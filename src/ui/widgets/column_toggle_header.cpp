@@ -1,0 +1,40 @@
+#include "ui/widgets/column_toggle_header.h"
+
+#include <QAction>
+#include <QContextMenuEvent>
+#include <QCursor>
+#include <QMenu>
+
+namespace ui {
+
+ColumnToggleHeaderView::ColumnToggleHeaderView(Qt::Orientation orientation, QWidget* parent)
+    : QHeaderView(orientation, parent) {
+    viewport()->installEventFilter(this);
+}
+
+void ColumnToggleHeaderView::set_column_labels(const QStringList& labels) {
+    labels_ = labels;
+}
+
+bool ColumnToggleHeaderView::eventFilter(QObject* obj, QEvent* event) {
+    if (obj == viewport() && event->type() == QEvent::ContextMenu) {
+        auto* cme = static_cast<QContextMenuEvent*>(event);
+        QMenu menu(this);
+
+        for (int i = 0; i < count(); ++i) {
+            QString label = (i < labels_.size()) ? labels_[i] : QString("Column %1").arg(i + 1);
+            QAction* action = menu.addAction(label);
+            action->setCheckable(true);
+            action->setChecked(!isSectionHidden(i));
+            connect(action, &QAction::toggled, this, [this, i](bool checked) {
+                setSectionHidden(i, !checked);
+            });
+        }
+
+        menu.exec(cme->globalPos());
+        return true;
+    }
+    return QHeaderView::eventFilter(obj, event);
+}
+
+}  // namespace ui
