@@ -37,7 +37,7 @@ StageFn StageRegistry::get_handler(const std::string& game_id,
             } else if (claim.priority == best_priority) {
                 // Log conflict
                 Logger::instance().warn("Conflicting stage claims for " +
-                    game_id + "." + stage_name + " — same priority, keeping first");
+                    game_id + "." + stage_name + " - same priority, keeping first");
             }
         }
     }

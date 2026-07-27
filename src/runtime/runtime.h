@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 
@@ -9,7 +10,8 @@ class Runtime {
 public:
     virtual ~Runtime() = default;
     virtual bool launch(const std::filesystem::path& executable,
-                        const std::string& game_id) = 0;
+                        const std::filesystem::path& game_dir,
+                        uint32_t steam_appid = 0) = 0;
     virtual bool is_available() const = 0;
     virtual std::string name() const = 0;
 };
@@ -17,7 +19,8 @@ public:
 class NativeRuntime : public Runtime {
 public:
     bool launch(const std::filesystem::path& executable,
-                const std::string& game_id) override;
+                const std::filesystem::path& game_dir,
+                uint32_t steam_appid = 0) override;
     bool is_available() const override;
     std::string name() const override { return "native"; }
 };
@@ -25,7 +28,8 @@ public:
 class ProtonRuntime : public Runtime {
 public:
     bool launch(const std::filesystem::path& executable,
-                const std::string& game_id) override;
+                const std::filesystem::path& game_dir,
+                uint32_t steam_appid = 0) override;
     bool is_available() const override;
     std::string name() const override { return "proton"; }
 

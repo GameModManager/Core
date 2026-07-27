@@ -1,4 +1,5 @@
 #include "engine/plugin_host/plugin_loader.h"
+#include "engine/plugin_host/python_loader.h"
 #include "engine/log/logger.h"
 
 #include "gmm_abi_v1.h"
@@ -46,13 +47,33 @@ static void cb_register_stage_claim(GmmRegistrationCtx* ctx,
 
     bridge->loader->stage_registry().register_claim(
         game_id, stage,
-        [fn, game_id, stage](Mod& mod, PipelineContext& ctx_) -> bool {
-            // Bridge from C++ types to ABI types
+        [fn](Mod& mod, PipelineContext& ctx_) -> bool {
             (void)mod; (void)ctx_;
-            // TODO: Create GmmModHandle/GmmInstanceHandle wrappers
-            return fn(nullptr, nullptr, nullptr, nullptr, nullptr);
+            // TODO: Create proper GmmModHandle/GmmInstanceHandle wrappers
+            return fn(nullptr, nullptr, nullptr, nullptr, nullptr) != 0;
         },
         priority, bridge->current_plugin->path);
+}
+
+static void cb_register_hook(GmmRegistrationCtx* ctx,
+                              const char* tag,
+                              const char* data,
+                              GmmHookFn fn,
+                              int priority,
+                              void* user_data) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge || !bridge->current_plugin) return;
+
+    std::string game_id = bridge->current_plugin->game_id;
+    std::string hook_tag = tag ? tag : "";
+    std::string hook_data = data ? data : "";
+
+    // Store as game knowledge — key=tag, value=data
+    bridge->loader->knowledge().set(game_id, hook_tag, hook_data);
+
+    Logger::instance().info("Plugin registered knowledge: " + hook_tag +
+        " (game=" + game_id + ", data=" + hook_data + ")");
+    (void)fn; (void)priority; (void)user_data;
 }
 
 static void cb_register_order_encoding(GmmRegistrationCtx* ctx,
@@ -81,12 +102,25 @@ static void cb_register_tool(GmmRegistrationCtx* ctx,
                               void (*invoke_fn)(void*),
                               void* user_data) {
     auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
-    if (!bridge) return;
+    if (!bridge || !bridge->current_plugin) return;
 
-    Logger::instance().info("Plugin registered tool: " +
-        std::string(tool_id ? tool_id : "unknown") +
-        " (" + (kind ? kind : "unknown") + ")");
-    (void)invoke_fn; (void)user_data;
+    ExternalTool tool;
+    tool.tool_id = tool_id ? tool_id : "";
+    tool.game_id = bridge->current_plugin->game_id;
+    tool.display_name = tool.tool_id;
+
+    std::string kind_str = kind ? kind : "advisory";
+    tool.kind = (kind_str == "workshop") ? ToolKind::Workshop : ToolKind::Advisory;
+
+    if (invoke_fn) {
+        tool.invoke_fn = [invoke_fn](void* ud) { invoke_fn(ud); };
+        tool.invoke_user_data = user_data;
+    }
+
+    bridge->loader->tool_registry().register_tool(tool);
+
+    Logger::instance().info("Plugin registered tool: " + tool.tool_id +
+        " (" + kind_str + ") for game=" + tool.game_id);
 }
 
 static void cb_register_capability(GmmRegistrationCtx* ctx,
@@ -139,7 +173,7 @@ bool PluginLoader::load_plugin(const std::string& path) {
 
     void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
     if (!handle) {
-        Logger::instance().error("Failed to load plugin: " + path + " — " + dlerror());
+        Logger::instance().error("Failed to load plugin: " + path + " - " + dlerror());
         return false;
     }
 
@@ -188,6 +222,7 @@ bool PluginLoader::load_plugin(const std::string& path) {
     GmmRegistrationCtx ctx = {};
     ctx.register_identity = cb_register_identity;
     ctx.register_stage_claim = cb_register_stage_claim;
+    ctx.register_hook = cb_register_hook;
     ctx.register_order_encoding = cb_register_order_encoding;
     ctx.register_deploy_strategy = cb_register_deploy_strategy;
     ctx.register_tool = cb_register_tool;
@@ -238,6 +273,11 @@ bool PluginLoader::load_directory(const std::string& dir_path) {
             if (load_plugin(path.string())) loaded++;
         }
 #endif
+
+        // Python plugins — always attempted regardless of OS
+        if (ext == ".py") {
+            if (python_load_plugin(this, path.string())) loaded++;
+        }
     }
 
     Logger::instance().info("Loaded " + std::to_string(loaded) + " plugins from " + dir_path);
@@ -249,6 +289,10 @@ bool PluginLoader::is_loaded(const std::string& path) const {
         if (p.path == path) return true;
     }
     return false;
+}
+
+void PluginLoader::add_loaded_plugin(PluginInfo info) {
+    plugins_.push_back(std::move(info));
 }
 
 void PluginLoader::unload_all() {

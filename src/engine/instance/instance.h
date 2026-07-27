@@ -16,11 +16,13 @@ enum class InstanceKind {
     Plugins,
     Logs,
     Config,
+    Overwrite,
 };
 
 struct InstanceInfo {
     std::string game_id;
     std::filesystem::path root;
+    std::filesystem::path game_dir;  // path to the actual game install (e.g. steamapps/common/...)
     bool portable = true;
 };
 
@@ -37,6 +39,7 @@ public:
 
     bool create_directories() const;
     bool write_toml() const;
+    bool read_toml();
 
     static std::filesystem::path resolve_portable_root(
         const std::filesystem::path& exe_dir);

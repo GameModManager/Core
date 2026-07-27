@@ -2,6 +2,7 @@
 
 #include "engine/pipeline/stage.h"
 
+#include <filesystem>
 #include <memory>
 #include <vector>
 
@@ -19,6 +20,7 @@ struct PipelineContext {
     Profile* profile = nullptr;
     DeploymentStrategy* deploy_strategy = nullptr;
     OrderEncodingHook* order_hook = nullptr;
+    std::filesystem::path game_dir;  // live game directory (for Overwrite capture)
 };
 
 class Pipeline {

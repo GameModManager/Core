@@ -2,6 +2,7 @@
 
 #include <QFrame>
 #include <QBoxLayout>
+#include <QIcon>
 #include <QStyle>
 
 namespace ui {
@@ -9,11 +10,9 @@ namespace ui {
 MainToolbar::MainToolbar(QWidget* parent)
     : QWidget(parent) {
     auto* settings_btn = add_gmm_button("Settings", "preferences-system");
-    auto* profiles_btn = add_gmm_button("Profiles", "user-bookmarks");
-    auto* instances_btn = add_gmm_button("Switch Instance", "system-file-manager");
+    auto* instances_btn = add_gmm_button("Switch Instance", "computerr");
 
     connect(settings_btn, &QToolButton::clicked, this, &MainToolbar::settings_clicked);
-    connect(profiles_btn, &QToolButton::clicked, this, &MainToolbar::profiles_clicked);
     connect(instances_btn, &QToolButton::clicked, this, &MainToolbar::instances_clicked);
 
     separator_ = new QFrame();
@@ -58,7 +57,9 @@ void MainToolbar::set_vertical(bool vertical) {
 QToolButton* MainToolbar::add_gmm_button(const QString& tooltip, const QString& icon_name) {
     auto* btn = new QToolButton(this);
     btn->setToolTip(tooltip);
-    btn->setIcon(style()->standardIcon(QStyle::SP_ComputerIcon));
+    // Try the named icon from the desktop theme first, fall back to a standard icon
+    auto theme_icon = QIcon::fromTheme(icon_name);
+    btn->setIcon(theme_icon.isNull() ? style()->standardIcon(QStyle::SP_ComputerIcon) : theme_icon);
     btn->setAutoRaise(true);
     btn->setIconSize(QSize(24, 24));
     btn->setToolButtonStyle(Qt::ToolButtonIconOnly);
@@ -66,14 +67,15 @@ QToolButton* MainToolbar::add_gmm_button(const QString& tooltip, const QString& 
     return btn;
 }
 
-QToolButton* MainToolbar::add_exec_button(const QString& tooltip, const QString& icon_name) {
+QToolButton* MainToolbar::add_exec_button(const QString& tooltip, const QIcon& icon) {
     auto* btn = new QToolButton(this);
     btn->setToolTip(tooltip);
-    btn->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
+    btn->setIcon(icon);
     btn->setAutoRaise(true);
     btn->setIconSize(QSize(24, 24));
     btn->setToolButtonStyle(Qt::ToolButtonIconOnly);
     exec_buttons_.append(btn);
+    layout_->addWidget(btn);
     return btn;
 }
 

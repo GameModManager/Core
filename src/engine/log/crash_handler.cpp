@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <execinfo.h>
 #include <ucontext.h>
@@ -18,9 +19,24 @@ std::string CrashHandler::dump_dir_;
 
 static constexpr int kMaxFrames = 64;
 
+// Recursively create directories (async-signal-safe subset: only uses mkdir + stat).
+static bool mkdirs(const std::string& path, mode_t mode) {
+    struct stat st{};
+    if (stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) return true;
+
+    // Find the parent
+    size_t pos = path.find_last_of('/');
+    if (pos != std::string::npos && pos > 0) {
+        std::string parent = path.substr(0, pos);
+        if (!parent.empty()) mkdirs(parent, mode);
+    }
+
+    return mkdir(path.c_str(), mode) == 0 || errno == EEXIST;
+}
+
 void CrashHandler::install(const std::string& dump_dir) {
     dump_dir_ = dump_dir;
-    mkdir(dump_dir_.c_str(), 0755);
+    mkdirs(dump_dir_, 0755);
 
     struct sigaction sa{};
     sa.sa_handler = signal_handler;

@@ -31,6 +31,7 @@ std::filesystem::path Instance::path_for(InstanceKind kind) const {
         case InstanceKind::Plugins:          return info_.root / "plugins";
         case InstanceKind::Logs:             return info_.root / "logs";
         case InstanceKind::Config:           return info_.root / "config";
+        case InstanceKind::Overwrite:        return info_.root / "mods" / "Overwrite";
     }
     return {};
 }
@@ -45,7 +46,8 @@ bool Instance::create_directories() const {
     if (ec) return false;
 
     const InstanceKind dirs[] = {
-        InstanceKind::Mods, InstanceKind::Profiles, InstanceKind::Downloads,
+        InstanceKind::Mods, InstanceKind::Overwrite, InstanceKind::Profiles,
+        InstanceKind::Downloads,
         InstanceKind::CacheArchives, InstanceKind::CacheThumbnails,
         InstanceKind::Plugins, InstanceKind::Logs, InstanceKind::Config,
     };
@@ -62,7 +64,41 @@ bool Instance::write_toml() const {
 
     out << "game_id = \"" << info_.game_id << "\"\n";
     out << "portable = " << (info_.portable ? "true" : "false") << "\n";
+    if (!info_.game_dir.empty()) {
+        out << "game_dir = \"" << info_.game_dir.string() << "\"\n";
+    }
     return out.good();
+}
+
+bool Instance::read_toml() {
+    std::ifstream in(toml_path());
+    if (!in) return false;
+
+    std::string line;
+    while (std::getline(in, line)) {
+        // game_id
+        auto eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        auto key = line.substr(0, eq);
+        // trim whitespace
+        key.erase(key.find_last_not_of(" \t") + 1);
+        key.erase(0, key.find_first_not_of(" \t"));
+
+        auto val_start = line.find('"', eq + 1);
+        if (val_start == std::string::npos) continue;
+        auto val_end = line.find('"', val_start + 1);
+        if (val_end == std::string::npos) continue;
+        auto val = line.substr(val_start + 1, val_end - val_start - 1);
+
+        if (key == "game_id") {
+            info_.game_id = val;
+        } else if (key == "game_dir") {
+            info_.game_dir = val;
+        } else if (key == "portable") {
+            info_.portable = (val == "true");
+        }
+    }
+    return true;
 }
 
 std::filesystem::path Instance::resolve_portable_root(
