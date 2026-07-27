@@ -18,10 +18,91 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y qt6-base-dev cmake g++
+          sudo apt-get install -y \
+            qt6-base-dev cmake g++ \
+            libzip-dev libsqlite3-dev libyaml-cpp-dev \
+            libcurl4-openssl-dev nlohmann-json3-dev \
+            libfuse3-dev libpython3-dev \
+            icoutils
 
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build
+        run: cmake --build build -j$(nproc)
+
+      - name: Test
+        working-directory: Core/build
+        run: ctest --output-on-failure
+
+      - name: Collect Linux artifacts
+        run: |
+          mkdir -p artifact
+          cp Core/build/gamemodmanager artifact/
+          cp Core/build/plugins/*.so artifact/ 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-build
+          path: artifact/
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install dependencies (vcpkg)
+        run: |
+          vcpkg install qt6-base libzip sqlite3 yaml-cpp libcurl nlohmann-json pybind11 python3 --triplet x64-windows
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test
+        working-directory: Core/build
+        run: ctest --output-on-failure -C Release
+
+      - name: Collect Windows artifacts
+        run: |
+          mkdir artifact
+          Copy-Item Core/build/gamemodmanager.exe artifact/
+          Get-ChildItem Core/build/plugins/*.dll -ErrorAction SilentlyContinue | Copy-Item -Destination artifact/
+          Get-ChildItem Core/build/*.dll -ErrorAction SilentlyContinue | Copy-Item -Destination artifact/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: artifact/
+
+  assemble-portable:
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-windows]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-build
+          path: linux-artifact/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-build
+          path: windows-artifact/
+
+      - name: Assemble portable distribution
+        run: |
+          chmod +x Core/packaging/assemble_portable.sh
+          Core/packaging/assemble_portable.sh linux-artifact/ windows-artifact/ GameModManager-Portable
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portable-distribution
+          path: GameModManager-Portable/

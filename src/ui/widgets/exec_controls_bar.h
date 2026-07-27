@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QWidget>
+#include <QStringList>
+#include <filesystem>
 
 class QComboBox;
 class QToolButton;
@@ -12,7 +14,11 @@ class ExecControlsBar : public QWidget {
 public:
     explicit ExecControlsBar(QWidget* parent = nullptr);
 
+    void set_executables(const QStringList& names, const QString& default_name = {},
+                         const std::filesystem::path& game_dir = {},
+                         const std::filesystem::path& icon_cache_dir = {});
     [[nodiscard]] QString current_executable() const;
+    [[nodiscard]] int current_executable_index() const;
 
 signals:
     void run_clicked();
