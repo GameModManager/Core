@@ -129,6 +129,17 @@ static void cb_register_tool(GmmRegistrationCtx* ctx,
         " (" + kind_str + ") for game=" + tool.game_id);
 }
 
+static void cb_register_image_diff(GmmRegistrationCtx* ctx,
+                                    GmmImageDiffFn fn,
+                                    void* user_data) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge) return;
+
+    bridge->loader->register_image_diff(fn, user_data);
+
+    Logger::instance().debug("Plugin registered image diff provider");
+}
+
 static void cb_register_sort_provider(GmmRegistrationCtx* ctx,
                                        const char* game_id,
                                        SortFn sort_fn,
@@ -284,6 +295,7 @@ bool PluginLoader::load_plugin(const std::string& path) {
     ctx.register_deploy_strategy = cb_register_deploy_strategy;
     ctx.register_tool = cb_register_tool;
     ctx.register_sort_provider = cb_register_sort_provider;
+    ctx.register_image_diff = cb_register_image_diff;
     ctx.register_capability = cb_register_capability;
     ctx.register_tab = cb_register_tab;
 

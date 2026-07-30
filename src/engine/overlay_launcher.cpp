@@ -229,25 +229,53 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
         close(fd);
 
         // We are now root (UID 0) in the new namespace — mount overlay
-        if (mount("none", "/", NULL, MS_REC | MS_PRIVATE, NULL) != 0)
+        if (mount("none", "/", NULL, MS_REC | MS_PRIVATE, NULL) != 0) {
+            const char* e = strerror(errno);
+            write(STDERR_FILENO, "Overlay: mount(MS_PRIVATE) failed: ", 36);
+            write(STDERR_FILENO, e, strlen(e));
+            write(STDERR_FILENO, "\n", 1);
             _exit(8);
+        }
 
         std::string lowerdir_str;
         std::string orig_dir;
-        if (!ca->extra_lowerdirs.empty()) {
-            // Preserve original game_dir by bind-mounting it to a temp location
-            char tmpl[] = "/tmp/gmm_orig_XXXXXX";
-            if (!mkdtemp(tmpl)) _exit(15);
-            orig_dir = tmpl;
-            if (mount(ca->game_dir.c_str(), orig_dir.c_str(), "", MS_BIND, NULL) != 0)
-                _exit(16);
 
-            // Build lowerdir: extra layers first, then original game_dir as bottom
-            for (size_t i = 0; i < ca->extra_lowerdirs.size(); ++i) {
-                if (i > 0) lowerdir_str += ":";
-                lowerdir_str += ca->extra_lowerdirs[i].string();
+        if (!ca->extra_lowerdirs.empty()) {
+            // Validate each extra_lowerdir before attempting overlay setup
+            std::vector<std::string> valid;
+            for (const auto& p : ca->extra_lowerdirs) {
+                auto s = p.string();
+                if (access(s.c_str(), R_OK) == 0) {
+                    valid.push_back(std::move(s));
+                } else {
+                    write(STDERR_FILENO, "Overlay: warning: skipping extra_lowerdir ", 42);
+                    write(STDERR_FILENO, s.c_str(), s.size());
+                    write(STDERR_FILENO, "\n", 1);
+                }
             }
-            lowerdir_str += ":" + orig_dir;
+
+            if (!valid.empty()) {
+                // Preserve original game_dir by bind-mounting it to a temp location
+                char tmpl[] = "/tmp/gmm_orig_XXXXXX";
+                if (!mkdtemp(tmpl)) _exit(15);
+                orig_dir = tmpl;
+                if (mount(ca->game_dir.c_str(), orig_dir.c_str(), "", MS_BIND, NULL) != 0) {
+                    const char* e = strerror(errno);
+                    write(STDERR_FILENO, "Overlay: mount(bind orig game_dir) failed: ", 44);
+                    write(STDERR_FILENO, e, strlen(e));
+                    write(STDERR_FILENO, "\n", 1);
+                    _exit(16);
+                }
+
+                // Build lowerdir: valid extra layers first, then original game_dir as bottom
+                for (size_t i = 0; i < valid.size(); ++i) {
+                    if (i > 0) lowerdir_str += ":";
+                    lowerdir_str += valid[i];
+                }
+                lowerdir_str += ":" + orig_dir;
+            } else {
+                lowerdir_str = ca->game_dir.string();
+            }
         } else {
             lowerdir_str = ca->game_dir.string();
         }
@@ -257,11 +285,23 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
                          + ",workdir=" + ca->overlay_work.string()
                          + ",userxattr";
 
-        if (mount("overlay", ca->mount_point.c_str(), "overlay", 0, data.c_str()) != 0)
+        if (mount("overlay", ca->mount_point.c_str(), "overlay", 0, data.c_str()) != 0) {
+            const char* e = strerror(errno);
+            write(STDERR_FILENO, "Overlay: mount(overlay) failed, data=", 38);
+            write(STDERR_FILENO, data.c_str(), data.size());
+            write(STDERR_FILENO, " errno=", 7);
+            write(STDERR_FILENO, e, strlen(e));
+            write(STDERR_FILENO, "\n", 1);
             _exit(9);
+        }
 
-        if (mount(ca->mount_point.c_str(), ca->game_dir.c_str(), "", MS_BIND, NULL) != 0)
+        if (mount(ca->mount_point.c_str(), ca->game_dir.c_str(), "", MS_BIND, NULL) != 0) {
+            const char* e = strerror(errno);
+            write(STDERR_FILENO, "Overlay: mount(bind overlay mount over game_dir) failed: ", 58);
+            write(STDERR_FILENO, e, strlen(e));
+            write(STDERR_FILENO, "\n", 1);
             _exit(10);
+        }
 
         setsid();
 

@@ -7,6 +7,8 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "engine/single_instance.h"
+
 static void qt_message_filter(QtMsgType type, const QMessageLogContext& ctx, const QString& msg) {
     // Suppress noisy Qt platform/theme messages
     if (msg.contains("grabbing the mouse") || msg.contains("This plugin supports"))
@@ -236,10 +238,11 @@ int main(int argc, char *argv[])
         cli::HeadlessConfig cfg;
         cfg.executable = exec_path;
         cfg.game_dir = inst.info().game_dir;
-        cfg.overwrite_dir = inst.info().root / "overwrite";
         cfg.instance_root = inst.info().root;
         cfg.steam_appid = steam_appid;
         cfg.is_windows_exe = is_windows_exe;
+        cfg.knowledge = &plugin_loader.knowledge();
+        cfg.game_id = inst.info().game_id;
 
         int exit_code = cli::launch_game_headless(cfg);
         engine::Logger::instance().debug(
@@ -330,6 +333,15 @@ int main(int argc, char *argv[])
             "Download URL: resolved to instance " + target_instance + " (game=" + matched_game_id + ")");
     }
 
+    // -- Single-instance guard (GUI mode only, not headless) ----------------
+    engine::SingleInstanceGuard instance_guard;
+    if (!headless && !instance_guard.tryAcquire()) {
+        instance_guard.requestFocus();
+        engine::Logger::instance().debug("Another instance running — requesting focus");
+        engine::CrashHandler::uninstall();
+        return 0;
+    }
+
     // Determine if we need the game selection screen
     bool show_selection = existing_instances.empty() && instance_name.isEmpty();
 
@@ -406,6 +418,14 @@ int main(int argc, char *argv[])
                 main_window->set_plugin_loader(&plugin_loader);
                 main_window->set_managed_games(&managed_games);
                 main_window->set_style_manager(&style_manager);
+
+                // Forward focus requests from other instances to this window
+                QObject::connect(&instance_guard, &engine::SingleInstanceGuard::focusRequested,
+                    main_window, [main_window]() {
+                        main_window->raise();
+                        main_window->activateWindow();
+                    });
+
                 main_window->set_game_info(
                     detected.game_id, detected.name, "Default",
                     detected.install_path, new_inst.info().root);
@@ -440,6 +460,13 @@ int main(int argc, char *argv[])
     window.set_plugin_loader(&plugin_loader);
     window.set_managed_games(&managed_games);
     window.set_style_manager(&style_manager);
+
+    // Forward focus requests from other instances to this window
+    QObject::connect(&instance_guard, &engine::SingleInstanceGuard::focusRequested,
+        &window, [&window]() {
+            window.raise();
+            window.activateWindow();
+        });
 
     // Resolve which instance to load
     std::string active_instance;

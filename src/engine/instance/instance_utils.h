@@ -8,6 +8,11 @@
 #include <vector>
 
 namespace engine {
+struct LaunchParams;
+class GameKnowledge;
+}
+
+namespace engine {
 
 // Canonical instances directory: ~/.local/share/GameModManager/instances/
 [[nodiscard]] std::filesystem::path default_instances_dir();
@@ -41,5 +46,20 @@ void write_last_instance(const std::string& name);
     const DetectedGame& game) {
     return create_instance_for_game(game, default_instances_dir());
 }
+
+// Prepare LaunchParams for launching a game from an instance.
+// If OverlayFS is supported on the instance:
+//   - Ensures .gmm_staging exists
+//   - Deploys all enabled mods to staging (creates symlinks)
+//   - Populates extra_lowerdirs with staging dir
+// Otherwise: returns basic LaunchParams with no extra lowerdirs.
+[[nodiscard]] LaunchParams prepare_launch_params(
+    const std::filesystem::path& instance_root,
+    const std::filesystem::path& game_dir,
+    const std::filesystem::path& executable,
+    const GameKnowledge& knowledge,
+    const std::string& game_id,
+    uint32_t steam_appid,
+    bool is_windows_exe);
 
 }

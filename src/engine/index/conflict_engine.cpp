@@ -60,10 +60,20 @@ std::string ConflictEngine::compute_quick_token(const std::filesystem::path& mod
 std::vector<std::string> ConflictEngine::walk_mod(
     const std::filesystem::path& mod_path,
     const std::vector<std::string>& extensions,
-    const std::vector<std::string>& ignored)
+    const std::vector<std::string>& ignored,
+    const std::vector<std::string>& scan_dirs)
 {
     // Build a set of ignored filenames for O(1) lookup
     std::unordered_set<std::string> ignore_set(ignored.begin(), ignored.end());
+
+    // Build subdirectory prefixes for fast filtering
+    // Each is e.g. "resources/" or "resources-dlc3/" — we check rel_str starts with one
+    std::vector<std::string> dir_prefixes;
+    for (const auto& d : scan_dirs) {
+        auto prefix = d;
+        if (!prefix.empty() && prefix.back() != '/') prefix += '/';
+        dir_prefixes.push_back(std::move(prefix));
+    }
 
     std::vector<std::string> files;
     std::error_code ec;
@@ -83,6 +93,18 @@ std::vector<std::string> ConflictEngine::walk_mod(
         if (ec) continue;
 
         auto rel_str = rel.string();
+
+        // Filter by subdirectory (if any scan_dirs are configured)
+        if (!dir_prefixes.empty()) {
+            bool in_scan_dir = false;
+            for (const auto& prefix : dir_prefixes) {
+                if (rel_str.starts_with(prefix)) {
+                    in_scan_dir = true;
+                    break;
+                }
+            }
+            if (!in_scan_dir) continue;
+        }
 
         // Filter by extension (if any extension filters are configured)
         if (!extensions.empty()) {
@@ -110,29 +132,31 @@ std::vector<std::string> ConflictEngine::walk_mod(
 // JSON cache I/O  (nlohmann::json)
 // ---------------------------------------------------------------------------
 
-std::unordered_map<std::string, ConflictEngine::FileCache>
+ConflictEngine::CacheData
 ConflictEngine::load_cache(const std::filesystem::path& cache_path) const {
+    CacheData data;
     if (cache_path.empty() || !std::filesystem::exists(cache_path))
-        return {};
+        return data;
 
     std::ifstream f(cache_path);
-    if (!f) return {};
+    if (!f) return data;
 
     try {
         json j;
         f >> j;
 
-        std::unordered_map<std::string, FileCache> cache;
+        data.filters_hash = j.value("filters_hash", size_t{0});
+
         if (j.contains("mods")) {
             for (const auto& [key, val] : j["mods"].items()) {
                 FileCache fc;
                 fc.token = val["token"].get<std::string>();
                 for (const auto& fp : val["files"])
                     fc.files.push_back(fp.get<std::string>());
-                cache[key] = std::move(fc);
+                data.mods[key] = std::move(fc);
             }
         }
-        return cache;
+        return data;
     } catch (...) {
         return {};
     }
@@ -140,7 +164,7 @@ ConflictEngine::load_cache(const std::filesystem::path& cache_path) const {
 
 void ConflictEngine::save_cache(
     const std::filesystem::path& cache_path,
-    const std::unordered_map<std::string, FileCache>& cache) const
+    const CacheData& data) const
 {
     if (cache_path.empty()) return;
 
@@ -151,9 +175,10 @@ void ConflictEngine::save_cache(
 
     json j;
     j["version"] = 1;
+    j["filters_hash"] = data.filters_hash;
 
     json mods_obj;
-    for (const auto& [folder, fc] : cache) {
+    for (const auto& [folder, fc] : data.mods) {
         json entry;
         entry["token"] = fc.token;
         entry["files"] = fc.files;
@@ -175,22 +200,42 @@ std::unordered_map<std::string, ConflictStats> ConflictEngine::compute(
     const std::string& extensions_csv,
     const std::string& ignored_csv,
     bool conflict_reversed,
-    const std::filesystem::path& cache_path)
+    const std::filesystem::path& cache_path,
+    const std::filesystem::path& extra_mods_dir,
+    const std::string& scan_dirs_csv)
 {
     if (mods_dir.empty() || mods.empty()) return {};
 
     auto extensions = split_csv(extensions_csv);
     auto ignored    = split_csv(ignored_csv);
+    auto scan_dirs  = split_csv(scan_dirs_csv);
+
+    // Compute filter hash — used to invalidate cache when scan/ext/ignore params change
+    std::string filter_key = extensions_csv + "\x00" + ignored_csv + "\x00" + scan_dirs_csv;
+    auto filters_hash = std::hash<std::string>{}(filter_key);
 
     // Load cached file lists
-    auto cache = load_cache(cache_path);
+    auto cache_data = load_cache(cache_path);
+    auto cache = std::move(cache_data.mods);
+
+    // If filter params changed, discard all cached entries
+    if (filters_hash != cache_data.filters_hash)
+        cache.clear();
 
     // Phase 1 — collect file lists (walk only changed mods)
     // mod_folder → vector of relative paths
     std::unordered_map<std::string, std::vector<std::string>> file_lists;
 
     for (const auto& [folder_name, priority] : mods) {
+        // Resolve actual mod path: try primary dir first, fall back to extra dir
         auto mod_path = mods_dir / folder_name;
+        std::error_code ec;
+        if (!std::filesystem::exists(mod_path, ec) && !extra_mods_dir.empty()) {
+            auto extra_path = extra_mods_dir / folder_name;
+            if (std::filesystem::exists(extra_path, ec))
+                mod_path = std::move(extra_path);
+        }
+
         auto token = compute_quick_token(mod_path);
 
         auto it = cache.find(folder_name);
@@ -199,7 +244,7 @@ std::unordered_map<std::string, ConflictStats> ConflictEngine::compute(
             file_lists[folder_name] = it->second.files;
         } else {
             // Cache miss — walk the directory
-            auto files = walk_mod(mod_path, extensions, ignored);
+            auto files = walk_mod(mod_path, extensions, ignored, scan_dirs);
             file_lists[folder_name] = files;
 
             // Update cache
@@ -218,7 +263,10 @@ std::unordered_map<std::string, ConflictStats> ConflictEngine::compute(
     }
 
     // Write cache back
-    save_cache(cache_path, cache);
+    CacheData out_data;
+    out_data.mods = std::move(cache);
+    out_data.filters_hash = filters_hash;
+    save_cache(cache_path, out_data);
 
     // Phase 2 — build path → owners registry
     // For each file, record (folder_name, priority) for every mod that owns it
@@ -277,9 +325,9 @@ void ConflictEngine::invalidate_mod(const std::string& folder_name,
                                      const std::filesystem::path& cache_path) {
     if (cache_path.empty()) return;
 
-    auto cache = load_cache(cache_path);
-    cache.erase(folder_name);
-    save_cache(cache_path, cache);
+    auto data = load_cache(cache_path);
+    data.mods.erase(folder_name);
+    save_cache(cache_path, data);
 }
 
 }  // namespace engine

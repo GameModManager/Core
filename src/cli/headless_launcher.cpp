@@ -1,7 +1,9 @@
 #include "cli/headless_launcher.h"
 
+#include "engine/instance/instance_utils.h"
 #include "engine/launcher.h"
 #include "engine/log/logger.h"
+#include "engine/registry/game_knowledge.h"
 
 #include <chrono>
 #include <filesystem>
@@ -19,7 +21,7 @@ int launch_game_headless(const HeadlessConfig& cfg) {
     engine::Logger::instance().debug(
         "  game_dir: " + cfg.game_dir.string());
     engine::Logger::instance().debug(
-        "  overwrite: " + cfg.overwrite_dir.string());
+        "  instance_root: " + cfg.instance_root.string());
     engine::Logger::instance().debug(
         "  appid: " + std::to_string(cfg.steam_appid) +
         "  windows: " + (cfg.is_windows_exe ? "yes" : "no"));
@@ -30,12 +32,15 @@ int launch_game_headless(const HeadlessConfig& cfg) {
         return 2;
     }
 
-    engine::LaunchParams lparams;
-    lparams.executable = cfg.executable;
-    lparams.game_dir = cfg.game_dir;
-    lparams.overwrite_dir = cfg.overwrite_dir;
-    lparams.steam_appid = cfg.steam_appid;
-    lparams.is_windows_exe = cfg.is_windows_exe;
+    // Build launch params through the shared workflow (same as GUI "Run" path)
+    auto lparams = engine::prepare_launch_params(
+        cfg.instance_root,
+        cfg.game_dir,
+        cfg.executable,
+        cfg.knowledge ? *cfg.knowledge : engine::GameKnowledge(),
+        cfg.game_id,
+        cfg.steam_appid,
+        cfg.is_windows_exe);
 
     auto launch_time = fs::file_time_type::clock::now();
     auto result = engine::launch_game(lparams);
@@ -49,11 +54,6 @@ int launch_game_headless(const HeadlessConfig& cfg) {
         "Headless: game launched (pid=" + std::to_string(result.pid) +
         "). Waiting for exit...");
 
-    // Wait for the game process to exit. For ProtonRuntime this blocks on
-    // the Proton script (waitforexitandrun) which stays alive for the full
-    // game duration. For NativeRuntime it blocks on the game process directly.
-    // PGID-based polling is unreliable here because Proton creates child
-    // sessions with different PGIDs internally.
     int status;
     pid_t child = static_cast<pid_t>(result.pid);
     pid_t ret;
@@ -66,7 +66,7 @@ int launch_game_headless(const HeadlessConfig& cfg) {
     std::this_thread::sleep_for(std::chrono::seconds(3));
 
     // Post-hoc capture (no-op if overlay was used)
-    engine::capture_overwrite(cfg.game_dir, cfg.overwrite_dir, launch_time);
+    engine::capture_overwrite(cfg.game_dir, lparams.overwrite_dir, launch_time);
 
     engine::Logger::instance().info("Headless: done");
     return (ret > 0 && WIFEXITED(status)) ? WEXITSTATUS(status) : 1;

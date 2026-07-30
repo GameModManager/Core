@@ -1,4 +1,7 @@
 #include <algorithm>
+#include <cstring>
+#include <fstream>
+#include <sys/wait.h>
 #include "ui/main_window/main_window.h"
 #include "ui/widgets/mod_list_model.h"
 #include "ui/widgets/mod_table_view.h"
@@ -190,9 +193,15 @@ MainWindow::MainWindow(QWidget* parent)
     main_layout->setContentsMargins(0, 0, 0, 0);
     main_layout->setSpacing(0);
 
-    // --- Profile bar above mod list ---
+    // --- Left panel: profile bar, mod list, filter bar stacked vertically ---
+    auto* left_panel = new QWidget(this);
+    auto* left_layout = new QVBoxLayout(left_panel);
+    left_layout->setContentsMargins(0, 0, 0, 0);
+    left_layout->setSpacing(0);
+
+    // Profile bar sits at top of left panel (inside same box as the mod list)
     profile_bar_ = new ProfileBar(this);
-    main_layout->addWidget(profile_bar_);
+    left_layout->addWidget(profile_bar_);
 
     connect(profile_bar_, &ProfileBar::create_separator_clicked, this, [this]() {
         create_separator();
@@ -206,33 +215,38 @@ MainWindow::MainWindow(QWidget* parent)
         update_title();
     });
 
-    // --- Horizontal splitter: mod list + right panel ---
-    main_splitter_ = new QSplitter(Qt::Horizontal, this);
-
-    // Left: mod list + filter bar stacked vertically
-    auto* left_panel = new QWidget(this);
-    auto* left_layout = new QVBoxLayout(left_panel);
-    left_layout->setContentsMargins(0, 0, 0, 0);
-    left_layout->setSpacing(0);
-
     mod_model_ = new ModListModel(this);
     mod_view_ = new ModTableView(this);
     mod_model_->set_view(mod_view_);
     mod_view_->setModel(mod_model_);
 
-    // Highlight conflicting mods on selection
+    // Highlight conflicting mods on selection + populate ConflictsTab
     connect(mod_view_->selectionModel(), &QItemSelectionModel::currentChanged,
             this, [this](const QModelIndex& current, const QModelIndex& /*previous*/) {
         if (!current.isValid()) {
             mod_model_->set_selected_mod({});
+            auto* ct = right_panel_->conflicts_tab();
+            if (ct) ct->clear_content();
             return;
         }
         const auto& mods = mod_model_->mods();
         if (current.row() >= 0 && current.row() < mods.size() &&
             !mods[current.row()].is_separator && !mods[current.row()].is_overwrite) {
-            mod_model_->set_selected_mod(mods[current.row()].id);
+            auto& selected = mods[current.row()];
+            mod_model_->set_selected_mod(selected.id);
+
+            // Push conflict data to the ConflictsTab
+            auto* ct = right_panel_->conflicts_tab();
+            if (ct) {
+                ct->show_conflicts(selected.id, mods,
+                                   last_conflict_registry_,
+                                   mod_model_->conflict_pairs(),
+                                   mod_model_->is_conflict_order_reversed());
+            }
         } else {
             mod_model_->set_selected_mod({});
+            auto* ct = right_panel_->conflicts_tab();
+            if (ct) ct->clear_content();
         }
     });
 
@@ -270,6 +284,7 @@ MainWindow::MainWindow(QWidget* parent)
             //engine::Logger::instance().debug("Saving order on mod_list_changed");
             save_order();
             sync_separator_ids();
+            apply_mod_filter();
         } else {
             //engine::Logger::instance().debug("Suppressed order save (loading)");
         }
@@ -336,6 +351,24 @@ MainWindow::MainWindow(QWidget* parent)
     filter_bar_ = new ModFilterBar(this);
     left_layout->addWidget(filter_bar_);
 
+    connect(filter_bar_, &ModFilterBar::filter_changed, this, [this]() {
+        apply_mod_filter();
+    });
+    connect(filter_bar_, &ModFilterBar::group_changed, this, [this]() {
+        apply_mod_filter();
+    });
+    connect(filter_bar_, &ModFilterBar::expand_all_clicked, this, [this]() {
+        for (int i = 0; i < mod_model_->mods().size(); ++i)
+            mod_model_->set_folded(i, false);
+        apply_mod_filter();
+    });
+    connect(filter_bar_, &ModFilterBar::collapse_all_clicked, this, [this]() {
+        for (int i = 0; i < mod_model_->mods().size(); ++i)
+            mod_model_->set_folded(i, true);
+        apply_mod_filter();
+    });
+
+    main_splitter_ = new QSplitter(Qt::Horizontal, this);
     main_splitter_->addWidget(left_panel);
 
     main_layout->addWidget(main_splitter_, 1);
@@ -418,8 +451,8 @@ MainWindow::MainWindow(QWidget* parent)
     connect(right_panel_->exec_controls(), &ExecControlsBar::shortcut_to_desktop,
             this, &MainWindow::add_shortcut_to_desktop);
 
-    connect(right_panel_->exec_controls(), &ExecControlsBar::select_executable_requested,
-            this, &MainWindow::pick_executable_file);
+    connect(right_panel_->exec_controls(), &ExecControlsBar::add_entry_requested,
+            this, &MainWindow::on_add_entry_requested);
 
     // Start IPC server to receive nxm:// URLs from other GMM processes
     nxm_ipc_ = new engine::NxmIpcServer(this);
@@ -483,6 +516,13 @@ void MainWindow::set_game_info(const std::string& game_id,
         if (plugin_loader_)
             right_panel_->set_capabilities(&plugin_loader_->capabilities());
         right_panel_->set_game(current_game_id_);
+
+        // Connect conflicts tab signals (tab created during set_game)
+        auto* ct = right_panel_->conflicts_tab();
+        if (ct) {
+            connect(ct, &ui::ConflictsTab::image_diff_requested,
+                    this, &MainWindow::on_image_diff_requested);
+        }
 
         load_mods_from_game();
         load_executables();
@@ -804,7 +844,7 @@ void MainWindow::sync_mod_enable_state(const QString& mod_id, bool enabled) {
     auto mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
     if (mods_subpath.empty()) return;
 
-    auto mod_folder = mods_dir_path() / mod_id.toStdString();
+    auto mod_folder = resolve_mod_folder(mod_id.toStdString(), mods_subpath);
 
     if (enabled) {
         (void)engine::ModScanner::enable_mod(*knowledge_, current_game_id_, mod_folder);
@@ -835,9 +875,9 @@ void MainWindow::sync_priorities() {
                 meta.save(meta_dir, mods[i].id.toStdString());
             }
         }
-        // Write game-native priority only for real mods
+        // Write game-native priority — resolve actual mod folder location
         if (!mods[i].is_overwrite && !mods[i].is_separator && !mods_subpath.empty()) {
-            auto mod_folder = mods_dir_path() / mods[i].id.toStdString();
+            auto mod_folder = resolve_mod_folder(mods[i].id.toStdString(), mods_subpath);
             (void)engine::ModScanner::set_priority(*knowledge_, current_game_id_, mod_folder, i);
         }
     }
@@ -1004,13 +1044,13 @@ void MainWindow::load_mods_from_game() {
         }
     }
 
-    // Clear existing mods (except Overwrite which ensure_overwrite_present manages)
-    auto existing = mod_model_->mods();
-    for (int i = existing.size() - 1; i >= 0; --i) {
-        if (!existing[i].is_overwrite) {
-            mod_model_->remove_mod(existing[i].id);
-        }
-    }
+    // Clear all existing mods (including game-native) — needed for instance switching
+    mod_model_->remove_all_mods();
+
+    // Filter out MERGED pseudo-mod folder from scan results
+    scanned.erase(std::remove_if(scanned.begin(), scanned.end(),
+        [](const engine::ScannedMod& m) { return m.folder_name == "MERGED"; }),
+        scanned.end());
 
     // Add scanned mods before Overwrite (Overwrite stays last)
     for (const auto& mod : scanned) {
@@ -1046,6 +1086,9 @@ void MainWindow::load_mods_from_game() {
         }
     }
 
+    // Ensure MERGED pseudo-mod is present (after loading scanned mods, before sorting)
+    mod_model_->ensure_merged_present();
+
     loading_ = false;
 
     // Sort by priority to restore saved order
@@ -1072,6 +1115,18 @@ void MainWindow::load_mods_from_game() {
 
     // Compute conflict stats for all mods
     recompute_conflicts();
+}
+
+std::filesystem::path MainWindow::resolve_mod_folder(const std::string& mod_id, const std::string& mods_subpath) const {
+    auto folder = mods_dir_path() / mod_id;
+    if (std::filesystem::exists(folder))
+        return folder;
+    if (!mods_subpath.empty()) {
+        auto fallback = current_game_dir_ / mods_subpath / mod_id;
+        if (std::filesystem::exists(fallback))
+            return fallback;
+    }
+    return folder;  // return the instance path even if it doesn't exist
 }
 
 std::filesystem::path MainWindow::meta_dir_path() const {
@@ -1208,15 +1263,21 @@ void MainWindow::recompute_conflicts() {
     auto conflict_extensions = knowledge_->get(current_game_id_, "conflict_extensions", "");
     auto ignored_files = knowledge_->get(current_game_id_, "ignored_files", "");
     auto conflict_reversed = knowledge_->get(current_game_id_, "conflict_order_reversed", "") == "true";
+    auto conflict_scan_dirs = knowledge_->get(current_game_id_, "conflict_scan_dirs", "");
 
-    // Collect mod info from the current model
+    // Collect mod info — only enabled mods affect the game
     std::vector<engine::ConflictEngine::ModInfo> mod_infos;
     for (const auto& mod : mod_model_->mods()) {
         if (mod.is_separator) continue;
+        if (!mod.enabled && !mod.is_overwrite && !mod.is_merged) continue;
         if (mod.is_overwrite) {
-            // Overwrite always wins: lowest priority for Isaac, highest for everyone else
             int ow_priority = conflict_reversed ? -1 : 999999;
             mod_infos.emplace_back(mod.id.toStdString(), ow_priority);
+            continue;
+        }
+        if (mod.is_merged) {
+            int mg_priority = conflict_reversed ? 0 : 999998;
+            mod_infos.emplace_back(mod.id.toStdString(), mg_priority);
             continue;
         }
         mod_infos.emplace_back(mod.id.toStdString(), mod.priority);
@@ -1226,23 +1287,32 @@ void MainWindow::recompute_conflicts() {
 
     auto mods_dir = mods_dir_path();
 
-    //engine::Logger::instance().debug(
-    //    "ConflictEngine: reversed=" + std::string(conflict_reversed ? "true" : "false") +
-    //    ", mods=" + std::to_string(mod_infos.size()) +
-    //    ", game=" + current_game_id_);
+    // Determine game's native mods directory (for mods that live there instead of instance)
+    std::filesystem::path game_mods_dir;
+    if (!current_game_dir_.empty() && knowledge_) {
+        auto game_mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
+        game_mods_dir = current_game_dir_;
+        if (!game_mods_subpath.empty())
+            game_mods_dir /= game_mods_subpath;
+        // Only pass as extra dir if it differs from the instance mods dir
+        if (game_mods_dir == mods_dir)
+            game_mods_dir.clear();
+    }
 
     engine::ConflictEngine engine;
     auto stats = engine.compute(mods_dir, mod_infos,
                                  conflict_extensions, ignored_files,
-                                 conflict_reversed, conflict_cache_path_);
+                                 conflict_reversed, conflict_cache_path_,
+                                 game_mods_dir, conflict_scan_dirs);
 
     // Push results into the model
     for (const auto& [folder_name, cs] : stats) {
         mod_model_->set_conflict_stats(QString::fromStdString(folder_name), cs.wins, cs.losses);
-        //engine::Logger::instance().debug(
-        //    "ConflictStats: " + folder_name +
-        //    " wins=" + std::to_string(cs.wins) +
-        //    " losses=" + std::to_string(cs.losses));
+    }
+    // Zero out any stale stats for disabled mods (not fed to the engine)
+    for (const auto& mod : mod_model_->mods()) {
+        if (!mod.enabled && !mod.is_overwrite && !mod.is_merged && !mod.is_separator)
+            mod_model_->set_conflict_stats(mod.id, 0, 0);
     }
 
     // Build pairwise data from the file registry
@@ -1272,171 +1342,459 @@ void MainWindow::recompute_conflicts() {
         }
     }
     mod_model_->set_conflict_pairs(pairs);
+    last_conflict_registry_ = engine.last_registry();
+}
+
+void MainWindow::on_image_diff_requested(const QString& relative_path) {
+    if (!plugin_loader_ || !plugin_loader_->has_image_diff())
+        return;
+
+    // Collect all mods that own this file from the conflict registry
+    auto it = last_conflict_registry_.find(relative_path.toStdString());
+    if (it == last_conflict_registry_.end() || it->second.size() < 2)
+        return;
+
+    const auto& owners = it->second;
+    std::vector<std::string> source_paths;
+    source_paths.reserve(owners.size());
+
+    auto mods_dir = mods_dir_path();
+    std::filesystem::path game_mods_dir;
+    if (!current_game_dir_.empty() && knowledge_) {
+        auto subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
+        game_mods_dir = current_game_dir_;
+        if (!subpath.empty()) game_mods_dir /= subpath;
+    }
+
+    for (const auto& [mod_name, _] : owners) {
+        // Check instance mods dir first, then game native mods dir
+        std::filesystem::path abs_path = mods_dir / mod_name / relative_path.toStdString();
+        if (std::filesystem::exists(abs_path)) {
+            source_paths.push_back(abs_path.string());
+            continue;
+        }
+        if (!game_mods_dir.empty()) {
+            abs_path = game_mods_dir / mod_name / relative_path.toStdString();
+            if (std::filesystem::exists(abs_path)) {
+                source_paths.push_back(abs_path.string());
+                continue;
+            }
+        }
+    }
+
+    if (source_paths.size() < 2) return;
+
+    // Compute output path — write to MERGED pseudo-mod folder
+    std::filesystem::path output_path = mods_dir_path() / "MERGED" / relative_path.toStdString();
+    std::error_code ec;
+    std::filesystem::create_directories(output_path.parent_path(), ec);
+
+    // Invoke the image diff provider
+    const auto& provider = plugin_loader_->image_diff_provider();
+    if (provider.fn) {
+        std::vector<const char*> c_paths;
+        c_paths.reserve(source_paths.size());
+        for (const auto& p : source_paths)
+            c_paths.push_back(p.c_str());
+
+        std::string out_str = output_path.string();
+        provider.fn(c_paths.data(), c_paths.size(), out_str.c_str(), provider.user_data);
+    }
 }
 
 void MainWindow::setup_mod_list_context_menu() {
-    mod_context_menu_ = new QMenu(this);
     mod_view_->setContextMenuPolicy(Qt::CustomContextMenu);
 
-    auto* clear_action = mod_context_menu_->addAction("Clear Overwrite");
-    auto* create_mod_action = mod_context_menu_->addAction("Create Mod from Overwrite");
-    mod_context_menu_->addSeparator();
-    auto* edit_separator_action = mod_context_menu_->addAction("Edit Separator");
-    auto* delete_separator_action = mod_context_menu_->addAction("Delete Separator");
-    mod_context_menu_->addSeparator();
-    auto* remove_action = mod_context_menu_->addAction("Remove");
-    auto* open_folder_action = mod_context_menu_->addAction("Open in File Manager");
-
     connect(mod_view_, &QWidget::customContextMenuRequested,
-            this, [this, clear_action, create_mod_action, edit_separator_action, delete_separator_action, remove_action, open_folder_action](const QPoint& pos) {
+            this, [this](const QPoint& pos) {
         auto idx = mod_view_->indexAt(pos);
         if (!idx.isValid()) return;
 
         int row = idx.row();
-        bool is_ow = mod_model_->is_overwrite(row);
-        bool is_sep = row >= 0 && row < mod_model_->mods().size() && mod_model_->mods()[row].is_separator;
-        bool is_native = row >= 0 && row < mod_model_->mods().size() && mod_model_->mods()[row].is_game_native;
+        if (row < 0 || row >= mod_model_->mods().size()) return;
+        const auto& entry = mod_model_->mods()[row];
 
-        clear_action->setVisible(is_ow);
-        create_mod_action->setVisible(is_ow);
-        edit_separator_action->setVisible(is_sep);
-        delete_separator_action->setVisible(is_sep);
-        remove_action->setVisible(!is_ow && !is_sep && !is_native);
-        open_folder_action->setVisible(!is_sep && !is_native);
+        QMenu menu;
 
-        mod_context_menu_->exec(mod_view_->viewport()->mapToGlobal(pos));
-    });
-
-    connect(clear_action, &QAction::triggered, this, [this]() {
-        auto sel = mod_view_->selectionModel()->selectedRows();
-        if (sel.isEmpty()) return;
-
-        auto reply = QMessageBox::question(this, "Clear Overwrite",
-            "Remove all files from the Overwrite folder? This cannot be undone.",
-            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-        if (reply != QMessageBox::Yes) return;
-
-        if (!current_instance_root_.empty()) {
-            auto overwrite_dir = current_instance_root_ / "overwrite";
-            if (engine::SyncStage::clear_overwrite(overwrite_dir)) {
-                engine::Logger::instance().debug("Overwrite cleared");
-                QMessageBox::information(this, "Overwrite", "Overwrite folder cleared.");
-            } else {
-                QMessageBox::warning(this, "Overwrite", "Failed to clear Overwrite folder.");
-            }
-        }
-    });
-
-    connect(create_mod_action, &QAction::triggered, this, [this]() {
-        bool ok;
-        auto name = QInputDialog::getText(this, "Create Mod from Overwrite",
-            "Mod name:", QLineEdit::Normal, QString(), &ok);
-        if (!ok || name.isEmpty()) return;
-
-        if (current_instance_root_.empty()) return;
-
-        auto overwrite_dir = current_instance_root_ / "overwrite";
-        auto mods_subpath = knowledge_ ? knowledge_->get(current_game_id_, "mods_subpath", "") : std::string();
-        if (mods_subpath.empty()) return;
-
-        auto mod_dir = mods_dir_path() / name.toStdString();
-
-        // Collect all files in Overwrite
-        std::vector<std::string> rel_paths;
-        std::error_code ec;
-        if (std::filesystem::exists(overwrite_dir)) {
-            for (const auto& entry :
-                 std::filesystem::recursive_directory_iterator(overwrite_dir)) {
-                if (entry.is_regular_file()) {
-                    auto rel = std::filesystem::relative(entry.path(), overwrite_dir, ec);
-                    if (!ec) rel_paths.push_back(rel.string());
-                }
-            }
-        }
-
-        if (rel_paths.empty()) {
-            QMessageBox::information(this, "Create Mod", "Overwrite folder is empty.");
+        if (entry.is_overwrite) {
+            menu.addAction(QIcon::fromTheme("edit-clear"), "Clear Overwrite",
+                this, [this]() { clear_overwrite(); });
+            menu.addAction(QIcon::fromTheme("document-new"), "Create Mod from Overwrite",
+                this, [this]() { create_mod_from_overwrite(); });
+            menu.exec(mod_view_->viewport()->mapToGlobal(pos));
             return;
         }
 
-        if (engine::SyncStage::promote_to_mod(overwrite_dir, mod_dir, rel_paths)) {
-            auto id = name;
-            mod_model_->add_mod(id, name, "");
-            engine::Logger::instance().debug("Promote Overwrite to mod: " + name.toStdString());
-            QMessageBox::information(this, "Create Mod",
-                "Overwrite contents promoted to mod: " + name);
-        } else {
-            QMessageBox::warning(this, "Create Mod", "Failed to promote Overwrite files.");
+        if (entry.is_separator) {
+            menu.addAction(QIcon::fromTheme("document-edit"), "Edit",
+                this, [this, row]() { edit_separator(row); });
+            menu.addAction(QIcon::fromTheme("edit-delete"), "Delete",
+                this, [this, row]() { delete_separator(row); });
+            menu.exec(mod_view_->viewport()->mapToGlobal(pos));
+            return;
         }
-    });
 
-    connect(remove_action, &QAction::triggered, this, [this]() {
+        // --- Mod rows below ---
         auto sel = mod_view_->selectionModel()->selectedRows();
-        if (sel.isEmpty()) return;
+        bool multi = sel.size() > 1;
 
-        QStringList names;
-        for (const auto& idx : sel) {
-            int row = idx.row();
-            if (row < 0 || row >= mod_model_->mods().size()) continue;
-            if (mod_model_->mods()[row].is_overwrite) continue;
-            names.append(mod_model_->mods()[row].name);
+        if (multi) {
+            menu.addAction(QIcon::fromTheme("dialog-ok"), "Enable Selected",
+                this, [this]() { toggle_selected_mods(true); });
+            menu.addAction(QIcon::fromTheme("dialog-cancel"), "Disable Selected",
+                this, [this]() { toggle_selected_mods(false); });
+            menu.addSeparator();
+            menu.addAction(QIcon::fromTheme("edit-delete"), "Remove",
+                this, [this]() { remove_selected_mods(); });
+            menu.exec(mod_view_->viewport()->mapToGlobal(pos));
+            return;
         }
-        if (names.isEmpty()) return;
 
-        auto reply = QMessageBox::question(this, "Remove Mods",
-            "Permanently delete " + QString::number(names.size()) + " mod(s) from disk?\n\n" +
-            names.join("\n") + "\n\nThis cannot be undone.",
-            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-        if (reply != QMessageBox::Yes) return;
+        // Single mod — full menu
+        auto mod_id = entry.id;
+        bool has_conflicts = entry.conflict_wins + entry.conflict_losses > 0;
 
-        auto mods_subpath = knowledge_ ? knowledge_->get(current_game_id_, "mods_subpath", "") : std::string();
-
-        for (const auto& idx : sel) {
-            int row = idx.row();
-            if (row < 0 || row >= mod_model_->mods().size()) continue;
-            const auto& entry = mod_model_->mods()[row];
-            if (entry.is_overwrite) continue;
-
-            // Delete mod folder from disk
-            if (!mods_subpath.empty() && !current_game_dir_.empty()) {
-                auto mod_folder = mods_dir_path() / entry.id.toStdString();
-                std::error_code ec;
-                std::filesystem::remove_all(mod_folder, ec);
-                if (ec) {
-                    engine::Logger::instance().error("Failed to remove mod folder: " + mod_folder.string() + ": " + ec.message());
-                }
+        // Change Separator submenu
+        auto* sep_submenu = menu.addMenu(QIcon::fromTheme("view-sort"), "Change Separator");
+        bool any_seps = false;
+        for (const auto& m : mod_model_->mods()) {
+            if (m.is_separator) {
+                any_seps = true;
+                sep_submenu->addAction(m.name, this, [this, mod_id, id = m.id]() {
+                    move_to_separator(mod_id, id);
+                });
             }
-            mod_model_->remove_mod(entry.id);
         }
-    });
+        sep_submenu->setEnabled(any_seps);
 
-    connect(open_folder_action, &QAction::triggered, this, [this]() {
-        auto sel = mod_view_->selectionModel()->selectedRows();
-        if (sel.isEmpty()) return;
-        int row = sel.first().row();
-        if (row < 0 || row >= mod_model_->mods().size()) return;
-        const auto& entry = mod_model_->mods()[row];
-        auto folder = mods_dir_path() / entry.id.toStdString();
-        QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(folder.string())));
-    });
+        menu.addAction(QIcon::fromTheme("list-add"), "Create Separator",
+            this, [this, row]() { create_separator_at_row(row); });
 
-    connect(edit_separator_action, &QAction::triggered, this, [this]() {
-        auto sel = mod_view_->selectionModel()->selectedRows();
-        if (sel.isEmpty()) return;
-        int row = sel.first().row();
-        if (row >= 0 && row < mod_model_->mods().size() && mod_model_->mods()[row].is_separator) {
-            edit_separator(row);
+        if (has_conflicts) {
+            menu.addSeparator();
+            menu.addAction(QIcon::fromTheme("go-top"), "Send to Highest Priority",
+                this, [this, mod_id]() { send_to_highest_priority(mod_id); });
+            menu.addAction(QIcon::fromTheme("go-bottom"), "Send to Lowest Priority",
+                this, [this, mod_id]() { send_to_lowest_priority(mod_id); });
+
+            if (!entry.separator_id.isEmpty() && mod_model_->has_conflicts_within_separator(mod_id)) {
+                menu.addAction(QIcon::fromTheme("go-up"), "Send to Highest in Separator",
+                    this, [this, mod_id]() { send_to_highest_in_separator(mod_id); });
+                menu.addAction(QIcon::fromTheme("go-down"), "Send to Lowest in Separator",
+                    this, [this, mod_id]() { send_to_lowest_in_separator(mod_id); });
+            }
         }
-    });
 
-    connect(delete_separator_action, &QAction::triggered, this, [this]() {
-        auto sel = mod_view_->selectionModel()->selectedRows();
-        if (sel.isEmpty()) return;
-        int row = sel.first().row();
-        if (row >= 0 && row < mod_model_->mods().size() && mod_model_->mods()[row].is_separator) {
-            delete_separator(row);
+        menu.addSeparator();
+        menu.addAction(QIcon::fromTheme("dialog-ok"), "Enable Selected",
+            this, [this]() { toggle_selected_mods(true); });
+        menu.addAction(QIcon::fromTheme("dialog-cancel"), "Disable Selected",
+            this, [this]() { toggle_selected_mods(false); });
+
+        menu.addSeparator();
+        menu.addAction(QIcon::fromTheme("document-edit"), "Rename Mod...",
+            this, [this]() { rename_selected_mod(); });
+
+        menu.addSeparator();
+        if (!entry.source_type.isEmpty()) {
+            auto src = source_visit_info(entry.source_type, entry.source_id);
+            if (!src.label.isEmpty()) {
+                auto* visit_act = menu.addAction(QIcon::fromTheme("text-html"), src.label,
+                    this, [this, src]() {
+                        if (!src.url.isEmpty())
+                            QDesktopServices::openUrl(QUrl(src.url));
+                    });
+                visit_act->setEnabled(!src.url.isEmpty());
+            }
         }
+        menu.addAction(QIcon::fromTheme("folder"), "Open in File Manager",
+            this, [this, mod_id]() {
+                auto folder = mods_dir_path() / mod_id.toStdString();
+                std::error_code ec;
+                if (!std::filesystem::exists(folder, ec)) {
+                    // Fall back to game's native mods directory
+                    auto game_mods_subpath = knowledge_
+                        ? knowledge_->get(current_game_id_, "mods_subpath", "") : "";
+                    auto fallback = current_game_dir_;
+                    if (!game_mods_subpath.empty())
+                        fallback /= game_mods_subpath;
+                    folder = fallback / mod_id.toStdString();
+                }
+                QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(folder.string())));
+            });
+
+        menu.addSeparator();
+        menu.addAction(QIcon::fromTheme("edit-delete"), "Remove",
+            this, [this]() { remove_selected_mods(); });
+
+        menu.exec(mod_view_->viewport()->mapToGlobal(pos));
     });
+}
+
+void MainWindow::clear_overwrite() {
+    auto reply = QMessageBox::question(this, "Clear Overwrite",
+        "Remove all files from the Overwrite folder? This cannot be undone.",
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (reply != QMessageBox::Yes) return;
+
+    if (!current_instance_root_.empty()) {
+        auto overwrite_dir = current_instance_root_ / "overwrite";
+        if (engine::SyncStage::clear_overwrite(overwrite_dir)) {
+            engine::Logger::instance().debug("Overwrite cleared");
+            QMessageBox::information(this, "Overwrite", "Overwrite folder cleared.");
+        } else {
+            QMessageBox::warning(this, "Overwrite", "Failed to clear Overwrite folder.");
+        }
+    }
+}
+
+void MainWindow::create_mod_from_overwrite() {
+    bool ok;
+    auto name = QInputDialog::getText(this, "Create Mod from Overwrite",
+        "Mod name:", QLineEdit::Normal, QString(), &ok);
+    if (!ok || name.isEmpty()) return;
+    if (current_instance_root_.empty()) return;
+
+    auto overwrite_dir = current_instance_root_ / "overwrite";
+    auto mods_subpath = knowledge_ ? knowledge_->get(current_game_id_, "mods_subpath", "") : std::string();
+    if (mods_subpath.empty()) return;
+
+    auto mod_dir = mods_dir_path() / name.toStdString();
+
+    std::vector<std::string> rel_paths;
+    std::error_code ec;
+    if (std::filesystem::exists(overwrite_dir)) {
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(overwrite_dir)) {
+            if (entry.is_regular_file()) {
+                auto rel = std::filesystem::relative(entry.path(), overwrite_dir, ec);
+                if (!ec) rel_paths.push_back(rel.string());
+            }
+        }
+    }
+    if (rel_paths.empty()) {
+        QMessageBox::information(this, "Create Mod", "Overwrite folder is empty.");
+        return;
+    }
+
+    if (engine::SyncStage::promote_to_mod(overwrite_dir, mod_dir, rel_paths)) {
+        auto id = name;
+        mod_model_->add_mod(id, name, "");
+        engine::Logger::instance().debug("Promote Overwrite to mod: " + name.toStdString());
+        QMessageBox::information(this, "Create Mod", "Overwrite contents promoted to mod: " + name);
+    } else {
+        QMessageBox::warning(this, "Create Mod", "Failed to promote Overwrite files.");
+    }
+}
+
+void MainWindow::remove_selected_mods() {
+    auto sel = mod_view_->selectionModel()->selectedRows();
+    if (sel.isEmpty()) return;
+
+    QStringList names;
+    for (const auto& idx : sel) {
+        int r = idx.row();
+        if (r < 0 || r >= mod_model_->mods().size()) continue;
+        if (mod_model_->mods()[r].is_overwrite) continue;
+        names.append(mod_model_->mods()[r].name);
+    }
+    if (names.isEmpty()) return;
+
+    auto reply = QMessageBox::question(this, "Remove Mods",
+        "Permanently delete " + QString::number(names.size()) + " mod(s) from disk?\n\n" +
+        names.join("\n") + "\n\nThis cannot be undone.",
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (reply != QMessageBox::Yes) return;
+
+    auto mods_subpath = knowledge_ ? knowledge_->get(current_game_id_, "mods_subpath", "") : std::string();
+
+    for (const auto& idx : sel) {
+        int r = idx.row();
+        if (r < 0 || r >= mod_model_->mods().size()) continue;
+        const auto& entry = mod_model_->mods()[r];
+        if (entry.is_overwrite) continue;
+
+        if (!mods_subpath.empty() && !current_game_dir_.empty()) {
+            auto mod_folder = mods_dir_path() / entry.id.toStdString();
+            std::error_code ec;
+            std::filesystem::remove_all(mod_folder, ec);
+            if (ec) {
+                engine::Logger::instance().error("Failed to remove mod folder: " +
+                    mod_folder.string() + ": " + ec.message());
+            }
+        }
+        mod_model_->remove_mod(entry.id);
+    }
+}
+
+void MainWindow::move_to_separator(const QString& mod_id, const QString& sep_id) {
+    mod_model_->set_separator_id(mod_id, sep_id);
+
+    // Move mod row to right after the separator row
+    const auto& mods = mod_model_->mods();
+    int sep_row = -1;
+    for (int i = 0; i < mods.size(); ++i) {
+        if (mods[i].is_separator && mods[i].id == sep_id) {
+            sep_row = i;
+            break;
+        }
+    }
+    if (sep_row >= 0)
+        mod_model_->move_mod(mod_id, sep_row + 1);
+}
+
+void MainWindow::send_to_highest_priority(const QString& id) {
+    if (mod_model_->is_conflict_order_reversed()) {
+        // Isaac: lowest priority number = highest priority = top of list
+        mod_model_->move_mod(id, 0);
+    } else {
+        // Standard (MO2): highest priority number = highest priority = bottom of list
+        int ow_row = mod_model_->overwrite_row();
+        int target = ow_row >= 0 ? ow_row - 1 : mod_model_->mods().size() - 1;
+        if (target < 0) target = 0;
+        mod_model_->move_mod(id, target);
+    }
+}
+
+void MainWindow::send_to_lowest_priority(const QString& id) {
+    if (mod_model_->is_conflict_order_reversed()) {
+        // Isaac: highest priority number = lowest priority = bottom of list
+        int ow_row = mod_model_->overwrite_row();
+        int target = ow_row >= 0 ? ow_row - 1 : mod_model_->mods().size() - 1;
+        if (target < 0) target = 0;
+        mod_model_->move_mod(id, target);
+    } else {
+        // Standard (MO2): lowest priority number = lowest priority = top of list
+        mod_model_->move_mod(id, 0);
+    }
+}
+
+void MainWindow::send_to_highest_in_separator(const QString& id) {
+    const auto& mods = mod_model_->mods();
+    int mod_row = mod_model_->priority_of(id);
+    if (mod_row < 0) return;
+
+    QString sep_id = mods[mod_row].separator_id;
+    if (sep_id.isEmpty()) return;
+
+    int sep_row = -1;
+    for (int i = mod_row - 1; i >= 0; --i) {
+        if (mods[i].is_separator && mods[i].id == sep_id) {
+            sep_row = i;
+            break;
+        }
+    }
+    if (sep_row < 0) return;
+    mod_model_->move_mod(id, sep_row + 1);
+}
+
+void MainWindow::send_to_lowest_in_separator(const QString& id) {
+    const auto& mods = mod_model_->mods();
+    int mod_row = mod_model_->priority_of(id);
+    if (mod_row < 0) return;
+
+    QString sep_id = mods[mod_row].separator_id;
+    if (sep_id.isEmpty()) return;
+
+    int ow_row = mod_model_->overwrite_row();
+    int target = ow_row >= 0 ? ow_row : mods.size();
+
+    for (int i = mod_row + 1; i < mods.size(); ++i) {
+        if (mods[i].is_separator) {
+            target = i;
+            break;
+        }
+    }
+    mod_model_->move_mod(id, target - 1);
+}
+
+void MainWindow::toggle_selected_mods(bool enabled) {
+    auto sel = mod_view_->selectionModel()->selectedRows();
+    for (const auto& idx : sel) {
+        int r = idx.row();
+        if (r < 0 || r >= mod_model_->mods().size()) continue;
+        const auto& entry = mod_model_->mods()[r];
+        if (entry.is_separator || entry.is_overwrite || entry.is_game_native) continue;
+
+        // Check if state would actually change
+        if (entry.enabled == enabled) continue;
+
+        mod_model_->setData(mod_model_->index(r, ModListModel::Enabled),
+            enabled ? Qt::Checked : Qt::Unchecked, Qt::CheckStateRole);
+        sync_mod_enable_state(entry.id, enabled);
+    }
+}
+
+void MainWindow::rename_selected_mod() {
+    auto sel = mod_view_->selectionModel()->selectedRows();
+    if (sel.isEmpty()) return;
+    int row = sel.first().row();
+    if (row < 0 || row >= mod_model_->mods().size()) return;
+    const auto& entry = mod_model_->mods()[row];
+    if (entry.is_separator || entry.is_overwrite) return;
+
+    if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return;
+    auto mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
+    if (mods_subpath.empty()) return;
+
+    bool ok;
+    auto new_name = QInputDialog::getText(this, "Rename Mod",
+        "New name:", QLineEdit::Normal, entry.name, &ok);
+    if (!ok || new_name.trimmed().isEmpty()) return;
+    if (new_name.trimmed() == entry.name) return;
+
+    auto old_folder = mods_dir_path() / entry.id.toStdString();
+    auto new_id = entry.id;  // keep same folder name on disk
+    // Actually: rename the folder on disk using the new display name
+    // But the folder name is the id, not the display name...
+    // For simplicity, just update the display name in the model.
+    // The folder stays the same.
+
+    // Write metadata.xml / meta.ini with new name
+    auto meta_dir = meta_dir_path();
+    if (!meta_dir.empty()) {
+        auto meta = engine::ModMeta::load(meta_dir, entry.id.toStdString());
+        meta.set("General", "name", new_name.trimmed().toStdString());
+        meta.save(meta_dir, entry.id.toStdString());
+    }
+
+    // Update model directly
+    int mod_idx = row;
+    auto& mods = const_cast<QVector<ModEntry>&>(mod_model_->mods());
+    if (mod_idx < mods.size()) {
+        mods[mod_idx].name = new_name.trimmed();
+        emit mod_model_->dataChanged(mod_model_->index(mod_idx, ModListModel::Name),
+                                      mod_model_->index(mod_idx, ModListModel::Name));
+    }
+
+    engine::Logger::instance().debug("Renamed mod: " + entry.name.toStdString() +
+        " -> " + new_name.trimmed().toStdString());
+}
+
+SourceVisitInfo MainWindow::source_visit_info(const QString& source_type, const QString& source_id) const {
+    if (source_type == "steam") {
+        return {"Visit on Workshop",
+            QString("https://steamcommunity.com/sharedfiles/filedetails/?id=%1").arg(source_id)};
+    }
+    if (source_type == "nexus") {
+        auto domain = QString::fromStdString(
+            knowledge_ ? knowledge_->get(current_game_id_, "nexus_domain", "") : "");
+        if (domain.isEmpty()) domain = source_id;
+        return {"Visit on Nexus",
+            QString("https://www.nexusmods.com/%1/mods/%2").arg(domain, source_id)};
+    }
+    if (source_type == "loverslab") {
+        return {"Visit on LoversLab",
+            QString("https://www.loverslab.com/files/file/%1/").arg(source_id)};
+    }
+    if (source_type == "moddb") {
+        return {"Visit on ModDB",
+            QString("https://www.moddb.com/mods/%1").arg(source_id)};
+    }
+    auto label = source_type;
+    if (!label.isEmpty()) {
+        label[0] = label[0].toUpper();
+    }
+    return {QString("Visit on %1").arg(label), QString()};
 }
 
 void MainWindow::create_separator() {
@@ -1492,6 +1850,64 @@ void MainWindow::create_separator() {
     auto id = QString::fromStdString(folder_name);
     mod_model_->add_separator(id, name.trimmed(), color.name());
     engine::Logger::instance().debug("Separator created: " + name.toStdString());
+}
+
+void MainWindow::create_separator_at_row(int row) {
+    if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return;
+
+    auto mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
+    auto separator_suffix = knowledge_->get(current_game_id_, "separator_suffix", "_separator");
+    if (mods_subpath.empty()) return;
+
+    bool ok;
+    auto name = QInputDialog::getText(this, "Create Separator",
+        "Separator name:", QLineEdit::Normal, QString(), &ok);
+    if (!ok || name.trimmed().isEmpty()) return;
+
+    // Check for duplicate names
+    auto existing = mod_model_->existing_separator_names();
+    if (existing.contains(name.trimmed())) {
+        QMessageBox::warning(this, "Separator", "A separator with this name already exists.");
+        return;
+    }
+
+    // Pick color
+    QColor initial("#888888");
+    QColor color = QColorDialog::getColor(initial, this, "Separator Color");
+    if (!color.isValid()) return;
+
+    auto folder_name = name.trimmed().toStdString() + separator_suffix;
+    auto sep_dir = mods_dir_path() / folder_name;
+
+    // Create the separator folder
+    std::error_code ec;
+    std::filesystem::create_directories(sep_dir, ec);
+    if (ec) {
+        QMessageBox::warning(this, "Separator", "Failed to create separator directory.");
+        return;
+    }
+
+    // Write separator.xml
+    auto xml_path = sep_dir / "separator.xml";
+    std::ofstream f(xml_path);
+    if (!f) {
+        QMessageBox::warning(this, "Separator", "Failed to write separator.xml.");
+        return;
+    }
+    f << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
+    f << "<separator>\n";
+    f << "  <name>" << name.trimmed().toStdString() << "</name>\n";
+    f << "  <color>" << color.name().toStdString() << "</color>\n";
+    f << "</separator>\n";
+    f.close();
+
+    // Add to model at the target row (below the clicked row)
+    auto id = QString::fromStdString(folder_name);
+    int insert_row = row + 1;
+    mod_model_->add_separator(id, name.trimmed(), color.name());
+    mod_model_->move_mod(id, insert_row);
+    engine::Logger::instance().debug("Separator created at row " + std::to_string(insert_row) +
+        ": " + name.toStdString());
 }
 
 void MainWindow::edit_separator(int row) {
@@ -1739,7 +2155,7 @@ void MainWindow::load_order() {
     if (!order.empty()) {
         QMap<QString, int> id_to_idx;
         for (int i = 0; i < mods.size(); ++i) {
-            if (!mods[i].is_overwrite)
+            if (!mods[i].is_overwrite && !mods[i].is_merged)
                 id_to_idx[mods[i].id] = i;
         }
         QVector<ModEntry> reordered;
@@ -1763,10 +2179,19 @@ void MainWindow::load_order() {
                 reordered.append(m);
             }
         }
-        // Overwrite always at bottom
-        for (const auto& m : mods) {
-            if (m.is_overwrite) { reordered.append(m); break; }
-        }
+        // Overwrite always first, MERGED always second
+        reordered.insert(0, ModEntry());
+        reordered.insert(1, ModEntry());
+        reordered[0].is_overwrite = true;
+        reordered[0].id = kOverwriteModId;
+        reordered[0].name = kOverwriteModName;
+        reordered[0].enabled = true;
+        reordered[0].priority = 0;
+        reordered[1].is_merged = true;
+        reordered[1].id = kMergedModId;
+        reordered[1].name = kMergedModName;
+        reordered[1].enabled = true;
+        reordered[1].priority = 1;
         mod_model_->reset_with_order(reordered);
         mod_model_->renumber_priorities();
         engine::Logger::instance().debug("Migrated from mod_order (" + std::to_string(order.size()) + " entries)");
@@ -1776,6 +2201,8 @@ void MainWindow::load_order() {
         std::stable_sort(sorted.begin(), sorted.end(), [](const ModEntry& a, const ModEntry& b) {
             if (a.is_overwrite) return false;
             if (b.is_overwrite) return true;
+            if (a.is_merged) return false;
+            if (b.is_merged) return true;
             return a.priority < b.priority;
         });
         bool needs_sort = false;
@@ -1827,10 +2254,8 @@ void MainWindow::load_order() {
 void MainWindow::save_executables() {
     if (current_instance_root_.empty()) return;
 
-    auto execs = right_panel_->exec_controls()->executable_paths();
     auto toml_path = current_instance_root_ / "instance.toml";
 
-    // Read existing toml to preserve other fields
     std::ifstream in(toml_path);
     std::string existing;
     if (in) {
@@ -1839,7 +2264,6 @@ void MainWindow::save_executables() {
     }
     in.close();
 
-    // Remove old executables lines
     std::istringstream stream(existing);
     std::string line;
     std::string cleaned;
@@ -1849,13 +2273,20 @@ void MainWindow::save_executables() {
         cleaned += line + "\n";
     }
 
-    // Write saved executables
-    cleaned += "executables = [";
-    for (int i = 0; i < execs.size(); ++i) {
-        if (i > 0) cleaned += ", ";
-        cleaned += "\"" + execs[i].toStdString() + "\"";
+    // Collect JSON objects from the combo
+    auto entries = right_panel_->exec_controls()->executable_entries();
+    QStringList json_entries;
+    for (const auto& e : entries) {
+        auto raw = QString::fromUtf8(QJsonDocument(e.toJson()).toJson(QJsonDocument::Compact));
+        json_entries.append(raw);
     }
-    cleaned += "]\n";
+
+    cleaned += "executables = [\n";
+    for (int i = 0; i < json_entries.size(); ++i) {
+        if (i > 0) cleaned += ",\n";
+        cleaned += "    " + json_entries[i].toStdString();
+    }
+    cleaned += "\n]\n";
 
     std::ofstream out(toml_path);
     if (out) out << cleaned;
@@ -1872,7 +2303,6 @@ void MainWindow::load_executables() {
     std::string content((std::istreambuf_iterator<char>(in)),
                         std::istreambuf_iterator<char>());
 
-    // Find executables = [...] line
     auto start = content.find("executables = [");
     if (start == std::string::npos) return;
     start += std::string("executables = [").size();
@@ -1880,13 +2310,51 @@ void MainWindow::load_executables() {
     if (end == std::string::npos) return;
 
     auto section = content.substr(start, end - start);
-    std::istringstream ss(section);
-    std::string token;
-    while (std::getline(ss, token, ',')) {
-        auto q = token.find('"');
-        auto q2 = token.rfind('"');
-        if (q != std::string::npos && q2 != std::string::npos && q2 > q) {
-            saved_executables_.push_back(token.substr(q + 1, q2 - q - 1));
+
+    // Parse entries: handle both JSON objects {..} and plain "strings"
+    // Walk character by character tracking brace depth
+    size_t i = 0;
+    while (i < section.size()) {
+        // Skip whitespace and commas
+        while (i < section.size() && (section[i] == ' ' || section[i] == '\t'
+               || section[i] == '\n' || section[i] == '\r' || section[i] == ','))
+            ++i;
+        if (i >= section.size()) break;
+
+        if (section[i] == '{') {
+            // JSON object — find matching close brace
+            int depth = 0;
+            auto obj_start = i;
+            while (i < section.size()) {
+                if (section[i] == '{') ++depth;
+                else if (section[i] == '}') {
+                    --depth;
+                    if (depth == 0) {
+                        ++i;  // include the closing brace
+                        break;
+                    }
+                } else if (section[i] == '"') {
+                    // Skip past quoted string
+                    ++i;
+                    while (i < section.size() && !(section[i] == '"' && section[i-1] != '\\'))
+                        ++i;
+                }
+                ++i;
+            }
+            saved_executables_.push_back(section.substr(obj_start, i - obj_start));
+        } else if (section[i] == '"') {
+            // Plain string — find closing quote
+            auto str_start = i;
+            ++i;
+            while (i < section.size() && !(section[i] == '"' && section[i-1] != '\\'))
+                ++i;
+            if (i < section.size()) ++i;  // include closing quote
+            auto raw = section.substr(str_start, i - str_start);
+            // Wrap legacy plain strings in JSON
+            saved_executables_.push_back("{\"path\":" + raw + "}");
+        } else {
+            // Skip unexpected characters
+            ++i;
         }
     }
 }
@@ -2064,6 +2532,9 @@ void MainWindow::launch_with_executable(const QString& full_path) {
         return;
     }
 
+    // Ensure disk order matches UI before launching
+    sync_priorities();
+
     // Read steam_appid from game plugin hooks — 0 if not registered
     uint32_t steam_appid = 0;
     if (knowledge_) {
@@ -2081,7 +2552,14 @@ void MainWindow::launch_with_executable(const QString& full_path) {
     lparams.is_windows_exe = (exec_path.extension().string() == ".exe" ||
                               exec_path.extension().string() == ".EXE");
     if (!staging_dir_.empty()) {
-        lparams.extra_lowerdirs.push_back(staging_dir_);
+        std::error_code ec;
+        std::filesystem::create_directories(staging_dir_, ec);
+        if (!ec) {
+            lparams.extra_lowerdirs.push_back(staging_dir_);
+        } else {
+            engine::Logger::instance().error(
+                "Failed to create staging dir: " + ec.message());
+        }
     }
 
     auto lresult = engine::launch_game(lparams);
@@ -2138,6 +2616,18 @@ void MainWindow::check_running_process() {
         QTimer::singleShot(3000, this, [this, t]() { do_capture_overwrite(t); });
     }
 #else
+    // Try to reap the root child on every tick.  is_process_group_alive()
+    // / kill(-pgid,0) considers zombie processes "alive" (they still have
+    // a task_struct entry), which would gate cleanup and cause a permanent
+    // zombie.  Early-reaping prevents that.
+    int reap_status;
+    pid_t early_reaped = waitpid(static_cast<pid_t>(running_process_pid_),
+                                 &reap_status, WNOHANG);
+    if (early_reaped > 0) {
+        engine::Logger::instance().debug("Watchdog: early-reaped child PID " +
+            std::to_string(early_reaped));
+    }
+
     // Linux: track the entire process group (PGID), not a single PID.
     int64_t pgid = running_process_pid_;
 
@@ -2166,6 +2656,17 @@ void MainWindow::check_running_process() {
 
     engine::Logger::instance().info("Watchdog: process group " +
         std::to_string(pgid) + " fully exited, scheduling capture in 3s");
+
+    // Safety reap — covers the case where the root PID was already collected
+    // above but a second waitpid on the same PID is harmless (returns ECHILD).
+    pid_t reap_result = waitpid(static_cast<pid_t>(pgid), &reap_status, WNOHANG);
+    if (reap_result == pgid) {
+        engine::Logger::instance().debug("Watchdog: reaped child PID " + std::to_string(pgid));
+    } else if (reap_result < 0 && errno != ECHILD) {
+        engine::Logger::instance().error("Watchdog: waitpid(" + std::to_string(pgid) +
+            ") failed: " + std::strerror(errno));
+    }
+
     flush_pending_changes();
     hide_game_lock_overlay();
     running_process_pid_ = -1;
@@ -2179,6 +2680,84 @@ void MainWindow::check_running_process() {
     auto t = launch_time_;
     QTimer::singleShot(3000, this, [this, t]() { do_capture_overwrite(t); });
 #endif
+}
+
+void MainWindow::apply_mod_filter() {
+    if (!mod_model_ || !mod_view_) return;
+
+    // Start from a clean fold state
+    mod_model_->apply_fold_state();
+
+    const QString text = filter_bar_->filter_text().trimmed().toLower();
+    const QString group = filter_bar_->current_group();
+    const auto& mods = mod_model_->mods();
+
+    // First pass: compute visibility for each mod row
+    QVector<bool> visible(mods.size(), false);
+    for (int row = 0; row < mods.size(); ++row) {
+        const auto& m = mods[row];
+
+        // Separators: determined in second pass
+        if (m.is_separator) continue;
+
+        // Text filter: match against name or id
+        bool text_match = text.isEmpty()
+            || m.name.toLower().contains(text)
+            || m.id.toLower().contains(text);
+
+        // Group filter
+        bool group_match = true;
+        if (group == "Enabled")
+            group_match = m.enabled;
+        else if (group == "Disabled")
+            group_match = !m.enabled;
+        else if (group == "Conflicts")
+            group_match = (m.conflict_wins > 0 || m.conflict_losses > 0);
+        else if (group == "Separators")
+            group_match = false;  // regular mods hidden when viewing separators only
+
+        visible[row] = text_match && group_match;
+
+        // If the separator above is folded, hide this row (fold overrides search)
+        if (visible[row] && !m.separator_id.isEmpty() && group == "All") {
+            for (int i = row - 1; i >= 0; --i) {
+                if (mods[i].is_separator && mods[i].id == m.separator_id) {
+                    if (mods[i].folded) {
+                        visible[row] = false;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    // Second pass: separators are shown only if at least one child mod is visible
+    for (int row = 0; row < mods.size(); ++row) {
+        if (!mods[row].is_separator) continue;
+
+        if (group == "Separators") {
+            visible[row] = true;
+        } else if (text.isEmpty() && (group == "All" || group == "Enabled" || group == "Disabled" || group == "Conflicts")) {
+            visible[row] = true;
+        } else {
+            // Scan children for any visible mod
+            visible[row] = false;
+            for (int j = row + 1; j < mods.size() && !mods[j].is_separator; ++j) {
+                if (visible[j]) {
+                    visible[row] = true;
+                    break;
+                }
+            }
+        }
+
+        mod_view_->setRowHidden(row, QModelIndex(), !visible[row]);
+    }
+
+    // Apply visibility to all mod rows
+    for (int row = 0; row < mods.size(); ++row) {
+        if (mods[row].is_separator) continue;
+        mod_view_->setRowHidden(row, QModelIndex(), !visible[row]);
+    }
 }
 
 void MainWindow::copy_process_tree() {
@@ -2348,8 +2927,8 @@ void MainWindow::do_capture_overwrite(std::filesystem::file_time_type capture_ti
 }
 
 void MainWindow::add_shortcut_to_toolbar() {
-    auto exec_rel = right_panel_->exec_controls()->current_executable();
-    if (exec_rel.isEmpty() || exec_rel == "Select executable...") {
+    auto entry = right_panel_->exec_controls()->current_entry();
+    if (entry.path.isEmpty()) {
         QMessageBox::warning(this, "Shortcut", "No executable selected.");
         return;
     }
@@ -2358,23 +2937,30 @@ void MainWindow::add_shortcut_to_toolbar() {
         return;
     }
 
-    auto exec_path = current_game_dir_ / exec_rel.toStdString();
+    auto exec_path = current_game_dir_ / entry.path.toStdString();
     if (!std::filesystem::exists(exec_path)) {
         QMessageBox::warning(this, "Shortcut",
             "Executable not found:\n" + QString::fromStdString(exec_path.string()));
         return;
     }
 
-    // Deduplicate: silently ignore if already added
     auto exec_path_qstr = QString::fromStdString(exec_path.string());
-    add_toolbar_shortcut_from_path(exec_path_qstr);
+    add_toolbar_shortcut_from_path(exec_path_qstr, entry.icon_path);
 }
 
-void MainWindow::add_toolbar_shortcut_from_path(const QString& full_path) {
+void MainWindow::add_toolbar_shortcut_from_path(const QString& full_path,
+                                                  const QString& icon_path) {
     if (toolbar_shortcut_paths_.contains(full_path)) return;
     if (!QFileInfo::exists(full_path)) return;
 
-    auto icon = extractExeIconShortcut(full_path);
+    QIcon icon;
+    if (!icon_path.isEmpty()) {
+        QPixmap pix(icon_path);
+        if (!pix.isNull())
+            icon = QIcon(pix);
+    }
+    if (icon.isNull())
+        icon = extractExeIconShortcut(full_path);
 
     // Derive tooltip from game name (replace underscores with spaces) + exe filename
     auto info = QFileInfo(full_path);
@@ -2392,8 +2978,8 @@ void MainWindow::add_toolbar_shortcut_from_path(const QString& full_path) {
 }
 
 void MainWindow::add_shortcut_to_desktop() {
-    auto exec_rel = right_panel_->exec_controls()->current_executable();
-    if (exec_rel.isEmpty() || exec_rel == "Select executable...") {
+    auto entry = right_panel_->exec_controls()->current_entry();
+    if (entry.path.isEmpty()) {
         QMessageBox::warning(this, "Shortcut", "No executable selected.");
         return;
     }
@@ -2402,7 +2988,7 @@ void MainWindow::add_shortcut_to_desktop() {
         return;
     }
 
-    auto exec_path = current_game_dir_ / exec_rel.toStdString();
+    auto exec_path = current_game_dir_ / entry.path.toStdString();
     if (!std::filesystem::exists(exec_path)) {
         QMessageBox::warning(this, "Shortcut",
             "Executable not found:\n" + QString::fromStdString(exec_path.string()));
@@ -2441,7 +3027,12 @@ void MainWindow::add_shortcut_to_desktop() {
     out << "Name=" << game_name << "\n";
     out << "Exec=" << exec_qstr << "\n";
     out << "Path=" << QString::fromStdString(current_game_dir_.string()) << "\n";
-    out << "Icon=" << QString::fromStdString(exec_path.string()) << "\n";
+    {
+        auto icon_for_desktop = entry.icon_path.isEmpty()
+            ? QString::fromStdString(exec_path.string())
+            : entry.icon_path;
+        out << "Icon=" << icon_for_desktop << "\n";
+    }
     out << "Terminal=false\n";
     out << "Categories=Game;\n";
     out << "Comment=Launch " << game_name << " via GameModManager\n";
@@ -2458,51 +3049,33 @@ void MainWindow::add_shortcut_to_desktop() {
         "Desktop shortcut created:\n" + desktop_file);
 }
 
-void MainWindow::pick_executable_file() {
-    auto start_dir = current_game_dir_.empty()
-        ? QDir::homePath()
-        : QString::fromStdString(current_game_dir_.string());
-
-#ifdef Q_OS_WIN
-    QString filter = "Executables (*.exe);;All Files (*)";
-#else
-    QString filter = "Executables (*.exe *.AppImage *.bin *.elf *.sh);;All Files (*)";
-#endif
-
-    auto path = QFileDialog::getOpenFileName(this,
-        "Select Executable", start_dir, filter);
-
-    if (path.isEmpty()) return;
-
-#ifndef Q_OS_WIN
-    if (!validate_linux_executable(path)) {
-        QMessageBox::warning(this, "Select Executable",
-            "The selected file is not a recognized executable type.\n"
-            "Please select a binary (.exe, .elf, .sh, .AppImage, .bin)\n"
-            "or an extensionless executable file.");
-        return;
-    }
-#endif
-
-    // Compute relative path from game dir
-    QString rel;
-    if (!current_game_dir_.empty()) {
-        auto game_qdir = QDir(start_dir);
-        rel = game_qdir.relativeFilePath(path);
-    } else {
-        rel = path;
+void MainWindow::on_add_entry_requested() {
+    // Collect mod list for the "Output to mod" dropdown
+    QVector<QPair<QString, QString>> mod_list;
+    if (mod_model_) {
+        for (const auto& m : mod_model_->mods()) {
+            if (!m.is_separator && !m.is_overwrite && !m.is_merged) {
+                mod_list.append({m.id, m.name});
+            }
+        }
     }
 
-    auto display = QFileInfo(path).fileName();
+    auto icon_cache = current_instance_root_.empty()
+        ? std::filesystem::path{}
+        : current_instance_root_ / "cache" / "thumbnails";
 
-    // Try to extract icon from the selected file
-    QIcon icon;
-    if (std::filesystem::exists(path.toStdString())) {
-        QFileIconProvider provider;
-        icon = provider.icon(QFileInfo(path));
+    auto existing = right_panel_->exec_controls()->executable_entries();
+    ExecEntryDialog dlg(current_game_dir_, mod_list, existing, icon_cache, this);
+    if (dlg.exec() != QDialog::Accepted) return;
+
+    auto all_entries = dlg.entries();
+
+    // Replace the entire combo content
+    auto* bar = right_panel_->exec_controls();
+    bar->clear_executables();
+    for (const auto& e : all_entries) {
+        bar->add_entry(e);
     }
-
-    right_panel_->exec_controls()->add_executable(display, rel, icon);
     save_executables();
 }
 
@@ -2630,15 +3203,34 @@ void MainWindow::create_game_lock_overlay() {
             hide_game_lock_overlay();
             return;
         }
+
+        auto reap_or_schedule = [this](pid_t pid) {
+            int status;
+            pid_t ret = waitpid(pid, &status, WNOHANG);
+            if (ret == pid) {
+                engine::Logger::instance().debug("Kill: reaped child " + std::to_string(pid));
+                return true;
+            }
+            if (ret == 0) {
+                // Child hasn't exited yet — schedule a one-shot reap later
+                QTimer::singleShot(3000, this, [this, pid]() {
+                    int s;
+                    waitpid(pid, &s, WNOHANG);
+                });
+                return false;
+            }
+            return true;  // ECHILD — already reaped or not ours
+        };
+
         // Kill the entire process group — game, launchers, Proton wrapper, all children.
-        // kill(-pgid, sig) sends to every process in the group.
-        // Try graceful shutdown first, then force kill.
         int ret = kill(-pgid, SIGTERM);
         if (ret != 0) {
             int err = errno;
             if (err == ESRCH) {
                 engine::Logger::instance().info("Kill: process group " + std::to_string(pgid) + " already empty");
+                reap_or_schedule(pgid);
                 running_process_pid_ = -1;
+                if (process_watch_timer_) process_watch_timer_->stop();
                 flush_pending_changes();
                 hide_game_lock_overlay();
                 return;
@@ -2658,8 +3250,9 @@ void MainWindow::create_game_lock_overlay() {
             }
         }
         engine::Logger::instance().info("Kill: terminated process group " + std::to_string(pgid));
-        if (process_watch_timer_) process_watch_timer_->stop();
+        reap_or_schedule(pgid);
         running_process_pid_ = -1;
+        if (process_watch_timer_) process_watch_timer_->stop();
         flush_pending_changes();
         hide_game_lock_overlay();
     });
@@ -2712,7 +3305,7 @@ void MainWindow::flush_pending_changes() {
 
     // Apply toggles (latest state per mod wins — already deduplicated by sync_mod_enable_state)
     for (const auto& pt : pending_changes_) {
-        auto mod_folder = mods_dir_path() / pt.mod_id.toStdString();
+        auto mod_folder = resolve_mod_folder(pt.mod_id.toStdString(), mods_subpath);
         if (pt.enabled) {
             (void)engine::ModScanner::enable_mod(*knowledge_, current_game_id_, mod_folder);
         } else {
@@ -2910,6 +3503,22 @@ void MainWindow::restore_app_state() {
                             obj[key].toString().toUtf8());
                         if (!state.isEmpty())
                             table->horizontalHeader()->restoreState(state);
+                        // Re-apply desired stretch modes so restoreState
+                        // doesn't permanently override them from old sessions
+                        if (key == "Data") {
+                            auto* h = table->horizontalHeader();
+                            h->setStretchLastSection(false);
+                            h->setSectionResizeMode(0, QHeaderView::Stretch);
+                            h->setSectionResizeMode(1, QHeaderView::Interactive);
+                            h->setSectionResizeMode(2, QHeaderView::Interactive);
+                        } else if (key == "Downloads") {
+                            auto* h = table->horizontalHeader();
+                            h->setStretchLastSection(false);
+                            h->setSectionResizeMode(0, QHeaderView::Stretch);
+                            h->setSectionResizeMode(1, QHeaderView::Interactive);
+                            h->setSectionResizeMode(2, QHeaderView::Interactive);
+                            h->setSectionResizeMode(3, QHeaderView::Interactive);
+                        }
                     }
                 }
             }
@@ -3307,6 +3916,10 @@ void MainWindow::show_instance_switcher() {
 
     auto selected = dlg.selected_instance().toStdString();
     if (selected.empty()) return;
+
+    // Don't reload if already on this instance
+    if (!current_instance_root_.empty() && instances_dir / selected == current_instance_root_)
+        return;
 
     auto inst = engine::Instance::installed(selected, instances_dir);
     if (!inst.read_toml()) {

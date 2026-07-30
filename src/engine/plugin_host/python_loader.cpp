@@ -46,6 +46,10 @@ public:
         engine::Logger::instance().debug("Python plugin registered deploy strategy");
     }
 
+    void register_image_diff() {
+        engine::Logger::instance().debug("Python plugin registered image diff provider (stub)");
+    }
+
     void register_tool(const std::string& tool_id, const std::string& kind) {
         engine::ExternalTool tool;
         tool.tool_id = tool_id;
@@ -146,6 +150,7 @@ PYBIND11_EMBEDDED_MODULE(gmm, m) {
              py::arg("stage_name"), py::arg("priority") = 0)
         .def("register_order_encoding_hook", &PyRegistrationContext::register_order_encoding_hook)
         .def("register_deploy_strategy", &PyRegistrationContext::register_deploy_strategy)
+        .def("register_image_diff", &PyRegistrationContext::register_image_diff)
         .def("register_tool", &PyRegistrationContext::register_tool,
              py::arg("tool_id"), py::arg("kind"))
         .def("register_capability", &PyRegistrationContext::register_capability,

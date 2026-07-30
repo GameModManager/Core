@@ -11,6 +11,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "engine/index/conflict_engine.h"
 #include "engine/meta/mod_meta.h"
 #include "engine/deploy/strategy.h"
 
@@ -50,6 +51,11 @@ class AppMenuBar;
 struct PendingToggle {
     QString mod_id;
     bool enabled = false;
+};
+
+struct SourceVisitInfo {
+    QString label;
+    QString url;
 };
 
 class MainWindow : public QMainWindow {
@@ -97,6 +103,7 @@ private:
     void sync_priorities();
     void sort_mods();
     void create_separator();
+    void create_separator_at_row(int row);
     void edit_separator(int row);
     void delete_separator(int row);
     void save_order();
@@ -109,12 +116,14 @@ private:
     void launch_game();
     void launch_with_executable(const QString& full_path);
     void add_shortcut_to_toolbar();
-    void add_toolbar_shortcut_from_path(const QString& full_path);
+    void add_toolbar_shortcut_from_path(const QString& full_path,
+                                         const QString& icon_path = {});
     void add_shortcut_to_desktop();
     void show_instance_switcher();
-    void pick_executable_file();
+    void on_add_entry_requested();
     static bool validate_linux_executable(const QString& path);
     void check_running_process();
+    void apply_mod_filter();
     void capture_overwrite_on_exit();
     void do_capture_overwrite(std::filesystem::file_time_type capture_time);
     void flush_pending_nxm();
@@ -122,10 +131,25 @@ private:
     void update_queue_label();
     void prompt_nxm_registration();
     void recompute_conflicts();
+    void on_image_diff_requested(const QString& relative_path);
     void migrate_mo2_meta();
     void load_meta_for_mods();
     void show_instance_statistics();
     void show_settings_dialog();
+
+    // Context menu helpers
+    void clear_overwrite();
+    void create_mod_from_overwrite();
+    void remove_selected_mods();
+    void move_to_separator(const QString& mod_id, const QString& sep_id);
+    void send_to_highest_priority(const QString& id);
+    void send_to_lowest_priority(const QString& id);
+    void send_to_highest_in_separator(const QString& id);
+    void send_to_lowest_in_separator(const QString& id);
+    void toggle_selected_mods(bool enabled);
+    void rename_selected_mod();
+    void open_source_for_mod(const QString& source_type, const QString& source_id);
+    [[nodiscard]] SourceVisitInfo source_visit_info(const QString& source_type, const QString& source_id) const;
 
     // Game-lock overlay
     void create_game_lock_overlay();
@@ -147,7 +171,6 @@ private:
     ConsolePanel* console_ = nullptr;
     GmmStatusBar* status_bar_ = nullptr;
     PipelineThread* pipeline_thread_ = nullptr;
-    QMenu* mod_context_menu_ = nullptr;
     engine::GameKnowledge* knowledge_ = nullptr;
     engine::PluginLoader* plugin_loader_ = nullptr;
     engine::ManagedGames* managed_games_ = nullptr;
@@ -177,8 +200,10 @@ private:
     std::filesystem::file_time_type launch_time_;
     std::filesystem::path staging_dir_;  // non-empty when OverlayFS deploy strategy is active
     std::filesystem::path conflict_cache_path_;  // path to conflict cache JSON
+    engine::PathRegistry last_conflict_registry_;
     std::filesystem::path meta_dir_path() const;
     std::filesystem::path mods_dir_path() const;
+    std::filesystem::path resolve_mod_folder(const std::string& mod_id, const std::string& mods_subpath) const;
     QByteArray pending_geometry_;
 
     // Konami code easter egg

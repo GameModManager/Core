@@ -61,7 +61,7 @@ LaunchResult launch_game(const LaunchParams& params) {
                 "Launched inside OverlayFS overlay. All writes go to Overwrite.");
             return {pid, true};
         }
-        Logger::instance().warn("OverlayFS launcher returned failure, falling back");
+        Logger::instance().error("OverlayFS launcher returned failure, falling back");
     } else {
         Logger::instance().warn("OverlayFS not supported for this filesystem, skipping");
     }

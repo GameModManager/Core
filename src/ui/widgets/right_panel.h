@@ -11,6 +11,7 @@ namespace engine { class GameCapabilities; }
 
 namespace ui {
 
+class ConflictsTab;
 class ExecControlsBar;
 class RightFilterBar;
 class DataTab;
@@ -31,6 +32,7 @@ public:
     [[nodiscard]] QTabWidget* tab_widget() const { return tab_widget_; }
     [[nodiscard]] RightFilterBar* filter_bar() const { return filter_bar_; }
     [[nodiscard]] DownloadsTab* downloads_tab() const;
+    [[nodiscard]] ConflictsTab* conflicts_tab() const;
 
 private:
     void clear_tabs();

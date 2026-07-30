@@ -9,6 +9,8 @@ namespace ui {
 
 constexpr const char* kOverwriteModId = "__overwrite__";
 constexpr const char* kOverwriteModName = "overwrite";
+constexpr const char* kMergedModId = "__merged__";
+constexpr const char* kMergedModName = "MERGED";
 
 constexpr const char* kModListMimeType = "application/x-gmm-modlist";
 
@@ -32,6 +34,7 @@ struct ModEntry {
     QString separator_id;
     bool is_separator = false;
     bool is_overwrite = false;
+    bool is_merged = false;
     bool is_game_native = false;
     bool folded = false;
 };
@@ -67,6 +70,8 @@ public:
     void add_mod(const QString& id, const QString& name, const QString& version, int priority = -1, bool is_game_native = false);
     void add_separator(const QString& id, const QString& name, const QString& color);
     void remove_mod(const QString& id);
+    void remove_all_mods();
+    void move_mod(const QString& id, int new_row);
     void toggle_mod(const QString& id);
     void set_conflict_stats(const QString& id, int wins, int losses);
     void set_tags(const QString& id, const QVector<ModTag>& tags);
@@ -83,6 +88,8 @@ public:
     [[nodiscard]] int priority_of(const QString& id) const;
     [[nodiscard]] int overwrite_row() const;
     [[nodiscard]] bool is_overwrite(int row) const;
+    [[nodiscard]] int merged_row() const;
+    [[nodiscard]] bool is_merged(int row) const;
 
     void set_view(QAbstractItemView* view) { mod_view_ = view; }
     void reset_with_order(const QVector<ModEntry>& entries);
@@ -90,8 +97,11 @@ public:
     [[nodiscard]] bool is_conflict_order_reversed() const { return conflict_order_reversed_; }
 
     void set_conflict_pairs(const QMap<QString, ConflictPairs>& pairs);
+    [[nodiscard]] const QMap<QString, ConflictPairs>& conflict_pairs() const { return conflict_pairs_; }
+    [[nodiscard]] bool has_conflicts_within_separator(const QString& mod_id) const;
     void set_selected_mod(const QString& id);
     void set_overwrite_path(const QString& path);
+    void ensure_merged_present();
 
 signals:
     void mod_list_changed();
