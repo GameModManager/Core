@@ -197,6 +197,7 @@ private:
     int64_t running_process_pid_ = -1;
     QTimer* process_watch_timer_ = nullptr;
     bool overlay_launched_ = false;
+    std::string cgroup_path_;  // cgroup v2 path for process tracking (empty = unavailable)
     std::filesystem::file_time_type launch_time_;
     std::filesystem::path staging_dir_;  // non-empty when OverlayFS deploy strategy is active
     std::filesystem::path conflict_cache_path_;  // path to conflict cache JSON

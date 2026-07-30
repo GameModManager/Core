@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAbstractTableModel>
+#include <QIcon>
 #include <QVector>
 
 class QAbstractItemView;
@@ -111,6 +112,9 @@ private:
     [[nodiscard]] QString compute_separator_flags(int row) const;
 
     QVector<ModEntry> mods_;
+    QIcon winning_icon_;
+    QIcon losing_icon_;
+    QIcon mix_icon_;
     QAbstractItemView* mod_view_ = nullptr;
     bool conflict_order_reversed_ = false;
     QString selected_mod_id_;

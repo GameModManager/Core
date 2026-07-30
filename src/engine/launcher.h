@@ -24,6 +24,9 @@ struct LaunchParams {
 struct LaunchResult {
     int64_t pid = -1;
     bool overlay_launched = false;
+    // Cgroup v2 path for reliable process tracking (empty = not available).
+    // When non-empty, all game descendants are members of this cgroup.
+    std::string cgroup_path;
 };
 
 LaunchResult launch_game(const LaunchParams& params);
@@ -32,7 +35,33 @@ void capture_overwrite(const std::filesystem::path& game_dir,
                        const std::filesystem::path& overwrite_dir,
                        std::filesystem::file_time_type capture_time);
 
-// -- Process group monitoring --------------------------------------------
+// -- Cgroup v2 process tracking (primary) --------------------------------
+
+struct CgroupHandle {
+    std::string path;  // empty = not available / delegation failed
+};
+
+// Create a cgroup v2 directory under the user's delegated subtree.
+// Returns empty handle when delegation isn't available (caller should
+// fall back to subreaper + PPID walking).
+CgroupHandle create_launch_cgroup(const std::string& name);
+
+// Move a PID into the cgroup.  Once the root game process is in the
+// cgroup, all its future descendants are automatically included.
+void cgroup_add_pid(const CgroupHandle& h, int64_t pid);
+
+// Read all PIDs currently in the cgroup (all game descendants).
+std::vector<int64_t> cgroup_members(const CgroupHandle& h);
+
+// Returns true when the cgroup contains zero processes.
+bool cgroup_is_empty(const CgroupHandle& h);
+
+// Kill every process in the cgroup (writes "1" to cgroup.kill).
+// Significantly more reliable than kill(-pgid, SIGTERM).
+void cgroup_kill(const CgroupHandle& h);
+
+// -- Process group monitoring (fallback) ----------------------------------
+
 // Returns true if any non-zombie process still exists in the given PGID.
 bool is_process_group_alive(int64_t pgid);
 
@@ -42,6 +71,7 @@ void wait_for_process_group(int64_t pgid,
 
 // Walk /proc via PPID chains to find ALL descendants of a root PID.
 // Catches processes that created new sessions via setsid().
+// Used as fallback when cgroup delegation is unavailable.
 std::vector<int64_t> get_process_descendants(int64_t root_pid);
 
 }

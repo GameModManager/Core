@@ -2,8 +2,10 @@
 
 #include <QBrush>
 #include <QColor>
+#include <QCoreApplication>
 #include <QDir>
 #include <QFont>
+#include <QIcon>
 #include <QMimeData>
 #include <QTreeView>
 
@@ -13,6 +15,12 @@ ModListModel::ModListModel(QObject* parent)
     : QAbstractTableModel(parent) {
     ensure_overwrite_present();
     ensure_merged_present();
+
+    // Load conflict-status icons from <appDir>/../resources/icons/
+    auto iconDir = QCoreApplication::applicationDirPath() + "/../resources/icons/";
+    winning_icon_ = QIcon(iconDir + "winning.png");
+    losing_icon_  = QIcon(iconDir + "losing.png");
+    mix_icon_     = QIcon(iconDir + "mix.png");
 }
 
 int ModListModel::rowCount(const QModelIndex& parent) const {
@@ -25,6 +33,24 @@ int ModListModel::columnCount(const QModelIndex& parent) const {
 
 QVariant ModListModel::data(const QModelIndex& index, int role) const {
     if (!index.isValid() || index.row() >= mods_.size()) return {};
+
+    // ── DecorationRole for Flags column ──────────────────────────────
+    if (role == Qt::DecorationRole && index.column() == Flags) {
+        const auto& m = mods_[index.row()];
+        int row = index.row();
+        if (m.is_separator) {
+            auto flag = compute_separator_flags(row);
+            if (flag == "+") return winning_icon_;
+            if (flag == "-") return losing_icon_;
+            if (flag == QString("\u00B1")) return mix_icon_;
+            return {};
+        }
+        if (!m.tags.isEmpty()) return {};
+        if (m.conflict_wins > 0 && m.conflict_losses > 0) return mix_icon_;
+        if (m.conflict_wins > 0) return winning_icon_;
+        if (m.conflict_losses > 0) return losing_icon_;
+        return {};
+    }
 
     const auto& mod = mods_[index.row()];
 
@@ -69,7 +95,7 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
                 }
                 case Name: return mod.name;
                 case Version: return QString();
-                case Flags: return compute_separator_flags(index.row());
+                case Flags: return QString();  // shown via DecorationRole icon
                 case Priority: return mod.priority;
             }
         }
@@ -146,12 +172,7 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
                 if (!mod.tags.isEmpty()) {
                     return mod.tags.first().type.toUpper();
                 }
-                if (mod.conflict_wins > 0 && mod.conflict_losses > 0)
-                    return QString("\u00B1");
-                if (mod.conflict_wins > 0)
-                    return QString("+");
-                if (mod.conflict_losses > 0)
-                    return QString("-");
+                // Icons handle conflict states — clear text
                 return QString();
             }
             case Priority: return mod.priority;
@@ -494,7 +515,7 @@ void ModListModel::set_conflict_stats(const QString& id, int wins, int losses) {
             mods_[i].conflict_wins = wins;
             mods_[i].conflict_losses = losses;
             emit dataChanged(index(i, Flags), index(i, Flags),
-                             {Qt::DisplayRole, Qt::ToolTipRole, Qt::ForegroundRole});
+                             {Qt::DecorationRole, Qt::DisplayRole, Qt::ToolTipRole, Qt::ForegroundRole});
             return;
         }
     }
@@ -504,7 +525,7 @@ void ModListModel::set_tags(const QString& id, const QVector<ModTag>& tags) {
     for (int i = 0; i < mods_.size(); ++i) {
         if (mods_[i].id == id) {
             mods_[i].tags = tags;
-            emit dataChanged(index(i, Flags), index(i, Flags), {Qt::DisplayRole, Qt::ToolTipRole, Qt::ForegroundRole});
+            emit dataChanged(index(i, Flags), index(i, Flags), {Qt::DisplayRole, Qt::ToolTipRole, Qt::ForegroundRole, Qt::DecorationRole});
             return;
         }
     }

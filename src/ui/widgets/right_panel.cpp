@@ -8,6 +8,7 @@
 #include <QHeaderView>
 #include <QTabWidget>
 #include <QTableWidget>
+#include <QTreeWidget>
 #include <QVBoxLayout>
 
 namespace ui {
@@ -74,7 +75,35 @@ QTableWidget* RightPanel::current_table() const {
 }
 
 void RightPanel::apply_filter() {
-    filter_bar_->apply_to(current_table());
+    const QString text = filter_bar_->filter_text().trimmed().toLower();
+
+    auto* table = current_table();
+    if (table) {
+        filter_bar_->apply_to(table);
+        return;
+    }
+
+    // ConflictsTab uses QTreeWidget — filter top-level items
+    auto* w = tab_widget_->currentWidget();
+    if (!w) return;
+    auto* tree = w->findChild<QTreeWidget*>();
+    if (tree) {
+        for (int i = 0; i < tree->topLevelItemCount(); ++i) {
+            auto* item = tree->topLevelItem(i);
+            if (text.isEmpty()) {
+                item->setHidden(false);
+                continue;
+            }
+            bool match = false;
+            for (int col = 0; col < tree->columnCount(); ++col) {
+                if (item->text(col).toLower().contains(text)) {
+                    match = true;
+                    break;
+                }
+            }
+            item->setHidden(!match);
+        }
+    }
 }
 
 void RightPanel::clear_tabs() {

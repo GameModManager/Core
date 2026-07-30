@@ -50,11 +50,16 @@ QToolTip {
 
 #gameLockOverlay QTreeWidget {
     color: white;
-    background-color: rgba(0, 0, 0, 76);
+    background-color: rgba(0, 0, 0, 180);
 }
 
 #gameLockOverlay QTreeWidget::item {
     background-color: transparent;
+}
+
+#gameLockOverlay QTreeWidget::item:selected {
+    color: white;
+    background-color: rgba(255, 255, 255, 30);
 }
 
 #gameLockOverlay QHeaderView::section {
