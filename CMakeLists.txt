@@ -104,6 +104,7 @@ set(ENGINE_SOURCES
     src/engine/deploy/strategy_junction.cpp
     src/engine/deploy/strategy_overlayfs_deploy.cpp
     src/engine/deploy/deploy_ledger.cpp
+    src/engine/deploy/deploy_utils.cpp
     src/engine/overlay_launcher.cpp
     src/engine/pipeline/pipeline.cpp
     src/engine/pipeline/fetch_stage.cpp
@@ -142,6 +143,7 @@ set(ENGINE_SOURCES
     src/engine/preload_interceptor.cpp
     src/engine/launcher.cpp
     src/cli/headless_launcher.cpp
+    src/engine/single_instance.cpp
 )
 
 # FUSE/VFS strategies — Linux only
@@ -172,6 +174,7 @@ set(UI_SOURCES
     src/ui/widgets/profile_bar.cpp
     src/ui/widgets/right_panel.cpp
     src/ui/widgets/exec_controls_bar.cpp
+    src/ui/widgets/exec_entry_dialog.cpp
     src/ui/widgets/console_panel.cpp
     src/ui/widgets/gmm_status_bar.cpp
     src/ui/widgets/instance_switcher_dialog.cpp

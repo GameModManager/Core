@@ -12,6 +12,7 @@ namespace ui {
 ModListModel::ModListModel(QObject* parent)
     : QAbstractTableModel(parent) {
     ensure_overwrite_present();
+    ensure_merged_present();
 }
 
 int ModListModel::rowCount(const QModelIndex& parent) const {
@@ -118,6 +119,18 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
         }
     }
 
+    // --- MERGED: italic blue name ---
+    if (mod.is_merged) {
+        if (role == Qt::FontRole && index.column() == Name) {
+            QFont f;
+            f.setItalic(true);
+            return f;
+        }
+        if (role == Qt::ForegroundRole && index.column() == Name) {
+            return QColor(80, 180, 255);  // blue
+        }
+    }
+
     // --- Regular mod + Overwrite shared ---
     if (role == Qt::CheckStateRole && index.column() == Enabled) {
         return mod.enabled ? Qt::Checked : Qt::Unchecked;
@@ -190,7 +203,8 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
 bool ModListModel::setData(const QModelIndex& index, const QVariant& value, int role) {
     if (!index.isValid() || index.row() >= mods_.size()) return false;
 
-    if (mods_[index.row()].is_separator || mods_[index.row()].is_overwrite || mods_[index.row()].is_game_native) return false;
+    auto& m = mods_[index.row()];
+    if (m.is_separator || m.is_overwrite || m.is_merged || m.is_game_native) return false;
 
     if (role == Qt::CheckStateRole && index.column() == Enabled) {
         mods_[index.row()].enabled = (value.toInt() == Qt::Checked);
@@ -226,11 +240,11 @@ Qt::ItemFlags ModListModel::flags(const QModelIndex& index) const {
     }
 
     if (index.column() == Enabled) {
-        if (!mod.is_overwrite)
+        if (!mod.is_overwrite && !mod.is_merged)
             f |= Qt::ItemIsUserCheckable;
     }
 
-    if (mod.is_overwrite || mod.is_game_native) {
+    if (mod.is_overwrite || mod.is_merged || mod.is_game_native) {
         f &= ~(Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled);
     } else {
         f |= Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled;
@@ -257,7 +271,7 @@ QMimeData* ModListModel::mimeData(const QModelIndexList& indexes) const {
     for (const auto& idx : indexes) {
         if (idx.isValid() && !rows.contains(idx.row())) {
             int r = idx.row();
-            if (r < mods_.size() && !mods_[r].is_overwrite) {
+            if (r < mods_.size() && !mods_[r].is_overwrite && !mods_[r].is_merged) {
                 rows.append(r);
             }
         }
@@ -301,7 +315,7 @@ bool ModListModel::dropMimeData(const QMimeData* data, Qt::DropAction action,
 
     QList<int> validSources;
     for (int r : sourceRows) {
-        if (r >= 0 && r < mods_.size() && !mods_[r].is_overwrite) {
+        if (r >= 0 && r < mods_.size() && !mods_[r].is_overwrite && !mods_[r].is_merged) {
             validSources.append(r);
         }
     }
@@ -350,13 +364,16 @@ bool ModListModel::moveRows(const QModelIndex& srcParent, int srcRow, int count,
     if (dstRow < 0 || dstRow > mods_.size()) return false;
     if (count != 1) return false;
 
-    if (mods_[srcRow].is_overwrite) return false;
+    if (mods_[srcRow].is_overwrite || mods_[srcRow].is_merged) return false;
 
     int dest = dstRow > srcRow ? dstRow - 1 : dstRow;
-    // Prevent moving onto or past Overwrite (always at bottom)
+    // Prevent moving onto or past Overwrite or MERGED (always pinned)
     int ow_row = overwrite_row();
     if (ow_row >= 0 && dest >= ow_row)
         dest = ow_row - 1;
+    int mg_row = merged_row();
+    if (mg_row >= 0 && dest >= mg_row)
+        dest = mg_row - 1;
     if (dest < 0) dest = 0;
 
     beginMoveRows(srcParent, srcRow, srcRow, srcParent, dest + (dest >= srcRow ? 1 : 0));
@@ -401,10 +418,10 @@ void ModListModel::add_separator(const QString& id, const QString& name, const Q
 }
 
 void ModListModel::remove_mod(const QString& id) {
-    if (id == kOverwriteModId) return;
+    if (id == kOverwriteModId || id == kMergedModId) return;
 
     for (int i = 0; i < mods_.size(); ++i) {
-        if (mods_[i].id == id && !mods_[i].is_overwrite && !mods_[i].is_game_native) {
+        if (mods_[i].id == id && !mods_[i].is_overwrite && !mods_[i].is_merged && !mods_[i].is_game_native) {
             beginRemoveRows({}, i, i);
             mods_.removeAt(i);
             endRemoveRows();
@@ -413,6 +430,51 @@ void ModListModel::remove_mod(const QString& id) {
             return;
         }
     }
+}
+
+void ModListModel::remove_all_mods() {
+    // Remove everything except Overwrite (including game-native mods)
+    bool changed = false;
+    for (int i = mods_.size() - 1; i >= 0; --i) {
+        if (!mods_[i].is_overwrite && !mods_[i].is_merged) {
+            beginRemoveRows({}, i, i);
+            mods_.removeAt(i);
+            endRemoveRows();
+            changed = true;
+        }
+    }
+    if (changed) {
+        renumber_priorities();
+        emit mod_list_changed();
+    }
+}
+
+void ModListModel::move_mod(const QString& id, int new_row) {
+    int src = -1;
+    for (int i = 0; i < mods_.size(); ++i) {
+        if (mods_[i].id == id) {
+            src = i;
+            break;
+        }
+    }
+    if (src < 0 || src == new_row) return;
+
+    int ow_row = overwrite_row();
+    int mg_row = merged_row();
+    // Clamp to just before Overwrite/MERGED — after takeAt(src) they shift left by 1
+    if (mg_row >= 0 && new_row >= mg_row)
+        new_row = mg_row - 1;
+    if (ow_row >= 0 && new_row >= ow_row)
+        new_row = ow_row - 1;
+    if (new_row < 0) new_row = 0;
+
+    beginMoveRows({}, src, src, {}, new_row + (new_row >= src ? 1 : 0));
+    auto item = mods_.takeAt(src);
+    mods_.insert(new_row, std::move(item));
+    endMoveRows();
+
+    renumber_priorities();
+    emit mod_list_changed();
 }
 
 void ModListModel::toggle_mod(const QString& id) {
@@ -491,7 +553,7 @@ void ModListModel::renumber_priorities() {
 QStringList ModListModel::enabled_mod_ids() const {
     QStringList ids;
     for (const auto& m : mods_) {
-        if (m.enabled && !m.is_separator && !m.is_overwrite) ids.append(m.id);
+        if (m.enabled && !m.is_separator && !m.is_overwrite && !m.is_merged) ids.append(m.id);
     }
     return ids;
 }
@@ -558,6 +620,7 @@ void ModListModel::reset_with_order(const QVector<ModEntry>& entries) {
     mods_ = entries;
     endResetModel();
     renumber_priorities();
+    emit mod_list_changed();
 }
 
 void ModListModel::set_conflict_order_reversed(bool reversed) {
@@ -580,6 +643,29 @@ QString ModListModel::compute_separator_flags(int row) const {
 
 void ModListModel::set_conflict_pairs(const QMap<QString, ConflictPairs>& pairs) {
     conflict_pairs_ = pairs;
+}
+
+bool ModListModel::has_conflicts_within_separator(const QString& mod_id) const {
+    QString sep_id;
+    for (const auto& m : mods_) {
+        if (m.id == mod_id) {
+            sep_id = m.separator_id;
+            break;
+        }
+    }
+    if (sep_id.isEmpty()) return false;
+    if (!conflict_pairs_.contains(mod_id)) return false;
+
+    const auto& pairs = conflict_pairs_[mod_id];
+    for (const auto& other : pairs.wins_against) {
+        int idx = priority_of(other);
+        if (idx >= 0 && mods_[idx].separator_id == sep_id) return true;
+    }
+    for (const auto& other : pairs.loses_to) {
+        int idx = priority_of(other);
+        if (idx >= 0 && mods_[idx].separator_id == sep_id) return true;
+    }
+    return false;
 }
 
 void ModListModel::set_selected_mod(const QString& id) {
@@ -609,6 +695,35 @@ void ModListModel::ensure_overwrite_present() {
     entry.priority = 0;
     entry.is_overwrite = true;
     int pos = mods_.size();  // always at bottom
+    beginInsertRows({}, pos, pos);
+    mods_.insert(pos, entry);
+    endInsertRows();
+}
+
+int ModListModel::merged_row() const {
+    for (int i = 0; i < mods_.size(); ++i) {
+        if (mods_[i].is_merged) return i;
+    }
+    return -1;
+}
+
+bool ModListModel::is_merged(int row) const {
+    return row >= 0 && row < mods_.size() && mods_[row].is_merged;
+}
+
+void ModListModel::ensure_merged_present() {
+    for (const auto& m : mods_) {
+        if (m.is_merged) return;
+    }
+    int overwrite_pos = overwrite_row();
+    int pos = (overwrite_pos >= 0) ? overwrite_pos + 1 : mods_.size();
+    ModEntry entry;
+    entry.id = kMergedModId;
+    entry.name = kMergedModName;
+    entry.version = "";
+    entry.enabled = true;
+    entry.priority = 1;
+    entry.is_merged = true;
     beginInsertRows({}, pos, pos);
     mods_.insert(pos, entry);
     endInsertRows();

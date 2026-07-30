@@ -6,6 +6,8 @@
 #include <QFileIconProvider>
 #include <QFileInfo>
 #include <QGridLayout>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMenu>
 #include <QProcess>
 #include <QStandardPaths>
@@ -15,39 +17,28 @@
 
 namespace {
 
-// Find wrestool: check bundled tools/ first, then fall back to system PATH
 QString findWrestool() {
-    // Bundled: <app_dir>/tools/linux/wrestool
     auto app_dir = QCoreApplication::applicationDirPath();
     auto bundled = app_dir + "/../tools/linux/wrestool";
     if (QFileInfo::exists(bundled)) return bundled;
-
-    // System PATH
     auto system = QStandardPaths::findExecutable("wrestool");
     if (!system.isEmpty()) return system;
-
     return {};
 }
 
 QIcon extractExeIcon(const QString& exePath, const std::filesystem::path& icon_cache_dir) {
     auto& log = engine::Logger::instance();
     auto exe_std = exePath.toStdString();
-
-    // Build cache key from executable filename (e.g. "isaac-ng.exe.ico")
     auto exe_file = QFileInfo(exePath).fileName();
     auto cache_key = exe_file + ".ico";
     auto cache_path = std::filesystem::path(icon_cache_dir.string()) / cache_key.toStdString();
 
-    // 1. Check cache
     if (!icon_cache_dir.empty() && std::filesystem::exists(cache_path)) {
         QIcon cached(QString::fromStdString(cache_path.string()));
-        if (!cached.isNull()) {
-            return cached;
-        }
+        if (!cached.isNull()) return cached;
         log.debug("Icon cache file exists but failed to load, re-extracting: " + cache_path.string());
     }
 
-    // 2. Try wrestool to extract the real PE icon (only works on .exe files)
     if (QFileInfo(exePath).suffix().compare("exe", Qt::CaseInsensitive) == 0) {
         auto wrestool = findWrestool();
         if (wrestool.isEmpty()) {
@@ -73,7 +64,6 @@ QIcon extractExeIcon(const QString& exePath, const std::filesystem::path& icon_c
                         log.warn("wrestool produced ico but QIcon failed to load: " + exe_std);
                     } else {
                         log.debug("Icon extracted via wrestool: " + exe_std);
-                        // Save to cache
                         if (!icon_cache_dir.empty()) {
                             std::error_code ec;
                             std::filesystem::create_directories(icon_cache_dir, ec);
@@ -93,9 +83,20 @@ QIcon extractExeIcon(const QString& exePath, const std::filesystem::path& icon_c
         }
     }
 
-    // 3. Fallback: QFileIconProvider (system association)
     QFileIconProvider provider;
     return provider.icon(QFileInfo(exePath));
+}
+
+// Resolve the display text for an ExecEntry (title, or filename from path, or "Untitled")
+QString displayTextForEntry(const QJsonObject& obj) {
+    auto title = obj["title"].toString();
+    if (!title.isEmpty()) return title;
+    auto path = obj["path"].toString();
+    if (!path.isEmpty()) {
+        auto last_slash = path.lastIndexOf('/');
+        return last_slash >= 0 ? path.mid(last_slash + 1) : path;
+    }
+    return "Untitled";
 }
 
 }  // namespace
@@ -108,15 +109,13 @@ ExecControlsBar::ExecControlsBar(QWidget* parent)
     layout->setContentsMargins(4, 2, 4, 2);
     layout->setSpacing(4);
 
-    // Big combo dropdown — spans 2 rows
     exec_combo_ = new QComboBox(this);
     exec_combo_->setMinimumHeight(50);
     exec_combo_->setMinimumWidth(200);
     exec_combo_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    exec_combo_->addItem("Select executable...");
+    exec_combo_->addItem("Add new entry...");
     layout->addWidget(exec_combo_, 0, 0, 2, 1);
 
-    // Run button — top right, same width as shortcut
     run_btn_ = new QToolButton(this);
     run_btn_->setText("Run");
     run_btn_->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
@@ -125,7 +124,6 @@ ExecControlsBar::ExecControlsBar(QWidget* parent)
     run_btn_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     layout->addWidget(run_btn_, 0, 1);
 
-    // Shortcut button with dropdown — below Run
     shortcut_btn_ = new QToolButton(this);
     shortcut_btn_->setText("Shortcut");
     shortcut_btn_->setIcon(style()->standardIcon(QStyle::SP_FileLinkIcon));
@@ -144,30 +142,43 @@ ExecControlsBar::ExecControlsBar(QWidget* parent)
     shortcut_btn_->setMenu(shortcut_menu);
     layout->addWidget(shortcut_btn_, 1, 1);
 
-    // Combo takes 70%, buttons take 30%
     layout->setColumnStretch(0, 7);
     layout->setColumnStretch(1, 3);
 
     connect(run_btn_, &QToolButton::clicked, this, &ExecControlsBar::run_clicked);
-    // Default shortcut click = toolbar
     connect(shortcut_btn_, &QToolButton::clicked,
             this, &ExecControlsBar::shortcut_to_toolbar);
 
-    // When "Select an executable..." is chosen, emit signal and restore previous selection
+    // When "Add new entry..." is chosen, emit signal and restore previous selection
     connect(exec_combo_, &QComboBox::currentIndexChanged, this, [this](int index) {
-        if (index >= 0 && exec_combo_->itemData(index).toString().isEmpty()
+        if (index >= 0 && exec_combo_->itemData(index).toJsonObject().isEmpty()
             && exec_combo_->count() > 1) {
-            // Restore previous selection
             int prev = index > 0 ? index - 1 : 1;
             QSignalBlocker blocker(exec_combo_);
             exec_combo_->setCurrentIndex(prev);
-            emit select_executable_requested();
+            emit add_entry_requested();
         }
     });
 }
 
+QJsonObject ExecControlsBar::item_data(int index) const {
+    auto var = exec_combo_->itemData(index);
+    if (var.userType() == QMetaType::QJsonObject)
+        return var.toJsonObject();
+    // Legacy: plain string path
+    QString s = var.toString();
+    if (!s.isEmpty())
+        return ExecEntry::fromLegacyPath(s).toJson();
+    return {};
+}
+
+void ExecControlsBar::set_item_data(int index, const QJsonObject& obj) {
+    exec_combo_->setItemData(index, QVariant(obj));
+}
+
 QString ExecControlsBar::current_executable() const {
-    return exec_combo_->currentData().toString();
+    auto obj = item_data(exec_combo_->currentIndex());
+    return obj["path"].toString();
 }
 
 int ExecControlsBar::current_executable_index() const {
@@ -177,54 +188,110 @@ int ExecControlsBar::current_executable_index() const {
 QStringList ExecControlsBar::executable_paths() const {
     QStringList paths;
     for (int i = 0; i < exec_combo_->count() - 1; ++i) {
-        auto rel = exec_combo_->itemData(i).toString();
-        if (!rel.isEmpty())
-            paths.append(rel);
+        auto obj = item_data(i);
+        auto p = obj["path"].toString();
+        if (!p.isEmpty())
+            paths.append(p);
     }
     return paths;
 }
 
+QVector<ExecEntry> ExecControlsBar::executable_entries() const {
+    QVector<ExecEntry> entries;
+    for (int i = 0; i < exec_combo_->count() - 1; ++i) {
+        auto obj = item_data(i);
+        if (!obj.isEmpty())
+            entries.append(ExecEntry::fromJson(obj));
+    }
+    return entries;
+}
+
 void ExecControlsBar::add_executable(const QString& display_name, const QString& rel_path,
-                                     const QIcon& icon) {
-    // Insert before the "Select an executable..." entry (always last)
+                                      const QIcon& icon) {
+    ExecEntry e;
+    e.title = display_name;
+    e.path = rel_path;
     int insert_pos = exec_combo_->count() - 1;
-    exec_combo_->insertItem(insert_pos, icon, display_name, rel_path);
+    exec_combo_->insertItem(insert_pos, icon, displayTextForEntry(e.toJson()), QVariant(e.toJson()));
     exec_combo_->setCurrentIndex(insert_pos);
+}
+
+void ExecControlsBar::add_entry(const ExecEntry& entry) {
+    QIcon icon;
+
+    // Custom icon path takes priority
+    if (!entry.icon_path.isEmpty()) {
+        QPixmap pix(entry.icon_path);
+        if (!pix.isNull())
+            icon = QIcon(pix);
+    }
+
+    // Fall back to filesystem icon from the binary path
+    if (icon.isNull() && !entry.path.isEmpty()) {
+        QFileIconProvider provider;
+        icon = provider.icon(QFileInfo(entry.path));
+    }
+
+    int insert_pos = exec_combo_->count() - 1;
+    exec_combo_->insertItem(insert_pos, icon, displayTextForEntry(entry.toJson()), QVariant(entry.toJson()));
+    exec_combo_->setCurrentIndex(insert_pos);
+}
+
+ExecEntry ExecControlsBar::current_entry() const {
+    int idx = exec_combo_->currentIndex();
+    if (idx < 0 || idx >= exec_combo_->count() - 1)
+        return {};
+    return ExecEntry::fromJson(item_data(idx));
 }
 
 void ExecControlsBar::clear_executables() {
     exec_combo_->clear();
+    // Re-add the sentinel so add_entry() works
+    exec_combo_->addItem("Add new entry...", QVariant(QJsonObject()));
 }
 
 void ExecControlsBar::set_executables(const QStringList& names, const QString& default_name,
-                                     const std::filesystem::path& game_dir,
-                                     const std::filesystem::path& icon_cache_dir) {
+                                       const std::filesystem::path& game_dir,
+                                       const std::filesystem::path& icon_cache_dir) {
     exec_combo_->clear();
 
     for (int i = 0; i < names.size(); ++i) {
-        auto name = names[i];
-        auto display = name;
-        auto last_slash = name.lastIndexOf('/');
-        if (last_slash >= 0) display = name.mid(last_slash + 1);
+        auto raw = names[i];
 
-        // Try to extract the real icon from the .exe via wrestool, fallback to QFileIconProvider
+        // Detect JSON string vs plain legacy path
+        ExecEntry entry;
+        if (raw.startsWith('{')) {
+            QJsonDocument doc = QJsonDocument::fromJson(raw.toUtf8());
+            if (doc.isObject()) {
+                entry = ExecEntry::fromJson(doc.object());
+            } else {
+                entry = ExecEntry::fromLegacyPath(raw);
+            }
+        } else {
+            entry = ExecEntry::fromLegacyPath(raw);
+        }
+
+        auto toml_path = entry.path;  // relative path in toml
+        auto display = displayTextForEntry(entry.toJson());
+
+        // Try icon
         if (!game_dir.empty()) {
-            auto full_path = game_dir / name.toStdString();
+            auto full_path = game_dir / toml_path.toStdString();
             if (std::filesystem::exists(full_path)) {
                 auto qpath = QString::fromStdString(full_path.string());
-                exec_combo_->addItem(extractExeIcon(qpath, icon_cache_dir), display, name);
+                exec_combo_->addItem(extractExeIcon(qpath, icon_cache_dir), display, QVariant(entry.toJson()));
                 continue;
             }
         }
-        exec_combo_->addItem(display, name);
+        exec_combo_->addItem(display, QVariant(entry.toJson()));
     }
-    // Always add "Select an executable..." at the end (empty data = file picker)
-    exec_combo_->addItem("Select an executable...", QVariant(""));
 
-    // Select the default
+    exec_combo_->addItem("Add new entry...", QVariant(QJsonObject()));
+
     if (!default_name.isEmpty()) {
         for (int i = 0; i < exec_combo_->count(); ++i) {
-            if (exec_combo_->itemData(i).toString() == default_name) {
+            auto p = item_data(i)["path"].toString();
+            if (!p.isEmpty() && p == default_name) {
                 exec_combo_->setCurrentIndex(i);
                 return;
             }

@@ -54,6 +54,13 @@ class RegistrationContext:
         """Register a custom deployment strategy (symlink / hardlink / vfs)."""
         ...
 
+    def register_image_diff(self) -> None:
+        """Register an image diff provider for merging conflicting sprite files.
+        
+        Launched from the Conflicts tab context menu on conflicting files.
+        """
+        ...
+
     def register_tool(self, tool_id: str, kind: str) -> None:
         """Register an external tool (LOOT, BodySlide, etc.).
 

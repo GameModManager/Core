@@ -1,5 +1,9 @@
 #include "engine/instance/instance_utils.h"
+#include "engine/deploy/deploy_utils.h"
+#include "engine/launcher.h"
 #include "engine/log/logger.h"
+#include "engine/overlay_launcher.h"
+#include "engine/registry/game_knowledge.h"
 
 #include <cstdlib>
 #include <fstream>
@@ -88,6 +92,63 @@ Instance create_instance_for_game(const DetectedGame& game,
         "Instance created: " + inst_name + " (game=" + game.game_id +
         ") at " + inst.info().root.string());
     return inst;
+}
+
+LaunchParams prepare_launch_params(
+    const fs::path& instance_root,
+    const fs::path& game_dir,
+    const fs::path& executable,
+    const GameKnowledge& knowledge,
+    const std::string& game_id,
+    uint32_t steam_appid,
+    bool is_windows_exe)
+{
+    LaunchParams params;
+    params.executable = executable;
+    params.game_dir = game_dir;
+    params.overwrite_dir = instance_root / "overwrite";
+    params.steam_appid = steam_appid;
+    params.is_windows_exe = is_windows_exe;
+
+    // Validate inputs
+    if (!fs::is_directory(game_dir)) {
+        Logger::instance().error("prepare_launch_params: game_dir not found: " + game_dir.string());
+        return params;
+    }
+
+    // Ensure overwrite dir exists (belt-and-suspenders — instance setup should have created it)
+    std::error_code ec;
+    fs::create_directories(params.overwrite_dir, ec);
+
+    // Check if OverlayFS is supported for this instance
+    if (!OverlayFsLauncher::is_supported(params.overwrite_dir)) {
+        Logger::instance().info("OverlayFS not supported, launching without overlay");
+        return params;
+    }
+
+    // Ensure staging dir exists (fixes ENOENT when no mods have been deployed yet)
+    auto staging_dir = instance_root / ".gmm_staging";
+    fs::create_directories(staging_dir, ec);
+    if (ec) {
+        Logger::instance().error("Failed to create staging dir: " + ec.message());
+        return params;
+    }
+
+    // Deploy all enabled mods to staging
+    std::string deploy_prefix = knowledge.get(game_id, "deploy_prefix", "Data");
+    std::string deploy_include_mod_id = knowledge.get(game_id, "deploy_include_mod_id", "false");
+    std::string disable_mechanism = knowledge.get(game_id, "disable_mechanism", "");
+    auto mods_dir = instance_root / "mods";
+
+    bool deployed = deploy_all_enabled_mods(mods_dir, staging_dir, deploy_prefix,
+                           deploy_include_mod_id == "true", disable_mechanism);
+    if (!deployed) {
+        Logger::instance().warn("Some mods failed to deploy to staging — continuing anyway");
+    }
+
+    params.extra_lowerdirs.push_back(staging_dir);
+    Logger::instance().info("Launch: OverlayFS staging at " + staging_dir.string());
+    return params;
 }
 
 }

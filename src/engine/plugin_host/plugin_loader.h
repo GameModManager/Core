@@ -11,6 +11,15 @@
 #include <string>
 #include <vector>
 
+// Forward declare ABI image diff callback type
+typedef void (*GmmImageDiffFn)(const char* const*, size_t, const char*, void*);
+
+// A provider registered by a tool plugin for merging conflicting files
+struct ImageDiffProvider {
+    GmmImageDiffFn fn = nullptr;
+    void* user_data = nullptr;
+};
+
 // ABI version from the header
 #define GMM_ABI_VERSION 1
 
@@ -68,6 +77,14 @@ public:
     const ToolRegistry& tool_registry() const { return tool_registry_; }
     const GameKnowledge& knowledge() const { return knowledge_; }
 
+    // Image diff provider — tool plugin for merging conflicting sprite files
+    void register_image_diff(GmmImageDiffFn fn, void* user_data) {
+        image_diff_.fn = fn;
+        image_diff_.user_data = user_data;
+    }
+    [[nodiscard]] bool has_image_diff() const { return image_diff_.fn != nullptr; }
+    [[nodiscard]] const ImageDiffProvider& image_diff_provider() const { return image_diff_; }
+
 private:
     void* dlopen_handle(const std::string& path);
     void unload_all();
@@ -78,6 +95,7 @@ private:
     GameCapabilities capabilities_;
     ToolRegistry tool_registry_;
     GameKnowledge knowledge_;
+    ImageDiffProvider image_diff_;
 };
 
 }  // namespace engine
