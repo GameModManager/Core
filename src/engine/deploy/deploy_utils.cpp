@@ -1,0 +1,94 @@
+#include "engine/deploy/deploy_utils.h"
+#include "engine/deploy/strategy.h"
+#include "engine/log/logger.h"
+
+#include <filesystem>
+#include <system_error>
+
+namespace engine {
+
+bool deploy_all_enabled_mods(
+    const path& mods_dir,
+    const path& staging_dir,
+    const std::string& deploy_prefix,
+    bool deploy_include_mod_id,
+    const std::string& disable_mechanism)
+{
+    std::error_code ec;
+    if (!std::filesystem::is_directory(mods_dir, ec)) {
+        Logger::instance().warn("deploy_all_enabled_mods: mods_dir not found: " + mods_dir.string());
+        return false;
+    }
+
+    // Ensure staging root exists
+    std::filesystem::create_directories(staging_dir, ec);
+    if (ec) {
+        Logger::instance().error("deploy_all_enabled_mods: failed to create staging dir: " + ec.message());
+        return false;
+    }
+
+    OverlayFsDeployStrategy strategy(staging_dir);
+    auto target_base = staging_dir / deploy_prefix;
+    std::filesystem::create_directories(target_base, ec);
+
+    int total_deployed = 0;
+    int total_failed = 0;
+    int mods_processed = 0;
+
+    for (const auto& entry : std::filesystem::directory_iterator(mods_dir, ec)) {
+        if (!entry.is_directory()) continue;
+
+        auto folder = entry.path().filename().string();
+
+        // Skip the special overwrite dir and merged dir
+        if (folder == "Overwrite" || folder == "MERGED" || folder == ".merged")
+            continue;
+
+        // Check disable sentinel
+        try {
+            bool enabled = disable_mechanism.empty() || !std::filesystem::exists(entry.path() / disable_mechanism);
+            if (!enabled) continue;
+        } catch (const std::filesystem::filesystem_error& ex) {
+            Logger::instance().warn("deploy_all_enabled_mods: cannot check enable state for " + folder + ": " + ex.what());
+            continue;
+        }
+
+        // Deploy every file in the mod folder
+        auto deploy_root = deploy_include_mod_id ? target_base / folder : target_base;
+        int deployed = 0;
+        int failed = 0;
+
+        std::error_code iter_ec;
+        for (const auto& file : std::filesystem::recursive_directory_iterator(entry.path(), iter_ec)) {
+            if (iter_ec) {
+                Logger::instance().warn("deploy_all_enabled_mods: error iterating " + folder + ": " + iter_ec.message());
+                iter_ec.clear();
+                break;
+            }
+            if (!file.is_regular_file()) continue;
+            auto rel = std::filesystem::relative(file.path(), entry.path());
+            auto target = deploy_root / rel;
+            std::filesystem::create_directories(target.parent_path(), ec);
+            if (strategy.deploy(file.path(), target)) {
+                ++deployed;
+            } else {
+                ++failed;
+            }
+        }
+
+        total_deployed += deployed;
+        total_failed += failed;
+        ++mods_processed;
+
+        Logger::instance().debug("deploy_all_enabled_mods: " + folder +
+            ": " + std::to_string(deployed) + " deployed" +
+            (failed ? ", " + std::to_string(failed) + " failed" : ""));
+    }
+
+    Logger::instance().info("deploy_all_enabled_mods: " + std::to_string(mods_processed) +
+        " mods processed, " + std::to_string(total_deployed) + " files deployed, " +
+        std::to_string(total_failed) + " failed");
+    return total_failed == 0;
+}
+
+}
