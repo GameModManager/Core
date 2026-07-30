@@ -36,6 +36,12 @@ RightPanel::RightPanel(QWidget* parent)
     // Data tab is always present — create it once
     data_tab_ = new DataTab(tab_widget_);
     setup_toggle_header(data_tab_->table(), {"Path", "Size", "Mod"});
+    // Path stretches to fill space; Size and Mod keep user-set width
+    auto* data_hdr = data_tab_->table()->horizontalHeader();
+    data_hdr->setStretchLastSection(false);
+    data_hdr->setSectionResizeMode(0, QHeaderView::Stretch);
+    data_hdr->setSectionResizeMode(1, QHeaderView::Interactive);
+    data_hdr->setSectionResizeMode(2, QHeaderView::Interactive);
     tab_widget_->addTab(data_tab_, "Data");
 
     layout->addWidget(tab_widget_, 1);
@@ -93,7 +99,6 @@ void RightPanel::ensure_tab(const std::string& capability, const QString& label)
         tab = t;
     } else if (capability == "conflicts") {
         auto* t = new ConflictsTab(tab_widget_);
-        setup_toggle_header(t->table(), {"File", "Winner", "Mods"});
         tab = t;
     } else if (capability == "archives") {
         auto* t = new ArchivesTab(tab_widget_);
@@ -149,6 +154,13 @@ DownloadsTab* RightPanel::downloads_tab() const {
     auto it = tabs_.find("downloads");
     if (it != tabs_.end())
         return qobject_cast<DownloadsTab*>(it->second);
+    return nullptr;
+}
+
+ConflictsTab* RightPanel::conflicts_tab() const {
+    auto it = tabs_.find("conflicts");
+    if (it != tabs_.end())
+        return qobject_cast<ConflictsTab*>(it->second);
     return nullptr;
 }
 
