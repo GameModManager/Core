@@ -27,7 +27,7 @@ jobs:
 
       - name: Install SQLite (prebuilt)
         run: |
-          Invoke-WebRequest -Uri "https://sqlite.org/2025/sqlite-dll-win-x64-3460000.zip" -OutFile sqlite.zip
+          Invoke-WebRequest -Uri "https://sqlite.org/2026/sqlite-dll-win-x64-3530400.zip" -OutFile sqlite.zip
           Expand-Archive sqlite.zip -DestinationPath deps/sqlite
 
       - name: Export GitHub Actions cache environment variables
