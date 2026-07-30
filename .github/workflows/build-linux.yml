@@ -32,9 +32,45 @@ jobs:
 
       - name: Collect artifacts
         run: |
-          mkdir -p artifact
+          mkdir -p artifact/lib
+
+          # Bundle the binary
           cp build/gamemodmanager artifact/
-          cp build/plugins/*.so artifact/ 2>/dev/null || true
+
+          # Bundle plugins
+          cp build/plugins/*.so artifact/lib/ 2>/dev/null || true
+
+          # Bundle all transitive shared library dependencies (exclude system libs)
+          BUNDLE_DEPS() {
+              local exe="$1"
+              ldd "$exe" | awk '/=> \// {print $3}' | while read -r lib; do
+                  # Skip libc, libstdc++, libm, libgcc, ld-linux, libdl, libpthread, librt
+                  base=$(basename "$lib")
+                  case "$base" in
+                      libc.so*|libstdc++.so*|libm.so*|libgcc_s.so*|ld-linux*|libdl.so*|libpthread.so*|librt.so*|libresolv.so*|libutil.so*|libnss_*|libGLdispatch*)
+                          ;;
+                      *)
+                          if [ ! -f "artifact/lib/$base" ]; then
+                              cp -L "$lib" artifact/lib/
+                          fi
+                          ;;
+                  esac
+              done
+          }
+
+          BUNDLE_DEPS build/gamemodmanager
+          for plugin in build/plugins/*.so; do
+              [ -f "$plugin" ] && BUNDLE_DEPS "$plugin"
+          done
+
+          # Create wrapper script that sets LD_LIBRARY_PATH
+          cat > artifact/gamemodmanager.sh << 'EOF'
+#!/bin/bash
+DIR="$(cd "$(dirname "$0")" && pwd)"
+export LD_LIBRARY_PATH="$DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec "$DIR/gamemodmanager" "$@"
+EOF
+          chmod +x artifact/gamemodmanager.sh
 
       - uses: actions/upload-artifact@v4
         with:
