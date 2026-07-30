@@ -2532,6 +2532,10 @@ void MainWindow::launch_with_executable(const QString& full_path) {
         return;
     }
 
+    // Show the lock overlay before launching — the game must not outrun it
+    auto binary_name = QString::fromStdString(exec_path.filename().string());
+    show_game_lock_overlay(binary_name, 0);
+
     // Ensure disk order matches UI before launching
     sync_priorities();
 
@@ -2565,13 +2569,20 @@ void MainWindow::launch_with_executable(const QString& full_path) {
     auto lresult = engine::launch_game(lparams);
 
     if (lresult.pid <= 0) {
+        hide_game_lock_overlay();
         QMessageBox::warning(this, "Launch", "Failed to launch game.");
         return;
     }
 
     overlay_launched_ = lresult.overlay_launched;
     running_process_pid_ = lresult.pid;
+    cgroup_path_ = lresult.cgroup_path;
     launch_time_ = std::filesystem::file_time_type::clock::now();
+
+    // Update overlay with actual PID now that we have it
+    game_lock_label_->setText(QString("The game is running: %1 (%2)")
+        .arg(binary_name)
+        .arg(lresult.pid));
 
     if (!process_watch_timer_) {
         process_watch_timer_ = new QTimer(this);
@@ -2581,7 +2592,6 @@ void MainWindow::launch_with_executable(const QString& full_path) {
         });
     }
     process_watch_timer_->start();
-    show_game_lock_overlay(QString::fromStdString(exec_path.filename().string()), lresult.pid);
 }
 
 void MainWindow::check_running_process() {
@@ -2616,6 +2626,32 @@ void MainWindow::check_running_process() {
         QTimer::singleShot(3000, this, [this, t]() { do_capture_overwrite(t); });
     }
 #else
+    // ---- cgroup v2 path (primary) ----
+    if (!cgroup_path_.empty()) {
+        if ((process_tree_checkbox_ && process_tree_checkbox_->isChecked())
+            && !engine::cgroup_is_empty({cgroup_path_}))
+            refresh_process_tree();
+
+        if (engine::cgroup_is_empty({cgroup_path_})) {
+            engine::Logger::instance().info(
+                "Watchdog: cgroup empty, game fully exited");
+            flush_pending_changes();
+            hide_game_lock_overlay();
+            running_process_pid_ = -1;
+            cgroup_path_.clear();
+            if (process_watch_timer_) process_watch_timer_->stop();
+            if (!staging_dir_.empty()) {
+                std::error_code ec;
+                std::filesystem::remove_all(staging_dir_, ec);
+                staging_dir_.clear();
+            }
+            auto t = launch_time_;
+            QTimer::singleShot(3000, this, [this, t]() { do_capture_overwrite(t); });
+        }
+        return;
+    }
+
+    // ---- fallback: subreaper + PGID / PPID walk ----
     // Try to reap the root child on every tick.  is_process_group_alive()
     // / kill(-pgid,0) considers zombie processes "alive" (they still have
     // a task_struct entry), which would gate cleanup and cause a permanent
@@ -2639,20 +2675,22 @@ void MainWindow::check_running_process() {
 
     // PGID scan found nothing — try PPID descendant walk.
     // This finds processes that created new sessions via setsid().
-    auto descendants = engine::get_process_descendants(pgid);
-    bool found_alive = false;
-    for (int64_t dpid : descendants) {
-        if (dpid == pgid) continue;
-        if (kill(static_cast<pid_t>(dpid), 0) == 0 || errno == EPERM) {
-            found_alive = true;
-            break;
+    {
+        auto descendants = engine::get_process_descendants(pgid);
+        bool found_alive = false;
+        for (int64_t dpid : descendants) {
+            if (dpid == pgid) continue;
+            if (kill(static_cast<pid_t>(dpid), 0) == 0 || errno == EPERM) {
+                found_alive = true;
+                break;
+            }
         }
+
+        if (process_tree_checkbox_ && process_tree_checkbox_->isChecked())
+            refresh_process_tree();
+
+        if (found_alive) return;
     }
-
-    if (process_tree_checkbox_ && process_tree_checkbox_->isChecked())
-        refresh_process_tree();
-
-    if (found_alive) return;
 
     engine::Logger::instance().info("Watchdog: process group " +
         std::to_string(pgid) + " fully exited, scheduling capture in 3s");
@@ -2670,8 +2708,8 @@ void MainWindow::check_running_process() {
     flush_pending_changes();
     hide_game_lock_overlay();
     running_process_pid_ = -1;
+    cgroup_path_.clear();
     if (process_watch_timer_) process_watch_timer_->stop();
-    // Clean up overlay staging dir (mod symlinks) — no longer needed
     if (!staging_dir_.empty()) {
         std::error_code ec;
         std::filesystem::remove_all(staging_dir_, ec);
@@ -2781,39 +2819,20 @@ void MainWindow::refresh_process_tree() {
     if (!process_tree_) return;
     process_tree_->clear();
 
-    pid_t root_pid = static_cast<pid_t>(running_process_pid_);
-    if (root_pid <= 0) return;
-
-    // Read root_pid's session ID — all descendants inherit this via setsid()
-    pid_t root_session = -1;
-    {
-        std::string spath = "/proc/" + std::to_string(root_pid) + "/stat";
-        FILE* f = fopen(spath.c_str(), "r");
-        if (f) {
-            char buf[4096] = {};
-            size_t n = fread(buf, 1, sizeof(buf) - 1, f);
-            fclose(f);
-            buf[n] = '\0';
-            char* open_paren = strchr(buf, '(');
-            char* close_paren = strrchr(buf, ')');
-            if (open_paren && close_paren) {
-                char* p = close_paren + 1;
-                while (*p == ' ') ++p;
-                while (*p && *p != ' ') ++p;
-                while (*p == ' ') ++p;
-                while (*p && *p != ' ') ++p;
-                while (*p == ' ') ++p;
-                while (*p && *p != ' ') ++p;
-                while (*p == ' ') ++p;
-                root_session = static_cast<pid_t>(atol(p));
-            }
-        }
-    }
+    if (running_process_pid_ <= 0) return;
 
     struct ProcInfo { pid_t pid; pid_t ppid; std::string name; char state; };
     std::vector<ProcInfo> procs;
 
-    // Collect all processes from /proc
+    // When cgroup is available, restrict the scan to its members only.
+    // Otherwise scan all of /proc and use PPID walk from the root PID.
+    std::unordered_set<pid_t> cgroup_set;
+    bool use_cgroup = !cgroup_path_.empty();
+    if (use_cgroup) {
+        for (int64_t p : engine::cgroup_members({cgroup_path_}))
+            cgroup_set.insert(static_cast<pid_t>(p));
+    }
+
     DIR* dir = opendir("/proc");
     if (!dir) return;
     struct dirent* entry;
@@ -2821,6 +2840,9 @@ void MainWindow::refresh_process_tree() {
         if (entry->d_type != DT_DIR) continue;
         pid_t pid = atol(entry->d_name);
         if (pid <= 0) continue;
+
+        if (use_cgroup && !cgroup_set.count(pid))
+            continue;
 
         std::string spath = "/proc/" + std::to_string(pid) + "/stat";
         FILE* f = fopen(spath.c_str(), "r");
@@ -2842,20 +2864,19 @@ void MainWindow::refresh_process_tree() {
         while (*p && *p != ' ') ++p;
         while (*p == ' ') ++p;
         pid_t ppid = static_cast<pid_t>(atol(p));
-        while (*p && *p != ' ') ++p;
-        while (*p == ' ') ++p;
-        pid_t session = static_cast<pid_t>(atol(p));
-
-        // Filter: if we got root's SID, include only same-session processes
-        if (root_session > 0 && session != root_session)
-            continue;
 
         procs.push_back({pid, ppid, comm, state});
     }
     closedir(dir);
 
-    // If SID couldn't be read (root exited), fall back to PPID descendant walk
-    if (root_session <= 0) {
+    if (procs.empty()) return;
+
+    // When using cgroup, the PID list is already complete (no PPID walk needed).
+    // Otherwise, run PPID descendant walk from the root PID.
+    if (!use_cgroup) {
+        pid_t root_pid = static_cast<pid_t>(running_process_pid_);
+        if (root_pid <= 0) return;
+
         std::unordered_set<pid_t> descendants;
         descendants.insert(root_pid);
         bool changed = true;
@@ -2869,16 +2890,16 @@ void MainWindow::refresh_process_tree() {
                 }
             }
         }
+
         procs.erase(std::remove_if(procs.begin(), procs.end(),
             [&](const ProcInfo& pr) { return !descendants.count(pr.pid); }),
             procs.end());
-    }
 
-    if (procs.empty()) return;
+        if (procs.empty()) return;
+    }
 
     std::unordered_map<pid_t, QTreeWidgetItem*> items;
 
-    // First pass: create all items
     for (const auto& pr : procs) {
         auto* item = new QTreeWidgetItem;
         item->setText(0, QString::fromStdString(pr.name));
@@ -2887,7 +2908,6 @@ void MainWindow::refresh_process_tree() {
         items[pr.pid] = item;
     }
 
-    // Second pass: build parent-child relationships
     for (const auto& pr : procs) {
         auto* item = items[pr.pid];
         auto parent_it = items.find(pr.ppid);
@@ -3113,6 +3133,8 @@ std::filesystem::path MainWindow::app_state_path() const {
 
 // --- Game-lock overlay ---
 
+// --- Game-lock overlay ---
+
 void MainWindow::create_game_lock_overlay() {
     game_lock_overlay_ = new QWidget(this);
     game_lock_overlay_->setObjectName("gameLockOverlay");
@@ -3197,6 +3219,26 @@ void MainWindow::create_game_lock_overlay() {
     kill_button_ = new QPushButton("Kill", game_lock_overlay_);
     kill_button_->setObjectName("killBtn");
     QObject::connect(kill_button_, &QPushButton::clicked, this, [this]() {
+        if (running_process_pid_ <= 0) {
+            flush_pending_changes();
+            hide_game_lock_overlay();
+            return;
+        }
+
+        // ---- cgroup v2 kill (primary) ----
+        if (!cgroup_path_.empty()) {
+            engine::cgroup_kill({cgroup_path_});
+            engine::Logger::instance().info(
+                "Kill: cgroup.kill written for " + cgroup_path_);
+            running_process_pid_ = -1;
+            cgroup_path_.clear();
+            if (process_watch_timer_) process_watch_timer_->stop();
+            flush_pending_changes();
+            hide_game_lock_overlay();
+            return;
+        }
+
+        // ---- fallback: process group kill ----
         pid_t pgid = static_cast<pid_t>(running_process_pid_);
         if (pgid <= 0) {
             flush_pending_changes();
@@ -3212,17 +3254,15 @@ void MainWindow::create_game_lock_overlay() {
                 return true;
             }
             if (ret == 0) {
-                // Child hasn't exited yet — schedule a one-shot reap later
                 QTimer::singleShot(3000, this, [this, pid]() {
                     int s;
                     waitpid(pid, &s, WNOHANG);
                 });
                 return false;
             }
-            return true;  // ECHILD — already reaped or not ours
+            return true;
         };
 
-        // Kill the entire process group — game, launchers, Proton wrapper, all children.
         int ret = kill(-pgid, SIGTERM);
         if (ret != 0) {
             int err = errno;
@@ -3273,13 +3313,18 @@ void MainWindow::show_game_lock_overlay(const QString& binary_name, int64_t pid)
     locked_pid_ = pid;
     pending_changes_.clear();
     if (pending_queue_label_) pending_queue_label_->hide();
-    game_lock_label_->setText(QString("The game is running: %1 (%2)")
-        .arg(binary_name)
-        .arg(pid));
+    if (pid > 0) {
+        game_lock_label_->setText(QString("The game is running: %1 (%2)")
+            .arg(binary_name)
+            .arg(pid));
+    } else {
+        game_lock_label_->setText(QString("Launching %1 …").arg(binary_name));
+    }
+
     game_lock_overlay_->setGeometry(rect());
     game_lock_overlay_->raise();
     game_lock_overlay_->show();
-    if (process_tree_checkbox_ && process_tree_checkbox_->isChecked())
+    if (pid > 0 && process_tree_checkbox_ && process_tree_checkbox_->isChecked())
         refresh_process_tree();
 }
 

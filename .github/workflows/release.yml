@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  linux:
+    uses: ./.github/workflows/build-linux.yml
+
+  windows:
+    uses: ./.github/workflows/build-windows.yml
+
+  assemble:
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-build
+          path: linux-artifact/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-build
+          path: windows-artifact/
+
+      - name: Assemble portable distribution
+        run: |
+          chmod +x packaging/assemble_portable.sh
+          packaging/assemble_portable.sh linux-artifact/ windows-artifact/ GameModManager-Portable
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portable-distribution
+          path: GameModManager-Portable/
+
+  release:
+    needs: [assemble]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: portable-distribution
+          path: release-artifact/
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifact/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

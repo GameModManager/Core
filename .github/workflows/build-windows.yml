@@ -1,0 +1,40 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install dependencies (vcpkg)
+        run: |
+          vcpkg install qtbase libzip sqlite3 yaml-cpp curl nlohmann-json pybind11 python3 --triplet x64-windows
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test
+        working-directory: build
+        run: ctest --output-on-failure -C Release
+
+      - name: Collect artifacts
+        run: |
+          mkdir artifact
+          Copy-Item build/gamemodmanager.exe artifact/
+          Get-ChildItem build/plugins/*.dll -ErrorAction SilentlyContinue | Copy-Item -Destination artifact/
+          Get-ChildItem build/*.dll -ErrorAction SilentlyContinue | Copy-Item -Destination artifact/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: artifact/
