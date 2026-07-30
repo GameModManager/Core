@@ -8,7 +8,7 @@
 
 namespace py = pybind11;
 
-// ── gmm.RegistrationContext — Python-side wrapper ──
+// -- gmm.RegistrationContext — Python-side wrapper --
 
 class PyRegistrationContext {
 public:
@@ -19,26 +19,31 @@ public:
                            const std::string& gog_id,
                            const std::string& epic_namespace,
                            const std::string& nexus_domain,
+                           const std::string& display_name,
                            const std::string& exe_windows,
                            const std::string& exe_linux,
                            const std::string& exe_macos) {
         plugin_->steam_appid = steam_appid;
         plugin_->nexus_domain = nexus_domain;
-        engine::Logger::instance().info("Python plugin registered identity: appid=" +
-            std::to_string(steam_appid) + " nexus=" + nexus_domain);
+        if (!display_name.empty())
+            plugin_->game_display_name = display_name;
+        engine::Logger::instance().debug("Python plugin registered identity: appid=" +
+            std::to_string(steam_appid) + " name=" +
+            (display_name.empty() ? plugin_->game_id : display_name) +
+            " nexus=" + nexus_domain);
     }
 
     void register_stage_claim(const std::string& stage_name, int priority) {
-        engine::Logger::instance().info("Python plugin registered stage claim: " + stage_name +
+        engine::Logger::instance().debug("Python plugin registered stage claim: " + stage_name +
             " (game=" + plugin_->game_id + ", priority=" + std::to_string(priority) + ")");
     }
 
     void register_order_encoding_hook() {
-        engine::Logger::instance().info("Python plugin registered order encoding hook");
+        engine::Logger::instance().debug("Python plugin registered order encoding hook");
     }
 
     void register_deploy_strategy() {
-        engine::Logger::instance().info("Python plugin registered deploy strategy");
+        engine::Logger::instance().debug("Python plugin registered deploy strategy");
     }
 
     void register_tool(const std::string& tool_id, const std::string& kind) {
@@ -49,7 +54,7 @@ public:
         tool.kind = (kind == "workshop") ? engine::ToolKind::Workshop : engine::ToolKind::Advisory;
         loader_->tool_registry().register_tool(tool);
 
-        engine::Logger::instance().info("Python plugin registered tool: " + tool_id +
+        engine::Logger::instance().debug("Python plugin registered tool: " + tool_id +
             " (" + kind + ")");
     }
 
@@ -82,6 +87,39 @@ public:
         loader_->capabilities().register_capability(info);
     }
 
+    void register_tab(const std::string& capability,
+                      const std::string& display_name,
+                      const std::string& data_path,
+                      const std::string& description,
+                      const std::string& protocol_handler,
+                      const std::string& website_domain,
+                      const std::string& supported_platforms,
+                      const std::string& insert_before,
+                      const std::string& insert_after) {
+        engine::CapabilityInfo info;
+        info.game_id = plugin_->game_id;
+        info.capability = capability;
+        info.display_name = display_name.empty() ? capability : display_name;
+        info.data_path = data_path;
+        info.description = description;
+        info.protocol_handler = protocol_handler;
+        info.website_domain = website_domain;
+        info.insert_before = insert_before;
+        info.insert_after = insert_after;
+
+        if (!supported_platforms.empty()) {
+            std::string s = supported_platforms;
+            size_t pos;
+            while ((pos = s.find(',')) != std::string::npos) {
+                info.supported_platforms.push_back(s.substr(0, pos));
+                s.erase(0, pos + 1);
+            }
+            if (!s.empty()) info.supported_platforms.push_back(s);
+        }
+
+        loader_->capabilities().register_capability(info);
+    }
+
     [[nodiscard]] std::string game_id() const { return plugin_->game_id; }
 
 private:
@@ -89,7 +127,7 @@ private:
     engine::PluginInfo* plugin_;
 };
 
-// ── Embedded gmm module ──
+// -- Embedded gmm module --
 
 PYBIND11_EMBEDDED_MODULE(gmm, m) {
     m.doc() = "GameModManager Python plugin API";
@@ -100,6 +138,7 @@ PYBIND11_EMBEDDED_MODULE(gmm, m) {
              py::arg("gog_id") = "",
              py::arg("epic_namespace") = "",
              py::arg("nexus_domain") = "",
+             py::arg("display_name") = "",
              py::arg("exe_windows") = "",
              py::arg("exe_linux") = "",
              py::arg("exe_macos") = "")
@@ -117,10 +156,20 @@ PYBIND11_EMBEDDED_MODULE(gmm, m) {
              py::arg("protocol_handler") = "",
              py::arg("website_domain") = "",
              py::arg("supported_platforms") = "")
+        .def("register_tab", &PyRegistrationContext::register_tab,
+             py::arg("capability"),
+             py::arg("display_name") = "",
+             py::arg("data_path") = "",
+             py::arg("description") = "",
+             py::arg("protocol_handler") = "",
+             py::arg("website_domain") = "",
+             py::arg("supported_platforms") = "",
+             py::arg("insert_before") = "",
+             py::arg("insert_after") = "")
         .def_property_readonly("game_id", &PyRegistrationContext::game_id);
 }
 
-// ── Interpreter lifecycle ──
+// -- Interpreter lifecycle --
 
 static std::unique_ptr<py::scoped_interpreter> s_interpreter;
 
@@ -129,7 +178,7 @@ bool engine::python_init() {
 
     try {
         s_interpreter = std::make_unique<py::scoped_interpreter>();
-        Logger::instance().info("Python interpreter initialized");
+        Logger::instance().debug("Python interpreter initialized");
         return true;
     } catch (const std::exception& e) {
         Logger::instance().error("Failed to initialize Python: " + std::string(e.what()));
@@ -174,16 +223,9 @@ bool engine::python_load_plugin(PluginLoader* loader, const std::string& path) {
         engine::PluginInfo info;
         info.path = path;
         info.game_id = module_name;
+        info.game_display_name = info.game_id;  // fallback, overridden by register_identity
         info.abi_version = 0;
         info.loaded = true;
-
-        static const std::unordered_map<std::string, std::string> display_names = {
-            {"skyrimse", "Skyrim Special Edition"},
-            {"isaac", "The Binding of Isaac: Rebirth"},
-        };
-        auto name_it = display_names.find(info.game_id);
-        info.game_display_name = (name_it != display_names.end())
-            ? name_it->second : info.game_id;
 
         // Create context and call register()
         PyRegistrationContext ctx(loader, &info);
@@ -192,7 +234,7 @@ bool engine::python_load_plugin(PluginLoader* loader, const std::string& path) {
         info.registered = true;
         loader->add_loaded_plugin(std::move(info));
 
-        Logger::instance().info("Python plugin registered: " + path +
+        Logger::instance().debug("Python plugin registered: " + path +
             " (game=" + info.game_id +
             ", appid=" + std::to_string(info.steam_appid) + ")");
         return true;

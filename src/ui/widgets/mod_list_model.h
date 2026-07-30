@@ -8,9 +8,14 @@ class QAbstractItemView;
 namespace ui {
 
 constexpr const char* kOverwriteModId = "__overwrite__";
-constexpr const char* kOverwriteModName = "Overwrite";
+constexpr const char* kOverwriteModName = "overwrite";
 
 constexpr const char* kModListMimeType = "application/x-gmm-modlist";
+
+struct ModTag {
+    QString type;    // "deprecated", "note", "warning", "incompatible", "clean", "dirty"
+    QString message; // The message to display
+};
 
 struct ModEntry {
     QString id;
@@ -19,10 +24,21 @@ struct ModEntry {
     QString separator_color;
     bool enabled = true;
     int priority = 0;
-    QStringList conflicts;
+    int conflict_wins = 0;
+    int conflict_losses = 0;
+    QVector<ModTag> tags;
+    QString source_type;
+    QString source_id;
+    QString separator_id;
     bool is_separator = false;
     bool is_overwrite = false;
+    bool is_game_native = false;
     bool folded = false;
+};
+
+struct ConflictPairs {
+    QStringList wins_against;
+    QStringList loses_to;
 };
 
 class ModListModel : public QAbstractTableModel {
@@ -48,11 +64,15 @@ public:
     bool moveRows(const QModelIndex& srcParent, int srcRow, int count,
                   const QModelIndex& dstParent, int dstRow) override;
 
-    void add_mod(const QString& id, const QString& name, const QString& version, int priority = -1);
+    void add_mod(const QString& id, const QString& name, const QString& version, int priority = -1, bool is_game_native = false);
     void add_separator(const QString& id, const QString& name, const QString& color);
     void remove_mod(const QString& id);
     void toggle_mod(const QString& id);
-    void set_conflicts(const QString& id, const QStringList& conflicting_ids);
+    void set_conflict_stats(const QString& id, int wins, int losses);
+    void set_tags(const QString& id, const QVector<ModTag>& tags);
+    void set_source_info(const QString& id, const QString& source_type, const QString& source_id);
+    void set_separator_id(const QString& id, const QString& separator_id);
+    void set_priority(const QString& id, int priority);
     void renumber_priorities();
     void set_folded(int row, bool folded);
     void apply_fold_state();
@@ -67,16 +87,25 @@ public:
     void set_view(QAbstractItemView* view) { mod_view_ = view; }
     void reset_with_order(const QVector<ModEntry>& entries);
     void set_conflict_order_reversed(bool reversed);
+    [[nodiscard]] bool is_conflict_order_reversed() const { return conflict_order_reversed_; }
+
+    void set_conflict_pairs(const QMap<QString, ConflictPairs>& pairs);
+    void set_selected_mod(const QString& id);
+    void set_overwrite_path(const QString& path);
 
 signals:
     void mod_list_changed();
 
 private:
     void ensure_overwrite_present();
+    [[nodiscard]] QString compute_separator_flags(int row) const;
 
     QVector<ModEntry> mods_;
     QAbstractItemView* mod_view_ = nullptr;
     bool conflict_order_reversed_ = false;
+    QString selected_mod_id_;
+    QMap<QString, ConflictPairs> conflict_pairs_;
+    QString overwrite_path_;
 };
 
 }  // namespace ui

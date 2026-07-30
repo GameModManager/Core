@@ -1,6 +1,8 @@
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/plugin_host/python_loader.h"
 #include "engine/log/logger.h"
+#include "engine/sort/sort_registry.h"
+#include "engine/sort/abi_sort_provider.h"
 
 #include "gmm_abi_v1.h"
 
@@ -21,6 +23,7 @@ static void cb_register_identity(GmmRegistrationCtx* ctx,
                                   const char* gog_id,
                                   const char* epic_namespace,
                                   const char* nexus_domain,
+                                  const char* display_name,
                                   const char* exe_windows,
                                   const char* exe_linux,
                                   const char* exe_macos) {
@@ -29,9 +32,12 @@ static void cb_register_identity(GmmRegistrationCtx* ctx,
 
     bridge->current_plugin->steam_appid = steam_appid;
     bridge->current_plugin->nexus_domain = nexus_domain ? nexus_domain : "";
+    if (display_name)
+        bridge->current_plugin->game_display_name = display_name;
 
-    Logger::instance().info("Plugin registered identity: appid=" +
+    Logger::instance().debug("Plugin registered identity: appid=" +
         std::to_string(steam_appid) +
+        " name=" + (display_name ? display_name : bridge->current_plugin->game_id) +
         " nexus=" + (nexus_domain ? std::string(nexus_domain) : "none"));
 }
 
@@ -71,7 +77,7 @@ static void cb_register_hook(GmmRegistrationCtx* ctx,
     // Store as game knowledge — key=tag, value=data
     bridge->loader->knowledge().set(game_id, hook_tag, hook_data);
 
-    Logger::instance().info("Plugin registered knowledge: " + hook_tag +
+    Logger::instance().debug("Plugin registered knowledge: " + hook_tag +
         " (game=" + game_id + ", data=" + hook_data + ")");
     (void)fn; (void)priority; (void)user_data;
 }
@@ -82,7 +88,7 @@ static void cb_register_order_encoding(GmmRegistrationCtx* ctx,
     if (!bridge) return;
 
     // TODO: Store order encoding callback in plugin info for pipeline use
-    Logger::instance().info("Plugin registered order encoding hook");
+    Logger::instance().debug("Plugin registered order encoding hook");
     (void)fn;
 }
 
@@ -92,7 +98,7 @@ static void cb_register_deploy_strategy(GmmRegistrationCtx* ctx,
     auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
     if (!bridge) return;
 
-    Logger::instance().info("Plugin registered deploy strategy");
+    Logger::instance().debug("Plugin registered deploy strategy");
     (void)deploy_fn; (void)remove_fn;
 }
 
@@ -119,8 +125,27 @@ static void cb_register_tool(GmmRegistrationCtx* ctx,
 
     bridge->loader->tool_registry().register_tool(tool);
 
-    Logger::instance().info("Plugin registered tool: " + tool.tool_id +
+    Logger::instance().debug("Plugin registered tool: " + tool.tool_id +
         " (" + kind_str + ") for game=" + tool.game_id);
+}
+
+static void cb_register_sort_provider(GmmRegistrationCtx* ctx,
+                                       const char* game_id,
+                                       SortFn sort_fn,
+                                       void* user_data) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge) return;
+
+    std::string gid = game_id ? game_id : "";
+    if (gid.empty()) {
+        Logger::instance().warn("Sort provider registered with empty game_id");
+        return;
+    }
+
+    auto provider = std::make_unique<AbiSortProvider>(gid.c_str(), sort_fn, user_data);
+    SortRegistry::instance().register_provider(gid, std::move(provider));
+
+    Logger::instance().debug("Plugin registered sort provider for game=" + gid);
 }
 
 static void cb_register_capability(GmmRegistrationCtx* ctx,
@@ -159,6 +184,46 @@ static void cb_register_capability(GmmRegistrationCtx* ctx,
     bridge->loader->capabilities().register_capability(info);
 }
 
+static void cb_register_tab(GmmRegistrationCtx* ctx,
+                             const char* capability,
+                             const char* display_name,
+                             const char* data_path,
+                             const char* description,
+                             const char* protocol_handler,
+                             const char* website_domain,
+                             const char* supported_platforms,
+                             const char* insert_before,
+                             const char* insert_after) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge || !bridge->current_plugin) return;
+
+    CapabilityInfo info;
+    info.game_id = bridge->current_plugin->game_id;
+    info.capability = capability ? capability : "";
+    info.display_name = display_name ? display_name : capability ? capability : "";
+    info.data_path = data_path ? data_path : "";
+    info.description = description ? description : "";
+    info.protocol_handler = protocol_handler ? protocol_handler : "";
+    info.website_domain = website_domain ? website_domain : "";
+    info.insert_before = insert_before ? insert_before : "";
+    info.insert_after = insert_after ? insert_after : "";
+
+    // Parse comma-separated platforms
+    if (supported_platforms) {
+        std::string platforms_str = supported_platforms;
+        size_t pos = 0;
+        while ((pos = platforms_str.find(',')) != std::string::npos) {
+            info.supported_platforms.push_back(platforms_str.substr(0, pos));
+            platforms_str.erase(0, pos + 1);
+        }
+        if (!platforms_str.empty()) {
+            info.supported_platforms.push_back(platforms_str);
+        }
+    }
+
+    bridge->loader->capabilities().register_capability(info);
+}
+
 PluginLoader::~PluginLoader() {
     unload_all();
 }
@@ -169,7 +234,7 @@ bool PluginLoader::load_plugin(const std::string& path) {
         return true;
     }
 
-    Logger::instance().info("Loading plugin: " + path);
+    Logger::instance().debug("Loading plugin: " + path);
 
     void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
     if (!handle) {
@@ -205,18 +270,10 @@ bool PluginLoader::load_plugin(const std::string& path) {
     PluginInfo info;
     info.path = path;
     info.game_id = std::filesystem::path(path).stem().string();
+    info.game_display_name = info.game_id;  // fallback, overridden by register_identity
     info.abi_version = plugin_abi;
     info.loaded = true;
     info.handle = handle;
-
-    // Derive display name from game_id
-    static const std::unordered_map<std::string, std::string> display_names = {
-        {"skyrimse", "Skyrim Special Edition"},
-        {"isaac", "The Binding of Isaac: Rebirth"},
-    };
-    auto name_it = display_names.find(info.game_id);
-    info.game_display_name = (name_it != display_names.end())
-        ? name_it->second : info.game_id;
 
     // Set up registration context and call plugin
     GmmRegistrationCtx ctx = {};
@@ -226,7 +283,9 @@ bool PluginLoader::load_plugin(const std::string& path) {
     ctx.register_order_encoding = cb_register_order_encoding;
     ctx.register_deploy_strategy = cb_register_deploy_strategy;
     ctx.register_tool = cb_register_tool;
+    ctx.register_sort_provider = cb_register_sort_provider;
     ctx.register_capability = cb_register_capability;
+    ctx.register_tab = cb_register_tab;
 
     RegistrationBridge bridge;
     bridge.loader = this;
@@ -238,9 +297,10 @@ bool PluginLoader::load_plugin(const std::string& path) {
     info.registered = true;
     plugins_.push_back(info);
 
-    Logger::instance().info("Plugin registered: " + path +
+    Logger::instance().debug("Plugin registered: " + path +
         " (game=" + info.game_id +
         ", appid=" + std::to_string(info.steam_appid) + ")");
+    Logger::instance().info("Game support plugin: " + info.game_display_name);
     return true;
 }
 
@@ -280,7 +340,14 @@ bool PluginLoader::load_directory(const std::string& dir_path) {
         }
     }
 
-    Logger::instance().info("Loaded " + std::to_string(loaded) + " plugins from " + dir_path);
+    Logger::instance().debug("Loaded " + std::to_string(loaded) + " plugins from " + dir_path);
+
+    std::string list_str;
+    for (size_t i = 0; i < plugins_.size(); ++i) {
+        if (i > 0) list_str += ", ";
+        list_str += plugins_[i].game_display_name;
+    }
+    Logger::instance().debug("Loaded plugins: [" + list_str + "]");
     return loaded > 0;
 }
 
@@ -309,7 +376,43 @@ std::string PluginLoader::display_name_for(const std::string& game_id) const {
     for (const auto& p : plugins_) {
         if (p.game_id == game_id) return p.game_display_name;
     }
+    // Fallback: resolve via fuzzy match
+    auto resolved = resolve_game_id(game_id);
+    if (resolved != game_id) return display_name_for(resolved);
     return game_id;
+}
+
+std::string PluginLoader::resolve_game_id(const std::string& game_id) const {
+    // Exact match — fast path
+    for (const auto& p : plugins_)
+        if (p.game_id == game_id) return game_id;
+
+    // Fuzzy: check if any plugin's game_id contains the query or vice versa
+    // (handles shortname→fullname renames like "isaac" ↔ "TheBindingOfIsaacRebirth")
+    std::string q_lower;
+    for (char c : game_id) q_lower += static_cast<char>(std::tolower(c));
+
+    for (const auto& p : plugins_) {
+        std::string p_lower;
+        for (char c : p.game_id) p_lower += static_cast<char>(std::tolower(c));
+
+        if (p_lower.find(q_lower) != std::string::npos ||
+            q_lower.find(p_lower) != std::string::npos)
+            return p.game_id;
+    }
+
+    // Fuzzy: try normalizing display name to instance-name format
+    // (spaces → underscores, remove illgal chars)
+    for (const auto& p : plugins_) {
+        std::string norm;
+        for (char c : p.game_display_name) {
+            if (c == ' ') norm += '_';
+            else norm += c;
+        }
+        if (norm == game_id) return p.game_id;
+    }
+
+    return game_id;  // no match — return as-is
 }
 
 }  // namespace engine

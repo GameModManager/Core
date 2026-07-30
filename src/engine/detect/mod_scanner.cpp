@@ -61,35 +61,30 @@ static bool should_ignore(const std::string& name,
 
 // --- ModScanner ---
 
-std::vector<ScannedMod> ModScanner::scan(
+// Shared implementation: scan the given mods_dir for mods.
+static std::vector<ScannedMod> scan_impl(
     const GameKnowledge& knowledge,
     const std::string& game_id,
-    const std::filesystem::path& game_install_dir) {
+    const std::filesystem::path& mods_dir,
+    const std::vector<std::filesystem::path>& ignore_symlink_targets) {
 
     // Read all config from GameKnowledge hooks
-    auto mods_subpath = knowledge.get(game_id, "mods_subpath", "");
     auto disable_file = knowledge.get(game_id, "disable_mechanism", "");
     auto ignored_csv  = knowledge.get(game_id, "ignored_files", "");
     auto metadata_file = knowledge.get(game_id, "metadata_file", "metadata.xml");
     auto name_tag     = knowledge.get(game_id, "metadata_name_tag", "name");
     auto version_tag  = knowledge.get(game_id, "metadata_version_tag", "version");
     auto separator_suffix = knowledge.get(game_id, "separator_suffix", "_separator");
+    auto workshop_pattern = knowledge.get(game_id, "workshop_id_pattern", "");
 
     auto ignored = split_csv(ignored_csv);
-    // Always ignore the metadata file and disable sentinel during directory scanning
+    // Always ignore system directories during directory scanning
+    ignored.emplace_back("overwrite");
     if (!metadata_file.empty() && should_ignore(metadata_file, ignored) == false) {
         ignored.push_back(metadata_file);
     }
     if (!disable_file.empty() && should_ignore(disable_file, ignored) == false) {
         ignored.push_back(disable_file);
-    }
-
-    // Resolve mods directory
-    std::filesystem::path mods_dir;
-    if (!mods_subpath.empty()) {
-        mods_dir = game_install_dir / mods_subpath;
-    } else {
-        mods_dir = game_install_dir;
     }
 
     std::vector<ScannedMod> mods;
@@ -101,13 +96,57 @@ std::vector<ScannedMod> ModScanner::scan(
     }
 
     for (const auto& entry : std::filesystem::directory_iterator(mods_dir)) {
-        if (!entry.is_directory()) continue;
+        try {
+            if (!entry.is_directory()) continue;
+        } catch (const std::filesystem::filesystem_error&) {
+            continue;
+        }
 
         auto folder_name = entry.path().filename().string();
         if (should_ignore(folder_name, ignored)) continue;
 
+        // Skip directories that are symlinks to paths we manage (e.g. Overwrite)
+        if (!ignore_symlink_targets.empty()) {
+            std::error_code ec2;
+            if (std::filesystem::is_symlink(entry.path(), ec2)) {
+                auto link_target = std::filesystem::read_symlink(entry.path(), ec2);
+                if (!ec2) {
+                    if (link_target.is_relative())
+                        link_target = std::filesystem::absolute(entry.path().parent_path() / link_target);
+                    auto resolved = std::filesystem::weakly_canonical(link_target, ec2);
+                    if (!ec2) {
+                        bool skip = false;
+                        for (const auto& ignore_root : ignore_symlink_targets) {
+                            auto canon_root = std::filesystem::weakly_canonical(ignore_root, ec2);
+                            if (!ec2) {
+                                auto r_str = resolved.string();
+                                auto i_str = canon_root.string();
+                                if (r_str.size() >= i_str.size() &&
+                                    r_str.compare(0, i_str.size(), i_str) == 0) {
+                                    skip = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (skip) continue;
+                    }
+                }
+            }
+        }
+
         ScannedMod mod;
         mod.folder_name = folder_name;
+
+        // Extract workshop ID from folder name if pattern is configured
+        if (!workshop_pattern.empty()) {
+            try {
+                std::regex ws_re(workshop_pattern);
+                std::smatch m;
+                if (std::regex_search(folder_name, m, ws_re)) {
+                    mod.workshop_id = std::stoll(m[1].str());
+                }
+            } catch (...) {}
+        }
 
         // Check for separator (game-specific suffix)
         if (!separator_suffix.empty() &&
@@ -207,6 +246,31 @@ std::vector<ScannedMod> ModScanner::scan(
     return mods;
 }
 
+std::vector<ScannedMod> ModScanner::scan(
+    const GameKnowledge& knowledge,
+    const std::string& game_id,
+    const std::filesystem::path& game_install_dir,
+    const std::vector<std::filesystem::path>& ignore_symlink_targets) {
+
+    auto mods_subpath = knowledge.get(game_id, "mods_subpath", "");
+    std::filesystem::path mods_dir;
+    if (!mods_subpath.empty()) {
+        mods_dir = game_install_dir / mods_subpath;
+    } else {
+        mods_dir = game_install_dir;
+    }
+    return scan_impl(knowledge, game_id, mods_dir, ignore_symlink_targets);
+}
+
+std::vector<ScannedMod> ModScanner::scan_dir(
+    const GameKnowledge& knowledge,
+    const std::string& game_id,
+    const std::filesystem::path& mods_dir,
+    const std::vector<std::filesystem::path>& ignore_symlink_targets) {
+
+    return scan_impl(knowledge, game_id, mods_dir, ignore_symlink_targets);
+}
+
 bool ModScanner::disable_mod(
     const GameKnowledge& knowledge,
     const std::string& game_id,
@@ -289,13 +353,14 @@ bool ModScanner::symlink_overwrite(const std::filesystem::path& game_mods_dir,
     if (game_mods_dir.empty() || overwrite_dir.empty()) return false;
     if (!std::filesystem::exists(game_mods_dir)) return false;
 
-    auto link_path = game_mods_dir / "Overwrite";
+    auto link_path = game_mods_dir / "__overwrite__";
     std::error_code ec;
 
-    if (std::filesystem::exists(link_path, ec)) {
-        if (std::filesystem::is_symlink(link_path, ec)) {
+    auto st = std::filesystem::symlink_status(link_path, ec);
+    if (!ec && std::filesystem::exists(st)) {
+        if (std::filesystem::is_symlink(st)) {
             auto target = std::filesystem::read_symlink(link_path, ec);
-            if (target == overwrite_dir) return true;
+            if (!ec && target == overwrite_dir) return true;
             std::filesystem::remove(link_path, ec);
         } else {
             return false;
@@ -308,7 +373,7 @@ bool ModScanner::symlink_overwrite(const std::filesystem::path& game_mods_dir,
         return false;
     }
 
-    Logger::instance().info("Overwrite symlinked: " + link_path.string() +
+    Logger::instance().debug("Overwrite symlinked: " + link_path.string() +
                             " -> " + overwrite_dir.string());
     return true;
 }

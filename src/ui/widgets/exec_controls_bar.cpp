@@ -42,51 +42,52 @@ QIcon extractExeIcon(const QString& exePath, const std::filesystem::path& icon_c
     if (!icon_cache_dir.empty() && std::filesystem::exists(cache_path)) {
         QIcon cached(QString::fromStdString(cache_path.string()));
         if (!cached.isNull()) {
-            log.debug("Icon cache hit: " + cache_path.string());
             return cached;
         }
         log.debug("Icon cache file exists but failed to load, re-extracting: " + cache_path.string());
     }
 
-    // 2. Try wrestool to extract the real PE icon
-    auto wrestool = findWrestool();
-    if (wrestool.isEmpty()) {
-        log.debug("wrestool not found, using QFileIconProvider fallback");
-    } else {
-        log.debug("Using wrestool: " + wrestool.toStdString() + " for " + exe_std);
-        QTemporaryDir tmpDir;
-        if (!tmpDir.isValid()) {
-            log.warn("Failed to create temp dir for icon extraction: " + exe_std);
+    // 2. Try wrestool to extract the real PE icon (only works on .exe files)
+    if (QFileInfo(exePath).suffix().compare("exe", Qt::CaseInsensitive) == 0) {
+        auto wrestool = findWrestool();
+        if (wrestool.isEmpty()) {
+            log.debug("wrestool not found, using QFileIconProvider fallback");
         } else {
-            auto outIco = tmpDir.filePath("icon.ico");
-            QProcess proc;
-            proc.start(wrestool, {"-x", "-t", "14", exePath, "-o", outIco});
-            if (!proc.waitForFinished(3000)) {
-                log.warn("wrestool timed out for: " + exe_std);
-            } else if (proc.exitCode() != 0) {
-                auto stderr_out = proc.readAllStandardError().toStdString();
-                log.warn("wrestool failed for " + exe_std + " (exit " +
-                            std::to_string(proc.exitCode()) + "): " + stderr_out);
+            log.debug("Using wrestool: " + wrestool.toStdString() + " for " + exe_std);
+            QTemporaryDir tmpDir;
+            if (!tmpDir.isValid()) {
+                log.warn("Failed to create temp dir for icon extraction: " + exe_std);
             } else {
-                QIcon ico(outIco);
-                if (ico.isNull()) {
-                    log.warn("wrestool produced ico but QIcon failed to load: " + exe_std);
+                auto outIco = tmpDir.filePath("icon.ico");
+                QProcess proc;
+                proc.start(wrestool, {"-x", "-t", "14", exePath, "-o", outIco});
+                if (!proc.waitForFinished(3000)) {
+                    log.warn("wrestool timed out for: " + exe_std);
+                } else if (proc.exitCode() != 0) {
+                    auto stderr_out = proc.readAllStandardError().toStdString();
+                    log.warn("wrestool failed for " + exe_std + " (exit " +
+                             std::to_string(proc.exitCode()) + "): " + stderr_out);
                 } else {
-                    log.debug("Icon extracted via wrestool: " + exe_std);
-                    // Save to cache
-                    if (!icon_cache_dir.empty()) {
-                        std::error_code ec;
-                        std::filesystem::create_directories(icon_cache_dir, ec);
-                        std::filesystem::copy_file(
-                            outIco.toStdString(), cache_path.string(),
-                            std::filesystem::copy_options::overwrite_existing, ec);
-                        if (ec) {
-                            log.warn("Failed to cache icon to " + cache_path.string() + ": " + ec.message());
-                        } else {
-                            log.debug("Icon cached to: " + cache_path.string());
+                    QIcon ico(outIco);
+                    if (ico.isNull()) {
+                        log.warn("wrestool produced ico but QIcon failed to load: " + exe_std);
+                    } else {
+                        log.debug("Icon extracted via wrestool: " + exe_std);
+                        // Save to cache
+                        if (!icon_cache_dir.empty()) {
+                            std::error_code ec;
+                            std::filesystem::create_directories(icon_cache_dir, ec);
+                            std::filesystem::copy_file(
+                                outIco.toStdString(), cache_path.string(),
+                                std::filesystem::copy_options::overwrite_existing, ec);
+                            if (ec) {
+                                log.warn("Failed to cache icon to " + cache_path.string() + ": " + ec.message());
+                            } else {
+                                log.debug("Icon cached to: " + cache_path.string());
+                            }
                         }
+                        return ico;
                     }
-                    return ico;
                 }
             }
         }
@@ -151,6 +152,18 @@ ExecControlsBar::ExecControlsBar(QWidget* parent)
     // Default shortcut click = toolbar
     connect(shortcut_btn_, &QToolButton::clicked,
             this, &ExecControlsBar::shortcut_to_toolbar);
+
+    // When "Select an executable..." is chosen, emit signal and restore previous selection
+    connect(exec_combo_, &QComboBox::currentIndexChanged, this, [this](int index) {
+        if (index >= 0 && exec_combo_->itemData(index).toString().isEmpty()
+            && exec_combo_->count() > 1) {
+            // Restore previous selection
+            int prev = index > 0 ? index - 1 : 1;
+            QSignalBlocker blocker(exec_combo_);
+            exec_combo_->setCurrentIndex(prev);
+            emit select_executable_requested();
+        }
+    });
 }
 
 QString ExecControlsBar::current_executable() const {
@@ -159,6 +172,28 @@ QString ExecControlsBar::current_executable() const {
 
 int ExecControlsBar::current_executable_index() const {
     return exec_combo_->currentIndex();
+}
+
+QStringList ExecControlsBar::executable_paths() const {
+    QStringList paths;
+    for (int i = 0; i < exec_combo_->count() - 1; ++i) {
+        auto rel = exec_combo_->itemData(i).toString();
+        if (!rel.isEmpty())
+            paths.append(rel);
+    }
+    return paths;
+}
+
+void ExecControlsBar::add_executable(const QString& display_name, const QString& rel_path,
+                                     const QIcon& icon) {
+    // Insert before the "Select an executable..." entry (always last)
+    int insert_pos = exec_combo_->count() - 1;
+    exec_combo_->insertItem(insert_pos, icon, display_name, rel_path);
+    exec_combo_->setCurrentIndex(insert_pos);
+}
+
+void ExecControlsBar::clear_executables() {
+    exec_combo_->clear();
 }
 
 void ExecControlsBar::set_executables(const QStringList& names, const QString& default_name,

@@ -1,7 +1,8 @@
 #pragma once
 
 #include <QFrame>
-#include <QTextEdit>
+
+class QPlainTextEdit;
 
 namespace engine { class Logger; }
 
@@ -17,7 +18,7 @@ public:
     void clear();
 
 private:
-    QTextEdit* console_output_ = nullptr;
+    QPlainTextEdit* output_ = nullptr;
 };
 
 }  // namespace ui

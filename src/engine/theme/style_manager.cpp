@@ -1,0 +1,182 @@
+#include "engine/theme/style_manager.h"
+#include "engine/theme/theme_manager.h"
+#include "engine/log/logger.h"
+
+#include <QApplication>
+#include <QFile>
+#include <QString>
+
+namespace engine {
+
+// -- Embedded default theme ---------------------------------------------
+// Uses palette() exclusively so the desktop provides all colors — no
+// hardcoded tints. This is the fallback when no user theme is loaded.
+// Minimal QSS: only app-specific named-widget rules.
+// Everything else uses QPalette + native KDE style.
+static const char* default_qss = R"(
+QToolTip {
+    color: palette(toolTipText);
+    background-color: palette(toolTipBase);
+}
+
+/* -- Game lock overlay --------------------------- */
+
+#gameLockOverlay {
+    background-color: rgba(0, 0, 0, 160);
+    color: white;
+}
+
+#gameLockOverlay QLabel {
+    color: white;
+    font-size: 20px;
+}
+
+#gameLockOverlay QPushButton {
+    font-size: 14px;
+}
+
+#unlockBtn:hover {
+    background-color: palette(highlight);
+}
+
+#killBtn {
+    background-color: #8b0000;
+    color: white;
+}
+
+#killBtn:hover {
+    background-color: #a00000;
+}
+
+#gameLockOverlay QTreeWidget {
+    color: white;
+    background-color: rgba(0, 0, 0, 76);
+}
+
+#gameLockOverlay QTreeWidget::item {
+    background-color: transparent;
+}
+
+#gameLockOverlay QHeaderView::section {
+    color: white;
+    background-color: rgba(50, 50, 50, 200);
+}
+
+#processTreeLabel {
+    color: white;
+}
+
+/* -- Status bar counter -------------------------- */
+
+#counterLabel {
+    color: palette(mid);
+}
+
+/* -- Instance switcher dialog -------------------- */
+
+#pathLabel {
+    color: palette(mid);
+    font-size: 10px;
+}
+
+/* -- Separator rows ------------------------------ */
+
+QWidget#separatorRow {
+    font-weight: bold;
+}
+
+/* -- Console panel ------------------------------- */
+
+#consoleOutput {
+    font-family: monospace;
+}
+
+/* -- Debug window -------------------------------- */
+
+QLabel#debugKey {
+    font-weight: bold;
+}
+
+QLabel#debugValue {
+    font-family: monospace;
+}
+
+/* -- Statistics dialog -------------------------- */
+
+QLabel#statLabel {
+    font-weight: bold;
+}
+
+/* -- Game selection ------------------------------ */
+
+#gameSelectionSubtitle {
+    color: palette(mid);
+}
+
+#gameSelectionNoInstall {
+    color: palette(mid);
+    font-style: italic;
+}
+)";
+
+StyleManager::StyleManager(ThemeManager& theme_manager, QObject* parent)
+    : QObject(parent)
+    , theme_manager_(theme_manager)
+{
+}
+
+StyleManager::~StyleManager() = default;
+
+void StyleManager::apply_default() {
+    current_theme_ = "default";
+    current_qss_path_.clear();
+
+    // Clear any per-widget setStyleSheet remnants so the global sheet wins
+    apply_qss(default_qss);
+    engine::Logger::instance().debug("Applied default palette-based theme");
+    emit theme_applied(QString::fromStdString(current_theme_));
+}
+
+bool StyleManager::load_theme(const std::filesystem::path& qss_path,
+                               const std::filesystem::path& tokens_path) {
+    QFile f(QString::fromStdString(qss_path.string()));
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        engine::Logger::instance().error("StyleManager: cannot open theme: " +
+            qss_path.string());
+        return false;
+    }
+
+    QString content = QString::fromUtf8(f.readAll());
+    f.close();
+
+    current_theme_ = qss_path.stem().string();
+    current_qss_path_ = qss_path;
+
+    if (!tokens_path.empty()) {
+        theme_manager_.load_tokens(tokens_path);
+        std::string rendered = theme_manager_.apply_template(content.toStdString());
+        apply_qss(rendered);
+    } else {
+        apply_qss(content.toStdString());
+    }
+
+    engine::Logger::instance().debug("Loaded theme: " + current_theme_ +
+        " (" + std::to_string(content.size()) + " bytes)");
+    emit theme_applied(QString::fromStdString(current_theme_));
+    return true;
+}
+
+void StyleManager::reload_current() {
+    if (current_theme_ == "default" || current_qss_path_.empty()) {
+        apply_default();
+        return;
+    }
+    load_theme(current_qss_path_);
+}
+
+void StyleManager::apply_qss(const std::string& qss_content) {
+    current_qss_ = qss_content;
+    qApp->setStyleSheet(QString::fromStdString(qss_content));
+}
+
+} // namespace engine

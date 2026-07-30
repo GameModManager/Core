@@ -25,7 +25,7 @@ bool VfsStrategy::deploy(const std::filesystem::path& source,
 
     // Store the mapping
     file_map_[target.string()] = source.string();
-    Logger::instance().debug("VFS mapped: " + target.string() + " -> " + source.string());
+    //Logger::instance().debug("VFS mapped: " + target.string() + " -> " + source.string());
     return true;
 }
 
@@ -52,7 +52,7 @@ bool VfsStrategy::mount(const std::filesystem::path& mount_point) {
     mount_point_ = mount_point;
     mounted_ = true;
 
-    Logger::instance().info("VFS mounted at " + mount_point.string() +
+    Logger::instance().debug("VFS mounted at " + mount_point.string() +
         " with " + std::to_string(file_map_.size()) + " files");
 
     // TODO: Actually call fuse_main() with a custom filesystem implementation
@@ -72,7 +72,7 @@ bool VfsStrategy::unmount() {
     mounted_ = false;
     file_map_.clear();
 
-    Logger::instance().info("VFS unmounted from " + mount_point_.string());
+    Logger::instance().debug("VFS unmounted from " + mount_point_.string());
     return true;
 }
 

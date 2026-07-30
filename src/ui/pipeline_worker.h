@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/pipeline/pipeline.h"
+#include "engine/nxm/nxm_router.h"
 
 #include <QObject>
 #include <QThread>
@@ -25,10 +26,15 @@ public:
 
 public slots:
     void install_mod(const std::string& id, const std::string& zip_path);
+    void install_from_nxm(const engine::NxmLink& link,
+                          const std::string& game_id,
+                          const std::string& mods_dir,
+                          const std::string& meta_dir);
     void remove_mod(const std::string& id);
 
 signals:
     void progress(const std::string& mod_id, int stage_index, const std::string& stage_name);
+    void download_progress(const std::string& mod_id, int64_t bytes_downloaded, int64_t bytes_total, double speed_bytes_per_sec);
     void finished(const std::string& mod_id, bool success, const std::string& message);
     void all_done();
 

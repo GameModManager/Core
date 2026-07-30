@@ -2,6 +2,7 @@
 
 #include <QBrush>
 #include <QColor>
+#include <QDir>
 #include <QFont>
 #include <QMimeData>
 #include <QTreeView>
@@ -28,14 +29,29 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
 
     // --- Separator: colored background spans all columns ---
     if (mod.is_separator) {
-        if (role == Qt::BackgroundRole || role == Qt::ToolTipRole) {
-            if (role == Qt::BackgroundRole) {
-                QColor bg(mod.separator_color.isEmpty() ? "#888888" : mod.separator_color);
-                return QBrush(bg);
+        if (role == Qt::BackgroundRole) {
+            // Conflict highlight takes precedence if this separator is referenced
+            if (!selected_mod_id_.isEmpty() && conflict_pairs_.contains(selected_mod_id_)) {
+                const auto& pairs = conflict_pairs_[selected_mod_id_];
+                if (pairs.wins_against.contains(mod.id))
+                    return QBrush(QColor(0, 200, 0, 76));   // 30% green
+                if (pairs.loses_to.contains(mod.id))
+                    return QBrush(QColor(200, 0, 0, 76));   // 30% red
             }
+            QColor bg(mod.separator_color.isEmpty() ? "#888888" : mod.separator_color);
+            return QBrush(bg);
+        }
+        if (role == Qt::ToolTipRole) {
             return mod.name;
         }
         if (role == Qt::ForegroundRole) {
+            // Use conflict colors for the Flags column on separators
+            if (index.column() == Flags) {
+                auto flag = compute_separator_flags(index.row());
+                if (flag == "+") return QColor(80, 200, 80);
+                if (flag == "-") return QColor(255, 80, 80);
+                if (flag == QString("\u00B1")) return QColor(255, 180, 0);
+            }
             QColor bg(mod.separator_color.isEmpty() ? "#888888" : mod.separator_color);
             int l = static_cast<int>(0.299 * bg.red() + 0.587 * bg.green() + 0.114 * bg.blue());
             return QBrush(l > 128 ? QColor(0, 0, 0) : QColor(255, 255, 255));
@@ -52,11 +68,14 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
                 }
                 case Name: return mod.name;
                 case Version: return QString();
-                case Flags: return QString();
-                case Priority: return QString();
+                case Flags: return compute_separator_flags(index.row());
+                case Priority: return mod.priority;
             }
         }
         if (role == Qt::TextAlignmentRole && index.column() == Enabled) {
+            return static_cast<int>(Qt::AlignCenter);
+        }
+        if (role == Qt::TextAlignmentRole && index.column() == Priority) {
             return static_cast<int>(Qt::AlignCenter);
         }
         if (role == Qt::FontRole && index.column() == Enabled) {
@@ -67,6 +86,21 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
         return {};
     }
 
+    // --- Game-native: italic gray name with "Unmanaged: " prefix ---
+    if (mod.is_game_native) {
+        if (role == Qt::FontRole && index.column() == Name) {
+            QFont f;
+            f.setItalic(true);
+            return f;
+        }
+        if (role == Qt::ForegroundRole && index.column() == Name) {
+            return QColor(140, 140, 140);
+        }
+        if (role == Qt::DisplayRole && index.column() == Name) {
+            return QString("Unmanaged: ") + mod.name;
+        }
+    }
+
     // --- Overwrite: italic gray name ---
     if (mod.is_overwrite) {
         if (role == Qt::FontRole && index.column() == Name) {
@@ -75,7 +109,12 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
             return f;
         }
         if (role == Qt::ForegroundRole && index.column() == Name) {
-            return QColor(160, 160, 160);
+            if (!overwrite_path_.isEmpty()) {
+                QDir dir(overwrite_path_);
+                if (dir.exists() && dir.entryList(QDir::Files | QDir::NoDotAndDotDot).size() > 0)
+                    return QColor(220, 50, 50);  // red = has captured files
+            }
+            return QColor(160, 160, 160);  // gray = empty
         }
     }
 
@@ -91,26 +130,67 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
             case Name: return mod.name;
             case Version: return mod.version;
             case Flags: {
-                if (mod.conflicts.isEmpty()) return "OK";
-                return QString("%1 conflict(s)").arg(mod.conflicts.size());
+                if (!mod.tags.isEmpty()) {
+                    return mod.tags.first().type.toUpper();
+                }
+                if (mod.conflict_wins > 0 && mod.conflict_losses > 0)
+                    return QString("\u00B1");
+                if (mod.conflict_wins > 0)
+                    return QString("+");
+                if (mod.conflict_losses > 0)
+                    return QString("-");
+                return QString();
             }
             case Priority: return mod.priority;
         }
     }
     if (role == Qt::ForegroundRole && index.column() == Flags) {
-        if (!mod.conflicts.isEmpty()) return QColor(255, 80, 80);
-        return QColor(80, 200, 80);
+        if (!mod.tags.isEmpty()) {
+            const auto& firstTag = mod.tags.first();
+            if (firstTag.type == "deprecated" || firstTag.type == "incompatible" || firstTag.type == "dirty") {
+                return QColor(255, 80, 80);  // Red
+            } else if (firstTag.type == "warning") {
+                return QColor(255, 180, 0);  // Orange/Yellow
+            } else if (firstTag.type == "note") {
+                return QColor(80, 180, 255);  // Blue
+            } else if (firstTag.type == "clean") {
+                return QColor(80, 200, 80);  // Green
+            }
+        }
+        if (mod.conflict_wins > 0 && mod.conflict_losses > 0)
+            return QColor(255, 180, 0);  // Orange — mixed
+        if (mod.conflict_wins > 0)
+            return QColor(80, 200, 80);  // Green — wins
+        if (mod.conflict_losses > 0)
+            return QColor(255, 80, 80);  // Red — loses
+        return QColor(160, 160, 160);  // Gray — no conflicts
     }
     if (role == Qt::TextAlignmentRole && index.column() == Priority) {
         return Qt::AlignCenter;
     }
+
+    // Conflict highlight background (mod + overwrite)
+    if (role == Qt::BackgroundRole && !mod.is_separator) {
+        if (!selected_mod_id_.isEmpty() && conflict_pairs_.contains(selected_mod_id_)) {
+            const auto& pairs = conflict_pairs_[selected_mod_id_];
+            if (pairs.wins_against.contains(mod.id))
+                return QBrush(QColor(0, 200, 0, 76));
+            if (pairs.loses_to.contains(mod.id))
+                return QBrush(QColor(200, 0, 0, 76));
+        }
+    }
+
+    // Subtle background tint for overwrite row (visual separator)
+    if (role == Qt::BackgroundRole && mod.is_overwrite)
+        return QBrush(QColor(80, 80, 80, 20));
+
     return {};
 }
 
 bool ModListModel::setData(const QModelIndex& index, const QVariant& value, int role) {
     if (!index.isValid() || index.row() >= mods_.size()) return false;
 
-    if (mods_[index.row()].is_separator || mods_[index.row()].is_overwrite) return false;
+    if (mods_[index.row()].is_separator || mods_[index.row()].is_overwrite || mods_[index.row()].is_game_native) return false;
 
     if (role == Qt::CheckStateRole && index.column() == Enabled) {
         mods_[index.row()].enabled = (value.toInt() == Qt::Checked);
@@ -146,10 +226,11 @@ Qt::ItemFlags ModListModel::flags(const QModelIndex& index) const {
     }
 
     if (index.column() == Enabled) {
-        f |= Qt::ItemIsUserCheckable;
+        if (!mod.is_overwrite)
+            f |= Qt::ItemIsUserCheckable;
     }
 
-    if (mod.is_overwrite) {
+    if (mod.is_overwrite || mod.is_game_native) {
         f &= ~(Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled);
     } else {
         f |= Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled;
@@ -246,10 +327,10 @@ bool ModListModel::dropMimeData(const QMimeData* data, Qt::DropAction action,
     if (targetRow < 0) targetRow = 0;
     if (targetRow > mods_.size()) targetRow = mods_.size();
 
-    // Prevent dropping above Overwrite
-    if (targetRow <= 0 && !mods_.isEmpty() && mods_.first().is_overwrite) {
-        targetRow = 1;
-    }
+    // Prevent dropping onto or past Overwrite (always at bottom)
+    int ow_row = overwrite_row();
+    if (ow_row >= 0 && targetRow > ow_row)
+        targetRow = ow_row;  // drop before Overwrite
 
     for (int i = 0; i < toMove.size(); ++i) {
         beginInsertRows({}, targetRow + i, targetRow + i);
@@ -272,7 +353,11 @@ bool ModListModel::moveRows(const QModelIndex& srcParent, int srcRow, int count,
     if (mods_[srcRow].is_overwrite) return false;
 
     int dest = dstRow > srcRow ? dstRow - 1 : dstRow;
-    if (dest <= 0 && mods_.first().is_overwrite) dest = 1;
+    // Prevent moving onto or past Overwrite (always at bottom)
+    int ow_row = overwrite_row();
+    if (ow_row >= 0 && dest >= ow_row)
+        dest = ow_row - 1;
+    if (dest < 0) dest = 0;
 
     beginMoveRows(srcParent, srcRow, srcRow, srcParent, dest + (dest >= srcRow ? 1 : 0));
     auto item = mods_.takeAt(srcRow);
@@ -284,7 +369,7 @@ bool ModListModel::moveRows(const QModelIndex& srcParent, int srcRow, int count,
     return true;
 }
 
-void ModListModel::add_mod(const QString& id, const QString& name, const QString& version, int priority) {
+void ModListModel::add_mod(const QString& id, const QString& name, const QString& version, int priority, bool is_game_native) {
     int insert_pos = mods_.size();
     beginInsertRows({}, insert_pos, insert_pos);
     ModEntry entry;
@@ -293,6 +378,7 @@ void ModListModel::add_mod(const QString& id, const QString& name, const QString
     entry.version = version;
     entry.enabled = true;
     entry.priority = priority >= 0 ? priority : insert_pos;
+    entry.is_game_native = is_game_native;
     mods_.insert(insert_pos, entry);
     endInsertRows();
     if (priority < 0) renumber_priorities();
@@ -318,7 +404,7 @@ void ModListModel::remove_mod(const QString& id) {
     if (id == kOverwriteModId) return;
 
     for (int i = 0; i < mods_.size(); ++i) {
-        if (mods_[i].id == id && !mods_[i].is_overwrite) {
+        if (mods_[i].id == id && !mods_[i].is_overwrite && !mods_[i].is_game_native) {
             beginRemoveRows({}, i, i);
             mods_.removeAt(i);
             endRemoveRows();
@@ -340,25 +426,65 @@ void ModListModel::toggle_mod(const QString& id) {
     }
 }
 
-void ModListModel::set_conflicts(const QString& id, const QStringList& conflicting_ids) {
+void ModListModel::set_conflict_stats(const QString& id, int wins, int losses) {
     for (int i = 0; i < mods_.size(); ++i) {
         if (mods_[i].id == id) {
-            mods_[i].conflicts = conflicting_ids;
-            emit dataChanged(index(i, Flags), index(i, Flags));
+            mods_[i].conflict_wins = wins;
+            mods_[i].conflict_losses = losses;
+            emit dataChanged(index(i, Flags), index(i, Flags),
+                             {Qt::DisplayRole, Qt::ToolTipRole, Qt::ForegroundRole});
+            return;
+        }
+    }
+}
+
+void ModListModel::set_tags(const QString& id, const QVector<ModTag>& tags) {
+    for (int i = 0; i < mods_.size(); ++i) {
+        if (mods_[i].id == id) {
+            mods_[i].tags = tags;
+            emit dataChanged(index(i, Flags), index(i, Flags), {Qt::DisplayRole, Qt::ToolTipRole, Qt::ForegroundRole});
+            return;
+        }
+    }
+}
+
+void ModListModel::set_source_info(const QString& id, const QString& source_type, const QString& source_id) {
+    for (int i = 0; i < mods_.size(); ++i) {
+        if (mods_[i].id == id) {
+            mods_[i].source_type = source_type;
+            mods_[i].source_id = source_id;
+            return;
+        }
+    }
+}
+
+void ModListModel::set_separator_id(const QString& id, const QString& separator_id) {
+    for (int i = 0; i < mods_.size(); ++i) {
+        if (mods_[i].id == id) {
+            mods_[i].separator_id = separator_id;
+            return;
+        }
+    }
+}
+
+void ModListModel::set_priority(const QString& id, int priority) {
+    for (int i = 0; i < mods_.size(); ++i) {
+        if (mods_[i].id == id) {
+            if (mods_[i].priority != priority) {
+                mods_[i].priority = priority;
+                emit dataChanged(index(i, Priority), index(i, Priority));
+            }
             return;
         }
     }
 }
 
 void ModListModel::renumber_priorities() {
-    int priority = 0;
     for (int i = 0; i < mods_.size(); ++i) {
-        if (mods_[i].is_separator) continue;
-        if (mods_[i].priority != priority) {
-            mods_[i].priority = priority;
+        if (mods_[i].priority != i) {
+            mods_[i].priority = i;
             emit dataChanged(index(i, Priority), index(i, Priority));
         }
-        ++priority;
     }
 }
 
@@ -435,7 +561,40 @@ void ModListModel::reset_with_order(const QVector<ModEntry>& entries) {
 }
 
 void ModListModel::set_conflict_order_reversed(bool reversed) {
+    if (conflict_order_reversed_ == reversed) return;
     conflict_order_reversed_ = reversed;
+}
+
+QString ModListModel::compute_separator_flags(int row) const {
+    bool has_wins = false, has_losses = false;
+    for (int i = row + 1; i < mods_.size(); ++i) {
+        if (mods_[i].is_separator) break;
+        if (mods_[i].conflict_wins > 0) has_wins = true;
+        if (mods_[i].conflict_losses > 0) has_losses = true;
+    }
+    if (has_wins && has_losses) return QString("\u00B1");
+    if (has_wins) return QString("+");
+    if (has_losses) return QString("-");
+    return QString();
+}
+
+void ModListModel::set_conflict_pairs(const QMap<QString, ConflictPairs>& pairs) {
+    conflict_pairs_ = pairs;
+}
+
+void ModListModel::set_selected_mod(const QString& id) {
+    if (selected_mod_id_ == id) return;
+    selected_mod_id_ = id;
+    emit dataChanged(index(0, 0), index(mods_.size() - 1, ColumnCount - 1));
+}
+
+void ModListModel::set_overwrite_path(const QString& path) {
+    if (overwrite_path_ == path) return;
+    overwrite_path_ = path;
+    // Refresh the Overwrite row's name color
+    int ow_row = overwrite_row();
+    if (ow_row >= 0)
+        emit dataChanged(index(ow_row, Name), index(ow_row, Name), {Qt::ForegroundRole});
 }
 
 void ModListModel::ensure_overwrite_present() {
@@ -449,8 +608,9 @@ void ModListModel::ensure_overwrite_present() {
     entry.enabled = true;
     entry.priority = 0;
     entry.is_overwrite = true;
-    beginInsertRows({}, 0, 0);
-    mods_.insert(0, entry);
+    int pos = mods_.size();  // always at bottom
+    beginInsertRows({}, pos, pos);
+    mods_.insert(pos, entry);
     endInsertRows();
 }
 

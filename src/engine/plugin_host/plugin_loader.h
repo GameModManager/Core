@@ -50,6 +50,11 @@ public:
     // Look up a game's display name by its game_id
     [[nodiscard]] std::string display_name_for(const std::string& game_id) const;
 
+    // Resolve a possibly-legacy game_id to the canonical game_id registered
+    // by a loaded plugin. Falls back to fuzzy matching (substring, instance-name
+    // normalization) so old instances with shortnames survive plugin renames.
+    [[nodiscard]] std::string resolve_game_id(const std::string& game_id) const;
+
     // Access registries populated by plugin registration
     StageRegistry& stage_registry() { return stage_registry_; }
     HookRegistry& hook_registry() { return hook_registry_; }

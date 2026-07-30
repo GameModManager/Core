@@ -1,7 +1,14 @@
 #include "ui/widgets/console_panel.h"
 #include "engine/log/logger.h"
 
+#include <QApplication>
+#include <QClipboard>
+#include <QPlainTextEdit>
+#include <QPointer>
 #include <QScrollBar>
+#include <QShortcut>
+#include <QTextCharFormat>
+#include <QTextCursor>
 #include <QVBoxLayout>
 
 namespace ui {
@@ -14,19 +21,30 @@ ConsolePanel::ConsolePanel(QWidget* parent)
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
 
-    console_output_ = new QTextEdit(this);
-    console_output_->setReadOnly(true);
-    console_output_->setFont(QFont("Monospace", 9));
-    console_output_->setAcceptRichText(true);
-    layout->addWidget(console_output_);
+    output_ = new QPlainTextEdit(this);
+    output_->setReadOnly(true);
+    output_->setUndoRedoEnabled(false);
+    output_->setFont(QFont("Monospace", 9));
+    output_->setFocusPolicy(Qt::StrongFocus);
+    output_->setLineWrapMode(QPlainTextEdit::NoWrap);
+    output_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    layout->addWidget(output_);
 
-    // Connect to logger
-    engine::Logger::instance().add_callback(
-        [this](engine::LogLevel level, const std::string& timestamp, const std::string& message) {
+    auto* copyShortcut = new QShortcut(QKeySequence::Copy, output_);
+    connect(copyShortcut, &QShortcut::activated, this, [this]() {
+        output_->copy();
+    });
+
+    QPointer<ConsolePanel> guard(this);
+    auto& logger = engine::Logger::instance();
+    logger.add_callback(
+        [guard](engine::LogLevel level, const std::string& timestamp, const std::string& message) {
+            auto* panel = guard.data();
+            if (!panel) return;
             int lvl = static_cast<int>(level);
-            QMetaObject::invokeMethod(this, [this, lvl, ts = QString::fromStdString(timestamp),
-                                              msg = QString::fromStdString(message)]() {
-                // Build tag from level
+            QMetaObject::invokeMethod(panel, [panel, lvl, ts = QString::fromStdString(timestamp),
+                                               msg = QString::fromStdString(message)]() {
+                if (!panel) return;
                 QString tag;
                 switch (static_cast<engine::LogLevel>(lvl)) {
                     case engine::LogLevel::Debug: tag = "DBG"; break;
@@ -34,46 +52,41 @@ ConsolePanel::ConsolePanel(QWidget* parent)
                     case engine::LogLevel::Warn:  tag = "WRN"; break;
                     case engine::LogLevel::Error: tag = "ERR"; break;
                 }
-                append_log(tag, ts, msg, lvl);
+                panel->append_log(tag, ts, msg, lvl);
             }, Qt::QueuedConnection);
         });
 }
 
 void ConsolePanel::append_log(const QString& tag, const QString& timestamp,
                                const QString& message, int level) {
-    // Colors: DBG=blue, INF=normal, WRN=yellow, ERR=red
-    QString tag_color;
-    bool bold = false;
-    switch (level) {
-        case 0:  tag_color = "#4488ff"; bold = true; break;  // DBG - blue
-        case 1:  tag_color = "#cccccc"; break;                // INF - normal
-        case 2:  tag_color = "#ffcc00"; bold = true; break;  // WRN - yellow
-        case 3:  tag_color = "#ff4444"; bold = true; break;  // ERR - red
-        default: tag_color = "#cccccc"; break;
+    QTextCharFormat tag_fmt;
+    switch (static_cast<engine::LogLevel>(level)) {
+        case engine::LogLevel::Debug: tag_fmt.setForeground(QColor(60, 120, 220)); tag_fmt.setFontWeight(QFont::Bold); break;
+        case engine::LogLevel::Info:  break;  // default text color
+        case engine::LogLevel::Warn:  tag_fmt.setForeground(QColor(255, 200, 0)); tag_fmt.setFontWeight(QFont::Bold); break;
+        case engine::LogLevel::Error: tag_fmt.setForeground(QColor(220, 40, 40)); tag_fmt.setFontWeight(QFont::Bold); break;
     }
+    QTextCharFormat ts_fmt;
+    ts_fmt.setForeground(QColor(120, 120, 120));
+    QTextCharFormat msg_fmt;
 
-    QString ts_color = "#888888";  // slightly darker
-    QString weight = bold ? "font-weight:bold;" : "";
+    auto* doc = output_->document();
+    QTextCursor cursor(doc);
+    cursor.movePosition(QTextCursor::End);
+    cursor.insertText(QStringLiteral("[%1] ").arg(tag), tag_fmt);
+    cursor.insertText(QStringLiteral("[%1] ").arg(timestamp), ts_fmt);
+    cursor.insertText(message + '\n', msg_fmt);
 
-    QString html = QString(
-        "<span style=\"color:%1;%3font-weight:bold;\">[%2]</span> "
-        "<span style=\"color:%4;\">[%5]</span> "
-        "<span style=\"%3\">%6</span>"
-    ).arg(tag_color, tag, weight, ts_color, timestamp, message.toHtmlEscaped());
-
-    console_output_->append(html);
-    auto* sb = console_output_->verticalScrollBar();
-    sb->setValue(sb->maximum());
+    auto* bar = output_->verticalScrollBar();
+    bar->setValue(bar->maximum());
 }
 
 void ConsolePanel::append_text(const QString& text) {
-    console_output_->append(text);
-    auto* sb = console_output_->verticalScrollBar();
-    sb->setValue(sb->maximum());
+    output_->appendPlainText(text);
 }
 
 void ConsolePanel::clear() {
-    console_output_->clear();
+    output_->clear();
 }
 
 }  // namespace ui

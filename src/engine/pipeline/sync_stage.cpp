@@ -41,6 +41,9 @@ std::vector<std::string> SyncStage::capture_overwrite_files(
          std::filesystem::recursive_directory_iterator(game_dir)) {
         if (!entry.is_regular_file()) continue;
 
+        // Skip symlinks — deployed mod files are symlinked into the game dir
+        if (entry.is_symlink()) continue;
+
         auto rel = std::filesystem::relative(entry.path(), game_dir, ec);
         if (ec) continue;
 
@@ -66,7 +69,7 @@ std::vector<std::string> SyncStage::capture_overwrite_files(
     }
 
     if (!captured.empty()) {
-        Logger::instance().info(
+        Logger::instance().debug(
             "Overwrite capture: " + std::to_string(captured.size()) +
             " file(s) captured from game directory");
     }

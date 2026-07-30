@@ -17,8 +17,8 @@ void HookRegistry::register_hook(const std::string& tag,
 
     hooks_.push_back(std::move(entry));
 
-    Logger::instance().debug("Hook registered: " + tag +
-        " by " + (plugin_id.empty() ? "unknown" : plugin_id));
+    //Logger::instance().debug("Hook registered: " + tag +
+    //    " by " + (plugin_id.empty() ? "unknown" : plugin_id));
 }
 
 void HookRegistry::fire(const std::string& tag, Mod& mod, PipelineContext& ctx) const {
@@ -38,8 +38,8 @@ void HookRegistry::fire(const std::string& tag, Mod& mod, PipelineContext& ctx) 
 
     // Fire each hook
     for (const auto* hook : matching) {
-        Logger::instance().debug("Firing hook: " + tag + " from " +
-            (hook->plugin_id.empty() ? "unknown" : hook->plugin_id));
+        //Logger::instance().debug("Firing hook: " + tag + " from " +
+        //    (hook->plugin_id.empty() ? "unknown" : hook->plugin_id));
         hook->handler(mod, ctx);
     }
 }

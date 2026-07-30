@@ -3,6 +3,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QWidget>
+#include <QStringList>
 
 namespace ui {
 
@@ -12,14 +13,18 @@ public:
     explicit GmmStatusBar(QWidget* parent = nullptr);
 
     void set_status(const QString& text);
-    void set_nexus_info(const QString& info);
-    void set_plugin_count(int count);
+
+    // Configure what the status bar shows for the current game
+    void set_counter_label(const QString& label);  // e.g. "Mods" or "Plugins"
+    void set_counter_value(int count);
+    void set_sources(const QStringList& sources);  // e.g. {"Nexus", "Steam"}
 
 private:
     QHBoxLayout* layout_ = nullptr;
     QLabel* status_label_ = nullptr;
-    QLabel* nexus_label_ = nullptr;
-    QLabel* plugin_label_ = nullptr;
+    QList<QLabel*> source_labels_;
+    QLabel* counter_label_ = nullptr;
+    QFrame* separator_ = nullptr;
 };
 
 }  // namespace ui

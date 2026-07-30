@@ -1,19 +1,38 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDir>
+#include <QMessageLogContext>
 #include <QStackedWidget>
+
+#include <cstdio>
+#include <cstdlib>
+
+static void qt_message_filter(QtMsgType type, const QMessageLogContext& ctx, const QString& msg) {
+    // Suppress noisy Qt platform/theme messages
+    if (msg.contains("grabbing the mouse") || msg.contains("This plugin supports"))
+        return;
+    // Forward everything else to the default handler
+    fprintf(stderr, "%s\n", qPrintable(msg));
+    Q_UNUSED(type); Q_UNUSED(ctx);
+}
 
 #include "ui/main_window/main_window.h"
 #include "ui/game_selection/game_selection_widget.h"
 #include "engine/log/logger.h"
 #include "engine/log/crash_handler.h"
 #include "engine/instance/instance.h"
+#include "engine/instance/instance_utils.h"
 #include "engine/detect/game_detector.h"
 #include "engine/plugin_host/plugin_loader.h"
+#include "engine/nxm/nxm_router.h"
+#include "engine/nxm/managed_games.h"
+#include "engine/nxm/nxm_ipc.h"
+#include "engine/theme/theme_manager.h"
+#include "engine/theme/style_manager.h"
+#include "cli/headless_launcher.h"
 
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
 
 namespace fs = std::filesystem;
 
@@ -31,107 +50,6 @@ static std::string crash_dir() {
     return data_dir() + "/crashes";
 }
 
-// Where installed instances live: ~/.local/share/GameModManager/instances/
-static std::string instances_dir() {
-    return data_dir() + "/instances";
-}
-
-// File tracking the last-used instance name
-static std::string last_instance_path() {
-    return data_dir() + "/last_instance";
-}
-
-// Convert a display name to an instance folder name.
-// "The Binding of Isaac: Rebirth" → "The_Binding_of_Isaac_Rebirth"
-// Strips all characters invalid on Windows: \ / : * ? " < > |
-static std::string display_name_to_instance(const std::string& display_name) {
-    static const std::string invalid = R"(\/:*?"<>|)";
-    std::string result;
-    result.reserve(display_name.size());
-    for (char c : display_name) {
-        if (c == ' ') result += '_';
-        else if (invalid.find(c) != std::string::npos) continue;
-        else result += c;
-    }
-    return result;
-}
-
-// Scan for existing instances. Returns the list of instance names found.
-static std::vector<std::string> scan_instances() {
-    std::vector<std::string> result;
-    std::error_code ec;
-    auto dir = fs::path(instances_dir());
-    if (!fs::is_directory(dir, ec)) return result;
-
-    for (const auto& entry : fs::directory_iterator(dir, ec)) {
-        if (!entry.is_directory()) continue;
-        auto toml = entry.path() / "instance.toml";
-        if (fs::exists(toml)) {
-            result.push_back(entry.path().filename().string());
-        }
-    }
-    return result;
-}
-
-// Read the last-used instance name from the tracking file.
-static std::string read_last_instance() {
-    std::ifstream f(last_instance_path());
-    std::string name;
-    if (f) std::getline(f, name);
-    return name;
-}
-
-// Write the last-used instance name to the tracking file.
-static void write_last_instance(const std::string& name) {
-    std::ofstream f(last_instance_path());
-    if (f) f << name << "\n";
-}
-
-// Parse game_id from instance.toml
-static std::string read_game_id_from_toml(const fs::path& toml_path) {
-    std::ifstream f(toml_path);
-    std::string line;
-    while (std::getline(f, line)) {
-        // Look for: game_id = "..."
-        auto key_pos = line.find("game_id");
-        if (key_pos == std::string::npos) continue;
-        auto eq = line.find('=', key_pos);
-        if (eq == std::string::npos) continue;
-        auto q1 = line.find('"', eq + 1);
-        if (q1 == std::string::npos) continue;
-        auto q2 = line.find('"', q1 + 1);
-        if (q2 == std::string::npos) continue;
-        return line.substr(q1 + 1, q2 - q1 - 1);
-    }
-    return {};
-}
-
-// Create an instance for the selected game.
-// instance_name is derived from the display name (e.g. "The_Binding_of_Isaac_Rebirth").
-static bool create_instance(const engine::DetectedGame& game,
-                             const std::string& instance_name) {
-    engine::Instance inst = engine::Instance::installed(
-        instance_name, fs::path(instances_dir()));
-    inst.info().game_id = game.game_id;
-    inst.info().game_dir = game.install_path;
-
-    if (!inst.create_directories()) {
-        engine::Logger::instance().error(
-            "Failed to create instance directories for " + instance_name);
-        return false;
-    }
-    if (!inst.write_toml()) {
-        engine::Logger::instance().error(
-            "Failed to write instance.toml for " + instance_name);
-        return false;
-    }
-
-    engine::Logger::instance().info(
-        "Instance created: " + instance_name + " (game=" + game.game_id +
-        ") at " + inst.info().root.string());
-    return true;
-}
-
 int main(int argc, char *argv[])
 {
     engine::CrashHandler::install(crash_dir());
@@ -139,46 +57,109 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     app.setApplicationName("GameModManager");
     app.setApplicationVersion("0.1.0");
-    app.setStyle("fusion");
+    // Use platform-native style (Breeze on KDE, etc.)
+
+    // Initialize theme system — default uses palette() so desktop colors apply
+    engine::ThemeManager theme_manager;
+    engine::StyleManager style_manager(theme_manager);
+    style_manager.apply_default();
+
+    // Suppress noisy Qt platform/theme messages (e.g. "grabbing the mouse" on Wayland)
+    qInstallMessageHandler(qt_message_filter);
 
     // Parse CLI flags
     QCommandLineParser parser;
     parser.setApplicationDescription("GameModManager - Cross-platform game mod manager");
-    parser.addHelpOption();
     parser.addVersionOption();
 
-    QCommandLineOption instanceOpt("instance", "Load specific instance", "name");
+    QCommandLineOption helpOpt("help", "Show this help message");
+    QCommandLineOption helpShort("h", "Show this help message");
+    parser.addOption(helpOpt);
+    parser.addOption(helpShort);
+
+    QCommandLineOption instanceOpt("instance", "Load specific instance by name", "name");
     parser.addOption(instanceOpt);
 
     QCommandLineOption launchOpt("launch", "Launch game directly (headless mode)");
     parser.addOption(launchOpt);
 
+    QCommandLineOption exeOpt("exe", "Executable path relative to game dir", "path");
+    parser.addOption(exeOpt);
+
+    QCommandLineOption nxmOpt("handle-nxm", "Handle an nxm:// download link", "url");
+    parser.addOption(nxmOpt);
+
+    QCommandLineOption gmmOpt("handle-gmm", "Handle a gmm:// download link", "url");
+    parser.addOption(gmmOpt);
+
     parser.process(app);
+
+    // If --help was requested, print colored help and exit
+    if (parser.isSet(helpOpt) || parser.isSet(helpShort)) {
+        // ANSI color codes
+        constexpr const char* R = "\033[31m";   // red — headers
+        constexpr const char* G = "\033[32m";   // green — short flags
+        constexpr const char* O = "\033[38;5;208m"; // orange — long flags
+        constexpr const char* B = "\033[34m";   // blue — variables
+        constexpr const char* D = "\033[0m";    // default reset
+
+        // Header
+        fprintf(stdout, "%sUsage:%s\n", R, D);
+        fprintf(stdout, "  gamemodmanager [options]\n\n");
+
+        // Examples
+        fprintf(stdout, "%sExamples:%s\n", R, D);
+        fprintf(stdout, "  gamemodmanager                         # Start GUI with last-used instance\n");
+        fprintf(stdout, "  gamemodmanager %s--instance%s %s<path>%s   Start GUI with a specific instance\n", O, D, B, D);
+        fprintf(stdout, "  gamemodmanager %s--handle-nxm%s %s<url>%s      # Handle an nxm:// download link\n", O, D, B, D);
+        fprintf(stdout, "  gamemodmanager %s--handle-gmm%s %s<url>%s      # Handle a gmm:// download link\n", O, D, B, D);
+        fprintf(stdout, "  gamemodmanager %s--launch%s %s--instance%s %s<path>%s %s--exe%s %s<path>%s\n", O, D, O, D, B, D, O, D, B, D);
+        fprintf(stdout, "                                # Launch game headless\n\n");
+
+        // Options
+        fprintf(stdout, "%sOptions:%s\n", R, D);
+        fprintf(stdout, "  %s-h%s, %s--help%s          Show this help message\n", G, D, O, D);
+        fprintf(stdout, "  %s-v%s, %s--version%s       Show version information\n", G, D, O, D);
+        fprintf(stdout, "  %s--instance%s %s<path>%s   Instance path or name\n", O, D, B, D);
+        fprintf(stdout, "  %s--launch%s            Launch game directly (headless)\n", O, D);
+        fprintf(stdout, "  %s--exe%s %s<path>%s      Executable path relative to game dir\n", O, D, B, D);
+        fprintf(stdout, "  %s--handle-nxm%s %s<url>%s  Handle an nxm:// download link\n", O, D, B, D);
+        fprintf(stdout, "  %s--handle-gmm%s %s<url>%s  Handle a gmm:// download link\n", O, D, B, D);
+        return 0;
+    }
 
     // Initialize logger
     engine::Logger::instance().set_log_file(log_path());
-    engine::Logger::instance().info("GameModManager v" + std::string(VERSION) + " started");
+    engine::Logger::instance().debug("GameModManager v" + std::string(VERSION) + " started");
 
-    // Handle CLI flags
+    // Parse remaining flags
     bool headless = parser.isSet(launchOpt);
+    bool handle_nxm = parser.isSet(nxmOpt);
+    bool handle_gmm = parser.isSet(gmmOpt);
     QString instance_name;
     if (parser.isSet(instanceOpt)) {
         instance_name = parser.value(instanceOpt);
-        engine::Logger::instance().info("Instance: " + instance_name.toStdString());
     }
 
-    if (headless) {
-        engine::Logger::instance().info("Headless launch mode");
-        engine::Logger::instance().error("Headless mode not yet implemented");
-        return 1;
+    std::string pending_url;
+    if (handle_nxm) {
+        pending_url = parser.value(nxmOpt).toStdString();
+    } else if (handle_gmm) {
+        std::string raw = parser.value(gmmOpt).toStdString();
+        static const std::string gmm_prefix = "gmm://nexus/";
+        if (raw.compare(0, gmm_prefix.size(), gmm_prefix) == 0) {
+            pending_url = "nxm://" + raw.substr(gmm_prefix.size());
+        } else {
+            engine::Logger::instance().warn("Unknown gmm:// scheme: " + raw);
+        }
     }
 
     // Ensure data directories exist
     std::error_code ec;
     fs::create_directories(fs::path(data_dir()), ec);
-    fs::create_directories(fs::path(instances_dir()), ec);
+    fs::create_directories(engine::default_instances_dir(), ec);
 
-    // Load plugins to discover supported games
+    // Load plugins — needed for both headless and GUI modes
     engine::PluginLoader plugin_loader;
     auto app_dir = QApplication::applicationDirPath();
     QStringList plugin_dirs = {
@@ -190,6 +171,86 @@ int main(int argc, char *argv[])
             plugin_loader.load_directory(dir.toStdString());
         }
     }
+
+    // -- Headless launch mode ---------------------------------------------
+    if (headless) {
+        engine::Logger::instance().debug("GameModManager - headless launch");
+
+        std::string instance_str = instance_name.toStdString();
+        fs::path instance_root = engine::resolve_instance_path(instance_str);
+        if (instance_root.empty()) {
+            engine::Logger::instance().error(
+                "Instance not found: " + (instance_str.empty() ? "(none)" : instance_str));
+            fprintf(stderr, "GameModManager: instance not found. Use --instance <path>.\n");
+            return 1;
+        }
+
+        engine::Instance inst = engine::Instance::installed(
+            instance_root.filename().string(), instance_root.parent_path());
+        if (!inst.read_toml()) {
+            engine::Logger::instance().error(
+                "Failed to read instance.toml at " + instance_root.string());
+            return 1;
+        }
+        if (inst.info().game_dir.empty()) {
+            engine::Logger::instance().error(
+                "game_dir not set in instance.toml for " + instance_root.string());
+            return 1;
+        }
+        if (!fs::exists(inst.info().game_dir)) {
+            engine::Logger::instance().error(
+                "game_dir does not exist: " + inst.info().game_dir.string());
+            return 1;
+        }
+
+        std::string exe_rel = parser.value(exeOpt).toStdString();
+        if (exe_rel.empty()) {
+            engine::Logger::instance().error("No executable specified. Use --exe <path>.");
+            return 1;
+        }
+        auto exec_path = inst.info().game_dir / exe_rel;
+        if (!fs::exists(exec_path)) {
+            engine::Logger::instance().error(
+                "Executable not found: " + exec_path.string());
+            return 1;
+        }
+
+        bool is_windows_exe = false;
+        auto ext = exec_path.extension().string();
+        if (!ext.empty() && ext[0] == '.') {
+            auto lower = ext.substr(1);
+            for (auto& c : lower) c = std::tolower(c);
+            is_windows_exe = (lower == "exe");
+        }
+
+        // Look up steam_appid from plugin game knowledge (same as UI path)
+        uint32_t steam_appid = inst.info().steam_appid;
+        if (steam_appid == 0) {
+            auto id_str = plugin_loader.knowledge().get(
+                inst.info().game_id, "steam_appid", "");
+            if (!id_str.empty()) {
+                try { steam_appid = std::stoul(id_str); } catch (...) {}
+            }
+        }
+
+        cli::HeadlessConfig cfg;
+        cfg.executable = exec_path;
+        cfg.game_dir = inst.info().game_dir;
+        cfg.overwrite_dir = inst.info().root / "overwrite";
+        cfg.instance_root = inst.info().root;
+        cfg.steam_appid = steam_appid;
+        cfg.is_windows_exe = is_windows_exe;
+
+        int exit_code = cli::launch_game_headless(cfg);
+        engine::Logger::instance().debug(
+            "Headless: exit code " + std::to_string(exit_code));
+        engine::CrashHandler::uninstall();
+        return exit_code;
+    }
+
+    // Load the managed games registry (which games we handle nxm:// for)
+    engine::ManagedGames managed_games(fs::path(data_dir()) / "managed_games.json");
+    managed_games.load();
 
     // Detect installed games via Steam VDF
     std::vector<engine::DetectedGame> installed_games;
@@ -208,14 +269,73 @@ int main(int argc, char *argv[])
     }
 
     // Check for existing instances
-    auto existing_instances = scan_instances();
+    auto existing_instances = engine::scan_instances();
+
+    // -- Download URL handling: try IPC to running instance first --
+    if (handle_nxm || handle_gmm) {
+        auto link = engine::NxmRouter::parse(pending_url);
+        if (!link.valid()) {
+            engine::Logger::instance().error("Invalid download URL: " + pending_url);
+            return 1;
+        }
+
+        // Try to send to a running GMM instance via local socket
+        if (engine::send_nxm_to_running_instance(QString::fromStdString(pending_url))) {
+            engine::Logger::instance().debug("Download URL forwarded to running instance");
+            engine::CrashHandler::uninstall();
+            return 0;
+        }
+
+        // No running instance — resolve the game and find/create the instance ourselves
+        // Match the nexus_domain to a game_id via plugins
+        std::string matched_game_id;
+        for (const auto& p : plugin_loader.plugins()) {
+            if (p.nexus_domain == link.nexus_domain) {
+                matched_game_id = p.game_id;
+                break;
+            }
+        }
+
+        if (matched_game_id.empty()) {
+            engine::Logger::instance().error(
+                "No game plugin supports Nexus domain: " + link.nexus_domain);
+            fprintf(stderr, "GameModManager: no game supports Nexus domain '%s'\n",
+                    link.nexus_domain.c_str());
+            return 1;
+        }
+
+        // Find an existing instance for this game
+        std::string target_instance;
+        for (const auto& inst_name : existing_instances) {
+            auto inst = engine::Instance::installed(inst_name, engine::default_instances_dir());
+            if (inst.read_toml() && inst.info().game_id == matched_game_id) {
+                target_instance = inst_name;
+                break;
+            }
+        }
+
+        if (target_instance.empty()) {
+            auto display_name = plugin_loader.display_name_for(matched_game_id);
+            engine::Logger::instance().error(
+                "No instance exists for " + display_name + " (" + matched_game_id + ")");
+            fprintf(stderr, "GameModManager: no instance exists for '%s'. "
+                    "Open GameModManager and create an instance first.\n",
+                    display_name.c_str());
+            return 1;
+        }
+
+        // We have the instance — fall through to normal GUI startup with this instance
+        instance_name = QString::fromStdString(target_instance);
+        engine::Logger::instance().debug(
+            "Download URL: resolved to instance " + target_instance + " (game=" + matched_game_id + ")");
+    }
 
     // Determine if we need the game selection screen
     bool show_selection = existing_instances.empty() && instance_name.isEmpty();
 
     if (show_selection) {
-        // ── First-run: show game selection screen ──
-        engine::Logger::instance().info("No instances found - showing game selection");
+        // -- First-run: show game selection screen --
+        engine::Logger::instance().debug("No instances found - showing game selection");
 
         // Build installed games list
         std::vector<ui::GameEntry> installed_entries;
@@ -255,7 +375,7 @@ int main(int argc, char *argv[])
 
         QObject::connect(selection, &ui::GameSelectionWidget::game_selected,
             [&](const ui::GameEntry& entry) {
-                engine::Logger::instance().info("Game selected: " + entry.game_id);
+                engine::Logger::instance().debug("Game selected: " + entry.game_id);
 
                 // Find the full DetectedGame for this entry
                 engine::DetectedGame detected;
@@ -276,19 +396,28 @@ int main(int argc, char *argv[])
                 }
 
                 // Create the instance
-                std::string inst_name = display_name_to_instance(detected.name);
-                if (!create_instance(detected, inst_name)) return;
-                write_last_instance(inst_name);
+                auto new_inst = engine::create_instance_for_game(detected);
+                if (new_inst.info().game_id.empty()) return;
+                engine::write_last_instance(new_inst.info().root.filename().string());
 
                 // Transition to MainWindow
                 main_window = new ui::MainWindow();
                 main_window->set_game_knowledge(&plugin_loader.knowledge());
-                auto inst_root = fs::path(instances_dir()) / inst_name;
+                main_window->set_plugin_loader(&plugin_loader);
+                main_window->set_managed_games(&managed_games);
+                main_window->set_style_manager(&style_manager);
                 main_window->set_game_info(
                     detected.game_id, detected.name, "Default",
-                    detected.install_path, inst_root);
+                    detected.install_path, new_inst.info().root);
                 main_window->show();
+                main_window->apply_initial_geometry();
                 stack.hide();
+
+                // If a download link was passed, queue it for this instance
+                if (!pending_url.empty()) {
+                    main_window->handle_nxm_download(engine::NxmRouter::parse(pending_url));
+                    pending_url.clear();  // only handle once
+                }
             });
 
         stack.addWidget(selection);
@@ -299,26 +428,27 @@ int main(int argc, char *argv[])
 
         int rc = app.exec();
 
-        engine::Logger::instance().info("GameModManager shutting down");
+        engine::Logger::instance().debug("GameModManager shutting down");
         engine::CrashHandler::uninstall();
         delete main_window;
         return rc;
     }
 
-    // ── Normal startup: instance exists ──
+    // -- Normal startup: instance exists --
     ui::MainWindow window;
     window.set_game_knowledge(&plugin_loader.knowledge());
+    window.set_plugin_loader(&plugin_loader);
+    window.set_managed_games(&managed_games);
+    window.set_style_manager(&style_manager);
 
     // Resolve which instance to load
     std::string active_instance;
     if (!instance_name.isEmpty()) {
         active_instance = instance_name.toStdString();
     } else {
-        // Auto-load last-used instance
-        active_instance = read_last_instance();
-        // Fallback to first found if no last-used or it no longer exists
+        active_instance = engine::read_last_instance();
         if (active_instance.empty() ||
-            !fs::exists(fs::path(instances_dir()) / active_instance / "instance.toml")) {
+            !fs::exists(engine::default_instances_dir() / active_instance / "instance.toml")) {
             if (!existing_instances.empty()) {
                 active_instance = existing_instances[0];
             }
@@ -326,28 +456,40 @@ int main(int argc, char *argv[])
     }
 
     if (!active_instance.empty()) {
-        write_last_instance(active_instance);
+        engine::write_last_instance(active_instance);
 
-        // Read the game_id and game_dir from the instance's toml
-        auto toml = fs::path(instances_dir()) / active_instance / "instance.toml";
-        engine::Instance temp_inst = engine::Instance::installed(active_instance, fs::path(instances_dir()));
+        auto temp_inst = engine::Instance::installed(active_instance, engine::default_instances_dir());
         temp_inst.read_toml();
         std::string game_id = temp_inst.info().game_id;
         std::filesystem::path game_dir = temp_inst.info().game_dir;
+
+        // Resolve canonical game_id (handles legacy shortname renames)
+        std::string resolved_id = plugin_loader.resolve_game_id(game_id);
+        if (resolved_id != game_id) {
+            engine::Logger::instance().debug("Migrated game_id: " + game_id + " -> " + resolved_id);
+            temp_inst.info().game_id = resolved_id;
+            temp_inst.write_toml();
+            game_id = resolved_id;
+        }
+
         std::string display_name = plugin_loader.display_name_for(game_id);
 
         window.set_game_info(game_id, display_name, "Default", game_dir,
-                             fs::path(instances_dir()) / active_instance);
+                             engine::default_instances_dir() / active_instance);
         window.setWindowTitle(("GameModManager - " + display_name).c_str());
-        engine::Logger::instance().info("Loaded instance: " + active_instance +
-            " (game=" + game_id + ")");
     }
 
     window.show();
+    window.apply_initial_geometry();
+
+    // If a download link was passed, queue it for the active instance
+    if (!pending_url.empty()) {
+        window.handle_nxm_download(engine::NxmRouter::parse(pending_url));
+    }
 
     int rc = app.exec();
 
-    engine::Logger::instance().info("GameModManager shutting down");
+    engine::Logger::instance().debug("GameModManager shutting down");
     engine::CrashHandler::uninstall();
     return rc;
 }

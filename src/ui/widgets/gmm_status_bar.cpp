@@ -16,31 +16,63 @@ GmmStatusBar::GmmStatusBar(QWidget* parent)
 
     layout_->addStretch();
 
-    // Right side: platform integration info
-    plugin_label_ = new QLabel("Plugins: 0", this);
-    plugin_label_->setStyleSheet("color: gray;");
-    layout_->addWidget(plugin_label_);
+    // Right side: counter + sources (populated dynamically)
+    counter_label_ = new QLabel(this);
+    counter_label_->setObjectName("counterLabel");
+    layout_->addWidget(counter_label_);
 
-    auto* sep = new QFrame();
-    sep->setFrameShape(QFrame::VLine);
-    sep->setFrameShadow(QFrame::Sunken);
-    layout_->addWidget(sep);
-
-    nexus_label_ = new QLabel("Nexus: --", this);
-    nexus_label_->setStyleSheet("color: gray;");
-    layout_->addWidget(nexus_label_);
+    separator_ = new QFrame();
+    separator_->setFrameShape(QFrame::VLine);
+    separator_->setFrameShadow(QFrame::Sunken);
+    layout_->addWidget(separator_);
 }
 
 void GmmStatusBar::set_status(const QString& text) {
     status_label_->setText(text);
 }
 
-void GmmStatusBar::set_nexus_info(const QString& info) {
-    nexus_label_->setText("Nexus: " + info);
+void GmmStatusBar::set_counter_label(const QString& label) {
+    counter_label_->setText(label + ": 0");
 }
 
-void GmmStatusBar::set_plugin_count(int count) {
-    plugin_label_->setText(QString("Plugins: %1").arg(count));
+void GmmStatusBar::set_counter_value(int count) {
+    auto text = counter_label_->text();
+    auto colon = text.indexOf(':');
+    if (colon >= 0) {
+        counter_label_->setText(text.left(colon + 1) + " " + QString::number(count));
+    }
+}
+
+void GmmStatusBar::set_sources(const QStringList& sources) {
+    // Remove old source labels
+    for (auto* label : source_labels_) {
+        layout_->removeWidget(label);
+        label->deleteLater();
+    }
+    source_labels_.clear();
+
+    // Remove old separator
+    if (separator_) {
+        layout_->removeWidget(separator_);
+        separator_->deleteLater();
+        separator_ = nullptr;
+    }
+
+    // Add separator if we have sources
+    if (!sources.isEmpty()) {
+        separator_ = new QFrame();
+        separator_->setFrameShape(QFrame::VLine);
+        separator_->setFrameShadow(QFrame::Sunken);
+        layout_->addWidget(separator_);
+    }
+
+    // Add a label for each source
+    for (const auto& source : sources) {
+        auto* label = new QLabel(source + ": --", this);
+        label->setStyleSheet("color: gray;");
+        layout_->addWidget(label);
+        source_labels_.append(label);
+    }
 }
 
 }  // namespace ui

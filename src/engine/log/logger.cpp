@@ -5,8 +5,15 @@
 #include <ctime>
 #include <fcntl.h>
 #include <unistd.h>
+#include <cstdlib>
+#include <cstring>
 
 namespace engine {
+
+Logger::Logger() {
+    auto* home = std::getenv("HOME");
+    if (home) home_dir_ = home;
+}
 
 Logger& Logger::instance() {
     static Logger s;
@@ -22,20 +29,40 @@ void Logger::add_callback(Callback cb) {
     callbacks_.push_back(std::move(cb));
 }
 
+void Logger::add_group_callback(GroupCallback cb) {
+    std::lock_guard lock(mutex_);
+    group_callbacks_.push_back(std::move(cb));
+}
+
+void Logger::begin_group(LogLevel level, const std::string& label) {
+    std::lock_guard lock(mutex_);
+    for (auto& cb : group_callbacks_) {
+        cb(true, level, label);
+    }
+}
+
+void Logger::end_group() {
+    std::lock_guard lock(mutex_);
+    for (auto& cb : group_callbacks_) {
+        cb(false, LogLevel::Debug, "");
+    }
+}
+
 void Logger::log(LogLevel level, const std::string& message) {
     if (level < min_level_) return;
 
     auto ts = make_timestamp();
+    auto msg = sanitize(message);
 
     std::lock_guard lock(mutex_);
     for (auto& cb : callbacks_) {
-        cb(level, ts, message);
+        cb(level, ts, msg);
     }
 
     if (log_fd_ >= 0) {
         auto tag = level_tag(level);
-        std::string line = "[" + tag + "] [" + ts + "] " + message + "\n";
-        ::write(log_fd_, line.data(), line.size());
+        std::string line = "[" + tag + "] [" + ts + "] " + msg + "\n";
+        (void)::write(log_fd_, line.data(), line.size());
     }
 }
 
@@ -43,6 +70,34 @@ void Logger::set_log_file(const std::string& path) {
     std::lock_guard lock(mutex_);
     if (log_fd_ >= 0) ::close(log_fd_);
     log_fd_ = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+}
+
+void Logger::enable_console(bool color) {
+    (void)color;
+    add_callback([](LogLevel level, const std::string& ts, const std::string& msg) {
+        static const char* colors[] = {
+            "\033[90m",  // Debug — bright black
+            "\033[0m",   // Info  — default
+            "\033[33m",  // Warn  — yellow
+            "\033[31m",  // Error — red
+        };
+        auto tag = level == LogLevel::Debug ? "DBG" :
+                   level == LogLevel::Info  ? "INF" :
+                   level == LogLevel::Warn  ? "WRN" : "ERR";
+        fprintf(stdout, "%s[%s] [%s] %s\033[0m\n",
+                colors[static_cast<int>(level)], tag, ts.c_str(), msg.c_str());
+        fflush(stdout);
+    });
+}
+
+std::string Logger::sanitize(std::string msg) const {
+    if (home_dir_.empty()) return msg;
+    for (;;) {
+        auto pos = msg.find(home_dir_);
+        if (pos == std::string::npos) break;
+        msg.replace(pos, home_dir_.size(), "{USER}");
+    }
+    return msg;
 }
 
 std::string Logger::make_timestamp() const {

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 project(GameModManager
     VERSION 0.1.0
     DESCRIPTION "Cross-platform game mod manager"
-    LANGUAGES CXX
+    LANGUAGES CXX C
 )
 
 set(CMAKE_CXX_STANDARD 20)
@@ -22,14 +22,14 @@ else()
     set(GMM_PLATFORM "linux")
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 
 # Dependencies — PkgConfig on Linux/macOS, find_package on Windows
 if(WIN32)
     # Windows: use find_package for each dependency
     # (exact package names depend on how deps are installed — vcpkg, manual, etc.)
-    find_path(LIBZIP_INCLUDE_DIR zip.h)
-    find_library(LIBZIP_LIBRARY NAMES zip)
+    find_path(LIBARCHIVE_INCLUDE_DIR archive.h)
+    find_library(LIBARCHIVE_LIBRARY NAMES archive)
     find_path(SQLITE3_INCLUDE_DIR sqlite3.h)
     find_library(SQLITE3_LIBRARY NAMES sqlite3)
     find_path(YAMLCPP_INCLUDE_DIR yaml-cpp/yaml.h)
@@ -39,10 +39,10 @@ if(WIN32)
     find_path(NLOHMANN_JSON_INCLUDE_DIR nlohmann/json.hpp)
 
     # Create imported targets for consistency with Linux path
-    add_library(PkgConfig::LIBZIP UNKNOWN IMPORTED)
-    set_target_properties(PkgConfig::LIBZIP PROPERTIES
-        IMPORTED_LOCATION "${LIBZIP_LIBRARY}"
-        INTERFACE_INCLUDE_DIRECTORIES "${LIBZIP_INCLUDE_DIR}")
+    add_library(PkgConfig::LIBARCHIVE UNKNOWN IMPORTED)
+    set_target_properties(PkgConfig::LIBARCHIVE PROPERTIES
+        IMPORTED_LOCATION "${LIBARCHIVE_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${LIBARCHIVE_INCLUDE_DIR}")
 
     add_library(PkgConfig::SQLITE3 UNKNOWN IMPORTED)
     set_target_properties(PkgConfig::SQLITE3 PROPERTIES
@@ -64,7 +64,7 @@ if(WIN32)
         INTERFACE_INCLUDE_DIRECTORIES "${NLOHMANN_JSON_INCLUDE_DIR}")
 else()
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(LIBZIP REQUIRED IMPORTED_TARGET libzip)
+    pkg_check_modules(LIBARCHIVE REQUIRED IMPORTED_TARGET libarchive)
     pkg_check_modules(SQLITE3 REQUIRED IMPORTED_TARGET sqlite3)
     pkg_check_modules(YAMLCPP REQUIRED IMPORTED_TARGET yaml-cpp)
     pkg_check_modules(CURL REQUIRED IMPORTED_TARGET libcurl)
@@ -90,17 +90,21 @@ add_subdirectory(external/plugins)
 # Engine sources — no Qt includes allowed here
 set(ENGINE_SOURCES
     src/engine/instance/instance.cpp
+    src/engine/instance/instance_utils.cpp
     src/engine/detect/game_detector.cpp
     src/engine/detect/mod_scanner.cpp
     src/engine/archive/archive_extractor.cpp
     src/engine/index/conflict_index.cpp
     src/engine/index/isaac_conflict_index.cpp
+    src/engine/index/conflict_engine.cpp
     src/engine/model/profile.cpp
     src/engine/deploy/order_hook.cpp
     src/engine/deploy/strategy_symlink.cpp
     src/engine/deploy/strategy_hardlink.cpp
     src/engine/deploy/strategy_junction.cpp
+    src/engine/deploy/strategy_overlayfs_deploy.cpp
     src/engine/deploy/deploy_ledger.cpp
+    src/engine/overlay_launcher.cpp
     src/engine/pipeline/pipeline.cpp
     src/engine/pipeline/fetch_stage.cpp
     src/engine/pipeline/extract_stage.cpp
@@ -119,12 +123,25 @@ set(ENGINE_SOURCES
     src/engine/registry/hook_registry.cpp
     src/engine/registry/game_capabilities.cpp
     src/engine/registry/game_knowledge.cpp
-    src/engine/sort/isaac_auto_sorter.cpp
+    src/engine/nxm/nxm_router.cpp
+    src/engine/nxm/managed_games.cpp
+    src/engine/nxm/nxm_ipc.cpp
+    src/engine/sort/abi_sort_provider.cpp
+    src/engine/sort/sort_registry.cpp
     src/engine/workshop/remote_cache.cpp
     src/engine/workshop/workshop_client.cpp
     src/engine/theme/theme_manager.cpp
+    src/engine/theme/style_manager.cpp
     src/engine/tools/external_tool.cpp
     src/engine/plugin_host/python_loader.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/source/source_provider.cpp
+    src/engine/source/nexus_provider.cpp
+    src/engine/source/steam_workshop_provider.cpp
+    src/engine/nexus_auth.cpp
+    src/engine/preload_interceptor.cpp
+    src/engine/launcher.cpp
+    src/cli/headless_launcher.cpp
 )
 
 # FUSE/VFS strategies — Linux only
@@ -157,6 +174,9 @@ set(UI_SOURCES
     src/ui/widgets/exec_controls_bar.cpp
     src/ui/widgets/console_panel.cpp
     src/ui/widgets/gmm_status_bar.cpp
+    src/ui/widgets/instance_switcher_dialog.cpp
+    src/ui/widgets/instance_statistics_dialog.cpp
+    src/ui/widgets/debug_window.cpp
     src/ui/widgets/mod_filter_bar.cpp
     src/ui/widgets/right_filter_bar.cpp
     src/ui/widgets/column_toggle_header.cpp
@@ -177,7 +197,7 @@ set(APP_SOURCES
 add_executable(gamemodmanager ${ENGINE_SOURCES} ${RUNTIME_SOURCES} ${PLATFORM_SOURCES} ${UI_SOURCES} ${APP_SOURCES})
 
 # Link libraries — platform-specific
-target_link_libraries(gamemodmanager PRIVATE Qt6::Widgets PkgConfig::LIBZIP PkgConfig::SQLITE3 PkgConfig::YAMLCPP PkgConfig::CURL PkgConfig::NLOHMANN_JSON pybind11::embed Python3::Python)
+target_link_libraries(gamemodmanager PRIVATE Qt6::Widgets Qt6::Network PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::YAMLCPP PkgConfig::CURL PkgConfig::NLOHMANN_JSON pybind11::embed Python3::Python)
 if(NOT WIN32)
     target_link_libraries(gamemodmanager PRIVATE ${CMAKE_DL_LIBS})
     if(FUSE3_FOUND)
@@ -191,6 +211,23 @@ endif()
 
 target_include_directories(gamemodmanager PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
 target_compile_definitions(gamemodmanager PRIVATE VERSION="${PROJECT_VERSION}")
+
+# LD_PRELOAD intercept library — Linux-only, C, built as a shared lib
+if(UNIX AND NOT APPLE)
+    add_library(gmm_overlay_intercept SHARED src/engine/overlay_intercept.c)
+    target_link_libraries(gmm_overlay_intercept PRIVATE dl)
+    set_target_properties(gmm_overlay_intercept PROPERTIES
+        AUTOMOC OFF
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
+    # Smoke test: verify all 17 function symbols resolve in the .so
+    add_executable(overlay_intercept_test tests/engine/overlay_intercept_test.c)
+    target_compile_definitions(overlay_intercept_test PRIVATE
+        GMM_INTERCEPT_SO="${CMAKE_CURRENT_BINARY_DIR}/libgmm_overlay_intercept.so")
+    target_link_libraries(overlay_intercept_test PRIVATE ${CMAKE_DL_LIBS})
+    add_test(NAME overlay_intercept_test COMMAND overlay_intercept_test)
+endif()
 
 # Tests — headless, no Qt
 add_executable(pipeline_test tests/engine/pipeline_test.cpp
@@ -212,9 +249,14 @@ add_executable(pipeline_test tests/engine/pipeline_test.cpp
     src/engine/pipeline/deploy_stage.cpp
     src/engine/pipeline/launch_stage.cpp
     src/engine/pipeline/sync_stage.cpp
+    src/engine/log/logger.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/source/source_provider.cpp
+    src/engine/source/steam_workshop_provider.cpp
+    src/engine/workshop/workshop_client.cpp
 )
 target_include_directories(pipeline_test PRIVATE src/)
-target_link_libraries(pipeline_test PRIVATE PkgConfig::LIBZIP PkgConfig::SQLITE3)
+target_link_libraries(pipeline_test PRIVATE PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::CURL PkgConfig::NLOHMANN_JSON)
 if(WIN32)
     target_link_libraries(pipeline_test PRIVATE advapi32)
 endif()
@@ -231,6 +273,8 @@ add_test(NAME phase04_test COMMAND phase04_test)
 add_executable(registry_test tests/engine/registry_test.cpp
     src/engine/registry/stage_registry.cpp
     src/engine/registry/hook_registry.cpp
+    src/engine/instance/instance.cpp
+    src/engine/archive/archive_extractor.cpp
     src/engine/pipeline/pipeline.cpp
     src/engine/pipeline/fetch_stage.cpp
     src/engine/pipeline/extract_stage.cpp
@@ -241,14 +285,20 @@ add_executable(registry_test tests/engine/registry_test.cpp
     src/engine/pipeline/launch_stage.cpp
     src/engine/pipeline/sync_stage.cpp
     src/engine/log/logger.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/source/source_provider.cpp
+    src/engine/source/steam_workshop_provider.cpp
+    src/engine/workshop/workshop_client.cpp
 )
 target_include_directories(registry_test PRIVATE src/)
-target_link_libraries(registry_test PRIVATE PkgConfig::SQLITE3)
+target_link_libraries(registry_test PRIVATE PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::CURL PkgConfig::NLOHMANN_JSON)
 add_test(NAME registry_test COMMAND registry_test)
 
 add_executable(perf_benchmark tests/perf/benchmark_test.cpp
     src/engine/index/conflict_index.cpp
     src/engine/model/profile.cpp
+    src/engine/instance/instance.cpp
+    src/engine/archive/archive_extractor.cpp
     src/engine/deploy/order_hook.cpp
     src/engine/deploy/deploy_ledger.cpp
     src/engine/registry/stage_registry.cpp
@@ -263,9 +313,13 @@ add_executable(perf_benchmark tests/perf/benchmark_test.cpp
     src/engine/pipeline/launch_stage.cpp
     src/engine/pipeline/sync_stage.cpp
     src/engine/log/logger.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/source/source_provider.cpp
+    src/engine/source/steam_workshop_provider.cpp
+    src/engine/workshop/workshop_client.cpp
 )
 target_include_directories(perf_benchmark PRIVATE src/)
-target_link_libraries(perf_benchmark PRIVATE PkgConfig::SQLITE3)
+target_link_libraries(perf_benchmark PRIVATE PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::CURL PkgConfig::NLOHMANN_JSON)
 target_compile_definitions(perf_benchmark PRIVATE VERSION="${PROJECT_VERSION}")
 add_test(NAME perf_benchmark COMMAND perf_benchmark)
 
@@ -278,6 +332,8 @@ add_executable(python_plugin_test tests/engine/python_plugin_test.cpp
     src/engine/registry/game_capabilities.cpp
     src/engine/registry/game_knowledge.cpp
     src/engine/tools/external_tool.cpp
+    src/engine/sort/sort_registry.cpp
+    src/engine/sort/abi_sort_provider.cpp
     src/engine/log/logger.cpp
 )
 target_include_directories(python_plugin_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
@@ -286,3 +342,11 @@ if(NOT WIN32)
     target_link_libraries(python_plugin_test PRIVATE ${CMAKE_DL_LIBS})
 endif()
 add_test(NAME python_plugin_test COMMAND python_plugin_test)
+
+add_executable(conflict_test tests/engine/conflict_test.cpp
+    src/engine/index/conflict_engine.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(conflict_test PRIVATE src/)
+target_link_libraries(conflict_test PRIVATE PkgConfig::NLOHMANN_JSON)
+add_test(NAME conflict_test COMMAND conflict_test)

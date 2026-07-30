@@ -14,6 +14,8 @@ public:
                         uint32_t steam_appid = 0) = 0;
     virtual bool is_available() const = 0;
     virtual std::string name() const = 0;
+    // PID of the last launched process, or -1 if unknown / not applicable
+    virtual int64_t last_pid() const { return -1; }
 };
 
 class NativeRuntime : public Runtime {
@@ -23,6 +25,10 @@ public:
                 uint32_t steam_appid = 0) override;
     bool is_available() const override;
     std::string name() const override { return "native"; }
+    int64_t last_pid() const override { return last_pid_; }
+
+private:
+    int64_t last_pid_ = -1;
 };
 
 class ProtonRuntime : public Runtime {
@@ -32,9 +38,20 @@ public:
                 uint32_t steam_appid = 0) override;
     bool is_available() const override;
     std::string name() const override { return "proton"; }
+    int64_t last_pid() const override { return last_pid_; }
+
+    // Find the Proton binary for a game (respects per-game compat tool override).
+    // Returns empty path if none found.
+    static std::filesystem::path find_proton_binary(uint32_t steam_appid = 0);
+
+    // Set all STEAM_COMPAT_* environment variables needed by the Proton script.
+    // Must be called before launching Proton in the same process or a child.
+    static bool prepare_proton_environment(const std::filesystem::path& game_dir,
+                                           uint32_t steam_appid);
 
 private:
     std::filesystem::path find_proton() const;
+    int64_t last_pid_ = -1;
 };
 
 }  // namespace engine

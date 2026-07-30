@@ -3,14 +3,15 @@
 #include <QFrame>
 #include <QBoxLayout>
 #include <QIcon>
+#include <QMenu>
 #include <QStyle>
 
 namespace ui {
 
 MainToolbar::MainToolbar(QWidget* parent)
     : QWidget(parent) {
+    auto* instances_btn = add_gmm_button("Switch Instance", "computer");
     auto* settings_btn = add_gmm_button("Settings", "preferences-system");
-    auto* instances_btn = add_gmm_button("Switch Instance", "computerr");
 
     connect(settings_btn, &QToolButton::clicked, this, &MainToolbar::settings_clicked);
     connect(instances_btn, &QToolButton::clicked, this, &MainToolbar::instances_clicked);
@@ -76,7 +77,39 @@ QToolButton* MainToolbar::add_exec_button(const QString& tooltip, const QIcon& i
     btn->setToolButtonStyle(Qt::ToolButtonIconOnly);
     exec_buttons_.append(btn);
     layout_->addWidget(btn);
+
+    // Right-click context menu to remove shortcut
+    btn->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(btn, &QWidget::customContextMenuRequested, this, [this, btn](const QPoint& pos) {
+        Q_UNUSED(pos);
+        QMenu menu;
+        menu.addAction("Remove shortcut");
+        auto* action = menu.exec(btn->mapToGlobal(QPoint(0, btn->height())));
+        if (action) {
+            QString path = btn->property("exec_path").toString();
+            remove_exec_button(btn);
+            if (!path.isEmpty()) {
+                emit shortcut_removed(path);
+            }
+        }
+    });
+
     return btn;
+}
+
+void MainToolbar::remove_exec_button(QToolButton* btn) {
+    if (!btn) return;
+    exec_buttons_.removeOne(btn);
+    layout_->removeWidget(btn);
+    btn->deleteLater();
+}
+
+void MainToolbar::clear_exec_buttons() {
+    while (!exec_buttons_.isEmpty()) {
+        auto* btn = exec_buttons_.takeFirst();
+        layout_->removeWidget(btn);
+        btn->deleteLater();
+    }
 }
 
 }  // namespace ui

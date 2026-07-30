@@ -11,7 +11,7 @@
 
 namespace ui {
 
-// ── Icon resolution ──
+// -- Icon resolution --
 
 // Build a colored circle with the game's first letter — used as a built-in icon
 // when no theme or exe icon is available.
@@ -77,7 +77,7 @@ QIcon GameSelectionWidget::resolve_icon(const GameEntry& entry, const QString& t
     return make_builtin_icon(entry.game_id, entry.display_name);
 }
 
-// ── GameSelectionWidget ──
+// -- GameSelectionWidget --
 
 GameSelectionWidget::GameSelectionWidget(QWidget* parent)
     : QWidget(parent) {
@@ -91,7 +91,7 @@ GameSelectionWidget::GameSelectionWidget(QWidget* parent)
     layout->setContentsMargins(40, 30, 40, 30);
     layout->setSpacing(16);
 
-    // ── Title ──
+    // -- Title --
     title_ = new QLabel("Welcome to GameModManager");
     QFont title_font = title_->font();
     title_font.setPointSize(18);
@@ -103,17 +103,17 @@ GameSelectionWidget::GameSelectionWidget(QWidget* parent)
     layout->addSpacing(10);
 
     auto* subtitle = new QLabel("Select a game to manage");
+    subtitle->setObjectName("gameSelectionSubtitle");
     QFont sub_font = subtitle->font();
     sub_font.setPointSize(11);
     sub_font.setItalic(true);
     subtitle->setFont(sub_font);
     subtitle->setAlignment(Qt::AlignCenter);
-    subtitle->setStyleSheet("color: palette(midText);");
     layout->addWidget(subtitle);
 
     layout->addSpacing(20);
 
-    // ── Installed Games section ──
+    // -- Installed Games section --
     installed_label_ = new QLabel("Installed Games");
     {
         QFont f = installed_label_->font();
@@ -128,7 +128,7 @@ GameSelectionWidget::GameSelectionWidget(QWidget* parent)
 
     layout->addSpacing(16);
 
-    // ── Available Games section ──
+    // -- Available Games section --
     available_label_ = new QLabel("Available Games");
     {
         QFont f = available_label_->font();
@@ -190,7 +190,7 @@ void GameSelectionWidget::set_games(const std::vector<GameEntry>& installed,
                     ? "No games detected. Install a supported game on Steam."
                     : "No additional games available.",
                 grid);
-            lbl->setStyleSheet("color: palette(midText); font-style: italic; padding: 10px;");
+            lbl->setObjectName("gameSelectionNoInstall");
             lbl->setAlignment(Qt::AlignCenter);
             auto* lay = new QVBoxLayout(grid);
             lay->addWidget(lbl);

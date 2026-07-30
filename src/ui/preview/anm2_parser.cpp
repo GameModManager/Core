@@ -26,7 +26,7 @@ std::optional<Anm2Data> Anm2Parser::parse_xml(const std::string& xml_content,
     QXmlStreamReader xml(QString::fromStdString(xml_content));
     Anm2Data result;
 
-    // ── Parse spritesheets ──
+    // -- Parse spritesheets --
     struct SpritesheetInfo {
         QString id;
         QString path;
@@ -34,10 +34,10 @@ std::optional<Anm2Data> Anm2Parser::parse_xml(const std::string& xml_content,
     };
     std::vector<SpritesheetInfo> spritesheets;
 
-    // ── Parse info/fps ──
+    // -- Parse info/fps --
     int fps = 30;
 
-    // ── First pass: collect spritesheets ──
+    // -- First pass: collect spritesheets --
     while (!xml.atEnd()) {
         xml.readNext();
         if (!xml.isStartElement()) continue;
@@ -67,14 +67,14 @@ std::optional<Anm2Data> Anm2Parser::parse_xml(const std::string& xml_content,
     xml.clear();
     xml.addData(QString::fromStdString(xml_content));
 
-    // ── Parse layers (Id -> SpritesheetId mapping) ──
+    // -- Parse layers (Id -> SpritesheetId mapping) --
     struct LayerInfo {
         int id = 0;
         int spritesheet_id = 0;
     };
     std::vector<LayerInfo> layers;
 
-    // ── Parse all animations ──
+    // -- Parse all animations --
     struct AnimData {
         struct RootFrame {
             bool visible = true;
@@ -180,7 +180,7 @@ std::optional<Anm2Data> Anm2Parser::parse_xml(const std::string& xml_content,
 
     result.fps = fps;
 
-    // ── Composite frames ──
+    // -- Composite frames --
     // First pass: compute bounding box from the first animation
     int min_x = 1000000, min_y = 1000000;
     int max_x = -1000000, max_y = -1000000;
