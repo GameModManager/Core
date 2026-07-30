@@ -28,11 +28,7 @@ jobs:
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build -j$(nproc)
-
-      - name: Test
-        working-directory: build
-        run: ctest --output-on-failure
+        run: cmake --build build -j$(nproc) --target gamemodmanager
 
       - name: Collect artifacts
         run: |

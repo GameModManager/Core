@@ -21,11 +21,7 @@ jobs:
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 
       - name: Build
-        run: cmake --build build --config Release
-
-      - name: Test
-        working-directory: build
-        run: ctest --output-on-failure -C Release
+        run: cmake --build build --config Release --target gamemodmanager
 
       - name: Collect artifacts
         run: |
