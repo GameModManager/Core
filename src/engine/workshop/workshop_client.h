@@ -66,11 +66,11 @@ private:
     // Dead IDs (permanently failed)
     std::unordered_set<int64_t> dead_ids_;
 
-    // Rate limiting: timestamps of recent requests
+    // Rate limiting: 60 requests per hour
     std::vector<double> request_timestamps_;
-    static constexpr int RATE_LIMIT = 180;        // requests per window
-    static constexpr int RATE_WINDOW = 300;       // seconds
-    static constexpr int RETRY_COOLDOWN = 300;    // seconds before retrying a failed ID
+    static constexpr int RATE_LIMIT = 60;         // requests per window
+    static constexpr int RATE_WINDOW = 3600;      // seconds (1 hour)
+    static constexpr int RETRY_COOLDOWN = 3600;   // seconds before retrying a failed ID
 };
 
 }  // namespace engine

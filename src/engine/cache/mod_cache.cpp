@@ -19,7 +19,7 @@ bool ModCache::open() {
         return false;
     }
     create_tables();
-    Logger::instance().info("Mod cache opened: " + db_path_);
+    Logger::instance().debug("Mod cache opened: " + db_path_);
     return true;
 }
 

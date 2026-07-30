@@ -14,6 +14,7 @@ namespace ui {
 class ExecControlsBar;
 class RightFilterBar;
 class DataTab;
+class DownloadsTab;
 
 class RightPanel : public QWidget {
     Q_OBJECT
@@ -29,6 +30,7 @@ public:
     [[nodiscard]] ExecControlsBar* exec_controls() const { return exec_controls_; }
     [[nodiscard]] QTabWidget* tab_widget() const { return tab_widget_; }
     [[nodiscard]] RightFilterBar* filter_bar() const { return filter_bar_; }
+    [[nodiscard]] DownloadsTab* downloads_tab() const;
 
 private:
     void clear_tabs();

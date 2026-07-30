@@ -7,7 +7,7 @@
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
 
-; ── Version (read from CMakeLists.txt or passed via /D flag) ──
+; -- Version (read from CMakeLists.txt or passed via /D flag) --
 !ifndef VERSION
     !define VERSION "0.1.0"
 !endif
@@ -18,7 +18,7 @@ InstallDir "$PROGRAMFILES\GameModManager"
 InstallDirRegKey HKCU "Software\GameModManager" "InstallDir"
 RequestExecutionLevel admin
 
-; ── Pages ──
+; -- Pages --
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "..\..\docs\LICENSE"
 !insertmacro MUI_PAGE_DIRECTORY
@@ -30,7 +30,7 @@ RequestExecutionLevel admin
 
 !insertmacro MUI_LANGUAGE "English"
 
-; ── Installer ──
+; -- Installer --
 Section "GameModManager" SecMain
     SetOutPath "$INSTDIR"
 
@@ -89,7 +89,7 @@ Section "GameModManager" SecMain
     CreateShortCut "$SMPROGRAMS\GameModManager\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
 SectionEnd
 
-; ── Uninstaller ──
+; -- Uninstaller --
 Section "Uninstall"
     ; Remove files
     RMDir /r "$INSTDIR\plugins"

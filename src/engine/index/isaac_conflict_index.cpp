@@ -165,7 +165,7 @@ void IsaacConflictIndex::clear() {
     priorities_.clear();
 }
 
-// ── Private helpers ──
+// -- Private helpers --
 
 std::unordered_set<std::string>
 IsaacConflictIndex::walk_mod(const std::string& mod_path) const {
@@ -277,7 +277,7 @@ std::string IsaacConflictIndex::quick_token(const std::string& mod_path) const {
     return std::string(buf);
 }
 
-// ── SQLite cache helpers ──
+// -- SQLite cache helpers --
 
 void IsaacConflictIndex::ensure_schema(const std::string& db_path) const {
     sqlite3* db = nullptr;

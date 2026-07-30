@@ -40,6 +40,9 @@ RightPanel::RightPanel(QWidget* parent)
 
     layout->addWidget(tab_widget_, 1);
 
+    // Small gap so the tab pane's bottom border is visible
+    layout->addSpacing(1);
+
     // Filter bar below tabs — persists across tab switches
     filter_bar_ = new RightFilterBar(this);
     layout->addWidget(filter_bar_);
@@ -88,6 +91,10 @@ void RightPanel::ensure_tab(const std::string& capability, const QString& label)
         auto* t = new PluginsTab(tab_widget_);
         setup_toggle_header(t->table(), {"Plugin", "Status", "Masters"});
         tab = t;
+    } else if (capability == "conflicts") {
+        auto* t = new ConflictsTab(tab_widget_);
+        setup_toggle_header(t->table(), {"File", "Winner", "Mods"});
+        tab = t;
     } else if (capability == "archives") {
         auto* t = new ArchivesTab(tab_widget_);
         setup_toggle_header(t->table(), {"Archive", "Size", "Priority"});
@@ -98,7 +105,17 @@ void RightPanel::ensure_tab(const std::string& capability, const QString& label)
         tab = t;
     } else if (capability == "downloads") {
         auto* t = new DownloadsTab(tab_widget_);
-        setup_toggle_header(t->table(), {"Name", "Source", "Size", "Status"});
+        setup_toggle_header(t->table(), {"Name", "Source", "Status", "Size"});
+        // Name stretches; Source/Status/Size keep user-set width on resize
+        auto* hdr = t->table()->horizontalHeader();
+        hdr->setStretchLastSection(false);
+        hdr->setSectionResizeMode(0, QHeaderView::Stretch);
+        hdr->setSectionResizeMode(1, QHeaderView::Interactive);
+        hdr->setSectionResizeMode(2, QHeaderView::Interactive);
+        hdr->setSectionResizeMode(3, QHeaderView::Interactive);
+        hdr->resizeSection(1, 80);
+        hdr->resizeSection(2, 100);
+        hdr->resizeSection(3, 80);
         tab = t;
     }
 
@@ -114,18 +131,25 @@ void RightPanel::set_game(const std::string& game_id) {
 
     if (!capabilities_) return;
 
-    if (capabilities_->has_capability(game_id, "plugins")) {
-        ensure_tab("plugins", "Plugins");
+    auto caps = capabilities_->sorted_capabilities_for(game_id);
+
+    // Remove Data from index 0 — re-add at correct sorted position
+    tab_widget_->removeTab(0);
+
+    for (const auto& info : caps) {
+        if (info.capability == "data") {
+            tab_widget_->addTab(data_tab_, "Data");
+        } else {
+            ensure_tab(info.capability, QString::fromStdString(info.display_name));
+        }
     }
-    if (capabilities_->has_capability(game_id, "archives")) {
-        ensure_tab("archives", "Archives");
-    }
-    if (capabilities_->has_capability(game_id, "saves")) {
-        ensure_tab("saves", "Saves");
-    }
-    if (capabilities_->has_capability(game_id, "downloads")) {
-        ensure_tab("downloads", "Downloads");
-    }
+}
+
+DownloadsTab* RightPanel::downloads_tab() const {
+    auto it = tabs_.find("downloads");
+    if (it != tabs_.end())
+        return qobject_cast<DownloadsTab*>(it->second);
+    return nullptr;
 }
 
 }  // namespace ui

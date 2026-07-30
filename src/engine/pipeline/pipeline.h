@@ -3,6 +3,7 @@
 #include "engine/pipeline/stage.h"
 
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -21,6 +22,23 @@ struct PipelineContext {
     DeploymentStrategy* deploy_strategy = nullptr;
     OrderEncodingHook* order_hook = nullptr;
     std::filesystem::path game_dir;  // live game directory (for Overwrite capture)
+    std::filesystem::path meta_dir;  // instance meta/ directory
+    std::filesystem::path mods_dir;  // where mod folders live
+
+    // Game-relative prefix for deployed mod files (e.g. "Data" for Skyrim, "mods" for Isaac)
+    std::string deploy_prefix = "Data";
+
+    // Whether to include the mod ID as a subdirectory in the deploy target path.
+    // Skyrim-style (files go directly into Data/) = false.
+    // Isaac-style (mods go into mods/ModName/) = true.
+    bool deploy_include_mod_id = false;
+
+    // When using OverlayFS deploy strategy, staging_dir holds the mod symlink tree
+    // that gets layered over game_dir at launch. Empty = deploy directly to game_dir.
+    std::filesystem::path staging_dir;
+
+    // Download progress callback (bytes downloaded, total bytes, speed in bytes/sec)
+    std::function<void(int64_t downloaded, int64_t total, double speed)> on_progress;
 };
 
 class Pipeline {
@@ -28,6 +46,7 @@ public:
     void set_context(PipelineContext ctx);
     void add_stage(std::unique_ptr<Stage> stage);
     bool run(Mod& mod);
+    PipelineContext& ctx() { return ctx_; }
 
 private:
     PipelineContext ctx_;

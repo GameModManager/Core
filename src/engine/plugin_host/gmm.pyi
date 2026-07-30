@@ -71,11 +71,31 @@ class RegistrationContext:
         website_domain: str = "",
         supported_platforms: str = "",
     ) -> None:
-        """Register a UI capability for this game.
+        """Register a game capability (non-tab feature).
 
         capability: "plugins", "archives", "saves", "downloads"
-        display_name: tab label shown in the right panel
+        display_name: label for the capability
         data_path: relative path where these are stored (e.g. "Data/")
         For downloads: protocol_handler ("nxm", "workshop"), website_domain, supported_platforms (comma-separated)
+        """
+
+    def register_tab(
+        self,
+        capability: str,
+        display_name: str = "",
+        data_path: str = "",
+        description: str = "",
+        protocol_handler: str = "",
+        website_domain: str = "",
+        supported_platforms: str = "",
+        insert_before: str = "",
+        insert_after: str = "",
+    ) -> None:
+        """Register a UI tab for this game with ordering.
+
+        capability: "plugins", "archives", "saves", "downloads", "conflicts", "data"
+        display_name: tab label shown in the right panel
+        insert_before: capability_id this tab should appear before
+        insert_after: capability_id this tab should appear after
         """
         ...

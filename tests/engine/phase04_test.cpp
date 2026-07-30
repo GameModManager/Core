@@ -55,9 +55,10 @@ int main() {
     // Disable modB
     profile.set_enabled("modB", false);
     auto enabled = profile.enabled_in_order();
-    assert(enabled.size() == 2);
+    assert(enabled.size() == 3);  // modC, modA, __overwrite__ (auto-pinned)
     assert(enabled[0] == "modC");
     assert(enabled[1] == "modA");
+    assert(enabled[2] == "__overwrite__");
 
     std::printf("PASS: profile_test\n");
 

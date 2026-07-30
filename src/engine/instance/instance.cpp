@@ -31,7 +31,8 @@ std::filesystem::path Instance::path_for(InstanceKind kind) const {
         case InstanceKind::Plugins:          return info_.root / "plugins";
         case InstanceKind::Logs:             return info_.root / "logs";
         case InstanceKind::Config:           return info_.root / "config";
-        case InstanceKind::Overwrite:        return info_.root / "mods" / "Overwrite";
+        case InstanceKind::Overwrite:        return info_.root / "overwrite";
+        case InstanceKind::Meta:             return info_.root / "meta";
     }
     return {};
 }
@@ -50,6 +51,7 @@ bool Instance::create_directories() const {
         InstanceKind::Downloads,
         InstanceKind::CacheArchives, InstanceKind::CacheThumbnails,
         InstanceKind::Plugins, InstanceKind::Logs, InstanceKind::Config,
+        InstanceKind::Meta,
     };
     for (auto kind : dirs) {
         std::filesystem::create_directories(path_for(kind), ec);
@@ -64,6 +66,9 @@ bool Instance::write_toml() const {
 
     out << "game_id = \"" << info_.game_id << "\"\n";
     out << "portable = " << (info_.portable ? "true" : "false") << "\n";
+    if (info_.steam_appid > 0) {
+        out << "steam_appid = " << info_.steam_appid << "\n";
+    }
     if (!info_.game_dir.empty()) {
         out << "game_dir = \"" << info_.game_dir.string() << "\"\n";
     }
@@ -84,21 +89,47 @@ bool Instance::read_toml() {
         key.erase(key.find_last_not_of(" \t") + 1);
         key.erase(0, key.find_first_not_of(" \t"));
 
-        auto val_start = line.find('"', eq + 1);
+        auto val_start = line.find_first_not_of(" \t", eq + 1);
         if (val_start == std::string::npos) continue;
-        auto val_end = line.find('"', val_start + 1);
-        if (val_end == std::string::npos) continue;
-        auto val = line.substr(val_start + 1, val_end - val_start - 1);
 
-        if (key == "game_id") {
-            info_.game_id = val;
-        } else if (key == "game_dir") {
-            info_.game_dir = val;
-        } else if (key == "portable") {
-            info_.portable = (val == "true");
+        // Quoted or numeric value
+        if (line[val_start] == '"') {
+            val_start++; // skip opening quote
+            auto val_end = line.find('"', val_start);
+            if (val_end == std::string::npos) continue;
+            auto val = line.substr(val_start, val_end - val_start);
+
+            if (key == "game_id") {
+                info_.game_id = val;
+            } else if (key == "game_dir") {
+                info_.game_dir = val;
+            }
+        } else {
+            // unquoted numeric/boolean
+            auto val_end = line.find_first_of(" \t\r\n", val_start);
+            if (val_end == std::string::npos) val_end = line.size();
+            auto val = line.substr(val_start, val_end - val_start);
+
+            if (key == "portable") {
+                info_.portable = (val == "true");
+            } else if (key == "steam_appid") {
+                try { info_.steam_appid = std::stoul(val); } catch (...) {}
+            }
         }
     }
     return true;
+}
+
+std::string Instance::to_instance_name(const std::string& display_name) {
+    static const std::string invalid = R"(\/:*?"<>|)";
+    std::string result;
+    result.reserve(display_name.size());
+    for (char c : display_name) {
+        if (c == ' ') result += '_';
+        else if (invalid.find(c) != std::string::npos) continue;
+        else result += c;
+    }
+    return result;
 }
 
 std::filesystem::path Instance::resolve_portable_root(

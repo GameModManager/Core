@@ -42,7 +42,7 @@ echo "Assembling portable distribution → $OUTPUT_DIR"
 # Create directory structure
 mkdir -p "$OUTPUT_DIR"/{runtime/{linux,windows},plugins/{linux,windows},tools/linux,config,mods,downloads,cache,logs}
 
-# ── Linux artifacts ──
+# -- Linux artifacts --
 if [ -n "$LINUX_DIR" ] && [ -d "$LINUX_DIR" ]; then
     echo "  Packaging Linux artifacts from $LINUX_DIR"
 
@@ -72,7 +72,7 @@ if [ -n "$LINUX_DIR" ] && [ -d "$LINUX_DIR" ]; then
     fi
 fi
 
-# ── Windows artifacts ──
+# -- Windows artifacts --
 if [ -n "$WINDOWS_DIR" ] && [ -d "$WINDOWS_DIR" ]; then
     echo "  Packaging Windows artifacts from $WINDOWS_DIR"
 
@@ -97,7 +97,7 @@ if [ -n "$WINDOWS_DIR" ] && [ -d "$WINDOWS_DIR" ]; then
     done
 fi
 
-# ── Shared files (identical on both platforms) ──
+# -- Shared files (identical on both platforms) --
 cat > "$OUTPUT_DIR/instance.toml" <<EOF
 # GameModManager portable instance
 # This file is shared across platforms — both binaries read it.

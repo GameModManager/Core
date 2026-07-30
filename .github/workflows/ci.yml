@@ -32,14 +32,14 @@ jobs:
         run: cmake --build build -j$(nproc)
 
       - name: Test
-        working-directory: Core/build
+        working-directory: build
         run: ctest --output-on-failure
 
       - name: Collect Linux artifacts
         run: |
           mkdir -p artifact
-          cp Core/build/gamemodmanager artifact/
-          cp Core/build/plugins/*.so artifact/ 2>/dev/null || true
+          cp build/gamemodmanager artifact/
+          cp build/plugins/*.so artifact/ 2>/dev/null || true
 
       - uses: actions/upload-artifact@v4
         with:
@@ -56,7 +56,7 @@ jobs:
 
       - name: Install dependencies (vcpkg)
         run: |
-          vcpkg install qt6-base libzip sqlite3 yaml-cpp libcurl nlohmann-json pybind11 python3 --triplet x64-windows
+          vcpkg install qtbase libzip sqlite3 yaml-cpp libcurl nlohmann-json pybind11 python3 --triplet x64-windows
 
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
@@ -65,15 +65,15 @@ jobs:
         run: cmake --build build --config Release
 
       - name: Test
-        working-directory: Core/build
+        working-directory: build
         run: ctest --output-on-failure -C Release
 
       - name: Collect Windows artifacts
         run: |
           mkdir artifact
-          Copy-Item Core/build/gamemodmanager.exe artifact/
-          Get-ChildItem Core/build/plugins/*.dll -ErrorAction SilentlyContinue | Copy-Item -Destination artifact/
-          Get-ChildItem Core/build/*.dll -ErrorAction SilentlyContinue | Copy-Item -Destination artifact/
+          Copy-Item build/gamemodmanager.exe artifact/
+          Get-ChildItem build/plugins/*.dll -ErrorAction SilentlyContinue | Copy-Item -Destination artifact/
+          Get-ChildItem build/*.dll -ErrorAction SilentlyContinue | Copy-Item -Destination artifact/
 
       - uses: actions/upload-artifact@v4
         with:
@@ -99,8 +99,8 @@ jobs:
 
       - name: Assemble portable distribution
         run: |
-          chmod +x Core/packaging/assemble_portable.sh
-          Core/packaging/assemble_portable.sh linux-artifact/ windows-artifact/ GameModManager-Portable
+          chmod +x packaging/assemble_portable.sh
+          packaging/assemble_portable.sh linux-artifact/ windows-artifact/ GameModManager-Portable
 
       - uses: actions/upload-artifact@v4
         with:

@@ -72,7 +72,7 @@ bool OverlayFsStrategy::mount(const std::filesystem::path& mount_point,
     std::string cmd = "mount -t overlay overlay -o lowerdir=" + lowerdir_str +
                       ",workdir=" + work_dir_.string() + " " + mount_point.string();
 
-    Logger::instance().info("OverlayFS mount: " + cmd);
+    Logger::instance().debug("OverlayFS mount: " + cmd);
 
     int result = std::system(cmd.c_str());
     if (result != 0) {
@@ -83,7 +83,7 @@ bool OverlayFsStrategy::mount(const std::filesystem::path& mount_point,
     mount_point_ = mount_point;
     mounted_ = true;
 
-    Logger::instance().info("OverlayFS mounted at " + mount_point.string() +
+    Logger::instance().debug("OverlayFS mounted at " + mount_point.string() +
         " with " + std::to_string(lower_dirs.size()) + " layers");
     return true;
 }
@@ -111,7 +111,7 @@ bool OverlayFsStrategy::remount(const std::vector<std::filesystem::path>& lower_
     std::string cmd = "mount -t overlay overlay -o remount,lowerdir=" + lowerdir_str +
                       " " + mount_point_.string();
 
-    Logger::instance().info("OverlayFS remount: " + cmd);
+    Logger::instance().debug("OverlayFS remount: " + cmd);
 
     int result = std::system(cmd.c_str());
     if (result != 0) {
@@ -119,7 +119,7 @@ bool OverlayFsStrategy::remount(const std::vector<std::filesystem::path>& lower_
         return false;
     }
 
-    Logger::instance().info("OverlayFS remounted with " + std::to_string(lower_dirs.size()) + " layers");
+    Logger::instance().debug("OverlayFS remounted with " + std::to_string(lower_dirs.size()) + " layers");
     return true;
 }
 
@@ -141,7 +141,7 @@ bool OverlayFsStrategy::unmount() {
     std::filesystem::remove_all(work_dir_, ec);
 
     mounted_ = false;
-    Logger::instance().info("OverlayFS unmounted from " + mount_point_.string());
+    Logger::instance().debug("OverlayFS unmounted from " + mount_point_.string());
     return true;
 }
 

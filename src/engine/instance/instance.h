@@ -17,12 +17,14 @@ enum class InstanceKind {
     Logs,
     Config,
     Overwrite,
+    Meta,
 };
 
 struct InstanceInfo {
     std::string game_id;
     std::filesystem::path root;
     std::filesystem::path game_dir;  // path to the actual game install (e.g. steamapps/common/...)
+    uint32_t steam_appid = 0;
     bool portable = true;
 };
 
@@ -40,6 +42,10 @@ public:
     bool create_directories() const;
     bool write_toml() const;
     bool read_toml();
+
+    // Convert a display name to a filesystem-safe instance folder name.
+    // "The Binding of Isaac: Rebirth" → "The_Binding_of_Isaac_Rebirth"
+    static std::string to_instance_name(const std::string& display_name);
 
     static std::filesystem::path resolve_portable_root(
         const std::filesystem::path& exe_dir);

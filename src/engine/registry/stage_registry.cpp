@@ -19,7 +19,7 @@ void StageRegistry::register_claim(const std::string& game_id,
 
     claims_.push_back(std::move(claim));
 
-    Logger::instance().info("Stage claim registered: " + game_id + "." + stage_name +
+    Logger::instance().debug("Stage claim registered: " + game_id + "." + stage_name +
         " by " + (plugin_id.empty() ? "unknown" : plugin_id) +
         " (priority " + std::to_string(priority) + ")");
 }

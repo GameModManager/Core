@@ -21,6 +21,7 @@ public:
     void set_recent_instances(const std::vector<std::string>& instances);
     void update_tools_for_game(const std::string& game_id,
                                const std::vector<engine::ExternalTool>& tools);
+    void set_sort_available(bool available);
 
 signals:
     // File
@@ -48,6 +49,7 @@ signals:
 
     // Tools
     void tool_requested(const QString& tool_id, const QString& game_id);
+    void sort_mods_requested();
     void open_instance_folder_requested();
     void open_mods_folder_requested();
     void open_downloads_folder_requested();
@@ -56,6 +58,7 @@ signals:
     void about_requested();
     void about_qt_requested();
     void check_updates_requested();
+    void instance_statistics_requested();
 
 private:
     void build_file_menu();
@@ -68,6 +71,7 @@ private:
     QMenu* columns_menu_ = nullptr;
     QMenu* tools_menu_ = nullptr;
     QAction* tools_separator_ = nullptr;
+    QAction* sort_action_ = nullptr;
     std::string current_game_id_;
 };
 

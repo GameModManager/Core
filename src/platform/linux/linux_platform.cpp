@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -139,6 +140,148 @@ bool LinuxPlatform::launch_executable(
 
 bool LinuxPlatform::is_elevated() const {
     return geteuid() == 0;
+}
+
+// --- NXM protocol handler registration (XDG) ---
+
+static const char* NXM_DESKTOP_FILE = "gamemodmanager-nxm.desktop";
+static const char* NXM_DESKTOP_ID = "gamemodmanager-nxm";
+
+static std::filesystem::path nxm_desktop_path() {
+    auto home = std::getenv("HOME");
+    if (!home) return {};
+    return std::filesystem::path(home) / ".local" / "share" / "applications" / NXM_DESKTOP_FILE;
+}
+
+bool LinuxPlatform::register_nxm_handler(const std::filesystem::path& exe_path) {
+    auto desktop = nxm_desktop_path();
+    if (desktop.empty()) return false;
+
+    std::error_code ec;
+    std::filesystem::create_directories(desktop.parent_path(), ec);
+
+    std::ofstream f(desktop);
+    if (!f) return false;
+
+    f << "[Desktop Entry]\n"
+      << "Type=Application\n"
+      << "Name=GameModManager\n"
+      << "Comment=Download Nexus Mods via nxm:// links\n"
+      << "Exec=\"" << exe_path.string() << "\" --handle-nxm %u\n"
+      << "Terminal=false\n"
+      << "MimeType=x-scheme-handler/nxm;\n"
+      << "NoDisplay=true\n"
+      << "Categories=Game;\n";
+
+    f.close();
+    if (!f.good()) return false;
+
+    // Register with xdg-mime as the default handler
+    std::string cmd = "xdg-mime default " + std::string(NXM_DESKTOP_ID) + ".desktop x-scheme-handler/nxm 2>/dev/null";
+    return std::system(cmd.c_str()) == 0;
+}
+
+bool LinuxPlatform::unregister_nxm_handler() {
+    auto desktop = nxm_desktop_path();
+    if (!desktop.empty()) {
+        std::error_code ec;
+        std::filesystem::remove(desktop, ec);
+    }
+
+    // Reset to the previous default (or remove)
+    std::string cmd = "xdg-mime default org.gnome.Nautilus.desktop x-scheme-handler/nxm 2>/dev/null";
+    // Note: this is a best-effort reset; the user may have had a different handler
+    // A more correct approach would be to read the old value before registering
+    std::system(cmd.c_str());
+    return true;
+}
+
+bool LinuxPlatform::is_nxm_handler_registered() {
+    auto desktop = nxm_desktop_path();
+    if (!std::filesystem::exists(desktop)) return false;
+
+    // Check if xdg-mime thinks we're the default
+    FILE* pipe = popen("xdg-mime query default x-scheme-handler/nxm 2>/dev/null", "r");
+    if (!pipe) return false;
+
+    char buf[256];
+    std::string result;
+    while (fgets(buf, sizeof(buf), pipe)) result += buf;
+    pclose(pipe);
+
+    // Trim whitespace
+    while (!result.empty() && (result.back() == '\n' || result.back() == '\r'))
+        result.pop_back();
+
+    return result == (std::string(NXM_DESKTOP_ID) + ".desktop");
+}
+
+// --- GMM protocol handler registration (XDG) ---
+
+static const char* GMM_DESKTOP_FILE = "gamemodmanager-gmm.desktop";
+static const char* GMM_DESKTOP_ID = "gamemodmanager-gmm";
+
+static std::filesystem::path gmm_desktop_path() {
+    auto home = std::getenv("HOME");
+    if (!home) return {};
+    return std::filesystem::path(home) / ".local" / "share" / "applications" / GMM_DESKTOP_FILE;
+}
+
+bool LinuxPlatform::register_gmm_handler(const std::filesystem::path& exe_path) {
+    auto desktop = gmm_desktop_path();
+    if (desktop.empty()) return false;
+
+    std::error_code ec;
+    std::filesystem::create_directories(desktop.parent_path(), ec);
+
+    std::ofstream f(desktop);
+    if (!f) return false;
+
+    f << "[Desktop Entry]\n"
+      << "Type=Application\n"
+      << "Name=GameModManager (gmm://)\n"
+      << "Comment=Download mods via gmm:// links\n"
+      << "Exec=\"" << exe_path.string() << "\" --handle-gmm %u\n"
+      << "Terminal=false\n"
+      << "MimeType=x-scheme-handler/gmm;\n"
+      << "NoDisplay=true\n"
+      << "Categories=Game;\n";
+
+    f.close();
+    if (!f.good()) return false;
+
+    std::string cmd = "xdg-mime default " + std::string(GMM_DESKTOP_ID) + ".desktop x-scheme-handler/gmm 2>/dev/null";
+    return std::system(cmd.c_str()) == 0;
+}
+
+bool LinuxPlatform::unregister_gmm_handler() {
+    auto desktop = gmm_desktop_path();
+    if (!desktop.empty()) {
+        std::error_code ec;
+        std::filesystem::remove(desktop, ec);
+    }
+
+    std::string cmd = "xdg-mime default org.gnome.Nautilus.desktop x-scheme-handler/gmm 2>/dev/null";
+    std::system(cmd.c_str());
+    return true;
+}
+
+bool LinuxPlatform::is_gmm_handler_registered() {
+    auto desktop = gmm_desktop_path();
+    if (!std::filesystem::exists(desktop)) return false;
+
+    FILE* pipe = popen("xdg-mime query default x-scheme-handler/gmm 2>/dev/null", "r");
+    if (!pipe) return false;
+
+    char buf[256];
+    std::string result;
+    while (fgets(buf, sizeof(buf), pipe)) result += buf;
+    pclose(pipe);
+
+    while (!result.empty() && (result.back() == '\n' || result.back() == '\r'))
+        result.pop_back();
+
+    return result == (std::string(GMM_DESKTOP_ID) + ".desktop");
 }
 
 }  // namespace engine

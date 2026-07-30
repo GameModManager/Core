@@ -1,56 +1,88 @@
 #include "engine/archive/archive_extractor.h"
 
-#include <zip.h>
+#include <archive.h>
+#include <archive_entry.h>
 
 #include <fstream>
 
 namespace engine {
 
-bool ArchiveExtractor::extract_zip(const std::filesystem::path& archive,
-                                   const std::filesystem::path& dest_dir,
-                                   std::vector<ExtractedFile>& out_files) {
-    int err = 0;
-    zip_t* za = zip_open(archive.string().c_str(), ZIP_RDONLY, &err);
-    if (!za) return false;
+bool ArchiveExtractor::extract(const std::filesystem::path& archive,
+                                const std::filesystem::path& dest_dir,
+                                std::vector<ExtractedFile>& out_files) {
+    struct archive* a = archive_read_new();
+    if (!a) return false;
 
-    zip_int64_t num_entries = zip_get_num_entries(za, 0);
-    for (zip_int64_t i = 0; i < num_entries; ++i) {
-        const char* name = zip_get_name(za, i, 0);
+    archive_read_support_filter_all(a);
+    archive_read_support_format_all(a);
+
+    int r = archive_read_open_filename(a, archive.string().c_str(), 10240);
+    if (r != ARCHIVE_OK) {
+        archive_read_free(a);
+        return false;
+    }
+
+    struct archive_entry* entry;
+    while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
+        const char* name = archive_entry_pathname(entry);
         if (!name) continue;
 
         std::string name_str(name);
-        if (name_str.empty() || name_str.back() == '/') continue;
+        if (name_str.empty()) continue;
 
-        auto entry_path = dest_dir / name_str;
-        auto parent = entry_path.parent_path();
-        std::error_code ec;
-        std::filesystem::create_directories(parent, ec);
-        if (ec) continue;
+        auto dest_path = dest_dir / name_str;
 
-        zip_file_t* zf = zip_fopen(za, name, 0);
-        if (!zf) continue;
-
-        std::ofstream out(entry_path, std::ios::binary);
-        if (!out) {
-            zip_fclose(zf);
+        // Strip trailing slash from dir entries for consistent detection
+        bool is_dir = (name_str.back() == '/');
+        if (is_dir) {
+            std::error_code ec;
+            std::filesystem::create_directories(dest_path, ec);
+            if (ec) {
+                archive_read_free(a);
+                return false;
+            }
             continue;
         }
 
-        char buf[8192];
-        zip_int64_t n;
-        while ((n = zip_fread(zf, buf, sizeof(buf))) > 0) {
-            out.write(buf, n);
+        // Ensure parent directory exists
+        std::error_code ec;
+        std::filesystem::create_directories(dest_path.parent_path(), ec);
+        if (ec) {
+            archive_read_free(a);
+            return false;
         }
-        zip_fclose(zf);
+
+        // Write file data
+        std::ofstream out(dest_path, std::ios::binary);
+        if (!out) {
+            archive_read_free(a);
+            return false;
+        }
+
+        char buf[32768];
+        la_int64_t nread;
+        while ((nread = archive_read_data(a, buf, sizeof(buf))) > 0) {
+            out.write(buf, static_cast<std::streamsize>(nread));
+            if (!out) {
+                archive_read_free(a);
+                return false;
+            }
+        }
+        if (nread < 0) {
+            // Read error
+            archive_read_free(a);
+            return false;
+        }
         out.close();
 
         ExtractedFile ef;
         ef.archive_path = name_str;
-        ef.dest_path = entry_path;
+        ef.dest_path = dest_path;
         out_files.push_back(std::move(ef));
     }
 
-    zip_close(za);
+    archive_read_close(a);
+    archive_read_free(a);
     return true;
 }
 

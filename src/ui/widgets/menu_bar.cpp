@@ -18,7 +18,7 @@ AppMenuBar::AppMenuBar(MainWindow* parent)
     build_help_menu();
 }
 
-// ───────── File ─────────
+// --------- File ---------
 
 void AppMenuBar::build_file_menu() {
     auto* menu = addMenu("&File");
@@ -57,7 +57,7 @@ void AppMenuBar::build_file_menu() {
     connect(exit, &QAction::triggered, this, &AppMenuBar::exit_requested);
 }
 
-// ───────── Edit ─────────
+// --------- Edit ---------
 
 void AppMenuBar::build_edit_menu() {
     auto* menu = addMenu("&Edit");
@@ -91,7 +91,7 @@ void AppMenuBar::build_edit_menu() {
     connect(prio_down, &QAction::triggered, this, &AppMenuBar::priority_down_requested);
 }
 
-// ───────── View ─────────
+// --------- View ---------
 
 void AppMenuBar::build_view_menu() {
     auto* menu = addMenu("&View");
@@ -123,7 +123,7 @@ void AppMenuBar::build_view_menu() {
     connect(refresh, &QAction::triggered, this, &AppMenuBar::refresh_requested);
 }
 
-// ───────── Tools ─────────
+// --------- Tools ---------
 
 void AppMenuBar::build_tools_menu() {
     tools_menu_ = addMenu("&Tools");
@@ -132,6 +132,10 @@ void AppMenuBar::build_tools_menu() {
     // (nothing here yet; added when a game is selected)
 
     tools_separator_ = tools_menu_->addSeparator();
+
+    sort_action_ = tools_menu_->addAction("Sort Mods");
+    sort_action_->setVisible(false);
+    connect(sort_action_, &QAction::triggered, this, &AppMenuBar::sort_mods_requested);
 
     auto* open_inst = tools_menu_->addAction("Open Instance Folder");
     connect(open_inst, &QAction::triggered, this, &AppMenuBar::open_instance_folder_requested);
@@ -172,10 +176,19 @@ void AppMenuBar::update_tools_for_game(
     }
 }
 
-// ───────── Help ─────────
+void AppMenuBar::set_sort_available(bool available) {
+    if (sort_action_) sort_action_->setVisible(available);
+}
+
+// --------- Help ---------
 
 void AppMenuBar::build_help_menu() {
     auto* menu = addMenu("&Help");
+
+    auto* stats = menu->addAction("Instance Statistics...");
+    connect(stats, &QAction::triggered, this, &AppMenuBar::instance_statistics_requested);
+
+    menu->addSeparator();
 
     auto* about = menu->addAction("About GameModManager");
     connect(about, &QAction::triggered, this, &AppMenuBar::about_requested);
@@ -189,7 +202,7 @@ void AppMenuBar::build_help_menu() {
     connect(updates, &QAction::triggered, this, &AppMenuBar::check_updates_requested);
 }
 
-// ───────── Recent instances ─────────
+// --------- Recent instances ---------
 
 void AppMenuBar::set_recent_instances(const std::vector<std::string>& instances) {
     recent_menu_->clear();
