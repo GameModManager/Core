@@ -80,7 +80,7 @@ void CrashHandler::write_dump(int sig) {
     if (fd < 0) return;
 
     auto write_str = [fd](const char* s) {
-        ::write(fd, s, std::strlen(s));
+        [[maybe_unused]] auto _ = ::write(fd, s, std::strlen(s));
     };
 
     const char* sig_name = "UNKNOWN";

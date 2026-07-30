@@ -62,7 +62,7 @@ void Logger::log(LogLevel level, const std::string& message) {
     if (log_fd_ >= 0) {
         auto tag = level_tag(level);
         std::string line = "[" + tag + "] [" + ts + "] " + msg + "\n";
-        (void)::write(log_fd_, line.data(), line.size());
+        [[maybe_unused]] auto _ = ::write(log_fd_, line.data(), line.size());
     }
 }
 
