@@ -133,7 +133,8 @@ int64_t PreloadInterceptor::launch(const std::filesystem::path& executable,
         marker_ofs << "1";
         marker_ofs.close();
 
-        execv(exe_str.c_str(), (char*[]){ (char*)exe_str.c_str(), nullptr });
+        char* argv[] = { const_cast<char*>(exe_str.c_str()), nullptr };
+        execv(argv[0], argv);
 
         // Fallback for scripts
         execl("/bin/sh", "sh", exe_str.c_str(), nullptr);
