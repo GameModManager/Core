@@ -42,12 +42,10 @@ jobs:
           VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
         run: |
           vcpkg install libzip yaml-cpp curl --triplet x64-windows-release
+          echo "VCPKG_ROOT=$(Split-Path (Get-Command vcpkg).Source)" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release `
-          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
-          -DVCPKG_TARGET_TRIPLET=x64-windows-release `
-          -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-release -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
 
       - name: Build
         run: cmake --build build --config Release --target gamemodmanager
