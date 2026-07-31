@@ -20,6 +20,11 @@ NxmLink NxmRouter::parse(const std::string& url) {
 
     auto rest = url.substr(prefix.size());
 
+    // Tolerate an empty authority re-serialized as a leading slash by browser
+    // / portal layers: "nxm:///game/mods/..." is the same link as
+    // "nxm://game/mods/...". Strip any leading slashes.
+    while (rest.size() > 1 && rest[0] == '/') rest.erase(0, 1);
+
     // Extract domain (up to first '/' or '?')
     auto domain_end = rest.find_first_of("/?");
     if (domain_end == std::string::npos) {
@@ -31,6 +36,19 @@ NxmLink NxmRouter::parse(const std::string& url) {
     if (link.nexus_domain.empty()) return link;
 
     auto path = rest.substr(domain_end + 1);
+
+    // The Nexus site emits "nxm://nexus/<game-domain>/mods/...": the literal
+    // authority "nexus" is not a game domain, the real one follows it.
+    if (rest.substr(0, domain_end) == "nexus") {
+        auto second_end = path.find_first_of("/?");
+        if (second_end != std::string::npos) {
+            auto second = path.substr(0, second_end);
+            if (second != "mods" && second != "files") {
+                link.nexus_domain = second;
+                path = path.substr(second_end + 1);
+            }
+        }
+    }
 
     // Parse path segments: mods/<mod_id>/files/<file_id>
     // Split on '/' and walk pairs
@@ -127,7 +145,7 @@ NxmLink NxmRouter::parse(const std::string& url) {
                 val = strip(val);
 
                 if (key == "key") link.key = val;
-                else if (key == "expire") {
+                else if (key == "expire" || key == "expires") {
                     try { link.expire = std::stoll(val); } catch (...) {}
                 }
                 else if (key == "user_id") {

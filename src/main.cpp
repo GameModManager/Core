@@ -1,4 +1,8 @@
 #include <QApplication>
+
+#ifdef GMM_HAS_QTKEYCHAIN
+#include "keyring/qtkeychain_keyring.h"
+#endif
 #include <QCommandLineParser>
 #include <QDir>
 #include <QMessageLogContext>
@@ -33,6 +37,7 @@ static void qt_message_filter(QtMsgType type, const QMessageLogContext& ctx, con
 #include "engine/nxm/nxm_ipc.h"
 #include "engine/theme/theme_manager.h"
 #include "engine/theme/style_manager.h"
+#include "engine/nexus_auth.h"
 #include "cli/headless_launcher.h"
 
 #include <cstdlib>
@@ -61,6 +66,15 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     app.setApplicationName("GameModManager");
     app.setApplicationVersion("0.1.0");
+
+    // Store secrets in the OS keyring (QtKeychain: Secret Service / KWallet)
+    // when available, falling back to insecure file storage with a warning
+    // otherwise. Must run on the main thread — do it now, before any download
+    // worker can touch the key.
+#ifdef GMM_HAS_QTKEYCHAIN
+    engine::NexusAuth::instance().set_keyring(
+        std::make_unique<engine::QtKeychainKeyring>());
+#endif
     // Smooth scrolling on item views is applied per-window via
     // ui::enable_smooth_scrolling() (Qt 6 removed AA_SmoothScrolling).
     // TODO: gate behind a Settings "Smooth scrolling" checkbox.

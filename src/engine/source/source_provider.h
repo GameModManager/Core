@@ -10,6 +10,13 @@ namespace engine {
 struct Mod;
 struct PipelineContext;
 
+// Info a provider can resolve for a mod before download.
+struct SourceDownloadInfo {
+    std::string archive_name;   // real archive filename incl. extension (empty
+                                // = keep the default "<source_id>[-<file_id>].zip")
+    std::string display_name;   // human-readable mod/file name for the UI
+};
+
 class SourceProvider {
 public:
     virtual ~SourceProvider() = default;
@@ -19,6 +26,12 @@ public:
     // the resume offset / abort flag.
     virtual bool fetch(const Mod& mod, PipelineContext& ctx,
                        const std::filesystem::path& dest_path) = 0;
+    // Optional: resolve metadata about a mod before download (real archive
+    // name, display name). Called by FetchStage on the worker thread before
+    // fetch(). An empty struct means "no info available".
+    virtual SourceDownloadInfo resolve_download_info(const Mod& mod) const {
+        return {};
+    }
 };
 
 class SourceRegistry {

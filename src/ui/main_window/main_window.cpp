@@ -425,10 +425,14 @@ MainWindow::MainWindow(QWidget* parent)
     // Download finished (download-only, MO2 model): the row becomes Complete
     // with a real file path; installation is a separate user-triggered step.
     connect(pipeline_thread_->worker(), &PipelineWorker::download_complete,
-            this, [this](const std::string& id, bool success, const std::string& archive_path) {
+            this, [this](const std::string& id, bool success,
+                         const std::string& archive_path, const std::string& name) {
         auto* dt = right_panel_->downloads_tab();
         if (dt) {
             if (!archive_path.empty()) dt->set_file_path(id, archive_path);
+            // Replace the "Mod #<id> - file <id>" placeholder with the real
+            // name the provider resolved (empty = nothing available).
+            if (!name.empty()) dt->rename_download(id, name);
             dt->mark_complete(id, success);
         }
         // Persist download state
@@ -4142,10 +4146,27 @@ void MainWindow::handle_nxm_download(const engine::NxmLink& link) {
         return;
     }
 
+    // Redact the signed download key in the log - it is a bearer token. The
+    // rest of the URL (expires, user_id, param names) stays visible so a
+    // session can verify whether the browser delivered the query string.
+    std::string log_url = link.full_url;
+    {
+        auto kp = log_url.find("key=");
+        if (kp != std::string::npos) {
+            auto ke = log_url.find_first_of("&", kp);
+            log_url = log_url.substr(0, kp + 4) +
+                      (ke != std::string::npos ? log_url.substr(ke) : "");
+        }
+    }
+
     engine::Logger::instance().debug(
         "NXM download: domain=" + link.nexus_domain +
         " mod=" + std::to_string(link.mod_id) +
-        " file=" + std::to_string(link.file_id));
+        " file=" + std::to_string(link.file_id) +
+        " key=" + (link.key.empty() ? "absent" :
+                   "present(" + std::to_string(link.key.size()) + "B)") +
+        " expires=" + (link.expire > 0 ? std::to_string(link.expire) : "none") +
+        " url=" + log_url);
 
     // Find which game_id owns this nexus_domain via managed games
     std::string matched_game_id;

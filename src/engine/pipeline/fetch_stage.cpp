@@ -34,13 +34,26 @@ bool FetchStage::execute(Mod& mod, PipelineContext& ctx) {
     std::error_code ec;
     std::filesystem::create_directories(dest_dir, ec);
 
-    // Build archive filename
+    // Build archive filename. Providers may resolve the real file name (e.g.
+    // Nexus file_name, with the correct extension); otherwise fall back to the
+    // generic "<source_id>[-<file_id>].zip".
     std::ostringstream fname;
-    fname << mod.download_source_id;
-    if (mod.download_nxm.file_id > 0)
-        fname << "-" << mod.download_nxm.file_id;
-    fname << ".zip";
+    auto info = provider->resolve_download_info(mod);
+    if (!info.archive_name.empty()) {
+        fname << info.archive_name;
+    } else {
+        fname << mod.download_source_id;
+        if (mod.download_nxm.file_id > 0)
+            fname << "-" << mod.download_nxm.file_id;
+        fname << ".zip";
+    }
     mod.archive_filename = fname.str();
+
+    // Carry the real display name (e.g. "SkyUI") up to the UI. Only when the
+    // provider actually resolved one - the PipelineWorker's placeholder
+    // ("Mod file <id>") is left untouched otherwise.
+    if (!info.display_name.empty())
+        mod.name = info.display_name;
 
     auto dest_path = dest_dir / mod.archive_filename;
 
