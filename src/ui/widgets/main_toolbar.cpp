@@ -83,7 +83,7 @@ QToolButton* MainToolbar::add_exec_button(const QString& tooltip, const QIcon& i
     connect(btn, &QWidget::customContextMenuRequested, this, [this, btn](const QPoint& pos) {
         Q_UNUSED(pos);
         QMenu menu;
-        menu.addAction("Remove shortcut");
+        menu.addAction(tr("Remove shortcut"));
         auto* action = menu.exec(btn->mapToGlobal(QPoint(0, btn->height())));
         if (action) {
             QString path = btn->property("exec_path").toString();

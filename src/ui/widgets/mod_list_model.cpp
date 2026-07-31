@@ -124,7 +124,7 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
             return QColor(140, 140, 140);
         }
         if (role == Qt::DisplayRole && index.column() == Name) {
-            return QString("Unmanaged: ") + mod.name;
+            return tr("Unmanaged: %1").arg(mod.name);
         }
     }
 
@@ -240,10 +240,10 @@ QVariant ModListModel::headerData(int section, Qt::Orientation, int role) const 
     if (role != Qt::DisplayRole) return {};
     switch (section) {
         case Enabled: return "";
-        case Name: return "Name";
-        case Version: return "Version";
-        case Flags: return "Flags";
-        case Priority: return "Priority";
+        case Name: return tr("Name");
+        case Version: return tr("Version");
+        case Flags: return tr("Flags");
+        case Priority: return tr("Priority");
     }
     return {};
 }

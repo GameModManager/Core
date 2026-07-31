@@ -22,7 +22,7 @@ else()
     set(GMM_PLATFORM "linux")
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network LinguistTools)
 
 # Dependencies — PkgConfig on Linux/macOS, find_package on Windows
 if(WIN32)
@@ -198,6 +198,24 @@ set(APP_SOURCES
 )
 
 add_executable(gamemodmanager ${ENGINE_SOURCES} ${RUNTIME_SOURCES} ${PLATFORM_SOURCES} ${UI_SOURCES} ${APP_SOURCES})
+
+# Translations - source language is English.
+# - qt_add_lupdate registers the standard `update_translations` target that
+#   refreshes i18n/en_US.ts with lupdate.
+# - qt_add_translations runs lrelease and embeds the resulting .qm under :/i18n/.
+set(TS_FILES
+    i18n/en_US.ts
+    i18n/de_DE.ts
+    i18n/ro_RO.ts
+)
+qt_add_lupdate(gamemodmanager
+    TS_FILES ${TS_FILES}
+    SOURCE_TARGETS gamemodmanager
+)
+qt_add_translations(gamemodmanager
+    TS_FILES ${TS_FILES}
+    RESOURCE_PREFIX /i18n
+)
 
 # Link libraries — platform-specific
 target_link_libraries(gamemodmanager PRIVATE Qt6::Widgets Qt6::Network PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::YAMLCPP PkgConfig::CURL PkgConfig::NLOHMANN_JSON pybind11::embed Python3::Python)

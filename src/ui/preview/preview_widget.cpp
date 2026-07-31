@@ -82,7 +82,7 @@ void PreviewWidget::paintEvent(QPaintEvent* event) {
 
 void PreviewWidget::contextMenuEvent(QContextMenuEvent* event) {
     QMenu menu(this);
-    QAction* anim_action = menu.addAction("Animate .anm2 preview");
+    QAction* anim_action = menu.addAction(tr("Animate .anm2 preview"));
     anim_action->setCheckable(true);
     anim_action->setChecked(animate_anm2_);
     connect(anim_action, &QAction::toggled, this, &PreviewWidget::set_animate_anm2);
