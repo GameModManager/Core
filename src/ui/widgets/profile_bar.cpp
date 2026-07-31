@@ -27,12 +27,11 @@ ProfileBar::ProfileBar(QWidget* parent)
 
     layout->addSpacing(8);
 
-    // Import button - empty stub for now
+    // Import button - imports a modlist file
     import_btn_ = new QToolButton(this);
     import_btn_->setText(tr("Import"));
     import_btn_->setIcon(style()->standardIcon(QStyle::SP_ArrowDown));
     import_btn_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    import_btn_->setEnabled(false);
     layout->addWidget(import_btn_);
 
     // Combined Import/Export button (replaces the old export to CSV)
