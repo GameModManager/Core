@@ -99,8 +99,12 @@
 #include <QTreeWidget>
 #include <QHeaderView>
 #include <QGroupBox>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDateTime>
+#include <QDir>
+#include <QLocale>
+#include <QSettings>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -154,7 +158,7 @@ QIcon extractExeIconShortcut(const QString& exePath) {
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent) {
-    setWindowTitle("GameModManager");
+    setWindowTitle(tr("GameModManager"));
     resize(1200, 800);
 
     // --- Menu bar (must be created before the toolbar so parent is set) ---
@@ -207,7 +211,7 @@ MainWindow::MainWindow(QWidget* parent)
         create_separator();
     });
     connect(profile_bar_, &ProfileBar::create_empty_mod_clicked, this, [this]() {
-        QMessageBox::information(this, "Create", "Create Empty Mod - coming soon");
+        QMessageBox::information(this, tr("Create"), tr("Create Empty Mod - coming soon"));
     });
 
     connect(profile_bar_, &ProfileBar::profile_changed, this, [this](const QString& profile) {
@@ -626,7 +630,7 @@ void MainWindow::set_game_info(const std::string& game_id,
 
 void MainWindow::update_title() {
     if (current_game_name_.empty()) {
-        setWindowTitle("GameModManager");
+        setWindowTitle(tr("GameModManager"));
     } else if (current_profile_name_.empty()) {
         setWindowTitle(("GameModManager - " + current_game_name_).c_str());
     } else {
@@ -661,19 +665,19 @@ void MainWindow::setup_menu_bar() {
 void MainWindow::connect_menu_actions() {
     // --- File ---
     connect(menu_bar_, &AppMenuBar::new_instance_requested, this, [this]() {
-        QMessageBox::information(this, "New Instance", "New Instance - coming soon");
+        QMessageBox::information(this, tr("New Instance"), tr("New Instance - coming soon"));
     });
     connect(menu_bar_, &AppMenuBar::open_instance_requested, this, [this]() {
-        QMessageBox::information(this, "Open Instance", "Open Instance - coming soon");
+        QMessageBox::information(this, tr("Open Instance"), tr("Open Instance - coming soon"));
     });
     connect(menu_bar_, &AppMenuBar::recent_instance_selected, this, [this](const QString& name) {
         engine::Logger::instance().debug("Opening recent instance: " + name.toStdString());
     });
     connect(menu_bar_, &AppMenuBar::import_mods_requested, this, [this]() {
-        QMessageBox::information(this, "Import Mods", "Import Mods - coming soon");
+        QMessageBox::information(this, tr("Import Mods"), tr("Import Mods - coming soon"));
     });
     connect(menu_bar_, &AppMenuBar::export_mods_requested, this, [this]() {
-        QMessageBox::information(this, "Export Mods", "Export Mods - coming soon");
+        QMessageBox::information(this, tr("Export Mods"), tr("Export Mods - coming soon"));
     });
     connect(menu_bar_, &AppMenuBar::settings_requested, this, &MainWindow::show_settings_dialog);
     connect(menu_bar_, &AppMenuBar::exit_requested, this, [this]() {
@@ -804,16 +808,16 @@ void MainWindow::connect_menu_actions() {
 
     // --- Help ---
     connect(menu_bar_, &AppMenuBar::about_requested, this, [this]() {
-        QMessageBox::about(this, "About GameModManager",
+        QMessageBox::about(this, tr("About GameModManager"),
             "<h3>GameModManager</h3>"
             "<p>Version " VERSION "</p>"
-            "<p>Cross-platform game mod manager with multi-repo plugin support.</p>");
+            "<p>" + tr("Cross-platform game mod manager with multi-repo plugin support.") + "</p>");
     });
     connect(menu_bar_, &AppMenuBar::about_qt_requested, this, [this]() {
-        QMessageBox::aboutQt(this, "About Qt");
+        QMessageBox::aboutQt(this, tr("About Qt"));
     });
     connect(menu_bar_, &AppMenuBar::check_updates_requested, this, [this]() {
-        QMessageBox::information(this, "Updates", "You are running the latest version.");
+        QMessageBox::information(this, tr("Updates"), tr("You are running the latest version."));
     });
     connect(menu_bar_, &AppMenuBar::instance_statistics_requested, this, &MainWindow::show_instance_statistics);
 }
@@ -1417,18 +1421,18 @@ void MainWindow::setup_mod_list_context_menu() {
         QMenu menu;
 
         if (entry.is_overwrite) {
-            menu.addAction(QIcon::fromTheme("edit-clear"), "Clear Overwrite",
+            menu.addAction(QIcon::fromTheme("edit-clear"), tr("Clear Overwrite"),
                 this, [this]() { clear_overwrite(); });
-            menu.addAction(QIcon::fromTheme("document-new"), "Create Mod from Overwrite",
+            menu.addAction(QIcon::fromTheme("document-new"), tr("Create Mod from Overwrite"),
                 this, [this]() { create_mod_from_overwrite(); });
             menu.exec(mod_view_->viewport()->mapToGlobal(pos));
             return;
         }
 
         if (entry.is_separator) {
-            menu.addAction(QIcon::fromTheme("document-edit"), "Edit",
+            menu.addAction(QIcon::fromTheme("document-edit"), tr("Edit"),
                 this, [this, row]() { edit_separator(row); });
-            menu.addAction(QIcon::fromTheme("edit-delete"), "Delete",
+            menu.addAction(QIcon::fromTheme("edit-delete"), tr("Delete"),
                 this, [this, row]() { delete_separator(row); });
             menu.exec(mod_view_->viewport()->mapToGlobal(pos));
             return;
@@ -1439,12 +1443,12 @@ void MainWindow::setup_mod_list_context_menu() {
         bool multi = sel.size() > 1;
 
         if (multi) {
-            menu.addAction(QIcon::fromTheme("dialog-ok"), "Enable Selected",
+            menu.addAction(QIcon::fromTheme("dialog-ok"), tr("Enable Selected"),
                 this, [this]() { toggle_selected_mods(true); });
-            menu.addAction(QIcon::fromTheme("dialog-cancel"), "Disable Selected",
+            menu.addAction(QIcon::fromTheme("dialog-cancel"), tr("Disable Selected"),
                 this, [this]() { toggle_selected_mods(false); });
             menu.addSeparator();
-            menu.addAction(QIcon::fromTheme("edit-delete"), "Remove",
+            menu.addAction(QIcon::fromTheme("edit-delete"), tr("Remove"),
                 this, [this]() { remove_selected_mods(); });
             menu.exec(mod_view_->viewport()->mapToGlobal(pos));
             return;
@@ -1455,7 +1459,7 @@ void MainWindow::setup_mod_list_context_menu() {
         bool has_conflicts = entry.conflict_wins + entry.conflict_losses > 0;
 
         // Change Separator submenu
-        auto* sep_submenu = menu.addMenu(QIcon::fromTheme("view-sort"), "Change Separator");
+        auto* sep_submenu = menu.addMenu(QIcon::fromTheme("view-sort"), tr("Change Separator"));
         bool any_seps = false;
         for (const auto& m : mod_model_->mods()) {
             if (m.is_separator) {
@@ -1467,32 +1471,32 @@ void MainWindow::setup_mod_list_context_menu() {
         }
         sep_submenu->setEnabled(any_seps);
 
-        menu.addAction(QIcon::fromTheme("list-add"), "Create Separator",
+        menu.addAction(QIcon::fromTheme("list-add"), tr("Create Separator"),
             this, [this, row]() { create_separator_at_row(row); });
 
         if (has_conflicts) {
             menu.addSeparator();
-            menu.addAction(QIcon::fromTheme("go-top"), "Send to Highest Priority",
+            menu.addAction(QIcon::fromTheme("go-top"), tr("Send to Highest Priority"),
                 this, [this, mod_id]() { send_to_highest_priority(mod_id); });
-            menu.addAction(QIcon::fromTheme("go-bottom"), "Send to Lowest Priority",
+            menu.addAction(QIcon::fromTheme("go-bottom"), tr("Send to Lowest Priority"),
                 this, [this, mod_id]() { send_to_lowest_priority(mod_id); });
 
             if (!entry.separator_id.isEmpty() && mod_model_->has_conflicts_within_separator(mod_id)) {
-                menu.addAction(QIcon::fromTheme("go-up"), "Send to Highest in Separator",
+                menu.addAction(QIcon::fromTheme("go-up"), tr("Send to Highest in Separator"),
                     this, [this, mod_id]() { send_to_highest_in_separator(mod_id); });
-                menu.addAction(QIcon::fromTheme("go-down"), "Send to Lowest in Separator",
+                menu.addAction(QIcon::fromTheme("go-down"), tr("Send to Lowest in Separator"),
                     this, [this, mod_id]() { send_to_lowest_in_separator(mod_id); });
             }
         }
 
         menu.addSeparator();
-        menu.addAction(QIcon::fromTheme("dialog-ok"), "Enable Selected",
+        menu.addAction(QIcon::fromTheme("dialog-ok"), tr("Enable Selected"),
             this, [this]() { toggle_selected_mods(true); });
-        menu.addAction(QIcon::fromTheme("dialog-cancel"), "Disable Selected",
+        menu.addAction(QIcon::fromTheme("dialog-cancel"), tr("Disable Selected"),
             this, [this]() { toggle_selected_mods(false); });
 
         menu.addSeparator();
-        menu.addAction(QIcon::fromTheme("document-edit"), "Rename Mod...",
+        menu.addAction(QIcon::fromTheme("document-edit"), tr("Rename Mod..."),
             this, [this]() { rename_selected_mod(); });
 
         menu.addSeparator();
@@ -1507,7 +1511,7 @@ void MainWindow::setup_mod_list_context_menu() {
                 visit_act->setEnabled(!src.url.isEmpty());
             }
         }
-        menu.addAction(QIcon::fromTheme("folder"), "Open in File Manager",
+        menu.addAction(QIcon::fromTheme("folder"), tr("Open in File Manager"),
             this, [this, mod_id]() {
                 auto folder = mods_dir_path() / mod_id.toStdString();
                 std::error_code ec;
@@ -1524,7 +1528,7 @@ void MainWindow::setup_mod_list_context_menu() {
             });
 
         menu.addSeparator();
-        menu.addAction(QIcon::fromTheme("edit-delete"), "Remove",
+        menu.addAction(QIcon::fromTheme("edit-delete"), tr("Remove"),
             this, [this]() { remove_selected_mods(); });
 
         menu.exec(mod_view_->viewport()->mapToGlobal(pos));
@@ -1532,8 +1536,8 @@ void MainWindow::setup_mod_list_context_menu() {
 }
 
 void MainWindow::clear_overwrite() {
-    auto reply = QMessageBox::question(this, "Clear Overwrite",
-        "Remove all files from the Overwrite folder? This cannot be undone.",
+    auto reply = QMessageBox::question(this, tr("Clear Overwrite"),
+        tr("Remove all files from the Overwrite folder? This cannot be undone."),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (reply != QMessageBox::Yes) return;
 
@@ -1541,17 +1545,17 @@ void MainWindow::clear_overwrite() {
         auto overwrite_dir = current_instance_root_ / "overwrite";
         if (engine::SyncStage::clear_overwrite(overwrite_dir)) {
             engine::Logger::instance().debug("Overwrite cleared");
-            QMessageBox::information(this, "Overwrite", "Overwrite folder cleared.");
+            QMessageBox::information(this, tr("Overwrite"), tr("Overwrite folder cleared."));
         } else {
-            QMessageBox::warning(this, "Overwrite", "Failed to clear Overwrite folder.");
+            QMessageBox::warning(this, tr("Overwrite"), tr("Failed to clear Overwrite folder."));
         }
     }
 }
 
 void MainWindow::create_mod_from_overwrite() {
     bool ok;
-    auto name = QInputDialog::getText(this, "Create Mod from Overwrite",
-        "Mod name:", QLineEdit::Normal, QString(), &ok);
+    auto name = QInputDialog::getText(this, tr("Create Mod from Overwrite"),
+        tr("Mod name:"), QLineEdit::Normal, QString(), &ok);
     if (!ok || name.isEmpty()) return;
     if (current_instance_root_.empty()) return;
 
@@ -1572,7 +1576,7 @@ void MainWindow::create_mod_from_overwrite() {
         }
     }
     if (rel_paths.empty()) {
-        QMessageBox::information(this, "Create Mod", "Overwrite folder is empty.");
+        QMessageBox::information(this, tr("Create Mod"), tr("Overwrite folder is empty."));
         return;
     }
 
@@ -1580,9 +1584,9 @@ void MainWindow::create_mod_from_overwrite() {
         auto id = name;
         mod_model_->add_mod(id, name, "");
         engine::Logger::instance().debug("Promote Overwrite to mod: " + name.toStdString());
-        QMessageBox::information(this, "Create Mod", "Overwrite contents promoted to mod: " + name);
+        QMessageBox::information(this, tr("Create Mod"), tr("Overwrite contents promoted to mod: %1").arg(name));
     } else {
-        QMessageBox::warning(this, "Create Mod", "Failed to promote Overwrite files.");
+        QMessageBox::warning(this, tr("Create Mod"), tr("Failed to promote Overwrite files."));
     }
 }
 
@@ -1599,9 +1603,9 @@ void MainWindow::remove_selected_mods() {
     }
     if (names.isEmpty()) return;
 
-    auto reply = QMessageBox::question(this, "Remove Mods",
-        "Permanently delete " + QString::number(names.size()) + " mod(s) from disk?\n\n" +
-        names.join("\n") + "\n\nThis cannot be undone.",
+    auto reply = QMessageBox::question(this, tr("Remove Mods"),
+        tr("Permanently delete %1 mod(s) from disk?\n\n%2\n\nThis cannot be undone.")
+            .arg(names.size()).arg(names.join("\n")),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (reply != QMessageBox::Yes) return;
 
@@ -1737,8 +1741,8 @@ void MainWindow::rename_selected_mod() {
     if (mods_subpath.empty()) return;
 
     bool ok;
-    auto new_name = QInputDialog::getText(this, "Rename Mod",
-        "New name:", QLineEdit::Normal, entry.name, &ok);
+    auto new_name = QInputDialog::getText(this, tr("Rename Mod"),
+        tr("New name:"), QLineEdit::Normal, entry.name, &ok);
     if (!ok || new_name.trimmed().isEmpty()) return;
     if (new_name.trimmed() == entry.name) return;
 
@@ -1772,29 +1776,29 @@ void MainWindow::rename_selected_mod() {
 
 SourceVisitInfo MainWindow::source_visit_info(const QString& source_type, const QString& source_id) const {
     if (source_type == "steam") {
-        return {"Visit on Workshop",
+        return {tr("Visit on Workshop"),
             QString("https://steamcommunity.com/sharedfiles/filedetails/?id=%1").arg(source_id)};
     }
     if (source_type == "nexus") {
         auto domain = QString::fromStdString(
             knowledge_ ? knowledge_->get(current_game_id_, "nexus_domain", "") : "");
         if (domain.isEmpty()) domain = source_id;
-        return {"Visit on Nexus",
+        return {tr("Visit on Nexus"),
             QString("https://www.nexusmods.com/%1/mods/%2").arg(domain, source_id)};
     }
     if (source_type == "loverslab") {
-        return {"Visit on LoversLab",
+        return {tr("Visit on LoversLab"),
             QString("https://www.loverslab.com/files/file/%1/").arg(source_id)};
     }
     if (source_type == "moddb") {
-        return {"Visit on ModDB",
+        return {tr("Visit on ModDB"),
             QString("https://www.moddb.com/mods/%1").arg(source_id)};
     }
     auto label = source_type;
     if (!label.isEmpty()) {
         label[0] = label[0].toUpper();
     }
-    return {QString("Visit on %1").arg(label), QString()};
+    return {tr("Visit on %1").arg(label), QString()};
 }
 
 void MainWindow::create_separator() {
@@ -1805,20 +1809,20 @@ void MainWindow::create_separator() {
     if (mods_subpath.empty()) return;
 
     bool ok;
-    auto name = QInputDialog::getText(this, "Create Separator",
-        "Separator name:", QLineEdit::Normal, QString(), &ok);
+    auto name = QInputDialog::getText(this, tr("Create Separator"),
+        tr("Separator name:"), QLineEdit::Normal, QString(), &ok);
     if (!ok || name.trimmed().isEmpty()) return;
 
     // Check for duplicate names
     auto existing = mod_model_->existing_separator_names();
     if (existing.contains(name.trimmed())) {
-        QMessageBox::warning(this, "Separator", "A separator with this name already exists.");
+        QMessageBox::warning(this, tr("Separator"), tr("A separator with this name already exists."));
         return;
     }
 
     // Pick color
     QColor initial("#888888");
-    QColor color = QColorDialog::getColor(initial, this, "Separator Color");
+    QColor color = QColorDialog::getColor(initial, this, tr("Separator Color"));
     if (!color.isValid()) return;
 
     auto folder_name = name.trimmed().toStdString() + separator_suffix;
@@ -1828,7 +1832,7 @@ void MainWindow::create_separator() {
     std::error_code ec;
     std::filesystem::create_directories(sep_dir, ec);
     if (ec) {
-        QMessageBox::warning(this, "Separator", "Failed to create separator directory.");
+        QMessageBox::warning(this, tr("Separator"), tr("Failed to create separator directory."));
         return;
     }
 
@@ -1836,7 +1840,7 @@ void MainWindow::create_separator() {
     auto xml_path = sep_dir / "separator.xml";
     std::ofstream f(xml_path);
     if (!f) {
-        QMessageBox::warning(this, "Separator", "Failed to write separator.xml.");
+        QMessageBox::warning(this, tr("Separator"), tr("Failed to write separator.xml."));
         return;
     }
     f << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
@@ -1860,20 +1864,20 @@ void MainWindow::create_separator_at_row(int row) {
     if (mods_subpath.empty()) return;
 
     bool ok;
-    auto name = QInputDialog::getText(this, "Create Separator",
-        "Separator name:", QLineEdit::Normal, QString(), &ok);
+    auto name = QInputDialog::getText(this, tr("Create Separator"),
+        tr("Separator name:"), QLineEdit::Normal, QString(), &ok);
     if (!ok || name.trimmed().isEmpty()) return;
 
     // Check for duplicate names
     auto existing = mod_model_->existing_separator_names();
     if (existing.contains(name.trimmed())) {
-        QMessageBox::warning(this, "Separator", "A separator with this name already exists.");
+        QMessageBox::warning(this, tr("Separator"), tr("A separator with this name already exists."));
         return;
     }
 
     // Pick color
     QColor initial("#888888");
-    QColor color = QColorDialog::getColor(initial, this, "Separator Color");
+    QColor color = QColorDialog::getColor(initial, this, tr("Separator Color"));
     if (!color.isValid()) return;
 
     auto folder_name = name.trimmed().toStdString() + separator_suffix;
@@ -1883,7 +1887,7 @@ void MainWindow::create_separator_at_row(int row) {
     std::error_code ec;
     std::filesystem::create_directories(sep_dir, ec);
     if (ec) {
-        QMessageBox::warning(this, "Separator", "Failed to create separator directory.");
+        QMessageBox::warning(this, tr("Separator"), tr("Failed to create separator directory."));
         return;
     }
 
@@ -1891,7 +1895,7 @@ void MainWindow::create_separator_at_row(int row) {
     auto xml_path = sep_dir / "separator.xml";
     std::ofstream f(xml_path);
     if (!f) {
-        QMessageBox::warning(this, "Separator", "Failed to write separator.xml.");
+        QMessageBox::warning(this, tr("Separator"), tr("Failed to write separator.xml."));
         return;
     }
     f << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
@@ -1923,21 +1927,21 @@ void MainWindow::edit_separator(int row) {
 
     // Prompt for new name
     bool ok;
-    auto new_name = QInputDialog::getText(this, "Edit Separator",
-        "Separator name:", QLineEdit::Normal, mod.name, &ok);
+    auto new_name = QInputDialog::getText(this, tr("Edit Separator"),
+        tr("Separator name:"), QLineEdit::Normal, mod.name, &ok);
     if (!ok || new_name.trimmed().isEmpty()) return;
 
     // Check for duplicate names (excluding self)
     auto existing = mod_model_->existing_separator_names();
     existing.removeAll(mod.name);
     if (existing.contains(new_name.trimmed())) {
-        QMessageBox::warning(this, "Separator", "A separator with this name already exists.");
+        QMessageBox::warning(this, tr("Separator"), tr("A separator with this name already exists."));
         return;
     }
 
     // Pick color
     QColor current_color(mod.separator_color.isEmpty() ? "#888888" : mod.separator_color);
-    QColor color = QColorDialog::getColor(current_color, this, "Separator Color");
+    QColor color = QColorDialog::getColor(current_color, this, tr("Separator Color"));
     if (!color.isValid()) return;
 
     auto old_folder = mod.id.toStdString();
@@ -1952,7 +1956,7 @@ void MainWindow::edit_separator(int row) {
         std::error_code ec;
         std::filesystem::rename(old_path, new_path, ec);
         if (ec) {
-            QMessageBox::warning(this, "Separator", "Failed to rename separator folder.");
+            QMessageBox::warning(this, tr("Separator"), tr("Failed to rename separator folder."));
             return;
         }
     }
@@ -1985,8 +1989,8 @@ void MainWindow::delete_separator(int row) {
     const auto& mod = mod_model_->mods()[row];
     if (!mod.is_separator) return;
 
-    auto reply = QMessageBox::question(this, "Delete Separator",
-        "Delete separator \"" + mod.name + "\" from disk?\n\nThis cannot be undone.",
+    auto reply = QMessageBox::question(this, tr("Delete Separator"),
+        tr("Delete separator \"%1\" from disk?\n\nThis cannot be undone.").arg(mod.name),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (reply != QMessageBox::Yes) return;
 
@@ -2500,12 +2504,12 @@ void MainWindow::populate_executables() {
 
 void MainWindow::launch_game() {
     auto exec_rel = right_panel_->exec_controls()->current_executable();
-    if (exec_rel.isEmpty() || exec_rel == "Select executable...") {
-        QMessageBox::warning(this, "Launch", "No executable selected.");
+    if (exec_rel.isEmpty() || exec_rel == kAddNewEntryText) {
+        QMessageBox::warning(this, tr("Launch"), tr("No executable selected."));
         return;
     }
     if (current_game_dir_.empty()) {
-        QMessageBox::warning(this, "Launch", "Game directory not set.");
+        QMessageBox::warning(this, tr("Launch"), tr("Game directory not set."));
         return;
     }
 
@@ -2527,8 +2531,8 @@ static void gmm_debug(const char* fmt, ...) {
 void MainWindow::launch_with_executable(const QString& full_path) {
     auto exec_path = std::filesystem::path(full_path.toStdString());
     if (!std::filesystem::exists(exec_path)) {
-        QMessageBox::warning(this, "Launch",
-            "Executable not found:\n" + full_path);
+        QMessageBox::warning(this, tr("Launch"),
+            tr("Executable not found:\n%1").arg(full_path));
         return;
     }
 
@@ -2570,7 +2574,7 @@ void MainWindow::launch_with_executable(const QString& full_path) {
 
     if (lresult.pid <= 0) {
         hide_game_lock_overlay();
-        QMessageBox::warning(this, "Launch", "Failed to launch game.");
+        QMessageBox::warning(this, tr("Launch"), tr("Failed to launch game."));
         return;
     }
 
@@ -2580,7 +2584,7 @@ void MainWindow::launch_with_executable(const QString& full_path) {
     launch_time_ = std::filesystem::file_time_type::clock::now();
 
     // Update overlay with actual PID now that we have it
-    game_lock_label_->setText(QString("The game is running: %1 (%2)")
+    game_lock_label_->setText(tr("The game is running: %1 (%2)")
         .arg(binary_name)
         .arg(lresult.pid));
 
@@ -2949,18 +2953,18 @@ void MainWindow::do_capture_overwrite(std::filesystem::file_time_type capture_ti
 void MainWindow::add_shortcut_to_toolbar() {
     auto entry = right_panel_->exec_controls()->current_entry();
     if (entry.path.isEmpty()) {
-        QMessageBox::warning(this, "Shortcut", "No executable selected.");
+        QMessageBox::warning(this, tr("Shortcut"), tr("No executable selected."));
         return;
     }
     if (current_game_dir_.empty()) {
-        QMessageBox::warning(this, "Shortcut", "Game directory not set.");
+        QMessageBox::warning(this, tr("Shortcut"), tr("Game directory not set."));
         return;
     }
 
     auto exec_path = current_game_dir_ / entry.path.toStdString();
     if (!std::filesystem::exists(exec_path)) {
-        QMessageBox::warning(this, "Shortcut",
-            "Executable not found:\n" + QString::fromStdString(exec_path.string()));
+        QMessageBox::warning(this, tr("Shortcut"),
+            tr("Executable not found:\n%1").arg(QString::fromStdString(exec_path.string())));
         return;
     }
 
@@ -3000,18 +3004,18 @@ void MainWindow::add_toolbar_shortcut_from_path(const QString& full_path,
 void MainWindow::add_shortcut_to_desktop() {
     auto entry = right_panel_->exec_controls()->current_entry();
     if (entry.path.isEmpty()) {
-        QMessageBox::warning(this, "Shortcut", "No executable selected.");
+        QMessageBox::warning(this, tr("Shortcut"), tr("No executable selected."));
         return;
     }
     if (current_game_dir_.empty()) {
-        QMessageBox::warning(this, "Shortcut", "Game directory not set.");
+        QMessageBox::warning(this, tr("Shortcut"), tr("Game directory not set."));
         return;
     }
 
     auto exec_path = current_game_dir_ / entry.path.toStdString();
     if (!std::filesystem::exists(exec_path)) {
-        QMessageBox::warning(this, "Shortcut",
-            "Executable not found:\n" + QString::fromStdString(exec_path.string()));
+        QMessageBox::warning(this, tr("Shortcut"),
+            tr("Executable not found:\n%1").arg(QString::fromStdString(exec_path.string())));
         return;
     }
 
@@ -3024,7 +3028,7 @@ void MainWindow::add_shortcut_to_desktop() {
         if (home) desktop = QString::fromUtf8(home) + "/Desktop";
     }
     if (desktop.isEmpty()) {
-        QMessageBox::warning(this, "Shortcut", "Could not determine desktop directory.");
+        QMessageBox::warning(this, tr("Shortcut"), tr("Could not determine desktop directory."));
         return;
     }
 
@@ -3036,8 +3040,8 @@ void MainWindow::add_shortcut_to_desktop() {
     auto desktop_file = desktop + "/" + game_name.replace(" ", "_") + ".desktop";
     QFile f(desktop_file);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        QMessageBox::warning(this, "Shortcut",
-            "Failed to create desktop file:\n" + desktop_file);
+        QMessageBox::warning(this, tr("Shortcut"),
+            tr("Failed to create desktop file:\n%1").arg(desktop_file));
         return;
     }
 
@@ -3065,8 +3069,8 @@ void MainWindow::add_shortcut_to_desktop() {
         QFile::ReadOther | QFile::ExeOther);
 
     engine::Logger::instance().debug("Created desktop shortcut: " + desktop_file.toStdString());
-    QMessageBox::information(this, "Shortcut",
-        "Desktop shortcut created:\n" + desktop_file);
+    QMessageBox::information(this, tr("Shortcut"),
+        tr("Desktop shortcut created:\n%1").arg(desktop_file));
 }
 
 void MainWindow::on_add_entry_requested() {
@@ -3145,7 +3149,7 @@ void MainWindow::create_game_lock_overlay() {
 
     layout->addStretch(2);
 
-    game_lock_label_ = new QLabel("The game is running", game_lock_overlay_);
+    game_lock_label_ = new QLabel(tr("The game is running"), game_lock_overlay_);
     game_lock_label_->setAlignment(Qt::AlignCenter);
     layout->addWidget(game_lock_label_);
 
@@ -3169,14 +3173,14 @@ void MainWindow::create_game_lock_overlay() {
     });
     tree_row->addWidget(process_tree_checkbox_);
 
-    auto* tree_label = new QLabel("Show process tree", game_lock_overlay_);
+    auto* tree_label = new QLabel(tr("Show process tree"), game_lock_overlay_);
     tree_label->setObjectName("processTreeLabel");
     tree_row->addWidget(tree_label);
 
     layout->addLayout(tree_row);
 
     process_tree_ = new QTreeWidget(game_lock_overlay_);
-    process_tree_->setHeaderLabels({"Name", "PID", "S"});
+    process_tree_->setHeaderLabels({tr("Name"), "PID", "S"});
     process_tree_->setColumnWidth(0, 200);
     process_tree_->setColumnWidth(1, 80);
     process_tree_->setColumnWidth(2, 30);
@@ -3192,9 +3196,9 @@ void MainWindow::create_game_lock_overlay() {
     // Copy button row (bottom-right of tree)
     auto* copy_tree_row = new QHBoxLayout;
     copy_tree_row->setContentsMargins(0, 0, 0, 0);
-    auto* copy_tree_btn = new QPushButton("Copy", game_lock_overlay_);
+    auto* copy_tree_btn = new QPushButton(tr("Copy"), game_lock_overlay_);
     copy_tree_btn->setFixedSize(52, 22);
-    copy_tree_btn->setToolTip("Copy process tree structure to clipboard");
+    copy_tree_btn->setToolTip(tr("Copy process tree structure to clipboard"));
     copy_tree_btn->setVisible(show_process_tree_);
     QObject::connect(copy_tree_btn, &QPushButton::clicked, this, &MainWindow::copy_process_tree);
     // Show/hide in sync with the tree toggle
@@ -3209,14 +3213,14 @@ void MainWindow::create_game_lock_overlay() {
     btn_layout->setAlignment(Qt::AlignCenter);
     btn_layout->setSpacing(16);
 
-    unlock_button_ = new QPushButton("Unlock", game_lock_overlay_);
+    unlock_button_ = new QPushButton(tr("Unlock"), game_lock_overlay_);
     unlock_button_->setObjectName("unlockBtn");
     QObject::connect(unlock_button_, &QPushButton::clicked, this, [this]() {
         hide_game_lock_overlay();
     });
     btn_layout->addWidget(unlock_button_);
 
-    kill_button_ = new QPushButton("Kill", game_lock_overlay_);
+    kill_button_ = new QPushButton(tr("Kill"), game_lock_overlay_);
     kill_button_->setObjectName("killBtn");
     QObject::connect(kill_button_, &QPushButton::clicked, this, [this]() {
         if (running_process_pid_ <= 0) {
@@ -3282,8 +3286,8 @@ void MainWindow::create_game_lock_overlay() {
                 err = errno;
                 engine::Logger::instance().error("Kill: kill(-" + std::to_string(pgid) + ", SIGKILL) failed: " +
                     std::strerror(err) + " (" + std::to_string(err) + ")");
-                QMessageBox::warning(this, "Kill Failed",
-                    QString("Failed to terminate process group %1: %2")
+                QMessageBox::warning(this, tr("Kill Failed"),
+                    tr("Failed to terminate process group %1: %2")
                         .arg(static_cast<long long>(pgid))
                         .arg(std::strerror(err)));
                 return;
@@ -3314,11 +3318,11 @@ void MainWindow::show_game_lock_overlay(const QString& binary_name, int64_t pid)
     pending_changes_.clear();
     if (pending_queue_label_) pending_queue_label_->hide();
     if (pid > 0) {
-        game_lock_label_->setText(QString("The game is running: %1 (%2)")
+    game_lock_label_->setText(tr("The game is running: %1 (%2)")
             .arg(binary_name)
             .arg(pid));
     } else {
-        game_lock_label_->setText(QString("Launching %1 …").arg(binary_name));
+        game_lock_label_->setText(tr("Launching %1 …").arg(binary_name));
     }
 
     game_lock_overlay_->setGeometry(rect());
@@ -3375,7 +3379,7 @@ void MainWindow::update_queue_label() {
         pending_queue_label_->hide();
         return;
     }
-    pending_queue_label_->setText(QString("Changes queued: %1 (apply on game exit)")
+    pending_queue_label_->setText(tr("Changes queued: %1 (apply on game exit)")
         .arg(pending_changes_.size()));
     pending_queue_label_->show();
 }
@@ -3421,11 +3425,11 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
                 std::ofstream ofs(flag.string());
                 ofs << "enabled\n";
                 engine::Logger::instance().info("Debug mode enabled (Konami code entered)");
-                status_bar_->set_status("Debug mode enabled");
+                status_bar_->set_status(tr("Debug mode enabled"));
             } else {
                 std::filesystem::remove(flag, ec);
                 engine::Logger::instance().info("Debug mode disabled");
-                status_bar_->set_status("Debug mode disabled");
+                status_bar_->set_status(tr("Debug mode disabled"));
             }
             konami_state_ = 0;
 
@@ -3640,9 +3644,9 @@ void MainWindow::handle_nxm_download(const engine::NxmLink& link) {
     }
 
     if (matched_game_id.empty()) {
-        QMessageBox::warning(this, "NXM Download",
-            "Unknown Nexus Mods domain: " + QString::fromStdString(link.nexus_domain) +
-            "\nNo game plugin supports this domain.");
+        QMessageBox::warning(this, tr("NXM Download"),
+            tr("Unknown Nexus Mods domain: %1\nNo game plugin supports this domain.")
+                .arg(QString::fromStdString(link.nexus_domain)));
         return;
     }
 
@@ -3650,22 +3654,20 @@ void MainWindow::handle_nxm_download(const engine::NxmLink& link) {
     bool is_managed = managed_games_ && managed_games_->is_managed(matched_game_id);
 
     if (!is_managed) {
-        QMessageBox::information(this, "NXM Download",
-            "This mod is for " +
-            QString::fromStdString(plugin_loader_->display_name_for(matched_game_id)) +
-            ", but GameModManager is not managing this game.\n\n"
-            "Open the game's instance first to register it, then try the link again.");
+        QMessageBox::information(this, tr("NXM Download"),
+            tr("This mod is for %1, but GameModManager is not managing this game.\n\n"
+               "Open the game's instance first to register it, then try the link again.")
+                .arg(QString::fromStdString(plugin_loader_->display_name_for(matched_game_id))));
         return;
     }
 
     // Game is managed — but is the active instance the right one?
     if (matched_game_id != current_game_id_) {
-        QMessageBox::information(this, "NXM Download",
-            "This mod is for " +
-            QString::fromStdString(plugin_loader_->display_name_for(matched_game_id)) +
-            ", but the active instance is " +
-            QString::fromStdString(current_game_name_) +
-            ".\nSwitch to the correct instance first.");
+        QMessageBox::information(this, tr("NXM Download"),
+            tr("This mod is for %1, but the active instance is %2.\n"
+               "Switch to the correct instance first.")
+                .arg(QString::fromStdString(plugin_loader_->display_name_for(matched_game_id)))
+                .arg(QString::fromStdString(current_game_name_)));
         return;
     }
 
@@ -3680,7 +3682,7 @@ void MainWindow::handle_nxm_download(const engine::NxmLink& link) {
     if (dt) {
         dt->add_download(
             std::to_string(link.mod_id),
-            "Mod #" + std::to_string(link.mod_id),
+            tr("Mod #%1").arg(link.mod_id).toStdString(),
             "Nexus Mods");
     }
 
@@ -3729,9 +3731,10 @@ void MainWindow::prompt_nxm_registration() {
     if (nexus_domain.empty()) return;
 
     QMessageBox msg(this);
-    msg.setWindowTitle("NXM Protocol Handler");
-    msg.setText("Do you want to register " + QString::fromStdString(current_game_name_) +
-        " to handle download links from <b>nexusmods.com</b> (nxm://)?");
+    msg.setWindowTitle(tr("NXM Protocol Handler"));
+    msg.setText(tr("Do you want to register %1 to handle download links from "
+                   "<b>nexusmods.com</b> (nxm://)?")
+        .arg(QString::fromStdString(current_game_name_)));
     msg.setTextFormat(Qt::RichText);
     msg.setIcon(QMessageBox::Question);
     msg.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
@@ -3763,58 +3766,86 @@ void MainWindow::show_settings_dialog() {
     bool has_key = auth.has_api_key();
 
     QDialog dlg(this);
-    dlg.setWindowTitle("Settings");
+    dlg.setWindowTitle(tr("Settings"));
     dlg.setMinimumWidth(480);
 
     auto* layout = new QVBoxLayout(&dlg);
 
+    // -- Language section ----------------------------------------
+    auto* lang_group = new QGroupBox(tr("Language"));
+    auto* lang_layout = new QVBoxLayout(lang_group);
+
+    QSettings settings("GameModManager", "GameModManager");
+    const QString current_lang = settings.value("language", "en_US").toString();
+
+    auto* lang_combo = new QComboBox;
+    QDir i18n_dir(":/i18n");
+    for (const auto& info : i18n_dir.entryInfoList({"*.qm"}, QDir::Files | QDir::NoDotAndDotDot)) {
+        const QString tag = info.completeBaseName();
+        const QLocale loc(tag);
+        const QString display = loc.language() != QLocale::C
+            ? loc.nativeLanguageName() + " (" + tag + ")"
+            : tag;
+        lang_combo->addItem(display, tag);
+    }
+    int lang_idx = lang_combo->findData(current_lang);
+    lang_combo->setCurrentIndex(lang_idx >= 0 ? lang_idx : 0);
+
+    auto* lang_hint = new QLabel(
+        tr("Restart the application for the language change to take effect."));
+    lang_hint->setWordWrap(true);
+
+    lang_layout->addWidget(lang_combo);
+    lang_layout->addWidget(lang_hint);
+    layout->addWidget(lang_group);
+
     // -- API Key section ----------------------------------------
-    auto* api_group = new QGroupBox("Nexus Mods API Key");
+    auto* api_group = new QGroupBox(tr("Nexus Mods API Key"));
     auto* api_layout = new QVBoxLayout(api_group);
 
     auto* key_edit = new QLineEdit;
     key_edit->setEchoMode(QLineEdit::Password);
-    key_edit->setPlaceholderText("Enter your Nexus Mods API key...");
+    key_edit->setPlaceholderText(tr("Enter your Nexus Mods API key..."));
     if (has_key)
         key_edit->setText(QString::fromStdString(auth.get_api_key()));
 
     auto* key_row = new QHBoxLayout;
     key_row->addWidget(key_edit, 1);
 
-    auto* save_btn = new QPushButton(has_key ? "Update" : "Save");
-    auto* clear_btn = new QPushButton("Clear");
+    auto* save_btn = new QPushButton(has_key ? tr("Update") : tr("Save"));
+    auto* clear_btn = new QPushButton(tr("Clear"));
     clear_btn->setEnabled(has_key);
     key_row->addWidget(save_btn);
     key_row->addWidget(clear_btn);
 
     api_layout->addLayout(key_row);
     api_layout->addWidget(new QLabel(
-        "Get your key at "
-        "<a href='https://www.nexusmods.com/users/myaccount?tab=api'>"
-        "nexusmods.com/users/myaccount?tab=api</a>"));
+        tr("Get your key at "
+           "<a href='https://www.nexusmods.com/users/myaccount?tab=api'>"
+           "nexusmods.com/users/myaccount?tab=api</a>")));
     layout->addWidget(api_group);
 
     // -- Rate-limit section --------------------------------------
-    auto* rl_group = new QGroupBox("API Rate Limit");
+    auto* rl_group = new QGroupBox(tr("API Rate Limit"));
     auto* rl_layout = new QVBoxLayout(rl_group);
 
     auto info = auth.get_rate_limit();
     auto* rl_label = new QLabel;
     if (info.limit > 0) {
         QString text;
-        text += QString("Remaining: <b>%1</b> / %2")
+        text += tr("Remaining: <b>%1</b> / %2")
             .arg(info.remaining).arg(info.limit);
         if (info.reset > 0) {
             QDateTime dt = QDateTime::fromSecsSinceEpoch(info.reset);
-            text += "<br>Resets: " + dt.toLocalTime().toString(Qt::TextDate);
+            text += "<br>" + tr("Resets: %1").arg(dt.toLocalTime().toString(Qt::TextDate));
         }
         if (info.last_updated > 0) {
             QDateTime lu = QDateTime::fromSecsSinceEpoch(info.last_updated);
-            text += "<br>Last request: " + lu.toLocalTime().toString(Qt::TextDate);
+            text += "<br>" + tr("Last request: %1").arg(lu.toLocalTime().toString(Qt::TextDate));
         }
         rl_label->setText(text);
     } else {
-        rl_label->setText("No API requests made yet in this session.");
+        rl_label->setText(tr("No API requests made yet in this session."));
     }
     rl_layout->addWidget(rl_label);
     layout->addWidget(rl_group);
@@ -3826,29 +3857,34 @@ void MainWindow::show_settings_dialog() {
     layout->addWidget(btn_box);
 
     // -- Button actions ------------------------------------------
+    connect(lang_combo, &QComboBox::currentIndexChanged, this, [lang_combo](int index) {
+        QSettings("GameModManager", "GameModManager")
+            .setValue("language", lang_combo->itemData(index).toString());
+    });
+
     connect(save_btn, &QPushButton::clicked, [&]() {
         QString key = key_edit->text().trimmed();
         if (key.isEmpty()) {
-            QMessageBox::warning(&dlg, "API Key",
-                "Enter your Nexus Mods API key or click Clear to remove it.");
+            QMessageBox::warning(&dlg, tr("API Key"),
+                tr("Enter your Nexus Mods API key or click Clear to remove it."));
             return;
         }
         auth.set_api_key(key.toStdString());
         clear_btn->setEnabled(true);
-        save_btn->setText("Update");
+        save_btn->setText(tr("Update"));
         engine::Logger::instance().info("Nexus API key saved");
-        QMessageBox::information(&dlg, "API Key", "API key saved successfully.");
+        QMessageBox::information(&dlg, tr("API Key"), tr("API key saved successfully."));
     });
 
     connect(clear_btn, &QPushButton::clicked, [&]() {
-        auto reply = QMessageBox::question(&dlg, "Clear API Key",
-            "Remove the stored Nexus Mods API key?",
+        auto reply = QMessageBox::question(&dlg, tr("Clear API Key"),
+            tr("Remove the stored Nexus Mods API key?"),
             QMessageBox::Yes | QMessageBox::No);
         if (reply == QMessageBox::Yes) {
             auth.clear_api_key();
             key_edit->clear();
             clear_btn->setEnabled(false);
-            save_btn->setText("Save");
+            save_btn->setText(tr("Save"));
             engine::Logger::instance().info("Nexus API key cleared");
         }
     });
@@ -3858,8 +3894,8 @@ void MainWindow::show_settings_dialog() {
 
 void MainWindow::show_instance_statistics() {
     if (current_instance_root_.empty()) {
-        QMessageBox::information(this, "Instance Statistics",
-                                 "No instance is currently loaded.");
+        QMessageBox::information(this, tr("Instance Statistics"),
+                                 tr("No instance is currently loaded."));
         return;
     }
 
@@ -3921,7 +3957,7 @@ void MainWindow::show_instance_switcher() {
         }
 
         QDialog sel_dlg(this);
-        sel_dlg.setWindowTitle("Create New Instance");
+        sel_dlg.setWindowTitle(tr("Create New Instance"));
         sel_dlg.setMinimumSize(600, 400);
         auto* layout = new QVBoxLayout(&sel_dlg);
         auto* selection = new ui::GameSelectionWidget(&sel_dlg);
@@ -3947,8 +3983,8 @@ void MainWindow::show_instance_switcher() {
 
         auto inst = engine::create_instance_for_game(dg, instances_dir);
         if (inst.info().game_id.empty()) {
-            QMessageBox::warning(this, "Error",
-                "Failed to create instance for " + QString::fromStdString(chosen.display_name));
+            QMessageBox::warning(this, tr("Error"),
+                tr("Failed to create instance for %1").arg(QString::fromStdString(chosen.display_name)));
             return;
         }
 
@@ -3968,8 +4004,8 @@ void MainWindow::show_instance_switcher() {
 
     auto inst = engine::Instance::installed(selected, instances_dir);
     if (!inst.read_toml()) {
-        QMessageBox::warning(this, "Error",
-            "Failed to read instance.toml for " + QString::fromStdString(selected));
+        QMessageBox::warning(this, tr("Error"),
+            tr("Failed to read instance.toml for %1").arg(QString::fromStdString(selected)));
         return;
     }
 

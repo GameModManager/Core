@@ -57,21 +57,21 @@ static QTableWidget* make_table(int cols, const QStringList& headers, QWidget* p
 }
 
 // Helper: state to display string
-static const char* state_label(DownloadState s) {
+static QString state_label(DownloadState s) {
     switch (s) {
-        case DownloadState::Downloading: return "Downloading";
-        case DownloadState::Complete:    return "Install";
-        case DownloadState::Installed:   return "Installed";
-        case DownloadState::Failed:      return "Failed";
+        case DownloadState::Downloading: return QCoreApplication::translate("DownloadsTab", "Downloading");
+        case DownloadState::Complete:    return QCoreApplication::translate("DownloadsTab", "Install");
+        case DownloadState::Installed:   return QCoreApplication::translate("DownloadsTab", "Installed");
+        case DownloadState::Failed:      return QCoreApplication::translate("DownloadsTab", "Failed");
     }
-    return "Unknown";
+    return QCoreApplication::translate("DownloadsTab", "Unknown");
 }
 
 // --- PluginsTab ---
 PluginsTab::PluginsTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    table_ = make_table(3, {"Plugin", "Status", "Masters"}, this);
+    table_ = make_table(3, {tr("Plugin"), tr("Status"), tr("Masters")}, this);
     layout->addWidget(table_);
 }
 
@@ -79,7 +79,7 @@ PluginsTab::PluginsTab(QWidget* parent) : QWidget(parent) {
 ArchivesTab::ArchivesTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    table_ = make_table(3, {"Archive", "Size", "Priority"}, this);
+    table_ = make_table(3, {tr("Archive"), tr("Size"), tr("Priority")}, this);
     layout->addWidget(table_);
 }
 
@@ -87,7 +87,7 @@ ArchivesTab::ArchivesTab(QWidget* parent) : QWidget(parent) {
 DataTab::DataTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    table_ = make_table(3, {"Path", "Size", "Mod"}, this);
+    table_ = make_table(3, {tr("Path"), tr("Size"), tr("Mod")}, this);
     layout->addWidget(table_);
 }
 
@@ -95,7 +95,7 @@ DataTab::DataTab(QWidget* parent) : QWidget(parent) {
 SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    table_ = make_table(3, {"Save", "Date", "Size"}, this);
+    table_ = make_table(3, {tr("Save"), tr("Date"), tr("Size")}, this);
     layout->addWidget(table_);
 }
 
@@ -103,7 +103,7 @@ SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
 DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    table_ = make_table(4, {"Name", "Source", "Status", "Size"}, this);
+    table_ = make_table(4, {tr("Name"), tr("Source"), tr("Status"), tr("Size")}, this);
     layout->addWidget(table_);
 
     connect(table_, &QTableWidget::cellDoubleClicked,
@@ -232,7 +232,7 @@ void DownloadsTab::mark_installed(const std::string& id) {
     if (entry.row < 0) return;
 
     entry.state = DownloadState::Installed;
-    replace_bar_with_label(id, "Installed", QColor());
+    replace_bar_with_label(id, tr("Installed"), QColor());
 
     // Show final archive size
     if (entry.total_size > 0) {
@@ -556,7 +556,7 @@ void ConflictsTab::on_custom_context_menu(const QPoint& pos) {
     context_file_path_ = file_path;
 
     QMenu menu(this);
-    auto* merge_action = menu.addAction("Merge in ImageDiff");
+    auto* merge_action = menu.addAction(tr("Merge in ImageDiff"));
     connect(merge_action, &QAction::triggered,
             this, &ConflictsTab::on_merge_in_imagediff);
     menu.exec(tree_->viewport()->mapToGlobal(pos));

@@ -2,7 +2,9 @@
 #include <QCommandLineParser>
 #include <QDir>
 #include <QMessageLogContext>
+#include <QSettings>
 #include <QStackedWidget>
+#include <QTranslator>
 
 #include <cstdio>
 #include <cstdlib>
@@ -60,6 +62,16 @@ int main(int argc, char *argv[])
     app.setApplicationName("GameModManager");
     app.setApplicationVersion("0.1.0");
     // Use platform-native style (Breeze on KDE, etc.)
+
+    // Load translations. The language comes from settings ("language", a
+    // language-COUNTRY tag like "en_US" or "de_DE"); English is the source
+    // language and ships as a no-op translation, so every .qm lives at
+    // :/i18n/<language_COUNTRY>.qm (named after the .ts, e.g. en_US.qm).
+    QTranslator translator;
+    const QString language = QSettings("GameModManager", "GameModManager")
+                                 .value("language", "en_US").toString();
+    if (translator.load(":/i18n/" + language + ".qm"))
+        app.installTranslator(&translator);
 
     // Initialize theme system — default uses palette() so desktop colors apply
     engine::ThemeManager theme_manager;
@@ -443,7 +455,7 @@ int main(int argc, char *argv[])
         stack.addWidget(selection);
         stack.setCurrentWidget(selection);
         stack.resize(900, 600);
-        stack.setWindowTitle("GameModManager - Select a Game");
+        stack.setWindowTitle(QCoreApplication::translate("main", "GameModManager - Select a Game"));
         stack.show();
 
         int rc = app.exec();
@@ -503,7 +515,9 @@ int main(int argc, char *argv[])
 
         window.set_game_info(game_id, display_name, "Default", game_dir,
                              engine::default_instances_dir() / active_instance);
-        window.setWindowTitle(("GameModManager - " + display_name).c_str());
+        window.setWindowTitle(
+            QCoreApplication::translate("main", "GameModManager - %1")
+                .arg(QString::fromStdString(display_name)));
     }
 
     window.show();
