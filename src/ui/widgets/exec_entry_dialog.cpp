@@ -64,7 +64,7 @@ QString ExecEntryDialog::display_name(const ExecEntry& e) {
         auto last_slash = e.path.lastIndexOf('/');
         return last_slash >= 0 ? e.path.mid(last_slash + 1) : e.path;
     }
-    return "Untitled";
+    return tr("Untitled");
 }
 
 // ---------------------------------------------------------------------------
@@ -79,7 +79,7 @@ ExecEntryDialog::ExecEntryDialog(const std::filesystem::path& game_dir,
     : QDialog(parent), game_dir_(game_dir),
       icon_cache_dir_(icon_cache_dir),
       entries_(initial_entries) {
-    setWindowTitle("Modify Executables");
+    setWindowTitle(tr("Modify Executables"));
     setMinimumSize(680, 460);
 
     auto* main = new QVBoxLayout(this);
@@ -96,8 +96,8 @@ ExecEntryDialog::ExecEntryDialog(const std::filesystem::path& game_dir,
     left_layout->addWidget(entry_list_);
 
     auto* btn_row = new QHBoxLayout;
-    auto* add_btn = new QPushButton("+ Add", left_panel);
-    auto* remove_btn = new QPushButton("- Remove", left_panel);
+    auto* add_btn = new QPushButton(tr("+ Add"), left_panel);
+    auto* remove_btn = new QPushButton(tr("- Remove"), left_panel);
     btn_row->addWidget(add_btn);
     btn_row->addWidget(remove_btn);
     btn_row->addStretch();
@@ -111,44 +111,44 @@ ExecEntryDialog::ExecEntryDialog(const std::filesystem::path& game_dir,
     form->setContentsMargins(8, 0, 0, 0);
 
     title_edit_ = new QLineEdit(right_panel);
-    title_edit_->setPlaceholderText("Leave empty to use the executable filename");
-    form->addRow("Title:", title_edit_);
+    title_edit_->setPlaceholderText(tr("Leave empty to use the executable filename"));
+    form->addRow(tr("Title:"), title_edit_);
 
     auto* binary_row = new QHBoxLayout;
     binary_edit_ = new QLineEdit(right_panel);
-    binary_edit_->setPlaceholderText("Relative path from game directory");
-    auto* browse_bin = new QPushButton("Browse...", right_panel);
+    binary_edit_->setPlaceholderText(tr("Relative path from game directory"));
+    auto* browse_bin = new QPushButton(tr("Browse..."), right_panel);
     binary_row->addWidget(binary_edit_);
     binary_row->addWidget(browse_bin);
-    form->addRow("Binary:", binary_row);
+    form->addRow(tr("Binary:"), binary_row);
 
     args_edit_ = new QLineEdit(right_panel);
-    args_edit_->setPlaceholderText("Optional command-line arguments");
-    form->addRow("Arguments:", args_edit_);
+    args_edit_->setPlaceholderText(tr("Optional command-line arguments"));
+    form->addRow(tr("Arguments:"), args_edit_);
 
     auto* cwd_row = new QHBoxLayout;
     start_in_edit_ = new QLineEdit(right_panel);
-    start_in_edit_->setPlaceholderText("Leave empty to use the game directory");
-    auto* browse_cwd = new QPushButton("Browse...", right_panel);
+    start_in_edit_->setPlaceholderText(tr("Leave empty to use the game directory"));
+    auto* browse_cwd = new QPushButton(tr("Browse..."), right_panel);
     cwd_row->addWidget(start_in_edit_);
     cwd_row->addWidget(browse_cwd);
-    form->addRow("Start in:", cwd_row);
+    form->addRow(tr("Start in:"), cwd_row);
 
     output_mod_combo_ = new QComboBox(right_panel);
-    output_mod_combo_->addItem("--- None ---", QVariant(""));
+    output_mod_combo_->addItem(tr("--- None ---"), QVariant(""));
     for (const auto& [id, name] : mod_list) {
         output_mod_combo_->addItem(name, QVariant(id));
     }
-    form->addRow("Output to mod:", output_mod_combo_);
+    form->addRow(tr("Output to mod:"), output_mod_combo_);
 
     // Icon row: checkbox + preview + button
     auto* icon_row = new QHBoxLayout;
-    use_app_icon_check_ = new QCheckBox("Use Application's Icon for shortcuts", right_panel);
+    use_app_icon_check_ = new QCheckBox(tr("Use Application's Icon for shortcuts"), right_panel);
     use_app_icon_check_->setChecked(true);
     icon_preview_ = new QLabel(right_panel);
     icon_preview_->setFixedSize(24, 24);
     icon_preview_->hide();
-    change_icon_btn_ = new QPushButton("Change icon", right_panel);
+    change_icon_btn_ = new QPushButton(tr("Change icon"), right_panel);
     change_icon_btn_->setEnabled(false);
     icon_row->addWidget(use_app_icon_check_);
     icon_row->addWidget(icon_preview_);
@@ -312,15 +312,15 @@ void ExecEntryDialog::on_change_icon() {
         return;
 
     QString filter =
-        "Icon files (*.ico *.png *.jpg *.jpeg *.svg);;"
-        "Executables (*.exe);;"
-        "All Files (*)";
+        tr("Icon files (*.ico *.png *.jpg *.jpeg *.svg);;"
+           "Executables (*.exe);;"
+           "All Files (*)");
 
     auto start_dir = game_dir_.empty()
         ? QDir::homePath()
         : QString::fromStdString(game_dir_.string());
 
-    auto chosen = QFileDialog::getOpenFileName(this, "Select Icon", start_dir, filter);
+    auto chosen = QFileDialog::getOpenFileName(this, tr("Select Icon"), start_dir, filter);
     if (chosen.isEmpty()) return;
 
     QString resolved = chosen;
@@ -424,12 +424,12 @@ void ExecEntryDialog::browse_binary() {
         : QString::fromStdString(game_dir_.string());
 
 #ifdef Q_OS_WIN
-    QString filter = "Executables (*.exe);;All Files (*)";
+    QString filter = tr("Executables (*.exe);;All Files (*)");
 #else
-    QString filter = "Executables (*.exe *.AppImage *.bin *.elf *.sh);;All Files (*)";
+    QString filter = tr("Executables (*.exe *.AppImage *.bin *.elf *.sh);;All Files (*)");
 #endif
 
-    auto path = QFileDialog::getOpenFileName(this, "Select Executable", start_dir, filter);
+    auto path = QFileDialog::getOpenFileName(this, tr("Select Executable"), start_dir, filter);
     if (path.isEmpty()) return;
 
     QString rel;
@@ -450,7 +450,7 @@ void ExecEntryDialog::browse_start_in() {
         ? (game_dir_.empty() ? QDir::homePath() : QString::fromStdString(game_dir_.string()))
         : start_in_edit_->text();
 
-    auto dir = QFileDialog::getExistingDirectory(this, "Select Working Directory", start_dir);
+    auto dir = QFileDialog::getExistingDirectory(this, tr("Select Working Directory"), start_dir);
     if (!dir.isEmpty()) {
         start_in_edit_->setText(dir);
     }
@@ -461,9 +461,10 @@ bool ExecEntryDialog::validate() {
 
     for (int i = 0; i < entries_.size(); ++i) {
         if (entries_[i].path.trimmed().isEmpty()) {
-            QMessageBox::warning(this, "Modify Executables",
-                "Entry \"" + display_name(entries_[i]) + "\" has no binary path set.\n"
-                "Please set a binary path or remove the entry.");
+            QMessageBox::warning(this, tr("Modify Executables"),
+                tr("Entry \"%1\" has no binary path set.\n"
+                   "Please set a binary path or remove the entry.")
+                    .arg(display_name(entries_[i])));
             select_entry(i);
             return false;
         }

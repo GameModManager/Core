@@ -68,7 +68,7 @@ InstanceStatisticsDialog::InstanceStatisticsDialog(
     : QDialog(parent)
     , instance_root_(instance_root) {
 
-    setWindowTitle("Instance Statistics");
+    setWindowTitle(tr("Instance Statistics"));
     setMinimumWidth(420);
 
     auto* layout = new QVBoxLayout(this);
@@ -86,9 +86,9 @@ InstanceStatisticsDialog::InstanceStatisticsDialog(
     uint64_t downloads_bytes = dir_size(downloads_dir);
     uint64_t logs_bytes = dir_size(logs_dir);
 
-    auto fmt = [](const std::string& label, uint64_t bytes, QLabel** out) {
+    auto fmt = [this](const char* label, uint64_t bytes, QLabel** out) {
         auto* row = new QHBoxLayout;
-        auto* lbl = new QLabel(QString::fromStdString(label));
+        auto* lbl = new QLabel(tr(label));
         lbl->setObjectName("statLabel");
         *out = new QLabel(QString::fromStdString(format_size(bytes)));
         (*out)->setAlignment(Qt::AlignRight);
@@ -104,7 +104,7 @@ InstanceStatisticsDialog::InstanceStatisticsDialog(
     layout->addLayout(fmt("Logs size:",       logs_bytes,       &logs_size_label_));
 
     auto* mods_row = new QHBoxLayout;
-    auto* mods_lbl = new QLabel("Total mods:");
+    auto* mods_lbl = new QLabel(tr("Total mods:"));
     mods_lbl->setObjectName("statLabel");
     total_mods_label_ = new QLabel(QString::number(total_mods));
     total_mods_label_->setAlignment(Qt::AlignRight);
@@ -130,7 +130,7 @@ InstanceStatisticsDialog::InstanceStatisticsDialog(
     // --- Size explorer button ---
     layout->addSpacing(12);
 
-    explorer_btn_ = new QPushButton("Open in size explorer...");
+    explorer_btn_ = new QPushButton(tr("Open in size explorer..."));
     std::string explorer_path;
     std::string explorer_name;
     for (const auto& [exe, display] : kExplorers) {
@@ -146,7 +146,7 @@ InstanceStatisticsDialog::InstanceStatisticsDialog(
     if (explorer_path.empty()) {
         explorer_btn_->setEnabled(false);
         explorer_btn_->setToolTip(
-            "Install Filelight from KDE for a visual disk usage view");
+            tr("Install Filelight from KDE for a visual disk usage view"));
     } else {
         explorer_btn_->setToolTip(QString::fromStdString(explorer_name));
         connect(explorer_btn_, &QPushButton::clicked, this,
@@ -160,7 +160,7 @@ InstanceStatisticsDialog::InstanceStatisticsDialog(
     layout->addWidget(explorer_btn_);
 
     // Close button
-    auto* close_btn = new QPushButton("Close");
+    auto* close_btn = new QPushButton(tr("Close"));
     connect(close_btn, &QPushButton::clicked, this, &QDialog::accept);
     layout->addWidget(close_btn);
 }

@@ -113,11 +113,11 @@ ExecControlsBar::ExecControlsBar(QWidget* parent)
     exec_combo_->setMinimumHeight(50);
     exec_combo_->setMinimumWidth(200);
     exec_combo_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    exec_combo_->addItem("Add new entry...");
+    exec_combo_->addItem(tr(kAddNewEntryText));
     layout->addWidget(exec_combo_, 0, 0, 2, 1);
 
     run_btn_ = new QToolButton(this);
-    run_btn_->setText("Run");
+    run_btn_->setText(tr("Run"));
     run_btn_->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
     run_btn_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     run_btn_->setMinimumHeight(24);
@@ -125,7 +125,7 @@ ExecControlsBar::ExecControlsBar(QWidget* parent)
     layout->addWidget(run_btn_, 0, 1);
 
     shortcut_btn_ = new QToolButton(this);
-    shortcut_btn_->setText("Shortcut");
+    shortcut_btn_->setText(tr("Shortcut"));
     shortcut_btn_->setIcon(style()->standardIcon(QStyle::SP_FileLinkIcon));
     shortcut_btn_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     shortcut_btn_->setMinimumHeight(24);
@@ -133,8 +133,8 @@ ExecControlsBar::ExecControlsBar(QWidget* parent)
     shortcut_btn_->setPopupMode(QToolButton::MenuButtonPopup);
 
     auto* shortcut_menu = new QMenu(this);
-    shortcut_menu->addAction("Shortcut to Toolbar");
-    shortcut_menu->addAction("Shortcut to Desktop");
+    shortcut_menu->addAction(tr("Shortcut to Toolbar"));
+    shortcut_menu->addAction(tr("Shortcut to Desktop"));
     connect(shortcut_menu->actions()[0], &QAction::triggered,
             this, &ExecControlsBar::shortcut_to_toolbar);
     connect(shortcut_menu->actions()[1], &QAction::triggered,
@@ -247,7 +247,7 @@ ExecEntry ExecControlsBar::current_entry() const {
 void ExecControlsBar::clear_executables() {
     exec_combo_->clear();
     // Re-add the sentinel so add_entry() works
-    exec_combo_->addItem("Add new entry...", QVariant(QJsonObject()));
+    exec_combo_->addItem(tr(kAddNewEntryText), QVariant(QJsonObject()));
 }
 
 void ExecControlsBar::set_executables(const QStringList& names, const QString& default_name,
@@ -286,7 +286,7 @@ void ExecControlsBar::set_executables(const QStringList& names, const QString& d
         exec_combo_->addItem(display, QVariant(entry.toJson()));
     }
 
-    exec_combo_->addItem("Add new entry...", QVariant(QJsonObject()));
+    exec_combo_->addItem(tr(kAddNewEntryText), QVariant(QJsonObject()));
 
     if (!default_name.isEmpty()) {
         for (int i = 0; i < exec_combo_->count(); ++i) {

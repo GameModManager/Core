@@ -59,7 +59,7 @@ static QIcon make_game_icon(const std::string& game_id, const std::string& name)
 
 InstanceSwitcherDialog::InstanceSwitcherDialog(engine::PluginLoader* plugins, QWidget* parent)
     : QDialog(parent), plugins_(plugins) {
-    setWindowTitle("Switch Instance");
+    setWindowTitle(tr("Switch Instance"));
     resize(520, 400);
 
     auto* main_layout = new QVBoxLayout(this);
@@ -67,7 +67,7 @@ InstanceSwitcherDialog::InstanceSwitcherDialog(engine::PluginLoader* plugins, QW
     main_layout->setSpacing(12);
 
     // Title
-    auto* title = new QLabel("Select an instance");
+    auto* title = new QLabel(tr("Select an instance"));
     {
         QFont f = title->font();
         f.setPointSize(14);
@@ -92,14 +92,14 @@ InstanceSwitcherDialog::InstanceSwitcherDialog(engine::PluginLoader* plugins, QW
         if (!icon.isNull()) {
             create_btn->setIcon(icon);
         }
-        create_btn->setText("+ Create new instance");
+        create_btn->setText(tr("+ Create new instance"));
     }
     bottom_layout->addWidget(create_btn);
 
     bottom_layout->addStretch();
 
-    auto* ok_btn = new QPushButton("OK", this);
-    auto* cancel_btn = new QPushButton("Cancel", this);
+    auto* ok_btn = new QPushButton(tr("OK"), this);
+    auto* cancel_btn = new QPushButton(tr("Cancel"), this);
     ok_btn->setDefault(true);
     bottom_layout->addWidget(ok_btn);
     bottom_layout->addWidget(cancel_btn);

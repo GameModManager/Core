@@ -22,7 +22,7 @@ bool ColumnToggleHeaderView::eventFilter(QObject* obj, QEvent* event) {
         QMenu menu(this);
 
         for (int i = 0; i < count(); ++i) {
-            QString label = (i < labels_.size()) ? labels_[i] : QString("Column %1").arg(i + 1);
+            QString label = (i < labels_.size()) ? labels_[i] : tr("Column %1").arg(i + 1);
             QAction* action = menu.addAction(label);
             action->setCheckable(true);
             action->setChecked(!isSectionHidden(i));

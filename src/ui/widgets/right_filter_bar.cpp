@@ -13,7 +13,7 @@ RightFilterBar::RightFilterBar(QWidget* parent)
     layout->setSpacing(4);
 
     filter_edit_ = new QLineEdit(this);
-    filter_edit_->setPlaceholderText("Filter...");
+    filter_edit_->setPlaceholderText(tr("Filter..."));
     filter_edit_->setClearButtonEnabled(true);
     layout->addWidget(filter_edit_, 1);
 

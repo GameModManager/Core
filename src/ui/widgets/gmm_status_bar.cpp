@@ -20,7 +20,7 @@ GmmStatusBar::GmmStatusBar(QWidget* parent)
     layout_->setSpacing(12);
 
     // Left: general status
-    status_label_ = new QLabel("Ready", this);
+    status_label_ = new QLabel(tr("Ready"), this);
     layout_->addWidget(status_label_);
 
     layout_->addStretch();
