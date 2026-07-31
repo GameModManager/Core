@@ -73,9 +73,6 @@
 #include <QFileInfo>
 #include <QHeaderView>
 #include <QInputDialog>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QMenu>
 #include <QMessageBox>
 #include <QProcess>
@@ -1957,12 +1954,44 @@ SourceVisitInfo MainWindow::source_visit_info(const QString& source_type, const 
     return {tr("Visit on %1").arg(label), QString()};
 }
 
-void MainWindow::create_separator() {
-    if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return;
+QString MainWindow::create_separator_named(const QString& name, const QString& color) {
+    if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return {};
 
     auto mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
     auto separator_suffix = knowledge_->get(current_game_id_, "separator_suffix", "_separator");
-    if (mods_subpath.empty()) return;
+    if (mods_subpath.empty()) return {};
+
+    // Guard against duplicate names
+    if (mod_model_->existing_separator_names().contains(name)) return {};
+
+    auto folder_name = name.toStdString() + separator_suffix;
+    auto sep_dir = mods_dir_path() / folder_name;
+
+    // Create the separator folder
+    std::error_code ec;
+    std::filesystem::create_directories(sep_dir, ec);
+    if (ec) return {};
+
+    // Write separator.xml
+    auto xml_path = sep_dir / "separator.xml";
+    std::ofstream f(xml_path);
+    if (!f) return {};
+    f << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
+    f << "<separator>\n";
+    f << "  <name>" << name.toStdString() << "</name>\n";
+    f << "  <color>" << color.toStdString() << "</color>\n";
+    f << "</separator>\n";
+    f.close();
+
+    // Add to model
+    auto id = QString::fromStdString(folder_name);
+    mod_model_->add_separator(id, name, color);
+    engine::Logger::instance().debug("Separator created: " + name.toStdString());
+    return id;
+}
+
+void MainWindow::create_separator() {
+    if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return;
 
     bool ok;
     auto name = QInputDialog::getText(this, tr("Create Separator"),
@@ -1970,46 +1999,18 @@ void MainWindow::create_separator() {
     if (!ok || name.trimmed().isEmpty()) return;
 
     // Check for duplicate names
-    auto existing = mod_model_->existing_separator_names();
-    if (existing.contains(name.trimmed())) {
+    if (mod_model_->existing_separator_names().contains(name.trimmed())) {
         QMessageBox::warning(this, tr("Separator"), tr("A separator with this name already exists."));
         return;
     }
 
     // Pick color
-    QColor initial("#888888");
-    QColor color = QColorDialog::getColor(initial, this, tr("Separator Color"));
+    QColor color = QColorDialog::getColor(QColor("#888888"), this, tr("Separator Color"));
     if (!color.isValid()) return;
 
-    auto folder_name = name.trimmed().toStdString() + separator_suffix;
-    auto sep_dir = mods_dir_path() / folder_name;
-
-    // Create the separator folder
-    std::error_code ec;
-    std::filesystem::create_directories(sep_dir, ec);
-    if (ec) {
+    if (create_separator_named(name.trimmed(), color.name()).isEmpty()) {
         QMessageBox::warning(this, tr("Separator"), tr("Failed to create separator directory."));
-        return;
     }
-
-    // Write separator.xml
-    auto xml_path = sep_dir / "separator.xml";
-    std::ofstream f(xml_path);
-    if (!f) {
-        QMessageBox::warning(this, tr("Separator"), tr("Failed to write separator.xml."));
-        return;
-    }
-    f << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
-    f << "<separator>\n";
-    f << "  <name>" << name.trimmed().toStdString() << "</name>\n";
-    f << "  <color>" << color.name().toStdString() << "</color>\n";
-    f << "</separator>\n";
-    f.close();
-
-    // Add to model
-    auto id = QString::fromStdString(folder_name);
-    mod_model_->add_separator(id, name.trimmed(), color.name());
-    engine::Logger::instance().debug("Separator created: " + name.toStdString());
 }
 
 void MainWindow::create_empty_mod() {
@@ -2092,42 +2093,111 @@ void MainWindow::import_archives(const QStringList& paths) {
     }
 }
 
+namespace {
+
+// Minimal RFC-4180 CSV parser (handles quoted fields, doubled quotes,
+// commas/newlines inside quotes).
+std::vector<QStringList> parse_csv(const QByteArray& data) {
+    std::vector<QStringList> rows;
+    const QString text = QString::fromUtf8(data);
+    QStringList current;
+    QString field;
+    bool in_quotes = false;
+    for (int i = 0; i < text.size(); ++i) {
+        const QChar c = text[i];
+        if (in_quotes) {
+            if (c == '"') {
+                if (i + 1 < text.size() && text[i + 1] == '"') {
+                    field += '"';
+                    ++i;
+                } else {
+                    in_quotes = false;
+                }
+            } else {
+                field += c;
+            }
+        } else if (c == '"') {
+            in_quotes = true;
+        } else if (c == ',') {
+            current << field;
+            field.clear();
+        } else if (c == '\n') {
+            current << field;
+            rows.push_back(current);
+            current.clear();
+            field.clear();
+        } else if (c != '\r') {
+            field += c;
+        }
+    }
+    if (!field.isEmpty() || !current.isEmpty()) {
+        current << field;
+        rows.push_back(current);
+    }
+    return rows;
+}
+
+QString csv_escape(const QString& field) {
+    if (!field.contains(',') && !field.contains('"') && !field.contains('\n'))
+        return field;
+    QString quoted = field;
+    quoted.replace("\"", "\"\"");
+    return "\"" + quoted + "\"";
+}
+
+}  // namespace
+
 void MainWindow::export_modlist() {
     if (current_game_id_.empty()) return;
     const QString path = QFileDialog::getSaveFileName(this,
-        tr("Export Modlist"), QString(), tr("Modlist (*.json);;All files (*)"));
+        tr("Export Modlist"), QString(), tr("CSV files (*.csv);;All files (*)"));
     if (path.isEmpty()) return;
-
-    QJsonArray mods_arr;
-    for (const auto& m : mod_model_->mods()) {
-        if (m.is_separator || m.is_overwrite || m.is_merged) continue;
-        QJsonObject obj;
-        obj["id"] = m.id;
-        obj["name"] = m.name;
-        obj["enabled"] = m.enabled;
-        mods_arr.append(obj);
-    }
-
-    QJsonObject root;
-    root["app"] = "GameModManager";
-    root["version"] = 1;
-    root["mods"] = mods_arr;
 
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly)) {
         QMessageBox::warning(this, tr("Export Modlist"), tr("Failed to write file."));
         return;
     }
-    f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+
+    auto write_row = [&](const QStringList& fields) {
+        QStringList escaped;
+        escaped.reserve(fields.size());
+        for (const auto& field : fields) escaped << csv_escape(field);
+        f.write(escaped.join(",").toUtf8());
+        f.write("\n");
+    };
+
+    write_row({QStringLiteral("type"), QStringLiteral("priority"),
+               QStringLiteral("name"), QStringLiteral("source_link"),
+               QStringLiteral("color"), QStringLiteral("modid"),
+               QStringLiteral("folder_name")});
+
+    const auto& mods = mod_model_->mods();
+    int exported = 0;
+    for (int i = 0; i < mods.size(); ++i) {
+        const auto& m = mods[i];
+        if (m.is_overwrite || m.is_merged) continue;
+        if (m.is_separator) {
+            write_row({QStringLiteral("separator"), QString::number(i),
+                       m.name, QString(), m.separator_color, QString(), m.id});
+        } else {
+            QString source;
+            if (!m.source_type.isEmpty())
+                source = source_visit_info(m.source_type, m.source_id).url;
+            write_row({QStringLiteral("mod"), QString::number(i),
+                       m.name, source, QString(), m.source_id, m.id});
+        }
+        ++exported;
+    }
     f.close();
     engine::Logger::instance().info("Modlist exported: " +
-        std::to_string(mods_arr.size()) + " mods");
+        std::to_string(exported) + " entries");
 }
 
 void MainWindow::import_modlist() {
     if (current_game_id_.empty()) return;
     const QString path = QFileDialog::getOpenFileName(this,
-        tr("Import Modlist"), QString(), tr("Modlist (*.json);;All files (*)"));
+        tr("Import Modlist"), QString(), tr("CSV files (*.csv);;All files (*)"));
     if (path.isEmpty()) return;
 
     QFile f(path);
@@ -2135,43 +2205,96 @@ void MainWindow::import_modlist() {
         QMessageBox::warning(this, tr("Import Modlist"), tr("Failed to open file."));
         return;
     }
-    QJsonParseError err;
-    auto doc = QJsonDocument::fromJson(f.readAll(), &err);
+    auto rows = parse_csv(f.readAll());
     f.close();
-    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+
+    if (rows.empty()) {
         QMessageBox::warning(this, tr("Import Modlist"), tr("Invalid modlist file."));
         return;
     }
 
-    auto root = doc.object();
-    auto mods_arr = root.value("mods").toArray();
-    int applied = 0;
-    int skipped = 0;
-    for (const auto& val : mods_arr) {
-        auto obj = val.toObject();
-        QString id = obj.value("id").toString();
-        if (id.isEmpty()) { ++skipped; continue; }
-        int row = mod_model_->priority_of(id);
-        if (row < 0) { ++skipped; continue; }
-        const auto& entry = mod_model_->mods()[row];
-        if (entry.is_separator || entry.is_overwrite || entry.is_merged || entry.is_game_native) { ++skipped; continue; }
-        bool enabled = obj.value("enabled").toBool(true);
-        mod_model_->setData(mod_model_->index(row, ModListModel::Enabled),
-                            enabled ? Qt::Checked : Qt::Unchecked, Qt::CheckStateRole);
-        ++applied;
+    // Skip the header row if present
+    size_t start = 0;
+    if (rows[0].value(0).trimmed() == QLatin1String("type")) start = 1;
+
+    // Match by strict priority: modid > folder name > display name. Each
+    // criterion gets its own full pass so an early name collision can't
+    // shadow a later, stronger folder/modid match.
+    auto find_row = [this](const QString& modid, const QString& folder_name,
+                           const QString& name, bool want_separator) -> int {
+        const auto& mods = mod_model_->mods();
+        auto match_any = [&mods, want_separator](const QString& key,
+                                                 QString ModEntry::*field) -> int {
+            if (key.isEmpty()) return -1;
+            for (int i = 0; i < mods.size(); ++i) {
+                const auto& m = mods[i];
+                if (m.is_overwrite || m.is_merged) continue;
+                if (m.is_separator != want_separator) continue;
+                if ((m.*field).compare(key, Qt::CaseInsensitive) == 0) return i;
+            }
+            return -1;
+        };
+        int idx = match_any(modid, &ModEntry::source_id);
+        if (idx < 0) idx = match_any(folder_name, &ModEntry::id);
+        if (idx < 0) idx = match_any(name, &ModEntry::name);
+        return idx;
+    };
+
+    // Batch the reorder with disk syncs suppressed; persist once at the end.
+    loading_ = true;
+    int placed = 0;
+    int created = 0;
+    int missing = 0;
+    int cursor = 0;
+    for (size_t r = start; r < rows.size(); ++r) {
+        const auto& row = rows[r];
+        QString type = row.value(0).trimmed().toLower();
+        QString name = row.value(2).trimmed();
+        QString modid = row.value(5).trimmed();
+        QString folder_name = row.value(6).trimmed();
+        bool is_separator = (type == QLatin1String("separator"));
+
+        int idx = is_separator
+            ? find_row(QString(), folder_name, name, true)
+            : find_row(modid, folder_name, name, false);
+        if (idx < 0 && is_separator && !name.isEmpty()) {
+            QString color = row.value(4).trimmed();
+            if (create_separator_named(name,
+                    color.isEmpty() ? QStringLiteral("#888888") : color).isEmpty()) {
+                ++missing;
+                continue;
+            }
+            ++created;
+            idx = find_row(QString(), QString(), name, true);
+        }
+        if (idx < 0) {
+            ++missing;
+            continue;
+        }
+
+        const auto& mods = mod_model_->mods();
+        if (idx != cursor) mod_model_->move_mod(mods[idx].id, cursor);
+        ++cursor;
+        ++placed;
     }
-    engine::Logger::instance().info("Modlist import: " + std::to_string(applied) +
-        " applied, " + std::to_string(skipped) + " skipped");
+    loading_ = false;
+
+    save_order();
+    sync_priorities();
+    sync_separator_ids();
+    apply_mod_filter();
+
+    const int total = static_cast<int>(rows.size() - start);
+    engine::Logger::instance().info("Modlist import: " + std::to_string(placed) +
+        " of " + std::to_string(total) + " placed, " + std::to_string(created) +
+        " separators created, " + std::to_string(missing) + " missing");
     QMessageBox::information(this, tr("Import Modlist"),
-        tr("Applied %1 mod(s). %2 unknown mod(s) skipped.").arg(applied).arg(skipped));
+        tr("Placed %1 of %2 entries in order. %3 separator(s) created. %4 not found.")
+            .arg(placed).arg(total).arg(created).arg(missing));
 }
 
 void MainWindow::create_separator_at_row(int row) {
     if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return;
-
-    auto mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
-    auto separator_suffix = knowledge_->get(current_game_id_, "separator_suffix", "_separator");
-    if (mods_subpath.empty()) return;
 
     bool ok;
     auto name = QInputDialog::getText(this, tr("Create Separator"),
@@ -2179,46 +2302,23 @@ void MainWindow::create_separator_at_row(int row) {
     if (!ok || name.trimmed().isEmpty()) return;
 
     // Check for duplicate names
-    auto existing = mod_model_->existing_separator_names();
-    if (existing.contains(name.trimmed())) {
+    if (mod_model_->existing_separator_names().contains(name.trimmed())) {
         QMessageBox::warning(this, tr("Separator"), tr("A separator with this name already exists."));
         return;
     }
 
     // Pick color
-    QColor initial("#888888");
-    QColor color = QColorDialog::getColor(initial, this, tr("Separator Color"));
+    QColor color = QColorDialog::getColor(QColor("#888888"), this, tr("Separator Color"));
     if (!color.isValid()) return;
 
-    auto folder_name = name.trimmed().toStdString() + separator_suffix;
-    auto sep_dir = mods_dir_path() / folder_name;
-
-    // Create the separator folder
-    std::error_code ec;
-    std::filesystem::create_directories(sep_dir, ec);
-    if (ec) {
+    auto id = create_separator_named(name.trimmed(), color.name());
+    if (id.isEmpty()) {
         QMessageBox::warning(this, tr("Separator"), tr("Failed to create separator directory."));
         return;
     }
 
-    // Write separator.xml
-    auto xml_path = sep_dir / "separator.xml";
-    std::ofstream f(xml_path);
-    if (!f) {
-        QMessageBox::warning(this, tr("Separator"), tr("Failed to write separator.xml."));
-        return;
-    }
-    f << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
-    f << "<separator>\n";
-    f << "  <name>" << name.trimmed().toStdString() << "</name>\n";
-    f << "  <color>" << color.name().toStdString() << "</color>\n";
-    f << "</separator>\n";
-    f.close();
-
-    // Add to model at the target row (below the clicked row)
-    auto id = QString::fromStdString(folder_name);
+    // Move the new separator to the target row (below the clicked row)
     int insert_row = row + 1;
-    mod_model_->add_separator(id, name.trimmed(), color.name());
     mod_model_->move_mod(id, insert_row);
     engine::Logger::instance().debug("Separator created at row " + std::to_string(insert_row) +
         ": " + name.toStdString());
