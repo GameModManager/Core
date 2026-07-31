@@ -115,6 +115,9 @@ set(ENGINE_SOURCES
     src/engine/pipeline/deploy_stage.cpp
     src/engine/pipeline/launch_stage.cpp
     src/engine/pipeline/sync_stage.cpp
+    src/engine/pipeline/plugin_claim_stage.cpp
+    src/engine/trace/trace_recorder.cpp
+    src/engine/plugin_host/abi_bridge.cpp
     src/engine/notify/notification_backend.cpp
     src/engine/log/logger.cpp
     src/engine/log/crash_handler.cpp
@@ -180,6 +183,8 @@ set(UI_SOURCES
     src/ui/widgets/instance_switcher_dialog.cpp
     src/ui/widgets/instance_statistics_dialog.cpp
     src/ui/widgets/debug_window.cpp
+    src/ui/widgets/pipeline_window.cpp
+    src/ui/widgets/zoom_controls.cpp
     src/ui/widgets/mod_filter_bar.cpp
     src/ui/widgets/right_filter_bar.cpp
     src/ui/widgets/column_toggle_header.cpp
@@ -252,6 +257,7 @@ add_executable(pipeline_test tests/engine/pipeline_test.cpp
     src/engine/pipeline/deploy_stage.cpp
     src/engine/pipeline/launch_stage.cpp
     src/engine/pipeline/sync_stage.cpp
+    src/engine/trace/trace_recorder.cpp
     src/engine/log/logger.cpp
     src/engine/meta/mod_meta.cpp
     src/engine/source/source_provider.cpp
@@ -273,6 +279,12 @@ add_executable(phase04_test tests/engine/phase04_test.cpp
 target_include_directories(phase04_test PRIVATE src/)
 add_test(NAME phase04_test COMMAND phase04_test)
 
+add_executable(trace_test tests/engine/trace_test.cpp
+    src/engine/trace/trace_recorder.cpp
+)
+target_include_directories(trace_test PRIVATE src/)
+add_test(NAME trace_test COMMAND trace_test)
+
 add_executable(registry_test tests/engine/registry_test.cpp
     src/engine/registry/stage_registry.cpp
     src/engine/registry/hook_registry.cpp
@@ -287,6 +299,7 @@ add_executable(registry_test tests/engine/registry_test.cpp
     src/engine/pipeline/deploy_stage.cpp
     src/engine/pipeline/launch_stage.cpp
     src/engine/pipeline/sync_stage.cpp
+    src/engine/trace/trace_recorder.cpp
     src/engine/log/logger.cpp
     src/engine/meta/mod_meta.cpp
     src/engine/source/source_provider.cpp
@@ -315,6 +328,7 @@ add_executable(perf_benchmark tests/perf/benchmark_test.cpp
     src/engine/pipeline/deploy_stage.cpp
     src/engine/pipeline/launch_stage.cpp
     src/engine/pipeline/sync_stage.cpp
+    src/engine/trace/trace_recorder.cpp
     src/engine/log/logger.cpp
     src/engine/meta/mod_meta.cpp
     src/engine/source/source_provider.cpp

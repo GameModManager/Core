@@ -232,7 +232,7 @@ bool NexusProvider::fetch(const Mod& mod, const PipelineContext& ctx,
         bool ok = curl_request(api_url, "", response, http_code, headers, &resp_headers);
         curl_slist_free_all(headers);
 
-        if (resp_headers.size() > 20)  // sanity check — don't parse empty/trivial
+        if (resp_headers.size() > 20)  // sanity check - don't parse empty/trivial
             parse_rate_limits(resp_headers);
 
         if (!ok) {
@@ -241,7 +241,7 @@ bool NexusProvider::fetch(const Mod& mod, const PipelineContext& ctx,
         }
         if (http_code == 403) {
             Logger::instance().error(
-                "NexusProvider: API key rejected (HTTP 403) — check your key at "
+                "NexusProvider: API key rejected (HTTP 403) - check your key at "
                 "nexusmods.com/users/myaccount?tab=api");
             return false;
         }

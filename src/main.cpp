@@ -61,7 +61,7 @@ int main(int argc, char *argv[])
     app.setApplicationVersion("0.1.0");
     // Use platform-native style (Breeze on KDE, etc.)
 
-    // Initialize theme system — default uses palette() so desktop colors apply
+    // Initialize theme system - default uses palette() so desktop colors apply
     engine::ThemeManager theme_manager;
     engine::StyleManager style_manager(theme_manager);
     style_manager.apply_default();
@@ -99,10 +99,10 @@ int main(int argc, char *argv[])
     // If --help was requested, print colored help and exit
     if (parser.isSet(helpOpt) || parser.isSet(helpShort)) {
         // ANSI color codes
-        constexpr const char* R = "\033[31m";   // red — headers
-        constexpr const char* G = "\033[32m";   // green — short flags
-        constexpr const char* O = "\033[38;5;208m"; // orange — long flags
-        constexpr const char* B = "\033[34m";   // blue — variables
+        constexpr const char* R = "\033[31m";   // red - headers
+        constexpr const char* G = "\033[32m";   // green - short flags
+        constexpr const char* O = "\033[38;5;208m"; // orange - long flags
+        constexpr const char* B = "\033[34m";   // blue - variables
         constexpr const char* D = "\033[0m";    // default reset
 
         // Header
@@ -161,7 +161,7 @@ int main(int argc, char *argv[])
     fs::create_directories(fs::path(data_dir()), ec);
     fs::create_directories(engine::default_instances_dir(), ec);
 
-    // Load plugins — needed for both headless and GUI modes
+    // Load plugins - needed for both headless and GUI modes
     engine::PluginLoader plugin_loader;
     auto app_dir = QApplication::applicationDirPath();
     QStringList plugin_dirs = {
@@ -289,7 +289,7 @@ int main(int argc, char *argv[])
             return 0;
         }
 
-        // No running instance — resolve the game and find/create the instance ourselves
+        // No running instance - resolve the game and find/create the instance ourselves
         // Match the nexus_domain to a game_id via plugins
         std::string matched_game_id;
         for (const auto& p : plugin_loader.plugins()) {
@@ -327,7 +327,7 @@ int main(int argc, char *argv[])
             return 1;
         }
 
-        // We have the instance — fall through to normal GUI startup with this instance
+        // We have the instance - fall through to normal GUI startup with this instance
         instance_name = QString::fromStdString(target_instance);
         engine::Logger::instance().debug(
             "Download URL: resolved to instance " + target_instance + " (game=" + matched_game_id + ")");
@@ -337,7 +337,7 @@ int main(int argc, char *argv[])
     engine::SingleInstanceGuard instance_guard;
     if (!headless && !instance_guard.tryAcquire()) {
         instance_guard.requestFocus();
-        engine::Logger::instance().debug("Another instance running — requesting focus");
+        engine::Logger::instance().debug("Another instance running - requesting focus");
         engine::CrashHandler::uninstall();
         return 0;
     }

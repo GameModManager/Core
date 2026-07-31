@@ -7,8 +7,8 @@
 
 namespace engine {
 
-// Windows platform module — registry paths, native launch, Steam detection via
-// registry or common paths. Does NOT compile on Linux (per PLAN.md §11 — platform
+// Windows platform module - registry paths, native launch, Steam detection via
+// registry or common paths. Does NOT compile on Linux (per PLAN.md §11 - platform
 // code is only in the translation units for its own OS).
 class WindowsPlatform : public PlatformInterface {
 public:

@@ -48,7 +48,7 @@ void IsaacConflictIndex::scan(const std::string& db_path) {
     for (const auto& folder : mod_folders) {
         fs::path mod_path = fs::path(mods_path_) / folder;
 
-        // Quick token check — skip full walk if unchanged
+        // Quick token check - skip full walk if unchanged
         std::string token = quick_token(mod_path.string());
         auto cached = load_cache(db_path, folder);
         if (cached && cached->token == token) {

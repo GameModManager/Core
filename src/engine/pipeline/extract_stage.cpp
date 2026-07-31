@@ -35,7 +35,7 @@ static std::string read_file_text(const std::filesystem::path& path) {
 
 bool ExtractStage::execute(Mod& mod, PipelineContext& ctx) {
     if (mod.files.empty() || mod.files[0].relative_path.empty()) {
-        // Metadata-only mods (e.g. Steam Workshop already on disk) — nothing to extract
+        // Metadata-only mods (e.g. Steam Workshop already on disk) - nothing to extract
         if (mod.state == ModState::Downloaded) {
             mod.state = ModState::Extracted;
             return true;
@@ -146,7 +146,7 @@ bool ExtractStage::execute(Mod& mod, PipelineContext& ctx) {
     if (mod.name.empty()) mod.name = mod_name;
     if (!mod_version.empty()) mod.version = mod_version;
 
-    // Store staging path — InstallStage will move to mods/
+    // Store staging path - InstallStage will move to mods/
     ModFile staging_entry;
     staging_entry.relative_path = staging_dir.string();
     mod.files.push_back(staging_entry);

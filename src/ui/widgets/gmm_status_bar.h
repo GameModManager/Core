@@ -4,6 +4,10 @@
 #include <QLabel>
 #include <QWidget>
 #include <QStringList>
+#include <QTimer>
+
+class QFrame;
+class QToolButton;
 
 namespace ui {
 
@@ -19,12 +23,19 @@ public:
     void set_counter_value(int count);
     void set_sources(const QStringList& sources);  // e.g. {"Nexus", "Steam"}
 
+signals:
+    void pipeline_clicked();
+
 private:
+    void refresh_pipeline_indicator();
+
     QHBoxLayout* layout_ = nullptr;
     QLabel* status_label_ = nullptr;
     QList<QLabel*> source_labels_;
     QLabel* counter_label_ = nullptr;
     QFrame* separator_ = nullptr;
+    QToolButton* pipeline_button_ = nullptr;
+    QTimer* pipeline_timer_ = nullptr;
 };
 
 }  // namespace ui

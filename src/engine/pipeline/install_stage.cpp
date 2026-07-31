@@ -44,7 +44,7 @@ bool InstallStage::execute(Mod& mod, PipelineContext& ctx) {
     }
 
     if (staging_dir.empty()) {
-        // Metadata-only mod (e.g. Steam Workshop already on disk) — nothing to install
+        // Metadata-only mod (e.g. Steam Workshop already on disk) - nothing to install
         if (mod.state == ModState::Extracted) {
             mod.state = ModState::Installed;
             return true;

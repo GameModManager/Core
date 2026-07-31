@@ -18,7 +18,7 @@ OverlayFsStrategy::~OverlayFsStrategy() {
 
 bool OverlayFsStrategy::deploy(const std::filesystem::path& source,
                                 const std::filesystem::path& target) {
-    // For OverlayFS, deploy is handled by the mount itself —
+    // For OverlayFS, deploy is handled by the mount itself -
     // individual file mappings aren't needed when lowerdir order IS the priority order
     (void)source;
     (void)target;
@@ -26,7 +26,7 @@ bool OverlayFsStrategy::deploy(const std::filesystem::path& source,
 }
 
 bool OverlayFsStrategy::remove(const std::filesystem::path& target) {
-    // Same — removal is done by remounting without the mod's lowerdir
+    // Same - removal is done by remounting without the mod's lowerdir
     (void)target;
     return true;
 }
@@ -171,7 +171,7 @@ bool OverlayFsStrategy::can_mount_unprivileged() {
     std::string content;
     std::getline(version, content);
 
-    // Extract major version number — simple check for >= 5.11
+    // Extract major version number - simple check for >= 5.11
     size_t dot_pos = content.find('.');
     if (dot_pos == std::string::npos) return false;
 

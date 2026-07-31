@@ -49,7 +49,7 @@ bool HardlinkStrategy::deploy(const std::filesystem::path& source,
 
 bool HardlinkStrategy::remove(const std::filesystem::path& target) {
     std::error_code ec;
-    // Only remove regular files (not directories — hardlinks can't create dirs)
+    // Only remove regular files (not directories - hardlinks can't create dirs)
     if (std::filesystem::is_regular_file(target)) {
         std::filesystem::remove(target, ec);
         return !ec;
