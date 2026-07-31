@@ -22,6 +22,29 @@ static void setup_toggle_header(QTableWidget* table, const QStringList& labels) 
     header->setSectionsMovable(true);
 }
 
+namespace {
+
+// Hide a tree item unless it or any descendant matches the filter text.
+bool apply_tree_filter(QTreeWidgetItem* item, const QString& text) {
+    bool self_match = text.isEmpty();
+    if (!self_match) {
+        for (int col = 0; col < item->columnCount(); ++col) {
+            if (item->text(col).toLower().contains(text)) {
+                self_match = true;
+                break;
+            }
+        }
+    }
+    bool child_match = false;
+    for (int i = 0; i < item->childCount(); ++i) {
+        if (apply_tree_filter(item->child(i), text)) child_match = true;
+    }
+    item->setHidden(!(self_match || child_match));
+    return self_match || child_match;
+}
+
+}  // anonymous namespace
+
 RightPanel::RightPanel(QWidget* parent)
     : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
@@ -36,13 +59,6 @@ RightPanel::RightPanel(QWidget* parent)
 
     // Data tab is always present - create it once
     data_tab_ = new DataTab(tab_widget_);
-    setup_toggle_header(data_tab_->table(), {tr("Path"), tr("Size"), tr("Mod")});
-    // Path stretches to fill space; Size and Mod keep user-set width
-    auto* data_hdr = data_tab_->table()->horizontalHeader();
-    data_hdr->setStretchLastSection(false);
-    data_hdr->setSectionResizeMode(0, QHeaderView::Stretch);
-    data_hdr->setSectionResizeMode(1, QHeaderView::Interactive);
-    data_hdr->setSectionResizeMode(2, QHeaderView::Interactive);
     tab_widget_->addTab(data_tab_, "Data");
 
     layout->addWidget(tab_widget_, 1);
@@ -80,29 +96,21 @@ void RightPanel::apply_filter() {
     auto* table = current_table();
     if (table) {
         filter_bar_->apply_to(table);
+        // DownloadsTab: re-apply the "hide installed" filter on top of the
+        // text filter (the text filter un-hides rows when its text is empty).
+        if (auto* dt = qobject_cast<DownloadsTab*>(tab_widget_->currentWidget()))
+            dt->reapply_installed_filter();
         return;
     }
 
-    // ConflictsTab uses QTreeWidget - filter top-level items
+    // ConflictsTab / DataTab use QTreeWidget - filter recursively so a branch
+    // stays visible when any descendant matches.
     auto* w = tab_widget_->currentWidget();
     if (!w) return;
     auto* tree = w->findChild<QTreeWidget*>();
     if (tree) {
-        for (int i = 0; i < tree->topLevelItemCount(); ++i) {
-            auto* item = tree->topLevelItem(i);
-            if (text.isEmpty()) {
-                item->setHidden(false);
-                continue;
-            }
-            bool match = false;
-            for (int col = 0; col < tree->columnCount(); ++col) {
-                if (item->text(col).toLower().contains(text)) {
-                    match = true;
-                    break;
-                }
-            }
-            item->setHidden(!match);
-        }
+        for (int i = 0; i < tree->topLevelItemCount(); ++i)
+            apply_tree_filter(tree->topLevelItem(i), text);
     }
 }
 
@@ -191,6 +199,10 @@ ConflictsTab* RightPanel::conflicts_tab() const {
     if (it != tabs_.end())
         return qobject_cast<ConflictsTab*>(it->second);
     return nullptr;
+}
+
+DataTab* RightPanel::data_tab() const {
+    return data_tab_;
 }
 
 }  // namespace ui

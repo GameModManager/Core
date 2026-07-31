@@ -138,6 +138,7 @@ private:
     void update_queue_label();
     void prompt_nxm_registration();
     void recompute_conflicts();
+    void refresh_data_tab();
     void on_image_diff_requested(const QString& relative_path);
     void migrate_mo2_meta();
     void load_meta_for_mods();

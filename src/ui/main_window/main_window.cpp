@@ -1375,8 +1375,10 @@ void MainWindow::load_meta_for_mods() {
 }
 
 void MainWindow::recompute_conflicts() {
-    if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty())
+    if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) {
+        refresh_data_tab();
         return;
+    }
 
     // Read per-game config from knowledge hooks (needed before mod_infos for overwrite priority)
     auto conflict_extensions = knowledge_->get(current_game_id_, "conflict_extensions", "");
@@ -1402,7 +1404,11 @@ void MainWindow::recompute_conflicts() {
         mod_infos.emplace_back(mod.id.toStdString(), mod.priority);
     }
 
-    if (mod_infos.empty()) return;
+    if (mod_infos.empty()) {
+        last_conflict_registry_.clear();
+        refresh_data_tab();
+        return;
+    }
 
     auto mods_dir = mods_dir_path();
 
@@ -1483,6 +1489,34 @@ void MainWindow::recompute_conflicts() {
     }
     mod_model_->set_conflict_pairs(pairs);
     last_conflict_registry_ = engine.last_registry();
+    refresh_data_tab();
+}
+
+void MainWindow::refresh_data_tab() {
+    auto* dt = right_panel_->data_tab();
+    if (!dt) return;
+
+    if (last_conflict_registry_.empty() || current_game_id_.empty()) {
+        dt->clear_content();
+        return;
+    }
+
+    auto mods_dir = mods_dir_path();
+
+    // Game-native mods dir (may equal mods_dir -> then fallback is unused)
+    std::filesystem::path game_mods_dir;
+    if (!current_game_dir_.empty() && knowledge_) {
+        auto game_mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
+        game_mods_dir = current_game_dir_;
+        if (!game_mods_subpath.empty())
+            game_mods_dir /= game_mods_subpath;
+        if (game_mods_dir == mods_dir)
+            game_mods_dir.clear();
+    }
+
+    dt->show_data(last_conflict_registry_, mod_model_->mods(),
+                  mod_model_->is_conflict_order_reversed(),
+                  mods_dir, game_mods_dir);
 }
 
 void MainWindow::on_image_diff_requested(const QString& relative_path) {

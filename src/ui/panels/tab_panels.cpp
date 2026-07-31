@@ -2,10 +2,12 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
 #include <QColor>
 #include <QDesktopServices>
 #include <QFileIconProvider>
 #include <QFileInfo>
+#include <QHBoxLayout>
 #include <QHeaderView>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -14,13 +16,17 @@
 #include <QPalette>
 #include <QProgressBar>
 #include <QSet>
+#include <QSettings>
 #include <QStyle>
 #include <QTableWidget>
 #include <QTreeWidget>
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include "ui/widgets/column_toggle_header.h"
 #include "ui/widgets/mod_list_model.h"
+
+#include "engine/log/logger.h"
 
 #include <algorithm>
 #include <cmath>
@@ -67,6 +73,59 @@ static QString state_label(DownloadState s) {
     return QCoreApplication::translate("DownloadsTab", "Unknown");
 }
 
+// --- MIME icon + tree helpers ---
+namespace {
+
+QIcon icon_for_file(const QString& file_path) {
+    static QFileIconProvider prov;
+    auto px = prov.icon(QFileInfo(file_path)).pixmap(16, 16);
+    return QIcon(px);
+}
+
+QIcon folder_icon() {
+    static QIcon folder;
+    if (folder.isNull()) {
+        QStyle* st = QApplication::style();
+        folder = st->standardIcon(QStyle::SP_DirIcon);
+    }
+    return folder;
+}
+
+// Find or create a child tree item by name under parent.
+QTreeWidgetItem* ensure_child(QTreeWidgetItem* parent, const QString& name, bool is_dir) {
+    for (int i = 0; i < parent->childCount(); ++i) {
+        if (parent->child(i)->text(0) == name)
+            return parent->child(i);
+    }
+    auto* item = new QTreeWidgetItem(parent);
+    item->setText(0, name);
+    if (is_dir)
+        item->setIcon(0, folder_icon());
+    return item;
+}
+
+// Recursively sort a tree so directories come first, then alphabetical.
+void sort_dirs_first(QTreeWidgetItem* parent) {
+    std::vector<QTreeWidgetItem*> children;
+    children.reserve(parent->childCount());
+    for (int i = 0; i < parent->childCount(); ++i)
+        children.push_back(parent->child(i));
+
+    std::sort(children.begin(), children.end(),
+              [](const QTreeWidgetItem* a, const QTreeWidgetItem* b) {
+                  bool a_dir = a->childCount() > 0;
+                  bool b_dir = b->childCount() > 0;
+                  if (a_dir != b_dir) return a_dir;
+                  return a->text(0) < b->text(0);
+              });
+
+    parent->takeChildren();
+    for (auto* c : children) parent->addChild(c);
+    for (auto* c : children) sort_dirs_first(c);
+}
+
+}  // anonymous namespace
+
 // --- PluginsTab ---
 PluginsTab::PluginsTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
@@ -87,8 +146,122 @@ ArchivesTab::ArchivesTab(QWidget* parent) : QWidget(parent) {
 DataTab::DataTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    table_ = make_table(3, {tr("Path"), tr("Size"), tr("Mod")}, this);
-    layout->addWidget(table_);
+
+    tree_ = new QTreeWidget(this);
+    tree_->setColumnCount(4);
+    auto* header = new ColumnToggleHeaderView(Qt::Horizontal, tree_);
+    header->set_column_labels({tr("Name"), tr("Size"), tr("Source"), tr("Providers")});
+    tree_->setHeader(header);
+    header->setStretchLastSection(false);
+    header->setSectionResizeMode(0, QHeaderView::Stretch);
+    header->setSectionResizeMode(1, QHeaderView::Interactive);
+    header->setSectionResizeMode(2, QHeaderView::Interactive);
+    header->setSectionResizeMode(3, QHeaderView::Interactive);
+    header->resizeSection(1, 90);
+    tree_->setAlternatingRowColors(true);
+    tree_->setSelectionMode(QAbstractItemView::SingleSelection);
+    tree_->setIconSize(QSize(16, 16));
+    tree_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    layout->addWidget(tree_, 1);
+}
+
+void DataTab::clear_content() {
+    tree_->clear();
+}
+
+void DataTab::show_data(
+    const std::unordered_map<std::string, std::vector<std::pair<std::string, int>>>& registry,
+    const QVector<ModEntry>& all_mods,
+    bool conflict_reversed,
+    const std::filesystem::path& mods_dir,
+    const std::filesystem::path& game_mods_dir)
+{
+    tree_->clear();
+    if (registry.empty()) return;
+
+    // mod id -> display name lookup
+    std::unordered_map<std::string, QString> display_names;
+    for (const auto& m : all_mods)
+        display_names[m.id.toStdString()] = m.name.isEmpty() ? m.id : m.name;
+
+    struct Row {
+        QString path;
+        QString source;
+        qint64 size = -1;
+        int providers = 0;
+        QStringList all_sources;
+    };
+    std::vector<Row> rows;
+    rows.reserve(registry.size());
+
+    for (const auto& [path, owners] : registry) {
+        if (owners.empty()) continue;
+
+        Row row;
+        row.path = QString::fromStdString(path).replace('\\', '/');
+
+        // Winner = the provider that actually takes effect
+        auto winner = conflict_reversed
+            ? std::min_element(owners.begin(), owners.end(),
+                               [](const auto& a, const auto& b) { return a.second < b.second; })
+            : std::max_element(owners.begin(), owners.end(),
+                               [](const auto& a, const auto& b) { return a.second < b.second; });
+
+        QString winner_id = QString::fromStdString(winner->first);
+        if (winner_id == QLatin1String(kOverwriteModId)) {
+            row.source = tr("Overwrite");
+        } else if (winner_id == QLatin1String(kMergedModId)) {
+            row.source = tr("MERGED");
+        } else {
+            auto it = display_names.find(winner->first);
+            row.source = it != display_names.end() ? it->second : winner_id;
+        }
+
+        row.providers = static_cast<int>(owners.size());
+        for (const auto& [owner, _] : owners) {
+            auto it = display_names.find(owner);
+            row.all_sources << (it != display_names.end() ? it->second
+                                                          : QString::fromStdString(owner));
+        }
+
+        // Size of the winning copy: instance mods dir first, then game-native
+        std::error_code ec;
+        auto sz = std::filesystem::file_size(mods_dir / winner->first / path, ec);
+        if (ec && !game_mods_dir.empty()) {
+            ec.clear();
+            sz = std::filesystem::file_size(game_mods_dir / winner->first / path, ec);
+        }
+        if (!ec) row.size = static_cast<qint64>(sz);
+
+        rows.push_back(std::move(row));
+    }
+
+    // Sorted path order gives naturally grouped tree insertion
+    std::sort(rows.begin(), rows.end(),
+              [](const Row& a, const Row& b) { return a.path < b.path; });
+
+    engine::Logger::instance().debug("Data tab populated: " +
+        std::to_string(rows.size()) + " merged files");
+
+    for (const auto& row : rows) {
+        auto parts = row.path.split('/');
+        auto* parent = tree_->invisibleRootItem();
+        for (int i = 0; i < parts.size() - 1; ++i)
+            parent = ensure_child(parent, parts[i], true);
+
+        auto* file_item = ensure_child(parent, parts.last(), false);
+        file_item->setIcon(0, icon_for_file(parts.last()));
+        file_item->setText(1, row.size >= 0 ? format_size(row.size) : QString());
+        file_item->setText(2, row.source);
+        file_item->setToolTip(2, row.all_sources.join(", "));
+        if (row.providers > 1) {
+            file_item->setText(3, QString::number(row.providers));
+            file_item->setToolTip(3, row.all_sources.join("\n"));
+        }
+    }
+
+    sort_dirs_first(tree_->invisibleRootItem());
+    tree_->expandToDepth(1);
 }
 
 // --- SavesTab ---
@@ -103,11 +276,28 @@ SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
 DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+
+    auto* top = new QHBoxLayout;
+    top->setContentsMargins(4, 2, 4, 2);
+    hide_installed_ = new QCheckBox(tr("Hide installed"), this);
+    top->addWidget(hide_installed_);
+    top->addStretch(1);
+    layout->addLayout(top);
+
     table_ = make_table(4, {tr("Name"), tr("Source"), tr("Status"), tr("Size")}, this);
-    layout->addWidget(table_);
+    layout->addWidget(table_, 1);
 
     connect(table_, &QTableWidget::cellDoubleClicked,
             this, &DownloadsTab::on_cell_double_clicked);
+    connect(hide_installed_, &QCheckBox::toggled, this, [this](bool checked) {
+        QSettings settings("GameModManager", "GameModManager");
+        settings.setValue("downloads/hide_installed", checked);
+        apply_installed_filter();
+    });
+
+    QSettings settings("GameModManager", "GameModManager");
+    hide_installed_->setChecked(settings.value("downloads/hide_installed", false).toBool());
 }
 
 void DownloadsTab::add_download(const std::string& id, const std::string& name,
@@ -238,6 +428,21 @@ void DownloadsTab::mark_installed(const std::string& id) {
     if (entry.total_size > 0) {
         entry.size_item->setText(format_size(entry.total_size));
     }
+
+    // If "hide installed" is on, the row disappears immediately
+    apply_installed_filter();
+}
+
+void DownloadsTab::apply_installed_filter() {
+    if (!hide_installed_ || !table_) return;
+    const bool hide = hide_installed_->isChecked();
+    for (const auto& [id, entry] : downloads_) {
+        table_->setRowHidden(entry.row, hide && entry.state == DownloadState::Installed);
+    }
+}
+
+void DownloadsTab::reapply_installed_filter() {
+    apply_installed_filter();
 }
 
 void DownloadsTab::on_cell_double_clicked(int row, int column) {
@@ -365,40 +570,9 @@ void DownloadsTab::deserialize(const std::string& json,
 
         table_->resizeRowToContents(entry.row);
     }
+
+    apply_installed_filter();
 }
-
-// --- MIME icon helpers ---
-namespace {
-
-QIcon icon_for_file(const QString& file_path) {
-    static QFileIconProvider prov;
-    auto px = prov.icon(QFileInfo(file_path)).pixmap(16, 16);
-    return QIcon(px);
-}
-
-QIcon folder_icon() {
-    static QIcon folder;
-    if (folder.isNull()) {
-        QStyle* st = QApplication::style();
-        folder = st->standardIcon(QStyle::SP_DirIcon);
-    }
-    return folder;
-}
-
-// Find or create a child tree item by name under parent.
-QTreeWidgetItem* ensure_child(QTreeWidgetItem* parent, const QString& name, bool is_dir) {
-    for (int i = 0; i < parent->childCount(); ++i) {
-        if (parent->child(i)->text(0) == name)
-            return parent->child(i);
-    }
-    auto* item = new QTreeWidgetItem(parent);
-    item->setText(0, name);
-    if (is_dir)
-        item->setIcon(0, folder_icon());
-    return item;
-}
-
-}  // anonymous namespace
 
 // --- ConflictsTab ---
 ConflictsTab::ConflictsTab(QWidget* parent) : QWidget(parent) {
