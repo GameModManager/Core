@@ -47,6 +47,7 @@ class ConsolePanel;
 class GmmStatusBar;
 class PipelineThread;
 class AppMenuBar;
+class PipelineWindow;
 
 struct PendingToggle {
     QString mod_id;
@@ -74,13 +75,13 @@ public:
     void set_managed_games(engine::ManagedGames* mg) { managed_games_ = mg; }
     void set_style_manager(engine::StyleManager* sm) { style_manager_ = sm; }
 
-    // NXM download routing — call when an nxm:// link is received
+    // NXM download routing - call when an nxm:// link is received
     void handle_nxm_download(const engine::NxmLink& link);
 
     [[nodiscard]] ModTableView* mod_view() const { return mod_view_; }
     [[nodiscard]] QSplitter* console_splitter() const { return console_splitter_; }
 
-    // Apply saved window geometry after show() — needed for Wayland where
+    // Apply saved window geometry after show() - needed for Wayland where
     // restoreGeometry() before platform-window creation is silently ignored.
     void apply_initial_geometry();
 
@@ -136,6 +137,7 @@ private:
     void load_meta_for_mods();
     void show_instance_statistics();
     void show_settings_dialog();
+    void show_pipeline_window();
 
     // Context menu helpers
     void clear_overwrite();
@@ -209,6 +211,7 @@ private:
 
     // Konami code easter egg
     DebugWindow* debug_window_ = nullptr;
+    PipelineWindow* pipeline_window_ = nullptr;
     int konami_state_ = 0;
     static constexpr int konami_sequence_[10] = {
         Qt::Key_Up,    Qt::Key_Up,

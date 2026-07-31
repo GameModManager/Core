@@ -27,7 +27,7 @@ ProfileBar::ProfileBar(QWidget* parent)
 
     layout->addSpacing(8);
 
-    // Import button — empty stub for now
+    // Import button - empty stub for now
     import_btn_ = new QToolButton(this);
     import_btn_->setText("Import");
     import_btn_->setIcon(style()->standardIcon(QStyle::SP_ArrowDown));

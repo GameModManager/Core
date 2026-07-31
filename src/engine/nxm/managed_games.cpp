@@ -103,7 +103,7 @@ void ManagedGames::add_source(const std::string& game_id, const GameSource& sour
             return;
         }
     }
-    // Game not found — create new entry
+    // Game not found - create new entry
     ManagedGameEntry entry;
     entry.game_id = game_id;
     entry.sources.push_back(source);

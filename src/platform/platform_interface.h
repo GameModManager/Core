@@ -7,7 +7,7 @@
 namespace engine {
 
 // Platform abstraction layer. Each OS provides its own implementation.
-// The engine never calls OS-specific APIs directly — always through this interface.
+// The engine never calls OS-specific APIs directly - always through this interface.
 //
 // Owned by main.cpp, passed to anything that needs platform services.
 // Qt-free: lives in engine/, no Qt headers.
@@ -28,15 +28,15 @@ public:
         return data_dir() / "instances";
     }
 
-    // Steam discovery — platform-specific paths
+    // Steam discovery - platform-specific paths
     [[nodiscard]] virtual std::filesystem::path find_steam_root() const = 0;
 
-    // Proton discovery — returns path to proton script/binary, empty if unavailable.
+    // Proton discovery - returns path to proton script/binary, empty if unavailable.
     // On Windows this always returns empty (no Proton on Windows).
     // On Linux this searches Steam tools for Proton installations.
     [[nodiscard]] virtual std::filesystem::path find_proton() const { return {}; }
 
-    // Wine discovery — for launching Windows games on Linux without Proton.
+    // Wine discovery - for launching Windows games on Linux without Proton.
     // Returns path to wine binary, empty if unavailable.
     [[nodiscard]] virtual std::filesystem::path find_wine() const { return {}; }
 

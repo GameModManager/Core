@@ -8,7 +8,7 @@ namespace engine {
 
 // Captures runtime-generated files from the game directory into the Overwrite mod.
 // After the game runs, any files in the game directory that don't belong to a
-// deployed mod get swept into the instance's Overwrite folder — configs, shader
+// deployed mod get swept into the instance's Overwrite folder - configs, shader
 // caches, logs, save-related files, etc.
 //
 // This is the mechanism that makes "Overwrite captures everything" real.

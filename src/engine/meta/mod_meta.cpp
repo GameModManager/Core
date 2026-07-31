@@ -333,7 +333,7 @@ ModMeta ModMeta::load(const std::filesystem::path& meta_dir,
     ModMeta meta;
     auto filepath = meta_dir / (folder_name + ".ini");
     std::ifstream f(filepath);
-    if (!f) return meta; // empty meta — caller checks has_section("General")
+    if (!f) return meta; // empty meta - caller checks has_section("General")
 
     std::string content((std::istreambuf_iterator<char>(f)),
                         std::istreambuf_iterator<char>());

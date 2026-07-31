@@ -169,7 +169,7 @@ std::optional<WorkshopItem> WorkshopClient::fetch_from_steam(int64_t workshop_id
         auto& item = details[0];
         int result = item.value("result", 0);
         if (result == 9) {
-            // File not found — mark as dead
+            // File not found - mark as dead
             mark_dead(workshop_id);
             return std::nullopt;
         }

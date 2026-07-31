@@ -67,7 +67,7 @@ std::vector<std::string> ConflictEngine::walk_mod(
     std::unordered_set<std::string> ignore_set(ignored.begin(), ignored.end());
 
     // Build subdirectory prefixes for fast filtering
-    // Each is e.g. "resources/" or "resources-dlc3/" — we check rel_str starts with one
+    // Each is e.g. "resources/" or "resources-dlc3/" - we check rel_str starts with one
     std::vector<std::string> dir_prefixes;
     for (const auto& d : scan_dirs) {
         auto prefix = d;
@@ -210,7 +210,7 @@ std::unordered_map<std::string, ConflictStats> ConflictEngine::compute(
     auto ignored    = split_csv(ignored_csv);
     auto scan_dirs  = split_csv(scan_dirs_csv);
 
-    // Compute filter hash — used to invalidate cache when scan/ext/ignore params change
+    // Compute filter hash - used to invalidate cache when scan/ext/ignore params change
     std::string filter_key = extensions_csv + "\x00" + ignored_csv + "\x00" + scan_dirs_csv;
     auto filters_hash = std::hash<std::string>{}(filter_key);
 
@@ -222,7 +222,7 @@ std::unordered_map<std::string, ConflictStats> ConflictEngine::compute(
     if (filters_hash != cache_data.filters_hash)
         cache.clear();
 
-    // Phase 1 — collect file lists (walk only changed mods)
+    // Phase 1 - collect file lists (walk only changed mods)
     // mod_folder → vector of relative paths
     std::unordered_map<std::string, std::vector<std::string>> file_lists;
 
@@ -240,10 +240,10 @@ std::unordered_map<std::string, ConflictStats> ConflictEngine::compute(
 
         auto it = cache.find(folder_name);
         if (it != cache.end() && it->second.token == token && !it->second.files.empty()) {
-            // Cache hit — use stored files
+            // Cache hit - use stored files
             file_lists[folder_name] = it->second.files;
         } else {
-            // Cache miss — walk the directory
+            // Cache miss - walk the directory
             auto files = walk_mod(mod_path, extensions, ignored, scan_dirs);
             file_lists[folder_name] = files;
 
@@ -268,7 +268,7 @@ std::unordered_map<std::string, ConflictStats> ConflictEngine::compute(
     out_data.filters_hash = filters_hash;
     save_cache(cache_path, out_data);
 
-    // Phase 2 — build path → owners registry
+    // Phase 2 - build path → owners registry
     // For each file, record (folder_name, priority) for every mod that owns it
     PathRegistry path_registry;
     for (const auto& [folder_name, priority] : mods) {
@@ -279,7 +279,7 @@ std::unordered_map<std::string, ConflictStats> ConflictEngine::compute(
         }
     }
 
-    // Phase 3 — derive per-mod conflict stats
+    // Phase 3 - derive per-mod conflict stats
     std::unordered_map<std::string, ConflictStats> results;
     for (const auto& [folder_name, priority] : mods) {
         auto it = file_lists.find(folder_name);
