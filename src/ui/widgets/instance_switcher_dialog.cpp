@@ -12,6 +12,7 @@
 
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/instance/instance.h"
+#include "ui/smooth_scroll.h"
 
 #include <filesystem>
 #include <fstream>
@@ -113,6 +114,9 @@ InstanceSwitcherDialog::InstanceSwitcherDialog(engine::PluginLoader* plugins, QW
     connect(list_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem*) {
         on_ok();
     });
+
+    // TODO: gate behind a Settings "Smooth scrolling" checkbox.
+    ui::enable_smooth_scrolling(this);
 }
 
 void InstanceSwitcherDialog::load_instances(const std::string& instances_dir) {

@@ -18,6 +18,7 @@
 #include "ui/widgets/instance_switcher_dialog.h"
 #include "ui/pipeline_worker.h"
 #include "ui/panels/tab_panels.h"
+#include "ui/smooth_scroll.h"
 #include "engine/launcher.h"
 #include "engine/log/logger.h"
 #include "engine/detect/mod_scanner.h"
@@ -501,6 +502,10 @@ MainWindow::MainWindow(QWidget* parent)
 
     connect_menu_actions();
     setup_mod_list_context_menu();
+
+    // Smooth scrolling on all item views (mod list, right-panel tables).
+    // TODO: gate behind a Settings "Smooth scrolling" checkbox.
+    ui::enable_smooth_scrolling(this);
 }
 
 void MainWindow::on_notification(const QString& title, const QString& message) {
