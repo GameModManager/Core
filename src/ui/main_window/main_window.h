@@ -104,6 +104,10 @@ private:
     void sync_priorities();
     void sort_mods();
     void create_separator();
+    void create_empty_mod();
+    void import_archives(const QStringList& paths);
+    void export_modlist();
+    void import_modlist();
     void create_separator_at_row(int row);
     void edit_separator(int row);
     void delete_separator(int row);
@@ -121,11 +125,12 @@ private:
                                          const QString& icon_path = {});
     void add_shortcut_to_desktop();
     void show_instance_switcher();
+    bool switch_to_instance(const QString& name);
+    void refresh_recent_instances();
     void on_add_entry_requested();
     static bool validate_linux_executable(const QString& path);
     void check_running_process();
     void apply_mod_filter();
-    void capture_overwrite_on_exit();
     void do_capture_overwrite(std::filesystem::file_time_type capture_time);
     void flush_pending_nxm();
     void flush_pending_changes();
@@ -148,6 +153,7 @@ private:
     void send_to_lowest_priority(const QString& id);
     void send_to_highest_in_separator(const QString& id);
     void send_to_lowest_in_separator(const QString& id);
+    void priority_move_selected(int step);
     void toggle_selected_mods(bool enabled);
     void rename_selected_mod();
     void open_source_for_mod(const QString& source_type, const QString& source_id);

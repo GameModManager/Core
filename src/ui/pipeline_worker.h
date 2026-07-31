@@ -30,7 +30,6 @@ public slots:
                           const std::string& game_id,
                           const std::string& mods_dir,
                           const std::string& meta_dir);
-    void remove_mod(const std::string& id);
 
 signals:
     void progress(const std::string& mod_id, int stage_index, const std::string& stage_name);

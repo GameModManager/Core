@@ -58,7 +58,6 @@ signals:
     // Help
     void about_requested();
     void about_qt_requested();
-    void check_updates_requested();
     void instance_statistics_requested();
 
 private:
