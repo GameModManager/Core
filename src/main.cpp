@@ -144,7 +144,7 @@ int main(int argc, char *argv[])
 
     // Initialize logger
     engine::Logger::instance().set_log_file(log_path());
-    engine::Logger::instance().debug("GameModManager v" + std::string(VERSION) + " started");
+    engine::Logger::instance().info("GameModManager v" + std::string(VERSION) + " started");
 
     // Parse remaining flags
     bool headless = parser.isSet(launchOpt);
@@ -296,7 +296,7 @@ int main(int argc, char *argv[])
 
         // Try to send to a running GMM instance via local socket
         if (engine::send_nxm_to_running_instance(QString::fromStdString(pending_url))) {
-            engine::Logger::instance().debug("Download URL forwarded to running instance");
+            engine::Logger::instance().info("Download URL forwarded to running instance");
             engine::CrashHandler::uninstall();
             return 0;
         }
@@ -349,7 +349,7 @@ int main(int argc, char *argv[])
     engine::SingleInstanceGuard instance_guard;
     if (!headless && !instance_guard.tryAcquire()) {
         instance_guard.requestFocus();
-        engine::Logger::instance().debug("Another instance running - requesting focus");
+        engine::Logger::instance().info("Another instance running - requesting focus");
         engine::CrashHandler::uninstall();
         return 0;
     }
@@ -359,7 +359,7 @@ int main(int argc, char *argv[])
 
     if (show_selection) {
         // -- First-run: show game selection screen --
-        engine::Logger::instance().debug("No instances found - showing game selection");
+        engine::Logger::instance().info("No instances found - showing game selection");
 
         // Build installed games list
         std::vector<ui::GameEntry> installed_entries;
@@ -399,7 +399,7 @@ int main(int argc, char *argv[])
 
         QObject::connect(selection, &ui::GameSelectionWidget::game_selected,
             [&](const ui::GameEntry& entry) {
-                engine::Logger::instance().debug("Game selected: " + entry.game_id);
+                engine::Logger::instance().info("Game selected: " + entry.game_id);
 
                 // Find the full DetectedGame for this entry
                 engine::DetectedGame detected;
@@ -460,7 +460,7 @@ int main(int argc, char *argv[])
 
         int rc = app.exec();
 
-        engine::Logger::instance().debug("GameModManager shutting down");
+        engine::Logger::instance().info("GameModManager shutting down");
         engine::CrashHandler::uninstall();
         delete main_window;
         return rc;
@@ -530,7 +530,7 @@ int main(int argc, char *argv[])
 
     int rc = app.exec();
 
-    engine::Logger::instance().debug("GameModManager shutting down");
+    engine::Logger::instance().info("GameModManager shutting down");
     engine::CrashHandler::uninstall();
     return rc;
 }

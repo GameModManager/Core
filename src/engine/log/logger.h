@@ -1,5 +1,6 @@
 #pragma once
 
+#include <deque>
 #include <functional>
 #include <mutex>
 #include <string>
@@ -8,6 +9,13 @@
 namespace engine {
 
 enum class LogLevel { Debug, Info, Warn, Error };
+
+// A single captured log message, kept for late subscribers.
+struct LogEntry {
+    LogLevel level;
+    std::string timestamp;
+    std::string message;
+};
 
 class Logger {
 public:
@@ -37,9 +45,13 @@ private:
     std::string level_tag(LogLevel level) const;
     std::string sanitize(std::string msg) const;
 
+    // Messages replayed to callbacks registered after they were logged.
+    static constexpr std::size_t kReplayLimit = 256;
+
     LogLevel min_level_ = LogLevel::Debug;
     std::vector<Callback> callbacks_;
     std::vector<GroupCallback> group_callbacks_;
+    std::deque<LogEntry> replay_buffer_;
     std::mutex mutex_;
     int log_fd_ = -1;
     std::string home_dir_;

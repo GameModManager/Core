@@ -71,7 +71,7 @@ void gmm_overlay_init(void) {
     const char *overwrite = getenv("GMM_OVERWRITE_DIR");
     if (!game || !overwrite) return;
 
-    gmm_debug = getenv("GMM_OVERLAY_DEBUG") != NULL;
+    gmm_debug = getenv("GMM_DEBUG") != NULL;
 
     gmm_game_dir = strdup(game);
     gmm_game_dir_len = strlen(gmm_game_dir);

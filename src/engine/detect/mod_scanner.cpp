@@ -240,8 +240,8 @@ static std::vector<ScannedMod> scan_impl(
         return a.display_name < b.display_name;
     });
 
-    Logger::instance().info("ModScanner: found " + std::to_string(mods.size()) +
-                            " mods in " + mods_dir.string());
+    Logger::instance().debug("ModScanner: found " + std::to_string(mods.size()) +
+                             " mods in " + mods_dir.string());
 
     return mods;
 }

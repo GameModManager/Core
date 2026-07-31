@@ -22,8 +22,6 @@
 namespace engine {
 
 bool OverlayFsLauncher::is_supported(const std::filesystem::path& upper_dir) {
-    Logger::instance().debug("OverlayFsLauncher::is_supported() checking kernel + filesystem");
-
     // 1. Kernel must support overlay filesystem
     std::ifstream fs("/proc/filesystems");
     if (!fs.is_open()) {
@@ -81,7 +79,7 @@ bool OverlayFsLauncher::is_supported(const std::filesystem::path& upper_dir) {
         }
     }
 
-    Logger::instance().debug("Overlay: kernel version OK (" + line.substr(0, line.find(' ', space_before + 1)) + ")");
+    auto kernel_ver = line.substr(0, line.find(' ', space_before + 1));
 
     // 3. If upper_dir is given, probe that the filesystem supports user xattrs
     if (!upper_dir.empty()) {
@@ -100,10 +98,9 @@ bool OverlayFsLauncher::is_supported(const std::filesystem::path& upper_dir) {
                 "). OverlayFS unavailable on this filesystem.");
             return false;
         }
-        Logger::instance().debug("Overlay: filesystem xattr probe OK at " + upper_dir.string());
     }
 
-    Logger::instance().debug("OverlayFsLauncher: supported");
+    Logger::instance().debug("OverlayFsLauncher: supported (kernel " + kernel_ver + ")");
     return true;
 }
 
@@ -112,7 +109,7 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
                                    const std::filesystem::path& upper_dir,
                                    const std::vector<std::string>& args,
                                    const std::vector<std::filesystem::path>& extra_lowerdirs) {
-    Logger::instance().info("OverlayFsLauncher::launch() executable=" + executable.string() +
+    Logger::instance().debug("OverlayFsLauncher::launch() executable=" + executable.string() +
         " game_dir=" + game_dir.string() + " upper_dir=" + upper_dir.string());
 
     if (!args.empty() && !extra_lowerdirs.empty()) {
@@ -121,7 +118,7 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
             if (!dirs_log.empty()) dirs_log += ", ";
             dirs_log += d.string();
         }
-        Logger::instance().info("Overlay: " + std::to_string(extra_lowerdirs.size()) +
+        Logger::instance().debug("Overlay: " + std::to_string(extra_lowerdirs.size()) +
             " extra lowerdir(s): " + dirs_log);
     }
 
@@ -184,7 +181,7 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
     // Open the stderr log file in the PARENT's namespace (before clone), so
     // the child inherits the fd and can dup2 it regardless of mount namespace.
     int stderr_fd = -1;
-    if (!args.empty() && !getenv("GMM_OVERLAY_DEBUG")) {
+    if (!args.empty() && !getenv("GMM_DEBUG")) {
         auto log_path = upper_dir / ".gmm_overlay_stderr.log";
         stderr_fd = open(log_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     }
@@ -309,7 +306,7 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
         if (devnull >= 0) {
             dup2(devnull, STDIN_FILENO);
             dup2(devnull, STDOUT_FILENO);
-            if (!getenv("GMM_OVERLAY_DEBUG")) {
+            if (!getenv("GMM_DEBUG")) {
                 if (ca->stderr_fd >= 0) {
                     // Use the fd opened by parent (survives namespace isolation)
                     dup2(ca->stderr_fd, STDERR_FILENO);
@@ -432,7 +429,7 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
                 return -1;
             }
         }
-        Logger::instance().info("Overlay: child PID " + std::to_string(pid) +
+        Logger::instance().debug("Overlay: child PID " + std::to_string(pid) +
             " survived 2s grace poll - truly running");
     } else {
         Logger::instance().debug("Overlay: child PID " + std::to_string(pid) +
@@ -441,7 +438,7 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
 
     // Child is still running (exec'd successfully) - stack no longer in use
     delete[] stack;
-    Logger::instance().info("Overlay: child PID " + std::to_string(pid) + " running");
+    Logger::instance().debug("Overlay: child PID " + std::to_string(pid) + " running");
     return static_cast<int64_t>(pid);
 }
 

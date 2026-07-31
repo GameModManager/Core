@@ -11,6 +11,8 @@
 #include <QTextCursor>
 #include <QVBoxLayout>
 
+#include <cstdlib>
+
 namespace ui {
 
 ConsolePanel::ConsolePanel(QWidget* parent)
@@ -36,9 +38,13 @@ ConsolePanel::ConsolePanel(QWidget* parent)
     });
 
     QPointer<ConsolePanel> guard(this);
+    // Same gate as Logger::enable_console(): console panel defaults to Info
+    // level (DBG hidden); GMM_DEBUG=1 drops min to Debug. Log file always full.
+    const bool verbose = std::getenv("GMM_DEBUG") != nullptr;
     auto& logger = engine::Logger::instance();
     logger.add_callback(
-        [guard](engine::LogLevel level, const std::string& timestamp, const std::string& message) {
+        [guard, verbose](engine::LogLevel level, const std::string& timestamp, const std::string& message) {
+            if (!verbose && level < engine::LogLevel::Info) return;
             auto* panel = guard.data();
             if (!panel) return;
             int lvl = static_cast<int>(level);

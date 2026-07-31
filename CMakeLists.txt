@@ -289,6 +289,12 @@ if(WIN32)
 endif()
 add_test(NAME pipeline_test COMMAND pipeline_test)
 
+add_executable(logger_test tests/engine/logger_test.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(logger_test PRIVATE src/)
+add_test(NAME logger_test COMMAND logger_test)
+
 add_executable(phase04_test tests/engine/phase04_test.cpp
     src/engine/index/conflict_index.cpp
     src/engine/model/profile.cpp

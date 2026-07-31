@@ -55,7 +55,7 @@ std::filesystem::path PreloadInterceptor::so_path() {
 int64_t PreloadInterceptor::launch(const std::filesystem::path& executable,
                                     const std::filesystem::path& game_dir,
                                     const std::filesystem::path& overwrite_dir) {
-    Logger::instance().info("PreloadInterceptor::launch() executable=" + executable.string() +
+    Logger::instance().debug("PreloadInterceptor::launch() executable=" + executable.string() +
         " game_dir=" + game_dir.string() + " overwrite_dir=" + overwrite_dir.string());
 
     if (!is_supported()) {
@@ -100,7 +100,7 @@ int64_t PreloadInterceptor::launch(const std::filesystem::path& executable,
         if (devnull >= 0) {
             dup2(devnull, STDIN_FILENO);
             dup2(devnull, STDOUT_FILENO);
-            if (!getenv("GMM_OVERLAY_DEBUG"))
+            if (!getenv("GMM_DEBUG"))
                 dup2(devnull, STDERR_FILENO);
             close(devnull);
         }
@@ -174,7 +174,7 @@ int64_t PreloadInterceptor::launch(const std::filesystem::path& executable,
         usleep(5000); // 5ms
     }
 
-    Logger::instance().info("Preload: child PID " + std::to_string(pid) + " running");
+    Logger::instance().debug("Preload: child PID " + std::to_string(pid) + " running");
     return static_cast<int64_t>(pid);
 }
 

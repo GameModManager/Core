@@ -71,12 +71,6 @@ QToolTip {
     color: white;
 }
 
-/* -- Status bar counter -------------------------- */
-
-#counterLabel {
-    color: palette(mid);
-}
-
 /* -- Instance switcher dialog -------------------- */
 
 #pathLabel {

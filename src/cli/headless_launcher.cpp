@@ -68,7 +68,7 @@ int launch_game_headless(const HeadlessConfig& cfg) {
     // Post-hoc capture (no-op if overlay was used)
     engine::capture_overwrite(cfg.game_dir, lparams.overwrite_dir, launch_time);
 
-    engine::Logger::instance().info("Headless: done");
+    engine::Logger::instance().debug("Headless: done");
     return (ret > 0 && WIFEXITED(status)) ? WEXITSTATUS(status) : 1;
 }
 

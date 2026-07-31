@@ -25,8 +25,18 @@ void Logger::set_level(LogLevel level) {
 }
 
 void Logger::add_callback(Callback cb) {
-    std::lock_guard lock(mutex_);
-    callbacks_.push_back(std::move(cb));
+    // Replay buffered messages to the new subscriber so it sees messages
+    // logged before it registered (e.g. startup lines). Replay goes through
+    // the callback itself, so its own level filtering still applies.
+    std::vector<LogEntry> replay;
+    {
+        std::lock_guard lock(mutex_);
+        replay.assign(replay_buffer_.begin(), replay_buffer_.end());
+        callbacks_.push_back(cb);
+    }
+    for (const auto& entry : replay) {
+        cb(entry.level, entry.timestamp, entry.message);
+    }
 }
 
 void Logger::add_group_callback(GroupCallback cb) {
@@ -59,6 +69,9 @@ void Logger::log(LogLevel level, const std::string& message) {
         cb(level, ts, msg);
     }
 
+    if (replay_buffer_.size() >= kReplayLimit) replay_buffer_.pop_front();
+    replay_buffer_.push_back({level, ts, msg});
+
     if (log_fd_ >= 0) {
         auto tag = level_tag(level);
         std::string line = "[" + tag + "] [" + ts + "] " + msg + "\n";
@@ -74,7 +87,10 @@ void Logger::set_log_file(const std::string& path) {
 
 void Logger::enable_console(bool color) {
     (void)color;
-    add_callback([](LogLevel level, const std::string& ts, const std::string& msg) {
+    // Console defaults to Info level (DBG hidden); GMM_DEBUG=1 drops min to Debug.
+    const bool verbose = std::getenv("GMM_DEBUG") != nullptr;
+    add_callback([verbose](LogLevel level, const std::string& ts, const std::string& msg) {
+        if (!verbose && level < LogLevel::Info) return;
         static const char* colors[] = {
             "\033[90m",  // Debug - bright black
             "\033[0m",   // Info  - default
