@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QPoint>
 #include <QString>
 #include <QVector>
 #include <QWidget>
@@ -54,6 +55,9 @@ public:
 signals:
     void install_requested(const std::string& id,
                            const std::filesystem::path& file_path);
+    // Emitted after a download entry (and its file) has been removed, so the
+    // manifest can be persisted. The entry is already gone from the table.
+    void entry_removed(const std::string& id);
 
 private:
     struct DownloadEntry {
@@ -71,6 +75,7 @@ private:
     void replace_bar_with_label(const std::string& id, const QString& text,
                                 const QColor& bg);
     void on_cell_double_clicked(int row, int column);
+    void on_custom_context_menu(const QPoint& pos);
     void apply_installed_filter();
 
     QTableWidget* table_ = nullptr;

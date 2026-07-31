@@ -91,6 +91,7 @@ add_subdirectory(external/plugins)
 set(ENGINE_SOURCES
     src/engine/instance/instance.cpp
     src/engine/instance/instance_utils.cpp
+    src/engine/fs_utils.cpp
     src/engine/detect/game_detector.cpp
     src/engine/detect/mod_scanner.cpp
     src/engine/archive/archive_extractor.cpp
@@ -231,8 +232,9 @@ if(NOT WIN32)
         target_compile_definitions(gamemodmanager PRIVATE HAS_FUSE3=1)
     endif()
 else()
-    # Windows: link ws2_32 for network, advapi32 for registry
-    target_link_libraries(gamemodmanager PRIVATE ws2_32 advapi32 shlwapi)
+    # Windows: link ws2_32 for network, advapi32 for registry, shell32 for
+    # SHFileOperation (Recycle Bin / move-to-trash)
+    target_link_libraries(gamemodmanager PRIVATE ws2_32 advapi32 shlwapi shell32)
 endif()
 
 target_include_directories(gamemodmanager PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)

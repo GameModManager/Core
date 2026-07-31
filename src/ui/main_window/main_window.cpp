@@ -20,6 +20,7 @@
 #include "ui/panels/tab_panels.h"
 #include "ui/smooth_scroll.h"
 #include "engine/launcher.h"
+#include "engine/fs_utils.h"
 #include "engine/log/logger.h"
 #include "engine/detect/mod_scanner.h"
 #include "engine/detect/game_detector.h"
@@ -700,6 +701,8 @@ void MainWindow::set_game_info(const std::string& game_id,
                 pipeline_thread_->worker()->install_mod(mod_id, fp.string());
             }, Qt::QueuedConnection);
         });
+        connect(dt, &DownloadsTab::entry_removed,
+                this, [this](const std::string&) { save_download_manifest(); });
     }
 
     // Show debug window if debugging.enabled flag exists
@@ -1774,7 +1777,7 @@ void MainWindow::remove_selected_mods() {
     if (names.isEmpty()) return;
 
     auto reply = QMessageBox::question(this, tr("Remove Mods"),
-        tr("Permanently delete %1 mod(s) from disk?\n\n%2\n\nThis cannot be undone.")
+        tr("Move %1 mod(s) to the trash bin?\n\n%2\n\nTheir files stay in the system trash and can be restored.")
             .arg(names.size()).arg(names.join("\n")),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (reply != QMessageBox::Yes) return;
@@ -1789,11 +1792,9 @@ void MainWindow::remove_selected_mods() {
 
         if (!mods_subpath.empty() && !current_game_dir_.empty()) {
             auto mod_folder = mods_dir_path() / entry.id.toStdString();
-            std::error_code ec;
-            std::filesystem::remove_all(mod_folder, ec);
-            if (ec) {
-                engine::Logger::instance().error("Failed to remove mod folder: " +
-                    mod_folder.string() + ": " + ec.message());
+            if (!engine::remove_path(mod_folder)) {
+                engine::Logger::instance().error("Failed to move mod folder to trash: " +
+                    mod_folder.string());
             }
         }
         mod_model_->remove_mod(entry.id);
@@ -2434,7 +2435,8 @@ void MainWindow::delete_separator(int row) {
     if (!mod.is_separator) return;
 
     auto reply = QMessageBox::question(this, tr("Delete Separator"),
-        tr("Delete separator \"%1\" from disk?\n\nThis cannot be undone.").arg(mod.name),
+        tr("Move separator \"%1\" to the trash bin?\n\nIt can be restored from the system trash.")
+            .arg(mod.name),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (reply != QMessageBox::Yes) return;
 
@@ -2443,10 +2445,8 @@ void MainWindow::delete_separator(int row) {
     auto mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
     if (!mods_subpath.empty() && !current_game_dir_.empty()) {
         auto sep_folder = mods_dir_path() / mod.id.toStdString();
-        std::error_code ec;
-        std::filesystem::remove_all(sep_folder, ec);
-        if (ec) {
-            engine::Logger::instance().error("Failed to remove separator folder: " + sep_folder.string());
+        if (!engine::remove_path(sep_folder)) {
+            engine::Logger::instance().error("Failed to move separator folder to trash: " + sep_folder.string());
         }
     }
 

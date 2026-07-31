@@ -13,6 +13,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMenu>
+#include <QMessageBox>
 #include <QPalette>
 #include <QProgressBar>
 #include <QSet>
@@ -27,6 +28,7 @@
 #include "ui/widgets/mod_list_model.h"
 
 #include "engine/log/logger.h"
+#include "engine/fs_utils.h"
 
 #include <algorithm>
 #include <cmath>
@@ -292,6 +294,9 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
 
     connect(table_, &QTableWidget::cellDoubleClicked,
             this, &DownloadsTab::on_cell_double_clicked);
+    table_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(table_, &QTableWidget::customContextMenuRequested,
+            this, &DownloadsTab::on_custom_context_menu);
     connect(hide_installed_, &QCheckBox::toggled, this, [this](bool checked) {
         QSettings settings("GameModManager", "GameModManager");
         settings.setValue("downloads/hide_installed", checked);
@@ -462,6 +467,53 @@ void DownloadsTab::on_cell_double_clicked(int row, int column) {
             return;
         }
     }
+}
+
+void DownloadsTab::on_custom_context_menu(const QPoint& pos) {
+    auto* item = table_->itemAt(pos);
+    if (!item) return;
+    const int row = item->row();
+
+    const std::string* found = nullptr;
+    for (const auto& [id, entry] : downloads_) {
+        if (entry.row == row) {
+            found = &id;
+            break;
+        }
+    }
+    if (!found) return;
+    const std::string id = *found;
+
+    QMenu menu(this);
+    auto* remove_action = menu.addAction(tr("Remove"));
+    connect(remove_action, &QAction::triggered, this, [this, id]() {
+        auto it = downloads_.find(id);
+        if (it == downloads_.end()) return;
+        auto& entry = it->second;
+
+        // Trash the archive file (if any) before dropping the entry.
+        if (!entry.file_path.empty() && std::filesystem::exists(entry.file_path)) {
+            if (!engine::remove_path(entry.file_path)) {
+                QMessageBox::warning(this, tr("Remove"),
+                    tr("Failed to move \"%1\" to the trash bin.").arg(
+                        QString::fromStdString(entry.file_path.filename().string())));
+                return;
+            }
+        }
+
+        const int removed_row = entry.row;
+        table_->removeRow(removed_row);
+        downloads_.erase(it);
+
+        // Rows below the removed one shift up - reindex the survivors.
+        for (auto& [eid, e] : downloads_) {
+            if (e.row > removed_row) --e.row;
+        }
+
+        emit entry_removed(id);
+    });
+
+    menu.exec(table_->viewport()->mapToGlobal(pos));
 }
 
 // --- Manifest persistence ---
