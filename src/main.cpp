@@ -61,6 +61,9 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     app.setApplicationName("GameModManager");
     app.setApplicationVersion("0.1.0");
+    // Smooth scrolling on item views is applied per-window via
+    // ui::enable_smooth_scrolling() (Qt 6 removed AA_SmoothScrolling).
+    // TODO: gate behind a Settings "Smooth scrolling" checkbox.
     // Use platform-native style (Breeze on KDE, etc.)
 
     // Load translations. The language comes from settings ("language", a

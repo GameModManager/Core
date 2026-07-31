@@ -18,6 +18,7 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QVBoxLayout>
+#include "ui/smooth_scroll.h"
 
 namespace ui {
 
@@ -197,6 +198,9 @@ ExecEntryDialog::ExecEntryDialog(const std::filesystem::path& game_dir,
     rebuild_list();
     if (!entries_.isEmpty())
         select_entry(0);
+
+    // TODO: gate behind a Settings "Smooth scrolling" checkbox.
+    ui::enable_smooth_scrolling(this);
 }
 
 QVector<ExecEntry> ExecEntryDialog::entries() const {
