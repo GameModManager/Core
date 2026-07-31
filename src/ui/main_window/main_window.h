@@ -104,6 +104,7 @@ private:
     void sync_priorities();
     void sort_mods();
     void create_separator();
+    QString create_separator_named(const QString& name, const QString& color);
     void create_empty_mod();
     void import_archives(const QStringList& paths);
     void export_modlist();
