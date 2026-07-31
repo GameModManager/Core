@@ -8,7 +8,7 @@
 
 namespace engine {
 
-// OverlayFS deploy strategy — O(1) reorder via remount
+// OverlayFS deploy strategy - O(1) reorder via remount
 // Requires Linux kernel with overlayfs support and appropriate privileges
 class OverlayFsStrategy : public DeploymentStrategy {
 public:

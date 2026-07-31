@@ -76,10 +76,10 @@ void Logger::enable_console(bool color) {
     (void)color;
     add_callback([](LogLevel level, const std::string& ts, const std::string& msg) {
         static const char* colors[] = {
-            "\033[90m",  // Debug — bright black
-            "\033[0m",   // Info  — default
-            "\033[33m",  // Warn  — yellow
-            "\033[31m",  // Error — red
+            "\033[90m",  // Debug - bright black
+            "\033[0m",   // Info  - default
+            "\033[33m",  // Warn  - yellow
+            "\033[31m",  // Error - red
         };
         auto tag = level == LogLevel::Debug ? "DBG" :
                    level == LogLevel::Info  ? "INF" :

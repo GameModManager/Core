@@ -12,7 +12,7 @@ namespace engine {
 //
 // Keys are namespaced: "conflict_extensions", "ignored_files",
 // "workshop_id_pattern", "disable_mechanism", "auto_sort_groups", etc.
-// Values are strings (comma-separated lists, JSON, regex — keyed by convention).
+// Values are strings (comma-separated lists, JSON, regex - keyed by convention).
 class GameKnowledge {
 public:
     void set(const std::string& game_id, const std::string& key, const std::string& value);

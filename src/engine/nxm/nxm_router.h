@@ -20,7 +20,7 @@ struct NxmLink {
 };
 
 // Routes nxm:// URLs to the correct game instance.
-// Pure C++ — no Qt dependency.
+// Pure C++ - no Qt dependency.
 class NxmRouter {
 public:
     // Parse an nxm:// URL into its components.

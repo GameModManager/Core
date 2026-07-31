@@ -53,7 +53,7 @@ bool FetchStage::execute(Mod& mod, PipelineContext& ctx) {
         return false;
     }
 
-    // Some providers (e.g. SteamWorkshop) are metadata-only — no file produced
+    // Some providers (e.g. SteamWorkshop) are metadata-only - no file produced
     if (!std::filesystem::exists(dest_path)) {
         mod.archive_filename.clear();
         mod.state = ModState::Downloaded;

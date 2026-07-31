@@ -7,6 +7,8 @@
 #include <QFont>
 #include <QIcon>
 #include <QMimeData>
+#include <QPainter>
+#include <QPixmap>
 #include <QTreeView>
 
 namespace ui {
@@ -18,9 +20,24 @@ ModListModel::ModListModel(QObject* parent)
 
     // Load conflict-status icons from <appDir>/../resources/icons/
     auto iconDir = QCoreApplication::applicationDirPath() + "/../resources/icons/";
-    winning_icon_ = QIcon(iconDir + "winning.png");
-    losing_icon_  = QIcon(iconDir + "losing.png");
-    mix_icon_     = QIcon(iconDir + "mix.png");
+    overwrite_icon_    = QIcon(iconDir + "conflict-overwrite.png");
+    overwritten_icon_  = QIcon(iconDir + "conflict-overwritten.png");
+    mixed_icon_        = QIcon(iconDir + "conflict-mixed.png");
+    redundant_icon_    = QIcon(iconDir + "conflict-redundant.png");
+    hidden_icon_       = QIcon(iconDir + "conflict-hidden.png");
+}
+
+// Lay the primary icon out with a secondary icon (e.g. hidden-files badge) to
+// its right, since a cell can only carry one DecorationRole icon.
+static QIcon stacked_icons(const QIcon& left, const QIcon& right) {
+    QSize s = left.actualSize(QSize(16, 16));
+    QPixmap pix(s.width() + 2 + s.width(), s.height());
+    pix.fill(Qt::transparent);
+    QPainter p(&pix);
+    left.paint(&p, 0, 0, s.width(), s.height());
+    right.paint(&p, s.width() + 2, 0, s.width(), s.height());
+    p.end();
+    return QIcon(pix);
 }
 
 int ModListModel::rowCount(const QModelIndex& parent) const {
@@ -40,16 +57,27 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
         int row = index.row();
         if (m.is_separator) {
             auto flag = compute_separator_flags(row);
-            if (flag == "+") return winning_icon_;
-            if (flag == "-") return losing_icon_;
-            if (flag == QString("\u00B1")) return mix_icon_;
+            if (flag == "+") return overwrite_icon_;
+            if (flag == "-") return overwritten_icon_;
+            if (flag == QString("\u00B1")) return mixed_icon_;
             return {};
         }
         if (!m.tags.isEmpty()) return {};
-        if (m.conflict_wins > 0 && m.conflict_losses > 0) return mix_icon_;
-        if (m.conflict_wins > 0) return winning_icon_;
-        if (m.conflict_losses > 0) return losing_icon_;
-        return {};
+
+        QIcon primary;
+        if (m.redundant) {
+            primary = redundant_icon_;
+        } else if (m.conflict_wins > 0 && m.conflict_losses > 0) {
+            primary = mixed_icon_;
+        } else if (m.conflict_wins > 0) {
+            primary = overwrite_icon_;
+        } else if (m.conflict_losses > 0) {
+            primary = overwritten_icon_;
+        }
+
+        if (!m.has_hidden_files) return primary;
+        if (primary.isNull()) return hidden_icon_;
+        return stacked_icons(primary, hidden_icon_);
     }
 
     const auto& mod = mods_[index.row()];
@@ -172,7 +200,7 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
                 if (!mod.tags.isEmpty()) {
                     return mod.tags.first().type.toUpper();
                 }
-                // Icons handle conflict states — clear text
+                // Icons handle conflict states - clear text
                 return QString();
             }
             case Priority: return mod.priority;
@@ -192,12 +220,12 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
             }
         }
         if (mod.conflict_wins > 0 && mod.conflict_losses > 0)
-            return QColor(255, 180, 0);  // Orange — mixed
+            return QColor(255, 180, 0);  // Orange - mixed
         if (mod.conflict_wins > 0)
-            return QColor(80, 200, 80);  // Green — wins
+            return QColor(80, 200, 80);  // Green - wins
         if (mod.conflict_losses > 0)
-            return QColor(255, 80, 80);  // Red — loses
-        return QColor(160, 160, 160);  // Gray — no conflicts
+            return QColor(255, 80, 80);  // Red - loses
+        return QColor(160, 160, 160);  // Gray - no conflicts
     }
     if (role == Qt::TextAlignmentRole && index.column() == Priority) {
         return Qt::AlignCenter;
@@ -482,7 +510,7 @@ void ModListModel::move_mod(const QString& id, int new_row) {
 
     int ow_row = overwrite_row();
     int mg_row = merged_row();
-    // Clamp to just before Overwrite/MERGED — after takeAt(src) they shift left by 1
+    // Clamp to just before Overwrite/MERGED - after takeAt(src) they shift left by 1
     if (mg_row >= 0 && new_row >= mg_row)
         new_row = mg_row - 1;
     if (ow_row >= 0 && new_row >= ow_row)
@@ -516,6 +544,26 @@ void ModListModel::set_conflict_stats(const QString& id, int wins, int losses) {
             mods_[i].conflict_losses = losses;
             emit dataChanged(index(i, Flags), index(i, Flags),
                              {Qt::DecorationRole, Qt::DisplayRole, Qt::ToolTipRole, Qt::ForegroundRole});
+            return;
+        }
+    }
+}
+
+void ModListModel::set_conflict_redundant(const QString& id, bool redundant) {
+    for (int i = 0; i < mods_.size(); ++i) {
+        if (mods_[i].id == id && mods_[i].redundant != redundant) {
+            mods_[i].redundant = redundant;
+            emit dataChanged(index(i, Flags), index(i, Flags), {Qt::DecorationRole});
+            return;
+        }
+    }
+}
+
+void ModListModel::set_hidden_files(const QString& id, bool has_hidden) {
+    for (int i = 0; i < mods_.size(); ++i) {
+        if (mods_[i].id == id && mods_[i].has_hidden_files != has_hidden) {
+            mods_[i].has_hidden_files = has_hidden;
+            emit dataChanged(index(i, Flags), index(i, Flags), {Qt::DecorationRole});
             return;
         }
     }

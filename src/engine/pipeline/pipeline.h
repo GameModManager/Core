@@ -48,9 +48,14 @@ public:
     bool run(Mod& mod);
     PipelineContext& ctx() { return ctx_; }
 
+    // TraceRecorder flow id this pipeline reports under (default "install").
+    void set_flow_id(std::string flow_id) { flow_id_ = std::move(flow_id); }
+    const std::string& flow_id() const { return flow_id_; }
+
 private:
     PipelineContext ctx_;
     std::vector<std::unique_ptr<Stage>> stages_;
+    std::string flow_id_ = "install";
 };
 
 }  // namespace engine

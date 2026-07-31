@@ -6,7 +6,7 @@
 
 namespace engine {
 
-// NTFS Junction Strategy — directory-level linking on Windows.
+// NTFS Junction Strategy - directory-level linking on Windows.
 // Junction points are preferred over symlinks on Windows because they don't
 // require admin privileges or Developer Mode. They only work for directories.
 // For individual files, falls back to copy.

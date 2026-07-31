@@ -55,7 +55,7 @@ std::filesystem::path NexusAuth::rate_storage_path() {
 }
 
 // -----------------------------------------------------------------------
-// Key derivation — XOR key from machine ID + app salt
+// Key derivation - XOR key from machine ID + app salt
 // -----------------------------------------------------------------------
 
 std::string NexusAuth::derive_key() const {
@@ -74,7 +74,7 @@ std::string NexusAuth::derive_key() const {
 }
 
 // -----------------------------------------------------------------------
-// Base64 (RFC 4648) — minimal, no external dependency
+// Base64 (RFC 4648) - minimal, no external dependency
 // -----------------------------------------------------------------------
 
 static const char kBase64[] =
@@ -150,7 +150,7 @@ std::string NexusAuth::decrypt(const std::string& ciphertext) const {
 }
 
 // -----------------------------------------------------------------------
-// Public API — API key
+// Public API - API key
 // -----------------------------------------------------------------------
 
 NexusAuth& NexusAuth::instance() {
@@ -187,7 +187,7 @@ void NexusAuth::clear_api_key() {
 }
 
 // -----------------------------------------------------------------------
-// Public API — rate limits
+// Public API - rate limits
 // -----------------------------------------------------------------------
 
 RateLimitInfo NexusAuth::get_rate_limit() const {

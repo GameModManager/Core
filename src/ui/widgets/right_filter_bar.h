@@ -8,7 +8,7 @@ class QTableWidget;
 namespace ui {
 
 // Persistent filter bar below the right panel's tab widget.
-// Survives tab switches — the same text filters whichever tab is active.
+// Survives tab switches - the same text filters whichever tab is active.
 class RightFilterBar : public QWidget {
     Q_OBJECT
 public:

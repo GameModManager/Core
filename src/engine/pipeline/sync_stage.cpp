@@ -12,7 +12,7 @@
 namespace engine {
 
 bool SyncStage::execute(Mod& mod, PipelineContext& ctx) {
-    // Per-mod sync is a no-op — Overwrite capture is a whole-instance
+    // Per-mod sync is a no-op - Overwrite capture is a whole-instance
     // operation triggered via capture_overwrite_files() after the game exits.
     return true;
 }
@@ -41,7 +41,7 @@ std::vector<std::string> SyncStage::capture_overwrite_files(
          std::filesystem::recursive_directory_iterator(game_dir)) {
         if (!entry.is_regular_file()) continue;
 
-        // Skip symlinks — deployed mod files are symlinked into the game dir
+        // Skip symlinks - deployed mod files are symlinked into the game dir
         if (entry.is_symlink()) continue;
 
         auto rel = std::filesystem::relative(entry.path(), game_dir, ec);

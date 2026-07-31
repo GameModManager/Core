@@ -13,7 +13,7 @@ namespace ui {
 
 // -- Icon resolution --
 
-// Build a colored circle with the game's first letter — used as a built-in icon
+// Build a colored circle with the game's first letter - used as a built-in icon
 // when no theme or exe icon is available.
 static QIcon make_builtin_icon(const std::string& game_id, const std::string& name) {
     // Pick a color based on game_id hash

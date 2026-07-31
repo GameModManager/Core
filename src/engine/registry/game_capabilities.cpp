@@ -38,7 +38,7 @@ std::vector<CapabilityInfo> GameCapabilities::sorted_capabilities_for(
     auto game_it = caps_.find(game_id);
     if (game_it == caps_.end()) return {};
 
-    // Collect all nodes — include "data" as an anchor
+    // Collect all nodes - include "data" as an anchor
     std::set<std::string> all_nodes;
     all_nodes.insert("data");
     for (const auto& [name, _] : game_it->second) {
@@ -80,7 +80,7 @@ std::vector<CapabilityInfo> GameCapabilities::sorted_capabilities_for(
         }
     }
 
-    // Resolve any remaining nodes (cycles — fall back to arbitrary order)
+    // Resolve any remaining nodes (cycles - fall back to arbitrary order)
     for (const auto& node : all_nodes) {
         if (std::find(sorted.begin(), sorted.end(), node) == sorted.end()) {
             sorted.push_back(node);
