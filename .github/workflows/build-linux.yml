@@ -64,12 +64,12 @@ jobs:
           done
 
           # Create wrapper script that sets LD_LIBRARY_PATH
-          cat > artifact/gamemodmanager.sh << 'EOF'
-#!/bin/bash
-DIR="$(cd "$(dirname "$0")" && pwd)"
-export LD_LIBRARY_PATH="$DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-exec "$DIR/gamemodmanager" "$@"
-EOF
+          printf '%s\n' \
+            '#!/bin/bash' \
+            'DIR="$(cd "$(dirname "$0")" && pwd)"' \
+            'export LD_LIBRARY_PATH="$DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"' \
+            'exec "$DIR/gamemodmanager" "$@"' \
+            > artifact/gamemodmanager.sh
           chmod +x artifact/gamemodmanager.sh
 
       - uses: actions/upload-artifact@v4
