@@ -34,7 +34,7 @@ RightPanel::RightPanel(QWidget* parent)
     tab_widget_ = new QTabWidget(this);
     tab_widget_->setTabPosition(QTabWidget::North);
 
-    // Data tab is always present — create it once
+    // Data tab is always present - create it once
     data_tab_ = new DataTab(tab_widget_);
     setup_toggle_header(data_tab_->table(), {tr("Path"), tr("Size"), tr("Mod")});
     // Path stretches to fill space; Size and Mod keep user-set width
@@ -50,7 +50,7 @@ RightPanel::RightPanel(QWidget* parent)
     // Small gap so the tab pane's bottom border is visible
     layout->addSpacing(1);
 
-    // Filter bar below tabs — persists across tab switches
+    // Filter bar below tabs - persists across tab switches
     filter_bar_ = new RightFilterBar(this);
     layout->addWidget(filter_bar_);
 
@@ -69,7 +69,7 @@ QTableWidget* RightPanel::current_table() const {
     auto* w = tab_widget_->currentWidget();
     if (!w) return nullptr;
 
-    // Each tab type exposes table() — try common patterns
+    // Each tab type exposes table() - try common patterns
     if (auto* t = w->findChild<QTableWidget*>()) return t;
     return nullptr;
 }
@@ -83,7 +83,7 @@ void RightPanel::apply_filter() {
         return;
     }
 
-    // ConflictsTab uses QTreeWidget — filter top-level items
+    // ConflictsTab uses QTreeWidget - filter top-level items
     auto* w = tab_widget_->currentWidget();
     if (!w) return;
     auto* tree = w->findChild<QTreeWidget*>();
@@ -167,7 +167,7 @@ void RightPanel::set_game(const std::string& game_id) {
 
     auto caps = capabilities_->sorted_capabilities_for(game_id);
 
-    // Remove Data from index 0 — re-add at correct sorted position
+    // Remove Data from index 0 - re-add at correct sorted position
     tab_widget_->removeTab(0);
 
     for (const auto& info : caps) {

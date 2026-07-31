@@ -8,7 +8,7 @@
 
 namespace engine {
 
-// Qt-free theme engine — manages token maps and QSS template substitution.
+// Qt-free theme engine - manages token maps and QSS template substitution.
 // UI layer is responsible for applying the resulting QSS and watching for file changes.
 class ThemeManager {
 public:

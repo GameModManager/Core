@@ -11,7 +11,7 @@ namespace engine {
 
 class ThemeManager;
 
-// Qt-aware style manager — loads QSS from embedded default or filesystem themes,
+// Qt-aware style manager - loads QSS from embedded default or filesystem themes,
 // applies them via qApp->setStyleSheet(), and supports live-reload through
 // ThemeManager's callback mechanism.
 class StyleManager : public QObject {

@@ -8,7 +8,7 @@
 
 namespace engine {
 
-// Linux platform module — XDG paths, Proton/Wine discovery, FUSE capabilities.
+// Linux platform module - XDG paths, Proton/Wine discovery, FUSE capabilities.
 class LinuxPlatform : public PlatformInterface {
 public:
     [[nodiscard]] std::string platform_name() const override { return "linux"; }

@@ -241,7 +241,7 @@ void DebugWindow::refresh_stats() {
         prev_sys_total = sys_total;
     }
 
-    // --- Process RAM (Pss from smaps_rollup — proportional set size) ---
+    // --- Process RAM (Pss from smaps_rollup - proportional set size) ---
     auto rollup = read_proc("/proc/self/smaps_rollup");
     auto parse_kb = [&](const char* key) -> unsigned long {
         auto pos = rollup.find(key);

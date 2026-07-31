@@ -24,7 +24,7 @@ public:
 // OverlayFS deploy strategy: mod files are symlinked into a staging directory
 // (not game_dir). At launch time, the staging directory is layered on top of
 // game_dir via OverlayFS, capturing all writes to the overwrite directory.
-// game_dir is NEVER touched — no symlinks, no writes.
+// game_dir is NEVER touched - no symlinks, no writes.
 class OverlayFsDeployStrategy : public DeploymentStrategy {
 public:
     explicit OverlayFsDeployStrategy(std::filesystem::path staging_dir);

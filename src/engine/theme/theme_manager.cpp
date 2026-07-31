@@ -62,7 +62,7 @@ bool ThemeManager::load_tokens(const std::filesystem::path& tokens_file) {
 
         if (c == '"') {
             if (!in_key && !in_value) {
-                // Start of a new string — figure out if it's key or value
+                // Start of a new string - figure out if it's key or value
                 if (key.empty()) {
                     in_key = true;
                 } else {

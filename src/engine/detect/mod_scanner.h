@@ -22,7 +22,7 @@ struct ScannedMod {
     bool is_game_native = false; // true for game-provided plugins (e.g. vanilla ESMs)
 };
 
-// Generic mod scanner — reads ALL game-specific config from GameKnowledge.
+// Generic mod scanner - reads ALL game-specific config from GameKnowledge.
 // No hardcoded file formats, tag names, or folder conventions.
 // Each game plugin tells the engine how to discover and parse its mods.
 class ModScanner {

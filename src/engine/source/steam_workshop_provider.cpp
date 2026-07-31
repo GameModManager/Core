@@ -35,7 +35,7 @@ bool SteamWorkshopProvider::fetch(const Mod& mod, const PipelineContext& ctx,
         Logger::instance().warn("SteamWorkshopProvider: no metadata for workshop_id=" +
                                 std::to_string(workshop_id) +
                                 " (cached, dead, or rate-limited)");
-        // Return true anyway — the mod is already on disk, metadata is optional
+        // Return true anyway - the mod is already on disk, metadata is optional
         return true;
     }
 

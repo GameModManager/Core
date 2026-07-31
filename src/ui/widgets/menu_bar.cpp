@@ -114,6 +114,12 @@ void AppMenuBar::build_view_menu() {
 
     menu->addSeparator();
 
+    auto* pipeline = menu->addAction("Workflow Pipeline...");
+    pipeline->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_P));
+    connect(pipeline, &QAction::triggered, this, &AppMenuBar::pipeline_requested);
+
+    menu->addSeparator();
+
     columns_menu_ = menu->addMenu(tr("Columns"));
 
     menu->addSeparator();
@@ -128,7 +134,7 @@ void AppMenuBar::build_view_menu() {
 void AppMenuBar::build_tools_menu() {
     tools_menu_ = addMenu(tr("&Tools"));
 
-    // Dynamic tools section — populated by update_tools_for_game()
+    // Dynamic tools section - populated by update_tools_for_game()
     // (nothing here yet; added when a game is selected)
 
     tools_separator_ = tools_menu_->addSeparator();

@@ -166,7 +166,7 @@ void InstanceSwitcherDialog::refresh_list() {
             display_name = ie.game_id;
         }
 
-        // Build the display label — always use the plugin's real display name
+        // Build the display label - always use the plugin's real display name
         // (the folder name has colons and other special chars stripped)
         std::string label = display_name;
 

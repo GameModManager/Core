@@ -89,7 +89,7 @@ bool JunctionStrategy::deploy(const std::filesystem::path& source,
         return create_junction(target, source);
     }
 
-    // Junctions only work for directories — fall back to copy for files
+    // Junctions only work for directories - fall back to copy for files
     std::filesystem::create_directories(target.parent_path(), ec);
     std::filesystem::copy_file(source, target,
                                std::filesystem::copy_options::overwrite_existing, ec);

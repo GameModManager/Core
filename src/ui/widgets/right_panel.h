@@ -45,7 +45,7 @@ private:
     RightFilterBar* filter_bar_ = nullptr;
     DataTab* data_tab_ = nullptr;
 
-    // Lazily created — owned by tab_widget_ once added
+    // Lazily created - owned by tab_widget_ once added
     std::unordered_map<std::string, QWidget*> tabs_;
 
     const engine::GameCapabilities* capabilities_ = nullptr;
