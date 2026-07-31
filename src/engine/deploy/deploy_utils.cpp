@@ -85,7 +85,7 @@ bool deploy_all_enabled_mods(
             (failed ? ", " + std::to_string(failed) + " failed" : ""));
     }
 
-    Logger::instance().info("deploy_all_enabled_mods: " + std::to_string(mods_processed) +
+    Logger::instance().debug("deploy_all_enabled_mods: " + std::to_string(mods_processed) +
         " mods processed, " + std::to_string(total_deployed) + " files deployed, " +
         std::to_string(total_failed) + " failed");
     return total_failed == 0;

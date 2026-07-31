@@ -113,12 +113,15 @@
 #include <QJsonObject>
 
 #include <algorithm>
+#include <cerrno>
+#include <chrono>
 #include <fstream>
 #include <iterator>
 #include <memory>
 #include <optional>
 #include <regex>
 #include <sstream>
+#include <thread>
 #include <unordered_set>
 
 namespace ui {
@@ -156,6 +159,27 @@ QIcon extractExeIconShortcut(const QString& exePath) {
 
     // Last resort: standard application icon
     return QApplication::style()->standardIcon(QStyle::SP_FileIcon);
+}
+
+// Reap the subreaper supervisor forked by engine::launcher_game(). It never
+// execs (stays "[gamemodmanager]"), so if the watchdog stops without
+// waitpid()ing it, it remains a zombie forever. A cgroup-empty result means
+// the game and its descendants are gone, so the supervisor exits as soon as
+// its reap loop hits ECHILD; poll briefly so a stray reparented daemon can't
+// hang the UI thread.
+bool reap_supervisor(pid_t pid) {
+    if (pid <= 0) return true;
+    using namespace std::chrono;
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        int status;
+        pid_t r = waitpid(pid, &status, WNOHANG);
+        if (r == pid) return true;
+        if (r < 0 && errno == ECHILD) return true;
+        std::this_thread::sleep_for(milliseconds(100));
+    }
+    engine::Logger::instance().warn("Watchdog: supervisor " + std::to_string(pid) +
+        " not reaped after 2s (stray child?)");
+    return false;
 }
 
 }  // anonymous namespace
@@ -288,14 +312,10 @@ MainWindow::MainWindow(QWidget* parent)
 
     // Save order on every model change
     connect(mod_model_, &ModListModel::mod_list_changed, this, [this]() {
-        if (!loading_) {
-            //engine::Logger::instance().debug("Saving order on mod_list_changed");
-            save_order();
-            sync_separator_ids();
-            apply_mod_filter();
-        } else {
-            //engine::Logger::instance().debug("Suppressed order save (loading)");
-        }
+        if (loading_) return;
+        save_order();
+        sync_separator_ids();
+        apply_mod_filter();
     });
 
     // Fold/unfold on separator arrow click (arrow is in the Enabled column)
@@ -507,15 +527,7 @@ void MainWindow::set_game_info(const std::string& game_id,
         conflict_cache_path_ = instance_root / "cache" / "conflict_cache.json";
     update_title();
 
-    // Log loaded plugins now that console callback is registered
-    if (plugin_loader_ && !plugin_loader_->plugins().empty()) {
-        std::string list_str;
-        for (size_t i = 0; i < plugin_loader_->plugins().size(); ++i) {
-            if (i > 0) list_str += ", ";
-            list_str += plugin_loader_->plugins()[i].game_display_name;
-        }
-        engine::Logger::instance().debug("Loaded plugins: [" + list_str + "]");
-    }
+    // (Loaded plugin list is logged once by PluginLoader::load_directory)
 
     if (!game_dir.empty() && knowledge_) {
         update_status_bar_for_game();
@@ -559,12 +571,12 @@ void MainWindow::set_game_info(const std::string& game_id,
             auto ovl_strat = std::make_unique<engine::OverlayFsDeployStrategy>(staging);
             staging_dir_ = staging;
             deploy_strategy = std::move(ovl_strat);
-            engine::Logger::instance().info("Deploy strategy: OverlayFS");
+            engine::Logger::instance().debug("Deploy strategy: OverlayFS");
         } else
 #endif
         {
             deploy_strategy = std::make_unique<engine::SymlinkStrategy>();
-            engine::Logger::instance().info("Deploy strategy: Symlink (direct to game_dir)");
+            engine::Logger::instance().debug("Deploy strategy: Symlink (direct to game_dir)");
         }
         ctx.deploy_strategy = deploy_strategy.get();
 
@@ -792,12 +804,8 @@ void MainWindow::connect_menu_actions() {
         }
         engine::Logger::instance().debug("Disabled " + std::to_string(sel.size()) + " mods");
     });
-    connect(menu_bar_, &AppMenuBar::priority_up_requested, this, [this]() {
-        engine::Logger::instance().debug("Priority Up requested");
-    });
-    connect(menu_bar_, &AppMenuBar::priority_down_requested, this, [this]() {
-        engine::Logger::instance().debug("Priority Down requested");
-    });
+    connect(menu_bar_, &AppMenuBar::priority_up_requested, this, []() {});
+    connect(menu_bar_, &AppMenuBar::priority_down_requested, this, []() {});
 
     // --- View ---
     connect(menu_bar_, &AppMenuBar::toggle_toolbar, this, [this](bool visible) {
@@ -817,9 +825,7 @@ void MainWindow::connect_menu_actions() {
             &MainWindow::show_pipeline_window);
     connect(status_bar_, &GmmStatusBar::pipeline_clicked, this,
             &MainWindow::show_pipeline_window);
-    connect(menu_bar_, &AppMenuBar::refresh_requested, this, [this]() {
-        engine::Logger::instance().debug("Refresh requested");
-    });
+    connect(menu_bar_, &AppMenuBar::refresh_requested, this, []() {});
 
     // Populate Columns submenu from the table header
     auto* header = mod_view_->header();
@@ -2367,17 +2373,6 @@ void MainWindow::load_order() {
 
     loading_ = false;
 
-    // Log final model order
-    {
-        std::ostringstream dbg;
-        for (int i = 0; i < mods.size(); ++i) {
-            if (i > 0) dbg << ", ";
-            dbg << mods[i].id.toStdString() << "(" << mods[i].priority << ")";
-            if (mods[i].is_separator) dbg << "[SEP]";
-        }
-        //engine::Logger::instance().debug("MODEL_ORDER: [" + dbg.str() + "]");
-    }
-
     sync_separator_ids();
 }
 
@@ -2644,7 +2639,7 @@ void MainWindow::launch_game() {
 }
 
 static void gmm_debug(const char* fmt, ...) {
-    static bool enabled = (std::getenv("GMM_OVERLAY_DEBUG") != nullptr);
+    static bool enabled = (std::getenv("GMM_DEBUG") != nullptr);
     if (!enabled) return;
     va_list args;
     va_start(args, fmt);
@@ -2784,8 +2779,9 @@ void MainWindow::check_running_process() {
             refresh_process_tree();
 
         if (engine::cgroup_is_empty({cgroup_path_})) {
-            engine::Logger::instance().info(
+            engine::Logger::instance().debug(
                 "Watchdog: cgroup empty, game fully exited");
+            reap_supervisor(static_cast<pid_t>(running_process_pid_));
             flush_pending_changes();
             hide_game_lock_overlay();
             trace.end_stage("launch", true, "Game exited");
@@ -2845,7 +2841,7 @@ void MainWindow::check_running_process() {
         if (found_alive) return;
     }
 
-    engine::Logger::instance().info("Watchdog: process group " +
+    engine::Logger::instance().debug("Watchdog: process group " +
         std::to_string(pgid) + " fully exited, scheduling capture in 3s");
 
     // Safety reap - covers the case where the root PID was already collected
@@ -3383,8 +3379,9 @@ void MainWindow::create_game_lock_overlay() {
         // ---- cgroup v2 kill (primary) ----
         if (!cgroup_path_.empty()) {
             engine::cgroup_kill({cgroup_path_});
-            engine::Logger::instance().info(
+            engine::Logger::instance().debug(
                 "Kill: cgroup.kill written for " + cgroup_path_);
+            reap_supervisor(static_cast<pid_t>(running_process_pid_));
             running_process_pid_ = -1;
             cgroup_path_.clear();
             if (process_watch_timer_) process_watch_timer_->stop();
@@ -3422,7 +3419,7 @@ void MainWindow::create_game_lock_overlay() {
         if (ret != 0) {
             int err = errno;
             if (err == ESRCH) {
-                engine::Logger::instance().info("Kill: process group " + std::to_string(pgid) + " already empty");
+                engine::Logger::instance().debug("Kill: process group " + std::to_string(pgid) + " already empty");
                 reap_or_schedule(pgid);
                 running_process_pid_ = -1;
                 if (process_watch_timer_) process_watch_timer_->stop();
@@ -3444,7 +3441,7 @@ void MainWindow::create_game_lock_overlay() {
                 return;
             }
         }
-        engine::Logger::instance().info("Kill: terminated process group " + std::to_string(pgid));
+        engine::Logger::instance().debug("Kill: terminated process group " + std::to_string(pgid));
         reap_or_schedule(pgid);
         running_process_pid_ = -1;
         if (process_watch_timer_) process_watch_timer_->stop();
@@ -3493,7 +3490,7 @@ void MainWindow::flush_pending_changes() {
     if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return;
     if (!mod_model_) return;
 
-    engine::Logger::instance().info("Flushing " + std::to_string(pending_changes_.size()) +
+    engine::Logger::instance().debug("Flushing " + std::to_string(pending_changes_.size()) +
         " queued mod changes");
 
     auto mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
@@ -3521,7 +3518,7 @@ void MainWindow::flush_pending_changes() {
 
     pending_changes_.clear();
     if (pending_queue_label_) pending_queue_label_->hide();
-    engine::Logger::instance().info("Queued mod changes flushed");
+    engine::Logger::instance().debug("Queued mod changes flushed");
 }
 
 void MainWindow::update_queue_label() {
@@ -3575,11 +3572,11 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
             if (!std::filesystem::exists(flag, ec)) {
                 std::ofstream ofs(flag.string());
                 ofs << "enabled\n";
-                engine::Logger::instance().info("Debug mode enabled (Konami code entered)");
+                engine::Logger::instance().debug("Debug mode enabled (Konami code entered)");
                 status_bar_->set_status(tr("Debug mode enabled"));
             } else {
                 std::filesystem::remove(flag, ec);
-                engine::Logger::instance().info("Debug mode disabled");
+                engine::Logger::instance().debug("Debug mode disabled");
                 status_bar_->set_status(tr("Debug mode disabled"));
             }
             konami_state_ = 0;
@@ -3648,8 +3645,6 @@ void MainWindow::save_app_state() {
     header_states["_process_tree_visible"] = show_process_tree_;
     QByteArray extra = QJsonDocument(header_states).toJson(QJsonDocument::Compact);
     write_ba(extra);
-
-    //engine::Logger::instance().debug("App state saved");
 }
 
 void MainWindow::restore_app_state() {
@@ -3724,8 +3719,6 @@ void MainWindow::restore_app_state() {
             }
         }
     }
-
-    //engine::Logger::instance().debug("App state restored");
 }
 
 void MainWindow::apply_initial_geometry() {

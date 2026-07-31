@@ -129,7 +129,7 @@ static LaunchResult do_launch(const LaunchParams& params) {
 #ifdef GMM_PLATFORM_LINUX
     // Priority 1: OverlayFS - kernel VFS level, works for any binary format
     if (OverlayFsLauncher::is_supported(params.overwrite_dir)) {
-        Logger::instance().info("OverlayFS launcher: supported, trying overlay launch");
+        Logger::instance().debug("OverlayFS launcher: supported, trying overlay launch");
 
         if (params.is_windows_exe) {
             auto proton = ProtonRuntime::find_proton_binary(params.steam_appid);
@@ -151,7 +151,7 @@ static LaunchResult do_launch(const LaunchParams& params) {
         }
 
         if (pid > 0) {
-            Logger::instance().info(
+            Logger::instance().debug(
                 "Launched inside OverlayFS overlay. All writes go to Overwrite.");
             return {pid, true};
         }
@@ -163,11 +163,11 @@ static LaunchResult do_launch(const LaunchParams& params) {
     // Priority 2: LD_PRELOAD - intercepts libc calls (native binaries only)
     if (pid <= 0 && !params.is_windows_exe) {
         if (PreloadInterceptor::is_supported()) {
-            Logger::instance().info("PreloadInterceptor: trying LD_PRELOAD launch");
+            Logger::instance().debug("PreloadInterceptor: trying LD_PRELOAD launch");
             pid = PreloadInterceptor::launch(exec_path, params.game_dir,
                                              params.overwrite_dir);
             if (pid > 0) {
-                Logger::instance().info(
+                Logger::instance().debug(
                     "Launched with LD_PRELOAD intercept. Writes redirected to Overwrite.");
                 return {pid, true};
             }
@@ -278,7 +278,7 @@ void capture_overwrite(const fs::path& game_dir,
         }
 
         if (!captured.empty()) {
-            Logger::instance().info(
+            Logger::instance().debug(
                 "Overwrite capture: " + std::to_string(captured.size()) +
                 " file(s) moved to Overwrite after process exit");
         }

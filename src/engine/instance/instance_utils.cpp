@@ -122,7 +122,7 @@ LaunchParams prepare_launch_params(
 
     // Check if OverlayFS is supported for this instance
     if (!OverlayFsLauncher::is_supported(params.overwrite_dir)) {
-        Logger::instance().info("OverlayFS not supported, launching without overlay");
+        Logger::instance().warn("OverlayFS not supported, launching without overlay");
         return params;
     }
 
@@ -147,7 +147,7 @@ LaunchParams prepare_launch_params(
     }
 
     params.extra_lowerdirs.push_back(staging_dir);
-    Logger::instance().info("Launch: OverlayFS staging at " + staging_dir.string());
+    Logger::instance().debug("Launch: OverlayFS staging at " + staging_dir.string());
     return params;
 }
 

@@ -59,15 +59,22 @@ bool NxmIpcServer::startListening() {
     // Remove stale socket if no one is listening
     QLocalSocket probe;
     probe.connectToServer(path);
-    if (probe.waitForConnected(100)) {
+    if (probe.waitForConnected(500)) {
         // Another instance is already listening
         probe.disconnectFromServer();
         Logger::instance().warn("Another GMM instance is already running (IPC socket in use)");
         return false;
     }
 
+    // No live listener, but a crashed session may have left a stale socket
+    // file behind. QLocalServer::listen() will NOT remove it on Unix, so we
+    // must do so explicitly (Qt docs: a crashed server leaves listen() failing
+    // with AddressInUseError until the file is removed). Safe because the
+    // single-instance guard guarantees we hold the lock.
+    QLocalServer::removeServer(path);
+
     if (!impl_->server.listen(path)) {
-        Logger::instance().error("Failed to start IPC server: " +
+        Logger::instance().warn("Failed to start IPC server (socket in use?): " +
             impl_->server.errorString().toStdString());
         return false;
     }
@@ -96,7 +103,7 @@ bool send_nxm_to_running_instance(const QString& url) {
     QLocalSocket socket;
     socket.connectToServer(path);
     if (!socket.waitForConnected(200)) {
-        //Logger::instance().debug("No running GMM instance found (IPC connect failed)");
+        Logger::instance().warn("No running GMM instance found (IPC connect failed)");
         return false;
     }
 

@@ -25,7 +25,6 @@ bool VfsStrategy::deploy(const std::filesystem::path& source,
 
     // Store the mapping
     file_map_[target.string()] = source.string();
-    //Logger::instance().debug("VFS mapped: " + target.string() + " -> " + source.string());
     return true;
 }
 

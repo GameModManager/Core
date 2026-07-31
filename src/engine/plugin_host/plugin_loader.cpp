@@ -256,8 +256,6 @@ bool PluginLoader::load_plugin(const std::string& path) {
         return true;
     }
 
-    Logger::instance().debug("Loading plugin: " + path);
-
     void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
     if (!handle) {
         Logger::instance().error("Failed to load plugin: " + path + " - " + dlerror());
@@ -320,10 +318,9 @@ bool PluginLoader::load_plugin(const std::string& path) {
     info.registered = true;
     plugins_.push_back(info);
 
-    Logger::instance().debug("Plugin registered: " + path +
-        " (game=" + info.game_id +
+    Logger::instance().debug("Plugin registered: " + info.game_display_name +
+        " (" + path + ", game=" + info.game_id +
         ", appid=" + std::to_string(info.steam_appid) + ")");
-    Logger::instance().info("Game support plugin: " + info.game_display_name);
     return true;
 }
 

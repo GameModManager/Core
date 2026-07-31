@@ -34,20 +34,17 @@ public:
     }
 
     void register_stage_claim(const std::string& stage_name, int priority) {
-        engine::Logger::instance().debug("Python plugin registered stage claim: " + stage_name +
-            " (game=" + plugin_->game_id + ", priority=" + std::to_string(priority) + ")");
+        (void)stage_name;
+        (void)priority;
     }
 
     void register_order_encoding_hook() {
-        engine::Logger::instance().debug("Python plugin registered order encoding hook");
     }
 
     void register_deploy_strategy() {
-        engine::Logger::instance().debug("Python plugin registered deploy strategy");
     }
 
     void register_image_diff() {
-        engine::Logger::instance().debug("Python plugin registered image diff provider (stub)");
     }
 
     void register_tool(const std::string& tool_id, const std::string& kind) {
@@ -57,9 +54,6 @@ public:
         tool.display_name = tool_id;
         tool.kind = (kind == "workshop") ? engine::ToolKind::Workshop : engine::ToolKind::Advisory;
         loader_->tool_registry().register_tool(tool);
-
-        engine::Logger::instance().debug("Python plugin registered tool: " + tool_id +
-            " (" + kind + ")");
     }
 
     void register_capability(const std::string& capability,
@@ -239,8 +233,8 @@ bool engine::python_load_plugin(PluginLoader* loader, const std::string& path) {
         info.registered = true;
         loader->add_loaded_plugin(std::move(info));
 
-        Logger::instance().debug("Python plugin registered: " + path +
-            " (game=" + info.game_id +
+        Logger::instance().debug("Python plugin registered: " + info.game_display_name +
+            " (" + path + ", game=" + info.game_id +
             ", appid=" + std::to_string(info.steam_appid) + ")");
         return true;
 

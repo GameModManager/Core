@@ -35,7 +35,6 @@ void ThemeManager::scan_themes(const std::filesystem::path& themes_dir) {
 
         if (!info.qss_path.empty()) {
             themes_.push_back(std::move(info));
-            //Logger::instance().debug("Found theme: " + info.name);
         }
     }
 
@@ -132,7 +131,6 @@ bool ThemeManager::render_theme(const std::filesystem::path& qss_template,
     }
 
     out << rendered;
-    //Logger::instance().debug("Rendered theme to " + output_path.string());
     return true;
 }
 
