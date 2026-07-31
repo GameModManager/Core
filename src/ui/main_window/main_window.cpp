@@ -73,9 +73,13 @@
 #include <QFileInfo>
 #include <QHeaderView>
 #include <QInputDialog>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMenu>
 #include <QMessageBox>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTimer>
 
@@ -240,12 +244,22 @@ MainWindow::MainWindow(QWidget* parent)
         create_separator();
     });
     connect(profile_bar_, &ProfileBar::create_empty_mod_clicked, this, [this]() {
-        QMessageBox::information(this, tr("Create"), tr("Create Empty Mod - coming soon"));
+        create_empty_mod();
     });
 
     connect(profile_bar_, &ProfileBar::profile_changed, this, [this](const QString& profile) {
         current_profile_name_ = profile.toStdString();
         update_title();
+    });
+
+    connect(profile_bar_, &ProfileBar::import_clicked, this, [this]() {
+        import_modlist();
+    });
+    connect(profile_bar_, &ProfileBar::export_modlist_clicked, this, [this]() {
+        export_modlist();
+    });
+    connect(profile_bar_, &ProfileBar::import_modlist_clicked, this, [this]() {
+        import_modlist();
     });
 
     mod_model_ = new ModListModel(this);
@@ -331,33 +345,7 @@ MainWindow::MainWindow(QWidget* parent)
 
     // Drag-and-drop archives onto the mod list to install manually
     connect(mod_view_, &ModTableView::files_dropped, this, [this](const QStringList& paths) {
-        if (current_instance_root_.empty()) return;
-        auto dl_dir = current_instance_root_ / "downloads";
-        std::error_code ec;
-        std::filesystem::create_directories(dl_dir, ec);
-
-        for (const auto& path : paths) {
-            QFileInfo fi(path);
-            auto dest = dl_dir / fi.fileName().toStdString();
-
-            // Copy archive to instance downloads folder
-            if (!QFile::exists(QString::fromStdString(dest.string()))) {
-                if (!QFile::copy(path, QString::fromStdString(dest.string()))) {
-                    engine::Logger::instance().error(
-                        "Failed to copy archive to downloads: " + dest.string());
-                    continue;
-                }
-            }
-
-            auto mod_id = fi.completeBaseName().toStdString();
-
-            // Show in DownloadsTab immediately with file path, mark ready
-            auto* dt = right_panel_->downloads_tab();
-            if (dt) {
-                dt->add_download(mod_id, mod_id, "Manual", dest);
-                dt->mark_complete(mod_id, true);
-            }
-        }
+        import_archives(paths);
     });
 
     auto* mod_header = new ColumnToggleHeaderView(Qt::Horizontal, mod_view_);
@@ -502,6 +490,9 @@ MainWindow::MainWindow(QWidget* parent)
 
     connect_menu_actions();
     setup_mod_list_context_menu();
+
+    // Populate Recent Instances submenu
+    refresh_recent_instances();
 
     // Smooth scrolling on all item views (mod list, right-panel tables).
     // TODO: gate behind a Settings "Smooth scrolling" checkbox.
@@ -730,6 +721,8 @@ void MainWindow::set_game_info(const std::string& game_id,
             debug_window_->hide();
         }
     }
+
+    refresh_recent_instances();
 }
 
 void MainWindow::update_title() {
@@ -769,19 +762,24 @@ void MainWindow::setup_menu_bar() {
 void MainWindow::connect_menu_actions() {
     // --- File ---
     connect(menu_bar_, &AppMenuBar::new_instance_requested, this, [this]() {
-        QMessageBox::information(this, tr("New Instance"), tr("New Instance - coming soon"));
+        show_instance_switcher();
     });
     connect(menu_bar_, &AppMenuBar::open_instance_requested, this, [this]() {
-        QMessageBox::information(this, tr("Open Instance"), tr("Open Instance - coming soon"));
+        show_instance_switcher();
     });
     connect(menu_bar_, &AppMenuBar::recent_instance_selected, this, [this](const QString& name) {
-        engine::Logger::instance().debug("Opening recent instance: " + name.toStdString());
+        switch_to_instance(name);
     });
     connect(menu_bar_, &AppMenuBar::import_mods_requested, this, [this]() {
-        QMessageBox::information(this, tr("Import Mods"), tr("Import Mods - coming soon"));
+        if (current_instance_root_.empty()) return;
+        const QStringList paths = QFileDialog::getOpenFileNames(this,
+            tr("Import Mod Archives"), QString(),
+            tr("Archives (*.zip *.7z *.rar *.tar *.gz);;All files (*)"));
+        if (paths.isEmpty()) return;
+        import_archives(paths);
     });
     connect(menu_bar_, &AppMenuBar::export_mods_requested, this, [this]() {
-        QMessageBox::information(this, tr("Export Mods"), tr("Export Mods - coming soon"));
+        export_modlist();
     });
     connect(menu_bar_, &AppMenuBar::settings_requested, this, &MainWindow::show_settings_dialog);
     connect(menu_bar_, &AppMenuBar::exit_requested, this, [this]() {
@@ -809,8 +807,12 @@ void MainWindow::connect_menu_actions() {
         }
         engine::Logger::instance().debug("Disabled " + std::to_string(sel.size()) + " mods");
     });
-    connect(menu_bar_, &AppMenuBar::priority_up_requested, this, []() {});
-    connect(menu_bar_, &AppMenuBar::priority_down_requested, this, []() {});
+    connect(menu_bar_, &AppMenuBar::priority_up_requested, this, [this]() {
+        priority_move_selected(-1);
+    });
+    connect(menu_bar_, &AppMenuBar::priority_down_requested, this, [this]() {
+        priority_move_selected(+1);
+    });
 
     // --- View ---
     connect(menu_bar_, &AppMenuBar::toggle_toolbar, this, [this](bool visible) {
@@ -830,7 +832,10 @@ void MainWindow::connect_menu_actions() {
             &MainWindow::show_pipeline_window);
     connect(status_bar_, &GmmStatusBar::pipeline_clicked, this,
             &MainWindow::show_pipeline_window);
-    connect(menu_bar_, &AppMenuBar::refresh_requested, this, []() {});
+    connect(menu_bar_, &AppMenuBar::refresh_requested, this, [this]() {
+        if (current_game_id_.empty()) return;
+        load_mods_from_game();
+    });
 
     // Populate Columns submenu from the table header
     auto* header = mod_view_->header();
@@ -917,9 +922,6 @@ void MainWindow::connect_menu_actions() {
     });
     connect(menu_bar_, &AppMenuBar::about_qt_requested, this, [this]() {
         QMessageBox::aboutQt(this, tr("About Qt"));
-    });
-    connect(menu_bar_, &AppMenuBar::check_updates_requested, this, [this]() {
-        QMessageBox::information(this, tr("Updates"), tr("You are running the latest version."));
     });
     connect(menu_bar_, &AppMenuBar::instance_statistics_requested, this, &MainWindow::show_instance_statistics);
 }
@@ -1848,6 +1850,23 @@ void MainWindow::send_to_lowest_in_separator(const QString& id) {
     mod_model_->move_mod(id, target - 1);
 }
 
+void MainWindow::priority_move_selected(int step) {
+    auto sel = mod_view_->selectionModel()->selectedRows();
+    if (sel.isEmpty()) return;
+
+    int r = sel.first().row();
+    const auto& mods = mod_model_->mods();
+    if (r < 0 || r >= mods.size()) return;
+    const auto& e = mods[r];
+    if (e.is_separator || e.is_overwrite || e.is_merged) return;
+
+    int target = r + step;
+    if (target < 0 || target >= mods.size()) return;
+    if (mods[target].is_separator || mods[target].is_overwrite || mods[target].is_merged) return;
+
+    mod_model_->move_mod(e.id, target);
+}
+
 void MainWindow::toggle_selected_mods(bool enabled) {
     auto sel = mod_view_->selectionModel()->selectedRows();
     for (const auto& idx : sel) {
@@ -1991,6 +2010,160 @@ void MainWindow::create_separator() {
     auto id = QString::fromStdString(folder_name);
     mod_model_->add_separator(id, name.trimmed(), color.name());
     engine::Logger::instance().debug("Separator created: " + name.toStdString());
+}
+
+void MainWindow::create_empty_mod() {
+    if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return;
+
+    bool ok;
+    auto name = QInputDialog::getText(this, tr("Create Empty Mod"),
+        tr("Mod name:"), QLineEdit::Normal, QString(), &ok);
+    if (!ok || name.trimmed().isEmpty()) return;
+
+    // Check for duplicate names
+    QString trimmed = name.trimmed();
+    for (const auto& m : mod_model_->mods()) {
+        if (!m.is_separator && !m.is_overwrite && !m.is_merged &&
+            (m.name.compare(trimmed, Qt::CaseInsensitive) == 0 ||
+             m.id.compare(trimmed, Qt::CaseInsensitive) == 0)) {
+            QMessageBox::warning(this, tr("Create Empty Mod"),
+                tr("A mod with this name already exists."));
+            return;
+        }
+    }
+
+    // Sanitize the folder name (drop path separators and reserved characters)
+    QString folder = trimmed;
+    folder.replace(QRegularExpression(R"([/\\:*?"<>|])"), "_");
+
+    auto mods_dir = mods_dir_path();
+    std::error_code ec;
+    std::filesystem::create_directories(mods_dir, ec);
+    if (ec) {
+        QMessageBox::warning(this, tr("Create Empty Mod"),
+            tr("Failed to create mods directory."));
+        return;
+    }
+
+    auto mod_dir = mods_dir / folder.toStdString();
+    if (std::filesystem::exists(mod_dir, ec)) {
+        QMessageBox::warning(this, tr("Create Empty Mod"),
+            tr("A folder named %1 already exists in the mods directory.").arg(folder));
+        return;
+    }
+    std::filesystem::create_directories(mod_dir, ec);
+    if (ec) {
+        QMessageBox::warning(this, tr("Create Empty Mod"),
+            tr("Failed to create mod folder."));
+        return;
+    }
+
+    engine::Logger::instance().debug("Empty mod created: " + folder.toStdString());
+    load_mods_from_game();
+}
+
+void MainWindow::import_archives(const QStringList& paths) {
+    if (current_instance_root_.empty()) return;
+    auto dl_dir = current_instance_root_ / "downloads";
+    std::error_code ec;
+    std::filesystem::create_directories(dl_dir, ec);
+
+    for (const auto& path : paths) {
+        QFileInfo fi(path);
+        auto dest = dl_dir / fi.fileName().toStdString();
+
+        // Copy archive to instance downloads folder
+        if (!QFile::exists(QString::fromStdString(dest.string()))) {
+            if (!QFile::copy(path, QString::fromStdString(dest.string()))) {
+                engine::Logger::instance().error(
+                    "Failed to copy archive to downloads: " + dest.string());
+                continue;
+            }
+        }
+
+        auto mod_id = fi.completeBaseName().toStdString();
+
+        // Show in DownloadsTab immediately with file path, mark ready
+        auto* dt = right_panel_->downloads_tab();
+        if (dt) {
+            dt->add_download(mod_id, mod_id, "Manual", dest);
+            dt->mark_complete(mod_id, true);
+        }
+    }
+}
+
+void MainWindow::export_modlist() {
+    if (current_game_id_.empty()) return;
+    const QString path = QFileDialog::getSaveFileName(this,
+        tr("Export Modlist"), QString(), tr("Modlist (*.json);;All files (*)"));
+    if (path.isEmpty()) return;
+
+    QJsonArray mods_arr;
+    for (const auto& m : mod_model_->mods()) {
+        if (m.is_separator || m.is_overwrite || m.is_merged) continue;
+        QJsonObject obj;
+        obj["id"] = m.id;
+        obj["name"] = m.name;
+        obj["enabled"] = m.enabled;
+        mods_arr.append(obj);
+    }
+
+    QJsonObject root;
+    root["app"] = "GameModManager";
+    root["version"] = 1;
+    root["mods"] = mods_arr;
+
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly)) {
+        QMessageBox::warning(this, tr("Export Modlist"), tr("Failed to write file."));
+        return;
+    }
+    f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    f.close();
+    engine::Logger::instance().info("Modlist exported: " +
+        std::to_string(mods_arr.size()) + " mods");
+}
+
+void MainWindow::import_modlist() {
+    if (current_game_id_.empty()) return;
+    const QString path = QFileDialog::getOpenFileName(this,
+        tr("Import Modlist"), QString(), tr("Modlist (*.json);;All files (*)"));
+    if (path.isEmpty()) return;
+
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) {
+        QMessageBox::warning(this, tr("Import Modlist"), tr("Failed to open file."));
+        return;
+    }
+    QJsonParseError err;
+    auto doc = QJsonDocument::fromJson(f.readAll(), &err);
+    f.close();
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+        QMessageBox::warning(this, tr("Import Modlist"), tr("Invalid modlist file."));
+        return;
+    }
+
+    auto root = doc.object();
+    auto mods_arr = root.value("mods").toArray();
+    int applied = 0;
+    int skipped = 0;
+    for (const auto& val : mods_arr) {
+        auto obj = val.toObject();
+        QString id = obj.value("id").toString();
+        if (id.isEmpty()) { ++skipped; continue; }
+        int row = mod_model_->priority_of(id);
+        if (row < 0) { ++skipped; continue; }
+        const auto& entry = mod_model_->mods()[row];
+        if (entry.is_separator || entry.is_overwrite || entry.is_merged || entry.is_game_native) { ++skipped; continue; }
+        bool enabled = obj.value("enabled").toBool(true);
+        mod_model_->setData(mod_model_->index(row, ModListModel::Enabled),
+                            enabled ? Qt::Checked : Qt::Unchecked, Qt::CheckStateRole);
+        ++applied;
+    }
+    engine::Logger::instance().info("Modlist import: " + std::to_string(applied) +
+        " applied, " + std::to_string(skipped) + " skipped");
+    QMessageBox::information(this, tr("Import Modlist"),
+        tr("Applied %1 mod(s). %2 unknown mod(s) skipped.").arg(applied).arg(skipped));
 }
 
 void MainWindow::create_separator_at_row(int row) {
@@ -3077,10 +3250,6 @@ void MainWindow::refresh_process_tree() {
     process_tree_->expandAll();
 }
 
-void MainWindow::capture_overwrite_on_exit() {
-    do_capture_overwrite(launch_time_);
-}
-
 void MainWindow::do_capture_overwrite(std::filesystem::file_time_type capture_time) {
     if (current_instance_root_.empty() || current_game_dir_.empty()) return;
 
@@ -4157,15 +4326,23 @@ void MainWindow::show_instance_switcher() {
     auto selected = dlg.selected_instance().toStdString();
     if (selected.empty()) return;
 
+    switch_to_instance(QString::fromStdString(selected));
+}
+
+bool MainWindow::switch_to_instance(const QString& name) {
+    auto instances_dir = engine::default_instances_dir();
+    auto selected = name.toStdString();
+    if (selected.empty()) return false;
+
     // Don't reload if already on this instance
     if (!current_instance_root_.empty() && instances_dir / selected == current_instance_root_)
-        return;
+        return true;
 
     auto inst = engine::Instance::installed(selected, instances_dir);
     if (!inst.read_toml()) {
         QMessageBox::warning(this, tr("Error"),
-            tr("Failed to read instance.toml for %1").arg(QString::fromStdString(selected)));
-        return;
+            tr("Failed to read instance.toml for %1").arg(name));
+        return false;
     }
 
     auto& info = inst.info();
@@ -4179,6 +4356,23 @@ void MainWindow::show_instance_switcher() {
     engine::write_last_instance(selected);
     set_game_info(game_id, display_name, "Default", info.game_dir, inst.info().root);
     engine::Logger::instance().debug("Switched to instance: " + selected);
+    return true;
+}
+
+void MainWindow::refresh_recent_instances() {
+    if (!menu_bar_) return;
+    auto instances_dir = engine::default_instances_dir();
+    std::vector<std::string> names;
+    std::error_code ec;
+    if (std::filesystem::is_directory(instances_dir, ec)) {
+        for (const auto& entry : std::filesystem::directory_iterator(instances_dir, ec)) {
+            if (!entry.is_directory()) continue;
+            if (!std::filesystem::exists(entry.path() / "instance.toml")) continue;
+            names.push_back(entry.path().filename().string());
+        }
+    }
+    std::sort(names.begin(), names.end());
+    menu_bar_->set_recent_instances(names);
 }
 
 }  // namespace ui

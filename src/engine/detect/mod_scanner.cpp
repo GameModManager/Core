@@ -348,34 +348,4 @@ bool ModScanner::set_priority(
     return fout.good();
 }
 
-bool ModScanner::symlink_overwrite(const std::filesystem::path& game_mods_dir,
-                                    const std::filesystem::path& overwrite_dir) {
-    if (game_mods_dir.empty() || overwrite_dir.empty()) return false;
-    if (!std::filesystem::exists(game_mods_dir)) return false;
-
-    auto link_path = game_mods_dir / "__overwrite__";
-    std::error_code ec;
-
-    auto st = std::filesystem::symlink_status(link_path, ec);
-    if (!ec && std::filesystem::exists(st)) {
-        if (std::filesystem::is_symlink(st)) {
-            auto target = std::filesystem::read_symlink(link_path, ec);
-            if (!ec && target == overwrite_dir) return true;
-            std::filesystem::remove(link_path, ec);
-        } else {
-            return false;
-        }
-    }
-
-    std::filesystem::create_symlink(overwrite_dir, link_path, ec);
-    if (ec) {
-        Logger::instance().error("Failed to create Overwrite symlink: " + ec.message());
-        return false;
-    }
-
-    Logger::instance().debug("Overwrite symlinked: " + link_path.string() +
-                            " -> " + overwrite_dir.string());
-    return true;
-}
-
 }  // namespace engine

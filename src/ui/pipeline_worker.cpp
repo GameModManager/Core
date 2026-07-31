@@ -102,12 +102,6 @@ void PipelineWorker::install_from_nxm(const engine::NxmLink& link,
     }
 }
 
-void PipelineWorker::remove_mod(const std::string& id) {
-    engine::Logger::instance().debug("Removing mod: " + id);
-    // TODO: implement removal logic
-    emit finished(id, true, "Removed");
-}
-
 // --- PipelineThread ---
 
 PipelineThread::PipelineThread(QObject* parent)

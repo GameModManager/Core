@@ -203,9 +203,6 @@ void AppMenuBar::build_help_menu() {
     connect(about_qt, &QAction::triggered, this, &AppMenuBar::about_qt_requested);
 
     menu->addSeparator();
-
-    auto* updates = menu->addAction(tr("Check for Updates..."));
-    connect(updates, &QAction::triggered, this, &AppMenuBar::check_updates_requested);
 }
 
 // --------- Recent instances ---------

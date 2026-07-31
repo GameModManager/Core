@@ -60,11 +60,6 @@ public:
         const std::string& game_id,
         const std::filesystem::path& mod_folder,
         int priority);
-
-    // Symlink the Overwrite directory into the game's mods folder.
-    [[nodiscard]] static bool symlink_overwrite(
-        const std::filesystem::path& game_mods_dir,
-        const std::filesystem::path& overwrite_dir);
 };
 
 }  // namespace engine
