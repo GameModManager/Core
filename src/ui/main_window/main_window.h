@@ -14,6 +14,7 @@
 #include "engine/index/conflict_engine.h"
 #include "engine/meta/mod_meta.h"
 #include "engine/deploy/strategy.h"
+#include "engine/nxm/nxm_router.h"
 
 class QSplitter;
 class QToolBar;
@@ -204,6 +205,9 @@ private:
     QStringList toolbar_shortcut_paths_;
     std::vector<std::string> saved_executables_;
     std::string pending_nxm_url_;
+    // In-flight/known Nexus downloads keyed by "<mod_id>-<file_id>", kept so a
+    // paused download can be resumed with its original NXM link.
+    std::unordered_map<std::string, engine::NxmLink> nxm_links_;
     int64_t running_process_pid_ = -1;
     QTimer* process_watch_timer_ = nullptr;
     bool overlay_launched_ = false;

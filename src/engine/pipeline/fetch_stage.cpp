@@ -44,6 +44,19 @@ bool FetchStage::execute(Mod& mod, PipelineContext& ctx) {
 
     auto dest_path = dest_dir / mod.archive_filename;
 
+    // Resume support: if a partial download already exists (a paused download
+    // was aborted and kept its file), continue from its size via HTTP Range.
+    ctx.download_resume_from = 0;
+    if (std::filesystem::exists(dest_path, ec)) {
+        auto sz = std::filesystem::file_size(dest_path, ec);
+        if (!ec && sz > 0) {
+            ctx.download_resume_from = static_cast<int64_t>(sz);
+            Logger::instance().debug("FetchStage: resuming partial download of " +
+                                     mod.download_source_id + " at byte " +
+                                     std::to_string(ctx.download_resume_from));
+        }
+    }
+
     Logger::instance().debug("FetchStage: downloading " + mod.download_source_type +
                             " mod " + mod.download_source_id +
                             " to " + dest_path.string());

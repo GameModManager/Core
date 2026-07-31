@@ -9,7 +9,7 @@ namespace engine {
 SteamWorkshopProvider::SteamWorkshopProvider(const std::string& db_path)
     : db_path_(db_path) {}
 
-bool SteamWorkshopProvider::fetch(const Mod& mod, const PipelineContext& ctx,
+bool SteamWorkshopProvider::fetch(const Mod& mod, PipelineContext& ctx,
                                    const std::filesystem::path& dest_path) {
     (void)dest_path;
     if (mod.download_source_type != "steam") return false;
