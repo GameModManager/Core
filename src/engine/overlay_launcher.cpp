@@ -180,9 +180,13 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
 
     // Open the stderr log file in the PARENT's namespace (before clone), so
     // the child inherits the fd and can dup2 it regardless of mount namespace.
+    // GMM-owned artifacts go into the instance cache, never into Overwrite.
     int stderr_fd = -1;
     if (!args.empty() && !getenv("GMM_DEBUG")) {
-        auto log_path = upper_dir / ".gmm_overlay_stderr.log";
+        auto cache_dir = upper_dir.parent_path() / "cache";
+        std::error_code log_ec;
+        std::filesystem::create_directories(cache_dir, log_ec);
+        auto log_path = cache_dir / ".gmm_overlay_stderr.log";
         stderr_fd = open(log_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     }
 
@@ -321,13 +325,6 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
 
         (void)chdir(ca->game_dir.c_str());
 
-        // Write a marker to confirm overlay setup reached exec
-        std::error_code marker_ec;
-        std::filesystem::path marker = ca->upper_dir / ".gmm_overlay_marker";
-        std::ofstream marker_ofs(marker.string());
-        marker_ofs << "1";
-        marker_ofs.close();
-
         if (!ca->exec_args.empty()) {
             std::vector<char*> argv;
             for (const auto& s : ca->exec_args)
@@ -412,7 +409,7 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
                     reason = "unknown status";
                 }
                 // Log stderr capture location if it exists
-                auto log_path = upper_dir / ".gmm_overlay_stderr.log";
+                auto log_path = upper_dir.parent_path() / "cache" / ".gmm_overlay_stderr.log";
                 std::error_code log_ec;
                 auto log_size = std::filesystem::file_size(log_path, log_ec);
                 if (!log_ec && log_size > 0) {
