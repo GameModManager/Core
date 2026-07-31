@@ -149,9 +149,11 @@ DataTab::DataTab(QWidget* parent) : QWidget(parent) {
 
     tree_ = new QTreeWidget(this);
     tree_->setColumnCount(4);
+    tree_->setHeaderLabels({tr("Name"), tr("Size"), tr("Source"), tr("Providers")});
     auto* header = new ColumnToggleHeaderView(Qt::Horizontal, tree_);
     header->set_column_labels({tr("Name"), tr("Size"), tr("Source"), tr("Providers")});
     tree_->setHeader(header);
+    header->setSectionsMovable(true);
     header->setStretchLastSection(false);
     header->setSectionResizeMode(0, QHeaderView::Stretch);
     header->setSectionResizeMode(1, QHeaderView::Interactive);
