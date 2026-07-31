@@ -166,7 +166,7 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
         if (role == Qt::ForegroundRole && index.column() == Name) {
             if (!overwrite_path_.isEmpty()) {
                 QDir dir(overwrite_path_);
-                if (dir.exists() && dir.entryList(QDir::Files | QDir::NoDotAndDotDot).size() > 0)
+                if (dir.exists() && !dir.isEmpty())
                     return QColor(220, 50, 50);  // red = has captured files
             }
             return QColor(160, 160, 160);  // gray = empty

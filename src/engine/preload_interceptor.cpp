@@ -6,7 +6,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <string>
 
 #include <fcntl.h>
@@ -125,13 +124,6 @@ int64_t PreloadInterceptor::launch(const std::filesystem::path& executable,
             _exit(15);
 
         Logger::instance().debug("Preload child: LD_PRELOAD=" + new_preload);
-
-        // Write a marker so parent can confirm we launched
-        std::error_code marker_ec;
-        std::filesystem::path marker = overwrite_dir / ".gmm_preload_marker";
-        std::ofstream marker_ofs(marker.string());
-        marker_ofs << "1";
-        marker_ofs.close();
 
         char* argv[] = { const_cast<char*>(exe_str.c_str()), nullptr };
         execv(argv[0], argv);
