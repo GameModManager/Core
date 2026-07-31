@@ -163,11 +163,19 @@ bool LinuxPlatform::register_nxm_handler(const std::filesystem::path& exe_path) 
     std::ofstream f(desktop);
     if (!f) return false;
 
+    // Quote the Exec path only when it contains whitespace. xdg-mime's
+    // desktop_file_to_binary() runs `command -v` on the raw first word and does
+    // NOT strip quotes, so a quoted path makes `xdg-mime query default` skip
+    // this entry entirely and is_nxm_handler_registered() reports false even
+    // when we are the default.
+    const std::string exe = exe_path.string();
+    const bool quote = exe.find_first_of(" \t") != std::string::npos;
+
     f << "[Desktop Entry]\n"
       << "Type=Application\n"
       << "Name=GameModManager\n"
       << "Comment=Download Nexus Mods via nxm:// links\n"
-      << "Exec=\"" << exe_path.string() << "\" --handle-nxm %u\n"
+      << "Exec=" << (quote ? "\"" : "") << exe << (quote ? "\"" : "") << " --handle-nxm %u\n"
       << "Terminal=false\n"
       << "MimeType=x-scheme-handler/nxm;\n"
       << "NoDisplay=true\n"
@@ -237,11 +245,16 @@ bool LinuxPlatform::register_gmm_handler(const std::filesystem::path& exe_path) 
     std::ofstream f(desktop);
     if (!f) return false;
 
+    // Same quoting rule as register_nxm_handler: keep the path unquoted unless
+    // it contains whitespace so xdg-mime can resolve this entry.
+    const std::string exe = exe_path.string();
+    const bool quote = exe.find_first_of(" \t") != std::string::npos;
+
     f << "[Desktop Entry]\n"
       << "Type=Application\n"
       << "Name=GameModManager (gmm://)\n"
       << "Comment=Download mods via gmm:// links\n"
-      << "Exec=\"" << exe_path.string() << "\" --handle-gmm %u\n"
+      << "Exec=" << (quote ? "\"" : "") << exe << (quote ? "\"" : "") << " --handle-gmm %u\n"
       << "Terminal=false\n"
       << "MimeType=x-scheme-handler/gmm;\n"
       << "NoDisplay=true\n"

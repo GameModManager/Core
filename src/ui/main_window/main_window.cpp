@@ -787,6 +787,10 @@ void MainWindow::set_game_info(const std::string& game_id,
     }
 
     refresh_recent_instances();
+
+    // Self-heal the OS-level nxm:// handler once per session, after the window
+    // is shown (deferred so the modal doesn't appear mid-construction).
+    QTimer::singleShot(0, this, &MainWindow::ensure_nxm_handler_default);
 }
 
 void MainWindow::update_title() {
@@ -4256,9 +4260,8 @@ void MainWindow::prompt_nxm_registration() {
     if (nexus_domain.empty()) return;
 
     QMessageBox msg(this);
-    msg.setWindowTitle(tr("NXM Protocol Handler"));
-    msg.setText(tr("Do you want to register %1 to handle download links from "
-                   "<b>nexusmods.com</b> (nxm://)?")
+    msg.setWindowTitle(tr("Nexus Mods Downloads"));
+    msg.setText(tr("Do you want to enable Nexus Mods downloads for <b>%1</b>?")
         .arg(QString::fromStdString(current_game_name_)));
     msg.setTextFormat(Qt::RichText);
     msg.setIcon(QMessageBox::Question);
@@ -4270,20 +4273,57 @@ void MainWindow::prompt_nxm_registration() {
         managed_games_->add_source(current_game_id_,
             engine::GameSource{"nexus", "nexusmods.com", nexus_domain});
 
-        // Ensure we're the nxm:// and gmm:// handler on Linux
-#ifdef GMM_PLATFORM_LINUX
-        auto app_path = std::filesystem::path(
-            QCoreApplication::applicationFilePath().toStdString());
-        if (!engine::LinuxPlatform::is_nxm_handler_registered()) {
-            (void)engine::LinuxPlatform::register_nxm_handler(app_path);
-        }
-        if (!engine::LinuxPlatform::is_gmm_handler_registered()) {
-            (void)engine::LinuxPlatform::register_gmm_handler(app_path);
-        }
-#endif
         engine::Logger::instance().debug(
-            "Registered " + current_game_id_ + " for nxm:// handling (nexusmods.com)");
+            "Registered " + current_game_id_ + " for Nexus Mods downloads (nexusmods.com)");
     }
+}
+
+void MainWindow::ensure_nxm_handler_default() {
+    if (nxm_handler_check_done_) return;
+    nxm_handler_check_done_ = true;
+
+#ifdef GMM_PLATFORM_LINUX
+    // Respect a permanent "don't ask again" choice
+    QSettings settings("GameModManager", "GameModManager");
+    if (settings.value("nxm/handler_check").toString() == "dont_ask") return;
+
+    // Self-heal: if we're still the default handler, nothing to do
+    if (engine::LinuxPlatform::is_nxm_handler_registered()) {
+        engine::Logger::instance().debug("nxm:// handler check: GameModManager is the default");
+        return;
+    }
+
+    auto app_path = std::filesystem::path(
+        QCoreApplication::applicationFilePath().toStdString());
+
+    engine::Logger::instance().info(
+        "nxm:// handler check: GameModManager is NOT the default — prompting");
+    QMessageBox msg(this);
+    msg.setWindowTitle(tr("NXM Protocol Handler"));
+    msg.setText(tr("GameModManager is no longer the default app for "
+                   "<b>nxm://</b> download links from Nexus Mods.\n\n"
+                   "Make it the default again?"));
+    msg.setTextFormat(Qt::RichText);
+    msg.setIcon(QMessageBox::Question);
+    auto* yes = msg.addButton(tr("Yes"), QMessageBox::YesRole);
+    auto* dont_show = msg.addButton(tr("Don't show"), QMessageBox::ActionRole);
+    auto* no = msg.addButton(tr("No"), QMessageBox::NoRole);
+    msg.setDefaultButton(yes);
+    msg.exec();
+
+    if (msg.clickedButton() == yes) {
+        (void)engine::LinuxPlatform::register_nxm_handler(app_path);
+        (void)engine::LinuxPlatform::register_gmm_handler(app_path);
+        engine::Logger::instance().info("nxm:// handler registered: GameModManager");
+    } else if (msg.clickedButton() == dont_show) {
+        settings.setValue("nxm/handler_check", "dont_ask");
+        engine::Logger::instance().debug("nxm:// handler check suppressed (don't show again)");
+    } else {
+        engine::Logger::instance().debug("nxm:// handler check declined; will ask next launch");
+    }
+#else
+    (void)0;
+#endif
 }
 
 void MainWindow::show_settings_dialog() {
