@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QVector>
 #include <QWidget>
 
 #include <filesystem>
@@ -9,6 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
+class QCheckBox;
 class QProgressBar;
 class QTableWidget;
 class QTableWidgetItem;
@@ -41,6 +43,9 @@ public:
     void mark_complete(const std::string& id, bool success);
     void mark_installed(const std::string& id);
 
+    // Re-apply the "hide installed" filter on top of any other row filter.
+    void reapply_installed_filter();
+
     // Persistence
     [[nodiscard]] std::string serialize() const;
     void deserialize(const std::string& json,
@@ -66,8 +71,10 @@ private:
     void replace_bar_with_label(const std::string& id, const QString& text,
                                 const QColor& bg);
     void on_cell_double_clicked(int row, int column);
+    void apply_installed_filter();
 
     QTableWidget* table_ = nullptr;
+    QCheckBox* hide_installed_ = nullptr;
     std::unordered_map<std::string, DownloadEntry> downloads_;
     int next_row_ = 0;
 };
@@ -94,9 +101,25 @@ class DataTab : public QWidget {
     Q_OBJECT
 public:
     explicit DataTab(QWidget* parent = nullptr);
-    [[nodiscard]] QTableWidget* table() const { return table_; }
+    [[nodiscard]] QTreeWidget* tree() const { return tree_; }
+
+    // Populate the merged game-visible file tree from the conflict registry.
+    //   registry          - relative path -> (mod_id, priority) providers
+    //   all_mods          - current mod list (for display names)
+    //   conflict_reversed - true if lower priority wins (Isaac convention)
+    //   mods_dir          - instance mods dir (first place to stat winners)
+    //   game_mods_dir     - game-native mods dir fallback (may be empty)
+    void show_data(
+        const std::unordered_map<std::string, std::vector<std::pair<std::string, int>>>& registry,
+        const QVector<ModEntry>& all_mods,
+        bool conflict_reversed,
+        const std::filesystem::path& mods_dir,
+        const std::filesystem::path& game_mods_dir);
+
+    void clear_content();
+
 private:
-    QTableWidget* table_ = nullptr;
+    QTreeWidget* tree_ = nullptr;
 };
 
 class SavesTab : public QWidget {

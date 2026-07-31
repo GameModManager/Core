@@ -33,6 +33,7 @@ public:
     [[nodiscard]] RightFilterBar* filter_bar() const { return filter_bar_; }
     [[nodiscard]] DownloadsTab* downloads_tab() const;
     [[nodiscard]] ConflictsTab* conflicts_tab() const;
+    [[nodiscard]] DataTab* data_tab() const;
 
 private:
     void clear_tabs();
