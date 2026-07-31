@@ -13,7 +13,7 @@ public:
     explicit SteamWorkshopProvider(const std::string& db_path);
 
     std::string source_type() const override { return "steam"; }
-    bool fetch(const Mod& mod, const PipelineContext& ctx,
+    bool fetch(const Mod& mod, PipelineContext& ctx,
                const std::filesystem::path& dest_path) override;
 
 private:

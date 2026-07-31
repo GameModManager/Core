@@ -14,8 +14,10 @@ class SourceProvider {
 public:
     virtual ~SourceProvider() = default;
     virtual std::string source_type() const = 0;
-    // Download a mod to dest_path. Returns true on success.
-    virtual bool fetch(const Mod& mod, const PipelineContext& ctx,
+    // Download a mod to dest_path. Returns true on success. ctx is mutable so
+    // providers can signal a pause (PipelineContext::download_paused) and read
+    // the resume offset / abort flag.
+    virtual bool fetch(const Mod& mod, PipelineContext& ctx,
                        const std::filesystem::path& dest_path) = 0;
 };
 

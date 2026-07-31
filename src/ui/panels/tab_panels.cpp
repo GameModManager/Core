@@ -68,6 +68,7 @@ static QTableWidget* make_table(int cols, const QStringList& headers, QWidget* p
 static QString state_label(DownloadState s) {
     switch (s) {
         case DownloadState::Downloading: return QCoreApplication::translate("DownloadsTab", "Downloading");
+        case DownloadState::Paused:      return QCoreApplication::translate("DownloadsTab", "Paused");
         case DownloadState::Complete:    return QCoreApplication::translate("DownloadsTab", "Install");
         case DownloadState::Installed:   return QCoreApplication::translate("DownloadsTab", "Installed");
         case DownloadState::Failed:      return QCoreApplication::translate("DownloadsTab", "Failed");
@@ -309,7 +310,10 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
 
 void DownloadsTab::add_download(const std::string& id, const std::string& name,
                                  const std::string& source,
-                                 const std::filesystem::path& file_path) {
+                                 const std::filesystem::path& file_path,
+                                 const std::string& nexus_domain,
+                                 int file_id,
+                                 const std::string& parent_mod_id) {
     auto [it, inserted] = downloads_.emplace(id, DownloadEntry{});
     if (!inserted) return;  // already exists
 
@@ -317,6 +321,9 @@ void DownloadsTab::add_download(const std::string& id, const std::string& name,
     entry.row = next_row_++;
     entry.file_path = file_path;
     entry.state = DownloadState::Downloading;
+    entry.nexus_domain = nexus_domain;
+    entry.file_id = file_id;
+    entry.parent_mod_id = parent_mod_id;
 
     table_->insertRow(entry.row);
 
@@ -344,8 +351,7 @@ void DownloadsTab::add_download(const std::string& id, const std::string& name,
 }
 
 DownloadsTab::DownloadEntry& DownloadsTab::entry_for(const std::string& id) {
-    static DownloadEntry null_entry{-1, {}, DownloadState::Downloading, 0,
-                                    nullptr, nullptr, nullptr, nullptr};
+    static DownloadEntry null_entry{-1};
     auto it = downloads_.find(id);
     if (it != downloads_.end()) return it->second;
     return null_entry;
@@ -440,6 +446,49 @@ void DownloadsTab::mark_installed(const std::string& id) {
     apply_installed_filter();
 }
 
+void DownloadsTab::mark_paused(const std::string& id) {
+    auto& entry = entry_for(id);
+    if (entry.row < 0) return;
+
+    entry.state = DownloadState::Paused;
+    replace_bar_with_label(id, tr("Paused"), QColor("#FF9800"));
+}
+
+void DownloadsTab::mark_downloading(const std::string& id) {
+    auto& entry = entry_for(id);
+    if (entry.row < 0) return;
+
+    entry.state = DownloadState::Downloading;
+
+    // Drop any label/bar currently in the Status column and start fresh.
+    if (entry.progress_bar) {
+        entry.progress_bar->deleteLater();
+        entry.progress_bar = nullptr;
+    }
+    table_->removeCellWidget(entry.row, 2);
+    delete table_->takeItem(entry.row, 2);
+
+    auto* bar = new QProgressBar(table_);
+    bar->setRange(0, 100);
+    bar->setValue(0);
+    bar->setTextVisible(true);
+    bar->setFormat("Starting...");
+    table_->setCellWidget(entry.row, 2, bar);
+    entry.progress_bar = bar;
+
+    table_->resizeRowToContents(entry.row);
+}
+
+void DownloadsTab::set_file_path(const std::string& id, const std::filesystem::path& path) {
+    auto& entry = entry_for(id);
+    if (entry.row < 0) return;
+    entry.file_path = path;
+}
+
+void DownloadsTab::set_downloads_dir(const std::filesystem::path& dir) {
+    downloads_dir_ = dir;
+}
+
 void DownloadsTab::apply_installed_filter() {
     if (!hide_installed_ || !table_) return;
     const bool hide = hide_installed_->isChecked();
@@ -461,7 +510,9 @@ void DownloadsTab::on_cell_double_clicked(int row, int column) {
                 entry.state == DownloadState::Failed) {
                 if (!entry.file_path.empty() &&
                     std::filesystem::exists(entry.file_path)) {
-                    emit install_requested(id, entry.file_path);
+                    emit install_requested(id, entry.file_path,
+                        entry.parent_mod_id.empty() ? "" : "nexus",
+                        entry.parent_mod_id, entry.file_id);
                 }
             }
             return;
@@ -483,37 +534,96 @@ void DownloadsTab::on_custom_context_menu(const QPoint& pos) {
     }
     if (!found) return;
     const std::string id = *found;
+    const auto& entry = downloads_.at(id);
+
+    // Theme icons with a standard-icon fallback (matches the mod-list menu
+    // and toolbar on non-themed platforms).
+    auto icon_for = [](const QString& theme, QStyle::StandardPixmap fallback) -> QIcon {
+        QIcon icon = QIcon::fromTheme(theme);
+        if (icon.isNull())
+            icon = QApplication::style()->standardIcon(fallback);
+        return icon;
+    };
 
     QMenu menu(this);
-    auto* remove_action = menu.addAction(tr("Remove"));
-    connect(remove_action, &QAction::triggered, this, [this, id]() {
-        auto it = downloads_.find(id);
-        if (it == downloads_.end()) return;
-        auto& entry = it->second;
 
-        // Trash the archive file (if any) before dropping the entry.
-        if (!entry.file_path.empty() && std::filesystem::exists(entry.file_path)) {
-            if (!engine::remove_path(entry.file_path)) {
-                QMessageBox::warning(this, tr("Remove"),
-                    tr("Failed to move \"%1\" to the trash bin.").arg(
-                        QString::fromStdString(entry.file_path.filename().string())));
-                return;
-            }
-        }
+    // Install / Reinstall (enabled when the archive exists and no download
+    // is running). Reuses the same pipeline as double-click.
+    const bool can_install =
+        entry.state != DownloadState::Downloading &&
+        entry.state != DownloadState::Paused &&
+        !entry.file_path.empty() &&
+        std::filesystem::exists(entry.file_path);
+    auto* install_action = menu.addAction(
+        icon_for("download", QStyle::SP_ArrowDown),
+        entry.state == DownloadState::Installed ? tr("Reinstall") : tr("Install"),
+        this, [this, id, entry]() {
+            emit install_requested(id, entry.file_path,
+                entry.parent_mod_id.empty() ? "" : "nexus",
+                entry.parent_mod_id, entry.file_id);
+        });
+    install_action->setEnabled(can_install);
 
-        const int removed_row = entry.row;
-        table_->removeRow(removed_row);
-        downloads_.erase(it);
+    if (entry.state == DownloadState::Downloading) {
+        menu.addAction(icon_for("media-playback-pause", QStyle::SP_MediaPause),
+            tr("Pause"), this, [this, id]() { emit pause_requested(id); });
+    } else if (entry.state == DownloadState::Paused) {
+        menu.addAction(icon_for("media-playback-start", QStyle::SP_MediaPlay),
+            tr("Resume"), this, [this, id]() { emit resume_requested(id); });
+    }
 
-        // Rows below the removed one shift up - reindex the survivors.
-        for (auto& [eid, e] : downloads_) {
-            if (e.row > removed_row) --e.row;
-        }
+    menu.addAction(icon_for("folder", QStyle::SP_DirOpenIcon),
+        tr("Show in Folder"), this, [entry, this]() {
+            auto dir = downloads_dir_;
+            if (!entry.file_path.empty())
+                dir = entry.file_path.parent_path();
+            if (!dir.empty())
+                QDesktopServices::openUrl(QUrl::fromLocalFile(
+                    QString::fromStdString(dir.string())));
+        });
 
-        emit entry_removed(id);
-    });
+    auto* nexus_action = menu.addAction(
+        icon_for("text-html", QStyle::SP_FileDialogInfoView),
+        tr("Open on Nexus"), this, [entry]() {
+            QDesktopServices::openUrl(QUrl(QString::fromStdString(
+                "https://www.nexusmods.com/" + entry.nexus_domain +
+                "/mods/" + entry.parent_mod_id)));
+        });
+    nexus_action->setEnabled(!entry.nexus_domain.empty() &&
+                             !entry.parent_mod_id.empty());
+
+    menu.addSeparator();
+    menu.addAction(icon_for("edit-delete", QStyle::SP_TrashIcon),
+        tr("Remove"), this, [this, id]() { remove_entry(id); });
 
     menu.exec(table_->viewport()->mapToGlobal(pos));
+}
+
+void DownloadsTab::remove_entry(const std::string& id) {
+    auto it = downloads_.find(id);
+    if (it == downloads_.end()) return;
+    auto& entry = it->second;
+
+    // Trash the archive file (if any) before dropping the entry.
+    if (!entry.file_path.empty() && std::filesystem::exists(entry.file_path)) {
+        if (!engine::remove_path(entry.file_path)) {
+            QMessageBox::warning(this, tr("Remove"),
+                tr("Failed to move \"%1\" to the trash bin.").arg(
+                    QString::fromStdString(entry.file_path.filename().string())));
+            return;
+        }
+    }
+
+    const int removed_row = entry.row;
+    table_->removeRow(removed_row);
+    downloads_.erase(it);
+
+    // Rows below the removed one shift up - reindex the survivors.
+    for (auto& [eid, e] : downloads_) {
+        if (e.row > removed_row) --e.row;
+    }
+
+    emit entry_removed(id);
 }
 
 // --- Manifest persistence ---
@@ -529,6 +639,12 @@ std::string DownloadsTab::serialize() const {
         obj["file_path"] = QString::fromStdString(entry.file_path.string());
         obj["state"] = static_cast<int>(entry.state);
         obj["total_size"] = static_cast<qint64>(entry.total_size);
+        // Origin metadata - kept for update checks and the future
+        // parent-mod + submods grouping (optional files).
+        obj["parent_mod_id"] = QString::fromStdString(entry.parent_mod_id);
+        obj["file_id"] = entry.file_id;
+        obj["domain"] = QString::fromStdString(entry.nexus_domain);
+        obj["category"] = QString::fromStdString(entry.category);
         arr.append(obj);
     }
     QJsonDocument doc(arr);
@@ -569,6 +685,10 @@ void DownloadsTab::deserialize(const std::string& json,
         entry.file_path = file_path;
         entry.state = state;
         entry.total_size = total_size;
+        entry.parent_mod_id = obj["parent_mod_id"].toString().toStdString();
+        entry.file_id = obj["file_id"].toInt();
+        entry.nexus_domain = obj["domain"].toString().toStdString();
+        entry.category = obj["category"].toString().toStdString();
 
         table_->insertRow(entry.row);
 

@@ -2,6 +2,7 @@
 
 #include "engine/pipeline/stage.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -39,6 +40,16 @@ struct PipelineContext {
 
     // Download progress callback (bytes downloaded, total bytes, speed in bytes/sec)
     std::function<void(int64_t downloaded, int64_t total, double speed)> on_progress;
+
+    // Download pause/resume control. `should_abort` is polled by the download
+    // provider's transfer callback; returning true aborts the fetch and keeps
+    // the partial file on disk (so a later run can resume it via Range).
+    std::function<bool()> should_abort;
+    bool download_paused = false;
+
+    // Fetch stages set this to the size of an existing partial file so the
+    // provider can resume from that offset instead of re-downloading.
+    int64_t download_resume_from = 0;
 };
 
 class Pipeline {

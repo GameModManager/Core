@@ -5,8 +5,10 @@
 
 #include <QObject>
 #include <QThread>
+#include <atomic>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 namespace engine {
 class Pipeline;
@@ -25,21 +27,42 @@ public:
     void set_context(engine::PipelineContext ctx);
 
 public slots:
-    void install_mod(const std::string& id, const std::string& zip_path);
-    void install_from_nxm(const engine::NxmLink& link,
-                          const std::string& game_id,
-                          const std::string& mods_dir,
-                          const std::string& meta_dir);
+    // Install an already-downloaded archive (downloads are decoupled from
+    // installs). source_type/source_id/file_id preserve the origin metadata
+    // for meta.ini (e.g. "nexus" + parent mod id + file id).
+    void install_mod(const std::string& id, const std::string& zip_path,
+                     const std::string& source_type = {},
+                     const std::string& source_id = {}, int file_id = 0);
+
+    // Download only (fetch stage): produces the archive in the instance
+    // downloads dir, then emits download_complete. Resume-safe - a partial
+    // file from a paused download is continued via HTTP Range.
+    void download_mod(const std::string& id, const engine::NxmLink& link,
+                      const std::string& game_id,
+                      const std::string& mods_dir,
+                      const std::string& meta_dir);
+
+    // Request a pause of an in-flight download (cooperative: the transfer
+    // callback polls the flag and aborts, keeping the partial file).
+    void pause_download(const std::string& id);
 
 signals:
     void progress(const std::string& mod_id, int stage_index, const std::string& stage_name);
     void download_progress(const std::string& mod_id, int64_t bytes_downloaded, int64_t bytes_total, double speed_bytes_per_sec);
-    void finished(const std::string& mod_id, bool success, const std::string& message);
+    void download_complete(const std::string& mod_id, bool success,
+                           const std::string& archive_path);
+    void install_complete(const std::string& mod_id, bool success,
+                          const std::string& message);
+    void paused(const std::string& mod_id);
     void all_done();
 
 private:
     std::unique_ptr<engine::Pipeline> pipeline_;
     engine::PipelineContext ctx_;
+    // Fetch-only pipeline used by download_mod (built in set_context).
+    std::unique_ptr<engine::Pipeline> fetch_pipeline_;
+    // Per-download pause flags, keyed by the download id.
+    std::unordered_map<std::string, std::atomic_bool> cancel_flags_;
 };
 
 // Wrapper to run PipelineWorker in a thread

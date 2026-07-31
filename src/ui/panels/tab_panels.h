@@ -25,6 +25,7 @@ struct ConflictPairs;
 
 enum class DownloadState {
     Downloading,
+    Paused,
     Complete,
     Installed,
     Failed
@@ -38,11 +39,24 @@ public:
 
     void add_download(const std::string& id, const std::string& name,
                       const std::string& source,
-                      const std::filesystem::path& file_path = {});
+                      const std::filesystem::path& file_path = {},
+                      const std::string& nexus_domain = {},
+                      int file_id = 0,
+                      const std::string& parent_mod_id = {});
     void update_progress(const std::string& id, int64_t downloaded,
                          int64_t total, double speed);
     void mark_complete(const std::string& id, bool success);
     void mark_installed(const std::string& id);
+    void mark_paused(const std::string& id);
+    void mark_downloading(const std::string& id);
+
+    // Record the on-disk archive for a download that was started without one
+    // (e.g. Nexus downloads, whose path is only known after the fetch).
+    void set_file_path(const std::string& id, const std::filesystem::path& path);
+
+    // Directory the instance downloads archives land in (for "Show in Folder"
+    // when an entry has no file yet).
+    void set_downloads_dir(const std::filesystem::path& dir);
 
     // Re-apply the "hide installed" filter on top of any other row filter.
     void reapply_installed_filter();
@@ -54,7 +68,12 @@ public:
 
 signals:
     void install_requested(const std::string& id,
-                           const std::filesystem::path& file_path);
+                           const std::filesystem::path& file_path,
+                           const std::string& source_type,
+                           const std::string& source_id,
+                           int file_id);
+    void pause_requested(const std::string& id);
+    void resume_requested(const std::string& id);
     // Emitted after a download entry (and its file) has been removed, so the
     // manifest can be persisted. The entry is already gone from the table.
     void entry_removed(const std::string& id);
@@ -65,6 +84,11 @@ private:
         std::filesystem::path file_path;
         DownloadState state = DownloadState::Downloading;
         int64_t total_size = 0;
+        // Origin metadata (Nexus): parent mod page id, file id, domain.
+        std::string parent_mod_id;
+        int file_id = 0;
+        std::string nexus_domain;
+        std::string category;
         QTableWidgetItem* name_item = nullptr;
         QTableWidgetItem* source_item = nullptr;
         QTableWidgetItem* size_item = nullptr;
@@ -76,11 +100,13 @@ private:
                                 const QColor& bg);
     void on_cell_double_clicked(int row, int column);
     void on_custom_context_menu(const QPoint& pos);
+    void remove_entry(const std::string& id);
     void apply_installed_filter();
 
     QTableWidget* table_ = nullptr;
     QCheckBox* hide_installed_ = nullptr;
     std::unordered_map<std::string, DownloadEntry> downloads_;
+    std::filesystem::path downloads_dir_;
     int next_row_ = 0;
 };
 

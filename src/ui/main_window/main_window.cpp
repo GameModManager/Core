@@ -422,21 +422,45 @@ MainWindow::MainWindow(QWidget* parent)
     pipeline_thread_ = new PipelineThread(this);
     pipeline_thread_->start();
 
-    // Reload mod list when a pipeline operation finishes
-    connect(pipeline_thread_->worker(), &PipelineWorker::finished,
-            this, [this](const std::string& mod_id, bool success, const std::string&) {
-        if (success && !current_game_id_.empty()) {
-            engine::Logger::instance().debug(
-                "Pipeline finished for " + mod_id + ", reloading mods...");
-            load_mods_from_game();
-            // Mark installed in DownloadsTab (pipeline includes install + deploy)
-            auto* dt = right_panel_->downloads_tab();
-            if (dt) dt->mark_installed(mod_id);
-        } else if (!success) {
-            auto* dt = right_panel_->downloads_tab();
-            if (dt) dt->mark_complete(mod_id, false);
+    // Download finished (download-only, MO2 model): the row becomes Complete
+    // with a real file path; installation is a separate user-triggered step.
+    connect(pipeline_thread_->worker(), &PipelineWorker::download_complete,
+            this, [this](const std::string& id, bool success, const std::string& archive_path) {
+        auto* dt = right_panel_->downloads_tab();
+        if (dt) {
+            if (!archive_path.empty()) dt->set_file_path(id, archive_path);
+            dt->mark_complete(id, success);
         }
         // Persist download state
+        save_download_manifest();
+    });
+
+    // Install finished (user-triggered via the Downloads context menu or
+    // double-click): reload the mod list and mark the entry Installed.
+    connect(pipeline_thread_->worker(), &PipelineWorker::install_complete,
+            this, [this](const std::string& mod_id, bool success, const std::string&) {
+        auto* dt = right_panel_->downloads_tab();
+        if (dt) {
+            if (success) {
+                if (!current_game_id_.empty()) {
+                    engine::Logger::instance().debug(
+                        "Install finished for " + mod_id + ", reloading mods...");
+                    load_mods_from_game();
+                }
+                dt->mark_installed(mod_id);
+            } else {
+                dt->mark_complete(mod_id, false);
+            }
+        }
+        // Persist download state
+        save_download_manifest();
+    });
+
+    // A download was paused mid-fetch (partial file kept for resume).
+    connect(pipeline_thread_->worker(), &PipelineWorker::paused,
+            this, [this](const std::string& id) {
+        auto* dt = right_panel_->downloads_tab();
+        if (dt) dt->mark_paused(id);
         save_download_manifest();
     });
 
@@ -511,6 +535,7 @@ void MainWindow::set_game_info(const std::string& game_id,
     toolbar_->clear_exec_buttons();
     toolbar_shortcut_paths_.clear();
     right_panel_->exec_controls()->clear_executables();
+    nxm_links_.clear();  // NXM links are instance-scoped
 
     current_game_id_ = game_id;
     current_game_name_ = game_display_name;
@@ -638,6 +663,14 @@ void MainWindow::set_game_info(const std::string& game_id,
         engine::TraceRecorder::instance().declare_flow(
             "install", "Mod install pipeline", std::move(flow_stages));
 
+        // The download flow is fetch-only (downloads are decoupled from
+        // installs); PipelineWorker::download_mod runs it.
+        engine::TraceRecorder::instance().declare_flow("download", "Mod download", {
+            {"Fetch", "core",
+             "Downloads the archive into the instance downloads dir "
+             "(pause/resume supported)"},
+        });
+
         // Declare the sort + launch flows eagerly too - the pipeline window
         // must show the full stage list (and who provides what) before either
         // flow has ever run.  sort_mods()/launch_with_executable() only
@@ -694,15 +727,46 @@ void MainWindow::set_game_info(const std::string& game_id,
     // Connect download double-click to install (tab exists after set_game above)
     auto* dt = right_panel_->downloads_tab();
     if (dt) {
+        dt->set_downloads_dir(current_instance_root_ / "downloads");
         connect(dt, &DownloadsTab::install_requested,
-                this, [this](const std::string& mod_id, const std::filesystem::path& fp) {
+                this, [this](const std::string& mod_id, const std::filesystem::path& fp,
+                             const std::string& source_type, const std::string& source_id,
+                             int file_id) {
             if (!pipeline_thread_) return;
-            QMetaObject::invokeMethod(pipeline_thread_->worker(), [this, mod_id, fp]() {
-                pipeline_thread_->worker()->install_mod(mod_id, fp.string());
+            QMetaObject::invokeMethod(pipeline_thread_->worker(),
+                [this, mod_id, fp, source_type, source_id, file_id]() {
+                pipeline_thread_->worker()->install_mod(
+                    mod_id, fp.string(), source_type, source_id, file_id);
+            }, Qt::QueuedConnection);
+        });
+        connect(dt, &DownloadsTab::pause_requested,
+                this, [this](const std::string& id) {
+            if (!pipeline_thread_) return;
+            QMetaObject::invokeMethod(pipeline_thread_->worker(), [this, id]() {
+                pipeline_thread_->worker()->pause_download(id);
+            }, Qt::QueuedConnection);
+        });
+        connect(dt, &DownloadsTab::resume_requested,
+                this, [this](const std::string& id) {
+            auto it = nxm_links_.find(id);
+            if (it == nxm_links_.end() || !pipeline_thread_) return;
+            auto* dtab = right_panel_->downloads_tab();
+            if (dtab) dtab->mark_downloading(id);
+            auto link = it->second;
+            auto mods_dir = mods_dir_path().string();
+            auto meta_dir = current_instance_root_.empty()
+                ? "" : (current_instance_root_ / "meta").string();
+            QMetaObject::invokeMethod(pipeline_thread_->worker(),
+                [this, id, link, mods_dir, meta_dir]() {
+                pipeline_thread_->worker()->download_mod(
+                    id, link, current_game_id_, mods_dir, meta_dir);
             }, Qt::QueuedConnection);
         });
         connect(dt, &DownloadsTab::entry_removed,
-                this, [this](const std::string&) { save_download_manifest(); });
+                this, [this](const std::string& id) {
+                nxm_links_.erase(id);
+                save_download_manifest();
+            });
     }
 
     // Show debug window if debugging.enabled flag exists
@@ -4129,28 +4193,37 @@ void MainWindow::handle_nxm_download(const engine::NxmLink& link) {
         " (mod_id=" + std::to_string(link.mod_id) +
         ", file_id=" + std::to_string(link.file_id) + ")");
 
-    // Show in DownloadsTab immediately
+    // Show in DownloadsTab immediately. The entry key is "<mod_id>-<file_id>"
+    // so Main and Optional files of the same mod page stay separate entries.
+    const auto mod_id = std::to_string(link.mod_id);
+    const auto file_id = std::to_string(link.file_id);
+    const auto key = mod_id + "-" + file_id;
+
     auto* dt = right_panel_->downloads_tab();
     if (dt) {
         dt->add_download(
-            std::to_string(link.mod_id),
-            tr("Mod #%1").arg(link.mod_id).toStdString(),
-            "Nexus Mods");
+            key,
+            tr("Mod #%1 - file %2").arg(QString::fromStdString(mod_id))
+                                    .arg(link.file_id).toStdString(),
+            "Nexus Mods", {}, link.nexus_domain, link.file_id, mod_id);
     }
+
+    // Keep the NXM link so a paused download can be resumed later.
+    nxm_links_[key] = link;
 
     // Build paths for the pipeline context
     auto mods_dir = mods_dir_path();
+    auto meta_dir = current_instance_root_.empty()
+        ? "" : (current_instance_root_ / "meta").string();
 
-    // Invoke the pipeline worker asynchronously
-    QMetaObject::invokeMethod(pipeline_thread_->worker(), [this, link, mods_dir]() {
-        pipeline_thread_->worker()->install_from_nxm(
-            link,
-            current_game_id_,
-            mods_dir.string(),
-            current_instance_root_.empty() ? "" : (current_instance_root_ / "meta").string());
+    // Invoke the pipeline worker asynchronously (download only - install is a
+    // separate user-triggered step)
+    QMetaObject::invokeMethod(pipeline_thread_->worker(), [this, key, link, mods_dir, meta_dir]() {
+        pipeline_thread_->worker()->download_mod(
+            key, link, current_game_id_, mods_dir.string(), meta_dir);
     }, Qt::QueuedConnection);
 
-    engine::Logger::instance().debug("Download queued for mod " + std::to_string(link.mod_id));
+    engine::Logger::instance().debug("Download queued for mod " + mod_id + " file " + file_id);
 }
 
 void MainWindow::flush_pending_nxm() {

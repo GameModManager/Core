@@ -21,6 +21,8 @@ namespace engine {
 
 struct DownloadProgress {
     std::function<void(int64_t, int64_t, double)> callback;
+    std::function<bool()> should_abort;
+    int64_t resume_base = 0;  // bytes already downloaded in a previous run
     std::chrono::steady_clock::time_point start;
 };
 
@@ -28,11 +30,18 @@ static int xferinfo_callback(void* user_data, curl_off_t dltotal, curl_off_t dln
                               curl_off_t ultotal, curl_off_t ulnow) {
     (void)ultotal; (void)ulnow;
     auto* dp = static_cast<DownloadProgress*>(user_data);
+    if (dp && dp->should_abort && dp->should_abort()) {
+        // Pause requested - abort this transfer; the partial file is kept.
+        return 1;
+    }
     if (dp && dp->callback) {
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration<double>(now - dp->start).count();
         double speed = (elapsed > 0.001) ? (dlnow / elapsed) : 0.0;
-        dp->callback(dlnow, dltotal, speed);
+        // During a resumed transfer curl reports only the remaining bytes
+        // (dlnow from 0, dltotal = remainder), so add the resume base back to
+        // keep the UI progress continuous across pause/resume.
+        dp->callback(dp->resume_base + dlnow, dp->resume_base + dltotal, speed);
     }
     return 0;
 }
@@ -103,14 +112,24 @@ static bool curl_request(const std::string& url,
     return (res == CURLE_OK);
 }
 
+// Downloads to dest_path. When `resume_from > 0` the existing partial file is
+// opened in append mode and the server is asked to continue from that byte
+// (HTTP Range). On an abort (pause) the partial file is KEPT so a later run
+// can resume; on any other failure the partial file is removed.
 static bool curl_download(const std::string& url,
                           const std::filesystem::path& dest_path,
                           long& http_code,
-                          DownloadProgress* progress = nullptr) {
+                          DownloadProgress* progress = nullptr,
+                          int64_t resume_from = 0,
+                          bool* aborted = nullptr) {
     auto* curl = curl_easy_init();
     if (!curl) return false;
 
-    std::ofstream file(dest_path, std::ios::binary);
+    std::ofstream file;
+    if (resume_from > 0)
+        file.open(dest_path, std::ios::binary | std::ios::app);
+    else
+        file.open(dest_path, std::ios::binary);
     if (!file) {
         curl_easy_cleanup(curl);
         return false;
@@ -124,6 +143,10 @@ static bool curl_download(const std::string& url,
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_file);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &file);
 
+    if (resume_from > 0)
+        curl_easy_setopt(curl, CURLOPT_RESUME_FROM_LARGE,
+                         static_cast<curl_off_t>(resume_from));
+
     if (progress && progress->callback) {
         curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
         curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, xferinfo_callback);
@@ -135,9 +158,16 @@ static bool curl_download(const std::string& url,
     curl_easy_cleanup(curl);
 
     file.close();
+
+    bool was_aborted = (res == CURLE_ABORTED_BY_CALLBACK);
+    if (aborted) *aborted = was_aborted;
+
     if (res != CURLE_OK || http_code >= 400) {
-        std::error_code ec;
-        std::filesystem::remove(dest_path, ec);
+        // Keep the partial file on abort (pause/resume); remove it otherwise.
+        if (!was_aborted) {
+            std::error_code ec;
+            std::filesystem::remove(dest_path, ec);
+        }
         return false;
     }
     return true;
@@ -184,7 +214,7 @@ static void parse_rate_limits(const std::string& headers) {
 // NexusProvider::fetch
 // ---------------------------------------------------------------------------
 
-bool NexusProvider::fetch(const Mod& mod, const PipelineContext& ctx,
+bool NexusProvider::fetch(const Mod& mod, PipelineContext& ctx,
                           const std::filesystem::path& dest_path) {
     if (mod.download_source_type != "nexus") return false;
 
@@ -325,11 +355,23 @@ bool NexusProvider::fetch(const Mod& mod, const PipelineContext& ctx,
 
     DownloadProgress dp;
     dp.callback = ctx.on_progress;
+    dp.should_abort = ctx.should_abort;
+    dp.resume_base = ctx.download_resume_from;
     dp.start = std::chrono::steady_clock::now();
 
-    if (!curl_download(download_url, dest_path, dl_code, &dp)) {
-        Logger::instance().error("NexusProvider: download failed (HTTP " +
-                                 std::to_string(dl_code) + ")");
+    bool aborted = false;
+    if (!curl_download(download_url, dest_path, dl_code, &dp,
+                       ctx.download_resume_from, &aborted)) {
+        if (aborted) {
+            // Pause requested - partial file is kept for resume.
+            ctx.download_paused = true;
+            Logger::instance().debug(
+                "NexusProvider: download aborted (pause), partial kept at " +
+                dest_path.string());
+        } else {
+            Logger::instance().error("NexusProvider: download failed (HTTP " +
+                                     std::to_string(dl_code) + ")");
+        }
         return false;
     }
 
