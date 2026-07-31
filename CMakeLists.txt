@@ -24,6 +24,10 @@ endif()
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Network LinguistTools)
 
+# QtKeychain OS keyring (Secret Service / KWallet / macOS Keychain / Windows
+# Credential Locker) — pulled on every platform that ships it.
+find_package(Qt6Keychain QUIET)
+
 # Dependencies — PkgConfig on Linux/macOS, find_package on Windows
 if(WIN32)
     # Windows: use find_package for each dependency
@@ -144,6 +148,7 @@ set(ENGINE_SOURCES
     src/engine/source/nexus_provider.cpp
     src/engine/source/steam_workshop_provider.cpp
     src/engine/nexus_auth.cpp
+    src/engine/keyring.cpp
     src/engine/preload_interceptor.cpp
     src/engine/launcher.cpp
     src/cli/headless_launcher.cpp
@@ -204,6 +209,13 @@ set(APP_SOURCES
 )
 
 add_executable(gamemodmanager ${ENGINE_SOURCES} ${RUNTIME_SOURCES} ${PLATFORM_SOURCES} ${UI_SOURCES} ${APP_SOURCES})
+
+# OS keyring (QtKeychain) — compiled in wherever the library is available
+if(Qt6Keychain_FOUND)
+    target_sources(gamemodmanager PRIVATE src/keyring/qtkeychain_keyring.cpp)
+    target_compile_definitions(gamemodmanager PRIVATE GMM_HAS_QTKEYCHAIN=1)
+    target_link_libraries(gamemodmanager PRIVATE Qt6Keychain::Qt6Keychain)
+endif()
 
 # Translations - source language is English.
 # - qt_add_lupdate registers the standard `update_translations` target that
@@ -335,6 +347,43 @@ add_executable(registry_test tests/engine/registry_test.cpp
 target_include_directories(registry_test PRIVATE src/)
 target_link_libraries(registry_test PRIVATE PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::CURL PkgConfig::NLOHMANN_JSON)
 add_test(NAME registry_test COMMAND registry_test)
+
+add_executable(nxm_router_test tests/engine/nxm_router_test.cpp
+    src/engine/nxm/nxm_router.cpp
+)
+target_include_directories(nxm_router_test PRIVATE src/)
+add_test(NAME nxm_router_test COMMAND nxm_router_test)
+
+# FileKeyring + NexusAuth keyring fallback/migration — pure C++, no Qt
+add_executable(keyring_test tests/engine/keyring_test.cpp
+    src/engine/keyring.cpp
+    src/engine/nexus_auth.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(keyring_test PRIVATE src/)
+add_test(NAME keyring_test COMMAND keyring_test)
+
+# Live OS keyring roundtrip — only when QtKeychain is available; skips
+# cleanly when no keyring daemon is running.
+if(Qt6Keychain_FOUND)
+    add_executable(qtkeychain_test tests/engine/qtkeychain_test.cpp
+        src/engine/keyring.cpp
+        src/engine/nexus_auth.cpp
+        src/engine/log/logger.cpp
+        src/keyring/qtkeychain_keyring.cpp
+    )
+    target_include_directories(qtkeychain_test PRIVATE src/)
+    target_link_libraries(qtkeychain_test PRIVATE Qt6Keychain::Qt6Keychain Qt6::Core)
+    add_test(NAME qtkeychain_test COMMAND qtkeychain_test)
+endif()
+
+if(GMM_PLATFORM STREQUAL "linux")
+    add_executable(mimeapps_test tests/engine/mimeapps_test.cpp
+        src/platform/linux/linux_platform.cpp
+    )
+    target_include_directories(mimeapps_test PRIVATE src/)
+    add_test(NAME mimeapps_test COMMAND mimeapps_test)
+endif()
 
 add_executable(perf_benchmark tests/perf/benchmark_test.cpp
     src/engine/index/conflict_index.cpp

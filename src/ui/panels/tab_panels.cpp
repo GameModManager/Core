@@ -357,6 +357,17 @@ DownloadsTab::DownloadEntry& DownloadsTab::entry_for(const std::string& id) {
     return null_entry;
 }
 
+void DownloadsTab::rename_download(const std::string& id,
+                                   const std::string& new_name) {
+    auto it = downloads_.find(id);
+    if (it == downloads_.end()) return;
+    auto& entry = it->second;
+    if (entry.name_item) {
+        entry.name_item->setText(QString::fromStdString(new_name));
+        table_->resizeRowToContents(entry.row);
+    }
+}
+
 void DownloadsTab::update_progress(const std::string& id, int64_t downloaded,
                                     int64_t total, double speed) {
     auto& entry = entry_for(id);

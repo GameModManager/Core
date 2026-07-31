@@ -49,8 +49,11 @@ public slots:
 signals:
     void progress(const std::string& mod_id, int stage_index, const std::string& stage_name);
     void download_progress(const std::string& mod_id, int64_t bytes_downloaded, int64_t bytes_total, double speed_bytes_per_sec);
+    // name is the real display name resolved by the provider (e.g. "SkyUI"),
+    // or empty when no provider info was available.
     void download_complete(const std::string& mod_id, bool success,
-                           const std::string& archive_path);
+                           const std::string& archive_path,
+                           const std::string& name = {});
     void install_complete(const std::string& mod_id, bool success,
                           const std::string& message);
     void paused(const std::string& mod_id);

@@ -50,6 +50,11 @@ public:
     void mark_paused(const std::string& id);
     void mark_downloading(const std::string& id);
 
+    // Update the displayed name of a download entry (e.g. the real mod name,
+    // resolved from the source after the download was queued with a
+    // placeholder). A no-op if the id is not present.
+    void rename_download(const std::string& id, const std::string& new_name);
+
     // Record the on-disk archive for a download that was started without one
     // (e.g. Nexus downloads, whose path is only known after the fetch).
     void set_file_path(const std::string& id, const std::filesystem::path& path);

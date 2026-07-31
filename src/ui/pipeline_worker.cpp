@@ -122,12 +122,18 @@ void PipelineWorker::download_mod(const std::string& id,
     if (!mod.files.empty())
         archive_path = mod.files[0].relative_path;
 
+    // Real display name only when the provider resolved one (FetchStage
+    // overwrote the "Mod file <id>" placeholder); empty otherwise so the UI
+    // keeps its own placeholder.
+    std::string display_name =
+        (mod.name == "Mod file " + id) ? std::string{} : mod.name;
+
     if (success) {
         engine::Logger::instance().debug("Download complete: " + id);
-        emit download_complete(id, true, archive_path);
+        emit download_complete(id, true, archive_path, display_name);
     } else {
         engine::Logger::instance().error("Download failed: " + id);
-        emit download_complete(id, false, archive_path);
+        emit download_complete(id, false, archive_path, display_name);
     }
 }
 

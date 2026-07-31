@@ -1,7 +1,10 @@
 #pragma once
 
-#include <string>
+#include "engine/keyring.h"
+
 #include <filesystem>
+#include <memory>
+#include <string>
 
 namespace engine {
 
@@ -13,8 +16,9 @@ struct RateLimitInfo {
     int64_t last_updated = 0; // Unix timestamp of last API call
 };
 
-// Manages Nexus Mods API key storage with obfuscated (XOR+b64) persistence.
-// Not real crypto - prevents casual plaintext reading of the stored key.
+// Manages Nexus Mods API key storage. Secrets live in the OS keyring
+// (injected via set_keyring()); when no OS keyring is available, storage
+// falls back to FileKeyring (obfuscated file, insecure) with a warning.
 class NexusAuth {
 public:
     static NexusAuth& instance();
@@ -24,6 +28,9 @@ public:
     void set_api_key(const std::string& key);
     void clear_api_key();
 
+    // Injects the OS-backed keyring. Call once at startup (before first use).
+    void set_keyring(std::unique_ptr<Keyring> keyring);
+
     // Rate-limit tracking - persisted to disk, survives relaunch.
     RateLimitInfo get_rate_limit() const;
     void update_rate_limit(int limit, int remaining, int64_t reset);
@@ -32,18 +39,14 @@ public:
     static std::filesystem::path config_dir();
 
 private:
-    NexusAuth() = default;
+    NexusAuth();
 
-    std::string derive_key() const;
-    std::string encrypt(const std::string& plaintext) const;
-    std::string decrypt(const std::string& ciphertext) const;
+    // The backend actually used: the injected keyring when available and
+    // reachable, otherwise the file fallback.
+    Keyring& effective_keyring() const;
 
-    static std::string base64_encode(const std::string& in);
-    static std::string base64_decode(const std::string& in);
-    static std::string machine_id();
-
-    static std::filesystem::path key_storage_path();
-    static std::filesystem::path rate_storage_path();
+    mutable std::unique_ptr<Keyring> keyring_;
+    mutable FileKeyring fallback_;
 };
 
 } // namespace engine
