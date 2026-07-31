@@ -9,7 +9,7 @@
 namespace engine {
 
 // -- Embedded default theme ---------------------------------------------
-// Uses palette() exclusively so the desktop provides all colors — no
+// Uses palette() exclusively so the desktop provides all colors - no
 // hardcoded tints. This is the fallback when no user theme is loaded.
 // Minimal QSS: only app-specific named-widget rules.
 // Everything else uses QPalette + native KDE style.
@@ -110,6 +110,79 @@ QLabel#debugValue {
 
 QLabel#statLabel {
     font-weight: bold;
+}
+
+/* -- Pipeline window ---------------------------- */
+
+#pipelineHeader {
+    font-weight: bold;
+}
+
+/* Card sits on the scene's palette(base) canvas; the border delineates it. */
+#pipelineCard {
+    background-color: palette(base);
+    border: 1px solid palette(midlight);
+    border-radius: 4px;
+}
+
+#pipelineCardHeader {
+    border-bottom: 1px solid palette(midlight);
+    border-top-left-radius: 3px;
+    border-top-right-radius: 3px;
+}
+
+#pipelineStageName {
+    font-weight: bold;
+}
+
+#pipelineOrigin {
+    color: palette(mid);
+    font-size: 10px;
+}
+
+#pipelineStatus {
+    font-size: 10px;
+    font-weight: bold;
+}
+
+#pipelineDescription {
+    color: palette(mid);
+    font-size: 10px;
+}
+
+#pipelineDuration {
+    color: palette(mid);
+    font-family: monospace;
+    font-size: 10px;
+}
+
+/* Failure message box - red border, ~10% red fill, whole message. */
+#pipelineFailBox {
+    border: 1px solid #c62828;
+    background-color: rgba(198, 40, 40, 25);
+    color: #c62828;
+    border-radius: 3px;
+    padding: 6px;
+    margin: 0 8px 8px 8px;
+    font-size: 10px;
+}
+
+#pipelinePlaceholder {
+    color: palette(mid);
+    font-style: italic;
+}
+
+/* Floating zoom bar pinned to the bottom-right of the pipeline canvas. */
+#zoomControls {
+    background-color: palette(midlight);
+    border-radius: 6px;
+}
+
+#zoomPercent {
+    color: palette(windowText);
+    font-weight: bold;
+    font-size: 10px;
+    padding: 0 2px;
 }
 
 /* -- Game selection ------------------------------ */

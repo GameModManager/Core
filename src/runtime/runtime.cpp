@@ -54,7 +54,7 @@ bool NativeRuntime::launch(const std::filesystem::path& executable,
         execl("/bin/sh", "sh", executable.c_str(), nullptr);
         _exit(1);
     } else if (pid > 0) {
-        // Parent: don't wait — child is fully detached
+        // Parent: don't wait - child is fully detached
         last_pid_ = static_cast<int64_t>(pid);
         return true;
     }
@@ -148,7 +148,7 @@ static std::string read_steam_compat_tool(uint32_t appid) {
             }
 
             if (in_app_section) {
-                // Look for "name" key — this is the tool name
+                // Look for "name" key - this is the tool name
                 auto tool_name = vdf_value_for_key(trimmed, "name");
                 if (!tool_name.empty()) {
                     return tool_name;
@@ -305,7 +305,7 @@ bool ProtonRuntime::prepare_proton_environment(const std::filesystem::path& game
     setenv("STEAM_COMPAT_INSTALL_PATH", game_dir.string().c_str(), 1);
     setenv("STEAM_COMPAT_APP_ID", std::to_string(steam_appid).c_str(), 1);
 
-    // Build library paths — all Steam library folders
+    // Build library paths - all Steam library folders
     std::string library_paths;
     auto lib_folders = steam_root / "steamapps" / "libraryfolders.vdf";
     if (std::filesystem::exists(lib_folders)) {

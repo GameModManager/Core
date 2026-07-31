@@ -8,7 +8,7 @@
 namespace engine {
 
 // An external tool registered by a game module.
-// §7: two categories — advisory (output feeds pipeline) and workshop (user launches directly).
+// §7: two categories - advisory (output feeds pipeline) and workshop (user launches directly).
 enum class ToolKind {
     Advisory,   // LOOT: run it, parse output, hand to OrderEncodingHook
     Workshop,   // BodySlide: user runs it, engine captures generated files
@@ -21,7 +21,7 @@ struct ExternalTool {
     std::string display_name;   // "LOOT", "BodySlide"
     std::string description;    // human-readable
 
-    // Detection — where to find the executable
+    // Detection - where to find the executable
     std::string executable_name;// "LOOT.exe", "BodySlidex64.exe"
     std::vector<std::string> search_paths; // known install locations
     std::string registry_key;   // Windows registry key (Phase 3)
@@ -30,7 +30,7 @@ struct ExternalTool {
     std::string invoke_args;    // command-line args, e.g. "--game {game_id} --out {output}"
     std::string working_dir;    // working directory template
 
-    // Callback — invoked by the engine when the tool needs to run
+    // Callback - invoked by the engine when the tool needs to run
     std::function<void(void*)> invoke_fn;
     void* invoke_user_data = nullptr;
 };

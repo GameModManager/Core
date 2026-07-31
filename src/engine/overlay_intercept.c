@@ -174,7 +174,7 @@ int open(const char *path, int flags, ...) {
             gmm_log("R %s -> overwrite (fd=%d)", path, ret);
             return ret;
         }
-        // Not in overwrite — fall back to original
+        // Not in overwrite - fall back to original
         errno = saved != ENOENT ? saved : 0;
         ret = real_open(path, flags, mode);
         gmm_log("R %s -> original (fd=%d)", path, ret);

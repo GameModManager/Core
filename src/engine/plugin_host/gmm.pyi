@@ -1,5 +1,5 @@
 """
-GameModManager Python plugin API — type stubs
+GameModManager Python plugin API - type stubs
 
 Usage in a plugin:
     import gmm
@@ -35,7 +35,7 @@ class RegistrationContext:
         exe_linux: str = "",
         exe_macos: str = "",
     ) -> None:
-        """Register this game module's identity — pure data, no behavior."""
+        """Register this game module's identity - pure data, no behavior."""
         ...
 
     def register_stage_claim(self, stage_name: str, priority: int = 0) -> None:

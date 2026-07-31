@@ -72,7 +72,7 @@ private:
     QString pending_path_;
     QPoint pending_pos_;
 
-    // Static checker cache — lazy-initialized in get_checker_pixmap()
+    // Static checker cache - lazy-initialized in get_checker_pixmap()
     // (not static members: QPixmap requires QApplication at construction time)
 };
 

@@ -31,22 +31,22 @@ std::vector<std::string> DeployLedger::diff(
     const std::unordered_map<std::string, std::string>& new_winners) const {
     std::vector<std::string> changed;
 
-    // Check existing deployments — find paths where winner changed
+    // Check existing deployments - find paths where winner changed
     for (const auto& [path, entry] : ledger_) {
         auto it = new_winners.find(path);
         if (it == new_winners.end()) {
-            // Path no longer has a winner — needs removal
+            // Path no longer has a winner - needs removal
             changed.push_back(path);
         } else if (it->second != entry.mod_id) {
-            // Winner changed — needs redeployment
+            // Winner changed - needs redeployment
             changed.push_back(path);
         }
     }
 
-    // Check new winners — find paths not in ledger
+    // Check new winners - find paths not in ledger
     for (const auto& [path, mod_id] : new_winners) {
         if (ledger_.find(path) == ledger_.end()) {
-            // New path — needs deployment
+            // New path - needs deployment
             changed.push_back(path);
         }
     }

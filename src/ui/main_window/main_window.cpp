@@ -51,8 +51,11 @@
 #include "engine/pipeline/extract_stage.h"
 #include "engine/pipeline/install_stage.h"
 #include "engine/pipeline/deploy_stage.h"
+#include "engine/pipeline/plugin_claim_stage.h"
+#include "engine/trace/trace_recorder.h"
 #include "engine/deploy/strategy.h"
 #include "runtime/runtime.h"
+#include "ui/widgets/pipeline_window.h"
 
 #include <QAction>
 #include <algorithm>
@@ -109,6 +112,7 @@
 #include <fstream>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <regex>
 #include <sstream>
 #include <unordered_set>
@@ -117,7 +121,7 @@ namespace ui {
 
 namespace {
 
-// Extract .exe icon via wrestool, fallback to QFileIconProvider — same logic as ExecControlsBar
+// Extract .exe icon via wrestool, fallback to QFileIconProvider - same logic as ExecControlsBar
 QIcon extractExeIconShortcut(const QString& exePath) {
     auto app_dir = QCoreApplication::applicationDirPath();
     auto bundled = app_dir + "/../tools/linux/wrestool";
@@ -460,7 +464,7 @@ MainWindow::MainWindow(QWidget* parent)
         connect(nxm_ipc_, &engine::NxmIpcServer::nxmUrlReceived,
                 this, [this](const QString& url) {
             std::string raw = url.toStdString();
-            // Accept gmm:// URLs too — convert to nxm:// for the parser
+            // Accept gmm:// URLs too - convert to nxm:// for the parser
             static const std::string gmm_pre = "gmm://nexus/";
             if (raw.compare(0, gmm_pre.size(), gmm_pre) == 0)
                 raw = "nxm://" + raw.substr(gmm_pre.size());
@@ -560,12 +564,95 @@ void MainWindow::set_game_info(const std::string& game_id,
         }
         ctx.deploy_strategy = deploy_strategy.get();
 
+        // Build the install pipeline from the 8-stage template.  A plugin
+        // stage claim (StageRegistry) wins over the core implementation for
+        // the same stage name; stages with no implementation at all stay out
+        // of the pipeline and render as "Not implemented" in the pipeline
+        // window.
+        auto claim_for = [this](const std::string& stage_name)
+            -> std::optional<engine::StageClaim> {
+            if (!plugin_loader_) return std::nullopt;
+            std::optional<engine::StageClaim> best;
+            for (const auto& c : plugin_loader_->stage_registry().claims()) {
+                if (c.game_id == current_game_id_ && c.stage_name == stage_name) {
+                    if (!best || c.priority > best->priority) best = c;
+                }
+            }
+            return best;
+        };
+
+        std::vector<std::pair<const char*, std::function<std::unique_ptr<engine::Stage>()>>>
+            core_makers = {
+                {"Fetch",   [] { return std::make_unique<engine::FetchStage>(); }},
+                {"Extract", [] { return std::make_unique<engine::ExtractStage>(); }},
+                {"Install", [] { return std::make_unique<engine::InstallStage>(); }},
+                {"Deploy",  [] { return std::make_unique<engine::DeployStage>(); }},
+            };
+        static const char* kInstallStages[] = {
+            "Fetch", "Extract", "Install", "Stage",
+            "Resolve", "Deploy", "Sync", "Launch",
+        };
+
         auto pipeline = std::make_unique<engine::Pipeline>();
         pipeline->set_context(ctx);
-        pipeline->add_stage(std::make_unique<engine::FetchStage>());
-        pipeline->add_stage(std::make_unique<engine::ExtractStage>());
-        pipeline->add_stage(std::make_unique<engine::InstallStage>());
-        pipeline->add_stage(std::make_unique<engine::DeployStage>());
+        pipeline->set_flow_id("install");
+
+        std::vector<engine::TraceStage> flow_stages;
+        flow_stages.reserve(8);
+        for (const char* stage_name : kInstallStages) {
+            auto claim = claim_for(stage_name);
+            std::unique_ptr<engine::Stage> impl;
+            std::string origin = "core";
+
+            if (claim) {
+                impl = std::make_unique<engine::PluginClaimStage>(
+                    stage_name, claim->plugin_id, claim->handler);
+                origin = claim->plugin_id;
+            } else {
+                for (const auto& [name, maker] : core_makers) {
+                    if (std::strcmp(name, stage_name) == 0) {
+                        impl = maker();
+                        break;
+                    }
+                }
+            }
+
+            engine::TraceStage ts;
+            ts.name = stage_name;
+            ts.origin = origin;
+            ts.implemented = (impl != nullptr);
+            if (impl) ts.description = impl->description();
+            flow_stages.push_back(std::move(ts));
+            if (impl) pipeline->add_stage(std::move(impl));
+        }
+        engine::TraceRecorder::instance().declare_flow(
+            "install", "Mod install pipeline", std::move(flow_stages));
+
+        // Declare the sort + launch flows eagerly too - the pipeline window
+        // must show the full stage list (and who provides what) before either
+        // flow has ever run.  sort_mods()/launch_with_executable() only
+        // begin_flow() at run time.
+        engine::TraceRecorder::instance().declare_flow("sort", "Auto-sort", {
+            {"Gather mod info", "core",
+             "Collects folder names, display names and workshop IDs from the mod list"},
+            {"Run sort provider", "core",
+             "Invokes the game's registered sort provider"},
+            {"Apply order", "core",
+             "Reorders the mod list per the provider's result"},
+            {"Save order", "core",
+             "Writes the new load order to disk"},
+        });
+        engine::TraceRecorder::instance().declare_flow("launch", "Game launch", {
+            {"Sync disk order", "core",
+             "Writes the UI's load order to disk before launch"},
+            {"Prepare launch environment", "core",
+             "Sets up the overlay / Proton environment and deploys enabled mods"},
+            {"Launch executable", "core",
+             "Starts the game through the launch tier chain"},
+            {"Monitor process", "core",
+             "Watches the running game and captures writes on exit"},
+        });
+
         pipeline_thread_->worker()->set_pipeline(std::move(pipeline));
         pipeline_thread_->worker()->set_context(ctx);
 
@@ -722,6 +809,10 @@ void MainWindow::connect_menu_actions() {
             console_splitter_->setSizes({700, 0});
         }
     });
+    connect(menu_bar_, &AppMenuBar::pipeline_requested, this,
+            &MainWindow::show_pipeline_window);
+    connect(status_bar_, &GmmStatusBar::pipeline_clicked, this,
+            &MainWindow::show_pipeline_window);
     connect(menu_bar_, &AppMenuBar::refresh_requested, this, [this]() {
         engine::Logger::instance().debug("Refresh requested");
     });
@@ -827,7 +918,7 @@ void MainWindow::sync_mod_enable_state(const QString& mod_id, bool enabled) {
         if (m.id == mod_id && m.is_separator) return;
     }
 
-    // Game is running — queue the change instead of writing to disk
+    // Game is running - queue the change instead of writing to disk
     if (running_process_pid_ > 0) {
         // Remove any existing pending toggle for this mod (latest wins)
         auto it = std::remove_if(pending_changes_.begin(), pending_changes_.end(),
@@ -857,7 +948,7 @@ void MainWindow::sync_priorities() {
     if (loading_) return;
     if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return;
 
-    // Game is running — skip disk write; full order saved at flush
+    // Game is running - skip disk write; full order saved at flush
     if (running_process_pid_ > 0) {
         return;
     }
@@ -875,7 +966,7 @@ void MainWindow::sync_priorities() {
                 meta.save(meta_dir, mods[i].id.toStdString());
             }
         }
-        // Write game-native priority — resolve actual mod folder location
+        // Write game-native priority - resolve actual mod folder location
         if (!mods[i].is_overwrite && !mods[i].is_separator && !mods_subpath.empty()) {
             auto mod_folder = resolve_mod_folder(mods[i].id.toStdString(), mods_subpath);
             (void)engine::ModScanner::set_priority(*knowledge_, current_game_id_, mod_folder, i);
@@ -884,13 +975,18 @@ void MainWindow::sync_priorities() {
 }
 
 void MainWindow::sort_mods() {
+    auto& trace = engine::TraceRecorder::instance();
+    trace.begin_flow("sort");
+
     auto* provider = engine::SortRegistry::instance().get_provider(current_game_id_);
     if (!provider) {
         engine::Logger::instance().warn("No sort provider registered for game: " + current_game_id_);
+        trace.end_flow("sort", false, "No sort provider for " + current_game_id_);
         return;
     }
 
     // Build mod info list from current model
+    trace.begin_stage("sort", "Gather mod info");
     std::vector<engine::SortModInfo> mod_infos;
     for (const auto& mod : mod_model_->mods()) {
         if (mod.is_separator || mod.is_overwrite || mod.id == kOverwriteModId) continue;
@@ -913,11 +1009,15 @@ void MainWindow::sort_mods() {
 
         mod_infos.push_back(info);
     }
+    trace.end_stage("sort", true, std::to_string(mod_infos.size()) + " mod(s) collected");
 
     // Call the sort provider
+    trace.begin_stage("sort", "Run sort provider");
     auto result = provider->sort(mod_infos);
+    trace.end_stage("sort", true, std::string("Provider: ") + provider->name());
 
     // Apply the sorted order to the model
+    trace.begin_stage("sort", "Apply order");
     loading_ = true;
 
     // Build a map of folder_name -> ModEntry
@@ -963,9 +1063,14 @@ void MainWindow::sort_mods() {
     }
 
     loading_ = false;
+    trace.end_stage("sort", true, "New order applied");
+
+    trace.begin_stage("sort", "Save order");
     save_order();
+    trace.end_stage("sort", true, "Order persisted");
 
     engine::Logger::instance().debug("Mods sorted by " + std::string(provider->name()));
+    trace.end_flow("sort", true);
 }
 
 void MainWindow::load_mods_from_game() {
@@ -995,7 +1100,7 @@ void MainWindow::load_mods_from_game() {
             auto instance_scanned = engine::ModScanner::scan_dir(
                 *knowledge_, current_game_id_, instance_mods_dir,
                 std::vector<std::filesystem::path>{});
-            // Merge — instance mods override game-native mods with same folder name
+            // Merge - instance mods override game-native mods with same folder name
             std::unordered_set<std::string> seen;
             for (const auto& m : instance_scanned)
                 seen.insert(m.folder_name);
@@ -1044,7 +1149,7 @@ void MainWindow::load_mods_from_game() {
         }
     }
 
-    // Clear all existing mods (including game-native) — needed for instance switching
+    // Clear all existing mods (including game-native) - needed for instance switching
     mod_model_->remove_all_mods();
 
     // Filter out MERGED pseudo-mod folder from scan results
@@ -1190,7 +1295,7 @@ void MainWindow::load_meta_for_mods() {
     auto meta_dir = meta_dir_path();
     if (meta_dir.empty()) return;
 
-    // Workshop ID pattern — used to detect Steam Workshop mods from folder names
+    // Workshop ID pattern - used to detect Steam Workshop mods from folder names
     auto workshop_pattern = knowledge_->get(current_game_id_, "workshop_id_pattern", "");
 
     auto mods = mod_model_->mods();
@@ -1205,12 +1310,12 @@ void MainWindow::load_meta_for_mods() {
         auto meta = engine::ModMeta::load(meta_dir, folder_name);
 
         if (!meta.has_section("General") && !meta.has_section("GameModManager")) {
-            // No meta file exists — create a default one (already at CURRENT_META_VERSION)
+            // No meta file exists - create a default one (already at CURRENT_META_VERSION)
             meta = engine::ModMeta::from_default(folder_name, "manual", "");
             meta.save(meta_dir, folder_name);
 
         } else {
-            // Existing meta — check if upgrade is needed
+            // Existing meta - check if upgrade is needed
             bool upgraded = false;
             int mv = meta.meta_version();
 
@@ -1265,7 +1370,7 @@ void MainWindow::recompute_conflicts() {
     auto conflict_reversed = knowledge_->get(current_game_id_, "conflict_order_reversed", "") == "true";
     auto conflict_scan_dirs = knowledge_->get(current_game_id_, "conflict_scan_dirs", "");
 
-    // Collect mod info — only enabled mods affect the game
+    // Collect mod info - only enabled mods affect the game
     std::vector<engine::ConflictEngine::ModInfo> mod_infos;
     for (const auto& mod : mod_model_->mods()) {
         if (mod.is_separator) continue;
@@ -1313,6 +1418,27 @@ void MainWindow::recompute_conflicts() {
     for (const auto& mod : mod_model_->mods()) {
         if (!mod.enabled && !mod.is_overwrite && !mod.is_merged && !mod.is_separator)
             mod_model_->set_conflict_stats(mod.id, 0, 0);
+    }
+
+    // "Redundant" mods: every file they provide is won by a higher-priority
+    // owner, so nothing the mod provides actually takes effect.
+    const auto& registry = engine.last_registry();
+    std::unordered_set<std::string> owns_files;
+    std::unordered_set<std::string> wins_a_file;
+    for (const auto& [path, owners] : registry) {
+        if (owners.empty()) continue;
+        for (const auto& [owner, _] : owners) owns_files.insert(owner);
+        const auto& winner = conflict_reversed
+            ? *std::min_element(owners.begin(), owners.end(),
+                                [](const auto& a, const auto& b) { return a.second < b.second; })
+            : *std::max_element(owners.begin(), owners.end(),
+                                [](const auto& a, const auto& b) { return a.second < b.second; });
+        wins_a_file.insert(winner.first);
+    }
+    for (const auto& mod : mod_model_->mods()) {
+        bool redundant = owns_files.count(mod.id.toStdString()) > 0 &&
+                         wins_a_file.count(mod.id.toStdString()) == 0;
+        mod_model_->set_conflict_redundant(mod.id, redundant);
     }
 
     // Build pairwise data from the file registry
@@ -1384,7 +1510,7 @@ void MainWindow::on_image_diff_requested(const QString& relative_path) {
 
     if (source_paths.size() < 2) return;
 
-    // Compute output path — write to MERGED pseudo-mod folder
+    // Compute output path - write to MERGED pseudo-mod folder
     std::filesystem::path output_path = mods_dir_path() / "MERGED" / relative_path.toStdString();
     std::error_code ec;
     std::filesystem::create_directories(output_path.parent_path(), ec);
@@ -1450,7 +1576,7 @@ void MainWindow::setup_mod_list_context_menu() {
             return;
         }
 
-        // Single mod — full menu
+        // Single mod - full menu
         auto mod_id = entry.id;
         bool has_conflicts = entry.conflict_wins + entry.conflict_losses > 0;
 
@@ -2322,7 +2448,7 @@ void MainWindow::load_executables() {
         if (i >= section.size()) break;
 
         if (section[i] == '{') {
-            // JSON object — find matching close brace
+            // JSON object - find matching close brace
             int depth = 0;
             auto obj_start = i;
             while (i < section.size()) {
@@ -2343,7 +2469,7 @@ void MainWindow::load_executables() {
             }
             saved_executables_.push_back(section.substr(obj_start, i - obj_start));
         } else if (section[i] == '"') {
-            // Plain string — find closing quote
+            // Plain string - find closing quote
             auto str_start = i;
             ++i;
             while (i < section.size() && !(section[i] == '"' && section[i-1] != '\\'))
@@ -2474,7 +2600,7 @@ void MainWindow::populate_executables() {
         for (const auto& s : saved_executables_)
             exec_list.append(QString::fromStdString(s));
     } else {
-        // First launch — seed from game plugin's known executables
+        // First launch - seed from game plugin's known executables
         auto execs_csv = knowledge_->get(current_game_id_, "executables", "");
         if (!execs_csv.empty()) {
             std::istringstream ss(execs_csv);
@@ -2525,21 +2651,27 @@ static void gmm_debug(const char* fmt, ...) {
 }
 
 void MainWindow::launch_with_executable(const QString& full_path) {
+    auto& trace = engine::TraceRecorder::instance();
+    trace.begin_flow("launch");
+
     auto exec_path = std::filesystem::path(full_path.toStdString());
     if (!std::filesystem::exists(exec_path)) {
         QMessageBox::warning(this, "Launch",
             "Executable not found:\n" + full_path);
+        trace.end_flow("launch", false, "Executable not found");
         return;
     }
 
-    // Show the lock overlay before launching — the game must not outrun it
+    // Show the lock overlay before launching - the game must not outrun it
     auto binary_name = QString::fromStdString(exec_path.filename().string());
     show_game_lock_overlay(binary_name, 0);
 
     // Ensure disk order matches UI before launching
+    trace.begin_stage("launch", "Sync disk order");
     sync_priorities();
+    trace.end_stage("launch", true, "Disk order matches UI");
 
-    // Read steam_appid from game plugin hooks — 0 if not registered
+    // Read steam_appid from game plugin hooks - 0 if not registered
     uint32_t steam_appid = 0;
     if (knowledge_) {
         auto id_str = knowledge_->get(current_game_id_, "steam_appid", "");
@@ -2548,6 +2680,7 @@ void MainWindow::launch_with_executable(const QString& full_path) {
         }
     }
 
+    trace.begin_stage("launch", "Prepare launch environment");
     engine::LaunchParams lparams;
     lparams.executable = exec_path;
     lparams.game_dir = current_game_dir_;
@@ -2565,14 +2698,22 @@ void MainWindow::launch_with_executable(const QString& full_path) {
                 "Failed to create staging dir: " + ec.message());
         }
     }
+    trace.end_stage("launch", true, "Overlay/staging paths ready");
 
+    trace.begin_stage("launch", "Launch executable");
     auto lresult = engine::launch_game(lparams);
 
     if (lresult.pid <= 0) {
+        trace.end_stage("launch", false, "launch_game returned no PID");
         hide_game_lock_overlay();
         QMessageBox::warning(this, "Launch", "Failed to launch game.");
+        trace.end_flow("launch", false, "Failed to launch game");
         return;
     }
+    trace.end_stage("launch", true,
+        lresult.overlay_launched
+            ? "Launched via OverlayFS / LD_PRELOAD overlay"
+            : "Launched via Native/Proton runtime");
 
     overlay_launched_ = lresult.overlay_launched;
     running_process_pid_ = lresult.pid;
@@ -2583,6 +2724,9 @@ void MainWindow::launch_with_executable(const QString& full_path) {
     game_lock_label_->setText(QString("The game is running: %1 (%2)")
         .arg(binary_name)
         .arg(lresult.pid));
+
+    // Monitor process - stays Running until the watchdog sees the game exit
+    trace.begin_stage("launch", "Monitor process");
 
     if (!process_watch_timer_) {
         process_watch_timer_ = new QTimer(this);
@@ -2595,6 +2739,7 @@ void MainWindow::launch_with_executable(const QString& full_path) {
 }
 
 void MainWindow::check_running_process() {
+    auto& trace = engine::TraceRecorder::instance();
     if (running_process_pid_ <= 0) {
         engine::Logger::instance().warn("Watchdog: pid <= 0, stopping timer");
         if (process_watch_timer_) process_watch_timer_->stop();
@@ -2616,6 +2761,8 @@ void MainWindow::check_running_process() {
         if (process_watch_timer_) process_watch_timer_->stop();
         flush_pending_changes();
         hide_game_lock_overlay();
+        trace.end_stage("launch", true, "Game exited");
+        trace.end_flow("launch", true, "Game session finished");
         if (!staging_dir_.empty()) {
             std::error_code ec;
             std::filesystem::remove_all(staging_dir_, ec);
@@ -2637,6 +2784,8 @@ void MainWindow::check_running_process() {
                 "Watchdog: cgroup empty, game fully exited");
             flush_pending_changes();
             hide_game_lock_overlay();
+            trace.end_stage("launch", true, "Game exited");
+            trace.end_flow("launch", true, "Game session finished");
             running_process_pid_ = -1;
             cgroup_path_.clear();
             if (process_watch_timer_) process_watch_timer_->stop();
@@ -2673,7 +2822,7 @@ void MainWindow::check_running_process() {
         return;
     }
 
-    // PGID scan found nothing — try PPID descendant walk.
+    // PGID scan found nothing - try PPID descendant walk.
     // This finds processes that created new sessions via setsid().
     {
         auto descendants = engine::get_process_descendants(pgid);
@@ -2695,7 +2844,7 @@ void MainWindow::check_running_process() {
     engine::Logger::instance().info("Watchdog: process group " +
         std::to_string(pgid) + " fully exited, scheduling capture in 3s");
 
-    // Safety reap — covers the case where the root PID was already collected
+    // Safety reap - covers the case where the root PID was already collected
     // above but a second waitpid on the same PID is harmless (returns ECHILD).
     pid_t reap_result = waitpid(static_cast<pid_t>(pgid), &reap_status, WNOHANG);
     if (reap_result == pgid) {
@@ -2707,6 +2856,8 @@ void MainWindow::check_running_process() {
 
     flush_pending_changes();
     hide_game_lock_overlay();
+    trace.end_stage("launch", true, "Game exited");
+    trace.end_flow("launch", true, "Game session finished");
     running_process_pid_ = -1;
     cgroup_path_.clear();
     if (process_watch_timer_) process_watch_timer_->stop();
@@ -3348,7 +3499,7 @@ void MainWindow::flush_pending_changes() {
         return;
     }
 
-    // Apply toggles (latest state per mod wins — already deduplicated by sync_mod_enable_state)
+    // Apply toggles (latest state per mod wins - already deduplicated by sync_mod_enable_state)
     for (const auto& pt : pending_changes_) {
         auto mod_folder = resolve_mod_folder(pt.mod_id.toStdString(), mods_subpath);
         if (pt.enabled) {
@@ -3658,7 +3809,7 @@ void MainWindow::handle_nxm_download(const engine::NxmLink& link) {
         return;
     }
 
-    // Game is managed — but is the active instance the right one?
+    // Game is managed - but is the active instance the right one?
     if (matched_game_id != current_game_id_) {
         QMessageBox::information(this, "NXM Download",
             "This mod is for " +
@@ -3669,7 +3820,7 @@ void MainWindow::handle_nxm_download(const engine::NxmLink& link) {
         return;
     }
 
-    // Route to the active instance — start download via pipeline worker
+    // Route to the active instance - start download via pipeline worker
     engine::Logger::instance().debug(
         "Starting download: " + current_game_name_ +
         " (mod_id=" + std::to_string(link.mod_id) +
@@ -3872,6 +4023,16 @@ void MainWindow::show_instance_statistics() {
     InstanceStatisticsDialog dlg(current_instance_root_, cache_dir,
                                  total_mods, this);
     dlg.exec();
+}
+
+void MainWindow::show_pipeline_window() {
+    if (!pipeline_window_) {
+        pipeline_window_ = new PipelineWindow(this);
+    }
+    pipeline_window_->refresh();
+    pipeline_window_->show();
+    pipeline_window_->raise();
+    pipeline_window_->activateWindow();
 }
 
 void MainWindow::show_instance_switcher() {

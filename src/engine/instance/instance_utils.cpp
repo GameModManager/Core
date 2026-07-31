@@ -116,7 +116,7 @@ LaunchParams prepare_launch_params(
         return params;
     }
 
-    // Ensure overwrite dir exists (belt-and-suspenders — instance setup should have created it)
+    // Ensure overwrite dir exists (belt-and-suspenders - instance setup should have created it)
     std::error_code ec;
     fs::create_directories(params.overwrite_dir, ec);
 
@@ -143,7 +143,7 @@ LaunchParams prepare_launch_params(
     bool deployed = deploy_all_enabled_mods(mods_dir, staging_dir, deploy_prefix,
                            deploy_include_mod_id == "true", disable_mechanism);
     if (!deployed) {
-        Logger::instance().warn("Some mods failed to deploy to staging — continuing anyway");
+        Logger::instance().warn("Some mods failed to deploy to staging - continuing anyway");
     }
 
     params.extra_lowerdirs.push_back(staging_dir);

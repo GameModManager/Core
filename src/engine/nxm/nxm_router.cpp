@@ -23,7 +23,7 @@ NxmLink NxmRouter::parse(const std::string& url) {
     // Extract domain (up to first '/' or '?')
     auto domain_end = rest.find_first_of("/?");
     if (domain_end == std::string::npos) {
-        // Just a domain, no path — e.g. "nxm://isaac"
+        // Just a domain, no path - e.g. "nxm://isaac"
         link.nexus_domain = rest;
         return link;
     }
@@ -58,7 +58,7 @@ NxmLink NxmRouter::parse(const std::string& url) {
     // Look for "files" keyword and extract file_id after it
     for (size_t i = 0; i + 1 < segments.size(); ++i) {
         if (segments[i] == "files") {
-            // file_id may have query params appended — strip at '?' or '&'
+            // file_id may have query params appended - strip at '?' or '&'
             auto& raw = segments[i + 1];
             auto qpos = raw.find_first_of("?&");
             auto id_str = (qpos != std::string::npos) ? raw.substr(0, qpos) : raw;
@@ -84,14 +84,14 @@ NxmLink NxmRouter::parse(const std::string& url) {
         }
     }
 
-    // Find query string — could start with '?' or be embedded with '&'
+    // Find query string - could start with '?' or be embedded with '&'
     {
         std::string query;
         auto q1 = url.find('?');
         if (q1 != std::string::npos) {
             query = url.substr(q1 + 1);
         } else {
-            // nxm links sometimes use & without ? — find "key=" anywhere
+            // nxm links sometimes use & without ? - find "key=" anywhere
             auto key_pos = url.find("key=");
             if (key_pos != std::string::npos) {
                 // Walk backwards to find the delimiter before "key="
