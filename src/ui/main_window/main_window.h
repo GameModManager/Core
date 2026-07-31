@@ -138,6 +138,7 @@ private:
     void flush_pending_changes();
     void update_queue_label();
     void prompt_nxm_registration();
+    void ensure_nxm_handler_default();
     void recompute_conflicts();
     void refresh_data_tab();
     void on_image_diff_requested(const QString& relative_path);
@@ -188,6 +189,7 @@ private:
     engine::StyleManager* style_manager_ = nullptr;
     engine::NxmIpcServer* nxm_ipc_ = nullptr;
     std::unique_ptr<engine::DeploymentStrategy> deploy_strategy_;
+    bool nxm_handler_check_done_ = false;
 
     void save_app_state();
     void restore_app_state();
