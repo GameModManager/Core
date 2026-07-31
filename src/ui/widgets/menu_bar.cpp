@@ -21,38 +21,38 @@ AppMenuBar::AppMenuBar(MainWindow* parent)
 // --------- File ---------
 
 void AppMenuBar::build_file_menu() {
-    auto* menu = addMenu("&File");
+    auto* menu = addMenu(tr("&File"));
 
-    auto* new_inst = menu->addAction("New Instance...");
+    auto* new_inst = menu->addAction(tr("New Instance..."));
     new_inst->setShortcut(QKeySequence::New);
     connect(new_inst, &QAction::triggered, this, &AppMenuBar::new_instance_requested);
 
-    auto* open_inst = menu->addAction("Open Instance...");
+    auto* open_inst = menu->addAction(tr("Open Instance..."));
     open_inst->setShortcut(QKeySequence::Open);
     connect(open_inst, &QAction::triggered, this, &AppMenuBar::open_instance_requested);
 
-    recent_menu_ = menu->addMenu("Recent Instances");
+    recent_menu_ = menu->addMenu(tr("Recent Instances"));
     recent_menu_->setEnabled(false);  // disabled until populated
 
     menu->addSeparator();
 
-    auto* import_mods = menu->addAction("Import Mods...");
+    auto* import_mods = menu->addAction(tr("Import Mods..."));
     import_mods->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I));
     connect(import_mods, &QAction::triggered, this, &AppMenuBar::import_mods_requested);
 
-    auto* export_mods = menu->addAction("Export Mods...");
+    auto* export_mods = menu->addAction(tr("Export Mods..."));
     export_mods->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E));
     connect(export_mods, &QAction::triggered, this, &AppMenuBar::export_mods_requested);
 
     menu->addSeparator();
 
-    auto* settings = menu->addAction("Settings...");
+    auto* settings = menu->addAction(tr("Settings..."));
     settings->setShortcut(QKeySequence::Preferences);
     connect(settings, &QAction::triggered, this, &AppMenuBar::settings_requested);
 
     menu->addSeparator();
 
-    auto* exit = menu->addAction("Exit");
+    auto* exit = menu->addAction(tr("Exit"));
     exit->setShortcut(QKeySequence::Quit);
     connect(exit, &QAction::triggered, this, &AppMenuBar::exit_requested);
 }
@@ -60,33 +60,33 @@ void AppMenuBar::build_file_menu() {
 // --------- Edit ---------
 
 void AppMenuBar::build_edit_menu() {
-    auto* menu = addMenu("&Edit");
+    auto* menu = addMenu(tr("&Edit"));
 
-    auto* select_all = menu->addAction("Select All");
+    auto* select_all = menu->addAction(tr("Select All"));
     select_all->setShortcut(QKeySequence::SelectAll);
     connect(select_all, &QAction::triggered, this, &AppMenuBar::select_all_requested);
 
-    auto* deselect_all = menu->addAction("Deselect All");
+    auto* deselect_all = menu->addAction(tr("Deselect All"));
     deselect_all->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_A));
     connect(deselect_all, &QAction::triggered, this, &AppMenuBar::deselect_all_requested);
 
     menu->addSeparator();
 
-    auto* enable = menu->addAction("Enable Selected");
+    auto* enable = menu->addAction(tr("Enable Selected"));
     enable->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
     connect(enable, &QAction::triggered, this, &AppMenuBar::enable_selected_requested);
 
-    auto* disable = menu->addAction("Disable Selected");
+    auto* disable = menu->addAction(tr("Disable Selected"));
     disable->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
     connect(disable, &QAction::triggered, this, &AppMenuBar::disable_selected_requested);
 
     menu->addSeparator();
 
-    auto* prio_up = menu->addAction("Priority Up");
+    auto* prio_up = menu->addAction(tr("Priority Up"));
     prio_up->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Up));
     connect(prio_up, &QAction::triggered, this, &AppMenuBar::priority_up_requested);
 
-    auto* prio_down = menu->addAction("Priority Down");
+    auto* prio_down = menu->addAction(tr("Priority Down"));
     prio_down->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Down));
     connect(prio_down, &QAction::triggered, this, &AppMenuBar::priority_down_requested);
 }
@@ -94,19 +94,19 @@ void AppMenuBar::build_edit_menu() {
 // --------- View ---------
 
 void AppMenuBar::build_view_menu() {
-    auto* menu = addMenu("&View");
+    auto* menu = addMenu(tr("&View"));
 
-    auto* toggle_toolbar = menu->addAction("Show Toolbar");
+    auto* toggle_toolbar = menu->addAction(tr("Show Toolbar"));
     toggle_toolbar->setCheckable(true);
     toggle_toolbar->setChecked(true);
     connect(toggle_toolbar, &QAction::toggled, this, &AppMenuBar::toggle_toolbar);
 
-    auto* toggle_status = menu->addAction("Show Status Bar");
+    auto* toggle_status = menu->addAction(tr("Show Status Bar"));
     toggle_status->setCheckable(true);
     toggle_status->setChecked(true);
     connect(toggle_status, &QAction::toggled, this, &AppMenuBar::toggle_status_bar);
 
-    auto* toggle_console = menu->addAction("Show Console");
+    auto* toggle_console = menu->addAction(tr("Show Console"));
     toggle_console->setCheckable(true);
     toggle_console->setChecked(false);
     toggle_console->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Backtab));
@@ -120,11 +120,11 @@ void AppMenuBar::build_view_menu() {
 
     menu->addSeparator();
 
-    columns_menu_ = menu->addMenu("Columns");
+    columns_menu_ = menu->addMenu(tr("Columns"));
 
     menu->addSeparator();
 
-    auto* refresh = menu->addAction("Refresh");
+    auto* refresh = menu->addAction(tr("Refresh"));
     refresh->setShortcut(QKeySequence::Refresh);
     connect(refresh, &QAction::triggered, this, &AppMenuBar::refresh_requested);
 }
@@ -132,24 +132,24 @@ void AppMenuBar::build_view_menu() {
 // --------- Tools ---------
 
 void AppMenuBar::build_tools_menu() {
-    tools_menu_ = addMenu("&Tools");
+    tools_menu_ = addMenu(tr("&Tools"));
 
     // Dynamic tools section - populated by update_tools_for_game()
     // (nothing here yet; added when a game is selected)
 
     tools_separator_ = tools_menu_->addSeparator();
 
-    sort_action_ = tools_menu_->addAction("Sort Mods");
+    sort_action_ = tools_menu_->addAction(tr("Sort Mods"));
     sort_action_->setVisible(false);
     connect(sort_action_, &QAction::triggered, this, &AppMenuBar::sort_mods_requested);
 
-    auto* open_inst = tools_menu_->addAction("Open Instance Folder");
+    auto* open_inst = tools_menu_->addAction(tr("Open Instance Folder"));
     connect(open_inst, &QAction::triggered, this, &AppMenuBar::open_instance_folder_requested);
 
-    auto* open_mods = tools_menu_->addAction("Open Mods Folder");
+    auto* open_mods = tools_menu_->addAction(tr("Open Mods Folder"));
     connect(open_mods, &QAction::triggered, this, &AppMenuBar::open_mods_folder_requested);
 
-    auto* open_dl = tools_menu_->addAction("Open Downloads Folder");
+    auto* open_dl = tools_menu_->addAction(tr("Open Downloads Folder"));
     connect(open_dl, &QAction::triggered, this, &AppMenuBar::open_downloads_folder_requested);
 }
 
@@ -189,22 +189,22 @@ void AppMenuBar::set_sort_available(bool available) {
 // --------- Help ---------
 
 void AppMenuBar::build_help_menu() {
-    auto* menu = addMenu("&Help");
+    auto* menu = addMenu(tr("&Help"));
 
-    auto* stats = menu->addAction("Instance Statistics...");
+    auto* stats = menu->addAction(tr("Instance Statistics..."));
     connect(stats, &QAction::triggered, this, &AppMenuBar::instance_statistics_requested);
 
     menu->addSeparator();
 
-    auto* about = menu->addAction("About GameModManager");
+    auto* about = menu->addAction(tr("About GameModManager"));
     connect(about, &QAction::triggered, this, &AppMenuBar::about_requested);
 
-    auto* about_qt = menu->addAction("About Qt");
+    auto* about_qt = menu->addAction(tr("About Qt"));
     connect(about_qt, &QAction::triggered, this, &AppMenuBar::about_qt_requested);
 
     menu->addSeparator();
 
-    auto* updates = menu->addAction("Check for Updates...");
+    auto* updates = menu->addAction(tr("Check for Updates..."));
     connect(updates, &QAction::triggered, this, &AppMenuBar::check_updates_requested);
 }
 

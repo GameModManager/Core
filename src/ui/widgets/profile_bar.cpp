@@ -17,11 +17,11 @@ ProfileBar::ProfileBar(QWidget* parent)
     layout->setSpacing(4);
 
     // Profile label + dropdown
-    auto* profile_label = new QLabel("Profile:", this);
+    auto* profile_label = new QLabel(tr("Profile:"), this);
     layout->addWidget(profile_label);
 
     profile_combo_ = new QComboBox(this);
-    profile_combo_->addItem("Default");
+    profile_combo_->addItem(tr("Default"));
     profile_combo_->setMinimumWidth(120);
     layout->addWidget(profile_combo_, 1);
 
@@ -29,7 +29,7 @@ ProfileBar::ProfileBar(QWidget* parent)
 
     // Import button - empty stub for now
     import_btn_ = new QToolButton(this);
-    import_btn_->setText("Import");
+    import_btn_->setText(tr("Import"));
     import_btn_->setIcon(style()->standardIcon(QStyle::SP_ArrowDown));
     import_btn_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     import_btn_->setEnabled(false);
@@ -51,8 +51,8 @@ ProfileBar::ProfileBar(QWidget* parent)
     import_export_btn_->setPopupMode(QToolButton::MenuButtonPopup);
 
     auto* import_export_menu = new QMenu(this);
-    auto* export_action = import_export_menu->addAction("Export modlist");
-    auto* import_action = import_export_menu->addAction("Import modlist");
+    auto* export_action = import_export_menu->addAction(tr("Export modlist"));
+    auto* import_action = import_export_menu->addAction(tr("Import modlist"));
     import_export_btn_->setMenu(import_export_menu);
     layout->addWidget(import_export_btn_);
 
@@ -74,8 +74,8 @@ ProfileBar::ProfileBar(QWidget* parent)
     create_btn_->setPopupMode(QToolButton::MenuButtonPopup);
 
     auto* create_menu = new QMenu(this);
-    create_menu->addAction("Create Separator");
-    create_menu->addAction("Create Empty Mod");
+    create_menu->addAction(tr("Create Separator"));
+    create_menu->addAction(tr("Create Empty Mod"));
     connect(create_menu->actions()[0], &QAction::triggered,
             this, &ProfileBar::create_separator_clicked);
     connect(create_menu->actions()[1], &QAction::triggered,

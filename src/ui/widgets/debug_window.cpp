@@ -29,7 +29,7 @@ DebugWindow::DebugWindow(const std::filesystem::path& instance_root,
     , game_name_(game_name)
     , plugin_loader_(plugin_loader) {
 
-    setWindowTitle("Debug Panel");
+    setWindowTitle(tr("Debug Panel"));
     setMinimumSize(520, 420);
     setAttribute(Qt::WA_DeleteOnClose, false);
 
@@ -72,12 +72,12 @@ DebugWindow::DebugWindow(const std::filesystem::path& instance_root,
     });
 
     // --- Resource usage ---
-    auto* res_group = new QGroupBox("Resource Usage");
+    auto* res_group = new QGroupBox(tr("Resource Usage"));
     auto* res_layout = new QVBoxLayout(res_group);
 
     auto add_row = [&](const char* label, QLabel** out) {
         auto* row = new QHBoxLayout;
-        auto* lbl = new QLabel(label);
+        auto* lbl = new QLabel(QCoreApplication::translate("DebugWindow", label));
         lbl->setObjectName("debugKey");
         *out = new QLabel("-");
         (*out)->setObjectName("debugValue");
@@ -94,14 +94,15 @@ DebugWindow::DebugWindow(const std::filesystem::path& instance_root,
     layout->addWidget(res_group);
 
     // --- Instance info ---
-    auto* info_group = new QGroupBox("Instance");
+    auto* info_group = new QGroupBox(tr("Instance"));
     auto* info_layout = new QVBoxLayout(info_group);
 
     auto add_info = [&](const char* label, QLabel** out) {
         auto* row = new QHBoxLayout;
-        auto* lbl = new QLabel(label);
+        auto* lbl = new QLabel(QCoreApplication::translate("DebugWindow", label));
         lbl->setObjectName("debugKey");
         *out = new QLabel("-");
+        (*out)->setObjectName("debugValue");
         (*out)->setAlignment(Qt::AlignRight);
         (*out)->setWordWrap(true);
         (*out)->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -121,15 +122,15 @@ DebugWindow::DebugWindow(const std::filesystem::path& instance_root,
     auto* btn_row = new QHBoxLayout;
     btn_row->setAlignment(Qt::AlignCenter);
     btn_row->setSpacing(12);
-    reload_ui_btn_ = new QPushButton("Reload UI");
-    reload_ui_btn_->setToolTip("Re-read debug.qss and apply (Ctrl+Shift+R)");
+    reload_ui_btn_ = new QPushButton(tr("Reload UI"));
+    reload_ui_btn_->setToolTip(tr("Re-read debug.qss and apply (Ctrl+Shift+R)"));
     if (on_reload_ui) {
         connect(reload_ui_btn_, &QPushButton::clicked, this, [on_reload_ui]() {
             on_reload_ui();
         });
     }
     btn_row->addWidget(reload_ui_btn_);
-    auto* close_btn = new QPushButton("Close");
+    auto* close_btn = new QPushButton(tr("Close"));
     connect(close_btn, &QPushButton::clicked, this, [this]() { hide(); });
     btn_row->addWidget(close_btn);
     layout->addLayout(btn_row);
@@ -144,7 +145,7 @@ DebugWindow::DebugWindow(const std::filesystem::path& instance_root,
             if (!list.empty()) list += "\n";
             list += "  " + p.game_display_name + " (" + p.game_id + ")";
         }
-        if (list.empty()) list = "(none)";
+        if (list.empty()) list = tr("(none)").toStdString();
         plugins_label_->setText(QString::fromStdString(list));
     }
 
@@ -232,7 +233,7 @@ void DebugWindow::refresh_stats() {
                 : 0.0;
             char buf[32];
             std::snprintf(buf, sizeof(buf), "%.1f%%", pct);
-            cpu_label_->setText(buf);
+            cpu_label_->setText(QString::fromUtf8(buf));
         } else {
             first_cpu = false;
         }
@@ -254,11 +255,7 @@ void DebugWindow::refresh_stats() {
         return std::stoul(val_str);
     };
     auto pss_kb = parse_kb("Pss:");
-    {
-        char buf[64];
-        std::snprintf(buf, sizeof(buf), "%lu MiB", pss_kb / 1024);
-        ram_label_->setText(buf);
-    }
+    ram_label_->setText(QString("%1 MiB").arg(pss_kb / 1024));
 
     // --- Process Disk IO ---
     static unsigned long long prev_read = 0, prev_write = 0;
@@ -286,15 +283,13 @@ void DebugWindow::refresh_stats() {
             auto delta_write = cur_write - prev_write;
             auto read_kbs = delta_read / 2048;
             auto write_kbs = delta_write / 2048;
-            char buf[64];
             if (read_kbs > 0 || write_kbs > 0) {
-                std::snprintf(buf, sizeof(buf), "R: %llu KiB/s  W: %llu KiB/s",
-                              read_kbs, write_kbs);
+                disk_label_->setText(QString("R: %1 KiB/s  W: %2 KiB/s")
+                    .arg(read_kbs).arg(write_kbs));
             } else {
-                std::snprintf(buf, sizeof(buf), "R: %llu B/s  W: %llu B/s",
-                              delta_read / 2, delta_write / 2);
+                disk_label_->setText(QString("R: %1 B/s  W: %2 B/s")
+                    .arg(delta_read / 2).arg(delta_write / 2));
             }
-            disk_label_->setText(buf);
         } else {
             first_io = false;
         }
@@ -318,16 +313,14 @@ void DebugWindow::refresh_stats() {
                 int hours = static_cast<int>(std::fmod(proc_uptime, 86400) / 3600);
                 int mins = static_cast<int>(std::fmod(proc_uptime, 3600) / 60);
                 int secs = static_cast<int>(std::fmod(proc_uptime, 60));
-                char buf[48];
                 if (days > 0)
-                    std::snprintf(buf, sizeof(buf), "%dd %dh %dm %ds", days, hours, mins, secs);
+                    uptime_label_->setText(QString("%1d %2h %3m %4s").arg(days).arg(hours).arg(mins).arg(secs));
                 else if (hours > 0)
-                    std::snprintf(buf, sizeof(buf), "%dh %dm %ds", hours, mins, secs);
+                    uptime_label_->setText(QString("%1h %2m %3s").arg(hours).arg(mins).arg(secs));
                 else if (mins > 0)
-                    std::snprintf(buf, sizeof(buf), "%dm %ds", mins, secs);
+                    uptime_label_->setText(QString("%1m %2s").arg(mins).arg(secs));
                 else
-                    std::snprintf(buf, sizeof(buf), "%ds", secs);
-                uptime_label_->setText(buf);
+                    uptime_label_->setText(QString("%1s").arg(secs));
             }
         }
     }

@@ -36,7 +36,7 @@ RightPanel::RightPanel(QWidget* parent)
 
     // Data tab is always present - create it once
     data_tab_ = new DataTab(tab_widget_);
-    setup_toggle_header(data_tab_->table(), {"Path", "Size", "Mod"});
+    setup_toggle_header(data_tab_->table(), {tr("Path"), tr("Size"), tr("Mod")});
     // Path stretches to fill space; Size and Mod keep user-set width
     auto* data_hdr = data_tab_->table()->horizontalHeader();
     data_hdr->setStretchLastSection(false);
@@ -124,22 +124,22 @@ void RightPanel::ensure_tab(const std::string& capability, const QString& label)
 
     if (capability == "plugins") {
         auto* t = new PluginsTab(tab_widget_);
-        setup_toggle_header(t->table(), {"Plugin", "Status", "Masters"});
+        setup_toggle_header(t->table(), {tr("Plugin"), tr("Status"), tr("Masters")});
         tab = t;
     } else if (capability == "conflicts") {
         auto* t = new ConflictsTab(tab_widget_);
         tab = t;
     } else if (capability == "archives") {
         auto* t = new ArchivesTab(tab_widget_);
-        setup_toggle_header(t->table(), {"Archive", "Size", "Priority"});
+        setup_toggle_header(t->table(), {tr("Archive"), tr("Size"), tr("Priority")});
         tab = t;
     } else if (capability == "saves") {
         auto* t = new SavesTab(tab_widget_);
-        setup_toggle_header(t->table(), {"Save", "Date", "Size"});
+        setup_toggle_header(t->table(), {tr("Save"), tr("Date"), tr("Size")});
         tab = t;
     } else if (capability == "downloads") {
         auto* t = new DownloadsTab(tab_widget_);
-        setup_toggle_header(t->table(), {"Name", "Source", "Status", "Size"});
+        setup_toggle_header(t->table(), {tr("Name"), tr("Source"), tr("Status"), tr("Size")});
         // Name stretches; Source/Status/Size keep user-set width on resize
         auto* hdr = t->table()->horizontalHeader();
         hdr->setStretchLastSection(false);
@@ -172,7 +172,7 @@ void RightPanel::set_game(const std::string& game_id) {
 
     for (const auto& info : caps) {
         if (info.capability == "data") {
-            tab_widget_->addTab(data_tab_, "Data");
+    tab_widget_->addTab(data_tab_, tr("Data"));
         } else {
             ensure_tab(info.capability, QString::fromStdString(info.display_name));
         }

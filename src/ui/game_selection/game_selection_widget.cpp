@@ -92,7 +92,7 @@ GameSelectionWidget::GameSelectionWidget(QWidget* parent)
     layout->setSpacing(16);
 
     // -- Title --
-    title_ = new QLabel("Welcome to GameModManager");
+    title_ = new QLabel(tr("Welcome to GameModManager"));
     QFont title_font = title_->font();
     title_font.setPointSize(18);
     title_font.setBold(true);
@@ -102,7 +102,7 @@ GameSelectionWidget::GameSelectionWidget(QWidget* parent)
 
     layout->addSpacing(10);
 
-    auto* subtitle = new QLabel("Select a game to manage");
+    auto* subtitle = new QLabel(tr("Select a game to manage"));
     subtitle->setObjectName("gameSelectionSubtitle");
     QFont sub_font = subtitle->font();
     sub_font.setPointSize(11);
@@ -114,7 +114,7 @@ GameSelectionWidget::GameSelectionWidget(QWidget* parent)
     layout->addSpacing(20);
 
     // -- Installed Games section --
-    installed_label_ = new QLabel("Installed Games");
+    installed_label_ = new QLabel(tr("Installed Games"));
     {
         QFont f = installed_label_->font();
         f.setPointSize(13);
@@ -129,7 +129,7 @@ GameSelectionWidget::GameSelectionWidget(QWidget* parent)
     layout->addSpacing(16);
 
     // -- Available Games section --
-    available_label_ = new QLabel("Available Games");
+    available_label_ = new QLabel(tr("Available Games"));
     {
         QFont f = available_label_->font();
         f.setPointSize(13);
