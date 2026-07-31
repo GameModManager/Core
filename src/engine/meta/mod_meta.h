@@ -10,7 +10,7 @@ namespace engine {
 
 // Section-based metadata for a single mod.
 // Format: [General] + [{provider}] sections + [GameModManager].
-// Provider sections are arbitrary — any game/plugin can write its own.
+// Provider sections are arbitrary - any game/plugin can write its own.
 class ModMeta {
 public:
     std::string get(const std::string& section, const std::string& key) const;

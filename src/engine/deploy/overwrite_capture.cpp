@@ -8,7 +8,7 @@ namespace engine {
 
 namespace {
 
-// Default patterns to ignore — game engine caches, saves, etc.
+// Default patterns to ignore - game engine caches, saves, etc.
 const std::vector<std::string> kDefaultIgnored = {
     ".git", ".svn",
     "__pycache__",

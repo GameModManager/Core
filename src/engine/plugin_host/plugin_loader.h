@@ -77,7 +77,7 @@ public:
     const ToolRegistry& tool_registry() const { return tool_registry_; }
     const GameKnowledge& knowledge() const { return knowledge_; }
 
-    // Image diff provider — tool plugin for merging conflicting sprite files
+    // Image diff provider - tool plugin for merging conflicting sprite files
     void register_image_diff(GmmImageDiffFn fn, void* user_data) {
         image_diff_.fn = fn;
         image_diff_.user_data = user_data;

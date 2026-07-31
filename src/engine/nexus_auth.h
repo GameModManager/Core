@@ -5,7 +5,7 @@
 
 namespace engine {
 
-// Nexus API rate limit state — persisted across restarts.
+// Nexus API rate limit state - persisted across restarts.
 struct RateLimitInfo {
     int limit = 0;         // total daily allowance
     int remaining = 0;     // remaining requests
@@ -14,7 +14,7 @@ struct RateLimitInfo {
 };
 
 // Manages Nexus Mods API key storage with obfuscated (XOR+b64) persistence.
-// Not real crypto — prevents casual plaintext reading of the stored key.
+// Not real crypto - prevents casual plaintext reading of the stored key.
 class NexusAuth {
 public:
     static NexusAuth& instance();
@@ -24,7 +24,7 @@ public:
     void set_api_key(const std::string& key);
     void clear_api_key();
 
-    // Rate-limit tracking — persisted to disk, survives relaunch.
+    // Rate-limit tracking - persisted to disk, survives relaunch.
     RateLimitInfo get_rate_limit() const;
     void update_rate_limit(int limit, int remaining, int64_t reset);
 

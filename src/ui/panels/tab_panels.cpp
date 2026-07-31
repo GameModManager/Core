@@ -442,7 +442,7 @@ void ConflictsTab::show_conflicts(
     const auto& cp = it.value();
     if (cp.wins_against.isEmpty() && cp.loses_to.isEmpty()) return;
 
-    // Build a set of enabled mod IDs — disabled mods have no influence
+    // Build a set of enabled mod IDs - disabled mods have no influence
     QSet<QString> enabled_ids;
     for (const auto& m : all_mods)
         if (m.enabled || m.is_overwrite || m.is_merged)

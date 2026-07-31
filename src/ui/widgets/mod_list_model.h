@@ -29,6 +29,8 @@ struct ModEntry {
     int priority = 0;
     int conflict_wins = 0;
     int conflict_losses = 0;
+    bool redundant = false;       // every file this mod provides is overridden by a higher-priority owner
+    bool has_hidden_files = false;  // some files are hidden by the (not yet implemented) hidden-files feature
     QVector<ModTag> tags;
     QString source_type;
     QString source_id;
@@ -75,6 +77,8 @@ public:
     void move_mod(const QString& id, int new_row);
     void toggle_mod(const QString& id);
     void set_conflict_stats(const QString& id, int wins, int losses);
+    void set_conflict_redundant(const QString& id, bool redundant);
+    void set_hidden_files(const QString& id, bool has_hidden);
     void set_tags(const QString& id, const QVector<ModTag>& tags);
     void set_source_info(const QString& id, const QString& source_type, const QString& source_id);
     void set_separator_id(const QString& id, const QString& separator_id);
@@ -112,9 +116,11 @@ private:
     [[nodiscard]] QString compute_separator_flags(int row) const;
 
     QVector<ModEntry> mods_;
-    QIcon winning_icon_;
-    QIcon losing_icon_;
-    QIcon mix_icon_;
+    QIcon overwrite_icon_;
+    QIcon overwritten_icon_;
+    QIcon mixed_icon_;
+    QIcon redundant_icon_;
+    QIcon hidden_icon_;
     QAbstractItemView* mod_view_ = nullptr;
     bool conflict_order_reversed_ = false;
     QString selected_mod_id_;

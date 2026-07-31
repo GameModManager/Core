@@ -1,6 +1,8 @@
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/plugin_host/python_loader.h"
 #include "engine/log/logger.h"
+#include "engine/model/mod.h"
+#include "engine/pipeline/pipeline.h"
 #include "engine/sort/sort_registry.h"
 #include "engine/sort/abi_sort_provider.h"
 
@@ -50,13 +52,22 @@ static void cb_register_stage_claim(GmmRegistrationCtx* ctx,
 
     std::string game_id = bridge->current_plugin->game_id;
     std::string stage = stage_name ? stage_name : "";
+    if (stage.empty() || !fn) return;
 
     bridge->loader->stage_registry().register_claim(
         game_id, stage,
         [fn](Mod& mod, PipelineContext& ctx_) -> bool {
-            (void)mod; (void)ctx_;
-            // TODO: Create proper GmmModHandle/GmmInstanceHandle wrappers
-            return fn(nullptr, nullptr, nullptr, nullptr, nullptr) != 0;
+            // Wrap the real engine objects in the opaque handles the ABI
+            // promises.  Accessors in abi_bridge.cpp are null-safe, so a
+            // context without instance/conflict/profile still works.
+            GmmModHandle mod_h = reinterpret_cast<GmmModHandle>(&mod);
+            GmmInstanceHandle inst_h =
+                reinterpret_cast<GmmInstanceHandle>(ctx_.instance);
+            GmmConflictIndexHandle conf_h =
+                reinterpret_cast<GmmConflictIndexHandle>(ctx_.conflict_index);
+            GmmProfileHandle prof_h =
+                reinterpret_cast<GmmProfileHandle>(ctx_.profile);
+            return fn(mod_h, inst_h, conf_h, prof_h, nullptr) != 0;
         },
         priority, bridge->current_plugin->path);
 }
@@ -74,7 +85,7 @@ static void cb_register_hook(GmmRegistrationCtx* ctx,
     std::string hook_tag = tag ? tag : "";
     std::string hook_data = data ? data : "";
 
-    // Store as game knowledge — key=tag, value=data
+    // Store as game knowledge - key=tag, value=data
     bridge->loader->knowledge().set(game_id, hook_tag, hook_data);
 
     Logger::instance().debug("Plugin registered knowledge: " + hook_tag +
@@ -346,7 +357,7 @@ bool PluginLoader::load_directory(const std::string& dir_path) {
         }
 #endif
 
-        // Python plugins — always attempted regardless of OS
+        // Python plugins - always attempted regardless of OS
         if (ext == ".py") {
             if (python_load_plugin(this, path.string())) loaded++;
         }
@@ -395,7 +406,7 @@ std::string PluginLoader::display_name_for(const std::string& game_id) const {
 }
 
 std::string PluginLoader::resolve_game_id(const std::string& game_id) const {
-    // Exact match — fast path
+    // Exact match - fast path
     for (const auto& p : plugins_)
         if (p.game_id == game_id) return game_id;
 
@@ -424,7 +435,7 @@ std::string PluginLoader::resolve_game_id(const std::string& game_id) const {
         if (norm == game_id) return p.game_id;
     }
 
-    return game_id;  // no match — return as-is
+    return game_id;  // no match - return as-is
 }
 
 }  // namespace engine

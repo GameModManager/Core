@@ -7,7 +7,7 @@
 
 namespace engine {
 
-// WineRuntime — launches Windows executables via Wine on Linux.
+// WineRuntime - launches Windows executables via Wine on Linux.
 // Used for non-Steam, non-Proton cases where the user has Wine installed.
 // ProtonRuntime already handles Steam-provided Proton; this handles standalone Wine.
 class WineRuntime : public Runtime {

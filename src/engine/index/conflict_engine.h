@@ -31,16 +31,16 @@ public:
     using ModInfo = std::pair<std::string, int>;
 
     // Compute per-mod conflict stats for all mods.
-    //   mods_dir        — absolute path to the directory containing mod folders
-    //   extra_mods_dir  — additional dir to search for mod folders (e.g. game's native mods dir).
+    //   mods_dir        - absolute path to the directory containing mod folders
+    //   extra_mods_dir  - additional dir to search for mod folders (e.g. game's native mods dir).
     //                     For each mod, mods_dir is tried first, then extra_mods_dir.
-    //   mods            — list of (folder_name, priority) for every mod (excl. Overwrite / separators)
-    //   extensions_csv  — comma-separated list of extensions to track (e.g. ".png,.lua").
+    //   mods            - list of (folder_name, priority) for every mod (excl. Overwrite / separators)
+    //   extensions_csv  - comma-separated list of extensions to track (e.g. ".png,.lua").
     //                     If empty, all files are tracked.
-    //   ignored_csv     — comma-separated list of filenames to skip (e.g. "metadata.xml,disable.it")
-    //   conflict_reversed — if true, lower priority number = wins (Isaac convention)
-    //   cache_path      — path to the JSON cache file (empty = no caching)
-    //   scan_dirs_csv   — comma-separated list of subdirectory names to restrict scanning to
+    //   ignored_csv     - comma-separated list of filenames to skip (e.g. "metadata.xml,disable.it")
+    //   conflict_reversed - if true, lower priority number = wins (Isaac convention)
+    //   cache_path      - path to the JSON cache file (empty = no caching)
+    //   scan_dirs_csv   - comma-separated list of subdirectory names to restrict scanning to
     //                     (e.g. "resources,resources-dlc3" for Isaac). Empty = scan everything.
     [[nodiscard]] std::unordered_map<std::string, ConflictStats> compute(
         const std::filesystem::path& mods_dir,

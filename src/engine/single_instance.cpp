@@ -87,7 +87,7 @@ bool SingleInstanceGuard::tryAcquire(int staleLockTimeoutMs) {
     if (!impl_->focus_server.listen(path)) {
         Logger::instance().error("SingleInstanceGuard: failed to start focus server: " +
             impl_->focus_server.errorString().toStdString());
-        // Even if the server fails, we still hold the lock — proceed
+        // Even if the server fails, we still hold the lock - proceed
         return true;
     }
 

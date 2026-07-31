@@ -10,7 +10,7 @@ namespace ui {
 
 class MainWindow;
 
-// Application menu bar — File / Edit / View / Tools / Help.
+// Application menu bar - File / Edit / View / Tools / Help.
 // Created once per MainWindow, lives at the top of the window.
 // Actions emit signals; MainWindow connects them to actual behavior.
 class AppMenuBar : public QMenuBar {
@@ -45,6 +45,7 @@ signals:
     void toggle_toolbar(bool visible);
     void toggle_status_bar(bool visible);
     void toggle_console(bool visible);
+    void pipeline_requested();
     void refresh_requested();
 
     // Tools

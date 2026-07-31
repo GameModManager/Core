@@ -8,7 +8,7 @@
 
 namespace py = pybind11;
 
-// -- gmm.RegistrationContext — Python-side wrapper --
+// -- gmm.RegistrationContext - Python-side wrapper --
 
 class PyRegistrationContext {
 public:

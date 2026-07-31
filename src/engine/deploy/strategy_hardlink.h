@@ -6,7 +6,7 @@
 
 namespace engine {
 
-// Hardlink strategy — invisible to the game, no extra disk usage.
+// Hardlink strategy - invisible to the game, no extra disk usage.
 // Cross-volume hardlinks are impossible (NTFS and ext4 both reject them),
 // so this checks the source and target share the same device before linking.
 // On cross-volume failure, returns false so the pipeline can fall back.

@@ -7,7 +7,7 @@ namespace engine {
 
 // Linux-specific: launches a process with LD_PRELOAD set to an intercept
 // library that redirects file writes from game_dir to overwrite_dir.
-// Works on any filesystem — no kernel features required beyond a standard
+// Works on any filesystem - no kernel features required beyond a standard
 // Linux environment.  The intercept library is a small C .so that wraps
 // open/openat/creat/rename/unlink/mkdir/rmdir.
 //
@@ -16,7 +16,7 @@ namespace engine {
 //   + Every process exit, the target dir has the captured files, no waitpid.
 //   - Only catches dynamically-linked binaries (over 99% of games).
 //   - Adds ~ns per file syscall (strcmp + branch).
-//   - Doesn't hide whiteouts or redirect deletes (intentional — game dir
+//   - Doesn't hide whiteouts or redirect deletes (intentional - game dir
 //     stays clean and Overwrite only contains *new/modified* files).
 class PreloadInterceptor {
 public:

@@ -163,7 +163,7 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
     }
 
     // Collect paths + outer UID/GID into a struct for the clone child.
-    // UID/GID MUST be captured before clone() — calling getuid() inside the
+    // UID/GID MUST be captured before clone() - calling getuid() inside the
     // new user namespace returns 65534 (nobody) because no mapping exists yet.
     uid_t outer_uid = getuid();
     gid_t outer_gid = getgid();
@@ -195,7 +195,7 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
     // Clone into new user + mount namespace.
     // With CLONE_NEWUSER the child starts with the parent's UID in the new
     // namespace, and IS the namespace owner, so it can write its own uid_map.
-    // CLONE_VFORK blocks the parent until the child execs or exits — after
+    // CLONE_VFORK blocks the parent until the child execs or exits - after
     // clone() returns the child's stack is no longer live, so we can free it
     // immediately (no waiting needed).
     auto* stack = new (std::nothrow) char[STACK_SIZE];
@@ -228,7 +228,7 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
         if (write(fd, map, (size_t)len) < 0) { close(fd); _exit(14); }
         close(fd);
 
-        // We are now root (UID 0) in the new namespace — mount overlay
+        // We are now root (UID 0) in the new namespace - mount overlay
         if (mount("none", "/", NULL, MS_REC | MS_PRIVATE, NULL) != 0) {
             const char* e = strerror(errno);
             (void)write(STDERR_FILENO, "Overlay: mount(MS_PRIVATE) failed: ", 36);
@@ -390,7 +390,7 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
     }
 
     // For wrapper/Proton launches (exec_args non-empty), poll for up to 2s
-    // to catch processes that exec but die immediately — the single WNOHANG
+    // to catch processes that exec but die immediately - the single WNOHANG
     // above races past CLONE_VFORK while the child is still inside execv(),
     // so a process that fails within the first ~2 seconds looks like
     // "success" to the WNOHANG check.
@@ -433,13 +433,13 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
             }
         }
         Logger::instance().info("Overlay: child PID " + std::to_string(pid) +
-            " survived 2s grace poll — truly running");
+            " survived 2s grace poll - truly running");
     } else {
         Logger::instance().debug("Overlay: child PID " + std::to_string(pid) +
             " exec'd (no args), no grace poll needed");
     }
 
-    // Child is still running (exec'd successfully) — stack no longer in use
+    // Child is still running (exec'd successfully) - stack no longer in use
     delete[] stack;
     Logger::instance().info("Overlay: child PID " + std::to_string(pid) + " running");
     return static_cast<int64_t>(pid);

@@ -67,7 +67,7 @@ LaunchResult launch_game(const LaunchParams& params) {
 
         if (game == 0) {
             // ---- game-launch process ----
-            // Join the cgroup BEFORE launching — all future children
+            // Join the cgroup BEFORE launching - all future children
             // (overlay clone, proton, steam.exe, etc.) inherit this
             // membership automatically.
             if (!cgroup.path.empty()) {
@@ -113,7 +113,7 @@ LaunchResult launch_game(const LaunchParams& params) {
 #endif
 }
 
-// Core launch logic — extracted so it can run inside the subreaper child
+// Core launch logic - extracted so it can run inside the subreaper child
 // on Linux. Returns the actual game PID and whether overlay was used.
 static LaunchResult do_launch(const LaunchParams& params) {
     Logger::instance().debug("Launching " + params.executable.string());
@@ -127,7 +127,7 @@ static LaunchResult do_launch(const LaunchParams& params) {
     int64_t pid = -1;
 
 #ifdef GMM_PLATFORM_LINUX
-    // Priority 1: OverlayFS — kernel VFS level, works for any binary format
+    // Priority 1: OverlayFS - kernel VFS level, works for any binary format
     if (OverlayFsLauncher::is_supported(params.overwrite_dir)) {
         Logger::instance().info("OverlayFS launcher: supported, trying overlay launch");
 
@@ -160,7 +160,7 @@ static LaunchResult do_launch(const LaunchParams& params) {
         Logger::instance().warn("OverlayFS not supported for this filesystem, skipping");
     }
 
-    // Priority 2: LD_PRELOAD — intercepts libc calls (native binaries only)
+    // Priority 2: LD_PRELOAD - intercepts libc calls (native binaries only)
     if (pid <= 0 && !params.is_windows_exe) {
         if (PreloadInterceptor::is_supported()) {
             Logger::instance().info("PreloadInterceptor: trying LD_PRELOAD launch");

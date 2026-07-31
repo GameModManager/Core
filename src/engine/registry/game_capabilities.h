@@ -9,7 +9,7 @@ namespace engine {
 
 // A game module registers which capabilities it supports.
 // The UI queries these to decide which tabs to show and how to populate them.
-// "Data" is always shown — it's the universal view of what the game sees on disk.
+// "Data" is always shown - it's the universal view of what the game sees on disk.
 
 struct CapabilityInfo {
     std::string game_id;
@@ -23,7 +23,7 @@ struct CapabilityInfo {
     std::string website_domain;    // e.g. "nexusmods.com"
     std::vector<std::string> supported_platforms;  // e.g. {"nexus", "workshop", "moddb"}
 
-    // Tab ordering — reference other capability_ids or "data"
+    // Tab ordering - reference other capability_ids or "data"
     std::string insert_before;
     std::string insert_after;
 };
