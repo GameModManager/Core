@@ -50,7 +50,7 @@ struct ConflictPairs {
 class ModListModel : public QAbstractTableModel {
     Q_OBJECT
 public:
-    enum Column { Enabled, Name, Version, Flags, Priority, ColumnCount };
+    enum Column { Name, Version, Flags, Priority, ColumnCount };
 
     // Custom role for the separator-marking scrollbar; separator rows return
     // their background QColor, everything else returns an invalid variant.

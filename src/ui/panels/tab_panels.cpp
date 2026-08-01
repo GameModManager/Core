@@ -1,16 +1,18 @@
 #include "ui/panels/tab_panels.h"
 #include "ui/settings/settings.h"
 
+#include <algorithm>
+
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
 #include <QColor>
-#include <QDesktopServices>
-#include <QDragEnterEvent>
+#include <QDesktopServices>#include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileIconProvider>
 #include <QFileInfo>
 #include <QFont>
+#include <QFontMetrics>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QJsonArray>
@@ -19,6 +21,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QPalette>
+#include <QPainter>
 #include <QProgressBar>
 #include <QSet>
 #include <QShowEvent>
@@ -182,6 +185,58 @@ protected:
     }
 };
 
+// Render the plugin-type marks as stacked MO2-style badge icons (a cell can
+// only carry one icon, so multiple marks are laid out into a single pixmap,
+// the same trick ModListModel uses for conflict icons). Each badge is a
+// colored rounded rect with the mark text centered on it; the mark list is
+// also kept in the cell tooltip for the full words ("Native" vs "NAT").
+static QIcon plugin_flag_icon(const QStringList& marks) {
+    constexpr int kHeight = 16;
+    constexpr int kGap = 2;
+    QFont font;
+    font.setPixelSize(9);
+    font.setBold(true);
+    const QFontMetrics fm(font);
+
+    QVector<QString> texts;
+    QVector<QColor> colors;
+    QVector<int> widths;
+    int total = 0;
+    for (const QString& m : marks) {
+        QColor color;
+        if (m == QLatin1String("ESM"))      color = QColor(0xC0, 0x50, 0x4D);
+        else if (m == QLatin1String("ESL")) color = QColor(0x4C, 0xAF, 0x50);
+        else if (m == QLatin1String("ESH")) color = QColor(0x4A, 0x90, 0xD9);
+        else if (m == QLatin1String("CC"))  color = QColor(0x9C, 0x6B, 0xDE);
+        else if (m == QLatin1String("Native")) color = QColor(0x80, 0x80, 0x80);
+        else                                color = QColor(0x60, 0x60, 0x60);
+        const int w = std::max(kHeight, fm.horizontalAdvance(m) + 6);
+        texts.push_back(m);
+        colors.push_back(color);
+        widths.push_back(w);
+        total += w;
+    }
+    total += std::max(0, static_cast<int>(texts.size()) - 1) * kGap;
+
+    QPixmap pix(total, kHeight);
+    pix.fill(Qt::transparent);
+    QPainter p(&pix);
+    p.setRenderHint(QPainter::Antialiasing);
+    int x = 0;
+    for (int i = 0; i < texts.size(); ++i) {
+        const int w = widths[i];
+        p.setPen(Qt::NoPen);
+        p.setBrush(colors[i]);
+        p.drawRoundedRect(x, 0, w, kHeight, 4, 4);
+        p.setFont(font);
+        p.setPen(Qt::white);
+        p.drawText(QRect(x, 0, w, kHeight), Qt::AlignCenter, texts[i]);
+        x += w + kGap;
+    }
+    p.end();
+    return QIcon(pix);
+}
+
 QTableWidget* PluginsTab::table() const {
     return table_;
 }
@@ -189,9 +244,9 @@ QTableWidget* PluginsTab::table() const {
 PluginsTab::PluginsTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    table_ = new PluginTable(0, 5, this);
+    table_ = new PluginTable(0, 4, this);
     table_->setHorizontalHeaderLabels(
-        {tr("Enabled"), tr("Plugin Name"), tr("Flags"), tr("Priority"), tr("Mod Index")});
+        {tr("Plugin Name"), tr("Flags"), tr("Priority"), tr("Mod Index")});
     table_->horizontalHeader()->setStretchLastSection(true);
     table_->verticalHeader()->setVisible(false);
     table_->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -228,32 +283,26 @@ void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
         const auto& p = plugins[static_cast<size_t>(i)];
         names_.push_back(p.name);
 
-        // Column 0: enabled. Fixed rows show a checked box that cannot be
-        // toggled; missing-master rows can still be checked but the engine
-        // rejects the enable with a message.
-        auto* enabled = new QTableWidgetItem;
-        Qt::ItemFlags ef = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-        if (p.force_loaded) {
-            enabled->setFlags(ef);  // no checkable, no drag: pinned
-            enabled->setCheckState(Qt::Checked);
-        } else {
-            enabled->setFlags(ef | Qt::ItemIsUserCheckable | Qt::ItemIsDragEnabled);
-            enabled->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
-        }
-        table_->setItem(i, 0, enabled);
-
-        // Column 1: name, red italic when a master is missing.
+        // Column 0: name with the enable checkbox folded into the cell
+        // (MO2-style). Fixed rows show a checked box that cannot be toggled;
+        // missing-master rows can still be checked but the engine rejects the
+        // enable with a message.
         auto* name = new QTableWidgetItem(QString::fromStdString(p.name));
         Qt::ItemFlags nf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-        if (!p.force_loaded) nf |= Qt::ItemIsDragEnabled;
-        name->setFlags(nf);
         if (p.force_loaded) {
+            name->setFlags(nf);  // no checkable, no drag: pinned
+            name->setCheckState(Qt::Checked);
             name->setForeground(fixed_color);
-        } else if (p.missing_master) {
-            QFont f = name->font();
-            f.setItalic(true);
-            name->setFont(f);
-            name->setForeground(missing_color);
+        } else {
+            nf |= Qt::ItemIsUserCheckable | Qt::ItemIsDragEnabled;
+            name->setFlags(nf);
+            name->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
+            if (p.missing_master) {
+                QFont f = name->font();
+                f.setItalic(true);
+                name->setFont(f);
+                name->setForeground(missing_color);
+            }
         }
         QString tip;
         if (!p.owner_mod.empty())
@@ -265,37 +314,40 @@ void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
         }
         if (p.missing_master) tip += tr("A required master is not installed.");
         if (!tip.isEmpty()) name->setToolTip(tip.trimmed());
-        table_->setItem(i, 1, name);
+        table_->setItem(i, 0, name);
 
-        // Column 2: flags.
+        // Column 1: flags as MO2-style badge icons (mark text in the tooltip).
         QStringList marks;
         if (p.is_light) marks << flag_marks[0];
         else if (p.is_medium) marks << flag_marks[1];
         else if (p.is_master) marks << flag_marks[2];
         if (p.is_cc) marks << tr("CC");
         if (p.is_game_native) marks << tr("Native");
-        auto* flags = new QTableWidgetItem(marks.join(" "));
+        auto* flags = new QTableWidgetItem;
         Qt::ItemFlags ff = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
         if (!p.force_loaded) ff |= Qt::ItemIsDragEnabled;
         flags->setFlags(ff);
-        if (p.force_loaded) flags->setForeground(fixed_color);
-        table_->setItem(i, 2, flags);
+        if (!marks.isEmpty()) {
+            flags->setIcon(plugin_flag_icon(marks));
+            flags->setToolTip(marks.join(" "));
+        }
+        table_->setItem(i, 1, flags);
 
-        // Column 3: priority.
+        // Column 2: priority.
         auto* prio = new QTableWidgetItem(QString::number(p.priority));
         Qt::ItemFlags pf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
         if (!p.force_loaded) pf |= Qt::ItemIsDragEnabled;
         prio->setFlags(pf);
         if (p.force_loaded) prio->setForeground(fixed_color);
-        table_->setItem(i, 3, prio);
+        table_->setItem(i, 2, prio);
 
-        // Column 4: mod index.
+        // Column 3: mod index.
         auto* idx = new QTableWidgetItem(QString::fromStdString(p.mod_index_text));
         Qt::ItemFlags xf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
         if (!p.force_loaded) xf |= Qt::ItemIsDragEnabled;
         idx->setFlags(xf);
         if (p.force_loaded) idx->setForeground(fixed_color);
-        table_->setItem(i, 4, idx);
+        table_->setItem(i, 3, idx);
     }
     syncing_ = false;
 }

@@ -63,8 +63,8 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
             if (flag == QString("\u00B1")) return mixed_icon_;
             return {};
         }
-        if (!m.tags.isEmpty()) return {};
-
+        // Conflict status icons (also for tagged mods — their tag text now
+        // lives in the tooltip, so the cell never renders empty).
         QIcon primary;
         if (m.redundant) {
             primary = redundant_icon_;
@@ -126,27 +126,19 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
             f.setBold(true);
             return f;
         }
-        if (role == Qt::DisplayRole || role == Qt::EditRole) {
+        if (role == Qt::DisplayRole) {
             switch (index.column()) {
-                case Enabled: {
-                    return mod.folded ? QString("\u25B6") : QString("\u25BC");
-                }
-                case Name: return mod.name;
+                case Name: return mod.folded ? QString("\u25B6 ") : QString("\u25BC ");
                 case Version: return QString();
                 case Flags: return QString();  // shown via DecorationRole icon
                 case Priority: return mod.priority;
             }
         }
-        if (role == Qt::TextAlignmentRole && index.column() == Enabled) {
-            return static_cast<int>(Qt::AlignCenter);
-        }
+        // EditRole carries the raw separator name (no arrow prefix) so
+        // name-based lookups keep working.
+        if (role == Qt::EditRole && index.column() == Name) return mod.name;
         if (role == Qt::TextAlignmentRole && index.column() == Priority) {
             return static_cast<int>(Qt::AlignCenter);
-        }
-        if (role == Qt::FontRole && index.column() == Enabled) {
-            QFont f;
-            f.setPointSize(8);
-            return f;
         }
         return {};
     }
@@ -196,25 +188,24 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
     }
 
     // --- Regular mod + Overwrite shared ---
-    if (role == Qt::CheckStateRole && index.column() == Enabled) {
+    if (role == Qt::CheckStateRole && index.column() == Name) {
+        if (mod.is_overwrite || mod.is_merged || mod.is_game_native)
+            return {};  // never-disableable rows carry no checkbox (MO2 parity)
         return mod.enabled ? Qt::Checked : Qt::Unchecked;
-    }
-    if (role == Qt::TextAlignmentRole && index.column() == Enabled) {
-        return Qt::AlignCenter;
     }
     if (role == Qt::DisplayRole || role == Qt::EditRole) {
         switch (index.column()) {
             case Name: return mod.name;
             case Version: return mod.version;
-            case Flags: {
-                if (!mod.tags.isEmpty()) {
-                    return mod.tags.first().type.toUpper();
-                }
-                // Icons handle conflict states - clear text
-                return QString();
-            }
+            case Flags: return QString();  // conflict/tag info is icon + tooltip
             case Priority: return mod.priority;
         }
+    }
+    if (role == Qt::ToolTipRole && index.column() == Flags && !mod.tags.isEmpty()) {
+        QStringList lines;
+        for (const auto& tag : mod.tags)
+            lines << tr("%1: %2").arg(tag.type.toUpper(), tag.message);
+        return lines.join("\n");
     }
     if (role == Qt::ForegroundRole && index.column() == Flags) {
         if (!mod.tags.isEmpty()) {
@@ -265,7 +256,7 @@ bool ModListModel::setData(const QModelIndex& index, const QVariant& value, int 
     auto& m = mods_[index.row()];
     if (m.is_separator || m.is_overwrite || m.is_merged || m.is_game_native) return false;
 
-    if (role == Qt::CheckStateRole && index.column() == Enabled) {
+    if (role == Qt::CheckStateRole && index.column() == Name) {
         mods_[index.row()].enabled = (value.toInt() == Qt::Checked);
         emit dataChanged(index, index, {Qt::CheckStateRole});
         emit mod_list_changed();
@@ -277,7 +268,6 @@ bool ModListModel::setData(const QModelIndex& index, const QVariant& value, int 
 QVariant ModListModel::headerData(int section, Qt::Orientation, int role) const {
     if (role != Qt::DisplayRole) return {};
     switch (section) {
-        case Enabled: return "";
         case Name: return tr("Name");
         case Version: return tr("Version");
         case Flags: return tr("Flags");
@@ -298,8 +288,8 @@ Qt::ItemFlags ModListModel::flags(const QModelIndex& index) const {
         return f;
     }
 
-    if (index.column() == Enabled) {
-        if (!mod.is_overwrite && !mod.is_merged)
+    if (index.column() == Name) {
+        if (!mod.is_overwrite && !mod.is_merged && !mod.is_game_native)
             f |= Qt::ItemIsUserCheckable;
     }
 
@@ -554,7 +544,7 @@ void ModListModel::toggle_mod(const QString& id) {
     for (int i = 0; i < mods_.size(); ++i) {
         if (mods_[i].id == id) {
             mods_[i].enabled = !mods_[i].enabled;
-            emit dataChanged(index(i, Enabled), index(i, Enabled), {Qt::CheckStateRole});
+            emit dataChanged(index(i, Name), index(i, Name), {Qt::CheckStateRole});
             emit mod_list_changed();
             return;
         }
@@ -674,7 +664,7 @@ void ModListModel::set_folded(int row, bool folded) {
     if (!mods_[row].is_separator) return;
     if (mods_[row].folded == folded) return;
     mods_[row].folded = folded;
-    emit dataChanged(index(row, Enabled), index(row, Enabled));
+    emit dataChanged(index(row, Name), index(row, Name));
     apply_fold_state();
 }
 

@@ -1,10 +1,12 @@
 // Offscreen GUI test for the Plugins tab (Skyrim-style game plugins).
 //
 // Verifies:
-//   - set_plugins() populates all five columns (enabled, name, flags,
-//     priority, mod index) in row order,
-//   - force-loaded rows (game-native, CC) show a non-checkable enabled box,
+//   - set_plugins() populates all four columns (name with in-cell enable
+//     checkbox, flags, priority, mod index) in row order,
+//   - force-loaded rows (game-native, CC) show a non-checkable checked box,
 //     are greyed, and have no drag flag,
+//   - the flags column renders MO2-style badge icons with the mark text in the
+//     tooltip,
 //   - missing-master rows are styled red italic with a tooltip naming the
 //     missing master and the owning mod,
 //   - toggling a checkbox emits toggle_requested(name, enabled),
@@ -44,7 +46,7 @@ static void check(bool cond, const char* what) {
 // Row whose Plugin Name column equals `name`, or -1.
 static int row_with_name(QTableWidget* table, const char* name) {
     for (int r = 0; r < table->rowCount(); ++r) {
-        auto* it = table->item(r, 1);
+        auto* it = table->item(r, 0);
         if (it && it->text() == QLatin1String(name)) return r;
     }
     return -1;
@@ -106,20 +108,27 @@ int main(int argc, char** argv) {
     tab.set_plugins(plugins);
 
     check(table->rowCount() == 4, "four plugin rows");
-    check(table->columnCount() == 5, "five columns");
+    check(table->columnCount() == 4, "four columns");
     check(row_with_name(table, "Skyrim.esm") == 0, "native ESM first");
     check(row_with_name(table, "ccBGSSSE001-Fish.esm") == 1, "CC second");
     check(row_with_name(table, "SkyUI_SE.esp") == 2, "mod plugin after CC");
     check(row_with_name(table, "Broken.esp") == 3, "broken plugin last");
 
-    // Flags / priority / mod index columns.
-    check(table->item(0, 2)->text() == "ESM Native", "native flags");
-    check(table->item(1, 2)->text() == "CC", "CC flags");
-    check(table->item(2, 2)->text() == "ESL", "light flags");
-    check(table->item(3, 2)->text() == "", "no flags for plain esp");
-    check(table->item(0, 3)->text() == "0" && table->item(3, 3)->text() == "3",
+    // Flags column: MO2-style badge icons, mark text in the tooltip.
+    check(!table->item(0, 1)->icon().isNull() &&
+              table->item(0, 1)->toolTip() == "ESM Native",
+          "native flags icon + tooltip");
+    check(!table->item(1, 1)->icon().isNull() &&
+              table->item(1, 1)->toolTip() == "CC",
+          "CC flags icon + tooltip");
+    check(!table->item(2, 1)->icon().isNull() &&
+              table->item(2, 1)->toolTip() == "ESL",
+          "light flags icon + tooltip");
+    check(table->item(3, 1)->icon().isNull(),
+          "no flags icon for plain esp");
+    check(table->item(0, 2)->text() == "0" && table->item(3, 2)->text() == "3",
           "priority column");
-    check(table->item(2, 4)->text() == "FE:000" && table->item(3, 4)->text() == "02",
+    check(table->item(2, 3)->text() == "FE:000" && table->item(3, 3)->text() == "02",
           "mod index column");
 
     // Pinned rows: checked, not user-checkable, greyed, not draggable.
@@ -128,7 +137,7 @@ int main(int argc, char** argv) {
         check(en->checkState() == Qt::Checked, "native shows checked");
         check(!(en->flags() & Qt::ItemIsUserCheckable), "native box not toggleable");
         check(!(en->flags() & Qt::ItemIsDragEnabled), "native row not draggable");
-        check(table->item(0, 1)->foreground().color() == Qt::gray,
+        check(table->item(0, 0)->foreground().color() == Qt::gray,
               "native name greyed");
         check(table->item(1, 0)->checkState() == Qt::Checked &&
                   !(table->item(1, 0)->flags() & Qt::ItemIsUserCheckable),
@@ -143,7 +152,7 @@ int main(int argc, char** argv) {
 
     // Missing master: red italic + tooltip naming the missing master.
     {
-        QTableWidgetItem* name = table->item(3, 1);
+        QTableWidgetItem* name = table->item(3, 0);
         check(name->foreground().color() == QColor(0xB0, 0x30, 0x30),
               "missing-master name red");
         check(name->font().italic(), "missing-master name italic");
