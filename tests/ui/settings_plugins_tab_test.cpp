@@ -6,11 +6,13 @@
 // fired while the vector was alive, later row clicks read freed memory).
 // Also verifies register_category grouping into the foldable category
 // tree, the filter, the Enabled toggle, the Path / Steam App ID rows
-// being gone, the 634x723 minimum dialog size, and the register_settings
-// mechanism: plugin options rendered as editable key:value rows in a
-// scrollable container, persisted on edit and read back on reopen. Source
-// providers must NOT show a settings container in this tab (only the
-// Sources tab) - verified with a registered fake provider.
+// being gone, the 723x634 minimum dialog size with both Plugins-tab
+// columns stretching to the window bottom, and the register_settings
+// mechanism: plugin options rendered as a Key | Value table (bool-like
+// values as a checkbox, others as plaintext), persisted on edit and read
+// back on reopen. Source providers must NOT show a settings container in
+// this tab (only the Sources tab) - verified with a registered fake
+// provider.
 //
 // Hermetic: plugins are loaded from the argv[1] dir when given (real
 // register_category / register_settings ABI roundtrip); if none load,
@@ -31,7 +33,9 @@
 #include <QLineEdit>
 #include <QLabel>
 #include <QPushButton>
-#include <QScrollArea>
+#include <QSplitter>
+#include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QTabWidget>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
@@ -187,31 +191,53 @@ int main(int argc, char** argv) {
     app.processEvents();
     check(true, "clicking a group header did not crash");
 
-    // --- Minimum dialog geometry (H723 x W634). ---
+    // --- Minimum dialog geometry (H634 x W723). ---
     const QSize min_size = dlg.minimumSize();
-    check(min_size.width() == 634 && min_size.height() == 723,
-          "settings dialog enforces min 634x723");
+    check(min_size.width() == 723 && min_size.height() == 634,
+          "settings dialog enforces min 723x634");
 
-    // --- register_settings: scrollable key:value options container. ---
-    // Scan leaves until one shows a scroll area with editable rows; also note
-    // whether a plugin without options shows the plain "no settings" label.
+    // --- Both columns stretch to the bottom of the window. ---
+    // The Plugins page must be the CURRENT tab (hidden pages get no real
+    // geometry), then the dialog is resized larger than its minimum.
+    if (tabs && page) tabs->setCurrentWidget(page);
+    dlg.resize(1000, 850);
+    app.processEvents();
+    auto* splitter = page->findChild<QSplitter*>();
+    check(splitter != nullptr, "Plugins tab uses a splitter");
+    if (splitter && splitter->widget(0) && splitter->widget(1)) {
+        const int h = splitter->height();
+        const bool tall = h >= 700;
+        const bool full =
+            splitter->widget(0)->height() == h && splitter->widget(1)->height() == h;
+        check(tall, "splitter stretches to the window bottom (>=700 of 850)");
+        check(full, "both columns fill the full window height");
+        check(splitter->widget(0)->minimumWidth() >= 361,
+              "left column min width is half the min window width (>=361)");
+    } else {
+        check(false, "splitter or its columns missing");
+    }
+
+    // --- register_settings: Key | Value table. ---
+    // Scan leaves until one shows a table with options; also note whether a
+    // plugin without options shows the plain "no settings" label.
     bool saw_options = false, saw_no_settings_label = false;
     for (int g = 0; g < tree->topLevelItemCount() && !saw_options; ++g) {
         auto* group = tree->topLevelItem(g);
         for (int c = 0; c < group->childCount() && !saw_options; ++c) {
             tree->setCurrentItem(group->child(c));
             app.processEvents();
-            auto* scroll = page->findChild<QScrollArea*>();
-            if (scroll && !scroll->findChildren<QLineEdit*>().isEmpty()) {
-                saw_options = true;
-                for (auto* lbl : page->findChildren<QLabel*>())
-                    if (lbl->text() == "This plugin exposes no settings.")
-                        saw_no_settings_label = true;
-                break;
+            if (auto* t = page->findChild<QTableWidget*>()) {
+                if (t->columnCount() == 2 && t->rowCount() > 0) {
+                    saw_options = true;
+                    for (auto* lbl : page->findChildren<QLabel*>())
+                        if (lbl->text() == "This plugin exposes no settings.")
+                            saw_no_settings_label = true;
+                    break;
+                }
             }
         }
     }
-    check(saw_options, "plugin options shown in a scrollable container");
+    check(saw_options, "plugin options shown in a Key | Value table");
     // Revisit a leaf without options (first group may be all-options).
     if (!saw_no_settings_label) {
         for (int g = 0; g < tree->topLevelItemCount() && !saw_no_settings_label; ++g) {
@@ -228,31 +254,46 @@ int main(int argc, char** argv) {
     check(saw_no_settings_label,
           "plugin without options shows the plain no-settings label");
 
-    // Select the options leaf again and verify key:value rows + defaults.
+    // Select the options leaf again and verify the table headers + rows.
     int opt_g = -1, opt_c = -1;
     for (int g = 0; g < tree->topLevelItemCount() && opt_g < 0; ++g) {
         auto* group = tree->topLevelItem(g);
         for (int c = 0; c < group->childCount() && opt_g < 0; ++c) {
             tree->setCurrentItem(group->child(c));
             app.processEvents();
-            if (auto* s = page->findChild<QScrollArea*>())
-                if (!s->findChildren<QLineEdit*>().isEmpty()) { opt_g = g; opt_c = c; }
+            if (auto* t = page->findChild<QTableWidget*>())
+                if (t->columnCount() == 2 && t->rowCount() > 0) { opt_g = g; opt_c = c; }
         }
     }
     check(opt_g >= 0, "re-selected a plugin that exposes options");
-    QLineEdit* opt_masterlist = nullptr;
-    QLineEdit* opt_auto = nullptr;
-    if (auto* s = page->findChild<QScrollArea*>()) {
-        auto edits = s->findChildren<QLineEdit*>();
-        if (edits.size() >= 2) { opt_masterlist = edits[0]; opt_auto = edits[1]; }
+
+    bool headers_ok = false;
+    if (auto* t = page->findChild<QTableWidget*>()) {
+        const auto* k = t->horizontalHeaderItem(0);
+        const auto* v = t->horizontalHeaderItem(1);
+        headers_ok = k && v && k->text() == "Key" && v->text() == "Value";
+    }
+    check(headers_ok, "table has Key | Value column headers");
+
+    QTableWidgetItem* opt_masterlist = nullptr;
+    QTableWidgetItem* opt_auto = nullptr;
+    if (auto* t = page->findChild<QTableWidget*>()) {
+        for (int r = 0; r < t->rowCount(); ++r) {
+            auto* k = t->item(r, 0);
+            if (!k) continue;
+            if (k->text() == "masterlist_url") opt_masterlist = t->item(r, 1);
+            else if (k->text() == "auto_sort_on_load") opt_auto = t->item(r, 1);
+        }
     }
     check(opt_masterlist != nullptr && opt_auto != nullptr,
-          "options rendered as two editable key:value rows");
+          "options rendered as table rows");
     check(opt_masterlist && opt_masterlist->text().isEmpty() &&
-              opt_auto && opt_auto->text() == "1",
-          "option defaults match the registered defaults");
+              !(opt_masterlist->flags() & Qt::ItemIsUserCheckable) &&
+              opt_auto && opt_auto->checkState() == Qt::Checked &&
+              (opt_auto->flags() & Qt::ItemIsUserCheckable),
+          "plaintext value is a non-checkable text cell, bool value is a checked checkbox");
 
-    // --- Persistence: edit a value, emit editingFinished, verify write. ---
+    // --- Persistence: checkbox toggle + text edit write back to Settings. ---
     const QString options_leaf_name =
         tree->topLevelItem(opt_g)->child(opt_c)->text(0);
     QString options_basename;
@@ -261,11 +302,14 @@ int main(int argc, char** argv) {
             options_basename =
                 QString::fromStdString(std::filesystem::path(p.path).filename().string());
     check(!options_basename.isEmpty(), "resolved options plugin basename");
-    opt_auto->setText("0");
-    QMetaObject::invokeMethod(opt_auto, "editingFinished", Qt::DirectConnection);
+    opt_auto->setCheckState(Qt::Unchecked);
+    opt_masterlist->setText("http://example/masterlist.yaml");
     app.processEvents();
     check(Settings::instance().plugin_setting(options_basename, "auto_sort_on_load", "1") == "0",
-          "UI edit persisted into Settings (plugins/settings/<basename>/<key>)");
+          "checkbox toggle persisted (plugins/settings/<basename>/<key>)");
+    check(Settings::instance().plugin_setting(options_basename, "masterlist_url", "") ==
+              "http://example/masterlist.yaml",
+          "plaintext edit persisted (plugins/settings/<basename>/<key>)");
 
     // --- Filter ---
     auto* filter = page->findChild<QLineEdit*>("pluginFilter");
@@ -366,10 +410,10 @@ int main(int argc, char** argv) {
             if (lbl->text() == "Source provider settings live on the Sources tab.")
                 provider_hint = true;
     check(provider_hint, "provider entry shows the Sources-tab hint");
-    check(page2 == nullptr || page2->findChild<QScrollArea*>() == nullptr,
-          "provider entry shows NO scrollable settings container in Plugins tab");
+    check(page2 == nullptr || page2->findChild<QTableWidget*>() == nullptr,
+          "provider entry shows NO settings table in Plugins tab");
 
-    // Reopen persistence: the edited option value survived into the new dialog.
+    // Reopen persistence: the edited option values survived into the new dialog.
     bool persisted_value = false;
     for (int g = 0; tree2 && g < tree2->topLevelItemCount() && !persisted_value; ++g) {
         auto* group = tree2->topLevelItem(g);
@@ -377,15 +421,24 @@ int main(int argc, char** argv) {
             if (group->child(c)->text(0) == options_leaf_name) {
                 tree2->setCurrentItem(group->child(c));
                 app.processEvents();
-                if (auto* s = page2->findChild<QScrollArea*>()) {
-                    auto edits = s->findChildren<QLineEdit*>();
-                    if (edits.size() >= 2 && edits[1]->text() == "0")
-                        persisted_value = true;
+                bool auto_unchecked = false, url_persisted = false;
+                if (auto* t = page2->findChild<QTableWidget*>()) {
+                    for (int r = 0; r < t->rowCount(); ++r) {
+                        auto* k = t->item(r, 0);
+                        if (!k) continue;
+                        if (k->text() == "auto_sort_on_load" && t->item(r, 1))
+                            auto_unchecked = t->item(r, 1)->checkState() == Qt::Unchecked;
+                        else if (k->text() == "masterlist_url" && t->item(r, 1))
+                            url_persisted = t->item(r, 1)->text() == "http://example/masterlist.yaml";
+                    }
                 }
+                if (auto_unchecked && url_persisted)
+                    persisted_value = true;
             }
         }
     }
-    check(persisted_value, "edited option value persisted across dialog reopen");
+    check(persisted_value,
+          "edited option values persisted across dialog reopen");
 
     if (auto* buttons2 = dlg2.findChild<QDialogButtonBox*>())
         if (auto* close_btn = buttons2->button(QDialogButtonBox::Close))

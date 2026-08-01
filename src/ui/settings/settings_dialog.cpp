@@ -8,6 +8,7 @@
 #include "engine/instance/instance_utils.h"
 #include "engine/log/logger.h"
 
+#include <QAbstractItemView>
 #include <QApplication>
 #include <QCheckBox>
 #include <QColorDialog>
@@ -20,16 +21,17 @@
 #include <QGroupBox>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QLocale>
 #include <QMessageBox>
 #include <QPushButton>
-#include <QScrollArea>
 #include <QSpinBox>
 #include <QSplitter>
 #include <QStyleFactory>
+#include <QTableWidget>
 #include <QTabWidget>
 #include <QTextEdit>
 #include <QTreeWidget>
@@ -38,6 +40,14 @@
 #include <functional>
 #include <memory>
 #include <vector>
+
+namespace {
+
+// Minimum window geometry for the settings dialog (H634 x W723).
+constexpr int kMinDialogWidth = 723;
+constexpr int kMinDialogHeight = 634;
+
+} // namespace
 
 SettingsDialog::SettingsDialog(engine::StyleManager* style_manager,
                                const QString& native_style_name,
@@ -48,12 +58,13 @@ SettingsDialog::SettingsDialog(engine::StyleManager* style_manager,
       native_style_name_(native_style_name), instance_root_(instance_root),
       plugin_loader_(plugin_loader) {
     setWindowTitle(tr("Settings"));
-    // Min geometry H723 x W634: the Plugins tab's settings pane needs room
-    // for its scrollable plugin-options container (same idea as the left list).
-    setMinimumSize(634, 723);
+    // Min geometry H634 x W723: the Plugins tab's two columns need the width
+    // (left plugin list ~half, right info pane ~half) at minimum window size.
+    setMinimumSize(kMinDialogWidth, kMinDialogHeight);
 
     auto* layout = new QVBoxLayout(this);
     auto* tabs = new QTabWidget(this);
+    layout->addWidget(tabs, 1);  // tab pages fill the whole window height
 
     tabs->addTab(build_general_tab(), tr("General"));
     tabs->addTab(build_theme_tab(), tr("Theme"));
@@ -63,8 +74,6 @@ SettingsDialog::SettingsDialog(engine::StyleManager* style_manager,
     tabs->addTab(build_plugins_tab(), tr("Plugins"));
     tabs->addTab(build_workarounds_tab(), tr("Workarounds"));
     tabs->addTab(build_diagnostics_tab(), tr("Diagnostics"));
-
-    layout->addWidget(tabs);
 
     auto* btn_box = new QDialogButtonBox(QDialogButtonBox::Close, this);
     connect(btn_box, &QDialogButtonBox::rejected, this, &QDialog::close);
@@ -638,10 +647,12 @@ QWidget* SettingsDialog::build_plugins_tab() {
     auto* layout = new QVBoxLayout(page);
 
     auto* splitter = new QSplitter(Qt::Horizontal, page);
-    layout->addWidget(splitter);
+    layout->addWidget(splitter, 1);  // columns stretch to the window bottom
 
     // -- Left: category-grouped plugin list + bottom filter bar --------------
     auto* left = new QWidget(splitter);
+    left->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    left->setMinimumWidth(kMinDialogWidth / 2);  // half the min window width
     auto* left_layout = new QVBoxLayout(left);
     left_layout->setContentsMargins(0, 0, 0, 0);
     auto* list = new QTreeWidget(left);
@@ -656,6 +667,7 @@ QWidget* SettingsDialog::build_plugins_tab() {
 
     // -- Right: info pane ----------------------------------------------------
     auto* info_pane = new QWidget(splitter);
+    info_pane->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto* info_layout = new QVBoxLayout(info_pane);
 
     // Foldable category headers, MO2 plugin types in display order.
@@ -763,27 +775,68 @@ QWidget* SettingsDialog::build_plugins_tab() {
                 gl->addWidget(new QLabel(tr("This plugin exposes no settings."), settings_group));
                 content_layout->addWidget(settings_group);
             } else {
-                // Scrollable container of editable key:value rows — same idea as
-                // the plugin list on the left: it fills the leftover vertical
-                // space and scrolls, so many options never stretch the dialog.
-                auto* scroll = new QScrollArea(settings_group);
-                scroll->setWidgetResizable(true);
-                scroll->setFrameShape(QFrame::NoFrame);
-                scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-                auto* inner = new QWidget(scroll);
-                auto* form = new QFormLayout(inner);
-                form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+                // Key | Value table (scrolls internally). Bool-looking values
+                // ("1"/"0"/"true"/"false"/"yes"/"no"/"on"/"off") get a checkbox
+                // in the Value column; everything else is a plaintext cell.
+                auto* table = new QTableWidget(0, 2, settings_group);
+                table->setHorizontalHeaderLabels({tr("Key"), tr("Value")});
+                table->verticalHeader()->setVisible(false);
+                table->horizontalHeader()->setStretchLastSection(true);
+                table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+                table->setSelectionBehavior(QAbstractItemView::SelectItems);
+                table->setEditTriggers(QAbstractItemView::DoubleClicked |
+                                       QAbstractItemView::EditKeyPressed);
+                table->setAlternatingRowColors(true);
+
+                auto is_bool = [](const QString& v) {
+                    const QString t = v.trimmed().toLower();
+                    return t == "1" || t == "0" || t == "true" || t == "false" ||
+                           t == "yes" || t == "no" || t == "on" || t == "off";
+                };
+                auto to_bool = [](const QString& v) {
+                    const QString t = v.trimmed().toLower();
+                    return t == "1" || t == "true" || t == "yes" || t == "on";
+                };
+
                 const QString basename = e.enabled_basename;
                 for (const auto& [key, value] : e.options) {
-                    auto* edit = new QLineEdit(value, inner);
-                    const QString k = key;
-                    connect(edit, &QLineEdit::editingFinished, this, [basename, k, edit] {
-                        Settings::instance().set_plugin_setting(basename, k, edit->text());
-                    });
-                    form->addRow(key, edit);
+                    const int row = table->rowCount();
+                    table->insertRow(row);
+                    auto* key_item = new QTableWidgetItem(key);
+                    key_item->setFlags(key_item->flags() & ~Qt::ItemIsEditable);
+                    table->setItem(row, 0, key_item);
+
+                    if (is_bool(value)) {
+                        auto* val_item = new QTableWidgetItem;
+                        val_item->setCheckState(to_bool(value) ? Qt::Checked : Qt::Unchecked);
+                        val_item->setFlags(val_item->flags() & ~Qt::ItemIsEditable);
+                        table->setItem(row, 1, val_item);
+                    } else {
+                        // QTableWidgetItem's default flags include
+                        // ItemIsUserCheckable; clear it so the persistence
+                        // handler can tell checkboxes from plaintext cells.
+                        auto* val_item = new QTableWidgetItem(value);
+                        val_item->setFlags(val_item->flags() & ~Qt::ItemIsUserCheckable);
+                        table->setItem(row, 1, val_item);
+                    }
                 }
-                scroll->setWidget(inner);
-                gl->addWidget(scroll);
+
+                // Connect after populating so programmatic setItem/setCheckState
+                // above do not fire the persistence write.
+                connect(table, &QTableWidget::itemChanged, this,
+                        [basename, table](QTableWidgetItem* item) {
+                            if (!item || item->column() != 1) return;
+                            auto* key_item = table->item(item->row(), 0);
+                            if (!key_item) return;
+                            const QString value =
+                                (item->flags() & Qt::ItemIsUserCheckable)
+                                ? (item->checkState() == Qt::Checked ? "1" : "0")
+                                : item->text();
+                            Settings::instance().set_plugin_setting(basename,
+                                                                    key_item->text(), value);
+                        });
+
+                gl->addWidget(table);
                 content_layout->addWidget(settings_group, 1);
             }
         } else {
@@ -839,7 +892,6 @@ QWidget* SettingsDialog::build_plugins_tab() {
         info_layout->addStretch(1);
     }
 
-    layout->addStretch(1);
     return page;
 }
 
