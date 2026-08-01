@@ -6,6 +6,8 @@
 #include "engine/source/source_provider.h"
 #include "engine/log/logger.h"
 
+#include <filesystem>
+
 namespace ui {
 
 // --- PipelineWorker ---
@@ -33,7 +35,8 @@ void PipelineWorker::set_context(engine::PipelineContext ctx) {
 
 void PipelineWorker::install_mod(const std::string& id, const std::string& zip_path,
                                   const std::string& source_type,
-                                  const std::string& source_id, int file_id) {
+                                  const std::string& source_id, int file_id,
+                                  const std::string& name) {
     engine::Logger::instance().debug("Installing mod: " + id);
 
     if (!pipeline_) {
@@ -43,7 +46,7 @@ void PipelineWorker::install_mod(const std::string& id, const std::string& zip_p
 
     engine::Mod mod;
     mod.id = id;
-    mod.name = id;
+    mod.name = name.empty() ? id : name;
     mod.state = engine::ModState::Downloaded;
     mod.download_source_type = source_type;
     mod.download_source_id = source_id;
@@ -53,6 +56,10 @@ void PipelineWorker::install_mod(const std::string& id, const std::string& zip_p
     engine::ModFile file;
     file.relative_path = zip_path;
     mod.files.push_back(file);
+
+    // Record the archive name (FetchStage used to set this; InstallStage's
+    // meta.ini record reads it).
+    mod.archive_filename = std::filesystem::path(zip_path).filename().string();
 
     bool success = pipeline_->run(mod);
 

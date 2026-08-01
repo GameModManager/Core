@@ -95,10 +95,12 @@ public:
     [[nodiscard]] bool is_overwrite(int row) const;
     [[nodiscard]] int merged_row() const;
     [[nodiscard]] bool is_merged(int row) const;
+    [[nodiscard]] bool uses_merged() const { return uses_merged_; }
 
     void set_view(QAbstractItemView* view) { mod_view_ = view; }
     void reset_with_order(const QVector<ModEntry>& entries);
     void set_conflict_order_reversed(bool reversed);
+    void set_uses_merged(bool on);
     [[nodiscard]] bool is_conflict_order_reversed() const { return conflict_order_reversed_; }
 
     void set_conflict_pairs(const QMap<QString, ConflictPairs>& pairs);
@@ -123,6 +125,7 @@ private:
     QIcon hidden_icon_;
     QAbstractItemView* mod_view_ = nullptr;
     bool conflict_order_reversed_ = false;
+    bool uses_merged_ = false;
     QString selected_mod_id_;
     QMap<QString, ConflictPairs> conflict_pairs_;
     QString overwrite_path_;

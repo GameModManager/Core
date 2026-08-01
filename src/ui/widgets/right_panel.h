@@ -35,6 +35,11 @@ public:
     [[nodiscard]] ConflictsTab* conflicts_tab() const;
     [[nodiscard]] DataTab* data_tab() const;
 
+    // Switch the tab bar to the Downloads tab (no-op when the game has no
+    // downloads capability). Used when a download arrives so the user sees
+    // the new entry appear.
+    void show_downloads_tab();
+
 private:
     void clear_tabs();
     void ensure_tab(const std::string& capability, const QString& label);

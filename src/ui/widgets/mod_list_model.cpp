@@ -437,6 +437,20 @@ bool ModListModel::moveRows(const QModelIndex& srcParent, int srcRow, int count,
 
 void ModListModel::add_mod(const QString& id, const QString& name, const QString& version, int priority, bool is_game_native) {
     int insert_pos = mods_.size();
+    // MO2 rule (Profile::refreshModStatus): a new mod that isn't in the mod
+    // list yet gets the HIGHEST regular priority - placed at the bottom of the
+    // user band, directly above the pinned MERGED/Overwrite block, never past
+    // Overwrite. Game-native mods and explicit-priority adds append at the
+    // end; load_order() is the final arbiter of display order.
+    if (!is_game_native && priority < 0) {
+        int mg_row = merged_row();
+        int ow_row = overwrite_row();
+        if (mg_row >= 0) {
+            insert_pos = mg_row;
+        } else if (ow_row >= 0) {
+            insert_pos = ow_row;
+        }
+    }
     beginInsertRows({}, insert_pos, insert_pos);
     ModEntry entry;
     entry.id = id;
@@ -780,7 +794,26 @@ bool ModListModel::is_merged(int row) const {
     return row >= 0 && row < mods_.size() && mods_[row].is_merged;
 }
 
+void ModListModel::set_uses_merged(bool on) {
+    if (uses_merged_ == on) return;
+    uses_merged_ = on;
+    if (on) {
+        ensure_merged_present();
+    } else {
+        int row = merged_row();
+        if (row >= 0) {
+            beginRemoveRows({}, row, row);
+            mods_.removeAt(row);
+            endRemoveRows();
+            renumber_priorities();
+            emit mod_list_changed();
+        }
+    }
+}
+
 void ModListModel::ensure_merged_present() {
+    // Only games that use the merged pseudo-mod (currently Isaac) pin it.
+    if (!uses_merged_) return;
     for (const auto& m : mods_) {
         if (m.is_merged) return;
     }

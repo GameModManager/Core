@@ -29,10 +29,13 @@ public:
 public slots:
     // Install an already-downloaded archive (downloads are decoupled from
     // installs). source_type/source_id/file_id preserve the origin metadata
-    // for meta.ini (e.g. "nexus" + parent mod id + file id).
+    // for meta.ini (e.g. "nexus" + parent mod id + file id). name is the
+    // display name from the Downloads tab (e.g. "SkyUI") and becomes the mod
+    // folder name; empty falls back to the download id.
     void install_mod(const std::string& id, const std::string& zip_path,
                      const std::string& source_type = {},
-                     const std::string& source_id = {}, int file_id = 0);
+                     const std::string& source_id = {}, int file_id = 0,
+                     const std::string& name = {});
 
     // Download only (fetch stage): produces the archive in the instance
     // downloads dir, then emits download_complete. Resume-safe - a partial

@@ -16,6 +16,12 @@ public:
     // Returns the real Nexus file metadata (files/{file}.json): the archive
     // name (file_name) for correct naming/extension and the display name.
     SourceDownloadInfo resolve_download_info(const Mod& mod) const override;
+
+private:
+    // Shared download routine for a resolved URL (used by both the API-auth
+    // paths and the direct-URL path).
+    bool download_from_url(const std::string& url, PipelineContext& ctx,
+                           const std::filesystem::path& dest_path);
 };
 
 } // namespace engine

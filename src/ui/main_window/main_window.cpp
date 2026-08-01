@@ -49,10 +49,9 @@
 #include "engine/source/nexus_provider.h"
 #include "engine/nexus_auth.h"
 #include "engine/source/steam_workshop_provider.h"
-#include "engine/pipeline/fetch_stage.h"
 #include "engine/pipeline/extract_stage.h"
+#include "engine/pipeline/fomod_stage.h"
 #include "engine/pipeline/install_stage.h"
-#include "engine/pipeline/deploy_stage.h"
 #include "engine/pipeline/plugin_claim_stage.h"
 #include "engine/trace/trace_recorder.h"
 #include "engine/deploy/strategy.h"
@@ -580,6 +579,10 @@ void MainWindow::set_game_info(const std::string& game_id,
         ctx.game_dir = current_game_dir_;
         ctx.meta_dir = current_instance_root_ / "meta";
         ctx.mods_dir = mods_dir_path();
+        // Metadata format inside installed mod folders: MO2's meta.ini by
+        // default, the game's XML file (Isaac's metadata.xml) if the game
+        // registered the metadata_file hook.
+        ctx.metadata_file = knowledge_->get(current_game_id_, "metadata_file", "meta.ini");
 
         // Set up deploy strategy
         ctx.deploy_prefix = knowledge_->get(current_game_id_, "deploy_prefix", "Data");
@@ -603,11 +606,14 @@ void MainWindow::set_game_info(const std::string& game_id,
         }
         ctx.deploy_strategy = deploy_strategy.get();
 
-        // Build the install pipeline from the 8-stage template.  A plugin
+        // Build the install pipeline from the 3-stage template.  A plugin
         // stage claim (StageRegistry) wins over the core implementation for
         // the same stage name; stages with no implementation at all stay out
         // of the pipeline and render as "Not implemented" in the pipeline
-        // window.
+        // window.  Installs are intentionally download-free: they unpack the
+        // already-downloaded archive and copy it into the mods folder, with a
+        // FOMOD-detection branch that aborts with a warning until FOMOD
+        // installers are supported.
         auto claim_for = [this](const std::string& stage_name)
             -> std::optional<engine::StageClaim> {
             if (!plugin_loader_) return std::nullopt;
@@ -622,14 +628,12 @@ void MainWindow::set_game_info(const std::string& game_id,
 
         std::vector<std::pair<const char*, std::function<std::unique_ptr<engine::Stage>()>>>
             core_makers = {
-                {"Fetch",   [] { return std::make_unique<engine::FetchStage>(); }},
                 {"Extract", [] { return std::make_unique<engine::ExtractStage>(); }},
+                {"Fomod",   [] { return std::make_unique<engine::FomodStage>(); }},
                 {"Install", [] { return std::make_unique<engine::InstallStage>(); }},
-                {"Deploy",  [] { return std::make_unique<engine::DeployStage>(); }},
             };
         static const char* kInstallStages[] = {
-            "Fetch", "Extract", "Install", "Stage",
-            "Resolve", "Deploy", "Sync", "Launch",
+            "Extract", "Fomod", "Install",
         };
 
         auto pipeline = std::make_unique<engine::Pipeline>();
@@ -637,7 +641,7 @@ void MainWindow::set_game_info(const std::string& game_id,
         pipeline->set_flow_id("install");
 
         std::vector<engine::TraceStage> flow_stages;
-        flow_stages.reserve(8);
+        flow_stages.reserve(3);
         for (const char* stage_name : kInstallStages) {
             auto claim = claim_for(stage_name);
             std::unique_ptr<engine::Stage> impl;
@@ -735,12 +739,12 @@ void MainWindow::set_game_info(const std::string& game_id,
         connect(dt, &DownloadsTab::install_requested,
                 this, [this](const std::string& mod_id, const std::filesystem::path& fp,
                              const std::string& source_type, const std::string& source_id,
-                             int file_id) {
+                             int file_id, const std::string& display_name) {
             if (!pipeline_thread_) return;
             QMetaObject::invokeMethod(pipeline_thread_->worker(),
-                [this, mod_id, fp, source_type, source_id, file_id]() {
+                [this, mod_id, fp, source_type, source_id, file_id, display_name]() {
                 pipeline_thread_->worker()->install_mod(
-                    mod_id, fp.string(), source_type, source_id, file_id);
+                    mod_id, fp.string(), source_type, source_id, file_id, display_name);
             }, Qt::QueuedConnection);
         });
         connect(dt, &DownloadsTab::pause_requested,
@@ -1055,10 +1059,17 @@ void MainWindow::sync_priorities() {
                 meta.save(meta_dir, mods[i].id.toStdString());
             }
         }
-        // Write game-native priority - resolve actual mod folder location
+        // Write game-native priority - resolve actual mod folder location.
+        // Only games that encode priority into mod-folder metadata (Isaac's
+        // NNN prefix in metadata.xml, read by the game itself) get a folder
+        // write; MO2-style games persist priority in the meta dir sidecar
+        // above and read load order from their plugins.txt / order encoding.
         if (!mods[i].is_overwrite && !mods[i].is_separator && !mods_subpath.empty()) {
-            auto mod_folder = resolve_mod_folder(mods[i].id.toStdString(), mods_subpath);
-            (void)engine::ModScanner::set_priority(*knowledge_, current_game_id_, mod_folder, i);
+            auto metadata_file = knowledge_->get(current_game_id_, "metadata_file", "meta.ini");
+            if (!metadata_file.empty() && metadata_file != "meta.ini") {
+                auto mod_folder = resolve_mod_folder(mods[i].id.toStdString(), mods_subpath);
+                (void)engine::ModScanner::set_priority(*knowledge_, current_game_id_, mod_folder, i);
+            }
         }
     }
 }
@@ -1241,6 +1252,11 @@ void MainWindow::load_mods_from_game() {
     // Clear all existing mods (including game-native) - needed for instance switching
     mod_model_->remove_all_mods();
 
+    // MERGED pseudo-mod is game-dependent (Isaac only); turn the flag on/off
+    // before anything adds rows, so switching Isaac <-> Skyrim adds/removes it.
+    auto uses_merged = knowledge_->get(current_game_id_, "uses_merged", "");
+    mod_model_->set_uses_merged(uses_merged == "true");
+
     // Filter out MERGED pseudo-mod folder from scan results
     scanned.erase(std::remove_if(scanned.begin(), scanned.end(),
         [](const engine::ScannedMod& m) { return m.folder_name == "MERGED"; }),
@@ -1266,16 +1282,23 @@ void MainWindow::load_mods_from_game() {
     migrate_mo2_meta();
     load_meta_for_mods();
 
-    // Read persisted priority from meta.ini for ALL entries (including separators, Overwrite)
+    // Read persisted priority from meta.ini for ALL entries (including separators, Overwrite).
+    // Mods without a persisted priority (e.g. freshly installed) get the bottom of the user
+    // band - MO2's rule: a new mod gets the highest regular priority, just above the pinned
+    // Overwrite/MERGED rows. set_priority() only writes the field; load_order() applies it.
     {
         auto meta_dir = meta_dir_path();
         if (!meta_dir.empty()) {
+            int regular_rows = 0;
+            for (const auto& m : mod_model_->mods()) {
+                if (!m.is_overwrite && !m.is_merged) ++regular_rows;
+            }
+            int bottom_priority = std::max(0, regular_rows - 1);
             for (const auto& m : mod_model_->mods()) {
                 auto meta = engine::ModMeta::load(meta_dir, m.id.toStdString());
                 int p = meta.priority();
-                if (p >= 0) {
-                    mod_model_->set_priority(m.id, p);
-                }
+                if (p < 0) p = bottom_priority;
+                mod_model_->set_priority(m.id, p);
             }
         }
     }
@@ -1287,6 +1310,11 @@ void MainWindow::load_mods_from_game() {
 
     // Sort by priority to restore saved order
     load_order();
+
+    // Persist priorities to {modname}.ini - including the ones just assigned to
+    // freshly installed mods above - so the order survives restarts. This also
+    // fires when load_order() produced no reorder (already-correct order).
+    sync_priorities();
 
     // Sync separator IDs for new mods or first-load (no instance.toml yet)
     sync_separator_ids();
@@ -2013,7 +2041,7 @@ void MainWindow::rename_selected_mod() {
     // For simplicity, just update the display name in the model.
     // The folder stays the same.
 
-    // Write metadata.xml / meta.ini with new name
+    // Record the new display name in the meta dir sidecar
     auto meta_dir = meta_dir_path();
     if (!meta_dir.empty()) {
         auto meta = engine::ModMeta::load(meta_dir, entry.id.toStdString());
@@ -2699,31 +2727,37 @@ void MainWindow::load_order() {
                 reordered.append(m);
             }
         }
-        // Overwrite always first, MERGED always second
+        // Overwrite always first, MERGED always second (only for games that use it)
         reordered.insert(0, ModEntry());
-        reordered.insert(1, ModEntry());
         reordered[0].is_overwrite = true;
         reordered[0].id = kOverwriteModId;
         reordered[0].name = kOverwriteModName;
         reordered[0].enabled = true;
         reordered[0].priority = 0;
-        reordered[1].is_merged = true;
-        reordered[1].id = kMergedModId;
-        reordered[1].name = kMergedModName;
-        reordered[1].enabled = true;
-        reordered[1].priority = 1;
+        if (mod_model_->uses_merged()) {
+            reordered.insert(1, ModEntry());
+            reordered[1].is_merged = true;
+            reordered[1].id = kMergedModId;
+            reordered[1].name = kMergedModName;
+            reordered[1].enabled = true;
+            reordered[1].priority = 1;
+        }
         mod_model_->reset_with_order(reordered);
         mod_model_->renumber_priorities();
         engine::Logger::instance().debug("Migrated from mod_order (" + std::to_string(order.size()) + " entries)");
     } else {
         // New path: sort by priority from meta.ini
         QVector<ModEntry> sorted = mods;
-        std::stable_sort(sorted.begin(), sorted.end(), [](const ModEntry& a, const ModEntry& b) {
+        // Mods without a persisted priority (-1) sort to the bottom of the user
+        // band, never the top - otherwise a freshly installed mod would win the
+        // list (top = priority 0).
+        auto key = [](const ModEntry& e) { return e.priority < 0 ? 1000000 : e.priority; };
+        std::stable_sort(sorted.begin(), sorted.end(), [&key](const ModEntry& a, const ModEntry& b) {
             if (a.is_overwrite) return false;
             if (b.is_overwrite) return true;
             if (a.is_merged) return false;
             if (b.is_merged) return true;
-            return a.priority < b.priority;
+            return key(a) < key(b);
         });
         bool needs_sort = false;
         for (int i = 0; i < mods.size(); ++i) {
@@ -4232,6 +4266,15 @@ void MainWindow::handle_nxm_download(const engine::NxmLink& link) {
                                     .arg(link.file_id).toStdString(),
             "Nexus Mods", {}, link.nexus_domain, link.file_id, mod_id);
     }
+
+    // Surface the download: bring the window to front and switch to the
+    // Downloads tab so the user sees the new entry start.
+    if (isMinimized()) {
+        showNormal();
+    }
+    raise();
+    activateWindow();
+    right_panel_->show_downloads_tab();
 
     // Keep the NXM link so a paused download can be resumed later.
     nxm_links_[key] = link;

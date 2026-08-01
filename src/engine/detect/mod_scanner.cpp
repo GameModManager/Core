@@ -1,6 +1,7 @@
 #include "engine/detect/mod_scanner.h"
 #include "engine/registry/game_knowledge.h"
 #include "engine/log/logger.h"
+#include "engine/meta/mod_meta.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -71,9 +72,13 @@ static std::vector<ScannedMod> scan_impl(
     // Read all config from GameKnowledge hooks
     auto disable_file = knowledge.get(game_id, "disable_mechanism", "");
     auto ignored_csv  = knowledge.get(game_id, "ignored_files", "");
-    auto metadata_file = knowledge.get(game_id, "metadata_file", "metadata.xml");
+    // MO2-style metadata is a meta.ini in the mod folder. Games whose engine
+    // reads XML metadata from mod folders (Isaac's metadata.xml) register the
+    // filename and name/version tags via hooks.
+    auto metadata_file = knowledge.get(game_id, "metadata_file", "meta.ini");
     auto name_tag     = knowledge.get(game_id, "metadata_name_tag", "name");
     auto version_tag  = knowledge.get(game_id, "metadata_version_tag", "version");
+    bool use_xml_meta = !metadata_file.empty() && metadata_file != "meta.ini";
     auto separator_suffix = knowledge.get(game_id, "separator_suffix", "_separator");
     auto workshop_pattern = knowledge.get(game_id, "workshop_id_pattern", "");
 
@@ -176,51 +181,76 @@ static std::vector<ScannedMod> scan_impl(
         }
 
         // Parse metadata file
-        auto metadata_path = entry.path() / metadata_file;
-        if (!std::filesystem::exists(metadata_path)) continue;
+        if (use_xml_meta) {
+            // XML metadata (Isaac): the mod is only recognized if the file
+            // exists; name/version come from the configured tags.
+            auto metadata_path = entry.path() / metadata_file;
+            if (!std::filesystem::exists(metadata_path)) continue;
 
-        auto content = read_file_text(metadata_path);
-        if (content.empty()) continue;
+            auto content = read_file_text(metadata_path);
+            if (content.empty()) continue;
 
-        auto raw_name = xml_find_tag(content, name_tag);
-        if (raw_name.empty()) continue;
+            auto raw_name = xml_find_tag(content, name_tag);
+            if (raw_name.empty()) continue;
 
-        mod.raw_name = raw_name;
+            mod.raw_name = raw_name;
 
-        // Normalize name: strip priority prefix if configured
-        auto prefix_re_str = knowledge.get(game_id, "priority_prefix_re", "");
-        if (!prefix_re_str.empty()) {
-            try {
-                static const std::regex prefix_re(prefix_re_str);
-                // Extract the numeric prefix value before stripping
-                std::smatch m;
-                if (std::regex_search(raw_name, m, prefix_re)) {
-                    auto prefix_str = m.str();
-                    // Strip non-digits to get the number
-                    std::string digits;
-                    for (char c : prefix_str) {
-                        if (std::isdigit(static_cast<unsigned char>(c))) digits += c;
+            // Normalize name: strip priority prefix if configured
+            auto prefix_re_str = knowledge.get(game_id, "priority_prefix_re", "");
+            if (!prefix_re_str.empty()) {
+                try {
+                    static const std::regex prefix_re(prefix_re_str);
+                    // Extract the numeric prefix value before stripping
+                    std::smatch m;
+                    if (std::regex_search(raw_name, m, prefix_re)) {
+                        auto prefix_str = m.str();
+                        // Strip non-digits to get the number
+                        std::string digits;
+                        for (char c : prefix_str) {
+                            if (std::isdigit(static_cast<unsigned char>(c))) digits += c;
+                        }
+                        if (!digits.empty()) {
+                            try { mod.priority = std::stoi(digits); } catch (...) {}
+                        }
                     }
-                    if (!digits.empty()) {
-                        try { mod.priority = std::stoi(digits); } catch (...) {}
-                    }
+                    mod.display_name = std::regex_replace(raw_name, prefix_re, "");
+                } catch (...) {
+                    mod.display_name = raw_name;
                 }
-                mod.display_name = std::regex_replace(raw_name, prefix_re, "");
-            } catch (...) {
+            } else {
                 mod.display_name = raw_name;
             }
+
+            // Trim whitespace from display name
+            auto first = mod.display_name.find_first_not_of(" \t");
+            if (first != std::string::npos) {
+                mod.display_name = mod.display_name.substr(first);
+            }
+
+            // Parse version
+            mod.version = xml_find_tag(content, version_tag);
         } else {
-            mod.display_name = raw_name;
+            // MO2-style meta.ini: the folder name IS the mod name; the ini
+            // carries the version. A legacy metadata.xml (written by older GMM
+            // installs for every game) is read as a fallback so pre-fix mods
+            // keep loading - it is never written for non-XML games again.
+            auto meta_path = entry.path() / "meta.ini";
+            auto content = read_file_text(meta_path);
+            if (content.empty()) {
+                auto legacy_path = entry.path() / "metadata.xml";
+                auto legacy = read_file_text(legacy_path);
+                if (legacy.empty()) continue;
+                mod.raw_name = folder_name;
+                mod.display_name = folder_name;
+                mod.version = xml_find_tag(legacy, "version");
+            } else {
+                engine::ModMeta meta;
+                if (!meta.parse(content)) continue;
+                mod.raw_name = folder_name;
+                mod.display_name = folder_name;
+                mod.version = meta.get("General", "version");
+            }
         }
-
-        // Trim whitespace from display name
-        auto first = mod.display_name.find_first_not_of(" \t");
-        if (first != std::string::npos) {
-            mod.display_name = mod.display_name.substr(first);
-        }
-
-        // Parse version
-        mod.version = xml_find_tag(content, version_tag);
 
         // Check for disable sentinel
         if (!disable_file.empty()) {
@@ -298,7 +328,7 @@ bool ModScanner::set_priority(
     const std::string& game_id,
     const std::filesystem::path& mod_folder,
     int priority) {
-    auto metadata_file = knowledge.get(game_id, "metadata_file", "metadata.xml");
+    auto metadata_file = knowledge.get(game_id, "metadata_file", "meta.ini");
     auto name_tag = knowledge.get(game_id, "metadata_name_tag", "name");
     auto prefix_re_str = knowledge.get(game_id, "priority_prefix_re", "");
     auto format_str = knowledge.get(game_id, "priority_format", "%03d ");
