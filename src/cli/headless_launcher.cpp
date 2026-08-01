@@ -41,6 +41,7 @@ int launch_game_headless(const HeadlessConfig& cfg) {
         cfg.game_id,
         cfg.steam_appid,
         cfg.is_windows_exe);
+    lparams.platform = cfg.platform;
 
     auto launch_time = fs::file_time_type::clock::now();
     auto result = engine::launch_game(lparams);

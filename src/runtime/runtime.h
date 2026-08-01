@@ -6,6 +6,8 @@
 
 namespace engine {
 
+class PlatformInterface;
+
 class Runtime {
 public:
     virtual ~Runtime() = default;
@@ -33,6 +35,8 @@ private:
 
 class ProtonRuntime : public Runtime {
 public:
+    explicit ProtonRuntime(const PlatformInterface* platform);
+
     bool launch(const std::filesystem::path& executable,
                 const std::filesystem::path& game_dir,
                 uint32_t steam_appid = 0) override;
@@ -41,16 +45,19 @@ public:
     int64_t last_pid() const override { return last_pid_; }
 
     // Find the Proton binary for a game (respects per-game compat tool override).
-    // Returns empty path if none found.
-    static std::filesystem::path find_proton_binary(uint32_t steam_appid = 0);
+    // Returns empty path if none found. All discovery goes through `platform`.
+    static std::filesystem::path find_proton_binary(const PlatformInterface* platform,
+                                                    uint32_t steam_appid = 0);
 
     // Set all STEAM_COMPAT_* environment variables needed by the Proton script.
     // Must be called before launching Proton in the same process or a child.
-    static bool prepare_proton_environment(const std::filesystem::path& game_dir,
+    // Steam root, prefix and library paths come from `platform`.
+    static bool prepare_proton_environment(const PlatformInterface* platform,
+                                           const std::filesystem::path& game_dir,
                                            uint32_t steam_appid);
 
 private:
-    std::filesystem::path find_proton() const;
+    const PlatformInterface* platform_;
     int64_t last_pid_ = -1;
 };
 

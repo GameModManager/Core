@@ -44,6 +44,12 @@ static void qt_message_filter(QtMsgType type, const QMessageLogContext& ctx, con
 #include "engine/nexus_auth.h"
 #include "cli/headless_launcher.h"
 
+#if defined(GMM_PLATFORM_LINUX)
+#include "platform/linux/linux_platform.h"
+#elif defined(GMM_PLATFORM_WINDOWS)
+#include "platform/windows/windows_platform.h"
+#endif
+
 #include <cstdlib>
 #include <filesystem>
 
@@ -158,6 +164,15 @@ int main(int argc, char *argv[])
     // Initialize logger
     engine::Logger::instance().set_log_file(log_path());
     engine::Logger::instance().info("GameModManager v" + std::string(VERSION) + " started");
+
+    // Platform services (Steam/Proton discovery, prefix resolution, user dirs).
+    // Single instance owned here, injected into everything that needs it.
+    std::unique_ptr<engine::PlatformInterface> platform;
+#if defined(GMM_PLATFORM_LINUX)
+    platform = std::make_unique<engine::LinuxPlatform>();
+#elif defined(GMM_PLATFORM_WINDOWS)
+    platform = std::make_unique<engine::WindowsPlatform>();
+#endif
 
     // Apply app settings that affect startup behavior.
     auto& settings = Settings::instance();
@@ -317,6 +332,7 @@ int main(int argc, char *argv[])
         cfg.is_windows_exe = is_windows_exe;
         cfg.knowledge = &plugin_loader.knowledge();
         cfg.game_id = inst.info().game_id;
+        cfg.platform = platform.get();
 
         int exit_code = cli::launch_game_headless(cfg);
         engine::Logger::instance().debug(
@@ -492,6 +508,7 @@ int main(int argc, char *argv[])
                 main_window->set_plugin_loader(&plugin_loader);
                 main_window->set_managed_games(&managed_games);
                 main_window->set_style_manager(&style_manager);
+                main_window->set_platform(platform.get());
                 main_window->set_native_style_name(native_style_name);
 
                 // Forward focus requests from other instances to this window
@@ -535,6 +552,7 @@ int main(int argc, char *argv[])
     window.set_plugin_loader(&plugin_loader);
     window.set_managed_games(&managed_games);
     window.set_style_manager(&style_manager);
+    window.set_platform(platform.get());
     window.set_native_style_name(native_style_name);
 
     // Forward focus requests from other instances to this window

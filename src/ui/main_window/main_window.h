@@ -34,6 +34,7 @@ class NxmIpcServer;
 struct NxmLink;
 struct ConflictStats;
 class StyleManager;
+class PlatformInterface;
 }
 
 namespace ui {
@@ -76,6 +77,7 @@ public:
     void set_plugin_loader(engine::PluginLoader* loader) { plugin_loader_ = loader; }
     void set_managed_games(engine::ManagedGames* mg) { managed_games_ = mg; }
     void set_style_manager(engine::StyleManager* sm) { style_manager_ = sm; }
+    void set_platform(engine::PlatformInterface* platform) { platform_ = platform; }
 
     // The QApplication's initial (native platform) style name, captured before
     // any user-selected style is applied. Used to restore "Default (system)"
@@ -195,6 +197,7 @@ private:
     engine::ManagedGames* managed_games_ = nullptr;
     QString native_style_name_;
     engine::StyleManager* style_manager_ = nullptr;
+    engine::PlatformInterface* platform_ = nullptr;
     engine::NxmIpcServer* nxm_ipc_ = nullptr;
     std::unique_ptr<engine::DeploymentStrategy> deploy_strategy_;
     bool nxm_handler_check_done_ = false;

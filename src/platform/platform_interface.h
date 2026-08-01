@@ -36,6 +36,35 @@ public:
     // On Linux this searches Steam tools for Proton installations.
     [[nodiscard]] virtual std::filesystem::path find_proton() const { return {}; }
 
+    // Per-game Proton runner selection, respecting Steam's per-game compat
+    // tool override. Falls back to the latest Proton when no override exists.
+    [[nodiscard]] virtual std::filesystem::path find_proton_for_game(
+        uint32_t steam_appid) const { return find_proton(); }
+
+    // Proton prefix (compatdata) directory for a game. Empty when not
+    // applicable (no Steam, or the platform has no Proton).
+    [[nodiscard]] virtual std::filesystem::path resolve_proton_prefix(
+        uint32_t steam_appid) const { return {}; }
+
+    // All Steam library folders (paths from libraryfolders.vdf, in priority
+    // order). Empty when not applicable. Used to build STEAM_COMPAT_LIBRARY_PATHS.
+    [[nodiscard]] virtual std::vector<std::filesystem::path>
+    steam_library_paths() const { return {}; }
+
+    // Windows user "Documents" directory for a game running under this
+    // platform's prefix. On Linux this is inside the Proton prefix
+    // (drive_c/users/<user>/Documents); on Windows the native
+    // %USERPROFILE%\Documents. Empty when not applicable.
+    [[nodiscard]] virtual std::filesystem::path game_documents_dir(
+        uint32_t steam_appid) const { return {}; }
+
+    // Windows user "Local AppData" directory for a game running under this
+    // platform's prefix. On Linux this is inside the Proton prefix
+    // (drive_c/users/<user>/AppData/Local); on Windows the native
+    // %LOCALAPPDATA%. Empty when not applicable.
+    [[nodiscard]] virtual std::filesystem::path game_local_appdata_dir(
+        uint32_t steam_appid) const { return {}; }
+
     // Wine discovery - for launching Windows games on Linux without Proton.
     // Returns path to wine binary, empty if unavailable.
     [[nodiscard]] virtual std::filesystem::path find_wine() const { return {}; }
