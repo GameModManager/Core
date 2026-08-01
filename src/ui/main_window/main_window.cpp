@@ -3036,6 +3036,23 @@ void MainWindow::launch_game() {
     }
 
     auto exec_path = current_game_dir_ / exec_rel.toStdString();
+    if (!std::filesystem::exists(exec_path)) {
+        engine::Logger::instance().warn(
+            "executable does not exist: " + exec_path.string());
+        QMessageBox::warning(this, tr("Launch"),
+            tr("The selected executable no longer exists:\n%1\n\n"
+               "The entry has been removed.")
+                .arg(QString::fromStdString(exec_path.string())));
+        auto* bar = right_panel_->exec_controls();
+        auto entries = bar->executable_entries();
+        bar->clear_executables();
+        for (const auto& e : entries) {
+            if (e.path == exec_rel) continue;
+            bar->add_entry(e);
+        }
+        save_executables();
+        return;
+    }
     launch_with_executable(QString::fromStdString(exec_path.string()));
 }
 
@@ -3633,6 +3650,27 @@ void MainWindow::on_add_entry_requested() {
         : current_instance_root_ / "cache" / "thumbnails";
 
     auto existing = right_panel_->exec_controls()->executable_entries();
+
+    // Prune dead entries (binary no longer exists) before showing the dialog.
+    // Deliberately not at startup: a temporarily unavailable game dir must not
+    // wipe the list. Pruning only persists if the user accepts the dialog.
+    if (!current_game_dir_.empty()) {
+        QVector<ExecEntry> pruned;
+        pruned.reserve(existing.size());
+        for (const auto& e : existing) {
+            auto resolved = current_game_dir_ / e.path.toStdString();
+            if (!e.path.trimmed().isEmpty() && !std::filesystem::exists(resolved)) {
+                engine::Logger::instance().warn(
+                    "removing dead executable entry '" +
+                    exec_entry_display_name(e).toStdString() +
+                    "' (does not exist: " + resolved.string() + ")");
+                continue;
+            }
+            pruned.append(e);
+        }
+        existing = pruned;
+    }
+
     ExecEntryDialog dlg(current_game_dir_, mod_list, existing, icon_cache, this);
     if (dlg.exec() != QDialog::Accepted) return;
 

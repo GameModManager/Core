@@ -1,5 +1,6 @@
 #include "ui/widgets/exec_entry_dialog.h"
 
+#include <QAbstractItemModel>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDialogButtonBox>
@@ -10,6 +11,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
 #include <QMessageBox>
 #include <QPixmap>
 #include <QProcess>
@@ -17,6 +19,8 @@
 #include <QSplitter>
 #include <QFileInfo>
 #include <QStandardPaths>
+#include <QStyle>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include "ui/smooth_scroll.h"
 
@@ -58,14 +62,14 @@ ExecEntry ExecEntry::fromLegacyPath(const QString& relPath) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-QString ExecEntryDialog::display_name(const ExecEntry& e) {
+QString exec_entry_display_name(const ExecEntry& e) {
     if (!e.title.isEmpty())
         return e.title;
     if (!e.path.isEmpty()) {
         auto last_slash = e.path.lastIndexOf('/');
         return last_slash >= 0 ? e.path.mid(last_slash + 1) : e.path;
     }
-    return tr("Untitled");
+    return QStringLiteral("Untitled");
 }
 
 // ---------------------------------------------------------------------------
@@ -87,22 +91,57 @@ ExecEntryDialog::ExecEntryDialog(const std::filesystem::path& game_dir,
 
     auto* splitter = new QSplitter(Qt::Horizontal, this);
 
-    // -- Left panel: entry list + Add/Remove buttons --
+    // -- Left panel: entry list + Add/Remove/Up/Down toolbar --
     auto* left_panel = new QWidget(this);
     auto* left_layout = new QVBoxLayout(left_panel);
     left_layout->setContentsMargins(0, 0, 0, 0);
+    left_layout->setSpacing(3);
+
+    auto* toolbar = new QHBoxLayout;
+    toolbar->setSpacing(0);
+    toolbar->addWidget(new QLabel(tr("Executables"), left_panel));
+    toolbar->addStretch();
+
+    auto make_btn = [this](const QString& tooltip, const QString& theme_icon,
+                           QStyle::StandardPixmap fallback) {
+        auto* btn = new QToolButton(this);
+        btn->setToolTip(tooltip);
+        auto icon = QIcon::fromTheme(theme_icon);
+        btn->setIcon(icon.isNull() ? style()->standardIcon(fallback) : icon);
+        btn->setAutoRaise(true);
+        btn->setIconSize(QSize(20, 20));
+        btn->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        return btn;
+    };
+
+    add_btn_ = make_btn(tr("Add an executable"), QStringLiteral("list-add"),
+                        QStyle::SP_FileDialogNewFolder);
+    remove_btn_ = make_btn(tr("Remove the selected executable"), QStringLiteral("list-remove"),
+                           QStyle::SP_TrashIcon);
+    up_btn_ = make_btn(tr("Move the executable up in the list"), QStringLiteral("go-up"),
+                       QStyle::SP_ArrowUp);
+    down_btn_ = make_btn(tr("Move the executable down in the list"), QStringLiteral("go-down"),
+                         QStyle::SP_ArrowDown);
+
+    auto* add_menu = new QMenu(add_btn_);
+    add_menu->addAction(tr("Add from file..."), this, &ExecEntryDialog::on_add_from_file);
+    add_menu->addAction(tr("Add empty"), this, &ExecEntryDialog::on_add_empty);
+    add_menu->addAction(tr("Clone selected"), this, &ExecEntryDialog::on_clone_selected);
+    add_btn_->setMenu(add_menu);
+    add_btn_->setPopupMode(QToolButton::InstantPopup);
+
+    toolbar->addWidget(add_btn_);
+    toolbar->addWidget(remove_btn_);
+    toolbar->addWidget(up_btn_);
+    toolbar->addWidget(down_btn_);
+    left_layout->addLayout(toolbar);
 
     entry_list_ = new QListWidget(left_panel);
     entry_list_->setMinimumWidth(180);
+    entry_list_->setToolTip(tr("List of configured executables"));
+    entry_list_->setDragDropMode(QAbstractItemView::InternalMove);
+    entry_list_->setDefaultDropAction(Qt::MoveAction);
     left_layout->addWidget(entry_list_);
-
-    auto* btn_row = new QHBoxLayout;
-    auto* add_btn = new QPushButton(tr("+ Add"), left_panel);
-    auto* remove_btn = new QPushButton(tr("- Remove"), left_panel);
-    btn_row->addWidget(add_btn);
-    btn_row->addWidget(remove_btn);
-    btn_row->addStretch();
-    left_layout->addLayout(btn_row);
 
     splitter->addWidget(left_panel);
 
@@ -178,8 +217,16 @@ ExecEntryDialog::ExecEntryDialog(const std::filesystem::path& game_dir,
     connect(entry_list_, &QListWidget::currentRowChanged,
             this, &ExecEntryDialog::on_list_selection_changed);
 
-    connect(add_btn, &QPushButton::clicked, this, &ExecEntryDialog::on_add_entry);
-    connect(remove_btn, &QPushButton::clicked, this, &ExecEntryDialog::on_remove_entry);
+    connect(remove_btn_, &QToolButton::clicked, this, &ExecEntryDialog::on_remove_entry);
+    connect(up_btn_, &QToolButton::clicked, this, &ExecEntryDialog::on_up_clicked);
+    connect(down_btn_, &QToolButton::clicked, this, &ExecEntryDialog::on_down_clicked);
+
+    // Drag-drop reorder: the view already moved the selection before our slot
+    // runs, so guard selection changes until we have rebuilt entries_.
+    connect(entry_list_->model(), &QAbstractItemModel::rowsAboutToBeMoved,
+            this, &ExecEntryDialog::on_rows_about_to_move);
+    connect(entry_list_->model(), &QAbstractItemModel::rowsMoved,
+            this, &ExecEntryDialog::on_rows_moved);
 
     connect(title_edit_, &QLineEdit::textChanged, this, &ExecEntryDialog::on_field_changed);
     connect(binary_edit_, &QLineEdit::textChanged, this, &ExecEntryDialog::on_field_changed);
@@ -198,6 +245,7 @@ ExecEntryDialog::ExecEntryDialog(const std::filesystem::path& game_dir,
     rebuild_list();
     if (!entries_.isEmpty())
         select_entry(0);
+    update_move_buttons();
 
     // TODO: gate behind a Settings "Smooth scrolling" checkbox.
     ui::enable_smooth_scrolling(this);
@@ -210,14 +258,22 @@ QVector<ExecEntry> ExecEntryDialog::entries() const {
 void ExecEntryDialog::rebuild_list() {
     QSignalBlocker blocker(entry_list_);
     entry_list_->clear();
-    for (const auto& e : entries_) {
-        entry_list_->addItem(display_name(e));
+    for (int i = 0; i < entries_.size(); ++i) {
+        auto* item = new QListWidgetItem(exec_entry_display_name(entries_[i]));
+        item->setData(Qt::UserRole, i);
+        entry_list_->addItem(item);
     }
+}
+
+void ExecEntryDialog::restamp_list_indices() {
+    for (int r = 0; r < entry_list_->count(); ++r)
+        entry_list_->item(r)->setData(Qt::UserRole, r);
 }
 
 void ExecEntryDialog::select_entry(int index) {
     if (index < 0 || index >= entries_.size()) {
         current_index_ = InvalidIndex;
+        update_move_buttons();
         return;
     }
 
@@ -254,6 +310,8 @@ void ExecEntryDialog::select_entry(int index) {
         QSignalBlocker blocker(entry_list_);
         entry_list_->setCurrentRow(index);
     }
+
+    update_move_buttons();
 }
 
 void ExecEntryDialog::save_current_entry() {
@@ -271,15 +329,77 @@ void ExecEntryDialog::save_current_entry() {
     // icon_path unchanged when unchecked (already set via on_change_icon)
 }
 
-void ExecEntryDialog::on_add_entry() {
+void ExecEntryDialog::on_add_from_file() {
     save_current_entry();
 
-    ExecEntry blank;
-    entries_.append(blank);
+    auto start_dir = game_dir_.empty()
+        ? QDir::homePath()
+        : QString::fromStdString(game_dir_.string());
 
-    auto* item = new QListWidgetItem(display_name(blank), entry_list_);
+#ifdef Q_OS_WIN
+    QString filter = tr("Executables (*.exe);;All Files (*)");
+#else
+    QString filter = tr("Executables (*.exe *.AppImage *.bin *.elf *.sh);;All Files (*)");
+#endif
+
+    auto path = QFileDialog::getOpenFileName(this, tr("Select Executable"), start_dir, filter);
+    if (path.isEmpty()) return;
+
+    ExecEntry e;
+    // MO2 uses the binary's base name as the initial title.
+    e.title = QFileInfo(path).completeBaseName();
+    if (!game_dir_.empty()) {
+        auto game_qdir = QDir(QString::fromStdString(game_dir_.string()));
+        e.path = game_qdir.relativeFilePath(path);
+    } else {
+        e.path = path;
+    }
+    add_new_entry(e);
+}
+
+void ExecEntryDialog::on_add_empty() {
+    ExecEntry e;
+    e.title = tr("New Executable");
+    add_new_entry(e);
+}
+
+void ExecEntryDialog::on_clone_selected() {
+    if (current_index_ < 0 || current_index_ >= entries_.size())
+        return;
+    save_current_entry();
+    add_new_entry(entries_[current_index_]);
+}
+
+void ExecEntryDialog::add_new_entry(const ExecEntry& src) {
+    ExecEntry e = src;
+    e.title = make_non_conflicting_title(exec_entry_display_name(e));
+
+    entries_.append(e);
+    auto* item = new QListWidgetItem(exec_entry_display_name(e), entry_list_);
+    item->setData(Qt::UserRole, entries_.size() - 1);
     entry_list_->addItem(item);
     select_entry(entry_list_->count() - 1);
+    update_move_buttons();
+}
+
+QString ExecEntryDialog::make_non_conflicting_title(const QString& base) const {
+    auto taken = [this](const QString& candidate) {
+        for (const auto& e : entries_) {
+            if (exec_entry_display_name(e) == candidate)
+                return true;
+        }
+        return false;
+    };
+
+    if (!taken(base))
+        return base;
+    // MO2 pattern: "Name (1)", "Name (2)", ... bounded like ExecutablesList.
+    for (int i = 1; i < 100; ++i) {
+        auto candidate = QString("%1 (%2)").arg(base).arg(i);
+        if (!taken(candidate))
+            return candidate;
+    }
+    return base;
 }
 
 void ExecEntryDialog::on_remove_entry() {
@@ -291,6 +411,7 @@ void ExecEntryDialog::on_remove_entry() {
     {
         QSignalBlocker blocker(entry_list_);
         delete entry_list_->takeItem(current_index_);
+        restamp_list_indices();
     }
 
     if (entries_.isEmpty()) {
@@ -307,8 +428,100 @@ void ExecEntryDialog::on_remove_entry() {
         updating_fields_ = false;
     } else {
         int next = std::min<int>(current_index_, entries_.size() - 1);
+        // Detach before selecting the replacement row: the implicit save inside
+        // select_entry must not write the removed entry's form data into the
+        // entry that slid into its slot.
+        current_index_ = InvalidIndex;
         select_entry(next);
     }
+    update_move_buttons();
+}
+
+void ExecEntryDialog::on_up_clicked() {
+    if (current_index_ <= 0)
+        return;
+    move_entry(current_index_, current_index_ - 1);
+}
+
+void ExecEntryDialog::on_down_clicked() {
+    if (current_index_ < 0 || current_index_ >= entries_.size() - 1)
+        return;
+    move_entry(current_index_, current_index_ + 1);
+}
+
+void ExecEntryDialog::move_entry(int from, int to) {
+    if (from < 0 || from >= entries_.size() || to < 0 || to >= entries_.size())
+        return;
+
+    save_current_entry();
+    entries_.move(from, to);
+
+    {
+        QSignalBlocker blocker(entry_list_);
+        auto* item = entry_list_->takeItem(from);
+        entry_list_->insertItem(to, item);
+        restamp_list_indices();
+    }
+
+    // Point current_index_ at the moved entry first so the implicit save inside
+    // select_entry writes back to the right slot (entries_ has been reordered).
+    current_index_ = to;
+    select_entry(to);
+    update_move_buttons();
+}
+
+void ExecEntryDialog::on_rows_about_to_move(const QModelIndex&, int, int,
+                                            const QModelIndex&, int) {
+    // The view updates the selection during the move, before our rowsMoved
+    // handler runs. Ignore those intermediate selection changes.
+    reordering_ = true;
+}
+
+void ExecEntryDialog::on_rows_moved(const QModelIndex&, int, int,
+                                    const QModelIndex&, int) {
+    // Rebuild entries_ in the new list order. Each item still carries its
+    // pre-move source index in UserRole.
+    QVector<ExecEntry> reordered;
+    reordered.reserve(entries_.size());
+    bool consistent = (entry_list_->count() == entries_.size());
+    for (int r = 0; consistent && r < entry_list_->count(); ++r) {
+        int src = entry_list_->item(r)->data(Qt::UserRole).toInt();
+        if (src < 0 || src >= entries_.size()) {
+            consistent = false;
+            break;
+        }
+        reordered.append(entries_[src]);
+    }
+    if (!consistent) {
+        rebuild_list();
+        reordering_ = false;
+        update_move_buttons();
+        return;
+    }
+    entries_ = reordered;
+
+    // The dragged (selected) item now sits at the view's current row. Point
+    // current_index_ there first so the implicit save in select_entry writes
+    // back to the right entry.
+    int row = entry_list_->currentRow();
+    if (row < 0 || row >= entries_.size())
+        row = entries_.isEmpty() ? InvalidIndex : 0;
+
+    {
+        QSignalBlocker blocker(entry_list_);
+        restamp_list_indices();
+    }
+
+    current_index_ = row;
+    if (row != InvalidIndex)
+        select_entry(row);
+    reordering_ = false;
+    update_move_buttons();
+}
+
+void ExecEntryDialog::update_move_buttons() {
+    up_btn_->setEnabled(current_index_ > 0);
+    down_btn_->setEnabled(current_index_ >= 0 && current_index_ < entries_.size() - 1);
 }
 
 void ExecEntryDialog::on_change_icon() {
@@ -393,6 +606,8 @@ void ExecEntryDialog::on_use_app_icon_toggled(bool checked) {
 }
 
 void ExecEntryDialog::on_list_selection_changed() {
+    if (reordering_) return;
+
     int row = entry_list_->currentRow();
     if (row == current_index_ || row < 0)
         return;
@@ -415,7 +630,7 @@ void ExecEntryDialog::on_field_changed() {
         auto* item = entry_list_->item(current_index_);
         if (item) {
             QSignalBlocker blocker(entry_list_);
-            item->setText(display_name(e));
+            item->setText(exec_entry_display_name(e));
         }
     }
 }
@@ -468,7 +683,7 @@ bool ExecEntryDialog::validate() {
             QMessageBox::warning(this, tr("Modify Executables"),
                 tr("Entry \"%1\" has no binary path set.\n"
                    "Please set a binary path or remove the entry.")
-                    .arg(display_name(entries_[i])));
+                    .arg(exec_entry_display_name(entries_[i])));
             select_entry(i);
             return false;
         }
