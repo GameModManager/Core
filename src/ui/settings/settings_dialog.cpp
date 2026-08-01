@@ -31,9 +31,11 @@
 #include <QStyleFactory>
 #include <QTabWidget>
 #include <QTextEdit>
+#include <QTreeWidget>
 #include <QVBoxLayout>
 
 #include <functional>
+#include <memory>
 #include <vector>
 
 SettingsDialog::SettingsDialog(engine::StyleManager* style_manager,
@@ -579,14 +581,20 @@ QWidget* SettingsDialog::build_plugins_tab() {
         QString name;
         bool is_plugin = false;
         // native plugin fields
-        QString author, version, description, game, steam_appid, abi_version, path;
+        QString author, version, description, game, category, abi_version;
+        QString enabled_basename;
         bool enabled = true;
         // provider fields
         QString provider_type;
         engine::SourceProvider* provider = nullptr;
     };
 
-    std::vector<Entry> entries;
+    // Heap-owned state so the info-pane lambda outlives this function.
+    struct InfoState {
+        std::vector<Entry> entries;
+        QWidget* content = nullptr;  // current info-pane body, rebuilt on selection
+    };
+    auto state = std::make_shared<InfoState>();
 
     if (plugin_loader_) {
         for (const auto& p : plugin_loader_->plugins()) {
@@ -597,14 +605,13 @@ QWidget* SettingsDialog::build_plugins_tab() {
             e.version = QString::fromStdString(p.version);
             e.description = QString::fromStdString(p.description);
             e.game = QString::fromStdString(p.game_id);
-            e.steam_appid = p.steam_appid > 0
-                ? QString::number(p.steam_appid) : QString();
+            e.category = QString::fromStdString(p.category);
             e.abi_version = p.abi_version > 0
                 ? QString::number(p.abi_version) : QString();
-            e.path = QString::fromStdString(p.path);
-            e.enabled = Settings::instance().plugin_enabled(
-                QString::fromStdString(std::filesystem::path(p.path).filename().string()));
-            entries.push_back(std::move(e));
+            e.enabled_basename =
+                QString::fromStdString(std::filesystem::path(p.path).filename().string());
+            e.enabled = Settings::instance().plugin_enabled(e.enabled_basename);
+            state->entries.push_back(std::move(e));
         }
     }
     for (auto* provider : engine::SourceRegistry::instance().providers()) {
@@ -613,7 +620,7 @@ QWidget* SettingsDialog::build_plugins_tab() {
         e.is_plugin = false;
         e.provider_type = QString::fromStdString(provider->source_type());
         e.provider = provider;
-        entries.push_back(std::move(e));
+        state->entries.push_back(std::move(e));
     }
 
     auto* page = new QWidget(this);
@@ -622,54 +629,95 @@ QWidget* SettingsDialog::build_plugins_tab() {
     auto* splitter = new QSplitter(Qt::Horizontal, page);
     layout->addWidget(splitter);
 
-    // -- Left: plugin list + bottom filter bar -----------------------------
+    // -- Left: category-grouped plugin list + bottom filter bar --------------
     auto* left = new QWidget(splitter);
     auto* left_layout = new QVBoxLayout(left);
     left_layout->setContentsMargins(0, 0, 0, 0);
-    auto* list = new QListWidget(left);
+    auto* list = new QTreeWidget(left);
+    list->setHeaderHidden(true);
+    list->setRootIsDecorated(true);
     auto* filter = new QLineEdit(left);
     filter->setPlaceholderText(tr("Filter..."));
     filter->setClearButtonEnabled(true);
     left_layout->addWidget(list, 1);
     left_layout->addWidget(filter);
 
-    // -- Right: info pane ---------------------------------------------------
+    // -- Right: info pane ----------------------------------------------------
     auto* info_pane = new QWidget(splitter);
     auto* info_layout = new QVBoxLayout(info_pane);
 
-    for (const auto& e : entries) {
-        auto* item = new QListWidgetItem(e.name, list);
-        item->setData(Qt::UserRole, static_cast<int>(&e - &entries[0]));
-        item->setToolTip(e.is_plugin
+    // Foldable category headers, MO2 plugin types in display order.
+    // Indices 0-7 = plugin categories (matching declared strings), 8 = sources,
+    // 9 = uncategorized fallback.
+    const std::vector<const char*> group_ids = {
+        "Game Support", "Installer", "Tool", "Diagnostics",
+        "Preview", "File Mapper", "Mod Page", "Settings Page",
+        "Sources", "Uncategorized",
+    };
+    constexpr int kSourcesGroup = 8;
+    constexpr int kUncategorizedGroup = 9;
+
+    auto group_for = [&group_ids](const Entry& e) -> int {
+        if (!e.is_plugin) return kSourcesGroup;
+        for (int i = 0; i < kSourcesGroup; ++i) {
+            if (QString::compare(e.category, QString::fromUtf8(group_ids[i]),
+                                 Qt::CaseInsensitive) == 0)
+                return i;
+        }
+        return kUncategorizedGroup;
+    };
+
+    // Build the group headers in fixed order, then the leaf items under them.
+    std::vector<bool> group_used(group_ids.size(), false);
+    for (const auto& e : state->entries) group_used[group_for(e)] = true;
+
+    std::vector<QTreeWidgetItem*> group_items(group_ids.size(), nullptr);
+    for (size_t g = 0; g < group_ids.size(); ++g) {
+        if (!group_used[g]) continue;
+        auto* group = new QTreeWidgetItem(list);
+        group->setText(0, tr(group_ids[g]));
+        QFont gf = group->font(0);
+        gf.setBold(true);
+        group->setFont(0, gf);
+        group->setFlags(group->flags() & ~Qt::ItemIsSelectable);
+        group->setToolTip(0, tr("Click the arrow to collapse/expand this category"));
+        group_items[g] = group;
+    }
+    for (size_t i = 0; i < state->entries.size(); ++i) {
+        const Entry& e = state->entries[i];
+        auto* item = new QTreeWidgetItem(group_items[group_for(e)]);
+        item->setText(0, e.name);
+        item->setData(0, Qt::UserRole, static_cast<int>(i));
+        item->setToolTip(0, e.is_plugin
             ? tr("Plugin: %1").arg(e.name)
             : tr("Source provider: %1").arg(e.name));
     }
 
-    auto rebuild_info = [this, info_pane, info_layout, &entries](int index) {
-        if (index < 0 || static_cast<size_t>(index) >= entries.size()) return;
-        const Entry& e = entries[index];
+    std::function<void(int)> rebuild_info = [this, info_pane, info_layout, state](int index) {
+        if (index < 0 || static_cast<size_t>(index) >= state->entries.size()) return;
+        const Entry& e = state->entries[index];
 
-        // Clear previous content
-        while (auto* item = info_layout->takeAt(0)) {
-            if (item->widget()) delete item->widget();
-            delete item;
-        }
+        // Delete the whole previous body (removes it from info_layout too).
+        delete state->content;
+        state->content = new QWidget(info_pane);
+        info_layout->addWidget(state->content);
+        auto* content_layout = new QVBoxLayout(state->content);
 
-        auto* title = new QLabel(e.name, info_pane);
+        auto* title = new QLabel(e.name, state->content);
         QFont title_font = title->font();
         title_font.setBold(true);
         title_font.setPointSize(title_font.pointSize() + 2);
         title->setFont(title_font);
-        info_layout->addWidget(title);
-        info_layout->addWidget(new QLabel(
+        content_layout->addWidget(title);
+        content_layout->addWidget(new QLabel(
             e.is_plugin ? tr("Plugin") : tr("Source provider (%1)").arg(e.provider_type),
-            info_pane));
+            state->content));
 
-        auto* form = new QFormLayout;
-        form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
         if (e.is_plugin) {
+            auto* form = new QFormLayout;
+            form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
             auto add_row = [&](const QString& label, const QString& value) {
-                auto* lbl = new QLabel(value.isEmpty() ? tr("(not set)") : value, info_pane);
+                auto* lbl = new QLabel(value.isEmpty() ? tr("(not set)") : value, state->content);
                 lbl->setWordWrap(true);
                 lbl->setTextInteractionFlags(Qt::TextSelectableByMouse);
                 form->addRow(label, lbl);
@@ -678,18 +726,14 @@ QWidget* SettingsDialog::build_plugins_tab() {
             add_row(tr("Version"), e.version);
             add_row(tr("Description"), e.description);
             add_row(tr("Game"), e.game);
-            add_row(tr("Steam App ID"), e.steam_appid);
             add_row(tr("ABI version"), e.abi_version);
-            add_row(tr("Path"), e.path);
+            content_layout->addLayout(form);
         }
-        info_layout->addLayout(form);
 
-        auto* enabled_box = new QCheckBox(
-            e.is_plugin ? tr("Enabled") : tr("Enabled"), info_pane);
+        auto* enabled_box = new QCheckBox(tr("Enabled"), state->content);
         if (e.is_plugin) {
             enabled_box->setChecked(e.enabled);
-            const QString basename =
-                QString::fromStdString(std::filesystem::path(e.path.toStdString()).filename().string());
+            const QString basename = e.enabled_basename;
             connect(enabled_box, &QCheckBox::toggled, this,
                     [basename](bool on) { Settings::instance().set_plugin_enabled(basename, on); });
             enabled_box->setToolTip(tr("Disabled plugins are not loaded on the next start."));
@@ -698,9 +742,9 @@ QWidget* SettingsDialog::build_plugins_tab() {
             enabled_box->setEnabled(false);
             enabled_box->setToolTip(tr("Source providers are always enabled."));
         }
-        info_layout->addWidget(enabled_box);
+        content_layout->addWidget(enabled_box);
 
-        auto* settings_group = new QGroupBox(tr("Settings"), info_pane);
+        auto* settings_group = new QGroupBox(tr("Settings"), state->content);
         auto* gl = new QVBoxLayout(settings_group);
         if (e.is_plugin) {
             gl->addWidget(new QLabel(tr("This plugin exposes no settings."), settings_group));
@@ -710,15 +754,28 @@ QWidget* SettingsDialog::build_plugins_tab() {
         } else {
             gl->addWidget(new QLabel(tr("This provider has no configurable settings."), settings_group));
         }
-        info_layout->addWidget(settings_group);
-        info_layout->addStretch(1);
+        content_layout->addWidget(settings_group);
+        content_layout->addStretch(1);
     };
 
-    connect(list, &QListWidget::currentRowChanged, this, rebuild_info);
+    connect(list, &QTreeWidget::currentItemChanged, this,
+            [rebuild_info](QTreeWidgetItem* current, QTreeWidgetItem*) {
+                if (!current) return;
+                const QVariant v = current->data(0, Qt::UserRole);
+                if (!v.isValid()) return;  // group header
+                rebuild_info(v.toInt());
+            });
     connect(filter, &QLineEdit::textChanged, this, [list](const QString& text) {
-        for (int i = 0; i < list->count(); ++i) {
-            auto* item = list->item(i);
-            item->setHidden(!item->text().contains(text, Qt::CaseInsensitive));
+        for (int i = 0; i < list->topLevelItemCount(); ++i) {
+            auto* group = list->topLevelItem(i);
+            int visible = 0;
+            for (int j = 0; j < group->childCount(); ++j) {
+                auto* child = group->child(j);
+                const bool match = child->text(0).contains(text, Qt::CaseInsensitive);
+                child->setHidden(!match);
+                if (match) ++visible;
+            }
+            group->setHidden(visible == 0);
         }
     });
 
@@ -728,13 +785,16 @@ QWidget* SettingsDialog::build_plugins_tab() {
     splitter->setStretchFactor(1, 1);
     splitter->setSizes({280, 360});
 
-    if (!entries.empty()) {
-        list->setCurrentRow(0);
-    } else {
-        while (auto* item = info_layout->takeAt(0)) {
-            if (item->widget()) delete item->widget();
-            delete item;
+    list->expandAll();
+    bool has_entries = false;
+    for (int i = 0; i < list->topLevelItemCount() && !has_entries; ++i) {
+        auto* group = list->topLevelItem(i);
+        if (group->childCount() > 0) {
+            list->setCurrentItem(group->child(0));
+            has_entries = true;
         }
+    }
+    if (!has_entries) {
         auto* none = new QLabel(tr("No plugins or providers loaded."), info_pane);
         none->setWordWrap(true);
         info_layout->addWidget(none);

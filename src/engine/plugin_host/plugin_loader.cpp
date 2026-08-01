@@ -55,6 +55,14 @@ static void cb_register_meta(GmmRegistrationCtx* ctx,
     if (description) bridge->current_plugin->description = description;
 }
 
+static void cb_register_category(GmmRegistrationCtx* ctx,
+                                 const char* category) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge || !bridge->current_plugin) return;
+
+    if (category) bridge->current_plugin->category = category;
+}
+
 static void cb_register_stage_claim(GmmRegistrationCtx* ctx,
                                      const char* stage_name,
                                      GmmStageFn fn,
@@ -325,6 +333,7 @@ bool PluginLoader::load_plugin(const std::string& path) {
     ctx.register_capability = cb_register_capability;
     ctx.register_tab = cb_register_tab;
     ctx.register_meta = cb_register_meta;
+    ctx.register_category = cb_register_category;
 
     RegistrationBridge bridge;
     bridge.loader = this;
