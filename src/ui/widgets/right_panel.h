@@ -16,6 +16,7 @@ class ExecControlsBar;
 class RightFilterBar;
 class DataTab;
 class DownloadsTab;
+class PluginsTab;
 
 class RightPanel : public QWidget {
     Q_OBJECT
@@ -34,6 +35,7 @@ public:
     [[nodiscard]] DownloadsTab* downloads_tab() const;
     [[nodiscard]] ConflictsTab* conflicts_tab() const;
     [[nodiscard]] DataTab* data_tab() const;
+    [[nodiscard]] PluginsTab* plugins_tab() const;
 
     // Switch the tab bar to the Downloads tab (no-op when the game has no
     // downloads capability). Used when a download arrives so the user sees

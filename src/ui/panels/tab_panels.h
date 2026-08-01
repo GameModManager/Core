@@ -1,5 +1,7 @@
 #pragma once
 
+#include "engine/plugins/plugin_info.h"
+
 #include <QPoint>
 #include <QString>
 #include <QVector>
@@ -133,9 +135,27 @@ class PluginsTab : public QWidget {
     Q_OBJECT
 public:
     explicit PluginsTab(QWidget* parent = nullptr);
-    [[nodiscard]] QTableWidget* table() const { return table_; }
+    // Out-of-line: table_ is a private PluginTable* whose base needs the
+    // complete type for the upcast.
+    [[nodiscard]] QTableWidget* table() const;
+
+    // Replace the plugin list contents. Row 0 = most dominant (first-loaded).
+    // Force-loaded rows (game-native, CC) are pinned and shown greyed.
+    void set_plugins(const std::vector<engine::GamePlugin>& plugins);
+
+    // Re-sync enabled checkboxes from engine state without rebuilding rows
+    // (used to revert a blocked toggle, incl. transitively flipped masters).
+    void sync_enabled(const std::vector<engine::GamePlugin>& plugins);
+
+signals:
+    void toggle_requested(const std::string& name, bool enabled);
+    void reorder_requested(int from_row, int to_row);
+
 private:
-    QTableWidget* table_ = nullptr;
+    class PluginTable;
+    PluginTable* table_ = nullptr;
+    std::vector<std::string> names_;
+    bool syncing_ = false;
 };
 
 class ArchivesTab : public QWidget {

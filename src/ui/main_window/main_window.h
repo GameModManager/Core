@@ -16,6 +16,7 @@
 #include "engine/deploy/strategy.h"
 #include "engine/nxm/nxm_router.h"
 #include "engine/instance/instance.h"
+#include "engine/plugins/plugin_database.h"
 
 class QSplitter;
 class QToolBar;
@@ -51,6 +52,7 @@ class GmmStatusBar;
 class PipelineThread;
 class AppMenuBar;
 class PipelineWindow;
+class PluginsTab;
 
 struct PendingToggle {
     QString mod_id;
@@ -157,6 +159,11 @@ private:
     void show_settings_dialog();
     void show_pipeline_window();
 
+    // Plugins tab (Skyrim-style games with plugin support).
+    void refresh_plugins_tab();
+    void on_plugin_toggle(const std::string& name, bool enabled);
+    void on_plugin_reorder(int from_row, int to_row);
+
     // Context menu helpers
     void clear_overwrite();
     void create_mod_from_overwrite();
@@ -217,6 +224,10 @@ private:
     std::filesystem::path current_game_dir_;
     std::filesystem::path current_instance_root_;
     bool loading_ = false;
+    // Plugin database driving the Plugins tab (empty until a plugin-capable
+    // game is loaded). Rebuilt on refresh; toggles/moves save the profile.
+    engine::PluginDatabase plugins_db_;
+    ui::PluginsTab* plugins_tab_widget_ = nullptr;
     QStringList toolbar_shortcut_paths_;
     std::vector<std::string> saved_executables_;
     std::string pending_nxm_url_;

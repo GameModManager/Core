@@ -145,6 +145,8 @@ set(ENGINE_SOURCES
     src/engine/tools/external_tool.cpp
     src/engine/plugin_host/python_loader.cpp
     src/engine/meta/mod_meta.cpp
+    src/engine/plugins/esp_header.cpp
+    src/engine/plugins/plugin_database.cpp
     src/engine/source/source_provider.cpp
     src/engine/source/nexus_provider.cpp
     src/engine/source/nexus_account.cpp
@@ -310,6 +312,18 @@ if(WIN32)
     target_link_libraries(pipeline_test PRIVATE advapi32)
 endif()
 add_test(NAME pipeline_test COMMAND pipeline_test)
+
+add_executable(plugin_database_test tests/engine/plugin_database_test.cpp
+    src/engine/plugins/esp_header.cpp
+    src/engine/plugins/plugin_database.cpp
+    src/engine/instance/instance.cpp
+    src/engine/log/logger.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/registry/game_knowledge.cpp
+)
+target_include_directories(plugin_database_test PRIVATE src/)
+target_link_libraries(plugin_database_test PRIVATE PkgConfig::NLOHMANN_JSON)
+add_test(NAME plugin_database_test COMMAND plugin_database_test)
 
 add_executable(logger_test tests/engine/logger_test.cpp
     src/engine/log/logger.cpp
@@ -611,3 +625,19 @@ target_compile_definitions(downloads_tab_test PRIVATE VERSION="${PROJECT_VERSION
 target_link_libraries(downloads_tab_test PRIVATE Qt6::Widgets)
 add_test(NAME downloads_tab_test COMMAND downloads_tab_test)
 set_tests_properties(downloads_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# Plugins tab — offscreen GUI test: population, pinned (force-loaded) rows,
+# missing-master styling, toggle + sync_enabled signal behavior. Drag-reorder
+# is intentionally not exercised (see the test's header comment).
+add_executable(plugins_tab_test tests/ui/plugins_tab_test.cpp
+    src/ui/panels/tab_panels.cpp
+    src/ui/settings/settings.cpp
+    src/ui/widgets/column_toggle_header.cpp
+    src/engine/log/logger.cpp
+    src/engine/fs_utils.cpp
+)
+target_include_directories(plugins_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_compile_definitions(plugins_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
+target_link_libraries(plugins_tab_test PRIVATE Qt6::Widgets)
+add_test(NAME plugins_tab_test COMMAND plugins_tab_test)
+set_tests_properties(plugins_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

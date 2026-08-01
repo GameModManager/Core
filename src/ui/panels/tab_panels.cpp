@@ -6,8 +6,11 @@
 #include <QCheckBox>
 #include <QColor>
 #include <QDesktopServices>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QFileIconProvider>
 #include <QFileInfo>
+#include <QFont>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QJsonArray>
@@ -21,6 +24,7 @@
 #include <QShowEvent>
 #include <QStyle>
 #include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QTreeWidget>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -132,13 +136,180 @@ void sort_dirs_first(QTreeWidgetItem* parent) {
 }  // anonymous namespace
 
 // --- PluginsTab ---
+
+// Table subclass that turns a drop between rows into a reorder request
+// instead of letting Qt's default InternalMove rearrange items (whose order
+// would then drift from the engine's). The engine repopulates on reorder.
+// Defined at namespace scope (NOT in an anonymous namespace) so the qualified
+// name matches the forward declaration in the header.
+class PluginsTab::PluginTable : public QTableWidget {
+public:
+    using QTableWidget::QTableWidget;
+
+    // Invoked with (from_row, to_row) when a valid reorder drop happens.
+    std::function<void(int, int)> on_reorder;
+
+protected:
+    void dropEvent(QDropEvent* event) override {
+        // The dragged row. Because the base dropEvent is never called (the
+        // engine repopulates instead), the model isn't mutated during the
+        // drag, so currentRow() still points at the row the user grabbed.
+        const int from = currentRow();
+        if (from < 0) {
+            event->ignore();
+            return;
+        }
+        const QModelIndex idx = indexAt(event->position().toPoint());
+        int to;
+        switch (dropIndicatorPosition()) {
+            case QAbstractItemView::AboveItem:
+            case QAbstractItemView::OnItem:
+                to = idx.isValid() ? idx.row() : rowCount() - 1;
+                break;
+            case QAbstractItemView::BelowItem:
+                to = idx.isValid() ? idx.row() + 1 : rowCount() - 1;
+                break;
+            default:  // OnViewport
+                to = rowCount() - 1;
+                break;
+        }
+        if (from == to || from + 1 == to) {  // no-op (incl. drop right below itself)
+            event->accept();
+            return;
+        }
+        if (on_reorder) on_reorder(from, to);
+        event->accept();  // base dropEvent is NOT called: MainWindow repopulates
+    }
+};
+
+QTableWidget* PluginsTab::table() const {
+    return table_;
+}
+
 PluginsTab::PluginsTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    table_ = make_table(5,
-        {tr("Enabled"), tr("Plugin Name"), tr("Flags"), tr("Priority"), tr("Mod Index")},
-        this);
+    table_ = new PluginTable(0, 5, this);
+    table_->setHorizontalHeaderLabels(
+        {tr("Enabled"), tr("Plugin Name"), tr("Flags"), tr("Priority"), tr("Mod Index")});
+    table_->horizontalHeader()->setStretchLastSection(true);
+    table_->verticalHeader()->setVisible(false);
+    table_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table_->setAlternatingRowColors(true);
+    // Drag-reorder within the user band only; fixed rows are not draggable.
+    table_->setDragDropMode(QAbstractItemView::InternalMove);
+    table_->setDefaultDropAction(Qt::MoveAction);
+    table_->setDragDropOverwriteMode(false);
+    table_->setDropIndicatorShown(true);
+    table_->on_reorder = [this](int from, int to) { emit reorder_requested(from, to); };
+    connect(table_, &QTableWidget::itemChanged, this, [this](QTableWidgetItem* item) {
+        if (syncing_ || !item || item->column() != 0) return;
+        const int row = item->row();
+        if (row < 0 || row >= static_cast<int>(names_.size())) return;
+        emit toggle_requested(names_[static_cast<size_t>(row)],
+                              item->checkState() == Qt::Checked);
+    });
     layout->addWidget(table_);
+}
+
+void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
+    syncing_ = true;
+    table_->setRowCount(0);
+    names_.clear();
+    names_.reserve(plugins.size());
+    table_->setRowCount(static_cast<int>(plugins.size()));
+
+    const QColor missing_color(0xB0, 0x30, 0x30);
+    const QColor fixed_color(Qt::gray);
+    const QStringList flag_marks = {"ESL", "ESH", "ESM"};
+
+    for (int i = 0; i < static_cast<int>(plugins.size()); ++i) {
+        const auto& p = plugins[static_cast<size_t>(i)];
+        names_.push_back(p.name);
+
+        // Column 0: enabled. Fixed rows show a checked box that cannot be
+        // toggled; missing-master rows can still be checked but the engine
+        // rejects the enable with a message.
+        auto* enabled = new QTableWidgetItem;
+        Qt::ItemFlags ef = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
+        if (p.force_loaded) {
+            enabled->setFlags(ef);  // no checkable, no drag: pinned
+            enabled->setCheckState(Qt::Checked);
+        } else {
+            enabled->setFlags(ef | Qt::ItemIsUserCheckable | Qt::ItemIsDragEnabled);
+            enabled->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
+        }
+        table_->setItem(i, 0, enabled);
+
+        // Column 1: name, red italic when a master is missing.
+        auto* name = new QTableWidgetItem(QString::fromStdString(p.name));
+        Qt::ItemFlags nf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
+        if (!p.force_loaded) nf |= Qt::ItemIsDragEnabled;
+        name->setFlags(nf);
+        if (p.force_loaded) {
+            name->setForeground(fixed_color);
+        } else if (p.missing_master) {
+            QFont f = name->font();
+            f.setItalic(true);
+            name->setFont(f);
+            name->setForeground(missing_color);
+        }
+        QString tip;
+        if (!p.owner_mod.empty())
+            tip += tr("Installed by: %1\n").arg(QString::fromStdString(p.owner_mod));
+        if (!p.masters.empty()) {
+            QStringList m;
+            for (const auto& master : p.masters) m << QString::fromStdString(master);
+            tip += tr("Masters: %1\n").arg(m.join(", "));
+        }
+        if (p.missing_master) tip += tr("A required master is not installed.");
+        if (!tip.isEmpty()) name->setToolTip(tip.trimmed());
+        table_->setItem(i, 1, name);
+
+        // Column 2: flags.
+        QStringList marks;
+        if (p.is_light) marks << flag_marks[0];
+        else if (p.is_medium) marks << flag_marks[1];
+        else if (p.is_master) marks << flag_marks[2];
+        if (p.is_cc) marks << tr("CC");
+        if (p.is_game_native) marks << tr("Native");
+        auto* flags = new QTableWidgetItem(marks.join(" "));
+        Qt::ItemFlags ff = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
+        if (!p.force_loaded) ff |= Qt::ItemIsDragEnabled;
+        flags->setFlags(ff);
+        if (p.force_loaded) flags->setForeground(fixed_color);
+        table_->setItem(i, 2, flags);
+
+        // Column 3: priority.
+        auto* prio = new QTableWidgetItem(QString::number(p.priority));
+        Qt::ItemFlags pf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
+        if (!p.force_loaded) pf |= Qt::ItemIsDragEnabled;
+        prio->setFlags(pf);
+        if (p.force_loaded) prio->setForeground(fixed_color);
+        table_->setItem(i, 3, prio);
+
+        // Column 4: mod index.
+        auto* idx = new QTableWidgetItem(QString::fromStdString(p.mod_index_text));
+        Qt::ItemFlags xf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
+        if (!p.force_loaded) xf |= Qt::ItemIsDragEnabled;
+        idx->setFlags(xf);
+        if (p.force_loaded) idx->setForeground(fixed_color);
+        table_->setItem(i, 4, idx);
+    }
+    syncing_ = false;
+}
+
+void PluginsTab::sync_enabled(const std::vector<engine::GamePlugin>& plugins) {
+    syncing_ = true;
+    const int rows = std::min(static_cast<int>(plugins.size()), table_->rowCount());
+    for (int i = 0; i < rows; ++i) {
+        const auto& p = plugins[static_cast<size_t>(i)];
+        QTableWidgetItem* item = table_->item(i, 0);
+        if (!item || p.force_loaded) continue;
+        item->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
+    }
+    syncing_ = false;
 }
 
 // --- ArchivesTab ---

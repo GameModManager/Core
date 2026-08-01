@@ -213,4 +213,11 @@ DataTab* RightPanel::data_tab() const {
     return data_tab_;
 }
 
+PluginsTab* RightPanel::plugins_tab() const {
+    auto it = tabs_.find("plugins");
+    if (it != tabs_.end())
+        return qobject_cast<PluginsTab*>(it->second);
+    return nullptr;
+}
+
 }  // namespace ui
