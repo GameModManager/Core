@@ -8,6 +8,8 @@
 #include <QMessageLogContext>
 #include <QSettings>
 #include <QStackedWidget>
+#include <QStyle>
+#include <QStyleFactory>
 #include <QTranslator>
 
 #include <cstdio>
@@ -157,13 +159,40 @@ int main(int argc, char *argv[])
     engine::Logger::instance().info("GameModManager v" + std::string(VERSION) + " started");
 
     // Initialize theme system — default uses palette() so desktop colors apply.
-    // Discover themes and apply the persisted selection (QSettings "theme").
+    // Discover themes and apply the persisted selection. A persisted Qt
+    // built-in style (QSettings "style", e.g. "Fusion") wins over the QSS
+    // theme ("theme") and is applied WITHOUT any custom QSS. Capture the
+    // native style name first so "Default (system)" can restore it later.
     // Runs after logger setup so discovery/applied lines land in the log file.
+    // Capture the native (platform) style name in canonical QStyleFactory
+    // casing before any user-selected style is applied - objectName() is
+    // lowercase ("breeze") while keys() is mixed case ("Breeze"), and
+    // QStyleFactory::create() is case-sensitive.
+    QString native_style_name = app.style()->objectName();
+    for (const auto& key : QStyleFactory::keys()) {
+        if (key.compare(native_style_name, Qt::CaseInsensitive) == 0) {
+            native_style_name = key;
+            break;
+        }
+    }
     engine::ThemeManager theme_manager;
     theme_manager.discover_themes(QApplication::applicationDirPath().toStdString());
     engine::StyleManager style_manager(theme_manager);
-    style_manager.apply_theme(QSettings("GameModManager", "GameModManager")
-                                  .value("theme", "default").toString().toStdString());
+    const QSettings theme_settings("GameModManager", "GameModManager");
+    const QString qt_style = theme_settings.value("style").toString();
+    if (!qt_style.isEmpty()) {
+        if (QStyle* st = QStyleFactory::create(qt_style)) {
+            app.setStyle(st);
+            engine::Logger::instance().info("Applied Qt style: " + qt_style.toStdString());
+        } else {
+            engine::Logger::instance().warn("Unknown Qt style: " + qt_style.toStdString());
+            style_manager.apply_theme(
+                theme_settings.value("theme", "default").toString().toStdString());
+        }
+    } else {
+        style_manager.apply_theme(
+            theme_settings.value("theme", "default").toString().toStdString());
+    }
 
     // Parse remaining flags
     bool headless = parser.isSet(launchOpt);
@@ -449,6 +478,7 @@ int main(int argc, char *argv[])
                 main_window->set_plugin_loader(&plugin_loader);
                 main_window->set_managed_games(&managed_games);
                 main_window->set_style_manager(&style_manager);
+                main_window->set_native_style_name(native_style_name);
 
                 // Forward focus requests from other instances to this window
                 QObject::connect(&instance_guard, &engine::SingleInstanceGuard::focusRequested,
@@ -491,6 +521,7 @@ int main(int argc, char *argv[])
     window.set_plugin_loader(&plugin_loader);
     window.set_managed_games(&managed_games);
     window.set_style_manager(&style_manager);
+    window.set_native_style_name(native_style_name);
 
     // Forward focus requests from other instances to this window
     QObject::connect(&instance_guard, &engine::SingleInstanceGuard::focusRequested,
