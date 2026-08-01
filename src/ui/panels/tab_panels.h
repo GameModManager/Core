@@ -76,7 +76,8 @@ signals:
                            const std::filesystem::path& file_path,
                            const std::string& source_type,
                            const std::string& source_id,
-                           int file_id);
+                           int file_id,
+                           const std::string& display_name);
     void pause_requested(const std::string& id);
     void resume_requested(const std::string& id);
     // Emitted after a download entry (and its file) has been removed, so the

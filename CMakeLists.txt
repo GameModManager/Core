@@ -114,6 +114,7 @@ set(ENGINE_SOURCES
     src/engine/pipeline/pipeline.cpp
     src/engine/pipeline/fetch_stage.cpp
     src/engine/pipeline/extract_stage.cpp
+    src/engine/pipeline/fomod_stage.cpp
     src/engine/pipeline/install_stage.cpp
     src/engine/pipeline/stage_stage.cpp
     src/engine/pipeline/resolve_stage.cpp
@@ -283,6 +284,7 @@ add_executable(pipeline_test tests/engine/pipeline_test.cpp
     src/engine/pipeline/pipeline.cpp
     src/engine/pipeline/fetch_stage.cpp
     src/engine/pipeline/extract_stage.cpp
+    src/engine/pipeline/fomod_stage.cpp
     src/engine/pipeline/install_stage.cpp
     src/engine/pipeline/stage_stage.cpp
     src/engine/pipeline/resolve_stage.cpp
@@ -331,6 +333,7 @@ add_executable(registry_test tests/engine/registry_test.cpp
     src/engine/pipeline/pipeline.cpp
     src/engine/pipeline/fetch_stage.cpp
     src/engine/pipeline/extract_stage.cpp
+    src/engine/pipeline/fomod_stage.cpp
     src/engine/pipeline/install_stage.cpp
     src/engine/pipeline/stage_stage.cpp
     src/engine/pipeline/resolve_stage.cpp
@@ -397,6 +400,7 @@ add_executable(perf_benchmark tests/perf/benchmark_test.cpp
     src/engine/pipeline/pipeline.cpp
     src/engine/pipeline/fetch_stage.cpp
     src/engine/pipeline/extract_stage.cpp
+    src/engine/pipeline/fomod_stage.cpp
     src/engine/pipeline/install_stage.cpp
     src/engine/pipeline/stage_stage.cpp
     src/engine/pipeline/resolve_stage.cpp

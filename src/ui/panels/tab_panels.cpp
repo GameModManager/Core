@@ -523,7 +523,9 @@ void DownloadsTab::on_cell_double_clicked(int row, int column) {
                     std::filesystem::exists(entry.file_path)) {
                     emit install_requested(id, entry.file_path,
                         entry.parent_mod_id.empty() ? "" : "nexus",
-                        entry.parent_mod_id, entry.file_id);
+                        entry.parent_mod_id, entry.file_id,
+                        entry.name_item ? entry.name_item->text().toStdString()
+                                        : std::string());
                 }
             }
             return;
@@ -571,7 +573,9 @@ void DownloadsTab::on_custom_context_menu(const QPoint& pos) {
         this, [this, id, entry]() {
             emit install_requested(id, entry.file_path,
                 entry.parent_mod_id.empty() ? "" : "nexus",
-                entry.parent_mod_id, entry.file_id);
+                entry.parent_mod_id, entry.file_id,
+                entry.name_item ? entry.name_item->text().toStdString()
+                                : std::string());
         });
     install_action->setEnabled(can_install);
 

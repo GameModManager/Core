@@ -194,6 +194,13 @@ DownloadsTab* RightPanel::downloads_tab() const {
     return nullptr;
 }
 
+void RightPanel::show_downloads_tab() {
+    auto* dt = downloads_tab();
+    if (!dt) return;
+    int index = tab_widget_->indexOf(dt);
+    if (index >= 0) tab_widget_->setCurrentIndex(index);
+}
+
 ConflictsTab* RightPanel::conflicts_tab() const {
     auto it = tabs_.find("conflicts");
     if (it != tabs_.end())

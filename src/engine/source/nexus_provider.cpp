@@ -228,6 +228,13 @@ bool NexusProvider::fetch(const Mod& mod, PipelineContext& ctx,
     if (mod.download_source_type != "nexus") return false;
 
     const auto& nxm = mod.download_nxm;
+
+    // Direct-URL path: the caller already resolved a working download URL, so
+    // no API auth or URL resolution is needed.
+    if (!mod.download_url.empty()) {
+        return download_from_url(mod.download_url, ctx, dest_path);
+    }
+
     if (nxm.file_id <= 0) {
         Logger::instance().error("NexusProvider: invalid file_id");
         return false;
@@ -396,6 +403,12 @@ bool NexusProvider::fetch(const Mod& mod, PipelineContext& ctx,
     }
 
     // ---- Step 2: Download the file ----
+    return download_from_url(download_url, ctx, dest_path);
+}
+
+bool NexusProvider::download_from_url(const std::string& download_url,
+                                      PipelineContext& ctx,
+                                      const std::filesystem::path& dest_path) {
     Logger::instance().debug("NexusProvider: downloading from Nexus...");
     long dl_code = 0;
 

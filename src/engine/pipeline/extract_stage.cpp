@@ -80,13 +80,18 @@ bool ExtractStage::execute(Mod& mod, PipelineContext& ctx) {
     std::string mod_name;
     std::string mod_version;
 
-    // Check for metadata.xml at the top level of extracted content
-    auto meta_xml = staging_dir / "metadata.xml";
-    if (std::filesystem::exists(meta_xml)) {
-        auto content = read_file_text(meta_xml);
-        if (!content.empty()) {
-            mod_name = xml_find_tag(content, "name");
-            mod_version = xml_find_tag(content, "version");
+    // Check for the game's metadata file at the top level of extracted content.
+    // Only XML-metadata games (Isaac) derive the display name from it; for
+    // MO2-style games the mod name comes from the folder structure below and
+    // the archive stem - never from metadata.xml.
+    if (!ctx.metadata_file.empty() && ctx.metadata_file != "meta.ini") {
+        auto meta_xml = staging_dir / ctx.metadata_file;
+        if (std::filesystem::exists(meta_xml)) {
+            auto content = read_file_text(meta_xml);
+            if (!content.empty()) {
+                mod_name = xml_find_tag(content, "name");
+                mod_version = xml_find_tag(content, "version");
+            }
         }
     }
 

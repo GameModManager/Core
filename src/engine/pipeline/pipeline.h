@@ -34,6 +34,11 @@ struct PipelineContext {
     // Isaac-style (mods go into mods/ModName/) = true.
     bool deploy_include_mod_id = false;
 
+    // Per-game metadata format inside mod folders. MO2-style games default to
+    // "meta.ini"; games whose engine reads XML metadata from mod folders
+    // (Isaac) register the filename via the metadata_file hook.
+    std::string metadata_file = "meta.ini";
+
     // When using OverlayFS deploy strategy, staging_dir holds the mod symlink tree
     // that gets layered over game_dir at launch. Empty = deploy directly to game_dir.
     std::filesystem::path staging_dir;

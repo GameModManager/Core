@@ -37,6 +37,10 @@ struct Mod {
         std::string nexus_domain;  // e.g. "skyrimspecialedition"
     } download_nxm;
 
+    // Pre-resolved direct download URL. When set, providers download from this
+    // URL directly instead of resolving one themselves.
+    std::string download_url;
+
     // Archive filename determined during fetch (e.g. "mod-12345-1-0.zip")
     std::string archive_filename;
 };
