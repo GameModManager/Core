@@ -1,411 +1,433 @@
-/* Dark theme — hardcoded dark palette. Tokens come from tokens.json. */
+/* Dark theme — inspired by MO2's "vs15 Dark" (color-first approach).
+   Color-only: changes NO element dimensions (no padding, margins, widths,
+   heights, min-sizes, or border widths) so layouts stay identical to the
+   default theme. Hover/focus/pressed/selected states are conveyed purely
+   through colors. Tokens come from tokens.json. */
+
+/* Remove focus outline (cosmetic only, no layout impact) */
+* {
+  outline: 0;
+}
+
+/* Make `background-color` work for :hover/:focus/:pressed states on tool
+   buttons without adding a border (same trick as vs15 Dark) */
+QToolButton {
+  border: none;
+}
 
 QToolTip {
-    color: $fg;
-    background-color: $bgInput;
-    border: 1px solid $border;
+  color: $fg;
+  background-color: $bgInput;
 }
 
 QWidget {
-    background-color: $bg;
-    color: $fg;
-    selection-background-color: $selected;
-    selection-color: white;
+  background-color: $bg;
+  color: $fg;
+  selection-background-color: $selected;
+  selection-color: white;
+}
+
+QWidget:disabled {
+  color: $fgMuted;
 }
 
 QMainWindow, QDialog {
-    background-color: $bg;
-}
-
-QGroupBox {
-    border: 1px solid $border;
-    border-radius: 4px;
-    margin-top: 10px;
-}
-
-QGroupBox::title {
-    subcontrol-origin: margin;
-    left: 8px;
-    padding: 0 4px;
+  background-color: $bg;
 }
 
 QPushButton {
-    background-color: $bgAlt;
-    border: 1px solid $border;
-    border-radius: 4px;
-    padding: 4px 12px;
+  background-color: $bgAlt;
+  color: $fg;
 }
 
-QPushButton:hover {
-    background-color: $bgInput;
+QPushButton:hover, QPushButton:focus {
+  background-color: $accent;
+  color: $accentFg;
 }
 
 QPushButton:pressed {
-    background-color: $bg;
+  background-color: $bgInput;
+}
+
+QPushButton:checked {
+  background-color: $accent;
+  color: $accentFg;
 }
 
 QPushButton:disabled {
-    color: $fgMuted;
+  background-color: $bgAlt;
+  color: $fgMuted;
 }
 
 QPushButton:default {
-    background-color: $accent;
-    color: $accentFg;
-    border-color: $accent;
+  background-color: $accent;
+  color: $accentFg;
 }
 
-QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox,
+QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox,
 QComboBox, QDateEdit, QTimeEdit, QDateTimeEdit {
-    background-color: $bgInput;
-    border: 1px solid $border;
-    border-radius: 3px;
-    padding: 3px 6px;
+  background-color: $bgInput;
+  color: $fg;
 }
 
-QComboBox::drop-down {
-    border: none;
-    width: 18px;
+QLineEdit:hover, QTextEdit:hover, QPlainTextEdit:hover,
+QAbstractSpinBox:hover, QComboBox:hover {
+  background-color: $bgAlt;
+}
+
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus,
+QAbstractSpinBox:focus, QComboBox:focus, QComboBox:on {
+  background-color: $bgAlt;
+  color: $fg;
 }
 
 QComboBox QAbstractItemView {
-    background-color: $bgAlt;
-    border: 1px solid $border;
-    selection-background-color: $selected;
-    selection-color: white;
+  background-color: $bgAlt;
+  color: $fg;
+  selection-background-color: $selected;
+  selection-color: white;
 }
 
-QTreeView, QTableView, QListView, QTreeWidget, QTableWidget, QListWidget {
-    background-color: $bgInput;
-    alternate-background-color: $bgAlt;
-    border: 1px solid $border;
+QAbstractItemView {
+  color: $fg;
+  background-color: $bgInput;
+  alternate-background-color: $bgAlt;
+  border-color: $border;
 }
 
-QTreeView::item, QTableView::item, QListView::item {
-    padding: 2px;
+QAbstractItemView::item:selected,
+QAbstractItemView::item:selected:hover,
+QAbstractItemView::item:alternate:selected,
+QAbstractItemView::item:alternate:selected:hover {
+  color: white;
+  background-color: $selected;
 }
 
-QTreeView::item:hover, QTableView::item:hover {
-    background-color: $bgAlt;
+QAbstractItemView::item:hover,
+QAbstractItemView::item:alternate:hover {
+  background-color: $bgAlt;
+}
+
+QHeaderView {
+  border: none;
 }
 
 QHeaderView::section {
-    background-color: $bgAlt;
-    color: $fg;
-    border: none;
-    border-right: 1px solid $border;
-    border-bottom: 1px solid $border;
-    padding: 4px 6px;
+  background-color: $bgAlt;
+  color: $fg;
+}
+
+QHeaderView::section:hover {
+  background-color: $bg;
+  color: $fg;
 }
 
 QTabWidget::pane {
-    border: 1px solid $border;
+  border-color: $border;
 }
 
 QTabBar::tab {
-    background-color: $bgAlt;
-    border: 1px solid $border;
-    border-bottom: none;
-    padding: 5px 14px;
-    margin-right: 2px;
-    border-top-left-radius: 3px;
-    border-top-right-radius: 3px;
+  background-color: transparent;
+  color: $fg;
+  border: none;
 }
 
-QTabBar::tab:selected {
-    background-color: $bgInput;
-    border-bottom-color: $bgInput;
+QTabBar::tab:hover {
+  background-color: $bgAlt;
 }
 
-QTabBar::tab:hover:!selected {
-    background-color: $bgInput;
+QTabBar::tab:selected,
+QTabBar::tab:selected:hover {
+  background-color: $accent;
+  color: $accentFg;
+}
+
+QTabBar::tab:disabled {
+  background-color: transparent;
+  color: $fgMuted;
 }
 
 QMenuBar {
-    background-color: $bg;
+  background-color: $bg;
 }
 
 QMenuBar::item:selected {
-    background-color: $bgAlt;
+  background-color: $bgAlt;
 }
 
 QMenu {
-    background-color: $bgAlt;
-    border: 1px solid $border;
-}
-
-QMenu::item {
-    padding: 4px 20px;
+  background-color: $bgAlt;
+  color: $fg;
+  border-color: $border;
 }
 
 QMenu::item:selected {
-    background-color: $selected;
-    color: white;
+  background-color: $selected;
+  color: white;
+}
+
+QMenu::item:disabled {
+  background-color: transparent;
+  color: $fgMuted;
 }
 
 QMenu::separator {
-    height: 1px;
-    background: $border;
-    margin: 4px 8px;
+  background-color: $border;
 }
 
 QStatusBar {
-    background-color: $bgAlt;
+  background-color: $bgAlt;
 }
 
 QStatusBar::item {
-    border: none;
+  border: none;
 }
 
-QScrollBar:vertical {
-    background: $bg;
-    width: 12px;
-    margin: 0;
+QScrollBar {
+  background-color: $bgAlt;
 }
 
-QScrollBar::handle:vertical {
-    background: $border;
-    border-radius: 5px;
-    min-height: 24px;
-    margin: 2px;
+QScrollBar::handle {
+  background-color: $border;
 }
 
-QScrollBar::handle:vertical:hover {
-    background: $fgMuted;
-}
-
-QScrollBar:horizontal {
-    background: $bg;
-    height: 12px;
-}
-
-QScrollBar::handle:horizontal {
-    background: $border;
-    border-radius: 5px;
-    min-width: 24px;
-    margin: 2px;
-}
-
-QScrollBar::handle:horizontal:hover {
-    background: $fgMuted;
+QScrollBar::handle:hover {
+  background-color: $fgMuted;
 }
 
 QScrollBar::add-line, QScrollBar::sub-line {
-    height: 0;
-    width: 0;
+  background-color: $bgAlt;
+  border: none;
 }
 
 QScrollBar::add-page, QScrollBar::sub-page {
-    background: transparent;
+  background: transparent;
 }
 
 QProgressBar {
-    background-color: $bgInput;
-    border: 1px solid $border;
-    border-radius: 3px;
-    text-align: center;
+  background-color: $bgInput;
+  color: $fg;
 }
 
 QProgressBar::chunk {
-    background-color: $accent;
-}
-
-QCheckBox::indicator {
-    width: 14px;
-    height: 14px;
-    border-radius: 3px;
-}
-
-QCheckBox::indicator:unchecked {
-    border: 1px solid $border;
-    background: $bgInput;
-}
-
-QCheckBox::indicator:checked {
-    border: 1px solid $accent;
-    background: $accent;
+  background: $accent;
 }
 
 QToolBar {
-    background: $bg;
-    border-bottom: 1px solid $border;
-    spacing: 2px;
+  background-color: $bg;
 }
 
 QToolButton {
-    background: transparent;
-    border-radius: 3px;
-    padding: 3px;
+  background-color: transparent;
 }
 
-QToolButton:hover {
-    background: $bgAlt;
+QToolButton:hover, QToolButton:focus {
+  background-color: $bgAlt;
 }
 
 QToolButton:pressed {
-    background: $bgInput;
+  background-color: $selected;
 }
 
 QToolButton:checked {
-    background: $selected;
+  background-color: $selected;
 }
 
-/* -- App-specific named widgets ------------------------ */
+QGroupBox::indicator,
+QTreeView::indicator,
+QCheckBox::indicator,
+QRadioButton::indicator {
+  background-color: $bgInput;
+  border-color: $border;
+  width: 13px;
+  height: 13px;
+  border-style: solid;
+  border-width: 1px;
+}
+
+QGroupBox::indicator:checked,
+QTreeView::indicator:checked,
+QCheckBox::indicator:checked {
+  background-color: $accent;
+  border-color: $accent;
+}
+
+QGroupBox::indicator:hover,
+QTreeView::indicator:hover,
+QCheckBox::indicator:hover,
+QRadioButton::indicator:hover {
+  background-color: $bgAlt;
+  border-color: $accent;
+}
+
+QRadioButton::indicator {
+  border-radius: 7px;
+}
+
+QRadioButton::indicator:checked {
+  background-color: $accent;
+  border-color: $accent;
+}
+
+/* -- App-specific named widgets ------------------------
+   Dimension properties match the embedded default theme exactly;
+   only colors are swapped. */
 
 /* Game lock overlay */
 #gameLockOverlay {
-    background-color: rgba(0, 0, 0, 160);
-    color: white;
+  background-color: rgba(0, 0, 0, 160);
+  color: white;
 }
 
 #gameLockOverlay QLabel {
-    color: white;
-    font-size: 20px;
+  color: white;
+  font-size: 20px;
 }
 
 #gameLockOverlay QPushButton {
-    font-size: 14px;
+  font-size: 14px;
 }
 
 #unlockBtn:hover {
-    background-color: $accent;
+  background-color: $accent;
 }
 
 #killBtn {
-    background-color: $dangerBg;
-    color: white;
+  background-color: $dangerBg;
+  color: white;
 }
 
 #killBtn:hover {
-    background-color: $danger;
+  background-color: $danger;
 }
 
 #gameLockOverlay QTreeWidget {
-    color: white;
-    background-color: rgba(0, 0, 0, 180);
+  color: white;
+  background-color: rgba(0, 0, 0, 180);
 }
 
 #gameLockOverlay QTreeWidget::item {
-    background-color: transparent;
+  background-color: transparent;
 }
 
 #gameLockOverlay QTreeWidget::item:selected {
-    color: white;
-    background-color: rgba(255, 255, 255, 30);
+  color: white;
+  background-color: rgba(255, 255, 255, 30);
 }
 
 #gameLockOverlay QHeaderView::section {
-    color: white;
-    background-color: rgba(50, 50, 50, 200);
+  color: white;
+  background-color: rgba(50, 50, 50, 200);
 }
 
 #processTreeLabel {
-    color: white;
+  color: white;
 }
 
 /* Instance switcher */
 #pathLabel {
-    color: $fgMuted;
-    font-size: 10px;
+  color: $fgMuted;
+  font-size: 10px;
 }
 
 /* Separator rows */
 QWidget#separatorRow {
-    font-weight: bold;
+  font-weight: bold;
 }
 
 /* Console panel */
 #consoleOutput {
-    font-family: monospace;
+  font-family: monospace;
 }
 
 /* Debug window */
 QLabel#debugKey {
-    font-weight: bold;
+  font-weight: bold;
 }
 
 QLabel#debugValue {
-    font-family: monospace;
+  font-family: monospace;
 }
 
 /* Statistics dialog */
 QLabel#statLabel {
-    font-weight: bold;
+  font-weight: bold;
 }
 
 /* Pipeline window */
 #pipelineHeader {
-    font-weight: bold;
+  font-weight: bold;
 }
 
 #pipelineCard {
-    background-color: $bgInput;
-    border: 1px solid $border;
-    border-radius: 4px;
+  background-color: $bgInput;
+  border: 1px solid $border;
+  border-radius: 4px;
 }
 
 #pipelineCardHeader {
-    border-bottom: 1px solid $border;
-    border-top-left-radius: 3px;
-    border-top-right-radius: 3px;
+  border-bottom: 1px solid $border;
+  border-top-left-radius: 3px;
+  border-top-right-radius: 3px;
 }
 
 #pipelineStageName {
-    font-weight: bold;
+  font-weight: bold;
 }
 
 #pipelineOrigin {
-    color: $fgMuted;
-    font-size: 10px;
+  color: $fgMuted;
+  font-size: 10px;
 }
 
 #pipelineStatus {
-    font-size: 10px;
-    font-weight: bold;
+  font-size: 10px;
+  font-weight: bold;
 }
 
 #pipelineDescription {
-    font-size: 10px;
+  font-size: 10px;
 }
 
 #pipelineDuration {
-    color: $fgMuted;
-    font-family: monospace;
-    font-size: 10px;
+  color: $fgMuted;
+  font-family: monospace;
+  font-size: 10px;
 }
 
 #pipelineFailBox {
-    border: 1px solid $danger;
-    background-color: rgba(198, 40, 40, 25);
-    color: $danger;
-    border-radius: 3px;
-    padding: 6px;
-    margin: 0 8px 8px 8px;
-    font-size: 10px;
+  border: 1px solid $danger;
+  background-color: rgba(198, 40, 40, 25);
+  color: $danger;
+  border-radius: 3px;
+  padding: 6px;
+  margin: 0 8px 8px 8px;
+  font-size: 10px;
 }
 
 #pipelinePlaceholder {
-    color: $fgMuted;
-    font-style: italic;
+  color: $fgMuted;
+  font-style: italic;
 }
 
 #zoomControls {
-    background-color: $bgAlt;
-    border-radius: 6px;
+  background-color: $bgAlt;
+  border-radius: 6px;
 }
 
 #zoomPercent {
-    color: $fg;
-    font-weight: bold;
-    font-size: 10px;
-    padding: 0 2px;
+  color: $fg;
+  font-weight: bold;
+  font-size: 10px;
+  padding: 0 2px;
 }
 
 /* Game selection */
 #gameSelectionSubtitle {
-    color: $fgMuted;
+  color: $fgMuted;
 }
 
 #gameSelectionNoInstall {
-    color: $fgMuted;
-    font-style: italic;
+  color: $fgMuted;
+  font-style: italic;
 }
