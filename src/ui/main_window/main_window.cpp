@@ -913,33 +913,10 @@ void MainWindow::connect_menu_actions() {
         load_mods_from_game();
     });
 
-    // Populate Columns submenu from the table header
-    auto* header = mod_view_->header();
-    auto* cols_menu = menu_bar_->findChild<QMenu*>("Columns", Qt::FindDirectChildrenOnly);
-    if (!cols_menu) {
-        // Find columns menu by iterating menus
-        for (auto* m : menu_bar_->actions()) {
-            if (m->menu() && m->text() == "&View") {
-                for (auto* sub : m->menu()->actions()) {
-                    if (sub->menu() && sub->text() == "Columns") {
-                        cols_menu = sub->menu();
-                        break;
-                    }
-                }
-                break;
-            }
-        }
-    }
-    if (cols_menu) {
-        for (int i = 0; i < header->count(); ++i) {
-            auto* act = cols_menu->addAction(header->model()->headerData(i, Qt::Horizontal).toString());
-            act->setCheckable(true);
-            act->setChecked(!header->isSectionHidden(i));
-            connect(act, &QAction::toggled, this, [header, i](bool show) {
-                header->setSectionHidden(i, !show);
-            });
-        }
-    }
+    connect(menu_bar_, &AppMenuBar::icon_size_requested, this, [this](int size) {
+        toolbar_area_->setIconSize(QSize(size, size));
+        toolbar_->set_icon_size(size);
+    });
 
     // --- Tools ---
     connect(menu_bar_, &AppMenuBar::tool_requested, this, [this](const QString& tool_id, const QString& game_id) {

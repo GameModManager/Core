@@ -2,6 +2,7 @@
 #include "ui/main_window/main_window.h"
 
 #include <QAction>
+#include <QActionGroup>
 #include <QApplication>
 #include <QDesktopServices>
 #include <QMessageBox>
@@ -120,7 +121,21 @@ void AppMenuBar::build_view_menu() {
 
     menu->addSeparator();
 
-    columns_menu_ = menu->addMenu(tr("Columns"));
+    auto* icons_menu = menu->addMenu(tr("Icons"));
+    auto* icons_group = new QActionGroup(this);
+    icons_group->setExclusive(true);
+    auto add_icon_size = [&](const QString& label, int size, bool checked) {
+        auto* act = icons_menu->addAction(label);
+        act->setCheckable(true);
+        act->setChecked(checked);
+        icons_group->addAction(act);
+        connect(act, &QAction::triggered, this, [this, size]() {
+            emit icon_size_requested(size);
+        });
+    };
+    add_icon_size(tr("Small"), 24, true);
+    add_icon_size(tr("Medium"), 32, false);
+    add_icon_size(tr("Large"), 48, false);
 
     menu->addSeparator();
 

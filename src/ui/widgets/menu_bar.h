@@ -46,6 +46,7 @@ signals:
     void toggle_status_bar(bool visible);
     void toggle_console(bool visible);
     void pipeline_requested();
+    void icon_size_requested(int size);
     void refresh_requested();
 
     // Tools
@@ -68,7 +69,6 @@ private:
     void build_help_menu();
 
     QMenu* recent_menu_ = nullptr;
-    QMenu* columns_menu_ = nullptr;
     QMenu* tools_menu_ = nullptr;
     QAction* tools_separator_ = nullptr;
     QAction* sort_action_ = nullptr;

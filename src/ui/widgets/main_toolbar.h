@@ -19,6 +19,7 @@ public:
     void clear_exec_buttons();
 
     void set_vertical(bool vertical);
+    void set_icon_size(int size);
     [[nodiscard]] bool is_vertical() const { return vertical_; }
 
 signals:
