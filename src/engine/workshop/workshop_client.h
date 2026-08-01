@@ -27,7 +27,8 @@ struct WorkshopItem {
 // removed/failed Workshop IDs, and rate-limits requests.
 class WorkshopClient {
 public:
-    explicit WorkshopClient(const std::string& db_path);
+    explicit WorkshopClient(const std::string& db_path,
+                            int rate_limit = 60, int rate_window = 3600);
 
     // Fetch details for a Workshop ID. Returns cached data if available.
     // Returns nullopt if the ID is known-dead or on network failure.
@@ -48,6 +49,9 @@ public:
     // Check if the rate limit allows another request.
     [[nodiscard]] bool can_request() const;
 
+    // Update the rate limit (requests per window) at runtime.
+    void set_rate_limit(int limit, int window);
+
     // Get cached item from SQLite (no network).
     std::optional<WorkshopItem> get_cached(int64_t workshop_id) const;
 
@@ -66,10 +70,10 @@ private:
     // Dead IDs (permanently failed)
     std::unordered_set<int64_t> dead_ids_;
 
-    // Rate limiting: 60 requests per hour
+    // Rate limiting: defaults 60 requests per hour, configurable.
     std::vector<double> request_timestamps_;
-    static constexpr int RATE_LIMIT = 60;         // requests per window
-    static constexpr int RATE_WINDOW = 3600;      // seconds (1 hour)
+    int rate_limit_ = 60;          // requests per window
+    int rate_window_ = 3600;       // seconds (1 window)
     static constexpr int RETRY_COOLDOWN = 3600;   // seconds before retrying a failed ID
 };
 

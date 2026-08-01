@@ -16,6 +16,7 @@ public:
     // Returns the real Nexus file metadata (files/{file}.json): the archive
     // name (file_name) for correct naming/extension and the display name.
     SourceDownloadInfo resolve_download_info(const Mod& mod) const override;
+    std::string display_name() const override;
 
 private:
     // Shared download routine for a resolved URL (used by both the API-auth

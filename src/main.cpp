@@ -6,7 +6,6 @@
 #include <QCommandLineParser>
 #include <QDir>
 #include <QMessageLogContext>
-#include <QSettings>
 #include <QStackedWidget>
 #include <QStyle>
 #include <QStyleFactory>
@@ -28,6 +27,7 @@ static void qt_message_filter(QtMsgType type, const QMessageLogContext& ctx, con
 
 #include "ui/main_window/main_window.h"
 #include "ui/game_selection/game_selection_widget.h"
+#include "ui/settings/settings.h"
 #include "engine/log/logger.h"
 #include "engine/log/crash_handler.h"
 #include "engine/instance/instance.h"
@@ -87,8 +87,7 @@ int main(int argc, char *argv[])
     // language and ships as a no-op translation, so every .qm lives at
     // :/i18n/<language_COUNTRY>.qm (named after the .ts, e.g. en_US.qm).
     QTranslator translator;
-    const QString language = QSettings("GameModManager", "GameModManager")
-                                 .value("language", "en_US").toString();
+    const QString language = Settings::instance().language();
     if (translator.load(":/i18n/" + language + ".qm"))
         app.installTranslator(&translator);
 
@@ -158,9 +157,20 @@ int main(int argc, char *argv[])
     engine::Logger::instance().set_log_file(log_path());
     engine::Logger::instance().info("GameModManager v" + std::string(VERSION) + " started");
 
+    // Apply app settings that affect startup behavior.
+    auto& settings = Settings::instance();
+    const QString instances_dir = settings.instances_dir();
+    if (!instances_dir.isEmpty())
+        engine::set_instances_dir_override(instances_dir.toStdString());
+    const QString log_level = settings.log_level();
+    if (log_level == "debug")      engine::Logger::instance().set_level(engine::LogLevel::Debug);
+    else if (log_level == "warn")  engine::Logger::instance().set_level(engine::LogLevel::Warn);
+    else if (log_level == "error") engine::Logger::instance().set_level(engine::LogLevel::Error);
+    // "info" is the default.
+
     // Initialize theme system — default uses palette() so desktop colors apply.
     // Discover themes and apply the persisted selection. A persisted Qt
-    // built-in style (QSettings "style", e.g. "Fusion") wins over the QSS
+    // built-in style ("style", e.g. "Fusion") wins over the QSS
     // theme ("theme") and is applied WITHOUT any custom QSS. Capture the
     // native style name first so "Default (system)" can restore it later.
     // Runs after logger setup so discovery/applied lines land in the log file.
@@ -178,20 +188,17 @@ int main(int argc, char *argv[])
     engine::ThemeManager theme_manager;
     theme_manager.discover_themes(QApplication::applicationDirPath().toStdString());
     engine::StyleManager style_manager(theme_manager);
-    const QSettings theme_settings("GameModManager", "GameModManager");
-    const QString qt_style = theme_settings.value("style").toString();
+    const QString qt_style = Settings::instance().style();
     if (!qt_style.isEmpty()) {
         if (QStyle* st = QStyleFactory::create(qt_style)) {
             app.setStyle(st);
             engine::Logger::instance().info("Applied Qt style: " + qt_style.toStdString());
         } else {
             engine::Logger::instance().warn("Unknown Qt style: " + qt_style.toStdString());
-            style_manager.apply_theme(
-                theme_settings.value("theme", "default").toString().toStdString());
+            style_manager.apply_theme(Settings::instance().theme().toStdString());
         }
     } else {
-        style_manager.apply_theme(
-            theme_settings.value("theme", "default").toString().toStdString());
+        style_manager.apply_theme(Settings::instance().theme().toStdString());
     }
 
     // Parse remaining flags
