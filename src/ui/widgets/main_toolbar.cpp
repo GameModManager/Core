@@ -55,6 +55,11 @@ void MainToolbar::set_vertical(bool vertical) {
     }
 }
 
+void MainToolbar::set_icon_size(int size) {
+    for (auto* btn : gmm_buttons_) btn->setIconSize(QSize(size, size));
+    for (auto* btn : exec_buttons_) btn->setIconSize(QSize(size, size));
+}
+
 QToolButton* MainToolbar::add_gmm_button(const QString& tooltip, const QString& icon_name) {
     auto* btn = new QToolButton(this);
     btn->setToolTip(tooltip);
