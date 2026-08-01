@@ -50,6 +50,14 @@ class RegistrationContext:
         """
         ...
 
+    def register_category(self, category: str = "") -> None:
+        """Declare this plugin's category shown as a foldable group in the
+        Plugins settings tab (e.g. "Game Support", "Installer", "Tool").
+
+        Empty string or a category outside the known set -> "Uncategorized".
+        """
+        ...
+
     def register_stage_claim(self, stage_name: str, priority: int = 0) -> None:
         """Claim exclusive ownership of a pipeline stage.
 

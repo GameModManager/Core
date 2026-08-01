@@ -457,3 +457,59 @@ add_executable(conflict_test tests/engine/conflict_test.cpp
 target_include_directories(conflict_test PRIVATE src/)
 target_link_libraries(conflict_test PRIVATE PkgConfig::NLOHMANN_JSON)
 add_test(NAME conflict_test COMMAND conflict_test)
+
+# Settings -> Plugins tab — offscreen GUI regression test. Exercises the
+# currentItemChanged -> rebuild_info crash path, register_category grouping,
+# the filter, Enabled toggles, and the missing Path/Steam App ID rows.
+add_executable(settings_plugins_tab_test tests/ui/settings_plugins_tab_test.cpp
+    src/ui/settings/settings.cpp
+    src/ui/settings/settings_dialog.cpp
+    src/ui/settings/source_pages.cpp
+    src/engine/log/logger.cpp
+    src/engine/trace/trace_recorder.cpp
+    src/engine/theme/theme_manager.cpp
+    src/engine/theme/style_manager.cpp
+    src/engine/plugin_host/plugin_loader.cpp
+    src/engine/plugin_host/python_loader.cpp
+    src/engine/registry/stage_registry.cpp
+    src/engine/registry/hook_registry.cpp
+    src/engine/registry/game_capabilities.cpp
+    src/engine/registry/game_knowledge.cpp
+    src/engine/tools/external_tool.cpp
+    src/engine/sort/sort_registry.cpp
+    src/engine/sort/abi_sort_provider.cpp
+    src/engine/pipeline/pipeline.cpp
+    src/engine/source/source_provider.cpp
+    src/engine/source/nexus_provider.cpp
+    src/engine/source/steam_workshop_provider.cpp
+    src/engine/nexus_auth.cpp
+    src/engine/keyring.cpp
+    src/engine/workshop/workshop_client.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/instance/instance.cpp
+    src/engine/instance/instance_utils.cpp
+    src/engine/deploy/deploy_utils.cpp
+    src/engine/deploy/strategy_symlink.cpp
+    src/engine/deploy/strategy_hardlink.cpp
+    src/engine/deploy/strategy_junction.cpp
+    src/engine/deploy/strategy_overlayfs_deploy.cpp
+    src/engine/deploy/deploy_ledger.cpp
+    src/engine/deploy/order_hook.cpp
+    src/engine/launcher.cpp
+    src/engine/overlay_launcher.cpp
+    src/engine/preload_interceptor.cpp
+    src/engine/single_instance.cpp
+    src/runtime/runtime.cpp
+    src/runtime/wine_runtime.cpp
+    src/platform/${GMM_PLATFORM}/${GMM_PLATFORM}_platform.cpp
+)
+target_include_directories(settings_plugins_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_compile_definitions(settings_plugins_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
+target_link_libraries(settings_plugins_tab_test PRIVATE Qt6::Widgets Qt6::Network
+    PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::YAMLCPP PkgConfig::CURL PkgConfig::NLOHMANN_JSON
+    pybind11::embed Python3::Python)
+if(NOT WIN32)
+    target_link_libraries(settings_plugins_tab_test PRIVATE ${CMAKE_DL_LIBS})
+endif()
+add_test(NAME settings_plugins_tab_test COMMAND settings_plugins_tab_test ${CMAKE_CURRENT_BINARY_DIR}/plugins)
+set_tests_properties(settings_plugins_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

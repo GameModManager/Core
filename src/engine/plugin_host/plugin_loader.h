@@ -32,6 +32,7 @@ struct PluginInfo {
     std::string author;             // optional, via register_meta
     std::string version;            // optional, via register_meta
     std::string description;        // optional, via register_meta
+    std::string category;           // optional, via register_category
     uint32_t steam_appid = 0;
     std::string nexus_domain;
     uint32_t abi_version = 0;
