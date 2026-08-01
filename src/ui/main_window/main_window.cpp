@@ -30,6 +30,7 @@
 #include "engine/registry/game_knowledge.h"
 #include "engine/instance/instance.h"
 #include "engine/instance/instance_utils.h"
+#include "engine/plugins/plugin_database.h"
 #include "engine/nxm/nxm_router.h"
 #include "engine/nxm/managed_games.h"
 #include "engine/nxm/nxm_ipc.h"
@@ -321,8 +322,12 @@ MainWindow::MainWindow(QWidget* parent)
         }
     });
 
-    // Sync priority rewrites to metadata files after reorder
-    connect(mod_model_, &ModListModel::mod_list_changed, this, &MainWindow::sync_priorities);
+    // Sync priority rewrites to metadata files after reorder; plugin discovery
+    // for the Plugins tab follows any mod-list change (install/remove/toggle).
+    connect(mod_model_, &ModListModel::mod_list_changed, this, [this]() {
+        sync_priorities();
+        refresh_plugins_tab();
+    });
 
     // Save order on every model change
     connect(mod_model_, &ModListModel::mod_list_changed, this, [this]() {
@@ -1332,6 +1337,9 @@ void MainWindow::load_mods_from_game() {
 
     // Compute conflict stats for all mods
     recompute_conflicts();
+
+    // Populate the Plugins tab from the (now loaded) mod list.
+    refresh_plugins_tab();
 }
 
 std::filesystem::path MainWindow::resolve_mod_folder(const std::string& mod_id, const std::string& mods_subpath) const {
@@ -1651,6 +1659,72 @@ void MainWindow::refresh_data_tab() {
     dt->show_data(last_conflict_registry_, mod_model_->mods(),
                   mod_model_->is_conflict_order_reversed(),
                   mods_dir, game_mods_dir);
+}
+
+void MainWindow::refresh_plugins_tab() {
+    if (loading_) return;
+    auto* pt = right_panel_->plugins_tab();
+    if (!pt || !knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) {
+        plugins_tab_widget_ = nullptr;
+        return;  // game without plugin support (or no tab yet)
+    }
+    if (pt != plugins_tab_widget_) {  // tab was recreated on game switch
+        connect(pt, &ui::PluginsTab::toggle_requested, this, &MainWindow::on_plugin_toggle);
+        connect(pt, &ui::PluginsTab::reorder_requested, this, &MainWindow::on_plugin_reorder);
+        plugins_tab_widget_ = pt;
+    }
+
+    const auto game_native = knowledge_->get(current_game_id_, "game_native_plugins", "");
+    if (game_native.empty()) {  // tab exists but the module declares no plugin hooks
+        plugins_db_ = engine::PluginDatabase{};
+        pt->set_plugins({});
+        return;
+    }
+
+    plugins_db_.refresh(current_game_dir_, mods_dir_path(), meta_dir_path(), "",
+                        game_native);
+    plugins_db_.load_creation_club(current_game_dir_);
+    plugins_db_.sort_load_order();
+
+    // A persisted profile is the source of truth once it exists; only a first
+    // run (no profile yet) enables everything and writes it.
+    const auto profiles_dir = profiles_dir_path();
+    bool applied = false;
+    if (!profiles_dir.empty())
+        applied = plugins_db_.load_profile(profiles_dir, current_profile_name_);
+    if (!applied) {
+        plugins_db_.set_all_enabled();
+        plugins_db_.set_missing_masters();
+        if (!profiles_dir.empty())
+            plugins_db_.save_profile(profiles_dir, current_profile_name_);
+    }
+    plugins_db_.generate_mod_indexes();
+    pt->set_plugins(plugins_db_.plugins());
+}
+
+void MainWindow::on_plugin_toggle(const std::string& name, bool enabled) {
+    std::string err;
+    if (!plugins_db_.set_enabled(name, enabled, &err)) {
+        auto* pt = right_panel_->plugins_tab();
+        if (pt) pt->sync_enabled(plugins_db_.plugins());
+        if (!err.empty())
+            QMessageBox::warning(this, tr("Plugins"), QString::fromStdString(err));
+        return;
+    }
+    plugins_db_.save_profile(profiles_dir_path(), current_profile_name_);
+    auto* pt = right_panel_->plugins_tab();
+    if (pt) pt->sync_enabled(plugins_db_.plugins());
+}
+
+void MainWindow::on_plugin_reorder(int from_row, int to_row) {
+    std::string err;
+    if (!plugins_db_.move_plugin(from_row, to_row, &err)) {
+        if (!err.empty())
+            QMessageBox::warning(this, tr("Plugins"), QString::fromStdString(err));
+        return;
+    }
+    plugins_db_.save_profile(profiles_dir_path(), current_profile_name_);
+    refresh_plugins_tab();  // repopulate: new order + recomputed priorities/indexes
 }
 
 void MainWindow::on_image_diff_requested(const QString& relative_path) {
@@ -3184,6 +3258,15 @@ void MainWindow::launch_with_executable(const QString& full_path,
     lparams.is_windows_exe = (exec_path.extension().string() == ".exe" ||
                               exec_path.extension().string() == ".EXE");
     lparams.platform = platform_;
+
+    // MO2-equivalent plugin order: build + write the game's Plugins.txt (and
+    // the instance profile) right before launch. No-op for games without
+    // plugin support (no localappdata_folder hook).
+    trace.begin_stage("launch", "Sync plugin order");
+    engine::PluginDatabase::write_plugins_txt_for_launch(
+        current_game_dir_, current_instance_root_, current_game_id_,
+        steam_appid, knowledge_ ? *knowledge_ : engine::GameKnowledge(), platform_);
+    trace.end_stage("launch", true, "Plugin order synced");
 
     // Output-to-mod: capture into a per-launch scratch dir, relay on exit.
     // Empty output_mod_dir = default Overwrite capture (toolbar shortcuts).

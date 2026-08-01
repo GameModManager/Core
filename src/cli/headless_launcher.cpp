@@ -3,6 +3,7 @@
 #include "engine/instance/instance_utils.h"
 #include "engine/launcher.h"
 #include "engine/log/logger.h"
+#include "engine/plugins/plugin_database.h"
 #include "engine/registry/game_knowledge.h"
 
 #include <chrono>
@@ -42,6 +43,13 @@ int launch_game_headless(const HeadlessConfig& cfg) {
         cfg.steam_appid,
         cfg.is_windows_exe);
     lparams.platform = cfg.platform;
+
+    // MO2-equivalent plugin order: build + write the game's Plugins.txt (and
+    // the instance profile) right before launch. No-op for games without
+    // plugin support (no localappdata_folder hook).
+    engine::PluginDatabase::write_plugins_txt_for_launch(
+        cfg.game_dir, cfg.instance_root, cfg.game_id, cfg.steam_appid,
+        cfg.knowledge ? *cfg.knowledge : engine::GameKnowledge(), cfg.platform);
 
     auto launch_time = fs::file_time_type::clock::now();
     auto result = engine::launch_game(lparams);

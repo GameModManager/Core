@@ -127,6 +127,9 @@ bool Instance::write_toml() const {
     if (!info_.overwrite_dir.empty()) {
         out << "overwrite_dir = \"" << info_.overwrite_dir.string() << "\"\n";
     }
+    if (!info_.plugins_txt_path.empty()) {
+        out << "plugins_txt_path = \"" << info_.plugins_txt_path.string() << "\"\n";
+    }
     return out.good();
 }
 
@@ -168,6 +171,8 @@ bool Instance::read_toml() {
                 info_.profiles_dir = val;
             } else if (key == "overwrite_dir") {
                 info_.overwrite_dir = val;
+            } else if (key == "plugins_txt_path") {
+                info_.plugins_txt_path = val;
             }
         } else {
             // unquoted numeric/boolean

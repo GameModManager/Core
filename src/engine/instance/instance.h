@@ -35,6 +35,11 @@ struct InstanceInfo {
     std::filesystem::path cache_dir;
     std::filesystem::path profiles_dir;
     std::filesystem::path overwrite_dir;
+    // Absolute path for the game's Plugins.txt (MO2's
+    // "Ignore plugins.txt on first launch"-adjacent override). Empty means
+    // "resolve via platform" (e.g. Proton prefix AppData/Local). Persisted to
+    // instance.toml only when non-empty.
+    std::filesystem::path plugins_txt_path;
 };
 
 class Instance {
