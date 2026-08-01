@@ -42,6 +42,11 @@ public:
     // New: adds a full entry with metadata
     void add_entry(const ExecEntry& entry);
 
+    // Restores the combo selection to the entry whose path matches. Returns
+    // false if no such entry exists. Fires current_executable_changed() so the
+    // in-memory selection tracker follows.
+    bool select_executable(const QString& path);
+
 signals:
     void run_clicked();
     void shortcut_to_toolbar();
@@ -56,6 +61,11 @@ private:
     QComboBox* exec_combo_ = nullptr;
     QToolButton* run_btn_ = nullptr;
     QToolButton* shortcut_btn_ = nullptr;
+
+    // Index of the last real (non-sentinel) selection, used to restore the
+    // combo when the user picks "<Edit...>" instead of jumping to the first
+    // real entry.
+    int last_real_index_ = 1;
 };
 
 }  // namespace ui

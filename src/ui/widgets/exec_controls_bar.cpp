@@ -142,11 +142,21 @@ ExecControlsBar::ExecControlsBar(QWidget* parent)
         if (index < 0) return;
         if (exec_combo_->itemData(index).toJsonObject().isEmpty()
             && exec_combo_->count() > 1) {
-            int prev = index > 0 ? index - 1 : 1;
-            QSignalBlocker blocker(exec_combo_);
-            exec_combo_->setCurrentIndex(prev);
+            // Sentinel (index 0). Keep the combo on the last real selection,
+            // NOT the entry right after the sentinel, and don't report this
+            // artificial restore as a user selection change - it would clobber
+            // the in-memory selection with the wrong executable.
+            int restore = (last_real_index_ >= 1 && last_real_index_ < exec_combo_->count())
+                ? last_real_index_ : 1;
+            {
+                QSignalBlocker blocker(exec_combo_);
+                exec_combo_->setCurrentIndex(restore);
+            }
             emit add_entry_requested();
+            return;
         }
+        if (index >= 1)
+            last_real_index_ = index;
         // Report only real selections. The lone sentinel (empty combo after
         // clear_executables) must not be reported - it would overwrite a
         // persisted selection before the real entries are populated.
@@ -226,7 +236,9 @@ void ExecControlsBar::add_entry(const ExecEntry& entry) {
         icon = provider.icon(QFileInfo(entry.path));
     }
 
-    int insert_pos = 1;  // right after the sentinel (index 0)
+    // Append at the end (after the sentinel) so the combo order matches the
+    // order entries were added in - full rebuilds must not reverse the list.
+    int insert_pos = exec_combo_->count();
     exec_combo_->insertItem(insert_pos, icon, exec_entry_display_name(entry), QVariant(entry.toJson()));
     exec_combo_->setCurrentIndex(insert_pos);
 }
@@ -242,6 +254,17 @@ void ExecControlsBar::clear_executables() {
     exec_combo_->clear();
     // Re-add the sentinel so add_entry() works
     exec_combo_->addItem(tr(kAddNewEntryText), QVariant(QJsonObject()));
+}
+
+bool ExecControlsBar::select_executable(const QString& path) {
+    if (path.isEmpty()) return false;
+    for (int i = 1; i < exec_combo_->count(); ++i) {
+        if (item_data(i)["path"].toString() == path) {
+            exec_combo_->setCurrentIndex(i);
+            return true;
+        }
+    }
+    return false;
 }
 
 void ExecControlsBar::set_executables(const QStringList& names, const QString& default_name,
