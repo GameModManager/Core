@@ -132,18 +132,19 @@ void RightPanel::ensure_tab(const std::string& capability, const QString& label)
 
     if (capability == "plugins") {
         auto* t = new PluginsTab(tab_widget_);
-        setup_toggle_header(t->table(), {tr("Plugin"), tr("Status"), tr("Masters")});
+        setup_toggle_header(t->table(), {tr("Enabled"), tr("Plugin Name"), tr("Flags"),
+                                         tr("Priority"), tr("Mod Index")});
         tab = t;
     } else if (capability == "conflicts") {
         auto* t = new ConflictsTab(tab_widget_);
         tab = t;
     } else if (capability == "archives") {
+        // Flat tree, no header.
         auto* t = new ArchivesTab(tab_widget_);
-        setup_toggle_header(t->table(), {tr("Archive"), tr("Size"), tr("Priority")});
         tab = t;
     } else if (capability == "saves") {
         auto* t = new SavesTab(tab_widget_);
-        setup_toggle_header(t->table(), {tr("Save"), tr("Date"), tr("Size")});
+        setup_toggle_header(t->table(), {tr("Name"), tr("File")});
         tab = t;
     } else if (capability == "downloads") {
         auto* t = new DownloadsTab(tab_widget_);

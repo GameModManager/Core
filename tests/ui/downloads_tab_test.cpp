@@ -103,6 +103,10 @@ int main(int argc, char** argv) {
               "untracked row shows Install (Complete) status");
         check(table->item(manual_row, 3)->text() == "2.0 KB",
               "untracked row shows the archive size");
+        auto* status = table->item(manual_row, 2);
+        check(status->foreground().color().name() == "#4caf50" &&
+                  status->background().style() == Qt::NoBrush,
+              "Complete status: normal background, green Install text");
     }
     check(row_with_name(table, "Tracked File-32444-11-1234.zip") < 0,
           "archive backing a tracked entry is not duplicated");
@@ -145,6 +149,35 @@ int main(int argc, char** argv) {
     tab.set_downloads_dir(dl_dir);
     check(row_with_name(table, "More Mod") >= 0,
           "scan runs again after the paused entry resolves");
+    {
+        const int failed_row = row_with_name(table, "Paused dl");
+        check(failed_row >= 0, "failed row present");
+        if (failed_row >= 0) {
+            auto* status = table->item(failed_row, 2);
+            check(status && status->text() == "Failed" &&
+                      status->foreground().color() == Qt::white &&
+                      status->background().color().name() == "#f44336",
+                  "Failed status keeps the red fill with white text");
+        }
+    }
+
+    // The reserved "Removed" state (not implemented yet) renders dark-yellow
+    // text with a normal background when restored from a manifest.
+    {
+        const std::string removed_json =
+            "[{\"id\":\"removed-1\",\"name\":\"RemovedMod\",\"source\":\"Manual\","
+            "\"file_path\":\"" + manual_zip.string() + "\",\"state\":5,\"total_size\":0}]";
+        tab.deserialize(removed_json, dl_dir);
+        const int removed_row = row_with_name(table, "RemovedMod");
+        check(removed_row >= 0, "Removed-state entry restored from manifest");
+        if (removed_row >= 0) {
+            auto* status = table->item(removed_row, 2);
+            check(status && status->text() == "Removed" &&
+                      status->foreground().color().name() == "#b8860b" &&
+                      status->background().style() == Qt::NoBrush,
+                  "Removed status renders dark-yellow text on normal background");
+        }
+    }
 
     // Double-clicking the untracked row emits install_requested with the real
     // archive path and an empty source type (local archive install).
