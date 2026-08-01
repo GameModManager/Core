@@ -6,6 +6,7 @@
 #include <string>
 
 namespace engine {
+class PluginLoader;
 class StyleManager;
 }
 
@@ -21,6 +22,7 @@ public:
     SettingsDialog(engine::StyleManager* style_manager,
                    const QString& native_style_name,
                    const std::filesystem::path& instance_root,
+                   engine::PluginLoader* plugin_loader,
                    QWidget* parent = nullptr);
 
 private:
@@ -36,4 +38,5 @@ private:
     engine::StyleManager* style_manager_;
     QString native_style_name_;
     std::filesystem::path instance_root_;
+    engine::PluginLoader* plugin_loader_ = nullptr;
 };

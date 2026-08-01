@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QColor>
 #include <QSettings>
 #include <QString>
 #include <QStringList>
@@ -33,6 +34,18 @@ public:
     void set_collapsible_separators_highlight_from(bool on);
     bool collapsible_separators_highlight_to() const;
     void set_collapsible_separators_highlight_to(bool on);
+    bool collapsible_separators_asc() const;
+    void set_collapsible_separators_asc(bool on);
+    bool collapsible_separators_dsc() const;
+    void set_collapsible_separators_dsc(bool on);
+    bool collapsible_separators_icons_conflicts() const;
+    void set_collapsible_separators_icons_conflicts(bool on);
+    bool collapsible_separators_icons_flags() const;
+    void set_collapsible_separators_icons_flags(bool on);
+    bool collapsible_separators_icons_content() const;
+    void set_collapsible_separators_icons_content(bool on);
+    bool collapsible_separators_icons_version() const;
+    void set_collapsible_separators_icons_version(bool on);
     bool check_update_after_install() const;
     void set_check_update_after_install(bool on);
     bool hide_api_counter() const;
@@ -123,10 +136,27 @@ public:
     // colors -------------------------------------------------------------------
     bool color_separator_scrollbar() const;
     void set_color_separator_scrollbar(bool on);
-    QString overwritten_files_color() const;
-    void set_overwritten_files_color(const QString& color);
-    QString contained_files_color() const;
-    void set_contained_files_color(const QString& color);
+    // MO2 mod-list conflict colors; defaults match MO2's colortable.cpp.
+    QColor modlist_overwritten_loose() const;    // "Is overwritten (loose files)"
+    void set_modlist_overwritten_loose(const QColor& c);
+    QColor modlist_overwriting_loose() const;    // "Is overwriting (loose files)"
+    void set_modlist_overwriting_loose(const QColor& c);
+    QColor modlist_overwritten_archive() const;  // "Is overwritten (archives)"
+    void set_modlist_overwritten_archive(const QColor& c);
+    QColor modlist_overwriting_archive() const;  // "Is overwriting (archives)"
+    void set_modlist_overwriting_archive(const QColor& c);
+    QColor modlist_contains_file() const;        // "Mod contains selected file"
+    void set_modlist_contains_file(const QColor& c);
+    QColor plugin_list_contained() const;        // "Plugin is contained in selected mod"
+    void set_plugin_list_contained(const QColor& c);
+    QColor plugin_list_master() const;           // "Plugin is master of selected plugin"
+    void set_plugin_list_master(const QColor& c);
+
+    // plugins -------------------------------------------------------------------
+    QStringList disabled_plugins() const;        // key: plugins/disabled
+    void set_disabled_plugins(const QStringList& names);
+    bool plugin_enabled(const QString& name) const;
+    void set_plugin_enabled(const QString& name, bool enabled);
 
     // nxm -----------------------------------------------------------------------
     QString nxm_handler_check() const;      // key: nxm/handler_check

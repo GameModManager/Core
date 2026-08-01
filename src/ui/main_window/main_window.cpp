@@ -4571,8 +4571,11 @@ void MainWindow::ensure_nxm_handler_default() {
 }
 
 void MainWindow::show_settings_dialog() {
-    SettingsDialog dlg(style_manager_, native_style_name_, current_instance_root_, this);
+    SettingsDialog dlg(style_manager_, native_style_name_, current_instance_root_,
+                       plugin_loader_, this);
     dlg.exec();
+    // The separator-scrollbar setting may have changed in the dialog.
+    if (mod_view_) mod_view_->apply_scrollbar_policy();
 }
 
 void MainWindow::show_instance_statistics() {

@@ -38,6 +38,18 @@ class RegistrationContext:
         """Register this game module's identity - pure data, no behavior."""
         ...
 
+    def register_meta(
+        self,
+        author: str = "",
+        version: str = "",
+        description: str = "",
+    ) -> None:
+        """Register optional metadata for the Plugins settings tab.
+
+        All fields are optional; empty strings leave them unset.
+        """
+        ...
+
     def register_stage_claim(self, stage_name: str, priority: int = 0) -> None:
         """Claim exclusive ownership of a pipeline stage.
 

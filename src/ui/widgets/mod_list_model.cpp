@@ -1,4 +1,5 @@
 #include "ui/widgets/mod_list_model.h"
+#include "ui/settings/settings.h"
 
 #include <QBrush>
 #include <QColor>
@@ -82,6 +83,15 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
 
     const auto& mod = mods_[index.row()];
 
+    // --- Scroll mark color for the separator-marking scrollbar ---
+    if (role == kScrollMarkRole) {
+        if (mod.is_separator) {
+            QColor bg(mod.separator_color.isEmpty() ? "#888888" : mod.separator_color);
+            return bg;
+        }
+        return {};
+    }
+
     // --- Separator: colored background spans all columns ---
     if (mod.is_separator) {
         if (role == Qt::BackgroundRole) {
@@ -89,9 +99,9 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
             if (!selected_mod_id_.isEmpty() && conflict_pairs_.contains(selected_mod_id_)) {
                 const auto& pairs = conflict_pairs_[selected_mod_id_];
                 if (pairs.wins_against.contains(mod.id))
-                    return QBrush(QColor(0, 200, 0, 76));   // 30% green
+                    return QBrush(Settings::instance().modlist_overwritten_loose());   // 30% green
                 if (pairs.loses_to.contains(mod.id))
-                    return QBrush(QColor(200, 0, 0, 76));   // 30% red
+                    return QBrush(Settings::instance().modlist_overwriting_loose());   // 30% red
             }
             QColor bg(mod.separator_color.isEmpty() ? "#888888" : mod.separator_color);
             return QBrush(bg);
@@ -236,9 +246,9 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
         if (!selected_mod_id_.isEmpty() && conflict_pairs_.contains(selected_mod_id_)) {
             const auto& pairs = conflict_pairs_[selected_mod_id_];
             if (pairs.wins_against.contains(mod.id))
-                return QBrush(QColor(0, 200, 0, 76));
+                return QBrush(Settings::instance().modlist_overwritten_loose());
             if (pairs.loses_to.contains(mod.id))
-                return QBrush(QColor(200, 0, 0, 76));
+                return QBrush(Settings::instance().modlist_overwriting_loose());
         }
     }
 

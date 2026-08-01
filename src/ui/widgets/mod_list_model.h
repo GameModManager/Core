@@ -52,6 +52,10 @@ class ModListModel : public QAbstractTableModel {
 public:
     enum Column { Enabled, Name, Version, Flags, Priority, ColumnCount };
 
+    // Custom role for the separator-marking scrollbar; separator rows return
+    // their background QColor, everything else returns an invalid variant.
+    static constexpr int kScrollMarkRole = Qt::UserRole + 1;
+
     explicit ModListModel(QObject* parent = nullptr);
 
     int rowCount(const QModelIndex& parent = {}) const override;
