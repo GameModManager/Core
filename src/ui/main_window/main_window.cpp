@@ -555,8 +555,11 @@ void MainWindow::set_game_info(const std::string& game_id,
     current_profile_name_ = profile_name;
     current_game_dir_ = game_dir;
     current_instance_root_ = instance_root;
-    if (!instance_root.empty())
-        conflict_cache_path_ = instance_root / "cache" / "conflict_cache.json";
+    if (!instance_root.empty()) {
+        current_instance_ = engine::Instance::from_root(instance_root);
+        current_instance_.read_toml();
+        conflict_cache_path_ = current_instance_.path_for(engine::InstanceKind::Cache) / "conflict_cache.json";
+    }
     // Restore the persisted per-instance executable selection BEFORE the
     // combo is populated, so set_executables can land on it instead of
     // defaulting to the first real entry.
@@ -604,7 +607,7 @@ void MainWindow::set_game_info(const std::string& game_id,
         ctx.deploy_include_mod_id = (inc_id == "true");
         std::unique_ptr<engine::DeploymentStrategy> deploy_strategy;
 #ifdef GMM_PLATFORM_LINUX
-        if (engine::OverlayFsLauncher::is_supported(current_instance_root_ / "overwrite")) {
+        if (engine::OverlayFsLauncher::is_supported(overwrite_dir_path())) {
             // OverlayFS: deploy symlinks into staging dir (not game_dir)
             auto staging = current_instance_root_ / ".gmm_staging";
             ctx.staging_dir = staging;
@@ -749,7 +752,7 @@ void MainWindow::set_game_info(const std::string& game_id,
     // Connect download double-click to install (tab exists after set_game above)
     auto* dt = right_panel_->downloads_tab();
     if (dt) {
-        dt->set_downloads_dir(current_instance_root_ / "downloads");
+        dt->set_downloads_dir(downloads_dir_path());
         connect(dt, &DownloadsTab::install_requested,
                 this, [this](const std::string& mod_id, const std::filesystem::path& fp,
                              const std::string& source_type, const std::string& source_id,
@@ -974,7 +977,7 @@ void MainWindow::connect_menu_actions() {
     });
     connect(menu_bar_, &AppMenuBar::open_downloads_folder_requested, this, [this]() {
         if (current_instance_root_.empty()) return;
-        auto dl_dir = current_instance_root_ / "downloads";
+        auto dl_dir = downloads_dir_path();
         std::error_code ec;
         if (!std::filesystem::exists(dl_dir, ec))
             std::filesystem::create_directories(dl_dir, ec);
@@ -1313,7 +1316,7 @@ void MainWindow::load_mods_from_game() {
 
     // Tell the model where Overwrite lives so it can colour the entry
     if (!current_instance_root_.empty()) {
-        auto overwrite_dir = current_instance_root_ / "overwrite";
+        auto overwrite_dir = overwrite_dir_path();
         mod_model_->set_overwrite_path(QString::fromStdString(overwrite_dir.string()));
     }
 
@@ -1352,11 +1355,36 @@ std::filesystem::path MainWindow::mods_dir_path() const {
     if (current_instance_root_.empty() && current_game_dir_.empty()) return {};
     // MO2-style: mods managed from instance root (even if mods_subpath is set)
     if (!current_instance_root_.empty())
-        return current_instance_root_ / "mods";
+        return current_instance_.path_for(engine::InstanceKind::Mods);
     auto subpath = knowledge_ ? knowledge_->get(current_game_id_, "mods_subpath", "") : "";
     if (!subpath.empty())
         return current_game_dir_ / subpath;
     return current_game_dir_;
+}
+
+std::filesystem::path MainWindow::downloads_dir_path() const {
+    if (current_instance_root_.empty()) return {};
+    return current_instance_.path_for(engine::InstanceKind::Downloads);
+}
+
+std::filesystem::path MainWindow::cache_dir_path() const {
+    if (current_instance_root_.empty()) return {};
+    return current_instance_.path_for(engine::InstanceKind::Cache);
+}
+
+std::filesystem::path MainWindow::cache_thumbnails_dir_path() const {
+    if (current_instance_root_.empty()) return {};
+    return current_instance_.path_for(engine::InstanceKind::CacheThumbnails);
+}
+
+std::filesystem::path MainWindow::profiles_dir_path() const {
+    if (current_instance_root_.empty()) return {};
+    return current_instance_.path_for(engine::InstanceKind::Profiles);
+}
+
+std::filesystem::path MainWindow::overwrite_dir_path() const {
+    if (current_instance_root_.empty()) return {};
+    return current_instance_.path_for(engine::InstanceKind::Overwrite);
 }
 
 void MainWindow::migrate_mo2_meta() {
@@ -1818,7 +1846,7 @@ void MainWindow::clear_overwrite() {
     if (reply != QMessageBox::Yes) return;
 
     if (!current_instance_root_.empty()) {
-        auto overwrite_dir = current_instance_root_ / "overwrite";
+        auto overwrite_dir = overwrite_dir_path();
         if (engine::SyncStage::clear_overwrite(overwrite_dir)) {
             engine::Logger::instance().debug("Overwrite cleared");
             QMessageBox::information(this, tr("Overwrite"), tr("Overwrite folder cleared."));
@@ -1835,7 +1863,7 @@ void MainWindow::create_mod_from_overwrite() {
     if (!ok || name.isEmpty()) return;
     if (current_instance_root_.empty()) return;
 
-    auto overwrite_dir = current_instance_root_ / "overwrite";
+    auto overwrite_dir = overwrite_dir_path();
     auto mods_subpath = knowledge_ ? knowledge_->get(current_game_id_, "mods_subpath", "") : std::string();
     if (mods_subpath.empty()) return;
 
@@ -2214,7 +2242,7 @@ void MainWindow::create_empty_mod() {
 
 void MainWindow::import_archives(const QStringList& paths) {
     if (current_instance_root_.empty()) return;
-    auto dl_dir = current_instance_root_ / "downloads";
+    auto dl_dir = downloads_dir_path();
     std::error_code ec;
     std::filesystem::create_directories(dl_dir, ec);
 
@@ -3036,9 +3064,7 @@ void MainWindow::populate_executables() {
         }
     }
 
-    auto icon_cache = current_instance_root_.empty()
-        ? std::filesystem::path{}
-        : current_instance_root_ / "cache" / "thumbnails";
+    auto icon_cache = cache_thumbnails_dir_path();
     // Restore the last selected executable for this instance. On a fresh
     // instance the selection is empty - just populate the list and let the
     // user pick.
@@ -3153,7 +3179,7 @@ void MainWindow::launch_with_executable(const QString& full_path,
     engine::LaunchParams lparams;
     lparams.executable = exec_path;
     lparams.game_dir = current_game_dir_;
-    lparams.overwrite_dir = current_instance_root_ / "overwrite";
+    lparams.overwrite_dir = overwrite_dir_path();
     lparams.steam_appid = steam_appid;
     lparams.is_windows_exe = (exec_path.extension().string() == ".exe" ||
                               exec_path.extension().string() == ".EXE");
@@ -3163,9 +3189,8 @@ void MainWindow::launch_with_executable(const QString& full_path,
     output_session_scratch_.clear();
     output_mod_dir_ = output_mod_dir;
     if (!output_mod_dir.empty()) {
-        auto scratch_base = current_instance_root_.empty()
-            ? (current_game_dir_ / "cache")
-            : (current_instance_root_ / "cache");
+        auto scratch_base = cache_dir_path();
+        if (scratch_base.empty()) scratch_base = current_game_dir_ / "cache";
         auto session = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count();
         output_session_scratch_ = scratch_base / "exec-output" /
@@ -3583,7 +3608,7 @@ void MainWindow::do_capture_overwrite(std::filesystem::file_time_type capture_ti
 
     bool session_active = !output_session_scratch_.empty() && !output_mod_dir_.empty();
     auto capture_dir = session_active ? output_session_scratch_
-                                      : (current_instance_root_ / "overwrite");
+                                      : overwrite_dir_path();
 
     // When launched via overlay, all writes already went directly into the
     // capture dir (upperdir = session scratch for output-mod, Overwrite otherwise).
@@ -3599,7 +3624,7 @@ void MainWindow::do_capture_overwrite(std::filesystem::file_time_type capture_ti
         auto mods_subpath = knowledge_
             ? knowledge_->get(current_game_id_, "mods_subpath", "") : std::string();
         auto inc_id = knowledge_->get(current_game_id_, "deploy_include_mod_id", "false");
-        auto overwrite_dir = current_instance_root_ / "overwrite";
+        auto overwrite_dir = overwrite_dir_path();
         auto relayed = engine::relay_output_to_mod(output_session_scratch_,
             output_mod_dir_, overwrite_dir, mods_subpath,
             inc_id == "true", output_mod_dir_.filename().string());
@@ -3753,9 +3778,7 @@ void MainWindow::on_add_entry_requested() {
         }
     }
 
-    auto icon_cache = current_instance_root_.empty()
-        ? std::filesystem::path{}
-        : current_instance_root_ / "cache" / "thumbnails";
+    auto icon_cache = cache_thumbnails_dir_path();
 
     auto existing = right_panel_->exec_controls()->executable_entries();
 
@@ -4325,7 +4348,7 @@ void MainWindow::apply_initial_geometry() {
 
 std::filesystem::path MainWindow::download_manifest_path() const {
     if (current_instance_root_.empty()) return {};
-    return current_instance_root_ / "downloads" / ".download_manifest.json";
+    return downloads_dir_path() / ".download_manifest.json";
 }
 
 void MainWindow::save_download_manifest() {
@@ -4351,7 +4374,7 @@ void MainWindow::load_download_manifest() {
     if (json.empty()) return;
     auto* dt = right_panel_->downloads_tab();
     if (!dt) return;
-    auto downloads_dir = current_instance_root_ / "downloads";
+    auto downloads_dir = downloads_dir_path();
     dt->deserialize(json, downloads_dir);
 }
 
@@ -4574,6 +4597,11 @@ void MainWindow::show_settings_dialog() {
     SettingsDialog dlg(style_manager_, native_style_name_, current_instance_root_,
                        plugin_loader_, this);
     dlg.exec();
+    // Per-folder path overrides may have changed in the dialog.
+    if (!current_instance_root_.empty()) {
+        current_instance_ = engine::Instance::from_root(current_instance_root_);
+        current_instance_.read_toml();
+    }
     // The separator-scrollbar setting may have changed in the dialog.
     if (mod_view_) mod_view_->apply_scrollbar_policy();
 }
@@ -4585,7 +4613,7 @@ void MainWindow::show_instance_statistics() {
         return;
     }
 
-    auto cache_dir = current_instance_root_ / "cache";
+    auto cache_dir = cache_dir_path();
     int total_mods = 0;
     for (const auto& m : mod_model_->mods()) {
         if (!m.is_separator && !m.is_overwrite) ++total_mods;

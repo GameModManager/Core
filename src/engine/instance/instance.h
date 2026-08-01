@@ -26,6 +26,15 @@ struct InstanceInfo {
     std::filesystem::path game_dir;  // path to the actual game install (e.g. steamapps/common/...)
     uint32_t steam_appid = 0;
     bool portable = true;
+    // Per-folder overrides for the instance's working directories. Empty
+    // means "use the default": <root>/mods, <root>/downloads, ... (MO2's
+    // base_directory-relative defaults). Persisted to instance.toml only
+    // when non-empty.
+    std::filesystem::path mods_dir;
+    std::filesystem::path downloads_dir;
+    std::filesystem::path cache_dir;
+    std::filesystem::path profiles_dir;
+    std::filesystem::path overwrite_dir;
 };
 
 class Instance {
@@ -33,11 +42,16 @@ public:
     static Instance portable(const std::filesystem::path& root);
     static Instance installed(const std::string& name,
                              const std::filesystem::path& instances_root);
+    static Instance from_root(const std::filesystem::path& root);
 
     [[nodiscard]] InstanceInfo& info() { return info_; }
     [[nodiscard]] const InstanceInfo& info() const { return info_; }
     [[nodiscard]] std::filesystem::path path_for(InstanceKind kind) const;
     [[nodiscard]] std::filesystem::path toml_path() const;
+
+    // Set/clear a per-folder override (empty clears -> default under root).
+    void set_path_override(InstanceKind kind, const std::filesystem::path& path);
+    [[nodiscard]] std::filesystem::path path_override(InstanceKind kind) const;
 
     bool create_directories() const;
     bool write_toml() const;
@@ -51,8 +65,12 @@ public:
         const std::filesystem::path& exe_dir);
     static bool is_portable(const std::filesystem::path& exe_dir);
 
-private:
+    // Default-constructed instance (empty root). Use portable()/installed()/
+    // from_root() for real instances; the default ctor exists so clients can
+    // hold a by-value member that is only populated once a root is known.
     Instance() = default;
+
+private:
     InstanceInfo info_;
 };
 

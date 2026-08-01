@@ -33,6 +33,7 @@
 #include <QGroupBox>
 #include <QLineEdit>
 #include <QLabel>
+#include <QMetaObject>
 #include <QPushButton>
 #include <QSplitter>
 #include <QTableWidget>
@@ -311,6 +312,11 @@ int main(int argc, char** argv) {
     }
 
     // --- Persistence: checkbox toggle + text edit write back to Settings. ---
+    if (opt_g < 0) {
+        std::printf("FAIL: no plugin exposing options was found\n");
+        ++failures;
+        return 1;
+    }
     const QString options_leaf_name =
         tree->topLevelItem(opt_g)->child(opt_c)->text(0);
     QString options_basename;
@@ -379,6 +385,52 @@ int main(int argc, char** argv) {
     }
     check(!has_path_row && !has_appid_row, "no Path / Steam App ID rows in info pane");
     check(has_author && has_abi, "Author / ABI version rows still shown");
+
+    // --- Paths tab: per-folder override fields. ---
+    auto find_tab_page = [](QTabWidget* tw, const char* needle) -> QWidget* {
+        for (int i = 0; tw && i < tw->count(); ++i)
+            if (tw->tabText(i).contains(needle, Qt::CaseInsensitive))
+                return tw->widget(i);
+        return nullptr;
+    };
+    auto* paths_page = find_tab_page(tabs, "Paths");
+    check(paths_page != nullptr, "Paths tab present");
+
+    QLineEdit* mods_edit = nullptr;
+    QLineEdit* downloads_edit = nullptr;
+    QLineEdit* cache_edit = nullptr;
+    QLineEdit* profiles_edit = nullptr;
+    QLineEdit* overwrite_edit = nullptr;
+    if (paths_page) {
+        for (auto* le : paths_page->findChildren<QLineEdit*>()) {
+            const auto ph = le->placeholderText();
+            if (ph == "$BASE_DIRECTORY/mods") mods_edit = le;
+            else if (ph == "$BASE_DIRECTORY/downloads") downloads_edit = le;
+            else if (ph == "$BASE_DIRECTORY/cache") cache_edit = le;
+            else if (ph == "$BASE_DIRECTORY/profiles") profiles_edit = le;
+            else if (ph == "$BASE_DIRECTORY/overwrite") overwrite_edit = le;
+        }
+    }
+    check(mods_edit && downloads_edit && cache_edit && profiles_edit && overwrite_edit,
+          "five per-folder override fields with $BASE_DIRECTORY placeholders");
+    check(mods_edit && mods_edit->text().isEmpty(),
+          "folder fields start empty when no override is set");
+
+    const QString custom_mods = "/tmp/gmm_plugins_tab/custom/mods";
+    if (mods_edit) {
+        mods_edit->setText(custom_mods);
+        QMetaObject::invokeMethod(mods_edit, "editingFinished", Qt::DirectConnection);
+        app.processEvents();
+    }
+    engine::Instance inst = engine::Instance::from_root(root);
+    inst.read_toml();
+    check(inst.path_for(engine::InstanceKind::Mods) == custom_mods.toStdString(),
+          "edited Mods field persisted to instance.toml override");
+    check(inst.path_for(engine::InstanceKind::Downloads) == root / "downloads",
+          "unset folders still default under the base directory");
+    check(inst.path_for(engine::InstanceKind::Cache) == root / "cache" &&
+              inst.path_for(engine::InstanceKind::Overwrite) == root / "overwrite",
+          "default cache/overwrite untouched by a mods-only override");
 
     // --- Close ---
     auto* buttons = dlg.findChild<QDialogButtonBox*>();
@@ -456,6 +508,17 @@ int main(int argc, char** argv) {
     }
     check(persisted_value,
           "edited option values persisted across dialog reopen");
+
+    // --- Paths-tab override survives a dialog reopen. ---
+    bool mods_override_shown = false;
+    auto* paths2 = find_tab_page(tabs2, "Paths");
+    if (paths2) {
+        for (auto* le : paths2->findChildren<QLineEdit*>())
+            if (le->placeholderText() == "$BASE_DIRECTORY/mods" &&
+                le->text() == custom_mods)
+                mods_override_shown = true;
+    }
+    check(mods_override_shown, "folder override shown again after dialog reopen");
 
     if (auto* buttons2 = dlg2.findChild<QDialogButtonBox*>())
         if (auto* close_btn = buttons2->button(QDialogButtonBox::Close))
