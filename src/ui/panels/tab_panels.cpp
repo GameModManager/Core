@@ -18,6 +18,7 @@
 #include <QPalette>
 #include <QProgressBar>
 #include <QSet>
+#include <QShowEvent>
 #include <QStyle>
 #include <QTableWidget>
 #include <QTreeWidget>
@@ -496,6 +497,72 @@ void DownloadsTab::set_file_path(const std::string& id, const std::filesystem::p
 
 void DownloadsTab::set_downloads_dir(const std::filesystem::path& dir) {
     downloads_dir_ = dir;
+    scan_downloads_dir();
+}
+
+void DownloadsTab::showEvent(QShowEvent* event) {
+    QWidget::showEvent(event);
+    // Re-scan so archives dropped into the downloads dir while the app is
+    // running appear in the list.
+    scan_downloads_dir();
+}
+
+bool DownloadsTab::has_active_download() const {
+    for (const auto& [id, entry] : downloads_) {
+        (void)id;
+        if (entry.state == DownloadState::Downloading ||
+            entry.state == DownloadState::Paused)
+            return true;
+    }
+    return false;
+}
+
+void DownloadsTab::scan_downloads_dir() {
+    if (downloads_dir_.empty()) return;
+    // While a download is downloading or paused its partial archive sits in
+    // the dir under its final name; don't surface it as a "Complete" entry.
+    if (has_active_download()) return;
+
+    static const std::vector<std::string> kArchiveExts = {
+        ".zip", ".7z", ".tar", ".rar", ".gz", ".bz2", ".xz", ".fomod"};
+
+    std::error_code ec;
+    std::filesystem::directory_iterator it(downloads_dir_, ec);
+    if (ec) return;
+    for (const auto& entry : it) {
+        if (!entry.is_regular_file(ec)) continue;
+        const auto path = entry.path();
+
+        std::string lower;
+        for (char c : path.extension().string())
+            lower.push_back(static_cast<char>(std::tolower(
+                static_cast<unsigned char>(c))));
+        if (std::find(kArchiveExts.begin(), kArchiveExts.end(), lower) ==
+            kArchiveExts.end())
+            continue;
+
+        const auto id = path.filename().string();
+        if (downloads_.count(id)) continue;
+
+        // Skip archives that already back a tracked entry under a different
+        // key (Nexus downloads use "<mod_id>-<file_id>", not the filename).
+        bool tracked = false;
+        for (const auto& [eid, e] : downloads_) {
+            (void)eid;
+            if (e.file_path == path) {
+                tracked = true;
+                break;
+            }
+        }
+        if (tracked) continue;
+
+        add_download(id, path.stem().string(), tr("Manual").toStdString(), path);
+        auto& added = downloads_.at(id);
+        added.total_size = static_cast<int64_t>(entry.file_size(ec));
+        if (ec) added.total_size = 0;
+        mark_complete(id, true);
+    }
+    apply_installed_filter();
 }
 
 void DownloadsTab::apply_installed_filter() {

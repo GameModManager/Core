@@ -595,3 +595,19 @@ if(NOT WIN32)
 endif()
 add_test(NAME settings_sources_tab_test COMMAND settings_sources_tab_test ${CMAKE_CURRENT_BINARY_DIR}/plugins)
 set_tests_properties(settings_sources_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# Downloads tab — offscreen GUI regression test for the untracked-archive
+# scan (manually downloaded / dragged-in archives must show up and install).
+# Hermetic: throwaway XDG_CONFIG_HOME, no network.
+add_executable(downloads_tab_test tests/ui/downloads_tab_test.cpp
+    src/ui/panels/tab_panels.cpp
+    src/ui/settings/settings.cpp
+    src/ui/widgets/column_toggle_header.cpp
+    src/engine/log/logger.cpp
+    src/engine/fs_utils.cpp
+)
+target_include_directories(downloads_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_compile_definitions(downloads_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
+target_link_libraries(downloads_tab_test PRIVATE Qt6::Widgets)
+add_test(NAME downloads_tab_test COMMAND downloads_tab_test)
+set_tests_properties(downloads_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

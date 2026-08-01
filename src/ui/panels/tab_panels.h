@@ -109,6 +109,17 @@ private:
     void remove_entry(const std::string& id);
     void apply_installed_filter();
 
+    // Add untracked archives sitting in the downloads dir as "Manual"
+    // Complete entries so they can be installed from the tab. Skip files that
+    // already back a tracked entry and any scan while a download is in
+    // flight (the in-progress archive would otherwise appear as a bogus
+    // "Complete" row).
+    void scan_downloads_dir();
+    bool has_active_download() const;
+
+protected:
+    void showEvent(QShowEvent* event) override;
+
     QTableWidget* table_ = nullptr;
     QCheckBox* hide_installed_ = nullptr;
     std::unordered_map<std::string, DownloadEntry> downloads_;
