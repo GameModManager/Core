@@ -20,4 +20,11 @@ bool nexus_http_request(const std::string& url,
                         std::string* response_headers = nullptr,
                         long timeout_seconds = 30);
 
+// libcurl rejects URLs carrying raw spaces/unsafe bytes. Nexus CDN download
+// URLs embed the archive filename unencoded (e.g. "RaceMenu Anniversary
+// Edition v0-4-20-0-...7z"), so the path segment must be percent-encoded
+// before CURLOPT_URL. Scheme, host and query are left untouched; existing
+// %XX escapes are preserved (no double-encoding).
+std::string encode_url_path(const std::string& url);
+
 } // namespace engine

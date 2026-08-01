@@ -91,7 +91,8 @@ static bool curl_download(const std::string& url,
         return false;
     }
 
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    const std::string encoded_url = engine::encode_url_path(url);
+    curl_easy_setopt(curl, CURLOPT_URL, encoded_url.c_str());
     curl_easy_setopt(curl, CURLOPT_USERAGENT,
                      "GameModManager/0.1 (Nexus Provider)");
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
@@ -119,8 +120,12 @@ static bool curl_download(const std::string& url,
     if (aborted) *aborted = was_aborted;
 
     if (res != CURLE_OK || http_code >= 400) {
-        // Keep the partial file on abort (pause/resume); remove it otherwise.
         if (!was_aborted) {
+            Logger::instance().error(
+                "NexusProvider: curl_download error: " +
+                std::string(curl_easy_strerror(res)) +
+                " (code=" + std::to_string(res) +
+                ", http_code=" + std::to_string(http_code) + ")");
             std::error_code ec;
             std::filesystem::remove(dest_path, ec);
         }
