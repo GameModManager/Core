@@ -357,6 +357,14 @@ add_executable(nxm_router_test tests/engine/nxm_router_test.cpp
 target_include_directories(nxm_router_test PRIVATE src/)
 add_test(NAME nxm_router_test COMMAND nxm_router_test)
 
+# Theme engine — Qt-free scan/tokens/discovery.
+add_executable(theme_test tests/engine/theme_test.cpp
+    src/engine/theme/theme_manager.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(theme_test PRIVATE src/)
+add_test(NAME theme_test COMMAND theme_test)
+
 # FileKeyring + NexusAuth keyring fallback/migration — pure C++, no Qt
 add_executable(keyring_test tests/engine/keyring_test.cpp
     src/engine/keyring.cpp

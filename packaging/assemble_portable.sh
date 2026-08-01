@@ -40,7 +40,7 @@ fi
 echo "Assembling portable distribution → $OUTPUT_DIR"
 
 # Create directory structure
-mkdir -p "$OUTPUT_DIR"/{runtime/{linux,windows},plugins/{linux,windows},tools/linux,config,mods,downloads,cache,logs}
+mkdir -p "$OUTPUT_DIR"/{runtime/{linux,windows},plugins/{linux,windows},tools/linux,config,mods,downloads,cache,logs,themes}
 
 # -- Linux artifacts --
 if [ -n "$LINUX_DIR" ] && [ -d "$LINUX_DIR" ]; then
@@ -98,6 +98,12 @@ if [ -n "$WINDOWS_DIR" ] && [ -d "$WINDOWS_DIR" ]; then
 fi
 
 # -- Shared files (identical on both platforms) --
+# Bundled themes (Dark, Nord, ...) ship beside the executable.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -d "$SCRIPT_DIR/../resources/themes" ]; then
+    cp -a "$SCRIPT_DIR/../resources/themes/." "$OUTPUT_DIR/themes/"
+fi
+
 cat > "$OUTPUT_DIR/instance.toml" <<EOF
 # GameModManager portable instance
 # This file is shared across platforms — both binaries read it.
