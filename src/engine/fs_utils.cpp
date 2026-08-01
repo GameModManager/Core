@@ -9,6 +9,8 @@
 #include <system_error>
 #include <vector>
 
+#include <algorithm>
+
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -139,6 +141,130 @@ bool remove_path(const std::filesystem::path& path, bool permanent) {
 #else
     return move_to_trash_linux(path);
 #endif
+}
+
+namespace {
+
+// Remove all empty directories under root (deepest first, repeatedly) so a
+// relayed scratch dir leaves no skeleton behind.
+void prune_empty_dirs(const std::filesystem::path& root) {
+    std::error_code ec;
+    bool any_removed = true;
+    while (any_removed) {
+        any_removed = false;
+        std::filesystem::recursive_directory_iterator it(
+            root, std::filesystem::directory_options::skip_permission_denied, ec);
+        auto end = std::filesystem::recursive_directory_iterator();
+        while (it != end && !ec) {
+            auto& entry = *it;
+            if (entry.is_directory() && !entry.is_symlink()) {
+                auto dir = entry.path();
+                if (std::filesystem::is_empty(dir, ec) && !ec) {
+                    std::filesystem::remove(dir, ec);
+                    if (!ec) any_removed = true;
+                }
+                ec.clear();
+            }
+            it.increment(ec);
+            if (ec) {
+                ec.clear();
+                it = std::filesystem::recursive_directory_iterator(
+                    root, std::filesystem::directory_options::skip_permission_denied, ec);
+            }
+        }
+    }
+}
+
+}  // namespace
+
+size_t relay_output_to_mod(const std::filesystem::path& scratch_dir,
+                           const std::filesystem::path& mod_dir,
+                           const std::filesystem::path& overwrite_dir,
+                           const std::string& mods_subpath,
+                           bool include_mod_id,
+                           const std::string& mod_id) {
+    std::error_code ec;
+    if (!std::filesystem::is_directory(scratch_dir, ec)) return 0;
+
+    // Normalize the mods subpath to forward slashes, no leading/trailing slash.
+    std::string subpath = mods_subpath;
+    std::replace(subpath.begin(), subpath.end(), '\\', '/');
+    while (!subpath.empty() && subpath.front() == '/')
+        subpath.erase(0, 1);
+    while (!subpath.empty() && subpath.back() == '/')
+        subpath.pop_back();
+
+    // Collect regular files first (moving during iteration invalidates it).
+    std::vector<std::filesystem::path> files;
+    {
+        std::filesystem::recursive_directory_iterator it(
+            scratch_dir, std::filesystem::directory_options::skip_permission_denied, ec);
+        auto end = std::filesystem::recursive_directory_iterator();
+        while (it != end) {
+            if (ec) {
+                ec.clear();
+                it.increment(ec);
+                continue;
+            }
+            if (it->is_regular_file() && !it->is_symlink())
+                files.push_back(it->path());
+            it.increment(ec);
+        }
+    }
+
+    size_t relayed = 0;
+    std::string mod_prefix;
+    if (include_mod_id && !mod_id.empty())
+        mod_prefix = mod_id + "/";
+
+    for (const auto& file : files) {
+        auto rel = std::filesystem::relative(file, scratch_dir, ec);
+        if (ec) {
+            ec.clear();
+            continue;
+        }
+        std::string rel_str = rel.string();
+        std::replace(rel_str.begin(), rel_str.end(), '\\', '/');
+
+        bool into_mod = false;
+        std::filesystem::path mod_rel;
+        if (!subpath.empty() && rel_str.size() > subpath.size() &&
+            rel_str.compare(0, subpath.size(), subpath) == 0 &&
+            rel_str[subpath.size()] == '/') {
+            std::string rest = rel_str.substr(subpath.size() + 1);
+            if (mod_prefix.empty()) {
+                mod_rel = std::filesystem::path(rest);
+                into_mod = true;
+            } else if (rest.compare(0, mod_prefix.size(), mod_prefix) == 0) {
+                mod_rel = std::filesystem::path(rest.substr(mod_prefix.size()));
+                into_mod = true;
+            }
+        }
+
+        std::filesystem::path dest = into_mod ? (mod_dir / mod_rel)
+                                              : (overwrite_dir / rel);
+        if (!dest.parent_path().empty())
+            std::filesystem::create_directories(dest.parent_path(), ec);
+        std::filesystem::rename(file, dest, ec);
+        if (ec) {
+            // Cross-device fallback: copy then remove the source.
+            ec.clear();
+            std::filesystem::copy_file(file, dest,
+                std::filesystem::copy_options::overwrite_existing, ec);
+            if (!ec)
+                std::filesystem::remove(file, ec);
+        }
+        if (ec) {
+            Logger::instance().error("relay_output_to_mod: failed to move " +
+                file.string() + " -> " + dest.string() + ": " + ec.message());
+            ec.clear();
+        } else if (into_mod) {
+            ++relayed;
+        }
+    }
+
+    prune_empty_dirs(scratch_dir);
+    return relayed;
 }
 
 }  // namespace engine

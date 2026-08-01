@@ -126,6 +126,14 @@ static LaunchResult do_launch(const LaunchParams& params) {
 
     int64_t pid = -1;
 
+    // "Output to mod" sessions capture into a per-launch scratch dir instead
+    // of the instance Overwrite folder. The xattr capability probe stays on
+    // overwrite_dir (same filesystem as the scratch dir - both live under the
+    // instance root).
+    auto capture_dir = params.output_capture_dir.empty()
+        ? params.overwrite_dir
+        : params.output_capture_dir;
+
 #ifdef GMM_PLATFORM_LINUX
     // Priority 1: OverlayFS - kernel VFS level, works for any binary format
     if (OverlayFsLauncher::is_supported(params.overwrite_dir)) {
@@ -139,20 +147,21 @@ static LaunchResult do_launch(const LaunchParams& params) {
                     proton.string(), "waitforexitandrun", exec_path.string()
                 };
                 pid = OverlayFsLauncher::launch(proton, params.game_dir,
-                                                params.overwrite_dir, ovl_args,
+                                                capture_dir, ovl_args,
                                                 params.extra_lowerdirs);
             } else {
                 Logger::instance().warn("OverlayFS: .exe but no Proton found, skipping");
             }
         } else {
             pid = OverlayFsLauncher::launch(exec_path, params.game_dir,
-                                            params.overwrite_dir, {},
+                                            capture_dir, {},
                                             params.extra_lowerdirs);
         }
 
         if (pid > 0) {
             Logger::instance().debug(
-                "Launched inside OverlayFS overlay. All writes go to Overwrite.");
+                "Launched inside OverlayFS overlay. All writes go to " +
+                capture_dir.string());
             return {pid, true};
         }
         Logger::instance().error("OverlayFS launcher returned failure, falling back");
@@ -165,10 +174,11 @@ static LaunchResult do_launch(const LaunchParams& params) {
         if (PreloadInterceptor::is_supported()) {
             Logger::instance().debug("PreloadInterceptor: trying LD_PRELOAD launch");
             pid = PreloadInterceptor::launch(exec_path, params.game_dir,
-                                             params.overwrite_dir);
+                                             capture_dir);
             if (pid > 0) {
                 Logger::instance().debug(
-                    "Launched with LD_PRELOAD intercept. Writes redirected to Overwrite.");
+                    "Launched with LD_PRELOAD intercept. Writes redirected to " +
+                    capture_dir.string());
                 return {pid, true};
             }
             Logger::instance().warn("PreloadInterceptor returned failure, falling back");
