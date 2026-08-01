@@ -5,8 +5,6 @@
 #include "engine/meta/mod_meta.h"
 #include "engine/log/logger.h"
 
-#include <fstream>
-
 namespace engine {
 
 static bool copy_recursive(const std::filesystem::path& src,
@@ -105,39 +103,10 @@ bool InstallStage::execute(Mod& mod, PipelineContext& ctx) {
     // same file with the same keys); metadata.xml is an Isaac-only trick - the
     // Isaac engine reads it from mod folders directly - and is written only
     // for games that registered the metadata_file hook.
-    if (ctx.metadata_file.empty() || ctx.metadata_file == "meta.ini") {
-        auto meta_ini = dest_dir / "meta.ini";
-        if (!std::filesystem::exists(meta_ini)) {
-            std::ofstream mf(meta_ini);
-            if (mf) {
-                std::string ver = mod.version.empty() ? "1.0" : mod.version;
-                mf << "[General]\n";
-                mf << "modid=" << (mod.download_source_id.empty() ? "0"
-                                                                  : mod.download_source_id)
-                   << "\n";
-                mf << "version=" << ver << "\n";
-                mf << "newestVersion=" << ver << "\n";
-                mf << "category=0\n";
-                if (!mod.archive_filename.empty())
-                    mf << "installationFile=" << mod.archive_filename << "\n";
-            }
-        }
-    } else {
-        auto metadata_path = dest_dir / ctx.metadata_file;
-        if (!std::filesystem::exists(metadata_path)) {
-            std::string display_name = mod.name;
-            if (display_name.empty()) display_name = folder_name;
-            std::string ver = mod.version.empty() ? "1.0" : mod.version;
-            std::ofstream mf(metadata_path);
-            if (mf) {
-                mf << "<?xml version=\"1.0\"?>\n"
-                   << "<mod>\n"
-                   << "  <name>" << display_name << "</name>\n"
-                   << "  <version>" << ver << "</version>\n"
-                   << "</mod>\n";
-            }
-        }
-    }
+    std::string display_name = mod.name.empty() ? folder_name : mod.name;
+    ModMeta::write_game_metadata(dest_dir, ctx.metadata_file, display_name,
+                                 mod.version, mod.download_source_id,
+                                 mod.archive_filename);
 
     // Clean up staging directory
     std::error_code ec;

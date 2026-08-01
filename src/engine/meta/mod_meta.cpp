@@ -378,4 +378,45 @@ ModMeta ModMeta::import_mo2(const std::filesystem::path& mod_folder,
     return from_mo2_import(content, folder_name);
 }
 
+// ---------------------------------------------------------------------------
+// Game-visible metadata files
+// ---------------------------------------------------------------------------
+
+bool ModMeta::write_game_metadata(const std::filesystem::path& mod_dir,
+                                  const std::string& metadata_file,
+                                  const std::string& display_name,
+                                  const std::string& version,
+                                  const std::string& modid,
+                                  const std::string& installation_file) {
+    if (mod_dir.empty()) return false;
+
+    if (metadata_file.empty() || metadata_file == "meta.ini") {
+        auto meta_ini = mod_dir / "meta.ini";
+        if (std::filesystem::exists(meta_ini)) return true;
+        std::ofstream mf(meta_ini);
+        if (!mf) return false;
+        mf << "[General]\n";
+        mf << "modid=" << (modid.empty() ? "0" : modid) << "\n";
+        mf << "version=" << (version.empty() ? "1.0" : version) << "\n";
+        mf << "newestVersion=" << (version.empty() ? "1.0" : version) << "\n";
+        mf << "category=0\n";
+        if (!installation_file.empty())
+            mf << "installationFile=" << installation_file << "\n";
+        return mf.good();
+    }
+
+    auto metadata_path = mod_dir / metadata_file;
+    if (std::filesystem::exists(metadata_path)) return true;
+    std::ofstream mf(metadata_path);
+    if (!mf) return false;
+    std::string name = display_name.empty() ? mod_dir.filename().string()
+                                            : display_name;
+    mf << "<?xml version=\"1.0\"?>\n"
+       << "<mod>\n"
+       << "  <name>" << name << "</name>\n"
+       << "  <version>" << (version.empty() ? "1.0" : version) << "</version>\n"
+       << "</mod>\n";
+    return mf.good();
+}
+
 } // namespace engine
