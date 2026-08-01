@@ -507,6 +507,18 @@ void Settings::set_plugin_enabled(const QString& name, bool enabled) {
     set_disabled_plugins(disabled);
 }
 
+QString Settings::plugin_setting(const QString& basename, const QString& key,
+                                 const QString& default_value) const {
+    return settings_.value(QString("plugins/settings/%1/%2").arg(basename, key),
+                           default_value)
+        .toString();
+}
+
+void Settings::set_plugin_setting(const QString& basename, const QString& key,
+                                  const QString& value) {
+    settings_.setValue(QString("plugins/settings/%1/%2").arg(basename, key), value);
+}
+
 // nxm -------------------------------------------------------------------------
 
 QString Settings::nxm_handler_check() const {

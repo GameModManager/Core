@@ -58,6 +58,18 @@ class RegistrationContext:
         """
         ...
 
+    def register_settings(self, settings: list[tuple[str, str]] = []) -> None:
+        """Declare this plugin's user-facing options as plain key:value pairs.
+
+        Rendered as editable rows in a scrollable container in the Plugins
+        settings tab. Each entry is (key, default value). Persisted overrides
+        are read back at startup; edits from the UI are written back.
+
+        Source providers must NOT use this - their settings live on the
+        Sources tab instead.
+        """
+        ...
+
     def register_stage_claim(self, stage_name: str, priority: int = 0) -> None:
         """Claim exclusive ownership of a pipeline stage.
 

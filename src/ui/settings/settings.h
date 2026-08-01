@@ -158,6 +158,13 @@ public:
     bool plugin_enabled(const QString& name) const;
     void set_plugin_enabled(const QString& name, bool enabled);
 
+    // Plugin-declared options (register_settings), persisted per plugin as
+    // plain key:value pairs under plugins/settings/<basename>/<key>.
+    QString plugin_setting(const QString& basename, const QString& key,
+                           const QString& default_value) const;
+    void set_plugin_setting(const QString& basename, const QString& key,
+                            const QString& value);
+
     // nxm -----------------------------------------------------------------------
     QString nxm_handler_check() const;      // key: nxm/handler_check
     void set_nxm_handler_check(const QString& value);
