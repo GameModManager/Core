@@ -305,6 +305,16 @@ void PipelineWindow::relayout(FlowTab& tab) {
 
 void PipelineWindow::refresh() {
     for (auto& [flow_id, tab] : tabs_by_flow_) {
+        // Track palette changes (theme reload) so the canvas + connectors
+        // stay readable on the current theme. The canvas is slightly darker
+        // than the card background (palette(base)) so cards stand out.
+        // Applied every tick - also covers placeholder tabs that skip the
+        // card/relayout path below.
+        QColor base = palette().base().color();
+        QColor canvas = base.darker(110);
+        if (tab.view->backgroundBrush().color() != canvas)
+            tab.view->setBackgroundBrush(canvas);
+
         auto snap = engine::TraceRecorder::instance().snapshot(flow_id);
         if (!snap) {
             show_placeholder(tab, "This flow has not run yet.");
@@ -337,12 +347,6 @@ void PipelineWindow::refresh() {
         }
         update_cards(tab, snap->stages);
         relayout(tab);
-
-        // Track palette changes (theme reload) so the canvas + connectors
-        // stay readable on the current theme.
-        QColor base = palette().base().color();
-        if (tab.view->backgroundBrush().color() != base)
-            tab.view->setBackgroundBrush(base);
     }
 }
 
