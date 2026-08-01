@@ -15,7 +15,7 @@ namespace ui {
 // Sentinel item text shown in the executable combo (the "add new entry" slot).
 // Kept in the header so main_window.cpp can compare against it without relying
 // on a translated string. Display sites wrap it in tr().
-inline constexpr const char* kAddNewEntryText = "Add new entry...";
+inline constexpr const char* kAddNewEntryText = "<Edit...>";
 
 class ExecControlsBar : public QWidget {
     Q_OBJECT

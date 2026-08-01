@@ -149,7 +149,7 @@ ExecControlsBar::ExecControlsBar(QWidget* parent)
     connect(shortcut_btn_, &QToolButton::clicked,
             this, &ExecControlsBar::shortcut_to_toolbar);
 
-    // When "Add new entry..." is chosen, emit signal and restore previous selection
+    // When "<Edit...>" is chosen, emit signal and restore previous selection
     connect(exec_combo_, &QComboBox::currentIndexChanged, this, [this](int index) {
         if (index >= 0 && exec_combo_->itemData(index).toJsonObject().isEmpty()
             && exec_combo_->count() > 1) {
@@ -187,7 +187,7 @@ int ExecControlsBar::current_executable_index() const {
 
 QStringList ExecControlsBar::executable_paths() const {
     QStringList paths;
-    for (int i = 0; i < exec_combo_->count() - 1; ++i) {
+    for (int i = 1; i < exec_combo_->count(); ++i) {
         auto obj = item_data(i);
         auto p = obj["path"].toString();
         if (!p.isEmpty())
@@ -198,7 +198,7 @@ QStringList ExecControlsBar::executable_paths() const {
 
 QVector<ExecEntry> ExecControlsBar::executable_entries() const {
     QVector<ExecEntry> entries;
-    for (int i = 0; i < exec_combo_->count() - 1; ++i) {
+    for (int i = 1; i < exec_combo_->count(); ++i) {
         auto obj = item_data(i);
         if (!obj.isEmpty())
             entries.append(ExecEntry::fromJson(obj));
@@ -211,7 +211,7 @@ void ExecControlsBar::add_executable(const QString& display_name, const QString&
     ExecEntry e;
     e.title = display_name;
     e.path = rel_path;
-    int insert_pos = exec_combo_->count() - 1;
+    int insert_pos = 1;  // right after the sentinel (index 0)
     exec_combo_->insertItem(insert_pos, icon, displayTextForEntry(e.toJson()), QVariant(e.toJson()));
     exec_combo_->setCurrentIndex(insert_pos);
 }
@@ -232,14 +232,14 @@ void ExecControlsBar::add_entry(const ExecEntry& entry) {
         icon = provider.icon(QFileInfo(entry.path));
     }
 
-    int insert_pos = exec_combo_->count() - 1;
+    int insert_pos = 1;  // right after the sentinel (index 0)
     exec_combo_->insertItem(insert_pos, icon, displayTextForEntry(entry.toJson()), QVariant(entry.toJson()));
     exec_combo_->setCurrentIndex(insert_pos);
 }
 
 ExecEntry ExecControlsBar::current_entry() const {
     int idx = exec_combo_->currentIndex();
-    if (idx < 0 || idx >= exec_combo_->count() - 1)
+    if (idx <= 0)  // index 0 is the sentinel, not an executable
         return {};
     return ExecEntry::fromJson(item_data(idx));
 }
@@ -254,6 +254,8 @@ void ExecControlsBar::set_executables(const QStringList& names, const QString& d
                                        const std::filesystem::path& game_dir,
                                        const std::filesystem::path& icon_cache_dir) {
     exec_combo_->clear();
+    // Sentinel stays first (index 0); real executables are appended after it
+    exec_combo_->addItem(tr(kAddNewEntryText), QVariant(QJsonObject()));
 
     for (int i = 0; i < names.size(); ++i) {
         auto raw = names[i];
@@ -286,10 +288,8 @@ void ExecControlsBar::set_executables(const QStringList& names, const QString& d
         exec_combo_->addItem(display, QVariant(entry.toJson()));
     }
 
-    exec_combo_->addItem(tr(kAddNewEntryText), QVariant(QJsonObject()));
-
     if (!default_name.isEmpty()) {
-        for (int i = 0; i < exec_combo_->count(); ++i) {
+        for (int i = 1; i < exec_combo_->count(); ++i) {
             auto p = item_data(i)["path"].toString();
             if (!p.isEmpty() && p == default_name) {
                 exec_combo_->setCurrentIndex(i);
@@ -297,6 +297,9 @@ void ExecControlsBar::set_executables(const QStringList& names, const QString& d
             }
         }
     }
+    // No default match (or none requested): land on the first real executable
+    if (exec_combo_->count() > 1)
+        exec_combo_->setCurrentIndex(1);
 }
 
 }  // namespace ui
