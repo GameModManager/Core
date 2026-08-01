@@ -554,6 +554,10 @@ void MainWindow::set_game_info(const std::string& game_id,
     current_instance_root_ = instance_root;
     if (!instance_root.empty())
         conflict_cache_path_ = instance_root / "cache" / "conflict_cache.json";
+    // Restore the persisted per-instance executable selection BEFORE the
+    // combo is populated, so set_executables can land on it instead of
+    // defaulting to the first real entry.
+    restore_exec_selection();
     update_title();
 
     // (Loaded plugin list is logged once by PluginLoader::load_directory)
@@ -4080,63 +4084,85 @@ void MainWindow::restore_app_state() {
     }
 
     // Restore right panel table header states (column widths, order, visibility)
-    uint32_t extra_len = 0;
-    if (in.read(reinterpret_cast<char*>(&extra_len), sizeof(extra_len)) && extra_len > 0) {
-        std::vector<char> buf(extra_len);
-        if (in.read(buf.data(), extra_len)) {
-            QByteArray raw(buf.data(), extra_len);
-            auto doc = QJsonDocument::fromJson(QByteArray::fromBase64(raw));
-            if (!doc.isObject())
-                doc = QJsonDocument::fromJson(raw);  // legacy: extra written raw
-            if (doc.isObject() && right_panel_) {
-            auto obj = doc.object();
-            // Restore process tree visibility (prefixed with _ to avoid tab-name collision)
-            if (obj.contains("_process_tree_visible"))
-                show_process_tree_ = obj["_process_tree_visible"].toBool();
-            // Restore toolbar icon size (Small/Medium/Large)
-            if (obj.contains("icon_size")) {
-                icon_size_ = obj["icon_size"].toInt(24);
-                menu_bar_->set_icon_size(icon_size_);
-                if (toolbar_area_)
-                    toolbar_area_->setIconSize(QSize(icon_size_, icon_size_));
-                if (toolbar_)
-                    toolbar_->set_icon_size(icon_size_);
-            }
-            // Last selected executable (restored in populate_executables)
-            if (obj.contains("selected_exec"))
-                pending_exec_selection_ = obj["selected_exec"].toString();
-            auto* tw = right_panel_->tab_widget();
-                for (int i = 0; i < tw->count(); ++i) {
-                    auto key = tw->tabText(i);
-                    if (!obj.contains(key)) continue;
-                    auto* tab = tw->widget(i);
-                    auto* table = tab->findChild<QTableWidget*>();
-                    if (table && table->horizontalHeader()) {
-                        auto state = QByteArray::fromBase64(
-                            obj[key].toString().toUtf8());
-                        if (!state.isEmpty())
-                            table->horizontalHeader()->restoreState(state);
-                        // Re-apply desired stretch modes so restoreState
-                        // doesn't permanently override them from old sessions
-                        if (key == "Data") {
-                            auto* h = table->horizontalHeader();
-                            h->setStretchLastSection(false);
-                            h->setSectionResizeMode(0, QHeaderView::Stretch);
-                            h->setSectionResizeMode(1, QHeaderView::Interactive);
-                            h->setSectionResizeMode(2, QHeaderView::Interactive);
-                        } else if (key == "Downloads") {
-                            auto* h = table->horizontalHeader();
-                            h->setStretchLastSection(false);
-                            h->setSectionResizeMode(0, QHeaderView::Stretch);
-                            h->setSectionResizeMode(1, QHeaderView::Interactive);
-                            h->setSectionResizeMode(2, QHeaderView::Interactive);
-                            h->setSectionResizeMode(3, QHeaderView::Interactive);
-                        }
-                    }
+    auto obj = read_app_state_extra();
+    if (!obj.isEmpty() && right_panel_) {
+        // Restore process tree visibility (prefixed with _ to avoid tab-name collision)
+        if (obj.contains("_process_tree_visible"))
+            show_process_tree_ = obj["_process_tree_visible"].toBool();
+        // Restore toolbar icon size (Small/Medium/Large)
+        if (obj.contains("icon_size")) {
+            icon_size_ = obj["icon_size"].toInt(24);
+            menu_bar_->set_icon_size(icon_size_);
+            if (toolbar_area_)
+                toolbar_area_->setIconSize(QSize(icon_size_, icon_size_));
+            if (toolbar_)
+                toolbar_->set_icon_size(icon_size_);
+        }
+        auto* tw = right_panel_->tab_widget();
+        for (int i = 0; i < tw->count(); ++i) {
+            auto key = tw->tabText(i);
+            if (!obj.contains(key)) continue;
+            auto* tab = tw->widget(i);
+            auto* table = tab->findChild<QTableWidget*>();
+            if (table && table->horizontalHeader()) {
+                auto state = QByteArray::fromBase64(
+                    obj[key].toString().toUtf8());
+                if (!state.isEmpty())
+                    table->horizontalHeader()->restoreState(state);
+                // Re-apply desired stretch modes so restoreState
+                // doesn't permanently override them from old sessions
+                if (key == "Data") {
+                    auto* h = table->horizontalHeader();
+                    h->setStretchLastSection(false);
+                    h->setSectionResizeMode(0, QHeaderView::Stretch);
+                    h->setSectionResizeMode(1, QHeaderView::Interactive);
+                    h->setSectionResizeMode(2, QHeaderView::Interactive);
+                } else if (key == "Downloads") {
+                    auto* h = table->horizontalHeader();
+                    h->setStretchLastSection(false);
+                    h->setSectionResizeMode(0, QHeaderView::Stretch);
+                    h->setSectionResizeMode(1, QHeaderView::Interactive);
+                    h->setSectionResizeMode(2, QHeaderView::Interactive);
+                    h->setSectionResizeMode(3, QHeaderView::Interactive);
                 }
             }
         }
     }
+}
+
+QJsonObject MainWindow::read_app_state_extra() const {
+    QJsonObject empty;
+    auto path = app_state_path();
+    if (!std::filesystem::exists(path)) return empty;
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return empty;
+
+    auto read_ba = [&]() -> QByteArray {
+        uint32_t len = 0;
+        if (!in.read(reinterpret_cast<char*>(&len), sizeof(len)) || len == 0) return {};
+        std::vector<char> buf(len);
+        if (!in.read(buf.data(), len)) return {};
+        return QByteArray::fromBase64(QByteArray(buf.data(), len));
+    };
+
+    // Skip the five fixed blocks (geometry, window state, splitters, header)
+    for (int i = 0; i < 5; ++i) read_ba();
+
+    uint32_t extra_len = 0;
+    if (!in.read(reinterpret_cast<char*>(&extra_len), sizeof(extra_len)) || extra_len == 0) return empty;
+    std::vector<char> buf(extra_len);
+    if (!in.read(buf.data(), extra_len)) return empty;
+    QByteArray raw(buf.data(), extra_len);
+    auto doc = QJsonDocument::fromJson(QByteArray::fromBase64(raw));
+    if (!doc.isObject())
+        doc = QJsonDocument::fromJson(raw);  // legacy: extra written raw
+    return doc.object();
+}
+
+void MainWindow::restore_exec_selection() {
+    auto obj = read_app_state_extra();
+    if (obj.contains("selected_exec"))
+        pending_exec_selection_ = obj["selected_exec"].toString();
 }
 
 void MainWindow::apply_initial_geometry() {

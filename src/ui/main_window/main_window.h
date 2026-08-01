@@ -193,6 +193,8 @@ private:
 
     void save_app_state();
     void restore_app_state();
+    void restore_exec_selection();
+    QJsonObject read_app_state_extra() const;
     std::filesystem::path app_state_path() const;
     void save_download_manifest();
     void load_download_manifest();
