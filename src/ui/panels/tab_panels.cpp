@@ -73,6 +73,7 @@ static QString state_label(DownloadState s) {
         case DownloadState::Complete:    return QCoreApplication::translate("DownloadsTab", "Install");
         case DownloadState::Installed:   return QCoreApplication::translate("DownloadsTab", "Installed");
         case DownloadState::Failed:      return QCoreApplication::translate("DownloadsTab", "Failed");
+        case DownloadState::Removed:     return QCoreApplication::translate("DownloadsTab", "Removed");
     }
     return QCoreApplication::translate("DownloadsTab", "Unknown");
 }
@@ -134,7 +135,9 @@ void sort_dirs_first(QTreeWidgetItem* parent) {
 PluginsTab::PluginsTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    table_ = make_table(3, {tr("Plugin"), tr("Status"), tr("Masters")}, this);
+    table_ = make_table(5,
+        {tr("Enabled"), tr("Plugin Name"), tr("Flags"), tr("Priority"), tr("Mod Index")},
+        this);
     layout->addWidget(table_);
 }
 
@@ -142,8 +145,15 @@ PluginsTab::PluginsTab(QWidget* parent) : QWidget(parent) {
 ArchivesTab::ArchivesTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    table_ = make_table(3, {tr("Archive"), tr("Size"), tr("Priority")}, this);
-    layout->addWidget(table_);
+    tree_ = new QTreeWidget(this);
+    tree_->setColumnCount(1);
+    tree_->setHeaderHidden(true);
+    tree_->setRootIsDecorated(false);
+    tree_->setAlternatingRowColors(true);
+    tree_->setSelectionMode(QAbstractItemView::SingleSelection);
+    tree_->setIconSize(QSize(16, 16));
+    tree_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    layout->addWidget(tree_, 1);
 }
 
 // --- DataTab ---
@@ -274,7 +284,7 @@ void DataTab::show_data(
 SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    table_ = make_table(3, {tr("Save"), tr("Date"), tr("Size")}, this);
+    table_ = make_table(2, {tr("Name"), tr("File")}, this);
     layout->addWidget(table_);
 }
 
@@ -407,7 +417,7 @@ void DownloadsTab::update_progress(const std::string& id, int64_t downloaded,
 }
 
 void DownloadsTab::replace_bar_with_label(const std::string& id, const QString& text,
-                                           const QColor& bg) {
+                                           const QColor& bg, const QColor& fg) {
     auto& entry = entry_for(id);
     if (entry.row < 0) return;
 
@@ -419,10 +429,10 @@ void DownloadsTab::replace_bar_with_label(const std::string& id, const QString& 
     auto* item = new QTableWidgetItem(text);
     item->setFlags(item->flags() & ~Qt::ItemIsEditable);
     item->setTextAlignment(Qt::AlignCenter);
-    if (bg.isValid()) {
+    if (bg.isValid())
         item->setBackground(bg);
-        item->setForeground(Qt::white);
-    }
+    if (fg.isValid())
+        item->setForeground(fg);
     table_->setItem(entry.row, 2, item);
 }
 
@@ -431,8 +441,13 @@ void DownloadsTab::mark_complete(const std::string& id, bool success) {
     if (entry.row < 0) return;
 
     entry.state = success ? DownloadState::Complete : DownloadState::Failed;
-    QColor bg = success ? QColor("#4CAF50") : QColor("#f44336");
-    replace_bar_with_label(id, state_label(entry.state), bg);
+    if (success) {
+        // Done: normal background, green "Install" text.
+        replace_bar_with_label(id, state_label(entry.state), QColor(), QColor("#4CAF50"));
+    } else {
+        replace_bar_with_label(id, state_label(entry.state),
+                               QColor("#f44336"), QColor(Qt::white));
+    }
 
     // Show final archive size
     if (entry.total_size > 0) {
@@ -445,7 +460,7 @@ void DownloadsTab::mark_installed(const std::string& id) {
     if (entry.row < 0) return;
 
     entry.state = DownloadState::Installed;
-    replace_bar_with_label(id, tr("Installed"), QColor());
+    replace_bar_with_label(id, tr("Installed"), QColor(), QColor());
 
     // Show final archive size
     if (entry.total_size > 0) {
@@ -461,7 +476,7 @@ void DownloadsTab::mark_paused(const std::string& id) {
     if (entry.row < 0) return;
 
     entry.state = DownloadState::Paused;
-    replace_bar_with_label(id, tr("Paused"), QColor("#FF9800"));
+    replace_bar_with_label(id, tr("Paused"), QColor("#FF9800"), QColor(Qt::white));
 }
 
 void DownloadsTab::mark_downloading(const std::string& id) {
@@ -809,16 +824,22 @@ void DownloadsTab::deserialize(const std::string& json,
             entry.size_item->setFlags(entry.size_item->flags() & ~Qt::ItemIsEditable);
             table_->setItem(entry.row, 3, entry.size_item);
 
-            QColor bg;
-            if (state == DownloadState::Complete) bg = QColor("#4CAF50");
-            else if (state == DownloadState::Failed) bg = QColor("#f44336");
+            QColor bg, fg;
+            if (state == DownloadState::Complete) {
+                fg = QColor("#4CAF50");
+            } else if (state == DownloadState::Failed) {
+                bg = QColor("#f44336");
+                fg = QColor(Qt::white);
+            } else if (state == DownloadState::Removed) {
+                fg = QColor("#B8860B");
+            }
             auto* item = new QTableWidgetItem(state_label(state));
             item->setFlags(item->flags() & ~Qt::ItemIsEditable);
             item->setTextAlignment(Qt::AlignCenter);
-            if (bg.isValid()) {
+            if (bg.isValid())
                 item->setBackground(bg);
-                item->setForeground(Qt::white);
-            }
+            if (fg.isValid())
+                item->setForeground(fg);
             table_->setItem(entry.row, 2, item);
         }
 

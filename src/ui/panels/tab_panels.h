@@ -28,7 +28,9 @@ enum class DownloadState {
     Paused,
     Complete,
     Installed,
-    Failed
+    Failed,
+    // Not implemented yet: reserved so manifests and rendering stay stable.
+    Removed
 };
 
 class DownloadsTab : public QWidget {
@@ -103,7 +105,7 @@ private:
 
     DownloadEntry& entry_for(const std::string& id);
     void replace_bar_with_label(const std::string& id, const QString& text,
-                                const QColor& bg);
+                                const QColor& bg, const QColor& fg);
     void on_cell_double_clicked(int row, int column);
     void on_custom_context_menu(const QPoint& pos);
     void remove_entry(const std::string& id);
@@ -140,9 +142,9 @@ class ArchivesTab : public QWidget {
     Q_OBJECT
 public:
     explicit ArchivesTab(QWidget* parent = nullptr);
-    [[nodiscard]] QTableWidget* table() const { return table_; }
+    [[nodiscard]] QTreeWidget* tree() const { return tree_; }
 private:
-    QTableWidget* table_ = nullptr;
+    QTreeWidget* tree_ = nullptr;
 };
 
 class DataTab : public QWidget {
