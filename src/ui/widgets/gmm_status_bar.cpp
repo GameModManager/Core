@@ -1,5 +1,6 @@
 #include "ui/widgets/gmm_status_bar.h"
 
+#include "engine/nexus_auth.h"
 #include "engine/trace/trace_recorder.h"
 
 #include <QFrame>
@@ -11,6 +12,10 @@ namespace {
 // Well-known flow ids shown in the pipeline indicator.
 const char* kFlowIds[] = {"launch", "install", "sort"};
 const char* kFlowTitles[] = {"Launch", "Install", "Sort"};
+
+// The Nexus source label shows the API budget consumed this hour/day.
+// Matches the "Nexus" entry of the game's download_sources knowledge key.
+const char* kRateSourceName = "Nexus";
 }  // namespace
 
 GmmStatusBar::GmmStatusBar(QWidget* parent)
@@ -76,6 +81,7 @@ void GmmStatusBar::set_sources(const QStringList& sources) {
         label->deleteLater();
     }
     source_labels_.clear();
+    source_labels_by_name_.clear();
 
     // Remove old separator
     if (separator_) {
@@ -98,10 +104,33 @@ void GmmStatusBar::set_sources(const QStringList& sources) {
         label->setStyleSheet("color: gray;");
         layout_->addWidget(label);
         source_labels_.append(label);
+        source_labels_by_name_.insert(source, label);
     }
+
+    refresh_nexus_source();
+}
+
+void GmmStatusBar::refresh_nexus_source() {
+    auto it = source_labels_by_name_.find(kRateSourceName);
+    if (it == source_labels_by_name_.end()) return;
+
+    // Format: "Nexus: <hourly made>/<daily made>" — requests consumed out of
+    // the Nexus hourly/daily budget (same numbers the Settings > Sources panel
+    // shows as remaining/limit; made = limit - remaining).
+    const auto rl = engine::NexusAuth::instance().get_rate_limit();
+    if (rl.hourly_limit <= 0 || rl.daily_limit <= 0) {
+        it.value()->setText(QString("%1: --").arg(kRateSourceName));
+        return;
+    }
+    const int hourly_made = rl.hourly_limit - rl.hourly_remaining;
+    const int daily_made = rl.daily_limit - rl.daily_remaining;
+    it.value()->setText(
+        QString("%1: %2/%3").arg(kRateSourceName).arg(hourly_made).arg(daily_made));
 }
 
 void GmmStatusBar::refresh_pipeline_indicator() {
+    refresh_nexus_source();
+
     auto& trace = engine::TraceRecorder::instance();
     QString text;
     bool any_running = false;
