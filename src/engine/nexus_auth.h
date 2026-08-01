@@ -21,6 +21,17 @@ struct RateLimitInfo {
     int64_t last_updated = 0;    // Unix timestamp of last API call
 };
 
+// Nexus account information from users/validate.json - persisted so the
+// settings panel can show it without re-validating on every open. MO2 only
+// knows Regular/Premium; Nexus additionally exposes a Supporter tier which we
+// surface between the two.
+struct NexusUserInfo {
+    enum class AccountType { None, Regular, Supporter, Premium };
+    std::string user_id;
+    std::string name;
+    AccountType account_type = AccountType::None;
+};
+
 // Manages Nexus Mods API key storage. Secrets live in the OS keyring
 // (injected via set_keyring()); when no OS keyring is available, storage
 // falls back to FileKeyring (obfuscated file, insecure) with a warning.
@@ -40,6 +51,12 @@ public:
     RateLimitInfo get_rate_limit() const;
     void update_rate_limit(int hourly_limit, int hourly_remaining, int64_t hourly_reset,
                            int daily_limit, int daily_remaining, int64_t daily_reset);
+
+    // User account info from users/validate.json - persisted to disk.
+    bool has_user_info() const;
+    NexusUserInfo get_user_info() const;
+    void set_user_info(const NexusUserInfo& info);
+    void clear_user_info();
 
     // Paths
     static std::filesystem::path config_dir();
