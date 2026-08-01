@@ -2,163 +2,465 @@
 
 #include "engine/log/logger.h"
 #include "engine/nexus_auth.h"
+#include "engine/source/nexus_account.h"
 #include "engine/source/nexus_provider.h"
+#include "engine/source/nexus_servers.h"
 #include "engine/source/source_provider.h"
 #include "engine/source/steam_workshop_provider.h"
 #include "ui/settings/settings.h"
 
+#ifdef GMM_PLATFORM_LINUX
+#include "platform/linux/linux_platform.h"
+#endif
+
+#include <QAbstractItemView>
+#include <QApplication>
 #include <QCheckBox>
-#include <QDateTime>
+#include <QClipboard>
+#include <QCoreApplication>
+#include <QDesktopServices>
+#include <QDialogButtonBox>
+#include <QFontDatabase>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QLineEdit>
-#include <QMessageBox>
+#include <QListWidget>
+#include <QListWidgetItem>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QUrl>
 #include <QVBoxLayout>
-#include <QWidget>
+
+#include <cctype>
+#include <filesystem>
+#include <string>
+#include <vector>
 
 namespace ui {
 
 namespace {
 
-// -- Nexus Mods ---------------------------------------------------------------
+bool contains_ci(const std::string& haystack, const std::string& needle) {
+    std::string h = haystack, n = needle;
+    for (auto& c : h) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (auto& c : n) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return h.find(n) != std::string::npos;
+}
 
-QWidget* build_nexus_page(QWidget* parent) {
+// MO2's localizedByteSpeed: e.g. "1.2 MB/s" / "340 KB/s".
+QString format_speed(int bps) {
+    if (bps <= 0) return {};
+    const double kb = static_cast<double>(bps) / 1024.0;
+    if (kb >= 1024.0)
+        return QString::number(kb / 1024.0, 'f', 1) + " MB/s";
+    return QString::number(kb, 'f', 0) + " KB/s";
+}
+
+QString account_type_label(engine::NexusUserInfo::AccountType t) {
+    switch (t) {
+        case engine::NexusUserInfo::AccountType::Premium:
+            return QObject::tr("Premium");
+        case engine::NexusUserInfo::AccountType::Supporter:
+            return QObject::tr("Supporter");
+        case engine::NexusUserInfo::AccountType::Regular:
+            return QObject::tr("Regular");
+        default:
+            return QObject::tr("N/A");
+    }
+}
+
+} // namespace
+
+// -- NexusManualKeyDialog ----------------------------------------------------
+
+NexusManualKeyDialog::NexusManualKeyDialog(QWidget* parent)
+    : QDialog(parent) {
+    setWindowTitle(tr("Enter API Key Manually"));
+
+    auto* layout = new QVBoxLayout(this);
+
+    key_edit_ = new QPlainTextEdit(this);
+    key_edit_->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    key_edit_->setPlaceholderText(tr("Paste your Nexus Mods API key here."));
+    layout->addWidget(key_edit_);
+
+    auto* open_browser_btn = new QPushButton(tr("Open Browser"), this);
+    auto* paste_btn = new QPushButton(tr("Paste"), this);
+    auto* clear_btn = new QPushButton(tr("Clear"), this);
+    auto* btn_row = new QHBoxLayout;
+    btn_row->addWidget(open_browser_btn);
+    btn_row->addWidget(paste_btn);
+    btn_row->addWidget(clear_btn);
+    layout->addLayout(btn_row);
+
+    auto* button_box =
+        new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    connect(button_box, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(button_box, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    layout->addWidget(button_box);
+
+    connect(open_browser_btn, &QPushButton::clicked, this, [this] { open_browser(); });
+    connect(paste_btn, &QPushButton::clicked, this, [this] { paste(); });
+    connect(clear_btn, &QPushButton::clicked, this, [this] { clear(); });
+}
+
+QString NexusManualKeyDialog::key() const {
+    return key_;
+}
+
+void NexusManualKeyDialog::accept() {
+    key_ = key_edit_->toPlainText();
+    QDialog::accept();
+}
+
+void NexusManualKeyDialog::open_browser() {
+    QDesktopServices::openUrl(
+        QUrl("https://www.nexusmods.com/users/myaccount?tab=api"));
+}
+
+void NexusManualKeyDialog::paste() {
+    const QString text = QApplication::clipboard()->text();
+    if (!text.isEmpty()) key_edit_->setPlainText(text);
+}
+
+void NexusManualKeyDialog::clear() {
+    key_edit_->clear();
+}
+
+// -- NexusPanel --------------------------------------------------------------
+
+// The Settings -> Sources -> Nexus sub-tab. A 1:1 clone of MO2's
+// settingsdialog.ui nexus tab (Nexus Account / Statistics / Nexus Connection /
+// Options / Servers). Unlike MO2 we use the API-key flow for everything (the
+// "Connect" button validates the stored key against users/validate.json), so
+// there is no OAuth login dialog.
+class NexusPanel : public QWidget {
+public:
+    explicit NexusPanel(QWidget* parent = nullptr);
+
+private:
+    void add_log(const QString& s);
+    void log_clear();
+    void refresh_account_and_stats();
+    void refresh_buttons();
+    void refresh_servers();
+    QListWidgetItem* make_server_item(const engine::NexusServer& srv) const;
+    void persist_server_preferences();
+
+    void connect_to_nexus();
+    void enter_key_manually();
+    void disconnect_from_nexus();
+    void associate_with_nxm();
+
+    QLabel* nexus_user_id_ = nullptr;
+    QLabel* nexus_name_ = nullptr;
+    QLabel* nexus_account_ = nullptr;
+    QLabel* nexus_daily_ = nullptr;
+    QLabel* nexus_hourly_ = nullptr;
+
+    QPushButton* connect_btn_ = nullptr;
+    QPushButton* manual_btn_ = nullptr;
+    QPushButton* disconnect_btn_ = nullptr;
+    QPushButton* associate_btn_ = nullptr;
+
+    QListWidget* log_list_ = nullptr;
+    QListWidget* known_list_ = nullptr;
+    QListWidget* preferred_list_ = nullptr;
+
+    // Persisting server preferences on every model change would wipe them
+    // while the lists are being (re)built during construction - the model
+    // change signals fire on clear()/addItem(). Only start persisting once
+    // the initial population is done.
+    bool servers_ready_ = false;
+};
+
+NexusPanel::NexusPanel(QWidget* parent)
+    : QWidget(parent) {
     auto& auth = engine::NexusAuth::instance();
-    const bool has_key = auth.has_api_key();
     auto& s = Settings::instance();
 
-    auto* page = new QWidget(parent);
-    auto* layout = new QVBoxLayout(page);
+    auto* outer = new QVBoxLayout(this);
 
-    auto* api_group = new QGroupBox(QWidget::tr("API Key"), page);
-    auto* api_layout = new QVBoxLayout(api_group);
+    // -- Box 1: Nexus Account | Statistics -----------------------------------
+    auto* box1 = new QHBoxLayout;
+    auto* account_group = new QGroupBox(tr("Nexus Account"), this);
+    auto* account_form = new QFormLayout(account_group);
+    nexus_user_id_ = new QLabel(tr("N/A"), account_group);
+    nexus_user_id_->setObjectName("nexusUserID");
+    nexus_name_ = new QLabel(tr("N/A"), account_group);
+    nexus_name_->setObjectName("nexusName");
+    nexus_account_ = new QLabel(tr("N/A"), account_group);
+    nexus_account_->setObjectName("nexusAccount");
+    account_form->addRow(tr("User ID:"), nexus_user_id_);
+    account_form->addRow(tr("Name:"), nexus_name_);
+    account_form->addRow(tr("Account:"), nexus_account_);
+    box1->addWidget(account_group);
 
-    auto* key_edit = new QLineEdit(api_group);
-    key_edit->setEchoMode(QLineEdit::Password);
-    key_edit->setPlaceholderText(QWidget::tr("Enter your Nexus Mods API key..."));
-    if (has_key)
-        key_edit->setText(QString::fromStdString(auth.get_api_key()));
+    auto* stats_group = new QGroupBox(tr("Statistics"), this);
+    auto* stats_form = new QFormLayout(stats_group);
+    nexus_daily_ = new QLabel(tr("N/A"), stats_group);
+    nexus_daily_->setObjectName("nexusDailyRequests");
+    nexus_hourly_ = new QLabel(tr("N/A"), stats_group);
+    nexus_hourly_->setObjectName("nexusHourlyRequests");
+    stats_form->addRow(tr("Daily requests:"), nexus_daily_);
+    stats_form->addRow(tr("Hourly requests:"), nexus_hourly_);
+    box1->addWidget(stats_group);
+    outer->addLayout(box1);
 
-    auto* key_row = new QHBoxLayout;
-    key_row->addWidget(key_edit, 1);
+    // -- Box 2: Nexus Connection ----------------------------------------------
+    auto* conn_group = new QGroupBox(tr("Nexus Connection"), this);
+    auto* conn_layout = new QHBoxLayout(conn_group);
+    auto* left_col = new QVBoxLayout;
+    connect_btn_ = new QPushButton(tr("Connect to Nexus"), conn_group);
+    connect_btn_->setObjectName("nexusConnect");
+    connect_btn_->setEnabled(false);
+    connect_btn_->setToolTip(
+        tr("Disabled: account validation currently crashes the app (see implementation.md Log)."));
+    manual_btn_ = new QPushButton(tr("Enter API Key Manually"), conn_group);
+    manual_btn_->setObjectName("nexusManualKey");
+    manual_btn_->setToolTip(tr("Manually enter the API key and try to login"));
+    disconnect_btn_ = new QPushButton(tr("Disconnect from Nexus"), conn_group);
+    disconnect_btn_->setObjectName("nexusDisconnect");
+    disconnect_btn_->setToolTip(tr("Clear the stored Nexus authorization."));
+    left_col->addWidget(connect_btn_);
+    left_col->addWidget(manual_btn_);
+    left_col->addWidget(disconnect_btn_);
+    left_col->addStretch(1);
+    conn_layout->addLayout(left_col, 1);
 
-    auto* save_btn = new QPushButton(has_key ? QWidget::tr("Update")
-                                             : QWidget::tr("Save"), api_group);
-    auto* clear_btn = new QPushButton(QWidget::tr("Clear"), api_group);
-    clear_btn->setEnabled(has_key);
-    key_row->addWidget(save_btn);
-    key_row->addWidget(clear_btn);
-    api_layout->addLayout(key_row);
-    api_layout->addWidget(new QLabel(
-        QWidget::tr("Get your key at "
-                    "<a href='https://www.nexusmods.com/users/myaccount?tab=api'>"
-                    "nexusmods.com/users/myaccount?tab=api</a>"), api_group));
-    layout->addWidget(api_group);
+    log_list_ = new QListWidget(conn_group);
+    log_list_->setObjectName("nexusLog");
+    conn_layout->addWidget(log_list_, 9);
+    outer->addWidget(conn_group);
 
-    auto* rl_group = new QGroupBox(QWidget::tr("API Rate Limit"), page);
-    auto* rl_layout = new QVBoxLayout(rl_group);
-    auto* rl_label = new QLabel(rl_group);
-    auto info = auth.get_rate_limit();
-    if (info.daily_limit > 0 || info.hourly_limit > 0) {
-        QString text;
-        auto budget_line = [&](const QString& name, int remaining, int limit,
-                               int64_t reset) {
-            QString line = QWidget::tr("%1: <b>%2</b> / %3")
-                .arg(name).arg(remaining).arg(limit);
-            if (reset > 0) {
-                QDateTime dt = QDateTime::fromSecsSinceEpoch(reset);
-                line += QWidget::tr(" &nbsp;(resets %1)")
-                    .arg(dt.toLocalTime().toString(Qt::TextDate));
-            }
-            return line;
-        };
-        if (info.hourly_limit > 0)
-            text += budget_line(QWidget::tr("Hourly"), info.hourly_remaining,
-                                info.hourly_limit, info.hourly_reset);
-        if (info.daily_limit > 0) {
-            if (!text.isEmpty()) text += "<br>";
-            text += budget_line(QWidget::tr("Daily"), info.daily_remaining,
-                                info.daily_limit, info.daily_reset);
-        }
-        if (info.last_updated > 0) {
-            QDateTime lu = QDateTime::fromSecsSinceEpoch(info.last_updated);
-            text += "<br>" + QWidget::tr("Last request: %1")
-                .arg(lu.toLocalTime().toString(Qt::TextDate));
-        }
-        rl_label->setText(text);
-    } else {
-        rl_label->setText(
-            QWidget::tr("No API requests made yet in this session."));
-    }
-    rl_layout->addWidget(rl_label);
-    layout->addWidget(rl_group);
-
-    auto* int_group = new QGroupBox(QWidget::tr("Integration"), page);
-    auto* int_layout = new QVBoxLayout(int_group);
-    auto* endorse_box =
-        new QCheckBox(QWidget::tr("Endorse mods from the manager"), int_group);
+    // -- Box 3: Options --------------------------------------------------------
+    auto* options_group = new QGroupBox(tr("Options"), this);
+    auto* options_layout = new QHBoxLayout(options_group);
+    auto* opts_left = new QVBoxLayout;
+    auto* endorse_box = new QCheckBox(tr("Endorsement Integration"), options_group);
     endorse_box->setChecked(s.endorsement_integration());
-    auto* track_box =
-        new QCheckBox(QWidget::tr("Track mods from the manager"), int_group);
+    auto* track_box = new QCheckBox(tr("Tracked Integration"), options_group);
     track_box->setChecked(s.tracked_integration());
-    auto* cat_box = new QCheckBox(
-        QWidget::tr("Apply Nexus category mappings"), int_group);
+    auto* cat_box = new QCheckBox(tr("Apply Nexus category mappings"), options_group);
     cat_box->setChecked(s.category_mappings());
-    int_layout->addWidget(endorse_box);
-    int_layout->addWidget(track_box);
-    int_layout->addWidget(cat_box);
-    layout->addWidget(int_group);
-
-    auto* counter_box = new QCheckBox(
-        QWidget::tr("Hide the API counter in the UI"), page);
+    cat_box->setEnabled(false);  // work in progress - kept, but inert
+    cat_box->setToolTip(tr("Work in progress"));
+    auto* counter_box = new QCheckBox(tr("Hide API Request Counter"), options_group);
     counter_box->setChecked(s.hide_api_counter());
-    layout->addWidget(counter_box);
-    layout->addStretch(1);
+    opts_left->addWidget(endorse_box);
+    opts_left->addWidget(track_box);
+    opts_left->addWidget(cat_box);
+    opts_left->addWidget(counter_box);
+    options_layout->addLayout(opts_left, 1);
 
-    QObject::connect(save_btn, &QPushButton::clicked,
-                     [&auth, key_edit, save_btn, clear_btn, page]() {
-        QString key = key_edit->text().trimmed();
-        if (key.isEmpty()) {
-            QMessageBox::warning(page, QWidget::tr("API Key"),
-                QWidget::tr("Enter your Nexus Mods API key or click Clear to "
-                            "remove it."));
-            return;
-        }
-        auth.set_api_key(key.toStdString());
-        clear_btn->setEnabled(true);
-        save_btn->setText(QWidget::tr("Update"));
-        engine::Logger::instance().info("Nexus API key saved");
-        QMessageBox::information(page, QWidget::tr("API Key"),
-                                 QWidget::tr("API key saved successfully."));
-    });
-    QObject::connect(clear_btn, &QPushButton::clicked,
-                     [&auth, key_edit, save_btn, clear_btn, page]() {
-        auto reply = QMessageBox::question(
-            page, QWidget::tr("Clear API Key"),
-            QWidget::tr("Remove the stored Nexus Mods API key?"),
-            QMessageBox::Yes | QMessageBox::No);
-        if (reply == QMessageBox::Yes) {
-            auth.clear_api_key();
-            key_edit->clear();
-            clear_btn->setEnabled(false);
-            save_btn->setText(QWidget::tr("Save"));
-            engine::Logger::instance().info("Nexus API key cleared");
-        }
-    });
-    QObject::connect(endorse_box, &QCheckBox::toggled,
-                     [&s](bool on) { s.set_endorsement_integration(on); });
-    QObject::connect(track_box, &QCheckBox::toggled,
-                     [&s](bool on) { s.set_tracked_integration(on); });
-    QObject::connect(cat_box, &QCheckBox::toggled,
-                     [&s](bool on) { s.set_category_mappings(on); });
-    QObject::connect(counter_box, &QCheckBox::toggled,
-                     [&s](bool on) { s.set_hide_api_counter(on); });
+    auto* opts_right = new QVBoxLayout;
+    associate_btn_ = new QPushButton(
+        tr("Associate with \"Download with manager\" links"), options_group);
+    associate_btn_->setObjectName("associateButton");
+    opts_right->addWidget(associate_btn_);
+    opts_right->addStretch(1);
+    options_layout->addLayout(opts_right, 1);
+    outer->addWidget(options_group);
 
-    return page;
+    // -- Box 4: Servers ---------------------------------------------------------
+    auto* servers_group = new QGroupBox(tr("Servers"), this);
+    auto* servers_layout = new QHBoxLayout(servers_group);
+    auto* known_col = new QVBoxLayout;
+    known_col->addWidget(new QLabel(
+        tr("Known Servers (updated on download)"), servers_group));
+    known_list_ = new QListWidget(servers_group);
+    known_list_->setObjectName("knownServersList");
+    known_list_->setDragDropMode(QAbstractItemView::DragDrop);
+    known_list_->setDefaultDropAction(Qt::MoveAction);
+    known_col->addWidget(known_list_);
+    servers_layout->addLayout(known_col, 1);
+
+    auto* preferred_col = new QVBoxLayout;
+    preferred_col->addWidget(new QLabel(
+        tr("Preferred Servers (Drag & Drop)"), servers_group));
+    preferred_list_ = new QListWidget(servers_group);
+    preferred_list_->setObjectName("preferredServersList");
+    preferred_list_->setDragDropMode(QAbstractItemView::DragDrop);
+    preferred_list_->setDefaultDropAction(Qt::MoveAction);
+    preferred_col->addWidget(preferred_list_);
+    servers_layout->addLayout(preferred_col, 1);
+    outer->addWidget(servers_group);
+
+    outer->addStretch(1);
+
+    // -- Wiring ---------------------------------------------------------------
+    connect(connect_btn_, &QPushButton::clicked, this, [this] { connect_to_nexus(); });
+    connect(manual_btn_, &QPushButton::clicked, this, [this] { enter_key_manually(); });
+    connect(disconnect_btn_, &QPushButton::clicked, this,
+            [this] { disconnect_from_nexus(); });
+    connect(associate_btn_, &QPushButton::clicked, this,
+            [this] { associate_with_nxm(); });
+
+    connect(endorse_box, &QCheckBox::toggled,
+            [&s](bool on) { s.set_endorsement_integration(on); });
+    connect(track_box, &QCheckBox::toggled,
+            [&s](bool on) { s.set_tracked_integration(on); });
+    connect(counter_box, &QCheckBox::toggled,
+            [&s](bool on) { s.set_hide_api_counter(on); });
+    // category_mappings is intentionally not wired: the checkbox is disabled
+    // (work in progress) and must never change the stored value.
+
+    auto persist = [this] { persist_server_preferences(); };
+    connect(known_list_->model(), &QAbstractItemModel::rowsMoved, this, persist);
+    connect(known_list_->model(), &QAbstractItemModel::rowsInserted, this, persist);
+    connect(known_list_->model(), &QAbstractItemModel::rowsRemoved, this, persist);
+    connect(preferred_list_->model(), &QAbstractItemModel::rowsMoved, this, persist);
+    connect(preferred_list_->model(), &QAbstractItemModel::rowsInserted, this, persist);
+    connect(preferred_list_->model(), &QAbstractItemModel::rowsRemoved, this, persist);
+
+    // -- Initial state ---------------------------------------------------------
+    if (auth.has_api_key())
+        add_log(tr("Connected."));
+    else
+        add_log(tr("Not connected."));
+
+    refresh_account_and_stats();
+    refresh_buttons();
+    refresh_servers();
+    servers_ready_ = true;
+}
+
+void NexusPanel::add_log(const QString& s) {
+    log_list_->addItem(s);
+    log_list_->scrollToBottom();
+}
+
+void NexusPanel::log_clear() {
+    log_list_->clear();
+}
+
+void NexusPanel::refresh_account_and_stats() {
+    auto& auth = engine::NexusAuth::instance();
+
+    if (auth.has_user_info()) {
+        const auto info = auth.get_user_info();
+        nexus_user_id_->setText(QString::fromStdString(info.user_id));
+        nexus_name_->setText(QString::fromStdString(info.name));
+        nexus_account_->setText(account_type_label(info.account_type));
+    } else {
+        nexus_user_id_->setText(tr("N/A"));
+        nexus_name_->setText(tr("N/A"));
+        nexus_account_->setText(tr("N/A"));
+    }
+
+    const auto rl = auth.get_rate_limit();
+    if (rl.daily_limit > 0)
+        nexus_daily_->setText(QString("%1/%2").arg(rl.daily_remaining).arg(rl.daily_limit));
+    else
+        nexus_daily_->setText(tr("N/A"));
+    if (rl.hourly_limit > 0)
+        nexus_hourly_->setText(QString("%1/%2").arg(rl.hourly_remaining).arg(rl.hourly_limit));
+    else
+        nexus_hourly_->setText(tr("N/A"));
+}
+
+void NexusPanel::refresh_buttons() {
+    const bool has_key = engine::NexusAuth::instance().has_api_key();
+    // connect_btn_ stays permanently disabled: validate_nexus_account() soft-crashes
+    // the app (see implementation.md Log 2026-08-01).
+    disconnect_btn_->setEnabled(has_key);
+#ifdef GMM_PLATFORM_LINUX
+    associate_btn_->setEnabled(!engine::LinuxPlatform::is_nxm_handler_registered());
+#else
+    associate_btn_->setEnabled(false);
+#endif
+}
+
+QListWidgetItem* NexusPanel::make_server_item(const engine::NexusServer& srv) const {
+    QString text = QString::fromStdString(srv.name);
+    if (contains_ci(srv.name, "CDN")) text += tr(" (automatic)");
+    const int avg = srv.average_speed();
+    if (avg > 0) text += QString(" (%1)").arg(format_speed(avg));
+    auto* item = new QListWidgetItem(text);
+    item->setData(Qt::UserRole, QString::fromStdString(srv.name));
+    return item;
+}
+
+void NexusPanel::refresh_servers() {
+    known_list_->clear();
+    preferred_list_->clear();
+    for (const auto& srv : engine::NexusServers::instance().known())
+        known_list_->addItem(make_server_item(srv));
+    for (const auto& srv : engine::NexusServers::instance().preferred())
+        preferred_list_->addItem(make_server_item(srv));
+}
+
+void NexusPanel::persist_server_preferences() {
+    if (!servers_ready_) return;
+    std::vector<std::string> ordered;
+    ordered.reserve(preferred_list_->count());
+    for (int i = 0; i < preferred_list_->count(); ++i) {
+        const QString name = preferred_list_->item(i)->data(Qt::UserRole).toString();
+        if (!name.isEmpty()) ordered.push_back(name.toStdString());
+    }
+    engine::NexusServers::instance().set_preferred(ordered);
+}
+
+void NexusPanel::connect_to_nexus() {
+    log_clear();
+    add_log(tr("Authorizing with Nexus..."));
+    const auto r = engine::validate_nexus_account();
+    if (r.ok) {
+        add_log(tr("Received user account information"));
+        add_log(tr("Linked with Nexus successfully."));
+    } else {
+        add_log(QString::fromStdString(r.message));
+    }
+    refresh_account_and_stats();
+    refresh_buttons();
+}
+
+void NexusPanel::enter_key_manually() {
+    NexusManualKeyDialog dlg(this);
+    if (dlg.exec() != QDialog::Accepted) return;
+
+    const QString key = dlg.key().trimmed();
+    if (key.isEmpty()) {
+        // MO2 parity: an empty key clears the stored credentials.
+        disconnect_from_nexus();
+        return;
+    }
+    engine::NexusAuth::instance().set_api_key(key.toStdString());
+    engine::Logger::instance().info("Nexus API key stored");
+    connect_to_nexus();
+}
+
+void NexusPanel::disconnect_from_nexus() {
+    auto& auth = engine::NexusAuth::instance();
+    auth.clear_api_key();
+    auth.clear_user_info();
+    log_clear();
+    add_log(tr("Disconnected."));
+    engine::Logger::instance().info("Nexus API key cleared");
+    refresh_account_and_stats();
+    refresh_buttons();
+}
+
+void NexusPanel::associate_with_nxm() {
+#ifdef GMM_PLATFORM_LINUX
+    const auto app_path = std::filesystem::path(
+        QCoreApplication::applicationFilePath().toStdString());
+    if (engine::LinuxPlatform::register_nxm_handler(app_path)) {
+        if (engine::LinuxPlatform::register_gmm_handler(app_path))
+            Settings::instance().set_nxm_handler_check("dont_ask");
+        else
+            engine::Logger::instance().error(
+                "Failed to register GameModManager as an x-scheme-handler for nxm://");
+        add_log(tr("Associated GameModManager with \"Download with manager\" links."));
+    } else {
+        add_log(tr("Failed to register the nxm:// handler."));
+    }
+#else
+    add_log(tr("nxm:// registration is not supported on this platform."));
+#endif
+    refresh_buttons();
 }
 
 // -- Steam Workshop -----------------------------------------------------------
@@ -193,13 +495,11 @@ QWidget* build_workshop_page(engine::SteamWorkshopProvider* provider,
     return page;
 }
 
-} // namespace
-
 QWidget* build_source_settings_page(engine::SourceProvider* provider,
                                     QWidget* parent) {
     if (provider == nullptr) return nullptr;
     if (provider->source_type() == "nexus") {
-        return build_nexus_page(parent);
+        return new NexusPanel(parent);
     }
     if (provider->source_type() == "steam") {
         auto* ws = dynamic_cast<engine::SteamWorkshopProvider*>(provider);

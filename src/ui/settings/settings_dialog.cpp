@@ -605,21 +605,20 @@ QWidget* SettingsDialog::build_sources_tab() {
     const auto providers = engine::SourceRegistry::instance().providers();
     if (providers.empty()) {
         layout->addWidget(new QLabel(tr("No download sources are available."), page));
-    }
-    for (auto* provider : providers) {
-        auto* group = new QGroupBox(
-            QString::fromStdString(provider->display_name()), page);
-        auto* gl = new QVBoxLayout(group);
-        if (QWidget* settings_page =
-                ui::build_source_settings_page(provider, group)) {
-            gl->addWidget(settings_page);
-        } else {
-            auto* lbl = new QLabel(
-                tr("This source has no configurable settings."), group);
-            lbl->setWordWrap(true);
-            gl->addWidget(lbl);
+    } else {
+        // One sub-tab per source provider (Nexus Mods, Steam Workshop, ...).
+        auto* tabs = new QTabWidget(page);
+        for (auto* provider : providers) {
+            QWidget* content = ui::build_source_settings_page(provider, tabs);
+            if (content == nullptr) {
+                auto* lbl = new QLabel(
+                    tr("This source has no configurable settings."), tabs);
+                lbl->setWordWrap(true);
+                content = lbl;
+            }
+            tabs->addTab(content, QString::fromStdString(provider->display_name()));
         }
-        layout->addWidget(group);
+        layout->addWidget(tabs, 1);
     }
 
     layout->addStretch(1);

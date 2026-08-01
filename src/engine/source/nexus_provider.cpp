@@ -4,6 +4,9 @@
 #include "engine/nxm/nxm_router.h"
 #include "engine/log/logger.h"
 #include "engine/nexus_auth.h"
+#include "engine/source/nexus_account.h"
+#include "engine/source/nexus_http.h"
+#include "engine/source/nexus_servers.h"
 
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
@@ -58,67 +61,11 @@ static size_t write_to_file(void* ptr, size_t size, size_t nmemb, void* stream) 
     return file->good() ? (size * nmemb) : 0;
 }
 
-static size_t write_to_string(void* ptr, size_t size, size_t nmemb, void* stream) {
-    auto* str = static_cast<std::string*>(stream);
-    str->append(static_cast<const char*>(ptr), size * nmemb);
-    return size * nmemb;
-}
-
-static size_t header_callback(void* ptr, size_t size, size_t nmemb, void* user_data) {
-    auto* headers = static_cast<std::string*>(user_data);
-    headers->append(static_cast<const char*>(ptr), size * nmemb);
-    return size * nmemb;
-}
-
-// ---------------------------------------------------------------------------
-// Helper: perform a libcurl request and return response body
-// ---------------------------------------------------------------------------
-
-static bool curl_request(const std::string& url,
-                         const std::string& post_body,
-                         std::string& response_body,
-                         long& http_code,
-                         curl_slist* headers = nullptr,
-                         std::string* response_headers = nullptr) {
-    auto* curl = curl_easy_init();
-    if (!curl) return false;
-
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_USERAGENT,
-                     "GameModManager/0.1 (Nexus Provider)");
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_string);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_body);
-
-    // Nexus API AUP (help.nexusmods.com/article/114) requires apps to identify
-    // themselves via application-name/application-version headers. They are
-    // appended on top of any caller-supplied headers (apikey etc. survive).
-    curl_slist* effective = nullptr;
-    for (curl_slist* h = headers; h; h = h->next)
-        effective = curl_slist_append(effective, h->data);
-    effective = curl_slist_append(effective, "application-name: GameModManager");
-    effective = curl_slist_append(effective, "application-version: 0.1.0");
-    if (effective)
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, effective);
-
-    if (response_headers) {
-        curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_callback);
-        curl_easy_setopt(curl, CURLOPT_HEADERDATA, response_headers);
-    }
-
-    if (!post_body.empty()) {
-        curl_easy_setopt(curl, CURLOPT_POST, 1L);
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_body.c_str());
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, post_body.size());
-    }
-
-    CURLcode res = curl_easy_perform(curl);
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-    curl_slist_free_all(effective);
-    curl_easy_cleanup(curl);
-
-    return (res == CURLE_OK);
+static bool contains_ci(const std::string& haystack, const std::string& needle) {
+    std::string h = haystack, n = needle;
+    for (auto& c : h) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (auto& c : n) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return h.find(n) != std::string::npos;
 }
 
 // Downloads to dest_path. When `resume_from > 0` the existing partial file is
@@ -183,57 +130,6 @@ static bool curl_download(const std::string& url,
 }
 
 // ---------------------------------------------------------------------------
-// Helper: parse rate-limit headers from a raw header block
-// ---------------------------------------------------------------------------
-
-static void parse_rate_limits(const std::string& headers) {
-    auto find_header = [&](const std::string& name) -> int64_t {
-        auto pos = headers.find(name + ": ");
-        if (pos == std::string::npos) {
-            // try lowercase
-            std::string lower = name;
-            for (auto& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            pos = headers.find(lower + ": ");
-            if (pos == std::string::npos) return -1;
-        }
-        pos = headers.find(':', pos) + 1;
-        while (pos < headers.size() && headers[pos] == ' ') ++pos;
-        int64_t val = 0;
-        while (pos < headers.size() && headers[pos] >= '0' && headers[pos] <= '9') {
-            val = val * 10 + (headers[pos] - '0');
-            ++pos;
-        }
-        return val;
-    };
-
-    // Nexus reports two budgets, each with its own reset (MO2
-    // NexusInterface::parseLimits reads the same plain headers). Prefer the
-    // authenticated variants (they reflect the API-key quota), fall back to
-    // the plain ones.
-    auto pick = [&](const std::string& primary, const std::string& fallback) -> int64_t {
-        int64_t v = find_header(primary);
-        return v >= 0 ? v : find_header(fallback);
-    };
-
-    int64_t daily_limit     = pick("x-rl-authenticated-daily-limit", "x-rl-daily-limit");
-    int64_t daily_remaining = pick("x-rl-authenticated-daily-remaining", "x-rl-daily-remaining");
-    int64_t daily_reset     = pick("x-rl-authenticated-daily-reset", "x-rl-daily-reset");
-    int64_t hourly_limit    = pick("x-rl-authenticated-hourly-limit", "x-rl-hourly-limit");
-    int64_t hourly_remaining = pick("x-rl-authenticated-hourly-remaining", "x-rl-hourly-remaining");
-    int64_t hourly_reset    = pick("x-rl-authenticated-hourly-reset", "x-rl-hourly-reset");
-
-    if (daily_limit > 0 || hourly_limit > 0) {
-        NexusAuth::instance().update_rate_limit(
-            static_cast<int>(hourly_limit),
-            static_cast<int>(hourly_remaining),
-            hourly_reset,
-            static_cast<int>(daily_limit),
-            static_cast<int>(daily_remaining),
-            daily_reset);
-    }
-}
-
-// ---------------------------------------------------------------------------
 // NexusProvider::fetch
 // ---------------------------------------------------------------------------
 
@@ -264,6 +160,69 @@ bool NexusProvider::fetch(const Mod& mod, PipelineContext& ctx,
     }
 
     std::string download_url;
+    std::string server_name;
+
+    // Collects the download_link entries, records each as a known server, then
+    // picks the most preferred URL. Mirrors MO2's ServerByPreference ordering:
+    // the user's preferred mirrors first (rank), then the CDN, then the rest
+    // in the API's own order. Fills download_url + server_name.
+    auto parse_and_pick = [&](const std::string& body) -> bool {
+        try {
+            auto j = nlohmann::json::parse(body);
+            if (!j.is_array()) {
+                Logger::instance().error(
+                    "NexusProvider: unexpected download-link response format");
+                return false;
+            }
+
+            struct Entry {
+                std::string name;
+                bool premium = false;
+                std::string uri;
+            };
+            std::vector<Entry> entries;
+            for (const auto& e : j) {
+                if (!e.is_object()) continue;
+                std::string uri = e.value("URI", "");
+                if (uri.empty()) uri = e.value("download_url", "");
+                if (uri.empty()) continue;
+
+                std::string long_name = e.value("name", "");
+                std::string name = e.value("short_name", "");
+                if (name.empty()) name = long_name;
+                const bool premium = contains_ci(long_name, "Premium");
+                if (!name.empty())
+                    NexusServers::instance().record_discovered(name, premium);
+                entries.push_back({name, premium, uri});
+            }
+
+            if (entries.empty()) {
+                Logger::instance().error(
+                    "NexusProvider: no usable download server in response");
+                return false;
+            }
+
+            std::stable_sort(entries.begin(), entries.end(),
+                             [](const Entry& a, const Entry& b) {
+                const int pa = NexusServers::instance().preferred_rank(a.name);
+                const int pb = NexusServers::instance().preferred_rank(b.name);
+                if (pa != pb) return pa > pb;
+                const bool cda = contains_ci(a.name, "CDN");
+                const bool cdb = contains_ci(b.name, "CDN");
+                if (cda != cdb) return cda;
+                return false;  // preserve the API's order for the rest
+            });
+
+            download_url = entries.front().uri;
+            server_name = entries.front().name;
+            return true;
+        } catch (const std::exception& e) {
+            Logger::instance().error(
+                "NexusProvider: failed to parse download-link response: " +
+                std::string(e.what()));
+            return false;
+        }
+    };
 
     // ---- Step 1: Resolve a direct download URL ----
 
@@ -289,7 +248,7 @@ bool NexusProvider::fetch(const Mod& mod, PipelineContext& ctx,
         std::string resp_headers;
         long http_code = 0;
 
-        bool ok = curl_request(api_url, "", response, http_code, headers, &resp_headers);
+        bool ok = nexus_http_request(api_url, "", response, http_code, headers, &resp_headers);
         curl_slist_free_all(headers);
 
         if (resp_headers.size() > 20)  // sanity check - don't parse empty/trivial
@@ -311,25 +270,7 @@ bool NexusProvider::fetch(const Mod& mod, PipelineContext& ctx,
             return false;
         }
 
-        try {
-            auto j = nlohmann::json::parse(response);
-            if (!j.is_array() || j.empty()) {
-                Logger::instance().error("NexusProvider: unexpected API-key response format");
-                return false;
-            }
-            download_url = j[0].value("URI", "");
-            if (download_url.empty())
-                download_url = j[0].value("download_url", "");
-        } catch (const std::exception& e) {
-            Logger::instance().error("NexusProvider: failed to parse API-key response: " +
-                                     std::string(e.what()));
-            return false;
-        }
-
-        if (download_url.empty()) {
-            Logger::instance().error("NexusProvider: empty download URL in API-key response");
-            return false;
-        }
+        if (!parse_and_pick(response)) return false;
 
     } else {
         // -- NXM auth path (signed-link flow, MO2-compatible) ----------
@@ -361,7 +302,7 @@ bool NexusProvider::fetch(const Mod& mod, PipelineContext& ctx,
         std::string resp_headers;
         long http_code = 0;
 
-        bool ok = curl_request(api_url, "", api_response, http_code, headers, &resp_headers);
+        bool ok = nexus_http_request(api_url, "", api_response, http_code, headers, &resp_headers);
         curl_slist_free_all(headers);
 
         if (resp_headers.size() > 20)  // sanity check - don't parse empty/trivial
@@ -385,44 +326,17 @@ bool NexusProvider::fetch(const Mod& mod, PipelineContext& ctx,
             return false;
         }
 
-        try {
-            auto j = nlohmann::json::parse(api_response);
-            if (!j.is_array() || j.empty()) {
-                Logger::instance().error(
-                    "NexusProvider: unexpected NXM-auth response format");
-                return false;
-            }
-            // Prefer the "Nexus CDN" entry; fall back to the first non-empty URI.
-            for (const auto& entry : j) {
-                if (!entry.is_object()) continue;
-                std::string uri = entry.value("URI", "");
-                if (uri.empty()) uri = entry.value("download_url", "");
-                if (!uri.empty()) {
-                    download_url = uri;
-                    break;
-                }
-            }
-        } catch (const std::exception& e) {
-            Logger::instance().error(
-                "NexusProvider: failed to parse NXM-auth response: " +
-                std::string(e.what()));
-            return false;
-        }
-
-        if (download_url.empty()) {
-            Logger::instance().error(
-                "NexusProvider: empty download URL in NXM-auth response");
-            return false;
-        }
+        if (!parse_and_pick(api_response)) return false;
     }
 
     // ---- Step 2: Download the file ----
-    return download_from_url(download_url, ctx, dest_path);
+    return download_from_url(download_url, ctx, dest_path, server_name);
 }
 
 bool NexusProvider::download_from_url(const std::string& download_url,
                                       PipelineContext& ctx,
-                                      const std::filesystem::path& dest_path) {
+                                      const std::filesystem::path& dest_path,
+                                      const std::string& server_name) {
     Logger::instance().debug("NexusProvider: downloading from Nexus...");
     long dl_code = 0;
 
@@ -446,6 +360,22 @@ bool NexusProvider::download_from_url(const std::string& download_url,
                                      std::to_string(dl_code) + ")");
         }
         return false;
+    }
+
+    // MO2 parity: record a speed sample for the serving server so the Servers
+    // settings box can show a per-mirror average. Short downloads (<5s) are
+    // skipped, their rate is too imprecise.
+    if (!server_name.empty()) {
+        const auto elapsed = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - dp.start).count();
+        std::error_code ec;
+        const auto size = std::filesystem::file_size(dest_path, ec);
+        if (!ec && elapsed > 5.0) {
+            const double bytes = static_cast<double>(size)
+                                 - static_cast<double>(dp.resume_base);
+            if (bytes > 0)
+                NexusServers::instance().record_speed(server_name, bytes / elapsed);
+        }
     }
 
     Logger::instance().debug("NexusProvider: download complete -> " + dest_path.string());
@@ -483,7 +413,7 @@ SourceDownloadInfo NexusProvider::resolve_download_info(const Mod& mod) const {
     std::string response;
     std::string resp_headers;
     long http_code = 0;
-    bool ok = curl_request(url, "", response, http_code, headers, &resp_headers);
+    bool ok = nexus_http_request(url, "", response, http_code, headers, &resp_headers);
     curl_slist_free_all(headers);
 
     if (resp_headers.size() > 20)  // sanity check - don't parse empty/trivial
