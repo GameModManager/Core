@@ -62,6 +62,26 @@ std::filesystem::path WindowsPlatform::cache_dir() const {
     return localappdata_dir() / L"cache";
 }
 
+// Native Windows game dirs - the prefix is the native OS, so the game's
+// Documents and Local AppData are the real user folders.
+std::filesystem::path WindowsPlatform::game_documents_dir(uint32_t /*steam_appid*/) const {
+    auto path = env_path(L"USERPROFILE");
+    if (path.empty()) return {};
+    return path / L"Documents";
+}
+
+std::filesystem::path WindowsPlatform::game_local_appdata_dir(uint32_t /*steam_appid*/) const {
+    auto path = env_path(L"LOCALAPPDATA");
+    if (path.empty()) {
+        path = expand_env(LR"(%USERPROFILE%\AppData\Local)");
+    }
+    return path;
+}
+
+std::filesystem::path WindowsPlatform::cache_dir() const {
+    return localappdata_dir() / L"cache";
+}
+
 // --- Steam discovery ---
 
 std::filesystem::path WindowsPlatform::find_steam_root() const {

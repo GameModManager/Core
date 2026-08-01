@@ -2,6 +2,7 @@
 
 #include "platform/platform_interface.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 
@@ -20,6 +21,8 @@ public:
 
     [[nodiscard]] std::filesystem::path find_steam_root() const override;
     [[nodiscard]] std::filesystem::path find_proton() const override { return {}; }
+    [[nodiscard]] std::filesystem::path game_documents_dir(uint32_t steam_appid) const override;
+    [[nodiscard]] std::filesystem::path game_local_appdata_dir(uint32_t steam_appid) const override;
 
     [[nodiscard]] bool launch_executable(
         const std::filesystem::path& executable,

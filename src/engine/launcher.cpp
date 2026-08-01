@@ -3,6 +3,7 @@
 #include "engine/log/logger.h"
 #include "engine/overlay_launcher.h"
 #include "engine/preload_interceptor.h"
+#include "platform/platform_interface.h"
 #include "runtime/runtime.h"
 
 #include <algorithm>
@@ -140,9 +141,9 @@ static LaunchResult do_launch(const LaunchParams& params) {
         Logger::instance().debug("OverlayFS launcher: supported, trying overlay launch");
 
         if (params.is_windows_exe) {
-            auto proton = ProtonRuntime::find_proton_binary(params.steam_appid);
+            auto proton = ProtonRuntime::find_proton_binary(params.platform, params.steam_appid);
             if (!proton.empty()) {
-                ProtonRuntime::prepare_proton_environment(params.game_dir, params.steam_appid);
+                ProtonRuntime::prepare_proton_environment(params.platform, params.game_dir, params.steam_appid);
                 std::vector<std::string> ovl_args = {
                     proton.string(), "waitforexitandrun", exec_path.string()
                 };
@@ -194,7 +195,7 @@ static LaunchResult do_launch(const LaunchParams& params) {
     {
         std::unique_ptr<Runtime> runtime;
         if (params.is_windows_exe)
-            runtime = std::make_unique<ProtonRuntime>();
+            runtime = std::make_unique<ProtonRuntime>(params.platform);
         if (!runtime)
             runtime = std::make_unique<NativeRuntime>();
 

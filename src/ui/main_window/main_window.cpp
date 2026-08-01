@@ -3183,6 +3183,7 @@ void MainWindow::launch_with_executable(const QString& full_path,
     lparams.steam_appid = steam_appid;
     lparams.is_windows_exe = (exec_path.extension().string() == ".exe" ||
                               exec_path.extension().string() == ".EXE");
+    lparams.platform = platform_;
 
     // Output-to-mod: capture into a per-launch scratch dir, relay on exit.
     // Empty output_mod_dir = default Overwrite capture (toolbar shortcuts).
