@@ -2987,15 +2987,6 @@ void MainWindow::group_mods_by_separator() {
 void MainWindow::populate_executables() {
     if (!knowledge_ || current_game_id_.empty()) return;
 
-    auto default_exec = knowledge_->get(current_game_id_, "default_executable", "");
-
-    // If the configured default doesn't exist on disk, fall back to SkyrimSE.exe
-    if (!default_exec.empty() && !current_game_dir_.empty()) {
-        auto default_path = current_game_dir_ / default_exec;
-        if (!std::filesystem::exists(default_path))
-            default_exec = "SkyrimSE.exe";
-    }
-
     // Prefer saved executables list (persists user additions across restarts)
     QStringList exec_list;
     if (!saved_executables_.empty()) {
@@ -3019,12 +3010,10 @@ void MainWindow::populate_executables() {
     auto icon_cache = current_instance_root_.empty()
         ? std::filesystem::path{}
         : current_instance_root_ / "cache" / "thumbnails";
-    // Prefer the last selected executable (restored per instance); fall back
-    // to the game's default executable.
-    auto preferred = pending_exec_selection_.isEmpty()
-        ? QString::fromStdString(default_exec)
-        : pending_exec_selection_;
-    right_panel_->exec_controls()->set_executables(exec_list, preferred, current_game_dir_, icon_cache);
+    // Restore the last selected executable for this instance. On a fresh
+    // instance the selection is empty - just populate the list and let the
+    // user pick.
+    right_panel_->exec_controls()->set_executables(exec_list, pending_exec_selection_, current_game_dir_, icon_cache);
 
     // Persist immediately on first run so future launches use the saved list
     if (saved_executables_.empty())
