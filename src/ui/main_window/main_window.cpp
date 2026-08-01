@@ -4611,12 +4611,13 @@ void MainWindow::show_settings_dialog() {
         auto* theme_layout = new QVBoxLayout(theme_group);
 
         theme_combo->addItem(tr("Default (system)"), "default");
-        for (const auto& name : style_manager_->theme_names())
-            theme_combo->addItem(QString::fromStdString(name), QString::fromStdString(name));
-        if (!QStyleFactory::keys().isEmpty()) {
+        for (const auto& key : QStyleFactory::keys())
+            theme_combo->addItem(key, "qt:" + key);
+        const auto theme_names = style_manager_->theme_names();
+        if (!theme_names.empty()) {
             theme_combo->insertSeparator(theme_combo->count());
-            for (const auto& key : QStyleFactory::keys())
-                theme_combo->addItem(tr("Qt: %1").arg(key), "qt:" + key);
+            for (const auto& name : theme_names)
+                theme_combo->addItem(QString::fromStdString(name), QString::fromStdString(name));
         }
 
         // A persisted built-in Qt style wins over the QSS theme.
