@@ -114,18 +114,16 @@ void GmmStatusBar::refresh_nexus_source() {
     auto it = source_labels_by_name_.find(kRateSourceName);
     if (it == source_labels_by_name_.end()) return;
 
-    // Format: "Nexus: <hourly made>/<daily made>" — requests consumed out of
-    // the Nexus hourly/daily budget (same numbers the Settings > Sources panel
-    // shows as remaining/limit; made = limit - remaining).
+    // Format: "Nexus: <hourly remaining>/<daily remaining>" — the Nexus API
+    // budget left this hour/day (same numbers the Settings > Sources panel
+    // shows, remaining out of limit).
     const auto rl = engine::NexusAuth::instance().get_rate_limit();
     if (rl.hourly_limit <= 0 || rl.daily_limit <= 0) {
         it.value()->setText(QString("%1: --").arg(kRateSourceName));
         return;
     }
-    const int hourly_made = rl.hourly_limit - rl.hourly_remaining;
-    const int daily_made = rl.daily_limit - rl.daily_remaining;
     it.value()->setText(
-        QString("%1: %2/%3").arg(kRateSourceName).arg(hourly_made).arg(daily_made));
+        QString("%1: %2/%3").arg(kRateSourceName).arg(rl.hourly_remaining).arg(rl.daily_remaining));
 }
 
 void GmmStatusBar::refresh_pipeline_indicator() {
