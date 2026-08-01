@@ -13,10 +13,20 @@ namespace fs = std::filesystem;
 
 namespace engine {
 
+namespace {
+fs::path instances_dir_override_;
+}  // namespace
+
 fs::path default_instances_dir() {
+    if (!instances_dir_override_.empty())
+        return instances_dir_override_;
     const char* home = std::getenv("HOME");
     if (!home) return "/tmp/gamemodmanager/instances";
     return std::string(home) + "/.local/share/GameModManager/instances";
+}
+
+void set_instances_dir_override(const fs::path& dir) {
+    instances_dir_override_ = dir;
 }
 
 fs::path last_instance_file_path() {

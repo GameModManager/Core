@@ -32,6 +32,9 @@ public:
     virtual SourceDownloadInfo resolve_download_info(const Mod& mod) const {
         return {};
     }
+
+    // Human-readable provider name for the UI (Sources tab).
+    virtual std::string display_name() const { return source_type(); }
 };
 
 class SourceRegistry {
@@ -40,6 +43,7 @@ public:
     void register_provider(std::unique_ptr<SourceProvider> provider);
     SourceProvider* provider_for(const std::string& source_type) const;
     std::vector<std::string> available_sources() const;
+    std::vector<SourceProvider*> providers() const;
 private:
     SourceRegistry() = default;
     std::vector<std::unique_ptr<SourceProvider>> providers_;

@@ -1,4 +1,5 @@
 #include "ui/panels/tab_panels.h"
+#include "ui/settings/settings.h"
 
 #include <QAction>
 #include <QApplication>
@@ -17,7 +18,6 @@
 #include <QPalette>
 #include <QProgressBar>
 #include <QSet>
-#include <QSettings>
 #include <QStyle>
 #include <QTableWidget>
 #include <QTreeWidget>
@@ -299,13 +299,11 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     connect(table_, &QTableWidget::customContextMenuRequested,
             this, &DownloadsTab::on_custom_context_menu);
     connect(hide_installed_, &QCheckBox::toggled, this, [this](bool checked) {
-        QSettings settings("GameModManager", "GameModManager");
-        settings.setValue("downloads/hide_installed", checked);
+        Settings::instance().set_hide_installed_downloads(checked);
         apply_installed_filter();
     });
 
-    QSettings settings("GameModManager", "GameModManager");
-    hide_installed_->setChecked(settings.value("downloads/hide_installed", false).toBool());
+    hide_installed_->setChecked(Settings::instance().hide_installed_downloads());
 }
 
 void DownloadsTab::add_download(const std::string& id, const std::string& name,

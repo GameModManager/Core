@@ -19,6 +19,8 @@
 #include "ui/pipeline_worker.h"
 #include "ui/panels/tab_panels.h"
 #include "ui/smooth_scroll.h"
+#include "ui/settings/settings_dialog.h"
+#include "ui/settings/settings.h"
 #include "engine/launcher.h"
 #include "engine/fs_utils.h"
 #include "engine/log/logger.h"
@@ -110,7 +112,6 @@
 #include <QDateTime>
 #include <QDir>
 #include <QLocale>
-#include <QSettings>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -484,7 +485,8 @@ MainWindow::MainWindow(QWidget* parent)
         ? (std::string(home) + "/.local/share/GameModManager/workshop_cache.db")
         : "workshop_cache.db";
     engine::SourceRegistry::instance().register_provider(
-        std::make_unique<engine::SteamWorkshopProvider>(ws_db));
+        std::make_unique<engine::SteamWorkshopProvider>(
+            ws_db, Settings::instance().workshop_rate_limit_per_hour()));
 
     connect(right_panel_->exec_controls(), &ExecControlsBar::run_clicked, this, &MainWindow::launch_game);
 
@@ -528,8 +530,8 @@ MainWindow::MainWindow(QWidget* parent)
     refresh_recent_instances();
 
     // Smooth scrolling on all item views (mod list, right-panel tables).
-    // TODO: gate behind a Settings "Smooth scrolling" checkbox.
-    ui::enable_smooth_scrolling(this);
+    if (Settings::instance().smooth_scrolling())
+        ui::enable_smooth_scrolling(this);
 }
 
 void MainWindow::on_notification(const QString& title, const QString& message) {
@@ -3270,7 +3272,8 @@ void MainWindow::check_running_process() {
         }
         // Delay capture so any child/spawned processes finish writing
         auto t = launch_time_;
-        QTimer::singleShot(3000, this, [this, t]() { do_capture_overwrite(t); });
+        QTimer::singleShot(Settings::instance().overlay_capture_delay_ms(),
+                           this, [this, t]() { do_capture_overwrite(t); });
     }
 #else
     // ---- cgroup v2 path (primary) ----
@@ -3296,7 +3299,8 @@ void MainWindow::check_running_process() {
                 staging_dir_.clear();
             }
             auto t = launch_time_;
-            QTimer::singleShot(3000, this, [this, t]() { do_capture_overwrite(t); });
+            QTimer::singleShot(Settings::instance().overlay_capture_delay_ms(),
+                               this, [this, t]() { do_capture_overwrite(t); });
         }
         return;
     }
@@ -3368,7 +3372,8 @@ void MainWindow::check_running_process() {
         staging_dir_.clear();
     }
     auto t = launch_time_;
-    QTimer::singleShot(3000, this, [this, t]() { do_capture_overwrite(t); });
+    QTimer::singleShot(Settings::instance().overlay_capture_delay_ms(),
+                       this, [this, t]() { do_capture_overwrite(t); });
 #endif
 }
 
@@ -4524,8 +4529,7 @@ void MainWindow::ensure_nxm_handler_default() {
 
 #ifdef GMM_PLATFORM_LINUX
     // Respect a permanent "don't ask again" choice
-    QSettings settings("GameModManager", "GameModManager");
-    if (settings.value("nxm/handler_check").toString() == "dont_ask") return;
+    if (Settings::instance().nxm_handler_check() == "dont_ask") return;
 
     // Self-heal: if we're still the default handler, nothing to do
     if (engine::LinuxPlatform::is_nxm_handler_registered()) {
@@ -4556,7 +4560,7 @@ void MainWindow::ensure_nxm_handler_default() {
         (void)engine::LinuxPlatform::register_gmm_handler(app_path);
         engine::Logger::instance().info("nxm:// handler registered: GameModManager");
     } else if (msg.clickedButton() == dont_show) {
-        settings.setValue("nxm/handler_check", "dont_ask");
+        Settings::instance().set_nxm_handler_check("dont_ask");
         engine::Logger::instance().debug("nxm:// handler check suppressed (don't show again)");
     } else {
         engine::Logger::instance().debug("nxm:// handler check declined; will ask next launch");
@@ -4567,204 +4571,7 @@ void MainWindow::ensure_nxm_handler_default() {
 }
 
 void MainWindow::show_settings_dialog() {
-    auto& auth = engine::NexusAuth::instance();
-    bool has_key = auth.has_api_key();
-
-    QDialog dlg(this);
-    dlg.setWindowTitle(tr("Settings"));
-    dlg.setMinimumWidth(480);
-
-    auto* layout = new QVBoxLayout(&dlg);
-
-    // -- Language section ----------------------------------------
-    auto* lang_group = new QGroupBox(tr("Language"));
-    auto* lang_layout = new QVBoxLayout(lang_group);
-
-    QSettings settings("GameModManager", "GameModManager");
-    const QString current_lang = settings.value("language", "en_US").toString();
-
-    auto* lang_combo = new QComboBox;
-    QDir i18n_dir(":/i18n");
-    for (const auto& info : i18n_dir.entryInfoList({"*.qm"}, QDir::Files | QDir::NoDotAndDotDot)) {
-        const QString tag = info.completeBaseName();
-        const QLocale loc(tag);
-        const QString display = loc.language() != QLocale::C
-            ? loc.nativeLanguageName() + " (" + tag + ")"
-            : tag;
-        lang_combo->addItem(display, tag);
-    }
-    int lang_idx = lang_combo->findData(current_lang);
-    lang_combo->setCurrentIndex(lang_idx >= 0 ? lang_idx : 0);
-
-    auto* lang_hint = new QLabel(
-        tr("Restart the application for the language change to take effect."));
-    lang_hint->setWordWrap(true);
-
-    lang_layout->addWidget(lang_combo);
-    lang_layout->addWidget(lang_hint);
-    layout->addWidget(lang_group);
-
-    // -- Theme section ------------------------------------------
-    auto* theme_combo = new QComboBox;
-    if (style_manager_) {
-        auto* theme_group = new QGroupBox(tr("Theme"));
-        auto* theme_layout = new QVBoxLayout(theme_group);
-
-        theme_combo->addItem(tr("Default (system)"), "default");
-        for (const auto& key : QStyleFactory::keys())
-            theme_combo->addItem(key, "qt:" + key);
-        const auto theme_names = style_manager_->theme_names();
-        if (!theme_names.empty()) {
-            theme_combo->insertSeparator(theme_combo->count());
-            for (const auto& name : theme_names)
-                theme_combo->addItem(QString::fromStdString(name), QString::fromStdString(name));
-        }
-
-        // A persisted built-in Qt style wins over the QSS theme.
-        const QSettings theme_settings("GameModManager", "GameModManager");
-        const QString current_style = theme_settings.value("style").toString();
-        const QString current_theme = theme_settings.value("theme", "default").toString();
-        int theme_idx = theme_combo->findData("qt:" + current_style);
-        if (theme_idx < 0)
-            theme_idx = theme_combo->findData(current_theme);
-        theme_combo->setCurrentIndex(theme_idx >= 0 ? theme_idx : 0);
-
-        auto* theme_hint = new QLabel(
-            tr("Editing a theme's .qss or tokens.json on disk live-reloads it. "
-               "Qt styles (Fusion, Windows, ...) are the built-in Qt look - no custom theme files."));
-        theme_hint->setWordWrap(true);
-
-        theme_layout->addWidget(theme_combo);
-        theme_layout->addWidget(theme_hint);
-        layout->addWidget(theme_group);
-    }
-
-    // -- API Key section ----------------------------------------
-    auto* api_group = new QGroupBox(tr("Nexus Mods API Key"));
-    auto* api_layout = new QVBoxLayout(api_group);
-
-    auto* key_edit = new QLineEdit;
-    key_edit->setEchoMode(QLineEdit::Password);
-    key_edit->setPlaceholderText(tr("Enter your Nexus Mods API key..."));
-    if (has_key)
-        key_edit->setText(QString::fromStdString(auth.get_api_key()));
-
-    auto* key_row = new QHBoxLayout;
-    key_row->addWidget(key_edit, 1);
-
-    auto* save_btn = new QPushButton(has_key ? tr("Update") : tr("Save"));
-    auto* clear_btn = new QPushButton(tr("Clear"));
-    clear_btn->setEnabled(has_key);
-    key_row->addWidget(save_btn);
-    key_row->addWidget(clear_btn);
-
-    api_layout->addLayout(key_row);
-    api_layout->addWidget(new QLabel(
-        tr("Get your key at "
-           "<a href='https://www.nexusmods.com/users/myaccount?tab=api'>"
-           "nexusmods.com/users/myaccount?tab=api</a>")));
-    layout->addWidget(api_group);
-
-    // -- Rate-limit section --------------------------------------
-    auto* rl_group = new QGroupBox(tr("API Rate Limit"));
-    auto* rl_layout = new QVBoxLayout(rl_group);
-
-    auto info = auth.get_rate_limit();
-    auto* rl_label = new QLabel;
-    if (info.daily_limit > 0 || info.hourly_limit > 0) {
-        QString text;
-        auto budget_line = [&](const QString& name, int remaining, int limit, int64_t reset) {
-            QString line = tr("%1: <b>%2</b> / %3")
-                .arg(name).arg(remaining).arg(limit);
-            if (reset > 0) {
-                QDateTime dt = QDateTime::fromSecsSinceEpoch(reset);
-                line += tr(" &nbsp;(resets %1)")
-                    .arg(dt.toLocalTime().toString(Qt::TextDate));
-            }
-            return line;
-        };
-        if (info.hourly_limit > 0)
-            text += budget_line(tr("Hourly"), info.hourly_remaining, info.hourly_limit, info.hourly_reset);
-        if (info.daily_limit > 0) {
-            if (!text.isEmpty()) text += "<br>";
-            text += budget_line(tr("Daily"), info.daily_remaining, info.daily_limit, info.daily_reset);
-        }
-        if (info.last_updated > 0) {
-            QDateTime lu = QDateTime::fromSecsSinceEpoch(info.last_updated);
-            text += "<br>" + tr("Last request: %1").arg(lu.toLocalTime().toString(Qt::TextDate));
-        }
-        rl_label->setText(text);
-    } else {
-        rl_label->setText(tr("No API requests made yet in this session."));
-    }
-    rl_layout->addWidget(rl_label);
-    layout->addWidget(rl_group);
-
-    // -- Dialog buttons ------------------------------------------
-    layout->addSpacing(8);
-    auto* btn_box = new QDialogButtonBox(QDialogButtonBox::Close);
-    connect(btn_box, &QDialogButtonBox::rejected, &dlg, &QDialog::close);
-    layout->addWidget(btn_box);
-
-    // -- Button actions ------------------------------------------
-    connect(lang_combo, &QComboBox::currentIndexChanged, this, [lang_combo](int index) {
-        QSettings("GameModManager", "GameModManager")
-            .setValue("language", lang_combo->itemData(index).toString());
-    });
-
-    connect(theme_combo, &QComboBox::currentIndexChanged, this, [this, theme_combo](int index) {
-        const QString data = theme_combo->itemData(index).toString();
-        QSettings settings("GameModManager", "GameModManager");
-        if (data.startsWith("qt:")) {
-            // Built-in Qt style: no custom QSS, no GMM theme.
-            const QString style = data.mid(3);
-            settings.setValue("style", style);
-            settings.remove("theme");
-            if (QStyle* st = QStyleFactory::create(style))
-                qApp->setStyle(st);
-            qApp->setStyleSheet(QString());
-            engine::Logger::instance().info("Applied Qt style: " + style.toStdString());
-            return;
-        }
-        // GMM theme (or Default): restore the native platform style first so
-        // the QSS renders on Breeze/etc., then apply the theme.
-        settings.setValue("theme", data);
-        settings.remove("style");
-        if (!native_style_name_.isEmpty()) {
-            if (QStyle* st = QStyleFactory::create(native_style_name_))
-                qApp->setStyle(st);
-        }
-        if (style_manager_)
-            style_manager_->apply_theme(data.toStdString());
-    });
-
-    connect(save_btn, &QPushButton::clicked, [&]() {
-        QString key = key_edit->text().trimmed();
-        if (key.isEmpty()) {
-            QMessageBox::warning(&dlg, tr("API Key"),
-                tr("Enter your Nexus Mods API key or click Clear to remove it."));
-            return;
-        }
-        auth.set_api_key(key.toStdString());
-        clear_btn->setEnabled(true);
-        save_btn->setText(tr("Update"));
-        engine::Logger::instance().info("Nexus API key saved");
-        QMessageBox::information(&dlg, tr("API Key"), tr("API key saved successfully."));
-    });
-
-    connect(clear_btn, &QPushButton::clicked, [&]() {
-        auto reply = QMessageBox::question(&dlg, tr("Clear API Key"),
-            tr("Remove the stored Nexus Mods API key?"),
-            QMessageBox::Yes | QMessageBox::No);
-        if (reply == QMessageBox::Yes) {
-            auth.clear_api_key();
-            key_edit->clear();
-            clear_btn->setEnabled(false);
-            save_btn->setText(tr("Save"));
-            engine::Logger::instance().info("Nexus API key cleared");
-        }
-    });
-
+    SettingsDialog dlg(style_manager_, native_style_name_, current_instance_root_, this);
     dlg.exec();
 }
 

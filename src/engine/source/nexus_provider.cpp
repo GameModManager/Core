@@ -516,4 +516,8 @@ SourceDownloadInfo NexusProvider::resolve_download_info(const Mod& mod) const {
     }
 }
 
+std::string NexusProvider::display_name() const {
+    return "Nexus Mods";
+}
+
 } // namespace engine

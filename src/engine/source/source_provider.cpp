@@ -26,4 +26,13 @@ std::vector<std::string> SourceRegistry::available_sources() const {
     return out;
 }
 
+std::vector<SourceProvider*> SourceRegistry::providers() const {
+    std::vector<SourceProvider*> out;
+    out.reserve(providers_.size());
+    for (const auto& p : providers_) {
+        out.push_back(p.get());
+    }
+    return out;
+}
+
 } // namespace engine

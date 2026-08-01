@@ -177,6 +177,9 @@ set(RUNTIME_SOURCES
 
 # UI sources — Qt lives here
 set(UI_SOURCES
+    src/ui/settings/settings.cpp
+    src/ui/settings/settings_dialog.cpp
+    src/ui/settings/source_pages.cpp
     src/ui/main_window/main_window.cpp
     src/ui/widgets/mod_list_model.cpp
     src/ui/widgets/mod_table_view.cpp
