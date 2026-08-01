@@ -63,6 +63,20 @@ static void cb_register_category(GmmRegistrationCtx* ctx,
     if (category) bridge->current_plugin->category = category;
 }
 
+static void cb_register_settings(GmmRegistrationCtx* ctx,
+                                 const char* const* keys,
+                                 const char* const* values,
+                                 size_t count) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge || !bridge->current_plugin || !keys || !values) return;
+
+    auto& settings = bridge->current_plugin->settings;
+    for (size_t i = 0; i < count; ++i) {
+        if (!keys[i] || !values[i]) continue;
+        settings.emplace_back(keys[i], values[i]);
+    }
+}
+
 static void cb_register_stage_claim(GmmRegistrationCtx* ctx,
                                      const char* stage_name,
                                      GmmStageFn fn,
@@ -334,6 +348,7 @@ bool PluginLoader::load_plugin(const std::string& path) {
     ctx.register_tab = cb_register_tab;
     ctx.register_meta = cb_register_meta;
     ctx.register_category = cb_register_category;
+    ctx.register_settings = cb_register_settings;
 
     RegistrationBridge bridge;
     bridge.loader = this;

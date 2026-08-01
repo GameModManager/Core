@@ -26,6 +26,7 @@
 #include <QLocale>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSpinBox>
 #include <QSplitter>
 #include <QStyleFactory>
@@ -47,7 +48,9 @@ SettingsDialog::SettingsDialog(engine::StyleManager* style_manager,
       native_style_name_(native_style_name), instance_root_(instance_root),
       plugin_loader_(plugin_loader) {
     setWindowTitle(tr("Settings"));
-    setMinimumWidth(560);
+    // Min geometry H723 x W634: the Plugins tab's settings pane needs room
+    // for its scrollable plugin-options container (same idea as the left list).
+    setMinimumSize(634, 723);
 
     auto* layout = new QVBoxLayout(this);
     auto* tabs = new QTabWidget(this);
@@ -587,6 +590,8 @@ QWidget* SettingsDialog::build_plugins_tab() {
         // provider fields
         QString provider_type;
         engine::SourceProvider* provider = nullptr;
+        // plugin-declared options (register_settings): key -> effective value
+        std::vector<std::pair<QString, QString>> options;
     };
 
     // Heap-owned state so the info-pane lambda outlives this function.
@@ -611,6 +616,12 @@ QWidget* SettingsDialog::build_plugins_tab() {
             e.enabled_basename =
                 QString::fromStdString(std::filesystem::path(p.path).filename().string());
             e.enabled = Settings::instance().plugin_enabled(e.enabled_basename);
+            for (const auto& [key, def] : p.settings) {
+                const QString k = QString::fromStdString(key);
+                e.options.emplace_back(
+                    k, Settings::instance().plugin_setting(e.enabled_basename, k,
+                                                           QString::fromStdString(def)));
+            }
             state->entries.push_back(std::move(e));
         }
     }
@@ -637,6 +648,7 @@ QWidget* SettingsDialog::build_plugins_tab() {
     list->setHeaderHidden(true);
     list->setRootIsDecorated(true);
     auto* filter = new QLineEdit(left);
+    filter->setObjectName("pluginFilter");
     filter->setPlaceholderText(tr("Filter..."));
     filter->setClearButtonEnabled(true);
     left_layout->addWidget(list, 1);
@@ -744,17 +756,43 @@ QWidget* SettingsDialog::build_plugins_tab() {
         }
         content_layout->addWidget(enabled_box);
 
-        auto* settings_group = new QGroupBox(tr("Settings"), state->content);
-        auto* gl = new QVBoxLayout(settings_group);
         if (e.is_plugin) {
-            gl->addWidget(new QLabel(tr("This plugin exposes no settings."), settings_group));
-        } else if (QWidget* settings_page =
-                       ui::build_source_settings_page(e.provider, settings_group)) {
-            gl->addWidget(settings_page);
+            auto* settings_group = new QGroupBox(tr("Settings"), state->content);
+            auto* gl = new QVBoxLayout(settings_group);
+            if (e.options.empty()) {
+                gl->addWidget(new QLabel(tr("This plugin exposes no settings."), settings_group));
+                content_layout->addWidget(settings_group);
+            } else {
+                // Scrollable container of editable key:value rows — same idea as
+                // the plugin list on the left: it fills the leftover vertical
+                // space and scrolls, so many options never stretch the dialog.
+                auto* scroll = new QScrollArea(settings_group);
+                scroll->setWidgetResizable(true);
+                scroll->setFrameShape(QFrame::NoFrame);
+                scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+                auto* inner = new QWidget(scroll);
+                auto* form = new QFormLayout(inner);
+                form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+                const QString basename = e.enabled_basename;
+                for (const auto& [key, value] : e.options) {
+                    auto* edit = new QLineEdit(value, inner);
+                    const QString k = key;
+                    connect(edit, &QLineEdit::editingFinished, this, [basename, k, edit] {
+                        Settings::instance().set_plugin_setting(basename, k, edit->text());
+                    });
+                    form->addRow(key, edit);
+                }
+                scroll->setWidget(inner);
+                gl->addWidget(scroll);
+                content_layout->addWidget(settings_group, 1);
+            }
         } else {
-            gl->addWidget(new QLabel(tr("This provider has no configurable settings."), settings_group));
+            // Source providers: their settings live on the Sources tab only.
+            auto* hint = new QLabel(tr("Source provider settings live on the Sources tab."),
+                                    state->content);
+            hint->setWordWrap(true);
+            content_layout->addWidget(hint);
         }
-        content_layout->addWidget(settings_group);
         content_layout->addStretch(1);
     };
 

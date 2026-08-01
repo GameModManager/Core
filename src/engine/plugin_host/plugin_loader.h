@@ -39,6 +39,11 @@ struct PluginInfo {
     bool loaded = false;
     bool registered = false;
     void* handle = nullptr;  // dlopen handle
+
+    // User-facing options declared via register_settings as plain
+    // key:value pairs (key = label, value = default). Source providers
+    // do not use this — their settings live in the Sources tab.
+    std::vector<std::pair<std::string, std::string>> settings;
 };
 
 class PluginLoader {
