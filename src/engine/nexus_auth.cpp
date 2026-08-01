@@ -133,7 +133,9 @@ RateLimitInfo NexusAuth::get_rate_limit() const {
     buf << f.rdbuf();
 
     // Minimal JSON parse (no nlohmann dependency in the engine level for auth)
-    // Format: {"limit":N,"remaining":N,"reset":N,"last_updated":N}
+    // Format:
+    // {"hourly_limit":N,"hourly_remaining":N,"hourly_reset":N,
+    //  "daily_limit":N,"daily_remaining":N,"daily_reset":N,"last_updated":N}
     auto read_int = [&](const std::string& key) -> int {
         auto pos = buf.str().find("\"" + key + "\"");
         if (pos == std::string::npos) return 0;
@@ -152,14 +154,25 @@ RateLimitInfo NexusAuth::get_rate_limit() const {
         return val * sign;
     };
 
-    info.limit = read_int("limit");
-    info.remaining = read_int("remaining");
-    info.reset = read_int("reset");
+    info.hourly_limit = read_int("hourly_limit");
+    info.hourly_remaining = read_int("hourly_remaining");
+    info.hourly_reset = read_int("hourly_reset");
+    info.daily_limit = read_int("daily_limit");
+    info.daily_remaining = read_int("daily_remaining");
+    info.daily_reset = read_int("daily_reset");
     info.last_updated = read_int("last_updated");
+
+    // Legacy files (pre hourly/daily split) stored the daily budget under
+    // limit/remaining/reset - migrate them into the daily fields.
+    if (info.daily_limit == 0) info.daily_limit = read_int("limit");
+    if (info.daily_remaining == 0) info.daily_remaining = read_int("remaining");
+    if (info.daily_reset == 0) info.daily_reset = read_int("reset");
+
     return info;
 }
 
-void NexusAuth::update_rate_limit(int limit, int remaining, int64_t reset) {
+void NexusAuth::update_rate_limit(int hourly_limit, int hourly_remaining, int64_t hourly_reset,
+                                  int daily_limit, int daily_remaining, int64_t daily_reset) {
     std::error_code ec;
     std::filesystem::create_directories(config_dir(), ec);
 
@@ -168,9 +181,12 @@ void NexusAuth::update_rate_limit(int limit, int remaining, int64_t reset) {
 
     auto now = std::time(nullptr);
     f << "{\n"
-      << "  \"limit\": " << limit << ",\n"
-      << "  \"remaining\": " << remaining << ",\n"
-      << "  \"reset\": " << reset << ",\n"
+      << "  \"hourly_limit\": " << hourly_limit << ",\n"
+      << "  \"hourly_remaining\": " << hourly_remaining << ",\n"
+      << "  \"hourly_reset\": " << hourly_reset << ",\n"
+      << "  \"daily_limit\": " << daily_limit << ",\n"
+      << "  \"daily_remaining\": " << daily_remaining << ",\n"
+      << "  \"daily_reset\": " << daily_reset << ",\n"
       << "  \"last_updated\": " << now << "\n"
       << "}\n";
 }

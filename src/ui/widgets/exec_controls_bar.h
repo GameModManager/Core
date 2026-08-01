@@ -47,6 +47,7 @@ signals:
     void shortcut_to_toolbar();
     void shortcut_to_desktop();
     void add_entry_requested();
+    void current_executable_changed();
 
 private:
     QJsonObject item_data(int index) const;

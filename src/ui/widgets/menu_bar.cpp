@@ -122,11 +122,13 @@ void AppMenuBar::build_view_menu() {
     menu->addSeparator();
 
     auto* icons_menu = menu->addMenu(tr("Icons"));
+    icons_menu_ = icons_menu;
     auto* icons_group = new QActionGroup(this);
     icons_group->setExclusive(true);
     auto add_icon_size = [&](const QString& label, int size, bool checked) {
         auto* act = icons_menu->addAction(label);
         act->setCheckable(true);
+        act->setData(size);
         act->setChecked(checked);
         icons_group->addAction(act);
         connect(act, &QAction::triggered, this, [this, size]() {
@@ -199,6 +201,16 @@ void AppMenuBar::update_tools_for_game(
 
 void AppMenuBar::set_sort_available(bool available) {
     if (sort_action_) sort_action_->setVisible(available);
+}
+
+void AppMenuBar::set_icon_size(int size) {
+    if (!icons_menu_) return;
+    for (auto* act : icons_menu_->actions()) {
+        if (act->data().toInt() == size) {
+            act->setChecked(true);
+            return;
+        }
+    }
 }
 
 // --------- Help ---------

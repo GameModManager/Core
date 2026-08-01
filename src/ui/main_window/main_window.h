@@ -222,6 +222,9 @@ private:
     std::filesystem::path mods_dir_path() const;
     std::filesystem::path resolve_mod_folder(const std::string& mod_id, const std::string& mods_subpath) const;
     QByteArray pending_geometry_;
+    // Restored app state, applied once the widgets are ready
+    int icon_size_ = 24;                 // toolbar icon size (small/medium/large)
+    QString pending_exec_selection_;     // last selected executable path, per instance
 
     // Konami code easter egg
     DebugWindow* debug_window_ = nullptr;

@@ -151,13 +151,15 @@ ExecControlsBar::ExecControlsBar(QWidget* parent)
 
     // When "<Edit...>" is chosen, emit signal and restore previous selection
     connect(exec_combo_, &QComboBox::currentIndexChanged, this, [this](int index) {
-        if (index >= 0 && exec_combo_->itemData(index).toJsonObject().isEmpty()
+        if (index < 0) return;
+        if (exec_combo_->itemData(index).toJsonObject().isEmpty()
             && exec_combo_->count() > 1) {
             int prev = index > 0 ? index - 1 : 1;
             QSignalBlocker blocker(exec_combo_);
             exec_combo_->setCurrentIndex(prev);
             emit add_entry_requested();
         }
+        emit current_executable_changed();
     });
 }
 
