@@ -5,6 +5,7 @@
 #endif
 #include <QCommandLineParser>
 #include <QDir>
+#include <QIcon>
 #include <QMessageLogContext>
 #include <QStackedWidget>
 #include <QStyle>
@@ -76,6 +77,18 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     app.setApplicationName("GameModManager");
     app.setApplicationVersion("0.1.0");
+
+    // App window icon: prefer the SVG, fall back to the PNG (the Qt SVG image
+    // format plugin may be absent on some deployments). Every window and
+    // dialog inherits this via the application icon.
+    {
+        const QString icon_dir =
+            QCoreApplication::applicationDirPath() + "/../resources/icons/";
+        QIcon app_icon(icon_dir + "gmm-logo.svg");
+        if (app_icon.isNull())
+            app_icon = QIcon(icon_dir + "gmm-logo.png");
+        app.setWindowIcon(app_icon);
+    }
 
     // Store secrets in the OS keyring (QtKeychain: Secret Service / KWallet)
     // when available, falling back to insecure file storage with a warning
