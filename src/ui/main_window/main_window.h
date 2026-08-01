@@ -76,6 +76,11 @@ public:
     void set_managed_games(engine::ManagedGames* mg) { managed_games_ = mg; }
     void set_style_manager(engine::StyleManager* sm) { style_manager_ = sm; }
 
+    // The QApplication's initial (native platform) style name, captured before
+    // any user-selected style is applied. Used to restore "Default (system)"
+    // after a built-in Qt style was picked in Settings.
+    void set_native_style_name(const QString& name) { native_style_name_ = name; }
+
     // NXM download routing - call when an nxm:// link is received
     void handle_nxm_download(const engine::NxmLink& link);
 
@@ -187,6 +192,7 @@ private:
     engine::GameKnowledge* knowledge_ = nullptr;
     engine::PluginLoader* plugin_loader_ = nullptr;
     engine::ManagedGames* managed_games_ = nullptr;
+    QString native_style_name_;
     engine::StyleManager* style_manager_ = nullptr;
     engine::NxmIpcServer* nxm_ipc_ = nullptr;
     std::unique_ptr<engine::DeploymentStrategy> deploy_strategy_;
