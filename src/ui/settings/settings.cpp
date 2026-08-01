@@ -87,6 +87,54 @@ void Settings::set_collapsible_separators_highlight_to(bool on) {
     settings_.setValue("interface/collapsible_separators_highlight_to", on);
 }
 
+bool Settings::collapsible_separators_asc() const {
+    return settings_.value("interface/collapsible_separators_asc", true).toBool();
+}
+
+void Settings::set_collapsible_separators_asc(bool on) {
+    settings_.setValue("interface/collapsible_separators_asc", on);
+}
+
+bool Settings::collapsible_separators_dsc() const {
+    return settings_.value("interface/collapsible_separators_dsc", false).toBool();
+}
+
+void Settings::set_collapsible_separators_dsc(bool on) {
+    settings_.setValue("interface/collapsible_separators_dsc", on);
+}
+
+bool Settings::collapsible_separators_icons_conflicts() const {
+    return settings_.value("interface/collapsible_separators_icons_conflicts", true).toBool();
+}
+
+void Settings::set_collapsible_separators_icons_conflicts(bool on) {
+    settings_.setValue("interface/collapsible_separators_icons_conflicts", on);
+}
+
+bool Settings::collapsible_separators_icons_flags() const {
+    return settings_.value("interface/collapsible_separators_icons_flags", true).toBool();
+}
+
+void Settings::set_collapsible_separators_icons_flags(bool on) {
+    settings_.setValue("interface/collapsible_separators_icons_flags", on);
+}
+
+bool Settings::collapsible_separators_icons_content() const {
+    return settings_.value("interface/collapsible_separators_icons_content", true).toBool();
+}
+
+void Settings::set_collapsible_separators_icons_content(bool on) {
+    settings_.setValue("interface/collapsible_separators_icons_content", on);
+}
+
+bool Settings::collapsible_separators_icons_version() const {
+    return settings_.value("interface/collapsible_separators_icons_version", true).toBool();
+}
+
+void Settings::set_collapsible_separators_icons_version(bool on) {
+    settings_.setValue("interface/collapsible_separators_icons_version", on);
+}
+
 bool Settings::check_update_after_install() const {
     return settings_.value("interface/check_update_after_install", true).toBool();
 }
@@ -379,20 +427,84 @@ void Settings::set_color_separator_scrollbar(bool on) {
     settings_.setValue("colors/color_separator_scrollbar", on);
 }
 
-QString Settings::overwritten_files_color() const {
-    return settings_.value("colors/overwritten_files", "#ff4444").toString();
+QColor Settings::modlist_overwritten_loose() const {
+    return settings_.value("colors/modlist_overwritten_loose", QColor(0, 255, 0, 64)).value<QColor>();
 }
 
-void Settings::set_overwritten_files_color(const QString& color) {
-    settings_.setValue("colors/overwritten_files", color);
+void Settings::set_modlist_overwritten_loose(const QColor& c) {
+    settings_.setValue("colors/modlist_overwritten_loose", c);
 }
 
-QString Settings::contained_files_color() const {
-    return settings_.value("colors/contained_files", "#44ff44").toString();
+QColor Settings::modlist_overwriting_loose() const {
+    return settings_.value("colors/modlist_overwriting_loose", QColor(255, 0, 0, 64)).value<QColor>();
 }
 
-void Settings::set_contained_files_color(const QString& color) {
-    settings_.setValue("colors/contained_files", color);
+void Settings::set_modlist_overwriting_loose(const QColor& c) {
+    settings_.setValue("colors/modlist_overwriting_loose", c);
+}
+
+QColor Settings::modlist_overwritten_archive() const {
+    return settings_.value("colors/modlist_overwritten_archive", QColor(0, 255, 255, 64)).value<QColor>();
+}
+
+void Settings::set_modlist_overwritten_archive(const QColor& c) {
+    settings_.setValue("colors/modlist_overwritten_archive", c);
+}
+
+QColor Settings::modlist_overwriting_archive() const {
+    return settings_.value("colors/modlist_overwriting_archive", QColor(255, 0, 255, 64)).value<QColor>();
+}
+
+void Settings::set_modlist_overwriting_archive(const QColor& c) {
+    settings_.setValue("colors/modlist_overwriting_archive", c);
+}
+
+QColor Settings::modlist_contains_file() const {
+    return settings_.value("colors/modlist_contains_file", QColor(0, 0, 255, 64)).value<QColor>();
+}
+
+void Settings::set_modlist_contains_file(const QColor& c) {
+    settings_.setValue("colors/modlist_contains_file", c);
+}
+
+QColor Settings::plugin_list_contained() const {
+    return settings_.value("colors/plugin_list_contained", QColor(0, 0, 255, 64)).value<QColor>();
+}
+
+void Settings::set_plugin_list_contained(const QColor& c) {
+    settings_.setValue("colors/plugin_list_contained", c);
+}
+
+QColor Settings::plugin_list_master() const {
+    return settings_.value("colors/plugin_list_master", QColor(255, 255, 0, 64)).value<QColor>();
+}
+
+void Settings::set_plugin_list_master(const QColor& c) {
+    settings_.setValue("colors/plugin_list_master", c);
+}
+
+// plugins ----------------------------------------------------------------------
+
+QStringList Settings::disabled_plugins() const {
+    return settings_.value("plugins/disabled").toStringList();
+}
+
+void Settings::set_disabled_plugins(const QStringList& names) {
+    settings_.setValue("plugins/disabled", names);
+}
+
+bool Settings::plugin_enabled(const QString& name) const {
+    return !disabled_plugins().contains(name);
+}
+
+void Settings::set_plugin_enabled(const QString& name, bool enabled) {
+    auto disabled = disabled_plugins();
+    if (enabled) {
+        disabled.removeAll(name);
+    } else if (!disabled.contains(name)) {
+        disabled.append(name);
+    }
+    set_disabled_plugins(disabled);
 }
 
 // nxm -------------------------------------------------------------------------

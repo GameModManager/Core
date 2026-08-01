@@ -1,38 +1,49 @@
 #include "ui/settings/settings_dialog.h"
 #include "ui/settings/settings.h"
 #include "ui/settings/source_pages.h"
+#include "engine/plugin_host/plugin_loader.h"
 #include "engine/source/source_provider.h"
 #include "engine/theme/style_manager.h"
+#include "engine/instance/instance.h"
+#include "engine/instance/instance_utils.h"
 #include "engine/log/logger.h"
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QColorDialog>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFileDialog>
 #include <QFormLayout>
+#include <QFrame>
 #include <QGroupBox>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QLocale>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QSplitter>
 #include <QStyleFactory>
 #include <QTabWidget>
 #include <QTextEdit>
 #include <QVBoxLayout>
 
+#include <functional>
 #include <vector>
 
 SettingsDialog::SettingsDialog(engine::StyleManager* style_manager,
                                const QString& native_style_name,
                                const std::filesystem::path& instance_root,
+                               engine::PluginLoader* plugin_loader,
                                QWidget* parent)
     : QDialog(parent), style_manager_(style_manager),
-      native_style_name_(native_style_name), instance_root_(instance_root) {
+      native_style_name_(native_style_name), instance_root_(instance_root),
+      plugin_loader_(plugin_loader) {
     setWindowTitle(tr("Settings"));
     setMinimumWidth(560);
 
@@ -181,7 +192,7 @@ QWidget* SettingsDialog::build_theme_tab() {
            "Qt styles (Fusion, Windows, ...) are the built-in Qt look - no custom theme files."), page);
     theme_hint->setWordWrap(true);
 
-    auto* group = new QGroupBox(tr("Theme"), page);
+    auto* group = new QGroupBox(tr("Style"), page);
     auto* gl = new QVBoxLayout(group);
     gl->addWidget(theme_combo);
     gl->addWidget(theme_hint);
@@ -212,6 +223,71 @@ QWidget* SettingsDialog::build_theme_tab() {
             style_manager_->apply_theme(data.toStdString());
     });
 
+    // -- Colors: MO2 ColorTable parity -------------------------------------
+    auto* colors_group = new QGroupBox(tr("Colors"), page);
+    auto* colors_form = new QFormLayout(colors_group);
+    colors_form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+
+    auto make_swatch = [this](QColor initial, std::function<void(const QColor&)> commit,
+                              QWidget* parent) {
+        auto* btn = new QPushButton(parent);
+        btn->setFixedSize(56, 22);
+        btn->setCursor(Qt::PointingHandCursor);
+        auto apply_swatch = [btn](const QColor& c) {
+            btn->setStyleSheet(
+                QString("background-color: rgba(%1,%2,%3,%4);")
+                    .arg(c.red()).arg(c.green()).arg(c.blue()).arg(c.alpha()));
+        };
+        apply_swatch(initial);
+        QObject::connect(btn, &QPushButton::clicked, btn, [btn, commit, apply_swatch]() {
+            QColor result = QColorDialog::getColor(
+                btn->property("current").value<QColor>(), btn,
+                tr("Choose color"), QColorDialog::ShowAlphaChannel);
+            if (result.isValid()) {
+                btn->setProperty("current", result);
+                apply_swatch(result);
+                commit(result);
+            }
+        });
+        btn->setProperty("current", initial);
+        return btn;
+    };
+
+    struct ColorRow { const char* label; QColor current; std::function<void(const QColor&)> commit; };
+    const auto rows = {
+        ColorRow{ QT_TR_NOOP("Is overwritten (loose files)"), s.modlist_overwritten_loose(),
+                  [&s](const QColor& c) { s.set_modlist_overwritten_loose(c); } },
+        ColorRow{ QT_TR_NOOP("Is overwriting (loose files)"), s.modlist_overwriting_loose(),
+                  [&s](const QColor& c) { s.set_modlist_overwriting_loose(c); } },
+        ColorRow{ QT_TR_NOOP("Is overwritten (archives)"), s.modlist_overwritten_archive(),
+                  [&s](const QColor& c) { s.set_modlist_overwritten_archive(c); } },
+        ColorRow{ QT_TR_NOOP("Is overwriting (archives)"), s.modlist_overwriting_archive(),
+                  [&s](const QColor& c) { s.set_modlist_overwriting_archive(c); } },
+        ColorRow{ QT_TR_NOOP("Mod contains selected file"), s.modlist_contains_file(),
+                  [&s](const QColor& c) { s.set_modlist_contains_file(c); } },
+        ColorRow{ QT_TR_NOOP("Plugin is contained in selected mod"), s.plugin_list_contained(),
+                  [&s](const QColor& c) { s.set_plugin_list_contained(c); } },
+        ColorRow{ QT_TR_NOOP("Plugin is master of selected plugin"), s.plugin_list_master(),
+                  [&s](const QColor& c) { s.set_plugin_list_master(c); } },
+    };
+    for (const auto& row : rows) {
+        colors_form->addRow(tr(row.label), make_swatch(row.current, row.commit, colors_group));
+    }
+
+    auto* reset_colors = new QPushButton(tr("Reset colors"), colors_group);
+    reset_colors->setToolTip(tr("Restore the default MO2 colors."));
+    connect(reset_colors, &QPushButton::clicked, this, [&s]() {
+        s.set_modlist_overwritten_loose(QColor(0, 255, 0, 64));
+        s.set_modlist_overwriting_loose(QColor(255, 0, 0, 64));
+        s.set_modlist_overwritten_archive(QColor(0, 255, 255, 64));
+        s.set_modlist_overwriting_archive(QColor(255, 0, 255, 64));
+        s.set_modlist_contains_file(QColor(0, 0, 255, 64));
+        s.set_plugin_list_contained(QColor(0, 0, 255, 64));
+        s.set_plugin_list_master(QColor(255, 255, 0, 64));
+    });
+    colors_form->addRow(QString(), reset_colors);
+    layout->addWidget(colors_group);
+
     layout->addStretch(1);
     return page;
 }
@@ -223,59 +299,85 @@ QWidget* SettingsDialog::build_modlist_tab() {
     auto* page = new QWidget(this);
     auto* layout = new QVBoxLayout(page);
 
-    auto* group = new QGroupBox(tr("Mod List"), page);
-    auto* gl = new QVBoxLayout(group);
-
-    auto* foreign_box = new QCheckBox(tr("Display foreign mods (DLC, Creation Club)"), group);
+    // Flat options, no group box (MO2 layout)
+    auto* foreign_box = new QCheckBox(tr("Display foreign mods (DLC, Creation Club)"), page);
     foreign_box->setChecked(s.display_foreign());
-    auto* save_filters_box = new QCheckBox(tr("Remember filter settings"), group);
+    auto* save_filters_box = new QCheckBox(tr("Remember filter settings"), page);
     save_filters_box->setChecked(s.save_filters());
-    auto* hover_box = new QCheckBox(tr("Auto-collapse separators on hover"), group);
+    auto* hover_box = new QCheckBox(tr("Auto-collapse separators on hover"), page);
     hover_box->setChecked(s.auto_collapse_on_hover());
-    auto* per_profile_box = new QCheckBox(tr("Collapsible separators per profile"), group);
-    per_profile_box->setChecked(s.collapsible_separators_per_profile());
-    auto* highlight_from_box = new QCheckBox(tr("Highlight separator when collapsed from above"), group);
-    highlight_from_box->setChecked(s.collapsible_separators_highlight_from());
-    auto* highlight_to_box = new QCheckBox(tr("Highlight separator when collapsed from below"), group);
-    highlight_to_box->setChecked(s.collapsible_separators_highlight_to());
-    auto* sep_scrollbar_box = new QCheckBox(tr("Color the scrollbar at separators"), group);
+    auto* sep_scrollbar_box = new QCheckBox(tr("Color the scrollbar at separators"), page);
     sep_scrollbar_box->setChecked(s.color_separator_scrollbar());
-    auto* check_update_box = new QCheckBox(tr("Check for updates after install"), group);
+    auto* check_update_box = new QCheckBox(tr("Check for updates after install"), page);
     check_update_box->setChecked(s.check_update_after_install());
 
-    gl->addWidget(foreign_box);
-    gl->addWidget(save_filters_box);
-    gl->addWidget(hover_box);
-    gl->addWidget(per_profile_box);
-    gl->addWidget(highlight_from_box);
-    gl->addWidget(highlight_to_box);
-    gl->addWidget(sep_scrollbar_box);
-    gl->addWidget(check_update_box);
-    layout->addWidget(group);
-
-    // Conflict colors ------------------------------------------------------------
-    auto* color_group = new QGroupBox(tr("Conflict Colors"), page);
-    auto* color_form = new QFormLayout(color_group);
-    auto* overwritten_edit = new QLineEdit(s.overwritten_files_color(), color_group);
-    auto* contained_edit = new QLineEdit(s.contained_files_color(), color_group);
-    color_form->addRow(tr("Overwritten files"), overwritten_edit);
-    color_form->addRow(tr("Contained files"), contained_edit);
-    layout->addWidget(color_group);
+    layout->addWidget(foreign_box);
+    layout->addWidget(save_filters_box);
+    layout->addWidget(hover_box);
+    layout->addWidget(sep_scrollbar_box);
+    layout->addWidget(check_update_box);
 
     connect(foreign_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_display_foreign(on); });
     connect(save_filters_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_save_filters(on); });
     connect(hover_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_auto_collapse_on_hover(on); });
-    connect(per_profile_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_collapsible_separators_per_profile(on); });
-    connect(highlight_from_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_collapsible_separators_highlight_from(on); });
-    connect(highlight_to_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_collapsible_separators_highlight_to(on); });
     connect(sep_scrollbar_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_color_separator_scrollbar(on); });
     connect(check_update_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_check_update_after_install(on); });
-    connect(overwritten_edit, &QLineEdit::editingFinished, this, [&s, overwritten_edit]() {
-        s.set_overwritten_files_color(overwritten_edit->text());
-    });
-    connect(contained_edit, &QLineEdit::editingFinished, this, [&s, contained_edit]() {
-        s.set_contained_files_color(contained_edit->text());
-    });
+
+    // Collapsible Separators box (mirrors MO2 settingsdialog.ui collapsibleSeparatorsWidget)
+    auto* sep_group = new QGroupBox(tr("Collapsible Separators"), page);
+    auto* sep_grid = new QGridLayout(sep_group);
+
+    auto* sort_label = new QLabel(tr("Enable when sorting by"), sep_group);
+    auto* asc_box = new QCheckBox(tr("ascending priority"), sep_group);
+    asc_box->setChecked(s.collapsible_separators_asc());
+    auto* dsc_box = new QCheckBox(tr("descending priority"), sep_group);
+    dsc_box->setChecked(s.collapsible_separators_dsc());
+
+    auto* conflicts_label = new QLabel(tr("Show conflicts and plugins"), sep_group);
+    auto* highlight_to_box = new QCheckBox(tr("on separators"), sep_group);
+    highlight_to_box->setChecked(s.collapsible_separators_highlight_to());
+    auto* highlight_from_box = new QCheckBox(tr("from separators"), sep_group);
+    highlight_from_box->setChecked(s.collapsible_separators_highlight_from());
+
+    auto* icons_label = new QLabel(tr("Show icons on separators"), sep_group);
+    auto* icons_conflicts = new QCheckBox(tr("conflicts"), sep_group);
+    icons_conflicts->setChecked(s.collapsible_separators_icons_conflicts());
+    auto* icons_flags = new QCheckBox(tr("flags"), sep_group);
+    icons_flags->setChecked(s.collapsible_separators_icons_flags());
+    auto* icons_content = new QCheckBox(tr("content"), sep_group);
+    icons_content->setChecked(s.collapsible_separators_icons_content());
+    auto* icons_version = new QCheckBox(tr("version"), sep_group);
+    icons_version->setChecked(s.collapsible_separators_icons_version());
+
+    sep_grid->addWidget(sort_label, 0, 0);
+    sep_grid->addWidget(asc_box, 0, 1);
+    sep_grid->addWidget(dsc_box, 0, 2);
+    sep_grid->addWidget(conflicts_label, 1, 0);
+    sep_grid->addWidget(highlight_to_box, 1, 1);
+    sep_grid->addWidget(highlight_from_box, 1, 2);
+    sep_grid->addWidget(icons_label, 2, 0);
+    auto* icons_row = new QHBoxLayout;
+    icons_row->addWidget(icons_conflicts);
+    icons_row->addWidget(icons_flags);
+    icons_row->addWidget(icons_content);
+    icons_row->addWidget(icons_version);
+    icons_row->addStretch(1);
+    sep_grid->addLayout(icons_row, 2, 1, 1, 2);
+    layout->addWidget(sep_group);
+
+    auto* per_profile_box = new QCheckBox(tr("Collapsible separators per profile"), page);
+    per_profile_box->setChecked(s.collapsible_separators_per_profile());
+    layout->addWidget(per_profile_box);
+
+    connect(asc_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_collapsible_separators_asc(on); });
+    connect(dsc_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_collapsible_separators_dsc(on); });
+    connect(highlight_to_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_collapsible_separators_highlight_to(on); });
+    connect(highlight_from_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_collapsible_separators_highlight_from(on); });
+    connect(icons_conflicts, &QCheckBox::toggled, this, [&s](bool on) { s.set_collapsible_separators_icons_conflicts(on); });
+    connect(icons_flags, &QCheckBox::toggled, this, [&s](bool on) { s.set_collapsible_separators_icons_flags(on); });
+    connect(icons_content, &QCheckBox::toggled, this, [&s](bool on) { s.set_collapsible_separators_icons_content(on); });
+    connect(icons_version, &QCheckBox::toggled, this, [&s](bool on) { s.set_collapsible_separators_icons_version(on); });
+    connect(per_profile_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_collapsible_separators_per_profile(on); });
 
     layout->addStretch(1);
     return page;
@@ -284,51 +386,156 @@ QWidget* SettingsDialog::build_modlist_tab() {
 // -- Paths ---------------------------------------------------------------------
 
 QWidget* SettingsDialog::build_paths_tab() {
+    namespace fs = std::filesystem;
     auto& s = Settings::instance();
     auto* page = new QWidget(this);
     auto* layout = new QVBoxLayout(page);
 
-    auto* inst_group = new QGroupBox(tr("Instances Directory"), page);
-    auto* inst_layout = new QVBoxLayout(inst_group);
-    auto* dir_edit = new QLineEdit(s.instances_dir(), inst_group);
-    dir_edit->setPlaceholderText(tr("Default (XDG data dir)"));
-    auto* dir_row = new QHBoxLayout;
-    dir_row->addWidget(dir_edit, 1);
-    auto* browse_btn = new QPushButton(tr("Browse..."), inst_group);
-    dir_row->addWidget(browse_btn);
-    inst_layout->addLayout(dir_row);
+    // Instances Directory — bare row, no group box (MO2 layout)
+    auto* inst_label = new QLabel(tr("Instances Directory"), page);
+    auto* dir_edit = new QLineEdit(s.instances_dir(), page);
+    dir_edit->setPlaceholderText(QString::fromStdString(engine::default_instances_dir().string()));
+    auto* inst_browse = new QPushButton(tr("Browse..."), page);
+    auto* inst_row = new QHBoxLayout;
+    inst_row->addWidget(inst_label);
+    inst_row->addWidget(dir_edit, 1);
+    inst_row->addWidget(inst_browse);
+    layout->addLayout(inst_row);
     auto* inst_hint = new QLabel(
-        tr("Where new instances are created. Leave empty for the default location."), inst_group);
+        tr("Where new instances are created. Leave empty for the default location."), page);
     inst_hint->setWordWrap(true);
-    inst_layout->addWidget(inst_hint);
-    layout->addWidget(inst_group);
+    layout->addWidget(inst_hint);
 
     connect(dir_edit, &QLineEdit::editingFinished, this, [&s, dir_edit]() {
         s.set_instances_dir(dir_edit->text().trimmed());
     });
-    connect(browse_btn, &QPushButton::clicked, this, [dir_edit]() {
+    connect(inst_browse, &QPushButton::clicked, this, [dir_edit]() {
         const QString dir = QFileDialog::getExistingDirectory(
             dir_edit, QObject::tr("Choose instances directory"), dir_edit->text());
         if (!dir.isEmpty())
             dir_edit->setText(dir);
     });
 
+    auto* hline = new QFrame(page);
+    hline->setFrameShape(QFrame::HLine);
+    hline->setFrameShadow(QFrame::Sunken);
+    layout->addWidget(hline);
+
     if (!instance_root_.empty()) {
-        auto* cur_group = new QGroupBox(tr("Current Instance"), page);
-        auto* cur_form = new QFormLayout(cur_group);
-        auto add_dir = [&](const QString& label, const std::filesystem::path& p) {
-            auto* lbl = new QLabel(QString::fromStdString(p.string()), cur_group);
+        auto* base_form = new QFormLayout;
+        base_form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+
+        // Base Directory — editable; committing a different path relocates the instance
+        auto* base_edit = new QLineEdit(QString::fromStdString(instance_root_.string()), page);
+        auto* base_browse = new QPushButton(tr("Browse..."), page);
+        auto* base_row = new QHBoxLayout;
+        base_row->addWidget(base_edit, 1);
+        base_row->addWidget(base_browse);
+        base_form->addRow(tr("Base Directory"), base_row);
+
+        auto make_dir_row = [&](const QString& label, const fs::path& p) {
+            auto* lbl = new QLabel(QString::fromStdString(p.string()), page);
             lbl->setTextInteractionFlags(Qt::TextSelectableByMouse);
             lbl->setWordWrap(true);
-            cur_form->addRow(label, lbl);
+            base_form->addRow(label, lbl);
+            return lbl;
         };
-        add_dir(tr("Base"), instance_root_);
-        add_dir(tr("Mods"), instance_root_ / "mods");
-        add_dir(tr("Downloads"), instance_root_ / "downloads");
-        add_dir(tr("Cache"), instance_root_ / "cache");
-        add_dir(tr("Profiles"), instance_root_ / "profiles");
-        add_dir(tr("Overwrite"), instance_root_ / "overwrite");
-        layout->addWidget(cur_group);
+        auto* mods_label = make_dir_row(tr("Mods"), instance_root_ / "mods");
+        auto* downloads_label = make_dir_row(tr("Downloads"), instance_root_ / "downloads");
+        auto* cache_label = make_dir_row(tr("Cache"), instance_root_ / "cache");
+        auto* profiles_label = make_dir_row(tr("Profiles"), instance_root_ / "profiles");
+        auto* overwrite_label = make_dir_row(tr("Overwrite"), instance_root_ / "overwrite");
+
+        auto refresh_derived = [this, mods_label, downloads_label, cache_label, profiles_label, overwrite_label]() {
+            mods_label->setText(QString::fromStdString((instance_root_ / "mods").string()));
+            downloads_label->setText(QString::fromStdString((instance_root_ / "downloads").string()));
+            cache_label->setText(QString::fromStdString((instance_root_ / "cache").string()));
+            profiles_label->setText(QString::fromStdString((instance_root_ / "profiles").string()));
+            overwrite_label->setText(QString::fromStdString((instance_root_ / "overwrite").string()));
+        };
+
+        auto commit_base = [this, &s, base_edit, refresh_derived]() {
+            QString new_base = base_edit->text().trimmed();
+            if (new_base.isEmpty()) return;
+            while (new_base.size() > 1 && new_base.endsWith('/'))
+                new_base.chop(1);
+            const fs::path target = new_base.toStdString();
+            const fs::path current = instance_root_;
+            if (target == current) return;
+
+            const auto resp = QMessageBox::question(
+                this, tr("Relocate Instance"),
+                tr("Change the Base Directory to:\n%1\n\nThe instance folder will be "
+                   "moved there. This may take a while for large instances, and a "
+                   "restart is recommended afterwards.").arg(new_base),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+            if (resp != QMessageBox::Yes) {
+                base_edit->setText(QString::fromStdString(current.string()));
+                return;
+            }
+            std::error_code ec;
+            if (fs::exists(target)) {
+                QMessageBox::warning(this, tr("Relocate Instance"),
+                    tr("The target directory already exists:\n%1").arg(new_base));
+                base_edit->setText(QString::fromStdString(current.string()));
+                return;
+            }
+            fs::rename(current, target, ec);
+            if (ec) {
+                QMessageBox::warning(this, tr("Relocate Instance"),
+                    tr("Failed to move the instance: %1")
+                        .arg(QString::fromStdString(ec.message())));
+                base_edit->setText(QString::fromStdString(current.string()));
+                return;
+            }
+            instance_root_ = target;
+            base_edit->setText(QString::fromStdString(instance_root_.string()));
+            refresh_derived();
+            engine::write_last_instance(instance_root_.filename().string());
+        };
+        connect(base_edit, &QLineEdit::editingFinished, this, commit_base);
+        connect(base_browse, &QPushButton::clicked, this, [base_edit, commit_base]() {
+            const QString dir = QFileDialog::getExistingDirectory(
+                base_edit, QObject::tr("Choose base directory"), base_edit->text());
+            if (!dir.isEmpty()) {
+                base_edit->setText(dir);
+                commit_base();
+            }
+        });
+
+        // Managed Game — writes game_dir back into instance.toml
+        auto* game_edit = new QLineEdit(page);
+        auto* game_browse = new QPushButton(tr("Browse..."), page);
+        auto* game_row = new QHBoxLayout;
+        game_row->addWidget(game_edit, 1);
+        game_row->addWidget(game_browse);
+        base_form->addRow(tr("Managed Game"), game_row);
+        {
+            auto inst = engine::Instance::installed(instance_root_.filename().string(),
+                                                    instance_root_.parent_path());
+            if (inst.read_toml() && !inst.info().game_dir.empty())
+                game_edit->setText(QString::fromStdString(inst.info().game_dir.string()));
+        }
+        auto commit_game = [this, game_edit]() {
+            const QString new_dir = game_edit->text().trimmed();
+            if (new_dir.isEmpty()) return;
+            auto inst = engine::Instance::installed(instance_root_.filename().string(),
+                                                    instance_root_.parent_path());
+            if (!inst.read_toml()) return;
+            inst.info().game_dir = new_dir.toStdString();
+            inst.write_toml();
+        };
+        connect(game_edit, &QLineEdit::editingFinished, this, commit_game);
+        connect(game_browse, &QPushButton::clicked, this, [game_edit, commit_game]() {
+            const QString dir = QFileDialog::getExistingDirectory(
+                game_edit, QObject::tr("Choose game directory"), game_edit->text());
+            if (!dir.isEmpty()) {
+                game_edit->setText(dir);
+                commit_game();
+            }
+        });
+
+        layout->addLayout(base_form);
     }
 
     layout->addStretch(1);
@@ -368,33 +575,171 @@ QWidget* SettingsDialog::build_sources_tab() {
 // -- Plugins -------------------------------------------------------------------
 
 QWidget* SettingsDialog::build_plugins_tab() {
+    struct Entry {
+        QString name;
+        bool is_plugin = false;
+        // native plugin fields
+        QString author, version, description, game, steam_appid, abi_version, path;
+        bool enabled = true;
+        // provider fields
+        QString provider_type;
+        engine::SourceProvider* provider = nullptr;
+    };
+
+    std::vector<Entry> entries;
+
+    if (plugin_loader_) {
+        for (const auto& p : plugin_loader_->plugins()) {
+            Entry e;
+            e.name = QString::fromStdString(p.game_display_name);
+            e.is_plugin = true;
+            e.author = QString::fromStdString(p.author);
+            e.version = QString::fromStdString(p.version);
+            e.description = QString::fromStdString(p.description);
+            e.game = QString::fromStdString(p.game_id);
+            e.steam_appid = p.steam_appid > 0
+                ? QString::number(p.steam_appid) : QString();
+            e.abi_version = p.abi_version > 0
+                ? QString::number(p.abi_version) : QString();
+            e.path = QString::fromStdString(p.path);
+            e.enabled = Settings::instance().plugin_enabled(
+                QString::fromStdString(std::filesystem::path(p.path).filename().string()));
+            entries.push_back(std::move(e));
+        }
+    }
+    for (auto* provider : engine::SourceRegistry::instance().providers()) {
+        Entry e;
+        e.name = QString::fromStdString(provider->display_name());
+        e.is_plugin = false;
+        e.provider_type = QString::fromStdString(provider->source_type());
+        e.provider = provider;
+        entries.push_back(std::move(e));
+    }
+
     auto* page = new QWidget(this);
     auto* layout = new QVBoxLayout(page);
 
-    auto* info = new QLabel(
-        tr("Loaded modules and providers. Each provider that exposes settings "
-           "does so on the Sources tab."), page);
-    info->setWordWrap(true);
-    layout->addWidget(info);
+    auto* splitter = new QSplitter(Qt::Horizontal, page);
+    layout->addWidget(splitter);
 
-    auto* group = new QGroupBox(tr("Loaded Plugins"), page);
-    auto* gl = new QVBoxLayout(group);
+    // -- Left: plugin list + bottom filter bar -----------------------------
+    auto* left = new QWidget(splitter);
+    auto* left_layout = new QVBoxLayout(left);
+    left_layout->setContentsMargins(0, 0, 0, 0);
+    auto* list = new QListWidget(left);
+    auto* filter = new QLineEdit(left);
+    filter->setPlaceholderText(tr("Filter..."));
+    filter->setClearButtonEnabled(true);
+    left_layout->addWidget(list, 1);
+    left_layout->addWidget(filter);
 
-    const auto providers = engine::SourceRegistry::instance().providers();
-    if (providers.empty()) {
-        gl->addWidget(new QLabel(tr("None loaded."), group));
+    // -- Right: info pane ---------------------------------------------------
+    auto* info_pane = new QWidget(splitter);
+    auto* info_layout = new QVBoxLayout(info_pane);
+
+    for (const auto& e : entries) {
+        auto* item = new QListWidgetItem(e.name, list);
+        item->setData(Qt::UserRole, static_cast<int>(&e - &entries[0]));
+        item->setToolTip(e.is_plugin
+            ? tr("Plugin: %1").arg(e.name)
+            : tr("Source provider: %1").arg(e.name));
     }
-    for (auto* provider : providers) {
-        auto* row = new QHBoxLayout;
-        auto* name = new QLabel(QString::fromStdString(provider->display_name()), group);
-        name->setWordWrap(true);
-        auto* type = new QLabel(QString::fromStdString(provider->source_type()), group);
-        type->setEnabled(false);
-        row->addWidget(name, 1);
-        row->addWidget(type);
-        gl->addLayout(row);
+
+    auto rebuild_info = [this, info_pane, info_layout, &entries](int index) {
+        if (index < 0 || static_cast<size_t>(index) >= entries.size()) return;
+        const Entry& e = entries[index];
+
+        // Clear previous content
+        while (auto* item = info_layout->takeAt(0)) {
+            if (item->widget()) delete item->widget();
+            delete item;
+        }
+
+        auto* title = new QLabel(e.name, info_pane);
+        QFont title_font = title->font();
+        title_font.setBold(true);
+        title_font.setPointSize(title_font.pointSize() + 2);
+        title->setFont(title_font);
+        info_layout->addWidget(title);
+        info_layout->addWidget(new QLabel(
+            e.is_plugin ? tr("Plugin") : tr("Source provider (%1)").arg(e.provider_type),
+            info_pane));
+
+        auto* form = new QFormLayout;
+        form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+        if (e.is_plugin) {
+            auto add_row = [&](const QString& label, const QString& value) {
+                auto* lbl = new QLabel(value.isEmpty() ? tr("(not set)") : value, info_pane);
+                lbl->setWordWrap(true);
+                lbl->setTextInteractionFlags(Qt::TextSelectableByMouse);
+                form->addRow(label, lbl);
+            };
+            add_row(tr("Author"), e.author);
+            add_row(tr("Version"), e.version);
+            add_row(tr("Description"), e.description);
+            add_row(tr("Game"), e.game);
+            add_row(tr("Steam App ID"), e.steam_appid);
+            add_row(tr("ABI version"), e.abi_version);
+            add_row(tr("Path"), e.path);
+        }
+        info_layout->addLayout(form);
+
+        auto* enabled_box = new QCheckBox(
+            e.is_plugin ? tr("Enabled") : tr("Enabled"), info_pane);
+        if (e.is_plugin) {
+            enabled_box->setChecked(e.enabled);
+            const QString basename =
+                QString::fromStdString(std::filesystem::path(e.path.toStdString()).filename().string());
+            connect(enabled_box, &QCheckBox::toggled, this,
+                    [basename](bool on) { Settings::instance().set_plugin_enabled(basename, on); });
+            enabled_box->setToolTip(tr("Disabled plugins are not loaded on the next start."));
+        } else {
+            enabled_box->setChecked(true);
+            enabled_box->setEnabled(false);
+            enabled_box->setToolTip(tr("Source providers are always enabled."));
+        }
+        info_layout->addWidget(enabled_box);
+
+        auto* settings_group = new QGroupBox(tr("Settings"), info_pane);
+        auto* gl = new QVBoxLayout(settings_group);
+        if (e.is_plugin) {
+            gl->addWidget(new QLabel(tr("This plugin exposes no settings."), settings_group));
+        } else if (QWidget* settings_page =
+                       ui::build_source_settings_page(e.provider, settings_group)) {
+            gl->addWidget(settings_page);
+        } else {
+            gl->addWidget(new QLabel(tr("This provider has no configurable settings."), settings_group));
+        }
+        info_layout->addWidget(settings_group);
+        info_layout->addStretch(1);
+    };
+
+    connect(list, &QListWidget::currentRowChanged, this, rebuild_info);
+    connect(filter, &QLineEdit::textChanged, this, [list](const QString& text) {
+        for (int i = 0; i < list->count(); ++i) {
+            auto* item = list->item(i);
+            item->setHidden(!item->text().contains(text, Qt::CaseInsensitive));
+        }
+    });
+
+    splitter->addWidget(left);
+    splitter->addWidget(info_pane);
+    splitter->setStretchFactor(0, 1);
+    splitter->setStretchFactor(1, 1);
+    splitter->setSizes({280, 360});
+
+    if (!entries.empty()) {
+        list->setCurrentRow(0);
+    } else {
+        while (auto* item = info_layout->takeAt(0)) {
+            if (item->widget()) delete item->widget();
+            delete item;
+        }
+        auto* none = new QLabel(tr("No plugins or providers loaded."), info_pane);
+        none->setWordWrap(true);
+        info_layout->addWidget(none);
+        info_layout->addStretch(1);
     }
-    layout->addWidget(group);
 
     layout->addStretch(1);
     return page;

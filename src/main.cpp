@@ -13,6 +13,8 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <string>
+#include <vector>
 
 #include "engine/single_instance.h"
 
@@ -230,6 +232,11 @@ int main(int argc, char *argv[])
 
     // Load plugins - needed for both headless and GUI modes
     engine::PluginLoader plugin_loader;
+    std::vector<std::string> disabled;
+    for (const auto& name : Settings::instance().disabled_plugins())
+        disabled.push_back(name.toStdString());
+    plugin_loader.set_disabled_plugins(disabled);
+
     auto app_dir = QApplication::applicationDirPath();
     QStringList plugin_dirs = {
         app_dir + "/plugins",
