@@ -2,14 +2,53 @@
 #include "engine/log/logger.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 
 namespace engine {
 
+std::vector<std::filesystem::path> theme_search_dirs(const std::filesystem::path& app_dir) {
+    std::vector<std::filesystem::path> dirs;
+
+    // 1. User themes (highest precedence) - where custom/edited themes go.
+    const char* xdg = std::getenv("XDG_DATA_HOME");
+    std::filesystem::path user_dir;
+    if (xdg && *xdg) {
+        user_dir = std::filesystem::path(xdg) / "GameModManager" / "themes";
+    } else if (const char* home = std::getenv("HOME"); home && *home) {
+        user_dir = std::filesystem::path(home) / ".local" / "share" / "GameModManager" / "themes";
+    }
+    if (!user_dir.empty()) dirs.push_back(user_dir);
+
+    // 2. Portable layout: themes/ beside the executable.
+    dirs.push_back(app_dir / "themes");
+    // 3. Dev/source layout: the GameModManager-Themes submodule (Core/themes).
+    dirs.push_back(app_dir / ".." / "themes");
+    // 4. Installed layout: share/GameModManager/themes.
+    dirs.push_back(app_dir / ".." / "share" / "GameModManager" / "themes");
+    // 5. Dev bundled themes: Core/resources/themes.
+    dirs.push_back(app_dir / ".." / "resources" / "themes");
+
+    return dirs;
+}
+
 void ThemeManager::scan_themes(const std::filesystem::path& themes_dir) {
     themes_.clear();
+    scan_dir(themes_dir);
+}
 
+void ThemeManager::discover_themes(const std::filesystem::path& app_dir) {
+    themes_.clear();
+    for (const auto& dir : theme_search_dirs(app_dir)) {
+        if (std::filesystem::exists(dir)) {
+            scan_dir(dir);
+        }
+    }
+    Logger::instance().debug("Discovered " + std::to_string(themes_.size()) + " themes");
+}
+
+void ThemeManager::scan_dir(const std::filesystem::path& themes_dir) {
     if (!std::filesystem::exists(themes_dir)) {
         Logger::instance().warn("Theme directory does not exist: " + themes_dir.string());
         return;
@@ -21,7 +60,7 @@ void ThemeManager::scan_themes(const std::filesystem::path& themes_dir) {
         ThemeInfo info;
         info.name = entry.path().filename().string();
 
-        // Look for theme.qss (or *.qss)
+        // Look for *.qss and tokens.json
         for (const auto& f : std::filesystem::directory_iterator(entry.path())) {
             if (f.is_regular_file()) {
                 auto ext = f.path().extension().string();
@@ -33,13 +72,13 @@ void ThemeManager::scan_themes(const std::filesystem::path& themes_dir) {
             }
         }
 
-        if (!info.qss_path.empty()) {
+        if (!info.qss_path.empty() && !find_theme(info.name)) {
             themes_.push_back(std::move(info));
         }
     }
 
-    Logger::instance().debug("Scanned " + std::to_string(themes_.size()) + " themes from " +
-        themes_dir.string());
+    std::sort(themes_.begin(), themes_.end(),
+        [](const ThemeInfo& a, const ThemeInfo& b) { return a.name < b.name; });
 }
 
 bool ThemeManager::load_tokens(const std::filesystem::path& tokens_file) {
@@ -52,6 +91,8 @@ bool ThemeManager::load_tokens(const std::filesystem::path& tokens_file) {
     // Simple JSON parser for flat key-value pairs: { "$key": "value" }
     std::string content((std::istreambuf_iterator<char>(file)),
                         std::istreambuf_iterator<char>());
+
+    tokens_.clear();
 
     std::string key, value;
     bool in_key = false, in_value = false;

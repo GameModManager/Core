@@ -194,6 +194,8 @@ StyleManager::StyleManager(ThemeManager& theme_manager, QObject* parent)
     : QObject(parent)
     , theme_manager_(theme_manager)
 {
+    connect(&watcher_, &QFileSystemWatcher::fileChanged,
+            this, [this]() { reload_current(); });
 }
 
 StyleManager::~StyleManager() = default;
@@ -201,6 +203,8 @@ StyleManager::~StyleManager() = default;
 void StyleManager::apply_default() {
     current_theme_ = "default";
     current_qss_path_.clear();
+    current_tokens_path_.clear();
+    watcher_.removePaths(watcher_.files());
 
     // Clear any per-widget setStyleSheet remnants so the global sheet wins
     apply_qss(default_qss);
@@ -208,23 +212,38 @@ void StyleManager::apply_default() {
     emit theme_applied(QString::fromStdString(current_theme_));
 }
 
-bool StyleManager::load_theme(const std::filesystem::path& qss_path,
-                               const std::filesystem::path& tokens_path) {
-    QFile f(QString::fromStdString(qss_path.string()));
+bool StyleManager::apply_theme(const std::string& name) {
+    if (name.empty() || name == "default") {
+        apply_default();
+        return false;
+    }
+    const auto* theme = theme_manager_.find_theme(name);
+    if (!theme) {
+        engine::Logger::instance().error("StyleManager: theme not found: " + name);
+        apply_default();
+        return false;
+    }
+    return load_theme(*theme);
+}
+
+bool StyleManager::load_theme(const ThemeManager::ThemeInfo& theme) {
+    QFile f(QString::fromStdString(theme.qss_path.string()));
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
         engine::Logger::instance().error("StyleManager: cannot open theme: " +
-            qss_path.string());
+            theme.qss_path.string());
         return false;
     }
 
     QString content = QString::fromUtf8(f.readAll());
     f.close();
 
-    current_theme_ = qss_path.stem().string();
-    current_qss_path_ = qss_path;
+    current_theme_ = theme.name;
+    current_qss_path_ = theme.qss_path;
+    current_tokens_path_ = theme.tokens_path;
+    watch_theme_files();
 
-    if (!tokens_path.empty()) {
-        theme_manager_.load_tokens(tokens_path);
+    if (!theme.tokens_path.empty()) {
+        theme_manager_.load_tokens(theme.tokens_path);
         std::string rendered = theme_manager_.apply_template(content.toStdString());
         apply_qss(rendered);
     } else {
@@ -242,7 +261,27 @@ void StyleManager::reload_current() {
         apply_default();
         return;
     }
-    load_theme(current_qss_path_);
+    ThemeManager::ThemeInfo info;
+    info.name = current_theme_;
+    info.qss_path = current_qss_path_;
+    info.tokens_path = current_tokens_path_;
+    load_theme(info);
+}
+
+std::vector<std::string> StyleManager::theme_names() const {
+    std::vector<std::string> names;
+    for (const auto& theme : theme_manager_.themes()) {
+        names.push_back(theme.name);
+    }
+    return names;
+}
+
+void StyleManager::watch_theme_files() {
+    watcher_.removePaths(watcher_.files());
+    watcher_.addPath(QString::fromStdString(current_qss_path_.string()));
+    if (!current_tokens_path_.empty()) {
+        watcher_.addPath(QString::fromStdString(current_tokens_path_.string()));
+    }
 }
 
 void StyleManager::apply_qss(const std::string& qss_content) {

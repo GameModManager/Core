@@ -8,6 +8,12 @@
 
 namespace engine {
 
+// Directories that should be searched for themes, in precedence order
+// (earlier wins on name conflicts). The app dir is where the binary lives.
+// Themes live as subdirectories, each containing a *.qss (template) and an
+// optional tokens.json (see ThemeManager::load_tokens).
+std::vector<std::filesystem::path> theme_search_dirs(const std::filesystem::path& app_dir);
+
 // Qt-free theme engine - manages token maps and QSS template substitution.
 // UI layer is responsible for applying the resulting QSS and watching for file changes.
 class ThemeManager {
@@ -18,8 +24,12 @@ public:
         std::filesystem::path tokens_path;
     };
 
-    // Scan a directory for themes (subdirs containing theme.qss + tokens.json)
+    // Scan a directory for themes (subdirs containing *.qss + optional *.json)
     void scan_themes(const std::filesystem::path& themes_dir);
+
+    // Scan every directory returned by theme_search_dirs(app_dir), deduped by
+    // name (first occurrence wins). Themes are sorted alphabetically.
+    void discover_themes(const std::filesystem::path& app_dir);
 
     // Load token map from a JSON file (simple key-value: { "$primary": "#1e1e2e" })
     bool load_tokens(const std::filesystem::path& tokens_file);
@@ -51,6 +61,9 @@ public:
     void notify_changed();
 
 private:
+    // Scan a single directory and append its themes (deduped by name, sorted).
+    void scan_dir(const std::filesystem::path& themes_dir);
+
     std::vector<ThemeInfo> themes_;
     std::unordered_map<std::string, std::string> tokens_;
     ThemeChangedCallback callback_;
