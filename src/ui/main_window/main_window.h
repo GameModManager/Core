@@ -121,7 +121,8 @@ private:
     void group_mods_by_separator();
     void populate_executables();
     void launch_game();
-    void launch_with_executable(const QString& full_path);
+    void launch_with_executable(const QString& full_path,
+                                const std::filesystem::path& output_mod_dir = {});
     void add_shortcut_to_toolbar();
     void add_toolbar_shortcut_from_path(const QString& full_path,
                                          const QString& icon_path = {});
@@ -218,6 +219,10 @@ private:
     std::string cgroup_path_;  // cgroup v2 path for process tracking (empty = unavailable)
     std::filesystem::file_time_type launch_time_;
     std::filesystem::path staging_dir_;  // non-empty when OverlayFS deploy strategy is active
+    // "Output to mod" session: scratch capture dir + target mod folder.
+    // Both empty = default Overwrite capture.
+    std::filesystem::path output_session_scratch_;
+    std::filesystem::path output_mod_dir_;
     std::filesystem::path conflict_cache_path_;  // path to conflict cache JSON
     engine::PathRegistry last_conflict_registry_;
     std::filesystem::path meta_dir_path() const;

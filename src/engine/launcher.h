@@ -14,6 +14,12 @@ struct LaunchParams {
     uint32_t steam_appid = 0;
     bool is_windows_exe = false;
 
+    // Transient per-session capture dir for "Output to mod" launches. When
+    // non-empty, all game writes are captured here instead of overwrite_dir,
+    // so the caller can relay the session's files into a specific mod folder
+    // after the game exits. Empty = default Overwrite capture.
+    std::filesystem::path output_capture_dir;
+
     // OverlayFS mod layer directories (priority order, first = highest).
     // When non-empty, the OverlayFsLauncher layers these over game_dir as
     // additional read-only overlay lowerdirs, enabling mod deployment without

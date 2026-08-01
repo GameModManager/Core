@@ -3047,8 +3047,8 @@ void MainWindow::populate_executables() {
 }
 
 void MainWindow::launch_game() {
-    auto exec_rel = right_panel_->exec_controls()->current_executable();
-    if (exec_rel.isEmpty() || exec_rel == kAddNewEntryText) {
+    auto entry = right_panel_->exec_controls()->current_entry();
+    if (entry.path.isEmpty() || entry.path == kAddNewEntryText) {
         QMessageBox::warning(this, tr("Launch"), tr("No executable selected."));
         return;
     }
@@ -3057,7 +3057,7 @@ void MainWindow::launch_game() {
         return;
     }
 
-    auto exec_path = current_game_dir_ / exec_rel.toStdString();
+    auto exec_path = current_game_dir_ / entry.path.toStdString();
     if (!std::filesystem::exists(exec_path)) {
         engine::Logger::instance().warn(
             "executable does not exist: " + exec_path.string());
@@ -3069,13 +3069,39 @@ void MainWindow::launch_game() {
         auto entries = bar->executable_entries();
         bar->clear_executables();
         for (const auto& e : entries) {
-            if (e.path == exec_rel) continue;
+            if (e.path == entry.path) continue;
             bar->add_entry(e);
         }
         save_executables();
         return;
     }
-    launch_with_executable(QString::fromStdString(exec_path.string()));
+
+    // Output-to-mod routing: resolve the target mod folder, auto-creating it
+    // (with the game's metadata file) when it doesn't exist yet.
+    std::filesystem::path output_mod_dir;
+    if (!entry.output_mod.isEmpty()) {
+        output_mod_dir = mods_dir_path() / entry.output_mod.toStdString();
+        std::error_code ec;
+        if (!std::filesystem::is_directory(output_mod_dir, ec)) {
+            std::filesystem::create_directories(output_mod_dir, ec);
+            if (ec) {
+                engine::Logger::instance().error(
+                    "Failed to create output mod folder " +
+                    output_mod_dir.string() + ": " + ec.message());
+                output_mod_dir.clear();
+            } else {
+                auto metadata_file = knowledge_
+                    ? knowledge_->get(current_game_id_, "metadata_file", "meta.ini")
+                    : "meta.ini";
+                engine::ModMeta::write_game_metadata(output_mod_dir, metadata_file,
+                    entry.output_mod.toStdString(), "1.0", "0");
+                engine::Logger::instance().debug(
+                    "Output-to-mod: created mod folder " + output_mod_dir.string());
+            }
+        }
+    }
+
+    launch_with_executable(QString::fromStdString(exec_path.string()), output_mod_dir);
 }
 
 static void gmm_debug(const char* fmt, ...) {
@@ -3089,7 +3115,8 @@ static void gmm_debug(const char* fmt, ...) {
     va_end(args);
 }
 
-void MainWindow::launch_with_executable(const QString& full_path) {
+void MainWindow::launch_with_executable(const QString& full_path,
+                                        const std::filesystem::path& output_mod_dir) {
     auto& trace = engine::TraceRecorder::instance();
     trace.begin_flow("launch");
 
@@ -3127,6 +3154,33 @@ void MainWindow::launch_with_executable(const QString& full_path) {
     lparams.steam_appid = steam_appid;
     lparams.is_windows_exe = (exec_path.extension().string() == ".exe" ||
                               exec_path.extension().string() == ".EXE");
+
+    // Output-to-mod: capture into a per-launch scratch dir, relay on exit.
+    // Empty output_mod_dir = default Overwrite capture (toolbar shortcuts).
+    output_session_scratch_.clear();
+    output_mod_dir_ = output_mod_dir;
+    if (!output_mod_dir.empty()) {
+        auto scratch_base = current_instance_root_.empty()
+            ? (current_game_dir_ / "cache")
+            : (current_instance_root_ / "cache");
+        auto session = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        output_session_scratch_ = scratch_base / "exec-output" /
+            ("sess-" + std::to_string(session));
+        std::error_code ec;
+        std::filesystem::create_directories(output_session_scratch_, ec);
+        if (ec) {
+            engine::Logger::instance().error(
+                "Failed to create output scratch dir: " + ec.message());
+            output_session_scratch_.clear();
+            output_mod_dir_.clear();
+        } else {
+            lparams.output_capture_dir = output_session_scratch_;
+            engine::Logger::instance().debug(
+                "Output-to-mod: capturing to " + output_session_scratch_.string());
+        }
+    }
+
     if (!staging_dir_.empty()) {
         std::error_code ec;
         std::filesystem::create_directories(staging_dir_, ec);
@@ -3147,6 +3201,12 @@ void MainWindow::launch_with_executable(const QString& full_path) {
         hide_game_lock_overlay();
         QMessageBox::warning(this, tr("Launch"), tr("Failed to launch game."));
         trace.end_flow("launch", false, "Failed to launch game");
+        if (!output_session_scratch_.empty()) {
+            std::error_code ec;
+            std::filesystem::remove_all(output_session_scratch_, ec);
+            output_session_scratch_.clear();
+        }
+        output_mod_dir_.clear();
         return;
     }
     trace.end_stage("launch", true,
@@ -3515,22 +3575,42 @@ void MainWindow::refresh_process_tree() {
 void MainWindow::do_capture_overwrite(std::filesystem::file_time_type capture_time) {
     if (current_instance_root_.empty() || current_game_dir_.empty()) return;
 
-    // When launched via overlay, all writes already went directly to Overwrite.
+    bool session_active = !output_session_scratch_.empty() && !output_mod_dir_.empty();
+    auto capture_dir = session_active ? output_session_scratch_
+                                      : (current_instance_root_ / "overwrite");
+
+    // When launched via overlay, all writes already went directly into the
+    // capture dir (upperdir = session scratch for output-mod, Overwrite otherwise).
     if (overlay_launched_) {
         overlay_launched_ = false;
-        engine::Logger::instance().debug("Overlay launched: reloading mods (writes already in Overwrite)");
-        load_mods_from_game();
-        return;
+        engine::Logger::instance().debug(
+            "Overlay launched: writes already in " + capture_dir.string());
+    } else {
+        engine::capture_overwrite(current_game_dir_, capture_dir, capture_time);
     }
 
-    auto overwrite_dir = current_instance_root_ / "overwrite";
-    engine::capture_overwrite(current_game_dir_, overwrite_dir, capture_time);
+    if (session_active) {
+        auto mods_subpath = knowledge_
+            ? knowledge_->get(current_game_id_, "mods_subpath", "") : std::string();
+        auto inc_id = knowledge_->get(current_game_id_, "deploy_include_mod_id", "false");
+        auto overwrite_dir = current_instance_root_ / "overwrite";
+        auto relayed = engine::relay_output_to_mod(output_session_scratch_,
+            output_mod_dir_, overwrite_dir, mods_subpath,
+            inc_id == "true", output_mod_dir_.filename().string());
+        engine::Logger::instance().debug(
+            "Output-to-mod: relayed " + std::to_string(relayed) +
+            " file(s) to " + output_mod_dir_.string() +
+            ", leftovers moved to Overwrite");
+        std::error_code ec;
+        std::filesystem::remove_all(output_session_scratch_, ec);
+        output_session_scratch_.clear();
+        output_mod_dir_.clear();
+    }
 
-    // Reload mod list so Overwrite contents become visible
+    // Reload mod list so the mod / Overwrite contents become visible
     std::error_code ec;
-    if (std::filesystem::exists(overwrite_dir, ec)) {
+    if (session_active || std::filesystem::exists(capture_dir, ec))
         load_mods_from_game();
-    }
 }
 
 void MainWindow::add_shortcut_to_toolbar() {
