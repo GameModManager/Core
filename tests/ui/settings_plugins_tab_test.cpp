@@ -30,6 +30,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QDialogButtonBox>
+#include <QGroupBox>
 #include <QLineEdit>
 #include <QLabel>
 #include <QPushButton>
@@ -292,6 +293,22 @@ int main(int argc, char** argv) {
               opt_auto && opt_auto->checkState() == Qt::Checked &&
               (opt_auto->flags() & Qt::ItemIsUserCheckable),
           "plaintext value is a non-checkable text cell, bool value is a checked checkbox");
+
+    // No "Settings" group box wraps the table; it is a direct child of the
+    // info list. And as the only stretch-1 item it reaches the pane bottom.
+    bool has_settings_box = false;
+    QWidget* info_pane_w = nullptr;
+    if (auto* sp = page->findChild<QSplitter*>()) info_pane_w = sp->widget(1);
+    if (info_pane_w)
+        for (auto* gb : info_pane_w->findChildren<QGroupBox*>())
+            if (gb->title() == "Settings") has_settings_box = true;
+    check(!has_settings_box, "no 'Settings' group box wraps the options table");
+    if (auto* t = page->findChild<QTableWidget*>()) {
+        const int pane_h = info_pane_w ? info_pane_w->height() : 0;
+        check(info_pane_w != nullptr && t->height() >= 300 && pane_h > 0 &&
+                  t->height() >= pane_h / 2,
+              "options table stretches to the info pane bottom");
+    }
 
     // --- Persistence: checkbox toggle + text edit write back to Settings. ---
     const QString options_leaf_name =

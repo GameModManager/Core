@@ -768,85 +768,83 @@ QWidget* SettingsDialog::build_plugins_tab() {
         }
         content_layout->addWidget(enabled_box);
 
-        if (e.is_plugin) {
-            auto* settings_group = new QGroupBox(tr("Settings"), state->content);
-            auto* gl = new QVBoxLayout(settings_group);
-            if (e.options.empty()) {
-                gl->addWidget(new QLabel(tr("This plugin exposes no settings."), settings_group));
-                content_layout->addWidget(settings_group);
-            } else {
-                // Key | Value table (scrolls internally). Bool-looking values
-                // ("1"/"0"/"true"/"false"/"yes"/"no"/"on"/"off") get a checkbox
-                // in the Value column; everything else is a plaintext cell.
-                auto* table = new QTableWidget(0, 2, settings_group);
-                table->setHorizontalHeaderLabels({tr("Key"), tr("Value")});
-                table->verticalHeader()->setVisible(false);
-                table->horizontalHeader()->setStretchLastSection(true);
-                table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-                table->setSelectionBehavior(QAbstractItemView::SelectItems);
-                table->setEditTriggers(QAbstractItemView::DoubleClicked |
-                                       QAbstractItemView::EditKeyPressed);
-                table->setAlternatingRowColors(true);
+        if (e.is_plugin && e.options.empty()) {
+            content_layout->addWidget(new QLabel(tr("This plugin exposes no settings."),
+                                                 state->content));
+            content_layout->addStretch(1);
+        } else if (e.is_plugin) {
+            // Key | Value table (scrolls internally) as the last item in the
+            // info list; it is the only stretch-1 item so it reaches the
+            // window bottom. Bool-looking values ("1"/"0"/"true"/"false"/
+            // "yes"/"no"/"on"/"off") get a checkbox in the Value column;
+            // everything else is a plaintext cell.
+            auto* table = new QTableWidget(0, 2, state->content);
+            table->setHorizontalHeaderLabels({tr("Key"), tr("Value")});
+            table->verticalHeader()->setVisible(false);
+            table->horizontalHeader()->setStretchLastSection(true);
+            table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+            table->setSelectionBehavior(QAbstractItemView::SelectItems);
+            table->setEditTriggers(QAbstractItemView::DoubleClicked |
+                                   QAbstractItemView::EditKeyPressed);
+            table->setAlternatingRowColors(true);
 
-                auto is_bool = [](const QString& v) {
-                    const QString t = v.trimmed().toLower();
-                    return t == "1" || t == "0" || t == "true" || t == "false" ||
-                           t == "yes" || t == "no" || t == "on" || t == "off";
-                };
-                auto to_bool = [](const QString& v) {
-                    const QString t = v.trimmed().toLower();
-                    return t == "1" || t == "true" || t == "yes" || t == "on";
-                };
+            auto is_bool = [](const QString& v) {
+                const QString t = v.trimmed().toLower();
+                return t == "1" || t == "0" || t == "true" || t == "false" ||
+                       t == "yes" || t == "no" || t == "on" || t == "off";
+            };
+            auto to_bool = [](const QString& v) {
+                const QString t = v.trimmed().toLower();
+                return t == "1" || t == "true" || t == "yes" || t == "on";
+            };
 
-                const QString basename = e.enabled_basename;
-                for (const auto& [key, value] : e.options) {
-                    const int row = table->rowCount();
-                    table->insertRow(row);
-                    auto* key_item = new QTableWidgetItem(key);
-                    key_item->setFlags(key_item->flags() & ~Qt::ItemIsEditable);
-                    table->setItem(row, 0, key_item);
+            const QString basename = e.enabled_basename;
+            for (const auto& [key, value] : e.options) {
+                const int row = table->rowCount();
+                table->insertRow(row);
+                auto* key_item = new QTableWidgetItem(key);
+                key_item->setFlags(key_item->flags() & ~Qt::ItemIsEditable);
+                table->setItem(row, 0, key_item);
 
-                    if (is_bool(value)) {
-                        auto* val_item = new QTableWidgetItem;
-                        val_item->setCheckState(to_bool(value) ? Qt::Checked : Qt::Unchecked);
-                        val_item->setFlags(val_item->flags() & ~Qt::ItemIsEditable);
-                        table->setItem(row, 1, val_item);
-                    } else {
-                        // QTableWidgetItem's default flags include
-                        // ItemIsUserCheckable; clear it so the persistence
-                        // handler can tell checkboxes from plaintext cells.
-                        auto* val_item = new QTableWidgetItem(value);
-                        val_item->setFlags(val_item->flags() & ~Qt::ItemIsUserCheckable);
-                        table->setItem(row, 1, val_item);
-                    }
+                if (is_bool(value)) {
+                    auto* val_item = new QTableWidgetItem;
+                    val_item->setCheckState(to_bool(value) ? Qt::Checked : Qt::Unchecked);
+                    val_item->setFlags(val_item->flags() & ~Qt::ItemIsEditable);
+                    table->setItem(row, 1, val_item);
+                } else {
+                    // QTableWidgetItem's default flags include
+                    // ItemIsUserCheckable; clear it so the persistence
+                    // handler can tell checkboxes from plaintext cells.
+                    auto* val_item = new QTableWidgetItem(value);
+                    val_item->setFlags(val_item->flags() & ~Qt::ItemIsUserCheckable);
+                    table->setItem(row, 1, val_item);
                 }
-
-                // Connect after populating so programmatic setItem/setCheckState
-                // above do not fire the persistence write.
-                connect(table, &QTableWidget::itemChanged, this,
-                        [basename, table](QTableWidgetItem* item) {
-                            if (!item || item->column() != 1) return;
-                            auto* key_item = table->item(item->row(), 0);
-                            if (!key_item) return;
-                            const QString value =
-                                (item->flags() & Qt::ItemIsUserCheckable)
-                                ? (item->checkState() == Qt::Checked ? "1" : "0")
-                                : item->text();
-                            Settings::instance().set_plugin_setting(basename,
-                                                                    key_item->text(), value);
-                        });
-
-                gl->addWidget(table);
-                content_layout->addWidget(settings_group, 1);
             }
+
+            // Connect after populating so programmatic setItem/setCheckState
+            // above do not fire the persistence write.
+            connect(table, &QTableWidget::itemChanged, this,
+                    [basename, table](QTableWidgetItem* item) {
+                        if (!item || item->column() != 1) return;
+                        auto* key_item = table->item(item->row(), 0);
+                        if (!key_item) return;
+                        const QString value =
+                            (item->flags() & Qt::ItemIsUserCheckable)
+                            ? (item->checkState() == Qt::Checked ? "1" : "0")
+                            : item->text();
+                        Settings::instance().set_plugin_setting(basename,
+                                                                key_item->text(), value);
+                    });
+
+            content_layout->addWidget(table, 1);
         } else {
             // Source providers: their settings live on the Sources tab only.
             auto* hint = new QLabel(tr("Source provider settings live on the Sources tab."),
                                     state->content);
             hint->setWordWrap(true);
             content_layout->addWidget(hint);
+            content_layout->addStretch(1);
         }
-        content_layout->addStretch(1);
     };
 
     connect(list, &QTreeWidget::currentItemChanged, this,
