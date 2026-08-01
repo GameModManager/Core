@@ -597,12 +597,12 @@ void MainWindow::set_game_info(const std::string& game_id,
             auto ovl_strat = std::make_unique<engine::OverlayFsDeployStrategy>(staging);
             staging_dir_ = staging;
             deploy_strategy = std::move(ovl_strat);
-            engine::Logger::instance().debug("Deploy strategy: OverlayFS");
+            engine::Logger::instance().info("Deploy strategy: OverlayFS");
         } else
 #endif
         {
             deploy_strategy = std::make_unique<engine::SymlinkStrategy>();
-            engine::Logger::instance().debug("Deploy strategy: Symlink (direct to game_dir)");
+            engine::Logger::instance().info("Deploy strategy: Symlink (direct to game_dir)");
         }
         ctx.deploy_strategy = deploy_strategy.get();
 
