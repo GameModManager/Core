@@ -4042,7 +4042,11 @@ void MainWindow::save_app_state() {
         if (!cur_exec.isEmpty())
             header_states["selected_exec"] = cur_exec;
     }
-    QByteArray extra = QJsonDocument(header_states).toJson(QJsonDocument::Compact);
+    // Match read_ba() below: every block in this file is stored base64.
+    // (Historical note: this used to be written raw while read_ba() decoded
+    // fromBase64, which silently corrupted the whole extra block - selected
+    // executable, icon size, and right-panel header states never restored.)
+    QByteArray extra = QJsonDocument(header_states).toJson(QJsonDocument::Compact).toBase64();
     write_ba(extra);
 }
 
@@ -4080,7 +4084,10 @@ void MainWindow::restore_app_state() {
     if (in.read(reinterpret_cast<char*>(&extra_len), sizeof(extra_len)) && extra_len > 0) {
         std::vector<char> buf(extra_len);
         if (in.read(buf.data(), extra_len)) {
-            auto doc = QJsonDocument::fromJson(QByteArray(buf.data(), extra_len));
+            QByteArray raw(buf.data(), extra_len);
+            auto doc = QJsonDocument::fromJson(QByteArray::fromBase64(raw));
+            if (!doc.isObject())
+                doc = QJsonDocument::fromJson(raw);  // legacy: extra written raw
             if (doc.isObject() && right_panel_) {
             auto obj = doc.object();
             // Restore process tree visibility (prefixed with _ to avoid tab-name collision)
