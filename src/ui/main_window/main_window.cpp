@@ -308,7 +308,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(mod_model_, &QAbstractItemModel::dataChanged,
             this, [this](const QModelIndex& topLeft, const QModelIndex& bottomRight, const QVector<int>& roles) {
         (void)bottomRight;
-        if (roles.contains(Qt::CheckStateRole) && topLeft.column() == ModListModel::Enabled) {
+        if (roles.contains(Qt::CheckStateRole) && topLeft.column() == ModListModel::Name) {
             auto id = mod_model_->data(topLeft.sibling(topLeft.row(), ModListModel::Name), Qt::EditRole).toString();
             bool enabled = mod_model_->data(topLeft, Qt::CheckStateRole).toInt() == Qt::Checked;
             sync_mod_enable_state(id, enabled);
@@ -337,9 +337,9 @@ MainWindow::MainWindow(QWidget* parent)
         apply_mod_filter();
     });
 
-    // Fold/unfold on separator arrow click (arrow is in the Enabled column)
+    // Fold/unfold on separator arrow click (arrow is a prefix in the Name cell)
     connect(mod_view_, &QTreeView::clicked, this, [this](const QModelIndex& idx) {
-        if (!idx.isValid() || idx.column() != ModListModel::Enabled) return;
+        if (!idx.isValid() || idx.column() != ModListModel::Name) return;
         int row = idx.row();
         if (row < 0 || row >= mod_model_->mods().size()) return;
         if (mod_model_->mods()[row].is_separator) {
@@ -353,12 +353,11 @@ MainWindow::MainWindow(QWidget* parent)
     });
 
     auto* mod_header = new ColumnToggleHeaderView(Qt::Horizontal, mod_view_);
-    mod_header->set_column_labels({"Enabled", "Name", "Version", "Flags", "Priority"});
+    mod_header->set_column_labels({"Name", "Version", "Flags", "Priority"});
     mod_view_->setHeader(mod_header);
 
     mod_header->setStretchLastSection(false);
     mod_header->setSectionsMovable(true);
-    mod_header->setSectionResizeMode(ModListModel::Enabled, QHeaderView::ResizeToContents);
     mod_header->setSectionResizeMode(ModListModel::Name, QHeaderView::Stretch);
     mod_header->setSectionResizeMode(ModListModel::Version, QHeaderView::Interactive);
     mod_header->setSectionResizeMode(ModListModel::Flags, QHeaderView::Interactive);
@@ -2119,7 +2118,7 @@ void MainWindow::toggle_selected_mods(bool enabled) {
         // Check if state would actually change
         if (entry.enabled == enabled) continue;
 
-        mod_model_->setData(mod_model_->index(r, ModListModel::Enabled),
+        mod_model_->setData(mod_model_->index(r, ModListModel::Name),
             enabled ? Qt::Checked : Qt::Unchecked, Qt::CheckStateRole);
         sync_mod_enable_state(entry.id, enabled);
     }
