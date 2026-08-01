@@ -3676,12 +3676,17 @@ void MainWindow::on_add_entry_requested() {
 
     auto all_entries = dlg.entries();
 
-    // Replace the entire combo content
+    // Replace the entire combo content, then re-apply the selection the user
+    // had before opening the editor. Editing must not move the combo to the
+    // first or last entry - the selection follows the user until app close.
     auto* bar = right_panel_->exec_controls();
+    auto prev_selection = bar->current_executable();
     bar->clear_executables();
     for (const auto& e : all_entries) {
         bar->add_entry(e);
     }
+    if (!prev_selection.isEmpty())
+        bar->select_executable(prev_selection);
     save_executables();
 }
 
