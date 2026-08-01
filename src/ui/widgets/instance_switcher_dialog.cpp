@@ -93,7 +93,7 @@ InstanceSwitcherDialog::InstanceSwitcherDialog(engine::PluginLoader* plugins, QW
         if (!icon.isNull()) {
             create_btn->setIcon(icon);
         }
-        create_btn->setText(tr("+ Create new instance"));
+        create_btn->setText(tr("Create new instance"));
     }
     bottom_layout->addWidget(create_btn);
 

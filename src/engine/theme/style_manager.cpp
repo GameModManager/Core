@@ -74,7 +74,7 @@ QToolTip {
 /* -- Instance switcher dialog -------------------- */
 
 #pathLabel {
-    color: palette(mid);
+    color: palette(placeholderText);
     font-size: 10px;
 }
 
@@ -140,7 +140,6 @@ QLabel#statLabel {
 }
 
 #pipelineDescription {
-    color: palette(mid);
     font-size: 10px;
 }
 
