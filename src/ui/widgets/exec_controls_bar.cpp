@@ -87,18 +87,6 @@ QIcon extractExeIcon(const QString& exePath, const std::filesystem::path& icon_c
     return provider.icon(QFileInfo(exePath));
 }
 
-// Resolve the display text for an ExecEntry (title, or filename from path, or "Untitled")
-QString displayTextForEntry(const QJsonObject& obj) {
-    auto title = obj["title"].toString();
-    if (!title.isEmpty()) return title;
-    auto path = obj["path"].toString();
-    if (!path.isEmpty()) {
-        auto last_slash = path.lastIndexOf('/');
-        return last_slash >= 0 ? path.mid(last_slash + 1) : path;
-    }
-    return "Untitled";
-}
-
 }  // namespace
 
 namespace ui {
@@ -218,7 +206,7 @@ void ExecControlsBar::add_executable(const QString& display_name, const QString&
     e.title = display_name;
     e.path = rel_path;
     int insert_pos = 1;  // right after the sentinel (index 0)
-    exec_combo_->insertItem(insert_pos, icon, displayTextForEntry(e.toJson()), QVariant(e.toJson()));
+    exec_combo_->insertItem(insert_pos, icon, exec_entry_display_name(e), QVariant(e.toJson()));
     exec_combo_->setCurrentIndex(insert_pos);
 }
 
@@ -239,7 +227,7 @@ void ExecControlsBar::add_entry(const ExecEntry& entry) {
     }
 
     int insert_pos = 1;  // right after the sentinel (index 0)
-    exec_combo_->insertItem(insert_pos, icon, displayTextForEntry(entry.toJson()), QVariant(entry.toJson()));
+    exec_combo_->insertItem(insert_pos, icon, exec_entry_display_name(entry), QVariant(entry.toJson()));
     exec_combo_->setCurrentIndex(insert_pos);
 }
 
@@ -280,7 +268,7 @@ void ExecControlsBar::set_executables(const QStringList& names, const QString& d
         }
 
         auto toml_path = entry.path;  // relative path in toml
-        auto display = displayTextForEntry(entry.toJson());
+        auto display = exec_entry_display_name(entry);
 
         // Try icon
         if (!game_dir.empty()) {
