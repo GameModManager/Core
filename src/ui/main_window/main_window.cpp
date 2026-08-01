@@ -89,6 +89,7 @@
 #include <QSplitter>
 #include <QStatusBar>
 #include <QStyle>
+#include <QStyleFactory>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTemporaryDir>
@@ -4612,14 +4613,24 @@ void MainWindow::show_settings_dialog() {
         theme_combo->addItem(tr("Default (system)"), "default");
         for (const auto& name : style_manager_->theme_names())
             theme_combo->addItem(QString::fromStdString(name), QString::fromStdString(name));
+        if (!QStyleFactory::keys().isEmpty()) {
+            theme_combo->insertSeparator(theme_combo->count());
+            for (const auto& key : QStyleFactory::keys())
+                theme_combo->addItem(tr("Qt: %1").arg(key), "qt:" + key);
+        }
 
-        const QString current_theme = QSettings("GameModManager", "GameModManager")
-                                          .value("theme", "default").toString();
-        int theme_idx = theme_combo->findData(current_theme);
+        // A persisted built-in Qt style wins over the QSS theme.
+        const QSettings theme_settings("GameModManager", "GameModManager");
+        const QString current_style = theme_settings.value("style").toString();
+        const QString current_theme = theme_settings.value("theme", "default").toString();
+        int theme_idx = theme_combo->findData("qt:" + current_style);
+        if (theme_idx < 0)
+            theme_idx = theme_combo->findData(current_theme);
         theme_combo->setCurrentIndex(theme_idx >= 0 ? theme_idx : 0);
 
         auto* theme_hint = new QLabel(
-            tr("Editing the theme's .qss or tokens.json on disk live-reloads it."));
+            tr("Editing a theme's .qss or tokens.json on disk live-reloads it. "
+               "Qt styles (Fusion, Windows, ...) are the built-in Qt look - no custom theme files."));
         theme_hint->setWordWrap(true);
 
         theme_layout->addWidget(theme_combo);
@@ -4701,10 +4712,29 @@ void MainWindow::show_settings_dialog() {
     });
 
     connect(theme_combo, &QComboBox::currentIndexChanged, this, [this, theme_combo](int index) {
-        const QString name = theme_combo->itemData(index).toString();
-        QSettings("GameModManager", "GameModManager").setValue("theme", name);
+        const QString data = theme_combo->itemData(index).toString();
+        QSettings settings("GameModManager", "GameModManager");
+        if (data.startsWith("qt:")) {
+            // Built-in Qt style: no custom QSS, no GMM theme.
+            const QString style = data.mid(3);
+            settings.setValue("style", style);
+            settings.remove("theme");
+            if (QStyle* st = QStyleFactory::create(style))
+                qApp->setStyle(st);
+            qApp->setStyleSheet(QString());
+            engine::Logger::instance().info("Applied Qt style: " + style.toStdString());
+            return;
+        }
+        // GMM theme (or Default): restore the native platform style first so
+        // the QSS renders on Breeze/etc., then apply the theme.
+        settings.setValue("theme", data);
+        settings.remove("style");
+        if (!native_style_name_.isEmpty()) {
+            if (QStyle* st = QStyleFactory::create(native_style_name_))
+                qApp->setStyle(st);
+        }
         if (style_manager_)
-            style_manager_->apply_theme(name.toStdString());
+            style_manager_->apply_theme(data.toStdString());
     });
 
     connect(save_btn, &QPushButton::clicked, [&]() {
