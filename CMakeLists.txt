@@ -354,6 +354,12 @@ target_include_directories(registry_test PRIVATE src/)
 target_link_libraries(registry_test PRIVATE PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::CURL PkgConfig::NLOHMANN_JSON)
 add_test(NAME registry_test COMMAND registry_test)
 
+add_executable(instance_path_test tests/engine/instance_path_test.cpp
+    src/engine/instance/instance.cpp
+)
+target_include_directories(instance_path_test PRIVATE src/)
+add_test(NAME instance_path_test COMMAND instance_path_test)
+
 add_executable(nxm_router_test tests/engine/nxm_router_test.cpp
     src/engine/nxm/nxm_router.cpp
 )

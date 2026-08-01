@@ -15,6 +15,7 @@
 #include "engine/meta/mod_meta.h"
 #include "engine/deploy/strategy.h"
 #include "engine/nxm/nxm_router.h"
+#include "engine/instance/instance.h"
 
 class QSplitter;
 class QToolBar;
@@ -231,8 +232,14 @@ private:
     std::filesystem::path output_mod_dir_;
     std::filesystem::path conflict_cache_path_;  // path to conflict cache JSON
     engine::PathRegistry last_conflict_registry_;
+    engine::Instance current_instance_;  // loaded per-folder overrides for the active instance
     std::filesystem::path meta_dir_path() const;
     std::filesystem::path mods_dir_path() const;
+    std::filesystem::path downloads_dir_path() const;
+    std::filesystem::path cache_dir_path() const;
+    std::filesystem::path cache_thumbnails_dir_path() const;
+    std::filesystem::path profiles_dir_path() const;
+    std::filesystem::path overwrite_dir_path() const;
     std::filesystem::path resolve_mod_folder(const std::string& mod_id, const std::string& mods_subpath) const;
     QByteArray pending_geometry_;
     // Restored app state, applied once the widgets are ready

@@ -447,28 +447,69 @@ QWidget* SettingsDialog::build_paths_tab() {
         base_row->addWidget(base_browse);
         base_form->addRow(tr("Base Directory"), base_row);
 
-        auto make_dir_row = [&](const QString& label, const fs::path& p) {
-            auto* lbl = new QLabel(QString::fromStdString(p.string()), page);
-            lbl->setTextInteractionFlags(Qt::TextSelectableByMouse);
-            lbl->setWordWrap(true);
-            base_form->addRow(label, lbl);
-            return lbl;
+        // Per-folder overrides. Empty field = default location under the
+        // Base Directory. Overrides persist to instance.toml and are honored
+        // by the instance wherever it reads/writes each folder.
+        struct FolderRow {
+            engine::InstanceKind kind;
+            QString label;
+            QString placeholder;
         };
-        auto* mods_label = make_dir_row(tr("Mods"), instance_root_ / "mods");
-        auto* downloads_label = make_dir_row(tr("Downloads"), instance_root_ / "downloads");
-        auto* cache_label = make_dir_row(tr("Cache"), instance_root_ / "cache");
-        auto* profiles_label = make_dir_row(tr("Profiles"), instance_root_ / "profiles");
-        auto* overwrite_label = make_dir_row(tr("Overwrite"), instance_root_ / "overwrite");
-
-        auto refresh_derived = [this, mods_label, downloads_label, cache_label, profiles_label, overwrite_label]() {
-            mods_label->setText(QString::fromStdString((instance_root_ / "mods").string()));
-            downloads_label->setText(QString::fromStdString((instance_root_ / "downloads").string()));
-            cache_label->setText(QString::fromStdString((instance_root_ / "cache").string()));
-            profiles_label->setText(QString::fromStdString((instance_root_ / "profiles").string()));
-            overwrite_label->setText(QString::fromStdString((instance_root_ / "overwrite").string()));
+        const FolderRow folders[] = {
+            {engine::InstanceKind::Mods, tr("Mods"), "$BASE_DIRECTORY/mods"},
+            {engine::InstanceKind::Downloads, tr("Downloads"), "$BASE_DIRECTORY/downloads"},
+            {engine::InstanceKind::Cache, tr("Cache"), "$BASE_DIRECTORY/cache"},
+            {engine::InstanceKind::Profiles, tr("Profiles"), "$BASE_DIRECTORY/profiles"},
+            {engine::InstanceKind::Overwrite, tr("Overwrite"), "$BASE_DIRECTORY/overwrite"},
         };
 
-        auto commit_base = [this, &s, base_edit, refresh_derived]() {
+        auto load_overrides = [&]() {
+            auto inst = engine::Instance::from_root(instance_root_);
+            inst.read_toml();
+            return inst;
+        };
+
+        for (const auto& f : folders) {
+            auto* edit = new QLineEdit(page);
+            edit->setPlaceholderText(f.placeholder);
+            {
+                auto inst = load_overrides();
+                auto ov = inst.path_override(f.kind);
+                if (!ov.empty())
+                    edit->setText(QString::fromStdString(ov.string()));
+            }
+            auto* browse = new QPushButton(tr("Browse..."), page);
+            auto* row = new QHBoxLayout;
+            row->addWidget(edit, 1);
+            row->addWidget(browse);
+            base_form->addRow(f.label, row);
+
+            auto commit = [this, kind = f.kind, edit]() {
+                const QString text = edit->text().trimmed();
+                auto inst = engine::Instance::from_root(instance_root_);
+                inst.read_toml();
+                inst.set_path_override(
+                    kind, text.isEmpty() ? std::filesystem::path{}
+                                         : std::filesystem::path(text.toStdString()));
+                inst.write_toml();
+            };
+            connect(edit, &QLineEdit::editingFinished, this, commit);
+            connect(browse, &QPushButton::clicked, this, [edit, commit]() {
+                const QString dir = QFileDialog::getExistingDirectory(
+                    edit, QObject::tr("Choose folder"), edit->text());
+                if (!dir.isEmpty()) {
+                    edit->setText(dir);
+                    commit();
+                }
+            });
+        }
+        auto* folders_hint = new QLabel(
+            tr("Each folder defaults to a subdirectory of the Base Directory. "
+               "Leave a field empty to keep the default location."), page);
+        folders_hint->setWordWrap(true);
+        base_form->addRow(QString(), folders_hint);
+
+        auto commit_base = [this, &s, base_edit]() {
             QString new_base = base_edit->text().trimmed();
             if (new_base.isEmpty()) return;
             while (new_base.size() > 1 && new_base.endsWith('/'))
@@ -504,7 +545,6 @@ QWidget* SettingsDialog::build_paths_tab() {
             }
             instance_root_ = target;
             base_edit->setText(QString::fromStdString(instance_root_.string()));
-            refresh_derived();
             engine::write_last_instance(instance_root_.filename().string());
         };
         connect(base_edit, &QLineEdit::editingFinished, this, commit_base);
