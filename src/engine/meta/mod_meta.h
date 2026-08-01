@@ -68,6 +68,20 @@ public:
     static ModMeta import_mo2(const std::filesystem::path& mod_folder,
                               const std::string& folder_name);
 
+    // --- Game-visible metadata files ---
+    // Write the game's metadata file into a mod folder so ModScanner
+    // recognizes the mod. MO2-style games get a meta.ini ([General] with
+    // modid/version/newestVersion/category/installationFile - the same file
+    // MO2's installers write); games that registered the metadata_file hook
+    // (Isaac) get their XML metadata file. No-op if the file already exists.
+    // Returns true on success (or if it already existed).
+    static bool write_game_metadata(const std::filesystem::path& mod_dir,
+                                    const std::string& metadata_file,
+                                    const std::string& display_name,
+                                    const std::string& version,
+                                    const std::string& modid = {},
+                                    const std::string& installation_file = {});
+
     // --- Versioning ---
     // Increment this whenever the meta format changes (new sections/keys added).
     // Existing meta files with an older version get upgraded on next load.

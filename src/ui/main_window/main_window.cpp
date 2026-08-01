@@ -1475,6 +1475,17 @@ void MainWindow::recompute_conflicts() {
     // Read per-game config from knowledge hooks (needed before mod_infos for overwrite priority)
     auto conflict_extensions = knowledge_->get(current_game_id_, "conflict_extensions", "");
     auto ignored_files = knowledge_->get(current_game_id_, "ignored_files", "");
+    // Mod folders carry per-mod metadata files the manager itself writes
+    // (meta.ini) or that the game reads (metadata.xml / disable marker).
+    // Every mod folder has them, so exclude them from conflict counting.
+    auto metadata_file = knowledge_->get(current_game_id_, "metadata_file", "meta.ini");
+    auto disable_file = knowledge_->get(current_game_id_, "disable_mechanism", "");
+    for (const auto* f : {&metadata_file, &disable_file}) {
+        if (f->empty()) continue;
+        if (ignored_files.find(*f) != std::string::npos) continue;
+        if (!ignored_files.empty()) ignored_files += ",";
+        ignored_files += *f;
+    }
     auto conflict_reversed = knowledge_->get(current_game_id_, "conflict_order_reversed", "") == "true";
     auto conflict_scan_dirs = knowledge_->get(current_game_id_, "conflict_scan_dirs", "");
 
@@ -1843,6 +1854,10 @@ void MainWindow::create_mod_from_overwrite() {
     }
 
     if (engine::SyncStage::promote_to_mod(overwrite_dir, mod_dir, rel_paths)) {
+        // Write the game's metadata file so ModScanner picks the mod up.
+        auto metadata_file = knowledge_->get(current_game_id_, "metadata_file", "meta.ini");
+        engine::ModMeta::write_game_metadata(mod_dir, metadata_file,
+                                             name.toStdString(), "1.0", "0");
         auto id = name;
         mod_model_->add_mod(id, name, "");
         engine::Logger::instance().debug("Promote Overwrite to mod: " + name.toStdString());
@@ -2182,6 +2197,13 @@ void MainWindow::create_empty_mod() {
             tr("Failed to create mod folder."));
         return;
     }
+
+    // Write the game's metadata file into the mod folder so ModScanner picks
+    // the mod up. MO2-style games get a meta.ini (same keys MO2 and
+    // InstallStage write); XML games (Isaac) get their metadata.xml.
+    auto metadata_file = knowledge_->get(current_game_id_, "metadata_file", "meta.ini");
+    engine::ModMeta::write_game_metadata(mod_dir, metadata_file,
+                                         trimmed.toStdString(), "1.0", "0");
 
     engine::Logger::instance().debug("Empty mod created: " + folder.toStdString());
     load_mods_from_game();
