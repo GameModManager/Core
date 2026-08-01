@@ -22,6 +22,7 @@ public:
     void update_tools_for_game(const std::string& game_id,
                                const std::vector<engine::ExternalTool>& tools);
     void set_sort_available(bool available);
+    void set_icon_size(int size);
 
 signals:
     // File
@@ -70,6 +71,7 @@ private:
 
     QMenu* recent_menu_ = nullptr;
     QMenu* tools_menu_ = nullptr;
+    QMenu* icons_menu_ = nullptr;
     QAction* tools_separator_ = nullptr;
     QAction* sort_action_ = nullptr;
     std::string current_game_id_;

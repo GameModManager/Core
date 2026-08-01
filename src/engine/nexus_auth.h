@@ -9,11 +9,16 @@
 namespace engine {
 
 // Nexus API rate limit state - persisted across restarts.
+// Nexus reports two independent budgets (see MO2 NexusInterface::parseLimits):
+// an hourly one and a daily one, each with its own reset timestamp.
 struct RateLimitInfo {
-    int limit = 0;         // total daily allowance
-    int remaining = 0;     // remaining requests
-    int64_t reset = 0;     // Unix timestamp when the counter resets
-    int64_t last_updated = 0; // Unix timestamp of last API call
+    int hourly_limit = 0;        // total hourly allowance
+    int hourly_remaining = 0;    // requests left in the current hour
+    int64_t hourly_reset = 0;    // Unix timestamp when the hourly counter resets
+    int daily_limit = 0;         // total daily allowance
+    int daily_remaining = 0;     // requests left today
+    int64_t daily_reset = 0;     // Unix timestamp when the daily counter resets
+    int64_t last_updated = 0;    // Unix timestamp of last API call
 };
 
 // Manages Nexus Mods API key storage. Secrets live in the OS keyring
@@ -33,7 +38,8 @@ public:
 
     // Rate-limit tracking - persisted to disk, survives relaunch.
     RateLimitInfo get_rate_limit() const;
-    void update_rate_limit(int limit, int remaining, int64_t reset);
+    void update_rate_limit(int hourly_limit, int hourly_remaining, int64_t hourly_reset,
+                           int daily_limit, int daily_remaining, int64_t daily_reset);
 
     // Paths
     static std::filesystem::path config_dir();

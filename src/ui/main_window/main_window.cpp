@@ -496,6 +496,13 @@ MainWindow::MainWindow(QWidget* parent)
     connect(right_panel_->exec_controls(), &ExecControlsBar::add_entry_requested,
             this, &MainWindow::on_add_entry_requested);
 
+    // Keep the persisted per-instance selection in sync with the live combo
+    connect(right_panel_->exec_controls(), &ExecControlsBar::current_executable_changed,
+            this, [this]() {
+        pending_exec_selection_ =
+            right_panel_->exec_controls()->current_executable();
+    });
+
     // Start IPC server to receive nxm:// URLs from other GMM processes
     nxm_ipc_ = new engine::NxmIpcServer(this);
     if (nxm_ipc_->startListening()) {
@@ -914,6 +921,7 @@ void MainWindow::connect_menu_actions() {
     });
 
     connect(menu_bar_, &AppMenuBar::icon_size_requested, this, [this](int size) {
+        icon_size_ = size;
         toolbar_area_->setIconSize(QSize(size, size));
         toolbar_->set_icon_size(size);
     });
@@ -3011,7 +3019,12 @@ void MainWindow::populate_executables() {
     auto icon_cache = current_instance_root_.empty()
         ? std::filesystem::path{}
         : current_instance_root_ / "cache" / "thumbnails";
-    right_panel_->exec_controls()->set_executables(exec_list, QString::fromStdString(default_exec), current_game_dir_, icon_cache);
+    // Prefer the last selected executable (restored per instance); fall back
+    // to the game's default executable.
+    auto preferred = pending_exec_selection_.isEmpty()
+        ? QString::fromStdString(default_exec)
+        : pending_exec_selection_;
+    right_panel_->exec_controls()->set_executables(exec_list, preferred, current_game_dir_, icon_cache);
 
     // Persist immediately on first run so future launches use the saved list
     if (saved_executables_.empty())
@@ -4034,6 +4047,12 @@ void MainWindow::save_app_state() {
         }
     }
     header_states["_process_tree_visible"] = show_process_tree_;
+    header_states["icon_size"] = icon_size_;
+    if (right_panel_ && right_panel_->exec_controls()) {
+        auto cur_exec = right_panel_->exec_controls()->current_executable();
+        if (!cur_exec.isEmpty())
+            header_states["selected_exec"] = cur_exec;
+    }
     QByteArray extra = QJsonDocument(header_states).toJson(QJsonDocument::Compact);
     write_ba(extra);
 }
@@ -4078,6 +4097,18 @@ void MainWindow::restore_app_state() {
             // Restore process tree visibility (prefixed with _ to avoid tab-name collision)
             if (obj.contains("_process_tree_visible"))
                 show_process_tree_ = obj["_process_tree_visible"].toBool();
+            // Restore toolbar icon size (Small/Medium/Large)
+            if (obj.contains("icon_size")) {
+                icon_size_ = obj["icon_size"].toInt(24);
+                menu_bar_->set_icon_size(icon_size_);
+                if (toolbar_area_)
+                    toolbar_area_->setIconSize(QSize(icon_size_, icon_size_));
+                if (toolbar_)
+                    toolbar_->set_icon_size(icon_size_);
+            }
+            // Last selected executable (restored in populate_executables)
+            if (obj.contains("selected_exec"))
+                pending_exec_selection_ = obj["selected_exec"].toString();
             auto* tw = right_panel_->tab_widget();
                 for (int i = 0; i < tw->count(); ++i) {
                     auto key = tw->tabText(i);
@@ -4437,13 +4468,23 @@ void MainWindow::show_settings_dialog() {
 
     auto info = auth.get_rate_limit();
     auto* rl_label = new QLabel;
-    if (info.limit > 0) {
+    if (info.daily_limit > 0 || info.hourly_limit > 0) {
         QString text;
-        text += tr("Remaining: <b>%1</b> / %2")
-            .arg(info.remaining).arg(info.limit);
-        if (info.reset > 0) {
-            QDateTime dt = QDateTime::fromSecsSinceEpoch(info.reset);
-            text += "<br>" + tr("Resets: %1").arg(dt.toLocalTime().toString(Qt::TextDate));
+        auto budget_line = [&](const QString& name, int remaining, int limit, int64_t reset) {
+            QString line = tr("%1: <b>%2</b> / %3")
+                .arg(name).arg(remaining).arg(limit);
+            if (reset > 0) {
+                QDateTime dt = QDateTime::fromSecsSinceEpoch(reset);
+                line += tr(" &nbsp;(resets %1)")
+                    .arg(dt.toLocalTime().toString(Qt::TextDate));
+            }
+            return line;
+        };
+        if (info.hourly_limit > 0)
+            text += budget_line(tr("Hourly"), info.hourly_remaining, info.hourly_limit, info.hourly_reset);
+        if (info.daily_limit > 0) {
+            if (!text.isEmpty()) text += "<br>";
+            text += budget_line(tr("Daily"), info.daily_remaining, info.daily_limit, info.daily_reset);
         }
         if (info.last_updated > 0) {
             QDateTime lu = QDateTime::fromSecsSinceEpoch(info.last_updated);

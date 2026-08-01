@@ -206,16 +206,30 @@ static void parse_rate_limits(const std::string& headers) {
         return val;
     };
 
-    // Only parse authenticated headers (the ones that matter for API-key users)
-    int64_t limit      = find_header("x-rl-authenticated-limit");
-    int64_t remaining  = find_header("x-rl-authenticated-remaining");
-    int64_t reset      = find_header("x-rl-authenticated-reset");
+    // Nexus reports two budgets, each with its own reset (MO2
+    // NexusInterface::parseLimits reads the same plain headers). Prefer the
+    // authenticated variants (they reflect the API-key quota), fall back to
+    // the plain ones.
+    auto pick = [&](const std::string& primary, const std::string& fallback) -> int64_t {
+        int64_t v = find_header(primary);
+        return v >= 0 ? v : find_header(fallback);
+    };
 
-    if (limit > 0 && remaining >= 0 && reset > 0) {
+    int64_t daily_limit     = pick("x-rl-authenticated-daily-limit", "x-rl-daily-limit");
+    int64_t daily_remaining = pick("x-rl-authenticated-daily-remaining", "x-rl-daily-remaining");
+    int64_t daily_reset     = pick("x-rl-authenticated-daily-reset", "x-rl-daily-reset");
+    int64_t hourly_limit    = pick("x-rl-authenticated-hourly-limit", "x-rl-hourly-limit");
+    int64_t hourly_remaining = pick("x-rl-authenticated-hourly-remaining", "x-rl-hourly-remaining");
+    int64_t hourly_reset    = pick("x-rl-authenticated-hourly-reset", "x-rl-hourly-reset");
+
+    if (daily_limit > 0 || hourly_limit > 0) {
         NexusAuth::instance().update_rate_limit(
-            static_cast<int>(limit),
-            static_cast<int>(remaining),
-            reset);
+            static_cast<int>(hourly_limit),
+            static_cast<int>(hourly_remaining),
+            hourly_reset,
+            static_cast<int>(daily_limit),
+            static_cast<int>(daily_remaining),
+            daily_reset);
     }
 }
 
