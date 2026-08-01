@@ -159,7 +159,11 @@ ExecControlsBar::ExecControlsBar(QWidget* parent)
             exec_combo_->setCurrentIndex(prev);
             emit add_entry_requested();
         }
-        emit current_executable_changed();
+        // Report only real selections. The lone sentinel (empty combo after
+        // clear_executables) must not be reported - it would overwrite a
+        // persisted selection before the real entries are populated.
+        if (!current_executable().isEmpty())
+            emit current_executable_changed();
     });
 }
 
