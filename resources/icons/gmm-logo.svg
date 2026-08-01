@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="210mm"
+   height="297mm"
+   viewBox="0 0 210 297"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4.4 (dcaf3e7d9e, 2026-05-05)"
+   sodipodi:docname="GMM_Logo.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#505050"
+     bordercolor="#eeeeee"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#505050"
+     inkscape:document-units="mm"
+     showguides="false"
+     inkscape:zoom="1.4142136"
+     inkscape:cx="301.58104"
+     inkscape:cy="347.54298"
+     inkscape:window-width="1973"
+     inkscape:window-height="1260"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <path
+       style="fill:#d68837;fill-opacity:1;stroke-width:1.08185"
+       d="m 100.23782,57.56412 26.21,-0.648494 35.32341,29.469568 -62.833681,5.217067 -30.126265,-32.598907 z"
+       id="path1"
+       sodipodi:nodetypes="cccccc" />
+    <path
+       style="fill:#854b0c;fill-opacity:1;stroke-width:0.705644"
+       d="M 161.76984,86.38299 148.02559,137.21104 86.287166,152.98659 98.656571,91.554164 Z"
+       id="path2"
+       sodipodi:nodetypes="ccccc" />
+    <path
+       style="fill:#ba5e00;fill-opacity:1;stroke-width:0.705644"
+       d="M 68.814937,59.005174 61.103269,114.31492 86.289697,152.97607 98.857548,91.426963 Z"
+       id="path3"
+       sodipodi:nodetypes="ccccc" />
+    <path
+       style="fill:none;fill-opacity:1;stroke:#c26019;stroke-width:21.1667;stroke-dasharray:none;stroke-opacity:1"
+       id="path4"
+       sodipodi:type="arc"
+       sodipodi:cx="109.25979"
+       sodipodi:cy="99.718246"
+       sodipodi:rx="85.125343"
+       sodipodi:ry="85.125343"
+       sodipodi:start="1.5662771"
+       sodipodi:end="4.7352703"
+       sodipodi:arc-type="arc"
+       d="M 109.64449,184.84272 A 85.125343,85.125343 0 0 1 35.343468,141.9403 85.125343,85.125343 0 0 1 36.13117,56.146131 85.125343,85.125343 0 0 1 111.2074,14.615186"
+       sodipodi:open="true" />
+    <path
+       style="fill:none;fill-opacity:1;stroke:#c26019;stroke-width:21.1667;stroke-dasharray:none;stroke-opacity:1"
+       id="path4-1"
+       sodipodi:type="arc"
+       sodipodi:cx="107.34367"
+       sodipodi:cy="99.677505"
+       sodipodi:rx="85.125343"
+       sodipodi:ry="85.125343"
+       sodipodi:start="0.62286655"
+       sodipodi:end="1.3535173"
+       sodipodi:arc-type="arc"
+       d="m 176.48329,149.33672 a 85.125343,85.125343 0 0 1 -50.78885,33.46463"
+       sodipodi:open="true" />
+    <path
+       style="fill:none;fill-opacity:1;stroke:#c26019;stroke-width:21.1667;stroke-dasharray:none;stroke-opacity:1"
+       id="path4-1-3"
+       sodipodi:type="arc"
+       sodipodi:cx="107.54811"
+       sodipodi:cy="96.800644"
+       sodipodi:rx="85.125343"
+       sodipodi:ry="85.125343"
+       sodipodi:start="6.0452566"
+       sodipodi:end="0.42611367"
+       sodipodi:arc-type="arc"
+       d="m 190.27532,76.737435 a 85.125343,85.125343 0 0 1 -5.21386,55.248505"
+       sodipodi:open="true" />
+    <path
+       style="fill:none;fill-opacity:1;stroke:#c26019;stroke-width:21.1667;stroke-dasharray:none;stroke-opacity:1"
+       id="path4-1-3-6"
+       sodipodi:type="arc"
+       sodipodi:cx="110.71737"
+       sodipodi:cy="99.286766"
+       sodipodi:rx="85.125343"
+       sodipodi:ry="85.125343"
+       sodipodi:start="5.075259"
+       sodipodi:end="5.7393014"
+       sodipodi:arc-type="arc"
+       d="m 140.93336,19.70462 a 85.125343,85.125343 0 0 1 42.62622,35.532899"
+       sodipodi:open="true" />
+  </g>
+</svg>
