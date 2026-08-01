@@ -90,15 +90,8 @@ int main(int argc, char *argv[])
     if (translator.load(":/i18n/" + language + ".qm"))
         app.installTranslator(&translator);
 
-    // Initialize theme system — default uses palette() so desktop colors apply
-    engine::ThemeManager theme_manager;
-    engine::StyleManager style_manager(theme_manager);
-    style_manager.apply_default();
-
     // Suppress noisy Qt platform/theme messages (e.g. "grabbing the mouse" on Wayland)
     qInstallMessageHandler(qt_message_filter);
-
-    // Parse CLI flags
     QCommandLineParser parser;
     parser.setApplicationDescription("GameModManager - Cross-platform game mod manager");
     parser.addVersionOption();
@@ -162,6 +155,15 @@ int main(int argc, char *argv[])
     // Initialize logger
     engine::Logger::instance().set_log_file(log_path());
     engine::Logger::instance().info("GameModManager v" + std::string(VERSION) + " started");
+
+    // Initialize theme system — default uses palette() so desktop colors apply.
+    // Discover themes and apply the persisted selection (QSettings "theme").
+    // Runs after logger setup so discovery/applied lines land in the log file.
+    engine::ThemeManager theme_manager;
+    theme_manager.discover_themes(QApplication::applicationDirPath().toStdString());
+    engine::StyleManager style_manager(theme_manager);
+    style_manager.apply_theme(QSettings("GameModManager", "GameModManager")
+                                  .value("theme", "default").toString().toStdString());
 
     // Parse remaining flags
     bool headless = parser.isSet(launchOpt);

@@ -9,6 +9,8 @@
 #include <QStyle>
 #include <QApplication>
 
+#include "engine/theme/theme_manager.h"
+
 namespace ui {
 
 // -- Icon resolution --
@@ -152,20 +154,14 @@ GameSelectionWidget::GameSelectionWidget(QWidget* parent)
 
 void GameSelectionWidget::set_games(const std::vector<GameEntry>& installed,
                                      const std::vector<GameEntry>& available) {
-    // Resolve themes dir (from the themes submodule)
+    // Resolve themes dir (user dir, submodule, installed, bundled)
     QString themes_dir;
     {
-        // Look for themes relative to the executable
         auto app_dir = QCoreApplication::applicationDirPath();
-        // Try multiple locations
-        QStringList candidates = {
-            app_dir + "/themes",
-            app_dir + "/../themes",
-            app_dir + "/../share/GameModManager/themes",
-        };
-        for (const auto& c : candidates) {
-            if (QDir(c).exists()) {
-                themes_dir = c;
+        for (const auto& dir : engine::theme_search_dirs(app_dir.toStdString())) {
+            const QString candidate = QString::fromStdString(dir.string());
+            if (QDir(candidate).exists()) {
+                themes_dir = candidate;
                 break;
             }
         }

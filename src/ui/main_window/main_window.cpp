@@ -4603,6 +4603,30 @@ void MainWindow::show_settings_dialog() {
     lang_layout->addWidget(lang_hint);
     layout->addWidget(lang_group);
 
+    // -- Theme section ------------------------------------------
+    auto* theme_combo = new QComboBox;
+    if (style_manager_) {
+        auto* theme_group = new QGroupBox(tr("Theme"));
+        auto* theme_layout = new QVBoxLayout(theme_group);
+
+        theme_combo->addItem(tr("Default (system)"), "default");
+        for (const auto& name : style_manager_->theme_names())
+            theme_combo->addItem(QString::fromStdString(name), QString::fromStdString(name));
+
+        const QString current_theme = QSettings("GameModManager", "GameModManager")
+                                          .value("theme", "default").toString();
+        int theme_idx = theme_combo->findData(current_theme);
+        theme_combo->setCurrentIndex(theme_idx >= 0 ? theme_idx : 0);
+
+        auto* theme_hint = new QLabel(
+            tr("Editing the theme's .qss or tokens.json on disk live-reloads it."));
+        theme_hint->setWordWrap(true);
+
+        theme_layout->addWidget(theme_combo);
+        theme_layout->addWidget(theme_hint);
+        layout->addWidget(theme_group);
+    }
+
     // -- API Key section ----------------------------------------
     auto* api_group = new QGroupBox(tr("Nexus Mods API Key"));
     auto* api_layout = new QVBoxLayout(api_group);
@@ -4674,6 +4698,13 @@ void MainWindow::show_settings_dialog() {
     connect(lang_combo, &QComboBox::currentIndexChanged, this, [lang_combo](int index) {
         QSettings("GameModManager", "GameModManager")
             .setValue("language", lang_combo->itemData(index).toString());
+    });
+
+    connect(theme_combo, &QComboBox::currentIndexChanged, this, [this, theme_combo](int index) {
+        const QString name = theme_combo->itemData(index).toString();
+        QSettings("GameModManager", "GameModManager").setValue("theme", name);
+        if (style_manager_)
+            style_manager_->apply_theme(name.toStdString());
     });
 
     connect(save_btn, &QPushButton::clicked, [&]() {
