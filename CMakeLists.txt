@@ -467,6 +467,14 @@ target_include_directories(conflict_test PRIVATE src/)
 target_link_libraries(conflict_test PRIVATE PkgConfig::NLOHMANN_JSON)
 add_test(NAME conflict_test COMMAND conflict_test)
 
+# URL percent-encoding for libcurl (Nexus CDN URLs embed unencoded filenames).
+add_executable(nexus_http_test tests/engine/nexus_http_test.cpp
+    src/engine/source/nexus_http.cpp
+)
+target_include_directories(nexus_http_test PRIVATE src/)
+target_link_libraries(nexus_http_test PRIVATE PkgConfig::CURL)
+add_test(NAME nexus_http_test COMMAND nexus_http_test)
+
 # Settings -> Plugins tab — offscreen GUI regression test. Exercises the
 # currentItemChanged -> rebuild_info crash path, register_category grouping,
 # the filter, Enabled toggles, and the missing Path/Steam App ID rows.
