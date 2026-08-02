@@ -70,6 +70,10 @@ int launch_game_headless(const HeadlessConfig& cfg) {
         ret = waitpid(child, &status, 0);
     } while (ret == -1 && errno == EINTR);
 
+    // Remove the launch cgroup now that every process has exited
+    // (best-effort; empty cgroup v2 dirs otherwise accumulate).
+    engine::cgroup_remove({result.cgroup_path});
+
     engine::Logger::instance().info(
         "Headless: game exited, waiting 3s for delayed writes");
     std::this_thread::sleep_for(std::chrono::seconds(3));

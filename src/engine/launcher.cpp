@@ -517,5 +517,14 @@ void cgroup_kill(const CgroupHandle& h) {
     if (f) f << "1";
 }
 
+void cgroup_remove(const CgroupHandle& h) {
+    if (h.path.empty()) return;
+    // fs::remove (rmdir) on the cgroup directory itself - recursive delete
+    // (remove_all) is wrong here: cgroup control files can't be unlinked
+    // (EPERM), while rmdir on an empty v2 cgroup works.
+    std::error_code ec;
+    fs::remove(h.path, ec);
+}
+
 }  // namespace engine
 

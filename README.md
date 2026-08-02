@@ -2,7 +2,7 @@
 
 # GameModManager
 
-A cross-platform, plugin-driven game mod manager with an MO2-style UI. Drop in a game plugin — no core rebuild needed.
+A cross-platform, plugin-driven game mod manager with an MO2-style UI. Drop in a game plugin - no core rebuild needed.
 
 </div>
 
@@ -24,10 +24,15 @@ A cross-platform, plugin-driven game mod manager with an MO2-style UI. Drop in a
 ## Features
 
 - MO2-style virtual mod list with drag-and-drop reordering
-- Plugin-based game support — each game is a separate shared library
+- Plugin-based game support - each game is a separate shared library
 - Multi-instance support (portable and installed)
-- Multiple deploy strategies: symlink, hardlink, NTFS junction, FUSE VFS, OverlayFS
-- 8-stage pipeline: Fetch → Extract → Install → Stage → Resolve → Deploy → Launch
+- Multiple deploy strategies: 
+    - [x] OverlayFS         (linux only)
+    - [ ] symlink
+    - [ ] hardlink
+    - [ ] FUSE VFS         (linux only)
+    - [ ] UVFS                  (windows only)
+    - [ ] NTFS junction (windows only)
 - Conflict detection with priority-ordered file overwrites
 - Python scripting tier via pybind11
 - Themeable via QSS token templates
@@ -42,7 +47,7 @@ A cross-platform, plugin-driven game mod manager with an MO2-style UI. Drop in a
 | The Binding of Isaac: Rebirth | Supported | `isaac.so` / `isaac.dll` |
 | Skyrim Special Edition | Stubbed | `skyrimse.so` / `skyrimse.dll` |
 
-Adding a new game requires only a new plugin file — no changes to the core binary.
+Adding a new game requires only a new plugin file - no changes to the core binary.
 
 ---
 
@@ -53,11 +58,11 @@ Adding a new game requires only a new plugin file — no changes to the core bin
 | Library | Version | Purpose |
 |---------|---------|---------|
 | Qt 6 | ≥ 6.0 | UI framework |
-| libzip | — | Archive extraction |
-| sqlite3 | — | Mod cache |
-| yaml-cpp | — | Config / masterlist parsing |
-| libcurl | — | HTTP downloads |
-| nlohmann/json | — | JSON parsing |
+| libzip | - | Archive extraction |
+| sqlite3 | - | Mod cache |
+| yaml-cpp | - | Config / masterlist parsing |
+| libcurl | - | HTTP downloads |
+| nlohmann/json | - | JSON parsing |
 | pybind11 | 2.13.6 (fetched) | Python embedding |
 | Python 3 | ≥ 3.10 | Plugin scripting |
 | libfuse3 | (optional) | VFS/OverlayFS deploy |
@@ -78,7 +83,7 @@ sudo apt-get install -y \
 git clone --recurse-submodules https://github.com/PetricaT/GameModManager.git
 cd GameModManager/Core
 
-# Configure (Release recommended — Debug bloats the binary ~12x)
+# Configure (Release recommended - Debug bloats the binary ~12x)
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 
 # Build
@@ -152,7 +157,7 @@ On first run, the app shows a game selection screen. After selecting a game, an 
 
 ```
 src/
-├-- engine/          # Qt-free core — instance, pipeline, conflicts, plugins
+├-- engine/          # Qt-free core - instance, pipeline, conflicts, plugins
 │   ├-- archive/     # Zip extraction
 │   ├-- cache/       # SQLite mod cache
 │   ├-- deploy/      # Symlink, hardlink, junction, VFS, OverlayFS strategies
@@ -171,7 +176,7 @@ src/
 │   └-- workshop/    # Steam Workshop / remote cache
 ├-- platform/        # OS-specific (linux/, windows/, macos/)
 ├-- runtime/         # ProtonRuntime, NativeRuntime, WineRuntime
-├-- ui/              # Qt Widgets — lives here, never in engine/
+├-- ui/              # Qt Widgets - lives here, never in engine/
 │   ├-- main_window/ # Main window, toolbar, status bar
 │   ├-- widgets/     # Mod list, filter bar, console, etc.
 │   ├-- panels/      # Tab panels
@@ -235,7 +240,7 @@ extern "C" uint32_t gmm_abi_version(void) {
 }
 ```
 
-Build it as a shared library and drop it into the `plugins/` directory. The core will pick it up on next launch — no recompilation needed.
+Build it as a shared library and drop it into the `plugins/` directory. The core will pick it up on next launch - no recompilation needed.
 
 See `external/plugins/isaac/isaac.cpp` for a complete example.
 
@@ -269,5 +274,5 @@ ctest --output-on-failure
 - [ ] NXM link routing (`nxm://` protocol handling)
 - [ ] Non-Steam game detection (GOG, Epic via Heroic/Lutris)
 - [ ] Settings dialog
-- [ ] Instance switching — create new instance flow
+- [ ] Instance switching - create new instance flow
 - [ ] Portable instance renaming
