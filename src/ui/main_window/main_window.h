@@ -15,6 +15,8 @@
 #include "engine/meta/mod_meta.h"
 #include "engine/deploy/strategy.h"
 #include "engine/nxm/nxm_router.h"
+#include "engine/instance/instance.h"
+#include "engine/plugins/plugin_database.h"
 
 class QSplitter;
 class QToolBar;
@@ -33,6 +35,7 @@ class NxmIpcServer;
 struct NxmLink;
 struct ConflictStats;
 class StyleManager;
+class PlatformInterface;
 }
 
 namespace ui {
@@ -49,6 +52,7 @@ class GmmStatusBar;
 class PipelineThread;
 class AppMenuBar;
 class PipelineWindow;
+class PluginsTab;
 
 struct PendingToggle {
     QString mod_id;
@@ -75,6 +79,7 @@ public:
     void set_plugin_loader(engine::PluginLoader* loader) { plugin_loader_ = loader; }
     void set_managed_games(engine::ManagedGames* mg) { managed_games_ = mg; }
     void set_style_manager(engine::StyleManager* sm) { style_manager_ = sm; }
+    void set_platform(engine::PlatformInterface* platform) { platform_ = platform; }
 
     // The QApplication's initial (native platform) style name, captured before
     // any user-selected style is applied. Used to restore "Default (system)"
@@ -154,9 +159,19 @@ private:
     void show_settings_dialog();
     void show_pipeline_window();
 
+    // Plugins tab (Skyrim-style games with plugin support).
+    void refresh_plugins_tab();
+    void on_plugin_toggle(const std::string& name, bool enabled);
+    void on_plugin_reorder(int from_row, int to_row);
+
     // Context menu helpers
     void clear_overwrite();
     void create_mod_from_overwrite();
+    void move_overwrite_content_to_mod();
+    void sync_overwrite_to_mods();
+    void open_overwrite_in_file_manager();
+    void show_overwrite_info_dialog();
+    void move_dropped_overwrite_files(const QStringList& paths, int mod_row);
     void remove_selected_mods();
     void move_to_separator(const QString& mod_id, const QString& sep_id);
     void send_to_highest_priority(const QString& id);
@@ -194,6 +209,7 @@ private:
     engine::ManagedGames* managed_games_ = nullptr;
     QString native_style_name_;
     engine::StyleManager* style_manager_ = nullptr;
+    engine::PlatformInterface* platform_ = nullptr;
     engine::NxmIpcServer* nxm_ipc_ = nullptr;
     std::unique_ptr<engine::DeploymentStrategy> deploy_strategy_;
     bool nxm_handler_check_done_ = false;
@@ -213,6 +229,10 @@ private:
     std::filesystem::path current_game_dir_;
     std::filesystem::path current_instance_root_;
     bool loading_ = false;
+    // Plugin database driving the Plugins tab (empty until a plugin-capable
+    // game is loaded). Rebuilt on refresh; toggles/moves save the profile.
+    engine::PluginDatabase plugins_db_;
+    ui::PluginsTab* plugins_tab_widget_ = nullptr;
     QStringList toolbar_shortcut_paths_;
     std::vector<std::string> saved_executables_;
     std::string pending_nxm_url_;
@@ -231,8 +251,14 @@ private:
     std::filesystem::path output_mod_dir_;
     std::filesystem::path conflict_cache_path_;  // path to conflict cache JSON
     engine::PathRegistry last_conflict_registry_;
+    engine::Instance current_instance_;  // loaded per-folder overrides for the active instance
     std::filesystem::path meta_dir_path() const;
     std::filesystem::path mods_dir_path() const;
+    std::filesystem::path downloads_dir_path() const;
+    std::filesystem::path cache_dir_path() const;
+    std::filesystem::path cache_thumbnails_dir_path() const;
+    std::filesystem::path profiles_dir_path() const;
+    std::filesystem::path overwrite_dir_path() const;
     std::filesystem::path resolve_mod_folder(const std::string& mod_id, const std::string& mods_subpath) const;
     QByteArray pending_geometry_;
     // Restored app state, applied once the widgets are ready

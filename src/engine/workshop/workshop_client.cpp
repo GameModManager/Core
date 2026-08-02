@@ -18,8 +18,8 @@ static size_t curl_write_string(char* ptr, size_t size, size_t nmemb, void* user
     return size * nmemb;
 }
 
-WorkshopClient::WorkshopClient(const std::string& db_path)
-    : db_path_(db_path) {
+WorkshopClient::WorkshopClient(const std::string& db_path, int rate_limit, int rate_window)
+    : db_path_(db_path), rate_limit_(rate_limit), rate_window_(rate_window) {
     ensure_schema();
     load_dead_ids();
 }
@@ -247,13 +247,13 @@ std::pair<int, std::optional<double>> WorkshopClient::rate_limit_state() const {
     int count = 0;
     std::optional<double> next_available;
     for (double ts : request_timestamps_) {
-        if (ts > now - RATE_WINDOW) count++;
+        if (ts > now - rate_window_) count++;
     }
 
-    if (count >= RATE_LIMIT && !request_timestamps_.empty()) {
+    if (count >= rate_limit_ && !request_timestamps_.empty()) {
         double oldest = *std::min_element(request_timestamps_.begin(),
                                            request_timestamps_.end());
-        next_available = oldest + RATE_WINDOW;
+        next_available = oldest + rate_window_;
     }
 
     return {count, next_available};
@@ -261,7 +261,20 @@ std::pair<int, std::optional<double>> WorkshopClient::rate_limit_state() const {
 
 bool WorkshopClient::can_request() const {
     auto [count, _] = rate_limit_state();
-    return count < RATE_LIMIT;
+    return count < rate_limit_;
+}
+
+void WorkshopClient::set_rate_limit(int limit, int window) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    rate_limit_ = limit > 0 ? limit : rate_limit_;
+    rate_window_ = window > 0 ? window : rate_window_;
+    // Prune timestamps that fall outside the new window.
+    double now = std::chrono::duration<double>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    request_timestamps_.erase(
+        std::remove_if(request_timestamps_.begin(), request_timestamps_.end(),
+                       [&](double ts) { return ts <= now - rate_window_; }),
+        request_timestamps_.end());
 }
 
 }  // namespace engine

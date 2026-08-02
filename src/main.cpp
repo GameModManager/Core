@@ -5,8 +5,8 @@
 #endif
 #include <QCommandLineParser>
 #include <QDir>
+#include <QIcon>
 #include <QMessageLogContext>
-#include <QSettings>
 #include <QStackedWidget>
 #include <QStyle>
 #include <QStyleFactory>
@@ -14,6 +14,8 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <string>
+#include <vector>
 
 #include "engine/single_instance.h"
 
@@ -28,6 +30,7 @@ static void qt_message_filter(QtMsgType type, const QMessageLogContext& ctx, con
 
 #include "ui/main_window/main_window.h"
 #include "ui/game_selection/game_selection_widget.h"
+#include "ui/settings/settings.h"
 #include "engine/log/logger.h"
 #include "engine/log/crash_handler.h"
 #include "engine/instance/instance.h"
@@ -41,6 +44,12 @@ static void qt_message_filter(QtMsgType type, const QMessageLogContext& ctx, con
 #include "engine/theme/style_manager.h"
 #include "engine/nexus_auth.h"
 #include "cli/headless_launcher.h"
+
+#if defined(GMM_PLATFORM_LINUX)
+#include "platform/linux/linux_platform.h"
+#elif defined(GMM_PLATFORM_WINDOWS)
+#include "platform/windows/windows_platform.h"
+#endif
 
 #include <cstdlib>
 #include <filesystem>
@@ -69,6 +78,18 @@ int main(int argc, char *argv[])
     app.setApplicationName("GameModManager");
     app.setApplicationVersion("0.1.0");
 
+    // App window icon: prefer the SVG, fall back to the PNG (the Qt SVG image
+    // format plugin may be absent on some deployments). Every window and
+    // dialog inherits this via the application icon.
+    {
+        const QString icon_dir =
+            QCoreApplication::applicationDirPath() + "/../resources/icons/";
+        QIcon app_icon(icon_dir + "gmm-logo.svg");
+        if (app_icon.isNull())
+            app_icon = QIcon(icon_dir + "gmm-logo.png");
+        app.setWindowIcon(app_icon);
+    }
+
     // Store secrets in the OS keyring (QtKeychain: Secret Service / KWallet)
     // when available, falling back to insecure file storage with a warning
     // otherwise. Must run on the main thread — do it now, before any download
@@ -87,8 +108,7 @@ int main(int argc, char *argv[])
     // language and ships as a no-op translation, so every .qm lives at
     // :/i18n/<language_COUNTRY>.qm (named after the .ts, e.g. en_US.qm).
     QTranslator translator;
-    const QString language = QSettings("GameModManager", "GameModManager")
-                                 .value("language", "en_US").toString();
+    const QString language = Settings::instance().language();
     if (translator.load(":/i18n/" + language + ".qm"))
         app.installTranslator(&translator);
 
@@ -158,9 +178,29 @@ int main(int argc, char *argv[])
     engine::Logger::instance().set_log_file(log_path());
     engine::Logger::instance().info("GameModManager v" + std::string(VERSION) + " started");
 
+    // Platform services (Steam/Proton discovery, prefix resolution, user dirs).
+    // Single instance owned here, injected into everything that needs it.
+    std::unique_ptr<engine::PlatformInterface> platform;
+#if defined(GMM_PLATFORM_LINUX)
+    platform = std::make_unique<engine::LinuxPlatform>();
+#elif defined(GMM_PLATFORM_WINDOWS)
+    platform = std::make_unique<engine::WindowsPlatform>();
+#endif
+
+    // Apply app settings that affect startup behavior.
+    auto& settings = Settings::instance();
+    const QString instances_dir = settings.instances_dir();
+    if (!instances_dir.isEmpty())
+        engine::set_instances_dir_override(instances_dir.toStdString());
+    const QString log_level = settings.log_level();
+    if (log_level == "debug")      engine::Logger::instance().set_level(engine::LogLevel::Debug);
+    else if (log_level == "warn")  engine::Logger::instance().set_level(engine::LogLevel::Warn);
+    else if (log_level == "error") engine::Logger::instance().set_level(engine::LogLevel::Error);
+    // "info" is the default.
+
     // Initialize theme system — default uses palette() so desktop colors apply.
     // Discover themes and apply the persisted selection. A persisted Qt
-    // built-in style (QSettings "style", e.g. "Fusion") wins over the QSS
+    // built-in style ("style", e.g. "Fusion") wins over the QSS
     // theme ("theme") and is applied WITHOUT any custom QSS. Capture the
     // native style name first so "Default (system)" can restore it later.
     // Runs after logger setup so discovery/applied lines land in the log file.
@@ -178,20 +218,17 @@ int main(int argc, char *argv[])
     engine::ThemeManager theme_manager;
     theme_manager.discover_themes(QApplication::applicationDirPath().toStdString());
     engine::StyleManager style_manager(theme_manager);
-    const QSettings theme_settings("GameModManager", "GameModManager");
-    const QString qt_style = theme_settings.value("style").toString();
+    const QString qt_style = Settings::instance().style();
     if (!qt_style.isEmpty()) {
         if (QStyle* st = QStyleFactory::create(qt_style)) {
             app.setStyle(st);
             engine::Logger::instance().info("Applied Qt style: " + qt_style.toStdString());
         } else {
             engine::Logger::instance().warn("Unknown Qt style: " + qt_style.toStdString());
-            style_manager.apply_theme(
-                theme_settings.value("theme", "default").toString().toStdString());
+            style_manager.apply_theme(Settings::instance().theme().toStdString());
         }
     } else {
-        style_manager.apply_theme(
-            theme_settings.value("theme", "default").toString().toStdString());
+        style_manager.apply_theme(Settings::instance().theme().toStdString());
     }
 
     // Parse remaining flags
@@ -223,6 +260,11 @@ int main(int argc, char *argv[])
 
     // Load plugins - needed for both headless and GUI modes
     engine::PluginLoader plugin_loader;
+    std::vector<std::string> disabled;
+    for (const auto& name : Settings::instance().disabled_plugins())
+        disabled.push_back(name.toStdString());
+    plugin_loader.set_disabled_plugins(disabled);
+
     auto app_dir = QApplication::applicationDirPath();
     QStringList plugin_dirs = {
         app_dir + "/plugins",
@@ -303,6 +345,7 @@ int main(int argc, char *argv[])
         cfg.is_windows_exe = is_windows_exe;
         cfg.knowledge = &plugin_loader.knowledge();
         cfg.game_id = inst.info().game_id;
+        cfg.platform = platform.get();
 
         int exit_code = cli::launch_game_headless(cfg);
         engine::Logger::instance().debug(
@@ -478,6 +521,7 @@ int main(int argc, char *argv[])
                 main_window->set_plugin_loader(&plugin_loader);
                 main_window->set_managed_games(&managed_games);
                 main_window->set_style_manager(&style_manager);
+                main_window->set_platform(platform.get());
                 main_window->set_native_style_name(native_style_name);
 
                 // Forward focus requests from other instances to this window
@@ -521,6 +565,7 @@ int main(int argc, char *argv[])
     window.set_plugin_loader(&plugin_loader);
     window.set_managed_games(&managed_games);
     window.set_style_manager(&style_manager);
+    window.set_platform(platform.get());
     window.set_native_style_name(native_style_name);
 
     // Forward focus requests from other instances to this window

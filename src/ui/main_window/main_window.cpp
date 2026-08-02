@@ -19,6 +19,8 @@
 #include "ui/pipeline_worker.h"
 #include "ui/panels/tab_panels.h"
 #include "ui/smooth_scroll.h"
+#include "ui/settings/settings_dialog.h"
+#include "ui/settings/settings.h"
 #include "engine/launcher.h"
 #include "engine/fs_utils.h"
 #include "engine/log/logger.h"
@@ -28,10 +30,16 @@
 #include "engine/registry/game_knowledge.h"
 #include "engine/instance/instance.h"
 #include "engine/instance/instance_utils.h"
+#include "engine/plugins/plugin_database.h"
 #include "engine/nxm/nxm_router.h"
 #include "engine/nxm/managed_games.h"
 #include "engine/nxm/nxm_ipc.h"
 #include "engine/pipeline/sync_stage.h"
+#include "engine/overwrite/overwrite_utils.h"
+#include "ui/overwrite/move_to_mod_dialog.h"
+#include "ui/overwrite/overwrite_info_dialog.h"
+#include "ui/overwrite/query_overwrite_dialog.h"
+#include "ui/overwrite/sync_overwrite_dialog.h"
 #include "engine/detect/game_detector.h"
 #include "ui/game_selection/game_selection_widget.h"
 
@@ -110,7 +118,6 @@
 #include <QDateTime>
 #include <QDir>
 #include <QLocale>
-#include <QSettings>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -306,7 +313,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(mod_model_, &QAbstractItemModel::dataChanged,
             this, [this](const QModelIndex& topLeft, const QModelIndex& bottomRight, const QVector<int>& roles) {
         (void)bottomRight;
-        if (roles.contains(Qt::CheckStateRole) && topLeft.column() == ModListModel::Enabled) {
+        if (roles.contains(Qt::CheckStateRole) && topLeft.column() == ModListModel::Name) {
             auto id = mod_model_->data(topLeft.sibling(topLeft.row(), ModListModel::Name), Qt::EditRole).toString();
             bool enabled = mod_model_->data(topLeft, Qt::CheckStateRole).toInt() == Qt::Checked;
             sync_mod_enable_state(id, enabled);
@@ -320,8 +327,12 @@ MainWindow::MainWindow(QWidget* parent)
         }
     });
 
-    // Sync priority rewrites to metadata files after reorder
-    connect(mod_model_, &ModListModel::mod_list_changed, this, &MainWindow::sync_priorities);
+    // Sync priority rewrites to metadata files after reorder; plugin discovery
+    // for the Plugins tab follows any mod-list change (install/remove/toggle).
+    connect(mod_model_, &ModListModel::mod_list_changed, this, [this]() {
+        sync_priorities();
+        refresh_plugins_tab();
+    });
 
     // Save order on every model change
     connect(mod_model_, &ModListModel::mod_list_changed, this, [this]() {
@@ -331,13 +342,24 @@ MainWindow::MainWindow(QWidget* parent)
         apply_mod_filter();
     });
 
-    // Fold/unfold on separator arrow click (arrow is in the Enabled column)
+    // Fold/unfold on separator arrow click (arrow is a prefix in the Name cell)
     connect(mod_view_, &QTreeView::clicked, this, [this](const QModelIndex& idx) {
-        if (!idx.isValid() || idx.column() != ModListModel::Enabled) return;
+        if (!idx.isValid() || idx.column() != ModListModel::Name) return;
         int row = idx.row();
         if (row < 0 || row >= mod_model_->mods().size()) return;
         if (mod_model_->mods()[row].is_separator) {
             mod_model_->set_folded(row, !mod_model_->mods()[row].folded);
+        }
+    });
+
+    // Double-clicking the Overwrite row opens the shared info dialog (MO2's
+    // default-action behavior for the Overwrite entry).
+    connect(mod_view_, &QTreeView::doubleClicked, this, [this](const QModelIndex& idx) {
+        if (!idx.isValid()) return;
+        int row = idx.row();
+        if (row < 0 || row >= mod_model_->mods().size()) return;
+        if (mod_model_->mods()[row].is_overwrite) {
+            show_overwrite_info_dialog();
         }
     });
 
@@ -346,13 +368,19 @@ MainWindow::MainWindow(QWidget* parent)
         import_archives(paths);
     });
 
+    // Drag-and-drop files/folders out of the Overwrite info dialog onto a mod
+    // row moves them into that mod (MO2's drop-to-mod).
+    connect(mod_view_, &ModTableView::overwrite_files_dropped, this,
+            [this](const QStringList& paths, int mod_row) {
+                move_dropped_overwrite_files(paths, mod_row);
+            });
+
     auto* mod_header = new ColumnToggleHeaderView(Qt::Horizontal, mod_view_);
-    mod_header->set_column_labels({"Enabled", "Name", "Version", "Flags", "Priority"});
+    mod_header->set_column_labels({"Name", "Version", "Flags", "Priority"});
     mod_view_->setHeader(mod_header);
 
     mod_header->setStretchLastSection(false);
     mod_header->setSectionsMovable(true);
-    mod_header->setSectionResizeMode(ModListModel::Enabled, QHeaderView::ResizeToContents);
     mod_header->setSectionResizeMode(ModListModel::Name, QHeaderView::Stretch);
     mod_header->setSectionResizeMode(ModListModel::Version, QHeaderView::Interactive);
     mod_header->setSectionResizeMode(ModListModel::Flags, QHeaderView::Interactive);
@@ -484,7 +512,8 @@ MainWindow::MainWindow(QWidget* parent)
         ? (std::string(home) + "/.local/share/GameModManager/workshop_cache.db")
         : "workshop_cache.db";
     engine::SourceRegistry::instance().register_provider(
-        std::make_unique<engine::SteamWorkshopProvider>(ws_db));
+        std::make_unique<engine::SteamWorkshopProvider>(
+            ws_db, Settings::instance().workshop_rate_limit_per_hour()));
 
     connect(right_panel_->exec_controls(), &ExecControlsBar::run_clicked, this, &MainWindow::launch_game);
 
@@ -528,8 +557,8 @@ MainWindow::MainWindow(QWidget* parent)
     refresh_recent_instances();
 
     // Smooth scrolling on all item views (mod list, right-panel tables).
-    // TODO: gate behind a Settings "Smooth scrolling" checkbox.
-    ui::enable_smooth_scrolling(this);
+    if (Settings::instance().smooth_scrolling())
+        ui::enable_smooth_scrolling(this);
 }
 
 void MainWindow::on_notification(const QString& title, const QString& message) {
@@ -553,8 +582,11 @@ void MainWindow::set_game_info(const std::string& game_id,
     current_profile_name_ = profile_name;
     current_game_dir_ = game_dir;
     current_instance_root_ = instance_root;
-    if (!instance_root.empty())
-        conflict_cache_path_ = instance_root / "cache" / "conflict_cache.json";
+    if (!instance_root.empty()) {
+        current_instance_ = engine::Instance::from_root(instance_root);
+        current_instance_.read_toml();
+        conflict_cache_path_ = current_instance_.path_for(engine::InstanceKind::Cache) / "conflict_cache.json";
+    }
     // Restore the persisted per-instance executable selection BEFORE the
     // combo is populated, so set_executables can land on it instead of
     // defaulting to the first real entry.
@@ -596,13 +628,23 @@ void MainWindow::set_game_info(const std::string& game_id,
         // registered the metadata_file hook.
         ctx.metadata_file = knowledge_->get(current_game_id_, "metadata_file", "meta.ini");
 
+        // When an install targets an existing mod folder, ask the user how to
+        // proceed (Merge/Replace/Rename/Cancel) instead of silently replacing.
+        // The pipeline runs on a worker thread; ask_overwrite marshals the
+        // modal dialog onto the main thread. Backup defaults to checked,
+        // matching MO2's QueryOverwriteDialog::BACKUP_YES default.
+        ctx.overwrite_query_cb = [this](const std::string& mod_name) {
+            return ui::ask_overwrite(QString::fromStdString(mod_name),
+                                     /*default_backup=*/true, this);
+        };
+
         // Set up deploy strategy
         ctx.deploy_prefix = knowledge_->get(current_game_id_, "deploy_prefix", "Data");
         auto inc_id = knowledge_->get(current_game_id_, "deploy_include_mod_id", "false");
         ctx.deploy_include_mod_id = (inc_id == "true");
         std::unique_ptr<engine::DeploymentStrategy> deploy_strategy;
 #ifdef GMM_PLATFORM_LINUX
-        if (engine::OverlayFsLauncher::is_supported(current_instance_root_ / "overwrite")) {
+        if (engine::OverlayFsLauncher::is_supported(overwrite_dir_path())) {
             // OverlayFS: deploy symlinks into staging dir (not game_dir)
             auto staging = current_instance_root_ / ".gmm_staging";
             ctx.staging_dir = staging;
@@ -747,7 +789,7 @@ void MainWindow::set_game_info(const std::string& game_id,
     // Connect download double-click to install (tab exists after set_game above)
     auto* dt = right_panel_->downloads_tab();
     if (dt) {
-        dt->set_downloads_dir(current_instance_root_ / "downloads");
+        dt->set_downloads_dir(downloads_dir_path());
         connect(dt, &DownloadsTab::install_requested,
                 this, [this](const std::string& mod_id, const std::filesystem::path& fp,
                              const std::string& source_type, const std::string& source_id,
@@ -972,7 +1014,7 @@ void MainWindow::connect_menu_actions() {
     });
     connect(menu_bar_, &AppMenuBar::open_downloads_folder_requested, this, [this]() {
         if (current_instance_root_.empty()) return;
-        auto dl_dir = current_instance_root_ / "downloads";
+        auto dl_dir = downloads_dir_path();
         std::error_code ec;
         if (!std::filesystem::exists(dl_dir, ec))
             std::filesystem::create_directories(dl_dir, ec);
@@ -1311,7 +1353,7 @@ void MainWindow::load_mods_from_game() {
 
     // Tell the model where Overwrite lives so it can colour the entry
     if (!current_instance_root_.empty()) {
-        auto overwrite_dir = current_instance_root_ / "overwrite";
+        auto overwrite_dir = overwrite_dir_path();
         mod_model_->set_overwrite_path(QString::fromStdString(overwrite_dir.string()));
     }
 
@@ -1327,6 +1369,9 @@ void MainWindow::load_mods_from_game() {
 
     // Compute conflict stats for all mods
     recompute_conflicts();
+
+    // Populate the Plugins tab from the (now loaded) mod list.
+    refresh_plugins_tab();
 }
 
 std::filesystem::path MainWindow::resolve_mod_folder(const std::string& mod_id, const std::string& mods_subpath) const {
@@ -1350,11 +1395,36 @@ std::filesystem::path MainWindow::mods_dir_path() const {
     if (current_instance_root_.empty() && current_game_dir_.empty()) return {};
     // MO2-style: mods managed from instance root (even if mods_subpath is set)
     if (!current_instance_root_.empty())
-        return current_instance_root_ / "mods";
+        return current_instance_.path_for(engine::InstanceKind::Mods);
     auto subpath = knowledge_ ? knowledge_->get(current_game_id_, "mods_subpath", "") : "";
     if (!subpath.empty())
         return current_game_dir_ / subpath;
     return current_game_dir_;
+}
+
+std::filesystem::path MainWindow::downloads_dir_path() const {
+    if (current_instance_root_.empty()) return {};
+    return current_instance_.path_for(engine::InstanceKind::Downloads);
+}
+
+std::filesystem::path MainWindow::cache_dir_path() const {
+    if (current_instance_root_.empty()) return {};
+    return current_instance_.path_for(engine::InstanceKind::Cache);
+}
+
+std::filesystem::path MainWindow::cache_thumbnails_dir_path() const {
+    if (current_instance_root_.empty()) return {};
+    return current_instance_.path_for(engine::InstanceKind::CacheThumbnails);
+}
+
+std::filesystem::path MainWindow::profiles_dir_path() const {
+    if (current_instance_root_.empty()) return {};
+    return current_instance_.path_for(engine::InstanceKind::Profiles);
+}
+
+std::filesystem::path MainWindow::overwrite_dir_path() const {
+    if (current_instance_root_.empty()) return {};
+    return current_instance_.path_for(engine::InstanceKind::Overwrite);
 }
 
 void MainWindow::migrate_mo2_meta() {
@@ -1623,6 +1693,72 @@ void MainWindow::refresh_data_tab() {
                   mods_dir, game_mods_dir);
 }
 
+void MainWindow::refresh_plugins_tab() {
+    if (loading_) return;
+    auto* pt = right_panel_->plugins_tab();
+    if (!pt || !knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) {
+        plugins_tab_widget_ = nullptr;
+        return;  // game without plugin support (or no tab yet)
+    }
+    if (pt != plugins_tab_widget_) {  // tab was recreated on game switch
+        connect(pt, &ui::PluginsTab::toggle_requested, this, &MainWindow::on_plugin_toggle);
+        connect(pt, &ui::PluginsTab::reorder_requested, this, &MainWindow::on_plugin_reorder);
+        plugins_tab_widget_ = pt;
+    }
+
+    const auto game_native = knowledge_->get(current_game_id_, "game_native_plugins", "");
+    if (game_native.empty()) {  // tab exists but the module declares no plugin hooks
+        plugins_db_ = engine::PluginDatabase{};
+        pt->set_plugins({});
+        return;
+    }
+
+    plugins_db_.refresh(current_game_dir_, mods_dir_path(), meta_dir_path(), "",
+                        game_native);
+    plugins_db_.load_creation_club(current_game_dir_);
+    plugins_db_.sort_load_order();
+
+    // A persisted profile is the source of truth once it exists; only a first
+    // run (no profile yet) enables everything and writes it.
+    const auto profiles_dir = profiles_dir_path();
+    bool applied = false;
+    if (!profiles_dir.empty())
+        applied = plugins_db_.load_profile(profiles_dir, current_profile_name_);
+    if (!applied) {
+        plugins_db_.set_all_enabled();
+        plugins_db_.set_missing_masters();
+        if (!profiles_dir.empty())
+            plugins_db_.save_profile(profiles_dir, current_profile_name_);
+    }
+    plugins_db_.generate_mod_indexes();
+    pt->set_plugins(plugins_db_.plugins());
+}
+
+void MainWindow::on_plugin_toggle(const std::string& name, bool enabled) {
+    std::string err;
+    if (!plugins_db_.set_enabled(name, enabled, &err)) {
+        auto* pt = right_panel_->plugins_tab();
+        if (pt) pt->sync_enabled(plugins_db_.plugins());
+        if (!err.empty())
+            QMessageBox::warning(this, tr("Plugins"), QString::fromStdString(err));
+        return;
+    }
+    plugins_db_.save_profile(profiles_dir_path(), current_profile_name_);
+    auto* pt = right_panel_->plugins_tab();
+    if (pt) pt->sync_enabled(plugins_db_.plugins());
+}
+
+void MainWindow::on_plugin_reorder(int from_row, int to_row) {
+    std::string err;
+    if (!plugins_db_.move_plugin(from_row, to_row, &err)) {
+        if (!err.empty())
+            QMessageBox::warning(this, tr("Plugins"), QString::fromStdString(err));
+        return;
+    }
+    plugins_db_.save_profile(profiles_dir_path(), current_profile_name_);
+    refresh_plugins_tab();  // repopulate: new order + recomputed priorities/indexes
+}
+
 void MainWindow::on_image_diff_requested(const QString& relative_path) {
     if (!plugin_loader_ || !plugin_loader_->has_image_diff())
         return;
@@ -1695,10 +1831,37 @@ void MainWindow::setup_mod_list_context_menu() {
         QMenu menu;
 
         if (entry.is_overwrite) {
-            menu.addAction(QIcon::fromTheme("edit-clear"), tr("Clear Overwrite"),
-                this, [this]() { clear_overwrite(); });
-            menu.addAction(QIcon::fromTheme("document-new"), tr("Create Mod from Overwrite"),
+            // MO2 ModListContextMenu::addOverwriteActions. The move/sync/clear
+            // actions only make sense when Overwrite has content; Open in
+            // Explorer and Information always apply. Gating mirrors MO2's
+            // `QDir(...).count() > 2` via overwrite_is_empty().
+            auto ow_subpath = knowledge_
+                ? knowledge_->get(current_game_id_, "mods_subpath", "") : std::string();
+            const bool has_content =
+                !engine::overwrite_is_empty(overwrite_dir_path(), ow_subpath);
+
+            auto* sync_act = menu.addAction(QIcon::fromTheme("merge"),
+                tr("Sync to Mods..."),
+                this, [this]() { sync_overwrite_to_mods(); });
+            auto* create_act = menu.addAction(QIcon::fromTheme("document-new"),
+                tr("Create Mod..."),
                 this, [this]() { create_mod_from_overwrite(); });
+            auto* move_act = menu.addAction(QIcon::fromTheme("go-down"),
+                tr("Move content to Mod..."),
+                this, [this]() { move_overwrite_content_to_mod(); });
+            auto* clear_act = menu.addAction(QIcon::fromTheme("edit-clear"),
+                tr("Clear Overwrite..."),
+                this, [this]() { clear_overwrite(); });
+            for (auto* act : {sync_act, create_act, move_act, clear_act})
+                act->setEnabled(has_content);
+
+            menu.addAction(QIcon::fromTheme("folder"), tr("Open in File Manager"),
+                this, [this]() { open_overwrite_in_file_manager(); });
+
+            menu.addSeparator();
+            menu.addAction(QIcon::fromTheme("dialog-information"), tr("Information..."),
+                this, [this]() { show_overwrite_info_dialog(); });
+
             menu.exec(mod_view_->viewport()->mapToGlobal(pos));
             return;
         }
@@ -1811,50 +1974,42 @@ void MainWindow::setup_mod_list_context_menu() {
 
 void MainWindow::clear_overwrite() {
     auto reply = QMessageBox::question(this, tr("Clear Overwrite"),
-        tr("Remove all files from the Overwrite folder? This cannot be undone."),
+        tr("Remove all files from the Overwrite folder? Deleted files go to the system trash."),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (reply != QMessageBox::Yes) return;
 
-    if (!current_instance_root_.empty()) {
-        auto overwrite_dir = current_instance_root_ / "overwrite";
-        if (engine::SyncStage::clear_overwrite(overwrite_dir)) {
-            engine::Logger::instance().debug("Overwrite cleared");
-            QMessageBox::information(this, tr("Overwrite"), tr("Overwrite folder cleared."));
-        } else {
-            QMessageBox::warning(this, tr("Overwrite"), tr("Failed to clear Overwrite folder."));
-        }
+    if (current_instance_root_.empty()) return;
+    auto overwrite_dir = overwrite_dir_path();
+    auto mods_subpath = knowledge_ ? knowledge_->get(current_game_id_, "mods_subpath", "") : std::string();
+    auto cleared = engine::clear_overwrite(overwrite_dir, mods_subpath);
+    if (cleared > 0) {
+        engine::Logger::instance().debug("Overwrite cleared (" +
+            std::to_string(cleared) + " file(s))");
+        QMessageBox::information(this, tr("Overwrite"), tr("Overwrite folder cleared."));
+    } else {
+        QMessageBox::warning(this, tr("Overwrite"), tr("Failed to clear Overwrite folder."));
     }
 }
 
 void MainWindow::create_mod_from_overwrite() {
-    bool ok;
-    auto name = QInputDialog::getText(this, tr("Create Mod from Overwrite"),
-        tr("Mod name:"), QLineEdit::Normal, QString(), &ok);
-    if (!ok || name.isEmpty()) return;
     if (current_instance_root_.empty()) return;
-
-    auto overwrite_dir = current_instance_root_ / "overwrite";
+    auto overwrite_dir = overwrite_dir_path();
     auto mods_subpath = knowledge_ ? knowledge_->get(current_game_id_, "mods_subpath", "") : std::string();
     if (mods_subpath.empty()) return;
 
-    auto mod_dir = mods_dir_path() / name.toStdString();
-
-    std::vector<std::string> rel_paths;
-    std::error_code ec;
-    if (std::filesystem::exists(overwrite_dir)) {
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(overwrite_dir)) {
-            if (entry.is_regular_file()) {
-                auto rel = std::filesystem::relative(entry.path(), overwrite_dir, ec);
-                if (!ec) rel_paths.push_back(rel.string());
-            }
-        }
-    }
-    if (rel_paths.empty()) {
+    if (engine::overwrite_is_empty(overwrite_dir)) {
         QMessageBox::information(this, tr("Create Mod"), tr("Overwrite folder is empty."));
         return;
     }
 
-    if (engine::SyncStage::promote_to_mod(overwrite_dir, mod_dir, rel_paths)) {
+    bool ok;
+    auto name = QInputDialog::getText(this, tr("Create Mod from Overwrite"),
+        tr("Mod name:"), QLineEdit::Normal, QString(), &ok);
+    if (!ok || name.isEmpty()) return;
+
+    auto mod_dir = mods_dir_path() / name.toStdString();
+    auto moved = engine::move_overwrite_to_mod(overwrite_dir, mod_dir, mods_subpath);
+    if (moved) {
         // Write the game's metadata file so ModScanner picks the mod up.
         auto metadata_file = knowledge_->get(current_game_id_, "metadata_file", "meta.ini");
         engine::ModMeta::write_game_metadata(mod_dir, metadata_file,
@@ -1862,9 +2017,193 @@ void MainWindow::create_mod_from_overwrite() {
         auto id = name;
         mod_model_->add_mod(id, name, "");
         engine::Logger::instance().debug("Promote Overwrite to mod: " + name.toStdString());
-        QMessageBox::information(this, tr("Create Mod"), tr("Overwrite contents promoted to mod: %1").arg(name));
+        QMessageBox::information(this, tr("Create Mod"),
+            tr("Overwrite contents promoted to mod: %1").arg(name));
     } else {
         QMessageBox::warning(this, tr("Create Mod"), tr("Failed to promote Overwrite files."));
+    }
+}
+
+void MainWindow::move_overwrite_content_to_mod() {
+    if (current_instance_root_.empty()) return;
+    auto overwrite_dir = overwrite_dir_path();
+    auto mods_subpath = knowledge_ ? knowledge_->get(current_game_id_, "mods_subpath", "") : std::string();
+    if (mods_subpath.empty()) return;
+    if (engine::overwrite_is_empty(overwrite_dir)) {
+        QMessageBox::information(this, tr("Move content"), tr("Overwrite folder is empty."));
+        return;
+    }
+
+    // MO2 moveOverwriteContentToExistingMod: picker excludes separators /
+    // foreign (game-native) / Overwrite / merged mods.
+    std::vector<std::pair<std::string, std::string>> mods;
+    for (const auto& m : mod_model_->mods()) {
+        if (m.is_separator || m.is_overwrite || m.is_merged || m.is_game_native) continue;
+        mods.emplace_back(m.id.toStdString(), m.name.toStdString());
+    }
+    if (mods.empty()) {
+        QMessageBox::information(this, tr("Move content"), tr("No mods available."));
+        return;
+    }
+
+    MoveToModDialog dialog(mods, this);
+    if (dialog.exec() != QDialog::Accepted) return;
+    auto folder = dialog.selected_folder();
+    if (folder.empty()) return;
+
+    auto mod_dir = mods_dir_path() / folder;
+    auto moved = engine::move_overwrite_to_mod(overwrite_dir, mod_dir, mods_subpath);
+    if (moved) {
+        engine::Logger::instance().debug("Moved Overwrite contents to mod: " + folder);
+        QMessageBox::information(this, tr("Move content"),
+            tr("Overwrite contents moved to mod: %1")
+                .arg(QString::fromStdString(folder)));
+    } else {
+        QMessageBox::warning(this, tr("Move content"), tr("Failed to move Overwrite files."));
+    }
+}
+
+void MainWindow::sync_overwrite_to_mods() {
+    if (current_instance_root_.empty() || !knowledge_) return;
+    auto overwrite_dir = overwrite_dir_path();
+    auto mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
+    if (mods_subpath.empty()) return;
+    if (engine::overwrite_is_empty(overwrite_dir)) {
+        QMessageBox::information(this, tr("Sync to Mods"), tr("Overwrite folder is empty."));
+        return;
+    }
+
+    const bool conflict_reversed =
+        knowledge_->get(current_game_id_, "conflict_order_reversed", "") == "true";
+    const bool include_mod_id =
+        knowledge_->get(current_game_id_, "deploy_include_mod_id", "") == "true";
+    const auto metadata_file = knowledge_->get(current_game_id_, "metadata_file", "meta.ini");
+
+    // Enabled managed mods only - the conflict engine must see them all
+    // (no extension filter, unlike the flags column).
+    std::vector<std::pair<std::string, int>> mod_infos;
+    for (const auto& m : mod_model_->mods()) {
+        if (m.is_separator || m.is_overwrite || m.is_merged || m.is_game_native) continue;
+        if (!m.enabled) continue;
+        mod_infos.emplace_back(m.id.toStdString(), m.priority);
+    }
+
+    // Game-origin destination: a mod folder named after the game.
+    const auto game_display =
+        current_game_name_.empty() ? current_game_id_ : current_game_name_;
+    std::string game_folder = game_display;
+    for (char& c : game_folder) {
+        if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' ||
+            c == '"' || c == '<' || c == '>' || c == '|')
+            c = '_';
+    }
+
+    SyncOverwriteDialog dialog(SyncOverwriteDialog::Context{
+        .overwrite_dir = overwrite_dir,
+        .mods_dir = mods_dir_path(),
+        .mod_infos = std::move(mod_infos),
+        .mods_subpath = mods_subpath,
+        .conflict_reversed = conflict_reversed,
+        .include_mod_id = include_mod_id,
+        .game_dir = current_game_dir_,
+        .game_folder = game_folder,
+        .game_label = game_display,
+        .metadata_file = metadata_file,
+    }, this);
+    if (dialog.exec() != QDialog::Accepted) return;
+
+    auto targets = dialog.targets();
+    if (targets.empty()) return;
+
+    auto moved = engine::apply_sync_plan(targets, overwrite_dir, mods_dir_path(),
+                                         mods_subpath, metadata_file, include_mod_id);
+    if (moved > 0) {
+        engine::Logger::instance().debug("Sync Overwrite: " +
+            std::to_string(moved) + " file(s) moved");
+        QMessageBox::information(this, tr("Sync to Mods"),
+            tr("Moved %1 file(s) from Overwrite to mods.").arg(moved));
+    } else {
+        QMessageBox::warning(this, tr("Sync to Mods"),
+                             tr("Failed to sync Overwrite files."));
+    }
+}
+
+void MainWindow::open_overwrite_in_file_manager() {
+    if (current_instance_root_.empty()) return;
+    auto overwrite_dir = overwrite_dir_path();
+    std::error_code ec;
+    if (!std::filesystem::is_directory(overwrite_dir, ec)) {
+        std::filesystem::create_directories(overwrite_dir, ec);
+    }
+    QDesktopServices::openUrl(
+        QUrl::fromLocalFile(QString::fromStdString(overwrite_dir.string())));
+}
+
+void MainWindow::show_overwrite_info_dialog() {
+    if (current_instance_root_.empty()) return;
+    auto overwrite_dir = overwrite_dir_path();
+    std::error_code ec;
+    if (!std::filesystem::is_directory(overwrite_dir, ec)) {
+        std::filesystem::create_directories(overwrite_dir, ec);
+    }
+    auto mods_subpath = knowledge_ ? knowledge_->get(current_game_id_, "mods_subpath", "") : std::string();
+
+    // Shared modeless dialog - MO2's findChild("__overwriteDialog") pattern.
+    auto* dialog = findChild<QDialog*>("__overwriteDialog");
+    if (dialog == nullptr) {
+        dialog = new ui::OverwriteInfoDialog(overwrite_dir, mods_subpath, this);
+        dialog->setObjectName("__overwriteDialog");
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+    } else {
+        qobject_cast<ui::OverwriteInfoDialog*>(dialog)->set_path(overwrite_dir);
+    }
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
+}
+
+void MainWindow::move_dropped_overwrite_files(const QStringList& paths,
+                                              int mod_row) {
+    if (current_instance_root_.empty()) return;
+    if (mod_row < 0 || mod_row >= mod_model_->mods().size()) return;
+    const auto& target = mod_model_->mods()[mod_row];
+    if (target.is_overwrite || target.is_separator || target.is_merged ||
+        target.is_game_native) {
+        return;
+    }
+    if (paths.isEmpty()) return;
+
+    auto overwrite_dir = overwrite_dir_path();
+    auto mods_subpath = knowledge_ ? knowledge_->get(current_game_id_, "mods_subpath", "") : std::string();
+    if (mods_subpath.empty()) return;
+    const bool include_mod_id =
+        knowledge_ && knowledge_->get(current_game_id_, "deploy_include_mod_id", "") == "true";
+    auto mod_dir = mods_dir_path() / target.id.toStdString();
+    const auto mod_id = target.id.toStdString();
+
+    bool any = false;
+    std::error_code ec;
+    const auto ow_canon = std::filesystem::weakly_canonical(overwrite_dir, ec);
+    for (const auto& p : paths) {
+        const auto canon = std::filesystem::weakly_canonical(p.toStdString(), ec);
+        if (ec) {
+            ec.clear();
+            continue;
+        }
+        const auto rel = std::filesystem::relative(canon, ow_canon, ec);
+        if (ec || rel.empty() || rel == "..") {
+            ec.clear();
+            continue;
+        }
+        if (engine::move_overwrite_entry_to_mod(
+                overwrite_dir, canon, mod_dir, mods_subpath, include_mod_id, mod_id))
+            any = true;
+    }
+
+    if (any) {
+        engine::Logger::instance().debug(
+            "Moved dropped Overwrite entries into mod: " + mod_id);
+        recompute_conflicts();
     }
 }
 
@@ -2015,7 +2354,7 @@ void MainWindow::toggle_selected_mods(bool enabled) {
         // Check if state would actually change
         if (entry.enabled == enabled) continue;
 
-        mod_model_->setData(mod_model_->index(r, ModListModel::Enabled),
+        mod_model_->setData(mod_model_->index(r, ModListModel::Name),
             enabled ? Qt::Checked : Qt::Unchecked, Qt::CheckStateRole);
         sync_mod_enable_state(entry.id, enabled);
     }
@@ -2212,7 +2551,7 @@ void MainWindow::create_empty_mod() {
 
 void MainWindow::import_archives(const QStringList& paths) {
     if (current_instance_root_.empty()) return;
-    auto dl_dir = current_instance_root_ / "downloads";
+    auto dl_dir = downloads_dir_path();
     std::error_code ec;
     std::filesystem::create_directories(dl_dir, ec);
 
@@ -3034,9 +3373,7 @@ void MainWindow::populate_executables() {
         }
     }
 
-    auto icon_cache = current_instance_root_.empty()
-        ? std::filesystem::path{}
-        : current_instance_root_ / "cache" / "thumbnails";
+    auto icon_cache = cache_thumbnails_dir_path();
     // Restore the last selected executable for this instance. On a fresh
     // instance the selection is empty - just populate the list and let the
     // user pick.
@@ -3048,6 +3385,16 @@ void MainWindow::populate_executables() {
 }
 
 void MainWindow::launch_game() {
+    // Re-entry guard: a fast double-click / Enter on the focused Run button can
+    // fire run_clicked twice while the first launch is still in flight. The
+    // overlay covers the mouse but not the keyboard, so guard explicitly.
+    if (running_process_pid_ > 0) {
+        engine::Logger::instance().debug(
+            "Launch skipped - game already running (pid " +
+            std::to_string(running_process_pid_) + ")");
+        return;
+    }
+
     auto entry = right_panel_->exec_controls()->current_entry();
     if (entry.path.isEmpty() || entry.path == kAddNewEntryText) {
         QMessageBox::warning(this, tr("Launch"), tr("No executable selected."));
@@ -3118,6 +3465,14 @@ static void gmm_debug(const char* fmt, ...) {
 
 void MainWindow::launch_with_executable(const QString& full_path,
                                         const std::filesystem::path& output_mod_dir) {
+    // Re-entry guard (also covers toolbar shortcuts, which call this directly).
+    if (running_process_pid_ > 0) {
+        engine::Logger::instance().debug(
+            "Launch skipped - game already running (pid " +
+            std::to_string(running_process_pid_) + ")");
+        return;
+    }
+
     auto& trace = engine::TraceRecorder::instance();
     trace.begin_flow("launch");
 
@@ -3151,19 +3506,29 @@ void MainWindow::launch_with_executable(const QString& full_path,
     engine::LaunchParams lparams;
     lparams.executable = exec_path;
     lparams.game_dir = current_game_dir_;
-    lparams.overwrite_dir = current_instance_root_ / "overwrite";
+    lparams.overwrite_dir = overwrite_dir_path();
     lparams.steam_appid = steam_appid;
     lparams.is_windows_exe = (exec_path.extension().string() == ".exe" ||
                               exec_path.extension().string() == ".EXE");
+    lparams.platform = platform_;
+    trace.end_stage("launch", true, "Launch environment prepared");
+
+    // MO2-equivalent plugin order: build + write the game's Plugins.txt (and
+    // the instance profile) right before launch. No-op for games without
+    // plugin support (no localappdata_folder hook).
+    trace.begin_stage("launch", "Sync plugin order");
+    engine::PluginDatabase::write_plugins_txt_for_launch(
+        current_game_dir_, current_instance_root_, current_game_id_,
+        steam_appid, knowledge_ ? *knowledge_ : engine::GameKnowledge(), platform_);
+    trace.end_stage("launch", true, "Plugin order synced");
 
     // Output-to-mod: capture into a per-launch scratch dir, relay on exit.
     // Empty output_mod_dir = default Overwrite capture (toolbar shortcuts).
     output_session_scratch_.clear();
     output_mod_dir_ = output_mod_dir;
     if (!output_mod_dir.empty()) {
-        auto scratch_base = current_instance_root_.empty()
-            ? (current_game_dir_ / "cache")
-            : (current_instance_root_ / "cache");
+        auto scratch_base = cache_dir_path();
+        if (scratch_base.empty()) scratch_base = current_game_dir_ / "cache";
         auto session = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count();
         output_session_scratch_ = scratch_base / "exec-output" /
@@ -3270,7 +3635,8 @@ void MainWindow::check_running_process() {
         }
         // Delay capture so any child/spawned processes finish writing
         auto t = launch_time_;
-        QTimer::singleShot(3000, this, [this, t]() { do_capture_overwrite(t); });
+        QTimer::singleShot(Settings::instance().overlay_capture_delay_ms(),
+                           this, [this, t]() { do_capture_overwrite(t); });
     }
 #else
     // ---- cgroup v2 path (primary) ----
@@ -3280,6 +3646,21 @@ void MainWindow::check_running_process() {
             refresh_process_tree();
 
         if (engine::cgroup_is_empty({cgroup_path_})) {
+            // A Steam handoff reparents the game's processes to the subreaper
+            // supervisor, which stays alive until its last child exits.  The
+            // cgroup can be empty in that window while the game still runs.
+            // Don't declare the game exited while the supervisor is waiting on
+            // reparented children - that would hide the lock overlay and clear
+            // the launch guard mid-session.
+            if (running_process_pid_ > 0 &&
+                (kill(static_cast<pid_t>(running_process_pid_), 0) == 0 ||
+                 errno == EPERM)) {
+                engine::Logger::instance().debug(
+                    "Watchdog: cgroup empty but supervisor alive (reparented game) - continuing");
+                if (process_tree_checkbox_ && process_tree_checkbox_->isChecked())
+                    refresh_process_tree();
+                return;
+            }
             engine::Logger::instance().debug(
                 "Watchdog: cgroup empty, game fully exited");
             reap_supervisor(static_cast<pid_t>(running_process_pid_));
@@ -3296,7 +3677,8 @@ void MainWindow::check_running_process() {
                 staging_dir_.clear();
             }
             auto t = launch_time_;
-            QTimer::singleShot(3000, this, [this, t]() { do_capture_overwrite(t); });
+            QTimer::singleShot(Settings::instance().overlay_capture_delay_ms(),
+                               this, [this, t]() { do_capture_overwrite(t); });
         }
         return;
     }
@@ -3368,7 +3750,8 @@ void MainWindow::check_running_process() {
         staging_dir_.clear();
     }
     auto t = launch_time_;
-    QTimer::singleShot(3000, this, [this, t]() { do_capture_overwrite(t); });
+    QTimer::singleShot(Settings::instance().overlay_capture_delay_ms(),
+                       this, [this, t]() { do_capture_overwrite(t); });
 #endif
 }
 
@@ -3578,7 +3961,7 @@ void MainWindow::do_capture_overwrite(std::filesystem::file_time_type capture_ti
 
     bool session_active = !output_session_scratch_.empty() && !output_mod_dir_.empty();
     auto capture_dir = session_active ? output_session_scratch_
-                                      : (current_instance_root_ / "overwrite");
+                                      : overwrite_dir_path();
 
     // When launched via overlay, all writes already went directly into the
     // capture dir (upperdir = session scratch for output-mod, Overwrite otherwise).
@@ -3594,7 +3977,7 @@ void MainWindow::do_capture_overwrite(std::filesystem::file_time_type capture_ti
         auto mods_subpath = knowledge_
             ? knowledge_->get(current_game_id_, "mods_subpath", "") : std::string();
         auto inc_id = knowledge_->get(current_game_id_, "deploy_include_mod_id", "false");
-        auto overwrite_dir = current_instance_root_ / "overwrite";
+        auto overwrite_dir = overwrite_dir_path();
         auto relayed = engine::relay_output_to_mod(output_session_scratch_,
             output_mod_dir_, overwrite_dir, mods_subpath,
             inc_id == "true", output_mod_dir_.filename().string());
@@ -3748,9 +4131,7 @@ void MainWindow::on_add_entry_requested() {
         }
     }
 
-    auto icon_cache = current_instance_root_.empty()
-        ? std::filesystem::path{}
-        : current_instance_root_ / "cache" / "thumbnails";
+    auto icon_cache = cache_thumbnails_dir_path();
 
     auto existing = right_panel_->exec_controls()->executable_entries();
 
@@ -4019,12 +4400,19 @@ void MainWindow::show_game_lock_overlay(const QString& binary_name, int64_t pid)
     game_lock_overlay_->setGeometry(rect());
     game_lock_overlay_->raise();
     game_lock_overlay_->show();
+    // Grab keyboard focus so Space/Enter can't re-activate the still-focused
+    // Run button while the game is starting. The overlay covers the mouse but
+    // not the keyboard without this.
+    game_lock_overlay_->setFocus();
+    game_lock_overlay_->grabKeyboard();
     if (pid > 0 && process_tree_checkbox_ && process_tree_checkbox_->isChecked())
         refresh_process_tree();
 }
 
 void MainWindow::hide_game_lock_overlay() {
     locked_pid_ = -1;
+    if (game_lock_overlay_ && game_lock_overlay_->isVisible())
+        game_lock_overlay_->releaseKeyboard();
     game_lock_overlay_->hide();
 }
 
@@ -4220,14 +4608,16 @@ void MainWindow::restore_app_state() {
     auto main_split = read_ba();
     auto console_split = read_ba();
     auto header_state = read_ba();
+    (void)header_state;  // mod-list header layout is NOT restored from disk:
+                         // a state saved with a different column count shifts
+                         // the old layout (Stretch/Interactive) onto the wrong
+                         // columns. The header always uses the setup in
+                         // setup_mod_view() instead.
 
     if (!geo.isEmpty()) pending_geometry_ = geo;
     if (!win_state.isEmpty()) restoreState(win_state);
     if (main_splitter_ && !main_split.isEmpty()) main_splitter_->restoreState(main_split);
     if (console_splitter_ && !console_split.isEmpty()) console_splitter_->restoreState(console_split);
-    if (mod_view_ && mod_view_->header() && !header_state.isEmpty()) {
-        mod_view_->header()->restoreState(header_state);
-    }
 
     // Restore right panel table header states (column widths, order, visibility)
     auto obj = read_app_state_extra();
@@ -4320,7 +4710,7 @@ void MainWindow::apply_initial_geometry() {
 
 std::filesystem::path MainWindow::download_manifest_path() const {
     if (current_instance_root_.empty()) return {};
-    return current_instance_root_ / "downloads" / ".download_manifest.json";
+    return downloads_dir_path() / ".download_manifest.json";
 }
 
 void MainWindow::save_download_manifest() {
@@ -4346,7 +4736,7 @@ void MainWindow::load_download_manifest() {
     if (json.empty()) return;
     auto* dt = right_panel_->downloads_tab();
     if (!dt) return;
-    auto downloads_dir = current_instance_root_ / "downloads";
+    auto downloads_dir = downloads_dir_path();
     dt->deserialize(json, downloads_dir);
 }
 
@@ -4524,8 +4914,7 @@ void MainWindow::ensure_nxm_handler_default() {
 
 #ifdef GMM_PLATFORM_LINUX
     // Respect a permanent "don't ask again" choice
-    QSettings settings("GameModManager", "GameModManager");
-    if (settings.value("nxm/handler_check").toString() == "dont_ask") return;
+    if (Settings::instance().nxm_handler_check() == "dont_ask") return;
 
     // Self-heal: if we're still the default handler, nothing to do
     if (engine::LinuxPlatform::is_nxm_handler_registered()) {
@@ -4556,7 +4945,7 @@ void MainWindow::ensure_nxm_handler_default() {
         (void)engine::LinuxPlatform::register_gmm_handler(app_path);
         engine::Logger::instance().info("nxm:// handler registered: GameModManager");
     } else if (msg.clickedButton() == dont_show) {
-        settings.setValue("nxm/handler_check", "dont_ask");
+        Settings::instance().set_nxm_handler_check("dont_ask");
         engine::Logger::instance().debug("nxm:// handler check suppressed (don't show again)");
     } else {
         engine::Logger::instance().debug("nxm:// handler check declined; will ask next launch");
@@ -4567,205 +4956,16 @@ void MainWindow::ensure_nxm_handler_default() {
 }
 
 void MainWindow::show_settings_dialog() {
-    auto& auth = engine::NexusAuth::instance();
-    bool has_key = auth.has_api_key();
-
-    QDialog dlg(this);
-    dlg.setWindowTitle(tr("Settings"));
-    dlg.setMinimumWidth(480);
-
-    auto* layout = new QVBoxLayout(&dlg);
-
-    // -- Language section ----------------------------------------
-    auto* lang_group = new QGroupBox(tr("Language"));
-    auto* lang_layout = new QVBoxLayout(lang_group);
-
-    QSettings settings("GameModManager", "GameModManager");
-    const QString current_lang = settings.value("language", "en_US").toString();
-
-    auto* lang_combo = new QComboBox;
-    QDir i18n_dir(":/i18n");
-    for (const auto& info : i18n_dir.entryInfoList({"*.qm"}, QDir::Files | QDir::NoDotAndDotDot)) {
-        const QString tag = info.completeBaseName();
-        const QLocale loc(tag);
-        const QString display = loc.language() != QLocale::C
-            ? loc.nativeLanguageName() + " (" + tag + ")"
-            : tag;
-        lang_combo->addItem(display, tag);
-    }
-    int lang_idx = lang_combo->findData(current_lang);
-    lang_combo->setCurrentIndex(lang_idx >= 0 ? lang_idx : 0);
-
-    auto* lang_hint = new QLabel(
-        tr("Restart the application for the language change to take effect."));
-    lang_hint->setWordWrap(true);
-
-    lang_layout->addWidget(lang_combo);
-    lang_layout->addWidget(lang_hint);
-    layout->addWidget(lang_group);
-
-    // -- Theme section ------------------------------------------
-    auto* theme_combo = new QComboBox;
-    if (style_manager_) {
-        auto* theme_group = new QGroupBox(tr("Theme"));
-        auto* theme_layout = new QVBoxLayout(theme_group);
-
-        theme_combo->addItem(tr("Default (system)"), "default");
-        for (const auto& key : QStyleFactory::keys())
-            theme_combo->addItem(key, "qt:" + key);
-        const auto theme_names = style_manager_->theme_names();
-        if (!theme_names.empty()) {
-            theme_combo->insertSeparator(theme_combo->count());
-            for (const auto& name : theme_names)
-                theme_combo->addItem(QString::fromStdString(name), QString::fromStdString(name));
-        }
-
-        // A persisted built-in Qt style wins over the QSS theme.
-        const QSettings theme_settings("GameModManager", "GameModManager");
-        const QString current_style = theme_settings.value("style").toString();
-        const QString current_theme = theme_settings.value("theme", "default").toString();
-        int theme_idx = theme_combo->findData("qt:" + current_style);
-        if (theme_idx < 0)
-            theme_idx = theme_combo->findData(current_theme);
-        theme_combo->setCurrentIndex(theme_idx >= 0 ? theme_idx : 0);
-
-        auto* theme_hint = new QLabel(
-            tr("Editing a theme's .qss or tokens.json on disk live-reloads it. "
-               "Qt styles (Fusion, Windows, ...) are the built-in Qt look - no custom theme files."));
-        theme_hint->setWordWrap(true);
-
-        theme_layout->addWidget(theme_combo);
-        theme_layout->addWidget(theme_hint);
-        layout->addWidget(theme_group);
-    }
-
-    // -- API Key section ----------------------------------------
-    auto* api_group = new QGroupBox(tr("Nexus Mods API Key"));
-    auto* api_layout = new QVBoxLayout(api_group);
-
-    auto* key_edit = new QLineEdit;
-    key_edit->setEchoMode(QLineEdit::Password);
-    key_edit->setPlaceholderText(tr("Enter your Nexus Mods API key..."));
-    if (has_key)
-        key_edit->setText(QString::fromStdString(auth.get_api_key()));
-
-    auto* key_row = new QHBoxLayout;
-    key_row->addWidget(key_edit, 1);
-
-    auto* save_btn = new QPushButton(has_key ? tr("Update") : tr("Save"));
-    auto* clear_btn = new QPushButton(tr("Clear"));
-    clear_btn->setEnabled(has_key);
-    key_row->addWidget(save_btn);
-    key_row->addWidget(clear_btn);
-
-    api_layout->addLayout(key_row);
-    api_layout->addWidget(new QLabel(
-        tr("Get your key at "
-           "<a href='https://www.nexusmods.com/users/myaccount?tab=api'>"
-           "nexusmods.com/users/myaccount?tab=api</a>")));
-    layout->addWidget(api_group);
-
-    // -- Rate-limit section --------------------------------------
-    auto* rl_group = new QGroupBox(tr("API Rate Limit"));
-    auto* rl_layout = new QVBoxLayout(rl_group);
-
-    auto info = auth.get_rate_limit();
-    auto* rl_label = new QLabel;
-    if (info.daily_limit > 0 || info.hourly_limit > 0) {
-        QString text;
-        auto budget_line = [&](const QString& name, int remaining, int limit, int64_t reset) {
-            QString line = tr("%1: <b>%2</b> / %3")
-                .arg(name).arg(remaining).arg(limit);
-            if (reset > 0) {
-                QDateTime dt = QDateTime::fromSecsSinceEpoch(reset);
-                line += tr(" &nbsp;(resets %1)")
-                    .arg(dt.toLocalTime().toString(Qt::TextDate));
-            }
-            return line;
-        };
-        if (info.hourly_limit > 0)
-            text += budget_line(tr("Hourly"), info.hourly_remaining, info.hourly_limit, info.hourly_reset);
-        if (info.daily_limit > 0) {
-            if (!text.isEmpty()) text += "<br>";
-            text += budget_line(tr("Daily"), info.daily_remaining, info.daily_limit, info.daily_reset);
-        }
-        if (info.last_updated > 0) {
-            QDateTime lu = QDateTime::fromSecsSinceEpoch(info.last_updated);
-            text += "<br>" + tr("Last request: %1").arg(lu.toLocalTime().toString(Qt::TextDate));
-        }
-        rl_label->setText(text);
-    } else {
-        rl_label->setText(tr("No API requests made yet in this session."));
-    }
-    rl_layout->addWidget(rl_label);
-    layout->addWidget(rl_group);
-
-    // -- Dialog buttons ------------------------------------------
-    layout->addSpacing(8);
-    auto* btn_box = new QDialogButtonBox(QDialogButtonBox::Close);
-    connect(btn_box, &QDialogButtonBox::rejected, &dlg, &QDialog::close);
-    layout->addWidget(btn_box);
-
-    // -- Button actions ------------------------------------------
-    connect(lang_combo, &QComboBox::currentIndexChanged, this, [lang_combo](int index) {
-        QSettings("GameModManager", "GameModManager")
-            .setValue("language", lang_combo->itemData(index).toString());
-    });
-
-    connect(theme_combo, &QComboBox::currentIndexChanged, this, [this, theme_combo](int index) {
-        const QString data = theme_combo->itemData(index).toString();
-        QSettings settings("GameModManager", "GameModManager");
-        if (data.startsWith("qt:")) {
-            // Built-in Qt style: no custom QSS, no GMM theme.
-            const QString style = data.mid(3);
-            settings.setValue("style", style);
-            settings.remove("theme");
-            if (QStyle* st = QStyleFactory::create(style))
-                qApp->setStyle(st);
-            qApp->setStyleSheet(QString());
-            engine::Logger::instance().info("Applied Qt style: " + style.toStdString());
-            return;
-        }
-        // GMM theme (or Default): restore the native platform style first so
-        // the QSS renders on Breeze/etc., then apply the theme.
-        settings.setValue("theme", data);
-        settings.remove("style");
-        if (!native_style_name_.isEmpty()) {
-            if (QStyle* st = QStyleFactory::create(native_style_name_))
-                qApp->setStyle(st);
-        }
-        if (style_manager_)
-            style_manager_->apply_theme(data.toStdString());
-    });
-
-    connect(save_btn, &QPushButton::clicked, [&]() {
-        QString key = key_edit->text().trimmed();
-        if (key.isEmpty()) {
-            QMessageBox::warning(&dlg, tr("API Key"),
-                tr("Enter your Nexus Mods API key or click Clear to remove it."));
-            return;
-        }
-        auth.set_api_key(key.toStdString());
-        clear_btn->setEnabled(true);
-        save_btn->setText(tr("Update"));
-        engine::Logger::instance().info("Nexus API key saved");
-        QMessageBox::information(&dlg, tr("API Key"), tr("API key saved successfully."));
-    });
-
-    connect(clear_btn, &QPushButton::clicked, [&]() {
-        auto reply = QMessageBox::question(&dlg, tr("Clear API Key"),
-            tr("Remove the stored Nexus Mods API key?"),
-            QMessageBox::Yes | QMessageBox::No);
-        if (reply == QMessageBox::Yes) {
-            auth.clear_api_key();
-            key_edit->clear();
-            clear_btn->setEnabled(false);
-            save_btn->setText(tr("Save"));
-            engine::Logger::instance().info("Nexus API key cleared");
-        }
-    });
-
+    SettingsDialog dlg(style_manager_, native_style_name_, current_instance_root_,
+                       plugin_loader_, this);
     dlg.exec();
+    // Per-folder path overrides may have changed in the dialog.
+    if (!current_instance_root_.empty()) {
+        current_instance_ = engine::Instance::from_root(current_instance_root_);
+        current_instance_.read_toml();
+    }
+    // The separator-scrollbar setting may have changed in the dialog.
+    if (mod_view_) mod_view_->apply_scrollbar_policy();
 }
 
 void MainWindow::show_instance_statistics() {
@@ -4775,7 +4975,7 @@ void MainWindow::show_instance_statistics() {
         return;
     }
 
-    auto cache_dir = current_instance_root_ / "cache";
+    auto cache_dir = cache_dir_path();
     int total_mods = 0;
     for (const auto& m : mod_model_->mods()) {
         if (!m.is_separator && !m.is_overwrite) ++total_mods;

@@ -16,6 +16,21 @@ class Profile;
 class DeploymentStrategy;
 class OrderEncodingHook;
 
+// How an install should handle a mod folder that already exists. Mirrors
+// MO2's QueryOverwriteDialog actions (queryoverwritedialog.h).
+enum class OverwriteAction {
+    Merge,    // add files into the existing folder, overwriting on conflict
+    Replace,  // delete the existing folder and install fresh
+    Rename,   // install under a new folder name (decision.new_name)
+    Cancel,   // abort the install
+};
+
+struct OverwriteDecision {
+    OverwriteAction action = OverwriteAction::Cancel;
+    bool backup = false;       // keep a <name>_backup copy of the old folder
+    std::string new_name;      // for Rename: the new mod folder name
+};
+
 struct PipelineContext {
     Instance* instance = nullptr;
     ConflictIndex* conflict_index = nullptr;
@@ -42,6 +57,13 @@ struct PipelineContext {
     // When using OverlayFS deploy strategy, staging_dir holds the mod symlink tree
     // that gets layered over game_dir at launch. Empty = deploy directly to game_dir.
     std::filesystem::path staging_dir;
+
+    // When the install target mod folder already exists, this callback asks the
+    // user how to proceed (Merge/Replace/Rename/Cancel). Invoked on the pipeline
+    // thread with the existing mod folder name; must be thread-safe (the UI
+    // wires it to marshal the dialog onto the main thread). Unset = silently
+    // replace (headless/CLI default, matching the pre-dialog behavior).
+    std::function<OverwriteDecision(const std::string& mod_name)> overwrite_query_cb;
 
     // Download progress callback (bytes downloaded, total bytes, speed in bytes/sec)
     std::function<void(int64_t downloaded, int64_t total, double speed)> on_progress;

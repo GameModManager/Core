@@ -23,6 +23,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include "ui/smooth_scroll.h"
+#include "ui/settings/settings.h"
 
 namespace ui {
 
@@ -248,7 +249,8 @@ ExecEntryDialog::ExecEntryDialog(const std::filesystem::path& game_dir,
     update_move_buttons();
 
     // TODO: gate behind a Settings "Smooth scrolling" checkbox.
-    ui::enable_smooth_scrolling(this);
+    if (Settings::instance().smooth_scrolling())
+        ui::enable_smooth_scrolling(this);
 }
 
 QVector<ExecEntry> ExecEntryDialog::entries() const {

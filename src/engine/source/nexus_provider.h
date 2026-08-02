@@ -16,12 +16,16 @@ public:
     // Returns the real Nexus file metadata (files/{file}.json): the archive
     // name (file_name) for correct naming/extension and the display name.
     SourceDownloadInfo resolve_download_info(const Mod& mod) const override;
+    std::string display_name() const override;
 
 private:
     // Shared download routine for a resolved URL (used by both the API-auth
-    // paths and the direct-URL path).
+    // paths and the direct-URL path). server_name is the Nexus mirror that
+    // served the URL (from the download_link.json entry); when non-empty a
+    // speed sample is recorded against it on success (MO2 parity).
     bool download_from_url(const std::string& url, PipelineContext& ctx,
-                           const std::filesystem::path& dest_path);
+                           const std::filesystem::path& dest_path,
+                           const std::string& server_name = {});
 };
 
 } // namespace engine

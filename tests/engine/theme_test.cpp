@@ -104,6 +104,10 @@ int main() {
 
         const auto* nord = tm.find_theme("Nord");
         write(root / "app" / "themes" / "Nord" / "tokens.json", "{ \"$fg\": \"#d8dee9\" }");
+        // tokens_path is only filled at scan time, so re-scan to pick it up.
+        tm.scan_themes(root / "app" / "themes");
+        nord = tm.find_theme("Nord");
+        assert(nord && !nord->tokens_path.empty());
         assert(tm.load_tokens(nord->tokens_path));
         assert(tm.tokens().size() == 1);
         assert(tm.tokens().count("$fg") == 1);
@@ -138,14 +142,17 @@ int main() {
     }
 
     // theme_search_dirs: user dir first, then portable, submodule, share, bundled.
+    // The submodule/share/bundled entries traverse via ".." so they only compare
+    // equal after normalization.
     {
         auto dirs = engine::theme_search_dirs(root / "app");
         assert(dirs.size() == 5);
-        assert(dirs[0] == root / "empty_user" / "GameModManager" / "themes");
-        assert(dirs[1] == root / "app" / "themes");
-        assert(dirs[2] == root / "themes");
-        assert(dirs[3] == root / "share" / "GameModManager" / "themes");
-        assert(dirs[4] == root / "resources" / "themes");
+        auto norm = [](const fs::path& p) { return p.lexically_normal(); };
+        assert(norm(dirs[0]) == norm(root / "empty_user" / "GameModManager" / "themes"));
+        assert(norm(dirs[1]) == norm(root / "app" / "themes"));
+        assert(norm(dirs[2]) == norm(root / "themes"));
+        assert(norm(dirs[3]) == norm(root / "share" / "GameModManager" / "themes"));
+        assert(norm(dirs[4]) == norm(root / "resources" / "themes"));
     }
 
     std::cout << "theme_test: all assertions passed\n";

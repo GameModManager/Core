@@ -77,38 +77,4 @@ std::vector<std::string> SyncStage::capture_overwrite_files(
     return captured;
 }
 
-bool SyncStage::clear_overwrite(const std::filesystem::path& overwrite_dir) {
-    std::error_code ec;
-    for (const auto& entry : std::filesystem::directory_iterator(overwrite_dir)) {
-        std::filesystem::remove_all(entry.path(), ec);
-        if (ec) return false;
-    }
-    return true;
-}
-
-bool SyncStage::promote_to_mod(
-    const std::filesystem::path& overwrite_dir,
-    const std::filesystem::path& mod_dir,
-    const std::vector<std::string>& relative_paths) {
-    std::error_code ec;
-
-    for (const auto& rel : relative_paths) {
-        auto src = overwrite_dir / rel;
-        auto dst = mod_dir / rel;
-
-        if (!std::filesystem::exists(src)) continue;
-
-        std::filesystem::create_directories(dst.parent_path(), ec);
-        std::filesystem::copy_file(
-            src, dst,
-            std::filesystem::copy_options::overwrite_existing, ec);
-        if (ec) return false;
-
-        // Remove from Overwrite after successful copy
-        std::filesystem::remove(src, ec);
-    }
-
-    return true;
-}
-
 }  // namespace engine

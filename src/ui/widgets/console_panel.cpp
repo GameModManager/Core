@@ -1,4 +1,5 @@
 #include "ui/widgets/console_panel.h"
+#include "ui/settings/settings.h"
 #include "engine/log/logger.h"
 
 #include <QApplication>
@@ -38,13 +39,15 @@ ConsolePanel::ConsolePanel(QWidget* parent)
     });
 
     QPointer<ConsolePanel> guard(this);
-    // Same gate as Logger::enable_console(): console panel defaults to Info
-    // level (DBG hidden); GMM_DEBUG=1 drops min to Debug. Log file always full.
+    // Console panel verbosity: GMM_DEBUG=1 forces Debug; otherwise the
+    // diagnostics/log_level setting applies. Log file always full.
     const bool verbose = std::getenv("GMM_DEBUG") != nullptr;
+    auto& settings = Settings::instance();
+    const bool panel_debug = verbose || settings.log_level() == "debug";
     auto& logger = engine::Logger::instance();
     logger.add_callback(
-        [guard, verbose](engine::LogLevel level, const std::string& timestamp, const std::string& message) {
-            if (!verbose && level < engine::LogLevel::Info) return;
+        [guard, panel_debug](engine::LogLevel level, const std::string& timestamp, const std::string& message) {
+            if (!panel_debug && level < engine::LogLevel::Info) return;
             auto* panel = guard.data();
             if (!panel) return;
             int lvl = static_cast<int>(level);

@@ -13,6 +13,7 @@
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/instance/instance.h"
 #include "ui/smooth_scroll.h"
+#include "ui/settings/settings.h"
 
 #include <filesystem>
 #include <fstream>
@@ -116,7 +117,8 @@ InstanceSwitcherDialog::InstanceSwitcherDialog(engine::PluginLoader* plugins, QW
     });
 
     // TODO: gate behind a Settings "Smooth scrolling" checkbox.
-    ui::enable_smooth_scrolling(this);
+    if (Settings::instance().smooth_scrolling())
+        ui::enable_smooth_scrolling(this);
 }
 
 void InstanceSwitcherDialog::load_instances(const std::string& instances_dir) {

@@ -22,16 +22,6 @@ public:
         const std::filesystem::path& game_dir,
         const std::filesystem::path& overwrite_dir,
         const ConflictIndex& conflict_index);
-
-    // Clear the Overwrite directory (e.g. before a fresh deploy).
-    [[nodiscard]] static bool clear_overwrite(
-        const std::filesystem::path& overwrite_dir);
-
-    // Promote files from Overwrite into a proper mod directory.
-    [[nodiscard]] static bool promote_to_mod(
-        const std::filesystem::path& overwrite_dir,
-        const std::filesystem::path& mod_dir,
-        const std::vector<std::string>& relative_paths);
 };
 
 }  // namespace engine
