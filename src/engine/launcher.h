@@ -73,6 +73,11 @@ bool cgroup_is_empty(const CgroupHandle& h);
 // Significantly more reliable than kill(-pgid, SIGTERM).
 void cgroup_kill(const CgroupHandle& h);
 
+// Remove a launch cgroup directory after the session ends.  Best-effort:
+// a v2 cgroup can only be rmdir'd once empty, so this fails silently if
+// processes still linger (or the path is already gone).
+void cgroup_remove(const CgroupHandle& h);
+
 // -- Process group monitoring (fallback) ----------------------------------
 
 // Returns true if any non-zombie process still exists in the given PGID.

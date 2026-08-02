@@ -382,6 +382,20 @@ add_executable(instance_path_test tests/engine/instance_path_test.cpp
 target_include_directories(instance_path_test PRIVATE src/)
 add_test(NAME instance_path_test COMMAND instance_path_test)
 
+# Regression: GUI + CLI launches must go through prepare_launch_params, which
+# deploys enabled mods to .gmm_staging and adds it to extra_lowerdirs.
+add_executable(launch_params_test tests/engine/launch_params_test.cpp
+    src/engine/instance/instance_utils.cpp
+    src/engine/instance/instance.cpp
+    src/engine/deploy/deploy_utils.cpp
+    src/engine/deploy/strategy_overlayfs_deploy.cpp
+    src/engine/registry/game_knowledge.cpp
+    src/engine/overlay_launcher.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(launch_params_test PRIVATE src/)
+add_test(NAME launch_params_test COMMAND launch_params_test)
+
 add_executable(nxm_router_test tests/engine/nxm_router_test.cpp
     src/engine/nxm/nxm_router.cpp
 )

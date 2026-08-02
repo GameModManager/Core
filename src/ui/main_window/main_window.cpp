@@ -3503,14 +3503,14 @@ void MainWindow::launch_with_executable(const QString& full_path,
     }
 
     trace.begin_stage("launch", "Prepare launch environment");
-    engine::LaunchParams lparams;
-    lparams.executable = exec_path;
-    lparams.game_dir = current_game_dir_;
-    lparams.overwrite_dir = overwrite_dir_path();
-    lparams.steam_appid = steam_appid;
-    lparams.is_windows_exe = (exec_path.extension().string() == ".exe" ||
-                              exec_path.extension().string() == ".EXE");
+    auto lparams = engine::prepare_launch_params(
+        current_instance_root_, current_game_dir_, exec_path,
+        knowledge_ ? *knowledge_ : engine::GameKnowledge(),
+        current_game_id_, steam_appid,
+        (exec_path.extension().string() == ".exe" ||
+         exec_path.extension().string() == ".EXE"));
     lparams.platform = platform_;
+    lparams.overwrite_dir = overwrite_dir_path();
     trace.end_stage("launch", true, "Launch environment prepared");
 
     // MO2-equivalent plugin order: build + write the game's Plugins.txt (and
@@ -3547,16 +3547,8 @@ void MainWindow::launch_with_executable(const QString& full_path,
         }
     }
 
-    if (!staging_dir_.empty()) {
-        std::error_code ec;
-        std::filesystem::create_directories(staging_dir_, ec);
-        if (!ec) {
-            lparams.extra_lowerdirs.push_back(staging_dir_);
-        } else {
-            engine::Logger::instance().error(
-                "Failed to create staging dir: " + ec.message());
-        }
-    }
+    if (!lparams.extra_lowerdirs.empty())
+        staging_dir_ = lparams.extra_lowerdirs.back();
     trace.end_stage("launch", true, "Overlay/staging paths ready");
 
     trace.begin_stage("launch", "Launch executable");
@@ -3652,7 +3644,21 @@ void MainWindow::check_running_process() {
             // Don't declare the game exited while the supervisor is waiting on
             // reparented children - that would hide the lock overlay and clear
             // the launch guard mid-session.
-            if (running_process_pid_ > 0 &&
+            //
+            // But early-reap the supervisor first: once its last child is
+            // reaped it _exit(0)s, and a zombie supervisor still answers
+            // kill(pid,0)==0 - which would misclassify a cleanly-exited game
+            // as "reparented" forever, leaving the lock overlay up with zero
+            // processes.  Same rule as the PGID zombie-gate war story:
+            // waitpid(WNOHANG) before trusting kill() liveness.
+            bool supervisor_gone = false;
+            if (running_process_pid_ > 0) {
+                int st;
+                pid_t r = waitpid(static_cast<pid_t>(running_process_pid_), &st, WNOHANG);
+                supervisor_gone = (r == static_cast<pid_t>(running_process_pid_)) ||
+                                  (r < 0 && errno == ECHILD);
+            }
+            if (!supervisor_gone && running_process_pid_ > 0 &&
                 (kill(static_cast<pid_t>(running_process_pid_), 0) == 0 ||
                  errno == EPERM)) {
                 engine::Logger::instance().debug(
@@ -3668,6 +3674,7 @@ void MainWindow::check_running_process() {
             hide_game_lock_overlay();
             trace.end_stage("launch", true, "Game exited");
             trace.end_flow("launch", true, "Game session finished");
+            engine::cgroup_remove({cgroup_path_});
             running_process_pid_ = -1;
             cgroup_path_.clear();
             if (process_watch_timer_) process_watch_timer_->stop();
@@ -4306,6 +4313,7 @@ void MainWindow::create_game_lock_overlay() {
             engine::Logger::instance().debug(
                 "Kill: cgroup.kill written for " + cgroup_path_);
             reap_supervisor(static_cast<pid_t>(running_process_pid_));
+            engine::cgroup_remove({cgroup_path_});
             running_process_pid_ = -1;
             cgroup_path_.clear();
             if (process_watch_timer_) process_watch_timer_->stop();
