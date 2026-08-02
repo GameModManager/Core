@@ -20,6 +20,7 @@
 #include <QJsonObject>
 #include <QMenu>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QPalette>
 #include <QPainter>
 #include <QPixmap>
@@ -27,6 +28,7 @@
 #include <QSet>
 #include <QShowEvent>
 #include <QStyle>
+#include <QStyleOptionViewItem>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTreeWidget>
@@ -184,6 +186,51 @@ protected:
         if (on_reorder) on_reorder(from, to);
         event->accept();  // base dropEvent is NOT called: MainWindow repopulates
     }
+
+    // MO2-style deselection: a plain left click on an already-selected row
+    // clears the selection (click the selected plugin again -> unselected).
+    // Clicks on the enable checkbox (column 0's check indicator) only toggle
+    // the check state, keeping the selection, as in MO2. The "was it selected
+    // before this click" test must happen at press time (the base press would
+    // otherwise select the row before the release can inspect it); the clear
+    // happens on release so drag-reorder still starts from a selected row.
+    void mousePressEvent(QMouseEvent* event) override {
+        press_was_selected_ = false;
+        press_on_check_ = false;
+        if (event->button() == Qt::LeftButton &&
+            event->modifiers() == Qt::NoModifier) {
+            const QModelIndex idx = indexAt(event->pos());
+            press_was_selected_ =
+                idx.isValid() && selectionModel()->isSelected(idx);
+            press_on_check_ = idx.isValid() && idx.column() == 0 &&
+                              check_indicator_rect(idx).contains(event->pos());
+        }
+        QTableWidget::mousePressEvent(event);
+    }
+
+    void mouseReleaseEvent(QMouseEvent* event) override {
+        if (event->button() == Qt::LeftButton &&
+            event->modifiers() == Qt::NoModifier && press_was_selected_ &&
+            !press_on_check_) {
+            clearSelection();
+            event->accept();
+            return;
+        }
+        QTableWidget::mouseReleaseEvent(event);
+    }
+
+private:
+    QRect check_indicator_rect(const QModelIndex& idx) const {
+        QStyleOptionViewItem opt;
+        opt.initFrom(this);
+        opt.rect = visualRect(idx);
+        opt.features |= QStyleOptionViewItem::HasCheckIndicator;
+        return style()->subElementRect(QStyle::SE_ItemViewItemCheckIndicator,
+                                       &opt, this);
+    }
+
+    bool press_was_selected_ = false;
+    bool press_on_check_ = false;
 };
 
 // MO2-style status emblems for the plugin list Flags column. MO2 renders a
