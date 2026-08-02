@@ -145,6 +145,7 @@ set(ENGINE_SOURCES
     src/engine/tools/external_tool.cpp
     src/engine/plugin_host/python_loader.cpp
     src/engine/meta/mod_meta.cpp
+    src/engine/overwrite/overwrite_utils.cpp
     src/engine/plugins/esp_header.cpp
     src/engine/plugins/plugin_database.cpp
     src/engine/source/source_provider.cpp
@@ -210,6 +211,10 @@ set(UI_SOURCES
     src/ui/preview/preview_widget.cpp
     src/ui/game_selection/game_card.cpp
     src/ui/game_selection/game_selection_widget.cpp
+    src/ui/overwrite/sync_overwrite_dialog.cpp
+    src/ui/overwrite/move_to_mod_dialog.cpp
+    src/ui/overwrite/overwrite_info_dialog.cpp
+    src/ui/overwrite/query_overwrite_dialog.cpp
 )
 
 # App entry point
@@ -481,6 +486,18 @@ target_include_directories(conflict_test PRIVATE src/)
 target_link_libraries(conflict_test PRIVATE PkgConfig::NLOHMANN_JSON)
 add_test(NAME conflict_test COMMAND conflict_test)
 
+# Overwrite workflow helpers (path mapping, move/sync, clear, sync plan).
+add_executable(overwrite_utils_test tests/engine/overwrite_utils_test.cpp
+    src/engine/overwrite/overwrite_utils.cpp
+    src/engine/index/conflict_engine.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/fs_utils.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(overwrite_utils_test PRIVATE src/)
+target_link_libraries(overwrite_utils_test PRIVATE PkgConfig::NLOHMANN_JSON)
+add_test(NAME overwrite_utils_test COMMAND overwrite_utils_test)
+
 # URL percent-encoding for libcurl (Nexus CDN URLs embed unencoded filenames).
 add_executable(nexus_http_test tests/engine/nexus_http_test.cpp
     src/engine/source/nexus_http.cpp
@@ -641,3 +658,24 @@ target_compile_definitions(plugins_tab_test PRIVATE VERSION="${PROJECT_VERSION}"
 target_link_libraries(plugins_tab_test PRIVATE Qt6::Widgets)
 add_test(NAME plugins_tab_test COMMAND plugins_tab_test)
 set_tests_properties(plugins_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# Overwrite dialogs — offscreen GUI test: QueryOverwriteDialog actions/backup,
+# MoveToModDialog selection, SyncOverwriteDialog combos + targets(), and
+# OverwriteInfoDialog mapping-root protection. Hermetic: throwaway
+# XDG_CONFIG_HOME and /tmp file trees, no network.
+add_executable(overwrite_dialogs_test tests/ui/overwrite_dialogs_test.cpp
+    src/ui/overwrite/sync_overwrite_dialog.cpp
+    src/ui/overwrite/move_to_mod_dialog.cpp
+    src/ui/overwrite/overwrite_info_dialog.cpp
+    src/ui/overwrite/query_overwrite_dialog.cpp
+    src/engine/overwrite/overwrite_utils.cpp
+    src/engine/index/conflict_engine.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/fs_utils.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(overwrite_dialogs_test PRIVATE src/)
+target_link_libraries(overwrite_dialogs_test PRIVATE Qt6::Widgets
+    PkgConfig::NLOHMANN_JSON)
+add_test(NAME overwrite_dialogs_test COMMAND overwrite_dialogs_test)
+set_tests_properties(overwrite_dialogs_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

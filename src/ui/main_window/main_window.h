@@ -167,6 +167,11 @@ private:
     // Context menu helpers
     void clear_overwrite();
     void create_mod_from_overwrite();
+    void move_overwrite_content_to_mod();
+    void sync_overwrite_to_mods();
+    void open_overwrite_in_file_manager();
+    void show_overwrite_info_dialog();
+    void move_dropped_overwrite_files(const QStringList& paths, int mod_row);
     void remove_selected_mods();
     void move_to_separator(const QString& mod_id, const QString& sep_id);
     void send_to_highest_priority(const QString& id);

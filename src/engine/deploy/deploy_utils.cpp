@@ -58,22 +58,32 @@ bool deploy_all_enabled_mods(
         int deployed = 0;
         int failed = 0;
 
+        // Iterate with skip_permission_denied + explicit increment(ec).
+        // A range-for over recursive_directory_iterator throws on the first
+        // permission-denied subdirectory (the increment operator has no ec
+        // overload), aborting the whole deploy with SIGABRT.
         std::error_code iter_ec;
-        for (const auto& file : std::filesystem::recursive_directory_iterator(entry.path(), iter_ec)) {
-            if (iter_ec) {
-                Logger::instance().warn("deploy_all_enabled_mods: error iterating " + folder + ": " + iter_ec.message());
-                iter_ec.clear();
-                break;
+        auto it = std::filesystem::recursive_directory_iterator(
+            entry.path(),
+            std::filesystem::directory_options::skip_permission_denied,
+            iter_ec);
+        auto end = std::filesystem::recursive_directory_iterator();
+        while (it != end && !iter_ec) {
+            const auto& file = *it;
+            if (file.is_regular_file()) {
+                auto rel = std::filesystem::relative(file.path(), entry.path());
+                auto target = deploy_root / rel;
+                std::filesystem::create_directories(target.parent_path(), ec);
+                if (strategy.deploy(file.path(), target)) {
+                    ++deployed;
+                } else {
+                    ++failed;
+                }
             }
-            if (!file.is_regular_file()) continue;
-            auto rel = std::filesystem::relative(file.path(), entry.path());
-            auto target = deploy_root / rel;
-            std::filesystem::create_directories(target.parent_path(), ec);
-            if (strategy.deploy(file.path(), target)) {
-                ++deployed;
-            } else {
-                ++failed;
-            }
+            it.increment(iter_ec);
+        }
+        if (iter_ec) {
+            Logger::instance().warn("deploy_all_enabled_mods: error iterating " + folder + ": " + iter_ec.message());
         }
 
         total_deployed += deployed;

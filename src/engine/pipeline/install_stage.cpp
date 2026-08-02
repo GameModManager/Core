@@ -29,6 +29,17 @@ static bool copy_recursive(const std::filesystem::path& src,
     return true;
 }
 
+// MO2's generateBackupName: "<name>_backup", "<name>_backup1", ... picking the
+// first name that does not already exist.
+static std::filesystem::path generate_backup_name(const std::filesystem::path& dir) {
+    auto backup = dir.string() + "_backup";
+    if (!std::filesystem::exists(backup)) return backup;
+    for (int i = 1;; ++i) {
+        auto candidate = dir.string() + "_backup" + std::to_string(i);
+        if (!std::filesystem::exists(candidate)) return candidate;
+    }
+}
+
 bool InstallStage::execute(Mod& mod, PipelineContext& ctx) {
     // Find staging directory from the mod's files (set by ExtractStage)
     std::filesystem::path staging_dir;
@@ -81,14 +92,62 @@ bool InstallStage::execute(Mod& mod, PipelineContext& ctx) {
         return false;
     }
 
+    // Ask the user how to proceed when the mod folder already exists (MO2's
+    // testOverwrite in installationmanager.cpp): Merge adds files into the
+    // existing folder, Replace deletes it and installs fresh, Rename installs
+    // under a new folder name (re-checked in a loop, since the new name may
+    // also exist), Cancel aborts. Without a callback the headless default is a
+    // silent replace (the behavior before the query dialog existed).
     auto dest_dir = mods_dir / folder_name;
+    while (std::filesystem::exists(dest_dir)) {
+        if (!ctx.overwrite_query_cb) {
+            Logger::instance().warn("InstallStage: mod folder already exists, removing: " +
+                                    dest_dir.string());
+            std::error_code ec;
+            std::filesystem::remove_all(dest_dir, ec);
+            break;
+        }
 
-    // Check if mod already exists
-    if (std::filesystem::exists(dest_dir)) {
-        Logger::instance().warn("InstallStage: mod folder already exists, removing: " +
-                                dest_dir.string());
-        std::error_code ec;
-        std::filesystem::remove_all(dest_dir, ec);
+        auto decision = ctx.overwrite_query_cb(folder_name);
+        if (decision.action == OverwriteAction::Cancel) {
+            Logger::instance().debug("InstallStage: install canceled by user");
+            return false;
+        }
+
+        if (decision.backup) {
+            auto backup_dir = generate_backup_name(dest_dir);
+            Logger::instance().debug("InstallStage: backing up " + dest_dir.string() +
+                                     " to " + backup_dir.string());
+            if (!copy_recursive(dest_dir, backup_dir)) {
+                Logger::instance().error("InstallStage: failed to create backup " +
+                                         backup_dir.string());
+                return false;
+            }
+        }
+
+        if (decision.action == OverwriteAction::Rename) {
+            folder_name = decision.new_name;
+            for (auto& c : folder_name) {
+                if (c == '/' || c == '\\' || c == '\0') c = '_';
+            }
+            if (folder_name.empty()) {
+                Logger::instance().error("InstallStage: rename produced an empty folder name");
+                return false;
+            }
+            dest_dir = mods_dir / folder_name;
+            continue;  // re-check: the new name may also exist
+        }
+
+        if (decision.action == OverwriteAction::Replace) {
+            Logger::instance().warn("InstallStage: replacing existing mod folder " +
+                                    dest_dir.string());
+            std::error_code ec;
+            std::filesystem::remove_all(dest_dir, ec);
+        }
+
+        // Merge (existing folder kept) or Replace (fresh empty folder) both
+        // fall through to the copy below.
+        break;
     }
 
     // Copy extracted files to mods/{folder_name}/

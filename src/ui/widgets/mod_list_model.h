@@ -112,6 +112,7 @@ public:
     [[nodiscard]] bool has_conflicts_within_separator(const QString& mod_id) const;
     void set_selected_mod(const QString& id);
     void set_overwrite_path(const QString& path);
+    [[nodiscard]] QString overwrite_path() const { return overwrite_path_; }
     void ensure_merged_present();
 
 signals:

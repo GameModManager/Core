@@ -39,11 +39,18 @@ public:
 
 signals:
     void files_dropped(const QStringList& paths);
+    // Files/folders dragged out of the Overwrite info dialog onto mod row
+    // `mod_row` (0-based into ModListModel). The view only reports drops it
+    // recognized as living under the Overwrite directory.
+    void overwrite_files_dropped(const QStringList& paths, int mod_row);
 
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dragMoveEvent(QDragMoveEvent* event) override;
     void dropEvent(QDropEvent* event) override;
+
+private:
+    bool is_under_overwrite(const QString& path) const;
 };
 
 }  // namespace ui
