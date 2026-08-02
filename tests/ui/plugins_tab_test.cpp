@@ -26,8 +26,11 @@
 #include "ui/settings/settings.h"
 
 #include <QApplication>
+#include <QStyle>
+#include <QStyleOptionViewItem>
 #include <QTableWidget>
 #include <QTableWidgetItem>
+#include <QTest>
 
 #include <cstdio>
 #include <string>
@@ -269,6 +272,49 @@ int main(int argc, char** argv) {
         table->clearSelection();
         check(tab.selected_plugin_names().isEmpty(),
               "selected_plugin_names empty after clear");
+    }
+
+    // --- Re-click deselection (MO2-style) ---
+    // A plain left click on an already-selected plugin row clears the
+    // selection; clicking an unselected row selects it; clicking the enable
+    // checkbox (column 0's check indicator) keeps the selection.
+    {
+        tab.resize(640, 400);
+        tab.show();
+        QApplication::processEvents();
+        auto* viewport = table->viewport();
+
+        table->clearSelection();
+        table->selectRow(2);
+        check(table->selectionModel()->selectedRows().size() == 1,
+              "prereq: selected plugin before re-click");
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                          table->visualItemRect(table->item(2, 1)).center());
+        check(table->selectionModel()->selectedRows().isEmpty(),
+              "clicking the selected plugin again deselects it");
+
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                          table->visualItemRect(table->item(3, 1)).center());
+        const auto sel = table->selectionModel()->selectedRows();
+        check(sel.size() == 1 && sel[0].row() == 3,
+              "clicking an unselected plugin selects it");
+
+        // Checkbox clicks keep the selection (they toggle enable state, not
+        // selection) — hit the indicator via the same style query the view uses.
+        table->clearSelection();
+        table->selectRow(0);
+        const QRect cell = table->visualItemRect(table->item(0, 0));
+        QStyleOptionViewItem opt;
+        opt.initFrom(table);
+        opt.rect = cell;
+        opt.features |= QStyleOptionViewItem::HasCheckIndicator;
+        const QPoint indicator = table->style()
+            ->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &opt, table)
+            .center();
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, indicator);
+        check(table->selectionModel()->selectedRows().size() == 1,
+              "checkbox click keeps the selection");
+        tab.hide();
     }
 
     std::printf("\n%d passed, %d failed\n", passes, failures);

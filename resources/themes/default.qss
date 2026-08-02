@@ -60,6 +60,14 @@ QToolTip {
     font-size: 10px;
 }
 
+/* -- Right panel -------------------------------- */
+
+/* The Plugins/Saves/Downloads tables in the right panel render Qt's grid
+   lines between rows; drop them so rows read as clean bands. */
+#rightPanel QTableView {
+    gridline-color: transparent;
+}
+
 /* -- Separator rows ------------------------------ */
 
 QWidget#separatorRow {

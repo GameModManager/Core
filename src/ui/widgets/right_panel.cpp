@@ -47,6 +47,9 @@ bool apply_tree_filter(QTreeWidgetItem* item, const QString& text) {
 
 RightPanel::RightPanel(QWidget* parent)
     : QWidget(parent) {
+    // QSS anchor for right-panel-specific rules (e.g. #rightPanel QTableView).
+    setObjectName("rightPanel");
+
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);

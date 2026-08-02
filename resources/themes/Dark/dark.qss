@@ -107,6 +107,11 @@ QTreeView, QListView, QTableView {
   border-width: 1px;
 }
 
+/* Right-panel tables (Plugins/Saves/Downloads): no grid lines between rows. */
+#rightPanel QTableView {
+  gridline-color: transparent;
+}
+
 QAbstractItemView {
   color: $fg;
   background-color: $bgInput;

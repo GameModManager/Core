@@ -22,7 +22,7 @@ else()
     set(GMM_PLATFORM "linux")
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Network LinguistTools)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network Test LinguistTools)
 
 # QtKeychain OS keyring (Secret Service / KWallet / macOS Keychain / Windows
 # Credential Locker) — pulled on every platform that ships it.
@@ -680,7 +680,7 @@ add_executable(plugins_tab_test tests/ui/plugins_tab_test.cpp
 )
 target_include_directories(plugins_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
 target_compile_definitions(plugins_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
-target_link_libraries(plugins_tab_test PRIVATE Qt6::Widgets)
+target_link_libraries(plugins_tab_test PRIVATE Qt6::Widgets Qt6::Test)
 add_test(NAME plugins_tab_test COMMAND plugins_tab_test)
 set_tests_properties(plugins_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
