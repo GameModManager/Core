@@ -4331,24 +4331,16 @@ void MainWindow::restore_app_state() {
     auto main_split = read_ba();
     auto console_split = read_ba();
     auto header_state = read_ba();
+    (void)header_state;  // mod-list header layout is NOT restored from disk:
+                         // a state saved with a different column count shifts
+                         // the old layout (Stretch/Interactive) onto the wrong
+                         // columns. The header always uses the setup in
+                         // setup_mod_view() instead.
 
     if (!geo.isEmpty()) pending_geometry_ = geo;
     if (!win_state.isEmpty()) restoreState(win_state);
     if (main_splitter_ && !main_split.isEmpty()) main_splitter_->restoreState(main_split);
     if (console_splitter_ && !console_split.isEmpty()) console_splitter_->restoreState(console_split);
-    if (mod_view_ && mod_view_->header()) {
-        if (!header_state.isEmpty())
-            mod_view_->header()->restoreState(header_state);
-        // Re-apply desired stretch modes so restoreState doesn't permanently
-        // override them from old sessions. The mod list lost a column when the
-        // Enabled column was removed, so a saved pre-MO2-look state shifts the
-        // old Name/Stretch layout onto Version and freezes it.
-        auto* mod_header = mod_view_->header();
-        mod_header->setSectionResizeMode(ModListModel::Name, QHeaderView::Stretch);
-        mod_header->setSectionResizeMode(ModListModel::Version, QHeaderView::Interactive);
-        mod_header->setSectionResizeMode(ModListModel::Flags, QHeaderView::Interactive);
-        mod_header->setSectionResizeMode(ModListModel::Priority, QHeaderView::Interactive);
-    }
 
     // Restore right panel table header states (column widths, order, visibility)
     auto obj = read_app_state_extra();
