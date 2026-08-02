@@ -5,6 +5,8 @@
 #include <QString>
 #include <QStringList>
 
+#include <optional>
+
 // App-level settings facade. All QSettings access goes through this class so
 // keys stay centralized and typed, mirroring MO2's Settings singleton.
 // Writes are immediate (per-control on change); keys keep their historical
@@ -136,6 +138,11 @@ public:
     // colors -------------------------------------------------------------------
     bool color_separator_scrollbar() const;
     void set_color_separator_scrollbar(bool on);
+    // Remembered color for the next separator (MO2 previousSeparatorColor).
+    // Hidden setting - never shown in the settings dialog.
+    std::optional<QColor> previous_separator_color() const;
+    void set_previous_separator_color(const QColor& c);
+    void remove_previous_separator_color();
     // MO2 mod-list conflict colors; defaults match MO2's colortable.cpp.
     QColor modlist_overwritten_loose() const;    // "Is overwritten (loose files)"
     void set_modlist_overwritten_loose(const QColor& c);

@@ -161,19 +161,18 @@ static std::vector<ScannedMod> scan_impl(
                                 separator_suffix) == 0) {
             mod.is_separator = true;
 
-            // Parse separator.xml for name + color
-            auto sep_xml = entry.path() / "separator.xml";
-            auto sep_content = read_file_text(sep_xml);
-            if (!sep_content.empty()) {
-                auto name = xml_find_tag(sep_content, "name");
-                auto color = xml_find_tag(sep_content, "color");
-                mod.display_name = name.empty()
-                    ? folder_name.substr(0, folder_name.size() - separator_suffix.size())
-                    : name;
-                mod.separator_color = color.empty() ? "#888888" : color;
-            } else {
-                mod.display_name = folder_name.substr(0, folder_name.size() - separator_suffix.size());
-                mod.separator_color = "#888888";
+            // MO2-style separator: the folder is "<name>_separator" and the
+            // display name is the folder minus the suffix (ModList::getDisplayName).
+            // An optional color comes from the meta.ini [General] color key -
+            // the same file MO2's setColor writes. No color means no color.
+            mod.display_name = folder_name.substr(0, folder_name.size() - separator_suffix.size());
+            auto meta_path = entry.path() / "meta.ini";
+            auto meta_content = read_file_text(meta_path);
+            if (!meta_content.empty()) {
+                engine::ModMeta meta;
+                if (meta.parse(meta_content)) {
+                    mod.separator_color = meta.get("General", "color");
+                }
             }
             mod.raw_name = folder_name;
             mods.push_back(std::move(mod));

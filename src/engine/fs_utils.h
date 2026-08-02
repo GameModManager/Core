@@ -4,6 +4,14 @@
 
 namespace engine {
 
+// Sanitize a directory name to be valid on disk (MO2's fixDirectoryName
+// equivalent): Windows-invalid characters (`: < > " ? * | /`, plus `\` on
+// Windows) and non-printable/control characters become '_'; leading dots and
+// trailing dots/spaces are stripped; reserved Windows device names
+// (con, prn, aux, nul, com1-9, lpt1-9) are prefixed with '_'.
+// Returns the sanitized name, or empty if nothing usable remains.
+[[nodiscard]] std::string sanitize_directory_name(std::string name);
+
 // Remove a file or directory from disk.
 //
 // By default the path is moved to the platform trash bin (recoverable).

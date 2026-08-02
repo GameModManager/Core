@@ -223,6 +223,29 @@ int main(int argc, char** argv) {
               "contained highlight survives set_plugins()");
         check(table->item(2, 0)->background().style() == Qt::NoBrush,
               "unhighlighted row stays untinted after set_plugins()");
+
+        // Regression: switching the selected mod must clear the previously
+        // owned plugins' tint (select mod A, then mod B -> A's plugins revert
+        // instead of staying blue/green).
+        tab.set_contained_plugins({QStringLiteral("SkyUI_SE.esp")});
+        check(table->item(2, 0)->background().color() ==
+                  Settings::instance().plugin_list_contained(),
+              "contained set A tints its plugins");
+        tab.set_contained_plugins({QStringLiteral("ccBGSSSE001-Fish.esm")});
+        check(table->item(2, 0)->background().style() == Qt::NoBrush,
+              "switching contained set clears the previous mod's plugins");
+        check(table->item(1, 0)->background().color() ==
+                  Settings::instance().plugin_list_contained(),
+              "new contained set tints the new mod's plugins");
+
+        // Clearing the master set reverts master-only rows to untinted.
+        tab.set_master_plugins({QStringLiteral("Skyrim.esm")});
+        check(table->item(0, 0)->background().color() ==
+                  Settings::instance().plugin_list_master(),
+              "master-only row tinted with plugin_list_master");
+        tab.set_master_plugins({});
+        check(table->item(0, 0)->background().style() == Qt::NoBrush,
+              "cleared master set reverts master-only row");
     }
 
     // selected_plugin_names() reports the selected rows in row order.

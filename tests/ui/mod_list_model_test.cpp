@@ -227,6 +227,105 @@ int main(int argc, char** argv) {
         model.set_highlighted_mods({});
     }
 
+    // --- MO2-parity inline rename (EditRole) + separator colors ---
+    {
+        const int sep_row = row_with_id(model, "Testing_separator");
+        const int mod_row = row_with_id(model, "SkyUI");
+        const int ow_row = row_with_id(model, ui::kOverwriteModId);
+        check(sep_row >= 0 && mod_row >= 0 && ow_row >= 0,
+              "rows located for rename tests");
+
+        // ItemIsEditable on the Name column for separators and regular mods,
+        // never for Overwrite / game-native rows.
+        const auto sep_flags = model.flags(model.index(sep_row, ui::ModListModel::Name));
+        check(sep_flags & Qt::ItemIsEditable, "separator Name cell is editable");
+        const auto mod_flags = model.flags(model.index(mod_row, ui::ModListModel::Name));
+        check(mod_flags & Qt::ItemIsEditable, "mod Name cell is editable");
+        const auto ow_flags = model.flags(model.index(ow_row, ui::ModListModel::Name));
+        check(!(ow_flags & Qt::ItemIsEditable), "Overwrite Name cell is not editable");
+        const int native_row = row_with_id(model, "Skyrim.esm");
+        const auto nat_flags = model.flags(model.index(native_row, ui::ModListModel::Name));
+        check(!(nat_flags & Qt::ItemIsEditable), "game-native Name cell is not editable");
+
+        // setData(EditRole) emits rename_requested with the trimmed name and
+        // does not mutate the row itself (the window handler owns the rename).
+        QString requested;
+        int requested_row = -1;
+        QObject::connect(&model, &ui::ModListModel::rename_requested,
+                         [&](int row, const QString& name) {
+                             requested_row = row;
+                             requested = name;
+                         });
+        check(model.setData(model.index(mod_row, ui::ModListModel::Name),
+                            QStringLiteral("  SkyUI  "), Qt::EditRole),
+              "setData EditRole accepted");
+        check(requested_row == mod_row && requested == QStringLiteral("SkyUI"),
+              "rename_requested carries row + trimmed name");
+        check(model.mods()[mod_row].name == QStringLiteral("SkyUI"),
+              "setData EditRole does not mutate the row");
+
+        // Overwrite / game-native rows reject edits outright.
+        check(!model.setData(model.index(ow_row, ui::ModListModel::Name),
+                             QStringLiteral("x"), Qt::EditRole),
+              "Overwrite rejects EditRole");
+        check(!model.setData(model.index(native_row, ui::ModListModel::Name),
+                             QStringLiteral("x"), Qt::EditRole),
+              "game-native row rejects EditRole");
+
+        // Separators are still not checkable/toggleable.
+        check(!model.setData(model.index(sep_row, ui::ModListModel::Name),
+                             Qt::Checked, Qt::CheckStateRole),
+              "separator rejects CheckStateRole");
+        QObject::disconnect(&model, &ui::ModListModel::rename_requested, nullptr, nullptr);
+    }
+
+    // rename_mod_in_place: keeps the row where it is (id + name updated).
+    {
+        const int before = row_with_id(model, "SkyUI");
+        model.rename_mod_in_place(before, QStringLiteral("SkyUI2"), QStringLiteral("SkyUI2"));
+        check(row_with_id(model, "SkyUI") < 0 && row_with_id(model, "SkyUI2") == before,
+              "rename in place preserves the row position");
+        check(model.mods()[before].name == QStringLiteral("SkyUI2"),
+              "rename in place updates the display name");
+    }
+
+    // set_mod_color / clear_mod_color drive the separator BackgroundRole.
+    {
+        const int sep_row = row_with_id(model, "Testing_separator");
+        const QColor teal(0, 128, 128, 200);
+        model.set_mod_color(QStringLiteral("Testing_separator"), teal);
+        const QVariant bg = model.data(
+            model.index(sep_row, ui::ModListModel::Name), Qt::BackgroundRole);
+        check(bg.canConvert<QBrush>() && bg.value<QBrush>().color() == teal,
+              "set_mod_color tints the separator row");
+        check(model.mods()[sep_row].separator_color == teal.name(QColor::HexArgb),
+              "set_mod_color stores HexArgb in the model entry");
+
+        model.clear_mod_color(QStringLiteral("Testing_separator"));
+        check(model.mods()[sep_row].separator_color.isEmpty(),
+              "clear_mod_color empties the stored color");
+        const QVariant bg2 = model.data(
+            model.index(sep_row, ui::ModListModel::Name), Qt::BackgroundRole);
+        check(bg2.canConvert<QBrush>() &&
+                  bg2.value<QBrush>().color() == QColor(QStringLiteral("#888888")),
+              "cleared separator falls back to the render default");
+    }
+
+    // Settings: previous_separator_color round-trip (MO2 previousSeparatorColor).
+    {
+        Settings::instance().remove_previous_separator_color();
+        check(!Settings::instance().previous_separator_color().has_value(),
+              "previous_separator_color empty by default");
+        const QColor lavender(200, 160, 220, 128);
+        Settings::instance().set_previous_separator_color(lavender);
+        auto stored = Settings::instance().previous_separator_color();
+        check(stored.has_value() && *stored == lavender,
+              "previous_separator_color round-trips through QSettings");
+        Settings::instance().remove_previous_separator_color();
+        check(!Settings::instance().previous_separator_color().has_value(),
+              "previous_separator_color removed");
+    }
+
     std::printf("\n%d passed, %d failed\n", passes, failures);
     return failures ? 1 : 0;
 }

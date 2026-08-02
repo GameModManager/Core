@@ -270,12 +270,20 @@ bool ModListModel::setData(const QModelIndex& index, const QVariant& value, int 
     if (!index.isValid() || index.row() >= mods_.size()) return false;
 
     auto& m = mods_[index.row()];
-    if (m.is_separator || m.is_overwrite || m.is_merged || m.is_game_native) return false;
+    if (m.is_overwrite || m.is_merged || m.is_game_native) return false;
 
     if (role == Qt::CheckStateRole && index.column() == Name) {
+        if (m.is_separator) return false;
         mods_[index.row()].enabled = (value.toInt() == Qt::Checked);
         emit dataChanged(index, index, {Qt::CheckStateRole});
         emit mod_list_changed();
+        return true;
+    }
+
+    // Inline rename (MO2 renameMod): the window handler does the disk rename
+    // synchronously and updates the row; it reverts via dataChanged on failure.
+    if (role == Qt::EditRole && index.column() == Name) {
+        emit rename_requested(index.row(), value.toString().trimmed());
         return true;
     }
     return false;
@@ -301,12 +309,16 @@ Qt::ItemFlags ModListModel::flags(const QModelIndex& index) const {
     if (mod.is_separator) {
         f &= ~Qt::ItemIsUserCheckable;
         f |= Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled;
+        if (index.column() == Name)
+            f |= Qt::ItemIsEditable;
         return f;
     }
 
     if (index.column() == Name) {
-        if (!mod.is_overwrite && !mod.is_merged && !mod.is_game_native)
+        if (!mod.is_overwrite && !mod.is_merged && !mod.is_game_native) {
             f |= Qt::ItemIsUserCheckable;
+            f |= Qt::ItemIsEditable;
+        }
     }
 
     if (mod.is_overwrite || mod.is_merged || mod.is_game_native) {
@@ -503,6 +515,31 @@ void ModListModel::add_separator(const QString& id, const QString& name, const Q
     endInsertRows();
     renumber_priorities();
     emit mod_list_changed();
+}
+
+void ModListModel::rename_mod_in_place(int row, const QString& new_id, const QString& new_name) {
+    if (row < 0 || row >= mods_.size()) return;
+    if (mods_[row].is_overwrite || mods_[row].is_merged) return;
+    mods_[row].id = new_id;
+    mods_[row].name = new_name;
+    emit dataChanged(index(row, Name), index(row, Version), {Qt::DisplayRole, Qt::EditRole});
+    emit mod_list_changed();
+}
+
+void ModListModel::set_mod_color(const QString& id, const QColor& color) {
+    for (int i = 0; i < mods_.size(); ++i) {
+        if (mods_[i].id == id) {
+            mods_[i].separator_color =
+                color.isValid() ? color.name(QColor::HexArgb) : QString();
+            emit dataChanged(index(i, Name), index(i, Priority));
+            emit mod_list_changed();
+            return;
+        }
+    }
+}
+
+void ModListModel::clear_mod_color(const QString& id) {
+    set_mod_color(id, QColor());
 }
 
 void ModListModel::remove_mod(const QString& id) {

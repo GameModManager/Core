@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAbstractTableModel>
+#include <QColor>
 #include <QIcon>
 #include <QSet>
 #include <QVector>
@@ -81,6 +82,13 @@ public:
     void remove_all_mods();
     void move_mod(const QString& id, int new_row);
     void toggle_mod(const QString& id);
+    // In-place rename that keeps the row where it is (id/priority/position
+    // unchanged except the id + display name). MO2 renames the folder on disk,
+    // so the id (folder name) changes too - this just updates the row.
+    void rename_mod_in_place(int row, const QString& new_id, const QString& new_name);
+    // Separator row colors (full-row tint). Invalid QColor clears the color.
+    void set_mod_color(const QString& id, const QColor& color);
+    void clear_mod_color(const QString& id);
     void set_conflict_stats(const QString& id, int wins, int losses);
     void set_conflict_redundant(const QString& id, bool redundant);
     void set_hidden_files(const QString& id, bool has_hidden);
@@ -125,6 +133,10 @@ public:
 
 signals:
     void mod_list_changed();
+    // Emitted by setData(Qt::EditRole) on the Name column. The window handler
+    // performs the disk rename (folder rename + metadata); on failure it must
+    // restore the row and emit dataChanged so the editor is reverted.
+    void rename_requested(int row, const QString& name);
 
 private:
     void ensure_overwrite_present();

@@ -123,8 +123,11 @@ private:
     void export_modlist();
     void import_modlist();
     void create_separator_at_row(int row);
-    void edit_separator(int row);
+    void rename_mod_inline(int row);          // start inline edit on a row's name cell
+    void apply_rename(int row, const QString& name);  // model rename_requested handler
     void delete_separator(int row);
+    void select_color_for_selected();
+    void reset_color_for_selected();
     void save_order();
     void load_order();
     void save_executables();
@@ -189,7 +192,6 @@ private:
     void send_to_lowest_in_separator(const QString& id);
     void priority_move_selected(int step);
     void toggle_selected_mods(bool enabled);
-    void rename_selected_mod();
     void open_source_for_mod(const QString& source_type, const QString& source_id);
     [[nodiscard]] SourceVisitInfo source_visit_info(const QString& source_type, const QString& source_id) const;
 
