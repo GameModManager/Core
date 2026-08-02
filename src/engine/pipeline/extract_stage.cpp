@@ -55,14 +55,18 @@ bool ExtractStage::execute(Mod& mod, PipelineContext& ctx) {
     std::error_code ec;
     std::filesystem::create_directories(staging_dir, ec);
     if (ec) {
-        Logger::instance().error("ExtractStage: failed to create staging dir");
+        Logger::instance().error("ExtractStage: failed to create staging dir " +
+                                 staging_dir.string() + ": " + ec.message());
         return false;
     }
 
     // Extract
     std::vector<ExtractedFile> extracted;
-    if (!ArchiveExtractor::extract(archive_path, staging_dir, extracted)) {
-        Logger::instance().error("ExtractStage: extraction failed");
+    std::string extract_error;
+    if (!ArchiveExtractor::extract(archive_path, staging_dir, extracted, extract_error)) {
+        Logger::instance().error("ExtractStage: extraction failed for " +
+                                 archive_path.string() + " into " +
+                                 staging_dir.string() + ": " + extract_error);
         std::filesystem::remove_all(staging_dir, ec);
         return false;
     }

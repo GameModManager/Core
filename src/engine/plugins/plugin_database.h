@@ -70,8 +70,11 @@ public:
 
     // Load profile state (plugins.txt/loadorder.txt/lockedorder.txt) from
     // <profiles_dir>/<profile_name>/. Returns true when state was applied.
+    // *repaired (optional) is set when the loaded order violated the native/CC
+    // band invariant (a core plugin below user plugins) and was healed.
     bool load_profile(const std::filesystem::path& profiles_dir,
-                      const std::string& profile_name);
+                      const std::string& profile_name,
+                      bool* repaired = nullptr);
 
     // Persist the current state in MO2-compatible files.
     void save_profile(const std::filesystem::path& profiles_dir,
@@ -118,8 +121,22 @@ public:
 private:
     void rebuild_index();
 
+    // Reassert the fixed band invariant: game-native plugins first (declared
+    // order, then any remaining), then Creation Club (ccc order, then any
+    // remaining), then everything else in its current (user/LOOT) relative
+    // order. Returns true when the order was actually changed. Called after
+    // profile order restore and defensively after every move, so a stale or
+    // hand-edited loadorder.txt can never park a core plugin below user ones.
+    bool reassert_band();
+
     // Plugin indices by name for lookup + ordering.
     std::map<std::string, size_t> by_name_;
+    // Lowercased-key index for master lookups. Master names come from TES4
+    // header MAST records, which are byte-exact; plugin names come from
+    // on-disk filenames. Games run on a case-insensitive filesystem
+    // (Windows), so matching must ignore case or a "skyrim.esm" header
+    // reference fails against an on-disk "Skyrim.esm".
+    std::map<std::string, size_t> by_name_ci_;
     std::vector<GamePlugin> plugins_;
 
     // Game-native plugins in the order declared by the game module.

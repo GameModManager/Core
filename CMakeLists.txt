@@ -673,6 +673,21 @@ target_link_libraries(plugins_tab_test PRIVATE Qt6::Widgets)
 add_test(NAME plugins_tab_test COMMAND plugins_tab_test)
 set_tests_properties(plugins_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+# ModListModel — offscreen GUI test: game-native (unmanaged) band enforcement.
+# Covers move_mod() no-op + clamp, drag-source exclusion, and drop clamping so
+# unmanaged mods can never end up below user mods. The load-time band ordering
+# (priority assignment + band-aware sort) lives in MainWindow and is verified
+# manually.
+add_executable(mod_list_model_test tests/ui/mod_list_model_test.cpp
+    src/ui/widgets/mod_list_model.cpp
+    src/ui/settings/settings.cpp
+)
+target_include_directories(mod_list_model_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_compile_definitions(mod_list_model_test PRIVATE VERSION="${PROJECT_VERSION}")
+target_link_libraries(mod_list_model_test PRIVATE Qt6::Widgets)
+add_test(NAME mod_list_model_test COMMAND mod_list_model_test)
+set_tests_properties(mod_list_model_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 # Overwrite dialogs — offscreen GUI test: QueryOverwriteDialog actions/backup,
 # MoveToModDialog selection, SyncOverwriteDialog combos + targets(), and
 # OverwriteInfoDialog mapping-root protection. Hermetic: throwaway
