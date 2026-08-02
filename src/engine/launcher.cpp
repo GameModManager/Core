@@ -157,6 +157,17 @@ static LaunchResult do_launch(const LaunchParams& params) {
         return {};
     }
 
+    // Launch via the canonical (realpath) spelling so the game's own argv /
+    // wine Z: path matches the overlay mountpoint.  The overlay is mounted at
+    // the realpath of game_dir (mount() resolves symlinks), but the instance
+    // path commonly goes through ~/.steam/steam -> ~/.local/share/Steam.  A
+    // walk that crosses that symlink does not enter the namespace-local
+    // overlay mount, so the game would silently see the pristine game dir
+    // with no mods.  Realpath both so both spellings agree.
+    std::error_code ec;
+    auto canonical = fs::canonical(exec_path, ec);
+    if (!ec) exec_path = canonical;
+
     int64_t pid = -1;
 
     // "Output to mod" sessions capture into a per-launch scratch dir instead
