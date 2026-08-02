@@ -15,7 +15,6 @@
 #include <sstream>
 
 namespace engine {
-namespace {
 
 bool is_plugin_file(const std::filesystem::path& p) {
     std::string ext;
@@ -25,6 +24,8 @@ bool is_plugin_file(const std::filesystem::path& p) {
     return ext == ".esm" || ext == ".esp" || ext == ".esl" || ext == ".esh" ||
            ext == ".esu";
 }
+
+namespace {
 
 std::string to_lower(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(),

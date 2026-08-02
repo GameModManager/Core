@@ -303,6 +303,11 @@ MainWindow::MainWindow(QWidget* parent)
         }
     });
 
+    // Mod selection -> highlight the mod's plugins in the plugins list
+    // (union across multi-selection, MO2's highlightPlugins parity).
+    connect(mod_view_->selectionModel(), &QItemSelectionModel::selectionChanged,
+            this, &MainWindow::on_mod_selection_changed);
+
     // Set alternating row colors via palette (dark-theme-aware)
     auto pal = mod_view_->palette();
     auto base = pal.color(QPalette::Base);
@@ -1262,6 +1267,7 @@ void MainWindow::load_mods_from_game() {
             for (const auto& m : scanned)
                 existing.insert(m.folder_name);
 
+            std::unordered_set<std::string> declared_native;
             std::istringstream ss(native_plugins_csv);
             std::string plugin;
             while (std::getline(ss, plugin, ',')) {
@@ -1269,6 +1275,7 @@ void MainWindow::load_mods_from_game() {
                 auto end = plugin.find_last_not_of(" \t");
                 if (start == std::string::npos) continue;
                 plugin = plugin.substr(start, end - start + 1);
+                declared_native.insert(plugin);
                 if (existing.count(plugin)) continue;
 
                 auto plugin_path = native_dir / plugin;
@@ -1281,6 +1288,30 @@ void MainWindow::load_mods_from_game() {
                 native_mod.is_game_native = true;
                 native_mod.enabled = true;
                 scanned.push_back(std::move(native_mod));
+            }
+
+            // Stray plugins dropped straight into the game's Data dir become
+            // synthesized unmanaged rows (MO2's UnmanagedMods behavior) so the
+            // mod<->plugin selection highlight round-trips for files with no
+            // owning mod. A file a mod folder already covers is skipped here -
+            // the ownership join (GamePlugin::owner_mod) decides which row
+            // highlights for shadowed strays instead.
+            std::error_code scan_ec;
+            if (std::filesystem::is_directory(native_dir, scan_ec)) {
+                for (const auto& entry :
+                     std::filesystem::directory_iterator(native_dir, scan_ec)) {
+                    if (!entry.is_regular_file(scan_ec)) continue;
+                    if (!engine::is_plugin_file(entry.path())) continue;
+                    const std::string file = entry.path().filename().string();
+                    if (declared_native.count(file) || existing.count(file)) continue;
+                    engine::ScannedMod stray_mod;
+                    stray_mod.folder_name = file;
+                    stray_mod.display_name = file;
+                    stray_mod.raw_name = file;
+                    stray_mod.is_game_native = true;
+                    stray_mod.enabled = true;
+                    scanned.push_back(std::move(stray_mod));
+                }
             }
         }
     }
@@ -1713,17 +1744,23 @@ void MainWindow::refresh_plugins_tab() {
     auto* pt = right_panel_->plugins_tab();
     if (!pt || !knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) {
         plugins_tab_widget_ = nullptr;
+        plugin_owner_index_.clear();
+        plugin_row_by_name_.clear();
         return;  // game without plugin support (or no tab yet)
     }
     if (pt != plugins_tab_widget_) {  // tab was recreated on game switch
         connect(pt, &ui::PluginsTab::toggle_requested, this, &MainWindow::on_plugin_toggle);
         connect(pt, &ui::PluginsTab::reorder_requested, this, &MainWindow::on_plugin_reorder);
+        connect(pt->table(), &QTableWidget::itemSelectionChanged,
+                this, &MainWindow::on_plugin_selection_changed);
         plugins_tab_widget_ = pt;
     }
 
     const auto game_native = knowledge_->get(current_game_id_, "game_native_plugins", "");
     if (game_native.empty()) {  // tab exists but the module declares no plugin hooks
         plugins_db_ = engine::PluginDatabase{};
+        plugin_owner_index_.clear();
+        plugin_row_by_name_.clear();
         pt->set_plugins({});
         return;
     }
@@ -1751,6 +1788,11 @@ void MainWindow::refresh_plugins_tab() {
     }
     plugins_db_.generate_mod_indexes();
     pt->set_plugins(plugins_db_.plugins());
+    rebuild_plugin_highlight_index();
+    // Rows and the selection indexes were rebuilt; re-apply any highlights the
+    // user still has active.
+    on_mod_selection_changed();
+    on_plugin_selection_changed();
 }
 
 void MainWindow::on_plugin_toggle(const std::string& name, bool enabled) {
@@ -1776,6 +1818,93 @@ void MainWindow::on_plugin_reorder(int from_row, int to_row) {
     }
     plugins_db_.save_profile(profiles_dir_path(), current_profile_name_);
     refresh_plugins_tab();  // repopulate: new order + recomputed priorities/indexes
+}
+
+void MainWindow::rebuild_plugin_highlight_index() {
+    plugin_owner_index_.clear();
+    plugin_row_by_name_.clear();
+    const auto& plugins = plugins_db_.plugins();
+    plugin_row_by_name_.reserve(static_cast<int>(plugins.size()));
+    for (size_t i = 0; i < plugins.size(); ++i) {
+        const auto& p = plugins[i];
+        plugin_row_by_name_.insert(QString::fromStdString(p.name), static_cast<int>(i));
+        if (!p.owner_mod.empty())
+            plugin_owner_index_[QString::fromStdString(p.owner_mod)]
+                .append(QString::fromStdString(p.name));
+    }
+}
+
+void MainWindow::on_mod_selection_changed() {
+    auto* pt = right_panel_ ? right_panel_->plugins_tab() : nullptr;
+    if (!pt || plugin_row_by_name_.isEmpty()) return;
+
+    const auto& mods = mod_model_->mods();
+    QVector<QString> contained;
+    QSet<QString> seen_contained;
+    contained.reserve(plugin_row_by_name_.size());
+
+    const auto rows = mod_view_->selectionModel()->selectedRows();
+    for (const auto& idx : rows) {
+        const int r = idx.row();
+        if (r < 0 || r >= mods.size()) continue;
+        const auto& m = mods[r];
+        if (m.is_separator || m.is_overwrite || m.is_merged) continue;
+
+        // Mods own the plugins whose owner_mod matches their id (MO2's
+        // highlightPlugins, via DirectoryEntry origin - GMM's owner_mod is the
+        // winning origin already).
+        const auto it = plugin_owner_index_.constFind(m.id);
+        if (it != plugin_owner_index_.constEnd()) {
+            for (const auto& name : it.value()) {
+                if (seen_contained.contains(name)) continue;
+                seen_contained.insert(name);
+                contained.append(name);
+            }
+        }
+        // Unmanaged (game-native / stray) mod: its plugin is the game file with
+        // the same name, as long as no mod wins that file.
+        if (m.is_game_native) {
+            const auto nit = plugin_row_by_name_.constFind(m.id);
+            if (nit != plugin_row_by_name_.constEnd()) {
+                const auto& p = plugins_db_.plugins()[nit.value()];
+                if (p.owner_mod.empty() && !seen_contained.contains(m.id)) {
+                    seen_contained.insert(m.id);
+                    contained.append(m.id);
+                }
+            }
+        }
+    }
+    pt->set_contained_plugins(contained);
+}
+
+void MainWindow::on_plugin_selection_changed() {
+    auto* pt = right_panel_ ? right_panel_->plugins_tab() : nullptr;
+    if (!pt) return;
+
+    const QStringList selected = pt->selected_plugin_names();
+    QSet<QString> highlighted_mods;
+    QVector<QString> masters;
+    QSet<QString> seen_masters;
+
+    for (const auto& name : selected) {
+        const auto it = plugin_row_by_name_.constFind(name);
+        if (it == plugin_row_by_name_.constEnd()) continue;
+        const auto& p = plugins_db_.plugins()[it.value()];
+        // Owning mod: owner_mod, or the unmanaged mod row for game-owned files
+        // (MO2's plugin-list selection -> setHighlightedMods).
+        const QString owner =
+            p.owner_mod.empty() ? name : QString::fromStdString(p.owner_mod);
+        highlighted_mods.insert(owner);
+        // Masters of the selected plugin render plugin_list_master.
+        for (const auto& master : p.masters) {
+            const QString m = QString::fromStdString(master);
+            if (!plugin_row_by_name_.contains(m) || seen_masters.contains(m)) continue;
+            seen_masters.insert(m);
+            masters.append(m);
+        }
+    }
+    mod_model_->set_highlighted_mods(highlighted_mods);
+    pt->set_master_plugins(masters);
 }
 
 void MainWindow::on_image_diff_requested(const QString& relative_path) {

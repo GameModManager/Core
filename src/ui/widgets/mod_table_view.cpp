@@ -38,7 +38,6 @@ void ModMarkingScrollBar::set_model(QAbstractItemModel* model) {
 void ModMarkingScrollBar::paintEvent(QPaintEvent* event) {
     QScrollBar::paintEvent(event);
 
-    if (!Settings::instance().color_separator_scrollbar()) return;
     if (!view_ || !view_->model()) return;
 
     QStyleOptionSlider style_option;
@@ -58,6 +57,10 @@ void ModMarkingScrollBar::paintEvent(QPaintEvent* event) {
 
     const qreal scale = static_cast<qreal>(groove.height()) / visible_rows.size();
 
+    // The model gates separator marks behind color_separator_scrollbar(); this
+    // pass draws whatever valid marks it reports (separators and/or
+    // plugin-selected highlights), so highlights are navigable in huge lists
+    // even with separator coloring off.
     QPainter painter(this);
     for (int i = 0; i < visible_rows.size(); ++i) {
         const QVariant color_variant =

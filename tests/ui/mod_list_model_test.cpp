@@ -15,8 +15,10 @@
 //
 // Hermetic: offscreen platform, throwaway XDG_CONFIG_HOME, no network.
 #include "ui/widgets/mod_list_model.h"
+#include "ui/settings/settings.h"
 
 #include <QApplication>
+#include <QBrush>
 #include <QMimeData>
 #include <QModelIndexList>
 
@@ -158,6 +160,72 @@ int main(int argc, char** argv) {
           "native-only drop rejected");
     check(row_with_id(model, "Skyrim.esm") == 0,
           "band intact after rejected drop");
+
+    // --- Plugin-selected mod highlight (MO2 "mod contains selected file") ---
+    {
+        const QColor hl = Settings::instance().modlist_contains_file();
+        model.set_highlighted_mods({QStringLiteral("SkyUI")});
+
+        // Scroll mark role: the highlighted mod returns the color, others none.
+        const int hl_row = row_with_id(model, "SkyUI");
+        const int other_row = row_with_id(model, "Enemy NPCs");
+        const QVariant mark = model.data(
+            model.index(hl_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+        check(mark.canConvert<QColor>() && mark.value<QColor>() == hl,
+              "scroll mark for highlighted mod");
+        const QVariant no_mark = model.data(
+            model.index(other_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+        check(!no_mark.isValid() || !no_mark.value<QColor>().isValid(),
+              "no scroll mark for unhighlighted mod");
+
+        // BackgroundRole: the highlighted row tints.
+        const QVariant bg = model.data(
+            model.index(hl_row, ui::ModListModel::Flags), Qt::BackgroundRole);
+        check(bg.canConvert<QBrush>() && bg.value<QBrush>().color() == hl,
+              "background tint for highlighted mod");
+
+        // Highlight beats the conflict highlight (MO2 markerColor precedence).
+        ui::ConflictPairs pairs;
+        pairs.loses_to << QStringLiteral("SkyUI");
+        model.set_conflict_pairs({{QStringLiteral("Enemy NPCs"), pairs}});
+        model.set_selected_mod(QStringLiteral("Enemy NPCs"));
+        const QVariant conflict_bg = model.data(
+            model.index(hl_row, ui::ModListModel::Flags), Qt::BackgroundRole);
+        check(conflict_bg.canConvert<QBrush>() &&
+                  conflict_bg.value<QBrush>().color() == hl,
+              "plugin highlight beats conflict color");
+
+        // Clearing the highlight reveals the conflict color underneath.
+        model.set_highlighted_mods({});
+        const QVariant after_clear = model.data(
+            model.index(hl_row, ui::ModListModel::Flags), Qt::BackgroundRole);
+        check(after_clear.canConvert<QBrush>() &&
+                  after_clear.value<QBrush>().color() ==
+                      Settings::instance().modlist_overwriting_loose(),
+              "clearing reveals conflict color");
+        model.set_selected_mod({});
+        model.set_conflict_pairs({});
+    }
+
+    // Separator mark gate: with separator coloring off a separator row yields
+    // no mark, while a highlighted mod's mark is independent of it.
+    {
+        Settings::instance().set_color_separator_scrollbar(false);
+        const QVariant sep_mark = model.data(
+            model.index(row_with_id(model, "Testing_separator"), ui::ModListModel::Name),
+            ui::ModListModel::kScrollMarkRole);
+        check(!sep_mark.isValid() || !sep_mark.value<QColor>().isValid(),
+              "separator mark hidden when separator coloring off");
+        model.set_highlighted_mods({QStringLiteral("SkyUI")});
+        const QVariant hl_mark = model.data(
+            model.index(row_with_id(model, "SkyUI"), ui::ModListModel::Name),
+            ui::ModListModel::kScrollMarkRole);
+        check(hl_mark.canConvert<QColor>() &&
+                  hl_mark.value<QColor>() == Settings::instance().modlist_contains_file(),
+              "highlight mark independent of separator coloring");
+        Settings::instance().set_color_separator_scrollbar(true);
+        model.set_highlighted_mods({});
+    }
 
     std::printf("\n%d passed, %d failed\n", passes, failures);
     return failures ? 1 : 0;

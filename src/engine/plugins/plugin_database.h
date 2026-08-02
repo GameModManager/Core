@@ -12,6 +12,11 @@ namespace engine {
 class GameKnowledge;
 class PlatformInterface;
 
+// True for files the game treats as plugins (.esm/.esp/.esl/.esh/.esu),
+// case-insensitively. Shared by the plugin DB and the mod-list stray-plugin
+// scan so both agree on what "a plugin file" means.
+bool is_plugin_file(const std::filesystem::path& p);
+
 // Game plugin list: discovery, load order, enable state, masters, mod
 // indexes, and MO2-compatible plugins.txt / loadorder.txt / lockedorder.txt
 // persistence. A Qt-free port of MO2's PluginList
