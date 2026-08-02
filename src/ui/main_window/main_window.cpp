@@ -65,6 +65,7 @@
 #include "engine/deploy/strategy.h"
 #include "runtime/runtime.h"
 #include "ui/widgets/pipeline_window.h"
+#include "ui/widgets/separator_dialog.h"
 
 #include <QAction>
 #include <algorithm>
@@ -2490,22 +2491,20 @@ QString MainWindow::create_separator_named(const QString& name, const QString& c
 void MainWindow::create_separator() {
     if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return;
 
-    bool ok;
-    auto name = QInputDialog::getText(this, tr("Create Separator"),
-        tr("Separator name:"), QLineEdit::Normal, QString(), &ok);
-    if (!ok || name.trimmed().isEmpty()) return;
+    // Single dialog: name + color picker together (no separate color step).
+    ui::SeparatorDialog dialog(tr("Create Separator"), QString(), QColor("#888888"), this);
+    if (dialog.exec() != QDialog::Accepted) return;
+
+    auto name = dialog.name();
+    if (name.isEmpty()) return;
 
     // Check for duplicate names
-    if (mod_model_->existing_separator_names().contains(name.trimmed())) {
+    if (mod_model_->existing_separator_names().contains(name)) {
         QMessageBox::warning(this, tr("Separator"), tr("A separator with this name already exists."));
         return;
     }
 
-    // Pick color
-    QColor color = QColorDialog::getColor(QColor("#888888"), this, tr("Separator Color"));
-    if (!color.isValid()) return;
-
-    if (create_separator_named(name.trimmed(), color.name()).isEmpty()) {
+    if (create_separator_named(name, dialog.color().name()).isEmpty()) {
         QMessageBox::warning(this, tr("Separator"), tr("Failed to create separator directory."));
     }
 }
@@ -2800,22 +2799,20 @@ void MainWindow::import_modlist() {
 void MainWindow::create_separator_at_row(int row) {
     if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return;
 
-    bool ok;
-    auto name = QInputDialog::getText(this, tr("Create Separator"),
-        tr("Separator name:"), QLineEdit::Normal, QString(), &ok);
-    if (!ok || name.trimmed().isEmpty()) return;
+    // Single dialog: name + color picker together (no separate color step).
+    ui::SeparatorDialog dialog(tr("Create Separator"), QString(), QColor("#888888"), this);
+    if (dialog.exec() != QDialog::Accepted) return;
+
+    auto name = dialog.name();
+    if (name.isEmpty()) return;
 
     // Check for duplicate names
-    if (mod_model_->existing_separator_names().contains(name.trimmed())) {
+    if (mod_model_->existing_separator_names().contains(name)) {
         QMessageBox::warning(this, tr("Separator"), tr("A separator with this name already exists."));
         return;
     }
 
-    // Pick color
-    QColor color = QColorDialog::getColor(QColor("#888888"), this, tr("Separator Color"));
-    if (!color.isValid()) return;
-
-    auto id = create_separator_named(name.trimmed(), color.name());
+    auto id = create_separator_named(name, dialog.color().name());
     if (id.isEmpty()) {
         QMessageBox::warning(this, tr("Separator"), tr("Failed to create separator directory."));
         return;
@@ -2839,27 +2836,26 @@ void MainWindow::edit_separator(int row) {
     auto separator_suffix = knowledge_->get(current_game_id_, "separator_suffix", "_separator");
     if (mods_subpath.empty()) return;
 
-    // Prompt for new name
-    bool ok;
-    auto new_name = QInputDialog::getText(this, tr("Edit Separator"),
-        tr("Separator name:"), QLineEdit::Normal, mod.name, &ok);
-    if (!ok || new_name.trimmed().isEmpty()) return;
+    // Single dialog: name + color picker together (no separate color step).
+    QColor current_color(mod.separator_color.isEmpty() ? "#888888" : mod.separator_color);
+    ui::SeparatorDialog dialog(tr("Edit Separator"), mod.name, current_color, this);
+    if (dialog.exec() != QDialog::Accepted) return;
+
+    auto new_name = dialog.name();
+    if (new_name.isEmpty()) return;
 
     // Check for duplicate names (excluding self)
     auto existing = mod_model_->existing_separator_names();
     existing.removeAll(mod.name);
-    if (existing.contains(new_name.trimmed())) {
+    if (existing.contains(new_name)) {
         QMessageBox::warning(this, tr("Separator"), tr("A separator with this name already exists."));
         return;
     }
 
-    // Pick color
-    QColor current_color(mod.separator_color.isEmpty() ? "#888888" : mod.separator_color);
-    QColor color = QColorDialog::getColor(current_color, this, tr("Separator Color"));
-    if (!color.isValid()) return;
+    QColor color = dialog.color();
 
     auto old_folder = mod.id.toStdString();
-    auto new_folder = new_name.trimmed().toStdString() + separator_suffix;
+    auto new_folder = new_name.toStdString() + separator_suffix;
 
     auto mods_dir = mods_dir_path();
     auto old_path = mods_dir / old_folder;
@@ -2881,7 +2877,7 @@ void MainWindow::edit_separator(int row) {
     if (f) {
         f << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
         f << "<separator>\n";
-        f << "  <name>" << new_name.trimmed().toStdString() << "</name>\n";
+        f << "  <name>" << new_name.toStdString() << "</name>\n";
         f << "  <color>" << color.name().toStdString() << "</color>\n";
         f << "</separator>\n";
     }
@@ -2889,7 +2885,7 @@ void MainWindow::edit_separator(int row) {
     // Update model entry
     loading_ = true;
     mod_model_->remove_mod(mod.id);
-    mod_model_->add_separator(QString::fromStdString(new_folder), new_name.trimmed(), color.name());
+    mod_model_->add_separator(QString::fromStdString(new_folder), new_name, color.name());
     loading_ = false;
 
     save_order();

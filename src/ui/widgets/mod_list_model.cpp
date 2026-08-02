@@ -128,7 +128,9 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
         }
         if (role == Qt::DisplayRole) {
             switch (index.column()) {
-                case Name: return mod.folded ? QString("\u25B6 ") : QString("\u25BC ");
+                // MO2-look: fold arrow is a prefix on the Name cell, followed
+                // by the separator's display name (suffix already stripped).
+                case Name: return (mod.folded ? QString("\u25B6 ") : QString("\u25BC ")) + mod.name;
                 case Version: return QString();
                 case Flags: return QString();  // shown via DecorationRole icon
                 case Priority: return mod.priority;

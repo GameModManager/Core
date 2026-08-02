@@ -86,6 +86,29 @@ int main(int argc, char** argv) {
               row_with_id(model, "Enemy NPCs") == 3,
           "band-first layout");
 
+    // Separator display: the Name cell is the fold arrow + the separator name
+    // (regression: the MO2-look pass dropped the name, leaving only the arrow);
+    // EditRole still carries the raw name for name-based lookups.
+    {
+        ui::ModEntry sep;
+        sep.id = QStringLiteral("Testing_separator");
+        sep.name = QStringLiteral("Testing");
+        sep.enabled = true;
+        sep.is_separator = true;
+        sep.separator_color = "#888888";
+        model.add_separator(sep.id, sep.name, sep.separator_color);
+        int r = row_with_id(model, "Testing_separator");
+        check(r >= 0, "separator row present");
+        if (r >= 0) {
+            QVariant disp = model.data(model.index(r, ui::ModListModel::Name), Qt::DisplayRole);
+            check(disp.isValid() && disp.toString() == QStringLiteral("\u25BC Testing"),
+                  "separator DisplayRole shows arrow + name");
+            QVariant edit = model.data(model.index(r, ui::ModListModel::Name), Qt::EditRole);
+            check(edit.isValid() && edit.toString() == QStringLiteral("Testing"),
+                  "separator EditRole carries raw name");
+        }
+    }
+
     // move_mod(): a game-native source never moves.
     model.move_mod("Skyrim.esm", 4);
     check(row_with_id(model, "Skyrim.esm") == 0 && model.native_band_bottom() == 2,
