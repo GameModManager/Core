@@ -22,6 +22,7 @@
 #include <QMessageBox>
 #include <QPalette>
 #include <QPainter>
+#include <QPixmap>
 #include <QProgressBar>
 #include <QSet>
 #include <QShowEvent>
@@ -185,53 +186,43 @@ protected:
     }
 };
 
-// Render the plugin-type marks as stacked MO2-style badge icons (a cell can
-// only carry one icon, so multiple marks are laid out into a single pixmap,
-// the same trick ModListModel uses for conflict icons). Each badge is a
-// colored rounded rect with the mark text centered on it; the mark list is
-// also kept in the cell tooltip for the full words ("Native" vs "NAT").
-static QIcon plugin_flag_icon(const QStringList& marks) {
-    constexpr int kHeight = 16;
-    constexpr int kGap = 2;
-    QFont font;
-    font.setPixelSize(9);
-    font.setBold(true);
-    const QFontMetrics fm(font);
+// MO2-style status emblems for the plugin list Flags column. MO2 renders a
+// horizontal stack of small emblem icons in that column (PluginList::iconData
+// + GenericIconDelegate); a cell can only carry one icon, so the selected
+// emblems are laid out into a single pixmap, the same trick ModListModel uses
+// for conflict icons. Emblem names mirror MO2's iconData() tokens.
+static QIcon plugin_flag_emblem_icon(const QStringList& marks) {
+    constexpr int kSize = 16;
+    constexpr int kGap = 4;
 
-    QVector<QString> texts;
-    QVector<QColor> colors;
-    QVector<int> widths;
-    int total = 0;
+    static const QString icon_dir =
+        QCoreApplication::applicationDirPath() + "/../resources/icons/";
+    static const QIcon warning(icon_dir + "plugin-warning.png");
+    static const QIcon awaiting(icon_dir + "plugin-awaiting.png");
+    static const QIcon run(icon_dir + "plugin-medium.png");
+
+    QVector<QIcon> icons;
+    icons.reserve(marks.size());
     for (const QString& m : marks) {
-        QColor color;
-        if (m == QLatin1String("ESM"))      color = QColor(0xC0, 0x50, 0x4D);
-        else if (m == QLatin1String("ESL")) color = QColor(0x4C, 0xAF, 0x50);
-        else if (m == QLatin1String("ESH")) color = QColor(0x4A, 0x90, 0xD9);
-        else if (m == QLatin1String("CC"))  color = QColor(0x9C, 0x6B, 0xDE);
-        else if (m == QLatin1String("Native")) color = QColor(0x80, 0x80, 0x80);
-        else                                color = QColor(0x60, 0x60, 0x60);
-        const int w = std::max(kHeight, fm.horizontalAdvance(m) + 6);
-        texts.push_back(m);
-        colors.push_back(color);
-        widths.push_back(w);
-        total += w;
+        if (m == QLatin1String("warning"))
+            icons.push_back(warning);
+        else if (m == QLatin1String("awaiting"))
+            icons.push_back(awaiting);
+        else if (m == QLatin1String("run"))
+            icons.push_back(run);
     }
-    total += std::max(0, static_cast<int>(texts.size()) - 1) * kGap;
+    if (icons.isEmpty()) return {};
 
-    QPixmap pix(total, kHeight);
+    const int total = static_cast<int>(icons.size()) * kSize +
+                      std::max(0, static_cast<int>(icons.size()) - 1) * kGap;
+    QPixmap pix(total, kSize);
     pix.fill(Qt::transparent);
     QPainter p(&pix);
-    p.setRenderHint(QPainter::Antialiasing);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
     int x = 0;
-    for (int i = 0; i < texts.size(); ++i) {
-        const int w = widths[i];
-        p.setPen(Qt::NoPen);
-        p.setBrush(colors[i]);
-        p.drawRoundedRect(x, 0, w, kHeight, 4, 4);
-        p.setFont(font);
-        p.setPen(Qt::white);
-        p.drawText(QRect(x, 0, w, kHeight), Qt::AlignCenter, texts[i]);
-        x += w + kGap;
+    for (const QIcon& icon : icons) {
+        p.drawPixmap(x, 0, kSize, kSize, icon.pixmap(kSize, kSize));
+        x += kSize + kGap;
     }
     p.end();
     return QIcon(pix);
@@ -277,7 +268,6 @@ void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
 
     const QColor missing_color(0xB0, 0x30, 0x30);
     const QColor fixed_color(Qt::gray);
-    const QStringList flag_marks = {"ESL", "ESH", "ESM"};
 
     for (int i = 0; i < static_cast<int>(plugins.size()); ++i) {
         const auto& p = plugins[static_cast<size_t>(i)];
@@ -297,12 +287,26 @@ void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
             nf |= Qt::ItemIsUserCheckable | Qt::ItemIsDragEnabled;
             name->setFlags(nf);
             name->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
-            if (p.missing_master) {
-                QFont f = name->font();
+        }
+        // MO2-style type indication via the name font (PluginList::fontData
+        // parity): bold = master/light extension, italic = light, underline =
+        // medium. Applies to fixed rows too (natives are bold masters).
+        if (p.has_master_ext || p.is_master_flagged || p.has_light_ext ||
+            p.is_light_flagged || p.is_medium_flagged) {
+            QFont f = name->font();
+            if (p.has_master_ext || p.is_master_flagged || p.has_light_ext)
+                f.setBold(true);
+            if (p.is_light_flagged || p.has_light_ext)
                 f.setItalic(true);
-                name->setFont(f);
-                name->setForeground(missing_color);
-            }
+            if (p.is_medium_flagged)
+                f.setUnderline(true);
+            name->setFont(f);
+        }
+        if (p.missing_master) {
+            QFont f = name->font();
+            f.setItalic(true);
+            name->setFont(f);
+            name->setForeground(missing_color);
         }
         QString tip;
         if (!p.owner_mod.empty())
@@ -316,20 +320,36 @@ void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
         if (!tip.isEmpty()) name->setToolTip(tip.trimmed());
         table_->setItem(i, 0, name);
 
-        // Column 1: flags as MO2-style badge icons (mark text in the tooltip).
+        // Column 1: status emblems (MO2's PluginList::iconData parity). MO2
+        // shows: warning (missing masters / problems), awaiting (ESL-flagged
+        // but not .esl), run (medium/ESH). It never icons the plugin *type*
+        // here — that's the name font above.
         QStringList marks;
-        if (p.is_light) marks << flag_marks[0];
-        else if (p.is_medium) marks << flag_marks[1];
-        else if (p.is_master) marks << flag_marks[2];
-        if (p.is_cc) marks << tr("CC");
-        if (p.is_game_native) marks << tr("Native");
+        QStringList reasons;
+        if (p.missing_master) {
+            marks << "warning";
+            reasons << tr("A required master is not installed");
+        }
+        if (p.is_light_flagged && !p.has_light_ext) {
+            marks << "awaiting";
+            reasons << tr("Flagged as light (ESL) but does not use the .esl extension");
+        }
+        if (p.is_medium_flagged) {
+            marks << "run";
+            reasons << tr("Medium plugin (ESH)");
+        }
+        if (p.is_medium_flagged && p.is_light_flagged) {
+            marks << "warning";
+            reasons << tr("Both light and medium flagged — may have mismatched records");
+        }
+        marks.removeDuplicates();
         auto* flags = new QTableWidgetItem;
         Qt::ItemFlags ff = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
         if (!p.force_loaded) ff |= Qt::ItemIsDragEnabled;
         flags->setFlags(ff);
         if (!marks.isEmpty()) {
-            flags->setIcon(plugin_flag_icon(marks));
-            flags->setToolTip(marks.join(" "));
+            flags->setIcon(plugin_flag_emblem_icon(marks));
+            flags->setToolTip(reasons.join("\n"));
         }
         table_->setItem(i, 1, flags);
 
@@ -338,6 +358,7 @@ void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
         Qt::ItemFlags pf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
         if (!p.force_loaded) pf |= Qt::ItemIsDragEnabled;
         prio->setFlags(pf);
+        prio->setTextAlignment(Qt::AlignCenter);
         if (p.force_loaded) prio->setForeground(fixed_color);
         table_->setItem(i, 2, prio);
 
@@ -346,6 +367,7 @@ void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
         Qt::ItemFlags xf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
         if (!p.force_loaded) xf |= Qt::ItemIsDragEnabled;
         idx->setFlags(xf);
+        idx->setTextAlignment(Qt::AlignCenter);
         if (p.force_loaded) idx->setForeground(fixed_color);
         table_->setItem(i, 3, idx);
     }

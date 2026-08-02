@@ -16,14 +16,23 @@ struct GamePlugin {
     std::filesystem::path full_path;  // on-disk source file
     std::vector<std::string> masters;
 
-    bool is_master = false;         // ESM flag (or .esm extension)
-    bool is_light = false;          // ESL flag (or .esl extension)
-    bool is_medium = false;         // ESH flag (or .esh extension)
+    bool is_master_flagged = false;  // ESM header flag (bit 0)
+    bool is_light_flagged = false;   // ESL header flag (bit 9) - Skyrim SE / Fallout 4
+    bool is_medium_flagged = false;  // ESH header flag (bit 10) - Starfield
+    bool has_master_ext = false;     // .esm extension
+    bool has_light_ext = false;      // .esl extension
     bool is_game_native = false;    // vanilla ESM that ships with the game
     bool is_cc = false;             // listed in Skyrim.ccc - the game force-loads it
     bool force_loaded = false;      // always enabled, cannot be toggled
     bool enabled = false;
     bool missing_master = false;    // a required master is absent from the list
+
+    // Type checks: header flag OR extension, matching the flag meaning that
+    // older GMM versions collapsed into a single bool (.esh has no extension
+    // field — it maps straight to is_medium_flagged).
+    [[nodiscard]] bool is_master() const { return is_master_flagged || has_master_ext; }
+    [[nodiscard]] bool is_light() const { return is_light_flagged || has_light_ext; }
+    [[nodiscard]] bool is_medium() const { return is_medium_flagged; }
 
     int priority = -1;              // position in the plugin list (0 = top = most dominant)
     int mod_priority = -1;          // priority of the owning mod (ordering tiebreak)

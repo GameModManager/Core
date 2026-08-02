@@ -5,8 +5,9 @@
 //     checkbox, flags, priority, mod index) in row order,
 //   - force-loaded rows (game-native, CC) show a non-checkable checked box,
 //     are greyed, and have no drag flag,
-//   - the flags column renders MO2-style badge icons with the mark text in the
-//     tooltip,
+//   - the flags column renders MO2-style status emblems (warning for missing
+//     master, awaiting for ESL-flagged-without-.esl) with a reason tooltip,
+//   - the plugin name carries the MO2 type font (bold master, italic light),
 //   - missing-master rows are styled red italic with a tooltip naming the
 //     missing master and the owning mod,
 //   - toggling a checkbox emits toggle_requested(name, enabled),
@@ -64,7 +65,8 @@ int main(int argc, char** argv) {
 
     engine::GamePlugin native;  // game-native: pinned
     native.name = "Skyrim.esm";
-    native.is_master = true;
+    native.is_master_flagged = true;
+    native.has_master_ext = true;
     native.is_game_native = true;
     native.force_loaded = true;
     native.enabled = true;
@@ -79,11 +81,11 @@ int main(int argc, char** argv) {
     cc.priority = 1;
     cc.mod_index_text = "01";
 
-    engine::GamePlugin skyui;  // user-band, light plugin
+    engine::GamePlugin skyui;  // user-band, ESL-flagged but .esp ext ("awaiting")
     skyui.name = "SkyUI_SE.esp";
     skyui.owner_mod = "SkyUI";
     skyui.masters = {"Skyrim.esm"};
-    skyui.is_light = true;
+    skyui.is_light_flagged = true;
     skyui.enabled = true;
     skyui.priority = 2;
     skyui.mod_index_text = "FE:000";
@@ -114,22 +116,26 @@ int main(int argc, char** argv) {
     check(row_with_name(table, "SkyUI_SE.esp") == 2, "mod plugin after CC");
     check(row_with_name(table, "Broken.esp") == 3, "broken plugin last");
 
-    // Flags column: MO2-style badge icons, mark text in the tooltip.
-    check(!table->item(0, 1)->icon().isNull() &&
-              table->item(0, 1)->toolTip() == "ESM Native",
-          "native flags icon + tooltip");
-    check(!table->item(1, 1)->icon().isNull() &&
-              table->item(1, 1)->toolTip() == "CC",
-          "CC flags icon + tooltip");
+    // Flags column: MO2-style status emblems — warning (missing master),
+    // awaiting (ESL-flagged without .esl ext), run (medium/ESH). Type is shown
+    // by the name font, not icons.
+    check(table->item(0, 1)->icon().isNull(), "no emblem for a plain master ESM");
+    check(table->item(1, 1)->icon().isNull(), "no emblem for a CC plugin");
     check(!table->item(2, 1)->icon().isNull() &&
-              table->item(2, 1)->toolTip() == "ESL",
-          "light flags icon + tooltip");
-    check(table->item(3, 1)->icon().isNull(),
-          "no flags icon for plain esp");
+              table->item(2, 1)->toolTip().contains("light (ESL)"),
+          "awaiting emblem for ESL-flagged .esp");
+    check(!table->item(3, 1)->icon().isNull() &&
+              table->item(3, 1)->toolTip().contains("required master"),
+          "warning emblem for missing master");
     check(table->item(0, 2)->text() == "0" && table->item(3, 2)->text() == "3",
           "priority column");
     check(table->item(2, 3)->text() == "FE:000" && table->item(3, 3)->text() == "02",
           "mod index column");
+
+    // MO2-style type font on the name: bold = master/light ext, italic = light.
+    check(table->item(0, 0)->font().bold(), "master ESM name bold");
+    check(table->item(2, 0)->font().italic() && !table->item(2, 0)->font().bold(),
+          "light-flagged name italic, not bold");
 
     // Pinned rows: checked, not user-checkable, greyed, not draggable.
     {
