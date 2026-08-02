@@ -2,8 +2,10 @@
 
 #include <QMainWindow>
 #include <QByteArray>
+#include <QHash>
 #include <QString>
 #include <QStringList>
+#include <QVector>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -163,6 +165,13 @@ private:
     void refresh_plugins_tab();
     void on_plugin_toggle(const std::string& name, bool enabled);
     void on_plugin_reorder(int from_row, int to_row);
+    // Bidirectional selection highlighting (MO2 parity): mod selection marks
+    // the plugins that mod owns (plugin_list_contained); plugin selection
+    // marks the owning mods in the mod list (modlist_contains_file) and the
+    // selected plugins' masters (plugin_list_master).
+    void on_mod_selection_changed();
+    void on_plugin_selection_changed();
+    void rebuild_plugin_highlight_index();
 
     // Context menu helpers
     void clear_overwrite();
@@ -233,6 +242,11 @@ private:
     // game is loaded). Rebuilt on refresh; toggles/moves save the profile.
     engine::PluginDatabase plugins_db_;
     ui::PluginsTab* plugins_tab_widget_ = nullptr;
+    // Selection-highlight indexes, rebuilt once per plugin refresh (O(P)); the
+    // per-selection work is then lookups only, so huge mod lists stay cheap.
+    // owner_mod -> plugin names the mod owns; name -> row in plugins_db_.
+    QHash<QString, QVector<QString>> plugin_owner_index_;
+    QHash<QString, int> plugin_row_by_name_;
     QStringList toolbar_shortcut_paths_;
     std::vector<std::string> saved_executables_;
     std::string pending_nxm_url_;

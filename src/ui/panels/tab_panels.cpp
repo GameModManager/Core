@@ -372,6 +372,7 @@ void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
         table_->setItem(i, 3, idx);
     }
     syncing_ = false;
+    apply_highlights();  // rows were rebuilt; re-tint selected-mod/master rows
 }
 
 void PluginsTab::sync_enabled(const std::vector<engine::GamePlugin>& plugins) {
@@ -384,6 +385,43 @@ void PluginsTab::sync_enabled(const std::vector<engine::GamePlugin>& plugins) {
         item->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
     }
     syncing_ = false;
+}
+
+void PluginsTab::apply_highlights() {
+    const QColor contained_color = Settings::instance().plugin_list_contained();
+    const QColor master_color = Settings::instance().plugin_list_master();
+    for (int i = 0; i < table_->rowCount(); ++i) {
+        if (static_cast<size_t>(i) >= names_.size()) continue;
+        const QString name = QString::fromStdString(names_[static_cast<size_t>(i)]);
+        const bool is_contained = contained_names_.contains(name);
+        const bool is_master = master_names_.contains(name);
+        if (!is_contained && !is_master) continue;
+        // Contained wins over master, matching MO2's PluginList check order.
+        const QBrush brush(is_contained ? contained_color : master_color);
+        for (int c = 0; c < table_->columnCount(); ++c) {
+            if (auto* item = table_->item(i, c)) item->setBackground(brush);
+        }
+    }
+}
+
+void PluginsTab::set_contained_plugins(const QVector<QString>& contained) {
+    contained_names_ = QSet<QString>(contained.begin(), contained.end());
+    apply_highlights();
+}
+
+void PluginsTab::set_master_plugins(const QVector<QString>& masters) {
+    master_names_ = QSet<QString>(masters.begin(), masters.end());
+    apply_highlights();
+}
+
+QStringList PluginsTab::selected_plugin_names() const {
+    QStringList names;
+    if (!table_ || !table_->selectionModel()) return names;
+    const auto rows = table_->selectionModel()->selectedRows();
+    for (const auto& idx : rows) {
+        if (auto* item = table_->item(idx.row(), 0)) names << item->text();
+    }
+    return names;
 }
 
 // --- ArchivesTab ---

@@ -23,6 +23,7 @@
 //
 // Hermetic: offscreen platform, throwaway XDG_CONFIG_HOME, no network.
 #include "ui/panels/tab_panels.h"
+#include "ui/settings/settings.h"
 
 #include <QApplication>
 #include <QTableWidget>
@@ -191,6 +192,61 @@ int main(int argc, char** argv) {
     tab.sync_enabled(plugins);  // revert
     check(table->item(3, 0)->checkState() == Qt::Unchecked,
           "sync_enabled reverts the box");
+
+    // --- Selection highlight (MO2 parity) ---
+    {
+        // Contained: plugins owned by the mod selected in the mod list.
+        tab.set_contained_plugins({QStringLiteral("SkyUI_SE.esp")});
+        check(table->item(2, 0)->background().color() ==
+                  Settings::instance().plugin_list_contained(),
+              "contained row tinted with plugin_list_contained");
+        check(table->item(2, 1)->background().color() ==
+                  Settings::instance().plugin_list_contained(),
+              "contained tint spans columns");
+
+        // Masters: of the plugin selected in the plugin list.
+        tab.set_master_plugins({QStringLiteral("Skyrim.esm")});
+        check(table->item(0, 0)->background().color() ==
+                  Settings::instance().plugin_list_master(),
+              "master row tinted with plugin_list_master");
+
+        // Contained wins over master when a row is both (MO2 check order).
+        tab.set_contained_plugins({QStringLiteral("Skyrim.esm")});
+        check(table->item(0, 0)->background().color() ==
+                  Settings::instance().plugin_list_contained(),
+              "contained beats master for the same row");
+
+        // set_plugins() rebuilds the rows; the highlights must survive.
+        tab.set_plugins(plugins);
+        check(table->item(0, 0)->background().color() ==
+                  Settings::instance().plugin_list_contained(),
+              "contained highlight survives set_plugins()");
+        check(table->item(2, 0)->background().style() == Qt::NoBrush,
+              "unhighlighted row stays untinted after set_plugins()");
+    }
+
+    // selected_plugin_names() reports the selected rows in row order.
+    {
+        table->clearSelection();
+        table->selectRow(2);
+        check(tab.selected_plugin_names() ==
+                  QStringList({QStringLiteral("SkyUI_SE.esp")}),
+              "selected_plugin_names for one row");
+        table->setSelectionMode(QAbstractItemView::ExtendedSelection);
+        table->clearSelection();
+        auto* sm = table->selectionModel();
+        sm->select(table->model()->index(0, 0),
+                   QItemSelectionModel::Select | QItemSelectionModel::Rows);
+        sm->select(table->model()->index(1, 0),
+                   QItemSelectionModel::Select | QItemSelectionModel::Rows);
+        const QStringList sel = tab.selected_plugin_names();
+        check(sel.size() == 2 && sel[0] == QStringLiteral("Skyrim.esm") &&
+                  sel[1] == QStringLiteral("ccBGSSSE001-Fish.esm"),
+              "selected_plugin_names in row order");
+        table->clearSelection();
+        check(tab.selected_plugin_names().isEmpty(),
+              "selected_plugin_names empty after clear");
+    }
 
     std::printf("\n%d passed, %d failed\n", passes, failures);
     return failures ? 1 : 0;

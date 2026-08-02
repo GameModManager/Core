@@ -2,6 +2,7 @@
 
 #include <QAbstractTableModel>
 #include <QIcon>
+#include <QSet>
 #include <QVector>
 
 class QAbstractItemView;
@@ -114,6 +115,10 @@ public:
     [[nodiscard]] const QMap<QString, ConflictPairs>& conflict_pairs() const { return conflict_pairs_; }
     [[nodiscard]] bool has_conflicts_within_separator(const QString& mod_id) const;
     void set_selected_mod(const QString& id);
+    // Mark mods owning a plugin selected in the plugins list (MO2's
+    // "Mod contains selected file" highlight). Rows render modlist_contains_file
+    // and feed the scrollbar marks. Empty set clears.
+    void set_highlighted_mods(const QSet<QString>& ids);
     void set_overwrite_path(const QString& path);
     [[nodiscard]] QString overwrite_path() const { return overwrite_path_; }
     void ensure_merged_present();
@@ -135,6 +140,7 @@ private:
     bool conflict_order_reversed_ = false;
     bool uses_merged_ = false;
     QString selected_mod_id_;
+    QSet<QString> highlighted_mods_;
     QMap<QString, ConflictPairs> conflict_pairs_;
     QString overwrite_path_;
 };

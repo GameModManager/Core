@@ -3,6 +3,7 @@
 #include "engine/plugins/plugin_info.h"
 
 #include <QPoint>
+#include <QSet>
 #include <QString>
 #include <QVector>
 #include <QWidget>
@@ -147,14 +148,31 @@ public:
     // (used to revert a blocked toggle, incl. transitively flipped masters).
     void sync_enabled(const std::vector<engine::GamePlugin>& plugins);
 
+    // MO2 parity. Two independent highlight flags rendered by apply_highlights
+    // (contained wins over master), re-applied by set_plugins() which rebuilds
+    // the rows:
+    //  - set_contained_plugins: plugins owned by the mod selected in the mod
+    //    list -> plugin_list_contained.
+    //  - set_master_plugins: masters of the plugin selected here ->
+    //    plugin_list_master.
+    void set_contained_plugins(const QVector<QString>& contained);
+    void set_master_plugins(const QVector<QString>& masters);
+
+    // Names of the plugins currently selected in the table (row order).
+    [[nodiscard]] QStringList selected_plugin_names() const;
+
 signals:
     void toggle_requested(const std::string& name, bool enabled);
     void reorder_requested(int from_row, int to_row);
 
 private:
+    void apply_highlights();
+
     class PluginTable;
     PluginTable* table_ = nullptr;
     std::vector<std::string> names_;
+    QSet<QString> contained_names_;
+    QSet<QString> master_names_;
     bool syncing_ = false;
 };
 

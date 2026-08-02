@@ -86,9 +86,17 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
     // --- Scroll mark color for the separator-marking scrollbar ---
     if (role == kScrollMarkRole) {
         if (mod.is_separator) {
+            // Separator marks are gated by the "color separator scrollbar"
+            // setting here (the scrollbar itself always draws marks); highlight
+            // marks below are independent of it.
+            if (!Settings::instance().color_separator_scrollbar()) return {};
             QColor bg(mod.separator_color.isEmpty() ? "#888888" : mod.separator_color);
             return bg;
         }
+        // Plugin-selected highlight (MO2 "mod contains selected file") - feeds
+        // the scrollbar mark so highlights are navigable in huge mod lists.
+        if (highlighted_mods_.contains(mod.id))
+            return Settings::instance().modlist_contains_file();
         return {};
     }
 
@@ -238,6 +246,10 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
 
     // Conflict highlight background (mod + overwrite)
     if (role == Qt::BackgroundRole && !mod.is_separator) {
+        // Plugin-selected highlight takes precedence over conflict colors
+        // (MO2's markerColor beats overwrite markers).
+        if (highlighted_mods_.contains(mod.id))
+            return QBrush(Settings::instance().modlist_contains_file());
         if (!selected_mod_id_.isEmpty() && conflict_pairs_.contains(selected_mod_id_)) {
             const auto& pairs = conflict_pairs_[selected_mod_id_];
             if (pairs.wins_against.contains(mod.id))
@@ -773,6 +785,15 @@ void ModListModel::set_selected_mod(const QString& id) {
     if (selected_mod_id_ == id) return;
     selected_mod_id_ = id;
     emit dataChanged(index(0, 0), index(mods_.size() - 1, ColumnCount - 1));
+}
+
+void ModListModel::set_highlighted_mods(const QSet<QString>& ids) {
+    if (highlighted_mods_ == ids) return;
+    highlighted_mods_ = ids;
+    // One dataChanged over the full range repaints the visible rows and the
+    // scrollbar marks (ModMarkingScrollBar listens to dataChanged).
+    emit dataChanged(index(0, 0), index(mods_.size() - 1, ColumnCount - 1),
+                     {Qt::BackgroundRole, kScrollMarkRole});
 }
 
 void ModListModel::set_overwrite_path(const QString& path) {
