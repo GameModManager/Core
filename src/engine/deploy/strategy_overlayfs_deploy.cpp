@@ -19,6 +19,17 @@ bool OverlayFsDeployStrategy::deploy(const std::filesystem::path& source,
         return false;
     }
 
+    // Redeploys write into the same staging dir on every launch, so the target
+    // already exists on the second run.  Clear it first: create_symlink would
+    // otherwise fail with EEXIST and a stale entry (from a removed/renamed mod
+    // file) would linger in the overlay.
+    std::filesystem::remove(target, ec);
+    if (ec) {
+        Logger::instance().error("OverlayFS deploy: failed to clear stale target " +
+            target.string() + ": " + ec.message());
+        return false;
+    }
+
     std::filesystem::create_symlink(source, target, ec);
     if (ec) {
         Logger::instance().error("OverlayFS deploy: failed to symlink " +

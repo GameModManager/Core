@@ -2,6 +2,7 @@
 
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMap>
 #include <QWidget>
 #include <QStringList>
 #include <QTimer>
@@ -28,10 +29,12 @@ signals:
 
 private:
     void refresh_pipeline_indicator();
+    void refresh_nexus_source();
 
     QHBoxLayout* layout_ = nullptr;
     QLabel* status_label_ = nullptr;
     QList<QLabel*> source_labels_;
+    QMap<QString, QLabel*> source_labels_by_name_;
     QLabel* counter_label_ = nullptr;
     QFrame* separator_ = nullptr;
     QToolButton* pipeline_button_ = nullptr;

@@ -50,7 +50,11 @@ struct ConflictPairs {
 class ModListModel : public QAbstractTableModel {
     Q_OBJECT
 public:
-    enum Column { Enabled, Name, Version, Flags, Priority, ColumnCount };
+    enum Column { Name, Version, Flags, Priority, ColumnCount };
+
+    // Custom role for the separator-marking scrollbar; separator rows return
+    // their background QColor, everything else returns an invalid variant.
+    static constexpr int kScrollMarkRole = Qt::UserRole + 1;
 
     explicit ModListModel(QObject* parent = nullptr);
 
@@ -108,6 +112,7 @@ public:
     [[nodiscard]] bool has_conflicts_within_separator(const QString& mod_id) const;
     void set_selected_mod(const QString& id);
     void set_overwrite_path(const QString& path);
+    [[nodiscard]] QString overwrite_path() const { return overwrite_path_; }
     void ensure_merged_present();
 
 signals:

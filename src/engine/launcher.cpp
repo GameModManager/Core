@@ -3,6 +3,7 @@
 #include "engine/log/logger.h"
 #include "engine/overlay_launcher.h"
 #include "engine/preload_interceptor.h"
+#include "platform/platform_interface.h"
 #include "runtime/runtime.h"
 
 #include <algorithm>
@@ -22,6 +23,35 @@
 namespace fs = std::filesystem;
 
 namespace engine {
+
+// Returns true when a live game chain (other than ourselves) shares our
+// launch cgroup.  Used after the OverlayFS wrapper exits during the grace
+// poll: Proton's `waitforexitandrun` hands a Steam game off and exits 0
+// while the game's own processes keep running in the launch cgroup.
+// Falling back would spawn a SECOND game instance.
+static bool game_chain_alive_in_cgroup() {
+    std::ifstream f("/proc/self/cgroup");
+    std::string line, rel;
+    while (std::getline(f, line)) {
+        auto colon = line.find(':');
+        if (colon == std::string::npos) continue;
+        auto slash = line.find(':', colon + 1);
+        if (slash == std::string::npos) continue;
+        rel = line.substr(slash + 1);
+        break;
+    }
+    // Only trust the check when the launch actually joined a GMM cgroup
+    // (delegation was available).  Otherwise the ambient cgroup is shared
+    // with unrelated processes and would produce a false positive.
+    if (rel.find("/gmm-") == std::string::npos) return false;
+
+    std::ifstream procs("/sys/fs/cgroup" + rel + "/cgroup.procs");
+    int64_t pid;
+    while (procs >> pid) {
+        if (pid != getpid()) return true;
+    }
+    return false;
+}
 
 static LaunchResult do_launch(const LaunchParams& params);
 
@@ -105,6 +135,9 @@ LaunchResult launch_game(const LaunchParams& params) {
 
     result.pid = static_cast<int64_t>(supervisor);
     result.cgroup_path = cgroup.path;
+    Logger::instance().debug(
+        "launch_game spawned supervisor PID " + std::to_string(supervisor) +
+        (cgroup.path.empty() ? "" : " (cgroup " + cgroup.path + ")"));
     return result;
 
 #else
@@ -124,6 +157,17 @@ static LaunchResult do_launch(const LaunchParams& params) {
         return {};
     }
 
+    // Launch via the canonical (realpath) spelling so the game's own argv /
+    // wine Z: path matches the overlay mountpoint.  The overlay is mounted at
+    // the realpath of game_dir (mount() resolves symlinks), but the instance
+    // path commonly goes through ~/.steam/steam -> ~/.local/share/Steam.  A
+    // walk that crosses that symlink does not enter the namespace-local
+    // overlay mount, so the game would silently see the pristine game dir
+    // with no mods.  Realpath both so both spellings agree.
+    std::error_code ec;
+    auto canonical = fs::canonical(exec_path, ec);
+    if (!ec) exec_path = canonical;
+
     int64_t pid = -1;
 
     // "Output to mod" sessions capture into a per-launch scratch dir instead
@@ -140,9 +184,9 @@ static LaunchResult do_launch(const LaunchParams& params) {
         Logger::instance().debug("OverlayFS launcher: supported, trying overlay launch");
 
         if (params.is_windows_exe) {
-            auto proton = ProtonRuntime::find_proton_binary(params.steam_appid);
+            auto proton = ProtonRuntime::find_proton_binary(params.platform, params.steam_appid);
             if (!proton.empty()) {
-                ProtonRuntime::prepare_proton_environment(params.game_dir, params.steam_appid);
+                ProtonRuntime::prepare_proton_environment(params.platform, params.game_dir, params.steam_appid);
                 std::vector<std::string> ovl_args = {
                     proton.string(), "waitforexitandrun", exec_path.string()
                 };
@@ -163,6 +207,18 @@ static LaunchResult do_launch(const LaunchParams& params) {
                 "Launched inside OverlayFS overlay. All writes go to " +
                 capture_dir.string());
             return {pid, true};
+        }
+
+        // The Proton wrapper (`proton waitforexitandrun <game>`) can exit 0
+        // during the grace poll after handing the game off to Steam, while the
+        // game's own processes keep running in the launch cgroup. Falling back
+        // would start a SECOND game instance (double-launch). If the game chain
+        // is still alive in the cgroup, treat the overlay attempt as a success.
+        if (game_chain_alive_in_cgroup()) {
+            Logger::instance().debug(
+                "OverlayFS wrapper exited but game processes remain in the launch "
+                "cgroup - treating as launched (no fallback, avoiding double-launch)");
+            return {getpid(), true};
         }
         Logger::instance().error("OverlayFS launcher returned failure, falling back");
     } else {
@@ -194,7 +250,7 @@ static LaunchResult do_launch(const LaunchParams& params) {
     {
         std::unique_ptr<Runtime> runtime;
         if (params.is_windows_exe)
-            runtime = std::make_unique<ProtonRuntime>();
+            runtime = std::make_unique<ProtonRuntime>(params.platform);
         if (!runtime)
             runtime = std::make_unique<NativeRuntime>();
 

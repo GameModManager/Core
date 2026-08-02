@@ -1,12 +1,18 @@
 #include "ui/panels/tab_panels.h"
+#include "ui/settings/settings.h"
+
+#include <algorithm>
 
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
 #include <QColor>
-#include <QDesktopServices>
+#include <QDesktopServices>#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QFileIconProvider>
 #include <QFileInfo>
+#include <QFont>
+#include <QFontMetrics>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QJsonArray>
@@ -15,11 +21,14 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QPalette>
+#include <QPainter>
+#include <QPixmap>
 #include <QProgressBar>
 #include <QSet>
-#include <QSettings>
+#include <QShowEvent>
 #include <QStyle>
 #include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QTreeWidget>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -72,6 +81,7 @@ static QString state_label(DownloadState s) {
         case DownloadState::Complete:    return QCoreApplication::translate("DownloadsTab", "Install");
         case DownloadState::Installed:   return QCoreApplication::translate("DownloadsTab", "Installed");
         case DownloadState::Failed:      return QCoreApplication::translate("DownloadsTab", "Failed");
+        case DownloadState::Removed:     return QCoreApplication::translate("DownloadsTab", "Removed");
     }
     return QCoreApplication::translate("DownloadsTab", "Unknown");
 }
@@ -130,19 +140,265 @@ void sort_dirs_first(QTreeWidgetItem* parent) {
 }  // anonymous namespace
 
 // --- PluginsTab ---
+
+// Table subclass that turns a drop between rows into a reorder request
+// instead of letting Qt's default InternalMove rearrange items (whose order
+// would then drift from the engine's). The engine repopulates on reorder.
+// Defined at namespace scope (NOT in an anonymous namespace) so the qualified
+// name matches the forward declaration in the header.
+class PluginsTab::PluginTable : public QTableWidget {
+public:
+    using QTableWidget::QTableWidget;
+
+    // Invoked with (from_row, to_row) when a valid reorder drop happens.
+    std::function<void(int, int)> on_reorder;
+
+protected:
+    void dropEvent(QDropEvent* event) override {
+        // The dragged row. Because the base dropEvent is never called (the
+        // engine repopulates instead), the model isn't mutated during the
+        // drag, so currentRow() still points at the row the user grabbed.
+        const int from = currentRow();
+        if (from < 0) {
+            event->ignore();
+            return;
+        }
+        const QModelIndex idx = indexAt(event->position().toPoint());
+        int to;
+        switch (dropIndicatorPosition()) {
+            case QAbstractItemView::AboveItem:
+            case QAbstractItemView::OnItem:
+                to = idx.isValid() ? idx.row() : rowCount() - 1;
+                break;
+            case QAbstractItemView::BelowItem:
+                to = idx.isValid() ? idx.row() + 1 : rowCount() - 1;
+                break;
+            default:  // OnViewport
+                to = rowCount() - 1;
+                break;
+        }
+        if (from == to || from + 1 == to) {  // no-op (incl. drop right below itself)
+            event->accept();
+            return;
+        }
+        if (on_reorder) on_reorder(from, to);
+        event->accept();  // base dropEvent is NOT called: MainWindow repopulates
+    }
+};
+
+// MO2-style status emblems for the plugin list Flags column. MO2 renders a
+// horizontal stack of small emblem icons in that column (PluginList::iconData
+// + GenericIconDelegate); a cell can only carry one icon, so the selected
+// emblems are laid out into a single pixmap, the same trick ModListModel uses
+// for conflict icons. Emblem names mirror MO2's iconData() tokens.
+static QIcon plugin_flag_emblem_icon(const QStringList& marks) {
+    constexpr int kSize = 16;
+    constexpr int kGap = 4;
+
+    static const QString icon_dir =
+        QCoreApplication::applicationDirPath() + "/../resources/icons/";
+    static const QIcon warning(icon_dir + "plugin-warning.png");
+    static const QIcon awaiting(icon_dir + "plugin-awaiting.png");
+    static const QIcon run(icon_dir + "plugin-medium.png");
+
+    QVector<QIcon> icons;
+    icons.reserve(marks.size());
+    for (const QString& m : marks) {
+        if (m == QLatin1String("warning"))
+            icons.push_back(warning);
+        else if (m == QLatin1String("awaiting"))
+            icons.push_back(awaiting);
+        else if (m == QLatin1String("run"))
+            icons.push_back(run);
+    }
+    if (icons.isEmpty()) return {};
+
+    const int total = static_cast<int>(icons.size()) * kSize +
+                      std::max(0, static_cast<int>(icons.size()) - 1) * kGap;
+    QPixmap pix(total, kSize);
+    pix.fill(Qt::transparent);
+    QPainter p(&pix);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
+    int x = 0;
+    for (const QIcon& icon : icons) {
+        p.drawPixmap(x, 0, kSize, kSize, icon.pixmap(kSize, kSize));
+        x += kSize + kGap;
+    }
+    p.end();
+    return QIcon(pix);
+}
+
+QTableWidget* PluginsTab::table() const {
+    return table_;
+}
+
 PluginsTab::PluginsTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    table_ = make_table(3, {tr("Plugin"), tr("Status"), tr("Masters")}, this);
+    table_ = new PluginTable(0, 4, this);
+    table_->setHorizontalHeaderLabels(
+        {tr("Plugin Name"), tr("Flags"), tr("Priority"), tr("Mod Index")});
+    table_->horizontalHeader()->setStretchLastSection(true);
+    table_->verticalHeader()->setVisible(false);
+    table_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table_->setAlternatingRowColors(true);
+    // Drag-reorder within the user band only; fixed rows are not draggable.
+    table_->setDragDropMode(QAbstractItemView::InternalMove);
+    table_->setDefaultDropAction(Qt::MoveAction);
+    table_->setDragDropOverwriteMode(false);
+    table_->setDropIndicatorShown(true);
+    table_->on_reorder = [this](int from, int to) { emit reorder_requested(from, to); };
+    connect(table_, &QTableWidget::itemChanged, this, [this](QTableWidgetItem* item) {
+        if (syncing_ || !item || item->column() != 0) return;
+        const int row = item->row();
+        if (row < 0 || row >= static_cast<int>(names_.size())) return;
+        emit toggle_requested(names_[static_cast<size_t>(row)],
+                              item->checkState() == Qt::Checked);
+    });
     layout->addWidget(table_);
+}
+
+void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
+    syncing_ = true;
+    table_->setRowCount(0);
+    names_.clear();
+    names_.reserve(plugins.size());
+    table_->setRowCount(static_cast<int>(plugins.size()));
+
+    const QColor missing_color(0xB0, 0x30, 0x30);
+    const QColor fixed_color(Qt::gray);
+
+    for (int i = 0; i < static_cast<int>(plugins.size()); ++i) {
+        const auto& p = plugins[static_cast<size_t>(i)];
+        names_.push_back(p.name);
+
+        // Column 0: name with the enable checkbox folded into the cell
+        // (MO2-style). Fixed rows show a checked box that cannot be toggled;
+        // missing-master rows can still be checked but the engine rejects the
+        // enable with a message.
+        auto* name = new QTableWidgetItem(QString::fromStdString(p.name));
+        Qt::ItemFlags nf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
+        if (p.force_loaded) {
+            name->setFlags(nf);  // no checkable, no drag: pinned
+            name->setCheckState(Qt::Checked);
+            name->setForeground(fixed_color);
+        } else {
+            nf |= Qt::ItemIsUserCheckable | Qt::ItemIsDragEnabled;
+            name->setFlags(nf);
+            name->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
+        }
+        // MO2-style type indication via the name font (PluginList::fontData
+        // parity): bold = master/light extension, italic = light, underline =
+        // medium. Applies to fixed rows too (natives are bold masters).
+        if (p.has_master_ext || p.is_master_flagged || p.has_light_ext ||
+            p.is_light_flagged || p.is_medium_flagged) {
+            QFont f = name->font();
+            if (p.has_master_ext || p.is_master_flagged || p.has_light_ext)
+                f.setBold(true);
+            if (p.is_light_flagged || p.has_light_ext)
+                f.setItalic(true);
+            if (p.is_medium_flagged)
+                f.setUnderline(true);
+            name->setFont(f);
+        }
+        if (p.missing_master) {
+            QFont f = name->font();
+            f.setItalic(true);
+            name->setFont(f);
+            name->setForeground(missing_color);
+        }
+        QString tip;
+        if (!p.owner_mod.empty())
+            tip += tr("Installed by: %1\n").arg(QString::fromStdString(p.owner_mod));
+        if (!p.masters.empty()) {
+            QStringList m;
+            for (const auto& master : p.masters) m << QString::fromStdString(master);
+            tip += tr("Masters: %1\n").arg(m.join(", "));
+        }
+        if (p.missing_master) tip += tr("A required master is not installed.");
+        if (!tip.isEmpty()) name->setToolTip(tip.trimmed());
+        table_->setItem(i, 0, name);
+
+        // Column 1: status emblems (MO2's PluginList::iconData parity). MO2
+        // shows: warning (missing masters / problems), awaiting (ESL-flagged
+        // but not .esl), run (medium/ESH). It never icons the plugin *type*
+        // here — that's the name font above.
+        QStringList marks;
+        QStringList reasons;
+        if (p.missing_master) {
+            marks << "warning";
+            reasons << tr("A required master is not installed");
+        }
+        if (p.is_light_flagged && !p.has_light_ext) {
+            marks << "awaiting";
+            reasons << tr("Flagged as light (ESL) but does not use the .esl extension");
+        }
+        if (p.is_medium_flagged) {
+            marks << "run";
+            reasons << tr("Medium plugin (ESH)");
+        }
+        if (p.is_medium_flagged && p.is_light_flagged) {
+            marks << "warning";
+            reasons << tr("Both light and medium flagged — may have mismatched records");
+        }
+        marks.removeDuplicates();
+        auto* flags = new QTableWidgetItem;
+        Qt::ItemFlags ff = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
+        if (!p.force_loaded) ff |= Qt::ItemIsDragEnabled;
+        flags->setFlags(ff);
+        if (!marks.isEmpty()) {
+            flags->setIcon(plugin_flag_emblem_icon(marks));
+            flags->setToolTip(reasons.join("\n"));
+        }
+        table_->setItem(i, 1, flags);
+
+        // Column 2: priority.
+        auto* prio = new QTableWidgetItem(QString::number(p.priority));
+        Qt::ItemFlags pf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
+        if (!p.force_loaded) pf |= Qt::ItemIsDragEnabled;
+        prio->setFlags(pf);
+        prio->setTextAlignment(Qt::AlignCenter);
+        if (p.force_loaded) prio->setForeground(fixed_color);
+        table_->setItem(i, 2, prio);
+
+        // Column 3: mod index.
+        auto* idx = new QTableWidgetItem(QString::fromStdString(p.mod_index_text));
+        Qt::ItemFlags xf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
+        if (!p.force_loaded) xf |= Qt::ItemIsDragEnabled;
+        idx->setFlags(xf);
+        idx->setTextAlignment(Qt::AlignCenter);
+        if (p.force_loaded) idx->setForeground(fixed_color);
+        table_->setItem(i, 3, idx);
+    }
+    syncing_ = false;
+}
+
+void PluginsTab::sync_enabled(const std::vector<engine::GamePlugin>& plugins) {
+    syncing_ = true;
+    const int rows = std::min(static_cast<int>(plugins.size()), table_->rowCount());
+    for (int i = 0; i < rows; ++i) {
+        const auto& p = plugins[static_cast<size_t>(i)];
+        QTableWidgetItem* item = table_->item(i, 0);
+        if (!item || p.force_loaded) continue;
+        item->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
+    }
+    syncing_ = false;
 }
 
 // --- ArchivesTab ---
 ArchivesTab::ArchivesTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    table_ = make_table(3, {tr("Archive"), tr("Size"), tr("Priority")}, this);
-    layout->addWidget(table_);
+    tree_ = new QTreeWidget(this);
+    tree_->setColumnCount(1);
+    tree_->setHeaderHidden(true);
+    tree_->setRootIsDecorated(false);
+    tree_->setAlternatingRowColors(true);
+    tree_->setSelectionMode(QAbstractItemView::SingleSelection);
+    tree_->setIconSize(QSize(16, 16));
+    tree_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    layout->addWidget(tree_, 1);
 }
 
 // --- DataTab ---
@@ -273,7 +529,7 @@ void DataTab::show_data(
 SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    table_ = make_table(3, {tr("Save"), tr("Date"), tr("Size")}, this);
+    table_ = make_table(2, {tr("Name"), tr("File")}, this);
     layout->addWidget(table_);
 }
 
@@ -299,13 +555,11 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     connect(table_, &QTableWidget::customContextMenuRequested,
             this, &DownloadsTab::on_custom_context_menu);
     connect(hide_installed_, &QCheckBox::toggled, this, [this](bool checked) {
-        QSettings settings("GameModManager", "GameModManager");
-        settings.setValue("downloads/hide_installed", checked);
+        Settings::instance().set_hide_installed_downloads(checked);
         apply_installed_filter();
     });
 
-    QSettings settings("GameModManager", "GameModManager");
-    hide_installed_->setChecked(settings.value("downloads/hide_installed", false).toBool());
+    hide_installed_->setChecked(Settings::instance().hide_installed_downloads());
 }
 
 void DownloadsTab::add_download(const std::string& id, const std::string& name,
@@ -408,7 +662,7 @@ void DownloadsTab::update_progress(const std::string& id, int64_t downloaded,
 }
 
 void DownloadsTab::replace_bar_with_label(const std::string& id, const QString& text,
-                                           const QColor& bg) {
+                                           const QColor& bg, const QColor& fg) {
     auto& entry = entry_for(id);
     if (entry.row < 0) return;
 
@@ -420,10 +674,10 @@ void DownloadsTab::replace_bar_with_label(const std::string& id, const QString& 
     auto* item = new QTableWidgetItem(text);
     item->setFlags(item->flags() & ~Qt::ItemIsEditable);
     item->setTextAlignment(Qt::AlignCenter);
-    if (bg.isValid()) {
+    if (bg.isValid())
         item->setBackground(bg);
-        item->setForeground(Qt::white);
-    }
+    if (fg.isValid())
+        item->setForeground(fg);
     table_->setItem(entry.row, 2, item);
 }
 
@@ -432,8 +686,13 @@ void DownloadsTab::mark_complete(const std::string& id, bool success) {
     if (entry.row < 0) return;
 
     entry.state = success ? DownloadState::Complete : DownloadState::Failed;
-    QColor bg = success ? QColor("#4CAF50") : QColor("#f44336");
-    replace_bar_with_label(id, state_label(entry.state), bg);
+    if (success) {
+        // Done: normal background, green "Install" text.
+        replace_bar_with_label(id, state_label(entry.state), QColor(), QColor("#4CAF50"));
+    } else {
+        replace_bar_with_label(id, state_label(entry.state),
+                               QColor("#f44336"), QColor(Qt::white));
+    }
 
     // Show final archive size
     if (entry.total_size > 0) {
@@ -446,7 +705,7 @@ void DownloadsTab::mark_installed(const std::string& id) {
     if (entry.row < 0) return;
 
     entry.state = DownloadState::Installed;
-    replace_bar_with_label(id, tr("Installed"), QColor());
+    replace_bar_with_label(id, tr("Installed"), QColor(), QColor());
 
     // Show final archive size
     if (entry.total_size > 0) {
@@ -462,7 +721,7 @@ void DownloadsTab::mark_paused(const std::string& id) {
     if (entry.row < 0) return;
 
     entry.state = DownloadState::Paused;
-    replace_bar_with_label(id, tr("Paused"), QColor("#FF9800"));
+    replace_bar_with_label(id, tr("Paused"), QColor("#FF9800"), QColor(Qt::white));
 }
 
 void DownloadsTab::mark_downloading(const std::string& id) {
@@ -498,6 +757,72 @@ void DownloadsTab::set_file_path(const std::string& id, const std::filesystem::p
 
 void DownloadsTab::set_downloads_dir(const std::filesystem::path& dir) {
     downloads_dir_ = dir;
+    scan_downloads_dir();
+}
+
+void DownloadsTab::showEvent(QShowEvent* event) {
+    QWidget::showEvent(event);
+    // Re-scan so archives dropped into the downloads dir while the app is
+    // running appear in the list.
+    scan_downloads_dir();
+}
+
+bool DownloadsTab::has_active_download() const {
+    for (const auto& [id, entry] : downloads_) {
+        (void)id;
+        if (entry.state == DownloadState::Downloading ||
+            entry.state == DownloadState::Paused)
+            return true;
+    }
+    return false;
+}
+
+void DownloadsTab::scan_downloads_dir() {
+    if (downloads_dir_.empty()) return;
+    // While a download is downloading or paused its partial archive sits in
+    // the dir under its final name; don't surface it as a "Complete" entry.
+    if (has_active_download()) return;
+
+    static const std::vector<std::string> kArchiveExts = {
+        ".zip", ".7z", ".tar", ".rar", ".gz", ".bz2", ".xz", ".fomod"};
+
+    std::error_code ec;
+    std::filesystem::directory_iterator it(downloads_dir_, ec);
+    if (ec) return;
+    for (const auto& entry : it) {
+        if (!entry.is_regular_file(ec)) continue;
+        const auto path = entry.path();
+
+        std::string lower;
+        for (char c : path.extension().string())
+            lower.push_back(static_cast<char>(std::tolower(
+                static_cast<unsigned char>(c))));
+        if (std::find(kArchiveExts.begin(), kArchiveExts.end(), lower) ==
+            kArchiveExts.end())
+            continue;
+
+        const auto id = path.filename().string();
+        if (downloads_.count(id)) continue;
+
+        // Skip archives that already back a tracked entry under a different
+        // key (Nexus downloads use "<mod_id>-<file_id>", not the filename).
+        bool tracked = false;
+        for (const auto& [eid, e] : downloads_) {
+            (void)eid;
+            if (e.file_path == path) {
+                tracked = true;
+                break;
+            }
+        }
+        if (tracked) continue;
+
+        add_download(id, path.stem().string(), tr("Manual").toStdString(), path);
+        auto& added = downloads_.at(id);
+        added.total_size = static_cast<int64_t>(entry.file_size(ec));
+        if (ec) added.total_size = 0;
+        mark_complete(id, true);
+    }
+    apply_installed_filter();
 }
 
 void DownloadsTab::apply_installed_filter() {
@@ -744,16 +1069,22 @@ void DownloadsTab::deserialize(const std::string& json,
             entry.size_item->setFlags(entry.size_item->flags() & ~Qt::ItemIsEditable);
             table_->setItem(entry.row, 3, entry.size_item);
 
-            QColor bg;
-            if (state == DownloadState::Complete) bg = QColor("#4CAF50");
-            else if (state == DownloadState::Failed) bg = QColor("#f44336");
+            QColor bg, fg;
+            if (state == DownloadState::Complete) {
+                fg = QColor("#4CAF50");
+            } else if (state == DownloadState::Failed) {
+                bg = QColor("#f44336");
+                fg = QColor(Qt::white);
+            } else if (state == DownloadState::Removed) {
+                fg = QColor("#B8860B");
+            }
             auto* item = new QTableWidgetItem(state_label(state));
             item->setFlags(item->flags() & ~Qt::ItemIsEditable);
             item->setTextAlignment(Qt::AlignCenter);
-            if (bg.isValid()) {
+            if (bg.isValid())
                 item->setBackground(bg);
-                item->setForeground(Qt::white);
-            }
+            if (fg.isValid())
+                item->setForeground(fg);
             table_->setItem(entry.row, 2, item);
         }
 

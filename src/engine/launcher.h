@@ -7,12 +7,19 @@
 
 namespace engine {
 
+class PlatformInterface;
+
 struct LaunchParams {
     std::filesystem::path executable;
     std::filesystem::path game_dir;
     std::filesystem::path overwrite_dir;
     uint32_t steam_appid = 0;
     bool is_windows_exe = false;
+
+    // Platform services (Steam/Proton discovery, prefix resolution, user dirs).
+    // All platform-specific path resolution in the launch path goes through this.
+    // Null = platform services unavailable (discovery returns empty, no Proton).
+    const PlatformInterface* platform = nullptr;
 
     // Transient per-session capture dir for "Output to mod" launches. When
     // non-empty, all game writes are captured here instead of overwrite_dir,

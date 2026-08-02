@@ -20,21 +20,60 @@ Instance Instance::installed(const std::string& name,
     return inst;
 }
 
+Instance Instance::from_root(const std::filesystem::path& root) {
+    Instance inst;
+    inst.info_.root = root;
+    return inst;
+}
+
 std::filesystem::path Instance::path_for(InstanceKind kind) const {
     switch (kind) {
-        case InstanceKind::Mods:             return info_.root / "mods";
-        case InstanceKind::Profiles:         return info_.root / "profiles";
-        case InstanceKind::Downloads:        return info_.root / "downloads";
-        case InstanceKind::Cache:            return info_.root / "cache";
-        case InstanceKind::CacheArchives:    return info_.root / "cache" / "archives";
-        case InstanceKind::CacheThumbnails:  return info_.root / "cache" / "thumbnails";
+        case InstanceKind::Mods:
+            return info_.mods_dir.empty() ? info_.root / "mods" : info_.mods_dir;
+        case InstanceKind::Downloads:
+            return info_.downloads_dir.empty() ? info_.root / "downloads" : info_.downloads_dir;
+        case InstanceKind::Cache:
+            return info_.cache_dir.empty() ? info_.root / "cache" : info_.cache_dir;
+        case InstanceKind::CacheArchives: {
+            auto base = info_.cache_dir.empty() ? info_.root / "cache" : info_.cache_dir;
+            return base / "archives";
+        }
+        case InstanceKind::CacheThumbnails: {
+            auto base = info_.cache_dir.empty() ? info_.root / "cache" : info_.cache_dir;
+            return base / "thumbnails";
+        }
+        case InstanceKind::Profiles:
+            return info_.profiles_dir.empty() ? info_.root / "profiles" : info_.profiles_dir;
+        case InstanceKind::Overwrite:
+            return info_.overwrite_dir.empty() ? info_.root / "overwrite" : info_.overwrite_dir;
         case InstanceKind::Plugins:          return info_.root / "plugins";
         case InstanceKind::Logs:             return info_.root / "logs";
         case InstanceKind::Config:           return info_.root / "config";
-        case InstanceKind::Overwrite:        return info_.root / "overwrite";
         case InstanceKind::Meta:             return info_.root / "meta";
     }
     return {};
+}
+
+void Instance::set_path_override(InstanceKind kind, const std::filesystem::path& path) {
+    switch (kind) {
+        case InstanceKind::Mods:      info_.mods_dir = path; break;
+        case InstanceKind::Downloads: info_.downloads_dir = path; break;
+        case InstanceKind::Cache:     info_.cache_dir = path; break;
+        case InstanceKind::Profiles:  info_.profiles_dir = path; break;
+        case InstanceKind::Overwrite: info_.overwrite_dir = path; break;
+        default: break;
+    }
+}
+
+std::filesystem::path Instance::path_override(InstanceKind kind) const {
+    switch (kind) {
+        case InstanceKind::Mods:      return info_.mods_dir;
+        case InstanceKind::Downloads: return info_.downloads_dir;
+        case InstanceKind::Cache:     return info_.cache_dir;
+        case InstanceKind::Profiles:  return info_.profiles_dir;
+        case InstanceKind::Overwrite: return info_.overwrite_dir;
+        default:                      return {};
+    }
 }
 
 std::filesystem::path Instance::toml_path() const {
@@ -72,6 +111,25 @@ bool Instance::write_toml() const {
     if (!info_.game_dir.empty()) {
         out << "game_dir = \"" << info_.game_dir.string() << "\"\n";
     }
+    // Per-folder overrides; only non-empty overrides are written.
+    if (!info_.mods_dir.empty()) {
+        out << "mods_dir = \"" << info_.mods_dir.string() << "\"\n";
+    }
+    if (!info_.downloads_dir.empty()) {
+        out << "downloads_dir = \"" << info_.downloads_dir.string() << "\"\n";
+    }
+    if (!info_.cache_dir.empty()) {
+        out << "cache_dir = \"" << info_.cache_dir.string() << "\"\n";
+    }
+    if (!info_.profiles_dir.empty()) {
+        out << "profiles_dir = \"" << info_.profiles_dir.string() << "\"\n";
+    }
+    if (!info_.overwrite_dir.empty()) {
+        out << "overwrite_dir = \"" << info_.overwrite_dir.string() << "\"\n";
+    }
+    if (!info_.plugins_txt_path.empty()) {
+        out << "plugins_txt_path = \"" << info_.plugins_txt_path.string() << "\"\n";
+    }
     return out.good();
 }
 
@@ -103,6 +161,18 @@ bool Instance::read_toml() {
                 info_.game_id = val;
             } else if (key == "game_dir") {
                 info_.game_dir = val;
+            } else if (key == "mods_dir") {
+                info_.mods_dir = val;
+            } else if (key == "downloads_dir") {
+                info_.downloads_dir = val;
+            } else if (key == "cache_dir") {
+                info_.cache_dir = val;
+            } else if (key == "profiles_dir") {
+                info_.profiles_dir = val;
+            } else if (key == "overwrite_dir") {
+                info_.overwrite_dir = val;
+            } else if (key == "plugins_txt_path") {
+                info_.plugins_txt_path = val;
             }
         } else {
             // unquoted numeric/boolean

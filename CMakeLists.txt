@@ -145,8 +145,14 @@ set(ENGINE_SOURCES
     src/engine/tools/external_tool.cpp
     src/engine/plugin_host/python_loader.cpp
     src/engine/meta/mod_meta.cpp
+    src/engine/overwrite/overwrite_utils.cpp
+    src/engine/plugins/esp_header.cpp
+    src/engine/plugins/plugin_database.cpp
     src/engine/source/source_provider.cpp
     src/engine/source/nexus_provider.cpp
+    src/engine/source/nexus_account.cpp
+    src/engine/source/nexus_http.cpp
+    src/engine/source/nexus_servers.cpp
     src/engine/source/steam_workshop_provider.cpp
     src/engine/nexus_auth.cpp
     src/engine/keyring.cpp
@@ -177,6 +183,9 @@ set(RUNTIME_SOURCES
 
 # UI sources — Qt lives here
 set(UI_SOURCES
+    src/ui/settings/settings.cpp
+    src/ui/settings/settings_dialog.cpp
+    src/ui/settings/source_pages.cpp
     src/ui/main_window/main_window.cpp
     src/ui/widgets/mod_list_model.cpp
     src/ui/widgets/mod_table_view.cpp
@@ -202,6 +211,10 @@ set(UI_SOURCES
     src/ui/preview/preview_widget.cpp
     src/ui/game_selection/game_card.cpp
     src/ui/game_selection/game_selection_widget.cpp
+    src/ui/overwrite/sync_overwrite_dialog.cpp
+    src/ui/overwrite/move_to_mod_dialog.cpp
+    src/ui/overwrite/overwrite_info_dialog.cpp
+    src/ui/overwrite/query_overwrite_dialog.cpp
 )
 
 # App entry point
@@ -305,6 +318,18 @@ if(WIN32)
 endif()
 add_test(NAME pipeline_test COMMAND pipeline_test)
 
+add_executable(plugin_database_test tests/engine/plugin_database_test.cpp
+    src/engine/plugins/esp_header.cpp
+    src/engine/plugins/plugin_database.cpp
+    src/engine/instance/instance.cpp
+    src/engine/log/logger.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/registry/game_knowledge.cpp
+)
+target_include_directories(plugin_database_test PRIVATE src/)
+target_link_libraries(plugin_database_test PRIVATE PkgConfig::NLOHMANN_JSON)
+add_test(NAME plugin_database_test COMMAND plugin_database_test)
+
 add_executable(logger_test tests/engine/logger_test.cpp
     src/engine/log/logger.cpp
 )
@@ -350,6 +375,12 @@ add_executable(registry_test tests/engine/registry_test.cpp
 target_include_directories(registry_test PRIVATE src/)
 target_link_libraries(registry_test PRIVATE PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::CURL PkgConfig::NLOHMANN_JSON)
 add_test(NAME registry_test COMMAND registry_test)
+
+add_executable(instance_path_test tests/engine/instance_path_test.cpp
+    src/engine/instance/instance.cpp
+)
+target_include_directories(instance_path_test PRIVATE src/)
+add_test(NAME instance_path_test COMMAND instance_path_test)
 
 add_executable(nxm_router_test tests/engine/nxm_router_test.cpp
     src/engine/nxm/nxm_router.cpp
@@ -454,3 +485,197 @@ add_executable(conflict_test tests/engine/conflict_test.cpp
 target_include_directories(conflict_test PRIVATE src/)
 target_link_libraries(conflict_test PRIVATE PkgConfig::NLOHMANN_JSON)
 add_test(NAME conflict_test COMMAND conflict_test)
+
+# Overwrite workflow helpers (path mapping, move/sync, clear, sync plan).
+add_executable(overwrite_utils_test tests/engine/overwrite_utils_test.cpp
+    src/engine/overwrite/overwrite_utils.cpp
+    src/engine/index/conflict_engine.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/fs_utils.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(overwrite_utils_test PRIVATE src/)
+target_link_libraries(overwrite_utils_test PRIVATE PkgConfig::NLOHMANN_JSON)
+add_test(NAME overwrite_utils_test COMMAND overwrite_utils_test)
+
+# URL percent-encoding for libcurl (Nexus CDN URLs embed unencoded filenames).
+add_executable(nexus_http_test tests/engine/nexus_http_test.cpp
+    src/engine/source/nexus_http.cpp
+)
+target_include_directories(nexus_http_test PRIVATE src/)
+target_link_libraries(nexus_http_test PRIVATE PkgConfig::CURL)
+add_test(NAME nexus_http_test COMMAND nexus_http_test)
+
+# Settings -> Plugins tab — offscreen GUI regression test. Exercises the
+# currentItemChanged -> rebuild_info crash path, register_category grouping,
+# the filter, Enabled toggles, and the missing Path/Steam App ID rows.
+add_executable(settings_plugins_tab_test tests/ui/settings_plugins_tab_test.cpp
+    src/ui/settings/settings.cpp
+    src/ui/settings/settings_dialog.cpp
+    src/ui/settings/source_pages.cpp
+    src/engine/log/logger.cpp
+    src/engine/trace/trace_recorder.cpp
+    src/engine/theme/theme_manager.cpp
+    src/engine/theme/style_manager.cpp
+    src/engine/plugin_host/plugin_loader.cpp
+    src/engine/plugin_host/python_loader.cpp
+    src/engine/registry/stage_registry.cpp
+    src/engine/registry/hook_registry.cpp
+    src/engine/registry/game_capabilities.cpp
+    src/engine/registry/game_knowledge.cpp
+    src/engine/tools/external_tool.cpp
+    src/engine/sort/sort_registry.cpp
+    src/engine/sort/abi_sort_provider.cpp
+    src/engine/pipeline/pipeline.cpp
+    src/engine/source/source_provider.cpp
+    src/engine/source/nexus_provider.cpp
+    src/engine/source/nexus_account.cpp
+    src/engine/source/nexus_http.cpp
+    src/engine/source/nexus_servers.cpp
+    src/engine/source/steam_workshop_provider.cpp
+    src/engine/nexus_auth.cpp
+    src/engine/keyring.cpp
+    src/engine/workshop/workshop_client.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/instance/instance.cpp
+    src/engine/instance/instance_utils.cpp
+    src/engine/deploy/deploy_utils.cpp
+    src/engine/deploy/strategy_symlink.cpp
+    src/engine/deploy/strategy_hardlink.cpp
+    src/engine/deploy/strategy_junction.cpp
+    src/engine/deploy/strategy_overlayfs_deploy.cpp
+    src/engine/deploy/deploy_ledger.cpp
+    src/engine/deploy/order_hook.cpp
+    src/engine/launcher.cpp
+    src/engine/overlay_launcher.cpp
+    src/engine/preload_interceptor.cpp
+    src/engine/single_instance.cpp
+    src/runtime/runtime.cpp
+    src/runtime/wine_runtime.cpp
+    src/platform/${GMM_PLATFORM}/${GMM_PLATFORM}_platform.cpp
+)
+target_include_directories(settings_plugins_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_compile_definitions(settings_plugins_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
+target_link_libraries(settings_plugins_tab_test PRIVATE Qt6::Widgets Qt6::Network
+    PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::YAMLCPP PkgConfig::CURL PkgConfig::NLOHMANN_JSON
+    pybind11::embed Python3::Python)
+if(NOT WIN32)
+    target_link_libraries(settings_plugins_tab_test PRIVATE ${CMAKE_DL_LIBS})
+endif()
+add_test(NAME settings_plugins_tab_test COMMAND settings_plugins_tab_test ${CMAKE_CURRENT_BINARY_DIR}/plugins)
+set_tests_properties(settings_plugins_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# Settings -> Sources tab — offscreen GUI regression test. Exercises the
+# nested per-source sub-tabs and the MO2-parity Nexus panel (account/stats
+# labels, connect/manual/disconnect buttons, options, known/preferred server
+# drag&drop lists), plus the engine server-registry and NexusAuth user-info
+# persistence. Hermetic: no network calls are made, XDG_CONFIG_HOME is a
+# throwaway dir.
+add_executable(settings_sources_tab_test tests/ui/settings_sources_tab_test.cpp
+    src/ui/settings/settings.cpp
+    src/ui/settings/settings_dialog.cpp
+    src/ui/settings/source_pages.cpp
+    src/engine/log/logger.cpp
+    src/engine/trace/trace_recorder.cpp
+    src/engine/theme/theme_manager.cpp
+    src/engine/theme/style_manager.cpp
+    src/engine/plugin_host/plugin_loader.cpp
+    src/engine/plugin_host/python_loader.cpp
+    src/engine/registry/stage_registry.cpp
+    src/engine/registry/hook_registry.cpp
+    src/engine/registry/game_capabilities.cpp
+    src/engine/registry/game_knowledge.cpp
+    src/engine/tools/external_tool.cpp
+    src/engine/sort/sort_registry.cpp
+    src/engine/sort/abi_sort_provider.cpp
+    src/engine/pipeline/pipeline.cpp
+    src/engine/source/source_provider.cpp
+    src/engine/source/nexus_provider.cpp
+    src/engine/source/nexus_account.cpp
+    src/engine/source/nexus_http.cpp
+    src/engine/source/nexus_servers.cpp
+    src/engine/source/steam_workshop_provider.cpp
+    src/engine/nexus_auth.cpp
+    src/engine/keyring.cpp
+    src/engine/workshop/workshop_client.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/instance/instance.cpp
+    src/engine/instance/instance_utils.cpp
+    src/engine/deploy/deploy_utils.cpp
+    src/engine/deploy/strategy_symlink.cpp
+    src/engine/deploy/strategy_hardlink.cpp
+    src/engine/deploy/strategy_junction.cpp
+    src/engine/deploy/strategy_overlayfs_deploy.cpp
+    src/engine/deploy/deploy_ledger.cpp
+    src/engine/deploy/order_hook.cpp
+    src/engine/launcher.cpp
+    src/engine/overlay_launcher.cpp
+    src/engine/preload_interceptor.cpp
+    src/engine/single_instance.cpp
+    src/runtime/runtime.cpp
+    src/runtime/wine_runtime.cpp
+    src/platform/${GMM_PLATFORM}/${GMM_PLATFORM}_platform.cpp
+)
+target_include_directories(settings_sources_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_compile_definitions(settings_sources_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
+target_link_libraries(settings_sources_tab_test PRIVATE Qt6::Widgets Qt6::Network
+    PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::YAMLCPP PkgConfig::CURL PkgConfig::NLOHMANN_JSON
+    pybind11::embed Python3::Python)
+if(NOT WIN32)
+    target_link_libraries(settings_sources_tab_test PRIVATE ${CMAKE_DL_LIBS})
+endif()
+add_test(NAME settings_sources_tab_test COMMAND settings_sources_tab_test ${CMAKE_CURRENT_BINARY_DIR}/plugins)
+set_tests_properties(settings_sources_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# Downloads tab — offscreen GUI regression test for the untracked-archive
+# scan (manually downloaded / dragged-in archives must show up and install).
+# Hermetic: throwaway XDG_CONFIG_HOME, no network.
+add_executable(downloads_tab_test tests/ui/downloads_tab_test.cpp
+    src/ui/panels/tab_panels.cpp
+    src/ui/settings/settings.cpp
+    src/ui/widgets/column_toggle_header.cpp
+    src/engine/log/logger.cpp
+    src/engine/fs_utils.cpp
+)
+target_include_directories(downloads_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_compile_definitions(downloads_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
+target_link_libraries(downloads_tab_test PRIVATE Qt6::Widgets)
+add_test(NAME downloads_tab_test COMMAND downloads_tab_test)
+set_tests_properties(downloads_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# Plugins tab — offscreen GUI test: population, pinned (force-loaded) rows,
+# missing-master styling, toggle + sync_enabled signal behavior. Drag-reorder
+# is intentionally not exercised (see the test's header comment).
+add_executable(plugins_tab_test tests/ui/plugins_tab_test.cpp
+    src/ui/panels/tab_panels.cpp
+    src/ui/settings/settings.cpp
+    src/ui/widgets/column_toggle_header.cpp
+    src/engine/log/logger.cpp
+    src/engine/fs_utils.cpp
+)
+target_include_directories(plugins_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_compile_definitions(plugins_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
+target_link_libraries(plugins_tab_test PRIVATE Qt6::Widgets)
+add_test(NAME plugins_tab_test COMMAND plugins_tab_test)
+set_tests_properties(plugins_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# Overwrite dialogs — offscreen GUI test: QueryOverwriteDialog actions/backup,
+# MoveToModDialog selection, SyncOverwriteDialog combos + targets(), and
+# OverwriteInfoDialog mapping-root protection. Hermetic: throwaway
+# XDG_CONFIG_HOME and /tmp file trees, no network.
+add_executable(overwrite_dialogs_test tests/ui/overwrite_dialogs_test.cpp
+    src/ui/overwrite/sync_overwrite_dialog.cpp
+    src/ui/overwrite/move_to_mod_dialog.cpp
+    src/ui/overwrite/overwrite_info_dialog.cpp
+    src/ui/overwrite/query_overwrite_dialog.cpp
+    src/engine/overwrite/overwrite_utils.cpp
+    src/engine/index/conflict_engine.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/fs_utils.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(overwrite_dialogs_test PRIVATE src/)
+target_link_libraries(overwrite_dialogs_test PRIVATE Qt6::Widgets
+    PkgConfig::NLOHMANN_JSON)
+add_test(NAME overwrite_dialogs_test COMMAND overwrite_dialogs_test)
+set_tests_properties(overwrite_dialogs_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

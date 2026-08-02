@@ -2,10 +2,11 @@
 
 #include "engine/log/logger.h"
 
+#include <nlohmann/json.hpp>
+
 #include <cstdlib>
 #include <ctime>
 #include <fstream>
-#include <sstream>
 
 namespace engine {
 
@@ -132,41 +133,28 @@ RateLimitInfo NexusAuth::get_rate_limit() const {
     std::stringstream buf;
     buf << f.rdbuf();
 
-    // Minimal JSON parse (no nlohmann dependency in the engine level for auth)
+    nlohmann::json j;
+    try {
+        j = nlohmann::json::parse(buf.str());
+    } catch (const std::exception&) {
+        return info;
+    }
     // Format:
     // {"hourly_limit":N,"hourly_remaining":N,"hourly_reset":N,
     //  "daily_limit":N,"daily_remaining":N,"daily_reset":N,"last_updated":N}
-    auto read_int = [&](const std::string& key) -> int {
-        auto pos = buf.str().find("\"" + key + "\"");
-        if (pos == std::string::npos) return 0;
-        pos = buf.str().find(':', pos);
-        if (pos == std::string::npos) return 0;
-        ++pos;
-        while (pos < buf.str().size() && (buf.str()[pos] == ' ' || buf.str()[pos] == '\t'))
-            ++pos;
-        int sign = 1;
-        if (buf.str()[pos] == '-') { sign = -1; ++pos; }
-        int val = 0;
-        while (pos < buf.str().size() && buf.str()[pos] >= '0' && buf.str()[pos] <= '9') {
-            val = val * 10 + (buf.str()[pos] - '0');
-            ++pos;
-        }
-        return val * sign;
-    };
-
-    info.hourly_limit = read_int("hourly_limit");
-    info.hourly_remaining = read_int("hourly_remaining");
-    info.hourly_reset = read_int("hourly_reset");
-    info.daily_limit = read_int("daily_limit");
-    info.daily_remaining = read_int("daily_remaining");
-    info.daily_reset = read_int("daily_reset");
-    info.last_updated = read_int("last_updated");
+    info.hourly_limit = j.value("hourly_limit", 0);
+    info.hourly_remaining = j.value("hourly_remaining", 0);
+    info.hourly_reset = j.value("hourly_reset", int64_t{0});
+    info.daily_limit = j.value("daily_limit", 0);
+    info.daily_remaining = j.value("daily_remaining", 0);
+    info.daily_reset = j.value("daily_reset", int64_t{0});
+    info.last_updated = j.value("last_updated", int64_t{0});
 
     // Legacy files (pre hourly/daily split) stored the daily budget under
     // limit/remaining/reset - migrate them into the daily fields.
-    if (info.daily_limit == 0) info.daily_limit = read_int("limit");
-    if (info.daily_remaining == 0) info.daily_remaining = read_int("remaining");
-    if (info.daily_reset == 0) info.daily_reset = read_int("reset");
+    if (info.daily_limit == 0) info.daily_limit = j.value("limit", 0);
+    if (info.daily_remaining == 0) info.daily_remaining = j.value("remaining", 0);
+    if (info.daily_reset == 0) info.daily_reset = j.value("reset", int64_t{0});
 
     return info;
 }
@@ -176,19 +164,76 @@ void NexusAuth::update_rate_limit(int hourly_limit, int hourly_remaining, int64_
     std::error_code ec;
     std::filesystem::create_directories(config_dir(), ec);
 
+    nlohmann::json j = {{"hourly_limit", hourly_limit},
+                        {"hourly_remaining", hourly_remaining},
+                        {"hourly_reset", hourly_reset},
+                        {"daily_limit", daily_limit},
+                        {"daily_remaining", daily_remaining},
+                        {"daily_reset", daily_reset},
+                        {"last_updated", std::time(nullptr)}};
+
     std::ofstream f(config_dir() / "nexus_rate.json", std::ios::trunc);
     if (!f) return;
+    f << j.dump(2) << "\n";
+}
 
-    auto now = std::time(nullptr);
-    f << "{\n"
-      << "  \"hourly_limit\": " << hourly_limit << ",\n"
-      << "  \"hourly_remaining\": " << hourly_remaining << ",\n"
-      << "  \"hourly_reset\": " << hourly_reset << ",\n"
-      << "  \"daily_limit\": " << daily_limit << ",\n"
-      << "  \"daily_remaining\": " << daily_remaining << ",\n"
-      << "  \"daily_reset\": " << daily_reset << ",\n"
-      << "  \"last_updated\": " << now << "\n"
-      << "}\n";
+// -----------------------------------------------------------------------
+// Public API - user account info
+// -----------------------------------------------------------------------
+
+bool NexusAuth::has_user_info() const {
+    return std::filesystem::exists(config_dir() / "nexus_user.json");
+}
+
+NexusUserInfo NexusAuth::get_user_info() const {
+    NexusUserInfo info;
+    std::ifstream f(config_dir() / "nexus_user.json");
+    if (!f) return info;
+
+    std::stringstream buf;
+    buf << f.rdbuf();
+
+    nlohmann::json j;
+    try {
+        j = nlohmann::json::parse(buf.str());
+    } catch (const std::exception&) {
+        return info;
+    }
+    // Format:
+    // {"user_id":"...","name":"...","account_type":"premium|supporter|regular"}
+    info.user_id = j.value("user_id", std::string{});
+    info.name = j.value("name", std::string{});
+    const std::string type = j.value("account_type", std::string{});
+    if (type == "premium")
+        info.account_type = NexusUserInfo::AccountType::Premium;
+    else if (type == "supporter")
+        info.account_type = NexusUserInfo::AccountType::Supporter;
+    else if (!type.empty())
+        info.account_type = NexusUserInfo::AccountType::Regular;
+
+    return info;
+}
+
+void NexusAuth::set_user_info(const NexusUserInfo& info) {
+    std::error_code ec;
+    std::filesystem::create_directories(config_dir(), ec);
+
+    const char* type = "regular";
+    if (info.account_type == NexusUserInfo::AccountType::Premium) type = "premium";
+    else if (info.account_type == NexusUserInfo::AccountType::Supporter) type = "supporter";
+
+    nlohmann::json j = {{"user_id", info.user_id},
+                        {"name", info.name},
+                        {"account_type", type}};
+
+    std::ofstream f(config_dir() / "nexus_user.json", std::ios::trunc);
+    if (!f) return;
+    f << j.dump(2) << "\n";
+}
+
+void NexusAuth::clear_user_info() {
+    std::error_code ec;
+    std::filesystem::remove(config_dir() / "nexus_user.json", ec);
 }
 
 } // namespace engine

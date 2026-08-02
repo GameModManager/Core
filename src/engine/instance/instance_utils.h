@@ -17,6 +17,11 @@ namespace engine {
 // Canonical instances directory: ~/.local/share/GameModManager/instances/
 [[nodiscard]] std::filesystem::path default_instances_dir();
 
+// Override the canonical instances directory (from app Settings at startup).
+// Passing an empty path clears the override. The override takes precedence
+// over the default XDG location.
+void set_instances_dir_override(const std::filesystem::path& dir);
+
 // Canonical last_instance file path
 [[nodiscard]] std::filesystem::path last_instance_file_path();
 

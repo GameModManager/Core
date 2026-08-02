@@ -43,6 +43,40 @@ static void cb_register_identity(GmmRegistrationCtx* ctx,
         " nexus=" + (nexus_domain ? std::string(nexus_domain) : "none"));
 }
 
+static void cb_register_meta(GmmRegistrationCtx* ctx,
+                             const char* author,
+                             const char* version,
+                             const char* description) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge || !bridge->current_plugin) return;
+
+    if (author) bridge->current_plugin->author = author;
+    if (version) bridge->current_plugin->version = version;
+    if (description) bridge->current_plugin->description = description;
+}
+
+static void cb_register_category(GmmRegistrationCtx* ctx,
+                                 const char* category) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge || !bridge->current_plugin) return;
+
+    if (category) bridge->current_plugin->category = category;
+}
+
+static void cb_register_settings(GmmRegistrationCtx* ctx,
+                                 const char* const* keys,
+                                 const char* const* values,
+                                 size_t count) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge || !bridge->current_plugin || !keys || !values) return;
+
+    auto& settings = bridge->current_plugin->settings;
+    for (size_t i = 0; i < count; ++i) {
+        if (!keys[i] || !values[i]) continue;
+        settings.emplace_back(keys[i], values[i]);
+    }
+}
+
 static void cb_register_stage_claim(GmmRegistrationCtx* ctx,
                                      const char* stage_name,
                                      GmmStageFn fn,
@@ -256,6 +290,11 @@ bool PluginLoader::load_plugin(const std::string& path) {
         return true;
     }
 
+    if (is_disabled(std::filesystem::path(path).filename().string())) {
+        Logger::instance().debug("Plugin disabled in settings, skipping: " + path);
+        return false;
+    }
+
     void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
     if (!handle) {
         Logger::instance().error("Failed to load plugin: " + path + " - " + dlerror());
@@ -307,6 +346,9 @@ bool PluginLoader::load_plugin(const std::string& path) {
     ctx.register_image_diff = cb_register_image_diff;
     ctx.register_capability = cb_register_capability;
     ctx.register_tab = cb_register_tab;
+    ctx.register_meta = cb_register_meta;
+    ctx.register_category = cb_register_category;
+    ctx.register_settings = cb_register_settings;
 
     RegistrationBridge bridge;
     bridge.loader = this;
@@ -356,6 +398,10 @@ bool PluginLoader::load_directory(const std::string& dir_path) {
 
         // Python plugins - always attempted regardless of OS
         if (ext == ".py") {
+            if (is_disabled(path.filename().string())) {
+                Logger::instance().debug("Plugin disabled in settings, skipping: " + path.string());
+                continue;
+            }
             if (python_load_plugin(this, path.string())) loaded++;
         }
     }
@@ -374,6 +420,13 @@ bool PluginLoader::load_directory(const std::string& dir_path) {
 bool PluginLoader::is_loaded(const std::string& path) const {
     for (const auto& p : plugins_) {
         if (p.path == path) return true;
+    }
+    return false;
+}
+
+bool PluginLoader::is_disabled(const std::string& filename) const {
+    for (const auto& name : disabled_plugins_) {
+        if (name == filename) return true;
     }
     return false;
 }

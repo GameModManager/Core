@@ -1,5 +1,7 @@
 #pragma once
 
+#include "engine/plugins/plugin_info.h"
+
 #include <QPoint>
 #include <QString>
 #include <QVector>
@@ -28,7 +30,9 @@ enum class DownloadState {
     Paused,
     Complete,
     Installed,
-    Failed
+    Failed,
+    // Not implemented yet: reserved so manifests and rendering stay stable.
+    Removed
 };
 
 class DownloadsTab : public QWidget {
@@ -103,11 +107,22 @@ private:
 
     DownloadEntry& entry_for(const std::string& id);
     void replace_bar_with_label(const std::string& id, const QString& text,
-                                const QColor& bg);
+                                const QColor& bg, const QColor& fg);
     void on_cell_double_clicked(int row, int column);
     void on_custom_context_menu(const QPoint& pos);
     void remove_entry(const std::string& id);
     void apply_installed_filter();
+
+    // Add untracked archives sitting in the downloads dir as "Manual"
+    // Complete entries so they can be installed from the tab. Skip files that
+    // already back a tracked entry and any scan while a download is in
+    // flight (the in-progress archive would otherwise appear as a bogus
+    // "Complete" row).
+    void scan_downloads_dir();
+    bool has_active_download() const;
+
+protected:
+    void showEvent(QShowEvent* event) override;
 
     QTableWidget* table_ = nullptr;
     QCheckBox* hide_installed_ = nullptr;
@@ -120,18 +135,36 @@ class PluginsTab : public QWidget {
     Q_OBJECT
 public:
     explicit PluginsTab(QWidget* parent = nullptr);
-    [[nodiscard]] QTableWidget* table() const { return table_; }
+    // Out-of-line: table_ is a private PluginTable* whose base needs the
+    // complete type for the upcast.
+    [[nodiscard]] QTableWidget* table() const;
+
+    // Replace the plugin list contents. Row 0 = most dominant (first-loaded).
+    // Force-loaded rows (game-native, CC) are pinned and shown greyed.
+    void set_plugins(const std::vector<engine::GamePlugin>& plugins);
+
+    // Re-sync enabled checkboxes from engine state without rebuilding rows
+    // (used to revert a blocked toggle, incl. transitively flipped masters).
+    void sync_enabled(const std::vector<engine::GamePlugin>& plugins);
+
+signals:
+    void toggle_requested(const std::string& name, bool enabled);
+    void reorder_requested(int from_row, int to_row);
+
 private:
-    QTableWidget* table_ = nullptr;
+    class PluginTable;
+    PluginTable* table_ = nullptr;
+    std::vector<std::string> names_;
+    bool syncing_ = false;
 };
 
 class ArchivesTab : public QWidget {
     Q_OBJECT
 public:
     explicit ArchivesTab(QWidget* parent = nullptr);
-    [[nodiscard]] QTableWidget* table() const { return table_; }
+    [[nodiscard]] QTreeWidget* tree() const { return tree_; }
 private:
-    QTableWidget* table_ = nullptr;
+    QTreeWidget* tree_ = nullptr;
 };
 
 class DataTab : public QWidget {

@@ -6,6 +6,7 @@
 
 namespace engine {
 class GameKnowledge;
+class PlatformInterface;
 }
 
 namespace cli {
@@ -17,6 +18,7 @@ struct HeadlessConfig {
     uint32_t steam_appid = 0;
     bool is_windows_exe = false;
     const engine::GameKnowledge* knowledge = nullptr;
+    const engine::PlatformInterface* platform = nullptr;
     std::string game_id;
 };
 

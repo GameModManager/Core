@@ -33,6 +33,22 @@ public:
             " nexus=" + nexus_domain);
     }
 
+    void register_meta(const std::string& author,
+                       const std::string& version,
+                       const std::string& description) {
+        plugin_->author = author;
+        plugin_->version = version;
+        plugin_->description = description;
+    }
+
+    void register_category(const std::string& category) {
+        plugin_->category = category;
+    }
+
+    void register_settings(const std::vector<std::pair<std::string, std::string>>& settings) {
+        plugin_->settings = settings;
+    }
+
     void register_stage_claim(const std::string& stage_name, int priority) {
         (void)stage_name;
         (void)priority;
@@ -142,6 +158,14 @@ PYBIND11_EMBEDDED_MODULE(gmm, m) {
              py::arg("exe_macos") = "")
         .def("register_stage_claim", &PyRegistrationContext::register_stage_claim,
              py::arg("stage_name"), py::arg("priority") = 0)
+        .def("register_meta", &PyRegistrationContext::register_meta,
+             py::arg("author") = "",
+             py::arg("version") = "",
+             py::arg("description") = "")
+        .def("register_category", &PyRegistrationContext::register_category,
+             py::arg("category") = "")
+        .def("register_settings", &PyRegistrationContext::register_settings,
+             py::arg("settings"))
         .def("register_order_encoding_hook", &PyRegistrationContext::register_order_encoding_hook)
         .def("register_deploy_strategy", &PyRegistrationContext::register_deploy_strategy)
         .def("register_image_diff", &PyRegistrationContext::register_image_diff)

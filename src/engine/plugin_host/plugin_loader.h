@@ -29,12 +29,21 @@ struct PluginInfo {
     std::string path;
     std::string game_id;
     std::string game_display_name;  // e.g. "Skyrim Special Edition"
+    std::string author;             // optional, via register_meta
+    std::string version;            // optional, via register_meta
+    std::string description;        // optional, via register_meta
+    std::string category;           // optional, via register_category
     uint32_t steam_appid = 0;
     std::string nexus_domain;
     uint32_t abi_version = 0;
     bool loaded = false;
     bool registered = false;
     void* handle = nullptr;  // dlopen handle
+
+    // User-facing options declared via register_settings as plain
+    // key:value pairs (key = label, value = default). Source providers
+    // do not use this — their settings live in the Sources tab.
+    std::vector<std::pair<std::string, std::string>> settings;
 };
 
 class PluginLoader {
@@ -47,6 +56,12 @@ public:
 
     bool load_plugin(const std::string& path);
     bool load_directory(const std::string& dir_path);
+
+    // Plugin basenames (e.g. "SkyrimSpecialEdition.so") skipped on load.
+    void set_disabled_plugins(const std::vector<std::string>& names) {
+        disabled_plugins_ = names;
+    }
+    [[nodiscard]] bool is_disabled(const std::string& filename) const;
 
     // Register a plugin that was loaded externally (e.g. by Python loader)
     void add_loaded_plugin(PluginInfo info);
@@ -90,6 +105,7 @@ private:
     void unload_all();
 
     std::vector<PluginInfo> plugins_;
+    std::vector<std::string> disabled_plugins_;
     StageRegistry stage_registry_;
     HookRegistry hook_registry_;
     GameCapabilities capabilities_;

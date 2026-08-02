@@ -4,10 +4,13 @@
 #include "engine/meta/mod_meta.h"
 #include "engine/log/logger.h"
 
+#include <cstdio>
+
 namespace engine {
 
-SteamWorkshopProvider::SteamWorkshopProvider(const std::string& db_path)
-    : db_path_(db_path) {}
+SteamWorkshopProvider::SteamWorkshopProvider(const std::string& db_path,
+                                             int rate_limit, int rate_window)
+    : db_path_(db_path), rate_limit_(rate_limit), rate_window_(rate_window) {}
 
 bool SteamWorkshopProvider::fetch(const Mod& mod, PipelineContext& ctx,
                                    const std::filesystem::path& dest_path) {
@@ -26,7 +29,7 @@ bool SteamWorkshopProvider::fetch(const Mod& mod, PipelineContext& ctx,
 
     // Lazy-init WorkshopClient
     if (!client_) {
-        client_ = std::make_unique<WorkshopClient>(db_path_);
+        client_ = std::make_unique<WorkshopClient>(db_path_, rate_limit_, rate_window_);
     }
 
     // Fetch metadata from Steam API (uses SQLite cache, respects rate limits)
@@ -73,6 +76,16 @@ bool SteamWorkshopProvider::fetch(const Mod& mod, PipelineContext& ctx,
     Logger::instance().debug("SteamWorkshopProvider: updated metadata for workshop " +
                             std::to_string(workshop_id));
     return true;
+}
+
+std::string SteamWorkshopProvider::display_name() const {
+    return "Steam Workshop";
+}
+
+void SteamWorkshopProvider::set_rate_limit(int limit, int window) {
+    rate_limit_ = limit;
+    rate_window_ = window;
+    if (client_) client_->set_rate_limit(limit, window);
 }
 
 } // namespace engine

@@ -38,6 +38,38 @@ class RegistrationContext:
         """Register this game module's identity - pure data, no behavior."""
         ...
 
+    def register_meta(
+        self,
+        author: str = "",
+        version: str = "",
+        description: str = "",
+    ) -> None:
+        """Register optional metadata for the Plugins settings tab.
+
+        All fields are optional; empty strings leave them unset.
+        """
+        ...
+
+    def register_category(self, category: str = "") -> None:
+        """Declare this plugin's category shown as a foldable group in the
+        Plugins settings tab (e.g. "Game Support", "Installer", "Tool").
+
+        Empty string or a category outside the known set -> "Uncategorized".
+        """
+        ...
+
+    def register_settings(self, settings: list[tuple[str, str]] = []) -> None:
+        """Declare this plugin's user-facing options as plain key:value pairs.
+
+        Rendered as editable rows in a scrollable container in the Plugins
+        settings tab. Each entry is (key, default value). Persisted overrides
+        are read back at startup; edits from the UI are written back.
+
+        Source providers must NOT use this - their settings live on the
+        Sources tab instead.
+        """
+        ...
+
     def register_stage_claim(self, stage_name: str, priority: int = 0) -> None:
         """Claim exclusive ownership of a pipeline stage.
 
