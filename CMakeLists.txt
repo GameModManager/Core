@@ -194,6 +194,7 @@ set(UI_SOURCES
     src/ui/widgets/right_panel.cpp
     src/ui/widgets/exec_controls_bar.cpp
     src/ui/widgets/exec_entry_dialog.cpp
+    src/ui/widgets/separator_dialog.cpp
     src/ui/widgets/console_panel.cpp
     src/ui/widgets/gmm_status_bar.cpp
     src/ui/widgets/instance_switcher_dialog.cpp
