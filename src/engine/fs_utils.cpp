@@ -10,6 +10,8 @@
 #include <vector>
 
 #include <algorithm>
+#include <cctype>
+#include <cstring>
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -18,6 +20,52 @@
 #endif
 
 namespace engine {
+
+std::string sanitize_directory_name(std::string name) {
+    if (name.empty()) return {};
+
+    const std::string invalid_chars = ":<>\"?*|/\\";
+    for (auto& c : name) {
+        unsigned char uc = static_cast<unsigned char>(c);
+        if (invalid_chars.find(c) != std::string::npos ||
+            !std::isprint(uc)) {
+            c = '_';
+        }
+    }
+
+    // Strip leading dots and trailing dots/spaces.
+    while (!name.empty() && name.front() == '.')
+        name.erase(0, 1);
+    while (!name.empty() && (name.back() == '.' || name.back() == ' '))
+        name.pop_back();
+
+    if (name.empty()) return {};
+
+    // Reserved Windows device names (case-insensitive).
+    const auto is_reserved = [](const std::string& n) {
+        static const char* const reserved[] = {
+            "con", "prn", "aux", "nul",
+            "com1", "com2", "com3", "com4", "com5",
+            "com6", "com7", "com8", "com9",
+            "lpt1", "lpt2", "lpt3", "lpt4", "lpt5",
+            "lpt6", "lpt7", "lpt8", "lpt9"};
+        for (const auto* r : reserved) {
+            if (n.size() == std::strlen(r) &&
+                std::equal(n.begin(), n.end(), r,
+                           [](char a, char b) {
+                               return std::tolower(static_cast<unsigned char>(a)) ==
+                                      std::tolower(static_cast<unsigned char>(b));
+                           })) {
+                return true;
+            }
+        }
+        return false;
+    };
+    if (is_reserved(name))
+        name = "_" + name;
+
+    return name;
+}
 
 namespace {
 

@@ -427,6 +427,21 @@ void Settings::set_color_separator_scrollbar(bool on) {
     settings_.setValue("colors/color_separator_scrollbar", on);
 }
 
+std::optional<QColor> Settings::previous_separator_color() const {
+    if (!settings_.contains("colors/previous_separator_color")) return std::nullopt;
+    auto c = settings_.value("colors/previous_separator_color").value<QColor>();
+    if (!c.isValid()) return std::nullopt;
+    return c;
+}
+
+void Settings::set_previous_separator_color(const QColor& c) {
+    settings_.setValue("colors/previous_separator_color", c);
+}
+
+void Settings::remove_previous_separator_color() {
+    settings_.remove("colors/previous_separator_color");
+}
+
 QColor Settings::modlist_overwritten_loose() const {
     return settings_.value("colors/modlist_overwritten_loose", QColor(0, 255, 0, 64)).value<QColor>();
 }

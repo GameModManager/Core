@@ -194,7 +194,6 @@ set(UI_SOURCES
     src/ui/widgets/right_panel.cpp
     src/ui/widgets/exec_controls_bar.cpp
     src/ui/widgets/exec_entry_dialog.cpp
-    src/ui/widgets/separator_dialog.cpp
     src/ui/widgets/console_panel.cpp
     src/ui/widgets/gmm_status_bar.cpp
     src/ui/widgets/instance_switcher_dialog.cpp
@@ -402,6 +401,17 @@ add_executable(nxm_router_test tests/engine/nxm_router_test.cpp
 )
 target_include_directories(nxm_router_test PRIVATE src/)
 add_test(NAME nxm_router_test COMMAND nxm_router_test)
+
+# ModScanner separator/meta scanning — MO2-parity: display name = folder minus
+# suffix, color from meta.ini [General] color (empty when unset), Qt-free.
+add_executable(scanner_test tests/engine/scanner_test.cpp
+    src/engine/detect/mod_scanner.cpp
+    src/engine/registry/game_knowledge.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(scanner_test PRIVATE src/)
+add_test(NAME scanner_test COMMAND scanner_test)
 
 # Theme engine — Qt-free scan/tokens/discovery.
 add_executable(theme_test tests/engine/theme_test.cpp

@@ -2,6 +2,7 @@
 #include <cstring>
 #include <fstream>
 #include <sys/wait.h>
+#include <QCursor>
 #include "ui/main_window/main_window.h"
 #include "ui/widgets/mod_list_model.h"
 #include "ui/widgets/mod_table_view.h"
@@ -65,7 +66,6 @@
 #include "engine/deploy/strategy.h"
 #include "runtime/runtime.h"
 #include "ui/widgets/pipeline_window.h"
-#include "ui/widgets/separator_dialog.h"
 
 #include <QAction>
 #include <algorithm>
@@ -348,14 +348,36 @@ MainWindow::MainWindow(QWidget* parent)
         apply_mod_filter();
     });
 
-    // Fold/unfold on separator arrow click (arrow is a prefix in the Name cell)
+    // Inline rename (MO2 renameMod): the handler renames the folder on disk
+    // and updates the row in place; on failure it reverts the editor.
+    connect(mod_model_, &ModListModel::rename_requested,
+            this, [this](int row, const QString& name) { apply_rename(row, name); });
+
+    // Fold/unfold on separator arrow click ONLY (the "▼ "/"▶ " prefix in the
+    // Name cell). Clicks anywhere else on the separator row must not fold.
     connect(mod_view_, &QTreeView::clicked, this, [this](const QModelIndex& idx) {
         if (!idx.isValid() || idx.column() != ModListModel::Name) return;
         int row = idx.row();
         if (row < 0 || row >= mod_model_->mods().size()) return;
-        if (mod_model_->mods()[row].is_separator) {
-            mod_model_->set_folded(row, !mod_model_->mods()[row].folded);
-        }
+        if (!mod_model_->mods()[row].is_separator) return;
+
+        // Hit-test the arrow prefix: a separator Name cell renders as
+        // "<arrow> <name>" with no checkbox/decoration (separators never reach
+        // the model's CheckStateRole), so the arrow starts at the cell's left
+        // edge. Require the click to land inside the measured arrow width.
+        const bool folded = mod_model_->mods()[row].folded;
+        // Separator Name cells render bold (model FontRole), so measure the
+        // arrow prefix with the same bold font the glyph is drawn in.
+        QFont arrow_font = mod_view_->font();
+        arrow_font.setBold(true);
+        const int arrow_width = QFontMetrics(arrow_font).horizontalAdvance(
+            QString(folded ? "\u25B6 " : "\u25BC "));
+        const QRect cell = mod_view_->visualRect(idx);
+        const QPoint pos = mod_view_->viewport()->mapFromGlobal(QCursor::pos());
+        if (pos.y() < cell.top() || pos.y() > cell.bottom()) return;
+        if (pos.x() < cell.left() || pos.x() > cell.left() + arrow_width) return;
+
+        mod_model_->set_folded(row, !folded);
     });
 
     // Double-clicking the Overwrite row opens the shared info dialog (MO2's
@@ -2015,10 +2037,19 @@ void MainWindow::setup_mod_list_context_menu() {
         }
 
         if (entry.is_separator) {
-            menu.addAction(QIcon::fromTheme("document-edit"), tr("Edit"),
-                this, [this, row]() { edit_separator(row); });
-            menu.addAction(QIcon::fromTheme("edit-delete"), tr("Delete"),
+            // MO2's separator context menu (modlistcontextmenu.cpp:381-409):
+            // Rename (inline edit) / Remove / Select Color / Reset Color.
+            menu.addAction(QIcon::fromTheme("document-edit"), tr("Rename Separator..."),
+                this, [this, row]() { rename_mod_inline(row); });
+            menu.addAction(QIcon::fromTheme("edit-delete"), tr("Remove Separator..."),
                 this, [this, row]() { delete_separator(row); });
+            menu.addSeparator();
+            menu.addAction(QIcon::fromTheme("color-picker"), tr("Select Color..."),
+                this, [this]() { select_color_for_selected(); });
+            if (!entry.separator_color.isEmpty()) {
+                menu.addAction(QIcon::fromTheme("edit-clear"), tr("Reset Color"),
+                    this, [this]() { reset_color_for_selected(); });
+            }
             menu.exec(mod_view_->viewport()->mapToGlobal(pos));
             return;
         }
@@ -2082,7 +2113,7 @@ void MainWindow::setup_mod_list_context_menu() {
 
         menu.addSeparator();
         menu.addAction(QIcon::fromTheme("document-edit"), tr("Rename Mod..."),
-            this, [this]() { rename_selected_mod(); });
+            this, [this, row]() { rename_mod_inline(row); });
 
         menu.addSeparator();
         if (!entry.source_type.isEmpty()) {
@@ -2508,52 +2539,6 @@ void MainWindow::toggle_selected_mods(bool enabled) {
     }
 }
 
-void MainWindow::rename_selected_mod() {
-    auto sel = mod_view_->selectionModel()->selectedRows();
-    if (sel.isEmpty()) return;
-    int row = sel.first().row();
-    if (row < 0 || row >= mod_model_->mods().size()) return;
-    const auto& entry = mod_model_->mods()[row];
-    if (entry.is_separator || entry.is_overwrite) return;
-
-    if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return;
-    auto mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
-    if (mods_subpath.empty()) return;
-
-    bool ok;
-    auto new_name = QInputDialog::getText(this, tr("Rename Mod"),
-        tr("New name:"), QLineEdit::Normal, entry.name, &ok);
-    if (!ok || new_name.trimmed().isEmpty()) return;
-    if (new_name.trimmed() == entry.name) return;
-
-    auto old_folder = mods_dir_path() / entry.id.toStdString();
-    auto new_id = entry.id;  // keep same folder name on disk
-    // Actually: rename the folder on disk using the new display name
-    // But the folder name is the id, not the display name...
-    // For simplicity, just update the display name in the model.
-    // The folder stays the same.
-
-    // Record the new display name in the meta dir sidecar
-    auto meta_dir = meta_dir_path();
-    if (!meta_dir.empty()) {
-        auto meta = engine::ModMeta::load(meta_dir, entry.id.toStdString());
-        meta.set("General", "name", new_name.trimmed().toStdString());
-        meta.save(meta_dir, entry.id.toStdString());
-    }
-
-    // Update model directly
-    int mod_idx = row;
-    auto& mods = const_cast<QVector<ModEntry>&>(mod_model_->mods());
-    if (mod_idx < mods.size()) {
-        mods[mod_idx].name = new_name.trimmed();
-        emit mod_model_->dataChanged(mod_model_->index(mod_idx, ModListModel::Name),
-                                      mod_model_->index(mod_idx, ModListModel::Name));
-    }
-
-    engine::Logger::instance().debug("Renamed mod: " + entry.name.toStdString() +
-        " -> " + new_name.trimmed().toStdString());
-}
-
 SourceVisitInfo MainWindow::source_visit_info(const QString& source_type, const QString& source_id) const {
     if (source_type == "steam") {
         return {tr("Visit on Workshop"),
@@ -2581,6 +2566,55 @@ SourceVisitInfo MainWindow::source_visit_info(const QString& source_type, const 
     return {tr("Visit on %1").arg(label), QString()};
 }
 
+namespace {
+
+// Write (or, with an empty color, remove) the color key in a separator's
+// meta.ini ([General] color) - the same file MO2's ModInfoRegular::setColor
+// writes. Returns false only on an actual write failure.
+bool write_separator_color_file(const std::filesystem::path& mod_dir, const QString& color) {
+    auto meta_path = mod_dir / "meta.ini";
+    engine::ModMeta meta;
+    if (std::filesystem::exists(meta_path)) {
+        std::ifstream f(meta_path);
+        if (f) {
+            std::string content((std::istreambuf_iterator<char>(f)),
+                                std::istreambuf_iterator<char>());
+            meta.parse(content);
+        }
+    }
+
+    const bool had_color = !meta.get("General", "color").empty();
+
+    if (color.isEmpty()) {
+        if (!had_color) return true;  // nothing stored - nothing to clear
+        // Rebuild the meta without the color key (ModMeta has no remove).
+        engine::ModMeta rebuilt;
+        for (const auto& section : meta.sections()) {
+            for (const auto& key : meta.keys(section)) {
+                if (section == "General" && key == "color") continue;
+                rebuilt.set(section, key, meta.get(section, key));
+            }
+        }
+        if (rebuilt.sections().empty()) {
+            std::error_code ec;
+            std::filesystem::remove(meta_path, ec);
+            return true;
+        }
+        std::ofstream out(meta_path);
+        if (!out) return false;
+        out << rebuilt.serialize();
+        return out.good();
+    }
+
+    meta.set("General", "color", color.toStdString());
+    std::ofstream out(meta_path);
+    if (!out) return false;
+    out << meta.serialize();
+    return out.good();
+}
+
+}  // namespace
+
 QString MainWindow::create_separator_named(const QString& name, const QString& color) {
     if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return {};
 
@@ -2599,16 +2633,16 @@ QString MainWindow::create_separator_named(const QString& name, const QString& c
     std::filesystem::create_directories(sep_dir, ec);
     if (ec) return {};
 
-    // Write separator.xml
-    auto xml_path = sep_dir / "separator.xml";
-    std::ofstream f(xml_path);
-    if (!f) return {};
-    f << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
-    f << "<separator>\n";
-    f << "  <name>" << name.toStdString() << "</name>\n";
-    f << "  <color>" << color.toStdString() << "</color>\n";
-    f << "</separator>\n";
-    f.close();
+    // MO2 writes separator metadata into the mod folder's meta.ini; the only
+    // persistent field GMM uses is the color. The display name derives from
+    // the folder name minus the separator suffix (ModList::getDisplayName),
+    // so no explicit name key is needed.
+    if (!color.isEmpty()) {
+        if (!write_separator_color_file(sep_dir, color)) {
+            std::filesystem::remove_all(sep_dir, ec);
+            return {};
+        }
+    }
 
     // Add to model
     auto id = QString::fromStdString(folder_name);
@@ -2620,21 +2654,32 @@ QString MainWindow::create_separator_named(const QString& name, const QString& c
 void MainWindow::create_separator() {
     if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return;
 
-    // Single dialog: name + color picker together (no separate color step).
-    ui::SeparatorDialog dialog(tr("Create Separator"), QString(), QColor("#888888"), this);
-    if (dialog.exec() != QDialog::Accepted) return;
-
-    auto name = dialog.name();
-    if (name.isEmpty()) return;
+    // MO2 createSeparator (modlistviewactions.cpp:152-204): a name-only prompt
+    // filtered through fixDirectoryName; the previously used separator color is
+    // inherited automatically - there is no color picker in this step.
+    QString name;
+    while (true) {
+        bool ok = false;
+        name = QInputDialog::getText(this, tr("Create Separator..."),
+            tr("This will create a new separator.\nPlease enter a name:"),
+            QLineEdit::Normal, name, &ok);
+        if (!ok) return;
+        name = QString::fromStdString(engine::sanitize_directory_name(name.toStdString()));
+        if (!name.isEmpty()) break;
+    }
 
     // Check for duplicate names
     if (mod_model_->existing_separator_names().contains(name)) {
-        QMessageBox::warning(this, tr("Separator"), tr("A separator with this name already exists."));
+        QMessageBox::warning(this, tr("Create Separator..."),
+            tr("A separator with this name already exists."));
         return;
     }
 
-    if (create_separator_named(name, dialog.color().name()).isEmpty()) {
-        QMessageBox::warning(this, tr("Separator"), tr("Failed to create separator directory."));
+    auto previous = Settings::instance().previous_separator_color();
+    const QString color = previous ? previous->name(QColor::HexArgb) : QString();
+    if (create_separator_named(name, color).isEmpty()) {
+        QMessageBox::warning(this, tr("Create Separator..."),
+            tr("Failed to create separator directory."));
     }
 }
 
@@ -2892,7 +2937,7 @@ void MainWindow::import_modlist() {
         if (idx < 0 && is_separator && !name.isEmpty()) {
             QString color = row.value(4).trimmed();
             if (create_separator_named(name,
-                    color.isEmpty() ? QStringLiteral("#888888") : color).isEmpty()) {
+                    color.isEmpty() ? QString() : color).isEmpty()) {
                 ++missing;
                 continue;
             }
@@ -2928,22 +2973,31 @@ void MainWindow::import_modlist() {
 void MainWindow::create_separator_at_row(int row) {
     if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return;
 
-    // Single dialog: name + color picker together (no separate color step).
-    ui::SeparatorDialog dialog(tr("Create Separator"), QString(), QColor("#888888"), this);
-    if (dialog.exec() != QDialog::Accepted) return;
-
-    auto name = dialog.name();
-    if (name.isEmpty()) return;
+    // Same MO2 flow as create_separator(): name-only prompt, previous color.
+    QString name;
+    while (true) {
+        bool ok = false;
+        name = QInputDialog::getText(this, tr("Create Separator..."),
+            tr("This will create a new separator.\nPlease enter a name:"),
+            QLineEdit::Normal, name, &ok);
+        if (!ok) return;
+        name = QString::fromStdString(engine::sanitize_directory_name(name.toStdString()));
+        if (!name.isEmpty()) break;
+    }
 
     // Check for duplicate names
     if (mod_model_->existing_separator_names().contains(name)) {
-        QMessageBox::warning(this, tr("Separator"), tr("A separator with this name already exists."));
+        QMessageBox::warning(this, tr("Create Separator..."),
+            tr("A separator with this name already exists."));
         return;
     }
 
-    auto id = create_separator_named(name, dialog.color().name());
+    auto previous = Settings::instance().previous_separator_color();
+    const QString color = previous ? previous->name(QColor::HexArgb) : QString();
+    auto id = create_separator_named(name, color);
     if (id.isEmpty()) {
-        QMessageBox::warning(this, tr("Separator"), tr("Failed to create separator directory."));
+        QMessageBox::warning(this, tr("Create Separator..."),
+            tr("Failed to create separator directory."));
         return;
     }
 
@@ -2954,73 +3008,97 @@ void MainWindow::create_separator_at_row(int row) {
         ": " + name.toStdString());
 }
 
-void MainWindow::edit_separator(int row) {
+void MainWindow::rename_mod_inline(int row) {
     if (row < 0 || row >= mod_model_->mods().size()) return;
     const auto& mod = mod_model_->mods()[row];
-    if (!mod.is_separator) return;
+    if (mod.is_overwrite || mod.is_merged || mod.is_game_native) return;
+    mod_view_->edit(mod_model_->index(row, ModListModel::Name));
+}
 
-    if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return;
+void MainWindow::apply_rename(int row, const QString& name) {
+    const auto revert = [this, row]() {
+        emit mod_model_->dataChanged(mod_model_->index(row, ModListModel::Name),
+                                     mod_model_->index(row, ModListModel::Version));
+    };
+
+    if (row < 0 || row >= mod_model_->mods().size()) return;
+    const auto& entry = mod_model_->mods()[row];
+    if (entry.is_overwrite || entry.is_merged || entry.is_game_native) { revert(); return; }
+
+    if (name == entry.name) { revert(); return; }  // unchanged
+
+    if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) { revert(); return; }
 
     auto mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
     auto separator_suffix = knowledge_->get(current_game_id_, "separator_suffix", "_separator");
-    if (mods_subpath.empty()) return;
+    if (mods_subpath.empty()) { revert(); return; }
 
-    // Single dialog: name + color picker together (no separate color step).
-    QColor current_color(mod.separator_color.isEmpty() ? "#888888" : mod.separator_color);
-    ui::SeparatorDialog dialog(tr("Edit Separator"), mod.name, current_color, this);
-    if (dialog.exec() != QDialog::Accepted) return;
-
-    auto new_name = dialog.name();
-    if (new_name.isEmpty()) return;
-
-    // Check for duplicate names (excluding self)
-    auto existing = mod_model_->existing_separator_names();
-    existing.removeAll(mod.name);
-    if (existing.contains(new_name)) {
-        QMessageBox::warning(this, tr("Separator"), tr("A separator with this name already exists."));
+    // Internal name = folder name on disk (MO2 makeInternalName): separators
+    // get the suffix appended, everything else is the raw name.
+    auto clean = engine::sanitize_directory_name(name.toStdString());
+    if (clean.empty()) {
+        QMessageBox::warning(this, tr("Rename"), tr("Invalid name."));
+        revert();
         return;
     }
+    const QString display_name = QString::fromStdString(clean);
+    std::string internal = clean;
+    if (entry.is_separator) internal += separator_suffix;
+    const QString new_id = QString::fromStdString(internal);
 
-    QColor color = dialog.color();
+    if (new_id == entry.id) { revert(); return; }  // sanitized back to the same folder
 
-    auto old_folder = mod.id.toStdString();
-    auto new_folder = new_name.toStdString() + separator_suffix;
-
-    auto mods_dir = mods_dir_path();
-    auto old_path = mods_dir / old_folder;
-    auto new_path = mods_dir / new_folder;
-
-    // Rename folder on disk if name changed
-    if (old_folder != new_folder) {
-        std::error_code ec;
-        std::filesystem::rename(old_path, new_path, ec);
-        if (ec) {
-            QMessageBox::warning(this, tr("Separator"), tr("Failed to rename separator folder."));
+    // Duplicate check (case-insensitive, excluding self) - MO2 renameMod.
+    for (const auto& m : mod_model_->mods()) {
+        if (m.id == entry.id) continue;
+        if (m.id.compare(new_id, Qt::CaseInsensitive) == 0) {
+            QMessageBox::warning(this, tr("Rename"),
+                tr("Name is already in use by another mod."));
+            revert();
             return;
         }
     }
 
-    // Rewrite separator.xml
-    auto xml_path = new_path / "separator.xml";
-    std::ofstream f(xml_path);
-    if (f) {
-        f << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
-        f << "<separator>\n";
-        f << "  <name>" << new_name.toStdString() << "</name>\n";
-        f << "  <color>" << color.name().toStdString() << "</color>\n";
-        f << "</separator>\n";
+    auto mods_dir = mods_dir_path();
+    const auto old_path = mods_dir / entry.id.toStdString();
+    const auto new_path = mods_dir / new_id.toStdString();
+
+    std::error_code ec;
+    if (std::filesystem::exists(new_path, ec)) {
+        QMessageBox::warning(this, tr("Rename"),
+            tr("A folder named %1 already exists in the mods directory.").arg(new_id));
+        revert();
+        return;
     }
 
-    // Update model entry
-    loading_ = true;
-    mod_model_->remove_mod(mod.id);
-    mod_model_->add_separator(QString::fromStdString(new_folder), new_name, color.name());
-    loading_ = false;
+    if (std::filesystem::exists(old_path, ec)) {
+        std::filesystem::rename(old_path, new_path, ec);
+        if (ec) {
+            QMessageBox::warning(this, tr("Rename"), tr("Failed to rename mod folder."));
+            revert();
+            return;
+        }
+    }
 
-    save_order();
-    sync_separator_ids();
+    // Move the instance-meta sidecar along with the folder so source/separator
+    // info isn't lost; keep its [GameModManager] folder key in sync.
+    auto meta_dir = meta_dir_path();
+    if (!meta_dir.empty()) {
+        auto old_meta = meta_dir / (entry.id.toStdString() + ".ini");
+        auto new_meta = meta_dir / (new_id.toStdString() + ".ini");
+        if (std::filesystem::exists(old_meta, ec)) {
+            std::filesystem::rename(old_meta, new_meta, ec);
+            if (!ec) {
+                auto meta = engine::ModMeta::load(meta_dir, new_id.toStdString());
+                meta.set("GameModManager", "folder", new_id.toStdString());
+                meta.save(meta_dir, new_id.toStdString());
+            }
+        }
+    }
 
-    engine::Logger::instance().debug("Separator edited: " + new_name.toStdString());
+    mod_model_->rename_mod_in_place(row, new_id, display_name);
+    engine::Logger::instance().debug("Renamed mod: " + entry.name.toStdString() +
+        " -> " + display_name.toStdString());
 }
 
 void MainWindow::delete_separator(int row) {
@@ -3046,6 +3124,57 @@ void MainWindow::delete_separator(int row) {
 
     mod_model_->remove_mod(mod.id);
     engine::Logger::instance().debug("Separator deleted: " + mod.name.toStdString());
+}
+
+void MainWindow::select_color_for_selected() {
+    auto sel = mod_view_->selectionModel()->selectedRows();
+    if (sel.isEmpty()) return;
+
+    const auto& ref = mod_model_->mods()[sel.first().row()];
+    QColor current;
+    if (ref.is_separator && !ref.separator_color.isEmpty())
+        current = QColor(ref.separator_color);
+
+    // MO2 setColor (modlistviewactions.cpp:1195-1224): standalone color dialog
+    // with alpha; prefills the current color or the remembered previous one.
+    QColorDialog dialog(this);
+    dialog.setOption(QColorDialog::ShowAlphaChannel);
+    if (current.isValid()) {
+        dialog.setCurrentColor(current);
+    } else if (auto prev = Settings::instance().previous_separator_color()) {
+        dialog.setCurrentColor(*prev);
+    }
+    if (dialog.exec() != QDialog::Accepted) return;
+
+    const auto color = dialog.currentColor();
+    if (!color.isValid()) return;
+
+    Settings::instance().set_previous_separator_color(color);
+    const QString hex = color.name(QColor::HexArgb);
+
+    for (const auto& idx : sel) {
+        int row = idx.row();
+        if (row < 0 || row >= mod_model_->mods().size()) continue;
+        const auto& mod = mod_model_->mods()[row];
+        if (!mod.is_separator) continue;
+        write_separator_color_file(mods_dir_path() / mod.id.toStdString(), hex);
+        mod_model_->set_mod_color(mod.id, color);
+    }
+}
+
+void MainWindow::reset_color_for_selected() {
+    auto sel = mod_view_->selectionModel()->selectedRows();
+    if (sel.isEmpty()) return;
+
+    for (const auto& idx : sel) {
+        int row = idx.row();
+        if (row < 0 || row >= mod_model_->mods().size()) continue;
+        const auto& mod = mod_model_->mods()[row];
+        if (!mod.is_separator) continue;
+        write_separator_color_file(mods_dir_path() / mod.id.toStdString(), QString());
+        mod_model_->clear_mod_color(mod.id);
+    }
+    Settings::instance().remove_previous_separator_color();
 }
 
 void MainWindow::save_order() {

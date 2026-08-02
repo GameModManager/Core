@@ -395,9 +395,12 @@ void PluginsTab::apply_highlights() {
         const QString name = QString::fromStdString(names_[static_cast<size_t>(i)]);
         const bool is_contained = contained_names_.contains(name);
         const bool is_master = master_names_.contains(name);
-        if (!is_contained && !is_master) continue;
         // Contained wins over master, matching MO2's PluginList check order.
-        const QBrush brush(is_contained ? contained_color : master_color);
+        // Rows in neither set are explicitly cleared (NoBrush) so a changed
+        // selection never leaves stale tints from a previously selected mod.
+        const QBrush brush = is_contained ? QBrush(contained_color)
+                           : is_master    ? QBrush(master_color)
+                                          : QBrush();
         for (int c = 0; c < table_->columnCount(); ++c) {
             if (auto* item = table_->item(i, c)) item->setBackground(brush);
         }
