@@ -158,8 +158,10 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
         }
     }
 
-    // --- Overwrite: italic gray name ---
+    // --- Overwrite: italic gray name, centered text ---
     if (mod.is_overwrite) {
+        if (role == Qt::TextAlignmentRole)
+            return static_cast<int>(Qt::AlignCenter);
         if (role == Qt::FontRole && index.column() == Name) {
             QFont f;
             f.setItalic(true);

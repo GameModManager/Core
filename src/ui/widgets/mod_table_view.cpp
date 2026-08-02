@@ -5,6 +5,7 @@
 #include <QAbstractItemModel>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QFileInfo>
 #include <QMimeData>
 #include <QPainter>
 #include <QStyle>
@@ -100,16 +101,13 @@ void ModTableView::setModel(QAbstractItemModel* model) {
 
 void ModTableView::dragEnterEvent(QDragEnterEvent* event) {
     if (event->mimeData()->hasUrls()) {
-        bool has_archive = false;
         for (const auto& url : event->mimeData()->urls()) {
-            if (url.isLocalFile() && is_supported_archive(url.toLocalFile())) {
-                has_archive = true;
-                break;
+            if (!url.isLocalFile()) continue;
+            const auto path = url.toLocalFile();
+            if (is_supported_archive(path) || is_under_overwrite(path)) {
+                event->acceptProposedAction();
+                return;
             }
-        }
-        if (has_archive) {
-            event->acceptProposedAction();
-            return;
         }
     }
     QTreeView::dragEnterEvent(event);
@@ -117,26 +115,63 @@ void ModTableView::dragEnterEvent(QDragEnterEvent* event) {
 
 void ModTableView::dragMoveEvent(QDragMoveEvent* event) {
     if (event->mimeData()->hasUrls()) {
-        event->acceptProposedAction();
-        return;
+        for (const auto& url : event->mimeData()->urls()) {
+            if (!url.isLocalFile()) continue;
+            const auto path = url.toLocalFile();
+            if (is_supported_archive(path) || is_under_overwrite(path)) {
+                event->acceptProposedAction();
+                return;
+            }
+        }
     }
     QTreeView::dragMoveEvent(event);
 }
 
 void ModTableView::dropEvent(QDropEvent* event) {
     if (event->mimeData()->hasUrls()) {
-        QStringList paths;
+        QStringList archives;
+        QStringList overwrite_paths;
         for (const auto& url : event->mimeData()->urls()) {
-            if (url.isLocalFile() && is_supported_archive(url.toLocalFile()))
-                paths.append(url.toLocalFile());
+            if (!url.isLocalFile()) continue;
+            const auto path = url.toLocalFile();
+            if (is_supported_archive(path))
+                archives.append(path);
+            else if (is_under_overwrite(path))
+                overwrite_paths.append(path);
         }
-        if (!paths.isEmpty()) {
-            emit files_dropped(paths);
+
+        if (!overwrite_paths.isEmpty()) {
+            const int row = indexAt(event->position().toPoint()).row();
+            if (row >= 0) {
+                emit overwrite_files_dropped(overwrite_paths, row);
+                event->acceptProposedAction();
+                return;
+            }
+        }
+        if (!archives.isEmpty()) {
+            emit files_dropped(archives);
             event->acceptProposedAction();
             return;
         }
     }
     QTreeView::dropEvent(event);
+}
+
+bool ModTableView::is_under_overwrite(const QString& path) const {
+    const auto* model = qobject_cast<const ModListModel*>(this->model());
+    if (!model) return false;
+    const auto ow = model->overwrite_path();
+    if (ow.isEmpty()) return false;
+
+    QFileInfo info(path);
+    const auto canon = info.canonicalFilePath();
+    const QFileInfo ow_info(ow);
+    const auto ow_canon = ow_info.canonicalFilePath();
+    if (canon.isEmpty() || ow_canon.isEmpty()) return false;
+
+    // Equal to or strictly inside the overwrite dir.
+    return canon == ow_canon ||
+           canon.startsWith(ow_canon + QLatin1Char('/'));
 }
 
 }  // namespace ui
