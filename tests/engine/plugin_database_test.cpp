@@ -231,6 +231,39 @@ void run_synthetic_fixture() {
     require(contains(errb, "Broken.esp") && contains(errb, "GoneMaster.esm"),
             "error names the chain plugin and missing master");
 
+    // Case-insensitive master resolution. Header MAST strings are byte-exact
+    // ("skyrim.esm", "caselib.esp") while plugin names come from on-disk
+    // filenames (Skyrim.esm, CaseLib.esp). Windows games resolve these on a
+    // case-insensitive filesystem, so the lookup must match ignoring case -
+    // otherwise real masters are falsely flagged and dependency ordering breaks.
+    fs::create_directories(mods / "CaseMod", ec);
+    write_esp(mods / "CaseMod" / "CasePlugin.esp", false, {"skyrim.esm"});
+    fs::create_directories(mods / "CaseLib", ec);
+    write_esp(mods / "CaseLib" / "CaseLib.esp", false, {"Skyrim.esm"});
+    fs::create_directories(mods / "CaseClient", ec);
+    write_esp(mods / "CaseClient" / "CaseClient.esp", false, {"caselib.esp"});
+    PluginDatabase dbc;
+    require(dbc.refresh(game, mods, meta, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
+            "refresh with case-mismatched masters");
+    dbc.load_creation_club(game);
+    dbc.sort_load_order();
+    dbc.set_all_enabled();
+    require(order_of(dbc, "CaseLib.esp") < order_of(dbc, "CaseClient.esp"),
+            "case-mismatched master still orders dependent after master");
+    const auto* casep = dbc.find("CasePlugin.esp");
+    require(casep && !casep->missing_master,
+            "lowercase master flag resolved against Skyrim.esm");
+    // Disabling CaseLib is blocked: CaseClient requires it via "caselib.esp".
+    std::string ercc;
+    require(!dbc.set_enabled("CaseLib.esp", false, &ercc),
+            "case-insensitive disable block");
+    require(contains(ercc, "CaseClient.esp"), "disable error names the dependent");
+    // Re-enabling a plugin whose lowercase master resolves works.
+    require(dbc.set_enabled("CaseClient.esp", false), "disable CaseClient");
+    ercc.clear();
+    require(dbc.set_enabled("CaseClient.esp", true, &ercc),
+            "re-enable CaseClient with case-resolved master");
+
     // Profile round-trip: save, flip enable state, load restores it.
     PluginDatabase db3;
     db3.refresh(game, mods, meta, "", "Skyrim.esm,Update.esm,Dawnguard.esm");
@@ -336,6 +369,114 @@ void run_synthetic_fixture() {
     require(!PluginDatabase::write_plugins_txt_for_launch(
                 game, inst_root, "isaac", 250900, no_plugins, &platform),
             "games without plugin support skip");
+
+    // Band invariant: re-cased game-native ESMs stay force-loaded in the fixed
+    // band above user plugins, and cc-prefixed content needs no Skyrim.ccc.
+    {
+        const fs::path b = base / "bandA";
+        const fs::path g = b / "game";
+        const fs::path m = b / "mods";
+        const fs::path mt = b / "meta";
+        fs::create_directories(g / "Data", ec);
+        fs::create_directories(m, ec);
+        fs::create_directories(mt, ec);
+        // On-disk names re-cased vs the declared canonical list.
+        write_esp(g / "Data" / "skyrim.esm", true, {});
+        write_esp(g / "Data" / "update.esm", true, {"Skyrim.esm"});
+        // CC content detected by prefix alone (no Skyrim.ccc file).
+        write_esp(g / "Data" / "ccBGSFO4001-Whatever.esm", true, {"Skyrim.esm"});
+        fs::create_directories(m / "UserMod", ec);
+        write_esp(m / "UserMod" / "UserMod.esp", false, {"skyrim.esm", "update.esm"});
+
+        PluginDatabase dba;
+        require(dba.refresh(g, m, mt, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
+                "refresh re-cased natives");
+        dba.sort_load_order();
+        dba.set_all_enabled();
+        dba.generate_mod_indexes();
+        require(order_of(dba, "skyrim.esm") == 0, "re-cased native keeps declared slot");
+        require(order_of(dba, "update.esm") == 1, "re-cased native keeps declared slot 2");
+        require(dba.plugins()[0].is_game_native && dba.plugins()[0].force_loaded,
+                "re-cased native force-loaded");
+        require(dba.plugins()[1].is_game_native && dba.plugins()[1].force_loaded,
+                "re-cased native 2 force-loaded");
+        const int cc_row = order_of(dba, "ccBGSFO4001-Whatever.esm");
+        require(cc_row == 2, "cc-prefix plugin in CC band without Skyrim.ccc");
+        require(dba.plugins()[cc_row].is_cc, "cc-prefix flagged CC");
+        require(dba.plugins()[cc_row].force_loaded, "cc-prefix force-loaded");
+        const int user_row = order_of(dba, "UserMod.esp");
+        require(user_row == 3 && user_row > cc_row, "user plugin after the fixed band");
+        std::string erra;
+        require(!dba.move_plugin(0, static_cast<int>(dba.plugins().size()) - 1, &erra),
+                "re-cased native cannot be moved to the bottom");
+        require(contains(erra, "core plugin"), "move error mentions core plugin");
+    }
+
+    // Band heal: a stale loadorder.txt that parks core plugins at the bottom
+    // is repaired on load (repaired=true, natives back on top, user order
+    // preserved) and the corrected order is persisted immediately.
+    {
+        const fs::path b = base / "bandB";
+        const fs::path g = b / "game";
+        const fs::path m = b / "mods";
+        const fs::path mt = b / "meta";
+        const fs::path pf = b / "profiles";
+        fs::create_directories(g / "Data", ec);
+        fs::create_directories(m, ec);
+        fs::create_directories(mt, ec);
+        fs::create_directories(pf, ec);
+        write_esp(g / "Data" / "Skyrim.esm", true, {});
+        write_esp(g / "Data" / "Update.esm", true, {"Skyrim.esm"});
+        write_esp(g / "Data" / "Dawnguard.esm", true, {"Skyrim.esm", "Update.esm"});
+        fs::create_directories(m / "UserMod", ec);
+        write_esp(m / "UserMod" / "UserMod.esp", false, {"Skyrim.esm"});
+        fs::create_directories(m / "Another", ec);
+        write_esp(m / "Another" / "Another.esp", false, {"Skyrim.esm"});
+
+        PluginDatabase dbb;
+        require(dbb.refresh(g, m, mt, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
+                "refresh heal fixture");
+        dbb.sort_load_order();
+        dbb.set_all_enabled();
+        dbb.save_profile(pf, "Default");
+        require(order_of(dbb, "Skyrim.esm") == 0, "sorted natives first");
+
+        // Corrupt the persisted order: core plugins parked at the bottom.
+        {
+            std::ofstream lo(pf / "Default" / "loadorder.txt");
+            lo << "UserMod.esp\nAnother.esp\nUpdate.esm\nDawnguard.esm\nSkyrim.esm\n";
+        }
+        PluginDatabase dbc2;
+        require(dbc2.refresh(g, m, mt, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
+                "refresh heal fixture again");
+        dbc2.sort_load_order();
+        bool repaired = false;
+        require(dbc2.load_profile(pf, "Default", &repaired), "profile loads");
+        require(repaired, "broken core order repaired on load");
+        require(order_of(dbc2, "Skyrim.esm") < order_of(dbc2, "UserMod.esp"),
+                "native healed above user plugins");
+        require(order_of(dbc2, "UserMod.esp") < order_of(dbc2, "Another.esp"),
+                "user relative order preserved");
+        require(order_of(dbc2, "Skyrim.esm") == 0 && order_of(dbc2, "Update.esm") == 1 &&
+                order_of(dbc2, "Dawnguard.esm") == 2,
+                "declared native order restored");
+        dbc2.save_profile(pf, "Default");  // persist-immediately
+        const std::string healed = file_contents(pf / "Default" / "loadorder.txt");
+        const auto first_native = healed.find("Skyrim.esm\n");
+        require(first_native != std::string::npos &&
+                first_native < healed.find("UserMod.esp\n") &&
+                healed.find("Update.esm\n") < healed.find("UserMod.esp\n"),
+                "healed order persisted to loadorder.txt");
+
+        // A clean profile loads without repair.
+        PluginDatabase dbc3;
+        require(dbc3.refresh(g, m, mt, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
+                "refresh heal fixture for clean load");
+        dbc3.sort_load_order();
+        bool repaired2 = true;
+        require(dbc3.load_profile(pf, "Default", &repaired2), "clean profile loads");
+        require(!repaired2, "clean profile does not need repair");
+    }
 
     std::fprintf(stderr, "plugin_database_test: synthetic fixture OK\n");
     fs::remove_all(base, ec);

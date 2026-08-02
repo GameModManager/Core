@@ -322,7 +322,7 @@ QMimeData* ModListModel::mimeData(const QModelIndexList& indexes) const {
     for (const auto& idx : indexes) {
         if (idx.isValid() && !rows.contains(idx.row())) {
             int r = idx.row();
-            if (r < mods_.size() && !mods_[r].is_overwrite && !mods_[r].is_merged) {
+            if (r < mods_.size() && !mods_[r].is_overwrite && !mods_[r].is_merged && !mods_[r].is_game_native) {
                 rows.append(r);
             }
         }
@@ -366,7 +366,7 @@ bool ModListModel::dropMimeData(const QMimeData* data, Qt::DropAction action,
 
     QList<int> validSources;
     for (int r : sourceRows) {
-        if (r >= 0 && r < mods_.size() && !mods_[r].is_overwrite && !mods_[r].is_merged) {
+        if (r >= 0 && r < mods_.size() && !mods_[r].is_overwrite && !mods_[r].is_merged && !mods_[r].is_game_native) {
             validSources.append(r);
         }
     }
@@ -397,6 +397,11 @@ bool ModListModel::dropMimeData(const QMimeData* data, Qt::DropAction action,
     if (ow_row >= 0 && targetRow > ow_row)
         targetRow = ow_row;  // drop before Overwrite
 
+    // Never drop into the game-native band (unmanaged mods stay on top)
+    int native_bottom = native_band_bottom();
+    if (targetRow < native_bottom)
+        targetRow = native_bottom;
+
     for (int i = 0; i < toMove.size(); ++i) {
         beginInsertRows({}, targetRow + i, targetRow + i);
         mods_.insert(targetRow + i, toMove[i]);
@@ -415,7 +420,7 @@ bool ModListModel::moveRows(const QModelIndex& srcParent, int srcRow, int count,
     if (dstRow < 0 || dstRow > mods_.size()) return false;
     if (count != 1) return false;
 
-    if (mods_[srcRow].is_overwrite || mods_[srcRow].is_merged) return false;
+    if (mods_[srcRow].is_overwrite || mods_[srcRow].is_merged || mods_[srcRow].is_game_native) return false;
 
     int dest = dstRow > srcRow ? dstRow - 1 : dstRow;
     // Prevent moving onto or past Overwrite or MERGED (always pinned)
@@ -425,6 +430,10 @@ bool ModListModel::moveRows(const QModelIndex& srcParent, int srcRow, int count,
     int mg_row = merged_row();
     if (mg_row >= 0 && dest >= mg_row)
         dest = mg_row - 1;
+    // Never move into the game-native band (unmanaged mods stay on top)
+    int native_bottom = native_band_bottom();
+    if (dest < native_bottom)
+        dest = native_bottom;
     if (dest < 0) dest = 0;
 
     beginMoveRows(srcParent, srcRow, srcRow, srcParent, dest + (dest >= srcRow ? 1 : 0));
@@ -523,6 +532,7 @@ void ModListModel::move_mod(const QString& id, int new_row) {
         }
     }
     if (src < 0 || src == new_row) return;
+    if (mods_[src].is_game_native) return;
 
     int ow_row = overwrite_row();
     int mg_row = merged_row();
@@ -531,6 +541,10 @@ void ModListModel::move_mod(const QString& id, int new_row) {
         new_row = mg_row - 1;
     if (ow_row >= 0 && new_row >= ow_row)
         new_row = ow_row - 1;
+    // Never move into the game-native band (unmanaged mods stay on top)
+    int native_bottom = native_band_bottom();
+    if (new_row < native_bottom)
+        new_row = native_bottom;
     if (new_row < 0) new_row = 0;
 
     beginMoveRows({}, src, src, {}, new_row + (new_row >= src ? 1 : 0));
@@ -790,6 +804,12 @@ int ModListModel::merged_row() const {
         if (mods_[i].is_merged) return i;
     }
     return -1;
+}
+
+int ModListModel::native_band_bottom() const {
+    int i = 0;
+    while (i < mods_.size() && mods_[i].is_game_native) ++i;
+    return i;
 }
 
 bool ModListModel::is_merged(int row) const {

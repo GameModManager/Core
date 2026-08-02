@@ -77,10 +77,10 @@ bool PluginDatabase::refresh(const std::filesystem::path& game_dir,
     by_name_.clear();
     native_order_.clear();
 
-    std::set<std::string> native_set;
+    std::set<std::string> native_ci_set;
     for (const auto& tok : split_csv(game_native_plugins)) {
         native_order_.push_back(tok);
-        native_set.insert(tok);
+        native_ci_set.insert(to_lower(tok));
     }
 
     std::error_code ec;
@@ -147,9 +147,23 @@ bool PluginDatabase::refresh(const std::filesystem::path& game_dir,
         plugins_.push_back(std::move(p));
     }
 
+    // Game-native detection is case-insensitive: on-disk filenames can be
+    // re-cased (e.g. "skyrim.esm") while the declared list keeps its canonical
+    // case. A renamed native must keep its force-loaded band membership, or it
+    // silently becomes a draggable user plugin.
     for (auto& p : plugins_) {
-        p.is_game_native = native_set.count(p.name) != 0;
+        p.is_game_native = native_ci_set.count(to_lower(p.name)) != 0;
         if (p.is_game_native) p.force_loaded = true;
+    }
+
+    // Creation Club content is identified by its "cc" filename prefix
+    // (independent of Skyrim.ccc): it is always force-loaded and pinned above
+    // user plugins. A user plugin named cc*.esp is treated as CC by design.
+    for (auto& p : plugins_) {
+        if (to_lower(p.name).rfind("cc", 0) == 0) {
+            p.is_cc = true;
+            p.force_loaded = true;
+        }
     }
 
     parse_headers();
@@ -159,7 +173,11 @@ bool PluginDatabase::refresh(const std::filesystem::path& game_dir,
 
 void PluginDatabase::rebuild_index() {
     by_name_.clear();
-    for (size_t i = 0; i < plugins_.size(); ++i) by_name_[plugins_[i].name] = i;
+    by_name_ci_.clear();
+    for (size_t i = 0; i < plugins_.size(); ++i) {
+        by_name_[plugins_[i].name] = i;
+        by_name_ci_[to_lower(plugins_[i].name)] = i;
+    }
 }
 
 void PluginDatabase::load_creation_club(const std::filesystem::path& game_dir) {
@@ -188,7 +206,10 @@ void PluginDatabase::load_creation_club(const std::filesystem::path& game_dir) {
     }
 
     for (auto& p : plugins_) {
-        const bool in_ccc = std::find(ccc_order_.begin(), ccc_order_.end(), p.name) != ccc_order_.end();
+        const std::string lower = to_lower(p.name);
+        const bool in_ccc =
+            std::any_of(ccc_order_.begin(), ccc_order_.end(),
+                        [&lower](const std::string& c) { return to_lower(c) == lower; });
         if (in_ccc) {
             p.is_cc = true;
             p.force_loaded = true;
@@ -233,16 +254,16 @@ void PluginDatabase::sort_load_order() {
 
     // 1. Game-native plugins: declared order first, then any natives not declared.
     for (const auto& name : native_order_) {
-        const auto it = by_name_.find(name);
-        if (it != by_name_.end()) append(it->second);
+        const auto it = by_name_ci_.find(to_lower(name));
+        if (it != by_name_ci_.end()) append(it->second);
     }
     for (size_t i = 0; i < n; ++i)
         if (plugins_[i].is_game_native) append(i);
 
     // 2. Creation Club plugins: ccc file order, then any CC not listed.
     for (const auto& name : ccc_order_) {
-        const auto it = by_name_.find(name);
-        if (it != by_name_.end()) append(it->second);
+        const auto it = by_name_ci_.find(to_lower(name));
+        if (it != by_name_ci_.end()) append(it->second);
     }
     for (size_t i = 0; i < n; ++i)
         if (plugins_[i].is_cc && !taken[i]) append(i);
@@ -267,31 +288,31 @@ void PluginDatabase::sort_load_order() {
     for (size_t i : mod_indices) {
         size_t deg = 0;
         for (const auto& master : plugins_[i].masters) {
-            const auto it = by_name_.find(master);
-            if (it != by_name_.end() && mod_indices.count(it->second) != 0) {
-                dependents[master].push_back(i);
+            const auto it = by_name_ci_.find(to_lower(master));
+            if (it != by_name_ci_.end() && mod_indices.count(it->second) != 0) {
+                dependents[to_lower(master)].push_back(i);
                 ++deg;
             }
         }
-        indegree[plugins_[i].name] = deg;
+        indegree[to_lower(plugins_[i].name)] = deg;
     }
 
     std::set<size_t, decltype(cmp)> ready(cmp);
     for (size_t i : mod_indices)
-        if (indegree[plugins_[i].name] == 0) ready.insert(i);
+        if (indegree[to_lower(plugins_[i].name)] == 0) ready.insert(i);
 
     std::vector<size_t> result;
     while (!ready.empty()) {
         const size_t cur = *ready.begin();
         ready.erase(ready.begin());
         result.push_back(cur);
-        for (size_t dep : dependents[plugins_[cur].name]) {
-            if (--indegree[plugins_[dep].name] == 0) ready.insert(dep);
+        for (size_t dep : dependents[to_lower(plugins_[cur].name)]) {
+            if (--indegree[to_lower(plugins_[dep].name)] == 0) ready.insert(dep);
         }
     }
     std::set<size_t, decltype(cmp)> rest(cmp);
     for (size_t i : mod_indices)
-        if (indegree[plugins_[i].name] > 0) rest.insert(i);
+        if (indegree[to_lower(plugins_[i].name)] > 0) rest.insert(i);
     for (size_t i : rest) result.push_back(i);
     for (size_t i : result) append(i);
 
@@ -306,6 +327,54 @@ void PluginDatabase::sort_load_order() {
     set_missing_masters();
 }
 
+bool PluginDatabase::reassert_band() {
+    const size_t n = plugins_.size();
+    if (n == 0) return false;
+
+    std::vector<bool> taken(n, false);
+    std::vector<size_t> ordered;
+    const auto append = [&](size_t idx) {
+        if (taken[idx]) return;
+        ordered.push_back(idx);
+        taken[idx] = true;
+    };
+
+    // Fixed band: declared natives (CI, so a re-cased file keeps its declared
+    // slot), then any remaining natives; then declared CC, then remaining CC.
+    // Everything else keeps its current (user/LOOT) relative order.
+    for (const auto& name : native_order_) {
+        const auto it = by_name_ci_.find(to_lower(name));
+        if (it != by_name_ci_.end()) append(it->second);
+    }
+    for (size_t i = 0; i < n; ++i)
+        if (plugins_[i].is_game_native) append(i);
+    for (const auto& name : ccc_order_) {
+        const auto it = by_name_ci_.find(to_lower(name));
+        if (it != by_name_ci_.end()) append(it->second);
+    }
+    for (size_t i = 0; i < n; ++i)
+        if (plugins_[i].is_cc && !taken[i]) append(i);
+    for (size_t i = 0; i < n; ++i)
+        if (!taken[i]) append(i);
+
+    bool repaired = false;
+    for (size_t i = 0; i < n; ++i) {
+        if (ordered[i] != i) {
+            repaired = true;
+            break;
+        }
+    }
+    if (!repaired) return false;
+
+    std::vector<GamePlugin> reordered;
+    reordered.reserve(ordered.size());
+    for (size_t i : ordered) reordered.push_back(plugins_[i]);
+    plugins_ = std::move(reordered);
+    rebuild_index();
+    for (size_t i = 0; i < plugins_.size(); ++i) plugins_[i].priority = static_cast<int>(i);
+    return true;
+}
+
 void PluginDatabase::set_all_enabled() {
     for (auto& p : plugins_) p.enabled = true;  // first run: load everything
 }
@@ -314,7 +383,7 @@ void PluginDatabase::set_missing_masters() {
     for (auto& p : plugins_) {
         p.missing_master = false;
         for (const auto& master : p.masters) {
-            if (by_name_.find(master) == by_name_.end()) {
+            if (by_name_ci_.find(to_lower(master)) == by_name_ci_.end()) {
                 p.missing_master = true;
                 break;
             }
@@ -370,8 +439,8 @@ bool PluginDatabase::set_enabled(const std::string& name, bool enabled, std::str
             visited[idx] = true;
             chain.push_back(cur);
             for (const auto& master : cur->masters) {
-                const auto mit = by_name_.find(master);
-                if (mit == by_name_.end()) {
+                const auto mit = by_name_ci_.find(to_lower(master));
+                if (mit == by_name_ci_.end()) {
                     if (error) *error = "Cannot enable " + cur->name + ": missing master " + master;
                     return false;
                 }
@@ -387,9 +456,13 @@ bool PluginDatabase::set_enabled(const std::string& name, bool enabled, std::str
         if (error) *error = name + " is a core plugin and cannot be disabled";
         return false;
     }
+    const std::string name_lower = to_lower(name);
     for (auto& other : plugins_) {
         if (!other.enabled || other.name == name) continue;
-        if (std::find(other.masters.begin(), other.masters.end(), name) != other.masters.end()) {
+        const auto has_master = [&name_lower](const std::string& m) {
+            return to_lower(m) == name_lower;
+        };
+        if (std::find_if(other.masters.begin(), other.masters.end(), has_master) != other.masters.end()) {
             if (error) *error = "Cannot disable " + name + ": " + other.name + " requires it as a master";
             return false;
         }
@@ -427,13 +500,16 @@ bool PluginDatabase::move_plugin(int from_row, int to_row, std::string* error) {
     rebuild_index();
     for (size_t i = 0; i < plugins_.size(); ++i) plugins_[i].priority = static_cast<int>(i);
     generate_mod_indexes();
+    reassert_band();  // defense-in-depth: force-loaded rows always stay on top
     return true;
 }
 
 bool PluginDatabase::load_profile(const std::filesystem::path& profiles_dir,
-                                  const std::string& profile_name) {
+                                  const std::string& profile_name,
+                                  bool* repaired) {
     const auto dir = profiles_dir / profile_name;
     bool applied = false;
+    if (repaired) *repaired = false;
 
     // Enable state: plugins.txt (* = enabled).
     if (std::filesystem::is_regular_file(dir / "plugins.txt")) {
@@ -444,8 +520,8 @@ bool PluginDatabase::load_profile(const std::filesystem::path& profiles_dir,
             if (line.empty() || line[0] == '#') continue;
             const bool enabled = line[0] == '*';
             const std::string name = enabled ? line.substr(1) : line;
-            const auto it = by_name_.find(name);
-            if (it != by_name_.end()) plugins_[it->second].enabled = enabled;
+            const auto it = by_name_ci_.find(to_lower(name));
+            if (it != by_name_ci_.end()) plugins_[it->second].enabled = enabled;
         }
         for (auto& p : plugins_)
             if (p.force_loaded) p.enabled = true;
@@ -466,8 +542,8 @@ bool PluginDatabase::load_profile(const std::filesystem::path& profiles_dir,
             std::vector<bool> taken(plugins_.size(), false);
             std::vector<GamePlugin> reordered;
             for (const auto& name : order) {
-                const auto it = by_name_.find(name);
-                if (it != by_name_.end() && !taken[it->second]) {
+                const auto it = by_name_ci_.find(to_lower(name));
+                if (it != by_name_ci_.end() && !taken[it->second]) {
                     reordered.push_back(plugins_[it->second]);
                     taken[it->second] = true;
                 }
@@ -481,6 +557,9 @@ bool PluginDatabase::load_profile(const std::filesystem::path& profiles_dir,
         }
     }
 
+    // A persisted loadorder.txt is a user/LOOT artifact and must never be able
+    // to park a core plugin below user ones - heal the band if it tried.
+    if (repaired && reassert_band()) *repaired = true;
     return applied;
 }
 

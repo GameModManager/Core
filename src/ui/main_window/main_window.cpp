@@ -1121,7 +1121,7 @@ void MainWindow::sort_mods() {
     trace.begin_stage("sort", "Gather mod info");
     std::vector<engine::SortModInfo> mod_infos;
     for (const auto& mod : mod_model_->mods()) {
-        if (mod.is_separator || mod.is_overwrite || mod.id == kOverwriteModId) continue;
+        if (mod.is_separator || mod.is_overwrite || mod.id == kOverwriteModId || mod.is_game_native) continue;
 
         engine::SortModInfo info;
         info.folder_name = mod.id.toStdString();
@@ -1158,8 +1158,11 @@ void MainWindow::sort_mods() {
         mod_map[mod.id] = mod;
     }
 
-    // Create new ordered list
+    // Create new ordered list: game-native (unmanaged) mods first (fixed top
+    // band, in declared order), then the provider's sorted user mods.
     QVector<ui::ModEntry> new_order;
+    for (const auto& mod : mod_model_->mods())
+        if (mod.is_game_native) new_order.append(mod);
 
     // Add mods in sorted order
     for (const auto& folder : result.sorted_folders) {
@@ -1171,7 +1174,7 @@ void MainWindow::sort_mods() {
 
     // Add any mods not in the sorted result (shouldn't happen, but be safe)
     for (const auto& mod : mod_model_->mods()) {
-        if (!mod.is_overwrite && std::find(result.sorted_folders.begin(), result.sorted_folders.end(), mod.id.toStdString()) == result.sorted_folders.end()) {
+        if (!mod.is_overwrite && !mod.is_game_native && std::find(result.sorted_folders.begin(), result.sorted_folders.end(), mod.id.toStdString()) == result.sorted_folders.end()) {
             new_order.append(mod);
         }
     }
@@ -1321,12 +1324,23 @@ void MainWindow::load_mods_from_game() {
     {
         auto meta_dir = meta_dir_path();
         if (!meta_dir.empty()) {
+            // Game-native (unmanaged) mods own the top band: give them 0..N-1 in
+            // declared order, overriding any stale persisted priority. They can
+            // never fall below the user band.
+            int native_priority = 0;
+            for (const auto& m : mod_model_->mods())
+                if (m.is_game_native) mod_model_->set_priority(m.id, native_priority++);
+
+            // Non-pinned rows (natives + user mods) span priorities 0..regular-1;
+            // a user mod without a persisted priority gets the highest one - just
+            // above the pinned Overwrite/MERGED block (MO2's new-mod rule).
             int regular_rows = 0;
             for (const auto& m : mod_model_->mods()) {
                 if (!m.is_overwrite && !m.is_merged) ++regular_rows;
             }
             int bottom_priority = std::max(0, regular_rows - 1);
             for (const auto& m : mod_model_->mods()) {
+                if (m.is_game_native) continue;
                 auto meta = engine::ModMeta::load(meta_dir, m.id.toStdString());
                 int p = meta.priority();
                 if (p < 0) p = bottom_priority;
@@ -1722,8 +1736,12 @@ void MainWindow::refresh_plugins_tab() {
     // run (no profile yet) enables everything and writes it.
     const auto profiles_dir = profiles_dir_path();
     bool applied = false;
-    if (!profiles_dir.empty())
-        applied = plugins_db_.load_profile(profiles_dir, current_profile_name_);
+    if (!profiles_dir.empty()) {
+        bool repaired = false;
+        applied = plugins_db_.load_profile(profiles_dir, current_profile_name_, &repaired);
+        if (repaired)  // core plugins were found below user ones - persist the heal
+            plugins_db_.save_profile(profiles_dir, current_profile_name_);
+    }
     if (!applied) {
         plugins_db_.set_all_enabled();
         plugins_db_.set_missing_masters();
@@ -3078,6 +3096,10 @@ void MainWindow::load_order() {
                 reordered.append(m);
             }
         }
+        // Game-native (unmanaged) mods own the top band: hoist them above the
+        // user entries, preserving relative order on both sides.
+        std::stable_partition(reordered.begin(), reordered.end(),
+            [](const ModEntry& m) { return m.is_game_native; });
         // Overwrite always first, MERGED always second (only for games that use it)
         reordered.insert(0, ModEntry());
         reordered[0].is_overwrite = true;
@@ -3108,6 +3130,9 @@ void MainWindow::load_order() {
             if (b.is_overwrite) return true;
             if (a.is_merged) return false;
             if (b.is_merged) return true;
+            // Game-native (unmanaged) mods form a fixed top band - they can
+            // never sort below user mods, whatever priority got persisted.
+            if (a.is_game_native != b.is_game_native) return a.is_game_native;
             return key(a) < key(b);
         });
         bool needs_sort = false;

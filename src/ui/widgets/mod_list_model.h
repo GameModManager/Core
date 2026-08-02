@@ -99,6 +99,9 @@ public:
     [[nodiscard]] bool is_overwrite(int row) const;
     [[nodiscard]] int merged_row() const;
     [[nodiscard]] bool is_merged(int row) const;
+    // Bottom of the leading game-native (unmanaged) band: the first row that is
+    // not game-native. Everything above it is pinned and never reorderable.
+    [[nodiscard]] int native_band_bottom() const;
     [[nodiscard]] bool uses_merged() const { return uses_merged_; }
 
     void set_view(QAbstractItemView* view) { mod_view_ = view; }
