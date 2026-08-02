@@ -200,21 +200,20 @@ void PluginDatabase::parse_headers() {
     for (auto& p : plugins_) {
         const auto hdr = read_esp_header(p.full_path);
         if (hdr.valid) {
-            p.is_master = hdr.is_master;
-            p.is_light = hdr.is_light;
-            p.is_medium = hdr.is_medium;
+            p.is_master_flagged = hdr.is_master;
+            p.is_light_flagged = hdr.is_light;
+            p.is_medium_flagged = hdr.is_medium;
             p.masters = hdr.masters;
         }
         // Extension fallbacks for games whose files don't carry the flags.
         const std::string ext = to_lower(p.full_path.extension().string());
         if (ext == ".esm") {
-            p.is_master = true;
+            p.has_master_ext = true;
         } else if (ext == ".esl") {
-            p.is_master = true;
-            p.is_light = true;
+            p.has_master_ext = true;
+            p.has_light_ext = true;
         } else if (ext == ".esh") {
-            p.is_master = true;
-            p.is_medium = true;
+            p.is_medium_flagged = true;
         }
     }
 }
@@ -328,11 +327,11 @@ void PluginDatabase::generate_mod_indexes() {
     uint32_t light_index = 0;
     uint32_t medium_index = 0;
     for (auto& p : plugins_) {
-        if (p.is_light) {
+        if (p.is_light()) {
             p.mod_index = 0xFE000000u | light_index;
             p.mod_index_text = "FE:" + hex3(light_index);
             ++light_index;
-        } else if (p.is_medium) {
+        } else if (p.is_medium()) {
             p.mod_index = 0xFD000000u | medium_index;
             p.mod_index_text = "FD:" + hex2(medium_index);
             ++medium_index;

@@ -169,7 +169,7 @@ void run_synthetic_fixture() {
     require(order_of(db, "SkyUI_SE.esp") == 4, "SkyUI after CC");
     require(order_of(db, "Patch.esp") == 5, "Patch after its master SkyUI");
     require(order_of(db, "Lights.esl") == 6, "Lights last");
-    require(db.plugins()[order_of(db, "Lights.esl")].is_light, "Lights.esl is light");
+    require(db.plugins()[order_of(db, "Lights.esl")].is_light(), "Lights.esl is light");
     require(db.plugins()[order_of(db, "ccBGSSSE001-Fish.esm")].is_cc, "Fish is CC");
     require(db.plugins()[order_of(db, "ccBGSSSE001-Fish.esm")].force_loaded,
             "Fish force-loaded");
