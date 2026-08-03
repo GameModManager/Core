@@ -65,6 +65,7 @@ void ZoomableView::set_zoom(qreal factor, ViewAnchor anchor) {
     factor = std::clamp(factor, kMinZoom, kMaxZoom);
     if (std::abs(factor - factor_) < 0.0005) return;
 
+    auto_fit_on_resize_ = false;
     qreal delta = factor / factor_;
     factor_ = factor;
 
@@ -72,6 +73,7 @@ void ZoomableView::set_zoom(qreal factor, ViewAnchor anchor) {
     scale(delta, delta);
 
     sync_bar();
+    emit zoom_changed(factor_);
 }
 
 void ZoomableView::zoom_in() {
@@ -82,8 +84,30 @@ void ZoomableView::zoom_out() {
     set_zoom(factor_ / kStep, QGraphicsView::AnchorViewCenter);
 }
 
+void ZoomableView::fit_to_scene() {
+    QGraphicsScene* s = scene();
+    if (!s) return;
+
+    const QRectF rect = s->itemsBoundingRect();
+    if (rect.isEmpty() || rect.width() <= 0.0 || rect.height() <= 0.0) return;
+
+    setTransformationAnchor(QGraphicsView::AnchorViewCenter);
+    fitInView(rect, Qt::KeepAspectRatio);
+
+    // Re-derive the zoom factor from the transform fitInView just applied so
+    // the floating bar and factor-based zoom operations stay consistent.
+    const QTransform t = transform();
+    factor_ = std::sqrt(std::abs(t.m11() * t.m22()));
+
+    sync_bar();
+    auto_fit_on_resize_ = true;
+    emit zoom_changed(factor_);
+}
+
 void ZoomableView::resizeEvent(QResizeEvent* event) {
     QGraphicsView::resizeEvent(event);
+    if (auto_fit_on_resize_)
+        fit_to_scene();
     position_bar();
 }
 

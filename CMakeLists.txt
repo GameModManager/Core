@@ -24,9 +24,19 @@ endif()
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Network Test LinguistTools)
 
+# Optional QtMultimedia (video playback in the FileViewer). The video viewer
+# page is compiled only when available; the container degrades to the
+# "unsupported" page otherwise.
+find_package(Qt6 COMPONENTS Multimedia MultimediaWidgets QUIET)
+
 # QtKeychain OS keyring (Secret Service / KWallet / macOS Keychain / Windows
 # Credential Locker) — pulled on every platform that ships it.
 find_package(Qt6Keychain QUIET)
+
+# KSyntaxHighlighting (KDE) — syntax highlighting for the Mod Info text/config
+# editors. Arch: `syntax-highlighting` (kf6). The imported target carries the
+# /usr/include/KF6 include path.
+find_package(KF6SyntaxHighlighting REQUIRED)
 
 # Dependencies — PkgConfig on Linux/macOS, find_package on Windows
 if(WIN32)
@@ -156,6 +166,7 @@ set(ENGINE_SOURCES
     src/engine/tools/external_tool.cpp
     src/engine/plugin_host/python_loader.cpp
     src/engine/meta/mod_meta.cpp
+    src/engine/meta/categories.cpp
     src/engine/overwrite/overwrite_utils.cpp
     src/engine/plugins/esp_header.cpp
     src/engine/plugins/plugin_database.cpp
@@ -165,7 +176,10 @@ set(ENGINE_SOURCES
     src/engine/source/nexus_http.cpp
     src/engine/source/nexus_servers.cpp
     src/engine/source/steam_workshop_provider.cpp
+    src/engine/source/loverslab_provider.cpp
     src/engine/nexus_auth.cpp
+    src/engine/loverslab_auth.cpp
+    src/engine/download/curl_download.cpp
     src/engine/keyring.cpp
     src/engine/preload_interceptor.cpp
     src/engine/launcher.cpp
@@ -210,7 +224,6 @@ set(UI_SOURCES
     src/ui/widgets/gmm_status_bar.cpp
     src/ui/widgets/instance_switcher_dialog.cpp
     src/ui/widgets/instance_statistics_dialog.cpp
-    src/ui/widgets/mod_info_dialog.cpp
     src/ui/widgets/debug_window.cpp
     src/ui/widgets/pipeline_window.cpp
     src/ui/widgets/zoom_controls.cpp
@@ -232,6 +245,38 @@ set(UI_SOURCES
     src/ui/fomod/fomod_image_viewer.cpp
     src/ui/fomod/fomod_wizard_dialog.cpp
 )
+
+# FileViewer module — reusable file viewers (image/video/3D-scene). The video
+# page needs QtMultimedia; without it the container shows the unsupported page.
+set(FILE_VIEWER_SOURCES
+    src/ui/viewer/file_viewer_widget.cpp
+    src/ui/viewer/file_viewer.cpp
+    src/ui/viewer/image_viewer.cpp
+    src/ui/viewer/scene_viewer.cpp
+)
+if(Qt6Multimedia_FOUND)
+    list(APPEND FILE_VIEWER_SOURCES src/ui/viewer/video_viewer.cpp)
+endif()
+list(APPEND UI_SOURCES ${FILE_VIEWER_SOURCES})
+
+# Mod Info dialog — the 9 MO2-parity tabs plus the dialog shell.
+set(MODINFO_SOURCES
+    src/ui/modinfo/mod_info_data.cpp
+    src/ui/modinfo/mod_info_tab.cpp
+    src/ui/modinfo/mod_info_dialog.cpp
+    src/ui/modinfo/generic_files_tab.cpp
+    src/ui/modinfo/text_files_tab.cpp
+    src/ui/modinfo/config_files_tab.cpp
+    src/ui/modinfo/images_tab.cpp
+    src/ui/modinfo/esps_tab.cpp
+    src/ui/modinfo/conflicts_tab.cpp
+    src/ui/modinfo/categories_tab.cpp
+    src/ui/modinfo/source_tab.cpp
+    src/ui/modinfo/notes_tab.cpp
+    src/ui/modinfo/filetree_tab.cpp
+    src/ui/modinfo/bbcode.cpp
+)
+list(APPEND UI_SOURCES ${MODINFO_SOURCES})
 
 # App entry point
 set(APP_SOURCES
@@ -266,7 +311,11 @@ qt_add_translations(gamemodmanager
 )
 
 # Link libraries — platform-specific
-target_link_libraries(gamemodmanager PRIVATE Qt6::Widgets Qt6::Network PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::YAMLCPP PkgConfig::CURL PkgConfig::NLOHMANN_JSON pybind11::embed Python3::Python)
+target_link_libraries(gamemodmanager PRIVATE Qt6::Widgets Qt6::Network PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::YAMLCPP PkgConfig::CURL PkgConfig::NLOHMANN_JSON pybind11::embed Python3::Python KF6::SyntaxHighlighting)
+if(Qt6Multimedia_FOUND)
+    target_compile_definitions(gamemodmanager PRIVATE GMM_HAS_MULTIMEDIA=1)
+    target_link_libraries(gamemodmanager PRIVATE Qt6::Multimedia Qt6::MultimediaWidgets)
+endif()
 if(NOT WIN32)
     target_link_libraries(gamemodmanager PRIVATE ${CMAKE_DL_LIBS})
     if(FUSE3_FOUND)
@@ -421,6 +470,13 @@ add_executable(instance_path_test tests/engine/instance_path_test.cpp
 )
 target_include_directories(instance_path_test PRIVATE src/)
 add_test(NAME instance_path_test COMMAND instance_path_test)
+
+# MO2-compatible per-instance category database (categories.dat/nexuscatmap.dat).
+add_executable(categories_test tests/engine/categories_test.cpp
+    src/engine/meta/categories.cpp
+)
+target_include_directories(categories_test PRIVATE src/)
+add_test(NAME categories_test COMMAND categories_test)
 
 # Regression: GUI + CLI launches must go through prepare_launch_params, which
 # deploys enabled mods to .gmm_staging and adds it to extra_lowerdirs.
@@ -608,6 +664,36 @@ target_include_directories(nexus_http_test PRIVATE src/)
 target_link_libraries(nexus_http_test PRIVATE PkgConfig::CURL)
 add_test(NAME nexus_http_test COMMAND nexus_http_test)
 
+# NexusProvider::parse_mod_info — the JSON mapping behind the Mod Info Nexus
+# tab's live refresh (no network involved; body-parsing only).
+add_executable(nexus_provider_test tests/engine/nexus_provider_test.cpp
+    src/engine/source/nexus_provider.cpp
+    src/engine/source/nexus_account.cpp
+    src/engine/source/nexus_http.cpp
+    src/engine/source/nexus_servers.cpp
+    src/engine/download/curl_download.cpp
+    src/engine/nexus_auth.cpp
+    src/engine/keyring.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(nexus_provider_test PRIVATE src/)
+target_link_libraries(nexus_provider_test PRIVATE PkgConfig::CURL PkgConfig::NLOHMANN_JSON)
+add_test(NAME nexus_provider_test COMMAND nexus_provider_test)
+
+# LoversLabAuth keyring storage + LoversLabProvider URL/Content-Disposition
+# parsing — Qt-free. No network: injected FileKeyring + pure string helpers.
+add_executable(loverslab_auth_test tests/engine/loverslab_auth_test.cpp
+    src/engine/loverslab_auth.cpp
+    src/engine/source/loverslab_provider.cpp
+    src/engine/download/curl_download.cpp
+    src/engine/source/nexus_http.cpp
+    src/engine/keyring.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(loverslab_auth_test PRIVATE src/)
+target_link_libraries(loverslab_auth_test PRIVATE PkgConfig::CURL)
+add_test(NAME loverslab_auth_test COMMAND loverslab_auth_test)
+
 # Settings -> Plugins tab — offscreen GUI regression test. Exercises the
 # currentItemChanged -> rebuild_info crash path, register_category grouping,
 # the filter, Enabled toggles, and the missing Path/Steam App ID rows.
@@ -635,6 +721,8 @@ add_executable(settings_plugins_tab_test tests/ui/settings_plugins_tab_test.cpp
     src/engine/source/nexus_http.cpp
     src/engine/source/nexus_servers.cpp
     src/engine/source/steam_workshop_provider.cpp
+    src/engine/loverslab_auth.cpp
+    src/engine/download/curl_download.cpp
     src/engine/nexus_auth.cpp
     src/engine/keyring.cpp
     src/engine/workshop/workshop_client.cpp
@@ -721,6 +809,8 @@ add_executable(settings_sources_tab_test tests/ui/settings_sources_tab_test.cpp
     src/engine/source/nexus_http.cpp
     src/engine/source/nexus_servers.cpp
     src/engine/source/steam_workshop_provider.cpp
+    src/engine/loverslab_auth.cpp
+    src/engine/download/curl_download.cpp
     src/engine/nexus_auth.cpp
     src/engine/keyring.cpp
     src/engine/workshop/workshop_client.cpp
@@ -763,10 +853,15 @@ add_executable(downloads_tab_test tests/ui/downloads_tab_test.cpp
     src/ui/widgets/column_toggle_header.cpp
     src/engine/log/logger.cpp
     src/engine/fs_utils.cpp
+    src/engine/loverslab_auth.cpp
+    src/engine/keyring.cpp
+    src/engine/source/loverslab_provider.cpp
+    src/engine/source/nexus_http.cpp
+    src/engine/download/curl_download.cpp
 )
 target_include_directories(downloads_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
 target_compile_definitions(downloads_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
-target_link_libraries(downloads_tab_test PRIVATE Qt6::Widgets)
+target_link_libraries(downloads_tab_test PRIVATE Qt6::Widgets PkgConfig::CURL)
 add_test(NAME downloads_tab_test COMMAND downloads_tab_test)
 set_tests_properties(downloads_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
@@ -780,12 +875,34 @@ add_executable(data_tab_test tests/ui/data_tab_test.cpp
     src/ui/widgets/column_toggle_header.cpp
     src/engine/log/logger.cpp
     src/engine/fs_utils.cpp
+    src/engine/loverslab_auth.cpp
+    src/engine/keyring.cpp
+    src/engine/source/loverslab_provider.cpp
+    src/engine/source/nexus_http.cpp
+    src/engine/download/curl_download.cpp
 )
 target_include_directories(data_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
 target_compile_definitions(data_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
-target_link_libraries(data_tab_test PRIVATE Qt6::Widgets)
+target_link_libraries(data_tab_test PRIVATE Qt6::Widgets PkgConfig::CURL)
 add_test(NAME data_tab_test COMMAND data_tab_test)
 set_tests_properties(data_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# Text/Config Files tabs — offscreen GUI regression test. Pins the list-to-
+# editor wiring (setModel() swaps the selection model, so rebuild_list() must
+# re-connect currentRowChanged -> select_file() or the editor never loads), the
+# Config Files filter (.ini/.cfg/.toml/.yaml/.yml/.json minus meta.ini), and
+# the Text Files dedupe (config extensions live only in the Config tab).
+add_executable(generic_files_tab_test tests/ui/generic_files_tab_test.cpp
+    src/ui/modinfo/generic_files_tab.cpp
+    src/ui/modinfo/text_files_tab.cpp
+    src/ui/modinfo/config_files_tab.cpp
+    src/ui/modinfo/mod_info_tab.cpp
+)
+target_include_directories(generic_files_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_compile_definitions(generic_files_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
+target_link_libraries(generic_files_tab_test PRIVATE Qt6::Widgets KF6::SyntaxHighlighting)
+add_test(NAME generic_files_tab_test COMMAND generic_files_tab_test)
+set_tests_properties(generic_files_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 # Plugins tab — offscreen GUI test: population, pinned (force-loaded) rows,
 # missing-master styling, toggle + sync_enabled signal behavior. Drag-reorder
@@ -796,10 +913,15 @@ add_executable(plugins_tab_test tests/ui/plugins_tab_test.cpp
     src/ui/widgets/column_toggle_header.cpp
     src/engine/log/logger.cpp
     src/engine/fs_utils.cpp
+    src/engine/loverslab_auth.cpp
+    src/engine/keyring.cpp
+    src/engine/source/loverslab_provider.cpp
+    src/engine/source/nexus_http.cpp
+    src/engine/download/curl_download.cpp
 )
 target_include_directories(plugins_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
 target_compile_definitions(plugins_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
-target_link_libraries(plugins_tab_test PRIVATE Qt6::Widgets Qt6::Test)
+target_link_libraries(plugins_tab_test PRIVATE Qt6::Widgets Qt6::Test PkgConfig::CURL)
 add_test(NAME plugins_tab_test COMMAND plugins_tab_test)
 set_tests_properties(plugins_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 

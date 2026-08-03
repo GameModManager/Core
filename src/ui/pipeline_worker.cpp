@@ -80,6 +80,43 @@ void PipelineWorker::download_mod(const std::string& id,
     (void)game_id;
     engine::Logger::instance().debug("Downloading mod file: " + id);
 
+    engine::Mod mod;
+    mod.id = id;
+    mod.name = "Mod file " + id;
+    mod.state = engine::ModState::Downloaded;
+    mod.download_source_type = "nexus";
+    mod.download_source_id = std::to_string(link.mod_id);
+    mod.download_nxm.file_id = link.file_id;
+    mod.download_nxm.key = link.key;
+    mod.download_nxm.expire = link.expire;
+    mod.download_nxm.user_id = link.user_id;
+    mod.download_nxm.nexus_domain = link.nexus_domain;
+
+    run_fetch(std::move(mod), id, mods_dir, meta_dir);
+}
+
+void PipelineWorker::download_mod_url(const std::string& id,
+                                      const std::string& url,
+                                      const std::string& game_id,
+                                      const std::string& mods_dir,
+                                      const std::string& meta_dir) {
+    (void)game_id;
+    engine::Logger::instance().debug("Downloading URL: " + id);
+
+    engine::Mod mod;
+    mod.id = id;
+    mod.name = "Mod file " + id;
+    mod.state = engine::ModState::Downloaded;
+    mod.download_source_type = "loverslab";
+    mod.download_source_id = id;
+    mod.download_url = url;
+
+    run_fetch(std::move(mod), id, mods_dir, meta_dir);
+}
+
+void PipelineWorker::run_fetch(engine::Mod mod, const std::string& id,
+                               const std::string& mods_dir,
+                               const std::string& meta_dir) {
     if (!fetch_pipeline_) {
         emit download_complete(id, false, "");
         return;
@@ -100,18 +137,6 @@ void PipelineWorker::download_mod(const std::string& id,
     fetch_pipeline_->ctx().on_progress = [this, id](int64_t dl, int64_t total, double speed) {
         emit download_progress(id, dl, total, speed);
     };
-
-    engine::Mod mod;
-    mod.id = id;
-    mod.name = "Mod file " + id;
-    mod.state = engine::ModState::Downloaded;
-    mod.download_source_type = "nexus";
-    mod.download_source_id = std::to_string(link.mod_id);
-    mod.download_nxm.file_id = link.file_id;
-    mod.download_nxm.key = link.key;
-    mod.download_nxm.expire = link.expire;
-    mod.download_nxm.user_id = link.user_id;
-    mod.download_nxm.nexus_domain = link.nexus_domain;
 
     bool success = fetch_pipeline_->run(mod);
 

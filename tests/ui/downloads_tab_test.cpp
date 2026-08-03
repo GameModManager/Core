@@ -317,6 +317,53 @@ int main(int argc, char** argv) {
               "dragEnterEvent ignores remote URLs");
     }
 
+    // A LoversLab download link dropped from a browser routes through the same
+    // "Add from URL…" flow (loverslab_url_entered); a non-LoversLab remote URL
+    // is still rejected and archive drops keep the file-import path.
+    {
+        std::string dropped_url;
+        QObject::connect(&tab, &ui::DownloadsTab::loverslab_url_entered,
+                         [&dropped_url](const std::string& url) {
+                             dropped_url = url;
+                         });
+
+        QMimeData ll_mime;
+        ll_mime.setUrls({QUrl(QStringLiteral(
+            "https://www.loverslab.com/files/file/10093-slug/?do=download&r=7"))});
+        QDragEnterEvent ll_enter(QPoint(5, 5), Qt::MoveAction | Qt::CopyAction,
+                                 &ll_mime, Qt::LeftButton, Qt::ShiftModifier);
+        tab.dragEnterEvent(&ll_enter);
+        check(ll_enter.isAccepted(),
+              "dragEnterEvent accepts a LoversLab URL drop");
+
+        QDropEvent ll_drop(QPointF(5, 5), Qt::MoveAction | Qt::CopyAction,
+                           &ll_mime, Qt::LeftButton, Qt::ShiftModifier);
+        tab.dropEvent(&ll_drop);
+        check(ll_drop.isAccepted(), "LoversLab URL drop is accepted");
+        check(dropped_url ==
+                  "https://www.loverslab.com/files/file/10093-slug/?do=download&r=7",
+              "dropped LoversLab URL emitted via loverslab_url_entered");
+
+        // A LoversLab page link dropped as bare text is also routed.
+        QMimeData ll_text;
+        ll_text.setText(QStringLiteral("https://www.loverslab.com/files/file/200/"));
+        QDropEvent text_drop(QPointF(5, 5), Qt::MoveAction | Qt::CopyAction,
+                             &ll_text, Qt::LeftButton, Qt::ShiftModifier);
+        tab.dropEvent(&text_drop);
+        check(dropped_url == "https://www.loverslab.com/files/file/200/",
+              "text-only LoversLab URL drop also routed");
+
+        // A multi-URL drag is not a single download link: stays rejected.
+        QMimeData multi_mime;
+        multi_mime.setUrls(
+            {QUrl(QStringLiteral("https://www.loverslab.com/files/file/1/")),
+             QUrl(QStringLiteral("https://www.loverslab.com/files/file/2/"))});
+        QDragEnterEvent multi_enter(QPoint(5, 5), Qt::MoveAction | Qt::CopyAction,
+                                    &multi_mime, Qt::LeftButton, Qt::ShiftModifier);
+        tab.dragEnterEvent(&multi_enter);
+        check(!multi_enter.isAccepted(), "multi-URL drag stays rejected");
+    }
+
     const auto moved_src = src_dir / "Dropped Mod.zip";
     write_file(moved_src, 1024);
     bool moved_accepted = false;

@@ -113,6 +113,9 @@ signals:
                            const std::string& display_name);
     void pause_requested(const std::string& id);
     void resume_requested(const std::string& id);
+    // Emitted with the raw pasted URL when the user triggers "Add from URL"
+    // (LoversLab and other no-API sites). MainWindow validates and routes it.
+    void loverslab_url_entered(const std::string& url);
     // Emitted after a download entry (and its file) has been removed, so the
     // manifest can be persisted. The entry is already gone from the table.
     void entry_removed(const std::string& id);

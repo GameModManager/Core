@@ -194,6 +194,13 @@ public:
     QByteArray fomod_left_split() const;         // key: fomod/left_split
     void set_fomod_left_split(const QByteArray& s);
 
+    // mod info -----------------------------------------------------------------
+    // Mod Info dialog geometry + last active tab (restored on next open).
+    QByteArray modinfo_window_geometry() const;  // key: modinfo/window_geometry
+    void set_modinfo_window_geometry(const QByteArray& g);
+    int modinfo_last_tab() const;                // key: modinfo/last_tab
+    void set_modinfo_last_tab(int index);
+
 private:
     Settings() = default;
     QSettings settings_{"GameModManager", "GameModManager"};

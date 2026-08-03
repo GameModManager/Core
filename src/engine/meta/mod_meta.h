@@ -53,11 +53,16 @@ public:
     [[nodiscard]] bool imported_from_mo2() const;
 
     // --- File I/O ---
-    // Load/save meta file at {instance_root}/meta/{folder_name}.ini
+    // Load/save meta file at {meta_dir}/{folder_name}.ini
     static ModMeta load(const std::filesystem::path& meta_dir,
                         const std::string& folder_name);
     bool save(const std::filesystem::path& meta_dir,
               const std::string& folder_name) const;
+
+    // Load/save meta at an explicit .ini path (e.g. a mod's own meta.ini,
+    // which lives inside the mod folder rather than the manager sidecar).
+    static ModMeta load_file(const std::filesystem::path& ini_file);
+    bool save_file(const std::filesystem::path& ini_file) const;
 
     // Check if a meta file already exists
     static bool exists(const std::filesystem::path& meta_dir,

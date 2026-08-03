@@ -3,6 +3,7 @@
 #include <QMainWindow>
 #include <QByteArray>
 #include <QHash>
+#include <QPointer>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -34,8 +35,7 @@ class GameKnowledge;
 class PluginLoader;
 class ManagedGames;
 class NxmIpcServer;
-struct NxmLink;
-struct ConflictStats;
+struct NxmLink;struct ConflictStats;
 class StyleManager;
 class PlatformInterface;
 }
@@ -56,6 +56,9 @@ class AppMenuBar;
 class PipelineWindow;
 class PluginsTab;
 class DataTab;
+class ModInfoDialog;
+struct ModInfoData;
+struct ModEntry;
 namespace preview { class PreviewWindow; }
 
 struct PendingToggle {
@@ -92,6 +95,11 @@ public:
 
     // NXM download routing - call when an nxm:// link is received
     void handle_nxm_download(const engine::NxmLink& link);
+
+    // LoversLab download routing - call when the user pastes a
+    // ?do=download link (LoversLab has no API; the session cookie is sent
+    // by LoversLabProvider).
+    void start_loverslab_download(const std::string& url);
 
     [[nodiscard]] ModTableView* mod_view() const { return mod_view_; }
     [[nodiscard]] QSplitter* console_splitter() const { return console_splitter_; }
@@ -166,8 +174,9 @@ private:
                          const QStringList& provider_paths,
                          const QStringList& provider_names);
     void on_data_add_executable(const QString& file_path, const QString& default_name);
-    void on_data_mod_info(const QString& mod_id);
+    void on_data_mod_info(const QString& mod_id, int initial_tab = -1);
     void on_data_hide(const QString& file_path, const QString& mod_id, bool hide);
+    ui::ModInfoData build_mod_info_data(const ModEntry& mod);
     void on_image_diff_requested(const QString& relative_path);
     void migrate_mo2_meta();
     void load_meta_for_mods();
@@ -277,6 +286,9 @@ private:
     // In-flight/known Nexus downloads keyed by "<mod_id>-<file_id>", kept so a
     // paused download can be resumed with its original NXM link.
     std::unordered_map<std::string, engine::NxmLink> nxm_links_;
+    // In-flight/known LoversLab downloads keyed by the download id, kept so a
+    // paused download can be resumed with its original ?do=download URL.
+    std::unordered_map<std::string, std::string> url_downloads_;
     int64_t running_process_pid_ = -1;
     QTimer* process_watch_timer_ = nullptr;
     bool overlay_launched_ = false;
@@ -290,6 +302,7 @@ private:
     std::filesystem::path conflict_cache_path_;  // path to conflict cache JSON
     engine::PathRegistry last_conflict_registry_;
     engine::Instance current_instance_;  // loaded per-folder overrides for the active instance
+    QPointer<ui::ModInfoDialog> modinfo_dialog_;  // alive while the dialog is open
     std::filesystem::path meta_dir_path() const;
     std::filesystem::path mods_dir_path() const;
     std::filesystem::path downloads_dir_path() const;

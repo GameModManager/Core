@@ -57,7 +57,9 @@
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/theme/style_manager.h"
 #include "engine/source/nexus_provider.h"
+#include "engine/source/loverslab_provider.h"
 #include "engine/nexus_auth.h"
+#include "engine/loverslab_auth.h"
 #include "engine/source/steam_workshop_provider.h"
 #include "engine/pipeline/extract_stage.h"
 #include "engine/pipeline/fomod_stage.h"
@@ -68,7 +70,7 @@
 #include "runtime/runtime.h"
 #include "runtime/wine_runtime.h"
 #include "ui/preview/preview_window.h"
-#include "ui/widgets/mod_info_dialog.h"
+#include "ui/modinfo/mod_info_dialog.h"
 #include "ui/widgets/pipeline_window.h"
 
 #include <QAction>
@@ -382,14 +384,27 @@ MainWindow::MainWindow(QWidget* parent)
     });
 
     // Double-clicking the Overwrite row opens the shared info dialog (MO2's
-    // default-action behavior for the Overwrite entry).
+    // default-action behavior for the Overwrite entry). Mod rows map the
+    // clicked column to a Mod Info tab (MO2's modlistview.cpp double-click):
+    // Version → Nexus, Flags → Conflicts, anything else → last-used tab.
     connect(mod_view_, &QTreeView::doubleClicked, this, [this](const QModelIndex& idx) {
         if (!idx.isValid()) return;
         int row = idx.row();
         if (row < 0 || row >= mod_model_->mods().size()) return;
-        if (mod_model_->mods()[row].is_overwrite) {
+        const auto& entry = mod_model_->mods()[row];
+        if (entry.is_overwrite) {
             show_overwrite_info_dialog();
+            return;
         }
+        if (entry.is_separator || entry.is_game_native) return;
+
+        int tab = -1;
+        switch (idx.column()) {
+        case ModListModel::Version:  tab = static_cast<int>(ui::ModInfoTabId::Source); break;
+        case ModListModel::Flags:    tab = static_cast<int>(ui::ModInfoTabId::Conflicts); break;
+        default: break;  // last-used tab
+        }
+        on_data_mod_info(entry.id, tab);
     });
 
     // Drag-and-drop archives onto the mod list to install manually
@@ -535,6 +550,8 @@ MainWindow::MainWindow(QWidget* parent)
     // Register built-in source providers
     engine::SourceRegistry::instance().register_provider(
         std::make_unique<engine::NexusProvider>());
+    engine::SourceRegistry::instance().register_provider(
+        std::make_unique<engine::LoversLabProvider>());
 
     auto home = std::getenv("HOME");
     std::string ws_db = home
@@ -1757,7 +1774,7 @@ void MainWindow::wire_data_tab() {
     connect(dt, &ui::DataTab::add_executable_requested,
             this, &MainWindow::on_data_add_executable);
     connect(dt, &ui::DataTab::open_mod_info_requested,
-            this, &MainWindow::on_data_mod_info);
+            this, [this](const QString& mod_id) { on_data_mod_info(mod_id); });
     connect(dt, &ui::DataTab::hide_requested, this, &MainWindow::on_data_hide);
     connect(dt, &ui::DataTab::refresh_requested, this, &MainWindow::recompute_conflicts);
     data_tab_widget_ = dt;
@@ -1851,39 +1868,146 @@ void MainWindow::on_data_add_executable(const QString& file_path,
     save_executables();
 }
 
-void MainWindow::on_data_mod_info(const QString& mod_id) {
-    for (const auto& mod : mod_model_->mods()) {
-        if (mod.id != mod_id) continue;
+ui::ModInfoData MainWindow::build_mod_info_data(const ModEntry& mod) {
+    ui::ModInfoData data;
+    data.id = mod.id;
+    data.name = mod.name;
+    data.version = mod.version;
+    data.color = mod.separator_color;
+    data.enabled = mod.enabled;
+    data.is_separator = mod.is_separator;
+    data.is_overwrite = mod.is_overwrite;
+    data.is_game_native = mod.is_game_native;
+    data.is_merged = mod.is_merged;
+    data.priority = mod.priority;
+    data.conflict_wins = mod.conflict_wins;
+    data.conflict_losses = mod.conflict_losses;
+    data.conflict_reversed = mod_model_->is_conflict_order_reversed();
 
-        ui::ModInfoDialog::Data data;
-        data.name = mod.name;
-        data.folder = mod.id;
-        data.version = mod.version;
-        data.enabled = mod.enabled;
-        data.priority = mod.priority;
-        data.conflict_wins = mod.conflict_wins;
-        data.conflict_losses = mod.conflict_losses;
-        if (mod.source_type == "nexus" && !mod.source_id.isEmpty())
-            data.source = tr("Nexus Mods (id: %1)").arg(mod.source_id);
-        else if (mod.source_type == "workshop" && !mod.source_id.isEmpty())
-            data.source = tr("Steam Workshop (id: %1)").arg(mod.source_id);
-        else if (!mod.source_type.isEmpty())
-            data.source = mod.source_type;
+    data.source_type = mod.source_type;
+    data.source_id = mod.source_id;
+    data.nexus_domain = QString::fromStdString(
+        knowledge_ ? knowledge_->get(current_game_id_, "nexus_domain", "") : "");
 
-        // Files this mod wins - its copies actually take effect.
-        int file_count = 0;
-        for (const auto& [path, owners] : last_conflict_registry_) {
-            if (owners.empty()) continue;
-            for (const auto& [owner, _] : owners) {
-                if (owner == mod_id.toStdString()) { ++file_count; break; }
+    // Sources the current game supports (download_sources knowledge, display
+    // names like "Nexus") — gates which sub-tabs the Source tab shows.
+    const auto sources_csv = knowledge_
+        ? knowledge_->get(current_game_id_, "download_sources", "") : "";
+    for (const auto& part :
+         QString::fromStdString(sources_csv).split(',', Qt::SkipEmptyParts))
+        data.supported_sources.append(part.trimmed());
+
+    const auto mods_subpath = knowledge_
+        ? knowledge_->get(current_game_id_, "mods_subpath", "") : "";
+    data.data_subpath = QString::fromStdString(mods_subpath);
+
+    std::filesystem::path mod_folder;
+    if (mod.is_overwrite)
+        mod_folder = overwrite_dir_path();
+    else
+        mod_folder = resolve_mod_folder(mod.id.toStdString(), mods_subpath);
+    data.mod_dir = QDir(QString::fromStdString(mod_folder.string()));
+    data.instance_root = QString::fromStdString(current_instance_root_.string());
+
+    // Conflicts touching this mod (registry paths are mod-dir-relative, i.e.
+    // what ConflictEngine walked with this mod folder as the root).
+    for (const auto& [path, owners] : last_conflict_registry_) {
+        bool is_owner = false;
+        for (const auto& [owner, _] : owners)
+            if (owner == mod.id.toStdString()) { is_owner = true; break; }
+        if (!is_owner) continue;
+        ui::ModInfoData::Owners owner_list;
+        owner_list.reserve(owners.size());
+        for (const auto& [owner, prio] : owners)
+            owner_list.emplace_back(QString::fromStdString(owner), prio);
+        data.conflicts.emplace_back(QString::fromStdString(path),
+                                    std::move(owner_list));
+    }
+
+    // Persistence: GMM's canonical sidecar meta file (the same one the rest of
+    // MainWindow reads/writes). Not the MO2-visible mods/<id>/meta.ini - tabs
+    // use GMM-canonical keys ([Nexusmods] etc.) and rewriting an MO2-format
+    // file with them would corrupt MO2 compatibility for imported mods.
+    const auto meta_dir = meta_dir_path();
+    data.load_meta = [meta_dir, mod_id = mod.id]() {
+        return engine::ModMeta::load(meta_dir, mod_id.toStdString());
+    };
+    data.save_meta = [meta_dir, mod_id = mod.id](const engine::ModMeta& meta) {
+        return meta.save(meta_dir, mod_id.toStdString());
+    };
+
+    // Actions wired to MainWindow.
+    const QString mod_dir_str = QString::fromStdString(mod_folder.string());
+    data.open_explorer = [mod_dir_str]() {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(mod_dir_str));
+    };
+    data.open_file = [](const QString& path) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+    };
+    data.open_url = [](const QString& url) {
+        QDesktopServices::openUrl(QUrl(url));
+    };
+    data.hide_file = [](const QString& abs, bool hide) {
+        const std::filesystem::path p(abs.toStdString());
+        return hide ? engine::hide_file(p) : engine::unhide_file(p);
+    };
+    data.set_mod_color = [this, mod_id = mod.id](const QColor& c) {
+        if (c.isValid())
+            mod_model_->set_mod_color(mod_id, c);
+        else
+            mod_model_->clear_mod_color(mod_id);
+    };
+    data.refresh_conflicts = [this, mod_id = mod.id]() {
+        recompute_conflicts();
+        if (!modinfo_dialog_) return;
+        for (const auto& m : mod_model_->mods())
+            if (m.id == mod_id) {
+                modinfo_dialog_->reload_current(build_mod_info_data(m));
+                return;
+            }
+    };
+    data.delete_mod = [this, mod_id = mod.id, mods_subpath]() -> bool {
+        if (!mods_subpath.empty() && !current_game_dir_.empty()) {
+            auto mod_folder = mods_dir_path() / mod_id.toStdString();
+            if (!engine::remove_path(mod_folder)) {
+                engine::Logger::instance().error(
+                    "Failed to move mod folder to trash: " + mod_folder.string());
             }
         }
-        data.file_count = file_count;
+        mod_model_->remove_mod(mod_id);
+        return true;
+    };
 
-        ui::ModInfoDialog dlg(data, this);
-        dlg.exec();
-        return;
+    // Live Nexus lookup for the Nexus tab's Refresh button.
+    const QString domain = data.nexus_domain;
+    const QString src_id = mod.source_id;
+    data.fetch_nexus_info = [domain, src_id]() {
+        auto* provider = dynamic_cast<engine::NexusProvider*>(
+            engine::SourceRegistry::instance().provider_for("nexus"));
+        if (!provider || domain.isEmpty() || src_id.isEmpty())
+            return engine::ModInfoResult{};
+        return provider->fetch_mod_info(domain.toStdString(),
+                                        src_id.toStdString());
+    };
+
+    return data;
+}
+
+void MainWindow::on_data_mod_info(const QString& mod_id, int initial_tab) {
+    std::vector<ui::ModInfoData> mods_data;
+    mods_data.reserve(mod_model_->mods().size());
+    int found = -1;
+    for (const auto& mod : mod_model_->mods()) {
+        if (mod.id == mod_id) found = static_cast<int>(mods_data.size());
+        mods_data.push_back(build_mod_info_data(mod));
     }
+    if (found < 0) return;
+
+    ui::ModInfoDialog dlg(std::move(mods_data), found,
+                          static_cast<ui::ModInfoTabId>(initial_tab), this);
+    modinfo_dialog_ = &dlg;
+    dlg.exec();
+    modinfo_dialog_.clear();
 }
 
 void MainWindow::on_data_hide(const QString& file_path, const QString& mod_id, bool hide) {
@@ -2289,6 +2413,12 @@ void MainWindow::setup_mod_list_context_menu() {
         menu.addSeparator();
         menu.addAction(QIcon::fromTheme("edit-delete"), tr("Remove"),
             this, [this]() { remove_selected_mods(); });
+
+        // MO2 puts Information last (modlistcontextmenu.cpp:267-273), the
+        // default action after all per-type actions.
+        menu.addSeparator();
+        menu.addAction(QIcon::fromTheme("dialog-information"), tr("Information..."),
+            this, [this, mod_id]() { on_data_mod_info(mod_id); });
 
         menu.exec(mod_view_->viewport()->mapToGlobal(pos));
     });
@@ -5196,6 +5326,8 @@ void MainWindow::wire_downloads_tab() {
                 mod_id, fp.string(), source_type, source_id, file_id, display_name);
         }, Qt::QueuedConnection);
     });
+    connect(dt, &DownloadsTab::loverslab_url_entered,
+            this, &MainWindow::start_loverslab_download);
     connect(dt, &DownloadsTab::pause_requested,
             this, [this](const std::string& id) {
         if (!pipeline_thread_) return;
@@ -5205,23 +5337,38 @@ void MainWindow::wire_downloads_tab() {
     });
     connect(dt, &DownloadsTab::resume_requested,
             this, [this](const std::string& id) {
-        auto it = nxm_links_.find(id);
-        if (it == nxm_links_.end() || !pipeline_thread_) return;
+        if (!pipeline_thread_) return;
         auto* dtab = right_panel_->downloads_tab();
         if (dtab) dtab->mark_downloading(id);
-        auto link = it->second;
         auto mods_dir = mods_dir_path().string();
         auto meta_dir = current_instance_root_.empty()
             ? "" : (current_instance_root_ / "meta").string();
-        QMetaObject::invokeMethod(pipeline_thread_->worker(),
-            [this, id, link, mods_dir, meta_dir]() {
-            pipeline_thread_->worker()->download_mod(
-                id, link, current_game_id_, mods_dir, meta_dir);
-        }, Qt::QueuedConnection);
+        // Nexus downloads resume with their original NXM link...
+        auto it_nxm = nxm_links_.find(id);
+        if (it_nxm != nxm_links_.end()) {
+            auto link = it_nxm->second;
+            QMetaObject::invokeMethod(pipeline_thread_->worker(),
+                [this, id, link, mods_dir, meta_dir]() {
+                pipeline_thread_->worker()->download_mod(
+                    id, link, current_game_id_, mods_dir, meta_dir);
+            }, Qt::QueuedConnection);
+            return;
+        }
+        // ...LoversLab downloads resume with their original URL.
+        auto it_url = url_downloads_.find(id);
+        if (it_url != url_downloads_.end()) {
+            auto url = it_url->second;
+            QMetaObject::invokeMethod(pipeline_thread_->worker(),
+                [this, id, url, mods_dir, meta_dir]() {
+                pipeline_thread_->worker()->download_mod_url(
+                    id, url, current_game_id_, mods_dir, meta_dir);
+            }, Qt::QueuedConnection);
+        }
     });
     connect(dt, &DownloadsTab::entry_removed,
             this, [this](const std::string& id) {
             nxm_links_.erase(id);
+            url_downloads_.erase(id);
             save_download_manifest();
         });
 }
@@ -5344,6 +5491,77 @@ void MainWindow::handle_nxm_download(const engine::NxmLink& link) {
     }, Qt::QueuedConnection);
 
     engine::Logger::instance().debug("Download queued for mod " + mod_id + " file " + file_id);
+}
+
+void MainWindow::start_loverslab_download(const std::string& url) {
+    if (!engine::LoversLabProvider::is_loverslab_url(url)) {
+        QMessageBox::warning(this, tr("Download from URL"),
+            tr("Not a LoversLab download link.\n\n"
+               "Right-click a file's Download button on loverslab.com and copy "
+               "the link address (it ends in ?do=download), then paste it here."));
+        return;
+    }
+
+    if (!engine::LoversLabAuth::instance().has_cookie()) {
+        QMessageBox::information(this, tr("Download from URL"),
+            tr("No LoversLab session cookie is configured.\n\n"
+               "LoversLab has no public API, so downloads need the session "
+               "cookie from a signed-in browser tab. Set it under Settings > "
+               "Sources > LoversLab, then try again."));
+        return;
+    }
+
+    // Redact the CSRF token in logs - it is a session-bound secret.
+    std::string log_url = url;
+    {
+        auto kp = log_url.find("csrfKey=");
+        if (kp != std::string::npos) {
+            auto ke = log_url.find_first_of("&", kp);
+            log_url = log_url.substr(0, kp + 8) +
+                      (ke != std::string::npos ? log_url.substr(ke) : "");
+        }
+    }
+    engine::Logger::instance().debug("LoversLab download: " + log_url);
+
+    // Entry key is the file id when the URL carries one, else a stable hash
+    // (keeps map keys and archive-name fallbacks free of '/' characters).
+    std::string file_id = engine::LoversLabProvider::extract_file_id(url);
+    const std::string key = file_id.empty()
+        ? "ll-" + std::to_string(std::hash<std::string>{}(url))
+        : file_id;
+
+    auto* dt = right_panel_->downloads_tab();
+    if (dt) {
+        dt->add_download(
+            key,
+            tr("LoversLab file %1").arg(QString::fromStdString(key)).toStdString(),
+            "LoversLab", {}, {}, 0, {});
+    }
+
+    // Surface the download: bring the window to front and switch to the
+    // Downloads tab so the user sees the new entry start.
+    if (isMinimized()) {
+        showNormal();
+    }
+    raise();
+    activateWindow();
+    right_panel_->show_downloads_tab();
+
+    // Keep the URL so a paused download can be resumed later.
+    url_downloads_[key] = url;
+
+    // Build paths for the pipeline context
+    auto mods_dir = mods_dir_path();
+    auto meta_dir = current_instance_root_.empty()
+        ? "" : (current_instance_root_ / "meta").string();
+
+    QMetaObject::invokeMethod(pipeline_thread_->worker(),
+        [this, key, url, mods_dir, meta_dir]() {
+        pipeline_thread_->worker()->download_mod_url(
+            key, url, current_game_id_, mods_dir.string(), meta_dir);
+    }, Qt::QueuedConnection);
+
+    engine::Logger::instance().debug("LoversLab download queued: " + key);
 }
 
 void MainWindow::flush_pending_nxm() {

@@ -8,6 +8,18 @@ namespace engine {
 
 struct NxmLink;
 
+// Result of a mods/{game}/mods/{id}.json query. `available` is false when the
+// request failed (no API key, HTTP error, unparseable body).
+struct ModInfoResult {
+    bool available = false;
+    std::string name;
+    std::string version;          // current installed-file version
+    std::string newest_version;   // newest file version on Nexus
+    std::string category_id;      // Nexus category id
+    std::string description;      // Nexus BBCode description
+    std::string author;
+};
+
 class NexusProvider : public SourceProvider {
 public:
     std::string source_type() const override { return "nexus"; }
@@ -17,6 +29,16 @@ public:
     // name (file_name) for correct naming/extension and the display name.
     SourceDownloadInfo resolve_download_info(const Mod& mod) const override;
     std::string display_name() const override;
+
+    // Live mod-info lookup for the Mod Info Nexus tab ("Refresh" button).
+    // Requires a configured API key; fills ModInfoResult::available=false on
+    // any failure. Never throws.
+    ModInfoResult fetch_mod_info(const std::string& nexus_domain,
+                                 const std::string& mod_id) const;
+
+    // Pure body parser for the mods/{game}/mods/{id}.json response (extracted
+    // so the mapping is unit-testable without the network).
+    static ModInfoResult parse_mod_info(const std::string& body);
 
 private:
     // Shared download routine for a resolved URL (used by both the API-auth

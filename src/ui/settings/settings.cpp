@@ -593,3 +593,19 @@ QByteArray Settings::fomod_left_split() const {
 void Settings::set_fomod_left_split(const QByteArray& s) {
     settings_.setValue("fomod/left_split", s);
 }
+
+QByteArray Settings::modinfo_window_geometry() const {
+    return settings_.value("modinfo/window_geometry").toByteArray();
+}
+
+void Settings::set_modinfo_window_geometry(const QByteArray& g) {
+    settings_.setValue("modinfo/window_geometry", g);
+}
+
+int Settings::modinfo_last_tab() const {
+    return settings_.value("modinfo/last_tab", 0).toInt();
+}
+
+void Settings::set_modinfo_last_tab(int index) {
+    settings_.setValue("modinfo/last_tab", index);
+}

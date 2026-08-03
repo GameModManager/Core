@@ -354,6 +354,26 @@ bool ModMeta::save(const std::filesystem::path& meta_dir,
     return f.good();
 }
 
+ModMeta ModMeta::load_file(const std::filesystem::path& ini_file) {
+    ModMeta meta;
+    std::ifstream f(ini_file);
+    if (!f) return meta;  // empty meta
+    std::string content((std::istreambuf_iterator<char>(f)),
+                        std::istreambuf_iterator<char>());
+    meta.parse(content);
+    return meta;
+}
+
+bool ModMeta::save_file(const std::filesystem::path& ini_file) const {
+    std::error_code ec;
+    std::filesystem::create_directories(ini_file.parent_path(), ec);
+    if (ec) return false;
+    std::ofstream f(ini_file);
+    if (!f) return false;
+    f << serialize();
+    return f.good();
+}
+
 bool ModMeta::exists(const std::filesystem::path& meta_dir,
                      const std::string& folder_name) {
     return std::filesystem::exists(meta_dir / (folder_name + ".ini"));

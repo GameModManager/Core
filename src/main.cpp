@@ -43,6 +43,7 @@ static void qt_message_filter(QtMsgType type, const QMessageLogContext& ctx, con
 #include "engine/theme/theme_manager.h"
 #include "engine/theme/style_manager.h"
 #include "engine/nexus_auth.h"
+#include "engine/loverslab_auth.h"
 #include "cli/headless_launcher.h"
 
 #if defined(GMM_PLATFORM_LINUX)
@@ -92,6 +93,8 @@ int main(int argc, char *argv[])
     // worker can touch the key.
 #ifdef GMM_HAS_QTKEYCHAIN
     engine::NexusAuth::instance().set_keyring(
+        std::make_unique<engine::QtKeychainKeyring>());
+    engine::LoversLabAuth::instance().set_keyring(
         std::make_unique<engine::QtKeychainKeyring>());
 #endif
     // Smooth scrolling on item views is applied per-window via
