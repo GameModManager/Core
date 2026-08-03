@@ -39,6 +39,14 @@ void Settings::set_hide_installed_downloads(bool on) {
     settings_.setValue("downloads/hide_installed", on);
 }
 
+bool Settings::compact_downloads() const {
+    return settings_.value("downloads/compact", true).toBool();
+}
+
+void Settings::set_compact_downloads(bool on) {
+    settings_.setValue("downloads/compact", on);
+}
+
 bool Settings::display_foreign() const {
     return settings_.value("interface/display_foreign", true).toBool();
 }

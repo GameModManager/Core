@@ -302,6 +302,17 @@ QWidget* SettingsDialog::build_theme_tab() {
     colors_form->addRow(QString(), reset_colors);
     layout->addWidget(colors_group);
 
+    // -- Design ----------------------------------------------------------
+    auto* design_group = new QGroupBox(tr("Design"), page);
+    auto* design_form = new QFormLayout(design_group);
+    design_form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    auto* compact_box = new QCheckBox(tr("Compact rows in the Downloads tab"), design_group);
+    compact_box->setChecked(s.compact_downloads());
+    design_form->addRow(compact_box);
+    connect(compact_box, &QCheckBox::toggled, this,
+            [&s](bool on) { s.set_compact_downloads(on); });
+    layout->addWidget(design_group);
+
     layout->addStretch(1);
     return page;
 }

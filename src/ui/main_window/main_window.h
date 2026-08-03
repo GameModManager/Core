@@ -233,6 +233,12 @@ private:
     void save_download_manifest();
     void load_download_manifest();
     std::filesystem::path download_manifest_path() const;
+    // Wire the Downloads tab for the current instance: load its manifest,
+    // point it at the instance downloads dir (starts the watchdog), and
+    // connect its install/pause/resume/removal signals. Called after every
+    // right-panel rebuild (startup and instance switch), where the tab is
+    // freshly created and would otherwise be inert.
+    void wire_downloads_tab();
 
     std::string current_game_id_;
     std::string current_game_name_;

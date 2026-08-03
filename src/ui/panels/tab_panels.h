@@ -18,9 +18,11 @@ class QCheckBox;
 class QDragEnterEvent;
 class QDragMoveEvent;
 class QDropEvent;
+class QFileSystemWatcher;
 class QProgressBar;
 class QTableWidget;
 class QTableWidgetItem;
+class QTimer;
 class QTreeWidget;
 class QTreeWidgetItem;
 
@@ -83,6 +85,10 @@ public:
     // Re-apply the "hide installed" filter on top of any other row filter.
     void reapply_installed_filter();
 
+    // Re-read the compact-downloads setting and restyle the table's row height
+    // (MO2 standard/compact padding) via the dynamic `compact` property.
+    void apply_compact_style();
+
     // Replace the conflict resolver shown when a dropped archive's name
     // collides with an existing file in the downloads dir. Defaults to the
     // MO2-style question dialog; callers (tests) may inject a stub.
@@ -108,6 +114,12 @@ signals:
     // Emitted after a download entry (and its file) has been removed, so the
     // manifest can be persisted. The entry is already gone from the table.
     void entry_removed(const std::string& id);
+
+private slots:
+    // The downloads dir changed on disk (watcher fired): (re)arm the debounce
+    // timer so bursts from large copies coalesce into a single scan.
+    void on_downloads_dir_changed();
+    void on_scan_timer_timeout();
 
 private:
     struct DownloadEntry {
@@ -145,10 +157,11 @@ private:
     bool add_downloads_dir_file(const std::filesystem::path& path);
 
     // Add untracked archives sitting in the downloads dir as "Manual"
-    // Complete entries so they can be installed from the tab. Skip files that
-    // already back a tracked entry and any scan while a download is in
-    // flight (the in-progress archive would otherwise appear as a bogus
-    // "Complete" row).
+    // Complete entries so they can be installed from the tab. Refresh the size
+    // of tracked same-named files and remove rows whose archive no longer
+    // exists. Skip files that already back a tracked entry and any scan while
+    // a download is in flight (the in-progress archive would otherwise appear
+    // as a bogus "Complete" row).
     void scan_downloads_dir();
     bool has_active_download() const;
 
@@ -163,7 +176,8 @@ protected:
     std::unordered_map<std::string, DownloadEntry> downloads_;
     std::filesystem::path downloads_dir_;
     ConflictResolver conflict_resolver_;
-    int next_row_ = 0;
+    QFileSystemWatcher* dir_watcher_ = nullptr;
+    QTimer* scan_timer_ = nullptr;
 };
 
 class PluginsTab : public QWidget {
