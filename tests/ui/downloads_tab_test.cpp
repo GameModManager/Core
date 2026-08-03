@@ -41,11 +41,14 @@
 #include <QApplication>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QHeaderView>
 #include <QMimeData>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QThread>
 #include <QUrl>
+
+#include "ui/settings/settings.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -127,6 +130,31 @@ int main(int argc, char** argv) {
     auto* table = tab.table();
     check(table->rowCount() == 2,
           "scan adds only the untracked archive (dedupes the tracked file)");
+
+    // Compact rows are sized explicitly (not by any stylesheet), so the
+    // heights apply at launch even with no QSS installed.
+    const int compact_h = qMax(24, table->fontMetrics().height() + 8);
+    check(table->verticalHeader()->defaultSectionSize() == compact_h,
+          "default section size equals the compact row height");
+    for (int r = 0; r < table->rowCount(); ++r) {
+        check(table->rowHeight(r) == compact_h,
+              "scanned row uses the explicit compact height");
+    }
+
+    // Toggling the setting re-heights existing rows immediately.
+    Settings::instance().set_compact_downloads(false);
+    tab.apply_compact_style();
+    const int standard_h = qMax(40, table->fontMetrics().height() + 22);
+    check(table->verticalHeader()->defaultSectionSize() == standard_h,
+          "default section size grows in standard mode");
+    for (int r = 0; r < table->rowCount(); ++r) {
+        check(table->rowHeight(r) == standard_h,
+              "rows re-heigh on compact toggle");
+    }
+    Settings::instance().set_compact_downloads(true);
+    tab.apply_compact_style();
+    check(table->rowHeight(0) == compact_h,
+          "rows shrink back after toggling compact on");
 
     const int manual_row = row_with_name(table, "My Mod");
     check(manual_row >= 0, "untracked archive listed with its stem as name");

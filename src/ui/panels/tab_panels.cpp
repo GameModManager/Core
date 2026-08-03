@@ -747,7 +747,8 @@ void DataTab::show_data(
     }
 
     sort_dirs_first(tree_->invisibleRootItem());
-    tree_->expandToDepth(1);
+    // Folders start collapsed (MO2-style: the tree opens with subfolders
+    // closed); double-click expands in place.
 }
 
 void DataTab::on_item_double_clicked(QTreeWidgetItem* item, int column) {
@@ -872,7 +873,9 @@ void DataTab::add_file_menus(QMenu& menu, QTreeWidgetItem* item) {
     auto* hide_action = menu.addAction(
         hidden ? tr("&Un-Hide") : tr("&Hide"),
         this, [this, item, hidden]() {
-            emit hide_requested(item->data(0, DataRealPathRole).toString(), !hidden);
+            emit hide_requested(item->data(0, DataRealPathRole).toString(),
+                                item->data(0, DataOriginModRole).toString(),
+                                !hidden);
         });
     hide_action->setStatusTip(hidden ? tr("Un-hides the file")
                                      : tr("Hides the file"));
@@ -1003,14 +1006,20 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
 void DownloadsTab::apply_compact_style() {
     const bool compact = Settings::instance().compact_downloads();
     table_->setProperty("compact", compact);
-    // Re-evaluate the QSS attribute selectors against the new property value.
-    table_->style()->unpolish(table_);
-    table_->style()->polish(table_);
-    // Floor for rows that haven't been resized to contents yet.
-    table_->verticalHeader()->setDefaultSectionSize(compact ? 22 : 40);
-    // Every populated row is already sizeHint-driven (resizeRowToContents), so
-    // re-syncing them applies the new ::item padding immediately.
-    table_->resizeRowsToContents();
+    // Explicit heights: independent of any stylesheet/theme, so compact always
+    // applies at launch. The dynamic property is kept for theme diagnostics.
+    const int h = row_height();
+    table_->verticalHeader()->setMinimumSectionSize(h);
+    table_->verticalHeader()->setDefaultSectionSize(h);
+    for (int r = 0; r < table_->rowCount(); ++r) {
+        table_->setRowHeight(r, h);
+    }
+}
+
+int DownloadsTab::row_height() const {
+    const bool compact = Settings::instance().compact_downloads();
+    const int base = table_->fontMetrics().height();
+    return compact ? qMax(24, base + 8) : qMax(40, base + 22);
 }
 
 void DownloadsTab::on_downloads_dir_changed() {
@@ -1076,7 +1085,7 @@ void DownloadsTab::add_download(const std::string& id, const std::string& name,
     table_->setCellWidget(entry.row, 2, bar);
     entry.progress_bar = bar;
 
-    table_->resizeRowToContents(entry.row);
+    table_->setRowHeight(entry.row, row_height());
 }
 
 DownloadsTab::DownloadEntry& DownloadsTab::entry_for(const std::string& id) {
@@ -1093,7 +1102,7 @@ void DownloadsTab::rename_download(const std::string& id,
     auto& entry = it->second;
     if (entry.name_item) {
         entry.name_item->setText(QString::fromStdString(new_name));
-        table_->resizeRowToContents(entry.row);
+        table_->setRowHeight(entry.row, row_height());
     }
 }
 
@@ -1230,7 +1239,7 @@ void DownloadsTab::mark_downloading(const std::string& id) {
     table_->setCellWidget(entry.row, 2, bar);
     entry.progress_bar = bar;
 
-    table_->resizeRowToContents(entry.row);
+    table_->setRowHeight(entry.row, row_height());
 }
 
 void DownloadsTab::set_file_path(const std::string& id, const std::filesystem::path& path) {
@@ -1737,7 +1746,7 @@ void DownloadsTab::deserialize(const std::string& json,
             table_->setItem(entry.row, 2, item);
         }
 
-        table_->resizeRowToContents(entry.row);
+        table_->setRowHeight(entry.row, row_height());
     }
 
     apply_installed_filter();

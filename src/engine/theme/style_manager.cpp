@@ -92,16 +92,10 @@ QWidget#separatorRow {
 
 /* -- Downloads tab ------------------------------- */
 
-/* MO2 parity: row height is driven by ::item padding (QSS `height` is ignored
-   for item views). The DownloadsTab sets the dynamic `compact` property and
-   re-polishes; these scoped rules keep every other table native. */
-QTableWidget#downloadsTable[compact="true"]::item {
-    padding: 4px 6px;
-}
-
-QTableWidget#downloadsTable[compact="false"]::item {
-    padding: 16px 6px;
-}
+/* Row height is explicit (DownloadsTab::row_height, font-derived), so no
+   ::item padding rules here. A stylesheet-dependent look would break when a
+   custom theme replaces this sheet, and QSS `height` is ignored for item
+   views anyway. */
 
 /* -- Debug window -------------------------------- */
 

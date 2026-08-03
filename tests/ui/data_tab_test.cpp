@@ -313,12 +313,17 @@ int main(int argc, char** argv) {
 
         bool got_hide = false;
         QString hide_path;
+        QString hide_mod_id;
         bool hide_flag = false;
         QObject::connect(&tab, &ui::DataTab::hide_requested,
-                         [&](const QString& p, bool h) { got_hide = true; hide_path = p; hide_flag = h; });
+                         [&](const QString& p, const QString& mod, bool h) {
+                             got_hide = true; hide_path = p;
+                             hide_mod_id = mod; hide_flag = h;
+                         });
         hide_act->trigger();
-        check(got_hide && hide_flag && hide_path.endsWith("Data/readme.txt"),
-              "Hide triggers with the real path and hide=true");
+        check(got_hide && hide_flag && hide_mod_id == "ModA" &&
+                  hide_path.endsWith("Data/readme.txt"),
+              "Hide triggers with the real path, winner mod id, and hide=true");
     }
 
     // --- Context menu on an executable.
