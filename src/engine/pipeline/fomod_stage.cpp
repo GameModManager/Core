@@ -40,10 +40,10 @@ public:
     {
         // FOMOD paths are Windows-native; resolve case-insensitively so a
         // condition referencing "meshes\Skeleton.nif" matches Meshes/...
-        if (!resolve_path_ci(contentRoot_, fileName).empty()) {
+        if (!resolve_path(contentRoot_, fileName).empty()) {
             return FileDependencyTypeEnum::Active;
         }
-        if (!gameDataDir_.empty() && !resolve_path_ci(gameDataDir_, fileName).empty()) {
+        if (!gameDataDir_.empty() && !resolve_path(gameDataDir_, fileName).empty()) {
             return FileDependencyTypeEnum::Active;
         }
         return FileDependencyTypeEnum::Missing;
@@ -53,29 +53,6 @@ private:
     std::filesystem::path contentRoot_;
     std::filesystem::path gameDataDir_;
 };
-
-// Case-insensitive filename compare: mod authors build on Windows' insensitive
-// filesystem, so "Fomod", "FOMOD" and "fomod" are all the same directory (FOMOD
-// Plus's scanner matches "fomod/ModuleConfig.xml" the same way).
-bool name_matches_ci(const std::filesystem::path& p, const std::string& lowerName)
-{
-    return toLower(p.filename().string()) == lowerName;
-}
-
-// Case-insensitive lookup of a file by its lowercase name inside a directory.
-std::filesystem::path find_file_ci(const std::filesystem::path& dir, const std::string& lowerName)
-{
-    std::error_code ec;
-    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
-        if (ec) {
-            return {};
-        }
-        if (entry.is_regular_file(ec) && name_matches_ci(entry.path(), lowerName)) {
-            return entry.path();
-        }
-    }
-    return {};
-}
 
 // FOMOD Plus findFomodDirectory: a directory named "fomod" (any casing) wins;
 // else if the current directory has exactly one entry and it is a directory,
