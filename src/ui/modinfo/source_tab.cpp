@@ -1,0 +1,366 @@
+#include "ui/modinfo/source_tab.h"
+
+#include "engine/meta/mod_meta.h"
+#include "engine/source/nexus_provider.h"
+#include "engine/source/source_provider.h"
+#include "ui/modinfo/bbcode.h"
+#include "ui/settings/settings.h"
+
+#include <QApplication>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QDesktopServices>
+#include <QFormLayout>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QScopedValueRollback>
+#include <QTabWidget>
+#include <QTextBrowser>
+#include <QUrl>
+#include <QVBoxLayout>
+
+#include <cctype>
+#include <string>
+
+namespace ui {
+
+namespace {
+
+engine::SourceProvider* find_provider(const QString& name) {
+    std::string low = name.trimmed().toStdString();
+    for (auto& c : low)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (auto* provider : engine::SourceRegistry::instance().providers()) {
+        auto matches = [&low](const std::string& s) {
+            std::string sl = s;
+            for (auto& c : sl)
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return sl == low;
+        };
+        if (matches(provider->source_type()) || matches(provider->display_name()))
+            return provider;
+    }
+    return nullptr;
+}
+
+}  // namespace
+
+SourceTab::SourceTab(QWidget* parent) : ModInfoTab(parent) {
+    auto* layout = new QVBoxLayout(this);
+    layout->setContentsMargins(0, 0, 0, 0);
+
+    sources_ = new QTabWidget(this);
+    sources_->setDocumentMode(true);
+    layout->addWidget(sources_, 1);
+}
+
+SourceTab::~SourceTab() = default;
+
+QString SourceTab::meta_value(const char* section, const char* key) const {
+    return QString::fromStdString(current().load_meta().get(section, key));
+}
+
+void SourceTab::set_meta_value(const char* section, const char* key,
+                               const QString& v) {
+    auto meta = current().load_meta();
+    const QString before = QString::fromStdString(meta.get(section, key));
+    if (before == v) return;
+    meta.set(section, key, v.toStdString());
+    current().save_meta(meta);
+}
+
+QWidget* SourceTab::build_nexus_page(QWidget* parent) {
+    auto* page = new QWidget(parent);
+    auto* layout = new QVBoxLayout(page);
+
+    auto* form = new QFormLayout();
+    mod_id_ = new QLineEdit(page);
+    mod_id_->setPlaceholderText(QStringLiteral("0"));
+    form->addRow(tr("Mod ID:"), mod_id_);
+
+    source_game_ = new QComboBox(page);
+    form->addRow(tr("Source game:"), source_game_);
+
+    version_ = new QLineEdit(page);
+    form->addRow(tr("Version:"), version_);
+
+    category_ = new QLineEdit(page);
+    category_->setPlaceholderText(QStringLiteral("0"));
+    form->addRow(tr("Category:"), category_);
+    layout->addLayout(form);
+
+    auto* buttons = new QHBoxLayout();
+    refresh_ = new QPushButton(tr("Refresh"), page);
+    visit_ = new QPushButton(tr("Visit on Nexus"), page);
+    buttons->addWidget(refresh_);
+    buttons->addWidget(visit_);
+
+    if (Settings::instance().endorsement_integration()) {
+        auto* endorse = new QPushButton(tr("Endorse"), page);
+        QObject::connect(endorse, &QPushButton::clicked, this,
+                         [this]() { on_visit(); });
+        buttons->addWidget(endorse);
+    }
+    if (Settings::instance().tracked_integration()) {
+        auto* track = new QPushButton(tr("Track"), page);
+        QObject::connect(track, &QPushButton::clicked, this,
+                         [this]() { on_visit(); });
+        buttons->addWidget(track);
+    }
+    buttons->addStretch(1);
+    layout->addLayout(buttons);
+
+    auto* custom_row = new QHBoxLayout();
+    custom_url_toggle_ = new QCheckBox(tr("Custom URL:"), page);
+    custom_url_ = new QLineEdit(page);
+    custom_url_->setEnabled(false);
+    visit_custom_ = new QPushButton(tr("Visit"), page);
+    visit_custom_->setEnabled(false);
+    custom_row->addWidget(custom_url_toggle_);
+    custom_row->addWidget(custom_url_, 1);
+    custom_row->addWidget(visit_custom_);
+    layout->addLayout(custom_row);
+
+    description_ = new QTextBrowser(page);
+    description_->setOpenExternalLinks(true);
+    layout->addWidget(description_, 1);
+
+    connect(mod_id_, &QLineEdit::editingFinished, this,
+            &SourceTab::persist_fields);
+    connect(version_, &QLineEdit::editingFinished, this,
+            &SourceTab::persist_fields);
+    connect(category_, &QLineEdit::editingFinished, this,
+            &SourceTab::persist_fields);
+    connect(custom_url_, &QLineEdit::editingFinished, this,
+            &SourceTab::persist_custom_url);
+    connect(custom_url_toggle_, &QCheckBox::toggled, this,
+            &SourceTab::on_custom_url_toggled);
+    connect(refresh_, &QPushButton::clicked, this, &SourceTab::on_refresh);
+    connect(visit_, &QPushButton::clicked, this, &SourceTab::on_visit);
+    connect(visit_custom_, &QPushButton::clicked, this,
+            &SourceTab::on_visit_custom);
+
+    return page;
+}
+
+QWidget* SourceTab::build_generic_page(engine::SourceProvider* provider,
+                                       QWidget* parent) {
+    auto* page = new QWidget(parent);
+    auto* form = new QFormLayout(page);
+
+    auto* source_name = new QLabel(
+        QString::fromStdString(provider->display_name()), page);
+    source_name->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    form->addRow(tr("Source:"), source_name);
+
+    auto* id_label = new QLabel(
+        current().source_id.isEmpty()
+            ? tr("(not installed from this source)")
+            : current().source_id,
+        page);
+    id_label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    form->addRow(tr("Source ID:"), id_label);
+
+    return page;
+}
+
+void SourceTab::set_mod(const ModInfoData& data) {
+    populate();
+    set_has_data(!data.source_id.isEmpty() ||
+                 !meta_value("General", "version").isEmpty() ||
+                 !meta_value("Nexusmods", "modid").isEmpty());
+}
+
+void SourceTab::populate() {
+    QScopedValueRollback loading_rollback(loading_, true);
+
+    // Rebuild the per-source sub-tabs: the set depends on the game's
+    // supported sources, and each build reads the current mod's data.
+    while (sources_->count() > 0) {
+        QWidget* page = sources_->widget(0);
+        sources_->removeTab(0);
+        delete page;
+    }
+    mod_id_ = nullptr;
+    source_game_ = nullptr;
+    version_ = nullptr;
+    category_ = nullptr;
+    refresh_ = nullptr;
+    visit_ = nullptr;
+    custom_url_toggle_ = nullptr;
+    custom_url_ = nullptr;
+    visit_custom_ = nullptr;
+    description_ = nullptr;
+
+    const QStringList sources = current().supported_sources;
+    if (sources.isEmpty()) {
+        auto* hint = new QLabel(
+            tr("No download sources are available for this game."), sources_);
+        hint->setWordWrap(true);
+        sources_->addTab(hint, tr("Sources"));
+        return;
+    }
+
+    for (const QString& name : sources) {
+        auto* provider = find_provider(name);
+        if (provider == nullptr) {
+            auto* hint = new QLabel(
+                tr("This source has no configurable settings."), sources_);
+            hint->setWordWrap(true);
+            sources_->addTab(hint, name);
+            continue;
+        }
+        QWidget* page =
+            provider->source_type() == "nexus"
+                ? build_nexus_page(sources_)
+                : build_generic_page(provider, sources_);
+        sources_->addTab(page, name);
+    }
+
+    if (mod_id_ == nullptr) return;  // no Nexus page for this game
+
+    mod_id_->setText(meta_value("Nexusmods", "modid"));
+    if (mod_id_->text().isEmpty())
+        mod_id_->setText(current().source_id);
+
+    source_game_->clear();
+    source_game_->addItem(current().nexus_domain, current().nexus_domain);
+    source_game_->setEnabled(false);
+
+    version_->setText(meta_value("General", "version"));
+    if (version_->text().isEmpty()) version_->setText(current().version);
+
+    category_->setText(meta_value("Nexusmods", "nexuscategory"));
+
+    custom_url_toggle_->setChecked(
+        meta_value("General", "hasCustomURL") == QStringLiteral("true"));
+    custom_url_->setText(meta_value("General", "url"));
+    custom_url_->setEnabled(custom_url_toggle_->isChecked());
+    visit_custom_->setEnabled(custom_url_toggle_->isChecked() &&
+                              !custom_url_->text().isEmpty());
+
+    update_version_color();
+    render_description();
+}
+
+void SourceTab::first_activation() {
+    // Show the stored description only; the user opts into network I/O via
+    // the Refresh button (MO2 refreshes eagerly, but that needs the API key
+    // and blocks; we don't).
+    populate();
+}
+
+void SourceTab::update_version_color() {
+    if (version_ == nullptr) return;
+    const QString version = meta_value("General", "version");
+    const QString newest = meta_value("General", "newestversion");
+    if (!version.isEmpty() && !newest.isEmpty() && version != newest) {
+        version_->setStyleSheet(QStringLiteral("color: red;"));
+        version_->setToolTip(tr("Newest version: %1").arg(newest));
+    } else {
+        version_->setStyleSheet(QString());
+        version_->setToolTip(tr("No update available"));
+    }
+}
+
+void SourceTab::render_description() {
+    if (description_ == nullptr) return;
+    const QString stored = meta_value("Nexusmods", "nexusdescription");
+    if (stored.isEmpty()) {
+        description_->setHtml(QStringLiteral(
+            "<div style=\"text-align:center; color:grey; padding-top:24px;\">"
+            "<p>No Nexus description stored for this mod. Press "
+            "<b>Refresh</b> to fetch it live.</p></div>"));
+        return;
+    }
+    description_->setHtml(
+        QStringLiteral("<html><body style=\"font-family:sans-serif;\">%1</body></html>")
+            .arg(bbcode_to_html(stored)));
+}
+
+void SourceTab::on_refresh() {
+    if (!current().fetch_nexus_info) return;
+    if (mod_id_ == nullptr) return;
+    const QString id = mod_id_->text().trimmed();
+    if (id.isEmpty() || id.toInt() <= 0) return;
+
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const auto result = current().fetch_nexus_info();
+    QApplication::restoreOverrideCursor();
+
+    if (!result.available) {
+        render_description();
+        return;
+    }
+
+    auto meta = current().load_meta();
+    const QString name = QString::fromStdString(result.name);
+    if (!name.isEmpty()) meta.set("General", "name", name.toStdString());
+    if (!result.version.empty())
+        meta.set("General", "version",
+                 QString::fromStdString(result.version).toStdString());
+    if (!result.newest_version.empty())
+        meta.set("General", "newestversion",
+                 QString::fromStdString(result.newest_version).toStdString());
+    if (!result.category_id.empty())
+        meta.set("Nexusmods", "nexuscategory",
+                 QString::fromStdString(result.category_id).toStdString());
+    if (!result.description.empty())
+        meta.set("Nexusmods", "nexusdescription",
+                 QString::fromStdString(result.description).toStdString());
+    current().save_meta(meta);
+
+    populate();
+}
+
+void SourceTab::on_visit() {
+    if (mod_id_ == nullptr) return;
+    const QString id = mod_id_->text().trimmed();
+    if (id.isEmpty() || id.toInt() <= 0) return;
+    if (!current().open_url) return;
+    current().open_url(QStringLiteral("https://www.nexusmods.com/%1/mods/%2")
+                           .arg(current().nexus_domain, id));
+}
+
+void SourceTab::on_visit_custom() {
+    if (custom_url_ == nullptr) return;
+    const QString url = custom_url_->text().trimmed();
+    if (url.isEmpty()) return;
+    if (!current().open_url) return;
+    current().open_url(url);
+}
+
+void SourceTab::on_custom_url_toggled() {
+    if (loading_) return;
+    custom_url_->setEnabled(custom_url_toggle_->isChecked());
+    visit_custom_->setEnabled(custom_url_toggle_->isChecked() &&
+                              !custom_url_->text().isEmpty());
+    set_meta_value("General", "hasCustomURL",
+                   custom_url_toggle_->isChecked() ? QStringLiteral("true")
+                                                   : QStringLiteral("false"));
+}
+
+void SourceTab::persist_fields() {
+    if (loading_) return;
+    if (mod_id_ == nullptr) return;
+    set_meta_value("Nexusmods", "modid", mod_id_->text().trimmed());
+    set_meta_value("General", "version", version_->text().trimmed());
+    set_meta_value("Nexusmods", "nexuscategory", category_->text().trimmed());
+}
+
+void SourceTab::persist_custom_url() {
+    if (loading_) return;
+    if (custom_url_ == nullptr) return;
+    set_meta_value("General", "url", custom_url_->text().trimmed());
+    visit_custom_->setEnabled(custom_url_toggle_->isChecked() &&
+                              !custom_url_->text().isEmpty());
+}
+
+void SourceTab::save_state() {
+    persist_fields();
+    persist_custom_url();
+}
+
+}  // namespace ui

@@ -45,6 +45,14 @@ public slots:
                       const std::string& mods_dir,
                       const std::string& meta_dir);
 
+    // Download only, by pre-assembled URL (LoversLab and other no-API sites).
+    // The provider fetches mod.download_url with the configured session
+    // cookie. Same pause/progress/resume contract as download_mod.
+    void download_mod_url(const std::string& id, const std::string& url,
+                          const std::string& game_id,
+                          const std::string& mods_dir,
+                          const std::string& meta_dir);
+
     // Request a pause of an in-flight download (cooperative: the transfer
     // callback polls the flag and aborts, keeping the partial file).
     void pause_download(const std::string& id);
@@ -69,6 +77,13 @@ private:
     std::unique_ptr<engine::Pipeline> fetch_pipeline_;
     // Per-download pause flags, keyed by the download id.
     std::unordered_map<std::string, std::atomic_bool> cancel_flags_;
+
+    // Shared body of download_mod / download_mod_url: runs the fetch-only
+    // pipeline with the given pre-assembled Mod and emits the completion
+    // signals. The caller sets the provider-specific download fields
+    // (download_source_type / download_nxm or download_url).
+    void run_fetch(engine::Mod mod, const std::string& id,
+                   const std::string& mods_dir, const std::string& meta_dir);
 };
 
 // Wrapper to run PipelineWorker in a thread

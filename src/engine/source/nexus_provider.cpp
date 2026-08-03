@@ -1,4 +1,5 @@
 #include "engine/source/nexus_provider.h"
+#include "engine/download/curl_download.h"
 #include "engine/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/nxm/nxm_router.h"
@@ -13,125 +14,15 @@
 
 #include <chrono>
 #include <cctype>
-#include <fstream>
 #include <sstream>
 
 namespace engine {
-
-// ---------------------------------------------------------------------------
-// Progress callback for libcurl downloads
-// ---------------------------------------------------------------------------
-
-struct DownloadProgress {
-    std::function<void(int64_t, int64_t, double)> callback;
-    std::function<bool()> should_abort;
-    int64_t resume_base = 0;  // bytes already downloaded in a previous run
-    std::chrono::steady_clock::time_point start;
-};
-
-static int xferinfo_callback(void* user_data, curl_off_t dltotal, curl_off_t dlnow,
-                              curl_off_t ultotal, curl_off_t ulnow) {
-    (void)ultotal; (void)ulnow;
-    auto* dp = static_cast<DownloadProgress*>(user_data);
-    if (dp && dp->should_abort && dp->should_abort()) {
-        // Pause requested - abort this transfer; the partial file is kept.
-        return 1;
-    }
-    if (dp && dp->callback) {
-        auto now = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration<double>(now - dp->start).count();
-        double speed = (elapsed > 0.001) ? (dlnow / elapsed) : 0.0;
-        // During a resumed transfer curl reports only the remaining bytes
-        // (dlnow from 0, dltotal = remainder), so add the resume base back to
-        // keep the UI progress continuous across pause/resume.
-        dp->callback(dp->resume_base + dlnow, dp->resume_base + dltotal, speed);
-    }
-    return 0;
-}
-
-// ---------------------------------------------------------------------------
-// libcurl write callbacks
-// ---------------------------------------------------------------------------
-
-static size_t write_to_file(void* ptr, size_t size, size_t nmemb, void* stream) {
-    auto* file = static_cast<std::ofstream*>(stream);
-    if (!file || !file->is_open()) return 0;
-    auto written = static_cast<std::streamsize>(size * nmemb);
-    file->write(static_cast<const char*>(ptr), written);
-    return file->good() ? (size * nmemb) : 0;
-}
 
 static bool contains_ci(const std::string& haystack, const std::string& needle) {
     std::string h = haystack, n = needle;
     for (auto& c : h) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     for (auto& c : n) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return h.find(n) != std::string::npos;
-}
-
-// Downloads to dest_path. When `resume_from > 0` the existing partial file is
-// opened in append mode and the server is asked to continue from that byte
-// (HTTP Range). On an abort (pause) the partial file is KEPT so a later run
-// can resume; on any other failure the partial file is removed.
-static bool curl_download(const std::string& url,
-                          const std::filesystem::path& dest_path,
-                          long& http_code,
-                          DownloadProgress* progress = nullptr,
-                          int64_t resume_from = 0,
-                          bool* aborted = nullptr) {
-    auto* curl = curl_easy_init();
-    if (!curl) return false;
-
-    std::ofstream file;
-    if (resume_from > 0)
-        file.open(dest_path, std::ios::binary | std::ios::app);
-    else
-        file.open(dest_path, std::ios::binary);
-    if (!file) {
-        curl_easy_cleanup(curl);
-        return false;
-    }
-
-    const std::string encoded_url = engine::encode_url_path(url);
-    curl_easy_setopt(curl, CURLOPT_URL, encoded_url.c_str());
-    curl_easy_setopt(curl, CURLOPT_USERAGENT,
-                     "GameModManager/0.1 (Nexus Provider)");
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 120L);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_file);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &file);
-
-    if (resume_from > 0)
-        curl_easy_setopt(curl, CURLOPT_RESUME_FROM_LARGE,
-                         static_cast<curl_off_t>(resume_from));
-
-    if (progress && progress->callback) {
-        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
-        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, xferinfo_callback);
-        curl_easy_setopt(curl, CURLOPT_XFERINFODATA, progress);
-    }
-
-    CURLcode res = curl_easy_perform(curl);
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-    curl_easy_cleanup(curl);
-
-    file.close();
-
-    bool was_aborted = (res == CURLE_ABORTED_BY_CALLBACK);
-    if (aborted) *aborted = was_aborted;
-
-    if (res != CURLE_OK || http_code >= 400) {
-        if (!was_aborted) {
-            Logger::instance().error(
-                "NexusProvider: curl_download error: " +
-                std::string(curl_easy_strerror(res)) +
-                " (code=" + std::to_string(res) +
-                ", http_code=" + std::to_string(http_code) + ")");
-            std::error_code ec;
-            std::filesystem::remove(dest_path, ec);
-        }
-        return false;
-    }
-    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -345,15 +236,16 @@ bool NexusProvider::download_from_url(const std::string& download_url,
     Logger::instance().debug("NexusProvider: downloading from Nexus...");
     long dl_code = 0;
 
-    DownloadProgress dp;
+    engine::download::Progress dp;
     dp.callback = ctx.on_progress;
     dp.should_abort = ctx.should_abort;
     dp.resume_base = ctx.download_resume_from;
     dp.start = std::chrono::steady_clock::now();
 
     bool aborted = false;
-    if (!curl_download(download_url, dest_path, dl_code, &dp,
-                       ctx.download_resume_from, &aborted)) {
+    if (!engine::download::curl_download(
+            download_url, dest_path, dl_code, {}, &dp,
+            ctx.download_resume_from, &aborted)) {
         if (aborted) {
             // Pause requested - partial file is kept for resume.
             ctx.download_paused = true;
@@ -453,6 +345,74 @@ SourceDownloadInfo NexusProvider::resolve_download_info(const Mod& mod) const {
 
 std::string NexusProvider::display_name() const {
     return "Nexus Mods";
+}
+
+// ---------------------------------------------------------------------------
+// NexusProvider::fetch_mod_info
+// ---------------------------------------------------------------------------
+
+ModInfoResult NexusProvider::fetch_mod_info(const std::string& nexus_domain,
+                                            const std::string& mod_id) const {
+    ModInfoResult result;
+    if (nexus_domain.empty() || mod_id.empty()) return result;
+    if (!NexusAuth::instance().has_api_key()) {
+        Logger::instance().debug(
+            "NexusProvider: fetch_mod_info skipped (no API key configured)");
+        return result;
+    }
+
+    const std::string api_key = NexusAuth::instance().get_api_key();
+    if (api_key.empty()) return result;
+
+    const std::string url = "https://api.nexusmods.com/v1/games/"
+                            + nexus_domain + "/mods/" + mod_id + ".json";
+
+    curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, ("apikey: " + api_key).c_str());
+    headers = curl_slist_append(headers, "Accept: application/json");
+
+    std::string response;
+    std::string resp_headers;
+    long http_code = 0;
+    const bool ok = nexus_http_request(url, "", response, http_code, headers,
+                                       &resp_headers);
+    curl_slist_free_all(headers);
+
+    if (resp_headers.size() > 20)  // sanity check - don't parse empty/trivial
+        parse_rate_limits(resp_headers);
+
+    if (!ok || http_code != 200) {
+        Logger::instance().debug(
+            "NexusProvider: fetch_mod_info failed (HTTP " +
+            std::to_string(http_code) + ") for mod " + mod_id);
+        return result;
+    }
+
+    return parse_mod_info(response);
+}
+
+ModInfoResult NexusProvider::parse_mod_info(const std::string& body) {
+    ModInfoResult result;
+    try {
+        auto j = nlohmann::json::parse(body);
+        if (!j.is_object()) return result;
+        result.available = j.value("available", false);
+        result.name = j.value("name", "");
+        result.version = j.value("version", "");
+        result.newest_version = j.value("newest_version", "");
+        if (j.contains("category_id")) {
+            const auto& c = j["category_id"];
+            if (c.is_number())
+                result.category_id = std::to_string(c.get<int>());
+            else if (c.is_string())
+                result.category_id = c.get<std::string>();
+        }
+        result.description = j.value("description", "");
+        result.author = j.value("author", "");
+        return result;
+    } catch (const std::exception&) {
+        return result;
+    }
 }
 
 } // namespace engine

@@ -1,6 +1,7 @@
 #include "ui/settings/source_pages.h"
 
 #include "engine/log/logger.h"
+#include "engine/loverslab_auth.h"
 #include "engine/nexus_auth.h"
 #include "engine/source/nexus_account.h"
 #include "engine/source/nexus_provider.h"
@@ -25,6 +26,7 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QPlainTextEdit>
@@ -495,6 +497,98 @@ QWidget* build_workshop_page(engine::SteamWorkshopProvider* provider,
     return page;
 }
 
+// -- LoversLab ----------------------------------------------------------------
+
+// Settings -> Sources -> LoversLab. LoversLab has no public API, so downloads
+// ride the user's browser session: paste the site's cookies (name=value pairs
+// joined by "; ") and GMM sends them as the Cookie header when fetching a
+// ?do=download link. The cookie is a session secret - it lives in the OS
+// keyring (same backend as the Nexus API key), never on disk in plain text.
+QWidget* build_loverslab_page(QWidget* parent) {
+    auto& auth = engine::LoversLabAuth::instance();
+    auto* page = new QWidget(parent);
+    auto* layout = new QVBoxLayout(page);
+
+    auto* group = new QGroupBox(QWidget::tr("Session Cookie"), page);
+    auto* v = new QVBoxLayout(group);
+
+    auto* hint = new QLabel(
+        QWidget::tr("LoversLab has no public API, so GMM downloads with the "
+                    "session of a signed-in browser tab.\n\n"
+                    "How to get the cookie:\n"
+                    "1. Sign in to loverslab.com in your browser.\n"
+                    "2. Open the developer tools (F12) -> Network tab, reload "
+                    "the page, click any request, and copy the \"Cookie\" "
+                    "request header.\n"
+                    "3. Paste it below and press Save.\n\n"
+                    "Any format is fine (name=value pairs, or the browser's "
+                    "tab-separated cookie list) - GMM normalizes it on save. "
+                    "The cookie is a session secret - it is stored in your OS "
+                    "keyring and never shown back to you."), group);
+    hint->setWordWrap(true);
+    v->addWidget(hint);
+
+    auto* cookie_edit = new QLineEdit(group);
+    cookie_edit->setEchoMode(QLineEdit::Password);
+    cookie_edit->setPlaceholderText(
+        QWidget::tr("memberID=...; pass_hash=...; ..."));
+    if (auth.has_cookie()) {
+        cookie_edit->setText(QString::fromStdString(auth.get_cookie()));
+    }
+    v->addWidget(cookie_edit);
+
+    auto* status = new QLabel(group);
+    status->setObjectName("llCookieStatus");
+    status->setText(auth.has_cookie()
+        ? QWidget::tr("Stored: %1").arg(QString::fromStdString(
+              engine::LoversLabAuth::redact(auth.get_cookie())))
+        : QWidget::tr("No cookie stored."));
+    v->addWidget(status);
+
+    auto* btn_row = new QHBoxLayout;
+    auto* paste_btn = new QPushButton(QWidget::tr("Paste"), group);
+    auto* save_btn = new QPushButton(QWidget::tr("Save"), group);
+    auto* clear_btn = new QPushButton(QWidget::tr("Clear"), group);
+    btn_row->addWidget(paste_btn);
+    btn_row->addWidget(save_btn);
+    btn_row->addWidget(clear_btn);
+    v->addLayout(btn_row);
+
+    layout->addWidget(group);
+    layout->addStretch(1);
+
+    auto update_status = [&auth, status](const std::string& cookie) {
+        status->setText(cookie.empty()
+            ? QWidget::tr("No cookie stored.")
+            : QWidget::tr("Stored: %1").arg(QString::fromStdString(
+                  engine::LoversLabAuth::redact(cookie))));
+    };
+
+    QObject::connect(paste_btn, &QPushButton::clicked,
+                     [cookie_edit]() {
+        const QString text = QApplication::clipboard()->text();
+        if (!text.isEmpty()) cookie_edit->setText(text);
+    });
+    QObject::connect(save_btn, &QPushButton::clicked,
+                     [&auth, cookie_edit, update_status]() {
+        const std::string cookie = cookie_edit->text().trimmed().toStdString();
+        if (cookie.empty()) {
+            auth.clear_cookie();
+        } else {
+            auth.set_cookie(cookie);
+        }
+        update_status(cookie);
+    });
+    QObject::connect(clear_btn, &QPushButton::clicked,
+                     [&auth, cookie_edit, update_status]() {
+        auth.clear_cookie();
+        cookie_edit->clear();
+        update_status({});
+    });
+
+    return page;
+}
+
 QWidget* build_source_settings_page(engine::SourceProvider* provider,
                                     QWidget* parent) {
     if (provider == nullptr) return nullptr;
@@ -504,6 +598,9 @@ QWidget* build_source_settings_page(engine::SourceProvider* provider,
     if (provider->source_type() == "steam") {
         auto* ws = dynamic_cast<engine::SteamWorkshopProvider*>(provider);
         if (ws != nullptr) return build_workshop_page(ws, parent);
+    }
+    if (provider->source_type() == "loverslab") {
+        return build_loverslab_page(parent);
     }
     return nullptr;
 }

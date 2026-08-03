@@ -20,9 +20,11 @@
 #include <QFontMetrics>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
 #include <QMimeData>
@@ -31,6 +33,7 @@
 #include <QPainter>
 #include <QPixmap>
 #include <QProgressBar>
+#include <QPushButton>
 #include <QSet>
 #include <QShowEvent>
 #include <QStyle>
@@ -48,6 +51,7 @@
 
 #include "engine/log/logger.h"
 #include "engine/fs_utils.h"
+#include "engine/source/loverslab_provider.h"
 
 #include <algorithm>
 #include <cmath>
@@ -130,6 +134,28 @@ static bool accepts_url_drop(const QMimeData* data) {
         if (!is_archive_path(url.toLocalFile().toStdString())) return false;
     }
     return true;
+}
+
+// A drag carrying exactly one LoversLab download link (a browser URL drag) is
+// routed to the same "Add from URL…" flow as the header button. Browsers drag
+// URLs as text/uri-list (surfaced through QMimeData::urls()); a bare-text
+// fallback covers text-only drags. Returns the URL, or "" when the drop is not
+// a single LoversLab link (so the archive-drop gate below still applies).
+static std::string loverslab_drop_url(const QMimeData* data) {
+    if (!data) return {};
+    QString candidate;
+    if (data->hasUrls()) {
+        const auto urls = data->urls();
+        if (urls.size() != 1) return {};
+        candidate = urls.first().toString();
+    } else if (data->hasText()) {
+        candidate = data->text().trimmed();
+    } else {
+        return {};
+    }
+    if (candidate.isEmpty()) return {};
+    const std::string url = candidate.toStdString();
+    return engine::LoversLabProvider::is_loverslab_url(url) ? url : std::string();
 }
 
 // --- MIME icon + tree helpers ---
@@ -942,6 +968,9 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     hide_installed_ = new QCheckBox(tr("Hide installed"), this);
     top->addWidget(hide_installed_);
     top->addStretch(1);
+    auto* add_url_btn = new QPushButton(tr("Add from URL…"), this);
+    add_url_btn->setObjectName("addUrlBtn");
+    top->addWidget(add_url_btn);
     layout->addLayout(top);
 
     table_ = make_table(4, {tr("Name"), tr("Source"), tr("Status"), tr("Size")}, this);
@@ -960,6 +989,24 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     });
 
     hide_installed_->setChecked(Settings::instance().hide_installed_downloads());
+
+    // "Add from URL…": paste a LoversLab ?do=download link (LoversLab has no
+    // API, so downloads ride the user's session cookie set in Settings). The
+    // tab only captures the URL - validation/routing happens in MainWindow.
+    connect(add_url_btn, &QPushButton::clicked, this, [this]() {
+        bool ok = false;
+        const QString url = QInputDialog::getText(
+            this, tr("Download from URL"),
+            tr("Paste a LoversLab download link:\n"
+               "Right-click a file's Download button on loverslab.com and copy\n"
+               "the link address (the URL ends in ?do=download).\n\n"
+               "Requires a session cookie - set it under Settings > Sources > "
+               "LoversLab."),
+            QLineEdit::Normal, QString(), &ok);
+        if (ok && !url.trimmed().isEmpty()) {
+            emit loverslab_url_entered(url.trimmed().toStdString());
+        }
+    });
 
     // External archive drops (drag from a file manager) land in the downloads
     // dir and surface as "Manual" entries. The QTableWidget itself does not
@@ -1454,16 +1501,27 @@ bool DownloadsTab::import_dropped_file(const std::filesystem::path& source,
 }
 
 void DownloadsTab::dragEnterEvent(QDragEnterEvent* event) {
-    if (accepts_url_drop(event->mimeData()))
+    if (accepts_url_drop(event->mimeData()) ||
+        !loverslab_drop_url(event->mimeData()).empty())
         event->acceptProposedAction();
 }
 
 void DownloadsTab::dragMoveEvent(QDragMoveEvent* event) {
-    if (accepts_url_drop(event->mimeData()))
+    if (accepts_url_drop(event->mimeData()) ||
+        !loverslab_drop_url(event->mimeData()).empty())
         event->acceptProposedAction();
 }
 
 void DownloadsTab::dropEvent(QDropEvent* event) {
+    // A single LoversLab download link dropped from a browser starts the same
+    // download flow as the "Add from URL…" button.
+    const std::string ll_url = loverslab_drop_url(event->mimeData());
+    if (!ll_url.empty()) {
+        emit loverslab_url_entered(ll_url);
+        event->accept();
+        return;
+    }
+
     if (!accepts_url_drop(event->mimeData())) {
         event->ignore();
         return;
@@ -1553,8 +1611,20 @@ void DownloadsTab::on_custom_context_menu(const QPoint& pos) {
         icon_for("download", QStyle::SP_ArrowDown),
         entry.state == DownloadState::Installed ? tr("Reinstall") : tr("Install"),
         this, [this, id, entry]() {
-            emit install_requested(id, entry.file_path,
-                entry.parent_mod_id.empty() ? "" : "nexus",
+            // Origin metadata: derive the engine source_type from the Source
+            // column (literal strings, serialized, so it survives restarts).
+            // LoversLab rows get "loverslab" so a later reinstall keeps the
+            // provenance. Not compared via tr(): the column is filled with the
+            // literal text, not a translated one.
+            const QString source_text =
+                entry.source_item ? entry.source_item->text() : QString();
+            std::string source_type;
+            if (source_text == QStringLiteral("Nexus Mods")) {
+                source_type = "nexus";
+            } else if (source_text == QStringLiteral("LoversLab")) {
+                source_type = "loverslab";
+            }
+            emit install_requested(id, entry.file_path, source_type,
                 entry.parent_mod_id, entry.file_id,
                 entry.name_item ? entry.name_item->text().toStdString()
                                 : std::string());
