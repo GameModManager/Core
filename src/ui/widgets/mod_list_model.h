@@ -59,6 +59,12 @@ public:
     // their background QColor, everything else returns an invalid variant.
     static constexpr int kScrollMarkRole = Qt::UserRole + 1;
 
+    // Individual flag icons for the Flags column (conflict status, hidden-files,
+    // FOMOD wizard), as QList<QIcon>. The FlagsDelegate paints each at native
+    // size and wraps to extra lines (growing the row) when they exceed the
+    // column width, instead of stacking them into one squeezed icon.
+    static constexpr int kFlagIconsRole = Qt::UserRole + 2;
+
     explicit ModListModel(QObject* parent = nullptr);
 
     int rowCount(const QModelIndex& parent = {}) const override;
