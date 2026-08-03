@@ -3,6 +3,7 @@
 #include "engine/log/logger.h"
 
 #include <QApplication>
+#include <QEvent>
 #include <QFile>
 #include <QString>
 
@@ -203,6 +204,14 @@ StyleManager::StyleManager(ThemeManager& theme_manager, QObject* parent)
 {
     connect(&watcher_, &QFileSystemWatcher::fileChanged,
             this, [this]() { reload_current(); });
+    // A system palette change (KDE Light<->Dark, etc.) must re-polish the
+    // widgets under the global QSS: QStyleSheetStyle resolves palette(...)
+    // at polish time, so without a re-apply the styled UI freezes on the old
+    // colors. Qt sends one ApplicationPaletteChange to the QApplication
+    // object itself on every palette change (system or programmatic), so an
+    // event filter on qApp is the single, non-deprecated hook. The native
+    // path (no stylesheet) updates itself - see reapply_on_palette_change().
+    qApp->installEventFilter(this);
 }
 
 StyleManager::~StyleManager() = default;
@@ -289,6 +298,28 @@ void StyleManager::watch_theme_files() {
     if (!current_tokens_path_.empty()) {
         watcher_.addPath(QString::fromStdString(current_tokens_path_.string()));
     }
+}
+
+void StyleManager::reapply_on_palette_change() {
+    // A Qt built-in style is active: the sheet was intentionally cleared and
+    // the native path already updates every widget on palette changes.
+    if (qApp->styleSheet().isEmpty())
+        return;
+    // Qt skips a re-polish when the stylesheet string is unchanged, so clear
+    // first to force every widget through QStyleSheetStyle again with the new
+    // palette. Both calls are synchronous (no event loop in between), so there
+    // is no visual flash.
+    qApp->setStyleSheet(QString());
+    qApp->setStyleSheet(QString::fromStdString(current_qss_));
+    engine::Logger::instance().debug("Re-applied stylesheet after system palette change");
+}
+
+bool StyleManager::eventFilter(QObject* watched, QEvent* event) {
+    if (event->type() == QEvent::ApplicationPaletteChange) {
+        reapply_on_palette_change();
+        return false;  // keep the event flowing to the application
+    }
+    return QObject::eventFilter(watched, event);
 }
 
 void StyleManager::apply_qss(const std::string& qss_content) {

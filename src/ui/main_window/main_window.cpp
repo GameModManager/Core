@@ -312,12 +312,9 @@ MainWindow::MainWindow(QWidget* parent)
     connect(mod_view_->selectionModel(), &QItemSelectionModel::selectionChanged,
             this, &MainWindow::on_mod_selection_changed);
 
-    // Set alternating row colors via palette (dark-theme-aware)
-    auto pal = mod_view_->palette();
-    auto base = pal.color(QPalette::Base);
-    bool dark = base.lightness() < 128;
-    pal.setColor(QPalette::AlternateBase, dark ? base.lighter(120) : base.darker(108));
-    mod_view_->setPalette(pal);
+    // Alternating row colors follow the system palette's AlternateBase (no
+    // custom bake: a setPalette() here would freeze the view and its children
+    // against system Light<->Dark switches).
 
     // Sync checkbox toggles to filesystem (disable.it)
     connect(mod_model_, &QAbstractItemModel::dataChanged,
