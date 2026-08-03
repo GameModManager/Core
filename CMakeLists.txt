@@ -198,6 +198,7 @@ set(UI_SOURCES
     src/ui/widgets/gmm_status_bar.cpp
     src/ui/widgets/instance_switcher_dialog.cpp
     src/ui/widgets/instance_statistics_dialog.cpp
+    src/ui/widgets/mod_info_dialog.cpp
     src/ui/widgets/debug_window.cpp
     src/ui/widgets/pipeline_window.cpp
     src/ui/widgets/zoom_controls.cpp
@@ -209,6 +210,7 @@ set(UI_SOURCES
     src/ui/pipeline_worker.cpp
     src/ui/preview/anm2_parser.cpp
     src/ui/preview/preview_widget.cpp
+    src/ui/preview/preview_window.cpp
     src/ui/game_selection/game_card.cpp
     src/ui/game_selection/game_selection_widget.cpp
     src/ui/overwrite/sync_overwrite_dialog.cpp
@@ -391,6 +393,7 @@ add_executable(launch_params_test tests/engine/launch_params_test.cpp
     src/engine/deploy/strategy_overlayfs_deploy.cpp
     src/engine/registry/game_knowledge.cpp
     src/engine/overlay_launcher.cpp
+    src/engine/fs_utils.cpp
     src/engine/log/logger.cpp
 )
 target_include_directories(launch_params_test PRIVATE src/)
@@ -523,6 +526,17 @@ target_include_directories(overwrite_utils_test PRIVATE src/)
 target_link_libraries(overwrite_utils_test PRIVATE PkgConfig::NLOHMANN_JSON)
 add_test(NAME overwrite_utils_test COMMAND overwrite_utils_test)
 
+# Hidden-file contract: is_hidden_file/hide_file/unhide_file (.gmmhidden +
+# .mohidden) and deploy_all_enabled_mods skipping hidden files on both suffixes.
+add_executable(deploy_hidden_test tests/engine/deploy_hidden_test.cpp
+    src/engine/deploy/deploy_utils.cpp
+    src/engine/deploy/strategy_overlayfs_deploy.cpp
+    src/engine/fs_utils.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(deploy_hidden_test PRIVATE src/)
+add_test(NAME deploy_hidden_test COMMAND deploy_hidden_test)
+
 # URL percent-encoding for libcurl (Nexus CDN URLs embed unencoded filenames).
 add_executable(nexus_http_test tests/engine/nexus_http_test.cpp
     src/engine/source/nexus_http.cpp
@@ -574,6 +588,7 @@ add_executable(settings_plugins_tab_test tests/ui/settings_plugins_tab_test.cpp
     src/engine/launcher.cpp
     src/engine/overlay_launcher.cpp
     src/engine/preload_interceptor.cpp
+    src/engine/fs_utils.cpp
     src/engine/single_instance.cpp
     src/runtime/runtime.cpp
     src/runtime/wine_runtime.cpp
@@ -636,6 +651,7 @@ add_executable(settings_sources_tab_test tests/ui/settings_sources_tab_test.cpp
     src/engine/launcher.cpp
     src/engine/overlay_launcher.cpp
     src/engine/preload_interceptor.cpp
+    src/engine/fs_utils.cpp
     src/engine/single_instance.cpp
     src/runtime/runtime.cpp
     src/runtime/wine_runtime.cpp
@@ -667,6 +683,23 @@ target_compile_definitions(downloads_tab_test PRIVATE VERSION="${PROJECT_VERSION
 target_link_libraries(downloads_tab_test PRIVATE Qt6::Widgets)
 add_test(NAME downloads_tab_test COMMAND downloads_tab_test)
 set_tests_properties(downloads_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# Data tab — offscreen GUI regression test for the MO2-parity file context
+# menu and double-click behavior: tree population, hidden-file rendering
+# (.gmmhidden/.mohidden), Open/Execute/Preview/Add-as-Executable/Mod Info/Hide
+# signal wiring, disabled VFS entries, and the common menus.
+add_executable(data_tab_test tests/ui/data_tab_test.cpp
+    src/ui/panels/tab_panels.cpp
+    src/ui/settings/settings.cpp
+    src/ui/widgets/column_toggle_header.cpp
+    src/engine/log/logger.cpp
+    src/engine/fs_utils.cpp
+)
+target_include_directories(data_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_compile_definitions(data_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
+target_link_libraries(data_tab_test PRIVATE Qt6::Widgets)
+add_test(NAME data_tab_test COMMAND data_tab_test)
+set_tests_properties(data_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 # Plugins tab — offscreen GUI test: population, pinned (force-loaded) rows,
 # missing-master styling, toggle + sync_enabled signal behavior. Drag-reorder

@@ -4,6 +4,25 @@
 
 namespace engine {
 
+// Hidden-file markers. GMM hides a mod file by renaming it to <name>.gmmhidden;
+// .mohidden is MO2's marker and is recognized so instances shared with MO2 hide
+// the same files. Both suffixes are skipped by deployment and shown as hidden
+// in the Data tab.
+inline constexpr const char* kGmmHiddenSuffix = ".gmmhidden";
+inline constexpr const char* kMo2HiddenSuffix = ".mohidden";
+
+// True if the file is hidden by either marker suffix (.gmmhidden or .mohidden).
+[[nodiscard]] bool is_hidden_file(const std::filesystem::path& path);
+
+// Hide a file by renaming it to <name>.gmmhidden. No-op if already hidden.
+// Returns true on success, false on failure (file kept intact).
+bool hide_file(const std::filesystem::path& path);
+
+// Un-hide a file by stripping whichever marker suffix it carries (.gmmhidden
+// or .mohidden, restoring the original MO2-compatible name). No-op if not
+// hidden. Returns true on success, false on failure.
+bool unhide_file(const std::filesystem::path& path);
+
 // Sanitize a directory name to be valid on disk (MO2's fixDirectoryName
 // equivalent): Windows-invalid characters (`: < > " ? * | /`, plus `\` on
 // Windows) and non-printable/control characters become '_'; leading dots and

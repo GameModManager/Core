@@ -1,5 +1,6 @@
 #include "ui/preview/preview_widget.h"
 
+#include <QApplication>
 #include <QContextMenuEvent>
 #include <QFile>
 #include <QMenu>
@@ -8,6 +9,44 @@
 #include <QPalette>
 
 namespace ui::preview {
+
+// Single checkerboard tile (8px squares).
+static QPixmap checker_tile(const QString& c1, const QString& c2) {
+    const int size = 8;
+    QPixmap pm(size * 2, size * 2);
+    pm.fill(QColor(c1));
+    QPainter p(&pm);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(c2));
+    p.drawRect(0, 0, size, size);
+    p.drawRect(size, size, size, size);
+    return pm;
+}
+
+QPixmap checker_pixmap(const QString& mode) {
+    // Local statics: lazy-initialized on first call (guaranteed after
+    // QApplication exists).
+    static QPixmap checker_light;
+    static QPixmap checker_dark;
+
+    if (mode == "checker_light") {
+        if (checker_light.isNull()) checker_light = checker_tile("#ffffff", "#cccccc");
+        return checker_light;
+    }
+    if (mode == "checker_dark") {
+        if (checker_dark.isNull()) checker_dark = checker_tile("#3a3a3a", "#2e2e2e");
+        return checker_dark;
+    }
+    // auto: detect from palette
+    auto bg = QApplication::palette().color(QPalette::Window);
+    int lum = (bg.red() * 299 + bg.green() * 587 + bg.blue() * 114) / 1000;
+    if (lum < 128) {
+        if (checker_dark.isNull()) checker_dark = checker_tile("#3a3a3a", "#2e2e2e");
+        return checker_dark;
+    }
+    if (checker_light.isNull()) checker_light = checker_tile("#ffffff", "#cccccc");
+    return checker_light;
+}
 
 PreviewWidget::PreviewWidget(QWidget* parent)
     : QLabel(parent, Qt::ToolTip | Qt::FramelessWindowHint)
@@ -36,39 +75,11 @@ void PreviewWidget::apply_style() {
 }
 
 QPixmap PreviewWidget::make_checker(const QString& c1, const QString& c2) {
-    const int size = 8;
-    QPixmap pm(size * 2, size * 2);
-    pm.fill(QColor(c1));
-    QPainter p(&pm);
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(c2));
-    p.drawRect(0, 0, size, size);
-    p.drawRect(size, size, size, size);
-    return pm;
+    return checker_tile(c1, c2);
 }
 
 QPixmap PreviewWidget::get_checker_pixmap() {
-    // Local statics: lazy-initialized on first call (guaranteed after QApplication exists).
-    static QPixmap checker_light;
-    static QPixmap checker_dark;
-
-    if (bg_mode_ == "checker_light") {
-        if (checker_light.isNull()) checker_light = make_checker("#ffffff", "#cccccc");
-        return checker_light;
-    }
-    if (bg_mode_ == "checker_dark") {
-        if (checker_dark.isNull()) checker_dark = make_checker("#3a3a3a", "#2e2e2e");
-        return checker_dark;
-    }
-    // auto: detect from palette
-    auto bg = palette().color(QPalette::Window);
-    int lum = (bg.red() * 299 + bg.green() * 587 + bg.blue() * 114) / 1000;
-    if (lum < 128) {
-        if (checker_dark.isNull()) checker_dark = make_checker("#3a3a3a", "#2e2e2e");
-        return checker_dark;
-    }
-    if (checker_light.isNull()) checker_light = make_checker("#ffffff", "#cccccc");
-    return checker_light;
+    return checker_pixmap(bg_mode_);
 }
 
 void PreviewWidget::paintEvent(QPaintEvent* event) {

@@ -65,6 +65,9 @@
 #include "engine/trace/trace_recorder.h"
 #include "engine/deploy/strategy.h"
 #include "runtime/runtime.h"
+#include "runtime/wine_runtime.h"
+#include "ui/preview/preview_window.h"
+#include "ui/widgets/mod_info_dialog.h"
 #include "ui/widgets/pipeline_window.h"
 
 #include <QAction>
@@ -637,6 +640,11 @@ void MainWindow::set_game_info(const std::string& game_id,
             connect(ct, &ui::ConflictsTab::image_diff_requested,
                     this, &MainWindow::on_image_diff_requested);
         }
+
+        // Wire the freshly created Data tab: resolve real file paths and run
+        // Open/Execute/Preview/Add-as-Executable/Mod Info/Hide from the
+        // context menu, plus "Reveal in file manager" and refresh.
+        wire_data_tab();
 
         // The Downloads tab was also freshly created by set_game: load its
         // manifest, point it at this instance's downloads dir (which starts
@@ -1720,6 +1728,157 @@ void MainWindow::refresh_data_tab() {
     dt->show_data(last_conflict_registry_, mod_model_->mods(),
                   mod_model_->is_conflict_order_reversed(),
                   mods_dir, game_mods_dir);
+}
+
+void MainWindow::wire_data_tab() {
+    auto* dt = right_panel_->data_tab();
+    if (!dt || dt == data_tab_widget_) return;
+    connect(dt, &ui::DataTab::open_requested, this, &MainWindow::on_data_open);
+    connect(dt, &ui::DataTab::execute_requested, this, &MainWindow::on_data_execute);
+    connect(dt, &ui::DataTab::preview_requested, this, &MainWindow::on_data_preview);
+    connect(dt, &ui::DataTab::add_executable_requested,
+            this, &MainWindow::on_data_add_executable);
+    connect(dt, &ui::DataTab::open_mod_info_requested,
+            this, &MainWindow::on_data_mod_info);
+    connect(dt, &ui::DataTab::hide_requested, this, &MainWindow::on_data_hide);
+    connect(dt, &ui::DataTab::refresh_requested, this, &MainWindow::recompute_conflicts);
+    data_tab_widget_ = dt;
+}
+
+void MainWindow::on_data_open(const QString& file_path) {
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(file_path))) {
+        QMessageBox::warning(this, tr("Open"),
+                             tr("Failed to open:\n%1").arg(file_path));
+    }
+}
+
+void MainWindow::on_data_execute(const QString& file_path, bool is_windows_exe) {
+    const std::filesystem::path exec_path(file_path.toStdString());
+    if (!std::filesystem::exists(exec_path)) {
+        QMessageBox::warning(this, tr("Execute"),
+                             tr("Executable not found:\n%1").arg(file_path));
+        return;
+    }
+
+    if (!is_windows_exe) {
+        // Native binary or script: launch it directly, detached.
+        if (!QProcess::startDetached(file_path)) {
+            QMessageBox::warning(this, tr("Execute"),
+                                 tr("Failed to launch:\n%1").arg(file_path));
+        }
+        return;
+    }
+
+    // Windows .exe: run through the game's Proton prefix (steam_appid picks
+    // the right prefix), falling back to a standalone Wine install.
+    uint32_t steam_appid = 0;
+    if (knowledge_) {
+        auto id_str = knowledge_->get(current_game_id_, "steam_appid", "");
+        if (!id_str.empty()) {
+            try { steam_appid = std::stoul(id_str); } catch (...) {}
+        }
+    }
+
+    std::unique_ptr<engine::Runtime> runtime;
+    if (platform_)
+        runtime = std::make_unique<engine::ProtonRuntime>(platform_);
+    if (!runtime || !runtime->is_available())
+        runtime = std::make_unique<engine::WineRuntime>();
+    if (!runtime->is_available()) {
+        QMessageBox::warning(this, tr("Execute"),
+            tr("No Proton or Wine runtime is available to run:\n%1").arg(file_path));
+        return;
+    }
+
+    if (!runtime->launch(exec_path, current_game_dir_, steam_appid)) {
+        QMessageBox::warning(this, tr("Execute"),
+            tr("Failed to launch %1 via %2.")
+                .arg(file_path, QString::fromStdString(runtime->name())));
+    }
+}
+
+void MainWindow::on_data_preview(const QString& file_path,
+                                 const QStringList& provider_paths,
+                                 const QStringList& provider_names) {
+    if (!preview_window_)
+        preview_window_ = new ui::preview::PreviewWindow(this);
+    preview_window_->show_file(file_path, provider_paths, provider_names);
+    preview_window_->show();
+    preview_window_->raise();
+    preview_window_->activateWindow();
+}
+
+void MainWindow::on_data_add_executable(const QString& file_path,
+                                        const QString& default_name) {
+    auto* ec = right_panel_->exec_controls();
+    if (!ec) return;
+
+    // Executable entries are stored game-relative (populate_executables
+    // resolves them against current_game_dir_), so relativize the file path.
+    QString rel_path = file_path;
+    if (!current_game_dir_.empty()) {
+        std::error_code ec_;
+        auto rel = std::filesystem::relative(
+            std::filesystem::path(file_path.toStdString()), current_game_dir_, ec_);
+        if (!ec_ && !rel.empty())
+            rel_path = QString::fromStdString(rel.string());
+    }
+
+    bool ok = false;
+    const QString name = QInputDialog::getText(this, tr("Add as Executable"),
+        tr("Name:"), QLineEdit::Normal, default_name, &ok);
+    if (!ok || name.trimmed().isEmpty()) return;
+
+    ec->add_executable(name, rel_path);
+    save_executables();
+}
+
+void MainWindow::on_data_mod_info(const QString& mod_id) {
+    for (const auto& mod : mod_model_->mods()) {
+        if (mod.id != mod_id) continue;
+
+        ui::ModInfoDialog::Data data;
+        data.name = mod.name;
+        data.folder = mod.id;
+        data.version = mod.version;
+        data.enabled = mod.enabled;
+        data.priority = mod.priority;
+        data.conflict_wins = mod.conflict_wins;
+        data.conflict_losses = mod.conflict_losses;
+        if (mod.source_type == "nexus" && !mod.source_id.isEmpty())
+            data.source = tr("Nexus Mods (id: %1)").arg(mod.source_id);
+        else if (mod.source_type == "workshop" && !mod.source_id.isEmpty())
+            data.source = tr("Steam Workshop (id: %1)").arg(mod.source_id);
+        else if (!mod.source_type.isEmpty())
+            data.source = mod.source_type;
+
+        // Files this mod wins - its copies actually take effect.
+        int file_count = 0;
+        for (const auto& [path, owners] : last_conflict_registry_) {
+            if (owners.empty()) continue;
+            for (const auto& [owner, _] : owners) {
+                if (owner == mod_id.toStdString()) { ++file_count; break; }
+            }
+        }
+        data.file_count = file_count;
+
+        ui::ModInfoDialog dlg(data, this);
+        dlg.exec();
+        return;
+    }
+}
+
+void MainWindow::on_data_hide(const QString& file_path, bool hide) {
+    const auto p = std::filesystem::path(file_path.toStdString());
+    const bool ok = hide ? engine::hide_file(p) : engine::unhide_file(p);
+    if (!ok) {
+        QMessageBox::warning(this, tr("Hide File"),
+            tr("Failed to %1 the file.").arg(hide ? tr("hide") : tr("un-hide")));
+        return;
+    }
+    // The rename bumps the mod folder's quick token, so the conflict cache is
+    // stale - recompute to pick up the new listing and refresh the tab.
+    recompute_conflicts();
 }
 
 void MainWindow::refresh_plugins_tab() {

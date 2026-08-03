@@ -5,6 +5,7 @@
 #include <QPoint>
 #include <QSet>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 #include <QWidget>
 
@@ -19,6 +20,7 @@ class QDragEnterEvent;
 class QDragMoveEvent;
 class QDropEvent;
 class QFileSystemWatcher;
+class QMenu;
 class QProgressBar;
 class QTableWidget;
 class QTableWidgetItem;
@@ -254,7 +256,42 @@ public:
 
     void clear_content();
 
-private:
+    [[nodiscard]] QTreeWidget* tree_widget() const { return tree_; }
+
+signals:
+    // A non-executable file should be opened with its default handler.
+    void open_requested(const QString& file_path);
+    // An executable file should be executed: native binaries directly, .exe
+    // through the instance's Proton/Wine runtime (no VFS - plain execution).
+    void execute_requested(const QString& file_path, bool is_windows_exe);
+    // A previewable file should be shown in the preview window. provider_paths
+    // / provider_names list the on-disk copies of every provider (primary
+    // first) so the window can browse variants (MO2's PreviewDialog).
+    void preview_requested(const QString& file_path,
+                           const QStringList& provider_paths,
+                           const QStringList& provider_names);
+    // Register the file in the executables list (default name suggestion).
+    void add_executable_requested(const QString& file_path,
+                                  const QString& default_name);
+    // Open the minimal Mod Info dialog for the mod owning the file.
+    void open_mod_info_requested(const QString& mod_id);
+    // Hide (rename to .gmmhidden) or un-hide the file on disk. The tree is
+    // rebuilt by the caller after the registry is re-computed.
+    void hide_requested(const QString& file_path, bool hide);
+    // Re-populate the tree from the current conflict registry.
+    void refresh_requested();
+
+protected:
+    // Context-menu / double-click internals. Protected (not private) so tests
+    // can drive the menu actions and open/preview paths directly.
+    void on_custom_context_menu(const QPoint& pos);
+    void on_item_double_clicked(QTreeWidgetItem* item, int column);
+    void add_file_menus(QMenu& menu, QTreeWidgetItem* item);
+    void add_common_menus(QMenu& menu);
+    void open_item(QTreeWidgetItem* item);
+    void preview_item(QTreeWidgetItem* item);
+    void dump_tree_to_file();
+
     QTreeWidget* tree_ = nullptr;
 };
 
