@@ -4672,9 +4672,11 @@ void MainWindow::create_game_lock_overlay() {
     process_tree_->header()->setStretchLastSection(false);
     process_tree_->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     process_tree_->setVisible(show_process_tree_);
-    process_tree_->setMaximumHeight(250);
-    layout->addWidget(process_tree_);
-
+    // Stretch 1 + the addStretch(1) spacers above/below: the tree fills a
+    // proportional share of the overlay height and shrinks as the window does,
+    // so the Copy/Unlock/Kill controls below it always stay in view.
+    layout->addWidget(process_tree_, 1);
+    
     // Copy button row (bottom-right of tree)
     auto* copy_tree_row = new QHBoxLayout;
     copy_tree_row->setContentsMargins(0, 0, 0, 0);
