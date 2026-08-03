@@ -33,6 +33,7 @@ private:
     QWidget* build_sources_tab();
     QWidget* build_plugins_tab();
     QWidget* build_workarounds_tab();
+    QWidget* build_fomod_tab();
     QWidget* build_diagnostics_tab();
 
     engine::StyleManager* style_manager_;

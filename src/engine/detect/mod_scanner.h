@@ -20,6 +20,7 @@ struct ScannedMod {
     bool is_separator = false;   // true if folder ends with separator_suffix
     bool is_overwrite = false;   // true for the special Overwrite entry
     bool is_game_native = false; // true for game-provided plugins (e.g. vanilla ESMs)
+    bool is_fomod = false;       // true if meta.ini carries a [fomod] section with saved choices
 };
 
 // Generic mod scanner - reads ALL game-specific config from GameKnowledge.

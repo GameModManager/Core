@@ -41,6 +41,7 @@ struct ModEntry {
     bool is_overwrite = false;
     bool is_merged = false;
     bool is_game_native = false;
+    bool is_fomod = false;        // installed via the FOMOD wizard
     bool folded = false;
 };
 
@@ -92,6 +93,7 @@ public:
     void set_conflict_stats(const QString& id, int wins, int losses);
     void set_conflict_redundant(const QString& id, bool redundant);
     void set_hidden_files(const QString& id, bool has_hidden);
+    void set_fomod(const QString& id, bool on);
     void set_tags(const QString& id, const QVector<ModTag>& tags);
     void set_source_info(const QString& id, const QString& source_type, const QString& source_id);
     void set_separator_id(const QString& id, const QString& separator_id);
@@ -148,6 +150,7 @@ private:
     QIcon mixed_icon_;
     QIcon redundant_icon_;
     QIcon hidden_icon_;
+    QIcon fomod_icon_;
     QAbstractItemView* mod_view_ = nullptr;
     bool conflict_order_reversed_ = false;
     bool uses_merged_ = false;

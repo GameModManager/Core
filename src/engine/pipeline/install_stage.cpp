@@ -5,6 +5,9 @@
 #include "engine/meta/mod_meta.h"
 #include "engine/log/logger.h"
 
+#include <fstream>
+#include <iterator>
+
 namespace engine {
 
 static bool copy_recursive(const std::filesystem::path& src,
@@ -166,6 +169,23 @@ bool InstallStage::execute(Mod& mod, PipelineContext& ctx) {
     ModMeta::write_game_metadata(dest_dir, ctx.metadata_file, display_name,
                                  mod.version, mod.download_source_id,
                                  mod.archive_filename);
+
+    // FOMOD choice persistence: record the installer's selections in the mod
+    // folder's meta.ini (MO2-style games only - Isaac's metadata.xml is the
+    // game's own format and must not be extended) so a reinstall can restore
+    // them, and Phase B's scanner can flag FOMOD-installed mods.
+    if ((ctx.metadata_file.empty() || ctx.metadata_file == "meta.ini") &&
+        !ctx.fomod_choices_json.empty()) {
+        const auto fomod_meta_path = dest_dir / "meta.ini";
+        std::ifstream fmod(fomod_meta_path);
+        std::string fmod_content((std::istreambuf_iterator<char>(fmod)),
+                                 std::istreambuf_iterator<char>());
+        ModMeta fmod_meta;
+        if (fmod_content.empty() || fmod_meta.parse(fmod_content)) {
+            fmod_meta.set("fomod", "choices", ctx.fomod_choices_json);
+            std::ofstream(fomod_meta_path) << fmod_meta.serialize();
+        }
+    }
 
     // Clean up staging directory
     std::error_code ec;

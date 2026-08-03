@@ -1,4 +1,5 @@
 #include "engine/pipeline/pipeline.h"
+#include "engine/fomod/fomod_view_model.h"
 #include "engine/pipeline/fetch_stage.h"
 #include "engine/pipeline/extract_stage.h"
 #include "engine/pipeline/fomod_stage.h"
@@ -35,6 +36,67 @@ struct TempDir {
     static int counter_;
 };
 int TempDir::counter_ = 0;
+
+// A staging dir with a real FOMOD: fomod/ModuleConfig.xml plus a required
+// Core.esm and two SelectAny plugin files (Patches/HighRes.esp, Patches/Lite.esp).
+struct FomodFixture {
+    TempDir tmp;
+    std::filesystem::path staging;
+    explicit FomodFixture(const std::string& config) {
+        staging = tmp.root / "staging";
+        std::filesystem::create_directories(staging / "fomod");
+        std::filesystem::create_directories(staging / "Patches");
+        std::ofstream(staging / "Core.esm") << "core";
+        std::ofstream(staging / "Patches" / "HighRes.esp") << "hr";
+        std::ofstream(staging / "Patches" / "Lite.esp") << "lite";
+        std::ofstream(staging / "fomod" / "ModuleConfig.xml") << config;
+    }
+    Mod make_mod(const std::string& name = "Fomod Mod") {
+        Mod mod;
+        mod.id = "fomod-mod";
+        mod.name = name;
+        mod.state = ModState::Extracted;
+        ModFile f;
+        f.relative_path = staging.string();
+        mod.files.push_back(f);
+        return mod;
+    }
+};
+
+const char* kBasicConfig = R"(<config>
+  <moduleName>Test FOMOD</moduleName>
+  <requiredInstallFiles>
+    <file source="Core.esm" destination=""/>
+  </requiredInstallFiles>
+  <installSteps>
+    <installStep name="Core">
+      <optionalFileGroups>
+        <group name="Options" type="SelectAny">
+          <plugins order="Ascending">
+            <plugin name="High Res">
+              <files><file source="Patches/HighRes.esp"/></files>
+            </plugin>
+            <plugin name="Lite">
+              <files><file source="Patches/Lite.esp"/></files>
+            </plugin>
+          </plugins>
+        </group>
+      </optionalFileGroups>
+    </installStep>
+  </installSteps>
+</config>)";
+
+const char* kHighResChoices = R"({"steps":[{"name":"Core","groups":[{"name":"Options","plugins":["High Res"],"deselected":[]}]}]})";
+
+// A helper that returns a FomodDecision accepting with High Res selected.
+auto accept_high_res =
+    [](const std::shared_ptr<FomodViewModel>&, const std::filesystem::path&, const std::string&,
+       const std::string&) {
+        FomodDecision d;
+        d.accept = true;
+        d.choices_json = kHighResChoices;
+        return d;
+    };
 }  // namespace
 
 int main() {
@@ -67,7 +129,7 @@ int main() {
     }
 
     // FomodStage: a plain archive (no fomod/ModuleConfig.xml) passes through,
-    // a FOMOD archive aborts the pipeline with a warning (not implemented).
+    // and a FOMOD archive is installed via the fomod_query_cb wizard.
     {
         TempDir plain;
         std::filesystem::create_directories(plain.root / "textures");
@@ -86,27 +148,178 @@ int main() {
         assert(fomod.execute(mod, ctx));
         std::printf("PASS: pipeline_test — non-FOMOD archive passes FomodStage\n");
     }
+
+    // (a) wizard accepts → FOMOD files installed, fomod/ pruned, choices passed on
     {
-        TempDir fomod;
-        std::filesystem::create_directories(fomod.root / "fomod");
-
-        FomodStage fomod_stage;
+        FomodFixture fix(kBasicConfig);
+        FomodStage fomod;
         PipelineContext ctx;
-        Mod mod;
-        mod.id = "fomod-mod";
-        mod.name = "Fomod Mod";
-        mod.state = ModState::Extracted;
+        Mod mod = fix.make_mod();
+        ctx.fomod_query_cb = [&](const std::shared_ptr<FomodViewModel>&, const std::filesystem::path& root,
+                                 const std::string& suggested, const std::string& previous) {
+            assert(root == fix.staging);
+            assert(suggested == "Fomod Mod");
+            assert(previous.empty());
+            FomodDecision d;
+            d.accept = true;
+            d.choices_json = kHighResChoices;
+            d.mod_name = "Installed Name";
+            return d;
+        };
+        assert(fomod.execute(mod, ctx));
+        assert(mod.name == "Installed Name");
+        assert(ctx.fomod_choices_json == kHighResChoices);
+        assert(std::filesystem::exists(fix.staging / "Core.esm"));
+        assert(std::filesystem::exists(fix.staging / "Patches" / "HighRes.esp"));
+        assert(!std::filesystem::exists(fix.staging / "Patches" / "Lite.esp"));
+        assert(!std::filesystem::exists(fix.staging / "fomod"));
+        std::printf("PASS: pipeline_test — FOMOD wizard accept installs selected files\n");
+    }
 
-        ModFile staging;
-        staging.relative_path = fomod.root.string();
-        mod.files.push_back(staging);
+    // (b) wizard cancel aborts the pipeline
+    {
+        FomodFixture fix(kBasicConfig);
+        FomodStage fomod;
+        PipelineContext ctx;
+        Mod mod = fix.make_mod();
+        ctx.fomod_query_cb = [](const std::shared_ptr<FomodViewModel>&, const std::filesystem::path&,
+                                const std::string&, const std::string&) {
+            return FomodDecision{};  // accept == false
+        };
+        assert(!fomod.execute(mod, ctx));
+        assert(ctx.fomod_choices_json.empty());
+        std::printf("PASS: pipeline_test — FOMOD wizard cancel aborts\n");
+    }
 
-        std::ofstream cfg(fomod.root / "fomod" / "ModuleConfig.xml");
-        cfg << "<config><moduleName>Test</moduleName></config>";
-        cfg.close();
+    // (b2) wizard Manual → archive contents install as-is (fomod/ pruned)
+    {
+        FomodFixture fix(kBasicConfig);
+        FomodStage fomod;
+        PipelineContext ctx;
+        Mod mod = fix.make_mod();
+        ctx.fomod_query_cb = [](const std::shared_ptr<FomodViewModel>&, const std::filesystem::path&,
+                                const std::string&, const std::string&) {
+            FomodDecision d;
+            d.manual = true;
+            d.mod_name = "Manual Name";
+            return d;
+        };
+        assert(fomod.execute(mod, ctx));
+        assert(mod.name == "Manual Name");
+        assert(ctx.fomod_choices_json.empty());
+        assert(std::filesystem::exists(fix.staging / "Core.esm"));
+        assert(std::filesystem::exists(fix.staging / "Patches" / "HighRes.esp"));
+        assert(std::filesystem::exists(fix.staging / "Patches" / "Lite.esp"));
+        assert(!std::filesystem::exists(fix.staging / "fomod"));
+        std::printf("PASS: pipeline_test — FOMOD Manual install keeps raw contents\n");
+    }
 
-        assert(!fomod_stage.execute(mod, ctx));
-        std::printf("PASS: pipeline_test — FOMOD archive aborts at FomodStage\n");
+    // (c) <csharpScript> FOMODs are rejected with a clear warning
+    {
+        FomodFixture fix(
+            "<config><moduleName>CS</moduleName><csharpScript>/* unsupported */</csharpScript></config>");
+        FomodStage fomod;
+        PipelineContext ctx;
+        Mod mod = fix.make_mod();
+        assert(!fomod.execute(mod, ctx));
+        std::printf("PASS: pipeline_test — C# script FOMOD aborts\n");
+    }
+
+    // (d) headless (no callback) + no previous choices → abort, never guess
+    {
+        FomodFixture fix(kBasicConfig);
+        FomodStage fomod;
+        PipelineContext ctx;
+        Mod mod = fix.make_mod();
+        assert(!fomod.execute(mod, ctx));
+        std::printf("PASS: pipeline_test — headless FOMOD without choices aborts\n");
+    }
+
+    // (e) headless with previously persisted choices → restored + installed
+    {
+        FomodFixture fix(kBasicConfig);
+        auto mods = fix.tmp.root / "mods";
+        std::filesystem::create_directories(mods / "Restored Mod");
+        std::ofstream(mods / "Restored Mod" / "meta.ini")
+            << "[fomod]\nchoices=" << kHighResChoices << "\n";
+        FomodStage fomod;
+        PipelineContext ctx;
+        ctx.mods_dir = mods;
+        Mod mod = fix.make_mod("Restored Mod");
+        assert(fomod.execute(mod, ctx));
+        assert(ctx.fomod_choices_json == kHighResChoices);
+        assert(std::filesystem::exists(fix.staging / "Patches" / "HighRes.esp"));
+        assert(!std::filesystem::exists(fix.staging / "Patches" / "Lite.esp"));
+        std::printf("PASS: pipeline_test — headless FOMOD restores previous choices\n");
+    }
+
+    // (f) files missing from the archive abort by default, proceed on request
+    {
+        const char* kMissingConfig = R"(<config>
+  <moduleName>Broken</moduleName>
+  <requiredInstallFiles>
+    <file source="Core.esm" destination=""/>
+    <file source="Missing.txt" destination=""/>
+  </requiredInstallFiles>
+</config>)";
+        {
+            FomodFixture fix(kMissingConfig);
+            FomodStage fomod;
+            PipelineContext ctx;
+            Mod mod = fix.make_mod();
+            ctx.fomod_query_cb = [](const std::shared_ptr<FomodViewModel>&, const std::filesystem::path&,
+                                    const std::string&, const std::string&) {
+                FomodDecision d;
+                d.accept = true;
+                return d;
+            };
+            assert(!fomod.execute(mod, ctx));
+            std::printf("PASS: pipeline_test — FOMOD missing files abort by default\n");
+        }
+        {
+            FomodFixture fix(kMissingConfig);
+            FomodStage fomod;
+            PipelineContext ctx;
+            Mod mod = fix.make_mod();
+            ctx.fomod_query_cb = [](const std::shared_ptr<FomodViewModel>&, const std::filesystem::path&,
+                                    const std::string&, const std::string&) {
+                FomodDecision d;
+                d.accept = true;
+                d.ignore_missing = true;
+                return d;
+            };
+            assert(fomod.execute(mod, ctx));
+            assert(std::filesystem::exists(fix.staging / "Core.esm"));
+            assert(!std::filesystem::exists(fix.staging / "fomod"));
+            std::printf("PASS: pipeline_test — FOMOD missing files ignored on request\n");
+        }
+    }
+
+    // (g) full flow: FomodStage + InstallStage persist [fomod] choices in the
+    // mod folder's meta.ini, and the installed folder contains only the
+    // selected files.
+    {
+        FomodFixture fix(kBasicConfig);
+        auto mods = fix.tmp.root / "mods";
+        std::filesystem::create_directories(mods);
+        FomodStage fomod;
+        PipelineContext ctx;
+        ctx.mods_dir = mods;
+        Mod mod = fix.make_mod();
+        ctx.fomod_query_cb = accept_high_res;
+        assert(fomod.execute(mod, ctx));
+        InstallStage install;
+        assert(install.execute(mod, ctx));
+        auto meta_path = mods / "Fomod Mod" / "meta.ini";
+        assert(std::filesystem::exists(meta_path));
+        std::ifstream f(meta_path);
+        std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+        assert(content.find("[fomod]") != std::string::npos);
+        assert(content.find(kHighResChoices) != std::string::npos);
+        assert(std::filesystem::exists(mods / "Fomod Mod" / "Core.esm"));
+        assert(std::filesystem::exists(mods / "Fomod Mod" / "Patches" / "HighRes.esp"));
+        assert(!std::filesystem::exists(mods / "Fomod Mod" / "Patches" / "Lite.esp"));
+        std::printf("PASS: pipeline_test — FOMOD choices persisted in mod folder meta.ini\n");
     }
 
     // InstallStage overwrite query flow: when the target mod folder already

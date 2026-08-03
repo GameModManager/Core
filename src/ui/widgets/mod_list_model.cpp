@@ -9,10 +9,50 @@
 #include <QIcon>
 #include <QMimeData>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPixmap>
 #include <QTreeView>
 
 namespace ui {
+
+// A 16x16 wizard hat (pointed purple hat with a yellow star), painted so the
+// FOMOD indicator needs no asset file. Matches the conflict-icon cell size.
+static QIcon make_wizard_hat_icon() {
+    QPixmap pix(16, 16);
+    pix.fill(Qt::transparent);
+    QPainter p(&pix);
+    p.setRenderHint(QPainter::Antialiasing);
+    // Brim
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(70, 40, 100));
+    p.drawRoundedRect(QRectF(0.5, 11.5, 15, 3.5), 1.5, 1.5);
+    // Pointed crown
+    QPainterPath crown;
+    crown.moveTo(4.5, 12);
+    crown.lineTo(6.5, 3);
+    crown.quadTo(7.0, 1.5, 9.5, 3);
+    crown.lineTo(11.5, 12);
+    crown.closeSubpath();
+    p.setBrush(QColor(110, 60, 160));
+    p.drawPath(crown);
+    // Star
+    QPainterPath star;
+    star.moveTo(8, 5.5);
+    star.lineTo(8.8, 7.4);
+    star.lineTo(10.9, 7.5);
+    star.lineTo(9.3, 8.8);
+    star.lineTo(9.9, 10.9);
+    star.lineTo(8, 9.8);
+    star.lineTo(6.1, 10.9);
+    star.lineTo(6.7, 8.8);
+    star.lineTo(5.1, 7.5);
+    star.lineTo(7.2, 7.4);
+    star.closeSubpath();
+    p.setBrush(QColor(255, 210, 80));
+    p.drawPath(star);
+    p.end();
+    return QIcon(pix);
+}
 
 ModListModel::ModListModel(QObject* parent)
     : QAbstractTableModel(parent) {
@@ -26,6 +66,7 @@ ModListModel::ModListModel(QObject* parent)
     mixed_icon_        = QIcon(iconDir + "conflict-mixed.png");
     redundant_icon_    = QIcon(iconDir + "conflict-redundant.png");
     hidden_icon_       = QIcon(iconDir + "conflict-hidden.png");
+    fomod_icon_        = make_wizard_hat_icon();
 }
 
 // Lay the primary icon out with a secondary icon (e.g. hidden-files badge) to
@@ -76,9 +117,17 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
             primary = overwritten_icon_;
         }
 
-        if (!m.has_hidden_files) return primary;
-        if (primary.isNull()) return hidden_icon_;
-        return stacked_icons(primary, hidden_icon_);
+        // Badges stacked to the right of the primary icon: hidden-files and
+        // FOMOD-wizard markers (MO2-style indicator row).
+        QIcon secondary;
+        if (m.has_hidden_files) secondary = hidden_icon_;
+        if (m.is_fomod)
+            secondary = secondary.isNull() ? fomod_icon_
+                                           : stacked_icons(secondary, fomod_icon_);
+
+        if (secondary.isNull()) return primary;
+        if (primary.isNull()) return secondary;
+        return stacked_icons(primary, secondary);
     }
 
     const auto& mod = mods_[index.row()];
@@ -213,8 +262,12 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
             case Priority: return mod.priority;
         }
     }
-    if (role == Qt::ToolTipRole && index.column() == Flags && !mod.tags.isEmpty()) {
+    if (role == Qt::ToolTipRole && index.column() == Flags &&
+        (!mod.tags.isEmpty() || mod.is_fomod)) {
         QStringList lines;
+        if (mod.is_fomod) {
+            lines << tr("FOMOD wizard: installed with selected options");
+        }
         for (const auto& tag : mod.tags)
             lines << tr("%1: %2").arg(tag.type.toUpper(), tag.message);
         return lines.join("\n");
@@ -645,6 +698,17 @@ void ModListModel::set_hidden_files(const QString& id, bool has_hidden) {
         if (mods_[i].id == id && mods_[i].has_hidden_files != has_hidden) {
             mods_[i].has_hidden_files = has_hidden;
             emit dataChanged(index(i, Flags), index(i, Flags), {Qt::DecorationRole});
+            return;
+        }
+    }
+}
+
+void ModListModel::set_fomod(const QString& id, bool on) {
+    for (int i = 0; i < mods_.size(); ++i) {
+        if (mods_[i].id == id && mods_[i].is_fomod != on) {
+            mods_[i].is_fomod = on;
+            emit dataChanged(index(i, Flags), index(i, Flags),
+                             {Qt::DecorationRole, Qt::ToolTipRole});
             return;
         }
     }

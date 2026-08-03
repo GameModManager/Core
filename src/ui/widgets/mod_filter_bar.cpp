@@ -37,6 +37,7 @@ ModFilterBar::ModFilterBar(QWidget* parent)
     group_combo_->addItem(tr("Enabled"));
     group_combo_->addItem(tr("Disabled"));
     group_combo_->addItem(tr("Conflicts"));
+    group_combo_->addItem(tr("FOMOD"));
     group_combo_->addItem(tr("Separators"));
     group_combo_->setMinimumWidth(100);
     layout->addWidget(group_combo_);

@@ -551,3 +551,45 @@ QString Settings::nxm_handler_check() const {
 void Settings::set_nxm_handler_check(const QString& value) {
     settings_.setValue("nxm/handler_check", value);
 }
+
+// fomod -----------------------------------------------------------------------
+
+bool Settings::always_restore_fomod_choices() const {
+    return settings_.value("fomod/always_restore_choices", true).toBool();
+}
+
+void Settings::set_always_restore_fomod_choices(bool on) {
+    settings_.setValue("fomod/always_restore_choices", on);
+}
+
+bool Settings::show_fomod_images() const {
+    return settings_.value("fomod/show_images", true).toBool();
+}
+
+void Settings::set_show_fomod_images(bool on) {
+    settings_.setValue("fomod/show_images", on);
+}
+
+QByteArray Settings::fomod_window_geometry() const {
+    return settings_.value("fomod/window_geometry").toByteArray();
+}
+
+void Settings::set_fomod_window_geometry(const QByteArray& g) {
+    settings_.setValue("fomod/window_geometry", g);
+}
+
+QByteArray Settings::fomod_center_split() const {
+    return settings_.value("fomod/center_split").toByteArray();
+}
+
+void Settings::set_fomod_center_split(const QByteArray& s) {
+    settings_.setValue("fomod/center_split", s);
+}
+
+QByteArray Settings::fomod_left_split() const {
+    return settings_.value("fomod/left_split").toByteArray();
+}
+
+void Settings::set_fomod_left_split(const QByteArray& s) {
+    settings_.setValue("fomod/left_split", s);
+}

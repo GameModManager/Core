@@ -81,6 +81,28 @@ int main() {
     require(!mod->is_separator, "SomeMod is not a separator");
     require(mod->display_name == "SomeMod", "mod display name is the folder");
     require(mod->separator_color.empty(), "regular mod carries no color");
+    require(!mod->is_fomod, "plain meta.ini is not flagged FOMOD");
+
+    // A FOMOD-installed mod: meta.ini carries [fomod] choices= (written by
+    // install_stage). It must be flagged so the mod list can show the wizard.
+    fs::create_directories(root / "FomodMod");
+    write_file(root / "FomodMod" / "meta.ini",
+               "[General]\nversion = 2.0\n[fomod]\nchoices = {\"step\":\"x\"}\n");
+    const auto mods3 = engine::ModScanner::scan_dir(knowledge, "testgame", root);
+    const auto* fm = by_folder(mods3, "FomodMod");
+    require(fm != nullptr, "fomod mod found");
+    require(fm->is_fomod, "mod with [fomod] choices is flagged FOMOD");
+    require(fm->version == "2.0", "fomod mod keeps its version");
+
+    // A mod whose meta.ini has a [fomod] section but no choices key is not
+    // flagged - only the persisted-choice marker counts.
+    fs::create_directories(root / "EmptyFomod");
+    write_file(root / "EmptyFomod" / "meta.ini",
+               "[General]\n[fomod]\nalwaysRestore = 1\n");
+    const auto mods4 = engine::ModScanner::scan_dir(knowledge, "testgame", root);
+    const auto* ef = by_folder(mods4, "EmptyFomod");
+    require(ef != nullptr, "empty-fomod mod found");
+    require(!ef->is_fomod, "[fomod] without choices is not flagged FOMOD");
 
     // A separator whose meta.ini exists but has no color key.
     fs::create_directories(root / "NoColor_separator");

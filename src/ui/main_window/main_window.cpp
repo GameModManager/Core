@@ -41,6 +41,7 @@
 #include "ui/overwrite/overwrite_info_dialog.h"
 #include "ui/overwrite/query_overwrite_dialog.h"
 #include "ui/overwrite/sync_overwrite_dialog.h"
+#include "ui/fomod/fomod_wizard_dialog.h"
 #include "engine/detect/game_detector.h"
 #include "ui/game_selection/game_selection_widget.h"
 
@@ -679,6 +680,22 @@ void MainWindow::set_game_info(const std::string& game_id,
             return ui::ask_overwrite(QString::fromStdString(mod_name),
                                      /*default_backup=*/true, this);
         };
+
+        // A FOMOD archive opens the install wizard. It drives the
+        // pipeline-owned FomodViewModel directly; ask_fomod marshals the modal
+        // onto the main thread like ask_overwrite. Settings gate the
+        // previous-choice restore and the image preview.
+        ctx.fomod_query_cb =
+            [this](const std::shared_ptr<engine::FomodViewModel>& view_model,
+                   const std::filesystem::path& content_root,
+                   const std::string& suggested_name,
+                   const std::string& previous_choices) {
+                auto& s = Settings::instance();
+                return ui::ask_fomod(view_model, content_root, suggested_name,
+                                     previous_choices,
+                                     s.always_restore_fomod_choices(),
+                                     s.show_fomod_images(), this);
+            };
 
         // Set up deploy strategy
         ctx.deploy_prefix = knowledge_->get(current_game_id_, "deploy_prefix", "Data");
@@ -1330,6 +1347,9 @@ void MainWindow::load_mods_from_game() {
             mod_model_->add_separator(id, name, color);
         } else {
             mod_model_->add_mod(id, name, ver, mod.priority, mod.is_game_native);
+            if (mod.is_fomod) {
+                mod_model_->set_fomod(id, true);
+            }
             if (!mod.enabled) {
                 mod_model_->toggle_mod(id);
             }
@@ -4197,6 +4217,8 @@ void MainWindow::apply_mod_filter() {
             group_match = !m.enabled;
         else if (group == "Conflicts")
             group_match = (m.conflict_wins > 0 || m.conflict_losses > 0);
+        else if (group == "FOMOD")
+            group_match = m.is_fomod;
         else if (group == "Separators")
             group_match = false;  // regular mods hidden when viewing separators only
 
