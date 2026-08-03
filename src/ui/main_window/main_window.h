@@ -55,6 +55,8 @@ class PipelineThread;
 class AppMenuBar;
 class PipelineWindow;
 class PluginsTab;
+class DataTab;
+namespace preview { class PreviewWindow; }
 
 struct PendingToggle {
     QString mod_id;
@@ -157,6 +159,15 @@ private:
     void ensure_nxm_handler_default();
     void recompute_conflicts();
     void refresh_data_tab();
+    void wire_data_tab();
+    void on_data_open(const QString& file_path);
+    void on_data_execute(const QString& file_path, bool is_windows_exe);
+    void on_data_preview(const QString& file_path,
+                         const QStringList& provider_paths,
+                         const QStringList& provider_names);
+    void on_data_add_executable(const QString& file_path, const QString& default_name);
+    void on_data_mod_info(const QString& mod_id);
+    void on_data_hide(const QString& file_path, bool hide);
     void on_image_diff_requested(const QString& relative_path);
     void migrate_mo2_meta();
     void load_meta_for_mods();
@@ -250,6 +261,11 @@ private:
     // game is loaded). Rebuilt on refresh; toggles/moves save the profile.
     engine::PluginDatabase plugins_db_;
     ui::PluginsTab* plugins_tab_widget_ = nullptr;
+    // Data tab context-menu targets. data_tab_widget_ is set by set_game_info()
+    // after each right-panel rebuild; preview_window_ is lazily created on the
+    // first preview request and kept across rebuilds.
+    ui::DataTab* data_tab_widget_ = nullptr;
+    ui::preview::PreviewWindow* preview_window_ = nullptr;
     // Selection-highlight indexes, rebuilt once per plugin refresh (O(P)); the
     // per-selection work is then lookups only, so huge mod lists stay cheap.
     // owner_mod -> plugin names the mod owns; name -> row in plugins_db_.

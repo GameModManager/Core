@@ -10,6 +10,11 @@
 
 namespace ui::preview {
 
+// Shared checkerboard tile for transparency preview backgrounds. mode is
+// "checker_light", "checker_dark" or "auto" (detects the current palette).
+// Used by both the hover PreviewWidget and the persistent PreviewWindow.
+[[nodiscard]] QPixmap checker_pixmap(const QString& mode);
+
 // Floating tooltip-style popup for previewing .png images and .anm2 animations.
 //
 // Shows near the cursor, auto-hides after the mouse moves away.

@@ -5,11 +5,14 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QBrush>
 #include <QCheckBox>
 #include <QColor>
 #include <QDesktopServices>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QFile>
+#include <QFileDialog>
 #include <QFileIconProvider>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
@@ -34,6 +37,7 @@
 #include <QStyleOptionViewItem>
 #include <QTableWidget>
 #include <QTableWidgetItem>
+#include <QTextStream>
 #include <QTimer>
 #include <QTreeWidget>
 #include <QUrl>
@@ -49,6 +53,7 @@
 #include <cmath>
 #include <cstdint>
 #include <fstream>
+#include <functional>
 
 namespace ui {
 
@@ -176,6 +181,25 @@ void sort_dirs_first(QTreeWidgetItem* parent) {
     parent->takeChildren();
     for (auto* c : children) parent->addChild(c);
     for (auto* c : children) sort_dirs_first(c);
+}
+
+// Roles on Data tab file items (column 0) - set by show_data, consumed by the
+// context menu. Local to this TU; the signals carry the resolved values out.
+enum DataTabItemRole {
+    DataRealPathRole = Qt::UserRole,   // QString - on-disk path of the winner
+    DataOriginModRole,                 // QString - winner mod id
+    DataHiddenRole,                    // bool - file carries a hidden suffix
+    DataProviderPathsRole,             // QStringList - on-disk copy per provider
+    DataProviderIdsRole,               // QStringList - provider mod ids
+};
+
+// Extension-based gate for the Preview action / preview window. Mirrors the
+// formats PreviewWindow can render (images + text).
+static bool can_preview(const QString& path) {
+    const QString ext = QFileInfo(path).suffix().toLower();
+    static const QStringList image_exts = {"png", "jpg", "jpeg", "webp", "bmp", "gif"};
+    static const QStringList text_exts = {"txt", "ini", "cfg", "log", "json", "xml", "meta", "md"};
+    return image_exts.contains(ext) || text_exts.contains(ext);
 }
 
 }  // anonymous namespace
@@ -551,6 +575,14 @@ DataTab::DataTab(QWidget* parent) : QWidget(parent) {
     tree_->setIconSize(QSize(16, 16));
     tree_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     layout->addWidget(tree_, 1);
+
+    // MO2 parity: double-click opens/executes a file; right-click shows the
+    // file/context menu (see on_custom_context_menu).
+    connect(tree_, &QTreeWidget::itemDoubleClicked,
+            this, &DataTab::on_item_double_clicked);
+    tree_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(tree_, &QTreeWidget::customContextMenuRequested,
+            this, &DataTab::on_custom_context_menu);
 }
 
 void DataTab::clear_content() {
@@ -573,20 +605,40 @@ void DataTab::show_data(
         display_names[m.id.toStdString()] = m.name.isEmpty() ? m.id : m.name;
 
     struct Row {
-        QString path;
+        QString path;          // display path (hidden suffix stripped)
+        QString registry_path; // registry key (may carry a hidden suffix)
+        QString real_path;     // on-disk path of the winning copy
+        QString origin_id;     // winner mod id
         QString source;
         qint64 size = -1;
         int providers = 0;
+        bool hidden = false;   // file carries .gmmhidden / .mohidden
         QStringList all_sources;
+        QStringList provider_paths;
+        QStringList provider_ids;
     };
     std::vector<Row> rows;
     rows.reserve(registry.size());
+
+    auto resolve_path = [&](const std::string& mod_id,
+                            const std::string& rel_path) -> std::filesystem::path {
+        std::error_code ec;
+        auto candidate = mods_dir / mod_id / rel_path;
+        if (std::filesystem::exists(candidate, ec)) return candidate;
+        if (!game_mods_dir.empty()) {
+            ec.clear();
+            candidate = game_mods_dir / mod_id / rel_path;
+            if (std::filesystem::exists(candidate, ec)) return candidate;
+        }
+        return {};
+    };
 
     for (const auto& [path, owners] : registry) {
         if (owners.empty()) continue;
 
         Row row;
-        row.path = QString::fromStdString(path).replace('\\', '/');
+        row.registry_path = QString::fromStdString(path).replace('\\', '/');
+        row.path = row.registry_path;
 
         // Winner = the provider that actually takes effect
         auto winner = conflict_reversed
@@ -596,6 +648,7 @@ void DataTab::show_data(
                                [](const auto& a, const auto& b) { return a.second < b.second; });
 
         QString winner_id = QString::fromStdString(winner->first);
+        row.origin_id = winner_id;
         if (winner_id == QLatin1String(kOverwriteModId)) {
             row.source = tr("Overwrite");
         } else if (winner_id == QLatin1String(kMergedModId)) {
@@ -605,32 +658,57 @@ void DataTab::show_data(
             row.source = it != display_names.end() ? it->second : winner_id;
         }
 
+        // Hidden files (.gmmhidden here, .mohidden in MO2-imported instances)
+        // display under their base name. A visible file with the same base
+        // name wins the display slot; otherwise the hidden copy is shown
+        // dimmed (the name survives so it can be un-hidden from the tab).
+        const std::string path_str = path;
+        if (engine::is_hidden_file(std::filesystem::path(path_str))) {
+            row.hidden = true;
+            const auto gmm = std::string(engine::kGmmHiddenSuffix);
+            const auto mo2 = std::string(engine::kMo2HiddenSuffix);
+            if (row.path.endsWith(QString::fromStdString(gmm)))
+                row.path.chop(static_cast<int>(gmm.size()));
+            else if (row.path.endsWith(QString::fromStdString(mo2)))
+                row.path.chop(static_cast<int>(mo2.size()));
+        }
+
         row.providers = static_cast<int>(owners.size());
         for (const auto& [owner, _] : owners) {
             auto it = display_names.find(owner);
             row.all_sources << (it != display_names.end() ? it->second
                                                           : QString::fromStdString(owner));
+            row.provider_ids << QString::fromStdString(owner);
+            row.provider_paths << QString::fromStdString(
+                resolve_path(owner, path_str).string());
         }
 
-        // Size of the winning copy: instance mods dir first, then game-native
+        // Size and real path of the winning copy (hidden suffix intact)
         std::error_code ec;
-        auto sz = std::filesystem::file_size(mods_dir / winner->first / path, ec);
-        if (ec && !game_mods_dir.empty()) {
-            ec.clear();
-            sz = std::filesystem::file_size(game_mods_dir / winner->first / path, ec);
+        const auto winner_real = resolve_path(winner->first, path_str);
+        if (!winner_real.empty()) {
+            row.real_path = QString::fromStdString(winner_real.string());
+            auto sz = std::filesystem::file_size(winner_real, ec);
+            if (!ec) row.size = static_cast<qint64>(sz);
         }
-        if (!ec) row.size = static_cast<qint64>(sz);
 
         rows.push_back(std::move(row));
     }
 
-    // Sorted path order gives naturally grouped tree insertion
+    // Sorted path order gives naturally grouped tree insertion. Equal display
+    // paths (a hidden copy vs a visible file of the same name) order the
+    // visible one first so it claims the row and the dimmed duplicate is
+    // skipped below.
     std::sort(rows.begin(), rows.end(),
-              [](const Row& a, const Row& b) { return a.path < b.path; });
+              [](const Row& a, const Row& b) {
+                  if (a.path != b.path) return a.path < b.path;
+                  return !a.hidden && b.hidden;
+              });
 
     engine::Logger::instance().debug("Data tab populated: " +
         std::to_string(rows.size()) + " merged files");
 
+    const QColor dim = QApplication::palette().color(QPalette::Disabled, QPalette::Text);
     for (const auto& row : rows) {
         auto parts = row.path.split('/');
         auto* parent = tree_->invisibleRootItem();
@@ -638,6 +716,12 @@ void DataTab::show_data(
             parent = ensure_child(parent, parts[i], true);
 
         auto* file_item = ensure_child(parent, parts.last(), false);
+
+        // A hidden copy whose display name is already owned by a visible (or
+        // earlier hidden) row stays invisible - the visible copy wins.
+        if (row.hidden && !file_item->data(0, DataRealPathRole).toString().isEmpty())
+            continue;
+
         file_item->setIcon(0, icon_for_file(parts.last()));
         file_item->setText(1, row.size >= 0 ? format_size(row.size) : QString());
         file_item->setText(2, row.source);
@@ -646,10 +730,194 @@ void DataTab::show_data(
             file_item->setText(3, QString::number(row.providers));
             file_item->setToolTip(3, row.all_sources.join("\n"));
         }
+
+        // Per-file metadata for the context menu (real path, origin mod,
+        // hidden state, provider copies for preview variant navigation).
+        file_item->setData(0, DataRealPathRole, row.real_path);
+        file_item->setData(0, DataOriginModRole, row.origin_id);
+        file_item->setData(0, DataHiddenRole, row.hidden);
+        file_item->setData(0, DataProviderPathsRole, row.provider_paths);
+        file_item->setData(0, DataProviderIdsRole, row.provider_ids);
+
+        if (row.hidden) {
+            file_item->setForeground(0, dim);
+            file_item->setForeground(2, dim);
+            file_item->setToolTip(0, tr("Hidden file"));
+        }
     }
 
     sort_dirs_first(tree_->invisibleRootItem());
     tree_->expandToDepth(1);
+}
+
+void DataTab::on_item_double_clicked(QTreeWidgetItem* item, int column) {
+    (void)column;
+    if (!item) return;
+    if (item->data(0, DataRealPathRole).toString().isEmpty()) return;
+    open_item(item);
+}
+
+void DataTab::open_item(QTreeWidgetItem* item) {
+    const QString real_path = item->data(0, DataRealPathRole).toString();
+    if (real_path.isEmpty()) return;
+    const bool is_exe = real_path.endsWith(".exe", Qt::CaseInsensitive);
+    if (is_exe || QFileInfo(real_path).isExecutable())
+        emit execute_requested(real_path, is_exe);
+    else
+        emit open_requested(real_path);
+}
+
+void DataTab::preview_item(QTreeWidgetItem* item) {
+    const QString primary = item->data(0, DataRealPathRole).toString();
+    if (primary.isEmpty()) return;
+    const QStringList paths = item->data(0, DataProviderPathsRole).toStringList();
+    const QStringList names = item->data(0, DataProviderIdsRole).toStringList();
+    emit preview_requested(primary, paths, names);
+}
+
+void DataTab::on_custom_context_menu(const QPoint& pos) {
+    auto* item = tree_->itemAt(pos);
+    if (!item) return;
+
+    QMenu menu(this);
+    menu.setToolTipsVisible(true);
+
+    // File actions only for leaf items backed by a real file. Directories and
+    // empty space get the common menus only (MO2's addDirectoryMenus is a
+    // no-op, so this matches).
+    if (item->childCount() == 0 && !item->data(0, DataRealPathRole).toString().isEmpty())
+        add_file_menus(menu, item);
+
+    add_common_menus(menu);
+    menu.exec(tree_->viewport()->mapToGlobal(pos));
+}
+
+void DataTab::add_file_menus(QMenu& menu, QTreeWidgetItem* item) {
+    const QString real_path = item->data(0, DataRealPathRole).toString();
+    const bool hidden = item->data(0, DataHiddenRole).toBool();
+    const bool is_exe = real_path.endsWith(".exe", Qt::CaseInsensitive) ||
+                        QFileInfo(real_path).isExecutable();
+
+    // Open/Execute, Preview, Open with VFS / Execute with VFS. The first
+    // enabled one of these three is bolded (MO2). VFS launches are disabled:
+    // no VFS machinery exists for arbitrary executables yet.
+    auto* open_action = menu.addAction(
+        is_exe ? tr("&Execute") : tr("&Open"),
+        this, [this, item]() { open_item(item); });
+    open_action->setStatusTip(is_exe ? tr("Launches this program")
+                                     : tr("Opens this file with its default handler"));
+
+    auto* preview_action = menu.addAction(
+        tr("&Preview"), this, [this, item]() { preview_item(item); });
+    preview_action->setStatusTip(tr("Previews this file within GameModManager"));
+    if (!can_preview(real_path)) {
+        preview_action->setEnabled(false);
+        preview_action->setStatusTip(
+            tr("This file has no preview handler associated with it"));
+    }
+
+    auto* hooked_action = menu.addAction(
+        is_exe ? tr("Execute with &VFS") : tr("Open with &VFS"), this, []() {});
+    hooked_action->setEnabled(false);
+    const QString vfs_hint = tr("Not implemented due to platform constraints for now");
+    hooked_action->setToolTip(vfs_hint);
+    hooked_action->setStatusTip(vfs_hint);
+
+    for (int i = 0; i < 3 && i < menu.actions().size(); ++i) {
+        if (menu.actions()[i]->isEnabled()) {
+            QFont f = menu.actions()[i]->font();
+            f.setBold(true);
+            menu.actions()[i]->setFont(f);
+            break;
+        }
+    }
+
+    menu.addSeparator();
+
+    auto* add_exe_action = menu.addAction(
+        tr("&Add as Executable"),
+        this, [this, item]() {
+            emit add_executable_requested(item->data(0, DataRealPathRole).toString(),
+                                          item->text(0));
+        });
+    add_exe_action->setStatusTip(tr("Add this file to the executables list"));
+    if (!is_exe) {
+        add_exe_action->setEnabled(false);
+        add_exe_action->setStatusTip(tr("This file is not executable"));
+    }
+
+    auto* reveal_action = menu.addAction(
+        tr("Reveal in E&xplorer"), this, [item]() {
+            const auto dir = QFileInfo(item->data(0, DataRealPathRole).toString())
+                                 .absolutePath();
+            if (!dir.isEmpty())
+                QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+        });
+    reveal_action->setStatusTip(tr("Opens the file in the file manager"));
+
+    const QString origin_mod_id = item->data(0, DataOriginModRole).toString();
+    auto* mod_info_action = menu.addAction(
+        tr("Open &Mod Info"), this, [this, origin_mod_id]() {
+            emit open_mod_info_requested(origin_mod_id);
+        });
+    const bool managed = !origin_mod_id.isEmpty() &&
+        origin_mod_id != QLatin1String(kOverwriteModId) &&
+        origin_mod_id != QLatin1String(kMergedModId);
+    mod_info_action->setStatusTip(tr("Opens the Mod Info Window"));
+    if (!managed) {
+        mod_info_action->setEnabled(false);
+        mod_info_action->setStatusTip(tr("This file is not in a managed mod"));
+    }
+
+    auto* hide_action = menu.addAction(
+        hidden ? tr("&Un-Hide") : tr("&Hide"),
+        this, [this, item, hidden]() {
+            emit hide_requested(item->data(0, DataRealPathRole).toString(), !hidden);
+        });
+    hide_action->setStatusTip(hidden ? tr("Un-hides the file")
+                                     : tr("Hides the file"));
+}
+
+void DataTab::add_common_menus(QMenu& menu) {
+    menu.addSeparator();
+
+    auto* save_action = menu.addAction(
+        tr("&Save Tree to Text File..."), this, [this]() { dump_tree_to_file(); });
+    save_action->setStatusTip(tr("Writes the list of files to a text file"));
+
+    auto* refresh_action = menu.addAction(
+        tr("&Refresh"), this, [this]() { emit refresh_requested(); });
+    refresh_action->setStatusTip(tr("Refreshes the list"));
+
+    menu.addAction(tr("Ex&pand All"), this, [this]() { tree_->expandAll(); });
+    menu.addAction(tr("&Collapse All"), this, [this]() { tree_->collapseAll(); });
+}
+
+void DataTab::dump_tree_to_file() {
+    const QString file_path = QFileDialog::getSaveFileName(
+        this, tr("Save Tree to Text File"));
+    if (file_path.isEmpty()) return;
+
+    QFile file(file_path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return;
+
+    QTextStream out(&file);
+    std::function<void(QTreeWidgetItem*, int)> write =
+        [&](QTreeWidgetItem* parent, int depth) {
+            for (int i = 0; i < parent->childCount(); ++i) {
+                auto* child = parent->child(i);
+                out << QString(depth * 2, ' ') << child->text(0);
+                if (child->childCount() == 0) {
+                    if (!child->text(1).isEmpty())
+                        out << "  (" << child->text(1) << ')';
+                    if (!child->text(2).isEmpty())
+                        out << "  " << child->text(2);
+                }
+                out << '\n';
+                write(child, depth + 1);
+            }
+        };
+    write(tree_->invisibleRootItem(), 0);
 }
 
 // --- SavesTab ---

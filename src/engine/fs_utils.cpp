@@ -352,4 +352,63 @@ size_t relay_output_to_mod(const std::filesystem::path& scratch_dir,
     return relayed;
 }
 
+bool is_hidden_file(const std::filesystem::path& path) {
+    const auto name = path.filename().string();
+    const auto gmm = std::string(kGmmHiddenSuffix);
+    const auto mo2 = std::string(kMo2HiddenSuffix);
+    if (name.size() > gmm.size() &&
+        name.compare(name.size() - gmm.size(), gmm.size(), gmm) == 0)
+        return true;
+    if (name.size() > mo2.size() &&
+        name.compare(name.size() - mo2.size(), mo2.size(), mo2) == 0)
+        return true;
+    return false;
+}
+
+bool hide_file(const std::filesystem::path& path) {
+    if (is_hidden_file(path)) return true;
+
+    const auto hidden_path = path.string() + kGmmHiddenSuffix;
+    std::error_code ec;
+    std::filesystem::rename(path, hidden_path, ec);
+    if (ec) {
+        Logger::instance().error("hide_file: failed to rename " + path.string() +
+            " -> " + hidden_path + ": " + ec.message());
+        return false;
+    }
+    Logger::instance().debug("hide_file: " + path.string() +
+        " -> " + hidden_path);
+    return true;
+}
+
+bool unhide_file(const std::filesystem::path& path) {
+    const auto name = path.filename().string();
+    const auto gmm = std::string(kGmmHiddenSuffix);
+    const auto mo2 = std::string(kMo2HiddenSuffix);
+
+    std::string stem = name;
+    if (name.size() > gmm.size() &&
+        name.compare(name.size() - gmm.size(), gmm.size(), gmm) == 0)
+        stem = name.substr(0, name.size() - gmm.size());
+    else if (name.size() > mo2.size() &&
+             name.compare(name.size() - mo2.size(), mo2.size(), mo2) == 0)
+        stem = name.substr(0, name.size() - mo2.size());
+    else
+        return true;  // not hidden
+
+    auto visible_path = path.parent_path() / stem;
+    if (visible_path == path) return true;
+
+    std::error_code ec;
+    std::filesystem::rename(path, visible_path, ec);
+    if (ec) {
+        Logger::instance().error("unhide_file: failed to rename " + path.string() +
+            " -> " + visible_path.string() + ": " + ec.message());
+        return false;
+    }
+    Logger::instance().debug("unhide_file: " + path.string() +
+        " -> " + visible_path.string());
+    return true;
+}
+
 }  // namespace engine
