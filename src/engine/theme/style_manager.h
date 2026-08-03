@@ -11,6 +11,8 @@
 
 #include "engine/theme/theme_manager.h"
 
+class QEvent;
+
 namespace engine {
 
 // Qt-aware style manager - loads QSS from embedded default or filesystem themes,
@@ -21,6 +23,8 @@ class StyleManager : public QObject {
 public:
     explicit StyleManager(ThemeManager& theme_manager, QObject* parent = nullptr);
     ~StyleManager() override;
+
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
     // Apply the default palette-based theme (embedded in the binary).
     // This is always available and requires no filesystem access.
@@ -53,6 +57,7 @@ signals:
 private:
     void apply_qss(const std::string& qss_content);
     void watch_theme_files();
+    void reapply_on_palette_change();
 
     ThemeManager& theme_manager_;
     std::string current_theme_;

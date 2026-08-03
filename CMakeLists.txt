@@ -655,6 +655,21 @@ endif()
 add_test(NAME settings_plugins_tab_test COMMAND settings_plugins_tab_test ${CMAKE_CURRENT_BINARY_DIR}/plugins)
 set_tests_properties(settings_plugins_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+# StyleManager palette-change re-apply — offscreen GUI regression test. The
+# global app stylesheet (installed even for the Default/system theme) renders
+# widgets via QStyleSheetStyle, which resolves palette(...) at polish time and
+# freezes the UI against system Light<->Dark switches; StyleManager must
+# re-apply the active sheet on QApplication::paletteChanged.
+add_executable(style_manager_palette_test tests/ui/style_manager_palette_test.cpp
+    src/engine/theme/theme_manager.cpp
+    src/engine/theme/style_manager.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(style_manager_palette_test PRIVATE src/)
+target_link_libraries(style_manager_palette_test PRIVATE Qt6::Widgets)
+add_test(NAME style_manager_palette_test COMMAND style_manager_palette_test)
+set_tests_properties(style_manager_palette_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 # Settings -> Sources tab — offscreen GUI regression test. Exercises the
 # nested per-source sub-tabs and the MO2-parity Nexus panel (account/stats
 # labels, connect/manual/disconnect buttons, options, known/preferred server
