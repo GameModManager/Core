@@ -698,20 +698,21 @@ void MainWindow::set_game_info(const std::string& game_id,
         ctx.deploy_prefix = knowledge_->get(current_game_id_, "deploy_prefix", "Data");
         auto inc_id = knowledge_->get(current_game_id_, "deploy_include_mod_id", "false");
         ctx.deploy_include_mod_id = (inc_id == "true");
+        bool case_sensitive = knowledge_->get(current_game_id_, "case_sensitive", "true") != "false";
         std::unique_ptr<engine::DeploymentStrategy> deploy_strategy;
 #ifdef GMM_PLATFORM_LINUX
         if (engine::OverlayFsLauncher::is_supported(overwrite_dir_path())) {
             // OverlayFS: deploy symlinks into staging dir (not game_dir)
             auto staging = current_instance_root_ / ".gmm_staging";
             ctx.staging_dir = staging;
-            auto ovl_strat = std::make_unique<engine::OverlayFsDeployStrategy>(staging);
+            auto ovl_strat = std::make_unique<engine::OverlayFsDeployStrategy>(staging, case_sensitive);
             staging_dir_ = staging;
             deploy_strategy = std::move(ovl_strat);
             engine::Logger::instance().info("Deploy strategy: OverlayFS");
         } else
 #endif
         {
-            deploy_strategy = std::make_unique<engine::SymlinkStrategy>();
+            deploy_strategy = std::make_unique<engine::SymlinkStrategy>(case_sensitive);
             engine::Logger::instance().info("Deploy strategy: Symlink (direct to game_dir)");
         }
         ctx.deploy_strategy = deploy_strategy.get();

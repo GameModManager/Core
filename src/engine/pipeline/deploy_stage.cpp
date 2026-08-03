@@ -38,8 +38,10 @@ bool DeployStage::execute(Mod& mod, PipelineContext& ctx) {
     for (const auto& entry : std::filesystem::recursive_directory_iterator(mod_path)) {
         if (entry.is_regular_file()) {
             auto rel = std::filesystem::relative(entry.path(), mod_path);
+            // NOTE: no create_directories(target.parent_path()) here. The
+            // strategy owns dir creation; pre-creating the exact-cased parent
+            // would defeat the case-insensitive target merge.
             auto target = deploy_root / rel;
-            std::filesystem::create_directories(target.parent_path(), ec);
             if (ctx.deploy_strategy->deploy(entry.path(), target)) {
                 deployed++;
             } else {

@@ -148,10 +148,11 @@ LaunchParams prepare_launch_params(
     std::string deploy_prefix = knowledge.get(game_id, "deploy_prefix", "Data");
     std::string deploy_include_mod_id = knowledge.get(game_id, "deploy_include_mod_id", "false");
     std::string disable_mechanism = knowledge.get(game_id, "disable_mechanism", "");
+    bool case_sensitive = knowledge.get(game_id, "case_sensitive", "true") != "false";
     auto mods_dir = instance_root / "mods";
 
     bool deployed = deploy_all_enabled_mods(mods_dir, staging_dir, deploy_prefix,
-                           deploy_include_mod_id == "true", disable_mechanism);
+                           deploy_include_mod_id == "true", disable_mechanism, case_sensitive);
     if (!deployed) {
         Logger::instance().warn("Some mods failed to deploy to staging - continuing anyway");
     }
