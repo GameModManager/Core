@@ -42,14 +42,14 @@ int TempDir::counter_ = 0;
 struct FomodFixture {
     TempDir tmp;
     std::filesystem::path staging;
-    explicit FomodFixture(const std::string& config) {
+    explicit FomodFixture(const std::string& config, const std::string& fomodDir = "fomod") {
         staging = tmp.root / "staging";
-        std::filesystem::create_directories(staging / "fomod");
+        std::filesystem::create_directories(staging / fomodDir);
         std::filesystem::create_directories(staging / "Patches");
         std::ofstream(staging / "Core.esm") << "core";
         std::ofstream(staging / "Patches" / "HighRes.esp") << "hr";
         std::ofstream(staging / "Patches" / "Lite.esp") << "lite";
-        std::ofstream(staging / "fomod" / "ModuleConfig.xml") << config;
+        std::ofstream(staging / fomodDir / "ModuleConfig.xml") << config;
     }
     Mod make_mod(const std::string& name = "Fomod Mod") {
         Mod mod;
@@ -189,6 +189,32 @@ int main() {
         assert(!fomod.execute(mod, ctx));
         assert(ctx.fomod_choices_json.empty());
         std::printf("PASS: pipeline_test — FOMOD wizard cancel aborts\n");
+    }
+
+    // (b3) capitalized "Fomod/" layout (XPMSE-style) is still detected — Windows
+    // mod authors ship any casing of the installer dir; detection is
+    // case-insensitive like FOMOD Plus's scanner.
+    {
+        FomodFixture fix(kBasicConfig, "Fomod");
+        FomodStage fomod;
+        PipelineContext ctx;
+        Mod mod = fix.make_mod();
+        int queried = 0;
+        ctx.fomod_query_cb = [&](const std::shared_ptr<FomodViewModel>&, const std::filesystem::path& root,
+                                 const std::string&, const std::string&) {
+            assert(root == fix.staging);
+            ++queried;
+            FomodDecision d;
+            d.accept = true;
+            d.choices_json = kHighResChoices;
+            return d;
+        };
+        assert(fomod.execute(mod, ctx));
+        assert(queried == 1);
+        assert(std::filesystem::exists(fix.staging / "Patches" / "HighRes.esp"));
+        assert(!std::filesystem::exists(fix.staging / "Patches" / "Lite.esp"));
+        assert(!std::filesystem::exists(fix.staging / "Fomod"));
+        std::printf("PASS: pipeline_test — capitalized Fomod/ layout detected case-insensitively\n");
     }
 
     // (b2) wizard Manual → archive contents install as-is (fomod/ pruned)

@@ -268,6 +268,51 @@ void test_generate_fomod_json()
     std::printf("PASS: fomod_installer — generateFomodJson\n");
 }
 
+void test_windows_paths_case_insensitive()
+{
+    TestDir dir("winpaths");
+    const auto& staging = dir.staging;
+    write_file(staging / "fomod/ModuleConfig.xml", "<config/>");
+
+    // On-disk tree uses forward slashes and real casing; the FOMOD references
+    // the same files with backslash separators and different case.
+    write_file(staging / "Skeleton Rig/HDT/body.nif", "BODY");
+    write_file(staging / "Meshes/Armor/Armor.nif", "ARMOR");
+
+    const std::string xml = R"(<config>
+  <moduleName>WinPaths</moduleName>
+  <requiredInstallFiles>
+    <file source="Skeleton Rig\HDT\body.nif" priority="0"/>
+    <file source="meshes\armor\armor.nif" priority="0"/>
+    <folder source="Skeleton Rig\HDT" destination="Data\SkeletonRig" priority="0"/>
+  </requiredInstallFiles>
+  <installSteps/>
+</config>)";
+
+    auto vm = view_model(xml);
+    FomodFileInstaller installer(staging, vm);
+    std::vector<std::string> missing;
+    assert(installer.apply(&missing));
+
+    // Nothing reported missing: backslashes resolved as separators and every
+    // component matched case-insensitively against the on-disk tree.
+    assert(missing.empty());
+
+    // Backslash source resolved to Skeleton Rig/HDT/body.nif (source-relative
+    // destination keeps the source's relative path).
+    assert(fs::exists(staging / "Skeleton Rig/HDT/body.nif"));
+
+    // Case-insensitive match: meshes\armor\armor.nif resolved to the on-disk
+    // Meshes/Armor/Armor.nif; the install destination uses the FOMOD's stated
+    // path verbatim (backslash normalized), like FOMOD Plus.
+    assert(fs::exists(staging / "Meshes/Armor/Armor.nif") == false);
+    assert(fs::exists(staging / "meshes/armor/armor.nif"));
+
+    // Folder children copied under the normalized backslash destination.
+    assert(fs::exists(staging / "Data/SkeletonRig/body.nif"));
+    std::printf("PASS: fomod_installer — Windows backslash paths + case-insensitive resolution\n");
+}
+
 }  // namespace
 
 int main()
@@ -275,6 +320,7 @@ int main()
     test_priority_remap_and_folders();
     test_folder_empty_destination();
     test_path_traversal_guard();
+    test_windows_paths_case_insensitive();
     test_generate_fomod_json();
     std::printf("PASS: fomod_installer_test — all installer cases\n");
     return 0;

@@ -1,5 +1,6 @@
 #include "engine/fomod/file_installer.h"
 
+#include "engine/fomod/fomod_utils.h"
 #include "engine/log/logger.h"
 
 #include <algorithm>
@@ -84,14 +85,16 @@ bool FomodFileInstaller::apply(std::vector<std::string>* missing)
                             std::to_string(filesToInstall.size()) + " files");
 
     for (const auto& file : filesToInstall) {
-        // FOMOD sources are relative to the archive root (the directory that
-        // contains the fomod/ folder), matching FOMOD Plus's
-        // getQualifiedFilePath.
-        const auto sourcePath = safe_join(mModRoot, file.source);
-        if (!sourcePath) {
-            continue;
-        }
-        if (!std::filesystem::exists(*sourcePath)) {
+        // FOMOD sources are Windows-native (backslash separators, arbitrary
+        // case). resolve_path_ci normalizes separators and matches each
+        // component case-insensitively against the on-disk tree.
+        bool escaped = false;
+        const auto sourcePath = resolve_path_ci(mModRoot, file.source, &escaped);
+        if (sourcePath.empty()) {
+            if (escaped) {
+                Logger::instance().error("FomodFileInstaller: path escapes mod root, skipping: " + file.source);
+                continue;
+            }
             Logger::instance().error("FomodFileInstaller: could not find source: " + file.source);
             if (missing != nullptr)
                 missing->push_back(file.source);
@@ -104,7 +107,7 @@ bool FomodFileInstaller::apply(std::vector<std::string>* missing)
         if (file.destination.has_value() && !file.destination->empty()) {
             targetRel = *file.destination;
         }
-        const auto targetPath = safe_join(mModRoot, targetRel);
+        const auto targetPath = safe_join(mModRoot, normalize_separators(targetRel));
         if (!targetPath) {
             continue;
         }
@@ -115,18 +118,18 @@ bool FomodFileInstaller::apply(std::vector<std::string>* missing)
             // one prefixes them (FOMOD Plus FileInstaller.cpp:58-64).
             std::filesystem::path dstBase = installTmp;
             if (file.destination.has_value() && !file.destination->empty()) {
-                const auto safeDest = safe_join(mModRoot, *file.destination);
+                const auto safeDest = safe_join(mModRoot, normalize_separators(*file.destination));
                 if (!safeDest) {
                     continue;
                 }
                 dstBase = installTmp / safeDest->lexically_relative(mModRoot);
             }
-            copy_dir_children(*sourcePath, dstBase, *missing);
+            copy_dir_children(sourcePath, dstBase, *missing);
         } else {
             // The destination relative path (from the mod root) is what ends up
             // inside the install tree.
             const auto dst = installTmp / targetPath->lexically_relative(mModRoot);
-            if (!copy_file_to(*sourcePath, dst, ec)) {
+            if (!copy_file_to(sourcePath, dst, ec)) {
                 Logger::instance().error("FomodFileInstaller: failed to copy " + file.source);
                 if (missing != nullptr)
                     missing->push_back(file.source);
