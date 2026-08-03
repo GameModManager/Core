@@ -191,6 +191,43 @@ bool remove_path(const std::filesystem::path& path, bool permanent) {
 #endif
 }
 
+bool move_path(const std::filesystem::path& source,
+               const std::filesystem::path& dest) {
+    std::error_code ec;
+
+    // Plain rename first (fast path, same filesystem).
+    std::filesystem::rename(source, dest, ec);
+    if (!ec) return true;
+
+    // Overwrite semantics: rename fails if dest exists on some platforms
+    // (and the copy fallback below needs an explicit overwrite flag). Remove
+    // a pre-existing dest so a conflict-resolved Overwrite is portable.
+    ec.clear();
+    if (std::filesystem::exists(dest, ec)) {
+        ec.clear();
+        std::filesystem::remove_all(dest, ec);
+        if (!ec) {
+            std::filesystem::rename(source, dest, ec);
+            if (!ec) return true;
+        }
+    }
+
+    // Cross-device fallback (EXDEV and friends): copy then remove the source.
+    ec.clear();
+    std::filesystem::copy(source, dest,
+        std::filesystem::copy_options::recursive |
+        std::filesystem::copy_options::copy_symlinks |
+        std::filesystem::copy_options::overwrite_existing, ec);
+    if (!ec)
+        std::filesystem::remove_all(source, ec);
+    if (ec) {
+        Logger::instance().error("move_path: failed to move " + source.string() +
+            " -> " + dest.string() + ": " + ec.message());
+        return false;
+    }
+    return true;
+}
+
 namespace {
 
 // Remove all empty directories under root (deepest first, repeatedly) so a

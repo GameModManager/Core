@@ -15,6 +15,9 @@
 #include <vector>
 
 class QCheckBox;
+class QDragEnterEvent;
+class QDragMoveEvent;
+class QDropEvent;
 class QProgressBar;
 class QTableWidget;
 class QTableWidgetItem;
@@ -34,6 +37,15 @@ enum class DownloadState {
     Failed,
     // Not implemented yet: reserved so manifests and rendering stay stable.
     Removed
+};
+
+// How a dropped archive that collides with an existing file in the downloads
+// dir should be handled. The default resolver shows an MO2-style question
+// dialog; tests inject a stub.
+enum class DropConflictAction {
+    Overwrite,
+    Rename,
+    Ignore
 };
 
 class DownloadsTab : public QWidget {
@@ -70,6 +82,14 @@ public:
 
     // Re-apply the "hide installed" filter on top of any other row filter.
     void reapply_installed_filter();
+
+    // Replace the conflict resolver shown when a dropped archive's name
+    // collides with an existing file in the downloads dir. Defaults to the
+    // MO2-style question dialog; callers (tests) may inject a stub.
+    using ConflictResolver = std::function<DropConflictAction(
+        const std::filesystem::path& existing_file,
+        const std::filesystem::path& dropped_file)>;
+    void set_conflict_resolver(ConflictResolver resolver);
 
     // Persistence
     [[nodiscard]] std::string serialize() const;
@@ -114,6 +134,16 @@ private:
     void remove_entry(const std::string& id);
     void apply_installed_filter();
 
+    // Move or copy a dropped local archive into downloads_dir_ and surface it
+    // as a "Manual" Complete entry. Returns true if an entry was added.
+    bool import_dropped_file(const std::filesystem::path& source, bool move);
+
+    // Add a download entry for a file already sitting in downloads_dir_
+    // (e.g. a drop that resolves to the same location, or one moved/copied in
+    // by import_dropped_file). Returns true if an entry was added. Adds
+    // nothing if the file is not an archive or already backs a tracked entry.
+    bool add_downloads_dir_file(const std::filesystem::path& path);
+
     // Add untracked archives sitting in the downloads dir as "Manual"
     // Complete entries so they can be installed from the tab. Skip files that
     // already back a tracked entry and any scan while a download is in
@@ -124,11 +154,15 @@ private:
 
 protected:
     void showEvent(QShowEvent* event) override;
+    void dragEnterEvent(QDragEnterEvent* event) override;
+    void dragMoveEvent(QDragMoveEvent* event) override;
+    void dropEvent(QDropEvent* event) override;
 
     QTableWidget* table_ = nullptr;
     QCheckBox* hide_installed_ = nullptr;
     std::unordered_map<std::string, DownloadEntry> downloads_;
     std::filesystem::path downloads_dir_;
+    ConflictResolver conflict_resolver_;
     int next_row_ = 0;
 };
 

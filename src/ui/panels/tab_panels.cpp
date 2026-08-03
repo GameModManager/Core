@@ -7,7 +7,8 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QColor>
-#include <QDesktopServices>#include <QDragEnterEvent>
+#include <QDesktopServices>
+#include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileIconProvider>
 #include <QFileInfo>
@@ -20,6 +21,7 @@
 #include <QJsonObject>
 #include <QMenu>
 #include <QMessageBox>
+#include <QMimeData>
 #include <QMouseEvent>
 #include <QPalette>
 #include <QPainter>
@@ -86,6 +88,41 @@ static QString state_label(DownloadState s) {
         case DownloadState::Removed:     return QCoreApplication::translate("DownloadsTab", "Removed");
     }
     return QCoreApplication::translate("DownloadsTab", "Unknown");
+}
+
+// Archive extensions the Downloads tab treats as installable: the untracked
+// scan surfaces them and external drops (MO2-style) import them into the
+// downloads dir.
+static const std::vector<std::string>& download_archive_exts() {
+    static const std::vector<std::string> exts = {
+        ".zip", ".7z", ".tar", ".rar", ".gz", ".bz2", ".xz", ".fomod"};
+    return exts;
+}
+
+// Case-insensitive check: does `path` carry one of the supported archive
+// extensions?
+static bool is_archive_path(const std::filesystem::path& path) {
+    std::string lower;
+    for (char c : path.extension().string())
+        lower.push_back(static_cast<char>(std::tolower(
+            static_cast<unsigned char>(c))));
+    const auto& exts = download_archive_exts();
+    return std::find(exts.begin(), exts.end(), lower) != exts.end();
+}
+
+// MO2's downloads-tab drag gate: accept only when every URL is a local file
+// with a supported archive extension (a single foreign URL rejects the whole
+// drag). Non-local (http etc.) URLs are not handled by the tab.
+static bool accepts_url_drop(const QMimeData* data) {
+    if (!data || !data->hasUrls()) return false;
+    const auto urls = data->urls();
+    if (urls.isEmpty()) return false;
+
+    for (const auto& url : urls) {
+        if (!url.isLocalFile()) return false;
+        if (!is_archive_path(url.toLocalFile().toStdString())) return false;
+    }
+    return true;
 }
 
 // --- MIME icon + tree helpers ---
@@ -648,6 +685,38 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     });
 
     hide_installed_->setChecked(Settings::instance().hide_installed_downloads());
+
+    // External archive drops (drag from a file manager) land in the downloads
+    // dir and surface as "Manual" entries. The QTableWidget itself does not
+    // accept drops, so events propagate up to this widget.
+    setAcceptDrops(true);
+
+    // Default conflict resolver: MO2-style question dialog
+    // (Overwrite / Rename new file / Ignore file).
+    conflict_resolver_ = [this](const std::filesystem::path& existing,
+                                const std::filesystem::path& dropped) {
+        QMessageBox box(QMessageBox::Question,
+                        QString::fromStdString(dropped.filename().string()),
+                        tr("A file with the same name has already been "
+                           "downloaded. What would you like to do?"));
+        box.addButton(tr("Overwrite"), QMessageBox::ActionRole);
+        box.addButton(tr("Rename new file"), QMessageBox::YesRole);
+        box.addButton(tr("Ignore file"), QMessageBox::RejectRole);
+        box.exec();
+        switch (box.buttonRole(box.clickedButton())) {
+            case QMessageBox::RejectRole:
+                return DropConflictAction::Ignore;
+            case QMessageBox::ActionRole:
+                return DropConflictAction::Overwrite;
+            default:
+            case QMessageBox::YesRole:
+                return DropConflictAction::Rename;
+        }
+    };
+}
+
+void DownloadsTab::set_conflict_resolver(ConflictResolver resolver) {
+    conflict_resolver_ = std::move(resolver);
 }
 
 void DownloadsTab::add_download(const std::string& id, const std::string& name,
@@ -871,46 +940,145 @@ void DownloadsTab::scan_downloads_dir() {
     // the dir under its final name; don't surface it as a "Complete" entry.
     if (has_active_download()) return;
 
-    static const std::vector<std::string> kArchiveExts = {
-        ".zip", ".7z", ".tar", ".rar", ".gz", ".bz2", ".xz", ".fomod"};
-
     std::error_code ec;
     std::filesystem::directory_iterator it(downloads_dir_, ec);
     if (ec) return;
     for (const auto& entry : it) {
         if (!entry.is_regular_file(ec)) continue;
-        const auto path = entry.path();
-
-        std::string lower;
-        for (char c : path.extension().string())
-            lower.push_back(static_cast<char>(std::tolower(
-                static_cast<unsigned char>(c))));
-        if (std::find(kArchiveExts.begin(), kArchiveExts.end(), lower) ==
-            kArchiveExts.end())
-            continue;
-
-        const auto id = path.filename().string();
-        if (downloads_.count(id)) continue;
-
-        // Skip archives that already back a tracked entry under a different
-        // key (Nexus downloads use "<mod_id>-<file_id>", not the filename).
-        bool tracked = false;
-        for (const auto& [eid, e] : downloads_) {
-            (void)eid;
-            if (e.file_path == path) {
-                tracked = true;
-                break;
-            }
-        }
-        if (tracked) continue;
-
-        add_download(id, path.stem().string(), tr("Manual").toStdString(), path);
-        auto& added = downloads_.at(id);
-        added.total_size = static_cast<int64_t>(entry.file_size(ec));
-        if (ec) added.total_size = 0;
-        mark_complete(id, true);
+        add_downloads_dir_file(entry.path());
     }
     apply_installed_filter();
+}
+
+bool DownloadsTab::add_downloads_dir_file(const std::filesystem::path& path) {
+    if (!is_archive_path(path)) return false;
+
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(path, ec)) return false;
+
+    const auto id = path.filename().string();
+    if (downloads_.count(id)) {
+        // Already tracked under this name: an overwrite drop replaced the
+        // file on disk, so refresh the row's size instead of adding a
+        // duplicate (the "new archive" must surface immediately).
+        auto& existing = downloads_.at(id);
+        auto fsize = std::filesystem::file_size(path, ec);
+        if (!ec) {
+            existing.total_size = static_cast<int64_t>(fsize);
+            if (existing.size_item)
+                existing.size_item->setText(format_size(existing.total_size));
+        }
+        return true;
+    }
+
+    // Already backs a tracked entry under a different key (Nexus downloads
+    // use "<mod_id>-<file_id>", not the filename).
+    for (const auto& [eid, e] : downloads_) {
+        (void)eid;
+        if (e.file_path == path) return false;
+    }
+
+    add_download(id, path.stem().string(), tr("Manual").toStdString(), path);
+    auto& added = downloads_.at(id);
+    added.total_size = static_cast<int64_t>(std::filesystem::file_size(path, ec));
+    if (ec) added.total_size = 0;
+    mark_complete(id, true);
+    return true;
+}
+
+bool DownloadsTab::import_dropped_file(const std::filesystem::path& source,
+                                       bool move) {
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(source, ec)) {
+        engine::Logger::instance().warn("drop: invalid source file " + source.string());
+        return false;
+    }
+
+    if (downloads_dir_.empty()) return false;
+    std::filesystem::create_directories(downloads_dir_, ec);
+    if (ec) {
+        engine::Logger::instance().error("drop: cannot create downloads dir " +
+            downloads_dir_.string() + ": " + ec.message());
+        return false;
+    }
+
+    auto dest = downloads_dir_ / source.filename();
+
+    // Dropping a file that already sits in the downloads dir: just surface it.
+    std::error_code cmp_ec;
+    const bool same_file =
+        std::filesystem::equivalent(source, dest, cmp_ec) ||
+        (!cmp_ec && source == dest);
+    if (same_file)
+        return add_downloads_dir_file(dest);
+
+    const bool exists = std::filesystem::exists(dest, ec);
+    if (exists) {
+        if (!conflict_resolver_) return false;
+        switch (conflict_resolver_(dest, source)) {
+            case DropConflictAction::Ignore:
+                return false;
+            case DropConflictAction::Rename: {
+                // MO2's getDownloadFileName numbering: N_<name>, 1-based.
+                int i = 1;
+                while (std::filesystem::exists(
+                    downloads_dir_ / (std::to_string(i) + "_" +
+                                      source.filename().string()), ec)) {
+                    ++i;
+                    ec.clear();
+                }
+                dest = downloads_dir_ / (std::to_string(i) + "_" +
+                                         source.filename().string());
+                break;
+            }
+            case DropConflictAction::Overwrite:
+                break;
+        }
+    }
+
+    bool ok = false;
+    if (move) {
+        ok = engine::move_path(source, dest);
+    } else {
+        std::error_code copy_ec;
+        std::filesystem::copy_file(source, dest,
+            std::filesystem::copy_options::overwrite_existing, copy_ec);
+        if (!copy_ec) ok = true;
+        else engine::Logger::instance().error("drop: failed to copy " + source.string() +
+            " -> " + dest.string() + ": " + copy_ec.message());
+    }
+    if (!ok) return false;
+
+    return add_downloads_dir_file(dest);
+}
+
+void DownloadsTab::dragEnterEvent(QDragEnterEvent* event) {
+    if (accepts_url_drop(event->mimeData()))
+        event->acceptProposedAction();
+}
+
+void DownloadsTab::dragMoveEvent(QDragMoveEvent* event) {
+    if (accepts_url_drop(event->mimeData()))
+        event->acceptProposedAction();
+}
+
+void DownloadsTab::dropEvent(QDropEvent* event) {
+    if (!accepts_url_drop(event->mimeData())) {
+        event->ignore();
+        return;
+    }
+    const bool move = event->proposedAction() == Qt::MoveAction;
+    if (move) {
+        // Tell the source we take ownership of the file (MO2 does the same
+        // so the file manager does not also move it).
+        event->setDropAction(Qt::TargetMoveAction);
+    }
+
+    // accepts_url_drop already guarantees every URL is a local archive file.
+    for (const auto& url : event->mimeData()->urls())
+        import_dropped_file(url.toLocalFile().toStdString(), move);
+    apply_installed_filter();
+    event->accept();
 }
 
 void DownloadsTab::apply_installed_filter() {

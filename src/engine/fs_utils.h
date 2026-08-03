@@ -23,6 +23,17 @@ namespace engine {
 // download removal in the app routes through it.
 bool remove_path(const std::filesystem::path& path, bool permanent = false);
 
+// Move a file or directory from source to dest.
+//
+// Uses a rename; on a cross-device error (EXDEV) falls back to a recursive
+// copy followed by removal of the source, so moves work across filesystems.
+// dest is overwritten if it already exists (rename semantics on POSIX); the
+// caller is responsible for resolving a name conflict first if a prompt is
+// wanted. Returns true on success, false on failure (source kept intact on
+// failure).
+bool move_path(const std::filesystem::path& source,
+               const std::filesystem::path& dest);
+
 // Relay a per-session captured output dir into a mod folder.
 //
 // scratch_dir holds game-root-relative files captured during a single
