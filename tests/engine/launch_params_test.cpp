@@ -118,6 +118,42 @@ static void check_deploy(const fs::path& root, bool include_mod_id,
     require(fs::exists(deployed), label + ": redeploy keeps the file");
 }
 
+// Case-insensitive game (knowledge case_sensitive=false): the launch deploy
+// must merge CI-equal directory paths (Meshes/ vs meshes/) into one canonical
+// casing in the staging tree, or the case-sensitive overlay mount splits a mod
+// across two dirs (XP32 ships both spellings with different files).
+static void check_ci_deploy(const fs::path& root, const std::string& label) {
+    fs::create_directories(root / "mods" / "CI_Mod" / "Meshes");
+    write_file(root / "mods" / "CI_Mod" / "Meshes" / "a.nif", "x");
+    fs::create_directories(root / "mods" / "CI_Mod" / "meshes");
+    write_file(root / "mods" / "CI_Mod" / "meshes" / "b.nif", "x");
+
+    const fs::path game_dir = root / "game";
+    fs::create_directories(game_dir);
+    const fs::path exe = game_dir / "Game.exe";
+    write_file(exe, "bin");
+
+    engine::GameKnowledge k;
+    k.set("testgame", "deploy_prefix", "Data");
+    k.set("testgame", "deploy_include_mod_id", "false");
+    k.set("testgame", "case_sensitive", "false");
+
+    const auto params = engine::prepare_launch_params(
+        root, game_dir, exe, k, "testgame", 12345, true);
+
+    const fs::path data = root / ".gmm_staging" / "Data";
+    const bool has_upper = fs::exists(data / "Meshes");
+    const bool has_lower = fs::exists(data / "meshes");
+    require(has_upper != has_lower,
+            label + ": CI-equal dirs merge into exactly one casing");
+    const fs::path merged = has_upper ? data / "Meshes" : data / "meshes";
+    require(fs::exists(merged / "a.nif"), label + ": upper-spelling file deployed");
+    require(fs::exists(merged / "b.nif"), label + ": lower-spelling file deployed");
+    require(fs::is_symlink(merged / "a.nif"), label + ": merged files are symlinks");
+    require(fs::exists(params.extra_lowerdirs.front()),
+            label + ": staging still the overlay lowerdir");
+}
+
 int main() {
     const fs::path base =
         fs::current_path() / ("gmm_test_launch_params_" + std::to_string(getpid()));
@@ -132,6 +168,7 @@ int main() {
 
     check_deploy(base / "instances" / "Flat", false, "flat deploy");
     check_deploy(base / "instances" / "ByMod", true, "include-mod-id deploy");
+    check_ci_deploy(base / "instances" / "CI", "ci deploy");
 
     fs::remove_all(base);
     std::printf("launch_params_test: all checks passed\n");

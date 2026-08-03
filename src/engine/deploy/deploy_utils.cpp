@@ -13,7 +13,8 @@ bool deploy_all_enabled_mods(
     const path& staging_dir,
     const std::string& deploy_prefix,
     bool deploy_include_mod_id,
-    const std::string& disable_mechanism)
+    const std::string& disable_mechanism,
+    bool case_sensitive)
 {
     std::error_code ec;
     if (!std::filesystem::is_directory(mods_dir, ec)) {
@@ -28,7 +29,7 @@ bool deploy_all_enabled_mods(
         return false;
     }
 
-    OverlayFsDeployStrategy strategy(staging_dir);
+    OverlayFsDeployStrategy strategy(staging_dir, case_sensitive);
     auto target_base = staging_dir / deploy_prefix;
     std::filesystem::create_directories(target_base, ec);
 
@@ -76,8 +77,12 @@ bool deploy_all_enabled_mods(
             // filter, not a continue: the iterator must still advance.
             if (file.is_regular_file() && !is_hidden_file(file.path())) {
                 auto rel = std::filesystem::relative(file.path(), entry.path());
+                // NOTE: no create_directories(target.parent_path()) here. The
+                // strategy owns dir creation, and pre-creating the target's
+                // parent with the mod's exact casing would defeat
+                // resolve_deploy_target_ci (the exact-cased dir would already
+                // exist, so the case-insensitive merge could never fire).
                 auto target = deploy_root / rel;
-                std::filesystem::create_directories(target.parent_path(), ec);
                 if (strategy.deploy(file.path(), target)) {
                     ++deployed;
                 } else {

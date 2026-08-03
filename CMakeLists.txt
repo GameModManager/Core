@@ -587,6 +587,19 @@ add_executable(deploy_hidden_test tests/engine/deploy_hidden_test.cpp
 target_include_directories(deploy_hidden_test PRIVATE src/)
 add_test(NAME deploy_hidden_test COMMAND deploy_hidden_test)
 
+# Case-insensitive deploy (Windows games): the per-game case_sensitive
+# knowledge flag routes deploy targets through resolve_deploy_target_ci so
+# CI-equal directory paths (Meshes/ vs meshes/) merge into one casing instead
+# of splitting a mod across two dirs on the case-sensitive overlay mount.
+add_executable(deploy_case_insensitive_test tests/engine/deploy_case_insensitive_test.cpp
+    src/engine/deploy/deploy_utils.cpp
+    src/engine/deploy/strategy_overlayfs_deploy.cpp
+    src/engine/fs_utils.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(deploy_case_insensitive_test PRIVATE src/)
+add_test(NAME deploy_case_insensitive_test COMMAND deploy_case_insensitive_test)
+
 # URL percent-encoding for libcurl (Nexus CDN URLs embed unencoded filenames).
 add_executable(nexus_http_test tests/engine/nexus_http_test.cpp
     src/engine/source/nexus_http.cpp
