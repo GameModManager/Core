@@ -683,6 +683,14 @@ target_link_libraries(style_manager_palette_test PRIVATE Qt6::Widgets)
 add_test(NAME style_manager_palette_test COMMAND style_manager_palette_test)
 set_tests_properties(style_manager_palette_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+# Flags column wrap math — pure-int layout helpers in mod_table_view.h
+# (FlagsDelegate paints each flag icon individually and grows the row when the
+# column is too narrow for all of them).
+add_executable(flags_delegate_test tests/ui/flags_delegate_test.cpp)
+target_include_directories(flags_delegate_test PRIVATE src/)
+target_link_libraries(flags_delegate_test PRIVATE Qt6::Widgets)
+add_test(NAME flags_delegate_test COMMAND flags_delegate_test)
+
 # Settings -> Sources tab — offscreen GUI regression test. Exercises the
 # nested per-source sub-tabs and the MO2-parity Nexus panel (account/stats
 # labels, connect/manual/disconnect buttons, options, known/preferred server

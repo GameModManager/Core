@@ -6,6 +6,7 @@
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileInfo>
+#include <QHeaderView>
 #include <QMimeData>
 #include <QPainter>
 #include <QStyle>
@@ -15,6 +16,81 @@
 #include <algorithm>
 
 namespace ui {
+
+namespace {
+constexpr int kFlagsSpacing = 2;  // px between adjacent flag icons
+}  // namespace
+
+// Native cell size for a set of flag icons (all 16x16 today, but take the max
+// so a larger icon anywhere in the list keeps every flag legible).
+static QSize flags_cell_size(const QList<QIcon>& icons) {
+    QSize cell(16, 16);
+    for (const auto& icon : icons)
+        cell = cell.expandedTo(icon.actualSize(QSize(16, 16)));
+    return cell;
+}
+
+static QList<QIcon> flags_for_index(const QModelIndex& index) {
+    return index.data(ModListModel::kFlagIconsRole).value<QList<QIcon>>();
+}
+
+void FlagsDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option,
+                          const QModelIndex& index) const {
+    // Background / selection / focus via the default path; the model no longer
+    // returns a DecorationRole for the Flags cell, so nothing extra is drawn.
+    QStyledItemDelegate::paint(painter, option, index);
+
+    const QList<QIcon> icons = flags_for_index(index);
+    if (icons.isEmpty()) return;
+
+    const QSize cell = flags_cell_size(icons);
+    const int per_line =
+        flags_icons_per_line(option.rect.width(), cell.width(), kFlagsSpacing);
+    const int lines = flags_icon_lines(icons.size(), per_line);
+    if (lines <= 0) return;
+
+    const QIcon::Mode mode = (option.state & QStyle::State_Selected)
+                                 ? QIcon::Selected
+                                 : ((option.state & QStyle::State_Enabled)
+                                        ? QIcon::Normal
+                                        : QIcon::Disabled);
+
+    const int step_x = cell.width() + kFlagsSpacing;
+    const int block_h = lines * cell.height();
+    const int y0 = option.rect.top() +
+                   std::max(0, (option.rect.height() - block_h) / 2);
+    for (int i = 0; i < icons.size(); ++i) {
+        const QRect target(option.rect.left() + (i % per_line) * step_x,
+                           y0 + (i / per_line) * cell.height(),
+                           cell.width(), cell.height());
+        icons[i].paint(painter, target, Qt::AlignCenter, mode, QIcon::Off);
+    }
+}
+
+QSize FlagsDelegate::sizeHint(const QStyleOptionViewItem& option,
+                              const QModelIndex& index) const {
+    const QList<QIcon> icons = flags_for_index(index);
+    if (icons.isEmpty())
+        return QStyledItemDelegate::sizeHint(option, index);
+
+    // A hidden Flags column must not inflate row heights.
+    if (const auto* view = qobject_cast<const QTreeView*>(option.widget)) {
+        if (view->isColumnHidden(index.column()))
+            return QStyledItemDelegate::sizeHint(option, index);
+    }
+
+    int cell_width = -1;
+    if (const auto* view = qobject_cast<const QTreeView*>(option.widget))
+        cell_width = view->columnWidth(index.column());
+    if (cell_width <= 0) cell_width = 80;  // default Flags column width
+
+    const QSize cell = flags_cell_size(icons);
+    const int per_line =
+        flags_icons_per_line(cell_width, cell.width(), kFlagsSpacing);
+    const int lines = flags_icon_lines(icons.size(), per_line);
+    // Width -1 = no preference; QTreeView only uses the height for row layout.
+    return QSize(-1, lines * cell.height());
+}
 
 static bool is_supported_archive(const QString& path) {
     static const QStringList exts = {".zip", ".rar", ".7z", ".7zip", ".gz", ".tar"};
@@ -87,6 +163,8 @@ ModTableView::ModTableView(QWidget* parent)
     setDropIndicatorShown(true);
     setVerticalScrollBar(new ModMarkingScrollBar(this));
     apply_scrollbar_policy();
+    // Flags column: render stacked flag icons at native size (see FlagsDelegate).
+    setItemDelegateForColumn(ModListModel::Flags, new FlagsDelegate(this));
 }
 
 void ModTableView::apply_scrollbar_policy() {
@@ -100,6 +178,18 @@ void ModTableView::setModel(QAbstractItemModel* model) {
     QTreeView::setModel(model);
     if (auto* marking = qobject_cast<ModMarkingScrollBar*>(verticalScrollBar()))
         marking->set_model(model);
+}
+
+void ModTableView::setHeader(QHeaderView* header) {
+    QTreeView::setHeader(header);
+    if (!header) return;
+    // Flag icons wrap based on the Flags column width (growing the row), so the
+    // cached row heights must follow the section while the user drags it.
+    connect(header, &QHeaderView::sectionResized, this,
+            [this](int logical, int, int) {
+                if (logical == ModListModel::Flags)
+                    scheduleDelayedItemsLayout();
+            });
 }
 
 void ModTableView::dragEnterEvent(QDragEnterEvent* event) {

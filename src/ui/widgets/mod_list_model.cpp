@@ -69,19 +69,6 @@ ModListModel::ModListModel(QObject* parent)
     fomod_icon_        = make_wizard_hat_icon();
 }
 
-// Lay the primary icon out with a secondary icon (e.g. hidden-files badge) to
-// its right, since a cell can only carry one DecorationRole icon.
-static QIcon stacked_icons(const QIcon& left, const QIcon& right) {
-    QSize s = left.actualSize(QSize(16, 16));
-    QPixmap pix(s.width() + 2 + s.width(), s.height());
-    pix.fill(Qt::transparent);
-    QPainter p(&pix);
-    left.paint(&p, 0, 0, s.width(), s.height());
-    right.paint(&p, s.width() + 2, 0, s.width(), s.height());
-    p.end();
-    return QIcon(pix);
-}
-
 int ModListModel::rowCount(const QModelIndex& parent) const {
     return parent.isValid() ? 0 : mods_.size();
 }
@@ -93,41 +80,33 @@ int ModListModel::columnCount(const QModelIndex& parent) const {
 QVariant ModListModel::data(const QModelIndex& index, int role) const {
     if (!index.isValid() || index.row() >= mods_.size()) return {};
 
-    // ── DecorationRole for Flags column ──────────────────────────────
-    if (role == Qt::DecorationRole && index.column() == Flags) {
+    // ── Flag icons for the Flags column ─────────────────────────────
+    // One individual QIcon per flag, in display order: conflict status, then
+    // hidden-files badge, then FOMOD wizard marker. The FlagsDelegate paints
+    // them one-by-one at native size and wraps to extra lines (growing the row)
+    // when they exceed the column width — never stacked into one icon.
+    if (role == kFlagIconsRole && index.column() == Flags) {
         const auto& m = mods_[index.row()];
-        int row = index.row();
+        QList<QIcon> icons;
         if (m.is_separator) {
-            auto flag = compute_separator_flags(row);
-            if (flag == "+") return overwrite_icon_;
-            if (flag == "-") return overwritten_icon_;
-            if (flag == QString("\u00B1")) return mixed_icon_;
-            return {};
+            auto flag = compute_separator_flags(index.row());
+            if (flag == "+") icons << overwrite_icon_;
+            else if (flag == "-") icons << overwritten_icon_;
+            else if (flag == QString("\u00B1")) icons << mixed_icon_;
+            return QVariant::fromValue(icons);
         }
-        // Conflict status icons (also for tagged mods — their tag text now
-        // lives in the tooltip, so the cell never renders empty).
-        QIcon primary;
         if (m.redundant) {
-            primary = redundant_icon_;
+            icons << redundant_icon_;
         } else if (m.conflict_wins > 0 && m.conflict_losses > 0) {
-            primary = mixed_icon_;
+            icons << mixed_icon_;
         } else if (m.conflict_wins > 0) {
-            primary = overwrite_icon_;
+            icons << overwrite_icon_;
         } else if (m.conflict_losses > 0) {
-            primary = overwritten_icon_;
+            icons << overwritten_icon_;
         }
-
-        // Badges stacked to the right of the primary icon: hidden-files and
-        // FOMOD-wizard markers (MO2-style indicator row).
-        QIcon secondary;
-        if (m.has_hidden_files) secondary = hidden_icon_;
-        if (m.is_fomod)
-            secondary = secondary.isNull() ? fomod_icon_
-                                           : stacked_icons(secondary, fomod_icon_);
-
-        if (secondary.isNull()) return primary;
-        if (primary.isNull()) return secondary;
-        return stacked_icons(primary, secondary);
+        if (m.has_hidden_files) icons << hidden_icon_;
+        if (m.is_fomod) icons << fomod_icon_;
+        return QVariant::fromValue(icons);
     }
 
     const auto& mod = mods_[index.row()];
@@ -189,7 +168,7 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
                 // by the separator's display name (suffix already stripped).
                 case Name: return (mod.folded ? QString("\u25B6 ") : QString("\u25BC ")) + mod.name;
                 case Version: return QString();
-                case Flags: return QString();  // shown via DecorationRole icon
+                case Flags: return QString();  // icons come via kFlagIconsRole
                 case Priority: return mod.priority;
             }
         }
@@ -677,7 +656,7 @@ void ModListModel::set_conflict_stats(const QString& id, int wins, int losses) {
             mods_[i].conflict_wins = wins;
             mods_[i].conflict_losses = losses;
             emit dataChanged(index(i, Flags), index(i, Flags),
-                             {Qt::DecorationRole, Qt::DisplayRole, Qt::ToolTipRole, Qt::ForegroundRole});
+                             {Qt::SizeHintRole, kFlagIconsRole, Qt::ToolTipRole});
             return;
         }
     }
@@ -687,7 +666,8 @@ void ModListModel::set_conflict_redundant(const QString& id, bool redundant) {
     for (int i = 0; i < mods_.size(); ++i) {
         if (mods_[i].id == id && mods_[i].redundant != redundant) {
             mods_[i].redundant = redundant;
-            emit dataChanged(index(i, Flags), index(i, Flags), {Qt::DecorationRole});
+            emit dataChanged(index(i, Flags), index(i, Flags),
+                             {Qt::SizeHintRole, kFlagIconsRole});
             return;
         }
     }
@@ -697,7 +677,8 @@ void ModListModel::set_hidden_files(const QString& id, bool has_hidden) {
     for (int i = 0; i < mods_.size(); ++i) {
         if (mods_[i].id == id && mods_[i].has_hidden_files != has_hidden) {
             mods_[i].has_hidden_files = has_hidden;
-            emit dataChanged(index(i, Flags), index(i, Flags), {Qt::DecorationRole});
+            emit dataChanged(index(i, Flags), index(i, Flags),
+                             {Qt::SizeHintRole, kFlagIconsRole});
             return;
         }
     }
@@ -708,7 +689,7 @@ void ModListModel::set_fomod(const QString& id, bool on) {
         if (mods_[i].id == id && mods_[i].is_fomod != on) {
             mods_[i].is_fomod = on;
             emit dataChanged(index(i, Flags), index(i, Flags),
-                             {Qt::DecorationRole, Qt::ToolTipRole});
+                             {Qt::SizeHintRole, kFlagIconsRole, Qt::ToolTipRole});
             return;
         }
     }
@@ -718,7 +699,8 @@ void ModListModel::set_tags(const QString& id, const QVector<ModTag>& tags) {
     for (int i = 0; i < mods_.size(); ++i) {
         if (mods_[i].id == id) {
             mods_[i].tags = tags;
-            emit dataChanged(index(i, Flags), index(i, Flags), {Qt::DisplayRole, Qt::ToolTipRole, Qt::ForegroundRole, Qt::DecorationRole});
+            emit dataChanged(index(i, Flags), index(i, Flags),
+                             {Qt::SizeHintRole, kFlagIconsRole, Qt::ToolTipRole});
             return;
         }
     }
