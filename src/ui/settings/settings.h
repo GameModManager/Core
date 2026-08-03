@@ -178,6 +178,22 @@ public:
     QString nxm_handler_check() const;      // key: nxm/handler_check
     void set_nxm_handler_check(const QString& value);
 
+    // fomod ---------------------------------------------------------------------
+    // FOMOD install wizard behavior. Restore-on-reinstall defaults to on so the
+    // wizard re-applies the previously persisted choices (MO2 behavior);
+    // image previews default to on.
+    bool always_restore_fomod_choices() const;   // key: fomod/always_restore_choices
+    void set_always_restore_fomod_choices(bool on);
+    bool show_fomod_images() const;              // key: fomod/show_images
+    void set_show_fomod_images(bool on);
+    // Last wizard geometry + splitter states (empty until the first install).
+    QByteArray fomod_window_geometry() const;    // key: fomod/window_geometry
+    void set_fomod_window_geometry(const QByteArray& g);
+    QByteArray fomod_center_split() const;       // key: fomod/center_split
+    void set_fomod_center_split(const QByteArray& s);
+    QByteArray fomod_left_split() const;         // key: fomod/left_split
+    void set_fomod_left_split(const QByteArray& s);
+
 private:
     Settings() = default;
     QSettings settings_{"GameModManager", "GameModManager"};

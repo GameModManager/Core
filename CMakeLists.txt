@@ -91,6 +91,17 @@ enable_testing()
 # Build game plugins as shared libraries (loaded via dlopen at runtime)
 add_subdirectory(external/plugins)
 
+# FOMOD engine sources (pugixml-backed ModuleConfig parser, condition tester,
+# view-model state machine, staging-dir file installer). Shared by the app and
+# the engine tests that drive FomodStage directly.
+set(FOMOD_ENGINE_SOURCES
+    src/engine/fomod/module_config.cpp
+    src/engine/fomod/condition_tester.cpp
+    src/engine/fomod/fomod_view_model.cpp
+    src/engine/fomod/file_installer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pugixml/pugixml.cpp
+)
+
 # Engine sources — no Qt includes allowed here
 set(ENGINE_SOURCES
     src/engine/instance/instance.cpp
@@ -160,6 +171,7 @@ set(ENGINE_SOURCES
     src/engine/launcher.cpp
     src/cli/headless_launcher.cpp
     src/engine/single_instance.cpp
+    ${FOMOD_ENGINE_SOURCES}
 )
 
 # FUSE/VFS strategies — Linux only
@@ -217,6 +229,8 @@ set(UI_SOURCES
     src/ui/overwrite/move_to_mod_dialog.cpp
     src/ui/overwrite/overwrite_info_dialog.cpp
     src/ui/overwrite/query_overwrite_dialog.cpp
+    src/ui/fomod/fomod_image_viewer.cpp
+    src/ui/fomod/fomod_wizard_dialog.cpp
 )
 
 # App entry point
@@ -265,7 +279,7 @@ else()
     target_link_libraries(gamemodmanager PRIVATE ws2_32 advapi32 shlwapi shell32)
 endif()
 
-target_include_directories(gamemodmanager PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_include_directories(gamemodmanager PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pugixml)
 target_compile_definitions(gamemodmanager PRIVATE VERSION="${PROJECT_VERSION}")
 
 # LD_PRELOAD intercept library — Linux-only, C, built as a shared lib
@@ -312,8 +326,9 @@ add_executable(pipeline_test tests/engine/pipeline_test.cpp
     src/engine/source/source_provider.cpp
     src/engine/source/steam_workshop_provider.cpp
     src/engine/workshop/workshop_client.cpp
+    ${FOMOD_ENGINE_SOURCES}
 )
-target_include_directories(pipeline_test PRIVATE src/)
+target_include_directories(pipeline_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pugixml)
 target_link_libraries(pipeline_test PRIVATE PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::CURL PkgConfig::NLOHMANN_JSON)
 if(WIN32)
     target_link_libraries(pipeline_test PRIVATE advapi32)
@@ -373,10 +388,33 @@ add_executable(registry_test tests/engine/registry_test.cpp
     src/engine/source/source_provider.cpp
     src/engine/source/steam_workshop_provider.cpp
     src/engine/workshop/workshop_client.cpp
+    ${FOMOD_ENGINE_SOURCES}
 )
-target_include_directories(registry_test PRIVATE src/)
+target_include_directories(registry_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pugixml)
 target_link_libraries(registry_test PRIVATE PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::CURL PkgConfig::NLOHMANN_JSON)
 add_test(NAME registry_test COMMAND registry_test)
+
+add_executable(fomod_module_config_test tests/engine/fomod_module_config_test.cpp
+    src/engine/log/logger.cpp
+    ${FOMOD_ENGINE_SOURCES}
+)
+target_include_directories(fomod_module_config_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pugixml)
+add_test(NAME fomod_module_config_test COMMAND fomod_module_config_test)
+
+add_executable(fomod_condition_test tests/engine/fomod_condition_test.cpp
+    src/engine/log/logger.cpp
+    ${FOMOD_ENGINE_SOURCES}
+)
+target_include_directories(fomod_condition_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pugixml)
+add_test(NAME fomod_condition_test COMMAND fomod_condition_test)
+
+add_executable(fomod_installer_test tests/engine/fomod_installer_test.cpp
+    src/engine/log/logger.cpp
+    ${FOMOD_ENGINE_SOURCES}
+)
+target_include_directories(fomod_installer_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pugixml)
+target_link_libraries(fomod_installer_test PRIVATE PkgConfig::NLOHMANN_JSON)
+add_test(NAME fomod_installer_test COMMAND fomod_installer_test)
 
 add_executable(instance_path_test tests/engine/instance_path_test.cpp
     src/engine/instance/instance.cpp
@@ -480,8 +518,9 @@ add_executable(perf_benchmark tests/perf/benchmark_test.cpp
     src/engine/source/source_provider.cpp
     src/engine/source/steam_workshop_provider.cpp
     src/engine/workshop/workshop_client.cpp
+    ${FOMOD_ENGINE_SOURCES}
 )
-target_include_directories(perf_benchmark PRIVATE src/)
+target_include_directories(perf_benchmark PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pugixml)
 target_link_libraries(perf_benchmark PRIVATE PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::CURL PkgConfig::NLOHMANN_JSON)
 target_compile_definitions(perf_benchmark PRIVATE VERSION="${PROJECT_VERSION}")
 add_test(NAME perf_benchmark COMMAND perf_benchmark)

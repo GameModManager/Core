@@ -1,0 +1,13 @@
+Third-party software included in or informing this project:
+
+FOMOD Plus (installer)
+  Source used for reference: REFERENCES/mo2-fomod-plus in the repository root.
+  Licensed under the MIT License (see that repo's README "License" section).
+  The FOMOD installer engine (ModuleConfig parsing, view models, condition
+  evaluation) and the wizard UI are a C++ port of FOMOD Plus by Kezyma,
+  itself derived from ModOrganizer's installer_fomod.
+
+pugixml (vendored at third_party/pugixml)
+  Copyright (C) 2006-2023 Arseny Kapoulkine
+  Copyright (C) 2003 Kristen Wegner
+  Distributed under the MIT License. See the notice in pugixml.hpp.

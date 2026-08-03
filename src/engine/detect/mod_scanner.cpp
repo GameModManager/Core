@@ -248,6 +248,13 @@ static std::vector<ScannedMod> scan_impl(
                 mod.raw_name = folder_name;
                 mod.display_name = folder_name;
                 mod.version = meta.get("General", "version");
+                // FOMOD-installed marker: install_stage writes [fomod] choices=
+                // so reinstalls can restore selections and the UI can flag the
+                // mod. This is the retroactive scan too - every load re-reads
+                // meta.ini, so mods installed before the marker existed are
+                // picked up here if their meta.ini already has the section.
+                mod.is_fomod = meta.has_section("fomod") &&
+                               !meta.get("fomod", "choices").empty();
             }
         }
 
