@@ -3,6 +3,7 @@
 #include "ui/fomod/fomod_image_viewer.h"
 #include "ui/settings/settings.h"
 #include "engine/fomod/file_installer.h"
+#include "engine/fomod/fomod_utils.h"
 #include "engine/log/logger.h"
 
 #include <QApplication>
@@ -347,8 +348,9 @@ void FomodWizardDialog::on_install_clicked()
     const auto files = engine::collect_files_to_install(*view_model_);
     std::vector<QString> missing;
     for (const auto& file : files) {
-        std::error_code ec;
-        if (!std::filesystem::exists(content_root_ / file.source, ec)) {
+        // Windows-native FOMOD sources (backslash separators, any casing) are
+        // resolved case-insensitively, matching the engine installer exactly.
+        if (engine::resolve_path_ci(content_root_, file.source).empty()) {
             missing.emplace_back(QString::fromStdString(file.source));
         }
     }

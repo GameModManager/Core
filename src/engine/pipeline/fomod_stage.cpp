@@ -38,11 +38,12 @@ public:
 
     FileDependencyTypeEnum file_state(const std::string& fileName) override
     {
-        std::error_code ec;
-        if (std::filesystem::exists(contentRoot_ / fileName, ec)) {
+        // FOMOD paths are Windows-native; resolve case-insensitively so a
+        // condition referencing "meshes\Skeleton.nif" matches Meshes/...
+        if (!resolve_path_ci(contentRoot_, fileName).empty()) {
             return FileDependencyTypeEnum::Active;
         }
-        if (!gameDataDir_.empty() && std::filesystem::exists(gameDataDir_ / fileName, ec)) {
+        if (!gameDataDir_.empty() && !resolve_path_ci(gameDataDir_, fileName).empty()) {
             return FileDependencyTypeEnum::Active;
         }
         return FileDependencyTypeEnum::Missing;
@@ -53,8 +54,31 @@ private:
     std::filesystem::path gameDataDir_;
 };
 
-// FOMOD Plus findFomodDirectory: a directory named exactly "fomod" wins; else
-// if the current directory has exactly one entry and it is a directory,
+// Case-insensitive filename compare: mod authors build on Windows' insensitive
+// filesystem, so "Fomod", "FOMOD" and "fomod" are all the same directory (FOMOD
+// Plus's scanner matches "fomod/ModuleConfig.xml" the same way).
+bool name_matches_ci(const std::filesystem::path& p, const std::string& lowerName)
+{
+    return toLower(p.filename().string()) == lowerName;
+}
+
+// Case-insensitive lookup of a file by its lowercase name inside a directory.
+std::filesystem::path find_file_ci(const std::filesystem::path& dir, const std::string& lowerName)
+{
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+        if (ec) {
+            return {};
+        }
+        if (entry.is_regular_file(ec) && name_matches_ci(entry.path(), lowerName)) {
+            return entry.path();
+        }
+    }
+    return {};
+}
+
+// FOMOD Plus findFomodDirectory: a directory named "fomod" (any casing) wins;
+// else if the current directory has exactly one entry and it is a directory,
 // descend into it.
 std::optional<std::filesystem::path> find_fomod_dir(const std::filesystem::path& dir)
 {
@@ -65,7 +89,7 @@ std::optional<std::filesystem::path> find_fomod_dir(const std::filesystem::path&
         if (ec) {
             return std::nullopt;
         }
-        if (entry.is_directory() && entry.path().filename() == fomod_files::FOMOD_DIR) {
+        if (entry.is_directory() && name_matches_ci(entry.path(), std::string(fomod_files::FOMOD_DIR))) {
             return entry.path();
         }
         singleChild = entry.path();
@@ -142,8 +166,8 @@ bool FomodStage::execute(Mod& mod, PipelineContext& ctx)
     if (!fomodDir) {
         return true;
     }
-    const auto moduleConfigPath = *fomodDir / std::string(fomod_files::MODULE_CONFIG);
-    if (!std::filesystem::exists(moduleConfigPath)) {
+    const auto moduleConfigPath = find_file_ci(*fomodDir, toLower(std::string(fomod_files::MODULE_CONFIG)));
+    if (moduleConfigPath.empty()) {
         return true;
     }
 
@@ -170,8 +194,8 @@ bool FomodStage::execute(Mod& mod, PipelineContext& ctx)
     }
 
     auto infoFile = std::make_unique<FomodInfoFile>();
-    const auto infoPath = *fomodDir / std::string(fomod_files::INFO_XML);
-    if (std::filesystem::exists(infoPath)) {
+    const auto infoPath = find_file_ci(*fomodDir, std::string(fomod_files::INFO_XML));
+    if (!infoPath.empty()) {
         try {
             infoFile->deserialize(infoPath);
         } catch (const XmlParseException& e) {

@@ -5,8 +5,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
 namespace engine {
@@ -59,6 +61,71 @@ inline std::string toLower(std::string str)
     std::transform(str.begin(), str.end(), str.begin(),
         [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return str;
+}
+
+// FOMOD paths are Windows-native: the spec's source/destination values use
+// backslash separators, and authors build on a case-insensitive filesystem so
+// any casing is possible. Translate '\' to '/' so the path resolves on Linux
+// (where '\' is a legal filename character, not a separator).
+inline std::string normalize_separators(std::string path)
+{
+    std::replace(path.begin(), path.end(), '\\', '/');
+    return path;
+}
+
+// Resolve a FOMOD-relative path against a root, matching each component
+// case-insensitively (Windows-archive behaviour). Returns the real on-disk
+// path (with the tree's actual casing) or an empty path when not found.
+// Absolute paths and ".." traversal are rejected; when `escaped` is non-null
+// it is set to true for rejection reasons that are not "file absent" (so
+// callers can skip traversal attempts silently instead of reporting them
+// missing).
+inline std::filesystem::path resolve_path_ci(const std::filesystem::path& root,
+    const std::string& relative, bool* escaped = nullptr)
+{
+    if (escaped) {
+        *escaped = false;
+    }
+    const std::filesystem::path rel(normalize_separators(relative));
+    if (rel.is_absolute() || rel.empty()) {
+        if (escaped) {
+            *escaped = true;
+        }
+        return {};
+    }
+    std::filesystem::path cur = root;
+    for (const auto& part : rel) {
+        const std::string comp = part.string();
+        if (comp.empty() || comp == ".") {
+            continue;
+        }
+        if (comp == "..") {
+            if (escaped) {
+                *escaped = true;
+            }
+            return {};
+        }
+        const std::string lowerComp = toLower(comp);
+        std::error_code ec;
+        std::filesystem::path match;
+        bool found = false;
+        for (const auto& entry : std::filesystem::directory_iterator(cur, ec)) {
+            if (ec) {
+                return {};
+            }
+            const std::string name = entry.path().filename().string();
+            if (name == comp || toLower(name) == lowerComp) {
+                match = entry.path();
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            return {};
+        }
+        cur = match;
+    }
+    return cur;
 }
 
 }  // namespace engine
