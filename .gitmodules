@@ -1,9 +1,12 @@
 [submodule "external/abi"]
 	path = external/abi
 	url = https://github.com/GameModManager/ABI
+	branch = main
 [submodule "external/plugins"]
 	path = external/plugins
 	url = https://github.com/GameModManager/Plugins
+	branch = main
 [submodule "themes"]
 	path = themes
 	url = https://github.com/GameModManager/Themes
+	branch = main
