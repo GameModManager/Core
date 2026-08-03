@@ -86,10 +86,10 @@ bool FomodFileInstaller::apply(std::vector<std::string>* missing)
 
     for (const auto& file : filesToInstall) {
         // FOMOD sources are Windows-native (backslash separators, arbitrary
-        // case). resolve_path_ci normalizes separators and matches each
-        // component case-insensitively against the on-disk tree.
+        // case). resolve_path normalizes separators and matches each component
+        // case-insensitively against the on-disk tree.
         bool escaped = false;
-        const auto sourcePath = resolve_path_ci(mModRoot, file.source, &escaped);
+        const auto sourcePath = resolve_path(mModRoot, file.source, &escaped);
         if (sourcePath.empty()) {
             if (escaped) {
                 Logger::instance().error("FomodFileInstaller: path escapes mod root, skipping: " + file.source);

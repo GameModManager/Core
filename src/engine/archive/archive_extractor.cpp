@@ -1,8 +1,10 @@
 #include "engine/archive/archive_extractor.h"
+#include "engine/fs_utils.h"
 
 #include <archive.h>
 #include <archive_entry.h>
 
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <string>
@@ -49,10 +51,24 @@ bool ArchiveExtractor::extract(const std::filesystem::path& archive,
         const char* name = archive_entry_pathname(entry);
         if (!name) continue;
 
-        std::string name_str(name);
+        // Entry names are Windows-native (backslash separators), so normalize
+        // them the same way engine::resolve_path does - this also makes
+        // Windows-authored "dir\" entries count as directories below.
+        // Traversal entries (absolute paths, "..") are never extracted: a
+        // single hostile entry must not escape dest_dir, so extraction fails.
+        std::string name_str = engine::normalize_separators(name);
         if (name_str.empty()) continue;
 
-        auto dest_path = dest_dir / name_str;
+        const std::filesystem::path name_path(name_str);
+        if (name_path.is_absolute() ||
+            std::any_of(name_path.begin(), name_path.end(),
+                        [](const auto& part) { return part == ".."; })) {
+            error = "archive entry has an unsafe path: " + name_str;
+            failed = true;
+            break;
+        }
+
+        auto dest_path = dest_dir / name_path;
 
         // Strip trailing slash from dir entries for consistent detection.
         // RAR/WinRAR stores directory entries WITHOUT a trailing slash - the

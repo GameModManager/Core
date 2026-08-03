@@ -350,7 +350,7 @@ void FomodWizardDialog::on_install_clicked()
     for (const auto& file : files) {
         // Windows-native FOMOD sources (backslash separators, any casing) are
         // resolved case-insensitively, matching the engine installer exactly.
-        if (engine::resolve_path_ci(content_root_, file.source).empty()) {
+        if (engine::resolve_path(content_root_, file.source).empty()) {
             missing.emplace_back(QString::fromStdString(file.source));
         }
     }

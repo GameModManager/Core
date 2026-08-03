@@ -565,6 +565,17 @@ target_include_directories(overwrite_utils_test PRIVATE src/)
 target_link_libraries(overwrite_utils_test PRIVATE PkgConfig::NLOHMANN_JSON)
 add_test(NAME overwrite_utils_test COMMAND overwrite_utils_test)
 
+# Windows-native path resolution (engine::resolve_path) + the shared string/path
+# helpers (normalize_separators, name_matches_ci, find_file_ci) - the regression
+# home for backslash/case handling across the FOMOD pipeline and archive
+# extraction.
+add_executable(fs_utils_test tests/engine/fs_utils_test.cpp
+    src/engine/fs_utils.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(fs_utils_test PRIVATE src/)
+add_test(NAME fs_utils_test COMMAND fs_utils_test)
+
 # Hidden-file contract: is_hidden_file/hide_file/unhide_file (.gmmhidden +
 # .mohidden) and deploy_all_enabled_mods skipping hidden files on both suffixes.
 add_executable(deploy_hidden_test tests/engine/deploy_hidden_test.cpp
