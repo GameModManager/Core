@@ -377,7 +377,22 @@ bool PluginDatabase::reassert_band() {
 }
 
 void PluginDatabase::set_all_enabled() {
-    for (auto& p : plugins_) p.enabled = true;  // first run: load everything
+    // First run (no persisted profile): load everything whose masters are
+    // present. A plugin whose required master is absent - not installed at all
+    // - stays disabled: the game could not load it anyway, and enabling it
+    // would only advertise a broken load order (MO2 parity: a missing master
+    // blocks the dependent plugin). Natives/CC have no masters or only
+    // game-native ones, so the fixed band is unaffected.
+    for (auto& p : plugins_) {
+        bool masters_present = true;
+        for (const auto& master : p.masters) {
+            if (by_name_ci_.find(to_lower(master)) == by_name_ci_.end()) {
+                masters_present = false;
+                break;
+            }
+        }
+        p.enabled = masters_present;
+    }
 }
 
 void PluginDatabase::set_missing_masters() {
@@ -514,6 +529,7 @@ bool PluginDatabase::load_profile(const std::filesystem::path& profiles_dir,
 
     // Enable state: plugins.txt (* = enabled).
     if (std::filesystem::is_regular_file(dir / "plugins.txt")) {
+        std::vector<bool> touched(plugins_.size(), false);
         std::ifstream in(dir / "plugins.txt");
         std::string line;
         while (std::getline(in, line)) {
@@ -522,11 +538,44 @@ bool PluginDatabase::load_profile(const std::filesystem::path& profiles_dir,
             const bool enabled = line[0] == '*';
             const std::string name = enabled ? line.substr(1) : line;
             const auto it = by_name_ci_.find(to_lower(name));
-            if (it != by_name_ci_.end()) plugins_[it->second].enabled = enabled;
+            if (it != by_name_ci_.end()) {
+                plugins_[it->second].enabled = enabled;
+                touched[it->second] = true;
+            }
         }
         for (auto& p : plugins_)
             if (p.force_loaded) p.enabled = true;
         applied = true;
+
+        // Plugins discovered after the profile was saved (a freshly installed
+        // mod) are not in plugins.txt, so the file leaves them at their
+        // disabled default. Default them to enabled instead - matching MO2's
+        // "an installed mod's plugins load" behaviour - but only when every
+        // required master is present AND active. A plugin whose master is
+        // absent or was disabled by the user stays disabled until the
+        // dependency is satisfied. Fixed-point so a chain of brand-new plugins
+        // enables transitively (masters sort before dependents, but the loop
+        // must not depend on that ordering).
+        bool changed = true;
+        while (changed) {
+            changed = false;
+            for (size_t i = 0; i < plugins_.size(); ++i) {
+                auto& p = plugins_[i];
+                if (touched[i] || p.force_loaded || p.enabled) continue;
+                bool masters_ok = true;
+                for (const auto& master : p.masters) {
+                    const auto mit = by_name_ci_.find(to_lower(master));
+                    if (mit == by_name_ci_.end() || !plugins_[mit->second].enabled) {
+                        masters_ok = false;
+                        break;
+                    }
+                }
+                if (masters_ok) {
+                    p.enabled = true;
+                    changed = true;
+                }
+            }
+        }
     }
 
     // Order: loadorder.txt, first line = first loaded.

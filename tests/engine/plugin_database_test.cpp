@@ -478,6 +478,92 @@ void run_synthetic_fixture() {
         require(!repaired2, "clean profile does not need repair");
     }
 
+    // Newly installed mods: a plugin that appears after the profile was saved
+    // is not in plugins.txt, so it must default to enabled when its masters are
+    // present AND active (MO2 parity) - and stay disabled when a master is
+    // absent or was disabled by the user.
+    {
+        const fs::path b = base / "newplug";
+        const fs::path g = b / "game";
+        const fs::path m = b / "mods";
+        const fs::path mt = b / "meta";
+        const fs::path pf = b / "profiles";
+        fs::create_directories(g / "Data", ec);
+        fs::create_directories(m, ec);
+        fs::create_directories(mt, ec);
+        fs::create_directories(pf / "Default", ec);
+        write_esp(g / "Data" / "Skyrim.esm", true, {});
+        write_esp(g / "Data" / "Update.esm", true, {"Skyrim.esm"});
+
+        // Installed before the profile existed; the saved plugins.txt disables it.
+        fs::create_directories(m / "OldMod", ec);
+        write_esp(m / "OldMod" / "OldPlugin.esp", false, {"Skyrim.esm"});
+        {
+            std::ofstream pt(pf / "Default" / "plugins.txt");
+            pt << "OldPlugin.esp\n";  // listed without '*', i.e. disabled
+        }
+        {
+            std::ofstream lo(pf / "Default" / "loadorder.txt");
+            lo << "OldPlugin.esp\n";
+        }
+
+        // Installed after the profile existed.
+        fs::create_directories(m / "NewMod", ec);
+        write_esp(m / "NewMod" / "NewPlugin.esp", false, {"Skyrim.esm", "Update.esm"});
+        fs::create_directories(m / "Gated", ec);
+        write_esp(m / "Gated" / "GatedPlugin.esp", false, {"Skyrim.esm", "OldPlugin.esp"});
+        fs::create_directories(m / "NoMaster", ec);
+        write_esp(m / "NoMaster" / "NoMaster.esp", false, {"Skyrim.esm", "AbsentMaster.esm"});
+        fs::create_directories(m / "Chain", ec);
+        write_esp(m / "Chain" / "ChainPlugin.esp", false, {"Skyrim.esm", "NewPlugin.esp"});
+
+        PluginDatabase dbn;
+        require(dbn.refresh(g, m, mt, "", "Skyrim.esm,Update.esm"),
+                "refresh new-plugin fixture");
+        dbn.load_creation_club(g);
+        dbn.sort_load_order();
+        require(dbn.load_profile(pf, "Default"), "profile with new plugins loads");
+        require(!dbn.plugins()[order_of(dbn, "OldPlugin.esp")].enabled,
+                "persisted disabled plugin stays disabled");
+        require(dbn.plugins()[order_of(dbn, "NewPlugin.esp")].enabled,
+                "new plugin enabled by default (masters active)");
+        require(dbn.plugins()[order_of(dbn, "ChainPlugin.esp")].enabled,
+                "new plugin enabled transitively via a new enabled master");
+        require(!dbn.plugins()[order_of(dbn, "GatedPlugin.esp")].enabled,
+                "new plugin gated on a user-disabled master stays disabled");
+        require(!dbn.plugins()[order_of(dbn, "NoMaster.esp")].enabled,
+                "new plugin with an absent master stays disabled");
+        require(dbn.plugins()[order_of(dbn, "NoMaster.esp")].missing_master,
+                "absent-master plugin still flagged");
+    }
+
+    // No-profile bootstrap: set_all_enabled() skips plugins whose master is
+    // absent (nothing to enable them against) while enabling the rest.
+    {
+        const fs::path b = base / "bootstrap";
+        const fs::path g = b / "game";
+        const fs::path m = b / "mods";
+        const fs::path mt = b / "meta";
+        fs::create_directories(g / "Data", ec);
+        fs::create_directories(m, ec);
+        fs::create_directories(mt, ec);
+        write_esp(g / "Data" / "Skyrim.esm", true, {});
+        fs::create_directories(m / "Ok", ec);
+        write_esp(m / "Ok" / "Ok.esp", false, {"Skyrim.esm"});
+        fs::create_directories(m / "Borked", ec);
+        write_esp(m / "Borked" / "Borked.esp", false, {"Skyrim.esm", "MissingMaster.esm"});
+
+        PluginDatabase dbs;
+        require(dbs.refresh(g, m, mt, "", "Skyrim.esm"), "refresh bootstrap fixture");
+        dbs.load_creation_club(g);
+        dbs.sort_load_order();
+        dbs.set_all_enabled();
+        require(dbs.plugins()[order_of(dbs, "Ok.esp")].enabled,
+                "bootstrap enables plugins with present masters");
+        require(!dbs.plugins()[order_of(dbs, "Borked.esp")].enabled,
+                "bootstrap keeps missing-master plugin disabled");
+    }
+
     std::fprintf(stderr, "plugin_database_test: synthetic fixture OK\n");
     fs::remove_all(base, ec);
 }
