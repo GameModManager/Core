@@ -24,6 +24,8 @@ public:
     void set_show_download_notifications(bool on);
     bool hide_installed_downloads() const;   // key: downloads/hide_installed
     void set_hide_installed_downloads(bool on);
+    bool compact_downloads() const;          // key: downloads/compact
+    void set_compact_downloads(bool on);
     bool display_foreign() const;
     void set_display_foreign(bool on);
     bool save_filters() const;

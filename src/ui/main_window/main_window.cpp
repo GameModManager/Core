@@ -638,6 +638,12 @@ void MainWindow::set_game_info(const std::string& game_id,
                     this, &MainWindow::on_image_diff_requested);
         }
 
+        // The Downloads tab was also freshly created by set_game: load its
+        // manifest, point it at this instance's downloads dir (which starts
+        // the directory watchdog) and connect its signals. Without this, a
+        // switched instance shows a dead tab.
+        wire_downloads_tab();
+
         load_mods_from_game();
         load_executables();
         populate_executables();
@@ -811,53 +817,8 @@ void MainWindow::set_game_info(const std::string& game_id,
     if (process_tree_)
         process_tree_->setVisible(show_process_tree_);
 
-    // Load persisted download entries
-    load_download_manifest();
-
-    // Connect download double-click to install (tab exists after set_game above)
-    auto* dt = right_panel_->downloads_tab();
-    if (dt) {
-        dt->set_downloads_dir(downloads_dir_path());
-        connect(dt, &DownloadsTab::install_requested,
-                this, [this](const std::string& mod_id, const std::filesystem::path& fp,
-                             const std::string& source_type, const std::string& source_id,
-                             int file_id, const std::string& display_name) {
-            if (!pipeline_thread_) return;
-            QMetaObject::invokeMethod(pipeline_thread_->worker(),
-                [this, mod_id, fp, source_type, source_id, file_id, display_name]() {
-                pipeline_thread_->worker()->install_mod(
-                    mod_id, fp.string(), source_type, source_id, file_id, display_name);
-            }, Qt::QueuedConnection);
-        });
-        connect(dt, &DownloadsTab::pause_requested,
-                this, [this](const std::string& id) {
-            if (!pipeline_thread_) return;
-            QMetaObject::invokeMethod(pipeline_thread_->worker(), [this, id]() {
-                pipeline_thread_->worker()->pause_download(id);
-            }, Qt::QueuedConnection);
-        });
-        connect(dt, &DownloadsTab::resume_requested,
-                this, [this](const std::string& id) {
-            auto it = nxm_links_.find(id);
-            if (it == nxm_links_.end() || !pipeline_thread_) return;
-            auto* dtab = right_panel_->downloads_tab();
-            if (dtab) dtab->mark_downloading(id);
-            auto link = it->second;
-            auto mods_dir = mods_dir_path().string();
-            auto meta_dir = current_instance_root_.empty()
-                ? "" : (current_instance_root_ / "meta").string();
-            QMetaObject::invokeMethod(pipeline_thread_->worker(),
-                [this, id, link, mods_dir, meta_dir]() {
-                pipeline_thread_->worker()->download_mod(
-                    id, link, current_game_id_, mods_dir, meta_dir);
-            }, Qt::QueuedConnection);
-        });
-        connect(dt, &DownloadsTab::entry_removed,
-                this, [this](const std::string& id) {
-                nxm_links_.erase(id);
-                save_download_manifest();
-            });
-    }
+    // The Downloads tab is wired (manifest, downloads dir + watchdog, signal
+    // connections) by wire_downloads_tab() right after the tab is created.
 
     // Show debug window if debugging.enabled flag exists
     if (!current_instance_root_.empty()) {
@@ -5027,6 +4988,58 @@ void MainWindow::load_download_manifest() {
     dt->deserialize(json, downloads_dir);
 }
 
+void MainWindow::wire_downloads_tab() {
+    auto* dt = right_panel_->downloads_tab();
+    if (!dt) return;
+
+    // Manifest first, then the dir scan: deserialize populates pipeline
+    // entries (ids like "<mod_id>-<file_id>") before the scan, so their
+    // archives are recognized as already-tracked instead of duplicated as
+    // "Manual" rows.
+    load_download_manifest();
+    dt->set_downloads_dir(downloads_dir_path());
+
+    connect(dt, &DownloadsTab::install_requested,
+            this, [this](const std::string& mod_id, const std::filesystem::path& fp,
+                         const std::string& source_type, const std::string& source_id,
+                         int file_id, const std::string& display_name) {
+        if (!pipeline_thread_) return;
+        QMetaObject::invokeMethod(pipeline_thread_->worker(),
+            [this, mod_id, fp, source_type, source_id, file_id, display_name]() {
+            pipeline_thread_->worker()->install_mod(
+                mod_id, fp.string(), source_type, source_id, file_id, display_name);
+        }, Qt::QueuedConnection);
+    });
+    connect(dt, &DownloadsTab::pause_requested,
+            this, [this](const std::string& id) {
+        if (!pipeline_thread_) return;
+        QMetaObject::invokeMethod(pipeline_thread_->worker(), [this, id]() {
+            pipeline_thread_->worker()->pause_download(id);
+        }, Qt::QueuedConnection);
+    });
+    connect(dt, &DownloadsTab::resume_requested,
+            this, [this](const std::string& id) {
+        auto it = nxm_links_.find(id);
+        if (it == nxm_links_.end() || !pipeline_thread_) return;
+        auto* dtab = right_panel_->downloads_tab();
+        if (dtab) dtab->mark_downloading(id);
+        auto link = it->second;
+        auto mods_dir = mods_dir_path().string();
+        auto meta_dir = current_instance_root_.empty()
+            ? "" : (current_instance_root_ / "meta").string();
+        QMetaObject::invokeMethod(pipeline_thread_->worker(),
+            [this, id, link, mods_dir, meta_dir]() {
+            pipeline_thread_->worker()->download_mod(
+                id, link, current_game_id_, mods_dir, meta_dir);
+        }, Qt::QueuedConnection);
+    });
+    connect(dt, &DownloadsTab::entry_removed,
+            this, [this](const std::string& id) {
+            nxm_links_.erase(id);
+            save_download_manifest();
+        });
+}
+
 void MainWindow::handle_nxm_download(const engine::NxmLink& link) {
     if (!link.valid()) {
         engine::Logger::instance().warn("Invalid NXM link received");
@@ -5253,6 +5266,8 @@ void MainWindow::show_settings_dialog() {
     }
     // The separator-scrollbar setting may have changed in the dialog.
     if (mod_view_) mod_view_->apply_scrollbar_policy();
+    // The compact-downloads setting may have changed in the dialog.
+    if (auto* dt = right_panel_->downloads_tab()) dt->apply_compact_style();
 }
 
 void MainWindow::show_instance_statistics() {

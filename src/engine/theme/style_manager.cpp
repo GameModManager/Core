@@ -90,6 +90,19 @@ QWidget#separatorRow {
     font-family: monospace;
 }
 
+/* -- Downloads tab ------------------------------- */
+
+/* MO2 parity: row height is driven by ::item padding (QSS `height` is ignored
+   for item views). The DownloadsTab sets the dynamic `compact` property and
+   re-polishes; these scoped rules keep every other table native. */
+QTableWidget#downloadsTable[compact="true"]::item {
+    padding: 4px 6px;
+}
+
+QTableWidget#downloadsTable[compact="false"]::item {
+    padding: 16px 6px;
+}
+
 /* -- Debug window -------------------------------- */
 
 QLabel#debugKey {

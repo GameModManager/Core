@@ -12,6 +12,7 @@
 #include <QDropEvent>
 #include <QFileIconProvider>
 #include <QFileInfo>
+#include <QFileSystemWatcher>
 #include <QFont>
 #include <QFontMetrics>
 #include <QHBoxLayout>
@@ -33,6 +34,7 @@
 #include <QStyleOptionViewItem>
 #include <QTableWidget>
 #include <QTableWidgetItem>
+#include <QTimer>
 #include <QTreeWidget>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -672,7 +674,9 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     layout->addLayout(top);
 
     table_ = make_table(4, {tr("Name"), tr("Source"), tr("Status"), tr("Size")}, this);
+    table_->setObjectName("downloadsTable");
     layout->addWidget(table_, 1);
+    apply_compact_style();
 
     connect(table_, &QTableWidget::cellDoubleClicked,
             this, &DownloadsTab::on_cell_double_clicked);
@@ -713,6 +717,47 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
                 return DropConflictAction::Rename;
         }
     };
+
+    // Watch the downloads dir so external changes (file-manager copies,
+    // modifier drops, removals) surface immediately. directoryChanged fires
+    // for any add/remove/rename; the single-shot timer coalesces bursts (Qt
+    // may emit several events for a single operation).
+    dir_watcher_ = new QFileSystemWatcher(this);
+    scan_timer_ = new QTimer(this);
+    scan_timer_->setSingleShot(true);
+    scan_timer_->setInterval(200);
+    connect(dir_watcher_, &QFileSystemWatcher::directoryChanged,
+            this, &DownloadsTab::on_downloads_dir_changed);
+    connect(scan_timer_, &QTimer::timeout,
+            this, &DownloadsTab::on_scan_timer_timeout);
+}
+
+void DownloadsTab::apply_compact_style() {
+    const bool compact = Settings::instance().compact_downloads();
+    table_->setProperty("compact", compact);
+    // Re-evaluate the QSS attribute selectors against the new property value.
+    table_->style()->unpolish(table_);
+    table_->style()->polish(table_);
+    // Floor for rows that haven't been resized to contents yet.
+    table_->verticalHeader()->setDefaultSectionSize(compact ? 22 : 40);
+    // Every populated row is already sizeHint-driven (resizeRowToContents), so
+    // re-syncing them applies the new ::item padding immediately.
+    table_->resizeRowsToContents();
+}
+
+void DownloadsTab::on_downloads_dir_changed() {
+    // Re-arm the debounce timer; a pending scan is deferred so burst events
+    // (e.g. a large copy) still coalesce into one refresh.
+    if (scan_timer_->isActive()) scan_timer_->stop();
+    scan_timer_->start();
+    engine::Logger::instance().debug(
+        "downloads: dir changed, scan scheduled (entries=" +
+        std::to_string(downloads_.size()) + ")");
+}
+
+void DownloadsTab::on_scan_timer_timeout() {
+    engine::Logger::instance().debug("downloads: scan timer fired");
+    scan_downloads_dir();
 }
 
 void DownloadsTab::set_conflict_resolver(ConflictResolver resolver) {
@@ -729,7 +774,11 @@ void DownloadsTab::add_download(const std::string& id, const std::string& name,
     if (!inserted) return;  // already exists
 
     auto& entry = it->second;
-    entry.row = next_row_++;
+    // Append at the end of the table. Do NOT keep a monotonic row counter:
+    // remove_entry() reindexes survivors downward, so a stale counter would
+    // point past the table end after entries are removed (rows then never
+    // surface - the reported "dead tab after removing entries" bug).
+    entry.row = table_->rowCount();
     entry.file_path = file_path;
     entry.state = DownloadState::Downloading;
     entry.nexus_domain = nexus_domain;
@@ -744,6 +793,7 @@ void DownloadsTab::add_download(const std::string& id, const std::string& name,
 
     entry.source_item = new QTableWidgetItem(QString::fromStdString(source));
     entry.source_item->setFlags(entry.source_item->flags() & ~Qt::ItemIsEditable);
+    entry.source_item->setTextAlignment(Qt::AlignCenter);
     table_->setItem(entry.row, 1, entry.source_item);
 
     entry.size_item = new QTableWidgetItem(QString());
@@ -842,6 +892,7 @@ void DownloadsTab::mark_complete(const std::string& id, bool success) {
     auto& entry = entry_for(id);
     if (entry.row < 0) return;
 
+    const auto prev_state = entry.state;
     entry.state = success ? DownloadState::Complete : DownloadState::Failed;
     if (success) {
         // Done: normal background, green "Install" text.
@@ -855,6 +906,14 @@ void DownloadsTab::mark_complete(const std::string& id, bool success) {
     if (entry.total_size > 0) {
         entry.size_item->setText(format_size(entry.total_size));
     }
+
+    // A download finishing is the only way out of the active-download scan
+    // guard; once none remain, re-scan so the completed archive (and anything
+    // that landed in the dir meanwhile) surfaces.
+    if ((prev_state == DownloadState::Downloading ||
+         prev_state == DownloadState::Paused) &&
+        !has_active_download())
+        on_downloads_dir_changed();
 }
 
 void DownloadsTab::mark_installed(const std::string& id) {
@@ -913,7 +972,31 @@ void DownloadsTab::set_file_path(const std::string& id, const std::filesystem::p
 }
 
 void DownloadsTab::set_downloads_dir(const std::filesystem::path& dir) {
-    downloads_dir_ = dir;
+    if (downloads_dir_ != dir) {
+        // Re-point the watcher (a switched instance gets a new downloads dir).
+        const auto old_str = QString::fromStdString(downloads_dir_.string());
+        if (!old_str.isEmpty() && dir_watcher_->directories().contains(old_str))
+            dir_watcher_->removePath(old_str);
+        downloads_dir_ = dir;
+    }
+    if (downloads_dir_.empty()) return;
+
+    std::error_code ec;
+    std::filesystem::create_directories(downloads_dir_, ec);
+    if (ec) {
+        engine::Logger::instance().error("downloads: cannot create dir " +
+            downloads_dir_.string() + ": " + ec.message());
+    }
+    const auto dir_str = QString::fromStdString(downloads_dir_.string());
+    if (!dir_watcher_->directories().contains(dir_str))
+        dir_watcher_->addPath(dir_str);
+    engine::Logger::instance().debug(
+        "downloads: watching dir " + downloads_dir_.string() +
+        " (watched=" +
+        std::to_string(dir_watcher_->directories().contains(dir_str)) + ")");
+
+    // Re-surface folder state immediately (new dir, or re-pointed after an
+    // instance switch); the watcher covers later external changes.
     scan_downloads_dir();
 }
 
@@ -935,26 +1018,65 @@ bool DownloadsTab::has_active_download() const {
 }
 
 void DownloadsTab::scan_downloads_dir() {
-    if (downloads_dir_.empty()) return;
+    if (downloads_dir_.empty()) {
+        engine::Logger::instance().debug("downloads: scan skipped (dir empty)");
+        return;
+    }
     // While a download is downloading or paused its partial archive sits in
     // the dir under its final name; don't surface it as a "Complete" entry.
-    if (has_active_download()) return;
+    if (has_active_download()) {
+        engine::Logger::instance().debug("downloads: scan skipped (active download)");
+        return;
+    }
 
     std::error_code ec;
     std::filesystem::directory_iterator it(downloads_dir_, ec);
-    if (ec) return;
+    if (ec) {
+        engine::Logger::instance().error("downloads: scan failed for " +
+            downloads_dir_.string() + ": " + ec.message());
+        return;
+    }
+    int scanned = 0;
     for (const auto& entry : it) {
         if (!entry.is_regular_file(ec)) continue;
+        ++scanned;
         add_downloads_dir_file(entry.path());
     }
+    engine::Logger::instance().debug("downloads: scanned " +
+        std::to_string(scanned) + " files, tracked=" +
+        std::to_string(downloads_.size()));
+
+    // Drop rows whose archive file is gone from the dir, so the tab mirrors
+    // disk state (the watchdog can't see a file a file manager just deleted).
+    // Collect ids first: remove_entry() mutates downloads_, and this loop is
+    // iterating it. remove_entry() skips the trash step for the missing file
+    // and emits entry_removed so the manifest persists the removal.
+    std::vector<std::string> vanished;
+    for (const auto& [id, entry] : downloads_) {
+        if (entry.file_path.empty()) continue;
+        std::error_code fec;
+        if (!std::filesystem::exists(entry.file_path, fec))
+            vanished.push_back(id);
+    }
+    for (const auto& id : vanished)
+        remove_entry(id);
+
     apply_installed_filter();
 }
 
 bool DownloadsTab::add_downloads_dir_file(const std::filesystem::path& path) {
-    if (!is_archive_path(path)) return false;
+    if (!is_archive_path(path)) {
+        engine::Logger::instance().debug("downloads: skip non-archive " +
+            path.filename().string());
+        return false;
+    }
 
     std::error_code ec;
-    if (!std::filesystem::is_regular_file(path, ec)) return false;
+    if (!std::filesystem::is_regular_file(path, ec)) {
+        engine::Logger::instance().debug("downloads: skip non-file " +
+            path.string());
+        return false;
+    }
 
     const auto id = path.filename().string();
     if (downloads_.count(id)) {
@@ -983,6 +1105,8 @@ bool DownloadsTab::add_downloads_dir_file(const std::filesystem::path& path) {
     added.total_size = static_cast<int64_t>(std::filesystem::file_size(path, ec));
     if (ec) added.total_size = 0;
     mark_complete(id, true);
+    engine::Logger::instance().debug("downloads: added Manual entry '" + id +
+        "' (total=" + std::to_string(downloads_.size()) + ")");
     return true;
 }
 
@@ -1277,7 +1401,7 @@ void DownloadsTab::deserialize(const std::string& json,
         if (!inserted) continue;
 
         auto& entry = it->second;
-        entry.row = next_row_++;
+        entry.row = table_->rowCount();
         entry.file_path = file_path;
         entry.state = state;
         entry.total_size = total_size;
@@ -1294,6 +1418,7 @@ void DownloadsTab::deserialize(const std::string& json,
 
         entry.source_item = new QTableWidgetItem(QString::fromStdString(source));
         entry.source_item->setFlags(entry.source_item->flags() & ~Qt::ItemIsEditable);
+        entry.source_item->setTextAlignment(Qt::AlignCenter);
         table_->setItem(entry.row, 1, entry.source_item);
 
         // For non-downloading states, show the file size; during download the

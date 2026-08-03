@@ -16,7 +16,17 @@
 //   - dropping archives onto the tab moves/copies them into the downloads dir
 //     per the proposed action, surfaces a Manual/Install row, and resolves
 //     name conflicts via the injected resolver (MO2 parity: Overwrite,
-//     N_<name> rename, Ignore).
+//     N_<name> rename, Ignore),
+//   - the directory watchdog refreshes the view on its own: a new archive
+//     appears, an overwritten tracked archive's size updates, a deleted
+//     archive's row is removed, and finishing the last active download ends
+//     the scan guard so in-flight partials surface,
+//   - the SAME watchdog and drop flows work when the tab starts EMPTY (a
+//     fresh instance downloads dir) - a 0-row tab must still come alive,
+//   - an add -> external delete -> add cycle on ONE tab keeps the tab alive:
+//     removing every entry (rows disappear) must not leave a stale row counter
+//     that breaks subsequent inserts (reported: "removed entries from the file
+//     manager, rows disappeared, then any further change stopped showing up").
 //
 // Drag-event delivery: QApplication::notify routes Drag/Drop events to the
 // active drag's current target only, so a synthesized QDropEvent never
@@ -34,6 +44,7 @@
 #include <QMimeData>
 #include <QTableWidget>
 #include <QTableWidgetItem>
+#include <QThread>
 #include <QUrl>
 
 #include <cstdio>
@@ -235,7 +246,8 @@ int main(int argc, char** argv) {
     // Build a drop carrying a single local file URL. move=true proposes
     // MoveAction (Shift drag), move=false proposes CopyAction (Ctrl drag) -
     // matching how Qt derives the proposed action from the modifiers.
-    auto send_drop = [&](const std::filesystem::path& file, bool move,
+    auto send_drop = [&](TestDownloadsTab* target,
+                         const std::filesystem::path& file, bool move,
                          bool* accepted = nullptr,
                          Qt::DropAction* drop_action = nullptr) {
         QMimeData mime;
@@ -244,7 +256,7 @@ int main(int argc, char** argv) {
                          Qt::MoveAction | Qt::CopyAction,
                          &mime, Qt::LeftButton,
                          move ? Qt::ShiftModifier : Qt::ControlModifier);
-        tab.dropEvent(&event);
+        target->dropEvent(&event);
         if (accepted) *accepted = event.isAccepted();
         if (drop_action) *drop_action = event.dropAction();
     };
@@ -281,7 +293,7 @@ int main(int argc, char** argv) {
     write_file(moved_src, 1024);
     bool moved_accepted = false;
     Qt::DropAction moved_action = Qt::IgnoreAction;
-    send_drop(moved_src, true, &moved_accepted, &moved_action);
+    send_drop(&tab, moved_src, true, &moved_accepted, &moved_action);
     check(moved_accepted, "move drop is accepted");
     check(moved_action == Qt::TargetMoveAction,
           "move drop takes the source (TargetMoveAction, MO2 parity)");
@@ -301,7 +313,7 @@ int main(int argc, char** argv) {
     write_file(copied_src, 512);
     bool copied_accepted = false;
     Qt::DropAction copied_action = Qt::IgnoreAction;
-    send_drop(copied_src, false, &copied_accepted, &copied_action);
+    send_drop(&tab, copied_src, false, &copied_accepted, &copied_action);
     check(copied_accepted, "copy drop is accepted");
     check(copied_action == Qt::CopyAction,
           "copy drop leaves the source in place (CopyAction)");
@@ -315,7 +327,7 @@ int main(int argc, char** argv) {
     const auto notes = src_dir / "Readme.txt";
     write_file(notes, 64);
     bool notes_accepted = true;
-    send_drop(notes, true, &notes_accepted);
+    send_drop(&tab, notes, true, &notes_accepted);
     check(!notes_accepted, "non-archive drop is ignored");
     check(std::filesystem::exists(notes) &&
               !std::filesystem::exists(dl_dir / "Readme.txt") &&
@@ -326,7 +338,7 @@ int main(int argc, char** argv) {
     // the file operation: the entry is surfaced, the file is not clobbered.
     const auto self_file = dl_dir / "Self Drop.zip";
     write_file(self_file, 256);
-    send_drop(self_file, true);
+    send_drop(&tab, self_file, true);
     check(std::filesystem::exists(self_file),
           "drop of an already-present file does not clobber it");
     check(row_with_name(table, "Self Drop") >= 0,
@@ -342,7 +354,7 @@ int main(int argc, char** argv) {
                                  const std::filesystem::path&) {
         return ui::DropConflictAction::Rename;
     });
-    send_drop(clash_src, true);
+    send_drop(&tab, clash_src, true);
     check(std::filesystem::exists(dl_dir / "1_Clash Mod.zip"),
           "conflict Rename lands the archive as 1_<name>");
     check(!std::filesystem::exists(clash_src),
@@ -359,7 +371,7 @@ int main(int argc, char** argv) {
                                  const std::filesystem::path&) {
         return ui::DropConflictAction::Ignore;
     });
-    send_drop(ignore_src, true);
+    send_drop(&tab, ignore_src, true);
     check(std::filesystem::exists(ignore_src),
           "conflict Ignore leaves the source in place");
     check(row_with_name(table, "Ignore Mod") < 0,
@@ -380,7 +392,7 @@ int main(int argc, char** argv) {
                                  const std::filesystem::path&) {
         return ui::DropConflictAction::Overwrite;
     });
-    send_drop(over_src, true);
+    send_drop(&tab, over_src, true);
     check(std::filesystem::exists(over_dest),
           "conflict Overwrite keeps the destination name");
     {
@@ -405,7 +417,7 @@ int main(int argc, char** argv) {
         check(table->item(re_seed_row, 3)->text() == "64 B",
               "tracked row initially shows the old size");
     write_file(re_src, 512);
-    send_drop(re_src, true);
+    send_drop(&tab, re_src, true);
     check(!std::filesystem::exists(re_src),
           "overwrite of a tracked entry moves the source");
     check(std::filesystem::exists(re_dest),
@@ -427,7 +439,7 @@ int main(int argc, char** argv) {
     check(rc_seed_row >= 0,
           "existing archive is tracked before the copy overwrite");
     write_file(re_copy_src, 1024);
-    send_drop(re_copy_src, false);
+    send_drop(&tab, re_copy_src, false);
     check(std::filesystem::exists(re_copy_src),
           "copy overwrite of a tracked entry keeps the source");
     check(std::filesystem::exists(re_copy_dest),
@@ -438,6 +450,142 @@ int main(int argc, char** argv) {
     if (rc_row >= 0)
         check(table->item(rc_row, 3)->text() == "1.0 KB",
               "copy overwrite of a tracked entry updates the size immediately");
+
+    // --- Downloads-dir watchdog: external changes surface on their own (a
+    // file-manager drop/delete must update the tab without a manual scan).
+    // The watcher + debounce timer need a live event loop, so poll with real
+    // sleeps until the expectation holds or the deadline passes.
+    auto wait_until = [&app](int timeout_ms, const std::function<bool()>& cond) {
+        for (int waited = 0; waited < timeout_ms; waited += 10) {
+            app.processEvents();
+            if (cond()) return true;
+            QThread::msleep(10);
+        }
+        return false;
+    };
+
+    TestDownloadsTab watch_tab;
+    watch_tab.set_downloads_dir(dl_dir);
+
+    // 1) A new archive landing in the dir appears without a manual scan.
+    const auto watched_add = dl_dir / "Watched Add.zip";
+    write_file(watched_add, 2048);
+    check(wait_until(1500, [&]() {
+              return row_with_name(watch_tab.table(), "Watched Add") >= 0;
+          }),
+          "watchdog surfaces a newly copied archive without a manual scan");
+    const int wa_row = row_with_name(watch_tab.table(), "Watched Add");
+    if (wa_row >= 0)
+        check(watch_tab.table()->item(wa_row, 3)->text() == "2.0 KB",
+              "watchdog row shows the new archive size");
+
+    // 2) Replacing an already-tracked archive refreshes its size on its own.
+    const auto watched_over = dl_dir / "Watched Overwrite.zip";
+    write_file(watched_over, 64);
+    check(wait_until(1500, [&]() {
+              return row_with_name(watch_tab.table(), "Watched Overwrite") >= 0;
+          }),
+          "watchdog surfaces the initial tracked archive");
+    write_file(watched_over, 512);
+    check(wait_until(1500, [&]() {
+              const int r = row_with_name(watch_tab.table(), "Watched Overwrite");
+              return r >= 0 && watch_tab.table()->item(r, 3)->text() == "512 B";
+          }),
+          "watchdog refreshes the size of an overwritten tracked archive");
+
+    // 3) Deleting an archive removes its row on its own.
+    std::filesystem::remove(watched_over);
+    check(wait_until(1500, [&]() {
+              return row_with_name(watch_tab.table(), "Watched Overwrite") < 0;
+          }),
+          "watchdog removes the row of a deleted archive");
+
+    // 4) Finishing the last active download ends the scan guard and surfaces a
+    // partial archive that landed while the download was in flight.
+    TestDownloadsTab guard_tab;
+    guard_tab.add_download("watch-dl", "Watch Flight", "Nexus Mods");
+    const auto watched_partial = dl_dir / "Watched Partial.zip";
+    write_file(watched_partial, 300);
+    guard_tab.set_downloads_dir(dl_dir);
+    check(row_with_name(guard_tab.table(), "Watched Partial") < 0,
+          "watchdog scan still skips while a download is in flight");
+    guard_tab.mark_complete("watch-dl", true);
+    check(wait_until(1500, [&]() {
+              return row_with_name(guard_tab.table(), "Watched Partial") >= 0;
+          }),
+          "finishing the last download auto-scans and surfaces the archive");
+
+    // --- Empty-tab regression: a fresh, EMPTY downloads tab must still come
+    // alive when files land in its dir (watchdog) or are dropped onto it. The
+    // pre-seeded dirs above never covered this state (reported: a 0-row tab
+    // fails to ever update, no matter how files end up in the downloads dir).
+    const std::filesystem::path empty_dir = "/tmp/gmm_downloads_tab/empty";
+    std::filesystem::create_directories(empty_dir);
+
+    TestDownloadsTab empty_tab;
+    empty_tab.set_downloads_dir(empty_dir);
+    check(empty_tab.table()->rowCount() == 0,
+          "empty downloads tab starts with zero rows");
+
+    // 1) Watchdog: a file copied into the previously-empty dir surfaces.
+    const auto fresh_zip = empty_dir / "Fresh Mod.zip";
+    write_file(fresh_zip, 1024);
+    check(wait_until(1500, [&]() {
+              return row_with_name(empty_tab.table(), "Fresh Mod") >= 0;
+          }),
+          "empty tab: watchdog surfaces a file copied into the dir");
+
+    // 2) Drop onto the empty tab: the archive lands in the dir AND a row
+    // appears (the reported flow is drag into a 0-row tab).
+    const auto empty_drop_src = src_dir / "Empty Tab Drop.zip";
+    write_file(empty_drop_src, 512);
+    bool empty_drop_accepted = false;
+    send_drop(&empty_tab, empty_drop_src, true,
+              &empty_drop_accepted);
+    check(empty_drop_accepted, "empty tab: drop is accepted");
+    check(std::filesystem::exists(empty_dir / "Empty Tab Drop.zip"),
+          "empty tab: drop lands the archive in the downloads dir");
+    check(row_with_name(empty_tab.table(), "Empty Tab Drop") >= 0,
+          "empty tab: dropped archive surfaces a row immediately");
+
+    // --- Add/remove/add regression: the reported break is "added entries to
+    // an empty list (worked), removed them manually from a file manager (rows
+    // disappeared), then ANY further change stopped showing up". The watchdog
+    // removal path must leave the tab alive for the next addition.
+    const std::filesystem::path cycle_dir = "/tmp/gmm_downloads_tab/cycle";
+    std::filesystem::create_directories(cycle_dir);
+
+    TestDownloadsTab cycle_tab;
+    cycle_tab.set_downloads_dir(cycle_dir);
+    check(cycle_tab.table()->rowCount() == 0,
+          "add/remove/add: cycle tab starts empty");
+
+    const auto cycle_a = cycle_dir / "Cycle A.zip";
+    write_file(cycle_a, 128);
+    check(wait_until(1500, [&]() {
+              return row_with_name(cycle_tab.table(), "Cycle A") >= 0;
+          }),
+          "add/remove/add: first archive surfaces (add works)");
+
+    std::filesystem::remove(cycle_a);
+    check(wait_until(1500, [&]() {
+              return row_with_name(cycle_tab.table(), "Cycle A") < 0;
+          }),
+          "add/remove/add: external delete removes the row");
+
+    const auto cycle_b = cycle_dir / "Cycle B.zip";
+    write_file(cycle_b, 256);
+    check(wait_until(1500, [&]() {
+              return row_with_name(cycle_tab.table(), "Cycle B") >= 0;
+          }),
+          "add/remove/add: a new archive still surfaces after a removal");
+
+    const auto cycle_c = cycle_dir / "Cycle C.zip";
+    write_file(cycle_c, 512);
+    check(wait_until(1500, [&]() {
+              return row_with_name(cycle_tab.table(), "Cycle C") >= 0;
+          }),
+          "add/remove/add: the tab stays alive for further additions");
 
     std::printf("\n%d passed, %d failed\n", passes, failures);
     return failures ? 1 : 0;

@@ -1,3 +1,6 @@
+> ![Warning]
+> This project is under active development and may not work correclty. Please do not try to use it in it's current state.
+
 <div align="center">
 
 # GameModManager
@@ -23,25 +26,21 @@ A cross-platform, plugin-driven game mod manager with an MO2-style UI. Drop in a
 
 ## Features
 
-- **MO2-style mod list** - virtual mod list with drag-and-drop reordering, a fixed game-native (unmanaged) band pinned above user mods, separators with fold arrows, conflict status icons, and in-cell checkboxes
-- **Bidirectional selection highlighting** (MO2 parity) - selecting mods tints the plugins they own in the Plugins tab; selecting a plugin tints its providing mods + masters in the mod list; highlighted mods also get colored scrollbar marks for 100K-mod navigation
+- **MO2-style mod list** - virtual mod list with drag-and-drop reordering, a fixed game-native (unmanaged) band pinned above user mods, separators with fold arrows, conflict status icons
 - **Plugin-based game support** - each game is a separate shared library loaded via the stable C ABI (dlopen/LoadLibrary)
-- **Multi-instance support** (portable and installed)
+- **Multi-instance support** (portable and global)
 - **Deploy strategies:**
     - [x] OverlayFS (Linux default)
-    - [x] symlink
-    - [x] hardlink
-    - [x] NTFS junction (Windows)
-    - [x] FUSE VFS (Linux)
-- **Conflict detection** with priority-ordered file overwrites and conflict-resolution dialogs (MO2's `testOverwrite` query flow: Merge/Replace/Rename/Cancel + Keep Backup)
+    - [ ] symlink
+    - [ ] hardlink
+    - [ ] NTFS junction (Windows)
+    - [ ] UVFS (Windows)
+    - [ ] FUSE VFS (Linux)
+- **Conflict detection** with priority-ordered file overwrites and conflict-resolution dialogs 
 - **Downloads tab** - Nexus + Steam Workshop sources, per-file progress/Pause, `nxm://` link routing via IPC, untracked-archive scan
-- **Overwrite management** - MO2 ports: Sync to Mods / Move to Mod / Overwrite browser / drag-to-mod
-- **OS keyring storage** for the Nexus API key (QtKeychain; secure file fallback)
-- **Settings dialog** - 8 tabs (General/Theme/Mod List/Paths/Sources/Plugins/Workarounds/Diagnostics), plugin-declared options
 - **Themeable** via QSS token templates (Dark + Nord bundled, plus Qt built-in styles)
 - **Python scripting tier** via pybind11
 - **Headless CLI** - launch games without the UI, handle `nxm://` links
-- **Robustness** - crash handler with stack-trace dumps, debug logging (`GMM_DEBUG`), IPC single-instance guard
 - Cross-platform: Linux, Windows (macOS planned)
 
 ---
@@ -55,7 +54,7 @@ A cross-platform, plugin-driven game mod manager with an MO2-style UI. Drop in a
 
 Tool plugins (non-game): `ImageDiff`, `IsaacModSorter`.
 
-Adding a new game requires only a new plugin file - no changes to the core binary.
+Adding a new game requires only a new plugin file.
 
 ---
 
@@ -166,59 +165,52 @@ On first run, the app shows a game selection screen. After selecting a game, an 
 
 `GMM_DEBUG=1` shows debug-level log lines in the console (the log file always has full verbosity). Crash dumps land in `~/.local/share/GameModManager/crashes/`.
 
-> [!IMPORTANT]
-> The binary must be built in **Release** mode for reasonable size. A Debug build produces a ~28 MB binary (debug info from template-heavy headers); a Release+stripped build produces ~2.4 MB.
-
 ---
 
 ## Architecture
 
 ```
 src/
-├-- cli/             # Headless CLI (--launch, --handle-nxm)
-├-- engine/          # Qt-free core - no Qt headers allowed here
-│   ├-- archive/     # Zip extraction
-│   ├-- cache/       # SQLite mod cache
-│   ├-- deploy/      # OverlayFS, symlink, hardlink, junction, FUSE strategies + deploy ledger
-│   ├-- detect/      # Game detection, mod scanning
-│   ├-- index/       # Conflict index
-│   ├-- instance/    # Instance management (portable + installed)
-│   ├-- keyring.{h,cpp} # Keyring interface + secure file fallback
-│   ├-- launcher.{h,cpp} # Shared game-launch chain (process-group watch, overlay tiers)
-│   ├-- log/         # Logger + crash handler
-│   ├-- meta/        # Metadata parsers
-│   ├-- model/       # Profile model
-│   ├-- notify/      # Notification backends
-│   ├-- nxm/         # nxm:// router + IPC server (single-instance guard)
+├-- cli/                    # Headless CLI (--launch, --handle-nxm)
+├-- engine/                 # Qt-free core - no Qt headers allowed here
+│   ├-- archive/            # Zip extraction
+│   ├-- cache/              # SQLite mod cache
+│   ├-- deploy/             # OverlayFS, symlink, hardlink, junction, FUSE strategies + deploy ledger
+│   ├-- detect/             # Game detection, mod scanning
+│   ├-- index/              # Conflict index
+│   ├-- instance/           # Instance management (portable + installed)
+│   ├-- keyring.{h,cpp}     # Keyring interface + secure file fallback
+│   ├-- launcher.{h,cpp}    # Shared game-launch chain (process-group watch, overlay tiers)
+│   ├-- log/                # Logger + crash handler
+│   ├-- meta/               # Metadata parsers
+│   ├-- model/              # Profile model
+│   ├-- notify/             # Notification backends
+│   ├-- nxm/                # nxm:// router + IPC server (single-instance guard)
 │   ├-- overlay_launcher / preload_interceptor # OverlayFS 3-tier capture chain
-│   ├-- overwrite/   # Overwrite movers/sync logic
-│   ├-- pipeline/    # 8-stage pipeline (fetch→...→launch)
-│   ├-- plugin_host/ # dlopen loader + Python embedding
-│   ├-- plugins/     # PluginDatabase (MO2 PluginList port), TES4 header parser
-│   ├-- registry/    # Stage registry, hook registry, GameKnowledge
-│   ├-- source/      # Source providers: Nexus, Steam Workshop
-│   ├-- sort/        # Generic sort provider + ABI wrapper
-│   ├-- theme/       # QSS token-template engine
-│   ├-- trace/       # Pipeline trace recorder
-│   ├-- workshop/    # Steam Workshop / remote cache
-│   └-- nexus_auth.{h,cpp} # Nexus API auth + rate limits
-├-- keyring/         # QtKeychain backend (Qt-bound; engine stays Qt-free)
-├-- platform/        # OS-specific (linux/, windows/, macos/)
-├-- runtime/         # ProtonRuntime, NativeRuntime, WineRuntime
-├-- ui/              # Qt Widgets - lives here, never in engine/
-│   ├-- main_window/ # Main window, toolbar, status bar, launch + highlight wiring
-│   ├-- widgets/     # Mod list (ModListModel), filter bar, console, etc.
-│   ├-- panels/      # Plugins/Archives/Data/Saves/Downloads tabs
-│   ├-- settings/    # Settings singleton + 8-tab SettingsDialog
-│   ├-- overwrite/   # MO2 overwrite dialogs (sync, move-to-mod, query, browser)
-│   ├-- game_selection/ # First-run game picker
+│   ├-- overwrite/          # Overwrite movers/sync logic
+│   ├-- pipeline/           # 8-stage pipeline (fetch→...→launch)
+│   ├-- plugin_host/        # dlopen loader + Python embedding
+│   ├-- plugins/            # PluginDatabase (MO2 PluginList port), TES4 header parser
+│   ├-- registry/           # Stage registry, hook registry, GameKnowledge
+│   ├-- source/             # Source providers: Nexus, Steam Workshop
+│   ├-- sort/               # Generic sort provider + ABI wrapper
+│   ├-- theme/              # QSS token-template engine
+│   ├-- trace/              # Pipeline trace recorder
+│   ├-- workshop/           # Steam Workshop / remote cache
+│   └-- nexus_auth.{h,cpp}  # Nexus API auth + rate limits
+├-- keyring/                # QtKeychain backend (Qt-bound; engine stays Qt-free)
+├-- platform/               # OS-specific (linux/, windows/, macos/)
+├-- runtime/                # ProtonRuntime, NativeRuntime, WineRuntime
+├-- ui/                     # Qt Widgets - lives here, never in engine/
+│   ├-- main_window/        # Main window, toolbar, status bar, launch + highlight wiring
+│   ├-- widgets/            # Mod list (ModListModel), filter bar, console, etc.
+│   ├-- panels/             # Plugins/Archives/Data/Saves/Downloads tabs
+│   ├-- settings/           # Settings singleton + 8-tab SettingsDialog
+│   ├-- overwrite/          # MO2 overwrite dialogs (sync, move-to-mod, query, browser)
+│   ├-- game_selection/     # First-run game picker
 │   └-- pipeline_worker.cpp # Pipeline runs on a worker QThread
-└-- main.cpp         # Entry point
+└-- main.cpp                # Entry point
 ```
-
-**Key boundary:** `src/engine/` contains **zero Qt headers**. The engine is a pure C++ library; all Qt code lives in `src/ui/`. This separation keeps the engine testable headless and the UI replaceable.
-
-**UI is the single source of truth for workflows.** The CLI never re-implements business logic - both the GUI and `cli/headless_launcher.cpp` consume the same engine functions (`engine::launch_game()`, `engine::prepare_launch_params()`, `engine::create_instance_for_game()`). Every game launch deploys mods through the one sanctioned path; the watchdog wipes the staging dir at session end.
 
 ### Plugin System
 
@@ -226,23 +218,13 @@ Game-specific logic lives in shared libraries under `external/plugins/`. Each pl
 
 ```
 external/
-├-- abi/             # Stable C ABI header (gmm_abi_v1.h, GMM_ABI_VERSION=1)
+├-- abi/                            # Stable C ABI header (gmm_abi_v1.h, GMM_ABI_VERSION=1)
 └-- plugins/
     ├-- CMakeLists.txt
-    ├-- SkyrimSpecialEdition/ # Skyrim SE: plugins.txt load order, Data/ layout
-    ├-- TheBindingOfIsaacRebirth/ # Isaac: mods/ layout, metadata.xml parsing
-    └-- Tools/          # ImageDiff, IsaacModSorter
+    ├-- SkyrimSpecialEdition/       # Skyrim SE: plugins.txt load order, Data/ layout
+    ├-- TheBindingOfIsaacRebirth/   # Isaac: mods/ layout, metadata.xml parsing
+    └-- Tools/                      # ImageDiff, IsaacModSorter
 ```
-
-### Pipeline
-
-The 8-stage pipeline processes mods from download to launch:
-
-```
-Fetch → Extract → Install → Stage → Resolve → Deploy → Sync → Launch
-```
-
-Each stage can be claimed by a plugin via `register_stage_claim`, allowing games to override specific stages while using the generic pipeline for the rest. The install stage runs MO2's `testOverwrite` query flow (Merge/Replace/Rename/Cancel + Keep Backup) when a mod folder already exists.
 
 ---
 
@@ -289,42 +271,6 @@ extern "C" uint32_t gmm_abi_version(void) {
 Build it as a shared library and drop it into the `plugins/` directory. The core will pick it up on next launch - no recompilation needed.
 
 See `external/plugins/SkyrimSpecialEdition/GameSupport/SkyrimSpecialEdition.cpp` for a complete real-world example. Registering metadata/category/settings callbacks is optional - NULL-check them so plugins built against older headers keep loading (ABI stays v1).
-
----
-
-## Tests
-
-```bash
-cd build
-ctest --output-on-failure
-```
-
-25 test suites, all passing:
-
-| Test | What it covers |
-|------|---------------|
-| `overlay_intercept_test` | OverlayFS interceptor capture chain |
-| `pipeline_test` | 8-stage pipeline + overwrite query flow |
-| `plugin_database_test` | MO2 PluginList port: discovery, load order, enable/disable, profiles |
-| `logger_test` | Logger replay buffer + levels |
-| `phase04_test` | Conflict index + profile model |
-| `trace_test` | Pipeline trace recorder |
-| `registry_test` | Stage/hook registry + pipeline wiring |
-| `instance_path_test` | Instance paths + `prepare_launch_params` deploy |
-| `launch_params_test` | Launch-param assembly (deploy idempotency) |
-| `nxm_router_test` | nxm:// link routing + IPC |
-| `theme_test` | Theme discovery/scan/tokens |
-| `keyring_test` / `qtkeychain_test` | Keyring interface + QtKeychain backend |
-| `mimeapps_test` | OS-level nxm:// handler registration |
-| `perf_benchmark` | 3000×50 mod stress test |
-| `python_plugin_test` | Python plugin loading via pybind11 |
-| `conflict_test` / `overwrite_utils_test` | Conflict resolution + overwrite movers |
-| `nexus_http_test` | Nexus API HTTP (URL encoding, rate limits) |
-| `settings_plugins_tab_test` / `settings_sources_tab_test` | Settings dialog tabs (offscreen) |
-| `downloads_tab_test` | Downloads tab (untracked-archive scan, states) |
-| `plugins_tab_test` | Plugins tab (emblem flags, pinned rows, highlights) |
-| `mod_list_model_test` | ModListModel (game-native band, highlight marks) |
-| `overwrite_dialogs_test` | MO2 overwrite dialogs (offscreen) |
 
 ---
 
