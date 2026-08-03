@@ -1,4 +1,5 @@
-> ![Warning]
+
+> [!WARNING]  
 > This project is under active development and may not work correclty. Please do not try to use it in it's current state.
 
 <div align="center">
