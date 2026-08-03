@@ -87,8 +87,8 @@ public:
     // Re-apply the "hide installed" filter on top of any other row filter.
     void reapply_installed_filter();
 
-    // Re-read the compact-downloads setting and restyle the table's row height
-    // (MO2 standard/compact padding) via the dynamic `compact` property.
+    // Re-read the compact-downloads setting and set explicit row heights
+    // (MO2 standard/compact) so the look does not depend on any stylesheet.
     void apply_compact_style();
 
     // Replace the conflict resolver shown when a dropped archive's name
@@ -166,6 +166,10 @@ private:
     // as a bogus "Complete" row).
     void scan_downloads_dir();
     bool has_active_download() const;
+
+    // MO2 standard/compact row height in pixels, derived from the current font
+    // so text never clips. Compact ~ font + 8; standard ~ font + 22.
+    int row_height() const;
 
 protected:
     void showEvent(QShowEvent* event) override;
@@ -275,9 +279,12 @@ signals:
                                   const QString& default_name);
     // Open the minimal Mod Info dialog for the mod owning the file.
     void open_mod_info_requested(const QString& mod_id);
-    // Hide (rename to .gmmhidden) or un-hide the file on disk. The tree is
-    // rebuilt by the caller after the registry is re-computed.
-    void hide_requested(const QString& file_path, bool hide);
+    // Hide (rename to .gmmhidden) or un-hide the file on disk. mod_id is the
+    // winner mod the file lives in - the caller drops that mod's conflict
+    // cache entry (the quick token can't see renames inside subdirectories)
+    // before re-computing the registry. The tree is rebuilt by the caller
+    // after the registry is re-computed.
+    void hide_requested(const QString& file_path, const QString& mod_id, bool hide);
     // Re-populate the tree from the current conflict registry.
     void refresh_requested();
 

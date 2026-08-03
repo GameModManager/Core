@@ -69,6 +69,32 @@ int main() {
         std::printf("  conflict_reversed=false: mod_c (pri=3) wins config.ini\n");
     }
 
+    // --- Subdirectory renames (e.g. hiding via .gmmhidden) don't change the
+    // mod root's quick token, so the cached file list would go stale and the
+    // registry would keep the pre-rename path. invalidate_mod() must force a
+    // re-scan so the next compute picks up the rename (MainWindow calls it
+    // after every hide/un-hide for exactly this reason).
+    {
+        fs::path cache = base / "conflict_cache.json";
+        engine.compute(base, mods, "", "metadata.xml", false, cache);
+        fs::rename(base / "mod_c" / "data" / "config.ini",
+                   base / "mod_c" / "data" / "config.ini.gmmhidden");
+        engine.invalidate_mod("mod_c", cache);
+        engine.compute(base, mods, "", "metadata.xml", false, cache);
+
+        const auto& reg = engine.last_registry();
+        auto it = reg.find("data/config.ini");
+        assert(it != reg.end() && it->second.size() == 2 &&
+               "mod_c's hidden copy must not stay among config.ini's owners");
+        assert(reg.find("data/config.ini.gmmhidden") != reg.end() &&
+               "the renamed hidden file must appear as its own registry key");
+
+        // Restore for the directory cleanup below.
+        fs::rename(base / "mod_c" / "data" / "config.ini.gmmhidden",
+                   base / "mod_c" / "data" / "config.ini");
+        std::printf("  invalidate_mod after a subdir rename re-scans the mod\n");
+    }
+
     fs::remove_all(base);
 
     std::printf("PASS: conflict_test\n");

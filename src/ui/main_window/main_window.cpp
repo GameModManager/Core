@@ -1868,7 +1868,7 @@ void MainWindow::on_data_mod_info(const QString& mod_id) {
     }
 }
 
-void MainWindow::on_data_hide(const QString& file_path, bool hide) {
+void MainWindow::on_data_hide(const QString& file_path, const QString& mod_id, bool hide) {
     const auto p = std::filesystem::path(file_path.toStdString());
     const bool ok = hide ? engine::hide_file(p) : engine::unhide_file(p);
     if (!ok) {
@@ -1876,8 +1876,13 @@ void MainWindow::on_data_hide(const QString& file_path, bool hide) {
             tr("Failed to %1 the file.").arg(hide ? tr("hide") : tr("un-hide")));
         return;
     }
-    // The rename bumps the mod folder's quick token, so the conflict cache is
-    // stale - recompute to pick up the new listing and refresh the tab.
+    // The rename happens inside a subdirectory (e.g. Data/...), which does NOT
+    // change the mod root's quick token - the conflict cache would keep serving
+    // the pre-rename file list and the tab would show the old name as a normal
+    // file (with no real path, so no file menu). Drop the owning mod's cached
+    // entry so recompute re-scans it and surfaces the hidden/un-hidden state.
+    engine::ConflictEngine engine;
+    engine.invalidate_mod(mod_id.toStdString(), conflict_cache_path_);
     recompute_conflicts();
 }
 

@@ -14,6 +14,18 @@ using json = nlohmann::json;
 
 namespace engine {
 
+namespace {
+
+// Version of the persisted conflict cache format. Bumped whenever the cache
+// semantics change in a way that makes old entries unreliable - e.g. hiding a
+// file inside a subdirectory renames it without changing the mod root's quick
+// token, so pre-fix caches can hold file lists that no longer match disk.
+// load_cache rejects mismatched versions, forcing a full re-walk that heals
+// stale state on the first compute after an update.
+inline constexpr int kCacheVersion = 2;
+
+}  // namespace
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -145,6 +157,11 @@ ConflictEngine::load_cache(const std::filesystem::path& cache_path) const {
         json j;
         f >> j;
 
+        // Reject caches written by an older format (see kCacheVersion): the
+        // quick token can't detect every on-disk change, so old entries may
+        // no longer describe the mod folders. A full re-walk rebuilds them.
+        if (j.value("version", 0) != kCacheVersion) return data;
+
         data.filters_hash = j.value("filters_hash", size_t{0});
 
         if (j.contains("mods")) {
@@ -174,7 +191,7 @@ void ConflictEngine::save_cache(
     if (ec) return;
 
     json j;
-    j["version"] = 1;
+    j["version"] = kCacheVersion;
     j["filters_hash"] = data.filters_hash;
 
     json mods_obj;

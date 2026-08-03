@@ -167,7 +167,7 @@ private:
                          const QStringList& provider_names);
     void on_data_add_executable(const QString& file_path, const QString& default_name);
     void on_data_mod_info(const QString& mod_id);
-    void on_data_hide(const QString& file_path, bool hide);
+    void on_data_hide(const QString& file_path, const QString& mod_id, bool hide);
     void on_image_diff_requested(const QString& relative_path);
     void migrate_mo2_meta();
     void load_meta_for_mods();
