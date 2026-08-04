@@ -41,6 +41,10 @@ struct Mod {
     // URL directly instead of resolving one themselves.
     std::string download_url;
 
+    // Source page URL for the download (e.g. a LoversLab file page). Persisted
+    // into the mod's per-source meta section so the UI can link back to it.
+    std::string download_page_url;
+
     // Archive filename determined during fetch (e.g. "mod-12345-1-0.zip")
     std::string archive_filename;
 };

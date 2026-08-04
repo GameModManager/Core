@@ -113,6 +113,15 @@ int main() {
         CHECK(engine::LoversLabProvider::extract_file_id(
                   "https://www.loverslab.com/topic/4242/").empty(),
               "no file marker -> empty");
+
+        CHECK(engine::LoversLabProvider::mod_page_url(
+                  "https://www.loverslab.com/files/file/4242-slug/?do=download&r=7") ==
+                  "https://www.loverslab.com/files/file/4242-slug/",
+              "download query stripped -> page URL");
+        CHECK(engine::LoversLabProvider::mod_page_url(
+                  "https://www.loverslab.com/files/file/4242/") ==
+                  "https://www.loverslab.com/files/file/4242/",
+              "bare page link unchanged");
     }
 
     // ---- Content-Disposition / percent-decode parsing -------------

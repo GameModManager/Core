@@ -26,7 +26,12 @@
 //   - an add -> external delete -> add cycle on ONE tab keeps the tab alive:
 //     removing every entry (rows disappear) must not leave a stale row counter
 //     that breaks subsequent inserts (reported: "removed entries from the file
-//     manager, rows disappeared, then any further change stopped showing up").
+//     manager, rows disappeared, then any further change stopped showing up"),
+//   - the row context menu is source-aware: a LoversLab row offers "Open on
+//     LoversLab" (its stored page URL), a Nexus row "Open on Nexus" (domain +
+//     mod id), and a local row no page action; triggering Install on a
+//     LoversLab row carries the origin provenance (source_type loverslab, the
+//     file id as source_id, and the page URL).
 //
 // Drag-event delivery: QApplication::notify routes Drag/Drop events to the
 // active drag's current target only, so a synthesized QDropEvent never
@@ -42,6 +47,7 @@
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QHeaderView>
+#include <QMenu>
 #include <QMimeData>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -88,6 +94,7 @@ struct TestDownloadsTab : ui::DownloadsTab {
     using ui::DownloadsTab::dragEnterEvent;
     using ui::DownloadsTab::dragMoveEvent;
     using ui::DownloadsTab::dropEvent;
+    using ui::DownloadsTab::add_context_menu_actions;
 };
 
 int main(int argc, char** argv) {
@@ -249,7 +256,7 @@ int main(int argc, char** argv) {
     QObject::connect(&tab, &ui::DownloadsTab::install_requested,
         [&](const std::string&, const std::filesystem::path& fp,
             const std::string& source_type, const std::string&,
-            int, const std::string& name) {
+            int, const std::string& name, const std::string&) {
             got_install = true;
             got_path = fp;
             got_source_type = source_type;
@@ -661,6 +668,78 @@ int main(int argc, char** argv) {
               return row_with_name(cycle_tab.table(), "Cycle C") >= 0;
           }),
           "add/remove/add: the tab stays alive for further additions");
+
+    // --- Source-aware "Open on ..." context action + install provenance ---
+    // The context menu is driven through add_context_menu_actions (no modal
+    // exec): a LoversLab row offers "Open on LoversLab" opening its stored
+    // page URL, a Nexus row "Open on Nexus" built from domain + mod id, and a
+    // local row no page action at all. Triggering a LoversLab row's Install
+    // must carry the origin provenance (source_type, file id, page URL).
+    TestDownloadsTab ctx_tab;
+
+    auto find_action = [](QMenu& menu, const char* text) -> QAction* {
+        const QString needle = QString::fromLatin1(text);
+        for (auto* act : menu.actions())
+            if (act->text() == needle) return act;
+        return nullptr;
+    };
+
+    // Complete LoversLab entry with a real archive on disk.
+    const std::string ll_page =
+        "https://www.loverslab.com/files/file/4242-skooma-whore-se/";
+    const auto ll_zip = dl_dir / "Skooma Whore SE v1.01.zip";
+    write_file(ll_zip, 512);
+    ctx_tab.add_download("4242", "Skooma Whore SE v1.01", "LoversLab",
+                         ll_zip, {}, 0, {}, ll_page);
+    ctx_tab.mark_complete("4242", true);
+    {
+        std::string got_st = "unset", got_sid = "unset", got_page = "unset";
+        bool triggered = false;
+        QObject::connect(&ctx_tab, &ui::DownloadsTab::install_requested,
+            [&](const std::string&, const std::filesystem::path&,
+                const std::string& st, const std::string& sid,
+                int, const std::string&, const std::string& page) {
+                triggered = true; got_st = st; got_sid = sid; got_page = page;
+            });
+        QMenu menu;
+        ctx_tab.add_context_menu_actions(menu, "4242");
+        auto* act = find_action(menu, "Open on LoversLab");
+        check(act && act->isEnabled() &&
+                  act->data().toString().toStdString() == ll_page,
+              "context menu: LoversLab row offers 'Open on LoversLab' with the page URL");
+        check(!find_action(menu, "Open on Nexus"),
+              "context menu: LoversLab row has no 'Open on Nexus' action");
+        auto* install = find_action(menu, "Install");
+        if (install) install->trigger();
+        check(triggered && got_st == "loverslab" && got_sid == "4242" &&
+                  got_page == ll_page,
+              "context menu: LoversLab Install carries loverslab provenance (id + page URL)");
+    }
+
+    // Nexus entry: URL built from domain + parent mod id.
+    ctx_tab.add_download("32444-1234", "Tracked File", "Nexus Mods",
+                         tracked_zip, "skyrimspecialedition", 1234, "32444");
+    {
+        QMenu menu;
+        ctx_tab.add_context_menu_actions(menu, "32444-1234");
+        auto* act = find_action(menu, "Open on Nexus");
+        check(act && act->isEnabled() &&
+                  act->data().toString().toStdString() ==
+                      "https://www.nexusmods.com/skyrimspecialedition/mods/32444",
+              "context menu: Nexus row offers 'Open on Nexus' with domain+modid URL");
+        check(!find_action(menu, "Open on LoversLab"),
+              "context menu: Nexus row has no 'Open on LoversLab' action");
+    }
+
+    // Local/manual entry: no page action at all.
+    ctx_tab.add_download("manual-1", "My Mod", "Manual", manual_zip);
+    {
+        QMenu menu;
+        ctx_tab.add_context_menu_actions(menu, "manual-1");
+        check(!find_action(menu, "Open on Nexus") &&
+                  !find_action(menu, "Open on LoversLab"),
+              "context menu: Manual row gets no page action");
+    }
 
     std::printf("\n%d passed, %d failed\n", passes, failures);
     return failures ? 1 : 0;

@@ -1598,7 +1598,8 @@ void MainWindow::load_meta_for_mods() {
         auto sid = meta.source_id();
         if (!st.empty()) {
             mod_model_->set_source_info(mod.id, QString::fromStdString(st),
-                                        QString::fromStdString(sid));
+                                        QString::fromStdString(sid),
+                                        QString::fromStdString(meta.source_page_url()));
         }
 
         // Update ModEntry with separator info from meta.ini
@@ -2398,7 +2399,8 @@ void MainWindow::setup_mod_list_context_menu() {
 
         menu.addSeparator();
         if (!entry.source_type.isEmpty()) {
-            auto src = source_visit_info(entry.source_type, entry.source_id);
+            auto src = source_visit_info(entry.source_type, entry.source_id,
+                                         entry.source_page_url);
             if (!src.label.isEmpty()) {
                 auto* visit_act = menu.addAction(QIcon::fromTheme("text-html"), src.label,
                     this, [this, src]() {
@@ -2826,7 +2828,7 @@ void MainWindow::toggle_selected_mods(bool enabled) {
     }
 }
 
-SourceVisitInfo MainWindow::source_visit_info(const QString& source_type, const QString& source_id) const {
+SourceVisitInfo MainWindow::source_visit_info(const QString& source_type, const QString& source_id, const QString& page_url) const {
     if (source_type == "steam") {
         return {tr("Visit on Workshop"),
             QString("https://steamcommunity.com/sharedfiles/filedetails/?id=%1").arg(source_id)};
@@ -2839,8 +2841,12 @@ SourceVisitInfo MainWindow::source_visit_info(const QString& source_type, const 
             QString("https://www.nexusmods.com/%1/mods/%2").arg(domain, source_id)};
     }
     if (source_type == "loverslab") {
-        return {tr("Visit on LoversLab"),
-            QString("https://www.loverslab.com/files/file/%1/").arg(source_id)};
+        // The stored page URL (the download link minus its ?do=download query)
+        // wins - the slug cannot be reconstructed from the file id alone.
+        QString url = page_url;
+        if (url.isEmpty() && !source_id.isEmpty())
+            url = QString("https://www.loverslab.com/files/file/%1/").arg(source_id);
+        return {tr("Visit on LoversLab"), url};
     }
     if (source_type == "moddb") {
         return {tr("Visit on ModDB"),
@@ -3147,7 +3153,8 @@ void MainWindow::export_modlist() {
         } else {
             QString source;
             if (!m.source_type.isEmpty())
-                source = source_visit_info(m.source_type, m.source_id).url;
+                source = source_visit_info(m.source_type, m.source_id,
+                                           m.source_page_url).url;
             write_row({QStringLiteral("mod"), QString::number(i),
                        m.name, source, QString(), m.source_id, m.id});
         }
@@ -5332,12 +5339,14 @@ void MainWindow::wire_downloads_tab() {
     connect(dt, &DownloadsTab::install_requested,
             this, [this](const std::string& mod_id, const std::filesystem::path& fp,
                          const std::string& source_type, const std::string& source_id,
-                         int file_id, const std::string& display_name) {
+                         int file_id, const std::string& display_name,
+                         const std::string& page_url) {
         if (!pipeline_thread_) return;
         QMetaObject::invokeMethod(pipeline_thread_->worker(),
-            [this, mod_id, fp, source_type, source_id, file_id, display_name]() {
+            [this, mod_id, fp, source_type, source_id, file_id, display_name, page_url]() {
             pipeline_thread_->worker()->install_mod(
-                mod_id, fp.string(), source_type, source_id, file_id, display_name);
+                mod_id, fp.string(), source_type, source_id, file_id, display_name,
+                page_url);
         }, Qt::QueuedConnection);
     });
     connect(dt, &DownloadsTab::loverslab_url_entered,
@@ -5549,7 +5558,8 @@ void MainWindow::start_loverslab_download(const std::string& url) {
         dt->add_download(
             key,
             tr("LoversLab file %1").arg(QString::fromStdString(key)).toStdString(),
-            "LoversLab", {}, {}, 0, {});
+            "LoversLab", {}, {}, 0, {},
+            engine::LoversLabProvider::mod_page_url(url));
     }
 
     // Surface the download: bring the window to front and switch to the

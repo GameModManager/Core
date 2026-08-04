@@ -36,6 +36,9 @@ struct ModEntry {
     QVector<ModTag> tags;
     QString source_type;
     QString source_id;
+    // Source page URL persisted in the mod's per-source meta section
+    // (LoversLab: the page the download came from). Used by "Visit on ...".
+    QString source_page_url;
     QString separator_id;
     bool is_separator = false;
     bool is_overwrite = false;
@@ -101,7 +104,9 @@ public:
     void set_hidden_files(const QString& id, bool has_hidden);
     void set_fomod(const QString& id, bool on);
     void set_tags(const QString& id, const QVector<ModTag>& tags);
-    void set_source_info(const QString& id, const QString& source_type, const QString& source_id);
+    void set_source_info(const QString& id, const QString& source_type,
+                         const QString& source_id,
+                         const QString& page_url = {});
     void set_separator_id(const QString& id, const QString& separator_id);
     void set_priority(const QString& id, int priority);
     void renumber_priorities();
