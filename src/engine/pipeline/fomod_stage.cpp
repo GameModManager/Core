@@ -233,6 +233,7 @@ bool FomodStage::execute(Mod& mod, PipelineContext& ctx)
         }
         if (!decision.accept) {
             Logger::instance().debug("FomodStage: FOMOD install canceled by user");
+            ctx.canceled = true;
             return false;
         }
         choicesJson = decision.choices_json;

@@ -69,6 +69,10 @@ signals:
                            const std::string& name = {});
     void install_complete(const std::string& mod_id, bool success,
                           const std::string& message);
+    // The user canceled an interactive install stage (FOMOD wizard, overwrite
+    // dialog). The download's state must be left untouched - this is NOT a
+    // failure, and no Failed/Installed mark is applied.
+    void install_canceled(const std::string& mod_id);
     void paused(const std::string& mod_id);
     void all_done();
 

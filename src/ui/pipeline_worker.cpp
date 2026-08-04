@@ -63,11 +63,16 @@ void PipelineWorker::install_mod(const std::string& id, const std::string& zip_p
     // meta.ini record reads it).
     mod.archive_filename = std::filesystem::path(zip_path).filename().string();
 
-    bool success = pipeline_->run(mod);
+    auto result = pipeline_->run(mod);
 
-    if (success) {
+    if (result == engine::PipelineResult::Success) {
         engine::Logger::instance().debug("Mod installed: " + id);
         emit install_complete(id, true, "Success");
+    } else if (result == engine::PipelineResult::Canceled) {
+        // User canceled an interactive stage (FOMOD wizard, overwrite dialog).
+        // Not a failure: the download keeps whatever state it had.
+        engine::Logger::instance().debug("Mod install canceled: " + id);
+        emit install_canceled(id);
     } else {
         engine::Logger::instance().error("Failed to install mod: " + id);
         emit install_complete(id, false, "Pipeline failed");
@@ -140,7 +145,8 @@ void PipelineWorker::run_fetch(engine::Mod mod, const std::string& id,
         emit download_progress(id, dl, total, speed);
     };
 
-    bool success = fetch_pipeline_->run(mod);
+    const bool success =
+        fetch_pipeline_->run(mod) == engine::PipelineResult::Success;
 
     // Clean up progress callback
     fetch_pipeline_->ctx().on_progress = nullptr;
