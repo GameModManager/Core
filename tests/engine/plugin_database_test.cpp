@@ -815,6 +815,68 @@ void run_synthetic_fixture() {
         engine::DiagnosticsRegistry::instance().clear();
     }
 
+    // Re-cased Skyrim.ccc: the ccc-file lookup is Windows-native and must find
+    // "skyrim.ccc"/"Data/skyrim.ccc" regardless of on-disk casing, or CC
+    // ordering/force-loading is silently skipped.
+    {
+        const fs::path b = base / "cccCase";
+        const fs::path g = b / "game";
+        const fs::path m = b / "mods";
+        const fs::path mt = b / "meta";
+        fs::create_directories(g / "Data", ec);
+        fs::create_directories(m, ec);
+        fs::create_directories(mt, ec);
+        write_esp(g / "Data" / "Skyrim.esm", true, {});
+        // A non-"cc"-prefixed plugin can only be force-loaded via the ccc
+        // file, so it discriminates "the file was actually found" from the
+        // prefix rule.
+        write_esp(g / "Data" / "ccBGSSSE001-Fish.esm", true, {"Skyrim.esm"});
+        write_esp(g / "Data" / "SeasonsOfSkyrim.esm", true, {"Skyrim.esm"});
+        {
+            std::ofstream ccc(g / "Data" / "skyrim.ccc");
+            ccc << "ccBGSSSE001-Fish.esm\nSeasonsOfSkyrim.esm\n";
+        }
+        PluginDatabase dcc;
+        require(dcc.refresh(g, m, mt, "", "Skyrim.esm"),
+                "refresh re-cased ccc fixture");
+        dcc.load_creation_club(g);
+        dcc.sort_load_order();
+        const auto& cps = dcc.plugins();
+        require(cps.size() == 3, "3 plugins in re-cased ccc fixture");
+        const int seasons = order_of(dcc, "SeasonsOfSkyrim.esm");
+        require(seasons >= 0, "Seasons discovered");
+        require(cps[seasons].is_cc && cps[seasons].force_loaded,
+                "non-cc-prefixed plugin force-loaded via re-cased Skyrim.ccc");
+        require(order_of(dcc, "ccBGSSSE001-Fish.esm") < seasons,
+                "ccc declared order respected");
+    }
+
+    // CI shadow dedup: a mod shipping a re-cased copy of a game-Data plugin
+    // (e.g. "Skyrim.esm" over the game's "skyrim.esm") must produce ONE row,
+    // not a duplicate native.
+    {
+        const fs::path b = base / "shadow";
+        const fs::path g = b / "game";
+        const fs::path m = b / "mods";
+        const fs::path mt = b / "meta";
+        fs::create_directories(g / "Data", ec);
+        fs::create_directories(m, ec);
+        fs::create_directories(mt, ec);
+        write_esp(g / "Data" / "skyrim.esm", true, {});
+        fs::create_directories(m / "ShadowMod", ec);
+        write_esp(m / "ShadowMod" / "Skyrim.esm", true, {});
+        PluginDatabase dsh;
+        require(dsh.refresh(g, m, mt, "", "Skyrim.esm"),
+                "refresh shadow fixture");
+        dsh.sort_load_order();
+        require(dsh.plugins().size() == 1,
+                "re-cased mod copy shadows the game Data plugin (one row)");
+        require(order_of(dsh, "Skyrim.esm") == 0,
+                "mod copy wins the name conflict");
+        require(dsh.plugins()[0].is_game_native && dsh.plugins()[0].force_loaded,
+                "shadowing copy keeps native band membership");
+    }
+
     std::fprintf(stderr, "plugin_database_test: synthetic fixture OK\n");
     fs::remove_all(base, ec);
 }

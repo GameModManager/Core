@@ -429,7 +429,12 @@ void FomodWizardDialog::update_display_for_active_plugin()
         image_label_->clear_image();
         return;
     }
-    image_label_->set_image(QImage(QString::fromStdString((content_root_ / image).string())));
+    const auto resolved = engine::resolve_path(content_root_, image);
+    if (resolved.empty()) {
+        image_label_->clear_image();
+        return;
+    }
+    image_label_->set_image(QImage(QString::fromStdString(resolved.string())));
 }
 
 void FomodWizardDialog::show_image_viewer()
@@ -441,7 +446,10 @@ void FomodWizardDialog::show_image_viewer()
     if (image.empty()) {
         return;
     }
-    const auto image_path = content_root_ / image;
+    const auto image_path = engine::resolve_path(content_root_, image);
+    if (image_path.empty()) {
+        return;
+    }
     auto* viewer = new FomodImageViewer(QImage(QString::fromStdString(image_path.string())), this);
     viewer->showMaximized();
 }

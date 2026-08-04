@@ -1,5 +1,6 @@
 #include "engine/plugins/plugin_database.h"
 
+#include "engine/fs_utils.h"
 #include "engine/instance/instance.h"
 #include "engine/log/logger.h"
 #include "engine/meta/mod_meta.h"
@@ -169,11 +170,14 @@ bool PluginDatabase::refresh(const std::filesystem::path& game_dir,
         }
     }
 
+    std::set<std::string> mod_ci_names;
+    for (const auto& [name, plugin] : mod_plugins) mod_ci_names.insert(to_lower(name));
     for (auto& [name, plugin] : mod_plugins) {
         game_data_files.erase(name);
         plugins_.push_back(std::move(plugin));
     }
     for (auto& [name, path] : game_data_files) {
+        if (mod_ci_names.count(to_lower(name)) != 0) continue;
         GamePlugin p;
         p.name = name;
         p.full_path = path;
@@ -219,11 +223,14 @@ void PluginDatabase::load_creation_club(const std::filesystem::path& game_dir) {
 
     std::error_code ec;
     std::vector<std::filesystem::path> candidates;
-    if (std::filesystem::is_regular_file(game_dir / "Skyrim.ccc", ec)) {
-        candidates.push_back(game_dir / "Skyrim.ccc");
+    if (std::filesystem::is_directory(game_dir, ec)) {
+        const auto root_ccc = find_file_ci(game_dir, "skyrim.ccc");
+        if (!root_ccc.empty()) candidates.push_back(root_ccc);
     }
-    if (std::filesystem::is_regular_file(game_dir / "Data" / "Skyrim.ccc", ec)) {
-        candidates.push_back(game_dir / "Data" / "Skyrim.ccc");
+    const auto data_dir = game_dir / "Data";
+    if (std::filesystem::is_directory(data_dir, ec)) {
+        const auto data_ccc = find_file_ci(data_dir, "skyrim.ccc");
+        if (!data_ccc.empty()) candidates.push_back(data_ccc);
     }
     if (candidates.empty()) return;
 
