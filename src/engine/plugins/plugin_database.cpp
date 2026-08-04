@@ -67,6 +67,38 @@ void strip_cr(std::string& s) {
     if (!s.empty() && s.back() == '\r') s.pop_back();
 }
 
+// MO2-parity same-origin asset detection (PluginList, pluginlist.cpp:271-280):
+// a plugin loads <basename>.ini and any .bsa/.ba2 whose name starts with its
+// base name (catches "SkyUI - Textures.bsa" / "- Voices.bsa" conventions).
+// Scans the plugin's own folder (mod dir for mod plugins, game Data otherwise).
+void scan_plugin_assets(GamePlugin& p) {
+    const std::string base = to_lower(p.full_path.stem().string());
+    if (base.empty()) return;
+
+    std::error_code ec;
+    const auto parent = p.full_path.parent_path();
+    if (!std::filesystem::is_directory(parent, ec)) return;
+
+    for (const auto& entry : std::filesystem::directory_iterator(parent, ec)) {
+        if (!entry.is_regular_file(ec)) continue;
+        const std::string file = entry.path().filename().string();
+        const std::string lower = to_lower(file);
+
+        if (lower == base + ".ini") {
+            p.has_ini = true;
+            continue;
+        }
+        const bool is_archive =
+            lower.size() >= 4 &&
+            (lower.compare(lower.size() - 4, 4, ".bsa") == 0 ||
+             lower.compare(lower.size() - 4, 4, ".ba2") == 0);
+        if (is_archive && lower.compare(0, base.size(), base) == 0) {
+            p.archives.push_back(file);
+        }
+    }
+    std::sort(p.archives.begin(), p.archives.end());
+}
+
 }  // namespace
 
 bool PluginDatabase::refresh(const std::filesystem::path& game_dir,
@@ -168,6 +200,7 @@ bool PluginDatabase::refresh(const std::filesystem::path& game_dir,
     }
 
     parse_headers();
+    for (auto& p : plugins_) scan_plugin_assets(p);
     rebuild_index();
     return true;
 }
@@ -226,6 +259,11 @@ void PluginDatabase::parse_headers() {
             p.is_light_flagged = hdr.is_light;
             p.is_medium_flagged = hdr.is_medium;
             p.masters = hdr.masters;
+            p.form_version = hdr.form_version;
+            p.header_version = hdr.header_version;
+            p.has_no_records = hdr.num_records == 0;
+            p.author = std::move(hdr.author);
+            p.description = std::move(hdr.description);
         }
         // Extension fallbacks for games whose files don't carry the flags.
         const std::string ext = to_lower(p.full_path.extension().string());
@@ -325,6 +363,10 @@ void PluginDatabase::sort_load_order() {
 
     for (size_t i = 0; i < plugins_.size(); ++i) plugins_[i].priority = static_cast<int>(i);
 
+    // A fresh topological sort must never move a pinned plugin - re-insert
+    // every locked plugin at its locked priority.
+    apply_locked_order();
+
     set_missing_masters();
 }
 
@@ -398,10 +440,11 @@ void PluginDatabase::set_all_enabled() {
 void PluginDatabase::set_missing_masters() {
     for (auto& p : plugins_) {
         p.missing_master = false;
+        p.missing_masters.clear();
         for (const auto& master : p.masters) {
             if (by_name_ci_.find(to_lower(master)) == by_name_ci_.end()) {
                 p.missing_master = true;
-                break;
+                p.missing_masters.push_back(master);
             }
         }
     }
@@ -499,11 +542,20 @@ bool PluginDatabase::move_plugin(int from_row, int to_row, std::string* error) {
         if (error) *error = plugins_[from_row].name + " is a core plugin and cannot be moved";
         return false;
     }
+    if (plugins_[from_row].locked) {
+        if (error) *error = plugins_[from_row].name + " is locked and cannot be moved";
+        return false;
+    }
 
     // First row of the user band = one past the fixed (force-loaded) rows.
     int band_top = 0;
     while (band_top < n && plugins_[band_top].force_loaded) ++band_top;
     if (to_row < band_top) to_row = band_top;
+    // A drop onto a locked row would displace the pinned plugin - reject it.
+    if (plugins_[to_row].locked) {
+        if (error) *error = plugins_[to_row].name + " is locked and cannot be displaced";
+        return false;
+    }
     if (from_row == to_row) return true;
 
     GamePlugin moved = std::move(plugins_[from_row]);
@@ -518,6 +570,86 @@ bool PluginDatabase::move_plugin(int from_row, int to_row, std::string* error) {
     generate_mod_indexes();
     reassert_band();  // defense-in-depth: force-loaded rows always stay on top
     return true;
+}
+
+bool PluginDatabase::set_locked(const std::string& name, bool lock, std::string* error) {
+    const auto it = by_name_ci_.find(to_lower(name));
+    if (it == by_name_ci_.end()) {
+        if (error) *error = name + " is not in the plugin list";
+        return false;
+    }
+    GamePlugin& p = plugins_[it->second];
+    if (lock && p.force_loaded) {
+        if (error) *error = p.name + " is a core plugin and cannot be locked";
+        return false;
+    }
+    p.locked = lock;
+    if (lock) {
+        locked_order_[p.name] = p.priority;
+    } else {
+        locked_order_.erase(p.name);
+    }
+    return true;
+}
+
+bool PluginDatabase::is_locked(const std::string& name) const {
+    const auto it = by_name_ci_.find(to_lower(name));
+    return it != by_name_ci_.end() && plugins_[it->second].locked;
+}
+
+void PluginDatabase::apply_locked_order() {
+    if (locked_order_.empty()) return;
+
+    // Locked plugins re-inserted in ascending locked priority, so earlier pins
+    // claim their slots first and a later collision walks upward. Mirrors MO2
+    // refreshLoadOrder (pluginlist.cpp:920).
+    std::vector<std::pair<int, std::string>> locked;
+    for (const auto& [name, prio] : locked_order_) locked.emplace_back(prio, name);
+    std::sort(locked.begin(), locked.end());
+
+    const size_t n = plugins_.size();
+    std::set<std::string> placed;
+    bool changed = false;
+
+    for (const auto& [target, name] : locked) {
+        const auto it = by_name_ci_.find(to_lower(name));
+        if (it == by_name_ci_.end()) continue;  // plugin not installed (pin kept)
+        size_t idx = it->second;
+        if (plugins_[idx].force_loaded) continue;
+
+        // Clamp into the user band (never above fixed game-native + CC rows).
+        size_t band_top = 0;
+        while (band_top < n && plugins_[band_top].force_loaded) ++band_top;
+        size_t dest = static_cast<size_t>(target);
+        if (dest < band_top) dest = band_top;
+        if (dest >= n) dest = n - 1;
+
+        // Walk upward past core rows and rows already claimed by an earlier
+        // locked plugin. A not-yet-placed locked plugin may be displaced; its
+        // own entry re-pins it.
+        while (dest < n &&
+               (plugins_[dest].force_loaded ||
+                (plugins_[dest].locked && placed.count(plugins_[dest].name) != 0))) {
+            ++dest;
+        }
+        if (dest >= n) dest = n - 1;
+
+        placed.insert(name);
+        if (idx == dest) continue;
+
+        GamePlugin moved = std::move(plugins_[idx]);
+        plugins_.erase(plugins_.begin() + static_cast<std::ptrdiff_t>(idx));
+        plugins_.insert(plugins_.begin() + static_cast<std::ptrdiff_t>(dest),
+                        std::move(moved));
+        changed = true;
+    }
+
+    if (changed) {
+        rebuild_index();
+        for (size_t i = 0; i < plugins_.size(); ++i) plugins_[i].priority = static_cast<int>(i);
+        generate_mod_indexes();
+        reassert_band();
+    }
 }
 
 bool PluginDatabase::load_profile(const std::filesystem::path& profiles_dir,
@@ -607,6 +739,41 @@ bool PluginDatabase::load_profile(const std::filesystem::path& profiles_dir,
         }
     }
 
+    // Locked plugins: "Name|priority" lines; a locked plugin is re-pinned at
+    // its recorded priority regardless of what plugins.txt/loadorder.txt say.
+    if (std::filesystem::is_regular_file(dir / "lockedorder.txt")) {
+        std::ifstream in(dir / "lockedorder.txt");
+        std::string line;
+        bool read_lock = false;
+        while (std::getline(in, line)) {
+            strip_cr(line);
+            if (line.empty() || line[0] == '#') continue;
+            const auto sep = line.rfind('|');
+            if (sep == std::string::npos) continue;  // malformed - skip (MO2 parity)
+            int prio = 0;
+            try {
+                prio = std::stoi(line.substr(sep + 1));
+            } catch (...) {
+                continue;
+            }
+            if (prio < 0) continue;
+            const std::string name = line.substr(0, sep);
+            read_lock = true;
+            const auto it = by_name_ci_.find(to_lower(name));
+            if (it == by_name_ci_.end()) {
+                // Plugin not currently installed - keep the pin so it survives
+                // a reinstall (MO2 readLockedOrderFrom parity).
+                locked_order_[name] = prio;
+                continue;
+            }
+            if (plugins_[it->second].force_loaded) continue;  // never lock core
+            plugins_[it->second].locked = true;
+            locked_order_[name] = prio;
+            applied = true;
+        }
+        if (read_lock) apply_locked_order();
+    }
+
     // A persisted loadorder.txt is a user/LOOT artifact and must never be able
     // to park a core plugin below user ones - heal the band if it tried.
     if (repaired && reassert_band()) *repaired = true;
@@ -623,6 +790,11 @@ void PluginDatabase::save_profile(const std::filesystem::path& profiles_dir,
     std::ofstream locked(dir / "lockedorder.txt");
     if (locked) {
         locked << "# This file was automatically generated by GameModManager.\n";
+        locked << "# Locked plugins keep their position through sorts.\n";
+        locked << "# Format: <plugin>|<priority>\n";
+        for (const auto& [name, prio] : locked_order_) {
+            locked << name << '|' << prio << '\n';
+        }
     }
 }
 

@@ -218,16 +218,43 @@ public:
     // Names of the plugins currently selected in the table (row order).
     [[nodiscard]] QStringList selected_plugin_names() const;
 
+    // User role on the Flags column holding the row's emblems as individual
+    // QIcons (QList<QIcon>). A FlagsDelegate paints them one-by-one at native
+    // size (wrapping, growing the row) - the stacked-pixmap single-icon
+    // approach scales every emblem down to one icon slot.
+    static constexpr int kPluginFlagsRole = Qt::UserRole + 60;
+    // Parallel role on the Flags column: per-emblem hover text (QStringList,
+    // same order as the kPluginFlagsRole icon list). FlagsDelegate::helpEvent
+    // shows ONLY the entry of the emblem under the cursor.
+    static constexpr int kPluginFlagTooltipsRole = Qt::UserRole + 61;
+
 signals:
     void toggle_requested(const std::string& name, bool enabled);
     void reorder_requested(int from_row, int to_row);
+    // User-pinned (immovable) load-order lock, from the row context menu.
+    void lock_requested(const std::string& name, bool locked);
+
+protected:
+    // Fills `menu` with the actions for the row at `row` (MO2's
+    // PluginListContextMenu lock actions). Split out of on_custom_context_menu
+    // so tests can drive it without exec()-ing a modal menu (DataTab pattern).
+    void add_context_menu_actions(QMenu& menu, int row);
 
 private:
     void apply_highlights();
+    void on_custom_context_menu(const QPoint& pos);
+    // Recompute every row's height from the emblem wrap math (FlagsDelegate
+    // paints one QIcon per emblem; a QTableWidget does not auto-size rows from
+    // a delegate's sizeHint). Runs after set_plugins and on Flags-column
+    // resizes so wrapping rows grow as the column narrows.
+    void relayout_flag_rows();
 
     class PluginTable;
     PluginTable* table_ = nullptr;
     std::vector<std::string> names_;
+    // Per-row engine state backing the context menu (locked / core rows).
+    std::vector<bool> rows_locked_;
+    std::vector<bool> rows_force_loaded_;
     QSet<QString> contained_names_;
     QSet<QString> master_names_;
     bool syncing_ = false;

@@ -14,6 +14,16 @@ struct EspHeaderInfo {
     bool is_medium = false;   // bit 10 (ESH) - Starfield
     bool localized = false;   // bit 7
     std::vector<std::string> masters;  // MAST subrecords in file order
+
+    // Form version from the record header version stamp (bytes 20-24),
+    // matching MO2's ESP::File::formVersion() (44 for Skyrim SE, 43 for LE).
+    uint32_t form_version = 0;
+    // Header version from the HEDR subrecord float (0.94, 1.70, 1.74, ...).
+    float header_version = 0.0f;
+    // Number of records from the HEDR subrecord (0 => dummy plugin).
+    uint32_t num_records = 0;
+    std::string author;       // CNAM subrecord
+    std::string description;  // SNAM subrecord
 };
 
 // Read and parse the TES4 header of a .esm/.esp/.esl file.

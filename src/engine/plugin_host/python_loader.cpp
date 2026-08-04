@@ -1,12 +1,61 @@
 #include "engine/plugin_host/python_loader.h"
 #include "engine/plugin_host/plugin_loader.h"
+#include "engine/plugin_host/diagnostics_registry.h"
 #include "engine/log/logger.h"
 
+#include <cstring>
 #include <filesystem>
+#include <memory>
+#include <vector>
 #include <pybind11/embed.h>
 #include <pybind11/stl.h>
 
 namespace py = pybind11;
+
+// -- Diagnostics bridge: a Python callable (plugin_name) -> list[str] bridged
+//    to the ABI GmmDiagnosticsFn the engine registry expects. Providers are
+//    owned here (they hold py::object) and cleared on interpreter shutdown.
+
+namespace {
+
+struct PyDiagnosticsProvider {
+    py::object fn;
+};
+
+void py_diagnostics_bridge(const char* plugin_name,
+                           char* out_buffer,
+                           size_t out_capacity,
+                           void* user_data) {
+    auto* provider = static_cast<PyDiagnosticsProvider*>(user_data);
+    if (!provider) return;
+
+    py::gil_scoped_acquire acquire;
+    try {
+        py::object result = provider->fn(py::str(plugin_name));
+        std::vector<std::string> messages;
+        if (py::isinstance<py::str>(result)) {
+            messages.push_back(py::cast<std::string>(result));
+        } else if (py::isinstance<py::list>(result)) {
+            for (auto item : py::cast<py::list>(result))
+                if (py::isinstance<py::str>(item))
+                    messages.push_back(py::cast<std::string>(item));
+        }
+        size_t off = 0;
+        for (const auto& msg : messages) {
+            if (off + msg.size() + 1 > out_capacity) break;
+            std::memcpy(out_buffer + off, msg.data(), msg.size());
+            off += msg.size();
+            out_buffer[off++] = '\0';
+        }
+        if (off < out_capacity) out_buffer[off] = '\0';
+    } catch (const py::error_already_set&) {
+        PyErr_Clear();  // a broken provider must not crash the refresh
+    }
+}
+
+std::vector<std::unique_ptr<PyDiagnosticsProvider>> g_py_providers;
+
+}  // namespace
 
 // -- gmm.RegistrationContext - Python-side wrapper --
 
@@ -47,6 +96,20 @@ public:
 
     void register_settings(const std::vector<std::pair<std::string, std::string>>& settings) {
         plugin_->settings = settings;
+    }
+
+    void register_diagnostics(py::object fn) {
+        if (!py::isinstance<py::function>(fn)) {
+            engine::Logger::instance().warn(
+                "register_diagnostics: fn is not a callable - ignored");
+            return;
+        }
+        auto provider = std::make_unique<PyDiagnosticsProvider>();
+        provider->fn = std::move(fn);
+        void* user_data = provider.get();
+        g_py_providers.push_back(std::move(provider));
+        engine::DiagnosticsRegistry::instance().register_provider(
+            plugin_->game_id, py_diagnostics_bridge, user_data);
     }
 
     void register_stage_claim(const std::string& stage_name, int priority) {
@@ -166,6 +229,8 @@ PYBIND11_EMBEDDED_MODULE(gmm, m) {
              py::arg("category") = "")
         .def("register_settings", &PyRegistrationContext::register_settings,
              py::arg("settings"))
+        .def("register_diagnostics", &PyRegistrationContext::register_diagnostics,
+             py::arg("fn"))
         .def("register_order_encoding_hook", &PyRegistrationContext::register_order_encoding_hook)
         .def("register_deploy_strategy", &PyRegistrationContext::register_deploy_strategy)
         .def("register_image_diff", &PyRegistrationContext::register_image_diff)
@@ -272,5 +337,12 @@ bool engine::python_load_plugin(PluginLoader* loader, const std::string& path) {
 }
 
 void engine::python_shutdown() {
+    {
+        // Destroy Python-side diagnostics providers with the GIL held and drop
+        // them from the registry so nothing stale is left behind.
+        py::gil_scoped_acquire acquire;
+        DiagnosticsRegistry::instance().clear();
+        g_py_providers.clear();
+    }
     s_interpreter.reset();
 }

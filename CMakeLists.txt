@@ -153,6 +153,7 @@ set(ENGINE_SOURCES
     src/engine/log/crash_handler.cpp
     src/engine/cache/mod_cache.cpp
     src/engine/plugin_host/plugin_loader.cpp
+    src/engine/plugin_host/diagnostics_registry.cpp
     src/engine/registry/stage_registry.cpp
     src/engine/registry/hook_registry.cpp
     src/engine/registry/game_capabilities.cpp
@@ -394,12 +395,13 @@ add_test(NAME pipeline_test COMMAND pipeline_test)
 add_executable(plugin_database_test tests/engine/plugin_database_test.cpp
     src/engine/plugins/esp_header.cpp
     src/engine/plugins/plugin_database.cpp
+    src/engine/plugin_host/diagnostics_registry.cpp
     src/engine/instance/instance.cpp
     src/engine/log/logger.cpp
     src/engine/meta/mod_meta.cpp
     src/engine/registry/game_knowledge.cpp
 )
-target_include_directories(plugin_database_test PRIVATE src/)
+target_include_directories(plugin_database_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
 target_link_libraries(plugin_database_test PRIVATE PkgConfig::NLOHMANN_JSON)
 add_test(NAME plugin_database_test COMMAND plugin_database_test)
 
@@ -592,6 +594,7 @@ add_test(NAME perf_benchmark COMMAND perf_benchmark)
 add_executable(python_plugin_test tests/engine/python_plugin_test.cpp
     src/engine/plugin_host/plugin_loader.cpp
     src/engine/plugin_host/python_loader.cpp
+    src/engine/plugin_host/diagnostics_registry.cpp
     src/engine/registry/stage_registry.cpp
     src/engine/registry/hook_registry.cpp
     src/engine/registry/game_capabilities.cpp
@@ -600,6 +603,10 @@ add_executable(python_plugin_test tests/engine/python_plugin_test.cpp
     src/engine/sort/sort_registry.cpp
     src/engine/sort/abi_sort_provider.cpp
     src/engine/log/logger.cpp
+    src/engine/plugins/esp_header.cpp
+    src/engine/plugins/plugin_database.cpp
+    src/engine/instance/instance.cpp
+    src/engine/meta/mod_meta.cpp
 )
 target_include_directories(python_plugin_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
 target_link_libraries(python_plugin_test PRIVATE pybind11::embed Python3::Python PkgConfig::SQLITE3)
@@ -714,6 +721,7 @@ add_executable(settings_plugins_tab_test tests/ui/settings_plugins_tab_test.cpp
     src/engine/theme/style_manager.cpp
     src/engine/plugin_host/plugin_loader.cpp
     src/engine/plugin_host/python_loader.cpp
+    src/engine/plugin_host/diagnostics_registry.cpp
     src/engine/registry/stage_registry.cpp
     src/engine/registry/hook_registry.cpp
     src/engine/registry/game_capabilities.cpp
@@ -802,6 +810,7 @@ add_executable(settings_sources_tab_test tests/ui/settings_sources_tab_test.cpp
     src/engine/theme/style_manager.cpp
     src/engine/plugin_host/plugin_loader.cpp
     src/engine/plugin_host/python_loader.cpp
+    src/engine/plugin_host/diagnostics_registry.cpp
     src/engine/registry/stage_registry.cpp
     src/engine/registry/hook_registry.cpp
     src/engine/registry/game_capabilities.cpp
@@ -858,6 +867,8 @@ add_executable(downloads_tab_test tests/ui/downloads_tab_test.cpp
     src/ui/panels/tab_panels.cpp
     src/ui/settings/settings.cpp
     src/ui/widgets/column_toggle_header.cpp
+    src/ui/widgets/mod_list_model.cpp
+    src/ui/widgets/mod_table_view.cpp
     src/engine/log/logger.cpp
     src/engine/fs_utils.cpp
     src/engine/loverslab_auth.cpp
@@ -880,6 +891,8 @@ add_executable(data_tab_test tests/ui/data_tab_test.cpp
     src/ui/panels/tab_panels.cpp
     src/ui/settings/settings.cpp
     src/ui/widgets/column_toggle_header.cpp
+    src/ui/widgets/mod_list_model.cpp
+    src/ui/widgets/mod_table_view.cpp
     src/engine/log/logger.cpp
     src/engine/fs_utils.cpp
     src/engine/loverslab_auth.cpp
@@ -922,6 +935,8 @@ add_executable(plugins_tab_test tests/ui/plugins_tab_test.cpp
     src/ui/panels/tab_panels.cpp
     src/ui/settings/settings.cpp
     src/ui/widgets/column_toggle_header.cpp
+    src/ui/widgets/mod_list_model.cpp
+    src/ui/widgets/mod_table_view.cpp
     src/engine/log/logger.cpp
     src/engine/fs_utils.cpp
     src/engine/loverslab_auth.cpp

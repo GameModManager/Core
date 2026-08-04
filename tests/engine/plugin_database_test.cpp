@@ -10,6 +10,7 @@
 // its mod, enabled plugins.txt output).
 #include "engine/instance/instance.h"
 #include "engine/meta/mod_meta.h"
+#include "engine/plugin_host/diagnostics_registry.h"
 #include "engine/plugins/plugin_database.h"
 #include "engine/plugins/esp_header.h"
 #include "engine/registry/game_knowledge.h"
@@ -17,6 +18,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -55,8 +57,16 @@ void append_u16(std::vector<char>& v, uint16_t x) {
 }
 
 // Minimal valid TES4 record: header + MAST subrecords (2-byte sizes).
+// Optional HEDR/CNAM/SNAM subrecords + record-header form version let tests
+// exercise the tooltip metadata parsing (author, description, header version,
+// record count / dummy detection, form version).
 void write_esp(const fs::path& path, bool esm_flag,
-               const std::vector<std::string>& masters) {
+               const std::vector<std::string>& masters,
+               const std::string& author = {},
+               const std::string& description = {},
+               float header_version = 0.0f,
+               uint32_t num_records = 0,
+               uint32_t form_version = 0) {
     std::vector<char> body;  // subrecords only
     for (const auto& m : masters) {
         body.push_back('M');
@@ -65,6 +75,40 @@ void write_esp(const fs::path& path, bool esm_flag,
         body.push_back('T');
         append_u16(body, static_cast<uint16_t>(m.size() + 1));
         body.insert(body.end(), m.begin(), m.end());
+        body.push_back('\0');
+    }
+    if (header_version > 0.0f || num_records > 0) {
+        body.push_back('H');
+        body.push_back('E');
+        body.push_back('D');
+        body.push_back('R');
+        append_u16(body, 12);
+        const char* hv = reinterpret_cast<const char*>(&header_version);
+        body.insert(body.end(), hv, hv + 4);
+        append_u16(body, static_cast<uint16_t>(num_records & 0xFFFF));
+        append_u16(body, static_cast<uint16_t>((num_records >> 16) & 0xFFFF));
+        const uint16_t next_obj = 0;
+        body.insert(body.end(), reinterpret_cast<const char*>(&next_obj),
+                    reinterpret_cast<const char*>(&next_obj) + 2);
+        body.insert(body.end(), reinterpret_cast<const char*>(&next_obj),
+                    reinterpret_cast<const char*>(&next_obj) + 2);
+    }
+    if (!author.empty()) {
+        body.push_back('C');
+        body.push_back('N');
+        body.push_back('A');
+        body.push_back('M');
+        append_u16(body, static_cast<uint16_t>(author.size() + 1));
+        body.insert(body.end(), author.begin(), author.end());
+        body.push_back('\0');
+    }
+    if (!description.empty()) {
+        body.push_back('S');
+        body.push_back('N');
+        body.push_back('A');
+        body.push_back('M');
+        append_u16(body, static_cast<uint16_t>(description.size() + 1));
+        body.insert(body.end(), description.begin(), description.end());
         body.push_back('\0');
     }
     std::ofstream out(path, std::ios::binary);
@@ -76,7 +120,7 @@ void write_esp(const fs::path& path, bool esm_flag,
     const uint32_t zero = 0;
     out.write(reinterpret_cast<const char*>(&zero), 4);  // formid
     out.write(reinterpret_cast<const char*>(&zero), 4);  // timestamp
-    out.write(reinterpret_cast<const char*>(&zero), 4);  // version
+    out.write(reinterpret_cast<const char*>(&form_version), 4);  // version stamp
     out.write(body.data(), static_cast<std::streamsize>(body.size()));
 }
 
@@ -96,6 +140,20 @@ int order_of(const engine::PluginDatabase& db, const std::string& name) {
     for (size_t i = 0; i < ps.size(); ++i)
         if (ps[i].name == name) return static_cast<int>(i);
     return -1;
+}
+
+// Fake ABI diagnostics providers (GmmDiagnosticsFn signature). Write zero or
+// more NUL-terminated messages into the buffer.
+void fake_diagnostics(const char* name, char* out, size_t cap, void*) {
+    const std::string s = std::string(name) == "Alpha.esp"
+                              ? std::string("hello-alpha\0bye-alpha", 22)
+                              : std::string("hello-beta\0", 11);
+    if (s.size() < cap) std::memcpy(out, s.data(), s.size());
+}
+
+void fake_diagnostics_other(const char*, char* out, size_t cap, void*) {
+    const std::string s("othergame-msg\0", 14);
+    if (s.size() < cap) std::memcpy(out, s.data(), s.size());
 }
 
 void run_synthetic_fixture() {
@@ -124,14 +182,29 @@ void run_synthetic_fixture() {
     }
 
     // Mod A (priority 3): SkyUI-like plugin depending on native masters only.
+    // Carries full TES4 header metadata (author/description/HEDR/form version)
+    // plus same-origin INI + archive files for the tooltip detection.
     fs::create_directories(mods / "SkyUI", ec);
-    write_esp(mods / "SkyUI" / "SkyUI_SE.esp", false, {"Skyrim.esm", "Update.esm"});
+    write_esp(mods / "SkyUI" / "SkyUI_SE.esp", false, {"Skyrim.esm", "Update.esm"},
+              "SkyUI team", "Sky UI", 1.70f, 100, 44);
+    {
+        std::ofstream ini(mods / "SkyUI" / "SkyUI_SE.ini");
+        ini << "[General]\n";
+        std::ofstream bsa(mods / "SkyUI" / "SkyUI_SE.bsa", std::ios::binary);
+        bsa.write("BSA", 3);
+        std::ofstream bsa2(mods / "SkyUI" / "SkyUI_SE - Textures.bsa", std::ios::binary);
+        bsa2.write("BSA", 3);
+        // Unrelated archive must NOT be associated with SkyUI (prefix rule).
+        std::ofstream other(mods / "SkyUI" / "OtherStuff.bsa", std::ios::binary);
+        other.write("BSA", 3);
+    }
     // Mod B (priority 5): a patch that depends on SkyUI (must sort after it).
     fs::create_directories(mods / "Patch", ec);
     write_esp(mods / "Patch" / "Patch.esp", false, {"Skyrim.esm", "SkyUI_SE.esp"});
-    // Mod C (priority 1): standalone light plugin.
+    // Mod C (priority 1): standalone light plugin, zero records (dummy).
     fs::create_directories(mods / "Lights", ec);
-    write_esp(mods / "Lights" / "Lights.esl", false, {"Skyrim.esm"});
+    write_esp(mods / "Lights" / "Lights.esl", false, {"Skyrim.esm"},
+              "", "", 1.70f, 0, 44);
     // Meta priorities for the mod tiebreak.
     for (const auto& [folder, prio] : std::vector<std::pair<const char*, int>>{
              {"SkyUI", 3}, {"Patch", 5}, {"Lights", 1}}) {
@@ -176,6 +249,36 @@ void run_synthetic_fixture() {
     require(db.plugins()[order_of(db, "SkyUI_SE.esp")].owner_mod == "SkyUI",
             "SkyUI owned by its mod");
 
+    // --- TES4 header metadata (tooltip parity) ---
+    {
+        const auto& skyui = db.plugins()[order_of(db, "SkyUI_SE.esp")];
+        require(skyui.author == "SkyUI team", "author parsed from CNAM");
+        require(skyui.description == "Sky UI", "description parsed from SNAM");
+        require(skyui.header_version == 1.70f, "header version parsed from HEDR");
+        require(skyui.form_version == 44, "form version parsed from version stamp");
+        require(!skyui.has_no_records, "100-record plugin not marked dummy");
+
+        const auto& native = db.plugins()[order_of(db, "Skyrim.esm")];
+        require(native.form_version == 0 && native.author.empty(),
+                "no-metadata plugin keeps zeroed fields");
+
+        const auto& lights = db.plugins()[order_of(db, "Lights.esl")];
+        require(lights.has_no_records, "zero-record plugin marked dummy");
+    }
+
+    // --- Same-origin assets (Loads Archives / Loads INI) ---
+    {
+        const auto& skyui = db.plugins()[order_of(db, "SkyUI_SE.esp")];
+        require(skyui.has_ini, "SkyUI.ini detected");
+        require(skyui.archives.size() == 2 &&
+                    skyui.archives[0] == "SkyUI_SE - Textures.bsa" &&
+                    skyui.archives[1] == "SkyUI_SE.bsa",
+                "archives match by basename prefix, sorted, unrelated excluded");
+        const auto& native = db.plugins()[order_of(db, "Skyrim.esm")];
+        require(!native.has_ini && native.archives.empty(),
+                "no assets for game-native plugin");
+    }
+
     // All enabled (first-run default).
     for (const auto& p : ps) require(p.enabled, "all enabled by default");
 
@@ -209,6 +312,9 @@ void run_synthetic_fixture() {
     db2.sort_load_order();
     const auto* broken = db2.find("Broken.esp");
     require(broken != nullptr && broken->missing_master, "missing master flagged");
+    require(broken->missing_masters.size() == 1 &&
+                broken->missing_masters[0] == "GoneMaster.esm",
+            "missing master names recorded");
 
     // Enabling a plugin whose master isn't installed is blocked (not just
     // flagged), with an error naming the missing master.
@@ -325,6 +431,109 @@ void run_synthetic_fixture() {
     // No-op self-move.
     const int nl = order_of(db3, "Lights.esl");
     require(db3.move_plugin(nl, nl), "self-move is a no-op");
+
+    // Locked plugins: pinned, immovable, sort-proof, and persisted through a
+    // profile round-trip (MO2 lockedorder.txt parity).
+    {
+        const fs::path b = base / "lock";
+        const fs::path g = b / "game";
+        const fs::path m = b / "mods";
+        const fs::path mt = b / "meta";
+        const fs::path pf = b / "profiles";
+        fs::create_directories(g / "Data", ec);
+        fs::create_directories(m, ec);
+        fs::create_directories(mt, ec);
+        fs::create_directories(pf, ec);
+        write_esp(g / "Data" / "Skyrim.esm", true, {});
+        write_esp(g / "Data" / "Update.esm", true, {"Skyrim.esm"});
+        fs::create_directories(m / "ModA", ec);
+        write_esp(m / "ModA" / "ModA.esp", false, {"Skyrim.esm"});
+        fs::create_directories(m / "ModB", ec);
+        write_esp(m / "ModB" / "ModB.esp", false, {"Skyrim.esm"});
+        fs::create_directories(m / "ModC", ec);
+        write_esp(m / "ModC" / "ModC.esp", false, {"Skyrim.esm"});
+
+        PluginDatabase dbl;
+        require(dbl.refresh(g, m, mt, "", "Skyrim.esm,Update.esm"),
+                "refresh lock fixture");
+        dbl.sort_load_order();
+        dbl.set_all_enabled();
+        require(order_of(dbl, "ModA.esp") == 2 && order_of(dbl, "ModB.esp") == 3 &&
+                    order_of(dbl, "ModC.esp") == 4,
+                "lock fixture starts sorted by name");
+
+        // Locking a core plugin is refused.
+        std::string errl;
+        require(!dbl.set_locked("Skyrim.esm", true, &errl),
+                "core plugin cannot be locked");
+        require(contains(errl, "core plugin"), "lock error mentions core plugin");
+
+        // Lock ModB at its current row.
+        const int b_row = order_of(dbl, "ModB.esp");
+        require(dbl.set_locked("ModB.esp", true), "ModB locks");
+        require(dbl.is_locked("ModB.esp"), "ModB is locked");
+        require(dbl.plugins()[b_row].locked, "ModB locked flag set");
+
+        // A locked plugin cannot be moved by drag.
+        errl.clear();
+        require(!dbl.move_plugin(b_row, 0, &errl), "locked plugin cannot be moved");
+        require(contains(errl, "locked"), "move error mentions locked");
+
+        // A drop onto the locked row would displace it - rejected.
+        errl.clear();
+        const int a_row = order_of(dbl, "ModA.esp");
+        require(!dbl.move_plugin(a_row, b_row, &errl),
+                "cannot drop onto a locked row");
+        require(contains(errl, "displaced"), "drop error mentions displacement");
+
+        // Sort keeps the pin.
+        dbl.sort_load_order();
+        require(dbl.is_locked("ModB.esp"), "lock survives a sort");
+        require(order_of(dbl, "ModB.esp") == b_row,
+                "locked plugin keeps its row through a sort");
+
+        // Persistence: lockedorder.txt records it, and a fresh DB re-pins it.
+        dbl.save_profile(pf, "Default");
+        const std::string lockfile =
+            file_contents(pf / "Default" / "lockedorder.txt");
+        require(contains(lockfile, "ModB.esp|" + std::to_string(b_row)),
+                "lockedorder.txt records ModB|row");
+
+        PluginDatabase dbk;
+        require(dbk.refresh(g, m, mt, "", "Skyrim.esm,Update.esm"),
+                "refresh lock reload");
+        dbk.sort_load_order();
+        require(dbk.load_profile(pf, "Default"), "lock profile loads");
+        require(dbk.is_locked("ModB.esp"), "lock restored from lockedorder.txt");
+        require(order_of(dbk, "ModB.esp") == b_row,
+                "locked plugin restored at its row");
+        require(!dbk.is_locked("ModA.esp"), "unlocked plugin stays unlocked");
+
+        // A hand-written lockedorder.txt pin also sticks (MO2
+        // readLockedOrderFrom parity), and an unlocked plugin stays free.
+        {
+            std::ofstream lo(pf / "Default" / "lockedorder.txt");
+            lo << "# a comment\nModC.esp|" << (b_row + 1) << "\n";
+        }
+        PluginDatabase dbm;
+        require(dbm.refresh(g, m, mt, "", "Skyrim.esm,Update.esm"),
+                "refresh lock handwrite");
+        dbm.sort_load_order();
+        require(dbm.load_profile(pf, "Default"), "hand-written lock loads");
+        require(dbm.is_locked("ModC.esp"), "hand-written pin sticks");
+        require(!dbm.is_locked("ModB.esp"), "unlisted plugin loads unlocked");
+
+        // Unlock clears the pin and drops it from lockedorder.txt.
+        errl.clear();
+        require(dbl.set_locked("ModB.esp", false), "ModB unlocks");
+        require(!dbl.is_locked("ModB.esp"), "ModB no longer locked");
+        require(!dbl.plugins()[order_of(dbl, "ModB.esp")].locked,
+                "locked flag cleared");
+        dbl.save_profile(pf, "Default");
+        require(!contains(file_contents(pf / "Default" / "lockedorder.txt"),
+                          "ModB.esp|"),
+                "unlocked plugin removed from lockedorder.txt");
+    }
 
     // The moved order persists through a profile round-trip.
     db3.save_profile(profiles, "Default");
@@ -562,6 +771,48 @@ void run_synthetic_fixture() {
                 "bootstrap enables plugins with present masters");
         require(!dbs.plugins()[order_of(dbs, "Borked.esp")].enabled,
                 "bootstrap keeps missing-master plugin disabled");
+    }
+
+    // Diagnostics providers (ABI register_diagnostics): called once per plugin
+    // after refresh, their NUL-terminated messages land in GamePlugin::messages
+    // for the tooltip (MO2 addInformation parity).
+    {
+        engine::PluginDatabase ddx;
+        auto& dxps = ddx.plugins_mutable();
+        {
+            engine::GamePlugin a;
+            a.name = "Alpha.esp";
+            engine::GamePlugin b;
+            b.name = "Beta.esp";
+            dxps.push_back(a);
+            dxps.push_back(b);
+        }
+
+        engine::DiagnosticsRegistry::instance().clear();
+        engine::DiagnosticsRegistry::instance().register_provider(
+            "skyrim", fake_diagnostics, nullptr);
+        engine::DiagnosticsRegistry::instance().register_provider(
+            "othergame", fake_diagnostics_other, nullptr);
+
+        engine::DiagnosticsRegistry::instance().collect("skyrim", ddx);
+        require(dxps[0].messages.size() == 2 &&
+                    dxps[0].messages[0] == "hello-alpha" &&
+                    dxps[0].messages[1] == "bye-alpha",
+                "provider messages parsed into GamePlugin::messages");
+        require(dxps[1].messages.size() == 1 &&
+                    dxps[1].messages[0] == "hello-beta",
+                "provider runs for every plugin");
+        require(dxps[1].messages[0] != "othergame-msg",
+                "providers for other games are skipped");
+
+        // collect() clears previous messages before re-running (replaces, not
+        // appends) - a stale provider message never lingers across refreshes.
+        engine::DiagnosticsRegistry::instance().collect("skyrim", ddx);
+        require(dxps[0].messages.size() == 2 &&
+                    dxps[0].messages[0] == "hello-alpha",
+                "collect replaces previous messages");
+
+        engine::DiagnosticsRegistry::instance().clear();
     }
 
     std::fprintf(stderr, "plugin_database_test: synthetic fixture OK\n");

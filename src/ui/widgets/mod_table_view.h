@@ -1,6 +1,12 @@
 #pragma once
 
+#include <QHelpEvent>
+#include <QIcon>
+#include <QList>
+#include <QPoint>
+#include <QRect>
 #include <QScrollBar>
+#include <QSize>
 #include <QStyledItemDelegate>
 #include <QTreeView>
 #include <QStringList>
@@ -8,6 +14,7 @@
 #include <algorithm>
 
 class QAbstractItemModel;
+class QAbstractItemView;
 
 namespace ui {
 
@@ -26,21 +33,80 @@ inline int flags_icon_lines(int count, int per_line) {
     return per_line > 0 ? (count + per_line - 1) / per_line : 0;
 }
 
+constexpr int kFlagsSpacing = 2;  // px between adjacent flag icons
+
+// Native cell size for a set of flag icons (all 16x16 today, but take the max
+// so a larger icon anywhere in the list keeps every flag legible).
+inline QSize flags_cell_size(const QList<QIcon>& icons) {
+    QSize cell(16, 16);
+    for (const auto& icon : icons)
+        cell = cell.expandedTo(icon.actualSize(QSize(16, 16)));
+    return cell;
+}
+
+// Height a `cell_width`-wide Flags cell needs for `icons`, growing by one icon
+// line per wrap. Height 0 = no icons. FlagsDelegate::sizeHint and the plugins
+// table (QTableWidget rows need explicit heights) both use this so the two
+// layouts can never disagree.
+inline QSize flags_wrapped_size(const QList<QIcon>& icons, int cell_width,
+                                int spacing = kFlagsSpacing) {
+    if (icons.isEmpty()) return QSize(0, 0);
+    const QSize cell = flags_cell_size(icons);
+    const int per_line = flags_icons_per_line(cell_width, cell.width(), spacing);
+    const int lines = flags_icon_lines(icons.size(), per_line);
+    return QSize(-1, lines * cell.height());
+}
+
+// Index of the flag icon under `local` (a point inside `cell_rect`) or -1.
+// Shares the wrap math with FlagsDelegate::paint so the hover hit-test can
+// never disagree with what is actually drawn.
+inline int flag_icon_at(const QList<QIcon>& icons, const QRect& cell_rect,
+                        const QPoint& local) {
+    if (icons.isEmpty() || !cell_rect.contains(local)) return -1;
+    const QSize cell = flags_cell_size(icons);
+    const int per_line =
+        flags_icons_per_line(cell_rect.width(), cell.width(), kFlagsSpacing);
+    const int lines = flags_icon_lines(icons.size(), per_line);
+    const int block_h = lines * cell.height();
+    const int y0 = cell_rect.top() + std::max(0, (cell_rect.height() - block_h) / 2);
+    const int step_x = cell.width() + kFlagsSpacing;
+    const int col = (local.x() - cell_rect.left()) / step_x;
+    const int row = (local.y() - y0) / cell.height();
+    const int idx = row * per_line + col;
+    if (idx < 0 || idx >= icons.size()) return -1;
+    const QRect icon_rect(cell_rect.left() + (idx % per_line) * step_x,
+                          y0 + (idx / per_line) * cell.height(),
+                          cell.width(), cell.height());
+    return icon_rect.contains(local) ? idx : -1;
+}
+
 // Delegate for the Flags column. The model returns each flag as an individual
-// QIcon (ModListModel::kFlagIconsRole); this delegate paints them one by one at
+// QIcon under `flag_icons_role`; this delegate paints them one by one at
 // native size and, when the column is too narrow for all of them, wraps to
 // extra lines and grows the row height (sizeHint). Qt's default single-
 // DecorationRole rendering would have squeezed the stack down to one icon slot.
 class FlagsDelegate : public QStyledItemDelegate {
     Q_OBJECT
 public:
-    using QStyledItemDelegate::QStyledItemDelegate;
+    // `flag_icons_role` is the model/user role carrying the QList<QIcon>.
+    // When `flag_tooltips_role` is non-zero it carries a parallel QStringList
+    // of per-icon hover text; helpEvent() shows ONLY the entry of the emblem
+    // under the cursor (and nothing over empty cell space).
+    explicit FlagsDelegate(int flag_icons_role, int flag_tooltips_role = 0,
+                           QWidget* parent = nullptr);
 
 protected:
     void paint(QPainter* painter, const QStyleOptionViewItem& option,
                const QModelIndex& index) const override;
     QSize sizeHint(const QStyleOptionViewItem& option,
                    const QModelIndex& index) const override;
+    bool helpEvent(QHelpEvent* event, QAbstractItemView* view,
+                   const QStyleOptionViewItem& option,
+                   const QModelIndex& index) override;
+
+private:
+    int flag_icons_role_ = Qt::UserRole;
+    int flag_tooltips_role_ = 0;
 };
 
 // Vertical scrollbar that paints a small colored mark at each separator row,

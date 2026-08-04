@@ -13,10 +13,12 @@
 
 namespace ui {
 
-static void setup_toggle_header(QTableWidget* table, const QStringList& labels) {
+static void setup_toggle_header(QTableWidget* table, const QStringList& labels,
+                                const QStringList& tooltips = {}) {
     if (!table) return;
     auto* header = new ColumnToggleHeaderView(Qt::Horizontal, table);
     header->set_column_labels(labels);
+    header->set_section_tooltips(tooltips);
     table->setHorizontalHeader(header);
     header->setStretchLastSection(true);
     header->setSectionsMovable(true);
@@ -135,8 +137,16 @@ void RightPanel::ensure_tab(const std::string& capability, const QString& label)
 
     if (capability == "plugins") {
         auto* t = new PluginsTab(tab_widget_);
-        setup_toggle_header(t->table(), {tr("Enabled"), tr("Plugin Name"), tr("Flags"),
-                                         tr("Priority"), tr("Mod Index")});
+        // Column header tooltips mirror MO2's PluginList::getColumnToolTip.
+        setup_toggle_header(t->table(),
+                            {tr("Enabled"), tr("Plugin Name"), tr("Flags"),
+                             tr("Priority"), tr("Mod Index")},
+                            {tr("Name of the plugin"),
+                             tr("Emblems to highlight things that might require attention."),
+                             tr("Load priority of plugins. The higher, the more "
+                                "\"important\" it is and thus overwrites data from "
+                                "plugins with lower priority."),
+                             tr("Determines the formids of objects originating from this mod.")});
         tab = t;
     } else if (capability == "conflicts") {
         auto* t = new ConflictsTab(tab_widget_);

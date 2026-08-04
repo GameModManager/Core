@@ -31,6 +31,7 @@
 #include <QMouseEvent>
 #include <QPalette>
 #include <QPainter>
+#include <QPair>
 #include <QPixmap>
 #include <QProgressBar>
 #include <QPushButton>
@@ -48,6 +49,7 @@
 
 #include "ui/widgets/column_toggle_header.h"
 #include "ui/widgets/mod_list_model.h"
+#include "ui/widgets/mod_table_view.h"
 
 #include "engine/log/logger.h"
 #include "engine/fs_utils.h"
@@ -232,6 +234,198 @@ static bool can_preview(const QString& path) {
 
 // --- PluginsTab ---
 
+// --- Flag-bound tooltip fragments (MO2 PluginList::tooltipData sub-blocks) ---
+// Each fragment describes exactly one status emblem; the Flags column shows
+// ONLY the fragment of the emblem under the cursor. plugin_tooltip_html()
+// composes the same fragments (plus the non-flag header block) into the full
+// per-plugin tooltip shown on the name/priority/mod-index cells.
+
+static QString missing_masters_html(const engine::GamePlugin& p) {
+    QStringList names;
+    for (const auto& s : p.missing_masters)
+        names << QString::fromStdString(s);
+    return "<br><b>" + PluginsTab::tr("Missing Masters") + "</b>: <b>" +
+           names.join(", ") + "</b>";
+}
+
+static QString archives_html(const engine::GamePlugin& p) {
+    // Fewer than 6 archives are listed inline; more just get the paragraph.
+    QString archive_line;
+    if (p.archives.size() < 6) {
+        QStringList names;
+        for (const auto& a : p.archives)
+            names << QString::fromStdString(a);
+        archive_line = names.join(", ") + "<br>";
+    }
+    return "<br><b>" + PluginsTab::tr("Loads Archives") + "</b>: " + archive_line +
+           PluginsTab::tr("There are Archives connected to this plugin. Their assets "
+                          "will be added to your game, overwriting in case of conflicts "
+                          "following the plugin order. Loose files will always overwrite "
+                          "assets from Archives. (This flag only checks for Archives from "
+                          "the same mod as the plugin)");
+}
+
+static QString has_ini_html() {
+    return "<br><b>" + PluginsTab::tr("Loads INI settings") + "</b>:<br>" +
+           PluginsTab::tr("There is an ini file connected to this plugin. Its settings "
+                          "will be added to your game settings, overwriting in case of "
+                          "conflicts.");
+}
+
+static QString esl_html(const engine::GamePlugin& p) {
+    const QString type = p.has_master_ext ? "ESM" : "ESP";
+    return "<br><br>" +
+           PluginsTab::tr("This %1 is flagged as a light plugin (ESL). It will adhere "
+                          "to the %1 load order but the records will be loaded in ESL "
+                          "space (FE/FF). You can have up to 4096 light plugins in "
+                          "addition to other plugin types.")
+               .arg(type);
+}
+
+static QString esh_html() {
+    return "<br><br>" +
+           PluginsTab::tr("This ESM is flagged as a medium plugin (ESH). It adheres to "
+                          "the ESM load order but loads records in ESH space (FD). You "
+                          "can have 256 medium plugins in addition to other plugin types.");
+}
+
+static QString both_light_medium_warning_html() {
+    return "<br><br>" +
+           PluginsTab::tr("WARNING: This plugin is both light and medium flagged. This "
+                          "could indicate that the file was saved improperly and may have "
+                          "mismatched record references. Use it at your own risk.");
+}
+
+static QString dummy_html() {
+    return "<br><br>" +
+           PluginsTab::tr("This is a dummy plugin. It contains no records and is "
+                          "typically used to load a paired archive file.");
+}
+
+// GMM-specific emblem (MO2 has no lock flag): the load-order pin.
+static QString locked_html() {
+    return "<br><b>" + PluginsTab::tr("Locked") + "</b>: " +
+           PluginsTab::tr("This plugin's load order position is locked.");
+}
+
+// (token, html) for every emblem the row shows, in MO2 iconData() order. The
+// Flags column stores icons and tooltips as two parallel lists built from this,
+// so the per-icon hover text can never point at the wrong emblem.
+static QVector<QPair<QString, QString>> plugin_flag_fragments(
+    const engine::GamePlugin& p) {
+    QVector<QPair<QString, QString>> frags;
+    if (!p.missing_masters.empty())
+        frags << QPair<QString, QString>(QStringLiteral("warning"),
+                                         missing_masters_html(p));
+    if (p.locked)
+        frags << QPair<QString, QString>(QStringLiteral("locked"), locked_html());
+    if (p.has_ini)
+        frags << QPair<QString, QString>(QStringLiteral("attachment"),
+                                         has_ini_html());
+    if (!p.archives.empty())
+        frags << QPair<QString, QString>(QStringLiteral("archive"),
+                                         archives_html(p));
+    if (p.is_light_flagged && !p.has_light_ext)
+        frags << QPair<QString, QString>(QStringLiteral("awaiting"),
+                                         esl_html(p));
+    if (p.is_medium_flagged)
+        frags << QPair<QString, QString>(QStringLiteral("run"), esh_html());
+    if (p.has_no_records)
+        frags << QPair<QString, QString>(QStringLiteral("dummy"), dummy_html());
+    // The both-light-and-medium warning rides both of those emblems.
+    if (p.is_light_flagged && p.is_medium_flagged) {
+        const QString warn = both_light_medium_warning_html();
+        for (auto& f : frags) {
+            if (f.first == QLatin1String("awaiting") ||
+                f.first == QLatin1String("run"))
+                f.second += warn;
+        }
+    }
+    return frags;
+}
+
+// Rich per-plugin tooltip, mirroring MO2's PluginList::tooltipData layout
+// (modorganizer/src/pluginlist.cpp:1492): Origin, enforced-notes, header
+// metadata, masters, archives/INI paragraphs, ESL/ESH warnings, dummy note and
+// diagnostics messages. Shown identically on every non-flags column of the row.
+static QString plugin_tooltip_html(const engine::GamePlugin& p) {
+    auto truncate = [](const QString& s) {
+        QString t = s;
+        if (t.length() > 1024) {
+            t.truncate(1024);
+            t += "...";
+        }
+        return t;
+    };
+
+    QString tip;
+    tip += "<b>" + PluginsTab::tr("Origin") + "</b>: " +
+           (p.owner_mod.empty() ? PluginsTab::tr("Game Data")
+                                : QString::fromStdString(p.owner_mod).toHtmlEscaped());
+
+    if (p.force_loaded)
+        tip += "<br><b><i>" +
+               PluginsTab::tr("This plugin can't be disabled or moved (enforced by the game).") +
+               "</i></b>";
+
+    if (p.form_version != 0)  // Oblivion-style headers have no form version
+        tip += "<br><b>" + PluginsTab::tr("Form Version") + "</b>: " +
+               QString::number(p.form_version);
+
+    tip += "<br><b>" + PluginsTab::tr("Header Version") + "</b>: " +
+           QString::number(p.header_version);
+
+    if (!p.author.empty())
+        tip += "<br><b>" + PluginsTab::tr("Author") + "</b>: " +
+               truncate(QString::fromStdString(p.author).toHtmlEscaped());
+
+    if (!p.description.empty())
+        tip += "<br><b>" + PluginsTab::tr("Description") + "</b>: " +
+               truncate(QString::fromStdString(p.description).toHtmlEscaped());
+
+    if (!p.missing_masters.empty())
+        tip += missing_masters_html(p);
+
+    // Enabled masters = declared masters minus the absent ones (MO2
+    // std::set_difference over masterUnset).
+    QStringList enabled;
+    for (const auto& m : p.masters) {
+        if (std::find(p.missing_masters.begin(), p.missing_masters.end(), m) ==
+            p.missing_masters.end())
+            enabled << QString::fromStdString(m);
+    }
+    if (!enabled.isEmpty())
+        tip += "<br><b>" + PluginsTab::tr("Enabled Masters") + "</b>: " +
+               enabled.join(", ");
+
+    if (!p.archives.empty())
+        tip += archives_html(p);
+
+    if (p.has_ini)
+        tip += has_ini_html();
+
+    if (p.is_light_flagged && !p.has_light_ext) {
+        tip += esl_html(p);
+    } else if (p.is_medium_flagged && p.has_master_ext) {
+        tip += esh_html();
+    }
+
+    if (p.is_light_flagged && p.is_medium_flagged)
+        tip += both_light_medium_warning_html();
+
+    if (p.has_no_records)
+        tip += dummy_html();
+
+    if (!p.messages.empty()) {
+        tip += "<hr><ul style=\"margin-left:15px; -qt-list-indent: 0;\">";
+        for (const auto& msg : p.messages)
+            tip += "<li>" + QString::fromStdString(msg).toHtmlEscaped() + "</li>";
+        tip += "</ul>";
+    }
+
+    return tip;
+}
+
 // Table subclass that turns a drop between rows into a reorder request
 // instead of letting Qt's default InternalMove rearrange items (whose order
 // would then drift from the engine's). The engine repopulates on reorder.
@@ -322,46 +516,32 @@ private:
     bool press_on_check_ = false;
 };
 
-// MO2-style status emblems for the plugin list Flags column. MO2 renders a
-// horizontal stack of small emblem icons in that column (PluginList::iconData
-// + GenericIconDelegate); a cell can only carry one icon, so the selected
-// emblems are laid out into a single pixmap, the same trick ModListModel uses
-// for conflict icons. Emblem names mirror MO2's iconData() tokens.
-static QIcon plugin_flag_emblem_icon(const QStringList& marks) {
-    constexpr int kSize = 16;
-    constexpr int kGap = 4;
-
+// MO2-style status emblems for the plugin list Flags column. One QIcon per
+// emblem (MO2 renders a horizontal stack via its icon delegate; a QTableWidget
+// cell can only carry one DecorationRole icon, so the emblems ride a custom
+// role and a FlagsDelegate paints them individually at native size - stacking
+// them into one pixmap would make Qt scale the whole stack down to one icon
+// slot, the mod-list bug from 2026-08-03). Emblem names mirror MO2's
+// iconData() tokens; per-flag hover text comes from plugin_flag_fragments().
+static QIcon plugin_flag_icon(const QString& token) {
     static const QString icon_dir =
         QCoreApplication::applicationDirPath() + "/../resources/icons/";
     static const QIcon warning(icon_dir + "plugin-warning.png");
     static const QIcon awaiting(icon_dir + "plugin-awaiting.png");
     static const QIcon run(icon_dir + "plugin-medium.png");
+    static const QIcon locked(icon_dir + "plugin-locked.png");
+    static const QIcon attachment(icon_dir + "plugin-attachment.png");
+    static const QIcon archive(icon_dir + "plugin-archive.png");
+    static const QIcon dummy(icon_dir + "plugin-dummy.png");
 
-    QVector<QIcon> icons;
-    icons.reserve(marks.size());
-    for (const QString& m : marks) {
-        if (m == QLatin1String("warning"))
-            icons.push_back(warning);
-        else if (m == QLatin1String("awaiting"))
-            icons.push_back(awaiting);
-        else if (m == QLatin1String("run"))
-            icons.push_back(run);
-    }
-    if (icons.isEmpty()) return {};
-
-    const int total = static_cast<int>(icons.size()) * kSize +
-                      std::max(0, static_cast<int>(icons.size()) - 1) * kGap;
-    QPixmap pix(total, kSize);
-    pix.fill(Qt::transparent);
-    QPainter p(&pix);
-    p.setRenderHint(QPainter::SmoothPixmapTransform);
-    int x = 0;
-    for (const QIcon& icon : icons) {
-        p.drawPixmap(x, 0, kSize, kSize, icon.pixmap(kSize, kSize));
-        x += kSize + kGap;
-    }
-    p.end();
-    return QIcon(pix);
+    if (token == QLatin1String("warning")) return warning;
+    if (token == QLatin1String("awaiting")) return awaiting;
+    if (token == QLatin1String("run")) return run;
+    if (token == QLatin1String("locked")) return locked;
+    if (token == QLatin1String("attachment")) return attachment;
+    if (token == QLatin1String("archive")) return archive;
+    if (token == QLatin1String("dummy")) return dummy;
+    return {};
 }
 
 QTableWidget* PluginsTab::table() const {
@@ -376,6 +556,18 @@ PluginsTab::PluginsTab(QWidget* parent) : QWidget(parent) {
         {tr("Plugin Name"), tr("Flags"), tr("Priority"), tr("Mod Index")});
     table_->horizontalHeader()->setStretchLastSection(true);
     table_->verticalHeader()->setVisible(false);
+    // Flags column: one QIcon per emblem under kPluginFlagsRole, painted by the
+    // shared FlagsDelegate at native size (a single DecorationRole icon would
+    // have squeezed the whole stack into one slot). kPluginFlagTooltipsRole
+    // gives the delegate per-emblem hover text. Row heights follow the wrap
+    // math when the column is too narrow for every emblem.
+    table_->setItemDelegateForColumn(
+        1, new ui::FlagsDelegate(PluginsTab::kPluginFlagsRole,
+                                 PluginsTab::kPluginFlagTooltipsRole, table_));
+    connect(table_->horizontalHeader(), &QHeaderView::sectionResized, this,
+            [this](int logical, int, int) {
+                if (logical == 1) relayout_flag_rows();
+            });
     table_->setSelectionBehavior(QAbstractItemView::SelectRows);
     table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table_->setAlternatingRowColors(true);
@@ -392,6 +584,9 @@ PluginsTab::PluginsTab(QWidget* parent) : QWidget(parent) {
         emit toggle_requested(names_[static_cast<size_t>(row)],
                               item->checkState() == Qt::Checked);
     });
+    table_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(table_, &QTableWidget::customContextMenuRequested,
+            this, &PluginsTab::on_custom_context_menu);
     layout->addWidget(table_);
 }
 
@@ -399,7 +594,11 @@ void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
     syncing_ = true;
     table_->setRowCount(0);
     names_.clear();
+    rows_locked_.clear();
+    rows_force_loaded_.clear();
     names_.reserve(plugins.size());
+    rows_locked_.reserve(plugins.size());
+    rows_force_loaded_.reserve(plugins.size());
     table_->setRowCount(static_cast<int>(plugins.size()));
 
     const QColor missing_color(0xB0, 0x30, 0x30);
@@ -408,6 +607,8 @@ void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
     for (int i = 0; i < static_cast<int>(plugins.size()); ++i) {
         const auto& p = plugins[static_cast<size_t>(i)];
         names_.push_back(p.name);
+        rows_locked_.push_back(p.locked);
+        rows_force_loaded_.push_back(p.force_loaded);
 
         // Column 0: name with the enable checkbox folded into the cell
         // (MO2-style). Fixed rows show a checked box that cannot be toggled;
@@ -420,7 +621,8 @@ void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
             name->setCheckState(Qt::Checked);
             name->setForeground(fixed_color);
         } else {
-            nf |= Qt::ItemIsUserCheckable | Qt::ItemIsDragEnabled;
+            nf |= Qt::ItemIsUserCheckable;
+            if (!p.locked) nf |= Qt::ItemIsDragEnabled;  // locked = immovable
             name->setFlags(nf);
             name->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
         }
@@ -444,71 +646,76 @@ void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
             name->setFont(f);
             name->setForeground(missing_color);
         }
-        QString tip;
-        if (!p.owner_mod.empty())
-            tip += tr("Installed by: %1\n").arg(QString::fromStdString(p.owner_mod));
-        if (!p.masters.empty()) {
-            QStringList m;
-            for (const auto& master : p.masters) m << QString::fromStdString(master);
-            tip += tr("Masters: %1\n").arg(m.join(", "));
+
+        // Emblems (MO2 PluginList::iconData token order) with their per-flag
+        // hover text, both built from plugin_flag_fragments() so icons and
+        // tooltips stay parallel. The name font carries the plugin type
+        // instead. The flags cell shows ONLY the emblem's own info on hover;
+        // the name/priority/mod-index cells keep the full rich tooltip.
+        const auto flag_frags = plugin_flag_fragments(p);
+        QList<QIcon> flag_icons;
+        QStringList flag_tips;
+        flag_icons.reserve(flag_frags.size());
+        flag_tips.reserve(flag_frags.size());
+        for (const auto& f : flag_frags) {
+            flag_icons << plugin_flag_icon(f.first);
+            flag_tips << f.second;
         }
-        if (p.missing_master) tip += tr("A required master is not installed.");
-        if (!tip.isEmpty()) name->setToolTip(tip.trimmed());
+
+        const QString tooltip = plugin_tooltip_html(p);
+        name->setToolTip(tooltip);
         table_->setItem(i, 0, name);
 
-        // Column 1: status emblems (MO2's PluginList::iconData parity). MO2
-        // shows: warning (missing masters / problems), awaiting (ESL-flagged
-        // but not .esl), run (medium/ESH). It never icons the plugin *type*
-        // here — that's the name font above.
-        QStringList marks;
-        QStringList reasons;
-        if (p.missing_master) {
-            marks << "warning";
-            reasons << tr("A required master is not installed");
-        }
-        if (p.is_light_flagged && !p.has_light_ext) {
-            marks << "awaiting";
-            reasons << tr("Flagged as light (ESL) but does not use the .esl extension");
-        }
-        if (p.is_medium_flagged) {
-            marks << "run";
-            reasons << tr("Medium plugin (ESH)");
-        }
-        if (p.is_medium_flagged && p.is_light_flagged) {
-            marks << "warning";
-            reasons << tr("Both light and medium flagged — may have mismatched records");
-        }
-        marks.removeDuplicates();
+        // Column 1: status emblems.
         auto* flags = new QTableWidgetItem;
         Qt::ItemFlags ff = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-        if (!p.force_loaded) ff |= Qt::ItemIsDragEnabled;
+        if (!p.force_loaded && !p.locked) ff |= Qt::ItemIsDragEnabled;
         flags->setFlags(ff);
-        if (!marks.isEmpty()) {
-            flags->setIcon(plugin_flag_emblem_icon(marks));
-            flags->setToolTip(reasons.join("\n"));
-        }
+        if (!flag_icons.isEmpty())
+            flags->setData(kPluginFlagsRole, QVariant::fromValue(flag_icons));
+        if (!flag_tips.isEmpty())
+            flags->setData(kPluginFlagTooltipsRole, QVariant::fromValue(flag_tips));
+        flags->setToolTip(QString());  // per-emblem hover only, no full-row tooltip
         table_->setItem(i, 1, flags);
 
         // Column 2: priority.
         auto* prio = new QTableWidgetItem(QString::number(p.priority));
         Qt::ItemFlags pf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-        if (!p.force_loaded) pf |= Qt::ItemIsDragEnabled;
+        if (!p.force_loaded && !p.locked) pf |= Qt::ItemIsDragEnabled;
         prio->setFlags(pf);
         prio->setTextAlignment(Qt::AlignCenter);
         if (p.force_loaded) prio->setForeground(fixed_color);
+        prio->setToolTip(tooltip);
         table_->setItem(i, 2, prio);
 
         // Column 3: mod index.
         auto* idx = new QTableWidgetItem(QString::fromStdString(p.mod_index_text));
         Qt::ItemFlags xf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-        if (!p.force_loaded) xf |= Qt::ItemIsDragEnabled;
+        if (!p.force_loaded && !p.locked) xf |= Qt::ItemIsDragEnabled;
         idx->setFlags(xf);
         idx->setTextAlignment(Qt::AlignCenter);
         if (p.force_loaded) idx->setForeground(fixed_color);
+        idx->setToolTip(tooltip);
         table_->setItem(i, 3, idx);
     }
     syncing_ = false;
     apply_highlights();  // rows were rebuilt; re-tint selected-mod/master rows
+    relayout_flag_rows();  // row heights follow the emblem wrap math
+}
+
+void PluginsTab::relayout_flag_rows() {
+    const int col_width = table_->columnWidth(1);
+    const int default_h = table_->verticalHeader()->defaultSectionSize();
+    for (int i = 0; i < table_->rowCount(); ++i) {
+        const auto* item = table_->item(i, 1);
+        const QList<QIcon> icons =
+            item ? item->data(kPluginFlagsRole).value<QList<QIcon>>()
+                 : QList<QIcon>();
+        const QSize wrapped = ui::flags_wrapped_size(icons, col_width);
+        const int h = wrapped.height() > 0 ? std::max(default_h, wrapped.height())
+                                           : default_h;
+        table_->setRowHeight(i, h);
+    }
 }
 
 void PluginsTab::sync_enabled(const std::vector<engine::GamePlugin>& plugins) {
@@ -521,6 +728,34 @@ void PluginsTab::sync_enabled(const std::vector<engine::GamePlugin>& plugins) {
         item->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
     }
     syncing_ = false;
+}
+
+void PluginsTab::add_context_menu_actions(QMenu& menu, int row) {
+    if (row < 0 || row >= static_cast<int>(names_.size())) return;
+    const size_t r = static_cast<size_t>(row);
+
+    // MO2's lock actions (PluginListContextMenu): "Lock load order" for
+    // unlocked plugins, "Unlock load order" for locked ones. Core rows cannot
+    // be locked (the engine refuses).
+    const bool locked = r < rows_locked_.size() && rows_locked_[r];
+    const bool core = r < rows_force_loaded_.size() && rows_force_loaded_[r];
+    if (!locked && !core) {
+        menu.addAction(tr("Lock load order"), this, [this, r]() {
+            emit lock_requested(names_[r], true);
+        });
+    } else if (locked) {
+        menu.addAction(tr("Unlock load order"), this, [this, r]() {
+            emit lock_requested(names_[r], false);
+        });
+    }
+}
+
+void PluginsTab::on_custom_context_menu(const QPoint& pos) {
+    const int row = table_->rowAt(pos.y());
+    QMenu menu(this);
+    add_context_menu_actions(menu, row);
+    if (menu.actions().isEmpty()) return;
+    menu.exec(table_->viewport()->mapToGlobal(pos));
 }
 
 void PluginsTab::apply_highlights() {

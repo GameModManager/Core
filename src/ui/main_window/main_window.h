@@ -188,6 +188,7 @@ private:
     void refresh_plugins_tab();
     void on_plugin_toggle(const std::string& name, bool enabled);
     void on_plugin_reorder(int from_row, int to_row);
+    void on_plugin_lock(const std::string& name, bool locked);
     // Bidirectional selection highlighting (MO2 parity): mod selection marks
     // the plugins that mod owns (plugin_list_contained); plugin selection
     // marks the owning mods in the mod list (modlist_contains_file) and the
