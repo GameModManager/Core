@@ -33,10 +33,13 @@ find_package(Qt6 COMPONENTS Multimedia MultimediaWidgets QUIET)
 # Credential Locker) — pulled on every platform that ships it.
 find_package(Qt6Keychain QUIET)
 
-# KSyntaxHighlighting (KDE) — syntax highlighting for the Mod Info text/config
-# editors. Arch: `syntax-highlighting` (kf6). The imported target carries the
-# /usr/include/KF6 include path.
-find_package(KF6SyntaxHighlighting REQUIRED)
+# KSyntaxHighlighting (KDE) — OPTIONAL syntax highlighting for the Mod Info
+# text/config editors. Arch: `syntax-highlighting` (kf6). The imported target
+# carries the /usr/include/KF6 include path. There is no KF6 for Windows (MSVC
+# or MinGW) or macOS, so when absent the editors degrade to plain text — the
+# GMM_HAS_SYNTAX_HIGHLIGHTING compile definition is applied near the app link
+# below, once the gamemodmanager target exists.
+find_package(KF6SyntaxHighlighting QUIET)
 
 # Dependencies — PkgConfig on Linux/macOS, find_package on Windows
 if(WIN32)
@@ -311,7 +314,11 @@ qt_add_translations(gamemodmanager
 )
 
 # Link libraries — platform-specific
-target_link_libraries(gamemodmanager PRIVATE Qt6::Widgets Qt6::Network PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::YAMLCPP PkgConfig::CURL PkgConfig::NLOHMANN_JSON pybind11::embed Python3::Python KF6::SyntaxHighlighting)
+target_link_libraries(gamemodmanager PRIVATE Qt6::Widgets Qt6::Network PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::YAMLCPP PkgConfig::CURL PkgConfig::NLOHMANN_JSON pybind11::embed Python3::Python)
+if(KF6SyntaxHighlighting_FOUND)
+    target_link_libraries(gamemodmanager PRIVATE KF6::SyntaxHighlighting)
+    target_compile_definitions(gamemodmanager PRIVATE GMM_HAS_SYNTAX_HIGHLIGHTING=1)
+endif()
 if(Qt6Multimedia_FOUND)
     target_compile_definitions(gamemodmanager PRIVATE GMM_HAS_MULTIMEDIA=1)
     target_link_libraries(gamemodmanager PRIVATE Qt6::Multimedia Qt6::MultimediaWidgets)
@@ -900,7 +907,11 @@ add_executable(generic_files_tab_test tests/ui/generic_files_tab_test.cpp
 )
 target_include_directories(generic_files_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
 target_compile_definitions(generic_files_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
-target_link_libraries(generic_files_tab_test PRIVATE Qt6::Widgets KF6::SyntaxHighlighting)
+target_link_libraries(generic_files_tab_test PRIVATE Qt6::Widgets)
+if(KF6SyntaxHighlighting_FOUND)
+    target_link_libraries(generic_files_tab_test PRIVATE KF6::SyntaxHighlighting)
+    target_compile_definitions(generic_files_tab_test PRIVATE GMM_HAS_SYNTAX_HIGHLIGHTING=1)
+endif()
 add_test(NAME generic_files_tab_test COMMAND generic_files_tab_test)
 set_tests_properties(generic_files_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
