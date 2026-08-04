@@ -43,6 +43,17 @@ public:
         const std::filesystem::path& mods_dir,
         const std::vector<std::filesystem::path>& ignore_symlink_targets = {});
 
+    // Scan a single mod folder (installed_missing_stages: the install pipeline
+    // produces one folder at a time, so the UI can add just that row instead of
+    // rescanning the whole mods dir). Returns empty when the folder holds no
+    // recognized mod.
+    [[nodiscard]] static std::vector<ScannedMod> scan_folder(
+        const GameKnowledge& knowledge,
+        const std::string& game_id,
+        const std::filesystem::path& mods_dir,
+        const std::string& folder_name,
+        const std::vector<std::filesystem::path>& ignore_symlink_targets = {});
+
     // Create the disable sentinel file for a mod.
     [[nodiscard]] static bool disable_mod(
         const GameKnowledge& knowledge,

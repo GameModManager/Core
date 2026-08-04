@@ -56,6 +56,12 @@ static void make_instance(const fs::path& root) {
     write_file(mod / "Sub" / "nested.txt.gmmhidden", "x");
     write_file(mod / "Sub" / "nested_mo2.txt.mohidden", "x");
     write_file(mod / "Sub" / "nested.txt", "x");
+
+    // Disabled mod: carries the .gmmdisabled sentinel at its root, so with
+    // disable_mechanism=".gmmdisabled" the whole mod must be skipped.
+    const fs::path disabled = root / "mods" / "DisabledMod";
+    write_file(disabled / "DisabledMod.esp", "x");
+    write_file(disabled / ".gmmdisabled", "");
 }
 
 int main() {
@@ -117,6 +123,19 @@ int main() {
           "nested GMM-hidden file is not deployed");
     check(!fs::exists(staging / "Data" / "Sub" / "nested_mo2.txt.mohidden"),
           "nested MO2-hidden file is not deployed");
+
+    // --- deploy skips disabled mods (disable sentinel) ---
+    const fs::path staging2 = root / ".gmm_staging2";
+    const bool ok2 = engine::deploy_all_enabled_mods(
+        root / "mods", staging2, "Data", /*deploy_include_mod_id=*/false,
+        ".gmmdisabled");
+    check(ok2, "deploy with disable mechanism succeeds");
+    check(!fs::exists(staging2 / "Data" / "DisabledMod.esp"),
+          "disabled mod's files are not deployed");
+    check(!fs::exists(staging2 / "Data" / ".gmmdisabled"),
+          "disable sentinel is not deployed");
+    check(fs::exists(staging2 / "Data" / "SkyUI.esp"),
+          "enabled mod still deployed with mechanism set");
 
     fs::remove_all(base);
     std::printf("\n%d passed, %d failed\n", passes, failures);

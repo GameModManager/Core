@@ -105,6 +105,34 @@ int main() {
     require(partial_back.info().game_id == "test_game",
             "existing keys preserved alongside new override keys");
 
+    // --- write_key surgical roundtrip (proton_runner). ---
+    Instance runner = Instance::from_root(root);
+    require(runner.write_key("proton_runner", "Proton 10.0"),
+            "write_key sets proton_runner");
+    Instance runner_back = Instance::from_root(root);
+    require(runner_back.read_toml(), "read_toml after write_key succeeds");
+    require(runner_back.info().proton_runner == "Proton 10.0",
+            "proton_runner roundtrips through toml");
+    require(runner_back.path_for(InstanceKind::Mods) == mods,
+            "write_key preserves existing override sections");
+    require(runner_back.info().game_id == "test_game",
+            "write_key preserves unrelated top-level keys");
+
+    // write_key with an absolute path survives too.
+    require(runner.write_key("proton_runner", "/opt/proton/proton"),
+            "write_key accepts absolute paths");
+    Instance abs_back = Instance::from_root(root);
+    require(abs_back.read_toml(), "read_toml after absolute write_key succeeds");
+    require(abs_back.info().proton_runner == "/opt/proton/proton",
+            "absolute proton_runner roundtrips");
+
+    // Empty value removes the key.
+    require(runner.write_key("proton_runner", ""), "write_key with empty value succeeds");
+    Instance cleared_back = Instance::from_root(root);
+    require(cleared_back.read_toml(), "read_toml after clearing succeeds");
+    require(cleared_back.info().proton_runner.empty(),
+            "cleared proton_runner reads empty");
+
     std::printf("instance_path_test: all checks passed\n");
     return 0;
 }

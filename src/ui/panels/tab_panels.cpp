@@ -230,6 +230,160 @@ static bool can_preview(const QString& path) {
     return image_exts.contains(ext) || text_exts.contains(ext);
 }
 
+// --- Data tab: per-row build + merge helpers. Shared by the full rebuild
+// (show_data) and the incremental install path (apply_mod) so a single row
+// means the same thing in both.
+
+struct DataTabRow {
+    QString path;          // display path (hidden suffix stripped)
+    QString real_path;     // on-disk path of the winning copy
+    QString origin_id;     // winner mod id
+    QString source;
+    qint64 size = -1;
+    int providers = 0;
+    bool hidden = false;   // file carries .gmmhidden / .mohidden
+    QStringList all_sources;
+    QStringList provider_paths;
+    QStringList provider_ids;
+};
+
+// mod id -> display name lookup (used for the source column and tooltips).
+std::unordered_map<std::string, QString> build_display_names(const QVector<ModEntry>& all_mods) {
+    std::unordered_map<std::string, QString> names;
+    for (const auto& m : all_mods)
+        names[m.id.toStdString()] = m.name.isEmpty() ? m.id : m.name;
+    return names;
+}
+
+// On-disk path of a provider's copy: instance mods dir first, then the
+// game-native mods dir fallback.
+std::filesystem::path resolve_mod_file(const std::string& mod_id,
+                                       const std::string& rel_path,
+                                       const std::filesystem::path& mods_dir,
+                                       const std::filesystem::path& game_mods_dir) {
+    std::error_code ec;
+    auto candidate = mods_dir / mod_id / rel_path;
+    if (std::filesystem::exists(candidate, ec)) return candidate;
+    if (!game_mods_dir.empty()) {
+        ec.clear();
+        candidate = game_mods_dir / mod_id / rel_path;
+        if (std::filesystem::exists(candidate, ec)) return candidate;
+    }
+    return {};
+}
+
+// Build one row from a registry entry (path -> (mod_id, priority) providers).
+DataTabRow build_data_row(const std::string& path,
+                          const std::vector<std::pair<std::string, int>>& owners,
+                          const std::unordered_map<std::string, QString>& display_names,
+                          bool conflict_reversed,
+                          const std::filesystem::path& mods_dir,
+                          const std::filesystem::path& game_mods_dir) {
+    DataTabRow row;
+    row.path = QString::fromStdString(path).replace('\\', '/');
+
+    // Winner = the provider that actually takes effect
+    auto winner = conflict_reversed
+        ? std::min_element(owners.begin(), owners.end(),
+                           [](const auto& a, const auto& b) { return a.second < b.second; })
+        : std::max_element(owners.begin(), owners.end(),
+                           [](const auto& a, const auto& b) { return a.second < b.second; });
+
+    QString winner_id = QString::fromStdString(winner->first);
+    row.origin_id = winner_id;
+    if (winner_id == QLatin1String(kOverwriteModId)) {
+        row.source = DataTab::tr("Overwrite");
+    } else if (winner_id == QLatin1String(kMergedModId)) {
+        row.source = DataTab::tr("MERGED");
+    } else {
+        auto it = display_names.find(winner->first);
+        row.source = it != display_names.end() ? it->second : winner_id;
+    }
+
+    // Hidden files (.gmmhidden here, .mohidden in MO2-imported instances)
+    // display under their base name. A visible file with the same base
+    // name wins the display slot; otherwise the hidden copy is shown
+    // dimmed (the name survives so it can be un-hidden from the tab).
+    if (engine::is_hidden_file(std::filesystem::path(path))) {
+        row.hidden = true;
+        const auto gmm = std::string(engine::kGmmHiddenSuffix);
+        const auto mo2 = std::string(engine::kMo2HiddenSuffix);
+        if (row.path.endsWith(QString::fromStdString(gmm)))
+            row.path.chop(static_cast<int>(gmm.size()));
+        else if (row.path.endsWith(QString::fromStdString(mo2)))
+            row.path.chop(static_cast<int>(mo2.size()));
+    }
+
+    row.providers = static_cast<int>(owners.size());
+    for (const auto& [owner, _] : owners) {
+        auto it = display_names.find(owner);
+        row.all_sources << (it != display_names.end() ? it->second
+                                                      : QString::fromStdString(owner));
+        row.provider_ids << QString::fromStdString(owner);
+        row.provider_paths << QString::fromStdString(
+            resolve_mod_file(owner, path, mods_dir, game_mods_dir).string());
+    }
+
+    // Size and real path of the winning copy (hidden suffix intact)
+    std::error_code ec;
+    const auto winner_real = resolve_mod_file(winner->first, path, mods_dir, game_mods_dir);
+    if (!winner_real.empty()) {
+        row.real_path = QString::fromStdString(winner_real.string());
+        auto sz = std::filesystem::file_size(winner_real, ec);
+        if (!ec) row.size = static_cast<qint64>(sz);
+    }
+    return row;
+}
+
+// Insert or update one row's tree item. When the row is already present it is
+// overwritten in place (provider counts, winner, sizes) so callers never
+// recreate items - this is what keeps the install path incremental.
+void upsert_data_row(QTreeWidget* tree, const DataTabRow& row) {
+    const QColor dim = QApplication::palette().color(QPalette::Disabled, QPalette::Text);
+    auto parts = row.path.split('/');
+    auto* parent = tree->invisibleRootItem();
+    for (int i = 0; i < parts.size() - 1; ++i)
+        parent = ensure_child(parent, parts[i], true);
+
+    auto* file_item = ensure_child(parent, parts.last(), false);
+
+    // A hidden copy whose display name is already owned by a visible (or
+    // earlier hidden) row stays invisible - the visible copy wins.
+    if (row.hidden && !file_item->data(0, DataRealPathRole).toString().isEmpty())
+        return;
+
+    file_item->setIcon(0, icon_for_file(parts.last()));
+    file_item->setText(1, row.size >= 0 ? format_size(row.size) : QString());
+    file_item->setText(2, row.source);
+    file_item->setToolTip(2, row.all_sources.join(", "));
+    if (row.providers > 1) {
+        file_item->setText(3, QString::number(row.providers));
+        file_item->setToolTip(3, row.all_sources.join("\n"));
+    } else {
+        file_item->setText(3, QString());
+        file_item->setToolTip(3, QString());
+    }
+
+    // Per-file metadata for the context menu (real path, origin mod,
+    // hidden state, provider copies for preview variant navigation).
+    file_item->setData(0, DataRealPathRole, row.real_path);
+    file_item->setData(0, DataOriginModRole, row.origin_id);
+    file_item->setData(0, DataHiddenRole, row.hidden);
+    file_item->setData(0, DataProviderPathsRole, row.provider_paths);
+    file_item->setData(0, DataProviderIdsRole, row.provider_ids);
+
+    if (row.hidden) {
+        file_item->setForeground(0, dim);
+        file_item->setForeground(2, dim);
+        file_item->setToolTip(0, DataTab::tr("Hidden file"));
+    } else {
+        // Reclaim the slot from a previously inserted hidden copy of the same
+        // base name: drop its dim so the visible file renders normally.
+        file_item->setData(0, Qt::ForegroundRole, QVariant());
+        file_item->setData(2, Qt::ForegroundRole, QVariant());
+    }
+}
+
 }  // anonymous namespace
 
 // --- PluginsTab ---
@@ -860,108 +1014,22 @@ void DataTab::show_data(
     tree_->clear();
     if (registry.empty()) return;
 
-    // mod id -> display name lookup
-    std::unordered_map<std::string, QString> display_names;
-    for (const auto& m : all_mods)
-        display_names[m.id.toStdString()] = m.name.isEmpty() ? m.id : m.name;
+    auto display_names = build_display_names(all_mods);
 
-    struct Row {
-        QString path;          // display path (hidden suffix stripped)
-        QString registry_path; // registry key (may carry a hidden suffix)
-        QString real_path;     // on-disk path of the winning copy
-        QString origin_id;     // winner mod id
-        QString source;
-        qint64 size = -1;
-        int providers = 0;
-        bool hidden = false;   // file carries .gmmhidden / .mohidden
-        QStringList all_sources;
-        QStringList provider_paths;
-        QStringList provider_ids;
-    };
-    std::vector<Row> rows;
+    std::vector<DataTabRow> rows;
     rows.reserve(registry.size());
-
-    auto resolve_path = [&](const std::string& mod_id,
-                            const std::string& rel_path) -> std::filesystem::path {
-        std::error_code ec;
-        auto candidate = mods_dir / mod_id / rel_path;
-        if (std::filesystem::exists(candidate, ec)) return candidate;
-        if (!game_mods_dir.empty()) {
-            ec.clear();
-            candidate = game_mods_dir / mod_id / rel_path;
-            if (std::filesystem::exists(candidate, ec)) return candidate;
-        }
-        return {};
-    };
-
     for (const auto& [path, owners] : registry) {
         if (owners.empty()) continue;
-
-        Row row;
-        row.registry_path = QString::fromStdString(path).replace('\\', '/');
-        row.path = row.registry_path;
-
-        // Winner = the provider that actually takes effect
-        auto winner = conflict_reversed
-            ? std::min_element(owners.begin(), owners.end(),
-                               [](const auto& a, const auto& b) { return a.second < b.second; })
-            : std::max_element(owners.begin(), owners.end(),
-                               [](const auto& a, const auto& b) { return a.second < b.second; });
-
-        QString winner_id = QString::fromStdString(winner->first);
-        row.origin_id = winner_id;
-        if (winner_id == QLatin1String(kOverwriteModId)) {
-            row.source = tr("Overwrite");
-        } else if (winner_id == QLatin1String(kMergedModId)) {
-            row.source = tr("MERGED");
-        } else {
-            auto it = display_names.find(winner->first);
-            row.source = it != display_names.end() ? it->second : winner_id;
-        }
-
-        // Hidden files (.gmmhidden here, .mohidden in MO2-imported instances)
-        // display under their base name. A visible file with the same base
-        // name wins the display slot; otherwise the hidden copy is shown
-        // dimmed (the name survives so it can be un-hidden from the tab).
-        const std::string path_str = path;
-        if (engine::is_hidden_file(std::filesystem::path(path_str))) {
-            row.hidden = true;
-            const auto gmm = std::string(engine::kGmmHiddenSuffix);
-            const auto mo2 = std::string(engine::kMo2HiddenSuffix);
-            if (row.path.endsWith(QString::fromStdString(gmm)))
-                row.path.chop(static_cast<int>(gmm.size()));
-            else if (row.path.endsWith(QString::fromStdString(mo2)))
-                row.path.chop(static_cast<int>(mo2.size()));
-        }
-
-        row.providers = static_cast<int>(owners.size());
-        for (const auto& [owner, _] : owners) {
-            auto it = display_names.find(owner);
-            row.all_sources << (it != display_names.end() ? it->second
-                                                          : QString::fromStdString(owner));
-            row.provider_ids << QString::fromStdString(owner);
-            row.provider_paths << QString::fromStdString(
-                resolve_path(owner, path_str).string());
-        }
-
-        // Size and real path of the winning copy (hidden suffix intact)
-        std::error_code ec;
-        const auto winner_real = resolve_path(winner->first, path_str);
-        if (!winner_real.empty()) {
-            row.real_path = QString::fromStdString(winner_real.string());
-            auto sz = std::filesystem::file_size(winner_real, ec);
-            if (!ec) row.size = static_cast<qint64>(sz);
-        }
-
-        rows.push_back(std::move(row));
+        rows.push_back(build_data_row(path, owners, display_names,
+                                      conflict_reversed, mods_dir, game_mods_dir));
     }
 
     // Sorted path order gives naturally grouped tree insertion. Equal display
     // paths (a hidden copy vs a visible file of the same name) order the
     // visible one first so it claims the row and the dimmed duplicate is
-    // skipped below.
+    // skipped in upsert_data_row.
     std::sort(rows.begin(), rows.end(),
-              [](const Row& a, const Row& b) {
+              [](const DataTabRow& a, const DataTabRow& b) {
                   if (a.path != b.path) return a.path < b.path;
                   return !a.hidden && b.hidden;
               });
@@ -969,47 +1037,44 @@ void DataTab::show_data(
     engine::Logger::instance().debug("Data tab populated: " +
         std::to_string(rows.size()) + " merged files");
 
-    const QColor dim = QApplication::palette().color(QPalette::Disabled, QPalette::Text);
-    for (const auto& row : rows) {
-        auto parts = row.path.split('/');
-        auto* parent = tree_->invisibleRootItem();
-        for (int i = 0; i < parts.size() - 1; ++i)
-            parent = ensure_child(parent, parts[i], true);
-
-        auto* file_item = ensure_child(parent, parts.last(), false);
-
-        // A hidden copy whose display name is already owned by a visible (or
-        // earlier hidden) row stays invisible - the visible copy wins.
-        if (row.hidden && !file_item->data(0, DataRealPathRole).toString().isEmpty())
-            continue;
-
-        file_item->setIcon(0, icon_for_file(parts.last()));
-        file_item->setText(1, row.size >= 0 ? format_size(row.size) : QString());
-        file_item->setText(2, row.source);
-        file_item->setToolTip(2, row.all_sources.join(", "));
-        if (row.providers > 1) {
-            file_item->setText(3, QString::number(row.providers));
-            file_item->setToolTip(3, row.all_sources.join("\n"));
-        }
-
-        // Per-file metadata for the context menu (real path, origin mod,
-        // hidden state, provider copies for preview variant navigation).
-        file_item->setData(0, DataRealPathRole, row.real_path);
-        file_item->setData(0, DataOriginModRole, row.origin_id);
-        file_item->setData(0, DataHiddenRole, row.hidden);
-        file_item->setData(0, DataProviderPathsRole, row.provider_paths);
-        file_item->setData(0, DataProviderIdsRole, row.provider_ids);
-
-        if (row.hidden) {
-            file_item->setForeground(0, dim);
-            file_item->setForeground(2, dim);
-            file_item->setToolTip(0, tr("Hidden file"));
-        }
-    }
+    for (const auto& row : rows)
+        upsert_data_row(tree_, row);
 
     sort_dirs_first(tree_->invisibleRootItem());
     // Folders start collapsed (MO2-style: the tree opens with subfolders
     // closed); double-click expands in place.
+}
+
+void DataTab::apply_mod(
+    const std::unordered_map<std::string, std::vector<std::pair<std::string, int>>>& registry,
+    const std::string& mod_id,
+    const QVector<ModEntry>& all_mods,
+    bool conflict_reversed,
+    const std::filesystem::path& mods_dir,
+    const std::filesystem::path& game_mods_dir)
+{
+    if (registry.empty()) return;
+
+    auto display_names = build_display_names(all_mods);
+
+    bool any = false;
+    for (const auto& [path, owners] : registry) {
+        if (owners.empty()) continue;
+        bool provides = false;
+        for (const auto& [owner, _] : owners) {
+            if (owner == mod_id) { provides = true; break; }
+        }
+        if (!provides) continue;
+        any = true;
+        upsert_data_row(tree_, build_data_row(path, owners, display_names,
+                                              conflict_reversed, mods_dir, game_mods_dir));
+    }
+
+    if (any) {
+        sort_dirs_first(tree_->invisibleRootItem());
+        engine::Logger::instance().debug(
+            "Data tab updated incrementally for installed mod: " + mod_id);
+    }
 }
 
 void DataTab::on_item_double_clicked(QTreeWidgetItem* item, int column) {

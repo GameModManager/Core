@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace engine {
@@ -88,6 +89,27 @@ struct PipelineContext {
     // replace (headless/CLI default, matching the pre-dialog behavior).
     std::function<OverwriteDecision(const std::string& mod_name)> overwrite_query_cb;
 
+    // Non-FOMOD install name confirmation (MO2's SimpleInstallDialog). Invoked
+    // on the pipeline thread with the suggested mod name (typically the Nexus
+    // display name, falling back to the archive stem) and the archive filename;
+    // returns the confirmed name, or nullopt when the user canceled the
+    // install. Unset (headless/CLI): the suggested name is used as-is. FOMOD
+    // archives are skipped - their wizard owns the name.
+    std::function<std::optional<std::string>(const std::string& suggested_name,
+                                             const std::string& archive_filename)>
+        name_query_cb;
+
+    // True once FomodStage recognizes the archive as a FOMOD (a fomod/
+    // ModuleConfig.xml exists), even when the wizard was skipped via "Manual".
+    // InstallStage uses it to skip the non-FOMOD name dialog.
+    bool fomod_detected = false;
+
+    // The final mod folder name produced by InstallStage (after any
+    // name-confirmation / Rename). Empty when the install never reached the
+    // copy step. PipelineWorker forwards it via install_complete so the UI can
+    // add just that one row instead of rescanning the whole mods dir.
+    std::string installed_mod_folder;
+
     // Set by an interactive stage when the user aborts (FOMOD wizard Cancel,
     // overwrite dialog Cancel). Pipeline::run stops and reports Canceled, which
     // the caller must not treat as a failure.
@@ -114,6 +136,13 @@ struct PipelineContext {
 
     // Download progress callback (bytes downloaded, total bytes, speed in bytes/sec)
     std::function<void(int64_t downloaded, int64_t total, double speed)> on_progress;
+
+    // Install-stage progress (extract/copy): current percent 0-100, or -1 when
+    // the stage cannot estimate progress (indeterminate bar), plus a short
+    // human status line ("Extracting SkyUI.zip…", "Installing to SkyUI…").
+    // Invoked on the pipeline thread; the UI marshals it to its progress
+    // dialog. Unset (headless/CLI default) = no reporting.
+    std::function<void(int percent, const std::string& status)> on_stage_progress;
 
     // Download pause/resume control. `should_abort` is polled by the download
     // provider's transfer callback; returning true aborts the fetch and keeps

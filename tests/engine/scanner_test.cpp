@@ -113,6 +113,17 @@ int main() {
     require(nc->separator_color.empty(),
             "meta.ini without a color key yields an empty color");
 
+    // A mod disabled via the default GMM sentinel. No game plugin declared a
+    // disable_mechanism here, so the engine default (.gmmdisabled) must apply:
+    // the mod comes back disabled on rescan (was a silent no-op before).
+    fs::create_directories(root / "DisabledMod");
+    write_file(root / "DisabledMod" / "meta.ini", "[General]\n");
+    write_file(root / "DisabledMod" / ".gmmdisabled", "");
+    const auto mods5 = engine::ModScanner::scan_dir(knowledge, "testgame", root);
+    const auto* dm = by_folder(mods5, "DisabledMod");
+    require(dm != nullptr, "disabled mod found");
+    require(!dm->enabled, "mod carrying .gmmdisabled is disabled by default");
+
     std::printf("scanner_test: all checks passed\n");
     return 0;
 }

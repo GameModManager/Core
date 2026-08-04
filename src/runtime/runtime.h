@@ -44,10 +44,19 @@ public:
     std::string name() const override { return "proton"; }
     int64_t last_pid() const override { return last_pid_; }
 
-    // Find the Proton binary for a game (respects per-game compat tool override).
-    // Returns empty path if none found. All discovery goes through `platform`.
+    // Pin this runtime to a specific Proton runner (display name or absolute
+    // path to a `proton` script). Empty = automatic (Steam per-game override,
+    // then latest installed Proton).
+    void set_runner_override(const std::string& runner) { runner_override_ = runner; }
+    [[nodiscard]] const std::string& runner_override() const { return runner_override_; }
+
+    // Find the Proton binary for a game (respects per-game compat tool
+    // override). Returns empty path if none found. All discovery goes through
+    // `platform`. `runner_override`, when non-empty, wins over every
+    // automatic resolution.
     static std::filesystem::path find_proton_binary(const PlatformInterface* platform,
-                                                    uint32_t steam_appid = 0);
+                                                    uint32_t steam_appid = 0,
+                                                    const std::string& runner_override = {});
 
     // Set all STEAM_COMPAT_* environment variables needed by the Proton script.
     // Must be called before launching Proton in the same process or a child.
@@ -58,6 +67,7 @@ public:
 
 private:
     const PlatformInterface* platform_;
+    std::string runner_override_;
     int64_t last_pid_ = -1;
 };
 

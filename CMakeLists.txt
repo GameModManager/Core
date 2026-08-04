@@ -41,6 +41,23 @@ find_package(Qt6Keychain QUIET)
 # below, once the gamemodmanager target exists.
 find_package(KF6SyntaxHighlighting QUIET)
 
+# LOOT load-order sorting (§7.1, Phase 5.5). gmm_lootcli links libloot, which
+# is a Rust crate built from source via its own cpp/CMakeLists.txt (invokes
+# cargo). Optional: when cargo is absent GMM_WITH_LOOT defaults OFF and the
+# engine's LootSorter surfaces a "binary missing" error at runtime.
+find_program(CARGO_EXECUTABLE cargo)
+set(GMM_WITH_LOOT_DEFAULT OFF)
+if(CARGO_EXECUTABLE)
+    set(GMM_WITH_LOOT_DEFAULT ON)
+endif()
+option(GMM_WITH_LOOT "Build the gmm_lootcli LOOT sort subprocess (links libloot)" ${GMM_WITH_LOOT_DEFAULT})
+if(GMM_WITH_LOOT AND NOT CARGO_EXECUTABLE)
+    message(WARNING
+        "GMM_WITH_LOOT=ON but cargo was not found on PATH. libloot is a Rust "
+        "crate; building it requires a Rust toolchain. The engine will report "
+        "gmm_lootcli as missing at runtime.")
+endif()
+
 # Dependencies — PkgConfig on Linux/macOS, find_package on Windows
 if(WIN32)
     # Windows: use find_package for each dependency
@@ -174,6 +191,8 @@ set(ENGINE_SOURCES
     src/engine/overwrite/overwrite_utils.cpp
     src/engine/plugins/esp_header.cpp
     src/engine/plugins/plugin_database.cpp
+    src/engine/sort/loot/loot_sorter.cpp
+    src/engine/sort/loot/masterlists.cpp
     src/engine/source/source_provider.cpp
     src/engine/source/nexus_provider.cpp
     src/engine/source/nexus_account.cpp
@@ -187,6 +206,7 @@ set(ENGINE_SOURCES
     src/engine/keyring.cpp
     src/engine/preload_interceptor.cpp
     src/engine/launcher.cpp
+    src/engine/proton_tools.cpp
     src/cli/headless_launcher.cpp
     src/engine/single_instance.cpp
     ${FOMOD_ENGINE_SOURCES}
@@ -217,6 +237,7 @@ set(UI_SOURCES
     src/ui/settings/settings_dialog.cpp
     src/ui/settings/source_pages.cpp
     src/ui/main_window/main_window.cpp
+    src/ui/main_window/loot_sort_worker.cpp
     src/ui/widgets/mod_list_model.cpp
     src/ui/widgets/mod_table_view.cpp
     src/ui/widgets/main_toolbar.cpp
@@ -246,8 +267,11 @@ set(UI_SOURCES
     src/ui/overwrite/move_to_mod_dialog.cpp
     src/ui/overwrite/overwrite_info_dialog.cpp
     src/ui/overwrite/query_overwrite_dialog.cpp
+    src/ui/install/install_name_dialog.cpp
+    src/ui/install/install_progress_dialog.cpp
     src/ui/fomod/fomod_image_viewer.cpp
     src/ui/fomod/fomod_wizard_dialog.cpp
+    src/ui/proton/proton_panel.cpp
 )
 
 # FileViewer module — reusable file viewers (image/video/3D-scene). The video
@@ -286,6 +310,30 @@ list(APPEND UI_SOURCES ${MODINFO_SOURCES})
 set(APP_SOURCES
     src/main.cpp
 )
+
+# LOOT sort subprocess (gmm_lootcli) — plain C++20, no Qt. Links libloot, whose
+# C++ wrapper is a Rust crate built from source (its own cpp/CMakeLists.txt
+# invokes `cargo build`; Rust is build-time only). 0.29.6 ships no root
+# CMakeLists.txt, so populate and add the cpp/ subdir directly. Suppress
+# libloot's own test/docs setup. The engine LootSorter is compiled regardless
+# of this option and reports the missing binary as a clear error.
+if(GMM_WITH_LOOT)
+    FetchContent_Declare(
+        libloot
+        GIT_REPOSITORY https://github.com/loot/libloot.git
+        GIT_TAG        0.29.6
+    )
+    FetchContent_Populate(libloot)
+    set(LIBLOOT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(LIBLOOT_INSTALL_DOCS OFF CACHE BOOL "" FORCE)
+    add_subdirectory(${libloot_SOURCE_DIR}/cpp)
+
+    add_executable(gmm_lootcli
+        tools/gmm_lootcli/src/main.cpp
+    )
+    target_include_directories(gmm_lootcli PRIVATE tools/gmm_lootcli/src)
+    target_link_libraries(gmm_lootcli PRIVATE libloot)
+endif()
 
 add_executable(gamemodmanager ${ENGINE_SOURCES} ${RUNTIME_SOURCES} ${PLATFORM_SOURCES} ${UI_SOURCES} ${APP_SOURCES})
 
@@ -405,6 +453,17 @@ target_include_directories(plugin_database_test PRIVATE src/ ${CMAKE_CURRENT_SOU
 target_link_libraries(plugin_database_test PRIVATE PkgConfig::NLOHMANN_JSON)
 add_test(NAME plugin_database_test COMMAND plugin_database_test)
 
+add_executable(loot_sorter_test tests/engine/loot_sorter_test.cpp
+    src/engine/sort/loot/loot_sorter.cpp
+    src/engine/sort/loot/masterlists.cpp
+    src/engine/download/curl_download.cpp
+    src/engine/source/nexus_http.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(loot_sorter_test PRIVATE src/)
+target_link_libraries(loot_sorter_test PRIVATE PkgConfig::CURL PkgConfig::NLOHMANN_JSON)
+add_test(NAME loot_sorter_test COMMAND loot_sorter_test)
+
 add_executable(logger_test tests/engine/logger_test.cpp
     src/engine/log/logger.cpp
 )
@@ -501,6 +560,16 @@ add_executable(launch_params_test tests/engine/launch_params_test.cpp
 )
 target_include_directories(launch_params_test PRIVATE src/)
 add_test(NAME launch_params_test COMMAND launch_params_test)
+
+# Proton tool-running: runner override resolution + run guards.
+add_executable(proton_tools_test tests/engine/proton_tools_test.cpp
+    src/engine/proton_tools.cpp
+    src/runtime/runtime.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(proton_tools_test PRIVATE src/)
+target_compile_definitions(proton_tools_test PRIVATE VERSION="${PROJECT_VERSION}")
+add_test(NAME proton_tools_test COMMAND proton_tools_test)
 
 add_executable(nxm_router_test tests/engine/nxm_router_test.cpp
     src/engine/nxm/nxm_router.cpp
@@ -975,6 +1044,7 @@ add_executable(overwrite_dialogs_test tests/ui/overwrite_dialogs_test.cpp
     src/ui/overwrite/move_to_mod_dialog.cpp
     src/ui/overwrite/overwrite_info_dialog.cpp
     src/ui/overwrite/query_overwrite_dialog.cpp
+    src/ui/install/install_name_dialog.cpp
     src/engine/overwrite/overwrite_utils.cpp
     src/engine/index/conflict_engine.cpp
     src/engine/meta/mod_meta.cpp
@@ -986,3 +1056,59 @@ target_link_libraries(overwrite_dialogs_test PRIVATE Qt6::Widgets
     PkgConfig::NLOHMANN_JSON)
 add_test(NAME overwrite_dialogs_test COMMAND overwrite_dialogs_test)
 set_tests_properties(overwrite_dialogs_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# Proton options panel — offscreen GUI smoke test: runner combo population,
+# selected_runner() mapping, and wine.json recommended-package loading against
+# the built plugins directory.
+add_executable(proton_panel_test tests/ui/proton_panel_test.cpp
+    src/ui/proton/proton_panel.cpp
+    src/engine/proton_tools.cpp
+    src/runtime/runtime.cpp
+    src/engine/instance/instance.cpp
+    src/engine/plugin_host/plugin_loader.cpp
+    src/engine/plugin_host/python_loader.cpp
+    src/engine/plugin_host/diagnostics_registry.cpp
+    src/engine/registry/stage_registry.cpp
+    src/engine/registry/hook_registry.cpp
+    src/engine/registry/game_capabilities.cpp
+    src/engine/registry/game_knowledge.cpp
+    src/engine/tools/external_tool.cpp
+    src/engine/sort/sort_registry.cpp
+    src/engine/sort/abi_sort_provider.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(proton_panel_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_compile_definitions(proton_panel_test PRIVATE VERSION="${PROJECT_VERSION}")
+target_link_libraries(proton_panel_test PRIVATE Qt6::Widgets
+    pybind11::embed Python3::Python)
+if(NOT WIN32)
+    target_link_libraries(proton_panel_test PRIVATE ${CMAKE_DL_LIBS})
+endif()
+add_test(NAME proton_panel_test COMMAND proton_panel_test ${CMAKE_CURRENT_BINARY_DIR}/plugins)
+set_tests_properties(proton_panel_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# Install progress (engine side): ArchiveExtractor two-pass % (header pre-pass
+# sums entry sizes, then bytes written are reported against it) and the
+# InstallStage copy % (files counted up front, then done/total). Both must
+# report a real, monotonic 0-100%.
+add_executable(install_progress_test tests/engine/install_progress_test.cpp
+    src/engine/archive/archive_extractor.cpp
+    src/engine/instance/instance.cpp
+    src/engine/pipeline/install_stage.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(install_progress_test PRIVATE src/)
+target_link_libraries(install_progress_test PRIVATE PkgConfig::LIBARCHIVE)
+add_test(NAME install_progress_test COMMAND install_progress_test)
+
+# Install progress dialog — offscreen GUI regression test. The MO2-style
+# install progress popup: begin/set_status bar modes, non-blocking
+# ApplicationModal show, and no-cancel Escape behavior.
+add_executable(install_progress_dialog_test tests/ui/install_progress_dialog_test.cpp
+    src/ui/install/install_progress_dialog.cpp
+)
+target_include_directories(install_progress_dialog_test PRIVATE src/)
+target_link_libraries(install_progress_dialog_test PRIVATE Qt6::Widgets)
+add_test(NAME install_progress_dialog_test COMMAND install_progress_dialog_test)
+set_tests_properties(install_progress_dialog_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

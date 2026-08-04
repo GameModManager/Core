@@ -5,6 +5,7 @@
 
 class QBoxLayout;
 class QFrame;
+class QMenu;
 
 namespace ui {
 
@@ -18,6 +19,11 @@ public:
     void remove_exec_button(QToolButton* btn);
     void clear_exec_buttons();
 
+    // Proton button: body click emits proton_clicked() (opens the Proton
+    // panel); the attached dropdown arrow shows `menu` (set via set_proton_menu).
+    QToolButton* add_proton_button(const QIcon& icon);
+    void set_proton_menu(QMenu* menu);
+
     void set_vertical(bool vertical);
     void set_icon_size(int size);
     [[nodiscard]] bool is_vertical() const { return vertical_; }
@@ -25,12 +31,14 @@ public:
 signals:
     void settings_clicked();
     void instances_clicked();
+    void proton_clicked();
     void shortcut_removed(const QString& path);
 
 private:
     bool vertical_ = false;
     QBoxLayout* layout_ = nullptr;
     QFrame* separator_ = nullptr;
+    QToolButton* proton_button_ = nullptr;
     QList<QToolButton*> gmm_buttons_;
     QList<QToolButton*> exec_buttons_;
 };

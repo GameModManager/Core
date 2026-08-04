@@ -72,27 +72,103 @@ std::filesystem::path LinuxPlatform::find_steam_root() const {
 
 // --- Proton discovery ---
 
-std::filesystem::path LinuxPlatform::find_proton() const {
+std::vector<PlatformInterface::ProtonVersionInfo>
+LinuxPlatform::scan_proton_runners() const {
+    std::vector<ProtonVersionInfo> result;
     auto steam_root = find_steam_root();
-    if (steam_root.empty()) return {};
+    if (steam_root.empty()) return result;
 
+    // 1. Dirs under steamapps/common with a `proton` script (official Proton
+    //    releases, Experimental, Hotfix, and GE-Proton when Steam-managed).
     auto tools = steam_root / "steamapps" / "common";
-    if (!std::filesystem::exists(tools)) return {};
-
-    std::filesystem::path best;
-    for (const auto& entry : std::filesystem::directory_iterator(tools)) {
-        if (!entry.is_directory()) continue;
-        auto name = entry.path().filename().string();
-        if (name.find("Proton") != std::string::npos) {
+    std::error_code ec;
+    if (std::filesystem::exists(tools)) {
+        for (const auto& entry : std::filesystem::directory_iterator(tools, ec)) {
+            if (!entry.is_directory()) continue;
+            auto name = entry.path().filename().string();
+            if (name.find("Proton") == std::string::npos) continue;
             auto proton_bin = entry.path() / "proton";
             if (std::filesystem::exists(proton_bin)) {
-                if (best.empty() || name > best.filename().string()) {
-                    best = proton_bin;
+                result.push_back({name, proton_bin});
+            }
+        }
+        ec.clear();
+    }
+
+    // 2. Compatibility tools registered in compatibilitytool.vdf. These live
+    //    outside steamapps/common (e.g. ~/Games/proton-ge-custom).
+    auto vdf_path = steam_root / "steamapps" / "compatibilitytool.vdf";
+    if (std::filesystem::exists(vdf_path)) {
+        std::ifstream f(vdf_path);
+        std::string line;
+        std::string current_tool;
+        while (std::getline(f, line)) {
+            auto trimmed = line;
+            auto start = trimmed.find_first_not_of(" \t");
+            if (start != std::string::npos) trimmed = trimmed.substr(start);
+
+            // A quoted token at the start of a line is a section header
+            // (the tool name). Remember it so a following install_path
+            // associates with the right tool.
+            if (!trimmed.empty() && trimmed[0] == '"' && trimmed.back() == '"' &&
+                trimmed.find('=') == std::string::npos &&
+                trimmed.find("install_path") == std::string::npos) {
+                auto close = trimmed.find('"', 1);
+                if (close != std::string::npos) {
+                    current_tool = trimmed.substr(1, close - 1);
                 }
+                continue;
+            }
+
+            auto install_path = vdf_value_for_key(trimmed, "install_path");
+            if (!install_path.empty() && !current_tool.empty()) {
+                auto proton_bin = std::filesystem::path(install_path) / "proton";
+                if (std::filesystem::exists(proton_bin)) {
+                    result.push_back({current_tool, proton_bin});
+                }
+                current_tool.clear();
             }
         }
     }
+
+    return result;
+}
+
+std::filesystem::path LinuxPlatform::find_proton() const {
+    auto runners = scan_proton_runners();
+    if (runners.empty()) return {};
+
+    std::string best_name;
+    std::filesystem::path best;
+    for (const auto& r : runners) {
+        if (best.empty() || r.name > best_name) {
+            best_name = r.name;
+            best = r.binary;
+        }
+    }
     return best;
+}
+
+std::vector<PlatformInterface::ProtonVersionInfo>
+LinuxPlatform::enumerate_proton_versions() const {
+    return scan_proton_runners();
+}
+
+std::filesystem::path LinuxPlatform::find_proton_named(const std::string& name) const {
+    if (name.empty()) return {};
+
+    // Absolute (or relative-with-slash) path: use it directly.
+    auto p = std::filesystem::path(name);
+    if (name.find('/') != std::string::npos) {
+        if (std::filesystem::exists(p)) return p;
+        return {};
+    }
+
+    // Otherwise match against the display names of installed runners.
+    for (const auto& r : scan_proton_runners()) {
+        if (r.name == name) return r.binary;
+    }
+    return {};
 }
 
 std::string LinuxPlatform::vdf_value_for_key(const std::string& line, const std::string& key) {

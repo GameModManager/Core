@@ -5,17 +5,37 @@
 #include "engine/meta/mod_meta.h"
 #include "engine/log/logger.h"
 
+#include <algorithm>
 #include <fstream>
+#include <functional>
 #include <iterator>
 
 namespace engine {
 
-static bool copy_recursive(const std::filesystem::path& src,
-                            const std::filesystem::path& dst) {
+// Copy a directory tree. When `on_progress` is set, it is called with the
+// percent of files copied (0-100). Files are counted in a cheap first pass so
+// the bar shows a real percent instead of a spinner; a tree that cannot be
+// enumerated reports -1 (indeterminate) for each copied file.
+static bool copy_recursive(
+    const std::filesystem::path& src, const std::filesystem::path& dst,
+    const std::function<void(int percent)>& on_progress = {}) {
     std::error_code ec;
     std::filesystem::create_directories(dst, ec);
     if (ec) return false;
 
+    int64_t total = 0;
+    for (auto it = std::filesystem::recursive_directory_iterator(
+             src, std::filesystem::directory_options::skip_permission_denied, ec);
+         it != std::filesystem::recursive_directory_iterator();
+         it.increment(ec)) {
+        if (ec) {
+            ec.clear();
+            continue;
+        }
+        if (it->is_regular_file()) ++total;
+    }
+
+    int64_t done = 0;
     for (const auto& entry : std::filesystem::recursive_directory_iterator(src)) {
         auto relative = std::filesystem::relative(entry.path(), src);
         auto dest_path = dst / relative;
@@ -27,6 +47,11 @@ static bool copy_recursive(const std::filesystem::path& src,
             std::filesystem::copy(entry.path(), dest_path,
                                   std::filesystem::copy_options::overwrite_existing, ec);
             if (ec) return false;
+            ++done;
+            if (on_progress) {
+                const int pct = total > 0 ? static_cast<int>(done * 100 / total) : -1;
+                on_progress(std::clamp(pct, 0, 100));
+            }
         }
     }
     return true;
@@ -63,6 +88,21 @@ bool InstallStage::execute(Mod& mod, PipelineContext& ctx) {
         }
         Logger::instance().error("InstallStage: no staging directory found");
         return false;
+    }
+
+    // Non-FOMOD installs get a name-confirmation step (MO2's SimpleInstallDialog):
+    // the UI pre-fills its best guess (typically the Nexus display name) and
+    // offers the archive filename in a dropdown. FOMOD archives are skipped -
+    // their wizard already owns the name. Canceling aborts the whole install
+    // (not a failure - the download keeps its state).
+    if (ctx.name_query_cb && !ctx.fomod_detected) {
+        auto chosen = ctx.name_query_cb(mod.name, mod.archive_filename);
+        if (!chosen) {
+            Logger::instance().debug("InstallStage: install canceled in name dialog");
+            ctx.canceled = true;
+            return false;
+        }
+        mod.name = *chosen;
     }
 
     // Determine mod folder name - the display name (e.g. "SkyUI") is the
@@ -154,9 +194,18 @@ bool InstallStage::execute(Mod& mod, PipelineContext& ctx) {
         break;
     }
 
+    // The folder name is now final (a Rename decision may have replaced it
+    // above). Record it so the caller can add just this one mod to the list.
+    ctx.installed_mod_folder = folder_name;
+
     // Copy extracted files to mods/{folder_name}/
     Logger::instance().debug("InstallStage: installing to " + dest_dir.string());
-    if (!copy_recursive(staging_dir, dest_dir)) {
+    const std::string install_status = "Installing to " + folder_name + "…";
+    if (!copy_recursive(staging_dir, dest_dir,
+                        [&ctx, &install_status](int percent) {
+                            if (ctx.on_stage_progress)
+                                ctx.on_stage_progress(percent, install_status);
+                        })) {
         Logger::instance().error("InstallStage: failed to copy files to " + dest_dir.string());
         return false;
     }

@@ -31,6 +31,14 @@ public:
     // Steam discovery - platform-specific paths
     [[nodiscard]] virtual std::filesystem::path find_steam_root() const = 0;
 
+    // A discovered Proton runner: user-facing name + path to the `proton`
+    // script/binary. The name is what Steam/the user knows it as and what is
+    // persisted as a per-instance runner override.
+    struct ProtonVersionInfo {
+        std::string name;
+        std::filesystem::path binary;
+    };
+
     // Proton discovery - returns path to proton script/binary, empty if unavailable.
     // On Windows this always returns empty (no Proton on Windows).
     // On Linux this searches Steam tools for Proton installations.
@@ -40,6 +48,18 @@ public:
     // tool override. Falls back to the latest Proton when no override exists.
     [[nodiscard]] virtual std::filesystem::path find_proton_for_game(
         uint32_t steam_appid) const { return find_proton(); }
+
+    // Every installed Proton runner (name -> proton binary), for the UI's
+    // runner selector. Empty on platforms without Proton.
+    [[nodiscard]] virtual std::vector<ProtonVersionInfo>
+    enumerate_proton_versions() const { return {}; }
+
+    // Resolve a named Proton runner (as persisted in instance.toml) to its
+    // proton binary. `name` may be an absolute path (used directly) or the
+    // runner's display name (searched among installed runners). Empty when
+    // the runner cannot be found.
+    [[nodiscard]] virtual std::filesystem::path find_proton_named(
+        const std::string& name) const { return {}; }
 
     // Proton prefix (compatdata) directory for a game. Empty when not
     // applicable (no Steam, or the platform has no Proton).

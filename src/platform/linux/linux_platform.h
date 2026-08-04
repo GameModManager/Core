@@ -22,6 +22,8 @@ public:
     [[nodiscard]] std::filesystem::path find_steam_root() const override;
     [[nodiscard]] std::filesystem::path find_proton() const override;
     [[nodiscard]] std::filesystem::path find_proton_for_game(uint32_t steam_appid) const override;
+    [[nodiscard]] std::vector<ProtonVersionInfo> enumerate_proton_versions() const override;
+    [[nodiscard]] std::filesystem::path find_proton_named(const std::string& name) const override;
     [[nodiscard]] std::filesystem::path resolve_proton_prefix(uint32_t steam_appid) const override;
     [[nodiscard]] std::vector<std::filesystem::path> steam_library_paths() const override;
     [[nodiscard]] std::filesystem::path game_documents_dir(uint32_t steam_appid) const override;
@@ -56,6 +58,10 @@ private:
     std::string read_steam_compat_tool(uint32_t steam_appid) const;
     // Map a tool name to its install directory via compatibilitytool.vdf
     std::filesystem::path resolve_tool_dir(const std::string& tool_name) const;
+    // Every Proton runner Steam manages: dirs under steamapps/common with a
+    // `proton` script, plus compatibility tool entries (GE-Proton etc.).
+    // `binary` is only non-empty when a `proton` script actually exists.
+    std::vector<ProtonVersionInfo> scan_proton_runners() const;
     // Windows user profile dir inside a Proton prefix ("drive_c/users/<user>"),
     // resolved by scanning drive_c/users/ (preferring "steamuser"). Empty when
     // the prefix is empty or has no user dir.

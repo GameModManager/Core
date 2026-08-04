@@ -51,4 +51,11 @@ void GameKnowledge::clear() {
     data_.clear();
 }
 
+std::string disable_mechanism_for(const GameKnowledge& knowledge,
+                                  const std::string& game_id) {
+    const std::string declared = knowledge.get(game_id, "disable_mechanism", "");
+    if (!declared.empty()) return declared;
+    return kDefaultDisableMechanism;
+}
+
 }  // namespace engine
