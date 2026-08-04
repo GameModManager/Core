@@ -334,7 +334,7 @@ QVariant ModListModel::headerData(int section, Qt::Orientation, int role) const 
 
 Qt::ItemFlags ModListModel::flags(const QModelIndex& index) const {
     auto f = QAbstractTableModel::flags(index);
-    if (!index.isValid()) return f;
+    if (!index.isValid()) return f | Qt::ItemIsDropEnabled;
 
     const auto& mod = mods_[index.row()];
 
@@ -405,6 +405,10 @@ bool ModListModel::dropMimeData(const QMimeData* data, Qt::DropAction action,
     // Convert to between-row semantics (like IsaacMM's FlatDropModel).
     if (parent.isValid()) {
         row = parent.row() + 1;
+    } else if (row < 0) {
+        // Drop onto empty viewport space (OnViewport): append at the end.
+        // The Overwrite / game-native clamps below still apply.
+        row = rowCount({});
     }
 
     if (action != Qt::MoveAction) return false;
