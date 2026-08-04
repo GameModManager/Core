@@ -83,6 +83,14 @@ public:
     bool set_locked(const std::string& name, bool lock, std::string* error = nullptr);
     [[nodiscard]] bool is_locked(const std::string& name) const;
 
+    // Reorder the user plugin band to the given load order (e.g. LOOT's sorted
+    // output). Game-native and Creation Club rows keep their fixed band; locked
+    // plugins are re-inserted at their pinned priorities; mod indexes are
+    // regenerated. Every name in `order` must resolve to a known plugin
+    // (case-insensitively) or the call fails with *error set and nothing changed.
+    bool apply_load_order(const std::vector<std::string>& order,
+                          std::string* error = nullptr);
+
     // Load profile state (plugins.txt/loadorder.txt/lockedorder.txt) from
     // <profiles_dir>/<profile_name>/. Returns true when state was applied.
     // *repaired (optional) is set when the loaded order violated the native/CC

@@ -77,7 +77,7 @@ bool ProtonRuntime::launch(const std::filesystem::path& executable,
     if (!std::filesystem::exists(executable)) return false;
     if (!platform_) return false;
 
-    auto proton = find_proton_binary(platform_, steam_appid);
+    auto proton = find_proton_binary(platform_, steam_appid, runner_override_);
     if (proton.empty()) return false;
 
     if (!prepare_proton_environment(platform_, game_dir, steam_appid)) return false;
@@ -101,8 +101,14 @@ bool ProtonRuntime::launch(const std::filesystem::path& executable,
 // --- Static helpers ---
 
 std::filesystem::path ProtonRuntime::find_proton_binary(const PlatformInterface* platform,
-                                                        uint32_t steam_appid) {
+                                                        uint32_t steam_appid,
+                                                        const std::string& runner_override) {
     if (!platform) return {};
+
+    if (!runner_override.empty()) {
+        auto named = platform->find_proton_named(runner_override);
+        if (!named.empty()) return named;
+    }
 
     if (steam_appid > 0) {
         auto proton = platform->find_proton_for_game(steam_appid);
@@ -143,7 +149,7 @@ bool ProtonRuntime::prepare_proton_environment(const PlatformInterface* platform
 }
 
 bool ProtonRuntime::is_available() const {
-    return platform_ && !find_proton_binary(platform_).empty();
+    return platform_ && !find_proton_binary(platform_, 0, runner_override_).empty();
 }
 
 }  // namespace engine

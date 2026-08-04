@@ -1,6 +1,8 @@
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <sstream>
 #include <sys/wait.h>
 #include <QCursor>
 #include "ui/main_window/main_window.h"
@@ -18,10 +20,12 @@
 #include "ui/widgets/instance_statistics_dialog.h"
 #include "ui/widgets/instance_switcher_dialog.h"
 #include "ui/pipeline_worker.h"
+#include "ui/main_window/loot_sort_worker.h"
 #include "ui/panels/tab_panels.h"
 #include "ui/smooth_scroll.h"
 #include "ui/settings/settings_dialog.h"
 #include "ui/settings/settings.h"
+#include "ui/proton/proton_panel.h"
 #include "engine/launcher.h"
 #include "engine/fs_utils.h"
 #include "engine/log/logger.h"
@@ -41,6 +45,8 @@
 #include "ui/overwrite/overwrite_info_dialog.h"
 #include "ui/overwrite/query_overwrite_dialog.h"
 #include "ui/overwrite/sync_overwrite_dialog.h"
+#include "ui/install/install_name_dialog.h"
+#include "ui/install/install_progress_dialog.h"
 #include "ui/fomod/fomod_wizard_dialog.h"
 #include "engine/detect/game_detector.h"
 #include "ui/game_selection/game_selection_widget.h"
@@ -232,6 +238,45 @@ MainWindow::MainWindow(QWidget* parent)
         toolbar_shortcut_paths_.removeAll(path);
         save_order();
     });
+
+    // --- Proton button: body opens the Proton options panel, arrow the menu ---
+    {
+        QIcon proton_icon(
+            QCoreApplication::applicationDirPath() + "/../resources/icons/proton.png");
+        if (proton_icon.isNull())
+            proton_icon = style()->standardIcon(QStyle::SP_ComputerIcon);
+        toolbar_->add_proton_button(proton_icon);
+
+        auto* proton_menu = new QMenu(this);
+        proton_menu->addAction(tr("Run winecfg"), this, [this]() {
+            run_prefix_tool({"winecfg"});
+        });
+        proton_menu->addAction(tr("Run winetricks"), this, [this]() {
+            run_prefix_tool({});
+        });
+        proton_menu->addAction(tr("Run an .exe in this prefix..."), this,
+                               &MainWindow::run_exe_in_prefix);
+
+        proton_menu->addSeparator();
+
+        proton_menu->addAction(tr("Open Wine Registry"), this, [this]() {
+            run_prefix_tool({"regedit"});
+        });
+        proton_menu->addAction(tr("Install a DLL..."), this, [this]() {
+            // winetricks `dlls` lands straight on the "Install a Windows DLL
+            // or component" picker.
+            run_prefix_tool({"dlls"});
+        });
+
+        proton_menu->addSeparator();
+
+        proton_menu->addAction(tr("Install recommended packages"), this, [this]() {
+            show_proton_panel();
+        });
+
+        toolbar_->set_proton_menu(proton_menu);
+        connect(toolbar_, &MainToolbar::proton_clicked, this, &MainWindow::show_proton_panel);
+    }
 
     // --- Vertical splitter: main area + console (console hidden by default) ---
     console_splitter_ = new QSplitter(Qt::Vertical, this);
@@ -512,16 +557,20 @@ MainWindow::MainWindow(QWidget* parent)
     });
 
     // Install finished (user-triggered via the Downloads context menu or
-    // double-click): reload the mod list and mark the entry Installed.
+    // double-click): add just the newly installed row to the mod list instead
+    // of reloading the whole mods dir, and mark the entry Installed.
     connect(pipeline_thread_->worker(), &PipelineWorker::install_complete,
-            this, [this](const std::string& mod_id, bool success, const std::string&) {
+            this, [this](const std::string& mod_id, bool success,
+                         const std::string&, const std::string& installed_folder) {
+        hide_install_progress();
         auto* dt = right_panel_->downloads_tab();
         if (dt) {
             if (success) {
-                if (!current_game_id_.empty()) {
+                if (!current_game_id_.empty() && !installed_folder.empty()) {
                     engine::Logger::instance().debug(
-                        "Install finished for " + mod_id + ", reloading mods...");
-                    load_mods_from_game();
+                        "Install finished for " + mod_id + ", adding " +
+                        installed_folder);
+                    add_installed_mod(installed_folder);
                 }
                 dt->mark_installed(mod_id);
             } else {
@@ -536,8 +585,14 @@ MainWindow::MainWindow(QWidget* parent)
     // failure - leave the download in whatever state it had (no Failed mark).
     connect(pipeline_thread_->worker(), &PipelineWorker::install_canceled,
             this, [this](const std::string&) {
+        hide_install_progress();
         save_download_manifest();
     });
+
+    // Forward install-stage progress (extract/copy) to the install progress
+    // popup. Emitted on the worker thread; this connection auto-queues it.
+    connect(pipeline_thread_->worker(), &PipelineWorker::install_progress,
+            this, &MainWindow::update_install_progress);
 
     // A download was paused mid-fetch (partial file kept for resume).
     connect(pipeline_thread_->worker(), &PipelineWorker::paused,
@@ -625,6 +680,7 @@ void MainWindow::set_game_info(const std::string& game_id,
                                 const std::filesystem::path& instance_root) {
     // Clear previous instance state before switching
     console_->clear();
+    hide_install_progress();
     toolbar_->clear_exec_buttons();
     toolbar_shortcut_paths_.clear();
     right_panel_->exec_controls()->clear_executables();
@@ -698,6 +754,10 @@ void MainWindow::set_game_info(const std::string& game_id,
         // modal dialog onto the main thread. Backup defaults to checked,
         // matching MO2's QueryOverwriteDialog::BACKUP_YES default.
         ctx.overwrite_query_cb = [this](const std::string& mod_name) {
+            // The user dialog supersedes the progress popup (MO2 does the
+            // same: the progress dialog is only visible while it can show
+            // progress, not while a decision is pending).
+            hide_install_progress();
             return ui::ask_overwrite(QString::fromStdString(mod_name),
                                      /*default_backup=*/true, this);
         };
@@ -711,11 +771,24 @@ void MainWindow::set_game_info(const std::string& game_id,
                    const std::filesystem::path& content_root,
                    const std::string& suggested_name,
                    const std::string& previous_choices) {
+                hide_install_progress();
                 auto& s = Settings::instance();
                 return ui::ask_fomod(view_model, content_root, suggested_name,
                                      previous_choices,
                                      s.always_restore_fomod_choices(),
                                      s.show_fomod_images(), this);
+            };
+
+        // Non-FOMOD installs confirm the mod name before copying (MO2's
+        // SimpleInstallDialog). The suggested name is the Downloads-tab display
+        // name (typically the Nexus name); the dialog's dropdown also offers a
+        // cleaned archive-stem derivation and the full archive filename.
+        // Canceling aborts the install.
+        ctx.name_query_cb =
+            [this](const std::string& suggested_name,
+                   const std::string& archive_filename) {
+                hide_install_progress();
+                return ui::ask_install_name(suggested_name, archive_filename, this);
             };
 
         // Set up deploy strategy
@@ -1021,6 +1094,13 @@ void MainWindow::connect_menu_actions() {
         }
         engine::Logger::instance().debug("Running tool: " + tool_id.toStdString() +
                                         " for game: " + game_id.toStdString());
+        if (tool_id == QStringLiteral("loot")) {
+            // LOOT is an advisory tool the engine drives itself: build a
+            // LootRequest from the current plugin DB and run gmm_lootcli off
+            // the UI thread (PLAN.md §7.1).
+            run_loot_sort();
+            return;
+        }
         if (tool->invoke_fn) {
             tool->invoke_fn(tool->invoke_user_data);
         } else {
@@ -1453,6 +1533,67 @@ void MainWindow::load_mods_from_game() {
     refresh_plugins_tab();
 }
 
+void MainWindow::add_installed_mod(const std::string& folder_name) {
+    if (folder_name.empty()) return;
+    if (!knowledge_ || current_game_id_.empty()) return;
+
+    // Scan just the one folder the install produced - not the whole mods dir.
+    auto scanned = engine::ModScanner::scan_folder(
+        *knowledge_, current_game_id_, mods_dir_path(), folder_name,
+        current_instance_root_.empty() ? std::vector<std::filesystem::path>{}
+                                       : std::vector<std::filesystem::path>{current_instance_root_});
+    if (scanned.empty()) return;
+
+    const auto& mod = scanned.front();
+
+    // If the row already exists (Merge/Replace into an existing folder, or a
+    // reinstall), don't add a duplicate - the files changed, so the conflict
+    // and Data refreshes below still run.
+    const auto id = QString::fromStdString(mod.folder_name);
+    bool exists = false;
+    for (const auto& m : mod_model_->mods()) {
+        if (m.id == id) { exists = true; break; }
+    }
+    if (!exists) {
+        auto name = QString::fromStdString(mod.display_name);
+        auto ver = QString::fromStdString(mod.version);
+        if (mod.is_separator) {
+            mod_model_->add_separator(id, name,
+                                      QString::fromStdString(mod.separator_color));
+        } else {
+            mod_model_->add_mod(id, name, ver, mod.priority, mod.is_game_native);
+            if (mod.is_fomod) mod_model_->set_fomod(id, true);
+            if (!mod.enabled) mod_model_->toggle_mod(id);
+        }
+        // Persist the freshly assigned priority (MO2 bottom-of-band) and
+        // separator ids, mirroring the full-load tail.
+        sync_priorities();
+        sync_separator_ids();
+    }
+
+    // Files changed regardless of whether the row is new: conflicts, Data tab
+    // and Plugins tab all reflect the installed content. Unlike the full
+    // recompute, the Data tab is refreshed incrementally: the engine's token
+    // cache already limits the registry rescan to the new mod's files, and
+    // apply_mod() merges only that mod's rows into the existing tree.
+    compute_conflict_state();
+    if (auto* dt = right_panel_->data_tab()) {
+        dt->apply_mod(last_conflict_registry_, folder_name, mod_model_->mods(),
+                      mod_model_->is_conflict_order_reversed(),
+                      mods_dir_path(), current_game_mods_dir());
+    }
+    refresh_plugins_tab();
+
+    // Update status bar mod count
+    int count = 0;
+    for (const auto& m : mod_model_->mods()) {
+        if (!m.is_separator && !m.is_overwrite && m.enabled) ++count;
+    }
+    status_bar_->set_counter_value(count);
+
+    engine::Logger::instance().debug("Added installed mod row: " + folder_name);
+}
+
 std::filesystem::path MainWindow::resolve_mod_folder(const std::string& mod_id, const std::string& mods_subpath) const {
     auto folder = mods_dir_path() / mod_id;
     if (std::filesystem::exists(folder))
@@ -1618,8 +1759,12 @@ void MainWindow::load_meta_for_mods() {
 }
 
 void MainWindow::recompute_conflicts() {
+    compute_conflict_state();
+    refresh_data_tab();
+}
+
+void MainWindow::compute_conflict_state() {
     if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) {
-        refresh_data_tab();
         return;
     }
 
@@ -1630,7 +1775,7 @@ void MainWindow::recompute_conflicts() {
     // (meta.ini) or that the game reads (metadata.xml / disable marker).
     // Every mod folder has them, so exclude them from conflict counting.
     auto metadata_file = knowledge_->get(current_game_id_, "metadata_file", "meta.ini");
-    auto disable_file = knowledge_->get(current_game_id_, "disable_mechanism", "");
+    auto disable_file = engine::disable_mechanism_for(*knowledge_, current_game_id_);
     for (const auto* f : {&metadata_file, &disable_file}) {
         if (f->empty()) continue;
         if (ignored_files.find(*f) != std::string::npos) continue;
@@ -1660,23 +1805,13 @@ void MainWindow::recompute_conflicts() {
 
     if (mod_infos.empty()) {
         last_conflict_registry_.clear();
-        refresh_data_tab();
         return;
     }
 
     auto mods_dir = mods_dir_path();
 
-    // Determine game's native mods directory (for mods that live there instead of instance)
-    std::filesystem::path game_mods_dir;
-    if (!current_game_dir_.empty() && knowledge_) {
-        auto game_mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
-        game_mods_dir = current_game_dir_;
-        if (!game_mods_subpath.empty())
-            game_mods_dir /= game_mods_subpath;
-        // Only pass as extra dir if it differs from the instance mods dir
-        if (game_mods_dir == mods_dir)
-            game_mods_dir.clear();
-    }
+    // Game-native mods dir (for mods that live there instead of instance)
+    auto game_mods_dir = current_game_mods_dir();
 
     engine::ConflictEngine engine;
     auto stats = engine.compute(mods_dir, mod_infos,
@@ -1743,7 +1878,20 @@ void MainWindow::recompute_conflicts() {
     }
     mod_model_->set_conflict_pairs(pairs);
     last_conflict_registry_ = engine.last_registry();
-    refresh_data_tab();
+}
+
+std::filesystem::path MainWindow::current_game_mods_dir() const {
+    std::filesystem::path game_mods_dir;
+    if (!current_game_dir_.empty() && knowledge_) {
+        auto game_mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
+        game_mods_dir = current_game_dir_;
+        if (!game_mods_subpath.empty())
+            game_mods_dir /= game_mods_subpath;
+        // Only pass as extra dir if it differs from the instance mods dir
+        if (game_mods_dir == mods_dir_path())
+            game_mods_dir.clear();
+    }
+    return game_mods_dir;
 }
 
 void MainWindow::refresh_data_tab() {
@@ -1756,17 +1904,7 @@ void MainWindow::refresh_data_tab() {
     }
 
     auto mods_dir = mods_dir_path();
-
-    // Game-native mods dir (may equal mods_dir -> then fallback is unused)
-    std::filesystem::path game_mods_dir;
-    if (!current_game_dir_.empty() && knowledge_) {
-        auto game_mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
-        game_mods_dir = current_game_dir_;
-        if (!game_mods_subpath.empty())
-            game_mods_dir /= game_mods_subpath;
-        if (game_mods_dir == mods_dir)
-            game_mods_dir.clear();
-    }
+    auto game_mods_dir = current_game_mods_dir();
 
     dt->show_data(last_conflict_registry_, mod_model_->mods(),
                   mod_model_->is_conflict_order_reversed(),
@@ -1823,8 +1961,13 @@ void MainWindow::on_data_execute(const QString& file_path, bool is_windows_exe) 
     }
 
     std::unique_ptr<engine::Runtime> runtime;
-    if (platform_)
-        runtime = std::make_unique<engine::ProtonRuntime>(platform_);
+    if (platform_) {
+        auto* proton = new engine::ProtonRuntime(platform_);
+        auto request = current_proton_request();
+        if (steam_appid == 0) steam_appid = request.steam_appid;
+        proton->set_runner_override(request.runner_override);
+        runtime.reset(proton);
+    }
     if (!runtime || !runtime->is_available())
         runtime = std::make_unique<engine::WineRuntime>();
     if (!runtime->is_available()) {
@@ -2063,8 +2206,9 @@ void MainWindow::refresh_plugins_tab() {
         return;
     }
 
-    plugins_db_.refresh(current_game_dir_, mods_dir_path(), meta_dir_path(), "",
-                        game_native);
+    const auto disable_mechanism = engine::disable_mechanism_for(*knowledge_, current_game_id_);
+    plugins_db_.refresh(current_game_dir_, mods_dir_path(), meta_dir_path(),
+                        disable_mechanism, game_native);
     plugins_db_.load_creation_club(current_game_dir_);
     plugins_db_.sort_load_order();
 
@@ -2093,6 +2237,108 @@ void MainWindow::refresh_plugins_tab() {
     // user still has active.
     on_mod_selection_changed();
     on_plugin_selection_changed();
+}
+
+void MainWindow::run_loot_sort() {
+    if (loading_ || current_game_id_.empty() || current_game_dir_.empty() || !knowledge_)
+        return;
+
+    const std::string loot_game_id =
+        knowledge_->get(current_game_id_, "loot_game_id", "");
+    if (loot_game_id.empty()) {
+        if (status_bar_)
+            status_bar_->set_status(tr("This game has no LOOT support"));
+        return;
+    }
+
+    // A fresh plugin DB: mods may have changed since the last render, and the
+    // request must carry each plugin's current winning path.
+    refresh_plugins_tab();
+
+    engine::LootRequest request;
+    request.game_id = current_game_id_;
+    request.loot_game_id = loot_game_id;
+    request.masterlist_repo =
+        knowledge_->get(current_game_id_, "loot_masterlist_repo", loot_game_id);
+    request.game_dir = current_game_dir_;
+    request.profile_dir = profiles_dir_path() / current_profile_name_;
+    request.platform = platform_;
+    for (const auto& p : plugins_db_.plugins()) {
+        request.plugins.push_back({p.name, p.full_path});
+    }
+    if (request.plugins.empty()) {
+        if (status_bar_) status_bar_->set_status(tr("No plugins to sort"));
+        return;
+    }
+
+    // gmm_lootcli ships next to the manager binary (build tree and install
+    // tree alike); fall back to a PATH search.
+    request.cli_path =
+        QCoreApplication::applicationDirPath().toStdString() + "/gmm_lootcli";
+    if (!std::filesystem::is_regular_file(request.cli_path)) {
+        if (const char* path_env = std::getenv("PATH")) {
+            std::istringstream ss(path_env);
+            std::string token;
+            while (std::getline(ss, token, ':')) {
+                auto candidate = std::filesystem::path(token) / "gmm_lootcli";
+                if (std::filesystem::is_regular_file(candidate)) {
+                    request.cli_path = candidate;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!loot_sort_thread_) {
+        loot_sort_thread_ = new ui::LootSortThread(this);
+        connect(loot_sort_thread_->worker(), &ui::LootSortWorker::progress,
+                this, &MainWindow::on_loot_progress, Qt::UniqueConnection);
+        connect(loot_sort_thread_->worker(), &ui::LootSortWorker::finished,
+                this, &MainWindow::on_loot_finished, Qt::UniqueConnection);
+    }
+    if (status_bar_)
+        status_bar_->set_status(tr("Sorting load order with LOOT…"));
+    loot_sort_thread_->start(std::move(request));
+}
+
+void MainWindow::on_loot_progress(int stage, const QString&) {
+    static const QStringList kStageNames = {
+        QString(),                                  // 0 - none
+        tr("Checking masterlist…"),                 // 1
+        tr("Updating masterlist…"),                 // 2
+        tr("Loading masterlists…"),                 // 3
+        tr("Reading plugins…"),                     // 4
+        tr("Sorting plugins…"),                     // 5
+        tr("Writing load order…"),                  // 6
+        tr("Parsing LOOT messages…"),               // 7
+        tr("Load order sorted"),                    // 8
+    };
+    if (!status_bar_) return;
+    if (stage >= 0 && stage < kStageNames.size() && !kStageNames.at(stage).isEmpty())
+        status_bar_->set_status(kStageNames.at(stage));
+}
+
+void MainWindow::on_loot_finished(engine::LootResult result) {
+    if (!result.ok) {
+        engine::Logger::instance().warn("LOOT sort failed: " + result.error);
+        if (status_bar_)
+            status_bar_->set_status(tr("LOOT sort failed: %1")
+                                        .arg(QString::fromStdString(result.error)));
+        return;
+    }
+
+    std::string err;
+    if (!plugins_db_.apply_load_order(result.sorted_names, &err)) {
+        if (status_bar_)
+            status_bar_->set_status(tr("LOOT sort could not be applied: %1")
+                                        .arg(QString::fromStdString(err)));
+        return;
+    }
+    plugins_db_.save_profile(profiles_dir_path(), current_profile_name_);
+    refresh_plugins_tab();
+    if (status_bar_)
+        status_bar_->set_status(tr("Load order sorted by LOOT (%1 plugins)")
+                                    .arg(result.sorted_names.size()));
 }
 
 void MainWindow::on_plugin_toggle(const std::string& name, bool enabled) {
@@ -5403,6 +5649,45 @@ void MainWindow::wire_downloads_tab() {
         });
 }
 
+void MainWindow::update_install_progress(const std::string& mod_id, int percent,
+                                         const std::string& status) {
+    // A new install resets the popup (title, bar) and (re)arms the deferred
+    // show. Subsequent updates for the same install just refresh it.
+    if (mod_id != active_install_progress_id_) {
+        active_install_progress_id_ = mod_id;
+        if (!install_progress_dialog_) {
+            install_progress_dialog_ = new ui::InstallProgressDialog(this);
+        }
+        install_progress_dialog_->begin(tr("Installing…"));
+        if (!install_progress_show_timer_) {
+            install_progress_show_timer_ = new QTimer(this);
+            install_progress_show_timer_->setSingleShot(true);
+            connect(install_progress_show_timer_, &QTimer::timeout,
+                    this, [this]() {
+                if (install_progress_dialog_) install_progress_dialog_->show();
+            });
+        }
+        // ~300ms delay so a quick install never flashes the dialog (MO2
+        // behaves the same way - the popup only appears for the slow part).
+        install_progress_show_timer_->start(300);
+    } else if (install_progress_dialog_ && !install_progress_dialog_->isVisible()) {
+        // The dialog was hidden by an interactive install dialog (FOMOD wizard,
+        // name confirm, overwrite) - it is back to being informative now, so
+        // show it immediately (the 300ms delay already elapsed long ago).
+        install_progress_dialog_->show();
+    }
+
+    if (install_progress_dialog_) {
+        install_progress_dialog_->set_status(QString::fromStdString(status), percent);
+    }
+}
+
+void MainWindow::hide_install_progress() {
+    active_install_progress_id_.clear();
+    if (install_progress_show_timer_) install_progress_show_timer_->stop();
+    if (install_progress_dialog_) install_progress_dialog_->hide();
+}
+
 void MainWindow::handle_nxm_download(const engine::NxmLink& link) {
     if (!link.valid()) {
         engine::Logger::instance().warn("Invalid NXM link received");
@@ -5688,6 +5973,98 @@ void MainWindow::ensure_nxm_handler_default() {
 #else
     (void)0;
 #endif
+}
+
+void MainWindow::show_proton_panel() {
+    if (current_instance_root_.empty()) {
+        QMessageBox::information(this, tr("Proton Options"),
+                                 tr("No instance is currently loaded."));
+        return;
+    }
+
+    engine::Instance inst = engine::Instance::from_root(current_instance_root_);
+    inst.read_toml();
+
+    uint32_t steam_appid = inst.info().steam_appid;
+    if (steam_appid == 0 && knowledge_) {
+        auto id_str = knowledge_->get(current_game_id_, "steam_appid", "");
+        if (!id_str.empty()) {
+            try { steam_appid = std::stoul(id_str); } catch (...) {}
+        }
+    }
+    const std::string game_name = current_game_name_.empty()
+        ? current_game_id_
+        : current_game_name_;
+
+    ui::ProtonPanel dlg(platform_, plugin_loader_, current_game_id_, game_name,
+                        current_game_dir_, steam_appid, current_instance_root_,
+                        inst.info().proton_runner, this);
+    if (dlg.exec() == QDialog::Accepted) {
+        auto runner = dlg.selected_runner();
+        engine::Instance write = engine::Instance::from_root(current_instance_root_);
+        write.read_toml();
+        write.write_key("proton_runner", runner);
+        current_instance_ = write;
+    }
+}
+
+engine::ProtonToolRequest MainWindow::current_proton_request() const {
+    engine::ProtonToolRequest request;
+    if (current_instance_root_.empty()) return request;
+    request.platform = platform_;
+    request.game_dir = current_game_dir_;
+
+    engine::Instance inst = engine::Instance::from_root(current_instance_root_);
+    if (inst.read_toml()) {
+        request.runner_override = inst.info().proton_runner;
+        request.steam_appid = inst.info().steam_appid;
+    }
+    if (request.steam_appid == 0 && knowledge_) {
+        auto id_str = knowledge_->get(current_game_id_, "steam_appid", "");
+        if (!id_str.empty()) {
+            try { request.steam_appid = std::stoul(id_str); } catch (...) {}
+        }
+    }
+    return request;
+}
+
+void MainWindow::run_prefix_tool(const QStringList& args) {
+    auto request = current_proton_request();
+    if (request.platform == nullptr || request.steam_appid == 0) {
+        QMessageBox::information(this, tr("Proton Tools"),
+            tr("No Steam game is loaded — a Proton prefix is required."));
+        return;
+    }
+
+    std::vector<std::string> argv;
+    for (const auto& a : args) argv.push_back(a.toStdString());
+
+    int64_t pid = engine::run_proton_tool(request, argv);
+    if (pid < 0) {
+        QMessageBox::warning(this, tr("Proton Tools"),
+            tr("No protontricks / winetricks / Wine available to run this tool."));
+    }
+}
+
+void MainWindow::run_exe_in_prefix() {
+    auto request = current_proton_request();
+    if (request.platform == nullptr || request.steam_appid == 0) {
+        QMessageBox::information(this, tr("Proton Tools"),
+            tr("No Steam game is loaded — a Proton prefix is required."));
+        return;
+    }
+
+    const QString file = QFileDialog::getOpenFileName(
+        this, tr("Run an .exe in this prefix"),
+        QString::fromStdString(current_game_dir_.string()),
+        tr("Windows executables (*.exe);;All files (*)"));
+    if (file.isEmpty()) return;
+
+    int64_t pid = engine::run_proton_exe(request, std::filesystem::path(file.toStdString()));
+    if (pid < 0) {
+        QMessageBox::warning(this, tr("Proton Tools"),
+            tr("Failed to run:\n%1").arg(file));
+    }
 }
 
 void MainWindow::show_settings_dialog() {

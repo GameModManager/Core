@@ -20,13 +20,47 @@ std::string archive_error_message(struct archive* a) {
     return msg;
 }
 
+// Cheap pre-pass for the progress bar: sum the uncompressed sizes of every
+// file entry by walking the headers only (no data is read or decompressed).
+// Returns -1 when the archive cannot be opened - the caller then falls back to
+// an indeterminate bar.
+int64_t archive_total_size(const std::filesystem::path& archive) {
+    struct archive* a = archive_read_new();
+    if (!a) return -1;
+    archive_read_support_filter_all(a);
+    archive_read_support_format_all(a);
+
+    int64_t total = 0;
+    if (archive_read_open_filename(a, archive.string().c_str(), 10240) == ARCHIVE_OK) {
+        struct archive_entry* entry;
+        int r;
+        while ((r = archive_read_next_header(a, &entry)) == ARCHIVE_OK) {
+            if (archive_entry_filetype(entry) == AE_IFDIR) continue;
+            la_int64_t sz = archive_entry_size(entry);
+            if (sz > 0) total += sz;
+        }
+    } else {
+        total = -1;
+    }
+    archive_read_close(a);
+    archive_read_free(a);
+    return total;
+}
+
 }  // namespace
 
 bool ArchiveExtractor::extract(const std::filesystem::path& archive,
                                 const std::filesystem::path& dest_dir,
                                 std::vector<ExtractedFile>& out_files,
-                                std::string& error) {
+                                std::string& error,
+                                const ExtractProgressFn& on_progress) {
     error.clear();
+
+    // Two-pass progress: sum entry sizes up front (header-only, cheap), then
+    // report bytes written against that total while extracting.
+    int64_t total_bytes = -1;
+    if (on_progress) total_bytes = archive_total_size(archive);
+
     struct archive* a = archive_read_new();
     if (!a) {
         error = "archive_read_new failed";
@@ -47,6 +81,13 @@ bool ArchiveExtractor::extract(const std::filesystem::path& archive,
 
     struct archive_entry* entry;
     bool failed = false;
+    // Bytes written so far; `last_reported` throttles progress updates to at
+    // most one per ~128 KiB so a single huge file doesn't flood the callback.
+    int64_t written = 0;
+    int64_t last_reported = -1;
+    auto report_progress = [&] {
+        if (on_progress) on_progress(written, total_bytes);
+    };
     while ((r = archive_read_next_header(a, &entry)) == ARCHIVE_OK) {
         const char* name = archive_entry_pathname(entry);
         if (!name) continue;
@@ -116,6 +157,11 @@ bool ArchiveExtractor::extract(const std::filesystem::path& archive,
                 failed = true;
                 break;
             }
+            written += nread;
+            if (on_progress && written - last_reported >= (128 * 1024)) {
+                last_reported = written;
+                report_progress();
+            }
         }
         if (failed) break;
         if (nread < 0) {
@@ -126,6 +172,7 @@ bool ArchiveExtractor::extract(const std::filesystem::path& archive,
             break;
         }
         out.close();
+        report_progress();  // end of this file: keeps the bar moving on archives of many small files
 
         ExtractedFile ef;
         ef.archive_path = name_str;

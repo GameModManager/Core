@@ -425,6 +425,75 @@ bool PluginDatabase::reassert_band() {
     return true;
 }
 
+bool PluginDatabase::apply_load_order(const std::vector<std::string>& order,
+                                      std::string* error) {
+    const size_t n = plugins_.size();
+    if (n == 0) return true;
+
+    // Resolve the requested order against the current list (case-insensitive,
+    // like master lookups). Any name that matches no plugin aborts the whole
+    // apply with an error - a partial reorder would corrupt the profile.
+    std::vector<bool> taken(n, false);
+    std::vector<size_t> user_order;
+    user_order.reserve(order.size());
+    const auto append = [&](size_t idx) {
+        if (taken[idx]) return;
+        user_order.push_back(idx);
+        taken[idx] = true;
+    };
+    for (const auto& name : order) {
+        const auto it = by_name_ci_.find(to_lower(name));
+        if (it == by_name_ci_.end()) {
+            if (error) *error = "Unknown plugin: " + name;
+            return false;
+        }
+        append(it->second);
+    }
+    // Plugins the sort didn't mention keep their current relative order,
+    // appended after the sorted ones.
+    for (size_t i = 0; i < n; ++i)
+        if (!taken[i]) append(i);
+
+    // Fixed band first (game-native: declared order then the rest; CC: ccc
+    // order then the rest), then the user band in the applied order.
+    std::vector<bool> done(n, false);
+    std::vector<size_t> ordered;
+    ordered.reserve(n);
+    const auto emit = [&](size_t idx) {
+        if (done[idx]) return;
+        ordered.push_back(idx);
+        done[idx] = true;
+    };
+    for (const auto& name : native_order_) {
+        const auto it = by_name_ci_.find(to_lower(name));
+        if (it != by_name_ci_.end()) emit(it->second);
+    }
+    for (size_t i = 0; i < n; ++i)
+        if (plugins_[i].is_game_native) emit(i);
+    for (const auto& name : ccc_order_) {
+        const auto it = by_name_ci_.find(to_lower(name));
+        if (it != by_name_ci_.end()) emit(it->second);
+    }
+    for (size_t i = 0; i < n; ++i)
+        if (plugins_[i].is_cc && !done[i]) emit(i);
+    for (size_t idx : user_order) emit(idx);
+
+    std::vector<GamePlugin> reordered;
+    reordered.reserve(ordered.size());
+    for (size_t idx : ordered) reordered.push_back(plugins_[idx]);
+    plugins_ = std::move(reordered);
+    rebuild_index();
+    for (size_t i = 0; i < plugins_.size(); ++i) plugins_[i].priority = static_cast<int>(i);
+
+    // Locked plugins are re-pinned at their locked priorities (an auto-sort
+    // must never move them), then the fixed band is re-asserted and mod
+    // indexes regenerated.
+    apply_locked_order();
+    set_missing_masters();
+    generate_mod_indexes();
+    return true;
+}
+
 void PluginDatabase::set_all_enabled() {
     // First run (no persisted profile): load everything whose masters are
     // present. A plugin whose required master is absent - not installed at all
@@ -865,7 +934,7 @@ bool PluginDatabase::write_plugins_txt_for_launch(
         return false;
     }
 
-    const std::string disable_mechanism = knowledge.get(game_id, "disable_mechanism", "");
+    const std::string disable_mechanism = disable_mechanism_for(knowledge, game_id);
     const std::string game_native = knowledge.get(game_id, "game_native_plugins", "");
 
     PluginDatabase db;

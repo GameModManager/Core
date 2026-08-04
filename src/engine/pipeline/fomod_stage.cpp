@@ -54,29 +54,8 @@ private:
     std::filesystem::path gameDataDir_;
 };
 
-// FOMOD Plus findFomodDirectory: a directory named "fomod" (any casing) wins;
-// else if the current directory has exactly one entry and it is a directory,
-// descend into it.
-std::optional<std::filesystem::path> find_fomod_dir(const std::filesystem::path& dir)
-{
-    std::error_code ec;
-    std::optional<std::filesystem::path> singleChild;
-    int entryCount = 0;
-    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
-        if (ec) {
-            return std::nullopt;
-        }
-        if (entry.is_directory() && name_matches_ci(entry.path(), std::string(fomod_files::FOMOD_DIR))) {
-            return entry.path();
-        }
-        singleChild = entry.path();
-        ++entryCount;
-    }
-    if (entryCount == 1 && singleChild && std::filesystem::is_directory(*singleChild, ec)) {
-        return find_fomod_dir(*singleChild);
-    }
-    return std::nullopt;
-}
+// FOMOD Plus findFomodDirectory lives in engine/fomod/fomod_utils.h (shared
+// with ExtractStage, which must not reshape FOMOD archives).
 
 // Previously persisted FOMOD choices from a reinstall: read [fomod] choices
 // from the mod folder's meta.ini (written by InstallStage).
@@ -149,6 +128,11 @@ bool FomodStage::execute(Mod& mod, PipelineContext& ctx)
     }
 
     Logger::instance().info("FomodStage: FOMOD installer detected for '" + mod.name + "'");
+
+    // From here on this is a FOMOD install: the wizard (or the manual skip)
+    // owns the mod name, so InstallStage must not show its non-FOMOD name
+    // dialog.
+    ctx.fomod_detected = true;
 
     // Content root = the directory that contains fomod/ (FOMOD Plus's
     // mFomodPath). FOMOD file sources are relative to it.

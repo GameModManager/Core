@@ -40,6 +40,10 @@ struct InstanceInfo {
     // "resolve via platform" (e.g. Proton prefix AppData/Local). Persisted to
     // instance.toml only when non-empty.
     std::filesystem::path plugins_txt_path;
+    // Selected Proton runner for this instance (display name or absolute path
+    // to a `proton` script). Empty = automatic (Steam per-game override, then
+    // latest installed Proton). Persisted to instance.toml.
+    std::string proton_runner;
 };
 
 class Instance {
@@ -57,6 +61,12 @@ public:
     // Set/clear a per-folder override (empty clears -> default under root).
     void set_path_override(InstanceKind kind, const std::filesystem::path& path);
     [[nodiscard]] std::filesystem::path path_override(InstanceKind kind) const;
+
+    // Surgically set/replace a single string key in instance.toml without
+    // touching any other keys (the file also holds app-owned sections like
+    // `executables`, so a full rewrite would clobber them). Removes the key
+    // when `value` is empty. Returns false on I/O failure.
+    bool write_key(const std::string& key, const std::string& value) const;
 
     bool create_directories() const;
     bool write_toml() const;

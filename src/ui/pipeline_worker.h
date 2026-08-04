@@ -62,13 +62,22 @@ public slots:
 signals:
     void progress(const std::string& mod_id, int stage_index, const std::string& stage_name);
     void download_progress(const std::string& mod_id, int64_t bytes_downloaded, int64_t bytes_total, double speed_bytes_per_sec);
+    // Per-stage install progress (extract/copy). percent is 0-100, or -1 for
+    // a stage that cannot estimate progress (indeterminate bar); status is a
+    // short human line ("Extracting SkyUI.zip…", "Installing to SkyUI…").
+    void install_progress(const std::string& mod_id, int percent,
+                          const std::string& status);
     // name is the real display name resolved by the provider (e.g. "SkyUI"),
     // or empty when no provider info was available.
     void download_complete(const std::string& mod_id, bool success,
                            const std::string& archive_path,
                            const std::string& name = {});
+    // installed_folder is the final mods/<folder> the install produced (empty
+    // when nothing was installed, e.g. a metadata-only mod). The UI can add
+    // just that one row instead of rescanning the whole mods dir.
     void install_complete(const std::string& mod_id, bool success,
-                          const std::string& message);
+                          const std::string& message,
+                          const std::string& installed_folder = {});
     // The user canceled an interactive install stage (FOMOD wizard, overwrite
     // dialog). The download's state must be left untouched - this is NOT a
     // failure, and no Failed/Installed mark is applied.

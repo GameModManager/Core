@@ -120,6 +120,13 @@ LaunchParams prepare_launch_params(
     params.steam_appid = steam_appid;
     params.is_windows_exe = is_windows_exe;
 
+    // Per-instance Proton runner override (empty = automatic). Read from
+    // instance.toml so every launch path (GUI + CLI) honors the selection.
+    Instance inst = Instance::from_root(instance_root);
+    if (inst.read_toml()) {
+        params.proton_runner = inst.info().proton_runner;
+    }
+
     // Validate inputs
     if (!fs::is_directory(game_dir)) {
         Logger::instance().error("prepare_launch_params: game_dir not found: " + game_dir.string());
@@ -147,7 +154,7 @@ LaunchParams prepare_launch_params(
     // Deploy all enabled mods to staging
     std::string deploy_prefix = knowledge.get(game_id, "deploy_prefix", "Data");
     std::string deploy_include_mod_id = knowledge.get(game_id, "deploy_include_mod_id", "false");
-    std::string disable_mechanism = knowledge.get(game_id, "disable_mechanism", "");
+    std::string disable_mechanism = disable_mechanism_for(knowledge, game_id);
     bool case_sensitive = knowledge.get(game_id, "case_sensitive", "true") != "false";
     auto mods_dir = instance_root / "mods";
 

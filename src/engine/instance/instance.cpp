@@ -173,6 +173,8 @@ bool Instance::read_toml() {
                 info_.overwrite_dir = val;
             } else if (key == "plugins_txt_path") {
                 info_.plugins_txt_path = val;
+            } else if (key == "proton_runner") {
+                info_.proton_runner = val;
             }
         } else {
             // unquoted numeric/boolean
@@ -188,6 +190,45 @@ bool Instance::read_toml() {
         }
     }
     return true;
+}
+
+bool Instance::write_key(const std::string& key, const std::string& value) const {
+    auto path = toml_path();
+    std::ifstream in(path);
+    std::string existing;
+    if (in) {
+        existing.assign((std::istreambuf_iterator<char>(in)),
+                        std::istreambuf_iterator<char>());
+    }
+    in.close();
+
+    std::istringstream stream(existing);
+    std::string line;
+    std::string cleaned;
+    std::string key_prefix = key + " =";
+    while (std::getline(stream, line)) {
+        // Skip the existing key (any position, matching save_executables'
+        // convention of stripping its own section before re-appending).
+        auto pos = line.find(key);
+        if (pos != std::string::npos) {
+            // Only treat it as ours when the token actually starts the key
+            // (avoid matching e.g. `other_proton_runner = ...`).
+            auto before_ok = pos == 0 || line[pos - 1] == ' ' || line[pos - 1] == '\t';
+            if (before_ok && line.compare(pos, key_prefix.size(), key_prefix) == 0) {
+                continue;
+            }
+        }
+        cleaned += line + "\n";
+    }
+
+    if (!value.empty()) {
+        cleaned += key + " = \"" + value + "\"\n";
+    }
+
+    std::ofstream out(path);
+    if (!out) return false;
+    out << cleaned;
+    return out.good();
 }
 
 std::string Instance::to_instance_name(const std::string& display_name) {

@@ -13,6 +13,7 @@
 #include "ui/overwrite/overwrite_info_dialog.h"
 #include "ui/overwrite/query_overwrite_dialog.h"
 #include "ui/overwrite/sync_overwrite_dialog.h"
+#include "ui/install/install_name_dialog.h"
 
 #include "engine/overwrite/overwrite_utils.h"
 #include "engine/pipeline/pipeline.h"
@@ -277,6 +278,42 @@ int main(int argc, char** argv) {
               "Isaac-style subpath does not protect a Data dir");
         check(isaac.is_mapping_root(isaac_root_idx),
               "info dialog protects the overwrite root itself");
+    }
+
+    // ---- InstallNameDialog (MO2 Quick Install port) --------------------------
+    {
+        // Candidates: Nexus name first, cleaned archive stem second, full
+        // archive filename last; no duplicates.
+        auto names = ui::InstallNameDialog::candidates(
+            "SkyUI", "SkyUI_5_2_SE-38604-5-2SE-1604800124.zip");
+        check(names.size() == 3, "name dialog offers exactly three candidates");
+        check(names[0] == "SkyUI", "Nexus display name is the preferred default");
+        check(names[1] == "SkyUI 5 2 SE", "cleaned archive stem is offered next");
+        check(names[2] == "SkyUI_5_2_SE-38604-5-2SE-1604800124.zip",
+              "full archive filename is offered last");
+
+        // The full archive filename is deduplicated when it equals the guess.
+        auto dups = ui::InstallNameDialog::candidates("My Mod.zip", "My Mod.zip");
+        check(dups.size() == 2, "candidates deduplicate identical names");
+
+        // Fallback when nothing resolvable is given.
+        auto fallback = ui::InstallNameDialog::candidates("", "");
+        check(fallback.size() == 1 && fallback[0] == "New Mod",
+              "empty inputs fall back to a placeholder name");
+
+        ui::InstallNameDialog dlg("SkyUI", "SkyUI_5_2_SE.zip");
+        auto* combo = dlg.findChild<QComboBox*>();
+        check(combo && combo->isEditable(), "name dialog uses an editable combobox");
+        check(combo && combo->count() == 3, "name combo carries all candidates");
+        check(dlg.name() == "SkyUI", "name() returns the preferred default");
+
+        // Picking a different dropdown entry or typing overrides the default.
+        if (combo) {
+            combo->setCurrentIndex(1);
+            check(dlg.name() == "SkyUI 5 2 SE", "name() follows the dropdown selection");
+            combo->setEditText("Custom Name");
+            check(dlg.name() == "Custom Name", "name() follows typed text");
+        }
     }
 
     std::printf("\n%d passed, %d failed\n", passes, failures);

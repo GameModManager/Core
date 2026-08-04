@@ -376,6 +376,64 @@ int main(int argc, char** argv) {
               "common menus expose Save Tree / Refresh / Expand / Collapse");
     }
 
+    // --- Incremental apply_mod(): merge one freshly installed mod (ModC) into
+    // the existing tree instead of rebuilding it. ModC lands at the bottom of
+    // the user band, i.e. the highest priority, so it wins every file it
+    // shares (mirrors what add_mod() + renumber_priorities() do on install).
+    const auto mod_c = mods_dir / "ModC";
+    std::filesystem::create_directories(mod_c / "Data" / "meshes");
+    write_file(mod_c / "Data/meshes" / "test.nif");    // now shared; ModC wins
+    write_file(mod_c / "Data" / "newfile.txt");        // sole ModC file
+    write_file(mod_c / "Data" / "foo.txt.gmmhidden");  // hidden copy of a live row
+
+    ui::ModEntry entry_c;
+    entry_c.id = "ModC";
+    entry_c.name = "Mod C";
+    entry_c.priority = 3;
+    mods.push_back(entry_c);
+
+    // The fresh registry the engine produced after ModC was installed.
+    Registry registry2;
+    registry2["Data/meshes/test.nif"] = {Owner("ModA", 2), Owner("ModB", 1), Owner("ModC", 3)};
+    registry2["Data/textures/albedo.png"] = {Owner("ModA", 2), Owner("ModB", 1), Owner("ModC", 3)};
+    registry2["Data/scripts/test.exe"] = {Owner("ModA", 2)};
+    registry2["Data/readme.txt"] = {Owner("ModA", 2)};
+    registry2["Data/tool.sh"] = {Owner("ModA", 2)};
+    registry2["Data/foo.txt"] = {Owner("ModA", 2)};
+    registry2["Data/foo.txt.gmmhidden"] = {Owner("ModA", 2), Owner("ModC", 3)};
+    registry2["Data/bar.txt.mohidden"] = {Owner("ModA", 2)};
+    registry2["Data/overwrite.txt"] = {Owner(ui::kOverwriteModId, 999999)};
+    registry2["Data/newfile.txt"] = {Owner("ModC", 3)};
+
+    auto* nif_before = find_item(tree, {"Data", "meshes", "test.nif"});
+    tab.apply_mod(registry2, "ModC", mods, /*conflict_reversed=*/false, mods_dir, {});
+
+    auto* nif_after = find_item(tree, {"Data", "meshes", "test.nif"});
+    check(nif_after != nullptr, "shared file row survives the incremental update");
+    check(nif_after == nif_before,
+          "shared file row is updated in place, not recreated");
+    if (nif_after) {
+        check(nif_after->text(2) == "Mod C",
+              "winner flips to the newly installed mod (bottom of the band)");
+        check(nif_after->text(3) == "3",
+              "provider count bumped 2 -> 3 for a file the new mod provides");
+    }
+    auto* newfile_item = find_item(tree, {"Data", "newfile.txt"});
+    check(newfile_item != nullptr,
+          "sole-owned file of the installed mod inserts a new row");
+    if (newfile_item) {
+        check(newfile_item->text(2) == "Mod C" && newfile_item->text(3).isEmpty(),
+              "sole-owned file shows the new mod as source and no provider count");
+    }
+    auto* readme_after = find_item(tree, {"Data", "readme.txt"});
+    check(readme_after != nullptr && readme_after->text(2) == "Mod A",
+          "rows the new mod does not touch are left alone");
+    auto* foo_after = find_item(tree, {"Data", "foo.txt"});
+    check(foo_after != nullptr &&
+              !(foo_after->foreground(0).color() ==
+                QApplication::palette().color(QPalette::Disabled, QPalette::Text)),
+          "hidden copy of an existing row does not reclaim its display slot");
+
     std::printf("\n%d passed, %d failed\n", passes, failures);
     return failures ? 1 : 0;
 }

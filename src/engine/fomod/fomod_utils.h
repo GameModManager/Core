@@ -10,6 +10,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -28,6 +30,32 @@ inline constexpr std::string_view TYPE_RECOMMENDED = "Recommended";
 inline constexpr std::string_view TYPE_NOT_USABLE = "NotUsable";
 inline constexpr std::string_view TYPE_COULD_BE_USABLE = "CouldBeUsable";
 }  // namespace fomod_files
+
+// FOMOD Plus findFomodDirectory: a directory named "fomod" (any casing) wins;
+// else if the current directory has exactly one entry and it is a directory,
+// descend into it. Returns the fomod dir path (the content root is its parent)
+// or nullopt when the tree holds no FOMOD installer.
+[[nodiscard]] inline std::optional<std::filesystem::path> find_fomod_dir(
+    const std::filesystem::path& dir)
+{
+    std::error_code ec;
+    std::optional<std::filesystem::path> singleChild;
+    int entryCount = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+        if (ec) {
+            return std::nullopt;
+        }
+        if (entry.is_directory() && name_matches_ci(entry.path(), std::string(fomod_files::FOMOD_DIR))) {
+            return entry.path();
+        }
+        singleChild = entry.path();
+        ++entryCount;
+    }
+    if (entryCount == 1 && singleChild && std::filesystem::is_directory(*singleChild, ec)) {
+        return find_fomod_dir(*singleChild);
+    }
+    return std::nullopt;
+}
 
 inline std::string& ltrim(std::string& s)
 {

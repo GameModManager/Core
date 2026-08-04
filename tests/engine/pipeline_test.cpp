@@ -417,6 +417,7 @@ int main() {
             assert(mod.state == ModState::Installed);
             assert(!std::filesystem::exists(dir / "old.txt"));
             assert(std::filesystem::exists(dir / "b.txt"));
+            assert(ctx.installed_mod_folder == "My Mod");
             std::printf("PASS: install overwrite — headless silent replace\n");
         }
 
@@ -497,6 +498,7 @@ int main() {
             assert(mod.id == "My Mod 2");
             assert(std::filesystem::exists(dir / "old.txt"));
             assert(std::filesystem::exists(mods / "My Mod 2" / "b.txt"));
+            assert(ctx.installed_mod_folder == "My Mod 2");
             std::printf("PASS: install overwrite — rename installs separately\n");
         }
 
@@ -525,6 +527,7 @@ int main() {
             assert(calls == 2);
             assert(mod.id == "My Mod 3");
             assert(std::filesystem::exists(mods / "My Mod 3" / "b.txt"));
+            assert(ctx.installed_mod_folder == "My Mod 3");
             std::printf("PASS: install overwrite — rename loop re-checks collisions\n");
         }
 
@@ -548,6 +551,163 @@ int main() {
             assert(std::filesystem::exists(dir / "old.txt"));
             assert(!std::filesystem::exists(dir / "b.txt"));
             std::printf("PASS: install overwrite — cancel aborts cleanly\n");
+        }
+    }
+
+    // normalize_staging_root (MO2 InstallerQuick::getSimpleArchiveBase +
+    // GamebryoModDataChecker): peel only wrappers the data-dir check says are
+    // safe, merge a lone "Data"+readme top layer up into the root, and never
+    // touch FOMOD archives.
+    {
+        // (a) SKSE/Plugins already looks like the game's data dir - no peel
+        {
+            TempDir env;
+            auto root = env.root / "staging";
+            std::filesystem::create_directories(root / "SKSE" / "Plugins");
+            std::ofstream(root / "SKSE" / "Plugins" / "x.dll") << "x";
+            auto r = normalize_staging_root(root, "Data");
+            assert(r.simple && !r.fomod && !r.merged_data_dir);
+            assert(r.peeled_folder_hint.empty());
+            assert(std::filesystem::exists(root / "SKSE" / "Plugins" / "x.dll"));
+            std::printf("PASS: normalize keeps a real data folder (SKSE) in place\n");
+        }
+
+        // (b) Data/SKSE/Plugins: a lone Data wrapper is peeled
+        {
+            TempDir env;
+            auto root = env.root / "staging";
+            std::filesystem::create_directories(root / "Data" / "SKSE" / "Plugins");
+            std::ofstream(root / "Data" / "SKSE" / "Plugins" / "x.dll") << "x";
+            auto r = normalize_staging_root(root, "Data");
+            assert(r.simple && r.peeled_folder_hint == "Data");
+            assert(std::filesystem::exists(root / "SKSE" / "Plugins" / "x.dll"));
+            assert(!std::filesystem::exists(root / "Data"));
+            std::printf("PASS: normalize unwraps a lone Data folder\n");
+        }
+
+        // (c) Wrapper/SKSE/Plugins: a non-data wrapper is peeled and reported
+        {
+            TempDir env;
+            auto root = env.root / "staging";
+            std::filesystem::create_directories(root / "Wrapper" / "SKSE" / "Plugins");
+            std::ofstream(root / "Wrapper" / "SKSE" / "Plugins" / "x.dll") << "x";
+            auto r = normalize_staging_root(root, "Data");
+            assert(r.simple && r.peeled_folder_hint == "Wrapper");
+            assert(std::filesystem::exists(root / "SKSE" / "Plugins" / "x.dll"));
+            assert(!std::filesystem::exists(root / "Wrapper"));
+            std::printf("PASS: normalize peels a non-data wrapper and reports the name hint\n");
+        }
+
+        // (d) lone Data + readme top layer is merged up (isDataTextArchiveTopLayer)
+        {
+            TempDir env;
+            auto root = env.root / "staging";
+            std::filesystem::create_directories(root / "Data" / "SKSE" / "Plugins");
+            std::ofstream(root / "Data" / "SKSE" / "Plugins" / "x.dll") << "x";
+            std::ofstream(root / "readme.txt") << "readme";
+            auto r = normalize_staging_root(root, "Data");
+            assert(r.simple && r.merged_data_dir && r.peeled_folder_hint.empty());
+            assert(std::filesystem::exists(root / "SKSE" / "Plugins" / "x.dll"));
+            assert(std::filesystem::exists(root / "readme.txt"));
+            assert(!std::filesystem::exists(root / "Data"));
+            std::printf("PASS: normalize merges a lone Data+readme top layer into the root\n");
+        }
+
+        // (e) FOMOD archives are never reshaped
+        {
+            TempDir env;
+            auto root = env.root / "staging";
+            std::filesystem::create_directories(root / "fomod");
+            std::filesystem::create_directories(root / "meshes");
+            std::ofstream(root / "fomod" / "ModuleConfig.xml") << "<config/>";
+            std::ofstream(root / "fomod" / "Info.xml") << "<info/>";
+            std::ofstream(root / "meshes" / "m.nif") << "x";
+            auto r = normalize_staging_root(root, "Data");
+            assert(r.fomod && !r.simple && !r.merged_data_dir);
+            assert(std::filesystem::exists(root / "fomod" / "ModuleConfig.xml"));
+            assert(std::filesystem::exists(root / "meshes" / "m.nif"));
+            std::printf("PASS: normalize leaves FOMOD archives untouched\n");
+        }
+    }
+
+    // InstallStage name dialog (MO2 SimpleInstallDialog): cancel aborts the
+    // install cleanly, accept installs under the chosen name, and FOMOD
+    // installs (their wizard owns the name) never trigger it.
+    {
+        TempDir env;
+        auto staging = env.root / "staging";
+        auto mods = env.root / "mods";
+        std::filesystem::create_directories(staging);
+        std::filesystem::create_directories(mods);
+        std::ofstream(staging / "a.txt") << "a";
+        auto make_mod = [&] {
+            Mod mod;
+            mod.id = "nmod";
+            mod.name = "Name Mod";
+            mod.archive_filename = "NameMod.zip";
+            mod.state = ModState::Extracted;
+            ModFile f;
+            f.relative_path = staging.string();
+            mod.files.push_back(f);
+            return mod;
+        };
+
+        // (a) cancel (nullopt) aborts, leaves everything untouched
+        {
+            PipelineContext ctx;
+            ctx.mods_dir = mods;
+            ctx.name_query_cb = [](const std::string&, const std::string&) {
+                return std::optional<std::string>();  // nullopt = cancel
+            };
+            Mod mod = make_mod();
+            InstallStage stage;
+            assert(!stage.execute(mod, ctx));
+            assert(ctx.canceled);
+            assert(mod.state != ModState::Installed);
+            assert(!std::filesystem::exists(mods / "Name Mod"));
+            std::printf("PASS: install name dialog cancel aborts cleanly\n");
+        }
+
+        // (b) accept installs under the chosen name (caller adds only that folder)
+        {
+            PipelineContext ctx;
+            ctx.mods_dir = mods;
+            ctx.name_query_cb = [](const std::string& suggested, const std::string& archive) {
+                assert(suggested == "Name Mod");
+                assert(archive == "NameMod.zip");
+                return std::optional<std::string>("Chosen Name");
+            };
+            Mod mod = make_mod();
+            InstallStage stage;
+            assert(stage.execute(mod, ctx));
+            assert(mod.name == "Chosen Name");
+            assert(ctx.installed_mod_folder == "Chosen Name");
+            assert(std::filesystem::exists(mods / "Chosen Name" / "a.txt"));
+            assert(!std::filesystem::exists(mods / "Name Mod"));
+            std::printf("PASS: install name dialog accept installs under the chosen name\n");
+        }
+
+        // (c) FOMOD installs skip the name dialog entirely
+        {
+            // The install in (b) cleaned up the staging dir - recreate it.
+            std::filesystem::create_directories(staging);
+            std::ofstream(staging / "a.txt") << "a";
+            PipelineContext ctx;
+            ctx.mods_dir = mods;
+            ctx.fomod_detected = true;
+            bool called = false;
+            ctx.name_query_cb = [&](const std::string&, const std::string&) {
+                called = true;
+                return std::optional<std::string>("Wrong Name");
+            };
+            Mod mod = make_mod();
+            InstallStage stage;
+            assert(stage.execute(mod, ctx));
+            assert(!called);
+            assert(mod.name == "Name Mod");
+            assert(ctx.installed_mod_folder == "Name Mod");
+            assert(std::filesystem::exists(mods / "Name Mod" / "a.txt"));
+            std::printf("PASS: install name dialog skipped for FOMOD installs\n");
         }
     }
 

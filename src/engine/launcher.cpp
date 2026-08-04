@@ -184,7 +184,8 @@ static LaunchResult do_launch(const LaunchParams& params) {
         Logger::instance().debug("OverlayFS launcher: supported, trying overlay launch");
 
         if (params.is_windows_exe) {
-            auto proton = ProtonRuntime::find_proton_binary(params.platform, params.steam_appid);
+            auto proton = ProtonRuntime::find_proton_binary(params.platform, params.steam_appid,
+                                                            params.proton_runner);
             if (!proton.empty()) {
                 ProtonRuntime::prepare_proton_environment(params.platform, params.game_dir, params.steam_appid);
                 std::vector<std::string> ovl_args = {

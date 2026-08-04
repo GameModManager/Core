@@ -72,11 +72,14 @@ bool deploy_all_enabled_mods(
         auto end = std::filesystem::recursive_directory_iterator();
         while (it != end && !iter_ec) {
             const auto& file = *it;
+            const auto rel = std::filesystem::relative(file.path(), entry.path());
             // Hidden files (.gmmhidden here, .mohidden from MO2-imported
-            // instances) must not reach the game - MO2 parity. The skip is a
-            // filter, not a continue: the iterator must still advance.
-            if (file.is_regular_file() && !is_hidden_file(file.path())) {
-                auto rel = std::filesystem::relative(file.path(), entry.path());
+            // instances) and the disable sentinel (disable_mechanism, e.g.
+            // ".gmmdisabled" or Isaac's "disable.it") must not reach the game -
+            // MO2 parity. The skip is a filter, not a continue: the iterator
+            // must still advance.
+            if (file.is_regular_file() && !is_hidden_file(file.path()) &&
+                rel != disable_mechanism) {
                 // NOTE: no create_directories(target.parent_path()) here. The
                 // strategy owns dir creation, and pre-creating the target's
                 // parent with the mod's exact casing would defeat

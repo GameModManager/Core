@@ -317,6 +317,20 @@ public:
         const std::filesystem::path& mods_dir,
         const std::filesystem::path& game_mods_dir);
 
+    // Incrementally merge one just-installed mod into the existing tree instead
+    // of rebuilding it. Call after the conflict registry was recomputed to
+    // include the new mod: files only it provides insert new rows, files it
+    // shares with other mods bump their provider counts in place. Existing
+    // items are updated, never recreated, so the cost scales with the new
+    // mod's file count rather than the whole merged tree.
+    void apply_mod(
+        const std::unordered_map<std::string, std::vector<std::pair<std::string, int>>>& registry,
+        const std::string& mod_id,
+        const QVector<ModEntry>& all_mods,
+        bool conflict_reversed,
+        const std::filesystem::path& mods_dir,
+        const std::filesystem::path& game_mods_dir);
+
     void clear_content();
 
     [[nodiscard]] QTreeWidget* tree_widget() const { return tree_; }

@@ -249,6 +249,46 @@ void run_synthetic_fixture() {
     require(db.plugins()[order_of(db, "SkyUI_SE.esp")].owner_mod == "SkyUI",
             "SkyUI owned by its mod");
 
+    // --- Apply a LOOT-style sorted order (PLAN.md §7.1) ---
+    {
+        // Lock SkyUI at its current priority first: an auto-sort must never
+        // move it.
+        require(db.set_locked("SkyUI_SE.esp", true), "SkyUI locked");
+
+        // Feed a deliberately shuffled user order. The native + CC band must
+        // stay fixed; the user band follows the requested order.
+        const std::vector<std::string> loot_order = {
+            "Lights.esl", "Patch.esp", "SkyUI_SE.esp"};
+        require(db.apply_load_order(loot_order), "apply LOOT order");
+        require(db.plugins()[0].name == "Skyrim.esm", "native band first");
+        require(order_of(db, "ccBGSSSE001-Fish.esm") == 3, "CC band fixed");
+        // SkyUI is locked at priority 4, so the requested order applies to the
+        // slots above it: SkyUI claims 4 (auto-sort could not move it) and
+        // Lights/Patch shift down into 5/6.
+        require(order_of(db, "SkyUI_SE.esp") == 4, "locked SkyUI stays at 4");
+        require(order_of(db, "Lights.esl") == 5, "Lights follows the locked row");
+        require(order_of(db, "Patch.esp") == 6, "Patch follows Lights");
+        // Mod indexes were regenerated for the new order (Lights keeps its
+        // light slot; Patch, last in the full-index band, still reads 05).
+        require(db.plugins()[order_of(db, "Lights.esl")].mod_index == 0xFE000000u,
+                "light index regenerated after apply");
+        require(db.plugins()[order_of(db, "Patch.esp")].mod_index == 5u,
+                "full index regenerated after apply");
+
+        // An unknown name must fail without touching the order.
+        const auto before = db.plugins();
+        std::string err;
+        require(!db.apply_load_order({"Lights.esl", "NotARealPlugin.esp"}, &err),
+                "unknown plugin rejected");
+        require(err.find("NotARealPlugin.esp") != std::string::npos,
+                "error names the unknown plugin");
+        require(db.plugins().size() == before.size(), "apply failure is a no-op");
+        require(order_of(db, "Lights.esl") == 5, "order unchanged after failure");
+
+        // Unlock so later fixture blocks start from a clean state.
+        require(db.set_locked("SkyUI_SE.esp", false), "SkyUI unlocked");
+    }
+
     // --- TES4 header metadata (tooltip parity) ---
     {
         const auto& skyui = db.plugins()[order_of(db, "SkyUI_SE.esp")];
@@ -942,10 +982,69 @@ void run_real_skyrim() {
                  ps.size(), saw_cc ? "yes" : "no");
 }
 
+// A mod disabled via the default GMM sentinel (.gmmdisabled) must contribute
+// nothing to the plugin database. Regression for the GUI passing "" as
+// disable_mechanism (main_window.cpp), which silently re-enabled disabled mods.
+void run_disabled_mod_fixture() {
+    using engine::PluginDatabase;
+
+    const fs::path base = "/tmp/gmm_plugin_disabled_fixture";
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    const fs::path game = base / "game";
+    const fs::path mods = base / "mods";
+    const fs::path meta = base / "meta";
+    fs::create_directories(game / "Data", ec);
+    fs::create_directories(mods, ec);
+    fs::create_directories(meta, ec);
+
+    write_esp(game / "Data" / "Skyrim.esm", true, {});
+    fs::create_directories(mods / "EnabledMod", ec);
+    write_esp(mods / "EnabledMod" / "Enabled.esp", false, {"Skyrim.esm"});
+    fs::create_directories(mods / "DisabledMod", ec);
+    write_esp(mods / "DisabledMod" / "Disabled.esp", false, {"Skyrim.esm"});
+    std::ofstream sentinel(mods / "DisabledMod" / ".gmmdisabled");
+    sentinel << "\n";
+
+    // The disable_mechanism_for() helper: declared hook wins, else default.
+    {
+        engine::GameKnowledge k;
+        require(engine::disable_mechanism_for(k, "anygame") == ".gmmdisabled",
+                "no declaration -> engine default sentinel");
+        k.set("anygame", "disable_mechanism", "disable.it");
+        require(engine::disable_mechanism_for(k, "anygame") == "disable.it",
+                "game-declared mechanism wins over default");
+    }
+
+    // Old buggy path: empty mechanism -> the disabled mod's plugin still counts.
+    {
+        PluginDatabase db;
+        require(db.refresh(game, mods, meta, "", "Skyrim.esm"),
+                "refresh with empty mechanism");
+        require(db.find("Disabled.esp") != nullptr,
+                "empty mechanism must NOT exclude (guards the regression)");
+        require(db.find("Enabled.esp") != nullptr, "enabled mod present");
+    }
+
+    // Correct: the sentinel is honored -> disabled mod contributes nothing.
+    {
+        PluginDatabase db;
+        require(db.refresh(game, mods, meta, ".gmmdisabled", "Skyrim.esm"),
+                "refresh with default sentinel");
+        require(db.find("Disabled.esp") == nullptr,
+                "disabled mod's plugin is excluded");
+        require(db.find("Enabled.esp") != nullptr, "enabled mod present");
+    }
+
+    fs::remove_all(base, ec);
+    std::fprintf(stderr, "plugin_database_test: disabled-mod fixture OK\n");
+}
+
 }  // namespace
 
 int main() {
     run_synthetic_fixture();
+    run_disabled_mod_fixture();
     run_real_skyrim();
     std::fprintf(stderr, "plugin_database_test: all OK\n");
     return 0;

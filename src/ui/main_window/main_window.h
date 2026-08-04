@@ -20,6 +20,7 @@
 #include "engine/nxm/nxm_router.h"
 #include "engine/instance/instance.h"
 #include "engine/plugins/plugin_database.h"
+#include "engine/proton_tools.h"
 
 class QSplitter;
 class QToolBar;
@@ -29,6 +30,7 @@ class QLabel;
 class QPushButton;
 class QCheckBox;
 class QTreeWidget;
+class QTimer;
 
 namespace engine {
 class GameKnowledge;
@@ -38,6 +40,7 @@ class NxmIpcServer;
 struct NxmLink;struct ConflictStats;
 class StyleManager;
 class PlatformInterface;
+struct LootResult;
 }
 
 namespace ui {
@@ -57,6 +60,8 @@ class PipelineWindow;
 class PluginsTab;
 class DataTab;
 class ModInfoDialog;
+class InstallProgressDialog;
+class LootSortThread;
 struct ModInfoData;
 struct ModEntry;
 namespace preview { class PreviewWindow; }
@@ -122,6 +127,7 @@ private:
     void connect_menu_actions();
     void setup_mod_list_context_menu();
     void load_mods_from_game();
+    void add_installed_mod(const std::string& folder_name);
     void update_status_bar_for_game();
     void sync_mod_enable_state(const QString& mod_id, bool enabled);
     void sync_priorities();
@@ -166,7 +172,20 @@ private:
     void prompt_nxm_registration();
     void ensure_nxm_handler_default();
     void recompute_conflicts();
+    // LOOT advisory-tool sort (PLAN.md §7.1): builds a LootRequest from the
+    // current plugin DB, runs gmm_lootcli off the UI thread, applies the
+    // sorted order, and persists it through save_profile().
+    void run_loot_sort();
+    void on_loot_progress(int stage, const QString& message);
+    void on_loot_finished(engine::LootResult result);
     void refresh_data_tab();
+    // Recompute the conflict registry + model stats WITHOUT refreshing the
+    // Data tab. Callers decide how to surface the result: recompute_conflicts()
+    // follows with a full show_data(), the install path with DataTab::apply_mod().
+    void compute_conflict_state();
+    // Game-native mods dir (mods_subpath under the game dir), empty when it
+    // equals the instance mods dir or no game is loaded.
+    std::filesystem::path current_game_mods_dir() const;
     void wire_data_tab();
     void on_data_open(const QString& file_path);
     void on_data_execute(const QString& file_path, bool is_windows_exe);
@@ -182,7 +201,25 @@ private:
     void load_meta_for_mods();
     void show_instance_statistics();
     void show_settings_dialog();
+    void show_proton_panel();
     void show_pipeline_window();
+
+    // Install-progress popup (MO2 parity): shows ~300ms into an install so
+    // quick installs never flash it, hides before each interactive install
+    // dialog (FOMOD wizard / name confirm / overwrite), and closes on install
+    // completion/cancel/failure. update_install_progress is connected to
+    // PipelineWorker::install_progress (queued onto this thread).
+    void update_install_progress(const std::string& mod_id, int percent,
+                                 const std::string& status);
+    void hide_install_progress();
+
+    // Run a wine/protontricks tool (winecfg, regedit, dlls, winetricks verbs,
+    // recommended packages...) in the active instance's prefix.
+    void run_prefix_tool(const QStringList& args);
+    // Pick an .exe and run it in the active instance's prefix.
+    void run_exe_in_prefix();
+    // Build the ProtonToolRequest for the active instance (empty when none).
+    [[nodiscard]] engine::ProtonToolRequest current_proton_request() const;
 
     // Plugins tab (Skyrim-style games with plugin support).
     void refresh_plugins_tab();
@@ -271,6 +308,8 @@ private:
     // game is loaded). Rebuilt on refresh; toggles/moves save the profile.
     engine::PluginDatabase plugins_db_;
     ui::PluginsTab* plugins_tab_widget_ = nullptr;
+    // Long-lived LOOT sort worker thread (created on first use, reused).
+    ui::LootSortThread* loot_sort_thread_ = nullptr;
     // Data tab context-menu targets. data_tab_widget_ is set by set_game_info()
     // after each right-panel rebuild; preview_window_ is lazily created on the
     // first preview request and kept across rebuilds.
@@ -342,6 +381,15 @@ private:
     QTreeWidget* process_tree_ = nullptr;
     int64_t locked_pid_ = -1;
     bool show_process_tree_ = false;
+
+    // Install-progress popup state. Lazily created on the first install;
+    // kept across installs within the session. install_progress_show_timer_
+    // defers the first show by ~300ms so a fast install never flashes the
+    // dialog; active_install_progress_id_ tracks which install the dialog
+    // belongs to so a new install resets it.
+    ui::InstallProgressDialog* install_progress_dialog_ = nullptr;
+    QTimer* install_progress_show_timer_ = nullptr;
+    std::string active_install_progress_id_;
 };
 
 }  // namespace ui

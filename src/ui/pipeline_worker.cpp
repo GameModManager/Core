@@ -63,11 +63,20 @@ void PipelineWorker::install_mod(const std::string& id, const std::string& zip_p
     // meta.ini record reads it).
     mod.archive_filename = std::filesystem::path(zip_path).filename().string();
 
+    // Route engine install-stage progress (extract/copy) to the UI. The
+    // callback runs on this worker thread; the signal is auto-queued to the
+    // main thread's progress dialog.
+    pipeline_->ctx().on_stage_progress =
+        [this, id](int percent, const std::string& status) {
+            emit install_progress(id, percent, status);
+        };
+
     auto result = pipeline_->run(mod);
 
     if (result == engine::PipelineResult::Success) {
         engine::Logger::instance().debug("Mod installed: " + id);
-        emit install_complete(id, true, "Success");
+        emit install_complete(id, true, "Success",
+                              pipeline_->ctx().installed_mod_folder);
     } else if (result == engine::PipelineResult::Canceled) {
         // User canceled an interactive stage (FOMOD wizard, overwrite dialog).
         // Not a failure: the download keeps whatever state it had.

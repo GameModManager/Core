@@ -32,6 +32,10 @@ struct LaunchParams {
     // additional read-only overlay lowerdirs, enabling mod deployment without
     // touching game_dir.  Empty = legacy behavior (no mod layers, write capture only).
     std::vector<std::filesystem::path> extra_lowerdirs;
+
+    // Selected Proton runner (display name or absolute path to a `proton`
+    // script). Empty = automatic (Steam per-game override, then latest).
+    std::string proton_runner;
 };
 
 struct LaunchResult {
