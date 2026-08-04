@@ -12,6 +12,7 @@ Usage in a plugin:
         ctx.register_capability("plugins", display_name="Plugins", data_path="Data/")
 """
 
+from typing import Callable
 
 class RegistrationContext:
     """Context passed to a plugin's register() function.
@@ -75,6 +76,15 @@ class RegistrationContext:
 
         Highest priority wins for a given (stage, game_id) pair.
         Engine falls back to generic logic if nothing claims it.
+        """
+        ...
+
+    def register_diagnostics(self, fn: Callable[[str], str | list[str]]) -> None:
+        """Register a diagnostics provider for this plugin's game.
+
+        Called once per plugin on every Plugins-tab refresh with the plugin's
+        file name; return a message string or list of messages to append to
+        that plugin's hover tooltip (below an <hr> separator).
         """
         ...
 

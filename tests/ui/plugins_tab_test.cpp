@@ -6,7 +6,9 @@
 //   - force-loaded rows (game-native, CC) show a non-checkable checked box,
 //     are greyed, and have no drag flag,
 //   - the flags column renders MO2-style status emblems (warning for missing
-//     master, awaiting for ESL-flagged-without-.esl) with a reason tooltip,
+//     master, awaiting for ESL-flagged-without-.esl) with per-emblem hover
+//     text (kPluginFlagTooltipsRole, shown only for the emblem under the
+//     cursor by FlagsDelegate::helpEvent) while the cell itself has no tooltip,
 //   - the plugin name carries the MO2 type font (bold master, italic light),
 //   - missing-master rows are styled red italic with a tooltip naming the
 //     missing master and the owning mod,
@@ -24,8 +26,16 @@
 // Hermetic: offscreen platform, throwaway XDG_CONFIG_HOME, no network.
 #include "ui/panels/tab_panels.h"
 #include "ui/settings/settings.h"
+#include "ui/widgets/mod_table_view.h"
 
+#include <QAction>
 #include <QApplication>
+#include <QIcon>
+#include <QList>
+#include <QMenu>
+#include <QPoint>
+#include <QRect>
+#include <QStringList>
 #include <QStyle>
 #include <QStyleOptionViewItem>
 #include <QTableWidget>
@@ -56,6 +66,19 @@ static int row_with_name(QTableWidget* table, const char* name) {
     }
     return -1;
 }
+
+static QAction* action_with_text(QMenu& menu, const char* text) {
+    for (auto* a : menu.actions()) {
+        if (a->text() == QLatin1String(text)) return a;
+    }
+    return nullptr;
+}
+
+// Expose the protected context-menu builder for direct driving (menu.exec() is
+// modal, so the full on_custom_context_menu flow is not exercised).
+struct TestPluginsTab : ui::PluginsTab {
+    using ui::PluginsTab::add_context_menu_actions;
+};
 
 int main(int argc, char** argv) {
     qputenv("QT_QPA_PLATFORM", "offscreen");
@@ -99,6 +122,7 @@ int main(int argc, char** argv) {
     broken.owner_mod = "Broken";
     broken.masters = {"Skyrim.esm", "GoneMaster.esm"};
     broken.missing_master = true;
+    broken.missing_masters = {"GoneMaster.esm"};
     broken.enabled = false;
     broken.priority = 3;
     broken.mod_index_text = "02";
@@ -109,7 +133,7 @@ int main(int argc, char** argv) {
     const std::vector<engine::GamePlugin> plugins_all_enabled = {
         native, cc, skyui, broken_enabled};
 
-    ui::PluginsTab tab;
+    TestPluginsTab tab;
     auto* table = tab.table();
     tab.set_plugins(plugins);
 
@@ -122,15 +146,27 @@ int main(int argc, char** argv) {
 
     // Flags column: MO2-style status emblems — warning (missing master),
     // awaiting (ESL-flagged without .esl ext), run (medium/ESH). Type is shown
-    // by the name font, not icons.
-    check(table->item(0, 1)->icon().isNull(), "no emblem for a plain master ESM");
-    check(table->item(1, 1)->icon().isNull(), "no emblem for a CC plugin");
-    check(!table->item(2, 1)->icon().isNull() &&
-              table->item(2, 1)->toolTip().contains("light (ESL)"),
-          "awaiting emblem for ESL-flagged .esp");
-    check(!table->item(3, 1)->icon().isNull() &&
-              table->item(3, 1)->toolTip().contains("required master"),
-          "warning emblem for missing master");
+    // by the name font, not icons. Emblems ride kPluginFlagsRole as individual
+    // QIcons; the FlagsDelegate paints them one-by-one at native size (never
+    // stacked into one pixmap that Qt would squeeze into a single icon slot).
+    check(table->item(0, 1)->data(ui::PluginsTab::kPluginFlagsRole).isNull(),
+          "no emblem for a plain master ESM");
+    check(table->item(1, 1)->data(ui::PluginsTab::kPluginFlagsRole).isNull(),
+          "no emblem for a CC plugin");
+    // Per-flag hover text rides kPluginFlagTooltipsRole as a parallel
+    // QStringList; the cell's own tooltip is cleared so the hover is answered
+    // by FlagsDelegate::helpEvent, not the view's item-tooltip path.
+    const QStringList skyui_tips = table->item(2, 1)
+        ->data(ui::PluginsTab::kPluginFlagTooltipsRole).value<QStringList>();
+    const QStringList broken_tips = table->item(3, 1)
+        ->data(ui::PluginsTab::kPluginFlagTooltipsRole).value<QStringList>();
+    check(skyui_tips.size() == 1 && skyui_tips[0].contains("light plugin (ESL)"),
+          "awaiting emblem hover text");
+    check(broken_tips.size() == 1 && broken_tips[0].contains("Missing Masters"),
+          "warning emblem hover text");
+    check(table->item(2, 1)->toolTip().isEmpty() &&
+              table->item(3, 1)->toolTip().isEmpty(),
+          "flags cells have no item tooltip (delegate answers the hover)");
     check(table->item(0, 2)->text() == "0" && table->item(3, 2)->text() == "3",
           "priority column");
     check(table->item(2, 3)->text() == "FE:000" && table->item(3, 3)->text() == "02",
@@ -315,6 +351,216 @@ int main(int argc, char** argv) {
         check(table->selectionModel()->selectedRows().size() == 1,
               "checkbox click keeps the selection");
         tab.hide();
+    }
+
+    // --- Rich HTML tooltip (MO2 tooltipData parity) ---
+    {
+        engine::GamePlugin rich;  // metadata-rich user plugin
+        rich.name = "RichPlugin.esp";
+        rich.owner_mod = "RichMod";
+        rich.masters = {"Skyrim.esm"};
+        rich.enabled = true;
+        rich.priority = 4;
+        rich.mod_index_text = "03";
+        rich.form_version = 44;
+        rich.header_version = 1.70f;
+        rich.author = "Test Author <tester>";
+        rich.description = "A rich test description";
+        rich.has_ini = true;
+        rich.archives = {"RichPlugin - Main.bsa", "RichPlugin - Textures.bsa"};
+        rich.messages = {"Message one", "Message two"};
+
+        engine::GamePlugin dummy;  // no records, paired with an archive
+        dummy.name = "Dummy.esl";
+        dummy.owner_mod = "DummyMod";
+        dummy.enabled = true;
+        dummy.has_no_records = true;
+        dummy.has_light_ext = true;
+        dummy.priority = 5;
+        dummy.mod_index_text = "FE:001";
+
+        engine::GamePlugin locked;  // user-pinned: immovable
+        locked.name = "Locked.esp";
+        locked.owner_mod = "LockedMod";
+        locked.enabled = true;
+        locked.locked = true;
+        locked.priority = 6;
+        locked.mod_index_text = "04";
+
+        const std::vector<engine::GamePlugin> rich_set = {
+            native, cc, skyui, broken, rich, dummy, locked};
+        tab.set_plugins(rich_set);
+
+        const int rr = row_with_name(table, "RichPlugin.esp");
+        check(rr >= 0, "rich plugin row present");
+        const QString rt = table->item(rr, 0)->toolTip();
+        check(rt.contains("Origin") && rt.contains("RichMod"),
+              "tooltip Origin line");
+        check(rt.contains("Form Version") && rt.contains("44"),
+              "tooltip Form Version line");
+        check(rt.contains("Header Version") && rt.contains("1.7"),
+              "tooltip Header Version line");
+        check(rt.contains("Author") && rt.contains("Test Author"),
+              "tooltip Author line");
+        check(rt.contains("Description") && rt.contains("test description"),
+              "tooltip Description line");
+        check(rt.contains("Loads Archives") &&
+                  rt.contains("Textures.bsa"),
+              "tooltip Loads Archives line");
+        check(rt.contains("Loads INI settings"), "tooltip Loads INI line");
+        check(rt.contains("Message one") && rt.contains("Message two"),
+              "tooltip diagnostics messages");
+        check(!rt.contains("Missing Masters"), "no Missing Masters for a healthy plugin");
+        // The same rich tooltip is shared by the name, priority and mod-index
+        // columns (MO2 tooltipData is column-independent).
+        check(table->item(rr, 0)->toolTip() == table->item(rr, 2)->toolTip() &&
+                  table->item(rr, 0)->toolTip() == table->item(rr, 3)->toolTip(),
+              "tooltip identical across non-flags columns");
+        // The flags cell carries no item tooltip: per-emblem hover text
+        // (delegate helpEvent) replaces the column-wide rich tooltip there.
+        check(table->item(rr, 1)->toolTip().isEmpty(),
+              "flags cell tooltip cleared for per-flag hover");
+        // Per-flag hover fragments: the rich plugin's two emblems (INI, BSA)
+        // expose exactly their own fragment, not the whole rich tooltip.
+        const QStringList rich_tips = table->item(rr, 1)
+            ->data(ui::PluginsTab::kPluginFlagTooltipsRole).value<QStringList>();
+        check(rich_tips.size() == 2, "per-flag tooltips parallel the emblems");
+        check(rich_tips[0].contains("Loads INI settings") &&
+                  !rich_tips[0].contains("Loads Archives") &&
+                  !rich_tips[0].contains("Origin"),
+              "INI emblem shows only its own fragment");
+        check(rich_tips[1].contains("Loads Archives") &&
+                  !rich_tips[1].contains("Loads INI settings"),
+              "archive emblem shows only its own fragment");
+
+        // Dummy plugin: emblem + explanatory paragraph.
+        const int dr = row_with_name(table, "Dummy.esl");
+        check(!table->item(dr, 1)
+                       ->data(ui::PluginsTab::kPluginFlagsRole)
+                       .value<QList<QIcon>>()
+                       .isEmpty(),
+              "dummy emblem shown for a no-records plugin");
+        check(table->item(dr, 0)->toolTip().contains("dummy plugin"),
+              "tooltip dummy paragraph");
+
+        // Locked plugin: immovable (no drag flag) but still toggleable, with
+        // the lock emblem and the full tooltip intact.
+        const int lr = row_with_name(table, "Locked.esp");
+        QTableWidgetItem* ln = table->item(lr, 0);
+        check(ln->flags() & Qt::ItemIsUserCheckable,
+              "locked row still toggleable");
+        check(!(ln->flags() & Qt::ItemIsDragEnabled),
+              "locked row not draggable");
+        check(!(table->item(lr, 1)->flags() & Qt::ItemIsDragEnabled) &&
+                  !(table->item(lr, 2)->flags() & Qt::ItemIsDragEnabled) &&
+                  !(table->item(lr, 3)->flags() & Qt::ItemIsDragEnabled),
+              "locked row drag disabled on every column");
+        check(!table->item(lr, 1)
+                       ->data(ui::PluginsTab::kPluginFlagsRole)
+                       .value<QList<QIcon>>()
+                       .isEmpty(),
+              "lock emblem shown for a locked plugin");
+        check(!ln->toolTip().isEmpty(), "locked row keeps the rich tooltip");
+
+        // Multiple emblems on one row stay separate QIcons (the composite
+        // pixmap approach would have squeezed them into a single slot).
+        check(table->item(rr, 1)
+                       ->data(ui::PluginsTab::kPluginFlagsRole)
+                       .value<QList<QIcon>>()
+                       .size() == 2,
+              "multi-emblem row exposes each emblem as its own icon");
+
+        // flag_icon_at() shares the wrap math with the delegate's paint, so a
+        // hover hit-test can never disagree with what is drawn. A 40px-wide
+        // cell fits two 16px icons (18px step): icon 0 at x 0-15, icon 1 at
+        // x 18-33.
+        {
+            const QList<QIcon> two = table->item(rr, 1)
+                ->data(ui::PluginsTab::kPluginFlagsRole).value<QList<QIcon>>();
+            const QRect cell(0, 0, 40, 16);
+            check(ui::flag_icon_at(two, cell, QPoint(2, 8)) == 0,
+                  "flag_icon_at hits the first emblem");
+            check(ui::flag_icon_at(two, cell, QPoint(20, 8)) == 1,
+                  "flag_icon_at hits the second emblem");
+            check(ui::flag_icon_at(two, cell, QPoint(5, 20)) == -1,
+                  "flag_icon_at misses below the emblems");
+            check(ui::flag_icon_at(two, cell, QPoint(35, 8)) == -1,
+                  "flag_icon_at misses on the right padding");
+            check(ui::flag_icon_at({}, cell, QPoint(5, 8)) == -1,
+                  "flag_icon_at with an empty list misses");
+        }
+
+        // A plugin flagged both ESL and ESH shows both emblems, and both of
+        // their fragments carry the both-flags warning (MO2 appends it to both
+        // paragraphs).
+        engine::GamePlugin both;
+        both.name = "Both.esp";
+        both.owner_mod = "BothMod";
+        both.enabled = true;
+        both.is_light_flagged = true;
+        both.is_medium_flagged = true;
+        both.priority = 7;
+        both.mod_index_text = "FE:002";
+        const std::vector<engine::GamePlugin> both_set = {
+            native, cc, skyui, broken, rich, dummy, locked, both};
+        tab.set_plugins(both_set);
+        const int br = row_with_name(table, "Both.esp");
+        const QList<QIcon> both_icons = table->item(br, 1)
+            ->data(ui::PluginsTab::kPluginFlagsRole).value<QList<QIcon>>();
+        const QStringList both_tips = table->item(br, 1)
+            ->data(ui::PluginsTab::kPluginFlagTooltipsRole).value<QStringList>();
+        check(both_icons.size() == 2, "both-flags row shows two emblems");
+        check(both_tips.size() == 2, "both-flags row shows two fragments");
+        check(both_tips[0].contains("light plugin (ESL)") &&
+                  both_tips[0].contains("both light and medium flagged"),
+              "awaiting fragment carries the both-flags warning");
+        check(both_tips[1].contains("medium plugin (ESH)") &&
+                  both_tips[1].contains("both light and medium flagged"),
+              "run fragment carries the both-flags warning");
+    }
+
+    // --- Lock context menu (MO2 PluginListContextMenu parity) ---
+    {
+        tab.set_plugins(plugins);
+
+        // Unlocked user row: offers "Lock load order" and emits lock_requested.
+        QMenu menu;
+        tab.add_context_menu_actions(menu, row_with_name(table, "SkyUI_SE.esp"));
+        auto* lock_act = action_with_text(menu, "Lock load order");
+        check(lock_act != nullptr, "unlocked row offers Lock load order");
+        check(action_with_text(menu, "Unlock load order") == nullptr,
+              "unlocked row offers no Unlock");
+        std::vector<std::pair<std::string, bool>> locks;
+        QObject::connect(&tab, &ui::PluginsTab::lock_requested,
+            [&](const std::string& name, bool locked) {
+                locks.emplace_back(name, locked);
+            });
+        lock_act->trigger();
+        check(locks.size() == 1 && locks[0].first == "SkyUI_SE.esp" &&
+                  locks[0].second,
+              "Lock action emits lock_requested(name, true)");
+
+        // Locked row: offers "Unlock load order".
+        engine::GamePlugin locked2 = skyui;
+        locked2.name = "Locked2.esp";
+        locked2.locked = true;
+        tab.set_plugins({native, locked2});
+        QMenu menu2;
+        tab.add_context_menu_actions(menu2, row_with_name(table, "Locked2.esp"));
+        auto* unlock_act = action_with_text(menu2, "Unlock load order");
+        check(unlock_act != nullptr, "locked row offers Unlock load order");
+        check(action_with_text(menu2, "Lock load order") == nullptr,
+              "locked row offers no Lock");
+        locks.clear();
+        unlock_act->trigger();
+        check(locks.size() == 1 && locks[0].first == "Locked2.esp" &&
+                  !locks[0].second,
+              "Unlock action emits lock_requested(name, false)");
+
+        // Core row (force_loaded): no lock actions at all.
+        QMenu menu3;
+        tab.add_context_menu_actions(menu3, row_with_name(table, "Skyrim.esm"));
+        check(menu3.actions().isEmpty(), "core row has no lock actions");
     }
 
     std::printf("\n%d passed, %d failed\n", passes, failures);

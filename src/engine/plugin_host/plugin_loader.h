@@ -25,6 +25,8 @@ struct ImageDiffProvider {
 
 namespace engine {
 
+class PluginDatabase;
+
 struct PluginInfo {
     std::string path;
     std::string game_id;
@@ -99,6 +101,11 @@ public:
     }
     [[nodiscard]] bool has_image_diff() const { return image_diff_.fn != nullptr; }
     [[nodiscard]] const ImageDiffProvider& image_diff_provider() const { return image_diff_; }
+
+    // Run every registered diagnostics provider for game_id over db, replacing
+    // each plugin's GamePlugin::messages. Call after the plugin database
+    // refreshes so the Plugins tab tooltip can render them.
+    void collect_diagnostics(const std::string& game_id, PluginDatabase& db);
 
 private:
     void* dlopen_handle(const std::string& path);

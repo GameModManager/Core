@@ -24,8 +24,25 @@ struct GamePlugin {
     bool is_game_native = false;    // vanilla ESM that ships with the game
     bool is_cc = false;             // listed in Skyrim.ccc - the game force-loads it
     bool force_loaded = false;      // always enabled, cannot be toggled
+    bool locked = false;            // user-pinned: cannot be moved (auto-sort or drag)
     bool enabled = false;
     bool missing_master = false;    // a required master is absent from the list
+    std::vector<std::string> missing_masters;  // names of the absent masters
+
+    // TES4 header metadata (MO2 tooltip parity). Unparsed/zero when the file
+    // has no such record (form_version 0 is hidden, like MO2).
+    uint32_t form_version = 0;
+    float header_version = 0.0f;
+    bool has_no_records = false;    // HEDR record count == 0 (dummy plugin)
+    std::string author;             // CNAM
+    std::string description;        // SNAM
+
+    // Same-origin assets MO2 associates with the plugin (basename matching).
+    bool has_ini = false;           // <basename>.ini in the owning folder
+    std::vector<std::string> archives;  // <basename>* .bsa/.ba2 in the folder
+
+    // Messages injected by registered diagnostics providers (tooltip <hr><ul>).
+    std::vector<std::string> messages;
 
     // Type checks: header flag OR extension, matching the flag meaning that
     // older GMM versions collapsed into a single bool (.esh has no extension

@@ -1,8 +1,10 @@
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/plugin_host/python_loader.h"
+#include "engine/plugin_host/diagnostics_registry.h"
 #include "engine/log/logger.h"
 #include "engine/model/mod.h"
 #include "engine/pipeline/pipeline.h"
+#include "engine/plugins/plugin_database.h"
 #include "engine/sort/sort_registry.h"
 #include "engine/sort/abi_sort_provider.h"
 
@@ -75,6 +77,16 @@ static void cb_register_settings(GmmRegistrationCtx* ctx,
         if (!keys[i] || !values[i]) continue;
         settings.emplace_back(keys[i], values[i]);
     }
+}
+
+static void cb_register_diagnostics(GmmRegistrationCtx* ctx,
+                                    GmmDiagnosticsFn fn,
+                                    void* user_data) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge || !bridge->current_plugin) return;
+
+    DiagnosticsRegistry::instance().register_provider(
+        bridge->current_plugin->game_id, fn, user_data);
 }
 
 static void cb_register_stage_claim(GmmRegistrationCtx* ctx,
@@ -349,6 +361,7 @@ bool PluginLoader::load_plugin(const std::string& path) {
     ctx.register_meta = cb_register_meta;
     ctx.register_category = cb_register_category;
     ctx.register_settings = cb_register_settings;
+    ctx.register_diagnostics = cb_register_diagnostics;
 
     RegistrationBridge bridge;
     bridge.loader = this;
@@ -433,6 +446,10 @@ bool PluginLoader::is_disabled(const std::string& filename) const {
 
 void PluginLoader::add_loaded_plugin(PluginInfo info) {
     plugins_.push_back(std::move(info));
+}
+
+void PluginLoader::collect_diagnostics(const std::string& game_id, PluginDatabase& db) {
+    DiagnosticsRegistry::instance().collect(game_id, db);
 }
 
 void PluginLoader::unload_all() {

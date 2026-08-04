@@ -2040,6 +2040,7 @@ void MainWindow::refresh_plugins_tab() {
     if (pt != plugins_tab_widget_) {  // tab was recreated on game switch
         connect(pt, &ui::PluginsTab::toggle_requested, this, &MainWindow::on_plugin_toggle);
         connect(pt, &ui::PluginsTab::reorder_requested, this, &MainWindow::on_plugin_reorder);
+        connect(pt, &ui::PluginsTab::lock_requested, this, &MainWindow::on_plugin_lock);
         connect(pt->table(), &QTableWidget::itemSelectionChanged,
                 this, &MainWindow::on_plugin_selection_changed);
         plugins_tab_widget_ = pt;
@@ -2076,6 +2077,8 @@ void MainWindow::refresh_plugins_tab() {
             plugins_db_.save_profile(profiles_dir, current_profile_name_);
     }
     plugins_db_.generate_mod_indexes();
+    if (plugin_loader_)  // plugin-supplied diagnostics land in the tooltip
+        plugin_loader_->collect_diagnostics(current_game_id_, plugins_db_);
     pt->set_plugins(plugins_db_.plugins());
     rebuild_plugin_highlight_index();
     // Rows and the selection indexes were rebuilt; re-apply any highlights the
@@ -2107,6 +2110,17 @@ void MainWindow::on_plugin_reorder(int from_row, int to_row) {
     }
     plugins_db_.save_profile(profiles_dir_path(), current_profile_name_);
     refresh_plugins_tab();  // repopulate: new order + recomputed priorities/indexes
+}
+
+void MainWindow::on_plugin_lock(const std::string& name, bool locked) {
+    std::string err;
+    if (!plugins_db_.set_locked(name, locked, &err)) {
+        if (!err.empty())
+            QMessageBox::warning(this, tr("Plugins"), QString::fromStdString(err));
+        return;
+    }
+    plugins_db_.save_profile(profiles_dir_path(), current_profile_name_);
+    refresh_plugins_tab();  // repopulate: lock emblem + drag flags re-applied
 }
 
 void MainWindow::rebuild_plugin_highlight_index() {

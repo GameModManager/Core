@@ -70,8 +70,18 @@ public:
     // Move a plugin within the user band (below the fixed game-native + CC
     // rows). Fixed rows are rejected; out-of-range drops are clamped. Priority
     // is recomputed as the row index and mod indexes regenerated afterwards.
+    // Locked plugins are rejected both as the source (they never move) and as
+    // the destination (a drop there would displace them).
     // Returns false with *error set on failure.
     bool move_plugin(int from_row, int to_row, std::string* error = nullptr);
+
+    // Pin/unpin a plugin at its current position (MO2 lock load order). A
+    // locked plugin can never move again: move_plugin rejects it and any
+    // auto-sort (sort_load_order, LOOT) re-places it at its locked priority.
+    // Force-loaded rows (game-native, CC) cannot be locked.
+    // Returns false with *error set on failure.
+    bool set_locked(const std::string& name, bool lock, std::string* error = nullptr);
+    [[nodiscard]] bool is_locked(const std::string& name) const;
 
     // Load profile state (plugins.txt/loadorder.txt/lockedorder.txt) from
     // <profiles_dir>/<profile_name>/. Returns true when state was applied.
@@ -93,6 +103,10 @@ public:
 
     [[nodiscard]] const std::vector<GamePlugin>& plugins() const { return plugins_; }
     [[nodiscard]] const GamePlugin* find(const std::string& name) const;
+
+    // Mutable access for engine-side consumers that attach per-plugin data
+    // (e.g. DiagnosticsRegistry populating GamePlugin::messages after refresh).
+    std::vector<GamePlugin>& plugins_mutable() { return plugins_; }
 
     // --- Launch-time helpers ---------------------------------------------
 
@@ -134,6 +148,11 @@ private:
     // hand-edited loadorder.txt can never park a core plugin below user ones.
     bool reassert_band();
 
+    // Re-insert every locked plugin at its locked priority (ascending order),
+    // so auto-sorts can never move a pinned plugin. Non-locked plugins are
+    // pushed down to fill the gaps. Mirrors MO2's PluginList::refreshLoadOrder.
+    void apply_locked_order();
+
     // Plugin indices by name for lookup + ordering.
     std::map<std::string, size_t> by_name_;
     // Lowercased-key index for master lookups. Master names come from TES4
@@ -143,6 +162,10 @@ private:
     // reference fails against an on-disk "Skyrim.esm".
     std::map<std::string, size_t> by_name_ci_;
     std::vector<GamePlugin> plugins_;
+
+    // Locked plugin name -> priority (MO2 lockedorder.txt state). Names of
+    // plugins not currently present are kept so the pin survives uninstall.
+    std::map<std::string, int> locked_order_;
 
     // Game-native plugins in the order declared by the game module.
     std::vector<std::string> native_order_;

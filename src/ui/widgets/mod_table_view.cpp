@@ -3,36 +3,32 @@
 #include "ui/settings/settings.h"
 
 #include <QAbstractItemModel>
+#include <QAbstractItemView>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileInfo>
 #include <QHeaderView>
+#include <QHelpEvent>
 #include <QMimeData>
 #include <QPainter>
 #include <QStyle>
 #include <QStyleOptionSlider>
+#include <QToolTip>
 #include <QUrl>
 
 #include <algorithm>
 
 namespace ui {
 
-namespace {
-constexpr int kFlagsSpacing = 2;  // px between adjacent flag icons
-}  // namespace
-
-// Native cell size for a set of flag icons (all 16x16 today, but take the max
-// so a larger icon anywhere in the list keeps every flag legible).
-static QSize flags_cell_size(const QList<QIcon>& icons) {
-    QSize cell(16, 16);
-    for (const auto& icon : icons)
-        cell = cell.expandedTo(icon.actualSize(QSize(16, 16)));
-    return cell;
+static QList<QIcon> flags_for_index(const QModelIndex& index, int role) {
+    return index.data(role).value<QList<QIcon>>();
 }
 
-static QList<QIcon> flags_for_index(const QModelIndex& index) {
-    return index.data(ModListModel::kFlagIconsRole).value<QList<QIcon>>();
-}
+FlagsDelegate::FlagsDelegate(int flag_icons_role, int flag_tooltips_role,
+                             QWidget* parent)
+    : QStyledItemDelegate(parent),
+      flag_icons_role_(flag_icons_role),
+      flag_tooltips_role_(flag_tooltips_role) {}
 
 void FlagsDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option,
                           const QModelIndex& index) const {
@@ -40,7 +36,7 @@ void FlagsDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option,
     // returns a DecorationRole for the Flags cell, so nothing extra is drawn.
     QStyledItemDelegate::paint(painter, option, index);
 
-    const QList<QIcon> icons = flags_for_index(index);
+    const QList<QIcon> icons = flags_for_index(index, flag_icons_role_);
     if (icons.isEmpty()) return;
 
     const QSize cell = flags_cell_size(icons);
@@ -69,7 +65,7 @@ void FlagsDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option,
 
 QSize FlagsDelegate::sizeHint(const QStyleOptionViewItem& option,
                               const QModelIndex& index) const {
-    const QList<QIcon> icons = flags_for_index(index);
+    const QList<QIcon> icons = flags_for_index(index, flag_icons_role_);
     if (icons.isEmpty())
         return QStyledItemDelegate::sizeHint(option, index);
 
@@ -84,12 +80,28 @@ QSize FlagsDelegate::sizeHint(const QStyleOptionViewItem& option,
         cell_width = view->columnWidth(index.column());
     if (cell_width <= 0) cell_width = 80;  // default Flags column width
 
-    const QSize cell = flags_cell_size(icons);
-    const int per_line =
-        flags_icons_per_line(cell_width, cell.width(), kFlagsSpacing);
-    const int lines = flags_icon_lines(icons.size(), per_line);
     // Width -1 = no preference; QTreeView only uses the height for row layout.
-    return QSize(-1, lines * cell.height());
+    return flags_wrapped_size(icons, cell_width);
+}
+
+bool FlagsDelegate::helpEvent(QHelpEvent* event, QAbstractItemView* view,
+                              const QStyleOptionViewItem& option,
+                              const QModelIndex& index) {
+    if (event->type() == QEvent::ToolTip && flag_tooltips_role_ != 0) {
+        const QStringList tips =
+            index.data(flag_tooltips_role_).value<QStringList>();
+        if (!tips.isEmpty()) {
+            const QList<QIcon> icons = flags_for_index(index, flag_icons_role_);
+            const int i = flag_icon_at(icons, option.rect, event->pos());
+            if (i >= 0 && i < tips.size()) {
+                QToolTip::showText(event->globalPos(), tips[i], view);
+                return true;
+            }
+            // Over the Flags cell but not on an emblem: no tooltip at all.
+            return true;
+        }
+    }
+    return QStyledItemDelegate::helpEvent(event, view, option, index);
 }
 
 static bool is_supported_archive(const QString& path) {
@@ -164,7 +176,10 @@ ModTableView::ModTableView(QWidget* parent)
     setVerticalScrollBar(new ModMarkingScrollBar(this));
     apply_scrollbar_policy();
     // Flags column: render stacked flag icons at native size (see FlagsDelegate).
-    setItemDelegateForColumn(ModListModel::Flags, new FlagsDelegate(this));
+    // No tooltips role (second arg 0): mod rows keep the delegate's default
+    // helpEvent so per-row descriptions still come from the item's tooltip.
+    setItemDelegateForColumn(ModListModel::Flags,
+                             new FlagsDelegate(ModListModel::kFlagIconsRole, 0, this));
 }
 
 void ModTableView::apply_scrollbar_policy() {

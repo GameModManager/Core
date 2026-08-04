@@ -35,6 +35,9 @@ EspHeaderInfo read_esp_header(const std::filesystem::path& file_path) {
     info.is_light = (flags & 0x0200u) != 0;
     info.is_medium = (flags & 0x0400u) != 0;
     info.localized = (flags & 0x0080u) != 0;
+    // Version stamp at bytes 20-24 (MO2's formVersion; 0 for plain or on some
+    // tools that zero it - the UI hides the field then, matching MO2).
+    info.form_version = le32(header + 20);
 
     // Sanity guard - a plugin header never legitimately exceeds a few KB.
     if (data_size > 16u * 1024 * 1024) return info;
@@ -62,6 +65,19 @@ EspHeaderInfo read_esp_header(const std::filesystem::path& file_path) {
                 master.pop_back();
             }
             if (!master.empty()) info.masters.push_back(master);
+        } else if (std::strcmp(type, "HEDR") == 0 && size >= 8) {
+            // HEDR: float header version, uint32 numRecords, uint32 nextObjectId.
+            std::memcpy(&info.header_version, data.data() + pos,
+                        sizeof(info.header_version));
+            info.num_records = le32(data.data() + pos + 4);
+        } else if (std::strcmp(type, "CNAM") == 0 && size > 0) {
+            std::string author(reinterpret_cast<const char*>(data.data() + pos), size);
+            while (!author.empty() && author.back() == '\0') author.pop_back();
+            info.author = std::move(author);
+        } else if (std::strcmp(type, "SNAM") == 0 && size > 0) {
+            std::string desc(reinterpret_cast<const char*>(data.data() + pos), size);
+            while (!desc.empty() && desc.back() == '\0') desc.pop_back();
+            info.description = std::move(desc);
         } else if (std::strcmp(type, "DATA") == 0 && size >= 4) {
             // Some tools write the ESL/ESH/localized bits in the TES4 DATA
             // subrecord instead of the record header. OR them in so both

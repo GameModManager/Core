@@ -1,5 +1,7 @@
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/plugin_host/python_loader.h"
+#include "engine/plugin_host/diagnostics_registry.h"
+#include "engine/plugins/plugin_database.h"
 
 #include <cassert>
 #include <cstdio>
@@ -23,6 +25,11 @@ static void test_python_plugin_load() {
         f << R"(
 import gmm
 
+def diag(plugin_name):
+    if plugin_name == "Target.esp":
+        return ["python says hi", "and again"]
+    return []
+
 def register(ctx):
     ctx.register_identity(
         steam_appid=12345,
@@ -34,6 +41,7 @@ def register(ctx):
         data_path="Data/",
         description="Test game plugin support",
     )
+    ctx.register_diagnostics(diag)
 )";
     }
 
@@ -59,6 +67,27 @@ def register(ctx):
     assert(game_caps.size() == 1);
     assert(game_caps[0].capability == "plugins");
     assert(game_caps[0].display_name == "Plugins");
+
+    // Verify the Python diagnostics provider: collect() invokes the bridged
+    // callable once per plugin and lands its messages in GamePlugin::messages.
+    {
+        engine::PluginDatabase db;
+        auto& ps = db.plugins_mutable();
+        engine::GamePlugin target;
+        target.name = "Target.esp";
+        engine::GamePlugin other;
+        other.name = "Other.esp";
+        ps.push_back(target);
+        ps.push_back(other);
+
+        engine::DiagnosticsRegistry::instance().collect("testgame", db);
+        assert(ps.size() == 2);
+        assert(ps[0].messages.size() == 2);
+        assert(ps[0].messages[0] == "python says hi");
+        assert(ps[0].messages[1] == "and again");
+        assert(ps[1].messages.empty());
+        engine::DiagnosticsRegistry::instance().clear();
+    }
 
     std::cout << "  game_id: " << info.game_id << std::endl;
     std::cout << "  steam_appid: " << info.steam_appid << std::endl;
