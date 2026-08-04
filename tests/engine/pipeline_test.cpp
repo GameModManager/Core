@@ -97,6 +97,27 @@ auto accept_high_res =
         d.choices_json = kHighResChoices;
         return d;
     };
+
+// A stage that fails (or cancels) after recording a directory staging entry in
+// mod.files. Pipeline::run must remove it so a failed/canceled install never
+// leaves the extract <archive>_tmp dir behind.
+class StagingFailStage final : public Stage {
+public:
+    StagingFailStage(std::filesystem::path staging, bool cancel)
+        : staging_(std::move(staging)), cancel_(cancel) {}
+    bool execute(Mod& mod, PipelineContext& ctx) override {
+        ModFile f;
+        f.relative_path = staging_.string();
+        mod.files.push_back(f);
+        if (cancel_) ctx.canceled = true;
+        return false;
+    }
+    std::string name() const override { return "Fail"; }
+
+private:
+    std::filesystem::path staging_;
+    bool cancel_;
+};
 }  // namespace
 
 int main() {
@@ -121,7 +142,7 @@ int main() {
         mod.version = "1.0";
 
         assert(mod.state == ModState::Downloaded);
-        assert(pipeline.run(mod));
+        assert(pipeline.run(mod) == engine::PipelineResult::Success);
         assert(mod.state == ModState::Deployed);
         assert(mod.id == "test-mod-001");
 
@@ -188,6 +209,7 @@ int main() {
         };
         assert(!fomod.execute(mod, ctx));
         assert(ctx.fomod_choices_json.empty());
+        assert(ctx.canceled);
         std::printf("PASS: pipeline_test — FOMOD wizard cancel aborts\n");
     }
 
@@ -522,10 +544,34 @@ int main() {
             Mod mod = make_mod(staging);
             assert(!install(mod, ctx));
             assert(mod.state != ModState::Installed);
+            assert(ctx.canceled);
             assert(std::filesystem::exists(dir / "old.txt"));
             assert(!std::filesystem::exists(dir / "b.txt"));
             std::printf("PASS: install overwrite — cancel aborts cleanly\n");
         }
+    }
+
+    // Pipeline::run: a canceled or failed stage reports Canceled vs Failed
+    // distinctly and cleans up the extract staging dir (<archive>_tmp leak).
+    for (bool cancel : {false, true}) {
+        TempDir tmp;
+        auto staging = tmp.root / "arch_tmp";
+        std::filesystem::create_directories(staging);
+        std::ofstream(staging / "f.txt") << "x";
+
+        Pipeline pipeline;
+        PipelineContext ctx;
+        pipeline.set_context(ctx);
+        pipeline.add_stage(std::make_unique<StagingFailStage>(staging, cancel));
+
+        Mod mod;
+        mod.id = "cleanup";
+        mod.state = ModState::Downloaded;
+        auto result = pipeline.run(mod);
+        assert(result == (cancel ? PipelineResult::Canceled : PipelineResult::Failed));
+        assert(!std::filesystem::exists(staging));
+        std::printf("PASS: pipeline_test — run %s cleans up staging dir\n",
+                    cancel ? "cancel" : "failure");
     }
 
     return 0;

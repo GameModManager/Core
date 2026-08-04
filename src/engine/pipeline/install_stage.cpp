@@ -114,6 +114,7 @@ bool InstallStage::execute(Mod& mod, PipelineContext& ctx) {
         auto decision = ctx.overwrite_query_cb(folder_name);
         if (decision.action == OverwriteAction::Cancel) {
             Logger::instance().debug("InstallStage: install canceled by user");
+            ctx.canceled = true;
             return false;
         }
 

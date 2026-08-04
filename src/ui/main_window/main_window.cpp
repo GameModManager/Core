@@ -532,6 +532,13 @@ MainWindow::MainWindow(QWidget* parent)
         save_download_manifest();
     });
 
+    // Install canceled by the user (FOMOD wizard or overwrite dialog): NOT a
+    // failure - leave the download in whatever state it had (no Failed mark).
+    connect(pipeline_thread_->worker(), &PipelineWorker::install_canceled,
+            this, [this](const std::string&) {
+        save_download_manifest();
+    });
+
     // A download was paused mid-fetch (partial file kept for resume).
     connect(pipeline_thread_->worker(), &PipelineWorker::paused,
             this, [this](const std::string& id) {

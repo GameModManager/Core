@@ -45,6 +45,15 @@ struct FomodDecision {
     bool ignore_missing = false; // skip sources missing from the archive
 };
 
+// Result of a pipeline run. Canceled is distinct from Failed: the user aborted
+// an interactive stage (FOMOD wizard, overwrite dialog), so callers must NOT
+// mark the download as failed - it keeps whatever state it had.
+enum class PipelineResult {
+    Success,
+    Failed,
+    Canceled,
+};
+
 struct PipelineContext {
     Instance* instance = nullptr;
     ConflictIndex* conflict_index = nullptr;
@@ -78,6 +87,11 @@ struct PipelineContext {
     // wires it to marshal the dialog onto the main thread). Unset = silently
     // replace (headless/CLI default, matching the pre-dialog behavior).
     std::function<OverwriteDecision(const std::string& mod_name)> overwrite_query_cb;
+
+    // Set by an interactive stage when the user aborts (FOMOD wizard Cancel,
+    // overwrite dialog Cancel). Pipeline::run stops and reports Canceled, which
+    // the caller must not treat as a failure.
+    bool canceled = false;
 
     // When the extracted archive is a FOMOD (fomod/ModuleConfig.xml), this
     // callback opens the installer wizard. Invoked on the pipeline thread with
@@ -116,7 +130,7 @@ class Pipeline {
 public:
     void set_context(PipelineContext ctx);
     void add_stage(std::unique_ptr<Stage> stage);
-    bool run(Mod& mod);
+    PipelineResult run(Mod& mod);
     PipelineContext& ctx() { return ctx_; }
 
     // TraceRecorder flow id this pipeline reports under (default "install").
