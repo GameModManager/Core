@@ -63,7 +63,8 @@ public:
                       const std::filesystem::path& file_path = {},
                       const std::string& nexus_domain = {},
                       int file_id = 0,
-                      const std::string& parent_mod_id = {});
+                      const std::string& parent_mod_id = {},
+                      const std::string& page_url = {});
     void update_progress(const std::string& id, int64_t downloaded,
                          int64_t total, double speed);
     void mark_complete(const std::string& id, bool success);
@@ -110,7 +111,8 @@ signals:
                            const std::string& source_type,
                            const std::string& source_id,
                            int file_id,
-                           const std::string& display_name);
+                           const std::string& display_name,
+                           const std::string& page_url = {});
     void pause_requested(const std::string& id);
     void resume_requested(const std::string& id);
     // Emitted with the raw pasted URL when the user triggers "Add from URL"
@@ -137,6 +139,10 @@ private:
         int file_id = 0;
         std::string nexus_domain;
         std::string category;
+        // Source page URL (LoversLab: the download link minus the
+        // ?do=download query). Persisted in the manifest so the "Open on ..."
+        // context action and install provenance survive restarts.
+        std::string page_url;
         QTableWidgetItem* name_item = nullptr;
         QTableWidgetItem* source_item = nullptr;
         QTableWidgetItem* size_item = nullptr;
@@ -147,9 +153,32 @@ private:
     void replace_bar_with_label(const std::string& id, const QString& text,
                                 const QColor& bg, const QColor& fg);
     void on_cell_double_clicked(int row, int column);
-    void on_custom_context_menu(const QPoint& pos);
     void remove_entry(const std::string& id);
     void apply_installed_filter();
+
+    // Derive the origin metadata for an install from a download entry:
+    // source_type ("nexus"/"loverslab"/""), source_id, file_id, and the
+    // source page URL. LoversLab rows key off the entry id (the file id) and
+    // carry page_url; Nexus rows carry parent_mod_id/file_id. Mirrors the
+    // Source column's literal strings (not tr()).
+    struct SourceInfo {
+        std::string source_type;
+        std::string source_id;
+        int file_id = 0;
+        std::string page_url;
+    };
+    SourceInfo source_info_for(const std::string& id,
+                               const DownloadEntry& entry) const;
+
+protected:
+    // Fills `menu` with the actions for the download entry at `id` (install,
+    // pause/resume, show in folder, source-aware "Open on ...", remove).
+    // Split out of on_custom_context_menu so tests can drive it without
+    // exec()-ing a modal menu (DataTab/PluginsTab pattern).
+    void add_context_menu_actions(QMenu& menu, const std::string& id);
+
+private:
+    void on_custom_context_menu(const QPoint& pos);
 
     // Move or copy a dropped local archive into downloads_dir_ and surface it
     // as a "Manual" Complete entry. Returns true if an entry was added.

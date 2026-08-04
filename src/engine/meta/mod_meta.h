@@ -45,6 +45,9 @@ public:
     [[nodiscard]] std::string folder() const;
     [[nodiscard]] std::string source_type() const;
     [[nodiscard]] std::string source_id() const;
+    // Source page URL from the per-source section (e.g. [LoversLab] page_url).
+    // Empty for sources that reconstruct their link from source_id instead.
+    [[nodiscard]] std::string source_page_url() const;
     [[nodiscard]] std::string separator_id() const;
     void set_separator_id(const std::string& id);
     [[nodiscard]] std::string version() const;

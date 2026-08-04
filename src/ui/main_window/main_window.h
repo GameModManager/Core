@@ -214,7 +214,7 @@ private:
     void priority_move_selected(int step);
     void toggle_selected_mods(bool enabled);
     void open_source_for_mod(const QString& source_type, const QString& source_id);
-    [[nodiscard]] SourceVisitInfo source_visit_info(const QString& source_type, const QString& source_id) const;
+    [[nodiscard]] SourceVisitInfo source_visit_info(const QString& source_type, const QString& source_id, const QString& page_url = {}) const;
 
     // Game-lock overlay
     void create_game_lock_overlay();

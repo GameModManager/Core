@@ -218,6 +218,21 @@ bool InstallStage::execute(Mod& mod, PipelineContext& ctx) {
             meta.set("Nexusmods", "fileid", std::to_string(mod.download_nxm.file_id));
         }
 
+        // LoversLab has no API, so its provenance lives in the [LoversLab]
+        // section: the file id, the page URL (the download link minus the
+        // ?do=download query - the slug cannot be reconstructed from the id),
+        // and what the download itself resolved to.
+        if (mod.download_source_type == "loverslab") {
+            if (!mod.download_source_id.empty())
+                meta.set("LoversLab", "fileid", mod.download_source_id);
+            if (!mod.download_page_url.empty())
+                meta.set("LoversLab", "page_url", mod.download_page_url);
+            if (!mod.name.empty())
+                meta.set("LoversLab", "display_name", mod.name);
+            if (!mod.archive_filename.empty())
+                meta.set("LoversLab", "archive_filename", mod.archive_filename);
+        }
+
         if (!meta.save(meta_dir, folder_name)) {
             Logger::instance().warn("InstallStage: failed to write meta.ini for " + folder_name);
         }

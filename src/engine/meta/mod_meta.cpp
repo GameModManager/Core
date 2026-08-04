@@ -298,6 +298,17 @@ std::string ModMeta::source_id() const {
     return get("GameModManager", "source_id");
 }
 
+std::string ModMeta::source_page_url() const {
+    // Provider sections are arbitrary; check the known ones that persist a
+    // page link. LoversLab is the only source today that cannot reconstruct
+    // its page from source_id alone (the slug lives in the download link).
+    if (has_section("LoversLab")) {
+        auto url = get("LoversLab", "page_url");
+        if (!url.empty()) return url;
+    }
+    return {};
+}
+
 std::string ModMeta::separator_id() const {
     return get("GameModManager", "separator_id");
 }

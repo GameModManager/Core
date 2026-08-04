@@ -706,11 +706,12 @@ void ModListModel::set_tags(const QString& id, const QVector<ModTag>& tags) {
     }
 }
 
-void ModListModel::set_source_info(const QString& id, const QString& source_type, const QString& source_id) {
+void ModListModel::set_source_info(const QString& id, const QString& source_type, const QString& source_id, const QString& page_url) {
     for (int i = 0; i < mods_.size(); ++i) {
         if (mods_[i].id == id) {
             mods_[i].source_type = source_type;
             mods_[i].source_id = source_id;
+            mods_[i].source_page_url = page_url;
             return;
         }
     }

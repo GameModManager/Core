@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <cctype>
+#include <filesystem>
 #include <string>
 
 namespace engine {
@@ -116,6 +117,11 @@ std::string LoversLabProvider::extract_file_id(const std::string& url) {
     return id;
 }
 
+std::string LoversLabProvider::mod_page_url(const std::string& url) {
+    const auto cut = url.find_first_of("?#");
+    return url.substr(0, cut);
+}
+
 bool LoversLabProvider::fetch(const Mod& mod, PipelineContext& ctx,
                               const std::filesystem::path& dest_path) {
     if (mod.download_source_type != "loverslab") return false;
@@ -211,6 +217,13 @@ SourceDownloadInfo LoversLabProvider::resolve_download_info(const Mod& mod) cons
     if (fname.empty()) return info;
 
     info.archive_name = fname;
+    // Surface the archive basename (minus its extension) as the human-readable
+    // name so the Downloads tab and the install folder get a real name instead
+    // of the "LoversLab file <id>" placeholder. It rides the same
+    // display_name -> mod.name -> download_complete rename chain the Nexus
+    // provider uses; when nothing resolves here, info stays empty and the
+    // placeholder remains as the last-resort fallback.
+    info.display_name = std::filesystem::path(fname).stem().string();
     return info;
 }
 

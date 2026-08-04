@@ -1328,7 +1328,8 @@ void DownloadsTab::add_download(const std::string& id, const std::string& name,
                                  const std::filesystem::path& file_path,
                                  const std::string& nexus_domain,
                                  int file_id,
-                                 const std::string& parent_mod_id) {
+                                 const std::string& parent_mod_id,
+                                 const std::string& page_url) {
     auto [it, inserted] = downloads_.emplace(id, DownloadEntry{});
     if (!inserted) return;  // already exists
 
@@ -1343,6 +1344,7 @@ void DownloadsTab::add_download(const std::string& id, const std::string& name,
     entry.nexus_domain = nexus_domain;
     entry.file_id = file_id;
     entry.parent_mod_id = parent_mod_id;
+    entry.page_url = page_url;
 
     table_->insertRow(entry.row);
 
@@ -1796,16 +1798,36 @@ void DownloadsTab::on_cell_double_clicked(int row, int column) {
                 entry.state == DownloadState::Failed) {
                 if (!entry.file_path.empty() &&
                     std::filesystem::exists(entry.file_path)) {
-                    emit install_requested(id, entry.file_path,
-                        entry.parent_mod_id.empty() ? "" : "nexus",
-                        entry.parent_mod_id, entry.file_id,
+                    auto src = source_info_for(id, entry);
+                    emit install_requested(id, entry.file_path, src.source_type,
+                        src.source_id, src.file_id,
                         entry.name_item ? entry.name_item->text().toStdString()
-                                        : std::string());
+                                        : std::string(),
+                        src.page_url);
                 }
             }
             return;
         }
     }
+}
+
+DownloadsTab::SourceInfo DownloadsTab::source_info_for(
+        const std::string& id, const DownloadEntry& entry) const {
+    SourceInfo info;
+    const QString source_text =
+        entry.source_item ? entry.source_item->text() : QString();
+    if (source_text == QStringLiteral("Nexus Mods")) {
+        info.source_type = "nexus";
+        info.source_id = entry.parent_mod_id;
+        info.file_id = entry.file_id;
+    } else if (source_text == QStringLiteral("LoversLab")) {
+        // The entry id is the file id (or an ll-<hash> fallback when the URL
+        // carried none); page_url is the mod page the download came from.
+        info.source_type = "loverslab";
+        info.source_id = id;
+        info.page_url = entry.page_url;
+    }
+    return info;
 }
 
 void DownloadsTab::on_custom_context_menu(const QPoint& pos) {
@@ -1821,7 +1843,13 @@ void DownloadsTab::on_custom_context_menu(const QPoint& pos) {
         }
     }
     if (!found) return;
-    const std::string id = *found;
+
+    QMenu menu(this);
+    add_context_menu_actions(menu, *found);
+    menu.exec(table_->viewport()->mapToGlobal(pos));
+}
+
+void DownloadsTab::add_context_menu_actions(QMenu& menu, const std::string& id) {
     const auto& entry = downloads_.at(id);
 
     // Theme icons with a standard-icon fallback (matches the mod-list menu
@@ -1832,8 +1860,6 @@ void DownloadsTab::on_custom_context_menu(const QPoint& pos) {
             icon = QApplication::style()->standardIcon(fallback);
         return icon;
     };
-
-    QMenu menu(this);
 
     // Install / Reinstall (enabled when the archive exists and no download
     // is running). Reuses the same pipeline as double-click.
@@ -1851,18 +1877,12 @@ void DownloadsTab::on_custom_context_menu(const QPoint& pos) {
             // LoversLab rows get "loverslab" so a later reinstall keeps the
             // provenance. Not compared via tr(): the column is filled with the
             // literal text, not a translated one.
-            const QString source_text =
-                entry.source_item ? entry.source_item->text() : QString();
-            std::string source_type;
-            if (source_text == QStringLiteral("Nexus Mods")) {
-                source_type = "nexus";
-            } else if (source_text == QStringLiteral("LoversLab")) {
-                source_type = "loverslab";
-            }
-            emit install_requested(id, entry.file_path, source_type,
-                entry.parent_mod_id, entry.file_id,
+            auto src = source_info_for(id, entry);
+            emit install_requested(id, entry.file_path, src.source_type,
+                src.source_id, src.file_id,
                 entry.name_item ? entry.name_item->text().toStdString()
-                                : std::string());
+                                : std::string(),
+                src.page_url);
         });
     install_action->setEnabled(can_install);
 
@@ -1884,21 +1904,36 @@ void DownloadsTab::on_custom_context_menu(const QPoint& pos) {
                     QString::fromStdString(dir.string())));
         });
 
-    auto* nexus_action = menu.addAction(
-        icon_for("text-html", QStyle::SP_FileDialogInfoView),
-        tr("Open on Nexus"), this, [entry]() {
-            QDesktopServices::openUrl(QUrl(QString::fromStdString(
-                "https://www.nexusmods.com/" + entry.nexus_domain +
-                "/mods/" + entry.parent_mod_id)));
-        });
-    nexus_action->setEnabled(!entry.nexus_domain.empty() &&
-                             !entry.parent_mod_id.empty());
+    // Open on <Source>: LoversLab rows open the stored mod page URL (the
+    // download link minus the ?do=download query, persisted in the manifest);
+    // Nexus rows build the page from domain + mod id. Local ("Manual") rows
+    // have no page and get no action.
+    const QString source_text =
+        entry.source_item ? entry.source_item->text() : QString();
+    QString page_url;
+    QString page_label;
+    if (!entry.page_url.empty()) {
+        page_label = tr("Open on %1").arg(
+            source_text.isEmpty() ? tr("LoversLab") : source_text);
+        page_url = QString::fromStdString(entry.page_url);
+    } else if (!entry.nexus_domain.empty() && !entry.parent_mod_id.empty()) {
+        page_label = tr("Open on Nexus");
+        page_url = QString::fromStdString(
+            "https://www.nexusmods.com/" + entry.nexus_domain +
+            "/mods/" + entry.parent_mod_id);
+    }
+    if (!page_url.isEmpty()) {
+        auto* page_action = menu.addAction(
+            icon_for("text-html", QStyle::SP_FileDialogInfoView),
+            page_label, this, [page_url]() {
+                QDesktopServices::openUrl(QUrl(page_url));
+            });
+        page_action->setData(page_url);  // test handle for the target URL
+    }
 
     menu.addSeparator();
     menu.addAction(icon_for("edit-delete", QStyle::SP_TrashIcon),
         tr("Remove"), this, [this, id]() { remove_entry(id); });
-
-    menu.exec(table_->viewport()->mapToGlobal(pos));
 }
 
 void DownloadsTab::remove_entry(const std::string& id) {
@@ -1947,6 +1982,7 @@ std::string DownloadsTab::serialize() const {
         obj["file_id"] = entry.file_id;
         obj["domain"] = QString::fromStdString(entry.nexus_domain);
         obj["category"] = QString::fromStdString(entry.category);
+        obj["page_url"] = QString::fromStdString(entry.page_url);
         arr.append(obj);
     }
     QJsonDocument doc(arr);
@@ -1991,6 +2027,7 @@ void DownloadsTab::deserialize(const std::string& json,
         entry.file_id = obj["file_id"].toInt();
         entry.nexus_domain = obj["domain"].toString().toStdString();
         entry.category = obj["category"].toString().toStdString();
+        entry.page_url = obj["page_url"].toString().toStdString();
 
         table_->insertRow(entry.row);
 

@@ -25,6 +25,10 @@ public:
     static bool is_loverslab_url(const std::string& url);
     // "https://www.loverslab.com/files/file/12345-slug/?do=download..." -> "12345"
     static std::string extract_file_id(const std::string& url);
+    // "https://www.loverslab.com/files/file/12345-slug/?do=download&..." ->
+    // "https://www.loverslab.com/files/file/12345-slug/" (query/fragment
+    // stripped). A bare page link is returned unchanged.
+    static std::string mod_page_url(const std::string& url);
 };
 
 } // namespace engine

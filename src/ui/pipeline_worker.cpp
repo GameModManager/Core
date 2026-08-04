@@ -36,7 +36,8 @@ void PipelineWorker::set_context(engine::PipelineContext ctx) {
 void PipelineWorker::install_mod(const std::string& id, const std::string& zip_path,
                                   const std::string& source_type,
                                   const std::string& source_id, int file_id,
-                                  const std::string& name) {
+                                  const std::string& name,
+                                  const std::string& page_url) {
     engine::Logger::instance().debug("Installing mod: " + id);
 
     if (!pipeline_) {
@@ -51,6 +52,7 @@ void PipelineWorker::install_mod(const std::string& id, const std::string& zip_p
     mod.download_source_type = source_type;
     mod.download_source_id = source_id;
     mod.download_nxm.file_id = file_id;
+    mod.download_page_url = page_url;
 
     // Add the zip file to mod files
     engine::ModFile file;
