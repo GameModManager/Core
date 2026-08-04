@@ -1,9 +1,11 @@
 #include "ui/modinfo/generic_files_tab.h"
 
+#ifdef GMM_HAS_SYNTAX_HIGHLIGHTING
 #include <KSyntaxHighlighting/Definition>
 #include <KSyntaxHighlighting/Repository>
 #include <KSyntaxHighlighting/SyntaxHighlighter>
 #include <KSyntaxHighlighting/Theme>
+#endif
 
 #include <QDirIterator>
 #include <QEvent>
@@ -49,9 +51,11 @@ GenericFilesTab::GenericFilesTab(QWidget* parent) : ModInfoTab(parent) {
     editor_->setEnabled(false);
     right_layout->addWidget(editor_, 1);
 
+#ifdef GMM_HAS_SYNTAX_HIGHLIGHTING
     repository_ = new KSyntaxHighlighting::Repository;
     // SyntaxHighlighter is parented to the document (deleted with it).
     highlighter_ = new KSyntaxHighlighting::SyntaxHighlighter(editor_->document());
+#endif
 
     auto* editor_bar = new QHBoxLayout();
     save_btn_ = new QPushButton(tr("Save"), right);
@@ -82,7 +86,9 @@ GenericFilesTab::GenericFilesTab(QWidget* parent) : ModInfoTab(parent) {
 }
 
 GenericFilesTab::~GenericFilesTab() {
+#ifdef GMM_HAS_SYNTAX_HIGHLIGHTING
     delete repository_;
+#endif
 }
 
 void GenericFilesTab::set_mod(const ModInfoData& data) {
@@ -156,11 +162,13 @@ void GenericFilesTab::load_editor(const QString& path) {
     editor_path_ = path;
     last_loaded_text_ = QString::fromUtf8(f.readAll());
     editor_->setPlainText(last_loaded_text_);
+#ifdef GMM_HAS_SYNTAX_HIGHLIGHTING
     // Filename-based grammar selection covers ini/cfg/toml/yaml/json/xml/...
     // for free; unknown extensions fall back to plain text (invalid Definition
     // clears highlighting).
     highlighter_->setDefinition(
         repository_->definitionForFileName(QFileInfo(path).fileName()));
+#endif
     apply_theme();
     editor_->setEnabled(true);
     editor_dirty_ = false;
@@ -170,7 +178,9 @@ void GenericFilesTab::load_editor(const QString& path) {
 // Picks a KSyntaxHighlighting theme that matches the editor's palette so the
 // highlighted text stays readable in both the light and dark app themes. Runs
 // per file load and on application palette changes (live theme switching).
+// No-op when KF6 is unavailable (plain-text editor).
 void GenericFilesTab::apply_theme() {
+#ifdef GMM_HAS_SYNTAX_HIGHLIGHTING
     if (!highlighter_) return;
     const KSyntaxHighlighting::Theme theme =
         repository_->themeForPalette(editor_->palette());
@@ -178,6 +188,7 @@ void GenericFilesTab::apply_theme() {
         highlighter_->setTheme(theme);
         highlighter_->rehighlight();
     }
+#endif
 }
 
 bool GenericFilesTab::event(QEvent* event) {

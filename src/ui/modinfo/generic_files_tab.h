@@ -12,10 +12,12 @@ class QPlainTextEdit;
 class QPushButton;
 class QSplitter;
 
+#ifdef GMM_HAS_SYNTAX_HIGHLIGHTING
 namespace KSyntaxHighlighting {
 class Repository;
 class SyntaxHighlighter;
 }
+#endif
 
 namespace ui {
 
@@ -23,7 +25,9 @@ namespace ui {
 // predicate) on the left and an inline plain-text editor on the right. Dirty
 // edits are flushed on mod switch / dialog close (canClose prompts). Used by
 // both the Text Files and Config Files tabs. The editor gets syntax
-// highlighting via KSyntaxHighlighting, resolved per file from its file name.
+// highlighting via KSyntaxHighlighting when available
+// (GMM_HAS_SYNTAX_HIGHLIGHTING), resolved per file from its file name;
+// otherwise it stays a plain text editor (no KF6 exists for Windows).
 class GenericFilesTab : public ModInfoTab {
     Q_OBJECT
 public:
@@ -61,8 +65,10 @@ private:
     QLineEdit* filter_ = nullptr;
     QPlainTextEdit* editor_ = nullptr;
     QPushButton* save_btn_ = nullptr;
+#ifdef GMM_HAS_SYNTAX_HIGHLIGHTING
     KSyntaxHighlighting::Repository* repository_ = nullptr;
     KSyntaxHighlighting::SyntaxHighlighter* highlighter_ = nullptr;
+#endif
     std::vector<File> files_;
     QString editor_path_;
     QString last_loaded_text_;
