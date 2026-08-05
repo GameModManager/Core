@@ -40,6 +40,7 @@
 #include <QSet>
 #include <QShowEvent>
 #include <QStyle>
+#include <QStyledItemDelegate>
 #include <QStyleOptionViewItem>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -785,6 +786,36 @@ static QIcon plugin_flag_icon(const QString& token) {
     return {};
 }
 
+// Column 4 (Locked): QTableWidget draws a bare DecorationRole icon at the
+// cell's left edge no matter the item's textAlignment, so center the single
+// lock pin by painting the decoration ourselves on top of the default path
+// (background / selection / alternating rows still come from the base).
+class CenteredIconDelegate : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    void paint(QPainter* painter, const QStyleOptionViewItem& option,
+               const QModelIndex& index) const override {
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, index);
+        const QIcon icon = opt.icon;
+        opt.icon = QIcon();  // base path draws no decoration
+        // drawControl directly: QStyledItemDelegate::paint would re-run
+        // initStyleOption and re-add the icon (left-aligned) on top of ours.
+        const QWidget* widget = option.widget;
+        QStyle* style = widget ? widget->style() : QApplication::style();
+        style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, widget);
+        if (icon.isNull()) return;
+        const QSize sz = icon.actualSize(option.rect.size());
+        const QRect r = QStyle::alignedRect(option.direction, Qt::AlignCenter,
+                                            sz, option.rect);
+        const QIcon::Mode mode = (option.state & QStyle::State_Selected)
+                                     ? QIcon::Selected
+                                     : QIcon::Normal;
+        icon.paint(painter, r, Qt::AlignCenter, mode, QIcon::Off);
+    }
+};
+
 QTableWidget* PluginsTab::table() const {
     return table_;
 }
@@ -806,6 +837,8 @@ PluginsTab::PluginsTab(QWidget* parent) : QWidget(parent) {
     table_->setItemDelegateForColumn(
         1, new ui::FlagsDelegate(PluginsTab::kPluginFlagsRole,
                                  PluginsTab::kPluginFlagTooltipsRole, table_));
+    // Locked column centers its single pin (bare icons would sit left-aligned).
+    table_->setItemDelegateForColumn(4, new CenteredIconDelegate(table_));
     connect(table_->horizontalHeader(), &QHeaderView::sectionResized, this,
             [this](int logical, int, int) {
                 if (logical == 1) relayout_flag_rows();
@@ -941,13 +974,12 @@ void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
         table_->setItem(i, 3, idx);
 
         // Column 4: load-order lock (GMM-specific, not in MO2's emblem set).
-        // Icon-only cell, empty for unlocked rows; shows the same pin that used
-        // to ride the Flags column.
+        // Icon-only cell, empty for unlocked rows; CenteredIconDelegate centers
+        // the pin that used to ride the Flags column.
         auto* lock = new QTableWidgetItem;
         Qt::ItemFlags lf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
         if (!p.force_loaded && !p.locked) lf |= Qt::ItemIsDragEnabled;
         lock->setFlags(lf);
-        lock->setTextAlignment(Qt::AlignCenter);
         if (p.locked) {
             lock->setIcon(plugin_flag_icon(QLatin1String("locked")));
             lock->setToolTip(locked_column_tooltip());
