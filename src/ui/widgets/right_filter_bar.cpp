@@ -2,6 +2,8 @@
 
 #include <QHBoxLayout>
 #include <QLineEdit>
+#include <QPushButton>
+#include <QSizePolicy>
 #include <QTableWidget>
 
 namespace ui {
@@ -17,8 +19,21 @@ RightFilterBar::RightFilterBar(QWidget* parent)
     filter_edit_->setClearButtonEnabled(true);
     layout->addWidget(filter_edit_, 1);
 
+    sort_button_ = new QPushButton(tr("Sort"), this);
+    sort_button_->setToolTip(
+        tr("This will invoke loot to sort the plugins using it's masterlists"));
+    sort_button_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    layout->addWidget(sort_button_);
+    sort_button_->hide();
+
     connect(filter_edit_, &QLineEdit::textChanged,
             this, &RightFilterBar::filter_changed);
+    connect(sort_button_, &QPushButton::clicked,
+            this, &RightFilterBar::sort_requested);
+}
+
+void RightFilterBar::set_sort_visible(bool visible) {
+    sort_button_->setVisible(visible);
 }
 
 QString RightFilterBar::filter_text() const {

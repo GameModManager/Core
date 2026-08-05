@@ -27,7 +27,9 @@
 #include "ui/settings/settings.h"
 #include "ui/proton/proton_panel.h"
 #include "engine/launcher.h"
+#include "engine/debug_env.h"
 #include "engine/fs_utils.h"
+#include "engine/theme/theme_manager.h"
 #include "engine/log/logger.h"
 #include "engine/detect/mod_scanner.h"
 #include "engine/detect/game_detector.h"
@@ -96,6 +98,7 @@
 #include <QInputDialog>
 #include <QMenu>
 #include <QMessageBox>
+#include <QAbstractButton>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -309,9 +312,8 @@ MainWindow::MainWindow(QWidget* parent)
         update_title();
     });
 
-    connect(profile_bar_, &ProfileBar::import_clicked, this, [this]() {
-        import_modlist();
-    });
+    connect(profile_bar_, &ProfileBar::open_folder_requested, this,
+            &MainWindow::open_folder);
     connect(profile_bar_, &ProfileBar::export_modlist_clicked, this, [this]() {
         export_modlist();
     });
@@ -558,11 +560,14 @@ MainWindow::MainWindow(QWidget* parent)
 
     // Install finished (user-triggered via the Downloads context menu or
     // double-click): add just the newly installed row to the mod list instead
-    // of reloading the whole mods dir, and mark the entry Installed.
+    // of reloading the whole mods dir, and mark the entry Installed. The UI
+    // lock put up at install_requested is released on every terminal signal
+    // (success, failure, cancel).
     connect(pipeline_thread_->worker(), &PipelineWorker::install_complete,
             this, [this](const std::string& mod_id, bool success,
                          const std::string&, const std::string& installed_folder) {
         hide_install_progress();
+        set_ui_enabled(true);
         auto* dt = right_panel_->downloads_tab();
         if (dt) {
             if (success) {
@@ -583,9 +588,11 @@ MainWindow::MainWindow(QWidget* parent)
 
     // Install canceled by the user (FOMOD wizard or overwrite dialog): NOT a
     // failure - leave the download in whatever state it had (no Failed mark).
+    // Release the UI lock the same way as install_complete.
     connect(pipeline_thread_->worker(), &PipelineWorker::install_canceled,
             this, [this](const std::string&) {
         hide_install_progress();
+        set_ui_enabled(true);
         save_download_manifest();
     });
 
@@ -624,6 +631,9 @@ MainWindow::MainWindow(QWidget* parent)
             ws_db, Settings::instance().workshop_rate_limit_per_hour()));
 
     connect(right_panel_->exec_controls(), &ExecControlsBar::run_clicked, this, &MainWindow::launch_game);
+
+    // LOOT sort shortcut from the Plugins tab filter bar
+    connect(right_panel_, &RightPanel::sort_requested, this, &MainWindow::run_loot_sort);
 
     connect(right_panel_->exec_controls(), &ExecControlsBar::shortcut_to_toolbar,
             this, &MainWindow::add_shortcut_to_toolbar);
@@ -1452,6 +1462,9 @@ void MainWindow::load_mods_from_game() {
             if (mod.is_fomod) {
                 mod_model_->set_fomod(id, true);
             }
+            if (mod.root_override) {
+                mod_model_->set_root_override(id, true);
+            }
             if (!mod.enabled) {
                 mod_model_->toggle_mod(id);
             }
@@ -1563,6 +1576,7 @@ void MainWindow::add_installed_mod(const std::string& folder_name) {
         } else {
             mod_model_->add_mod(id, name, ver, mod.priority, mod.is_game_native);
             if (mod.is_fomod) mod_model_->set_fomod(id, true);
+            if (mod.root_override) mod_model_->set_root_override(id, true);
             if (!mod.enabled) mod_model_->toggle_mod(id);
         }
         // Persist the freshly assigned priority (MO2 bottom-of-band) and
@@ -1578,9 +1592,16 @@ void MainWindow::add_installed_mod(const std::string& folder_name) {
     // apply_mod() merges only that mod's rows into the existing tree.
     compute_conflict_state();
     if (auto* dt = right_panel_->data_tab()) {
+        std::string mods_subpath;
+        std::string deploy_prefix;
+        if (knowledge_) {
+            mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
+            deploy_prefix = knowledge_->get(current_game_id_, "deploy_prefix", "Data");
+        }
         dt->apply_mod(last_conflict_registry_, folder_name, mod_model_->mods(),
                       mod_model_->is_conflict_order_reversed(),
-                      mods_dir_path(), current_game_mods_dir());
+                      mods_dir_path(), current_game_mods_dir(),
+                      current_game_dir_, mods_subpath, deploy_prefix);
     }
     refresh_plugins_tab();
 
@@ -1645,6 +1666,19 @@ std::filesystem::path MainWindow::profiles_dir_path() const {
 std::filesystem::path MainWindow::overwrite_dir_path() const {
     if (current_instance_root_.empty()) return {};
     return current_instance_.path_for(engine::InstanceKind::Overwrite);
+}
+
+std::filesystem::path MainWindow::game_mygames_dir() const {
+    if (!platform_ || !knowledge_ || current_game_id_.empty()) return {};
+    auto id_str = knowledge_->get(current_game_id_, "steam_appid", "");
+    if (id_str.empty()) return {};
+    uint32_t appid = 0;
+    try { appid = std::stoul(id_str); } catch (...) { return {}; }
+    const auto documents = platform_->game_documents_dir(appid);
+    if (documents.empty()) return {};
+    auto sub = knowledge_->get(current_game_id_, "mygames_folder", "");
+    if (sub.empty()) sub = current_game_name_.empty() ? current_game_id_ : current_game_name_;
+    return documents / "My Games" / sub;
 }
 
 void MainWindow::migrate_mo2_meta() {
@@ -1906,9 +1940,17 @@ void MainWindow::refresh_data_tab() {
     auto mods_dir = mods_dir_path();
     auto game_mods_dir = current_game_mods_dir();
 
+    std::string mods_subpath;
+    std::string deploy_prefix;
+    if (knowledge_) {
+        mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
+        deploy_prefix = knowledge_->get(current_game_id_, "deploy_prefix", "Data");
+    }
+
     dt->show_data(last_conflict_registry_, mod_model_->mods(),
                   mod_model_->is_conflict_order_reversed(),
-                  mods_dir, game_mods_dir);
+                  mods_dir, game_mods_dir,
+                  current_game_dir_, mods_subpath, deploy_prefix);
 }
 
 void MainWindow::wire_data_tab() {
@@ -1999,23 +2041,16 @@ void MainWindow::on_data_add_executable(const QString& file_path,
     auto* ec = right_panel_->exec_controls();
     if (!ec) return;
 
-    // Executable entries are stored game-relative (populate_executables
-    // resolves them against current_game_dir_), so relativize the file path.
-    QString rel_path = file_path;
-    if (!current_game_dir_.empty()) {
-        std::error_code ec_;
-        auto rel = std::filesystem::relative(
-            std::filesystem::path(file_path.toStdString()), current_game_dir_, ec_);
-        if (!ec_ && !rel.empty())
-            rel_path = QString::fromStdString(rel.string());
-    }
+    // file_path is the merged-view (deploy-relative) path emitted by the Data
+    // tab - stored verbatim. populate_executables / launch resolve it against
+    // current_game_dir_, where the overlay mount makes it reachable.
 
     bool ok = false;
     const QString name = QInputDialog::getText(this, tr("Add as Executable"),
         tr("Name:"), QLineEdit::Normal, default_name, &ok);
     if (!ok || name.trimmed().isEmpty()) return;
 
-    ec->add_executable(name, rel_path);
+    ec->add_executable(name, file_path);
     save_executables();
 }
 
@@ -2598,6 +2633,30 @@ void MainWindow::setup_mod_list_context_menu() {
                 this, [this]() { toggle_selected_mods(true); });
             menu.addAction(QIcon::fromTheme("dialog-cancel"), tr("Disable Selected"),
                 this, [this]() { toggle_selected_mods(false); });
+            // Tweaks submenu: applies to every selected mod. Checked only when
+            // ALL of them share the state; clicking applies the inverse.
+            {
+                QList<int> rows;
+                bool any_on = false;
+                bool any_off = false;
+                for (const auto& si : sel) {
+                    if (si.row() < 0 || si.row() >= mod_model_->mods().size()) continue;
+                    const auto& m = mod_model_->mods()[si.row()];
+                    if (m.is_separator || m.is_overwrite || m.is_merged || m.is_game_native)
+                        continue;
+                    rows << si.row();
+                    if (m.root_override) any_on = true; else any_off = true;
+                }
+                auto* tweaks = menu.addMenu(QIcon::fromTheme("preferences-other"), tr("Tweaks"));
+                auto* root_act = tweaks->addAction(tr("Treat mod as root dir"));
+                root_act->setCheckable(true);
+                const bool all_on = any_on && !any_off;
+                root_act->setChecked(all_on);
+                root_act->setEnabled(!rows.isEmpty());
+                connect(root_act, &QAction::triggered, this, [this, rows, all_on]() {
+                    toggle_root_override(rows, !all_on);
+                });
+            }
             menu.addSeparator();
             menu.addAction(QIcon::fromTheme("edit-delete"), tr("Remove"),
                 this, [this]() { remove_selected_mods(); });
@@ -2649,6 +2708,21 @@ void MainWindow::setup_mod_list_context_menu() {
         menu.addSeparator();
         menu.addAction(QIcon::fromTheme("document-edit"), tr("Rename Mod..."),
             this, [this, row]() { rename_mod_inline(row); });
+
+        // Tweaks submenu - per-mod deploy options (MO2's per-mod tweaks).
+        {
+            auto* tweaks = menu.addMenu(QIcon::fromTheme("preferences-other"), tr("Tweaks"));
+            auto* root_act = tweaks->addAction(tr("Treat mod as root dir"));
+            root_act->setCheckable(true);
+            root_act->setChecked(entry.root_override);
+            root_act->setEnabled(!entry.is_separator && !entry.is_overwrite &&
+                                 !entry.is_merged && !entry.is_game_native);
+            root_act->setStatusTip(tr("Deploy this mod's files to the game root "
+                                      "instead of the data dir"));
+            connect(root_act, &QAction::triggered, this, [this, row]() {
+                toggle_root_override({row}, !mod_model_->mods()[row].root_override);
+            });
+        }
 
         menu.addSeparator();
         if (!entry.source_type.isEmpty()) {
@@ -3079,6 +3153,36 @@ void MainWindow::toggle_selected_mods(bool enabled) {
             enabled ? Qt::Checked : Qt::Unchecked, Qt::CheckStateRole);
         sync_mod_enable_state(entry.id, enabled);
     }
+}
+
+// "Treat mod as root dir" (Tweaks menu): persist the flag in the mod folder's
+// meta.ini ([General] rootOverride) and mirror it into the model. When enabled
+// the mod deploys to the game root at launch; the Data tab picks it up via
+// refresh_data_tab so root files become visible.
+void MainWindow::toggle_root_override(const QList<int>& rows, bool on) {
+    for (int r : rows) {
+        if (r < 0 || r >= mod_model_->mods().size()) continue;
+        const auto& entry = mod_model_->mods()[r];
+        if (entry.is_separator || entry.is_overwrite || entry.is_merged || entry.is_game_native)
+            continue;
+        if (entry.root_override == on) continue;
+
+        auto mod_dir = mods_dir_path() / entry.id.toStdString();
+        auto meta_ini = mod_dir / "meta.ini";
+        std::error_code ec;
+        engine::ModMeta meta;
+        if (std::filesystem::is_regular_file(meta_ini, ec)) {
+            meta = engine::ModMeta::load_file(meta_ini);
+        }
+        meta.set("General", "rootOverride", on ? "1" : "0");
+        if (!meta.save_file(meta_ini)) {
+            engine::Logger::instance().warn(
+                "toggle_root_override: failed to write " + meta_ini.string());
+            continue;
+        }
+        mod_model_->set_root_override(entry.id, on);
+    }
+    refresh_data_tab();
 }
 
 SourceVisitInfo MainWindow::source_visit_info(const QString& source_type, const QString& source_id, const QString& page_url) const {
@@ -3515,6 +3619,58 @@ void MainWindow::import_modlist() {
     QMessageBox::information(this, tr("Import Modlist"),
         tr("Placed %1 of %2 entries in order. %3 separator(s) created. %4 not found.")
             .arg(placed).arg(total).arg(created).arg(missing));
+}
+
+void MainWindow::open_folder(ui::FolderKind kind) {
+    std::filesystem::path target;
+    switch (kind) {
+    case ui::FolderKind::Game:
+        target = current_game_dir_;
+        break;
+    case ui::FolderKind::MyGames:
+    case ui::FolderKind::Inis:
+        // INIs live in the profile folder when local INIs are on, else in the
+        // game's My Games folder (MO2's openIniFolder semantics).
+        if (kind == ui::FolderKind::Inis && Settings::instance().local_inis()) {
+            target = profiles_dir_path() / current_profile_name_;
+        } else {
+            target = game_mygames_dir();
+        }
+        break;
+    case ui::FolderKind::Instance:
+        target = current_instance_root_;
+        break;
+    case ui::FolderKind::Mods:
+        target = mods_dir_path();
+        break;
+    case ui::FolderKind::Profile:
+        target = profiles_dir_path() / current_profile_name_;
+        break;
+    case ui::FolderKind::Downloads:
+        target = downloads_dir_path();
+        break;
+    case ui::FolderKind::Install:
+        target = QCoreApplication::applicationDirPath().toStdString();
+        break;
+    case ui::FolderKind::Plugins:
+        target = std::filesystem::path(QCoreApplication::applicationDirPath().toStdString())
+            / "plugins";
+        break;
+    case ui::FolderKind::Themes:
+        target = engine::theme_search_dirs(
+            QCoreApplication::applicationDirPath().toStdString()).front();
+        break;
+    case ui::FolderKind::Logs:
+        if (platform_) target = platform_->data_dir();
+        break;
+    }
+
+    if (target.empty()) return;
+
+    std::error_code ec;
+    if (!std::filesystem::exists(target, ec))
+        std::filesystem::create_directories(target, ec);
+    QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(target.string())));
 }
 
 void MainWindow::create_separator_at_row(int row) {
@@ -4202,8 +4358,13 @@ void MainWindow::populate_executables() {
     auto icon_cache = cache_thumbnails_dir_path();
     // Restore the last selected executable for this instance. On a fresh
     // instance the selection is empty - just populate the list and let the
-    // user pick.
-    right_panel_->exec_controls()->set_executables(exec_list, pending_exec_selection_, current_game_dir_, icon_cache);
+    // user pick. Staging is passed so merged-view (mod-provided) executables
+    // still get icons after a deploy.
+    auto staging = current_instance_root_.empty()
+        ? std::filesystem::path()
+        : current_instance_root_ / ".gmm_staging";
+    right_panel_->exec_controls()->set_executables(
+        exec_list, pending_exec_selection_, current_game_dir_, icon_cache, staging);
 
     // Persist immediately on first run so future launches use the saved list
     if (saved_executables_.empty())
@@ -4231,24 +4392,16 @@ void MainWindow::launch_game() {
         return;
     }
 
-    auto exec_path = current_game_dir_ / entry.path.toStdString();
-    if (!std::filesystem::exists(exec_path)) {
-        engine::Logger::instance().warn(
-            "executable does not exist: " + exec_path.string());
-        QMessageBox::warning(this, tr("Launch"),
-            tr("The selected executable no longer exists:\n%1\n\n"
-               "The entry has been removed.")
-                .arg(QString::fromStdString(exec_path.string())));
-        auto* bar = right_panel_->exec_controls();
-        auto entries = bar->executable_entries();
-        bar->clear_executables();
-        for (const auto& e : entries) {
-            if (e.path == entry.path) continue;
-            bar->add_entry(e);
-        }
-        save_executables();
-        return;
-    }
+    // Resolve against the canonical game dir spelling so the path matches the
+    // overlay mountpoint (game_dir commonly goes through ~/.steam ->
+    // ~/.local/share/Steam). Entry paths are merged-view (deploy-relative);
+    // the namespace-local overlay makes them reachable at launch even though
+    // they may not exist physically here. Reachability is validated after
+    // deploy in launch_with_executable - entries are never auto-removed.
+    std::error_code ce;
+    auto canon_game = std::filesystem::weakly_canonical(current_game_dir_, ce);
+    auto exec_path = (ce || canon_game.empty() ? current_game_dir_ : canon_game) /
+                     entry.path.toStdString();
 
     // Output-to-mod routing: resolve the target mod folder, auto-creating it
     // (with the game's metadata file) when it doesn't exist yet.
@@ -4279,7 +4432,7 @@ void MainWindow::launch_game() {
 }
 
 static void gmm_debug(const char* fmt, ...) {
-    static bool enabled = (std::getenv("GMM_DEBUG") != nullptr);
+    static bool enabled = gmm_debug_enabled();
     if (!enabled) return;
     va_list args;
     va_start(args, fmt);
@@ -4303,12 +4456,6 @@ void MainWindow::launch_with_executable(const QString& full_path,
     trace.begin_flow("launch");
 
     auto exec_path = std::filesystem::path(full_path.toStdString());
-    if (!std::filesystem::exists(exec_path)) {
-        QMessageBox::warning(this, tr("Launch"),
-            tr("Executable not found:\n%1").arg(full_path));
-        trace.end_flow("launch", false, "Executable not found");
-        return;
-    }
 
     // Show the lock overlay before launching - the game must not outrun it
     auto binary_name = QString::fromStdString(exec_path.filename().string());
@@ -4375,6 +4522,20 @@ void MainWindow::launch_with_executable(const QString& full_path,
 
     if (!lparams.extra_lowerdirs.empty())
         staging_dir_ = lparams.extra_lowerdirs.back();
+
+    // Merged-view existence check, AFTER deploy so staging is populated: the
+    // file may be game-native (physical), live-overlay (mounted), or a
+    // deployed mod file under .gmm_staging. Entries are kept either way - a
+    // "missing" file usually just means its mod is disabled.
+    if (!engine::merged_view_file_exists(current_game_dir_, staging_dir_, exec_path)) {
+        trace.end_flow("launch", false, "Executable not found");
+        hide_game_lock_overlay();
+        QMessageBox::warning(this, tr("Launch"),
+            tr("The selected executable is not reachable in the game directory.\n%1\n\n"
+               "If it belongs to a mod, make sure that mod is enabled.")
+                .arg(QString::fromStdString(exec_path.string())));
+        return;
+    }
     trace.end_stage("launch", true, "Overlay/staging paths ready");
 
     trace.begin_stage("launch", "Launch executable");
@@ -4843,12 +5004,13 @@ void MainWindow::add_shortcut_to_toolbar() {
         return;
     }
 
-    auto exec_path = current_game_dir_ / entry.path.toStdString();
-    if (!std::filesystem::exists(exec_path)) {
-        QMessageBox::warning(this, tr("Shortcut"),
-            tr("Executable not found:\n%1").arg(QString::fromStdString(exec_path.string())));
-        return;
-    }
+    // Same merged-view resolution as launch_game: canonical base + the entry's
+    // deploy-relative path. Reachability is validated at launch (after deploy);
+    // entries that only exist in the merged view are valid toolbar targets.
+    std::error_code ce;
+    auto canon_game = std::filesystem::weakly_canonical(current_game_dir_, ce);
+    auto exec_path = (ce || canon_game.empty() ? current_game_dir_ : canon_game) /
+                     entry.path.toStdString();
 
     auto exec_path_qstr = QString::fromStdString(exec_path.string());
     add_toolbar_shortcut_from_path(exec_path_qstr, entry.icon_path);
@@ -4857,7 +5019,6 @@ void MainWindow::add_shortcut_to_toolbar() {
 void MainWindow::add_toolbar_shortcut_from_path(const QString& full_path,
                                                   const QString& icon_path) {
     if (toolbar_shortcut_paths_.contains(full_path)) return;
-    if (!QFileInfo::exists(full_path)) return;
 
     QIcon icon;
     if (!icon_path.isEmpty()) {
@@ -4894,10 +5055,20 @@ void MainWindow::add_shortcut_to_desktop() {
         return;
     }
 
-    auto exec_path = current_game_dir_ / entry.path.toStdString();
+    // Same merged-view resolution as the toolbar: canonical game dir spelling
+    // + the entry's deploy-relative path. A .desktop file runs OUTSIDE the
+    // launch namespace, so only physically present executables can be a
+    // desktop target - mod-provided ones get an honest message instead.
+    std::error_code ce;
+    auto canon_game = std::filesystem::weakly_canonical(current_game_dir_, ce);
+    auto exec_path = (ce || canon_game.empty() ? current_game_dir_ : canon_game) /
+                     entry.path.toStdString();
     if (!std::filesystem::exists(exec_path)) {
         QMessageBox::warning(this, tr("Shortcut"),
-            tr("Executable not found:\n%1").arg(QString::fromStdString(exec_path.string())));
+            tr("Executable not found:\n%1\n\n"
+               "Mod-provided executables can only be launched from within "
+               "GameModManager.")
+                .arg(QString::fromStdString(exec_path.string())));
         return;
     }
 
@@ -4968,27 +5139,11 @@ void MainWindow::on_add_entry_requested() {
 
     auto icon_cache = cache_thumbnails_dir_path();
 
+    // Entries are never auto-pruned here: with merged-view (deploy-relative)
+    // paths a "missing" file usually just means its mod is disabled, and it
+    // must not be deleted on that basis. A "Clean entries" sweep (MO2-style)
+    // is planned separately.
     auto existing = right_panel_->exec_controls()->executable_entries();
-
-    // Prune dead entries (binary no longer exists) before showing the dialog.
-    // Deliberately not at startup: a temporarily unavailable game dir must not
-    // wipe the list. Pruning only persists if the user accepts the dialog.
-    if (!current_game_dir_.empty()) {
-        QVector<ExecEntry> pruned;
-        pruned.reserve(existing.size());
-        for (const auto& e : existing) {
-            auto resolved = current_game_dir_ / e.path.toStdString();
-            if (!e.path.trimmed().isEmpty() && !std::filesystem::exists(resolved)) {
-                engine::Logger::instance().warn(
-                    "removing dead executable entry '" +
-                    exec_entry_display_name(e).toStdString() +
-                    "' (does not exist: " + resolved.string() + ")");
-                continue;
-            }
-            pruned.append(e);
-        }
-        existing = pruned;
-    }
 
     ExecEntryDialog dlg(current_game_dir_, mod_list, existing, icon_cache, this);
     if (dlg.exec() != QDialog::Accepted) return;
@@ -5254,6 +5409,19 @@ void MainWindow::hide_game_lock_overlay() {
     game_lock_overlay_->hide();
 }
 
+void MainWindow::set_ui_enabled(bool enabled) {
+    // Lock or unlock the whole manager surface (mod list, panels, console,
+    // menus, toolbars). The install dialogs (FOMOD wizard, name confirm,
+    // overwrite query, progress popup) are top-level children of `this`, NOT
+    // of the disabled content widgets, so they stay interactive while the
+    // manager itself is greyed out - the same shape MO2's UILocker produces.
+    if (centralWidget()) centralWidget()->setEnabled(enabled);
+    if (menu_bar_) menu_bar_->setEnabled(enabled);
+    if (toolbar_area_) toolbar_area_->setEnabled(enabled);
+    if (profile_bar_) profile_bar_->setEnabled(enabled);
+    if (status_bar_) status_bar_->setEnabled(enabled);
+}
+
 void MainWindow::flush_pending_changes() {
     if (pending_changes_.empty()) return;
     if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return;
@@ -5302,6 +5470,36 @@ void MainWindow::update_queue_label() {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
+    // Closing cancels in-flight downloads. Warn first unless the user told us
+    // to never ask again ("Don't Ask" persists the preference). MO2 asks the
+    // same question (mainwindow.cpp canExit); here Ok/Quit/Don't Ask all
+    // proceed with the close, Cancel aborts it.
+    auto* dt = right_panel_ ? right_panel_->downloads_tab() : nullptr;
+    if (dt && dt->has_active_download() &&
+        Settings::instance().confirm_close_with_downloads()) {
+        QMessageBox box(this);
+        box.setWindowTitle(tr("Active Downloads"));
+        box.setIcon(QMessageBox::Warning);
+        box.setText(tr("You have active downloads in progress.\n"
+                       "Closing the application will cancel them."));
+        auto* ok_btn = box.addButton(tr("Ok"), QMessageBox::AcceptRole);
+        auto* quit_btn = box.addButton(tr("Quit"), QMessageBox::AcceptRole);
+        auto* dont_ask_btn = box.addButton(tr("Don't Ask"), QMessageBox::AcceptRole);
+        auto* cancel_btn = box.addButton(tr("Cancel"), QMessageBox::RejectRole);
+        box.setDefaultButton(cancel_btn);
+        box.exec();
+
+        QAbstractButton* clicked = box.clickedButton();
+        if (clicked == cancel_btn) {
+            event->ignore();
+            return;
+        }
+        if (clicked == dont_ask_btn) {
+            Settings::instance().set_confirm_close_with_downloads(false);
+        }
+        // Ok / Quit / Don't Ask all fall through to the close.
+    }
+
     save_download_manifest();
     save_app_state();
 
@@ -5595,6 +5793,10 @@ void MainWindow::wire_downloads_tab() {
                          int file_id, const std::string& display_name,
                          const std::string& page_url) {
         if (!pipeline_thread_) return;
+        // Lock the interface for the duration of the install so the user can't
+        // race it (re-trigger, edit the mod list, quit mid-copy). Released by
+        // install_complete / install_canceled.
+        set_ui_enabled(false);
         QMetaObject::invokeMethod(pipeline_thread_->worker(),
             [this, mod_id, fp, source_type, source_id, file_id, display_name, page_url]() {
             pipeline_thread_->worker()->install_mod(

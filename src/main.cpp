@@ -77,7 +77,7 @@ int main(int argc, char *argv[])
 
     QApplication app(argc, argv);
     app.setApplicationName("GameModManager");
-    app.setApplicationVersion("0.1.0");
+    app.setApplicationVersion(VERSION);
 
     // App window icon: the PNG (the SVG renderer mis-renders on some setups).
     // Every window and dialog inherits this via the application icon.
@@ -311,12 +311,14 @@ int main(int argc, char *argv[])
             engine::Logger::instance().error("No executable specified. Use --exe <path>.");
             return 1;
         }
-        auto exec_path = inst.info().game_dir / exe_rel;
-        if (!fs::exists(exec_path)) {
-            engine::Logger::instance().error(
-                "Executable not found: " + exec_path.string());
-            return 1;
-        }
+        // Resolve against the canonical game dir spelling (matches the overlay
+        // mountpoint and do_launch's realpath). --exe is a merged-view path
+        // relative to the game dir, so it may only exist after deploy - the
+        // headless launch validates reachability via prepare_launch_params.
+        std::error_code ce;
+        auto canon_game = fs::weakly_canonical(inst.info().game_dir, ce);
+        auto exec_path = (ce || canon_game.empty() ? inst.info().game_dir : canon_game) /
+                         exe_rel;
 
         bool is_windows_exe = false;
         auto ext = exec_path.extension().string();

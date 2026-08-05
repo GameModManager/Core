@@ -87,6 +87,36 @@ QIcon extractExeIcon(const QString& exePath, const std::filesystem::path& icon_c
     return provider.icon(QFileInfo(exePath));
 }
 
+// Single icon-resolution path for combo items, shared by add_entry() and
+// set_executables(): a user-picked custom icon wins, then the extracted exe
+// icon (cache + wrestool + QFileIconProvider), otherwise no icon. Staging is
+// the deploy dir (".gmm_staging"): a mod-provided executable may only exist
+// there (merged view), not at game_dir/path physically.
+QIcon resolveEntryIcon(const ui::ExecEntry& entry,
+                       const std::filesystem::path& game_dir,
+                       const std::filesystem::path& icon_cache_dir,
+                       const std::filesystem::path& staging_dir) {
+    if (!entry.icon_path.isEmpty()) {
+        QPixmap pix(entry.icon_path);
+        if (!pix.isNull())
+            return QIcon(pix);
+    }
+
+    if (!game_dir.empty() && !entry.path.isEmpty()) {
+        auto full_path = std::filesystem::path(game_dir.string()) / entry.path.toStdString();
+        if (std::filesystem::exists(full_path)) {
+            return extractExeIcon(QString::fromStdString(full_path.string()), icon_cache_dir);
+        }
+        if (!staging_dir.empty()) {
+            auto staged = staging_dir / entry.path.toStdString();
+            if (std::filesystem::exists(staged)) {
+                return extractExeIcon(QString::fromStdString(staged.string()), icon_cache_dir);
+            }
+        }
+    }
+    return {};
+}
+
 }  // namespace
 
 namespace ui {
@@ -221,20 +251,7 @@ void ExecControlsBar::add_executable(const QString& display_name, const QString&
 }
 
 void ExecControlsBar::add_entry(const ExecEntry& entry) {
-    QIcon icon;
-
-    // Custom icon path takes priority
-    if (!entry.icon_path.isEmpty()) {
-        QPixmap pix(entry.icon_path);
-        if (!pix.isNull())
-            icon = QIcon(pix);
-    }
-
-    // Fall back to filesystem icon from the binary path
-    if (icon.isNull() && !entry.path.isEmpty()) {
-        QFileIconProvider provider;
-        icon = provider.icon(QFileInfo(entry.path));
-    }
+    QIcon icon = resolveEntryIcon(entry, game_dir_, icon_cache_dir_, staging_dir_);
 
     // Append at the end (after the sentinel) so the combo order matches the
     // order entries were added in - full rebuilds must not reverse the list.
@@ -269,10 +286,17 @@ bool ExecControlsBar::select_executable(const QString& path) {
 
 void ExecControlsBar::set_executables(const QStringList& names, const QString& default_name,
                                        const std::filesystem::path& game_dir,
-                                       const std::filesystem::path& icon_cache_dir) {
+                                       const std::filesystem::path& icon_cache_dir,
+                                       const std::filesystem::path& staging_dir) {
     exec_combo_->clear();
     // Sentinel stays first (index 0); real executables are appended after it
     exec_combo_->addItem(tr(kAddNewEntryText), QVariant(QJsonObject()));
+
+    // Keep the resolution context for later add_entry() calls (dialog accept,
+    // missing-exe prune) so every rebuild path resolves icons identically.
+    game_dir_ = game_dir;
+    icon_cache_dir_ = icon_cache_dir;
+    staging_dir_ = staging_dir;
 
     for (int i = 0; i < names.size(); ++i) {
         auto raw = names[i];
@@ -290,19 +314,8 @@ void ExecControlsBar::set_executables(const QStringList& names, const QString& d
             entry = ExecEntry::fromLegacyPath(raw);
         }
 
-        auto toml_path = entry.path;  // relative path in toml
         auto display = exec_entry_display_name(entry);
-
-        // Try icon
-        if (!game_dir.empty()) {
-            auto full_path = game_dir / toml_path.toStdString();
-            if (std::filesystem::exists(full_path)) {
-                auto qpath = QString::fromStdString(full_path.string());
-                exec_combo_->addItem(extractExeIcon(qpath, icon_cache_dir), display, QVariant(entry.toJson()));
-                continue;
-            }
-        }
-        exec_combo_->addItem(display, QVariant(entry.toJson()));
+        exec_combo_->addItem(resolveEntryIcon(entry, game_dir_, icon_cache_dir_, staging_dir_), display, QVariant(entry.toJson()));
     }
 
     if (!default_name.isEmpty()) {

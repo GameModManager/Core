@@ -21,6 +21,7 @@ struct ScannedMod {
     bool is_overwrite = false;   // true for the special Overwrite entry
     bool is_game_native = false; // true for game-provided plugins (e.g. vanilla ESMs)
     bool is_fomod = false;       // true if meta.ini carries a [fomod] section with saved choices
+    bool root_override = false;  // true if the mod deploys to the game root (meta.ini [General] rootOverride)
 };
 
 // Generic mod scanner - reads ALL game-specific config from GameKnowledge.

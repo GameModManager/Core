@@ -39,6 +39,13 @@ public:
     void set_log_file(const std::string& path);
     void enable_console(bool color = true);
 
+    // Fork-safe append: writes straight to the log file fd with NO mutex and
+    // NO callbacks. Intended for the forked launch supervisor, which must not
+    // take the logger's mutex (a GUI thread could have held it at fork) nor
+    // run Qt-object callbacks in a child process. Caller supplies the full
+    // line including trailing newline.
+    void raw_append(const std::string& line) const;
+
 private:
     Logger();
     std::string make_timestamp() const;

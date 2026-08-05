@@ -62,6 +62,21 @@ static void make_instance(const fs::path& root) {
     const fs::path disabled = root / "mods" / "DisabledMod";
     write_file(disabled / "DisabledMod.esp", "x");
     write_file(disabled / ".gmmdisabled", "");
+
+    // Root-override mod (meta.ini [General] rootOverride=1): top-level files
+    // deploy to the staging root (the game root), a leading Data/ folder still
+    // lands in Data, and hidden files stay hidden.
+    const fs::path root_mod = root / "mods" / "RootMod";
+    write_file(root_mod / "meta.ini", "[General]\nrootOverride = 1\n");
+    write_file(root_mod / "RootHook.dll", "x");
+    write_file(root_mod / "Data" / "meshes" / "root.nif", "x");
+    write_file(root_mod / "Data" / "hidden.txt.gmmhidden", "x");
+
+    // Disabled root-override mod: the sentinel must win over the flag.
+    const fs::path disabled_root = root / "mods" / "DisabledRootMod";
+    write_file(disabled_root / "meta.ini", "[General]\nrootOverride = 1\n");
+    write_file(disabled_root / "RootHook2.dll", "x");
+    write_file(disabled_root / ".gmmdisabled", "");
 }
 
 int main() {
@@ -124,6 +139,16 @@ int main() {
     check(!fs::exists(staging / "Data" / "Sub" / "nested_mo2.txt.mohidden"),
           "nested MO2-hidden file is not deployed");
 
+    // --- root-override mods deploy to the game root ---
+    check(fs::exists(staging / "RootHook.dll"),
+          "root-override mod's top-level file deploys to the game root");
+    check(fs::exists(staging / "Data" / "meshes" / "root.nif"),
+          "root-override mod's Data/ content still lands in Data");
+    check(!fs::exists(staging / "Data" / "RootHook.dll"),
+          "root-override top-level file does not leak under Data");
+    check(!fs::exists(staging / "Data" / "hidden.txt.gmmhidden"),
+          "hidden file of a root-override mod is not deployed");
+
     // --- deploy skips disabled mods (disable sentinel) ---
     const fs::path staging2 = root / ".gmm_staging2";
     const bool ok2 = engine::deploy_all_enabled_mods(
@@ -136,6 +161,8 @@ int main() {
           "disable sentinel is not deployed");
     check(fs::exists(staging2 / "Data" / "SkyUI.esp"),
           "enabled mod still deployed with mechanism set");
+    check(!fs::exists(staging2 / "RootHook2.dll"),
+          "disabled root-override mod's root files are not deployed");
 
     fs::remove_all(base);
     std::printf("\n%d passed, %d failed\n", passes, failures);

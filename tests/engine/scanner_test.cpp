@@ -124,6 +124,22 @@ int main() {
     require(dm != nullptr, "disabled mod found");
     require(!dm->enabled, "mod carrying .gmmdisabled is disabled by default");
 
+    // A mod flagged rootOverride in its meta.ini [General].
+    fs::create_directories(root / "RootMod");
+    write_file(root / "RootMod" / "meta.ini", "[General]\nrootOverride = 1\n");
+    const auto mods6 = engine::ModScanner::scan_dir(knowledge, "testgame", root);
+    const auto* rm = by_folder(mods6, "RootMod");
+    require(rm != nullptr, "root-flagged mod found");
+    require(rm->root_override, "mod with [General] rootOverride=1 is flagged");
+
+    // A mod without the key stays unflagged.
+    fs::create_directories(root / "FlatMod");
+    write_file(root / "FlatMod" / "meta.ini", "[General]\n");
+    const auto mods7 = engine::ModScanner::scan_dir(knowledge, "testgame", root);
+    const auto* flat = by_folder(mods7, "FlatMod");
+    require(flat != nullptr, "flat mod found");
+    require(!flat->root_override, "mod without rootOverride stays unflagged");
+
     std::printf("scanner_test: all checks passed\n");
     return 0;
 }

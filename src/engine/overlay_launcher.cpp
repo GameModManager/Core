@@ -1,5 +1,6 @@
 #include "engine/overlay_launcher.h"
 
+#include "engine/debug_env.h"
 #include "engine/log/logger.h"
 
 #include <cstdlib>
@@ -182,7 +183,7 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
     // the child inherits the fd and can dup2 it regardless of mount namespace.
     // GMM-owned artifacts go into the instance cache, never into Overwrite.
     int stderr_fd = -1;
-    if (!args.empty() && !getenv("GMM_DEBUG")) {
+    if (!args.empty() && !gmm_debug_enabled()) {
         auto cache_dir = upper_dir.parent_path() / "cache";
         std::error_code log_ec;
         std::filesystem::create_directories(cache_dir, log_ec);
@@ -209,7 +210,10 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
         auto* ca = static_cast<const CloneArgs*>(arg);
 
         // ---- In new user + mount namespace ----
-        // Map UID 0 in the new namespace → outer UID, so we become root inside.
+        // Map only our real UID/GID into the namespace (single-line map, so we keep
+        // ns-owner capabilities for mount() but present the real uid to children).
+        // Presenting uid 0 would trip root checks in games' launchers (e.g. Steam's
+        // bin_steam.sh refuses when `id -u == 0`), so map uid → same uid.
         int fd = open("/proc/self/setgroups", O_WRONLY);
         if (fd >= 0) {
             if (write(fd, "deny", 4) < 0) { close(fd); _exit(12); }
@@ -217,19 +221,19 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
         }
 
         char map[64];
-        int len = snprintf(map, sizeof(map), "0 %u 1", ca->outer_uid);
+        int len = snprintf(map, sizeof(map), "%u %u 1", ca->outer_uid, ca->outer_uid);
         fd = open("/proc/self/uid_map", O_WRONLY);
         if (fd < 0) _exit(6);
         if (write(fd, map, (size_t)len) < 0) { close(fd); _exit(13); }
         close(fd);
 
-        len = snprintf(map, sizeof(map), "0 %u 1", ca->outer_gid);
+        len = snprintf(map, sizeof(map), "%u %u 1", ca->outer_gid, ca->outer_gid);
         fd = open("/proc/self/gid_map", O_WRONLY);
         if (fd < 0) _exit(7);
         if (write(fd, map, (size_t)len) < 0) { close(fd); _exit(14); }
         close(fd);
 
-        // We are now root (UID 0) in the new namespace - mount overlay
+        // We retain full ns-owner capabilities - mount overlay
         if (mount("none", "/", NULL, MS_REC | MS_PRIVATE, NULL) != 0) {
             const char* e = strerror(errno);
             (void)write(STDERR_FILENO, "Overlay: mount(MS_PRIVATE) failed: ", 36);
@@ -310,7 +314,7 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
         if (devnull >= 0) {
             dup2(devnull, STDIN_FILENO);
             dup2(devnull, STDOUT_FILENO);
-            if (!getenv("GMM_DEBUG")) {
+            if (!gmm_debug_enabled()) {
                 if (ca->stderr_fd >= 0) {
                     // Use the fd opened by parent (survives namespace isolation)
                     dup2(ca->stderr_fd, STDERR_FILENO);

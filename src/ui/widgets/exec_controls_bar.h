@@ -24,7 +24,8 @@ public:
 
     void set_executables(const QStringList& names, const QString& default_name = {},
                           const std::filesystem::path& game_dir = {},
-                          const std::filesystem::path& icon_cache_dir = {});
+                          const std::filesystem::path& icon_cache_dir = {},
+                          const std::filesystem::path& staging_dir = {});
     void clear_executables();
     [[nodiscard]] QString current_executable() const;
     [[nodiscard]] int current_executable_index() const;
@@ -66,6 +67,16 @@ private:
     // combo when the user picks "<Edit...>" instead of jumping to the first
     // real entry.
     int last_real_index_ = 1;
+
+    // Resolution context for combo item icons. Fed by set_executables; used by
+    // add_entry so both rebuild paths resolve icons identically (custom icon
+    // first, then the cached wrestool/QFileIconProvider extraction).
+    std::filesystem::path game_dir_;
+    std::filesystem::path icon_cache_dir_;
+    // Deploy staging dir (".gmm_staging") for merged-view icon fallback:
+    // mod-provided executables exist there after deploy but not at
+    // game_dir/path physically.
+    std::filesystem::path staging_dir_;
 };
 
 }  // namespace ui

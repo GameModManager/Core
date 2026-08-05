@@ -167,6 +167,14 @@ void Settings::set_show_change_game_confirmation(bool on) {
     settings_.setValue("interface/show_change_game_confirmation", on);
 }
 
+bool Settings::confirm_close_with_downloads() const {
+    return settings_.value("close/confirm_downloads", true).toBool();
+}
+
+void Settings::set_confirm_close_with_downloads(bool on) {
+    settings_.setValue("close/confirm_downloads", on);
+}
+
 // general -----------------------------------------------------------------
 
 bool Settings::check_for_updates() const {

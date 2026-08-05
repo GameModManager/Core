@@ -22,6 +22,26 @@ bool SymlinkStrategy::deploy(const std::filesystem::path& source,
     // Create parent directories
     std::filesystem::create_directories(merged.parent_path(), ec);
 
+    // Executables and scripts must be REAL files, not symlinks: they resolve
+    // siblings relative to their own location, and a symlink resolves through
+    // to the mod folder (so skse64_loader.exe would look for SkyrimSE.exe in
+    // the mod folder). Same contract as OverlayFsDeployStrategy.
+    if (is_executable_binary(source)) {
+        std::filesystem::copy_file(source, merged,
+                                   std::filesystem::copy_options::overwrite_existing,
+                                   ec);
+        if (ec) return false;
+        std::error_code perm_ec;
+        auto perms = std::filesystem::status(merged, perm_ec).permissions();
+        if (!perm_ec && (perms & std::filesystem::perms::owner_exec) == std::filesystem::perms::none) {
+            std::filesystem::permissions(merged,
+                perms | std::filesystem::perms::owner_exec
+                      | std::filesystem::perms::group_exec
+                      | std::filesystem::perms::others_exec, perm_ec);
+        }
+        return !perm_ec;
+    }
+
     std::filesystem::create_symlink(source, merged, ec);
     return !ec;
 }

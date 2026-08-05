@@ -242,9 +242,15 @@ bool NexusProvider::download_from_url(const std::string& download_url,
     dp.resume_base = ctx.download_resume_from;
     dp.start = std::chrono::steady_clock::now();
 
+    // Large archives routinely exceed a fixed transfer timeout (Nexus is
+    // often slow). long_lived removes the overall cap - only the connect
+    // timeout applies - matching LoversLabProvider's large-file handling.
+    engine::download::Options opts;
+    opts.long_lived = true;
+
     bool aborted = false;
     if (!engine::download::curl_download(
-            download_url, dest_path, dl_code, {}, &dp,
+            download_url, dest_path, dl_code, opts, &dp,
             ctx.download_resume_from, &aborted)) {
         if (aborted) {
             // Pause requested - partial file is kept for resume.

@@ -411,4 +411,31 @@ bool unhide_file(const std::filesystem::path& path) {
     return true;
 }
 
+bool merged_view_file_exists(const std::filesystem::path& game_dir,
+                             const std::filesystem::path& staging_dir,
+                             const std::filesystem::path& exec_path) {
+    std::error_code ec;
+    if (std::filesystem::exists(exec_path, ec)) return true;
+    if (staging_dir.empty() || game_dir.empty()) return false;
+
+    // Reachability in the merged view covers three cases:
+    //  1) the file physically exists (native game file, live overlay mount,
+    //     or a legacy absolute path already resolved into the real mods
+    //     folder) - handled above;
+    //  2) it is a game-relative path that only exists once deployed into
+    //     staging (e.g. a root-override mod's skse64_loader.exe);
+    //  3) the same as 2 but reached through the ~/.steam symlink spelling,
+    //     which weakly_canonical dissolves before the relative comparison.
+    auto canon_exec = std::filesystem::weakly_canonical(exec_path, ec);
+    if (ec || canon_exec.empty()) return false;
+    ec.clear();
+    auto canon_game = std::filesystem::weakly_canonical(game_dir, ec);
+    if (ec || canon_game.empty()) return false;
+
+    ec.clear();
+    auto rel = std::filesystem::relative(canon_exec, canon_game, ec);
+    if (ec || rel.empty() || rel.is_absolute()) return false;
+    return std::filesystem::exists(staging_dir / rel, ec);
+}
+
 }  // namespace engine

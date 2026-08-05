@@ -147,6 +147,18 @@ inline constexpr const char* kMo2HiddenSuffix = ".mohidden";
 // True if the file is hidden by either marker suffix (.gmmhidden or .mohidden).
 [[nodiscard]] bool is_hidden_file(const std::filesystem::path& path);
 
+// Returns true when `exec_path` is reachable in the game's merged view:
+// either physically on disk (native game file, live overlay mount, or a
+// legacy absolute entry) or as a deployed mod file under `staging_dir`
+// (game-relative paths only). `staging_dir` is typically the populated
+// `.gmm_staging` dir; pass empty to skip the deploy fallback. Both paths
+// are weakly-canonicalized first, so the ~/.steam vs ~/.local/share/Steam
+// spelling mismatch never defeats the relative comparison.
+[[nodiscard]] bool merged_view_file_exists(
+    const std::filesystem::path& game_dir,
+    const std::filesystem::path& staging_dir,
+    const std::filesystem::path& exec_path);
+
 // Hide a file by renaming it to <name>.gmmhidden. No-op if already hidden.
 // Returns true on success, false on failure (file kept intact).
 bool hide_file(const std::filesystem::path& path);

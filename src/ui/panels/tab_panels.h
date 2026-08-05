@@ -85,6 +85,10 @@ public:
     // when an entry has no file yet).
     void set_downloads_dir(const std::filesystem::path& dir);
 
+    // True while any entry is still downloading or paused, so the app can warn
+    // (and the tab can guard rescanning) while a fetch is in flight.
+    bool has_active_download() const;
+
     // Re-apply the "hide installed" filter on top of any other row filter.
     void reapply_installed_filter();
 
@@ -197,7 +201,6 @@ private:
     // a download is in flight (the in-progress archive would otherwise appear
     // as a bogus "Complete" row).
     void scan_downloads_dir();
-    bool has_active_download() const;
 
     // MO2 standard/compact row height in pixels, derived from the current font
     // so text never clips. Compact ~ font + 8; standard ~ font + 22.
@@ -310,12 +313,23 @@ public:
     //   conflict_reversed - true if lower priority wins (Isaac convention)
     //   mods_dir          - instance mods dir (first place to stat winners)
     //   game_mods_dir     - game-native mods dir fallback (may be empty)
+    //   game_root_dir     - game install root (for the Root view's game-native
+    //                       file walk; may be empty to disable the Root view)
+    //   mods_subpath      - the game's data-dir name inside the root (Skyrim:
+    //                       "Data"); used for the Root->Data nav label and to
+    //                       exclude the game's own folders from the native walk
+    //   deploy_prefix     - game-relative subpath mods deploy into when not
+    //                       root-flagged; the data-dir segment a root-override
+    //                       mod's content must keep (Skyrim: "Data")
     void show_data(
         const std::unordered_map<std::string, std::vector<std::pair<std::string, int>>>& registry,
         const QVector<ModEntry>& all_mods,
         bool conflict_reversed,
         const std::filesystem::path& mods_dir,
-        const std::filesystem::path& game_mods_dir);
+        const std::filesystem::path& game_mods_dir,
+        const std::filesystem::path& game_root_dir,
+        const std::string& mods_subpath,
+        const std::string& deploy_prefix);
 
     // Incrementally merge one just-installed mod into the existing tree instead
     // of rebuilding it. Call after the conflict registry was recomputed to
@@ -329,7 +343,10 @@ public:
         const QVector<ModEntry>& all_mods,
         bool conflict_reversed,
         const std::filesystem::path& mods_dir,
-        const std::filesystem::path& game_mods_dir);
+        const std::filesystem::path& game_mods_dir,
+        const std::filesystem::path& game_root_dir,
+        const std::string& mods_subpath,
+        const std::string& deploy_prefix);
 
     void clear_content();
 
@@ -371,6 +388,29 @@ protected:
     void open_item(QTreeWidgetItem* item);
     void preview_item(QTreeWidgetItem* item);
     void dump_tree_to_file();
+
+private:
+    // The merged tree has two scopes: the game's data dir (default, shows the
+    // mod-overlaid data content) and the game root (root-override mods' root
+    // files + game-native root files like skse64_loader.exe). A top-level
+    // navigation row (".." in the Data view, the data-dir folder in the Root
+    // view) switches between them.
+    enum class View { Data, Root };
+    void switch_view(View v);
+    // Rebuild the tree from the stored inputs (used on view switch).
+    void rebuild_from_stored();
+
+    // Stored show_data inputs so switch_view() can rebuild without the caller
+    // re-supplying them.
+    View view_ = View::Data;
+    std::unordered_map<std::string, std::vector<std::pair<std::string, int>>> stored_registry_;
+    QVector<ModEntry> stored_mods_;
+    bool stored_conflict_reversed_ = false;
+    std::filesystem::path stored_mods_dir_;
+    std::filesystem::path stored_game_mods_dir_;
+    std::filesystem::path stored_game_root_dir_;
+    std::string stored_mods_subpath_;
+    std::string stored_deploy_prefix_;
 
     QTreeWidget* tree_ = nullptr;
 };

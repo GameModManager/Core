@@ -1,5 +1,6 @@
 #include "engine/launcher.h"
 
+#include "engine/fs_utils.h"
 #include "engine/log/logger.h"
 #include "engine/overlay_launcher.h"
 #include "engine/preload_interceptor.h"
@@ -57,7 +58,15 @@ static LaunchResult do_launch(const LaunchParams& params);
 
 LaunchResult launch_game(const LaunchParams& params) {
     auto exec_path = params.executable;
-    if (!fs::exists(exec_path)) {
+    // Merged-view pre-check (same semantics as do_launch): the file may be
+    // game-native (physical), deployed into .gmm_staging, or only visible
+    // through the overlay mount that the launcher child is about to create.
+    // A plain fs::exists runs in the caller's namespace where the overlay is
+    // NOT mounted, so a staging-only mod executable (e.g. a root-override
+    // mod's skse64_loader.exe) would look "missing" and abort the launch.
+    const fs::path staging =
+        params.extra_lowerdirs.empty() ? fs::path() : params.extra_lowerdirs.back();
+    if (!merged_view_file_exists(params.game_dir, staging, exec_path)) {
         Logger::instance().error("Executable not found: " + exec_path.string());
         return {};
     }
@@ -114,10 +123,29 @@ LaunchResult launch_game(const LaunchParams& params) {
         // Reap-loop: stay alive until no children remain.
         // Because PR_SET_CHILD_SUBREAPER is set, any orphaned
         // grandchildren are reparented here and get reaped.
+        // Each reaped child logs its exit status so a game that dies
+        // moments after launch leaves a trail (crash signal vs clean
+        // exit code) instead of a silent "Watchdog: cgroup empty".
+        // raw_append() bypasses the logger mutex + callbacks: this process
+        // was forked from a multithreaded Qt app, so taking the mutex here
+        // could deadlock on a lock a vanished thread held at fork time.
         while (true) {
             int status;
             pid_t p = waitpid(-1, &status, 0);
             if (p < 0 && errno == ECHILD) break;
+            std::string line;
+            if (WIFEXITED(status)) {
+                line = "[INF] [supervisor] reaped child " +
+                       std::to_string(p) + " exited with code " +
+                       std::to_string(WEXITSTATUS(status));
+            } else if (WIFSIGNALED(status)) {
+                line = "[WRN] [supervisor] child " + std::to_string(p) +
+                       " killed by signal " + std::to_string(WTERMSIG(status));
+            } else {
+                line = "[INF] [supervisor] reaped child " +
+                       std::to_string(p) + " status " + std::to_string(status);
+            }
+            Logger::instance().raw_append(line + "\n");
         }
         _exit(0);
     }
@@ -152,8 +180,11 @@ static LaunchResult do_launch(const LaunchParams& params) {
     Logger::instance().debug("Launching " + params.executable.string());
 
     auto exec_path = params.executable;
-    if (!fs::exists(exec_path)) {
-        Logger::instance().error("Executable not found: " + exec_path.string());
+    const fs::path staging =
+        params.extra_lowerdirs.empty() ? fs::path() : params.extra_lowerdirs.back();
+    if (!merged_view_file_exists(params.game_dir, staging, exec_path)) {
+        Logger::instance().error("Executable not found (game dir or staging): " +
+                                 exec_path.string());
         return {};
     }
 
@@ -207,6 +238,15 @@ static LaunchResult do_launch(const LaunchParams& params) {
             Logger::instance().debug(
                 "Launched inside OverlayFS overlay. All writes go to " +
                 capture_dir.string());
+            // The overlay child's stderr (wine/proton errors) is captured to
+            // the instance cache when GMM_DEBUG is off - point at it now so a
+            // crash AFTER the 2s grace poll still leaves a trace to read.
+            if (params.is_windows_exe) {
+                Logger::instance().debug(
+                    "Game stderr will be captured at " +
+                    (capture_dir.parent_path() / "cache" /
+                     ".gmm_overlay_stderr.log").string());
+            }
             return {pid, true};
         }
 

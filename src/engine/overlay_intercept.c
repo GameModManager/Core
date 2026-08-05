@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include "debug_env.h"
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -71,7 +72,7 @@ void gmm_overlay_init(void) {
     const char *overwrite = getenv("GMM_OVERWRITE_DIR");
     if (!game || !overwrite) return;
 
-    gmm_debug = getenv("GMM_DEBUG") != NULL;
+    gmm_debug = gmm_debug_enabled();
 
     gmm_game_dir = strdup(game);
     gmm_game_dir_len = strlen(gmm_game_dir);

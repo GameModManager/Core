@@ -53,6 +53,7 @@
 
 #include "engine/log/logger.h"
 #include "engine/fs_utils.h"
+#include "engine/deploy/root_override.h"
 #include "engine/source/loverslab_provider.h"
 
 #include <algorithm>
@@ -191,14 +192,41 @@ QTreeWidgetItem* ensure_child(QTreeWidgetItem* parent, const QString& name, bool
     return item;
 }
 
+// Roles on Data tab file items (column 0) - set by show_data, consumed by the
+// context menu. Local to this TU; the signals carry the resolved values out.
+enum DataTabItemRole {
+    DataRealPathRole = Qt::UserRole,   // QString - on-disk path of the winner
+    DataVfsPathRole,                   // QString - merged-view path (deploy-relative)
+    DataOriginModRole,                 // QString - winner mod id
+    DataHiddenRole,                    // bool - file carries a hidden suffix
+    DataProviderPathsRole,             // QStringList - on-disk copy per provider
+    DataProviderIdsRole,               // QStringList - provider mod ids
+    DataNavRole,                       // int - nav target (kNavTargetData/Root);
+                                      //      unset on ordinary rows
+};
+
+// Nav-row targets carried by DataNavRole (see DataTab::View).
+constexpr int kNavTargetData = 0;
+constexpr int kNavTargetRoot = 1;
+
+// Pseudo mod id for game-native root files (skse64_loader.exe, ...). Never a
+// real mod folder, so it must fail the "managed mod" / hide gates.
+constexpr const char* kGameRootNativeId = "__game_root__";
+
 // Recursively sort a tree so directories come first, then alphabetical.
+// Navigation rows (DataNavRole set) are pinned to the front at every level so
+// the ".." / data-dir switcher stays reachable regardless of sort order.
 void sort_dirs_first(QTreeWidgetItem* parent) {
     std::vector<QTreeWidgetItem*> children;
     children.reserve(parent->childCount());
     for (int i = 0; i < parent->childCount(); ++i)
         children.push_back(parent->child(i));
 
-    std::sort(children.begin(), children.end(),
+    auto first_non_nav = std::stable_partition(
+        children.begin(), children.end(),
+        [](const QTreeWidgetItem* c) { return !c->data(0, DataNavRole).isNull(); });
+
+    std::sort(first_non_nav, children.end(),
               [](const QTreeWidgetItem* a, const QTreeWidgetItem* b) {
                   bool a_dir = a->childCount() > 0;
                   bool b_dir = b->childCount() > 0;
@@ -210,16 +238,6 @@ void sort_dirs_first(QTreeWidgetItem* parent) {
     for (auto* c : children) parent->addChild(c);
     for (auto* c : children) sort_dirs_first(c);
 }
-
-// Roles on Data tab file items (column 0) - set by show_data, consumed by the
-// context menu. Local to this TU; the signals carry the resolved values out.
-enum DataTabItemRole {
-    DataRealPathRole = Qt::UserRole,   // QString - on-disk path of the winner
-    DataOriginModRole,                 // QString - winner mod id
-    DataHiddenRole,                    // bool - file carries a hidden suffix
-    DataProviderPathsRole,             // QStringList - on-disk copy per provider
-    DataProviderIdsRole,               // QStringList - provider mod ids
-};
 
 // Extension-based gate for the Preview action / preview window. Mirrors the
 // formats PreviewWindow can render (images + text).
@@ -364,9 +382,10 @@ void upsert_data_row(QTreeWidget* tree, const DataTabRow& row) {
         file_item->setToolTip(3, QString());
     }
 
-    // Per-file metadata for the context menu (real path, origin mod,
-    // hidden state, provider copies for preview variant navigation).
+    // Per-file metadata for the context menu (real path, merged-view path,
+    // origin mod, hidden state, provider copies for preview navigation).
     file_item->setData(0, DataRealPathRole, row.real_path);
+    file_item->setData(0, DataVfsPathRole, row.path);
     file_item->setData(0, DataOriginModRole, row.origin_id);
     file_item->setData(0, DataHiddenRole, row.hidden);
     file_item->setData(0, DataProviderPathsRole, row.provider_paths);
@@ -382,6 +401,83 @@ void upsert_data_row(QTreeWidget* tree, const DataTabRow& row) {
         file_item->setData(0, Qt::ForegroundRole, QVariant());
         file_item->setData(2, Qt::ForegroundRole, QVariant());
     }
+}
+
+// --- Root view (root-override mods + game-native root files) helpers ---
+
+// Mod ids flagged [General] rootOverride, as displayed in the mod list.
+std::unordered_set<std::string> root_override_mod_ids(const QVector<ModEntry>& all_mods) {
+    std::unordered_set<std::string> out;
+    for (const auto& m : all_mods)
+        if (m.root_override) out.insert(m.id.toStdString());
+    return out;
+}
+
+// One row for a game-native file sitting in the game root (skse64_loader.exe,
+// ...). origin_id is the kGameRootNativeId pseudo-id so "Open Mod Info" and
+// "Hide" stay disabled for it.
+DataTabRow native_root_row(const std::filesystem::path& root,
+                           const std::filesystem::path& file) {
+    std::error_code ec;
+    DataTabRow row;
+    row.path = QString::fromStdString(
+        std::filesystem::relative(file, root, ec).generic_string());
+    row.origin_id = QString::fromStdString(kGameRootNativeId);
+    row.source = DataTab::tr("Base Game");
+    row.providers = 1;
+    row.real_path = QString::fromStdString(file.string());
+    row.all_sources = {row.source};
+    row.provider_ids = {row.origin_id};
+    row.provider_paths = {row.real_path};
+    auto sz = std::filesystem::file_size(file, ec);
+    if (!ec) row.size = static_cast<qint64>(sz);
+    return row;
+}
+
+// True if `name` is a game-root folder the Root view must not descend into:
+// the game's own data dir (shown by the merged Data view), the instance mods
+// dir, overwrite, and the deploy staging dir. Compared case-insensitively
+// (Isaac's real folder is "Mods" while its mods_subpath is "mods").
+bool is_reserved_root_dir(const std::string& name, const std::string& mods_subpath) {
+    auto lname = name;
+    for (char& c : lname) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    std::unordered_set<std::string> reserved = {
+        "overwrite", "merged", ".merged", ".gmm_staging"};
+    auto lsub = mods_subpath;
+    for (char& c : lsub) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (!lsub.empty()) reserved.insert(std::move(lsub));
+    else reserved.insert("data");
+    return reserved.count(lname) > 0;
+}
+
+// Recursively collect the game's native root files (dirs relative to root).
+void collect_native_root_rows(const std::filesystem::path& dir,
+                              const std::filesystem::path& root,
+                              const std::string& mods_subpath,
+                              std::vector<DataTabRow>& out) {
+    std::error_code ec;
+    auto it = std::filesystem::directory_iterator(
+        dir, std::filesystem::directory_options::skip_permission_denied, ec);
+    for (const auto& entry : it) {
+        if (entry.is_directory()) {
+            if (is_reserved_root_dir(entry.path().filename().string(), mods_subpath))
+                continue;
+            collect_native_root_rows(entry.path(), root, mods_subpath, out);
+        } else if (entry.is_regular_file()) {
+            out.push_back(native_root_row(root, entry.path()));
+        }
+    }
+}
+
+// Navigation row that switches the merged tree scope (".." up to the game
+// root, or the data-dir folder back into the data view). Pinned to the front
+// of the tree by sort_dirs_first.
+QTreeWidgetItem* make_nav_item(const QString& label, int target) {
+    auto* item = new QTreeWidgetItem();
+    item->setText(0, label);
+    item->setIcon(0, folder_icon());
+    item->setData(0, DataNavRole, target);
+    return item;
 }
 
 }  // anonymous namespace
@@ -1009,19 +1105,54 @@ void DataTab::show_data(
     const QVector<ModEntry>& all_mods,
     bool conflict_reversed,
     const std::filesystem::path& mods_dir,
-    const std::filesystem::path& game_mods_dir)
+    const std::filesystem::path& game_mods_dir,
+    const std::filesystem::path& game_root_dir,
+    const std::string& mods_subpath,
+    const std::string& deploy_prefix)
 {
-    tree_->clear();
-    if (registry.empty()) return;
+    stored_registry_ = registry;
+    stored_mods_ = all_mods;
+    stored_conflict_reversed_ = conflict_reversed;
+    stored_mods_dir_ = mods_dir;
+    stored_game_mods_dir_ = game_mods_dir;
+    stored_game_root_dir_ = game_root_dir;
+    stored_mods_subpath_ = mods_subpath;
+    stored_deploy_prefix_ = deploy_prefix;
+    rebuild_from_stored();
+}
 
-    auto display_names = build_display_names(all_mods);
+void DataTab::switch_view(View v) {
+    if (view_ == v) return;
+    view_ = v;
+    rebuild_from_stored();
+}
+
+void DataTab::rebuild_from_stored() {
+    tree_->clear();
+    if (stored_registry_.empty()) return;
+
+    const bool root_view = view_ == View::Root;
+    const auto display_names = build_display_names(stored_mods_);
+    const auto root_mods = root_override_mod_ids(stored_mods_);
 
     std::vector<DataTabRow> rows;
-    rows.reserve(registry.size());
-    for (const auto& [path, owners] : registry) {
+    rows.reserve(stored_registry_.size());
+    for (const auto& [path, owners] : stored_registry_) {
         if (owners.empty()) continue;
-        rows.push_back(build_data_row(path, owners, display_names,
-                                      conflict_reversed, mods_dir, game_mods_dir));
+        const auto cls = engine::classify_registry_path(
+            path, owners, root_mods, stored_deploy_prefix_);
+        if (root_view && cls.space != engine::DeploySpace::Root) continue;
+        if (!root_view && cls.space != engine::DeploySpace::Data) continue;
+        rows.push_back(build_data_row(cls.display_path, owners, display_names,
+                                      stored_conflict_reversed_, stored_mods_dir_,
+                                      stored_game_mods_dir_));
+    }
+
+    // Game-native root files only exist at the game root (skse64_loader.exe,
+    // ControlMap_Custom.txt, ...); the data dir shows mod content alone.
+    if (root_view && !stored_game_root_dir_.empty()) {
+        collect_native_root_rows(stored_game_root_dir_, stored_game_root_dir_,
+                                 stored_mods_subpath_, rows);
     }
 
     // Sorted path order gives naturally grouped tree insertion. Equal display
@@ -1034,13 +1165,29 @@ void DataTab::show_data(
                   return !a.hidden && b.hidden;
               });
 
-    engine::Logger::instance().debug("Data tab populated: " +
-        std::to_string(rows.size()) + " merged files");
+    // Scope navigation row: ".." climbs from the data dir to the game root,
+    // the data-dir folder climbs back down. Pinned to the front by
+    // sort_dirs_first.
+    if (root_view) {
+        const QString label = stored_mods_subpath_.empty()
+            ? tr("Data")
+            : QString::fromStdString(stored_mods_subpath_);
+        tree_->addTopLevelItem(make_nav_item(label, kNavTargetData));
+        tree_->topLevelItem(0)->setToolTip(
+            0, tr("Open the %1 folder").arg(label));
+    } else if (!stored_game_root_dir_.empty()) {
+        tree_->addTopLevelItem(make_nav_item(tr(".."), kNavTargetRoot));
+        tree_->topLevelItem(0)->setToolTip(0, tr("Up to the game root directory"));
+    }
 
     for (const auto& row : rows)
         upsert_data_row(tree_, row);
 
     sort_dirs_first(tree_->invisibleRootItem());
+
+    engine::Logger::instance().debug("Data tab populated (" +
+        std::string(root_view ? "root" : "data") + " view): " +
+        std::to_string(rows.size()) + " files");
     // Folders start collapsed (MO2-style: the tree opens with subfolders
     // closed); double-click expands in place.
 }
@@ -1051,11 +1198,27 @@ void DataTab::apply_mod(
     const QVector<ModEntry>& all_mods,
     bool conflict_reversed,
     const std::filesystem::path& mods_dir,
-    const std::filesystem::path& game_mods_dir)
+    const std::filesystem::path& game_mods_dir,
+    const std::filesystem::path& game_root_dir,
+    const std::string& mods_subpath,
+    const std::string& deploy_prefix)
 {
     if (registry.empty()) return;
 
-    auto display_names = build_display_names(all_mods);
+    // Keep the stored inputs in sync so a later view switch rebuilds with the
+    // freshly installed mod included.
+    stored_registry_ = registry;
+    stored_mods_ = all_mods;
+    stored_conflict_reversed_ = conflict_reversed;
+    stored_mods_dir_ = mods_dir;
+    stored_game_mods_dir_ = game_mods_dir;
+    stored_game_root_dir_ = game_root_dir;
+    stored_mods_subpath_ = mods_subpath;
+    stored_deploy_prefix_ = deploy_prefix;
+
+    const bool root_view = view_ == View::Root;
+    const auto display_names = build_display_names(all_mods);
+    const auto root_mods = root_override_mod_ids(all_mods);
 
     bool any = false;
     for (const auto& [path, owners] : registry) {
@@ -1065,8 +1228,12 @@ void DataTab::apply_mod(
             if (owner == mod_id) { provides = true; break; }
         }
         if (!provides) continue;
+        const auto cls = engine::classify_registry_path(
+            path, owners, root_mods, deploy_prefix);
+        if (root_view && cls.space != engine::DeploySpace::Root) continue;
+        if (!root_view && cls.space != engine::DeploySpace::Data) continue;
         any = true;
-        upsert_data_row(tree_, build_data_row(path, owners, display_names,
+        upsert_data_row(tree_, build_data_row(cls.display_path, owners, display_names,
                                               conflict_reversed, mods_dir, game_mods_dir));
     }
 
@@ -1080,6 +1247,13 @@ void DataTab::apply_mod(
 void DataTab::on_item_double_clicked(QTreeWidgetItem* item, int column) {
     (void)column;
     if (!item) return;
+    // Navigation rows (".." / data-dir folder) switch the merged tree scope.
+    if (!item->data(0, DataNavRole).isNull()) {
+        switch_view(item->data(0, DataNavRole).toInt() == kNavTargetRoot
+                        ? View::Root
+                        : View::Data);
+        return;
+    }
     if (item->data(0, DataRealPathRole).toString().isEmpty()) return;
     open_item(item);
 }
@@ -1105,6 +1279,8 @@ void DataTab::preview_item(QTreeWidgetItem* item) {
 void DataTab::on_custom_context_menu(const QPoint& pos) {
     auto* item = tree_->itemAt(pos);
     if (!item) return;
+    // Navigation rows have no file menu - double-click switches the scope.
+    if (!item->data(0, DataNavRole).isNull()) return;
 
     QMenu menu(this);
     menu.setToolTipsVisible(true);
@@ -1164,7 +1340,9 @@ void DataTab::add_file_menus(QMenu& menu, QTreeWidgetItem* item) {
     auto* add_exe_action = menu.addAction(
         tr("&Add as Executable"),
         this, [this, item]() {
-            emit add_executable_requested(item->data(0, DataRealPathRole).toString(),
+            // Carry the merged-view (deploy-relative) path: it is what the
+            // launch overlay resolves, never the on-disk mods-folder path.
+            emit add_executable_requested(item->data(0, DataVfsPathRole).toString(),
                                           item->text(0));
         });
     add_exe_action->setStatusTip(tr("Add this file to the executables list"));
@@ -1183,13 +1361,15 @@ void DataTab::add_file_menus(QMenu& menu, QTreeWidgetItem* item) {
     reveal_action->setStatusTip(tr("Opens the file in the file manager"));
 
     const QString origin_mod_id = item->data(0, DataOriginModRole).toString();
+    const bool game_native = origin_mod_id == QLatin1String(kGameRootNativeId);
     auto* mod_info_action = menu.addAction(
         tr("Open &Mod Info"), this, [this, origin_mod_id]() {
             emit open_mod_info_requested(origin_mod_id);
         });
     const bool managed = !origin_mod_id.isEmpty() &&
         origin_mod_id != QLatin1String(kOverwriteModId) &&
-        origin_mod_id != QLatin1String(kMergedModId);
+        origin_mod_id != QLatin1String(kMergedModId) &&
+        !game_native;
     mod_info_action->setStatusTip(tr("Opens the Mod Info Window"));
     if (!managed) {
         mod_info_action->setEnabled(false);
@@ -1205,6 +1385,10 @@ void DataTab::add_file_menus(QMenu& menu, QTreeWidgetItem* item) {
         });
     hide_action->setStatusTip(hidden ? tr("Un-hides the file")
                                      : tr("Hides the file"));
+    if (game_native) {
+        hide_action->setEnabled(false);
+        hide_action->setStatusTip(tr("This file belongs to the game"));
+    }
 }
 
 void DataTab::add_common_menus(QMenu& menu) {

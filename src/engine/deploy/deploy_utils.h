@@ -62,6 +62,17 @@ using std::filesystem::path;
     return cur / comps.back();
 }
 
+// True when a mod file must be a REAL file (copied) in the staging tree rather
+// than a symlink. Executables and scripts resolve sibling files relative to
+// their own location; a symlinked lowerdir inode resolves through to the mod
+// folder (/proc/self/exe, Wine path canonicalization), so skse64_loader.exe
+// would look for SkyrimSE.exe in the mod folder and fail. Detection is
+// deliberate: only things that RUN from within the merged view are copied -
+// .exe (PE via Proton/Wine), .elf, .sh, and extensionless files that are
+// either ELF binaries or #! scripts. Everything else (meshes, textures, DDS,
+// .bin blobs, plugins) stays symlinked - it is only ever read, never run.
+[[nodiscard]] bool is_executable_binary(const std::filesystem::path& path);
+
 // Deploy all enabled (non-disabled) mods from instance_root/mods/ to staging_dir.
 // staging_dir is created if it doesn't exist. Uses OverlayFsDeployStrategy internally
 // to create symlinks under staging_dir/deploy_prefix/[mod_id/].

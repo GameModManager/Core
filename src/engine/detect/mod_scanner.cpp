@@ -258,6 +258,10 @@ static std::optional<ScannedMod> scan_entry(
             // picked up here if their meta.ini already has the section.
             mod.is_fomod = meta.has_section("fomod") &&
                            !meta.get("fomod", "choices").empty();
+            // Root-override marker: when set, the mod's folder is treated as
+            // the game's root directory at deploy time (files under a leading
+            // Data/ folder still land in Data/; everything else goes to root).
+            mod.root_override = meta.get("General", "rootOverride") == "1";
         }
     }
 

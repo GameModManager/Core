@@ -1,15 +1,18 @@
 ; packaging/windows/installer.nsi
 ; NSIS installer script for GameModManager on Windows
 ;
-; Build with: makensis installer.nsi
+; Build with: cmake --build . --target package_installer   (injects the version
+; from Core/CMakeLists.txt project(VERSION ...) automatically), or manually:
+;   makensis -DVERSION=X.Y.Z installer.nsi
+; Bare `makensis installer.nsi` falls back to the VERSION define below.
 ; Expects gamemodmanager/ directory with the built exe + plugins + Qt DLLs
 
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
 
-; -- Version (read from CMakeLists.txt or passed via /D flag) --
+; -- Version (CMake injects this via -DVERSION; fallback for manual runs) --
 !ifndef VERSION
-    !define VERSION "0.1.0"
+    !define VERSION "0.1.5"
 !endif
 
 Name "GameModManager ${VERSION}"
