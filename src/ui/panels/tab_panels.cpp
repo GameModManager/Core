@@ -777,7 +777,7 @@ private:
 static QIcon plugin_flag_icon(const QString& token) {
     auto& icons = engine::IconManager::instance();
     if (token == QLatin1String("warning")) return icons.resolve_icon("plugin-warning");
-    if (token == QLatin1String("awaiting")) return icons.resolve_icon("plugin-awaiting");
+    if (token == QLatin1String("awaiting")) return icons.resolve_icon("plugin-light");
     if (token == QLatin1String("run")) return icons.resolve_icon("plugin-medium");
     if (token == QLatin1String("locked")) return icons.resolve_icon("plugin-locked");
     if (token == QLatin1String("attachment")) return icons.resolve_icon("plugin-attachment");
