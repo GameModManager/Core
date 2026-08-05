@@ -125,6 +125,17 @@ int main() {
     require(dm != nullptr, "disabled mod found");
     require(!dm->enabled, "mod carrying .gmmdisabled is disabled by default");
 
+    // GMM-internal scratch dirs (.gmm_overlay_work and friends) are manager
+    // machinery, never mods - wherever they land in the mods dir (an overlay
+    // launch can leave .gmm_overlay_work here as an artifact).
+    fs::create_directories(root / ".gmm_overlay_work");
+    fs::create_directories(root / ".gmm_staging");
+    const auto modsG = engine::ModScanner::scan_dir(knowledge, "testgame", root);
+    require(by_folder(modsG, ".gmm_overlay_work") == nullptr,
+            ".gmm_overlay_work is not listed as a mod");
+    require(by_folder(modsG, ".gmm_staging") == nullptr,
+            ".gmm_staging is not listed as a mod");
+
     // A mod flagged rootOverride in its meta.ini [General].
     fs::create_directories(root / "RootMod");
     write_file(root / "RootMod" / "meta.ini", "[General]\nrootOverride = 1\n");

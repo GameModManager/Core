@@ -387,6 +387,12 @@ static std::vector<ScannedMod> scan_impl(
             continue;
         }
 
+        // GMM-internal scratch dirs (.gmm_overlay_work, .gmm_staging, ...) are
+        // never mods, wherever they land in the mods dir - they are manager
+        // machinery, not user content (e.g. .gmm_overlay_work can end up here
+        // as an overlay-launch artifact).
+        if (entry.path().filename().string().starts_with(".gmm_")) continue;
+
         auto mod = scan_entry(entry.path(), cfg, ignore_symlink_targets);
         if (mod) mods.push_back(std::move(*mod));
     }
