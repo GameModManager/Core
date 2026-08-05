@@ -1363,7 +1363,10 @@ void MainWindow::load_mods_from_game() {
         current_instance_root_.empty() ? std::vector<std::filesystem::path>{}
                                        : std::vector<std::filesystem::path>{current_instance_root_});
 
-    // Also scan instance mods directory if different from game mods dir
+    // Instance mode: the mod list comes from the instance mods dir ONLY. The
+    // game's own mods subpath is never a mod source - its folders (e.g. Skyrim's
+    // Data/Scripts, Data/Video) are vanilla game content, not mods, and would
+    // otherwise be listed (and flagged) as mods. MO2 lists only <instance>/mods.
     if (!current_instance_root_.empty()) {
         auto instance_mods_dir = mods_dir_path();
         auto game_mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
@@ -1373,19 +1376,9 @@ void MainWindow::load_mods_from_game() {
         auto inst_canon = std::filesystem::weakly_canonical(instance_mods_dir, ec_canon);
         auto game_canon = std::filesystem::weakly_canonical(game_mods_dir, ec_canon);
         if (inst_canon != game_canon) {
-            auto instance_scanned = engine::ModScanner::scan_dir(
+            scanned = engine::ModScanner::scan_dir(
                 *knowledge_, current_game_id_, instance_mods_dir,
                 std::vector<std::filesystem::path>{});
-            // Merge - instance mods override game-native mods with same folder name
-            std::unordered_set<std::string> seen;
-            for (const auto& m : instance_scanned)
-                seen.insert(m.folder_name);
-            for (auto& m : scanned) {
-                if (seen.count(m.folder_name))
-                    continue;
-                instance_scanned.push_back(std::move(m));
-            }
-            scanned = std::move(instance_scanned);
         }
     }
 
