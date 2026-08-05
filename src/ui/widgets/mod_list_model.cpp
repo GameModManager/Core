@@ -70,7 +70,7 @@ ModListModel::ModListModel(QObject* parent)
     redundant_icon_    = icons.resolve_icon("conflict-redundant");
     hidden_icon_       = icons.resolve_icon("conflict-hidden");
     fomod_icon_        = make_wizard_hat_icon();
-    root_override_icon_ = icons.resolve_icon("anchor");
+    root_override_icon_ = icons.resolve_icon("root-dir");
 }
 
 int ModListModel::rowCount(const QModelIndex& parent) const {

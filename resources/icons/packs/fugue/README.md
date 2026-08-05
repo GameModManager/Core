@@ -32,7 +32,7 @@ Key -> Fugue source mapping:
 - preferences-other / preferences-system -> gear.png
 - view-sort -> sort.png
 - computer -> computer.png
-- anchor -> anchor.png
+- root-dir -> root-dir.png
 - archive -> box.png
 - update-available -> arrow-circle.png
 
