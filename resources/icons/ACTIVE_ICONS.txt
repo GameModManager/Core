@@ -32,8 +32,8 @@ media-playback-start
 merge
 plugin-archive
 plugin-attachment
-plugin-awaiting
 plugin-dummy
+plugin-light
 plugin-locked
 plugin-medium
 plugin-warning
@@ -53,6 +53,6 @@ Notes:
   game_id as its key (a theme can ship themes/<theme>/icons/<game_id>.png); no fixed
   entry here.
 - Bundled but NOT referenced by any code (candidates for cleanup):
-  archive.png, plugin-information.png, update-available.png.
+  archive.png, plugin-awaiting.png, plugin-information.png, update-available.png.
 - moddb is mapped by vendor_icon_key() but no ModDB provider exists yet, so it is not
   actively used; vendor/moddb.ico could be dropped until the provider lands.
