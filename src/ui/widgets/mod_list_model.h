@@ -45,6 +45,7 @@ struct ModEntry {
     bool is_merged = false;
     bool is_game_native = false;
     bool is_fomod = false;        // installed via the FOMOD wizard
+    bool root_override = false;   // deploys to the game root instead of the data dir
     bool folded = false;
 };
 
@@ -103,6 +104,7 @@ public:
     void set_conflict_redundant(const QString& id, bool redundant);
     void set_hidden_files(const QString& id, bool has_hidden);
     void set_fomod(const QString& id, bool on);
+    void set_root_override(const QString& id, bool on);
     void set_tags(const QString& id, const QVector<ModTag>& tags);
     void set_source_info(const QString& id, const QString& source_type,
                          const QString& source_id,
@@ -162,6 +164,7 @@ private:
     QIcon redundant_icon_;
     QIcon hidden_icon_;
     QIcon fomod_icon_;
+    QIcon root_override_icon_;
     QAbstractItemView* mod_view_ = nullptr;
     bool conflict_order_reversed_ = false;
     bool uses_merged_ = false;

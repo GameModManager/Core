@@ -2,6 +2,7 @@
 
 #include <QComboBox>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QMenu>
 #include <QPainter>
@@ -27,12 +28,44 @@ ProfileBar::ProfileBar(QWidget* parent)
 
     layout->addSpacing(8);
 
-    // Import button - imports a modlist file
-    import_btn_ = new QToolButton(this);
-    import_btn_->setText(tr("Import"));
-    import_btn_->setIcon(style()->standardIcon(QStyle::SP_ArrowDown));
-    import_btn_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    layout->addWidget(import_btn_);
+    // Open folders button - hosts all the important instance paths
+    // (MO2's openFolderMenu). Icon-only, no text.
+    folders_btn_ = new QToolButton(this);
+    folders_btn_->setIcon(QIcon::fromTheme("document-open-folder",
+        style()->standardIcon(QStyle::SP_DirOpenIcon)));
+    folders_btn_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    folders_btn_->setPopupMode(QToolButton::MenuButtonPopup);
+
+    auto* folders_menu = new QMenu(this);
+    auto add_folder = [this, folders_menu](const QString& text, FolderKind kind) {
+        auto* action = folders_menu->addAction(text);
+        connect(action, &QAction::triggered, this,
+                [this, kind]() { emit open_folder_requested(kind); });
+        return action;
+    };
+
+    add_folder(tr("Open Game folder"), FolderKind::Game);
+    add_folder(tr("Open MyGames folder"), FolderKind::MyGames);
+    add_folder(tr("Open INIs folder"), FolderKind::Inis);
+    folders_menu->addSeparator();
+    add_folder(tr("Open Instance folder"), FolderKind::Instance);
+    add_folder(tr("Open Mods folder"), FolderKind::Mods);
+    add_folder(tr("Open Profile folder"), FolderKind::Profile);
+    add_folder(tr("Open Downloads folder"), FolderKind::Downloads);
+    folders_menu->addSeparator();
+    auto* install_action = add_folder(tr("Open GMM Install folder"), FolderKind::Install);
+    install_action->setEnabled(false);  // app isn't installed anywhere
+    add_folder(tr("Open GMM Plugins folder"), FolderKind::Plugins);
+    add_folder(tr("Open GMM Themes folder"), FolderKind::Themes);
+    add_folder(tr("Open GMM Logs folder"), FolderKind::Logs);
+
+    folders_btn_->setMenu(folders_menu);
+    layout->addWidget(folders_btn_);
+
+    connect(folders_btn_, &QToolButton::clicked, this, [this]() {
+        if (auto* m = folders_btn_->menu())
+            m->exec(folders_btn_->mapToGlobal(QPoint(0, folders_btn_->height())));
+    });
 
     // Combined Import/Export button (replaces the old export to CSV)
     QPixmap up_px = style()->standardIcon(QStyle::SP_ArrowUp).pixmap(12, 12);
@@ -89,8 +122,6 @@ ProfileBar::ProfileBar(QWidget* parent)
 
     connect(profile_combo_, &QComboBox::currentTextChanged,
             this, &ProfileBar::profile_changed);
-    connect(import_btn_, &QToolButton::clicked,
-            this, &ProfileBar::import_clicked);
 }
 
 }  // namespace ui

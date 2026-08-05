@@ -1,5 +1,6 @@
 #include "ui/widgets/console_panel.h"
 #include "ui/settings/settings.h"
+#include "engine/debug_env.h"
 #include "engine/log/logger.h"
 
 #include <QApplication>
@@ -41,7 +42,7 @@ ConsolePanel::ConsolePanel(QWidget* parent)
     QPointer<ConsolePanel> guard(this);
     // Console panel verbosity: GMM_DEBUG=1 forces Debug; otherwise the
     // diagnostics/log_level setting applies. Log file always full.
-    const bool verbose = std::getenv("GMM_DEBUG") != nullptr;
+    const bool verbose = gmm_debug_enabled();
     auto& settings = Settings::instance();
     const bool panel_debug = verbose || settings.log_level() == "debug";
     auto& logger = engine::Logger::instance();

@@ -3,6 +3,7 @@
 #include <QWidget>
 
 class QLineEdit;
+class QPushButton;
 class QTableWidget;
 
 namespace ui {
@@ -19,11 +20,16 @@ public:
     // Apply the current filter text to the given table
     void apply_to(QTableWidget* table) const;
 
+    // Show/hide the LOOT sort shortcut. Only meaningful on the Plugins tab.
+    void set_sort_visible(bool visible);
+
 signals:
     void filter_changed(const QString& text);
+    void sort_requested();
 
 private:
     QLineEdit* filter_edit_ = nullptr;
+    QPushButton* sort_button_ = nullptr;
 };
 
 }  // namespace ui

@@ -27,11 +27,9 @@ int launch_game_headless(const HeadlessConfig& cfg) {
         "  appid: " + std::to_string(cfg.steam_appid) +
         "  windows: " + (cfg.is_windows_exe ? "yes" : "no"));
 
-    if (!fs::exists(cfg.executable)) {
-        engine::Logger::instance().error(
-            "Executable not found: " + cfg.executable.string());
-        return 2;
-    }
+    // No pre-check here: the executable may only exist in the merged view
+    // (deployed into .gmm_staging). prepare_launch_params populates staging;
+    // do_launch then validates reachability and fails with a log line.
 
     // Build launch params through the shared workflow (same as GUI "Run" path)
     auto lparams = engine::prepare_launch_params(

@@ -67,6 +67,7 @@ ModListModel::ModListModel(QObject* parent)
     redundant_icon_    = QIcon(iconDir + "conflict-redundant.png");
     hidden_icon_       = QIcon(iconDir + "conflict-hidden.png");
     fomod_icon_        = make_wizard_hat_icon();
+    root_override_icon_ = QIcon(iconDir + "fugue/anchor.png");
 }
 
 int ModListModel::rowCount(const QModelIndex& parent) const {
@@ -106,6 +107,7 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
         }
         if (m.has_hidden_files) icons << hidden_icon_;
         if (m.is_fomod) icons << fomod_icon_;
+        if (m.root_override) icons << root_override_icon_;
         return QVariant::fromValue(icons);
     }
 
@@ -242,10 +244,13 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
         }
     }
     if (role == Qt::ToolTipRole && index.column() == Flags &&
-        (!mod.tags.isEmpty() || mod.is_fomod)) {
+        (!mod.tags.isEmpty() || mod.is_fomod || mod.root_override)) {
         QStringList lines;
         if (mod.is_fomod) {
             lines << tr("FOMOD wizard: installed with selected options");
+        }
+        if (mod.root_override) {
+            lines << tr("Deploys to the game root directory");
         }
         for (const auto& tag : mod.tags)
             lines << tr("%1: %2").arg(tag.type.toUpper(), tag.message);
@@ -692,6 +697,17 @@ void ModListModel::set_fomod(const QString& id, bool on) {
     for (int i = 0; i < mods_.size(); ++i) {
         if (mods_[i].id == id && mods_[i].is_fomod != on) {
             mods_[i].is_fomod = on;
+            emit dataChanged(index(i, Flags), index(i, Flags),
+                             {Qt::SizeHintRole, kFlagIconsRole, Qt::ToolTipRole});
+            return;
+        }
+    }
+}
+
+void ModListModel::set_root_override(const QString& id, bool on) {
+    for (int i = 0; i < mods_.size(); ++i) {
+        if (mods_[i].id == id && mods_[i].root_override != on) {
+            mods_[i].root_override = on;
             emit dataChanged(index(i, Flags), index(i, Flags),
                              {Qt::SizeHintRole, kFlagIconsRole, Qt::ToolTipRole});
             return;

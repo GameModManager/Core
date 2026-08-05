@@ -46,7 +46,7 @@ bool nexus_http_request(const std::string& url,
     for (curl_slist* h = headers; h; h = h->next)
         effective = curl_slist_append(effective, h->data);
     effective = curl_slist_append(effective, "application-name: GameModManager");
-    effective = curl_slist_append(effective, "application-version: 0.1.0");
+    effective = curl_slist_append(effective, "application-version: " VERSION);
     if (effective)
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, effective);
 

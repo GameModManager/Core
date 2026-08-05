@@ -42,10 +42,15 @@ public:
     // the new entry appear.
     void show_downloads_tab();
 
+signals:
+    // LOOT sort shortcut pressed in the Plugins tab filter bar.
+    void sort_requested();
+
 private:
     void clear_tabs();
     void ensure_tab(const std::string& capability, const QString& label);
     void apply_filter();
+    void update_sort_visibility();
     QTableWidget* current_table() const;
 
     ExecControlsBar* exec_controls_ = nullptr;

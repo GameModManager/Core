@@ -9,6 +9,7 @@
 // contract: deploy happens, disabled mods and special dirs are skipped, the
 // deploy is idempotent, and staging is the overlay lowerdir.
 #include "engine/instance/instance_utils.h"
+#include "engine/fs_utils.h"
 #include "engine/launcher.h"
 #include "engine/overlay_launcher.h"
 #include "engine/registry/game_knowledge.h"
@@ -154,9 +155,63 @@ static void check_ci_deploy(const fs::path& root, const std::string& label) {
             label + ": staging still the overlay lowerdir");
 }
 
+// Merged-view reachability (merged_view_file_exists): an executable is a valid
+// launch target when it exists physically (native game file, live overlay
+// mount, or a legacy absolute path already resolved into the mods folder) OR
+// when it is a game-relative path whose deployed copy lives in .gmm_staging -
+// even when reached through the ~/.steam symlink spelling of the game dir.
+static void check_merged_view(const fs::path& base) {
+    const fs::path game_dir = base / "game";
+    const fs::path staging = base / ".gmm_staging";
+    fs::create_directories(game_dir);
+    fs::create_directories(staging);
+
+    // 1) Native game file, physically present.
+    const fs::path native = game_dir / "SkyrimSE.exe";
+    write_file(native, "bin");
+    require(engine::merged_view_file_exists(game_dir, staging, native),
+            "merged_view: native file is reachable");
+
+    // 2) Staged-only file (root-override mod exe deployed at the game root).
+    const fs::path staged_only = game_dir / "skse64_loader.exe";
+    require(!fs::exists(staged_only),
+            "merged_view: staged-only file is absent physically");
+    write_file(staging / "skse64_loader.exe", "bin");
+    require(engine::merged_view_file_exists(game_dir, staging, staged_only),
+            "merged_view: staged-only file reachable via staging");
+    require(!engine::merged_view_file_exists(game_dir, {}, staged_only),
+            "merged_view: staged-only file NOT reachable without staging");
+
+    // 3) Symlink-spelling mismatch: reach the staged file through a symlink
+    // to game_dir (the ~/.steam -> ~/.local/share/Steam case).
+    const fs::path link_dir = base / "link";
+    std::error_code ec;
+    fs::create_directory_symlink(game_dir, link_dir, ec);
+    if (!ec) {
+        const fs::path via_link = link_dir / "skse64_loader.exe";
+        require(engine::merged_view_file_exists(game_dir, staging, via_link),
+                "merged_view: staged-only file reachable through the symlink spelling");
+    }
+
+    // 4) Legacy absolute path into the physical mods folder.
+    const fs::path mods_exe =
+        base / "mods" / "skse64_2_02_06" / "skse64_loader.exe";
+    write_file(mods_exe, "bin");
+    require(engine::merged_view_file_exists(game_dir, staging, mods_exe),
+            "merged_view: legacy absolute mods path is reachable");
+
+    // 5) Missing everywhere -> false.
+    const fs::path missing = game_dir / "does_not_exist.exe";
+    require(!engine::merged_view_file_exists(game_dir, staging, missing),
+            "merged_view: missing file is not reachable");
+}
+
 int main() {
     const fs::path base =
         fs::current_path() / ("gmm_test_launch_params_" + std::to_string(getpid()));
+
+    // Pure filesystem predicate: runs even where overlay deployment cannot.
+    check_merged_view(base);
 
     // Graceful skip on filesystems that cannot host an overlay upperdir
     // (kernel < 5.11 or no user xattr): the deploy branch can't run there.

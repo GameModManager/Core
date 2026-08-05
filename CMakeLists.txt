@@ -1,9 +1,15 @@
 cmake_minimum_required(VERSION 3.20)
+# Single source of truth for the app version. Every consumer reads PROJECT_VERSION:
+# the C++ VERSION compile definition (per-target below), the NSIS installer
+# (package_installer target passes -DVERSION=${PROJECT_VERSION}), and the plugins
+# (GMM_VERSION, visible in the add_subdirectory'd external/plugins scope).
 project(GameModManager
-    VERSION 0.1.0
+    VERSION 0.1.5
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
+
+set(GMM_VERSION "${PROJECT_VERSION}")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -151,6 +157,7 @@ set(ENGINE_SOURCES
     src/engine/deploy/strategy_overlayfs_deploy.cpp
     src/engine/deploy/deploy_ledger.cpp
     src/engine/deploy/deploy_utils.cpp
+    src/engine/deploy/root_override.cpp
     src/engine/overlay_launcher.cpp
     src/engine/pipeline/pipeline.cpp
     src/engine/pipeline/fetch_stage.cpp
@@ -412,7 +419,10 @@ add_executable(pipeline_test tests/engine/pipeline_test.cpp
     src/engine/index/conflict_index.cpp
     src/engine/model/profile.cpp
     src/engine/deploy/order_hook.cpp
+    src/engine/deploy/deploy_utils.cpp
     src/engine/deploy/strategy_symlink.cpp
+    src/engine/deploy/strategy_overlayfs_deploy.cpp
+    src/engine/fs_utils.cpp
     src/engine/deploy/strategy_hardlink.cpp
     src/engine/deploy/strategy_junction.cpp
     src/engine/pipeline/pipeline.cpp
@@ -462,6 +472,7 @@ add_executable(loot_sorter_test tests/engine/loot_sorter_test.cpp
 )
 target_include_directories(loot_sorter_test PRIVATE src/)
 target_link_libraries(loot_sorter_test PRIVATE PkgConfig::CURL PkgConfig::NLOHMANN_JSON)
+target_compile_definitions(loot_sorter_test PRIVATE VERSION="${PROJECT_VERSION}")
 add_test(NAME loot_sorter_test COMMAND loot_sorter_test)
 
 add_executable(logger_test tests/engine/logger_test.cpp
@@ -552,6 +563,7 @@ add_executable(launch_params_test tests/engine/launch_params_test.cpp
     src/engine/instance/instance_utils.cpp
     src/engine/instance/instance.cpp
     src/engine/deploy/deploy_utils.cpp
+    src/engine/meta/mod_meta.cpp
     src/engine/deploy/strategy_overlayfs_deploy.cpp
     src/engine/registry/game_knowledge.cpp
     src/engine/overlay_launcher.cpp
@@ -719,6 +731,7 @@ add_test(NAME fs_utils_test COMMAND fs_utils_test)
 # .mohidden) and deploy_all_enabled_mods skipping hidden files on both suffixes.
 add_executable(deploy_hidden_test tests/engine/deploy_hidden_test.cpp
     src/engine/deploy/deploy_utils.cpp
+    src/engine/meta/mod_meta.cpp
     src/engine/deploy/strategy_overlayfs_deploy.cpp
     src/engine/fs_utils.cpp
     src/engine/log/logger.cpp
@@ -732,6 +745,7 @@ add_test(NAME deploy_hidden_test COMMAND deploy_hidden_test)
 # of splitting a mod across two dirs on the case-sensitive overlay mount.
 add_executable(deploy_case_insensitive_test tests/engine/deploy_case_insensitive_test.cpp
     src/engine/deploy/deploy_utils.cpp
+    src/engine/meta/mod_meta.cpp
     src/engine/deploy/strategy_overlayfs_deploy.cpp
     src/engine/fs_utils.cpp
     src/engine/log/logger.cpp
@@ -739,12 +753,38 @@ add_executable(deploy_case_insensitive_test tests/engine/deploy_case_insensitive
 target_include_directories(deploy_case_insensitive_test PRIVATE src/)
 add_test(NAME deploy_case_insensitive_test COMMAND deploy_case_insensitive_test)
 
+# Root-override deploy-space classification: which view (Data vs game root)
+# shows a conflicting-registry path when a provider mod carries [General]
+# rootOverride, and how the display path is rewritten.
+add_executable(root_override_test tests/engine/root_override_test.cpp
+    src/engine/deploy/root_override.cpp
+)
+target_include_directories(root_override_test PRIVATE src/)
+add_test(NAME root_override_test COMMAND root_override_test)
+
+# Executable-copy deploy: executables and scripts (.exe/.elf/.sh + extensionless
+# ELF/shebang) must deploy as REAL files into staging - a symlinked lowerdir
+# inode resolves through to the mod folder when run, breaking self-relative
+# sibling lookups (skse64_loader.exe can't find SkyrimSE.exe). Data files stay
+# symlinks. Covers the OverlayFS staging path and the SymlinkStrategy fallback.
+add_executable(deploy_binary_test tests/engine/deploy_binary_test.cpp
+    src/engine/deploy/deploy_utils.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/deploy/strategy_overlayfs_deploy.cpp
+    src/engine/deploy/strategy_symlink.cpp
+    src/engine/fs_utils.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(deploy_binary_test PRIVATE src/)
+add_test(NAME deploy_binary_test COMMAND deploy_binary_test)
+
 # URL percent-encoding for libcurl (Nexus CDN URLs embed unencoded filenames).
 add_executable(nexus_http_test tests/engine/nexus_http_test.cpp
     src/engine/source/nexus_http.cpp
 )
 target_include_directories(nexus_http_test PRIVATE src/)
 target_link_libraries(nexus_http_test PRIVATE PkgConfig::CURL)
+target_compile_definitions(nexus_http_test PRIVATE VERSION="${PROJECT_VERSION}")
 add_test(NAME nexus_http_test COMMAND nexus_http_test)
 
 # NexusProvider::parse_mod_info — the JSON mapping behind the Mod Info Nexus
@@ -761,6 +801,7 @@ add_executable(nexus_provider_test tests/engine/nexus_provider_test.cpp
 )
 target_include_directories(nexus_provider_test PRIVATE src/)
 target_link_libraries(nexus_provider_test PRIVATE PkgConfig::CURL PkgConfig::NLOHMANN_JSON)
+target_compile_definitions(nexus_provider_test PRIVATE VERSION="${PROJECT_VERSION}")
 add_test(NAME nexus_provider_test COMMAND nexus_provider_test)
 
 # LoversLabAuth keyring storage + LoversLabProvider URL/Content-Disposition
@@ -775,6 +816,7 @@ add_executable(loverslab_auth_test tests/engine/loverslab_auth_test.cpp
 )
 target_include_directories(loverslab_auth_test PRIVATE src/)
 target_link_libraries(loverslab_auth_test PRIVATE PkgConfig::CURL)
+target_compile_definitions(loverslab_auth_test PRIVATE VERSION="${PROJECT_VERSION}")
 add_test(NAME loverslab_auth_test COMMAND loverslab_auth_test)
 
 # Settings -> Plugins tab — offscreen GUI regression test. Exercises the
@@ -940,6 +982,7 @@ add_executable(downloads_tab_test tests/ui/downloads_tab_test.cpp
     src/ui/widgets/mod_table_view.cpp
     src/engine/log/logger.cpp
     src/engine/fs_utils.cpp
+    src/engine/deploy/root_override.cpp
     src/engine/loverslab_auth.cpp
     src/engine/keyring.cpp
     src/engine/source/loverslab_provider.cpp
@@ -964,6 +1007,7 @@ add_executable(data_tab_test tests/ui/data_tab_test.cpp
     src/ui/widgets/mod_table_view.cpp
     src/engine/log/logger.cpp
     src/engine/fs_utils.cpp
+    src/engine/deploy/root_override.cpp
     src/engine/loverslab_auth.cpp
     src/engine/keyring.cpp
     src/engine/source/loverslab_provider.cpp
@@ -1008,6 +1052,7 @@ add_executable(plugins_tab_test tests/ui/plugins_tab_test.cpp
     src/ui/widgets/mod_table_view.cpp
     src/engine/log/logger.cpp
     src/engine/fs_utils.cpp
+    src/engine/deploy/root_override.cpp
     src/engine/loverslab_auth.cpp
     src/engine/keyring.cpp
     src/engine/source/loverslab_provider.cpp
@@ -1112,3 +1157,20 @@ target_include_directories(install_progress_dialog_test PRIVATE src/)
 target_link_libraries(install_progress_dialog_test PRIVATE Qt6::Widgets)
 add_test(NAME install_progress_dialog_test COMMAND install_progress_dialog_test)
 set_tests_properties(install_progress_dialog_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# -- Windows installer -------------------------------------------------------
+# `package_installer` builds the NSIS installer from packaging/windows/installer.nsi
+# with the version injected from this CMakeLists' project(VERSION ...) — the
+# installer never needs a manual version edit. Installer.nsi keeps a
+# !ifndef VERSION fallback for bare `makensis installer.nsi` runs.
+if(WIN32)
+    find_program(MAKENSIS_EXECUTABLE makensis)
+    if(MAKENSIS_EXECUTABLE)
+        add_custom_target(package_installer
+            COMMAND ${MAKENSIS_EXECUTABLE} -DVERSION=${PROJECT_VERSION} installer.nsi
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows
+            COMMENT "Building GameModManager-${PROJECT_VERSION}-Setup.exe"
+            VERBATIM
+        )
+    endif()
+endif()

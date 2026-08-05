@@ -2,11 +2,42 @@
 #include "engine/deploy/strategy.h"
 #include "engine/fs_utils.h"
 #include "engine/log/logger.h"
+#include "engine/meta/mod_meta.h"
 
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
+#include <fstream>
 #include <system_error>
 
 namespace engine {
+
+bool is_executable_binary(const std::filesystem::path& path) {
+    auto ext = path.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    if (ext == ".exe" || ext == ".elf" || ext == ".sh")
+        return true;
+
+    // Extensionless: sniff the magic. ELF binaries and #! scripts both need
+    // real-file semantics; a plain data file with no extension does not.
+    if (ext.empty()) {
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(path, ec)) return false;
+        std::ifstream in(path, std::ios::binary);
+        if (!in) return false;
+        char magic[2] = {};
+        in.read(magic, 2);
+        if (in.gcount() < 2) return false;
+        if (static_cast<unsigned char>(magic[0]) == 0x7f &&
+            static_cast<unsigned char>(magic[1]) == 0x45)  // \x7f 'E' == ELF
+            return true;
+        if (magic[0] == '#' && magic[1] == '!')  // shebang script
+            return true;
+    }
+    return false;
+}
 
 bool deploy_all_enabled_mods(
     const path& mods_dir,
@@ -55,8 +86,27 @@ bool deploy_all_enabled_mods(
             continue;
         }
 
+        // Root-override mods (meta.ini [General] rootOverride) deploy into the
+        // staging root - the game root - instead of the data dir. A leading
+        // Data/ folder inside such a mod lands in Data/ naturally.
+        bool root_override = false;
+        {
+            std::error_code meta_ec;
+            auto meta_ini = entry.path() / "meta.ini";
+            if (std::filesystem::is_regular_file(meta_ini, meta_ec)) {
+                try {
+                    engine::ModMeta meta = engine::ModMeta::load_file(meta_ini);
+                    root_override = meta.get("General", "rootOverride") == "1";
+                } catch (const std::exception& ex) {
+                    Logger::instance().warn("deploy_all_enabled_mods: cannot read meta for " + folder + ": " + ex.what());
+                }
+            }
+        }
+
         // Deploy every file in the mod folder
-        auto deploy_root = deploy_include_mod_id ? target_base / folder : target_base;
+        auto deploy_root = root_override
+            ? staging_dir
+            : (deploy_include_mod_id ? target_base / folder : target_base);
         int deployed = 0;
         int failed = 0;
 

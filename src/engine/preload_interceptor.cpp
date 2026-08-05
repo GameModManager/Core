@@ -1,5 +1,6 @@
 #include "engine/preload_interceptor.h"
 
+#include "engine/debug_env.h"
 #include "engine/log/logger.h"
 
 #include <cerrno>
@@ -99,7 +100,7 @@ int64_t PreloadInterceptor::launch(const std::filesystem::path& executable,
         if (devnull >= 0) {
             dup2(devnull, STDIN_FILENO);
             dup2(devnull, STDOUT_FILENO);
-            if (!getenv("GMM_DEBUG"))
+            if (!gmm_debug_enabled())
                 dup2(devnull, STDERR_FILENO);
             close(devnull);
         }

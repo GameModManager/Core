@@ -27,6 +27,7 @@ public:
     void set_vertical(bool vertical);
     void set_icon_size(int size);
     [[nodiscard]] bool is_vertical() const { return vertical_; }
+    [[nodiscard]] int current_icon_size() const { return current_icon_size_; }
 
 signals:
     void settings_clicked();
@@ -36,6 +37,7 @@ signals:
 
 private:
     bool vertical_ = false;
+    int current_icon_size_ = 24;  // last icon size applied via set_icon_size
     QBoxLayout* layout_ = nullptr;
     QFrame* separator_ = nullptr;
     QToolButton* proton_button_ = nullptr;

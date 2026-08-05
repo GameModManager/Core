@@ -34,6 +34,39 @@ bool OverlayFsDeployStrategy::deploy(const std::filesystem::path& source,
         return false;
     }
 
+    // Executables and scripts must be REAL files in the merged view, not
+    // symlinks: they resolve siblings relative to their own location, and a
+    // symlinked lowerdir inode resolves through to the mod folder (so
+    // skse64_loader.exe would look for SkyrimSE.exe in the mod folder).
+    if (is_executable_binary(source)) {
+        std::filesystem::copy_file(source, merged,
+                                   std::filesystem::copy_options::overwrite_existing,
+                                   ec);
+        if (ec) {
+            Logger::instance().error("OverlayFS deploy: failed to copy binary " +
+                source.string() + " -> " + merged.string() + ": " + ec.message());
+            return false;
+        }
+        // Ensure the staged copy carries the exec bit (copy_file preserves the
+        // source mode; a mod-shipped exe may lack +x). Pre-setting it here
+        // keeps the launcher's chmod a no-op, avoiding an overlay copy-up of
+        // the binary into the overwrite upperdir on launch.
+        std::error_code perm_ec;
+        auto perms = std::filesystem::status(merged, perm_ec).permissions();
+        if (!perm_ec && (perms & std::filesystem::perms::owner_exec) == std::filesystem::perms::none) {
+            std::filesystem::permissions(merged,
+                perms | std::filesystem::perms::owner_exec
+                      | std::filesystem::perms::group_exec
+                      | std::filesystem::perms::others_exec, perm_ec);
+            if (perm_ec) {
+                Logger::instance().error("OverlayFS deploy: failed to set exec bit on " +
+                    merged.string() + ": " + perm_ec.message());
+                return false;
+            }
+        }
+        return true;
+    }
+
     std::filesystem::create_symlink(source, merged, ec);
     if (ec) {
         Logger::instance().error("OverlayFS deploy: failed to symlink " +

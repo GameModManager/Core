@@ -52,6 +52,10 @@ class MainToolbar;
 class ProfileBar;
 class ModFilterBar;
 class RightPanel;
+
+// Forward-declared: fully defined in ui/widgets/profile_bar.h, which owns the
+// FolderKind enum and is included before any use in .cpp files.
+enum class FolderKind;
 class ConsolePanel;
 class GmmStatusBar;
 class PipelineThread;
@@ -109,6 +113,13 @@ public:
     [[nodiscard]] ModTableView* mod_view() const { return mod_view_; }
     [[nodiscard]] QSplitter* console_splitter() const { return console_splitter_; }
 
+    // Lock or unlock the whole mod manager interface. Locking blocks user
+    // interaction (mouse + keyboard) across the main window and greys it out,
+    // so long-running operations like archive installs can't race the user.
+    // Always re-enable when the operation finishes or cancels - every path
+    // that disables must re-enable on completion/failure.
+    void set_ui_enabled(bool enabled);
+
     // Apply saved window geometry after show() - needed for Wayland where
     // restoreGeometry() before platform-window creation is silently ignored.
     void apply_initial_geometry();
@@ -138,6 +149,7 @@ private:
     void import_archives(const QStringList& paths);
     void export_modlist();
     void import_modlist();
+    void open_folder(ui::FolderKind kind);
     void create_separator_at_row(int row);
     void rename_mod_inline(int row);          // start inline edit on a row's name cell
     void apply_rename(int row, const QString& name);  // model rename_requested handler
@@ -250,6 +262,9 @@ private:
     void send_to_lowest_in_separator(const QString& id);
     void priority_move_selected(int step);
     void toggle_selected_mods(bool enabled);
+    // "Treat mod as root dir" (Tweaks menu): persist [General] rootOverride in
+    // each mod's meta.ini and refresh the model + Data tab. rows are model rows.
+    void toggle_root_override(const QList<int>& rows, bool on);
     void open_source_for_mod(const QString& source_type, const QString& source_id);
     [[nodiscard]] SourceVisitInfo source_visit_info(const QString& source_type, const QString& source_id, const QString& page_url = {}) const;
 
@@ -350,6 +365,9 @@ private:
     std::filesystem::path cache_thumbnails_dir_path() const;
     std::filesystem::path profiles_dir_path() const;
     std::filesystem::path overwrite_dir_path() const;
+    // Game's My Games folder under the prefix Documents dir (MO2's
+    // documentsDirectory). Empty when the game has no prefix / appid.
+    std::filesystem::path game_mygames_dir() const;
     std::filesystem::path resolve_mod_folder(const std::string& mod_id, const std::string& mods_subpath) const;
     QByteArray pending_geometry_;
     // Restored app state, applied once the widgets are ready

@@ -1,4 +1,5 @@
 #include "engine/log/logger.h"
+#include "engine/debug_env.h"
 
 #include <chrono>
 #include <cstdio>
@@ -88,7 +89,7 @@ void Logger::set_log_file(const std::string& path) {
 void Logger::enable_console(bool color) {
     (void)color;
     // Console defaults to Info level (DBG hidden); GMM_DEBUG=1 drops min to Debug.
-    const bool verbose = std::getenv("GMM_DEBUG") != nullptr;
+    const bool verbose = gmm_debug_enabled();
     add_callback([verbose](LogLevel level, const std::string& ts, const std::string& msg) {
         if (!verbose && level < LogLevel::Info) return;
         static const char* colors[] = {
@@ -104,6 +105,11 @@ void Logger::enable_console(bool color) {
                 colors[static_cast<int>(level)], tag, ts.c_str(), msg.c_str());
         fflush(stdout);
     });
+}
+
+void Logger::raw_append(const std::string& line) const {
+    if (log_fd_ >= 0)
+        ::write(log_fd_, line.data(), line.size());
 }
 
 std::string Logger::sanitize(std::string msg) const {

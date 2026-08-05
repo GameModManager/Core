@@ -57,6 +57,11 @@ public:
     bool show_change_game_confirmation() const;
     void set_show_change_game_confirmation(bool on);
 
+    // Ask for confirmation before closing while downloads are still running
+    // (the close cancels them). "Don't Ask" persists this as false.
+    bool confirm_close_with_downloads() const;   // key: close/confirm_downloads
+    void set_confirm_close_with_downloads(bool on);
+
     // general ---------------------------------------------------------------
     bool check_for_updates() const;
     void set_check_for_updates(bool on);

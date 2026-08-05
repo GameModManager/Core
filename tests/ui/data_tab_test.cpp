@@ -165,7 +165,8 @@ int main(int argc, char** argv) {
     registry["Data/overwrite.txt"] = {Owner(ui::kOverwriteModId, 999999)};
 
     TestDataTab tab;
-    tab.show_data(registry, mods, /*conflict_reversed=*/false, mods_dir, {});
+    tab.show_data(registry, mods, /*conflict_reversed=*/false, mods_dir, {},
+                  /*game_root_dir=*/{}, /*mods_subpath=*/"Data", /*deploy_prefix=*/"Data");
     QTreeWidget* tree = tab.tree_widget();
 
     // --- Tree population.
@@ -342,6 +343,20 @@ int main(int argc, char** argv) {
         auto* add_exe_act = action_with_text(menu, "&Add as Executable");
         check(add_exe_act && add_exe_act->isEnabled(),
               "Add as Executable is enabled for an executable");
+
+        // Triggering it emits the merged-view (deploy-relative) path - what
+        // the launch overlay resolves - never the on-disk mods-folder path.
+        bool got_add_exe = false;
+        QString add_exe_path;
+        QString add_exe_name;
+        QObject::connect(&tab, &ui::DataTab::add_executable_requested,
+                         [&](const QString& p, const QString& name) {
+                             got_add_exe = true; add_exe_path = p; add_exe_name = name;
+                         });
+        if (add_exe_act) add_exe_act->trigger();
+        check(got_add_exe && add_exe_path == "Data/scripts/test.exe" &&
+                  add_exe_name == "test.exe",
+              "Add as Executable carries the deploy-relative path and file name");
     }
 
     // --- Context menu on a hidden file offers Un-Hide.
@@ -406,7 +421,8 @@ int main(int argc, char** argv) {
     registry2["Data/newfile.txt"] = {Owner("ModC", 3)};
 
     auto* nif_before = find_item(tree, {"Data", "meshes", "test.nif"});
-    tab.apply_mod(registry2, "ModC", mods, /*conflict_reversed=*/false, mods_dir, {});
+    tab.apply_mod(registry2, "ModC", mods, /*conflict_reversed=*/false, mods_dir, {},
+                  /*game_root_dir=*/{}, /*mods_subpath=*/"Data", /*deploy_prefix=*/"Data");
 
     auto* nif_after = find_item(tree, {"Data", "meshes", "test.nif"});
     check(nif_after != nullptr, "shared file row survives the incremental update");

@@ -25,6 +25,8 @@
 #include "ui/smooth_scroll.h"
 #include "ui/settings/settings.h"
 
+#include <filesystem>
+
 namespace ui {
 
 // ---------------------------------------------------------------------------
@@ -351,8 +353,16 @@ void ExecEntryDialog::on_add_from_file() {
     // MO2 uses the binary's base name as the initial title.
     e.title = QFileInfo(path).completeBaseName();
     if (!game_dir_.empty()) {
-        auto game_qdir = QDir(QString::fromStdString(game_dir_.string()));
-        e.path = game_qdir.relativeFilePath(path);
+        // Canonicalize both sides: game_dir commonly goes through the ~/.steam
+        // symlink, so a raw relativeFilePath() produces a .. count that only
+        // matches the realpath spelling and dead-ends at the symlinked one.
+        std::error_code ec;
+        auto canon_base = std::filesystem::weakly_canonical(game_dir_, ec);
+        const auto base = ec || canon_base.empty() ? game_dir_ : canon_base;
+        auto canon_path = QFileInfo(path).canonicalFilePath();
+        if (canon_path.isEmpty()) canon_path = path;
+        auto game_qdir = QDir(QString::fromStdString(base.string()));
+        e.path = game_qdir.relativeFilePath(canon_path);
     } else {
         e.path = path;
     }
@@ -655,8 +665,15 @@ void ExecEntryDialog::browse_binary() {
 
     QString rel;
     if (!game_dir_.empty()) {
-        auto game_qdir = QDir(QString::fromStdString(game_dir_.string()));
-        rel = game_qdir.relativeFilePath(path);
+        // Canonicalize both sides (same rationale as on_add_from_file): the
+        // game dir commonly goes through the ~/.steam symlink.
+        std::error_code ec;
+        auto canon_base = std::filesystem::weakly_canonical(game_dir_, ec);
+        const auto base = ec || canon_base.empty() ? game_dir_ : canon_base;
+        auto canon_path = QFileInfo(path).canonicalFilePath();
+        if (canon_path.isEmpty()) canon_path = path;
+        auto game_qdir = QDir(QString::fromStdString(base.string()));
+        rel = game_qdir.relativeFilePath(canon_path);
     } else {
         rel = path;
     }

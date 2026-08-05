@@ -56,6 +56,7 @@ void MainToolbar::set_vertical(bool vertical) {
 }
 
 void MainToolbar::set_icon_size(int size) {
+    current_icon_size_ = size;
     for (auto* btn : gmm_buttons_) btn->setIconSize(QSize(size, size));
     for (auto* btn : exec_buttons_) btn->setIconSize(QSize(size, size));
 }
@@ -67,7 +68,7 @@ QToolButton* MainToolbar::add_gmm_button(const QString& tooltip, const QString& 
     auto theme_icon = QIcon::fromTheme(icon_name);
     btn->setIcon(theme_icon.isNull() ? style()->standardIcon(QStyle::SP_ComputerIcon) : theme_icon);
     btn->setAutoRaise(true);
-    btn->setIconSize(QSize(24, 24));
+    btn->setIconSize(QSize(current_icon_size_, current_icon_size_));
     btn->setToolButtonStyle(Qt::ToolButtonIconOnly);
     gmm_buttons_.append(btn);
     return btn;
@@ -78,7 +79,7 @@ QToolButton* MainToolbar::add_proton_button(const QIcon& icon) {
     proton_button_->setToolTip(tr("Proton options"));
     proton_button_->setIcon(icon);
     proton_button_->setAutoRaise(true);
-    proton_button_->setIconSize(QSize(24, 24));
+    proton_button_->setIconSize(QSize(current_icon_size_, current_icon_size_));
     proton_button_->setToolButtonStyle(Qt::ToolButtonIconOnly);
     // Body click opens the Proton panel; the arrow opens the dropdown menu.
     proton_button_->setPopupMode(QToolButton::MenuButtonPopup);
@@ -103,7 +104,7 @@ QToolButton* MainToolbar::add_exec_button(const QString& tooltip, const QIcon& i
     btn->setToolTip(tooltip);
     btn->setIcon(icon);
     btn->setAutoRaise(true);
-    btn->setIconSize(QSize(24, 24));
+    btn->setIconSize(QSize(current_icon_size_, current_icon_size_));
     btn->setToolButtonStyle(Qt::ToolButtonIconOnly);
     exec_buttons_.append(btn);
     layout_->addWidget(btn);

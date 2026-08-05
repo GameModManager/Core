@@ -78,12 +78,26 @@ RightPanel::RightPanel(QWidget* parent)
     // Re-filter when the user switches tabs
     connect(tab_widget_, &QTabWidget::currentChanged, this, [this]() {
         apply_filter();
+        update_sort_visibility();
     });
 
     // Re-filter as the user types
     connect(filter_bar_, &RightFilterBar::filter_changed, this, [this]() {
         apply_filter();
     });
+
+    // Forward the LOOT sort shortcut up to MainWindow
+    connect(filter_bar_, &RightFilterBar::sort_requested,
+            this, &RightPanel::sort_requested);
+
+    // The Sort button only makes sense on the Plugins tab
+    update_sort_visibility();
+}
+
+void RightPanel::update_sort_visibility() {
+    const bool on_plugins_tab =
+        tab_widget_->currentWidget() == plugins_tab();
+    filter_bar_->set_sort_visible(on_plugins_tab);
 }
 
 QTableWidget* RightPanel::current_table() const {
