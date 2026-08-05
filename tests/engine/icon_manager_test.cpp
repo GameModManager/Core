@@ -68,6 +68,12 @@ int main(int argc, char** argv) {
     fs::create_directories(bundled_dir);
     write_png(bundled_dir / "bundled-key.png");
 
+    // Branded source icons: resources/icons/vendor/<key>.ico
+    const fs::path vendor_dir = bundled_dir / "vendor";
+    fs::create_directories(vendor_dir);
+    write_png(vendor_dir / "nexusmods.ico");
+    write_png(vendor_dir / "loverslab.ico");
+
     // Packs: fugue (base) + zeta (arbitrary user-facing pack).
     const fs::path packs = bundled_dir / "packs";
     fs::create_directories(packs / "fugue");
@@ -130,6 +136,29 @@ int main(int argc, char** argv) {
           "standardIcon fallback fires when everything else misses");
     check(!icon_has_surface(mgr.resolve_icon("gmm-no-such-key", QStyle::SP_CustomBase)),
           "SP_CustomBase means no fallback: unresolved key is null");
+
+    // Vendor tier: branded source icons resolve from resources/icons/vendor/.
+    check(icon_has_surface(mgr.resolve_icon("nexusmods")),
+          "default: vendor subdir supplies branded source icons");
+    check(icon_has_surface(mgr.resolve_icon("loverslab")),
+          "default: vendor subdir supplies loverslab");
+    mgr.set_mode("system");
+    check(icon_has_surface(mgr.resolve_icon("nexusmods")),
+          "system: vendor icons still act as the app default net");
+    mgr.set_mode("default");
+
+    // vendor_icon_key mapping: source_type and display strings both map.
+    check(engine::vendor_icon_key("nexus") == "nexusmods", "vendor_icon_key: nexus type");
+    check(engine::vendor_icon_key("Nexus Mods") == "nexusmods",
+          "vendor_icon_key: Nexus Mods display string");
+    check(engine::vendor_icon_key("LoversLab") == "loverslab",
+          "vendor_icon_key: LoversLab");
+    check(engine::vendor_icon_key("steam") == "steam", "vendor_icon_key: steam type");
+    check(engine::vendor_icon_key("Steam Workshop") == "steam",
+          "vendor_icon_key: Steam Workshop display string");
+    check(engine::vendor_icon_key("moddb") == "moddb", "vendor_icon_key: moddb");
+    check(engine::vendor_icon_key("Manual").empty(), "vendor_icon_key: manual has no icon");
+    check(engine::vendor_icon_key("").empty(), "vendor_icon_key: empty has no icon");
 
     fs::remove_all(base);
 

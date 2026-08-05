@@ -666,6 +666,12 @@ QWidget* SettingsDialog::build_sources_tab() {
                 content = lbl;
             }
             tabs->addTab(content, QString::fromStdString(provider->display_name()));
+            const std::string vendor_key =
+                engine::vendor_icon_key(provider->source_type());
+            if (!vendor_key.empty())
+                tabs->setTabIcon(tabs->count() - 1,
+                                 engine::IconManager::instance().resolve_icon(
+                                     QString::fromStdString(vendor_key)));
         }
         layout->addWidget(tabs, 1);
     }

@@ -3,6 +3,7 @@
 #include "engine/meta/mod_meta.h"
 #include "engine/source/nexus_provider.h"
 #include "engine/source/source_provider.h"
+#include "engine/theme/icon_manager.h"
 #include "ui/modinfo/bbcode.h"
 #include "ui/settings/settings.h"
 
@@ -203,20 +204,35 @@ void SourceTab::populate() {
         return;
     }
 
+    // One sub-tab per source. Branded source icons (Nexus Mods, LoversLab,
+    // Steam Workshop) resolve from resources/icons/vendor/ via IconManager.
+    auto add_source_tab = [this](QWidget* page, const QString& title,
+                                 const QString& source_key) {
+        const std::string vendor_key = engine::vendor_icon_key(source_key.toStdString());
+        if (vendor_key.empty()) {
+            sources_->addTab(page, title);
+        } else {
+            sources_->addTab(page, engine::IconManager::instance().resolve_icon(
+                                       QString::fromStdString(vendor_key)),
+                             title);
+        }
+    };
+
     for (const QString& name : sources) {
         auto* provider = find_provider(name);
         if (provider == nullptr) {
             auto* hint = new QLabel(
                 tr("This source has no configurable settings."), sources_);
             hint->setWordWrap(true);
-            sources_->addTab(hint, name);
+            add_source_tab(hint, name, name);
             continue;
         }
         QWidget* page =
             provider->source_type() == "nexus"
                 ? build_nexus_page(sources_)
                 : build_generic_page(provider, sources_);
-        sources_->addTab(page, name);
+        add_source_tab(page, name,
+                       QString::fromStdString(provider->source_type()));
     }
 
     if (mod_id_ == nullptr) return;  // no Nexus page for this game
