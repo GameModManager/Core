@@ -84,6 +84,12 @@ public:
     void set_style(const QString& name);
     void clear_style();                    // no Qt built-in style selected
 
+    // icon pack ------------------------------------------------------------
+    // "default" (theme icons first, then system), "system" (ignore theme/pack
+    // icons), or a bundled pack name ("fugue", "mo2", ...).
+    QString icon_pack() const;
+    void set_icon_pack(const QString& name);
+
     // geometry ---------------------------------------------------------------
     bool center_dialogs() const;
     void set_center_dialogs(bool on);

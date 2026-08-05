@@ -245,6 +245,16 @@ void Settings::clear_style() {
     settings_.remove("style");
 }
 
+// icon pack ------------------------------------------------------------------
+
+QString Settings::icon_pack() const {
+    return settings_.value("appearance/icon_pack", "default").toString();
+}
+
+void Settings::set_icon_pack(const QString& name) {
+    settings_.setValue("appearance/icon_pack", name);
+}
+
 // geometry -------------------------------------------------------------------
 
 bool Settings::center_dialogs() const {

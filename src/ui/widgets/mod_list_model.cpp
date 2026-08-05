@@ -1,6 +1,8 @@
 #include "ui/widgets/mod_list_model.h"
 #include "ui/settings/settings.h"
 
+#include "engine/theme/icon_manager.h"
+
 #include <QBrush>
 #include <QColor>
 #include <QCoreApplication>
@@ -59,15 +61,16 @@ ModListModel::ModListModel(QObject* parent)
     ensure_overwrite_present();
     ensure_merged_present();
 
-    // Load conflict-status icons from <appDir>/../resources/icons/
-    auto iconDir = QCoreApplication::applicationDirPath() + "/../resources/icons/";
-    overwrite_icon_    = QIcon(iconDir + "conflict-overwrite.png");
-    overwritten_icon_  = QIcon(iconDir + "conflict-overwritten.png");
-    mixed_icon_        = QIcon(iconDir + "conflict-mixed.png");
-    redundant_icon_    = QIcon(iconDir + "conflict-redundant.png");
-    hidden_icon_       = QIcon(iconDir + "conflict-hidden.png");
+    // Conflict-status icons resolve through IconManager so a theme or icon
+    // pack can override them (the "mo2" pack ships MO2-style badges).
+    auto& icons = engine::IconManager::instance();
+    overwrite_icon_    = icons.resolve_icon("conflict-overwrite");
+    overwritten_icon_  = icons.resolve_icon("conflict-overwritten");
+    mixed_icon_        = icons.resolve_icon("conflict-mixed");
+    redundant_icon_    = icons.resolve_icon("conflict-redundant");
+    hidden_icon_       = icons.resolve_icon("conflict-hidden");
     fomod_icon_        = make_wizard_hat_icon();
-    root_override_icon_ = QIcon(iconDir + "fugue/anchor.png");
+    root_override_icon_ = icons.resolve_icon("anchor");
 }
 
 int ModListModel::rowCount(const QModelIndex& parent) const {

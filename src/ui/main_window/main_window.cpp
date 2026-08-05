@@ -30,6 +30,7 @@
 #include "engine/debug_env.h"
 #include "engine/fs_utils.h"
 #include "engine/theme/theme_manager.h"
+#include "engine/theme/icon_manager.h"
 #include "engine/log/logger.h"
 #include "engine/detect/mod_scanner.h"
 #include "engine/detect/game_detector.h"
@@ -244,10 +245,8 @@ MainWindow::MainWindow(QWidget* parent)
 
     // --- Proton button: body opens the Proton options panel, arrow the menu ---
     {
-        QIcon proton_icon(
-            QCoreApplication::applicationDirPath() + "/../resources/icons/proton.png");
-        if (proton_icon.isNull())
-            proton_icon = style()->standardIcon(QStyle::SP_ComputerIcon);
+        QIcon proton_icon = engine::IconManager::instance().resolve_icon(
+            "proton", QStyle::SP_ComputerIcon);
         toolbar_->add_proton_button(proton_icon);
 
         auto* proton_menu = new QMenu(this);
@@ -2580,26 +2579,26 @@ void MainWindow::setup_mod_list_context_menu() {
             const bool has_content =
                 !engine::overwrite_is_empty(overwrite_dir_path(), ow_subpath);
 
-            auto* sync_act = menu.addAction(QIcon::fromTheme("merge"),
+            auto* sync_act = menu.addAction(engine::IconManager::instance().resolve_icon("merge"),
                 tr("Sync to Mods..."),
                 this, [this]() { sync_overwrite_to_mods(); });
-            auto* create_act = menu.addAction(QIcon::fromTheme("document-new"),
+            auto* create_act = menu.addAction(engine::IconManager::instance().resolve_icon("document-new"),
                 tr("Create Mod..."),
                 this, [this]() { create_mod_from_overwrite(); });
-            auto* move_act = menu.addAction(QIcon::fromTheme("go-down"),
+            auto* move_act = menu.addAction(engine::IconManager::instance().resolve_icon("go-down"),
                 tr("Move content to Mod..."),
                 this, [this]() { move_overwrite_content_to_mod(); });
-            auto* clear_act = menu.addAction(QIcon::fromTheme("edit-clear"),
+            auto* clear_act = menu.addAction(engine::IconManager::instance().resolve_icon("edit-clear"),
                 tr("Clear Overwrite..."),
                 this, [this]() { clear_overwrite(); });
             for (auto* act : {sync_act, create_act, move_act, clear_act})
                 act->setEnabled(has_content);
 
-            menu.addAction(QIcon::fromTheme("folder"), tr("Open in File Manager"),
+            menu.addAction(engine::IconManager::instance().resolve_icon("folder"), tr("Open in File Manager"),
                 this, [this]() { open_overwrite_in_file_manager(); });
 
             menu.addSeparator();
-            menu.addAction(QIcon::fromTheme("dialog-information"), tr("Information..."),
+            menu.addAction(engine::IconManager::instance().resolve_icon("dialog-information"), tr("Information..."),
                 this, [this]() { show_overwrite_info_dialog(); });
 
             menu.exec(mod_view_->viewport()->mapToGlobal(pos));
@@ -2609,15 +2608,15 @@ void MainWindow::setup_mod_list_context_menu() {
         if (entry.is_separator) {
             // MO2's separator context menu (modlistcontextmenu.cpp:381-409):
             // Rename (inline edit) / Remove / Select Color / Reset Color.
-            menu.addAction(QIcon::fromTheme("document-edit"), tr("Rename Separator..."),
+            menu.addAction(engine::IconManager::instance().resolve_icon("document-edit"), tr("Rename Separator..."),
                 this, [this, row]() { rename_mod_inline(row); });
-            menu.addAction(QIcon::fromTheme("edit-delete"), tr("Remove Separator..."),
+            menu.addAction(engine::IconManager::instance().resolve_icon("edit-delete"), tr("Remove Separator..."),
                 this, [this, row]() { delete_separator(row); });
             menu.addSeparator();
-            menu.addAction(QIcon::fromTheme("color-picker"), tr("Select Color..."),
+            menu.addAction(engine::IconManager::instance().resolve_icon("color-picker"), tr("Select Color..."),
                 this, [this]() { select_color_for_selected(); });
             if (!entry.separator_color.isEmpty()) {
-                menu.addAction(QIcon::fromTheme("edit-clear"), tr("Reset Color"),
+                menu.addAction(engine::IconManager::instance().resolve_icon("edit-clear"), tr("Reset Color"),
                     this, [this]() { reset_color_for_selected(); });
             }
             menu.exec(mod_view_->viewport()->mapToGlobal(pos));
@@ -2629,9 +2628,9 @@ void MainWindow::setup_mod_list_context_menu() {
         bool multi = sel.size() > 1;
 
         if (multi) {
-            menu.addAction(QIcon::fromTheme("dialog-ok"), tr("Enable Selected"),
+            menu.addAction(engine::IconManager::instance().resolve_icon("dialog-ok"), tr("Enable Selected"),
                 this, [this]() { toggle_selected_mods(true); });
-            menu.addAction(QIcon::fromTheme("dialog-cancel"), tr("Disable Selected"),
+            menu.addAction(engine::IconManager::instance().resolve_icon("dialog-cancel"), tr("Disable Selected"),
                 this, [this]() { toggle_selected_mods(false); });
             // Tweaks submenu: applies to every selected mod. Checked only when
             // ALL of them share the state; clicking applies the inverse.
@@ -2647,7 +2646,7 @@ void MainWindow::setup_mod_list_context_menu() {
                     rows << si.row();
                     if (m.root_override) any_on = true; else any_off = true;
                 }
-                auto* tweaks = menu.addMenu(QIcon::fromTheme("preferences-other"), tr("Tweaks"));
+                auto* tweaks = menu.addMenu(engine::IconManager::instance().resolve_icon("preferences-other"), tr("Tweaks"));
                 auto* root_act = tweaks->addAction(tr("Treat mod as root dir"));
                 root_act->setCheckable(true);
                 const bool all_on = any_on && !any_off;
@@ -2658,7 +2657,7 @@ void MainWindow::setup_mod_list_context_menu() {
                 });
             }
             menu.addSeparator();
-            menu.addAction(QIcon::fromTheme("edit-delete"), tr("Remove"),
+            menu.addAction(engine::IconManager::instance().resolve_icon("edit-delete"), tr("Remove"),
                 this, [this]() { remove_selected_mods(); });
             menu.exec(mod_view_->viewport()->mapToGlobal(pos));
             return;
@@ -2669,7 +2668,7 @@ void MainWindow::setup_mod_list_context_menu() {
         bool has_conflicts = entry.conflict_wins + entry.conflict_losses > 0;
 
         // Change Separator submenu
-        auto* sep_submenu = menu.addMenu(QIcon::fromTheme("view-sort"), tr("Change Separator"));
+        auto* sep_submenu = menu.addMenu(engine::IconManager::instance().resolve_icon("view-sort"), tr("Change Separator"));
         bool any_seps = false;
         for (const auto& m : mod_model_->mods()) {
             if (m.is_separator) {
@@ -2681,37 +2680,37 @@ void MainWindow::setup_mod_list_context_menu() {
         }
         sep_submenu->setEnabled(any_seps);
 
-        menu.addAction(QIcon::fromTheme("list-add"), tr("Create Separator"),
+        menu.addAction(engine::IconManager::instance().resolve_icon("list-add"), tr("Create Separator"),
             this, [this, row]() { create_separator_at_row(row); });
 
         if (has_conflicts) {
             menu.addSeparator();
-            menu.addAction(QIcon::fromTheme("go-top"), tr("Send to Highest Priority"),
+            menu.addAction(engine::IconManager::instance().resolve_icon("go-top"), tr("Send to Highest Priority"),
                 this, [this, mod_id]() { send_to_highest_priority(mod_id); });
-            menu.addAction(QIcon::fromTheme("go-bottom"), tr("Send to Lowest Priority"),
+            menu.addAction(engine::IconManager::instance().resolve_icon("go-bottom"), tr("Send to Lowest Priority"),
                 this, [this, mod_id]() { send_to_lowest_priority(mod_id); });
 
             if (!entry.separator_id.isEmpty() && mod_model_->has_conflicts_within_separator(mod_id)) {
-                menu.addAction(QIcon::fromTheme("go-up"), tr("Send to Highest in Separator"),
+                menu.addAction(engine::IconManager::instance().resolve_icon("go-up"), tr("Send to Highest in Separator"),
                     this, [this, mod_id]() { send_to_highest_in_separator(mod_id); });
-                menu.addAction(QIcon::fromTheme("go-down"), tr("Send to Lowest in Separator"),
+                menu.addAction(engine::IconManager::instance().resolve_icon("go-down"), tr("Send to Lowest in Separator"),
                     this, [this, mod_id]() { send_to_lowest_in_separator(mod_id); });
             }
         }
 
         menu.addSeparator();
-        menu.addAction(QIcon::fromTheme("dialog-ok"), tr("Enable Selected"),
+        menu.addAction(engine::IconManager::instance().resolve_icon("dialog-ok"), tr("Enable Selected"),
             this, [this]() { toggle_selected_mods(true); });
-        menu.addAction(QIcon::fromTheme("dialog-cancel"), tr("Disable Selected"),
+        menu.addAction(engine::IconManager::instance().resolve_icon("dialog-cancel"), tr("Disable Selected"),
             this, [this]() { toggle_selected_mods(false); });
 
         menu.addSeparator();
-        menu.addAction(QIcon::fromTheme("document-edit"), tr("Rename Mod..."),
+        menu.addAction(engine::IconManager::instance().resolve_icon("document-edit"), tr("Rename Mod..."),
             this, [this, row]() { rename_mod_inline(row); });
 
         // Tweaks submenu - per-mod deploy options (MO2's per-mod tweaks).
         {
-            auto* tweaks = menu.addMenu(QIcon::fromTheme("preferences-other"), tr("Tweaks"));
+            auto* tweaks = menu.addMenu(engine::IconManager::instance().resolve_icon("preferences-other"), tr("Tweaks"));
             auto* root_act = tweaks->addAction(tr("Treat mod as root dir"));
             root_act->setCheckable(true);
             root_act->setChecked(entry.root_override);
@@ -2729,7 +2728,7 @@ void MainWindow::setup_mod_list_context_menu() {
             auto src = source_visit_info(entry.source_type, entry.source_id,
                                          entry.source_page_url);
             if (!src.label.isEmpty()) {
-                auto* visit_act = menu.addAction(QIcon::fromTheme("text-html"), src.label,
+                auto* visit_act = menu.addAction(engine::IconManager::instance().resolve_icon("text-html"), src.label,
                     this, [this, src]() {
                         if (!src.url.isEmpty())
                             QDesktopServices::openUrl(QUrl(src.url));
@@ -2737,7 +2736,7 @@ void MainWindow::setup_mod_list_context_menu() {
                 visit_act->setEnabled(!src.url.isEmpty());
             }
         }
-        menu.addAction(QIcon::fromTheme("folder"), tr("Open in File Manager"),
+        menu.addAction(engine::IconManager::instance().resolve_icon("folder"), tr("Open in File Manager"),
             this, [this, mod_id]() {
                 auto folder = mods_dir_path() / mod_id.toStdString();
                 std::error_code ec;
@@ -2754,13 +2753,13 @@ void MainWindow::setup_mod_list_context_menu() {
             });
 
         menu.addSeparator();
-        menu.addAction(QIcon::fromTheme("edit-delete"), tr("Remove"),
+        menu.addAction(engine::IconManager::instance().resolve_icon("edit-delete"), tr("Remove"),
             this, [this]() { remove_selected_mods(); });
 
         // MO2 puts Information last (modlistcontextmenu.cpp:267-273), the
         // default action after all per-type actions.
         menu.addSeparator();
-        menu.addAction(QIcon::fromTheme("dialog-information"), tr("Information..."),
+        menu.addAction(engine::IconManager::instance().resolve_icon("dialog-information"), tr("Information..."),
             this, [this, mod_id]() { on_data_mod_info(mod_id); });
 
         menu.exec(mod_view_->viewport()->mapToGlobal(pos));
@@ -6277,6 +6276,16 @@ void MainWindow::show_settings_dialog() {
     if (!current_instance_root_.empty()) {
         current_instance_ = engine::Instance::from_root(current_instance_root_);
         current_instance_.read_toml();
+    }
+    // The icon-pack (and theme) settings may have changed in the dialog:
+    // re-sync IconManager and re-apply the persistent window/toolbar icons.
+    // Context menus build their icons on demand, so they pick it up already.
+    {
+        auto& icon_mgr = engine::IconManager::instance();
+        icon_mgr.set_current_theme(Settings::instance().theme().toStdString());
+        icon_mgr.set_mode(Settings::instance().icon_pack().toStdString());
+        toolbar_->reapply_icons();
+        qApp->setWindowIcon(icon_mgr.resolve_icon("gmm-logo"));
     }
     // The separator-scrollbar setting may have changed in the dialog.
     if (mod_view_) mod_view_->apply_scrollbar_policy();

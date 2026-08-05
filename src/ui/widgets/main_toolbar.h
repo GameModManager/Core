@@ -26,6 +26,11 @@ public:
 
     void set_vertical(bool vertical);
     void set_icon_size(int size);
+
+    // Re-resolve the built-in buttons (Switch Instance, Settings, Proton)
+    // through IconManager after the icon-pack setting changes.
+    void reapply_icons();
+
     [[nodiscard]] bool is_vertical() const { return vertical_; }
     [[nodiscard]] int current_icon_size() const { return current_icon_size_; }
 

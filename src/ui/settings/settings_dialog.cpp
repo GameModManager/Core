@@ -4,6 +4,7 @@
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/source/source_provider.h"
 #include "engine/theme/style_manager.h"
+#include "engine/theme/icon_manager.h"
 #include "engine/instance/instance.h"
 #include "engine/instance/instance_utils.h"
 #include "engine/log/logger.h"
@@ -212,6 +213,42 @@ QWidget* SettingsDialog::build_theme_tab() {
     gl->addWidget(theme_combo);
     gl->addWidget(theme_hint);
     layout->addWidget(group);
+
+    // -- Icon pack ---------------------------------------------------------
+    auto* icons_group = new QGroupBox(tr("Icon pack"), page);
+    auto* il = new QVBoxLayout(icons_group);
+    auto* pack_combo = new QComboBox(icons_group);
+    pack_combo->addItem(tr("Default (theme then system)"), "default");
+    pack_combo->addItem(tr("System (ignore theme and pack icons)"), "system");
+    const auto pack_names = engine::IconManager::instance().pack_names();
+    if (!pack_names.empty()) {
+        pack_combo->insertSeparator(pack_combo->count());
+        for (const auto& name : pack_names)
+            pack_combo->addItem(QString::fromStdString(name),
+                                QString::fromStdString(name));
+    }
+    const QString current_pack = s.icon_pack();
+    int pack_idx = pack_combo->findData(current_pack);
+    pack_combo->setCurrentIndex(pack_idx >= 0 ? pack_idx : 0);
+
+    auto* pack_hint = new QLabel(
+        tr("Icons resolve as: theme/pack icons first, then the system icon "
+           "theme, then the bundled Fugue base pack. \"System\" ignores theme "
+           "and pack icons entirely. Menu icons apply immediately; toolbar and "
+           "list icons refresh on the next launch."), icons_group);
+    pack_hint->setWordWrap(true);
+    il->addWidget(pack_combo);
+    il->addWidget(pack_hint);
+    layout->addWidget(icons_group);
+
+    connect(pack_combo, &QComboBox::currentIndexChanged, this,
+            [&s, pack_combo](int index) {
+                const QString data = pack_combo->itemData(index).toString();
+                s.set_icon_pack(data);
+                engine::IconManager::instance().set_mode(data.toStdString());
+                engine::Logger::instance().info(
+                    "Icon pack: " + data.toStdString());
+            });
 
     connect(theme_combo, &QComboBox::currentIndexChanged, this, [this, &s, theme_combo](int index) {
         const QString data = theme_combo->itemData(index).toString();
