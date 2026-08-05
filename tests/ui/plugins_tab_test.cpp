@@ -1,8 +1,8 @@
 // Offscreen GUI test for the Plugins tab (Skyrim-style game plugins).
 //
 // Verifies:
-//   - set_plugins() populates all four columns (name with in-cell enable
-//     checkbox, flags, priority, mod index) in row order,
+//   - set_plugins() populates all five columns (name with in-cell enable
+//     checkbox, flags, priority, mod index, locked) in row order,
 //   - force-loaded rows (game-native, CC) show a non-checkable checked box,
 //     are greyed, and have no drag flag,
 //   - the flags column renders MO2-style status emblems (warning for missing
@@ -25,6 +25,7 @@
 //
 // Hermetic: offscreen platform, throwaway XDG_CONFIG_HOME, no network.
 #include "ui/panels/tab_panels.h"
+#include "engine/theme/icon_manager.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/mod_table_view.h"
 
@@ -90,6 +91,12 @@ int main(int argc, char** argv) {
     QCoreApplication::setOrganizationName("GameModManager");
     QCoreApplication::setApplicationName("GameModManager");
 
+    // IconManager resolves icons from <build>/../resources. Without this the
+    // tier chain is empty and the lock pin (fugue pack) comes back null on the
+    // offscreen platform.
+    engine::IconManager::instance().discover_packs(
+        std::filesystem::path(QCoreApplication::applicationDirPath().toStdString()));
+
     engine::GamePlugin native;  // game-native: pinned
     native.name = "Skyrim.esm";
     native.is_master_flagged = true;
@@ -138,7 +145,9 @@ int main(int argc, char** argv) {
     tab.set_plugins(plugins);
 
     check(table->rowCount() == 4, "four plugin rows");
-    check(table->columnCount() == 4, "four columns");
+    check(table->columnCount() == 5, "five columns");
+    check(table->horizontalHeaderItem(4)->text() == QLatin1String("Locked"),
+          "Locked column header");
     check(row_with_name(table, "Skyrim.esm") == 0, "native ESM first");
     check(row_with_name(table, "ccBGSSSE001-Fish.esm") == 1, "CC second");
     check(row_with_name(table, "SkyUI_SE.esp") == 2, "mod plugin after CC");
@@ -444,7 +453,8 @@ int main(int argc, char** argv) {
               "tooltip dummy paragraph");
 
         // Locked plugin: immovable (no drag flag) but still toggleable, with
-        // the lock emblem and the full tooltip intact.
+        // the lock pin in its own rightmost column (not a Flags emblem) and the
+        // full tooltip intact.
         const int lr = row_with_name(table, "Locked.esp");
         QTableWidgetItem* ln = table->item(lr, 0);
         check(ln->flags() & Qt::ItemIsUserCheckable,
@@ -453,13 +463,19 @@ int main(int argc, char** argv) {
               "locked row not draggable");
         check(!(table->item(lr, 1)->flags() & Qt::ItemIsDragEnabled) &&
                   !(table->item(lr, 2)->flags() & Qt::ItemIsDragEnabled) &&
-                  !(table->item(lr, 3)->flags() & Qt::ItemIsDragEnabled),
+                  !(table->item(lr, 3)->flags() & Qt::ItemIsDragEnabled) &&
+                  !(table->item(lr, 4)->flags() & Qt::ItemIsDragEnabled),
               "locked row drag disabled on every column");
-        check(!table->item(lr, 1)
+        check(table->item(lr, 1)
                        ->data(ui::PluginsTab::kPluginFlagsRole)
-                       .value<QList<QIcon>>()
-                       .isEmpty(),
-              "lock emblem shown for a locked plugin");
+                       .isNull(),
+              "lock is no longer a Flags emblem");
+        check(!table->item(lr, 4)->icon().isNull(),
+              "lock pin shown in the Locked column");
+        check(table->item(lr, 4)->toolTip().contains("locked"),
+              "Locked cell hover explains the pin");
+        check(table->item(rr, 4)->icon().isNull(),
+              "unlocked rich row has no lock pin");
         check(!ln->toolTip().isEmpty(), "locked row keeps the rich tooltip");
 
         // Multiple emblems on one row stay separate QIcons (the composite

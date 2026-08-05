@@ -153,14 +153,21 @@ void RightPanel::ensure_tab(const std::string& capability, const QString& label)
         auto* t = new PluginsTab(tab_widget_);
         // Column header tooltips mirror MO2's PluginList::getColumnToolTip.
         setup_toggle_header(t->table(),
-                            {tr("Enabled"), tr("Plugin Name"), tr("Flags"),
-                             tr("Priority"), tr("Mod Index")},
+                            {tr("Plugin Name"), tr("Flags"), tr("Priority"),
+                             tr("Mod Index"), tr("Locked")},
                             {tr("Name of the plugin"),
                              tr("Emblems to highlight things that might require attention."),
                              tr("Load priority of plugins. The higher, the more "
                                 "\"important\" it is and thus overwrites data from "
                                 "plugins with lower priority."),
-                             tr("Determines the formids of objects originating from this mod.")});
+                             tr("Determines the formids of objects originating from this mod."),
+                             tr("Whether this plugin's load order position is pinned.")});
+        // Mod Index keeps stretching (it used to be the last section); the
+        // Locked column stays a fixed narrow slot.
+        auto* hdr = t->table()->horizontalHeader();
+        hdr->setStretchLastSection(false);
+        hdr->setSectionResizeMode(3, QHeaderView::Stretch);
+        hdr->resizeSection(4, 80);
         tab = t;
     } else if (capability == "conflicts") {
         auto* t = new ConflictsTab(tab_widget_);

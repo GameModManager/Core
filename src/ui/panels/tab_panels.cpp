@@ -553,23 +553,22 @@ static QString dummy_html() {
                           "typically used to load a paired archive file.");
 }
 
-// GMM-specific emblem (MO2 has no lock flag): the load-order pin.
-static QString locked_html() {
-    return "<br><b>" + PluginsTab::tr("Locked") + "</b>: " +
-           PluginsTab::tr("This plugin's load order position is locked.");
+// GMM-specific lock marker (MO2 has no lock flag): the load-order pin. It
+// lives in its own rightmost column, not among the Flags emblems.
+static QString locked_column_tooltip() {
+    return PluginsTab::tr("This plugin's load order position is locked.");
 }
 
 // (token, html) for every emblem the row shows, in MO2 iconData() order. The
 // Flags column stores icons and tooltips as two parallel lists built from this,
-// so the per-icon hover text can never point at the wrong emblem.
+// so the per-icon hover text can never point at the wrong emblem. The lock is
+// intentionally NOT here - it has its own column.
 static QVector<QPair<QString, QString>> plugin_flag_fragments(
     const engine::GamePlugin& p) {
     QVector<QPair<QString, QString>> frags;
     if (!p.missing_masters.empty())
         frags << QPair<QString, QString>(QStringLiteral("warning"),
                                          missing_masters_html(p));
-    if (p.locked)
-        frags << QPair<QString, QString>(QStringLiteral("locked"), locked_html());
     if (p.has_ini)
         frags << QPair<QString, QString>(QStringLiteral("attachment"),
                                          has_ini_html());
@@ -793,9 +792,10 @@ QTableWidget* PluginsTab::table() const {
 PluginsTab::PluginsTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    table_ = new PluginTable(0, 4, this);
+    table_ = new PluginTable(0, 5, this);
     table_->setHorizontalHeaderLabels(
-        {tr("Plugin Name"), tr("Flags"), tr("Priority"), tr("Mod Index")});
+        {tr("Plugin Name"), tr("Flags"), tr("Priority"), tr("Mod Index"),
+         tr("Locked")});
     table_->horizontalHeader()->setStretchLastSection(true);
     table_->verticalHeader()->setVisible(false);
     // Flags column: one QIcon per emblem under kPluginFlagsRole, painted by the
@@ -939,6 +939,20 @@ void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
         if (p.force_loaded) idx->setForeground(fixed_color);
         idx->setToolTip(tooltip);
         table_->setItem(i, 3, idx);
+
+        // Column 4: load-order lock (GMM-specific, not in MO2's emblem set).
+        // Icon-only cell, empty for unlocked rows; shows the same pin that used
+        // to ride the Flags column.
+        auto* lock = new QTableWidgetItem;
+        Qt::ItemFlags lf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
+        if (!p.force_loaded && !p.locked) lf |= Qt::ItemIsDragEnabled;
+        lock->setFlags(lf);
+        lock->setTextAlignment(Qt::AlignCenter);
+        if (p.locked) {
+            lock->setIcon(plugin_flag_icon(QLatin1String("locked")));
+            lock->setToolTip(locked_column_tooltip());
+        }
+        table_->setItem(i, 4, lock);
     }
     syncing_ = false;
     apply_highlights();  // rows were rebuilt; re-tint selected-mod/master rows
