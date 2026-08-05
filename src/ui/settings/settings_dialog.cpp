@@ -203,21 +203,14 @@ QWidget* SettingsDialog::build_theme_tab() {
         theme_idx = theme_combo->findData(current_theme);
     theme_combo->setCurrentIndex(theme_idx >= 0 ? theme_idx : 0);
 
-    auto* theme_hint = new QLabel(
+    // The old "Style" / "Icon pack" boxes were replaced by a plain two-row form;
+    // the hints that used to sit below each combo now hover over the selector.
+    theme_combo->setToolTip(
         tr("Editing a theme's .qss or tokens.json on disk live-reloads it. "
-           "Qt styles (Fusion, Windows, ...) are the built-in Qt look - no custom theme files."), page);
-    theme_hint->setWordWrap(true);
-
-    auto* group = new QGroupBox(tr("Style"), page);
-    auto* gl = new QVBoxLayout(group);
-    gl->addWidget(theme_combo);
-    gl->addWidget(theme_hint);
-    layout->addWidget(group);
+           "Qt styles (Fusion, Windows, ...) are the built-in Qt look - no custom theme files."));
 
     // -- Icon pack ---------------------------------------------------------
-    auto* icons_group = new QGroupBox(tr("Icon pack"), page);
-    auto* il = new QVBoxLayout(icons_group);
-    auto* pack_combo = new QComboBox(icons_group);
+    auto* pack_combo = new QComboBox(page);
     pack_combo->addItem(tr("Default (theme then system)"), "default");
     pack_combo->addItem(tr("System (ignore theme and pack icons)"), "system");
     const auto pack_names = engine::IconManager::instance().pack_names();
@@ -230,16 +223,17 @@ QWidget* SettingsDialog::build_theme_tab() {
     const QString current_pack = s.icon_pack();
     int pack_idx = pack_combo->findData(current_pack);
     pack_combo->setCurrentIndex(pack_idx >= 0 ? pack_idx : 0);
-
-    auto* pack_hint = new QLabel(
+    pack_combo->setToolTip(
         tr("Icons resolve as: theme/pack icons first, then the system icon "
            "theme, then the bundled Fugue base pack. \"System\" ignores theme "
            "and pack icons entirely. Menu icons apply immediately; toolbar and "
-           "list icons refresh on the next launch."), icons_group);
-    pack_hint->setWordWrap(true);
-    il->addWidget(pack_combo);
-    il->addWidget(pack_hint);
-    layout->addWidget(icons_group);
+           "list icons refresh on the next launch."));
+
+    auto* form = new QFormLayout;
+    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    form->addRow(tr("Style:"), theme_combo);
+    form->addRow(tr("Icons:"), pack_combo);
+    layout->addLayout(form);
 
     connect(pack_combo, &QComboBox::currentIndexChanged, this,
             [&s, pack_combo](int index) {
