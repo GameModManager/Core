@@ -137,6 +137,14 @@ struct PipelineContext {
     // Download progress callback (bytes downloaded, total bytes, speed in bytes/sec)
     std::function<void(int64_t downloaded, int64_t total, double speed)> on_progress;
 
+    // Resolved download metadata. FetchStage fires this right after the
+    // provider's resolve_download_info - before any bytes flow - so the UI can
+    // replace its placeholder row name with the real mod/file name immediately
+    // instead of waiting for download_complete. Invoked on the pipeline thread.
+    // Both values may be empty when the provider could not resolve anything.
+    std::function<void(const std::string& archive_name,
+                       const std::string& display_name)> on_download_meta;
+
     // Install-stage progress (extract/copy): current percent 0-100, or -1 when
     // the stage cannot estimate progress (indeterminate bar), plus a short
     // human status line ("Extracting SkyUI.zip…", "Installing to SkyUI…").

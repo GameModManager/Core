@@ -72,6 +72,14 @@ signals:
     void download_complete(const std::string& mod_id, bool success,
                            const std::string& archive_path,
                            const std::string& name = {});
+    // Emitted as soon as the provider resolves the download's metadata - right
+    // before the bytes start flowing (FetchStage fires on_download_meta).
+    // display_name is the source-resolved mod/file name ("" when unknown);
+    // archive_name is the real archive filename the download will be saved as.
+    // The UI uses this to replace the placeholder row name immediately.
+    void download_meta(const std::string& mod_id,
+                       const std::string& archive_name,
+                       const std::string& display_name);
     // installed_folder is the final mods/<folder> the install produced (empty
     // when nothing was installed, e.g. a metadata-only mod). The UI can add
     // just that one row instead of rescanning the whole mods dir.

@@ -10,6 +10,7 @@
 #include "engine/pipeline/launch_stage.h"
 #include "engine/pipeline/sync_stage.h"
 #include "engine/model/mod.h"
+#include "engine/source/source_provider.h"
 
 #include <cassert>
 #include <cstdio>
@@ -117,6 +118,40 @@ public:
 private:
     std::filesystem::path staging_;
     bool cancel_;
+};
+
+// A provider that resolves download metadata without touching the network and
+// writes a trivial archive in fetch() - lets FetchStage be tested hermetically.
+class TestMetaProvider final : public SourceProvider {
+public:
+    std::string source_type() const override { return "test-meta"; }
+    bool fetch(const Mod&, PipelineContext&,
+               const std::filesystem::path& dest_path) override {
+        std::ofstream(dest_path) << "archive";
+        return true;
+    }
+    SourceDownloadInfo resolve_download_info(const Mod&) const override {
+        SourceDownloadInfo info;
+        info.archive_name = "Real_Archive-198-489053.7z";
+        info.display_name = "Real Mod Name";
+        return info;
+    }
+};
+
+// Same, but resolve_download_info returns nothing (e.g. no API key / probe
+// failed) - FetchStage must fall back to the default names and report the
+// empty metadata so the UI keeps its placeholder.
+class TestBlankProvider final : public SourceProvider {
+public:
+    std::string source_type() const override { return "test-blank"; }
+    bool fetch(const Mod&, PipelineContext&,
+               const std::filesystem::path& dest_path) override {
+        std::ofstream(dest_path) << "archive";
+        return true;
+    }
+    SourceDownloadInfo resolve_download_info(const Mod&) const override {
+        return {};
+    }
 };
 }  // namespace
 
@@ -732,6 +767,73 @@ int main() {
         assert(!std::filesystem::exists(staging));
         std::printf("PASS: pipeline_test — run %s cleans up staging dir\n",
                     cancel ? "cancel" : "failure");
+    }
+
+    // FetchStage on_download_meta: as soon as the provider resolves the
+    // download metadata (before any bytes flow), the callback carries the real
+    // archive name + display name so the UI can replace its placeholder row
+    // name immediately instead of waiting for download_complete.
+    {
+        engine::SourceRegistry::instance().register_provider(
+            std::make_unique<TestMetaProvider>());
+        TempDir tmp;
+        auto mods = tmp.root / "mods";
+        std::filesystem::create_directories(mods);
+        FetchStage stage;
+        PipelineContext ctx;
+        ctx.mods_dir = mods;
+        bool meta_fired = false;
+        ctx.on_download_meta = [&](const std::string& archive_name,
+                                   const std::string& display_name) {
+            meta_fired = true;
+            assert(archive_name == "Real_Archive-198-489053.7z");
+            assert(display_name == "Real Mod Name");
+        };
+        Mod mod;
+        mod.id = "198-489053";
+        mod.name = "Mod file 198-489053";  // the worker's placeholder
+        mod.download_source_type = "test-meta";
+        mod.download_source_id = "198";
+        mod.download_nxm.file_id = 489053;
+        assert(stage.execute(mod, ctx));
+        assert(meta_fired);
+        assert(mod.name == "Real Mod Name");
+        assert(mod.archive_filename == "Real_Archive-198-489053.7z");
+        assert(std::filesystem::exists(
+            tmp.root / "downloads" / "Real_Archive-198-489053.7z"));
+        std::printf(
+            "PASS: FetchStage on_download_meta carries the resolved name before bytes flow\n");
+    }
+
+    // Same callback when the provider has no metadata: fires empty (so the UI
+    // keeps its placeholder), mod.name is untouched, and the default
+    // "<source_id>.zip" archive name is used.
+    {
+        engine::SourceRegistry::instance().register_provider(
+            std::make_unique<TestBlankProvider>());
+        TempDir tmp;
+        auto mods = tmp.root / "mods";
+        std::filesystem::create_directories(mods);
+        FetchStage stage;
+        PipelineContext ctx;
+        ctx.mods_dir = mods;
+        std::string got_archive, got_display;
+        ctx.on_download_meta = [&](const std::string& a, const std::string& d) {
+            got_archive = a;
+            got_display = d;
+        };
+        Mod mod;
+        mod.id = "blank";
+        mod.name = "Mod file blank";  // placeholder
+        mod.download_source_type = "test-blank";
+        mod.download_source_id = "7";
+        assert(stage.execute(mod, ctx));
+        assert(got_archive.empty() && got_display.empty());
+        assert(mod.name == "Mod file blank");
+        assert(mod.archive_filename == "7.zip");
+        assert(std::filesystem::exists(tmp.root / "downloads" / "7.zip"));
+        std::printf(
+            "PASS: FetchStage on_download_meta fires empty when the provider has no info\n");
     }
 
     return 0;
