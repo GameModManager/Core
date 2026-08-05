@@ -4,7 +4,6 @@ Every key here is actively resolved somewhere in src/ — do NOT delete the matc
 asset from this directory. If you add a new icon to the app, add its key to this list
 in the same session (AGENTS.md rule).
 
-anchor
 color-picker
 conflict-hidden
 conflict-mixed
@@ -40,6 +39,7 @@ plugin-medium
 plugin-warning
 preferences-other
 proton
+root-dir
 text-html
 view-sort
 
