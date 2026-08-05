@@ -154,11 +154,20 @@ void PipelineWorker::run_fetch(engine::Mod mod, const std::string& id,
         emit download_progress(id, dl, total, speed);
     };
 
+    // Fire the resolved name as soon as FetchStage knows it (before the bytes
+    // flow) so the UI can drop its placeholder immediately. Cleared with the
+    // progress callback after the run.
+    fetch_pipeline_->ctx().on_download_meta =
+        [this, id](const std::string& archive_name, const std::string& display_name) {
+            emit download_meta(id, archive_name, display_name);
+        };
+
     const bool success =
         fetch_pipeline_->run(mod) == engine::PipelineResult::Success;
 
-    // Clean up progress callback
+    // Clean up progress callbacks
     fetch_pipeline_->ctx().on_progress = nullptr;
+    fetch_pipeline_->ctx().on_download_meta = nullptr;
 
     if (fetch_pipeline_->ctx().download_paused) {
         engine::Logger::instance().debug("Download paused: " + id);

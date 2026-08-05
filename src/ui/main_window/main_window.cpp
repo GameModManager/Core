@@ -557,6 +557,22 @@ MainWindow::MainWindow(QWidget* parent)
         save_download_manifest();
     });
 
+    // Download metadata resolved by the provider right before the bytes flow:
+    // replace the "Mod #<id> - file <id>" / "LoversLab file <id>" placeholder
+    // with the real name immediately, instead of only when the download ends.
+    // Prefer the source-resolved mod/file name; fall back to the raw archive
+    // name (extension stripped) so the row is descriptive either way.
+    connect(pipeline_thread_->worker(), &PipelineWorker::download_meta,
+            this, [this](const std::string& id, const std::string& archive_name,
+                         const std::string& display_name) {
+        auto* dt = right_panel_->downloads_tab();
+        if (!dt) return;
+        std::string name = display_name;
+        if (name.empty() && !archive_name.empty())
+            name = std::filesystem::path(archive_name).stem().string();
+        if (!name.empty()) dt->rename_download(id, name);
+    });
+
     // Install finished (user-triggered via the Downloads context menu or
     // double-click): add just the newly installed row to the mod list instead
     // of reloading the whole mods dir, and mark the entry Installed. The UI

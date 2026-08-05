@@ -55,6 +55,12 @@ bool FetchStage::execute(Mod& mod, PipelineContext& ctx) {
     if (!info.display_name.empty())
         mod.name = info.display_name;
 
+    // Surface the resolved metadata (archive name + display name) as soon as
+    // it is known - before the download starts - so the UI can replace its
+    // placeholder row name immediately rather than at download_complete.
+    if (ctx.on_download_meta)
+        ctx.on_download_meta(info.archive_name, info.display_name);
+
     auto dest_path = dest_dir / mod.archive_filename;
 
     // Resume support: if a partial download already exists (a paused download
