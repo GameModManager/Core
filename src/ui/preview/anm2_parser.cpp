@@ -341,7 +341,8 @@ std::string Anm2Parser::resolve_spritesheet(const std::string& anm2_dir,
     }
 
     // Deep search for the file (case-insensitive)
-    for (auto it = fs::recursive_directory_iterator(resource_root);
+    for (auto it = fs::recursive_directory_iterator(
+             resource_root, fs::directory_options::skip_permission_denied);
          it != fs::recursive_directory_iterator(); ++it) {
         if (!it->is_regular_file()) continue;
         std::string fname = it->path().filename().string();

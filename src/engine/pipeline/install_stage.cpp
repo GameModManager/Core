@@ -36,7 +36,8 @@ static bool copy_recursive(
     }
 
     int64_t done = 0;
-    for (const auto& entry : std::filesystem::recursive_directory_iterator(src)) {
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(
+             src, std::filesystem::directory_options::skip_permission_denied)) {
         auto relative = std::filesystem::relative(entry.path(), src);
         auto dest_path = dst / relative;
 

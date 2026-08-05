@@ -71,6 +71,7 @@ ModListModel::ModListModel(QObject* parent)
     hidden_icon_       = icons.resolve_icon("conflict-hidden");
     fomod_icon_        = make_wizard_hat_icon();
     root_override_icon_ = icons.resolve_icon("root-dir");
+    invalid_icon_       = icons.resolve_icon("mod-invalid");
 }
 
 int ModListModel::rowCount(const QModelIndex& parent) const {
@@ -111,6 +112,7 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
         if (m.has_hidden_files) icons << hidden_icon_;
         if (m.is_fomod) icons << fomod_icon_;
         if (m.root_override) icons << root_override_icon_;
+        if (m.invalid_data || m.no_metadata) icons << invalid_icon_;
         return QVariant::fromValue(icons);
     }
 
@@ -201,6 +203,18 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
         }
     }
 
+    // --- MO2 FLAG_INVALID: italic dark-gray name ("No valid game data") ---
+    if (mod.invalid_data) {
+        if (role == Qt::FontRole && index.column() == Name) {
+            QFont f;
+            f.setItalic(true);
+            return f;
+        }
+        if (role == Qt::ForegroundRole && index.column() == Name) {
+            return QColor(140, 140, 140);
+        }
+    }
+
     // --- Overwrite: italic gray name, centered text ---
     if (mod.is_overwrite) {
         if (role == Qt::TextAlignmentRole)
@@ -247,8 +261,15 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
         }
     }
     if (role == Qt::ToolTipRole && index.column() == Flags &&
-        (!mod.tags.isEmpty() || mod.is_fomod || mod.root_override)) {
+        (!mod.tags.isEmpty() || mod.is_fomod || mod.root_override ||
+         mod.invalid_data || mod.no_metadata)) {
         QStringList lines;
+        if (mod.invalid_data) {
+            lines << tr("No valid game data");
+        }
+        if (mod.no_metadata) {
+            lines << tr("Not installed by the manager (no metadata file)");
+        }
         if (mod.is_fomod) {
             lines << tr("FOMOD wizard: installed with selected options");
         }
@@ -711,6 +732,30 @@ void ModListModel::set_root_override(const QString& id, bool on) {
     for (int i = 0; i < mods_.size(); ++i) {
         if (mods_[i].id == id && mods_[i].root_override != on) {
             mods_[i].root_override = on;
+            emit dataChanged(index(i, Flags), index(i, Flags),
+                             {Qt::SizeHintRole, kFlagIconsRole, Qt::ToolTipRole});
+            return;
+        }
+    }
+}
+
+void ModListModel::set_invalid_data(const QString& id, bool on) {
+    for (int i = 0; i < mods_.size(); ++i) {
+        if (mods_[i].id == id && mods_[i].invalid_data != on) {
+            mods_[i].invalid_data = on;
+            // Name styling (italic gray) + Flags icon/tooltip both change.
+            emit dataChanged(index(i, Name), index(i, Flags),
+                             {Qt::FontRole, Qt::ForegroundRole, Qt::SizeHintRole,
+                              kFlagIconsRole, Qt::ToolTipRole});
+            return;
+        }
+    }
+}
+
+void ModListModel::set_no_metadata(const QString& id, bool on) {
+    for (int i = 0; i < mods_.size(); ++i) {
+        if (mods_[i].id == id && mods_[i].no_metadata != on) {
+            mods_[i].no_metadata = on;
             emit dataChanged(index(i, Flags), index(i, Flags),
                              {Qt::SizeHintRole, kFlagIconsRole, Qt::ToolTipRole});
             return;

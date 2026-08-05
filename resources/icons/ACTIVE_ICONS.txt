@@ -1,8 +1,5 @@
 These are the icons that are currently in use, and will be recognized by the manager.
 One line per key: the exact name we call in the app (passed to IconManager::resolve_icon()).
-Every key here is actively resolved somewhere in src/ — do NOT delete the matching
-asset from this directory. If you add a new icon to the app, add its key to this list
-in the same session (AGENTS.md rule).
 
 color-picker
 conflict-hidden
@@ -30,6 +27,7 @@ list-remove
 media-playback-pause
 media-playback-start
 merge
+mod-invalid
 plugin-archive
 plugin-attachment
 plugin-dummy
@@ -44,15 +42,7 @@ text-html
 view-sort
 
 Vendor source icons (resolved via engine::vendor_icon_key(), assets in vendor/):
-loverslab
 nexusmods
+loverslab
 steam
-
-Notes:
-- Game icons are dynamic keys: GameSelectionWidget resolves each installed game's
-  game_id as its key (a theme can ship themes/<theme>/icons/<game_id>.png); no fixed
-  entry here.
-- Bundled but NOT referenced by any code (candidates for cleanup):
-  archive.png, plugin-awaiting.png, plugin-information.png, update-available.png.
-- moddb is mapped by vendor_icon_key() but no ModDB provider exists yet, so it is not
-  actively used; vendor/moddb.ico could be dropped until the provider lands.
+moddb
