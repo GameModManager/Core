@@ -1,6 +1,5 @@
 #include "ui/game_selection/game_selection_widget.h"
 
-#include <QDir>
 #include <QGridLayout>
 #include <QLabel>
 #include <QScrollArea>
@@ -9,7 +8,7 @@
 #include <QStyle>
 #include <QApplication>
 
-#include "engine/theme/theme_manager.h"
+#include "engine/theme/icon_manager.h"
 
 namespace ui {
 
@@ -61,21 +60,13 @@ static QIcon make_builtin_icon(const std::string& game_id, const std::string& na
     return QIcon(pm);
 }
 
-QIcon GameSelectionWidget::resolve_icon(const GameEntry& entry, const QString& themes_dir) {
-    // 1. Theme icon: themes/<current>/icons/<game_id>.png
-    if (!themes_dir.isEmpty()) {
-        QDir theme_dir(themes_dir);
-        QStringList name_filters;
-        name_filters << (QString::fromStdString(entry.game_id) + ".png")
-                     << (QString::fromStdString(entry.game_id) + ".svg");
-        auto files = theme_dir.entryList(name_filters, QDir::Files);
-        if (!files.isEmpty()) {
-            QIcon theme_icon(theme_dir.filePath(files.first()));
-            if (!theme_icon.isNull()) return theme_icon;
-        }
-    }
-
-    // 2. Built-in icon (generated from game name)
+QIcon GameSelectionWidget::resolve_icon(const GameEntry& entry) {
+    // Game icons are a logical key too: a theme can ship themes/<theme>/icons/
+    // <game_id>.png, and IconManager falls back to system/fugue before the
+    // generated letter avatar here.
+    QIcon icon = engine::IconManager::instance().resolve_icon(
+        QString::fromStdString(entry.game_id));
+    if (!icon.isNull()) return icon;
     return make_builtin_icon(entry.game_id, entry.display_name);
 }
 
@@ -154,19 +145,6 @@ GameSelectionWidget::GameSelectionWidget(QWidget* parent)
 
 void GameSelectionWidget::set_games(const std::vector<GameEntry>& installed,
                                      const std::vector<GameEntry>& available) {
-    // Resolve themes dir (user dir, submodule, installed, bundled)
-    QString themes_dir;
-    {
-        auto app_dir = QCoreApplication::applicationDirPath();
-        for (const auto& dir : engine::theme_search_dirs(app_dir.toStdString())) {
-            const QString candidate = QString::fromStdString(dir.string());
-            if (QDir(candidate).exists()) {
-                themes_dir = candidate;
-                break;
-            }
-        }
-    }
-
     // Helper to populate a grid
     auto populate_grid = [&](QWidget* grid, const std::vector<GameEntry>& games, bool installed_section) {
         // Clear existing
@@ -199,7 +177,7 @@ void GameSelectionWidget::set_games(const std::vector<GameEntry>& installed,
         int col = 0;
         for (const auto& entry : games) {
             auto* card = new GameCard(entry, grid);
-            card->set_icon(resolve_icon(entry, themes_dir));
+            card->set_icon(resolve_icon(entry));
             connect(card, &GameCard::clicked, this, &GameSelectionWidget::game_selected);
             grid_layout->addWidget(card, col / 3, col % 3);
             col++;

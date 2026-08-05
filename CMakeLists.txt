@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # (package_installer target passes -DVERSION=${PROJECT_VERSION}), and the plugins
 # (GMM_VERSION, visible in the add_subdirectory'd external/plugins scope).
 project(GameModManager
-    VERSION 0.1.5
+    VERSION 0.1.6
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -191,6 +191,7 @@ set(ENGINE_SOURCES
     src/engine/workshop/workshop_client.cpp
     src/engine/theme/theme_manager.cpp
     src/engine/theme/style_manager.cpp
+    src/engine/theme/icon_manager.cpp
     src/engine/tools/external_tool.cpp
     src/engine/plugin_host/python_loader.cpp
     src/engine/meta/mod_meta.cpp
@@ -608,6 +609,16 @@ add_executable(theme_test tests/engine/theme_test.cpp
 target_include_directories(theme_test PRIVATE src/)
 add_test(NAME theme_test COMMAND theme_test)
 
+# IconManager resolution chain — offscreen GUI test (QApplication for SP fallback)
+add_executable(icon_manager_test tests/engine/icon_manager_test.cpp
+    src/engine/theme/icon_manager.cpp
+    src/engine/theme/theme_manager.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(icon_manager_test PRIVATE src/)
+target_link_libraries(icon_manager_test PRIVATE Qt6::Widgets)
+add_test(NAME icon_manager_test COMMAND icon_manager_test)
+
 # FileKeyring + NexusAuth keyring fallback/migration — pure C++, no Qt
 add_executable(keyring_test tests/engine/keyring_test.cpp
     src/engine/keyring.cpp
@@ -830,6 +841,7 @@ add_executable(settings_plugins_tab_test tests/ui/settings_plugins_tab_test.cpp
     src/engine/trace/trace_recorder.cpp
     src/engine/theme/theme_manager.cpp
     src/engine/theme/style_manager.cpp
+    src/engine/theme/icon_manager.cpp
     src/engine/plugin_host/plugin_loader.cpp
     src/engine/plugin_host/python_loader.cpp
     src/engine/plugin_host/diagnostics_registry.cpp
@@ -919,6 +931,7 @@ add_executable(settings_sources_tab_test tests/ui/settings_sources_tab_test.cpp
     src/engine/trace/trace_recorder.cpp
     src/engine/theme/theme_manager.cpp
     src/engine/theme/style_manager.cpp
+    src/engine/theme/icon_manager.cpp
     src/engine/plugin_host/plugin_loader.cpp
     src/engine/plugin_host/python_loader.cpp
     src/engine/plugin_host/diagnostics_registry.cpp
@@ -980,6 +993,8 @@ add_executable(downloads_tab_test tests/ui/downloads_tab_test.cpp
     src/ui/widgets/column_toggle_header.cpp
     src/ui/widgets/mod_list_model.cpp
     src/ui/widgets/mod_table_view.cpp
+    src/engine/theme/theme_manager.cpp
+    src/engine/theme/icon_manager.cpp
     src/engine/log/logger.cpp
     src/engine/fs_utils.cpp
     src/engine/deploy/root_override.cpp
@@ -1005,6 +1020,8 @@ add_executable(data_tab_test tests/ui/data_tab_test.cpp
     src/ui/widgets/column_toggle_header.cpp
     src/ui/widgets/mod_list_model.cpp
     src/ui/widgets/mod_table_view.cpp
+    src/engine/theme/theme_manager.cpp
+    src/engine/theme/icon_manager.cpp
     src/engine/log/logger.cpp
     src/engine/fs_utils.cpp
     src/engine/deploy/root_override.cpp
@@ -1050,6 +1067,8 @@ add_executable(plugins_tab_test tests/ui/plugins_tab_test.cpp
     src/ui/widgets/column_toggle_header.cpp
     src/ui/widgets/mod_list_model.cpp
     src/ui/widgets/mod_table_view.cpp
+    src/engine/theme/theme_manager.cpp
+    src/engine/theme/icon_manager.cpp
     src/engine/log/logger.cpp
     src/engine/fs_utils.cpp
     src/engine/deploy/root_override.cpp
@@ -1073,6 +1092,9 @@ set_tests_properties(plugins_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=of
 add_executable(mod_list_model_test tests/ui/mod_list_model_test.cpp
     src/ui/widgets/mod_list_model.cpp
     src/ui/settings/settings.cpp
+    src/engine/theme/theme_manager.cpp
+    src/engine/theme/icon_manager.cpp
+    src/engine/log/logger.cpp
 )
 target_include_directories(mod_list_model_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
 target_compile_definitions(mod_list_model_test PRIVATE VERSION="${PROJECT_VERSION}")

@@ -1,6 +1,7 @@
 #include "ui/modinfo/filetree_tab.h"
 
 #include "engine/fs_utils.h"
+#include "engine/theme/icon_manager.h"
 #include "ui/viewer/file_viewer.h"
 
 #include <QDesktopServices>
@@ -107,7 +108,7 @@ void FiletreeTab::show_menu(const QPoint& pos) {
     QObject::connect(rename, &QAction::triggered, this, &FiletreeTab::on_rename);
 
     auto* remove = menu.addAction(tr("&Delete"));
-    remove->setIcon(QIcon::fromTheme(QStringLiteral("edit-delete")));
+    remove->setIcon(engine::IconManager::instance().resolve_icon("edit-delete"));
     QObject::connect(remove, &QAction::triggered, this, &FiletreeTab::on_delete);
 
     menu.exec(tree_->viewport()->mapToGlobal(pos));

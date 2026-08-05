@@ -42,6 +42,7 @@ static void qt_message_filter(QtMsgType type, const QMessageLogContext& ctx, con
 #include "engine/nxm/nxm_ipc.h"
 #include "engine/theme/theme_manager.h"
 #include "engine/theme/style_manager.h"
+#include "engine/theme/icon_manager.h"
 #include "engine/nexus_auth.h"
 #include "engine/loverslab_auth.h"
 #include "cli/headless_launcher.h"
@@ -79,13 +80,19 @@ int main(int argc, char *argv[])
     app.setApplicationName("GameModManager");
     app.setApplicationVersion(VERSION);
 
+    // Central icon resolution (icon packs). Set up before the window icon so
+    // the app icon itself resolves through the pack chain. The mode and theme
+    // come from settings; the settings dialog updates them live.
+    {
+        auto& icon_mgr = engine::IconManager::instance();
+        icon_mgr.discover_packs(QCoreApplication::applicationDirPath().toStdString());
+        icon_mgr.set_mode(Settings::instance().icon_pack().toStdString());
+        icon_mgr.set_current_theme(Settings::instance().theme().toStdString());
+    }
+
     // App window icon: the PNG (the SVG renderer mis-renders on some setups).
     // Every window and dialog inherits this via the application icon.
-    {
-        const QString icon_dir =
-            QCoreApplication::applicationDirPath() + "/../resources/icons/";
-        app.setWindowIcon(QIcon(icon_dir + "gmm-logo.png"));
-    }
+    app.setWindowIcon(engine::IconManager::instance().resolve_icon("gmm-logo"));
 
     // Store secrets in the OS keyring (QtKeychain: Secret Service / KWallet)
     // when available, falling back to insecure file storage with a warning

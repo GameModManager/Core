@@ -29,7 +29,7 @@ signals:
     void game_selected(const GameEntry& entry);
 
 private:
-    static QIcon resolve_icon(const GameEntry& entry, const QString& themes_dir);
+    static QIcon resolve_icon(const GameEntry& entry);
 
     QLabel* title_ = nullptr;
     QLabel* installed_label_ = nullptr;

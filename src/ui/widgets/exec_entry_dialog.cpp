@@ -1,5 +1,7 @@
 #include "ui/widgets/exec_entry_dialog.h"
 
+#include "engine/theme/icon_manager.h"
+
 #include <QAbstractItemModel>
 #include <QComboBox>
 #include <QCoreApplication>
@@ -109,8 +111,7 @@ ExecEntryDialog::ExecEntryDialog(const std::filesystem::path& game_dir,
                            QStyle::StandardPixmap fallback) {
         auto* btn = new QToolButton(this);
         btn->setToolTip(tooltip);
-        auto icon = QIcon::fromTheme(theme_icon);
-        btn->setIcon(icon.isNull() ? style()->standardIcon(fallback) : icon);
+        btn->setIcon(engine::IconManager::instance().resolve_icon(theme_icon, fallback));
         btn->setAutoRaise(true);
         btn->setIconSize(QSize(20, 20));
         btn->setToolButtonStyle(Qt::ToolButtonIconOnly);

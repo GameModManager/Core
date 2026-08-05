@@ -1,5 +1,7 @@
 #include "ui/widgets/profile_bar.h"
 
+#include "engine/theme/icon_manager.h"
+
 #include <QComboBox>
 #include <QHBoxLayout>
 #include <QIcon>
@@ -31,8 +33,8 @@ ProfileBar::ProfileBar(QWidget* parent)
     // Open folders button - hosts all the important instance paths
     // (MO2's openFolderMenu). Icon-only, no text.
     folders_btn_ = new QToolButton(this);
-    folders_btn_->setIcon(QIcon::fromTheme("document-open-folder",
-        style()->standardIcon(QStyle::SP_DirOpenIcon)));
+    folders_btn_->setIcon(engine::IconManager::instance().resolve_icon(
+        "document-open-folder", QStyle::SP_DirOpenIcon));
     folders_btn_->setToolButtonStyle(Qt::ToolButtonIconOnly);
     folders_btn_->setPopupMode(QToolButton::MenuButtonPopup);
 

@@ -1,5 +1,7 @@
 #include "ui/widgets/main_toolbar.h"
 
+#include "engine/theme/icon_manager.h"
+
 #include <QFrame>
 #include <QBoxLayout>
 #include <QIcon>
@@ -64,14 +66,28 @@ void MainToolbar::set_icon_size(int size) {
 QToolButton* MainToolbar::add_gmm_button(const QString& tooltip, const QString& icon_name) {
     auto* btn = new QToolButton(this);
     btn->setToolTip(tooltip);
-    // Try the named icon from the desktop theme first, fall back to a standard icon
-    auto theme_icon = QIcon::fromTheme(icon_name);
-    btn->setIcon(theme_icon.isNull() ? style()->standardIcon(QStyle::SP_ComputerIcon) : theme_icon);
+    btn->setIcon(engine::IconManager::instance().resolve_icon(
+        icon_name, QStyle::SP_ComputerIcon));
+    btn->setProperty("gmm_icon_name", icon_name);
     btn->setAutoRaise(true);
     btn->setIconSize(QSize(current_icon_size_, current_icon_size_));
     btn->setToolButtonStyle(Qt::ToolButtonIconOnly);
     gmm_buttons_.append(btn);
     return btn;
+}
+
+void MainToolbar::reapply_icons() {
+    for (auto* btn : gmm_buttons_) {
+        if (btn == proton_button_) continue;
+        const QString name = btn->property("gmm_icon_name").toString();
+        if (name.isEmpty()) continue;
+        btn->setIcon(engine::IconManager::instance().resolve_icon(
+            name, QStyle::SP_ComputerIcon));
+    }
+    if (proton_button_) {
+        proton_button_->setIcon(engine::IconManager::instance().resolve_icon(
+            "proton", QStyle::SP_ComputerIcon));
+    }
 }
 
 QToolButton* MainToolbar::add_proton_button(const QIcon& icon) {

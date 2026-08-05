@@ -1,6 +1,8 @@
 #include "ui/panels/tab_panels.h"
 #include "ui/settings/settings.h"
 
+#include "engine/theme/icon_manager.h"
+
 #include <algorithm>
 
 #include <QAction>
@@ -173,8 +175,7 @@ QIcon icon_for_file(const QString& file_path) {
 QIcon folder_icon() {
     static QIcon folder;
     if (folder.isNull()) {
-        QStyle* st = QApplication::style();
-        folder = st->standardIcon(QStyle::SP_DirIcon);
+        folder = engine::IconManager::instance().resolve_icon("folder", QStyle::SP_DirIcon);
     }
     return folder;
 }
@@ -774,23 +775,14 @@ private:
 // slot, the mod-list bug from 2026-08-03). Emblem names mirror MO2's
 // iconData() tokens; per-flag hover text comes from plugin_flag_fragments().
 static QIcon plugin_flag_icon(const QString& token) {
-    static const QString icon_dir =
-        QCoreApplication::applicationDirPath() + "/../resources/icons/";
-    static const QIcon warning(icon_dir + "plugin-warning.png");
-    static const QIcon awaiting(icon_dir + "plugin-awaiting.png");
-    static const QIcon run(icon_dir + "plugin-medium.png");
-    static const QIcon locked(icon_dir + "plugin-locked.png");
-    static const QIcon attachment(icon_dir + "plugin-attachment.png");
-    static const QIcon archive(icon_dir + "plugin-archive.png");
-    static const QIcon dummy(icon_dir + "plugin-dummy.png");
-
-    if (token == QLatin1String("warning")) return warning;
-    if (token == QLatin1String("awaiting")) return awaiting;
-    if (token == QLatin1String("run")) return run;
-    if (token == QLatin1String("locked")) return locked;
-    if (token == QLatin1String("attachment")) return attachment;
-    if (token == QLatin1String("archive")) return archive;
-    if (token == QLatin1String("dummy")) return dummy;
+    auto& icons = engine::IconManager::instance();
+    if (token == QLatin1String("warning")) return icons.resolve_icon("plugin-warning");
+    if (token == QLatin1String("awaiting")) return icons.resolve_icon("plugin-awaiting");
+    if (token == QLatin1String("run")) return icons.resolve_icon("plugin-medium");
+    if (token == QLatin1String("locked")) return icons.resolve_icon("plugin-locked");
+    if (token == QLatin1String("attachment")) return icons.resolve_icon("plugin-attachment");
+    if (token == QLatin1String("archive")) return icons.resolve_icon("plugin-archive");
+    if (token == QLatin1String("dummy")) return icons.resolve_icon("plugin-dummy");
     return {};
 }
 
@@ -2101,13 +2093,10 @@ void DownloadsTab::on_custom_context_menu(const QPoint& pos) {
 void DownloadsTab::add_context_menu_actions(QMenu& menu, const std::string& id) {
     const auto& entry = downloads_.at(id);
 
-    // Theme icons with a standard-icon fallback (matches the mod-list menu
-    // and toolbar on non-themed platforms).
+    // Resolved through the central IconManager (theme/pack -> system -> fugue),
+    // with a standard-icon fallback for the download actions.
     auto icon_for = [](const QString& theme, QStyle::StandardPixmap fallback) -> QIcon {
-        QIcon icon = QIcon::fromTheme(theme);
-        if (icon.isNull())
-            icon = QApplication::style()->standardIcon(fallback);
-        return icon;
+        return engine::IconManager::instance().resolve_icon(theme, fallback);
     };
 
     // Install / Reinstall (enabled when the archive exists and no download
