@@ -10,6 +10,21 @@
 
 namespace engine {
 
+std::string vendor_icon_key(const std::string& source) {
+    std::string low;
+    low.reserve(source.size());
+    for (char c : source) {
+        if (c == ' ')
+            continue;
+        low.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
+    if (low == "nexus" || low == "nexusmods") return "nexusmods";
+    if (low == "loverslab") return "loverslab";
+    if (low == "steam" || low == "steamworkshop") return "steam";
+    if (low == "moddb") return "moddb";
+    return "";
+}
+
 IconManager& IconManager::instance() {
     static IconManager mgr;
     return mgr;
@@ -88,6 +103,10 @@ QIcon IconManager::resolve_icon(const QString& key, QStyle::StandardPixmap sp) c
     QIcon bundled;
     if (!resources_dir_.empty()) {
         bundled = load_from_dir(resources_dir_ / "icons", key);
+        // Branded source icons live in resources/icons/vendor/<key>.* so the
+        // root icons dir stays free of dead leftovers.
+        if (bundled.isNull())
+            bundled = load_from_dir(resources_dir_ / "icons" / "vendor", key);
     }
     QIcon theme_icon = QIcon::fromTheme(key);
     if (mode_ == "system") {

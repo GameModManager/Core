@@ -1596,6 +1596,10 @@ void DownloadsTab::add_download(const std::string& id, const std::string& name,
     entry.source_item = new QTableWidgetItem(QString::fromStdString(source));
     entry.source_item->setFlags(entry.source_item->flags() & ~Qt::ItemIsEditable);
     entry.source_item->setTextAlignment(Qt::AlignCenter);
+    const std::string vendor_key = engine::vendor_icon_key(source);
+    if (!vendor_key.empty())
+        entry.source_item->setIcon(engine::IconManager::instance().resolve_icon(
+            QString::fromStdString(vendor_key)));
     table_->setItem(entry.row, 1, entry.source_item);
 
     entry.size_item = new QTableWidgetItem(QString());
@@ -2276,6 +2280,10 @@ void DownloadsTab::deserialize(const std::string& json,
         entry.source_item = new QTableWidgetItem(QString::fromStdString(source));
         entry.source_item->setFlags(entry.source_item->flags() & ~Qt::ItemIsEditable);
         entry.source_item->setTextAlignment(Qt::AlignCenter);
+        const std::string vendor_key = engine::vendor_icon_key(source);
+        if (!vendor_key.empty())
+            entry.source_item->setIcon(engine::IconManager::instance().resolve_icon(
+                QString::fromStdString(vendor_key)));
         table_->setItem(entry.row, 1, entry.source_item);
 
         // For non-downloading states, show the file size; during download the

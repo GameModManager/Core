@@ -55,6 +55,9 @@
 #include <QUrl>
 
 #include "ui/settings/settings.h"
+#include "engine/theme/icon_manager.h"
+
+#include <QByteArray>
 
 #include <cstdio>
 #include <filesystem>
@@ -77,6 +80,15 @@ static void write_file(const std::filesystem::path& path, size_t size) {
     std::ofstream out(path, std::ios::binary);
     out.write("x", 1);
     for (size_t i = 1; i < size; ++i) out.put(static_cast<char>('a' + (i % 26)));
+}
+
+// 1x1 transparent PNG - a real image so the vendor icon actually loads.
+static const char* kPngB64 =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+static void write_png(const std::filesystem::path& p) {
+    const QByteArray bytes = QByteArray::fromBase64(kPngB64);
+    std::ofstream out(p, std::ios::binary);
+    out.write(bytes.constData(), bytes.size());
 }
 
 // Row index whose Name column equals `name`, or -1.
@@ -107,6 +119,13 @@ int main(int argc, char** argv) {
     QCoreApplication::setOrganizationName("GameModManager");
     QCoreApplication::setApplicationName("GameModManager");
 
+    // Hermetic IconManager: a synthetic resources tree whose vendor/ dir ships
+    // a branded Nexus icon, so the Source-cell icon below resolves for real.
+    const std::filesystem::path icons = "/tmp/gmm_downloads_tab/icons";
+    std::filesystem::create_directories(icons / "resources" / "icons" / "vendor");
+    write_png(icons / "resources" / "icons" / "vendor" / "nexusmods.ico");
+    engine::IconManager::instance().discover_packs(icons / "app");
+
     const std::filesystem::path dl_dir = "/tmp/gmm_downloads_tab/dl";
     std::filesystem::create_directories(dl_dir);
 
@@ -131,12 +150,23 @@ int main(int argc, char** argv) {
                      "skyrimspecialedition", 1234, "32444");
     tab.mark_complete("32444-1234", true);
 
+    // Branded source icon on the Source cell, resolved from the vendor dir.
+    auto* nexus_src = tab.table()->item(0, 1);
+    check(nexus_src && !nexus_src->icon().isNull(),
+          "Nexus Mods row carries the branded vendor icon");
+
     // Trigger the scan via set_downloads_dir (what MainWindow does on startup).
     tab.set_downloads_dir(dl_dir);
 
     auto* table = tab.table();
     check(table->rowCount() == 2,
           "scan adds only the untracked archive (dedupes the tracked file)");
+
+    // The scanned Manual row must NOT carry a vendor icon.
+    auto* manual_src = table->item(1, 1);
+    check(manual_src && manual_src->text() == QLatin1String("Manual") &&
+              manual_src->icon().isNull(),
+          "Manual row has no vendor icon");
 
     // Compact rows are sized explicitly (not by any stylesheet), so the
     // heights apply at launch even with no QSS installed.

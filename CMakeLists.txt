@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # (package_installer target passes -DVERSION=${PROJECT_VERSION}), and the plugins
 # (GMM_VERSION, visible in the add_subdirectory'd external/plugins scope).
 project(GameModManager
-    VERSION 0.1.6
+    VERSION 0.1.7
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
