@@ -92,7 +92,11 @@ std::vector<std::string> ConflictEngine::walk_mod(
 
     if (!std::filesystem::exists(mod_path, ec)) return files;
 
-    for (const auto& entry : std::filesystem::recursive_directory_iterator(mod_path, ec)) {
+    // skip_permission_denied: a permission-denied subdirectory makes the
+    // throwing operator++ abort the whole scan (SIGABRT). Same hardening as
+    // deploy_utils.cpp.
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(
+             mod_path, std::filesystem::directory_options::skip_permission_denied, ec)) {
         if (ec) break;
 
         if (!entry.is_regular_file(ec)) continue;

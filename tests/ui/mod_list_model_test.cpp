@@ -19,6 +19,8 @@
 
 #include <QApplication>
 #include <QBrush>
+#include <QFont>
+#include <QIcon>
 #include <QMimeData>
 #include <QModelIndexList>
 
@@ -324,6 +326,57 @@ int main(int argc, char** argv) {
         Settings::instance().remove_previous_separator_color();
         check(!Settings::instance().previous_separator_color().has_value(),
               "previous_separator_color removed");
+    }
+
+    // --- Invalid-data / no-metadata flags (MO2 FLAG_INVALID parity) ---
+    {
+        model.add_mod(QStringLiteral("GhostMod"), QStringLiteral("GhostMod"), QString(), -1);
+        const int gr = row_with_id(model, "GhostMod");
+        check(gr >= 0, "flag-test mod row present");
+
+        // invalid-data only: flag icon + tooltip + italic gray name (MO2).
+        model.set_invalid_data(QStringLiteral("GhostMod"), true);
+        QList<QIcon> icons = model.data(
+            model.index(gr, ui::ModListModel::Flags),
+            ui::ModListModel::kFlagIconsRole).value<QList<QIcon>>();
+        check(icons.size() == 1, "invalid-data adds one flag icon");
+        const QString tip = model.data(
+            model.index(gr, ui::ModListModel::Flags), Qt::ToolTipRole).toString();
+        check(tip.contains(QStringLiteral("No valid game data")),
+              "invalid-data tooltip");
+        const QVariant fnt = model.data(
+            model.index(gr, ui::ModListModel::Name), Qt::FontRole);
+        check(fnt.canConvert<QFont>() && fnt.value<QFont>().italic(),
+              "invalid-data name is italic");
+        const QVariant fg = model.data(
+            model.index(gr, ui::ModListModel::Name), Qt::ForegroundRole);
+        check(fg.canConvert<QColor>() && fg.value<QColor>().isValid(),
+              "invalid-data name is tinted");
+
+        // no_metadata: same single icon, own tooltip line; name stays normal.
+        model.set_no_metadata(QStringLiteral("GhostMod"), true);
+        icons = model.data(
+            model.index(gr, ui::ModListModel::Flags),
+            ui::ModListModel::kFlagIconsRole).value<QList<QIcon>>();
+        check(icons.size() == 1, "both flags still render a single icon");
+        const QString tip2 = model.data(
+            model.index(gr, ui::ModListModel::Flags), Qt::ToolTipRole).toString();
+        check(tip2.contains(QStringLiteral("Not installed by the manager")),
+              "no_metadata tooltip");
+        check(tip2.contains(QStringLiteral("No valid game data")),
+              "tooltip lists both reasons when both flags are set");
+
+        // Clearing both removes the icon and restores the normal name.
+        model.set_invalid_data(QStringLiteral("GhostMod"), false);
+        model.set_no_metadata(QStringLiteral("GhostMod"), false);
+        icons = model.data(
+            model.index(gr, ui::ModListModel::Flags),
+            ui::ModListModel::kFlagIconsRole).value<QList<QIcon>>();
+        check(icons.isEmpty(), "clearing the flags removes the icon");
+        const QVariant fnt2 = model.data(
+            model.index(gr, ui::ModListModel::Name), Qt::FontRole);
+        check(!fnt2.isValid() || !fnt2.value<QFont>().italic(),
+              "clearing invalid-data restores the non-italic name");
     }
 
     std::printf("\n%d passed, %d failed\n", passes, failures);

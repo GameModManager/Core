@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 
 namespace fs = std::filesystem;
@@ -139,6 +140,129 @@ int main() {
     const auto* flat = by_folder(mods7, "FlatMod");
     require(flat != nullptr, "flat mod found");
     require(!flat->root_override, "mod without rootOverride stays unflagged");
+
+    // A folder dropped into Mods/ with NO metadata file must still be listed
+    // (MO2 lists every folder) - it is flagged so the UI can warn it wasn't
+    // installed by the manager. Was silently invisible before.
+    fs::create_directories(root / "DroppedFolder");
+    const auto modsA = engine::ModScanner::scan_dir(knowledge, "testgame", root);
+    const auto* df = by_folder(modsA, "DroppedFolder");
+    require(df != nullptr, "meta-less folder is still listed");
+    require(df->no_metadata, "meta-less folder flagged no_metadata");
+    require(df->display_name == "DroppedFolder",
+            "meta-less folder display name is the folder");
+    require(!df->invalid_data,
+            "no checker registered -> nothing can look invalid");
+
+    // A malformed meta.ini must not hide the folder either (MO2's QSettings
+    // reads it as empty): it keeps its defaults instead of vanishing.
+    fs::create_directories(root / "BrokenMeta");
+    write_file(root / "BrokenMeta" / "meta.ini", "this is {{{ not valid ini ]]]");
+    const auto modsB = engine::ModScanner::scan_dir(knowledge, "testgame", root);
+    const auto* bm = by_folder(modsB, "BrokenMeta");
+    require(bm != nullptr, "malformed meta.ini folder still listed");
+    require(!bm->no_metadata, "malformed meta.ini still counts as metadata present");
+    require(!bm->invalid_data, "no checker registered -> malformed folder not invalid");
+
+    // Content-validity markers come from per-game hooks (the engine never
+    // hardcodes them): mod_valid_dirs + mod_valid_exts model the Bethesda
+    // allow-set. No markers -> no checker -> no folder can be invalid.
+    engine::GameKnowledge checker;
+    checker.set("skyrim", "mod_valid_dirs", "textures,meshes");
+    checker.set("skyrim", "mod_valid_exts", "esp,esm");
+
+    // Empty folder with no metadata and no valid game data -> both flags.
+    fs::create_directories(root / "BadContent");
+    const auto modsC = engine::ModScanner::scan_dir(checker, "skyrim", root);
+    const auto* bc = by_folder(modsC, "BadContent");
+    require(bc != nullptr, "empty content folder listed");
+    require(bc->invalid_data, "folder with no valid game data flagged invalid");
+    require(bc->no_metadata, "empty content folder also flagged no_metadata");
+
+    // A folder with a recognized data dir is valid content but still has no
+    // manager metadata (the two flags are independent).
+    fs::create_directories(root / "GoodContent");
+    fs::create_directories(root / "GoodContent" / "textures");
+    const auto modsC2 = engine::ModScanner::scan_dir(checker, "skyrim", root);
+    const auto* gc = by_folder(modsC2, "GoodContent");
+    require(gc != nullptr && !gc->invalid_data,
+            "textures/ folder is valid content");
+    require(gc->no_metadata, "textures/ folder still flagged no_metadata");
+
+    // A meta.ini-only folder is valid content (metadata presence counts,
+    // mirroring MO2's Bethesda checker accepting meta.ini via "ini").
+    fs::create_directories(root / "MetaOnly");
+    write_file(root / "MetaOnly" / "meta.ini", "[General]\n");
+    const auto modsC3 = engine::ModScanner::scan_dir(checker, "skyrim", root);
+    const auto* mo = by_folder(modsC3, "MetaOnly");
+    require(mo != nullptr && !mo->invalid_data,
+            "meta.ini-only folder is valid content");
+    require(!mo->no_metadata, "meta.ini-only folder has metadata");
+
+    // XML metadata games (Isaac): metadata_file hook + Isaac's content markers.
+    engine::GameKnowledge xml_know;
+    xml_know.set("isaac", "metadata_file", "metadata.xml");
+    xml_know.set("isaac", "metadata_name_tag", "name");
+    xml_know.set("isaac", "metadata_version_tag", "version");
+    xml_know.set("isaac", "mod_valid_dirs", "resources,resources-dlc3");
+
+    // Folder without metadata.xml: listed, no_metadata, and no resources -> invalid.
+    fs::create_directories(root / "XmlNoMeta");
+    const auto modsX = engine::ModScanner::scan_dir(xml_know, "isaac", root);
+    const auto* xn = by_folder(modsX, "XmlNoMeta");
+    require(xn != nullptr && xn->no_metadata,
+            "xml folder without metadata.xml listed + no_metadata");
+    require(xn->invalid_data, "xml folder without resources is invalid content");
+
+    // Folder with metadata.xml: parsed normally, not no_metadata, content valid.
+    fs::create_directories(root / "XmlMod");
+    write_file(root / "XmlMod" / "metadata.xml",
+               "<mod><name>My Xml Mod</name><version>1.0</version></mod>");
+    const auto modsX2 = engine::ModScanner::scan_dir(xml_know, "isaac", root);
+    const auto* xm = by_folder(modsX2, "XmlMod");
+    require(xm != nullptr && !xm->no_metadata,
+            "xml mod with metadata listed, has metadata");
+    require(xm->display_name == "My Xml Mod", "xml name parsed");
+    require(!xm->invalid_data, "metadata presence makes content valid");
+
+    // resources-dlc3/ alone (no metadata.xml) is valid content, still no_metadata.
+    fs::create_directories(root / "XmlResOnly");
+    fs::create_directories(root / "XmlResOnly" / "resources-dlc3");
+    const auto modsX3 = engine::ModScanner::scan_dir(xml_know, "isaac", root);
+    const auto* xr = by_folder(modsX3, "XmlResOnly");
+    require(xr != nullptr && !xr->invalid_data,
+            "resources-dlc3/ folder is valid content");
+    require(xr->no_metadata, "resources-dlc3/ folder still flagged no_metadata");
+
+    // MO2 "Ignore missing data" persists [General] validated=true in the
+    // folder's meta.ini (the scanner reads the key back). For XML games the
+    // meta.ini is GMM-owned, so it suppresses both flags on a folder that has
+    // neither metadata.xml nor resources.
+    fs::create_directories(root / "XmlValidated");
+    write_file(root / "XmlValidated" / "meta.ini", "[General]\nvalidated = true\n");
+    const auto modsV = engine::ModScanner::scan_dir(xml_know, "isaac", root);
+    const auto* xv = by_folder(modsV, "XmlValidated");
+    require(xv != nullptr && !xv->invalid_data,
+            "validated=true suppresses the invalid flag");
+    require(!xv->no_metadata, "validated=true suppresses the no_metadata flag");
+
+    // mark_validated() round-trip: writes the key MO2-style into meta.ini
+    // (creating it), clearing the flags on rescan.
+    fs::create_directories(root / "MarkedValid");
+    require(engine::ModScanner::mark_validated(root / "MarkedValid"),
+            "mark_validated writes meta.ini");
+    {
+        std::ifstream f(root / "MarkedValid" / "meta.ini");
+        std::string content((std::istreambuf_iterator<char>(f)),
+                            std::istreambuf_iterator<char>());
+        require(content.find("validated") != std::string::npos,
+                "mark_validated persisted 'validated' in meta.ini");
+    }
+    const auto modsV2 = engine::ModScanner::scan_dir(checker, "skyrim", root);
+    const auto* mv = by_folder(modsV2, "MarkedValid");
+    require(mv != nullptr && !mv->no_metadata,
+            "mark_validated clears the no_metadata flag");
+    require(!mv->invalid_data, "mark_validated clears the invalid flag");
 
     std::printf("scanner_test: all checks passed\n");
     return 0;

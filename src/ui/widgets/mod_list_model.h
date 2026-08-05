@@ -46,6 +46,8 @@ struct ModEntry {
     bool is_game_native = false;
     bool is_fomod = false;        // installed via the FOMOD wizard
     bool root_override = false;   // deploys to the game root instead of the data dir
+    bool invalid_data = false;    // MO2 FLAG_INVALID: folder holds no recognized game data
+    bool no_metadata = false;     // no manager metadata file in the folder (not a managed install)
     bool folded = false;
 };
 
@@ -105,6 +107,9 @@ public:
     void set_hidden_files(const QString& id, bool has_hidden);
     void set_fomod(const QString& id, bool on);
     void set_root_override(const QString& id, bool on);
+    // MO2 FLAG_INVALID / missing-metadata markers (see ModEntry).
+    void set_invalid_data(const QString& id, bool on);
+    void set_no_metadata(const QString& id, bool on);
     void set_tags(const QString& id, const QVector<ModTag>& tags);
     void set_source_info(const QString& id, const QString& source_type,
                          const QString& source_id,
@@ -165,6 +170,7 @@ private:
     QIcon hidden_icon_;
     QIcon fomod_icon_;
     QIcon root_override_icon_;
+    QIcon invalid_icon_;
     QAbstractItemView* mod_view_ = nullptr;
     bool conflict_order_reversed_ = false;
     bool uses_merged_ = false;

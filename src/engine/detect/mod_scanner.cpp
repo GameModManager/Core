@@ -61,6 +61,16 @@ static bool should_ignore(const std::string& name,
     return false;
 }
 
+static bool ci_equals(const std::string& a, const std::string& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (std::tolower(static_cast<unsigned char>(a[i])) !=
+            std::tolower(static_cast<unsigned char>(b[i])))
+            return false;
+    }
+    return true;
+}
+
 // --- ModScanner ---
 
 // Per-game settings read from GameKnowledge hooks, shared by the directory scan
@@ -75,7 +85,43 @@ struct ScanConfig {
     std::string separator_suffix;
     std::string workshop_pattern;
     std::string priority_prefix_re;
+    // Per-game content allow-lists (MO2's GamebryoModDataChecker analogue).
+    // Both empty → no checker registered → no folder can look invalid.
+    std::vector<std::string> valid_dirs;
+    std::vector<std::string> valid_exts;
 };
+
+// MO2's GamebryoModDataChecker::dataLooksValid analogue: a folder has valid
+// game data if it contains any top-level directory named in mod_valid_dirs,
+// any top-level file whose extension is in mod_valid_exts, or the game's own
+// metadata file (Isaac mods are identified by metadata.xml; MO2's Bethesda
+// checker accepts meta.ini via the "ini" extension rule). No allow-lists
+// registered → nothing can look invalid. Case-insensitive, mirroring the
+// Windows filesystem games shipped on (Skyrim registers case_sensitive=false).
+static bool content_looks_valid(const ScanConfig& cfg,
+                                const std::filesystem::path& entry_path) {
+    if (cfg.valid_dirs.empty() && cfg.valid_exts.empty()) return true;
+
+    if (!cfg.metadata_file.empty() &&
+        std::filesystem::exists(entry_path / cfg.metadata_file))
+        return true;
+
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(entry_path, ec)) {
+        const auto name = entry.path().filename().string();
+        if (entry.is_directory(ec)) {
+            for (const auto& d : cfg.valid_dirs)
+                if (ci_equals(name, d)) return true;
+        } else if (entry.is_regular_file(ec)) {
+            auto dot = name.find_last_of('.');
+            if (dot == std::string::npos) continue;
+            auto ext = name.substr(dot + 1);
+            for (const auto& e : cfg.valid_exts)
+                if (ci_equals(ext, e)) return true;
+        }
+    }
+    return false;
+}
 
 static ScanConfig make_scan_config(const GameKnowledge& knowledge,
                                    const std::string& game_id) {
@@ -92,6 +138,11 @@ static ScanConfig make_scan_config(const GameKnowledge& knowledge,
     cfg.separator_suffix = knowledge.get(game_id, "separator_suffix", "_separator");
     cfg.workshop_pattern = knowledge.get(game_id, "workshop_id_pattern", "");
     cfg.priority_prefix_re = knowledge.get(game_id, "priority_prefix_re", "");
+    // Content-validity allow-lists come from the game's support plugin, never
+    // hardcoded here: mod_valid_dirs = valid top-level folder names (CSV),
+    // mod_valid_exts = valid top-level file extensions (CSV, no leading dot).
+    cfg.valid_dirs = split_csv(knowledge.get(game_id, "mod_valid_dirs", ""));
+    cfg.valid_exts = split_csv(knowledge.get(game_id, "mod_valid_exts", ""));
 
     cfg.ignored = split_csv(ignored_csv);
     // Always ignore system directories during directory scanning
@@ -185,52 +236,59 @@ static std::optional<ScannedMod> scan_entry(
 
     // Parse metadata file
     if (cfg.use_xml_meta) {
-        // XML metadata (Isaac): the mod is only recognized if the file
-        // exists; name/version come from the configured tags.
+        // XML metadata (Isaac): name/version come from the configured tags.
+        // A folder without the metadata file is STILL a mod (MO2 lists every
+        // folder in Mods/); it is flagged no_metadata so the UI can warn it
+        // wasn't installed by the manager.
         auto metadata_path = entry_path / cfg.metadata_file;
-        if (!std::filesystem::exists(metadata_path)) return std::nullopt;
-
-        auto content = read_file_text(metadata_path);
-        if (content.empty()) return std::nullopt;
-
-        auto raw_name = xml_find_tag(content, cfg.name_tag);
-        if (raw_name.empty()) return std::nullopt;
-
-        mod.raw_name = raw_name;
-
-        // Normalize name: strip priority prefix if configured
-        if (!cfg.priority_prefix_re.empty()) {
-            try {
-                static const std::regex prefix_re(cfg.priority_prefix_re);
-                // Extract the numeric prefix value before stripping
-                std::smatch m;
-                if (std::regex_search(raw_name, m, prefix_re)) {
-                    auto prefix_str = m.str();
-                    // Strip non-digits to get the number
-                    std::string digits;
-                    for (char c : prefix_str) {
-                        if (std::isdigit(static_cast<unsigned char>(c))) digits += c;
-                    }
-                    if (!digits.empty()) {
-                        try { mod.priority = std::stoi(digits); } catch (...) {}
-                    }
-                }
-                mod.display_name = std::regex_replace(raw_name, prefix_re, "");
-            } catch (...) {
-                mod.display_name = raw_name;
-            }
+        if (!std::filesystem::exists(metadata_path)) {
+            mod.no_metadata = true;
+            mod.raw_name = folder_name;
+            mod.display_name = folder_name;
         } else {
-            mod.display_name = raw_name;
-        }
+            auto content = read_file_text(metadata_path);
+            auto raw_name = content.empty() ? std::string{} : xml_find_tag(content, cfg.name_tag);
+            if (raw_name.empty()) {
+                mod.raw_name = folder_name;
+                mod.display_name = folder_name;
+            } else {
+                mod.raw_name = raw_name;
 
-        // Trim whitespace from display name
-        auto first = mod.display_name.find_first_not_of(" \t");
-        if (first != std::string::npos) {
-            mod.display_name = mod.display_name.substr(first);
-        }
+                // Normalize name: strip priority prefix if configured
+                if (!cfg.priority_prefix_re.empty()) {
+                    try {
+                        static const std::regex prefix_re(cfg.priority_prefix_re);
+                        // Extract the numeric prefix value before stripping
+                        std::smatch m;
+                        if (std::regex_search(raw_name, m, prefix_re)) {
+                            auto prefix_str = m.str();
+                            // Strip non-digits to get the number
+                            std::string digits;
+                            for (char c : prefix_str) {
+                                if (std::isdigit(static_cast<unsigned char>(c))) digits += c;
+                            }
+                            if (!digits.empty()) {
+                                try { mod.priority = std::stoi(digits); } catch (...) {}
+                            }
+                        }
+                        mod.display_name = std::regex_replace(raw_name, prefix_re, "");
+                    } catch (...) {
+                        mod.display_name = raw_name;
+                    }
+                } else {
+                    mod.display_name = raw_name;
+                }
 
-        // Parse version
-        mod.version = xml_find_tag(content, cfg.version_tag);
+                // Trim whitespace from display name
+                auto first = mod.display_name.find_first_not_of(" \t");
+                if (first != std::string::npos) {
+                    mod.display_name = mod.display_name.substr(first);
+                }
+
+                // Parse version
+                mod.version = xml_find_tag(content, cfg.version_tag);
+            }
+        }
     } else {
         // MO2-style meta.ini: the folder name IS the mod name; the ini
         // carries the version. A legacy metadata.xml (written by older GMM
@@ -241,29 +299,60 @@ static std::optional<ScannedMod> scan_entry(
         if (content.empty()) {
             auto legacy_path = entry_path / "metadata.xml";
             auto legacy = read_file_text(legacy_path);
-            if (legacy.empty()) return std::nullopt;
-            mod.raw_name = folder_name;
-            mod.display_name = folder_name;
-            mod.version = xml_find_tag(legacy, "version");
+            if (!legacy.empty()) {
+                mod.raw_name = folder_name;
+                mod.display_name = folder_name;
+                mod.version = xml_find_tag(legacy, "version");
+            } else {
+                // No metadata at all: still emit the folder (MO2 lists every
+                // folder) and flag it so the UI warns it isn't a managed mod.
+                mod.no_metadata = true;
+                mod.raw_name = folder_name;
+                mod.display_name = folder_name;
+            }
         } else {
             engine::ModMeta meta;
-            if (!meta.parse(content)) return std::nullopt;
-            mod.raw_name = folder_name;
-            mod.display_name = folder_name;
-            mod.version = meta.get("General", "version");
-            // FOMOD-installed marker: install_stage writes [fomod] choices=
-            // so reinstalls can restore selections and the UI can flag the
-            // mod. This is the retroactive scan too - every load re-reads
-            // meta.ini, so mods installed before the marker existed are
-            // picked up here if their meta.ini already has the section.
-            mod.is_fomod = meta.has_section("fomod") &&
-                           !meta.get("fomod", "choices").empty();
-            // Root-override marker: when set, the mod's folder is treated as
-            // the game's root directory at deploy time (files under a leading
-            // Data/ folder still land in Data/; everything else goes to root).
-            mod.root_override = meta.get("General", "rootOverride") == "1";
+            if (meta.parse(content)) {
+                mod.raw_name = folder_name;
+                mod.display_name = folder_name;
+                mod.version = meta.get("General", "version");
+                // FOMOD-installed marker: install_stage writes [fomod] choices=
+                // so reinstalls can restore selections and the UI can flag the
+                // mod. This is the retroactive scan too - every load re-reads
+                // meta.ini, so mods installed before the marker existed are
+                // picked up here if their meta.ini already has the section.
+                mod.is_fomod = meta.has_section("fomod") &&
+                               !meta.get("fomod", "choices").empty();
+                // Root-override marker: when set, the mod's folder is treated as
+                // the game's root directory at deploy time (files under a leading
+                // Data/ folder still land in Data/; everything else goes to root).
+                mod.root_override = meta.get("General", "rootOverride") == "1";
+            } else {
+                // Malformed meta.ini: MO2's QSettings reads it as empty, so the
+                // folder keeps its defaults rather than vanishing from the list.
+                mod.raw_name = folder_name;
+                mod.display_name = folder_name;
+            }
         }
     }
+
+    // MO2's validated marker: [General] validated=true in the folder's
+    // meta.ini - the file MO2's markValidated writes ("Ignore missing data").
+    // Read for every game (an XML game's meta.ini is GMM-owned, never read by
+    // the game itself) so the marker suppresses both flags below.
+    if (!mod.validated) {
+        auto meta_path = entry_path / "meta.ini";
+        auto meta_content = read_file_text(meta_path);
+        if (!meta_content.empty()) {
+            engine::ModMeta meta;
+            if (meta.parse(meta_content) &&
+                meta.get("General", "validated") == "true") {
+                mod.validated = true;
+            }
+        }
+    }
+    mod.no_metadata = mod.no_metadata && !mod.validated;
+    mod.invalid_data = !mod.validated && !content_looks_valid(cfg, entry_path);
 
     // Check for disable sentinel
     if (!cfg.disable_file.empty()) {
@@ -429,6 +518,20 @@ bool ModScanner::set_priority(
     if (!fout) return false;
     fout << content;
     return fout.good();
+}
+
+bool ModScanner::mark_validated(const std::filesystem::path& mod_folder) {
+    // MO2's markValidated: persist [General] validated=true in the mod folder's
+    // own meta.ini (creating the file if the folder had none). The scanner
+    // reads the same key back, so the invalid/no-metadata flags stay cleared.
+    auto ini_path = mod_folder / "meta.ini";
+    engine::ModMeta meta;
+    if (std::filesystem::exists(ini_path)) {
+        auto content = read_file_text(ini_path);
+        if (content.empty() || !meta.parse(content)) return false;
+    }
+    meta.set("General", "validated", "true");
+    return meta.save_file(ini_path);
 }
 
 }  // namespace engine

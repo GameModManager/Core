@@ -37,8 +37,8 @@ std::vector<std::string> SyncStage::capture_overwrite_files(
     }
 
     // Walk the game directory
-    for (const auto& entry :
-         std::filesystem::recursive_directory_iterator(game_dir)) {
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(
+             game_dir, std::filesystem::directory_options::skip_permission_denied)) {
         if (!entry.is_regular_file()) continue;
 
         // Skip symlinks - deployed mod files are symlinked into the game dir

@@ -22,6 +22,15 @@ struct ScannedMod {
     bool is_game_native = false; // true for game-provided plugins (e.g. vanilla ESMs)
     bool is_fomod = false;       // true if meta.ini carries a [fomod] section with saved choices
     bool root_override = false;  // true if the mod deploys to the game root (meta.ini [General] rootOverride)
+    // No recognized metadata file in the folder (MO2 lists every folder in
+    // Mods/; the manager warns when it wasn't the one that installed it).
+    bool no_metadata = false;
+    // Content-validity check failed (MO2's FLAG_INVALID "No valid game data"):
+    // the folder holds no recognized game data per the per-game allow-lists.
+    bool invalid_data = false;
+    // MO2's validated marker ([General] validated=true in the folder's
+    // meta.ini, the file markValidated writes). Suppresses the flags above.
+    bool validated = false;
 };
 
 // Generic mod scanner - reads ALL game-specific config from GameKnowledge.
@@ -73,6 +82,12 @@ public:
         const std::string& game_id,
         const std::filesystem::path& mod_folder,
         int priority);
+
+    // MO2's "Ignore missing data": persist [General] validated=true in the
+    // folder's meta.ini (creating it if absent) so the invalid/no-metadata
+    // flags stay cleared on rescan. Returns false on write failure.
+    [[nodiscard]] static bool mark_validated(
+        const std::filesystem::path& mod_folder);
 };
 
 }  // namespace engine

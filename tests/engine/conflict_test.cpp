@@ -5,6 +5,10 @@
 #include <filesystem>
 #include <fstream>
 
+#if defined(__unix__)
+#include <unistd.h>
+#endif
+
 int main() {
     using namespace engine;
     namespace fs = std::filesystem;
@@ -94,6 +98,43 @@ int main() {
                    base / "mod_c" / "data" / "config.ini");
         std::printf("  invalidate_mod after a subdir rename re-scans the mod\n");
     }
+
+    // --- A permission-denied subdirectory inside a mod must not abort the
+    // scan. Before skip_permission_denied, the throwing operator++ terminated
+    // the whole process (SIGABRT) on the first unreadable subdir. This is the
+    // regression for the app crash "cannot increment recursive directory
+    // iterator: Permission denied".
+#if defined(__unix__)
+    if (::geteuid() != 0) {
+        fs::path locked_mod = base / "mod_locked";
+        fs::create_directories(locked_mod / "data");
+        fs::create_directories(locked_mod / "secret");
+        touch(locked_mod / "data" / "config.ini");
+        touch(locked_mod / "secret" / "hidden.bin");
+        fs::permissions(locked_mod / "secret", fs::perms::none);
+
+        std::vector<ConflictEngine::ModInfo> mods2 = mods;
+        mods2.push_back({"mod_locked", 4});
+
+        auto results = engine.compute(base, mods2, "", "metadata.xml", true);
+
+        // The visible data/config.ini must still be indexed; the unreadable
+        // secret/ subtree is skipped, not a crash.
+        assert(results["mod_locked"].total_files == 1);
+        const auto& reg = engine.last_registry();
+        auto it = reg.find("data/config.ini");
+        assert(it != reg.end() && it->second.size() == 4 &&
+               "all four mods still own config.ini, locked or not");
+        assert(reg.find("secret/hidden.bin") == reg.end());
+
+        // Restore permissions so cleanup can remove the tree.
+        fs::permissions(locked_mod / "secret", fs::perms::owner_all);
+        fs::remove_all(locked_mod);
+        std::printf("  permission-denied subdir is skipped, not a crash\n");
+    } else {
+        std::printf("  (skipped permission-denied check: running as root)\n");
+    }
+#endif
 
     fs::remove_all(base);
 

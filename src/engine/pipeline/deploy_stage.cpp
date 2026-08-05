@@ -35,7 +35,10 @@ bool DeployStage::execute(Mod& mod, PipelineContext& ctx) {
     int deployed = 0;
     int failed = 0;
     auto deploy_root = ctx.deploy_include_mod_id ? target_base / mod.id : target_base;
-    for (const auto& entry : std::filesystem::recursive_directory_iterator(mod_path)) {
+    // skip_permission_denied: a permission-denied subdirectory makes the
+    // range-for's throwing operator++ abort the whole deploy (SIGABRT).
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(
+             mod_path, std::filesystem::directory_options::skip_permission_denied)) {
         if (entry.is_regular_file()) {
             auto rel = std::filesystem::relative(entry.path(), mod_path);
             // NOTE: no create_directories(target.parent_path()) here. The

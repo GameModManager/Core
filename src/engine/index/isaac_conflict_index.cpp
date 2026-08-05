@@ -173,7 +173,10 @@ IsaacConflictIndex::walk_mod(const std::string& mod_path) const {
     fs::path mod_dir(mod_path);
 
     std::error_code ec;
-    for (auto it = fs::recursive_directory_iterator(mod_dir, ec);
+    // skip_permission_denied: a permission-denied subdirectory makes the
+    // throwing operator++ abort the whole walk (SIGABRT).
+    for (auto it = fs::recursive_directory_iterator(
+             mod_dir, fs::directory_options::skip_permission_denied, ec);
          it != fs::recursive_directory_iterator(); ++it) {
         if (!it->is_regular_file()) continue;
 
@@ -220,7 +223,8 @@ std::string IsaacConflictIndex::fingerprint_folder(const std::string& mod_path) 
 
     // Include conflict-relevant files with their mtimes
     fs::path mod_dir(mod_path);
-    for (auto it = fs::recursive_directory_iterator(mod_dir, ec);
+    for (auto it = fs::recursive_directory_iterator(
+             mod_dir, fs::directory_options::skip_permission_denied, ec);
          it != fs::recursive_directory_iterator(); ++it) {
         if (!it->is_regular_file()) continue;
 

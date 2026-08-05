@@ -1480,6 +1480,12 @@ void MainWindow::load_mods_from_game() {
             if (mod.root_override) {
                 mod_model_->set_root_override(id, true);
             }
+            if (mod.invalid_data) {
+                mod_model_->set_invalid_data(id, true);
+            }
+            if (mod.no_metadata) {
+                mod_model_->set_no_metadata(id, true);
+            }
             if (!mod.enabled) {
                 mod_model_->toggle_mod(id);
             }
@@ -1592,6 +1598,8 @@ void MainWindow::add_installed_mod(const std::string& folder_name) {
             mod_model_->add_mod(id, name, ver, mod.priority, mod.is_game_native);
             if (mod.is_fomod) mod_model_->set_fomod(id, true);
             if (mod.root_override) mod_model_->set_root_override(id, true);
+            if (mod.invalid_data) mod_model_->set_invalid_data(id, true);
+            if (mod.no_metadata) mod_model_->set_no_metadata(id, true);
             if (!mod.enabled) mod_model_->toggle_mod(id);
         }
         // Persist the freshly assigned priority (MO2 bottom-of-band) and
@@ -2698,6 +2706,22 @@ void MainWindow::setup_mod_list_context_menu() {
 
         menu.addAction(engine::IconManager::instance().resolve_icon("list-add"), tr("Create Separator"),
             this, [this, row]() { create_separator_at_row(row); });
+
+        // MO2's "Ignore missing data" (modlistcontextmenu + modlistviewactions
+        // ignoreMissingData): offered only on flagged rows (no valid game data
+        // and/or no manager metadata). Persists [General] validated=true in the
+        // mod's own meta.ini so the flags stay cleared on rescan.
+        if (entry.invalid_data || entry.no_metadata) {
+            menu.addSeparator();
+            menu.addAction(engine::IconManager::instance().resolve_icon("dialog-ok"), tr("Ignore missing data"),
+                this, [this, mod_id]() {
+                    auto folder = mods_dir_path() / mod_id.toStdString();
+                    if (engine::ModScanner::mark_validated(folder)) {
+                        mod_model_->set_invalid_data(mod_id, false);
+                        mod_model_->set_no_metadata(mod_id, false);
+                    }
+                });
+        }
 
         if (has_conflicts) {
             menu.addSeparator();
