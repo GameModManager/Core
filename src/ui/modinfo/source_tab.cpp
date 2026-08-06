@@ -5,9 +5,9 @@
 #include "engine/source/source_provider.h"
 #include "engine/theme/icon_manager.h"
 #include "ui/modinfo/bbcode.h"
+#include "ui/modinfo/source_fetch_worker.h"
 #include "ui/settings/settings.h"
 
-#include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDesktopServices>
@@ -302,10 +302,57 @@ void SourceTab::on_refresh() {
     const QString id = mod_id_->text().trimmed();
     if (id.isEmpty() || id.toInt() <= 0) return;
 
-    QApplication::setOverrideCursor(Qt::WaitCursor);
-    const auto result = current().fetch_nexus_info();
-    QApplication::restoreOverrideCursor();
+    ++refresh_generation_;
+    if (fetch_in_flight_) {
+        // A refresh is already on the wire: coalesce — relaunch once it
+        // lands, so rapid Re-clicks queue at most one follow-up fetch and a
+        // stale result never writes meta.
+        refresh_pending_ = true;
+        return;
+    }
+    launch_fetch();
+}
 
+void SourceTab::launch_fetch() {
+    fetch_in_flight_ = true;
+    refresh_pending_ = false;
+    refresh_mod_id_ = current().id;
+    const quint64 gen = refresh_generation_;
+    auto fetch = current().fetch_nexus_info;
+
+    if (refresh_ != nullptr) {
+        refresh_->setEnabled(false);
+        refresh_->setText(tr("Fetching…"));
+    }
+
+    if (source_fetch_thread_ == nullptr) {
+        source_fetch_thread_ = new ui::SourceFetchThread(this);
+        connect(source_fetch_thread_->worker(), &ui::SourceFetchWorker::finished,
+                this, &SourceTab::on_fetch_finished);
+    }
+    source_fetch_thread_->start(std::move(fetch), gen);
+}
+
+void SourceTab::on_fetch_finished(engine::ModInfoResult result,
+                                  quint64 generation) {
+    fetch_in_flight_ = false;
+    if (refresh_ != nullptr) {
+        refresh_->setEnabled(true);
+        refresh_->setText(tr("Refresh"));
+    }
+
+    // Drop a result that no longer belongs: superseded by a newer Refresh, or
+    // the user switched mods (prev/next) while the fetch was in flight.
+    const bool stale =
+        generation != refresh_generation_ || refresh_mod_id_ != current().id;
+    const bool relaunch = refresh_pending_;
+    refresh_pending_ = false;
+
+    if (!stale) apply_fetch_result(result);
+    if (relaunch) launch_fetch();
+}
+
+void SourceTab::apply_fetch_result(const engine::ModInfoResult& result) {
     if (!result.available) {
         render_description();
         return;
@@ -336,6 +383,7 @@ void SourceTab::on_visit() {
     const QString id = mod_id_->text().trimmed();
     if (id.isEmpty() || id.toInt() <= 0) return;
     if (!current().open_url) return;
+    if (current().nexus_domain.isEmpty()) return;  // no plugin identity → no valid URL
     current().open_url(QStringLiteral("https://www.nexusmods.com/%1/mods/%2")
                            .arg(current().nexus_domain, id));
 }

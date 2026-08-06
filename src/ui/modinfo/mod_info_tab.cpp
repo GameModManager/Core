@@ -10,8 +10,4 @@ void ModInfoTab::set_has_data(bool has) {
     has_data_ = has;
 }
 
-void ModInfoTab::set_current(const ModInfoData& data) {
-    current_ = data;
-}
-
 }  // namespace ui

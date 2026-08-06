@@ -27,6 +27,11 @@ public:
     ModInfoTabId tab_id() const { return tab_id_; }
     void set_tab_id(ModInfoTabId id) { tab_id_ = id; }
 
+    // Swaps in the working data for the currently displayed mod. The dialog
+    // calls this before set_mod(); tabs read it through current(). Public so a
+    // host (or a test driving a tab standalone) can set the data too.
+    void set_current(const ModInfoData& data) { current_ = data; }
+
 protected:
     const ModInfoData& current() const { return current_; }
 
@@ -35,9 +40,6 @@ protected:
     void set_has_data(bool has);
 
 private:
-    friend class ModInfoDialog;
-    void set_current(const ModInfoData& data);
-
     ModInfoData current_;
     ModInfoTabId tab_id_ = ModInfoTabId::TextFiles;
     bool has_data_ = false;

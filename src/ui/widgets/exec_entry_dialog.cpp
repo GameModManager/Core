@@ -77,6 +77,41 @@ QString exec_entry_display_name(const ExecEntry& e) {
     return QStringLiteral("Untitled");
 }
 
+QString output_mod_for_path(const QVector<ExecEntry>& entries,
+                            const std::filesystem::path& game_dir,
+                            const QString& full_path) {
+    if (game_dir.empty() || full_path.isEmpty())
+        return {};
+
+    // Canonicalize both sides (same rationale as browse_binary): the game dir
+    // commonly goes through the ~/.steam symlink, so a raw comparison against
+    // the symlinked spelling would dead-end.
+    std::error_code ec;
+    auto canon_base = std::filesystem::weakly_canonical(game_dir, ec);
+    const auto base = ec || canon_base.empty() ? game_dir : canon_base;
+    auto canon_full = std::filesystem::weakly_canonical(full_path.toStdString(), ec);
+    if (ec || canon_full.empty())
+        canon_full = full_path.toStdString();
+
+    auto rel = std::filesystem::relative(canon_full, base, ec);
+    if (ec || rel.empty())
+        return {};
+    // Paths escaping the game dir (e.g. /usr/bin/dolphin) produce a leading
+    // ".."; an entry-path match is then impossible.
+    if (rel.begin() != rel.end() && rel.begin()->string() == "..")
+        return {};
+    const QString rel_q = QString::fromStdString(rel.generic_string());
+    if (rel_q.isEmpty())
+        return {};
+    const QString rel_lower = rel_q.toLower();
+
+    for (const auto& e : entries) {
+        if (!e.output_mod.isEmpty() && e.path.toLower() == rel_lower)
+            return e.output_mod;
+    }
+    return {};
+}
+
 // ---------------------------------------------------------------------------
 // ExecEntryDialog
 // ---------------------------------------------------------------------------
@@ -179,6 +214,12 @@ ExecEntryDialog::ExecEntryDialog(const std::filesystem::path& game_dir,
     form->addRow(tr("Start in:"), cwd_row);
 
     output_mod_combo_ = new QComboBox(right_panel);
+    output_mod_combo_->setEditable(true);
+    output_mod_combo_->setInsertPolicy(QComboBox::NoInsert);
+    output_mod_combo_->setToolTip(tr(
+        "Type a mod name or pick one from the list. A name that is not in the\n"
+        "list yet is auto-created as a new mod when the executable runs.\n"
+        "Empty (--- None ---) routes output to Overwrite."));
     output_mod_combo_->addItem(tr("--- None ---"), QVariant(""));
     for (const auto& [id, name] : mod_list) {
         output_mod_combo_->addItem(name, QVariant(id));
@@ -238,6 +279,8 @@ ExecEntryDialog::ExecEntryDialog(const std::filesystem::path& game_dir,
     connect(start_in_edit_, &QLineEdit::textChanged, this, &ExecEntryDialog::on_field_changed);
     connect(output_mod_combo_, &QComboBox::currentIndexChanged,
             this, &ExecEntryDialog::on_field_changed);
+    connect(output_mod_combo_, &QComboBox::editTextChanged,
+            this, &ExecEntryDialog::on_field_changed);
 
     connect(browse_bin, &QPushButton::clicked, this, &ExecEntryDialog::browse_binary);
     connect(browse_cwd, &QPushButton::clicked, this, &ExecEntryDialog::browse_start_in);
@@ -293,7 +336,12 @@ void ExecEntryDialog::select_entry(int index) {
     args_edit_->setText(e.arguments);
     start_in_edit_->setText(e.start_in);
     int combo_idx = output_mod_combo_->findData(e.output_mod);
-    output_mod_combo_->setCurrentIndex(combo_idx >= 0 ? combo_idx : 0);
+    if (combo_idx >= 0)
+        output_mod_combo_->setCurrentIndex(combo_idx);
+    else if (!e.output_mod.isEmpty())
+        output_mod_combo_->setEditText(e.output_mod);
+    else
+        output_mod_combo_->setCurrentIndex(0);
 
     bool has_custom = !e.icon_path.isEmpty();
     use_app_icon_check_->setChecked(!has_custom);
@@ -328,10 +376,20 @@ void ExecEntryDialog::save_current_entry() {
     e.path       = binary_edit_->text().trimmed();
     e.arguments  = args_edit_->text().trimmed();
     e.start_in   = start_in_edit_->text().trimmed();
-    e.output_mod = output_mod_combo_->currentData().toString();
+    e.output_mod = current_output_mod_text();
     if (use_app_icon_check_->isChecked())
         e.icon_path.clear();
     // icon_path unchanged when unchecked (already set via on_change_icon)
+}
+
+QString ExecEntryDialog::current_output_mod_text() const {
+    const QString text = output_mod_combo_->currentText().trimmed();
+    // Selecting a listed mod returns its stored id; the "--- None ---" sentinel
+    // returns its empty data. Anything else is free-typed and routed as-is.
+    int idx = output_mod_combo_->findText(text);
+    if (idx >= 0)
+        return output_mod_combo_->itemData(idx).toString();
+    return text;
 }
 
 void ExecEntryDialog::on_add_from_file() {
@@ -573,9 +631,10 @@ void ExecEntryDialog::on_change_icon() {
                 QProcess proc;
                 proc.start(wrestool, {"-x", "-t", "14", chosen, "-o", outIco});
                 if (proc.waitForFinished(3000) && proc.exitCode() == 0) {
-                    // Cache the extracted icon
+                    // Cache the extracted icon (keyed by full filename so the
+                    // shared extractExeIcon cache lookup finds it)
                     if (!icon_cache_dir_.empty()) {
-                        auto cache_name = QFileInfo(chosen).completeBaseName() + ".ico";
+                        auto cache_name = QFileInfo(chosen).fileName() + ".ico";
                         auto cache_path = icon_cache_dir_ / cache_name.toStdString();
                         std::error_code ec;
                         std::filesystem::create_directories(icon_cache_dir_, ec);
@@ -636,7 +695,7 @@ void ExecEntryDialog::on_field_changed() {
         e.path       = binary_edit_->text().trimmed();
         e.arguments  = args_edit_->text().trimmed();
         e.start_in   = start_in_edit_->text().trimmed();
-        e.output_mod = output_mod_combo_->currentData().toString();
+        e.output_mod = current_output_mod_text();
         if (use_app_icon_check_->isChecked())
             e.icon_path.clear();
 

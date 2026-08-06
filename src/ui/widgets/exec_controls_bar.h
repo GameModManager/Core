@@ -17,6 +17,12 @@ namespace ui {
 // on a translated string. Display sites wrap it in tr().
 inline constexpr const char* kAddNewEntryText = "<Edit...>";
 
+// Single exe-icon extraction path for the executables combo, the toolbar
+// shortcuts and Data-tab "Add as Executable": cached <basename>.ico in
+// icon_cache_dir wins, then wrestool extraction (cached on success), then
+// QFileIconProvider, then the standard file icon. Never returns a null icon.
+QIcon extractExeIcon(const QString& exePath, const std::filesystem::path& icon_cache_dir);
+
 class ExecControlsBar : public QWidget {
     Q_OBJECT
 public:

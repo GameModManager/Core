@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # (package_installer target passes -DVERSION=${PROJECT_VERSION}), and the plugins
 # (GMM_VERSION, visible in the add_subdirectory'd external/plugins scope).
 project(GameModManager
-    VERSION 0.2.1
+    VERSION 0.2.20
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -122,7 +122,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(pybind11)
 
-enable_testing()
+# Test suite — OFF by default. When OFF, no test executables are created and
+# none are registered, so `cmake --build build` produces only the app, the
+# plugins, and the LD_PRELOAD intercept library. build.sh passes
+# -DGMM_BUILD_TESTS=ON only for its --tests mode.
+option(GMM_BUILD_TESTS "Build and register the test suite" OFF)
+if(GMM_BUILD_TESTS)
+    enable_testing()
+endif()
 
 # Build game plugins as shared libraries (loaded via dlopen at runtime)
 add_subdirectory(external/plugins)
@@ -142,6 +149,7 @@ set(FOMOD_ENGINE_SOURCES
 set(ENGINE_SOURCES
     src/engine/instance/instance.cpp
     src/engine/instance/instance_utils.cpp
+    src/engine/instance/game_icons.cpp
     src/engine/fs_utils.cpp
     src/engine/detect/game_detector.cpp
     src/engine/detect/mod_scanner.cpp
@@ -246,6 +254,10 @@ set(UI_SOURCES
     src/ui/settings/source_pages.cpp
     src/ui/main_window/main_window.cpp
     src/ui/main_window/loot_sort_worker.cpp
+    src/ui/main_window/conflict_scan_worker.cpp
+    src/ui/main_window/mod_scan_worker.cpp
+    src/ui/main_window/plugin_db_load_worker.cpp
+    src/ui/main_window/deploy_worker.cpp
     src/ui/widgets/mod_list_model.cpp
     src/ui/widgets/mod_table_view.cpp
     src/ui/widgets/main_toolbar.cpp
@@ -256,6 +268,7 @@ set(UI_SOURCES
     src/ui/widgets/console_panel.cpp
     src/ui/widgets/gmm_status_bar.cpp
     src/ui/widgets/instance_switcher_dialog.cpp
+    src/ui/widgets/game_icon_cache.cpp
     src/ui/widgets/instance_statistics_dialog.cpp
     src/ui/widgets/debug_window.cpp
     src/ui/widgets/pipeline_window.cpp
@@ -308,6 +321,7 @@ set(MODINFO_SOURCES
     src/ui/modinfo/conflicts_tab.cpp
     src/ui/modinfo/categories_tab.cpp
     src/ui/modinfo/source_tab.cpp
+    src/ui/modinfo/source_fetch_worker.cpp
     src/ui/modinfo/notes_tab.cpp
     src/ui/modinfo/filetree_tab.cpp
     src/ui/modinfo/bbcode.cpp
@@ -405,14 +419,17 @@ if(UNIX AND NOT APPLE)
     )
 
     # Smoke test: verify all 17 function symbols resolve in the .so
-    add_executable(overlay_intercept_test tests/engine/overlay_intercept_test.c)
-    target_compile_definitions(overlay_intercept_test PRIVATE
-        GMM_INTERCEPT_SO="${CMAKE_CURRENT_BINARY_DIR}/libgmm_overlay_intercept.so")
-    target_link_libraries(overlay_intercept_test PRIVATE ${CMAKE_DL_LIBS})
-    add_test(NAME overlay_intercept_test COMMAND overlay_intercept_test)
+    if(GMM_BUILD_TESTS)
+        add_executable(overlay_intercept_test tests/engine/overlay_intercept_test.c)
+        target_compile_definitions(overlay_intercept_test PRIVATE
+            GMM_INTERCEPT_SO="${CMAKE_CURRENT_BINARY_DIR}/libgmm_overlay_intercept.so")
+        target_link_libraries(overlay_intercept_test PRIVATE ${CMAKE_DL_LIBS})
+        add_test(NAME overlay_intercept_test COMMAND overlay_intercept_test)
+    endif()
 endif()
 
 # Tests — headless, no Qt
+if(GMM_BUILD_TESTS)
 add_executable(pipeline_test tests/engine/pipeline_test.cpp
     src/engine/instance/instance.cpp
     src/engine/detect/game_detector.cpp
@@ -573,6 +590,26 @@ add_executable(launch_params_test tests/engine/launch_params_test.cpp
 )
 target_include_directories(launch_params_test PRIVATE src/)
 add_test(NAME launch_params_test COMMAND launch_params_test)
+
+# Game icon cache path/URL resolution + cache skip logic (Qt-free).
+add_executable(game_icons_test tests/engine/game_icons_test.cpp
+    src/engine/instance/game_icons.cpp
+    src/engine/instance/instance_utils.cpp
+    src/engine/instance/instance.cpp
+    src/engine/deploy/deploy_utils.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/deploy/strategy_overlayfs_deploy.cpp
+    src/engine/registry/game_knowledge.cpp
+    src/engine/overlay_launcher.cpp
+    src/engine/fs_utils.cpp
+    src/engine/download/curl_download.cpp
+    src/engine/source/nexus_http.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(game_icons_test PRIVATE src/)
+target_compile_definitions(game_icons_test PRIVATE VERSION="${PROJECT_VERSION}")
+target_link_libraries(game_icons_test PRIVATE PkgConfig::CURL)
+add_test(NAME game_icons_test COMMAND game_icons_test)
 
 # Proton tool-running: runner override resolution + run guards.
 add_executable(proton_tools_test tests/engine/proton_tools_test.cpp
@@ -789,6 +826,21 @@ add_executable(deploy_binary_test tests/engine/deploy_binary_test.cpp
 target_include_directories(deploy_binary_test PRIVATE src/)
 add_test(NAME deploy_binary_test COMMAND deploy_binary_test)
 
+# Parallel deploy executor (P8.4): first full deploy farms N mods across worker
+# threads with monotonic progress; contested targets are won deterministically
+# by the lexicographically-last mod; unchanged re-runs touch zero files (O(Δ)
+# ledger) and disabling a mod unlinks its stale staging entries; the
+# case-insensitive merge and include-mod-id layouts hold under parallelism.
+add_executable(deploy_parallel_test tests/engine/deploy_parallel_test.cpp
+    src/engine/deploy/deploy_utils.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/deploy/strategy_overlayfs_deploy.cpp
+    src/engine/fs_utils.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(deploy_parallel_test PRIVATE src/)
+add_test(NAME deploy_parallel_test COMMAND deploy_parallel_test)
+
 # URL percent-encoding for libcurl (Nexus CDN URLs embed unencoded filenames).
 add_executable(nexus_http_test tests/engine/nexus_http_test.cpp
     src/engine/source/nexus_http.cpp
@@ -984,6 +1036,30 @@ endif()
 add_test(NAME settings_sources_tab_test COMMAND settings_sources_tab_test ${CMAKE_CURRENT_BINARY_DIR}/plugins)
 set_tests_properties(settings_sources_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+# SourceTab (Mod Info -> Source tab) — offscreen GUI test for the async Refresh
+# (P8.3): a fake fetch_nexus_info proves the network round-trip runs on the
+# gmm-source-fetch worker thread (never the UI thread, no WaitCursor), lands a
+# result in the mod's meta, and a second Refresh while one is in flight
+# supersedes the first (stale result dropped, no torn meta write).
+add_executable(source_tab_test tests/ui/source_tab_test.cpp
+    src/ui/modinfo/source_tab.cpp
+    src/ui/modinfo/source_fetch_worker.cpp
+    src/ui/modinfo/mod_info_tab.cpp
+    src/ui/modinfo/mod_info_data.cpp
+    src/ui/modinfo/bbcode.cpp
+    src/engine/source/source_provider.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/theme/icon_manager.cpp
+    src/engine/theme/theme_manager.cpp
+    src/engine/log/logger.cpp
+    src/ui/settings/settings.cpp
+)
+target_include_directories(source_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_compile_definitions(source_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
+target_link_libraries(source_tab_test PRIVATE Qt6::Widgets)
+add_test(NAME source_tab_test COMMAND source_tab_test)
+set_tests_properties(source_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 # Downloads tab — offscreen GUI regression test for the untracked-archive
 # scan (manually downloaded / dragged-in archives must show up and install).
 # Hermetic: throwaway XDG_CONFIG_HOME, no network.
@@ -1009,6 +1085,45 @@ target_compile_definitions(downloads_tab_test PRIVATE VERSION="${PROJECT_VERSION
 target_link_libraries(downloads_tab_test PRIVATE Qt6::Widgets PkgConfig::CURL)
 add_test(NAME downloads_tab_test COMMAND downloads_tab_test)
 set_tests_properties(downloads_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# PipelineWorker download pool — P8.5/T5 parallel-download regression test.
+# Pins the fetch-pool contracts with a fake provider (no network): two
+# transfers run concurrently (deterministic 2-way barrier), the pool is bounded
+# to kMaxConcurrentDownloads with a FIFO queue beyond it, an in-flight pause
+# aborts cooperatively and keeps the partial file, and a queued pause drops the
+# download before it ever starts.
+add_executable(pipeline_worker_test tests/ui/pipeline_worker_test.cpp
+    src/ui/pipeline_worker.cpp
+    src/engine/pipeline/pipeline.cpp
+    src/engine/pipeline/fetch_stage.cpp
+    src/engine/instance/instance.cpp
+    src/engine/trace/trace_recorder.cpp
+    src/engine/log/logger.cpp
+    src/engine/source/source_provider.cpp
+)
+target_include_directories(pipeline_worker_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_compile_definitions(pipeline_worker_test PRIVATE VERSION="${PROJECT_VERSION}")
+target_link_libraries(pipeline_worker_test PRIVATE Qt6::Core)
+add_test(NAME pipeline_worker_test COMMAND pipeline_worker_test)
+
+# Plugin-DB preload worker (P8.5 / T6) — hermetic test that the startup-time
+# plugin-DB disk load runs on a worker thread (gmm-plugin-db), returns the
+# parsed database via a queued signal, and that a superseding load's generation
+# is dropped by the consumer contract.
+add_executable(plugin_db_load_test tests/ui/plugin_db_load_test.cpp
+    src/ui/main_window/plugin_db_load_worker.cpp
+    src/engine/plugins/esp_header.cpp
+    src/engine/plugins/plugin_database.cpp
+    src/engine/plugin_host/diagnostics_registry.cpp
+    src/engine/instance/instance.cpp
+    src/engine/log/logger.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/registry/game_knowledge.cpp
+)
+target_include_directories(plugin_db_load_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_compile_definitions(plugin_db_load_test PRIVATE VERSION="${PROJECT_VERSION}")
+target_link_libraries(plugin_db_load_test PRIVATE Qt6::Core PkgConfig::NLOHMANN_JSON)
+add_test(NAME plugin_db_load_test COMMAND plugin_db_load_test)
 
 # Data tab — offscreen GUI regression test for the MO2-parity file context
 # menu and double-click behavior: tree population, hidden-file rendering
@@ -1102,6 +1217,24 @@ target_link_libraries(mod_list_model_test PRIVATE Qt6::Widgets)
 add_test(NAME mod_list_model_test COMMAND mod_list_model_test)
 set_tests_properties(mod_list_model_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+# ExecEntryDialog — offscreen GUI test: ExecEntry JSON round-trip plus the
+# output-to-mod path matcher (MO2 getByBinary parity). The matcher is what
+# routes toolbar-shortcut and Data-tab Execute launches into the entry's
+# configured output mod; verified game-relative, case-insensitive,
+# symlink-canonicalized, first-match-wins, and out-of-game exclusion.
+add_executable(exec_entry_dialog_test tests/ui/exec_entry_dialog_test.cpp
+    src/ui/widgets/exec_entry_dialog.cpp
+    src/ui/settings/settings.cpp
+    src/engine/theme/theme_manager.cpp
+    src/engine/theme/icon_manager.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(exec_entry_dialog_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_compile_definitions(exec_entry_dialog_test PRIVATE VERSION="${PROJECT_VERSION}")
+target_link_libraries(exec_entry_dialog_test PRIVATE Qt6::Widgets)
+add_test(NAME exec_entry_dialog_test COMMAND exec_entry_dialog_test)
+set_tests_properties(exec_entry_dialog_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 # Overwrite dialogs — offscreen GUI test: QueryOverwriteDialog actions/backup,
 # MoveToModDialog selection, SyncOverwriteDialog combos + targets(), and
 # OverwriteInfoDialog mapping-root protection. Hermetic: throwaway
@@ -1179,6 +1312,7 @@ target_include_directories(install_progress_dialog_test PRIVATE src/)
 target_link_libraries(install_progress_dialog_test PRIVATE Qt6::Widgets)
 add_test(NAME install_progress_dialog_test COMMAND install_progress_dialog_test)
 set_tests_properties(install_progress_dialog_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()  # GMM_BUILD_TESTS
 
 # -- Windows installer -------------------------------------------------------
 # `package_installer` builds the NSIS installer from packaging/windows/installer.nsi

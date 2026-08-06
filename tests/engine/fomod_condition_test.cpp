@@ -26,7 +26,8 @@ std::unique_ptr<ModuleConfiguration> parse_config(const std::string& xml)
     const auto path = std::filesystem::temp_directory_path() / "gmm_fomod_condition_test.xml";
     std::ofstream(path) << xml;
     auto config = std::make_unique<ModuleConfiguration>();
-    assert(config->deserialize(path));
+    const bool parsed = config->deserialize(path);
+    assert(parsed);
     std::filesystem::remove(path);
     return config;
 }

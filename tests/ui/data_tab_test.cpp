@@ -9,14 +9,15 @@
 //     are listed under their base name and dimmed, and a visible file sharing
 //     the base name claims the row over its hidden copy,
 //   - double-clicking a non-executable emits open_requested with the on-disk
-//     path of the winning copy; an .exe emits execute_requested(..., true);
-//     a native executable (exec bit) emits execute_requested(..., false);
-//     a directory emits nothing (no real path behind it),
+//     path of the winning copy; an .exe emits execute_requested(path, true,
+//     vfs_path); a native executable (exec bit) emits execute_requested(path,
+//     false, vfs_path); a directory emits nothing (no real path behind it).
+//     The third argument is the merged deploy-relative (DataVfsPathRole) path
+//     the receiver resolves against the overlay-launch chain,
 //   - preview_item() emits preview_requested with one on-disk copy per
 //     provider so the preview window can browse variants,
 //   - add_file_menus() exposes the MO2 menu: Open/Execute, Preview (enabled
-//     only for previewable files), the two VFS entries disabled with the
-//     platform-constraints tooltip, Add as Executable (executables only),
+//     only for previewable files), Add as Executable (executables only),
 //     Reveal in Explorer, Open Mod Info (disabled for Overwrite/MERGED),
 //     Hide/Un-Hide, and the common menus (Save Tree, Refresh, Expand/Collapse),
 //   - triggering the menu actions emits the right signals with the right
@@ -142,6 +143,17 @@ int main(int argc, char** argv) {
     write_file(mod_a / "Data/foo.txt.gmmhidden");  // hidden GMM copy
     write_file(mod_a / "Data/bar.txt.mohidden");   // hidden MO2 copy
 
+    // BodySlide-style content: at the mod root with no Data/ wrapper, so its
+    // registry key carries no deploy-prefix segment (the user's reported case).
+    std::filesystem::create_directories(mod_a / "CalienteTools" / "BodySlide");
+    write_file(mod_a / "CalienteTools" / "BodySlide" / "BodySlide.exe");
+    // Root-override mod (skse64-style): an internal Data/ folder, so its data
+    // keys carry the deploy prefix and classify into the data view with it
+    // stripped.
+    const auto mod_d = mods_dir / "ModD";
+    std::filesystem::create_directories(mod_d / "Data" / "Tools");
+    write_file(mod_d / "Data/Tools/helper.exe");
+
     // Mod entries mirror what MainWindow feeds the tab.
     ui::ModEntry entry_a;
     entry_a.id = "ModA";
@@ -151,7 +163,12 @@ int main(int argc, char** argv) {
     entry_b.id = "ModB";
     entry_b.name = "Mod B";
     entry_b.priority = 1;
-    QVector<ui::ModEntry> mods = {entry_a, entry_b};
+    ui::ModEntry entry_d;
+    entry_d.id = "ModD";
+    entry_d.name = "Mod D";
+    entry_d.priority = 4;
+    entry_d.root_override = true;
+    QVector<ui::ModEntry> mods = {entry_a, entry_b, entry_d};
 
     Registry registry;
     registry["Data/meshes/test.nif"] = {Owner("ModA", 2), Owner("ModB", 1)};
@@ -163,10 +180,13 @@ int main(int argc, char** argv) {
     registry["Data/foo.txt.gmmhidden"] = {Owner("ModA", 2)};
     registry["Data/bar.txt.mohidden"] = {Owner("ModA", 2)};
     registry["Data/overwrite.txt"] = {Owner(ui::kOverwriteModId, 999999)};
+    registry["CalienteTools/BodySlide/BodySlide.exe"] = {Owner("ModA", 2)};
+    registry["Data/Tools/helper.exe"] = {Owner("ModD", 4)};
 
     TestDataTab tab;
     tab.show_data(registry, mods, /*conflict_reversed=*/false, mods_dir, {},
-                  /*game_root_dir=*/{}, /*mods_subpath=*/"Data", /*deploy_prefix=*/"Data");
+                  /*game_root_dir=*/{}, /*mods_subpath=*/"Data",
+                  /*deploy_prefix=*/"Data", /*deploy_include_mod_id=*/false);
     QTreeWidget* tree = tab.tree_widget();
 
     // --- Tree population.
@@ -212,9 +232,11 @@ int main(int argc, char** argv) {
     bool got_execute = false;
     QString exec_path;
     bool exec_is_exe = false;
+    QString exec_vfs;
     QObject::connect(&tab, &ui::DataTab::execute_requested,
-                     [&](const QString& p, bool is_exe) {
+                     [&](const QString& p, bool is_exe, const QString& vfs) {
                          got_execute = true; exec_path = p; exec_is_exe = is_exe;
+                         exec_vfs = vfs;
                      });
 
     auto* readme_item = find_item(tree, {"Data", "readme.txt"});
@@ -229,8 +251,9 @@ int main(int argc, char** argv) {
     if (exe_item) {
         tab.on_item_double_clicked(exe_item, 0);
         check(got_execute && exec_is_exe &&
-                  exec_path.endsWith("test.exe"),
-              "double-click on an .exe emits execute_requested(..., true)");
+                  exec_path.endsWith("test.exe") &&
+                  exec_vfs == "Data/Data/scripts/test.exe",
+              "double-click on an .exe emits execute_requested(..., true, vfs_path)");
     }
 
     got_execute = false;
@@ -238,8 +261,9 @@ int main(int argc, char** argv) {
     if (tool_item) {
         tab.on_item_double_clicked(tool_item, 0);
         check(got_execute && !exec_is_exe &&
-                  exec_path.endsWith("tool.sh"),
-              "double-click on a native executable emits execute_requested(..., false)");
+                  exec_path.endsWith("tool.sh") &&
+                  exec_vfs == "Data/Data/tool.sh",
+              "double-click on a native executable emits execute_requested(..., false, vfs_path)");
     }
 
     bool got_after_dir = false;
@@ -282,7 +306,6 @@ int main(int argc, char** argv) {
         tab.add_file_menus(menu, readme_item);
         auto* open_act = action_with_text(menu, "&Open");
         auto* preview_act = action_with_text(menu, "&Preview");
-        auto* vfs_act = action_with_text(menu, "Open with &VFS");
         auto* add_exe_act = action_with_text(menu, "&Add as Executable");
         auto* reveal_act = action_with_text(menu, "Reveal in E&xplorer");
         auto* mod_info_act = action_with_text(menu, "Open &Mod Info");
@@ -291,9 +314,8 @@ int main(int argc, char** argv) {
               "text file menu has an enabled Open");
         check(preview_act && preview_act->isEnabled(),
               "previewable file menu has an enabled Preview");
-        check(vfs_act && !vfs_act->isEnabled() &&
-                  vfs_act->toolTip().contains("Not implemented"),
-              "VFS entry is disabled with the platform-constraints hint");
+        check(action_with_text(menu, "Open with &VFS") == nullptr,
+              "no separate VFS entry: plain Execute/Open already carries the merged path");
         check(add_exe_act && !add_exe_act->isEnabled(),
               "Add as Executable is disabled for a non-executable");
         check(reveal_act && reveal_act->isEnabled(),
@@ -337,9 +359,8 @@ int main(int argc, char** argv) {
         auto* preview_act = action_with_text(menu, "&Preview");
         check(preview_act && !preview_act->isEnabled(),
               "Preview is disabled for a non-previewable .exe");
-        auto* vfs_act = action_with_text(menu, "Execute with &VFS");
-        check(vfs_act && !vfs_act->isEnabled(),
-              "Execute with VFS is disabled");
+        check(action_with_text(menu, "Execute with &VFS") == nullptr,
+              "no separate VFS entry on executables: Execute launches in the merged view");
         auto* add_exe_act = action_with_text(menu, "&Add as Executable");
         check(add_exe_act && add_exe_act->isEnabled(),
               "Add as Executable is enabled for an executable");
@@ -354,9 +375,110 @@ int main(int argc, char** argv) {
                              got_add_exe = true; add_exe_path = p; add_exe_name = name;
                          });
         if (add_exe_act) add_exe_act->trigger();
-        check(got_add_exe && add_exe_path == "Data/scripts/test.exe" &&
+        // This fixture feeds `Data/...` keys for non-root-override mods (an
+        // un-normalized layout): deploy maps them to <prefix>/Data/... so the
+        // merged path doubles the prefix. Real installs peel a lone Data/
+        // wrapper (normalize_staging_root), which is why the BodySlide-style
+        // key below is prefix-free.
+        check(got_add_exe && add_exe_path == "Data/Data/scripts/test.exe" &&
                   add_exe_name == "test.exe",
               "Add as Executable carries the deploy-relative path and file name");
+
+        // BodySlide-style row (prefix-free key, non-root-override): the merged
+        // path must gain the deploy prefix - launch resolves
+        // game_dir/Data/CalienteTools/... (the real staging target), never the
+        // data-view-relative CalienteTools/...
+        auto* bodyslide_item = find_item(
+            tree, {"CalienteTools", "BodySlide", "BodySlide.exe"});
+        check(bodyslide_item != nullptr,
+              "root-content file appears in the data view");
+        bool got_body = false;
+        QString body_path;
+        QString body_phys;
+        QObject::connect(&tab, &ui::DataTab::add_executable_requested,
+                         [&](const QString& p, const QString& name, const QString& phys) {
+                             got_body = true; body_path = p; body_phys = phys;
+                         });
+        if (bodyslide_item) {
+            QMenu bmenu;
+            tab.add_file_menus(bmenu, bodyslide_item);
+            auto* body_act = action_with_text(bmenu, "&Add as Executable");
+            check(body_act && body_act->isEnabled(),
+                  "BodySlide row offers Add as Executable");
+            if (body_act) body_act->trigger();
+        }
+        check(got_body &&
+                  body_path == "Data/CalienteTools/BodySlide/BodySlide.exe",
+              "Add as Executable prefixes root-content with the deploy dir");
+        // physical_path = the winning mod's on-disk copy (icon extraction
+        // source) - it must ride along even though the merged path has no
+        // physical file.
+        check(got_body && body_phys.endsWith("CalienteTools/BodySlide/BodySlide.exe") &&
+                  std::filesystem::exists(body_phys.toStdString()),
+              "Add as Executable carries the physical winning copy for icons");
+
+        // Root-override mod's data content (skse64-style): classify stripped
+        // the leading Data/ from the display path, so the merged path must add
+        // it back - and no mod-folder segment, since root-override content
+        // deploys straight under the prefix.
+        auto* helper_item = find_item(tree, {"Tools", "helper.exe"});
+        check(helper_item != nullptr,
+              "root-override data content appears in the data view");
+        if (helper_item) {
+            QMenu hmenu;
+            tab.add_file_menus(hmenu, helper_item);
+            auto* helper_act = action_with_text(hmenu, "&Add as Executable");
+            check(helper_act && helper_act->isEnabled(),
+                  "root-override data row offers Add as Executable");
+            bool got_helper = false;
+            QString helper_path;
+            QObject::connect(&tab, &ui::DataTab::add_executable_requested,
+                             [&](const QString& p, const QString& name) {
+                                 got_helper = true; helper_path = p;
+                             });
+            if (helper_act) helper_act->trigger();
+            check(got_helper && helper_path == "Data/Tools/helper.exe",
+                  "root-override data row carries the deploy-prefixed merged path");
+        }
+    }
+
+    // --- Isaac-style game (deploy_include_mod_id): the merged executable path
+    // carries the mod-folder segment deploy adds under <prefix>/<mod>/.
+    {
+        const std::filesystem::path mods2_dir = "/tmp/gmm_data_tab/mods_isaac";
+        std::filesystem::create_directories(mods2_dir / "RepentanceMod" / "resources");
+        write_file(mods2_dir / "RepentanceMod" / "resources/main.exe");
+        ui::ModEntry entry_r;
+        entry_r.id = "RepentanceMod";
+        entry_r.name = "Repentance Mod";
+        entry_r.priority = 7;
+        QVector<ui::ModEntry> isaac_mods = {entry_r};
+        Registry isaac_registry;
+        isaac_registry["resources/main.exe"] = {Owner("RepentanceMod", 7)};
+
+        TestDataTab isaac_tab;
+        isaac_tab.show_data(isaac_registry, isaac_mods, /*conflict_reversed=*/false,
+                            mods2_dir, {}, /*game_root_dir=*/{},
+                            /*mods_subpath=*/"mods", /*deploy_prefix=*/"Data",
+                            /*deploy_include_mod_id=*/true);
+        auto* isaac_exe = find_item(isaac_tab.tree_widget(), {"resources", "main.exe"});
+        check(isaac_exe != nullptr, "include-mod-id row appears in the data view");
+        bool got_isaac = false;
+        QString isaac_path;
+        QObject::connect(&isaac_tab, &ui::DataTab::add_executable_requested,
+                         [&](const QString& p, const QString& name) {
+                             got_isaac = true; isaac_path = p;
+                         });
+        if (isaac_exe) {
+            QMenu imenu;
+            isaac_tab.add_file_menus(imenu, isaac_exe);
+            auto* isaac_act = action_with_text(imenu, "&Add as Executable");
+            check(isaac_act && isaac_act->isEnabled(),
+                  "include-mod-id row offers Add as Executable");
+            if (isaac_act) isaac_act->trigger();
+        }
+        check(got_isaac && isaac_path == "Data/RepentanceMod/resources/main.exe",
+              "include-mod-id merged path carries the mod-folder segment");
     }
 
     // --- Context menu on a hidden file offers Un-Hide.
@@ -422,7 +544,8 @@ int main(int argc, char** argv) {
 
     auto* nif_before = find_item(tree, {"Data", "meshes", "test.nif"});
     tab.apply_mod(registry2, "ModC", mods, /*conflict_reversed=*/false, mods_dir, {},
-                  /*game_root_dir=*/{}, /*mods_subpath=*/"Data", /*deploy_prefix=*/"Data");
+                  /*game_root_dir=*/{}, /*mods_subpath=*/"Data",
+                  /*deploy_prefix=*/"Data", /*deploy_include_mod_id=*/false);
 
     auto* nif_after = find_item(tree, {"Data", "meshes", "test.nif"});
     check(nif_after != nullptr, "shared file row survives the incremental update");

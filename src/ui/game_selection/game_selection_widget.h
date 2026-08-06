@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <QIcon>
+#include <QPointer>
 #include <QWidget>
 
 #include "ui/game_selection/game_card.h"
@@ -30,12 +31,14 @@ signals:
 
 private:
     static QIcon resolve_icon(const GameEntry& entry);
+    void on_icon_ready(const QString& game_id);
 
     QLabel* title_ = nullptr;
     QLabel* installed_label_ = nullptr;
     QWidget* installed_grid_ = nullptr;
     QLabel* available_label_ = nullptr;
     QWidget* available_grid_ = nullptr;
+    std::vector<QPointer<GameCard>> cards_;
 };
 
 }  // namespace ui

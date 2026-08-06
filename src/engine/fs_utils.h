@@ -159,6 +159,23 @@ inline constexpr const char* kMo2HiddenSuffix = ".mohidden";
     const std::filesystem::path& staging_dir,
     const std::filesystem::path& exec_path);
 
+// Returns the physical candidate that backs `exec_path` in the merged view:
+// the host path itself when it exists, otherwise the deployed copy under
+// `staging_dir` (game-relative paths only), otherwise empty. Same
+// canonicalization rules as merged_view_file_exists.
+[[nodiscard]] std::filesystem::path merged_view_file_resolve(
+    const std::filesystem::path& game_dir,
+    const std::filesystem::path& staging_dir,
+    const std::filesystem::path& exec_path);
+
+// True when `exec_path` resolves in the merged view to a regular file — the
+// launchable-executable check. Rejects directories and special entries (e.g.
+// a mod's bin/ folder) that the launchers cannot exec.
+[[nodiscard]] bool merged_view_executable_reachable(
+    const std::filesystem::path& game_dir,
+    const std::filesystem::path& staging_dir,
+    const std::filesystem::path& exec_path);
+
 // Hide a file by renaming it to <name>.gmmhidden. No-op if already hidden.
 // Returns true on success, false on failure (file kept intact).
 bool hide_file(const std::filesystem::path& path);

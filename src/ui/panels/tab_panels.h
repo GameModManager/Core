@@ -20,8 +20,11 @@ class QDragEnterEvent;
 class QDragMoveEvent;
 class QDropEvent;
 class QFileSystemWatcher;
+class QLCDNumber;
 class QMenu;
 class QProgressBar;
+class QPushButton;
+class QShowEvent;
 class QTableWidget;
 class QTableWidgetItem;
 class QTimer;
@@ -237,6 +240,14 @@ public:
     // (used to revert a blocked toggle, incl. transitively flipped masters).
     void sync_enabled(const std::vector<engine::GamePlugin>& plugins);
 
+    // MO2-style plugin counter (PluginListView::updatePluginCount parity,
+    // modorganizer/src/pluginlistview.cpp:67). The number shows how many
+    // enabled plugins pass the tab's text filter (row-hidden rows are
+    // excluded); the tooltip breaks the count down by type with active/total
+    // columns. Recomputed by set_plugins()/sync_enabled(), on show(), and by
+    // RightPanel whenever the filter text changes.
+    void refresh_counters();
+
     // MO2 parity. Two independent highlight flags rendered by apply_highlights
     // (contained wins over master), re-applied by set_plugins() which rebuilds
     // the rows:
@@ -265,12 +276,17 @@ signals:
     void reorder_requested(int from_row, int to_row);
     // User-pinned (immovable) load-order lock, from the row context menu.
     void lock_requested(const std::string& name, bool locked);
+    // Refresh button pressed: re-scan plugins on disk and repopulate.
+    void refresh_requested();
 
 protected:
     // Fills `menu` with the actions for the row at `row` (MO2's
     // PluginListContextMenu lock actions). Split out of on_custom_context_menu
     // so tests can drive it without exec()-ing a modal menu (DataTab pattern).
     void add_context_menu_actions(QMenu& menu, int row);
+    // Recompute the counter when the tab becomes visible again (the text
+    // filter may have been changed while another tab was current).
+    void showEvent(QShowEvent* event) override;
 
 private:
     void apply_highlights();
@@ -281,12 +297,20 @@ private:
     // resizes so wrapping rows grow as the column narrows.
     void relayout_flag_rows();
 
+    // MO2 plugin classification for the counter (updatePluginCount order):
+    // medium > light (ext-or-flag) > master (ext-or-flag) > regular.
+    enum class PluginType { Regular, Master, Light, Medium };
+
     class PluginTable;
     PluginTable* table_ = nullptr;
+    QPushButton* refresh_button_ = nullptr;
+    QLCDNumber* counter_display_ = nullptr;
     std::vector<std::string> names_;
     // Per-row engine state backing the context menu (locked / core rows).
     std::vector<bool> rows_locked_;
     std::vector<bool> rows_force_loaded_;
+    // Per-row MO2 plugin type, index-aligned with names_ (drives the counter).
+    std::vector<PluginType> rows_type_;
     QSet<QString> contained_names_;
     QSet<QString> master_names_;
     bool syncing_ = false;
@@ -321,6 +345,9 @@ public:
     //   deploy_prefix     - game-relative subpath mods deploy into when not
     //                       root-flagged; the data-dir segment a root-override
     //                       mod's content must keep (Skyrim: "Data")
+    //   deploy_include_mod_id - true when mods deploy under <deploy_prefix>/
+    //                       <mod_folder>/ (Isaac convention); the extra segment
+    //                       the Add-as-Executable merged path must carry
     void show_data(
         const std::unordered_map<std::string, std::vector<std::pair<std::string, int>>>& registry,
         const QVector<ModEntry>& all_mods,
@@ -329,7 +356,8 @@ public:
         const std::filesystem::path& game_mods_dir,
         const std::filesystem::path& game_root_dir,
         const std::string& mods_subpath,
-        const std::string& deploy_prefix);
+        const std::string& deploy_prefix,
+        bool deploy_include_mod_id);
 
     // Incrementally merge one just-installed mod into the existing tree instead
     // of rebuilding it. Call after the conflict registry was recomputed to
@@ -346,7 +374,8 @@ public:
         const std::filesystem::path& game_mods_dir,
         const std::filesystem::path& game_root_dir,
         const std::string& mods_subpath,
-        const std::string& deploy_prefix);
+        const std::string& deploy_prefix,
+        bool deploy_include_mod_id);
 
     void clear_content();
 
@@ -356,8 +385,12 @@ signals:
     // A non-executable file should be opened with its default handler.
     void open_requested(const QString& file_path);
     // An executable file should be executed: native binaries directly, .exe
-    // through the instance's Proton/Wine runtime (no VFS - plain execution).
-    void execute_requested(const QString& file_path, bool is_windows_exe);
+    // through the instance's Proton/Wine runtime. Both routes mount the
+    // overlay (merged view), so `vfs_path` (the merged Data-relative path,
+    // DataVfsPathRole - empty for legacy absolute entries) is passed for the
+    // receiver to resolve against the overlay-launch chain.
+    void execute_requested(const QString& file_path, bool is_windows_exe,
+                           const QString& vfs_path);
     // A previewable file should be shown in the preview window. provider_paths
     // / provider_names list the on-disk copies of every provider (primary
     // first) so the window can browse variants (MO2's PreviewDialog).
@@ -365,8 +398,12 @@ signals:
                            const QStringList& provider_paths,
                            const QStringList& provider_names);
     // Register the file in the executables list (default name suggestion).
+    // physical_path is the on-disk path of the winning copy (DataRealPathRole),
+    // used by the receiver to resolve the exe's icon - it exists even when the
+    // merged-view path does not (mod-provided executable before any deploy).
     void add_executable_requested(const QString& file_path,
-                                  const QString& default_name);
+                                  const QString& default_name,
+                                  const QString& physical_path);
     // Open the minimal Mod Info dialog for the mod owning the file.
     void open_mod_info_requested(const QString& mod_id);
     // Hide (rename to .gmmhidden) or un-hide the file on disk. mod_id is the
@@ -411,6 +448,7 @@ private:
     std::filesystem::path stored_game_root_dir_;
     std::string stored_mods_subpath_;
     std::string stored_deploy_prefix_;
+    bool stored_deploy_include_mod_id_ = false;
 
     QTreeWidget* tree_ = nullptr;
 };

@@ -2,8 +2,11 @@
 
 #include "ui/modinfo/mod_info_tab.h"
 
+#include <QString>
+
 namespace engine {
 class SourceProvider;
+struct ModInfoResult;
 }
 
 class QCheckBox;
@@ -15,6 +18,8 @@ class QTabWidget;
 class QTextBrowser;
 
 namespace ui {
+
+class SourceFetchThread;
 
 // MO2's Nexus tab generalized into a per-game Source tab: one sub-tab per
 // source the current game supports (the download_sources knowledge key), each
@@ -38,6 +43,9 @@ private:
     void update_version_color();
     void render_description();
     void on_refresh();
+    void launch_fetch();
+    void on_fetch_finished(engine::ModInfoResult result, quint64 generation);
+    void apply_fetch_result(const engine::ModInfoResult& result);
     void on_visit();
     void on_visit_custom();
     void on_custom_url_toggled();
@@ -63,6 +71,18 @@ private:
     QPushButton* visit_custom_ = nullptr;
     QTextBrowser* description_ = nullptr;
     bool loading_ = false;
+
+    // Async Refresh (P8.3): the fetch runs on a worker thread
+    // (gmm-source-fetch). `refresh_generation_` tags each launch so a stale
+    // result (superseded by a newer Refresh) is dropped; `refresh_mod_id_`
+    // pins the mod the fetch belongs to so a result can't land on a different
+    // mod after a prev/next switch. `fetch_in_flight_`/`refresh_pending_`
+    // coalesce rapid Re-clicks into at most one queued follow-up.
+    SourceFetchThread* source_fetch_thread_ = nullptr;
+    quint64 refresh_generation_ = 0;
+    QString refresh_mod_id_;
+    bool fetch_in_flight_ = false;
+    bool refresh_pending_ = false;
 };
 
 }  // namespace ui

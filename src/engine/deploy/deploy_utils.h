@@ -3,10 +3,17 @@
 #include "engine/fs_utils.h"
 
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <vector>
 
 namespace engine {
+
+// Deploy progress: files_done filesystem operations completed out of
+// files_total (link/unlink of the staged tree). Invoked from the executor's
+// worker threads; callers that cross a thread boundary must forward it via a
+// queued signal. total == 0 means there was nothing to do.
+using DeployProgressFn = std::function<void(int files_done, int files_total)>;
 
 using std::filesystem::path;
 
@@ -88,6 +95,39 @@ using std::filesystem::path;
     bool deploy_include_mod_id,
     const std::string& disable_mechanism,
     bool case_sensitive = true);
+
+// Parallel variant of deploy_all_enabled_mods (PLAN §13.3, P8.4): the same
+// contract, but the per-mod tree walks and the per-file link/unlink operations
+// are farmed across a thread pool — link/unlink is IO+syscall bound and
+// embarrassingly parallel across independent paths, so the first-ever full
+// deploy of a large modlist scales with the available cores.
+//
+// Determinism: a contested target (two enabled mods shipping the same relative
+// path) is won by the LAST mod in lexicographic folder order, replacing the
+// directory_iterator order the sequential version depended on (which is
+// arbitrary filesystem order, so the winner was never well-defined).
+//
+// Incremental O(Δ) redeploys: the executor persists a ledger of what's staged
+// (target -> source) as <staging_dir>/.gmm_deploy_ledger. On a re-run, entries
+// whose winner and staged file are unchanged cost a single stat and are
+// skipped; only new/re-pointed/missing files are touched, and entries that
+// stopped being winners (disabled/removed mod) are unlinked so a disabled
+// mod's files can't linger in the overlay. The ledger lives inside staging, so
+// the session-end wipe that clears .gmm_staging clears it too — the next
+// launch is a full (parallel) deploy by design.
+//
+// num_threads: 0 (default) = std::thread::hardware_concurrency(), capped at
+// 16. progress (if set) is invoked with (done, total) as link operations
+// complete; total==0 means nothing to do.
+[[nodiscard]] bool deploy_all_enabled_mods_parallel(
+    const path& mods_dir,
+    const path& staging_dir,
+    const std::string& deploy_prefix,
+    bool deploy_include_mod_id,
+    const std::string& disable_mechanism,
+    bool case_sensitive = true,
+    unsigned int num_threads = 0,
+    const DeployProgressFn& progress = {});
 
 }
 

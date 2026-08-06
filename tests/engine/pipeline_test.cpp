@@ -405,6 +405,59 @@ int main() {
         std::printf("PASS: pipeline_test — FOMOD choices persisted in mod folder meta.ini\n");
     }
 
+    // Regression: the PipelineContext is reused across installs in one session,
+    // so per-install state must be reset at the start of every run. A plain
+    // (non-FOMOD) mod installed AFTER a genuine FOMOD must NOT inherit the
+    // previous mod's [fomod] choices in its meta.ini.
+    {
+        TempDir env;
+        auto mods = env.root / "mods";
+        std::filesystem::create_directories(mods);
+
+        auto pipeline = std::make_unique<Pipeline>();
+        PipelineContext ctx;
+        ctx.mods_dir = mods;
+        ctx.fomod_query_cb = accept_high_res;
+        pipeline->set_context(ctx);
+        pipeline->add_stage(std::make_unique<FomodStage>());
+        pipeline->add_stage(std::make_unique<InstallStage>());
+
+        // Install #1: a genuine FOMOD - sets ctx.fomod_choices_json.
+        {
+            FomodFixture fix(kBasicConfig);
+            Mod mod = fix.make_mod("Fomod One");
+            mod.state = ModState::Extracted;
+            assert(pipeline->run(mod) == PipelineResult::Success);
+            assert(pipeline->ctx().fomod_choices_json == kHighResChoices);
+        }
+
+        // Install #2: a plain archive (no fomod dir) through the SAME pipeline.
+        // Its meta.ini must not carry the first mod's [fomod] choices.
+        {
+            TempDir plain;
+            std::filesystem::create_directories(plain.root / "textures");
+            std::ofstream(plain.root / "textures" / "t.dds") << "t";
+            Mod mod;
+            mod.id = "plain-2";
+            mod.name = "Plain Two";
+            mod.state = ModState::Extracted;
+            ModFile staging;
+            staging.relative_path = plain.root.string();
+            mod.files.push_back(staging);
+            assert(pipeline->run(mod) == PipelineResult::Success);
+
+            auto meta_path = mods / "Plain Two" / "meta.ini";
+            assert(std::filesystem::exists(meta_path));
+            std::ifstream f(meta_path);
+            std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+            assert(content.find("[fomod]") == std::string::npos);
+            assert(content.find(kHighResChoices) == std::string::npos);
+            assert(!pipeline->ctx().fomod_detected);
+            assert(pipeline->ctx().fomod_choices_json.empty());
+        }
+        std::printf("PASS: pipeline_test — non-FOMOD install after a FOMOD does not inherit its choices\n");
+    }
+
     // InstallStage overwrite query flow: when the target mod folder already
     // exists, overwrite_query_cb decides Merge/Replace/Rename/Cancel instead
     // of the silent-replace default.

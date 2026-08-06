@@ -54,6 +54,29 @@ static bool game_chain_alive_in_cgroup() {
     return false;
 }
 
+// Validates a launch executable against the merged view (physical, deployed
+// into staging, or only reachable through the overlay mount the launcher is
+// about to create) and logs a specific reason when it cannot be launched.
+// Returns true when `exec_path` resolves to a regular file. The directory
+// case (e.g. a mod's bin/ folder) is rejected with a clear message instead of
+// a cryptic exec failure inside the overlay child.
+static bool check_launch_executable(const fs::path& game_dir,
+                                    const fs::path& staging,
+                                    const fs::path& exec_path) {
+    const fs::path resolved = merged_view_file_resolve(game_dir, staging, exec_path);
+    if (resolved.empty()) {
+        Logger::instance().error("Executable not found: " + exec_path.string());
+        return false;
+    }
+    std::error_code rc;
+    if (!fs::is_regular_file(resolved, rc)) {
+        Logger::instance().error("Executable is not a regular file (resolved to " +
+            resolved.string() + "): " + exec_path.string());
+        return false;
+    }
+    return true;
+}
+
 static LaunchResult do_launch(const LaunchParams& params);
 
 LaunchResult launch_game(const LaunchParams& params) {
@@ -66,8 +89,7 @@ LaunchResult launch_game(const LaunchParams& params) {
     // mod's skse64_loader.exe) would look "missing" and abort the launch.
     const fs::path staging =
         params.extra_lowerdirs.empty() ? fs::path() : params.extra_lowerdirs.back();
-    if (!merged_view_file_exists(params.game_dir, staging, exec_path)) {
-        Logger::instance().error("Executable not found: " + exec_path.string());
+    if (!check_launch_executable(params.game_dir, staging, exec_path)) {
         return {};
     }
 
@@ -182,9 +204,7 @@ static LaunchResult do_launch(const LaunchParams& params) {
     auto exec_path = params.executable;
     const fs::path staging =
         params.extra_lowerdirs.empty() ? fs::path() : params.extra_lowerdirs.back();
-    if (!merged_view_file_exists(params.game_dir, staging, exec_path)) {
-        Logger::instance().error("Executable not found (game dir or staging): " +
-                                 exec_path.string());
+    if (!check_launch_executable(params.game_dir, staging, exec_path)) {
         return {};
     }
 
@@ -289,6 +309,18 @@ static LaunchResult do_launch(const LaunchParams& params) {
 
     // Fallback: standard runtime launch + post-hoc capture
     {
+        // A native executable that exists only in the merged view (deployed
+        // mod file) can only be run by the OverlayFS launcher - neither the
+        // LD_PRELOAD interceptor nor a plain fork/exec can reach it. Explain
+        // that instead of a bare "not found" when overlay support failed.
+        std::error_code phys_ec;
+        if (!params.is_windows_exe && !fs::exists(exec_path, phys_ec) &&
+            merged_view_file_exists(params.game_dir, staging, exec_path)) {
+            Logger::instance().error(
+                "Executable exists only in the merged view (deployed mod file); "
+                "the OverlayFS launcher is required: " + exec_path.string());
+        }
+
         std::unique_ptr<Runtime> runtime;
         if (params.is_windows_exe)
             runtime = std::make_unique<ProtonRuntime>(params.platform);

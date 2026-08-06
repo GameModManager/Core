@@ -26,11 +26,51 @@ QString findWrestool() {
     return {};
 }
 
+QIcon resolveEntryIcon(const ui::ExecEntry& entry,
+                       const std::filesystem::path& game_dir,
+                       const std::filesystem::path& icon_cache_dir,
+                       const std::filesystem::path& staging_dir) {
+    if (!entry.icon_path.isEmpty()) {
+        QPixmap pix(entry.icon_path);
+        if (!pix.isNull())
+            return QIcon(pix);
+    }
+
+    // Cache-first: a mod-provided executable may exist only in the deploy
+    // staging dir (wiped every session) or in a merged path that is never
+    // physical. Once its icon has been extracted it lives in the cache by
+    // basename, so restored entries keep their icon even before any deploy.
+    if (!icon_cache_dir.empty() && !entry.path.isEmpty()) {
+        auto cache_key = QFileInfo(entry.path).fileName() + ".ico";
+        auto cache_path = std::filesystem::path(icon_cache_dir.string()) / cache_key.toStdString();
+        QIcon cached(QString::fromStdString(cache_path.string()));
+        if (!cached.isNull())
+            return cached;
+    }
+
+    if (!game_dir.empty() && !entry.path.isEmpty()) {
+        auto full_path = std::filesystem::path(game_dir.string()) / entry.path.toStdString();
+        if (std::filesystem::exists(full_path)) {
+            return ui::extractExeIcon(QString::fromStdString(full_path.string()), icon_cache_dir);
+        }
+        if (!staging_dir.empty()) {
+            auto staged = staging_dir / entry.path.toStdString();
+            if (std::filesystem::exists(staged)) {
+                return ui::extractExeIcon(QString::fromStdString(staged.string()), icon_cache_dir);
+            }
+        }
+    }
+    return {};
+}
+
+}  // namespace
+
+namespace ui {
+
 QIcon extractExeIcon(const QString& exePath, const std::filesystem::path& icon_cache_dir) {
     auto& log = engine::Logger::instance();
     auto exe_std = exePath.toStdString();
-    auto exe_file = QFileInfo(exePath).fileName();
-    auto cache_key = exe_file + ".ico";
+    auto cache_key = QFileInfo(exePath).fileName() + ".ico";
     auto cache_path = std::filesystem::path(icon_cache_dir.string()) / cache_key.toStdString();
 
     if (!icon_cache_dir.empty() && std::filesystem::exists(cache_path)) {
@@ -55,9 +95,9 @@ QIcon extractExeIcon(const QString& exePath, const std::filesystem::path& icon_c
                 if (!proc.waitForFinished(3000)) {
                     log.warn("wrestool timed out for: " + exe_std);
                 } else if (proc.exitCode() != 0) {
-                    auto stderr_out = proc.readAllStandardError().toStdString();
+                    auto stderr_out = QString::fromUtf8(proc.readAllStandardError()).trimmed();
                     log.warn("wrestool failed for " + exe_std + " (exit " +
-                             std::to_string(proc.exitCode()) + "): " + stderr_out);
+                             std::to_string(proc.exitCode()) + "): " + stderr_out.toStdString());
                 } else {
                     QIcon ico(outIco);
                     if (ico.isNull()) {
@@ -83,43 +123,10 @@ QIcon extractExeIcon(const QString& exePath, const std::filesystem::path& icon_c
         }
     }
 
-    QFileIconProvider provider;
-    return provider.icon(QFileInfo(exePath));
+    auto provider_icon = QFileIconProvider().icon(QFileInfo(exePath));
+    if (!provider_icon.isNull()) return provider_icon;
+    return QApplication::style()->standardIcon(QStyle::SP_FileIcon);
 }
-
-// Single icon-resolution path for combo items, shared by add_entry() and
-// set_executables(): a user-picked custom icon wins, then the extracted exe
-// icon (cache + wrestool + QFileIconProvider), otherwise no icon. Staging is
-// the deploy dir (".gmm_staging"): a mod-provided executable may only exist
-// there (merged view), not at game_dir/path physically.
-QIcon resolveEntryIcon(const ui::ExecEntry& entry,
-                       const std::filesystem::path& game_dir,
-                       const std::filesystem::path& icon_cache_dir,
-                       const std::filesystem::path& staging_dir) {
-    if (!entry.icon_path.isEmpty()) {
-        QPixmap pix(entry.icon_path);
-        if (!pix.isNull())
-            return QIcon(pix);
-    }
-
-    if (!game_dir.empty() && !entry.path.isEmpty()) {
-        auto full_path = std::filesystem::path(game_dir.string()) / entry.path.toStdString();
-        if (std::filesystem::exists(full_path)) {
-            return extractExeIcon(QString::fromStdString(full_path.string()), icon_cache_dir);
-        }
-        if (!staging_dir.empty()) {
-            auto staged = staging_dir / entry.path.toStdString();
-            if (std::filesystem::exists(staged)) {
-                return extractExeIcon(QString::fromStdString(staged.string()), icon_cache_dir);
-            }
-        }
-    }
-    return {};
-}
-
-}  // namespace
-
-namespace ui {
 
 ExecControlsBar::ExecControlsBar(QWidget* parent)
     : QWidget(parent) {

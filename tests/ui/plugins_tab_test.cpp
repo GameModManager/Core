@@ -32,9 +32,11 @@
 #include <QAction>
 #include <QApplication>
 #include <QIcon>
+#include <QLCDNumber>
 #include <QList>
 #include <QMenu>
 #include <QPoint>
+#include <QPushButton>
 #include <QRect>
 #include <QStringList>
 #include <QStyle>
@@ -577,6 +579,95 @@ int main(int argc, char** argv) {
         QMenu menu3;
         tab.add_context_menu_actions(menu3, row_with_name(table, "Skyrim.esm"));
         check(menu3.actions().isEmpty(), "core row has no lock actions");
+    }
+
+    // --- MO2-style plugin counter (PluginListView::updatePluginCount parity) ---
+    // The header row above the table carries a Refresh button (left) and a
+    // single counter (right) that shows enabled + filter-visible plugins, with
+    // an active/total breakdown by type in the tooltip. Classification order
+    // matches MO2: medium > light (ext or flag) > master (ext or flag) >
+    // regular.
+    {
+        engine::GamePlugin master = native;  // Skyrim.esm: master, enabled
+        engine::GamePlugin lite;             // .esl ext: light, enabled
+        lite.name = "Lite.esl";
+        lite.has_light_ext = true;
+        lite.enabled = true;
+        engine::GamePlugin lite_flag;        // ESL-flagged .esp: light, disabled
+        lite_flag.name = "LiteFlag.esp";
+        lite_flag.is_light_flagged = true;
+        lite_flag.enabled = false;
+        engine::GamePlugin reg_on;           // regular, enabled
+        reg_on.name = "RegularOn.esp";
+        reg_on.enabled = true;
+        engine::GamePlugin reg_off;          // regular, disabled
+        reg_off.name = "RegularOff.esp";
+        reg_off.enabled = false;
+        engine::GamePlugin medium;           // medium (ESH), enabled
+        medium.name = "Medium.esm";
+        medium.is_medium_flagged = true;
+        medium.enabled = true;
+
+        const std::vector<engine::GamePlugin> count_set = {
+            master, lite, lite_flag, reg_on, reg_off, medium};
+
+        auto* counter = tab.findChild<QLCDNumber*>("mo2CounterLabel");
+        auto* refresh_btn = tab.findChild<QPushButton*>("pluginRefreshBtn");
+        check(counter != nullptr, "MO2 counter label present above the table");
+        check(refresh_btn != nullptr, "Refresh button present above the table");
+
+        tab.set_plugins(count_set);
+        // 6 rows, 4 enabled (master, lite, reg_on, medium), all visible.
+        check(counter->intValue() == 4, "counter shows enabled+visible count");
+        check(counter->digitCount() == 4, "counter zero-pads to 4 digits ([ 0000 ])");
+
+        // Tooltip breakdown mirrors MO2: All 4/6, ESMs 1/1, ESPs 1/2,
+        // ESMs+ESPs 2/3, ESLs 1/2, and the ESH row (a medium plugin exists).
+        const QString tip = counter->toolTip();
+        check(tip.contains("<tr><td>All plugins:</td><td align=\"right\">4</td>"
+                           "<td align=\"right\">6</td></tr>") &&
+                  tip.contains("<tr><td>ESMs:</td><td align=\"right\">1</td>"
+                               "<td align=\"right\">1</td></tr>") &&
+                  tip.contains("<tr><td>ESPs:</td><td align=\"right\">1</td>"
+                               "<td align=\"right\">2</td></tr>") &&
+                  tip.contains("<tr><td>ESMs+ESPs:</td><td align=\"right\">2</td>"
+                               "<td align=\"right\">3</td></tr>"),
+              "counter tooltip All/ESMs/ESPs/ESMs+ESPs active+total rows");
+        check(tip.contains("<tr><td>ESLs:</td><td align=\"right\">1</td>"
+                           "<td align=\"right\">2</td></tr>"),
+              "counter tooltip ESL row");
+        check(tip.contains("<tr><td>ESHs:</td><td align=\"right\">1</td>"
+                           "<td align=\"right\">1</td></tr>"),
+              "counter tooltip ESH row when a medium plugin exists");
+
+        // Filter parity: a row hidden by the text filter is excluded.
+        const int reg_row = row_with_name(table, "RegularOn.esp");
+        table->setRowHidden(reg_row, true);
+        tab.refresh_counters();
+        check(counter->intValue() == 3, "counter excludes filter-hidden rows");
+        table->setRowHidden(reg_row, false);
+        tab.refresh_counters();
+        check(counter->intValue() == 4, "counter returns after unhide");
+
+        // Enable toggles (sync_enabled path, no rebuild) update the counter.
+        std::vector<engine::GamePlugin> count_set2 = count_set;
+        count_set2[2].enabled = true;  // LiteFlag.esp -> 5 active
+        tab.sync_enabled(count_set2);
+        check(counter->intValue() == 5, "counter follows sync_enabled toggles");
+        tab.sync_enabled(count_set);  // revert
+        check(counter->intValue() == 4, "counter reverts with sync_enabled");
+
+        // The Refresh button asks for a plugins-only rescan.
+        bool refreshed = false;
+        QObject::connect(&tab, &ui::PluginsTab::refresh_requested,
+                         [&refreshed]() { refreshed = true; });
+        tab.resize(640, 400);
+        tab.show();
+        QApplication::processEvents();
+        QTest::mouseClick(refresh_btn, Qt::LeftButton);
+        QApplication::processEvents();
+        check(refreshed, "Refresh button emits refresh_requested");
+        tab.hide();
     }
 
     std::printf("\n%d passed, %d failed\n", passes, failures);

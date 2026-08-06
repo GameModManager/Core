@@ -13,6 +13,16 @@ void Pipeline::add_stage(std::unique_ptr<Stage> stage) {
 }
 
 PipelineResult Pipeline::run(Mod& mod) {
+    // The context is reused across installs (the pipeline worker lives for the
+    // whole session), so per-install state must never leak from one mod into
+    // the next. Without this reset, FomodStage's choices from the previous
+    // genuine FOMOD install were persisted into every later non-FOMOD mod's
+    // meta.ini ([fomod] choices on archives with no fomod dir).
+    ctx_.fomod_detected = false;
+    ctx_.fomod_choices_json.clear();
+    ctx_.installed_mod_folder.clear();
+    ctx_.canceled = false;
+
     auto& trace = TraceRecorder::instance();
     trace.begin_flow(flow_id_);
 

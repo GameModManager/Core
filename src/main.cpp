@@ -31,6 +31,7 @@ static void qt_message_filter(QtMsgType type, const QMessageLogContext& ctx, con
 #include "ui/main_window/main_window.h"
 #include "ui/game_selection/game_selection_widget.h"
 #include "ui/settings/settings.h"
+#include "ui/widgets/game_icon_cache.h"
 #include "engine/log/logger.h"
 #include "engine/log/crash_handler.h"
 #include "engine/instance/instance.h"
@@ -366,22 +367,6 @@ int main(int argc, char *argv[])
     engine::ManagedGames managed_games(fs::path(data_dir()) / "managed_games.json");
     managed_games.load();
 
-    // Detect installed games via Steam VDF
-    std::vector<engine::DetectedGame> installed_games;
-    {
-        // Build a list of (appid, {game_id, game_name}) from loaded plugins
-        std::vector<std::pair<uint32_t, std::pair<std::string, std::string>>> game_specs;
-        for (const auto& plugin : plugin_loader.plugins()) {
-            if (plugin.steam_appid > 0) {
-                game_specs.push_back({plugin.steam_appid,
-                    {plugin.game_id, plugin.game_display_name}});
-            }
-        }
-        if (!game_specs.empty()) {
-            installed_games = engine::GameDetector::detect_steam_games_multi(game_specs);
-        }
-    }
-
     // Check for existing instances
     auto existing_instances = engine::scan_instances();
 
@@ -453,12 +438,35 @@ int main(int argc, char *argv[])
         return 0;
     }
 
+    // Game icons (instance switcher / game selector) resolve their declared
+    // URLs from game knowledge — point the shared icon cache at the loaded
+    // plugins' store (GUI paths only; headless never renders icons).
+    ui::GameIconCache::set_knowledge(&plugin_loader.knowledge());
+
     // Determine if we need the game selection screen
     bool show_selection = existing_instances.empty() && instance_name.isEmpty();
 
     if (show_selection) {
         // -- First-run: show game selection screen --
         engine::Logger::instance().info("No instances found - showing game selection");
+
+        // Detect installed games via Steam VDF — ONLY the first-run selection
+        // screen consumes this, so the normal startup path never pays for the
+        // synchronous Steam/ACF reads on the main thread (T6, THREADING.md §6).
+        std::vector<engine::DetectedGame> installed_games;
+        {
+            // Build a list of (appid, {game_id, game_name}) from loaded plugins
+            std::vector<std::pair<uint32_t, std::pair<std::string, std::string>>> game_specs;
+            for (const auto& plugin : plugin_loader.plugins()) {
+                if (plugin.steam_appid > 0) {
+                    game_specs.push_back({plugin.steam_appid,
+                        {plugin.game_id, plugin.game_display_name}});
+                }
+            }
+            if (!game_specs.empty()) {
+                installed_games = engine::GameDetector::detect_steam_games_multi(game_specs);
+            }
+        }
 
         // Build installed games list
         std::vector<ui::GameEntry> installed_entries;

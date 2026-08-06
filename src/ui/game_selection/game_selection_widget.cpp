@@ -3,62 +3,13 @@
 #include <QGridLayout>
 #include <QLabel>
 #include <QScrollArea>
-#include <QPainter>
-#include <QPainterPath>
-#include <QStyle>
-#include <QApplication>
 
 #include "engine/theme/icon_manager.h"
+#include "ui/widgets/game_icon_cache.h"
 
 namespace ui {
 
 // -- Icon resolution --
-
-// Build a colored circle with the game's first letter - used as a built-in icon
-// when no theme or exe icon is available.
-static QIcon make_builtin_icon(const std::string& game_id, const std::string& name) {
-    // Pick a color based on game_id hash
-    auto hash = std::hash<std::string>{}(game_id);
-    QColor base;
-    switch (hash % 8) {
-        case 0: base = QColor(100, 149, 237); break; // cornflower blue
-        case 1: base = QColor(220, 80, 80);   break; // red
-        case 2: base = QColor(80, 180, 100);  break; // green
-        case 3: base = QColor(200, 160, 60);  break; // gold
-        case 4: base = QColor(160, 100, 200); break; // purple
-        case 5: base = QColor(60, 180, 200);  break; // teal
-        case 6: base = QColor(220, 140, 60);  break; // orange
-        case 7: base = QColor(120, 120, 180); break; // slate
-    }
-
-    QPixmap pm(64, 64);
-    pm.fill(Qt::transparent);
-
-    QPainter p(&pm);
-    p.setRenderHint(QPainter::Antialiasing);
-
-    // Circle
-    p.setPen(Qt::NoPen);
-    p.setBrush(base);
-    p.drawEllipse(2, 2, 60, 60);
-
-    // First letter of display name
-    QString letter;
-    if (!name.empty()) {
-        letter = QString::fromStdString(name).left(1).toUpper();
-    } else {
-        letter = QString::fromStdString(game_id).left(1).toUpper();
-    }
-
-    p.setPen(Qt::white);
-    QFont f = p.font();
-    f.setPointSize(24);
-    f.setBold(true);
-    p.setFont(f);
-    p.drawText(QRect(0, 0, 64, 64), Qt::AlignCenter, letter);
-
-    return QIcon(pm);
-}
 
 QIcon GameSelectionWidget::resolve_icon(const GameEntry& entry) {
     // Game icons are a logical key too: a theme can ship themes/<theme>/icons/
@@ -67,7 +18,11 @@ QIcon GameSelectionWidget::resolve_icon(const GameEntry& entry) {
     QIcon icon = engine::IconManager::instance().resolve_icon(
         QString::fromStdString(entry.game_id));
     if (!icon.isNull()) return icon;
-    return make_builtin_icon(entry.game_id, entry.display_name);
+    // Declared icon from the global cache (async fetch if missing), else the
+    // letter avatar.
+    return GameIconCache::instance().icon_for(
+        QString::fromStdString(entry.game_id),
+        QString::fromStdString(entry.display_name), 64);
 }
 
 // -- GameSelectionWidget --
@@ -141,10 +96,26 @@ GameSelectionWidget::GameSelectionWidget(QWidget* parent)
     auto* outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
     outer->addWidget(scroll);
+
+    // Swap an async-downloaded icon into its matching card(s) when it lands
+    connect(&GameIconCache::instance(), &GameIconCache::icon_ready,
+            this, &GameSelectionWidget::on_icon_ready);
+}
+
+void GameSelectionWidget::on_icon_ready(const QString& game_id) {
+    std::string gid = game_id.toStdString();
+    for (auto& card : cards_) {
+        if (card && card->entry().game_id == gid) {
+            card->set_icon(resolve_icon(card->entry()));
+        }
+    }
 }
 
 void GameSelectionWidget::set_games(const std::vector<GameEntry>& installed,
                                      const std::vector<GameEntry>& available) {
+    // Cards are rebuilt below; drop the old QPointers.
+    cards_.clear();
+
     // Helper to populate a grid
     auto populate_grid = [&](QWidget* grid, const std::vector<GameEntry>& games, bool installed_section) {
         // Clear existing
@@ -178,6 +149,7 @@ void GameSelectionWidget::set_games(const std::vector<GameEntry>& installed,
         for (const auto& entry : games) {
             auto* card = new GameCard(entry, grid);
             card->set_icon(resolve_icon(entry));
+            cards_.push_back(card);
             connect(card, &GameCard::clicked, this, &GameSelectionWidget::game_selected);
             grid_layout->addWidget(card, col / 3, col % 3);
             col++;

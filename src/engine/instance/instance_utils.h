@@ -1,7 +1,9 @@
 #pragma once
 
+#include "engine/deploy/deploy_utils.h"
 #include "engine/detect/game_detector.h"
 #include "engine/instance/instance.h"
+#include "engine/registry/game_knowledge.h"
 
 #include <filesystem>
 #include <string>
@@ -9,7 +11,6 @@
 
 namespace engine {
 struct LaunchParams;
-class GameKnowledge;
 }
 
 namespace engine {
@@ -52,12 +53,35 @@ void write_last_instance(const std::string& name);
     return create_instance_for_game(game, default_instances_dir());
 }
 
+// Snapshot of everything prepare_launch_params needs, captured on the calling
+// thread so a worker can run the deploy off the main thread (P8.4). Held by
+// value; GameKnowledge is a read-only key/value store copied cheaply.
+struct LaunchPrepRequest {
+    std::filesystem::path instance_root;
+    std::filesystem::path game_dir;
+    std::filesystem::path executable;
+    GameKnowledge knowledge;
+    std::string game_id;
+    uint32_t steam_appid = 0;
+    bool is_windows_exe = false;
+};
+
 // Prepare LaunchParams for launching a game from an instance.
 // If OverlayFS is supported on the instance:
 //   - Ensures .gmm_staging exists
 //   - Deploys all enabled mods to staging (creates symlinks)
 //   - Populates extra_lowerdirs with staging dir
 // Otherwise: returns basic LaunchParams with no extra lowerdirs.
+//
+// The deploy runs on the parallel executor (PLAN §13.3). progress, if set, is
+// invoked with link-operation progress as the deploy runs (see
+// deploy_utils.h); the engine function itself is synchronous and only returns
+// once the staging tree is fully populated.
+[[nodiscard]] LaunchParams prepare_launch_params(
+    const LaunchPrepRequest& req,
+    const DeployProgressFn& progress = {});
+
+// Convenience overload keeping the old argument order (tests, CLI).
 [[nodiscard]] LaunchParams prepare_launch_params(
     const std::filesystem::path& instance_root,
     const std::filesystem::path& game_dir,

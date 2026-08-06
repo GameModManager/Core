@@ -121,6 +121,15 @@ public:
     void set_tracked_integration(bool on);
     bool category_mappings() const;
     void set_category_mappings(bool on);
+    // Queue Nexus downloads one-at-a-time. Free Regular/Supporter accounts are
+    // throttled to ~1.5MB/s, so parallel transfers don't help them; only
+    // Premium lifts the cap. Defaults to ON (multithreading OFF by default).
+    // On login the tier-derived default is applied ONLY while the user has
+    // never set the value explicitly — a manual choice survives later logins.
+    bool nexus_queue_downloads() const;           // key: nexus/queue_downloads
+    void set_nexus_queue_downloads(bool on);
+    bool nexus_queue_downloads_set() const;       // user explicitly chose a value
+    void remove_nexus_queue_downloads();          // back to tier-derived default
 
     // workshop source ---------------------------------------------------------
     int workshop_rate_limit_per_hour() const;   // key: workshop/rate_limit_per_hour
