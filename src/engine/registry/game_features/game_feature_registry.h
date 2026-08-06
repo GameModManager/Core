@@ -14,12 +14,17 @@
 //   - resolve_mod_data_checker(): MO2's CombinedModDataChecker — ALL registered
 //     checkers OR together (ANY checker VALID -> VALID). The union's allow-set
 //     drives the mod list's FLAG_INVALID ("No valid game data").
+//   - resolve_game_plugins(): MO2's GamePlugins::gamePlugins() — the game's
+//     vanilla plugin files (unmanaged top band); a registered feature replaces
+//     the old game_native_plugins knowledge hook. Consumers go through the free
+//     native_plugins_csv() helper below (registry-first, hook fallback).
 
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "engine/registry/game_features/game_feature.h"
+#include "engine/registry/game_knowledge.h"
 
 namespace engine {
 
@@ -57,6 +62,11 @@ public:
     [[nodiscard]] std::shared_ptr<const ModDataCheckerFeature> resolve_mod_data_checker(
         const std::string& game_id) const;
 
+    // Highest-priority GamePluginsFeature (the game's vanilla plugin files,
+    // MO2 GamePlugins::gamePlugins()), else nullptr.
+    [[nodiscard]] std::shared_ptr<const GamePluginsFeature> resolve_game_plugins(
+        const std::string& game_id) const;
+
     // All registrations for (game_id, type) in registration order (for
     // diagnostics/tests). Empty when nothing matches.
     [[nodiscard]] std::vector<RegisteredGameFeature> features_for(
@@ -70,5 +80,16 @@ private:
     GameFeatureRegistry() = default;
     std::vector<RegisteredGameFeature> features_;
 };
+
+// The game's native (unmanaged) plugin list as comma-separated CSV — the
+// format every consumer already parses (PluginDatabase::refresh,
+// MainWindow preload/refresh, ModScanWorker unmanaged-row synthesis).
+// Resolved registry-first: a registered "game_plugins" feature (MO2
+// GamePlugins::gamePlugins()), else the game_native_plugins knowledge hook,
+// else empty. Keeping the two sources behind one function is what lets a
+// plugin override Skyrim's vanilla ESM band the way the data-checker can be
+// overridden.
+[[nodiscard]] std::string native_plugins_csv(const GameKnowledge& knowledge,
+                                             const std::string& game_id);
 
 }  // namespace engine

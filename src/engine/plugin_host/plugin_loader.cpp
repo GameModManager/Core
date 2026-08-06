@@ -126,6 +126,19 @@ static void cb_register_game_feature(GmmRegistrationCtx* ctx,
             std::move(folders), std::move(extensions));
         GameFeatureRegistry::instance().register_feature(
             gid, type, priority, std::move(checker), bridge->current_plugin->path);
+    } else if (type == "game_plugins") {
+        // The game's vanilla plugin files (MO2 GamePlugins::gamePlugins()):
+        // Skyrim's ESMs + _ResourcePack.esl head the unmanaged top band. The
+        // plugin names ride the folder_names array slot — the ABI's two string
+        // arrays are generic payload slots interpreted per feature type.
+        std::vector<std::string> plugins;
+        if (folder_names) {
+            for (size_t i = 0; i < folder_count; ++i)
+                if (folder_names[i]) plugins.emplace_back(folder_names[i]);
+        }
+        auto feature = std::make_shared<GamePluginsFeature>(std::move(plugins));
+        GameFeatureRegistry::instance().register_feature(
+            gid, type, priority, std::move(feature), bridge->current_plugin->path);
     } else {
         Logger::instance().warn("Plugin registered unknown game feature type: " +
             type + " (ignored)");

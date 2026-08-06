@@ -8,6 +8,7 @@ namespace engine {
 
 namespace {
 constexpr const char* kModDataCheckerType = "mod_data_checker";
+constexpr const char* kGamePluginsType = "game_plugins";
 }  // namespace
 
 GameFeatureRegistry& GameFeatureRegistry::instance() {
@@ -73,6 +74,23 @@ std::shared_ptr<const ModDataCheckerFeature> GameFeatureRegistry::resolve_mod_da
                                                          std::move(extensions));
 }
 
+std::shared_ptr<const GamePluginsFeature> GameFeatureRegistry::resolve_game_plugins(
+    const std::string& game_id) const {
+    std::shared_ptr<GameFeature> best;
+    int best_priority = 0;
+    bool have_best = false;
+    for (const auto& entry : features_) {
+        if (entry.game_id != game_id || entry.feature_type != kGamePluginsType) continue;
+        if (!dynamic_cast<GamePluginsFeature*>(entry.feature.get())) continue;
+        if (!have_best || entry.priority >= best_priority) {
+            best = entry.feature;
+            best_priority = entry.priority;
+            have_best = true;
+        }
+    }
+    return std::dynamic_pointer_cast<const GamePluginsFeature>(best);
+}
+
 std::vector<RegisteredGameFeature> GameFeatureRegistry::features_for(
     const std::string& game_id,
     const std::string& feature_type) const {
@@ -86,6 +104,20 @@ std::vector<RegisteredGameFeature> GameFeatureRegistry::features_for(
 
 void GameFeatureRegistry::clear() {
     features_.clear();
+}
+
+std::string native_plugins_csv(const GameKnowledge& knowledge,
+                               const std::string& game_id) {
+    if (auto feature = GameFeatureRegistry::instance().resolve_game_plugins(game_id)) {
+        std::string out;
+        for (const auto& plugin : feature->plugins()) {
+            if (plugin.empty()) continue;
+            if (!out.empty()) out += ",";
+            out += plugin;
+        }
+        return out;
+    }
+    return knowledge.get(game_id, "game_native_plugins", "");
 }
 
 }  // namespace engine

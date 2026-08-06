@@ -3,6 +3,7 @@
 #include "engine/log/logger.h"
 #include "engine/meta/mod_meta.h"
 #include "engine/plugins/plugin_database.h"
+#include "engine/registry/game_features/game_feature_registry.h"
 
 #include <QMetaObject>
 #include <QThread>
@@ -61,8 +62,8 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
     // join (GamePlugin::owner_mod) decides which row highlights for shadowed
     // strays instead.
     {
-        auto native_plugins_csv = knowledge.get(game_id, "game_native_plugins", "");
-        if (!native_plugins_csv.empty()) {
+        auto native_plugins = engine::native_plugins_csv(knowledge, game_id);
+        if (!native_plugins.empty()) {
             auto game_mods_subpath = knowledge.get(game_id, "mods_subpath", "");
             std::filesystem::path native_dir = request.game_dir;
             if (!game_mods_subpath.empty())
@@ -73,7 +74,7 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
                 existing.insert(m.folder_name);
 
             std::unordered_set<std::string> declared_native;
-            std::istringstream ss(native_plugins_csv);
+            std::istringstream ss(native_plugins);
             std::string plugin;
             while (std::getline(ss, plugin, ',')) {
                 auto start = plugin.find_first_not_of(" \t");

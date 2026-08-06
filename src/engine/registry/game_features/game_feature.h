@@ -12,9 +12,10 @@
 // plugin's own feature registers at the LOWEST priority (MO2 model: the
 // game's built-in feature is the baseline everything else overrides).
 //
-// ModDataChecker is the first concrete feature (already had
-// content_looks_valid/mod_valid_dirs as its body — extraction, not net-new
-// work). Qt-free.
+// ModDataChecker was the first concrete feature (already had
+// content_looks_valid/mod_valid_dirs as its body), GamePlugins the second
+// (the game_native_plugins hook's body) — extraction, not net-new work.
+// Qt-free.
 
 #include <memory>
 #include <string>
@@ -62,6 +63,25 @@ public:
 private:
     std::vector<std::string> folders_;
     std::vector<std::string> extensions_;
+};
+
+// Port of MO2's GamePlugins::gamePlugins(): the plugin files the game ships
+// with and always enables (Skyrim's vanilla ESMs + _ResourcePack.esl). These
+// appear as unmanaged mods in the list (cannot be removed/reordered) and head
+// the fixed top band of the mod list / load order. Instance-based — the list
+// comes from whoever registered the feature (the game plugin, or an overriding
+// plugin).
+class GamePluginsFeature : public GameFeature {
+public:
+    explicit GamePluginsFeature(std::vector<std::string> plugins)
+        : plugins_(std::move(plugins)) {}
+
+    const char* type_name() const override { return "game_plugins"; }
+
+    const std::vector<std::string>& plugins() const { return plugins_; }
+
+private:
+    std::vector<std::string> plugins_;
 };
 
 }  // namespace engine

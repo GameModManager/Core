@@ -39,6 +39,7 @@
 #include "engine/detect/mod_scanner.h"
 #include "engine/detect/game_detector.h"
 #include "engine/index/conflict_engine.h"
+#include "engine/registry/game_features/game_feature_registry.h"
 #include "engine/registry/game_knowledge.h"
 #include "engine/instance/instance.h"
 #include "engine/instance/instance_utils.h"
@@ -1412,7 +1413,7 @@ void MainWindow::launch_plugin_db_preload() {
     preloaded_plugin_db_.reset();
 
     if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return;
-    const auto game_native = knowledge_->get(current_game_id_, "game_native_plugins", "");
+    const auto game_native = engine::native_plugins_csv(*knowledge_, current_game_id_);
     if (game_native.empty()) return;  // game declares no plugin hooks — nothing to preload
 
     ui::PluginDbLoadRequest request;
@@ -2306,7 +2307,7 @@ void MainWindow::refresh_plugins_tab() {
         plugins_tab_widget_ = pt;
     }
 
-    const auto game_native = knowledge_->get(current_game_id_, "game_native_plugins", "");
+    const auto game_native = engine::native_plugins_csv(*knowledge_, current_game_id_);
     if (game_native.empty()) {  // tab exists but the module declares no plugin hooks
         plugins_db_ = engine::PluginDatabase{};
         plugin_owner_index_.clear();
