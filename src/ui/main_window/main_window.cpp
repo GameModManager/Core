@@ -24,6 +24,7 @@
 #include "ui/main_window/conflict_scan_worker.h"
 #include "ui/main_window/mod_scan_worker.h"
 #include "ui/main_window/plugin_db_load_worker.h"
+#include "ui/main_window/saves_scan_worker.h"
 #include "ui/main_window/deploy_worker.h"
 #include "ui/panels/tab_panels.h"
 #include "ui/smooth_scroll.h"
@@ -778,6 +779,11 @@ void MainWindow::set_game_info(const std::string& game_id,
         // the directory watchdog) and connect its signals. Without this, a
         // switched instance shows a dead tab.
         wire_downloads_tab();
+
+        // The Saves tab (if the game supports it) was freshly created too:
+        // point it at the game's saves dir, connect refresh/delete, and run an
+        // initial scan.
+        wire_saves_tab();
 
         load_mods_from_game();
         // Plugin-DB disk load runs CONCURRENTLY with the mod scan (T6/P8.5):
@@ -2403,6 +2409,11 @@ void MainWindow::refresh_plugins_tab() {
     // P1.3 event bus: mirror MO2 onRefreshed (plugin list rebuilt).
     engine::EventBus::instance().dispatch(
         engine::events::kPluginListRefreshed, "{}");
+
+    // The Saves tab's missing-asset column depends on the plugin load order:
+    // a toggle/refresh here moved the state, so re-scan (no-op when the game
+    // has no Saves tab).
+    on_saves_refresh_requested();
 }
 
 void MainWindow::run_loot_sort() {
@@ -6203,6 +6214,53 @@ void MainWindow::wire_downloads_tab() {
             url_downloads_.erase(id);
             save_download_manifest();
         });
+}
+
+void MainWindow::wire_saves_tab() {
+    auto* st = right_panel_->saves_tab();
+    if (!st) return;
+
+    // Saves live under documents/My Games/<game> (game_mygames_dir()). The
+    // "Saves" leaf is knowledge-driven where the game plugin defines it; the
+    // Bethesda-family default applies to Skyrim/FO4/etc.
+    auto sub = knowledge_->get(current_game_id_, "saves_subpath", "Saves");
+    const auto saves_dir = game_mygames_dir() / sub;
+    engine::Logger::instance().debug("Saves tab: watching " + saves_dir.string());
+    st->set_saves_dir(saves_dir);
+
+    connect(st, &ui::SavesTab::refresh_requested,
+            this, &MainWindow::on_saves_refresh_requested);
+    connect(st, &ui::SavesTab::delete_requested,
+            this, &MainWindow::on_saves_delete_requested);
+
+    // Initial fill; the directory watcher drives later refreshes.
+    on_saves_refresh_requested();
+}
+
+void MainWindow::on_saves_refresh_requested() {
+    auto* st = right_panel_->saves_tab();
+    if (!st) return;
+
+    ui::SavesScanRequest request;
+    request.saves_dir = st->saves_dir();
+    if (request.saves_dir.empty()) return;
+    request.extensions = {"ess"};
+    request.game_id = current_game_id_;
+    // Snapshot the plugin list so results reflect the load order at the moment
+    // the refresh was asked for (missing-asset state moves with toggles).
+    request.plugins = plugins_db_.plugins();
+    request.mods_dir = mods_dir_path();
+    request.overwrite_dir = overwrite_dir_path();
+    st->request_scan(std::move(request));
+}
+
+void MainWindow::on_saves_delete_requested(const QStringList& filepaths) {
+    // Trash (never permanent): engine::remove_path -> QDir::moveToTrash.
+    for (const auto& fp : filepaths) {
+        engine::remove_path(std::filesystem::path(fp.toStdString()), /*permanent=*/false);
+    }
+    // The saved state no longer matches disk; re-scan.
+    on_saves_refresh_requested();
 }
 
 void MainWindow::update_install_progress(const std::string& mod_id, int percent,

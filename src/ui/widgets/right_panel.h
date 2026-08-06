@@ -17,6 +17,7 @@ class RightFilterBar;
 class DataTab;
 class DownloadsTab;
 class PluginsTab;
+class SavesTab;
 
 class RightPanel : public QWidget {
     Q_OBJECT
@@ -33,6 +34,7 @@ public:
     [[nodiscard]] QTabWidget* tab_widget() const { return tab_widget_; }
     [[nodiscard]] RightFilterBar* filter_bar() const { return filter_bar_; }
     [[nodiscard]] DownloadsTab* downloads_tab() const;
+    [[nodiscard]] SavesTab* saves_tab() const;
     [[nodiscard]] ConflictsTab* conflicts_tab() const;
     [[nodiscard]] DataTab* data_tab() const;
     [[nodiscard]] PluginsTab* plugins_tab() const;
