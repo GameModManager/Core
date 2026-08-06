@@ -6,6 +6,7 @@
 #include <QBrush>
 #include <QColor>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFont>
 #include <QIcon>
@@ -14,6 +15,11 @@
 #include <QTreeView>
 
 namespace ui {
+
+// Epoch seconds -> "yyyy-MM-dd HH:mm:ss" for the Installation/Changed columns.
+static QString format_epoch_ts(qint64 ts) {
+    return QDateTime::fromSecsSinceEpoch(ts).toString("yyyy-MM-dd HH:mm:ss");
+}
 
 ModListModel::ModListModel(QObject* parent)
     : QAbstractTableModel(parent) {
@@ -31,6 +37,12 @@ ModListModel::ModListModel(QObject* parent)
     fomod_icon_        = icons.resolve_icon("save");
     root_override_icon_ = icons.resolve_icon("root-dir");
     invalid_icon_       = icons.resolve_icon("mod-invalid");
+    // Vendor icons for the Source column (MO2 COL_GAME analogue): resolved
+    // through the same vendor_icon_key() mapping the Source tab uses.
+    for (const char* key : {"nexusmods", "loverslab", "steam", "moddb"}) {
+        QIcon icon = icons.resolve_icon(QString::fromLatin1(key));
+        if (!icon.isNull()) vendor_icons_[QString::fromLatin1(key)] = icon;
+    }
 }
 
 int ModListModel::rowCount(const QModelIndex& parent) const {
@@ -44,29 +56,35 @@ int ModListModel::columnCount(const QModelIndex& parent) const {
 QVariant ModListModel::data(const QModelIndex& index, int role) const {
     if (!index.isValid() || index.row() >= mods_.size()) return {};
 
-    // ── Flag icons for the Flags column ─────────────────────────────
-    // One individual QIcon per flag, in display order: conflict status, then
-    // hidden-files badge, then FOMOD saved badge. The FlagsDelegate paints
-    // them one-by-one at native size and wraps to extra lines (growing the row)
-    // when they exceed the column width — never stacked into one icon.
-    if (role == kFlagIconsRole && index.column() == Flags) {
+    // ── Flag icons for the Conflicts/Flags columns ────────────────────────
+    // MO2 keeps these as two columns: COL_CONFLICTFLAGS carries the win/loss
+    // state badge (and a separator's +/-/± merge-state icon), COL_FLAGS the
+    // hidden-files/FOMOD/root-override/invalid badges. Each is an individual
+    // QIcon under kFlagIconsRole; the FlagsDelegate paints them one-by-one at
+    // native size and wraps to extra lines (growing the row) when they exceed
+    // the column width — never stacked into one icon.
+    if (role == kFlagIconsRole &&
+        (index.column() == Conflicts || index.column() == Flags)) {
         const auto& m = mods_[index.row()];
         QList<QIcon> icons;
-        if (m.is_separator) {
-            auto flag = compute_separator_flags(index.row());
-            if (flag == "+") icons << overwrite_icon_;
-            else if (flag == "-") icons << overwritten_icon_;
-            else if (flag == QString("\u00B1")) icons << mixed_icon_;
+        if (index.column() == Conflicts) {
+            if (m.is_separator) {
+                auto flag = compute_separator_flags(index.row());
+                if (flag == "+") icons << overwrite_icon_;
+                else if (flag == "-") icons << overwritten_icon_;
+                else if (flag == QString("\u00B1")) icons << mixed_icon_;
+                return QVariant::fromValue(icons);
+            }
+            if (m.redundant) {
+                icons << redundant_icon_;
+            } else if (m.conflict_wins > 0 && m.conflict_losses > 0) {
+                icons << mixed_icon_;
+            } else if (m.conflict_wins > 0) {
+                icons << overwrite_icon_;
+            } else if (m.conflict_losses > 0) {
+                icons << overwritten_icon_;
+            }
             return QVariant::fromValue(icons);
-        }
-        if (m.redundant) {
-            icons << redundant_icon_;
-        } else if (m.conflict_wins > 0 && m.conflict_losses > 0) {
-            icons << mixed_icon_;
-        } else if (m.conflict_wins > 0) {
-            icons << overwrite_icon_;
-        } else if (m.conflict_losses > 0) {
-            icons << overwritten_icon_;
         }
         if (m.has_hidden_files) icons << hidden_icon_;
         if (m.is_fomod) icons << fomod_icon_;
@@ -214,11 +232,40 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
     if (role == Qt::DisplayRole || role == Qt::EditRole) {
         switch (index.column()) {
             case Name: return mod.name;
+            case Conflicts: return QString();  // icon via kFlagIconsRole
+            case Flags: return QString();      // icon via kFlagIconsRole
+            case Category: return mod.category;
+            case Source: return QString();     // vendor icon via DecorationRole
+            case SourceId: return mod.source_id;
             case Version: return mod.version;
-            case Flags: return QString();  // conflict/tag info is icon + tooltip
+            case Installation:
+                return mod.installation_ts > 0 ? format_epoch_ts(mod.installation_ts)
+                                               : QString();
+            case Changed:
+                return mod.changed_ts > 0 ? format_epoch_ts(mod.changed_ts) : QString();
             case Priority: return mod.priority;
         }
     }
+    // Vendor icon for the Source column (MO2 COL_GAME analogue): the badge of
+    // the site the download came from (Nexus/LoversLab/Steam/ModDB).
+    if (role == Qt::DecorationRole && index.column() == Source && !mod.is_separator) {
+        return source_icon(mod.source_type);
+    }
+    // Conflicts tooltip: what this mod wins/loses against.
+    if (role == Qt::ToolTipRole && index.column() == Conflicts && !mod.is_separator &&
+        (mod.conflict_wins > 0 || mod.conflict_losses > 0 || mod.redundant)) {
+        QStringList lines;
+        if (mod.redundant)
+            lines << tr("Redundant: every file is provided by a higher-priority mod");
+        if (mod.conflict_wins > 0)
+            lines << tr("Overwrites %1 file(s)").arg(mod.conflict_wins);
+        if (mod.conflict_losses > 0)
+            lines << tr("Overwritten by %1 file(s)").arg(mod.conflict_losses);
+        return lines.join("\n");
+    }
+    // Source tooltip: the download source name.
+    if (role == Qt::ToolTipRole && index.column() == Source && !mod.source_type.isEmpty())
+        return mod.source_type;
     if (role == Qt::ToolTipRole && index.column() == Flags &&
         (!mod.tags.isEmpty() || mod.is_fomod || mod.root_override ||
          mod.invalid_data || mod.no_metadata)) {
@@ -260,7 +307,11 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
             return QColor(255, 80, 80);  // Red - loses
         return QColor(160, 160, 160);  // Gray - no conflicts
     }
-    if (role == Qt::TextAlignmentRole && index.column() == Priority) {
+    // Centered text/icon columns (MO2 centers everything but Name/Version).
+    if (role == Qt::TextAlignmentRole &&
+        (index.column() == Conflicts || index.column() == Category ||
+         index.column() == SourceId || index.column() == Installation ||
+         index.column() == Changed || index.column() == Priority)) {
         return Qt::AlignCenter;
     }
 
@@ -313,8 +364,14 @@ QVariant ModListModel::headerData(int section, Qt::Orientation, int role) const 
     if (role != Qt::DisplayRole) return {};
     switch (section) {
         case Name: return tr("Name");
-        case Version: return tr("Version");
+        case Conflicts: return tr("Conflicts");
         case Flags: return tr("Flags");
+        case Category: return tr("Category");
+        case Source: return tr("Source");
+        case SourceId: return tr("Source ID");
+        case Version: return tr("Version");
+        case Installation: return tr("Installation");
+        case Changed: return tr("Changed");
         case Priority: return tr("Priority");
     }
     return {};
@@ -496,7 +553,7 @@ bool ModListModel::moveRows(const QModelIndex& srcParent, int srcRow, int count,
     return true;
 }
 
-void ModListModel::add_mod(const QString& id, const QString& name, const QString& version, int priority, bool is_game_native) {
+void ModListModel::add_mod(const QString& id, const QString& name, const QString& version, int priority, bool is_game_native, qint64 install_ts, qint64 changed_ts) {
     int insert_pos = mods_.size();
     // MO2 rule (Profile::refreshModStatus): a new mod that isn't in the mod
     // list yet gets the HIGHEST regular priority - placed at the bottom of the
@@ -520,6 +577,8 @@ void ModListModel::add_mod(const QString& id, const QString& name, const QString
     entry.enabled = true;
     entry.priority = priority >= 0 ? priority : insert_pos;
     entry.is_game_native = is_game_native;
+    entry.installation_ts = install_ts;
+    entry.changed_ts = changed_ts;
     mods_.insert(insert_pos, entry);
     endInsertRows();
     if (priority < 0) renumber_priorities();
@@ -736,9 +795,37 @@ void ModListModel::set_tags(const QString& id, const QVector<ModTag>& tags) {
 void ModListModel::set_source_info(const QString& id, const QString& source_type, const QString& source_id, const QString& page_url) {
     for (int i = 0; i < mods_.size(); ++i) {
         if (mods_[i].id == id) {
-            mods_[i].source_type = source_type;
-            mods_[i].source_id = source_id;
-            mods_[i].source_page_url = page_url;
+            if (mods_[i].source_type != source_type || mods_[i].source_id != source_id ||
+                mods_[i].source_page_url != page_url) {
+                mods_[i].source_type = source_type;
+                mods_[i].source_id = source_id;
+                mods_[i].source_page_url = page_url;
+                // Source icon + Source ID text both derive from this.
+                emit dataChanged(index(i, Source), index(i, SourceId),
+                                 {Qt::DisplayRole, Qt::DecorationRole, Qt::ToolTipRole});
+            }
+            return;
+        }
+    }
+}
+
+void ModListModel::set_category(const QString& id, const QString& category) {
+    for (int i = 0; i < mods_.size(); ++i) {
+        if (mods_[i].id == id && mods_[i].category != category) {
+            mods_[i].category = category;
+            emit dataChanged(index(i, Category), index(i, Category));
+            return;
+        }
+    }
+}
+
+void ModListModel::set_timestamps(const QString& id, qint64 install_ts, qint64 changed_ts) {
+    for (int i = 0; i < mods_.size(); ++i) {
+        if (mods_[i].id == id &&
+            (mods_[i].installation_ts != install_ts || mods_[i].changed_ts != changed_ts)) {
+            mods_[i].installation_ts = install_ts;
+            mods_[i].changed_ts = changed_ts;
+            emit dataChanged(index(i, Installation), index(i, Changed));
             return;
         }
     }
@@ -833,6 +920,14 @@ void ModListModel::apply_fold_state() {
         }
         tree->setRowHidden(i, QModelIndex(), false);
     }
+}
+
+QIcon ModListModel::source_icon(const QString& source_type) const {
+    if (source_type.isEmpty()) return {};
+    const QString key =
+        QString::fromStdString(engine::vendor_icon_key(source_type.toStdString()));
+    if (key.isEmpty()) return {};
+    return vendor_icons_.value(key);
 }
 
 QStringList ModListModel::existing_separator_names() const {

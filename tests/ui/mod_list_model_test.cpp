@@ -15,14 +15,20 @@
 //
 // Hermetic: offscreen platform, throwaway XDG_CONFIG_HOME, no network.
 #include "ui/widgets/mod_list_model.h"
+#include "ui/widgets/column_toggle_header.h"
 #include "ui/settings/settings.h"
+#include "engine/theme/icon_manager.h"
 
 #include <QApplication>
 #include <QBrush>
+#include <QContextMenuEvent>
 #include <QFont>
 #include <QIcon>
+#include <QMenu>
 #include <QMimeData>
 #include <QModelIndexList>
+#include <QTableView>
+#include <QTimer>
 
 #include <cstdio>
 #include <filesystem>
@@ -48,6 +54,10 @@ static int row_with_id(const ui::ModListModel& model, const char* id) {
 
 int main(int argc, char** argv) {
     qputenv("QT_QPA_PLATFORM", "offscreen");
+    // Deterministic "yyyy-MM-dd HH:mm:ss" rendering: format_epoch_ts uses local
+    // time, so pin the test process to UTC.
+    qputenv("TZ", "UTC");
+    tzset();
     const std::filesystem::path cfg = "/tmp/gmm_mod_list_model/config";
     std::filesystem::remove_all("/tmp/gmm_mod_list_model");
     std::filesystem::create_directories(cfg);
@@ -406,6 +416,154 @@ int main(int argc, char** argv) {
             model.index(gr, ui::ModListModel::Name), Qt::FontRole);
         check(!fnt2.isValid() || !fnt2.value<QFont>().italic(),
               "clearing invalid-data restores the non-italic name");
+    }
+
+    {
+        // Column set (P8.4): exactly the 10 columns in display order.
+        check(model.columnCount() == 10, "mod list exposes 10 columns");
+        const char* labels[] = {"Name", "Conflicts", "Flags", "Category", "Source",
+                                "Source ID", "Version", "Installation", "Changed",
+                                "Priority"};
+        for (int c = 0; c < 10; ++c) {
+            const QVariant hd = model.headerData(c, Qt::Horizontal, Qt::DisplayRole);
+            check(hd.isValid() && hd.toString() == QLatin1String(labels[c]),
+                  "header label for new column");
+        }
+
+        // add_mod carries the filesystem timestamps into the model entry.
+        model.add_mod(QStringLiteral("Timed"), QStringLiteral("Timed Mod"),
+                      QStringLiteral("1.0"), 7, false, 1700000000, 1700005000);
+        const int tr = row_with_id(model, "Timed");
+        check(tr >= 0, "timed mod row present");
+        check(model.mods()[tr].installation_ts == 1700000000 &&
+                  model.mods()[tr].changed_ts == 1700005000,
+              "add_mod stores install/changed timestamps");
+
+        // Category renders in the Category column.
+        model.set_category(QStringLiteral("Timed"), QStringLiteral("Gameplay"));
+        const QVariant cat = model.data(
+            model.index(tr, ui::ModListModel::Category), Qt::DisplayRole);
+        check(cat.isValid() && cat.toString() == QLatin1String("Gameplay"),
+              "set_category renders in the Category column");
+        model.set_category(QStringLiteral("Timed"), QStringLiteral("Gameplay"));
+        model.set_category(QStringLiteral("Timed"), QStringLiteral("UI"));
+        check(model.mods()[tr].category == QStringLiteral("UI"),
+              "set_category updates an existing value");
+
+        // set_timestamps updates the entry and the two date columns.
+        model.set_timestamps(QStringLiteral("Timed"), 1700000000, 1700005000);
+        const QVariant inst = model.data(
+            model.index(tr, ui::ModListModel::Installation), Qt::DisplayRole);
+        const QVariant chg = model.data(
+            model.index(tr, ui::ModListModel::Changed), Qt::DisplayRole);
+        check(inst.toString() == QLatin1String("2023-11-14 22:13:20"),
+              "Installation renders folder birth time as local datetime");
+        check(chg.toString() == QLatin1String("2023-11-14 23:36:40"),
+              "Changed renders folder mtime as local datetime");
+        model.set_timestamps(QStringLiteral("Timed"), 0, 0);
+        const QVariant inst0 = model.data(
+            model.index(tr, ui::ModListModel::Installation), Qt::DisplayRole);
+        check(inst0.toString().isEmpty(),
+              "zero timestamps render empty cells");
+
+        // Source column: ID text + vendor icon + tooltip (MO2 COL_GAME).
+        model.set_source_info(QStringLiteral("Timed"), QStringLiteral("nexusmods"),
+                              QStringLiteral("12345"), QStringLiteral("https://nxm/"));
+        const QVariant sid = model.data(
+            model.index(tr, ui::ModListModel::SourceId), Qt::DisplayRole);
+        check(sid.isValid() && sid.toString() == QLatin1String("12345"),
+              "Source ID renders the numeric id");
+        const QVariant tip = model.data(
+            model.index(tr, ui::ModListModel::Source), Qt::ToolTipRole);
+        check(tip.isValid() && tip.toString() == QLatin1String("nexusmods"),
+              "Source tooltip shows the vendor name");
+        // Icon only when the icon pack actually resolves the vendor badge:
+        // whatever resolve_icon yields, the model's DecorationRole must match
+        // (null in a hermetic test with no icon pack, non-null otherwise).
+        const QIcon vendor = engine::IconManager::instance().resolve_icon("nexusmods");
+        const QVariant dec = model.data(
+            model.index(tr, ui::ModListModel::Source), Qt::DecorationRole);
+        const QIcon dec_icon = dec.canConvert<QIcon>() ? dec.value<QIcon>() : QIcon();
+        check(dec_icon.isNull() == vendor.isNull(),
+              "Source DecorationRole matches the resolved vendor icon");
+
+        // Version and Priority keep rendering after the enum reorder.
+        const QVariant ver = model.data(
+            model.index(tr, ui::ModListModel::Version), Qt::DisplayRole);
+        check(ver.isValid() && ver.toString() == QLatin1String("1.0"),
+              "Version renders after column reorder");
+        const QVariant prio = model.data(
+            model.index(tr, ui::ModListModel::Priority), Qt::DisplayRole);
+        check(prio.isValid() && prio.toInt() == 7,
+              "Priority renders after column reorder");
+    }
+
+    {
+        // ColumnToggleHeaderView: lock API + the context-menu contract the
+        // Name column relies on — locked entries render checked+disabled, an
+        // unlocked user toggle hides the section and emits section_toggled.
+        QTableView view;
+        auto* hdr = new ui::ColumnToggleHeaderView(Qt::Horizontal, &view);
+        hdr->set_column_labels({"Name", "Conflicts", "Flags"});
+        hdr->set_locked_section(0);
+        view.setModel(&model);
+        view.setHorizontalHeader(hdr);
+        check(hdr->count() == model.columnCount(),
+              "header follows the model column count");
+        check(hdr->is_locked(0), "lockable section reported locked");
+        check(!hdr->is_locked(1), "unlocked section reported unlocked");
+        hdr->set_section_tooltips({"tip0", QString(), "tip2"});
+        check(hdr->section_tooltip(0) == QLatin1String("tip0") &&
+                  hdr->section_tooltip(1).isEmpty() &&
+                  hdr->section_tooltip(2) == QLatin1String("tip2"),
+              "per-section tooltips map by logical index");
+
+        // Drive the real context menu hermetically: the menu's nested event
+        // loop is closed by a timer that inspects + triggers actions while
+        // the menu is open. The delay must outlive event dispatch (a 0-ms
+        // timer fires before a posted event is processed).
+        QVector<QPair<bool, bool>> menu_state;  // (enabled, checked)
+        QVector<int> toggled;
+        QObject::connect(hdr, &ui::ColumnToggleHeaderView::section_toggled, &view,
+                         [&toggled](int logical, bool hidden) {
+                             toggled.append(logical);
+                             toggled.append(hidden ? 1 : 0);
+                         });
+        QTimer::singleShot(100, [&]() {
+            QMenu* m = qobject_cast<QMenu*>(QApplication::activePopupWidget());
+            if (!m) return;
+            const auto actions = m->actions();
+            for (int i = 0; i < actions.size() && i < 3; ++i)
+                menu_state.append({actions.at(i)->isEnabled(),
+                                   actions.at(i)->isChecked()});
+            if (actions.size() > 1) actions.at(1)->trigger();
+            m->close();
+        });
+        // Safety net: never let the nested menu loop hang the test.
+        QTimer::singleShot(2000, []() {
+            if (QWidget* w = QApplication::activePopupWidget()) w->close();
+        });
+        auto* cme = new QContextMenuEvent(QContextMenuEvent::Mouse, QPoint(5, 5),
+                                          QPoint(5, 5));
+        QCoreApplication::postEvent(hdr->viewport(), cme);
+        QApplication::processEvents();
+        check(menu_state.size() == 3, "context menu offers one action per column");
+        check(menu_state.size() == 3 && !menu_state.at(0).first &&
+                  menu_state.at(0).second,
+              "locked column renders checked + disabled");
+        check(toggled.size() == 2 && toggled.at(0) == 1 && toggled.at(1) == 1,
+              "unlocked toggle emits section_toggled(hidden)");
+        check(hdr->isSectionHidden(1),
+              "user toggle hides the unlocked section");
+        check(!hdr->isSectionHidden(0),
+              "locked section stays visible");
+
+        // The lock is menu-enforced by design: programmatic hide still works
+        // (the restore path uses setSectionHidden directly).
+        hdr->setSectionHidden(0, true);
+        check(hdr->isSectionHidden(0),
+              "programmatic setSectionHidden bypasses the menu lock");
+        QObject::disconnect(hdr, nullptr, &view, nullptr);
     }
 
     std::printf("\n%d passed, %d failed\n", passes, failures);

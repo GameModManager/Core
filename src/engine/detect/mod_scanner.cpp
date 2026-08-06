@@ -5,11 +5,17 @@
 #include "engine/meta/mod_meta.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <optional>
 #include <sstream>
 #include <regex>
+
+#if defined(__linux__)
+#include <fcntl.h>
+#include <sys/stat.h>
+#endif
 
 namespace engine {
 
@@ -70,6 +76,41 @@ static bool ci_equals(const std::string& a, const std::string& b) {
             return false;
     }
     return true;
+}
+
+// Folder timestamps for the mod list's Installation/Changed columns. MO2's
+// COL_INSTALLTIME reads the mod folder's birth time (a Replace install
+// recreates the folder → new time; Merge keeps it → old time preserved), and
+// "Changed" is the folder's last-write time. Birth time is not in the C++
+// std::filesystem API, so it needs statx(2) on Linux; when the filesystem
+// doesn't report btime the install time falls back to the write time. Epoch
+// seconds, 0 on error.
+static void folder_timestamps(const std::filesystem::path& dir, int64_t& install,
+                              int64_t& changed) {
+    install = 0;
+    changed = 0;
+
+    std::error_code ec;
+    auto mtime = std::filesystem::last_write_time(dir, ec);
+    if (ec) return;
+    // last_write_time runs on the filesystem clock, whose epoch is NOT the
+    // Unix epoch on libstdc++ (__file_clock). Convert explicitly via the
+    // standard to_sys()/from_sys() pair, or the raw duration is garbage.
+    const int64_t mtime_sec = static_cast<int64_t>(
+        std::chrono::duration_cast<std::chrono::seconds>(
+            std::filesystem::file_time_type::clock::to_sys(mtime)
+                .time_since_epoch())
+            .count());
+    changed = mtime_sec;
+
+#if defined(__linux__)
+    struct statx stx;
+    if (::statx(AT_FDCWD, dir.c_str(), 0, STATX_BTIME, &stx) == 0 &&
+        (stx.stx_mask & STATX_BTIME)) {
+        install = static_cast<int64_t>(stx.stx_btime.tv_sec);
+    }
+#endif
+    if (install <= 0) install = mtime_sec;
 }
 
 // --- ModScanner ---
@@ -224,6 +265,11 @@ static std::optional<ScannedMod> scan_entry(
             }
         } catch (...) {}
     }
+
+    // Installation/Changed for the mod list: folder birth time and last-write
+    // time (MO2 COL_INSTALLTIME semantics). Set for separators too; the
+    // Overwrite/MERGED pseudo-rows are synthesized elsewhere and stay 0.
+    folder_timestamps(entry_path, mod.install_time, mod.changed_time);
 
     // Check for separator (game-specific suffix)
     if (!cfg.separator_suffix.empty() &&

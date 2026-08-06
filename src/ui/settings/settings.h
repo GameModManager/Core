@@ -62,6 +62,14 @@ public:
     bool confirm_close_with_downloads() const;   // key: close/confirm_downloads
     void set_confirm_close_with_downloads(bool on);
 
+    // mod list columns --------------------------------------------------------
+    // Per-instance set of mod-list columns the user has hidden (by column
+    // name, stable across reordering). Missing key = first-run defaults apply.
+    // The Name column is never stored here (it cannot be hidden).
+    QStringList modlist_hidden_columns(const QString& instance_name) const;
+    void set_modlist_hidden_columns(const QString& instance_name,
+                                    const QStringList& hidden);
+
     // general ---------------------------------------------------------------
     bool check_for_updates() const;
     void set_check_for_updates(bool on);

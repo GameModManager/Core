@@ -13,10 +13,12 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <thread>
 
 namespace fs = std::filesystem;
 
@@ -274,6 +276,30 @@ int main() {
     require(mv != nullptr && !mv->no_metadata,
             "mark_validated clears the no_metadata flag");
     require(!mv->invalid_data, "mark_validated clears the invalid flag");
+
+    // Timestamps (P8.4): every real folder reports its birth (installation) and
+    // mtime (changed) so the mod list can show both columns.
+    const auto* timed = by_folder(modsV2, "SomeMod");
+    require(timed != nullptr, "SomeMod found for timestamp check");
+    require(timed->install_time > 0, "install_time populated for a real folder");
+    require(timed->changed_time > 0, "changed_time populated for a real folder");
+    require(timed->changed_time >= timed->install_time,
+            "changed_time (mtime) is not older than install_time (btime)");
+    const auto* sep = by_folder(modsV2, "My Mods_separator");
+    require(sep != nullptr && sep->install_time > 0,
+            "separators carry a birth time too");
+    {
+        // Rewriting a file bumps mtime; the re-scanned mod must reflect it.
+        // Sleep past the current second first so the bump is observable at
+        // whole-second granularity (the whole test runs in well under a second).
+        std::this_thread::sleep_for(std::chrono::milliseconds(1200));
+        const fs::path touched = root / "SomeMod" / "content.txt";
+        write_file(touched, "hello\n");
+        const auto modsR = engine::ModScanner::scan_dir(checker, "skyrim", root);
+        const auto* re = by_folder(modsR, "SomeMod");
+        require(re != nullptr && re->changed_time > timed->changed_time,
+                "changed_time reflects a file write after install");
+    }
 
     std::printf("scanner_test: all checks passed\n");
     return 0;

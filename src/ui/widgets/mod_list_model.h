@@ -2,6 +2,7 @@
 
 #include <QAbstractTableModel>
 #include <QColor>
+#include <QHash>
 #include <QIcon>
 #include <QSet>
 #include <QVector>
@@ -49,6 +50,14 @@ struct ModEntry {
     bool invalid_data = false;    // MO2 FLAG_INVALID: folder holds no recognized game data
     bool no_metadata = false;     // no manager metadata file in the folder (not a managed install)
     bool folded = false;
+    // Category name resolved from the instance's category DB (meta.ini
+    // [General] category CSV primary, else [Nexusmods] nexuscategory). Empty
+    // when unresolvable.
+    QString category;
+    // Installation (folder birth time) and Changed (folder last-write time).
+    // 0 = unavailable (separators, Overwrite/MERGED pseudo-rows).
+    qint64 installation_ts = 0;
+    qint64 changed_ts = 0;
 };
 
 struct ConflictPairs {
@@ -59,7 +68,10 @@ struct ConflictPairs {
 class ModListModel : public QAbstractTableModel {
     Q_OBJECT
 public:
-    enum Column { Name, Version, Flags, Priority, ColumnCount };
+    // Column order is the display order: Name first (never hideable), Priority
+    // last. Adding/reordering columns is safe - no code persists column indices.
+    enum Column { Name, Conflicts, Flags, Category, Source, SourceId, Version,
+                  Installation, Changed, Priority, ColumnCount };
 
     // Custom role for the separator-marking scrollbar; separator rows return
     // their background QColor, everything else returns an invalid variant.
@@ -89,7 +101,9 @@ public:
     bool moveRows(const QModelIndex& srcParent, int srcRow, int count,
                   const QModelIndex& dstParent, int dstRow) override;
 
-    void add_mod(const QString& id, const QString& name, const QString& version, int priority = -1, bool is_game_native = false);
+    void add_mod(const QString& id, const QString& name, const QString& version,
+                 int priority = -1, bool is_game_native = false,
+                 qint64 install_ts = 0, qint64 changed_ts = 0);
     void add_separator(const QString& id, const QString& name, const QString& color);
     void remove_mod(const QString& id);
     void remove_all_mods();
@@ -114,6 +128,12 @@ public:
     void set_source_info(const QString& id, const QString& source_type,
                          const QString& source_id,
                          const QString& page_url = {});
+    // Category name for the Category column (resolved by the window layer from
+    // the instance's category DB; the model just stores the display string).
+    void set_category(const QString& id, const QString& category);
+    // Installation (folder birth time) + Changed (folder last-write time),
+    // epoch seconds. 0 clears both cells.
+    void set_timestamps(const QString& id, qint64 install_ts, qint64 changed_ts);
     void set_separator_id(const QString& id, const QString& separator_id);
     void set_priority(const QString& id, int priority);
     void renumber_priorities();
@@ -161,6 +181,9 @@ signals:
 private:
     void ensure_overwrite_present();
     [[nodiscard]] QString compute_separator_flags(int row) const;
+    // Vendor badge for a mod's source_type (via engine::vendor_icon_key), or
+    // null for unknown/empty sources.
+    [[nodiscard]] QIcon source_icon(const QString& source_type) const;
 
     QVector<ModEntry> mods_;
     QIcon overwrite_icon_;
@@ -171,6 +194,8 @@ private:
     QIcon fomod_icon_;
     QIcon root_override_icon_;
     QIcon invalid_icon_;
+    // source icon-key ("nexusmods", "loverslab", "steam", "moddb") -> badge.
+    QHash<QString, QIcon> vendor_icons_;
     QAbstractItemView* mod_view_ = nullptr;
     bool conflict_order_reversed_ = false;
     bool uses_merged_ = false;
