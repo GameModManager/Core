@@ -6,6 +6,7 @@
 
 #include <filesystem>
 #include <string>
+#include <system_error>
 
 #include "engine/filetree/file_tree.h"
 
@@ -21,6 +22,17 @@ public:
 
     // The on-disk directory this node represents.
     const std::filesystem::path& on_disk_path() const { return m_path; }
+
+    // True when this node's on-disk directory is itself a symlink. The tree
+    // enumerates through it (do_populate follows the link), but MO2's QDir
+    // NoSymLinks filter and the legacy recursive_directory_iterator walks do
+    // not descend into symlinked directories - walkers that must mirror that
+    // behavior return WalkReturn::Skip for these nodes so their contents stay
+    // out of the walked set.
+    bool is_symlink() const {
+        std::error_code ec;
+        return std::filesystem::is_symlink(m_path, ec);
+    }
 
     DirectoryFileTree(std::shared_ptr<const FileTree> parent, std::string name,
                       NameCompare cmp, std::filesystem::path path,
