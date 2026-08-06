@@ -2,14 +2,28 @@
 #include "engine/plugin_host/python_loader.h"
 #include "engine/plugin_host/diagnostics_registry.h"
 #include "engine/plugins/plugin_database.h"
+#include "engine/detect/mod_scanner.h"
+#include "engine/registry/game_features/game_feature_registry.h"
+#include "engine/registry/game_knowledge.h"
 
 #include <cassert>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 
 namespace fs = std::filesystem;
+
+// Release builds compile out assert() (-DNDEBUG), so the plugin-loading checks
+// above use it loosely; the register_game_feature mirror test below uses this
+// hard require (exits non-zero on failure) so ctest actually catches it.
+static void require(bool cond, const std::string& msg) {
+    if (!cond) {
+        std::fprintf(stderr, "FAIL: %s\n", msg.c_str());
+        std::exit(1);
+    }
+}
 
 static void test_python_plugin_load() {
     std::cout << "=== test_python_plugin_load ===" << std::endl;
@@ -162,12 +176,82 @@ def register(ctx):
     fs::remove_all(tmp);
 }
 
+// P1.2 GameFeatureRegistry pybind mirror: a Python plugin calls
+// ctx.register_game_feature() to register (or, with a higher priority,
+// override) a per-game mod_data_checker. The mirror must feed the same
+// engine registry the C ABI feeds — so a mod whose only content is the
+// registered folder is no longer "No valid game data" (FLAG_INVALID).
+static void test_python_register_game_feature() {
+    std::cout << "=== test_python_register_game_feature ===" << std::endl;
+
+    engine::GameFeatureRegistry::instance().clear();
+
+    fs::path tmp = fs::temp_directory_path() / "gmm_python_feature";
+    fs::create_directories(tmp);
+
+    fs::path plugin_path = tmp / "checker_override.py";
+    {
+        std::ofstream f(plugin_path);
+        f << R"(
+import gmm
+
+def register(ctx):
+    ctx.register_identity(steam_appid=12345)
+    ctx.register_game_feature(
+        game_id="skyrim",
+        feature_type="mod_data_checker",
+        priority=5,
+        folder_names=["customstuff"],
+        file_extensions=["custoext"],
+    )
+)";
+    }
+
+    fs::path root = tmp / "mods";
+    fs::create_directories(root / "CustomMod" / "customstuff");
+    fs::create_directories(root / "ForeignMod" / "otherstuff");
+
+    engine::python_init();
+    engine::PluginLoader loader;
+    require(engine::python_load_plugin(&loader, plugin_path.string()),
+            "python plugin with register_game_feature loads");
+
+    auto combined = engine::GameFeatureRegistry::instance().resolve_mod_data_checker("skyrim");
+    require(combined != nullptr, "python-registered checker resolves");
+    require(combined && !combined->folder_names().empty() &&
+            combined->folder_names()[0] == "customstuff",
+            "python folder_names reached the engine registry");
+
+    auto mods = engine::ModScanner::scan_dir(engine::GameKnowledge{}, "skyrim", root);
+    bool found_custom = false, found_foreign = false;
+    for (const auto& m : mods) {
+        if (m.folder_name == "CustomMod") {
+            found_custom = true;
+            require(!m.invalid_data,
+                    "mod with only customstuff/ is valid (override shows)");
+        }
+        if (m.folder_name == "ForeignMod") {
+            found_foreign = true;
+            require(m.invalid_data,
+                    "mod with only otherstuff/ is no valid game data");
+        }
+    }
+    require(found_custom && found_foreign, "both mod folders scanned");
+
+    std::cout << "  python register_game_feature feeds the engine registry" << std::endl;
+    std::cout << "  PASSED" << std::endl;
+
+    engine::python_shutdown();
+    fs::remove_all(tmp);
+}
+
 int main() {
     std::cout << "Python plugin tests" << std::endl;
 
     test_python_plugin_load();
     test_python_plugin_missing_register();
     test_python_plugin_duplicate_load();
+    test_python_register_game_feature();
 
     std::cout << "\nAll Python plugin tests passed!" << std::endl;
     return 0;

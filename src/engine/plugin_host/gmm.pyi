@@ -128,6 +128,27 @@ class RegistrationContext:
         For downloads: protocol_handler ("nxm", "workshop"), website_domain, supported_platforms (comma-separated)
         """
 
+    def register_game_feature(
+        self,
+        game_id: str = "",
+        feature_type: str = "",
+        priority: int = 0,
+        folder_names: list[str] = [],
+        file_extensions: list[str] = [],
+    ) -> None:
+        """Register or override a per-game behavior feature (MO2 IGameFeatures).
+
+        feature_type: "mod_data_checker" (first). The game's own feature
+            registers at the LOWEST priority; registering the same type at a
+            higher priority overrides/augments it (MO2 combines all checkers:
+            ANY checker VALID -> VALID, so the union's allow-sets drive the mod
+            list's "No valid game data" flag).
+        game_id: the game this feature serves ("" = this plugin's own game).
+        folder_names/file_extensions: mod_data_checker allow-sets (top-level
+            directory names / file extensions that count as real game data).
+        """
+        ...
+
     def register_tab(
         self,
         capability: str,
