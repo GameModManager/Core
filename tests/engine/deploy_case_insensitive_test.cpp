@@ -6,12 +6,19 @@
 // (case-insensitive by nature) reads a half-populated mod. When the per-game
 // `case_sensitive` knowledge flag is false, every deploy target is routed
 // through resolve_deploy_target_ci and CI-equal directory paths collapse into
-// one canonical casing. Pinned here:
+// one canonical casing, AND the staged tree is made reachable under the
+// lowercase spellings the game actually queries (add_case_insensitive_aliases
+// creates `meshes` -> `Meshes` style symlinks plus the root `data` -> `Data`
+// alias). Pinned here:
 //
-//   1. same-mod merge: `Meshes/a.nif` + `meshes/b.nif` land in ONE dir.
+//   1. same-mod merge: `Meshes/a.nif` + `meshes/b.nif` land in ONE real dir.
 //   2. cross-mod merge: mod A `Meshes/x`, mod B `meshes/y` share one dir.
-//   3. control: case_sensitive=true keeps both casings (today's behavior).
-//   4. hidden files are still skipped under the merge.
+//   3. lowercase alias: the non-canonical spelling resolves to the same files
+//      (`data/meshes/...` and `data` root alias both work).
+//   4. recursion: a deep uppercase dir (Meshes/UppercaseSub) gets its own
+//      lowercase alias at every level.
+//   5. control: case_sensitive=true keeps both casings and creates no aliases.
+//   6. hidden files are still skipped under the merge.
 #include "engine/deploy/deploy_utils.h"
 
 #include <cstdio>
@@ -43,14 +50,11 @@ static void write_file(const fs::path& p, const std::string& contents) {
     }
 }
 
-// True when exactly one of the two CI-equal names exists; returns that dir.
-static fs::path one_of(const fs::path& parent,
-                       const std::string& upper, const std::string& lower,
-                       bool& ok) {
-    const bool has_upper = fs::exists(parent / upper);
-    const bool has_lower = fs::exists(parent / lower);
-    ok = has_upper != has_lower;
-    return has_upper ? parent / upper : parent / lower;
+// True only for a REAL directory - symlinks (aliases, staged file links) do
+// not count.
+static bool is_real_dir(const fs::path& p) {
+    std::error_code ec;
+    return fs::is_directory(fs::symlink_status(p, ec));
 }
 
 static void deploy_and_merge(const fs::path& base, bool case_sensitive,
@@ -61,6 +65,11 @@ static void deploy_and_merge(const fs::path& base, bool case_sensitive,
     // Same-mod split: one file under `Meshes`, one under `meshes`.
     write_file(mods / "ModA" / "Meshes" / "a.nif", "x");
     write_file(mods / "ModA" / "meshes" / "b.nif", "x");
+
+    // Deep uppercase dir to exercise recursive aliasing.
+    write_file(mods / "ModA" / "Meshes" / "UppercaseSub" / "deep.nif", "x");
+    // Already-lowercase dir: no alias may be created for it.
+    write_file(mods / "ModA" / "Meshes" / "lowercase" / "plain.nif", "x");
 
     // Cross-mod split: a second mod that only carries the lowercase spelling.
     write_file(mods / "ModB" / "meshes" / "c.nif", "x");
@@ -76,20 +85,60 @@ static void deploy_and_merge(const fs::path& base, bool case_sensitive,
 
     const std::string l = label;
     if (case_sensitive) {
-        check(fs::exists(staging / "Data" / "Meshes") &&
-                  fs::exists(staging / "Data" / "meshes"),
+        check(is_real_dir(staging / "Data" / "Meshes") &&
+                  is_real_dir(staging / "Data" / "meshes"),
               (l + ": control keeps both casings (Meshes + meshes)").c_str());
         check(fs::exists(staging / "Data" / "Meshes" / "a.nif") &&
                   fs::exists(staging / "Data" / "meshes" / "b.nif"),
               (l + ": control keeps each file under its own casing").c_str());
+        check(!fs::is_symlink(staging / "data") &&
+                  !fs::exists(staging / "data"),
+              (l + ": control creates no root data alias").c_str());
     } else {
-        bool merged = false;
+        // Exactly ONE real directory among the CI-equal spellings; the other
+        // may only exist as a lowercase symlink alias.
+        const bool real_upper = is_real_dir(staging / "Data" / "Meshes");
+        const bool real_lower = is_real_dir(staging / "Data" / "meshes");
+        check(real_upper != real_lower,
+              (l + ": CI-equal dirs merge into exactly one real casing").c_str());
         const fs::path dir =
-            one_of(staging / "Data", "Meshes", "meshes", merged);
-        check(merged, (l + ": CI-equal dirs merge into exactly one casing").c_str());
+            real_upper ? staging / "Data" / "Meshes" : staging / "Data" / "meshes";
+
         check(fs::exists(dir / "a.nif") && fs::exists(dir / "b.nif") &&
                   fs::exists(dir / "c.nif"),
               (l + ": merged dir carries every file (same-mod + cross-mod)").c_str());
+        check(fs::exists(dir / "UppercaseSub" / "deep.nif"),
+              (l + ": deep subdir survives the merge").c_str());
+
+        // The non-canonical spelling resolves through the alias symlink.
+        const fs::path alias = real_upper ? staging / "Data" / "meshes"
+                                          : staging / "Data" / "Meshes";
+        check(fs::is_symlink(alias),
+              (l + ": non-canonical spelling is a lowercase alias symlink").c_str());
+        check(fs::exists(alias / "a.nif") && fs::exists(alias / "b.nif") &&
+                  fs::exists(alias / "c.nif"),
+              (l + ": files are reachable through the lowercase alias").c_str());
+        check(fs::exists(alias / "UppercaseSub" / "deep.nif") &&
+                  fs::is_symlink(alias / "uppercasesub") &&
+                  fs::exists(alias / "uppercasesub" / "deep.nif"),
+              (l + ": deep dir has its own lowercase alias at every level").c_str());
+
+        // Root-level `data` -> `Data` alias (games resolve "data/..." relative
+        // to their cwd == the overlay root).
+        check(fs::is_symlink(staging / "data"),
+              (l + ": root data -> Data alias exists").c_str());
+        check(fs::exists(staging / "data" / "meshes" / "a.nif") &&
+                  fs::exists(staging / "data" / "Meshes" / "b.nif"),
+              (l + ": files resolve through the root data alias").c_str());
+
+        // No alias for an already-lowercase dir name.
+        const fs::path real_dir_for_lower =
+            real_upper ? staging / "Data" / "Meshes" : staging / "Data" / "meshes";
+        check(!fs::is_symlink(real_dir_for_lower / "lowercase"),
+              (l + ": no alias created for an already-lowercase dir").c_str());
+        check(fs::exists(real_dir_for_lower / "lowercase" / "plain.nif"),
+              (l + ": lowercase dir content survives").c_str());
+
         check(!fs::exists(dir / "Hidden.nif.gmmhidden"),
               (l + ": hidden file still skipped under the merge").c_str());
         check(!fs::exists(staging / "Data" / "Meshes" / "Hidden.nif.gmmhidden") &&

@@ -195,11 +195,21 @@ static void check_ci_deploy(const fs::path& root, const std::string& label) {
         root, game_dir, exe, k, "testgame", 12345, true);
 
     const fs::path data = root / ".gmm_staging" / "Data";
-    const bool has_upper = fs::exists(data / "Meshes");
-    const bool has_lower = fs::exists(data / "meshes");
-    require(has_upper != has_lower,
-            label + ": CI-equal dirs merge into exactly one casing");
-    const fs::path merged = has_upper ? data / "Meshes" : data / "meshes";
+    // Exactly one REAL directory among the CI-equal spellings; the other may
+    // exist only as the deploy's lowercase alias symlink (game resolves the
+    // lower spelling through it). fs::exists follows symlinks, so realness is
+    // checked via symlink_status.
+    const bool real_upper =
+        fs::is_directory(fs::symlink_status(data / "Meshes"));
+    const bool real_lower =
+        fs::is_directory(fs::symlink_status(data / "meshes"));
+    require(real_upper != real_lower,
+            label + ": CI-equal dirs merge into exactly one real casing");
+    const fs::path merged = real_upper ? data / "Meshes" : data / "meshes";
+    // The non-canonical spelling, if present, is a lowercase alias symlink.
+    const fs::path alias = real_upper ? data / "meshes" : data / "Meshes";
+    require(!fs::exists(alias) || fs::is_symlink(alias),
+            label + ": non-canonical spelling is only a lowercase alias");
     require(fs::exists(merged / "a.nif"), label + ": upper-spelling file deployed");
     require(fs::exists(merged / "b.nif"), label + ": lower-spelling file deployed");
     require(fs::is_symlink(merged / "a.nif"), label + ": merged files are symlinks");

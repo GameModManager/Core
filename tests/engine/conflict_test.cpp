@@ -186,6 +186,52 @@ int main() {
     }
 #endif
 
+    // --- CI-normalized registry keys: a Windows game's mods can ship both
+    // casings of a directory (XP32: Meshes/ + meshes/). The deploy merges them
+    // into one staged path, so the registry must register the two spellings as
+    // ONE key (directory components lowercased) - otherwise the Data tab shows
+    // the same logical file twice and conflicts are missed.
+    {
+        fs::path ci_mods = base / "mods_ci";
+        fs::create_directories(ci_mods / "mod_upper" / "Meshes");
+        fs::create_directories(ci_mods / "mod_lower" / "meshes");
+        fs::create_directories(ci_mods / "mod_upper" / "Meshes" / "Sub");
+        fs::create_directories(ci_mods / "mod_lower" / "meshes" / "sub");
+        touch(ci_mods / "mod_upper" / "Meshes" / "a.nif");
+        touch(ci_mods / "mod_lower" / "meshes" / "a.nif");
+        touch(ci_mods / "mod_upper" / "Meshes" / "Sub" / "b.nif");
+        touch(ci_mods / "mod_lower" / "meshes" / "sub" / "b.nif");
+
+        // The two spellings must be genuinely distinct directories; on a
+        // case-insensitive filesystem they collide and this test can't run
+        // (mod_upper/meshes/a.nif would resolve to Meshes/a.nif).
+        if (!fs::exists(ci_mods / "mod_upper" / "meshes" / "a.nif")) {
+            std::vector<ConflictEngine::ModInfo> ci_list = {
+                {"mod_upper", 1}, {"mod_lower", 2}};
+            ConflictEngine ci_engine;
+            auto ci_results = ci_engine.compute(ci_mods, ci_list, "", "", false);
+            check(ci_results["mod_upper"].total_files == 2,
+                  "ci: upper-cased mod indexes both files");
+            check(ci_results["mod_lower"].total_files == 2,
+                  "ci: lower-cased mod indexes both files");
+            const auto& ci_reg = ci_engine.last_registry();
+            auto k1 = ci_reg.find("meshes/a.nif");
+            check(k1 != ci_reg.end() && k1->second.size() == 2,
+                  "ci: Meshes/a.nif and meshes/a.nif merge into one key");
+            auto k2 = ci_reg.find("meshes/sub/b.nif");
+            check(k2 != ci_reg.end() && k2->second.size() == 2,
+                  "ci: nested Meshes/Sub and meshes/sub merge too");
+            check(ci_results["mod_lower"].wins == 2,
+                  "ci: higher-priority mod wins both merged files");
+            check(ci_results["mod_upper"].losses == 2,
+                  "ci: lower-priority mod loses both merged files");
+            std::printf("  dual-case dirs register as one CI-normalized key\n");
+        } else {
+            std::printf("  (skipped CI key check: case-insensitive filesystem)\n");
+        }
+        fs::remove_all(ci_mods);
+    }
+
     fs::remove_all(base);
 
     std::printf("\n%d passed, %d failed\n", passes, failures);

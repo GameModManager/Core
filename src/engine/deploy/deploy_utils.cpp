@@ -121,6 +121,63 @@ void save_ledger(const std::filesystem::path& staging_dir,
 
 }  // namespace
 
+std::size_t add_case_insensitive_aliases(
+    const std::filesystem::path& staging_dir) {
+    std::error_code ec;
+    if (!std::filesystem::exists(staging_dir, ec) || ec) return 0;
+
+    std::size_t created = 0;
+    std::filesystem::recursive_directory_iterator it(
+        staging_dir,
+        std::filesystem::directory_options::skip_permission_denied, ec);
+    const std::filesystem::recursive_directory_iterator end;
+    for (; it != end; it.increment(ec)) {
+        if (ec) break;
+
+        // Only real directories get aliases. Files and symlinks (every staged
+        // file is a symlink to its mod copy) are skipped; symlinked
+        // directories - none exist in a normal deploy - are never descended.
+        std::error_code sec;
+        const auto st = std::filesystem::symlink_status(it->path(), sec);
+        if (sec || !std::filesystem::is_directory(st)) continue;
+
+        const std::string name = it->path().filename().string();
+        std::string lower = name;
+        std::transform(lower.begin(), lower.end(), lower.begin(),
+                       [](unsigned char c) {
+                           return static_cast<char>(std::tolower(c));
+                       });
+        if (lower == name) continue;
+
+        const auto alias = it->path().parent_path() / lower;
+        std::error_code aec;
+        const auto atype = std::filesystem::symlink_status(alias, aec).type();
+        if (aec) {
+            aec.clear();
+        } else if (atype == std::filesystem::file_type::symlink) {
+            // Stale generated alias (its canonical dir was removed by a
+            // redeploy): replace it rather than leave a dangling entry.
+            std::filesystem::remove(alias, aec);
+            aec.clear();
+        } else if (atype != std::filesystem::file_type::not_found) {
+            continue;  // real file/dir already owns the alias name: leave it
+        }
+
+        std::filesystem::create_symlink(name, alias, aec);
+        if (aec) {
+            Logger::instance().warn(
+                "case-insensitive alias: failed to create " + alias.string() +
+                " -> " + name + ": " + aec.message());
+            continue;
+        }
+        ++created;
+    }
+    if (created > 0)
+        Logger::instance().debug(
+            "case-insensitive aliases created: " + std::to_string(created));
+    return created;
+}
+
 bool deploy_all_enabled_mods_parallel(
     const path& mods_dir,
     const path& staging_dir,
@@ -336,6 +393,18 @@ bool deploy_all_enabled_mods_parallel(
 
     // --- Phase E: persist the ledger of what's now staged.
     save_ledger(staging_dir, winners);
+
+    // --- Phase F: case-insensitive alias pass (Windows games only). The
+    // overlay mount is case-sensitive, but the game resolves paths
+    // case-insensitively; lowercase symlink aliases make the staged tree
+    // reachable under the spellings the game actually queries (Modex's
+    // "data/interface/modex/...", OAR's "data/meshes/...") and funnel runtime
+    // writes into one canonical casing instead of dual-case dirs.
+    if (!case_sensitive) {
+        const std::size_t aliases = add_case_insensitive_aliases(staging_dir);
+        if (aliases == 0)
+            Logger::instance().debug("case-insensitive aliases: none needed");
+    }
 
     size_t file_count = 0;
     for (const auto& m : mods)

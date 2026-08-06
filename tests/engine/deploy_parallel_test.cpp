@@ -170,10 +170,16 @@ int main() {
         ci_mods, ci_staging, "Data", false, "", false, 4);
     check(ok, "parallel CI deploy succeeds");
     const fs::path data = ci_staging / "Data";
-    const bool has_upper = fs::exists(data / "Meshes");
-    const bool has_lower = fs::exists(data / "meshes");
-    check(has_upper != has_lower, "CI-equal dirs merge into exactly one casing");
-    const fs::path merged = has_upper ? data / "Meshes" : data / "meshes";
+    // Exactly one REAL directory among the CI-equal spellings; the other may
+    // exist only as the deploy's lowercase alias symlink (fs::exists follows
+    // symlinks, so realness is checked via symlink_status).
+    const bool real_upper =
+        fs::is_directory(fs::symlink_status(data / "Meshes"));
+    const bool real_lower =
+        fs::is_directory(fs::symlink_status(data / "meshes"));
+    check(real_upper != real_lower,
+          "CI-equal dirs merge into exactly one real casing");
+    const fs::path merged = real_upper ? data / "Meshes" : data / "meshes";
     check(fs::is_symlink(merged / "a.nif") && fs::is_symlink(merged / "b.nif"),
           "both spellings' files deployed into the merged casing");
 

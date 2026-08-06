@@ -129,5 +129,22 @@ using std::filesystem::path;
     unsigned int num_threads = 0,
     const DeployProgressFn& progress = {});
 
+// Create lowercase symlink aliases inside a freshly deployed staging tree so a
+// Windows (case-insensitive) game's path lookups resolve on the case-sensitive
+// overlay. For every directory whose on-disk name has uppercase letters, an
+// alias symlink <lowercase(name)> -> <name> is created in the same parent
+// (e.g. Data/Interface gains Data/interface; the staging root's Data gains
+// data). A game's lowercase spellings (Modex's relative "data/interface/
+// modex/...", OAR's "data/meshes/...") then resolve through the alias chain
+// into the canonical-case staged files, and its runtime writes funnel into one
+// tree instead of spawning duplicate-case directories in the overwrite layer.
+//
+// Idempotent and non-destructive: a real entry at the alias name is left alone
+// (it is already the canonical spelling); a stale generated alias is replaced.
+// Runs on the caller's thread after the (possibly parallel) link phase.
+// Returns the number of aliases created.
+[[nodiscard]] std::size_t add_case_insensitive_aliases(
+    const std::filesystem::path& staging_dir);
+
 }
 

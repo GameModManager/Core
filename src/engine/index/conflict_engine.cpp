@@ -1,6 +1,7 @@
 #include "engine/index/conflict_engine.h"
 
 #include "engine/filetree/dir_file_tree.h"
+#include "engine/fs_utils.h"
 #include "engine/log/logger.h"
 
 #include <algorithm>
@@ -298,13 +299,17 @@ std::unordered_map<std::string, ConflictStats> ConflictEngine::compute(
     save_cache(cache_path, out_data);
 
     // Phase 2 - build path → owners registry
-    // For each file, record (folder_name, priority) for every mod that owns it
+    // For each file, record (folder_name, priority) for every mod that owns it.
+    // Keys are CI-normalized (directory components lowercased) so a Windows
+    // game's dual-case mod trees (Meshes/ + meshes/) register as the SAME
+    // deployed path - the deploy merges them into one casing, so the registry
+    // must not split one logical file into two conflict candidates.
     PathRegistry path_registry;
     for (const auto& [folder_name, priority] : mods) {
         auto it = file_lists.find(folder_name);
         if (it == file_lists.end()) continue;
         for (const auto& rel_path : it->second) {
-            path_registry[rel_path].emplace_back(folder_name, priority);
+            path_registry[normalize_ci_key(rel_path)].emplace_back(folder_name, priority);
         }
     }
 
@@ -318,7 +323,7 @@ std::unordered_map<std::string, ConflictStats> ConflictEngine::compute(
         stats.total_files = static_cast<int>(it->second.size());
 
         for (const auto& rel_path : it->second) {
-            auto& owners = path_registry[rel_path];
+            auto& owners = path_registry[normalize_ci_key(rel_path)];
             if (owners.size() <= 1) continue;  // no conflict
 
             // The owner with the "winning" priority is:
