@@ -5,6 +5,7 @@
 #include "engine/log/logger.h"
 #include "engine/meta/mod_meta.h"
 #include "engine/plugins/esp_header.h"
+#include "engine/registry/game_features/game_feature_registry.h"
 #include "engine/registry/game_knowledge.h"
 #include "platform/platform_interface.h"
 
@@ -935,7 +936,7 @@ bool PluginDatabase::write_plugins_txt_for_launch(
     }
 
     const std::string disable_mechanism = disable_mechanism_for(knowledge, game_id);
-    const std::string game_native = knowledge.get(game_id, "game_native_plugins", "");
+    const std::string game_native = native_plugins_csv(knowledge, game_id);
 
     PluginDatabase db;
     if (!db.refresh(game_dir, inst.path_for(InstanceKind::Mods),

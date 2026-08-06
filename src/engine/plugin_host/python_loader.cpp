@@ -134,6 +134,11 @@ public:
                 folder_names, file_extensions);
             engine::GameFeatureRegistry::instance().register_feature(
                 gid, feature_type, priority, checker, plugin_->path);
+        } else if (feature_type == "game_plugins") {
+            // The game's vanilla plugin files (MO2 GamePlugins::gamePlugins()).
+            auto feature = std::make_shared<engine::GamePluginsFeature>(folder_names);
+            engine::GameFeatureRegistry::instance().register_feature(
+                gid, feature_type, priority, feature, plugin_->path);
         } else {
             engine::Logger::instance().warn(
                 "register_game_feature: unknown feature type '" + feature_type +

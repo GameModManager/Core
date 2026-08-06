@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # (package_installer target passes -DVERSION=${PROJECT_VERSION}), and the plugins
 # (GMM_VERSION, visible in the add_subdirectory'd external/plugins scope).
 project(GameModManager
-    VERSION 0.2.24
+    VERSION 0.2.25
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -489,10 +489,16 @@ add_executable(plugin_database_test tests/engine/plugin_database_test.cpp
     src/engine/instance/instance.cpp
     src/engine/log/logger.cpp
     src/engine/meta/mod_meta.cpp
+    src/engine/registry/game_features/game_feature.cpp
+    src/engine/registry/game_features/game_feature_registry.cpp
     src/engine/registry/game_knowledge.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
 )
 target_include_directories(plugin_database_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
-target_link_libraries(plugin_database_test PRIVATE PkgConfig::NLOHMANN_JSON)
+target_link_libraries(plugin_database_test PRIVATE PkgConfig::NLOHMANN_JSON PkgConfig::LIBARCHIVE)
 add_test(NAME plugin_database_test COMMAND plugin_database_test)
 
 add_executable(loot_sorter_test tests/engine/loot_sorter_test.cpp
@@ -1283,11 +1289,17 @@ add_executable(plugin_db_load_test tests/ui/plugin_db_load_test.cpp
     src/engine/instance/instance.cpp
     src/engine/log/logger.cpp
     src/engine/meta/mod_meta.cpp
+    src/engine/registry/game_features/game_feature.cpp
+    src/engine/registry/game_features/game_feature_registry.cpp
     src/engine/registry/game_knowledge.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
 )
 target_include_directories(plugin_db_load_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
 target_compile_definitions(plugin_db_load_test PRIVATE VERSION="${PROJECT_VERSION}")
-target_link_libraries(plugin_db_load_test PRIVATE Qt6::Core PkgConfig::NLOHMANN_JSON)
+target_link_libraries(plugin_db_load_test PRIVATE Qt6::Core PkgConfig::NLOHMANN_JSON PkgConfig::LIBARCHIVE)
 add_test(NAME plugin_db_load_test COMMAND plugin_db_load_test)
 
 # Data tab — offscreen GUI regression test for the MO2-parity file context

@@ -8,9 +8,13 @@
 //     drives the mod list's FLAG_INVALID ("No valid game data"),
 //   - the knowledge-hook fallback (mod_valid_dirs/mod_valid_exts) survives for
 //     games whose plugin still uses it and for scanner knowledge tests,
+//   - GamePlugins (MO2 GamePlugins::gamePlugins): the registered game_plugins
+//     feature replaces the game_native_plugins hook via native_plugins_csv()
+//     (registry-first, hook fallback),
 //   - the P1.2 exit criterion end-to-end: a TEST PLUGIN overrides the Skyrim
-//     plugin's data-checker via the register_game_feature C ABI, and the mod
-//     list (ModScanner -> invalid_data) shows the override — engine untouched.
+//     plugin's data-checker AND vanilla-plugin band via the register_game_feature
+//     C ABI, and the mod list (ModScanner -> invalid_data) / native_plugins_csv
+//     show the override — engine untouched.
 //
 // Uses the check() PASS/FAIL pattern (Release builds compile out assert()).
 
@@ -121,12 +125,36 @@ static void test_registry_semantics() {
     auto all = reg.features_for("skyrim", "mod_data_checker");
     check(all.size() == 3, "features_for returns all 3 skyrim registrations");
 
+    // GamePlugins (MO2 GamePlugins::gamePlugins): same priority + replace
+    // semantics, own type key. Game's own band at priority 0, an override at
+    // higher priority wins resolve().
+    check(reg.resolve_game_plugins("skyrim") == nullptr,
+          "no game_plugins registered yet -> nullptr");
+    reg.register_feature("skyrim", "game_plugins", 0,
+        std::make_shared<engine::GamePluginsFeature>(
+            std::vector<std::string>{"Skyrim.esm", "Update.esm"}), "skyrim_plugin");
+    auto own_band = reg.resolve_game_plugins("skyrim");
+    check(own_band != nullptr && own_band->plugins().size() == 2 &&
+          own_band->plugins()[0] == "Skyrim.esm",
+          "game's own game_plugins band resolves");
+    reg.register_feature("skyrim", "game_plugins", 50,
+        std::make_shared<engine::GamePluginsFeature>(
+            std::vector<std::string>{"Override.esm"}), "override_plugin");
+    auto over_band = reg.resolve_game_plugins("skyrim");
+    check(over_band != nullptr && over_band->plugins().size() == 1 &&
+          over_band->plugins()[0] == "Override.esm",
+          "higher-priority game_plugins override wins resolve");
+    check(reg.resolve_game_plugins("isaac") == nullptr,
+          "game_plugins per-game isolation");
+
     // Clear drops everything.
     reg.clear();
     check(reg.resolve("skyrim", "mod_data_checker") == nullptr,
           "clear drops registrations");
     check(reg.resolve_mod_data_checker("isaac") == nullptr,
           "clear drops combined checkers");
+    check(reg.resolve_game_plugins("skyrim") == nullptr,
+          "clear drops game_plugins registrations");
 }
 
 static void test_scanner_integration() {
@@ -167,6 +195,47 @@ static void test_scanner_integration() {
     reg.clear();
 }
 
+static void test_native_plugins_resolution() {
+    std::printf("=== test_native_plugins_resolution ===\n");
+    auto& reg = engine::GameFeatureRegistry::instance();
+    reg.clear();
+
+    engine::GameKnowledge knowledge;
+    knowledge.set("skyrim", "game_native_plugins",
+                  "Skyrim.esm,Update.esm,Dawnguard.esm");
+
+    // Knowledge fallback: no registered feature -> the hook CSV drives the
+    // consumers (plugin_database / mod list / mod scan) exactly as before.
+    check(engine::native_plugins_csv(knowledge, "skyrim") ==
+              "Skyrim.esm,Update.esm,Dawnguard.esm",
+          "knowledge fallback: hook CSV returned verbatim");
+
+    // Registry wins: a registered game_plugins feature replaces the hook.
+    reg.register_feature("skyrim", "game_plugins", 0,
+        std::make_shared<engine::GamePluginsFeature>(
+            std::vector<std::string>{"Custom.esm", "Other.esm"}), "skyrim_plugin");
+    check(engine::native_plugins_csv(knowledge, "skyrim") == "Custom.esm,Other.esm",
+          "registered game_plugins feature supersedes the hook");
+
+    // A higher-priority registration overrides it.
+    reg.register_feature("skyrim", "game_plugins", 10,
+        std::make_shared<engine::GamePluginsFeature>(
+            std::vector<std::string>{"Override.esm"}), "override_plugin");
+    check(engine::native_plugins_csv(knowledge, "skyrim") == "Override.esm",
+          "higher-priority game_plugins overrides for the CSV");
+
+    // Per-game isolation + empty when nothing declares a band.
+    check(engine::native_plugins_csv(knowledge, "isaac") == "",
+          "game with no native plugin source resolves empty");
+    reg.register_feature("isaac", "game_plugins", 0,
+        std::make_shared<engine::GamePluginsFeature>(
+            std::vector<std::string>{"Isaac.esm"}), "isaac_plugin");
+    check(engine::native_plugins_csv(knowledge, "skyrim") == "Override.esm",
+          "isaac registration does not leak into skyrim");
+
+    reg.clear();
+}
+
 static void test_override_via_c_abi() {
     std::printf("=== test_override_via_c_abi ===\n");
     auto& reg = engine::GameFeatureRegistry::instance();
@@ -187,6 +256,32 @@ static void test_override_via_c_abi() {
     check(all.size() == 2, "both checkers registered for SkyrimSpecialEdition");
     check(all.size() == 2 && all[0].priority == 0 && all[1].priority == 100,
           "game's own at priority 0, override at priority 100");
+
+    // The Skyrim plugin also registers its game_plugins band (the 6 vanilla
+    // ESMs) at priority 0; the override replaces it at priority 100, and
+    // native_plugins_csv() — the single source plugin_database / the mod list
+    // / mod scan feed — returns the override's band.
+    auto bands = reg.features_for("SkyrimSpecialEdition", "game_plugins");
+    check(bands.size() == 2, "both game_plugins bands registered");
+    check(bands.size() == 2 && bands[0].priority == 0 && bands[1].priority == 100,
+          "game's own band at priority 0, override at priority 100");
+    auto skyrim_band = std::dynamic_pointer_cast<const engine::GamePluginsFeature>(
+        bands[0].feature);
+    check(skyrim_band && skyrim_band->plugins().size() == 6 &&
+          skyrim_band->plugins()[0] == "Skyrim.esm" &&
+          skyrim_band->plugins()[5] == "_ResourcePack.esl",
+          "Skyrim's own plugin registers its 6 vanilla plugins");
+    auto gp_winner = reg.resolve_game_plugins("SkyrimSpecialEdition");
+    check(gp_winner != nullptr && gp_winner->plugins().size() == 2 &&
+          gp_winner->plugins()[0] == "VanillaOverride.esm",
+          "resolve_game_plugins returns the override's band");
+
+    const std::string native_csv =
+        engine::native_plugins_csv(engine::GameKnowledge{}, "SkyrimSpecialEdition");
+    check(native_csv == "VanillaOverride.esm,AlsoVanilla.esm",
+          "native_plugins_csv resolves through the C ABI override");
+    check(native_csv.find("Skyrim.esm") == std::string::npos,
+          "override fully replaces Skyrim's own vanilla band");
 
     auto combined = reg.resolve_mod_data_checker("SkyrimSpecialEdition");
     check(combined != nullptr, "combined checker resolves");
@@ -233,6 +328,7 @@ static void test_override_via_c_abi() {
 int main() {
     test_registry_semantics();
     test_scanner_integration();
+    test_native_plugins_resolution();
     test_override_via_c_abi();
 
     if (g_failed > 0) {

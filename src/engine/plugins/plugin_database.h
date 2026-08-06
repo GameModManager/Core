@@ -29,7 +29,9 @@ public:
     //   mods_dir   - instance mods dir
     //   meta_dir   - instance meta dir (mod priority sidecars; may be empty)
     //   disable_mechanism - sentinel filename marking a mod disabled (may be empty)
-    //   game_native_plugins - comma-separated vanilla plugins (game_native_plugins hook)
+    //   game_native_plugins - comma-separated vanilla plugins (resolved via
+    //   engine::native_plugins_csv(): a registered "game_plugins" game feature,
+    //   else the game_native_plugins knowledge hook)
     bool refresh(const std::filesystem::path& game_dir,
                  const std::filesystem::path& mods_dir,
                  const std::filesystem::path& meta_dir,
