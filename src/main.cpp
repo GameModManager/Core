@@ -457,7 +457,7 @@ int main(int argc, char *argv[])
         {
             // Build a list of (appid, {game_id, game_name}) from loaded plugins
             std::vector<std::pair<uint32_t, std::pair<std::string, std::string>>> game_specs;
-            for (const auto& plugin : plugin_loader.plugins()) {
+            for (const auto& plugin : plugin_loader.game_plugins()) {
                 if (plugin.steam_appid > 0) {
                     game_specs.push_back({plugin.steam_appid,
                         {plugin.game_id, plugin.game_display_name}});
@@ -482,7 +482,7 @@ int main(int argc, char *argv[])
 
         // Build available games list (all registered but not detected)
         std::vector<ui::GameEntry> available_entries;
-        for (const auto& plugin : plugin_loader.plugins()) {
+        for (const auto& plugin : plugin_loader.game_plugins()) {
             bool found = false;
             for (const auto& g : installed_games) {
                 if (g.game_id == plugin.game_id) { found = true; break; }

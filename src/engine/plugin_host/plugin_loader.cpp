@@ -83,6 +83,9 @@ static void cb_register_identity(GmmRegistrationCtx* ctx,
     bridge->current_plugin->nexus_domain = nexus_domain ? nexus_domain : "";
     if (display_name)
         bridge->current_plugin->game_display_name = display_name;
+    // register_identity is THE game-support marker: only game plugins call it,
+    // so game_plugins() / the create-instance list keys off this flag.
+    bridge->current_plugin->game_support = true;
 
     Logger::instance().debug("Plugin registered identity: appid=" +
         std::to_string(steam_appid) +
