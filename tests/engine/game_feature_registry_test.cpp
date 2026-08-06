@@ -26,6 +26,7 @@
 // Uses the check() PASS/FAIL pattern (Release builds compile out assert()).
 
 #include "engine/detect/mod_scanner.h"
+#include "engine/events/event_bus.h"
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/registry/game_features/game_feature_registry.h"
 #include "engine/registry/game_knowledge.h"
@@ -35,6 +36,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -587,6 +589,34 @@ static void test_override_via_c_abi() {
           "mod list keeps Skyrim's own textures/ as valid content");
     check(foreign_mod != nullptr && foreign_mod->invalid_data,
           "mod list flags otherstuff/ as no valid game data");
+
+    // P1.3 — the C ABI subscribe_event path end-to-end: the override fixture
+    // subscribed to mod_installed + game_finished during register(); driving
+    // the same public bus the UI emits into must reach the fixture's handler
+    // (which logs to GMM_TEST_EVENTS_LOG).
+    const fs::path ev_log = "/tmp/gmm_feature_registry_abi_events.log";
+    std::error_code ev_ec;
+    fs::remove(ev_log, ev_ec);
+    ::setenv("GMM_TEST_EVENTS_LOG", ev_log.c_str(), 1);
+    engine::EventBus::instance().dispatch(
+        engine::events::kModInstalled,
+        engine::json_obj({{"mod", "SkyUI"}, {"name", "SkyUI"}}));
+    engine::EventBus::instance().dispatch(
+        engine::events::kGameFinished,
+        engine::json_obj({{"exit_code", "0"}}));
+    std::ifstream evf(ev_log);
+    std::vector<std::string> ev_lines;
+    std::string ev_line;
+    while (std::getline(evf, ev_line)) ev_lines.push_back(ev_line);
+    check(ev_lines.size() == 2,
+          "C-ABI fixture received both dispatched events");
+    check(ev_lines.size() == 2 &&
+          ev_lines[0] == "mod_installed {\"mod\":\"SkyUI\",\"name\":\"SkyUI\"}",
+          "C-ABI fixture logged mod_installed payload verbatim");
+    check(ev_lines.size() == 2 &&
+          ev_lines[1] == "game_finished {\"exit_code\":\"0\"}",
+          "C-ABI fixture logged game_finished payload verbatim");
+    engine::EventBus::instance().clear();
 
     reg.clear();
 }

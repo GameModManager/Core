@@ -1,6 +1,7 @@
 #include "engine/plugin_host/python_loader.h"
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/plugin_host/diagnostics_registry.h"
+#include "engine/events/event_bus.h"
 #include "engine/log/logger.h"
 #include "engine/registry/game_features/game_feature_registry.h"
 
@@ -55,6 +56,34 @@ void py_diagnostics_bridge(const char* plugin_name,
 }
 
 std::vector<std::unique_ptr<PyDiagnosticsProvider>> g_py_providers;
+
+// -- Event bridge: a Python callable (event_id: str, payload: dict) -> None
+//    bridged to the bus. The host emits a JSON object string; the bridge
+//    json.loads()s it so the Python handler receives a plain dict. Handlers
+//    are owned here (they hold py::object) and cleared on interpreter
+//    shutdown, matching the diagnostics providers above.
+
+struct PyEventHandler {
+    py::object fn;
+};
+
+void py_event_bridge(const char* event_id,
+                     const char* json_payload,
+                     void* user_data) {
+    auto* handler = static_cast<PyEventHandler*>(user_data);
+    if (!handler) return;
+
+    py::gil_scoped_acquire acquire;
+    try {
+        py::object parsed =
+            py::module_::import("json").attr("loads")(py::str(json_payload));
+        handler->fn(py::str(event_id), parsed);
+    } catch (const py::error_already_set&) {
+        PyErr_Clear();  // a broken handler must not crash the emitter
+    }
+}
+
+std::vector<std::unique_ptr<PyEventHandler>> g_py_handlers;
 
 }  // namespace
 
@@ -111,6 +140,35 @@ public:
         g_py_providers.push_back(std::move(provider));
         engine::DiagnosticsRegistry::instance().register_provider(
             plugin_->game_id, py_diagnostics_bridge, user_data);
+    }
+
+    // P1.3 event subscription — the pybind mirror of the ABI subscribe_event
+    // entry. fn is called as fn(event_id: str, payload: dict) whenever the
+    // host emits the event; the JSON payload is decoded by the bridge so the
+    // plugin sees a plain dict (see the event id doc in gmm_abi_v1.h).
+    void subscribe_event(const std::string& event_id, py::object fn) {
+        if (event_id.empty()) {
+            engine::Logger::instance().warn(
+                "subscribe_event: empty event_id - ignored");
+            return;
+        }
+        if (!py::isinstance<py::function>(fn)) {
+            engine::Logger::instance().warn(
+                "subscribe_event: fn is not a callable - ignored");
+            return;
+        }
+        auto handler = std::make_unique<PyEventHandler>();
+        handler->fn = std::move(fn);
+        void* user_data = handler.get();
+        g_py_handlers.push_back(std::move(handler));
+        engine::EventBus::instance().subscribe(
+            event_id,
+            [user_data](const std::string& eid, const std::string& payload) {
+                py_event_bridge(eid.c_str(), payload.c_str(), user_data);
+            },
+            plugin_->path);
+        engine::Logger::instance().debug(
+            "Python plugin subscribed to event: " + event_id);
     }
 
     // P1.2 GameFeatureRegistry (MO2 IGameFeatures analogue): registers or
@@ -299,6 +357,8 @@ PYBIND11_EMBEDDED_MODULE(gmm, m) {
              py::arg("settings"))
         .def("register_diagnostics", &PyRegistrationContext::register_diagnostics,
              py::arg("fn"))
+        .def("subscribe_event", &PyRegistrationContext::subscribe_event,
+             py::arg("event_id"), py::arg("fn"))
         .def("register_game_feature", &PyRegistrationContext::register_game_feature,
              py::arg("game_id") = "",
              py::arg("feature_type"),
@@ -418,11 +478,14 @@ bool engine::python_load_plugin(PluginLoader* loader, const std::string& path) {
 
 void engine::python_shutdown() {
     {
-        // Destroy Python-side diagnostics providers with the GIL held and drop
-        // them from the registry so nothing stale is left behind.
+        // Destroy Python-side event handlers + diagnostics providers with the
+        // GIL held. The event bus is cleared FIRST so no bus callback can
+        // still run against a destroyed handler during interpreter teardown.
         py::gil_scoped_acquire acquire;
+        EventBus::instance().clear();
         DiagnosticsRegistry::instance().clear();
         g_py_providers.clear();
+        g_py_handlers.clear();
         GameFeatureRegistry::instance().clear();
     }
     s_interpreter.reset();

@@ -32,6 +32,7 @@
 #include "ui/proton/proton_panel.h"
 #include "engine/launcher.h"
 #include "engine/debug_env.h"
+#include "engine/events/event_bus.h"
 #include "engine/fs_utils.h"
 #include "engine/theme/theme_manager.h"
 #include "engine/theme/icon_manager.h"
@@ -165,20 +166,21 @@ namespace {
 // waitpid()ing it, it remains a zombie forever. A cgroup-empty result means
 // the game and its descendants are gone, so the supervisor exits as soon as
 // its reap loop hits ECHILD; poll briefly so a stray reparented daemon can't
-// hang the UI thread.
-bool reap_supervisor(pid_t pid) {
-    if (pid <= 0) return true;
+// hang the UI thread. Returns the supervisor's exit code (WEXITSTATUS), or -1
+// when it could not be reaped.
+int reap_supervisor(pid_t pid) {
+    if (pid <= 0) return -1;
     using namespace std::chrono;
     for (int attempt = 0; attempt < 20; ++attempt) {
         int status;
         pid_t r = waitpid(pid, &status, WNOHANG);
-        if (r == pid) return true;
-        if (r < 0 && errno == ECHILD) return true;
+        if (r == pid) return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+        if (r < 0 && errno == ECHILD) return -1;
         std::this_thread::sleep_for(milliseconds(100));
     }
     engine::Logger::instance().warn("Watchdog: supervisor " + std::to_string(pid) +
         " not reaped after 2s (stray child?)");
-    return false;
+    return -1;
 }
 
 }  // anonymous namespace
@@ -293,6 +295,10 @@ MainWindow::MainWindow(QWidget* parent)
     connect(profile_bar_, &ProfileBar::profile_changed, this, [this](const QString& profile) {
         current_profile_name_ = profile.toStdString();
         update_title();
+        // P1.3 event bus: mirror MO2 onProfileChanged.
+        engine::EventBus::instance().dispatch(
+            engine::events::kProfileChanged,
+            engine::json_obj({{"profile", current_profile_name_}}));
     });
 
     connect(profile_bar_, &ProfileBar::open_folder_requested, this,
@@ -581,6 +587,15 @@ MainWindow::MainWindow(QWidget* parent)
                         "Install finished for " + mod_id + ", adding " +
                         installed_folder);
                     add_installed_mod(installed_folder);
+                    // P1.3 event bus: mirror MO2 onModInstalled. The bus
+                    // handler runs synchronously here (install is UI-thread);
+                    // a subscribed plugin must not block.
+                    engine::EventBus::instance().dispatch(
+                        engine::events::kModInstalled,
+                        engine::json_obj({
+                            {"mod", installed_folder},
+                            {"name", installed_folder},
+                        }));
                 }
                 dt->mark_installed(mod_id);
             }
@@ -1228,6 +1243,15 @@ void MainWindow::sync_mod_enable_state(const QString& mod_id, bool enabled) {
     } else {
         (void)engine::ModScanner::disable_mod(*knowledge_, current_game_id_, mod_folder);
     }
+
+    // P1.3 event bus: mirror MO2 onModStateChanged. Fires on the UI thread
+    // after the on-disk state change; a plugin handler must not block.
+    engine::EventBus::instance().dispatch(
+        engine::events::kModStateChanged,
+        engine::json_obj({
+            {"mod", mod_id.toStdString()},
+            {"enabled", enabled ? "1" : "0"},
+        }));
 }
 
 void MainWindow::sync_priorities() {
@@ -1247,9 +1271,22 @@ void MainWindow::sync_priorities() {
         // Persist priority to meta.ini for every row (Overwrite, separators, mods)
         if (!meta_dir.empty()) {
             auto meta = engine::ModMeta::load(meta_dir, mods[i].id.toStdString());
-            if (meta.priority() != i) {
+            int old_priority = meta.priority();
+            if (old_priority != i) {
                 meta.set_priority(i);
                 meta.save(meta_dir, mods[i].id.toStdString());
+                // P1.3 event bus: mirror MO2 onModMoved — fired only for real
+                // moves, on the UI thread, after the priority persisted.
+                if (old_priority >= 0 && !mods[i].is_overwrite &&
+                    !mods[i].is_separator) {
+                    engine::EventBus::instance().dispatch(
+                        engine::events::kModMoved,
+                        engine::json_obj({
+                            {"mod", mods[i].id.toStdString()},
+                            {"from", std::to_string(old_priority)},
+                            {"to", std::to_string(i)},
+                        }));
+                }
             }
         }
         // Write game-native priority - resolve actual mod folder location.
@@ -2228,6 +2265,10 @@ ui::ModInfoData MainWindow::build_mod_info_data(const ModEntry& mod) {
             }
         }
         mod_model_->remove_mod(mod_id);
+        // P1.3 event bus: mirror MO2 onModRemoved.
+        engine::EventBus::instance().dispatch(
+            engine::events::kModRemoved,
+            engine::json_obj({{"mod", mod_id.toStdString()}}));
         return true;
     };
 
@@ -2358,6 +2399,10 @@ void MainWindow::refresh_plugins_tab() {
     // user still has active.
     on_mod_selection_changed();
     on_plugin_selection_changed();
+
+    // P1.3 event bus: mirror MO2 onRefreshed (plugin list rebuilt).
+    engine::EventBus::instance().dispatch(
+        engine::events::kPluginListRefreshed, "{}");
 }
 
 void MainWindow::run_loot_sort() {
@@ -2474,9 +2519,23 @@ void MainWindow::on_plugin_toggle(const std::string& name, bool enabled) {
     plugins_db_.save_profile(profiles_dir_path(), current_profile_name_);
     auto* pt = right_panel_->plugins_tab();
     if (pt) pt->sync_enabled(plugins_db_.plugins());
+    // P1.3 event bus: mirror MO2 onPluginStateChanged.
+    engine::EventBus::instance().dispatch(
+        engine::events::kPluginStateChanged,
+        engine::json_obj({
+            {"plugin", name},
+            {"enabled", enabled ? "1" : "0"},
+        }));
 }
 
 void MainWindow::on_plugin_reorder(int from_row, int to_row) {
+    // Capture the moved plugin's name before the reorder so the event carries
+    // it (refresh_plugins_tab() rebuilds rows right after the move).
+    std::string moved_name;
+    const auto& plugins_before = plugins_db_.plugins();
+    if (from_row >= 0 && from_row < static_cast<int>(plugins_before.size()))
+        moved_name = plugins_before[static_cast<size_t>(from_row)].name;
+
     std::string err;
     if (!plugins_db_.move_plugin(from_row, to_row, &err)) {
         if (!err.empty())
@@ -2485,6 +2544,14 @@ void MainWindow::on_plugin_reorder(int from_row, int to_row) {
     }
     plugins_db_.save_profile(profiles_dir_path(), current_profile_name_);
     refresh_plugins_tab();  // repopulate: new order + recomputed priorities/indexes
+    // P1.3 event bus: mirror MO2 onPluginMoved.
+    engine::EventBus::instance().dispatch(
+        engine::events::kPluginMoved,
+        engine::json_obj({
+            {"plugin", moved_name},
+            {"from", std::to_string(from_row)},
+            {"to", std::to_string(to_row)},
+        }));
 }
 
 void MainWindow::on_plugin_lock(const std::string& name, bool locked) {
@@ -4818,6 +4885,15 @@ void MainWindow::on_launch_params_prepared(engine::LaunchParams lparams) {
     cgroup_path_ = lresult.cgroup_path;
     launch_time_ = std::filesystem::file_time_type::clock::now();
 
+    // P1.3 event bus: mirror MO2 onAboutToRun — emitted only once the launch
+    // actually succeeded (a PID exists) so a failed launch is not reported.
+    engine::EventBus::instance().dispatch(
+        engine::events::kGameLaunched,
+        engine::json_obj({
+            {"exe", exec_path.string()},
+            {"args", ""},
+        }));
+
     // Update overlay with actual PID now that we have it
     game_lock_label_->setText(tr("The game is running: %1 (%2)")
         .arg(binary_name)
@@ -4861,6 +4937,9 @@ void MainWindow::check_running_process() {
         hide_game_lock_overlay();
         trace.end_stage("launch", true, "Game exited");
         trace.end_flow("launch", true, "Game session finished");
+        engine::EventBus::instance().dispatch(
+            engine::events::kGameFinished,
+            engine::json_obj({{"exit_code", "0"}}));
         if (!staging_dir_.empty()) {
             std::error_code ec;
             std::filesystem::remove_all(staging_dir_, ec);
@@ -4910,7 +4989,7 @@ void MainWindow::check_running_process() {
             }
             engine::Logger::instance().debug(
                 "Watchdog: cgroup empty, game fully exited");
-            reap_supervisor(static_cast<pid_t>(running_process_pid_));
+            int supervisor_exit = reap_supervisor(static_cast<pid_t>(running_process_pid_));
             flush_pending_changes();
             hide_game_lock_overlay();
             trace.end_stage("launch", true, "Game exited");
@@ -4919,6 +4998,11 @@ void MainWindow::check_running_process() {
             running_process_pid_ = -1;
             cgroup_path_.clear();
             if (process_watch_timer_) process_watch_timer_->stop();
+            // P1.3 event bus: mirror MO2 onFinishedRun.
+            engine::EventBus::instance().dispatch(
+                engine::events::kGameFinished,
+                engine::json_obj(
+                    {{"exit_code", std::to_string(supervisor_exit)}}));
             if (!staging_dir_.empty()) {
                 std::error_code ec;
                 std::filesystem::remove_all(staging_dir_, ec);
@@ -4992,6 +5076,12 @@ void MainWindow::check_running_process() {
     running_process_pid_ = -1;
     cgroup_path_.clear();
     if (process_watch_timer_) process_watch_timer_->stop();
+    // P1.3 event bus: mirror MO2 onFinishedRun (fallback PGID path).
+    engine::EventBus::instance().dispatch(
+        engine::events::kGameFinished,
+        engine::json_obj({{"exit_code",
+                           WIFEXITED(reap_status) ? std::to_string(WEXITSTATUS(reap_status))
+                                                  : "-1"}}));
     if (!staging_dir_.empty()) {
         std::error_code ec;
         std::filesystem::remove_all(staging_dir_, ec);
@@ -5700,6 +5790,15 @@ void MainWindow::flush_pending_changes() {
         } else {
             (void)engine::ModScanner::disable_mod(*knowledge_, current_game_id_, mod_folder);
         }
+        // P1.3 event bus: mirror MO2 onModStateChanged for the deferred
+        // (game-running) toggle path — the state only actually changed on disk
+        // here, so this is the moment to emit, not at queue time.
+        engine::EventBus::instance().dispatch(
+            engine::events::kModStateChanged,
+            engine::json_obj({
+                {"mod", pt.mod_id.toStdString()},
+                {"enabled", pt.enabled ? "1" : "0"},
+            }));
     }
 
     // Save final mod order (priorities may have changed via drag-drop while game ran)
