@@ -6744,7 +6744,7 @@ void MainWindow::show_instance_switcher() {
         std::vector<engine::DetectedGame> installed_games;
         if (plugin_loader_) {
             std::vector<std::pair<uint32_t, std::pair<std::string, std::string>>> game_specs;
-            for (const auto& p : plugin_loader_->plugins()) {
+            for (const auto& p : plugin_loader_->game_plugins()) {
                 if (p.steam_appid > 0)
                     game_specs.push_back({p.steam_appid, {p.game_id, p.game_display_name}});
             }
@@ -6762,7 +6762,7 @@ void MainWindow::show_instance_switcher() {
             installed_entries.push_back(e);
         }
         if (plugin_loader_) {
-            for (const auto& p : plugin_loader_->plugins()) {
+            for (const auto& p : plugin_loader_->game_plugins()) {
                 bool found = false;
                 for (const auto& ie : installed_entries) {
                     if (ie.game_id == p.game_id) { found = true; break; }

@@ -106,6 +106,7 @@ public:
         plugin_->nexus_domain = nexus_domain;
         if (!display_name.empty())
             plugin_->game_display_name = display_name;
+        plugin_->game_support = true;
         engine::Logger::instance().debug("Python plugin registered identity: appid=" +
             std::to_string(steam_appid) + " name=" +
             (display_name.empty() ? plugin_->game_id : display_name) +

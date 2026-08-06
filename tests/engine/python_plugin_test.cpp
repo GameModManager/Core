@@ -393,6 +393,75 @@ def register(ctx):
     fs::remove_all(tmp);
 }
 
+// Regression (0.2.35): the create-new-instance / first-run game lists treated
+// EVERY plugin with a game_id as a game, so Tool/feature plugins that never
+// called register_identity (ImageDiff, IsaacModSorter) showed up as creatable
+// games. game_support is set ONLY by register_identity; game_plugins() must
+// return exactly the identity-registered plugins.
+static void test_python_game_plugins() {
+    std::cout << "=== test_python_game_plugins ===" << std::endl;
+
+    engine::GameFeatureRegistry::instance().clear();
+
+    fs::path tmp = fs::temp_directory_path() / "gmm_python_game_plugins";
+    fs::remove_all(tmp);
+    fs::create_directories(tmp);
+
+    const fs::path game_path = tmp / "game.py";
+    {
+        std::ofstream f(game_path);
+        f << R"(
+import gmm
+
+def register(ctx):
+    ctx.register_identity(steam_appid=777, nexus_domain="game")
+)";
+    }
+    const fs::path tool_path = tmp / "tool.py";
+    {
+        std::ofstream f(tool_path);
+        f << R"(
+import gmm
+
+def register(ctx):
+    ctx.register_meta(author="Team", version="1", description="a tool")
+)";
+    }
+
+    engine::python_init();
+    engine::PluginLoader loader;
+    require(engine::python_load_plugin(&loader, game_path.string()),
+            "game python plugin loads");
+    require(engine::python_load_plugin(&loader, tool_path.string()),
+            "tool python plugin loads");
+    require(loader.plugins().size() == 2,
+            "both plugins registered");
+
+    bool saw_game = false, saw_tool = false;
+    for (const auto& p : loader.plugins()) {
+        if (p.game_id == "game") {
+            saw_game = true;
+            require(p.game_support, "register_identity sets game_support");
+        } else if (p.game_id == "tool") {
+            saw_tool = true;
+            require(!p.game_support, "no register_identity means NOT game support");
+        }
+    }
+    require(saw_game && saw_tool, "both plugin infos inspected");
+
+    const auto games = loader.game_plugins();
+    require(games.size() == 1 && games[0].game_id == "game",
+            "game_plugins() returns ONLY the identity-registered plugin");
+    require(games[0].steam_appid == 777 && games[0].game_display_name == "game",
+            "game_plugins() carries identity data");
+
+    std::cout << "  game_plugins() filters out non-game tool plugins" << std::endl;
+    std::cout << "  PASSED" << std::endl;
+
+    engine::python_shutdown();
+    fs::remove_all(tmp);
+}
+
 int main() {
     std::cout << "Python plugin tests" << std::endl;
 
@@ -402,6 +471,7 @@ int main() {
     test_python_register_game_feature();
     test_python_subscribe_event();
     test_python_settings_tab();
+    test_python_game_plugins();
 
     std::cout << "\nAll Python plugin tests passed!" << std::endl;
     return 0;

@@ -37,6 +37,11 @@ struct PluginInfo {
     std::string category;           // optional, via register_category
     uint32_t steam_appid = 0;
     std::string nexus_domain;
+    // True only when the plugin called register_identity — i.e. it provides
+    // game support (a game to create instances for). Tool/feature plugins
+    // (ImageDiff, IsaacModSorter, ...) never do; their game_id is just the
+    // module stem, so gate any "list of games" on this, never on game_id.
+    bool game_support = false;
     uint32_t abi_version = 0;
     bool loaded = false;
     bool registered = false;
@@ -89,6 +94,15 @@ public:
 
     const std::vector<PluginInfo>& plugins() const { return plugins_; }
     std::vector<PluginInfo>& plugins_mutable() { return plugins_; }
+
+    // Only the plugins that registered game support (register_identity) —
+    // the ones that can back an instance. Feature/tool plugins are excluded.
+    [[nodiscard]] std::vector<PluginInfo> game_plugins() const {
+        std::vector<PluginInfo> games;
+        for (const auto& p : plugins_)
+            if (p.game_support) games.push_back(p);
+        return games;
+    }
 
     bool is_loaded(const std::string& path) const;
 
