@@ -1,5 +1,6 @@
 #include "engine/pipeline/pipeline.h"
 #include "engine/fomod/fomod_view_model.h"
+#include "engine/filetree/staging_layout.h"
 #include "engine/pipeline/fetch_stage.h"
 #include "engine/pipeline/extract_stage.h"
 #include "engine/pipeline/fomod_stage.h"
