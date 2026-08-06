@@ -10,51 +10,10 @@
 #include <QFont>
 #include <QIcon>
 #include <QMimeData>
-#include <QPainter>
-#include <QPainterPath>
 #include <QPixmap>
 #include <QTreeView>
 
 namespace ui {
-
-// A 16x16 wizard hat (pointed purple hat with a yellow star), painted so the
-// FOMOD indicator needs no asset file. Matches the conflict-icon cell size.
-static QIcon make_wizard_hat_icon() {
-    QPixmap pix(16, 16);
-    pix.fill(Qt::transparent);
-    QPainter p(&pix);
-    p.setRenderHint(QPainter::Antialiasing);
-    // Brim
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(70, 40, 100));
-    p.drawRoundedRect(QRectF(0.5, 11.5, 15, 3.5), 1.5, 1.5);
-    // Pointed crown
-    QPainterPath crown;
-    crown.moveTo(4.5, 12);
-    crown.lineTo(6.5, 3);
-    crown.quadTo(7.0, 1.5, 9.5, 3);
-    crown.lineTo(11.5, 12);
-    crown.closeSubpath();
-    p.setBrush(QColor(110, 60, 160));
-    p.drawPath(crown);
-    // Star
-    QPainterPath star;
-    star.moveTo(8, 5.5);
-    star.lineTo(8.8, 7.4);
-    star.lineTo(10.9, 7.5);
-    star.lineTo(9.3, 8.8);
-    star.lineTo(9.9, 10.9);
-    star.lineTo(8, 9.8);
-    star.lineTo(6.1, 10.9);
-    star.lineTo(6.7, 8.8);
-    star.lineTo(5.1, 7.5);
-    star.lineTo(7.2, 7.4);
-    star.closeSubpath();
-    p.setBrush(QColor(255, 210, 80));
-    p.drawPath(star);
-    p.end();
-    return QIcon(pix);
-}
 
 ModListModel::ModListModel(QObject* parent)
     : QAbstractTableModel(parent) {
@@ -69,7 +28,7 @@ ModListModel::ModListModel(QObject* parent)
     mixed_icon_        = icons.resolve_icon("conflict-mixed");
     redundant_icon_    = icons.resolve_icon("conflict-redundant");
     hidden_icon_       = icons.resolve_icon("conflict-hidden");
-    fomod_icon_        = make_wizard_hat_icon();
+    fomod_icon_        = icons.resolve_icon("save");
     root_override_icon_ = icons.resolve_icon("root-dir");
     invalid_icon_       = icons.resolve_icon("mod-invalid");
 }
@@ -87,7 +46,7 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
 
     // ── Flag icons for the Flags column ─────────────────────────────
     // One individual QIcon per flag, in display order: conflict status, then
-    // hidden-files badge, then FOMOD wizard marker. The FlagsDelegate paints
+    // hidden-files badge, then FOMOD saved badge. The FlagsDelegate paints
     // them one-by-one at native size and wraps to extra lines (growing the row)
     // when they exceed the column width — never stacked into one icon.
     if (role == kFlagIconsRole && index.column() == Flags) {
@@ -271,7 +230,7 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
             lines << tr("Not installed by the manager (no metadata file)");
         }
         if (mod.is_fomod) {
-            lines << tr("FOMOD wizard: installed with selected options");
+            lines << tr("FOMOD saved: installed with selected options");
         }
         if (mod.root_override) {
             lines << tr("Deploys to the game root directory");

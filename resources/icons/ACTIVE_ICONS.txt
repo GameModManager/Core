@@ -38,6 +38,7 @@ plugin-warning
 preferences-other
 proton
 root-dir
+save
 text-html
 view-sort
 
