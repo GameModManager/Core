@@ -71,6 +71,29 @@ class RegistrationContext:
         """
         ...
 
+    def register_settings_tab(
+        self,
+        title: str,
+        settings: list[tuple[str, str, str, object | None]] = [],
+    ) -> None:
+        """Declare a typed settings tab rendered as native host widgets
+        (P1.5). Each entry is (key, type, default, options):
+
+          ("show_previews", "bool",   "1",    None)      -> checkbox
+          ("max_threads",   "int",    "4",    "1:8")     -> spinbox (range)
+          ("mod_name_prefix","string","mod_", None)      -> line edit
+          ("install_mode",  "choice", "Full", ["Full", "Compact", "Minimal"])
+                                                        -> combo box
+
+        The host adds a Settings-dialog tab titled by `title` (one per
+        plugin) after the fixed tabs. Edits persist through the same
+        plugins/settings/<basename>/<key> store as register_settings; keys
+        declared here stop rendering as raw key:value rows in the Plugins
+        tab's info pane. `options` is None except: "choice" (list of
+        candidate values) and "int" (the "min:max" range string).
+        """
+        ...
+
     def register_stage_claim(self, stage_name: str, priority: int = 0) -> None:
         """Claim exclusive ownership of a pipeline stage.
 
