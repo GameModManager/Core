@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # (package_installer target passes -DVERSION=${PROJECT_VERSION}), and the plugins
 # (GMM_VERSION, visible in the add_subdirectory'd external/plugins scope).
 project(GameModManager
-    VERSION 0.2.23
+    VERSION 0.2.24
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -157,6 +157,8 @@ set(ENGINE_SOURCES
     src/engine/filetree/archive_file_tree.cpp
     src/engine/filetree/staging_layout.cpp
     src/engine/registry/game_features/mod_data_checker.cpp
+    src/engine/registry/game_features/game_feature.cpp
+    src/engine/registry/game_features/game_feature_registry.cpp
     src/engine/detect/game_detector.cpp
     src/engine/detect/mod_scanner.cpp
     src/engine/archive/archive_extractor.cpp
@@ -659,11 +661,18 @@ add_test(NAME nxm_router_test COMMAND nxm_router_test)
 # suffix, color from meta.ini [General] color (empty when unset), Qt-free.
 add_executable(scanner_test tests/engine/scanner_test.cpp
     src/engine/detect/mod_scanner.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
+    src/engine/registry/game_features/game_feature.cpp
+    src/engine/registry/game_features/game_feature_registry.cpp
     src/engine/registry/game_knowledge.cpp
     src/engine/meta/mod_meta.cpp
     src/engine/log/logger.cpp
 )
 target_include_directories(scanner_test PRIVATE src/)
+target_link_libraries(scanner_test PRIVATE PkgConfig::LIBARCHIVE)
 add_test(NAME scanner_test COMMAND scanner_test)
 
 # Theme engine — Qt-free scan/tokens/discovery.
@@ -759,10 +768,18 @@ add_executable(python_plugin_test tests/engine/python_plugin_test.cpp
     src/engine/plugin_host/plugin_loader.cpp
     src/engine/plugin_host/python_loader.cpp
     src/engine/plugin_host/diagnostics_registry.cpp
+    src/engine/registry/game_features/game_feature.cpp
+    src/engine/registry/game_features/game_feature_registry.cpp
+    src/engine/registry/game_features/mod_data_checker.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
     src/engine/registry/stage_registry.cpp
     src/engine/registry/hook_registry.cpp
     src/engine/registry/game_capabilities.cpp
     src/engine/registry/game_knowledge.cpp
+    src/engine/detect/mod_scanner.cpp
     src/engine/tools/external_tool.cpp
     src/engine/sort/sort_registry.cpp
     src/engine/sort/abi_sort_provider.cpp
@@ -773,11 +790,64 @@ add_executable(python_plugin_test tests/engine/python_plugin_test.cpp
     src/engine/meta/mod_meta.cpp
 )
 target_include_directories(python_plugin_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
-target_link_libraries(python_plugin_test PRIVATE pybind11::embed Python3::Python PkgConfig::SQLITE3)
+target_link_libraries(python_plugin_test PRIVATE pybind11::embed Python3::Python PkgConfig::SQLITE3 PkgConfig::LIBARCHIVE)
 if(NOT WIN32)
     target_link_libraries(python_plugin_test PRIVATE ${CMAKE_DL_LIBS})
 endif()
 add_test(NAME python_plugin_test COMMAND python_plugin_test)
+
+# P1.2 test fixture: a plugin that overrides the Skyrim plugin's mod_data_checker
+# via the register_game_feature C ABI (priority above the game's own baseline).
+# Built into test_plugins/ and loaded ONLY by game_feature_registry_test — never
+# shipped to the app's plugins dir, never loaded by the app.
+add_library(gmm_override_mod_data_checker MODULE
+    tests/engine/plugins/override_mod_data_checker.cpp
+)
+target_include_directories(gmm_override_mod_data_checker PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+set_target_properties(gmm_override_mod_data_checker PROPERTIES
+    PREFIX ""
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test_plugins"
+)
+
+# P1.2 GameFeatureRegistry — MO2 IGameFeatures analogue: priority + replace
+# registration, combined ModDataChecker driving the mod list's FLAG_INVALID,
+# and the exit criterion (a test plugin overrides the Skyrim plugin's
+# data-checker and the mod list shows the override, engine untouched).
+add_executable(game_feature_registry_test tests/engine/game_feature_registry_test.cpp
+    src/engine/detect/mod_scanner.cpp
+    src/engine/registry/game_features/game_feature.cpp
+    src/engine/registry/game_features/game_feature_registry.cpp
+    src/engine/registry/game_features/mod_data_checker.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
+    src/engine/registry/game_knowledge.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/log/logger.cpp
+    src/engine/plugin_host/plugin_loader.cpp
+    src/engine/plugin_host/python_loader.cpp
+    src/engine/plugin_host/diagnostics_registry.cpp
+    src/engine/registry/stage_registry.cpp
+    src/engine/registry/hook_registry.cpp
+    src/engine/registry/game_capabilities.cpp
+    src/engine/tools/external_tool.cpp
+    src/engine/sort/sort_registry.cpp
+    src/engine/sort/abi_sort_provider.cpp
+    src/engine/plugins/esp_header.cpp
+    src/engine/plugins/plugin_database.cpp
+    src/engine/instance/instance.cpp
+)
+target_include_directories(game_feature_registry_test PRIVATE
+    src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_link_libraries(game_feature_registry_test PRIVATE pybind11::embed Python3::Python PkgConfig::SQLITE3 PkgConfig::LIBARCHIVE ${CMAKE_DL_LIBS})
+target_compile_definitions(game_feature_registry_test PRIVATE
+    GMM_OVERRIDE_PLUGIN_PATH="${CMAKE_BINARY_DIR}/test_plugins/gmm_override_mod_data_checker${CMAKE_SHARED_LIBRARY_SUFFIX}"
+    GMM_SKYRIM_PLUGIN_PATH="${CMAKE_BINARY_DIR}/plugins/SkyrimSpecialEdition${CMAKE_SHARED_LIBRARY_SUFFIX}"
+)
+add_test(NAME game_feature_registry_test COMMAND game_feature_registry_test)
+add_dependencies(game_feature_registry_test SkyrimSpecialEdition gmm_override_mod_data_checker)
 
 add_executable(conflict_test tests/engine/conflict_test.cpp
     src/engine/index/conflict_engine.cpp
@@ -980,6 +1050,8 @@ add_executable(settings_plugins_tab_test tests/ui/settings_plugins_tab_test.cpp
     src/engine/plugin_host/plugin_loader.cpp
     src/engine/plugin_host/python_loader.cpp
     src/engine/plugin_host/diagnostics_registry.cpp
+    src/engine/registry/game_features/game_feature.cpp
+    src/engine/registry/game_features/game_feature_registry.cpp
     src/engine/registry/stage_registry.cpp
     src/engine/registry/hook_registry.cpp
     src/engine/registry/game_capabilities.cpp
@@ -1074,6 +1146,8 @@ add_executable(settings_sources_tab_test tests/ui/settings_sources_tab_test.cpp
     src/engine/plugin_host/plugin_loader.cpp
     src/engine/plugin_host/python_loader.cpp
     src/engine/plugin_host/diagnostics_registry.cpp
+    src/engine/registry/game_features/game_feature.cpp
+    src/engine/registry/game_features/game_feature_registry.cpp
     src/engine/registry/stage_registry.cpp
     src/engine/registry/hook_registry.cpp
     src/engine/registry/game_capabilities.cpp
@@ -1364,6 +1438,12 @@ add_executable(proton_panel_test tests/ui/proton_panel_test.cpp
     src/engine/plugin_host/plugin_loader.cpp
     src/engine/plugin_host/python_loader.cpp
     src/engine/plugin_host/diagnostics_registry.cpp
+    src/engine/registry/game_features/game_feature.cpp
+    src/engine/registry/game_features/game_feature_registry.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
     src/engine/registry/stage_registry.cpp
     src/engine/registry/hook_registry.cpp
     src/engine/registry/game_capabilities.cpp
@@ -1376,7 +1456,7 @@ add_executable(proton_panel_test tests/ui/proton_panel_test.cpp
 target_include_directories(proton_panel_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
 target_compile_definitions(proton_panel_test PRIVATE VERSION="${PROJECT_VERSION}")
 target_link_libraries(proton_panel_test PRIVATE Qt6::Widgets
-    pybind11::embed Python3::Python)
+    pybind11::embed Python3::Python PkgConfig::LIBARCHIVE)
 if(NOT WIN32)
     target_link_libraries(proton_panel_test PRIVATE ${CMAKE_DL_LIBS})
 endif()

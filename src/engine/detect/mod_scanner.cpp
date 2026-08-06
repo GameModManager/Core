@@ -1,4 +1,5 @@
 #include "engine/detect/mod_scanner.h"
+#include "engine/registry/game_features/game_feature_registry.h"
 #include "engine/registry/game_knowledge.h"
 #include "engine/log/logger.h"
 #include "engine/meta/mod_meta.h"
@@ -152,6 +153,21 @@ static ScanConfig make_scan_config(const GameKnowledge& knowledge,
     }
     if (!cfg.disable_file.empty() && should_ignore(cfg.disable_file, cfg.ignored) == false) {
         cfg.ignored.push_back(cfg.disable_file);
+    }
+    // Content-validity allow-lists drive MO2's FLAG_INVALID ("No valid game
+    // data"). The P1.2 GameFeatureRegistry is the override seam: any plugin
+    // can register a mod_data_checker for this game (priority + replace, MO2
+    // IGameFeatures — combined across all registered checkers). A registered
+    // checker wins; the per-game CSV hooks (mod_valid_dirs/mod_valid_exts)
+    // remain the fallback for games whose plugin still uses them (Isaac) and
+    // for the scanner's own knowledge-driven tests.
+    auto checker = GameFeatureRegistry::instance().resolve_mod_data_checker(game_id);
+    if (checker) {
+        cfg.valid_dirs = checker->folder_names();
+        cfg.valid_exts = checker->file_extensions();
+    } else {
+        cfg.valid_dirs = split_csv(knowledge.get(game_id, "mod_valid_dirs", ""));
+        cfg.valid_exts = split_csv(knowledge.get(game_id, "mod_valid_exts", ""));
     }
     return cfg;
 }

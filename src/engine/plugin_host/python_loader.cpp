@@ -2,6 +2,7 @@
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/plugin_host/diagnostics_registry.h"
 #include "engine/log/logger.h"
+#include "engine/registry/game_features/game_feature_registry.h"
 
 #include <cstring>
 #include <filesystem>
@@ -110,6 +111,38 @@ public:
         g_py_providers.push_back(std::move(provider));
         engine::DiagnosticsRegistry::instance().register_provider(
             plugin_->game_id, py_diagnostics_bridge, user_data);
+    }
+
+    // P1.2 GameFeatureRegistry (MO2 IGameFeatures analogue): registers or
+    // overrides a per-game behavior feature with priority + replace. The
+    // game's own feature registers at the lowest priority; a plugin
+    // registering the same feature_type at a higher priority overrides it.
+    // Mirrors the register_game_feature C ABI in gmm_abi_v1.h.
+    void register_game_feature(const std::string& game_id,
+                               const std::string& feature_type,
+                               int priority,
+                               const std::vector<std::string>& folder_names,
+                               const std::vector<std::string>& file_extensions) {
+        std::string gid = game_id.empty() ? plugin_->game_id : game_id;
+        if (gid.empty() || feature_type.empty()) {
+            engine::Logger::instance().warn(
+                "register_game_feature: empty game_id/feature_type - ignored");
+            return;
+        }
+        if (feature_type == "mod_data_checker") {
+            auto checker = std::make_shared<engine::ModDataCheckerFeature>(
+                folder_names, file_extensions);
+            engine::GameFeatureRegistry::instance().register_feature(
+                gid, feature_type, priority, checker, plugin_->path);
+        } else {
+            engine::Logger::instance().warn(
+                "register_game_feature: unknown feature type '" + feature_type +
+                "' - ignored");
+            return;
+        }
+        engine::Logger::instance().debug("Python plugin registered game feature: " +
+            feature_type + " (game=" + gid + ", priority=" +
+            std::to_string(priority) + ")");
     }
 
     void register_stage_claim(const std::string& stage_name, int priority) {
@@ -231,6 +264,12 @@ PYBIND11_EMBEDDED_MODULE(gmm, m) {
              py::arg("settings"))
         .def("register_diagnostics", &PyRegistrationContext::register_diagnostics,
              py::arg("fn"))
+        .def("register_game_feature", &PyRegistrationContext::register_game_feature,
+             py::arg("game_id") = "",
+             py::arg("feature_type"),
+             py::arg("priority") = 0,
+             py::arg("folder_names") = std::vector<std::string>{},
+             py::arg("file_extensions") = std::vector<std::string>{})
         .def("register_order_encoding_hook", &PyRegistrationContext::register_order_encoding_hook)
         .def("register_deploy_strategy", &PyRegistrationContext::register_deploy_strategy)
         .def("register_image_diff", &PyRegistrationContext::register_image_diff)
@@ -343,6 +382,7 @@ void engine::python_shutdown() {
         py::gil_scoped_acquire acquire;
         DiagnosticsRegistry::instance().clear();
         g_py_providers.clear();
+        GameFeatureRegistry::instance().clear();
     }
     s_interpreter.reset();
 }

@@ -5,6 +5,7 @@
 #include "engine/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/plugins/plugin_database.h"
+#include "engine/registry/game_features/game_feature_registry.h"
 #include "engine/sort/sort_registry.h"
 #include "engine/sort/abi_sort_provider.h"
 
@@ -87,6 +88,52 @@ static void cb_register_diagnostics(GmmRegistrationCtx* ctx,
 
     DiagnosticsRegistry::instance().register_provider(
         bridge->current_plugin->game_id, fn, user_data);
+}
+
+static void cb_register_game_feature(GmmRegistrationCtx* ctx,
+                                     const char* game_id,
+                                     const char* feature_type,
+                                     int priority,
+                                     const char* const* folder_names,
+                                     size_t folder_count,
+                                     const char* const* file_extensions,
+                                     size_t extension_count) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge || !bridge->current_plugin) return;
+
+    // NULL game_id = this plugin's own game (matches how every other
+    // registration keys itself); an explicit game_id lets a standalone plugin
+    // override a game it doesn't provide (the P1.2 override test does this).
+    std::string gid = game_id ? game_id : bridge->current_plugin->game_id;
+    std::string type = feature_type ? feature_type : "";
+    if (gid.empty() || type.empty()) {
+        Logger::instance().warn("Game feature registered with empty game_id/type");
+        return;
+    }
+
+    if (type == "mod_data_checker") {
+        std::vector<std::string> folders;
+        if (folder_names) {
+            for (size_t i = 0; i < folder_count; ++i)
+                if (folder_names[i]) folders.emplace_back(folder_names[i]);
+        }
+        std::vector<std::string> extensions;
+        if (file_extensions) {
+            for (size_t i = 0; i < extension_count; ++i)
+                if (file_extensions[i]) extensions.emplace_back(file_extensions[i]);
+        }
+        auto checker = std::make_shared<ModDataCheckerFeature>(
+            std::move(folders), std::move(extensions));
+        GameFeatureRegistry::instance().register_feature(
+            gid, type, priority, std::move(checker), bridge->current_plugin->path);
+    } else {
+        Logger::instance().warn("Plugin registered unknown game feature type: " +
+            type + " (ignored)");
+        return;
+    }
+
+    Logger::instance().debug("Plugin registered game feature: " + type +
+        " (game=" + gid + ", priority=" + std::to_string(priority) + ")");
 }
 
 static void cb_register_stage_claim(GmmRegistrationCtx* ctx,
@@ -362,6 +409,7 @@ bool PluginLoader::load_plugin(const std::string& path) {
     ctx.register_category = cb_register_category;
     ctx.register_settings = cb_register_settings;
     ctx.register_diagnostics = cb_register_diagnostics;
+    ctx.register_game_feature = cb_register_game_feature;
 
     RegistrationBridge bridge;
     bridge.loader = this;
