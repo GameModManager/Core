@@ -175,6 +175,17 @@ void Settings::set_confirm_close_with_downloads(bool on) {
     settings_.setValue("close/confirm_downloads", on);
 }
 
+// mod list columns ---------------------------------------------------------
+
+QStringList Settings::modlist_hidden_columns(const QString& instance_name) const {
+    return settings_.value("modlist/columns/" + instance_name).toStringList();
+}
+
+void Settings::set_modlist_hidden_columns(const QString& instance_name,
+                                          const QStringList& hidden) {
+    settings_.setValue("modlist/columns/" + instance_name, hidden);
+}
+
 // general -----------------------------------------------------------------
 
 bool Settings::check_for_updates() const {

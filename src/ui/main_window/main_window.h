@@ -51,6 +51,7 @@ namespace ui {
 class DebugWindow;
 class ModListModel;
 class ModTableView;
+class ColumnToggleHeaderView;
 class MainToolbar;
 class ProfileBar;
 class ModFilterBar;
@@ -257,6 +258,10 @@ private:
     void on_plugin_db_preloaded(engine::PluginDatabase db, quint64 generation);
     bool adopt_preloaded_plugin_db();
     void load_meta_for_mods();
+    // Apply the per-instance persisted mod-list column visibility (defaults on
+    // first run). Name is always forced visible. Called on scan finish, when
+    // the current instance is known.
+    void restore_mod_column_visibility();
     void show_instance_statistics();
     void show_settings_dialog();
     void show_proton_panel();
@@ -331,6 +336,7 @@ private:
     ProfileBar* profile_bar_ = nullptr;
     ModFilterBar* filter_bar_ = nullptr;
     ModTableView* mod_view_ = nullptr;
+    ColumnToggleHeaderView* mod_header_ = nullptr;
     ModListModel* mod_model_ = nullptr;
     RightPanel* right_panel_ = nullptr;
     QSplitter* main_splitter_ = nullptr;

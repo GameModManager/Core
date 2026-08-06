@@ -175,9 +175,14 @@ ModTableView::ModTableView(QWidget* parent)
     setDropIndicatorShown(true);
     setVerticalScrollBar(new ModMarkingScrollBar(this));
     apply_scrollbar_policy();
-    // Flags column: render stacked flag icons at native size (see FlagsDelegate).
-    // No tooltips role (second arg 0): mod rows keep the delegate's default
-    // helpEvent so per-row descriptions still come from the item's tooltip.
+    // Conflicts + Flags columns: render stacked flag icons at native size (see
+    // FlagsDelegate). MO2 splits these into COL_CONFLICTFLAGS (win/loss badge)
+    // and COL_FLAGS (hidden/FOMOD/root-override badges); both come through the
+    // same kFlagIconsRole, filtered per column by the model. No tooltips role
+    // (second arg 0): mod rows keep the delegate's default helpEvent so
+    // per-row descriptions still come from the item's tooltip.
+    setItemDelegateForColumn(ModListModel::Conflicts,
+                             new FlagsDelegate(ModListModel::kFlagIconsRole, 0, this));
     setItemDelegateForColumn(ModListModel::Flags,
                              new FlagsDelegate(ModListModel::kFlagIconsRole, 0, this));
 }
@@ -198,11 +203,13 @@ void ModTableView::setModel(QAbstractItemModel* model) {
 void ModTableView::setHeader(QHeaderView* header) {
     QTreeView::setHeader(header);
     if (!header) return;
-    // Flag icons wrap based on the Flags column width (growing the row), so the
-    // cached row heights must follow the section while the user drags it.
+    // Flag icons wrap based on the Conflicts/Flags column width (growing the
+    // row), so the cached row heights must follow the section while the user
+    // drags it.
     connect(header, &QHeaderView::sectionResized, this,
             [this](int logical, int, int) {
-                if (logical == ModListModel::Flags)
+                if (logical == ModListModel::Conflicts ||
+                    logical == ModListModel::Flags)
                     scheduleDelayedItemsLayout();
             });
 }

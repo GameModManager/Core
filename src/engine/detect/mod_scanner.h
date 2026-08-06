@@ -16,6 +16,10 @@ struct ScannedMod {
     std::string separator_color; // hex color for separators (e.g. "#888888"), empty for mods
     int priority = -1;           // extracted from name prefix via priority_prefix_re, -1 = none
     int64_t workshop_id = 0;     // extracted from folder name via workshop_id_pattern, 0 = none
+    // Folder birth time (statx btime, MO2 COL_INSTALLTIME semantics; falls
+    // back to the folder's last-write time). 0 = unavailable/not a real folder.
+    int64_t install_time = 0;    // epoch seconds
+    int64_t changed_time = 0;    // folder last-write time, epoch seconds
     bool enabled = true;         // false if disable sentinel exists
     bool is_separator = false;   // true if folder ends with separator_suffix
     bool is_overwrite = false;   // true for the special Overwrite entry

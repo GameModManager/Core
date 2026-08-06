@@ -39,6 +39,7 @@
 #include "engine/theme/icon_manager.h"
 #include "engine/log/logger.h"
 #include "engine/detect/mod_scanner.h"
+#include "engine/meta/categories.h"
 #include "engine/detect/game_detector.h"
 #include "engine/index/conflict_engine.h"
 #include "engine/registry/game_features/game_feature_registry.h"
@@ -182,6 +183,25 @@ int reap_supervisor(pid_t pid) {
     engine::Logger::instance().warn("Watchdog: supervisor " + std::to_string(pid) +
         " not reaped after 2s (stray child?)");
     return -1;
+}
+
+// Stable per-column name for persisting mod-list visibility (enum names, not
+// indices, so the stored state survives a column reorder). Keep in sync with
+// ModListModel::Column order.
+QString mod_column_name(int column) {
+    switch (column) {
+        case ModListModel::Name:         return "Name";
+        case ModListModel::Conflicts:    return "Conflicts";
+        case ModListModel::Flags:        return "Flags";
+        case ModListModel::Category:     return "Category";
+        case ModListModel::Source:       return "Source";
+        case ModListModel::SourceId:     return "Source ID";
+        case ModListModel::Version:      return "Version";
+        case ModListModel::Installation: return "Installation";
+        case ModListModel::Changed:      return "Changed";
+        case ModListModel::Priority:     return "Priority";
+    }
+    return {};
 }
 
 }  // anonymous namespace
@@ -437,8 +457,12 @@ MainWindow::MainWindow(QWidget* parent)
 
         int tab = -1;
         switch (idx.column()) {
-        case ModListModel::Version:  tab = static_cast<int>(ui::ModInfoTabId::Source); break;
-        case ModListModel::Flags:    tab = static_cast<int>(ui::ModInfoTabId::Conflicts); break;
+        case ModListModel::Conflicts:  tab = static_cast<int>(ui::ModInfoTabId::Conflicts); break;
+        case ModListModel::Flags:      tab = static_cast<int>(ui::ModInfoTabId::Conflicts); break;
+        case ModListModel::Category:   tab = static_cast<int>(ui::ModInfoTabId::Categories); break;
+        case ModListModel::Source:
+        case ModListModel::SourceId:
+        case ModListModel::Version:    tab = static_cast<int>(ui::ModInfoTabId::Source); break;
         default: break;  // last-used tab
         }
         on_data_mod_info(entry.id, tab);
@@ -457,18 +481,55 @@ MainWindow::MainWindow(QWidget* parent)
             });
 
     auto* mod_header = new ColumnToggleHeaderView(Qt::Horizontal, mod_view_);
-    mod_header->set_column_labels({"Name", "Version", "Flags", "Priority"});
+    mod_header->set_column_labels({"Name", "Conflicts", "Flags", "Category", "Source",
+                                   "Source ID", "Version", "Installation", "Changed",
+                                   "Priority"});
+    mod_header->set_section_tooltips({
+        tr("Name of the mod"),
+        tr("Win/loss state of file conflicts with other mods"),
+        tr("Badges: hidden files, FOMOD saved, root override, invalid data"),
+        tr("Primary category of the mod"),
+        tr("Site the mod was downloaded from"),
+        tr("Mod/file ID on the source site"),
+        tr("Version of the mod (if available)"),
+        tr("When the mod folder was created (install/replace time)"),
+        tr("Last time the mod folder was modified"),
+        tr("Install priority: the higher, the more it overwrites"),
+    });
     mod_view_->setHeader(mod_header);
+    mod_header_ = mod_header;
 
     mod_header->setStretchLastSection(false);
     mod_header->setSectionsMovable(true);
     mod_header->setSectionResizeMode(ModListModel::Name, QHeaderView::Stretch);
-    mod_header->setSectionResizeMode(ModListModel::Version, QHeaderView::Interactive);
-    mod_header->setSectionResizeMode(ModListModel::Flags, QHeaderView::Interactive);
-    mod_header->setSectionResizeMode(ModListModel::Priority, QHeaderView::Interactive);
-    mod_header->resizeSection(ModListModel::Version, 80);
+    for (int c = ModListModel::Conflicts; c < ModListModel::ColumnCount; ++c)
+        mod_header->setSectionResizeMode(c, QHeaderView::Interactive);
+    mod_header->resizeSection(ModListModel::Conflicts, 80);
     mod_header->resizeSection(ModListModel::Flags, 80);
+    mod_header->resizeSection(ModListModel::Category, 120);
+    mod_header->resizeSection(ModListModel::Source, 40);
+    mod_header->resizeSection(ModListModel::SourceId, 70);
+    mod_header->resizeSection(ModListModel::Version, 80);
+    mod_header->resizeSection(ModListModel::Installation, 90);
+    mod_header->resizeSection(ModListModel::Changed, 90);
     mod_header->resizeSection(ModListModel::Priority, 60);
+
+    // The Name column can never be hidden (the context menu shows it checked
+    // + disabled). Persist user visibility toggles per instance; the restore
+    // happens on scan finish when the instance name is known.
+    mod_header->set_locked_section(ModListModel::Name);
+    connect(mod_header, &ColumnToggleHeaderView::section_toggled, this,
+            [this](int logical, bool hidden) {
+                if (logical == ModListModel::Name || current_instance_root_.empty()) return;
+                const auto key = QString::fromStdString(current_instance_root_.filename().string());
+                const auto stored =
+                    Settings::instance().modlist_hidden_columns(key);
+                auto hidden_set = QSet<QString>(stored.cbegin(), stored.cend());
+                const QString name = mod_column_name(logical);
+                if (hidden) hidden_set.insert(name);
+                else hidden_set.remove(name);
+                Settings::instance().set_modlist_hidden_columns(key, hidden_set.values());
+            });
 
     left_layout->addWidget(mod_view_, 1);
 
@@ -1506,6 +1567,11 @@ void MainWindow::on_mod_scan_finished(ui::ModScanResult result, quint64 generati
 
     auto& scanned = result.scanned;
 
+    // Apply the per-instance column visibility (defaults on first run; Name is
+    // always forced visible). The instance root is known now, so per-instance
+    // settings resolve correctly across instance switches.
+    restore_mod_column_visibility();
+
     // Clear all existing mods (including game-native) - needed for instance switching
     mod_model_->remove_all_mods();
 
@@ -1528,7 +1594,8 @@ void MainWindow::on_mod_scan_finished(ui::ModScanResult result, quint64 generati
             auto color = QString::fromStdString(mod.separator_color);
             mod_model_->add_separator(id, name, color);
         } else {
-            mod_model_->add_mod(id, name, ver, mod.priority, mod.is_game_native);
+            mod_model_->add_mod(id, name, ver, mod.priority, mod.is_game_native,
+                                mod.install_time, mod.changed_time);
             if (mod.is_fomod) {
                 mod_model_->set_fomod(id, true);
             }
@@ -1651,7 +1718,8 @@ void MainWindow::add_installed_mod(const std::string& folder_name) {
             mod_model_->add_separator(id, name,
                                       QString::fromStdString(mod.separator_color));
         } else {
-            mod_model_->add_mod(id, name, ver, mod.priority, mod.is_game_native);
+            mod_model_->add_mod(id, name, ver, mod.priority, mod.is_game_native,
+                                mod.install_time, mod.changed_time);
             if (mod.is_fomod) mod_model_->set_fomod(id, true);
             if (mod.root_override) mod_model_->set_root_override(id, true);
             if (mod.invalid_data) mod_model_->set_invalid_data(id, true);
@@ -1662,6 +1730,10 @@ void MainWindow::add_installed_mod(const std::string& folder_name) {
         // separator ids, mirroring the full-load tail.
         sync_priorities();
         sync_separator_ids();
+    } else {
+        // Replace/merge into an existing folder changed its birth/write time,
+        // so the Installation/Changed cells must follow (single-row refresh).
+        mod_model_->set_timestamps(id, mod.install_time, mod.changed_time);
     }
 
     // Files changed regardless of whether the row is new: conflicts, Data tab
@@ -1774,6 +1846,13 @@ void MainWindow::load_meta_for_mods() {
     // Workshop ID pattern - used to detect Steam Workshop mods from folder names
     auto workshop_pattern = knowledge_->get(current_game_id_, "workshop_id_pattern", "");
 
+    // Per-instance category DB (MO2's categories.dat/nexuscatmap.dat), loaded
+    // once per call for the Category column. Same resolution the Categories tab
+    // uses: [General] category CSV primary first, else the Nexus mapping.
+    engine::Categories cats;
+    if (!current_instance_root_.empty())
+        cats = engine::Categories::load(current_instance_root_);
+
     auto mods = mod_model_->mods();
     for (int i = 0; i < mods.size(); ++i) {
         const auto& mod = mods[i];
@@ -1829,11 +1908,50 @@ void MainWindow::load_meta_for_mods() {
                                         QString::fromStdString(meta.source_page_url()));
         }
 
+        // Category column: same resolution as the Categories tab — [General]
+        // "category" CSV primary first, else the Nexus category mapping. Both
+        // names come from the per-instance category DB.
+        QString category_name;
+        const auto csv = QString::fromStdString(meta.get("General", "category"));
+        int primary = 0;
+        const auto parts = csv.split(QLatin1Char(','), Qt::SkipEmptyParts);
+        if (!parts.isEmpty()) primary = parts.first().toInt();
+        if (primary <= 0) {
+            const int nexus_id =
+                QString::fromStdString(meta.get("Nexusmods", "nexuscategory")).toInt();
+            if (nexus_id > 0) {
+                if (const auto* cat = cats.category_for_nexus(nexus_id))
+                    primary = cat->id;
+            }
+        }
+        if (primary > 0) {
+            if (const auto* cat = cats.find(primary))
+                category_name = QString::fromStdString(cat->name);
+        }
+        if (!category_name.isEmpty())
+            mod_model_->set_category(mod.id, category_name);
+
         // Update ModEntry with separator info from meta.ini
         auto sep_id = meta.separator_id();
         if (!sep_id.empty()) {
             mod_model_->set_separator_id(mod.id, QString::fromStdString(sep_id));
         }
+    }
+}
+
+void MainWindow::restore_mod_column_visibility() {
+    if (!mod_header_ || current_instance_root_.empty()) return;
+
+    const auto key = QString::fromStdString(current_instance_root_.filename().string());
+    const auto stored = Settings::instance().modlist_hidden_columns(key);
+    const auto hidden_set = QSet<QString>(stored.cbegin(), stored.cend());
+
+    for (int c = ModListModel::Name; c < ModListModel::ColumnCount; ++c) {
+        const QString name = mod_column_name(c);
+        if (name.isEmpty()) continue;
+        // Name is hard-locked visible; everything else follows the stored set.
+        const bool hidden = !mod_header_->is_locked(c) && hidden_set.contains(name);
+        mod_header_->setSectionHidden(c, hidden);
     }
 }
 

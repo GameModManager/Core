@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # (package_installer target passes -DVERSION=${PROJECT_VERSION}), and the plugins
 # (GMM_VERSION, visible in the add_subdirectory'd external/plugins scope).
 project(GameModManager
-    VERSION 0.2.35
+    VERSION 0.2.36
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -1592,6 +1592,7 @@ set_tests_properties(saves_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offs
 # manually.
 add_executable(mod_list_model_test tests/ui/mod_list_model_test.cpp
     src/ui/widgets/mod_list_model.cpp
+    src/ui/widgets/column_toggle_header.cpp
     src/ui/settings/settings.cpp
     src/engine/theme/theme_manager.cpp
     src/engine/theme/icon_manager.cpp
