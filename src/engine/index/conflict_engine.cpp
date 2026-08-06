@@ -1,5 +1,6 @@
 #include "engine/index/conflict_engine.h"
 
+#include "engine/filetree/dir_file_tree.h"
 #include "engine/log/logger.h"
 
 #include <algorithm>
@@ -92,39 +93,45 @@ std::vector<std::string> ConflictEngine::walk_mod(
 
     if (!std::filesystem::exists(mod_path, ec)) return files;
 
-    // skip_permission_denied: a permission-denied subdirectory makes the
-    // throwing operator++ abort the whole scan (SIGABRT). Same hardening as
-    // deploy_utils.cpp.
-    for (const auto& entry : std::filesystem::recursive_directory_iterator(
-             mod_path, std::filesystem::directory_options::skip_permission_denied, ec)) {
-        if (ec) break;
+    // Walk through the unified tree (PLAN §19.4 P1.1) instead of a per-context
+    // recursive_directory_iterator. DirectoryFileTree population is
+    // permission-hardened the same way (do_populate increments with ec, a
+    // permission-denied subdirectory is skipped, not a SIGABRT), and a
+    // symlinked subdirectory is skipped to match the legacy iterator, which
+    // never descends into one.
+    auto tree = DirectoryFileTree::make_tree(mod_path, NameCompare::CaseInsensitive,
+                                             /*ignore_meta_ini=*/false);
+    tree->walk([&](const std::string& prefix, const FileTree::const_reference& entry) {
+        if (!entry->is_file()) {
+            auto dir = std::dynamic_pointer_cast<const DirectoryFileTree>(entry);
+            if (dir != nullptr && dir->is_symlink())
+                return FileTree::WalkReturn::Skip;
+            return FileTree::WalkReturn::Continue;
+        }
 
-        if (!entry.is_regular_file(ec)) continue;
-        if (ec) break;
+        const std::string filename = entry->name();
+        if (ignore_set.find(filename) != ignore_set.end())
+            return FileTree::WalkReturn::Continue;
 
-        auto filename = entry.path().filename().string();
-        if (ignore_set.find(filename) != ignore_set.end()) continue;
-
-        auto rel = std::filesystem::relative(entry.path(), mod_path, ec);
-        if (ec) continue;
-
-        auto rel_str = rel.string();
+        const std::string rel_str = prefix + filename;
 
         // Filter by subdirectory (if any scan_dirs are configured)
         if (!dir_prefixes.empty()) {
             bool in_scan_dir = false;
-            for (const auto& prefix : dir_prefixes) {
-                if (rel_str.starts_with(prefix)) {
+            for (const auto& pfx : dir_prefixes) {
+                if (rel_str.starts_with(pfx)) {
                     in_scan_dir = true;
                     break;
                 }
             }
-            if (!in_scan_dir) continue;
+            if (!in_scan_dir) return FileTree::WalkReturn::Continue;
         }
 
-        // Filter by extension (if any extension filters are configured)
+        // Filter by extension (if any extension filters are configured). Kept
+        // on the on-disk spelling and case-sensitive exactly like the legacy
+        // walk (entry.path().extension()).
         if (!extensions.empty()) {
-            auto ext = entry.path().extension().string();
+            const std::string ext = std::filesystem::path(filename).extension().string();
             bool found = false;
             for (const auto& filter_ext : extensions) {
                 // Normalise: both should have a leading dot
@@ -133,11 +140,12 @@ std::vector<std::string> ConflictEngine::walk_mod(
                 if (fe[0] != '.') fe = "." + fe;
                 if (ext == fe) { found = true; break; }
             }
-            if (!found) continue;
+            if (!found) return FileTree::WalkReturn::Continue;
         }
 
         files.push_back(rel_str);
-    }
+        return FileTree::WalkReturn::Continue;
+    });
 
     // Stable sort for reproducible cache entries
     std::sort(files.begin(), files.end());

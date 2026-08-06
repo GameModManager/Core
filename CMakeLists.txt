@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # (package_installer target passes -DVERSION=${PROJECT_VERSION}), and the plugins
 # (GMM_VERSION, visible in the add_subdirectory'd external/plugins scope).
 project(GameModManager
-    VERSION 0.2.22
+    VERSION 0.2.23
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -604,10 +604,15 @@ add_executable(launch_params_test tests/engine/launch_params_test.cpp
     src/engine/deploy/strategy_overlayfs_deploy.cpp
     src/engine/registry/game_knowledge.cpp
     src/engine/overlay_launcher.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
     src/engine/fs_utils.cpp
     src/engine/log/logger.cpp
 )
 target_include_directories(launch_params_test PRIVATE src/)
+target_link_libraries(launch_params_test PRIVATE PkgConfig::LIBARCHIVE)
 add_test(NAME launch_params_test COMMAND launch_params_test)
 
 # Game icon cache path/URL resolution + cache skip logic (Qt-free).
@@ -620,6 +625,10 @@ add_executable(game_icons_test tests/engine/game_icons_test.cpp
     src/engine/deploy/strategy_overlayfs_deploy.cpp
     src/engine/registry/game_knowledge.cpp
     src/engine/overlay_launcher.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
     src/engine/fs_utils.cpp
     src/engine/download/curl_download.cpp
     src/engine/source/nexus_http.cpp
@@ -627,7 +636,7 @@ add_executable(game_icons_test tests/engine/game_icons_test.cpp
 )
 target_include_directories(game_icons_test PRIVATE src/)
 target_compile_definitions(game_icons_test PRIVATE VERSION="${PROJECT_VERSION}")
-target_link_libraries(game_icons_test PRIVATE PkgConfig::CURL)
+target_link_libraries(game_icons_test PRIVATE PkgConfig::CURL PkgConfig::LIBARCHIVE)
 add_test(NAME game_icons_test COMMAND game_icons_test)
 
 # Proton tool-running: runner override resolution + run guards.
@@ -772,22 +781,32 @@ add_test(NAME python_plugin_test COMMAND python_plugin_test)
 
 add_executable(conflict_test tests/engine/conflict_test.cpp
     src/engine/index/conflict_engine.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
     src/engine/log/logger.cpp
 )
 target_include_directories(conflict_test PRIVATE src/)
-target_link_libraries(conflict_test PRIVATE PkgConfig::NLOHMANN_JSON)
+target_link_libraries(conflict_test PRIVATE PkgConfig::NLOHMANN_JSON
+    PkgConfig::LIBARCHIVE)
 add_test(NAME conflict_test COMMAND conflict_test)
 
 # Overwrite workflow helpers (path mapping, move/sync, clear, sync plan).
 add_executable(overwrite_utils_test tests/engine/overwrite_utils_test.cpp
     src/engine/overwrite/overwrite_utils.cpp
     src/engine/index/conflict_engine.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
     src/engine/meta/mod_meta.cpp
     src/engine/fs_utils.cpp
     src/engine/log/logger.cpp
 )
 target_include_directories(overwrite_utils_test PRIVATE src/)
-target_link_libraries(overwrite_utils_test PRIVATE PkgConfig::NLOHMANN_JSON)
+target_link_libraries(overwrite_utils_test PRIVATE PkgConfig::NLOHMANN_JSON
+    PkgConfig::LIBARCHIVE)
 add_test(NAME overwrite_utils_test COMMAND overwrite_utils_test)
 
 # Windows-native path resolution (engine::resolve_path) + the shared string/path
@@ -825,10 +844,15 @@ add_executable(deploy_hidden_test tests/engine/deploy_hidden_test.cpp
     src/engine/deploy/deploy_utils.cpp
     src/engine/meta/mod_meta.cpp
     src/engine/deploy/strategy_overlayfs_deploy.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
     src/engine/fs_utils.cpp
     src/engine/log/logger.cpp
 )
 target_include_directories(deploy_hidden_test PRIVATE src/)
+target_link_libraries(deploy_hidden_test PRIVATE PkgConfig::LIBARCHIVE)
 add_test(NAME deploy_hidden_test COMMAND deploy_hidden_test)
 
 # Case-insensitive deploy (Windows games): the per-game case_sensitive
@@ -839,10 +863,15 @@ add_executable(deploy_case_insensitive_test tests/engine/deploy_case_insensitive
     src/engine/deploy/deploy_utils.cpp
     src/engine/meta/mod_meta.cpp
     src/engine/deploy/strategy_overlayfs_deploy.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
     src/engine/fs_utils.cpp
     src/engine/log/logger.cpp
 )
 target_include_directories(deploy_case_insensitive_test PRIVATE src/)
+target_link_libraries(deploy_case_insensitive_test PRIVATE PkgConfig::LIBARCHIVE)
 add_test(NAME deploy_case_insensitive_test COMMAND deploy_case_insensitive_test)
 
 # Root-override deploy-space classification: which view (Data vs game root)
@@ -864,10 +893,15 @@ add_executable(deploy_binary_test tests/engine/deploy_binary_test.cpp
     src/engine/meta/mod_meta.cpp
     src/engine/deploy/strategy_overlayfs_deploy.cpp
     src/engine/deploy/strategy_symlink.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
     src/engine/fs_utils.cpp
     src/engine/log/logger.cpp
 )
 target_include_directories(deploy_binary_test PRIVATE src/)
+target_link_libraries(deploy_binary_test PRIVATE PkgConfig::LIBARCHIVE)
 add_test(NAME deploy_binary_test COMMAND deploy_binary_test)
 
 # Parallel deploy executor (P8.4): first full deploy farms N mods across worker
@@ -879,10 +913,15 @@ add_executable(deploy_parallel_test tests/engine/deploy_parallel_test.cpp
     src/engine/deploy/deploy_utils.cpp
     src/engine/meta/mod_meta.cpp
     src/engine/deploy/strategy_overlayfs_deploy.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
     src/engine/fs_utils.cpp
     src/engine/log/logger.cpp
 )
 target_include_directories(deploy_parallel_test PRIVATE src/)
+target_link_libraries(deploy_parallel_test PRIVATE PkgConfig::LIBARCHIVE)
 add_test(NAME deploy_parallel_test COMMAND deploy_parallel_test)
 
 # URL percent-encoding for libcurl (Nexus CDN URLs embed unencoded filenames).
@@ -974,6 +1013,10 @@ add_executable(settings_plugins_tab_test tests/ui/settings_plugins_tab_test.cpp
     src/engine/overlay_launcher.cpp
     src/engine/preload_interceptor.cpp
     src/engine/fs_utils.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
     src/engine/single_instance.cpp
     src/runtime/runtime.cpp
     src/runtime/wine_runtime.cpp
@@ -1064,6 +1107,10 @@ add_executable(settings_sources_tab_test tests/ui/settings_sources_tab_test.cpp
     src/engine/overlay_launcher.cpp
     src/engine/preload_interceptor.cpp
     src/engine/fs_utils.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
     src/engine/single_instance.cpp
     src/runtime/runtime.cpp
     src/runtime/wine_runtime.cpp
@@ -1292,11 +1339,16 @@ add_executable(overwrite_dialogs_test tests/ui/overwrite_dialogs_test.cpp
     src/engine/overwrite/overwrite_utils.cpp
     src/engine/index/conflict_engine.cpp
     src/engine/meta/mod_meta.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
     src/engine/fs_utils.cpp
     src/engine/log/logger.cpp
 )
 target_include_directories(overwrite_dialogs_test PRIVATE src/)
 target_link_libraries(overwrite_dialogs_test PRIVATE Qt6::Widgets
+    PkgConfig::LIBARCHIVE
     PkgConfig::NLOHMANN_JSON)
 add_test(NAME overwrite_dialogs_test COMMAND overwrite_dialogs_test)
 set_tests_properties(overwrite_dialogs_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

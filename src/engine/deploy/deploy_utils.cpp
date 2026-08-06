@@ -1,5 +1,6 @@
 #include "engine/deploy/deploy_utils.h"
 #include "engine/deploy/strategy.h"
+#include "engine/filetree/dir_file_tree.h"
 #include "engine/fs_utils.h"
 #include "engine/log/logger.h"
 #include "engine/meta/mod_meta.h"
@@ -187,31 +188,39 @@ bool deploy_all_enabled_mods_parallel(
     //     (rel, source) file pairs. Purely discovery - no deploy work.
     run_parallel(mods.size(), num_threads, [&](size_t i) {
         ModSnapshot& m = mods[i];
-        // skip_permission_denied + explicit increment(ec): a range-for over
-        // recursive_directory_iterator throws on the first permission-denied
-        // subdirectory, aborting the whole deploy with SIGABRT.
-        std::error_code iter_ec;
-        auto it = std::filesystem::recursive_directory_iterator(
-            mods_dir / m.folder,
-            std::filesystem::directory_options::skip_permission_denied,
-            iter_ec);
-        auto end = std::filesystem::recursive_directory_iterator();
-        while (it != end && !iter_ec) {
-            const auto& file = *it;
-            const auto rel = std::filesystem::relative(file.path(), mods_dir / m.folder);
+        const auto mod_dir = mods_dir / m.folder;
+
+        // Walk through the unified tree (PLAN §19.4 P1.1) instead of a
+        // per-context recursive_directory_iterator. DirectoryFileTree
+        // population is permission-hardened (do_populate increments with ec, a
+        // permission-denied subdirectory is skipped, not a SIGABRT), and a
+        // symlinked subdirectory is skipped to match the legacy iterator,
+        // which never descends into one.
+        std::error_code dir_ec;
+        if (!std::filesystem::is_directory(mod_dir, dir_ec)) {
+            Logger::instance().warn("deploy_all_enabled_mods: error iterating " + m.folder +
+                                    ": not a directory");
+            return;
+        }
+        auto tree = DirectoryFileTree::make_tree(mod_dir, NameCompare::CaseInsensitive,
+                                                 /*ignore_meta_ini=*/false);
+        tree->walk([&](const std::string& prefix, const FileTree::const_reference& entry) {
+            if (!entry->is_file()) {
+                auto dir = std::dynamic_pointer_cast<const DirectoryFileTree>(entry);
+                if (dir != nullptr && dir->is_symlink())
+                    return FileTree::WalkReturn::Skip;
+                return FileTree::WalkReturn::Continue;
+            }
             // Hidden files (.gmmhidden here, .mohidden from MO2-imported
             // instances) and the disable sentinel must not reach the game.
-            // The skip is a filter, not a continue: the iterator must still
-            // advance.
-            if (file.is_regular_file() && !is_hidden_file(file.path()) &&
-                rel != disable_mechanism) {
-                m.files.emplace_back(rel, file.path());
+            const std::string rel = prefix + entry->name();
+            if (is_hidden_file(std::filesystem::path(entry->name())) ||
+                rel == disable_mechanism) {
+                return FileTree::WalkReturn::Continue;
             }
-            it.increment(iter_ec);
-        }
-        if (iter_ec) {
-            Logger::instance().warn("deploy_all_enabled_mods: error iterating " + m.folder + ": " + iter_ec.message());
-        }
+            m.files.emplace_back(std::filesystem::path(rel), mod_dir / rel);
+            return FileTree::WalkReturn::Continue;
+        });
         // Sort within the mod so CI-equal dir spellings merge into a
         // deterministic casing (first-seen wins).
         std::sort(m.files.begin(), m.files.end(),

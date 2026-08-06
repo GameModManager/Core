@@ -1,6 +1,5 @@
 #include "engine/index/conflict_engine.h"
 
-#include <cassert>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -9,9 +8,20 @@
 #include <unistd.h>
 #endif
 
+namespace fs = std::filesystem;
+
+static int failures = 0;
+static int passes = 0;
+static void check(bool cond, const char* what) {
+    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
+    if (cond)
+        ++passes;
+    else
+        ++failures;
+}
+
 int main() {
     using namespace engine;
-    namespace fs = std::filesystem;
 
     fs::path base = fs::temp_directory_path() / "conflict_test_core";
     fs::remove_all(base);
@@ -39,36 +49,38 @@ int main() {
         {"mod_c", 3},
     };
 
+    // --- conflict_reversed=true: lower priority number wins (Isaac) ---
     {
         auto results = engine.compute(base, mods, "", "metadata.xml", true);
 
-        assert(results.size() == 3);
-        assert(results["mod_a"].total_files == 2);
-        assert(results["mod_a"].wins == 1);
-        assert(results["mod_a"].losses == 0);
-        assert(results["mod_b"].total_files == 2);
-        assert(results["mod_b"].wins == 0);
-        assert(results["mod_b"].losses == 1);
-        assert(results["mod_c"].total_files == 2);
-        assert(results["mod_c"].wins == 0);
-        assert(results["mod_c"].losses == 1);
+        check(results.size() == 3, "compute returns one entry per mod");
+        check(results["mod_a"].total_files == 2, "mod_a indexes its two files");
+        check(results["mod_a"].wins == 1, "mod_a (pri=1) wins the shared config.ini");
+        check(results["mod_a"].losses == 0, "mod_a has no losses");
+        check(results["mod_b"].total_files == 2, "mod_b indexes its two files");
+        check(results["mod_b"].wins == 0, "mod_b (pri=2) does not win config.ini");
+        check(results["mod_b"].losses == 1, "mod_b loses config.ini to mod_a");
+        check(results["mod_c"].total_files == 2, "mod_c indexes its two files");
+        check(results["mod_c"].wins == 0, "mod_c (pri=3) does not win config.ini");
+        check(results["mod_c"].losses == 1, "mod_c loses config.ini to mod_a");
 
         std::printf("  conflict_reversed=true: mod_a (pri=1) wins config.ini\n");
     }
 
+    // --- conflict_reversed=false: higher priority number wins (MO2) ---
     {
         auto results = engine.compute(base, mods, "", "metadata.xml", false);
 
-        assert(results.size() == 3);
-        assert(results["mod_c"].total_files == 2);
-        assert(results["mod_c"].wins == 1);
-        assert(results["mod_c"].losses == 0);
-        assert(results["mod_b"].total_files == 2);
-        assert(results["mod_b"].wins == 0);
-        assert(results["mod_b"].losses == 1);
-        assert(results["mod_a"].total_files == 2);
-        assert(results["mod_a"].wins == 0);
-        assert(results["mod_a"].losses == 1);
+        check(results.size() == 3, "compute returns one entry per mod");
+        check(results["mod_c"].total_files == 2, "mod_c indexes its two files");
+        check(results["mod_c"].wins == 1, "mod_c (pri=3) wins the shared config.ini");
+        check(results["mod_c"].losses == 0, "mod_c has no losses");
+        check(results["mod_b"].total_files == 2, "mod_b indexes its two files");
+        check(results["mod_b"].wins == 0, "mod_b (pri=2) does not win config.ini");
+        check(results["mod_b"].losses == 1, "mod_b loses config.ini to mod_c");
+        check(results["mod_a"].total_files == 2, "mod_a indexes its two files");
+        check(results["mod_a"].wins == 0, "mod_a (pri=1) does not win config.ini");
+        check(results["mod_a"].losses == 1, "mod_a loses config.ini to mod_c");
 
         std::printf("  conflict_reversed=false: mod_c (pri=3) wins config.ini\n");
     }
@@ -88,10 +100,10 @@ int main() {
 
         const auto& reg = engine.last_registry();
         auto it = reg.find("data/config.ini");
-        assert(it != reg.end() && it->second.size() == 2 &&
-               "mod_c's hidden copy must not stay among config.ini's owners");
-        assert(reg.find("data/config.ini.gmmhidden") != reg.end() &&
-               "the renamed hidden file must appear as its own registry key");
+        check(it != reg.end() && it->second.size() == 2,
+              "mod_c's hidden copy must not stay among config.ini's owners");
+        check(reg.find("data/config.ini.gmmhidden") != reg.end(),
+              "the renamed hidden file must appear as its own registry key");
 
         // Restore for the directory cleanup below.
         fs::rename(base / "mod_c" / "data" / "config.ini.gmmhidden",
@@ -100,8 +112,9 @@ int main() {
     }
 
     // --- A permission-denied subdirectory inside a mod must not abort the
-    // scan. Before skip_permission_denied, the throwing operator++ terminated
-    // the whole process (SIGABRT) on the first unreadable subdir. This is the
+    // scan. Before the tree-based walker (DirectoryFileTree do_populate
+    // increments with ec), the throwing operator++ terminated the whole
+    // process (SIGABRT) on the first unreadable subdir. This is the
     // regression for the app crash "cannot increment recursive directory
     // iterator: Permission denied".
 #if defined(__unix__)
@@ -120,12 +133,14 @@ int main() {
 
         // The visible data/config.ini must still be indexed; the unreadable
         // secret/ subtree is skipped, not a crash.
-        assert(results["mod_locked"].total_files == 1);
+        check(results["mod_locked"].total_files == 1,
+              "visible file of the mod with an unreadable subdir is indexed");
         const auto& reg = engine.last_registry();
         auto it = reg.find("data/config.ini");
-        assert(it != reg.end() && it->second.size() == 4 &&
-               "all four mods still own config.ini, locked or not");
-        assert(reg.find("secret/hidden.bin") == reg.end());
+        check(it != reg.end() && it->second.size() == 4,
+              "all four mods still own config.ini, locked or not");
+        check(reg.find("secret/hidden.bin") == reg.end(),
+              "unreadable subdir contents are not indexed");
 
         // Restore permissions so cleanup can remove the tree.
         fs::permissions(locked_mod / "secret", fs::perms::owner_all);
@@ -134,10 +149,45 @@ int main() {
     } else {
         std::printf("  (skipped permission-denied check: running as root)\n");
     }
+
+    // --- A symlinked subdirectory is not descended into, matching the legacy
+    // recursive_directory_iterator (and MO2's QDir NoSymLinks filter). A
+    // symlink to a FILE still counts as a file, exactly like the legacy
+    // is_regular_file which follows the link.
+    {
+        fs::create_directories(base / "mod_link" / "data");
+        fs::create_directories(base / "outside");
+        touch(base / "mod_link" / "data" / "config.ini");
+        touch(base / "outside" / "hidden.bin");
+
+        std::error_code ec;
+        fs::create_directory_symlink(base / "outside", base / "mod_link" / "evil", ec);
+        fs::create_symlink(base / "outside" / "hidden.bin",
+                           base / "mod_link" / "data" / "jump.ini", ec);
+        if (ec) {
+            std::printf("  (skipped symlink checks: symlinks unsupported)\n");
+        } else {
+            std::vector<ConflictEngine::ModInfo> sym_mods = {{"mod_link", 1}};
+            auto results = engine.compute(base, sym_mods, "", "metadata.xml", false);
+
+            check(results["mod_link"].total_files == 2,
+                  "symlinked-dir contents not indexed, symlinked file is");
+            const auto& reg = engine.last_registry();
+            check(reg.find("data/config.ini") != reg.end(),
+                  "regular file of the mod is indexed");
+            check(reg.find("data/jump.ini") != reg.end(),
+                  "symlink to a file is indexed as a file");
+            check(reg.find("evil/hidden.bin") == reg.end(),
+                  "symlinked subdirectory is not descended into");
+            std::printf("  symlinked subdir is skipped, symlinked file kept\n");
+        }
+        fs::remove_all(base / "mod_link");
+        fs::remove_all(base / "outside");
+    }
 #endif
 
     fs::remove_all(base);
 
-    std::printf("PASS: conflict_test\n");
-    return 0;
+    std::printf("\n%d passed, %d failed\n", passes, failures);
+    return failures ? 1 : 0;
 }
