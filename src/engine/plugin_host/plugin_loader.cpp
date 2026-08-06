@@ -4,6 +4,7 @@
 #include "engine/events/event_bus.h"
 #include "engine/log/logger.h"
 #include "engine/model/mod.h"
+#include "engine/pipeline/fomod_stage.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/plugins/plugin_database.h"
 #include "engine/registry/game_features/game_feature_registry.h"
@@ -12,6 +13,8 @@
 
 #include "gmm_abi_v1.h"
 
+#include <cstdio>
+#include <cstring>
 #include <dlfcn.h>
 #include <filesystem>
 
@@ -22,6 +25,46 @@ struct RegistrationBridge {
     PluginLoader* loader = nullptr;
     PluginInfo* current_plugin = nullptr;
 };
+
+namespace {
+
+// PipelineContext of the stage claim currently executing on this thread. Set
+// around the plugin handler invocation so the host UI bridge callbacks
+// (GmmHostUi::fomod_wizard) can re-enter the engine on the same Mod + context
+// the plugin was handed. Only valid inside the handler; the host marshals any
+// UI onto the main thread itself, so the pointer stays valid for the whole
+// call, and the bridge refuses to run without it (e.g. called on a worker
+// thread spawned by the plugin).
+thread_local PipelineContext* g_active_stage_ctx = nullptr;
+
+// Minimal JSON string escaping for the host->plugin result payloads.
+std::string json_escape(const std::string& s) {
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (char c : s) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b";  break;
+            case '\f': out += "\\f";  break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            case '\t': out += "\\t";  break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof buf, "\\u%04x",
+                                  static_cast<unsigned int>(c));
+                    out += buf;
+                } else {
+                    out += c;
+                }
+        }
+    }
+    return out;
+}
+
+}  // namespace
 
 // ABI callback implementations
 static void cb_register_identity(GmmRegistrationCtx* ctx,
@@ -214,6 +257,60 @@ static void cb_subscribe_event(GmmRegistrationCtx* ctx,
         std::string(event_id) + " (plugin=" + bridge->current_plugin->game_id + ")");
 }
 
+// P1.4 — GmmHostUi::fomod_wizard: the plugin's Fomod stage handler asks the
+// host to run the FOMOD wizard + install for the mod it is processing. The
+// engine's Qt-free FomodStage does all the work (detect fomod/, parse
+// ModuleConfig.xml, apply the chosen options to the staging dir, flatten);
+// the wizard itself is the host's fomod_query_cb (wired by the UI to the
+// native dialog), invoked on the pipeline thread exactly as in the core
+// FomodStage path. The outcome goes back to the plugin as JSON.
+//
+// No ctx is passed: the pipeline context of the plugin's running stage comes
+// from the thread-local set around the handler invocation, so the plugin can
+// call this from a handler it cached the function pointer of — never from a
+// cached GmmRegistrationCtx (that is host storage, valid only for
+// gmm_register_v1).
+static int cb_fomod_wizard(GmmModHandle mod,
+                           char* out_json,
+                           size_t out_capacity) {
+    auto* m = reinterpret_cast<Mod*>(mod);
+    if (!m || !out_json || out_capacity == 0) return 0;
+    out_json[0] = '\0';
+
+    PipelineContext* pctx = g_active_stage_ctx;
+    if (!pctx) {
+        Logger::instance().warn("host_ui.fomod_wizard called outside a stage handler");
+        return 0;
+    }
+
+    FomodStage stage;
+    const bool ok = stage.execute(*m, *pctx);
+
+    // Serialize the outcome. fomod_detected separates "not a FOMOD"
+    // (pass-through) from a real FOMOD install; canceled vs failed via the
+    // stage's own context flag (FomodStage sets ctx.canceled on wizard
+    // cancel). choices carries the persisted fomod.json object verbatim.
+    std::string json;
+    if (!pctx->fomod_detected) {
+        json = "{\"outcome\":\"not_fomod\"}";
+    } else if (pctx->canceled) {
+        json = "{\"outcome\":\"canceled\"}";
+    } else if (!ok) {
+        json = "{\"outcome\":\"failed\"}";
+    } else {
+        json = "{\"outcome\":\"installed\",\"final_name\":\"" + json_escape(m->name) +
+               "\",\"choices\":" +
+               (pctx->fomod_choices_json.empty() ? "null" : pctx->fomod_choices_json) +
+               "}";
+    }
+    if (json.size() >= out_capacity) {
+        Logger::instance().warn("host_ui.fomod_wizard: result does not fit the plugin buffer");
+        return 0;
+    }
+    std::memcpy(out_json, json.c_str(), json.size() + 1);
+    return 1;
+}
+
 static void cb_register_stage_claim(GmmRegistrationCtx* ctx,
                                      const char* stage_name,
                                      GmmStageFn fn,
@@ -238,7 +335,13 @@ static void cb_register_stage_claim(GmmRegistrationCtx* ctx,
                 reinterpret_cast<GmmConflictIndexHandle>(ctx_.conflict_index);
             GmmProfileHandle prof_h =
                 reinterpret_cast<GmmProfileHandle>(ctx_.profile);
-            return fn(mod_h, inst_h, conf_h, prof_h, nullptr) != 0;
+            // The context is live only for the plugin handler's call: the
+            // host UI bridge (ctx.host_ui.*) re-enters engine stages on it,
+            // so the pointer can never outlive the invoke.
+            g_active_stage_ctx = &ctx_;
+            const int result = fn(mod_h, inst_h, conf_h, prof_h, nullptr);
+            g_active_stage_ctx = nullptr;
+            return result != 0;
         },
         priority, bridge->current_plugin->path);
 }
@@ -490,6 +593,7 @@ bool PluginLoader::load_plugin(const std::string& path) {
     ctx.register_game_feature = cb_register_game_feature;
     ctx.register_game_feature_data = cb_register_game_feature_data;
     ctx.subscribe_event = cb_subscribe_event;
+    ctx.host_ui.fomod_wizard = cb_fomod_wizard;
 
     RegistrationBridge bridge;
     bridge.loader = this;

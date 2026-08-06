@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # (package_installer target passes -DVERSION=${PROJECT_VERSION}), and the plugins
 # (GMM_VERSION, visible in the add_subdirectory'd external/plugins scope).
 project(GameModManager
-    VERSION 0.2.27
+    VERSION 0.2.28
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -367,6 +367,15 @@ if(GMM_WITH_LOOT)
 endif()
 
 add_executable(gamemodmanager ${ENGINE_SOURCES} ${RUNTIME_SOURCES} ${PLATFORM_SOURCES} ${UI_SOURCES} ${APP_SOURCES})
+
+# Plugins resolve the gmm_* opaque-handle accessors (abi_bridge.cpp) through
+# dlopen, so the executable must export them to its dynamic symbol table.
+# Without this a plugin calling gmm_mod_name()/gmm_instance_game_id() etc.
+# fails to load with "undefined symbol" (the P1.4 fixture was the first to
+# exercise them; every registration-only plugin loaded fine regardless).
+if(NOT WIN32 AND NOT APPLE)
+    target_link_options(gamemodmanager PRIVATE -rdynamic)
+endif()
 
 # OS keyring (QtKeychain) — compiled in wherever the library is available
 if(Qt6Keychain_FOUND)
@@ -804,9 +813,13 @@ add_executable(python_plugin_test tests/engine/python_plugin_test.cpp
     src/engine/plugins/plugin_database.cpp
     src/engine/instance/instance.cpp
     src/engine/meta/mod_meta.cpp
+    src/engine/fs_utils.cpp
+    src/engine/pipeline/fomod_stage.cpp
+    ${FOMOD_ENGINE_SOURCES}
 )
-target_include_directories(python_plugin_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
-target_link_libraries(python_plugin_test PRIVATE pybind11::embed Python3::Python PkgConfig::SQLITE3 PkgConfig::LIBARCHIVE)
+target_include_directories(python_plugin_test PRIVATE
+    src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pugixml)
+target_link_libraries(python_plugin_test PRIVATE pybind11::embed Python3::Python PkgConfig::SQLITE3 PkgConfig::LIBARCHIVE PkgConfig::NLOHMANN_JSON)
 if(NOT WIN32)
     target_link_libraries(python_plugin_test PRIVATE ${CMAKE_DL_LIBS})
 endif()
@@ -855,16 +868,91 @@ add_executable(game_feature_registry_test tests/engine/game_feature_registry_tes
     src/engine/plugins/esp_header.cpp
     src/engine/plugins/plugin_database.cpp
     src/engine/instance/instance.cpp
+    src/engine/fs_utils.cpp
+    src/engine/pipeline/fomod_stage.cpp
+    ${FOMOD_ENGINE_SOURCES}
 )
 target_include_directories(game_feature_registry_test PRIVATE
-    src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
-target_link_libraries(game_feature_registry_test PRIVATE pybind11::embed Python3::Python PkgConfig::SQLITE3 PkgConfig::LIBARCHIVE ${CMAKE_DL_LIBS})
+    src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pugixml)
+target_link_libraries(game_feature_registry_test PRIVATE pybind11::embed Python3::Python PkgConfig::SQLITE3 PkgConfig::LIBARCHIVE PkgConfig::NLOHMANN_JSON ${CMAKE_DL_LIBS})
 target_compile_definitions(game_feature_registry_test PRIVATE
     GMM_OVERRIDE_PLUGIN_PATH="${CMAKE_BINARY_DIR}/test_plugins/gmm_override_mod_data_checker${CMAKE_SHARED_LIBRARY_SUFFIX}"
     GMM_SKYRIM_PLUGIN_PATH="${CMAKE_BINARY_DIR}/plugins/SkyrimSpecialEdition${CMAKE_SHARED_LIBRARY_SUFFIX}"
 )
 add_test(NAME game_feature_registry_test COMMAND game_feature_registry_test)
 add_dependencies(game_feature_registry_test SkyrimSpecialEdition gmm_override_mod_data_checker)
+
+# P1.4 test fixture: a plugin that CLAIMS the "Fomod" install-template stage
+# via the register_stage_claim C ABI and runs the install through the host UI
+# bridge (GmmHostUi::fomod_wizard — the engine's Qt-free FomodStage + the
+# host's fomod_query_cb wizard). Built into test_plugins/ and loaded ONLY by
+# fomod_stage_plugin_test — never shipped to the app's plugins dir, never
+# loaded by the app.
+add_library(gmm_fomod_stage_plugin MODULE
+    tests/engine/plugins/fomod_stage_plugin.cpp
+)
+target_include_directories(gmm_fomod_stage_plugin PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+set_target_properties(gmm_fomod_stage_plugin PROPERTIES
+    PREFIX ""
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test_plugins"
+)
+
+# P1.4 host UI bridge test — a plugin claims the Fomod stage, main_window's
+# claim_for picks it over the core FomodStage, and its handler runs the install
+# through GmmHostUi::fomod_wizard. The outcome JSON proves the bridge ran
+# end-to-end (installed with the wizard-edited name + choices; wizard cancel
+# surfaces as Canceled), and the staging-dir assertions prove the engine's
+# FomodStage behaved exactly as in the core path — engine untouched.
+add_executable(fomod_stage_plugin_test tests/engine/fomod_stage_plugin_test.cpp
+    src/engine/instance/instance.cpp
+    src/engine/pipeline/pipeline.cpp
+    src/engine/pipeline/fomod_stage.cpp
+    src/engine/pipeline/plugin_claim_stage.cpp
+    src/engine/fs_utils.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/log/logger.cpp
+    src/engine/trace/trace_recorder.cpp
+    src/engine/plugin_host/plugin_loader.cpp
+    src/engine/plugin_host/python_loader.cpp
+    src/engine/plugin_host/diagnostics_registry.cpp
+    src/engine/plugin_host/abi_bridge.cpp
+    src/engine/index/conflict_index.cpp
+    src/engine/model/profile.cpp
+    src/engine/events/event_bus.cpp
+    src/engine/registry/stage_registry.cpp
+    src/engine/registry/hook_registry.cpp
+    src/engine/registry/game_capabilities.cpp
+    src/engine/registry/game_knowledge.cpp
+    src/engine/registry/game_features/game_feature.cpp
+    src/engine/registry/game_features/game_feature_registry.cpp
+    src/engine/registry/game_features/mod_data_checker.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
+    src/engine/tools/external_tool.cpp
+    src/engine/sort/sort_registry.cpp
+    src/engine/sort/abi_sort_provider.cpp
+    src/engine/plugins/esp_header.cpp
+    src/engine/plugins/plugin_database.cpp
+    ${FOMOD_ENGINE_SOURCES}
+)
+target_include_directories(fomod_stage_plugin_test PRIVATE
+    src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pugixml)
+target_link_libraries(fomod_stage_plugin_test PRIVATE
+    pybind11::embed Python3::Python PkgConfig::SQLITE3 PkgConfig::LIBARCHIVE
+    PkgConfig::NLOHMANN_JSON ${CMAKE_DL_LIBS})
+target_compile_definitions(fomod_stage_plugin_test PRIVATE
+    GMM_FOMOD_PLUGIN_PATH="${CMAKE_BINARY_DIR}/test_plugins/gmm_fomod_stage_plugin${CMAKE_SHARED_LIBRARY_SUFFIX}"
+)
+# The fixture plugin resolves the gmm_* accessors (abi_bridge.cpp) through
+# dlopen — same export requirement as the app itself.
+if(NOT WIN32 AND NOT APPLE)
+    target_link_options(fomod_stage_plugin_test PRIVATE -rdynamic)
+endif()
+add_test(NAME fomod_stage_plugin_test COMMAND fomod_stage_plugin_test)
+add_dependencies(fomod_stage_plugin_test gmm_fomod_stage_plugin)
 
 add_executable(conflict_test tests/engine/conflict_test.cpp
     src/engine/index/conflict_engine.cpp
@@ -1111,8 +1199,11 @@ add_executable(settings_plugins_tab_test tests/ui/settings_plugins_tab_test.cpp
     src/runtime/runtime.cpp
     src/runtime/wine_runtime.cpp
     src/platform/${GMM_PLATFORM}/${GMM_PLATFORM}_platform.cpp
+    src/engine/pipeline/fomod_stage.cpp
+    ${FOMOD_ENGINE_SOURCES}
 )
-target_include_directories(settings_plugins_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_include_directories(settings_plugins_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pugixml)
 target_compile_definitions(settings_plugins_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
 target_link_libraries(settings_plugins_tab_test PRIVATE Qt6::Widgets Qt6::Network
     PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::YAMLCPP PkgConfig::CURL PkgConfig::NLOHMANN_JSON
@@ -1208,8 +1299,11 @@ add_executable(settings_sources_tab_test tests/ui/settings_sources_tab_test.cpp
     src/runtime/runtime.cpp
     src/runtime/wine_runtime.cpp
     src/platform/${GMM_PLATFORM}/${GMM_PLATFORM}_platform.cpp
+    src/engine/pipeline/fomod_stage.cpp
+    ${FOMOD_ENGINE_SOURCES}
 )
-target_include_directories(settings_sources_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_include_directories(settings_sources_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pugixml)
 target_compile_definitions(settings_sources_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
 target_link_libraries(settings_sources_tab_test PRIVATE Qt6::Widgets Qt6::Network
     PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::YAMLCPP PkgConfig::CURL PkgConfig::NLOHMANN_JSON
@@ -1478,11 +1572,16 @@ add_executable(proton_panel_test tests/ui/proton_panel_test.cpp
     src/engine/sort/sort_registry.cpp
     src/engine/sort/abi_sort_provider.cpp
     src/engine/log/logger.cpp
+    src/engine/meta/mod_meta.cpp
+    src/engine/fs_utils.cpp
+    src/engine/pipeline/fomod_stage.cpp
+    ${FOMOD_ENGINE_SOURCES}
 )
-target_include_directories(proton_panel_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_include_directories(proton_panel_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pugixml)
 target_compile_definitions(proton_panel_test PRIVATE VERSION="${PROJECT_VERSION}")
 target_link_libraries(proton_panel_test PRIVATE Qt6::Widgets
-    pybind11::embed Python3::Python PkgConfig::LIBARCHIVE)
+    pybind11::embed Python3::Python PkgConfig::LIBARCHIVE PkgConfig::NLOHMANN_JSON)
 if(NOT WIN32)
     target_link_libraries(proton_panel_test PRIVATE ${CMAKE_DL_LIBS})
 endif()
