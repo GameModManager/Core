@@ -128,6 +128,38 @@ public:
         plugin_->settings = settings;
     }
 
+    // P1.5 typed settings tab — the pybind mirror of the ABI
+    // register_settings_tab entry. Each entry is a (key, type, default,
+    // options) tuple; options is None except for type "choice" (a list of
+    // candidate choices) or "int" (the "min:max" range string).
+    void register_settings_tab(const std::string& title,
+                               const std::vector<py::tuple>& settings) {
+        if (title.empty()) {
+            engine::Logger::instance().warn(
+                "register_settings_tab: empty title - ignored");
+            return;
+        }
+        engine::PluginInfo::SettingTab tab;
+        tab.title = title;
+        for (const auto& t : settings) {
+            if (t.size() < 3) continue;
+            engine::PluginInfo::SettingTabEntry entry;
+            entry.key = py::cast<std::string>(t[0]);
+            entry.type = py::cast<std::string>(t[1]);
+            entry.default_value = py::cast<std::string>(t[2]);
+            if (t.size() >= 4 && !t[3].is_none()) {
+                if (entry.type == "choice") {
+                    for (const auto& o : py::cast<std::vector<std::string>>(t[3]))
+                        entry.choices.push_back(o);
+                } else if (entry.type == "int") {
+                    entry.int_range = py::cast<std::string>(t[3]);
+                }
+            }
+            tab.settings.push_back(std::move(entry));
+        }
+        plugin_->settings_tab = std::move(tab);
+    }
+
     void register_diagnostics(py::object fn) {
         if (!py::isinstance<py::function>(fn)) {
             engine::Logger::instance().warn(
@@ -355,6 +387,8 @@ PYBIND11_EMBEDDED_MODULE(gmm, m) {
              py::arg("category") = "")
         .def("register_settings", &PyRegistrationContext::register_settings,
              py::arg("settings"))
+        .def("register_settings_tab", &PyRegistrationContext::register_settings_tab,
+             py::arg("title"), py::arg("settings"))
         .def("register_diagnostics", &PyRegistrationContext::register_diagnostics,
              py::arg("fn"))
         .def("subscribe_event", &PyRegistrationContext::subscribe_event,
