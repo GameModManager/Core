@@ -98,6 +98,11 @@ public:
     // (and the tab can guard rescanning) while a fetch is in flight.
     bool has_active_download() const;
 
+    // Remember the shared filter bar's current text so "hide installed"
+    // re-applications never unhide rows the text filter hid. Called by
+    // RightPanel::apply_filter on every filter change/tab switch.
+    void set_filter_text(const QString& text);
+
     // Re-apply the "hide installed" filter on top of any other row filter.
     void reapply_installed_filter();
 
@@ -224,6 +229,10 @@ protected:
     QTableWidget* table_ = nullptr;
     QCheckBox* hide_installed_ = nullptr;
     std::unordered_map<std::string, DownloadEntry> downloads_;
+    // Last filter text passed by RightPanel::apply_filter (trimmed, lowered),
+    // re-applied by apply_installed_filter so it never unhides rows the text
+    // filter hid. Empty when no text filter is active.
+    QString current_filter_text_;
     std::filesystem::path downloads_dir_;
     ConflictResolver conflict_resolver_;
     QFileSystemWatcher* dir_watcher_ = nullptr;

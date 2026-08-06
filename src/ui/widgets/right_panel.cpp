@@ -120,9 +120,13 @@ void RightPanel::apply_filter() {
         if (auto* pt = plugins_tab())
             pt->refresh_counters();
         // DownloadsTab: re-apply the "hide installed" filter on top of the
-        // text filter (the text filter un-hides rows when its text is empty).
-        if (auto* dt = qobject_cast<DownloadsTab*>(tab_widget_->currentWidget()))
+        // text filter. set_filter_text feeds it the current text so the
+        // re-apply hides rows that fail either filter instead of unhiding the
+        // text-filtered ones.
+        if (auto* dt = qobject_cast<DownloadsTab*>(tab_widget_->currentWidget())) {
+            dt->set_filter_text(text);
             dt->reapply_installed_filter();
+        }
         return;
     }
 

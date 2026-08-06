@@ -44,6 +44,7 @@
 #include "ui/panels/tab_panels.h"
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QHeaderView>
@@ -769,6 +770,67 @@ int main(int argc, char** argv) {
         check(!find_action(menu, "Open on Nexus") &&
                   !find_action(menu, "Open on LoversLab"),
               "context menu: Manual row gets no page action");
+    }
+
+    // --- Filter regression: text filter + "hide installed" must compose ---
+    // RightPanel::apply_filter applies the bar text via apply_to(table) and
+    // then re-applies the hide-installed checkbox via
+    // set_filter_text + reapply_installed_filter. Before the fix,
+    // apply_installed_filter unhid every row the text filter had hidden, so
+    // the Downloads "Filter..." bar did nothing (user report).
+    {
+        TestDownloadsTab f_tab;
+        f_tab.add_download("t1", "Tracked File", "Nexus Mods", tracked_zip,
+                           "skyrimspecialedition", 1234, "32444");
+        f_tab.mark_complete("t1", true);
+        f_tab.add_download("t2", "Skooma Whore SE", "LoversLab", ll_zip, {}, 0,
+                           {}, ll_page);
+        f_tab.mark_complete("t2", true);
+        auto* f_tab_tbl = f_tab.table();
+        auto row_of = [&](const char* name) {
+            for (int r = 0; r < f_tab_tbl->rowCount(); ++r) {
+                auto* item = f_tab_tbl->item(r, 0);
+                if (item && item->text() == QLatin1String(name)) return r;
+            }
+            return -1;
+        };
+        // The tab's only QCheckBox is the "Hide installed" toggle; checking it
+        // fires the same toggled handler the UI uses.
+        auto* hide_cb = f_tab.findChild<QCheckBox*>();
+        check(hide_cb, "DownloadsTab exposes the hide-installed checkbox");
+
+        // Text filter alone hides non-matching rows.
+        f_tab.set_filter_text(QStringLiteral("Skooma"));
+        f_tab.reapply_installed_filter();
+        check(f_tab_tbl->isRowHidden(row_of("Tracked File")),
+              "text filter hides non-matching row");
+        check(!f_tab_tbl->isRowHidden(row_of("Skooma Whore SE")),
+              "text filter keeps matching row");
+
+        // Empty text restores all rows.
+        f_tab.set_filter_text(QStringLiteral(""));
+        f_tab.reapply_installed_filter();
+        check(!f_tab_tbl->isRowHidden(row_of("Tracked File")) &&
+                  !f_tab_tbl->isRowHidden(row_of("Skooma Whore SE")),
+              "clearing the text filter restores every row");
+
+        // "Hide installed" + text: rows hidden by EITHER filter stay hidden,
+        // matching what RightPanel::apply_filter composes.
+        if (hide_cb) hide_cb->setChecked(true);
+        f_tab.mark_installed("t1");
+        f_tab.set_filter_text(QStringLiteral("Skooma"));
+        f_tab.reapply_installed_filter();
+        check(f_tab_tbl->isRowHidden(row_of("Tracked File")),
+              "installed row stays hidden under text+hide-installed");
+        check(!f_tab_tbl->isRowHidden(row_of("Skooma Whore SE")),
+              "non-installed matching row visible under text+hide-installed");
+
+        f_tab.set_filter_text(QStringLiteral(""));
+        f_tab.reapply_installed_filter();
+        check(f_tab_tbl->isRowHidden(row_of("Tracked File")),
+              "hide-installed alone hides installed row");
+        check(!f_tab_tbl->isRowHidden(row_of("Skooma Whore SE")),
+              "hide-installed alone keeps uninstalled row");
     }
 
     std::printf("\n%d passed, %d failed\n", passes, failures);

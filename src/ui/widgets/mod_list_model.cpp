@@ -807,6 +807,10 @@ void ModListModel::set_folded(int row, bool folded) {
     mods_[row].folded = folded;
     emit dataChanged(index(row, Name), index(row, Name));
     apply_fold_state();
+    // Persist the fold: the MainWindow mod_list_changed handler saves
+    // instance.toml's folded_separators. Without this a fold/unfold never
+    // reached the disk and the state reset on every reopen/relaunch.
+    emit mod_list_changed();
 }
 
 void ModListModel::apply_fold_state() {
