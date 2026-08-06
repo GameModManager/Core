@@ -2523,9 +2523,34 @@ void DownloadsTab::dropEvent(QDropEvent* event) {
 void DownloadsTab::apply_installed_filter() {
     if (!hide_installed_ || !table_) return;
     const bool hide = hide_installed_->isChecked();
+    const QString text = current_filter_text_;
     for (const auto& [id, entry] : downloads_) {
-        table_->setRowHidden(entry.row, hide && entry.state == DownloadState::Installed);
+        // "Hide installed" always wins over the text filter.
+        if (hide && entry.state == DownloadState::Installed) {
+            table_->setRowHidden(entry.row, true);
+            continue;
+        }
+        // A row hidden by the shared text filter (RightFilterBar::apply_to) is
+        // never unhidden here - without this the re-apply clobbered the text
+        // filter and "Filter..." did nothing on the Downloads tab.
+        if (!text.isEmpty()) {
+            bool match = false;
+            for (int col = 0; col < table_->columnCount(); ++col) {
+                auto* item = table_->item(entry.row, col);
+                if (item && item->text().toLower().contains(text)) {
+                    match = true;
+                    break;
+                }
+            }
+            table_->setRowHidden(entry.row, !match);
+        } else {
+            table_->setRowHidden(entry.row, false);
+        }
     }
+}
+
+void DownloadsTab::set_filter_text(const QString& text) {
+    current_filter_text_ = text.trimmed().toLower();
 }
 
 void DownloadsTab::reapply_installed_filter() {

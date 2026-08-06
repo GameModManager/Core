@@ -107,10 +107,39 @@ int main(int argc, char** argv) {
             QVariant disp = model.data(model.index(r, ui::ModListModel::Name), Qt::DisplayRole);
             check(disp.isValid() && disp.toString() == QStringLiteral("\u25BC Testing"),
                   "separator DisplayRole shows arrow + name");
-            QVariant edit = model.data(model.index(r, ui::ModListModel::Name), Qt::EditRole);
-            check(edit.isValid() && edit.toString() == QStringLiteral("Testing"),
-                  "separator EditRole carries raw name");
-        }
+        QVariant edit = model.data(model.index(r, ui::ModListModel::Name), Qt::EditRole);
+        check(edit.isValid() && edit.toString() == QStringLiteral("Testing"),
+              "separator EditRole carries raw name");
+    }
+
+    // Fold-persistence regression: toggling a separator must announce
+    // mod_list_changed so MainWindow persists instance.toml's
+    // folded_separators. Without the emit, a fold/unfold never reached the
+    // disk and every reopen/relaunch reset the separator states (user report).
+    {
+        const int sep_row = row_with_id(model, "Testing_separator");
+        check(sep_row >= 0, "separator row present for fold test");
+        int change_count = 0;
+        QObject::connect(&model, &ui::ModListModel::mod_list_changed,
+                         [&]() { ++change_count; });
+        check(!model.mods()[sep_row].folded, "separator starts unfolded");
+        model.set_folded(sep_row, true);
+        check(model.mods()[sep_row].folded, "set_folded(true) folds the separator");
+        check(change_count == 1, "fold emits mod_list_changed (persist trigger)");
+        model.set_folded(sep_row, true);
+        check(change_count == 1, "no-op fold does not re-emit");
+        model.set_folded(sep_row, false);
+        check(!model.mods()[sep_row].folded, "set_folded(false) unfolds");
+        check(change_count == 2, "unfold emits mod_list_changed");
+        model.set_folded(0, true);
+        check(!model.mods()[0].folded && change_count == 2,
+              "set_folded on a non-separator row is a no-op");
+        // The lambda captures change_count by reference; tear the connection
+        // down before this block ends, or a later mod_list_changed emission
+        // (rename_mod_in_place, moves, ...) writes through the dangling ref.
+        QObject::disconnect(&model, &ui::ModListModel::mod_list_changed,
+                            nullptr, nullptr);
+    }
     }
 
     // move_mod(): a game-native source never moves.
