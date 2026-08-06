@@ -36,4 +36,9 @@ public:
                         const ExtractProgressFn& on_progress = {});
 };
 
+// True when `archive` carries a RAR signature (RAR4 "Rar!\x1a\x07\x00" or
+// RAR5 "Rar!\x1a\x07\x01\x00"). Used by extract() to decide whether the unrar
+// CLI fallback may help when libarchive's RAR reader rejects the archive.
+[[nodiscard]] bool is_rar_archive(const std::filesystem::path& archive);
+
 }  // namespace engine

@@ -7,12 +7,14 @@
 #include "engine/pipeline/install_stage.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/model/mod.h"
+#include "engine/process_utils.h"
 
 #include <cassert>
 #include <cstdio>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <unistd.h>
 #include <utility>
@@ -139,17 +141,19 @@ int main() {
             {"meshes/b.nif", std::string(131072, 'b')},
             {"readme.txt", "hello"},
         };
-        assert(write_store_zip(archive, entries));
+        const bool zipped = write_store_zip(archive, entries);
+        assert(zipped);
 
         std::vector<engine::ExtractedFile> files;
         std::string error;
         std::vector<std::pair<std::int64_t, std::int64_t>> progress;
         const std::int64_t expected_total = 65536 + 131072 + 5;
-        assert(engine::ArchiveExtractor::extract(
+        const bool extracted = engine::ArchiveExtractor::extract(
             archive, tmp.root / "out", files, error,
             [&](std::int64_t done, std::int64_t total) {
                 progress.emplace_back(done, total);
-            }));
+            });
+        assert(extracted);
         assert(error.empty());
         assert(files.size() == 3);  // directory entries are not extracted files
         assert(std::filesystem::exists(tmp.root / "out" / "textures" / "a.dds"));
@@ -202,7 +206,8 @@ int main() {
         };
 
         engine::InstallStage stage;
-        assert(stage.execute(mod, ctx));
+        const bool executed = stage.execute(mod, ctx);
+        assert(executed);
         assert(mod.state == engine::ModState::Installed);
         assert(std::filesystem::exists(mods / "Progress Mod" / "file0.txt"));
         assert(std::filesystem::exists(mods / "Progress Mod" / "sub" / "nested.bin"));
@@ -218,6 +223,65 @@ int main() {
         assert(statuses.front().find("Installing to Progress Mod") != std::string::npos);
         std::printf("PASS: install_progress — InstallStage copy reported %d%%\n",
                     percents.back());
+    }
+
+    // (c) RAR fallback regression: libarchive 3.8.x rejects RAR5 archives whose
+    // declared dictionary exceeds 64 MiB ("Declared dictionary size is not
+    // supported") - a routine reality for WinRAR-made mod archives - so
+    // extract() must fall back to the unrar CLI. The fixture bytes below were
+    // validated against bsdtar (rejects with exactly that error) and unrar 7.x
+    // (extracts cleanly), so succeeding here proves the fallback was taken,
+    // not that libarchive happened to read the archive.
+    {
+        TempDir tmp;
+        auto archive = tmp.root / "dict128mib.rar";
+        {
+            std::ofstream f(archive, std::ios::binary);
+            // RAR5 signature + MAIN block + FILE "hello.txt" (stored, declared
+            // 128 MiB dictionary) + ENDARC block.
+            static const unsigned char kFixture[] = {
+                0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x01, 0x00,
+                0xc5, 0x1a, 0x33, 0x32, 0x03, 0x01, 0x00, 0x00,
+                0xd0, 0xee, 0xc8, 0x89, 0x17, 0x02, 0x02, 0x13,
+                0x04, 0x13, 0x00, 0xb9, 0x14, 0x59, 0x8f, 0x80,
+                0x50, 0x00, 0x09, 0x68, 0x65, 0x6c, 0x6c, 0x6f,
+                0x2e, 0x74, 0x78, 0x74, 0x68, 0x65, 0x6c, 0x6c,
+                0x6f, 0x20, 0x72, 0x61, 0x72, 0x35, 0x20, 0x66,
+                0x61, 0x6c, 0x6c, 0x62, 0x61, 0x63, 0x6b, 0x39,
+                0xf9, 0xb2, 0x81, 0x02, 0x05, 0x00,
+            };
+            f.write(reinterpret_cast<const char*>(kFixture), sizeof(kFixture));
+        }
+        assert(engine::is_rar_archive(archive));
+
+        // The real install path needs `unrar` on PATH too; skip gracefully when
+        // it is absent so the rest of the suite still runs elsewhere.
+        const bool unrar_present = [] {
+            const engine::CapturedProcess p = engine::run_captured({"unrar", "--version"});
+            return p.ok;
+        }();
+        if (!unrar_present) {
+            std::printf("SKIP: install_progress — unrar fallback (unrar not on PATH)\n");
+            return 0;
+        }
+
+        std::vector<engine::ExtractedFile> files;
+        std::string error;
+        const bool extracted =
+            engine::ArchiveExtractor::extract(archive, tmp.root / "out", files, error);
+        if (!extracted) {
+            std::printf("FAIL: install_progress — unrar fallback failed: %s\n", error.c_str());
+            return 1;
+        }
+        assert(files.size() == 1);
+        assert(files[0].archive_path == "hello.txt");
+        assert(std::filesystem::exists(tmp.root / "out" / "hello.txt"));
+        std::ifstream in(tmp.root / "out" / "hello.txt", std::ios::binary);
+        const std::string content((std::istreambuf_iterator<char>(in)),
+                                  std::istreambuf_iterator<char>());
+        assert(content == "hello rar5 fallback");
+        std::printf("PASS: install_progress — unrar fallback extracted '%s' (%zu bytes)\n",
+                    files[0].archive_path.c_str(), content.size());
     }
 
     return 0;

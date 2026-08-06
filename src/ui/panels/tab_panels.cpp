@@ -26,6 +26,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLCDNumber>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
@@ -198,7 +199,8 @@ QTreeWidgetItem* ensure_child(QTreeWidgetItem* parent, const QString& name, bool
 // context menu. Local to this TU; the signals carry the resolved values out.
 enum DataTabItemRole {
     DataRealPathRole = Qt::UserRole,   // QString - on-disk path of the winner
-    DataVfsPathRole,                   // QString - merged-view path (deploy-relative)
+    DataVfsPathRole,                   // QString - merged-view path, game-dir
+                                       //           relative (deploy-relative)
     DataOriginModRole,                 // QString - winner mod id
     DataHiddenRole,                    // bool - file carries a hidden suffix
     DataProviderPathsRole,             // QStringList - on-disk copy per provider
@@ -256,6 +258,7 @@ static bool can_preview(const QString& path) {
 
 struct DataTabRow {
     QString path;          // display path (hidden suffix stripped)
+    QString vfs_path;      // game-dir-relative merged path (Add as Executable)
     QString real_path;     // on-disk path of the winning copy
     QString origin_id;     // winner mod id
     QString source;
@@ -292,15 +295,27 @@ std::filesystem::path resolve_mod_file(const std::string& mod_id,
     return {};
 }
 
-// Build one row from a registry entry (path -> (mod_id, priority) providers).
-DataTabRow build_data_row(const std::string& path,
+// Build one row from a registry entry (key_path -> (mod_id, priority)
+// providers). key_path is the mod-folder-relative path the on-disk files live
+// at; display_path is the data-view-relative path the row is shown under
+// (classify_registry_path strips a leading deploy-prefix segment for
+// root-override mods' data content). space / deploy_prefix /
+// deploy_include_mod_id / root_override_mods classify the row's deploy layout
+// so vfs_path (the Add-as-Executable path) matches the real staging target
+// exactly, never the data-view-relative display path.
+DataTabRow build_data_row(const std::string& key_path,
+                          const std::string& display_path,
                           const std::vector<std::pair<std::string, int>>& owners,
                           const std::unordered_map<std::string, QString>& display_names,
                           bool conflict_reversed,
                           const std::filesystem::path& mods_dir,
-                          const std::filesystem::path& game_mods_dir) {
+                          const std::filesystem::path& game_mods_dir,
+                          engine::DeploySpace space,
+                          const std::string& deploy_prefix,
+                          bool deploy_include_mod_id,
+                          const std::unordered_set<std::string>& root_override_mods) {
     DataTabRow row;
-    row.path = QString::fromStdString(path).replace('\\', '/');
+    row.path = QString::fromStdString(display_path).replace('\\', '/');
 
     // Winner = the provider that actually takes effect
     auto winner = conflict_reversed
@@ -324,7 +339,7 @@ DataTabRow build_data_row(const std::string& path,
     // display under their base name. A visible file with the same base
     // name wins the display slot; otherwise the hidden copy is shown
     // dimmed (the name survives so it can be un-hidden from the tab).
-    if (engine::is_hidden_file(std::filesystem::path(path))) {
+    if (engine::is_hidden_file(std::filesystem::path(display_path))) {
         row.hidden = true;
         const auto gmm = std::string(engine::kGmmHiddenSuffix);
         const auto mo2 = std::string(engine::kMo2HiddenSuffix);
@@ -341,17 +356,34 @@ DataTabRow build_data_row(const std::string& path,
                                                       : QString::fromStdString(owner));
         row.provider_ids << QString::fromStdString(owner);
         row.provider_paths << QString::fromStdString(
-            resolve_mod_file(owner, path, mods_dir, game_mods_dir).string());
+            resolve_mod_file(owner, key_path, mods_dir, game_mods_dir).string());
     }
 
     // Size and real path of the winning copy (hidden suffix intact)
     std::error_code ec;
-    const auto winner_real = resolve_mod_file(winner->first, path, mods_dir, game_mods_dir);
+    const auto winner_real = resolve_mod_file(winner->first, key_path, mods_dir, game_mods_dir);
     if (!winner_real.empty()) {
         row.real_path = QString::fromStdString(winner_real.string());
         auto sz = std::filesystem::file_size(winner_real, ec);
         if (!ec) row.size = static_cast<qint64>(sz);
     }
+
+    // Merged (game-dir-relative) path the launch overlay resolves: for Data
+    // rows the deploy prefix, then the mod-folder segment for
+    // include-mod-id games (skipped for root-override mods, whose Data content
+    // deploys straight under the prefix), then the display path. Root rows
+    // deploy at the game root, so their display path already is the merged one.
+    QString merged;
+    if (space == engine::DeploySpace::Data) {
+        if (!deploy_prefix.empty())
+            merged = QString::fromStdString(deploy_prefix);
+        if (deploy_include_mod_id &&
+            !root_override_mods.count(row.origin_id.toStdString())) {
+            if (!merged.isEmpty()) merged += '/';
+            merged += row.origin_id;
+        }
+    }
+    row.vfs_path = merged.isEmpty() ? row.path : merged + "/" + row.path;
     return row;
 }
 
@@ -387,7 +419,7 @@ void upsert_data_row(QTreeWidget* tree, const DataTabRow& row) {
     // Per-file metadata for the context menu (real path, merged-view path,
     // origin mod, hidden state, provider copies for preview navigation).
     file_item->setData(0, DataRealPathRole, row.real_path);
-    file_item->setData(0, DataVfsPathRole, row.path);
+    file_item->setData(0, DataVfsPathRole, row.vfs_path);
     file_item->setData(0, DataOriginModRole, row.origin_id);
     file_item->setData(0, DataHiddenRole, row.hidden);
     file_item->setData(0, DataProviderPathsRole, row.provider_paths);
@@ -424,6 +456,7 @@ DataTabRow native_root_row(const std::filesystem::path& root,
     DataTabRow row;
     row.path = QString::fromStdString(
         std::filesystem::relative(file, root, ec).generic_string());
+    row.vfs_path = row.path;  // game-native files live at the game root already
     row.origin_id = QString::fromStdString(kGameRootNativeId);
     row.source = DataTab::tr("Base Game");
     row.providers = 1;
@@ -862,7 +895,29 @@ PluginsTab::PluginsTab(QWidget* parent) : QWidget(parent) {
     table_->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(table_, &QTableWidget::customContextMenuRequested,
             this, &PluginsTab::on_custom_context_menu);
+
+    // Header row: MO2-style refresh button (left) + active-plugin counter
+    // (right, PluginListView::updatePluginCount parity).
+    auto* header = new QHBoxLayout;
+    header->setContentsMargins(4, 2, 4, 2);
+    refresh_button_ = new QPushButton(tr("Refresh"), this);
+    refresh_button_->setObjectName("pluginRefreshBtn");
+    refresh_button_->setToolTip(
+        tr("Re-scan plugins on disk and reload the list."));
+    connect(refresh_button_, &QPushButton::clicked, this,
+            [this]() { emit refresh_requested(); });
+    header->addWidget(refresh_button_);
+    header->addStretch(1);
+    // MO2 renders this counter as a QLCDNumber (Qt's bundled seven-segment
+    // "lcd" font inside a sunken box) — the [ 0000 ] look the user wanted.
+    counter_display_ = new QLCDNumber(this);
+    counter_display_->setObjectName("mo2CounterLabel");
+    counter_display_->setDigitCount(4);
+    header->addWidget(counter_display_);
+    layout->addLayout(header);
     layout->addWidget(table_);
+
+    refresh_counters();  // empty table -> 0 plus the breakdown tooltip
 }
 
 void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
@@ -871,9 +926,11 @@ void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
     names_.clear();
     rows_locked_.clear();
     rows_force_loaded_.clear();
+    rows_type_.clear();
     names_.reserve(plugins.size());
     rows_locked_.reserve(plugins.size());
     rows_force_loaded_.reserve(plugins.size());
+    rows_type_.reserve(plugins.size());
     table_->setRowCount(static_cast<int>(plugins.size()));
 
     const QColor missing_color(0xB0, 0x30, 0x30);
@@ -884,6 +941,18 @@ void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
         names_.push_back(p.name);
         rows_locked_.push_back(p.locked);
         rows_force_loaded_.push_back(p.force_loaded);
+        // MO2 counter classification order (updatePluginCount): medium wins,
+        // then light (extension or flag), then master (extension or flag),
+        // everything else is a regular plugin.
+        if (p.is_medium_flagged) {
+            rows_type_.push_back(PluginType::Medium);
+        } else if (p.has_light_ext || p.is_light_flagged) {
+            rows_type_.push_back(PluginType::Light);
+        } else if (p.has_master_ext || p.is_master_flagged) {
+            rows_type_.push_back(PluginType::Master);
+        } else {
+            rows_type_.push_back(PluginType::Regular);
+        }
 
         // Column 0: name with the enable checkbox folded into the cell
         // (MO2-style). Fixed rows show a checked box that cannot be toggled;
@@ -989,6 +1058,7 @@ void PluginsTab::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
     syncing_ = false;
     apply_highlights();  // rows were rebuilt; re-tint selected-mod/master rows
     relayout_flag_rows();  // row heights follow the emblem wrap math
+    refresh_counters();
 }
 
 void PluginsTab::relayout_flag_rows() {
@@ -1016,6 +1086,88 @@ void PluginsTab::sync_enabled(const std::vector<engine::GamePlugin>& plugins) {
         item->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
     }
     syncing_ = false;
+    refresh_counters();  // enable toggles change the counter in MO2 mode
+}
+
+void PluginsTab::showEvent(QShowEvent* event) {
+    QWidget::showEvent(event);
+    refresh_counters();  // filter may have changed while another tab was current
+}
+
+void PluginsTab::refresh_counters() {
+    int activeMasterCount = 0, activeLightCount = 0;
+    int activeMediumCount = 0, activeRegularCount = 0;
+    int masterCount = 0, lightCount = 0;
+    int mediumCount = 0, regularCount = 0;
+    int activeVisibleCount = 0;
+
+    for (int i = 0; i < table_->rowCount(); ++i) {
+        if (static_cast<size_t>(i) >= rows_type_.size()) break;
+        QTableWidgetItem* item = table_->item(i, 0);
+        const bool active = item && item->checkState() == Qt::Checked;
+        const bool visible = !table_->isRowHidden(i);
+        switch (rows_type_[static_cast<size_t>(i)]) {
+            case PluginType::Medium:
+                ++mediumCount;
+                activeMediumCount += active;
+                activeVisibleCount += visible && active;
+                break;
+            case PluginType::Light:
+                ++lightCount;
+                activeLightCount += active;
+                activeVisibleCount += visible && active;
+                break;
+            case PluginType::Master:
+                ++masterCount;
+                activeMasterCount += active;
+                activeVisibleCount += visible && active;
+                break;
+            case PluginType::Regular:
+                ++regularCount;
+                activeRegularCount += active;
+                activeVisibleCount += visible && active;
+                break;
+        }
+    }
+
+    const int activeCount = activeMasterCount + activeMediumCount +
+                            activeLightCount + activeRegularCount;
+    const int totalCount = masterCount + mediumCount + lightCount + regularCount;
+
+    // MO2's breakdown tooltip (updatePluginCount): active/total per type.
+    QString tip =
+        QStringLiteral("<table cellspacing=\"6\">"
+                       "<tr><th>%1</th><th>%2</th><th>%3</th></tr>"
+                       "<tr><td>All plugins:</td><td align=\"right\">%4</td>"
+                       "<td align=\"right\">%5</td></tr>"
+                       "<tr><td>ESMs:</td><td align=\"right\">%6</td>"
+                       "<td align=\"right\">%7</td></tr>"
+                       "<tr><td>ESPs:</td><td align=\"right\">%8</td>"
+                       "<td align=\"right\">%9</td></tr>"
+                       "<tr><td>ESMs+ESPs:</td><td align=\"right\">%10</td>"
+                       "<td align=\"right\">%11</td></tr>")
+            .arg(tr("Type"), tr("Active"), tr("Total"))
+            .arg(activeCount)
+            .arg(totalCount)
+            .arg(activeMasterCount)
+            .arg(masterCount)
+            .arg(activeRegularCount)
+            .arg(regularCount)
+            .arg(activeMasterCount + activeRegularCount)
+            .arg(masterCount + regularCount);
+    if (mediumCount > 0)
+        tip += tr("<tr><td>ESHs:</td><td align=\"right\">%1</td>"
+                  "<td align=\"right\">%2</td></tr>")
+                   .arg(activeMediumCount)
+                   .arg(mediumCount);
+    tip += tr("<tr><td>ESLs:</td><td align=\"right\">%1</td>"
+              "<td align=\"right\">%2</td></tr>")
+               .arg(activeLightCount)
+               .arg(lightCount);
+    tip += QStringLiteral("</table>");
+
+    counter_display_->display(activeVisibleCount);
+    counter_display_->setToolTip(tip);
 }
 
 void PluginsTab::add_context_menu_actions(QMenu& menu, int row) {
@@ -1146,7 +1298,8 @@ void DataTab::show_data(
     const std::filesystem::path& game_mods_dir,
     const std::filesystem::path& game_root_dir,
     const std::string& mods_subpath,
-    const std::string& deploy_prefix)
+    const std::string& deploy_prefix,
+    bool deploy_include_mod_id)
 {
     stored_registry_ = registry;
     stored_mods_ = all_mods;
@@ -1156,6 +1309,7 @@ void DataTab::show_data(
     stored_game_root_dir_ = game_root_dir;
     stored_mods_subpath_ = mods_subpath;
     stored_deploy_prefix_ = deploy_prefix;
+    stored_deploy_include_mod_id_ = deploy_include_mod_id;
     rebuild_from_stored();
 }
 
@@ -1181,9 +1335,11 @@ void DataTab::rebuild_from_stored() {
             path, owners, root_mods, stored_deploy_prefix_);
         if (root_view && cls.space != engine::DeploySpace::Root) continue;
         if (!root_view && cls.space != engine::DeploySpace::Data) continue;
-        rows.push_back(build_data_row(cls.display_path, owners, display_names,
+        rows.push_back(build_data_row(path, cls.display_path, owners, display_names,
                                       stored_conflict_reversed_, stored_mods_dir_,
-                                      stored_game_mods_dir_));
+                                      stored_game_mods_dir_, cls.space,
+                                      stored_deploy_prefix_,
+                                      stored_deploy_include_mod_id_, root_mods));
     }
 
     // Game-native root files only exist at the game root (skse64_loader.exe,
@@ -1239,7 +1395,8 @@ void DataTab::apply_mod(
     const std::filesystem::path& game_mods_dir,
     const std::filesystem::path& game_root_dir,
     const std::string& mods_subpath,
-    const std::string& deploy_prefix)
+    const std::string& deploy_prefix,
+    bool deploy_include_mod_id)
 {
     if (registry.empty()) return;
 
@@ -1253,6 +1410,7 @@ void DataTab::apply_mod(
     stored_game_root_dir_ = game_root_dir;
     stored_mods_subpath_ = mods_subpath;
     stored_deploy_prefix_ = deploy_prefix;
+    stored_deploy_include_mod_id_ = deploy_include_mod_id;
 
     const bool root_view = view_ == View::Root;
     const auto display_names = build_display_names(all_mods);
@@ -1271,8 +1429,10 @@ void DataTab::apply_mod(
         if (root_view && cls.space != engine::DeploySpace::Root) continue;
         if (!root_view && cls.space != engine::DeploySpace::Data) continue;
         any = true;
-        upsert_data_row(tree_, build_data_row(cls.display_path, owners, display_names,
-                                              conflict_reversed, mods_dir, game_mods_dir));
+        upsert_data_row(tree_, build_data_row(path, cls.display_path, owners, display_names,
+                                              conflict_reversed, mods_dir, game_mods_dir,
+                                              cls.space, deploy_prefix,
+                                              deploy_include_mod_id, root_mods));
     }
 
     if (any) {
@@ -1301,7 +1461,8 @@ void DataTab::open_item(QTreeWidgetItem* item) {
     if (real_path.isEmpty()) return;
     const bool is_exe = real_path.endsWith(".exe", Qt::CaseInsensitive);
     if (is_exe || QFileInfo(real_path).isExecutable())
-        emit execute_requested(real_path, is_exe);
+        emit execute_requested(real_path, is_exe,
+                               item->data(0, DataVfsPathRole).toString());
     else
         emit open_requested(real_path);
 }
@@ -1339,13 +1500,16 @@ void DataTab::add_file_menus(QMenu& menu, QTreeWidgetItem* item) {
     const bool is_exe = real_path.endsWith(".exe", Qt::CaseInsensitive) ||
                         QFileInfo(real_path).isExecutable();
 
-    // Open/Execute, Preview, Open with VFS / Execute with VFS. The first
-    // enabled one of these three is bolded (MO2). VFS launches are disabled:
-    // no VFS machinery exists for arbitrary executables yet.
+    // Open/Execute, Preview, Add as Executable. The first enabled one of the
+    // first three is bolded (MO2). VFS is not a separate menu entry: the plain
+    // Execute (executables) and Add-as-Executable both carry the merged
+    // DataVfsPathRole so the receiver launches through the overlay (merged
+    // view) - exactly what MO2's plain Execute does when a mod is active.
+    // Non-executables open by their physical path (Open carries no VFS role).
     auto* open_action = menu.addAction(
         is_exe ? tr("&Execute") : tr("&Open"),
         this, [this, item]() { open_item(item); });
-    open_action->setStatusTip(is_exe ? tr("Launches this program")
+    open_action->setStatusTip(is_exe ? tr("Launches this program (in the merged mod view)")
                                      : tr("Opens this file with its default handler"));
 
     auto* preview_action = menu.addAction(
@@ -1357,31 +1521,19 @@ void DataTab::add_file_menus(QMenu& menu, QTreeWidgetItem* item) {
             tr("This file has no preview handler associated with it"));
     }
 
-    auto* hooked_action = menu.addAction(
-        is_exe ? tr("Execute with &VFS") : tr("Open with &VFS"), this, []() {});
-    hooked_action->setEnabled(false);
-    const QString vfs_hint = tr("Not implemented due to platform constraints for now");
-    hooked_action->setToolTip(vfs_hint);
-    hooked_action->setStatusTip(vfs_hint);
-
-    for (int i = 0; i < 3 && i < menu.actions().size(); ++i) {
-        if (menu.actions()[i]->isEnabled()) {
-            QFont f = menu.actions()[i]->font();
-            f.setBold(true);
-            menu.actions()[i]->setFont(f);
-            break;
-        }
-    }
-
     menu.addSeparator();
 
     auto* add_exe_action = menu.addAction(
         tr("&Add as Executable"),
         this, [this, item]() {
             // Carry the merged-view (deploy-relative) path: it is what the
-            // launch overlay resolves, never the on-disk mods-folder path.
+            // launch overlay resolves, never the on-disk mods-folder path. The
+            // physical winning copy rides along so the receiver can extract
+            // the exe's icon even before any deploy makes the merged path
+            // reachable.
             emit add_executable_requested(item->data(0, DataVfsPathRole).toString(),
-                                          item->text(0));
+                                          item->text(0),
+                                          item->data(0, DataRealPathRole).toString());
         });
     add_exe_action->setStatusTip(tr("Add this file to the executables list"));
     if (!is_exe) {
@@ -1512,18 +1664,12 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
 
     hide_installed_->setChecked(Settings::instance().hide_installed_downloads());
 
-    // "Add from URL…": paste a LoversLab ?do=download link (LoversLab has no
-    // API, so downloads ride the user's session cookie set in Settings). The
-    // tab only captures the URL - validation/routing happens in MainWindow.
     connect(add_url_btn, &QPushButton::clicked, this, [this]() {
         bool ok = false;
         const QString url = QInputDialog::getText(
             this, tr("Download from URL"),
-            tr("Paste a LoversLab download link:\n"
-               "Right-click a file's Download button on loverslab.com and copy\n"
-               "the link address (the URL ends in ?do=download).\n\n"
-               "Requires a session cookie - set it under Settings > Sources > "
-               "LoversLab."),
+            tr("Paste a download link from a supported source:\n"
+               "Right-click a file's Download button and copy the link address"),
             QLineEdit::Normal, QString(), &ok);
         if (ok && !url.trimmed().isEmpty()) {
             emit loverslab_url_entered(url.trimmed().toStdString());

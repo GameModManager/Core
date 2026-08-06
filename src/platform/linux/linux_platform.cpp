@@ -26,26 +26,26 @@ std::filesystem::path LinuxPlatform::resolve_env_dir(
 
 std::filesystem::path LinuxPlatform::data_dir() const {
     auto home = std::getenv("HOME");
-    if (!home) return "/tmp/gamemodmanager";
+    if (!home) return "/tmp/GameModManager";
     return resolve_env_dir("XDG_DATA_HOME",
                            std::filesystem::path(home) / ".local" / "share") /
-           "gamemodmanager";
+           "GameModManager";
 }
 
 std::filesystem::path LinuxPlatform::config_dir() const {
     auto home = std::getenv("HOME");
-    if (!home) return "/tmp/gamemodmanager";
+    if (!home) return "/tmp/GameModManager";
     return resolve_env_dir("XDG_CONFIG_HOME",
                            std::filesystem::path(home) / ".config") /
-           "gamemodmanager";
+           "GameModManager";
 }
 
 std::filesystem::path LinuxPlatform::cache_dir() const {
     auto home = std::getenv("HOME");
-    if (!home) return "/tmp/gamemodmanager";
+    if (!home) return "/tmp/GameModManager";
     return resolve_env_dir("XDG_CACHE_HOME",
                            std::filesystem::path(home) / ".cache") /
-           "gamemodmanager";
+           "GameModManager";
 }
 
 // --- Steam discovery ---

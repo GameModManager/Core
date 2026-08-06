@@ -115,6 +115,10 @@ void RightPanel::apply_filter() {
     auto* table = current_table();
     if (table) {
         filter_bar_->apply_to(table);
+        // The Plugins-tab counter is MO2-style (enabled + filter-visible), so
+        // it must track the filter as it is typed.
+        if (auto* pt = plugins_tab())
+            pt->refresh_counters();
         // DownloadsTab: re-apply the "hide installed" filter on top of the
         // text filter (the text filter un-hides rows when its text is empty).
         if (auto* dt = qobject_cast<DownloadsTab*>(tab_widget_->currentWidget()))

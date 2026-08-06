@@ -176,6 +176,11 @@ void ModInfoDialog::reload_current(ModInfoData data) {
     tabs_->setCurrentIndex(static_cast<int>(ModInfoTabId::Conflicts));
 }
 
+QString ModInfoDialog::current_mod_id() const {
+    if (index_ < 0 || index_ >= static_cast<int>(mods_.size())) return {};
+    return mods_[static_cast<size_t>(index_)].id;
+}
+
 bool ModInfoDialog::can_switch() const {
     for (auto* tab : tab_order_) {
         if (!tab->can_close()) return false;

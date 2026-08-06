@@ -42,6 +42,11 @@ public:
     // the new entry appear.
     void show_downloads_tab();
 
+    // Re-apply the current filter text to the current tab's table. Used after
+    // a Plugins-tab refresh, whose set_plugins() rebuild rebuilds rows and
+    // clears the row-hidden states the filter had set.
+    void reapply_current_filter() { apply_filter(); }
+
 signals:
     // LOOT sort shortcut pressed in the Plugins tab filter bar.
     void sort_requested();

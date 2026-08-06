@@ -31,6 +31,9 @@ public:
     // recompute) and jumps to the Conflicts tab. Keeps the same mod selected.
     void reload_current(ModInfoData data);
 
+    // Folder name of the mod currently displayed, empty when none.
+    [[nodiscard]] QString current_mod_id() const;
+
 protected:
     void keyPressEvent(QKeyEvent* event) override;
     void closeEvent(QCloseEvent* event) override;

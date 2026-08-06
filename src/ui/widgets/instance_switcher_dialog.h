@@ -8,6 +8,7 @@
 
 class QListWidget;
 class QListWidgetItem;
+class QLabel;
 
 namespace engine {
 class PluginLoader;
@@ -18,8 +19,11 @@ namespace ui {
 struct InstanceSwitcherEntry {
     std::string name;          // folder name (e.g. "The_Binding_of_Isaac_Rebirth")
     std::string game_id;       // from instance.toml
+    std::string display_name;  // resolved from the plugin (fallback: game_id)
     std::filesystem::path root; // absolute path to instance root
     bool portable;             // from instance.toml
+    QLabel* icon_label = nullptr;  // owned by the list widget; refreshed when
+                                   // the async icon fetch lands
 };
 
 class InstanceSwitcherDialog : public QDialog {
@@ -43,6 +47,7 @@ private:
     void on_ok();
     void on_create();
     void refresh_list();
+    void update_icons_for(const QString& game_id);
 
     engine::PluginLoader* plugins_ = nullptr;
     std::string instances_dir_;

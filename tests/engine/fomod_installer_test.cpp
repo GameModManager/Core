@@ -53,7 +53,8 @@ std::unique_ptr<ModuleConfiguration> parse_config(const std::string& xml)
     const auto path = fs::temp_directory_path() / "gmm_fomod_install_cfg.xml";
     std::ofstream(path) << xml;
     auto config = std::make_unique<ModuleConfiguration>();
-    assert(config->deserialize(path));
+    const bool parsed = config->deserialize(path);
+    assert(parsed);
     fs::remove(path);
     return config;
 }
@@ -115,7 +116,8 @@ void test_priority_remap_and_folders()
     auto vm = view_model(xml);
     FomodFileInstaller installer(staging, vm);
     std::vector<std::string> missing;
-    assert(installer.apply(&missing));
+    const bool applied = installer.apply(&missing);
+    assert(applied);
 
     // Destination remap + higher priority overwrites lower.
     assert(fs::exists(staging / "out.txt"));
@@ -165,7 +167,8 @@ void test_folder_empty_destination()
     auto vm = view_model(xml);
     FomodFileInstaller installer(staging, vm);
     std::vector<std::string> missing;
-    assert(installer.apply(&missing));
+    const bool applied = installer.apply(&missing);
+    assert(applied);
     assert(missing.empty());
 
     // Empty destination puts the folder's children at the install root.
@@ -194,7 +197,8 @@ void test_path_traversal_guard()
     auto vm = view_model(xml);
     FomodFileInstaller installer(staging, vm);
     std::vector<std::string> missing;
-    assert(installer.apply(&missing));
+    const bool applied = installer.apply(&missing);
+    assert(applied);
 
     // Both entries skipped; nothing escaped the mod root. The final install
     // tree is empty because every entry was rejected.
@@ -292,7 +296,8 @@ void test_windows_paths_case_insensitive()
     auto vm = view_model(xml);
     FomodFileInstaller installer(staging, vm);
     std::vector<std::string> missing;
-    assert(installer.apply(&missing));
+    const bool applied = installer.apply(&missing);
+    assert(applied);
 
     // Nothing reported missing: backslashes resolved as separators and every
     // component matched case-insensitively against the on-disk tree.

@@ -20,6 +20,8 @@
 #include <fstream>
 #include <string>
 #include <unistd.h>
+#include <utility>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -119,6 +121,56 @@ static void check_deploy(const fs::path& root, bool include_mod_id,
     require(fs::exists(deployed), label + ": redeploy keeps the file");
 }
 
+// Request-based overload (P8.4): the engine call is synchronous and returns
+// ONLY once the staging tree is fully populated, and it reports link-operation
+// progress through the callback (monotonic, completing at the total). The
+// GUI's async launch chains on that completion, so this return-contract is
+// what makes the launch-never-before-deploy ordering provable.
+static void check_deploy_request(const fs::path& root, const std::string& label) {
+    make_instance(root);
+    const fs::path game_dir = root / "game";
+    fs::create_directories(game_dir);
+    const fs::path exe = game_dir / "Game.exe";
+    write_file(exe, "bin");
+
+    engine::LaunchPrepRequest req;
+    req.instance_root = root;
+    req.game_dir = game_dir;
+    req.executable = exe;
+    req.knowledge = make_knowledge(false);
+    req.game_id = "testgame";
+    req.steam_appid = 12345;
+    req.is_windows_exe = true;
+
+    std::vector<std::pair<int, int>> progress;
+    const auto params = engine::prepare_launch_params(
+        req, [&progress](int done, int total) {
+            progress.emplace_back(done, total);
+        });
+
+    require(params.extra_lowerdirs.size() == 1,
+            label + ": request overload yields one lowerdir");
+    const fs::path deployed = root / ".gmm_staging" / "Data" / "RaceMenu.esp";
+    require(fs::is_symlink(deployed), label + ": deploy finished before return");
+
+    // Progress contract: monotonic and completed exactly at the total, which
+    // is non-zero on the first-ever deploy.
+    bool monotonic = true;
+    int last = 0;
+    int total = 0;
+    for (const auto& [d, t] : progress) {
+        if (d < last || d > t) monotonic = false;
+        last = d;
+        total = t;
+    }
+    require(!progress.empty(), label + ": progress reported");
+    require(total > 0, label + ": first deploy reports non-zero total");
+    require(monotonic, label + ": progress monotonic");
+    require(last == total, label + ": progress completes at the total");
+    require(fs::is_symlink(deployed),
+            label + ": staging complete when prepare_launch_params returned");
+}
+
 // Case-insensitive game (knowledge case_sensitive=false): the launch deploy
 // must merge CI-equal directory paths (Meshes/ vs meshes/) into one canonical
 // casing in the staging tree, or the case-sensitive overlay mount splits a mod
@@ -191,6 +243,9 @@ static void check_merged_view(const fs::path& base) {
         const fs::path via_link = link_dir / "skse64_loader.exe";
         require(engine::merged_view_file_exists(game_dir, staging, via_link),
                 "merged_view: staged-only file reachable through the symlink spelling");
+        require(engine::merged_view_file_resolve(game_dir, staging, via_link) ==
+                    staging / "skse64_loader.exe",
+                "merged_view: resolve returns the staged copy through the symlink spelling");
     }
 
     // 4) Legacy absolute path into the physical mods folder.
@@ -204,6 +259,29 @@ static void check_merged_view(const fs::path& base) {
     const fs::path missing = game_dir / "does_not_exist.exe";
     require(!engine::merged_view_file_exists(game_dir, staging, missing),
             "merged_view: missing file is not reachable");
+
+    // 6) resolve(): the physical file wins, staging is the fallback, a total
+    // miss returns empty - and the staging result matches the merged-view
+    // semantics the overlay gate now uses (mount happens before execv).
+    require(engine::merged_view_file_resolve(game_dir, staging, native) == native,
+            "merged_view: resolve returns the physical file");
+    require(engine::merged_view_file_resolve(game_dir, staging, staged_only) ==
+                staging / "skse64_loader.exe",
+            "merged_view: resolve falls back to the staged copy");
+    require(engine::merged_view_file_resolve(game_dir, staging, missing).empty(),
+            "merged_view: resolve is empty for a missing file");
+
+    // 7) executable_reachable(): regular files only. A directory (e.g. a mod's
+    // bin/ folder) resolves but must be rejected - execv'ing it would fail
+    // cryptically inside the overlay child.
+    require(engine::merged_view_executable_reachable(game_dir, staging, staged_only),
+            "merged_view: staged file is executable-reachable");
+    const fs::path staged_dir = staging / "Data";
+    fs::create_directories(staged_dir);
+    require(!engine::merged_view_executable_reachable(game_dir, staging, staged_dir),
+            "merged_view: a directory is not executable-reachable");
+    require(!engine::merged_view_executable_reachable(game_dir, staging, missing),
+            "merged_view: missing file is not executable-reachable");
 }
 
 int main() {
@@ -223,6 +301,7 @@ int main() {
 
     check_deploy(base / "instances" / "Flat", false, "flat deploy");
     check_deploy(base / "instances" / "ByMod", true, "include-mod-id deploy");
+    check_deploy_request(base / "instances" / "Request", "request overload");
     check_ci_deploy(base / "instances" / "CI", "ci deploy");
 
     fs::remove_all(base);

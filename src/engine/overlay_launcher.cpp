@@ -1,6 +1,7 @@
 #include "engine/overlay_launcher.h"
 
 #include "engine/debug_env.h"
+#include "engine/fs_utils.h"
 #include "engine/log/logger.h"
 
 #include <cstdlib>
@@ -123,8 +124,19 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
             " extra lowerdir(s): " + dirs_log);
     }
 
-    if (!std::filesystem::exists(executable)) {
-        Logger::instance().error("Overlay: executable not found: " + executable.string());
+    // Merged-view-aware gate. The executable may be physical (native game
+    // file, the Proton binary for .exe entries), or it may be a merged-view
+    // path that only resolves once the overlay is mounted over game_dir (a
+    // mod-provided native executable, e.g. a root-override loader or a
+    // Data-scoped tool). The child mounts BEFORE execv, so a staging-reachable
+    // path resolves there; the gate only rejects what the overlay can never
+    // provide. Directories (a mod's bin/ folder) are rejected up front too -
+    // execv'ing them would otherwise fail cryptically inside the child.
+    const std::filesystem::path staging =
+        extra_lowerdirs.empty() ? std::filesystem::path() : extra_lowerdirs.back();
+    if (!merged_view_executable_reachable(game_dir, staging, executable)) {
+        Logger::instance().error("Overlay: executable not reachable as a regular file "
+            "in merged view: " + executable.string());
         return -1;
     }
     if (!std::filesystem::exists(game_dir)) {
@@ -150,14 +162,23 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
     Logger::instance().debug("Overlay: work_dir=" + work_dir.string() +
         " mount_point=" + mount_point.string());
 
-    // Ensure executable permission (same as NativeRuntime)
-    auto st = std::filesystem::status(executable);
-    auto perms = st.permissions();
-    if ((perms & std::filesystem::perms::owner_exec) == std::filesystem::perms::none) {
-        std::filesystem::permissions(executable,
-            perms | std::filesystem::perms::owner_exec
-                   | std::filesystem::perms::group_exec
-                   | std::filesystem::perms::others_exec, ec);
+    // Ensure executable permission (same as NativeRuntime). Only applies to
+    // physically present executables: merged-view-only paths (e.g. a deployed
+    // tool) resolve through the overlay, and the deploy already sets the exec
+    // bit on staged copies. fs::status() without an error_code would THROW for
+    // a merged-only path, so probe with one.
+    {
+        std::error_code perm_ec;
+        auto st = std::filesystem::status(executable, perm_ec);
+        if (!perm_ec) {
+            auto perms = st.permissions();
+            if ((perms & std::filesystem::perms::owner_exec) == std::filesystem::perms::none) {
+                std::filesystem::permissions(executable,
+                    perms | std::filesystem::perms::owner_exec
+                           | std::filesystem::perms::group_exec
+                           | std::filesystem::perms::others_exec, ec);
+            }
+        }
     }
 
     // Collect paths + outer UID/GID into a struct for the clone child.

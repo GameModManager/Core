@@ -6,9 +6,11 @@
 // disconnected, the log line, the Connect/Manual/Disconnect button enablement
 // against the stored key, the inert category-mappings checkbox, the
 // drag&drop server lists and their persistence back to the engine, and the
-// manual-key dialog. Also drives the engine modules behind the panel:
-// NexusServers (discovery, speed sampling, preferred-list persistence) and
-// NexusAuth user-info roundtrip.
+// manual-key dialog. The "Queue downloads (one at a time)" checkbox's
+// tier-derived default (Regular/Supporter -> ON, Premium -> OFF, applied only
+// while the user has never set the value) is pinned here too. Also drives the
+// engine modules behind the panel: NexusServers (discovery, speed sampling,
+// preferred-list persistence) and NexusAuth user-info roundtrip.
 //
 // Hermetic: no network calls are made (the Connect button is never clicked —
 // validating the key would hit users/validate.json). XDG_CONFIG_HOME points
@@ -237,17 +239,20 @@ int main(int argc, char** argv) {
         QCheckBox* track = nullptr;
         QCheckBox* cat = nullptr;
         QCheckBox* counter = nullptr;
+        QCheckBox* queue = nullptr;
         if (nexus)
             for (auto* cb : nexus->findChildren<QCheckBox*>()) {
                 if (cb->text() == "Endorsement Integration") endorse = cb;
                 if (cb->text() == "Tracked Integration") track = cb;
                 if (cb->text() == "Apply Nexus category mappings") cat = cb;
                 if (cb->text() == "Hide API Request Counter") counter = cb;
+                if (cb->text() == "Queue downloads (one at a time)") queue = cb;
             }
-        check(endorse && track && cat && counter, "all four option checkboxes present");
+        check(endorse && track && cat && counter && queue,
+              "all five option checkboxes present");
         check(endorse && endorse->isChecked() && track && track->isChecked() &&
-                  counter && !counter->isChecked(),
-              "options initial states (endorse + track on, counter off)");
+                  counter && !counter->isChecked() && queue && queue->isChecked(),
+              "options initial states (endorse + track + queue on, counter off)");
         check(cat && !cat->isEnabled() &&
                   cat->toolTip().contains("Work in progress"),
               "category-mappings box is inert (disabled + WIP tooltip)");
@@ -272,6 +277,13 @@ int main(int argc, char** argv) {
         check(s.hide_api_counter(), "counter toggle persisted");
         counter->toggle();
         app.processEvents();
+        queue->toggle();
+        app.processEvents();
+        check(!s.nexus_queue_downloads() && s.nexus_queue_downloads_set(),
+              "queue toggle persisted off (and becomes an explicit choice)");
+        queue->toggle();
+        app.processEvents();
+        check(s.nexus_queue_downloads(), "queue re-toggle persisted back on");
         cat->setChecked(true);
         app.processEvents();
         check(!s.category_mappings(),
@@ -398,6 +410,81 @@ int main(int argc, char** argv) {
     }
     auth.clear_user_info();
     check(!auth.has_user_info(), "user info cleared");
+
+    // --- Tier-derived queue-downloads default (applied on login, only while
+    // --- the user has never set the value explicitly).
+    auto queue_box_of = [](QWidget* nexus) -> QCheckBox* {
+        if (!nexus) return nullptr;
+        for (auto* cb : nexus->findChildren<QCheckBox*>())
+            if (cb->text() == "Queue downloads (one at a time)") return cb;
+        return nullptr;
+    };
+    auto& s = Settings::instance();
+    s.remove_nexus_queue_downloads();
+    check(!s.nexus_queue_downloads_set(), "queue-downloads setting starts unset");
+
+    // Premium login -> the checkbox defaults OFF while unset (Premium lifts
+    // the ~1.5MB/s cap, so parallel Nexus downloads are useful).
+    {
+        engine::NexusUserInfo prem;
+        prem.account_type = engine::NexusUserInfo::AccountType::Premium;
+        auth.set_user_info(prem);
+        auto dlg = make_dialog();
+        auto* q = queue_box_of(nexus_page_of(dlg));
+        check(q && !q->isChecked(),
+              "Premium account: queueing defaults OFF while unset");
+    }
+    // Supporter keeps the free-account throttle -> ON.
+    {
+        engine::NexusUserInfo sup;
+        sup.account_type = engine::NexusUserInfo::AccountType::Supporter;
+        auth.set_user_info(sup);
+        auto dlg = make_dialog();
+        auto* q = queue_box_of(nexus_page_of(dlg));
+        check(q && q->isChecked(),
+              "Supporter account: queueing defaults ON while unset");
+    }
+    // Regular -> ON.
+    {
+        engine::NexusUserInfo reg;
+        reg.account_type = engine::NexusUserInfo::AccountType::Regular;
+        auth.set_user_info(reg);
+        auto dlg = make_dialog();
+        auto* q = queue_box_of(nexus_page_of(dlg));
+        check(q && q->isChecked(),
+              "Regular account: queueing defaults ON while unset");
+    }
+    // A manual choice survives later logins: neither the checkbox state nor
+    // apply_nexus_queue_default() may override it.
+    {
+        s.set_nexus_queue_downloads(false);
+        auto dlg = make_dialog();
+        auto* q = queue_box_of(nexus_page_of(dlg));
+        check(q && !q->isChecked(),
+              "manual OFF choice shown even for a Supporter login");
+        ui::apply_nexus_queue_default();
+        check(!s.nexus_queue_downloads(),
+              "apply_nexus_queue_default never overrides a manual choice");
+        s.remove_nexus_queue_downloads();
+    }
+    // apply_nexus_queue_default seeds the tier default only while unset.
+    {
+        engine::NexusUserInfo sup;
+        sup.account_type = engine::NexusUserInfo::AccountType::Supporter;
+        auth.set_user_info(sup);
+        ui::apply_nexus_queue_default();
+        check(s.nexus_queue_downloads() && s.nexus_queue_downloads_set(),
+              "apply_nexus_queue_default seeds Supporter -> ON while unset");
+        s.remove_nexus_queue_downloads();
+        engine::NexusUserInfo prem;
+        prem.account_type = engine::NexusUserInfo::AccountType::Premium;
+        auth.set_user_info(prem);
+        ui::apply_nexus_queue_default();
+        check(!s.nexus_queue_downloads() && s.nexus_queue_downloads_set(),
+              "apply_nexus_queue_default seeds Premium -> OFF while unset");
+        s.remove_nexus_queue_downloads();
+    }
+    auth.clear_user_info();
 
     // --- Stored key flips Connect/Disconnect (no network touched). ---
     check(!auth.has_api_key(), "no api key after clear");

@@ -14,50 +14,12 @@
 #include "engine/instance/instance.h"
 #include "ui/smooth_scroll.h"
 #include "ui/settings/settings.h"
+#include "ui/widgets/game_icon_cache.h"
 
 #include <filesystem>
 #include <fstream>
 
 namespace ui {
-
-// Build a colored circle with the game's first letter
-static QIcon make_game_icon(const std::string& game_id, const std::string& name) {
-    auto hash = std::hash<std::string>{}(game_id);
-    QColor base;
-    switch (hash % 8) {
-        case 0: base = QColor(100, 149, 237); break;
-        case 1: base = QColor(220, 80, 80);   break;
-        case 2: base = QColor(80, 180, 100);  break;
-        case 3: base = QColor(200, 160, 60);  break;
-        case 4: base = QColor(160, 100, 200); break;
-        case 5: base = QColor(60, 180, 200);  break;
-        case 6: base = QColor(220, 140, 60);  break;
-        case 7: base = QColor(120, 120, 180); break;
-    }
-
-    QPixmap pm(48, 48);
-    pm.fill(Qt::transparent);
-    QPainter p(&pm);
-    p.setRenderHint(QPainter::Antialiasing);
-    p.setPen(Qt::NoPen);
-    p.setBrush(base);
-    p.drawEllipse(2, 2, 44, 44);
-
-    QString letter;
-    if (!name.empty())
-        letter = QString::fromStdString(name).left(1).toUpper();
-    else
-        letter = QString::fromStdString(game_id).left(1).toUpper();
-
-    p.setPen(Qt::white);
-    QFont f = p.font();
-    f.setPointSize(18);
-    f.setBold(true);
-    p.setFont(f);
-    p.drawText(QRect(0, 0, 48, 48), Qt::AlignCenter, letter);
-
-    return QIcon(pm);
-}
 
 InstanceSwitcherDialog::InstanceSwitcherDialog(engine::PluginLoader* plugins, QWidget* parent)
     : QDialog(parent), plugins_(plugins) {
@@ -115,6 +77,10 @@ InstanceSwitcherDialog::InstanceSwitcherDialog(engine::PluginLoader* plugins, QW
     connect(list_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem*) {
         on_ok();
     });
+
+    // Swap an async-downloaded icon into its row when it lands
+    connect(&GameIconCache::instance(), &GameIconCache::icon_ready,
+            this, &InstanceSwitcherDialog::update_icons_for);
 
     // TODO: gate behind a Settings "Smooth scrolling" checkbox.
     if (Settings::instance().smooth_scrolling())
@@ -176,6 +142,7 @@ void InstanceSwitcherDialog::refresh_list() {
         // (the folder name has colons and other special chars stripped)
         std::string label = display_name;
 
+        ie.display_name = display_name;
         entries_.push_back(ie);
 
         // Create list item with custom widget
@@ -184,13 +151,17 @@ void InstanceSwitcherDialog::refresh_list() {
         hlay->setContentsMargins(8, 6, 8, 6);
         hlay->setSpacing(12);
 
-        // Game icon
+        // Game icon — declared icon from the global cache, or a letter avatar
+        // while the fetch is in flight (icon_ready() swaps it in).
         auto* icon_label = new QLabel();
-        auto icon = make_game_icon(ie.game_id, display_name);
-        icon_label->setPixmap(icon.pixmap(36, 36));
         icon_label->setFixedSize(36, 36);
         icon_label->setAlignment(Qt::AlignCenter);
+        auto icon = GameIconCache::instance().icon_for(
+            QString::fromStdString(ie.game_id),
+            QString::fromStdString(display_name), 36);
+        icon_label->setPixmap(icon.pixmap(36, 36));
         hlay->addWidget(icon_label);
+        entries_.back().icon_label = icon_label;
 
         // Text column
         auto* text_layout = new QVBoxLayout();
@@ -234,6 +205,18 @@ void InstanceSwitcherDialog::on_create() {
     create_requested_ = true;
     emit create_new_instance();
     accept();
+}
+
+void InstanceSwitcherDialog::update_icons_for(const QString& game_id) {
+    std::string gid = game_id.toStdString();
+    for (auto& entry : entries_) {
+        if (entry.game_id == gid && entry.icon_label) {
+            auto icon = GameIconCache::instance().icon_for(
+                QString::fromStdString(entry.game_id),
+                QString::fromStdString(entry.display_name), 36);
+            entry.icon_label->setPixmap(icon.pixmap(36, 36));
+        }
+    }
 }
 
 }  // namespace ui

@@ -75,6 +75,24 @@ QString account_type_label(engine::NexusUserInfo::AccountType t) {
 
 } // namespace
 
+bool nexus_queue_default_for(engine::NexusUserInfo::AccountType type) {
+    // Supporter keeps the free-account ~1.5MB/s throttle (only Premium lifts
+    // it), so only a Premium account defaults to parallel Nexus downloads.
+    return type != engine::NexusUserInfo::AccountType::Premium;
+}
+
+void apply_nexus_queue_default() {
+    auto& s = Settings::instance();
+    // The user's explicit choice wins - the tier default is applied only
+    // while the value has never been set manually.
+    if (s.nexus_queue_downloads_set()) return;
+    auto& auth = engine::NexusAuth::instance();
+    const auto type = auth.has_user_info()
+        ? auth.get_user_info().account_type
+        : engine::NexusUserInfo::AccountType::None;
+    s.set_nexus_queue_downloads(nexus_queue_default_for(type));
+}
+
 // -- NexusManualKeyDialog ----------------------------------------------------
 
 NexusManualKeyDialog::NexusManualKeyDialog(QWidget* parent)
@@ -251,10 +269,26 @@ NexusPanel::NexusPanel(QWidget* parent)
     cat_box->setToolTip(tr("Work in progress"));
     auto* counter_box = new QCheckBox(tr("Hide API Request Counter"), options_group);
     counter_box->setChecked(s.hide_api_counter());
+    // Queue Nexus downloads one-at-a-time. The initial state is the effective
+    // value: the stored one once the user chose it, otherwise the tier-derived
+    // default (Regular/Supporter -> queue, Premium -> parallel). Wiring happens
+    // below so the construction-time setChecked never writes a stored value.
+    auto* queue_box = new QCheckBox(tr("Queue downloads (one at a time)"), options_group);
+    queue_box->setObjectName("nexusQueueDownloads");
+    queue_box->setToolTip(
+        tr("Free Regular/Supporter accounts are throttled to ~1.5MB/s, so "
+           "parallel downloads don't help; Premium lifts the cap."));
+    const bool queue_effective = s.nexus_queue_downloads_set()
+        ? s.nexus_queue_downloads()
+        : nexus_queue_default_for(auth.has_user_info()
+                                      ? auth.get_user_info().account_type
+                                      : engine::NexusUserInfo::AccountType::None);
+    queue_box->setChecked(queue_effective);
     opts_left->addWidget(endorse_box);
     opts_left->addWidget(track_box);
     opts_left->addWidget(cat_box);
     opts_left->addWidget(counter_box);
+    opts_left->addWidget(queue_box);
     options_layout->addLayout(opts_left, 1);
 
     auto* opts_right = new QVBoxLayout;
@@ -306,6 +340,8 @@ NexusPanel::NexusPanel(QWidget* parent)
             [&s](bool on) { s.set_tracked_integration(on); });
     connect(counter_box, &QCheckBox::toggled,
             [&s](bool on) { s.set_hide_api_counter(on); });
+    connect(queue_box, &QCheckBox::toggled,
+            [&s](bool on) { s.set_nexus_queue_downloads(on); });
     // category_mappings is intentionally not wired: the checkbox is disabled
     // (work in progress) and must never change the stored value.
 
@@ -412,6 +448,10 @@ void NexusPanel::connect_to_nexus() {
     if (r.ok) {
         add_log(tr("Received user account information"));
         add_log(tr("Linked with Nexus successfully."));
+        // First login for this setting: seed the queue-downloads default from
+        // the account tier (Regular/Supporter -> queue, Premium -> parallel).
+        // A value the user set manually is never overridden.
+        apply_nexus_queue_default();
     } else {
         add_log(QString::fromStdString(r.message));
     }

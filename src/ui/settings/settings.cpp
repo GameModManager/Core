@@ -357,6 +357,22 @@ void Settings::set_category_mappings(bool on) {
     settings_.setValue("nexus/category_mappings", on);
 }
 
+bool Settings::nexus_queue_downloads() const {
+    return settings_.value("nexus/queue_downloads", true).toBool();
+}
+
+void Settings::set_nexus_queue_downloads(bool on) {
+    settings_.setValue("nexus/queue_downloads", on);
+}
+
+bool Settings::nexus_queue_downloads_set() const {
+    return settings_.contains("nexus/queue_downloads");
+}
+
+void Settings::remove_nexus_queue_downloads() {
+    settings_.remove("nexus/queue_downloads");
+}
+
 // workshop source ------------------------------------------------------------
 
 int Settings::workshop_rate_limit_per_hour() const {

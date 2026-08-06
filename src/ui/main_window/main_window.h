@@ -8,7 +8,9 @@
 #include <QStringList>
 #include <QVector>
 #include <filesystem>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -41,6 +43,7 @@ struct NxmLink;struct ConflictStats;
 class StyleManager;
 class PlatformInterface;
 struct LootResult;
+struct LaunchParams;
 }
 
 namespace ui {
@@ -52,6 +55,7 @@ class MainToolbar;
 class ProfileBar;
 class ModFilterBar;
 class RightPanel;
+class DeployThread;
 
 // Forward-declared: fully defined in ui/widgets/profile_bar.h, which owns the
 // FolderKind enum and is included before any use in .cpp files.
@@ -66,8 +70,16 @@ class DataTab;
 class ModInfoDialog;
 class InstallProgressDialog;
 class LootSortThread;
+class ConflictScanThread;
+class ModScanThread;
+class PluginDbLoadThread;
 struct ModInfoData;
 struct ModEntry;
+struct ConflictScanResult;
+struct ConflictScanRequest;
+struct ModScanResult;
+struct ModScanRequest;
+struct PluginDbLoadRequest;
 namespace preview { class PreviewWindow; }
 
 struct PendingToggle {
@@ -166,6 +178,9 @@ private:
     void launch_game();
     void launch_with_executable(const QString& full_path,
                                 const std::filesystem::path& output_mod_dir = {});
+    // Resolves an output-to-mod target folder, auto-creating it (with the
+    // game's metadata file) when it doesn't exist yet. Empty input -> empty.
+    std::filesystem::path ensure_output_mod_dir(const QString& mod_name);
     void add_shortcut_to_toolbar();
     void add_toolbar_shortcut_from_path(const QString& full_path,
                                          const QString& icon_path = {});
@@ -176,6 +191,8 @@ private:
     void on_add_entry_requested();
     static bool validate_linux_executable(const QString& path);
     void check_running_process();
+    void on_deploy_progress(int files_done, int files_total);
+    void on_launch_params_prepared(engine::LaunchParams params);
     void apply_mod_filter();
     void do_capture_overwrite(std::filesystem::file_time_type capture_time);
     void flush_pending_nxm();
@@ -183,7 +200,21 @@ private:
     void update_queue_label();
     void prompt_nxm_registration();
     void ensure_nxm_handler_default();
+    // Conflict recompute (THREADING.md §3.6, P8.1): recompute_conflicts() is
+    // now a debounce entry point — rapid toggles/reorders coalesce into one
+    // scan (single-shot QTimer). The scan itself runs off the main thread
+    // (ConflictScanThread) on a snapshot of the mod list; results are applied
+    // back to the model + registry on the main thread. request_conflict_scan()
+    // is the immediate (non-debounced) entry for the install path; its
+    // follow_up runs on the main thread once the results have landed.
     void recompute_conflicts();
+    void request_conflict_scan(std::function<void()> follow_up);
+    void start_conflict_scan();
+    void on_conflict_scan_finished(ui::ConflictScanResult result, quint64 generation);
+    void apply_conflict_results(const ui::ConflictScanResult& result);
+    void launch_conflict_scan_batch(std::vector<std::function<void()>> follow_ups);
+    ui::ConflictScanRequest build_conflict_scan_request();
+    void reload_open_modinfo_dialog();
     // LOOT advisory-tool sort (PLAN.md §7.1): builds a LootRequest from the
     // current plugin DB, runs gmm_lootcli off the UI thread, applies the
     // sorted order, and persists it through save_profile().
@@ -191,25 +222,40 @@ private:
     void on_loot_progress(int stage, const QString& message);
     void on_loot_finished(engine::LootResult result);
     void refresh_data_tab();
-    // Recompute the conflict registry + model stats WITHOUT refreshing the
-    // Data tab. Callers decide how to surface the result: recompute_conflicts()
-    // follows with a full show_data(), the install path with DataTab::apply_mod().
-    void compute_conflict_state();
     // Game-native mods dir (mods_subpath under the game dir), empty when it
     // equals the instance mods dir or no game is loaded.
     std::filesystem::path current_game_mods_dir() const;
     void wire_data_tab();
     void on_data_open(const QString& file_path);
-    void on_data_execute(const QString& file_path, bool is_windows_exe);
+    void on_data_execute(const QString& file_path, bool is_windows_exe,
+                         const QString& vfs_path);
     void on_data_preview(const QString& file_path,
                          const QStringList& provider_paths,
                          const QStringList& provider_names);
-    void on_data_add_executable(const QString& file_path, const QString& default_name);
+    void on_data_add_executable(const QString& file_path, const QString& default_name,
+                                const QString& physical_path = {});
     void on_data_mod_info(const QString& mod_id, int initial_tab = -1);
     void on_data_hide(const QString& file_path, const QString& mod_id, bool hide);
     ui::ModInfoData build_mod_info_data(const ModEntry& mod);
     void on_image_diff_requested(const QString& relative_path);
-    void migrate_mo2_meta();
+    // Mod scan (THREADING.md §3.5/§3.6, P8.2): load_mods_from_game() kicks a
+    // scan onto ModScanThread (worker does all directory walking: ModScanner
+    // scan/scan_dir, native/stray plugin synthesis, one-time MO2 meta import)
+    // against a snapshot; the result lands here on the main thread, which then
+    // rebuilds the model + meta + priorities. A generation counter drops a
+    // stale scan's result when a refresh or instance switch superseded it.
+    void on_mod_scan_finished(ui::ModScanResult result, quint64 generation);
+    ui::ModScanRequest build_mod_scan_request();
+    // Plugin-DB preload (THREADING.md §3.5, P8.5/T6): launch_plugin_db_preload()
+    // runs the plugin-DB disk load (refresh -> header parse -> creation club ->
+    // load order) on PluginDbLoadThread CONCURRENTLY with the mod scan, so the
+    // two independent startup loads overlap instead of running sequentially.
+    // The result lands in on_plugin_db_preloaded() (generation drops a stale
+    // load after an instance switch) and is adopted by refresh_plugins_tab() —
+    // which otherwise does the same disk read synchronously.
+    void launch_plugin_db_preload();
+    void on_plugin_db_preloaded(engine::PluginDatabase db, quint64 generation);
+    bool adopt_preloaded_plugin_db();
     void load_meta_for_mods();
     void show_instance_statistics();
     void show_settings_dialog();
@@ -267,6 +313,10 @@ private:
     void toggle_root_override(const QList<int>& rows, bool on);
     void open_source_for_mod(const QString& source_type, const QString& source_id);
     [[nodiscard]] SourceVisitInfo source_visit_info(const QString& source_type, const QString& source_id, const QString& page_url = {}) const;
+    // Nexus game domain for the current game ("skyrimspecialedition"), resolved
+    // from the loaded plugin's identity - the single source of truth (there is
+    // NO "nexus_domain" knowledge hook; plugins register it via register_identity).
+    [[nodiscard]] QString current_nexus_domain() const;
 
     // Game-lock overlay
     void create_game_lock_overlay();
@@ -336,6 +386,10 @@ private:
     QHash<QString, QVector<QString>> plugin_owner_index_;
     QHash<QString, int> plugin_row_by_name_;
     QStringList toolbar_shortcut_paths_;
+    // Custom icon path for each toolbar shortcut, kept in lockstep with
+    // toolbar_shortcut_paths_ (same index) and persisted to instance.toml so
+    // custom icons survive restarts.
+    QStringList toolbar_shortcut_icons_;
     std::vector<std::string> saved_executables_;
     std::string pending_nxm_url_;
     // In-flight/known Nexus downloads keyed by "<mod_id>-<file_id>", kept so a
@@ -356,6 +410,47 @@ private:
     std::filesystem::path output_mod_dir_;
     std::filesystem::path conflict_cache_path_;  // path to conflict cache JSON
     engine::PathRegistry last_conflict_registry_;
+    // Conflict recompute machinery (P8.1): debounce timer coalesces rapid
+    // toggle/reorder requests; the scan runs on ConflictScanThread with at most
+    // one in flight (conflict_scan_running_); requests arriving mid-scan queue
+    // a fresh scan (conflict_scan_pending_); generation drops stale results;
+    // invalidations of the quick-token cache are applied by the worker before
+    // it scans. Follow-ups run on the main thread after the results land.
+    QTimer* conflict_debounce_timer_ = nullptr;
+    ui::ConflictScanThread* conflict_scan_thread_ = nullptr;
+    bool conflict_scan_running_ = false;
+    bool conflict_scan_pending_ = false;
+    quint64 conflict_scan_generation_ = 0;
+    std::unordered_set<std::string> conflict_invalidate_pending_;
+    std::vector<std::function<void()>> conflict_scan_pending_follow_ups_;
+    std::vector<std::function<void()>> conflict_scan_active_follow_ups_;
+    // Mod scan machinery (P8.2): load_mods_from_game() launches the scan on
+    // ModScanThread; generation drops a stale result (refresh or instance
+    // switch superseded it). No reentrancy flag needed — the model is only
+    // touched from on_mod_scan_finished on the main thread, and the worker
+    // thread serializes queued scans.
+    ui::ModScanThread* mod_scan_thread_ = nullptr;
+    quint64 mod_scan_generation_ = 0;
+    // Plugin-DB preload machinery (P8.5/T6): launch_plugin_db_preload() runs
+    // the plugin-DB disk load concurrently with the mod scan on
+    // PluginDbLoadThread (gmm-plugin-db). plugin_db_generation_ drops a stale
+    // load (instance switch bumps it); preload_pending_ is true only between a
+    // launch and its consumption — either adoption by refresh_plugins_tab() or
+    // a synchronous fallback read (which discards the pending preload so it
+    // can't land late and clobber fresher data).
+    ui::PluginDbLoadThread* plugin_db_load_thread_ = nullptr;
+    quint64 plugin_db_generation_ = 0;
+    bool preload_pending_ = false;
+    std::optional<engine::PluginDatabase> preloaded_plugin_db_;
+    std::filesystem::path preloaded_plugin_db_game_dir_;
+    // Launch deploy machinery (P8.4): launch_with_executable() builds a
+    // LaunchPrepRequest snapshot and runs prepare_launch_params on DeployThread
+    // (gmm-deploy); launch_game() only ever runs from on_launch_params_prepared
+    // after the deploy finished, so the game provably never starts before
+    // .gmm_staging is fully populated. launch_prep_pending_ re-entry-guards the
+    // gap; a stale result (instance switched mid-deploy) is dropped.
+    ui::DeployThread* launch_deploy_thread_ = nullptr;
+    bool launch_prep_pending_ = false;
     engine::Instance current_instance_;  // loaded per-folder overrides for the active instance
     QPointer<ui::ModInfoDialog> modinfo_dialog_;  // alive while the dialog is open
     std::filesystem::path meta_dir_path() const;

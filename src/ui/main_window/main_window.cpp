@@ -21,6 +21,10 @@
 #include "ui/widgets/instance_switcher_dialog.h"
 #include "ui/pipeline_worker.h"
 #include "ui/main_window/loot_sort_worker.h"
+#include "ui/main_window/conflict_scan_worker.h"
+#include "ui/main_window/mod_scan_worker.h"
+#include "ui/main_window/plugin_db_load_worker.h"
+#include "ui/main_window/deploy_worker.h"
 #include "ui/panels/tab_panels.h"
 #include "ui/smooth_scroll.h"
 #include "ui/settings/settings_dialog.h"
@@ -155,39 +159,6 @@ namespace ui {
 
 namespace {
 
-// Extract .exe icon via wrestool, fallback to QFileIconProvider - same logic as ExecControlsBar
-QIcon extractExeIconShortcut(const QString& exePath) {
-    auto app_dir = QCoreApplication::applicationDirPath();
-    auto bundled = app_dir + "/../tools/linux/wrestool";
-    QString wrestool;
-    if (QFileInfo::exists(bundled)) {
-        wrestool = bundled;
-    } else {
-        wrestool = QStandardPaths::findExecutable("wrestool");
-    }
-
-    if (!wrestool.isEmpty()) {
-        QTemporaryDir tmpDir;
-        if (tmpDir.isValid()) {
-            auto outIco = tmpDir.filePath("icon.ico");
-            QProcess proc;
-            proc.start(wrestool, {"-x", "-t", "14", exePath, "-o", outIco});
-            if (proc.waitForFinished(3000) && proc.exitCode() == 0) {
-                QIcon ico(outIco);
-                if (!ico.isNull()) return ico;
-            }
-        }
-    }
-
-    // Try QFileIconProvider (works for installed apps, returns generic for .exe on Linux)
-    QFileIconProvider provider;
-    auto provider_icon = provider.icon(QFileInfo(exePath));
-    if (!provider_icon.isNull()) return provider_icon;
-
-    // Last resort: standard application icon
-    return QApplication::style()->standardIcon(QStyle::SP_FileIcon);
-}
-
 // Reap the subreaper supervisor forked by engine::launcher_game(). It never
 // execs (stays "[gamemodmanager]"), so if the watchdog stops without
 // waitpid()ing it, it remains a zombie forever. A cgroup-empty result means
@@ -216,6 +187,14 @@ MainWindow::MainWindow(QWidget* parent)
     setWindowTitle(tr("GameModManager"));
     resize(1200, 800);
 
+    // Conflict recompute infra (P8.1, THREADING.md §3.6): debounce + worker
+    // thread so toggling/reordering a mod never blocks the UI on a full scan.
+    conflict_debounce_timer_ = new QTimer(this);
+    conflict_debounce_timer_->setSingleShot(true);
+    conflict_debounce_timer_->setInterval(150);
+    connect(conflict_debounce_timer_, &QTimer::timeout,
+            this, &MainWindow::start_conflict_scan);
+
     // --- Menu bar (must be created before the toolbar so parent is set) ---
     setup_menu_bar();
 
@@ -239,7 +218,11 @@ MainWindow::MainWindow(QWidget* parent)
     connect(toolbar_, &MainToolbar::instances_clicked, this, &MainWindow::show_instance_switcher);
     connect(menu_bar_, &AppMenuBar::sort_mods_requested, this, &MainWindow::sort_mods);
     connect(toolbar_, &MainToolbar::shortcut_removed, this, [this](const QString& path) {
-        toolbar_shortcut_paths_.removeAll(path);
+        int idx = toolbar_shortcut_paths_.indexOf(path);
+        if (idx >= 0) {
+            toolbar_shortcut_paths_.removeAt(idx);
+            toolbar_shortcut_icons_.removeAt(idx);
+        }
         save_order();
     });
 
@@ -539,6 +522,11 @@ MainWindow::MainWindow(QWidget* parent)
 
     pipeline_thread_ = new PipelineThread(this);
     pipeline_thread_->start();
+    // Nexus downloads queue one-at-a-time per Settings (free Regular/Supporter
+    // accounts are throttled; see Settings::nexus_queue_downloads). Pushed at
+    // startup and re-pushed after the settings dialog closes.
+    pipeline_thread_->worker()->set_nexus_queue_downloads(
+        Settings::instance().nexus_queue_downloads());
 
     // Download finished (download-only, MO2 model): the row becomes Complete
     // with a real file path; installation is a separate user-triggered step.
@@ -577,7 +565,8 @@ MainWindow::MainWindow(QWidget* parent)
     // double-click): add just the newly installed row to the mod list instead
     // of reloading the whole mods dir, and mark the entry Installed. The UI
     // lock put up at install_requested is released on every terminal signal
-    // (success, failure, cancel).
+    // (success, failure, cancel). A failed install leaves the download row in
+    // its download state - only a failed download marks it Failed.
     connect(pipeline_thread_->worker(), &PipelineWorker::install_complete,
             this, [this](const std::string& mod_id, bool success,
                          const std::string&, const std::string& installed_folder) {
@@ -593,9 +582,11 @@ MainWindow::MainWindow(QWidget* parent)
                     add_installed_mod(installed_folder);
                 }
                 dt->mark_installed(mod_id);
-            } else {
-                dt->mark_complete(mod_id, false);
             }
+            // Install failure is NOT a download failure: the row keeps its
+            // download state (Complete, retryable Install button). The error
+            // was already logged to the console by the pipeline worker /
+            // extract stage - don't flip the download to Failed here.
         }
         // Persist download state
         save_download_manifest();
@@ -708,6 +699,7 @@ void MainWindow::set_game_info(const std::string& game_id,
     hide_install_progress();
     toolbar_->clear_exec_buttons();
     toolbar_shortcut_paths_.clear();
+    toolbar_shortcut_icons_.clear();
     right_panel_->exec_controls()->clear_executables();
     nxm_links_.clear();  // NXM links are instance-scoped
 
@@ -721,6 +713,22 @@ void MainWindow::set_game_info(const std::string& game_id,
         current_instance_.read_toml();
         conflict_cache_path_ = current_instance_.path_for(engine::InstanceKind::Cache) / "conflict_cache.json";
     }
+
+    // Any in-flight conflict scan belongs to the previous instance: bump the
+    // generation so its result is dropped when it lands, and discard queued
+    // requests/invalidations for the old game. running_ stays true so the
+    // worker thread never has more than one scan queued (they serialize on the
+    // shared conflict cache file); the new game's first recompute queues behind
+    // it and on_conflict_scan_finished() drains the queue on the stale result.
+    conflict_scan_generation_ = conflict_scan_generation_ + 1;
+    conflict_scan_pending_ = false;
+    conflict_scan_pending_follow_ups_.clear();
+    conflict_scan_active_follow_ups_.clear();
+    conflict_invalidate_pending_.clear();
+    // The same for any in-flight mod scan: it belongs to the previous
+    // instance's mods dir, so its result must be dropped (load_mods_from_game
+    // also bumps when it launches a fresh scan).
+    mod_scan_generation_ = mod_scan_generation_ + 1;
     // Restore the persisted per-instance executable selection BEFORE the
     // combo is populated, so set_executables can land on it instead of
     // defaulting to the first real entry.
@@ -756,6 +764,12 @@ void MainWindow::set_game_info(const std::string& game_id,
         wire_downloads_tab();
 
         load_mods_from_game();
+        // Plugin-DB disk load runs CONCURRENTLY with the mod scan (T6/P8.5):
+        // the two independent startup loads overlap instead of the plugin DB
+        // waiting for the scan to land and then reading the same disk
+        // sequentially. refresh_plugins_tab() adopts the preload when it's
+        // ready, and falls back to a synchronous read otherwise.
+        launch_plugin_db_preload();
         load_executables();
         populate_executables();
 
@@ -951,6 +965,11 @@ void MainWindow::set_game_info(const std::string& game_id,
 
         // Prompt to register this game for nxm:// handling if not already managed
         prompt_nxm_registration();
+    } else {
+        // No game to load here. Any in-flight mod scan's result was just
+        // dropped by the generation bump above, so clear the loading flag it
+        // would otherwise leave stuck.
+        loading_ = false;
     }
 
     // Restore saved app state now that current_instance_root_ is known
@@ -1358,91 +1377,90 @@ void MainWindow::load_mods_from_game() {
     auto conflict_reversed = knowledge_->get(current_game_id_, "conflict_order_reversed", "");
     mod_model_->set_conflict_order_reversed(conflict_reversed == "true");
 
-    // Scan game's native mods directory
-    auto scanned = engine::ModScanner::scan(*knowledge_, current_game_id_, current_game_dir_,
-        current_instance_root_.empty() ? std::vector<std::filesystem::path>{}
-                                       : std::vector<std::filesystem::path>{current_instance_root_});
+    // Any in-flight scan belongs to an older state (a refresh supersedes the
+    // previous refresh; set_game_info bumps on instance switches too): bump
+    // the generation so its result is dropped when it lands. The scan itself
+    // runs on ModScanThread — the main thread does no directory walking here
+    // (P8.2, THREADING.md §3.5/§3.6).
+    mod_scan_generation_ = mod_scan_generation_ + 1;
 
-    // Instance mode: the mod list comes from the instance mods dir ONLY. The
-    // game's own mods subpath is never a mod source - its folders (e.g. Skyrim's
-    // Data/Scripts, Data/Video) are vanilla game content, not mods, and would
-    // otherwise be listed (and flagged) as mods. MO2 lists only <instance>/mods.
-    if (!current_instance_root_.empty()) {
-        auto instance_mods_dir = mods_dir_path();
-        auto game_mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
-        auto game_mods_dir = current_game_dir_ / game_mods_subpath;
-        // Only scan separately if they're different directories
-        std::error_code ec_canon;
-        auto inst_canon = std::filesystem::weakly_canonical(instance_mods_dir, ec_canon);
-        auto game_canon = std::filesystem::weakly_canonical(game_mods_dir, ec_canon);
-        if (inst_canon != game_canon) {
-            scanned = engine::ModScanner::scan_dir(
-                *knowledge_, current_game_id_, instance_mods_dir,
-                std::vector<std::filesystem::path>{});
-        }
+    ui::ModScanRequest request = build_mod_scan_request();
+    if (!mod_scan_thread_) {
+        mod_scan_thread_ = new ui::ModScanThread(this);
+        connect(mod_scan_thread_->worker(), &ui::ModScanWorker::finished,
+                this, &MainWindow::on_mod_scan_finished, Qt::UniqueConnection);
+    }
+    mod_scan_thread_->start(std::move(request), mod_scan_generation_);
+}
+
+ui::ModScanRequest MainWindow::build_mod_scan_request() {
+    ui::ModScanRequest request;
+    request.knowledge = *knowledge_;  // snapshot — read-only after plugin registration
+    request.game_id = current_game_id_;
+    request.game_dir = current_game_dir_;
+    request.instance_root = current_instance_root_;
+    request.mods_dir = mods_dir_path();
+    request.meta_dir = meta_dir_path();
+    return request;
+}
+
+void MainWindow::launch_plugin_db_preload() {
+    // Discard any preload state left over from a previous instance and bump
+    // the generation so a still-running load's result is dropped when it lands.
+    plugin_db_generation_ = plugin_db_generation_ + 1;
+    preload_pending_ = false;
+    preloaded_plugin_db_.reset();
+
+    if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return;
+    const auto game_native = knowledge_->get(current_game_id_, "game_native_plugins", "");
+    if (game_native.empty()) return;  // game declares no plugin hooks — nothing to preload
+
+    ui::PluginDbLoadRequest request;
+    request.game_dir = current_game_dir_;
+    request.mods_dir = mods_dir_path();
+    request.meta_dir = meta_dir_path();
+    request.disable_mechanism = engine::disable_mechanism_for(*knowledge_, current_game_id_);
+    request.game_native = game_native;
+
+    preload_pending_ = true;
+    preloaded_plugin_db_game_dir_ = current_game_dir_;
+    if (!plugin_db_load_thread_) {
+        plugin_db_load_thread_ = new ui::PluginDbLoadThread(this);
+        connect(plugin_db_load_thread_->worker(), &ui::PluginDbLoadWorker::finished,
+                this, &MainWindow::on_plugin_db_preloaded, Qt::UniqueConnection);
+    }
+    plugin_db_load_thread_->start(std::move(request), plugin_db_generation_);
+}
+
+void MainWindow::on_plugin_db_preloaded(engine::PluginDatabase db, quint64 generation) {
+    if (generation != plugin_db_generation_ || !preload_pending_) {
+        // Superseded by an instance switch or already consumed/superseded by a
+        // synchronous fallback read — never adopt stale disk state.
+        return;
+    }
+    preloaded_plugin_db_ = std::move(db);
+}
+
+bool MainWindow::adopt_preloaded_plugin_db() {
+    if (!preload_pending_ || !preloaded_plugin_db_) return false;
+    // The preload belongs to a different instance's game dir (paranoia; the
+    // generation check above already covers switches) — refuse it.
+    if (preloaded_plugin_db_game_dir_ != current_game_dir_) return false;
+    plugins_db_ = std::move(*preloaded_plugin_db_);
+    preloaded_plugin_db_.reset();
+    preload_pending_ = false;
+    return true;
+}
+
+void MainWindow::on_mod_scan_finished(ui::ModScanResult result, quint64 generation) {
+    if (generation != mod_scan_generation_) {
+        // Superseded (a newer refresh or instance switch launched another
+        // scan): never apply a stale mod list. loading_ stays true — the newer
+        // scan's result clears it when it lands.
+        return;
     }
 
-    // Detect game-native plugins (e.g. vanilla ESMs) from the game's mods directory
-    {
-        auto native_plugins_csv = knowledge_->get(current_game_id_, "game_native_plugins", "");
-        if (!native_plugins_csv.empty()) {
-            auto game_mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
-            std::filesystem::path native_dir = current_game_dir_;
-            if (!game_mods_subpath.empty())
-                native_dir /= game_mods_subpath;
-
-            std::unordered_set<std::string> existing;
-            for (const auto& m : scanned)
-                existing.insert(m.folder_name);
-
-            std::unordered_set<std::string> declared_native;
-            std::istringstream ss(native_plugins_csv);
-            std::string plugin;
-            while (std::getline(ss, plugin, ',')) {
-                auto start = plugin.find_first_not_of(" \t");
-                auto end = plugin.find_last_not_of(" \t");
-                if (start == std::string::npos) continue;
-                plugin = plugin.substr(start, end - start + 1);
-                declared_native.insert(plugin);
-                if (existing.count(plugin)) continue;
-
-                auto plugin_path = native_dir / plugin;
-                if (!std::filesystem::exists(plugin_path)) continue;
-
-                engine::ScannedMod native_mod;
-                native_mod.folder_name = plugin;
-                native_mod.display_name = plugin;
-                native_mod.raw_name = plugin;
-                native_mod.is_game_native = true;
-                native_mod.enabled = true;
-                scanned.push_back(std::move(native_mod));
-            }
-
-            // Stray plugins dropped straight into the game's Data dir become
-            // synthesized unmanaged rows (MO2's UnmanagedMods behavior) so the
-            // mod<->plugin selection highlight round-trips for files with no
-            // owning mod. A file a mod folder already covers is skipped here -
-            // the ownership join (GamePlugin::owner_mod) decides which row
-            // highlights for shadowed strays instead.
-            std::error_code scan_ec;
-            if (std::filesystem::is_directory(native_dir, scan_ec)) {
-                for (const auto& entry :
-                     std::filesystem::directory_iterator(native_dir, scan_ec)) {
-                    if (!entry.is_regular_file(scan_ec)) continue;
-                    if (!engine::is_plugin_file(entry.path())) continue;
-                    const std::string file = entry.path().filename().string();
-                    if (declared_native.count(file) || existing.count(file)) continue;
-                    engine::ScannedMod stray_mod;
-                    stray_mod.folder_name = file;
-                    stray_mod.display_name = file;
-                    stray_mod.raw_name = file;
-                    stray_mod.is_game_native = true;
-                    stray_mod.enabled = true;
-                    scanned.push_back(std::move(stray_mod));
-                }
-            }
-        }
-    }
+    auto& scanned = result.scanned;
 
     // Clear all existing mods (including game-native) - needed for instance switching
     mod_model_->remove_all_mods();
@@ -1485,8 +1503,8 @@ void MainWindow::load_mods_from_game() {
         }
     }
 
-    // Import MO2 meta.ini files and load/create meta for each mod
-    migrate_mo2_meta();
+    // Load/create meta for each mod. (The one-time MO2 meta.ini import ran on
+    // the worker thread as part of the scan; this only reads sidecars.)
     load_meta_for_mods();
 
     // Read persisted priority from meta.ini for ALL entries (including separators, Overwrite).
@@ -1553,7 +1571,8 @@ void MainWindow::load_mods_from_game() {
     }
     status_bar_->set_counter_value(count);
 
-    // Compute conflict stats for all mods
+    // Compute conflict stats for all mods (debounced entry; the scan runs off
+    // the main thread per P8.1).
     recompute_conflicts();
 
     // Populate the Plugins tab from the (now loaded) mod list.
@@ -1605,20 +1624,27 @@ void MainWindow::add_installed_mod(const std::string& folder_name) {
     // and Plugins tab all reflect the installed content. Unlike the full
     // recompute, the Data tab is refreshed incrementally: the engine's token
     // cache already limits the registry rescan to the new mod's files, and
-    // apply_mod() merges only that mod's rows into the existing tree.
-    compute_conflict_state();
-    if (auto* dt = right_panel_->data_tab()) {
-        std::string mods_subpath;
-        std::string deploy_prefix;
-        if (knowledge_) {
-            mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
-            deploy_prefix = knowledge_->get(current_game_id_, "deploy_prefix", "Data");
+    // apply_mod() merges only that mod's rows into the existing tree. The scan
+    // runs off the main thread (P8.1); the incremental apply runs once the
+    // freshly computed registry includes this mod.
+    request_conflict_scan([this, folder_name]() {
+        if (auto* dt = right_panel_->data_tab()) {
+            std::string mods_subpath;
+            std::string deploy_prefix;
+            bool deploy_include_mod_id = false;
+            if (knowledge_) {
+                mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
+                deploy_prefix = knowledge_->get(current_game_id_, "deploy_prefix", "Data");
+                deploy_include_mod_id = knowledge_->get(
+                    current_game_id_, "deploy_include_mod_id", "false") == "true";
+            }
+            dt->apply_mod(last_conflict_registry_, folder_name, mod_model_->mods(),
+                          mod_model_->is_conflict_order_reversed(),
+                          mods_dir_path(), current_game_mods_dir(),
+                          current_game_dir_, mods_subpath, deploy_prefix,
+                          deploy_include_mod_id);
         }
-        dt->apply_mod(last_conflict_registry_, folder_name, mod_model_->mods(),
-                      mod_model_->is_conflict_order_reversed(),
-                      mods_dir_path(), current_game_mods_dir(),
-                      current_game_dir_, mods_subpath, deploy_prefix);
-    }
+    });
     refresh_plugins_tab();
 
     // Update status bar mod count
@@ -1697,47 +1723,6 @@ std::filesystem::path MainWindow::game_mygames_dir() const {
     return documents / "My Games" / sub;
 }
 
-void MainWindow::migrate_mo2_meta() {
-    auto meta_dir = meta_dir_path();
-    if (meta_dir.empty()) return;
-
-    auto mods_dir = mods_dir_path();
-
-    if (!std::filesystem::exists(mods_dir)) return;
-
-    // Steam appid for this game (needed for Workshop mods)
-    auto steam_appid_str = knowledge_->get(current_game_id_, "steam_appid", "0");
-
-    for (const auto& entry : std::filesystem::directory_iterator(mods_dir)) {
-        if (!entry.is_directory()) continue;
-        auto folder_name = entry.path().filename().string();
-
-        // Skip if meta already imported
-        if (engine::ModMeta::exists(meta_dir, folder_name))
-            continue;
-
-        // Check if MO2 meta.ini exists in this mod's folder
-        if (!engine::ModMeta::has_mo2_meta(entry.path()))
-            continue;
-
-        // Import
-        auto meta = engine::ModMeta::import_mo2(entry.path(), folder_name);
-        if (!meta.has_section("General") && !meta.has_section("GameModManager"))
-            continue;
-
-        // Fill in the steam_appid from game knowledge
-        if (!steam_appid_str.empty() && steam_appid_str != "0") {
-            meta.set("GameModManager", "steam_appid", steam_appid_str);
-        }
-
-        if (meta.save(meta_dir, folder_name)) {
-            engine::Logger::instance().debug("Imported MO2 meta: " + folder_name + "/meta.ini");
-        } else {
-            engine::Logger::instance().warn("Failed to save imported meta: " + folder_name);
-        }
-    }
-}
-
 void MainWindow::load_meta_for_mods() {
     auto meta_dir = meta_dir_path();
     if (meta_dir.empty()) return;
@@ -1809,18 +1794,69 @@ void MainWindow::load_meta_for_mods() {
 }
 
 void MainWindow::recompute_conflicts() {
-    compute_conflict_state();
-    refresh_data_tab();
+    if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return;
+    // Debounce: coalesce rapid toggle/reorder/refresh requests into one scan.
+    if (conflict_debounce_timer_->isActive()) conflict_debounce_timer_->stop();
+    conflict_debounce_timer_->start();
 }
 
-void MainWindow::compute_conflict_state() {
-    if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) {
+void MainWindow::start_conflict_scan() {
+    request_conflict_scan([this]() { refresh_data_tab(); });
+}
+
+// Immediate (non-debounced) entry: used by the install path, whose follow-up
+// must land after the freshly computed registry includes the new mod.
+void MainWindow::request_conflict_scan(std::function<void()> follow_up) {
+    std::vector<std::function<void()>> batch;
+    if (follow_up) batch.push_back(std::move(follow_up));
+    launch_conflict_scan_batch(std::move(batch));
+}
+
+void MainWindow::launch_conflict_scan_batch(std::vector<std::function<void()>> follow_ups) {
+    if (conflict_scan_running_) {
+        // One scan is already in flight. Queue a fresh one (snapshot is rebuilt
+        // when it launches, so it reflects the newest state); its follow-ups
+        // run after that newer scan lands.
+        conflict_scan_pending_ = true;
+        for (auto& f : follow_ups)
+            if (f) conflict_scan_pending_follow_ups_.push_back(std::move(f));
         return;
     }
 
+    // An immediate scan supersedes any pending debounce.
+    conflict_debounce_timer_->stop();
+
+    ui::ConflictScanRequest request = build_conflict_scan_request();
+    if (request.mod_infos.empty()) {
+        // Nothing enabled to scan: mirror the old compute_conflict_state()
+        // early-return — the registry is cleared, follow-ups still run so the
+        // Data tab (and any incremental install apply) empties.
+        last_conflict_registry_.clear();
+        for (auto& f : follow_ups)
+            if (f) f();
+        return;
+    }
+
+    conflict_scan_running_ = true;
+    conflict_scan_active_follow_ups_ = std::move(follow_ups);
+    conflict_scan_generation_ = conflict_scan_generation_ + 1;
+    if (!conflict_scan_thread_) {
+        conflict_scan_thread_ = new ui::ConflictScanThread(this);
+        connect(conflict_scan_thread_->worker(), &ui::ConflictScanWorker::finished,
+                this, &MainWindow::on_conflict_scan_finished, Qt::UniqueConnection);
+    }
+    conflict_scan_thread_->start(std::move(request), conflict_scan_generation_);
+}
+
+ui::ConflictScanRequest MainWindow::build_conflict_scan_request() {
+    ui::ConflictScanRequest request;
+    request.mods_dir = mods_dir_path();
+    request.extra_mods_dir = current_game_mods_dir();
+    request.cache_path = conflict_cache_path_;
+
     // Read per-game config from knowledge hooks (needed before mod_infos for overwrite priority)
-    auto conflict_extensions = knowledge_->get(current_game_id_, "conflict_extensions", "");
-    auto ignored_files = knowledge_->get(current_game_id_, "ignored_files", "");
+    request.extensions_csv = knowledge_->get(current_game_id_, "conflict_extensions", "");
+    request.ignored_csv = knowledge_->get(current_game_id_, "ignored_files", "");
     // Mod folders carry per-mod metadata files the manager itself writes
     // (meta.ini) or that the game reads (metadata.xml / disable marker).
     // Every mod folder has them, so exclude them from conflict counting.
@@ -1828,49 +1864,72 @@ void MainWindow::compute_conflict_state() {
     auto disable_file = engine::disable_mechanism_for(*knowledge_, current_game_id_);
     for (const auto* f : {&metadata_file, &disable_file}) {
         if (f->empty()) continue;
-        if (ignored_files.find(*f) != std::string::npos) continue;
-        if (!ignored_files.empty()) ignored_files += ",";
-        ignored_files += *f;
+        if (request.ignored_csv.find(*f) != std::string::npos) continue;
+        if (!request.ignored_csv.empty()) request.ignored_csv += ",";
+        request.ignored_csv += *f;
     }
-    auto conflict_reversed = knowledge_->get(current_game_id_, "conflict_order_reversed", "") == "true";
-    auto conflict_scan_dirs = knowledge_->get(current_game_id_, "conflict_scan_dirs", "");
+    request.conflict_reversed =
+        knowledge_->get(current_game_id_, "conflict_order_reversed", "") == "true";
+    request.scan_dirs_csv = knowledge_->get(current_game_id_, "conflict_scan_dirs", "");
 
     // Collect mod info - only enabled mods affect the game
-    std::vector<engine::ConflictEngine::ModInfo> mod_infos;
     for (const auto& mod : mod_model_->mods()) {
         if (mod.is_separator) continue;
         if (!mod.enabled && !mod.is_overwrite && !mod.is_merged) continue;
         if (mod.is_overwrite) {
-            int ow_priority = conflict_reversed ? -1 : 999999;
-            mod_infos.emplace_back(mod.id.toStdString(), ow_priority);
+            request.mod_infos.emplace_back(mod.id.toStdString(),
+                                           request.conflict_reversed ? -1 : 999999);
             continue;
         }
         if (mod.is_merged) {
-            int mg_priority = conflict_reversed ? 0 : 999998;
-            mod_infos.emplace_back(mod.id.toStdString(), mg_priority);
+            request.mod_infos.emplace_back(mod.id.toStdString(),
+                                           request.conflict_reversed ? 0 : 999998);
             continue;
         }
-        mod_infos.emplace_back(mod.id.toStdString(), mod.priority);
+        request.mod_infos.emplace_back(mod.id.toStdString(), mod.priority);
     }
 
-    if (mod_infos.empty()) {
-        last_conflict_registry_.clear();
+    request.invalidate = std::move(conflict_invalidate_pending_);
+    conflict_invalidate_pending_.clear();
+    return request;
+}
+
+void MainWindow::on_conflict_scan_finished(ui::ConflictScanResult result, quint64 generation) {
+    if (generation != conflict_scan_generation_) {
+        // Superseded (e.g. an instance switch bumped the generation while this
+        // scan was in flight): never apply a stale result, but the worker is
+        // idle now, so any queued requests for the newer state must still run.
+        conflict_scan_running_ = false;
+        if (conflict_scan_pending_) {
+            conflict_scan_pending_ = false;
+            auto batch = std::move(conflict_scan_pending_follow_ups_);
+            conflict_scan_pending_follow_ups_.clear();
+            launch_conflict_scan_batch(std::move(batch));
+        }
         return;
     }
+    conflict_scan_running_ = false;
 
-    auto mods_dir = mods_dir_path();
+    apply_conflict_results(result);
 
-    // Game-native mods dir (for mods that live there instead of instance)
-    auto game_mods_dir = current_game_mods_dir();
+    auto follow_ups = std::move(conflict_scan_active_follow_ups_);
+    conflict_scan_active_follow_ups_.clear();
+    for (auto& f : follow_ups)
+        if (f) f();
+    reload_open_modinfo_dialog();
 
-    engine::ConflictEngine engine;
-    auto stats = engine.compute(mods_dir, mod_infos,
-                                 conflict_extensions, ignored_files,
-                                 conflict_reversed, conflict_cache_path_,
-                                 game_mods_dir, conflict_scan_dirs);
+    // A request arrived mid-scan: launch the queued fresh scan now.
+    if (conflict_scan_pending_) {
+        conflict_scan_pending_ = false;
+        auto batch = std::move(conflict_scan_pending_follow_ups_);
+        conflict_scan_pending_follow_ups_.clear();
+        launch_conflict_scan_batch(std::move(batch));
+    }
+}
 
-    // Push results into the model
-    for (const auto& [folder_name, cs] : stats) {
+void MainWindow::apply_conflict_results(const ui::ConflictScanResult& result) {
+    // Push per-mod stats into the model
+    for (const auto& [folder_name, cs] : result.stats) {
         mod_model_->set_conflict_stats(QString::fromStdString(folder_name), cs.wins, cs.losses);
     }
     // Zero out any stale stats for disabled mods (not fed to the engine)
@@ -1881,7 +1940,8 @@ void MainWindow::compute_conflict_state() {
 
     // "Redundant" mods: every file they provide is won by a higher-priority
     // owner, so nothing the mod provides actually takes effect.
-    const auto& registry = engine.last_registry();
+    const auto& registry = result.registry;
+    const bool conflict_reversed = result.conflict_reversed;
     std::unordered_set<std::string> owns_files;
     std::unordered_set<std::string> wins_a_file;
     for (const auto& [path, owners] : registry) {
@@ -1910,7 +1970,7 @@ void MainWindow::compute_conflict_state() {
         auto& l = pairs[loser];
         if (!l.loses_to.contains(winner)) l.loses_to.append(winner);
     };
-    for (const auto& [path, owners] : engine.last_registry()) {
+    for (const auto& [path, owners] : registry) {
         if (owners.size() <= 1) continue;
         auto winner_it = conflict_reversed
             ? std::min_element(owners.begin(), owners.end(),
@@ -1927,7 +1987,19 @@ void MainWindow::compute_conflict_state() {
         }
     }
     mod_model_->set_conflict_pairs(pairs);
-    last_conflict_registry_ = engine.last_registry();
+    last_conflict_registry_ = result.registry;
+}
+
+void MainWindow::reload_open_modinfo_dialog() {
+    if (!modinfo_dialog_) return;
+    const QString id = modinfo_dialog_->current_mod_id();
+    if (id.isEmpty()) return;
+    for (const auto& m : mod_model_->mods()) {
+        if (m.id == id) {
+            modinfo_dialog_->reload_current(build_mod_info_data(m));
+            return;
+        }
+    }
 }
 
 std::filesystem::path MainWindow::current_game_mods_dir() const {
@@ -1958,15 +2030,19 @@ void MainWindow::refresh_data_tab() {
 
     std::string mods_subpath;
     std::string deploy_prefix;
+    bool deploy_include_mod_id = false;
     if (knowledge_) {
         mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
         deploy_prefix = knowledge_->get(current_game_id_, "deploy_prefix", "Data");
+        deploy_include_mod_id = knowledge_->get(
+            current_game_id_, "deploy_include_mod_id", "false") == "true";
     }
 
     dt->show_data(last_conflict_registry_, mod_model_->mods(),
                   mod_model_->is_conflict_order_reversed(),
                   mods_dir, game_mods_dir,
-                  current_game_dir_, mods_subpath, deploy_prefix);
+                  current_game_dir_, mods_subpath, deploy_prefix,
+                  deploy_include_mod_id);
 }
 
 void MainWindow::wire_data_tab() {
@@ -1991,54 +2067,23 @@ void MainWindow::on_data_open(const QString& file_path) {
     }
 }
 
-void MainWindow::on_data_execute(const QString& file_path, bool is_windows_exe) {
-    const std::filesystem::path exec_path(file_path.toStdString());
-    if (!std::filesystem::exists(exec_path)) {
-        QMessageBox::warning(this, tr("Execute"),
-                             tr("Executable not found:\n%1").arg(file_path));
-        return;
+void MainWindow::on_data_execute(const QString& file_path, bool is_windows_exe,
+                                 const QString& vfs_path) {
+    // Every execute goes through the standard overlay-launch chain (the same
+    // one the game and toolbar shortcuts use): it deploys enabled mods into
+    // .gmm_staging and launches inside the overlay, so the tool sees the
+    // merged view of every installed mod (MO2's plain Execute). The launchable
+    // target is the merged Data-relative path; legacy absolute entries fall
+    // back to their physical path, which the overlay also resolves.
+    QString target = file_path;
+    if (!vfs_path.isEmpty() && !current_game_dir_.empty()) {
+        target = QString::fromStdString(
+            (std::filesystem::weakly_canonical(current_game_dir_) /
+             vfs_path.toStdString())
+                .string());
     }
-
-    if (!is_windows_exe) {
-        // Native binary or script: launch it directly, detached.
-        if (!QProcess::startDetached(file_path)) {
-            QMessageBox::warning(this, tr("Execute"),
-                                 tr("Failed to launch:\n%1").arg(file_path));
-        }
-        return;
-    }
-
-    // Windows .exe: run through the game's Proton prefix (steam_appid picks
-    // the right prefix), falling back to a standalone Wine install.
-    uint32_t steam_appid = 0;
-    if (knowledge_) {
-        auto id_str = knowledge_->get(current_game_id_, "steam_appid", "");
-        if (!id_str.empty()) {
-            try { steam_appid = std::stoul(id_str); } catch (...) {}
-        }
-    }
-
-    std::unique_ptr<engine::Runtime> runtime;
-    if (platform_) {
-        auto* proton = new engine::ProtonRuntime(platform_);
-        auto request = current_proton_request();
-        if (steam_appid == 0) steam_appid = request.steam_appid;
-        proton->set_runner_override(request.runner_override);
-        runtime.reset(proton);
-    }
-    if (!runtime || !runtime->is_available())
-        runtime = std::make_unique<engine::WineRuntime>();
-    if (!runtime->is_available()) {
-        QMessageBox::warning(this, tr("Execute"),
-            tr("No Proton or Wine runtime is available to run:\n%1").arg(file_path));
-        return;
-    }
-
-    if (!runtime->launch(exec_path, current_game_dir_, steam_appid)) {
-        QMessageBox::warning(this, tr("Execute"),
-            tr("Failed to launch %1 via %2.")
-                .arg(file_path, QString::fromStdString(runtime->name())));
-    }
+    (void)is_windows_exe;  // launch_with_executable derives it from the extension
+    launch_with_executable(target, {});
 }
 
 void MainWindow::on_data_preview(const QString& file_path,
@@ -2053,7 +2098,8 @@ void MainWindow::on_data_preview(const QString& file_path,
 }
 
 void MainWindow::on_data_add_executable(const QString& file_path,
-                                        const QString& default_name) {
+                                        const QString& default_name,
+                                        const QString& physical_path) {
     auto* ec = right_panel_->exec_controls();
     if (!ec) return;
 
@@ -2066,7 +2112,14 @@ void MainWindow::on_data_add_executable(const QString& file_path,
         tr("Name:"), QLineEdit::Normal, default_name, &ok);
     if (!ok || name.trimmed().isEmpty()) return;
 
-    ec->add_executable(name, file_path);
+    // Icon comes from the physical winning copy (DataRealPathRole) - the merged
+    // path may not exist on disk until the first deploy this session. The
+    // extraction is cached by basename so the entry keeps its icon across
+    // restarts even with an empty staging dir.
+    QIcon icon;
+    if (!physical_path.isEmpty())
+        icon = ui::extractExeIcon(physical_path, cache_thumbnails_dir_path());
+    ec->add_executable(name, file_path, icon);
     save_executables();
 }
 
@@ -2088,8 +2141,10 @@ ui::ModInfoData MainWindow::build_mod_info_data(const ModEntry& mod) {
 
     data.source_type = mod.source_type;
     data.source_id = mod.source_id;
-    data.nexus_domain = QString::fromStdString(
-        knowledge_ ? knowledge_->get(current_game_id_, "nexus_domain", "") : "");
+    // From the plugin identity, not a knowledge hook (there is none named
+    // "nexus_domain") - drives the Source-tab Visit-on-Nexus URL AND the
+    // Nexus Refresh API call (games/{domain}/mods/{id}.json).
+    data.nexus_domain = current_nexus_domain();
 
     // Sources the current game supports (download_sources knowledge, display
     // names like "Nexus") — gates which sub-tabs the Source tab shows.
@@ -2159,15 +2214,10 @@ ui::ModInfoData MainWindow::build_mod_info_data(const ModEntry& mod) {
         else
             mod_model_->clear_mod_color(mod_id);
     };
-    data.refresh_conflicts = [this, mod_id = mod.id]() {
-        recompute_conflicts();
-        if (!modinfo_dialog_) return;
-        for (const auto& m : mod_model_->mods())
-            if (m.id == mod_id) {
-                modinfo_dialog_->reload_current(build_mod_info_data(m));
-                return;
-            }
-    };
+    // Recompute is debounced + async now (P8.1); the dialog is reloaded with
+    // the fresh conflict data from reload_open_modinfo_dialog() once the scan
+    // lands, so no eager reload with stale data here.
+    data.refresh_conflicts = [this]() { recompute_conflicts(); };
     data.delete_mod = [this, mod_id = mod.id, mods_subpath]() -> bool {
         if (!mods_subpath.empty() && !current_game_dir_.empty()) {
             auto mod_folder = mods_dir_path() / mod_id.toStdString();
@@ -2224,9 +2274,10 @@ void MainWindow::on_data_hide(const QString& file_path, const QString& mod_id, b
     // change the mod root's quick token - the conflict cache would keep serving
     // the pre-rename file list and the tab would show the old name as a normal
     // file (with no real path, so no file menu). Drop the owning mod's cached
-    // entry so recompute re-scans it and surfaces the hidden/un-hidden state.
-    engine::ConflictEngine engine;
-    engine.invalidate_mod(mod_id.toStdString(), conflict_cache_path_);
+    // entry so the next scan re-scans it and surfaces the hidden/un-hidden
+    // state. The invalidation is applied by the scan worker (before it reads
+    // the cache), so it is only ever touched on the worker thread.
+    conflict_invalidate_pending_.insert(mod_id.toStdString());
     recompute_conflicts();
 }
 
@@ -2243,6 +2294,13 @@ void MainWindow::refresh_plugins_tab() {
         connect(pt, &ui::PluginsTab::toggle_requested, this, &MainWindow::on_plugin_toggle);
         connect(pt, &ui::PluginsTab::reorder_requested, this, &MainWindow::on_plugin_reorder);
         connect(pt, &ui::PluginsTab::lock_requested, this, &MainWindow::on_plugin_lock);
+        connect(pt, &ui::PluginsTab::refresh_requested, this, [this]() {
+            refresh_plugins_tab();
+            // set_plugins() rebuilds the rows and clears row-hidden states;
+            // re-apply the active text filter so rows and counter stay
+            // consistent with the filter box.
+            if (right_panel_) right_panel_->reapply_current_filter();
+        });
         connect(pt->table(), &QTableWidget::itemSelectionChanged,
                 this, &MainWindow::on_plugin_selection_changed);
         plugins_tab_widget_ = pt;
@@ -2257,11 +2315,22 @@ void MainWindow::refresh_plugins_tab() {
         return;
     }
 
-    const auto disable_mechanism = engine::disable_mechanism_for(*knowledge_, current_game_id_);
-    plugins_db_.refresh(current_game_dir_, mods_dir_path(), meta_dir_path(),
-                        disable_mechanism, game_native);
-    plugins_db_.load_creation_club(current_game_dir_);
-    plugins_db_.sort_load_order();
+    // T6: when the concurrently-preloaded DB (launch_plugin_db_preload) is
+    // ready, adopt it and skip the synchronous disk read entirely. Otherwise
+    // fall back to it — and drop the pending preload so a late-landing result
+    // can't clobber the fresher synchronous read.
+    bool adopted = adopt_preloaded_plugin_db();
+    if (!adopted && preload_pending_) {
+        preload_pending_ = false;
+        preloaded_plugin_db_.reset();
+    }
+    if (!adopted) {
+        const auto disable_mechanism = engine::disable_mechanism_for(*knowledge_, current_game_id_);
+        plugins_db_.refresh(current_game_dir_, mods_dir_path(), meta_dir_path(),
+                            disable_mechanism, game_native);
+        plugins_db_.load_creation_club(current_game_dir_);
+        plugins_db_.sort_load_order();
+    }
 
     // A persisted profile is the source of truth once it exists; only a first
     // run (no profile yet) enables everything and writes it.
@@ -3217,15 +3286,27 @@ void MainWindow::toggle_root_override(const QList<int>& rows, bool on) {
     refresh_data_tab();
 }
 
+QString MainWindow::current_nexus_domain() const {
+    if (plugin_loader_ && !current_game_id_.empty()) {
+        for (const auto& p : plugin_loader_->plugins()) {
+            if (p.game_id == current_game_id_)
+                return QString::fromStdString(p.nexus_domain);
+        }
+    }
+    return {};
+}
+
 SourceVisitInfo MainWindow::source_visit_info(const QString& source_type, const QString& source_id, const QString& page_url) const {
     if (source_type == "steam") {
         return {tr("Visit on Workshop"),
             QString("https://steamcommunity.com/sharedfiles/filedetails/?id=%1").arg(source_id)};
     }
     if (source_type == "nexus") {
-        auto domain = QString::fromStdString(
-            knowledge_ ? knowledge_->get(current_game_id_, "nexus_domain", "") : "");
-        if (domain.isEmpty()) domain = source_id;
+        // The game domain comes from the plugin identity (e.g.
+        // "skyrimspecialedition") - NEVER the mod id, and there is no
+        // "nexus_domain" knowledge hook to read. Empty domain = disabled Visit.
+        const QString domain = current_nexus_domain();
+        if (domain.isEmpty()) return {tr("Visit on Nexus"), QString()};
         return {tr("Visit on Nexus"),
             QString("https://www.nexusmods.com/%1/mods/%2").arg(domain, source_id)};
     }
@@ -3927,7 +4008,8 @@ void MainWindow::save_order() {
     }
     in.close();
 
-    // Remove old mod_order / folded_separators / toolbar_shortcuts lines
+    // Remove old mod_order / folded_separators / toolbar_shortcuts /
+    // toolbar_shortcut_icons lines
     std::istringstream stream(existing);
     std::string line;
     std::string cleaned;
@@ -3938,6 +4020,8 @@ void MainWindow::save_order() {
         if (fold_pos != std::string::npos) continue;
         auto ts_pos = line.find("toolbar_shortcuts");
         if (ts_pos != std::string::npos) continue;
+        auto tsi_pos = line.find("toolbar_shortcut_icons");
+        if (tsi_pos != std::string::npos) continue;
         cleaned += line + "\n";
     }
 
@@ -3964,6 +4048,19 @@ void MainWindow::save_order() {
     }
     cleaned += "]\n";
 
+    // Per-shortcut custom icon paths (parallel to toolbar_shortcuts, same
+    // index). "-" marks "no custom icon" (the naive TOML parser below drops
+    // empty tokens, which would desync the arrays); restore maps it back to
+    // empty and falls back to exe extraction.
+    cleaned += "toolbar_shortcut_icons = [";
+    bool first_tsi = true;
+    for (const auto& icon : toolbar_shortcut_icons_) {
+        if (!first_tsi) cleaned += ", ";
+        cleaned += "\"" + (icon.isEmpty() ? "-" : icon.toStdString()) + "\"";
+        first_tsi = false;
+    }
+    cleaned += "]\n";
+
     std::ofstream out(toml_path);
     if (out) out << cleaned;
 }
@@ -3979,6 +4076,7 @@ void MainWindow::load_order() {
     std::vector<std::string> order;     // migrated from mod_order (for backward compat)
     std::vector<std::string> folded_names;
     std::vector<std::string> toolbar_paths;
+    std::vector<std::string> toolbar_icons;
 
     while (std::getline(in, line)) {
         auto key_pos = line.find("mod_order");
@@ -4032,6 +4130,25 @@ void MainWindow::load_order() {
                     auto e = token.find_last_not_of(" \t\"");
                     if (s != std::string::npos && e != std::string::npos) {
                         toolbar_paths.push_back(token.substr(s, e - s + 1));
+                    }
+                }
+            }
+            continue;
+        }
+
+        auto tsi_pos = line.find("toolbar_shortcut_icons");
+        if (tsi_pos != std::string::npos) {
+            auto bracket = line.find('[');
+            auto close_bracket = line.find(']');
+            if (bracket != std::string::npos && close_bracket != std::string::npos) {
+                auto content = line.substr(bracket + 1, close_bracket - bracket - 1);
+                std::istringstream ss(content);
+                std::string token;
+                while (std::getline(ss, token, ',')) {
+                    auto s = token.find_first_not_of(" \t\"");
+                    auto e = token.find_last_not_of(" \t\"");
+                    if (s != std::string::npos && e != std::string::npos) {
+                        toolbar_icons.push_back(token.substr(s, e - s + 1));
                     }
                 }
             }
@@ -4149,8 +4266,12 @@ void MainWindow::load_order() {
 
     // Restore toolbar shortcuts
     engine::Logger::instance().begin_group(engine::LogLevel::Debug, "Restored toolbar shortcuts");
-    for (const auto& path : toolbar_paths) {
-        add_toolbar_shortcut_from_path(QString::fromStdString(path));
+    for (size_t i = 0; i < toolbar_paths.size(); ++i) {
+        // "-" is the persisted empty-icon sentinel (see save_order)
+        auto icon = (i < toolbar_icons.size() && toolbar_icons[i] != "-")
+            ? QString::fromStdString(toolbar_icons[i])
+            : QString();
+        add_toolbar_shortcut_from_path(QString::fromStdString(toolbar_paths[i]), icon);
     }
     engine::Logger::instance().end_group();
 
@@ -4437,30 +4558,32 @@ void MainWindow::launch_game() {
 
     // Output-to-mod routing: resolve the target mod folder, auto-creating it
     // (with the game's metadata file) when it doesn't exist yet.
-    std::filesystem::path output_mod_dir;
-    if (!entry.output_mod.isEmpty()) {
-        output_mod_dir = mods_dir_path() / entry.output_mod.toStdString();
-        std::error_code ec;
-        if (!std::filesystem::is_directory(output_mod_dir, ec)) {
-            std::filesystem::create_directories(output_mod_dir, ec);
-            if (ec) {
-                engine::Logger::instance().error(
-                    "Failed to create output mod folder " +
-                    output_mod_dir.string() + ": " + ec.message());
-                output_mod_dir.clear();
-            } else {
-                auto metadata_file = knowledge_
-                    ? knowledge_->get(current_game_id_, "metadata_file", "meta.ini")
-                    : "meta.ini";
-                engine::ModMeta::write_game_metadata(output_mod_dir, metadata_file,
-                    entry.output_mod.toStdString(), "1.0", "0");
-                engine::Logger::instance().debug(
-                    "Output-to-mod: created mod folder " + output_mod_dir.string());
-            }
-        }
-    }
-
+    const auto output_mod_dir = ensure_output_mod_dir(entry.output_mod);
     launch_with_executable(QString::fromStdString(exec_path.string()), output_mod_dir);
+}
+
+std::filesystem::path MainWindow::ensure_output_mod_dir(const QString& mod_name) {
+    if (mod_name.isEmpty())
+        return {};
+    auto output_mod_dir = mods_dir_path() / mod_name.toStdString();
+    std::error_code ec;
+    if (!std::filesystem::is_directory(output_mod_dir, ec)) {
+        std::filesystem::create_directories(output_mod_dir, ec);
+        if (ec) {
+            engine::Logger::instance().error(
+                "Failed to create output mod folder " +
+                output_mod_dir.string() + ": " + ec.message());
+            return {};
+        }
+        auto metadata_file = knowledge_
+            ? knowledge_->get(current_game_id_, "metadata_file", "meta.ini")
+            : "meta.ini";
+        engine::ModMeta::write_game_metadata(output_mod_dir, metadata_file,
+            mod_name.toStdString(), "1.0", "0");
+        engine::Logger::instance().debug(
+            "Output-to-mod: created mod folder " + output_mod_dir.string());
+    }
+    return output_mod_dir;
 }
 
 static void gmm_debug(const char* fmt, ...) {
@@ -4483,11 +4606,52 @@ void MainWindow::launch_with_executable(const QString& full_path,
             std::to_string(running_process_pid_) + ")");
         return;
     }
+    // A previous launch's deploy is still running (P8.4: the deploy now runs
+    // on the worker thread). The continuation will launch or clean up.
+    if (launch_prep_pending_) {
+        engine::Logger::instance().debug(
+            "Launch skipped - deploy already in progress");
+        return;
+    }
 
     auto& trace = engine::TraceRecorder::instance();
     trace.begin_flow("launch");
 
     auto exec_path = std::filesystem::path(full_path.toStdString());
+
+    // Output-to-mod routing (MO2 getByBinary parity): an explicit target from
+    // the exec-controls combo wins; otherwise the launched binary's configured
+    // output mod is resolved from the executable entries, so toolbar shortcuts
+    // and Data-tab Execute honor it too. Unmatched binaries fall back to
+    // Overwrite capture.
+    std::filesystem::path effective_output = output_mod_dir;
+    if (effective_output.empty() && !current_game_dir_.empty()) {
+        const QString mod_name = ui::output_mod_for_path(
+            right_panel_->exec_controls()->executable_entries(),
+            current_game_dir_, full_path);
+        if (!mod_name.isEmpty())
+            effective_output = ensure_output_mod_dir(mod_name);
+    }
+    if (!effective_output.empty()) {
+        const QString folder =
+            QString::fromStdString(effective_output.filename().string());
+        bool disabled = false;
+        for (const auto& m : mod_model_->mods()) {
+            if (m.id.compare(folder, Qt::CaseInsensitive) == 0) {
+                disabled = !m.enabled;
+                break;
+            }
+        }
+        if (disabled) {
+            engine::Logger::instance().error(
+                "Launch blocked - output mod '" + folder.toStdString() + "' is disabled");
+            QMessageBox::warning(this, tr("Launch"),
+                tr("The designated write target \"%1\" is not enabled.\n\n"
+                   "Enable the mod and try again.").arg(folder));
+            trace.end_flow("launch", false, "Output mod disabled");
+            return;
+        }
+    }
 
     // Show the lock overlay before launching - the game must not outrun it
     auto binary_name = QString::fromStdString(exec_path.filename().string());
@@ -4507,16 +4671,68 @@ void MainWindow::launch_with_executable(const QString& full_path,
         }
     }
 
+    // Build a launch-prep snapshot and run the deploy on the worker thread
+    // (P8.4). engine::prepare_launch_params deploys all enabled mods into
+    // .gmm_staging and returns the assembled params; the worker emits
+    // prepared() only after that finished, so launch_game() (in
+    // on_launch_params_prepared) provably never starts before the staging
+    // tree is complete.
     trace.begin_stage("launch", "Prepare launch environment");
-    auto lparams = engine::prepare_launch_params(
-        current_instance_root_, current_game_dir_, exec_path,
-        knowledge_ ? *knowledge_ : engine::GameKnowledge(),
-        current_game_id_, steam_appid,
-        (exec_path.extension().string() == ".exe" ||
-         exec_path.extension().string() == ".EXE"));
+    engine::LaunchPrepRequest req;
+    req.instance_root = current_instance_root_;
+    req.game_dir = current_game_dir_;
+    req.executable = exec_path;
+    req.knowledge = knowledge_ ? *knowledge_ : engine::GameKnowledge();
+    req.game_id = current_game_id_;
+    req.steam_appid = steam_appid;
+    req.is_windows_exe = (exec_path.extension().string() == ".exe" ||
+                          exec_path.extension().string() == ".EXE");
+
+    if (!launch_deploy_thread_) {
+        launch_deploy_thread_ = new ui::DeployThread(this);
+        connect(launch_deploy_thread_->worker(), &ui::DeployWorker::progress,
+                this, &MainWindow::on_deploy_progress);
+        connect(launch_deploy_thread_->worker(), &ui::DeployWorker::prepared,
+                this, &MainWindow::on_launch_params_prepared);
+    }
+
+    launch_prep_pending_ = true;
+    output_mod_dir_ = effective_output;
+    output_session_scratch_.clear();
+    launch_deploy_thread_->start(std::move(req));
+    // Returns immediately; the launch continues in on_launch_params_prepared.
+}
+
+void MainWindow::on_deploy_progress(int files_done, int files_total) {
+    if (!launch_prep_pending_) return;
+    if (files_total > 0) {
+        game_lock_label_->setText(tr("Deploying mods… %1/%2")
+            .arg(files_done).arg(files_total));
+    }
+}
+
+void MainWindow::on_launch_params_prepared(engine::LaunchParams lparams) {
+    if (!launch_prep_pending_) return;
+    launch_prep_pending_ = false;
+
+    auto& trace = engine::TraceRecorder::instance();
+    auto exec_path = lparams.executable;
+    auto binary_name = QString::fromStdString(exec_path.filename().string());
+
+    // The user may have switched instances while the deploy ran: the staging
+    // tree belongs to the OLD instance. Drop the stale result - never launch
+    // into the wrong game.
+    if (lparams.game_dir != current_game_dir_) {
+        engine::Logger::instance().warn(
+            "Launch abandoned - instance changed while mods were deploying");
+        trace.end_flow("launch", false, "Instance changed mid-deploy");
+        hide_game_lock_overlay();
+        return;
+    }
+    trace.end_stage("launch", true, "Launch environment prepared");
+
     lparams.platform = platform_;
     lparams.overwrite_dir = overwrite_dir_path();
-    trace.end_stage("launch", true, "Launch environment prepared");
 
     // MO2-equivalent plugin order: build + write the game's Plugins.txt (and
     // the instance profile) right before launch. No-op for games without
@@ -4524,14 +4740,13 @@ void MainWindow::launch_with_executable(const QString& full_path,
     trace.begin_stage("launch", "Sync plugin order");
     engine::PluginDatabase::write_plugins_txt_for_launch(
         current_game_dir_, current_instance_root_, current_game_id_,
-        steam_appid, knowledge_ ? *knowledge_ : engine::GameKnowledge(), platform_);
+        lparams.steam_appid, knowledge_ ? *knowledge_ : engine::GameKnowledge(), platform_);
     trace.end_stage("launch", true, "Plugin order synced");
 
     // Output-to-mod: capture into a per-launch scratch dir, relay on exit.
-    // Empty output_mod_dir = default Overwrite capture (toolbar shortcuts).
+    // Empty output_mod_dir_ = default Overwrite capture (toolbar shortcuts).
     output_session_scratch_.clear();
-    output_mod_dir_ = output_mod_dir;
-    if (!output_mod_dir.empty()) {
+    if (!output_mod_dir_.empty()) {
         auto scratch_base = cache_dir_path();
         if (scratch_base.empty()) scratch_base = current_game_dir_ / "cache";
         auto session = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -4562,6 +4777,12 @@ void MainWindow::launch_with_executable(const QString& full_path,
     if (!engine::merged_view_file_exists(current_game_dir_, staging_dir_, exec_path)) {
         trace.end_flow("launch", false, "Executable not found");
         hide_game_lock_overlay();
+        if (!output_session_scratch_.empty()) {
+            std::error_code ec;
+            std::filesystem::remove_all(output_session_scratch_, ec);
+            output_session_scratch_.clear();
+        }
+        output_mod_dir_.clear();
         QMessageBox::warning(this, tr("Launch"),
             tr("The selected executable is not reachable in the game directory.\n%1\n\n"
                "If it belongs to a mod, make sure that mod is enabled.")
@@ -5059,7 +5280,7 @@ void MainWindow::add_toolbar_shortcut_from_path(const QString& full_path,
             icon = QIcon(pix);
     }
     if (icon.isNull())
-        icon = extractExeIconShortcut(full_path);
+        icon = ui::extractExeIcon(full_path, cache_thumbnails_dir_path());
 
     // Derive tooltip from game name (replace underscores with spaces) + exe filename
     auto info = QFileInfo(full_path);
@@ -5073,6 +5294,7 @@ void MainWindow::add_toolbar_shortcut_from_path(const QString& full_path,
         launch_with_executable(full_path);
     });
     toolbar_shortcut_paths_.append(full_path);
+    toolbar_shortcut_icons_.append(icon_path);
     save_order();
 }
 
@@ -6131,17 +6353,11 @@ void MainWindow::prompt_nxm_registration() {
     // Already registered? Skip.
     if (managed_games_->is_managed(current_game_id_)) return;
 
-    // Find the nexus_domain for this game from the loaded plugin
-    std::string nexus_domain;
-    for (const auto& p : plugin_loader_->plugins()) {
-        if (p.game_id == current_game_id_) {
-            nexus_domain = p.nexus_domain;
-            break;
-        }
-    }
+    // Find the nexus_domain for this game from the loaded plugin identity
+    const QString nexus_domain = current_nexus_domain();
 
     // No nexus_domain means this game doesn't support Nexus Mods at all
-    if (nexus_domain.empty()) return;
+    if (nexus_domain.isEmpty()) return;
 
     QMessageBox msg(this);
     msg.setWindowTitle(tr("Nexus Mods Downloads"));
@@ -6155,7 +6371,7 @@ void MainWindow::prompt_nxm_registration() {
 
     if (reply == QMessageBox::Yes) {
         managed_games_->add_source(current_game_id_,
-            engine::GameSource{"nexus", "nexusmods.com", nexus_domain});
+            engine::GameSource{"nexus", "nexusmods.com", nexus_domain.toStdString()});
 
         engine::Logger::instance().debug(
             "Registered " + current_game_id_ + " for Nexus Mods downloads (nexusmods.com)");
@@ -6324,6 +6540,10 @@ void MainWindow::show_settings_dialog() {
     if (mod_view_) mod_view_->apply_scrollbar_policy();
     // The compact-downloads setting may have changed in the dialog.
     if (auto* dt = right_panel_->downloads_tab()) dt->apply_compact_style();
+    // The Nexus queue-downloads setting may have changed in the dialog: push
+    // the new value into the fetch pool.
+    pipeline_thread_->worker()->set_nexus_queue_downloads(
+        Settings::instance().nexus_queue_downloads());
 }
 
 void MainWindow::show_instance_statistics() {

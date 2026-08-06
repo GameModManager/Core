@@ -1,5 +1,6 @@
 #include "engine/archive/archive_extractor.h"
 #include "engine/fs_utils.h"
+#include "engine/process_utils.h"
 
 #include <archive.h>
 #include <archive_entry.h>
@@ -8,6 +9,7 @@
 #include <cstring>
 #include <fstream>
 #include <string>
+#include <system_error>
 
 namespace engine {
 
@@ -45,6 +47,59 @@ int64_t archive_total_size(const std::filesystem::path& archive) {
     archive_read_close(a);
     archive_read_free(a);
     return total;
+}
+
+// RAR fallback via the unrar CLI - the Linux analog of MO2's UnRAR.exe on
+// Windows. libarchive's RAR5 reader refuses archives whose declared window
+// exceeds 64 MiB ("Declared dictionary size is not supported"), and WinRAR-made
+// mod archives routinely exceed it. unrar has no such cap. extract() only
+// reaches this for genuine RAR files (magic check), never for other formats
+// libarchive rejected. No byte-level progress is available, so the caller
+// switches to an indeterminate bar; on failure `error` holds the reason.
+bool extract_with_unrar(const std::filesystem::path& archive,
+                        const std::filesystem::path& dest_dir,
+                        std::vector<ExtractedFile>& out_files,
+                        std::string& error) {
+    std::error_code ec;
+    std::filesystem::create_directories(dest_dir, ec);
+    if (ec) {
+        error = "cannot create " + dest_dir.string() + ": " + ec.message();
+        return false;
+    }
+
+    // -p- refuses password prompts so an encrypted archive fails fast instead
+    // of hanging the install on an invisible prompt; -y + -o+ overwrite; -idq
+    // silences the percentage spam; the trailing '/' makes unrar treat dest as
+    // a directory (it is created on the fly if missing).
+    CapturedProcess proc = run_captured(
+        {"unrar", "x", "-o+", "-y", "-p-", "-idq", archive.string(),
+         dest_dir.string() + "/"});
+    if (!proc.ok) {
+        error = "unrar not available (install the 'unrar' package)";
+        return false;
+    }
+    if (proc.exit_code != 0) {
+        error = "unrar exited with code " + std::to_string(proc.exit_code) + ": " +
+                proc.err;
+        return false;
+    }
+
+    // Rebuild the extracted-file list by walking the tree: every regular file
+    // under dest_dir came from the archive (it was created fresh above).
+    auto it = std::filesystem::recursive_directory_iterator(dest_dir, ec);
+    if (ec) return true;  // nothing listed; extraction itself still succeeded
+    for (const auto& entry : it) {
+        if (entry.is_directory()) continue;
+        std::error_code rel_ec;
+        const std::filesystem::path rel =
+            std::filesystem::relative(entry.path(), dest_dir, rel_ec);
+        if (rel_ec) continue;
+        ExtractedFile ef;
+        ef.dest_path = entry.path();
+        ef.archive_path = engine::normalize_separators(rel.string());
+        out_files.push_back(std::move(ef));
+    }
+    return true;
 }
 
 }  // namespace
@@ -191,7 +246,34 @@ bool ArchiveExtractor::extract(const std::filesystem::path& archive,
 
     archive_read_close(a);
     archive_read_free(a);
-    return !failed;
+    if (!failed) return true;
+
+    // RAR fallback: libarchive's RAR5 reader caps the declared dictionary at
+    // 64 MiB ("Declared dictionary size is not supported"), which WinRAR-made
+    // mod archives routinely exceed. Retry with the unrar CLI for genuine RAR
+    // files only - never for other formats libarchive rejected. Keep the
+    // libarchive diagnostic as the primary error and append unrar's if the
+    // fallback fails too.
+    if (is_rar_archive(archive)) {
+        if (on_progress) on_progress(0, 0);  // indeterminate bar - no byte totals from unrar
+        out_files.clear();  // drop any partial list from the libarchive pass
+        std::string unrar_error;
+        if (extract_with_unrar(archive, dest_dir, out_files, unrar_error)) {
+            return true;
+        }
+        if (!unrar_error.empty()) error += "; unrar fallback failed: " + unrar_error;
+    }
+    return false;
+}
+
+bool is_rar_archive(const std::filesystem::path& archive) {
+    std::ifstream f(archive, std::ios::binary);
+    if (!f) return false;
+    char magic[7] = {};
+    f.read(magic, 7);
+    static constexpr char kRar4[7] = {'R', 'a', 'r', '!', '\x1a', '\x07', '\x00'};
+    static constexpr char kRar5[7] = {'R', 'a', 'r', '!', '\x1a', '\x07', '\x01'};
+    return std::memcmp(magic, kRar4, 7) == 0 || std::memcmp(magic, kRar5, 7) == 0;
 }
 
 }  // namespace engine

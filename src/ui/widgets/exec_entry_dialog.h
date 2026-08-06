@@ -37,6 +37,14 @@ struct ExecEntry {
 // filename, else "Untitled". Shared by the dialog, the combo bar and logging.
 QString exec_entry_display_name(const ExecEntry& e);
 
+// Resolves the output-to-mod routing for a launched binary (MO2 getByBinary
+// parity): returns the first entry whose binary path matches the given absolute
+// path, compared as a game-relative path, case-insensitively. Empty when no
+// entry declares an output mod for that binary (caller falls back to Overwrite).
+QString output_mod_for_path(const QVector<ExecEntry>& entries,
+                            const std::filesystem::path& game_dir,
+                            const QString& full_path);
+
 class ExecEntryDialog : public QDialog {
     Q_OBJECT
 public:
@@ -54,6 +62,9 @@ private:
     void rebuild_list();
     void select_entry(int index);
     void save_current_entry();
+    // Output-mod combo value: the selected mod's id, or the free-typed name
+    // when it matches no list item (empty for "--- None ---" / blank text).
+    QString current_output_mod_text() const;
     void on_add_from_file();
     void on_add_empty();
     void on_clone_selected();
