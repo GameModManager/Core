@@ -6,6 +6,7 @@
 #include "ui/main_window/saves_scan_worker.h"
 
 #include <QPoint>
+#include <QPointer>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -531,7 +532,7 @@ private:
     bool scanning_ = false;
     // Hover info popup (MO2 GamebryoSaveGameInfoWidget port). Recreated per
     // hover so content never goes stale.
-    QWidget* info_popup_ = nullptr;
+    QPointer<QWidget> info_popup_;
 };
 
 class ConflictsTab : public QWidget {
