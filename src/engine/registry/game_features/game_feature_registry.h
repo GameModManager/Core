@@ -21,6 +21,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "engine/registry/game_features/game_feature.h"
@@ -67,6 +68,16 @@ public:
     [[nodiscard]] std::shared_ptr<const GamePluginsFeature> resolve_game_plugins(
         const std::string& game_id) const;
 
+    // Typed resolve for any feature class exposing a static type_key(): the
+    // highest-priority registered feature of T's type, else nullptr. E.g.
+    // resolve_feature<ScriptExtenderFeature>(game_id).
+    template <class T>
+    [[nodiscard]] std::shared_ptr<const T> resolve_feature(
+        const std::string& game_id) const {
+        auto f = resolve(game_id, T::type_key());
+        return std::dynamic_pointer_cast<const T>(f);
+    }
+
     // All registrations for (game_id, type) in registration order (for
     // diagnostics/tests). Empty when nothing matches.
     [[nodiscard]] std::vector<RegisteredGameFeature> features_for(
@@ -91,5 +102,35 @@ private:
 // overridden.
 [[nodiscard]] std::string native_plugins_csv(const GameKnowledge& knowledge,
                                              const std::string& game_id);
+
+// The registered UnmanagedModsFeature's internal mod names (MO2
+// IUnmanagedMods::mods(false)), empty when none is registered. ModScanWorker
+// merges these into its unmanaged-row synthesis so a plugin can declare mods
+// the game manages itself (DLC/CC folders) that must show in the list.
+[[nodiscard]] std::vector<std::string> unmanaged_mods_for(
+    const std::string& game_id);
+
+// Register a game feature whose payload is key/value pairs — the
+// register_game_feature_data ABI entry (and its pybind mirror) land here, so
+// the parse logic lives once and is directly testable. This is the path for
+// the seven structured-data feature types; the two array-payload types
+// (mod_data_checker, game_plugins) go through GameFeatureRegistry directly.
+// Keys per feature_type (see gmm_abi_v1.h register_game_feature_data):
+//   mod_data_content  — "enabled" (comma-separated catalog IDs),
+//                       "content:<id>" = "name|icon|filter_only" (override).
+//   data_archives     — "vanilla_archives" (comma-separated archive names).
+//   script_extender   — "binary", "plugin_path", "loader_name",
+//                       "savegame_extension".
+//   save_game_info    — "extensions" (comma-separated save extensions).
+//   local_savegames   — "saves_subpath", "ini_file".
+//   unmanaged_mods    — "mods" (comma-separated internal mod names).
+//   bsa_invalidation  — "bsa_name", "bsa_version".
+// Unknown feature_type or an empty game_id/type is logged and returns false.
+[[nodiscard]] bool register_game_feature_data(
+    const std::string& game_id,
+    const std::string& feature_type,
+    int priority,
+    const std::vector<std::pair<std::string, std::string>>& kv,
+    const std::string& source = "");
 
 }  // namespace engine

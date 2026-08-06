@@ -149,6 +149,44 @@ static void cb_register_game_feature(GmmRegistrationCtx* ctx,
         " (game=" + gid + ", priority=" + std::to_string(priority) + ")");
 }
 
+static void cb_register_game_feature_data(GmmRegistrationCtx* ctx,
+                                          const char* game_id,
+                                          const char* feature_type,
+                                          int priority,
+                                          const char* const* keys,
+                                          const char* const* values,
+                                          size_t count) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge || !bridge->current_plugin) return;
+
+    // NULL game_id = this plugin's own game (same rule as every other
+    // registration); an explicit game_id lets a standalone plugin override a
+    // game it doesn't provide.
+    std::string gid = game_id ? game_id : bridge->current_plugin->game_id;
+    std::string type = feature_type ? feature_type : "";
+    if (gid.empty() || type.empty()) {
+        Logger::instance().warn("Game feature data registered with empty game_id/type");
+        return;
+    }
+
+    // The 7 structured-data feature types (mod_data_content, data_archives,
+    // script_extender, save_game_info, local_savegames, unmanaged_mods,
+    // bsa_invalidation) parse through the shared registry function, so the
+    // key-value contract lives once and the pybind mirror stays identical.
+    std::vector<std::pair<std::string, std::string>> kv;
+    if (keys && values) {
+        for (size_t i = 0; i < count; ++i)
+            if (keys[i]) kv.emplace_back(keys[i], values[i] ? values[i] : "");
+    }
+    if (!engine::register_game_feature_data(gid, type, priority, std::move(kv),
+                                            bridge->current_plugin->path)) {
+        return;  // register_game_feature_data already logged the reason
+    }
+
+    Logger::instance().debug("Plugin registered game feature: " + type +
+        " (game=" + gid + ", priority=" + std::to_string(priority) + ")");
+}
+
 static void cb_register_stage_claim(GmmRegistrationCtx* ctx,
                                      const char* stage_name,
                                      GmmStageFn fn,
@@ -423,6 +461,7 @@ bool PluginLoader::load_plugin(const std::string& path) {
     ctx.register_settings = cb_register_settings;
     ctx.register_diagnostics = cb_register_diagnostics;
     ctx.register_game_feature = cb_register_game_feature;
+    ctx.register_game_feature_data = cb_register_game_feature_data;
 
     RegistrationBridge bridge;
     bridge.loader = this;

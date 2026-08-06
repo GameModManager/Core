@@ -149,6 +149,34 @@ class RegistrationContext:
         """
         ...
 
+    def register_game_feature_data(
+        self,
+        game_id: str = "",
+        feature_type: str = "",
+        priority: int = 0,
+        data: dict[str, str] = {},
+    ) -> None:
+        """Register a per-game feature whose payload is key/value pairs (the
+        7 structured-data feature types; register_game_feature covers the two
+        array-payload types). Same priority + replace semantics.
+
+        Keys per feature_type (see gmm_abi_v1.h register_game_feature_data):
+          "mod_data_content"  — "enabled": comma-separated catalog content IDs
+                                (plugin, optional, interface, mesh, bsa,
+                                script, skse, skse_files, skyproc, sound,
+                                texture, mcm, ini, facegen, modgroup);
+                                "content:<id>": "name|icon|filter_only".
+          "data_archives"     — "vanilla_archives": comma-separated archive names.
+          "script_extender"   — "binary", "plugin_path", "loader_name",
+                                "savegame_extension".
+          "save_game_info"    — "extensions": comma-separated save extensions.
+          "local_savegames"   — "saves_subpath", "ini_file".
+          "unmanaged_mods"    — "mods": comma-separated internal mod names.
+          "bsa_invalidation"  — "bsa_name", "bsa_version".
+        game_id: the game this feature serves ("" = this plugin's own game).
+        """
+        ...
+
     def register_tab(
         self,
         capability: str,
