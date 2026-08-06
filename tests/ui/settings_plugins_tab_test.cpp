@@ -27,14 +27,17 @@
 #include "engine/theme/style_manager.h"
 #include "engine/theme/theme_manager.h"
 
+#include <QAbstractSpinBox>
 #include <QApplication>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QGroupBox>
 #include <QLineEdit>
 #include <QLabel>
 #include <QMetaObject>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QSplitter>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -127,9 +130,11 @@ int main(int argc, char** argv) {
     engine::StyleManager style(tm);
 
     engine::PluginLoader loader;
-    const bool have_real = argc > 1 && loader.load_directory(argv[1]);
-    std::printf("load_directory(%s) = %d, plugins = %zu\n",
-                have_real ? argv[1] : "(none)", (int)have_real, loader.plugins().size());
+    // Load every directory given on the command line (argv[1] = the real
+    // plugins dir, argv[2] = build/test_plugins with the P1.5 fixture).
+    for (int i = 1; i < argc; ++i) loader.load_directory(argv[i]);
+    std::printf("loaded %d plugin dir(s), plugins = %zu\n",
+                argc - 1, loader.plugins().size());
     if (loader.plugins().empty()) seed_synthetic(loader);
     for (const auto& p : loader.plugins())
         std::printf("  - %-40s game=%-28s category=%s\n",
@@ -334,6 +339,98 @@ int main(int argc, char** argv) {
               "http://example/masterlist.yaml",
           "plaintext edit persisted (plugins/settings/<basename>/<key>)");
 
+    // --- P1.5: typed plugin settings tab (register_settings_tab). ---
+    // The fixture declares a "Fixture Settings" tab: bool/int/string/choice
+    // rendered as native widgets, edits persisted through the same per-plugin
+    // store, and its declared keys stop rendering as raw key:value rows in
+    // the info pane (the undeclared plain_legacy_key keeps showing).
+    QWidget* fixture_page = nullptr;
+    for (int i = 0; tabs && i < tabs->count(); ++i)
+        if (tabs->tabText(i) == "Fixture Settings") fixture_page = tabs->widget(i);
+    check(fixture_page != nullptr, "plugin settings tab appended with its declared title");
+    if (!fixture_page) {
+        std::printf("FAIL: no 'Fixture Settings' tab in the dialog\n");
+        ++failures;
+    } else {
+        const auto checkboxes = fixture_page->findChildren<QCheckBox*>();
+        const auto spins = fixture_page->findChildren<QSpinBox*>();
+        // QSpinBox/QDoubleSpinBox embed a QLineEdit internally; filter those
+        // out so the string setting is the only plain line edit found.
+        const auto edits = [&fixture_page] {
+            QList<QLineEdit*> out;
+            for (auto* e : fixture_page->findChildren<QLineEdit*>())
+                if (!qobject_cast<QAbstractSpinBox*>(e->parentWidget())) out << e;
+            return out;
+        }();
+        const auto combos = fixture_page->findChildren<QComboBox*>();
+        check(checkboxes.size() == 1 && checkboxes[0]->isChecked(),
+              "bool setting renders as a checked checkbox");
+        check(spins.size() == 1 && spins[0]->value() == 4 &&
+                  spins[0]->minimum() == 1 && spins[0]->maximum() == 8,
+              "int setting renders as a spinbox honoring min:max");
+        check(edits.size() == 1 && edits[0]->text() == "mod_",
+              "string setting renders as a line edit");
+        check(combos.size() == 1 && combos[0]->count() == 3 &&
+                  combos[0]->currentText() == "Full",
+              "choice setting renders as a combo box");
+
+        QString fixture_basename;
+        for (const auto& p : loader.plugins())
+            if (QString::fromStdString(p.game_display_name) == "Settings Tab Fixture")
+                fixture_basename = QString::fromStdString(
+                    std::filesystem::path(p.path).filename().string());
+        check(!fixture_basename.isEmpty(), "resolved fixture plugin basename");
+        if (!fixture_basename.isEmpty()) {
+            auto& s = Settings::instance();
+            if (checkboxes.size() == 1) {
+                checkboxes[0]->setChecked(false);
+                app.processEvents();
+                check(s.plugin_setting(fixture_basename, "show_previews", "1") == "0",
+                      "bool edit persisted");
+            }
+            if (spins.size() == 1) {
+                spins[0]->setValue(6);
+                app.processEvents();
+                check(s.plugin_setting(fixture_basename, "max_threads", "4") == "6",
+                      "int edit persisted");
+            }
+            if (edits.size() == 1) {
+                edits[0]->setText("bundle_");
+                app.processEvents();
+                check(s.plugin_setting(fixture_basename, "mod_name_prefix", "mod_") == "bundle_",
+                      "string edit persisted");
+            }
+            if (combos.size() == 1) {
+                combos[0]->setCurrentText("Compact");
+                app.processEvents();
+                check(s.plugin_setting(fixture_basename, "install_mode", "Full") == "Compact",
+                      "choice edit persisted");
+            }
+        }
+    }
+
+    // Select the fixture leaf: declared keys filtered from the kv table, the
+    // undeclared plain key kept, and a hint points at the typed tab.
+    for (int g = 0; tree && g < tree->topLevelItemCount(); ++g) {
+        auto* group = tree->topLevelItem(g);
+        for (int c = 0; c < group->childCount(); ++c)
+            if (group->child(c)->text(0) == "Settings Tab Fixture")
+                tree->setCurrentItem(group->child(c));
+    }
+    app.processEvents();
+    bool tab_hint_shown = false;
+    bool only_legacy_row = false;
+    if (page) {
+        for (auto* lbl : page->findChildren<QLabel*>())
+            if (lbl->text().startsWith("Settings live on the")) tab_hint_shown = true;
+        if (auto* t = page->findChild<QTableWidget*>()) {
+            only_legacy_row = t->rowCount() == 1 && t->item(0, 0) &&
+                              t->item(0, 0)->text() == "plain_legacy_key";
+        }
+    }
+    check(tab_hint_shown, "fixture info pane hints at the typed settings tab");
+    check(only_legacy_row, "declared keys filtered from kv table, undeclared key kept");
+
     // --- Filter ---
     auto* filter = page->findChild<QLineEdit*>("pluginFilter");
     check(filter != nullptr, "filter bar present");
@@ -522,6 +619,34 @@ int main(int argc, char** argv) {
 
     if (auto* buttons2 = dlg2.findChild<QDialogButtonBox*>())
         if (auto* close_btn = buttons2->button(QDialogButtonBox::Close))
+            close_btn->click();
+    app.processEvents();
+
+    // --- P1.5 reopen: the edited typed-tab values survive into a new dialog.
+    SettingsDialog dlg3(&style, "breeze", root, &loader);
+    dlg3.show();
+    app.processEvents();
+    auto* tabs3 = find_tabs(dlg3);
+    QWidget* fixture_page3 = nullptr;
+    for (int i = 0; tabs3 && i < tabs3->count(); ++i)
+        if (tabs3->tabText(i) == "Fixture Settings") fixture_page3 = tabs3->widget(i);
+    bool typed_restored = false;
+    if (fixture_page3) {
+        const auto c3 = fixture_page3->findChildren<QCheckBox*>();
+        const auto s3 = fixture_page3->findChildren<QSpinBox*>();
+        QList<QLineEdit*> e3;
+        for (auto* e : fixture_page3->findChildren<QLineEdit*>())
+            if (!qobject_cast<QAbstractSpinBox*>(e->parentWidget())) e3 << e;
+        const auto m3 = fixture_page3->findChildren<QComboBox*>();
+        typed_restored = !c3.empty() && !c3[0]->isChecked() &&
+                         !s3.empty() && s3[0]->value() == 6 &&
+                         !e3.empty() && e3[0]->text() == "bundle_" &&
+                         !m3.empty() && m3[0]->currentText() == "Compact";
+    }
+    check(typed_restored, "typed tab values persisted across dialog reopen");
+
+    if (auto* buttons3 = dlg3.findChild<QDialogButtonBox*>())
+        if (auto* close_btn = buttons3->button(QDialogButtonBox::Close))
             close_btn->click();
     app.processEvents();
 

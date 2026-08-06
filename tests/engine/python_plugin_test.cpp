@@ -318,6 +318,81 @@ def register(ctx):
     fs::remove_all(tmp);
 }
 
+// P1.5: the pybind mirror of register_settings_tab. A Python plugin declares a
+// typed settings tab; the loader parses it into PluginInfo::settings_tab the
+// same way the C ABI path does (choices split into a list, int range kept as
+// a string, no options for bool/string).
+static void test_python_settings_tab() {
+    std::cout << "=== test_python_settings_tab ===" << std::endl;
+
+    fs::path tmp = fs::temp_directory_path() / "gmm_python_settings_tab";
+    fs::create_directories(tmp);
+
+    fs::path plugin_path = tmp / "settings_tab.py";
+    {
+        std::ofstream f(plugin_path);
+        f << R"(
+import gmm
+
+def register(ctx):
+    ctx.register_identity(nexus_domain="settabs", steam_appid=9999)
+    ctx.register_category("Settings Page")
+    ctx.register_settings_tab("Python Fixture Settings", [
+        ("show_previews", "bool", "1", None),
+        ("max_threads", "int", "4", "1:8"),
+        ("mod_name_prefix", "string", "mod_", None),
+        ("install_mode", "choice", "Full", ["Full", "Compact", "Minimal"]),
+    ])
+    ctx.register_settings([("plain_legacy_key", "legacy_value")])
+)";
+    }
+
+    engine::python_init();
+    engine::PluginLoader loader;
+    require(engine::python_load_plugin(&loader, plugin_path.string()),
+            "python plugin with register_settings_tab loads");
+    require(loader.plugins().size() == 1, "settings-tab plugin registered");
+    const auto& info = loader.plugins()[0];
+
+    require(info.settings_tab.title == "Python Fixture Settings",
+            "settings_tab.title parsed from the Python declaration");
+    require(info.settings_tab.settings.size() == 4,
+            "all four typed settings parsed");
+
+    const auto& show = info.settings_tab.settings[0];
+    require(show.key == "show_previews" && show.type == "bool" &&
+                show.default_value == "1" && show.choices.empty() &&
+                show.int_range.empty(),
+            "bool entry parsed (no options)");
+
+    const auto& thr = info.settings_tab.settings[1];
+    require(thr.key == "max_threads" && thr.type == "int" &&
+                thr.default_value == "4" && thr.int_range == "1:8",
+            "int entry parsed with min:max range");
+
+    const auto& pre = info.settings_tab.settings[2];
+    require(pre.key == "mod_name_prefix" && pre.type == "string" &&
+                pre.default_value == "mod_",
+            "string entry parsed");
+
+    const auto& mode = info.settings_tab.settings[3];
+    require(mode.key == "install_mode" && mode.type == "choice" &&
+                mode.default_value == "Full" &&
+                mode.choices == std::vector<std::string>{"Full", "Compact", "Minimal"},
+            "choice entry parsed with candidate list");
+
+    require(info.settings.size() == 1 &&
+                info.settings.begin()->first == "plain_legacy_key",
+            "undeclared register_settings key kept alongside the tab");
+
+    std::cout << "  settings_tab parsed: title='" << info.settings_tab.title
+              << "' entries=" << info.settings_tab.settings.size() << std::endl;
+    std::cout << "  PASSED" << std::endl;
+
+    engine::python_shutdown();
+    fs::remove_all(tmp);
+}
+
 int main() {
     std::cout << "Python plugin tests" << std::endl;
 
@@ -326,6 +401,7 @@ int main() {
     test_python_plugin_duplicate_load();
     test_python_register_game_feature();
     test_python_subscribe_event();
+    test_python_settings_tab();
 
     std::cout << "\nAll Python plugin tests passed!" << std::endl;
     return 0;

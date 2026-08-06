@@ -124,6 +124,43 @@ static void cb_register_settings(GmmRegistrationCtx* ctx,
     }
 }
 
+static void cb_register_settings_tab(GmmRegistrationCtx* ctx,
+                                     const char* title,
+                                     const char* const* keys,
+                                     const char* const* types,
+                                     const char* const* defaults,
+                                     const char* const* options,
+                                     size_t count) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge || !bridge->current_plugin || !title || !keys || !types) return;
+
+    PluginInfo::SettingTab tab;
+    tab.title = title;
+    for (size_t i = 0; i < count; ++i) {
+        if (!keys[i] || !types[i]) continue;
+        PluginInfo::SettingTabEntry entry;
+        entry.key = keys[i];
+        entry.type = types[i];
+        if (defaults && defaults[i]) entry.default_value = defaults[i];
+        if (options && options[i]) {
+            if (entry.type == "choice") {
+                // newline-separated candidate choices
+                std::string opts = options[i];
+                size_t pos = 0;
+                while ((pos = opts.find('\n')) != std::string::npos) {
+                    entry.choices.emplace_back(opts.substr(0, pos));
+                    opts.erase(0, pos + 1);
+                }
+                if (!opts.empty()) entry.choices.emplace_back(std::move(opts));
+            } else if (entry.type == "int") {
+                entry.int_range = options[i];
+            }
+        }
+        tab.settings.push_back(std::move(entry));
+    }
+    bridge->current_plugin->settings_tab = std::move(tab);
+}
+
 static void cb_register_diagnostics(GmmRegistrationCtx* ctx,
                                     GmmDiagnosticsFn fn,
                                     void* user_data) {
@@ -589,6 +626,7 @@ bool PluginLoader::load_plugin(const std::string& path) {
     ctx.register_meta = cb_register_meta;
     ctx.register_category = cb_register_category;
     ctx.register_settings = cb_register_settings;
+    ctx.register_settings_tab = cb_register_settings_tab;
     ctx.register_diagnostics = cb_register_diagnostics;
     ctx.register_game_feature = cb_register_game_feature;
     ctx.register_game_feature_data = cb_register_game_feature_data;

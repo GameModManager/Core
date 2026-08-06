@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # (package_installer target passes -DVERSION=${PROJECT_VERSION}), and the plugins
 # (GMM_VERSION, visible in the add_subdirectory'd external/plugins scope).
 project(GameModManager
-    VERSION 0.2.28
+    VERSION 0.2.29
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -898,6 +898,21 @@ set_target_properties(gmm_fomod_stage_plugin PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test_plugins"
 )
 
+# P1.5 test fixture: a plugin that declares a typed settings tab via the new
+# register_settings_tab C ABI entry (bool/int/string/choice + one undeclared
+# plain register_settings key). Built into test_plugins/ and loaded ONLY by
+# settings_plugins_tab_test — never shipped to the app's plugins dir, never
+# loaded by the app.
+add_library(gmm_settings_tab_plugin MODULE
+    tests/engine/plugins/settings_tab_plugin.cpp
+)
+target_include_directories(gmm_settings_tab_plugin PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+set_target_properties(gmm_settings_tab_plugin PROPERTIES
+    PREFIX ""
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test_plugins"
+)
+
 # P1.4 host UI bridge test — a plugin claims the Fomod stage, main_window's
 # claim_for picks it over the core FomodStage, and its handler runs the install
 # through GmmHostUi::fomod_wizard. The outcome JSON proves the bridge ran
@@ -1211,8 +1226,9 @@ target_link_libraries(settings_plugins_tab_test PRIVATE Qt6::Widgets Qt6::Networ
 if(NOT WIN32)
     target_link_libraries(settings_plugins_tab_test PRIVATE ${CMAKE_DL_LIBS})
 endif()
-add_test(NAME settings_plugins_tab_test COMMAND settings_plugins_tab_test ${CMAKE_CURRENT_BINARY_DIR}/plugins)
+add_test(NAME settings_plugins_tab_test COMMAND settings_plugins_tab_test ${CMAKE_CURRENT_BINARY_DIR}/plugins ${CMAKE_BINARY_DIR}/test_plugins)
 set_tests_properties(settings_plugins_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+add_dependencies(settings_plugins_tab_test gmm_settings_tab_plugin)
 
 # StyleManager palette-change re-apply — offscreen GUI regression test. The
 # global app stylesheet (installed even for the Default/system theme) renders
