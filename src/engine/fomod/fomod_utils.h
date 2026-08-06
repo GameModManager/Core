@@ -7,6 +7,7 @@
 // Windows-native resolver, engine::resolve_path) - keep no copies here.
 
 #include "engine/fs_utils.h"
+#include "engine/filetree/file_tree.h"
 
 #include <algorithm>
 #include <cctype>
@@ -55,6 +56,28 @@ inline constexpr std::string_view TYPE_COULD_BE_USABLE = "CouldBeUsable";
         return find_fomod_dir(*singleChild);
     }
     return std::nullopt;
+}
+
+// Tree variant of find_fomod_dir: the same descent rule (a "fomod" directory
+// of any casing wins; else descend the lone single-dir child) over a lazy file
+// tree, so the same FOMOD detection runs on in-memory/archive trees. Returns
+// the fomod directory node (the content root is its parent) or null.
+[[nodiscard]] inline std::shared_ptr<const FileTree> find_fomod_dir(
+    const std::shared_ptr<const FileTree>& tree)
+{
+    if (!tree) return nullptr;
+    for (const auto& entry : *tree) {
+        if (entry->is_dir() &&
+            name_equals(entry->name(), std::string(fomod_files::FOMOD_DIR),
+                        NameCompare::CaseInsensitive)) {
+            return entry->as_tree();
+        }
+    }
+    if (tree->size() == 1) {
+        auto only = tree->at(0);
+        if (only->is_dir()) return find_fomod_dir(only->as_tree());
+    }
+    return nullptr;
 }
 
 inline std::string& ltrim(std::string& s)

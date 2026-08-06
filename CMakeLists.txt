@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # (package_installer target passes -DVERSION=${PROJECT_VERSION}), and the plugins
 # (GMM_VERSION, visible in the add_subdirectory'd external/plugins scope).
 project(GameModManager
-    VERSION 0.2.21
+    VERSION 0.2.22
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -151,6 +151,12 @@ set(ENGINE_SOURCES
     src/engine/instance/instance_utils.cpp
     src/engine/instance/game_icons.cpp
     src/engine/fs_utils.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
+    src/engine/filetree/staging_layout.cpp
+    src/engine/registry/game_features/mod_data_checker.cpp
     src/engine/detect/game_detector.cpp
     src/engine/detect/mod_scanner.cpp
     src/engine/archive/archive_extractor.cpp
@@ -441,6 +447,12 @@ add_executable(pipeline_test tests/engine/pipeline_test.cpp
     src/engine/deploy/strategy_symlink.cpp
     src/engine/deploy/strategy_overlayfs_deploy.cpp
     src/engine/fs_utils.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
+    src/engine/filetree/staging_layout.cpp
+    src/engine/registry/game_features/mod_data_checker.cpp
     src/engine/deploy/strategy_hardlink.cpp
     src/engine/deploy/strategy_junction.cpp
     src/engine/pipeline/pipeline.cpp
@@ -518,6 +530,13 @@ add_executable(registry_test tests/engine/registry_test.cpp
     src/engine/registry/hook_registry.cpp
     src/engine/instance/instance.cpp
     src/engine/archive/archive_extractor.cpp
+    src/engine/fs_utils.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
+    src/engine/filetree/staging_layout.cpp
+    src/engine/registry/game_features/mod_data_checker.cpp
     src/engine/pipeline/pipeline.cpp
     src/engine/pipeline/fetch_stage.cpp
     src/engine/pipeline/extract_stage.cpp
@@ -696,6 +715,13 @@ add_executable(perf_benchmark tests/perf/benchmark_test.cpp
     src/engine/deploy/deploy_ledger.cpp
     src/engine/registry/stage_registry.cpp
     src/engine/registry/hook_registry.cpp
+    src/engine/fs_utils.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
+    src/engine/filetree/staging_layout.cpp
+    src/engine/registry/game_features/mod_data_checker.cpp
     src/engine/pipeline/pipeline.cpp
     src/engine/pipeline/fetch_stage.cpp
     src/engine/pipeline/extract_stage.cpp
@@ -774,6 +800,24 @@ add_executable(fs_utils_test tests/engine/fs_utils_test.cpp
 )
 target_include_directories(fs_utils_test PRIVATE src/)
 add_test(NAME fs_utils_test COMMAND fs_utils_test)
+
+# Unified file tree (PLAN §19 P1.1): FileTree/FileTreeEntry over a directory on
+# disk and over a libarchive archive, name comparison, lazy population, walk,
+# and the staging-layout wrapper-peel analysis running on trees. The archive-vs-
+# folder shape-equivalence proof is the Phase 7 exit criterion's core.
+add_executable(filetree_test tests/engine/filetree_test.cpp
+    src/engine/fs_utils.cpp
+    src/engine/log/logger.cpp
+    src/engine/filetree/file_tree.cpp
+    src/engine/filetree/dir_file_tree.cpp
+    src/engine/filetree/data_archive.cpp
+    src/engine/filetree/archive_file_tree.cpp
+    src/engine/filetree/staging_layout.cpp
+    src/engine/registry/game_features/mod_data_checker.cpp
+)
+target_include_directories(filetree_test PRIVATE src/)
+target_link_libraries(filetree_test PRIVATE PkgConfig::LIBARCHIVE)
+add_test(NAME filetree_test COMMAND filetree_test)
 
 # Hidden-file contract: is_hidden_file/hide_file/unhide_file (.gmmhidden +
 # .mohidden) and deploy_all_enabled_mods skipping hidden files on both suffixes.
