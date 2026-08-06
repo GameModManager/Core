@@ -5,6 +5,7 @@
 #include "engine/detect/mod_scanner.h"
 #include "engine/registry/game_features/game_feature_registry.h"
 #include "engine/registry/game_knowledge.h"
+#include "engine/events/event_bus.h"
 
 #include <cassert>
 #include <cstdio>
@@ -245,6 +246,78 @@ def register(ctx):
     fs::remove_all(tmp);
 }
 
+// P1.3 exit criterion: "a Python plugin logs an install and a state-change,
+// engine tests pin the event stream." The plugin subscribes to the host event
+// bus during register(); the test drives the SAME public dispatch() the UI
+// calls, and asserts the Python handler received both events with the right
+// dict payloads (logged to a file by the plugin itself).
+static void test_python_subscribe_event() {
+    std::cout << "=== test_python_subscribe_event ===" << std::endl;
+
+    engine::EventBus::instance().clear();
+
+    fs::path tmp = fs::temp_directory_path() / "gmm_python_events";
+    fs::create_directories(tmp);
+    fs::path log_path = tmp / "events.log";
+
+    fs::path plugin_path = tmp / "listener.py";
+    {
+        std::ofstream f(plugin_path);
+        f << "import gmm\n";
+        f << "\n";
+        f << "LOG = " << '"' << log_path.string() << '"' << "\n";
+        f << "\n";
+        f << R"(
+def log_event(event_id, payload):
+    with open(LOG, "a") as fh:
+        fh.write(event_id + "|" + payload.get("mod", "") + "|"
+                 + str(payload.get("enabled", "")) + "\n")
+
+def register(ctx):
+    ctx.register_identity(steam_appid=4242)
+    ctx.subscribe_event("mod_installed", log_event)
+    ctx.subscribe_event("mod_state_changed", log_event)
+)";
+    }
+
+    engine::python_init();
+    engine::PluginLoader loader;
+    require(engine::python_load_plugin(&loader, plugin_path.string()),
+            "python plugin with subscribe_event loads");
+    require(loader.plugins().size() == 1,
+            "listener plugin registered");
+    require(engine::EventBus::instance().subscriber_count("mod_installed") == 1,
+            "python subscription landed on the bus (mod_installed)");
+    require(engine::EventBus::instance().subscriber_count("mod_state_changed") == 1,
+            "python subscription landed on the bus (mod_state_changed)");
+
+    // Drive the same public emit the UI uses (MainWindow install/state points).
+    engine::EventBus::instance().dispatch(
+        engine::events::kModInstalled,
+        engine::json_obj({{"mod", "SkyUI"}, {"name", "SkyUI"}}));
+    engine::EventBus::instance().dispatch(
+        engine::events::kModStateChanged,
+        engine::json_obj({{"mod", "SkyUI"}, {"enabled", "1"}}));
+
+    // The Python handler logged exactly the two events, in order, with the
+    // decoded dict payloads.
+    require(fs::exists(log_path), "python handler wrote the events log");
+    std::ifstream f(log_path);
+    std::vector<std::string> lines;
+    std::string line;
+    while (std::getline(f, line)) lines.push_back(line);
+    require(lines.size() == 2, "install + state-change both logged");
+    require(lines[0] == "mod_installed|SkyUI|", "install logged with mod name");
+    require(lines[1] == "mod_state_changed|SkyUI|1", "state-change logged with enabled=1");
+
+    std::cout << "  python plugin logged install + state-change via the bus" << std::endl;
+    std::cout << "  PASSED" << std::endl;
+
+    engine::python_shutdown();
+    engine::EventBus::instance().clear();
+    fs::remove_all(tmp);
+}
+
 int main() {
     std::cout << "Python plugin tests" << std::endl;
 
@@ -252,6 +325,7 @@ int main() {
     test_python_plugin_missing_register();
     test_python_plugin_duplicate_load();
     test_python_register_game_feature();
+    test_python_subscribe_event();
 
     std::cout << "\nAll Python plugin tests passed!" << std::endl;
     return 0;

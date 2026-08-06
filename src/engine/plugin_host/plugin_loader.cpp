@@ -1,6 +1,7 @@
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/plugin_host/python_loader.h"
 #include "engine/plugin_host/diagnostics_registry.h"
+#include "engine/events/event_bus.h"
 #include "engine/log/logger.h"
 #include "engine/model/mod.h"
 #include "engine/pipeline/pipeline.h"
@@ -185,6 +186,32 @@ static void cb_register_game_feature_data(GmmRegistrationCtx* ctx,
 
     Logger::instance().debug("Plugin registered game feature: " + type +
         " (game=" + gid + ", priority=" + std::to_string(priority) + ")");
+}
+
+static void cb_subscribe_event(GmmRegistrationCtx* ctx,
+                               const char* event_id,
+                               GmmEventFn fn,
+                               void* user_data) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge || !bridge->current_plugin) return;
+    if (!event_id || !fn) {
+        Logger::instance().warn("subscribe_event called with null event_id/fn");
+        return;
+    }
+
+    // The bus owns the std::function, so the captured GmmEventFn+user_data
+    // live for the subscription's lifetime; unload_all() drops every
+    // subscription registered under this plugin's path before dlclose, so the
+    // pointer never outlives the .so that owns fn.
+    engine::EventBus::instance().subscribe(
+        event_id,
+        [fn, user_data](const std::string& eid, const std::string& payload) {
+            fn(eid.c_str(), payload.c_str(), user_data);
+        },
+        bridge->current_plugin->path);
+
+    Logger::instance().debug("Plugin subscribed to event: " +
+        std::string(event_id) + " (plugin=" + bridge->current_plugin->game_id + ")");
 }
 
 static void cb_register_stage_claim(GmmRegistrationCtx* ctx,
@@ -462,6 +489,7 @@ bool PluginLoader::load_plugin(const std::string& path) {
     ctx.register_diagnostics = cb_register_diagnostics;
     ctx.register_game_feature = cb_register_game_feature;
     ctx.register_game_feature_data = cb_register_game_feature_data;
+    ctx.subscribe_event = cb_subscribe_event;
 
     RegistrationBridge bridge;
     bridge.loader = this;
@@ -554,6 +582,9 @@ void PluginLoader::collect_diagnostics(const std::string& game_id, PluginDatabas
 
 void PluginLoader::unload_all() {
     for (auto& p : plugins_) {
+        // Drop this plugin's event subscriptions BEFORE dlclose so no bus
+        // callback can ever run against unloaded .so code.
+        EventBus::instance().clear_source(p.path);
         if (p.handle) {
             dlclose(p.handle);
             p.handle = nullptr;

@@ -88,6 +88,38 @@ class RegistrationContext:
         """
         ...
 
+    def subscribe_event(
+        self, event_id: str, fn: Callable[[str, dict[str, str]], None]
+    ) -> None:
+        """Subscribe to a host event bus event (MO2 signal analogue).
+
+        fn is called as fn(event_id, payload) whenever the host emits the
+        event; payload is a plain dict of str -> str (the bus payload is a
+        JSON object of string values, decoded by the bridge). Canonical
+        event ids and their payload keys — see gmm_abi_v1.h subscribe_event:
+
+          mod_installed      {"mod", "name"}
+          mod_removed        {"mod"}
+          mod_state_changed  {"mod", "enabled"}
+          mod_moved          {"mod", "from", "to"}
+          profile_created    {"profile"}
+          profile_renamed    {"old_name", "new_name"}
+          profile_removed    {"profile"}
+          profile_changed    {"profile"}
+          plugin_list_refreshed  {}
+          plugin_state_changed   {"plugin", "enabled"}
+          plugin_moved       {"plugin", "from", "to"}
+          download_complete  {"id", "file"}
+          download_paused    {"id"}
+          download_failed    {"id"}
+          download_removed   {"id"}
+          game_launched      {"exe", "args"}
+          game_finished      {"exit_code"}
+
+        Handlers run on the emitting thread; keep them short and non-blocking.
+        """
+        ...
+
     def register_order_encoding_hook(self) -> None:
         """Register a load-order writer (plugins.txt / metadata.xml style)."""
         ...

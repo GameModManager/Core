@@ -14,6 +14,8 @@
 #include "gmm_abi_v1.h"
 
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 static const char* const OVERRIDE_DIRS[] = {
     "customstuff",
@@ -52,6 +54,21 @@ static const char* const OVERRIDE_BSA_VALS[] = {
     "0x68",
 };
 
+// P1.3 — subscribe to host events through the ABI. The fixture logs received
+// events to the file named by GMM_TEST_EVENTS_LOG (set by the test); the
+// subscription proves a C plugin reaches the host event bus end-to-end.
+static void on_test_event(const char* event_id,
+                          const char* json_payload,
+                          void* user_data) {
+    (void)user_data;
+    const char* log = getenv("GMM_TEST_EVENTS_LOG");
+    if (!log) return;
+    FILE* f = fopen(log, "a");
+    if (!f) return;
+    fprintf(f, "%s %s\n", event_id, json_payload);
+    fclose(f);
+}
+
 extern "C" void gmm_register_v1(GmmRegistrationCtx* ctx) {
     if (ctx->register_game_feature) {
         ctx->register_game_feature(ctx,
@@ -88,6 +105,10 @@ extern "C" void gmm_register_v1(GmmRegistrationCtx* ctx) {
             OVERRIDE_BSA_KEYS,
             OVERRIDE_BSA_VALS,
             sizeof(OVERRIDE_BSA_KEYS) / sizeof(OVERRIDE_BSA_KEYS[0]));
+    }
+    if (ctx->subscribe_event) {
+        ctx->subscribe_event(ctx, "mod_installed", on_test_event, NULL);
+        ctx->subscribe_event(ctx, "game_finished", on_test_event, NULL);
     }
 }
 

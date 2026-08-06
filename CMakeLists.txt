@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # (package_installer target passes -DVERSION=${PROJECT_VERSION}), and the plugins
 # (GMM_VERSION, visible in the add_subdirectory'd external/plugins scope).
 project(GameModManager
-    VERSION 0.2.26
+    VERSION 0.2.27
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -187,6 +187,7 @@ set(ENGINE_SOURCES
     src/engine/pipeline/sync_stage.cpp
     src/engine/pipeline/plugin_claim_stage.cpp
     src/engine/trace/trace_recorder.cpp
+    src/engine/events/event_bus.cpp
     src/engine/plugin_host/abi_bridge.cpp
     src/engine/notify/notification_backend.cpp
     src/engine/log/logger.cpp
@@ -519,6 +520,14 @@ add_executable(logger_test tests/engine/logger_test.cpp
 target_include_directories(logger_test PRIVATE src/)
 add_test(NAME logger_test COMMAND logger_test)
 
+# P1.3 event bus — subscription semantics (order, token unsubscribe,
+# clear_source/clear), JSON payload builder, reentrancy, concurrent emits.
+add_executable(event_bus_test tests/engine/event_bus_test.cpp
+    src/engine/events/event_bus.cpp
+)
+target_include_directories(event_bus_test PRIVATE src/)
+add_test(NAME event_bus_test COMMAND event_bus_test)
+
 add_executable(phase04_test tests/engine/phase04_test.cpp
     src/engine/index/conflict_index.cpp
     src/engine/model/profile.cpp
@@ -774,6 +783,7 @@ add_executable(python_plugin_test tests/engine/python_plugin_test.cpp
     src/engine/plugin_host/plugin_loader.cpp
     src/engine/plugin_host/python_loader.cpp
     src/engine/plugin_host/diagnostics_registry.cpp
+    src/engine/events/event_bus.cpp
     src/engine/registry/game_features/game_feature.cpp
     src/engine/registry/game_features/game_feature_registry.cpp
     src/engine/registry/game_features/mod_data_checker.cpp
@@ -835,6 +845,7 @@ add_executable(game_feature_registry_test tests/engine/game_feature_registry_tes
     src/engine/plugin_host/plugin_loader.cpp
     src/engine/plugin_host/python_loader.cpp
     src/engine/plugin_host/diagnostics_registry.cpp
+    src/engine/events/event_bus.cpp
     src/engine/registry/stage_registry.cpp
     src/engine/registry/hook_registry.cpp
     src/engine/registry/game_capabilities.cpp
@@ -1056,6 +1067,7 @@ add_executable(settings_plugins_tab_test tests/ui/settings_plugins_tab_test.cpp
     src/engine/plugin_host/plugin_loader.cpp
     src/engine/plugin_host/python_loader.cpp
     src/engine/plugin_host/diagnostics_registry.cpp
+    src/engine/events/event_bus.cpp
     src/engine/registry/game_features/game_feature.cpp
     src/engine/registry/game_features/game_feature_registry.cpp
     src/engine/registry/stage_registry.cpp
@@ -1152,6 +1164,7 @@ add_executable(settings_sources_tab_test tests/ui/settings_sources_tab_test.cpp
     src/engine/plugin_host/plugin_loader.cpp
     src/engine/plugin_host/python_loader.cpp
     src/engine/plugin_host/diagnostics_registry.cpp
+    src/engine/events/event_bus.cpp
     src/engine/registry/game_features/game_feature.cpp
     src/engine/registry/game_features/game_feature_registry.cpp
     src/engine/registry/stage_registry.cpp
@@ -1450,6 +1463,7 @@ add_executable(proton_panel_test tests/ui/proton_panel_test.cpp
     src/engine/plugin_host/plugin_loader.cpp
     src/engine/plugin_host/python_loader.cpp
     src/engine/plugin_host/diagnostics_registry.cpp
+    src/engine/events/event_bus.cpp
     src/engine/registry/game_features/game_feature.cpp
     src/engine/registry/game_features/game_feature_registry.cpp
     src/engine/filetree/file_tree.cpp
