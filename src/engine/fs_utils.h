@@ -26,6 +26,29 @@ namespace engine {
     return str;
 }
 
+// Normalize a relative path into the canonical spelling the conflict registry
+// is keyed by: every DIRECTORY component lowercased, the final file name kept
+// on its on-disk casing. This mirrors the deploy's case-insensitive directory
+// merge (resolve_deploy_target_ci) exactly: CI-equal directory trees from
+// Windows-game mods (Meshes/ + meshes/) register as the same deployed paths,
+// while two CI-equal FILE names stay side-by-side (a rare packaging bug the
+// deploy deliberately does not merge). Consumers that look a mod-relative
+// path up in the registry must run it through this first.
+[[nodiscard]] inline std::string normalize_ci_key(std::string path)
+{
+    std::replace(path.begin(), path.end(), '\\', '/');
+    const auto last = path.find_last_of('/');
+    if (last == std::string::npos) return path;
+    std::string out;
+    out.reserve(path.size());
+    for (size_t i = 0; i < last; ++i)
+        out += static_cast<char>(std::tolower(
+            static_cast<unsigned char>(path[i])));
+    out += '/';
+    out += path.substr(last + 1);
+    return out;
+}
+
 // Translate Windows backslash separators to '/'.
 [[nodiscard]] inline std::string normalize_separators(std::string path)
 {

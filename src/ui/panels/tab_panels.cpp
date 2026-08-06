@@ -68,6 +68,7 @@
 
 #include "engine/log/logger.h"
 #include "engine/fs_utils.h"
+#include "engine/deploy/deploy_utils.h"
 #include "engine/deploy/root_override.h"
 #include "engine/source/loverslab_provider.h"
 
@@ -290,7 +291,11 @@ std::unordered_map<std::string, QString> build_display_names(const QVector<ModEn
 }
 
 // On-disk path of a provider's copy: instance mods dir first, then the
-// game-native mods dir fallback.
+// game-native mods dir fallback. The registry key is CI-normalized (directory
+// components lowercased), but the mod keeps its on-disk casing - so when the
+// exact-case lookup misses, resolve case-insensitively through
+// resolve_deploy_target_ci to find the real file (exact exists() is the fast
+// path; the CI walk only runs for dual-case trees).
 std::filesystem::path resolve_mod_file(const std::string& mod_id,
                                        const std::string& rel_path,
                                        const std::filesystem::path& mods_dir,
@@ -298,9 +303,13 @@ std::filesystem::path resolve_mod_file(const std::string& mod_id,
     std::error_code ec;
     auto candidate = mods_dir / mod_id / rel_path;
     if (std::filesystem::exists(candidate, ec)) return candidate;
+    candidate = engine::resolve_deploy_target_ci(mods_dir / mod_id / rel_path);
+    if (std::filesystem::exists(candidate, ec)) return candidate;
     if (!game_mods_dir.empty()) {
         ec.clear();
         candidate = game_mods_dir / mod_id / rel_path;
+        if (std::filesystem::exists(candidate, ec)) return candidate;
+        candidate = engine::resolve_deploy_target_ci(game_mods_dir / mod_id / rel_path);
         if (std::filesystem::exists(candidate, ec)) return candidate;
     }
     return {};

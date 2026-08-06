@@ -465,7 +465,9 @@ std::vector<OverwriteSyncFile> collect_overwrite_sync_files(
         OverwriteSyncFile f;
         f.overwrite_rel = rel;
 
-        auto it = registry.find(mod_rel);
+        // Registry keys are CI-normalized (directory components lowercased);
+        // the overwrite tree keeps on-disk casing, so normalize before lookup.
+        auto it = registry.find(normalize_ci_key(mod_rel));
         if (it != registry.end()) {
             for (const auto& [mod_id, priority] : it->second) {
                 f.owners.push_back({mod_id, priority});
