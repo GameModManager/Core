@@ -1665,14 +1665,9 @@ SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
     table_->setSelectionBehavior(QAbstractItemView::SelectRows);
     layout->addWidget(table_, 1);
 
-    watcher_ = new QFileSystemWatcher(this);
-    refresh_timer_ = new QTimer(this);
-    refresh_timer_->setSingleShot(true);
-    refresh_timer_->setInterval(500);  // MO2 savestab.cpp debounce
-    connect(watcher_, &QFileSystemWatcher::directoryChanged,
-            this, [this] { refresh_timer_->start(); });
-    connect(refresh_timer_, &QTimer::timeout, this, &SavesTab::refresh);
-
+    // No directory watcher: scans run once at game load and after a delete,
+    // never in the background (a watched Proton-prefix Saves dir churns and
+    // spammed 1-per-second re-scans).
     scan_thread_ = new SavesScanThread(this);
     connect(scan_thread_->worker(), &SavesScanWorker::finished,
             this, &SavesTab::on_scan_finished, Qt::QueuedConnection);
@@ -1694,16 +1689,6 @@ SavesTab::~SavesTab() {
 
 void SavesTab::set_saves_dir(const std::filesystem::path& dir) {
     saves_dir_ = dir;
-    for (const auto& watched : watcher_->directories()) {
-        watcher_->removePath(watched);
-    }
-    if (!dir.empty() && std::filesystem::is_directory(dir)) {
-        watcher_->addPath(QString::fromStdString(dir.string()));
-    }
-}
-
-bool SavesTab::watching() const {
-    return !watcher_->directories().isEmpty();
 }
 
 void SavesTab::set_saves(SavesScanResult result) {
@@ -1734,10 +1719,6 @@ void SavesTab::set_saves(SavesScanResult result) {
 
 void SavesTab::clear_saves() {
     scanning_ = false;
-    refresh_timer_->stop();
-    for (const auto& watched : watcher_->directories()) {
-        watcher_->removePath(watched);
-    }
     saves_ = {};
     table_->setRowCount(0);
     hide_save_info();
@@ -1751,10 +1732,6 @@ const engine::SaveGame* SavesTab::save_at(int row) const {
 const std::vector<engine::SaveMissingAsset>* SavesTab::missing_at(int row) const {
     if (row < 0 || row >= saves_.entries.size()) return nullptr;
     return &saves_.entries[row].missing;
-}
-
-void SavesTab::refresh() {
-    emit refresh_requested();
 }
 
 void SavesTab::request_scan(SavesScanRequest request) {

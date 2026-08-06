@@ -369,7 +369,7 @@ private:
     // (startup and instance switch).
     void wire_saves_tab();
     // Gather the current saves dir + plugin load order and hand a scan request
-    // to the tab (answer to SavesTab::refresh_requested).
+    // to the tab: build a scan request from the current plugin list + dirs.
     void on_saves_refresh_requested();
     // Remove save files (and .skse co-saves) via engine::remove_path (trash),
     // then refresh the list.

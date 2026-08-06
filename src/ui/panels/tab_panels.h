@@ -472,28 +472,24 @@ public:
     // per-save missing-assets data.
     void set_saves(SavesScanResult result);
 
-    // The directory to watch for changes + scan. Empty disables the watcher.
+    // The saves directory (used by MainWindow when it builds a scan request).
+    // Scans are NOT watched: one runs at game load, and MainWindow re-runs one
+    // after a delete. No background re-scans.
     void set_saves_dir(const std::filesystem::path& dir);
     [[nodiscard]] std::filesystem::path saves_dir() const { return saves_dir_; }
-    // True while the directory watcher is armed (the dir exists and is watched).
-    [[nodiscard]] bool watching() const;
 
-    // Game/instance switch: drop the current list, stop watching.
+    // Game/instance switch: drop the current list.
     void clear_saves();
 
     // Run one scan on the background thread. The request carries a snapshot of
     // the current load order + dirs, so results reflect the state at the moment
-    // the refresh was asked for. MainWindow builds it in answer to
-    // refresh_requested().
+    // the refresh was asked for. MainWindow builds it in answer to a delete
+    // (or the initial fill at game load).
     void request_scan(SavesScanRequest request);
 
     // Row's save at `row`, or nullptr when out of range.
     [[nodiscard]] const engine::SaveGame* save_at(int row) const;
     [[nodiscard]] const std::vector<engine::SaveMissingAsset>* missing_at(int row) const;
-
-    // A refresh is due (watcher fire after the debounce, or an explicit call
-    // when the plugin list changed — missing-asset state moved).
-    void refresh();
 
     // Columns (RightPanel sets the toggle header labels).
     static constexpr int kColumnName = 0;
@@ -501,11 +497,8 @@ public:
     static constexpr int kColumnMissing = 2;
 
 signals:
-    // Ask MainWindow to re-gather context (fresh plugin list, dirs) and hand
-    // it back via a new scan request.
-    void refresh_requested();
     // Delete the named save files (and their .skse co-saves) — MainWindow
-    // routes through engine::remove_path (trash).
+    // routes through engine::remove_path (trash), then re-scans.
     void delete_requested(const QStringList& filepaths);
 
 protected:
@@ -524,8 +517,6 @@ private:
     static QString missing_tooltip(const SavesScanResultEntry& entry);
 
     QTableWidget* table_ = nullptr;
-    QFileSystemWatcher* watcher_ = nullptr;
-    QTimer* refresh_timer_ = nullptr;
     SavesScanThread* scan_thread_ = nullptr;
     SavesScanResult saves_;
     std::filesystem::path saves_dir_;
