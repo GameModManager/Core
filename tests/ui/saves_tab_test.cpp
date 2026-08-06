@@ -25,11 +25,13 @@
 #include "ui/panels/tab_panels.h"
 
 #include <QApplication>
+#include <QEvent>
 #include <QEventLoop>
 #include <QSignalSpy>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTimer>
+#include <QWidget>
 
 #include <cstdio>
 #include <filesystem>
@@ -114,6 +116,13 @@ static void write_save(const fs::path& dir, const std::string& base,
 static void write_file(const fs::path& p, const std::string& data) {
     std::ofstream(p, std::ios::binary).write(data.data(),
                                              static_cast<std::streamsize>(data.size()));
+}
+
+static QWidget* find_tooltip_widget() {
+    for (QWidget* w : QApplication::topLevelWidgets()) {
+        if (w->windowType() == Qt::ToolTip) return w;
+    }
+    return nullptr;
 }
 
 int main(int argc, char** argv) {
@@ -279,7 +288,28 @@ int main(int argc, char** argv) {
     t2.stop();
     check(spy.count() >= 1, "dir change → (debounced) refresh_requested");
 
-    // --- Part 4: clear_saves ---
+    // --- Part 4: hover info popup survives external close (regression for the
+    // Aug 2026 crash: deleting a save killed the whole manager) ---
+    // The popup is a Qt::ToolTip window with WA_DeleteOnClose. Qt auto-dismisses
+    // a visible tooltip when the user presses a mouse button / key (e.g. clicking
+    // a row before pressing Delete); that close() destroys the widget behind the
+    // tab's back. SavesTab must tolerate the next hover instead of calling
+    // close() on the freed pointer (use QPointer — raw QWidget* was a UAF).
+    table->itemEntered(table->item(0, 0));
+    QWidget* popup = find_tooltip_widget();
+    check(popup != nullptr, "hover on a row creates the info popup");
+    if (popup) {
+        popup->close();  // exactly what Qt's tooltip auto-dismiss does
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        check(find_tooltip_widget() == nullptr,
+              "external close + deferred delete destroyed the popup");
+        table->itemEntered(table->item(0, 0));  // re-enter → show_save_info again
+        QWidget* rebuilt = find_tooltip_widget();
+        check(rebuilt != nullptr && rebuilt->isVisible(),
+              "re-entering after external destroy rebuilds the popup (no UAF)");
+    }
+
+    // --- Part 5: clear_saves ---
     tab.clear_saves();
     check(table->rowCount() == 0, "clear_saves empties the table");
     check(!tab.watching(), "clear_saves unwatches the dir");
