@@ -1,9 +1,12 @@
 // P1.2 test fixture — a plugin that OVERRIDES the Skyrim plugin's
-// mod_data_checker AND game_plugins via the register_game_feature C ABI.
-// Built only for game_feature_registry_test: it registers its allow-sets and
-// its vanilla-plugin band for the Skyrim game at a priority above the game
-// plugin's own baseline (0), so the mod list (ModScanner::scan_dir ->
-// invalid_data) must accept a mod whose only content is "customstuff/", and
+// mod_data_checker, game_plugins, AND script_extender via the
+// register_game_feature / register_game_feature_data C ABI, and registers a
+// bsa_invalidation feature Skyrim's own plugin does NOT provide (proving the
+// 9th feature type registers through the same surface). Built only for
+// game_feature_registry_test: it registers its allow-sets and its vanilla
+// plugin band for the Skyrim game at a priority above the game plugin's own
+// baseline (0), so the mod list (ModScanner::scan_dir -> invalid_data) must
+// accept a mod whose only content is "customstuff/", and
 // native_plugins_csv() must return the override's band — proof that both
 // overrides show without any engine change. Not shipped; the app never loads
 // it.
@@ -25,6 +28,30 @@ static const char* const OVERRIDE_PLUGINS[] = {
     "AlsoVanilla.esm",
 };
 
+static const char* const OVERRIDE_SE_KEYS[] = {
+    "binary",
+    "plugin_path",
+    "loader_name",
+    "savegame_extension",
+};
+
+static const char* const OVERRIDE_SE_VALS[] = {
+    "superse_loader.exe",
+    "superse/plugins",
+    "superse_loader.exe",
+    "sse",
+};
+
+static const char* const OVERRIDE_BSA_KEYS[] = {
+    "bsa_name",
+    "bsa_version",
+};
+
+static const char* const OVERRIDE_BSA_VALS[] = {
+    "CustomInvalidation.bsa",
+    "0x68",
+};
+
 extern "C" void gmm_register_v1(GmmRegistrationCtx* ctx) {
     if (ctx->register_game_feature) {
         ctx->register_game_feature(ctx,
@@ -44,6 +71,23 @@ extern "C" void gmm_register_v1(GmmRegistrationCtx* ctx) {
             sizeof(OVERRIDE_PLUGINS) / sizeof(OVERRIDE_PLUGINS[0]),
             NULL,
             0);
+    }
+    if (ctx->register_game_feature_data) {
+        ctx->register_game_feature_data(ctx,
+            "SkyrimSpecialEdition",       /* game_id — override Skyrim's SKSE */
+            "script_extender",
+            100,                          /* priority — above the game's own (0) */
+            OVERRIDE_SE_KEYS,
+            OVERRIDE_SE_VALS,
+            sizeof(OVERRIDE_SE_KEYS) / sizeof(OVERRIDE_SE_KEYS[0]));
+
+        ctx->register_game_feature_data(ctx,
+            "SkyrimSpecialEdition",       /* game_id — Skyrim registers none */
+            "bsa_invalidation",
+            100,                          /* priority — only registration */
+            OVERRIDE_BSA_KEYS,
+            OVERRIDE_BSA_VALS,
+            sizeof(OVERRIDE_BSA_KEYS) / sizeof(OVERRIDE_BSA_KEYS[0]));
     }
 }
 

@@ -150,6 +150,36 @@ public:
             std::to_string(priority) + ")");
     }
 
+    // P1.2 GameFeatureRegistry, key/value variant: the 7 structured-data
+    // feature types (mod_data_content, data_archives, script_extender,
+    // save_game_info, local_savegames, unmanaged_mods, bsa_invalidation).
+    // Mirrors the register_game_feature_data C ABI in gmm_abi_v1.h; the kv
+    // parse lives in the shared engine::register_game_feature_data so both
+    // surfaces agree byte-for-byte.
+    void register_game_feature_data(const std::string& game_id,
+                                    const std::string& feature_type,
+                                    int priority,
+                                    py::dict data) {
+        std::string gid = game_id.empty() ? plugin_->game_id : game_id;
+        if (gid.empty() || feature_type.empty()) {
+            engine::Logger::instance().warn(
+                "register_game_feature_data: empty game_id/feature_type - ignored");
+            return;
+        }
+        std::vector<std::pair<std::string, std::string>> kv;
+        for (auto item : data) {
+            kv.emplace_back(py::cast<std::string>(item.first),
+                            py::cast<std::string>(py::str(item.second)));
+        }
+        if (!engine::register_game_feature_data(gid, feature_type, priority,
+                                                std::move(kv), plugin_->path)) {
+            return;  // register_game_feature_data already logged the reason
+        }
+        engine::Logger::instance().debug(
+            "Python plugin registered game feature: " + feature_type +
+            " (game=" + gid + ", priority=" + std::to_string(priority) + ")");
+    }
+
     void register_stage_claim(const std::string& stage_name, int priority) {
         (void)stage_name;
         (void)priority;
@@ -275,6 +305,12 @@ PYBIND11_EMBEDDED_MODULE(gmm, m) {
              py::arg("priority") = 0,
              py::arg("folder_names") = std::vector<std::string>{},
              py::arg("file_extensions") = std::vector<std::string>{})
+        .def("register_game_feature_data",
+             &PyRegistrationContext::register_game_feature_data,
+             py::arg("game_id") = "",
+             py::arg("feature_type"),
+             py::arg("priority") = 0,
+             py::arg("data") = py::dict())
         .def("register_order_encoding_hook", &PyRegistrationContext::register_order_encoding_hook)
         .def("register_deploy_strategy", &PyRegistrationContext::register_deploy_strategy)
         .def("register_image_diff", &PyRegistrationContext::register_image_diff)

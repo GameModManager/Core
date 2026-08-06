@@ -116,6 +116,38 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
         }
     }
 
+    // Registered unmanaged_mods feature (MO2 IUnmanagedMods): mods the game
+    // manages itself (DLC/CC folders, plugin-less game dirs) that a plugin
+    // declares and that must appear in the list as unmanaged rows. A file or
+    // folder with the declared internal name inside the game's mods dir
+    // becomes a row; anything a scan row already covers is skipped.
+    {
+        auto unmanaged = engine::unmanaged_mods_for(game_id);
+        if (!unmanaged.empty()) {
+            auto game_mods_subpath = knowledge.get(game_id, "mods_subpath", "");
+            std::filesystem::path native_dir = request.game_dir;
+            if (!game_mods_subpath.empty())
+                native_dir /= game_mods_subpath;
+
+            std::unordered_set<std::string> existing;
+            for (const auto& m : scanned)
+                existing.insert(m.folder_name);
+
+            for (const auto& name : unmanaged) {
+                if (name.empty() || existing.count(name)) continue;
+                std::error_code ec;
+                if (!std::filesystem::exists(native_dir / name, ec)) continue;
+                engine::ScannedMod unmanaged_mod;
+                unmanaged_mod.folder_name = name;
+                unmanaged_mod.display_name = name;
+                unmanaged_mod.raw_name = name;
+                unmanaged_mod.is_game_native = true;
+                unmanaged_mod.enabled = true;
+                scanned.push_back(std::move(unmanaged_mod));
+            }
+        }
+    }
+
     // One-time import of MO2 meta.ini sidecars into the manager's meta dir
     // (migrate_mo2_meta). Runs here so the load path does no directory walking
     // on the main thread. Idempotent: folders whose meta is already imported
