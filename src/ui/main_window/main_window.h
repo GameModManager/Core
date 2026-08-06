@@ -363,6 +363,18 @@ private:
     // freshly created and would otherwise be inert.
     void wire_downloads_tab();
 
+    // Wire the Saves tab for the current instance: point it at the game's
+    // saves dir (starts the directory watchdog), connect its refresh/delete
+    // signals, and run an initial scan. Called after every right-panel rebuild
+    // (startup and instance switch).
+    void wire_saves_tab();
+    // Gather the current saves dir + plugin load order and hand a scan request
+    // to the tab (answer to SavesTab::refresh_requested).
+    void on_saves_refresh_requested();
+    // Remove save files (and .skse co-saves) via engine::remove_path (trash),
+    // then refresh the list.
+    void on_saves_delete_requested(const QStringList& filepaths);
+
     std::string current_game_id_;
     std::string current_game_name_;
     std::string current_profile_name_ = "Default";

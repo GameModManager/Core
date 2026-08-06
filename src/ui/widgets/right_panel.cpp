@@ -182,7 +182,15 @@ void RightPanel::ensure_tab(const std::string& capability, const QString& label)
         tab = t;
     } else if (capability == "saves") {
         auto* t = new SavesTab(tab_widget_);
-        setup_toggle_header(t->table(), {tr("Name"), tr("File")});
+        setup_toggle_header(t->table(), {tr("Name"), tr("File"), tr("Missing")});
+        // Name stretches; File/Missing keep user-set width on resize.
+        auto* hdr = t->table()->horizontalHeader();
+        hdr->setStretchLastSection(false);
+        hdr->setSectionResizeMode(0, QHeaderView::Stretch);
+        hdr->setSectionResizeMode(1, QHeaderView::Interactive);
+        hdr->setSectionResizeMode(2, QHeaderView::Interactive);
+        hdr->resizeSection(1, 220);
+        hdr->resizeSection(2, 60);
         tab = t;
     } else if (capability == "downloads") {
         auto* t = new DownloadsTab(tab_widget_);
@@ -230,6 +238,13 @@ DownloadsTab* RightPanel::downloads_tab() const {
     auto it = tabs_.find("downloads");
     if (it != tabs_.end())
         return qobject_cast<DownloadsTab*>(it->second);
+    return nullptr;
+}
+
+SavesTab* RightPanel::saves_tab() const {
+    auto it = tabs_.find("saves");
+    if (it != tabs_.end())
+        return qobject_cast<SavesTab*>(it->second);
     return nullptr;
 }
 

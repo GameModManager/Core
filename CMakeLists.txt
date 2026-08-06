@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # (package_installer target passes -DVERSION=${PROJECT_VERSION}), and the plugins
 # (GMM_VERSION, visible in the add_subdirectory'd external/plugins scope).
 project(GameModManager
-    VERSION 0.2.29
+    VERSION 0.2.30
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -77,6 +77,10 @@ if(WIN32)
     find_path(CURL_INCLUDE_DIR curl/curl.h)
     find_library(CURL_LIBRARY NAMES libcurl curllib)
     find_path(NLOHMANN_JSON_INCLUDE_DIR nlohmann/json.hpp)
+    find_path(ZLIB_INCLUDE_DIR zlib.h)
+    find_library(ZLIB_LIBRARY NAMES z zlib)
+    find_path(LZ4_INCLUDE_DIR lz4.h)
+    find_library(LZ4_LIBRARY NAMES lz4)
 
     # Create imported targets for consistency with Linux path
     add_library(PkgConfig::LIBARCHIVE UNKNOWN IMPORTED)
@@ -102,6 +106,16 @@ if(WIN32)
     add_library(PkgConfig::NLOHMANN_JSON INTERFACE IMPORTED)
     set_target_properties(PkgConfig::NLOHMANN_JSON PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${NLOHMANN_JSON_INCLUDE_DIR}")
+
+    add_library(PkgConfig::ZLIB UNKNOWN IMPORTED)
+    set_target_properties(PkgConfig::ZLIB PROPERTIES
+        IMPORTED_LOCATION "${ZLIB_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${ZLIB_INCLUDE_DIR}")
+
+    add_library(PkgConfig::LZ4 UNKNOWN IMPORTED)
+    set_target_properties(PkgConfig::LZ4 PROPERTIES
+        IMPORTED_LOCATION "${LZ4_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${LZ4_INCLUDE_DIR}")
 else()
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(LIBARCHIVE REQUIRED IMPORTED_TARGET libarchive)
@@ -109,6 +123,8 @@ else()
     pkg_check_modules(YAMLCPP REQUIRED IMPORTED_TARGET yaml-cpp)
     pkg_check_modules(CURL REQUIRED IMPORTED_TARGET libcurl)
     pkg_check_modules(NLOHMANN_JSON REQUIRED IMPORTED_TARGET nlohmann_json)
+    pkg_check_modules(ZLIB REQUIRED IMPORTED_TARGET zlib)
+    pkg_check_modules(LZ4 REQUIRED IMPORTED_TARGET liblz4)
     pkg_check_modules(FUSE3 IMPORTED_TARGET fuse3)
 endif()
 
@@ -216,6 +232,11 @@ set(ENGINE_SOURCES
     src/engine/overwrite/overwrite_utils.cpp
     src/engine/plugins/esp_header.cpp
     src/engine/plugins/plugin_database.cpp
+    src/engine/saves/save_game.cpp
+    src/engine/saves/save_reader.cpp
+    src/engine/saves/skyrim_save.cpp
+    src/engine/saves/save_scanner.cpp
+    src/engine/saves/save_missing_assets.cpp
     src/engine/sort/loot/loot_sorter.cpp
     src/engine/sort/loot/masterlists.cpp
     src/engine/source/source_provider.cpp
@@ -266,6 +287,7 @@ set(UI_SOURCES
     src/ui/main_window/conflict_scan_worker.cpp
     src/ui/main_window/mod_scan_worker.cpp
     src/ui/main_window/plugin_db_load_worker.cpp
+    src/ui/main_window/saves_scan_worker.cpp
     src/ui/main_window/deploy_worker.cpp
     src/ui/widgets/mod_list_model.cpp
     src/ui/widgets/mod_table_view.cpp
@@ -403,7 +425,7 @@ qt_add_translations(gamemodmanager
 )
 
 # Link libraries — platform-specific
-target_link_libraries(gamemodmanager PRIVATE Qt6::Widgets Qt6::Network PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::YAMLCPP PkgConfig::CURL PkgConfig::NLOHMANN_JSON pybind11::embed Python3::Python)
+target_link_libraries(gamemodmanager PRIVATE Qt6::Widgets Qt6::Network PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::YAMLCPP PkgConfig::CURL PkgConfig::NLOHMANN_JSON PkgConfig::ZLIB PkgConfig::LZ4 pybind11::embed Python3::Python)
 if(KF6SyntaxHighlighting_FOUND)
     target_link_libraries(gamemodmanager PRIVATE KF6::SyntaxHighlighting)
     target_compile_definitions(gamemodmanager PRIVATE GMM_HAS_SYNTAX_HIGHLIGHTING=1)
@@ -544,6 +566,19 @@ add_executable(phase04_test tests/engine/phase04_test.cpp
 )
 target_include_directories(phase04_test PRIVATE src/)
 add_test(NAME phase04_test COMMAND phase04_test)
+
+# P2.5 saves — ESS parser (MO2 GamebryoSaveGame port): synthetic LE + SE
+# fixtures across compression types 0/1/2 plus the real-save validation.
+add_executable(save_parser_test tests/engine/save_parser_test.cpp
+    src/engine/saves/save_game.cpp
+    src/engine/saves/save_reader.cpp
+    src/engine/saves/skyrim_save.cpp
+    src/engine/saves/save_scanner.cpp
+    src/engine/saves/save_missing_assets.cpp
+)
+target_include_directories(save_parser_test PRIVATE src/)
+target_link_libraries(save_parser_test PRIVATE PkgConfig::ZLIB PkgConfig::LZ4)
+add_test(NAME save_parser_test COMMAND save_parser_test)
 
 add_executable(trace_test tests/engine/trace_test.cpp
     src/engine/trace/trace_recorder.cpp
@@ -1359,6 +1394,12 @@ set_tests_properties(source_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=off
 # Hermetic: throwaway XDG_CONFIG_HOME, no network.
 add_executable(downloads_tab_test tests/ui/downloads_tab_test.cpp
     src/ui/panels/tab_panels.cpp
+    src/ui/main_window/saves_scan_worker.cpp
+    src/engine/saves/save_game.cpp
+    src/engine/saves/save_reader.cpp
+    src/engine/saves/skyrim_save.cpp
+    src/engine/saves/save_scanner.cpp
+    src/engine/saves/save_missing_assets.cpp
     src/ui/settings/settings.cpp
     src/ui/widgets/column_toggle_header.cpp
     src/ui/widgets/mod_list_model.cpp
@@ -1376,7 +1417,7 @@ add_executable(downloads_tab_test tests/ui/downloads_tab_test.cpp
 )
 target_include_directories(downloads_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
 target_compile_definitions(downloads_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
-target_link_libraries(downloads_tab_test PRIVATE Qt6::Widgets PkgConfig::CURL)
+target_link_libraries(downloads_tab_test PRIVATE Qt6::Widgets PkgConfig::CURL PkgConfig::ZLIB PkgConfig::LZ4)
 add_test(NAME downloads_tab_test COMMAND downloads_tab_test)
 set_tests_properties(downloads_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
@@ -1431,6 +1472,12 @@ add_test(NAME plugin_db_load_test COMMAND plugin_db_load_test)
 # signal wiring, disabled VFS entries, and the common menus.
 add_executable(data_tab_test tests/ui/data_tab_test.cpp
     src/ui/panels/tab_panels.cpp
+    src/ui/main_window/saves_scan_worker.cpp
+    src/engine/saves/save_game.cpp
+    src/engine/saves/save_reader.cpp
+    src/engine/saves/skyrim_save.cpp
+    src/engine/saves/save_scanner.cpp
+    src/engine/saves/save_missing_assets.cpp
     src/ui/settings/settings.cpp
     src/ui/widgets/column_toggle_header.cpp
     src/ui/widgets/mod_list_model.cpp
@@ -1448,7 +1495,7 @@ add_executable(data_tab_test tests/ui/data_tab_test.cpp
 )
 target_include_directories(data_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
 target_compile_definitions(data_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
-target_link_libraries(data_tab_test PRIVATE Qt6::Widgets PkgConfig::CURL)
+target_link_libraries(data_tab_test PRIVATE Qt6::Widgets PkgConfig::CURL PkgConfig::ZLIB PkgConfig::LZ4)
 add_test(NAME data_tab_test COMMAND data_tab_test)
 set_tests_properties(data_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
@@ -1478,6 +1525,12 @@ set_tests_properties(generic_files_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATF
 # is intentionally not exercised (see the test's header comment).
 add_executable(plugins_tab_test tests/ui/plugins_tab_test.cpp
     src/ui/panels/tab_panels.cpp
+    src/ui/main_window/saves_scan_worker.cpp
+    src/engine/saves/save_game.cpp
+    src/engine/saves/save_reader.cpp
+    src/engine/saves/skyrim_save.cpp
+    src/engine/saves/save_scanner.cpp
+    src/engine/saves/save_missing_assets.cpp
     src/ui/settings/settings.cpp
     src/ui/widgets/column_toggle_header.cpp
     src/ui/widgets/mod_list_model.cpp
@@ -1495,9 +1548,42 @@ add_executable(plugins_tab_test tests/ui/plugins_tab_test.cpp
 )
 target_include_directories(plugins_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
 target_compile_definitions(plugins_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
-target_link_libraries(plugins_tab_test PRIVATE Qt6::Widgets Qt6::Test PkgConfig::CURL)
+target_link_libraries(plugins_tab_test PRIVATE Qt6::Widgets Qt6::Test PkgConfig::CURL PkgConfig::ZLIB PkgConfig::LZ4)
 add_test(NAME plugins_tab_test COMMAND plugins_tab_test)
 set_tests_properties(plugins_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# Saves tab — offscreen GUI test: table population + the missing-assets column
+# (counts, provider tooltips, disabled-inactive rendering), an end-to-end scan
+# through the worker thread against real parseable SE fixtures, the 500ms
+# debounced dir-watcher refresh, and clear_saves.
+add_executable(saves_tab_test tests/ui/saves_tab_test.cpp
+    src/ui/panels/tab_panels.cpp
+    src/ui/main_window/saves_scan_worker.cpp
+    src/engine/saves/save_game.cpp
+    src/engine/saves/save_reader.cpp
+    src/engine/saves/skyrim_save.cpp
+    src/engine/saves/save_scanner.cpp
+    src/engine/saves/save_missing_assets.cpp
+    src/ui/settings/settings.cpp
+    src/ui/widgets/column_toggle_header.cpp
+    src/ui/widgets/mod_list_model.cpp
+    src/ui/widgets/mod_table_view.cpp
+    src/engine/theme/theme_manager.cpp
+    src/engine/theme/icon_manager.cpp
+    src/engine/log/logger.cpp
+    src/engine/fs_utils.cpp
+    src/engine/deploy/root_override.cpp
+    src/engine/loverslab_auth.cpp
+    src/engine/keyring.cpp
+    src/engine/source/loverslab_provider.cpp
+    src/engine/source/nexus_http.cpp
+    src/engine/download/curl_download.cpp
+)
+target_include_directories(saves_tab_test PRIVATE src/ ${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include)
+target_compile_definitions(saves_tab_test PRIVATE VERSION="${PROJECT_VERSION}")
+target_link_libraries(saves_tab_test PRIVATE Qt6::Widgets Qt6::Test PkgConfig::CURL PkgConfig::ZLIB PkgConfig::LZ4)
+add_test(NAME saves_tab_test COMMAND saves_tab_test)
+set_tests_properties(saves_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 # ModListModel — offscreen GUI test: game-native (unmanaged) band enforcement.
 # Covers move_mod() no-op + clamp, drag-source exclusion, and drop clamping so

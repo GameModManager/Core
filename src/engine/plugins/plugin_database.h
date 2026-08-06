@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/plugins/plugin_file.h"
 #include "engine/plugins/plugin_info.h"
 
 #include <filesystem>
@@ -12,16 +13,6 @@ namespace engine {
 class GameKnowledge;
 class PlatformInterface;
 
-// True for files the game treats as plugins (.esm/.esp/.esl/.esh/.esu),
-// case-insensitively. Shared by the plugin DB and the mod-list stray-plugin
-// scan so both agree on what "a plugin file" means.
-bool is_plugin_file(const std::filesystem::path& p);
-
-// Game plugin list: discovery, load order, enable state, masters, mod
-// indexes, and MO2-compatible plugins.txt / loadorder.txt / lockedorder.txt
-// persistence. A Qt-free port of MO2's PluginList
-// (modorganizer/src/pluginlist.cpp) scoped to what a mod manager needs to
-// make the game actually load mods.
 class PluginDatabase {
 public:
     // Discover + parse all plugins from the game's merged Data view.
