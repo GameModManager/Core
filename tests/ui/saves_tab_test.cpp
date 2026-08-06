@@ -10,9 +10,9 @@
 //     parseable SE saves land in the table and the missing column reflects the
 //     request's plugin snapshot + mods/overwrite dirs (enabled = satisfied,
 //     provided by a mod folder = satisfied-with-provider, absent = missing),
-//   - set_saves_dir() arms the directory watcher and a change to the watched
-//     dir triggers the 500ms-debounced refresh_requested() (MO2 savestab
-//     behavior),
+//   - set_saves_dir() records the directory (no watcher: scans run once at
+//     game load and after a delete — a save dropped on disk must NOT trigger
+//     a background re-scan, regression for the Aug 2026 watch-spam),
 //   - clear_saves() empties the table and unwatches the dir.
 //
 // The Delete/context-menu flows are NOT exercised: on_delete_key() shows a
@@ -274,19 +274,27 @@ int main(int argc, char** argv) {
         check(tab.save_at(0) != nullptr, "scan result readable via save_at");
     }
 
-    // --- Part 3: directory watcher → debounced refresh_requested ---
+    // --- Part 3: no background re-scan (regression for the Aug 2026 spam:
+    // the Proton-prefix Saves dir churns on its own, and the old
+    // QFileSystemWatcher auto-rescan fired ~once per second while idle).
+    // Scans run once at game load and after a delete — never in the background.
     tab.set_saves_dir(saves);
-    check(tab.watching(), "watcher armed on set_saves_dir");
-    QSignalSpy spy(&tab, &ui::SavesTab::refresh_requested);
-    write_file(saves / "new_save.ess", "x");  // a change in the watched dir
+    check(tab.saves_dir() == saves, "set_saves_dir records the dir");
+    // A change on disk must NOT grow the table: drop a brand-new, newest save
+    // into the dir and give the old watcher machinery plenty of time to
+    // (wrongly) fire. The table must stay exactly as the explicit scan left it.
+    const uint64_t newest = newer + 0x10000000;  // FILETIME, ~3 min later
+    write_save(saves, "Player1_20260803000000_1_3", "Player1", 41, "Whiterun", 3,
+               newest, {"Skyrim.esm"});
     QEventLoop loop2;
     QTimer t2;
     t2.setSingleShot(true);
     QObject::connect(&t2, &QTimer::timeout, &loop2, &QEventLoop::quit);
-    t2.start(3000);
-    while (spy.count() == 0 && t2.isActive()) loop2.processEvents();
-    t2.stop();
-    check(spy.count() >= 1, "dir change → (debounced) refresh_requested");
+    t2.start(2500);  // > the old 500ms debounce + scan round-trip
+    loop2.exec();
+    check(table->rowCount() == 2 &&
+              table->item(0, 1)->text() == "Player1_20260802141135_1_1.ess",
+          "a save dropped on disk does NOT auto-trigger a re-scan");
 
     // --- Part 4: hover info popup survives external close (regression for the
     // Aug 2026 crash: deleting a save killed the whole manager) ---
@@ -312,7 +320,6 @@ int main(int argc, char** argv) {
     // --- Part 5: clear_saves ---
     tab.clear_saves();
     check(table->rowCount() == 0, "clear_saves empties the table");
-    check(!tab.watching(), "clear_saves unwatches the dir");
 
     std::printf("%d passed, %d failed\n", passes, failures);
     fs::remove_all("/tmp/gmm_saves_tab");

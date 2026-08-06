@@ -6225,15 +6225,15 @@ void MainWindow::wire_saves_tab() {
     // Bethesda-family default applies to Skyrim/FO4/etc.
     auto sub = knowledge_->get(current_game_id_, "saves_subpath", "Saves");
     const auto saves_dir = game_mygames_dir() / sub;
-    engine::Logger::instance().debug("Saves tab: watching " + saves_dir.string());
+    engine::Logger::instance().debug("Saves tab: scanning " + saves_dir.string());
     st->set_saves_dir(saves_dir);
 
-    connect(st, &ui::SavesTab::refresh_requested,
-            this, &MainWindow::on_saves_refresh_requested);
+    // No directory watcher: scans run once here and after a delete. The
+    // Proton-prefix Saves dir churns on its own, so watching spammed rescans.
     connect(st, &ui::SavesTab::delete_requested,
             this, &MainWindow::on_saves_delete_requested);
 
-    // Initial fill; the directory watcher drives later refreshes.
+    // Initial fill (the delete flow triggers the only later scan).
     on_saves_refresh_requested();
 }
 
