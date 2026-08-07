@@ -110,7 +110,9 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
                                    const std::filesystem::path& game_dir,
                                    const std::filesystem::path& upper_dir,
                                    const std::vector<std::string>& args,
-                                   const std::vector<std::filesystem::path>& extra_lowerdirs) {
+                                   const std::vector<std::filesystem::path>& extra_lowerdirs,
+                                   const std::filesystem::path& bind_mount_source,
+                                   const std::filesystem::path& bind_mount_target) {
     Logger::instance().debug("OverlayFsLauncher::launch() executable=" + executable.string() +
         " game_dir=" + game_dir.string() + " upper_dir=" + upper_dir.string());
 
@@ -195,6 +197,8 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
         const std::filesystem::path upper_dir;
         std::vector<std::string> exec_args;
         std::vector<std::filesystem::path> extra_lowerdirs;
+        std::filesystem::path bind_mount_source;
+        std::filesystem::path bind_mount_target;
         int stderr_fd;
         uid_t outer_uid;
         gid_t outer_gid;
@@ -212,7 +216,7 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
         stderr_fd = open(log_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     }
 
-    CloneArgs ca{executable, game_dir, mount_point, overlay_work, upper_dir, args, extra_lowerdirs, stderr_fd, outer_uid, outer_gid};
+    CloneArgs ca{executable, game_dir, mount_point, overlay_work, upper_dir, args, extra_lowerdirs, bind_mount_source, bind_mount_target, stderr_fd, outer_uid, outer_gid};
     constexpr size_t STACK_SIZE = 16384;
 
     // Clone into new user + mount namespace.
@@ -327,6 +331,27 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
             (void)write(STDERR_FILENO, e, strlen(e));
             (void)write(STDERR_FILENO, "\n", 1);
             _exit(10);
+        }
+
+        // Optional extra bind mount (e.g. per-profile local saves): mount the
+        // real source dir over the game-facing target dir so the game's writes
+        // to the target land in the source. Best-effort - a missing source or a
+        // mount failure logs to stderr but does not abort the launch (the game
+        // runs with plain (non-local) saves in that case).
+        if (!ca->bind_mount_source.empty() && !ca->bind_mount_target.empty()) {
+            if (access(ca->bind_mount_source.c_str(), R_OK | W_OK) == 0) {
+                if (mount(ca->bind_mount_source.c_str(), ca->bind_mount_target.c_str(),
+                          "", MS_BIND, NULL) != 0) {
+                    const char* e = strerror(errno);
+                    (void)write(STDERR_FILENO, "Overlay: bind mount (local saves) failed: ", 42);
+                    (void)write(STDERR_FILENO, e, strlen(e));
+                    (void)write(STDERR_FILENO, "\n", 1);
+                } else {
+                    (void)write(STDERR_FILENO, "Overlay: bind mount (local saves) installed\n", 43);
+                }
+            } else {
+                (void)write(STDERR_FILENO, "Overlay: bind mount (local saves) source missing, skipping\n", 60);
+            }
         }
 
         setsid();

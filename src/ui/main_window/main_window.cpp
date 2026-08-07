@@ -818,6 +818,27 @@ void MainWindow::set_game_info(const std::string& game_id,
         });
     }
 
+    // P5 (MO2 createOverwriteDirectories parity): pre-create the Overwrite
+    // mapping root <overwrite>/<mods_subpath> so the game's first write finds
+    // its target dir already present. Deferred + idempotent, never blocks load.
+    if (!instance_root.empty() && knowledge_) {
+        auto ow_root = current_instance_.path_for(engine::InstanceKind::Overwrite);
+        auto ow_subpath =
+            knowledge_->get(current_game_id_, "mods_subpath", "");
+        if (!ow_subpath.empty()) {
+            auto mapping_root = ow_root / ow_subpath;
+            QTimer::singleShot(0, this, [this, mapping_root]() {
+                std::error_code ec;
+                std::filesystem::create_directories(mapping_root, ec);
+                if (ec) {
+                    engine::Logger::instance().warn(
+                        "Overwrite: failed to pre-create mapping root " +
+                        mapping_root.string() + ": " + ec.message());
+                }
+            });
+        }
+    }
+
     // Any in-flight conflict scan belongs to the previous instance: bump the
     // generation so its result is dropped when it lands, and discard queued
     // requests/invalidations for the old game. running_ stays true so the
@@ -3424,10 +3445,8 @@ void MainWindow::send_to_highest_priority(const QString& id) {
 void MainWindow::send_to_lowest_priority(const QString& id) {
     if (mod_model_->is_conflict_order_reversed()) {
         // Isaac: highest priority number = lowest priority = bottom of list
-        int ow_row = mod_model_->overwrite_row();
-        int target = ow_row >= 0 ? ow_row - 1 : mod_model_->mods().size() - 1;
-        if (target < 0) target = 0;
-        mod_model_->move_mod(id, target);
+        // (below the pinned Overwrite/MERGED which sit at the top).
+        mod_model_->move_mod(id, mod_model_->mods().size() - 1);
     } else {
         // Standard (MO2): lowest priority number = lowest priority = top of list
         mod_model_->move_mod(id, 0);
@@ -3462,7 +3481,9 @@ void MainWindow::send_to_lowest_in_separator(const QString& id) {
     if (sep_id.isEmpty()) return;
 
     int ow_row = mod_model_->overwrite_row();
-    int target = ow_row >= 0 ? ow_row : mods.size();
+    int target = mod_model_->is_conflict_order_reversed()
+        ? mods.size()
+        : (ow_row >= 0 ? ow_row : mods.size());
 
     for (int i = mod_row + 1; i < mods.size(); ++i) {
         if (mods[i].is_separator) {
@@ -5027,6 +5048,8 @@ void MainWindow::launch_with_executable(const QString& full_path,
     req.steam_appid = steam_appid;
     req.is_windows_exe = (exec_path.extension().string() == ".exe" ||
                           exec_path.extension().string() == ".EXE");
+    req.local_saves_enabled = Settings::instance().local_saves();
+    req.platform = platform_;
 
     if (!launch_deploy_thread_) {
         launch_deploy_thread_ = new ui::DeployThread(this);
@@ -5639,7 +5662,7 @@ void MainWindow::do_capture_overwrite(std::filesystem::file_time_type capture_ti
         engine::Logger::instance().debug(
             "Output-to-mod: relayed " + std::to_string(relayed) +
             " file(s) to " + output_mod_dir_.string() +
-            ", leftovers moved to Overwrite");
+            " (P2: the mod is the full write target, Overwrite untouched)");
         std::error_code ec;
         std::filesystem::remove_all(output_session_scratch_, ec);
         output_session_scratch_.clear();

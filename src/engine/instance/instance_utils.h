@@ -11,6 +11,7 @@
 
 namespace engine {
 struct LaunchParams;
+class PlatformInterface;
 }
 
 namespace engine {
@@ -64,6 +65,14 @@ struct LaunchPrepRequest {
     std::string game_id;
     uint32_t steam_appid = 0;
     bool is_windows_exe = false;
+    // Local-saves redirect (MO2 GamebryoLocalSavegames): when true and the
+    // game has a registered local_savegames feature, prepare_launch_params
+    // rewrites the game INI to save under __MO_Saves and installs the profile
+    // dir bind mount into LaunchParams. Only honored for Windows executables
+    // when the overlay launcher is available (a bind mount needs the mount
+    // namespace). Empty platform = skipped.
+    bool local_saves_enabled = false;
+    const class PlatformInterface* platform = nullptr;
 };
 
 // Prepare LaunchParams for launching a game from an instance.

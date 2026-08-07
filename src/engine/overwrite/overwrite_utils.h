@@ -40,20 +40,9 @@ struct OverwriteSyncTarget {
 };
 
 // Normalize an overwrite-relative (game-root-relative) path into the
-// mod-relative path the file should have inside a mod folder.
-//
-// Mirrors relay_output_to_mod's mapping rules:
-//   - mods_subpath non-empty and path under "<mods_subpath>/" ->
-//     strip "<mods_subpath>/" (Skyrim: "Data/meshes/x" -> "meshes/x").
-//     The prefix match is case-insensitive: Isaac's game dir writes "Mods/"
-//     while the knowledge registry says "mods".
-//   - include_mod_id and path under "<mods_subpath>/<mod_id>/" ->
-//     strip both (Isaac: "mods/MyMod/resources/x" -> "resources/x").
-//   - otherwise the path is passed through unchanged.
-std::string overwrite_to_mod_rel(const std::string& overwrite_rel,
-                                 const std::string& mods_subpath,
-                                 bool include_mod_id = false,
-                                 const std::string& mod_id = {});
+// mod-relative path the file should have inside a mod folder. Shared with the
+// "Output to mod" relay: the canonical bridge lives in fs_utils.h
+// (engine::overwrite_to_mod_rel) so both consumers use the same mapping.
 
 // Move ALL contents of overwrite_dir into mod_dir, normalizing each path with
 // overwrite_to_mod_rel() (so a Skyrim "Data/..." file lands at the mod root).

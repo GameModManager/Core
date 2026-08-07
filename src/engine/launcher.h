@@ -36,6 +36,14 @@ struct LaunchParams {
     // Selected Proton runner (display name or absolute path to a `proton`
     // script). Empty = automatic (Steam per-game override, then latest).
     std::string proton_runner;
+
+    // Optional extra bind mount inside the launch mount namespace (e.g. the
+    // per-profile local-saves dir over the game-facing My Games __MO_Saves
+    // folder). When both are non-empty, the OverlayFsLauncher mounts source
+    // over target before exec so the game writes to dummy path land in the
+    // profile dir. Empty = no extra bind.
+    std::filesystem::path bind_mount_source;
+    std::filesystem::path bind_mount_target;
 };
 
 struct LaunchResult {

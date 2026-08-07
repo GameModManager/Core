@@ -32,14 +32,17 @@ int launch_game_headless(const HeadlessConfig& cfg) {
     // do_launch then validates reachability and fails with a log line.
 
     // Build launch params through the shared workflow (same as GUI "Run" path)
-    auto lparams = engine::prepare_launch_params(
-        cfg.instance_root,
-        cfg.game_dir,
-        cfg.executable,
-        cfg.knowledge ? *cfg.knowledge : engine::GameKnowledge(),
-        cfg.game_id,
-        cfg.steam_appid,
-        cfg.is_windows_exe);
+    engine::LaunchPrepRequest req;
+    req.instance_root = cfg.instance_root;
+    req.game_dir = cfg.game_dir;
+    req.executable = cfg.executable;
+    req.knowledge = cfg.knowledge ? *cfg.knowledge : engine::GameKnowledge();
+    req.game_id = cfg.game_id;
+    req.steam_appid = cfg.steam_appid;
+    req.is_windows_exe = cfg.is_windows_exe;
+    req.local_saves_enabled = cfg.local_saves_enabled;
+    req.platform = cfg.platform;
+    auto lparams = engine::prepare_launch_params(req);
     lparams.platform = cfg.platform;
 
     // MO2-equivalent plugin order: build + write the game's Plugins.txt (and

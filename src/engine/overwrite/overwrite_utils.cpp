@@ -14,37 +14,6 @@ namespace engine {
 
 namespace {
 
-// Normalize a relative path string to forward slashes, no trailing slash.
-std::string normalize_rel(std::string p) {
-    std::replace(p.begin(), p.end(), '\\', '/');
-    while (!p.empty() && p.front() == '/')
-        p.erase(0, 1);
-    while (!p.empty() && p.back() == '/')
-        p.pop_back();
-    return p;
-}
-
-// True when path starts with the segment prefix ("prefix/..." or equals it).
-// ASCII case-insensitive: Isaac's game dir writes "Mods/" while the knowledge
-// registry says "mods", and Windows filesystems ignore case.
-bool starts_with_segment(const std::string& path, const std::string& prefix) {
-    if (prefix.empty()) return false;
-    if (path.size() < prefix.size()) return false;
-    for (size_t i = 0; i < prefix.size(); ++i) {
-        char a = path[i], b = prefix[i];
-        if (a >= 'A' && a <= 'Z') a = static_cast<char>(a + 32);
-        if (b >= 'A' && b <= 'Z') b = static_cast<char>(b + 32);
-        if (a != b) return false;
-    }
-    return path.size() == prefix.size() || path[prefix.size()] == '/';
-}
-
-// Strip a leading segment prefix ("prefix/rest" -> "rest", "prefix" -> "").
-std::string strip_segment(const std::string& path, const std::string& prefix) {
-    if (path.size() <= prefix.size()) return {};
-    return path.substr(prefix.size() + 1);
-}
-
 // Rename src -> dst, falling back to copy+remove across devices. Returns true
 // on success. On failure after a partial copy the destination is removed.
 bool move_file_robust(const std::filesystem::path& src,
@@ -418,24 +387,6 @@ std::size_t normalize_level(const std::filesystem::path& dir) {
 
 }  // namespace
 
-std::string overwrite_to_mod_rel(const std::string& overwrite_rel,
-                                 const std::string& mods_subpath,
-                                 bool include_mod_id,
-                                 const std::string& mod_id) {
-    auto rel = normalize_rel(overwrite_rel);
-    auto subpath = normalize_rel(mods_subpath);
-    if (subpath.empty()) return rel;
-
-    if (starts_with_segment(rel, subpath)) {
-        auto rest = strip_segment(rel, subpath);
-        if (!include_mod_id || mod_id.empty()) return rest;
-        if (starts_with_segment(rest, normalize_rel(mod_id)))
-            return strip_segment(rest, normalize_rel(mod_id));
-        return rest;
-    }
-    return rel;
-}
-
 bool move_overwrite_to_mod(const std::filesystem::path& overwrite_dir,
                            const std::filesystem::path& mod_dir,
                            const std::string& mods_subpath,
@@ -652,24 +603,33 @@ std::vector<OverwriteSyncFile> collect_overwrite_sync_files(
         OverwriteSyncFile f;
         f.overwrite_rel = rel;
 
-        // Registry keys are CI-normalized (directory components lowercased);
-        // the overwrite tree keeps on-disk casing, so normalize before lookup.
-        auto it = registry.find(normalize_ci_key(mod_rel));
-        if (it != registry.end()) {
-            for (const auto& [mod_id, priority] : it->second) {
+        // Ownership is FULLY case-insensitive (MO2's shared tree findFile lowers
+        // dirs AND the final filename), so a captured Data/Meshes/ReadMe.txt is
+        // owned by a mod storing meshes/readme.txt. The registry keys are
+        // normalize_ci_key-shaped (dirs lowered, filename case preserved), and the
+        // deploy deliberately keeps CI-equal filenames as distinct entries - so the
+        // registry may hold meshes/readme.txt AND meshes/README.txt from different
+        // mods. Iterate and match every entry whose fully-CI key equals ours; each
+        // distinct registry entry contributes its owners, preserving the same
+        // per-file "winner first, then alternatives" shape as a single-key lookup.
+        const std::string full_key = normalize_ci_full(mod_rel);
+        for (const auto& [registry_key, owners] : registry) {
+            (void)registry_key;
+            if (normalize_ci_full(registry_key) != full_key) continue;
+            for (const auto& [mod_id, priority] : owners) {
                 f.owners.push_back({mod_id, priority});
             }
-            if (conflict_reversed) {
-                std::stable_sort(f.owners.begin(), f.owners.end(),
-                    [](const OverwriteOwner& a, const OverwriteOwner& b) {
-                        return a.priority < b.priority;
-                    });
-            } else {
-                std::stable_sort(f.owners.begin(), f.owners.end(),
-                    [](const OverwriteOwner& a, const OverwriteOwner& b) {
-                        return a.priority > b.priority;
-                    });
-            }
+        }
+        if (conflict_reversed) {
+            std::stable_sort(f.owners.begin(), f.owners.end(),
+                [](const OverwriteOwner& a, const OverwriteOwner& b) {
+                    return a.priority < b.priority;
+                });
+        } else {
+            std::stable_sort(f.owners.begin(), f.owners.end(),
+                [](const OverwriteOwner& a, const OverwriteOwner& b) {
+                    return a.priority > b.priority;
+                });
         }
 
         f.game_has_file = game_has_file(game_dir, rel);

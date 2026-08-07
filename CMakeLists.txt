@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # (package_installer target passes -DVERSION=${PROJECT_VERSION}), and the plugins
 # (GMM_VERSION, visible in the add_subdirectory'd external/plugins scope).
 project(GameModManager
-    VERSION 0.2.44
+    VERSION 0.3.0
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -237,6 +237,7 @@ set(ENGINE_SOURCES
     src/engine/saves/skyrim_save.cpp
     src/engine/saves/save_scanner.cpp
     src/engine/saves/save_missing_assets.cpp
+    src/engine/saves/local_saves.cpp
     src/engine/sort/loot/loot_sorter.cpp
     src/engine/sort/loot/masterlists.cpp
     src/engine/source/source_provider.cpp
@@ -666,6 +667,9 @@ add_executable(launch_params_test tests/engine/launch_params_test.cpp
     src/engine/meta/mod_meta.cpp
     src/engine/deploy/strategy_overlayfs_deploy.cpp
     src/engine/registry/game_knowledge.cpp
+    src/engine/registry/game_features/game_feature.cpp
+    src/engine/registry/game_features/game_feature_registry.cpp
+    src/engine/saves/local_saves.cpp
     src/engine/overlay_launcher.cpp
     src/engine/filetree/file_tree.cpp
     src/engine/filetree/dir_file_tree.cpp
@@ -687,6 +691,9 @@ add_executable(game_icons_test tests/engine/game_icons_test.cpp
     src/engine/meta/mod_meta.cpp
     src/engine/deploy/strategy_overlayfs_deploy.cpp
     src/engine/registry/game_knowledge.cpp
+    src/engine/registry/game_features/game_feature.cpp
+    src/engine/registry/game_features/game_feature_registry.cpp
+    src/engine/saves/local_saves.cpp
     src/engine/overlay_launcher.cpp
     src/engine/filetree/file_tree.cpp
     src/engine/filetree/dir_file_tree.cpp
@@ -1047,6 +1054,16 @@ add_executable(fs_utils_test tests/engine/fs_utils_test.cpp
 target_include_directories(fs_utils_test PRIVATE src/)
 add_test(NAME fs_utils_test COMMAND fs_utils_test)
 
+# Per-profile local saves (MO2 GamebryoLocalSavegames parity): the INI rewrite
+# (sLocalSavePath / bUseMyGamesDirectory), savepath.ini backup/restore, dir
+# prep, and the bind-mount pair. Qt-free, temp-dir based.
+add_executable(local_saves_test tests/engine/local_saves_test.cpp
+    src/engine/saves/local_saves.cpp
+    src/engine/log/logger.cpp
+)
+target_include_directories(local_saves_test PRIVATE src/)
+add_test(NAME local_saves_test COMMAND local_saves_test)
+
 # Unified file tree (PLAN §19 P1.1): FileTree/FileTreeEntry over a directory on
 # disk and over a libarchive archive, name comparison, lazy population, walk,
 # and the staging-layout wrapper-peel analysis running on trees. The archive-vs-
@@ -1214,6 +1231,7 @@ add_executable(settings_plugins_tab_test tests/ui/settings_plugins_tab_test.cpp
     src/engine/registry/hook_registry.cpp
     src/engine/registry/game_capabilities.cpp
     src/engine/registry/game_knowledge.cpp
+    src/engine/saves/local_saves.cpp
     src/engine/tools/external_tool.cpp
     src/engine/sort/sort_registry.cpp
     src/engine/sort/abi_sort_provider.cpp
@@ -1317,6 +1335,7 @@ add_executable(settings_sources_tab_test tests/ui/settings_sources_tab_test.cpp
     src/engine/registry/hook_registry.cpp
     src/engine/registry/game_capabilities.cpp
     src/engine/registry/game_knowledge.cpp
+    src/engine/saves/local_saves.cpp
     src/engine/tools/external_tool.cpp
     src/engine/sort/sort_registry.cpp
     src/engine/sort/abi_sort_provider.cpp

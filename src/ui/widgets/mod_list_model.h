@@ -207,6 +207,11 @@ public:
     void set_conflict_order_reversed(bool reversed);
     void set_uses_merged(bool on);
     [[nodiscard]] bool is_conflict_order_reversed() const { return conflict_order_reversed_; }
+    // The Overwrite/MERGED pinned state lives at the dominant rows. With
+    // conflict_order_reversed (Isaac convention) the LOWEST priority wins, so
+    // the pinned block sits at the TOP of the list; normally it sits at the
+    // BOTTOM. Row index IS priority, so this is which end the winner is on.
+    [[nodiscard]] bool pinned_at_top() const { return conflict_order_reversed_; }
 
     void set_conflict_pairs(const QMap<QString, ConflictPairs>& pairs);
     [[nodiscard]] const QMap<QString, ConflictPairs>& conflict_pairs() const { return conflict_pairs_; }
@@ -229,6 +234,11 @@ signals:
 
 private:
     void ensure_overwrite_present();
+    // Reposition the Overwrite/MERGED pseudo-mods to the dominant end (bottom
+    // for normal priority, top for conflict-reversed games). Called by
+    // reset_with_order so every load/sort path inherits correct pinning even
+    // when a caller inserted the rows themselves.
+    void pin_pinned_rows();
     [[nodiscard]] QString compute_separator_flags(int row) const;
     // Vendor badge for a mod's source_type (via engine::vendor_icon_key), or
     // null for unknown/empty sources.

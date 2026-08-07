@@ -1710,6 +1710,43 @@ int main(int argc, char** argv) {
             check(false, "nested mod indent render geometry valid");
     }
 
+    // Conflict-reversed orientation (Isaac convention): the pinned Overwrite
+    // block sits at the TOP of the list (row 0), so the always-winning
+    // pseudo-mod is the winner for low-priority-wins games.
+    {
+        ui::ModListModel mm;
+        mm.set_conflict_order_reversed(true);
+        mm.set_uses_merged(true);  // Isaac pins MERGED too
+        QVector<ui::ModEntry> entries;
+        for (const char* id : {"ModA", "ModB"}) {
+            ui::ModEntry u;
+            u.id = QString::fromLatin1(id);
+            u.name = u.id;
+            u.enabled = true;
+            entries.append(u);
+        }
+        ui::ModEntry ow;
+        ow.id = ui::kOverwriteModId;
+        ow.name = ui::kOverwriteModName;
+        ow.enabled = true;
+        ow.is_overwrite = true;
+        ui::ModEntry mg;
+        mg.id = ui::kMergedModId;
+        mg.name = ui::kMergedModName;
+        mg.enabled = true;
+        mg.is_merged = true;
+        entries.append(mg);
+        entries.append(ow);
+        mm.reset_with_order(entries);
+        const int ow_row = row_with_id(mm, ui::kOverwriteModId);
+        const int mg_row = row_with_id(mm, ui::kMergedModId);
+        check(ow_row == 0, "reversed: Overwrite pinned at the top (row 0)");
+        check(mg_row == 1, "reversed: MERGED sits just below Overwrite (row 1)");
+        check(row_with_id(mm, "ModA") == 2 && row_with_id(mm, "ModB") == 3,
+              "reversed: user mods live below the pinned block");
+        check(mm.is_conflict_order_reversed(), "reversed flag observable");
+    }
+
     std::printf("\n%d passed, %d failed\n", passes, failures);
     return failures ? 1 : 0;
 }

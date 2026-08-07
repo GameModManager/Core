@@ -270,6 +270,58 @@ int main() {
         std::printf("  collect_overwrite_sync_files: OK\n");
     }
 
+    // --- collect_overwrite_sync_files: FULLY case-insensitive ownership (P1) ---
+    // MO2's shared tree matches dirs AND the final filename case-insensitively,
+    // so a captured Data/Meshes/ReadMe.txt is owned by a mod storing
+    // meshes/readme.txt. The old normalize_ci_key lookup kept the filename's
+    // casing and silently dropped the association ("no owner").
+    {
+        const fs::path ow = base / "ow_collect_fullci";
+        const fs::path mods = base / "mods_collect_fullci";
+        const fs::path game = base / "game_collect_fullci";
+        fs::create_directories(ow / "Data" / "Meshes");
+        fs::create_directories(mods / "mod_a" / "meshes");
+        fs::create_directories(mods / "mod_b" / "meshes");
+        fs::create_directories(game / "Data");
+
+        touch(mods / "mod_a" / "meshes" / "readme.txt");   // lowercase name
+        touch(mods / "mod_b" / "meshes" / "ReadMe.txt");   // CI-equal name
+        // Captured write uses a third casing for dir AND filename.
+        touch(ow / "Data" / "Meshes" / "ReadMe.txt");
+
+        const std::vector<std::pair<std::string, int>> mod_infos = {
+            {"mod_a", 3}, {"mod_b", 1},
+        };
+
+        auto files = collect_overwrite_sync_files(ow, mods, mod_infos, "Data",
+                                                  /*conflict_reversed=*/false,
+                                                  /*include_mod_id=*/false, game);
+        assert(files.size() == 1);
+        const auto& f = files[0];
+        assert(f.overwrite_rel == "Data/Meshes/ReadMe.txt");
+        // Both mods own it via fully-CI matching, winner first (pri 3 = mod_a).
+        assert(f.owners.size() == 2);
+        assert(f.owners[0].mod_id == "mod_a");
+        assert(f.owners[1].mod_id == "mod_b");
+        assert(!f.game_has_file);
+
+        // A file NO mod provides in any casing still reads as unowned.
+        touch(ow / "Data" / "Meshes" / "orphan.txt");
+        files = collect_overwrite_sync_files(ow, mods, mod_infos, "Data",
+                                             /*conflict_reversed=*/false,
+                                             /*include_mod_id=*/false, game);
+        assert(files.size() == 2);
+        for (const auto& g : files) {
+            if (g.overwrite_rel == "Data/Meshes/orphan.txt") {
+                assert(g.owners.empty());
+            }
+        }
+
+        fs::remove_all(mods);
+        fs::remove_all(ow);
+        std::printf("  collect_overwrite_sync_files (full-CI ownership): OK\n");
+    }
+
     // --- apply_sync_plan -------------------------------------------------------
     {
         const fs::path ow = base / "ow_plan";
