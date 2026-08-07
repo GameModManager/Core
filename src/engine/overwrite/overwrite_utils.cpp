@@ -6,6 +6,7 @@
 #include "engine/meta/mod_meta.h"
 
 #include <algorithm>
+#include <map>
 #include <set>
 #include <system_error>
 
@@ -227,6 +228,192 @@ bool sync_file(const std::filesystem::path& overwrite_dir,
 
     prune_up(src.parent_path(), overwrite_dir);
     return true;
+}
+
+// Resolve `parent / name` to the on-disk casing of a CI-equal entry when the
+// exact-cased path does not exist (mirrors resolve_deploy_target_ci: reuse the
+// casing that is already on disk). Returns the exact path when nothing matches.
+std::filesystem::path resolve_child_ci(const std::filesystem::path& parent,
+                                       const std::string& name) {
+    std::error_code ec;
+    const auto exact = parent / name;
+    if (std::filesystem::exists(exact, ec) || ec) return exact;
+    for (const auto& entry : std::filesystem::directory_iterator(parent, ec)) {
+        if (ec) break;
+        if (name_matches_ci(entry.path(), name)) return entry.path();
+    }
+    return exact;
+}
+
+// Move the contents of src into dst (both directories), merging nested
+// directories case-insensitively: dst/<child> resolves to an existing CI-equal
+// directory's casing, and an exact-name destination file is the same logical
+// file (the moved copy wins - "Meshes/x" and "meshes/x" collapse). Case-
+// different file names (README.txt vs readme.txt) stay side by side, matching
+// the registry which never case-folds the final filename. src is removed when
+// emptied. Symlinks are moved as-is, never followed. Returns false on failure.
+bool merge_dir_into(const std::filesystem::path& dst,
+                    const std::filesystem::path& src) {
+    std::error_code ec;
+    std::filesystem::create_directories(dst, ec);
+    if (ec) return false;
+
+    std::vector<std::filesystem::path> children;
+    std::filesystem::directory_iterator it(src, ec);
+    auto end = std::filesystem::directory_iterator();
+    while (it != end && !ec) {
+        children.push_back(it->path());
+        it.increment(ec);
+    }
+    if (ec) return false;
+
+    bool ok = true;
+    for (const auto& child : children) {
+        const std::string name = child.filename().string();
+        const auto dest = resolve_child_ci(dst, name);
+
+        std::error_code sec;
+        const auto st = std::filesystem::symlink_status(child, sec);
+        if (sec) {
+            ec.clear();
+            ok = false;
+            continue;
+        }
+        if (std::filesystem::is_directory(st)) {
+            std::error_code de;
+            if (std::filesystem::is_directory(dest, de) && !de) {
+                if (!merge_dir_into(dest, child)) ok = false;
+            } else {
+                de.clear();
+                if (!move_file_robust(child, dest, ec)) {
+                    Logger::instance().error(
+                        "overwrite_utils: failed to move " + child.string() +
+                        " -> " + dest.string() + ": " + ec.message());
+                    ec.clear();
+                    ok = false;
+                }
+            }
+        } else {
+            // Same exact-name file = the same logical file (the moved copy
+            // wins). Case-different file names are left side by side - the
+            // registry does not case-fold the final filename, so README.txt
+            // and readme.txt are distinct files.
+            const auto dest = dst / name;
+            std::error_code de;
+            if (std::filesystem::exists(dest, de) && !de) {
+                std::filesystem::remove(dest, de);
+                if (de) de.clear();
+            }
+            if (!move_file_robust(child, dest, ec)) {
+                Logger::instance().error(
+                    "overwrite_utils: failed to move " + child.string() +
+                    " -> " + dest.string() + ": " + ec.message());
+                ec.clear();
+                ok = false;
+            }
+        }
+    }
+
+    prune_up(src, src.parent_path());
+    return ok;
+}
+
+// Count regular files under dir (symlinks not followed). Used to pick the
+// surviving casing when two CI-equal directories merge.
+std::size_t count_files_recursive(const std::filesystem::path& dir) {
+    std::error_code ec;
+    std::size_t n = 0;
+    std::filesystem::recursive_directory_iterator it(
+        dir, std::filesystem::directory_options::skip_permission_denied, ec);
+    auto end = std::filesystem::recursive_directory_iterator();
+    while (it != end && !ec) {
+        if (it->is_regular_file()) ++n;
+        it.increment(ec);
+    }
+    return n;
+}
+
+// One level of the CI normalization: recurse into child dirs (post-order),
+// then merge CI-duplicate directories at this level. Returns the number of
+// directories merged away.
+std::size_t normalize_level(const std::filesystem::path& dir) {
+    std::error_code ec;
+    if (!std::filesystem::is_directory(dir, ec) || ec) return 0;
+    ec.clear();
+
+    struct Entry {
+        std::filesystem::path path;
+        std::string name;
+        std::string lower;
+        bool is_dir = false;
+    };
+    std::vector<Entry> entries;
+    std::filesystem::directory_iterator it(dir, ec);
+    auto end = std::filesystem::directory_iterator();
+    while (it != end && !ec) {
+        std::error_code sec;
+        const auto st = std::filesystem::symlink_status(it->path(), sec);
+        if (!sec && st.type() != std::filesystem::file_type::symlink) {
+            auto name = it->path().filename().string();
+            auto lower = name;
+            std::transform(lower.begin(), lower.end(), lower.begin(),
+                           [](unsigned char c) {
+                               return static_cast<char>(std::tolower(c));
+                           });
+            entries.push_back(
+                {it->path(), std::move(name), std::move(lower),
+                 std::filesystem::is_directory(st)});
+        }
+        it.increment(ec);
+        if (ec) ec.clear();
+    }
+
+    // Children first: nested collisions resolve before their parents merge, so
+    // content moved by a parent-level merge is already normalized.
+    std::size_t merged = 0;
+    for (const auto& e : entries)
+        if (e.is_dir) merged += normalize_level(e.path);
+
+    // Bucket immediate children by lowercased name and merge dir collisions.
+    std::map<std::string, std::vector<Entry>> buckets;
+    for (const auto& e : entries) buckets[e.lower].push_back(e);
+
+    for (const auto& [lower, group] : buckets) {
+        (void)lower;
+        std::vector<const Entry*> dirs, files;
+        for (const auto& e : group)
+            (e.is_dir ? dirs : files).push_back(&e);
+        if (dirs.size() <= 1) continue;
+
+        const Entry* keep = dirs.front();
+        std::size_t keep_count = count_files_recursive(keep->path);
+        for (size_t i = 1; i < dirs.size(); ++i) {
+            const std::size_t c = count_files_recursive(dirs[i]->path);
+            if (c > keep_count ||
+                (c == keep_count && dirs[i]->name < keep->name)) {
+                keep = dirs[i];
+                keep_count = c;
+            }
+        }
+
+        for (const Entry* other : dirs) {
+            if (other == keep) continue;
+            if (merge_dir_into(keep->path, other->path)) {
+                ++merged;
+            } else {
+                Logger::instance().error(
+                    "overwrite CI-normalize: failed to merge " +
+                    other->path.string() + " into " + keep->path.string());
+            }
+        }
+
+        if (!files.empty())
+            Logger::instance().warn(
+                "overwrite CI-normalize: " + std::to_string(files.size()) +
+                " file(s) collide case-insensitively with directory " +
+                keep->path.string() + "; left in place");
+    }
+    return merged;
 }
 
 }  // namespace
@@ -531,6 +718,13 @@ size_t apply_sync_plan(const std::vector<OverwriteSyncTarget>& targets,
         }
     }
     return moved;
+}
+
+std::size_t normalize_overwrite_casing(
+    const std::filesystem::path& overwrite_dir) {
+    std::error_code ec;
+    if (!std::filesystem::is_directory(overwrite_dir, ec) || ec) return 0;
+    return normalize_level(overwrite_dir);
 }
 
 }  // namespace engine

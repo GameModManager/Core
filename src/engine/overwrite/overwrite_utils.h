@@ -139,4 +139,19 @@ size_t apply_sync_plan(const std::vector<OverwriteSyncTarget>& targets,
                        const std::string& metadata_file,
                        bool include_mod_id = false);
 
+// Merge case-insensitive-duplicate directories in overwrite_dir so the folder
+// follows the SAME CI rule the deploy and conflict registry use
+// (resolve_deploy_target_ci / normalize_ci_key). Windows games resolve paths
+// case-insensitively, but every Linux capture target is case-sensitive - the
+// overlay upperdir (Overwrite itself) receives the game's raw writes, so a
+// logical "Data/Meshes" splits across "Meshes" and "meshes". Directory
+// components merge into one surviving casing (most content wins, byte-lexic
+// smallest name breaks ties - title-cased "Meshes" beats "meshes"); CI-equal
+// FILE names stay side-by-side (the same rare-packaging-bug exception the
+// deploy makes). Idempotent and cheap on an already-normalized tree (one
+// directory listing per dir, zero merges). Symlinks are never followed or
+// merged. Returns the number of directories merged away.
+std::size_t normalize_overwrite_casing(
+    const std::filesystem::path& overwrite_dir);
+
 }  // namespace engine

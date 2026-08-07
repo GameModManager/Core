@@ -77,7 +77,11 @@ int launch_game_headless(const HeadlessConfig& cfg) {
     std::this_thread::sleep_for(std::chrono::seconds(3));
 
     // Post-hoc capture (no-op if overlay was used)
-    engine::capture_overwrite(cfg.game_dir, lparams.overwrite_dir, launch_time);
+    bool case_insensitive =
+        cfg.knowledge &&
+        cfg.knowledge->get(cfg.game_id, "case_sensitive", "true") == "false";
+    engine::capture_overwrite(cfg.game_dir, lparams.overwrite_dir, launch_time,
+                              case_insensitive);
 
     engine::Logger::instance().debug("Headless: done");
     return (ret > 0 && WIFEXITED(status)) ? WEXITSTATUS(status) : 1;

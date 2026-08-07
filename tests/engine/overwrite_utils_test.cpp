@@ -328,6 +328,78 @@ int main() {
         }
     }
 
+    // --- normalize_overwrite_casing ------------------------------------------
+    {
+        // The game's raw case-insensitive writes split one logical directory
+        // across casings in Overwrite (case-sensitive upperdir): "Meshes" +
+        // "meshes" etc. must collapse to a single directory.
+        const fs::path ow = base / "ow_normalize";
+        fs::create_directories(ow / "Data" / "Meshes");
+        fs::create_directories(ow / "Data" / "meshes");
+        fs::create_directories(ow / "Data" / "Textures" / "terrain");
+        fs::create_directories(ow / "Data" / "textures" / "terrain");
+        fs::create_directories(ow / "Data" / "SKSE" / "Plugins");
+        fs::create_directories(ow / "Data" / "skse" / "plugins");
+        touch(ow / "Data" / "Meshes" / "a.nif");
+        touch(ow / "Data" / "meshes" / "b.nif");
+        write_str(ow / "Data" / "Meshes" / "x.nif", "upper");
+        write_str(ow / "Data" / "meshes" / "x.nif", "lower");
+        touch(ow / "Data" / "Textures" / "terrain" / "x.dds");
+        touch(ow / "Data" / "textures" / "terrain" / "y.dds");
+        touch(ow / "Data" / "SKSE" / "Plugins" / "SkyUI.ini");
+        touch(ow / "Data" / "skse" / "plugins" / "MapMenu.ini");
+        // Case-different FILE names are distinct files - kept side by side.
+        write_str(ow / "Data" / "readme.txt", "keep");
+        write_str(ow / "Data" / "README.txt", "keep2");
+
+        // One merged pair at the Data level, three nested pairs.
+        assert(normalize_overwrite_casing(ow) == 3);
+
+        // Survivor casing on ties: byte-lexic smallest ("Meshes" < "meshes").
+        assert(fs::exists(ow / "Data" / "Meshes" / "a.nif"));
+        assert(fs::exists(ow / "Data" / "Meshes" / "b.nif"));
+        assert(!fs::exists(ow / "Data" / "meshes"));
+        // Same logical file across casings: one survives, moved copy wins.
+        assert(read_str(ow / "Data" / "Meshes" / "x.nif") == "lower");
+        assert(fs::exists(ow / "Data" / "Textures" / "terrain" / "x.dds"));
+        assert(fs::exists(ow / "Data" / "Textures" / "terrain" / "y.dds"));
+        assert(!fs::exists(ow / "Data" / "textures"));
+        assert(fs::exists(ow / "Data" / "SKSE" / "Plugins" / "SkyUI.ini"));
+        assert(fs::exists(ow / "Data" / "SKSE" / "Plugins" / "MapMenu.ini"));
+        assert(!fs::exists(ow / "Data" / "skse"));
+        assert(read_str(ow / "Data" / "readme.txt") == "keep");
+        assert(read_str(ow / "Data" / "README.txt") == "keep2");
+
+        // Idempotent: a clean Overwrite costs one listing, zero merges.
+        assert(normalize_overwrite_casing(ow) == 0);
+        // Missing dir is a no-op.
+        assert(normalize_overwrite_casing(base / "no_such_dir") == 0);
+
+        // Most content wins (no tie): meshes holds more files than Meshes.
+        const fs::path ow2 = base / "ow_normalize_most";
+        fs::create_directories(ow2 / "Data" / "Meshes");
+        fs::create_directories(ow2 / "Data" / "meshes");
+        touch(ow2 / "Data" / "meshes" / "a.nif");
+        touch(ow2 / "Data" / "meshes" / "b.nif");
+        touch(ow2 / "Data" / "meshes" / "c.nif");
+        touch(ow2 / "Data" / "Meshes" / "d.nif");
+        assert(normalize_overwrite_casing(ow2) == 1);
+        assert(fs::exists(ow2 / "Data" / "meshes" / "a.nif"));
+        assert(fs::exists(ow2 / "Data" / "meshes" / "d.nif"));
+        assert(!fs::exists(ow2 / "Data" / "Meshes"));
+
+        // Symlinks are never followed or merged.
+        const fs::path ow3 = base / "ow_normalize_symlink";
+        fs::create_directories(ow3 / "Data" / "meshes");
+        fs::create_symlink(ow3 / "Data" / "real_target", ow3 / "Data" / "Meshes");
+        touch(ow3 / "Data" / "meshes" / "a.nif");
+        assert(normalize_overwrite_casing(ow3) == 0);
+        assert(fs::exists(ow3 / "Data" / "meshes" / "a.nif"));
+        assert(fs::is_symlink(ow3 / "Data" / "Meshes"));
+
+        std::printf("  normalize_overwrite_casing: OK\n");
+    }
+
     fs::remove_all(base);
     std::printf("PASS: overwrite_utils_test\n");
     return 0;
