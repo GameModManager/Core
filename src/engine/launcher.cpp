@@ -3,6 +3,7 @@
 #include "engine/fs_utils.h"
 #include "engine/log/logger.h"
 #include "engine/overlay_launcher.h"
+#include "engine/overwrite/overwrite_utils.h"
 #include "engine/preload_interceptor.h"
 #include "platform/platform_interface.h"
 #include "runtime/runtime.h"
@@ -343,7 +344,8 @@ static LaunchResult do_launch(const LaunchParams& params) {
 
 void capture_overwrite(const fs::path& game_dir,
                        const fs::path& overwrite_dir,
-                       fs::file_time_type capture_time) {
+                       fs::file_time_type capture_time,
+                       bool case_insensitive) {
     if (game_dir.empty() || overwrite_dir.empty()) return;
 
     try {
@@ -414,6 +416,17 @@ void capture_overwrite(const fs::path& game_dir,
                         game_dir, fs::directory_options::skip_permission_denied, ec);
                 }
             }
+        }
+
+        // The game's raw writes can split one logical directory across two
+        // casings ("Meshes" + "meshes" - the overlay upperdir is case-sensitive
+        // but Windows games resolve paths case-insensitively). Fold CI-equal
+        // directories back together so Overwrite follows the same rule the
+        // deploy and conflict registry use.
+        if (case_insensitive && normalize_overwrite_casing(overwrite_dir) > 0) {
+            Logger::instance().debug(
+                "Overwrite capture: merged case-insensitive directory "
+                "duplicates in Overwrite");
         }
 
         if (!captured.empty()) {

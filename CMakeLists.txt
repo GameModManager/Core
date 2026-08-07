@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # (package_installer target passes -DVERSION=${PROJECT_VERSION}), and the plugins
 # (GMM_VERSION, visible in the add_subdirectory'd external/plugins scope).
 project(GameModManager
-    VERSION 0.2.43
+    VERSION 0.2.44
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -1240,6 +1240,8 @@ add_executable(settings_plugins_tab_test tests/ui/settings_plugins_tab_test.cpp
     src/engine/deploy/deploy_ledger.cpp
     src/engine/deploy/order_hook.cpp
     src/engine/launcher.cpp
+    src/engine/overwrite/overwrite_utils.cpp
+    src/engine/index/conflict_engine.cpp
     src/engine/overlay_launcher.cpp
     src/engine/preload_interceptor.cpp
     src/engine/fs_utils.cpp
@@ -1341,6 +1343,8 @@ add_executable(settings_sources_tab_test tests/ui/settings_sources_tab_test.cpp
     src/engine/deploy/deploy_ledger.cpp
     src/engine/deploy/order_hook.cpp
     src/engine/launcher.cpp
+    src/engine/overwrite/overwrite_utils.cpp
+    src/engine/index/conflict_engine.cpp
     src/engine/overlay_launcher.cpp
     src/engine/preload_interceptor.cpp
     src/engine/fs_utils.cpp

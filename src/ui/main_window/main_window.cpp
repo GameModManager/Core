@@ -801,6 +801,23 @@ void MainWindow::set_game_info(const std::string& game_id,
         conflict_cache_path_ = current_instance_.path_for(engine::InstanceKind::Cache) / "conflict_cache.json";
     }
 
+    // The Overwrite folder may carry CI-duplicate directories (Meshes/ +
+    // meshes/) left by an earlier session on the case-sensitive Linux fs: the
+    // game's raw writes split one logical dir across casings. Fold them back
+    // once per instance load (deferred so the switch is never blocked - it is
+    // idempotent, a clean Overwrite costs one listing).
+    if (!instance_root.empty() && knowledge_ &&
+        knowledge_->get(current_game_id_, "case_sensitive", "true") == "false") {
+        auto ow = current_instance_.path_for(engine::InstanceKind::Overwrite);
+        QTimer::singleShot(0, this, [this, ow]() {
+            if (engine::normalize_overwrite_casing(ow) > 0) {
+                engine::Logger::instance().debug(
+                    "Overwrite: healed case-insensitive directory duplicates in " +
+                    ow.string());
+            }
+        });
+    }
+
     // Any in-flight conflict scan belongs to the previous instance: bump the
     // generation so its result is dropped when it lands, and discard queued
     // requests/invalidations for the old game. running_ stays true so the
@@ -5583,6 +5600,9 @@ void MainWindow::refresh_process_tree() {
 void MainWindow::do_capture_overwrite(std::filesystem::file_time_type capture_time) {
     if (current_instance_root_.empty() || current_game_dir_.empty()) return;
 
+    bool case_insensitive =
+        knowledge_ && knowledge_->get(current_game_id_, "case_sensitive", "true") == "false";
+
     bool session_active = !output_session_scratch_.empty() && !output_mod_dir_.empty();
     auto capture_dir = session_active ? output_session_scratch_
                                       : overwrite_dir_path();
@@ -5594,7 +5614,18 @@ void MainWindow::do_capture_overwrite(std::filesystem::file_time_type capture_ti
         engine::Logger::instance().debug(
             "Overlay launched: writes already in " + capture_dir.string());
     } else {
-        engine::capture_overwrite(current_game_dir_, capture_dir, capture_time);
+        engine::capture_overwrite(current_game_dir_, capture_dir, capture_time,
+                                  case_insensitive);
+    }
+
+    // Fold CI-duplicate directories (Meshes/ + meshes/ split by the game's raw
+    // case-insensitive writes) back together, for both capture paths. The
+    // capture already normalizes internally; this covers the overlay upperdir
+    // and the output-session scratch (so relayed mods are merged too).
+    if (case_insensitive && engine::normalize_overwrite_casing(capture_dir) > 0) {
+        engine::Logger::instance().debug(
+            "Overwrite: merged case-insensitive directory duplicates in " +
+            capture_dir.string());
     }
 
     if (session_active) {

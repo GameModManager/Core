@@ -50,7 +50,8 @@ LaunchResult launch_game(const LaunchParams& params);
 
 void capture_overwrite(const std::filesystem::path& game_dir,
                        const std::filesystem::path& overwrite_dir,
-                       std::filesystem::file_time_type capture_time);
+                       std::filesystem::file_time_type capture_time,
+                       bool case_insensitive = false);
 
 // -- Cgroup v2 process tracking (primary) --------------------------------
 
