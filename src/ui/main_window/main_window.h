@@ -262,6 +262,10 @@ private:
     // first run). Name is always forced visible. Called on scan finish, when
     // the current instance is known.
     void restore_mod_column_visibility();
+    // Apply the per-instance "Nested mod list" setting to the model. Called on
+    // scan finish (before load_order so folds/links render correctly) and after
+    // the settings dialog closes.
+    void apply_nesting_setting();
     void show_instance_statistics();
     void show_settings_dialog();
     void show_proton_panel();

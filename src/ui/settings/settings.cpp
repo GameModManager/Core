@@ -186,6 +186,14 @@ void Settings::set_modlist_hidden_columns(const QString& instance_name,
     settings_.setValue("modlist/columns/" + instance_name, hidden);
 }
 
+bool Settings::modlist_nested(const QString& instance_name) const {
+    return settings_.value("modlist/nested/" + instance_name, false).toBool();
+}
+
+void Settings::set_modlist_nested(const QString& instance_name, bool on) {
+    settings_.setValue("modlist/nested/" + instance_name, on);
+}
+
 // general -----------------------------------------------------------------
 
 bool Settings::check_for_updates() const {

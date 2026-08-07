@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # (package_installer target passes -DVERSION=${PROJECT_VERSION}), and the plugins
 # (GMM_VERSION, visible in the add_subdirectory'd external/plugins scope).
 project(GameModManager
-    VERSION 0.2.38
+    VERSION 0.2.41
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -288,6 +288,7 @@ set(UI_SOURCES
     src/ui/main_window/mod_scan_worker.cpp
     src/ui/main_window/plugin_db_load_worker.cpp
     src/ui/main_window/saves_scan_worker.cpp
+    src/ui/main_window/data_tab_build_worker.cpp
     src/ui/main_window/deploy_worker.cpp
     src/ui/widgets/mod_list_model.cpp
     src/ui/widgets/mod_table_view.cpp
@@ -1395,6 +1396,7 @@ set_tests_properties(source_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=off
 add_executable(downloads_tab_test tests/ui/downloads_tab_test.cpp
     src/ui/panels/tab_panels.cpp
     src/ui/main_window/saves_scan_worker.cpp
+    src/ui/main_window/data_tab_build_worker.cpp
     src/engine/saves/save_game.cpp
     src/engine/saves/save_reader.cpp
     src/engine/saves/skyrim_save.cpp
@@ -1473,6 +1475,7 @@ add_test(NAME plugin_db_load_test COMMAND plugin_db_load_test)
 add_executable(data_tab_test tests/ui/data_tab_test.cpp
     src/ui/panels/tab_panels.cpp
     src/ui/main_window/saves_scan_worker.cpp
+    src/ui/main_window/data_tab_build_worker.cpp
     src/engine/saves/save_game.cpp
     src/engine/saves/save_reader.cpp
     src/engine/saves/skyrim_save.cpp
@@ -1526,6 +1529,7 @@ set_tests_properties(generic_files_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATF
 add_executable(plugins_tab_test tests/ui/plugins_tab_test.cpp
     src/ui/panels/tab_panels.cpp
     src/ui/main_window/saves_scan_worker.cpp
+    src/ui/main_window/data_tab_build_worker.cpp
     src/engine/saves/save_game.cpp
     src/engine/saves/save_reader.cpp
     src/engine/saves/skyrim_save.cpp
@@ -1559,6 +1563,7 @@ set_tests_properties(plugins_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=of
 add_executable(saves_tab_test tests/ui/saves_tab_test.cpp
     src/ui/panels/tab_panels.cpp
     src/ui/main_window/saves_scan_worker.cpp
+    src/ui/main_window/data_tab_build_worker.cpp
     src/engine/saves/save_game.cpp
     src/engine/saves/save_reader.cpp
     src/engine/saves/skyrim_save.cpp
@@ -1592,6 +1597,7 @@ set_tests_properties(saves_tab_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offs
 # manually.
 add_executable(mod_list_model_test tests/ui/mod_list_model_test.cpp
     src/ui/widgets/mod_list_model.cpp
+    src/ui/widgets/mod_table_view.cpp
     src/ui/widgets/column_toggle_header.cpp
     src/ui/settings/settings.cpp
     src/engine/theme/theme_manager.cpp

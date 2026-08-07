@@ -4,6 +4,7 @@
 
 #include <QAbstractItemModel>
 #include <QAbstractItemView>
+#include <QApplication>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileInfo>
@@ -112,6 +113,71 @@ static bool is_supported_archive(const QString& path) {
     return false;
 }
 
+IndentDelegate::IndentDelegate(int indent_depth_role, QWidget* parent)
+    : QStyledItemDelegate(parent), indent_depth_role_(indent_depth_role) {}
+
+void IndentDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option,
+                           const QModelIndex& index) const {
+    const int depth = index.data(indent_depth_role_).toInt();
+
+    // Resolve the full option exactly like QStyledItemDelegate::paint would,
+    // but ONCE, so each pass below controls which pieces it draws. (Calling
+    // QStyledItemDelegate::paint re-runs initStyleOption per call and re-reads
+    // CheckStateRole from the model, so clearing HasCheckIndicator on a pass
+    // did NOT suppress its checkbox - the nested rows drew two checkboxes.)
+    QStyleOptionViewItem opt = option;
+    initStyleOption(&opt, index);
+    const QWidget* widget = opt.widget ? opt.widget : nullptr;
+    QStyle* style = widget ? widget->style() : QApplication::style();
+
+    if (depth <= 0) {
+        style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, widget);
+        return;
+    }
+    int shift = depth * kIndentStep;
+    // Centered text (separators with "Center text on separators" on, the
+    // default) moves only HALF the rect shift: the text centers within
+    // [L+shift, R], whose center is C + shift/2. Double the shift so a centered
+    // row indents the same full kIndentStep per level a left-aligned row does -
+    // without this, nested separators looked flat until ~4 levels deep.
+    if (opt.displayAlignment & Qt::AlignHCenter)
+        shift *= 2;
+    // The checkbox stays at its normal (left) position, so the shifted name
+    // must clear it - ADD the checkbox width rather than max()ing with it:
+    // Pass 2 suppresses the checkbox, so the style reserves no space for it and
+    // the name would otherwise start exactly where the PARENT's text starts
+    // (the parent's own text is already past its checkbox). max(shift, cbw)
+    // made the depth-1 shift degenerate to exactly the checkbox width, so the
+    // first nested mod rendered ~0px past its parent ("mod 2 is 2-3px left of
+    // its parent"); only depth 2+ stepped.
+    if (opt.features & QStyleOptionViewItem::HasCheckIndicator) {
+        const QRect check =
+            style->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &opt, widget);
+        shift += check.right() - opt.rect.left() + 1;
+    }
+
+    // Pass 1: full-width background + the checkbox at its NORMAL position (the
+    // left edge, exactly where a flat row draws it) - no text/icon, so the
+    // indentation gutter keeps the row highlight and the checkbox NEVER shifts
+    // with the name.
+    QStyleOptionViewItem bg = opt;
+    bg.text.clear();
+    bg.icon = QIcon();
+    bg.features &= ~QStyleOptionViewItem::HasDisplay;
+    bg.state &= ~QStyle::State_HasFocus;
+    style->drawControl(QStyle::CE_ItemViewItem, &bg, painter, widget);
+
+    // Pass 2: text + icon shifted right into the remaining width (right edge
+    // stays put, so nothing bleeds into the next column). Checkbox suppressed -
+    // Pass 1 already drew it at the normal position.
+    QStyleOptionViewItem content = opt;
+    content.rect.setLeft(content.rect.left() + shift);
+    if (content.rect.width() > 0) {
+        content.features &= ~QStyleOptionViewItem::HasCheckIndicator;
+        style->drawControl(QStyle::CE_ItemViewItem, &content, painter, widget);
+    }
+}
+
 ModMarkingScrollBar::ModMarkingScrollBar(QTreeView* view)
     : QScrollBar(view), view_(view) {}
 
@@ -185,6 +251,10 @@ ModTableView::ModTableView(QWidget* parent)
                              new FlagsDelegate(ModListModel::kFlagIconsRole, 0, this));
     setItemDelegateForColumn(ModListModel::Flags,
                              new FlagsDelegate(ModListModel::kFlagIconsRole, 0, this));
+    // Name column: nesting indentation (shifts the name right under its parent,
+    // purely visual). Depth 0 renders exactly like the default cell.
+    setItemDelegateForColumn(ModListModel::Name,
+                             new IndentDelegate(ModListModel::kIndentDepthRole, this));
 }
 
 void ModTableView::apply_scrollbar_policy() {

@@ -436,6 +436,20 @@ QWidget* SettingsDialog::build_modlist_tab() {
     per_profile_box->setChecked(s.collapsible_separators_per_profile());
     layout->addWidget(per_profile_box);
 
+    // Per-instance nesting toggle (Settings > Mod List, below the per-profile
+    // box). The key is the instance-root folder name, same key namespace as
+    // modlist_hidden_columns, so each instance remembers its own value.
+    const QString inst_key = instance_root_.empty()
+        ? QString()
+        : QString::fromStdString(instance_root_.filename().string());
+    auto* nested_box = new QCheckBox(tr("Nested mod list ⚠️ (Experimental)"), page);
+    nested_box->setChecked(!inst_key.isEmpty() && s.modlist_nested(inst_key));
+    if (inst_key.isEmpty()) {
+        // No instance loaded (standalone tests): keep the checkbox inert.
+        nested_box->setEnabled(false);
+    }
+    layout->addWidget(nested_box);
+
     connect(asc_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_collapsible_separators_asc(on); });
     connect(dsc_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_collapsible_separators_dsc(on); });
     connect(highlight_to_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_collapsible_separators_highlight_to(on); });
@@ -445,6 +459,9 @@ QWidget* SettingsDialog::build_modlist_tab() {
     connect(icons_content, &QCheckBox::toggled, this, [&s](bool on) { s.set_collapsible_separators_icons_content(on); });
     connect(icons_version, &QCheckBox::toggled, this, [&s](bool on) { s.set_collapsible_separators_icons_version(on); });
     connect(per_profile_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_collapsible_separators_per_profile(on); });
+    connect(nested_box, &QCheckBox::toggled, this, [&s, inst_key](bool on) {
+        if (!inst_key.isEmpty()) s.set_modlist_nested(inst_key, on);
+    });
 
     layout->addStretch(1);
     return page;

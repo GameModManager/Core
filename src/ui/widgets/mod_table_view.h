@@ -125,6 +125,26 @@ private:
     QTreeView* view_ = nullptr;
 };
 
+// Delegate for the Name column: shifts the cell content right by the nesting
+// depth (kIndentDepthRole) so nested mods read as indented under their parent.
+// Purely visual - load order / priorities are untouched. The full-row
+// background (selection / alternate tint) is drawn first on the unshifted
+// rect, so the indentation gutter is never a gap in the row highlight; the
+// checkbox + text + vendor glyph are then drawn shifted right.
+class IndentDelegate : public QStyledItemDelegate {
+    Q_OBJECT
+public:
+    explicit IndentDelegate(int indent_depth_role, QWidget* parent = nullptr);
+
+protected:
+    void paint(QPainter* painter, const QStyleOptionViewItem& option,
+               const QModelIndex& index) const override;
+
+private:
+    int indent_depth_role_ = Qt::UserRole;
+    static constexpr int kIndentStep = 20;  // px per nesting level (visible at depth 1)
+};
+
 class ModTableView : public QTreeView {
     Q_OBJECT
 public:
