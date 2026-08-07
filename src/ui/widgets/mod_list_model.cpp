@@ -141,26 +141,43 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
             int l = static_cast<int>(0.299 * bg.red() + 0.587 * bg.green() + 0.114 * bg.blue());
             return QBrush(l > 128 ? QColor(0, 0, 0) : QColor(255, 255, 255));
         }
-        if (role == Qt::FontRole && index.column() == Name) {
+        if (role == Qt::FontRole && (index.column() == Name || index.column() == Fold)) {
             QFont f;
             f.setBold(true);
             return f;
         }
         if (role == Qt::DisplayRole) {
             switch (index.column()) {
-                // MO2-look: fold arrow is a prefix on the Name cell, followed
-                // by the separator's display name (suffix already stripped).
-                case Name: return (mod.folded ? QString("\u25B6 ") : QString("\u25BC ")) + mod.name;
+                // Fold arrow lives in its own column (pinned left of Name).
+                // It renders only when the separator has content to hide
+                // (band rule); an empty band shows a dead cell. No trailing
+                // space - the cell centers the glyph on its own.
+                case Fold:
+                    return separator_has_content(index.row())
+                               ? (mod.folded ? QString("\u25B6") : QString("\u25BC"))
+                               : QString();
+                case Name: return mod.name;
                 case Version: return QString();
                 case Flags: return QString();  // icons come via kFlagIconsRole
                 case Priority: return mod.priority;
             }
         }
-        // EditRole carries the raw separator name (no arrow prefix) so
-        // name-based lookups keep working.
+        // EditRole carries the raw separator name so name-based lookups keep
+        // working (the fold arrow never enters the name in any role).
         if (role == Qt::EditRole && index.column() == Name) return mod.name;
-        if (role == Qt::TextAlignmentRole && index.column() == Priority) {
-            return static_cast<int>(Qt::AlignCenter);
+        if (role == Qt::TextAlignmentRole) {
+            // The Fold column is always centered (arrow pinned to the edge,
+            // centered within its cell) regardless of the center-separators
+            // setting.
+            if (index.column() == Fold)
+                return static_cast<int>(Qt::AlignCenter);
+            // "Center text on separators" (Settings > Theme > Design, default
+            // on) centers every separator cell; the Priority cell stays
+            // centered regardless (MO2 parity).
+            if (Settings::instance().center_separator_text())
+                return static_cast<int>(Qt::AlignCenter);
+            if (index.column() == Priority)
+                return static_cast<int>(Qt::AlignCenter);
         }
         return {};
     }
@@ -308,10 +325,12 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
         return QColor(160, 160, 160);  // Gray - no conflicts
     }
     // Centered text/icon columns (MO2 centers everything but Name/Version).
+    // Fold is always centered (arrow cell); every other Fold cell is empty.
     if (role == Qt::TextAlignmentRole &&
-        (index.column() == Conflicts || index.column() == Category ||
-         index.column() == SourceId || index.column() == Installation ||
-         index.column() == Changed || index.column() == Priority)) {
+        (index.column() == Fold || index.column() == Conflicts ||
+         index.column() == Category || index.column() == SourceId ||
+         index.column() == Installation || index.column() == Changed ||
+         index.column() == Priority)) {
         return Qt::AlignCenter;
     }
 
@@ -472,9 +491,11 @@ bool ModListModel::dropMimeData(const QMimeData* data, Qt::DropAction action,
     if (sourceRows.isEmpty()) return false;
 
     QList<int> validSources;
+    bool all_separators = true;
     for (int r : sourceRows) {
         if (r >= 0 && r < mods_.size() && !mods_[r].is_overwrite && !mods_[r].is_merged && !mods_[r].is_game_native) {
             validSources.append(r);
+            if (!mods_[r].is_separator) all_separators = false;
         }
     }
     if (validSources.isEmpty()) return false;
@@ -504,10 +525,20 @@ bool ModListModel::dropMimeData(const QMimeData* data, Qt::DropAction action,
     if (ow_row >= 0 && targetRow > ow_row)
         targetRow = ow_row;  // drop before Overwrite
 
-    // Never drop into the game-native band (unmanaged mods stay on top)
-    int native_bottom = native_band_bottom();
-    if (targetRow < native_bottom)
-        targetRow = native_bottom;
+    // Game-native (unmanaged) mods stay on top. Only a separator may enter
+    // the band region (so its fold can hide the native mods); an in-band
+    // separator drop snaps to just above the band to keep it contiguous. Any
+    // non-separator in the drag forces the whole drop below the band.
+    if (all_separators) {
+        int nb_first = native_band_first();
+        int nb_last = native_band_last();
+        if (nb_first >= 0 && targetRow > nb_first && targetRow <= nb_last)
+            targetRow = nb_first;
+    } else {
+        int nb_last = native_band_last();
+        if (nb_last >= 0 && targetRow <= nb_last)
+            targetRow = nb_last + 1;
+    }
 
     for (int i = 0; i < toMove.size(); ++i) {
         beginInsertRows({}, targetRow + i, targetRow + i);
@@ -537,11 +568,27 @@ bool ModListModel::moveRows(const QModelIndex& srcParent, int srcRow, int count,
     int mg_row = merged_row();
     if (mg_row >= 0 && dest >= mg_row)
         dest = mg_row - 1;
-    // Never move into the game-native band (unmanaged mods stay on top)
-    int native_bottom = native_band_bottom();
-    if (dest < native_bottom)
-        dest = native_bottom;
+    // Game-native (unmanaged) mods stay on top. Only a separator may enter
+    // the band region (so its fold can hide the native mods); an in-band
+    // separator move snaps to just above the band to keep it contiguous.
+    // dest is in post-removal coordinates, so the band bounds shift up by one
+    // when the moved row sat at or above the band.
+    int nb_first = native_band_first();
+    int nb_last = native_band_last();
+    if (srcRow <= nb_first) {
+        nb_first -= 1;
+        nb_last -= 1;
+    }
+    if (mods_[srcRow].is_separator) {
+        if (nb_first >= 0 && dest > nb_first && dest <= nb_last)
+            dest = nb_first;
+    } else if (nb_last >= 0 && dest <= nb_last) {
+        dest = nb_last + 1;
+    }
     if (dest < 0) dest = 0;
+    // The clamps above can pull dest back onto srcRow (a no-op move); report
+    // it as such - Qt's movePersistentIndexes crashes on a self-move.
+    if (dest == srcRow) return false;
 
     beginMoveRows(srcParent, srcRow, srcRow, srcParent, dest + (dest >= srcRow ? 1 : 0));
     auto item = mods_.takeAt(srcRow);
@@ -675,11 +722,27 @@ void ModListModel::move_mod(const QString& id, int new_row) {
         new_row = mg_row - 1;
     if (ow_row >= 0 && new_row >= ow_row)
         new_row = ow_row - 1;
-    // Never move into the game-native band (unmanaged mods stay on top)
-    int native_bottom = native_band_bottom();
-    if (new_row < native_bottom)
-        new_row = native_bottom;
+    // Game-native (unmanaged) mods stay on top. Only a separator may enter
+    // the band region (so its fold can hide the native mods); an in-band
+    // separator move snaps to just above the band to keep it contiguous.
+    // new_row is in post-removal coordinates, so the band bounds shift up by
+    // one when the moved row sat at or above the band.
+    int nb_first = native_band_first();
+    int nb_last = native_band_last();
+    if (src <= nb_first) {
+        nb_first -= 1;
+        nb_last -= 1;
+    }
+    if (mods_[src].is_separator) {
+        if (nb_first >= 0 && new_row > nb_first && new_row <= nb_last)
+            new_row = nb_first;
+    } else if (nb_last >= 0 && new_row <= nb_last) {
+        new_row = nb_last + 1;
+    }
     if (new_row < 0) new_row = 0;
+    // The clamps above can pull new_row back onto src (a no-op move); report
+    // it as such - Qt's movePersistentIndexes crashes on a self-move.
+    if (new_row == src) return;
 
     beginMoveRows({}, src, src, {}, new_row + (new_row >= src ? 1 : 0));
     auto item = mods_.takeAt(src);
@@ -859,6 +922,12 @@ void ModListModel::renumber_priorities() {
             emit dataChanged(index(i, Priority), index(i, Priority));
         }
     }
+    // Structural changes (add/remove/move) can flip a separator's "has
+    // content" band and therefore its arrow; the affected separator rows are
+    // not repainted by the row insert/remove/move alone, so refresh the whole
+    // Fold column.
+    if (!mods_.isEmpty())
+        emit dataChanged(index(0, Fold), index(mods_.size() - 1, Fold), {Qt::DisplayRole});
 }
 
 QStringList ModListModel::enabled_mod_ids() const {
@@ -892,7 +961,9 @@ void ModListModel::set_folded(int row, bool folded) {
     if (!mods_[row].is_separator) return;
     if (mods_[row].folded == folded) return;
     mods_[row].folded = folded;
-    emit dataChanged(index(row, Name), index(row, Name));
+    // Repaint both the Fold cell (glyph flips \u25BC <-> \u25B6) and the Name
+    // cell it used to prefix.
+    emit dataChanged(index(row, Fold), index(row, Name), {Qt::DisplayRole});
     apply_fold_state();
     // Persist the fold: the MainWindow mod_list_changed handler saves
     // instance.toml's folded_separators. Without this a fold/unfold never
@@ -962,6 +1033,20 @@ QString ModListModel::compute_separator_flags(int row) const {
     if (has_wins) return QString("+");
     if (has_losses) return QString("-");
     return QString();
+}
+
+bool ModListModel::separator_has_content(int row) const {
+    if (row < 0 || row >= mods_.size()) return false;
+    if (!mods_[row].is_separator) return false;
+    // Flat band rule: content exists if any hideable row (mod/native/merged -
+    // everything apply_fold_state hides) sits between this separator and the
+    // next separator or Overwrite. The scan stops at the first one, so this is
+    // O(1)-ish per call.
+    for (int i = row + 1; i < mods_.size(); ++i) {
+        if (mods_[i].is_separator || mods_[i].is_overwrite) return false;
+        return true;
+    }
+    return false;
 }
 
 void ModListModel::set_conflict_pairs(const QMap<QString, ConflictPairs>& pairs) {
@@ -1039,10 +1124,18 @@ int ModListModel::merged_row() const {
     return -1;
 }
 
-int ModListModel::native_band_bottom() const {
-    int i = 0;
-    while (i < mods_.size() && mods_[i].is_game_native) ++i;
-    return i;
+int ModListModel::native_band_first() const {
+    for (int i = 0; i < mods_.size(); ++i) {
+        if (mods_[i].is_game_native) return i;
+    }
+    return mods_.size();
+}
+
+int ModListModel::native_band_last() const {
+    for (int i = mods_.size() - 1; i >= 0; --i) {
+        if (mods_[i].is_game_native) return i;
+    }
+    return -1;
 }
 
 bool ModListModel::is_merged(int row) const {
