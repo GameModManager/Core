@@ -994,6 +994,111 @@ int main(int argc, char** argv) {
               "both nested separators link to the parent");
     }
 
+    // Multi-row nest drops: dragging several rows of the same kind onto an
+    // item of that kind makes EACH dragged row a child of the target. The old
+    // behavior only nested single-row drags - a multi-separator selection
+    // dropped onto a separator fell back to a flat move.
+    {
+        ui::ModListModel m;
+        m.set_nesting_enabled(true);
+        QVector<ui::ModEntry> e;
+        for (const char* id : {"SepA", "SepB", "SepC", "SepD"}) {
+            ui::ModEntry sep;
+            sep.id = QString::fromLatin1(id);
+            sep.name = id;
+            sep.enabled = true;
+            sep.is_separator = true;
+            e.append(sep);
+        }
+        ui::ModEntry ow;
+        ow.id = ui::kOverwriteModId;
+        ow.name = ui::kOverwriteModName;
+        ow.enabled = true;
+        ow.is_overwrite = true;
+        e.append(ow);
+        m.reset_with_order(e);
+        // Rows: SepA(0), SepB(1), SepC(2), SepD(3), overwrite(4).
+        auto rid = [&](const char* id) { return row_with_id(m, id); };
+
+        // Drag SepC and SepD together onto SepA.
+        QMimeData d;
+        d.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("2,3"));
+        check(m.dropMimeData(&d, Qt::MoveAction, -1, 0, m.index(rid("SepA"), 0)),
+              "multi-separator nest drop accepted");
+        check(m.mods()[rid("SepC")].parent_id == QLatin1String("SepA") &&
+                  m.mods()[rid("SepD")].parent_id == QLatin1String("SepA"),
+              "each dragged separator links to the target parent");
+        check(rid("SepC") == rid("SepA") + 1 && rid("SepD") == rid("SepC") + 1,
+              "dragged separators land directly below the parent in drag order");
+        check(m.nesting_depth(rid("SepC")) == 1 && m.nesting_depth(rid("SepD")) == 1,
+              "both nested separators sit at depth 1");
+
+        // Multi-mod variant: two mods dropped onto a mod.
+        ui::ModListModel m2;
+        m2.set_nesting_enabled(true);
+        QVector<ui::ModEntry> e2;
+        for (const char* id : {"ModP", "ModQ", "ModR"}) {
+            ui::ModEntry mod;
+            mod.id = QString::fromLatin1(id);
+            mod.name = mod.id;
+            mod.enabled = true;
+            e2.append(mod);
+        }
+        ui::ModEntry ow2;
+        ow2.id = ui::kOverwriteModId;
+        ow2.name = ui::kOverwriteModName;
+        ow2.enabled = true;
+        ow2.is_overwrite = true;
+        e2.append(ow2);
+        m2.reset_with_order(e2);
+        // Rows: ModP(0), ModQ(1), ModR(2), overwrite(3).
+        auto rid2 = [&](const char* id) { return row_with_id(m2, id); };
+        QMimeData d2;
+        d2.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("1,2"));
+        check(m2.dropMimeData(&d2, Qt::MoveAction, -1, 0, m2.index(rid2("ModP"), 0)),
+              "multi-mod nest drop accepted");
+        check(m2.mods()[rid2("ModQ")].parent_id == QLatin1String("ModP") &&
+                  m2.mods()[rid2("ModR")].parent_id == QLatin1String("ModP"),
+              "each dragged mod links to the target parent");
+        check(rid2("ModQ") == rid2("ModP") + 1 && rid2("ModR") == rid2("ModQ") + 1,
+              "dragged mods land directly below the parent in drag order");
+
+        // Mixed drag (mod + separator): explicitly NOT nested - flat move only.
+        ui::ModListModel m3;
+        m3.set_nesting_enabled(true);
+        QVector<ui::ModEntry> e3;
+        for (const char* id : {"SepTarget_separator", "SepX_separator"}) {
+            ui::ModEntry sep;
+            sep.id = QString::fromLatin1(id);
+            sep.name = id;
+            sep.enabled = true;
+            sep.is_separator = true;
+            e3.append(sep);
+        }
+        ui::ModEntry modx;
+        modx.id = "ModX";
+        modx.name = "ModX";
+        modx.enabled = true;
+        e3.append(modx);
+        ui::ModEntry ow3;
+        ow3.id = ui::kOverwriteModId;
+        ow3.name = ui::kOverwriteModName;
+        ow3.enabled = true;
+        ow3.is_overwrite = true;
+        e3.append(ow3);
+        m3.reset_with_order(e3);
+        // Rows: SepTarget(0), SepX(1), ModX(2), overwrite(3).
+        auto rid3 = [&](const char* id) { return row_with_id(m3, id); };
+        QMimeData d3;
+        d3.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("1,2"));
+        check(m3.dropMimeData(&d3, Qt::MoveAction, -1, 0,
+                              m3.index(rid3("SepTarget_separator"), 0)),
+              "mixed mod+separator drag accepted as a move");
+        check(m3.mods()[rid3("SepX_separator")].parent_id.isEmpty() &&
+                  m3.mods()[rid3("ModX")].parent_id.isEmpty(),
+              "mixed drag stays a flat move: nothing nests");
+    }
+
     // Separator nesting + nesting-aware band scope end: a folded separator hides
     // its band up to the next NON-descendant separator; nested separators and
     // their bands are swallowed by the parent's fold.
@@ -1137,15 +1242,16 @@ int main(int argc, char** argv) {
         check(m.mods()[rid("SepS_separator")].parent_id.isEmpty(),
               "separator dropped on a mod never nests");
 
-        // Multi-row drag onto an item: never links.
+        // Multi-row drag onto one of its OWN rows (ModP is part of the drag):
+        // the cycle guard blocks the link even though all rows share the kind.
         QMimeData dmulti;
         dmulti.setData(QLatin1String(ui::kModListMimeType),
                        QByteArrayLiteral("1,2"));  // ModP + ModQ
         check(m.dropMimeData(&dmulti, Qt::MoveAction, -1, 0, m.index(rid("ModP"), 0)),
-              "multi-row on-item drop accepted");
+              "multi-row self-target drop accepted");
         check(m.mods()[rid("ModP")].parent_id.isEmpty() &&
                   m.mods()[rid("ModQ")].parent_id.isEmpty(),
-              "multi-row drag never nests");
+              "multi-row drop onto one of its own rows never nests (cycle guard)");
 
         // Overwrite target: never a parent.
         QMimeData dow;
