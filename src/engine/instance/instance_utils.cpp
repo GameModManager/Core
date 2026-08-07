@@ -178,6 +178,7 @@ LaunchParams prepare_launch_params(
     std::string deploy_include_mod_id = req.knowledge.get(req.game_id, "deploy_include_mod_id", "false");
     std::string disable_mechanism = disable_mechanism_for(req.knowledge, req.game_id);
     bool case_sensitive = req.knowledge.get(req.game_id, "case_sensitive", "true") != "false";
+    params.ci_resolve = !case_sensitive;
     auto mods_dir = req.instance_root / "mods";
 
     bool deployed = deploy_all_enabled_mods_parallel(

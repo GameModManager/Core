@@ -77,6 +77,12 @@ static void deploy_and_merge(const fs::path& base, bool case_sensitive,
     // Hidden file must stay skipped even under the merge.
     write_file(mods / "ModA" / "Meshes" / "Hidden.nif.gmmhidden", "x");
 
+    // CI-equal FILENAME collision across two mods: one ships 0_Master.hxk,
+    // the other ships 0_master.hxk. Under case-insensitive deploy exactly ONE
+    // staged file must survive (last lexical mod wins) - never side-by-side.
+    write_file(mods / "ModA" / "Actors" / "0_master.hxk", "A");
+    write_file(mods / "ModB" / "Actors" / "0_Master.hxk", "B");
+
     const fs::path staging = root / ".gmm_staging";
     const bool ok = engine::deploy_all_enabled_mods(
         mods, staging, "Data", /*deploy_include_mod_id=*/false, "",
@@ -144,6 +150,23 @@ static void deploy_and_merge(const fs::path& base, bool case_sensitive,
         check(!fs::exists(staging / "Data" / "Meshes" / "Hidden.nif.gmmhidden") &&
                   !fs::exists(staging / "Data" / "meshes" / "Hidden.nif.gmmhidden"),
               (l + ": no hidden file anywhere in the staging tree").c_str());
+
+        // CI-equal FILENAMES collapse to exactly one staged file, won by the
+        // last lexical mod (ModB > ModA), at its casing, with its content.
+        // Never side-by-side.
+        check(fs::exists(staging / "Data" / "Actors" / "0_Master.hxk"),
+              (l + ": CI filename collision resolves to one survivor").c_str());
+        check(!fs::exists(staging / "Data" / "Actors" / "0_master.hxk"),
+              (l + ": losing CI-equal filename does not land side-by-side").c_str());
+        check(!fs::exists(staging / "data" / "actors" / "0_master.hxk"),
+              (l + ": loser absent anywhere in the staging tree").c_str());
+        {
+            std::ifstream in(staging / "Data" / "Actors" / "0_Master.hxk");
+            std::string contents((std::istreambuf_iterator<char>(in)),
+                                 std::istreambuf_iterator<char>());
+            check(contents == "B",
+                  (l + ": surviving file carries the winning mod's content").c_str());
+        }
     }
 }
 

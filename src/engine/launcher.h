@@ -44,6 +44,11 @@ struct LaunchParams {
     // profile dir. Empty = no extra bind.
     std::filesystem::path bind_mount_source;
     std::filesystem::path bind_mount_target;
+
+    // Case-insensitive resolve (Windows games). When true, the launch child
+    // preloads libgmm_ci_intercept.so so ENOENT lookups under game_dir are
+    // re-resolved against the on-disk tree's real casing (v0.3.1).
+    bool ci_resolve = false;
 };
 
 struct LaunchResult {

@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # (package_installer target passes -DVERSION=${PROJECT_VERSION}), and the plugins
 # (GMM_VERSION, visible in the add_subdirectory'd external/plugins scope).
 project(GameModManager
-    VERSION 0.3.0
+    VERSION 0.3.2
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -468,6 +468,23 @@ if(UNIX AND NOT APPLE)
             GMM_INTERCEPT_SO="${CMAKE_CURRENT_BINARY_DIR}/libgmm_overlay_intercept.so")
         target_link_libraries(overlay_intercept_test PRIVATE ${CMAKE_DL_LIBS})
         add_test(NAME overlay_intercept_test COMMAND overlay_intercept_test)
+    endif()
+
+    # Case-insensitive syscall interposer — CI-resolves ENOENT lookups for
+    # case-sensitive launches of Windows games (v0.3.1).
+    add_library(gmm_ci_intercept SHARED src/engine/ci_intercept.c)
+    target_link_libraries(gmm_ci_intercept PRIVATE dl)
+    set_target_properties(gmm_ci_intercept PROPERTIES
+        AUTOMOC OFF
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+
+    if(GMM_BUILD_TESTS)
+        add_executable(ci_intercept_test tests/engine/ci_intercept_test.c)
+        target_compile_definitions(ci_intercept_test PRIVATE
+            GMM_CI_SO="${CMAKE_CURRENT_BINARY_DIR}/libgmm_ci_intercept.so")
+        target_link_libraries(ci_intercept_test PRIVATE ${CMAKE_DL_LIBS})
+        add_test(NAME ci_intercept_test COMMAND ci_intercept_test)
     endif()
 endif()
 
