@@ -332,10 +332,23 @@ bool deploy_all_enabled_mods_parallel(
             auto resolved = resolve_deploy_target_ci(p / ".gmmprobe").parent_path();
             std::filesystem::create_directories(resolved, ec);
         }
+        // CI-equal filenames (0_Master.hxk vs 0_master.hxk) must collapse to
+        // exactly ONE staged file, not land side-by-side. Fold the whole
+        // target to a case-insensitive map key so a collision erases the
+        // earlier-written on-disk target; the last mod in lexicographic folder
+        // order therefore wins the slot (matching the contested-target
+        // contract above) and its casing is what lands on disk.
+        std::map<std::string, std::filesystem::path> canonical;  // fold -> target
         for (const auto& m : mods) {
             auto base = deploy_root_for(m);
-            for (const auto& [rel, source] : m.files)
-                winners[resolve_deploy_target_ci(base / rel)] = source;
+            for (const auto& [rel, source] : m.files) {
+                const auto target = resolve_deploy_target_ci(base / rel);
+                const std::string key = normalize_ci_full(target.string());
+                if (auto it = canonical.find(key); it != canonical.end())
+                    winners.erase(it->second);
+                canonical[key] = target;
+                winners[target] = source;
+            }
         }
     }
 

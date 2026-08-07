@@ -1,5 +1,6 @@
 #include "engine/launcher.h"
 
+#include "engine/debug_env.h"
 #include "engine/fs_utils.h"
 #include "engine/log/logger.h"
 #include "engine/overlay_launcher.h"
@@ -229,6 +230,35 @@ static LaunchResult do_launch(const LaunchParams& params) {
     auto capture_dir = params.output_capture_dir.empty()
         ? params.overwrite_dir
         : params.output_capture_dir;
+
+    // Case-insensitive lookup (Windows games): preload libgmm_ci_intercept.so
+    // so the game's ENOENT lookups under game_dir re-resolve against the real
+    // on-disk casing. Env is set in this (already-forked game-launch) process;
+    // the OverlayFS child and Proton inherit it via execv/exec.
+    if (params.ci_resolve) {
+        static const fs::path ci_so = []() {
+            std::error_code e;
+            auto self = fs::read_symlink("/proc/self/exe", e);
+            if (e) return fs::path();
+            auto d = self.parent_path();
+            for (const auto& cand : { d / "libgmm_ci_intercept.so",
+                                      d.parent_path() / "lib" / "libgmm_ci_intercept.so" }) {
+                if (fs::exists(cand, e)) return cand;
+            }
+            return fs::path();
+        }();
+        if (!ci_so.empty()) {
+            auto cur = getenv("LD_PRELOAD");
+            std::string pre = ci_so.string() + (cur && cur[0] ? ":" + std::string(cur) : "");
+            setenv("LD_PRELOAD", pre.c_str(), 1);
+            setenv("GMM_CI_ENABLED", "1", 1);
+            setenv("GMM_CI_ROOT", params.game_dir.c_str(), 1);
+            if (gmm_debug_enabled()) setenv("GMM_CI_DEBUG", "1", 1);
+            Logger::instance().debug("CI shim: preloaded " + ci_so.string());
+        } else {
+            Logger::instance().warn("CI shim enabled but libgmm_ci_intercept.so not found");
+        }
+    }
 
 #ifdef GMM_PLATFORM_LINUX
     // Priority 1: OverlayFS - kernel VFS level, works for any binary format

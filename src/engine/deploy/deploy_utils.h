@@ -24,8 +24,10 @@ using std::filesystem::path;
 // Windows games resolve paths case-insensitively, and the case-sensitive
 // overlay mount must not split a mod across two dirs. Components that do not
 // exist yet keep the requested spelling (the deploy creates them). The final
-// component is not matched: CI-equal file names are a rare packaging bug and
-// land side-by-side.
+// file-name component is NOT matched here: the caller (deploy_utils.cpp's
+// winner map) folds it case-insensitively so CI-equal filenames (0_Master.hxk
+// vs 0_master.hxk) collapse to exactly one staged file, won by the last mod in
+// folder order, never landing side-by-side.
 //
 // Exact-cased exists() is the fast path; the parent-dir CI scan runs only when
 // a component is absent at its requested casing, so well-formed mods cost one
