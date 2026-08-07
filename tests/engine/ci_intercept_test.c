@@ -50,8 +50,29 @@ static int run_checks_read(const char *lower_path) {
     return 0;
 }
 
+/* Mode-regression helper: create a file with open(O_CREAT, 0644) THROUGH the
+ * interposer and exit. The parent stats the result. Regression for the v0.3.2
+ * bug where the interposed open() dropped the variadic mode argument, so every
+ * game-created file landed mode 0000 (the game then could not re-read its own
+ * config and crashed on the next launch). */
+static int run_checks_create_mode(void) {
+    const char *path = getenv("GMM_CI_CREATE");
+    if (!path) return 1;
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) {
+        fprintf(stderr, "FAIL: create('%s') failed: %s\n", path, strerror(errno));
+        return 1;
+    }
+    if (write(fd, "Y", 1) != 1) { perror("write"); close(fd); return 1; }
+    close(fd);
+    return 0;
+}
+
 int main(void) {
     /* ---- helper mode: exec'd by the parent WITH the shim LD_PRELOADed ---- */
+    if (getenv("GMM_CI_CREATE")) {
+        return run_checks_create_mode();
+    }
     const char *lower_for_helper = getenv("GMM_CI_LOWER");
     if (lower_for_helper) {
         return run_checks_read(lower_for_helper);
@@ -79,6 +100,10 @@ int main(void) {
     char lower_nested[4096];
     snprintf(lower_nested, sizeof lower_nested, "%s/meshes/behaviors/0_master.hxk", base);
 
+    /* Mode-regression target: created through the shim, must NOT be 0000. */
+    char create_target[4096];
+    snprintf(create_target, sizeof create_target, "%s/SettingsUser.json", base);
+
     /* Re-exec THIS binary as the helper, with the shim loaded + CI env.
      * LD_PRELOAD only takes effect on exec, so a fork() alone would not load
      * the .so - hence the self re-exec. */
@@ -105,21 +130,46 @@ int main(void) {
     int status;
     if (waitpid(pid, &status, 0) < 0) { perror("waitpid"); return 2; }
 
+    /* Mode-regression child: create via interposer, then verify mode != 0. */
+    setenv("GMM_CI_CREATE", create_target, 1);
+    unsetenv("GMM_CI_LOWER");
+    pid_t pid2 = fork();
+    if (pid2 == 0) {
+        execv(self, NULL);
+        perror("execv");
+        _exit(2);
+    }
+    int status2;
+    if (waitpid(pid2, &status2, 0) < 0) { perror("waitpid"); return 2; }
+
+    struct stat csb;
+    int mode_ok = 0;
+    if (stat(create_target, &csb) == 0) {
+        mode_t m = csb.st_mode & 0777;
+        mode_ok = (m != 0);
+        printf("mode_ok=%d mode=%o\n", mode_ok, m);
+    } else {
+        perror("stat create_target");
+    }
+
     /* parent (no shim) must still fail ENOENT: proves fs is case-sensitive. */
     struct stat sb;
     int parent_failed = (stat(lower_nested, &sb) != 0 && errno == ENOENT);
 
+    unlink(create_target);
     unlink(deployed_upper);
     rmdir(nested_upper);
     rmdir(meshes);
     rmdir(base);
 
     int child_ok = WIFEXITED(status) && WEXITSTATUS(status) == 0;
-    if (child_ok && parent_failed) {
+    int child2_ok = WIFEXITED(status2) && WEXITSTATUS(status2) == 0;
+    if (child_ok && child2_ok && parent_failed && mode_ok) {
         printf("ALL CHECKS PASSED\n");
         return 0;
     }
-    fprintf(stderr, "child_ok=%d parent_failed=%d\n", child_ok, parent_failed);
+    fprintf(stderr, "child_ok=%d child2_ok=%d parent_failed=%d mode_ok=%d\n",
+            child_ok, child2_ok, parent_failed, mode_ok);
     if (!parent_failed)
         fprintf(stderr, "FAIL: parent stat'ed lowercase WITHOUT shim (fs is CI?)\n");
     return 1;
