@@ -9,6 +9,44 @@
 namespace engine {
 
 // ---------------------------------------------------------------------------
+// Game-root-relative -> mod-relative path bridge
+// ---------------------------------------------------------------------------
+// Canonical, shared by relay_output_to_mod (the "Output to mod" relay) AND the
+// overwrite sync dialog (Sync Overwrite to Mods). Lives here in fs_utils so a
+// file captured at a game-root-relative path can be relocated into a flat mod
+// folder without the relay pulling in the overwrite/conflict engine stack. See
+// overwrite_utils.h for the path-space model.
+
+// Normalize a relative path string to forward slashes, no trailing slash.
+[[nodiscard]] std::string normalize_rel(std::string p);
+
+// True when path starts with the segment prefix ("prefix/..." or equals it).
+// ASCII case-insensitive: Isaac's game dir writes "Mods/" while the knowledge
+// registry says "mods", and Windows filesystems ignore case.
+[[nodiscard]] bool starts_with_segment(const std::string& path,
+                                       const std::string& prefix);
+
+// Strip a leading segment prefix ("prefix/rest" -> "rest", "prefix" -> "").
+[[nodiscard]] std::string strip_segment(const std::string& path,
+                                        const std::string& prefix);
+
+// Normalize an overwrite-relative (game-root-relative) path into the
+// mod-relative path the file should have inside a mod folder.
+//
+// Mirrors relay_output_to_mod's mapping rules:
+//   - mods_subpath non-empty and path under "<mods_subpath>/" ->
+//     strip "<mods_subpath>/" (Skyrim: "Data/meshes/x" -> "meshes/x").
+//     The prefix match is case-insensitive: Isaac's game dir writes "Mods/"
+//     while the knowledge registry says "mods".
+//   - include_mod_id and path under "<mods_subpath>/<mod_id>/" ->
+//     strip both (Isaac: "mods/MyMod/resources/x" -> "resources/x").
+//   - otherwise the path is passed through unchanged.
+[[nodiscard]] std::string overwrite_to_mod_rel(const std::string& overwrite_rel,
+                                               const std::string& mods_subpath,
+                                               bool include_mod_id = false,
+                                               const std::string& mod_id = {});
+
+// ---------------------------------------------------------------------------
 // Windows-native path resolution
 // ---------------------------------------------------------------------------
 // Every path that comes from a mod or an archive is treated as Windows-native:
@@ -47,6 +85,22 @@ namespace engine {
     out += '/';
     out += path.substr(last + 1);
     return out;
+}
+
+// Normalize a relative path into a FULLY case-insensitive key: every segment
+// INCLUDING the final filename is lowercased (unlike normalize_ci_key, which
+// keeps the final filename's on-disk casing). This is the ownership-only
+// variant used by the Overwrite->mod association (MO2's shared tree findFile
+// matches dirs AND the final name case-insensitively), so Data/Meshes/ReadMe.txt
+// is owned by a mod storing meshes/readme.txt. The deploy and conflict-registry
+// keys stay on normalize_ci_key (case-different file names remain distinct there);
+// this narrow split is deliberate.
+[[nodiscard]] inline std::string normalize_ci_full(std::string path)
+{
+    std::replace(path.begin(), path.end(), '\\', '/');
+    std::transform(path.begin(), path.end(), path.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return path;
 }
 
 // Translate Windows backslash separators to '/'.
@@ -241,19 +295,22 @@ bool move_path(const std::filesystem::path& source,
 // Relay a per-session captured output dir into a mod folder.
 //
 // scratch_dir holds game-root-relative files captured during a single
-// "Output to mod" launch. Files that map into the mod are moved into mod_dir
-// (Data-relative layout - the mods_subpath / mod_id prefix is stripped);
-// everything else is moved into overwrite_dir as leftover. The scratch dir is
-// emptied of remaining directories afterwards (it is NOT removed itself - the
-// caller owns its lifetime).
+// "Output to mod" launch. EVERY captured file is moved into mod_dir -
+// nothing falls through to overwrite_dir (P2: the output mod is the full
+// write target, MO2 Custom Overwrites parity). overwrite_dir is ignored and
+// kept only for API stability. The scratch dir is emptied of remaining
+// directories afterwards (it is NOT removed itself - the caller owns its
+// lifetime).
 //
-// Mapping rules (mirror the game plugin's on-disk layout):
-//  - Skyrim-style (include_mod_id=false): scratch/<mods_subpath>/<rest>
-//    maps to mod_dir/<rest>  (mods_subpath is e.g. "Data").
+// Mapping rules (mirror the game plugin's on-disk layout, via the same
+// overwrite_to_mod_rel bridge the sync dialog uses):
+//  - Skyrim-style (include_mod_id=false): flat mods, a scratch
+//    <mods_subpath>/<rest> file maps to mod_dir/<rest> (mods_subpath is e.g.
+//    "Data"); a path outside the mapping passes through under its own name.
 //  - Isaac-style (include_mod_id=true): scratch/<mods_subpath>/<mod_id>/<rest>
 //    maps to mod_dir/<rest>  (mod_id is the mod's folder name).
-// Files not under mods_subpath (or under a different mod's folder) go to
-// overwrite_dir keeping their game-root-relative path.
+// A path that maps onto the mod root itself (bare "Data") keeps its filename
+// at the mod root.
 //
 // Returns the number of files relayed into mod_dir.
 size_t relay_output_to_mod(const std::filesystem::path& scratch_dir,

@@ -245,14 +245,18 @@ static LaunchResult do_launch(const LaunchParams& params) {
                 };
                 pid = OverlayFsLauncher::launch(proton, params.game_dir,
                                                 capture_dir, ovl_args,
-                                                params.extra_lowerdirs);
+                                                params.extra_lowerdirs,
+                                                params.bind_mount_source,
+                                                params.bind_mount_target);
             } else {
                 Logger::instance().warn("OverlayFS: .exe but no Proton found, skipping");
             }
         } else {
             pid = OverlayFsLauncher::launch(exec_path, params.game_dir,
                                             capture_dir, {},
-                                            params.extra_lowerdirs);
+                                            params.extra_lowerdirs,
+                                            params.bind_mount_source,
+                                            params.bind_mount_target);
         }
 
         if (pid > 0) {

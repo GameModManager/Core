@@ -620,10 +620,18 @@ bool ModListModel::dropMimeData(const QMimeData* data, Qt::DropAction action,
     if (targetRow < 0) targetRow = 0;
     if (targetRow > mods_.size()) targetRow = mods_.size();
 
-    // Prevent dropping onto or past Overwrite (always at bottom)
+    // Prevent dropping onto or past the pinned Overwrite/MERGED block. The
+    // block sits at the dominant end: bottom normally, top for reversed games.
     int ow_row = overwrite_row();
-    if (ow_row >= 0 && targetRow > ow_row)
-        targetRow = ow_row;  // drop before Overwrite
+    int mg_row = merged_row();
+    if (pinned_at_top()) {
+        int pin_end = (mg_row >= 0) ? mg_row : ow_row;
+        if (pin_end >= 0 && targetRow <= pin_end)
+            targetRow = pin_end + 1;  // drop below the pinned block
+    } else {
+        if (ow_row >= 0 && targetRow > ow_row)
+            targetRow = ow_row;  // drop before Overwrite
+    }
 
     // Game-native (unmanaged) mods stay on top. Only a separator may enter
     // the band region (so its fold can hide the native mods); an in-band
@@ -674,13 +682,20 @@ bool ModListModel::moveRows(const QModelIndex& srcParent, int srcRow, int count,
     if (mods_[srcRow].is_overwrite || mods_[srcRow].is_merged || mods_[srcRow].is_game_native) return false;
 
     int dest = dstRow > srcRow ? dstRow - 1 : dstRow;
-    // Prevent moving onto or past Overwrite or MERGED (always pinned)
+    // Prevent moving onto or past the pinned Overwrite/MERGED block. The block
+    // sits at the dominant end: bottom normally, top for reversed games.
     int ow_row = overwrite_row();
-    if (ow_row >= 0 && dest >= ow_row)
-        dest = ow_row - 1;
     int mg_row = merged_row();
-    if (mg_row >= 0 && dest >= mg_row)
-        dest = mg_row - 1;
+    if (pinned_at_top()) {
+        int pin_end = (mg_row >= 0) ? mg_row : ow_row;
+        if (pin_end >= 0 && dest <= pin_end)
+            dest = pin_end + 1;
+    } else {
+        if (ow_row >= 0 && dest >= ow_row)
+            dest = ow_row - 1;
+        if (mg_row >= 0 && dest >= mg_row)
+            dest = mg_row - 1;
+    }
     // Game-native (unmanaged) mods stay on top. Only a separator may enter
     // the band region (so its fold can hide the native mods); an in-band
     // separator move snaps to just above the band to keep it contiguous.
@@ -721,9 +736,18 @@ void ModListModel::add_mod(const QString& id, const QString& name, const QString
     // Overwrite. Game-native mods and explicit-priority adds append at the
     // end; load_order() is the final arbiter of display order.
     if (!is_game_native && priority < 0) {
+        // MO2 rule (Profile::refreshModStatus): a new mod that isn't in the mod
+        // list yet gets the HIGHEST regular priority - placed at the bottom of
+        // the user band, directly above the pinned Overwrite/MERGED block. For
+        // reversed games (Isaac) the winner is the LOWEST priority, so the
+        // block sits at the top and the new mod goes just below it.
         int mg_row = merged_row();
         int ow_row = overwrite_row();
-        if (mg_row >= 0) {
+        if (pinned_at_top()) {
+            int pin_end = (mg_row >= 0) ? mg_row : ow_row;
+            if (pin_end >= 0)
+                insert_pos = pin_end + 1;
+        } else if (mg_row >= 0) {
             insert_pos = mg_row;
         } else if (ow_row >= 0) {
             insert_pos = ow_row;
@@ -864,11 +888,20 @@ void ModListModel::move_mod(const QString& id, int new_row) {
     if (block.size() == 1) {
         int ow_row = overwrite_row();
         int mg_row = merged_row();
-        // Clamp to just before Overwrite/MERGED - after takeAt(src) they shift left by 1
-        if (mg_row >= 0 && new_row >= mg_row)
-            new_row = mg_row - 1;
-        if (ow_row >= 0 && new_row >= ow_row)
-            new_row = ow_row - 1;
+        // Clamp to just within the user band on the pinned block's side - after
+        // takeAt(src) the block shifts left by 1. Bottom-pinned (normal): mods
+        // stay above Overwrite/MERGED. Top-pinned (reversed, Isaac): mods stay
+        // below the block, which itself sits at rows 0..n.
+        if (pinned_at_top()) {
+            int pin_end = (mg_row >= 0) ? mg_row : ow_row;
+            if (pin_end >= 0 && new_row <= pin_end)
+                new_row = pin_end + 1;
+        } else {
+            if (mg_row >= 0 && new_row >= mg_row)
+                new_row = mg_row - 1;
+            if (ow_row >= 0 && new_row >= ow_row)
+                new_row = ow_row - 1;
+        }
         // Game-native (unmanaged) mods stay on top. Only a separator may enter
         // the band region (so its fold can hide the native mods); an in-band
         // separator move snaps to just above the band to keep it contiguous.
@@ -1394,8 +1427,53 @@ void ModListModel::reset_with_order(const QVector<ModEntry>& entries) {
     mods_ = entries;
     endResetModel();
     sanitize_parent_links();
+    // Every load/sort path ultimately rebuays the list here; pin the Overwrite
+    // and MERGED pseudo-mods to the dominant end (callers may or may not place
+    // them correctly). The dominant end is the bottom for normal priority and
+    // the top for conflict-reversed games (Isaac).
+    pin_pinned_rows();
     renumber_priorities();
     emit mod_list_changed();
+}
+
+void ModListModel::pin_pinned_rows() {
+    // Locate the two pinned rows (if present) and hoist/lower them to the
+    // dominant end, preserving the relative order of everything else.
+    int ow = overwrite_row();
+    int mg = merged_row();
+    QVector<ModEntry> pinned;
+    QVector<ModEntry> rest;
+    for (int i = 0; i < mods_.size(); ++i) {
+        if (i == ow || i == mg)
+            pinned.append(mods_[i]);
+        else
+            rest.append(mods_[i]);
+    }
+    if (pinned.isEmpty()) return;  // nothing to pin; keep caller order
+    // Dominant order inside the pinned block: Overwrite is the always-winner,
+    // so it must win under both conventions. Under reversed the winner is the
+    // LOWEST row, so Overwrite goes first (index 0); under normal the winner
+    // is the HIGHEST row, so Overwrite goes last.
+    QVector<ModEntry> pinned_ordered;
+    if (pinned_at_top()) {
+        pinned_ordered.append(pinned);
+        std::sort(pinned_ordered.begin(), pinned_ordered.end(),
+                  [](const ModEntry& a, const ModEntry& b) {
+                      return a.is_overwrite && !b.is_overwrite;
+                  });
+    } else {
+        pinned_ordered = pinned;
+        std::sort(pinned_ordered.begin(), pinned_ordered.end(),
+                  [](const ModEntry& a, const ModEntry& b) {
+                      return !a.is_overwrite && b.is_overwrite;
+                  });
+    }
+    QVector<ModEntry> combined;
+    if (pinned_at_top())
+        combined = pinned_ordered + rest;
+    else
+        combined = rest + pinned_ordered;
+    mods_ = combined;
 }
 
 void ModListModel::set_conflict_order_reversed(bool reversed) {
@@ -1478,7 +1556,9 @@ void ModListModel::ensure_overwrite_present() {
     entry.enabled = true;
     entry.priority = 0;
     entry.is_overwrite = true;
-    int pos = mods_.size();  // always at bottom
+    // Pin at the dominant end: bottom for normal (highest priority wins), top
+    // for conflict_order_reversed games (Isaac convention, lowest wins).
+    int pos = pinned_at_top() ? 0 : mods_.size();
     beginInsertRows({}, pos, pos);
     mods_.insert(pos, entry);
     endInsertRows();
@@ -1533,7 +1613,10 @@ void ModListModel::ensure_merged_present() {
         if (m.is_merged) return;
     }
     int overwrite_pos = overwrite_row();
-    int pos = (overwrite_pos >= 0) ? overwrite_pos + 1 : mods_.size();
+    // MERGED sits just past Overwrite on the dominant end: below it normally,
+    // above everything (row 1, after the pinned Overwrite at 0) for reversed.
+    int pos = (overwrite_pos >= 0) ? overwrite_pos + 1
+                                   : (pinned_at_top() ? 0 : mods_.size());
     ModEntry entry;
     entry.id = kMergedModId;
     entry.name = kMergedModName;

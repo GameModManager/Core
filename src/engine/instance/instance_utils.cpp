@@ -1,9 +1,13 @@
 #include "engine/instance/instance_utils.h"
+
 #include "engine/deploy/deploy_utils.h"
 #include "engine/launcher.h"
 #include "engine/log/logger.h"
 #include "engine/overlay_launcher.h"
+#include "engine/registry/game_features/game_feature_registry.h"
 #include "engine/registry/game_knowledge.h"
+#include "engine/saves/local_saves.h"
+#include "platform/platform_interface.h"
 
 #include <cstdlib>
 #include <fstream>
@@ -184,8 +188,66 @@ LaunchParams prepare_launch_params(
         Logger::instance().warn("Some mods failed to deploy to staging - continuing anyway");
     }
 
-    params.extra_lowerdirs.push_back(staging_dir);
+params.extra_lowerdirs.push_back(staging_dir);
     Logger::instance().debug("Launch: OverlayFS staging at " + staging_dir.string());
+
+    // Per-profile local saves (P4): when enabled for a Windows game with a
+    // registered local_savegames feature, rewrite the game INI to save under
+    // __MO_Saves and install the profile-saves bind mount into the launch
+    // namespace. Reuses MO2's GamebryoLocalSavegames prepareProfile semantics
+    // (backup/restore via savepath.ini), so the game keeps isolated saves per
+    // instance profile.
+    //
+    // Only applies when the overlay launcher is in use (a bind mount needs the
+    // mount namespace) and we can resolve the game's My Games folder from the
+    // platform + a registered feature. Otherwise this is a silent no-op.
+    if (req.local_saves_enabled && req.is_windows_exe && req.platform &&
+        OverlayFsLauncher::is_supported(params.overwrite_dir)) {
+        params.bind_mount_source = std::filesystem::path();
+        params.bind_mount_target = std::filesystem::path();
+        const auto feature =
+            GameFeatureRegistry::instance().resolve_feature<LocalSavegamesFeature>(req.game_id);
+        const std::string ini_file =
+            feature ? feature->ini_file() : std::string();
+        const std::string sub =
+            req.knowledge.get(req.game_id, "mygames_folder", "");
+        const std::string appid_str =
+            req.knowledge.get(req.game_id, "steam_appid", "");
+        if (feature && !ini_file.empty() && !sub.empty() && !appid_str.empty()) {
+            uint32_t appid = 0;
+            try {
+                appid = static_cast<uint32_t>(std::stoul(appid_str));
+            } catch (...) {}
+            const auto documents = req.platform->game_documents_dir(appid);
+            if (!documents.empty()) {
+                const auto mygames = documents / "My Games" / sub;
+                // mygames resolution + ini name come from the platform plugin
+                // registry rather than the plugin's per-instance registers; use
+                // the feature's ini_file. The saves subpath is where the game
+                // reads/writes saves under My Games - currently only the
+                // platform Documents dir is needed for the mount path.
+                auto cfg = resolve_local_saves(mygames, req.instance_root,
+                                               "Default", ini_file, true);
+                const bool applied = apply_local_saves(cfg);
+                (void)applied;
+                auto m = local_saves_mount(cfg);
+                params.bind_mount_source = m.first;
+                params.bind_mount_target = m.second;
+                if (!m.first.empty())
+                    Logger::instance().debug(
+                        "Launch: local saves bind " + m.first.string() +
+                        " -> " + m.second.string());
+            } else {
+                Logger::instance().warn(
+                    "Launch: local saves requested but no prefix Documents dir");
+            }
+        } else {
+            Logger::instance().debug(
+                "Launch: local saves requested but no local_savegames feature "
+                "or mygames hook for " + req.game_id);
+        }
+    }
+
     return params;
 }
 

@@ -103,6 +103,52 @@ int main() {
         std::printf("  resolve_path missing/traversal/absolute/empty: OK\n");
     }
 
+    // --- relay_output_to_mod: P2 route-everything -------------------------------
+    // An "Output to mod" session captures game-root-relative writes into a
+    // scratch dir. P2: EVERY file goes into the mod; nothing falls through to
+    // Overwrite - the mod is the full write target (MO2 Custom Mods parity).
+    {
+        const fs::path base_r = base / "relay";
+        const fs::path scratch = base_r / "scratch";
+        const fs::path mod = base_r / "mod" / "MyMod";
+        const fs::path ow = base_r / "overwrite";
+        fs::create_directories(scratch / "Data" / "Meshes");
+        fs::create_directories(scratch / "Config");
+        fs::create_directories(mod);
+        fs::create_directories(ow);
+
+        // Data-relative (Skyrim) + a game-root file (also routed into the mod).
+        touch(scratch / "Data" / "Meshes" / "a.nif");
+        touch(scratch / "Config" / "game.ini");
+
+        // Skyrim: mods_subpath "Data", not include_mod_id. Both files must land
+        // in the mod; Overwrite must stay empty.
+        auto n = relay_output_to_mod(scratch, mod, ow, "Data", false, "");
+        assert(n == 2);
+        assert(fs::exists(mod / "Meshes" / "a.nif"));   // Data/ stripped
+        assert(!fs::exists(mod / "Data"));              // no Data wrapper
+        assert(fs::exists(mod / "Config" / "game.ini")); // game-root passes through, still in the mod
+        assert(fs::is_empty(ow));                        // Overwrite never touched
+
+        // Isaac-style include_mod_id: scratch/<mods_subpath>/<mod_id>/<rest>
+        // maps to mod/<rest>; a file outside the mapping still lands in the mod.
+        const fs::path scratch2 = base_r / "scratch2";
+        const fs::path mod2 = base_r / "mod" / "IsaacMod";
+        fs::create_directories(scratch2 / "mods" / "IsaacMod" / "resources" / "gfx");
+        fs::create_directories(scratch2 / "top");
+        fs::create_directories(mod2);
+        touch(scratch2 / "mods" / "IsaacMod" / "resources" / "gfx" / "a.png");
+        touch(scratch2 / "top" / "root.txt");
+        auto n2 = relay_output_to_mod(scratch2, mod2, ow, "mods", true, "IsaacMod");
+        assert(n2 == 2);
+        assert(fs::exists(mod2 / "resources" / "gfx" / "a.png"));
+        assert(fs::exists(mod2 / "top" / "root.txt"));
+        assert(fs::is_empty(ow));
+
+        fs::remove_all(base_r);
+        std::printf("  relay_output_to_mod (P2 route-everything): OK\n");
+    }
+
     std::printf("fs_utils_test: all checks passed\n");
     fs::remove_all(base);
     return 0;

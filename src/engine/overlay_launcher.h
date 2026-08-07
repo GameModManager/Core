@@ -28,11 +28,19 @@ public:
     // game_dir as additional read-only overlay layers (first = highest priority).
     // This enables mod deployment without touching game_dir - deploy symlinks
     // into a staging dir and pass it as an extra lowerdir.
+    //
+    // bind_mount_source/bind_mount_target, when non-empty, add one additional
+    // real directory bind mount inside the same mount namespace (e.g. the
+    // per-profile local-saves dir mounted over the game-facing My Games
+    // __MO_Saves folder), so the game sees one dir but writes hit another.
+    // Both paths must exist on the host; a missing source is logged and skipped.
     static int64_t launch(const std::filesystem::path& executable,
                           const std::filesystem::path& game_dir,
                           const std::filesystem::path& upper_dir,
                           const std::vector<std::string>& args = {},
-                          const std::vector<std::filesystem::path>& extra_lowerdirs = {});
+                          const std::vector<std::filesystem::path>& extra_lowerdirs = {},
+                          const std::filesystem::path& bind_mount_source = {},
+                          const std::filesystem::path& bind_mount_target = {});
 
     // Poll whether a launch()-ed process has exited (non-blocking).
     // Returns true if the process is gone.

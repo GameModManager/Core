@@ -21,6 +21,55 @@
 
 namespace engine {
 
+// ---------------------------------------------------------------------------
+// Game-root-relative -> mod-relative path bridge (shared with the overwrite
+// sync dialog; see fs_utils.h).
+// ---------------------------------------------------------------------------
+
+std::string normalize_rel(std::string p) {
+    std::replace(p.begin(), p.end(), '\\', '/');
+    while (!p.empty() && p.front() == '/')
+        p.erase(0, 1);
+    while (!p.empty() && p.back() == '/')
+        p.pop_back();
+    return p;
+}
+
+bool starts_with_segment(const std::string& path, const std::string& prefix) {
+    if (prefix.empty()) return false;
+    if (path.size() < prefix.size()) return false;
+    for (size_t i = 0; i < prefix.size(); ++i) {
+        char a = path[i], b = prefix[i];
+        if (a >= 'A' && a <= 'Z') a = static_cast<char>(a + 32);
+        if (b >= 'A' && b <= 'Z') b = static_cast<char>(b + 32);
+        if (a != b) return false;
+    }
+    return path.size() == prefix.size() || path[prefix.size()] == '/';
+}
+
+std::string strip_segment(const std::string& path, const std::string& prefix) {
+    if (path.size() <= prefix.size()) return {};
+    return path.substr(prefix.size() + 1);
+}
+
+std::string overwrite_to_mod_rel(const std::string& overwrite_rel,
+                                 const std::string& mods_subpath,
+                                 bool include_mod_id,
+                                 const std::string& mod_id) {
+    auto rel = normalize_rel(overwrite_rel);
+    auto subpath = normalize_rel(mods_subpath);
+    if (subpath.empty()) return rel;
+
+    if (starts_with_segment(rel, subpath)) {
+        auto rest = strip_segment(rel, subpath);
+        if (!include_mod_id || mod_id.empty()) return rest;
+        if (starts_with_segment(rest, normalize_rel(mod_id)))
+            return strip_segment(rest, normalize_rel(mod_id));
+        return rest;
+    }
+    return rel;
+}
+
 std::string sanitize_directory_name(std::string name) {
     if (name.empty()) return {};
 
@@ -268,16 +317,10 @@ size_t relay_output_to_mod(const std::filesystem::path& scratch_dir,
                            const std::string& mods_subpath,
                            bool include_mod_id,
                            const std::string& mod_id) {
+    (void)overwrite_dir;  // P2: ALL output goes into the mod, never Overwrite
     std::error_code ec;
     if (!std::filesystem::is_directory(scratch_dir, ec)) return 0;
-
-    // Normalize the mods subpath to forward slashes, no leading/trailing slash.
-    std::string subpath = mods_subpath;
-    std::replace(subpath.begin(), subpath.end(), '\\', '/');
-    while (!subpath.empty() && subpath.front() == '/')
-        subpath.erase(0, 1);
-    while (!subpath.empty() && subpath.back() == '/')
-        subpath.pop_back();
+    if (mod_dir.empty()) return 0;
 
     // Collect regular files first (moving during iteration invalidates it).
     std::vector<std::filesystem::path> files;
@@ -298,10 +341,6 @@ size_t relay_output_to_mod(const std::filesystem::path& scratch_dir,
     }
 
     size_t relayed = 0;
-    std::string mod_prefix;
-    if (include_mod_id && !mod_id.empty())
-        mod_prefix = mod_id + "/";
-
     for (const auto& file : files) {
         auto rel = std::filesystem::relative(file, scratch_dir, ec);
         if (ec) {
@@ -311,23 +350,21 @@ size_t relay_output_to_mod(const std::filesystem::path& scratch_dir,
         std::string rel_str = rel.string();
         std::replace(rel_str.begin(), rel_str.end(), '\\', '/');
 
-        bool into_mod = false;
-        std::filesystem::path mod_rel;
-        if (!subpath.empty() && rel_str.size() > subpath.size() &&
-            rel_str.compare(0, subpath.size(), subpath) == 0 &&
-            rel_str[subpath.size()] == '/') {
-            std::string rest = rel_str.substr(subpath.size() + 1);
-            if (mod_prefix.empty()) {
-                mod_rel = std::filesystem::path(rest);
-                into_mod = true;
-            } else if (rest.compare(0, mod_prefix.size(), mod_prefix) == 0) {
-                mod_rel = std::filesystem::path(rest.substr(mod_prefix.size()));
-                into_mod = true;
-            }
+        // Route EVERY file into the mod, mapping the scratch path through the
+        // same game-root-relative -> mod-relative bridge the sync dialog uses
+        // (overwrite_to_mod_rel): a Skyrim "Data/meshes/x" lands at mod
+        // "meshes/x"; an Isaac "<mods_subpath>/<mod_id>/x" lands at mod "x";
+        // a path outside the mapping (game-root file) passes through unchanged
+        // and still lands in the mod. Nothing falls through to Overwrite.
+        auto mod_rel = overwrite_to_mod_rel(rel_str, mods_subpath,
+                                           include_mod_id, mod_id);
+        if (mod_rel.empty()) {
+            // A path that maps onto the mod root itself (bare "Data") — the
+            // file is the mapping root: keep its name, drop nothing.
+            mod_rel = rel_str;
         }
 
-        std::filesystem::path dest = into_mod ? (mod_dir / mod_rel)
-                                              : (overwrite_dir / rel);
+        std::filesystem::path dest = mod_dir / mod_rel;
         if (!dest.parent_path().empty())
             std::filesystem::create_directories(dest.parent_path(), ec);
         std::filesystem::rename(file, dest, ec);
@@ -343,7 +380,7 @@ size_t relay_output_to_mod(const std::filesystem::path& scratch_dir,
             Logger::instance().error("relay_output_to_mod: failed to move " +
                 file.string() + " -> " + dest.string() + ": " + ec.message());
             ec.clear();
-        } else if (into_mod) {
+        } else {
             ++relayed;
         }
     }
