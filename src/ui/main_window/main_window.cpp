@@ -11,6 +11,7 @@
 #include "ui/widgets/profile_bar.h"
 #include "ui/widgets/mod_filter_bar.h"
 #include "ui/widgets/column_toggle_header.h"
+#include "ui/widgets/list_dialog.h"
 #include "ui/widgets/right_panel.h"
 #include "ui/widgets/exec_controls_bar.h"
 #include "ui/widgets/console_panel.h"
@@ -2966,20 +2967,29 @@ void MainWindow::setup_mod_list_context_menu() {
 
         // Single mod - full menu
         auto mod_id = entry.id;
-        bool has_conflicts = entry.conflict_wins + entry.conflict_losses > 0;
 
-        // Change Separator submenu
-        auto* sep_submenu = menu.addMenu(engine::IconManager::instance().resolve_icon("view-sort"), tr("Change Separator"));
+        // Send to... submenu (MO2 modlistcontextmenu.cpp:285-338): priority
+        // moves + the separator picker. The separator picker opens the shared
+        // ListDialog (MO2 sendModsToSeparator, listdialog.ui) instead of an
+        // inline submenu entry per separator — a submenu with many separators
+        // (or long names) grew to cover the whole screen.
+        auto* send_to = menu.addMenu(engine::IconManager::instance().resolve_icon("view-sort"), tr("Send to..."));
+        send_to->addAction(engine::IconManager::instance().resolve_icon("go-top"), tr("Send to Highest Priority"),
+            this, [this, mod_id]() { send_to_highest_priority(mod_id); });
+        send_to->addAction(engine::IconManager::instance().resolve_icon("go-bottom"), tr("Send to Lowest Priority"),
+            this, [this, mod_id]() { send_to_lowest_priority(mod_id); });
         bool any_seps = false;
-        for (const auto& m : mod_model_->mods()) {
-            if (m.is_separator) {
-                any_seps = true;
-                sep_submenu->addAction(m.name, this, [this, mod_id, id = m.id]() {
-                    move_to_separator(mod_id, id);
-                });
-            }
+        for (const auto& m : mod_model_->mods())
+            if (m.is_separator) { any_seps = true; break; }
+        auto* sep_act = send_to->addAction(engine::IconManager::instance().resolve_icon("view-sort"), tr("Separator..."),
+            this, [this, mod_id]() { send_to_separator(mod_id); });
+        sep_act->setEnabled(any_seps);
+        if (!entry.separator_id.isEmpty() && mod_model_->has_conflicts_within_separator(mod_id)) {
+            send_to->addAction(engine::IconManager::instance().resolve_icon("go-up"), tr("Send to Highest in Separator"),
+                this, [this, mod_id]() { send_to_highest_in_separator(mod_id); });
+            send_to->addAction(engine::IconManager::instance().resolve_icon("go-down"), tr("Send to Lowest in Separator"),
+                this, [this, mod_id]() { send_to_lowest_in_separator(mod_id); });
         }
-        sep_submenu->setEnabled(any_seps);
 
         menu.addAction(engine::IconManager::instance().resolve_icon("list-add"), tr("Create Separator"),
             this, [this, row]() { create_separator_at_row(row); });
@@ -2998,21 +3008,6 @@ void MainWindow::setup_mod_list_context_menu() {
                         mod_model_->set_no_metadata(mod_id, false);
                     }
                 });
-        }
-
-        if (has_conflicts) {
-            menu.addSeparator();
-            menu.addAction(engine::IconManager::instance().resolve_icon("go-top"), tr("Send to Highest Priority"),
-                this, [this, mod_id]() { send_to_highest_priority(mod_id); });
-            menu.addAction(engine::IconManager::instance().resolve_icon("go-bottom"), tr("Send to Lowest Priority"),
-                this, [this, mod_id]() { send_to_lowest_priority(mod_id); });
-
-            if (!entry.separator_id.isEmpty() && mod_model_->has_conflicts_within_separator(mod_id)) {
-                menu.addAction(engine::IconManager::instance().resolve_icon("go-up"), tr("Send to Highest in Separator"),
-                    this, [this, mod_id]() { send_to_highest_in_separator(mod_id); });
-                menu.addAction(engine::IconManager::instance().resolve_icon("go-down"), tr("Send to Lowest in Separator"),
-                    this, [this, mod_id]() { send_to_lowest_in_separator(mod_id); });
-            }
         }
 
         menu.addSeparator();
@@ -3370,6 +3365,30 @@ void MainWindow::move_to_separator(const QString& mod_id, const QString& sep_id)
     }
     if (sep_row >= 0)
         mod_model_->move_mod(mod_id, sep_row + 1);
+}
+
+void MainWindow::send_to_separator(const QString& mod_id) {
+    // MO2 sendModsToSeparator (modlistviewactions.cpp:661-701): collect the
+    // separators in mod-list order into the shared ListDialog and move the mod
+    // to the chosen one. Ids ride item data so duplicate display names can't
+    // misresolve.
+    QStringList names;
+    QList<QVariant> ids;
+    for (const auto& m : mod_model_->mods()) {
+        if (m.is_separator) {
+            names << m.name;
+            ids << m.id;
+        }
+    }
+    if (names.isEmpty()) return;
+
+    ui::ListDialog dlg(this);
+    dlg.setWindowTitle(tr("Select a separator..."));
+    dlg.setChoices(names);
+    dlg.setChoiceData(ids);
+    if (dlg.exec() != QDialog::Accepted) return;
+    const QString sep_id = dlg.getChoiceData().toString();
+    if (!sep_id.isEmpty()) move_to_separator(mod_id, sep_id);
 }
 
 void MainWindow::send_to_highest_priority(const QString& id) {
