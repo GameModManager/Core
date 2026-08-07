@@ -25,6 +25,7 @@
 #include <QFont>
 #include <QFontMetrics>
 #include <QGuiApplication>
+#include <QHash>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QImage>
@@ -225,10 +226,6 @@ enum DataTabItemRole {
 constexpr int kNavTargetData = 0;
 constexpr int kNavTargetRoot = 1;
 
-// Pseudo mod id for game-native root files (skse64_loader.exe, ...). Never a
-// real mod folder, so it must fail the "managed mod" / hide gates.
-constexpr const char* kGameRootNativeId = "__game_root__";
-
 // Recursively sort a tree so directories come first, then alphabetical.
 // Navigation rows (DataNavRole set) are pinned to the front at every level so
 // the ".." / data-dir switcher stays reachable regardless of sort order.
@@ -264,23 +261,25 @@ static bool can_preview(const QString& path) {
     return image_exts.contains(ext) || text_exts.contains(ext);
 }
 
-// --- Data tab: per-row build + merge helpers. Shared by the full rebuild
-// (show_data) and the incremental install path (apply_mod) so a single row
-// means the same thing in both.
+// --- Data tab: per-row build + merge helpers. The per-row compute
+// (DataTabRow, build_data_row, the root-view native walk) lives in
+// data_tab_build_worker.{h,cpp} and is shared by the background full build and
+// the incremental install path (apply_mod), so a single row means the same
+// thing in both. The helpers below are the widget-touching half: display-name
+// lookup and the indexed tree upsert.
 
-struct DataTabRow {
-    QString path;          // display path (hidden suffix stripped)
-    QString vfs_path;      // game-dir-relative merged path (Add as Executable)
-    QString real_path;     // on-disk path of the winning copy
-    QString origin_id;     // winner mod id
-    QString source;
-    qint64 size = -1;
-    int providers = 0;
-    bool hidden = false;   // file carries .gmmhidden / .mohidden
-    QStringList all_sources;
-    QStringList provider_paths;
-    QStringList provider_ids;
-};
+// True when the mod list's display-relevant fields (id, name, root-flag) are
+// unchanged. Compared before storing so a show_data with identical inputs can
+// skip the population pass entirely.
+bool same_mod_list(const QVector<ModEntry>& a, const QVector<ModEntry>& b) {
+    if (a.size() != b.size()) return false;
+    for (int i = 0; i < a.size(); ++i) {
+        if (a[i].id != b[i].id || a[i].name != b[i].name ||
+            a[i].root_override != b[i].root_override)
+            return false;
+    }
+    return true;
+}
 
 // mod id -> display name lookup (used for the source column and tooltips).
 std::unordered_map<std::string, QString> build_display_names(const QVector<ModEntry>& all_mods) {
@@ -290,134 +289,39 @@ std::unordered_map<std::string, QString> build_display_names(const QVector<ModEn
     return names;
 }
 
-// On-disk path of a provider's copy: instance mods dir first, then the
-// game-native mods dir fallback. The registry key is CI-normalized (directory
-// components lowercased), but the mod keeps its on-disk casing - so when the
-// exact-case lookup misses, resolve case-insensitively through
-// resolve_deploy_target_ci to find the real file (exact exists() is the fast
-// path; the CI walk only runs for dual-case trees).
-std::filesystem::path resolve_mod_file(const std::string& mod_id,
-                                       const std::string& rel_path,
-                                       const std::filesystem::path& mods_dir,
-                                       const std::filesystem::path& game_mods_dir) {
-    std::error_code ec;
-    auto candidate = mods_dir / mod_id / rel_path;
-    if (std::filesystem::exists(candidate, ec)) return candidate;
-    candidate = engine::resolve_deploy_target_ci(mods_dir / mod_id / rel_path);
-    if (std::filesystem::exists(candidate, ec)) return candidate;
-    if (!game_mods_dir.empty()) {
-        ec.clear();
-        candidate = game_mods_dir / mod_id / rel_path;
-        if (std::filesystem::exists(candidate, ec)) return candidate;
-        candidate = engine::resolve_deploy_target_ci(game_mods_dir / mod_id / rel_path);
-        if (std::filesystem::exists(candidate, ec)) return candidate;
-    }
-    return {};
-}
-
-// Build one row from a registry entry (key_path -> (mod_id, priority)
-// providers). key_path is the mod-folder-relative path the on-disk files live
-// at; display_path is the data-view-relative path the row is shown under
-// (classify_registry_path strips a leading deploy-prefix segment for
-// root-override mods' data content). space / deploy_prefix /
-// deploy_include_mod_id / root_override_mods classify the row's deploy layout
-// so vfs_path (the Add-as-Executable path) matches the real staging target
-// exactly, never the data-view-relative display path.
-DataTabRow build_data_row(const std::string& key_path,
-                          const std::string& display_path,
-                          const std::vector<std::pair<std::string, int>>& owners,
-                          const std::unordered_map<std::string, QString>& display_names,
-                          bool conflict_reversed,
-                          const std::filesystem::path& mods_dir,
-                          const std::filesystem::path& game_mods_dir,
-                          engine::DeploySpace space,
-                          const std::string& deploy_prefix,
-                          bool deploy_include_mod_id,
-                          const std::unordered_set<std::string>& root_override_mods) {
-    DataTabRow row;
-    row.path = QString::fromStdString(display_path).replace('\\', '/');
-
-    // Winner = the provider that actually takes effect
-    auto winner = conflict_reversed
-        ? std::min_element(owners.begin(), owners.end(),
-                           [](const auto& a, const auto& b) { return a.second < b.second; })
-        : std::max_element(owners.begin(), owners.end(),
-                           [](const auto& a, const auto& b) { return a.second < b.second; });
-
-    QString winner_id = QString::fromStdString(winner->first);
-    row.origin_id = winner_id;
-    if (winner_id == QLatin1String(kOverwriteModId)) {
-        row.source = DataTab::tr("Overwrite");
-    } else if (winner_id == QLatin1String(kMergedModId)) {
-        row.source = DataTab::tr("MERGED");
-    } else {
-        auto it = display_names.find(winner->first);
-        row.source = it != display_names.end() ? it->second : winner_id;
-    }
-
-    // Hidden files (.gmmhidden here, .mohidden in MO2-imported instances)
-    // display under their base name. A visible file with the same base
-    // name wins the display slot; otherwise the hidden copy is shown
-    // dimmed (the name survives so it can be un-hidden from the tab).
-    if (engine::is_hidden_file(std::filesystem::path(display_path))) {
-        row.hidden = true;
-        const auto gmm = std::string(engine::kGmmHiddenSuffix);
-        const auto mo2 = std::string(engine::kMo2HiddenSuffix);
-        if (row.path.endsWith(QString::fromStdString(gmm)))
-            row.path.chop(static_cast<int>(gmm.size()));
-        else if (row.path.endsWith(QString::fromStdString(mo2)))
-            row.path.chop(static_cast<int>(mo2.size()));
-    }
-
-    row.providers = static_cast<int>(owners.size());
-    for (const auto& [owner, _] : owners) {
-        auto it = display_names.find(owner);
-        row.all_sources << (it != display_names.end() ? it->second
-                                                      : QString::fromStdString(owner));
-        row.provider_ids << QString::fromStdString(owner);
-        row.provider_paths << QString::fromStdString(
-            resolve_mod_file(owner, key_path, mods_dir, game_mods_dir).string());
-    }
-
-    // Size and real path of the winning copy (hidden suffix intact)
-    std::error_code ec;
-    const auto winner_real = resolve_mod_file(winner->first, key_path, mods_dir, game_mods_dir);
-    if (!winner_real.empty()) {
-        row.real_path = QString::fromStdString(winner_real.string());
-        auto sz = std::filesystem::file_size(winner_real, ec);
-        if (!ec) row.size = static_cast<qint64>(sz);
-    }
-
-    // Merged (game-dir-relative) path the launch overlay resolves: for Data
-    // rows the deploy prefix, then the mod-folder segment for
-    // include-mod-id games (skipped for root-override mods, whose Data content
-    // deploys straight under the prefix), then the display path. Root rows
-    // deploy at the game root, so their display path already is the merged one.
-    QString merged;
-    if (space == engine::DeploySpace::Data) {
-        if (!deploy_prefix.empty())
-            merged = QString::fromStdString(deploy_prefix);
-        if (deploy_include_mod_id &&
-            !root_override_mods.count(row.origin_id.toStdString())) {
-            if (!merged.isEmpty()) merged += '/';
-            merged += row.origin_id;
-        }
-    }
-    row.vfs_path = merged.isEmpty() ? row.path : merged + "/" + row.path;
-    return row;
+// Find or create a child tree item by name, indexed by its full display path.
+// Unlike ensure_child (a linear child scan, used by ConflictsTab), lookups are
+// O(1) - the Data tab's tree can hold tens of thousands of rows, where the
+// linear scan made the full rebuild O(n^2). item_index_ is kept in sync by
+// every caller.
+QTreeWidgetItem* ensure_indexed_child(QTreeWidgetItem* parent, const QString& name,
+                                      const QString& full_path, bool is_dir,
+                                      QHash<QString, QTreeWidgetItem*>& index) {
+    auto it = index.constFind(full_path);
+    if (it != index.constEnd()) return *it;
+    auto* item = new QTreeWidgetItem(parent);
+    item->setText(0, name);
+    if (is_dir) item->setIcon(0, folder_icon());
+    index.insert(full_path, item);
+    return item;
 }
 
 // Insert or update one row's tree item. When the row is already present it is
 // overwritten in place (provider counts, winner, sizes) so callers never
 // recreate items - this is what keeps the install path incremental.
-void upsert_data_row(QTreeWidget* tree, const DataTabRow& row) {
+void upsert_data_row(QTreeWidget* tree, const DataTabRow& row,
+                     QHash<QString, QTreeWidgetItem*>& index) {
     const QColor dim = QApplication::palette().color(QPalette::Disabled, QPalette::Text);
     auto parts = row.path.split('/');
     auto* parent = tree->invisibleRootItem();
-    for (int i = 0; i < parts.size() - 1; ++i)
-        parent = ensure_child(parent, parts[i], true);
+    QString parent_path;
+    for (int i = 0; i < parts.size() - 1; ++i) {
+        if (!parent_path.isEmpty()) parent_path += '/';
+        parent_path += parts[i];
+        parent = ensure_indexed_child(parent, parts[i], parent_path, true, index);
+    }
 
-    auto* file_item = ensure_child(parent, parts.last(), false);
+    auto* file_item = ensure_indexed_child(parent, parts.last(), row.path, false, index);
 
     // A hidden copy whose display name is already owned by a visible (or
     // earlier hidden) row stays invisible - the visible copy wins.
@@ -467,66 +371,9 @@ std::unordered_set<std::string> root_override_mod_ids(const QVector<ModEntry>& a
     return out;
 }
 
-// One row for a game-native file sitting in the game root (skse64_loader.exe,
-// ...). origin_id is the kGameRootNativeId pseudo-id so "Open Mod Info" and
-// "Hide" stay disabled for it.
-DataTabRow native_root_row(const std::filesystem::path& root,
-                           const std::filesystem::path& file) {
-    std::error_code ec;
-    DataTabRow row;
-    row.path = QString::fromStdString(
-        std::filesystem::relative(file, root, ec).generic_string());
-    row.vfs_path = row.path;  // game-native files live at the game root already
-    row.origin_id = QString::fromStdString(kGameRootNativeId);
-    row.source = DataTab::tr("Base Game");
-    row.providers = 1;
-    row.real_path = QString::fromStdString(file.string());
-    row.all_sources = {row.source};
-    row.provider_ids = {row.origin_id};
-    row.provider_paths = {row.real_path};
-    auto sz = std::filesystem::file_size(file, ec);
-    if (!ec) row.size = static_cast<qint64>(sz);
-    return row;
-}
-
-// True if `name` is a game-root folder the Root view must not descend into:
-// the game's own data dir (shown by the merged Data view), the instance mods
-// dir, overwrite, and the deploy staging dir. Compared case-insensitively
-// (Isaac's real folder is "Mods" while its mods_subpath is "mods").
-bool is_reserved_root_dir(const std::string& name, const std::string& mods_subpath) {
-    auto lname = name;
-    for (char& c : lname) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    std::unordered_set<std::string> reserved = {
-        "overwrite", "merged", ".merged", ".gmm_staging"};
-    auto lsub = mods_subpath;
-    for (char& c : lsub) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    if (!lsub.empty()) reserved.insert(std::move(lsub));
-    else reserved.insert("data");
-    return reserved.count(lname) > 0;
-}
-
-// Recursively collect the game's native root files (dirs relative to root).
-void collect_native_root_rows(const std::filesystem::path& dir,
-                              const std::filesystem::path& root,
-                              const std::string& mods_subpath,
-                              std::vector<DataTabRow>& out) {
-    std::error_code ec;
-    auto it = std::filesystem::directory_iterator(
-        dir, std::filesystem::directory_options::skip_permission_denied, ec);
-    for (const auto& entry : it) {
-        if (entry.is_directory()) {
-            if (is_reserved_root_dir(entry.path().filename().string(), mods_subpath))
-                continue;
-            collect_native_root_rows(entry.path(), root, mods_subpath, out);
-        } else if (entry.is_regular_file()) {
-            out.push_back(native_root_row(root, entry.path()));
-        }
-    }
-}
-
 // Navigation row that switches the merged tree scope (".." up to the game
 // root, or the data-dir folder back into the data view). Pinned to the front
-// of the tree by sort_dirs_first.
+// of the tree by insert order (the worker's dirs-first sort keeps it first).
 QTreeWidgetItem* make_nav_item(const QString& label, int target) {
     auto* item = new QTreeWidgetItem();
     item->setText(0, label);
@@ -1304,10 +1151,32 @@ DataTab::DataTab(QWidget* parent) : QWidget(parent) {
     tree_->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(tree_, &QTreeWidget::customContextMenuRequested,
             this, &DataTab::on_custom_context_menu);
+
+    // Background row building (THREADING.md §0): the per-file stat pass runs on
+    // the worker thread; the finished row set arrives via a queued signal and
+    // is chunked into the tree on the main thread.
+    build_thread_ = new DataTabBuildThread(this);
+    connect(build_thread_->worker(), &DataTabBuildWorker::finished,
+            this, &DataTab::on_build_finished);
+}
+
+DataTab::~DataTab() {
+    // Drop the worker thread before the widget dies (its dtor quits and waits
+    // for the worker to finish; an in-flight build result is discarded by the
+    // receiver being destroyed).
+    delete build_thread_;
 }
 
 void DataTab::clear_content() {
+    // Invalidate any in-flight or in-progress population and wipe the tree.
+    ++build_generation_;
+    build_pending_ = false;
+    pending_rows_.clear();
+    pending_pos_ = 0;
     tree_->clear();
+    item_index_.clear();
+    applied_rows_.clear();
+    dirty_ = true;  // next show/refresh repopulates
 }
 
 void DataTab::show_data(
@@ -1321,6 +1190,20 @@ void DataTab::show_data(
     const std::string& deploy_prefix,
     bool deploy_include_mod_id)
 {
+    // No-op when nothing display-relevant changed: after a recompute that
+    // leaves the registry and mod list untouched, skip the population pass
+    // instead of rebuilding the whole tree.
+    const bool inputs_changed =
+        registry != stored_registry_ ||
+        !same_mod_list(stored_mods_, all_mods) ||
+        stored_conflict_reversed_ != conflict_reversed ||
+        stored_mods_dir_ != mods_dir ||
+        stored_game_mods_dir_ != game_mods_dir ||
+        stored_game_root_dir_ != game_root_dir ||
+        stored_mods_subpath_ != mods_subpath ||
+        stored_deploy_prefix_ != deploy_prefix ||
+        stored_deploy_include_mod_id_ != deploy_include_mod_id;
+
     stored_registry_ = registry;
     stored_mods_ = all_mods;
     stored_conflict_reversed_ = conflict_reversed;
@@ -1330,78 +1213,120 @@ void DataTab::show_data(
     stored_mods_subpath_ = mods_subpath;
     stored_deploy_prefix_ = deploy_prefix;
     stored_deploy_include_mod_id_ = deploy_include_mod_id;
-    rebuild_from_stored();
+
+    if (inputs_changed) dirty_ = true;
+    if (dirty_ && isVisible()) request_populate();
 }
 
 void DataTab::switch_view(View v) {
     if (view_ == v) return;
     view_ = v;
-    rebuild_from_stored();
+    // A different view shows a different row set - always repopulate, even if
+    // the stored inputs are unchanged.
+    dirty_ = true;
+    if (isVisible()) request_populate();
 }
 
-void DataTab::rebuild_from_stored() {
+void DataTab::showEvent(QShowEvent*) {
+    if (dirty_) request_populate();
+}
+
+void DataTab::request_populate() {
+    dirty_ = false;
+    build_pending_ = true;
+    ++build_generation_;
+    build_thread_->start(build_request(), build_generation_);
+}
+
+DataTabBuildRequest DataTab::build_request() const {
+    DataTabBuildRequest req;
+    req.registry = stored_registry_;
+    req.display_names = build_display_names(stored_mods_);
+    req.root_override_mods = root_override_mod_ids(stored_mods_);
+    req.conflict_reversed = stored_conflict_reversed_;
+    req.root_view = view_ == View::Root;
+    req.mods_dir = stored_mods_dir_;
+    req.game_mods_dir = stored_game_mods_dir_;
+    req.game_root_dir = stored_game_root_dir_;
+    req.mods_subpath = stored_mods_subpath_;
+    req.deploy_prefix = stored_deploy_prefix_;
+    req.deploy_include_mod_id = stored_deploy_include_mod_id_;
+    return req;
+}
+
+void DataTab::on_build_finished(DataTabBuildResult result, quint64 generation) {
+    if (generation != build_generation_) return;  // a newer build superseded it
+    build_pending_ = false;
+    apply_build_result(std::move(result));
+}
+
+void DataTab::apply_build_result(DataTabBuildResult result) {
+    // Identical row set for the current view: the tree already shows it, and
+    // applying it again would recreate every item and collapse the user's
+    // expansion state (rows encode everything display-relevant, so equality
+    // is exact).
+    if (result.rows == applied_rows_) return;
+
+    tree_->setUpdatesEnabled(false);
     tree_->clear();
-    if (stored_registry_.empty()) return;
-
-    const bool root_view = view_ == View::Root;
-    const auto display_names = build_display_names(stored_mods_);
-    const auto root_mods = root_override_mod_ids(stored_mods_);
-
-    std::vector<DataTabRow> rows;
-    rows.reserve(stored_registry_.size());
-    for (const auto& [path, owners] : stored_registry_) {
-        if (owners.empty()) continue;
-        const auto cls = engine::classify_registry_path(
-            path, owners, root_mods, stored_deploy_prefix_);
-        if (root_view && cls.space != engine::DeploySpace::Root) continue;
-        if (!root_view && cls.space != engine::DeploySpace::Data) continue;
-        rows.push_back(build_data_row(path, cls.display_path, owners, display_names,
-                                      stored_conflict_reversed_, stored_mods_dir_,
-                                      stored_game_mods_dir_, cls.space,
-                                      stored_deploy_prefix_,
-                                      stored_deploy_include_mod_id_, root_mods));
-    }
-
-    // Game-native root files only exist at the game root (skse64_loader.exe,
-    // ControlMap_Custom.txt, ...); the data dir shows mod content alone.
-    if (root_view && !stored_game_root_dir_.empty()) {
-        collect_native_root_rows(stored_game_root_dir_, stored_game_root_dir_,
-                                 stored_mods_subpath_, rows);
-    }
-
-    // Sorted path order gives naturally grouped tree insertion. Equal display
-    // paths (a hidden copy vs a visible file of the same name) order the
-    // visible one first so it claims the row and the dimmed duplicate is
-    // skipped in upsert_data_row.
-    std::sort(rows.begin(), rows.end(),
-              [](const DataTabRow& a, const DataTabRow& b) {
-                  if (a.path != b.path) return a.path < b.path;
-                  return !a.hidden && b.hidden;
-              });
+    item_index_.clear();
 
     // Scope navigation row: ".." climbs from the data dir to the game root,
-    // the data-dir folder climbs back down. Pinned to the front by
-    // sort_dirs_first.
-    if (root_view) {
-        const QString label = stored_mods_subpath_.empty()
-            ? tr("Data")
-            : QString::fromStdString(stored_mods_subpath_);
-        tree_->addTopLevelItem(make_nav_item(label, kNavTargetData));
-        tree_->topLevelItem(0)->setToolTip(
-            0, tr("Open the %1 folder").arg(label));
-    } else if (!stored_game_root_dir_.empty()) {
-        tree_->addTopLevelItem(make_nav_item(tr(".."), kNavTargetRoot));
-        tree_->topLevelItem(0)->setToolTip(0, tr("Up to the game root directory"));
+    // the data-dir folder climbs back down. Inserted before the rows; the
+    // worker's dirs-first sort keeps it pinned to the front.
+    if (!result.rows.empty()) {
+        if (view_ == View::Root) {
+            const QString label = stored_mods_subpath_.empty()
+                ? tr("Data")
+                : QString::fromStdString(stored_mods_subpath_);
+            tree_->addTopLevelItem(make_nav_item(label, kNavTargetData));
+            tree_->topLevelItem(0)->setToolTip(
+                0, tr("Open the %1 folder").arg(label));
+        } else if (!stored_game_root_dir_.empty()) {
+            tree_->addTopLevelItem(make_nav_item(tr(".."), kNavTargetRoot));
+            tree_->topLevelItem(0)->setToolTip(0, tr("Up to the game root directory"));
+        }
     }
 
-    for (const auto& row : rows)
-        upsert_data_row(tree_, row);
+    pending_rows_ = std::move(result.rows);
+    pending_pos_ = 0;
+    tree_->setUpdatesEnabled(true);
 
-    sort_dirs_first(tree_->invisibleRootItem());
+    if (pending_rows_.empty()) {
+        applied_rows_.clear();
+        engine::Logger::instance().debug("Data tab populated (" +
+            std::string(view_ == View::Root ? "root" : "data") + " view): 0 files");
+        return;
+    }
+    QTimer::singleShot(0, this, &DataTab::apply_chunk_step);
+}
 
+void DataTab::apply_chunk_step() {
+    // Cancelled: apply_mod superseded an in-flight population, so the pending
+    // row set was cleared and a fresh build was queued instead.
+    if (pending_rows_.empty()) return;
+
+    // Fill the next ~1000 rows in one event-loop turn (with the tree's updates
+    // suspended, so one repaint per chunk) and re-queue for the next turn.
+    constexpr int kChunk = 1000;
+    tree_->setUpdatesEnabled(false);
+    int n = 0;
+    while (pending_pos_ < pending_rows_.size() && n < kChunk) {
+        upsert_data_row(tree_, pending_rows_[pending_pos_], item_index_);
+        ++pending_pos_;
+        ++n;
+    }
+    tree_->setUpdatesEnabled(true);
+
+    if (pending_pos_ < pending_rows_.size()) {
+        QTimer::singleShot(0, this, &DataTab::apply_chunk_step);
+        return;
+    }
+
+    applied_rows_ = std::move(pending_rows_);
     engine::Logger::instance().debug("Data tab populated (" +
-        std::string(root_view ? "root" : "data") + " view): " +
-        std::to_string(rows.size()) + " files");
+        std::string(view_ == View::Root ? "root" : "data") + " view): " +
+        std::to_string(applied_rows_.size()) + " files");
     // Folders start collapsed (MO2-style: the tree opens with subfolders
     // closed); double-click expands in place.
 }
@@ -1432,6 +1357,19 @@ void DataTab::apply_mod(
     stored_deploy_prefix_ = deploy_prefix;
     stored_deploy_include_mod_id_ = deploy_include_mod_id;
 
+    // A background population is in flight (building on the worker thread, or
+    // its row set still being chunked into the tree). Merging into the
+    // half-built tree would interleave stale rows with the new mod's - cancel
+    // the in-flight build and let a fresh one supersede it instead.
+    if (build_pending_ || !pending_rows_.empty()) {
+        ++build_generation_;
+        pending_rows_.clear();
+        pending_pos_ = 0;
+        dirty_ = true;
+        if (isVisible()) request_populate();
+        return;
+    }
+
     const bool root_view = view_ == View::Root;
     const auto display_names = build_display_names(all_mods);
     const auto root_mods = root_override_mod_ids(all_mods);
@@ -1452,11 +1390,13 @@ void DataTab::apply_mod(
         upsert_data_row(tree_, build_data_row(path, cls.display_path, owners, display_names,
                                               conflict_reversed, mods_dir, game_mods_dir,
                                               cls.space, deploy_prefix,
-                                              deploy_include_mod_id, root_mods));
+                                              deploy_include_mod_id, root_mods),
+                        item_index_);
     }
 
     if (any) {
         sort_dirs_first(tree_->invisibleRootItem());
+        applied_rows_.clear();  // the in-place merge no longer matches the last build
         engine::Logger::instance().debug(
             "Data tab updated incrementally for installed mod: " + mod_id);
     }

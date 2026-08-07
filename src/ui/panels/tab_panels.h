@@ -4,7 +4,9 @@
 #include "engine/saves/save_game.h"
 #include "engine/saves/save_missing_assets.h"
 #include "ui/main_window/saves_scan_worker.h"
+#include "ui/main_window/data_tab_build_worker.h"
 
+#include <QHash>
 #include <QPoint>
 #include <QPointer>
 #include <QSet>
@@ -344,6 +346,7 @@ class DataTab : public QWidget {
     Q_OBJECT
 public:
     explicit DataTab(QWidget* parent = nullptr);
+    ~DataTab() override;
     [[nodiscard]] QTreeWidget* tree() const { return tree_; }
 
     // Populate the merged game-visible file tree from the conflict registry.
@@ -431,6 +434,12 @@ signals:
     void refresh_requested();
 
 protected:
+    // Deferred population: show_data stores inputs and rebuilds the tree only
+    // once the tab is actually visible (the RightPanel is a QTabWidget, so a
+    // non-current page is hidden). The heavy per-file stat pass always runs on
+    // the DataTabBuildThread; the main thread only fills QTreeWidget items.
+    void showEvent(QShowEvent* event) override;
+
     // Context-menu / double-click internals. Protected (not private) so tests
     // can drive the menu actions and open/preview paths directly.
     void on_custom_context_menu(const QPoint& pos);
@@ -449,8 +458,18 @@ private:
     // view) switches between them.
     enum class View { Data, Root };
     void switch_view(View v);
-    // Rebuild the tree from the stored inputs (used on view switch).
-    void rebuild_from_stored();
+
+    // Queue a background population of the current view. Snapshot of the
+    // stored inputs goes to the worker; the finished() row set is applied by
+    // apply_build_result() on the main thread.
+    void request_populate();
+    void on_build_finished(DataTabBuildResult result, quint64 generation);
+    void apply_build_result(DataTabBuildResult result);
+    // Fill the next chunk of pending_rows_ into the tree (one event-loop turn
+    // each) so the main thread stays responsive while a large instance's tree
+    // materializes.
+    void apply_chunk_step();
+    DataTabBuildRequest build_request() const;
 
     // Stored show_data inputs so switch_view() can rebuild without the caller
     // re-supplying them.
@@ -465,6 +484,24 @@ private:
     std::string stored_deploy_prefix_;
     bool stored_deploy_include_mod_id_ = false;
 
+    // Population state machine. dirty_ is set when the stored inputs changed
+    // (or the view switched) and cleared once a build is queued; showEvent
+    // re-triggers it after a deferral. build_pending_ + pending_rows_ cover the
+    // in-flight window: a build running on the worker thread, or its row set
+    // still being chunked into the tree. The generation counter drops stale
+    // results (the latest build always wins, like ConflictScanThread).
+    bool dirty_ = true;
+    bool build_pending_ = false;
+    quint64 build_generation_ = 0;
+    std::vector<DataTabRow> pending_rows_;
+    std::vector<DataTabRow> applied_rows_;  // last fully applied row set (path-keyed no-op)
+    std::size_t pending_pos_ = 0;
+
+    // Display-path -> item index, kept in sync with tree_ so ensure_child is
+    // O(1) instead of the linear child scan (the 11k-file O(n^2) rebuild cost).
+    QHash<QString, QTreeWidgetItem*> item_index_;
+
+    DataTabBuildThread* build_thread_ = nullptr;
     QTreeWidget* tree_ = nullptr;
 };
 

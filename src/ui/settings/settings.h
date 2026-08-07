@@ -69,6 +69,11 @@ public:
     QStringList modlist_hidden_columns(const QString& instance_name) const;
     void set_modlist_hidden_columns(const QString& instance_name,
                                     const QStringList& hidden);
+    // Per-instance "nested mod list" toggle: allows dragging mods onto mods and
+    // separators onto separators to build a visual nesting (indented, foldable
+    // children) without changing load order / priorities. Defaults to off.
+    bool modlist_nested(const QString& instance_name) const;
+    void set_modlist_nested(const QString& instance_name, bool on);
 
     // general ---------------------------------------------------------------
     bool check_for_updates() const;

@@ -416,13 +416,13 @@ MainWindow::MainWindow(QWidget* parent)
     // Fold/unfold on the Fold column ONLY (the dedicated arrow cell, left of
     // Name). Clicks anywhere else on the separator row - including the whole
     // Name cell - must not fold. A separator with no content to hide shows an
-    // empty Fold cell and its click is a dead no-op too.
+    // empty Fold cell and its click is a dead no-op too. With nesting enabled
+    // a mod with children folds the same way (hides its subtree).
     connect(mod_view_, &QTreeView::clicked, this, [this](const QModelIndex& idx) {
         if (!idx.isValid() || idx.column() != ModListModel::Fold) return;
         int row = idx.row();
         if (row < 0 || row >= mod_model_->mods().size()) return;
-        if (!mod_model_->mods()[row].is_separator) return;
-        if (!mod_model_->separator_has_content(row)) return;
+        if (!mod_model_->has_content(row)) return;
 
         const bool folded = mod_model_->mods()[row].folded;
         mod_model_->set_folded(row, !folded);
@@ -1673,6 +1673,10 @@ void MainWindow::on_mod_scan_finished(ui::ModScanResult result, quint64 generati
     mod_model_->ensure_merged_present();
 
     loading_ = false;
+
+    // Apply the per-instance nesting gate before restoring order/folds/links,
+    // so load_order's fold restore and render decisions see the right mode.
+    apply_nesting_setting();
 
     // Sort by priority to restore saved order
     load_order();
@@ -4219,8 +4223,8 @@ void MainWindow::save_order() {
     }
     in.close();
 
-    // Remove old mod_order / folded_separators / toolbar_shortcuts /
-    // toolbar_shortcut_icons lines
+    // Remove old mod_order / folded_separators / folded_mods / mod_parents /
+    // toolbar_shortcuts / toolbar_shortcut_icons lines
     std::istringstream stream(existing);
     std::string line;
     std::string cleaned;
@@ -4229,6 +4233,10 @@ void MainWindow::save_order() {
         if (key_pos != std::string::npos) continue;
         auto fold_pos = line.find("folded_separators");
         if (fold_pos != std::string::npos) continue;
+        auto fm_pos = line.find("folded_mods");
+        if (fm_pos != std::string::npos) continue;
+        auto np_pos = line.find("mod_parents");
+        if (np_pos != std::string::npos) continue;
         auto ts_pos = line.find("toolbar_shortcuts");
         if (ts_pos != std::string::npos) continue;
         auto tsi_pos = line.find("toolbar_shortcut_icons");
@@ -4246,6 +4254,31 @@ void MainWindow::save_order() {
             cleaned += "\"" + m.name.toStdString() + "\"";
             first = false;
         }
+    }
+    cleaned += "]\n";
+
+    // Folded mods (visual nesting; name-keyed like folded_separators, so a
+    // renamed mod loses its fold state - consistent with the separator rule).
+    cleaned += "folded_mods = [";
+    bool first_fm = true;
+    for (const auto& m : mods) {
+        if (!m.is_separator && m.folded) {
+            if (!first_fm) cleaned += ", ";
+            cleaned += "\"" + m.name.toStdString() + "\"";
+            first_fm = false;
+        }
+    }
+    cleaned += "]\n";
+
+    // Visual-nesting parent links: "child_id=parent_id". Id-based, so renames
+    // survive (rename_mod_in_place cascades parent_id on the model).
+    cleaned += "mod_parents = [";
+    bool first_mp = true;
+    for (const auto& m : mods) {
+        if (m.parent_id.isEmpty()) continue;
+        if (!first_mp) cleaned += ", ";
+        cleaned += "\"" + m.id.toStdString() + "=" + m.parent_id.toStdString() + "\"";
+        first_mp = false;
     }
     cleaned += "]\n";
 
@@ -4286,6 +4319,8 @@ void MainWindow::load_order() {
     std::string line;
     std::vector<std::string> order;     // migrated from mod_order (for backward compat)
     std::vector<std::string> folded_names;
+    std::vector<std::string> folded_mod_names;  // visual nesting (folded mods)
+    std::vector<std::pair<std::string, std::string>> parent_links;  // "child" -> "parent"
     std::vector<std::string> toolbar_paths;
     std::vector<std::string> toolbar_icons;
 
@@ -4323,6 +4358,46 @@ void MainWindow::load_order() {
                     if (s != std::string::npos && e != std::string::npos) {
                         folded_names.push_back(token.substr(s, e - s + 1));
                     }
+                }
+            }
+            continue;
+        }
+
+        auto fm_pos = line.find("folded_mods");
+        if (fm_pos != std::string::npos) {
+            auto bracket = line.find('[');
+            auto close_bracket = line.find(']');
+            if (bracket != std::string::npos && close_bracket != std::string::npos) {
+                auto content = line.substr(bracket + 1, close_bracket - bracket - 1);
+                std::istringstream ss(content);
+                std::string token;
+                while (std::getline(ss, token, ',')) {
+                    auto s = token.find_first_not_of(" \t\"");
+                    auto e = token.find_last_not_of(" \t\"");
+                    if (s != std::string::npos && e != std::string::npos) {
+                        folded_mod_names.push_back(token.substr(s, e - s + 1));
+                    }
+                }
+            }
+            continue;
+        }
+
+        auto np_pos = line.find("mod_parents");
+        if (np_pos != std::string::npos) {
+            auto bracket = line.find('[');
+            auto close_bracket = line.find(']');
+            if (bracket != std::string::npos && close_bracket != std::string::npos) {
+                auto content = line.substr(bracket + 1, close_bracket - bracket - 1);
+                std::istringstream ss(content);
+                std::string token;
+                while (std::getline(ss, token, ',')) {
+                    auto s = token.find_first_not_of(" \t\"");
+                    auto e = token.find_last_not_of(" \t\"");
+                    if (s == std::string::npos || e == std::string::npos) continue;
+                    auto entry = token.substr(s, e - s + 1);
+                    auto eq = entry.find('=');
+                    if (eq == std::string::npos || eq == 0 || eq == entry.size() - 1) continue;
+                    parent_links.emplace_back(entry.substr(0, eq), entry.substr(eq + 1));
                 }
             }
             continue;
@@ -4378,13 +4453,22 @@ void MainWindow::load_order() {
     }
 
     // Migration path: if old mod_order is present, use it to reorder + assign priorities
-    auto apply_fold = [&folded_names](ModEntry& m) {
-        if (!m.is_separator) return;
+    auto apply_fold = [&folded_names, &folded_mod_names](ModEntry& m) {
+        // Separators use folded_separators, folded mods use folded_mods (both
+        // name-keyed). Either way the flag is reset first so a stale entry in
+        // the persisted list can't resurrect a fold that was later unfolded.
+        const auto& names = m.is_separator ? folded_names : folded_mod_names;
         m.folded = false;
-        for (const auto& fn : folded_names) {
+        for (const auto& fn : names) {
             if (m.name.toStdString() == fn) { m.folded = true; break; }
         }
     };
+
+    // Id-based nesting links from instance.toml's mod_parents.
+    QHash<QString, QString> parent_map;
+    for (const auto& [child, parent] : parent_links) {
+        parent_map[QString::fromStdString(child)] = QString::fromStdString(parent);
+    }
 
     if (!order.empty()) {
         QMap<QString, int> id_to_idx;
@@ -4476,9 +4560,12 @@ void MainWindow::load_order() {
         }
     }
 
-    // Ensure apply_fold_state() reflects current flags
-    mod_model_->apply_fold_state();
+    // Restore persisted visual-nesting parent links and re-validate them
+    // (sanitize_parent_links clears dangling / kind-mismatched / cyclic links,
+    // e.g. a child whose parent was deleted or renamed out of existence).
+    mod_model_->restore_parent_links(parent_map);
 
+    // Ensure apply_fold_state() reflects current flags
     mod_model_->apply_fold_state();
 
     // Restore toolbar shortcuts
@@ -5252,6 +5339,13 @@ void MainWindow::apply_mod_filter() {
     const QString group = filter_bar_->current_group();
     const auto& mods = mod_model_->mods();
 
+    // Fold-hidden set (pure model computation): a folded separator band scope
+    // or a folded mod subtree. Filtered-out rows inside a fold scope must stay
+    // hidden and must never be re-shown by the ancestor propagation below.
+    QVector<bool> fold_hidden(mods.size(), false);
+    for (int row = 0; row < mods.size(); ++row)
+        fold_hidden[row] = mod_model_->is_row_fold_hidden(row);
+
     // First pass: compute visibility for each mod row
     QVector<bool> visible(mods.size(), false);
     for (int row = 0; row < mods.size(); ++row) {
@@ -5280,16 +5374,10 @@ void MainWindow::apply_mod_filter() {
 
         visible[row] = text_match && group_match;
 
-        // If the separator above is folded, hide this row (fold overrides search)
-        if (visible[row] && !m.separator_id.isEmpty() && group == "All") {
-            for (int i = row - 1; i >= 0; --i) {
-                if (mods[i].is_separator && mods[i].id == m.separator_id) {
-                    if (mods[i].folded) {
-                        visible[row] = false;
-                    }
-                    break;
-                }
-            }
+        // If an active fold scope (folded separator band or folded mod subtree)
+        // hides this row, hide it too - fold overrides search.
+        if (visible[row] && group == "All" && fold_hidden[row]) {
+            visible[row] = false;
         }
     }
 
@@ -5312,7 +5400,35 @@ void MainWindow::apply_mod_filter() {
             }
         }
 
+        // A separator inside a folded scope (a folded parent's band or a
+        // folded mod subtree) must STAY hidden: apply_fold_state() hid it and
+        // the force-show branches above would otherwise re-show it (the bug
+        // was nested separators staying visible under a folded parent).
+        // Mirrors the fold-overrides-search rule applied to mod rows (which
+        // only overrides when group == "All").
+        if (visible[row] && group == "All" && fold_hidden[row]) {
+            visible[row] = false;
+        }
         mod_view_->setRowHidden(row, QModelIndex(), !visible[row]);
+    }
+
+    // Nesting: a filtered-out ancestor (mod parent or separator) stays visible
+    // while any of its subtree members matches, so the tree never breaks
+    // mid-level under a filter. Fold-hidden rows are never re-shown (the fold
+    // override above already hid their visible members, so they can't re-show
+    // via a descendant either - the check keeps it airtight).
+    if (mod_model_->nesting_enabled()) {
+        bool changed = true;
+        while (changed) {
+            changed = false;
+            for (int row = 0; row < mods.size(); ++row) {
+                if (visible[row] || fold_hidden[row]) continue;
+                if (mod_model_->has_visible_descendant(row, visible)) {
+                    visible[row] = true;
+                    changed = true;
+                }
+            }
+        }
     }
 
     // Apply visibility to all mod rows
@@ -6838,12 +6954,20 @@ void MainWindow::show_settings_dialog() {
     }
     // The separator-scrollbar setting may have changed in the dialog.
     if (mod_view_) mod_view_->apply_scrollbar_policy();
+    // The per-instance nesting setting may have changed in the dialog.
+    apply_nesting_setting();
     // The compact-downloads setting may have changed in the dialog.
     if (auto* dt = right_panel_->downloads_tab()) dt->apply_compact_style();
     // The Nexus queue-downloads setting may have changed in the dialog: push
     // the new value into the fetch pool.
     pipeline_thread_->worker()->set_nexus_queue_downloads(
         Settings::instance().nexus_queue_downloads());
+}
+
+void MainWindow::apply_nesting_setting() {
+    if (current_instance_root_.empty()) return;
+    const auto key = QString::fromStdString(current_instance_root_.filename().string());
+    mod_model_->set_nesting_enabled(Settings::instance().modlist_nested(key));
 }
 
 void MainWindow::show_instance_statistics() {

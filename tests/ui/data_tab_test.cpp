@@ -38,6 +38,9 @@
 #include "engine/fs_utils.h"
 
 #include <QApplication>
+#include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QEventLoop>
 #include <QMenu>
 #include <QPalette>
 #include <QTreeWidget>
@@ -112,6 +115,50 @@ struct TestDataTab : ui::DataTab {
     using ui::DataTab::preview_item;
 };
 
+// Data-tab population is asynchronous (DataTabBuildThread + chunked fill), so
+// tests must pump the event loop until the tree materializes. The worker
+// thread's finished signal and the zero-timer chunk steps both run through
+// processEvents(); the registry here is tiny, so one chunk completes the tree.
+static void pump_until_populated(QTreeWidget* tree, int timeout_ms = 5000) {
+    QElapsedTimer t;
+    t.start();
+    while (t.elapsed() < timeout_ms) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 25);
+        if (tree->topLevelItemCount() > 0) return;
+    }
+}
+
+static int count_leaves(QTreeWidgetItem* parent) {
+    int n = 0;
+    for (int i = 0; i < parent->childCount(); ++i) {
+        auto* c = parent->child(i);
+        n += (c->childCount() == 0) ? 1 : count_leaves(c);
+    }
+    return n;
+}
+
+// Pump until the tree holds at least want_leaves leaf rows (for the chunked
+// large-registry regression, where pump_until_populated would return too early,
+// mid-fill).
+static void pump_until_leaves(QTreeWidget* tree, int want_leaves, int timeout_ms = 30000) {
+    QElapsedTimer t;
+    t.start();
+    while (t.elapsed() < timeout_ms) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 25);
+        if (count_leaves(tree->invisibleRootItem()) >= want_leaves) return;
+    }
+}
+
+// Pump for a fixed duration, so the queue can drain even when no observable
+// condition changes (e.g. verifying a re-show does NOT rebuild: the tree stays
+// populated either way, only item identity tells them apart).
+static void pump_ms(int ms) {
+    QElapsedTimer t;
+    t.start();
+    while (t.elapsed() < ms)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+}
+
 int main(int argc, char** argv) {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     const std::filesystem::path cfg = "/tmp/gmm_data_tab/config";
@@ -184,10 +231,12 @@ int main(int argc, char** argv) {
     registry["Data/Tools/helper.exe"] = {Owner("ModD", 4)};
 
     TestDataTab tab;
+    tab.show();  // visible => population runs on show (deferred-population path)
     tab.show_data(registry, mods, /*conflict_reversed=*/false, mods_dir, {},
                   /*game_root_dir=*/{}, /*mods_subpath=*/"Data",
                   /*deploy_prefix=*/"Data", /*deploy_include_mod_id=*/false);
     QTreeWidget* tree = tab.tree_widget();
+    pump_until_populated(tree);
 
     // --- Tree population.
     check(find_item(tree, {"Data", "meshes", "test.nif"}) != nullptr,
@@ -223,6 +272,77 @@ int main(int argc, char** argv) {
     }
     check(find_item(tree, {"Data", "bar.txt.mohidden"}) == nullptr,
           "hidden suffix is stripped from the displayed name");
+
+    // --- Identical-inputs no-op: re-showing the same registry must not rebuild
+    // the tree (item identity is preserved, expansion state would survive too).
+    {
+        TestDataTab t;
+        t.show();
+        t.show_data(registry, mods, /*conflict_reversed=*/false, mods_dir, {},
+                    /*game_root_dir=*/{}, /*mods_subpath=*/"Data",
+                    /*deploy_prefix=*/"Data", /*deploy_include_mod_id=*/false);
+        QTreeWidget* tr = t.tree_widget();
+        pump_until_populated(tr);
+        auto* first = find_item(tr, {"Data", "readme.txt"});
+        check(first != nullptr, "first show_data populates the tree");
+        t.show_data(registry, mods, /*conflict_reversed=*/false, mods_dir, {},
+                    /*game_root_dir=*/{}, /*mods_subpath=*/"Data",
+                    /*deploy_prefix=*/"Data", /*deploy_include_mod_id=*/false);
+        pump_ms(50);  // let any spurious rebuild's chunk timers run
+        auto* second = find_item(tr, {"Data", "readme.txt"});
+        check(second != nullptr, "identical re-show keeps the tree populated");
+        check(second == first,
+              "identical inputs are a no-op: tree items are not recreated");
+    }
+
+    // --- Hidden-tab deferral: show_data must not populate while the tab is not
+    // visible (the RightPanel hides non-current pages; the heavy stat pass only
+    // runs once the tab is actually shown).
+    {
+        TestDataTab t;
+        // Deliberately NOT shown yet.
+        t.show_data(registry, mods, /*conflict_reversed=*/false, mods_dir, {},
+                    /*game_root_dir=*/{}, /*mods_subpath=*/"Data",
+                    /*deploy_prefix=*/"Data", /*deploy_include_mod_id=*/false);
+        QTreeWidget* tr = t.tree_widget();
+        check(tr->topLevelItemCount() == 0,
+              "show_data on a hidden tab defers population");
+        pump_ms(50);
+        check(tr->topLevelItemCount() == 0,
+              "hidden tab stays empty while the event loop runs");
+        t.show();
+        pump_until_populated(tr);
+        check(tr->topLevelItemCount() > 0 &&
+                  find_item(tr, {"Data", "readme.txt"}) != nullptr,
+              "showing the tab triggers the deferred population");
+    }
+
+    // --- Chunked fill: a large registry (~1500 rows, more than one 1000-row
+    // chunk) must materialize completely via the progressive fill path.
+    {
+        constexpr int kDirs = 5;
+        constexpr int kPerDir = 300;
+        Registry big;
+        for (int d = 0; d < kDirs; ++d) {
+            for (int f = 0; f < kPerDir; ++f) {
+                big["Data/bigdir" + std::to_string(d) + "/file" +
+                    std::to_string(f) + ".txt"] = {Owner("ModA", 2)};
+            }
+        }
+        TestDataTab t;
+        t.show();
+        t.show_data(big, mods, /*conflict_reversed=*/false, mods_dir, {},
+                    /*game_root_dir=*/{}, /*mods_subpath=*/"Data",
+                    /*deploy_prefix=*/"Data", /*deploy_include_mod_id=*/false);
+        QTreeWidget* tr = t.tree_widget();
+        pump_until_leaves(tr, kDirs * kPerDir);
+        check(count_leaves(tr->invisibleRootItem()) == kDirs * kPerDir,
+              "large registry materializes every file through chunked inserts");
+        check(find_item(tr, {"Data", "bigdir2", "file123.txt"}) != nullptr,
+              "a deep row of the large registry appears at its path");
+        check(find_item(tr, {"Data", "bigdir4", "file299.txt"}) != nullptr,
+              "the last chunk's last row appears at its path");
+    }
 
     // --- Double-click dispatches.
     bool got_open = false;
@@ -457,10 +577,12 @@ int main(int argc, char** argv) {
         isaac_registry["resources/main.exe"] = {Owner("RepentanceMod", 7)};
 
         TestDataTab isaac_tab;
+        isaac_tab.show();
         isaac_tab.show_data(isaac_registry, isaac_mods, /*conflict_reversed=*/false,
                             mods2_dir, {}, /*game_root_dir=*/{},
                             /*mods_subpath=*/"mods", /*deploy_prefix=*/"Data",
                             /*deploy_include_mod_id=*/true);
+        pump_until_populated(isaac_tab.tree_widget());
         auto* isaac_exe = find_item(isaac_tab.tree_widget(), {"resources", "main.exe"});
         check(isaac_exe != nullptr, "include-mod-id row appears in the data view");
         bool got_isaac = false;

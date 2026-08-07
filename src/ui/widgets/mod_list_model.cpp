@@ -112,6 +112,26 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
         return {};
     }
 
+    // Fold arrow column (pinned left of Name): separators always render when
+    // their band has content (flat rule); with nesting enabled, mods with
+    // children render too (their fold hides the subtree). Overwrite/MERGED and
+    // game-native rows never render an arrow.
+    if (role == Qt::DisplayRole && index.column() == Fold) {
+        const bool nestable_mod =
+            !mod.is_separator && !mod.is_overwrite && !mod.is_merged && !mod.is_game_native;
+        if (mod.is_separator || (nesting_enabled_ && nestable_mod))
+            return has_content(index.row())
+                       ? (mod.folded ? QString("\u25B6") : QString("\u25BC"))
+                       : QString();
+        return QString();
+    }
+
+    // Nesting indentation depth for the Name column (IndentDelegate consumes
+    // this to shift the text right). Always 0 while nesting is disabled, even
+    // if parent_id links persist.
+    if (role == kIndentDepthRole && index.column() == Name)
+        return nesting_depth(index.row());
+
     // --- Separator: colored background spans all columns ---
     if (mod.is_separator) {
         if (role == Qt::BackgroundRole) {
@@ -148,14 +168,6 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
         }
         if (role == Qt::DisplayRole) {
             switch (index.column()) {
-                // Fold arrow lives in its own column (pinned left of Name).
-                // It renders only when the separator has content to hide
-                // (band rule); an empty band shows a dead cell. No trailing
-                // space - the cell centers the glyph on its own.
-                case Fold:
-                    return separator_has_content(index.row())
-                               ? (mod.folded ? QString("\u25B6") : QString("\u25BC"))
-                               : QString();
                 case Name: return mod.name;
                 case Version: return QString();
                 case Flags: return QString();  // icons come via kFlagIconsRole
@@ -465,10 +477,13 @@ bool ModListModel::dropMimeData(const QMimeData* data, Qt::DropAction action,
                                 int row, int column, const QModelIndex& parent) {
     Q_UNUSED(column);
 
-    // QTreeView passes parent=valid, row=-1 when dropping ON an item.
-    // Convert to between-row semantics (like IsaacMM's FlatDropModel).
-    if (parent.isValid()) {
-        row = parent.row() + 1;
+    // QTreeView passes parent=valid, row=-1 when dropping ON an item. Convert
+    // to between-row semantics (like IsaacMM's FlatDropModel): an OnItem drop
+    // lands just below the item (and, with nesting, may link to it).
+    const bool on_item = parent.isValid();
+    const int drop_parent_row = on_item ? parent.row() : -1;
+    if (on_item) {
+        row = drop_parent_row + 1;
     } else if (row < 0) {
         // Drop onto empty viewport space (OnViewport): append at the end.
         // The Overwrite / game-native clamps below still apply.
@@ -490,15 +505,64 @@ bool ModListModel::dropMimeData(const QMimeData* data, Qt::DropAction action,
 
     if (sourceRows.isEmpty()) return false;
 
-    QList<int> validSources;
-    bool all_separators = true;
+    // Expand each valid source to its whole subtree (nesting ride-along):
+    // dragging a parent mod/separator moves its children with it so the block
+    // stays contiguous. Only when nesting is enabled - when the feature is off
+    // the links are inert and drops behave exactly like the flat list.
+    QVector<int> validSources;
     for (int r : sourceRows) {
-        if (r >= 0 && r < mods_.size() && !mods_[r].is_overwrite && !mods_[r].is_merged && !mods_[r].is_game_native) {
-            validSources.append(r);
-            if (!mods_[r].is_separator) all_separators = false;
+        if (r < 0 || r >= mods_.size()) continue;
+        if (mods_[r].is_overwrite || mods_[r].is_merged || mods_[r].is_game_native) continue;
+        if (validSources.contains(r)) continue;
+        validSources.append(r);
+        if (nesting_enabled_) {
+            for (int j = 0; j < mods_.size(); ++j)
+                if (j != r && !validSources.contains(j) && is_descendant_of(j, mods_[r].id))
+                    validSources.append(j);
         }
     }
     if (validSources.isEmpty()) return false;
+    std::sort(validSources.begin(), validSources.end());
+
+    bool all_separators = true;
+    for (int r : validSources) {
+        if (!mods_[r].is_separator) {
+            all_separators = false;
+            break;
+        }
+    }
+
+    // Nest link decision: only a single top-level source (one row in the drag,
+    // which may still drag its whole subtree) dropped ON an item of the same
+    // kind (mod->mod, separator->separator) becomes a child. The target must be
+    // nestable (not Overwrite/MERGED/game-native) and must not be the source
+    // itself or an ancestor of it (cycle guard).
+    QString new_parent_id;
+    if (on_item && sourceRows.size() == 1 && nesting_enabled_ &&
+        drop_parent_row >= 0 && drop_parent_row < mods_.size() &&
+        !validSources.isEmpty()) {
+        const auto& src = mods_[validSources[0]];  // the top-level dragged row
+        const auto& tgt = mods_[drop_parent_row];
+        const bool tgt_nestable =
+            !tgt.is_overwrite && !tgt.is_merged && !tgt.is_game_native;
+        if (src.is_separator == tgt.is_separator && tgt_nestable &&
+            tgt.id != src.id && !is_descendant_of(drop_parent_row, src.id))
+            new_parent_id = tgt.id;
+    }
+
+    // A nest-drop appends to the parent's subtree instead of landing directly
+    // below the parent: the new child goes AFTER the last current descendant,
+    // so repeated drops keep natural (not reversed) child order. With no
+    // children yet this is exactly the old "just below parent" position. In
+    // pre-removal coordinates; the removal-adjustment below shifts it for
+    // sources that were part of the subtree.
+    if (!new_parent_id.isEmpty()) {
+        int last_desc = drop_parent_row;
+        for (int j = 0; j < mods_.size(); ++j)
+            if (j != drop_parent_row && is_descendant_of(j, new_parent_id))
+                last_desc = std::max(last_desc, j);
+        row = last_desc + 1;
+    }
 
     QList<ModEntry> toMove;
     for (int r : validSources) {
@@ -539,6 +603,13 @@ bool ModListModel::dropMimeData(const QMimeData* data, Qt::DropAction action,
         if (nb_last >= 0 && targetRow <= nb_last)
             targetRow = nb_last + 1;
     }
+
+    // The first inserted entry is the single top-level source (the subtree
+    // block keeps internal order); stamp its new parent link if the nest
+    // gesture applied. Descendants keep their existing parent_id, which still
+    // points at the moved source - the block rides along as one unit.
+    if (!new_parent_id.isEmpty())
+        toMove[0].parent_id = new_parent_id;
 
     for (int i = 0; i < toMove.size(); ++i) {
         beginInsertRows({}, targetRow + i, targetRow + i);
@@ -650,8 +721,14 @@ void ModListModel::add_separator(const QString& id, const QString& name, const Q
 void ModListModel::rename_mod_in_place(int row, const QString& new_id, const QString& new_name) {
     if (row < 0 || row >= mods_.size()) return;
     if (mods_[row].is_overwrite || mods_[row].is_merged) return;
+    const QString old_id = mods_[row].id;
     mods_[row].id = new_id;
     mods_[row].name = new_name;
+    // Children that pointed at the old id follow the rename: nesting links are
+    // id-based, so the persisted mod_parents stay valid after a rename.
+    for (auto& m : mods_) {
+        if (m.parent_id == old_id) m.parent_id = new_id;
+    }
     emit dataChanged(index(row, Name), index(row, Version), {Qt::DisplayRole, Qt::EditRole});
     emit mod_list_changed();
 }
@@ -677,10 +754,23 @@ void ModListModel::remove_mod(const QString& id) {
 
     for (int i = 0; i < mods_.size(); ++i) {
         if (mods_[i].id == id && !mods_[i].is_overwrite && !mods_[i].is_merged && !mods_[i].is_game_native) {
+            // Detach the subtree instead of cascade-deleting: children of the
+            // removed row go back to top-level so no orphaned indentation is
+            // left behind (save_order would otherwise persist a dangling link).
+            bool detached = false;
+            for (auto& m : mods_) {
+                if (m.parent_id == id) { m.parent_id.clear(); detached = true; }
+            }
             beginRemoveRows({}, i, i);
             mods_.removeAt(i);
             endRemoveRows();
             renumber_priorities();
+            if (detached) {
+                apply_fold_state();
+                if (!mods_.isEmpty())
+                    emit dataChanged(index(0, Fold), index(mods_.size() - 1, Name),
+                                     {Qt::DisplayRole, kIndentDepthRole});
+            }
             emit mod_list_changed();
             return;
         }
@@ -715,39 +805,102 @@ void ModListModel::move_mod(const QString& id, int new_row) {
     if (src < 0 || src == new_row) return;
     if (mods_[src].is_game_native) return;
 
-    int ow_row = overwrite_row();
-    int mg_row = merged_row();
-    // Clamp to just before Overwrite/MERGED - after takeAt(src) they shift left by 1
-    if (mg_row >= 0 && new_row >= mg_row)
-        new_row = mg_row - 1;
-    if (ow_row >= 0 && new_row >= ow_row)
-        new_row = ow_row - 1;
-    // Game-native (unmanaged) mods stay on top. Only a separator may enter
-    // the band region (so its fold can hide the native mods); an in-band
-    // separator move snaps to just above the band to keep it contiguous.
-    // new_row is in post-removal coordinates, so the band bounds shift up by
-    // one when the moved row sat at or above the band.
-    int nb_first = native_band_first();
-    int nb_last = native_band_last();
-    if (src <= nb_first) {
-        nb_first -= 1;
-        nb_last -= 1;
+    // Subtree ride-along: with nesting on, the move block is the row plus all
+    // its descendants (current order), so a priority-arrow/keyboard move keeps
+    // the visual tree intact - same block semantics as dropMimeData. With the
+    // feature off (or a childless row) this degrades to the flat single-row
+    // move below.
+    QVector<int> block;
+    block.append(src);
+    if (nesting_enabled_) {
+        for (int i = 0; i < mods_.size(); ++i)
+            if (i != src && !block.contains(i) && is_descendant_of(i, mods_[src].id))
+                block.append(i);
+        std::sort(block.begin(), block.end());
     }
-    if (mods_[src].is_separator) {
-        if (nb_first >= 0 && new_row > nb_first && new_row <= nb_last)
-            new_row = nb_first;
-    } else if (nb_last >= 0 && new_row <= nb_last) {
-        new_row = nb_last + 1;
-    }
-    if (new_row < 0) new_row = 0;
-    // The clamps above can pull new_row back onto src (a no-op move); report
-    // it as such - Qt's movePersistentIndexes crashes on a self-move.
-    if (new_row == src) return;
 
-    beginMoveRows({}, src, src, {}, new_row + (new_row >= src ? 1 : 0));
-    auto item = mods_.takeAt(src);
-    mods_.insert(new_row, std::move(item));
-    endMoveRows();
+    if (block.size() == 1) {
+        int ow_row = overwrite_row();
+        int mg_row = merged_row();
+        // Clamp to just before Overwrite/MERGED - after takeAt(src) they shift left by 1
+        if (mg_row >= 0 && new_row >= mg_row)
+            new_row = mg_row - 1;
+        if (ow_row >= 0 && new_row >= ow_row)
+            new_row = ow_row - 1;
+        // Game-native (unmanaged) mods stay on top. Only a separator may enter
+        // the band region (so its fold can hide the native mods); an in-band
+        // separator move snaps to just above the band to keep it contiguous.
+        // new_row is in post-removal coordinates, so the band bounds shift up by
+        // one when the moved row sat at or above the band.
+        int nb_first = native_band_first();
+        int nb_last = native_band_last();
+        if (src <= nb_first) {
+            nb_first -= 1;
+            nb_last -= 1;
+        }
+        if (mods_[src].is_separator) {
+            if (nb_first >= 0 && new_row > nb_first && new_row <= nb_last)
+                new_row = nb_first;
+        } else if (nb_last >= 0 && new_row <= nb_last) {
+            new_row = nb_last + 1;
+        }
+        if (new_row < 0) new_row = 0;
+        // The clamps above can pull new_row back onto src (a no-op move); report
+        // it as such - Qt's movePersistentIndexes crashes on a self-move.
+        if (new_row == src) return;
+
+        beginMoveRows({}, src, src, {}, new_row + (new_row >= src ? 1 : 0));
+        auto item = mods_.takeAt(src);
+        mods_.insert(new_row, std::move(item));
+        endMoveRows();
+
+        renumber_priorities();
+        emit mod_list_changed();
+        return;
+    }
+
+    // Multi-row subtree: extract the whole block, then reinsert it contiguously
+    // at the target. new_row is a pre-removal "insert before this row" position
+    // (same convention as dropMimeData's row), converted post-removal below.
+    // Unrelated rows interleaved inside the subtree keep their relative order
+    // and close up around the block.
+    QList<ModEntry> blockEntries;
+    for (int r : block) blockEntries.append(mods_[r]);
+    for (int i = block.size() - 1; i >= 0; --i) {
+        beginRemoveRows({}, block[i], block[i]);
+        mods_.removeAt(block[i]);
+        endRemoveRows();
+    }
+    // Adjust target row: each removed block row before the target shifts it down.
+    int targetRow = new_row;
+    for (int r : block) {
+        if (r < targetRow) targetRow--;
+    }
+    if (targetRow < 0) targetRow = 0;
+    if (targetRow > mods_.size()) targetRow = mods_.size();
+    // Prevent inserting onto or past Overwrite (always at bottom).
+    int ow_row = overwrite_row();
+    if (ow_row >= 0 && targetRow > ow_row)
+        targetRow = ow_row;
+    // Native band (post-removal bounds). A separator block may enter the band
+    // region; any non-separator block is clamped below it. The block is uniform
+    // in kind (descendants always match the parent), so src decides the rule.
+    if (mods_[src].is_separator) {
+        int nb_first = native_band_first();
+        int nb_last = native_band_last();
+        if (nb_first >= 0 && targetRow > nb_first && targetRow <= nb_last)
+            targetRow = nb_first;
+    } else {
+        int nb_last = native_band_last();
+        if (nb_last >= 0 && targetRow <= nb_last)
+            targetRow = nb_last + 1;
+    }
+
+    for (int i = 0; i < blockEntries.size(); ++i) {
+        beginInsertRows({}, targetRow + i, targetRow + i);
+        mods_.insert(targetRow + i, blockEntries[i]);
+        endInsertRows();
+    }
 
     renumber_priorities();
     emit mod_list_changed();
@@ -958,8 +1111,13 @@ bool ModListModel::is_overwrite(int row) const {
 
 void ModListModel::set_folded(int row, bool folded) {
     if (row < 0 || row >= mods_.size()) return;
-    if (!mods_[row].is_separator) return;
-    if (mods_[row].folded == folded) return;
+    const auto& m = mods_[row];
+    if (m.is_overwrite || m.is_merged || m.is_game_native) return;
+    // No nesting gate here: the flag is preserved-but-inert when the feature is
+    // off (no arrow renders, has_content() is false, Pass B does not hide), so
+    // the load-time restore path works regardless of the gate. The interaction
+    // gate lives in the fold-click handler's has_content() guard.
+    if (m.folded == folded) return;
     mods_[row].folded = folded;
     // Repaint both the Fold cell (glyph flips \u25BC <-> \u25B6) and the Name
     // cell it used to prefix.
@@ -971,26 +1129,206 @@ void ModListModel::set_folded(int row, bool folded) {
     emit mod_list_changed();
 }
 
+void ModListModel::set_nesting_enabled(bool on) {
+    if (nesting_enabled_ == on) return;
+    nesting_enabled_ = on;
+    // Links are preserved-but-inert when off; toggling re-derives indentation
+    // and arrows. A full-column refresh covers both directions.
+    apply_fold_state();
+    emit dataChanged(index(0, Fold), index(mods_.size() - 1, Name),
+                     {Qt::DisplayRole, kIndentDepthRole});
+}
+
+bool ModListModel::is_descendant_of(int row, const QString& ancestor_id) const {
+    if (row < 0 || row >= mods_.size()) return false;
+    if (ancestor_id.isEmpty()) return false;
+    // Walk the parent_id chain up; a cycle or a missing id terminates the walk
+    // (a dangling link can never make a row a descendant of anyone).
+    QString cur = mods_[row].parent_id;
+    for (int hops = 0; hops <= mods_.size(); ++hops) {
+        if (cur == ancestor_id) return true;
+        if (cur.isEmpty()) return false;
+        int idx = -1;
+        for (int i = 0; i < mods_.size(); ++i) {
+            if (mods_[i].id == cur) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx < 0) return false;
+        cur = mods_[idx].parent_id;
+    }
+    return false;  // cycle guard
+}
+
+int ModListModel::nesting_depth(int row) const {
+    if (!nesting_enabled_) return 0;
+    if (row < 0 || row >= mods_.size()) return 0;
+    QString cur = mods_[row].parent_id;
+    int depth = 0;
+    for (; depth <= mods_.size(); ++depth) {
+        if (cur.isEmpty()) return depth;
+        int idx = -1;
+        for (int i = 0; i < mods_.size(); ++i) {
+            if (mods_[i].id == cur) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx < 0) return depth;  // dangling link: not nested under anyone
+        cur = mods_[idx].parent_id;
+    }
+    return depth;
+}
+
+bool ModListModel::has_content(int row) const {
+    if (row < 0 || row >= mods_.size()) return false;
+    const auto& m = mods_[row];
+    if (m.is_overwrite || m.is_merged) return false;
+    // Legacy flat rule (also the non-nesting behavior): only separators fold,
+    // and only when the row directly below is a hideable non-separator.
+    if (!nesting_enabled_) {
+        if (!m.is_separator) return false;
+        for (int i = row + 1; i < mods_.size(); ++i) {
+            if (mods_[i].is_separator || mods_[i].is_overwrite) return false;
+            return true;
+        }
+        return false;
+    }
+    // Nesting rule: any row whose fold hides something has content. A fold
+    // hides its subtree (descendants) and, for separators, its flat band (any
+    // hideable row below until the next non-descendant separator or Overwrite).
+    for (int j = 0; j < mods_.size(); ++j) {
+        if (j != row && is_descendant_of(j, m.id)) return true;
+    }
+    if (m.is_separator) {
+        for (int i = row + 1; i < mods_.size(); ++i) {
+            if (mods_[i].is_overwrite) return false;
+            if (mods_[i].is_separator) {
+                if (is_descendant_of(i, m.id)) continue;  // inside the scope
+                return false;                              // scope ends here
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+QVector<bool> ModListModel::compute_fold_hidden() const {
+    QVector<bool> hidden(mods_.size(), false);
+    // Pass A: folded separator band scopes. A folded separator hides everything
+    // below it until the next separator that is NOT a descendant of it, or
+    // Overwrite - so a folded parent swallows its nested separators' bands.
+    bool hiding = false;
+    QString hide_root;
+    for (int i = 0; i < mods_.size(); ++i) {
+        const auto& m = mods_[i];
+        if (hiding) {
+            if (m.is_overwrite) {
+                hiding = false;
+            } else if (m.is_separator && !is_descendant_of(i, hide_root)) {
+                hiding = false;  // a non-descendant separator ends the scope
+            } else {
+                hidden[i] = true;
+                continue;
+            }
+        }
+        if (m.is_separator && m.folded) {
+            hiding = true;
+            hide_root = m.id;
+        }
+    }
+    // Pass B: folded mod subtrees (a mod hidden by Pass A cannot start a scope,
+    // so its fold never leaks outward past the band that hides it). Gated on
+    // the nesting feature: while it is off, preserved folded mods are inert and
+    // never hide their subtree (preserve-but-inert).
+    if (nesting_enabled_) {
+        for (int i = 0; i < mods_.size(); ++i) {
+            const auto& m = mods_[i];
+            if (m.is_separator || m.is_overwrite || m.is_merged || m.is_game_native) continue;
+            if (!m.folded || hidden[i]) continue;
+            for (int j = 0; j < mods_.size(); ++j) {
+                if (j != i && is_descendant_of(j, m.id))
+                    hidden[j] = true;
+            }
+        }
+    }
+    return hidden;
+}
+
+bool ModListModel::is_row_fold_hidden(int row) const {
+    if (row < 0 || row >= mods_.size()) return false;
+    return compute_fold_hidden()[row];
+}
+
+void ModListModel::sanitize_parent_links() {
+    bool changed = false;
+    for (int i = 0; i < mods_.size(); ++i) {
+        const QString pid = mods_[i].parent_id;
+        if (pid.isEmpty()) continue;
+        int pidx = -1;
+        for (int j = 0; j < mods_.size(); ++j) {
+            if (mods_[j].id == pid) {
+                pidx = j;
+                break;
+            }
+        }
+        bool invalid = false;
+        if (pidx < 0) {
+            invalid = true;  // dangling
+        } else if (pidx == i) {
+            invalid = true;  // self-link
+        } else {
+            const auto& p = mods_[pidx];
+            if (p.is_overwrite || p.is_merged || p.is_game_native) {
+                invalid = true;  // unpinnable parent
+            } else if (p.is_separator != mods_[i].is_separator) {
+                invalid = true;  // kind mismatch (mod<->separator)
+            }
+        }
+        // A cycle (i is an ancestor of its own parent) also invalidates.
+        if (!invalid && is_descendant_of(pidx, mods_[i].id)) {
+            invalid = true;
+        }
+        if (invalid) {
+            mods_[i].parent_id.clear();
+            changed = true;
+        }
+    }
+    if (changed) {
+        apply_fold_state();
+        emit dataChanged(index(0, Fold), index(mods_.size() - 1, Name),
+                         {Qt::DisplayRole, kIndentDepthRole});
+    }
+}
+
+void ModListModel::restore_parent_links(const QHash<QString, QString>& links) {
+    if (links.isEmpty()) return;
+    for (auto& m : mods_) {
+        const auto it = links.constFind(m.id);
+        m.parent_id = (it != links.constEnd()) ? it.value() : QString();
+    }
+    sanitize_parent_links();
+    if (!mods_.isEmpty())
+        emit dataChanged(index(0, Fold), index(mods_.size() - 1, Name),
+                         {Qt::DisplayRole, kIndentDepthRole});
+}
+
+bool ModListModel::has_visible_descendant(int row, const QVector<bool>& visible) const {
+    if (row < 0 || row >= mods_.size() || !nesting_enabled_) return false;
+    for (int j = 0; j < mods_.size(); ++j)
+        if (j != row && visible.value(j, false) && is_descendant_of(j, mods_[row].id))
+            return true;
+    return false;
+}
+
 void ModListModel::apply_fold_state() {
     auto* tree = qobject_cast<QTreeView*>(mod_view_);
     if (!tree) return;
 
-    bool hiding = false;
-    for (int i = 0; i < mods_.size(); ++i) {
-        if (mods_[i].is_separator) {
-            hiding = mods_[i].folded;
-            continue;
-        }
-        if (hiding) {
-            if (mods_[i].is_overwrite) {
-                hiding = false;
-            } else {
-                tree->setRowHidden(i, QModelIndex(), true);
-                continue;
-            }
-        }
-        tree->setRowHidden(i, QModelIndex(), false);
-    }
+    const QVector<bool> hidden = compute_fold_hidden();
+    for (int i = 0; i < mods_.size(); ++i)
+        tree->setRowHidden(i, QModelIndex(), hidden[i]);
 }
 
 QIcon ModListModel::source_icon(const QString& source_type) const {
@@ -1013,6 +1351,7 @@ void ModListModel::reset_with_order(const QVector<ModEntry>& entries) {
     beginResetModel();
     mods_ = entries;
     endResetModel();
+    sanitize_parent_links();
     renumber_priorities();
     emit mod_list_changed();
 }
@@ -1033,20 +1372,6 @@ QString ModListModel::compute_separator_flags(int row) const {
     if (has_wins) return QString("+");
     if (has_losses) return QString("-");
     return QString();
-}
-
-bool ModListModel::separator_has_content(int row) const {
-    if (row < 0 || row >= mods_.size()) return false;
-    if (!mods_[row].is_separator) return false;
-    // Flat band rule: content exists if any hideable row (mod/native/merged -
-    // everything apply_fold_state hides) sits between this separator and the
-    // next separator or Overwrite. The scan stops at the first one, so this is
-    // O(1)-ish per call.
-    for (int i = row + 1; i < mods_.size(); ++i) {
-        if (mods_[i].is_separator || mods_[i].is_overwrite) return false;
-        return true;
-    }
-    return false;
 }
 
 void ModListModel::set_conflict_pairs(const QMap<QString, ConflictPairs>& pairs) {

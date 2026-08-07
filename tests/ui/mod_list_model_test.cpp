@@ -17,6 +17,7 @@
 //
 // Hermetic: offscreen platform, throwaway XDG_CONFIG_HOME, no network.
 #include "ui/widgets/mod_list_model.h"
+#include "ui/widgets/mod_table_view.h"
 #include "ui/widgets/column_toggle_header.h"
 #include "ui/settings/settings.h"
 #include "engine/theme/icon_manager.h"
@@ -26,6 +27,7 @@
 #include <QContextMenuEvent>
 #include <QFont>
 #include <QIcon>
+#include <QImage>
 #include <QMenu>
 #include <QMimeData>
 #include <QModelIndexList>
@@ -127,7 +129,7 @@ int main(int argc, char** argv) {
         }
         // This separator was appended between Enemy NPCs and Overwrite -> empty
         // band -> no content to hide -> Fold cell empty and not foldable.
-        check(!model.separator_has_content(r), "appended separator has an empty band");
+        check(!model.has_content(r), "appended separator has an empty band");
         if (r >= 0) {
             QVariant fold = model.data(model.index(r, ui::ModListModel::Fold), Qt::DisplayRole);
             check(fold.isValid() && fold.toString().isEmpty(),
@@ -139,7 +141,7 @@ int main(int argc, char** argv) {
             QVariant fold = model.data(model.index(skyui, ui::ModListModel::Fold), Qt::DisplayRole);
             check(fold.toString().isEmpty(),
                   "regular mod Fold cell is empty");
-            check(!model.separator_has_content(skyui),
+            check(!model.has_content(skyui),
                   "regular mod reports no fold content");
         }
     }
@@ -199,7 +201,7 @@ int main(int argc, char** argv) {
         e2.append(ow2);
         m2.reset_with_order(e2);
 
-        check(m2.separator_has_content(0), "separator with a mod below has content");
+        check(m2.has_content(0), "separator with a mod below has content");
         const QVariant fold_open =
             m2.data(m2.index(0, ui::ModListModel::Fold), Qt::DisplayRole);
         check(fold_open.isValid() && fold_open.toString() == QStringLiteral("\u25BC"),
@@ -242,7 +244,7 @@ int main(int argc, char** argv) {
         ow3.is_overwrite = true;
         e3.append(ow3);
         m3.reset_with_order(e3);
-        check(!m3.separator_has_content(0),
+        check(!m3.has_content(0),
               "separator directly above Overwrite has no content");
     }
 
@@ -814,6 +816,792 @@ int main(int argc, char** argv) {
         check(hdr->isSectionHidden(0),
               "programmatic setSectionHidden bypasses the menu lock");
         QObject::disconnect(hdr, nullptr, &view, nullptr);
+    }
+
+    // --- Visual nesting (per-instance "Nested mod list", default off) ---
+    // Mod-to-mod nesting: on-item single-source drops of the same kind become
+    // children (parent_id + indentation + a fold arrow that hides the subtree).
+    {
+        ui::ModListModel m;
+        check(!m.nesting_enabled(), "nesting gate defaults to off");
+        m.set_nesting_enabled(true);
+        check(m.nesting_enabled(), "nesting gate can be enabled");
+
+        QVector<ui::ModEntry> e;
+        for (const char* id : {"ModD", "ModA", "ModB", "ModC"}) {
+            ui::ModEntry mod;
+            mod.id = QString::fromLatin1(id);
+            mod.name = mod.id;
+            mod.enabled = true;
+            e.append(mod);
+        }
+        ui::ModEntry ow;
+        ow.id = ui::kOverwriteModId;
+        ow.name = ui::kOverwriteModName;
+        ow.enabled = true;
+        ow.is_overwrite = true;
+        e.append(ow);
+        m.reset_with_order(e);
+        // Rows: ModD(0), ModA(1), ModB(2), ModC(3), overwrite(4).
+
+        auto rid = [&](const char* id) { return row_with_id(m, id); };
+        check(m.nesting_depth(rid("ModD")) == 0, "top-level mod depth 0");
+
+        // Nest ModB under ModA (on-item drop, valid parent index).
+        QMimeData d1;
+        d1.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("2"));
+        check(m.dropMimeData(&d1, Qt::MoveAction, -1, 0, m.index(rid("ModA"), 0)),
+              "mod-on-mod nest drop accepted");
+        check(m.mods()[rid("ModB")].parent_id == QLatin1String("ModA"),
+              "mod-on-mod drop links child to parent");
+        check(m.nesting_depth(rid("ModB")) == 1, "nested mod depth 1");
+        check(rid("ModB") == rid("ModA") + 1, "nested mod lands directly below its parent");
+        check(m.has_content(rid("ModA")), "parent mod with a child has content");
+        check(m.data(m.index(rid("ModA"), ui::ModListModel::Fold), Qt::DisplayRole)
+                      .toString() == QStringLiteral("\u25BC"),
+              "mod with children shows down-arrow in Fold column");
+
+        // Grandchild: ModC under ModB.
+        QMimeData d2;
+        d2.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("3"));
+        check(m.dropMimeData(&d2, Qt::MoveAction, -1, 0, m.index(rid("ModB"), 0)),
+              "grandchild nest drop accepted");
+        check(m.mods()[rid("ModC")].parent_id == QLatin1String("ModB"),
+              "grandchild links to its immediate parent");
+        check(m.nesting_depth(rid("ModC")) == 2, "grandchild depth 2");
+        check(m.has_content(rid("ModB")), "intermediate mod has content");
+
+        // Folding the root hides the whole subtree, never unrelated mods.
+        m.set_folded(rid("ModA"), true);
+        check(m.mods()[rid("ModA")].folded, "mod fold applies");
+        check(m.is_row_fold_hidden(rid("ModB")) && m.is_row_fold_hidden(rid("ModC")),
+              "folding the root hides the whole subtree");
+        check(!m.is_row_fold_hidden(rid("ModD")), "unrelated mod stays visible");
+        check(m.data(m.index(rid("ModA"), ui::ModListModel::Fold), Qt::DisplayRole)
+                      .toString() == QStringLiteral("\u25B6"),
+              "folded mod shows right-arrow in Fold column");
+        m.set_folded(rid("ModA"), false);
+
+        // Cycle guard: dragging a parent onto its own child never links.
+        QMimeData dcyc;
+        dcyc.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("1"));
+        check(m.dropMimeData(&dcyc, Qt::MoveAction, -1, 0, m.index(rid("ModB"), 0)),
+              "cycle drop still accepted as a move");
+        check(m.mods()[rid("ModA")].parent_id.isEmpty(),
+              "cycle guard: parent never nests under its own child");
+        check(m.mods()[rid("ModB")].parent_id == QLatin1String("ModA"),
+              "existing child link untouched by the cycle drop");
+
+        // Subtree ride-along: dragging a parent moves its whole block, and
+        // re-parenting under ModD moves the block with its children attached.
+        QMimeData dsub;
+        dsub.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("1"));
+        check(m.dropMimeData(&dsub, Qt::MoveAction, -1, 0, m.index(rid("ModD"), 0)),
+              "subtree re-parent drop accepted");
+        check(m.mods()[rid("ModA")].parent_id == QLatin1String("ModD"),
+              "block re-parented under the new target");
+        check(m.mods()[rid("ModB")].parent_id == QLatin1String("ModA") &&
+                  m.mods()[rid("ModC")].parent_id == QLatin1String("ModB"),
+              "children keep their intra-block links");
+        check(rid("ModA") == rid("ModD") + 1 && rid("ModB") == rid("ModA") + 1 &&
+                  rid("ModC") == rid("ModB") + 1,
+              "subtree block stays contiguous under the new parent");
+        check(m.nesting_depth(rid("ModA")) == 1 && m.nesting_depth(rid("ModB")) == 2 &&
+                  m.nesting_depth(rid("ModC")) == 3,
+              "re-parented chain keeps increasing depth");
+        check(m.has_content(rid("ModD")), "root of the re-parented block has content");
+    }
+
+    // Nest-drop ordering: repeated drops onto the same parent APPEND — each new
+    // child lands after the parent's last current descendant (last child), not
+    // directly below the parent (which would make it the first child and stack
+    // the children in reverse drop order).
+    {
+        ui::ModListModel m;
+        m.set_nesting_enabled(true);
+        QVector<ui::ModEntry> e;
+        for (const char* id : {"ModA", "ModB", "ModC"}) {
+            ui::ModEntry mod;
+            mod.id = QString::fromLatin1(id);
+            mod.name = mod.id;
+            mod.enabled = true;
+            e.append(mod);
+        }
+        ui::ModEntry ow;
+        ow.id = ui::kOverwriteModId;
+        ow.name = ui::kOverwriteModName;
+        ow.enabled = true;
+        ow.is_overwrite = true;
+        e.append(ow);
+        m.reset_with_order(e);
+        // Rows: ModA(0), ModB(1), ModC(2), overwrite(3).
+        auto rid = [&](const char* id) { return row_with_id(m, id); };
+
+        // First nest: no children yet, so ModB lands right below ModA.
+        QMimeData d1;
+        d1.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("1"));
+        check(m.dropMimeData(&d1, Qt::MoveAction, -1, 0, m.index(rid("ModA"), 0)),
+              "first nest drop accepted");
+        check(rid("ModB") == rid("ModA") + 1,
+              "first child lands directly below its parent");
+
+        // Second nest: ModC must become the LAST child (after ModB), not the
+        // first one squeezed in between the parent and ModB.
+        QMimeData d2;
+        d2.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("2"));
+        check(m.dropMimeData(&d2, Qt::MoveAction, -1, 0, m.index(rid("ModA"), 0)),
+              "second nest drop accepted");
+        check(rid("ModC") == rid("ModB") + 1,
+              "second child appends as the LAST child, not the first");
+        check(m.nesting_depth(rid("ModB")) == 1 && m.nesting_depth(rid("ModC")) == 1,
+              "both children sit at depth 1");
+
+        // Separator variant of the same rule: dropping 02.x separators onto a
+        // parent separator keeps them in drop order, not reversed.
+        ui::ModListModel s;
+        s.set_nesting_enabled(true);
+        QVector<ui::ModEntry> se;
+        for (const char* id : {"SepP_separator", "SepC_separator", "SepD_separator"}) {
+            ui::ModEntry sep;
+            sep.id = QString::fromLatin1(id);
+            sep.name = id;
+            sep.enabled = true;
+            sep.is_separator = true;
+            se.append(sep);
+        }
+        ui::ModEntry sow;
+        sow.id = ui::kOverwriteModId;
+        sow.name = ui::kOverwriteModName;
+        sow.enabled = true;
+        sow.is_overwrite = true;
+        se.append(sow);
+        s.reset_with_order(se);
+        // Rows: SepP(0), SepC(1), SepD(2), overwrite(3).
+        auto srid = [&](const char* id) { return row_with_id(s, id); };
+
+        QMimeData sd1;
+        sd1.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("1"));
+        check(s.dropMimeData(&sd1, Qt::MoveAction, -1, 0, s.index(srid("SepP_separator"), 0)),
+              "separator nest drop #1 accepted");
+        QMimeData sd2;
+        sd2.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("2"));
+        check(s.dropMimeData(&sd2, Qt::MoveAction, -1, 0, s.index(srid("SepP_separator"), 0)),
+              "separator nest drop #2 accepted");
+        check(srid("SepD_separator") == srid("SepC_separator") + 1,
+              "nested separators keep drop order (SepD last child, not first)");
+        check(s.mods()[srid("SepC_separator")].parent_id == QLatin1String("SepP_separator") &&
+                  s.mods()[srid("SepD_separator")].parent_id == QLatin1String("SepP_separator"),
+              "both nested separators link to the parent");
+    }
+
+    // Separator nesting + nesting-aware band scope end: a folded separator hides
+    // its band up to the next NON-descendant separator; nested separators and
+    // their bands are swallowed by the parent's fold.
+    {
+        ui::ModListModel m;
+        m.set_nesting_enabled(true);
+        QVector<ui::ModEntry> e;
+        ui::ModEntry sepP;
+        sepP.id = QStringLiteral("SepP_separator");
+        sepP.name = QStringLiteral("SepP");
+        sepP.enabled = true;
+        sepP.is_separator = true;
+        e.append(sepP);
+        for (const char* id : {"ModX", "ModY"}) {
+            ui::ModEntry mod;
+            mod.id = QString::fromLatin1(id);
+            mod.name = mod.id;
+            mod.enabled = true;
+            e.append(mod);
+        }
+        ui::ModEntry sepN;
+        sepN.id = QStringLiteral("SepN_separator");
+        sepN.name = QStringLiteral("SepN");
+        sepN.enabled = true;
+        sepN.is_separator = true;
+        e.append(sepN);
+        ui::ModEntry sepQ;
+        sepQ.id = QStringLiteral("SepQ_separator");
+        sepQ.name = QStringLiteral("SepQ");
+        sepQ.enabled = true;
+        sepQ.is_separator = true;
+        e.append(sepQ);
+        ui::ModEntry modZ;
+        modZ.id = QStringLiteral("ModZ");
+        modZ.name = QStringLiteral("ModZ");
+        modZ.enabled = true;
+        e.append(modZ);
+        ui::ModEntry ow;
+        ow.id = ui::kOverwriteModId;
+        ow.name = ui::kOverwriteModName;
+        ow.enabled = true;
+        ow.is_overwrite = true;
+        e.append(ow);
+        m.reset_with_order(e);
+        // Rows: SepP(0), ModX(1), ModY(2), SepN(3), SepQ(4), ModZ(5), overwrite(6).
+
+        auto rid = [&](const char* id) { return row_with_id(m, id); };
+
+        // Nest SepN under SepP (separator -> separator).
+        QMimeData ds;
+        ds.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("3"));
+        check(m.dropMimeData(&ds, Qt::MoveAction, -1, 0, m.index(rid("SepP_separator"), 0)),
+              "separator-on-separator nest drop accepted");
+        check(m.mods()[rid("SepN_separator")].parent_id == QLatin1String("SepP_separator"),
+              "nested separator links to its parent separator");
+        check(rid("SepN_separator") == rid("SepP_separator") + 1,
+              "nested separator lands directly below its parent");
+        check(m.nesting_depth(rid("SepN_separator")) == 1,
+              "nested separator depth 1");
+        check(m.has_content(rid("SepP_separator")),
+              "separator with a nested separator child has content");
+
+        // Rows now: SepP(0), SepN(1), ModX(2), ModY(3), SepQ(4), ModZ(5), overwrite(6).
+        check(m.has_content(rid("SepN_separator")),
+              "nested separator with a band below has content");
+
+        // Fold SepN: hides ModX + ModY, stops at the non-descendant SepQ.
+        m.set_folded(rid("SepN_separator"), true);
+        check(m.is_row_fold_hidden(rid("ModX")) && m.is_row_fold_hidden(rid("ModY")),
+              "folding a nested separator hides its band");
+        check(!m.is_row_fold_hidden(rid("SepQ_separator")) &&
+                  !m.is_row_fold_hidden(rid("ModZ")),
+              "non-descendant separator ends the fold scope");
+        check(!m.is_row_fold_hidden(rid("SepP_separator")),
+              "parent separator stays visible above its child's fold");
+
+        // Fold SepP too: swallows SepN's fold AND its band, still stops at SepQ.
+        m.set_folded(rid("SepP_separator"), true);
+        check(m.is_row_fold_hidden(rid("SepN_separator")) &&
+                  m.is_row_fold_hidden(rid("ModX")) && m.is_row_fold_hidden(rid("ModY")),
+              "folding the parent swallows the nested separator and its band");
+        check(!m.is_row_fold_hidden(rid("SepQ_separator")),
+              "parent fold still ends at the non-descendant separator");
+        m.set_folded(rid("SepP_separator"), false);
+        m.set_folded(rid("SepN_separator"), false);
+
+        // A separator's fold scope covers mods below it regardless of nesting.
+        m.set_folded(rid("SepQ_separator"), true);
+        check(m.is_row_fold_hidden(rid("ModZ")),
+              "folding SepQ hides the mods in its band");
+        check(!m.is_row_fold_hidden(rid("ModY")),
+              "SepQ fold does not reach above the non-descendant SepN");
+        m.set_folded(rid("SepQ_separator"), false);
+    }
+
+    // No-link cases: kind mismatch (mod<->separator), multi-row drags, and
+    // unpinnable targets (Overwrite/MERGED/game-native) never nest.
+    {
+        // Clean model (no native band): flush-below-separator and no-link rules.
+        ui::ModListModel m;
+        m.set_nesting_enabled(true);
+        QVector<ui::ModEntry> e;
+        ui::ModEntry sep;
+        sep.id = QStringLiteral("SepS_separator");
+        sep.name = QStringLiteral("SepS");
+        sep.enabled = true;
+        sep.is_separator = true;
+        e.append(sep);
+        for (const char* id : {"ModP", "ModQ"}) {
+            ui::ModEntry mod;
+            mod.id = QString::fromLatin1(id);
+            mod.name = mod.id;
+            mod.enabled = true;
+            e.append(mod);
+        }
+        ui::ModEntry ow;
+        ow.id = ui::kOverwriteModId;
+        ow.name = ui::kOverwriteModName;
+        ow.enabled = true;
+        ow.is_overwrite = true;
+        e.append(ow);
+        m.reset_with_order(e);
+        // Rows: SepS(0), ModP(1), ModQ(2), overwrite(3).
+        auto rid = [&](const char* id) { return row_with_id(m, id); };
+
+        // Mod dropped ON a separator: lands flush in the band, no link.
+        QMimeData dmod;
+        dmod.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("1"));
+        check(m.dropMimeData(&dmod, Qt::MoveAction, -1, 0, m.index(rid("SepS_separator"), 0)),
+              "mod-on-separator drop accepted");
+        check(m.mods()[rid("ModP")].parent_id.isEmpty(),
+              "mod dropped on a separator never nests");
+        check(rid("ModP") == rid("SepS_separator") + 1,
+              "mod dropped on a separator lands flush in its band");
+
+        // Separator dropped ON a mod: no link.
+        QMimeData dsep;
+        dsep.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("0"));
+        check(m.dropMimeData(&dsep, Qt::MoveAction, -1, 0, m.index(rid("ModP"), 0)),
+              "separator-on-mod drop accepted");
+        check(m.mods()[rid("SepS_separator")].parent_id.isEmpty(),
+              "separator dropped on a mod never nests");
+
+        // Multi-row drag onto an item: never links.
+        QMimeData dmulti;
+        dmulti.setData(QLatin1String(ui::kModListMimeType),
+                       QByteArrayLiteral("1,2"));  // ModP + ModQ
+        check(m.dropMimeData(&dmulti, Qt::MoveAction, -1, 0, m.index(rid("ModP"), 0)),
+              "multi-row on-item drop accepted");
+        check(m.mods()[rid("ModP")].parent_id.isEmpty() &&
+                  m.mods()[rid("ModQ")].parent_id.isEmpty(),
+              "multi-row drag never nests");
+
+        // Overwrite target: never a parent.
+        QMimeData dow;
+        dow.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("1"));
+        check(m.dropMimeData(&dow, Qt::MoveAction, -1, 0,
+                             m.index(rid("__overwrite__"), 0)),
+              "drop on Overwrite accepted");
+        check(m.mods()[rid("ModP")].parent_id.isEmpty(),
+              "Overwrite never becomes a parent");
+
+        // Gate-off: preserved links become inert - no depth, no arrow, no fold
+        // action, and drops never create links; re-enabling restores it all.
+        QMimeData dlink;
+        dlink.setData(QLatin1String(ui::kModListMimeType),
+                      QByteArray::number(rid("ModQ")));
+        check(m.dropMimeData(&dlink, Qt::MoveAction, -1, 0, m.index(rid("ModP"), 0)),
+              "link-creating drop accepted while on");
+        check(m.mods()[rid("ModQ")].parent_id == QLatin1String("ModP"),
+              "gate-on drop links the mod");
+        const QString preserved = m.mods()[rid("ModQ")].parent_id;
+        m.set_nesting_enabled(false);
+        check(m.nesting_depth(rid("ModQ")) == 0,
+              "gate-off drops indentation to 0");
+        check(!m.has_content(rid("ModP")),
+              "gate-off hides mod content/arrows");
+        check(m.data(m.index(rid("ModP"), ui::ModListModel::Fold), Qt::DisplayRole)
+                      .toString().isEmpty(),
+              "gate-off shows no fold arrow on a mod with preserved children");
+        m.set_folded(rid("ModP"), true);
+        check(m.mods()[rid("ModP")].folded,
+              "gate-off fold action preserves the flag (inert)");
+        check(!m.is_row_fold_hidden(rid("ModQ")),
+              "gate-off fold never hides the preserved subtree");
+        check(m.mods()[rid("ModQ")].parent_id == preserved,
+              "gate-off preserves the parent_id links (inert, not cleared)");
+        QMimeData dgateoff;
+        dgateoff.setData(QLatin1String(ui::kModListMimeType),
+                         QByteArray::number(rid("ModP")));
+        check(m.dropMimeData(&dgateoff, Qt::MoveAction, -1, 0, m.index(rid("ModQ"), 0)),
+              "gate-off drop accepted");
+        check(m.mods()[rid("ModP")].parent_id.isEmpty(),
+              "gate-off drop never creates a NEW link");
+        check(m.mods()[rid("ModQ")].parent_id == preserved,
+              "gate-off keeps the preserved link untouched");
+        m.set_nesting_enabled(true);
+        check(m.nesting_depth(rid("ModQ")) == 1 && m.has_content(rid("ModP")),
+              "re-enabling restores depth and content");
+    }
+
+    // Game-native target (with a native band present): never a parent, and the
+    // drop clamps below the band as usual.
+    {
+        ui::ModListModel m;
+        m.set_nesting_enabled(true);
+        QVector<ui::ModEntry> e;
+        ui::ModEntry nat;
+        nat.id = QStringLiteral("Native.esm");
+        nat.name = QStringLiteral("Native.esm");
+        nat.enabled = true;
+        nat.is_game_native = true;
+        e.append(nat);
+        ui::ModEntry mod;
+        mod.id = QStringLiteral("ModQ");
+        mod.name = QStringLiteral("ModQ");
+        mod.enabled = true;
+        e.append(mod);
+        ui::ModEntry ow;
+        ow.id = ui::kOverwriteModId;
+        ow.name = ui::kOverwriteModName;
+        ow.enabled = true;
+        ow.is_overwrite = true;
+        e.append(ow);
+        m.reset_with_order(e);
+        QMimeData dnat;
+        dnat.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("1"));
+        check(m.dropMimeData(&dnat, Qt::MoveAction, -1, 0, m.index(0, 0)),
+              "drop on a game-native row accepted");
+        check(m.mods()[row_with_id(m, "ModQ")].parent_id.isEmpty(),
+              "game-native row never becomes a parent");
+        check(m.native_band_last() == 0,
+              "native band intact after the drop");
+    }
+
+    // sanitize_parent_links() at load: dangling, kind-mismatched, self-linked,
+    // cycled, overwrite/native-parented and missing links are all cleared;
+    // valid chains survive.
+    {
+        ui::ModListModel m;
+        QVector<ui::ModEntry> e;
+        for (const char* id : {"ModA", "ModB", "ModC", "ModD", "ModE", "ModF",
+                               "ModG", "ModH", "ModI", "ModJ"}) {
+            ui::ModEntry mod;
+            mod.id = QString::fromLatin1(id);
+            mod.name = mod.id;
+            mod.enabled = true;
+            e.append(mod);
+        }
+        e[1].parent_id = QStringLiteral("ModA");          // valid child
+        e[2].parent_id = QStringLiteral("ModB");          // valid grandchild
+        e[3].parent_id = QStringLiteral("ghost");         // dangling
+        e[4].parent_id = QStringLiteral("SepS_separator");// mod under separator
+        e[5].parent_id = QStringLiteral("ModF");          // self-link
+        e[6].parent_id = QStringLiteral("__overwrite__"); // under Overwrite
+        e[7].parent_id = QStringLiteral("ModI");          // cycle A
+        e[8].parent_id = QStringLiteral("ModH");          // cycle B
+        e[9].parent_id = QStringLiteral("Native.esm");    // under game-native
+        ui::ModEntry sep;
+        sep.id = QStringLiteral("SepS_separator");
+        sep.name = QStringLiteral("SepS");
+        sep.enabled = true;
+        sep.is_separator = true;
+        e.append(sep);
+        ui::ModEntry sepT;
+        sepT.id = QStringLiteral("SepT_separator");
+        sepT.name = QStringLiteral("SepT");
+        sepT.enabled = true;
+        sepT.is_separator = true;
+        sepT.parent_id = QStringLiteral("ModA");          // separator under mod
+        e.append(sepT);
+        ui::ModEntry nat;
+        nat.id = QStringLiteral("Native.esm");
+        nat.name = QStringLiteral("Native.esm");
+        nat.enabled = true;
+        nat.is_game_native = true;
+        e.append(nat);
+        ui::ModEntry ow;
+        ow.id = ui::kOverwriteModId;
+        ow.name = ui::kOverwriteModName;
+        ow.enabled = true;
+        ow.is_overwrite = true;
+        e.append(ow);
+        m.reset_with_order(e);  // runs sanitize_parent_links
+
+        auto pid = [&](const char* id) {
+            return m.mods()[row_with_id(m, id)].parent_id;
+        };
+        check(pid("ModB") == QLatin1String("ModA") && pid("ModC") == QLatin1String("ModB"),
+              "valid nesting chain survives sanitize");
+        check(pid("ModD").isEmpty(), "dangling parent link cleared");
+        check(pid("ModE").isEmpty(), "mod-under-separator link cleared");
+        check(pid("ModF").isEmpty(), "self-link cleared");
+        check(pid("ModG").isEmpty(), "overwrite-parented link cleared");
+        check(!(pid("ModH") == QLatin1String("ModI") && pid("ModI") == QLatin1String("ModH")),
+              "cycle links broken (no 2-cycle survives)");
+        check(pid("ModJ").isEmpty(), "game-native-parented link cleared");
+        check(pid("SepT_separator").isEmpty(), "separator-under-mod link cleared");
+    }
+
+    // Persistence/lifecycle: restore_parent_links (the instance.toml load
+    // path), remove_mod subtree detach, rename_mod_in_place link cascade.
+    {
+        ui::ModListModel m;
+        m.add_mod(QStringLiteral("ModA"), QStringLiteral("ModA"), QString());
+        m.add_mod(QStringLiteral("ModB"), QStringLiteral("ModB"), QString());
+        m.add_mod(QStringLiteral("ModC"), QStringLiteral("ModC"), QString());
+        m.add_mod(QStringLiteral("ModD"), QStringLiteral("ModD"), QString());
+
+        // Load-time restore from instance.toml's mod_parents.
+        QHash<QString, QString> links;
+        links.insert(QStringLiteral("ModB"), QStringLiteral("ModA"));
+        links.insert(QStringLiteral("ModC"), QStringLiteral("ModB"));
+        links.insert(QStringLiteral("ModD"), QStringLiteral("ghost"));
+        m.restore_parent_links(links);
+        auto pid = [&](const char* id) {
+            return m.mods()[row_with_id(m, id)].parent_id;
+        };
+        check(pid("ModB") == QLatin1String("ModA") && pid("ModC") == QLatin1String("ModB"),
+              "restore_parent_links applies valid links");
+        check(pid("ModD").isEmpty(),
+              "restore_parent_links sanitizes dangling links");
+
+        // remove_mod detaches the subtree instead of cascade-deleting it.
+        m.remove_mod(QStringLiteral("ModA"));
+        check(pid("ModB").isEmpty(),
+              "remove_mod detaches children (no orphaned link)");
+        check(row_with_id(m, "ModB") >= 0 && row_with_id(m, "ModC") >= 0,
+              "remove_mod keeps the detached subtree in the list");
+
+        // rename_mod_in_place cascades id-based parent links.
+        const int row = row_with_id(m, "ModC");
+        m.rename_mod_in_place(row, QStringLiteral("ModC2"), QStringLiteral("ModC2"));
+        check(pid("ModC2") == QLatin1String("ModB"),
+              "rename cascades parent links to children");
+    }
+
+    // move_mod subtree ride-along: with nesting on, moving a parent moves its
+    // whole block (children + grandchildren) contiguously even when unrelated
+    // rows sit between them; gate-off degrades to the flat single-row move.
+    {
+        ui::ModListModel m;
+        // Interleaved on purpose: block rows sit at 1 (P), 3 (C), 4 (G).
+        for (const char* id : {"U", "P", "V", "C", "G"})
+            m.add_mod(QString::fromLatin1(id), QString::fromLatin1(id), QString());
+        QHash<QString, QString> links;
+        links.insert(QStringLiteral("C"), QStringLiteral("P"));
+        links.insert(QStringLiteral("G"), QStringLiteral("C"));
+        m.restore_parent_links(links);
+        m.set_nesting_enabled(true);
+
+        m.move_mod(QStringLiteral("P"), 0);
+        QVector<QString> order;
+        for (const auto& mod : m.mods()) order.append(mod.id);
+        check(order == (QVector<QString>{QStringLiteral("P"), QStringLiteral("C"),
+                                          QStringLiteral("G"), QStringLiteral("U"),
+                                          QStringLiteral("V"), QStringLiteral("__overwrite__")}),
+              "move_mod rides the whole subtree along (contiguous block)");
+        auto pid = [&](const char* id) {
+            return m.mods()[row_with_id(m, id)].parent_id;
+        };
+        check(pid("C") == QLatin1String("P") && pid("G") == QLatin1String("C"),
+              "move_mod keeps intra-block parent links intact");
+
+        // Gate-off: the preserved links are inert, so only P moves.
+        m.set_nesting_enabled(false);
+        m.move_mod(QStringLiteral("P"), 3);
+        order.clear();
+        for (const auto& mod : m.mods()) order.append(mod.id);
+        check(order == (QVector<QString>{QStringLiteral("C"), QStringLiteral("G"),
+                                          QStringLiteral("U"), QStringLiteral("P"),
+                                          QStringLiteral("V"), QStringLiteral("__overwrite__")}),
+              "gate-off move_mod is a flat single-row move");
+    }
+
+    // IndentDelegate regression: a nested mod's Name cell must render exactly
+    // ONE checkbox at the NORMAL (left) position - the name shifts right, the
+    // checkbox never does, and there is no leftover duplicate. Render a depth-0
+    // and a depth-1 row with EMPTY names (Name cell = checkbox only) and require
+    // the two Name-cell crops to be pixel-identical: the old delegate cleared
+    // HasCheckIndicator on the background pass, but QStyledItemDelegate::paint
+    // re-runs initStyleOption (re-reading CheckStateRole) and drew the checkbox
+    // TWICE - once at the normal spot, once shifted next to the name.
+    {
+        ui::ModListModel rm;
+        rm.set_nesting_enabled(true);
+        QVector<ui::ModEntry> re;
+        for (const char* id : {"Parent", "Child"}) {
+            ui::ModEntry mod;
+            mod.id = QString::fromLatin1(id);
+            mod.name.clear();  // empty: Name cell holds just the checkbox
+            mod.enabled = true;
+            re.append(mod);
+        }
+        ui::ModEntry row2;
+        row2.id = ui::kOverwriteModId;
+        row2.name = ui::kOverwriteModName;
+        row2.enabled = true;
+        row2.is_overwrite = true;
+        re.append(row2);
+        rm.reset_with_order(re);
+        ui::ModTableView rview;
+        rview.setModel(&rm);
+        rview.setAlternatingRowColors(false);
+        QMimeData rd;
+        rd.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("1"));
+        rm.dropMimeData(&rd, Qt::MoveAction, -1, 0,
+                        rm.index(row_with_id(rm, "Parent"), 0));
+        check(rm.nesting_depth(row_with_id(rm, "Child")) == 1,
+              "nested child renders at depth 1");
+        rview.resize(480, 140);
+        rview.show();
+        rview.setCurrentIndex(QModelIndex());  // no focus ring on row 0
+        rview.clearFocus();
+        QCoreApplication::processEvents();
+        const QImage shot = rview.viewport()->grab().toImage();
+        const QRect cell0 =
+            rview.visualRect(rm.index(row_with_id(rm, "Parent"), ui::ModListModel::Name));
+        const QRect cell1 =
+            rview.visualRect(rm.index(row_with_id(rm, "Child"), ui::ModListModel::Name));
+        if (cell0.isValid() && cell1.isValid() && !shot.isNull()) {
+            const QImage c0 = shot.copy(cell0);
+            const QImage c1 = shot.copy(cell1);
+            check(c0 == c1,
+                  "nested Name cell draws exactly one checkbox at the normal position");
+        } else {
+            check(false, "nested Name cell render geometry valid");
+        }
+    }
+
+    // IndentDelegate regression: a nested SEPARATOR must indent clearly at
+    // EVERY level, not just from ~depth 4. Separator names are CENTERED (the
+    // "Center text on separators" default) and centered text inside a rect
+    // whose left edge shifts by `shift` moves its visual center by only
+    // shift/2 - so depth 1 landed at 7px (indistinguishable from a flat row),
+    // depth 4 at 28px, which is why shallow nesting looked flat. The delegate
+    // doubles the shift for centered rows so each level moves a full
+    // kIndentStep. Render a 5-deep separator chain and require the Name text
+    // to start clearly further right at each successive depth.
+    {
+        const bool old_center = Settings::instance().center_separator_text();
+        Settings::instance().set_center_separator_text(true);
+        ui::ModListModel sm;
+        sm.set_nesting_enabled(true);
+        QVector<ui::ModEntry> se;
+        for (const char* id : {"A", "B", "C", "D", "E"}) {
+            ui::ModEntry sep;
+            sep.id = QString::fromLatin1(id);
+            sep.name = QStringLiteral("Separator %1").arg(QString::fromLatin1(id));
+            sep.enabled = true;
+            sep.is_separator = true;
+            sep.separator_color = "#888888";
+            se.append(sep);
+        }
+        ui::ModEntry sow;
+        sow.id = ui::kOverwriteModId;
+        sow.name = ui::kOverwriteModName;
+        sow.enabled = true;
+        sow.is_overwrite = true;
+        se.append(sow);
+        sm.reset_with_order(se);
+        auto nest_onto = [&](const char* child, const char* parent) {
+            QMimeData d;
+            d.setData(QLatin1String(ui::kModListMimeType),
+                      QByteArray::number(row_with_id(sm, child)));
+            sm.dropMimeData(&d, Qt::MoveAction, -1, 0,
+                            sm.index(row_with_id(sm, parent), 0));
+        };
+        nest_onto("B", "A");
+        nest_onto("C", "B");
+        nest_onto("D", "C");
+        nest_onto("E", "D");
+        check(sm.nesting_depth(row_with_id(sm, "E")) == 4,
+              "5-deep separator chain nests to depth 4");
+        ui::ModTableView sv;
+        sv.setModel(&sm);
+        sv.setAlternatingRowColors(false);
+        sv.setColumnWidth(ui::ModListModel::Name, 260);
+        sv.resize(700, 180);
+        sv.show();
+        sv.setCurrentIndex(QModelIndex());
+        sv.clearFocus();
+        QCoreApplication::processEvents();
+        const QImage sshot = sv.viewport()->grab().toImage();
+        auto first_content_x = [&](const QImage& cell) -> int {
+            const QRgb bg = cell.pixel(0, 0);
+            const int y0 = cell.height() / 3;
+            const int y1 = (2 * cell.height()) / 3;
+            for (int x = 0; x < cell.width(); ++x)
+                for (int y = y0; y <= y1; ++y) {
+                    const QRgb p = cell.pixel(x, y);
+                    if (qAbs(qRed(p) - qRed(bg)) > 40 ||
+                        qAbs(qGreen(p) - qGreen(bg)) > 40 ||
+                        qAbs(qBlue(p) - qBlue(bg)) > 40)
+                        return x;
+                }
+            return -1;
+        };
+        QVector<int> starts;
+        bool geom_ok = !sshot.isNull();
+        for (const char* id : {"A", "B", "C", "D", "E"}) {
+            const QRect cell = sv.visualRect(sm.index(row_with_id(sm, id),
+                                                      ui::ModListModel::Name));
+            if (!cell.isValid()) {
+                geom_ok = false;
+                break;
+            }
+            const int sx = first_content_x(sshot.copy(cell));
+            if (sx < 0) {
+                geom_ok = false;
+                break;
+            }
+            starts.append(sx);
+        }
+        if (geom_ok && starts.size() == 5) {
+            bool increasing = true;
+            bool clear_step = true;
+            for (int i = 1; i < starts.size(); ++i) {
+                if (starts[i] <= starts[i - 1]) increasing = false;
+                if (starts[i] - starts[i - 1] < 14) clear_step = false;
+            }
+            check(increasing,
+                  "nested separator text starts further right at every depth");
+            check(clear_step,
+                  "each nesting depth indents the separator name by a clear, "
+                  "uniform step (centered-text shift doubling)");
+        } else {
+            check(false, "separator indent render geometry valid");
+        }
+        Settings::instance().set_center_separator_text(old_center);
+    }
+
+    // IndentDelegate regression: the FIRST nested MOD must step a full
+    // kIndentStep right of its parent's TEXT. Mods are left-aligned WITH a
+    // checkbox, and the old shift = max(depth*kIndentStep, checkbox-width)
+    // degenerated at depth 1 to EXACTLY the checkbox width - so the child's
+    // suppressed-checkbox text started right where the parent's (already
+    // checkbox-cleared) text starts: the first nested mod rendered ~0px past
+    // its parent ("mod 2 is 2-3px left of its parent"). The shift now ADDS the
+    // checkbox width, so the child lands a full step right of the parent.
+    {
+        ui::ModListModel mm;
+        mm.set_nesting_enabled(true);
+        QVector<ui::ModEntry> me;
+        for (const char* id : {"P", "C"}) {
+            ui::ModEntry mod;
+            mod.id = QString::fromLatin1(id);
+            mod.name = QStringLiteral("Mod %1").arg(QString::fromLatin1(id));
+            mod.enabled = true;
+            me.append(mod);
+        }
+        ui::ModEntry mw;
+        mw.id = ui::kOverwriteModId;
+        mw.name = ui::kOverwriteModName;
+        mw.enabled = true;
+        mw.is_overwrite = true;
+        me.append(mw);
+        mm.reset_with_order(me);
+        QMimeData md;
+        md.setData(QLatin1String(ui::kModListMimeType),
+                   QByteArray::number(row_with_id(mm, "C")));
+        mm.dropMimeData(&md, Qt::MoveAction, -1, 0,
+                        mm.index(row_with_id(mm, "P"), 0));
+        check(mm.nesting_depth(row_with_id(mm, "C")) == 1,
+              "nested mod renders at depth 1");
+        ui::ModTableView mv;
+        mv.setModel(&mm);
+        mv.setAlternatingRowColors(false);
+        mv.setColumnWidth(ui::ModListModel::Name, 260);
+        mv.resize(700, 120);
+        mv.show();
+        mv.setCurrentIndex(QModelIndex());
+        mv.clearFocus();
+        QCoreApplication::processEvents();
+        const QImage mshot = mv.viewport()->grab().toImage();
+        const int indW = QApplication::style()->pixelMetric(QStyle::PM_IndicatorWidth);
+        auto text_start = [&](const QImage& cell) -> int {
+            const QRgb bg = cell.pixel(0, 0);
+            auto content = [&](int x) {
+                for (int y = cell.height() / 3; y <= (2 * cell.height()) / 3; ++y) {
+                    const QRgb p = cell.pixel(x, y);
+                    if (qAbs(qRed(p) - qRed(bg)) > 40 ||
+                        qAbs(qGreen(p) - qGreen(bg)) > 40 ||
+                        qAbs(qBlue(p) - qBlue(bg)) > 40)
+                        return true;
+                }
+                return false;
+            };
+            int cb_left = -1;
+            for (int x = 0; x < cell.width(); ++x)
+                if (content(x)) { cb_left = x; break; }
+            if (cb_left < 0) return -1;
+            for (int x = cb_left + indW + 2; x < cell.width(); ++x)
+                if (content(x)) return x;
+            return -1;
+        };
+        const QRect pcell =
+            mv.visualRect(mm.index(row_with_id(mm, "P"), ui::ModListModel::Name));
+        const QRect ccell =
+            mv.visualRect(mm.index(row_with_id(mm, "C"), ui::ModListModel::Name));
+        const int ptl = text_start(mshot.copy(pcell));
+        const int ctl = text_start(mshot.copy(ccell));
+        if (ptl >= 0 && ctl >= 0)
+            check(ctl - ptl >= 14,
+                  "first nested mod's text steps a full kIndentStep right of "
+                  "its parent's text (checkbox width added, not maxed)");
+        else
+            check(false, "nested mod indent render geometry valid");
     }
 
     std::printf("\n%d passed, %d failed\n", passes, failures);

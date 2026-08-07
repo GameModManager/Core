@@ -50,6 +50,12 @@ struct ModEntry {
     bool invalid_data = false;    // MO2 FLAG_INVALID: folder holds no recognized game data
     bool no_metadata = false;     // no manager metadata file in the folder (not a managed install)
     bool folded = false;
+    // Visual nesting (the per-instance "Nested mod list" setting): id of the
+    // parent mod/separator this row is indented under. Empty = top-level.
+    // Load order / priorities / separator_id group membership are unaffected -
+    // nesting is purely presentational. Allowed links only: mod->mod and
+    // separator->separator (never mod->separator or separator->mod).
+    QString parent_id;
     // Category name resolved from the instance's category DB (meta.ini
     // [General] category CSV primary, else [Nexusmods] nexuscategory). Empty
     // when unresolvable.
@@ -84,6 +90,12 @@ public:
     // native size and wraps to extra lines (growing the row) when they exceed the
     // column width, instead of stacking them into one squeezed icon.
     static constexpr int kFlagIconsRole = Qt::UserRole + 2;
+
+    // Visual-nesting indentation depth for the Name column (0 = top-level).
+    // Always 0 while the "Nested mod list" setting is off, even if parent_id
+    // links persist (preserved-but-inert so re-enabling restores the layout).
+    // The IndentDelegate consumes this to shift the name text right.
+    static constexpr int kIndentDepthRole = Qt::UserRole + 3;
 
     explicit ModListModel(QObject* parent = nullptr);
 
@@ -141,6 +153,36 @@ public:
     void renumber_priorities();
     void set_folded(int row, bool folded);
     void apply_fold_state();
+    // Visual nesting gate (per-instance "Nested mod list" setting). When off,
+    // parent_id links are preserved but inert: no indentation, no fold arrows
+    // on mods, and drops never create links - re-enabling restores the layout.
+    void set_nesting_enabled(bool on);
+    [[nodiscard]] bool nesting_enabled() const { return nesting_enabled_; }
+    // Nesting depth for the Name column (kIndentDepthRole). 0 when the feature
+    // is off. Cycle-guarded: never exceeds the row count.
+    [[nodiscard]] int nesting_depth(int row) const;
+    // Whether a row carries a fold arrow ("has content to hide"). For a
+    // separator this is the flat band rule: there is at least one hideable row
+    // (mod/native/merged) below it before the next non-descendant separator or
+    // Overwrite. With nesting enabled, any row (mod or separator) with a
+    // descendant that its fold would hide reports content too. Overwrite and
+    // MERGED never report content.
+    [[nodiscard]] bool has_content(int row) const;
+    // Pure (view-free) version of apply_fold_state's decision: whether this row
+    // is hidden by an active fold scope. Testable without a QTreeView.
+    [[nodiscard]] bool is_row_fold_hidden(int row) const;
+    // Drop parent_id links that are dangling (parent id not present), point at
+    // Overwrite/MERGED/game-native rows, link a mod under a separator or a
+    // separator under a mod, or form a cycle. Runs at load time.
+    void sanitize_parent_links();
+    // Load-time restore of persisted nesting links ("child id" -> "parent id",
+    // as read from instance.toml's mod_parents). Entries missing from the map
+    // get a cleared link. Re-validates everything via sanitize_parent_links().
+    void restore_parent_links(const QHash<QString, QString>& links);
+    // Whether any row flagged visible in `visible` is a descendant of `row`
+    // (nesting). Used by the mod filter so a filtered-out parent stays shown
+    // while one of its subtree members matches. False when nesting is off.
+    [[nodiscard]] bool has_visible_descendant(int row, const QVector<bool>& visible) const;
     QStringList existing_separator_names() const;
 
     [[nodiscard]] const QVector<ModEntry>& mods() const { return mods_; }
@@ -158,11 +200,6 @@ public:
     // separators may be placed at or above the band.
     [[nodiscard]] int native_band_first() const;
     [[nodiscard]] int native_band_last() const;
-    // Whether a row carries a fold arrow ("has content to hide"). For a
-    // separator this is the flat band rule: there is at least one hideable row
-    // (mod/native/merged) below it before the next separator or Overwrite.
-    // Every other row type returns false; mod submods are a future feature.
-    [[nodiscard]] bool separator_has_content(int row) const;
     [[nodiscard]] bool uses_merged() const { return uses_merged_; }
 
     void set_view(QAbstractItemView* view) { mod_view_ = view; }
@@ -196,6 +233,14 @@ private:
     // Vendor badge for a mod's source_type (via engine::vendor_icon_key), or
     // null for unknown/empty sources.
     [[nodiscard]] QIcon source_icon(const QString& source_type) const;
+    // Whether row's parent_id chain reaches ancestor_id (row is in the
+    // ancestor's subtree). Cycle-guarded. Used by fold scopes, nesting_depth,
+    // the drop cycle guard and sanitize_parent_links.
+    [[nodiscard]] bool is_descendant_of(int row, const QString& ancestor_id) const;
+    // Full fold-hidden set: Pass A (folded separator band scopes, nesting-aware
+    // scope end) + Pass B (folded mod subtrees). Shared by apply_fold_state and
+    // is_row_fold_hidden so both see exactly the same decision.
+    [[nodiscard]] QVector<bool> compute_fold_hidden() const;
 
     QVector<ModEntry> mods_;
     QIcon overwrite_icon_;
@@ -211,6 +256,7 @@ private:
     QAbstractItemView* mod_view_ = nullptr;
     bool conflict_order_reversed_ = false;
     bool uses_merged_ = false;
+    bool nesting_enabled_ = false;
     QString selected_mod_id_;
     QSet<QString> highlighted_mods_;
     QMap<QString, ConflictPairs> conflict_pairs_;
