@@ -663,6 +663,14 @@ void Settings::set_modinfo_window_geometry(const QByteArray& g) {
     settings_.setValue("modinfo/window_geometry", g);
 }
 
+QByteArray Settings::listdialog_window_geometry() const {
+    return settings_.value("listdialog/window_geometry").toByteArray();
+}
+
+void Settings::set_listdialog_window_geometry(const QByteArray& g) {
+    settings_.setValue("listdialog/window_geometry", g);
+}
+
 int Settings::modinfo_last_tab() const {
     return settings_.value("modinfo/last_tab", 0).toInt();
 }

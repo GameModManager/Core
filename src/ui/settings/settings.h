@@ -238,6 +238,10 @@ public:
     int modinfo_last_tab() const;                // key: modinfo/last_tab
     void set_modinfo_last_tab(int index);
 
+    // ListDialog (generic choice picker) geometry — restored on next open.
+    QByteArray listdialog_window_geometry() const;  // key: listdialog/window_geometry
+    void set_listdialog_window_geometry(const QByteArray& g);
+
 private:
     Settings() = default;
     QSettings settings_{"GameModManager", "GameModManager"};

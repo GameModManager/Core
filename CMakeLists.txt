@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # (package_installer target passes -DVERSION=${PROJECT_VERSION}), and the plugins
 # (GMM_VERSION, visible in the add_subdirectory'd external/plugins scope).
 project(GameModManager
-    VERSION 0.2.42
+    VERSION 0.2.43
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -308,6 +308,7 @@ set(UI_SOURCES
     src/ui/widgets/mod_filter_bar.cpp
     src/ui/widgets/right_filter_bar.cpp
     src/ui/widgets/column_toggle_header.cpp
+    src/ui/widgets/list_dialog.cpp
     src/ui/widgets/menu_bar.cpp
     src/ui/panels/tab_panels.cpp
     src/ui/pipeline_worker.cpp
@@ -1637,6 +1638,8 @@ add_executable(overwrite_dialogs_test tests/ui/overwrite_dialogs_test.cpp
     src/ui/overwrite/move_to_mod_dialog.cpp
     src/ui/overwrite/overwrite_info_dialog.cpp
     src/ui/overwrite/query_overwrite_dialog.cpp
+    src/ui/widgets/list_dialog.cpp
+    src/ui/settings/settings.cpp
     src/ui/install/install_name_dialog.cpp
     src/engine/overwrite/overwrite_utils.cpp
     src/engine/index/conflict_engine.cpp
@@ -1654,6 +1657,19 @@ target_link_libraries(overwrite_dialogs_test PRIVATE Qt6::Widgets
     PkgConfig::NLOHMANN_JSON)
 add_test(NAME overwrite_dialogs_test COMMAND overwrite_dialogs_test)
 set_tests_properties(overwrite_dialogs_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# ListDialog — offscreen GUI test for the shared MO2 ListDialog port: choices in
+# order, selection/getChoice + id payloads, case-insensitive filter + single-
+# match auto-select + red-border toggle + clear restore, double-click accept,
+# Ok disabled when empty, geometry round-trip through the Settings key.
+add_executable(list_dialog_test tests/ui/list_dialog_test.cpp
+    src/ui/widgets/list_dialog.cpp
+    src/ui/settings/settings.cpp
+)
+target_include_directories(list_dialog_test PRIVATE src/)
+target_link_libraries(list_dialog_test PRIVATE Qt6::Widgets Qt6::Test)
+add_test(NAME list_dialog_test COMMAND list_dialog_test)
+set_tests_properties(list_dialog_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 # Proton options panel — offscreen GUI smoke test: runner combo population,
 # selected_runner() mapping, and wine.json recommended-package loading against
