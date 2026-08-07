@@ -4,7 +4,6 @@
 #include <fstream>
 #include <sstream>
 #include <sys/wait.h>
-#include <QCursor>
 #include "ui/main_window/main_window.h"
 #include "ui/widgets/mod_list_model.h"
 #include "ui/widgets/mod_table_view.h"
@@ -155,6 +154,7 @@
 #include <memory>
 #include <optional>
 #include <regex>
+#include <set>
 #include <sstream>
 #include <thread>
 #include <unordered_set>
@@ -413,30 +413,18 @@ MainWindow::MainWindow(QWidget* parent)
     connect(mod_model_, &ModListModel::rename_requested,
             this, [this](int row, const QString& name) { apply_rename(row, name); });
 
-    // Fold/unfold on separator arrow click ONLY (the "▼ "/"▶ " prefix in the
-    // Name cell). Clicks anywhere else on the separator row must not fold.
+    // Fold/unfold on the Fold column ONLY (the dedicated arrow cell, left of
+    // Name). Clicks anywhere else on the separator row - including the whole
+    // Name cell - must not fold. A separator with no content to hide shows an
+    // empty Fold cell and its click is a dead no-op too.
     connect(mod_view_, &QTreeView::clicked, this, [this](const QModelIndex& idx) {
-        if (!idx.isValid() || idx.column() != ModListModel::Name) return;
+        if (!idx.isValid() || idx.column() != ModListModel::Fold) return;
         int row = idx.row();
         if (row < 0 || row >= mod_model_->mods().size()) return;
         if (!mod_model_->mods()[row].is_separator) return;
+        if (!mod_model_->separator_has_content(row)) return;
 
-        // Hit-test the arrow prefix: a separator Name cell renders as
-        // "<arrow> <name>" with no checkbox/decoration (separators never reach
-        // the model's CheckStateRole), so the arrow starts at the cell's left
-        // edge. Require the click to land inside the measured arrow width.
         const bool folded = mod_model_->mods()[row].folded;
-        // Separator Name cells render bold (model FontRole), so measure the
-        // arrow prefix with the same bold font the glyph is drawn in.
-        QFont arrow_font = mod_view_->font();
-        arrow_font.setBold(true);
-        const int arrow_width = QFontMetrics(arrow_font).horizontalAdvance(
-            QString(folded ? "\u25B6 " : "\u25BC "));
-        const QRect cell = mod_view_->visualRect(idx);
-        const QPoint pos = mod_view_->viewport()->mapFromGlobal(QCursor::pos());
-        if (pos.y() < cell.top() || pos.y() > cell.bottom()) return;
-        if (pos.x() < cell.left() || pos.x() > cell.left() + arrow_width) return;
-
         mod_model_->set_folded(row, !folded);
     });
 
@@ -481,10 +469,11 @@ MainWindow::MainWindow(QWidget* parent)
             });
 
     auto* mod_header = new ColumnToggleHeaderView(Qt::Horizontal, mod_view_);
-    mod_header->set_column_labels({"Name", "Conflicts", "Flags", "Category", "Source",
-                                   "Source ID", "Version", "Installation", "Changed",
-                                   "Priority"});
+    mod_header->set_column_labels({"", "Name", "Conflicts", "Flags", "Category",
+                                   "Source", "Source ID", "Version", "Installation",
+                                   "Changed", "Priority"});
     mod_header->set_section_tooltips({
+        tr("Fold or unfold this separator (hides or shows its contents)"),
         tr("Name of the mod"),
         tr("Win/loss state of file conflicts with other mods"),
         tr("Badges: hidden files, FOMOD saved, root override, invalid data"),
@@ -501,6 +490,11 @@ MainWindow::MainWindow(QWidget* parent)
 
     mod_header->setStretchLastSection(false);
     mod_header->setSectionsMovable(true);
+    // The Fold arrow column is pinned to the left edge: fixed 24px cell,
+    // always visible, and re-snapped to visual index 0 if the user tries to
+    // drag another column past it (the arrow must stay aligned to the edge).
+    mod_header->setSectionResizeMode(ModListModel::Fold, QHeaderView::Fixed);
+    mod_header->resizeSection(ModListModel::Fold, 24);
     mod_header->setSectionResizeMode(ModListModel::Name, QHeaderView::Stretch);
     for (int c = ModListModel::Conflicts; c < ModListModel::ColumnCount; ++c)
         mod_header->setSectionResizeMode(c, QHeaderView::Interactive);
@@ -514,13 +508,16 @@ MainWindow::MainWindow(QWidget* parent)
     mod_header->resizeSection(ModListModel::Changed, 90);
     mod_header->resizeSection(ModListModel::Priority, 60);
 
-    // The Name column can never be hidden (the context menu shows it checked
-    // + disabled). Persist user visibility toggles per instance; the restore
-    // happens on scan finish when the instance name is known.
+    // The Name and Fold columns can never be hidden (the context menu shows
+    // them checked + disabled). Persist user visibility toggles per instance;
+    // the restore happens on scan finish when the instance name is known.
     mod_header->set_locked_section(ModListModel::Name);
+    mod_header->set_locked_section(ModListModel::Fold);
     connect(mod_header, &ColumnToggleHeaderView::section_toggled, this,
             [this](int logical, bool hidden) {
-                if (logical == ModListModel::Name || current_instance_root_.empty()) return;
+                if (logical == ModListModel::Name || logical == ModListModel::Fold ||
+                    current_instance_root_.empty())
+                    return;
                 const auto key = QString::fromStdString(current_instance_root_.filename().string());
                 const auto stored =
                     Settings::instance().modlist_hidden_columns(key);
@@ -529,6 +526,17 @@ MainWindow::MainWindow(QWidget* parent)
                 if (hidden) hidden_set.insert(name);
                 else hidden_set.remove(name);
                 Settings::instance().set_modlist_hidden_columns(key, hidden_set.values());
+            });
+
+    // Non-negotiable: the Fold arrow column stays at the left edge. Other
+    // columns stay draggable, but any drag that displaces Fold from visual
+    // index 0 is reverted. The recursive sectionMoved (from moveSection) sees
+    // Fold already at 0 and returns, so this cannot loop.
+    connect(mod_header, &QHeaderView::sectionMoved, this,
+            [mod_header](int, int, int) {
+                const int foldLogical = ModListModel::Fold;
+                if (mod_header->visualIndex(foldLogical) == 0) return;
+                mod_header->moveSection(foldLogical, 0);
             });
 
     left_layout->addWidget(mod_view_, 1);
@@ -1625,12 +1633,23 @@ void MainWindow::on_mod_scan_finished(ui::ModScanResult result, quint64 generati
     {
         auto meta_dir = meta_dir_path();
         if (!meta_dir.empty()) {
-            // Game-native (unmanaged) mods own the top band: give them 0..N-1 in
-            // declared order, overriding any stale persisted priority. They can
-            // never fall below the user band.
+            // Game-native (unmanaged) mods own the top band, but a separator
+            // may sit ABOVE it (its fold hides the native mods): that
+            // separator keeps its persisted priority and the band shifts down
+            // past it. Natives fill the remaining top slots in declared order.
             int native_priority = 0;
-            for (const auto& m : mod_model_->mods())
-                if (m.is_game_native) mod_model_->set_priority(m.id, native_priority++);
+            std::set<int> sep_priorities;
+            for (const auto& m : mod_model_->mods()) {
+                if (!m.is_separator) continue;
+                auto sep_meta = engine::ModMeta::load(meta_dir, m.id.toStdString());
+                int sp = sep_meta.priority();
+                if (sp >= 0) sep_priorities.insert(sp);
+            }
+            for (const auto& m : mod_model_->mods()) {
+                if (!m.is_game_native) continue;
+                while (sep_priorities.count(native_priority)) ++native_priority;
+                mod_model_->set_priority(m.id, native_priority++);
+            }
 
             // Non-pinned rows (natives + user mods) span priorities 0..regular-1;
             // a user mod without a persisted priority gets the highest one - just
@@ -2527,11 +2546,6 @@ void MainWindow::refresh_plugins_tab() {
     // P1.3 event bus: mirror MO2 onRefreshed (plugin list rebuilt).
     engine::EventBus::instance().dispatch(
         engine::events::kPluginListRefreshed, "{}");
-
-    // The Saves tab's missing-asset column depends on the plugin load order:
-    // a toggle/refresh here moved the state, so re-scan (no-op when the game
-    // has no Saves tab).
-    on_saves_refresh_requested();
 }
 
 void MainWindow::run_loot_sort() {
@@ -4434,8 +4448,14 @@ void MainWindow::load_order() {
             if (a.is_merged) return false;
             if (b.is_merged) return true;
             // Game-native (unmanaged) mods form a fixed top band - they can
-            // never sort below user mods, whatever priority got persisted.
-            if (a.is_game_native != b.is_game_native) return a.is_game_native;
+            // never sort below user mods, whatever priority got persisted. A
+            // separator placed above the band (lower priority than the
+            // natives) keeps its place so its fold can hide the native mods.
+            if (a.is_game_native != b.is_game_native) {
+                if (a.is_separator) return key(a) < key(b);
+                if (b.is_separator) return key(b) > key(a);
+                return a.is_game_native;
+            }
             return key(a) < key(b);
         });
         bool needs_sort = false;
@@ -6346,8 +6366,12 @@ void MainWindow::wire_saves_tab() {
     engine::Logger::instance().debug("Saves tab: scanning " + saves_dir.string());
     st->set_saves_dir(saves_dir);
 
-    // No directory watcher: scans run once here and after a delete. The
-    // Proton-prefix Saves dir churns on its own, so watching spammed rescans.
+    // No directory watcher and no mod-list/plugin-driven rescans: the Saves
+    // dir is scanned exactly once here (at load, when the tab is wired) and
+    // after a delete. Earlier versions re-scanned on every mod_list_changed
+    // (via refresh_plugins_tab) to keep the missing-asset column in sync, but
+    // that made a separator fold/unfold trigger a full save scan - so the
+    // missing-asset column now reflects launch-time load order only.
     connect(st, &ui::SavesTab::delete_requested,
             this, &MainWindow::on_saves_delete_requested);
 

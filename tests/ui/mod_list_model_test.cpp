@@ -4,9 +4,11 @@
 // entries must be a pinned top band that user mods can never move above. The
 // band is enforced by three layers, all covered here:
 //   - move_mod(): a game-native source is a no-op, and a user-mod target is
-//     clamped to native_band_bottom() (never into the band),
+//     clamped to just below the band (never into the band); a separator may
+//     move above the band (and an in-band separator target snaps to it),
 //   - mimeData(): game-native rows are not drag sources,
-//   - dropMimeData(): a drop aimed above the band is clamped down to it, and
+//   - dropMimeData(): a drop aimed above the band is clamped down to it (for
+//     non-separator drags) while a separator-only drag may land above it, and
 //     a native-only source is rejected outright.
 //
 // The load-time ordering (priority assignment + band-aware sort) lives in
@@ -93,16 +95,18 @@ int main(int argc, char** argv) {
     entries.append(ow);
     model.reset_with_order(entries);
 
-    check(model.native_band_bottom() == 2, "native band occupies rows 0-1");
+    check(model.native_band_first() == 0 && model.native_band_last() == 1,
+          "native band occupies rows 0-1");
     check(row_with_id(model, "Skyrim.esm") == 0 &&
               row_with_id(model, "Update.esm") == 1 &&
               row_with_id(model, "SkyUI") == 2 &&
               row_with_id(model, "Enemy NPCs") == 3,
           "band-first layout");
 
-    // Separator display: the Name cell is the fold arrow + the separator name
-    // (regression: the MO2-look pass dropped the name, leaving only the arrow);
-    // EditRole still carries the raw name for name-based lookups.
+    // Separator display: the fold arrow lives in its own Fold column (left of
+    // Name); the Name cell is the plain separator name (regression: the arrow
+    // used to be a "▼ "/"▶ " prefix on Name). EditRole still carries the raw
+    // name for name-based lookups.
     {
         ui::ModEntry sep;
         sep.id = QStringLiteral("Testing_separator");
@@ -114,12 +118,30 @@ int main(int argc, char** argv) {
         int r = row_with_id(model, "Testing_separator");
         check(r >= 0, "separator row present");
         if (r >= 0) {
-            QVariant disp = model.data(model.index(r, ui::ModListModel::Name), Qt::DisplayRole);
-            check(disp.isValid() && disp.toString() == QStringLiteral("\u25BC Testing"),
-                  "separator DisplayRole shows arrow + name");
-        QVariant edit = model.data(model.index(r, ui::ModListModel::Name), Qt::EditRole);
-        check(edit.isValid() && edit.toString() == QStringLiteral("Testing"),
-              "separator EditRole carries raw name");
+            QVariant name = model.data(model.index(r, ui::ModListModel::Name), Qt::DisplayRole);
+            check(name.isValid() && name.toString() == QStringLiteral("Testing"),
+                  "separator Name cell is the plain name (no arrow prefix)");
+            QVariant edit = model.data(model.index(r, ui::ModListModel::Name), Qt::EditRole);
+            check(edit.isValid() && edit.toString() == QStringLiteral("Testing"),
+                  "separator EditRole carries raw name");
+        }
+        // This separator was appended between Enemy NPCs and Overwrite -> empty
+        // band -> no content to hide -> Fold cell empty and not foldable.
+        check(!model.separator_has_content(r), "appended separator has an empty band");
+        if (r >= 0) {
+            QVariant fold = model.data(model.index(r, ui::ModListModel::Fold), Qt::DisplayRole);
+            check(fold.isValid() && fold.toString().isEmpty(),
+                  "empty-band separator shows no arrow in Fold column");
+        }
+        // Non-separator rows never carry an arrow.
+        const int skyui = row_with_id(model, "SkyUI");
+        if (skyui >= 0) {
+            QVariant fold = model.data(model.index(skyui, ui::ModListModel::Fold), Qt::DisplayRole);
+            check(fold.toString().isEmpty(),
+                  "regular mod Fold cell is empty");
+            check(!model.separator_has_content(skyui),
+                  "regular mod reports no fold content");
+        }
     }
 
     // Fold-persistence regression: toggling a separator must announce
@@ -150,16 +172,88 @@ int main(int argc, char** argv) {
         QObject::disconnect(&model, &ui::ModListModel::mod_list_changed,
                             nullptr, nullptr);
     }
+
+    // Fold arrow gating (band rule): a separator sitting above mods shows the
+    // glyph in the Fold column and it flips with fold state; a separator whose
+    // band ends at Overwrite has nothing to hide.
+    {
+        ui::ModListModel m2;
+        QVector<ui::ModEntry> e2;
+        ui::ModEntry s;
+        s.id = QStringLiteral("Section");
+        s.name = QStringLiteral("Section");
+        s.enabled = true;
+        s.is_separator = true;
+        s.separator_color = "#888888";
+        e2.append(s);
+        ui::ModEntry mod;
+        mod.id = QStringLiteral("ModA");
+        mod.name = QStringLiteral("ModA");
+        mod.enabled = true;
+        e2.append(mod);
+        ui::ModEntry ow2;
+        ow2.id = ui::kOverwriteModId;
+        ow2.name = ui::kOverwriteModName;
+        ow2.enabled = true;
+        ow2.is_overwrite = true;
+        e2.append(ow2);
+        m2.reset_with_order(e2);
+
+        check(m2.separator_has_content(0), "separator with a mod below has content");
+        const QVariant fold_open =
+            m2.data(m2.index(0, ui::ModListModel::Fold), Qt::DisplayRole);
+        check(fold_open.isValid() && fold_open.toString() == QStringLiteral("\u25BC"),
+              "unfolded separator shows down-arrow in Fold column");
+        m2.set_folded(0, true);
+        const QVariant fold_closed =
+            m2.data(m2.index(0, ui::ModListModel::Fold), Qt::DisplayRole);
+        check(fold_closed.isValid() && fold_closed.toString() == QStringLiteral("\u25B6"),
+              "folded separator shows right-arrow in Fold column");
+        // The Name cell never shows the arrow, regardless of fold state.
+        const QVariant name_disp =
+            m2.data(m2.index(0, ui::ModListModel::Name), Qt::DisplayRole);
+        check(name_disp.isValid() && name_disp.toString() == QStringLiteral("Section"),
+              "folded separator Name cell stays the plain name");
+        // Fold column alignment is always centered (separator and mod rows).
+        const QVariant align_sep = m2.data(
+            m2.index(0, ui::ModListModel::Fold), Qt::TextAlignmentRole);
+        check(align_sep.isValid() &&
+                  align_sep.toInt() == static_cast<int>(Qt::AlignCenter),
+              "separator Fold cell centered");
+        const QVariant align_mod = m2.data(
+            m2.index(1, ui::ModListModel::Fold), Qt::TextAlignmentRole);
+        check(align_mod.isValid() &&
+                  align_mod.toInt() == static_cast<int>(Qt::AlignCenter),
+              "mod Fold cell centered");
+
+        // Overwrite is never content: a separator directly above it hides nothing.
+        ui::ModListModel m3;
+        QVector<ui::ModEntry> e3;
+        ui::ModEntry s3;
+        s3.id = QStringLiteral("Solo");
+        s3.name = QStringLiteral("Solo");
+        s3.enabled = true;
+        s3.is_separator = true;
+        e3.append(s3);
+        ui::ModEntry ow3;
+        ow3.id = ui::kOverwriteModId;
+        ow3.name = ui::kOverwriteModName;
+        ow3.enabled = true;
+        ow3.is_overwrite = true;
+        e3.append(ow3);
+        m3.reset_with_order(e3);
+        check(!m3.separator_has_content(0),
+              "separator directly above Overwrite has no content");
     }
 
     // move_mod(): a game-native source never moves.
     model.move_mod("Skyrim.esm", 4);
-    check(row_with_id(model, "Skyrim.esm") == 0 && model.native_band_bottom() == 2,
+    check(row_with_id(model, "Skyrim.esm") == 0 && model.native_band_last() == 1,
           "native mod move is a no-op");
 
     // move_mod(): a user mod aimed at the top clamps to just below the band.
     model.move_mod("Enemy NPCs", 0);
-    check(row_with_id(model, "Enemy NPCs") == 2 && model.native_band_bottom() == 2,
+    check(row_with_id(model, "Enemy NPCs") == 2 && model.native_band_last() == 1,
           "user mod move clamps to band bottom");
     check(row_with_id(model, "Skyrim.esm") == 0 &&
               row_with_id(model, "Update.esm") == 1,
@@ -201,6 +295,156 @@ int main(int argc, char** argv) {
           "native-only drop rejected");
     check(row_with_id(model, "Skyrim.esm") == 0,
           "band intact after rejected drop");
+
+    // --- Separators above the game-native band (fold hides the native mods) ---
+    {
+        ui::ModListModel m2;
+        QVector<ui::ModEntry> e2;
+        for (const char* id : {"Skyrim.esm", "Update.esm"}) {
+            ui::ModEntry n;
+            n.id = QString::fromLatin1(id);
+            n.name = n.id;
+            n.enabled = true;
+            n.is_game_native = true;
+            e2.append(n);
+        }
+        ui::ModEntry sep2;
+        sep2.id = QStringLiteral("Testing_separator");
+        sep2.name = QStringLiteral("Testing");
+        sep2.enabled = true;
+        sep2.is_separator = true;
+        e2.append(sep2);
+        ui::ModEntry mod2;
+        mod2.id = QStringLiteral("SkyUI");
+        mod2.name = QStringLiteral("SkyUI");
+        mod2.enabled = true;
+        e2.append(mod2);
+        ui::ModEntry ow2;
+        ow2.id = ui::kOverwriteModId;
+        ow2.name = ui::kOverwriteModName;
+        ow2.enabled = true;
+        ow2.is_overwrite = true;
+        e2.append(ow2);
+        m2.reset_with_order(e2);
+        // Initial: natives(0,1), sep(2), SkyUI(3), overwrite(4).
+
+        // move_mod(): a separator aimed INTO the band snaps to just above it.
+        m2.move_mod("Testing_separator", 1);  // between the natives
+        check(row_with_id(m2, "Testing_separator") == 0 &&
+                  row_with_id(m2, "Skyrim.esm") == 1 &&
+                  row_with_id(m2, "Update.esm") == 2,
+              "in-band separator move snaps above the band");
+        check(m2.native_band_first() == 1 && m2.native_band_last() == 2,
+              "band stays contiguous after snap");
+
+        // move_mod(): a separator moved below the band stays below it.
+        m2.move_mod("Testing_separator", 3);  // above SkyUI, below the band
+        check(row_with_id(m2, "Testing_separator") == 3 &&
+                  row_with_id(m2, "Skyrim.esm") == 0,
+              "separator below the band stays below");
+        check(m2.native_band_first() == 0 && m2.native_band_last() == 1,
+              "band back on top after separator moves down");
+
+        // dropMimeData(): a separator-only drop may land above the band.
+        QMimeData dsep;
+        dsep.setData(QLatin1String(ui::kModListMimeType),
+                     QByteArrayLiteral("3"));  // Testing_separator
+        check(m2.dropMimeData(&dsep, Qt::MoveAction, 0, 0, {}),
+              "separator-only drop above the band accepted");
+        check(row_with_id(m2, "Testing_separator") == 0 &&
+                  row_with_id(m2, "Skyrim.esm") == 1,
+              "separator drop lands above the band");
+
+        // dropMimeData(): a separator-only drop INTO the band snaps to the top.
+        QMimeData dsep2;
+        dsep2.setData(QLatin1String(ui::kModListMimeType),
+                      QByteArrayLiteral("0"));  // Testing_separator
+        check(m2.dropMimeData(&dsep2, Qt::MoveAction, 1, 0, {}),
+              "separator-only in-band drop accepted");
+        check(row_with_id(m2, "Testing_separator") == 0 &&
+                  row_with_id(m2, "Skyrim.esm") == 1,
+              "in-band separator drop snaps above the band");
+
+        // dropMimeData(): a mixed (separator + mod) drag stays below the band.
+        QMimeData dmixed;
+        dmixed.setData(QLatin1String(ui::kModListMimeType),
+                       QByteArrayLiteral("0,3"));  // sep + SkyUI
+        check(m2.dropMimeData(&dmixed, Qt::MoveAction, 0, 0, {}),
+              "mixed drag accepted");
+        check(row_with_id(m2, "Testing_separator") != 0,
+              "mixed drag never lands above the band");
+        check(m2.native_band_first() == 0 && m2.native_band_last() == 1,
+              "band back on top after mixed drag");
+    }
+
+    // --- Center text on separators (Theme > Design, default on) ---
+    {
+        ui::ModListModel m3;
+        QVector<ui::ModEntry> e3;
+        for (const char* id : {"Skyrim.esm"}) {
+            ui::ModEntry n;
+            n.id = QString::fromLatin1(id);
+            n.name = n.id;
+            n.enabled = true;
+            n.is_game_native = true;
+            e3.append(n);
+        }
+        ui::ModEntry sep3;
+        sep3.id = QStringLiteral("Sep_separator");
+        sep3.name = QStringLiteral("Sep");
+        sep3.enabled = true;
+        sep3.is_separator = true;
+        e3.append(sep3);
+        ui::ModEntry mod3;
+        mod3.id = QStringLiteral("SkyUI");
+        mod3.name = QStringLiteral("SkyUI");
+        mod3.enabled = true;
+        e3.append(mod3);
+        ui::ModEntry ow3;
+        ow3.id = ui::kOverwriteModId;
+        ow3.name = ui::kOverwriteModName;
+        ow3.enabled = true;
+        ow3.is_overwrite = true;
+        e3.append(ow3);
+        m3.reset_with_order(e3);
+
+        const int sep_row = row_with_id(m3, "Sep_separator");
+        const int mod_row = row_with_id(m3, "SkyUI");
+        check(sep_row >= 0 && mod_row >= 0, "alignment-test rows present");
+
+        check(Settings::instance().center_separator_text(),
+              "center_separator_text defaults to on");
+
+        // Setting on: every separator cell is centered.
+        const QVariant on_name = m3.data(m3.index(sep_row, ui::ModListModel::Name),
+                                         Qt::TextAlignmentRole);
+        check(on_name.isValid() &&
+                  on_name.toInt() == static_cast<int>(Qt::AlignCenter),
+              "separator Name centered with the setting on");
+        const QVariant on_prio = m3.data(m3.index(sep_row, ui::ModListModel::Priority),
+                                         Qt::TextAlignmentRole);
+        check(on_prio.isValid() &&
+                  on_prio.toInt() == static_cast<int>(Qt::AlignCenter),
+              "separator Priority centered with the setting on");
+
+        // Setting off: separator text falls back to left alignment.
+        Settings::instance().set_center_separator_text(false);
+        const QVariant off_name = m3.data(m3.index(sep_row, ui::ModListModel::Name),
+                                          Qt::TextAlignmentRole);
+        check(!off_name.isValid(),
+              "separator Name left-aligned with the setting off");
+        const QVariant off_prio = m3.data(m3.index(sep_row, ui::ModListModel::Priority),
+                                          Qt::TextAlignmentRole);
+        check(off_prio.isValid() &&
+                  off_prio.toInt() == static_cast<int>(Qt::AlignCenter),
+              "separator Priority stays centered regardless");
+
+        // Regular mods are never centered by the separator setting.
+        const QVariant mod_align = m3.data(m3.index(mod_row, ui::ModListModel::Name),
+                                           Qt::TextAlignmentRole);
+        check(!mod_align.isValid(), "regular mod Name never centered");
+        Settings::instance().set_center_separator_text(true);
+    }
 
     // --- Plugin-selected mod highlight (MO2 "mod contains selected file") ---
     {
@@ -419,13 +663,19 @@ int main(int argc, char** argv) {
     }
 
     {
-        // Column set (P8.4): exactly the 10 columns in display order.
-        check(model.columnCount() == 10, "mod list exposes 10 columns");
-        const char* labels[] = {"Name", "Conflicts", "Flags", "Category", "Source",
-                                "Source ID", "Version", "Installation", "Changed",
-                                "Priority"};
-        for (int c = 0; c < 10; ++c) {
+        // Column set (P8.4): exactly the 11 columns in display order. The Fold
+        // column is first and carries no header label.
+        check(model.columnCount() == 11, "mod list exposes 11 columns");
+        const char* labels[] = {"", "Name", "Conflicts", "Flags", "Category",
+                                "Source", "Source ID", "Version", "Installation",
+                                "Changed", "Priority"};
+        for (int c = 0; c < 11; ++c) {
             const QVariant hd = model.headerData(c, Qt::Horizontal, Qt::DisplayRole);
+            if (c == ui::ModListModel::Fold) {
+                check(!hd.isValid() || hd.toString().isEmpty(),
+                      "Fold column has no header label");
+                continue;
+            }
             check(hd.isValid() && hd.toString() == QLatin1String(labels[c]),
                   "header label for new column");
         }

@@ -480,6 +480,14 @@ void Settings::set_color_separator_scrollbar(bool on) {
     settings_.setValue("colors/color_separator_scrollbar", on);
 }
 
+bool Settings::center_separator_text() const {
+    return settings_.value("appearance/center_separator_text", true).toBool();
+}
+
+void Settings::set_center_separator_text(bool on) {
+    settings_.setValue("appearance/center_separator_text", on);
+}
+
 std::optional<QColor> Settings::previous_separator_color() const {
     if (!settings_.contains("colors/previous_separator_color")) return std::nullopt;
     auto c = settings_.value("colors/previous_separator_color").value<QColor>();

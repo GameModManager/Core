@@ -348,6 +348,11 @@ QWidget* SettingsDialog::build_theme_tab() {
     design_form->addRow(compact_box);
     connect(compact_box, &QCheckBox::toggled, this,
             [&s](bool on) { s.set_compact_downloads(on); });
+    auto* center_sep_box = new QCheckBox(tr("Center text on separators"), design_group);
+    center_sep_box->setChecked(s.center_separator_text());
+    design_form->addRow(center_sep_box);
+    connect(center_sep_box, &QCheckBox::toggled, this,
+            [&s](bool on) { s.set_center_separator_text(on); });
     layout->addWidget(design_group);
 
     layout->addStretch(1);

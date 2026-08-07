@@ -68,10 +68,12 @@ struct ConflictPairs {
 class ModListModel : public QAbstractTableModel {
     Q_OBJECT
 public:
-    // Column order is the display order: Name first (never hideable), Priority
-    // last. Adding/reordering columns is safe - no code persists column indices.
-    enum Column { Name, Conflicts, Flags, Category, Source, SourceId, Version,
-                  Installation, Changed, Priority, ColumnCount };
+    // Column order is the display order: Fold first (never hideable, pinned to
+    // the left edge, carries the separator fold arrow), Name second, Priority
+    // last. Adding/reordering columns is safe - no code persists column
+    // indices.
+    enum Column { Fold, Name, Conflicts, Flags, Category, Source, SourceId,
+                  Version, Installation, Changed, Priority, ColumnCount };
 
     // Custom role for the separator-marking scrollbar; separator rows return
     // their background QColor, everything else returns an invalid variant.
@@ -148,9 +150,19 @@ public:
     [[nodiscard]] bool is_overwrite(int row) const;
     [[nodiscard]] int merged_row() const;
     [[nodiscard]] bool is_merged(int row) const;
-    // Bottom of the leading game-native (unmanaged) band: the first row that is
-    // not game-native. Everything above it is pinned and never reorderable.
-    [[nodiscard]] int native_band_bottom() const;
+    // Game-native (unmanaged) band rows. The band is contiguous (clamps keep
+    // it that way) but is NOT necessarily leading: a separator may sit above
+    // it (so its fold can hide the native mods). native_band_first() is the
+    // first native row (== mods_.size() when there is no native band);
+    // native_band_last() is the last native row (-1 when none). Only
+    // separators may be placed at or above the band.
+    [[nodiscard]] int native_band_first() const;
+    [[nodiscard]] int native_band_last() const;
+    // Whether a row carries a fold arrow ("has content to hide"). For a
+    // separator this is the flat band rule: there is at least one hideable row
+    // (mod/native/merged) below it before the next separator or Overwrite.
+    // Every other row type returns false; mod submods are a future feature.
+    [[nodiscard]] bool separator_has_content(int row) const;
     [[nodiscard]] bool uses_merged() const { return uses_merged_; }
 
     void set_view(QAbstractItemView* view) { mod_view_ = view; }

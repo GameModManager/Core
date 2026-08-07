@@ -168,6 +168,10 @@ public:
     // colors -------------------------------------------------------------------
     bool color_separator_scrollbar() const;
     void set_color_separator_scrollbar(bool on);
+    // Center the label on separator rows (Settings > Theme > Design). MO2
+    // centers separator text by default; off restores left-alignment.
+    bool center_separator_text() const;
+    void set_center_separator_text(bool on);
     // Remembered color for the next separator (MO2 previousSeparatorColor).
     // Hidden setting - never shown in the settings dialog.
     std::optional<QColor> previous_separator_color() const;
