@@ -183,12 +183,12 @@ static statfn_t real_lstat_fn(void) {
     return F_lstat_real;
 }
 
-static int open_with_ci(const char *path, int flags,
+static int open_with_ci(const char *path, int flags, mode_t mode,
                         int (*real_fn)(const char *, int, ...), const char *what) {
     if (!gmm_ci_enabled || !is_read_open(flags))
-        return real_fn(path, flags, 0);
+        return real_fn(path, flags, mode);
 
-    int ret = real_fn(path, flags, 0);
+    int ret = real_fn(path, flags, mode);
     if (ret >= 0) return ret;
     int saved = errno;
     if (saved != ENOENT) return ret;
@@ -198,7 +198,7 @@ static int open_with_ci(const char *path, int flags,
 
     char buf[PATH_MAX];
     if (ci_resolve(path, buf, sizeof(buf))) {
-        int ret2 = real_fn(buf, flags, 0);
+        int ret2 = real_fn(buf, flags, mode);
         if (ret2 >= 0) {
             gmm_ci_log("%s '%s' -> '%s'", what, path, buf);
             return ret2;
@@ -211,7 +211,11 @@ static int open_with_ci(const char *path, int flags,
 
 int open(const char *path, int flags, ...) {
     if (!F_open) F_open = (openfn_t)dlsym(RTLD_NEXT, "open");
-    return open_with_ci(path, flags, F_open, "open");
+    va_list ap;
+    va_start(ap, flags);
+    mode_t mode = (flags & O_CREAT) ? (mode_t)va_arg(ap, int) : 0;
+    va_end(ap);
+    return open_with_ci(path, flags, mode, F_open, "open");
 }
 
 int openat(int dirfd, const char *path, int flags, ...) {

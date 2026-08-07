@@ -867,24 +867,6 @@ void PluginDatabase::save_profile(const std::filesystem::path& profiles_dir,
 }
 
 bool PluginDatabase::write_game_plugins_txt(const std::filesystem::path& path) const {
-    // The target may already exist with mode 000 (a Proton-bootstrapped or
-    // prior sandbox-written file - the game OWNs it but denies all perms), which
-    // makes ofstream fail EACCES. Recover the file to user-writable before
-    // opening so a stale 000 file can't break a launch.
-    std::error_code ec;
-    if (std::filesystem::exists(path, ec) && !ec) {
-        auto perms = std::filesystem::status(path).permissions();
-        if ((perms & std::filesystem::perms::owner_write) == std::filesystem::perms::none) {
-            std::filesystem::permissions(path,
-                std::filesystem::perms::owner_read |
-                std::filesystem::perms::owner_write |
-                std::filesystem::perms::group_read,
-                std::filesystem::perm_options::replace, ec);
-            if (ec) Logger::instance().warn("PluginDatabase: chmod " + path.string() +
-                                            " for write failed: " + ec.message());
-            else Logger::instance().warn("PluginDatabase: recovered unwritable " + path.string());
-        }
-    }
     std::ofstream out(path);
     if (!out) return false;
     out << "# This file is used by Skyrim to keep track of your downloaded content.\n";
