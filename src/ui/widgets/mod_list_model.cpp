@@ -532,22 +532,58 @@ bool ModListModel::dropMimeData(const QMimeData* data, Qt::DropAction action,
         }
     }
 
-    // Nest link decision: only a single top-level source (one row in the drag,
-    // which may still drag its whole subtree) dropped ON an item of the same
-    // kind (mod->mod, separator->separator) becomes a child. The target must be
-    // nestable (not Overwrite/MERGED/game-native) and must not be the source
-    // itself or an ancestor of it (cycle guard).
+    // Nest link decision: an on-item drop nests the dragged top-level rows
+    // (a single row OR a multi-row selection, each possibly carrying its whole
+    // subtree) under the target when they are all the same kind as it
+    // (mod->mod, separator->separator). A mixed mod+separator drag never nests
+    // - it stays a flat move. The target must be nestable (not
+    // Overwrite/MERGED/game-native) and must not be part of the dragged block
+    // or a descendant of it (cycle guard).
     QString new_parent_id;
-    if (on_item && sourceRows.size() == 1 && nesting_enabled_ &&
-        drop_parent_row >= 0 && drop_parent_row < mods_.size() &&
-        !validSources.isEmpty()) {
-        const auto& src = mods_[validSources[0]];  // the top-level dragged row
+    if (on_item && nesting_enabled_ && drop_parent_row >= 0 &&
+        drop_parent_row < mods_.size() && !validSources.isEmpty()) {
         const auto& tgt = mods_[drop_parent_row];
         const bool tgt_nestable =
             !tgt.is_overwrite && !tgt.is_merged && !tgt.is_game_native;
-        if (src.is_separator == tgt.is_separator && tgt_nestable &&
-            tgt.id != src.id && !is_descendant_of(drop_parent_row, src.id))
-            new_parent_id = tgt.id;
+        if (tgt_nestable) {
+            // Top-level sources of the drag: dragged rows that are not
+            // themselves descendants of another dragged row (their subtrees
+            // ride along and keep their internal parent links).
+            QVector<int> topSources;
+            for (int r : sourceRows) {
+                if (r < 0 || r >= mods_.size()) continue;
+                if (mods_[r].is_overwrite || mods_[r].is_merged ||
+                    mods_[r].is_game_native)
+                    continue;
+                bool inside = false;
+                for (int o : sourceRows) {
+                    if (o != r && o >= 0 && o < mods_.size() &&
+                        is_descendant_of(r, mods_[o].id)) {
+                        inside = true;
+                        break;
+                    }
+                }
+                if (!inside) topSources.append(r);
+            }
+            bool all_same_kind = !topSources.isEmpty();
+            for (int r : topSources) {
+                if (mods_[r].is_separator != tgt.is_separator) {
+                    all_same_kind = false;
+                    break;
+                }
+            }
+            // Cycle guard: the target may be a dragged row or a descendant of
+            // a dragged row (a parent can never nest under its own child).
+            bool target_in_block = false;
+            for (int r : validSources) {
+                if (r == drop_parent_row ||
+                    is_descendant_of(drop_parent_row, mods_[r].id)) {
+                    target_in_block = true;
+                    break;
+                }
+            }
+            if (all_same_kind && !target_in_block) new_parent_id = tgt.id;
+        }
     }
 
     // A nest-drop appends to the parent's subtree instead of landing directly
@@ -604,12 +640,18 @@ bool ModListModel::dropMimeData(const QMimeData* data, Qt::DropAction action,
             targetRow = nb_last + 1;
     }
 
-    // The first inserted entry is the single top-level source (the subtree
-    // block keeps internal order); stamp its new parent link if the nest
-    // gesture applied. Descendants keep their existing parent_id, which still
-    // points at the moved source - the block rides along as one unit.
-    if (!new_parent_id.isEmpty())
-        toMove[0].parent_id = new_parent_id;
+    // Stamp the new parent link on every top-level source of the drag (a
+    // single row, or each row of a multi-row selection). Rows whose parent is
+    // inside the moved block keep their existing parent_id - the subtree
+    // block rides along as one unit.
+    if (!new_parent_id.isEmpty()) {
+        QSet<QString> moved_ids;
+        for (const auto& e : toMove) moved_ids.insert(e.id);
+        for (auto& e : toMove) {
+            if (e.parent_id.isEmpty() || !moved_ids.contains(e.parent_id))
+                e.parent_id = new_parent_id;
+        }
+    }
 
     for (int i = 0; i < toMove.size(); ++i) {
         beginInsertRows({}, targetRow + i, targetRow + i);
