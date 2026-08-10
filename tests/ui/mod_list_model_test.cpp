@@ -475,7 +475,7 @@ int main(int argc, char** argv) {
         ui::ConflictPairs pairs;
         pairs.loses_to << QStringLiteral("SkyUI");
         model.set_conflict_pairs({{QStringLiteral("Enemy NPCs"), pairs}});
-        model.set_selected_mod(QStringLiteral("Enemy NPCs"));
+        model.set_selected_mods({QStringLiteral("Enemy NPCs")});
         const QVariant conflict_bg = model.data(
             model.index(hl_row, ui::ModListModel::Flags), Qt::BackgroundRole);
         check(conflict_bg.canConvert<QBrush>() &&
@@ -490,7 +490,87 @@ int main(int argc, char** argv) {
                   after_clear.value<QBrush>().color() ==
                       Settings::instance().modlist_overwriting_loose(),
               "clearing reveals conflict color");
-        model.set_selected_mod({});
+        model.set_selected_mods({});
+        model.set_conflict_pairs({});
+    }
+
+    // --- Conflict-partner scroll marks (MO2 ModListViewMarkingScrollBar) ---
+    // Selecting a mod draws the win/loss colors as scrollbar marks
+    // (kScrollMarkRole) — the same union that tints rows via BackgroundRole,
+    // extended across multi-selection.
+    {
+        ui::ConflictPairs enemy;
+        enemy.loses_to << QStringLiteral("SkyUI");           // SkyUI overwrites Enemy NPCs
+        enemy.wins_against << QStringLiteral("Update.esm");  // Enemy NPCs overwrites Update.esm
+        ui::ConflictPairs skyrim;
+        skyrim.loses_to << QStringLiteral("Update.esm");     // Update.esm overwrites Skyrim.esm
+        model.set_conflict_pairs({
+            {QStringLiteral("Enemy NPCs"), enemy},
+            {QStringLiteral("Skyrim.esm"), skyrim},
+        });
+
+        // Single selection: red for a mod that overwrites the selection, green
+        // for one the selection overwrites.
+        model.set_selected_mods({QStringLiteral("Enemy NPCs")});
+        const int skyui_row = row_with_id(model, "SkyUI");
+        const int update_row = row_with_id(model, "Update.esm");
+        const int skyrim_row = row_with_id(model, "Skyrim.esm");
+        const QVariant red_mark = model.data(
+            model.index(skyui_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+        check(red_mark.canConvert<QColor>() &&
+                  red_mark.value<QColor>() == Settings::instance().modlist_overwriting_loose(),
+              "scroll mark: red for the mod overwriting the selection");
+        const QVariant green_mark = model.data(
+            model.index(update_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+        check(green_mark.canConvert<QColor>() &&
+                  green_mark.value<QColor>() == Settings::instance().modlist_overwritten_loose(),
+              "scroll mark: green for the mod the selection overwrites");
+        const QVariant none_mark = model.data(
+            model.index(skyrim_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+        check(!none_mark.isValid() || !none_mark.value<QColor>().isValid(),
+              "no scroll mark for an unconcerned mod");
+        // BackgroundRole follows the same union (MO2 markerColor drives both
+        // the row tint and the scrollbar ticks).
+        const QVariant bg = model.data(
+            model.index(skyui_row, ui::ModListModel::Flags), Qt::BackgroundRole);
+        check(bg.canConvert<QBrush>() &&
+                  bg.value<QBrush>().color() == Settings::instance().modlist_overwriting_loose(),
+              "background tint shares the union color");
+
+        // Multi-select union: partners of EITHER selected mod are marked.
+        model.set_selected_mods({QStringLiteral("Enemy NPCs"), QStringLiteral("Skyrim.esm")});
+        // Update.esm is green via Enemy NPCs and red via Skyrim.esm — red wins
+        // globally (MO2 markerColor precedence: overwritten > overwrite).
+        const QVariant union_mark = model.data(
+            model.index(update_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+        check(union_mark.canConvert<QColor>() &&
+                  union_mark.value<QColor>() == Settings::instance().modlist_overwriting_loose(),
+              "red beats green when a row wins one pair and loses another");
+        const QVariant skyui_union = model.data(
+            model.index(skyui_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+        check(skyui_union.canConvert<QColor>() &&
+                  skyui_union.value<QColor>() == Settings::instance().modlist_overwriting_loose(),
+              "union marks a partner of the other selection too");
+        const QVariant sel_self = model.data(
+            model.index(skyrim_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+        check(!sel_self.isValid() || !sel_self.value<QColor>().isValid(),
+              "a selected mod that conflicts with nothing gets no self-mark");
+
+        // Plugin highlight beats the conflict tick (MO2 markerColor order).
+        model.set_highlighted_mods({QStringLiteral("SkyUI")});
+        const QVariant hl_mark = model.data(
+            model.index(skyui_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+        check(hl_mark.canConvert<QColor>() &&
+                  hl_mark.value<QColor>() == Settings::instance().modlist_contains_file(),
+              "plugin highlight beats the conflict scroll mark");
+
+        // Clearing the selection clears every mark.
+        model.set_selected_mods({});
+        model.set_highlighted_mods({});
+        const QVariant cleared = model.data(
+            model.index(skyui_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+        check(!cleared.isValid() || !cleared.value<QColor>().isValid(),
+              "clearing the selection clears the scroll marks");
         model.set_conflict_pairs({});
     }
 
@@ -994,6 +1074,63 @@ int main(int argc, char** argv) {
               "both nested separators link to the parent");
     }
 
+    // User regression: nesting a brand-new separator under a parent that
+    // already holds a nested separator with mods must not steal those mods.
+    // The new separator lands after the bottom separator's whole fold band
+    // (below its mods) and takes nothing with it.
+    {
+        ui::ModListModel m;
+        m.set_nesting_enabled(true);
+        QVector<ui::ModEntry> e;
+        for (const char* id : {"P_separator", "S1_separator", "ModM1", "ModM2", "S2_separator"}) {
+            ui::ModEntry ent;
+            ent.id = QString::fromLatin1(id);
+            ent.name = id;
+            ent.enabled = true;
+            ent.is_separator = QString::fromLatin1(id).endsWith(QStringLiteral("_separator"));
+            e.append(ent);
+        }
+        ui::ModEntry ow;
+        ow.id = ui::kOverwriteModId;
+        ow.name = ui::kOverwriteModName;
+        ow.enabled = true;
+        ow.is_overwrite = true;
+        e.append(ow);
+        m.reset_with_order(e);
+        auto rid = [&](const char* id) { return row_with_id(m, id); };
+
+        // Build the user's tree: S1 nested under P, then mods M1/M2 following
+        // it. Mods never parent-link under a separator (same-kind nesting
+        // rule), so they stay top-level and S1 owns them via its fold band.
+        QMimeData d1;
+        d1.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("1"));
+        check(m.dropMimeData(&d1, Qt::MoveAction, -1, 0, m.index(rid("P_separator"), 0)),
+              "S1 nest drop accepted");
+        check(m.mods()[rid("S1_separator")].parent_id == QLatin1String("P_separator"),
+              "S1 links to P");
+        check(m.mods()[rid("ModM1")].parent_id.isEmpty() &&
+                  m.mods()[rid("ModM2")].parent_id.isEmpty(),
+              "band mods stay top-level (same-kind nesting rule)");
+        check(m.has_content(rid("S1_separator")),
+              "S1 owns the mods below it via its fold band");
+
+        // Drag S2 onto P: it must become P's child, land AFTER M2 (end of P's
+        // fold scope), and leave the band mods unclaimed by S2's fold.
+        QMimeData dS2;
+        dS2.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("4"));
+        check(m.dropMimeData(&dS2, Qt::MoveAction, -1, 0, m.index(rid("P_separator"), 0)),
+              "S2 nest drop accepted");
+        check(m.mods()[rid("S2_separator")].parent_id == QLatin1String("P_separator"),
+              "S2 links to the parent");
+        check(rid("S2_separator") == rid("ModM2") + 1,
+              "S2 lands after the bottom separator's whole band");
+        check(!m.has_content(rid("S2_separator")),
+              "S2 takes nothing - no fold band of its own");
+        check(m.mods()[rid("ModM1")].parent_id.isEmpty() &&
+                  m.mods()[rid("ModM2")].parent_id.isEmpty(),
+              "band mods are not re-parented (nothing stolen)");
+    }
+
     // Multi-row nest drops: dragging several rows of the same kind onto an
     // item of that kind makes EACH dragged row a child of the target. The old
     // behavior only nested single-row drags - a multi-separator selection
@@ -1147,35 +1284,54 @@ int main(int argc, char** argv) {
 
         auto rid = [&](const char* id) { return row_with_id(m, id); };
 
-        // Nest SepN under SepP (separator -> separator).
+        // Nest SepN under SepP (separator -> separator). It lands at the END of
+        // SepP's fold scope (after its band mods), never squeezed between the
+        // parent and the mods it owns - the "new separator steals the parent's
+        // mods" bug.
         QMimeData ds;
         ds.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("3"));
         check(m.dropMimeData(&ds, Qt::MoveAction, -1, 0, m.index(rid("SepP_separator"), 0)),
               "separator-on-separator nest drop accepted");
         check(m.mods()[rid("SepN_separator")].parent_id == QLatin1String("SepP_separator"),
               "nested separator links to its parent separator");
-        check(rid("SepN_separator") == rid("SepP_separator") + 1,
-              "nested separator lands directly below its parent");
+        check(rid("SepN_separator") == rid("ModY") + 1,
+              "nested separator lands after the parent's band (does not steal its mods)");
         check(m.nesting_depth(rid("SepN_separator")) == 1,
               "nested separator depth 1");
         check(m.has_content(rid("SepP_separator")),
               "separator with a nested separator child has content");
 
-        // Rows now: SepP(0), SepN(1), ModX(2), ModY(3), SepQ(4), ModZ(5), overwrite(6).
-        check(m.has_content(rid("SepN_separator")),
-              "nested separator with a band below has content");
+        // Rows now: SepP(0), ModX(1), ModY(2), SepN(3), SepQ(4), ModZ(5), overwrite(6).
+        check(!m.has_content(rid("SepN_separator")),
+              "a separator nested at the end of the parent's band has no band of its own");
 
-        // Fold SepN: hides ModX + ModY, stops at the non-descendant SepQ.
-        m.set_folded(rid("SepN_separator"), true);
-        check(m.is_row_fold_hidden(rid("ModX")) && m.is_row_fold_hidden(rid("ModY")),
-              "folding a nested separator hides its band");
+        // Fold SepP: swallows its whole scope - the band mods AND the nested
+        // separator - stopping at the non-descendant SepQ.
+        m.set_folded(rid("SepP_separator"), true);
+        check(m.is_row_fold_hidden(rid("ModX")) && m.is_row_fold_hidden(rid("ModY")) &&
+                  m.is_row_fold_hidden(rid("SepN_separator")),
+              "folding the parent swallows its band and the nested separator");
         check(!m.is_row_fold_hidden(rid("SepQ_separator")) &&
                   !m.is_row_fold_hidden(rid("ModZ")),
-              "non-descendant separator ends the fold scope");
+              "parent fold stops at the non-descendant separator");
+        m.set_folded(rid("SepP_separator"), false);
+
+        // Moving a nested separator above the parent's band re-gives it that
+        // band: the fold scope follows position, so it then owns the mods below.
+        m.move_mod(QStringLiteral("SepN_separator"), rid("SepP_separator") + 1);
+        check(rid("SepN_separator") == rid("SepP_separator") + 1,
+              "moving the nested separator above the band places it directly under the parent");
+        check(m.has_content(rid("SepN_separator")),
+              "nested separator above the band has content");
+        m.set_folded(rid("SepN_separator"), true);
+        check(m.is_row_fold_hidden(rid("ModX")) && m.is_row_fold_hidden(rid("ModY")),
+              "folding the nested separator hides its band");
+        check(!m.is_row_fold_hidden(rid("SepQ_separator")) &&
+                  !m.is_row_fold_hidden(rid("ModZ")),
+              "its fold still ends at the non-descendant separator");
         check(!m.is_row_fold_hidden(rid("SepP_separator")),
               "parent separator stays visible above its child's fold");
-
-        // Fold SepP too: swallows SepN's fold AND its band, still stops at SepQ.
+        m.set_folded(rid("SepN_separator"), false);
         m.set_folded(rid("SepP_separator"), true);
         check(m.is_row_fold_hidden(rid("SepN_separator")) &&
                   m.is_row_fold_hidden(rid("ModX")) && m.is_row_fold_hidden(rid("ModY")),
@@ -1183,7 +1339,6 @@ int main(int argc, char** argv) {
         check(!m.is_row_fold_hidden(rid("SepQ_separator")),
               "parent fold still ends at the non-descendant separator");
         m.set_folded(rid("SepP_separator"), false);
-        m.set_folded(rid("SepN_separator"), false);
 
         // A separator's fold scope covers mods below it regardless of nesting.
         m.set_folded(rid("SepQ_separator"), true);
@@ -1745,6 +1900,72 @@ int main(int argc, char** argv) {
         check(row_with_id(mm, "ModA") == 2 && row_with_id(mm, "ModB") == 3,
               "reversed: user mods live below the pinned block");
         check(mm.is_conflict_order_reversed(), "reversed flag observable");
+    }
+
+    // Dirty-priority set (P8.6): renumber_priorities() flags exactly the rows
+    // whose persisted priority can diverge from their row index; a fresh
+    // add_mod (no persisted priority yet) is always flagged; the set clears via
+    // clear_dirty_priority_ids(). MainWindow::sync_priorities() consumes this
+    // set so a reorder writes only the moved rows' meta.ini (MO2 parity: the
+    // profile is the in-memory source of truth, not per-move disk reads).
+    {
+        ui::ModListModel dm;
+        // Deterministic layout: ModA 0, ModB 1, ModC 2, Overwrite pinned last.
+        QVector<ui::ModEntry> base;
+        for (const char* id : {"ModA", "ModB", "ModC"}) {
+            ui::ModEntry m;
+            m.id = QString::fromLatin1(id);
+            m.name = m.id;
+            m.enabled = true;
+            base.append(m);
+        }
+        ui::ModEntry ow;
+        ow.id = ui::kOverwriteModId;
+        ow.name = ui::kOverwriteModName;
+        ow.enabled = true;
+        ow.is_overwrite = true;
+        base.append(ow);
+        // Priorities default to 0 in ModEntry; stamp row indices so the reset
+        // below renumbers nothing (the "unchanged order dirties nothing" case
+        // below needs a clean slate to prove it).
+        for (int i = 0; i < base.size(); ++i) base[i].priority = i;
+        dm.reset_with_order(base);
+        check(dm.dirty_priority_ids().isEmpty(),
+              "reset_with_order from scratch dirties nothing");
+
+        // A fresh add_mod (no persisted priority) flags itself, and the Overwrite
+        // row whose index shifted down.
+        dm.add_mod("ModD", "ModD", "1.0");  // lands just above Overwrite
+        QSet<QString> dirty = dm.dirty_priority_ids();
+        check(dirty.contains("ModD"), "fresh add_mod flags the new mod dirty");
+        check(dirty.contains(ui::kOverwriteModId),
+              "fresh add_mod flags the shifted Overwrite row");
+
+        // A move shifts rows -> renumber marks the moved + displaced rows.
+        dm.clear_dirty_priority_ids();
+        dm.move_mod("ModB", 3);  // row 1 -> row 3 (just above Overwrite)
+        dirty = dm.dirty_priority_ids();
+        check(dirty.contains("ModB"), "move_mod marks the moved mod dirty");
+        check(dirty.contains("ModC") && dirty.contains("ModD"),
+              "move_mod marks the displaced rows dirty");
+        check(!dirty.contains("ModA") && !dirty.contains(ui::kOverwriteModId),
+              "move_mod does not dirty unaffected rows");
+
+        dm.clear_dirty_priority_ids();
+
+        // reset_with_order with an unchanged order dirties nothing.
+        QVector<ui::ModEntry> re = dm.mods();
+        dm.reset_with_order(re);
+        check(dm.dirty_priority_ids().isEmpty(),
+              "reset_with_order with unchanged order dirties nothing");
+
+        // reset_with_order that reorders flags exactly the rows that moved.
+        re = dm.mods();
+        std::swap(re[1], re[2]);  // swap the two mods just below ModA
+        dm.reset_with_order(re);
+        dirty = dm.dirty_priority_ids();
+        check(dirty.size() == 2 && dirty.contains(re[1].id) && dirty.contains(re[2].id),
+              "reset_with_order with a reorder flags exactly the moved rows");
     }
 
     std::printf("\n%d passed, %d failed\n", passes, failures);

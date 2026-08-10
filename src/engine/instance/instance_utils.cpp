@@ -108,6 +108,36 @@ Instance create_instance_for_game(const DetectedGame& game,
     return inst;
 }
 
+DeployConfig deploy_config_for(const fs::path& instance_root,
+                               const fs::path& game_dir,
+                               const GameKnowledge& knowledge,
+                               const std::string& game_id) {
+    DeployConfig cfg;
+    cfg.mods_dir = instance_root / "mods";
+    cfg.game_dir = game_dir;
+    cfg.deploy_prefix = knowledge.get(game_id, "deploy_prefix", "Data");
+    cfg.deploy_include_mod_id =
+        knowledge.get(game_id, "deploy_include_mod_id", "false") == "true";
+    cfg.disable_mechanism = disable_mechanism_for(knowledge, game_id);
+    cfg.case_sensitive = knowledge.get(game_id, "case_sensitive", "true") != "false";
+    if (const char* cs = std::getenv("GMM_CASE_SENSITIVE"); cs)
+        cfg.case_sensitive = (std::string(cs) == "1");
+    cfg.ledger_file = instance_root / ".gmm_deploy_ledger";
+    cfg.backup_root = game_dir / kOriginalFilesDirName;
+    return cfg;
+}
+
+std::string effective_deploy_strategy(const fs::path& instance_root,
+                                      const GameKnowledge& knowledge,
+                                      const std::string& game_id) {
+    if (!instance_root.empty()) {
+        Instance inst = Instance::from_root(instance_root);
+        if (inst.read_toml() && !inst.info().deploy_strategy.empty())
+            return inst.info().deploy_strategy;
+    }
+    return deploy_strategy_for(knowledge, game_id);
+}
+
 LaunchParams prepare_launch_params(
     const std::filesystem::path& instance_root,
     const std::filesystem::path& game_dir,
@@ -138,6 +168,7 @@ LaunchParams prepare_launch_params(
     params.overwrite_dir = req.instance_root / "overwrite";
     params.steam_appid = req.steam_appid;
     params.is_windows_exe = req.is_windows_exe;
+    params.environment = req.environment;
 
     // Per-instance Proton runner override (empty = automatic). Read from
     // instance.toml so every launch path (GUI + CLI) honors the selection.
@@ -156,41 +187,73 @@ LaunchParams prepare_launch_params(
     std::error_code ec;
     fs::create_directories(params.overwrite_dir, ec);
 
-    // Check if OverlayFS is supported for this instance
-    if (!OverlayFsLauncher::is_supported(params.overwrite_dir)) {
+    // Per-game deploy strategy: symlink (default) deploys mods straight into
+    // game_dir and launches plain; overlayfs (explicit opt-in per game) deploys
+    // into the session-wiped staging dir and launches sandboxed. A per-instance
+    // "deploy_strategy" override in instance.toml (set from the UI's Deploy
+    // Management selector) wins over the knowledge default.
+    const std::string deploy_strategy_name = effective_deploy_strategy(
+        req.instance_root, req.knowledge, req.game_id);
+    const bool use_overlay = (deploy_strategy_name == kDeployStrategyOverlayFs);
+    params.use_overlay = use_overlay;
+    if (use_overlay && !OverlayFsLauncher::is_supported(params.overwrite_dir)) {
         Logger::instance().warn("OverlayFS not supported, launching without overlay");
         return params;
     }
 
-    // Ensure staging dir exists (fixes ENOENT when no mods have been deployed yet)
-    auto staging_dir = req.instance_root / ".gmm_staging";
-    fs::create_directories(staging_dir, ec);
-    if (ec) {
-        Logger::instance().error("Failed to create staging dir: " + ec.message());
-        return params;
+    // Deploy parameters are gathered once via deploy_config_for so the
+    // launch-time deploy and the UI's "Deploy management" actions use the exact
+    // same values (knowledge keys + GMM_CASE_SENSITIVE override included).
+    const DeployConfig deploy_cfg =
+        deploy_config_for(req.instance_root, req.game_dir, req.knowledge, req.game_id);
+    // === BROKEN FEATURE — DO NOT ENABLE ===
+    // Historical arm switch for the libgmm_ci_intercept.so case-insensitive
+    // interposer. The shim is broken (shadows Wine's own case-insensitivity,
+    // broke Pandora, 2026-08-09) and do_launch only honors ci_resolve when
+    // GMM_ENABLE_BROKEN_CI_SHIM is explicitly set. Kept as inert documentation
+    // of the old wiring; do not build on it.
+    params.ci_resolve = !deploy_cfg.case_sensitive;
+
+    // The engine deploy is synchronous: it returns only once the deploy tree
+    // is fully populated, so every launch path chains launch on this return
+    // (the GUI via a worker thread's completion signal, the CLI by plain
+    // blocking).
+    bool deployed = false;
+    if (use_overlay) {
+        // Ensure staging dir exists (fixes ENOENT when no mods have been
+        // deployed yet)
+        auto staging_dir = req.instance_root / ".gmm_staging";
+        fs::create_directories(staging_dir, ec);
+        if (ec) {
+            Logger::instance().error("Failed to create staging dir: " + ec.message());
+            return params;
+        }
+        deployed = deploy_all_enabled_mods_parallel(
+            deploy_cfg.mods_dir, staging_dir, deploy_cfg.deploy_prefix,
+            deploy_cfg.deploy_include_mod_id, deploy_cfg.disable_mechanism,
+            deploy_cfg.case_sensitive, 0, progress);
+        if (!deployed) {
+            Logger::instance().warn("Some mods failed to deploy to staging - continuing anyway");
+        }
+        params.extra_lowerdirs.push_back(staging_dir);
+        Logger::instance().debug("Launch: OverlayFS staging at " + staging_dir.string());
+    } else {
+        // Direct-symlink mode: deploy into game_dir. The ledger persists at
+        // the instance root (outside the session-wiped .gmm_staging), so a
+        // conflict-resolution owner change across sessions is detected and
+        // only the changed winners are touched (O(Δ) redeploy). Originals the
+        // deploy displaces are parked in <game_dir>/Original_Files, never
+        // deleted.
+        deployed = deploy_all_enabled_mods_direct(
+            deploy_cfg.mods_dir, deploy_cfg.game_dir, deploy_cfg.deploy_prefix,
+            deploy_cfg.deploy_include_mod_id, deploy_cfg.disable_mechanism,
+            deploy_cfg.case_sensitive, deploy_cfg.ledger_file,
+            deploy_cfg.backup_root, 0, progress);
+        if (!deployed) {
+            Logger::instance().warn("Some mods failed to deploy into game_dir - continuing anyway");
+        }
+        Logger::instance().debug("Launch: direct-symlink deploy into " + deploy_cfg.game_dir.string());
     }
-
-    // Deploy all enabled mods to staging (parallel executor, P8.4). The
-    // engine call is synchronous: it returns only once the staging tree is
-    // fully populated, so every launch path chains launch on this return (the
-    // GUI via a worker thread's completion signal, the CLI by plain blocking).
-    std::string deploy_prefix = req.knowledge.get(req.game_id, "deploy_prefix", "Data");
-    std::string deploy_include_mod_id = req.knowledge.get(req.game_id, "deploy_include_mod_id", "false");
-    std::string disable_mechanism = disable_mechanism_for(req.knowledge, req.game_id);
-    bool case_sensitive = req.knowledge.get(req.game_id, "case_sensitive", "true") != "false";
-    params.ci_resolve = !case_sensitive;
-    auto mods_dir = req.instance_root / "mods";
-
-    bool deployed = deploy_all_enabled_mods_parallel(
-        mods_dir, staging_dir, deploy_prefix,
-        deploy_include_mod_id == "true", disable_mechanism, case_sensitive,
-        0, progress);
-    if (!deployed) {
-        Logger::instance().warn("Some mods failed to deploy to staging - continuing anyway");
-    }
-
-params.extra_lowerdirs.push_back(staging_dir);
-    Logger::instance().debug("Launch: OverlayFS staging at " + staging_dir.string());
 
     // Per-profile local saves (P4): when enabled for a Windows game with a
     // registered local_savegames feature, rewrite the game INI to save under
@@ -202,8 +265,7 @@ params.extra_lowerdirs.push_back(staging_dir);
     // Only applies when the overlay launcher is in use (a bind mount needs the
     // mount namespace) and we can resolve the game's My Games folder from the
     // platform + a registered feature. Otherwise this is a silent no-op.
-    if (req.local_saves_enabled && req.is_windows_exe && req.platform &&
-        OverlayFsLauncher::is_supported(params.overwrite_dir)) {
+    if (use_overlay && req.local_saves_enabled && req.is_windows_exe && req.platform) {
         params.bind_mount_source = std::filesystem::path();
         params.bind_mount_target = std::filesystem::path();
         const auto feature =

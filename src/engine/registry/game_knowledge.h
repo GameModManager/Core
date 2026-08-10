@@ -48,4 +48,16 @@ inline constexpr const char* kDefaultDisableMechanism = ".gmmdisabled";
 [[nodiscard]] std::string disable_mechanism_for(const GameKnowledge& knowledge,
                                                 const std::string& game_id);
 
+// Deploy strategy names for the per-game "deploy_strategy" knowledge key.
+// The default is Symlink (direct symlinks into game_dir); a game opts out of
+// that by setting the key to kDeployStrategyOverlayFs, which deploys into a
+// staging dir and overlays it onto the game at launch (Linux only).
+inline constexpr const char* kDefaultDeployStrategy = "symlink";
+inline constexpr const char* kDeployStrategyOverlayFs = "overlayfs";
+
+// Deploy strategy declared for the given game. Falls back to
+// kDefaultDeployStrategy when the game plugin declares nothing.
+[[nodiscard]] std::string deploy_strategy_for(const GameKnowledge& knowledge,
+                                              const std::string& game_id);
+
 }  // namespace engine

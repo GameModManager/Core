@@ -35,6 +35,8 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
     // Scan game's native mods directory.
     scanned = engine::ModScanner::scan(knowledge, game_id, request.game_dir,
                                        ignore_symlink_targets);
+    engine::Logger::instance().debug("ModScanWorker: game-dir scan found " +
+                             std::to_string(scanned.size()) + " mod(s)");
 
     // Instance mode: the mod list comes from the instance mods dir ONLY. The
     // game's own mods subpath is never a mod source - its folders (e.g.
@@ -48,9 +50,18 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
         std::error_code ec_canon;
         auto inst_canon = std::filesystem::weakly_canonical(request.mods_dir, ec_canon);
         auto game_canon = std::filesystem::weakly_canonical(game_mods_dir, ec_canon);
+        engine::Logger::instance().debug(
+            "ModScanWorker: instance mode (instance_root=" + request.instance_root.string() +
+            ") inst_mods_dir=" + inst_canon.string() +
+            " game_mods_dir=" + game_canon.string() +
+            " same=" + std::to_string(inst_canon == game_canon ? 1 : 0));
         if (inst_canon != game_canon) {
             scanned = engine::ModScanner::scan_dir(knowledge, game_id, request.mods_dir,
                                                    std::vector<std::filesystem::path>{});
+            engine::Logger::instance().debug("ModScanWorker: game-dir scan REPLACED by instance mods dir, " +
+                                     std::to_string(scanned.size()) + " mod(s)");
+        } else {
+            engine::Logger::instance().debug("ModScanWorker: instance mods dir == game mods dir, keeping game-dir scan");
         }
     }
 

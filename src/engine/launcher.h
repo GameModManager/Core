@@ -33,6 +33,13 @@ struct LaunchParams {
     // touching game_dir.  Empty = legacy behavior (no mod layers, write capture only).
     std::vector<std::filesystem::path> extra_lowerdirs;
 
+    // True when the launch runs inside the OverlayFS sandbox (mount namespace
+    // + overlay over game_dir + write capture into overwrite_dir). Set from the
+    // instance's deploy_strategy: overlayfs games launch sandboxed, symlink
+    // (default) games launch plain - mods are already linked into game_dir, so
+    // no overlay is mounted and game writes go straight to game_dir.
+    bool use_overlay = false;
+
     // Selected Proton runner (display name or absolute path to a `proton`
     // script). Empty = automatic (Steam per-game override, then latest).
     std::string proton_runner;
@@ -45,10 +52,20 @@ struct LaunchParams {
     std::filesystem::path bind_mount_source;
     std::filesystem::path bind_mount_target;
 
-    // Case-insensitive resolve (Windows games). When true, the launch child
-    // preloads libgmm_ci_intercept.so so ENOENT lookups under game_dir are
-    // re-resolved against the on-disk tree's real casing (v0.3.1).
+    // === BROKEN FEATURE — DO NOT ENABLE ===
+    // Historical arm switch for the libgmm_ci_intercept.so case-insensitive
+    // interposer. The shim is broken — it shadows Wine's own case-insensitive
+    // path handling and broke Pandora's game-tree reads (2026-08-09). do_launch
+    // never preloads it unless GMM_ENABLE_BROKEN_CI_SHIM is explicitly set to a
+    // truthy value. Kept only so the old wiring stays documented; do not build
+    // on this flag.
     bool ci_resolve = false;
+
+    // Per-executable environment overrides, each "KEY=VALUE". Applied to the
+    // launched process (inherited by the overlay child / Proton / the game).
+    // Entries without '=' are ignored with a warning. Empty = inherit the
+    // parent environment unchanged.
+    std::vector<std::string> environment;
 };
 
 struct LaunchResult {

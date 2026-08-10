@@ -188,6 +188,13 @@ public:
     [[nodiscard]] const QVector<ModEntry>& mods() const { return mods_; }
     [[nodiscard]] QStringList enabled_mod_ids() const;
     [[nodiscard]] int priority_of(const QString& id) const;
+    // Rows whose persisted priority may have diverged from their row index
+    // (marked by renumber_priorities for every row whose priority field changed).
+    // sync_priorities() persists only these to meta.ini — a reorder writes the
+    // moved rows instead of re-reading every mod's metadata (MO2 parity: the
+    // profile is the in-memory source of truth, not per-move disk reads).
+    [[nodiscard]] QSet<QString> dirty_priority_ids() const { return dirty_priority_ids_; }
+    void clear_dirty_priority_ids() { dirty_priority_ids_.clear(); }
     [[nodiscard]] int overwrite_row() const;
     [[nodiscard]] bool is_overwrite(int row) const;
     [[nodiscard]] int merged_row() const;
@@ -216,7 +223,10 @@ public:
     void set_conflict_pairs(const QMap<QString, ConflictPairs>& pairs);
     [[nodiscard]] const QMap<QString, ConflictPairs>& conflict_pairs() const { return conflict_pairs_; }
     [[nodiscard]] bool has_conflicts_within_separator(const QString& mod_id) const;
-    void set_selected_mod(const QString& id);
+    // The mod ids whose conflicts are highlighted (row tint + scrollbar marks).
+    // Multi-select: the union of conflict partners across ALL selected mods
+    // (MO2 refreshMarkersAndPlugins parity). Empty set clears the highlight.
+    void set_selected_mods(const QSet<QString>& ids);
     // Mark mods owning a plugin selected in the plugins list (MO2's
     // "Mod contains selected file" highlight). Rows render modlist_contains_file
     // and feed the scrollbar marks. Empty set clears.
@@ -240,6 +250,11 @@ private:
     // when a caller inserted the rows themselves.
     void pin_pinned_rows();
     [[nodiscard]] QString compute_separator_flags(int row) const;
+    // Conflict-highlight color for a mod id: red (modlist_overwriting_loose)
+    // when some selected mod loses to it, green (modlist_overwritten_loose)
+    // when some selected mod wins over it, invalid otherwise. Red wins over
+    // green (MO2 markerColor precedence: overwritten > overwrite).
+    [[nodiscard]] QColor conflict_highlight_color(const QString& id) const;
     // Vendor badge for a mod's source_type (via engine::vendor_icon_key), or
     // null for unknown/empty sources.
     [[nodiscard]] QIcon source_icon(const QString& source_type) const;
@@ -267,10 +282,11 @@ private:
     bool conflict_order_reversed_ = false;
     bool uses_merged_ = false;
     bool nesting_enabled_ = false;
-    QString selected_mod_id_;
+    QSet<QString> selected_mod_ids_;
     QSet<QString> highlighted_mods_;
     QMap<QString, ConflictPairs> conflict_pairs_;
     QString overwrite_path_;
+    QSet<QString> dirty_priority_ids_;
 };
 
 }  // namespace ui

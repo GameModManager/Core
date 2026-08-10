@@ -58,4 +58,11 @@ std::string disable_mechanism_for(const GameKnowledge& knowledge,
     return kDefaultDisableMechanism;
 }
 
+std::string deploy_strategy_for(const GameKnowledge& knowledge,
+                                const std::string& game_id) {
+    const std::string declared = knowledge.get(game_id, "deploy_strategy", "");
+    if (!declared.empty()) return declared;
+    return kDefaultDeployStrategy;
+}
+
 }  // namespace engine

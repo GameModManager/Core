@@ -82,9 +82,10 @@ using std::filesystem::path;
 // .bin blobs, plugins) stays symlinked - it is only ever read, never run.
 [[nodiscard]] bool is_executable_binary(const std::filesystem::path& path);
 
-// Deploy all enabled (non-disabled) mods from instance_root/mods/ to staging_dir.
-// staging_dir is created if it doesn't exist. Uses OverlayFsDeployStrategy internally
-// to create symlinks under staging_dir/deploy_prefix/[mod_id/].
+// Deploy all enabled (non-disabled) mods from instance_root/mods/ to the
+// overlay staging dir. staging_dir is created if it doesn't exist. Uses
+// OverlayFsDeployStrategy internally to create symlinks under
+// staging_dir/deploy_prefix/[mod_id/].
 // disable_mechanism: the sentinel filename (e.g. ".disable") that marks a mod as disabled.
 // case_sensitive: true (default) preserves each mod's on-disk casing in the
 // staging tree; false routes every target through resolve_deploy_target_ci for
@@ -128,6 +129,70 @@ using std::filesystem::path;
     bool deploy_include_mod_id,
     const std::string& disable_mechanism,
     bool case_sensitive = true,
+    unsigned int num_threads = 0,
+    const DeployProgressFn& progress = {});
+
+// Direct-symlink variant (the "deploy_strategy = symlink" default): mods are
+// deployed straight into the game's own directory tree (game_dir), not a
+// staging dir. Uses SymlinkStrategy internally, so targets under
+// game_dir/deploy_prefix/[mod_id/] are symlinks back to the mod folder and
+// executables are real (copied) files.
+//
+// Same winner determinism and incremental O(Δ) redeploy contract as the
+// parallel overlay variant, with two differences:
+//   - The ledger persists at ledger_file (the caller's choice — typically
+//     <instance>/.gmm_deploy_ledger, OUTSIDE the session-wiped .gmm_staging),
+//     so conflict-resolution owner changes across sessions are detected: a
+//     file whose winner changed is re-pointed, and a file whose winner
+//     disappeared (disabled/removed mod) is unlinked from game_dir.
+//   - No case-insensitive alias pass: game_dir is the game's own tree, so no
+//     alias chain needs to be synthesized (Wine/Proton resolve
+//     case-insensitively on their own).
+//
+// num_threads/progress behave as in deploy_all_enabled_mods_parallel.
+//
+// backup_root: when non-empty, a real (non-symlink, non-ledger-owned) file/dir
+// at a target the deploy is about to overwrite is moved to
+// backup_root/<relative path> FIRST instead of being destroyed, and a target
+// that stops being a winner has its backed-up original moved back. This is how
+// direct mode guarantees an original game file is never deleted: on first
+// collision it is relocated to <game_dir>/Original_Files (the caller's usual
+// backup_root), and "remove deployed files" restores it. Empty = no backup
+// behavior (pure overlay/symlink semantics for callers that opt out).
+[[nodiscard]] bool deploy_all_enabled_mods_direct(
+    const path& mods_dir,
+    const path& game_dir,
+    const std::string& deploy_prefix,
+    bool deploy_include_mod_id,
+    const std::string& disable_mechanism,
+    bool case_sensitive,
+    const path& ledger_file,
+    const path& backup_root = {},
+    unsigned int num_threads = 0,
+    const DeployProgressFn& progress = {});
+
+// Directory name (inside the game's root) where direct-symlink deploys park
+// original game files that a mod overrides. Everything there is a restore
+// candidate: remove_deployed_files() moves each back to its game_dir location.
+inline constexpr const char* kOriginalFilesDirName = "Original_Files";
+
+// Remove every file the ledger says was deployed from game_dir and restore the
+// original files the deploy parked in backup_root. Backs the UI's "Remove
+// deployed files" action and the teardown half of "Force re-deploy links".
+//
+// For each ledger entry the deployed artifact (symlink or copied executable) is
+// removed and, when an original was backed up for it, that original is moved
+// back from backup_root to the exact relative location. Empty directories the
+// deploy created inside backup_root are pruned; game_dir is only touched at
+// deployed targets. On full success the ledger is dropped so the next deploy
+// re-evaluates from scratch (and re-backs-up restored originals); on partial
+// failure it is preserved so a later deploy re-checks everything.
+//
+// num_threads/progress behave as in deploy_all_enabled_mods_parallel.
+[[nodiscard]] bool remove_deployed_files(
+    const path& game_dir,
+    const path& backup_root,
+    const path& ledger_file,
     unsigned int num_threads = 0,
     const DeployProgressFn& progress = {});
 

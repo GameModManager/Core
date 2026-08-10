@@ -81,6 +81,12 @@ static bool check_launch_executable(const fs::path& game_dir,
 
 static LaunchResult do_launch(const LaunchParams& params);
 
+// Truthy check for an opt-in env flag: set and not "0".
+static bool env_is_true(const char* name) {
+    const char* v = std::getenv(name);
+    return v && *v && v[0] != '0';
+}
+
 LaunchResult launch_game(const LaunchParams& params) {
     auto exec_path = params.executable;
     // Merged-view pre-check (same semantics as do_launch): the file may be
@@ -231,11 +237,43 @@ static LaunchResult do_launch(const LaunchParams& params) {
         ? params.overwrite_dir
         : params.output_capture_dir;
 
-    // Case-insensitive lookup (Windows games): preload libgmm_ci_intercept.so
-    // so the game's ENOENT lookups under game_dir re-resolve against the real
-    // on-disk casing. Env is set in this (already-forked game-launch) process;
-    // the OverlayFS child and Proton inherit it via execv/exec.
-    if (params.ci_resolve) {
+    // Per-executable environment overrides. Set in this (already-forked
+    // game-launch) process; the OverlayFS child, Proton, and the game inherit
+    // them via fork/exec. Explicit overrides take precedence over inherited
+    // values (setenv overwrite=1), which is what lets WINEDEBUG=+file and
+    // friends reach the tool while leaving everything else untouched. These are
+    // applied before downstream launch decisions (e.g. the broken-CI-shim
+    // opt-in gate) so launch knobs can be supplied per executable via the
+    // Environment field.
+    for (const auto& var : params.environment) {
+        auto eq = var.find('=');
+        if (eq == std::string::npos || eq == 0) {
+            Logger::instance().warn(
+                "Launch env: ignoring malformed entry (no 'NAME=' part): " + var);
+            continue;
+        }
+        const std::string key = var.substr(0, eq);
+        const std::string value = var.substr(eq + 1);
+        setenv(key.c_str(), value.c_str(), 1);
+        Logger::instance().debug("Launch env: " + key + "=" + value);
+    }
+
+    // === BROKEN FEATURE — DO NOT ENABLE ===
+    // The custom case-insensitive interposer (libgmm_ci_intercept.so) is
+    // broken and must NEVER be preloaded. It shadows Wine's own (correct)
+    // case-insensitive path handling: its ENOENT re-resolution actively
+    // breaks Windows tools that read the deployed game tree. The Pandora
+    // "Could not find file Z:\...\Data\meshes\actors\..." failures
+    // (2026-08-09) were caused by THIS shim, not by missing files — Wine's
+    // native case-insensitivity resolves those lookups correctly. Our shim
+    // only fights the runtime it is injected into.
+    // The library, its build target and its unit test are kept in-tree purely
+    // as reference. It stays inert unless GMM_ENABLE_BROKEN_CI_SHIM is set to
+    // a truthy value — re-enabling it without a genuine case-sensitivity bug
+    // that Wine itself cannot handle is a mistake. (If you do, remove the
+    // stale GMM_NO_CI_SHIM entries from executable Environment fields first.)
+    const bool ci_shim_enabled = params.ci_resolve && env_is_true("GMM_ENABLE_BROKEN_CI_SHIM");
+    if (ci_shim_enabled) {
         static const fs::path ci_so = []() {
             std::error_code e;
             auto self = fs::read_symlink("/proc/self/exe", e);
@@ -261,8 +299,12 @@ static LaunchResult do_launch(const LaunchParams& params) {
     }
 
 #ifdef GMM_PLATFORM_LINUX
-    // Priority 1: OverlayFS - kernel VFS level, works for any binary format
-    if (OverlayFsLauncher::is_supported(params.overwrite_dir)) {
+    // Priority 1: OverlayFS - kernel VFS level, works for any binary format.
+    // Only for overlayfs games (use_overlay): in direct-symlink mode mods are
+    // already linked into game_dir, so the overlay (and its write capture into
+    // overwrite_dir) is neither needed nor wanted - game writes must land in
+    // game_dir itself.
+    if (params.use_overlay && OverlayFsLauncher::is_supported(params.overwrite_dir)) {
         Logger::instance().debug("OverlayFS launcher: supported, trying overlay launch");
 
         if (params.is_windows_exe) {
@@ -321,8 +363,10 @@ static LaunchResult do_launch(const LaunchParams& params) {
         Logger::instance().warn("OverlayFS not supported for this filesystem, skipping");
     }
 
-    // Priority 2: LD_PRELOAD - intercepts libc calls (native binaries only)
-    if (pid <= 0 && !params.is_windows_exe) {
+    // Priority 2: LD_PRELOAD - intercepts libc calls (native binaries only).
+    // Overlay games only: it redirects writes into capture_dir, and direct-mode
+    // games must write straight to game_dir.
+    if (pid <= 0 && !params.is_windows_exe && params.use_overlay) {
         if (PreloadInterceptor::is_supported()) {
             Logger::instance().debug("PreloadInterceptor: trying LD_PRELOAD launch");
             pid = PreloadInterceptor::launch(exec_path, params.game_dir,
