@@ -73,7 +73,47 @@ struct LaunchPrepRequest {
     // namespace). Empty platform = skipped.
     bool local_saves_enabled = false;
     const class PlatformInterface* platform = nullptr;
+    // Per-executable environment overrides ("KEY=VALUE"), forwarded verbatim to
+    // LaunchParams so the launched process gets them (empty = inherit).
+    std::vector<std::string> environment;
 };
+
+// Direct-symlink deploy parameters gathered once from instance.toml + game
+// knowledge. The single source of truth for direct-mode deploys: both
+// prepare_launch_params and the UI's "Deploy management" actions consume it
+// (golden rule: never re-derive these per caller).
+struct DeployConfig {
+    std::filesystem::path mods_dir;
+    std::filesystem::path game_dir;
+    std::string deploy_prefix;
+    bool deploy_include_mod_id = false;
+    std::string disable_mechanism;
+    bool case_sensitive = true;
+    std::filesystem::path ledger_file;
+    // Where originals displaced by the deploy are parked (<game_dir>/
+    // kOriginalFilesDirName); empty when a caller opts out of backup/restore.
+    std::filesystem::path backup_root;
+};
+
+// Gather the DeployConfig for a direct-symlink deploy of an instance's enabled
+// mods into its game dir. Honors the same knowledge keys and GMM_CASE_SENSITIVE
+// override as prepare_launch_params, so a UI-initiated re-deploy or removal
+// behaves exactly like the launch-time deploy.
+[[nodiscard]] DeployConfig deploy_config_for(
+    const std::filesystem::path& instance_root,
+    const std::filesystem::path& game_dir,
+    const GameKnowledge& knowledge,
+    const std::string& game_id);
+
+// Effective deploy strategy for an instance: the per-instance
+// "deploy_strategy" override in instance.toml when set, else the game plugin's
+// knowledge default (deploy_strategy_for). The single source of truth both the
+// launch path and the UI's strategy selector consume, so a user picking a
+// strategy in Deploy Management is honored at launch.
+[[nodiscard]] std::string effective_deploy_strategy(
+    const std::filesystem::path& instance_root,
+    const GameKnowledge& knowledge,
+    const std::string& game_id);
 
 // Prepare LaunchParams for launching a game from an instance.
 // If OverlayFS is supported on the instance:

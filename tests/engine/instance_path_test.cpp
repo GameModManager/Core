@@ -133,6 +133,29 @@ int main() {
     require(cleared_back.info().proton_runner.empty(),
             "cleared proton_runner reads empty");
 
+    // --- deploy_strategy: write_toml + write_key roundtrips. ---
+    Instance strat = Instance::from_root(root);
+    strat.info().deploy_strategy = "overlayfs";
+    require(strat.write_toml(), "write_toml with deploy_strategy succeeds");
+    Instance strat_back = Instance::from_root(root);
+    require(strat_back.read_toml(), "read_toml after deploy_strategy write succeeds");
+    require(strat_back.info().deploy_strategy == "overlayfs",
+            "deploy_strategy roundtrips through write_toml");
+
+    Instance strat_key = Instance::from_root(root);
+    require(strat_key.write_key("deploy_strategy", "symlink"),
+            "write_key sets deploy_strategy");
+    Instance strat_key_back = Instance::from_root(root);
+    require(strat_key_back.read_toml(), "read_toml after deploy_strategy write_key succeeds");
+    require(strat_key_back.info().deploy_strategy == "symlink",
+            "deploy_strategy roundtrips through write_key");
+    require(strat_key.write_key("deploy_strategy", ""),
+            "write_key with empty value clears deploy_strategy");
+    Instance strat_cleared = Instance::from_root(root);
+    require(strat_cleared.read_toml(), "read_toml after clearing deploy_strategy succeeds");
+    require(strat_cleared.info().deploy_strategy.empty(),
+            "cleared deploy_strategy reads empty");
+
     std::printf("instance_path_test: all checks passed\n");
     return 0;
 }

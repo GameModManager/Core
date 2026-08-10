@@ -1,6 +1,8 @@
 #include "ui/proton/proton_panel.h"
 
+#include "engine/deploy/deploy_utils.h"
 #include "engine/instance/instance.h"
+#include "engine/overlay_launcher.h"
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/proton_tools.h"
 #include "platform/platform_interface.h"
@@ -15,11 +17,15 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QMessageBox>
+#include <QMetaObject>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QGroupBox>
+#include <QThread>
 #include <QVBoxLayout>
 
 #include <cstdint>
+#include <utility>
 
 namespace ui {
 
@@ -31,6 +37,8 @@ ProtonPanel::ProtonPanel(engine::PlatformInterface* platform,
                          uint32_t steam_appid,
                          const std::filesystem::path& instance_root,
                          const std::string& current_runner,
+                         const std::string& current_deploy_strategy,
+                         const engine::DeployConfig& deploy_config,
                          QWidget* parent)
     : QDialog(parent),
       platform_(platform),
@@ -39,7 +47,9 @@ ProtonPanel::ProtonPanel(engine::PlatformInterface* platform,
       game_display_name_(game_display_name),
       game_dir_(game_dir),
       steam_appid_(steam_appid),
-      instance_root_(instance_root) {
+      instance_root_(instance_root),
+      current_deploy_strategy_(current_deploy_strategy),
+      deploy_config_(deploy_config) {
     setWindowTitle(tr("Proton Options — %1").arg(QString::fromStdString(game_display_name_)));
 
     auto* root = new QVBoxLayout(this);
@@ -71,6 +81,9 @@ ProtonPanel::ProtonPanel(engine::PlatformInterface* platform,
     packages_layout_ = packages_layout;
     root->addWidget(packages_group);
 
+    // --- Deploy management (symlink-deploy games only) ---
+    build_deploy_management();
+
     // --- Buttons ---
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
     auto* ok = buttons->addButton(tr("Save"), QDialogButtonBox::AcceptRole);
@@ -80,6 +93,17 @@ ProtonPanel::ProtonPanel(engine::PlatformInterface* platform,
 
     refresh_runners();
     load_recommended_packages();
+}
+
+ProtonPanel::~ProtonPanel() {
+    // Safety net: a deploy/remove task may still be finishing when the panel
+    // closes. The modal progress dialog blocks interaction while one runs, so
+    // this is normally a no-op, but never leave the worker running into a dead
+    // panel (queued callbacks into a destroyed object are dropped).
+    if (deploy_thread_) {
+        deploy_thread_->quit();
+        deploy_thread_->wait();
+    }
 }
 
 std::string ProtonPanel::selected_runner() const {
@@ -248,6 +272,164 @@ void ProtonPanel::install_packages(const QStringList& verbs) {
         packages_status_->setText(
             tr("Started installing: %1").arg(verbs.join(", ")));
     }
+}
+
+void ProtonPanel::build_deploy_management() {
+    auto* root = qobject_cast<QVBoxLayout*>(this->layout());
+    if (!root) return;
+
+    auto* group = new QGroupBox(tr("Deploy Management"), this);
+    auto* layout = new QVBoxLayout(group);
+
+    // Deployment strategy selector. Only the strategies this build actually
+    // supports are listed: Symlink (direct links into the game folder) is
+    // always available; OverlayFS (staging + sandboxed launch) only when the
+    // host supports the overlay launcher. Hardlink is not wired into any
+    // deploy path, so it is intentionally not offered.
+    auto* strategy_row = new QHBoxLayout;
+    strategy_row->addWidget(new QLabel(tr("Deployment strategy:"), group));
+    deploy_strategy_combo_ = new QComboBox(group);
+    deploy_strategy_combo_->addItem(tr("Symlink"),
+                                    QString::fromLatin1(engine::kDefaultDeployStrategy));
+    if (engine::OverlayFsLauncher::is_supported(instance_root_ / "overwrite")) {
+        deploy_strategy_combo_->addItem(
+            tr("OverlayFS"),
+            QString::fromLatin1(engine::kDeployStrategyOverlayFs));
+    }
+    int idx = deploy_strategy_combo_->findData(
+        QString::fromStdString(current_deploy_strategy_));
+    deploy_strategy_combo_->setCurrentIndex(idx >= 0 ? idx : 0);
+    current_deploy_strategy_ =
+        deploy_strategy_combo_->currentData().toString().toStdString();
+    connect(deploy_strategy_combo_, &QComboBox::currentIndexChanged,
+            this, [this](int) {
+                const std::string value =
+                    deploy_strategy_combo_->currentData().toString().toStdString();
+                engine::Instance inst = engine::Instance::from_root(instance_root_);
+                inst.read_toml();
+                inst.write_key("deploy_strategy", value);
+                current_deploy_strategy_ = value;
+                update_deploy_actions_enabled();
+            });
+    strategy_row->addWidget(deploy_strategy_combo_, 1);
+    layout->addLayout(strategy_row);
+
+    auto* row = new QHBoxLayout;
+    redeploy_btn_ = new QPushButton(tr("Force re-deploy links"), this);
+    remove_btn_ = new QPushButton(tr("Remove deployed files"), this);
+    connect(redeploy_btn_, &QPushButton::clicked, this,
+            [this]() { run_deploy_task(DeployTaskKind::Redeploy); });
+    connect(remove_btn_, &QPushButton::clicked, this,
+            [this]() { run_deploy_task(DeployTaskKind::Remove); });
+    row->addWidget(redeploy_btn_);
+    row->addWidget(remove_btn_);
+    layout->addLayout(row);
+
+    root->addWidget(group);
+
+    update_deploy_actions_enabled();
+}
+
+void ProtonPanel::update_deploy_actions_enabled() {
+    // The direct-deploy actions (re-deploy / remove links) only make sense for
+    // the Symlink strategy; OverlayFS never touches game_dir.
+    const bool direct =
+        (current_deploy_strategy_ == engine::kDefaultDeployStrategy);
+    if (redeploy_btn_) redeploy_btn_->setEnabled(direct);
+    if (remove_btn_) remove_btn_->setEnabled(direct);
+}
+
+void ProtonPanel::run_deploy_task(DeployTaskKind kind) {
+    if (deploy_thread_) return;  // a task is already running
+
+    const bool remove_only = (kind == DeployTaskKind::Remove);
+    const QString confirm = remove_only
+        ? tr("Remove all deployed files and restore the original game files?\n\n"
+             "Every deployed link/copy is deleted and any original file parked "
+             "in Original_Files is moved back. The game returns to its pristine, "
+             "unmodded state.")
+        : tr("Force re-deploy of all mod links?\n\n"
+             "The current deploy is first removed (original game files are "
+             "restored), then every enabled mod is re-deployed from scratch.");
+    if (QMessageBox::question(this, tr("Deploy Management"), confirm) !=
+        QMessageBox::Yes) {
+        return;
+    }
+
+    redeploy_btn_->setEnabled(false);
+    remove_btn_->setEnabled(false);
+
+    deploy_progress_ = new QProgressDialog(
+        remove_only ? tr("Removing deployed files...")
+                    : tr("Re-deploying mod links..."),
+        QString(), 0, 0, this);
+    deploy_progress_->setWindowModality(Qt::WindowModal);
+    deploy_progress_->setCancelButton(nullptr);
+    deploy_progress_->setAutoClose(false);
+    deploy_progress_->setAutoReset(false);
+    // No title-bar close button: the task must run to completion.
+    deploy_progress_->setWindowFlags(Qt::Dialog | Qt::CustomizeWindowHint |
+                                     Qt::WindowTitleHint);
+    deploy_progress_->show();
+
+    const engine::DeployConfig config = deploy_config_;
+    auto* thread = QThread::create([this, kind, config, remove_only]() {
+        const auto on_progress = [this](int done, int total) {
+            QMetaObject::invokeMethod(
+                this,
+                [this, done, total]() {
+                    if (!deploy_progress_) return;
+                    if (total > 0) {
+                        deploy_progress_->setRange(0, total);
+                        deploy_progress_->setValue(done);
+                    }
+                },
+                Qt::QueuedConnection);
+        };
+        bool ok;
+        if (remove_only) {
+            ok = engine::remove_deployed_files(
+                config.game_dir, config.backup_root, config.ledger_file,
+                0, on_progress);
+        } else {
+            ok = engine::remove_deployed_files(
+                config.game_dir, config.backup_root, config.ledger_file,
+                0, on_progress);
+            if (ok) {
+                ok = engine::deploy_all_enabled_mods_direct(
+                    config.mods_dir, config.game_dir, config.deploy_prefix,
+                    config.deploy_include_mod_id, config.disable_mechanism,
+                    config.case_sensitive, config.ledger_file, config.backup_root,
+                    0, on_progress);
+            }
+        }
+        QMetaObject::invokeMethod(this, [this, kind, ok]() {
+            finish_deploy_task(kind, ok);
+        }, Qt::QueuedConnection);
+    });
+    thread->setObjectName(QStringLiteral("gmm-deploy-management"));
+    deploy_thread_ = thread;
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    thread->start();
+}
+
+void ProtonPanel::finish_deploy_task(DeployTaskKind kind, bool ok) {
+    deploy_thread_ = nullptr;
+    if (deploy_progress_) {
+        deploy_progress_->close();
+        deploy_progress_->deleteLater();
+        deploy_progress_ = nullptr;
+    }
+    update_deploy_actions_enabled();
+
+    const QString text = ok
+        ? (kind == DeployTaskKind::Remove
+               ? tr("Deployed files removed and original game files restored.")
+               : tr("All enabled mods re-deployed."))
+        : (kind == DeployTaskKind::Remove
+               ? tr("Removal finished with errors - see the log.")
+               : tr("Re-deploy finished with errors - see the log."));
+    QMessageBox::information(this, tr("Deploy Management"), text);
 }
 
 }  // namespace ui

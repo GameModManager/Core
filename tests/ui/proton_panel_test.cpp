@@ -71,7 +71,9 @@ int main(int argc, char** argv) {
                               "Skyrim Special Edition",
                               "/home/petrica/.steam/steam/steamapps/common/"
                               "Skyrim Special Edition",
-                              489830, "/tmp/gmm_proton_panel_instance", "");
+                              489830, "/tmp/gmm_proton_panel_instance", "",
+                              engine::kDefaultDeployStrategy,
+                              engine::DeployConfig{});
         require(panel.selected_runner().empty(), "Automatic maps to empty runner");
 
         // Find the runner combo by walking children: it must list Automatic
@@ -88,13 +90,26 @@ int main(int argc, char** argv) {
         require(found_auto, "combo lists Automatic");
         require(found_10, "combo lists Proton 10.0");
         require(found_exp, "combo lists Proton - Experimental");
+
+        // Deploy management: the strategy selector must list Symlink (always
+        // available). OverlayFS appears only when the host supports it (not
+        // guaranteed on this test machine), so its absence is not asserted.
+        bool found_symlink = false;
+        for (auto* combo : panel.findChildren<QComboBox*>()) {
+            for (int i = 0; i < combo->count(); ++i) {
+                if (combo->itemText(i) == "Symlink") found_symlink = true;
+            }
+        }
+        require(found_symlink, "deploy strategy combo lists Symlink");
     }
 
     // Unknown game: no wine.json -> panel still constructs, no crash.
     {
         ui::ProtonPanel panel(&platform, &loader, "UnknownGame", "Unknown Game",
                               "/tmp/gmm_proton_panel_game", 0,
-                              "/tmp/gmm_proton_panel_instance", "");
+                              "/tmp/gmm_proton_panel_instance", "",
+                              engine::kDefaultDeployStrategy,
+                              engine::DeployConfig{});
         require(panel.selected_runner().empty(), "unknown game stays Automatic");
     }
 

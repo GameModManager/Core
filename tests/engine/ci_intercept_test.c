@@ -68,10 +68,39 @@ static int run_checks_create_mode(void) {
     return 0;
 }
 
+/* Wine-prefix helper: the path passed in GMM_CI_DOSDEVICES carries a wine
+ * `<prefix>/dosdevices/z:` prefix (a symlink to unix root `/`) that the kernel
+ * resolves transparently but our string comparison must strip before checking
+ * against GMM_CI_ROOT. Regression for the v0.3.x bug where under_root()
+ * rejected every wine path, so the shim was silently inert in-game. */
+static int run_checks_dosdevices(void) {
+    const char *path = getenv("GMM_CI_DOSDEVICES");
+    if (!path) return 1;
+    struct stat sb;
+    if (stat(path, &sb) != 0) {
+        fprintf(stderr, "FAIL: stat('%s') not resolved: %s\n",
+                path, strerror(errno));
+        return 1;
+    }
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        fprintf(stderr, "FAIL: open('%s') not resolved: %s\n",
+                path, strerror(errno));
+        return 1;
+    }
+    close(fd);
+    printf("PASS: CI-resolved dosdevices/z:-prefixed '%s'\n", path);
+    return 0;
+}
+
 int main(void) {
     /* ---- helper mode: exec'd by the parent WITH the shim LD_PRELOADed ---- */
     if (getenv("GMM_CI_CREATE")) {
         return run_checks_create_mode();
+    }
+    const char *dosdevices_for_helper = getenv("GMM_CI_DOSDEVICES");
+    if (dosdevices_for_helper) {
+        return run_checks_dosdevices();
     }
     const char *lower_for_helper = getenv("GMM_CI_LOWER");
     if (lower_for_helper) {
@@ -99,6 +128,24 @@ int main(void) {
 
     char lower_nested[4096];
     snprintf(lower_nested, sizeof lower_nested, "%s/meshes/behaviors/0_master.hxk", base);
+
+    /* Wine dosdevices tree: a fake prefix with `z:` symlinked to unix root `/`
+     * (exactly what wine sets up). The game's path reaches libc as
+     * `<prefix>/dosdevices/z:/home/.../Data/...`; the kernel resolves the
+     * symlink, but our string check must too. We build the symlink pointing
+     * at `/` and query `<base>/dosdevices/z:<base>/meshes/behaviors/0_master.hxk`.
+     * The kernel follows `z:` -> `/`, so the raw path is `<base>/...` and the
+     * rest of the query is the lowercase nested path -> ENOENT without the
+     * shim; with the shim it must resolve through the prefix strip. */
+    char dd[4096];
+    snprintf(dd, sizeof dd, "%s/dosdevices", base);
+    if (mkdir(dd, 0755) != 0) { perror("mkdir dosdevices"); return 2; }
+    char dd_z[4096];
+    snprintf(dd_z, sizeof dd_z, "%s/z:", dd);
+    if (symlink("/", dd_z) != 0) { perror("symlink z:"); return 2; }
+    char dd_query[4096];
+    snprintf(dd_query, sizeof dd_query, "%s/dosdevices/z:%s/meshes/behaviors/0_master.hxk",
+             base, base);
 
     /* Mode-regression target: created through the shim, must NOT be 0000. */
     char create_target[4096];
@@ -130,9 +177,22 @@ int main(void) {
     int status;
     if (waitpid(pid, &status, 0) < 0) { perror("waitpid"); return 2; }
 
+    /* Dosdevices-prefix child: same tree, queried through a wine z: symlink. */
+    setenv("GMM_CI_DOSDEVICES", dd_query, 1);
+    unsetenv("GMM_CI_LOWER");
+    pid_t pid3 = fork();
+    if (pid3 == 0) {
+        execv(self, NULL);
+        perror("execv");
+        _exit(2);
+    }
+    int status3;
+    if (waitpid(pid3, &status3, 0) < 0) { perror("waitpid"); return 2; }
+
     /* Mode-regression child: create via interposer, then verify mode != 0. */
     setenv("GMM_CI_CREATE", create_target, 1);
     unsetenv("GMM_CI_LOWER");
+    unsetenv("GMM_CI_DOSDEVICES");
     pid_t pid2 = fork();
     if (pid2 == 0) {
         execv(self, NULL);
@@ -155,22 +215,30 @@ int main(void) {
     /* parent (no shim) must still fail ENOENT: proves fs is case-sensitive. */
     struct stat sb;
     int parent_failed = (stat(lower_nested, &sb) != 0 && errno == ENOENT);
+    /* same for the dosdevices-prefixed query: raw path is <base>/meshes/... */
+    int dd_parent_failed = (stat(dd_query, &sb) != 0 && errno == ENOENT);
 
     unlink(create_target);
     unlink(deployed_upper);
+    unlink(dd_z);
+    unlink(dd_query);
     rmdir(nested_upper);
     rmdir(meshes);
+    rmdir(dd);
     rmdir(base);
 
     int child_ok = WIFEXITED(status) && WEXITSTATUS(status) == 0;
     int child2_ok = WIFEXITED(status2) && WEXITSTATUS(status2) == 0;
-    if (child_ok && child2_ok && parent_failed && mode_ok) {
+    int child3_ok = WIFEXITED(status3) && WEXITSTATUS(status3) == 0;
+    if (child_ok && child2_ok && child3_ok && parent_failed && dd_parent_failed && mode_ok) {
         printf("ALL CHECKS PASSED\n");
         return 0;
     }
-    fprintf(stderr, "child_ok=%d child2_ok=%d parent_failed=%d mode_ok=%d\n",
-            child_ok, child2_ok, parent_failed, mode_ok);
+    fprintf(stderr, "child_ok=%d child2_ok=%d child3_ok=%d parent_failed=%d dd_parent_failed=%d mode_ok=%d\n",
+            child_ok, child2_ok, child3_ok, parent_failed, dd_parent_failed, mode_ok);
     if (!parent_failed)
         fprintf(stderr, "FAIL: parent stat'ed lowercase WITHOUT shim (fs is CI?)\n");
+    if (!dd_parent_failed)
+        fprintf(stderr, "FAIL: parent stat'ed dosdevices query WITHOUT shim (fs is CI?)\n");
     return 1;
 }

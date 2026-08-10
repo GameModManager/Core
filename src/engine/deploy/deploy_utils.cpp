@@ -84,16 +84,19 @@ void run_parallel(size_t n, unsigned int num_threads, Fn&& fn) {
 }
 
 // Persistent deploy ledger: target path -> source path of what's currently
-// staged, written as a TSV inside the staging dir (wiped together with
-// .gmm_staging at session end). Round-trips byte-exactly on Linux.
+// deployed, written as a TSV. In overlay mode it lives inside the staging dir
+// (wiped together with .gmm_staging at session end, so the next launch is a
+// full parallel deploy by design); in direct-symlink mode it lives at the
+// instance root where the session-end wipe can't reach it, so owner changes
+// across sessions are detected. Round-trips byte-exactly on Linux.
 std::filesystem::path ledger_path(const std::filesystem::path& staging_dir) {
     return staging_dir / ".gmm_deploy_ledger";
 }
 
 std::map<std::filesystem::path, std::filesystem::path> load_ledger(
-    const std::filesystem::path& staging_dir) {
+    const std::filesystem::path& ledger_file) {
     std::map<std::filesystem::path, std::filesystem::path> m;
-    std::ifstream in(ledger_path(staging_dir));
+    std::ifstream in(ledger_file);
     std::string line;
     while (std::getline(in, line)) {
         auto tab = line.find('\t');
@@ -104,11 +107,10 @@ std::map<std::filesystem::path, std::filesystem::path> load_ledger(
     return m;
 }
 
-void save_ledger(const std::filesystem::path& staging_dir,
+void save_ledger(const std::filesystem::path& ledger_file,
                  const std::map<std::filesystem::path, std::filesystem::path>& m) {
     std::error_code ec;
-    const auto target = ledger_path(staging_dir);
-    std::filesystem::path tmpp = target;
+    std::filesystem::path tmpp = ledger_file;
     tmpp += ".tmp";
     std::ofstream out(tmpp, std::ios::trunc);
     if (!out) return;
@@ -116,7 +118,112 @@ void save_ledger(const std::filesystem::path& staging_dir,
         out << t.string() << '\t' << s.string() << '\n';
     out.flush();
     out.close();
-    std::filesystem::rename(tmpp, target, ec);
+    std::filesystem::rename(tmpp, ledger_file, ec);
+}
+
+// True when `p` is a strict descendant of `root` (same filesystem spelling).
+// Guards the backup store against backing up into itself when a root-override
+// mod ships a path that happens to collide with the Original_Files folder.
+bool is_within(const std::filesystem::path& p,
+               const std::filesystem::path& root) {
+    const auto rel = p.lexically_relative(root);
+    return !rel.empty() && rel != "." && *rel.begin() != "..";
+}
+
+// Original-file safety (direct mode only): before the strategy overwrites a
+// target, move a real (non-symlink) file/dir that occupies it into the backup
+// store at backup_root/<relative path>, so it is preserved and restorable.
+// Targets the deploy already owns (present in old_ledger) are left alone: they
+// are mod artifacts, and a game overwrite of one (e.g. Pandora replacing a
+// deployed symlink with a generated .hkx) is derived data, not an original.
+void backup_original(const std::filesystem::path& target,
+                     const std::filesystem::path& deploy_root,
+                     const std::filesystem::path& backup_root,
+                     const std::map<std::filesystem::path, std::filesystem::path>& old_ledger) {
+    if (backup_root.empty() || is_within(target, backup_root)) return;
+    std::error_code ec;
+    if (!std::filesystem::exists(target, ec) || ec) return;
+    if (std::filesystem::is_symlink(target)) return;
+    if (old_ledger.count(target)) return;
+
+    const auto rel = target.lexically_relative(deploy_root);
+    if (rel.empty()) return;
+    const auto backup = backup_root / rel;
+    std::filesystem::create_directories(backup.parent_path(), ec);
+    std::filesystem::rename(target, backup, ec);
+    if (ec) {
+        Logger::instance().error(
+            "deploy: failed to back up original " + target.string() +
+            " to " + backup.string() + ": " + ec.message());
+    }
+}
+
+// Remove a deployed artifact (symlink or copied executable) and, when an
+// original was parked for it, restore it from backup_root to the same relative
+// location. Used by the incremental remove pass (a disabled mod's files) and by
+// remove_deployed_files. Returns false if any step failed.
+bool remove_and_restore(const std::filesystem::path& target,
+                        const std::filesystem::path& deploy_root,
+                        const std::filesystem::path& backup_root) {
+    bool ok = true;
+    std::error_code ec;
+    const auto st = std::filesystem::symlink_status(target, ec);
+    if (ec) {
+        ec.clear();
+    } else if (st.type() != std::filesystem::file_type::not_found) {
+        std::filesystem::remove_all(target, ec);
+        if (ec) {
+            Logger::instance().error(
+                "deploy: failed to remove " + target.string() + ": " + ec.message());
+            ok = false;
+        }
+    }
+    if (backup_root.empty() || is_within(target, backup_root)) return ok;
+
+    const auto rel = target.lexically_relative(deploy_root);
+    if (rel.empty()) return ok;
+    const auto backup = backup_root / rel;
+    std::error_code rec;
+    if (!std::filesystem::exists(backup, rec) || rec) return ok;
+    std::filesystem::create_directories(target.parent_path(), rec);
+    if (rec) {
+        Logger::instance().error(
+            "deploy: failed to prepare restore dir for " + target.string() +
+            ": " + rec.message());
+        return false;
+    }
+    std::filesystem::rename(backup, target, rec);
+    if (rec) {
+        Logger::instance().error(
+            "deploy: failed to restore original " + backup.string() +
+            " -> " + target.string() + ": " + rec.message());
+        ok = false;
+    }
+    return ok;
+}
+
+// Remove empty directories under root, deepest first. Only ever called on the
+// backup store (our own folder) after restoring originals out of it; never on
+// game_dir.
+void prune_empty_dirs(const std::filesystem::path& root) {
+    std::error_code ec;
+    std::vector<std::filesystem::path> dirs;
+    std::filesystem::recursive_directory_iterator it(
+        root, std::filesystem::directory_options::skip_permission_denied, ec);
+    const std::filesystem::recursive_directory_iterator end;
+    for (; it != end; it.increment(ec)) {
+        if (ec) break;
+        std::error_code sec;
+        if (it->is_directory(sec)) dirs.push_back(it->path());
+    }
+    std::sort(dirs.begin(), dirs.end(),
+              [](const std::filesystem::path& a, const std::filesystem::path& b) {
+                  return a.string().size() > b.string().size();
+              });
+    for (const auto& d : dirs) {
+        std::error_code rec;
+        if (std::filesystem::is_empty(d, rec)) std::filesystem::remove(d, rec);
+    }
 }
 
 }  // namespace
@@ -178,15 +285,26 @@ std::size_t add_case_insensitive_aliases(
     return created;
 }
 
-bool deploy_all_enabled_mods_parallel(
-    const path& mods_dir,
-    const path& staging_dir,
-    const std::string& deploy_prefix,
-    bool deploy_include_mod_id,
-    const std::string& disable_mechanism,
-    bool case_sensitive,
-    unsigned int num_threads,
-    const DeployProgressFn& progress)
+// Shared executor for both deploy modes. deploy_root is the base directory
+// targets are rooted at (the overlay staging dir, or game_dir for the
+// direct-symlink mode). strategy performs the per-file link/copy work and
+// decides how a target is created; ledger_file is where the target -> source
+// TSV persists across runs. When add_ci_aliases is true (overlay mode for
+// case-insensitive games), lowercase directory alias symlinks are added after
+// the link phase so a Windows game's lowercase spellings resolve on the
+// case-sensitive overlay mount.
+bool deploy_impl(const path& mods_dir,
+                 const path& deploy_root,
+                 const std::string& deploy_prefix,
+                 bool deploy_include_mod_id,
+                 const std::string& disable_mechanism,
+                 bool case_sensitive,
+                 DeploymentStrategy& strategy,
+                 const path& ledger_file,
+                 bool add_ci_aliases,
+                 const path& backup_root,
+                 unsigned int num_threads,
+                 const DeployProgressFn& progress)
 {
     std::error_code ec;
     if (!std::filesystem::is_directory(mods_dir, ec)) {
@@ -285,17 +403,17 @@ bool deploy_all_enabled_mods_parallel(
     });
 
     // --- Phase B: resolve the deterministic winner per final target.
-    std::filesystem::create_directories(staging_dir, ec);
+    std::filesystem::create_directories(deploy_root, ec);
     if (ec) {
-        Logger::instance().error("deploy_all_enabled_mods: failed to create staging dir: " + ec.message());
+        Logger::instance().error("deploy_all_enabled_mods: failed to create deploy root: " + ec.message());
         return false;
     }
-    auto target_base = staging_dir / deploy_prefix;
+    auto target_base = deploy_root / deploy_prefix;
     std::filesystem::create_directories(target_base, ec);
 
     auto deploy_root_for = [&](const ModSnapshot& m) -> std::filesystem::path {
         return m.root_override
-            ? staging_dir
+            ? deploy_root
             : (deploy_include_mod_id ? target_base / m.folder : target_base);
     };
 
@@ -363,7 +481,7 @@ bool deploy_all_enabled_mods_parallel(
         bool remove;
     };
     std::vector<WorkItem> work;
-    auto old_ledger = load_ledger(staging_dir);
+    auto old_ledger = load_ledger(ledger_file);
     for (const auto& [target, source] : winners) {
         bool unchanged = false;
         if (auto it = old_ledger.find(target); it != old_ledger.end() && it->second == source) {
@@ -381,7 +499,6 @@ bool deploy_all_enabled_mods_parallel(
     // --- Phase D: parallel link/unlink over the work list.
     int work_failed = 0;
     if (!work.empty()) {
-        OverlayFsDeployStrategy strategy(staging_dir, case_sensitive);
         std::atomic<int> done{0};
         std::atomic<int> failed{0};
         const int total = static_cast<int>(work.size());
@@ -389,10 +506,15 @@ bool deploy_all_enabled_mods_parallel(
             const WorkItem& w = work[i];
             bool ok;
             if (w.remove) {
-                std::error_code rmc;
-                std::filesystem::remove(w.target, rmc);
-                ok = !rmc;
+                // Unlink the deployed artifact and, in direct mode with a
+                // backup store, restore the original it displaced (a disabled
+                // mod's file returns the game to its pre-deploy state instead
+                // of leaving a hole).
+                ok = remove_and_restore(w.target, deploy_root, backup_root);
             } else {
+                // Direct mode: park any real game file at the target before the
+                // strategy overwrites it, so original files are never deleted.
+                backup_original(w.target, deploy_root, backup_root, old_ledger);
                 ok = strategy.deploy(w.source, w.target);
             }
             if (!ok) failed.fetch_add(1, std::memory_order_relaxed);
@@ -404,17 +526,19 @@ bool deploy_all_enabled_mods_parallel(
         progress(0, 0);
     }
 
-    // --- Phase E: persist the ledger of what's now staged.
-    save_ledger(staging_dir, winners);
+    // --- Phase E: persist the ledger of what's now deployed.
+    save_ledger(ledger_file, winners);
 
-    // --- Phase F: case-insensitive alias pass (Windows games only). The
-    // overlay mount is case-sensitive, but the game resolves paths
+    // --- Phase F: case-insensitive alias pass (overlay mode, Windows games
+    // only). The overlay mount is case-sensitive, but the game resolves paths
     // case-insensitively; lowercase symlink aliases make the staged tree
     // reachable under the spellings the game actually queries (Modex's
     // "data/interface/modex/...", OAR's "data/meshes/...") and funnel runtime
-    // writes into one canonical casing instead of dual-case dirs.
-    if (!case_sensitive) {
-        const std::size_t aliases = add_case_insensitive_aliases(staging_dir);
+    // writes into one canonical casing instead of dual-case dirs. Direct mode
+    // needs no aliases: the game reads its own (already-cased) game_dir, and
+    // Wine/Proton resolve case-insensitively on their own.
+    if (add_ci_aliases) {
+        const std::size_t aliases = add_case_insensitive_aliases(deploy_root);
         if (aliases == 0)
             Logger::instance().debug("case-insensitive aliases: none needed");
     }
@@ -427,6 +551,85 @@ bool deploy_all_enabled_mods_parallel(
         std::to_string(work.size()) + " touched (" +
         std::to_string(work_failed) + " failed)");
     return work_failed == 0;
+}
+
+bool deploy_all_enabled_mods_parallel(
+    const path& mods_dir,
+    const path& staging_dir,
+    const std::string& deploy_prefix,
+    bool deploy_include_mod_id,
+    const std::string& disable_mechanism,
+    bool case_sensitive,
+    unsigned int num_threads,
+    const DeployProgressFn& progress)
+{
+    OverlayFsDeployStrategy strategy(staging_dir, case_sensitive);
+    return deploy_impl(mods_dir, staging_dir, deploy_prefix, deploy_include_mod_id,
+                       disable_mechanism, case_sensitive, strategy,
+                       ledger_path(staging_dir), /*add_ci_aliases=*/!case_sensitive,
+                       /*backup_root=*/{}, num_threads, progress);
+}
+
+bool deploy_all_enabled_mods_direct(
+    const path& mods_dir,
+    const path& game_dir,
+    const std::string& deploy_prefix,
+    bool deploy_include_mod_id,
+    const std::string& disable_mechanism,
+    bool case_sensitive,
+    const path& ledger_file,
+    const path& backup_root,
+    unsigned int num_threads,
+    const DeployProgressFn& progress)
+{
+    SymlinkStrategy strategy(case_sensitive);
+    return deploy_impl(mods_dir, game_dir, deploy_prefix, deploy_include_mod_id,
+                       disable_mechanism, case_sensitive, strategy,
+                       ledger_file, /*add_ci_aliases=*/false, backup_root,
+                       num_threads, progress);
+}
+
+bool remove_deployed_files(const path& game_dir,
+                           const path& backup_root,
+                           const path& ledger_file,
+                           unsigned int num_threads,
+                           const DeployProgressFn& progress)
+{
+    auto ledger = load_ledger(ledger_file);
+    if (ledger.empty()) {
+        if (progress) progress(0, 0);
+        return true;
+    }
+
+    std::vector<path> targets;
+    targets.reserve(ledger.size());
+    for (const auto& [target, src] : ledger) {
+        (void)src;
+        targets.push_back(target);
+    }
+
+    std::atomic<int> done{0};
+    std::atomic<int> failed{0};
+    const int total = static_cast<int>(targets.size());
+    run_parallel(targets.size(), num_threads, [&](size_t i) {
+        if (!remove_and_restore(targets[i], game_dir, backup_root))
+            failed.fetch_add(1, std::memory_order_relaxed);
+        int d = done.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (progress) progress(d, total);
+    });
+
+    // Restoring an original leaves its parent chain in the backup store empty;
+    // prune those (backup_root is our own folder - never game_dir).
+    if (!backup_root.empty()) prune_empty_dirs(backup_root);
+
+    if (failed.load(std::memory_order_relaxed) == 0) {
+        // Everything restored/removed: drop the ledger so the next deploy
+        // re-evaluates from scratch (and re-backs-up restored originals).
+        std::error_code ec;
+        std::filesystem::remove(ledger_file, ec);
+        return true;
+    }
+    return false;
 }
 
 bool deploy_all_enabled_mods(

@@ -1,4 +1,5 @@
 #include "engine/overwrite/overwrite_utils.h"
+#include "engine/fs_utils.h"
 
 #include <cassert>
 #include <cstdio>

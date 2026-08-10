@@ -109,6 +109,11 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
         // the scrollbar mark so highlights are navigable in huge mod lists.
         if (highlighted_mods_.contains(mod.id))
             return Settings::instance().modlist_contains_file();
+        // Conflict partners of the selected mod(s): MO2 markerColor drives the
+        // same colors in the row tint (BackgroundRole) and the scrollbar marks
+        // (ModListViewMarkingScrollBar falls back to the model's mark role).
+        if (const QColor cc = conflict_highlight_color(mod.id); cc.isValid())
+            return cc;
         return {};
     }
 
@@ -136,13 +141,8 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
     if (mod.is_separator) {
         if (role == Qt::BackgroundRole) {
             // Conflict highlight takes precedence if this separator is referenced
-            if (!selected_mod_id_.isEmpty() && conflict_pairs_.contains(selected_mod_id_)) {
-                const auto& pairs = conflict_pairs_[selected_mod_id_];
-                if (pairs.wins_against.contains(mod.id))
-                    return QBrush(Settings::instance().modlist_overwritten_loose());   // 30% green
-                if (pairs.loses_to.contains(mod.id))
-                    return QBrush(Settings::instance().modlist_overwriting_loose());   // 30% red
-            }
+            if (const QColor cc = conflict_highlight_color(mod.id); cc.isValid())
+                return QBrush(cc);
             QColor bg(mod.separator_color.isEmpty() ? "#888888" : mod.separator_color);
             return QBrush(bg);
         }
@@ -352,13 +352,8 @@ QVariant ModListModel::data(const QModelIndex& index, int role) const {
         // (MO2's markerColor beats overwrite markers).
         if (highlighted_mods_.contains(mod.id))
             return QBrush(Settings::instance().modlist_contains_file());
-        if (!selected_mod_id_.isEmpty() && conflict_pairs_.contains(selected_mod_id_)) {
-            const auto& pairs = conflict_pairs_[selected_mod_id_];
-            if (pairs.wins_against.contains(mod.id))
-                return QBrush(Settings::instance().modlist_overwritten_loose());
-            if (pairs.loses_to.contains(mod.id))
-                return QBrush(Settings::instance().modlist_overwriting_loose());
-        }
+        if (const QColor cc = conflict_highlight_color(mod.id); cc.isValid())
+            return QBrush(cc);
     }
 
     // Subtle background tint for overwrite row (visual separator)
@@ -592,11 +587,29 @@ bool ModListModel::dropMimeData(const QMimeData* data, Qt::DropAction action,
     // children yet this is exactly the old "just below parent" position. In
     // pre-removal coordinates; the removal-adjustment below shifts it for
     // sources that were part of the subtree.
+    //
+    // For a separator target the append position extends past its fold band:
+    // mods following a nested separator are NOT parent-linked (nesting is
+    // same-kind only - mods never link under separators), but the separator
+    // visually owns them via its fold scope (rows below until the next
+    // non-descendant separator or Overwrite, same scope as compute_fold_hidden
+    // and has_content). Inserting a new child between the separator and its
+    // band mods would hand those mods to the new child's fold - the "new
+    // separator steals the bottom separator's mods" bug.
     if (!new_parent_id.isEmpty()) {
         int last_desc = drop_parent_row;
-        for (int j = 0; j < mods_.size(); ++j)
-            if (j != drop_parent_row && is_descendant_of(j, new_parent_id))
-                last_desc = std::max(last_desc, j);
+        const auto& tgt = mods_[drop_parent_row];
+        if (tgt.is_separator) {
+            for (int j = drop_parent_row + 1; j < mods_.size(); ++j) {
+                if (mods_[j].is_overwrite || mods_[j].is_merged) break;
+                if (mods_[j].is_separator && !is_descendant_of(j, new_parent_id)) break;
+                last_desc = j;
+            }
+        } else {
+            for (int j = 0; j < mods_.size(); ++j)
+                if (j != drop_parent_row && is_descendant_of(j, new_parent_id))
+                    last_desc = std::max(last_desc, j);
+        }
         row = last_desc + 1;
     }
 
@@ -765,7 +778,14 @@ void ModListModel::add_mod(const QString& id, const QString& name, const QString
     entry.changed_ts = changed_ts;
     mods_.insert(insert_pos, entry);
     endInsertRows();
-    if (priority < 0) renumber_priorities();
+    if (priority < 0) {
+        renumber_priorities();
+        // The fresh mod's priority field equals its row index, so the renumber
+        // pass above won't flag it — but there is no persisted priority on disk
+        // yet. Mark it dirty so sync_priorities() writes meta.ini and the order
+        // survives restarts (MO2 bottom-of-band rule).
+        dirty_priority_ids_.insert(id);
+    }
     emit mod_list_changed();
 }
 
@@ -1147,6 +1167,9 @@ void ModListModel::renumber_priorities() {
     for (int i = 0; i < mods_.size(); ++i) {
         if (mods_[i].priority != i) {
             mods_[i].priority = i;
+            // The persisted priority for this row now lags its row index;
+            // sync_priorities() will write meta.ini for exactly these rows.
+            dirty_priority_ids_.insert(mods_[i].id);
             emit dataChanged(index(i, Priority), index(i, Priority));
         }
     }
@@ -1521,10 +1544,33 @@ bool ModListModel::has_conflicts_within_separator(const QString& mod_id) const {
     return false;
 }
 
-void ModListModel::set_selected_mod(const QString& id) {
-    if (selected_mod_id_ == id) return;
-    selected_mod_id_ = id;
-    emit dataChanged(index(0, 0), index(mods_.size() - 1, ColumnCount - 1));
+void ModListModel::set_selected_mods(const QSet<QString>& ids) {
+    if (selected_mod_ids_ == ids) return;
+    selected_mod_ids_ = ids;
+    // One dataChanged over the full range repaints the visible rows and the
+    // scrollbar marks (ModMarkingScrollBar listens to dataChanged).
+    emit dataChanged(index(0, 0), index(mods_.size() - 1, ColumnCount - 1),
+                     {Qt::BackgroundRole, kScrollMarkRole});
+}
+
+QColor ModListModel::conflict_highlight_color(const QString& id) const {
+    if (selected_mod_ids_.isEmpty()) return {};
+    // Two passes so red wins globally (MO2 markerColor: overwritten >
+    // overwrite) even when the same row loses to one selection and wins over
+    // another — a per-selection loses-first check would return green early.
+    for (const auto& sel : selected_mod_ids_) {
+        const auto it = conflict_pairs_.constFind(sel);
+        if (it == conflict_pairs_.constEnd()) continue;
+        if (it->loses_to.contains(id))
+            return Settings::instance().modlist_overwriting_loose();
+    }
+    for (const auto& sel : selected_mod_ids_) {
+        const auto it = conflict_pairs_.constFind(sel);
+        if (it == conflict_pairs_.constEnd()) continue;
+        if (it->wins_against.contains(id))
+            return Settings::instance().modlist_overwritten_loose();
+    }
+    return {};
 }
 
 void ModListModel::set_highlighted_mods(const QSet<QString>& ids) {

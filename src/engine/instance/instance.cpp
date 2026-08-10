@@ -130,6 +130,12 @@ bool Instance::write_toml() const {
     if (!info_.plugins_txt_path.empty()) {
         out << "plugins_txt_path = \"" << info_.plugins_txt_path.string() << "\"\n";
     }
+    if (!info_.proton_runner.empty()) {
+        out << "proton_runner = \"" << info_.proton_runner << "\"\n";
+    }
+    if (!info_.deploy_strategy.empty()) {
+        out << "deploy_strategy = \"" << info_.deploy_strategy << "\"\n";
+    }
     return out.good();
 }
 
@@ -175,6 +181,8 @@ bool Instance::read_toml() {
                 info_.plugins_txt_path = val;
             } else if (key == "proton_runner") {
                 info_.proton_runner = val;
+            } else if (key == "deploy_strategy") {
+                info_.deploy_strategy = val;
             }
         } else {
             // unquoted numeric/boolean

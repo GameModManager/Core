@@ -220,6 +220,22 @@ MainWindow::MainWindow(QWidget* parent)
     connect(conflict_debounce_timer_, &QTimer::timeout,
             this, &MainWindow::start_conflict_scan);
 
+    // Plugin-discovery + order-persist debounce (P8.6, MO2 parity): a mod move
+    // or toggle fires mod_list_changed repeatedly; the Plugins tab re-discovers
+    // plugin files only when their availability actually changed (install /
+    // remove / rename / toggle), and instance.toml is rewritten once at gesture
+    // end instead of once per step.
+    plugin_refresh_debounce_timer_ = new QTimer(this);
+    plugin_refresh_debounce_timer_->setSingleShot(true);
+    plugin_refresh_debounce_timer_->setInterval(250);
+    connect(plugin_refresh_debounce_timer_, &QTimer::timeout,
+            this, &MainWindow::refresh_plugins_tab);
+
+    save_order_timer_ = new QTimer(this);
+    save_order_timer_->setSingleShot(true);
+    save_order_timer_->setInterval(300);
+    connect(save_order_timer_, &QTimer::timeout, this, &MainWindow::save_order);
+
     // --- Menu bar (must be created before the toolbar so parent is set) ---
     setup_menu_bar();
 
@@ -341,7 +357,6 @@ MainWindow::MainWindow(QWidget* parent)
     connect(mod_view_->selectionModel(), &QItemSelectionModel::currentChanged,
             this, [this](const QModelIndex& current, const QModelIndex& /*previous*/) {
         if (!current.isValid()) {
-            mod_model_->set_selected_mod({});
             auto* ct = right_panel_->conflicts_tab();
             if (ct) ct->clear_content();
             return;
@@ -350,7 +365,6 @@ MainWindow::MainWindow(QWidget* parent)
         if (current.row() >= 0 && current.row() < mods.size() &&
             !mods[current.row()].is_separator && !mods[current.row()].is_overwrite) {
             auto& selected = mods[current.row()];
-            mod_model_->set_selected_mod(selected.id);
 
             // Push conflict data to the ConflictsTab
             auto* ct = right_panel_->conflicts_tab();
@@ -361,14 +375,14 @@ MainWindow::MainWindow(QWidget* parent)
                                    mod_model_->is_conflict_order_reversed());
             }
         } else {
-            mod_model_->set_selected_mod({});
             auto* ct = right_panel_->conflicts_tab();
             if (ct) ct->clear_content();
         }
     });
 
     // Mod selection -> highlight the mod's plugins in the plugins list
-    // (union across multi-selection, MO2's highlightPlugins parity).
+    // (union across multi-selection, MO2's highlightPlugins parity) and feed
+    // the conflict-highlight union (row tint + scrollbar marks).
     connect(mod_view_->selectionModel(), &QItemSelectionModel::selectionChanged,
             this, &MainWindow::on_mod_selection_changed);
 
@@ -381,9 +395,21 @@ MainWindow::MainWindow(QWidget* parent)
             this, [this](const QModelIndex& topLeft, const QModelIndex& bottomRight, const QVector<int>& roles) {
         (void)bottomRight;
         if (roles.contains(Qt::CheckStateRole) && topLeft.column() == ModListModel::Name) {
-            auto id = mod_model_->data(topLeft.sibling(topLeft.row(), ModListModel::Name), Qt::EditRole).toString();
+            // Id must be the on-disk folder name (mod.id): the Name column's
+            // EditRole returns the display name (mod.name), which for XML-meta
+            // games (Isaac) strips the _<workshopId> suffix. Resolving the
+            // display name against the mods dir yields a nonexistent path and
+            // the disable.it write fails silently (bug: no disable marker on
+            // toggle, ever, for Isaac).
+            int row = topLeft.row();
+            if (row < 0 || row >= static_cast<int>(mod_model_->mods().size())) return;
+            auto id = mod_model_->mods()[row].id;
             bool enabled = mod_model_->data(topLeft, Qt::CheckStateRole).toInt() == Qt::Checked;
             sync_mod_enable_state(id, enabled);
+
+            // Enabling/disabling a mod changes which plugins the virtual Data
+            // serves (plugins_db skips disabled mods) - re-discover on toggle.
+            request_plugin_refresh();
 
             // Update status bar mod count
             int count = 0;
@@ -394,17 +420,22 @@ MainWindow::MainWindow(QWidget* parent)
         }
     });
 
-    // Sync priority rewrites to metadata files after reorder; plugin discovery
-    // for the Plugins tab follows any mod-list change (install/remove/toggle).
+    // Sync priority rewrites to metadata files after reorder (only the moved
+    // rows, via the model's dirty set) and recompute conflict stats (debounced,
+    // MO2 modPrioritiesChanged -> clearCaches). The Plugins tab is NOT refreshed
+    // here: it only reacts to plugin-file availability changes (install/remove/
+    // rename/toggle), debounced via request_plugin_refresh() from those sites —
+    // reorders and folds never re-discover plugins (MO2 parity).
     connect(mod_model_, &ModListModel::mod_list_changed, this, [this]() {
         sync_priorities();
-        refresh_plugins_tab();
+        recompute_conflicts();
     });
 
-    // Save order on every model change
+    // Save order (debounced) and re-apply per-row fold/group state on every
+    // model change.
     connect(mod_model_, &ModListModel::mod_list_changed, this, [this]() {
         if (loading_) return;
-        save_order();
+        request_save_order();
         sync_separator_ids();
         apply_mod_filter();
     });
@@ -967,7 +998,15 @@ void MainWindow::set_game_info(const std::string& game_id,
         bool case_sensitive = knowledge_->get(current_game_id_, "case_sensitive", "true") != "false";
         std::unique_ptr<engine::DeploymentStrategy> deploy_strategy;
 #ifdef GMM_PLATFORM_LINUX
-        if (engine::OverlayFsLauncher::is_supported(overwrite_dir_path())) {
+        // Per-game deploy strategy. Default is Symlink (direct symlinks into
+        // game_dir); a game opts out via the "deploy_strategy" knowledge key,
+        // which selects the OverlayFS staging approach (when the host supports
+        // it).
+        const std::string deploy_strategy_name =
+            engine::effective_deploy_strategy(current_instance_root_, *knowledge_,
+                                              current_game_id_);
+        if (deploy_strategy_name == engine::kDeployStrategyOverlayFs &&
+            engine::OverlayFsLauncher::is_supported(overwrite_dir_path())) {
             // OverlayFS: deploy symlinks into staging dir (not game_dir)
             auto staging = current_instance_root_ / ".gmm_staging";
             ctx.staging_dir = staging;
@@ -1381,14 +1420,22 @@ void MainWindow::sync_priorities() {
     auto mods_subpath = knowledge_->get(current_game_id_, "mods_subpath", "");
 
     auto& mods = mod_model_->mods();
-    for (int i = 0; i < mods.size(); ++i) {
-        // Persist priority to meta.ini for every row (Overwrite, separators, mods)
+    // Only rows whose priority actually changed (marked by
+    // renumber_priorities) are persisted — a reorder touches the moved rows,
+    // never every mod's meta.ini. Ids that vanished (mod removed / renamed
+    // after the mark) resolve to -1 and are skipped.
+    auto dirty = mod_model_->dirty_priority_ids();
+    for (const auto& id : dirty) {
+        int i = mod_model_->priority_of(id);
+        if (i < 0) continue;  // mod no longer present; nothing to persist
+
+        // Persist priority to meta.ini for the row (Overwrite, separators, mods)
         if (!meta_dir.empty()) {
-            auto meta = engine::ModMeta::load(meta_dir, mods[i].id.toStdString());
+            auto meta = engine::ModMeta::load(meta_dir, id.toStdString());
             int old_priority = meta.priority();
             if (old_priority != i) {
                 meta.set_priority(i);
-                meta.save(meta_dir, mods[i].id.toStdString());
+                meta.save(meta_dir, id.toStdString());
                 // P1.3 event bus: mirror MO2 onModMoved — fired only for real
                 // moves, on the UI thread, after the priority persisted.
                 if (old_priority >= 0 && !mods[i].is_overwrite &&
@@ -1396,7 +1443,7 @@ void MainWindow::sync_priorities() {
                     engine::EventBus::instance().dispatch(
                         engine::events::kModMoved,
                         engine::json_obj({
-                            {"mod", mods[i].id.toStdString()},
+                            {"mod", id.toStdString()},
                             {"from", std::to_string(old_priority)},
                             {"to", std::to_string(i)},
                         }));
@@ -1411,11 +1458,12 @@ void MainWindow::sync_priorities() {
         if (!mods[i].is_overwrite && !mods[i].is_separator && !mods_subpath.empty()) {
             auto metadata_file = knowledge_->get(current_game_id_, "metadata_file", "meta.ini");
             if (!metadata_file.empty() && metadata_file != "meta.ini") {
-                auto mod_folder = resolve_mod_folder(mods[i].id.toStdString(), mods_subpath);
+                auto mod_folder = resolve_mod_folder(id.toStdString(), mods_subpath);
                 (void)engine::ModScanner::set_priority(*knowledge_, current_game_id_, mod_folder, i);
             }
         }
     }
+    mod_model_->clear_dirty_priority_ids();
 }
 
 void MainWindow::sort_mods() {
@@ -1631,6 +1679,10 @@ void MainWindow::on_mod_scan_finished(ui::ModScanResult result, quint64 generati
     scanned.erase(std::remove_if(scanned.begin(), scanned.end(),
         [](const engine::ScannedMod& m) { return m.folder_name == "MERGED"; }),
         scanned.end());
+    engine::Logger::instance().debug(
+        "on_mod_scan_finished: scan returned " + std::to_string(result.scanned.size()) +
+        " mod(s), " + std::to_string(scanned.size()) + " after MERGED filter (gen=" +
+        std::to_string(generation) + ")");
 
     // Add scanned mods before Overwrite (Overwrite stays last)
     for (const auto& mod : scanned) {
@@ -1710,6 +1762,10 @@ void MainWindow::on_mod_scan_finished(ui::ModScanResult result, quint64 generati
 
     // Ensure MERGED pseudo-mod is present (after loading scanned mods, before sorting)
     mod_model_->ensure_merged_present();
+
+    engine::Logger::instance().debug(
+        "on_mod_scan_finished: model holds " + std::to_string(mod_model_->mods().size()) +
+        " rows after adding scan results");
 
     loading_ = false;
 
@@ -2018,6 +2074,7 @@ void MainWindow::restore_mod_column_visibility() {
 }
 
 void MainWindow::recompute_conflicts() {
+    if (loading_) return;  // load mutations are followed by an explicit scan
     if (!knowledge_ || current_game_id_.empty() || current_game_dir_.empty()) return;
     // Debounce: coalesce rapid toggle/reorder/refresh requests into one scan.
     if (conflict_debounce_timer_->isActive()) conflict_debounce_timer_->stop();
@@ -2051,6 +2108,10 @@ void MainWindow::launch_conflict_scan_batch(std::vector<std::function<void()>> f
     conflict_debounce_timer_->stop();
 
     ui::ConflictScanRequest request = build_conflict_scan_request();
+    engine::Logger::instance().debug(
+        "conflict scan: " + std::to_string(request.mod_infos.size()) + " mod(s) for game " +
+        current_game_id_ + " (mods_dir=" + request.mods_dir.string() +
+        " extra=" + request.extra_mods_dir.string() + ")");
     if (request.mod_infos.empty()) {
         // Nothing enabled to scan: mirror the old compute_conflict_state()
         // early-return — the registry is cleared, follow-ups still run so the
@@ -2133,6 +2194,11 @@ void MainWindow::on_conflict_scan_finished(ui::ConflictScanResult result, quint6
         return;
     }
     conflict_scan_running_ = false;
+
+    engine::Logger::instance().debug(
+        "conflict scan finished: " + std::to_string(result.registry.size()) +
+        " entries in registry (gen=" + std::to_string(generation) +
+        " current_gen=" + std::to_string(conflict_scan_generation_) + ")");
 
     apply_conflict_results(result);
 
@@ -2243,6 +2309,10 @@ std::filesystem::path MainWindow::current_game_mods_dir() const {
 void MainWindow::refresh_data_tab() {
     auto* dt = right_panel_->data_tab();
     if (!dt) return;
+
+    engine::Logger::instance().debug(
+        "refresh_data_tab: registry=" + std::to_string(last_conflict_registry_.size()) +
+        " entries, game=" + current_game_id_);
 
     if (last_conflict_registry_.empty() || current_game_id_.empty()) {
         dt->clear_content();
@@ -2509,6 +2579,13 @@ void MainWindow::on_data_hide(const QString& file_path, const QString& mod_id, b
     recompute_conflicts();
 }
 
+void MainWindow::request_plugin_refresh() {
+    if (loading_) return;  // the scan-finish tail refreshes plugins explicitly
+    if (plugin_refresh_debounce_timer_->isActive())
+        plugin_refresh_debounce_timer_->stop();
+    plugin_refresh_debounce_timer_->start();
+}
+
 void MainWindow::refresh_plugins_tab() {
     if (loading_) return;
     auto* pt = right_panel_->plugins_tab();
@@ -2766,15 +2843,29 @@ void MainWindow::rebuild_plugin_highlight_index() {
 }
 
 void MainWindow::on_mod_selection_changed() {
+    const auto& mods = mod_model_->mods();
+    const auto rows = mod_view_->selectionModel()->selectedRows();
+
+    // Conflict-highlight union across the whole selection (MO2
+    // refreshMarkersAndPlugins -> setOverwriteMarkers parity). Independent of
+    // the plugins tab, so run before its early return.
+    QSet<QString> conflict_ids;
+    for (const auto& idx : rows) {
+        const int r = idx.row();
+        if (r < 0 || r >= mods.size()) continue;
+        const auto& m = mods[r];
+        if (m.is_separator || m.is_overwrite || m.is_merged) continue;
+        conflict_ids.insert(m.id);
+    }
+    mod_model_->set_selected_mods(conflict_ids);
+
     auto* pt = right_panel_ ? right_panel_->plugins_tab() : nullptr;
     if (!pt || plugin_row_by_name_.isEmpty()) return;
 
-    const auto& mods = mod_model_->mods();
     QVector<QString> contained;
     QSet<QString> seen_contained;
     contained.reserve(plugin_row_by_name_.size());
 
-    const auto rows = mod_view_->selectionModel()->selectedRows();
     for (const auto& idx : rows) {
         const int r = idx.row();
         if (r < 0 || r >= mods.size()) continue;
@@ -2996,6 +3087,27 @@ void MainWindow::setup_mod_list_context_menu() {
                     toggle_root_override(rows, !all_on);
                 });
             }
+            // Send to... submenu (MO2 modlistcontextmenu.cpp:325 sends all
+            // selected mods to one separator): applies to every selected mod
+            // row, skipping separators/pinned rows. Relative order is preserved
+            // by move_mods_to_separator.
+            {
+                QList<int> rows;
+                bool any_seps = false;
+                for (const auto& m : mod_model_->mods())
+                    if (m.is_separator) { any_seps = true; break; }
+                for (const auto& si : sel) {
+                    if (si.row() < 0 || si.row() >= mod_model_->mods().size()) continue;
+                    const auto& m = mod_model_->mods()[si.row()];
+                    if (m.is_separator || m.is_overwrite || m.is_merged || m.is_game_native)
+                        continue;
+                    rows << si.row();
+                }
+                auto* send_to = menu.addMenu(engine::IconManager::instance().resolve_icon("view-sort"), tr("Send to..."));
+                auto* sep_act = send_to->addAction(engine::IconManager::instance().resolve_icon("view-sort"), tr("Separator..."),
+                    this, [this, rows]() { send_to_separator(rows); });
+                sep_act->setEnabled(any_seps && !rows.isEmpty());
+            }
             menu.addSeparator();
             menu.addAction(engine::IconManager::instance().resolve_icon("edit-delete"), tr("Remove"),
                 this, [this]() { remove_selected_mods(); });
@@ -3020,7 +3132,7 @@ void MainWindow::setup_mod_list_context_menu() {
         for (const auto& m : mod_model_->mods())
             if (m.is_separator) { any_seps = true; break; }
         auto* sep_act = send_to->addAction(engine::IconManager::instance().resolve_icon("view-sort"), tr("Separator..."),
-            this, [this, mod_id]() { send_to_separator(mod_id); });
+            this, [this, row]() { send_to_separator(QList<int>{row}); });
         sep_act->setEnabled(any_seps);
         if (!entry.separator_id.isEmpty() && mod_model_->has_conflicts_within_separator(mod_id)) {
             send_to->addAction(engine::IconManager::instance().resolve_icon("go-up"), tr("Send to Highest in Separator"),
@@ -3387,29 +3499,15 @@ void MainWindow::remove_selected_mods() {
         }
         mod_model_->remove_mod(entry.id);
     }
+    // Removed mods may have been the only owner of plugin files - re-discover.
+    request_plugin_refresh();
 }
 
-void MainWindow::move_to_separator(const QString& mod_id, const QString& sep_id) {
-    mod_model_->set_separator_id(mod_id, sep_id);
-
-    // Move mod row to right after the separator row
-    const auto& mods = mod_model_->mods();
-    int sep_row = -1;
-    for (int i = 0; i < mods.size(); ++i) {
-        if (mods[i].is_separator && mods[i].id == sep_id) {
-            sep_row = i;
-            break;
-        }
-    }
-    if (sep_row >= 0)
-        mod_model_->move_mod(mod_id, sep_row + 1);
-}
-
-void MainWindow::send_to_separator(const QString& mod_id) {
-    // MO2 sendModsToSeparator (modlistviewactions.cpp:661-701): collect the
-    // separators in mod-list order into the shared ListDialog and move the mod
-    // to the chosen one. Ids ride item data so duplicate display names can't
-    // misresolve.
+void MainWindow::send_to_separator(const QList<int>& rows) {
+    // MO2 sendModsToSeparator (modlistviewactions.cpp:661-729): collect the
+    // separators in mod-list order into the shared ListDialog and move the
+    // selected mods to the chosen one. Ids ride item data so duplicate display
+    // names can't misresolve.
     QStringList names;
     QList<QVariant> ids;
     for (const auto& m : mod_model_->mods()) {
@@ -3426,7 +3524,82 @@ void MainWindow::send_to_separator(const QString& mod_id) {
     dlg.setChoiceData(ids);
     if (dlg.exec() != QDialog::Accepted) return;
     const QString sep_id = dlg.getChoiceData().toString();
-    if (!sep_id.isEmpty()) move_to_separator(mod_id, sep_id);
+    if (sep_id.isEmpty()) return;
+
+    // Filter to real mod rows (the multi menu skips pinned rows already, but
+    // the single-mod path passes one row unconditionally).
+    QStringList mod_ids;
+    for (int r : rows) {
+        if (r < 0 || r >= mod_model_->mods().size()) continue;
+        const auto& m = mod_model_->mods()[r];
+        if (m.is_separator || m.is_overwrite || m.is_merged || m.is_game_native)
+            continue;
+        mod_ids << m.id;
+    }
+    if (mod_ids.isEmpty()) return;
+
+    for (const auto& id : mod_ids)
+        mod_model_->set_separator_id(id, sep_id);
+    move_mods_to_separator(mod_ids, sep_id);
+}
+
+void MainWindow::move_mods_to_separator(const QStringList& ids, const QString& sep_id) {
+    // Move every selected mod to the row right below the chosen separator. All
+    // ids already carry sep_id (set by send_to_separator); this only relocates
+    // rows. Moving top-most subtrees first (descending current row) preserves
+    // relative order: each landing at sep_row+1 pushes the previous batch down
+    // in the same sequence. Descendants of a selected mod are left to move_mod's
+    // block ride-along - moving them explicitly too would lift a child above
+    // its own parent.
+    const auto& mods = mod_model_->mods();
+    int sep_row = -1;
+    for (int i = 0; i < mods.size(); ++i) {
+        if (mods[i].is_separator && mods[i].id == sep_id) {
+            sep_row = i;
+            break;
+        }
+    }
+    if (sep_row < 0) return;
+
+    QVector<QPair<int, QString>> rowed;
+    // Mirror of ModListModel::is_descendant_of (private there): walk row's
+    // parent_id chain to see if it reaches ancestor_id.
+    auto is_descendant_of = [&mods](int row, const QString& ancestor_id) {
+        QString cur = mods[row].parent_id;
+        for (int hops = 0; hops <= mods.size(); ++hops) {
+            if (cur == ancestor_id) return true;
+            if (cur.isEmpty()) return false;
+            int idx = -1;
+            for (int i = 0; i < mods.size(); ++i) {
+                if (mods[i].id == cur) { idx = i; break; }
+            }
+            if (idx < 0) return false;
+            cur = mods[idx].parent_id;
+        }
+        return false;
+    };
+    for (const auto& id : ids) {
+        int r = mod_model_->priority_of(id);
+        if (r < 0) continue;
+        bool covered_by_selected_ancestor = false;
+        for (const auto& other : ids) {
+            if (other == id) continue;
+            int orow = mod_model_->priority_of(other);
+            if (orow < 0 || orow >= r) continue;
+            if (is_descendant_of(r, other)) {
+                covered_by_selected_ancestor = true;
+                break;
+            }
+        }
+        if (!covered_by_selected_ancestor)
+            rowed << qMakePair(r, id);
+    }
+    std::sort(rowed.begin(), rowed.end(),
+              [](const QPair<int, QString>& a, const QPair<int, QString>& b) {
+                  return a.first > b.first;
+              });
+    for (const auto& [r, id] : rowed)
+        mod_model_->move_mod(id, sep_row + 1);
 }
 
 void MainWindow::send_to_highest_priority(const QString& id) {
@@ -4185,6 +4358,8 @@ void MainWindow::apply_rename(int row, const QString& name) {
     }
 
     mod_model_->rename_mod_in_place(row, new_id, display_name);
+    // Renamed folder -> owner_mod attribution in the Plugins tab must follow.
+    request_plugin_refresh();
     engine::Logger::instance().debug("Renamed mod: " + entry.name.toStdString() +
         " -> " + display_name.toStdString());
 }
@@ -4263,6 +4438,12 @@ void MainWindow::reset_color_for_selected() {
         mod_model_->clear_mod_color(mod.id);
     }
     Settings::instance().remove_previous_separator_color();
+}
+
+void MainWindow::request_save_order() {
+    if (loading_) return;
+    if (save_order_timer_->isActive()) save_order_timer_->stop();
+    save_order_timer_->start();
 }
 
 void MainWindow::save_order() {
@@ -4641,6 +4822,38 @@ void MainWindow::load_order() {
     sync_separator_ids();
 }
 
+// Find the closing ']' of a TOML array whose opening '[' is at position
+// `from`. Brackets inside double-quoted strings (JSON escapes included) and
+// nested arrays (e.g. the "env":[] of an executable entry) are skipped so a
+// ']' inside an entry never truncates the section early.
+static size_t find_toml_array_end(const std::string& s, size_t from) {
+    int depth = 0;
+    bool in_string = false;
+    bool escaped = false;
+    for (size_t i = from; i < s.size(); ++i) {
+        const char c = s[i];
+        if (in_string) {
+            if (escaped) {
+                escaped = false;
+            } else if (c == '\\') {
+                escaped = true;
+            } else if (c == '"') {
+                in_string = false;
+            }
+            continue;
+        }
+        if (c == '"') {
+            in_string = true;
+        } else if (c == '[') {
+            ++depth;
+        } else if (c == ']') {
+            if (depth == 0) return i;
+            --depth;
+        }
+    }
+    return std::string::npos;
+}
+
 void MainWindow::save_executables() {
     if (current_instance_root_.empty()) return;
 
@@ -4654,14 +4867,22 @@ void MainWindow::save_executables() {
     }
     in.close();
 
-    std::istringstream stream(existing);
-    std::string line;
-    std::string cleaned;
-    while (std::getline(stream, line)) {
-        auto key_pos = line.find("executables");
-        if (key_pos != std::string::npos) continue;
-        cleaned += line + "\n";
+    // Remove the ENTIRE previous `executables = [...]` block (header through
+    // its closing ']' line). Stripping only the header line would leave the
+    // entries and ']' behind as orphaned garbage that cascades on every save.
+    std::string cleaned = existing;
+    auto header = cleaned.find("executables = [");
+    if (header != std::string::npos) {
+        auto open = header + std::string("executables = [").size();
+        auto close = find_toml_array_end(cleaned, open);
+        if (close != std::string::npos) {
+            auto line_end = cleaned.find('\n', close);
+            auto block_end = (line_end == std::string::npos) ? cleaned.size() : line_end + 1;
+            cleaned.erase(header, block_end - header);
+        }
     }
+    while (!cleaned.empty() && (cleaned.back() == '\n' || cleaned.back() == '\r'))
+        cleaned.pop_back();
 
     // Collect JSON objects from the combo
     auto entries = right_panel_->exec_controls()->executable_entries();
@@ -4671,7 +4892,7 @@ void MainWindow::save_executables() {
         json_entries.append(raw);
     }
 
-    cleaned += "executables = [\n";
+    cleaned += "\nexecutables = [\n";
     for (int i = 0; i < json_entries.size(); ++i) {
         if (i > 0) cleaned += ",\n";
         cleaned += "    " + json_entries[i].toStdString();
@@ -4696,7 +4917,7 @@ void MainWindow::load_executables() {
     auto start = content.find("executables = [");
     if (start == std::string::npos) return;
     start += std::string("executables = [").size();
-    auto end = content.find(']', start);
+    auto end = find_toml_array_end(content, start);
     if (end == std::string::npos) return;
 
     auto section = content.substr(start, end - start);
@@ -5051,6 +5272,20 @@ void MainWindow::launch_with_executable(const QString& full_path,
     req.local_saves_enabled = Settings::instance().local_saves();
     req.platform = platform_;
 
+    // Per-executable environment overrides, resolved the same way output-to-mod
+    // routing is (first matching executable entry owns the launch): Run button,
+    // toolbar shortcuts and Data-tab Execute all inherit the configured env.
+    const QStringList env_list = ui::environment_for_path(
+        right_panel_->exec_controls()->executable_entries(),
+        current_game_dir_, full_path);
+    for (const auto& v : env_list)
+        req.environment.push_back(v.toStdString());
+    if (!req.environment.empty()) {
+        engine::Logger::instance().debug(
+            "Launch env: " + std::to_string(req.environment.size()) +
+            " override(s) from executable entry for " + full_path.toStdString());
+    }
+
     if (!launch_deploy_thread_) {
         launch_deploy_thread_ = new ui::DeployThread(this);
         connect(launch_deploy_thread_->worker(), &ui::DeployWorker::progress,
@@ -5109,7 +5344,7 @@ void MainWindow::on_launch_params_prepared(engine::LaunchParams lparams) {
     // Output-to-mod: capture into a per-launch scratch dir, relay on exit.
     // Empty output_mod_dir_ = default Overwrite capture (toolbar shortcuts).
     output_session_scratch_.clear();
-    if (!output_mod_dir_.empty()) {
+    if (!output_mod_dir_.empty() && lparams.use_overlay) {
         auto scratch_base = cache_dir_path();
         if (scratch_base.empty()) scratch_base = current_game_dir_ / "cache";
         auto session = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -5128,10 +5363,18 @@ void MainWindow::on_launch_params_prepared(engine::LaunchParams lparams) {
             engine::Logger::instance().debug(
                 "Output-to-mod: capturing to " + output_session_scratch_.string());
         }
+    } else if (!output_mod_dir_.empty()) {
+        // Direct-symlink mode captures nothing: game writes land in game_dir,
+        // so there is no session to relay into the output mod.
+        engine::Logger::instance().warn(
+            "Output-to-mod unavailable: game launches in direct-symlink mode "
+            "(writes go to game_dir)");
+        output_mod_dir_.clear();
     }
 
     if (!lparams.extra_lowerdirs.empty())
         staging_dir_ = lparams.extra_lowerdirs.back();
+    overlay_session_ = lparams.use_overlay;
 
     // Merged-view existence check, AFTER deploy so staging is populated: the
     // file may be game-native (physical), live-overlay (mounted), or a
@@ -5622,6 +5865,15 @@ void MainWindow::refresh_process_tree() {
 
 void MainWindow::do_capture_overwrite(std::filesystem::file_time_type capture_time) {
     if (current_instance_root_.empty() || current_game_dir_.empty()) return;
+
+    // Direct-symlink session: no overlay, no capture - the game wrote straight
+    // into game_dir and the files must stay there. Nothing to harvest, and
+    // capture_overwrite would MOVE the game's files out of game_dir.
+    if (!overlay_session_) {
+        output_session_scratch_.clear();
+        output_mod_dir_.clear();
+        return;
+    }
 
     bool case_insensitive =
         knowledge_ && knowledge_->get(current_game_id_, "case_sensitive", "true") == "false";
@@ -6935,9 +7187,23 @@ void MainWindow::show_proton_panel() {
         ? current_game_id_
         : current_game_name_;
 
+    // Gather the deploy config through the same engine function the launch
+    // path uses, so the panel's actions behave exactly like the launch-time
+    // deploy. The effective strategy (instance.toml override, else knowledge)
+    // seeds the panel's "Deployment strategy" selector and decides whether the
+    // direct-deploy actions are usable.
+    engine::GameKnowledge empty_knowledge;
+    const engine::GameKnowledge& knowledge = knowledge_ ? *knowledge_ : empty_knowledge;
+    const engine::DeployConfig deploy_cfg = engine::deploy_config_for(
+        current_instance_root_, current_game_dir_, knowledge, current_game_id_);
+    const std::string effective_strategy =
+        engine::effective_deploy_strategy(current_instance_root_, knowledge,
+                                          current_game_id_);
+
     ui::ProtonPanel dlg(platform_, plugin_loader_, current_game_id_, game_name,
                         current_game_dir_, steam_appid, current_instance_root_,
-                        inst.info().proton_runner, this);
+                        inst.info().proton_runner, effective_strategy,
+                        deploy_cfg, this);
     if (dlg.exec() == QDialog::Accepted) {
         auto runner = dlg.selected_runner();
         engine::Instance write = engine::Instance::from_root(current_instance_root_);

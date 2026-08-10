@@ -44,6 +44,10 @@ struct InstanceInfo {
     // to a `proton` script). Empty = automatic (Steam per-game override, then
     // latest installed Proton). Persisted to instance.toml.
     std::string proton_runner;
+    // Per-instance deploy strategy override ("symlink" | "overlayfs"). Empty
+    // = the game plugin's "deploy_strategy" knowledge default. Persisted to
+    // instance.toml; wins over the knowledge key when set.
+    std::string deploy_strategy;
 };
 
 class Instance {

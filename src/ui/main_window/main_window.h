@@ -170,6 +170,11 @@ private:
     void select_color_for_selected();
     void reset_color_for_selected();
     void save_order();
+    // Debounced order-persist entry: a drag/arrow-move rewrites instance.toml
+    // once at gesture end instead of once per step (MO2 writes modlist.txt at
+    // drag end). The direct call sites (sort apply, instance close, shortcut
+    // add/remove) stay immediate and double as flushes.
+    void request_save_order();
     void load_order();
     void save_executables();
     void load_executables();
@@ -290,6 +295,12 @@ private:
 
     // Plugins tab (Skyrim-style games with plugin support).
     void refresh_plugins_tab();
+    // Debounced plugin-discovery entry: the Plugins tab only reacts to changes
+    // in plugin-file availability (install/remove/rename/toggle), never to
+    // reorders or folds. Restarts a ~250ms single-shot that calls
+    // refresh_plugins_tab() (MO2 parity: the plugin model isn't rebuilt on
+    // every mod-list change).
+    void request_plugin_refresh();
     void on_plugin_toggle(const std::string& name, bool enabled);
     void on_plugin_reorder(int from_row, int to_row);
     void on_plugin_lock(const std::string& name, bool locked);
@@ -310,8 +321,8 @@ private:
     void show_overwrite_info_dialog();
     void move_dropped_overwrite_files(const QStringList& paths, int mod_row);
     void remove_selected_mods();
-    void move_to_separator(const QString& mod_id, const QString& sep_id);
-    void send_to_separator(const QString& mod_id);
+    void move_mods_to_separator(const QStringList& ids, const QString& sep_id);
+    void send_to_separator(const QList<int>& rows);
     void send_to_highest_priority(const QString& id);
     void send_to_lowest_priority(const QString& id);
     void send_to_highest_in_separator(const QString& id);
@@ -424,6 +435,10 @@ private:
     int64_t running_process_pid_ = -1;
     QTimer* process_watch_timer_ = nullptr;
     bool overlay_launched_ = false;
+    // True when the active session launches inside the OverlayFS sandbox (only
+    // then is there write capture to harvest at session end). Direct-symlink
+    // games write straight to game_dir - nothing to capture.
+    bool overlay_session_ = true;
     std::string cgroup_path_;  // cgroup v2 path for process tracking (empty = unavailable)
     std::filesystem::file_time_type launch_time_;
     std::filesystem::path staging_dir_;  // non-empty when OverlayFS deploy strategy is active
@@ -440,6 +455,11 @@ private:
     // invalidations of the quick-token cache are applied by the worker before
     // it scans. Follow-ups run on the main thread after the results land.
     QTimer* conflict_debounce_timer_ = nullptr;
+    // Plugin-refresh + order-persist debounce timers (P8.6): request_plugin_
+    // refresh() / request_save_order() restart these so a gesture that fires
+    // many mod_list_changed signals triggers one refresh / one toml rewrite.
+    QTimer* plugin_refresh_debounce_timer_ = nullptr;
+    QTimer* save_order_timer_ = nullptr;
     ui::ConflictScanThread* conflict_scan_thread_ = nullptr;
     bool conflict_scan_running_ = false;
     bool conflict_scan_pending_ = false;

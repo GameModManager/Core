@@ -16,6 +16,7 @@ class QComboBox;
 class QListWidget;
 class QDialogButtonBox;
 class QModelIndex;
+class QPlainTextEdit;
 class QToolButton;
 
 namespace ui {
@@ -27,6 +28,7 @@ struct ExecEntry {
     QString start_in;   // working directory (empty = game_dir)
     QString output_mod; // mod ID for output routing (empty = none)
     QString icon_path;  // custom icon path (empty = auto-detect from binary)
+    QStringList environment;  // "KEY=VALUE" per entry, set for the launched process
 
     QJsonObject toJson() const;
     static ExecEntry fromJson(const QJsonObject& obj);
@@ -44,6 +46,13 @@ QString exec_entry_display_name(const ExecEntry& e);
 QString output_mod_for_path(const QVector<ExecEntry>& entries,
                             const std::filesystem::path& game_dir,
                             const QString& full_path);
+
+// Resolves the per-executable environment ("KEY=VALUE" list) for a launched
+// binary, with the same first-match path semantics as output_mod_for_path.
+// Empty when no entry matches (caller launches with the inherited environment).
+QStringList environment_for_path(const QVector<ExecEntry>& entries,
+                                 const std::filesystem::path& game_dir,
+                                 const QString& full_path);
 
 class ExecEntryDialog : public QDialog {
     Q_OBJECT
@@ -108,6 +117,7 @@ private:
     QLineEdit* args_edit_ = nullptr;
     QLineEdit* start_in_edit_ = nullptr;
     QComboBox* output_mod_combo_ = nullptr;
+    QPlainTextEdit* env_edit_ = nullptr;
     QCheckBox* use_app_icon_check_ = nullptr;
     QPushButton* change_icon_btn_ = nullptr;
     QLabel* icon_preview_ = nullptr;

@@ -79,12 +79,18 @@ int launch_game_headless(const HeadlessConfig& cfg) {
         "Headless: game exited, waiting 3s for delayed writes");
     std::this_thread::sleep_for(std::chrono::seconds(3));
 
-    // Post-hoc capture (no-op if overlay was used)
-    bool case_insensitive =
-        cfg.knowledge &&
-        cfg.knowledge->get(cfg.game_id, "case_sensitive", "true") == "false";
-    engine::capture_overwrite(cfg.game_dir, lparams.overwrite_dir, launch_time,
-                              case_insensitive);
+    // Post-hoc capture. Only for overlay-capable sessions: an OverlayFS launch
+    // already wrote into the upperdir (capture is a no-op), and the plain
+    // fallback needs the harvest. Direct-symlink games write straight into
+    // game_dir and must NOT be harvested - capture would move the game's own
+    // files out of game_dir into Overwrite.
+    if (lparams.use_overlay) {
+        bool case_insensitive =
+            cfg.knowledge &&
+            cfg.knowledge->get(cfg.game_id, "case_sensitive", "true") == "false";
+        engine::capture_overwrite(cfg.game_dir, lparams.overwrite_dir, launch_time,
+                                  case_insensitive);
+    }
 
     engine::Logger::instance().debug("Headless: done");
     return (ret > 0 && WIFEXITED(status)) ? WEXITSTATUS(status) : 1;

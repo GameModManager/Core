@@ -9,6 +9,7 @@
 #include <QFileDialog>
 #include <QFormLayout>
 #include <QHBoxLayout>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
@@ -16,6 +17,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QPixmap>
+#include <QPlainTextEdit>
 #include <QProcess>
 #include <QPushButton>
 #include <QSplitter>
@@ -29,7 +31,23 @@
 
 #include <filesystem>
 
+#include <functional>
+
 namespace ui {
+
+// Parses the Environment field into "KEY=VALUE" entries. One per line; blank
+// lines and lines without a '=' (which the launcher would reject anyway) are
+// dropped.
+static QStringList parse_environment_text(const QString& text) {
+    QStringList out;
+    const auto lines = text.split(QLatin1Char('\n'));
+    for (const auto& line : lines) {
+        const auto trimmed = line.trimmed();
+        if (!trimmed.isEmpty() && trimmed.contains(QLatin1Char('=')))
+            out.append(trimmed);
+    }
+    return out;
+}
 
 // ---------------------------------------------------------------------------
 // ExecEntry
@@ -43,6 +61,7 @@ QJsonObject ExecEntry::toJson() const {
     obj["cwd"]  = start_in;
     obj["mod"]  = output_mod;
     obj["icon"] = icon_path;
+    obj["env"]  = QJsonArray::fromStringList(environment);
     return obj;
 }
 
@@ -54,6 +73,11 @@ ExecEntry ExecEntry::fromJson(const QJsonObject& obj) {
     e.start_in   = obj["cwd"].toString();
     e.output_mod = obj["mod"].toString();
     e.icon_path  = obj["icon"].toString();
+    e.environment.clear();
+    const auto env_arr = obj["env"].toArray();
+    e.environment.reserve(env_arr.size());
+    for (const auto& v : env_arr)
+        e.environment.append(v.toString());
     return e;
 }
 
@@ -77,11 +101,17 @@ QString exec_entry_display_name(const ExecEntry& e) {
     return QStringLiteral("Untitled");
 }
 
-QString output_mod_for_path(const QVector<ExecEntry>& entries,
-                            const std::filesystem::path& game_dir,
-                            const QString& full_path) {
+// Shared MO2 getByBinary matcher: returns the first entry whose game-relative
+// path equals the launched binary's (case-insensitive, symlink-canonicalized)
+// AND satisfies `pick`. Returns nullptr when nothing matches / inputs are
+// empty. `pick` keeps each consumer's skip-empty semantics (an entry without
+// an output mod, or without env vars, does not shadow a later configured one).
+static const ExecEntry* find_entry_for_path(const QVector<ExecEntry>& entries,
+                                            const std::filesystem::path& game_dir,
+                                            const QString& full_path,
+                                            const std::function<bool(const ExecEntry&)>& pick) {
     if (game_dir.empty() || full_path.isEmpty())
-        return {};
+        return nullptr;
 
     // Canonicalize both sides (same rationale as browse_binary): the game dir
     // commonly goes through the ~/.steam symlink, so a raw comparison against
@@ -95,21 +125,39 @@ QString output_mod_for_path(const QVector<ExecEntry>& entries,
 
     auto rel = std::filesystem::relative(canon_full, base, ec);
     if (ec || rel.empty())
-        return {};
+        return nullptr;
     // Paths escaping the game dir (e.g. /usr/bin/dolphin) produce a leading
     // ".."; an entry-path match is then impossible.
     if (rel.begin() != rel.end() && rel.begin()->string() == "..")
-        return {};
+        return nullptr;
     const QString rel_q = QString::fromStdString(rel.generic_string());
     if (rel_q.isEmpty())
-        return {};
+        return nullptr;
     const QString rel_lower = rel_q.toLower();
 
     for (const auto& e : entries) {
-        if (!e.output_mod.isEmpty() && e.path.toLower() == rel_lower)
-            return e.output_mod;
+        if (!e.path.isEmpty() && e.path.toLower() == rel_lower && pick(e))
+            return &e;
     }
-    return {};
+    return nullptr;
+}
+
+QString output_mod_for_path(const QVector<ExecEntry>& entries,
+                            const std::filesystem::path& game_dir,
+                            const QString& full_path) {
+    const ExecEntry* e = find_entry_for_path(
+        entries, game_dir, full_path,
+        [](const ExecEntry& en) { return !en.output_mod.isEmpty(); });
+    return e ? e->output_mod : QString();
+}
+
+QStringList environment_for_path(const QVector<ExecEntry>& entries,
+                                 const std::filesystem::path& game_dir,
+                                 const QString& full_path) {
+    const ExecEntry* e = find_entry_for_path(
+        entries, game_dir, full_path,
+        [](const ExecEntry& en) { return !en.environment.isEmpty(); });
+    return e ? e->environment : QStringList();
 }
 
 // ---------------------------------------------------------------------------
@@ -226,6 +274,15 @@ ExecEntryDialog::ExecEntryDialog(const std::filesystem::path& game_dir,
     }
     form->addRow(tr("Output to mod:"), output_mod_combo_);
 
+    env_edit_ = new QPlainTextEdit(right_panel);
+    env_edit_->setPlaceholderText(tr("NAME=VALUE per line, e.g.\nWINEDEBUG=+file"));
+    env_edit_->setFixedHeight(70);
+    env_edit_->setToolTip(tr(
+        "Environment variables set for the launched process, one NAME=VALUE\n"
+        "per line. Leave empty to inherit the parent environment. Useful for\n"
+        "debugging (e.g. WINEDEBUG=+file to trace wine file access)."));
+    form->addRow(tr("Environment:"), env_edit_);
+
     // Icon row: checkbox + preview + button
     auto* icon_row = new QHBoxLayout;
     use_app_icon_check_ = new QCheckBox(tr("Use Application's Icon for shortcuts"), right_panel);
@@ -281,6 +338,8 @@ ExecEntryDialog::ExecEntryDialog(const std::filesystem::path& game_dir,
             this, &ExecEntryDialog::on_field_changed);
     connect(output_mod_combo_, &QComboBox::editTextChanged,
             this, &ExecEntryDialog::on_field_changed);
+    connect(env_edit_, &QPlainTextEdit::textChanged,
+            this, &ExecEntryDialog::on_field_changed);
 
     connect(browse_bin, &QPushButton::clicked, this, &ExecEntryDialog::browse_binary);
     connect(browse_cwd, &QPushButton::clicked, this, &ExecEntryDialog::browse_start_in);
@@ -335,6 +394,7 @@ void ExecEntryDialog::select_entry(int index) {
     binary_edit_->setText(e.path);
     args_edit_->setText(e.arguments);
     start_in_edit_->setText(e.start_in);
+    env_edit_->setPlainText(e.environment.join(QLatin1Char('\n')));
     int combo_idx = output_mod_combo_->findData(e.output_mod);
     if (combo_idx >= 0)
         output_mod_combo_->setCurrentIndex(combo_idx);
@@ -377,6 +437,7 @@ void ExecEntryDialog::save_current_entry() {
     e.arguments  = args_edit_->text().trimmed();
     e.start_in   = start_in_edit_->text().trimmed();
     e.output_mod = current_output_mod_text();
+    e.environment = parse_environment_text(env_edit_->toPlainText());
     if (use_app_icon_check_->isChecked())
         e.icon_path.clear();
     // icon_path unchanged when unchecked (already set via on_change_icon)
@@ -493,6 +554,7 @@ void ExecEntryDialog::on_remove_entry() {
         args_edit_->clear();
         start_in_edit_->clear();
         output_mod_combo_->setCurrentIndex(0);
+        env_edit_->clear();
         use_app_icon_check_->setChecked(true);
         change_icon_btn_->setEnabled(false);
         icon_preview_->hide();
@@ -696,6 +758,7 @@ void ExecEntryDialog::on_field_changed() {
         e.arguments  = args_edit_->text().trimmed();
         e.start_in   = start_in_edit_->text().trimmed();
         e.output_mod = current_output_mod_text();
+        e.environment = parse_environment_text(env_edit_->toPlainText());
         if (use_app_icon_check_->isChecked())
             e.icon_path.clear();
 

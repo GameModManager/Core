@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 # (package_installer target passes -DVERSION=${PROJECT_VERSION}), and the plugins
 # (GMM_VERSION, visible in the add_subdirectory'd external/plugins scope).
 project(GameModManager
-    VERSION 0.3.3
+    VERSION 0.3.16
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
@@ -470,8 +470,12 @@ if(UNIX AND NOT APPLE)
         add_test(NAME overlay_intercept_test COMMAND overlay_intercept_test)
     endif()
 
-    # Case-insensitive syscall interposer — CI-resolves ENOENT lookups for
-    # case-sensitive launches of Windows games (v0.3.1).
+    # === BROKEN FEATURE — DO NOT ENABLE ===
+    # libgmm_ci_intercept.so is a case-insensitive syscall interposer that is
+    # broken: it shadows Wine's own case-insensitivity and broke Pandora's
+    # game-tree reads (2026-08-09). It is built + unit-tested only as
+    # kept-reference. do_launch never preloads it unless
+    # GMM_ENABLE_BROKEN_CI_SHIM is explicitly set. Do not rely on it.
     add_library(gmm_ci_intercept SHARED src/engine/ci_intercept.c)
     target_link_libraries(gmm_ci_intercept PRIVATE dl)
     set_target_properties(gmm_ci_intercept PROPERTIES
@@ -683,6 +687,7 @@ add_executable(launch_params_test tests/engine/launch_params_test.cpp
     src/engine/deploy/deploy_utils.cpp
     src/engine/meta/mod_meta.cpp
     src/engine/deploy/strategy_overlayfs_deploy.cpp
+    src/engine/deploy/strategy_symlink.cpp
     src/engine/registry/game_knowledge.cpp
     src/engine/registry/game_features/game_feature.cpp
     src/engine/registry/game_features/game_feature_registry.cpp
@@ -707,6 +712,7 @@ add_executable(game_icons_test tests/engine/game_icons_test.cpp
     src/engine/deploy/deploy_utils.cpp
     src/engine/meta/mod_meta.cpp
     src/engine/deploy/strategy_overlayfs_deploy.cpp
+    src/engine/deploy/strategy_symlink.cpp
     src/engine/registry/game_knowledge.cpp
     src/engine/registry/game_features/game_feature.cpp
     src/engine/registry/game_features/game_feature_registry.cpp
@@ -1105,6 +1111,7 @@ add_executable(deploy_hidden_test tests/engine/deploy_hidden_test.cpp
     src/engine/deploy/deploy_utils.cpp
     src/engine/meta/mod_meta.cpp
     src/engine/deploy/strategy_overlayfs_deploy.cpp
+    src/engine/deploy/strategy_symlink.cpp
     src/engine/filetree/file_tree.cpp
     src/engine/filetree/dir_file_tree.cpp
     src/engine/filetree/data_archive.cpp
@@ -1124,6 +1131,7 @@ add_executable(deploy_case_insensitive_test tests/engine/deploy_case_insensitive
     src/engine/deploy/deploy_utils.cpp
     src/engine/meta/mod_meta.cpp
     src/engine/deploy/strategy_overlayfs_deploy.cpp
+    src/engine/deploy/strategy_symlink.cpp
     src/engine/filetree/file_tree.cpp
     src/engine/filetree/dir_file_tree.cpp
     src/engine/filetree/data_archive.cpp
@@ -1174,6 +1182,7 @@ add_executable(deploy_parallel_test tests/engine/deploy_parallel_test.cpp
     src/engine/deploy/deploy_utils.cpp
     src/engine/meta/mod_meta.cpp
     src/engine/deploy/strategy_overlayfs_deploy.cpp
+    src/engine/deploy/strategy_symlink.cpp
     src/engine/filetree/file_tree.cpp
     src/engine/filetree/dir_file_tree.cpp
     src/engine/filetree/data_archive.cpp
@@ -1719,6 +1728,10 @@ add_executable(proton_panel_test tests/ui/proton_panel_test.cpp
     src/engine/proton_tools.cpp
     src/runtime/runtime.cpp
     src/engine/instance/instance.cpp
+    src/engine/deploy/deploy_utils.cpp
+    src/engine/deploy/strategy_symlink.cpp
+    src/engine/deploy/strategy_overlayfs_deploy.cpp
+    src/engine/overlay_launcher.cpp
     src/engine/plugin_host/plugin_loader.cpp
     src/engine/plugin_host/python_loader.cpp
     src/engine/plugin_host/diagnostics_registry.cpp
