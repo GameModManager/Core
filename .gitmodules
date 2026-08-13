@@ -10,3 +10,15 @@
 	path = themes
 	url = https://github.com/GameModManager/Themes
 	branch = main
+[submodule "i18n"]
+	path = i18n
+	url = https://github.com/GameModManager/i18n
+	branch = main
+[submodule "packaging"]
+	path = packaging
+	url = https://github.com/GameModManager/Packaging
+	branch = main
+[submodule "resources"]
+	path = resources
+	url = https://github.com/GameModManager/Resources
+	branch = main
