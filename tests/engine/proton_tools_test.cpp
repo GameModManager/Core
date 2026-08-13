@@ -13,14 +13,15 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
-static void require(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "FAIL: %s\n", msg);
-        std::exit(1);
-    }
+namespace {
+void require(bool cond, const char* msg) {
+    INFO(msg);
+    REQUIRE(cond);
+}
 }
 
 // --- Stub platform: controllable proton discovery ---
@@ -46,7 +47,7 @@ public:
     }
 };
 
-int main() {
+TEST_CASE("proton tools", "[engine]") {
     StubPlatform platform;
 
     // --- resolve_proton_runner ---
@@ -136,7 +137,4 @@ int main() {
         fs::remove(exe_path, ec);
         fs::remove(proton_path, ec);
     }
-
-    std::printf("PASS: proton_tools_test\n");
-    return 0;
 }

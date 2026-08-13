@@ -6,10 +6,10 @@
 
 #include "engine/fomod/module_config.h"
 
-#include <cassert>
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <catch2/catch_test_macros.hpp>
 
 namespace {
 
@@ -39,28 +39,27 @@ std::filesystem::path fixture_path(const std::string& name)
 ModuleConfiguration parse(const std::string& name)
 {
     ModuleConfiguration config;
-    assert(config.deserialize(fixture_path(name)));
+    REQUIRE(config.deserialize(fixture_path(name)));
     return config;
 }
 
 }  // namespace
 
-int main()
-{
+TEST_CASE("fomod module config", "[engine]") {
     // All real-world fixtures parse with the expected module name and step
     // count, and every step carries at least one group with plugins.
     for (const auto& fix : kFixtures) {
         auto config = parse(fix.file);
-        assert(config.moduleName == fix.module_name);
+        REQUIRE(config.moduleName == fix.module_name);
         if (fix.step_count >= 0) {
-            assert(static_cast<int>(config.installSteps.installSteps.size()) == fix.step_count);
+            REQUIRE(static_cast<int>(config.installSteps.installSteps.size()) == fix.step_count);
         }
-        assert(!config.installSteps.installSteps.empty());
+        REQUIRE(!config.installSteps.installSteps.empty());
         for (const auto& step : config.installSteps.installSteps) {
-            assert(!step.name.empty());
-            assert(!step.optionalFileGroups.groups.empty());
+            REQUIRE(!step.name.empty());
+            REQUIRE(!step.optionalFileGroups.groups.empty());
             for (const auto& group : step.optionalFileGroups.groups) {
-                assert(!group.plugins.plugins.empty());
+                REQUIRE(!group.plugins.plugins.empty());
             }
         }
         std::printf("PASS: fomod_module_config — %s parses\n", fix.file);
@@ -70,37 +69,37 @@ int main()
     // and the TK Dodge typeDescriptor (file dependencies, order, priority).
     {
         auto config = parse("test_moduleconf_precision.xml");
-        assert(config.moduleName == "Precision");
+        REQUIRE(config.moduleName == "Precision");
 
         const auto& required = config.requiredInstallFiles.files;
-        assert(required.size() == 8);
-        assert(required[0].source == "Interface");
-        assert(required[0].destination == "Interface");
-        assert(required[7].source == "Precision.esp");
-        assert(required[7].destination == "Precision.esp");
+        REQUIRE(required.size() == 8);
+        REQUIRE(required[0].source == "Interface");
+        REQUIRE(required[0].destination == "Interface");
+        REQUIRE(required[7].source == "Precision.esp");
+        REQUIRE(required[7].destination == "Precision.esp");
 
         const auto& tkDodge = config.installSteps.installSteps[0]
                                   .optionalFileGroups.groups[0].plugins.plugins[0];
-        assert(tkDodge.typeDescriptor.dependencyType.defaultType == PluginTypeEnum::NotUsable);
+        REQUIRE(tkDodge.typeDescriptor.dependencyType.defaultType == PluginTypeEnum::NotUsable);
 
         const auto& pattern = tkDodge.typeDescriptor.dependencyType.patterns.patterns[0];
-        assert(pattern.type == PluginTypeEnum::Recommended);
-        assert(pattern.dependencies.operatorType == OperatorTypeEnum::OR);
-        assert(pattern.dependencies.fileDependencies.size() == 4);
-        assert(pattern.dependencies.flagDependencies.empty());
-        assert(pattern.dependencies.fileDependencies[0].file == "TKDodge.esp");
-        assert(pattern.dependencies.fileDependencies[0].state == FileDependencyTypeEnum::Active);
-        assert(pattern.dependencies.fileDependencies[1].file == "TKDodge.esp");
-        assert(pattern.dependencies.fileDependencies[1].state == FileDependencyTypeEnum::Inactive);
-        assert(pattern.dependencies.fileDependencies[2].file == "UltimateCombat.esp");
-        assert(pattern.dependencies.fileDependencies[2].state == FileDependencyTypeEnum::Active);
-        assert(pattern.dependencies.fileDependencies[3].file == "UltimateCombat.esp");
-        assert(pattern.dependencies.fileDependencies[3].state == FileDependencyTypeEnum::Inactive);
+        REQUIRE(pattern.type == PluginTypeEnum::Recommended);
+        REQUIRE(pattern.dependencies.operatorType == OperatorTypeEnum::OR);
+        REQUIRE(pattern.dependencies.fileDependencies.size() == 4);
+        REQUIRE(pattern.dependencies.flagDependencies.empty());
+        REQUIRE(pattern.dependencies.fileDependencies[0].file == "TKDodge.esp");
+        REQUIRE(pattern.dependencies.fileDependencies[0].state == FileDependencyTypeEnum::Active);
+        REQUIRE(pattern.dependencies.fileDependencies[1].file == "TKDodge.esp");
+        REQUIRE(pattern.dependencies.fileDependencies[1].state == FileDependencyTypeEnum::Inactive);
+        REQUIRE(pattern.dependencies.fileDependencies[2].file == "UltimateCombat.esp");
+        REQUIRE(pattern.dependencies.fileDependencies[2].state == FileDependencyTypeEnum::Active);
+        REQUIRE(pattern.dependencies.fileDependencies[3].file == "UltimateCombat.esp");
+        REQUIRE(pattern.dependencies.fileDependencies[3].state == FileDependencyTypeEnum::Inactive);
 
         // Backslash sources are preserved verbatim (FOMOD Plus behavior).
-        assert(tkDodge.files.files[0].source == "Compatibility\\TK Dodge Ultimate Combat");
-        assert(tkDodge.files.files[0].destination == "Nemesis_Engine");
-        assert(tkDodge.files.files[0].priority == 0);
+        REQUIRE(tkDodge.files.files[0].source == "Compatibility\\TK Dodge Ultimate Combat");
+        REQUIRE(tkDodge.files.files[0].destination == "Nemesis_Engine");
+        REQUIRE(tkDodge.files.files[0].priority == 0);
         std::printf("PASS: fomod_module_config — Precision structure\n");
     }
 
@@ -109,12 +108,12 @@ int main()
         auto config = parse("test_moduleconf_bos.xml");
         const auto& firstPlugin = config.installSteps.installSteps.front()
                                       .optionalFileGroups.groups.front().plugins.plugins.front();
-        assert(firstPlugin.typeDescriptor.dependencyType.defaultType == PluginTypeEnum::Optional);
+        REQUIRE(firstPlugin.typeDescriptor.dependencyType.defaultType == PluginTypeEnum::Optional);
 
         const auto& patterns = firstPlugin.typeDescriptor.dependencyType.patterns.patterns;
-        assert(patterns.size() == 3);
-        assert(patterns.front().dependencies.gameDependencies.size() == 1);
-        assert(patterns.front().dependencies.gameDependencies.front().version == "1.6.1130.0");
+        REQUIRE(patterns.size() == 3);
+        REQUIRE(patterns.front().dependencies.gameDependencies.size() == 1);
+        REQUIRE(patterns.front().dependencies.gameDependencies.front().version == "1.6.1130.0");
         std::printf("PASS: fomod_module_config — Base Object Swapper game version\n");
     }
 
@@ -125,9 +124,9 @@ int main()
                                .optionalFileGroups.groups[0].plugins.plugins[0]
                                .typeDescriptor.dependencyType.patterns.patterns[0]
                                .dependencies;
-        assert(deps.flagDependencies.size() == 1);
-        assert(deps.nestedDependencies.size() == 1);
-        assert(deps.nestedDependencies[0].flagDependencies.size() == 2);
+        REQUIRE(deps.flagDependencies.size() == 1);
+        REQUIRE(deps.nestedDependencies.size() == 1);
+        REQUIRE(deps.nestedDependencies[0].flagDependencies.size() == 2);
         std::printf("PASS: fomod_module_config — Mini Embers nested dependencies\n");
     }
 
@@ -138,12 +137,9 @@ int main()
                                .optionalFileGroups.groups[0].plugins.plugins[0]
                                .typeDescriptor.dependencyType.patterns.patterns[0]
                                .dependencies;
-        assert(deps.flagDependencies.size() == 1);
-        assert(deps.nestedDependencies.size() == 1);
-        assert(deps.nestedDependencies[0].flagDependencies.size() == 2);
+        REQUIRE(deps.flagDependencies.size() == 1);
+        REQUIRE(deps.nestedDependencies.size() == 1);
+        REQUIRE(deps.nestedDependencies[0].flagDependencies.size() == 2);
         std::printf("PASS: fomod_module_config — Embers nested dependencies\n");
     }
-
-    std::printf("PASS: fomod_module_config_test — all fixtures parsed\n");
-    return 0;
 }

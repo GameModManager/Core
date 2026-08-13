@@ -13,19 +13,20 @@
 #include <QProgressBar>
 
 #include <cstdio>
+#include <catch2/catch_test_macros.hpp>
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
-int main(int argc, char** argv) {
-    QApplication app(argc, argv);
+TEST_CASE("install progress dialog", "[ui]") {
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
 
     ui::InstallProgressDialog dlg;
     auto* bar = dlg.findChild<QProgressBar*>();
@@ -37,10 +38,8 @@ int main(int argc, char** argv) {
     check(dlg.windowModality() == Qt::ApplicationModal,
           "dialog is ApplicationModal (non-blocking show, blocking input)");
 
-    if (!bar || !label) {
-        std::printf("\n%d passed, %d failed\n", passes, failures);
-        return 1;
-    }
+    REQUIRE(bar != nullptr);
+    REQUIRE(label != nullptr);
 
     // begin(): title + empty status + determinate 0%.
     dlg.begin(QStringLiteral("Installing…"));
@@ -75,6 +74,4 @@ int main(int argc, char** argv) {
     check(dlg.isVisible(), "Escape does not dismiss the install progress popup");
 
     dlg.hide();
-    std::printf("\n%d passed, %d failed\n", passes, failures);
-    return failures == 0 ? 0 : 1;
 }

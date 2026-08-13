@@ -19,15 +19,13 @@
 #include <cstdio>
 #include <filesystem>
 #include <system_error>
+#include <catch2/catch_test_macros.hpp>
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 namespace {
@@ -40,8 +38,11 @@ QString qstr(const std::filesystem::path& p) {
 
 }  // namespace
 
-int main(int argc, char** argv) {
-    QApplication app(argc, argv);
+TEST_CASE("exec entry dialog", "[ui]") {
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
 
     root_dir = std::filesystem::temp_directory_path() /
                ("gmm_exec_entry_test_" + std::to_string(QCoreApplication::applicationPid()));
@@ -223,7 +224,4 @@ int main(int argc, char** argv) {
     }
 
     std::filesystem::remove_all(root_dir, ec);
-
-    std::printf("\n%d passed, %d failed\n", passes, failures);
-    return failures == 0 ? 0 : 1;
 }

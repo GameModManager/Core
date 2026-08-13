@@ -12,17 +12,18 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
-static void require(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "FAIL: %s\n", msg);
-        std::exit(1);
-    }
+namespace {
+void require(bool cond, const char* msg) {
+    INFO(msg);
+    REQUIRE(cond);
+}
 }
 
-int main() {
+TEST_CASE("game icons", "[engine]") {
     using engine::GameKnowledge;
 
     // Isolate from the real cache dir: point the instances override at a temp
@@ -82,7 +83,4 @@ int main() {
     // Restore defaults and clean up.
     engine::set_instances_dir_override({});
     fs::remove_all(root.parent_path());
-
-    std::printf("game_icons_test: all checks passed\n");
-    return 0;
 }

@@ -17,16 +17,16 @@
 #include <iostream>
 #include <iterator>
 #include <string>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
-static int failures = 0;
 
-static void check(bool cond, const char* what) {
-    if (!cond) {
-        std::cerr << "FAIL: " << what << "\n";
-        ++failures;
-    }
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 static std::string read_file(const fs::path& p) {
@@ -75,7 +75,7 @@ static void seed_isolated_home(const fs::path& root) {
     }
 }
 
-int main() {
+TEST_CASE("mimeapps", "[engine]") {
     const std::string old_home = std::getenv("HOME") ? std::getenv("HOME") : "";
     const fs::path root =
         fs::temp_directory_path() / ("gmm_mimeapps_test_" + std::to_string(::getpid()));
@@ -151,10 +151,4 @@ int main() {
     std::error_code cleanup_ec;
     fs::remove_all(root, cleanup_ec);
 
-    if (failures) {
-        std::cerr << failures << " check(s) failed\n";
-        return 1;
-    }
-    std::cout << "mimeapps_test: all checks passed\n";
-    return 0;
 }

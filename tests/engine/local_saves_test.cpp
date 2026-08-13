@@ -11,14 +11,15 @@
 #include <string>
 #include <unistd.h>
 #include <utility>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
-static void require(bool cond, const std::string& msg) {
-    if (!cond) {
-        std::fprintf(stderr, "FAIL: %s\n", msg.c_str());
-        std::exit(1);
-    }
+namespace {
+void require(bool cond, const std::string& msg) {
+    INFO(msg);
+    REQUIRE(cond);
+}
 }
 
 static std::string read_file(const fs::path& p) {
@@ -36,7 +37,7 @@ static fs::path make_mygames() {
     return dir;
 }
 
-int main() {
+TEST_CASE("local saves", "[engine]") {
     const auto mygames = make_mygames();
     const auto instance = mygames / "instance";
     fs::create_directories(instance);
@@ -138,6 +139,4 @@ int main() {
     require(!bad.enabled, "resolve: empty mygames -> disabled");
 
     fs::remove_all(mygames);
-    std::printf("local_saves_test: OK\n");
-    return 0;
 }

@@ -8,6 +8,8 @@
 #include "engine/sort/loot/masterlists.h"
 #include "platform/platform_interface.h"
 
+#include <catch2/catch_test_macros.hpp>
+
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -20,13 +22,10 @@
 
 namespace fs = std::filesystem;
 
-static int failures = 0;
 #define require(cond, msg)                                       \
     do {                                                         \
-        if (!(cond)) {                                           \
-            std::fprintf(stderr, "FAIL(%d): %s\n", __LINE__, msg); \
-            ++failures;                                          \
-        }                                                        \
+        INFO(msg);                                               \
+        REQUIRE((cond));                                         \
     } while (0)
 
 namespace {
@@ -228,7 +227,7 @@ void run_masterlist_fallback_case(const fs::path& base) {
 
 }  // namespace
 
-int main() {
+TEST_CASE("loot sorter", "[engine]") {
     const fs::path base = "/tmp/gmm_loot_sorter_test";
     std::error_code ec;
     fs::remove_all(base, ec);
@@ -245,11 +244,4 @@ int main() {
     run_failure_case(base);
     run_missing_cli_case(base);
     run_masterlist_fallback_case(base);
-
-    if (failures != 0) {
-        std::fprintf(stderr, "loot_sorter_test: %d FAILURES\n", failures);
-        return 1;
-    }
-    std::fprintf(stderr, "loot_sorter_test: all cases OK\n");
-    return 0;
 }

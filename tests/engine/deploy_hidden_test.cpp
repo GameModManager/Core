@@ -21,17 +21,15 @@
 #include <fstream>
 #include <string>
 #include <unistd.h>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 static void write_file(const fs::path& p, const std::string& contents) {
@@ -79,7 +77,7 @@ static void make_instance(const fs::path& root) {
     write_file(disabled_root / ".gmmdisabled", "");
 }
 
-int main() {
+TEST_CASE("deploy hidden", "[engine]") {
     // --- fs_utils hide/unhide/is_hidden contract ---
     check(engine::is_hidden_file("Data/Hidden.ini.gmmhidden"),
           "is_hidden_file recognizes the .gmmhidden suffix");
@@ -165,6 +163,4 @@ int main() {
           "disabled root-override mod's root files are not deployed");
 
     fs::remove_all(base);
-    std::printf("\n%d passed, %d failed\n", passes, failures);
-    return failures ? 1 : 0;
 }

@@ -33,6 +33,7 @@
 #include <string>
 #include <unistd.h>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 using namespace engine;
@@ -44,15 +45,12 @@ using namespace engine;
 // The fixture plugin's game_id = its .so stem (plugin_loader.cpp:468).
 static const char* const kPluginGame = "gmm_fomod_stage_plugin";
 
-static int g_failed = 0;
-static int g_checked = 0;
 
-static void check(bool cond, const std::string& msg) {
-    ++g_checked;
-    if (!cond) {
-        ++g_failed;
-        std::fprintf(stderr, "FAIL: %s\n", msg.c_str());
-    }
+namespace {
+void check(bool cond, const std::string& msg) {
+    INFO(msg);
+    REQUIRE(cond);
+}
 }
 
 // Build a temp directory tree rooted at a unique path under the system tmp.
@@ -295,15 +293,8 @@ static void test_fomod_cancel_via_bridge() {
           "canceled is not misreported as failed");
 }
 
-int main() {
+TEST_CASE("fomod stage plugin", "[engine]") {
     test_fomod_claim_via_bridge();
     test_fomod_cancel_via_bridge();
 
-    if (g_failed > 0) {
-        std::fprintf(stderr, "fomod_stage_plugin_test: %d/%d checks FAILED\n",
-                     g_failed, g_checked);
-        return 1;
-    }
-    std::printf("fomod_stage_plugin_test: all %d checks passed\n", g_checked);
-    return 0;
 }

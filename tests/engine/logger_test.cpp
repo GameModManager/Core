@@ -4,17 +4,18 @@
 #include <cstdlib>
 #include <string>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
 using namespace engine;
 
-static void require(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "FAIL: %s\n", msg);
-        std::exit(1);
-    }
+namespace {
+void require(bool cond, const char* msg) {
+    INFO(msg);
+    REQUIRE(cond);
+}
 }
 
-int main() {
+TEST_CASE("logger", "[engine]") {
     auto& logger = Logger::instance();
     logger.set_log_file("/dev/null");  // avoid writing into the cwd
 
@@ -62,7 +63,4 @@ int main() {
     require(tail.size() == 256, "replay buffer bounded at kReplayLimit");
     require(tail.front() == "flood-44", "oldest buffered entry is flood-44");
     require(tail.back() == "flood-299", "newest buffered entry is flood-299");
-
-    std::printf("logger_test: OK (%zu replayed)\n", replayed.size());
-    return 0;
 }

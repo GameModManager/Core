@@ -19,14 +19,15 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
-static void require(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "FAIL: %s\n", msg);
-        std::exit(1);
-    }
+namespace {
+void require(bool cond, const char* msg) {
+    INFO(msg);
+    REQUIRE(cond);
+}
 }
 
 class StubPlatform : public engine::PlatformInterface {
@@ -54,11 +55,13 @@ public:
     fs::path find_proton() const override { return "/steam/Proton 10.0/proton"; }
 };
 
-int main(int argc, char** argv) {
-    QApplication app(argc, argv);
+TEST_CASE("proton panel", "[ui]") {
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
 
-    const std::string plugins_dir =
-        argc > 1 ? argv[1] : std::string();
+    const std::string plugins_dir = GMM_PLUGINS_DIR;
 
     StubPlatform platform;
     engine::PluginLoader loader;
@@ -112,7 +115,4 @@ int main(int argc, char** argv) {
                               engine::DeployConfig{});
         require(panel.selected_runner().empty(), "unknown game stays Automatic");
     }
-
-    std::printf("PASS: proton_panel_test\n");
-    return 0;
 }

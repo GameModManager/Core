@@ -38,18 +38,15 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    std::fflush(stdout);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 // --- minimal SE-format save writer (compression type 0) ---
@@ -125,13 +122,16 @@ static QWidget* find_tooltip_widget() {
     return nullptr;
 }
 
-int main(int argc, char** argv) {
+TEST_CASE("saves tab", "[ui]") {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     const fs::path cfg = "/tmp/gmm_saves_tab/config";
     fs::remove_all("/tmp/gmm_saves_tab");
     fs::create_directories(cfg);
     qputenv("XDG_CONFIG_HOME", cfg.c_str());
-    QApplication app(argc, argv);
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
     QCoreApplication::setOrganizationName("GameModManager");
     QCoreApplication::setApplicationName("GameModManager");
 
@@ -321,7 +321,5 @@ int main(int argc, char** argv) {
     tab.clear_saves();
     check(table->rowCount() == 0, "clear_saves empties the table");
 
-    std::printf("%d passed, %d failed\n", passes, failures);
     fs::remove_all("/tmp/gmm_saves_tab");
-    return failures == 0 ? 0 : 1;
 }

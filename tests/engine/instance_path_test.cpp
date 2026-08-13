@@ -9,17 +9,18 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
-static void require(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "FAIL: %s\n", msg);
-        std::exit(1);
-    }
+namespace {
+void require(bool cond, const char* msg) {
+    INFO(msg);
+    REQUIRE(cond);
+}
 }
 
-int main() {
+TEST_CASE("instance path", "[engine]") {
     using engine::Instance;
     using engine::InstanceKind;
 
@@ -156,6 +157,33 @@ int main() {
     require(strat_cleared.info().deploy_strategy.empty(),
             "cleared deploy_strategy reads empty");
 
-    std::printf("instance_path_test: all checks passed\n");
-    return 0;
+    // --- last_tab roundtrip (Issue #21). ---
+    Instance tabbed = Instance::from_root(root);
+    tabbed.info().game_id = "test_game";
+    tabbed.info().last_tab = "plugins";
+    require(tabbed.write_toml(), "write_toml with last_tab succeeds");
+    Instance tabbed_back = Instance::from_root(root);
+    require(tabbed_back.read_toml(), "read_toml after last_tab write succeeds");
+    require(tabbed_back.info().last_tab == "plugins",
+            "last_tab roundtrips through toml");
+    require(tabbed_back.info().game_id == "test_game",
+            "last_tab write preserves unrelated top-level keys");
+
+    // write_key surgical roundtrip for last_tab.
+    require(tabbed.write_key("last_tab", "downloads"),
+            "write_key sets last_tab");
+    Instance tab_key_back = Instance::from_root(root);
+    require(tab_key_back.read_toml(), "read_toml after last_tab write_key succeeds");
+    require(tab_key_back.info().last_tab == "downloads",
+            "last_tab write_key roundtrips through toml");
+    require(tab_key_back.info().game_id == "test_game",
+            "last_tab write_key preserves unrelated top-level keys");
+
+    // Empty last_tab is not persisted; a fresh instance reads empty (defaults
+    // to the first tab).
+    require(tabbed.write_key("last_tab", ""), "write_key clears last_tab");
+    Instance tab_cleared = Instance::from_root(root);
+    require(tab_cleared.read_toml(), "read_toml after clearing last_tab succeeds");
+    require(tab_cleared.info().last_tab.empty(),
+            "cleared last_tab reads empty");
 }

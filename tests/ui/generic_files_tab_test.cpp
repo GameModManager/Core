@@ -24,15 +24,13 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <catch2/catch_test_macros.hpp>
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 static void write_file(const std::filesystem::path& path, const char* content) {
@@ -57,7 +55,7 @@ static bool contains(const QStringList& names, const char* needle) {
     return names.contains(QLatin1String(needle));
 }
 
-int main(int argc, char** argv) {
+TEST_CASE("generic files tab", "[ui]") {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     const std::filesystem::path base = "/tmp/gmm_generic_files";
     std::filesystem::remove_all(base);
@@ -68,7 +66,10 @@ int main(int argc, char** argv) {
     write_file(mod_dir / "settings.yaml", "yaml content\n");
     write_file(mod_dir / "plugin.esm", "esm content\n");
     write_file(mod_dir / "meta.ini", "manager data, not a game config\n");
-    QApplication app(argc, argv);
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
 
     ui::ModInfoData data;
     data.id = "TestMod";
@@ -145,7 +146,4 @@ int main(int argc, char** argv) {
                   "selecting a text file loads its contents into the editor");
         }
     }
-
-    std::printf("\n%d passed, %d failed\n", passes, failures);
-    return failures ? 1 : 0;
 }

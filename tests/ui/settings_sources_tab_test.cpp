@@ -48,15 +48,13 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <catch2/catch_test_macros.hpp>
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 // A provider with no UI page: its sub-tab must fall back to the
@@ -100,14 +98,17 @@ static QWidget* nexus_page_of(std::unique_ptr<SettingsDialog>& dlg) {
     return find_sub_tab(inner, "Nexus Mods");
 }
 
-int main(int argc, char** argv) {
+TEST_CASE("settings sources tab", "[ui]") {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     // Keep QSettings/keyring/server writes fully out of the real config.
     const std::filesystem::path cfg = "/tmp/gmm_sources_tab/config";
     std::filesystem::remove_all("/tmp/gmm_sources_tab");
     std::filesystem::create_directories(cfg);
     qputenv("XDG_CONFIG_HOME", cfg.c_str());
-    QApplication app(argc, argv);
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
     QCoreApplication::setOrganizationName("GameModManager");
     QCoreApplication::setApplicationName("GameModManager");
 
@@ -148,7 +149,6 @@ int main(int argc, char** argv) {
 
         auto* inner = sources ? sources->findChild<QTabWidget*>() : nullptr;
         check(inner != nullptr, "Sources tab nests a per-provider QTabWidget");
-        if (!inner) return 1;
 
         check(inner->count() == 3, "one sub-tab per registered provider (3)");
         bool has_nexus = false, has_steam = false, has_fake = false;
@@ -526,6 +526,4 @@ int main(int argc, char** argv) {
     }
 
     engine::NexusServers::instance().clear_all();
-    std::printf("\n%d passed, %d failed\n", passes, failures);
-    return failures ? 1 : 0;
 }

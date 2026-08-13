@@ -6,21 +6,19 @@
 
 #if defined(__unix__)
 #include <unistd.h>
+#include <catch2/catch_test_macros.hpp>
 #endif
 
 namespace fs = std::filesystem;
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
-int main() {
+TEST_CASE("conflict", "[engine]") {
     using namespace engine;
 
     fs::path base = fs::temp_directory_path() / "conflict_test_core";
@@ -233,7 +231,4 @@ int main() {
     }
 
     fs::remove_all(base);
-
-    std::printf("\n%d passed, %d failed\n", passes, failures);
-    return failures ? 1 : 0;
 }

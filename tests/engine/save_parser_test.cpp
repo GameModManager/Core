@@ -31,16 +31,17 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
 using namespace engine;
 
 namespace fs = std::filesystem;
 
-static void check(bool cond, const char* what) {
-    if (!cond) {
-        std::fprintf(stderr, "FAIL: %s\n", what);
-        std::exit(1);
-    }
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 // --- tiny little-endian writers ---
@@ -254,7 +255,7 @@ static int64_t filename_epoch(const std::string& name) {
                     static_cast<unsigned>(s));
 }
 
-int main() {
+TEST_CASE("save parser", "[engine]") {
     fs::path root = fs::temp_directory_path() / "gmm_save_parser_test";
     fs::remove_all(root);
     fs::create_directories(root);
@@ -486,7 +487,4 @@ int main() {
     } else {
         std::fprintf(stderr, "note: real save dir absent, skipping Part B\n");
     }
-
-    std::fprintf(stderr, "save_parser_test: PASS\n");
-    return 0;
 }

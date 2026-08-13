@@ -5,23 +5,21 @@
 // never disagree about how many icons fit.
 #include "ui/widgets/mod_table_view.h"
 
-#include <cassert>
+#include <catch2/catch_test_macros.hpp>
 
-int main() {
+TEST_CASE("flags delegate", "[ui]") {
     // 16px icons with 2px spacing in the default 80px Flags column.
-    assert(ui::flags_icons_per_line(80, 16, 2) == 4);
+    REQUIRE(ui::flags_icons_per_line(80, 16, 2) == 4);
     // Exactly one full line.
-    assert(ui::flags_icons_per_line(18, 16, 2) == 1);
+    REQUIRE(ui::flags_icons_per_line(18, 16, 2) == 1);
     // Column narrower than a single icon still lays out one per line.
-    assert(ui::flags_icons_per_line(10, 16, 2) == 1);
+    REQUIRE(ui::flags_icons_per_line(10, 16, 2) == 1);
     // Wider column, same rule.
-    assert(ui::flags_icons_per_line(160, 16, 2) == 8);
+    REQUIRE(ui::flags_icons_per_line(160, 16, 2) == 8);
 
-    assert(ui::flags_icon_lines(1, 4) == 1);
-    assert(ui::flags_icon_lines(4, 4) == 1);
-    assert(ui::flags_icon_lines(5, 4) == 2);  // wraps to a second line
-    assert(ui::flags_icon_lines(9, 4) == 3);
-    assert(ui::flags_icon_lines(0, 4) == 0);
-
-    return 0;
+    REQUIRE(ui::flags_icon_lines(1, 4) == 1);
+    REQUIRE(ui::flags_icon_lines(4, 4) == 1);
+    REQUIRE(ui::flags_icon_lines(5, 4) == 2);  // wraps to a second line
+    REQUIRE(ui::flags_icon_lines(9, 4) == 3);
+    REQUIRE(ui::flags_icon_lines(0, 4) == 0);
 }

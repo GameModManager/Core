@@ -49,9 +49,21 @@ public:
     // clears the row-hidden states the filter had set.
     void reapply_current_filter() { apply_filter(); }
 
+    // Restore the last selected tab for the current instance. `capability` is
+    // the persisted tab key ("data", "plugins", "downloads", ...). No-op when
+    // the capability is empty or the game doesn't support it - the tab bar
+    // stays on the first tab (the default).
+    void restore_tab(const std::string& capability);
+
 signals:
     // LOOT sort shortcut pressed in the Plugins tab filter bar.
     void sort_requested();
+
+    // The user switched the right-panel tab. Emits the tab's capability key
+    // ("data", "plugins", "downloads", ...) so the caller can persist it per
+    // instance. Not emitted during programmatic rebuilds (set_game,
+    // restore_tab, show_downloads_tab).
+    void tab_changed(const QString& capability);
 
 private:
     void clear_tabs();
@@ -59,6 +71,8 @@ private:
     void apply_filter();
     void update_sort_visibility();
     QTableWidget* current_table() const;
+    // Capability key of the currently visible tab ("" when none).
+    std::string current_tab_capability() const;
 
     ExecControlsBar* exec_controls_ = nullptr;
     QTabWidget* tab_widget_ = nullptr;
@@ -70,6 +84,10 @@ private:
 
     const engine::GameCapabilities* capabilities_ = nullptr;
     std::string current_game_id_;
+    // True while the tab bar is being rebuilt/restored programmatically
+    // (set_game, restore_tab, show_downloads_tab); suppresses tab_changed so
+    // only genuine user selections are persisted.
+    bool suppress_tab_save_ = false;
 };
 
 }  // namespace ui

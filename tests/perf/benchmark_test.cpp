@@ -7,12 +7,12 @@
 #include "engine/registry/hook_registry.h"
 #include "engine/pipeline/pipeline.h"
 
-#include <cassert>
 #include <chrono>
 #include <cstdio>
 #include <random>
 #include <string>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
 using namespace engine;
 using namespace std::chrono;
@@ -34,7 +34,7 @@ static std::string file_path(int mod_index, int file_index) {
     return "Data/" + mod_id(mod_index) + "/file_" + std::to_string(file_index) + ".esp";
 }
 
-int main() {
+TEST_CASE("benchmark", "[perf]") {
     printf("=== Performance Benchmark (§14 targets) ===\n");
     printf("Mods: %d, Files/mod: %d, Conflict rate: ~%d%%\n\n",
            MOD_COUNT, FILES_PER_MOD, CONFLICT_RATE);
@@ -197,7 +197,4 @@ int main() {
         printf("[HookRegistry] Fire %d hooks: %ld ms (all should run)\n",
                fire_count, ms);
     }
-
-    printf("\n=== Benchmark complete ===\n");
-    return 0;
 }

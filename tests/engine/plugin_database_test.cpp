@@ -23,14 +23,15 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
-static void require(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "FAIL: %s\n", msg);
-        std::exit(1);
-    }
+namespace {
+void require(bool cond, const char* msg) {
+    INFO(msg);
+    REQUIRE(cond);
+}
 }
 
 // --- Fake platform for launch-target resolution ---
@@ -1042,10 +1043,8 @@ void run_disabled_mod_fixture() {
 
 }  // namespace
 
-int main() {
+TEST_CASE("plugin database", "[engine]") {
     run_synthetic_fixture();
     run_disabled_mod_fixture();
     run_real_skyrim();
-    std::fprintf(stderr, "plugin_database_test: all OK\n");
-    return 0;
 }

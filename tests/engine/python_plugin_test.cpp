@@ -7,23 +7,23 @@
 #include "engine/registry/game_knowledge.h"
 #include "engine/events/event_bus.h"
 
-#include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
 // Release builds compile out assert() (-DNDEBUG), so the plugin-loading checks
 // above use it loosely; the register_game_feature mirror test below uses this
 // hard require (exits non-zero on failure) so ctest actually catches it.
-static void require(bool cond, const std::string& msg) {
-    if (!cond) {
-        std::fprintf(stderr, "FAIL: %s\n", msg.c_str());
-        std::exit(1);
-    }
+namespace {
+void require(bool cond, const std::string& msg) {
+    INFO(msg);
+    REQUIRE(cond);
+}
 }
 
 static void test_python_plugin_load() {
@@ -462,7 +462,7 @@ def register(ctx):
     fs::remove_all(tmp);
 }
 
-int main() {
+TEST_CASE("python plugin", "[engine]") {
     std::cout << "Python plugin tests" << std::endl;
 
     test_python_plugin_load();
@@ -472,7 +472,4 @@ int main() {
     test_python_subscribe_event();
     test_python_settings_tab();
     test_python_game_plugins();
-
-    std::cout << "\nAll Python plugin tests passed!" << std::endl;
-    return 0;
 }

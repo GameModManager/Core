@@ -48,6 +48,10 @@ struct InstanceInfo {
     // = the game plugin's "deploy_strategy" knowledge default. Persisted to
     // instance.toml; wins over the knowledge key when set.
     std::string deploy_strategy;
+    // Name of the last selected right-panel tab (capability key, e.g.
+    // "plugins", "downloads", "data"). Empty = default to the first tab.
+    // Persisted to instance.toml.
+    std::string last_tab;
 };
 
 class Instance {

@@ -27,17 +27,15 @@
 #include <fstream>
 #include <string>
 #include <unistd.h>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 static void write_file(const fs::path& p, const std::string& contents) {
@@ -170,7 +168,7 @@ static void deploy_and_merge(const fs::path& base, bool case_sensitive,
     }
 }
 
-int main() {
+TEST_CASE("deploy case insensitive", "[engine]") {
     const fs::path base =
         fs::current_path() / ("gmm_deploy_ci_" + std::to_string(getpid()));
     fs::remove_all(base);
@@ -180,6 +178,4 @@ int main() {
     deploy_and_merge(base / "Control", /*case_sensitive=*/true, "control");
 
     fs::remove_all(base);
-    std::printf("\n%d passed, %d failed\n", passes, failures);
-    return failures ? 1 : 0;
 }

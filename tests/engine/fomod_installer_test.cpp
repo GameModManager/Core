@@ -9,13 +9,13 @@
 
 #include <nlohmann/json.hpp>
 
-#include <cassert>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
 namespace {
 
@@ -54,7 +54,7 @@ std::unique_ptr<ModuleConfiguration> parse_config(const std::string& xml)
     std::ofstream(path) << xml;
     auto config = std::make_unique<ModuleConfiguration>();
     const bool parsed = config->deserialize(path);
-    assert(parsed);
+    REQUIRE(parsed);
     fs::remove(path);
     return config;
 }
@@ -117,34 +117,34 @@ void test_priority_remap_and_folders()
     FomodFileInstaller installer(staging, vm);
     std::vector<std::string> missing;
     const bool applied = installer.apply(&missing);
-    assert(applied);
+    REQUIRE(applied);
 
     // Destination remap + higher priority overwrites lower.
-    assert(fs::exists(staging / "out.txt"));
-    assert(read_file(staging / "out.txt") == "HIGH");
+    REQUIRE(fs::exists(staging / "out.txt"));
+    REQUIRE(read_file(staging / "out.txt") == "HIGH");
 
     // Equal priority: XML order wins (stable sort).
-    assert(read_file(staging / "same.txt") == "SECOND");
+    REQUIRE(read_file(staging / "same.txt") == "SECOND");
 
     // Plain files land at the tree root with their source-relative path.
-    assert(fs::exists(staging / "meshes/a.nif"));
-    assert(fs::exists(staging / "meshes/b.nif"));
+    REQUIRE(fs::exists(staging / "meshes/a.nif"));
+    REQUIRE(fs::exists(staging / "meshes/b.nif"));
 
     // Folder children copied under the destination prefix.
-    assert(fs::exists(staging / "Data/textures/t1.dds"));
-    assert(fs::exists(staging / "Data/textures/sub/t2.dds"));
+    REQUIRE(fs::exists(staging / "Data/textures/t1.dds"));
+    REQUIRE(fs::exists(staging / "Data/textures/sub/t2.dds"));
 
     // The fomod/ dir is gone; original files that were only sources are gone.
-    assert(!fs::exists(staging / "fomod"));
-    assert(!fs::exists(staging / "overwrite_low.txt"));
-    assert(!fs::exists(staging / "textures"));
+    REQUIRE(!fs::exists(staging / "fomod"));
+    REQUIRE(!fs::exists(staging / "overwrite_low.txt"));
+    REQUIRE(!fs::exists(staging / "textures"));
 
     // Missing sources are reported, not fatal.
-    assert(missing.size() == 1);
-    assert(missing[0] == "does_not_exist.nif");
+    REQUIRE(missing.size() == 1);
+    REQUIRE(missing[0] == "does_not_exist.nif");
 
     // No leftover sibling install tree.
-    assert(!fs::exists(staging.string() + "_gmm_fomod_install"));
+    REQUIRE(!fs::exists(staging.string() + "_gmm_fomod_install"));
     std::printf("PASS: fomod_installer — priority, remap, folders, missing\n");
 }
 
@@ -168,13 +168,13 @@ void test_folder_empty_destination()
     FomodFileInstaller installer(staging, vm);
     std::vector<std::string> missing;
     const bool applied = installer.apply(&missing);
-    assert(applied);
-    assert(missing.empty());
+    REQUIRE(applied);
+    REQUIRE(missing.empty());
 
     // Empty destination puts the folder's children at the install root.
-    assert(fs::exists(staging / "t1.dds"));
-    assert(fs::exists(staging / "sub/t2.dds"));
-    assert(!fs::exists(staging / "textures"));
+    REQUIRE(fs::exists(staging / "t1.dds"));
+    REQUIRE(fs::exists(staging / "sub/t2.dds"));
+    REQUIRE(!fs::exists(staging / "textures"));
     std::printf("PASS: fomod_installer — folder with empty destination\n");
 }
 
@@ -198,14 +198,14 @@ void test_path_traversal_guard()
     FomodFileInstaller installer(staging, vm);
     std::vector<std::string> missing;
     const bool applied = installer.apply(&missing);
-    assert(applied);
+    REQUIRE(applied);
 
     // Both entries skipped; nothing escaped the mod root. The final install
     // tree is empty because every entry was rejected.
-    assert(missing.empty());
-    assert(!fs::exists(staging / "ok.nif"));
-    assert(!fs::exists(dir.root / "evil"));
-    assert(fs::exists(staging / "meshes") == false);
+    REQUIRE(missing.empty());
+    REQUIRE(!fs::exists(staging / "ok.nif"));
+    REQUIRE(!fs::exists(dir.root / "evil"));
+    REQUIRE(fs::exists(staging / "meshes") == false);
     std::printf("PASS: fomod_installer — path traversal guard\n");
 }
 
@@ -258,17 +258,17 @@ void test_generate_fomod_json()
             skipMe = plugin;
         }
     });
-    assert(chosen->isSelected());  // auto-selected Recommended
-    assert(!skipMe->isSelected());
+    REQUIRE(chosen->isSelected());  // auto-selected Recommended
+    REQUIRE(!skipMe->isSelected());
     FomodViewModel::markManuallySet(skipMe);
 
     FomodFileInstaller installer(staging, vm);
     const auto json = nlohmann::json::parse(installer.generateFomodJson());
     const auto& group = json["steps"][0]["groups"][0];
-    assert(group["plugins"].size() == 1);
-    assert(group["plugins"][0] == "Chosen");
-    assert(group["deselected"].size() == 1);
-    assert(group["deselected"][0] == "SkipMe");
+    REQUIRE(group["plugins"].size() == 1);
+    REQUIRE(group["plugins"][0] == "Chosen");
+    REQUIRE(group["deselected"].size() == 1);
+    REQUIRE(group["deselected"][0] == "SkipMe");
     std::printf("PASS: fomod_installer — generateFomodJson\n");
 }
 
@@ -297,36 +297,33 @@ void test_windows_paths_case_insensitive()
     FomodFileInstaller installer(staging, vm);
     std::vector<std::string> missing;
     const bool applied = installer.apply(&missing);
-    assert(applied);
+    REQUIRE(applied);
 
     // Nothing reported missing: backslashes resolved as separators and every
     // component matched case-insensitively against the on-disk tree.
-    assert(missing.empty());
+    REQUIRE(missing.empty());
 
     // Backslash source resolved to Skeleton Rig/HDT/body.nif (source-relative
     // destination keeps the source's relative path).
-    assert(fs::exists(staging / "Skeleton Rig/HDT/body.nif"));
+    REQUIRE(fs::exists(staging / "Skeleton Rig/HDT/body.nif"));
 
     // Case-insensitive match: meshes\armor\armor.nif resolved to the on-disk
     // Meshes/Armor/Armor.nif; the install destination uses the FOMOD's stated
     // path verbatim (backslash normalized), like FOMOD Plus.
-    assert(fs::exists(staging / "Meshes/Armor/Armor.nif") == false);
-    assert(fs::exists(staging / "meshes/armor/armor.nif"));
+    REQUIRE(fs::exists(staging / "Meshes/Armor/Armor.nif") == false);
+    REQUIRE(fs::exists(staging / "meshes/armor/armor.nif"));
 
     // Folder children copied under the normalized backslash destination.
-    assert(fs::exists(staging / "Data/SkeletonRig/body.nif"));
+    REQUIRE(fs::exists(staging / "Data/SkeletonRig/body.nif"));
     std::printf("PASS: fomod_installer — Windows backslash paths + case-insensitive resolution\n");
 }
 
 }  // namespace
 
-int main()
-{
+TEST_CASE("fomod installer", "[engine]") {
     test_priority_remap_and_folders();
     test_folder_empty_destination();
     test_path_traversal_guard();
     test_windows_paths_case_insensitive();
     test_generate_fomod_json();
-    std::printf("PASS: fomod_installer_test — all installer cases\n");
-    return 0;
 }

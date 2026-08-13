@@ -3,17 +3,18 @@
 #include <cstdio>
 #include <string>
 #include <thread>
+#include <catch2/catch_test_macros.hpp>
 
 using namespace engine;
 
-static void require(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "FAIL: %s\n", msg);
-        std::exit(1);
-    }
+namespace {
+void require(bool cond, const char* msg) {
+    INFO(msg);
+    REQUIRE(cond);
+}
 }
 
-int main() {
+TEST_CASE("trace", "[engine]") {
     auto& trace = TraceRecorder::instance();
 
     // --- declare_flow + snapshot basics ---
@@ -134,7 +135,4 @@ int main() {
     });
     t1.join();
     t2.join();
-
-    std::printf("PASS: trace_test\n");
-    return 0;
 }

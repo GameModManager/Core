@@ -5,15 +5,16 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <catch2/catch_test_macros.hpp>
 
-static void require(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "FAIL: %s\n", msg);
-        std::exit(1);
-    }
+namespace {
+void require(bool cond, const char* msg) {
+    INFO(msg);
+    REQUIRE(cond);
+}
 }
 
-int main() {
+TEST_CASE("nexus provider", "[engine]") {
     using engine::ModInfoResult;
     using engine::NexusProvider;
 
@@ -52,7 +53,4 @@ int main() {
     require(!bad.available && bad.name.empty(), "garbage yields empty result");
     ModInfoResult arr = NexusProvider::parse_mod_info("[1,2,3]");
     require(!arr.available, "non-object JSON yields empty result");
-
-    std::printf("nexus_provider_test: all checks passed\n");
-    return 0;
 }

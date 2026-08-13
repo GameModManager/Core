@@ -37,16 +37,13 @@
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <catch2/catch_test_macros.hpp>
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    std::fflush(stdout);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 static int row_with_id(const ui::ModListModel& model, const char* id) {
@@ -56,7 +53,7 @@ static int row_with_id(const ui::ModListModel& model, const char* id) {
     return -1;
 }
 
-int main(int argc, char** argv) {
+TEST_CASE("mod list model", "[ui]") {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     // Deterministic "yyyy-MM-dd HH:mm:ss" rendering: format_epoch_ts uses local
     // time, so pin the test process to UTC.
@@ -66,7 +63,10 @@ int main(int argc, char** argv) {
     std::filesystem::remove_all("/tmp/gmm_mod_list_model");
     std::filesystem::create_directories(cfg);
     qputenv("XDG_CONFIG_HOME", cfg.c_str());
-    QApplication app(argc, argv);
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
     QCoreApplication::setOrganizationName("GameModManager");
     QCoreApplication::setApplicationName("GameModManager");
 
@@ -1967,7 +1967,4 @@ int main(int argc, char** argv) {
         check(dirty.size() == 2 && dirty.contains(re[1].id) && dirty.contains(re[2].id),
               "reset_with_order with a reorder flags exactly the moved rows");
     }
-
-    std::printf("\n%d passed, %d failed\n", passes, failures);
-    return failures ? 1 : 0;
 }
