@@ -36,17 +36,15 @@
 #include <string>
 #include <unistd.h>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 namespace {
@@ -93,8 +91,11 @@ static bool should_accept(quint64 generation, quint64 latest_generation,
     return generation == latest_generation && pending;
 }
 
-int main(int argc, char* argv[]) {
-    QCoreApplication app(argc, argv);
+TEST_CASE("plugin db load", "[ui]") {
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QCoreApplication app(test_argc, test_argv);
     (void)app;
 
     const fs::path base =
@@ -182,8 +183,7 @@ int main(int argc, char* argv[]) {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
         QThread::msleep(2);
         if (timer.elapsed() > 10000) {
-            std::fprintf(stderr, "FAIL: load never landed\n");
-            return 1;
+            FAIL("load never landed");
         }
     }
 
@@ -250,8 +250,7 @@ int main(int argc, char* argv[]) {
             QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
             QThread::msleep(2);
             if (t2.elapsed() > 10000) {
-                std::fprintf(stderr, "FAIL: second load never landed\n");
-                return 1;
+                FAIL("second load never landed");
             }
         }
         check(results[1].generation == 2,
@@ -267,6 +266,4 @@ int main(int argc, char* argv[]) {
     }
 
     fs::remove_all(base, ec);
-    std::printf("\n%d passed, %d failed\n", passes, failures);
-    return failures ? 1 : 0;
 }

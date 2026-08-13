@@ -3,9 +3,9 @@
 #include "engine/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 
-#include <cassert>
 #include <cstdio>
 #include <string>
+#include <catch2/catch_test_macros.hpp>
 
 using namespace engine;
 
@@ -13,8 +13,8 @@ static void test_stage_registry_basic() {
     StageRegistry reg;
 
     // No claims yet
-    assert(!reg.has_claim("skyrimse", "deploy"));
-    assert(!reg.get_handler("skyrimse", "deploy"));
+    REQUIRE(!reg.has_claim("skyrimse", "deploy"));
+    REQUIRE(!reg.get_handler("skyrimse", "deploy"));
 
     // Register a claim
     bool called = false;
@@ -22,19 +22,19 @@ static void test_stage_registry_basic() {
         [&](Mod&, PipelineContext&) -> bool { called = true; return true; },
         0, "test_plugin");
 
-    assert(reg.has_claim("skyrimse", "deploy"));
-    assert(!reg.has_claim("skyrimse", "launch"));
-    assert(!reg.has_claim("isaac", "deploy"));
+    REQUIRE(reg.has_claim("skyrimse", "deploy"));
+    REQUIRE(!reg.has_claim("skyrimse", "launch"));
+    REQUIRE(!reg.has_claim("isaac", "deploy"));
 
     // Get the handler and call it
     auto handler = reg.get_handler("skyrimse", "deploy");
-    assert(handler);
+    REQUIRE(handler);
 
     Mod mod;
     PipelineContext ctx;
     bool result = handler(mod, ctx);
-    assert(result);
-    assert(called);
+    REQUIRE(result);
+    REQUIRE(called);
 
     printf("  PASS: stage_registry_basic\n");
 }
@@ -54,12 +54,12 @@ static void test_stage_registry_priority() {
         10, "high_priority");
 
     auto handler = reg.get_handler("skyrimse", "deploy");
-    assert(handler);
+    REQUIRE(handler);
 
     Mod mod;
     PipelineContext ctx;
     handler(mod, ctx);
-    assert(last_priority == 10);  // High priority wins
+    REQUIRE(last_priority == 10);  // High priority wins
 
     printf("  PASS: stage_registry_priority\n");
 }
@@ -69,7 +69,7 @@ static void test_stage_registry_fallback() {
 
     // No claims — should return nullptr (fallback to generic)
     auto handler = reg.get_handler("skyrimse", "deploy");
-    assert(!handler);
+    REQUIRE(!handler);
 
     // Claim for a different game shouldn't affect skyrimse
     reg.register_claim("isaac", "deploy",
@@ -77,7 +77,7 @@ static void test_stage_registry_fallback() {
         0, "isaac_plugin");
 
     handler = reg.get_handler("skyrimse", "deploy");
-    assert(!handler);
+    REQUIRE(!handler);
 
     printf("  PASS: stage_registry_fallback\n");
 }
@@ -86,7 +86,7 @@ static void test_hook_registry_basic() {
     HookRegistry reg;
 
     // No hooks yet
-    assert(!reg.has_hooks("skyrimse.resolve.post"));
+    REQUIRE(!reg.has_hooks("skyrimse.resolve.post"));
 
     int call_count = 0;
 
@@ -95,14 +95,14 @@ static void test_hook_registry_basic() {
         [&](Mod&, PipelineContext&) { call_count++; },
         0, "plugin_a");
 
-    assert(reg.has_hooks("skyrimse.resolve.post"));
-    assert(!reg.has_hooks("skyrimse.launch.pre"));
+    REQUIRE(reg.has_hooks("skyrimse.resolve.post"));
+    REQUIRE(!reg.has_hooks("skyrimse.launch.pre"));
 
     // Fire it
     Mod mod;
     PipelineContext ctx;
     reg.fire("skyrimse.resolve.post", mod, ctx);
-    assert(call_count == 1);
+    REQUIRE(call_count == 1);
 
     printf("  PASS: hook_registry_basic\n");
 }
@@ -129,7 +129,7 @@ static void test_hook_registry_multiple() {
     reg.fire("skyrimse.deploy.pre", mod, ctx);
 
     // All three should fire in registration order (same priority = stable order)
-    assert(call_order == "ABC");
+    REQUIRE(call_order == "ABC");
 
     printf("  PASS: hook_registry_multiple\n");
 }
@@ -156,7 +156,7 @@ static void test_hook_registry_priority_ordering() {
     PipelineContext ctx;
     reg.fire("test.tag", mod, ctx);
 
-    assert(call_order == "highmidlow");
+    REQUIRE(call_order == "highmidlow");
 
     printf("  PASS: hook_registry_priority_ordering\n");
 }
@@ -175,17 +175,17 @@ static void test_hook_registry_isolation() {
     PipelineContext ctx;
 
     reg.fire("tag.a", mod, ctx);
-    assert(tag_a_count == 2);
-    assert(tag_b_count == 0);
+    REQUIRE(tag_a_count == 2);
+    REQUIRE(tag_b_count == 0);
 
     reg.fire("tag.b", mod, ctx);
-    assert(tag_a_count == 2);
-    assert(tag_b_count == 1);
+    REQUIRE(tag_a_count == 2);
+    REQUIRE(tag_b_count == 1);
 
     printf("  PASS: hook_registry_isolation\n");
 }
 
-int main() {
+TEST_CASE("registry", "[engine]") {
     printf("Running registry tests...\n");
 
     test_stage_registry_basic();
@@ -195,7 +195,4 @@ int main() {
     test_hook_registry_multiple();
     test_hook_registry_priority_ordering();
     test_hook_registry_isolation();
-
-    printf("\nAll registry tests passed!\n");
-    return 0;
 }

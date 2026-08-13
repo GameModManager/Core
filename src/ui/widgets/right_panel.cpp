@@ -75,10 +75,17 @@ RightPanel::RightPanel(QWidget* parent)
     filter_bar_ = new RightFilterBar(this);
     layout->addWidget(filter_bar_);
 
-    // Re-filter when the user switches tabs
+    // Re-filter when the user switches tabs; persist the selection per
+    // instance (Issue #21). Programmatic switches (set_game, restore_tab,
+    // show_downloads_tab) set suppress_tab_save_ so only genuine user
+    // selections reach the save handler.
     connect(tab_widget_, &QTabWidget::currentChanged, this, [this]() {
         apply_filter();
         update_sort_visibility();
+        if (!suppress_tab_save_) {
+            emit tab_changed(
+                QString::fromStdString(current_tab_capability()));
+        }
     });
 
     // Re-filter as the user types
@@ -220,9 +227,15 @@ void RightPanel::ensure_tab(const std::string& capability, const QString& label)
 
 void RightPanel::set_game(const std::string& game_id) {
     current_game_id_ = game_id;
+    // Rebuilding the tab bar fires currentChanged for every removed/added
+    // tab; none of those are user selections, so suppress tab_changed.
+    suppress_tab_save_ = true;
     clear_tabs();
 
-    if (!capabilities_) return;
+    if (!capabilities_) {
+        suppress_tab_save_ = false;
+        return;
+    }
 
     auto caps = capabilities_->sorted_capabilities_for(game_id);
 
@@ -236,6 +249,38 @@ void RightPanel::set_game(const std::string& game_id) {
             ensure_tab(info.capability, QString::fromStdString(info.display_name));
         }
     }
+    suppress_tab_save_ = false;
+}
+
+void RightPanel::restore_tab(const std::string& capability) {
+    if (capability.empty()) return;  // default = first tab
+
+    QWidget* target = nullptr;
+    if (capability == "data") {
+        target = data_tab_;
+    } else {
+        auto it = tabs_.find(capability);
+        if (it != tabs_.end()) target = it->second;
+    }
+    // Unknown/unsupported capability: keep the first tab (the default).
+    if (!target) return;
+
+    int index = tab_widget_->indexOf(target);
+    if (index < 0) return;
+
+    suppress_tab_save_ = true;
+    tab_widget_->setCurrentIndex(index);
+    suppress_tab_save_ = false;
+}
+
+std::string RightPanel::current_tab_capability() const {
+    auto* w = tab_widget_->currentWidget();
+    if (!w) return {};
+    if (w == data_tab_) return "data";
+    for (const auto& [cap, widget] : tabs_) {
+        if (widget == w) return cap;
+    }
+    return {};
 }
 
 DownloadsTab* RightPanel::downloads_tab() const {
@@ -256,7 +301,12 @@ void RightPanel::show_downloads_tab() {
     auto* dt = downloads_tab();
     if (!dt) return;
     int index = tab_widget_->indexOf(dt);
-    if (index >= 0) tab_widget_->setCurrentIndex(index);
+    if (index < 0) return;
+    // Programmatic switch (a download arrived) - not a user selection, so
+    // don't persist it as the instance's last tab.
+    suppress_tab_save_ = true;
+    tab_widget_->setCurrentIndex(index);
+    suppress_tab_save_ = false;
 }
 
 ConflictsTab* RightPanel::conflicts_tab() const {

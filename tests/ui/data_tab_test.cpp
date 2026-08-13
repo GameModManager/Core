@@ -53,15 +53,13 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 using Registry = std::unordered_map<std::string, std::vector<std::pair<std::string, int>>>;
@@ -159,13 +157,16 @@ static void pump_ms(int ms) {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
 }
 
-int main(int argc, char** argv) {
+TEST_CASE("data tab", "[ui]") {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     const std::filesystem::path cfg = "/tmp/gmm_data_tab/config";
     std::filesystem::remove_all("/tmp/gmm_data_tab");
     std::filesystem::create_directories(cfg);
     qputenv("XDG_CONFIG_HOME", cfg.c_str());
-    QApplication app(argc, argv);
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
 
     // --- Build two mod folders on disk. ModA wins every shared file.
     const std::filesystem::path mods_dir = "/tmp/gmm_data_tab/mods";
@@ -694,7 +695,4 @@ int main(int argc, char** argv) {
               !(foo_after->foreground(0).color() ==
                 QApplication::palette().color(QPalette::Disabled, QPalette::Text)),
           "hidden copy of an existing row does not reclaim its display slot");
-
-    std::printf("\n%d passed, %d failed\n", passes, failures);
-    return failures ? 1 : 0;
 }

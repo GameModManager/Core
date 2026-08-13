@@ -34,18 +34,15 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    if (cond) {
-        ++passes;
-    } else {
-        ++failures;
-    }
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 struct TempDir {
@@ -162,7 +159,7 @@ static bool same_verdict(const engine::StagingNormalizeResult& a,
            a.peel_chain == b.peel_chain;
 }
 
-int main() {
+TEST_CASE("filetree", "[engine]") {
     using namespace engine;
 
     // --- 1. name comparison ------------------------------------------------
@@ -428,8 +425,4 @@ int main() {
         check(r.fomod && fs::exists(root / "fomod" / "ModuleConfig.xml"),
               "physical driver leaves FOMOD untouched");
     }
-    std::printf("PASS: normalize_staging_root physical driver\n");
-
-    std::printf("\nfiletree_test: %d passed, %d failed\n", passes, failures);
-    return failures == 0 ? 0 : 1;
 }

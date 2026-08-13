@@ -45,15 +45,13 @@
 #include <unistd.h>
 #include <utility>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 // A provider that "downloads" by writing local bytes with a polled-transfer
@@ -175,8 +173,11 @@ static bool wait_until(const std::function<bool()>& cond, int timeout_ms) {
     return true;
 }
 
-int main(int argc, char* argv[]) {
-    QCoreApplication app(argc, argv);
+TEST_CASE("pipeline worker", "[ui]") {
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QCoreApplication app(test_argc, test_argv);
     (void)app;
     engine::Logger::instance().enable_console();
 
@@ -377,6 +378,4 @@ int main(int argc, char* argv[]) {
           "queueing off: download_complete emitted for both");
 
     std::filesystem::remove_all(base, ec);
-    std::printf("\n%d passed, %d failed\n", passes, failures);
-    return failures ? 1 : 0;
 }

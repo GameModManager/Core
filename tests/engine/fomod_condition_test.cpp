@@ -8,7 +8,6 @@
 #include "engine/fomod/module_config.h"
 #include "engine/fomod/view_models.h"
 
-#include <cassert>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -16,6 +15,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
 namespace {
 
@@ -27,7 +27,7 @@ std::unique_ptr<ModuleConfiguration> parse_config(const std::string& xml)
     std::ofstream(path) << xml;
     auto config = std::make_unique<ModuleConfiguration>();
     const bool parsed = config->deserialize(path);
-    assert(parsed);
+    REQUIRE(parsed);
     std::filesystem::remove(path);
     return config;
 }
@@ -45,7 +45,7 @@ std::shared_ptr<PluginViewModel> find_plugin(const std::shared_ptr<FomodViewMode
             result = plugin;
         }
     });
-    assert(result);
+    REQUIRE(result);
     return result;
 }
 
@@ -83,19 +83,19 @@ void test_file_dependencies_and_cache()
     FileDependency dep;
     dep.file = "Patch.esp";
     dep.state = FileDependencyTypeEnum::Active;
-    assert(tester.testFileDependency(dep));
+    REQUIRE(tester.testFileDependency(dep));
     dep.state = FileDependencyTypeEnum::Inactive;
-    assert(!tester.testFileDependency(dep));
+    REQUIRE(!tester.testFileDependency(dep));
     dep.state = FileDependencyTypeEnum::Missing;
-    assert(!tester.testFileDependency(dep));
-    assert(resolver.calls == 1);  // cached after the first resolution
+    REQUIRE(!tester.testFileDependency(dep));
+    REQUIRE(resolver.calls == 1);  // cached after the first resolution
 
     FileDependency missing;
     missing.file = "Nope.esp";
     missing.state = FileDependencyTypeEnum::Missing;
-    assert(tester.testFileDependency(missing));
-    assert(tester.testFileDependency(missing));
-    assert(resolver.calls == 2);  // second miss resolved once, then cached
+    REQUIRE(tester.testFileDependency(missing));
+    REQUIRE(tester.testFileDependency(missing));
+    REQUIRE(resolver.calls == 2);  // second miss resolved once, then cached
     std::printf("PASS: fomod_condition — file states + resolver cache\n");
 }
 
@@ -107,11 +107,11 @@ void test_game_version_lexicographic()
 
     GameDependency dep;
     dep.version = "1.5.97";
-    assert(tester.testGameDependency(dep));
+    REQUIRE(tester.testGameDependency(dep));
     dep.version = "1.6.640";
-    assert(tester.testGameDependency(dep));
+    REQUIRE(tester.testGameDependency(dep));
     dep.version = "1.7.0";
-    assert(!tester.testGameDependency(dep));
+    REQUIRE(!tester.testGameDependency(dep));
     std::printf("PASS: fomod_condition — game version lexicographic comparison\n");
 }
 
@@ -120,7 +120,7 @@ void test_null_provider_passes()
     FomodConditionTester tester(nullptr, nullptr);
     GameDependency dep;
     dep.version = "9.9.9";
-    assert(tester.testGameDependency(dep));  // null provider → satisfied + warning
+    REQUIRE(tester.testGameDependency(dep));  // null provider → satisfied + warning
     std::printf("PASS: fomod_condition — null game-version provider passes\n");
 }
 
@@ -176,19 +176,19 @@ void test_flag_dependency_drives_type()
     auto follow = find_plugin(vm, "Follow");
     auto group = first_group(vm, 0);
 
-    assert(!toggle->isSelected());
-    assert(!follow->isSelected());
-    assert(follow->getCurrentPluginType() == PluginTypeEnum::Optional);
+    REQUIRE(!toggle->isSelected());
+    REQUIRE(!follow->isSelected());
+    REQUIRE(follow->getCurrentPluginType() == PluginTypeEnum::Optional);
 
     vm->togglePlugin(group, toggle, true);
-    assert(toggle->isSelected());
-    assert(follow->isSelected());
-    assert(follow->getCurrentPluginType() == PluginTypeEnum::Recommended);
+    REQUIRE(toggle->isSelected());
+    REQUIRE(follow->isSelected());
+    REQUIRE(follow->getCurrentPluginType() == PluginTypeEnum::Recommended);
 
     vm->togglePlugin(group, toggle, false);
-    assert(!toggle->isSelected());
-    assert(!follow->isSelected());
-    assert(follow->getCurrentPluginType() == PluginTypeEnum::Optional);
+    REQUIRE(!toggle->isSelected());
+    REQUIRE(!follow->isSelected());
+    REQUIRE(follow->getCurrentPluginType() == PluginTypeEnum::Optional);
     std::printf("PASS: fomod_condition — flag dependency drives plugin type\n");
 }
 
@@ -260,24 +260,24 @@ void test_most_recent_flag_wins()
     auto groupLate = first_group(vm, 1);
 
     vm->togglePlugin(groupEarly, early, true);
-    assert(follower->getCurrentPluginType() == PluginTypeEnum::Optional);  // only "early" is set
+    REQUIRE(follower->getCurrentPluginType() == PluginTypeEnum::Optional);  // only "early" is set
 
     vm->togglePlugin(groupLate, late, true);
-    assert(follower->getCurrentPluginType() == PluginTypeEnum::Recommended);
-    assert(follower->isSelected());
+    REQUIRE(follower->getCurrentPluginType() == PluginTypeEnum::Recommended);
+    REQUIRE(follower->isSelected());
 
     // Most-recent-wins ordering in the flag map: step 2 before step 1.
     const auto flags = vm->flag_map()->getFlagsByKey("m");
-    assert(flags.size() == 2);
-    assert(flags[0].second == "late");
-    assert(flags[1].second == "early");
+    REQUIRE(flags.size() == 2);
+    REQUIRE(flags[0].second == "late");
+    REQUIRE(flags[1].second == "early");
 
     vm->togglePlugin(groupEarly, early, false);
-    assert(follower->isSelected());  // still "late", unaffected by removing "early"
+    REQUIRE(follower->isSelected());  // still "late", unaffected by removing "early"
 
     vm->togglePlugin(groupLate, late, false);
-    assert(!follower->isSelected());
-    assert(follower->getCurrentPluginType() == PluginTypeEnum::Optional);
+    REQUIRE(!follower->isSelected());
+    REQUIRE(follower->getCurrentPluginType() == PluginTypeEnum::Optional);
     std::printf("PASS: fomod_condition — most-recent-wins flag ordering\n");
 }
 
@@ -342,15 +342,15 @@ void test_first_match_pattern_wins()
     auto group = first_group(vm, 0);
 
     vm->togglePlugin(group, setA1, true);
-    assert(dual->getCurrentPluginType() == PluginTypeEnum::Recommended);
+    REQUIRE(dual->getCurrentPluginType() == PluginTypeEnum::Recommended);
 
     vm->togglePlugin(group, setA2, true);
-    assert(dual->getCurrentPluginType() == PluginTypeEnum::Recommended);  // first pattern still wins
+    REQUIRE(dual->getCurrentPluginType() == PluginTypeEnum::Recommended);  // first pattern still wins
 
     vm->togglePlugin(group, setA1, false);
-    assert(dual->getCurrentPluginType() == PluginTypeEnum::Required);  // only second pattern matches
-    assert(dual->isSelected());
-    assert(!dual->isEnabled());
+    REQUIRE(dual->getCurrentPluginType() == PluginTypeEnum::Required);  // only second pattern matches
+    REQUIRE(dual->isSelected());
+    REQUIRE(!dual->isEnabled());
     std::printf("PASS: fomod_condition — first-match pattern wins\n");
 }
 
@@ -403,16 +403,16 @@ void test_empty_value_flag_dependency()
     auto noFlag = find_plugin(vm, "NoFlag");
     auto group = first_group(vm, 0);
 
-    assert(noFlag->isSelected());  // "u" unset at start → Recommended
-    assert(noFlag->getCurrentPluginType() == PluginTypeEnum::Recommended);
+    REQUIRE(noFlag->isSelected());  // "u" unset at start → Recommended
+    REQUIRE(noFlag->getCurrentPluginType() == PluginTypeEnum::Recommended);
 
     vm->togglePlugin(group, setsU, true);
-    assert(!noFlag->isSelected());
-    assert(noFlag->getCurrentPluginType() == PluginTypeEnum::Optional);
+    REQUIRE(!noFlag->isSelected());
+    REQUIRE(noFlag->getCurrentPluginType() == PluginTypeEnum::Optional);
 
     vm->togglePlugin(group, setsU, false);
-    assert(noFlag->isSelected());
-    assert(noFlag->getCurrentPluginType() == PluginTypeEnum::Recommended);
+    REQUIRE(noFlag->isSelected());
+    REQUIRE(noFlag->getCurrentPluginType() == PluginTypeEnum::Recommended);
     std::printf("PASS: fomod_condition — empty-value flag dependency (unset)\n");
 }
 
@@ -475,15 +475,15 @@ void test_and_semantics()
     auto group = first_group(vm, 0);
 
     vm->togglePlugin(group, setP, true);
-    assert(andPlugin->getCurrentPluginType() == PluginTypeEnum::Optional);  // only p set
+    REQUIRE(andPlugin->getCurrentPluginType() == PluginTypeEnum::Optional);  // only p set
 
     vm->togglePlugin(group, setQ, true);
-    assert(andPlugin->getCurrentPluginType() == PluginTypeEnum::Recommended);
-    assert(andPlugin->isSelected());
+    REQUIRE(andPlugin->getCurrentPluginType() == PluginTypeEnum::Recommended);
+    REQUIRE(andPlugin->isSelected());
 
     vm->togglePlugin(group, setQ, false);
-    assert(andPlugin->getCurrentPluginType() == PluginTypeEnum::Optional);
-    assert(!andPlugin->isSelected());
+    REQUIRE(andPlugin->getCurrentPluginType() == PluginTypeEnum::Optional);
+    REQUIRE(!andPlugin->isSelected());
     std::printf("PASS: fomod_condition — AND composite dependency\n");
 }
 
@@ -546,18 +546,18 @@ void test_or_semantics()
     auto group = first_group(vm, 0);
 
     vm->togglePlugin(group, setX, true);
-    assert(orPlugin->getCurrentPluginType() == PluginTypeEnum::Recommended);
-    assert(orPlugin->isSelected());
+    REQUIRE(orPlugin->getCurrentPluginType() == PluginTypeEnum::Recommended);
+    REQUIRE(orPlugin->isSelected());
 
     vm->togglePlugin(group, setY, true);
-    assert(orPlugin->isSelected());  // still selected, both flags now set
+    REQUIRE(orPlugin->isSelected());  // still selected, both flags now set
 
     vm->togglePlugin(group, setX, false);
-    assert(orPlugin->isSelected());  // y still matches
+    REQUIRE(orPlugin->isSelected());  // y still matches
 
     vm->togglePlugin(group, setY, false);
-    assert(orPlugin->getCurrentPluginType() == PluginTypeEnum::Optional);
-    assert(!orPlugin->isSelected());
+    REQUIRE(orPlugin->getCurrentPluginType() == PluginTypeEnum::Optional);
+    REQUIRE(!orPlugin->isSelected());
     std::printf("PASS: fomod_condition — OR composite dependency\n");
 }
 
@@ -615,21 +615,20 @@ void test_step_visibility()
 
     // S2 hidden initially: stepForward skips it.
     vm->stepForward();
-    assert(vm->getActiveStep()->getName() == "S3");
-    assert(vm->isLastVisibleStep());
+    REQUIRE(vm->getActiveStep()->getName() == "S3");
+    REQUIRE(vm->isLastVisibleStep());
 
     // Setting the flag makes S2 visible; stepBack now lands on it.
     vm->togglePlugin(group, reveal, true);
     vm->stepBack();
-    assert(vm->getActiveStep()->getName() == "S2");
+    REQUIRE(vm->getActiveStep()->getName() == "S2");
 
     std::printf("PASS: fomod_condition — step visibility\n");
 }
 
 }  // namespace
 
-int main()
-{
+TEST_CASE("fomod condition", "[engine]") {
     test_file_dependencies_and_cache();
     test_game_version_lexicographic();
     test_null_provider_passes();
@@ -640,6 +639,4 @@ int main()
     test_and_semantics();
     test_or_semantics();
     test_step_visibility();
-    std::printf("PASS: fomod_condition_test — all condition cases\n");
-    return 0;
 }

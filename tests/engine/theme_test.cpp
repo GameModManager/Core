@@ -2,7 +2,6 @@
 #include "engine/theme/theme_manager.h"
 #include "engine/log/logger.h"
 
-#include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -16,6 +15,7 @@
 #define getpid _getpid
 #else
 #include <unistd.h>
+#include <catch2/catch_test_macros.hpp>
 #endif
 
 namespace fs = std::filesystem;
@@ -39,7 +39,7 @@ std::string read_all(const fs::path& path) {
 
 }  // namespace
 
-int main() {
+TEST_CASE("theme", "[engine]") {
     // Isolate from any real user theme dirs.
     auto root = test_root();
     fs::remove_all(root);
@@ -67,17 +67,17 @@ int main() {
     {
         engine::ThemeManager tm;
         tm.scan_themes(root / "app" / "themes");
-        assert(tm.themes().size() == 3);
-        assert(tm.themes()[0].name == "Dark");
-        assert(tm.themes()[1].name == "Nord");
-        assert(tm.themes()[2].name == "Shared");
+        REQUIRE(tm.themes().size() == 3);
+        REQUIRE(tm.themes()[0].name == "Dark");
+        REQUIRE(tm.themes()[1].name == "Nord");
+        REQUIRE(tm.themes()[2].name == "Shared");
 
         const auto* dark = tm.find_theme("Dark");
-        assert(dark && dark->qss_path.filename() == "dark.qss");
-        assert(dark && !dark->tokens_path.empty());
+        REQUIRE((dark && dark->qss_path.filename() == "dark.qss"));
+        REQUIRE((dark && !dark->tokens_path.empty()));
         const auto* nord = tm.find_theme("Nord");
-        assert(nord && nord->qss_path.filename() == "nord.qss");
-        assert(nord && nord->tokens_path.empty());  // no tokens file -> fine
+        REQUIRE((nord && nord->qss_path.filename() == "nord.qss"));
+        REQUIRE((nord && nord->tokens_path.empty()));  // no tokens file -> fine
     }
 
     // Token substitution with prefix-safe ordering.
@@ -85,13 +85,13 @@ int main() {
         engine::ThemeManager tm;
         tm.scan_themes(root / "app" / "themes");
         const auto* dark = tm.find_theme("Dark");
-        assert(tm.load_tokens(dark->tokens_path));
-        assert(tm.apply_template("a $bg b") == "a #1e1f24 b");
+        REQUIRE(tm.load_tokens(dark->tokens_path));
+        REQUIRE(tm.apply_template("a $bg b") == "a #1e1f24 b");
 
         // Longer keys win over prefix keys: $bg vs $bgAlt.
         tm.set_token("$bg", "#1e1f24");
         tm.set_token("$bgAlt", "#26272e");
-        assert(tm.apply_template("$bgAlt|$bg") == "#26272e|#1e1f24");
+        REQUIRE(tm.apply_template("$bgAlt|$bg") == "#26272e|#1e1f24");
     }
 
     // load_tokens clears the previous token map (no stale-token leak).
@@ -99,19 +99,19 @@ int main() {
         engine::ThemeManager tm;
         tm.scan_themes(root / "app" / "themes");
         const auto* dark = tm.find_theme("Dark");
-        assert(tm.load_tokens(dark->tokens_path));
-        assert(tm.tokens().size() == 2);
+        REQUIRE(tm.load_tokens(dark->tokens_path));
+        REQUIRE(tm.tokens().size() == 2);
 
         const auto* nord = tm.find_theme("Nord");
         write(root / "app" / "themes" / "Nord" / "tokens.json", "{ \"$fg\": \"#d8dee9\" }");
         // tokens_path is only filled at scan time, so re-scan to pick it up.
         tm.scan_themes(root / "app" / "themes");
         nord = tm.find_theme("Nord");
-        assert(nord && !nord->tokens_path.empty());
-        assert(tm.load_tokens(nord->tokens_path));
-        assert(tm.tokens().size() == 1);
-        assert(tm.tokens().count("$fg") == 1);
-        assert(tm.tokens().count("$bg") == 0);
+        REQUIRE((nord && !nord->tokens_path.empty()));
+        REQUIRE(tm.load_tokens(nord->tokens_path));
+        REQUIRE(tm.tokens().size() == 1);
+        REQUIRE(tm.tokens().count("$fg") == 1);
+        REQUIRE(tm.tokens().count("$bg") == 0);
     }
 
     // render_theme writes the fully-substituted QSS.
@@ -122,10 +122,10 @@ int main() {
         tm.load_tokens(dark->tokens_path);
         auto out = root / "out" / "rendered.qss";
         fs::create_directories(out.parent_path());
-        assert(tm.render_theme(dark->qss_path, out));
+        REQUIRE(tm.render_theme(dark->qss_path, out));
         auto content = read_all(out);
-        assert(content.find("#1e1f24") != std::string::npos);
-        assert(content.find("$bg") == std::string::npos);
+        REQUIRE(content.find("#1e1f24") != std::string::npos);
+        REQUIRE(content.find("$bg") == std::string::npos);
     }
 
     // discover_themes: scans all search dirs, first occurrence wins, sorted.
@@ -133,12 +133,12 @@ int main() {
         engine::ThemeManager tm;
         tm.discover_themes(root / "app");
         const auto* shared = tm.find_theme("Shared");
-        assert(shared);
+        REQUIRE(shared);
         // app_dir/themes precedes app_dir/../themes.
-        assert(shared->qss_path.string().find((root / "app" / "themes").string()) == 0);
+        REQUIRE(shared->qss_path.string().find((root / "app" / "themes").string()) == 0);
         // All three themes present, sorted.
-        assert(tm.themes().size() == 3);
-        assert(tm.themes()[0].name == "Dark");
+        REQUIRE(tm.themes().size() == 3);
+        REQUIRE(tm.themes()[0].name == "Dark");
     }
 
     // theme_search_dirs: user dir first, then portable, submodule, share, bundled.
@@ -146,16 +146,15 @@ int main() {
     // equal after normalization.
     {
         auto dirs = engine::theme_search_dirs(root / "app");
-        assert(dirs.size() == 5);
+        REQUIRE(dirs.size() == 5);
         auto norm = [](const fs::path& p) { return p.lexically_normal(); };
-        assert(norm(dirs[0]) == norm(root / "empty_user" / "GameModManager" / "themes"));
-        assert(norm(dirs[1]) == norm(root / "app" / "themes"));
-        assert(norm(dirs[2]) == norm(root / "themes"));
-        assert(norm(dirs[3]) == norm(root / "share" / "GameModManager" / "themes"));
-        assert(norm(dirs[4]) == norm(root / "resources" / "themes"));
+        REQUIRE(norm(dirs[0]) == norm(root / "empty_user" / "GameModManager" / "themes"));
+        REQUIRE(norm(dirs[1]) == norm(root / "app" / "themes"));
+        REQUIRE(norm(dirs[2]) == norm(root / "themes"));
+        REQUIRE(norm(dirs[3]) == norm(root / "share" / "GameModManager" / "themes"));
+        REQUIRE(norm(dirs[4]) == norm(root / "resources" / "themes"));
     }
 
     std::cout << "theme_test: all assertions passed\n";
     fs::remove_all(root);
-    return 0;
 }

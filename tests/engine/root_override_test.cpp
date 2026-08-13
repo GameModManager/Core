@@ -10,23 +10,21 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
 using engine::classify_registry_path;
 using engine::DeploySpace;
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 using Owners = std::vector<std::pair<std::string, int>>;
 
-int main() {
+TEST_CASE("root override", "[engine]") {
     const std::unordered_set<std::string> no_root = {};
     const std::unordered_set<std::string> with_root = {"SKSE"};
 
@@ -88,7 +86,4 @@ int main() {
         "resources/gfx/a.png", Owners{{"ModA", 1}}, no_root, "");
     check(no_prefix_flat.space == DeploySpace::Data,
           "empty deploy_prefix, no root owner -> Data space");
-
-    std::printf("\n%d passed, %d failed\n", passes, failures);
-    return failures ? 1 : 0;
 }

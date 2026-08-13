@@ -19,17 +19,15 @@
 #include <fstream>
 #include <string>
 #include <unistd.h>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 static void write_bytes(const fs::path& p, const std::string& contents) {
@@ -73,7 +71,7 @@ static void make_instance(const fs::path& root) {
     write_bytes(mod / "blob.bin", kText);     // data blob, NOT an exe
 }
 
-int main() {
+TEST_CASE("deploy binary", "[engine]") {
     // --- is_executable_binary unit checks ---
     const fs::path tmp =
         fs::current_path() / ("gmm_deploy_binary_" + std::to_string(getpid()));
@@ -161,6 +159,4 @@ int main() {
           "SymlinkStrategy .txt stays a symlink");
 
     fs::remove_all(tmp);
-    std::printf("\n%d passed, %d failed\n", passes, failures);
-    return failures ? 1 : 0;
 }

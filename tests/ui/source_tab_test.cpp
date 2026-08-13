@@ -31,15 +31,13 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <catch2/catch_test_macros.hpp>
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 // A Nexus-typed provider with no network surface; find_provider() in
@@ -91,13 +89,16 @@ static ui::ModInfoData make_data(const std::string& id,
     return data;
 }
 
-int main(int argc, char** argv) {
+TEST_CASE("source tab", "[ui]") {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     const std::filesystem::path cfg = "/tmp/gmm_source_tab/config";
     std::filesystem::remove_all("/tmp/gmm_source_tab");
     std::filesystem::create_directories(cfg);
     qputenv("XDG_CONFIG_HOME", cfg.c_str());
-    QApplication app(argc, argv);
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
     QCoreApplication::setOrganizationName("GameModManager");
     QCoreApplication::setApplicationName("GameModManager");
 
@@ -143,7 +144,6 @@ int main(int argc, char** argv) {
                 std::printf("DEBUG label: %s\n", qPrintable(lbl->text()));
         }
         check(refresh != nullptr, "Nexus page has a Refresh button");
-        if (!refresh) return 1;
         refresh->click();
 
         const bool landed = wait_for([&] {
@@ -198,7 +198,7 @@ int main(int argc, char** argv) {
         QApplication::processEvents();
 
         auto* refresh = find_refresh(tab);
-        if (!refresh) return 1;
+        REQUIRE(refresh != nullptr);
 
         // First click: gen 1, the worker parks inside the fetch.
         refresh->click();
@@ -233,7 +233,4 @@ int main(int argc, char** argv) {
                   "second result",
               "meta holds only the newer result (no torn write)");
     }
-
-    std::printf("\n%d passed, %d failed\n", passes, failures);
-    return failures ? 1 : 0;
 }

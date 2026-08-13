@@ -27,14 +27,15 @@
 #include <unistd.h>
 #include <utility>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
-static void require(bool cond, const std::string& msg) {
-    if (!cond) {
-        std::fprintf(stderr, "FAIL: %s\n", msg.c_str());
-        std::exit(1);
-    }
+namespace {
+void require(bool cond, const std::string& msg) {
+    INFO(msg);
+    REQUIRE(cond);
+}
 }
 
 static void write_file(const fs::path& p, const std::string& contents) {
@@ -574,7 +575,7 @@ static void check_effective_strategy(const fs::path& root) {
             "effective strategy with empty instance root uses knowledge");
 }
 
-int main() {
+TEST_CASE("launch params", "[engine]") {
     const fs::path base =
         fs::current_path() / ("gmm_test_launch_params_" + std::to_string(getpid()));
 
@@ -593,9 +594,7 @@ int main() {
     // Overlay-mode checks: graceful skip on filesystems that cannot host an
     // overlay upperdir (kernel < 5.11 or no user xattr).
     if (!engine::OverlayFsLauncher::is_supported(base / "probe")) {
-        std::printf("launch_params_test: overlay not supported here - skipping\n");
-        fs::remove_all(base);
-        return 0;
+        SKIP("overlay not supported here");
     }
 
     check_deploy(base / "instances" / "Flat", false, "flat deploy");
@@ -604,6 +603,4 @@ int main() {
     check_ci_deploy(base / "instances" / "CI", "ci deploy");
 
     fs::remove_all(base);
-    std::printf("launch_params_test: all checks passed\n");
-    return 0;
 }

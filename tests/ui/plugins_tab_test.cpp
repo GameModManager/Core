@@ -49,16 +49,13 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    std::fflush(stdout);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 // Row whose Plugin Name column equals `name`, or -1.
@@ -83,13 +80,16 @@ struct TestPluginsTab : ui::PluginsTab {
     using ui::PluginsTab::add_context_menu_actions;
 };
 
-int main(int argc, char** argv) {
+TEST_CASE("plugins tab", "[ui]") {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     const std::filesystem::path cfg = "/tmp/gmm_plugins_tab/config";
     std::filesystem::remove_all("/tmp/gmm_plugins_tab");
     std::filesystem::create_directories(cfg);
     qputenv("XDG_CONFIG_HOME", cfg.c_str());
-    QApplication app(argc, argv);
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
     QCoreApplication::setOrganizationName("GameModManager");
     QCoreApplication::setApplicationName("GameModManager");
 
@@ -669,7 +669,4 @@ int main(int argc, char** argv) {
         check(refreshed, "Refresh button emits refresh_requested");
         tab.hide();
     }
-
-    std::printf("\n%d passed, %d failed\n", passes, failures);
-    return failures ? 1 : 0;
 }

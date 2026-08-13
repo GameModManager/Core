@@ -13,11 +13,11 @@
 #include "engine/model/mod.h"
 #include "engine/source/source_provider.h"
 
-#include <cassert>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <unistd.h>
+#include <catch2/catch_test_macros.hpp>
 
 namespace {
 using namespace engine;
@@ -156,7 +156,7 @@ public:
 };
 }  // namespace
 
-int main() {
+TEST_CASE("pipeline", "[engine]") {
     {
         Pipeline pipeline;
 
@@ -177,10 +177,10 @@ int main() {
         mod.name = "Test Mod";
         mod.version = "1.0";
 
-        assert(mod.state == ModState::Downloaded);
-        assert(pipeline.run(mod) == engine::PipelineResult::Success);
-        assert(mod.state == ModState::Deployed);
-        assert(mod.id == "test-mod-001");
+        REQUIRE(mod.state == ModState::Downloaded);
+        REQUIRE(pipeline.run(mod) == engine::PipelineResult::Success);
+        REQUIRE(mod.state == ModState::Deployed);
+        REQUIRE(mod.id == "test-mod-001");
 
         std::printf("PASS: pipeline_test — mod flowed through all 8 stages\n");
     }
@@ -202,7 +202,7 @@ int main() {
         staging.relative_path = plain.root.string();
         mod.files.push_back(staging);
 
-        assert(fomod.execute(mod, ctx));
+        REQUIRE(fomod.execute(mod, ctx));
         std::printf("PASS: pipeline_test — non-FOMOD archive passes FomodStage\n");
     }
 
@@ -214,22 +214,22 @@ int main() {
         Mod mod = fix.make_mod();
         ctx.fomod_query_cb = [&](const std::shared_ptr<FomodViewModel>&, const std::filesystem::path& root,
                                  const std::string& suggested, const std::string& previous) {
-            assert(root == fix.staging);
-            assert(suggested == "Fomod Mod");
-            assert(previous.empty());
+            REQUIRE(root == fix.staging);
+            REQUIRE(suggested == "Fomod Mod");
+            REQUIRE(previous.empty());
             FomodDecision d;
             d.accept = true;
             d.choices_json = kHighResChoices;
             d.mod_name = "Installed Name";
             return d;
         };
-        assert(fomod.execute(mod, ctx));
-        assert(mod.name == "Installed Name");
-        assert(ctx.fomod_choices_json == kHighResChoices);
-        assert(std::filesystem::exists(fix.staging / "Core.esm"));
-        assert(std::filesystem::exists(fix.staging / "Patches" / "HighRes.esp"));
-        assert(!std::filesystem::exists(fix.staging / "Patches" / "Lite.esp"));
-        assert(!std::filesystem::exists(fix.staging / "fomod"));
+        REQUIRE(fomod.execute(mod, ctx));
+        REQUIRE(mod.name == "Installed Name");
+        REQUIRE(ctx.fomod_choices_json == kHighResChoices);
+        REQUIRE(std::filesystem::exists(fix.staging / "Core.esm"));
+        REQUIRE(std::filesystem::exists(fix.staging / "Patches" / "HighRes.esp"));
+        REQUIRE(!std::filesystem::exists(fix.staging / "Patches" / "Lite.esp"));
+        REQUIRE(!std::filesystem::exists(fix.staging / "fomod"));
         std::printf("PASS: pipeline_test — FOMOD wizard accept installs selected files\n");
     }
 
@@ -243,9 +243,9 @@ int main() {
                                 const std::string&, const std::string&) {
             return FomodDecision{};  // accept == false
         };
-        assert(!fomod.execute(mod, ctx));
-        assert(ctx.fomod_choices_json.empty());
-        assert(ctx.canceled);
+        REQUIRE(!fomod.execute(mod, ctx));
+        REQUIRE(ctx.fomod_choices_json.empty());
+        REQUIRE(ctx.canceled);
         std::printf("PASS: pipeline_test — FOMOD wizard cancel aborts\n");
     }
 
@@ -260,18 +260,18 @@ int main() {
         int queried = 0;
         ctx.fomod_query_cb = [&](const std::shared_ptr<FomodViewModel>&, const std::filesystem::path& root,
                                  const std::string&, const std::string&) {
-            assert(root == fix.staging);
+            REQUIRE(root == fix.staging);
             ++queried;
             FomodDecision d;
             d.accept = true;
             d.choices_json = kHighResChoices;
             return d;
         };
-        assert(fomod.execute(mod, ctx));
-        assert(queried == 1);
-        assert(std::filesystem::exists(fix.staging / "Patches" / "HighRes.esp"));
-        assert(!std::filesystem::exists(fix.staging / "Patches" / "Lite.esp"));
-        assert(!std::filesystem::exists(fix.staging / "Fomod"));
+        REQUIRE(fomod.execute(mod, ctx));
+        REQUIRE(queried == 1);
+        REQUIRE(std::filesystem::exists(fix.staging / "Patches" / "HighRes.esp"));
+        REQUIRE(!std::filesystem::exists(fix.staging / "Patches" / "Lite.esp"));
+        REQUIRE(!std::filesystem::exists(fix.staging / "Fomod"));
         std::printf("PASS: pipeline_test — capitalized Fomod/ layout detected case-insensitively\n");
     }
 
@@ -288,13 +288,13 @@ int main() {
             d.mod_name = "Manual Name";
             return d;
         };
-        assert(fomod.execute(mod, ctx));
-        assert(mod.name == "Manual Name");
-        assert(ctx.fomod_choices_json.empty());
-        assert(std::filesystem::exists(fix.staging / "Core.esm"));
-        assert(std::filesystem::exists(fix.staging / "Patches" / "HighRes.esp"));
-        assert(std::filesystem::exists(fix.staging / "Patches" / "Lite.esp"));
-        assert(!std::filesystem::exists(fix.staging / "fomod"));
+        REQUIRE(fomod.execute(mod, ctx));
+        REQUIRE(mod.name == "Manual Name");
+        REQUIRE(ctx.fomod_choices_json.empty());
+        REQUIRE(std::filesystem::exists(fix.staging / "Core.esm"));
+        REQUIRE(std::filesystem::exists(fix.staging / "Patches" / "HighRes.esp"));
+        REQUIRE(std::filesystem::exists(fix.staging / "Patches" / "Lite.esp"));
+        REQUIRE(!std::filesystem::exists(fix.staging / "fomod"));
         std::printf("PASS: pipeline_test — FOMOD Manual install keeps raw contents\n");
     }
 
@@ -305,7 +305,7 @@ int main() {
         FomodStage fomod;
         PipelineContext ctx;
         Mod mod = fix.make_mod();
-        assert(!fomod.execute(mod, ctx));
+        REQUIRE(!fomod.execute(mod, ctx));
         std::printf("PASS: pipeline_test — C# script FOMOD aborts\n");
     }
 
@@ -315,7 +315,7 @@ int main() {
         FomodStage fomod;
         PipelineContext ctx;
         Mod mod = fix.make_mod();
-        assert(!fomod.execute(mod, ctx));
+        REQUIRE(!fomod.execute(mod, ctx));
         std::printf("PASS: pipeline_test — headless FOMOD without choices aborts\n");
     }
 
@@ -330,10 +330,10 @@ int main() {
         PipelineContext ctx;
         ctx.mods_dir = mods;
         Mod mod = fix.make_mod("Restored Mod");
-        assert(fomod.execute(mod, ctx));
-        assert(ctx.fomod_choices_json == kHighResChoices);
-        assert(std::filesystem::exists(fix.staging / "Patches" / "HighRes.esp"));
-        assert(!std::filesystem::exists(fix.staging / "Patches" / "Lite.esp"));
+        REQUIRE(fomod.execute(mod, ctx));
+        REQUIRE(ctx.fomod_choices_json == kHighResChoices);
+        REQUIRE(std::filesystem::exists(fix.staging / "Patches" / "HighRes.esp"));
+        REQUIRE(!std::filesystem::exists(fix.staging / "Patches" / "Lite.esp"));
         std::printf("PASS: pipeline_test — headless FOMOD restores previous choices\n");
     }
 
@@ -357,7 +357,7 @@ int main() {
                 d.accept = true;
                 return d;
             };
-            assert(!fomod.execute(mod, ctx));
+            REQUIRE(!fomod.execute(mod, ctx));
             std::printf("PASS: pipeline_test — FOMOD missing files abort by default\n");
         }
         {
@@ -372,9 +372,9 @@ int main() {
                 d.ignore_missing = true;
                 return d;
             };
-            assert(fomod.execute(mod, ctx));
-            assert(std::filesystem::exists(fix.staging / "Core.esm"));
-            assert(!std::filesystem::exists(fix.staging / "fomod"));
+            REQUIRE(fomod.execute(mod, ctx));
+            REQUIRE(std::filesystem::exists(fix.staging / "Core.esm"));
+            REQUIRE(!std::filesystem::exists(fix.staging / "fomod"));
             std::printf("PASS: pipeline_test — FOMOD missing files ignored on request\n");
         }
     }
@@ -391,18 +391,18 @@ int main() {
         ctx.mods_dir = mods;
         Mod mod = fix.make_mod();
         ctx.fomod_query_cb = accept_high_res;
-        assert(fomod.execute(mod, ctx));
+        REQUIRE(fomod.execute(mod, ctx));
         InstallStage install;
-        assert(install.execute(mod, ctx));
+        REQUIRE(install.execute(mod, ctx));
         auto meta_path = mods / "Fomod Mod" / "meta.ini";
-        assert(std::filesystem::exists(meta_path));
+        REQUIRE(std::filesystem::exists(meta_path));
         std::ifstream f(meta_path);
         std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-        assert(content.find("[fomod]") != std::string::npos);
-        assert(content.find(kHighResChoices) != std::string::npos);
-        assert(std::filesystem::exists(mods / "Fomod Mod" / "Core.esm"));
-        assert(std::filesystem::exists(mods / "Fomod Mod" / "Patches" / "HighRes.esp"));
-        assert(!std::filesystem::exists(mods / "Fomod Mod" / "Patches" / "Lite.esp"));
+        REQUIRE(content.find("[fomod]") != std::string::npos);
+        REQUIRE(content.find(kHighResChoices) != std::string::npos);
+        REQUIRE(std::filesystem::exists(mods / "Fomod Mod" / "Core.esm"));
+        REQUIRE(std::filesystem::exists(mods / "Fomod Mod" / "Patches" / "HighRes.esp"));
+        REQUIRE(!std::filesystem::exists(mods / "Fomod Mod" / "Patches" / "Lite.esp"));
         std::printf("PASS: pipeline_test — FOMOD choices persisted in mod folder meta.ini\n");
     }
 
@@ -428,8 +428,8 @@ int main() {
             FomodFixture fix(kBasicConfig);
             Mod mod = fix.make_mod("Fomod One");
             mod.state = ModState::Extracted;
-            assert(pipeline->run(mod) == PipelineResult::Success);
-            assert(pipeline->ctx().fomod_choices_json == kHighResChoices);
+            REQUIRE(pipeline->run(mod) == PipelineResult::Success);
+            REQUIRE(pipeline->ctx().fomod_choices_json == kHighResChoices);
         }
 
         // Install #2: a plain archive (no fomod dir) through the SAME pipeline.
@@ -445,16 +445,16 @@ int main() {
             ModFile staging;
             staging.relative_path = plain.root.string();
             mod.files.push_back(staging);
-            assert(pipeline->run(mod) == PipelineResult::Success);
+            REQUIRE(pipeline->run(mod) == PipelineResult::Success);
 
             auto meta_path = mods / "Plain Two" / "meta.ini";
-            assert(std::filesystem::exists(meta_path));
+            REQUIRE(std::filesystem::exists(meta_path));
             std::ifstream f(meta_path);
             std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-            assert(content.find("[fomod]") == std::string::npos);
-            assert(content.find(kHighResChoices) == std::string::npos);
-            assert(!pipeline->ctx().fomod_detected);
-            assert(pipeline->ctx().fomod_choices_json.empty());
+            REQUIRE(content.find("[fomod]") == std::string::npos);
+            REQUIRE(content.find(kHighResChoices) == std::string::npos);
+            REQUIRE(!pipeline->ctx().fomod_detected);
+            REQUIRE(pipeline->ctx().fomod_choices_json.empty());
         }
         std::printf("PASS: pipeline_test — non-FOMOD install after a FOMOD does not inherit its choices\n");
     }
@@ -502,11 +502,11 @@ int main() {
             PipelineContext ctx;
             ctx.mods_dir = mods;
             Mod mod = make_mod(staging);
-            assert(install(mod, ctx));
-            assert(mod.state == ModState::Installed);
-            assert(!std::filesystem::exists(dir / "old.txt"));
-            assert(std::filesystem::exists(dir / "b.txt"));
-            assert(ctx.installed_mod_folder == "My Mod");
+            REQUIRE(install(mod, ctx));
+            REQUIRE(mod.state == ModState::Installed);
+            REQUIRE(!std::filesystem::exists(dir / "old.txt"));
+            REQUIRE(std::filesystem::exists(dir / "b.txt"));
+            REQUIRE(ctx.installed_mod_folder == "My Mod");
             std::printf("PASS: install overwrite — headless silent replace\n");
         }
 
@@ -522,10 +522,10 @@ int main() {
                 return OverwriteDecision{OverwriteAction::Merge};
             };
             Mod mod = make_mod(staging);
-            assert(install(mod, ctx));
-            assert(mod.state == ModState::Installed);
-            assert(std::filesystem::exists(dir / "old.txt"));
-            assert(std::filesystem::exists(dir / "b.txt"));
+            REQUIRE(install(mod, ctx));
+            REQUIRE(mod.state == ModState::Installed);
+            REQUIRE(std::filesystem::exists(dir / "old.txt"));
+            REQUIRE(std::filesystem::exists(dir / "b.txt"));
             std::printf("PASS: install overwrite — merge keeps existing files\n");
         }
 
@@ -541,10 +541,10 @@ int main() {
                 return OverwriteDecision{OverwriteAction::Replace};
             };
             Mod mod = make_mod(staging);
-            assert(install(mod, ctx));
-            assert(mod.state == ModState::Installed);
-            assert(!std::filesystem::exists(dir / "old.txt"));
-            assert(std::filesystem::exists(dir / "b.txt"));
+            REQUIRE(install(mod, ctx));
+            REQUIRE(mod.state == ModState::Installed);
+            REQUIRE(!std::filesystem::exists(dir / "old.txt"));
+            REQUIRE(std::filesystem::exists(dir / "b.txt"));
             std::printf("PASS: install overwrite — replace deletes old files\n");
         }
 
@@ -560,10 +560,10 @@ int main() {
                 return OverwriteDecision{OverwriteAction::Replace, /*backup=*/true};
             };
             Mod mod = make_mod(staging);
-            assert(install(mod, ctx));
+            REQUIRE(install(mod, ctx));
             auto backup = mods / "My Mod_backup";
-            assert(std::filesystem::exists(backup / "old.txt"));
-            assert(!std::filesystem::exists(dir / "old.txt"));
+            REQUIRE(std::filesystem::exists(backup / "old.txt"));
+            REQUIRE(!std::filesystem::exists(dir / "old.txt"));
             std::printf("PASS: install overwrite — replace keeps a backup\n");
         }
 
@@ -582,12 +582,12 @@ int main() {
                 return d;
             };
             Mod mod = make_mod(staging);
-            assert(install(mod, ctx));
-            assert(mod.state == ModState::Installed);
-            assert(mod.id == "My Mod 2");
-            assert(std::filesystem::exists(dir / "old.txt"));
-            assert(std::filesystem::exists(mods / "My Mod 2" / "b.txt"));
-            assert(ctx.installed_mod_folder == "My Mod 2");
+            REQUIRE(install(mod, ctx));
+            REQUIRE(mod.state == ModState::Installed);
+            REQUIRE(mod.id == "My Mod 2");
+            REQUIRE(std::filesystem::exists(dir / "old.txt"));
+            REQUIRE(std::filesystem::exists(mods / "My Mod 2" / "b.txt"));
+            REQUIRE(ctx.installed_mod_folder == "My Mod 2");
             std::printf("PASS: install overwrite — rename installs separately\n");
         }
 
@@ -611,12 +611,12 @@ int main() {
                 return d;
             };
             Mod mod = make_mod(staging);
-            assert(install(mod, ctx));
-            assert(mod.state == ModState::Installed);
-            assert(calls == 2);
-            assert(mod.id == "My Mod 3");
-            assert(std::filesystem::exists(mods / "My Mod 3" / "b.txt"));
-            assert(ctx.installed_mod_folder == "My Mod 3");
+            REQUIRE(install(mod, ctx));
+            REQUIRE(mod.state == ModState::Installed);
+            REQUIRE(calls == 2);
+            REQUIRE(mod.id == "My Mod 3");
+            REQUIRE(std::filesystem::exists(mods / "My Mod 3" / "b.txt"));
+            REQUIRE(ctx.installed_mod_folder == "My Mod 3");
             std::printf("PASS: install overwrite — rename loop re-checks collisions\n");
         }
 
@@ -634,11 +634,11 @@ int main() {
                 return OverwriteDecision{OverwriteAction::Cancel};
             };
             Mod mod = make_mod(staging);
-            assert(!install(mod, ctx));
-            assert(mod.state != ModState::Installed);
-            assert(ctx.canceled);
-            assert(std::filesystem::exists(dir / "old.txt"));
-            assert(!std::filesystem::exists(dir / "b.txt"));
+            REQUIRE(!install(mod, ctx));
+            REQUIRE(mod.state != ModState::Installed);
+            REQUIRE(ctx.canceled);
+            REQUIRE(std::filesystem::exists(dir / "old.txt"));
+            REQUIRE(!std::filesystem::exists(dir / "b.txt"));
             std::printf("PASS: install overwrite — cancel aborts cleanly\n");
         }
     }
@@ -655,9 +655,9 @@ int main() {
             std::filesystem::create_directories(root / "SKSE" / "Plugins");
             std::ofstream(root / "SKSE" / "Plugins" / "x.dll") << "x";
             auto r = normalize_staging_root(root, "Data");
-            assert(r.simple && !r.fomod && !r.merged_data_dir);
-            assert(r.peeled_folder_hint.empty());
-            assert(std::filesystem::exists(root / "SKSE" / "Plugins" / "x.dll"));
+            REQUIRE((r.simple && !r.fomod && !r.merged_data_dir));
+            REQUIRE(r.peeled_folder_hint.empty());
+            REQUIRE(std::filesystem::exists(root / "SKSE" / "Plugins" / "x.dll"));
             std::printf("PASS: normalize keeps a real data folder (SKSE) in place\n");
         }
 
@@ -668,9 +668,9 @@ int main() {
             std::filesystem::create_directories(root / "Data" / "SKSE" / "Plugins");
             std::ofstream(root / "Data" / "SKSE" / "Plugins" / "x.dll") << "x";
             auto r = normalize_staging_root(root, "Data");
-            assert(r.simple && r.peeled_folder_hint == "Data");
-            assert(std::filesystem::exists(root / "SKSE" / "Plugins" / "x.dll"));
-            assert(!std::filesystem::exists(root / "Data"));
+            REQUIRE((r.simple && r.peeled_folder_hint == "Data"));
+            REQUIRE(std::filesystem::exists(root / "SKSE" / "Plugins" / "x.dll"));
+            REQUIRE(!std::filesystem::exists(root / "Data"));
             std::printf("PASS: normalize unwraps a lone Data folder\n");
         }
 
@@ -681,9 +681,9 @@ int main() {
             std::filesystem::create_directories(root / "Wrapper" / "SKSE" / "Plugins");
             std::ofstream(root / "Wrapper" / "SKSE" / "Plugins" / "x.dll") << "x";
             auto r = normalize_staging_root(root, "Data");
-            assert(r.simple && r.peeled_folder_hint == "Wrapper");
-            assert(std::filesystem::exists(root / "SKSE" / "Plugins" / "x.dll"));
-            assert(!std::filesystem::exists(root / "Wrapper"));
+            REQUIRE((r.simple && r.peeled_folder_hint == "Wrapper"));
+            REQUIRE(std::filesystem::exists(root / "SKSE" / "Plugins" / "x.dll"));
+            REQUIRE(!std::filesystem::exists(root / "Wrapper"));
             std::printf("PASS: normalize peels a non-data wrapper and reports the name hint\n");
         }
 
@@ -695,10 +695,10 @@ int main() {
             std::ofstream(root / "Data" / "SKSE" / "Plugins" / "x.dll") << "x";
             std::ofstream(root / "readme.txt") << "readme";
             auto r = normalize_staging_root(root, "Data");
-            assert(r.simple && r.merged_data_dir && r.peeled_folder_hint.empty());
-            assert(std::filesystem::exists(root / "SKSE" / "Plugins" / "x.dll"));
-            assert(std::filesystem::exists(root / "readme.txt"));
-            assert(!std::filesystem::exists(root / "Data"));
+            REQUIRE((r.simple && r.merged_data_dir && r.peeled_folder_hint.empty()));
+            REQUIRE(std::filesystem::exists(root / "SKSE" / "Plugins" / "x.dll"));
+            REQUIRE(std::filesystem::exists(root / "readme.txt"));
+            REQUIRE(!std::filesystem::exists(root / "Data"));
             std::printf("PASS: normalize merges a lone Data+readme top layer into the root\n");
         }
 
@@ -712,9 +712,9 @@ int main() {
             std::ofstream(root / "fomod" / "Info.xml") << "<info/>";
             std::ofstream(root / "meshes" / "m.nif") << "x";
             auto r = normalize_staging_root(root, "Data");
-            assert(r.fomod && !r.simple && !r.merged_data_dir);
-            assert(std::filesystem::exists(root / "fomod" / "ModuleConfig.xml"));
-            assert(std::filesystem::exists(root / "meshes" / "m.nif"));
+            REQUIRE((r.fomod && !r.simple && !r.merged_data_dir));
+            REQUIRE(std::filesystem::exists(root / "fomod" / "ModuleConfig.xml"));
+            REQUIRE(std::filesystem::exists(root / "meshes" / "m.nif"));
             std::printf("PASS: normalize leaves FOMOD archives untouched\n");
         }
     }
@@ -750,10 +750,10 @@ int main() {
             };
             Mod mod = make_mod();
             InstallStage stage;
-            assert(!stage.execute(mod, ctx));
-            assert(ctx.canceled);
-            assert(mod.state != ModState::Installed);
-            assert(!std::filesystem::exists(mods / "Name Mod"));
+            REQUIRE(!stage.execute(mod, ctx));
+            REQUIRE(ctx.canceled);
+            REQUIRE(mod.state != ModState::Installed);
+            REQUIRE(!std::filesystem::exists(mods / "Name Mod"));
             std::printf("PASS: install name dialog cancel aborts cleanly\n");
         }
 
@@ -762,17 +762,17 @@ int main() {
             PipelineContext ctx;
             ctx.mods_dir = mods;
             ctx.name_query_cb = [](const std::string& suggested, const std::string& archive) {
-                assert(suggested == "Name Mod");
-                assert(archive == "NameMod.zip");
+                REQUIRE(suggested == "Name Mod");
+                REQUIRE(archive == "NameMod.zip");
                 return std::optional<std::string>("Chosen Name");
             };
             Mod mod = make_mod();
             InstallStage stage;
-            assert(stage.execute(mod, ctx));
-            assert(mod.name == "Chosen Name");
-            assert(ctx.installed_mod_folder == "Chosen Name");
-            assert(std::filesystem::exists(mods / "Chosen Name" / "a.txt"));
-            assert(!std::filesystem::exists(mods / "Name Mod"));
+            REQUIRE(stage.execute(mod, ctx));
+            REQUIRE(mod.name == "Chosen Name");
+            REQUIRE(ctx.installed_mod_folder == "Chosen Name");
+            REQUIRE(std::filesystem::exists(mods / "Chosen Name" / "a.txt"));
+            REQUIRE(!std::filesystem::exists(mods / "Name Mod"));
             std::printf("PASS: install name dialog accept installs under the chosen name\n");
         }
 
@@ -791,11 +791,11 @@ int main() {
             };
             Mod mod = make_mod();
             InstallStage stage;
-            assert(stage.execute(mod, ctx));
-            assert(!called);
-            assert(mod.name == "Name Mod");
-            assert(ctx.installed_mod_folder == "Name Mod");
-            assert(std::filesystem::exists(mods / "Name Mod" / "a.txt"));
+            REQUIRE(stage.execute(mod, ctx));
+            REQUIRE(!called);
+            REQUIRE(mod.name == "Name Mod");
+            REQUIRE(ctx.installed_mod_folder == "Name Mod");
+            REQUIRE(std::filesystem::exists(mods / "Name Mod" / "a.txt"));
             std::printf("PASS: install name dialog skipped for FOMOD installs\n");
         }
     }
@@ -817,8 +817,8 @@ int main() {
         mod.id = "cleanup";
         mod.state = ModState::Downloaded;
         auto result = pipeline.run(mod);
-        assert(result == (cancel ? PipelineResult::Canceled : PipelineResult::Failed));
-        assert(!std::filesystem::exists(staging));
+        REQUIRE(result == (cancel ? PipelineResult::Canceled : PipelineResult::Failed));
+        REQUIRE(!std::filesystem::exists(staging));
         std::printf("PASS: pipeline_test — run %s cleans up staging dir\n",
                     cancel ? "cancel" : "failure");
     }
@@ -840,8 +840,8 @@ int main() {
         ctx.on_download_meta = [&](const std::string& archive_name,
                                    const std::string& display_name) {
             meta_fired = true;
-            assert(archive_name == "Real_Archive-198-489053.7z");
-            assert(display_name == "Real Mod Name");
+            REQUIRE(archive_name == "Real_Archive-198-489053.7z");
+            REQUIRE(display_name == "Real Mod Name");
         };
         Mod mod;
         mod.id = "198-489053";
@@ -849,11 +849,11 @@ int main() {
         mod.download_source_type = "test-meta";
         mod.download_source_id = "198";
         mod.download_nxm.file_id = 489053;
-        assert(stage.execute(mod, ctx));
-        assert(meta_fired);
-        assert(mod.name == "Real Mod Name");
-        assert(mod.archive_filename == "Real_Archive-198-489053.7z");
-        assert(std::filesystem::exists(
+        REQUIRE(stage.execute(mod, ctx));
+        REQUIRE(meta_fired);
+        REQUIRE(mod.name == "Real Mod Name");
+        REQUIRE(mod.archive_filename == "Real_Archive-198-489053.7z");
+        REQUIRE(std::filesystem::exists(
             tmp.root / "downloads" / "Real_Archive-198-489053.7z"));
         std::printf(
             "PASS: FetchStage on_download_meta carries the resolved name before bytes flow\n");
@@ -881,14 +881,12 @@ int main() {
         mod.name = "Mod file blank";  // placeholder
         mod.download_source_type = "test-blank";
         mod.download_source_id = "7";
-        assert(stage.execute(mod, ctx));
-        assert(got_archive.empty() && got_display.empty());
-        assert(mod.name == "Mod file blank");
-        assert(mod.archive_filename == "7.zip");
-        assert(std::filesystem::exists(tmp.root / "downloads" / "7.zip"));
+        REQUIRE(stage.execute(mod, ctx));
+        REQUIRE((got_archive.empty() && got_display.empty()));
+        REQUIRE(mod.name == "Mod file blank");
+        REQUIRE(mod.archive_filename == "7.zip");
+        REQUIRE(std::filesystem::exists(tmp.root / "downloads" / "7.zip"));
         std::printf(
             "PASS: FetchStage on_download_meta fires empty when the provider has no info\n");
     }
-
-    return 0;
 }

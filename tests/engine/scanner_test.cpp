@@ -19,14 +19,15 @@
 #include <iterator>
 #include <string>
 #include <thread>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
-static void require(bool cond, const std::string& msg) {
-    if (!cond) {
-        std::fprintf(stderr, "FAIL: %s\n", msg.c_str());
-        std::exit(1);
-    }
+namespace {
+void require(bool cond, const std::string& msg) {
+    INFO(msg);
+    REQUIRE(cond);
+}
 }
 
 static void write_file(const fs::path& p, const std::string& contents) {
@@ -43,7 +44,7 @@ static const engine::ScannedMod* by_folder(const std::vector<engine::ScannedMod>
     return nullptr;
 }
 
-int main() {
+TEST_CASE("scanner", "[engine]") {
     const fs::path root = "/tmp/gmm_scanner_test";
     fs::remove_all(root);
     fs::create_directories(root);
@@ -300,7 +301,4 @@ int main() {
         require(re != nullptr && re->changed_time > timed->changed_time,
                 "changed_time reflects a file write after install");
     }
-
-    std::printf("scanner_test: all checks passed\n");
-    return 0;
 }

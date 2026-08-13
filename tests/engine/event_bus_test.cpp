@@ -6,17 +6,18 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
 using namespace engine;
 
-static void require(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "FAIL: %s\n", msg);
-        std::exit(1);
-    }
+namespace {
+void require(bool cond, const char* msg) {
+    INFO(msg);
+    REQUIRE(cond);
+}
 }
 
-int main() {
+TEST_CASE("event bus", "[engine]") {
     auto& bus = EventBus::instance();
     bus.clear();  // hermetic: no state leaks across test runs
 
@@ -133,6 +134,4 @@ int main() {
     }
 
     bus.clear();
-    std::printf("event_bus_test: OK\n");
-    return 0;
 }

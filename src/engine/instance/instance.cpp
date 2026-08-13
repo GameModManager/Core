@@ -136,6 +136,9 @@ bool Instance::write_toml() const {
     if (!info_.deploy_strategy.empty()) {
         out << "deploy_strategy = \"" << info_.deploy_strategy << "\"\n";
     }
+    if (!info_.last_tab.empty()) {
+        out << "last_tab = \"" << info_.last_tab << "\"\n";
+    }
     return out.good();
 }
 
@@ -183,6 +186,8 @@ bool Instance::read_toml() {
                 info_.proton_runner = val;
             } else if (key == "deploy_strategy") {
                 info_.deploy_strategy = val;
+            } else if (key == "last_tab") {
+                info_.last_tab = val;
             }
         } else {
             // unquoted numeric/boolean

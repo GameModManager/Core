@@ -23,18 +23,15 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    std::fflush(stdout);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 // 1x1 transparent PNG.
@@ -51,9 +48,12 @@ static bool icon_has_surface(const QIcon& icon) {
     return !icon.isNull() && !icon.pixmap(16, 16).isNull();
 }
 
-int main(int argc, char** argv) {
+TEST_CASE("icon manager", "[ui]") {
     qputenv("QT_QPA_PLATFORM", "offscreen");
-    QApplication app(argc, argv);
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
 
     fs::path base = fs::temp_directory_path() / "gmm_icon_manager_test";
     fs::remove_all(base);
@@ -161,7 +161,4 @@ int main(int argc, char** argv) {
     check(engine::vendor_icon_key("").empty(), "vendor_icon_key: empty has no icon");
 
     fs::remove_all(base);
-
-    std::printf("%d passed, %d failed\n", passes, failures);
-    return failures == 0 ? 0 : 1;
 }

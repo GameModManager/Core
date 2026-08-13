@@ -8,17 +8,15 @@
 #include <fstream>
 #include <string>
 #include <unistd.h>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
-static int failures = 0;
 
-#define CHECK(cond, msg)                                                       \
-    do {                                                                       \
-        if (!(cond)) {                                                         \
-            std::printf("FAIL: %s (%s:%d)\n", msg, __FILE__, __LINE__);        \
-            ++failures;                                                        \
-        }                                                                      \
+#define CHECK(cond, msg)                                               \
+    do {                                                               \
+        INFO(msg);                                                     \
+        REQUIRE(cond);                                                 \
     } while (0)
 
 static fs::path temp_dir(const char* tag) {
@@ -29,7 +27,7 @@ static fs::path temp_dir(const char* tag) {
     return p;
 }
 
-int main() {
+TEST_CASE("keyring", "[engine]") {
     // NexusAuth's config_dir() follows XDG_CONFIG_HOME; redirect it to a temp
     // dir BEFORE the singleton is first touched so nothing writes to the real
     // user config.
@@ -121,10 +119,4 @@ int main() {
               "migrated key stored in keyring");
     }
 
-    if (failures == 0) {
-        std::printf("keyring_test: all tests passed\n");
-        return 0;
-    }
-    std::printf("keyring_test: %d FAILURE(S)\n", failures);
-    return 1;
 }

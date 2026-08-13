@@ -23,17 +23,15 @@
 #include <unistd.h>
 #include <utility>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 static void write_file(const fs::path& p, const std::string& contents) {
@@ -46,7 +44,7 @@ static void write_file(const fs::path& p, const std::string& contents) {
     }
 }
 
-int main() {
+TEST_CASE("deploy parallel", "[engine]") {
     const fs::path base =
         fs::current_path() / ("gmm_test_deploy_parallel_" + std::to_string(getpid()));
     const fs::path mods = base / "mods";
@@ -184,6 +182,4 @@ int main() {
           "both spellings' files deployed into the merged casing");
 
     fs::remove_all(base);
-    std::printf("%d passed, %d failed\n", passes, failures);
-    return failures == 0 ? 0 : 1;
 }

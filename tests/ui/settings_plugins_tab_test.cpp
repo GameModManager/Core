@@ -48,15 +48,13 @@
 #include <cstdio>
 #include <filesystem>
 #include <memory>
+#include <catch2/catch_test_macros.hpp>
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 // Minimal provider so the "provider entries never show a settings container
@@ -111,7 +109,7 @@ static void seed_synthetic(engine::PluginLoader& loader) {
     loader.add_loaded_plugin(std::move(c));
 }
 
-int main(int argc, char** argv) {
+TEST_CASE("settings plugins tab", "[ui]") {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     // Keep QSettings writes fully out of the user's real config. Wipe any
     // previous run's state so persisted option edits don't leak across runs.
@@ -119,7 +117,10 @@ int main(int argc, char** argv) {
     std::filesystem::remove_all("/tmp/gmm_plugins_tab");
     std::filesystem::create_directories(cfg);
     qputenv("XDG_CONFIG_HOME", cfg.c_str());
-    QApplication app(argc, argv);
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
     QCoreApplication::setOrganizationName("GameModManager");
     QCoreApplication::setApplicationName("GameModManager");
 
@@ -130,11 +131,12 @@ int main(int argc, char** argv) {
     engine::StyleManager style(tm);
 
     engine::PluginLoader loader;
-    // Load every directory given on the command line (argv[1] = the real
-    // plugins dir, argv[2] = build/test_plugins with the P1.5 fixture).
-    for (int i = 1; i < argc; ++i) loader.load_directory(argv[i]);
+    // Load the real plugins dir and the build/test_plugins fixture dir
+    // (GMM_PLUGINS_DIR / GMM_TEST_PLUGINS_DIR compile definitions).
+    loader.load_directory(GMM_PLUGINS_DIR);
+    loader.load_directory(GMM_TEST_PLUGINS_DIR);
     std::printf("loaded %d plugin dir(s), plugins = %zu\n",
-                argc - 1, loader.plugins().size());
+                2, loader.plugins().size());
     if (loader.plugins().empty()) seed_synthetic(loader);
     for (const auto& p : loader.plugins())
         std::printf("  - %-40s game=%-28s category=%s\n",
@@ -153,7 +155,6 @@ int main(int argc, char** argv) {
 
     auto* tree = page ? page->findChild<QTreeWidget*>() : nullptr;
     check(tree != nullptr, "left pane is a QTreeWidget (grouped)");
-    if (!tree) return 1;
 
     // --- Category grouping from register_category strings. ---
     bool has_game_support = false, has_tool = false, has_sources = false;
@@ -317,11 +318,7 @@ int main(int argc, char** argv) {
     }
 
     // --- Persistence: checkbox toggle + text edit write back to Settings. ---
-    if (opt_g < 0) {
-        std::printf("FAIL: no plugin exposing options was found\n");
-        ++failures;
-        return 1;
-    }
+    REQUIRE(opt_g >= 0);
     const QString options_leaf_name =
         tree->topLevelItem(opt_g)->child(opt_c)->text(0);
     QString options_basename;
@@ -349,8 +346,7 @@ int main(int argc, char** argv) {
         if (tabs->tabText(i) == "Fixture Settings") fixture_page = tabs->widget(i);
     check(fixture_page != nullptr, "plugin settings tab appended with its declared title");
     if (!fixture_page) {
-        std::printf("FAIL: no 'Fixture Settings' tab in the dialog\n");
-        ++failures;
+        FAIL("no 'Fixture Settings' tab in the dialog");
     } else {
         const auto checkboxes = fixture_page->findChildren<QCheckBox*>();
         const auto spins = fixture_page->findChildren<QSpinBox*>();
@@ -649,7 +645,4 @@ int main(int argc, char** argv) {
         if (auto* close_btn = buttons3->button(QDialogButtonBox::Close))
             close_btn->click();
     app.processEvents();
-
-    std::printf("\n%d passed, %d failed\n", passes, failures);
-    return failures ? 1 : 0;
 }

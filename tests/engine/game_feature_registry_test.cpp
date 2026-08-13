@@ -37,6 +37,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
@@ -47,15 +48,12 @@ namespace fs = std::filesystem;
 #define GMM_SKYRIM_PLUGIN_PATH "SkyrimSpecialEdition.so"
 #endif
 
-static int g_failed = 0;
-static int g_checked = 0;
 
-static void check(bool cond, const std::string& msg) {
-    ++g_checked;
-    if (!cond) {
-        ++g_failed;
-        std::fprintf(stderr, "FAIL: %s\n", msg.c_str());
-    }
+namespace {
+void check(bool cond, const std::string& msg) {
+    INFO(msg);
+    REQUIRE(cond);
+}
 }
 
 static void write_file(const fs::path& p, const std::string& contents) {
@@ -621,7 +619,7 @@ static void test_override_via_c_abi() {
     reg.clear();
 }
 
-int main() {
+TEST_CASE("game feature registry", "[engine]") {
     test_registry_semantics();
     test_scanner_integration();
     test_native_plugins_resolution();
@@ -629,11 +627,4 @@ int main() {
     test_mod_data_content_classifier();
     test_override_via_c_abi();
 
-    if (g_failed > 0) {
-        std::fprintf(stderr, "game_feature_registry_test: %d/%d checks FAILED\n",
-                     g_failed, g_checked);
-        return 1;
-    }
-    std::printf("game_feature_registry_test: all %d checks passed\n", g_checked);
-    return 0;
 }

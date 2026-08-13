@@ -26,15 +26,13 @@
 
 #include <cstdio>
 #include <filesystem>
+#include <catch2/catch_test_macros.hpp>
 
-static int failures = 0;
-static int passes = 0;
-static void check(bool cond, const char* what) {
-    std::printf("%s: %s\n", cond ? "PASS" : "FAIL", what);
-    if (cond)
-        ++passes;
-    else
-        ++failures;
+namespace {
+void check(bool cond, const char* what) {
+    INFO(what);
+    REQUIRE(cond);
+}
 }
 
 static QListWidget* list_of(ui::ListDialog& dlg) {
@@ -50,13 +48,16 @@ static QPushButton* ok_of(ui::ListDialog& dlg) {
     return box ? box->button(QDialogButtonBox::Ok) : nullptr;
 }
 
-int main(int argc, char** argv) {
+TEST_CASE("list dialog", "[ui]") {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     const std::filesystem::path cfg = "/tmp/gmm_list_dialog/config";
     std::filesystem::remove_all("/tmp/gmm_list_dialog");
     std::filesystem::create_directories(cfg);
     qputenv("XDG_CONFIG_HOME", cfg.c_str());
-    QApplication app(argc, argv);
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
     QCoreApplication::setOrganizationName("GameModManager");
     QCoreApplication::setApplicationName("GameModManager");
 
@@ -165,7 +166,4 @@ int main(int argc, char** argv) {
         check(Settings::instance().listdialog_window_geometry() == geo,
               "geometry round-trips through the Settings key");
     }
-
-    std::printf("\n%d passed, %d failed\n", passes, failures);
-    return failures == 0 ? 0 : 1;
 }

@@ -1,10 +1,10 @@
 #include "engine/fs_utils.h"
 
-#include <cassert>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
@@ -14,7 +14,7 @@ static bool path_is(const fs::path& got, const fs::path& want) {
     return got.lexically_normal() == want.lexically_normal();
 }
 
-int main() {
+TEST_CASE("fs utils", "[engine]") {
     using namespace engine;
 
     const fs::path base = fs::temp_directory_path() / "fs_utils_test_core";
@@ -28,23 +28,23 @@ int main() {
 
     // --- normalize_separators / toLower --------------------------------------
     {
-        assert(normalize_separators("a\\b\\c") == "a/b/c");
-        assert(normalize_separators("a/b/c") == "a/b/c");
-        assert(normalize_separators("Skeleton Rig\\HDT") == "Skeleton Rig/HDT");
-        assert(normalize_separators("") == "");
-        assert(toLower("Fomod") == "fomod");
-        assert(toLower("MODULE") == "module");
+        REQUIRE(normalize_separators("a\\b\\c") == "a/b/c");
+        REQUIRE(normalize_separators("a/b/c") == "a/b/c");
+        REQUIRE(normalize_separators("Skeleton Rig\\HDT") == "Skeleton Rig/HDT");
+        REQUIRE(normalize_separators("") == "");
+        REQUIRE(toLower("Fomod") == "fomod");
+        REQUIRE(toLower("MODULE") == "module");
         std::printf("  normalize_separators/toLower: OK\n");
     }
 
     // --- name_matches_ci / find_file_ci ---------------------------------------
     {
-        assert(name_matches_ci(fs::path("Meshes"), "meshes"));
-        assert(name_matches_ci(fs::path("meshes"), "MESHES"));
-        assert(!name_matches_ci(fs::path("Meshes"), "meshesx"));
-        assert(find_file_ci(base / "Fomod", "moduleconfig.xml") ==
+        REQUIRE(name_matches_ci(fs::path("Meshes"), "meshes"));
+        REQUIRE(name_matches_ci(fs::path("meshes"), "MESHES"));
+        REQUIRE(!name_matches_ci(fs::path("Meshes"), "meshesx"));
+        REQUIRE(find_file_ci(base / "Fomod", "moduleconfig.xml") ==
                base / "Fomod" / "ModuleConfig.xml");
-        assert(find_file_ci(base / "Fomod", "nope.xml").empty());
+        REQUIRE(find_file_ci(base / "Fomod", "nope.xml").empty());
         std::printf("  name_matches_ci/find_file_ci: OK\n");
     }
 
@@ -52,24 +52,24 @@ int main() {
     {
         bool escaped = false;
         auto p = resolve_path(base, "Meshes\\Armor\\armor.nif", &escaped);
-        assert(!p.empty() && !escaped);
-        assert(path_is(p, base / "Meshes" / "Armor" / "armor.nif"));
+        REQUIRE((!p.empty() && !escaped));
+        REQUIRE(path_is(p, base / "Meshes" / "Armor" / "armor.nif"));
 
         // Matches case-insensitively and returns the on-disk casing.
         p = resolve_path(base, "meshes\\armor\\armor.nif");
-        assert(!p.empty());
-        assert(p.filename().string() == "armor.nif");
-        assert(p.parent_path().filename().string() == "Armor");
+        REQUIRE(!p.empty());
+        REQUIRE(p.filename().string() == "armor.nif");
+        REQUIRE(p.parent_path().filename().string() == "Armor");
 
         // Directory with spaces, resolved as a path.
         p = resolve_path(base, "Skeleton Rig\\HDT");
-        assert(!p.empty());
-        assert(path_is(p, base / "Skeleton Rig" / "HDT"));
+        REQUIRE(!p.empty());
+        REQUIRE(path_is(p, base / "Skeleton Rig" / "HDT"));
 
         // Trailing slash resolves to the directory itself.
         p = resolve_path(base, "Meshes\\Armor\\");
-        assert(!p.empty());
-        assert(path_is(p, base / "Meshes" / "Armor"));
+        REQUIRE(!p.empty());
+        REQUIRE(path_is(p, base / "Meshes" / "Armor"));
 
         std::printf("  resolve_path separators/case/spaces: OK\n");
     }
@@ -78,27 +78,27 @@ int main() {
     {
         bool escaped = false;
         auto p = resolve_path(base, "meshes\\nope\\x.nif", &escaped);
-        assert(p.empty() && !escaped);  // absent, not an escape
+        REQUIRE((p.empty() && !escaped));  // absent, not an escape
 
         escaped = false;
         p = resolve_path(base, "..\\evil.txt", &escaped);
-        assert(p.empty() && escaped);
+        REQUIRE((p.empty() && escaped));
 
         escaped = false;
         p = resolve_path(base, "Meshes/../../evil.txt", &escaped);
-        assert(p.empty() && escaped);
+        REQUIRE((p.empty() && escaped));
 
         escaped = false;
         p = resolve_path(base, "/etc/passwd", &escaped);
-        assert(p.empty() && escaped);
+        REQUIRE((p.empty() && escaped));
 
         escaped = false;
         p = resolve_path(base, "\\\\server\\share", &escaped);  // UNC = absolute
-        assert(p.empty() && escaped);
+        REQUIRE((p.empty() && escaped));
 
         escaped = false;
         p = resolve_path(base, "", &escaped);
-        assert(p.empty() && escaped);
+        REQUIRE((p.empty() && escaped));
 
         std::printf("  resolve_path missing/traversal/absolute/empty: OK\n");
     }
@@ -124,11 +124,11 @@ int main() {
         // Skyrim: mods_subpath "Data", not include_mod_id. Both files must land
         // in the mod; Overwrite must stay empty.
         auto n = relay_output_to_mod(scratch, mod, ow, "Data", false, "");
-        assert(n == 2);
-        assert(fs::exists(mod / "Meshes" / "a.nif"));   // Data/ stripped
-        assert(!fs::exists(mod / "Data"));              // no Data wrapper
-        assert(fs::exists(mod / "Config" / "game.ini")); // game-root passes through, still in the mod
-        assert(fs::is_empty(ow));                        // Overwrite never touched
+        REQUIRE(n == 2);
+        REQUIRE(fs::exists(mod / "Meshes" / "a.nif"));   // Data/ stripped
+        REQUIRE(!fs::exists(mod / "Data"));              // no Data wrapper
+        REQUIRE(fs::exists(mod / "Config" / "game.ini")); // game-root passes through, still in the mod
+        REQUIRE(fs::is_empty(ow));                        // Overwrite never touched
 
         // Isaac-style include_mod_id: scratch/<mods_subpath>/<mod_id>/<rest>
         // maps to mod/<rest>; a file outside the mapping still lands in the mod.
@@ -140,10 +140,10 @@ int main() {
         touch(scratch2 / "mods" / "IsaacMod" / "resources" / "gfx" / "a.png");
         touch(scratch2 / "top" / "root.txt");
         auto n2 = relay_output_to_mod(scratch2, mod2, ow, "mods", true, "IsaacMod");
-        assert(n2 == 2);
-        assert(fs::exists(mod2 / "resources" / "gfx" / "a.png"));
-        assert(fs::exists(mod2 / "top" / "root.txt"));
-        assert(fs::is_empty(ow));
+        REQUIRE(n2 == 2);
+        REQUIRE(fs::exists(mod2 / "resources" / "gfx" / "a.png"));
+        REQUIRE(fs::exists(mod2 / "top" / "root.txt"));
+        REQUIRE(fs::is_empty(ow));
 
         fs::remove_all(base_r);
         std::printf("  relay_output_to_mod (P2 route-everything): OK\n");
@@ -151,5 +151,4 @@ int main() {
 
     std::printf("fs_utils_test: all checks passed\n");
     fs::remove_all(base);
-    return 0;
 }

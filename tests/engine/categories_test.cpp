@@ -10,14 +10,15 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
 
-static void require(bool cond, const char* msg) {
-    if (!cond) {
-        std::fprintf(stderr, "FAIL: %s\n", msg);
-        std::exit(1);
-    }
+namespace {
+void require(bool cond, const char* msg) {
+    INFO(msg);
+    REQUIRE(cond);
+}
 }
 
 static void write_file(const fs::path& path, const std::string& content) {
@@ -25,7 +26,7 @@ static void write_file(const fs::path& path, const std::string& content) {
     out << content;
 }
 
-int main() {
+TEST_CASE("categories", "[engine]") {
     using engine::Categories;
 
     // --- Default seed (MO2's loadDefaultCategories). ---
@@ -136,7 +137,4 @@ int main() {
             "nexus mapping added");
     require(m.category_for_nexus(52) && m.category_for_nexus(52)->name == "Gameplay",
             "category_for_nexus resolves through the map");
-
-    std::printf("categories_test: all checks passed\n");
-    return 0;
 }
