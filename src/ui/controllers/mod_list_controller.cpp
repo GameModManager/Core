@@ -141,6 +141,55 @@ bool write_separator_color_file(const std::filesystem::path &mod_dir,
   return out.good();
 }
 
+// Per-row UI state persisted in the manager sidecar
+// ({instance_root}/meta/{folder_name}.ini, [GameModManager] section):
+// folded (tree-view collapse) and parent_id (visual-nesting link; absent =
+// top-level). The sidecar is the single source of truth for these fields;
+// instance.toml's legacy folded_separators/folded_mods/mod_parents are only
+// a one-release read-compat fallback (migrated into the sidecar on load).
+struct SidecarUiState {
+  engine::ModMeta meta; // loaded sidecar (empty when no file exists)
+  bool has_folded = false;
+  bool folded = false;
+  bool has_parent = false;
+  QString parent_id;
+};
+
+SidecarUiState load_sidecar_ui_state(const std::filesystem::path &meta_dir,
+                                     const QString &id) {
+  SidecarUiState out;
+  if (meta_dir.empty())
+    return out;
+  out.meta = engine::ModMeta::load(meta_dir, id.toStdString());
+  for (const auto &key : out.meta.keys("GameModManager")) {
+    if (key == "folded") {
+      out.has_folded = true;
+      out.folded = out.meta.get("GameModManager", "folded") == "true";
+    } else if (key == "parent_id") {
+      auto v = out.meta.get("GameModManager", "parent_id");
+      if (!v.empty()) {
+        out.has_parent = true;
+        out.parent_id = QString::fromStdString(v);
+      }
+    }
+  }
+  return out;
+}
+
+// Remove the manager sidecar for a mod id (delete cleanup). Logs on failure;
+// never silently swallows a filesystem error.
+void remove_sidecar(const std::filesystem::path &meta_dir, const QString &id) {
+  if (meta_dir.empty())
+    return;
+  auto sidecar = meta_dir / (id.toStdString() + ".ini");
+  std::error_code ec;
+  if (std::filesystem::exists(sidecar, ec) &&
+      !std::filesystem::remove(sidecar, ec)) {
+    engine::Logger::instance().error("Failed to remove sidecar: " +
+                                     sidecar.string());
+  }
+}
+
 std::vector<QStringList> parse_csv(const QByteArray &data) {
   std::vector<QStringList> rows;
   const QString text = QString::fromUtf8(data);
@@ -330,6 +379,11 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
       return;
     save_order();
     sync_separator_ids();
+    // Persist per-mod UI state (folded + parent_id) to the manager sidecar.
+    // Covers fold toggles, nesting drops, parent renames (the model cascades
+    // children's parent_id, this rewrites their sidecars) and deletes (the
+    // model detaches children, this clears their sidecar parent_id).
+    sync_mod_ui_state();
     apply_mod_filter();
   });
 
@@ -2548,6 +2602,7 @@ void ModListController::remove_selected_mods() {
   auto mods_subpath = w_->knowledge_ ? w_->knowledge_->get(w_->current_game_id_,
                                                            "mods_subpath", "")
                                      : std::string();
+  auto meta_dir = w_->meta_dir_path();
 
   for (const auto &idx : sel) {
     int r = idx.row();
@@ -2564,6 +2619,10 @@ void ModListController::remove_selected_mods() {
             "Failed to move mod folder to trash: " + mod_folder.string());
       }
     }
+    // Delete cleanup: drop the manager sidecar so a removed mod leaves no
+    // orphaned metadata. Children's parent_id is cleared by the model detach
+    // and rewritten by sync_mod_ui_state() via mod_list_changed.
+    remove_sidecar(meta_dir, entry.id);
     w_->mod_model_->remove_mod(entry.id);
   }
 }
@@ -3403,6 +3462,10 @@ void ModListController::delete_separator(int row) {
     }
   }
 
+  // Delete cleanup: drop the manager sidecar. Children of the separator are
+  // detached by the model (parent_id cleared) and their sidecars rewritten by
+  // sync_mod_ui_state() via mod_list_changed.
+  remove_sidecar(w_->meta_dir_path(), mod.id);
   w_->mod_model_->remove_mod(mod.id);
   engine::Logger::instance().debug("Separator deleted: " +
                                    mod.name.toStdString());
@@ -3486,9 +3549,12 @@ void ModListController::save_order() {
   in.close();
 
   // Remove old mod_order / folded_separators / folded_mods / mod_parents /
-  // toolbar_shortcuts / toolbar_shortcut_icons lines (the icons key is only
-  // stripped here for backward compat with pre-#34 instance.toml files; it is
-  // no longer written).
+  // toolbar_shortcuts / toolbar_shortcut_icons lines. The three UI-state keys
+  // (folded_separators/folded_mods/mod_parents) are no longer written — per-mod
+  // fold/parent state lives in the manager sidecar (Issue #35) — but legacy
+  // lines are stripped here so the next save heals old instance.toml files.
+  // The icons key is only stripped for backward compat with pre-#34 files; it
+  // is no longer written either.
   std::istringstream stream(existing);
   std::string line;
   std::string cleaned;
@@ -3513,49 +3579,6 @@ void ModListController::save_order() {
       continue;
     cleaned += line + "\n";
   }
-
-  // Folded separators
-  cleaned += "folded_separators = [";
-  bool first = true;
-  auto &mods = w_->mod_model_->mods();
-  for (const auto &m : mods) {
-    if (m.is_separator && m.folded) {
-      if (!first)
-        cleaned += ", ";
-      cleaned += "\"" + m.name.toStdString() + "\"";
-      first = false;
-    }
-  }
-  cleaned += "]\n";
-
-  // Folded mods (visual nesting; name-keyed like folded_separators, so a
-  // renamed mod loses its fold state - consistent with the separator rule).
-  cleaned += "folded_mods = [";
-  bool first_fm = true;
-  for (const auto &m : mods) {
-    if (!m.is_separator && m.folded) {
-      if (!first_fm)
-        cleaned += ", ";
-      cleaned += "\"" + m.name.toStdString() + "\"";
-      first_fm = false;
-    }
-  }
-  cleaned += "]\n";
-
-  // Visual-nesting parent links: "child_id=parent_id". Id-based, so renames
-  // survive (rename_mod_in_place cascades parent_id on the model).
-  cleaned += "mod_parents = [";
-  bool first_mp = true;
-  for (const auto &m : mods) {
-    if (m.parent_id.isEmpty())
-      continue;
-    if (!first_mp)
-      cleaned += ", ";
-    cleaned +=
-        "\"" + m.id.toStdString() + "=" + m.parent_id.toStdString() + "\"";
-    first_mp = false;
-  }
-  cleaned += "]\n";
 
   // Toolbar shortcuts (Issue #34): game-relative executable paths referencing
   // the executables list. The icon, args/cwd/env, output mod and title are
@@ -3726,26 +3749,85 @@ void ModListController::load_order() {
     return;
   }
 
-  // Migration path: if old mod_order is present, use it to reorder + assign
-  // priorities
-  auto apply_fold = [&folded_names, &folded_mod_names](ModEntry &m) {
-    // Separators use folded_separators, folded mods use folded_mods (both
-    // name-keyed). Either way the flag is reset first so a stale entry in
-    // the persisted list can't resurrect a fold that was later unfolded.
-    const auto &names = m.is_separator ? folded_names : folded_mod_names;
-    m.folded = false;
-    for (const auto &fn : names) {
-      if (m.name.toStdString() == fn) {
-        m.folded = true;
-        break;
+  // --- Per-mod UI state: manager sidecar primary, legacy instance.toml
+  // fallback (one-release read-compat) ---
+  //
+  // folded + parent_id live in the manager sidecar
+  // ({instance_root}/meta/{folder_name}.ini, [GameModManager] section).
+  // Legacy instance.toml keys (folded_separators/folded_mods/mod_parents)
+  // are only consulted when a sidecar lacks the new key, and are migrated
+  // into the sidecar here (self-healing). save_order() strips the legacy
+  // keys on the next write. Pseudo-rows (Overwrite/MERGED/game-native)
+  // never persist fold/parent.
+  auto meta_dir = w_->meta_dir_path();
+  // id -> {folded, parent_id} effective values (sidecar wins, legacy fills
+  // the gaps for one release).
+  QHash<QString, std::pair<bool, QString>> ui_state;
+  bool migrated = false;
+  for (auto &m : mods) {
+    if (m.is_overwrite || m.is_merged || m.is_game_native)
+      continue;
+    auto st = load_sidecar_ui_state(meta_dir, m.id);
+    bool folded = false;
+    QString parent;
+    bool row_migrated = false;
+    if (st.has_folded) {
+      folded = st.folded;
+    } else {
+      // Legacy fallback: folded_separators/folded_mods are name-keyed (same
+      // matching as the old apply_fold).
+      const auto &names = m.is_separator ? folded_names : folded_mod_names;
+      for (const auto &fn : names) {
+        if (m.name.toStdString() == fn) {
+          folded = true;
+          st.meta.set_folded(true);
+          row_migrated = true;
+          break;
+        }
       }
     }
+    if (st.has_parent) {
+      parent = st.parent_id;
+    } else {
+      // Legacy fallback: mod_parents is id-keyed ("child=parent").
+      for (const auto &[child, par] : parent_links) {
+        if (child == m.id.toStdString()) {
+          parent = QString::fromStdString(par);
+          st.meta.set_parent_id(par);
+          row_migrated = true;
+          break;
+        }
+      }
+    }
+    if (row_migrated) {
+      if (st.meta.save(meta_dir, m.id.toStdString())) {
+        migrated = true;
+      } else {
+        engine::Logger::instance().error(
+            "Failed to migrate UI state sidecar for " + m.id.toStdString());
+      }
+    }
+    ui_state.insert(m.id, {folded, parent});
+  }
+  if (migrated) {
+    engine::Logger::instance().debug(
+        "Migrated folded/parent UI state from instance.toml to manager "
+        "sidecars");
+  }
+
+  // Apply fold state from the effective map (sidecar primary; legacy filled
+  // the gaps above). The flag is reset first so a stale sidecar entry can't
+  // resurrect a fold that was later unfolded.
+  auto apply_fold = [&ui_state](ModEntry &m) {
+    auto it = ui_state.constFind(m.id);
+    m.folded = (it != ui_state.constEnd()) ? it->first : false;
   };
 
-  // Id-based nesting links from instance.toml's mod_parents.
+  // Id-based nesting links from the effective parent map.
   QHash<QString, QString> parent_map;
-  for (const auto &[child, parent] : parent_links) {
-    parent_map[QString::fromStdString(child)] = QString::fromStdString(parent);
+  for (auto it = ui_state.constBegin(); it != ui_state.constEnd(); ++it) {
+    if (!it->second.isEmpty())
+      parent_map.insert(it.key(), it->second);
   }
 
   if (!order.empty()) {
@@ -3862,6 +3944,39 @@ void ModListController::load_order() {
   // Ensure apply_fold_state() reflects current flags
   w_->mod_model_->apply_fold_state();
 
+  // Delete cleanup (self-healing): drop orphaned sidecars — files in the
+  // meta dir whose mod folder no longer exists in the model (deleted outside
+  // the manager, or rows removed while it was closed). Pseudo-row sidecars
+  // (Overwrite/MERGED, created by sync_priorities) are kept. Children of a
+  // deleted row get their parent_id cleared by the model's detach path, then
+  // rewritten by sync_mod_ui_state().
+  {
+    std::error_code ec;
+    if (!meta_dir.empty() && std::filesystem::exists(meta_dir, ec)) {
+      QSet<QString> valid_ids;
+      for (const auto &m : w_->mod_model_->mods())
+        valid_ids.insert(m.id);
+      for (const auto &entry :
+           std::filesystem::directory_iterator(meta_dir, ec)) {
+        std::error_code entry_ec;
+        if (!entry.is_regular_file(entry_ec))
+          continue;
+        auto fname = entry.path().filename().string();
+        if (fname.size() < 5 ||
+            fname.compare(fname.size() - 4, 4, ".ini") != 0)
+          continue;
+        auto folder = QString::fromStdString(fname.substr(0, fname.size() - 4));
+        if (valid_ids.contains(folder))
+          continue;
+        std::error_code remove_ec;
+        if (std::filesystem::remove(entry.path(), remove_ec)) {
+          engine::Logger::instance().debug(
+              "Removed orphaned sidecar: " + entry.path().string());
+        }
+      }
+    }
+  }
+
   // Restore toolbar shortcuts (Issue #34): pins are game-relative paths
   // referencing the executables list. Legacy pre-#34 files stored absolute
   // paths (and a parallel toolbar_shortcut_icons array) - migrate absolute
@@ -3917,6 +4032,45 @@ void ModListController::sync_separator_ids() {
         meta.set_separator_id(new_sid.toStdString());
         meta.save(meta_dir, folder_name);
       }
+    }
+  }
+}
+
+void ModListController::sync_mod_ui_state() {
+  if (w_->loading_)
+    return;
+  if (w_->current_instance_root_.empty())
+    return;
+  auto meta_dir = w_->meta_dir_path();
+  if (meta_dir.empty())
+    return;
+
+  // Persist per-mod UI state (folded + parent_id) to the manager sidecar.
+  // Pseudo-rows (Overwrite/MERGED/game-native) never persist fold/parent.
+  // Only rows whose sidecar diverges from the model are written, so a
+  // steady-state mod_list_changed (e.g. a priority move) costs reads only.
+  const auto &mods = w_->mod_model_->mods();
+  for (const auto &m : mods) {
+    if (m.is_overwrite || m.is_merged || m.is_game_native)
+      continue;
+    auto st = load_sidecar_ui_state(meta_dir, m.id);
+    bool changed = false;
+    if (!st.has_folded || st.folded != m.folded) {
+      st.meta.set_folded(m.folded);
+      changed = true;
+    }
+    if (m.parent_id.isEmpty()) {
+      if (st.has_parent) {
+        st.meta.unset("GameModManager", "parent_id");
+        changed = true;
+      }
+    } else if (st.parent_id != m.parent_id) {
+      st.meta.set_parent_id(m.parent_id.toStdString());
+      changed = true;
+    }
+    if (changed && !st.meta.save(meta_dir, m.id.toStdString())) {
+      engine::Logger::instance().error(
+          "Failed to persist UI state sidecar for " + m.id.toStdString());
     }
   }
 }

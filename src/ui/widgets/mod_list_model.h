@@ -176,8 +176,9 @@ public:
     // separator under a mod, or form a cycle. Runs at load time.
     void sanitize_parent_links();
     // Load-time restore of persisted nesting links ("child id" -> "parent id",
-    // as read from instance.toml's mod_parents). Entries missing from the map
-    // get a cleared link. Re-validates everything via sanitize_parent_links().
+    // as read from the manager sidecar's parent_id / legacy instance.toml
+    // mod_parents). Entries missing from the map get a cleared link.
+    // Re-validates everything via sanitize_parent_links().
     void restore_parent_links(const QHash<QString, QString>& links);
     // Whether any row flagged visible in `visible` is a descendant of `row`
     // (nesting). Used by the mod filter so a filtered-out parent stays shown

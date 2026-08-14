@@ -55,6 +55,21 @@ public:
     void set_priority(int p);
     [[nodiscard]] bool imported_from_mo2() const;
 
+    // --- Per-mod UI state (manager sidecar) ---
+    // Tree-view collapse state and visual-nesting parent link. These live in
+    // the manager sidecar's [GameModManager] section ({instance_root}/meta/
+    // {folder_name}.ini) — NOT the mod's own MO2-format meta.ini, which is
+    // game-visible. folded is explicit true/false; parent_id is absent for
+    // top-level rows (unset() clears it back to "absent").
+    [[nodiscard]] bool folded() const;
+    void set_folded(bool folded_state);
+    [[nodiscard]] std::string parent_id() const;
+    void set_parent_id(const std::string& id);
+
+    // Remove a single key (and leave the section in place). Used to clear
+    // parent_id so a top-level row serializes without the key.
+    void unset(const std::string& section, const std::string& key);
+
     // --- File I/O ---
     // Load/save meta file at {meta_dir}/{folder_name}.ini
     static ModMeta load(const std::filesystem::path& meta_dir,

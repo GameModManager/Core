@@ -336,6 +336,32 @@ bool ModMeta::imported_from_mo2() const {
 }
 
 // ---------------------------------------------------------------------------
+// Per-mod UI state (manager sidecar)
+// ---------------------------------------------------------------------------
+
+bool ModMeta::folded() const {
+    return get("GameModManager", "folded") == "true";
+}
+
+void ModMeta::set_folded(bool folded_state) {
+    set("GameModManager", "folded", folded_state ? "true" : "false");
+}
+
+std::string ModMeta::parent_id() const {
+    return get("GameModManager", "parent_id");
+}
+
+void ModMeta::set_parent_id(const std::string& id) {
+    set("GameModManager", "parent_id", id);
+}
+
+void ModMeta::unset(const std::string& section, const std::string& key) {
+    int idx = section_index(sections_, section);
+    if (idx < 0) return;
+    sections_[idx].second.erase(key);
+}
+
+// ---------------------------------------------------------------------------
 // File I/O
 // ---------------------------------------------------------------------------
 

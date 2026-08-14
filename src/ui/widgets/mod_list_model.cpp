@@ -811,7 +811,8 @@ void ModListModel::rename_mod_in_place(int row, const QString& new_id, const QSt
     mods_[row].id = new_id;
     mods_[row].name = new_name;
     // Children that pointed at the old id follow the rename: nesting links are
-    // id-based, so the persisted mod_parents stay valid after a rename.
+    // id-based, so the persisted sidecar parent_id stays valid after a rename
+    // (sync_mod_ui_state rewrites the children's sidecars on mod_list_changed).
     for (auto& m : mods_) {
         if (m.parent_id == old_id) m.parent_id = new_id;
     }
@@ -1221,9 +1222,10 @@ void ModListModel::set_folded(int row, bool folded) {
     // cell it used to prefix.
     emit dataChanged(index(row, Fold), index(row, Name), {Qt::DisplayRole});
     apply_fold_state();
-    // Persist the fold: the MainWindow mod_list_changed handler saves
-    // instance.toml's folded_separators. Without this a fold/unfold never
-    // reached the disk and the state reset on every reopen/relaunch.
+    // Persist the fold: the MainWindow mod_list_changed handler saves the
+    // manager sidecar's [GameModManager] folded key. Without this a
+    // fold/unfold never reached the disk and the state reset on every
+    // reopen/relaunch.
     emit mod_list_changed();
 }
 
