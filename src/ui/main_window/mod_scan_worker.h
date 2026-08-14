@@ -1,7 +1,7 @@
 #pragma once
 
-#include "engine/detect/mod_scanner.h"
-#include "engine/registry/game_knowledge.h"
+#include "engine/game/detect/mod_scanner.h"
+#include "engine/game/registry/game_knowledge.h"
 
 #include <QObject>
 

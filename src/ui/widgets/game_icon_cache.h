@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/registry/game_knowledge.h"
+#include "engine/game/registry/game_knowledge.h"
 
 #include <QIcon>
 #include <QObject>

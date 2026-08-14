@@ -1,5 +1,5 @@
 // Test for engine::NxmRouter::parse.
-#include "engine/nxm/nxm_router.h"
+#include "engine/source/nxm/nxm_router.h"
 
 #include <catch2/catch_test_macros.hpp>
 

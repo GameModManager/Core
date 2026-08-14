@@ -1,6 +1,6 @@
 #include "engine/pipeline/pipeline.h"
-#include "engine/fomod/fomod_view_model.h"
-#include "engine/filetree/staging_layout.h"
+#include "engine/mod/fomod/fomod_view_model.h"
+#include "engine/mod/filetree/staging_layout.h"
 #include "engine/pipeline/fetch_stage.h"
 #include "engine/pipeline/extract_stage.h"
 #include "engine/pipeline/fomod_stage.h"
@@ -10,7 +10,7 @@
 #include "engine/pipeline/deploy_stage.h"
 #include "engine/pipeline/launch_stage.h"
 #include "engine/pipeline/sync_stage.h"
-#include "engine/model/mod.h"
+#include "engine/mod/model/mod.h"
 #include "engine/source/source_provider.h"
 
 #include <cstdio>

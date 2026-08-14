@@ -1,10 +1,10 @@
 #include "ui/proton/proton_panel.h"
 
 #include "engine/deploy/deploy_utils.h"
-#include "engine/instance/instance.h"
-#include "engine/launch/overlay_launcher.h"
-#include "engine/plugin_host/plugin_loader.h"
-#include "engine/launch/proton_tools.h"
+#include "engine/core/instance/instance.h"
+#include "engine/deploy/launch/overlay_launcher.h"
+#include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "engine/deploy/launch/proton_tools.h"
 #include "platform/platform_interface.h"
 #include "runtime/runtime.h"
 

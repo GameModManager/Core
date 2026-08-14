@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/trace/trace_recorder.h"
+#include "engine/core/trace/trace_recorder.h"
 
 #include <QDialog>
 #include <QLabel>

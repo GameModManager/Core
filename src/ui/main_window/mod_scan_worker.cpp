@@ -1,9 +1,9 @@
 #include "ui/main_window/mod_scan_worker.h"
 
-#include "engine/log/logger.h"
-#include "engine/meta/mod_meta.h"
-#include "engine/plugins/plugin_database.h"
-#include "engine/registry/game_features/game_feature_registry.h"
+#include "engine/core/log/logger.h"
+#include "engine/mod/meta/mod_meta.h"
+#include "engine/game/plugins/plugin_database.h"
+#include "engine/game/registry/game_features/game_feature_registry.h"
 
 #include <QMetaObject>
 #include <QThread>

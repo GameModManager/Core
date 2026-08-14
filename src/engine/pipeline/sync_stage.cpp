@@ -1,8 +1,8 @@
 #include "engine/pipeline/sync_stage.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/index/conflict_index.h"
-#include "engine/instance/instance.h"
-#include "engine/log/logger.h"
+#include "engine/core/instance/instance.h"
+#include "engine/core/log/logger.h"
 
 #include <algorithm>
 #include <filesystem>

@@ -4,9 +4,9 @@
 // path resolution under <data root>/cache/icons, the cached-file short-circuit
 // (no network), the zero-byte leftover cleanup, and a clean failure for an
 // unreachable URL (no partial file left behind).
-#include "engine/instance/game_icons.h"
-#include "engine/instance/instance_utils.h"
-#include "engine/registry/game_knowledge.h"
+#include "engine/core/instance/game_icons.h"
+#include "engine/core/instance/instance_utils.h"
+#include "engine/game/registry/game_knowledge.h"
 
 #include <cstdio>
 #include <cstdlib>

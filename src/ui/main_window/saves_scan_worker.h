@@ -8,9 +8,9 @@
 // dir); the worker copies the game's save files and computes per-save missing
 // assets, then hands back a full result via a queued signal.
 
-#include "engine/plugins/plugin_info.h"
-#include "engine/saves/save_game.h"
-#include "engine/saves/save_missing_assets.h"
+#include "engine/game/plugins/plugin_info.h"
+#include "engine/game/saves/save_game.h"
+#include "engine/game/saves/save_missing_assets.h"
 
 #include <QObject>
 #include <QString>

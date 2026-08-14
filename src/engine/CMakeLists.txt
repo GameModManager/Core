@@ -1,8 +1,11 @@
 # Engine — Qt-free static library. No Qt6::* target is linked here and no
-# Qt include directory is exposed. The handful of Qt-using files that live
-# under src/engine/ (theme/style_manager, theme/icon_manager,
-# notify/notification_backend, nxm/nxm_ipc, single_instance) are compiled
-# into gmm_ui instead, keeping this target Qt-free at the CMake level.
+# Qt include directory is exposed. The Qt-using files (theme/style_manager,
+# theme/icon_manager, notify/notification_backend, nxm/nxm_ipc,
+# launch/single_instance) live under src/ui/ and are compiled into gmm_ui
+# instead, keeping this target Qt-free at the CMake level.
+#
+# Directory groups (issue/33): core/, mod/, source/, game/, pipeline/,
+# deploy/, platform/; sort/ and index/ stay at engine top level.
 #
 # Dependency direction: engine -> runtime -> platform (all Qt-free).
 
@@ -10,33 +13,33 @@
 # view-model state machine, staging-dir file installer). Shared by the app and
 # the engine tests that drive FomodStage directly.
 set(FOMOD_ENGINE_SOURCES
-    fomod/module_config.cpp
-    fomod/condition_tester.cpp
-    fomod/fomod_view_model.cpp
-    fomod/file_installer.cpp
+    mod/fomod/module_config.cpp
+    mod/fomod/condition_tester.cpp
+    mod/fomod/fomod_view_model.cpp
+    mod/fomod/file_installer.cpp
     ${PROJECT_SOURCE_DIR}/third_party/pugixml/pugixml.cpp
 )
 
 set(ENGINE_SOURCES
-    instance/instance.cpp
-    instance/instance_utils.cpp
-    instance/game_icons.cpp
-    util/fs_utils.cpp
-    filetree/file_tree.cpp
-    filetree/dir_file_tree.cpp
-    filetree/data_archive.cpp
-    filetree/archive_file_tree.cpp
-    filetree/staging_layout.cpp
-    registry/game_features/mod_data_checker.cpp
-    registry/game_features/game_feature.cpp
-    registry/game_features/game_feature_registry.cpp
-    detect/game_detector.cpp
-    detect/mod_scanner.cpp
-    archive/archive_extractor.cpp
+    core/instance/instance.cpp
+    core/instance/instance_utils.cpp
+    core/instance/game_icons.cpp
+    core/util/fs_utils.cpp
+    mod/filetree/file_tree.cpp
+    mod/filetree/dir_file_tree.cpp
+    mod/filetree/data_archive.cpp
+    mod/filetree/archive_file_tree.cpp
+    mod/filetree/staging_layout.cpp
+    game/registry/game_features/mod_data_checker.cpp
+    game/registry/game_features/game_feature.cpp
+    game/registry/game_features/game_feature_registry.cpp
+    game/detect/game_detector.cpp
+    game/detect/mod_scanner.cpp
+    mod/archive/archive_extractor.cpp
     index/conflict_index.cpp
     index/isaac_conflict_index.cpp
     index/conflict_engine.cpp
-    model/profile.cpp
+    mod/model/profile.cpp
     deploy/order_hook.cpp
     deploy/strategy_symlink.cpp
     deploy/strategy_hardlink.cpp
@@ -45,7 +48,7 @@ set(ENGINE_SOURCES
     deploy/deploy_ledger.cpp
     deploy/deploy_utils.cpp
     deploy/root_override.cpp
-    launch/overlay_launcher.cpp
+    deploy/launch/overlay_launcher.cpp
     pipeline/pipeline.cpp
     pipeline/fetch_stage.cpp
     pipeline/extract_stage.cpp
@@ -57,38 +60,38 @@ set(ENGINE_SOURCES
     pipeline/launch_stage.cpp
     pipeline/sync_stage.cpp
     pipeline/plugin_claim_stage.cpp
-    trace/trace_recorder.cpp
-    events/event_bus.cpp
-    plugin_host/abi_bridge.cpp
-    log/logger.cpp
-    log/crash_handler.cpp
-    cache/mod_cache.cpp
-    plugin_host/plugin_loader.cpp
-    plugin_host/diagnostics_registry.cpp
-    registry/stage_registry.cpp
-    registry/hook_registry.cpp
-    registry/game_capabilities.cpp
-    registry/game_knowledge.cpp
-    nxm/nxm_router.cpp
-    nxm/managed_games.cpp
+    core/trace/trace_recorder.cpp
+    core/events/event_bus.cpp
+    pipeline/plugin_host/abi_bridge.cpp
+    core/log/logger.cpp
+    core/log/crash_handler.cpp
+    mod/cache/mod_cache.cpp
+    pipeline/plugin_host/plugin_loader.cpp
+    pipeline/plugin_host/diagnostics_registry.cpp
+    pipeline/registry/stage_registry.cpp
+    pipeline/registry/hook_registry.cpp
+    game/registry/game_capabilities.cpp
+    game/registry/game_knowledge.cpp
+    source/nxm/nxm_router.cpp
+    source/nxm/managed_games.cpp
     sort/abi_sort_provider.cpp
     sort/sort_registry.cpp
-    workshop/remote_cache.cpp
-    workshop/workshop_client.cpp
-    theme/theme_manager.cpp
-    tools/external_tool.cpp
-    plugin_host/python_loader.cpp
-    meta/mod_meta.cpp
-    meta/categories.cpp
-    overwrite/overwrite_utils.cpp
-    plugins/esp_header.cpp
-    plugins/plugin_database.cpp
-    saves/save_game.cpp
-    saves/save_reader.cpp
-    saves/skyrim_save.cpp
-    saves/save_scanner.cpp
-    saves/save_missing_assets.cpp
-    saves/local_saves.cpp
+    source/workshop/remote_cache.cpp
+    source/workshop/workshop_client.cpp
+    platform/theme/theme_manager.cpp
+    platform/tools/external_tool.cpp
+    pipeline/plugin_host/python_loader.cpp
+    mod/meta/mod_meta.cpp
+    mod/meta/categories.cpp
+    mod/overwrite/overwrite_utils.cpp
+    game/plugins/esp_header.cpp
+    game/plugins/plugin_database.cpp
+    game/saves/save_game.cpp
+    game/saves/save_reader.cpp
+    game/saves/skyrim_save.cpp
+    game/saves/save_scanner.cpp
+    game/saves/save_missing_assets.cpp
+    game/saves/local_saves.cpp
     sort/loot/loot_sorter.cpp
     sort/loot/masterlists.cpp
     source/source_provider.cpp
@@ -100,11 +103,11 @@ set(ENGINE_SOURCES
     source/loverslab_provider.cpp
     source/nexus_auth.cpp
     source/loverslab_auth.cpp
-    download/curl_download.cpp
-    keyring/keyring.cpp
-    launch/preload_interceptor.cpp
-    launch/launcher.cpp
-    launch/proton_tools.cpp
+    source/download/curl_download.cpp
+    core/keyring/keyring.cpp
+    deploy/launch/preload_interceptor.cpp
+    deploy/launch/launcher.cpp
+    deploy/launch/proton_tools.cpp
     ${FOMOD_ENGINE_SOURCES}
 )
 

@@ -1,13 +1,13 @@
 #include "engine/pipeline/fomod_stage.h"
 #include "engine/pipeline/pipeline.h"
-#include "engine/model/mod.h"
-#include "engine/fomod/condition_tester.h"
-#include "engine/fomod/file_installer.h"
-#include "engine/fomod/fomod_utils.h"
-#include "engine/fomod/fomod_view_model.h"
-#include "engine/fomod/module_config.h"
-#include "engine/meta/mod_meta.h"
-#include "engine/log/logger.h"
+#include "engine/mod/model/mod.h"
+#include "engine/mod/fomod/condition_tester.h"
+#include "engine/mod/fomod/file_installer.h"
+#include "engine/mod/fomod/fomod_utils.h"
+#include "engine/mod/fomod/fomod_view_model.h"
+#include "engine/mod/fomod/module_config.h"
+#include "engine/mod/meta/mod_meta.h"
+#include "engine/core/log/logger.h"
 
 #include <nlohmann/json.hpp>
 
@@ -54,7 +54,7 @@ private:
     std::filesystem::path gameDataDir_;
 };
 
-// FOMOD Plus findFomodDirectory lives in engine/fomod/fomod_utils.h (shared
+// FOMOD Plus findFomodDirectory lives in engine/mod/fomod/fomod_utils.h (shared
 // with ExtractStage, which must not reshape FOMOD archives).
 
 // Previously persisted FOMOD choices from a reinstall: read [fomod] choices

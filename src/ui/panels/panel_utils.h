@@ -5,7 +5,7 @@
 // panel file stays self-contained. Header-only inline so no extra TU is
 // needed.
 
-#include "engine/theme/icon_manager.h"
+#include "ui/theme/icon_manager.h"
 
 #include <QAbstractItemView>
 #include <QFileIconProvider>

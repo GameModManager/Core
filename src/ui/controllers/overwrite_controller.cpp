@@ -7,10 +7,10 @@
 #include <QMessageBox>
 #include <QUrl>
 
-#include "engine/log/logger.h"
-#include "engine/meta/mod_meta.h"
-#include "engine/overwrite/overwrite_utils.h"
-#include "engine/registry/game_knowledge.h"
+#include "engine/core/log/logger.h"
+#include "engine/mod/meta/mod_meta.h"
+#include "engine/mod/overwrite/overwrite_utils.h"
+#include "engine/game/registry/game_knowledge.h"
 #include "ui/main_window/main_window.h"
 #include "ui/overwrite/move_to_mod_dialog.h"
 #include "ui/overwrite/overwrite_info_dialog.h"

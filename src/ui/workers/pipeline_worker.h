@@ -1,8 +1,8 @@
 #pragma once
 
-#include "engine/model/mod.h"
+#include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
-#include "engine/nxm/nxm_router.h"
+#include "engine/source/nxm/nxm_router.h"
 
 #include <QObject>
 #include <QThread>

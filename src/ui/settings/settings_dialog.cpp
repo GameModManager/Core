@@ -1,13 +1,13 @@
 #include "ui/settings/settings_dialog.h"
 #include "ui/settings/settings.h"
 #include "ui/settings/source_pages.h"
-#include "engine/plugin_host/plugin_loader.h"
+#include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "engine/source/source_provider.h"
-#include "engine/theme/style_manager.h"
-#include "engine/theme/icon_manager.h"
-#include "engine/instance/instance.h"
-#include "engine/instance/instance_utils.h"
-#include "engine/log/logger.h"
+#include "ui/theme/style_manager.h"
+#include "ui/theme/icon_manager.h"
+#include "engine/core/instance/instance.h"
+#include "engine/core/instance/instance_utils.h"
+#include "engine/core/log/logger.h"
 
 #include <QAbstractItemView>
 #include <QApplication>

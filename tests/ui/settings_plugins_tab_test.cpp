@@ -21,11 +21,11 @@
 #include "ui/settings/settings_dialog.h"
 #include "ui/settings/settings.h"
 
-#include "engine/instance/instance_utils.h"
-#include "engine/plugin_host/plugin_loader.h"
+#include "engine/core/instance/instance_utils.h"
+#include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "engine/source/source_provider.h"
-#include "engine/theme/style_manager.h"
-#include "engine/theme/theme_manager.h"
+#include "ui/theme/style_manager.h"
+#include "engine/platform/theme/theme_manager.h"
 
 #include <QAbstractSpinBox>
 #include <QApplication>
