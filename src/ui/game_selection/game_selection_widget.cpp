@@ -13,7 +13,7 @@ namespace ui {
 
 QIcon GameSelectionWidget::resolve_icon(const GameEntry& entry) {
     // Game icons are a logical key too: a theme can ship themes/<theme>/icons/
-    // <game_id>.png, and IconManager falls back to system/fugue before the
+    // <game_id>.png, and IconManager falls back to system/base pack before the
     // generated letter avatar here.
     QIcon icon = engine::IconManager::instance().resolve_icon(
         QString::fromStdString(entry.game_id));
