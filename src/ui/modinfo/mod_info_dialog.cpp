@@ -164,7 +164,12 @@ void ModInfoDialog::switch_to(int index) {
     if (index == nav_index_) return;
     if (!can_switch()) return;
 
-    for (auto* tab : tab_order_) tab->save_state();
+    // Only tabs that were actually initialized (set_current() + set_mod())
+    // hold a valid ModInfoData; unvisited tabs have null std::function
+    // members and would crash in save_state() (std::bad_function_call).
+    for (size_t i = 0; i < tab_order_.size(); ++i)
+        if (tab_loaded_[i])
+            tab_order_[i]->save_state();
 
     const QString& target_id = nav_list_[static_cast<size_t>(index)].first;
     if (data_builder_) {
@@ -185,7 +190,12 @@ int ModInfoDialog::next_nav_index(int from, int dir) const {
 
 void ModInfoDialog::reload_current(ModInfoData data) {
     if (!can_switch()) return;
-    for (auto* tab : tab_order_) tab->save_state();
+    // Only tabs that were actually initialized (set_current() + set_mod())
+    // hold a valid ModInfoData; unvisited tabs have null std::function
+    // members and would crash in save_state() (std::bad_function_call).
+    for (size_t i = 0; i < tab_order_.size(); ++i)
+        if (tab_loaded_[i])
+            tab_order_[i]->save_state();
     current_mod_data_ = std::move(data);
 
     // Mark all tabs as needing reload.
@@ -249,7 +259,12 @@ void ModInfoDialog::closeEvent(QCloseEvent* event) {
         event->ignore();
         return;
     }
-    for (auto* tab : tab_order_) tab->save_state();
+    // Only tabs that were actually initialized (set_current() + set_mod())
+    // hold a valid ModInfoData; unvisited tabs have null std::function
+    // members and would crash in save_state() (std::bad_function_call).
+    for (size_t i = 0; i < tab_order_.size(); ++i)
+        if (tab_loaded_[i])
+            tab_order_[i]->save_state();
     persist_geometry();
     QDialog::closeEvent(event);
 }
