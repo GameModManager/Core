@@ -43,6 +43,7 @@
 #include "engine/events/event_bus.h"
 #include "engine/fs_utils.h"
 #include "engine/instance/instance.h"
+#include "engine/instance/instance_utils.h"
 #include "engine/log/logger.h"
 #include "engine/meta/mod_meta.h"
 #include "engine/overwrite/overwrite_utils.h"
@@ -1457,10 +1458,22 @@ void LaunchController::show_proton_panel() {
                                     ? w_->current_game_id_
                                     : w_->current_game_name_;
 
+  // Snapshot the game knowledge (read-only after plugin registration) so the
+  // panel's deploy management section uses the exact same effective strategy
+  // and DeployConfig as the launch path (instance_utils: single source of
+  // truth for direct-symlink deploys).
+  engine::GameKnowledge knowledge =
+      w_->knowledge_ ? *w_->knowledge_ : engine::GameKnowledge();
+  const std::string deploy_strategy = engine::effective_deploy_strategy(
+      w_->current_instance_root_, knowledge, w_->current_game_id_);
+  const engine::DeployConfig deploy_config = engine::deploy_config_for(
+      w_->current_instance_root_, w_->current_game_dir_, knowledge,
+      w_->current_game_id_);
+
   ui::ProtonPanel dlg(w_->platform_, w_->plugin_loader_, w_->current_game_id_,
                       game_name, w_->current_game_dir_, steam_appid,
                       w_->current_instance_root_, inst.info().proton_runner,
-                      w_);
+                      deploy_strategy, deploy_config, w_);
   if (dlg.exec() == QDialog::Accepted) {
     auto runner = dlg.selected_runner();
     engine::Instance write =
