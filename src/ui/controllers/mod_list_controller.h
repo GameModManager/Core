@@ -65,6 +65,12 @@ public slots:
   void save_order();
   void load_order();
   void sync_separator_ids();
+  // Persist per-mod UI state (folded + parent_id) to the manager sidecar
+  // ({instance_root}/meta/{folder_name}.ini, [GameModManager] section).
+  // Runs on every mod_list_changed (fold toggles, nesting drops, renames,
+  // deletes) so the sidecar always mirrors the model. Pseudo-rows
+  // (Overwrite/MERGED/game-native) never persist fold/parent.
+  void sync_mod_ui_state();
   void group_mods_by_separator();
   void apply_mod_filter();
   // Conflict recompute (THREADING.md §3.6, P8.1) — see MainWindow comments.
