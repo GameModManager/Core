@@ -128,21 +128,24 @@ void ImagesTab::set_mod(const ModInfoData& data) {
     apply_filter();
 }
 
+void ImagesTab::first_activation() {
+    for (int i = 0; i < thumbnails_->count(); ++i) {
+        auto* item = thumbnails_->item(i);
+        const QString path = item->data(Qt::UserRole).toString();
+        if (icon_cache_.contains(path)) continue;
+        QImageReader reader(path);
+        const QImage img = reader.read();
+        if (img.isNull()) continue;
+        icon_cache_[path] = QIcon(QPixmap::fromImage(img.scaled(
+            96, 96, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
+        item->setIcon(icon_cache_[path]);
+    }
+}
+
 void ImagesTab::rebuild_list() {
     thumbnails_->clear();
     for (const auto& f : files_) {
-        auto& icon = icon_cache_[f.path];
-        if (icon.isNull()) {
-            QImageReader reader(f.path);
-            const QSize size = reader.size();
-            if (!size.isValid() || size.width() <= 0 || size.height() <= 0)
-                continue;
-            const QImage img = reader.read();
-            if (img.isNull()) continue;
-            icon = QIcon(QPixmap::fromImage(img.scaled(
-                96, 96, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
-        }
-        auto* item = new QListWidgetItem(icon, f.text, thumbnails_);
+        auto* item = new QListWidgetItem(f.text, thumbnails_);
         item->setData(Qt::UserRole, f.path);
         item->setToolTip(f.text);
         item->setSizeHint(QSize(110, 96 + thumbnails_->fontMetrics().height()));

@@ -4,7 +4,9 @@
 
 #include <QDialog>
 
+#include <functional>
 #include <memory>
+#include <utility>
 #include <vector>
 
 class QLabel;
@@ -23,7 +25,8 @@ class ModInfoTab;
 class ModInfoDialog : public QDialog {
     Q_OBJECT
 public:
-    explicit ModInfoDialog(std::vector<ModInfoData> mods, int index,
+    explicit ModInfoDialog(ModInfoData data,
+                           std::vector<std::pair<QString, bool>> nav_list,
                            ModInfoTabId initial_tab, QWidget* parent = nullptr);
     ~ModInfoDialog() override;
 
@@ -33,6 +36,11 @@ public:
 
     // Folder name of the mod currently displayed, empty when none.
     [[nodiscard]] QString current_mod_id() const;
+
+    // Set the builder used by prev/next to rebuild ModInfoData on demand.
+    void set_data_builder(std::function<ModInfoData(const QString&)> builder) {
+        data_builder_ = std::move(builder);
+    }
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -45,20 +53,26 @@ private:
     // Nearest non-separator mod index in direction `dir` (+1 next, -1 prev)
     // from `from`, or -1 when there is none. Separators are never worth
     // viewing, so prev/next cycle past them.
-    int next_mod_index(int from, int dir) const;
+    int next_nav_index(int from, int dir) const;
     bool can_switch() const;
     void persist_geometry();
     void restore_geometry();
     void on_delete_mod();
 
-    std::vector<ModInfoData> mods_;
-    int index_ = -1;
+    // Builder callback: given a mod id, returns the fully populated ModInfoData.
+    // Set by the controller so prev/next can rebuild on demand.
+    std::function<ModInfoData(const QString&)> data_builder_;
+
+    ModInfoData current_mod_data_;
+    std::vector<std::pair<QString, bool>> nav_list_;
+    int nav_index_ = -1;
     QTabWidget* tabs_ = nullptr;
     QLabel* mod_name_ = nullptr;
     QPushButton* prev_btn_ = nullptr;
     QPushButton* next_btn_ = nullptr;
     QPushButton* delete_btn_ = nullptr;
     std::vector<ModInfoTab*> tab_order_;
+    std::vector<bool> tab_loaded_;
     std::vector<bool> tab_activated_;
 };
 
