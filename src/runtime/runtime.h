@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace engine {
 
@@ -11,9 +12,15 @@ class PlatformInterface;
 class Runtime {
 public:
     virtual ~Runtime() = default;
+    // Launch `executable` with `args` appended to argv (empty = none) and the
+    // process cwd set to `cwd` when non-empty (empty = game_dir). Relative
+    // cwd values are resolved against game_dir by the caller before this is
+    // reached (the engine normalizes in do_launch).
     virtual bool launch(const std::filesystem::path& executable,
                         const std::filesystem::path& game_dir,
-                        uint32_t steam_appid = 0) = 0;
+                        uint32_t steam_appid = 0,
+                        const std::vector<std::string>& args = {},
+                        const std::filesystem::path& cwd = {}) = 0;
     virtual bool is_available() const = 0;
     virtual std::string name() const = 0;
     // PID of the last launched process, or -1 if unknown / not applicable
@@ -24,7 +31,9 @@ class NativeRuntime : public Runtime {
 public:
     bool launch(const std::filesystem::path& executable,
                 const std::filesystem::path& game_dir,
-                uint32_t steam_appid = 0) override;
+                uint32_t steam_appid = 0,
+                const std::vector<std::string>& args = {},
+                const std::filesystem::path& cwd = {}) override;
     bool is_available() const override;
     std::string name() const override { return "native"; }
     int64_t last_pid() const override { return last_pid_; }
@@ -39,7 +48,9 @@ public:
 
     bool launch(const std::filesystem::path& executable,
                 const std::filesystem::path& game_dir,
-                uint32_t steam_appid = 0) override;
+                uint32_t steam_appid = 0,
+                const std::vector<std::string>& args = {},
+                const std::filesystem::path& cwd = {}) override;
     bool is_available() const override;
     std::string name() const override { return "proton"; }
     int64_t last_pid() const override { return last_pid_; }

@@ -169,6 +169,8 @@ LaunchParams prepare_launch_params(
     params.steam_appid = req.steam_appid;
     params.is_windows_exe = req.is_windows_exe;
     params.environment = req.environment;
+    params.args = req.args;
+    params.cwd = req.cwd;
 
     // Per-instance Proton runner override (empty = automatic). Read from
     // instance.toml so every launch path (GUI + CLI) honors the selection.

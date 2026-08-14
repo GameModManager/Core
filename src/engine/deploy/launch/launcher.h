@@ -66,6 +66,17 @@ struct LaunchParams {
     // Entries without '=' are ignored with a warning. Empty = inherit the
     // parent environment unchanged.
     std::vector<std::string> environment;
+
+    // Command-line arguments appended after the executable (Issue #34). The
+    // exact argv the game sees is <executable> <args...>; for Windows
+    // executables launched through Proton the same list is appended to
+    // `proton waitforexitandrun <executable> <args...>`. Empty = no args.
+    std::vector<std::string> args;
+
+    // Working directory for the launched process. Empty = game_dir (the
+    // pre-existing behavior). Relative paths are resolved against game_dir.
+    // Applies to every launch path (overlay, LD_PRELOAD, native, Proton).
+    std::filesystem::path cwd;
 };
 
 struct LaunchResult {

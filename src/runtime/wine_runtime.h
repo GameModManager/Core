@@ -14,7 +14,9 @@ class WineRuntime : public Runtime {
 public:
     bool launch(const std::filesystem::path& executable,
                 const std::filesystem::path& game_dir,
-                uint32_t steam_appid = 0) override;
+                uint32_t steam_appid = 0,
+                const std::vector<std::string>& args = {},
+                const std::filesystem::path& cwd = {}) override;
     bool is_available() const override;
     std::string name() const override { return "wine"; }
 
