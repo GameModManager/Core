@@ -8,12 +8,12 @@
 // Part B (when the real Skyrim SE install is present): validates discovery of
 // the actual plugins on disk (native ESMs first, CC flagged, SkyUI owned by
 // its mod, enabled plugins.txt output).
-#include "engine/instance/instance.h"
-#include "engine/meta/mod_meta.h"
-#include "engine/plugin_host/diagnostics_registry.h"
-#include "engine/plugins/plugin_database.h"
-#include "engine/plugins/esp_header.h"
-#include "engine/registry/game_knowledge.h"
+#include "engine/core/instance/instance.h"
+#include "engine/mod/meta/mod_meta.h"
+#include "engine/pipeline/plugin_host/diagnostics_registry.h"
+#include "engine/game/plugins/plugin_database.h"
+#include "engine/game/plugins/esp_header.h"
+#include "engine/game/registry/game_knowledge.h"
 #include "platform/platform_interface.h"
 
 #include <cstdio>

@@ -6,7 +6,7 @@
 // the combo back correctly (empty = Automatic, name otherwise). Uses a stub
 // platform + a real PluginLoader pointed at the built plugins directory, so
 // the wine.json shipped with the Skyrim plugin is exercised.
-#include "engine/plugin_host/plugin_loader.h"
+#include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "platform/platform_interface.h"
 #include "ui/proton/proton_panel.h"
 

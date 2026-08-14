@@ -1,7 +1,7 @@
 #include "ui/main_window/data_tab_build_worker.h"
 
 #include "engine/deploy/deploy_utils.h"
-#include "engine/util/fs_utils.h"
+#include "engine/core/util/fs_utils.h"
 #include "ui/widgets/mod_list_model.h"
 
 #include <QCoreApplication>

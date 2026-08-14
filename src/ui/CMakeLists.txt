@@ -1,8 +1,8 @@
 # UI — Qt lives here. Static library linking Qt6 and the Qt-free engine.
-# Also compiles the handful of Qt-using files that physically live under
-# src/engine/ (theme/style_manager, theme/icon_manager,
-# notify/notification_backend, nxm/nxm_ipc, single_instance) so gmm_engine
-# stays Qt-free at the CMake level.
+# The Qt-using files that used to live under src/engine/ (theme/style_manager,
+# theme/icon_manager, notify/notification_backend, nxm/nxm_ipc,
+# app/single_instance) were relocated here (issue/33) so gmm_engine stays
+# Qt-free at the CMake level.
 
 set(UI_SOURCES
     settings/settings.cpp
@@ -63,12 +63,12 @@ set(UI_SOURCES
     fomod/fomod_image_viewer.cpp
     fomod/fomod_wizard_dialog.cpp
     proton/proton_panel.cpp
-    # Qt-using engine files — see comment above; keeps gmm_engine Qt-free
-    ${PROJECT_SOURCE_DIR}/src/engine/theme/style_manager.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/theme/icon_manager.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/notify/notification_backend.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/nxm/nxm_ipc.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/launch/single_instance.cpp
+    # Qt-using files relocated from src/engine/ (issue/33) — keeps gmm_engine Qt-free
+    ${PROJECT_SOURCE_DIR}/src/ui/theme/style_manager.cpp
+    ${PROJECT_SOURCE_DIR}/src/ui/theme/icon_manager.cpp
+    ${PROJECT_SOURCE_DIR}/src/ui/notify/notification_backend.cpp
+    ${PROJECT_SOURCE_DIR}/src/ui/nxm/nxm_ipc.cpp
+    ${PROJECT_SOURCE_DIR}/src/ui/app/single_instance.cpp
 )
 
 # FileViewer module — reusable file viewers (image/video/3D-scene). The video

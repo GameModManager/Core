@@ -1,7 +1,7 @@
 #include "ui/main_window/saves_scan_worker.h"
 
-#include "engine/saves/save_scanner.h"
-#include "engine/saves/skyrim_save.h"
+#include "engine/game/saves/save_scanner.h"
+#include "engine/game/saves/skyrim_save.h"
 
 #include <QMetaObject>
 #include <QThread>

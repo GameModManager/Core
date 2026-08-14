@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/plugins/plugin_info.h"
+#include "engine/game/plugins/plugin_info.h"
 
 #include <QPoint>
 #include <QSet>

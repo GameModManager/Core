@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/plugins/plugin_database.h"
+#include "engine/game/plugins/plugin_database.h"
 
 #include <QObject>
 

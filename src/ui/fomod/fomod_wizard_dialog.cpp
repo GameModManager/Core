@@ -2,9 +2,9 @@
 
 #include "ui/fomod/fomod_image_viewer.h"
 #include "ui/settings/settings.h"
-#include "engine/fomod/file_installer.h"
-#include "engine/fomod/fomod_utils.h"
-#include "engine/log/logger.h"
+#include "engine/mod/fomod/file_installer.h"
+#include "engine/mod/fomod/fomod_utils.h"
+#include "engine/core/log/logger.h"
 
 #include <QApplication>
 #include <QButtonGroup>

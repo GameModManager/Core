@@ -3,7 +3,7 @@
 #include "ui/widgets/right_filter_bar.h"
 #include "ui/widgets/column_toggle_header.h"
 #include "ui/panels/tab_panels.h"
-#include "engine/registry/game_capabilities.h"
+#include "engine/game/registry/game_capabilities.h"
 
 #include <QHeaderView>
 #include <QTabWidget>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/fomod/fomod_view_model.h"
+#include "engine/mod/fomod/fomod_view_model.h"
 #include "engine/pipeline/pipeline.h"
 
 #include <QDialog>

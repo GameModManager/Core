@@ -1,7 +1,7 @@
 #include "ui/panels/saves_tab.h"
 #include "ui/panels/panel_utils.h"
 
-#include "engine/log/logger.h"
+#include "engine/core/log/logger.h"
 
 #include <QCursor>
 #include <QDateTime>

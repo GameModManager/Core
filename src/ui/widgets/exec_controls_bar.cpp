@@ -1,5 +1,5 @@
 #include "ui/widgets/exec_controls_bar.h"
-#include "engine/log/logger.h"
+#include "engine/core/log/logger.h"
 
 #include <QApplication>
 #include <QComboBox>

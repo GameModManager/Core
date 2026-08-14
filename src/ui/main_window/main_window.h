@@ -18,12 +18,12 @@
 
 #include "engine/deploy/strategy.h"
 #include "engine/index/conflict_engine.h"
-#include "engine/instance/instance.h"
-#include "engine/meta/mod_meta.h"
-#include "engine/nxm/nxm_router.h"
-#include "engine/plugins/plugin_database.h"
-#include "engine/launch/proton_tools.h"
-#include "engine/registry/game_knowledge.h"
+#include "engine/core/instance/instance.h"
+#include "engine/mod/meta/mod_meta.h"
+#include "engine/source/nxm/nxm_router.h"
+#include "engine/game/plugins/plugin_database.h"
+#include "engine/deploy/launch/proton_tools.h"
+#include "engine/game/registry/game_knowledge.h"
 #include "platform/platform_interface.h"
 
 class QSplitter;

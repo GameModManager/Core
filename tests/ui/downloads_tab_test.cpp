@@ -56,7 +56,7 @@
 #include <QUrl>
 
 #include "ui/settings/settings.h"
-#include "engine/theme/icon_manager.h"
+#include "ui/theme/icon_manager.h"
 
 #include <QByteArray>
 

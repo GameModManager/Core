@@ -1,7 +1,7 @@
 #pragma once
 
 #include "engine/source/source_provider.h"
-#include "engine/workshop/workshop_client.h"
+#include "engine/source/workshop/workshop_client.h"
 
 #include <memory>
 #include <string>

@@ -11,7 +11,7 @@
 //
 // Hermetic: offscreen platform, throwaway HOME/XDG_DATA_HOME, synthetic
 // resources tree (no real app assets), no network.
-#include "engine/theme/icon_manager.h"
+#include "ui/theme/icon_manager.h"
 
 #include <QApplication>
 #include <QByteArray>

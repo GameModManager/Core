@@ -27,7 +27,7 @@
 #include <QEventLoop>
 #include <QThread>
 
-#include "engine/log/logger.h"
+#include "engine/core/log/logger.h"
 #include "engine/source/source_provider.h"
 
 #include <atomic>

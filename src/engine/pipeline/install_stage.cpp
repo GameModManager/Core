@@ -1,9 +1,9 @@
 #include "engine/pipeline/install_stage.h"
 #include "engine/pipeline/pipeline.h"
-#include "engine/model/mod.h"
-#include "engine/instance/instance.h"
-#include "engine/meta/mod_meta.h"
-#include "engine/log/logger.h"
+#include "engine/mod/model/mod.h"
+#include "engine/core/instance/instance.h"
+#include "engine/mod/meta/mod_meta.h"
+#include "engine/core/log/logger.h"
 
 #include <algorithm>
 #include <fstream>

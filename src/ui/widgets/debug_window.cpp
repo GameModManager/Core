@@ -1,5 +1,5 @@
 #include "ui/widgets/debug_window.h"
-#include "engine/plugin_host/plugin_loader.h"
+#include "engine/pipeline/plugin_host/plugin_loader.h"
 
 #include <QApplication>
 #include <QHBoxLayout>

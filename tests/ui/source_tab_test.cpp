@@ -11,7 +11,7 @@
 // mod's meta (no torn write). Hermetic: no network, no real config (fake
 // provider registered in SourceRegistry, XDG_CONFIG_HOME pointed at a
 // throwaway dir).
-#include "engine/meta/mod_meta.h"
+#include "engine/mod/meta/mod_meta.h"
 #include "engine/source/nexus_provider.h"
 #include "engine/source/source_provider.h"
 #include "ui/modinfo/source_tab.h"

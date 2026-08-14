@@ -1,6 +1,6 @@
 #include "ui/main_window/plugin_db_load_worker.h"
 
-#include "engine/log/logger.h"
+#include "engine/core/log/logger.h"
 
 #include <QMetaObject>
 #include <QThread>

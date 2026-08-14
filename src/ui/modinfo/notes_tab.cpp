@@ -1,6 +1,6 @@
 #include "ui/modinfo/notes_tab.h"
 
-#include "engine/meta/mod_meta.h"
+#include "engine/mod/meta/mod_meta.h"
 
 #include <QColorDialog>
 #include <QHBoxLayout>

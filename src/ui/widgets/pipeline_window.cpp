@@ -1,7 +1,7 @@
 #include "ui/widgets/pipeline_window.h"
 #include "ui/widgets/zoom_controls.h"
 
-#include "engine/trace/trace_recorder.h"
+#include "engine/core/trace/trace_recorder.h"
 
 #include <QGraphicsPathItem>
 #include <QGraphicsPolygonItem>

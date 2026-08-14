@@ -2,7 +2,7 @@
 #include "ui/settings/settings.h"
 #include "ui/widgets/mod_table_view.h"
 
-#include "engine/theme/icon_manager.h"
+#include "ui/theme/icon_manager.h"
 
 #include <QAbstractItemView>
 #include <QAction>
