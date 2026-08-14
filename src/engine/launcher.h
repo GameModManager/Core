@@ -73,6 +73,9 @@ struct LaunchResult {
     bool overlay_launched = false;
     // Cgroup v2 path for reliable process tracking (empty = not available).
     // When non-empty, all game descendants are members of this cgroup.
+    // Contains a std::string: never serialize LaunchResult across the
+    // fork() result pipe as raw bytes — send only the POD fields (pid,
+    // overlay_launched) and rebuild this from the parent's CgroupHandle.
     std::string cgroup_path;
 };
 
