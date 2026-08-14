@@ -230,7 +230,7 @@ QWidget* SettingsDialog::build_theme_tab() {
     pack_combo->setCurrentIndex(pack_idx >= 0 ? pack_idx : 0);
     pack_combo->setToolTip(
         tr("Icons resolve as: theme/pack icons first, then the system icon "
-           "theme, then the bundled Fugue base pack. \"System\" ignores theme "
+           "theme, then the bundled base pack. \"System\" ignores theme "
            "and pack icons entirely. Menu icons apply immediately; toolbar and "
            "list icons refresh on the next launch."));
 
