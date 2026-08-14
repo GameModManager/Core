@@ -20,6 +20,7 @@ public:
     ~FiletreeTab() override;
 
     void set_mod(const ModInfoData& data) override;
+    void first_activation() override;
 
 private:
     void show_menu(const QPoint& pos);
@@ -34,6 +35,7 @@ private:
 
     QTreeView* tree_ = nullptr;
     QFileSystemModel* model_ = nullptr;
+    QString root_path_;
 };
 
 }  // namespace ui

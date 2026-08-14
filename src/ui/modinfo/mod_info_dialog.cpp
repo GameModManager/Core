@@ -26,13 +26,23 @@
 
 namespace ui {
 
-ModInfoDialog::ModInfoDialog(std::vector<ModInfoData> mods, int index,
+ModInfoDialog::ModInfoDialog(ModInfoData data,
+                             std::vector<std::pair<QString, bool>> nav_list,
                              ModInfoTabId initial_tab, QWidget* parent)
     : QDialog(parent)
-    , mods_(std::move(mods))
-    , index_(index) {
+    , current_mod_data_(std::move(data))
+    , nav_list_(std::move(nav_list))
+    , nav_index_(-1) {
     setWindowTitle(tr("Mod Information"));
     resize(735, 534);
+
+    // Find nav_index_ for the current mod.
+    for (int i = 0; i < static_cast<int>(nav_list_.size()); ++i) {
+        if (nav_list_[static_cast<size_t>(i)].first == current_mod_data_.id) {
+            nav_index_ = i;
+            break;
+        }
+    }
 
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(6, 6, 6, 6);
@@ -59,13 +69,21 @@ ModInfoDialog::ModInfoDialog(std::vector<ModInfoData> mods, int index,
     make_tab(new NotesTab(this), tr("Notes"));
     make_tab(new FiletreeTab(this), tr("Filetree"));
 
+    tab_loaded_.assign(tab_order_.size(), false);
     tab_activated_.assign(tab_order_.size(), false);
 
     connect(tabs_, &QTabWidget::currentChanged, this, [this](int i) {
         if (i < 0 || i >= static_cast<int>(tab_order_.size())) return;
+        auto* tab = tab_order_[static_cast<size_t>(i)];
+        if (!tab_loaded_[static_cast<size_t>(i)]) {
+            tab_loaded_[static_cast<size_t>(i)] = true;
+            tab->set_current(current_mod_data_);
+            tab->set_mod(current_mod_data_);
+            tab->restore_state();
+        }
         if (!tab_activated_[static_cast<size_t>(i)]) {
             tab_activated_[static_cast<size_t>(i)] = true;
-            tab_order_[static_cast<size_t>(i)]->first_activation();
+            tab->first_activation();
         }
     });
 
@@ -99,11 +117,11 @@ ModInfoDialog::ModInfoDialog(std::vector<ModInfoData> mods, int index,
     layout->addWidget(bar);
 
     connect(prev_btn_, &QPushButton::clicked, this, [this]() {
-        const int target = next_mod_index(index_, -1);
+        const int target = next_nav_index(nav_index_, -1);
         if (target >= 0) switch_to(target);
     });
     connect(next_btn_, &QPushButton::clicked, this, [this]() {
-        const int target = next_mod_index(index_, +1);
+        const int target = next_nav_index(nav_index_, +1);
         if (target >= 0) switch_to(target);
     });
     connect(delete_btn_, &QPushButton::clicked, this,
@@ -113,8 +131,9 @@ ModInfoDialog::ModInfoDialog(std::vector<ModInfoData> mods, int index,
 
     // Load the initial mod's data BEFORE activating any tab: setCurrentIndex
     // below fires first_activation(), which reads tab data (and switch_to()
-    // early-returns when index == index_, so it can't be relied on here).
-    load_index(index_);
+    // early-returns when nav_index_ == nav_index_, so it can't be relied on
+    // here).
+    load_index(nav_index_);
 
     // Place on the requested tab, or the last-used one.
     int tab_index = static_cast<int>(initial_tab);
@@ -127,58 +146,56 @@ ModInfoDialog::ModInfoDialog(std::vector<ModInfoData> mods, int index,
 ModInfoDialog::~ModInfoDialog() = default;
 
 void ModInfoDialog::load_index(int index) {
-    index_ = index;
-    const auto& data = mods_[static_cast<size_t>(index_)];
-    for (auto* tab : tab_order_) {
-        tab->set_current(data);
-        tab->set_mod(data);
-        tab->restore_state();
-    }
+    nav_index_ = index;
 
-    mod_name_->setText(data.name);
-    prev_btn_->setEnabled(next_mod_index(index_, -1) >= 0);
-    next_btn_->setEnabled(next_mod_index(index_, +1) >= 0);
+    mod_name_->setText(current_mod_data_.name);
+    prev_btn_->setEnabled(next_nav_index(nav_index_, -1) >= 0);
+    next_btn_->setEnabled(next_nav_index(nav_index_, +1) >= 0);
 
-    const bool deletable = !data.is_separator && !data.is_overwrite &&
-                           !data.is_merged && !data.is_game_native &&
-                           static_cast<bool>(data.delete_mod);
+    const bool deletable = !current_mod_data_.is_separator &&
+                           !current_mod_data_.is_overwrite &&
+                           !current_mod_data_.is_merged &&
+                           !current_mod_data_.is_game_native &&
+                           static_cast<bool>(current_mod_data_.delete_mod);
     delete_btn_->setEnabled(deletable);
 }
 
 void ModInfoDialog::switch_to(int index) {
-    if (index == index_) return;
+    if (index == nav_index_) return;
     if (!can_switch()) return;
 
     for (auto* tab : tab_order_) tab->save_state();
 
+    const QString& target_id = nav_list_[static_cast<size_t>(index)].first;
+    if (data_builder_) {
+        current_mod_data_ = data_builder_(target_id);
+        tab_loaded_.assign(tab_order_.size(), false);
+    }
+
     load_index(index);
 }
 
-int ModInfoDialog::next_mod_index(int from, int dir) const {
-    for (int i = from + dir; i >= 0 && i < static_cast<int>(mods_.size()); i += dir) {
-        if (!mods_[static_cast<size_t>(i)].is_separator) return i;
+int ModInfoDialog::next_nav_index(int from, int dir) const {
+    for (int i = from + dir;
+         i >= 0 && i < static_cast<int>(nav_list_.size()); i += dir) {
+        if (!nav_list_[static_cast<size_t>(i)].second) return i;
     }
     return -1;
 }
 
 void ModInfoDialog::reload_current(ModInfoData data) {
-    if (index_ < 0 || index_ >= static_cast<int>(mods_.size())) return;
     if (!can_switch()) return;
     for (auto* tab : tab_order_) tab->save_state();
-    mods_[static_cast<size_t>(index_)] = std::move(data);
-    const auto& cur = mods_[static_cast<size_t>(index_)];
-    for (auto* tab : tab_order_) {
-        tab->set_current(cur);
-        tab->set_mod(cur);
-        tab->restore_state();
-    }
-    mod_name_->setText(cur.name);
-    tabs_->setCurrentIndex(static_cast<int>(ModInfoTabId::Conflicts));
+    current_mod_data_ = std::move(data);
+
+    // Mark all tabs as needing reload.
+    tab_loaded_.assign(tab_order_.size(), false);
+
+    load_index(nav_index_);
 }
 
 QString ModInfoDialog::current_mod_id() const {
-    if (index_ < 0 || index_ >= static_cast<int>(mods_.size())) return {};
-    return mods_[static_cast<size_t>(index_)].id;
+    return current_mod_data_.id;
 }
 
 bool ModInfoDialog::can_switch() const {
@@ -189,21 +206,20 @@ bool ModInfoDialog::can_switch() const {
 }
 
 void ModInfoDialog::on_delete_mod() {
-    if (index_ < 0 || index_ >= static_cast<int>(mods_.size())) return;
-    auto& data = mods_[static_cast<size_t>(index_)];
-    if (data.is_separator || data.is_overwrite || data.is_merged ||
-        data.is_game_native || !data.delete_mod) {
+    if (current_mod_data_.is_separator || current_mod_data_.is_overwrite ||
+        current_mod_data_.is_merged || current_mod_data_.is_game_native ||
+        !current_mod_data_.delete_mod) {
         return;
     }
 
     if (QMessageBox::question(this, tr("Delete Mod"),
-                              tr("Delete the mod \"%1\"?").arg(data.name),
+                              tr("Delete the mod \"%1\"?").arg(current_mod_data_.name),
                               QMessageBox::Yes | QMessageBox::No,
                               QMessageBox::No) != QMessageBox::Yes) {
         return;
     }
 
-    if (data.delete_mod()) {
+    if (current_mod_data_.delete_mod()) {
         persist_geometry();
         accept();  // the mod list refresh invalidates the data we hold
     }
