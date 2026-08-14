@@ -239,6 +239,14 @@ ModTableView::ModTableView(QWidget* parent)
     setDragEnabled(true);
     setAcceptDrops(true);
     setDropIndicatorShown(true);
+    // Double-click opens the Mod Info popup (see ModListController), never
+    // rename: the default QTreeView triggers include DoubleClicked, which
+    // would open the inline rename editor on the Name column after the modal
+    // info dialog closes (QAbstractItemView::mouseDoubleClickEvent emits
+    // doubleClicked first and only runs the edit trigger once the slot
+    // returns, i.e. after dlg.exec() unwinds). Rename stays reachable via
+    // EditKeyPressed (F2) and the context menu's "Rename Mod..." entry.
+    setEditTriggers(QAbstractItemView::EditKeyPressed);
     setVerticalScrollBar(new ModMarkingScrollBar(this));
     apply_scrollbar_policy();
     // Conflicts + Flags columns: render stacked flag icons at native size (see
