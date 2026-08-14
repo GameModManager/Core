@@ -22,7 +22,7 @@
 #include "engine/meta/mod_meta.h"
 #include "engine/nxm/nxm_router.h"
 #include "engine/plugins/plugin_database.h"
-#include "engine/proton_tools.h"
+#include "engine/launch/proton_tools.h"
 #include "engine/registry/game_knowledge.h"
 #include "platform/platform_interface.h"
 

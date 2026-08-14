@@ -1,6 +1,6 @@
 #include "ui/widgets/console_panel.h"
 #include "ui/settings/settings.h"
-#include "engine/debug_env.h"
+#include "engine/util/debug_env.h"
 #include "engine/log/logger.h"
 
 #include <QApplication>

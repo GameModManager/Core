@@ -1,6 +1,6 @@
 #include "ui/modinfo/conflicts_tab.h"
 
-#include "engine/fs_utils.h"
+#include "engine/util/fs_utils.h"
 
 #include <QApplication>
 #include <QDesktopServices>

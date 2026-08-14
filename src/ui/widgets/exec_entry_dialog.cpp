@@ -26,7 +26,7 @@
 #include <QStyle>
 #include <QToolButton>
 #include <QVBoxLayout>
-#include "ui/smooth_scroll.h"
+#include "ui/widgets/smooth_scroll.h"
 #include "ui/settings/settings.h"
 
 #include <filesystem>

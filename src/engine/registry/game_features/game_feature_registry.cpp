@@ -1,7 +1,7 @@
 #include "engine/registry/game_features/game_feature_registry.h"
 
 #include "engine/log/logger.h"
-#include "engine/fs_utils.h"
+#include "engine/util/fs_utils.h"
 
 #include <sstream>
 #include <utility>

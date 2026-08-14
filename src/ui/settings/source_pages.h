@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/nexus_auth.h"
+#include "engine/source/nexus_auth.h"
 
 #include <QDialog>
 #include <QString>

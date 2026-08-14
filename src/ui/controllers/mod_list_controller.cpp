@@ -26,7 +26,7 @@
 
 #include "engine/detect/mod_scanner.h"
 #include "engine/events/event_bus.h"
-#include "engine/fs_utils.h"
+#include "engine/util/fs_utils.h"
 #include "engine/index/conflict_engine.h"
 #include "engine/instance/instance.h"
 #include "engine/log/logger.h"

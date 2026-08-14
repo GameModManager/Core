@@ -1,4 +1,4 @@
-#include "ui/pipeline_worker.h"
+#include "ui/workers/pipeline_worker.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/pipeline/fetch_stage.h"
 #include "engine/pipeline/stage.h"

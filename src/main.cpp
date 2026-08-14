@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-#include "engine/single_instance.h"
+#include "engine/launch/single_instance.h"
 
 static void qt_message_filter(QtMsgType type, const QMessageLogContext& ctx, const QString& msg) {
     // Suppress noisy Qt platform/theme messages
@@ -44,8 +44,8 @@ static void qt_message_filter(QtMsgType type, const QMessageLogContext& ctx, con
 #include "engine/theme/theme_manager.h"
 #include "engine/theme/style_manager.h"
 #include "engine/theme/icon_manager.h"
-#include "engine/nexus_auth.h"
-#include "engine/loverslab_auth.h"
+#include "engine/source/nexus_auth.h"
+#include "engine/source/loverslab_auth.h"
 #include "cli/headless_launcher.h"
 
 #if defined(GMM_PLATFORM_LINUX)
