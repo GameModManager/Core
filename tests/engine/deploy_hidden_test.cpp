@@ -12,7 +12,7 @@
 //      can never reach the game, matching MO2's renamed-suffix convention.
 //      Both the GMM and MO2 suffixes are covered, at the top level and nested
 //      in subdirectories, and a visible sibling still deploys.
-#include "engine/fs_utils.h"
+#include "engine/util/fs_utils.h"
 #include "engine/deploy/deploy_utils.h"
 
 #include <cstdio>

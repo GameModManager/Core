@@ -1,7 +1,7 @@
 #include "cli/headless_launcher.h"
 
 #include "engine/instance/instance_utils.h"
-#include "engine/launcher.h"
+#include "engine/launch/launcher.h"
 #include "engine/log/logger.h"
 #include "engine/plugins/plugin_database.h"
 #include "engine/registry/game_knowledge.h"

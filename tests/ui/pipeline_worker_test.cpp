@@ -20,7 +20,7 @@
 //
 // Hermetic: QCoreApplication (no widgets), fake providers write local files,
 // no network, throwaway temp dir.
-#include "ui/pipeline_worker.h"
+#include "ui/workers/pipeline_worker.h"
 
 #include <QCoreApplication>
 #include <QElapsedTimer>

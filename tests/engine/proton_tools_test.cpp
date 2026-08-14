@@ -4,7 +4,7 @@
 // platform, fallback to per-game/latest when unresolvable, null platform) and
 // the guard cases of run_proton_exe. The exec paths themselves are thin
 // fork+execvp orchestrations over platform discovery — not unit-tested here.
-#include "engine/proton_tools.h"
+#include "engine/launch/proton_tools.h"
 #include "platform/platform_interface.h"
 
 #include <cstdio>

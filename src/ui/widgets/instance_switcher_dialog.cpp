@@ -12,7 +12,7 @@
 
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/instance/instance.h"
-#include "ui/smooth_scroll.h"
+#include "ui/widgets/smooth_scroll.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/game_icon_cache.h"
 

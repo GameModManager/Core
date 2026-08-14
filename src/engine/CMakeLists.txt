@@ -21,7 +21,7 @@ set(ENGINE_SOURCES
     instance/instance.cpp
     instance/instance_utils.cpp
     instance/game_icons.cpp
-    fs_utils.cpp
+    util/fs_utils.cpp
     filetree/file_tree.cpp
     filetree/dir_file_tree.cpp
     filetree/data_archive.cpp
@@ -45,7 +45,7 @@ set(ENGINE_SOURCES
     deploy/deploy_ledger.cpp
     deploy/deploy_utils.cpp
     deploy/root_override.cpp
-    overlay_launcher.cpp
+    launch/overlay_launcher.cpp
     pipeline/pipeline.cpp
     pipeline/fetch_stage.cpp
     pipeline/extract_stage.cpp
@@ -98,13 +98,13 @@ set(ENGINE_SOURCES
     source/nexus_servers.cpp
     source/steam_workshop_provider.cpp
     source/loverslab_provider.cpp
-    nexus_auth.cpp
-    loverslab_auth.cpp
+    source/nexus_auth.cpp
+    source/loverslab_auth.cpp
     download/curl_download.cpp
-    keyring.cpp
-    preload_interceptor.cpp
-    launcher.cpp
-    proton_tools.cpp
+    keyring/keyring.cpp
+    launch/preload_interceptor.cpp
+    launch/launcher.cpp
+    launch/proton_tools.cpp
     ${FOMOD_ENGINE_SOURCES}
 )
 

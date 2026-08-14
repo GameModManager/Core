@@ -14,9 +14,9 @@
 // (overlay mode), and direct mode writes into game_dir with no staging or
 // lowerdirs.
 #include "engine/instance/instance_utils.h"
-#include "engine/fs_utils.h"
-#include "engine/launcher.h"
-#include "engine/overlay_launcher.h"
+#include "engine/util/fs_utils.h"
+#include "engine/launch/launcher.h"
+#include "engine/launch/overlay_launcher.h"
 #include "engine/registry/game_knowledge.h"
 
 #include <cstdio>
