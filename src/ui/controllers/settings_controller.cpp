@@ -28,7 +28,7 @@
 #include "engine/deploy/strategy.h"
 #include "engine/detect/game_detector.h"
 #include "engine/events/event_bus.h"
-#include "engine/fs_utils.h"
+#include "engine/util/fs_utils.h"
 #include "engine/instance/instance.h"
 #include "engine/instance/instance_utils.h"
 #include "engine/log/logger.h"
@@ -55,7 +55,7 @@
 #include "ui/main_window/main_window.h"
 #include "ui/overwrite/query_overwrite_dialog.h"
 #include "ui/panels/tab_panels.h"
-#include "ui/pipeline_worker.h"
+#include "ui/workers/pipeline_worker.h"
 #include "ui/settings/settings.h"
 #include "ui/settings/settings_dialog.h"
 #include "ui/widgets/console_panel.h"
@@ -72,7 +72,7 @@
 #include "ui/widgets/right_panel.h"
 
 #ifdef GMM_PLATFORM_LINUX
-#include "engine/overlay_launcher.h"
+#include "engine/launch/overlay_launcher.h"
 #include "platform/linux/linux_platform.h"
 #endif
 

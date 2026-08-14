@@ -1,6 +1,6 @@
 #include "engine/archive/archive_extractor.h"
-#include "engine/fs_utils.h"
-#include "engine/process_utils.h"
+#include "engine/util/fs_utils.h"
+#include "engine/util/process_utils.h"
 
 #include <archive.h>
 #include <archive_entry.h>

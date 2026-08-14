@@ -38,10 +38,10 @@
 #include <sys/wait.h>
 #endif
 
-#include "engine/debug_env.h"
+#include "engine/util/debug_env.h"
 #include "engine/deploy/strategy.h"
 #include "engine/events/event_bus.h"
-#include "engine/fs_utils.h"
+#include "engine/util/fs_utils.h"
 #include "engine/instance/instance.h"
 #include "engine/instance/instance_utils.h"
 #include "engine/log/logger.h"
@@ -49,7 +49,7 @@
 #include "engine/overwrite/overwrite_utils.h"
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/plugins/plugin_database.h"
-#include "engine/proton_tools.h"
+#include "engine/launch/proton_tools.h"
 #include "engine/registry/game_knowledge.h"
 #include "engine/trace/trace_recorder.h"
 #include "ui/main_window/deploy_worker.h"

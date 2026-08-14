@@ -1,8 +1,8 @@
 #include "ui/settings/source_pages.h"
 
 #include "engine/log/logger.h"
-#include "engine/loverslab_auth.h"
-#include "engine/nexus_auth.h"
+#include "engine/source/loverslab_auth.h"
+#include "engine/source/nexus_auth.h"
 #include "engine/source/nexus_account.h"
 #include "engine/source/nexus_provider.h"
 #include "engine/source/nexus_servers.h"

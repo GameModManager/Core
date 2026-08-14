@@ -1,9 +1,9 @@
 #include "engine/instance/instance_utils.h"
 
 #include "engine/deploy/deploy_utils.h"
-#include "engine/launcher.h"
+#include "engine/launch/launcher.h"
 #include "engine/log/logger.h"
-#include "engine/overlay_launcher.h"
+#include "engine/launch/overlay_launcher.h"
 #include "engine/registry/game_features/game_feature_registry.h"
 #include "engine/registry/game_knowledge.h"
 #include "engine/saves/local_saves.h"

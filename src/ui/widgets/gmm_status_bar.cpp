@@ -1,6 +1,6 @@
 #include "ui/widgets/gmm_status_bar.h"
 
-#include "engine/nexus_auth.h"
+#include "engine/source/nexus_auth.h"
 #include "engine/trace/trace_recorder.h"
 
 #include <QFrame>

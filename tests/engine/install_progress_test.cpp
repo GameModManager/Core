@@ -7,7 +7,7 @@
 #include "engine/pipeline/install_stage.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/model/mod.h"
-#include "engine/process_utils.h"
+#include "engine/util/process_utils.h"
 
 #include <cstdio>
 #include <cstdint>

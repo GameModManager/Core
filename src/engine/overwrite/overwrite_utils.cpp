@@ -1,6 +1,6 @@
 #include "engine/overwrite/overwrite_utils.h"
 
-#include "engine/fs_utils.h"
+#include "engine/util/fs_utils.h"
 #include "engine/index/conflict_engine.h"
 #include "engine/log/logger.h"
 #include "engine/meta/mod_meta.h"

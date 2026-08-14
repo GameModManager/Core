@@ -2,7 +2,7 @@
 #include "ui/panels/panel_utils.h"
 #include "ui/settings/settings.h"
 
-#include "engine/fs_utils.h"
+#include "engine/util/fs_utils.h"
 #include "engine/log/logger.h"
 #include "engine/source/loverslab_provider.h"
 #include "engine/theme/icon_manager.h"

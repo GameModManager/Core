@@ -20,7 +20,7 @@
 #include "ui/settings/settings.h"
 #include "ui/settings/source_pages.h"
 
-#include "engine/nexus_auth.h"
+#include "engine/source/nexus_auth.h"
 #include "engine/plugin_host/plugin_loader.h"
 #include "engine/source/nexus_provider.h"
 #include "engine/source/nexus_servers.h"

@@ -48,7 +48,7 @@ set(UI_SOURCES
     panels/data_tab.cpp
     panels/saves_tab.cpp
     panels/conflicts_tab.cpp
-    pipeline_worker.cpp
+    workers/pipeline_worker.cpp
     preview/anm2_parser.cpp
     preview/preview_widget.cpp
     preview/preview_window.cpp
@@ -68,7 +68,7 @@ set(UI_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/theme/icon_manager.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/notify/notification_backend.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/nxm/nxm_ipc.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/single_instance.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/launch/single_instance.cpp
 )
 
 # FileViewer module — reusable file viewers (image/video/3D-scene). The video

@@ -1,7 +1,7 @@
 #include "engine/source/nexus_account.h"
 
 #include "engine/log/logger.h"
-#include "engine/nexus_auth.h"
+#include "engine/source/nexus_auth.h"
 #include "engine/source/nexus_http.h"
 
 #include <nlohmann/json.hpp>
