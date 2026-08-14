@@ -1,7 +1,7 @@
 #pragma once
 
 #include "engine/instance/instance_utils.h"
-#include "engine/launcher.h"
+#include "engine/launch/launcher.h"
 
 #include <QObject>
 

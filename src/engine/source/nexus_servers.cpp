@@ -1,6 +1,6 @@
 #include "engine/source/nexus_servers.h"
 
-#include "engine/nexus_auth.h"
+#include "engine/source/nexus_auth.h"
 
 #include <nlohmann/json.hpp>
 

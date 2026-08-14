@@ -1,6 +1,6 @@
 #include "engine/filetree/staging_layout.h"
 
-#include "engine/fs_utils.h"
+#include "engine/util/fs_utils.h"
 #include "engine/fomod/fomod_utils.h"
 #include "engine/registry/game_features/mod_data_checker.h"
 

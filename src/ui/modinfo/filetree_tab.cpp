@@ -1,6 +1,6 @@
 #include "ui/modinfo/filetree_tab.h"
 
-#include "engine/fs_utils.h"
+#include "engine/util/fs_utils.h"
 #include "engine/theme/icon_manager.h"
 #include "ui/viewer/file_viewer.h"
 

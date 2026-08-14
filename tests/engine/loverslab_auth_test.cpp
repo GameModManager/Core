@@ -2,7 +2,7 @@
 // No network is involved: the injected keyring is a FileKeyring over a temp
 // dir and the Content-Disposition parsing is pure string handling.
 #include "engine/download/curl_download.h"
-#include "engine/loverslab_auth.h"
+#include "engine/source/loverslab_auth.h"
 #include "engine/source/loverslab_provider.h"
 
 #include <cstdio>

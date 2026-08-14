@@ -6,7 +6,7 @@
 // Separator/case handling lives in engine/fs_utils.h (the single canonical
 // Windows-native resolver, engine::resolve_path) - keep no copies here.
 
-#include "engine/fs_utils.h"
+#include "engine/util/fs_utils.h"
 #include "engine/filetree/file_tree.h"
 
 #include <algorithm>

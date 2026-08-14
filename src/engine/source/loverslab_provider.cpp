@@ -1,7 +1,7 @@
 #include "engine/source/loverslab_provider.h"
 
 #include "engine/download/curl_download.h"
-#include "engine/loverslab_auth.h"
+#include "engine/source/loverslab_auth.h"
 #include "engine/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/log/logger.h"
