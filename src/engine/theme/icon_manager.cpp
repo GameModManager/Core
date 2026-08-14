@@ -117,9 +117,10 @@ QIcon IconManager::resolve_icon(const QString& key, QStyle::StandardPixmap sp) c
         if (!theme_icon.isNull()) return theme_icon;
     }
 
-    // 4. Fugue base pack (always-on safety net).
-    if (!packs_dir_.empty()) {
-        QIcon icon = load_from_dir(packs_dir_ / "fugue", key);
+    // 4. Base pack (always-on safety net): the first discovered pack, so the
+    //    name comes from the packs/ dir listing - never hardcoded.
+    if (!packs_.empty()) {
+        QIcon icon = load_from_dir(packs_dir_ / packs_.front(), key);
         if (!icon.isNull()) return icon;
     }
 

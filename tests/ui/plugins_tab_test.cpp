@@ -94,7 +94,7 @@ TEST_CASE("plugins tab", "[ui]") {
     QCoreApplication::setApplicationName("GameModManager");
 
     // IconManager resolves icons from <build>/../resources. Without this the
-    // tier chain is empty and the lock pin (fugue pack) comes back null on the
+    // tier chain is empty and the lock pin (base pack) comes back null on the
     // offscreen platform.
     engine::IconManager::instance().discover_packs(
         std::filesystem::path(QCoreApplication::applicationDirPath().toStdString()));

@@ -29,7 +29,9 @@ std::string vendor_icon_key(const std::string& source);
 //                             resources/icons/vendor/<key>.* for branded
 //                             source icons)
 //   3. desktop icon theme     QIcon::fromTheme(key)
-//   4. fugue base pack        resources/icons/packs/fugue/<key>.png|.svg
+//   4. base pack (first       resources/icons/packs/<pack>/<key>.png|.svg
+//      pack discovered in     (the pack name comes from discovery)
+//      packs/, sorted)
 //   5. caller standardIcon fallback (QStyle::SP_CustomBase = none)
 //
 // Mode comes from Settings::icon_pack() ("default" | "system" | pack name);
@@ -42,7 +44,8 @@ public:
     // Scan <appDir>/../resources/icons/packs/ for bundled packs. Idempotent.
     void discover_packs(const std::filesystem::path& app_dir);
 
-    // Bundled pack names, sorted. "fugue" is always included (the base pack).
+    // Bundled pack names, sorted. The first entry is the base pack used as
+    // the tier-4 fallback.
     std::vector<std::string> pack_names() const;
 
     // Resolution mode: "default", "system", or a pack name from pack_names().

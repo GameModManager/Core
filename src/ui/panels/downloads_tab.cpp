@@ -794,7 +794,7 @@ void DownloadsTab::on_custom_context_menu(const QPoint& pos) {
 void DownloadsTab::add_context_menu_actions(QMenu& menu, const std::string& id) {
     const auto& entry = downloads_.at(id);
 
-    // Resolved through the central IconManager (theme/pack -> system -> fugue),
+    // Resolved through the central IconManager (theme/pack -> system -> base pack),
     // with a standard-icon fallback for the download actions.
     auto icon_for = [](const QString& theme, QStyle::StandardPixmap fallback) -> QIcon {
         return engine::IconManager::instance().resolve_icon(theme, fallback);
