@@ -99,7 +99,7 @@ public:
 
     // icon pack ------------------------------------------------------------
     // "default" (theme icons first, then system), "system" (ignore theme/pack
-    // icons), or a bundled pack name ("fugue", "mo2", ...).
+    // icons), or a bundled pack name from resources/icons/packs/ (e.g. "MO2").
     QString icon_pack() const;
     void set_icon_pack(const QString& name);
 

@@ -2,9 +2,9 @@
 //
 // Every logical icon key resolves through one order:
 //   default mode:   theme icons dir -> bundled resources/icons -> system
-//                   (QIcon::fromTheme) -> fugue base pack -> standardIcon
-//   <pack> mode:    resources/icons/packs/<pack> -> bundled -> system -> fugue
-//   system mode:    system (QIcon::fromTheme) -> bundled -> fugue
+//                   (QIcon::fromTheme) -> base pack (first discovered) -> standardIcon
+//   <pack> mode:    resources/icons/packs/<pack> -> bundled -> system -> base pack
+//   system mode:    system (QIcon::fromTheme) -> bundled -> base pack
 //
 // The last two tiers always act as a safety net, so a key that nothing
 // supplies returns null only when the caller also passes SP_CustomBase.
@@ -74,11 +74,13 @@ TEST_CASE("icon manager", "[ui]") {
     write_png(vendor_dir / "nexusmods.ico");
     write_png(vendor_dir / "loverslab.ico");
 
-    // Packs: fugue (base) + zeta (arbitrary user-facing pack).
+    // Packs: two arbitrary packs in a temp dir, discovered dynamically by the
+    // manager - the sorted-first one ("alpha") is the base pack that the
+    // tier-4 fallback uses. No pack name is hardcoded anywhere.
     const fs::path packs = bundled_dir / "packs";
-    fs::create_directories(packs / "fugue");
+    fs::create_directories(packs / "alpha");
     fs::create_directories(packs / "zeta");
-    write_png(packs / "fugue" / "fallback-key.png");
+    write_png(packs / "alpha" / "fallback-key.png");
     write_png(packs / "zeta" / "pack-only.png");
 
     // A theme that ships its own icons dir (XDG_DATA_HOME search dir 1).
@@ -90,22 +92,25 @@ TEST_CASE("icon manager", "[ui]") {
     auto& mgr = engine::IconManager::instance();
     mgr.discover_packs(app_dir);
 
-    // Pack discovery: sorted, fugue guaranteed present.
+    // Pack discovery: sorted, first pack is the base fallback.
     const auto names = mgr.pack_names();
     check(names.size() == 2, "two packs discovered");
-    check(!names.empty() && names[0] == "fugue" && names[1] == "zeta",
-          "pack_names sorted, fugue first");
+    check(!names.empty() && names[0] == "alpha" && names[1] == "zeta",
+          "pack_names sorted, base pack first");
 
     // Default mode, no active theme: bundled tier supplies the app default.
     mgr.set_mode("default");
     mgr.set_current_theme("");
     check(icon_has_surface(mgr.resolve_icon("bundled-key")), "default: bundled asset resolves");
 
-    // Fugue base pack is the always-on safety net.
+    // The first discovered pack (base pack) is the always-on safety net; the
+    // name comes from the packs/ listing, so renaming it keeps the fallback.
     check(icon_has_surface(mgr.resolve_icon("fallback-key")),
-          "default: fugue fallback supplies key absent elsewhere");
+          "default: base-pack fallback supplies key absent elsewhere");
+    check(!icon_has_surface(mgr.resolve_icon("pack-only")),
+          "default: non-base packs are not the fallback");
 
-    // Pack mode: the selected pack overrides bundled/system/fugue.
+    // Pack mode: the selected pack overrides bundled/system/base pack.
     mgr.set_mode("zeta");
     check(icon_has_surface(mgr.resolve_icon("pack-only")), "pack mode: selected pack supplies key");
     mgr.set_mode("default");
@@ -128,7 +133,8 @@ TEST_CASE("icon manager", "[ui]") {
     check(!icon_has_surface(mgr.resolve_icon("pack-only")), "system: packs skipped");
     check(icon_has_surface(mgr.resolve_icon("bundled-key")),
           "system: bundled asset still acts as the net");
-    check(icon_has_surface(mgr.resolve_icon("fallback-key")), "system: fugue fallback still acts");
+    check(icon_has_surface(mgr.resolve_icon("fallback-key")),
+          "system: base-pack fallback still acts");
     mgr.set_mode("default");
 
     // Standard-icon fallback is the caller's last resort.
