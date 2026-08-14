@@ -230,7 +230,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
           this,
           [this](const QModelIndex &current, const QModelIndex & /*previous*/) {
             if (!current.isValid()) {
-              w_->mod_model_->set_selected_mod({});
+              w_->mod_model_->set_selected_mods({});
               auto *ct = w_->right_panel_->conflicts_tab();
               if (ct)
                 ct->clear_content();
@@ -241,7 +241,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
                 !mods[current.row()].is_separator &&
                 !mods[current.row()].is_overwrite) {
               auto &selected = mods[current.row()];
-              w_->mod_model_->set_selected_mod(selected.id);
+              w_->mod_model_->set_selected_mods({selected.id});
 
               // Push conflict data to the ConflictsTab
               auto *ct = w_->right_panel_->conflicts_tab();
@@ -252,7 +252,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
                     w_->mod_model_->is_conflict_order_reversed());
               }
             } else {
-              w_->mod_model_->set_selected_mod({});
+              w_->mod_model_->set_selected_mods({});
               auto *ct = w_->right_panel_->conflicts_tab();
               if (ct)
                 ct->clear_content();
