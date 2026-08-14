@@ -54,7 +54,9 @@ std::filesystem::path PreloadInterceptor::so_path() {
 
 int64_t PreloadInterceptor::launch(const std::filesystem::path& executable,
                                     const std::filesystem::path& game_dir,
-                                    const std::filesystem::path& overwrite_dir) {
+                                    const std::filesystem::path& overwrite_dir,
+                                    const std::vector<std::string>& args,
+                                    const std::filesystem::path& cwd) {
     Logger::instance().debug("PreloadInterceptor::launch() executable=" + executable.string() +
         " game_dir=" + game_dir.string() + " overwrite_dir=" + overwrite_dir.string());
 
@@ -105,7 +107,7 @@ int64_t PreloadInterceptor::launch(const std::filesystem::path& executable,
             close(devnull);
         }
 
-        if (chdir(game_dir.c_str()) != 0)
+        if (chdir(cwd.empty() ? game_dir.c_str() : cwd.c_str()) != 0)
             _exit(12);
 
         // Set env vars for the intercept library
@@ -126,11 +128,22 @@ int64_t PreloadInterceptor::launch(const std::filesystem::path& executable,
 
         Logger::instance().debug("Preload child: LD_PRELOAD=" + new_preload);
 
-        char* argv[] = { const_cast<char*>(exe_str.c_str()), nullptr };
-        execv(argv[0], argv);
+        // argv[0] = executable, then the configured args, then nullptr.
+        std::vector<char*> argv;
+        argv.push_back(const_cast<char*>(exe_str.c_str()));
+        for (const auto& a : args)
+            argv.push_back(const_cast<char*>(a.c_str()));
+        argv.push_back(nullptr);
+        execv(argv[0], argv.data());
 
-        // Fallback for scripts
-        execl("/bin/sh", "sh", exe_str.c_str(), nullptr);
+        // Fallback for scripts (args preserved)
+        std::vector<char*> sh_argv;
+        sh_argv.push_back(const_cast<char*>("sh"));
+        sh_argv.push_back(const_cast<char*>(exe_str.c_str()));
+        for (const auto& a : args)
+            sh_argv.push_back(const_cast<char*>(a.c_str()));
+        sh_argv.push_back(nullptr);
+        execv("/bin/sh", sh_argv.data());
         _exit(5);
     }
 

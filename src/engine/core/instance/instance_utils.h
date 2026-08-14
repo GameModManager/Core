@@ -76,6 +76,12 @@ struct LaunchPrepRequest {
     // Per-executable environment overrides ("KEY=VALUE"), forwarded verbatim to
     // LaunchParams so the launched process gets them (empty = inherit).
     std::vector<std::string> environment;
+    // Per-executable command-line arguments, forwarded verbatim to
+    // LaunchParams (empty = none).
+    std::vector<std::string> args;
+    // Per-executable working directory (empty = game_dir), forwarded verbatim
+    // to LaunchParams.
+    std::filesystem::path cwd;
 };
 
 // Direct-symlink deploy parameters gathered once from instance.toml + game

@@ -21,12 +21,15 @@ namespace engine {
 
 bool NativeRuntime::launch(const std::filesystem::path& executable,
                            const std::filesystem::path& game_dir,
-                           uint32_t /*steam_appid*/) {
+                           uint32_t /*steam_appid*/,
+                           const std::vector<std::string>& args,
+                           const std::filesystem::path& cwd) {
     if (!std::filesystem::exists(executable)) return false;
 
 #ifdef _WIN32
     // On Windows, use ShellExecute to launch any registered file type
-    auto cmd = "\"" + executable.string() + "\"";
+    std::string cmd = "\"" + executable.string() + "\"";
+    for (const auto& a : args) cmd += " \"" + a + "\"";
     return std::system(cmd.c_str()) == 0;
 #else
     // Ensure the file is executable
@@ -44,14 +47,29 @@ bool NativeRuntime::launch(const std::filesystem::path& executable,
     if (pid == 0) {
         // Child process: detach from parent process group
         setsid();
-        // Change to game directory so relative paths in the executable work
-        if (!game_dir.empty())
-            chdir(game_dir.c_str());
+        // Change to the configured working directory (game_dir when unset)
+        // so relative paths in the executable work.
+        const auto work_dir = cwd.empty() ? game_dir : cwd;
+        if (!work_dir.empty())
+            chdir(work_dir.c_str());
         // Redirect stdin from /dev/null so the child doesn't inherit our TTY
         if (freopen("/dev/null", "r", stdin)) {}
-        execlp(executable.c_str(), executable.c_str(), nullptr);
-        // If exec fails, try running through /bin/sh (for scripts without proper shebang)
-        execl("/bin/sh", "sh", executable.c_str(), nullptr);
+        // argv[0] = executable, then the configured args, then nullptr.
+        std::vector<char*> argv;
+        argv.push_back(const_cast<char*>(executable.c_str()));
+        for (const auto& a : args)
+            argv.push_back(const_cast<char*>(a.c_str()));
+        argv.push_back(nullptr);
+        execvp(argv[0], argv.data());
+        // If exec fails, try running through /bin/sh (for scripts without
+        // proper shebang), preserving the args.
+        std::vector<char*> sh_argv;
+        sh_argv.push_back(const_cast<char*>("sh"));
+        sh_argv.push_back(const_cast<char*>(executable.c_str()));
+        for (const auto& a : args)
+            sh_argv.push_back(const_cast<char*>(a.c_str()));
+        sh_argv.push_back(nullptr);
+        execv("/bin/sh", sh_argv.data());
         _exit(1);
     } else if (pid > 0) {
         // Parent: don't wait - child is fully detached
@@ -73,7 +91,9 @@ ProtonRuntime::ProtonRuntime(const PlatformInterface* platform)
 
 bool ProtonRuntime::launch(const std::filesystem::path& executable,
                            const std::filesystem::path& game_dir,
-                           uint32_t steam_appid) {
+                           uint32_t steam_appid,
+                           const std::vector<std::string>& args,
+                           const std::filesystem::path& cwd) {
     if (!std::filesystem::exists(executable)) return false;
     if (!platform_) return false;
 
@@ -85,11 +105,19 @@ bool ProtonRuntime::launch(const std::filesystem::path& executable,
     pid_t pid = fork();
     if (pid == 0) {
         setsid();
-        if (!game_dir.empty())
-            chdir(game_dir.c_str());
+        const auto work_dir = cwd.empty() ? game_dir : cwd;
+        if (!work_dir.empty())
+            chdir(work_dir.c_str());
         if (freopen("/dev/null", "r", stdin)) {}
-        execlp(proton.c_str(), proton.filename().c_str(),
-               "waitforexitandrun", executable.c_str(), nullptr);
+        // proton waitforexitandrun <exe> <args...>
+        std::vector<char*> argv;
+        argv.push_back(const_cast<char*>(proton.filename().c_str()));
+        argv.push_back(const_cast<char*>("waitforexitandrun"));
+        argv.push_back(const_cast<char*>(executable.c_str()));
+        for (const auto& a : args)
+            argv.push_back(const_cast<char*>(a.c_str()));
+        argv.push_back(nullptr);
+        execv(proton.c_str(), argv.data());
         _exit(1);
     } else if (pid > 0) {
         last_pid_ = static_cast<int64_t>(pid);

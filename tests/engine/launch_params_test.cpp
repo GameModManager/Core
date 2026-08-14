@@ -150,6 +150,8 @@ static void check_deploy_request(const fs::path& root, const std::string& label)
     req.steam_appid = 12345;
     req.is_windows_exe = true;
     req.environment = {"WINEDEBUG=+file", "GMM_TEST_FLAG=1"};
+    req.args = {"-foo", "bar baz"};
+    req.cwd = game_dir / "bin";
 
     std::vector<std::pair<int, int>> progress;
     const auto params = engine::prepare_launch_params(
@@ -166,6 +168,12 @@ static void check_deploy_request(const fs::path& root, const std::string& label)
     require(params.environment.size() == 2 &&
             params.environment[0] == "WINEDEBUG=+file",
             label + ": environment order preserved");
+    require(params.args == req.args,
+            label + ": args forwarded to LaunchParams");
+    require(params.args.size() == 2 && params.args[1] == "bar baz",
+            label + ": args order and quoting preserved");
+    require(params.cwd == req.cwd,
+            label + ": cwd forwarded to LaunchParams");
 
     // Progress contract: monotonic and completed exactly at the total, which
     // is non-zero on the first-ever deploy.

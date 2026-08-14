@@ -43,12 +43,22 @@ std::filesystem::path WineRuntime::find_wine_binary() const {
 
 bool WineRuntime::launch(const std::filesystem::path& executable,
                          const std::filesystem::path& /*game_dir*/,
-                         uint32_t /*steam_appid*/) {
+                         uint32_t /*steam_appid*/,
+                         const std::vector<std::string>& args,
+                         const std::filesystem::path& cwd) {
     auto wine = find_wine_binary();
     if (wine.empty()) return false;
     if (!std::filesystem::exists(executable)) return false;
 
-    std::string cmd = "\"" + wine.string() + "\" \"" + executable.string() + "\" &";
+    // Standalone Wine path (not used by the engine launch flow, which prefers
+    // Proton for .exe launches). Best-effort args/cwd support via the shell.
+    std::string cmd;
+    if (!cwd.empty())
+        cmd = "cd \"" + cwd.string() + "\" && ";
+    cmd += "\"" + wine.string() + "\" \"" + executable.string() + "\"";
+    for (const auto& a : args)
+        cmd += " \"" + a + "\"";
+    cmd += " &";
     return std::system(cmd.c_str()) == 0;
 }
 
