@@ -90,7 +90,6 @@ void SettingsController::set_game_info(
   w_->downloads_->hide_install_progress();
   w_->toolbar_->clear_exec_buttons();
   w_->toolbar_shortcut_paths_.clear();
-  w_->toolbar_shortcut_icons_.clear();
   w_->right_panel_->exec_controls()->clear_executables();
   w_->nxm_links_.clear(); // NXM links are instance-scoped
 

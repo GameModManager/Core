@@ -189,6 +189,27 @@ QString csv_escape(const QString &field) {
   return "\"" + quoted + "\"";
 }
 
+// Converts a legacy absolute toolbar-shortcut pin to a game-relative path
+// (Issue #34 schema migration). Returns the input unchanged when it is not
+// absolute, cannot be resolved relative to the game dir, or escapes the game
+// dir (e.g. /usr/bin/dolphin) - such pins keep the absolute form and launch
+// path-only.
+QString to_game_relative_path(const std::filesystem::path &game_dir,
+                              const QString &path) {
+  if (path.isEmpty() || game_dir.empty() || !QFileInfo(path).isAbsolute())
+    return path;
+  std::error_code ec;
+  auto canon_game = std::filesystem::weakly_canonical(game_dir, ec);
+  auto base = (ec || canon_game.empty()) ? game_dir : canon_game;
+  auto canon_full = std::filesystem::weakly_canonical(path.toStdString(), ec);
+  if (ec || canon_full.empty())
+    return path;
+  auto rel = std::filesystem::relative(canon_full, base, ec);
+  if (ec || rel.empty() || rel.begin()->string() == "..")
+    return path;
+  return QString::fromStdString(rel.generic_string());
+}
+
 } // anonymous namespace
 
 ModListController::ModListController(MainWindow *w, QObject *parent)
@@ -3465,7 +3486,9 @@ void ModListController::save_order() {
   in.close();
 
   // Remove old mod_order / folded_separators / folded_mods / mod_parents /
-  // toolbar_shortcuts / toolbar_shortcut_icons lines
+  // toolbar_shortcuts / toolbar_shortcut_icons lines (the icons key is only
+  // stripped here for backward compat with pre-#34 instance.toml files; it is
+  // no longer written).
   std::istringstream stream(existing);
   std::string line;
   std::string cleaned;
@@ -3534,7 +3557,11 @@ void ModListController::save_order() {
   }
   cleaned += "]\n";
 
-  // Toolbar shortcuts
+  // Toolbar shortcuts (Issue #34): game-relative executable paths referencing
+  // the executables list. The icon, args/cwd/env, output mod and title are
+  // inherited from the referenced ExecEntry - no per-shortcut config is
+  // duplicated here anymore. toolbar_shortcut_icons was removed with the
+  // schema change (legacy files are migrated on load).
   cleaned += "toolbar_shortcuts = [";
   bool first_ts = true;
   for (const auto &path : w_->toolbar_shortcut_paths_) {
@@ -3542,20 +3569,6 @@ void ModListController::save_order() {
       cleaned += ", ";
     cleaned += "\"" + path.toStdString() + "\"";
     first_ts = false;
-  }
-  cleaned += "]\n";
-
-  // Per-shortcut custom icon paths (parallel to toolbar_shortcuts, same
-  // index). "-" marks "no custom icon" (the naive TOML parser below drops
-  // empty tokens, which would desync the arrays); restore maps it back to
-  // empty and falls back to exe extraction.
-  cleaned += "toolbar_shortcut_icons = [";
-  bool first_tsi = true;
-  for (const auto &icon : w_->toolbar_shortcut_icons_) {
-    if (!first_tsi)
-      cleaned += ", ";
-    cleaned += "\"" + (icon.isEmpty() ? "-" : icon.toStdString()) + "\"";
-    first_tsi = false;
   }
   cleaned += "]\n";
 
@@ -3849,16 +3862,27 @@ void ModListController::load_order() {
   // Ensure apply_fold_state() reflects current flags
   w_->mod_model_->apply_fold_state();
 
-  // Restore toolbar shortcuts
+  // Restore toolbar shortcuts (Issue #34): pins are game-relative paths
+  // referencing the executables list. Legacy pre-#34 files stored absolute
+  // paths (and a parallel toolbar_shortcut_icons array) - migrate absolute
+  // pins to game-relative refs when they resolve under the game dir, keep the
+  // legacy icon as a fallback until materialize_toolbar_shortcuts folds it
+  // into the referenced ExecEntry.
   engine::Logger::instance().begin_group(engine::LogLevel::Debug,
                                          "Restored toolbar shortcuts");
   for (size_t i = 0; i < toolbar_paths.size(); ++i) {
-    // "-" is the persisted empty-icon sentinel (see save_order)
+    auto pin = QString::fromStdString(toolbar_paths[i]);
+    if (!pin.isEmpty() && QFileInfo(pin).isAbsolute()) {
+      const auto rel = to_game_relative_path(w_->current_game_dir_, pin);
+      if (!rel.isEmpty() && !QFileInfo(rel).isAbsolute())
+        pin = rel;
+    }
+    // "-" was the persisted empty-icon sentinel in legacy files (see the old
+    // save_order); newer files have no icons array at all.
     auto icon = (i < toolbar_icons.size() && toolbar_icons[i] != "-")
                     ? QString::fromStdString(toolbar_icons[i])
                     : QString();
-    w_->launch_->add_toolbar_shortcut_from_path(
-        QString::fromStdString(toolbar_paths[i]), icon);
+    w_->launch_->add_toolbar_shortcut_from_path(pin, icon);
   }
   engine::Logger::instance().end_group();
 

@@ -2,6 +2,8 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <string>
+#include <vector>
 
 namespace engine {
 
@@ -25,9 +27,13 @@ public:
     static bool is_supported();
 
     // Launch executable with LD_PRELOAD set.  Returns child PID or -1.
+    // `args` are appended to argv after the executable (empty = none); `cwd`
+    // is the working directory for the child (empty = game_dir).
     static int64_t launch(const std::filesystem::path& executable,
                           const std::filesystem::path& game_dir,
-                          const std::filesystem::path& overwrite_dir);
+                          const std::filesystem::path& overwrite_dir,
+                          const std::vector<std::string>& args = {},
+                          const std::filesystem::path& cwd = {});
 
     // Poll whether the process exited (non-blocking).  Returns true when
     // the PID is gone.

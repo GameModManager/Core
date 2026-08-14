@@ -84,10 +84,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   connect(toolbar_, &MainToolbar::shortcut_removed, this,
           [this](const QString &path) {
             int idx = toolbar_shortcut_paths_.indexOf(path);
-            if (idx >= 0) {
+            if (idx >= 0)
               toolbar_shortcut_paths_.removeAt(idx);
-              toolbar_shortcut_icons_.removeAt(idx);
-            }
             mod_list_->save_order();
           });
 

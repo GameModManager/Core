@@ -40,7 +40,8 @@ public:
                           const std::vector<std::string>& args = {},
                           const std::vector<std::filesystem::path>& extra_lowerdirs = {},
                           const std::filesystem::path& bind_mount_source = {},
-                          const std::filesystem::path& bind_mount_target = {});
+                          const std::filesystem::path& bind_mount_target = {},
+                          const std::filesystem::path& cwd = {});
 
     // Poll whether a launch()-ed process has exited (non-blocking).
     // Returns true if the process is gone.
