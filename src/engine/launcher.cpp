@@ -87,6 +87,18 @@ static bool env_is_true(const char* name) {
     return v && *v && v[0] != '0';
 }
 
+// POD-only wire format for the launch result pipe. LaunchResult contains a
+// std::string (cgroup_path) whose internal heap pointers are only valid in the
+// child's address space after fork(); serializing the whole struct across the
+// pipe leaves the parent with garbage pointers, and a later std::string
+// assignment operator-deletes memory it never allocated (ASan
+// alloc-dealloc-mismatch). Only the trivially copyable fields cross the pipe;
+// the parent rebuilds cgroup_path from its own local CgroupHandle.
+struct LaunchResultWire {
+    int64_t pid = -1;
+    bool overlay_launched = false;
+};
+
 LaunchResult launch_game(const LaunchParams& params) {
     auto exec_path = params.executable;
     // Merged-view pre-check (same semantics as do_launch): the file may be
@@ -144,7 +156,11 @@ LaunchResult launch_game(const LaunchParams& params) {
                     << getpid();
             }
             LaunchResult lr = do_launch(params);
-            write(result_pipe[1], &lr, sizeof(lr));
+            // Never write the full LaunchResult: its std::string (cgroup_path)
+            // holds child-heap pointers that are meaningless to the parent.
+            // Send only the POD wire fields.
+            LaunchResultWire wire{lr.pid, lr.overlay_launched};
+            write(result_pipe[1], &wire, sizeof(wire));
             close(result_pipe[1]);
             _exit(0);
         }
@@ -182,16 +198,21 @@ LaunchResult launch_game(const LaunchParams& params) {
 
     // ---- parent (the returned caller) ----
     close(result_pipe[1]);
-    LaunchResult result;
-    ssize_t n = read(result_pipe[0], &result, sizeof(result));
+    LaunchResultWire wire;
+    ssize_t n = read(result_pipe[0], &wire, sizeof(wire));
     close(result_pipe[0]);
 
-    if (n != sizeof(result)) {
+    if (n != sizeof(wire)) {
         waitpid(supervisor, nullptr, 0);
         return {};
     }
 
+    // Rebuild the full result from the POD wire data + local state:
+    // cgroup_path never crosses the pipe (the parent already holds it), and
+    // the tracked PID is the subreaper supervisor (existing behavior).
+    LaunchResult result;
     result.pid = static_cast<int64_t>(supervisor);
+    result.overlay_launched = wire.overlay_launched;
     result.cgroup_path = cgroup.path;
     Logger::instance().debug(
         "launch_game spawned supervisor PID " + std::to_string(supervisor) +
