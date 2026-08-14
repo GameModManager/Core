@@ -4,11 +4,11 @@
 
 #include <QLabel>
 
-#include "engine/detect/mod_scanner.h"
-#include "engine/events/event_bus.h"
-#include "engine/log/logger.h"
-#include "engine/nxm/nxm_router.h"
-#include "engine/registry/game_knowledge.h"
+#include "engine/game/detect/mod_scanner.h"
+#include "engine/core/events/event_bus.h"
+#include "engine/core/log/logger.h"
+#include "engine/source/nxm/nxm_router.h"
+#include "engine/game/registry/game_knowledge.h"
 #include "ui/main_window/main_window.h"
 
 namespace ui {

@@ -3,10 +3,10 @@
 // ordering, first-match type patterns, empty-value flag deps (flag unset),
 // and step visibility. Ported from FOMOD Plus (MIT) semantics.
 
-#include "engine/fomod/condition_tester.h"
-#include "engine/fomod/fomod_view_model.h"
-#include "engine/fomod/module_config.h"
-#include "engine/fomod/view_models.h"
+#include "engine/mod/fomod/condition_tester.h"
+#include "engine/mod/fomod/fomod_view_model.h"
+#include "engine/mod/fomod/module_config.h"
+#include "engine/mod/fomod/view_models.h"
 
 #include <cstdio>
 #include <filesystem>

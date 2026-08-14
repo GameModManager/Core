@@ -3,9 +3,9 @@
 // destination = install root), missing-file collection, path-traversal guard,
 // staging-dir swap, and fomod.json choice serialization.
 
-#include "engine/fomod/file_installer.h"
-#include "engine/fomod/fomod_view_model.h"
-#include "engine/fomod/module_config.h"
+#include "engine/mod/fomod/file_installer.h"
+#include "engine/mod/fomod/fomod_view_model.h"
+#include "engine/mod/fomod/module_config.h"
 
 #include <nlohmann/json.hpp>
 

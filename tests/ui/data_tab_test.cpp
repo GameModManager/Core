@@ -35,7 +35,7 @@
 // Hermetic: offscreen platform, throwaway XDG_CONFIG_HOME and /tmp file tree.
 #include "ui/panels/tab_panels.h"
 #include "ui/widgets/mod_list_model.h"
-#include "engine/util/fs_utils.h"
+#include "engine/core/util/fs_utils.h"
 
 #include <QApplication>
 #include <QCoreApplication>

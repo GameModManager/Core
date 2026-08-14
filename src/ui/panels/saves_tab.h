@@ -1,7 +1,7 @@
 #pragma once
 
-#include "engine/saves/save_game.h"
-#include "engine/saves/save_missing_assets.h"
+#include "engine/game/saves/save_game.h"
+#include "engine/game/saves/save_missing_assets.h"
 #include "ui/main_window/saves_scan_worker.h"
 
 #include <QPointer>

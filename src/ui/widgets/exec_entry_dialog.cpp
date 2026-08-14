@@ -1,6 +1,6 @@
 #include "ui/widgets/exec_entry_dialog.h"
 
-#include "engine/theme/icon_manager.h"
+#include "ui/theme/icon_manager.h"
 
 #include <QAbstractItemModel>
 #include <QComboBox>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/instance/instance_utils.h"
+#include "engine/core/instance/instance_utils.h"
 
 #include <QDialog>
 

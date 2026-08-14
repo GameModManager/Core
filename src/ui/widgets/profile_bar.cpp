@@ -1,6 +1,6 @@
 #include "ui/widgets/profile_bar.h"
 
-#include "engine/theme/icon_manager.h"
+#include "ui/theme/icon_manager.h"
 
 #include <QComboBox>
 #include <QHBoxLayout>

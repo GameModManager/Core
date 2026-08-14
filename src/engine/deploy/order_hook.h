@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/model/profile.h"
+#include "engine/mod/model/profile.h"
 
 #include <filesystem>
 #include <string>

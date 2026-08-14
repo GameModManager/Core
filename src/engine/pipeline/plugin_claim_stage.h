@@ -3,7 +3,7 @@
 #include <string>
 
 #include "engine/pipeline/stage.h"
-#include "engine/registry/stage_registry.h"
+#include "engine/pipeline/registry/stage_registry.h"
 
 namespace engine {
 

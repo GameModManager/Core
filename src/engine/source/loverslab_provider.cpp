@@ -1,10 +1,10 @@
 #include "engine/source/loverslab_provider.h"
 
-#include "engine/download/curl_download.h"
+#include "engine/source/download/curl_download.h"
 #include "engine/source/loverslab_auth.h"
-#include "engine/model/mod.h"
+#include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
-#include "engine/log/logger.h"
+#include "engine/core/log/logger.h"
 #include "engine/source/nexus_http.h"  // encode_url_path
 
 #include <curl/curl.h>

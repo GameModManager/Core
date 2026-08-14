@@ -25,7 +25,7 @@
 //
 // Hermetic: offscreen platform, throwaway XDG_CONFIG_HOME, no network.
 #include "ui/panels/tab_panels.h"
-#include "engine/theme/icon_manager.h"
+#include "ui/theme/icon_manager.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/mod_table_view.h"
 

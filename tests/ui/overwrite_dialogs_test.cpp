@@ -15,7 +15,7 @@
 #include "ui/overwrite/sync_overwrite_dialog.h"
 #include "ui/install/install_name_dialog.h"
 
-#include "engine/overwrite/overwrite_utils.h"
+#include "engine/mod/overwrite/overwrite_utils.h"
 #include "engine/pipeline/pipeline.h"
 
 #include <QApplication>

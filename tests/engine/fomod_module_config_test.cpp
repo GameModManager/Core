@@ -4,7 +4,7 @@
 // mirror the upstream test files so a parser regression here means the same
 // thing it would upstream.
 
-#include "engine/fomod/module_config.h"
+#include "engine/mod/fomod/module_config.h"
 
 #include <cstdio>
 #include <filesystem>

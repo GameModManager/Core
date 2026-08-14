@@ -1,10 +1,10 @@
 #include "engine/pipeline/extract_stage.h"
 #include "engine/pipeline/pipeline.h"
-#include "engine/model/mod.h"
-#include "engine/archive/archive_extractor.h"
-#include "engine/filetree/staging_layout.h"
-#include "engine/fomod/fomod_utils.h"
-#include "engine/log/logger.h"
+#include "engine/mod/model/mod.h"
+#include "engine/mod/archive/archive_extractor.h"
+#include "engine/mod/filetree/staging_layout.h"
+#include "engine/mod/fomod/fomod_utils.h"
+#include "engine/core/log/logger.h"
 
 #include <algorithm>
 #include <fstream>

@@ -6,7 +6,7 @@
 
 #include "engine/deploy/deploy_utils.h"
 #include "engine/deploy/root_override.h"
-#include "engine/log/logger.h"
+#include "engine/core/log/logger.h"
 
 #include <QAction>
 #include <QApplication>

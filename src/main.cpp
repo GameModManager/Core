@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-#include "engine/launch/single_instance.h"
+#include "ui/app/single_instance.h"
 
 static void qt_message_filter(QtMsgType type, const QMessageLogContext& ctx, const QString& msg) {
     // Suppress noisy Qt platform/theme messages
@@ -32,18 +32,18 @@ static void qt_message_filter(QtMsgType type, const QMessageLogContext& ctx, con
 #include "ui/game_selection/game_selection_widget.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/game_icon_cache.h"
-#include "engine/log/logger.h"
-#include "engine/log/crash_handler.h"
-#include "engine/instance/instance.h"
-#include "engine/instance/instance_utils.h"
-#include "engine/detect/game_detector.h"
-#include "engine/plugin_host/plugin_loader.h"
-#include "engine/nxm/nxm_router.h"
-#include "engine/nxm/managed_games.h"
-#include "engine/nxm/nxm_ipc.h"
-#include "engine/theme/theme_manager.h"
-#include "engine/theme/style_manager.h"
-#include "engine/theme/icon_manager.h"
+#include "engine/core/log/logger.h"
+#include "engine/core/log/crash_handler.h"
+#include "engine/core/instance/instance.h"
+#include "engine/core/instance/instance_utils.h"
+#include "engine/game/detect/game_detector.h"
+#include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "engine/source/nxm/nxm_router.h"
+#include "engine/source/nxm/managed_games.h"
+#include "ui/nxm/nxm_ipc.h"
+#include "engine/platform/theme/theme_manager.h"
+#include "ui/theme/style_manager.h"
+#include "ui/theme/icon_manager.h"
 #include "engine/source/nexus_auth.h"
 #include "engine/source/loverslab_auth.h"
 #include "cli/headless_launcher.h"

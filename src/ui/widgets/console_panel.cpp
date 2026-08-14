@@ -1,7 +1,7 @@
 #include "ui/widgets/console_panel.h"
 #include "ui/settings/settings.h"
-#include "engine/util/debug_env.h"
-#include "engine/log/logger.h"
+#include "engine/core/util/debug_env.h"
+#include "engine/core/log/logger.h"
 
 #include <QApplication>
 #include <QClipboard>

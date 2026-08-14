@@ -1,7 +1,7 @@
 #include "ui/widgets/mod_list_model.h"
 #include "ui/settings/settings.h"
 
-#include "engine/theme/icon_manager.h"
+#include "ui/theme/icon_manager.h"
 
 #include <QBrush>
 #include <QColor>
