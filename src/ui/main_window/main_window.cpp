@@ -14,7 +14,7 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
-#include "engine/theme/icon_manager.h"
+#include "ui/theme/icon_manager.h"
 #include "ui/controllers/downloads_controller.h"
 #include "ui/controllers/launch_controller.h"
 #include "ui/controllers/mod_list_controller.h"

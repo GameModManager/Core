@@ -20,7 +20,7 @@
 #include "ui/widgets/mod_table_view.h"
 #include "ui/widgets/column_toggle_header.h"
 #include "ui/settings/settings.h"
-#include "engine/theme/icon_manager.h"
+#include "ui/theme/icon_manager.h"
 
 #include <QApplication>
 #include <QBrush>

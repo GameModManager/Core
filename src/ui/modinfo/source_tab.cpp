@@ -1,9 +1,9 @@
 #include "ui/modinfo/source_tab.h"
 
-#include "engine/meta/mod_meta.h"
+#include "engine/mod/meta/mod_meta.h"
 #include "engine/source/nexus_provider.h"
 #include "engine/source/source_provider.h"
-#include "engine/theme/icon_manager.h"
+#include "ui/theme/icon_manager.h"
 #include "ui/modinfo/bbcode.h"
 #include "ui/modinfo/source_fetch_worker.h"
 #include "ui/settings/settings.h"

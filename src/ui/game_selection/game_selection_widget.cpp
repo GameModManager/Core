@@ -4,7 +4,7 @@
 #include <QLabel>
 #include <QScrollArea>
 
-#include "engine/theme/icon_manager.h"
+#include "ui/theme/icon_manager.h"
 #include "ui/widgets/game_icon_cache.h"
 
 namespace ui {

@@ -1,6 +1,6 @@
 #include "engine/pipeline/pipeline.h"
 
-#include "engine/trace/trace_recorder.h"
+#include "engine/core/trace/trace_recorder.h"
 
 namespace engine {
 

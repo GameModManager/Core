@@ -1,6 +1,6 @@
-#include "engine/registry/stage_registry.h"
-#include "engine/registry/hook_registry.h"
-#include "engine/model/mod.h"
+#include "engine/pipeline/registry/stage_registry.h"
+#include "engine/pipeline/registry/hook_registry.h"
+#include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 
 #include <cstdio>

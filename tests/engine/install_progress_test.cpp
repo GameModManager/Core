@@ -3,11 +3,11 @@
 // the InstallStage copy percent (files counted up front, then done/total).
 // Both must report a real, monotonic 0-100% - the engine side of the
 // MO2-style install progress popup.
-#include "engine/archive/archive_extractor.h"
+#include "engine/mod/archive/archive_extractor.h"
 #include "engine/pipeline/install_stage.h"
 #include "engine/pipeline/pipeline.h"
-#include "engine/model/mod.h"
-#include "engine/util/process_utils.h"
+#include "engine/mod/model/mod.h"
+#include "engine/core/util/process_utils.h"
 
 #include <cstdio>
 #include <cstdint>

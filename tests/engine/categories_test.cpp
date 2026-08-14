@@ -4,7 +4,7 @@
 // 3-cell categories.dat format (id|name|parentId), the 4-cell nexus variant,
 // nexuscatmap.dat mapping + category_for_nexus, add/remove/set_parent, and
 // rebuilding the tree (has_children, dangling-parent pruning).
-#include "engine/meta/categories.h"
+#include "engine/mod/meta/categories.h"
 
 #include <cstdio>
 #include <cstdlib>

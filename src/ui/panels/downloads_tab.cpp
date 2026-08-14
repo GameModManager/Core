@@ -2,10 +2,10 @@
 #include "ui/panels/panel_utils.h"
 #include "ui/settings/settings.h"
 
-#include "engine/util/fs_utils.h"
-#include "engine/log/logger.h"
+#include "engine/core/util/fs_utils.h"
+#include "engine/core/log/logger.h"
 #include "engine/source/loverslab_provider.h"
-#include "engine/theme/icon_manager.h"
+#include "ui/theme/icon_manager.h"
 
 #include <QAction>
 #include <QCheckBox>

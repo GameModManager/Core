@@ -1,10 +1,10 @@
 #include "engine/index/conflict_index.h"
-#include "engine/model/profile.h"
-#include "engine/model/mod.h"
+#include "engine/mod/model/profile.h"
+#include "engine/mod/model/mod.h"
 #include "engine/deploy/order_hook.h"
 #include "engine/deploy/deploy_ledger.h"
-#include "engine/registry/stage_registry.h"
-#include "engine/registry/hook_registry.h"
+#include "engine/pipeline/registry/stage_registry.h"
+#include "engine/pipeline/registry/hook_registry.h"
 #include "engine/pipeline/pipeline.h"
 
 #include <chrono>

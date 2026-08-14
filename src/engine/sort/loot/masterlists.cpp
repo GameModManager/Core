@@ -1,7 +1,7 @@
 #include "engine/sort/loot/masterlists.h"
 
-#include "engine/download/curl_download.h"
-#include "engine/log/logger.h"
+#include "engine/source/download/curl_download.h"
+#include "engine/core/log/logger.h"
 #include "platform/platform_interface.h"
 
 #include <chrono>

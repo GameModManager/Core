@@ -13,11 +13,11 @@
 //   embedded-time == filename-time for every file whose name carries a
 //   standard timestamp.
 
-#include "engine/saves/save_game.h"
-#include "engine/saves/save_missing_assets.h"
-#include "engine/saves/save_reader.h"
-#include "engine/saves/save_scanner.h"
-#include "engine/saves/skyrim_save.h"
+#include "engine/game/saves/save_game.h"
+#include "engine/game/saves/save_missing_assets.h"
+#include "engine/game/saves/save_reader.h"
+#include "engine/game/saves/save_scanner.h"
+#include "engine/game/saves/skyrim_save.h"
 
 #include <lz4.h>
 #include <zlib.h>

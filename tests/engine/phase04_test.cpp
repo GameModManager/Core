@@ -1,5 +1,5 @@
 #include "engine/index/conflict_index.h"
-#include "engine/model/profile.h"
+#include "engine/mod/model/profile.h"
 #include "engine/deploy/order_hook.h"
 
 #include <cstdio>

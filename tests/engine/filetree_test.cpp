@@ -18,11 +18,11 @@
 // Uses a check() counter that returns a real non-zero exit code (Release
 // builds compile asserts out under -DNDEBUG, so a bare assert() suite cannot
 // fail ctest - see build/CMakeCache.txt).
-#include "engine/filetree/file_tree.h"
-#include "engine/filetree/dir_file_tree.h"
-#include "engine/filetree/archive_file_tree.h"
-#include "engine/filetree/staging_layout.h"
-#include "engine/registry/game_features/mod_data_checker.h"
+#include "engine/mod/filetree/file_tree.h"
+#include "engine/mod/filetree/dir_file_tree.h"
+#include "engine/mod/filetree/archive_file_tree.h"
+#include "engine/mod/filetree/staging_layout.h"
+#include "engine/game/registry/game_features/mod_data_checker.h"
 
 #include <archive.h>
 #include <archive_entry.h>

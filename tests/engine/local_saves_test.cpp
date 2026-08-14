@@ -2,7 +2,7 @@
 // (sLocalSavePath=__MO_Saves\, bUseMyGamesDirectory=1), the savepath.ini
 // backup/restore, the profile saves dir, and the bind-mount pair the launch
 // layer installs. Uses temp dirs only - no VFS, no overlay.
-#include "engine/saves/local_saves.h"
+#include "engine/game/saves/local_saves.h"
 
 #include <cstdio>
 #include <cstdlib>

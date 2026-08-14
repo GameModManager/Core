@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "engine/model/mod.h"
+#include "engine/mod/model/mod.h"
 
 namespace engine {
 

@@ -4,7 +4,7 @@
 // cache-derived archives/thumbnails), set_path_override clearing back to the
 // default, and the instance.toml roundtrip (only non-empty overrides are
 // persisted; a read-back instance resolves the same paths).
-#include "engine/instance/instance.h"
+#include "engine/core/instance/instance.h"
 
 #include <cstdio>
 #include <cstdlib>

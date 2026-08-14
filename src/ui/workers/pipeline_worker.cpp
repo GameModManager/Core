@@ -2,9 +2,9 @@
 #include "engine/pipeline/pipeline.h"
 #include "engine/pipeline/fetch_stage.h"
 #include "engine/pipeline/stage.h"
-#include "engine/model/mod.h"
+#include "engine/mod/model/mod.h"
 #include "engine/source/source_provider.h"
-#include "engine/log/logger.h"
+#include "engine/core/log/logger.h"
 
 #include <filesystem>
 

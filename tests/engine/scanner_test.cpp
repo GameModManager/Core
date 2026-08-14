@@ -8,8 +8,8 @@
 //     is stored - it is never defaulted to "#888888" anymore (that fallback
 //     lives in the UI model rendering),
 //   - regular mods are scanned from meta.ini and carry no color.
-#include "engine/detect/mod_scanner.h"
-#include "engine/registry/game_knowledge.h"
+#include "engine/game/detect/mod_scanner.h"
+#include "engine/game/registry/game_knowledge.h"
 
 #include <cstdio>
 #include <cstdlib>
