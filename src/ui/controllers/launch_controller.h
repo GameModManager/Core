@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -9,6 +10,17 @@
 #include "ui/main_window/main_window.h"
 
 namespace ui {
+
+struct ExecEntry;
+
+// Extracts the raw contents of a TOML array value for `key` (e.g.
+// "executables = [...]") from `content`. Bracket-depth-aware: nested arrays
+// (env lists) and quoted strings are skipped, so a ']' inside a string or a
+// nested array never truncates the section (Issue #34 / R3). Returns the
+// section between the brackets (without them), or empty when the key is
+// missing, the array is unterminated, or the array is empty.
+std::string extract_toml_array(const std::string &content,
+                               const std::string &key);
 
 // Game launching: executable list persistence, deploy-before-launch
 // (DeployThread), process watch + game-lock overlay, "output to mod" capture,
@@ -24,14 +36,29 @@ public slots:
   void load_executables();
   void populate_executables();
   void launch_game();
+  // Launch an executable with the full ExecEntry configuration. `output_mod_dir`
+  // is the explicit output-to-mod target (empty = resolve from the entries /
+  // Overwrite capture); `arguments` / `start_in` / `environment` come from the
+  // referenced ExecEntry and are applied to the launched process (Issue #34).
   void launch_with_executable(const QString &full_path,
-                              const std::filesystem::path &output_mod_dir = {});
+                              const std::filesystem::path &output_mod_dir = {},
+                              const QString &arguments = {},
+                              const QString &start_in = {},
+                              const QStringList &environment = {});
   // Resolves an output-to-mod target folder, auto-creating it (with the
   // game's metadata file) when it doesn't exist yet. Empty input -> empty.
   std::filesystem::path ensure_output_mod_dir(const QString &mod_name);
   void add_shortcut_to_toolbar();
-  void add_toolbar_shortcut_from_path(const QString &full_path,
-                                      const QString &icon_path = {});
+  // Adds a toolbar shortcut referencing an executable by game-relative path.
+  // `legacy_icon` is only used when restoring a pre-#34 instance.toml that
+  // stored per-shortcut icons (the schema now inherits the icon from the
+  // referenced ExecEntry); new shortcuts pass an empty icon.
+  void add_toolbar_shortcut_from_path(const QString &rel_path,
+                                      const QString &legacy_icon = {});
+  // Launches the executable referenced by a toolbar shortcut. Resolves the
+  // full ExecEntry configuration (args, cwd, env, output mod, icon) at click
+  // time so shortcuts stay in sync with the executables list.
+  void launch_toolbar_shortcut(const QString &rel_path);
   void add_shortcut_to_desktop();
   void on_add_entry_requested();
   static bool validate_linux_executable(const QString &path);
@@ -59,7 +86,27 @@ public:
   [[nodiscard]] engine::ProtonToolRequest current_proton_request() const;
 
 private:
+  // Migration + materialization for toolbar shortcuts (Issue #34): after the
+  // executables combo is populated, every pinned path that has no matching
+  // ExecEntry gets a minimal path-only entry materialized so the reference
+  // resolves and stays editable; legacy per-shortcut icons recorded by
+  // add_toolbar_shortcut_from_path are folded into the referenced entry.
+  void materialize_toolbar_shortcuts();
+  // Writes a shell wrapper (under the instance cache) that exports the
+  // entry's environment variables and execs the real command with the
+  // working directory. Used by add_shortcut_to_desktop for entries with env
+  // vars - a .desktop Exec= line cannot set environment variables. Returns
+  // the wrapper path, or empty on failure. `base_name` keys the wrapper
+  // filename so it matches the .desktop file it belongs to.
+  QString write_desktop_wrapper(const ExecEntry &entry,
+                                const std::filesystem::path &exec_path,
+                                const std::filesystem::path &work_dir,
+                                const QString &base_name);
   MainWindow *w_ = nullptr;
+  // Transient legacy-icon handoff between load_order() (toolbar restore runs
+  // before load_executables/populate_executables) and materialization. Keyed
+  // by the game-relative path; cleared after populate_executables.
+  QHash<QString, QString> pending_toolbar_icons_;
 };
 
 } // namespace ui

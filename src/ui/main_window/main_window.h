@@ -215,11 +215,10 @@ private:
   // owner_mod -> plugin names the mod owns; name -> row in plugins_db_.
   QHash<QString, QVector<QString>> plugin_owner_index_;
   QHash<QString, int> plugin_row_by_name_;
+  // Toolbar shortcut pins: game-relative executable paths referencing the
+  // executables list (Issue #34). The icon, args/cwd/env, output mod and
+  // title are inherited from the referenced ExecEntry at click time.
   QStringList toolbar_shortcut_paths_;
-  // Custom icon path for each toolbar shortcut, kept in lockstep with
-  // toolbar_shortcut_paths_ (same index) and persisted to instance.toml so
-  // custom icons survive restarts.
-  QStringList toolbar_shortcut_icons_;
   std::vector<std::string> saved_executables_;
   std::string pending_nxm_url_;
   // In-flight/known Nexus downloads keyed by "<mod_id>-<file_id>", kept so a

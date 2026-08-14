@@ -112,7 +112,8 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
                                    const std::vector<std::string>& args,
                                    const std::vector<std::filesystem::path>& extra_lowerdirs,
                                    const std::filesystem::path& bind_mount_source,
-                                   const std::filesystem::path& bind_mount_target) {
+                                   const std::filesystem::path& bind_mount_target,
+                                   const std::filesystem::path& cwd) {
     Logger::instance().debug("OverlayFsLauncher::launch() executable=" + executable.string() +
         " game_dir=" + game_dir.string() + " upper_dir=" + upper_dir.string());
 
@@ -199,6 +200,7 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
         std::vector<std::filesystem::path> extra_lowerdirs;
         std::filesystem::path bind_mount_source;
         std::filesystem::path bind_mount_target;
+        std::filesystem::path cwd;  // empty = chdir(game_dir)
         int stderr_fd;
         uid_t outer_uid;
         gid_t outer_gid;
@@ -216,7 +218,7 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
         stderr_fd = open(log_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     }
 
-    CloneArgs ca{executable, game_dir, mount_point, overlay_work, upper_dir, args, extra_lowerdirs, bind_mount_source, bind_mount_target, stderr_fd, outer_uid, outer_gid};
+    CloneArgs ca{executable, game_dir, mount_point, overlay_work, upper_dir, args, extra_lowerdirs, bind_mount_source, bind_mount_target, cwd, stderr_fd, outer_uid, outer_gid};
     constexpr size_t STACK_SIZE = 16384;
 
     // Clone into new user + mount namespace.
@@ -373,7 +375,10 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
             close(devnull);
         }
 
-        (void)chdir(ca->game_dir.c_str());
+        // Per-executable working directory (cwd, empty = game_dir). The
+        // overlay mount is already in place at this point, so a cwd inside
+        // the game dir resolves to the merged view.
+        (void)chdir(ca->cwd.empty() ? ca->game_dir.c_str() : ca->cwd.c_str());
 
         if (!ca->exec_args.empty()) {
             std::vector<char*> argv;

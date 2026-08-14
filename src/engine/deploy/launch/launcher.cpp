@@ -248,6 +248,26 @@ static LaunchResult do_launch(const LaunchParams& params) {
     auto canonical = fs::canonical(exec_path, ec);
     if (!ec) exec_path = canonical;
 
+    // Normalize the per-executable working directory once here so every
+    // launch path below (overlay, LD_PRELOAD, runtime) consumes the same
+    // value: empty -> game_dir, relative -> game_dir/<cwd>, absolute -> as-is.
+    // A missing cwd (relative path that escapes or does not exist) is
+    // downgraded to game_dir rather than aborting the launch.
+    fs::path work_dir = params.cwd;
+    if (work_dir.empty()) {
+        work_dir = params.game_dir;
+    } else if (work_dir.is_relative()) {
+        work_dir = params.game_dir / work_dir;
+    }
+    {
+        std::error_code wd_ec;
+        const auto canonical_wd = fs::weakly_canonical(work_dir, wd_ec);
+        if (wd_ec || !fs::is_directory(canonical_wd, wd_ec))
+            work_dir = params.game_dir;
+        else
+            work_dir = canonical_wd;
+    }
+
     int64_t pid = -1;
 
     // "Output to mod" sessions capture into a per-launch scratch dir instead
@@ -333,23 +353,29 @@ static LaunchResult do_launch(const LaunchParams& params) {
                                                             params.proton_runner);
             if (!proton.empty()) {
                 ProtonRuntime::prepare_proton_environment(params.platform, params.game_dir, params.steam_appid);
+                // proton waitforexitandrun <exe> <args...> — the per-executable
+                // args are appended after the executable so the game receives them.
                 std::vector<std::string> ovl_args = {
                     proton.string(), "waitforexitandrun", exec_path.string()
                 };
+                for (const auto& a : params.args)
+                    ovl_args.push_back(a);
                 pid = OverlayFsLauncher::launch(proton, params.game_dir,
                                                 capture_dir, ovl_args,
                                                 params.extra_lowerdirs,
                                                 params.bind_mount_source,
-                                                params.bind_mount_target);
+                                                params.bind_mount_target,
+                                                work_dir);
             } else {
                 Logger::instance().warn("OverlayFS: .exe but no Proton found, skipping");
             }
         } else {
             pid = OverlayFsLauncher::launch(exec_path, params.game_dir,
-                                            capture_dir, {},
+                                            capture_dir, params.args,
                                             params.extra_lowerdirs,
                                             params.bind_mount_source,
-                                            params.bind_mount_target);
+                                            params.bind_mount_target,
+                                            work_dir);
         }
 
         if (pid > 0) {
@@ -391,7 +417,8 @@ static LaunchResult do_launch(const LaunchParams& params) {
         if (PreloadInterceptor::is_supported()) {
             Logger::instance().debug("PreloadInterceptor: trying LD_PRELOAD launch");
             pid = PreloadInterceptor::launch(exec_path, params.game_dir,
-                                             capture_dir);
+                                             capture_dir, params.args,
+                                             work_dir);
             if (pid > 0) {
                 Logger::instance().debug(
                     "Launched with LD_PRELOAD intercept. Writes redirected to " +
@@ -431,7 +458,8 @@ static LaunchResult do_launch(const LaunchParams& params) {
             " (runtime: " + runtime->name() +
             ", appid: " + std::to_string(params.steam_appid) + ")");
 
-        if (!runtime->launch(exec_path, params.game_dir, params.steam_appid)) {
+        if (!runtime->launch(exec_path, params.game_dir, params.steam_appid,
+                             params.args, work_dir)) {
             Logger::instance().error("Failed to launch game");
             return {};
         }
