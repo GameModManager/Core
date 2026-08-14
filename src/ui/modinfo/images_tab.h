@@ -25,6 +25,7 @@ public:
     ~ImagesTab() override;
 
     void set_mod(const ModInfoData& data) override;
+    void first_activation() override;
     void save_state() override;
     bool can_close() override;
 

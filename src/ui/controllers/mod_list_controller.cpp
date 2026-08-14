@@ -1731,19 +1731,33 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
 
 void ModListController::on_data_mod_info(const QString &mod_id,
                                          int initial_tab) {
-  std::vector<ui::ModInfoData> mods_data;
-  mods_data.reserve(w_->mod_model_->mods().size());
-  int found = -1;
+  ui::ModInfoData mod_data;
+  bool found = false;
   for (const auto &mod : w_->mod_model_->mods()) {
-    if (mod.id == mod_id)
-      found = static_cast<int>(mods_data.size());
-    mods_data.push_back(build_mod_info_data(mod));
+    if (mod.id == mod_id) {
+      mod_data = build_mod_info_data(mod);
+      found = true;
+      break;
+    }
   }
-  if (found < 0)
+  if (!found)
     return;
 
-  ui::ModInfoDialog dlg(std::move(mods_data), found,
+  std::vector<std::pair<QString, bool>> nav_list;
+  nav_list.reserve(w_->mod_model_->mods().size());
+  for (const auto &mod : w_->mod_model_->mods()) {
+    nav_list.emplace_back(mod.id, mod.is_separator);
+  }
+
+  ui::ModInfoDialog dlg(std::move(mod_data), std::move(nav_list),
                         static_cast<ui::ModInfoTabId>(initial_tab), w_);
+  dlg.set_data_builder([this](const QString& id) -> ui::ModInfoData {
+    for (const auto &mod : w_->mod_model_->mods()) {
+      if (mod.id == id)
+        return build_mod_info_data(mod);
+    }
+    return {};
+  });
   w_->modinfo_dialog_ = &dlg;
   dlg.exec();
   w_->modinfo_dialog_.clear();

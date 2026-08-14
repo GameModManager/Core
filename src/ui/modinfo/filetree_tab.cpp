@@ -68,11 +68,15 @@ FiletreeTab::FiletreeTab(QWidget* parent) : ModInfoTab(parent) {
 FiletreeTab::~FiletreeTab() = default;
 
 void FiletreeTab::set_mod(const ModInfoData& data) {
-    const QString root = data.mod_dir.absolutePath();
-    model_->setRootPath(root);
-    tree_->setRootIndex(model_->index(root));
-    tree_->expandToDepth(0);
+    root_path_ = data.mod_dir.absolutePath();
     set_has_data(true);
+}
+
+void FiletreeTab::first_activation() {
+    if (root_path_.isEmpty()) return;
+    model_->setRootPath(root_path_);
+    tree_->setRootIndex(model_->index(root_path_));
+    tree_->expandToDepth(0);
 }
 
 QString FiletreeTab::selected_path() const {
