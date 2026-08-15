@@ -1,6 +1,6 @@
 
 > [!WARNING]  
-> This project is under active development and may not work correclty. Please do not try to use it in it's current state.
+> This project is under active development and will break often. Please do not try to use it in it's current state beyond just a simple preview.
 
 <div align="center">
 
@@ -32,7 +32,8 @@ A cross-platform, plugin-driven game mod manager with an MO2-style UI. Drop in a
 - **Multi-instance support** (portable and global)
 - **Deploy strategies:**
     - [x] OverlayFS (Linux default)
-    - [ ] symlink
+    - [x] symlink
+    - [ ] Direct (Copy/In Place)
     - [ ] hardlink
     - [ ] NTFS junction (Windows)
     - [ ] UVFS (Windows)
@@ -41,8 +42,8 @@ A cross-platform, plugin-driven game mod manager with an MO2-style UI. Drop in a
 - **Downloads tab** - Nexus + Steam Workshop sources, per-file progress/Pause, `nxm://` link routing via IPC, untracked-archive scan
 - **Themeable** via QSS token templates (Dark + Nord bundled, plus Qt built-in styles)
 - **Python scripting tier** via pybind11
-- **Headless CLI** - launch games without the UI, handle `nxm://` links
-- Cross-platform: Linux, Windows (macOS planned)
+- **Headless CLI** - launch games without the UI, handle `nxm://` & `gmm://` links for cross-mod manager routing 
+- Cross-platform: Linux, Windows & (macOS planned)
 
 ---
 
@@ -123,7 +124,7 @@ cmake --build build --config Release
 ### macOS
 
 > [!NOTE]
-> macOS support is planned (Phase 4). The build should work but platform-specific paths and native launch are not yet implemented.
+> macOS support is planned. The build should work but platform-specific paths and native launch are not yet implemented.
 
 ```bash
 # Install dependencies via Homebrew
