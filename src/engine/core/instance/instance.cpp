@@ -1,7 +1,8 @@
 #include "engine/core/instance/instance.h"
 
+#include "engine/core/instance/toml_utils.h"
+
 #include <fstream>
-#include <sstream>
 
 namespace engine {
 
@@ -100,147 +101,114 @@ bool Instance::create_directories() const {
 }
 
 bool Instance::write_toml() const {
-    std::ofstream out(toml_path());
-    if (!out) return false;
-
-    out << "game_id = \"" << info_.game_id << "\"\n";
-    out << "portable = " << (info_.portable ? "true" : "false") << "\n";
+    toml::table tbl;
+    tbl.emplace("game_id", info_.game_id);
+    tbl.emplace("portable", info_.portable);
     if (info_.steam_appid > 0) {
-        out << "steam_appid = " << info_.steam_appid << "\n";
+        tbl.emplace("steam_appid", static_cast<int64_t>(info_.steam_appid));
     }
     if (!info_.game_dir.empty()) {
-        out << "game_dir = \"" << info_.game_dir.string() << "\"\n";
+        tbl.emplace("game_dir", info_.game_dir.string());
     }
     // Per-folder overrides; only non-empty overrides are written.
     if (!info_.mods_dir.empty()) {
-        out << "mods_dir = \"" << info_.mods_dir.string() << "\"\n";
+        tbl.emplace("mods_dir", info_.mods_dir.string());
     }
     if (!info_.downloads_dir.empty()) {
-        out << "downloads_dir = \"" << info_.downloads_dir.string() << "\"\n";
+        tbl.emplace("downloads_dir", info_.downloads_dir.string());
     }
     if (!info_.cache_dir.empty()) {
-        out << "cache_dir = \"" << info_.cache_dir.string() << "\"\n";
+        tbl.emplace("cache_dir", info_.cache_dir.string());
     }
     if (!info_.profiles_dir.empty()) {
-        out << "profiles_dir = \"" << info_.profiles_dir.string() << "\"\n";
+        tbl.emplace("profiles_dir", info_.profiles_dir.string());
     }
     if (!info_.overwrite_dir.empty()) {
-        out << "overwrite_dir = \"" << info_.overwrite_dir.string() << "\"\n";
+        tbl.emplace("overwrite_dir", info_.overwrite_dir.string());
     }
     if (!info_.plugins_txt_path.empty()) {
-        out << "plugins_txt_path = \"" << info_.plugins_txt_path.string() << "\"\n";
+        tbl.emplace("plugins_txt_path", info_.plugins_txt_path.string());
     }
     if (!info_.proton_runner.empty()) {
-        out << "proton_runner = \"" << info_.proton_runner << "\"\n";
+        tbl.emplace("proton_runner", info_.proton_runner);
     }
     if (!info_.deploy_strategy.empty()) {
-        out << "deploy_strategy = \"" << info_.deploy_strategy << "\"\n";
+        tbl.emplace("deploy_strategy", info_.deploy_strategy);
     }
     if (!info_.last_tab.empty()) {
-        out << "last_tab = \"" << info_.last_tab << "\"\n";
+        tbl.emplace("last_tab", info_.last_tab);
     }
+
+    std::ofstream out(toml_path());
+    if (!out) return false;
+    out << serialize_instance_toml(tbl);
     return out.good();
 }
 
 bool Instance::read_toml() {
-    std::ifstream in(toml_path());
-    if (!in) return false;
+    auto tbl = parse_instance_toml(toml_path());
+    if (!tbl) return false;
 
-    std::string line;
-    while (std::getline(in, line)) {
-        // game_id
-        auto eq = line.find('=');
-        if (eq == std::string::npos) continue;
-        auto key = line.substr(0, eq);
-        // trim whitespace
-        key.erase(key.find_last_not_of(" \t") + 1);
-        key.erase(0, key.find_first_not_of(" \t"));
-
-        auto val_start = line.find_first_not_of(" \t", eq + 1);
-        if (val_start == std::string::npos) continue;
-
-        // Quoted or numeric value
-        if (line[val_start] == '"') {
-            val_start++; // skip opening quote
-            auto val_end = line.find('"', val_start);
-            if (val_end == std::string::npos) continue;
-            auto val = line.substr(val_start, val_end - val_start);
-
-            if (key == "game_id") {
-                info_.game_id = val;
-            } else if (key == "game_dir") {
-                info_.game_dir = val;
-            } else if (key == "mods_dir") {
-                info_.mods_dir = val;
-            } else if (key == "downloads_dir") {
-                info_.downloads_dir = val;
-            } else if (key == "cache_dir") {
-                info_.cache_dir = val;
-            } else if (key == "profiles_dir") {
-                info_.profiles_dir = val;
-            } else if (key == "overwrite_dir") {
-                info_.overwrite_dir = val;
-            } else if (key == "plugins_txt_path") {
-                info_.plugins_txt_path = val;
-            } else if (key == "proton_runner") {
-                info_.proton_runner = val;
-            } else if (key == "deploy_strategy") {
-                info_.deploy_strategy = val;
-            } else if (key == "last_tab") {
-                info_.last_tab = val;
-            }
-        } else {
-            // unquoted numeric/boolean
-            auto val_end = line.find_first_of(" \t\r\n", val_start);
-            if (val_end == std::string::npos) val_end = line.size();
-            auto val = line.substr(val_start, val_end - val_start);
-
-            if (key == "portable") {
-                info_.portable = (val == "true");
-            } else if (key == "steam_appid") {
-                try { info_.steam_appid = std::stoul(val); } catch (...) {}
-            }
-        }
+    if (auto v = (*tbl)["game_id"].value<std::string>()) {
+        info_.game_id = *v;
+    }
+    if (auto v = (*tbl)["game_dir"].value<std::string>()) {
+        info_.game_dir = *v;
+    }
+    if (auto v = (*tbl)["mods_dir"].value<std::string>()) {
+        info_.mods_dir = *v;
+    }
+    if (auto v = (*tbl)["downloads_dir"].value<std::string>()) {
+        info_.downloads_dir = *v;
+    }
+    if (auto v = (*tbl)["cache_dir"].value<std::string>()) {
+        info_.cache_dir = *v;
+    }
+    if (auto v = (*tbl)["profiles_dir"].value<std::string>()) {
+        info_.profiles_dir = *v;
+    }
+    if (auto v = (*tbl)["overwrite_dir"].value<std::string>()) {
+        info_.overwrite_dir = *v;
+    }
+    if (auto v = (*tbl)["plugins_txt_path"].value<std::string>()) {
+        info_.plugins_txt_path = *v;
+    }
+    if (auto v = (*tbl)["proton_runner"].value<std::string>()) {
+        info_.proton_runner = *v;
+    }
+    if (auto v = (*tbl)["deploy_strategy"].value<std::string>()) {
+        info_.deploy_strategy = *v;
+    }
+    if (auto v = (*tbl)["last_tab"].value<std::string>()) {
+        info_.last_tab = *v;
+    }
+    if (auto v = (*tbl)["portable"].value<bool>()) {
+        info_.portable = *v;
+    }
+    if (auto v = (*tbl)["steam_appid"].value<int64_t>()) {
+        info_.steam_appid = static_cast<uint32_t>(*v);
     }
     return true;
 }
 
 bool Instance::write_key(const std::string& key, const std::string& value) const {
     auto path = toml_path();
-    std::ifstream in(path);
-    std::string existing;
-    if (in) {
-        existing.assign((std::istreambuf_iterator<char>(in)),
-                        std::istreambuf_iterator<char>());
+    // Read-modify-write: parse the full file (legacy repair included) so
+    // app-owned sections like `executables` survive untouched. A missing or
+    // unparseable file starts from an empty table.
+    auto tbl = parse_instance_toml(path);
+    if (!tbl) {
+        tbl = toml::table{};
     }
-    in.close();
-
-    std::istringstream stream(existing);
-    std::string line;
-    std::string cleaned;
-    std::string key_prefix = key + " =";
-    while (std::getline(stream, line)) {
-        // Skip the existing key (any position, matching save_executables'
-        // convention of stripping its own section before re-appending).
-        auto pos = line.find(key);
-        if (pos != std::string::npos) {
-            // Only treat it as ours when the token actually starts the key
-            // (avoid matching e.g. `other_proton_runner = ...`).
-            auto before_ok = pos == 0 || line[pos - 1] == ' ' || line[pos - 1] == '\t';
-            if (before_ok && line.compare(pos, key_prefix.size(), key_prefix) == 0) {
-                continue;
-            }
-        }
-        cleaned += line + "\n";
-    }
-
-    if (!value.empty()) {
-        cleaned += key + " = \"" + value + "\"\n";
+    if (value.empty()) {
+        tbl->erase(key);
+    } else {
+        tbl->insert_or_assign(key, value);
     }
 
     std::ofstream out(path);
     if (!out) return false;
-    out << cleaned;
+    out << serialize_instance_toml(*tbl);
     return out.good();
 }
 
