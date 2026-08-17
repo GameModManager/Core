@@ -24,6 +24,11 @@ struct ModScanRequest {
     std::filesystem::path instance_root; // empty = portable (no-instance) mode
     std::filesystem::path mods_dir;      // resolved mods_dir_path() (instance or game)
     std::filesystem::path meta_dir;      // resolved meta_dir_path(), empty in portable mode
+    // Direct-symlink deploy ledger (<instance>/.gmm_deploy_ledger). The stray
+    // plugin scan consults it so files we deployed ourselves are never
+    // synthesized as unmanaged rows. Empty = no ledger (portable mode, or the
+    // instance has never been deployed).
+    std::filesystem::path ledger_file;
 };
 
 struct ModScanResult {

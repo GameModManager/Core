@@ -29,6 +29,7 @@
 #include "engine/core/util/fs_utils.h"
 #include "engine/index/conflict_engine.h"
 #include "engine/core/instance/instance.h"
+#include "engine/core/instance/instance_utils.h"
 #include "engine/core/instance/toml_utils.h"
 #include "engine/core/log/logger.h"
 #include "engine/mod/meta/categories.h"
@@ -848,6 +849,16 @@ ui::ModScanRequest ModListController::build_mod_scan_request() {
   request.instance_root = w_->current_instance_root_;
   request.mods_dir = w_->mods_dir_path();
   request.meta_dir = w_->meta_dir_path();
+  // Direct-symlink deploys persist their ledger at the instance root; the
+  // stray-plugin scan consults it so deployed .esp files are not synthesized
+  // as unmanaged rows. Empty in portable mode (no instance -> no deploy).
+  if (!w_->current_instance_root_.empty()) {
+    request.ledger_file =
+        engine::deploy_config_for(w_->current_instance_root_,
+                                  w_->current_game_dir_, *w_->knowledge_,
+                                  w_->current_game_id_)
+            .ledger_file;
+  }
   return request;
 }
 
