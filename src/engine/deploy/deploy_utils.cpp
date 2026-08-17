@@ -44,6 +44,26 @@ bool is_executable_binary(const std::filesystem::path& path) {
     return false;
 }
 
+// Persistent deploy ledger: target path -> source path of what's currently
+// deployed, written as a TSV. In overlay mode it lives inside the staging dir
+// (wiped together with .gmm_staging at session end, so the next launch is a
+// full parallel deploy by design); in direct-symlink mode it lives at the
+// instance root where the session-end wipe can't reach it, so owner changes
+// across sessions are detected. Round-trips byte-exactly on Linux.
+std::map<std::filesystem::path, std::filesystem::path> load_deploy_ledger(
+    const std::filesystem::path& ledger_file) {
+    std::map<std::filesystem::path, std::filesystem::path> m;
+    std::ifstream in(ledger_file);
+    std::string line;
+    while (std::getline(in, line)) {
+        auto tab = line.find('\t');
+        if (tab == std::string::npos) continue;
+        m.emplace(std::filesystem::path(line.substr(0, tab)),
+                  std::filesystem::path(line.substr(tab + 1)));
+    }
+    return m;
+}
+
 namespace {
 
 // One enabled mod, with its walked file list (relative path -> absolute source).
@@ -91,20 +111,6 @@ void run_parallel(size_t n, unsigned int num_threads, Fn&& fn) {
 // across sessions are detected. Round-trips byte-exactly on Linux.
 std::filesystem::path ledger_path(const std::filesystem::path& staging_dir) {
     return staging_dir / ".gmm_deploy_ledger";
-}
-
-std::map<std::filesystem::path, std::filesystem::path> load_ledger(
-    const std::filesystem::path& ledger_file) {
-    std::map<std::filesystem::path, std::filesystem::path> m;
-    std::ifstream in(ledger_file);
-    std::string line;
-    while (std::getline(in, line)) {
-        auto tab = line.find('\t');
-        if (tab == std::string::npos) continue;
-        m.emplace(std::filesystem::path(line.substr(0, tab)),
-                  std::filesystem::path(line.substr(tab + 1)));
-    }
-    return m;
 }
 
 void save_ledger(const std::filesystem::path& ledger_file,
@@ -481,7 +487,7 @@ bool deploy_impl(const path& mods_dir,
         bool remove;
     };
     std::vector<WorkItem> work;
-    auto old_ledger = load_ledger(ledger_file);
+    auto old_ledger = load_deploy_ledger(ledger_file);
     for (const auto& [target, source] : winners) {
         bool unchanged = false;
         if (auto it = old_ledger.find(target); it != old_ledger.end() && it->second == source) {
@@ -595,7 +601,7 @@ bool remove_deployed_files(const path& game_dir,
                            unsigned int num_threads,
                            const DeployProgressFn& progress)
 {
-    auto ledger = load_ledger(ledger_file);
+    auto ledger = load_deploy_ledger(ledger_file);
     if (ledger.empty()) {
         if (progress) progress(0, 0);
         return true;

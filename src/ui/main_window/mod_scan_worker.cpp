@@ -1,6 +1,7 @@
 #include "ui/main_window/mod_scan_worker.h"
 
 #include "engine/core/log/logger.h"
+#include "engine/deploy/deploy_utils.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/game/plugins/plugin_database.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
@@ -109,12 +110,43 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
 
             std::error_code scan_ec;
             if (std::filesystem::is_directory(native_dir, scan_ec)) {
+                // Deployed plugins (direct-symlink mode) live in the game's
+                // Data dir as symlinks back into the instance mods folder. The
+                // deploy ledger is the source of truth for what we deployed: a
+                // plugin whose path is a ledger target must NOT be synthesized
+                // as an unmanaged row. Compare via weakly_canonical on both
+                // sides so a symlinked/differently-spelled game dir still
+                // matches, and only canonicalize plugin targets (the stray
+                // scan only cares about plugins).
+                std::unordered_set<std::filesystem::path> deployed_plugins;
+                if (!request.ledger_file.empty()) {
+                    for (const auto& [target, source] :
+                         engine::load_deploy_ledger(request.ledger_file)) {
+                        (void)source;
+                        if (!engine::is_plugin_file(target)) continue;
+                        std::error_code cec;
+                        auto canon = std::filesystem::weakly_canonical(target, cec);
+                        if (!cec) deployed_plugins.insert(std::move(canon));
+                    }
+                }
+
                 for (const auto& entry :
                      std::filesystem::directory_iterator(native_dir, scan_ec)) {
+                    // Deployed .esp files are always symlinks (only executables
+                    // are copied as real files, and .esp is never executable):
+                    // skip symlinks outright. A real file the user dropped in
+                    // still flows through to the unmanaged synthesis below.
+                    std::error_code sec;
+                    if (entry.is_symlink(sec)) continue;
                     if (!entry.is_regular_file(scan_ec)) continue;
                     if (!engine::is_plugin_file(entry.path())) continue;
                     const std::string file = entry.path().filename().string();
                     if (declared_native.count(file) || existing.count(file)) continue;
+                    if (!deployed_plugins.empty()) {
+                        std::error_code cec;
+                        auto canon = std::filesystem::weakly_canonical(entry.path(), cec);
+                        if (!cec && deployed_plugins.count(canon)) continue;
+                    }
                     engine::ScannedMod stray_mod;
                     stray_mod.folder_name = file;
                     stray_mod.display_name = file;

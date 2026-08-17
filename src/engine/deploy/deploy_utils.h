@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -175,6 +176,14 @@ using std::filesystem::path;
 // original game files that a mod overrides. Everything there is a restore
 // candidate: remove_deployed_files() moves each back to its game_dir location.
 inline constexpr const char* kOriginalFilesDirName = "Original_Files";
+
+// Load the persistent deploy ledger (target -> source TSV) written by
+// deploy_all_enabled_mods_* / remove_deployed_files. Returns an empty map when
+// the file is absent or unreadable. Consumers that must know what the manager
+// deployed (e.g. the mod scan's stray-plugin synthesis) use this instead of
+// re-deriving the ledger path or format.
+[[nodiscard]] std::map<std::filesystem::path, std::filesystem::path>
+load_deploy_ledger(const std::filesystem::path& ledger_file);
 
 // Remove every file the ledger says was deployed from game_dir and restore the
 // original files the deploy parked in backup_root. Backs the UI's "Remove
