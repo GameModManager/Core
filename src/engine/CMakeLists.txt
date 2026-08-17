@@ -23,6 +23,7 @@ set(FOMOD_ENGINE_SOURCES
 set(ENGINE_SOURCES
     core/instance/instance.cpp
     core/instance/instance_utils.cpp
+    core/instance/toml_utils.cpp
     core/instance/game_icons.cpp
     core/util/fs_utils.cpp
     mod/filetree/file_tree.cpp
@@ -144,6 +145,7 @@ target_link_libraries(gmm_engine PRIVATE
     PkgConfig::YAMLCPP
     PkgConfig::CURL
     PkgConfig::NLOHMANN_JSON
+    PkgConfig::TOMLPLUSPLUS
     PkgConfig::ZLIB
     PkgConfig::LZ4
     pybind11::embed

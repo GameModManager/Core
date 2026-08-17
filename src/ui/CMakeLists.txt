@@ -124,6 +124,7 @@ target_link_libraries(gmm_ui PRIVATE
     gmm_engine
     gmm_runtime
     gmm_platform
+    PkgConfig::TOMLPLUSPLUS
 )
 if(Qt6Multimedia_FOUND)
     target_compile_definitions(gmm_ui PUBLIC GMM_HAS_MULTIMEDIA=1)

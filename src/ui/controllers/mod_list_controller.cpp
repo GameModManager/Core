@@ -29,6 +29,7 @@
 #include "engine/core/util/fs_utils.h"
 #include "engine/index/conflict_engine.h"
 #include "engine/core/instance/instance.h"
+#include "engine/core/instance/toml_utils.h"
 #include "engine/core/log/logger.h"
 #include "engine/mod/meta/categories.h"
 #include "engine/mod/meta/mod_meta.h"
@@ -3539,45 +3540,21 @@ void ModListController::save_order() {
   // instance.toml
   auto toml_path = w_->current_instance_root_ / "instance.toml";
 
-  // Read existing toml to preserve other fields
-  std::ifstream in(toml_path);
-  std::string existing;
-  if (in) {
-    existing.assign((std::istreambuf_iterator<char>(in)),
-                    std::istreambuf_iterator<char>());
-  }
-  in.close();
+  // Read-modify-write: preserve every other key in the file.
+  auto tbl = engine::parse_instance_toml(toml_path);
+  if (!tbl)
+    tbl = toml::table{};
 
   // Remove old mod_order / folded_separators / folded_mods / mod_parents /
-  // toolbar_shortcuts / toolbar_shortcut_icons lines. The three UI-state keys
+  // toolbar_shortcut_icons keys. The three UI-state keys
   // (folded_separators/folded_mods/mod_parents) are no longer written — per-mod
   // fold/parent state lives in the manager sidecar (Issue #35) — but legacy
-  // lines are stripped here so the next save heals old instance.toml files.
+  // keys are stripped here so the next save heals old instance.toml files.
   // The icons key is only stripped for backward compat with pre-#34 files; it
   // is no longer written either.
-  std::istringstream stream(existing);
-  std::string line;
-  std::string cleaned;
-  while (std::getline(stream, line)) {
-    auto key_pos = line.find("mod_order");
-    if (key_pos != std::string::npos)
-      continue;
-    auto fold_pos = line.find("folded_separators");
-    if (fold_pos != std::string::npos)
-      continue;
-    auto fm_pos = line.find("folded_mods");
-    if (fm_pos != std::string::npos)
-      continue;
-    auto np_pos = line.find("mod_parents");
-    if (np_pos != std::string::npos)
-      continue;
-    auto ts_pos = line.find("toolbar_shortcuts");
-    if (ts_pos != std::string::npos)
-      continue;
-    auto tsi_pos = line.find("toolbar_shortcut_icons");
-    if (tsi_pos != std::string::npos)
-      continue;
-    cleaned += line + "\n";
+  for (const char *legacy : {"mod_order", "folded_separators", "folded_mods",
+                             "mod_parents", "toolbar_shortcut_icons"}) {
+    tbl->erase(legacy);
   }
 
   // Toolbar shortcuts (Issue #34): game-relative executable paths referencing
@@ -3585,19 +3562,15 @@ void ModListController::save_order() {
   // inherited from the referenced ExecEntry - no per-shortcut config is
   // duplicated here anymore. toolbar_shortcut_icons was removed with the
   // schema change (legacy files are migrated on load).
-  cleaned += "toolbar_shortcuts = [";
-  bool first_ts = true;
-  for (const auto &path : w_->toolbar_shortcut_paths_) {
-    if (!first_ts)
-      cleaned += ", ";
-    cleaned += "\"" + path.toStdString() + "\"";
-    first_ts = false;
-  }
-  cleaned += "]\n";
+  auto ts = toml::array{};
+  for (const auto &path : w_->toolbar_shortcut_paths_)
+    ts.push_back(path.toStdString());
+  tbl->insert_or_assign("toolbar_shortcuts", std::move(ts));
 
   std::ofstream out(toml_path);
-  if (out)
-    out << cleaned;
+  if (!out)
+    return;
+  out << engine::serialize_instance_toml(*tbl);
 }
 
 void ModListController::load_order() {
@@ -3605,11 +3578,10 @@ void ModListController::load_order() {
     return;
 
   auto toml_path = w_->current_instance_root_ / "instance.toml";
-  std::ifstream in(toml_path);
-  if (!in)
+  auto tbl = engine::parse_instance_toml(toml_path);
+  if (!tbl)
     return;
 
-  std::string line;
   std::vector<std::string>
       order; // migrated from mod_order (for backward compat)
   std::vector<std::string> folded_names;
@@ -3619,127 +3591,47 @@ void ModListController::load_order() {
   std::vector<std::string> toolbar_paths;
   std::vector<std::string> toolbar_icons;
 
-  while (std::getline(in, line)) {
-    auto key_pos = line.find("mod_order");
-    if (key_pos != std::string::npos) {
-      auto bracket = line.find('[');
-      auto close_bracket = line.find(']');
-      if (bracket != std::string::npos && close_bracket != std::string::npos) {
-        auto content = line.substr(bracket + 1, close_bracket - bracket - 1);
-        std::istringstream ss(content);
-        std::string token;
-        while (std::getline(ss, token, ',')) {
-          auto s = token.find_first_not_of(" \t\"");
-          auto e = token.find_last_not_of(" \t\"");
-          if (s != std::string::npos && e != std::string::npos) {
-            order.push_back(token.substr(s, e - s + 1));
-          }
-        }
+  // Legacy mod_order: array of folder names (strings; tolerate numeric ids
+  // from very old files).
+  if (auto arr = (*tbl)["mod_order"].as_array()) {
+    for (const auto &e : *arr) {
+      if (auto s = e.value<std::string>()) {
+        order.push_back(*s);
+      } else if (auto i = e.value<int64_t>()) {
+        order.push_back(std::to_string(*i));
       }
-      continue;
-    }
-
-    auto fold_pos = line.find("folded_separators");
-    if (fold_pos != std::string::npos) {
-      auto bracket = line.find('[');
-      auto close_bracket = line.find(']');
-      if (bracket != std::string::npos && close_bracket != std::string::npos) {
-        auto content = line.substr(bracket + 1, close_bracket - bracket - 1);
-        std::istringstream ss(content);
-        std::string token;
-        while (std::getline(ss, token, ',')) {
-          auto s = token.find_first_not_of(" \t\"");
-          auto e = token.find_last_not_of(" \t\"");
-          if (s != std::string::npos && e != std::string::npos) {
-            folded_names.push_back(token.substr(s, e - s + 1));
-          }
-        }
-      }
-      continue;
-    }
-
-    auto fm_pos = line.find("folded_mods");
-    if (fm_pos != std::string::npos) {
-      auto bracket = line.find('[');
-      auto close_bracket = line.find(']');
-      if (bracket != std::string::npos && close_bracket != std::string::npos) {
-        auto content = line.substr(bracket + 1, close_bracket - bracket - 1);
-        std::istringstream ss(content);
-        std::string token;
-        while (std::getline(ss, token, ',')) {
-          auto s = token.find_first_not_of(" \t\"");
-          auto e = token.find_last_not_of(" \t\"");
-          if (s != std::string::npos && e != std::string::npos) {
-            folded_mod_names.push_back(token.substr(s, e - s + 1));
-          }
-        }
-      }
-      continue;
-    }
-
-    auto np_pos = line.find("mod_parents");
-    if (np_pos != std::string::npos) {
-      auto bracket = line.find('[');
-      auto close_bracket = line.find(']');
-      if (bracket != std::string::npos && close_bracket != std::string::npos) {
-        auto content = line.substr(bracket + 1, close_bracket - bracket - 1);
-        std::istringstream ss(content);
-        std::string token;
-        while (std::getline(ss, token, ',')) {
-          auto s = token.find_first_not_of(" \t\"");
-          auto e = token.find_last_not_of(" \t\"");
-          if (s == std::string::npos || e == std::string::npos)
-            continue;
-          auto entry = token.substr(s, e - s + 1);
-          auto eq = entry.find('=');
-          if (eq == std::string::npos || eq == 0 || eq == entry.size() - 1)
-            continue;
-          parent_links.emplace_back(entry.substr(0, eq), entry.substr(eq + 1));
-        }
-      }
-      continue;
-    }
-
-    auto ts_pos = line.find("toolbar_shortcuts");
-    if (ts_pos != std::string::npos) {
-      auto bracket = line.find('[');
-      auto close_bracket = line.find(']');
-      if (bracket != std::string::npos && close_bracket != std::string::npos) {
-        auto content = line.substr(bracket + 1, close_bracket - bracket - 1);
-        std::istringstream ss(content);
-        std::string token;
-        while (std::getline(ss, token, ',')) {
-          auto s = token.find_first_not_of(" \t\"");
-          auto e = token.find_last_not_of(" \t\"");
-          if (s != std::string::npos && e != std::string::npos) {
-            toolbar_paths.push_back(token.substr(s, e - s + 1));
-          }
-        }
-      }
-      continue;
-    }
-
-    auto tsi_pos = line.find("toolbar_shortcut_icons");
-    if (tsi_pos != std::string::npos) {
-      auto bracket = line.find('[');
-      auto close_bracket = line.find(']');
-      if (bracket != std::string::npos && close_bracket != std::string::npos) {
-        auto content = line.substr(bracket + 1, close_bracket - bracket - 1);
-        std::istringstream ss(content);
-        std::string token;
-        while (std::getline(ss, token, ',')) {
-          auto s = token.find_first_not_of(" \t\"");
-          auto e = token.find_last_not_of(" \t\"");
-          if (s != std::string::npos && e != std::string::npos) {
-            toolbar_icons.push_back(token.substr(s, e - s + 1));
-          }
-        }
-      }
-      continue;
     }
   }
-
-  in.close();
+  if (auto arr = (*tbl)["folded_separators"].as_array()) {
+    for (const auto &e : *arr) {
+      if (auto s = e.value<std::string>()) folded_names.push_back(*s);
+    }
+  }
+  if (auto arr = (*tbl)["folded_mods"].as_array()) {
+    for (const auto &e : *arr) {
+      if (auto s = e.value<std::string>()) folded_mod_names.push_back(*s);
+    }
+  }
+  // Legacy mod_parents: array of "child=parent" strings.
+  if (auto arr = (*tbl)["mod_parents"].as_array()) {
+    for (const auto &e : *arr) {
+      if (auto s = e.value<std::string>()) {
+        auto eq = s->find('=');
+        if (eq != std::string::npos && eq != 0 && eq != s->size() - 1)
+          parent_links.emplace_back(s->substr(0, eq), s->substr(eq + 1));
+      }
+    }
+  }
+  if (auto arr = (*tbl)["toolbar_shortcuts"].as_array()) {
+    for (const auto &e : *arr) {
+      if (auto s = e.value<std::string>()) toolbar_paths.push_back(*s);
+    }
+  }
+  if (auto arr = (*tbl)["toolbar_shortcut_icons"].as_array()) {
+    for (const auto &e : *arr) {
+      if (auto s = e.value<std::string>()) toolbar_icons.push_back(*s);
+    }
+  }
 
   w_->loading_ = true;
 
