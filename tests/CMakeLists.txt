@@ -213,6 +213,9 @@ gmm_catch2_test(pipeline_worker_test ui/pipeline_worker_test.cpp
 gmm_catch2_test(plugin_db_load_test ui/plugin_db_load_test.cpp
     LIBS gmm_ui Qt6::Core)
 
+gmm_catch2_test(mod_scan_worker_test ui/mod_scan_worker_test.cpp
+    LIBS gmm_ui Qt6::Core)
+
 gmm_catch2_test(data_tab_test ui/data_tab_test.cpp
     UI
     LIBS gmm_ui)
