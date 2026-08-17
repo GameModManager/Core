@@ -12,12 +12,12 @@
 
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "engine/core/instance/instance.h"
+#include "engine/core/instance/toml_utils.h"
 #include "ui/widgets/smooth_scroll.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/game_icon_cache.h"
 
 #include <filesystem>
-#include <fstream>
 
 namespace ui {
 
@@ -110,23 +110,13 @@ void InstanceSwitcherDialog::refresh_list() {
         ie.root = entry.path();
 
         // Parse instance.toml for game_id and portable flag
-        std::ifstream f(toml);
-        std::string line;
-        while (std::getline(f, line)) {
-            auto eq = line.find('=');
-            if (eq == std::string::npos) continue;
-            auto key = line.substr(0, eq);
-            key.erase(key.find_last_not_of(" \t") + 1);
-            key.erase(0, key.find_first_not_of(" \t"));
-
-            auto q1 = line.find('"', eq + 1);
-            if (q1 == std::string::npos) continue;
-            auto q2 = line.find('"', q1 + 1);
-            if (q2 == std::string::npos) continue;
-            auto val = line.substr(q1 + 1, q2 - q1 - 1);
-
-            if (key == "game_id") ie.game_id = val;
-            else if (key == "portable") ie.portable = (val == "true");
+        if (auto tbl = engine::parse_instance_toml(toml)) {
+            if (auto v = (*tbl)["game_id"].value<std::string>()) {
+                ie.game_id = *v;
+            }
+            if (auto v = (*tbl)["portable"].value<bool>()) {
+                ie.portable = *v;
+            }
         }
 
         // Resolve display name from plugin
