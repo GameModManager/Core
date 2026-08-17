@@ -2,6 +2,7 @@
 
 #include "engine/deploy/deploy_utils.h"
 #include "engine/deploy/launch/launcher.h"
+#include "engine/deploy/strategy_direct.h"
 #include "engine/core/log/logger.h"
 #include "engine/deploy/launch/overlay_launcher.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
@@ -12,6 +13,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <unordered_set>
+#include <utility>
 
 namespace fs = std::filesystem;
 
@@ -193,10 +195,14 @@ LaunchParams prepare_launch_params(
     // game_dir and launches plain; overlayfs (explicit opt-in per game) deploys
     // into the session-wiped staging dir and launches sandboxed. A per-instance
     // "deploy_strategy" override in instance.toml (set from the UI's Deploy
-    // Management selector) wins over the knowledge default.
+    // Management selector) wins over the knowledge default. "direct" is the
+    // lifecycle-object form of the symlink default: same on-disk result, but
+    // routed through DirectDeployStrategy so deploy_all/undeploy/sync are
+    // first-class.
     const std::string deploy_strategy_name = effective_deploy_strategy(
         req.instance_root, req.knowledge, req.game_id);
     const bool use_overlay = (deploy_strategy_name == kDeployStrategyOverlayFs);
+    const bool use_direct = (deploy_strategy_name == kDeployStrategyDirect);
     params.use_overlay = use_overlay;
     if (use_overlay && !OverlayFsLauncher::is_supported(params.overwrite_dir)) {
         Logger::instance().warn("OverlayFS not supported, launching without overlay");
@@ -239,6 +245,28 @@ LaunchParams prepare_launch_params(
         }
         params.extra_lowerdirs.push_back(staging_dir);
         Logger::instance().debug("Launch: OverlayFS staging at " + staging_dir.string());
+    } else if (use_direct) {
+        // "direct" strategy: the lifecycle-object form of the symlink
+        // default. DirectDeployStrategy owns the same DeployConfig values and
+        // wraps deploy_all_enabled_mods_direct, so the on-disk result is
+        // identical to the symlink path below — but the strategy object is
+        // what resolves the name, keeping the launch path and the UI's
+        // deploy-management actions on the same class.
+        DirectDeployStrategy::Config cfg;
+        cfg.mods_dir = deploy_cfg.mods_dir;
+        cfg.game_dir = deploy_cfg.game_dir;
+        cfg.deploy_prefix = deploy_cfg.deploy_prefix;
+        cfg.deploy_include_mod_id = deploy_cfg.deploy_include_mod_id;
+        cfg.disable_mechanism = deploy_cfg.disable_mechanism;
+        cfg.case_sensitive = deploy_cfg.case_sensitive;
+        cfg.ledger_file = deploy_cfg.ledger_file;
+        cfg.backup_root = deploy_cfg.backup_root;
+        DirectDeployStrategy strategy(std::move(cfg));
+        deployed = strategy.deploy_all(progress);
+        if (!deployed) {
+            Logger::instance().warn("Some mods failed to deploy into game_dir - continuing anyway");
+        }
+        Logger::instance().debug("Launch: direct deploy into " + deploy_cfg.game_dir.string());
     } else {
         // Direct-symlink mode: deploy into game_dir. The ledger persists at
         // the instance root (outside the session-wiped .gmm_staging), so a
