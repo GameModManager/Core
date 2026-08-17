@@ -43,6 +43,7 @@ set(ENGINE_SOURCES
     mod/model/profile.cpp
     deploy/order_hook.cpp
     deploy/strategy_symlink.cpp
+    deploy/strategy_direct.cpp
     deploy/strategy_hardlink.cpp
     deploy/strategy_junction.cpp
     deploy/strategy_overlayfs_deploy.cpp
