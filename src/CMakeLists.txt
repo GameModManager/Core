@@ -66,7 +66,7 @@ target_link_libraries(gamemodmanager PRIVATE
     gmm_ui gmm_cli gmm_engine gmm_runtime gmm_platform
     Qt6::Widgets Qt6::Network
     PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::YAMLCPP PkgConfig::CURL
-    PkgConfig::NLOHMANN_JSON PkgConfig::ZLIB PkgConfig::LZ4
+    PkgConfig::NLOHMANN_JSON PkgConfig::TOMLPLUSPLUS PkgConfig::ZLIB PkgConfig::LZ4
     pybind11::embed Python3::Python
 )
 if(KF6SyntaxHighlighting_FOUND)

@@ -11,6 +11,9 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QIcon>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPixmap>
@@ -46,6 +49,7 @@
 #include "engine/core/util/fs_utils.h"
 #include "engine/core/instance/instance.h"
 #include "engine/core/instance/instance_utils.h"
+#include "engine/core/instance/toml_utils.h"
 #include "engine/core/log/logger.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/mod/overwrite/overwrite_utils.h"
@@ -173,87 +177,103 @@ QString shell_quote(const QString &s) {
 LaunchController::LaunchController(MainWindow *w, QObject *parent)
     : QObject(parent), w_(w) {}
 
+// ---------------------------------------------------------------------------
+// Executables persistence (instance.toml `executables` array)
+// ---------------------------------------------------------------------------
+
+// Converts an ExecEntry to a TOML inline table. The array is stored as valid
+// TOML (bare keys, `=` separators) — the pre-toml++ JSON-style inline tables
+// ({"path":"..."}) were invalid TOML and are migrated on read.
+toml::table exec_entry_to_toml(const ExecEntry &e) {
+  toml::table t;
+  t.emplace("path", e.path.toStdString());
+  t.emplace("title", e.title.toStdString());
+  t.emplace("args", e.arguments.toStdString());
+  t.emplace("cwd", e.start_in.toStdString());
+  t.emplace("mod", e.output_mod.toStdString());
+  t.emplace("icon", e.icon_path.toStdString());
+  auto env = toml::array{};
+  for (const auto &v : e.environment)
+    env.push_back(v.toStdString());
+  t.emplace("env", std::move(env));
+  t.is_inline(true);
+  return t;
+}
+
+// Converts a TOML inline table back to the compact JSON string consumed by
+// ExecControlsBar (the format ExecEntry::toJson() produces).
+std::string toml_table_to_json(const toml::table &t) {
+  QJsonObject obj;
+  for (const auto &[k, v] : t) {
+    const auto key = QString::fromStdString(std::string(k.str()));
+    if (auto s = v.value<std::string>()) {
+      obj[key] = QString::fromStdString(*s);
+    } else if (auto b = v.value<bool>()) {
+      obj[key] = *b;
+    } else if (auto i = v.value<int64_t>()) {
+      obj[key] = static_cast<double>(*i);
+    } else if (auto d = v.value<double>()) {
+      obj[key] = *d;
+    } else if (auto arr = v.as_array()) {
+      QJsonArray ja;
+      for (const auto &e : *arr) {
+        if (auto s = e.value<std::string>())
+          ja.append(QString::fromStdString(*s));
+      }
+      obj[key] = ja;
+    }
+  }
+  return QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact))
+      .toStdString();
+}
+
+// Parses the `executables` array from instance.toml content and returns each
+// entry as a JSON string (the format consumed by ExecControlsBar). Handles
+// TOML inline tables and legacy plain-string entries; legacy JSON-style
+// inline tables are repaired by engine::parse_instance_toml_content. Empty
+// when the key is missing or the content is unparseable.
+std::vector<std::string> extract_executables(const std::string &content) {
+  std::vector<std::string> out;
+  auto tbl = engine::parse_instance_toml_content(content);
+  if (!tbl)
+    return out;
+  auto arr = (*tbl)["executables"].as_array();
+  if (!arr)
+    return out;
+  out.reserve(arr->size());
+  for (const auto &elem : *arr) {
+    if (auto entry = elem.as_table()) {
+      out.push_back(toml_table_to_json(*entry));
+    } else if (auto s = elem.value<std::string>()) {
+      // Legacy plain string -> wrap in JSON {"path": "..."}.
+      out.push_back("{\"path\":\"" + *s + "\"}");
+    }
+  }
+  return out;
+}
+
 void LaunchController::save_executables() {
   if (w_->current_instance_root_.empty())
     return;
 
   auto toml_path = w_->current_instance_root_ / "instance.toml";
 
-  std::ifstream in(toml_path);
-  std::string existing;
-  if (in) {
-    existing.assign((std::istreambuf_iterator<char>(in)),
-                    std::istreambuf_iterator<char>());
-  }
-  in.close();
-
-  std::istringstream stream(existing);
-  std::string line;
-  std::string cleaned;
-  while (std::getline(stream, line)) {
-    auto key_pos = line.find("executables");
-    if (key_pos != std::string::npos)
-      continue;
-    cleaned += line + "\n";
-  }
+  // Read-modify-write: preserve every other key in the file.
+  auto tbl = engine::parse_instance_toml(toml_path);
+  if (!tbl)
+    tbl = toml::table{};
 
   // Collect JSON objects from the combo
   auto entries = w_->right_panel_->exec_controls()->executable_entries();
-  QStringList json_entries;
-  for (const auto &e : entries) {
-    auto raw = QString::fromUtf8(
-        QJsonDocument(e.toJson()).toJson(QJsonDocument::Compact));
-    json_entries.append(raw);
-  }
-
-  cleaned += "executables = [\n";
-  for (int i = 0; i < json_entries.size(); ++i) {
-    if (i > 0)
-      cleaned += ",\n";
-    cleaned += "    " + json_entries[i].toStdString();
-  }
-  cleaned += "\n]\n";
+  auto arr = toml::array{};
+  for (const auto &e : entries)
+    arr.push_back(exec_entry_to_toml(e));
+  tbl->insert_or_assign("executables", std::move(arr));
 
   std::ofstream out(toml_path);
-  if (out)
-    out << cleaned;
-}
-
-std::string extract_toml_array(const std::string &content,
-                               const std::string &key) {
-  auto start = content.find(key + " = [");
-  if (start == std::string::npos)
-    return {};
-  start += key.size() + 4; // skip "key = ["
-
-  // Bracket-depth-aware scan for the array's closing ']' (Issue #34 / R3).
-  // A naive find(']') truncates at the first ']' inside an env array
-  // ("env":["WINEDEBUG=+file"]), corrupting every entry that follows it.
-  // Track nested [] (env arrays) and skip quoted strings so a ']' inside a
-  // string never counts toward the depth.
-  size_t scan = start;
-  int depth = 1; // we are inside the outer array
-  while (scan < content.size()) {
-    const char c = content[scan];
-    if (c == '"') {
-      // Skip past the quoted string (escaped quotes handled by the backslash
-      // check) - brackets inside strings are literal text.
-      ++scan;
-      while (scan < content.size() &&
-             !(content[scan] == '"' && content[scan - 1] != '\\'))
-        ++scan;
-      if (scan >= content.size())
-        return {};
-    } else if (c == '[') {
-      ++depth;
-    } else if (c == ']') {
-      --depth;
-      if (depth == 0)
-        return content.substr(start, scan - start);
-    }
-    ++scan;
-  }
-  return {};
+  if (!out)
+    return;
+  out << engine::serialize_instance_toml(*tbl);
 }
 
 void LaunchController::load_executables() {
@@ -262,68 +282,21 @@ void LaunchController::load_executables() {
     return;
 
   auto toml_path = w_->current_instance_root_ / "instance.toml";
-  std::ifstream in(toml_path);
-  if (!in)
+  auto tbl = engine::parse_instance_toml(toml_path);
+  if (!tbl)
     return;
 
-  std::string content((std::istreambuf_iterator<char>(in)),
-                      std::istreambuf_iterator<char>());
-
-  auto section = extract_toml_array(content, "executables");
-  if (section.empty())
+  auto arr = (*tbl)["executables"].as_array();
+  if (!arr)
     return;
 
-  // Parse entries: handle both JSON objects {..} and plain "strings"
-  // Walk character by character tracking brace depth
-  size_t i = 0;
-  while (i < section.size()) {
-    // Skip whitespace and commas
-    while (i < section.size() &&
-           (section[i] == ' ' || section[i] == '\t' || section[i] == '\n' ||
-            section[i] == '\r' || section[i] == ','))
-      ++i;
-    if (i >= section.size())
-      break;
-
-    if (section[i] == '{') {
-      // JSON object - find matching close brace
-      int depth = 0;
-      auto obj_start = i;
-      while (i < section.size()) {
-        if (section[i] == '{')
-          ++depth;
-        else if (section[i] == '}') {
-          --depth;
-          if (depth == 0) {
-            ++i; // include the closing brace
-            break;
-          }
-        } else if (section[i] == '"') {
-          // Skip past quoted string
-          ++i;
-          while (i < section.size() &&
-                 !(section[i] == '"' && section[i - 1] != '\\'))
-            ++i;
-        }
-        ++i;
-      }
-      w_->saved_executables_.push_back(
-          section.substr(obj_start, i - obj_start));
-    } else if (section[i] == '"') {
-      // Plain string - find closing quote
-      auto str_start = i;
-      ++i;
-      while (i < section.size() &&
-             !(section[i] == '"' && section[i - 1] != '\\'))
-        ++i;
-      if (i < section.size())
-        ++i; // include closing quote
-      auto raw = section.substr(str_start, i - str_start);
-      // Wrap legacy plain strings in JSON
-      w_->saved_executables_.push_back("{\"path\":" + raw + "}");
-    } else {
-      // Skip unexpected characters
-      ++i;
+  w_->saved_executables_.reserve(arr->size());
+  for (const auto &elem : *arr) {
+    if (auto entry = elem.as_table()) {
+      w_->saved_executables_.push_back(toml_table_to_json(*entry));
+    } else if (auto s = elem.value<std::string>()) {
+      // Legacy plain string -> wrap in JSON {"path": "..."}.
+      w_->saved_executables_.push_back("{\"path\":\"" + *s + "\"}");
     }
   }
 }

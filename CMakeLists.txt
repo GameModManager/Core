@@ -77,6 +77,7 @@ if(WIN32)
     find_path(CURL_INCLUDE_DIR curl/curl.h)
     find_library(CURL_LIBRARY NAMES libcurl curllib)
     find_path(NLOHMANN_JSON_INCLUDE_DIR nlohmann/json.hpp)
+    find_path(TOMLPLUSPLUS_INCLUDE_DIR toml++/toml.hpp)
     find_path(ZLIB_INCLUDE_DIR zlib.h)
     find_library(ZLIB_LIBRARY NAMES z zlib)
     find_path(LZ4_INCLUDE_DIR lz4.h)
@@ -107,6 +108,13 @@ if(WIN32)
     set_target_properties(PkgConfig::NLOHMANN_JSON PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${NLOHMANN_JSON_INCLUDE_DIR}")
 
+    # toml++ is header-only by default; the INTERFACE target keeps the Windows
+    # build free of a toml++ DLL (the Linux/macOS pkg-config module links the
+    # distro's shared build instead).
+    add_library(PkgConfig::TOMLPLUSPLUS INTERFACE IMPORTED)
+    set_target_properties(PkgConfig::TOMLPLUSPLUS PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${TOMLPLUSPLUS_INCLUDE_DIR}")
+
     add_library(PkgConfig::ZLIB UNKNOWN IMPORTED)
     set_target_properties(PkgConfig::ZLIB PROPERTIES
         IMPORTED_LOCATION "${ZLIB_LIBRARY}"
@@ -123,6 +131,7 @@ else()
     pkg_check_modules(YAMLCPP REQUIRED IMPORTED_TARGET yaml-cpp)
     pkg_check_modules(CURL REQUIRED IMPORTED_TARGET libcurl)
     pkg_check_modules(NLOHMANN_JSON REQUIRED IMPORTED_TARGET nlohmann_json)
+    pkg_check_modules(TOMLPLUSPLUS REQUIRED IMPORTED_TARGET tomlplusplus)
     pkg_check_modules(ZLIB REQUIRED IMPORTED_TARGET zlib)
     pkg_check_modules(LZ4 REQUIRED IMPORTED_TARGET liblz4)
     pkg_check_modules(FUSE3 IMPORTED_TARGET fuse3)

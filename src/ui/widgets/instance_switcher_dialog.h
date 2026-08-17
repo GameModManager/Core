@@ -21,7 +21,7 @@ struct InstanceSwitcherEntry {
     std::string game_id;       // from instance.toml
     std::string display_name;  // resolved from the plugin (fallback: game_id)
     std::filesystem::path root; // absolute path to instance root
-    bool portable;             // from instance.toml
+    bool portable = true;        // from instance.toml (default: portable)
     QLabel* icon_label = nullptr;  // owned by the list widget; refreshed when
                                    // the async icon fetch lands
 };

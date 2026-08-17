@@ -6,6 +6,7 @@
 #include <QStringList>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #include "ui/main_window/main_window.h"
 
@@ -13,14 +14,14 @@ namespace ui {
 
 struct ExecEntry;
 
-// Extracts the raw contents of a TOML array value for `key` (e.g.
-// "executables = [...]") from `content`. Bracket-depth-aware: nested arrays
-// (env lists) and quoted strings are skipped, so a ']' inside a string or a
-// nested array never truncates the section (Issue #34 / R3). Returns the
-// section between the brackets (without them), or empty when the key is
-// missing, the array is unterminated, or the array is empty.
-std::string extract_toml_array(const std::string &content,
-                               const std::string &key);
+// Parses the `executables` array from instance.toml content and returns each
+// entry as a JSON string (the format consumed by ExecControlsBar). Handles
+// TOML inline tables and legacy plain-string entries; legacy JSON-style
+// inline tables ({"path":"..."}) are repaired by
+// engine::parse_instance_toml_content. Empty when the key is missing or the
+// content is unparseable. Backed by toml++ (Issue #5e8) — the pre-toml++
+// bracket-depth scan (Issue #34) is superseded by a real TOML parser.
+std::vector<std::string> extract_executables(const std::string &content);
 
 // Game launching: executable list persistence, deploy-before-launch
 // (DeployThread), process watch + game-lock overlay, "output to mod" capture,
