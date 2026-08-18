@@ -276,6 +276,14 @@ public:
         (void)priority;
     }
 
+    void register_wildcard_stage_claim(const std::string& game_id,
+                                       const std::string& stage_name,
+                                       int priority) {
+        (void)game_id;
+        (void)stage_name;
+        (void)priority;
+    }
+
     void register_order_encoding_hook() {
     }
 
@@ -380,6 +388,11 @@ PYBIND11_EMBEDDED_MODULE(gmm, m) {
              py::arg("exe_macos") = "")
         .def("register_stage_claim", &PyRegistrationContext::register_stage_claim,
              py::arg("stage_name"), py::arg("priority") = 0)
+        .def("register_wildcard_stage_claim",
+             &PyRegistrationContext::register_wildcard_stage_claim,
+             py::arg("game_id") = "",
+             py::arg("stage_name"),
+             py::arg("priority") = 0)
         .def("register_meta", &PyRegistrationContext::register_meta,
              py::arg("author") = "",
              py::arg("version") = "",

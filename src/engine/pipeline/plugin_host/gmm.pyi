@@ -95,10 +95,26 @@ class RegistrationContext:
         ...
 
     def register_stage_claim(self, stage_name: str, priority: int = 0) -> None:
-        """Claim exclusive ownership of a pipeline stage.
+        """Claim exclusive ownership of a pipeline stage for this plugin's game.
 
         Highest priority wins for a given (stage, game_id) pair.
         Engine falls back to generic logic if nothing claims it.
+        """
+        ...
+
+    def register_wildcard_stage_claim(
+        self,
+        game_id: str = "",
+        stage_name: str = "",
+        priority: int = 0,
+    ) -> None:
+        """Claim exclusive ownership of a pipeline stage for any/specific game.
+
+        Like register_stage_claim but with an explicit game_id so a plugin
+        can claim a stage for ANY game (game_id="" or omitted = wildcard)
+        or for a specific game different from its own.  Resolution priority:
+        exact-match claims beat wildcard claims at equal priority, so a
+        game-specific plugin always wins over a generic wildcard.
         """
         ...
 
