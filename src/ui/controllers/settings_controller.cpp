@@ -316,9 +316,17 @@ void SettingsController::set_game_info(
         return std::nullopt;
       std::optional<engine::StageClaim> best;
       for (const auto &c : w_->plugin_loader_->stage_registry().claims()) {
-        if (c.game_id == w_->current_game_id_ && c.stage_name == stage_name) {
-          if (!best || c.priority > best->priority)
-            best = c;
+        if (c.stage_name != stage_name) continue;
+        // An empty game_id is a wildcard claim matching any game; at equal
+        // priority a game-specific claim wins over a wildcard.
+        const bool wildcard = c.game_id.empty();
+        if (!wildcard && c.game_id != w_->current_game_id_) continue;
+        if (!best) {
+          best = c;
+        } else if (c.priority > best->priority ||
+                   (c.priority == best->priority && best->game_id.empty() &&
+                    !wildcard)) {
+          best = c;
         }
       }
       return best;

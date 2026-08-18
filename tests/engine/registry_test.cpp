@@ -82,6 +82,97 @@ static void test_stage_registry_fallback() {
     printf("  PASS: stage_registry_fallback\n");
 }
 
+static void test_stage_registry_wildcard() {
+    StageRegistry reg;
+
+    // A wildcard claim (empty game_id) matches any game.
+    reg.register_claim("", "deploy",
+        [](Mod&, PipelineContext&) -> bool { return true; },
+        0, "wildcard_plugin");
+
+    REQUIRE(reg.has_claim("skyrimse", "deploy"));
+    REQUIRE(reg.has_claim("isaac", "deploy"));
+    REQUIRE(reg.has_claim("any_other_game", "deploy"));
+    REQUIRE(reg.get_handler("skyrimse", "deploy"));
+    REQUIRE(reg.get_handler("isaac", "deploy"));
+
+    // The wildcard still respects the stage name.
+    REQUIRE(!reg.has_claim("skyrimse", "launch"));
+    REQUIRE(!reg.get_handler("skyrimse", "launch"));
+
+    printf("  PASS: stage_registry_wildcard\n");
+}
+
+static void test_stage_registry_wildcard_precedence() {
+    // Game-specific claim beats a wildcard at the same priority, regardless of
+    // registration order.
+    StageRegistry reg;
+    std::string winner;
+
+    reg.register_claim("", "deploy",
+        [&](Mod&, PipelineContext&) -> bool { winner = "wildcard"; return true; },
+        10, "wildcard_plugin");
+    reg.register_claim("skyrimse", "deploy",
+        [&](Mod&, PipelineContext&) -> bool { winner = "skyrimse"; return true; },
+        10, "game_plugin");
+
+    Mod mod;
+    PipelineContext ctx;
+
+    auto handler = reg.get_handler("skyrimse", "deploy");
+    REQUIRE(handler);
+    handler(mod, ctx);
+    REQUIRE(winner == "skyrimse");  // game-specific wins at equal priority
+
+    // Another game still falls back to the wildcard.
+    winner.clear();
+    handler = reg.get_handler("isaac", "deploy");
+    REQUIRE(handler);
+    handler(mod, ctx);
+    REQUIRE(winner == "wildcard");
+
+    // Reverse registration order: the game-specific claim still wins.
+    StageRegistry reg2;
+    std::string winner2;
+    reg2.register_claim("skyrimse", "deploy",
+        [&](Mod&, PipelineContext&) -> bool { winner2 = "skyrimse"; return true; },
+        10, "game_plugin");
+    reg2.register_claim("", "deploy",
+        [&](Mod&, PipelineContext&) -> bool { winner2 = "wildcard"; return true; },
+        10, "wildcard_plugin");
+
+    handler = reg2.get_handler("skyrimse", "deploy");
+    REQUIRE(handler);
+    handler(mod, ctx);
+    REQUIRE(winner2 == "skyrimse");
+
+    printf("  PASS: stage_registry_wildcard_precedence\n");
+}
+
+static void test_stage_registry_wildcard_priority() {
+    // Priority is the primary ordering: a higher-priority wildcard beats a
+    // lower-priority game-specific claim.
+    StageRegistry reg;
+    std::string winner;
+
+    reg.register_claim("skyrimse", "deploy",
+        [&](Mod&, PipelineContext&) -> bool { winner = "game"; return true; },
+        1, "game_plugin");
+    reg.register_claim("", "deploy",
+        [&](Mod&, PipelineContext&) -> bool { winner = "wildcard"; return true; },
+        10, "wildcard_plugin");
+
+    auto handler = reg.get_handler("skyrimse", "deploy");
+    REQUIRE(handler);
+
+    Mod mod;
+    PipelineContext ctx;
+    handler(mod, ctx);
+    REQUIRE(winner == "wildcard");
+
+    printf("  PASS: stage_registry_wildcard_priority\n");
+}
+
 static void test_hook_registry_basic() {
     HookRegistry reg;
 
@@ -191,6 +282,9 @@ TEST_CASE("registry", "[engine]") {
     test_stage_registry_basic();
     test_stage_registry_priority();
     test_stage_registry_fallback();
+    test_stage_registry_wildcard();
+    test_stage_registry_wildcard_precedence();
+    test_stage_registry_wildcard_priority();
     test_hook_registry_basic();
     test_hook_registry_multiple();
     test_hook_registry_priority_ordering();
