@@ -64,6 +64,7 @@ private:
     std::string current_qss_;
     std::filesystem::path current_qss_path_;
     std::filesystem::path current_tokens_path_;
+    std::string current_base_style_;
     ThemeChangedCallback theme_changed_cb_;
     QFileSystemWatcher watcher_;
 };

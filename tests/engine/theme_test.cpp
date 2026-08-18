@@ -56,6 +56,8 @@ TEST_CASE("theme", "[engine]") {
         "QWidget { color: $fg; background: $bg; }");
     write(root / "app" / "themes" / "Dark" / "tokens.json",
         "{ \"$fg\": \"#e6e6eb\", \"$bg\": \"#1e1f24\" }");
+    write(root / "app" / "themes" / "Dark" / "theme.json",
+        "{ \"base_style\": \"Fusion\" }");
     write(root / "app" / "themes" / "Nord" / "nord.qss",
         "QWidget { color: $fg; }");
     write(root / "app" / "themes" / "Shared" / "shared.qss",
@@ -75,9 +77,31 @@ TEST_CASE("theme", "[engine]") {
         const auto* dark = tm.find_theme("Dark");
         REQUIRE((dark && dark->qss_path.filename() == "dark.qss"));
         REQUIRE((dark && !dark->tokens_path.empty()));
+        REQUIRE((dark && dark->tokens_path.filename() == "tokens.json"));
+        // theme.json metadata is parsed into base_style, not treated as tokens.
+        REQUIRE((dark && dark->base_style == "Fusion"));
         const auto* nord = tm.find_theme("Nord");
         REQUIRE((nord && nord->qss_path.filename() == "nord.qss"));
         REQUIRE((nord && nord->tokens_path.empty()));  // no tokens file -> fine
+        REQUIRE((nord && nord->base_style.empty()));   // no theme.json -> style-agnostic
+    }
+
+    // base_style parsing edge cases: theme.json without the key, and a
+    // theme.json with a value that is not a valid Qt style name (parsing
+    // still succeeds; availability is the UI layer's concern).
+    {
+        write(root / "app" / "themes" / "Shared" / "theme.json",
+            "{ \"author\": \"gmm\" }");
+        write(root / "app" / "themes" / "Nord" / "theme.json",
+            "{ \"base_style\": \"NoSuchStyle\" }");
+        engine::ThemeManager tm;
+        tm.scan_themes(root / "app" / "themes");
+        const auto* shared = tm.find_theme("Shared");
+        REQUIRE((shared && shared->base_style.empty()));
+        const auto* nord = tm.find_theme("Nord");
+        REQUIRE((nord && nord->base_style == "NoSuchStyle"));
+        // tokens_path must not point at theme.json.
+        REQUIRE((nord && nord->tokens_path.empty()));
     }
 
     // Token substitution with prefix-safe ordering.

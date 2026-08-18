@@ -22,6 +22,9 @@ public:
         std::string name;
         std::filesystem::path qss_path;
         std::filesystem::path tokens_path;
+        // Optional Qt base style (e.g. "Fusion") declared in theme.json.
+        // Empty means the theme is style-agnostic and the active style is kept.
+        std::string base_style;
     };
 
     // Scan a directory for themes (subdirs containing *.qss + optional *.json)
