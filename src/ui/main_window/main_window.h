@@ -58,6 +58,7 @@ class ColumnToggleHeaderView;
 class MainToolbar;
 class ProfileBar;
 class ModFilterBar;
+class CategoryFilterPanel;
 class RightPanel;
 class DeployThread;
 
@@ -174,6 +175,9 @@ private:
   MainToolbar *toolbar_ = nullptr;
   ProfileBar *profile_bar_ = nullptr;
   ModFilterBar *filter_bar_ = nullptr;
+  // MO2-style category filter panel (checkable category tree + Clear/Edit).
+  // Hidden by default; the << / >> toggle in the filter bar shows/hides it.
+  CategoryFilterPanel *category_filter_panel_ = nullptr;
   ModTableView *mod_view_ = nullptr;
   ColumnToggleHeaderView *mod_header_ = nullptr;
   ModListModel *mod_model_ = nullptr;

@@ -1131,6 +1131,16 @@ void ModListModel::set_category(const QString& id, const QString& category) {
     }
 }
 
+void ModListModel::set_category_ids(const QString& id, const QVector<int>& ids) {
+    for (int i = 0; i < mods_.size(); ++i) {
+        if (mods_[i].id == id && mods_[i].category_ids != ids) {
+            mods_[i].category_ids = ids;
+            emit dataChanged(index(i, Category), index(i, Category));
+            return;
+        }
+    }
+}
+
 void ModListModel::set_timestamps(const QString& id, qint64 install_ts, qint64 changed_ts) {
     for (int i = 0; i < mods_.size(); ++i) {
         if (mods_[i].id == id &&
