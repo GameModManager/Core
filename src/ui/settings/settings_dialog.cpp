@@ -49,98 +49,6 @@ namespace {
 constexpr int kMinDialogWidth = 723;
 constexpr int kMinDialogHeight = 634;
 
-// Builds native widgets for a plugin's typed settings (register_settings_tab):
-// bool -> QCheckBox, int -> QSpinBox, string -> QLineEdit, choice -> QComboBox.
-// Edits persist through the same per-plugin key:value store as the plain
-// register_settings rows (plugins/settings/<basename>/<key>). Returns a widget
-// containing the form; the caller owns it. Used by the Plugins tab to render
-// a plugin's settings inline when it is selected.
-QWidget* build_plugin_settings_form(const engine::PluginInfo::SettingTab& tab,
-                                    const QString& basename,
-                                    QWidget* parent) {
-    auto& s = Settings::instance();
-    auto* container = new QWidget(parent);
-    auto* form = new QFormLayout(container);
-    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-    form->setLabelAlignment(Qt::AlignLeft);
-
-    auto parse_bool = [](const QString& v) {
-        const QString t = v.trimmed().toLower();
-        return t == "1" || t == "true" || t == "yes" || t == "on";
-    };
-
-    for (const auto& st : tab.settings) {
-        const QString key = QString::fromStdString(st.key);
-        const QString def = QString::fromStdString(st.default_value);
-        const QString value = s.plugin_setting(basename, key, def);
-
-        if (st.type == "bool") {
-            auto* box = new QCheckBox(container);
-            box->setChecked(parse_bool(value));
-            QObject::connect(box, &QCheckBox::toggled, container,
-                    [&s, basename, key](bool on) {
-                        s.set_plugin_setting(basename, key, on ? "1" : "0");
-                    });
-            form->addRow(key, box);
-        } else if (st.type == "int") {
-            auto* spin = new QSpinBox(container);
-            // Optional "min:max" range; anything unparsable keeps the
-            // widget's default 0..INT_MAX (a bad min/max falls back too).
-            if (!st.int_range.empty()) {
-                const auto colon = st.int_range.find(':');
-                if (colon != std::string::npos) {
-                    const int lo = std::atoi(st.int_range.substr(0, colon).c_str());
-                    const int hi = std::atoi(st.int_range.substr(colon + 1).c_str());
-                    if (lo < hi) spin->setRange(lo, hi);
-                }
-            }
-            int int_value = spin->minimum();
-            bool parsed = false;
-            const int from_value = value.toInt(&parsed);
-            if (parsed) {
-                int_value = from_value;
-            } else {
-                parsed = false;
-                const int from_def = def.toInt(&parsed);
-                if (parsed) int_value = from_def;
-            }
-            spin->setValue(int_value);
-            QObject::connect(spin, &QSpinBox::valueChanged, container,
-                    [&s, basename, key](int v) {
-                        s.set_plugin_setting(basename, key, QString::number(v));
-                    });
-            form->addRow(key, spin);
-        } else if (st.type == "choice") {
-            auto* combo = new QComboBox(container);
-            int select = 0;
-            for (size_t i = 0; i < st.choices.size(); ++i) {
-                const QString opt = QString::fromStdString(st.choices[i]);
-                combo->addItem(opt);
-                if (opt == value) select = static_cast<int>(i);
-            }
-            combo->setCurrentIndex(select);
-            QObject::connect(combo, &QComboBox::currentTextChanged, container,
-                    [&s, basename, key](const QString& text) {
-                        s.set_plugin_setting(basename, key, text);
-                    });
-            form->addRow(key, combo);
-        } else {
-            // "string" and any unknown type: plaintext line edit.
-            if (st.type != "string")
-                engine::Logger::instance().warn(
-                    "Plugin settings: unknown setting type '" + st.type +
-                    "' for key '" + st.key + "' - rendered as text");
-            auto* edit = new QLineEdit(value, container);
-            QObject::connect(edit, &QLineEdit::textChanged, container,
-                    [&s, basename, key](const QString& text) {
-                        s.set_plugin_setting(basename, key, text);
-                    });
-            form->addRow(key, edit);
-        }
-    }
-    return container;
-}
-
 } // namespace
 
 SettingsDialog::SettingsDialog(engine::StyleManager* style_manager,
@@ -803,9 +711,9 @@ QWidget* SettingsDialog::build_plugins_tab() {
         engine::SourceProvider* provider = nullptr;
         // plugin-declared options (register_settings): key -> effective value
         std::vector<std::pair<QString, QString>> options;
-        // P1.5: typed settings declared via register_settings_tab. When
-        // non-empty they render inline in the info pane (not as a separate
-        // tab) and the keys they declare stop rendering as raw key:value rows.
+        // P1.5: typed settings declared via register_settings_tab. Their keys
+        // are merged into `options` so every plugin setting renders as a
+        // key:value row in the info pane's table.
         engine::PluginInfo::SettingTab settings_tab;
     };
 
@@ -831,8 +739,9 @@ QWidget* SettingsDialog::build_plugins_tab() {
             e.enabled_basename =
                 QString::fromStdString(std::filesystem::path(p.path).filename().string());
             e.enabled = Settings::instance().plugin_enabled(e.enabled_basename);
-            // P1.5: keys declared by a typed settings tab render inline in the
-            // info pane instead of raw key:value rows here.
+            // P1.5: typed settings declared via register_settings_tab merge
+            // into the same key:value rows as register_settings — the table
+            // is the only rendering path for plugin settings.
             e.settings_tab = p.settings_tab;
             const auto tab_key = [&p](const std::string& key) {
                 for (const auto& st : p.settings_tab.settings)
@@ -840,11 +749,17 @@ QWidget* SettingsDialog::build_plugins_tab() {
                 return false;
             };
             for (const auto& [key, def] : p.settings) {
-                if (tab_key(key)) continue;
+                if (tab_key(key)) continue;  // avoid duplicates with the tab
                 const QString k = QString::fromStdString(key);
                 e.options.emplace_back(
                     k, Settings::instance().plugin_setting(e.enabled_basename, k,
                                                            QString::fromStdString(def)));
+            }
+            for (const auto& st : p.settings_tab.settings) {
+                const QString k = QString::fromStdString(st.key);
+                e.options.emplace_back(
+                    k, Settings::instance().plugin_setting(e.enabled_basename, k,
+                                                           QString::fromStdString(st.default_value)));
             }
             state->entries.push_back(std::move(e));
         }
@@ -983,22 +898,9 @@ QWidget* SettingsDialog::build_plugins_tab() {
         }
         content_layout->addWidget(enabled_box);
 
-        // P1.5: typed settings declared via register_settings_tab render
-        // inline here (under the plugin's metadata), not as a separate tab.
-        const bool has_inline_settings =
-            e.is_plugin && !e.settings_tab.title.empty() && !e.settings_tab.settings.empty();
-        if (has_inline_settings) {
-            auto* settings_group = new QGroupBox(tr("Settings"), state->content);
-            auto* group_layout = new QVBoxLayout(settings_group);
-            group_layout->addWidget(build_plugin_settings_form(
-                e.settings_tab, e.enabled_basename, settings_group));
-            content_layout->addWidget(settings_group);
-        }
-        if (e.is_plugin && e.options.empty() && !has_inline_settings) {
+        if (e.is_plugin && e.options.empty()) {
             content_layout->addWidget(new QLabel(tr("This plugin exposes no settings."),
                                                  state->content));
-        }
-        if (e.is_plugin && e.options.empty()) {
             content_layout->addStretch(1);
         } else if (e.is_plugin) {
             // Key | Value table (scrolls internally) as the last item in the
