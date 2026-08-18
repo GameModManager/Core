@@ -1,14 +1,14 @@
 // FOMOD plugin integration test — verifies that the FOMOD installer plugin:
 //   1. Loads correctly and registers its identity, category, and settings tab
-//   2. The "FOMOD" typed settings tab appears in the Settings dialog with
-//      the correct settings (Restore previous choices, Show FOMOD images)
-//   3. The FOMOD settings are persisted through the typed settings tab API
-//   4. The old FOMOD standalone tab no longer appears (if removed) or is
-//      still present (if not yet removed — baseline for Workspace-0xo.4)
+//   2. The Settings dialog has NO "FOMOD" tab (Workspace-363: plugin settings
+//      render under the Plugins section, not as separate tabs)
+//   3. Selecting the FOMOD plugin in the Plugins section shows its settings
+//      inline (Restore previous choices, Show FOMOD images)
+//   4. The FOMOD settings are persisted through the typed settings API
 //
 // This test loads the real FomodInstaller plugin from the build/plugins
 // directory alongside the test fixture plugins. It exercises the full round-
-// trip: plugin load → register_settings_tab → SettingsDialog renders →
+// trip: plugin load → register_settings_tab → Plugins-tab inline render →
 // user edits → persist → reopen → values restored.
 //
 // UI test: requires QApplication offscreen, links gmm_ui.
@@ -29,6 +29,8 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QTabWidget>
+#include <QTreeWidget>
+#include <QTreeWidgetItem>
 
 #include <cstdio>
 #include <filesystem>
@@ -45,6 +47,14 @@ void check(bool cond, const char* what) {
 static QTabWidget* find_tabs(QDialog& dlg) {
     for (auto* t : dlg.findChildren<QTabWidget*>())
         return t;
+    return nullptr;
+}
+
+static QWidget* find_plugins_page(QTabWidget* tabs) {
+    if (!tabs) return nullptr;
+    for (int i = 0; i < tabs->count(); ++i)
+        if (tabs->tabText(i).contains("Plugins", Qt::CaseInsensitive))
+            return tabs->widget(i);
     return nullptr;
 }
 
@@ -76,21 +86,25 @@ TEST_CASE("fomod plugin settings integration", "[ui]") {
 
     // Check if FomodInstaller is among the loaded plugins.
     bool has_fomod = false;
+    QString fomod_display_name;
+    QString fomod_basename;
     for (const auto& p : loader.plugins()) {
         std::string basename = std::filesystem::path(p.path).filename().string();
         if (basename.find("FomodInstaller") != std::string::npos ||
             basename.find("fomod_installer") != std::string::npos) {
             has_fomod = true;
+            fomod_display_name = QString::fromStdString(p.game_display_name);
+            fomod_basename = QString::fromStdString(basename);
             std::printf("  FOMOD plugin found: %s (game=%s, category=%s)\n",
                         basename.c_str(), p.game_id.c_str(), p.category.c_str());
             check(p.category == "Installer",
                   "FOMOD plugin category is Installer");
-            check(!p.game_id.empty() || true,  // game_id may be empty for wildcard plugins
-                  "FOMOD plugin has a game_id");
+            check(!p.settings_tab.title.empty(),
+                  "FOMOD plugin declares a typed settings tab");
         }
     }
 
-    // Open the settings dialog and check for the FOMOD settings tab.
+    // Open the settings dialog.
     SettingsDialog dlg(&style, "breeze", root, &loader);
     dlg.show();
     app.processEvents();
@@ -98,86 +112,106 @@ TEST_CASE("fomod plugin settings integration", "[ui]") {
     auto* tabs = find_tabs(dlg);
     check(tabs != nullptr, "dialog exposes a QTabWidget");
 
-    // --- Check for FOMOD typed settings tab (register_settings_tab) ---
+    // --- Workspace-363: NO "FOMOD" tab in Settings. ---
+    // Neither the old standalone tab nor a plugin-declared tab may exist;
+    // the FOMOD settings render inline under Plugins > FOMOD Installer.
+    bool has_fomod_tab = false;
+    for (int i = 0; tabs && i < tabs->count(); ++i)
+        if (tabs->tabText(i) == "FOMOD") has_fomod_tab = true;
+    check(!has_fomod_tab, "no FOMOD tab in the Settings dialog");
+
     if (has_fomod) {
-        QWidget* fomod_tab = nullptr;
-        for (int i = 0; tabs && i < tabs->count(); ++i)
-            if (tabs->tabText(i) == "FOMOD")
-                fomod_tab = tabs->widget(i);
-        check(fomod_tab != nullptr,
-              "FOMOD typed settings tab present in the dialog");
+        // --- Select the FOMOD plugin in the Plugins section. ---
+        auto* page = find_plugins_page(tabs);
+        check(page != nullptr, "Plugins tab present");
+        auto* tree = page ? page->findChild<QTreeWidget*>() : nullptr;
+        check(tree != nullptr, "Plugins tab has the plugin tree");
 
-        if (fomod_tab) {
-            // Check that the two settings are rendered
-            const auto checkboxes = fomod_tab->findChildren<QCheckBox*>();
-            check(checkboxes.size() == 2,
-                  "FOMOD settings tab has exactly 2 checkbox settings");
-
-            // Verify the setting names appear as labels
-            bool has_restore = false, has_images = false;
-            for (auto* lbl : fomod_tab->findChildren<QLabel*>()) {
-                if (lbl->text().contains("Restore previous choices"))
-                    has_restore = true;
-                if (lbl->text().contains("Show FOMOD images"))
-                    has_images = true;
-            }
-            check(has_restore, "Restore previous choices setting present");
-            check(has_images, "Show FOMOD images setting present");
-
-            // Verify defaults: both should be checked (default "1")
-            if (checkboxes.size() == 2) {
-                bool both_checked = true;
-                for (auto* cb : checkboxes)
-                    if (!cb->isChecked()) both_checked = false;
-                check(both_checked, "both FOMOD settings default to checked");
-            }
-
-            // --- Test persistence: toggle off, reopen, verify ---
-            if (checkboxes.size() == 2) {
-                checkboxes[0]->setChecked(false);
-                app.processEvents();
-
-                // Find the plugin basename for persistence
-                QString fomod_basename;
-                for (const auto& p : loader.plugins()) {
-                    std::string basename = std::filesystem::path(p.path).filename().string();
-                    if (basename.find("FomodInstaller") != std::string::npos ||
-                        basename.find("fomod_installer") != std::string::npos) {
-                        fomod_basename = QString::fromStdString(basename);
-                    }
-                }
-                if (!fomod_basename.isEmpty()) {
-                    auto& s = Settings::instance();
-                    // The setting key matches what register_settings_tab declared
-                    check(s.plugin_setting(fomod_basename, "Restore previous choices", "1") == "0",
-                          "FOMOD setting persisted after edit");
+        bool selected = false;
+        for (int g = 0; tree && g < tree->topLevelItemCount() && !selected; ++g) {
+            auto* group = tree->topLevelItem(g);
+            for (int c = 0; c < group->childCount() && !selected; ++c) {
+                if (group->child(c)->text(0) == fomod_display_name) {
+                    tree->setCurrentItem(group->child(c));
+                    selected = true;
                 }
             }
         }
+        check(selected, "selected the FOMOD plugin leaf in the Plugins tree");
+        app.processEvents();
+
+        // --- The two settings render inline in the info pane. ---
+        // The info pane also carries the Enabled checkbox; exclude it so only
+        // the typed settings widgets are counted.
+        const auto checkboxes = [&page] {
+            QList<QCheckBox*> out;
+            for (auto* cb : page->findChildren<QCheckBox*>())
+                if (cb->text() != "Enabled") out << cb;
+            return out;
+        }();
+        check(checkboxes.size() == 2,
+              "FOMOD plugin info pane has exactly 2 checkbox settings");
+
+        // Verify the setting names appear as labels.
+        bool has_restore = false, has_images = false;
+        for (auto* lbl : page->findChildren<QLabel*>()) {
+            if (lbl->text().contains("Restore previous choices"))
+                has_restore = true;
+            if (lbl->text().contains("Show FOMOD images"))
+                has_images = true;
+        }
+        check(has_restore, "Restore previous choices setting present");
+        check(has_images, "Show FOMOD images setting present");
+
+        // Verify defaults: both should be checked (default "1").
+        if (checkboxes.size() == 2) {
+            bool both_checked = true;
+            for (auto* cb : checkboxes)
+                if (!cb->isChecked()) both_checked = false;
+            check(both_checked, "both FOMOD settings default to checked");
+        }
+
+        // --- Test persistence: toggle off, reopen, verify. ---
+        if (checkboxes.size() == 2) {
+            checkboxes[0]->setChecked(false);
+            app.processEvents();
+
+            auto& s = Settings::instance();
+            // The setting key matches what register_settings_tab declared.
+            check(s.plugin_setting(fomod_basename, "Restore previous choices", "1") == "0",
+                  "FOMOD setting persisted after edit");
+        }
+
+        // --- Reopen: the inline settings restore the edited value. ---
+        SettingsDialog dlg2(&style, "breeze", root, &loader);
+        dlg2.show();
+        app.processEvents();
+        auto* tabs2 = find_tabs(dlg2);
+        auto* page2 = find_plugins_page(tabs2);
+        auto* tree2 = page2 ? page2->findChild<QTreeWidget*>() : nullptr;
+        bool restored = false;
+        for (int g = 0; tree2 && g < tree2->topLevelItemCount() && !restored; ++g) {
+            auto* group = tree2->topLevelItem(g);
+            for (int c = 0; c < group->childCount() && !restored; ++c) {
+                if (group->child(c)->text(0) == fomod_display_name) {
+                    tree2->setCurrentItem(group->child(c));
+                    app.processEvents();
+                    QList<QCheckBox*> cbs;
+                    for (auto* cb : page2->findChildren<QCheckBox*>())
+                        if (cb->text() != "Enabled") cbs << cb;
+                    restored = cbs.size() == 2 && !cbs[0]->isChecked() && cbs[1]->isChecked();
+                }
+            }
+        }
+        check(restored, "FOMOD inline settings restored after dialog reopen");
+        if (auto* buttons2 = dlg2.findChild<QDialogButtonBox*>())
+            if (auto* close_btn = buttons2->button(QDialogButtonBox::Close))
+                close_btn->click();
+        app.processEvents();
     } else {
-        std::printf("  FOMOD installer plugin not found — skipping tab checks\n");
+        std::printf("  FOMOD installer plugin not found — skipping inline checks\n");
         INFO("FomodInstaller plugin not found in loaded plugins; this is expected "
              "if the Plugins repo hasn't been updated with the FOMOD installer source.");
-    }
-
-    // --- Check for old standalone FOMOD tab (Workspace-0xo.4 removal check) ---
-    // This test documents whether the old FOMOD tab still exists in Settings.
-    // If it does, that's the baseline before Workspace-0xo.4 is merged.
-    bool has_standalone_fomod_tab = false;
-    for (int i = 0; tabs && i < tabs->count(); ++i) {
-        if (tabs->tabText(i) == "FOMOD") {
-            // Note: if the plugin also registers a "FOMOD" tab via
-            // register_settings_tab, we may see multiple "FOMOD" tabs.
-            // The standalone one is the one added by build_fomod_tab().
-            has_standalone_fomod_tab = true;
-        }
-    }
-    // We just record the state — the actual removal is tested by
-    // settings_plugins_tab_test or a dedicated removal test.
-    if (has_standalone_fomod_tab) {
-        std::printf("  NOTE: standalone FOMOD tab still present in Settings\n");
-        INFO("The old FOMOD standalone tab still exists — Workspace-0xo.4 removal "
-             "has not been merged into this branch.");
     }
 
     // --- Close dialog ---
