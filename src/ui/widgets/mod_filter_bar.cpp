@@ -13,6 +13,21 @@ ModFilterBar::ModFilterBar(QWidget* parent)
     layout->setContentsMargins(4, 2, 4, 2);
     layout->setSpacing(4);
 
+    // Category filter panel toggle [<< / >>] (MO2 parity): shows/hides the
+    // checkable category tree. The text flips to indicate the panel state.
+    category_toggle_btn_ = new QToolButton(this);
+    category_toggle_btn_->setText(">>");
+    category_toggle_btn_->setToolTip(tr("Show / hide the category filter panel"));
+    category_toggle_btn_->setFixedWidth(30);
+    category_toggle_btn_->setCheckable(true);
+    layout->addWidget(category_toggle_btn_);
+
+    connect(category_toggle_btn_, &QToolButton::toggled, this,
+            [this](bool on) {
+                category_toggle_btn_->setText(on ? "<<" : ">>");
+                emit category_panel_toggled(on);
+            });
+
     // Expand/Collapse all button [>>]
     expand_btn_ = new QToolButton(this);
     expand_btn_->setText(">>");
