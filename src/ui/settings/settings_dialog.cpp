@@ -49,6 +49,98 @@ namespace {
 constexpr int kMinDialogWidth = 723;
 constexpr int kMinDialogHeight = 634;
 
+// Builds native widgets for a plugin's typed settings (register_settings_tab):
+// bool -> QCheckBox, int -> QSpinBox, string -> QLineEdit, choice -> QComboBox.
+// Edits persist through the same per-plugin key:value store as the plain
+// register_settings rows (plugins/settings/<basename>/<key>). Returns a widget
+// containing the form; the caller owns it. Used by the Plugins tab to render
+// a plugin's settings inline when it is selected.
+QWidget* build_plugin_settings_form(const engine::PluginInfo::SettingTab& tab,
+                                    const QString& basename,
+                                    QWidget* parent) {
+    auto& s = Settings::instance();
+    auto* container = new QWidget(parent);
+    auto* form = new QFormLayout(container);
+    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    form->setLabelAlignment(Qt::AlignLeft);
+
+    auto parse_bool = [](const QString& v) {
+        const QString t = v.trimmed().toLower();
+        return t == "1" || t == "true" || t == "yes" || t == "on";
+    };
+
+    for (const auto& st : tab.settings) {
+        const QString key = QString::fromStdString(st.key);
+        const QString def = QString::fromStdString(st.default_value);
+        const QString value = s.plugin_setting(basename, key, def);
+
+        if (st.type == "bool") {
+            auto* box = new QCheckBox(container);
+            box->setChecked(parse_bool(value));
+            QObject::connect(box, &QCheckBox::toggled, container,
+                    [&s, basename, key](bool on) {
+                        s.set_plugin_setting(basename, key, on ? "1" : "0");
+                    });
+            form->addRow(key, box);
+        } else if (st.type == "int") {
+            auto* spin = new QSpinBox(container);
+            // Optional "min:max" range; anything unparsable keeps the
+            // widget's default 0..INT_MAX (a bad min/max falls back too).
+            if (!st.int_range.empty()) {
+                const auto colon = st.int_range.find(':');
+                if (colon != std::string::npos) {
+                    const int lo = std::atoi(st.int_range.substr(0, colon).c_str());
+                    const int hi = std::atoi(st.int_range.substr(colon + 1).c_str());
+                    if (lo < hi) spin->setRange(lo, hi);
+                }
+            }
+            int int_value = spin->minimum();
+            bool parsed = false;
+            const int from_value = value.toInt(&parsed);
+            if (parsed) {
+                int_value = from_value;
+            } else {
+                parsed = false;
+                const int from_def = def.toInt(&parsed);
+                if (parsed) int_value = from_def;
+            }
+            spin->setValue(int_value);
+            QObject::connect(spin, &QSpinBox::valueChanged, container,
+                    [&s, basename, key](int v) {
+                        s.set_plugin_setting(basename, key, QString::number(v));
+                    });
+            form->addRow(key, spin);
+        } else if (st.type == "choice") {
+            auto* combo = new QComboBox(container);
+            int select = 0;
+            for (size_t i = 0; i < st.choices.size(); ++i) {
+                const QString opt = QString::fromStdString(st.choices[i]);
+                combo->addItem(opt);
+                if (opt == value) select = static_cast<int>(i);
+            }
+            combo->setCurrentIndex(select);
+            QObject::connect(combo, &QComboBox::currentTextChanged, container,
+                    [&s, basename, key](const QString& text) {
+                        s.set_plugin_setting(basename, key, text);
+                    });
+            form->addRow(key, combo);
+        } else {
+            // "string" and any unknown type: plaintext line edit.
+            if (st.type != "string")
+                engine::Logger::instance().warn(
+                    "Plugin settings: unknown setting type '" + st.type +
+                    "' for key '" + st.key + "' - rendered as text");
+            auto* edit = new QLineEdit(value, container);
+            QObject::connect(edit, &QLineEdit::textChanged, container,
+                    [&s, basename, key](const QString& text) {
+                        s.set_plugin_setting(basename, key, text);
+                    });
+            form->addRow(key, edit);
+        }
+    }
+    return container;
+}
+
 } // namespace
 
 SettingsDialog::SettingsDialog(engine::StyleManager* style_manager,
@@ -75,12 +167,7 @@ SettingsDialog::SettingsDialog(engine::StyleManager* style_manager,
     tabs->addTab(build_sources_tab(), tr("Sources"));
     tabs->addTab(build_plugins_tab(), tr("Plugins"));
     tabs->addTab(build_workarounds_tab(), tr("Workarounds"));
-    tabs->addTab(build_fomod_tab(), tr("FOMOD"));
     tabs->addTab(build_diagnostics_tab(), tr("Diagnostics"));
-
-    // P1.5: plugin-declared typed settings tabs (register_settings_tab)
-    // appended after the fixed tabs, one per plugin.
-    append_plugin_settings_tabs(tabs);
 
     auto* btn_box = new QDialogButtonBox(QDialogButtonBox::Close, this);
     connect(btn_box, &QDialogButtonBox::rejected, this, &QDialog::close);
@@ -701,108 +788,6 @@ QWidget* SettingsDialog::build_sources_tab() {
     return page;
 }
 
-// -- Plugin settings tabs (P1.5) -------------------------------------------------
-// One native Settings-dialog tab per plugin that declared a typed settings
-// tab (register_settings_tab). Each setting renders as the widget matching
-// its type and edits persist through the same per-plugin key:value store as
-// the plain register_settings rows (plugins/settings/<basename>/<key>).
-
-void SettingsDialog::append_plugin_settings_tabs(QTabWidget* tabs) {
-    if (!plugin_loader_) return;
-
-    auto& s = Settings::instance();
-    for (const auto& p : plugin_loader_->plugins()) {
-        const auto& tab = p.settings_tab;
-        if (tab.title.empty() || tab.settings.empty()) continue;
-
-        const QString basename =
-            QString::fromStdString(std::filesystem::path(p.path).filename().string());
-        auto* page = new QWidget(tabs);
-        auto* page_layout = new QVBoxLayout(page);
-        auto* form = new QFormLayout;
-        form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-        form->setLabelAlignment(Qt::AlignLeft);
-
-        auto parse_bool = [](const QString& v) {
-            const QString t = v.trimmed().toLower();
-            return t == "1" || t == "true" || t == "yes" || t == "on";
-        };
-
-        for (const auto& st : tab.settings) {
-            const QString key = QString::fromStdString(st.key);
-            const QString def = QString::fromStdString(st.default_value);
-            const QString value = s.plugin_setting(basename, key, def);
-
-            if (st.type == "bool") {
-                auto* box = new QCheckBox(page);
-                box->setChecked(parse_bool(value));
-                connect(box, &QCheckBox::toggled, this,
-                        [&s, basename, key](bool on) {
-                            s.set_plugin_setting(basename, key, on ? "1" : "0");
-                        });
-                form->addRow(key, box);
-            } else if (st.type == "int") {
-                auto* spin = new QSpinBox(page);
-                // Optional "min:max" range; anything unparsable keeps the
-                // widget's default 0..INT_MAX (a bad min/max falls back too).
-                if (!st.int_range.empty()) {
-                    const auto colon = st.int_range.find(':');
-                    if (colon != std::string::npos) {
-                        const int lo = std::atoi(st.int_range.substr(0, colon).c_str());
-                        const int hi = std::atoi(st.int_range.substr(colon + 1).c_str());
-                        if (lo < hi) spin->setRange(lo, hi);
-                    }
-                }
-                int int_value = spin->minimum();
-                bool parsed = false;
-                const int from_value = value.toInt(&parsed);
-                if (parsed) {
-                    int_value = from_value;
-                } else {
-                    parsed = false;
-                    const int from_def = def.toInt(&parsed);
-                    if (parsed) int_value = from_def;
-                }
-                spin->setValue(int_value);
-                connect(spin, &QSpinBox::valueChanged, this,
-                        [&s, basename, key](int v) {
-                            s.set_plugin_setting(basename, key, QString::number(v));
-                        });
-                form->addRow(key, spin);
-            } else if (st.type == "choice") {
-                auto* combo = new QComboBox(page);
-                int select = 0;
-                for (size_t i = 0; i < st.choices.size(); ++i) {
-                    const QString opt = QString::fromStdString(st.choices[i]);
-                    combo->addItem(opt);
-                    if (opt == value) select = static_cast<int>(i);
-                }
-                combo->setCurrentIndex(select);
-                connect(combo, &QComboBox::currentTextChanged, this,
-                        [&s, basename, key](const QString& text) {
-                            s.set_plugin_setting(basename, key, text);
-                        });
-                form->addRow(key, combo);
-            } else {
-                // "string" and any unknown type: plaintext line edit.
-                if (st.type != "string")
-                    engine::Logger::instance().warn("Plugin '" + p.game_id +
-                        "' settings tab: unknown setting type '" + st.type +
-                        "' for key '" + st.key + "' - rendered as text");                auto* edit = new QLineEdit(value, page);
-                connect(edit, &QLineEdit::textChanged, this,
-                        [&s, basename, key](const QString& text) {
-                            s.set_plugin_setting(basename, key, text);
-                        });
-                form->addRow(key, edit);
-            }
-        }
-
-        page_layout->addLayout(form);
-        page_layout->addStretch(1);
-        tabs->addTab(page, QString::fromStdString(tab.title));
-    }
-}
-
 // -- Plugins -------------------------------------------------------------------
 
 QWidget* SettingsDialog::build_plugins_tab() {
@@ -818,9 +803,10 @@ QWidget* SettingsDialog::build_plugins_tab() {
         engine::SourceProvider* provider = nullptr;
         // plugin-declared options (register_settings): key -> effective value
         std::vector<std::pair<QString, QString>> options;
-        // P1.5: non-empty when the plugin declared a typed settings tab; the
-        // keys it declares then stop rendering as raw key:value rows.
-        QString settings_tab_title;
+        // P1.5: typed settings declared via register_settings_tab. When
+        // non-empty they render inline in the info pane (not as a separate
+        // tab) and the keys they declare stop rendering as raw key:value rows.
+        engine::PluginInfo::SettingTab settings_tab;
     };
 
     // Heap-owned state so the info-pane lambda outlives this function.
@@ -845,10 +831,9 @@ QWidget* SettingsDialog::build_plugins_tab() {
             e.enabled_basename =
                 QString::fromStdString(std::filesystem::path(p.path).filename().string());
             e.enabled = Settings::instance().plugin_enabled(e.enabled_basename);
-            // P1.5: keys declared by a typed settings tab render on that tab
-            // instead of raw key:value rows here.
-            if (!p.settings_tab.title.empty())
-                e.settings_tab_title = QString::fromStdString(p.settings_tab.title);
+            // P1.5: keys declared by a typed settings tab render inline in the
+            // info pane instead of raw key:value rows here.
+            e.settings_tab = p.settings_tab;
             const auto tab_key = [&p](const std::string& key) {
                 for (const auto& st : p.settings_tab.settings)
                     if (st.key == key) return true;
@@ -998,16 +983,18 @@ QWidget* SettingsDialog::build_plugins_tab() {
         }
         content_layout->addWidget(enabled_box);
 
-        // P1.5: when the plugin moved its settings onto a typed tab, say so —
-        // even if a few undeclared keys still render as rows below.
-        if (e.is_plugin && !e.settings_tab_title.isEmpty()) {
-            auto* tab_hint = new QLabel(
-                tr("Settings live on the \"%1\" tab.").arg(e.settings_tab_title),
-                state->content);
-            tab_hint->setWordWrap(true);
-            content_layout->addWidget(tab_hint);
+        // P1.5: typed settings declared via register_settings_tab render
+        // inline here (under the plugin's metadata), not as a separate tab.
+        const bool has_inline_settings =
+            e.is_plugin && !e.settings_tab.title.empty() && !e.settings_tab.settings.empty();
+        if (has_inline_settings) {
+            auto* settings_group = new QGroupBox(tr("Settings"), state->content);
+            auto* group_layout = new QVBoxLayout(settings_group);
+            group_layout->addWidget(build_plugin_settings_form(
+                e.settings_tab, e.enabled_basename, settings_group));
+            content_layout->addWidget(settings_group);
         }
-        if (e.is_plugin && e.options.empty() && e.settings_tab_title.isEmpty()) {
+        if (e.is_plugin && e.options.empty() && !has_inline_settings) {
             content_layout->addWidget(new QLabel(tr("This plugin exposes no settings."),
                                                  state->content));
         }
@@ -1223,41 +1210,6 @@ QWidget* SettingsDialog::build_workarounds_tab() {
     connect(delay_spin, &QSpinBox::valueChanged, this, [&s](int v) { s.set_overlay_capture_delay_ms(v); });
     connect(core_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_force_enable_core_files(on); });
     connect(archive_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_experimental_archive_parsing(on); });
-
-    layout->addStretch(1);
-    return page;
-}
-
-// -- FOMOD -------------------------------------------------------------------
-
-QWidget* SettingsDialog::build_fomod_tab() {
-    auto& s = Settings::instance();
-    auto* page = new QWidget(this);
-    auto* layout = new QVBoxLayout(page);
-
-    auto* group = new QGroupBox(tr("Wizard"), page);
-    auto* form = new QFormLayout(group);
-
-    auto* restore_box = new QCheckBox(tr("Restore previous choices"), group);
-    restore_box->setChecked(s.always_restore_fomod_choices());
-    restore_box->setToolTip(tr("Automatically re-select the options chosen the last "
-                               "time this FOMOD was installed."));
-
-    auto* images_box = new QCheckBox(tr("Show FOMOD images"), group);
-    images_box->setChecked(s.show_fomod_images());
-
-    auto* hint = new QLabel(tr("Per-module choices are stored in the module's "
-                               "meta.ini [fomod] section."), group);
-    hint->setWordWrap(true);
-    hint->setEnabled(false);
-
-    form->addRow(QString(), restore_box);
-    form->addRow(QString(), images_box);
-    form->addRow(QString(), hint);
-    layout->addWidget(group);
-
-    connect(restore_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_always_restore_fomod_choices(on); });
-    connect(images_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_show_fomod_images(on); });
 
     layout->addStretch(1);
     return page;
