@@ -262,9 +262,27 @@ void SettingsController::set_game_info(
                const std::string &previous_choices) {
           w_->downloads_->hide_install_progress();
           auto &s = Settings::instance();
+          // FOMOD wizard behavior comes from the FomodInstaller plugin's
+          // declared settings (register_settings_tab), which render inline
+          // under Plugins > FOMOD Installer. Fall back to the legacy core
+          // keys when the plugin isn't loaded.
+          bool always_restore = s.always_restore_fomod_choices();
+          bool show_images = s.show_fomod_images();
+          if (w_->plugin_loader_) {
+            for (const auto &p : w_->plugin_loader_->plugins()) {
+              if (p.settings_tab.title != "FOMOD") continue;
+              const QString basename = QString::fromStdString(
+                  std::filesystem::path(p.path).filename().string());
+              always_restore =
+                  s.plugin_setting(basename, "Restore previous choices", "1") == "1";
+              show_images =
+                  s.plugin_setting(basename, "Show FOMOD images", "1") == "1";
+              break;
+            }
+          }
           return ui::ask_fomod(
               view_model, content_root, suggested_name, previous_choices,
-              s.always_restore_fomod_choices(), s.show_fomod_images(), w_);
+              always_restore, show_images, w_);
         };
 
     // Non-FOMOD installs confirm the mod name before copying (MO2's
