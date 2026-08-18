@@ -6,6 +6,8 @@
 #include <QEvent>
 #include <QFile>
 #include <QString>
+#include <QStyle>
+#include <QStyleFactory>
 
 namespace engine {
 
@@ -220,6 +222,7 @@ void StyleManager::apply_default() {
     current_theme_ = "default";
     current_qss_path_.clear();
     current_tokens_path_.clear();
+    current_base_style_.clear();
     watcher_.removePaths(watcher_.files());
 
     // Clear any per-widget setStyleSheet remnants so the global sheet wins
@@ -256,7 +259,23 @@ bool StyleManager::load_theme(const ThemeManager::ThemeInfo& theme) {
     current_theme_ = theme.name;
     current_qss_path_ = theme.qss_path;
     current_tokens_path_ = theme.tokens_path;
+    current_base_style_ = theme.base_style;
     watch_theme_files();
+
+    // Apply the theme's declared base Qt style before QSS. Native platform
+    // styles (Breeze, adwaita, ...) don't fully respect QSS, so themes that
+    // declare a base style (e.g. "Fusion") render consistently everywhere.
+    // If the style is unavailable on this system, log a warning and continue
+    // with whatever style is currently active.
+    if (!theme.base_style.empty()) {
+        if (QStyle* st = QStyleFactory::create(QString::fromStdString(theme.base_style))) {
+            qApp->setStyle(st);
+            engine::Logger::instance().debug("Applied base style: " + theme.base_style);
+        } else {
+            engine::Logger::instance().warn("StyleManager: base style not available: " +
+                theme.base_style);
+        }
+    }
 
     if (!theme.tokens_path.empty()) {
         theme_manager_.load_tokens(theme.tokens_path);
@@ -281,6 +300,7 @@ void StyleManager::reload_current() {
     info.name = current_theme_;
     info.qss_path = current_qss_path_;
     info.tokens_path = current_tokens_path_;
+    info.base_style = current_base_style_;
     load_theme(info);
 }
 

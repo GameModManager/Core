@@ -194,6 +194,10 @@ gmm_catch2_test(style_manager_palette_test ui/style_manager_palette_test.cpp
     UI
     LIBS gmm_ui)
 
+gmm_catch2_test(style_manager_base_style_test ui/style_manager_base_style_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(flags_delegate_test ui/flags_delegate_test.cpp
     LIBS gmm_ui)
 
