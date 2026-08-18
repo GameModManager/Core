@@ -61,6 +61,7 @@
 #include "ui/widgets/gmm_status_bar.h"
 #include "ui/widgets/list_dialog.h"
 #include "ui/widgets/mod_filter_bar.h"
+#include "ui/widgets/category_filter_panel.h"
 #include "ui/widgets/mod_list_model.h"
 #include "ui/widgets/mod_table_view.h"
 #include "ui/widgets/profile_bar.h"
@@ -543,6 +544,13 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
 
   left_layout->addWidget(w_->mod_view_, 1);
 
+  // Category filter panel (MO2 parity): hidden by default; the << / >> toggle
+  // in the filter bar shows/hides it. Placed between the mod list and the
+  // filter bar so opening it pushes the filter bar down.
+  w_->category_filter_panel_ = new CategoryFilterPanel(w_);
+  w_->category_filter_panel_->hide();
+  left_layout->addWidget(w_->category_filter_panel_);
+
   w_->filter_bar_ = new ModFilterBar(w_);
   left_layout->addWidget(w_->filter_bar_);
 
@@ -550,6 +558,18 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
           [this]() { apply_mod_filter(); });
   connect(w_->filter_bar_, &ModFilterBar::group_changed, this,
           [this]() { apply_mod_filter(); });
+  connect(w_->filter_bar_, &ModFilterBar::category_panel_toggled,
+          w_->category_filter_panel_, &QWidget::setVisible);
+  connect(w_->category_filter_panel_, &CategoryFilterPanel::category_filter_changed,
+          this, [this]() { apply_mod_filter(); });
+  connect(w_->category_filter_panel_, &CategoryFilterPanel::edit_categories_clicked,
+          this, [this]() {
+            // The category editor dialog is tracked by Workspace-l36.4; the
+            // button is wired here so the editor can attach without touching
+            // the panel.
+            engine::Logger::instance().debug(
+                "Category editor requested (Workspace-l36.4)");
+          });
   connect(w_->filter_bar_, &ModFilterBar::expand_all_clicked, this, [this]() {
     for (int i = 0; i < w_->mod_model_->mods().size(); ++i)
       w_->mod_model_->set_folded(i, false);
@@ -1283,6 +1303,21 @@ void ModListController::load_meta_for_mods() {
     }
     if (!category_name.isEmpty())
       w_->mod_model_->set_category(mod.id, category_name);
+
+    // Category ids for the filter panel: the full [General] "category" CSV
+    // (primary first). The Nexus fallback (no CSV) contributes the mapped
+    // internal id so the panel can filter those mods too.
+    QVector<int> category_ids;
+    for (const auto &p : parts) {
+      bool ok = false;
+      const int cid = p.toInt(&ok);
+      if (ok && cid > 0)
+        category_ids.append(cid);
+    }
+    if (category_ids.isEmpty() && primary > 0)
+      category_ids.append(primary);
+    if (!category_ids.isEmpty())
+      w_->mod_model_->set_category_ids(mod.id, category_ids);
 
     // Update ModEntry with separator info from meta.ini
     auto sep_id = meta.separator_id();
@@ -4063,6 +4098,15 @@ void ModListController::apply_mod_filter() {
   const QString group = w_->filter_bar_->current_group();
   const auto &mods = w_->mod_model_->mods();
 
+  // Category filter: with any category checked, a mod matches when it carries
+  // at least one checked category id (MO2 OR semantics). No checked categories
+  // = no category filter.
+  const QSet<int> checked_categories =
+      w_->category_filter_panel_
+          ? w_->category_filter_panel_->checked_category_ids()
+          : QSet<int>();
+  const bool category_filter_active = !checked_categories.isEmpty();
+
   // Fold-hidden set (pure model computation): a folded separator band scope
   // or a folded mod subtree. Filtered-out rows inside a fold scope must stay
   // hidden and must never be re-shown by the ancestor propagation below.
@@ -4096,7 +4140,20 @@ void ModListController::apply_mod_filter() {
     else if (group == "Separators")
       group_match = false; // regular mods hidden when viewing separators only
 
-    visible[row] = text_match && group_match;
+    // Category filter (OR semantics): the mod matches when any of its
+    // category ids is checked.
+    bool category_match = true;
+    if (category_filter_active) {
+      category_match = false;
+      for (int cid : m.category_ids) {
+        if (checked_categories.contains(cid)) {
+          category_match = true;
+          break;
+        }
+      }
+    }
+
+    visible[row] = text_match && group_match && category_match;
 
     // If an active fold scope (folded separator band or folded mod subtree)
     // hides w_ row, hide it too - fold overrides search.
@@ -4112,7 +4169,7 @@ void ModListController::apply_mod_filter() {
 
     if (group == "Separators") {
       visible[row] = true;
-    } else if (text.isEmpty() &&
+    } else if (text.isEmpty() && !category_filter_active &&
                (group == "All" || group == "Enabled" || group == "Disabled" ||
                 group == "Conflicts")) {
       visible[row] = true;
