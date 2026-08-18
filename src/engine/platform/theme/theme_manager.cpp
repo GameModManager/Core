@@ -2,11 +2,47 @@
 #include "engine/core/log/logger.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
 
 namespace engine {
+
+namespace {
+
+// Extract the string value of `key` from a flat JSON file such as
+// { "base_style": "Fusion" }. Returns an empty string when the key is
+// missing or the file cannot be parsed.
+std::string read_json_string(const std::filesystem::path& file, const std::string& key) {
+    std::ifstream in(file);
+    if (!in.is_open()) return {};
+
+    std::string content((std::istreambuf_iterator<char>(in)),
+                        std::istreambuf_iterator<char>());
+
+    const std::string needle = "\"" + key + "\"";
+    size_t pos = content.find(needle);
+    if (pos == std::string::npos) return {};
+    pos += needle.size();
+
+    // Skip whitespace, expect ':'
+    while (pos < content.size() && std::isspace(static_cast<unsigned char>(content[pos]))) ++pos;
+    if (pos >= content.size() || content[pos] != ':') return {};
+    ++pos;
+    while (pos < content.size() && std::isspace(static_cast<unsigned char>(content[pos]))) ++pos;
+    if (pos >= content.size() || content[pos] != '"') return {};
+
+    ++pos;
+    std::string value;
+    while (pos < content.size() && content[pos] != '"') {
+        value += content[pos];
+        ++pos;
+    }
+    return value;
+}
+
+}  // namespace
 
 std::vector<std::filesystem::path> theme_search_dirs(const std::filesystem::path& app_dir) {
     std::vector<std::filesystem::path> dirs;
@@ -60,14 +96,18 @@ void ThemeManager::scan_dir(const std::filesystem::path& themes_dir) {
         ThemeInfo info;
         info.name = entry.path().filename().string();
 
-        // Look for *.qss and tokens.json
+        // Look for *.qss, tokens.json and optional theme.json metadata.
         for (const auto& f : std::filesystem::directory_iterator(entry.path())) {
             if (f.is_regular_file()) {
                 auto ext = f.path().extension().string();
                 if (ext == ".qss") {
                     info.qss_path = f.path();
                 } else if (ext == ".json") {
-                    info.tokens_path = f.path();
+                    if (f.path().filename() == "theme.json") {
+                        info.base_style = read_json_string(f.path(), "base_style");
+                    } else {
+                        info.tokens_path = f.path();
+                    }
                 }
             }
         }
