@@ -69,6 +69,7 @@ set(ENGINE_SOURCES
     core/log/crash_handler.cpp
     mod/cache/mod_cache.cpp
     pipeline/plugin_host/plugin_loader.cpp
+    pipeline/plugin_host/category_factory.cpp
     pipeline/plugin_host/diagnostics_registry.cpp
     pipeline/registry/stage_registry.cpp
     pipeline/registry/hook_registry.cpp

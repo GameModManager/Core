@@ -60,6 +60,11 @@ struct ModEntry {
     // [General] category CSV primary, else [Nexusmods] nexuscategory). Empty
     // when unresolvable.
     QString category;
+    // Category ids from the mod's meta.ini [General] "category" CSV (primary
+    // first), used by the category filter panel. Empty when the mod has no
+    // categories assigned (or only a Nexus mapping, which contributes the
+    // mapped internal id).
+    QVector<int> category_ids;
     // Installation (folder birth time) and Changed (folder last-write time).
     // 0 = unavailable (separators, Overwrite/MERGED pseudo-rows).
     qint64 installation_ts = 0;
@@ -145,6 +150,10 @@ public:
     // Category name for the Category column (resolved by the window layer from
     // the instance's category DB; the model just stores the display string).
     void set_category(const QString& id, const QString& category);
+    // Category ids for the category filter panel (the full [General] "category"
+    // CSV, primary first). The model stores them for the filter; the Category
+    // column display is unaffected.
+    void set_category_ids(const QString& id, const QVector<int>& ids);
     // Installation (folder birth time) + Changed (folder last-write time),
     // epoch seconds. 0 clears both cells.
     void set_timestamps(const QString& id, qint64 install_ts, qint64 changed_ts);

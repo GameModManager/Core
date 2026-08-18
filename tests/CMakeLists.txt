@@ -58,6 +58,7 @@ gmm_catch2_test(fomod_module_config_test engine/fomod_module_config_test.cpp)
 gmm_catch2_test(fomod_condition_test engine/fomod_condition_test.cpp)
 gmm_catch2_test(instance_path_test engine/instance_path_test.cpp)
 gmm_catch2_test(categories_test engine/categories_test.cpp)
+gmm_catch2_test(category_factory_test engine/category_factory_test.cpp)
 gmm_catch2_test(mod_meta_test engine/mod_meta_test.cpp)
 gmm_catch2_test(launch_params_test engine/launch_params_test.cpp)
 gmm_catch2_test(game_icons_test engine/game_icons_test.cpp)
@@ -239,6 +240,10 @@ gmm_catch2_test(saves_tab_test ui/saves_tab_test.cpp
 gmm_catch2_test(mod_list_model_test ui/mod_list_model_test.cpp
     UI
     LIBS gmm_ui)
+
+gmm_catch2_test(category_filter_panel_test ui/category_filter_panel_test.cpp
+    UI
+    LIBS gmm_ui Qt6::Test)
 
 gmm_catch2_test(exec_entry_dialog_test ui/exec_entry_dialog_test.cpp
     UI

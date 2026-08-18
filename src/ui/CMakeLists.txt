@@ -38,6 +38,7 @@ set(UI_SOURCES
     widgets/pipeline_window.cpp
     widgets/zoom_controls.cpp
     widgets/mod_filter_bar.cpp
+    widgets/category_filter_panel.cpp
     widgets/right_filter_bar.cpp
     widgets/column_toggle_header.cpp
     widgets/list_dialog.cpp

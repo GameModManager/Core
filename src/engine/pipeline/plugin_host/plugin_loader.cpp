@@ -1,4 +1,5 @@
 #include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "engine/pipeline/plugin_host/category_factory.h"
 #include "engine/pipeline/plugin_host/python_loader.h"
 #include "engine/pipeline/plugin_host/diagnostics_registry.h"
 #include "engine/core/events/event_bus.h"
@@ -111,6 +112,21 @@ static void cb_register_category(GmmRegistrationCtx* ctx,
     if (!bridge || !bridge->current_plugin) return;
 
     if (category) bridge->current_plugin->category = category;
+}
+
+static void cb_register_categories(GmmRegistrationCtx* ctx, const int* ids,
+                                   const char* const* names,
+                                   const int* parent_ids, size_t count) {
+    if (!ids || !names || count == 0) return;
+
+    CategoryFactory::instance().merge(ids, names, parent_ids, count);
+
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (bridge && bridge->current_plugin) {
+        Logger::instance().debug(
+            "Plugin registered " + std::to_string(count) +
+            " categories (plugin=" + bridge->current_plugin->game_id + ")");
+    }
 }
 
 static void cb_register_settings(GmmRegistrationCtx* ctx,
@@ -628,6 +644,7 @@ bool PluginLoader::load_plugin(const std::string& path) {
     ctx.register_tab = cb_register_tab;
     ctx.register_meta = cb_register_meta;
     ctx.register_category = cb_register_category;
+    ctx.register_categories = cb_register_categories;
     ctx.register_settings = cb_register_settings;
     ctx.register_settings_tab = cb_register_settings_tab;
     ctx.register_diagnostics = cb_register_diagnostics;
