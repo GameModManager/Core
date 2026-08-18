@@ -8,6 +8,7 @@ set(UI_SOURCES
     settings/settings.cpp
     settings/settings_dialog.cpp
     settings/source_pages.cpp
+    settings/categories_dialog.cpp
     main_window/main_window.cpp
     main_window/loot_sort_worker.cpp
     main_window/conflict_scan_worker.cpp
