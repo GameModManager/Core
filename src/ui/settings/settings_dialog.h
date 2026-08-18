@@ -34,7 +34,6 @@ private:
     QWidget* build_sources_tab();
     QWidget* build_plugins_tab();
     QWidget* build_workarounds_tab();
-    QWidget* build_fomod_tab();
     QWidget* build_diagnostics_tab();
     // P1.5: one native settings tab per plugin that declared a typed
     // settings_tab (appended after the fixed tabs, titled by the plugin).

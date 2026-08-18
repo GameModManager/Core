@@ -75,7 +75,6 @@ SettingsDialog::SettingsDialog(engine::StyleManager* style_manager,
     tabs->addTab(build_sources_tab(), tr("Sources"));
     tabs->addTab(build_plugins_tab(), tr("Plugins"));
     tabs->addTab(build_workarounds_tab(), tr("Workarounds"));
-    tabs->addTab(build_fomod_tab(), tr("FOMOD"));
     tabs->addTab(build_diagnostics_tab(), tr("Diagnostics"));
 
     // P1.5: plugin-declared typed settings tabs (register_settings_tab)
@@ -1223,41 +1222,6 @@ QWidget* SettingsDialog::build_workarounds_tab() {
     connect(delay_spin, &QSpinBox::valueChanged, this, [&s](int v) { s.set_overlay_capture_delay_ms(v); });
     connect(core_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_force_enable_core_files(on); });
     connect(archive_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_experimental_archive_parsing(on); });
-
-    layout->addStretch(1);
-    return page;
-}
-
-// -- FOMOD -------------------------------------------------------------------
-
-QWidget* SettingsDialog::build_fomod_tab() {
-    auto& s = Settings::instance();
-    auto* page = new QWidget(this);
-    auto* layout = new QVBoxLayout(page);
-
-    auto* group = new QGroupBox(tr("Wizard"), page);
-    auto* form = new QFormLayout(group);
-
-    auto* restore_box = new QCheckBox(tr("Restore previous choices"), group);
-    restore_box->setChecked(s.always_restore_fomod_choices());
-    restore_box->setToolTip(tr("Automatically re-select the options chosen the last "
-                               "time this FOMOD was installed."));
-
-    auto* images_box = new QCheckBox(tr("Show FOMOD images"), group);
-    images_box->setChecked(s.show_fomod_images());
-
-    auto* hint = new QLabel(tr("Per-module choices are stored in the module's "
-                               "meta.ini [fomod] section."), group);
-    hint->setWordWrap(true);
-    hint->setEnabled(false);
-
-    form->addRow(QString(), restore_box);
-    form->addRow(QString(), images_box);
-    form->addRow(QString(), hint);
-    layout->addWidget(group);
-
-    connect(restore_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_always_restore_fomod_choices(on); });
-    connect(images_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_show_fomod_images(on); });
 
     layout->addStretch(1);
     return page;
