@@ -386,6 +386,37 @@ static void cb_register_stage_claim(GmmRegistrationCtx* ctx,
         priority, bridge->current_plugin->path);
 }
 
+static void cb_register_wildcard_stage_claim(GmmRegistrationCtx* ctx,
+                                              const char* game_id,
+                                              const char* stage_name,
+                                              GmmStageFn fn,
+                                              int priority) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge || !bridge->current_plugin) return;
+
+    // NULL/empty game_id = wildcard (applies to all games)
+    std::string gid = game_id ? game_id : "";
+    std::string stage = stage_name ? stage_name : "";
+    if (stage.empty() || !fn) return;
+
+    bridge->loader->stage_registry().register_claim(
+        gid, stage,
+        [fn](Mod& mod, PipelineContext& ctx_) -> bool {
+            GmmModHandle mod_h = reinterpret_cast<GmmModHandle>(&mod);
+            GmmInstanceHandle inst_h =
+                reinterpret_cast<GmmInstanceHandle>(ctx_.instance);
+            GmmConflictIndexHandle conf_h =
+                reinterpret_cast<GmmConflictIndexHandle>(ctx_.conflict_index);
+            GmmProfileHandle prof_h =
+                reinterpret_cast<GmmProfileHandle>(ctx_.profile);
+            g_active_stage_ctx = &ctx_;
+            const int result = fn(mod_h, inst_h, conf_h, prof_h, nullptr);
+            g_active_stage_ctx = nullptr;
+            return result != 0;
+        },
+        priority, bridge->current_plugin->path);
+}
+
 static void cb_register_hook(GmmRegistrationCtx* ctx,
                               const char* tag,
                               const char* data,
@@ -635,6 +666,7 @@ bool PluginLoader::load_plugin(const std::string& path) {
     ctx.register_game_feature_data = cb_register_game_feature_data;
     ctx.subscribe_event = cb_subscribe_event;
     ctx.host_ui.fomod_wizard = cb_fomod_wizard;
+    ctx.register_wildcard_stage_claim = cb_register_wildcard_stage_claim;
 
     RegistrationBridge bridge;
     bridge.loader = this;
