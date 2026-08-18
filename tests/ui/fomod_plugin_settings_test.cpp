@@ -3,12 +3,13 @@
 //   2. The Settings dialog has NO "FOMOD" tab (Workspace-363: plugin settings
 //      render under the Plugins section, not as separate tabs)
 //   3. Selecting the FOMOD plugin in the Plugins section shows its settings
-//      inline (Restore previous choices, Show FOMOD images)
+//      as rows in the Key | Value table (Restore previous choices, Show FOMOD
+//      images — bool values as checkbox cells)
 //   4. The FOMOD settings are persisted through the typed settings API
 //
 // This test loads the real FomodInstaller plugin from the build/plugins
 // directory alongside the test fixture plugins. It exercises the full round-
-// trip: plugin load → register_settings_tab → Plugins-tab inline render →
+// trip: plugin load → register_settings_tab → Plugins-tab table render →
 // user edits → persist → reopen → values restored.
 //
 // UI test: requires QApplication offscreen, links gmm_ui.
@@ -20,14 +21,12 @@
 #include "ui/theme/style_manager.h"
 #include "engine/platform/theme/theme_manager.h"
 
-#include <QAbstractSpinBox>
 #include <QApplication>
-#include <QCheckBox>
-#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QLabel>
-#include <QLineEdit>
 #include <QPushButton>
+#include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QTabWidget>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
@@ -140,46 +139,44 @@ TEST_CASE("fomod plugin settings integration", "[ui]") {
         check(selected, "selected the FOMOD plugin leaf in the Plugins tree");
         app.processEvents();
 
-        // --- The two settings render inline in the info pane. ---
-        // The info pane also carries the Enabled checkbox; exclude it so only
-        // the typed settings widgets are counted.
-        const auto checkboxes = [&page] {
-            QList<QCheckBox*> out;
-            for (auto* cb : page->findChildren<QCheckBox*>())
-                if (cb->text() != "Enabled") out << cb;
-            return out;
-        }();
-        check(checkboxes.size() == 2,
-              "FOMOD plugin info pane has exactly 2 checkbox settings");
-
-        // Verify the setting names appear as labels.
-        bool has_restore = false, has_images = false;
-        for (auto* lbl : page->findChildren<QLabel*>()) {
-            if (lbl->text().contains("Restore previous choices"))
-                has_restore = true;
-            if (lbl->text().contains("Show FOMOD images"))
-                has_images = true;
+        // --- The two settings render as rows in the Key | Value table. ---
+        // The info pane also carries the Enabled checkbox; the settings table
+        // is the only QTableWidget in the page.
+        QTableWidget* table = page ? page->findChild<QTableWidget*>() : nullptr;
+        check(table != nullptr, "FOMOD info pane shows the settings table");
+        auto row_for = [](QTableWidget* t, const QString& key) -> QTableWidgetItem* {
+            for (int r = 0; r < t->rowCount(); ++r) {
+                auto* k = t->item(r, 0);
+                if (k && k->text() == key) return t->item(r, 1);
+            }
+            return nullptr;
+        };
+        bool rows_ok = false;
+        if (table) {
+            auto* restore = row_for(table, "Restore previous choices");
+            auto* images = row_for(table, "Show FOMOD images");
+            rows_ok = table->columnCount() == 2 && table->rowCount() == 2 &&
+                      restore && images &&
+                      (restore->flags() & Qt::ItemIsUserCheckable) &&
+                      restore->checkState() == Qt::Checked &&
+                      (images->flags() & Qt::ItemIsUserCheckable) &&
+                      images->checkState() == Qt::Checked;
         }
-        check(has_restore, "Restore previous choices setting present");
-        check(has_images, "Show FOMOD images setting present");
-
-        // Verify defaults: both should be checked (default "1").
-        if (checkboxes.size() == 2) {
-            bool both_checked = true;
-            for (auto* cb : checkboxes)
-                if (!cb->isChecked()) both_checked = false;
-            check(both_checked, "both FOMOD settings default to checked");
-        }
+        check(rows_ok,
+              "FOMOD settings render as checked checkbox rows in the table");
 
         // --- Test persistence: toggle off, reopen, verify. ---
-        if (checkboxes.size() == 2) {
-            checkboxes[0]->setChecked(false);
-            app.processEvents();
+        if (table) {
+            auto* restore = row_for(table, "Restore previous choices");
+            if (restore) {
+                restore->setCheckState(Qt::Unchecked);
+                app.processEvents();
 
-            auto& s = Settings::instance();
-            // The setting key matches what register_settings_tab declared.
-            check(s.plugin_setting(fomod_basename, "Restore previous choices", "1") == "0",
-                  "FOMOD setting persisted after edit");
+                auto& s = Settings::instance();
+                // The setting key matches what register_settings_tab declared.
+                check(s.plugin_setting(fomod_basename, "Restore previous choices", "1") == "0",
+                      "FOMOD setting persisted after edit");
+            }
         }
 
         // --- Reopen: the inline settings restore the edited value. ---
@@ -196,10 +193,13 @@ TEST_CASE("fomod plugin settings integration", "[ui]") {
                 if (group->child(c)->text(0) == fomod_display_name) {
                     tree2->setCurrentItem(group->child(c));
                     app.processEvents();
-                    QList<QCheckBox*> cbs;
-                    for (auto* cb : page2->findChildren<QCheckBox*>())
-                        if (cb->text() != "Enabled") cbs << cb;
-                    restored = cbs.size() == 2 && !cbs[0]->isChecked() && cbs[1]->isChecked();
+                    if (auto* t = page2->findChild<QTableWidget*>()) {
+                        auto* restore = row_for(t, "Restore previous choices");
+                        auto* images = row_for(t, "Show FOMOD images");
+                        restored = restore && images &&
+                                   restore->checkState() == Qt::Unchecked &&
+                                   images->checkState() == Qt::Checked;
+                    }
                 }
             }
         }
