@@ -52,12 +52,13 @@ struct PluginInfo {
     // do not use this — their settings live in the Sources tab.
     std::vector<std::pair<std::string, std::string>> settings;
 
-    // Typed settings tab (P1.5) declared via register_settings_tab. When
-    // non-empty, the host renders a dedicated Settings-dialog tab with a
-    // native widget per setting (bool -> QCheckBox, int -> QSpinBox,
-    // string -> QLineEdit, choice -> QComboBox) and persists edits through
-    // the same per-plugin key:value store as `settings`. Keys declared here
-    // stop rendering as raw rows in the Plugins-tab info pane.
+    // Typed settings (P1.5) declared via register_settings_tab. When
+    // non-empty, the host renders them inline in the Plugins-tab info pane
+    // (not as a separate Settings-dialog tab) with a native widget per
+    // setting (bool -> QCheckBox, int -> QSpinBox, string -> QLineEdit,
+    // choice -> QComboBox) and persists edits through the same per-plugin
+    // key:value store as `settings`. Keys declared here stop rendering as
+    // raw rows in the Plugins-tab info pane.
     struct SettingTabEntry {
         std::string key;
         std::string type;              // "bool" | "int" | "string" | "choice"
