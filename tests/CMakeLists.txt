@@ -176,6 +176,9 @@ if(NOT WIN32 AND NOT APPLE)
 endif()
 add_dependencies(fomod_stage_plugin_test gmm_fomod_stage_plugin)
 
+# StageRegistry wildcard claim resolution — pure engine test, no Qt, no UI.
+gmm_catch2_test(stage_registry_wildcard_test engine/stage_registry_wildcard_test.cpp)
+
 # ---------------------------------------------------------------------------
 # UI tests — offscreen GUI tests, link the UI library (which carries Qt and
 # the engine transitively)
@@ -264,6 +267,17 @@ gmm_catch2_test(proton_panel_test ui/proton_panel_test.cpp
 gmm_catch2_test(install_progress_dialog_test ui/install_progress_dialog_test.cpp
     UI
     LIBS gmm_ui)
+
+# FOMOD plugin integration — loads the FomodInstaller plugin, verifies its
+# settings tab appears in the Settings dialog with correct settings and
+# persistence. Also documents whether the old standalone FOMOD tab still exists.
+gmm_catch2_test(fomod_plugin_settings_test ui/fomod_plugin_settings_test.cpp
+    UI
+    LIBS gmm_ui ${CMAKE_DL_LIBS}
+    DEFINES
+        GMM_PLUGINS_DIR="${CMAKE_BINARY_DIR}/plugins"
+        GMM_TEST_PLUGINS_DIR="${CMAKE_BINARY_DIR}/test_plugins"
+)
 
 # ---------------------------------------------------------------------------
 # LD_PRELOAD intercept smoke tests — Linux-only, C (plain executables, not
