@@ -3,6 +3,7 @@
 #include "ui/controllers/overwrite_controller.h"
 #include "ui/controllers/queue_controller.h"
 #include "ui/controllers/settings_controller.h"
+#include "ui/settings/categories_dialog.h"
 
 #include <QColorDialog>
 #include <QDesktopServices>
@@ -564,11 +565,16 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
           this, [this]() { apply_mod_filter(); });
   connect(w_->category_filter_panel_, &CategoryFilterPanel::edit_categories_clicked,
           this, [this]() {
-            // The category editor dialog is tracked by Workspace-l36.4; the
-            // button is wired here so the editor can attach without touching
-            // the panel.
-            engine::Logger::instance().debug(
-                "Category editor requested (Workspace-l36.4)");
+            // MO2 parity: the Categories dialog edits the global category
+            // registry (engine::CategoryFactory) and persists it to the
+            // instance's categories.dat. On accept the filter tree is rebuilt
+            // (the checked set is reset — removed categories can no longer be
+            // checked) and the mod filter is re-applied.
+            ui::CategoriesDialog dlg(w_->current_instance_root_, w_);
+            if (dlg.exec() == QDialog::Accepted) {
+              w_->category_filter_panel_->rebuild();
+              apply_mod_filter();
+            }
           });
   connect(w_->filter_bar_, &ModFilterBar::expand_all_clicked, this, [this]() {
     for (int i = 0; i < w_->mod_model_->mods().size(); ++i)
