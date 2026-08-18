@@ -35,9 +35,6 @@ private:
     QWidget* build_plugins_tab();
     QWidget* build_workarounds_tab();
     QWidget* build_diagnostics_tab();
-    // P1.5: one native settings tab per plugin that declared a typed
-    // settings_tab (appended after the fixed tabs, titled by the plugin).
-    void append_plugin_settings_tabs(QTabWidget* tabs);
 
     engine::StyleManager* style_manager_;
     QString native_style_name_;
