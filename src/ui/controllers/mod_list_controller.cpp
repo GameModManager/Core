@@ -5,6 +5,7 @@
 #include "ui/controllers/settings_controller.h"
 #include "ui/settings/categories_dialog.h"
 
+#include <QActionGroup>
 #include <QColorDialog>
 #include <QDesktopServices>
 #include <QFile>
@@ -25,29 +26,29 @@
 #include <set>
 #include <sstream>
 
-#include "engine/game/detect/mod_scanner.h"
 #include "engine/core/events/event_bus.h"
-#include "engine/core/util/fs_utils.h"
-#include "engine/index/conflict_engine.h"
 #include "engine/core/instance/instance.h"
 #include "engine/core/instance/instance_utils.h"
 #include "engine/core/instance/toml_utils.h"
 #include "engine/core/log/logger.h"
-#include "engine/mod/meta/categories.h"
-#include "engine/mod/meta/mod_meta.h"
-#include "engine/source/nxm/managed_games.h"
-#include "engine/mod/overwrite/overwrite_utils.h"
-#include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "engine/core/trace/trace_recorder.h"
+#include "engine/core/util/fs_utils.h"
+#include "engine/game/detect/mod_scanner.h"
 #include "engine/game/plugins/plugin_database.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
 #include "engine/game/registry/game_knowledge.h"
+#include "engine/index/conflict_engine.h"
+#include "engine/mod/meta/categories.h"
+#include "engine/mod/meta/mod_meta.h"
+#include "engine/mod/overwrite/overwrite_utils.h"
+#include "engine/pipeline/plugin_host/category_factory.h"
+#include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "engine/platform/theme/theme_manager.h"
 #include "engine/sort/sort_provider.h"
 #include "engine/sort/sort_registry.h"
 #include "engine/source/nexus_provider.h"
+#include "engine/source/nxm/managed_games.h"
 #include "engine/source/source_provider.h"
-#include "ui/theme/icon_manager.h"
-#include "engine/platform/theme/theme_manager.h"
-#include "engine/core/trace/trace_recorder.h"
 #include "ui/main_window/conflict_scan_worker.h"
 #include "ui/main_window/loot_sort_worker.h"
 #include "ui/main_window/mod_scan_worker.h"
@@ -57,12 +58,13 @@
 #include "ui/panels/tab_panels.h"
 #include "ui/preview/preview_window.h"
 #include "ui/settings/settings.h"
+#include "ui/theme/icon_manager.h"
+#include "ui/widgets/category_filter_panel.h"
 #include "ui/widgets/column_toggle_header.h"
 #include "ui/widgets/exec_controls_bar.h"
 #include "ui/widgets/gmm_status_bar.h"
 #include "ui/widgets/list_dialog.h"
 #include "ui/widgets/mod_filter_bar.h"
-#include "ui/widgets/category_filter_panel.h"
 #include "ui/widgets/mod_list_model.h"
 #include "ui/widgets/mod_table_view.h"
 #include "ui/widgets/profile_bar.h"
@@ -561,10 +563,11 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
           [this]() { apply_mod_filter(); });
   connect(w_->filter_bar_, &ModFilterBar::category_panel_toggled,
           w_->category_filter_panel_, &QWidget::setVisible);
-  connect(w_->category_filter_panel_, &CategoryFilterPanel::category_filter_changed,
-          this, [this]() { apply_mod_filter(); });
-  connect(w_->category_filter_panel_, &CategoryFilterPanel::edit_categories_clicked,
-          this, [this]() {
+  connect(w_->category_filter_panel_,
+          &CategoryFilterPanel::category_filter_changed, this,
+          [this]() { apply_mod_filter(); });
+  connect(w_->category_filter_panel_,
+          &CategoryFilterPanel::edit_categories_clicked, this, [this]() {
             // MO2 parity: the Categories dialog edits the global category
             // registry (engine::CategoryFactory) and persists it to the
             // instance's categories.dat. On accept the filter tree is rebuilt
@@ -879,11 +882,10 @@ ui::ModScanRequest ModListController::build_mod_scan_request() {
   // stray-plugin scan consults it so deployed .esp files are not synthesized
   // as unmanaged rows. Empty in portable mode (no instance -> no deploy).
   if (!w_->current_instance_root_.empty()) {
-    request.ledger_file =
-        engine::deploy_config_for(w_->current_instance_root_,
-                                  w_->current_game_dir_, *w_->knowledge_,
-                                  w_->current_game_id_)
-            .ledger_file;
+    request.ledger_file = engine::deploy_config_for(
+                              w_->current_instance_root_, w_->current_game_dir_,
+                              *w_->knowledge_, w_->current_game_id_)
+                              .ledger_file;
   }
   return request;
 }
@@ -1879,7 +1881,7 @@ void ModListController::on_data_mod_info(const QString &mod_id,
 
   ui::ModInfoDialog dlg(std::move(mod_data), std::move(nav_list),
                         static_cast<ui::ModInfoTabId>(initial_tab), w_);
-  dlg.set_data_builder([this](const QString& id) -> ui::ModInfoData {
+  dlg.set_data_builder([this](const QString &id) -> ui::ModInfoData {
     for (const auto &mod : w_->mod_model_->mods()) {
       if (mod.id == id)
         return build_mod_info_data(mod);
@@ -2524,6 +2526,12 @@ void ModListController::setup_mod_list_context_menu() {
                        tr("Create Separator"), w_,
                        [this, row]() { create_separator_at_row(row); });
 
+        // MO2's "Change Categories" (checkboxes) + "Primary Category" (radio
+        // buttons) submenus (modlistcontextmenu.cpp:341-379). Both edit the
+        // mod's [General] "category" CSV (primary first) in the manager
+        // sidecar meta and refresh the mod list filter on change.
+        add_category_menus(menu, mod_id);
+
         // MO2's "Ignore missing data" (modlistcontextmenu + modlistviewactions
         // ignoreMissingData): offered only on flagged rows (no valid game data
         // and/or no manager metadata). Persists [General] validated=true in the
@@ -2623,6 +2631,111 @@ void ModListController::setup_mod_list_context_menu() {
 
         menu.exec(w_->mod_view_->viewport()->mapToGlobal(pos));
       });
+}
+
+void ModListController::add_category_menus(QMenu &menu, const QString &mod_id) {
+  const auto meta_dir = w_->meta_dir_path();
+  if (meta_dir.empty())
+    return;
+
+  // Current [General] "category" CSV (primary first) from the manager sidecar.
+  // Re-read on every toggle so sequential checkbox changes accumulate instead
+  // of each overwriting the menu-open snapshot (MO2 mutates the mod info
+  // object directly; the sidecar is our equivalent source of truth).
+  auto load_current = [meta_dir, mod_id]() {
+    auto meta = engine::ModMeta::load(meta_dir, mod_id.toStdString());
+    QVector<int> ids;
+    const QString csv = QString::fromStdString(meta.get("General", "category"));
+    for (const auto &part : csv.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+      bool ok = false;
+      const int id = part.toInt(&ok);
+      if (ok && id > 0 && !ids.contains(id))
+        ids.append(id);
+    }
+    return ids;
+  };
+
+  // Persist a new CSV (primary first), update the Category column + filter
+  // ids, and re-apply the mod filter so a category-filtered list reacts
+  // immediately (MO2 refreshFilter parity).
+  auto apply = [this, meta_dir, mod_id](const QVector<int> &ids) {
+    QStringList parts;
+    for (int id : ids)
+      parts << QString::number(id);
+    auto meta = engine::ModMeta::load(meta_dir, mod_id.toStdString());
+    meta.set("General", "category", parts.join(QLatin1Char(',')).toStdString());
+    meta.save(meta_dir, mod_id.toStdString());
+
+    QString primary_name;
+    if (!ids.isEmpty()) {
+      if (const auto *cat =
+              engine::CategoryFactory::instance().categoryById(ids.first()))
+        primary_name = QString::fromStdString(cat->name);
+    }
+    w_->mod_model_->set_category(mod_id, primary_name);
+    w_->mod_model_->set_category_ids(mod_id, ids);
+    apply_mod_filter();
+  };
+
+  const QVector<int> current = load_current();
+
+  // "Change Categories": one checkable action per category, alphabetized like
+  // the filter panel (MO2's flat category list). Checking appends the id
+  // (first checked becomes primary); unchecking removes it and the first
+  // remaining id becomes primary.
+  auto *change_menu = menu.addMenu(
+      engine::IconManager::instance().resolve_icon("preferences-other"),
+      tr("Change Categories"));
+  std::vector<const engine::CategoryFactory::Category *> cats;
+  for (const auto &[id, cat] : engine::CategoryFactory::instance().categories())
+    if (id != 0)
+      cats.push_back(&cat);
+  std::sort(cats.begin(), cats.end(), [](const auto *a, const auto *b) {
+    return QString::fromStdString(a->name).compare(
+               QString::fromStdString(b->name), Qt::CaseInsensitive) < 0;
+  });
+  for (const auto *cat : cats) {
+    auto *act = change_menu->addAction(QString::fromStdString(cat->name));
+    act->setCheckable(true);
+    act->setChecked(current.contains(cat->id));
+    connect(act, &QAction::triggered, this,
+            [this, mod_id, cat, load_current, apply](bool checked) {
+              QVector<int> ids = load_current();
+              if (checked) {
+                if (!ids.contains(cat->id))
+                  ids.append(cat->id);
+              } else {
+                ids.removeAll(cat->id);
+              }
+              apply(ids);
+            });
+  }
+
+  // "Primary Category": radio buttons for the checked categories only (MO2
+  // parity). Selecting one moves it to the front of the CSV.
+  auto *primary_menu =
+      menu.addMenu(engine::IconManager::instance().resolve_icon("view-sort"),
+                   tr("Primary Category"));
+  if (current.isEmpty()) {
+    primary_menu->setEnabled(false);
+  } else {
+    auto *group = new QActionGroup(primary_menu);
+    for (int id : current) {
+      const auto *cat = engine::CategoryFactory::instance().categoryById(id);
+      auto *act = primary_menu->addAction(
+          cat ? QString::fromStdString(cat->name) : QString::number(id));
+      act->setCheckable(true);
+      act->setChecked(id == current.first());
+      group->addAction(act);
+      connect(act, &QAction::triggered, this,
+              [this, mod_id, id, load_current, apply]() {
+                QVector<int> ids = load_current();
+                ids.removeAll(id);
+                ids.prepend(id);
+                apply(ids);
+              });
+    }
+  }
 }
 
 void ModListController::remove_selected_mods() {
@@ -3656,12 +3769,14 @@ void ModListController::load_order() {
   }
   if (auto arr = (*tbl)["folded_separators"].as_array()) {
     for (const auto &e : *arr) {
-      if (auto s = e.value<std::string>()) folded_names.push_back(*s);
+      if (auto s = e.value<std::string>())
+        folded_names.push_back(*s);
     }
   }
   if (auto arr = (*tbl)["folded_mods"].as_array()) {
     for (const auto &e : *arr) {
-      if (auto s = e.value<std::string>()) folded_mod_names.push_back(*s);
+      if (auto s = e.value<std::string>())
+        folded_mod_names.push_back(*s);
     }
   }
   // Legacy mod_parents: array of "child=parent" strings.
@@ -3676,12 +3791,14 @@ void ModListController::load_order() {
   }
   if (auto arr = (*tbl)["toolbar_shortcuts"].as_array()) {
     for (const auto &e : *arr) {
-      if (auto s = e.value<std::string>()) toolbar_paths.push_back(*s);
+      if (auto s = e.value<std::string>())
+        toolbar_paths.push_back(*s);
     }
   }
   if (auto arr = (*tbl)["toolbar_shortcut_icons"].as_array()) {
     for (const auto &e : *arr) {
-      if (auto s = e.value<std::string>()) toolbar_icons.push_back(*s);
+      if (auto s = e.value<std::string>())
+        toolbar_icons.push_back(*s);
     }
   }
 
@@ -3906,16 +4023,15 @@ void ModListController::load_order() {
         if (!entry.is_regular_file(entry_ec))
           continue;
         auto fname = entry.path().filename().string();
-        if (fname.size() < 5 ||
-            fname.compare(fname.size() - 4, 4, ".ini") != 0)
+        if (fname.size() < 5 || fname.compare(fname.size() - 4, 4, ".ini") != 0)
           continue;
         auto folder = QString::fromStdString(fname.substr(0, fname.size() - 4));
         if (valid_ids.contains(folder))
           continue;
         std::error_code remove_ec;
         if (std::filesystem::remove(entry.path(), remove_ec)) {
-          engine::Logger::instance().debug(
-              "Removed orphaned sidecar: " + entry.path().string());
+          engine::Logger::instance().debug("Removed orphaned sidecar: " +
+                                           entry.path().string());
         }
       }
     }

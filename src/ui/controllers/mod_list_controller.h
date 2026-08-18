@@ -11,6 +11,7 @@
 
 #include "ui/main_window/main_window.h"
 
+class QMenu;
 class QVBoxLayout;
 
 namespace ui {
@@ -132,6 +133,11 @@ public slots:
   void toggle_selected_mods(bool enabled);
   // "Treat mod as root dir" (Tweaks menu).
   void toggle_root_override(const QList<int> &rows, bool on);
+  // MO2's "Change Categories" (checkable) + "Primary Category" (radio)
+  // submenus for a single mod. Both edit the mod's [General] "category" CSV
+  // (primary first) in the manager sidecar meta; every change persists
+  // immediately and refreshes the mod list filter.
+  void add_category_menus(QMenu &menu, const QString &mod_id);
 
   // Nexus game domain for the current game ("skyrimspecialedition"), resolved
   // from the loaded plugin's identity - the single source of truth (there is
