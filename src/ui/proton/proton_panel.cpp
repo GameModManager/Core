@@ -291,6 +291,9 @@ void ProtonPanel::build_deploy_management() {
     deploy_strategy_combo_ = new QComboBox(group);
     deploy_strategy_combo_->addItem(tr("Symlink"),
                                     QString::fromLatin1(engine::kDefaultDeployStrategy));
+    deploy_strategy_combo_->addItem(
+        tr("Direct"),
+        QString::fromLatin1(engine::kDeployStrategyDirect));
     if (engine::OverlayFsLauncher::is_supported(instance_root_ / "overwrite")) {
         deploy_strategy_combo_->addItem(
             tr("OverlayFS"),
@@ -332,9 +335,11 @@ void ProtonPanel::build_deploy_management() {
 
 void ProtonPanel::update_deploy_actions_enabled() {
     // The direct-deploy actions (re-deploy / remove links) only make sense for
-    // the Symlink strategy; OverlayFS never touches game_dir.
+    // strategies that touch game_dir: Symlink and Direct. OverlayFS never
+    // touches game_dir.
     const bool direct =
-        (current_deploy_strategy_ == engine::kDefaultDeployStrategy);
+        (current_deploy_strategy_ == engine::kDefaultDeployStrategy) ||
+        (current_deploy_strategy_ == engine::kDeployStrategyDirect);
     if (redeploy_btn_) redeploy_btn_->setEnabled(direct);
     if (remove_btn_) remove_btn_->setEnabled(direct);
 }

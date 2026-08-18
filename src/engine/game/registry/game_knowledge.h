@@ -52,8 +52,12 @@ inline constexpr const char* kDefaultDisableMechanism = ".gmmdisabled";
 // The default is Symlink (direct symlinks into game_dir); a game opts out of
 // that by setting the key to kDeployStrategyOverlayFs, which deploys into a
 // staging dir and overlays it onto the game at launch (Linux only).
+// kDeployStrategyDirect is the lifecycle-object form of the symlink default:
+// it deploys straight into game_dir through DirectDeployStrategy (the same
+// on-disk result, but with deploy_all/undeploy/sync as first-class methods).
 inline constexpr const char* kDefaultDeployStrategy = "symlink";
 inline constexpr const char* kDeployStrategyOverlayFs = "overlayfs";
+inline constexpr const char* kDeployStrategyDirect = "direct";
 
 // Deploy strategy declared for the given game. Falls back to
 // kDefaultDeployStrategy when the game plugin declares nothing.
