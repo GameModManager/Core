@@ -29,11 +29,15 @@ public:
                         int priority = 0,
                         const std::string& plugin_id = "");
 
-    // Returns the handler for a (game_id, stage_name) pair, or nullptr if none claimed
+    // Returns the handler for a (game_id, stage_name) pair, or nullptr if none
+    // claimed. A claim registered with an empty game_id is a wildcard that
+    // matches any game; at equal priority a game-specific claim wins over a
+    // wildcard.
     [[nodiscard]] StageFn get_handler(const std::string& game_id,
                                       const std::string& stage_name) const;
 
-    // Check if any claim exists for a given stage
+    // Check if any claim exists for a given stage. A wildcard claim (empty
+    // game_id) counts as a claim for every game.
     [[nodiscard]] bool has_claim(const std::string& game_id,
                                  const std::string& stage_name) const;
 

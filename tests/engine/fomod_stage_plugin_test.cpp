@@ -108,15 +108,20 @@ static void make_fomod_staging(const fs::path& staging) {
 }
 
 // Replicates main_window's claim_for lambda: best-priority plugin claim for
-// (game_id, stage_name).
+// (game_id, stage_name). An empty game_id is a wildcard claim matching any
+// game; at equal priority a game-specific claim wins over a wildcard.
 static std::optional<StageClaim> claim_for(const StageRegistry& reg,
                                            const std::string& game_id,
                                            const std::string& stage_name) {
     std::optional<StageClaim> best;
     for (const auto& c : reg.claims()) {
-        if (c.game_id == game_id && c.stage_name == stage_name) {
-            if (!best || c.priority > best->priority) best = c;
-        }
+        if (c.stage_name != stage_name) continue;
+        const bool wildcard = c.game_id.empty();
+        if (!wildcard && c.game_id != game_id) continue;
+        if (!best ||
+            c.priority > best->priority ||
+            (c.priority == best->priority && best->game_id.empty() && !wildcard))
+            best = c;
     }
     return best;
 }
