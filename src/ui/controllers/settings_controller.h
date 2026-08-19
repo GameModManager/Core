@@ -49,6 +49,12 @@ public slots:
   void show_pipeline_window();
   void show_instance_switcher();
   bool switch_to_instance(const QString &name);
+  // Runs the "Create new instance" flow: detects installed games, shows the
+  // GameSelectionWidget picker, creates the instance and switches to it.
+  // Returns true when an instance was created and loaded, false when the user
+  // cancelled the picker or creation failed. Shared by the popup switcher
+  // (after the dialog's create button) and the Full UI tab-mode switcher.
+  bool create_new_instance();
   void refresh_recent_instances();
   void prompt_nxm_registration();
   void ensure_nxm_handler_default();
