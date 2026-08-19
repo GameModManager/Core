@@ -18,6 +18,7 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QMetaObject>
+#include <QPointer>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QGroupBox>
@@ -110,13 +111,17 @@ ProtonContentWidget::ProtonContentWidget(
 }
 
 ProtonContentWidget::~ProtonContentWidget() {
-  // Safety net: a deploy/remove task may still be finishing when the widget
-  // is destroyed (tab closed mid-task). Never leave the worker running into a
-  // dead widget (queued callbacks into a destroyed object are dropped).
-  if (deploy_thread_) {
-    deploy_thread_->quit();
-    deploy_thread_->wait();
-  }
+  // A deploy/remove task may still be running when the widget is destroyed
+  // (tab closed mid-task). We deliberately do NOT quit()+wait() here: that
+  // would block the UI thread until the deploy finishes (potentially minutes
+  // for a large instance) and, worse, queued QMetaObject::invokeMethod events
+  // posted by the worker could still be dispatched to this object afterwards.
+  // Instead run_deploy_task() captures a QPointer to this widget: once the
+  // widget is destroyed the pointer goes null, the worker stops posting
+  // progress/finish callbacks, and the thread's finished->deleteLater
+  // connection releases the QThread object. The engine deploy calls run to
+  // completion in the background, which is also safer for file consistency
+  // than aborting a deploy mid-way.
 }
 
 std::string ProtonContentWidget::selected_runner() const {
@@ -391,15 +396,22 @@ void ProtonContentWidget::run_deploy_task(DeployTaskKind kind) {
   deploy_status_->show();
 
   const engine::DeployConfig config = deploy_config_;
-  auto *thread = QThread::create([this, kind, config, remove_only]() {
-    const auto on_progress = [this](int done, int total) {
+  // Guard against the widget being destroyed while the task runs (tab closed
+  // mid-deploy): the worker captures a QPointer instead of a raw `this`, so
+  // once the widget is gone the pointer is null and every queued callback is
+  // a no-op instead of a use-after-free.
+  QPointer<ProtonContentWidget> self(this);
+  auto *thread = QThread::create([self, kind, config, remove_only]() {
+    const auto on_progress = [self](int done, int total) {
+      if (!self) return; // widget destroyed while the task was running
       QMetaObject::invokeMethod(
-          this,
-          [this, done, total]() {
-            if (!deploy_progress_) return;
+          self,
+          [self, done, total]() {
+            if (!self) return;
+            if (!self->deploy_progress_) return;
             if (total > 0) {
-              deploy_progress_->setRange(0, total);
-              deploy_progress_->setValue(done);
+              self->deploy_progress_->setRange(0, total);
+              self->deploy_progress_->setValue(done);
             }
           },
           Qt::QueuedConnection);
@@ -421,8 +433,10 @@ void ProtonContentWidget::run_deploy_task(DeployTaskKind kind) {
             on_progress);
       }
     }
-    QMetaObject::invokeMethod(this, [this, kind, ok]() {
-      finish_deploy_task(kind, ok);
+    if (!self) return; // widget destroyed while the task was running
+    QMetaObject::invokeMethod(self, [self, kind, ok]() {
+      if (!self) return;
+      self->finish_deploy_task(kind, ok);
     }, Qt::QueuedConnection);
   });
   thread->setObjectName(QStringLiteral("gmm-deploy-management"));
