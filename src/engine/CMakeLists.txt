@@ -41,6 +41,9 @@ set(ENGINE_SOURCES
     index/isaac_conflict_index.cpp
     index/conflict_engine.cpp
     mod/model/profile.cpp
+    profile/profile.cpp
+    profile/delayed_file_writer.cpp
+    profile/safe_write_file.cpp
     deploy/order_hook.cpp
     deploy/strategy_symlink.cpp
     deploy/strategy_direct.cpp
