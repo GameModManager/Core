@@ -36,6 +36,11 @@ public slots:
   QJsonObject read_app_state_extra() const;
   void restore_exec_selection();
   void show_settings_dialog();
+  // Re-apply settings that may have changed in the settings dialog (icons,
+  // nesting, scrollbar policy, compact downloads, nexus queue). Called after
+  // the dialog closes in popup mode and after the settings tab closes in
+  // Full UI tab mode.
+  void apply_settings_changes();
   // Apply the per-instance "Nested mod list" setting to the model. Called on
   // scan finish (before load_order so folds/links render correctly) and after
   // the settings dialog closes.
