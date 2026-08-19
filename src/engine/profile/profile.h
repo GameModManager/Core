@@ -102,6 +102,11 @@ public:
     [[nodiscard]] bool automatic_archive_invalidation() const;
     void set_automatic_archive_invalidation(bool value);
 
+    // Set an arbitrary root-section key in settings.ini (e.g. "ProfileName",
+    // written by profile creation when a profile is copied). Unknown
+    // keys/sections are preserved on save (read-before-write).
+    void set_root_setting(const std::string& key, const std::string& value);
+
     // Atomically write settings.ini. Returns true on success.
     bool save_settings();
 

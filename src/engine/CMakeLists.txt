@@ -42,6 +42,7 @@ set(ENGINE_SOURCES
     index/conflict_engine.cpp
     mod/model/profile.cpp
     profile/profile.cpp
+    profile/profile_creation.cpp
     profile/delayed_file_writer.cpp
     profile/safe_write_file.cpp
     deploy/order_hook.cpp
