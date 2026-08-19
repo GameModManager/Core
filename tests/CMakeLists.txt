@@ -263,6 +263,10 @@ gmm_catch2_test(categories_dialog_test ui/categories_dialog_test.cpp
     UI
     LIBS gmm_ui Qt6::Test)
 
+gmm_catch2_test(profile_manager_dialog_test ui/profile_manager_dialog_test.cpp
+    UI
+    LIBS gmm_ui Qt6::Test)
+
 gmm_catch2_test(exec_entry_dialog_test ui/exec_entry_dialog_test.cpp
     UI
     LIBS gmm_ui)

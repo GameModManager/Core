@@ -45,6 +45,9 @@
 #include "engine/pipeline/plugin_host/category_factory.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "engine/platform/theme/theme_manager.h"
+#include "engine/profile/profile.h"
+#include "engine/profile/profile_creation.h"
+#include "engine/profile/profile_switching.h"
 #include "engine/sort/sort_provider.h"
 #include "engine/sort/sort_registry.h"
 #include "engine/source/nexus_provider.h"
@@ -58,6 +61,7 @@
 #include "ui/modinfo/mod_info_dialog.h"
 #include "ui/panels/tab_panels.h"
 #include "ui/preview/preview_window.h"
+#include "ui/profile/profile_manager_dialog.h"
 #include "ui/settings/settings.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/widgets/category_filter_panel.h"
@@ -281,14 +285,9 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
           [this]() { create_empty_mod(); });
 
   connect(w_->profile_bar_, &ProfileBar::profile_changed, this,
-          [this](const QString &profile) {
-            w_->current_profile_name_ = profile.toStdString();
-            w_->update_title();
-            // P1.3 event bus: mirror MO2 onProfileChanged.
-            engine::EventBus::instance().dispatch(
-                engine::events::kProfileChanged,
-                engine::json_obj({{"profile", w_->current_profile_name_}}));
-          });
+          [this](const QString &profile) { switch_profile(profile); });
+  connect(w_->profile_bar_, &ProfileBar::manage_profiles_requested, this,
+          [this]() { open_profile_manager(); });
 
   connect(w_->profile_bar_, &ProfileBar::open_folder_requested, this,
           &ModListController::open_folder);
@@ -586,6 +585,121 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
               apply_mod_filter();
             }
           });
+}
+
+void ModListController::refresh_profiles() {
+  const auto profiles_dir = w_->profiles_dir_path();
+  if (profiles_dir.empty())
+    return;
+
+  QStringList names;
+  for (const auto &name : engine::profile::list_profiles(profiles_dir))
+    names << QString::fromStdString(name);
+
+  // Resolve the profile to select: the current profile when it still exists,
+  // else the saved default profile, else the first profile. The fallback
+  // updates current_profile_name_ so the rest of the app (title, plugin DB,
+  // mod list) agrees with the selector.
+  QString current = QString::fromStdString(w_->current_profile_name_);
+  if (!names.contains(current)) {
+    const QString def = Settings::instance().default_profile();
+    if (!def.isEmpty() && names.contains(def)) {
+      current = def;
+    } else if (!names.isEmpty()) {
+      current = names.first();
+    } else {
+      current.clear();
+    }
+    if (!current.isEmpty()) {
+      w_->current_profile_name_ = current.toStdString();
+      w_->update_title();
+    }
+  }
+  w_->profile_bar_->set_profiles(names, current);
+}
+
+void ModListController::open_profile_manager() {
+  const auto profiles_dir = w_->profiles_dir_path();
+  if (profiles_dir.empty())
+    return;
+
+  ui::ProfileManagerDialog dlg(
+      profiles_dir, QString::fromStdString(w_->current_profile_name_),
+      Settings::instance().default_profile(), w_);
+  connect(&dlg, &ProfileManagerDialog::profiles_changed, this,
+          [this]() { refresh_profiles(); });
+  connect(&dlg, &ProfileManagerDialog::default_profile_changed, this,
+          [](const QString &name) {
+            Settings::instance().set_default_profile(name);
+          });
+
+  if (dlg.exec() == QDialog::Accepted) {
+    const QString selected = dlg.selected_profile();
+    if (!selected.isEmpty() &&
+        selected != QString::fromStdString(w_->current_profile_name_)) {
+      switch_profile(selected);
+    }
+  }
+  refresh_profiles();
+}
+
+void ModListController::switch_profile(const QString &profile) {
+  if (profile.isEmpty() ||
+      profile == QString::fromStdString(w_->current_profile_name_))
+    return;
+
+  const auto profiles_dir = w_->profiles_dir_path();
+  if (profiles_dir.empty())
+    return;
+
+  // The UI tracks only the active profile name; construct the engine model
+  // for the current profile on demand so the switcher can persist it.
+  engine::profile::Profile current_profile(profiles_dir /
+                                           w_->current_profile_name_);
+
+  // Live state snapshot for save_current_profile (MO2's saveCurrentProfile):
+  // the in-memory mod list is the source of truth for what's installed.
+  engine::profile::ProfileSaveState state;
+  for (const auto &m : w_->mod_model_->mods()) {
+    if (m.is_separator || m.is_overwrite || m.is_merged)
+      continue;
+    state.known_mods.push_back(m.id.toStdString());
+    if (m.is_game_native)
+      state.foreign_mods.push_back(m.id.toStdString());
+  }
+
+  engine::profile::ProfileSwitchCallbacks callbacks;
+  // Re-scan the mods directory and rebuild the mod list (MO2's
+  // refreshDirectoryStructure). The scan reads the mods dir; the new
+  // profile's modlist.txt state is restored by the switcher into the
+  // engine Profile before this callback runs.
+  callbacks.refresh_directory_structure = [this]() { load_mods_from_game(); };
+  // Reload the Plugins tab from the new profile's plugin files (MO2's
+  // refreshLists). refresh_plugins_tab() applies load_profile itself.
+  callbacks.refresh_plugin_list = [this]() { refresh_plugins_tab(); };
+  // The Archives tab is not yet wired to profile data; the switcher skips
+  // empty callbacks.
+  callbacks.refresh_bsa_list = {};
+  // Archive invalidation is persisted per profile (settings.ini); applying
+  // it to the game INI is a deploy concern outside this ticket.
+  callbacks.set_archive_invalidation = {};
+
+  auto result = engine::profile::switch_profile(
+      profiles_dir, profile.toStdString(), &current_profile, state,
+      &w_->plugins_db_, callbacks);
+  if (!result.success) {
+    QMessageBox::warning(
+        w_, tr("Switch Profile"),
+        tr("Could not switch to profile \"%1\": %2")
+            .arg(profile, QString::fromStdString(result.error)));
+    return;
+  }
+  if (!result.changed)
+    return;
+
+  w_->current_profile_name_ = profile.toStdString();
+  w_->update_title();
+  refresh_profiles();
 }
 
 void ModListController::update_status_bar_for_game() {
