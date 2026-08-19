@@ -28,15 +28,6 @@ ModFilterBar::ModFilterBar(QWidget* parent)
                 emit category_panel_toggled(on);
             });
 
-    // Expand/Collapse all button [>>]
-    expand_btn_ = new QToolButton(this);
-    expand_btn_->setText(">>");
-    expand_btn_->setToolTip(tr("Expand / Collapse all groups"));
-    expand_btn_->setFixedWidth(30);
-    layout->addWidget(expand_btn_);
-
-    connect(expand_btn_, &QToolButton::clicked, this, &ModFilterBar::expand_all_clicked);
-
     // Filter text input
     filter_edit_ = new QLineEdit(this);
     filter_edit_->setPlaceholderText(tr("Filter..."));
