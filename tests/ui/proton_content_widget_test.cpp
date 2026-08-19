@@ -12,12 +12,16 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QMessageBox>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QThread>
+#include <QTimer>
 
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 #include <catch2/catch_test_macros.hpp>
@@ -119,4 +123,83 @@ TEST_CASE("proton content widget", "[ui]") {
         if (strip_mnemonic(btn->text()) == "Close") btn->click();
     }
     require(cancelled, "Close emits cancel_requested");
+}
+
+// Regression test for the use-after-free when the Proton tab is closed while a
+// deploy/remove task is running (Workspace-3v5.8 blocker). The worker thread
+// posts queued QMetaObject::invokeMethod callbacks targeting the widget; if
+// the widget is destroyed mid-task those callbacks must be safe no-ops
+// (QPointer guard), not dispatches into freed memory, and the destructor must
+// not block the UI thread waiting for the deploy to finish.
+TEST_CASE("proton content widget survives tab close during deploy task", "[ui]") {
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
+
+    StubPlatform platform;
+    engine::PluginLoader loader;
+
+    // Temp instance/game dirs plus a large deploy ledger so the removal task
+    // takes long enough that the worker is still running when the widget is
+    // destroyed below (the tab-close-mid-task window).
+    const auto tmp = std::filesystem::temp_directory_path() / "gmm_proton_uaf_test";
+    std::filesystem::remove_all(tmp);
+    std::filesystem::create_directories(tmp / "game");
+    std::filesystem::create_directories(tmp / "mods");
+    {
+        std::ofstream ledger(tmp / "ledger.tsv");
+        for (int i = 0; i < 20000; ++i) {
+            ledger << (tmp / "game" / ("file_" + std::to_string(i))).string()
+                   << '\t'
+                   << (tmp / "mods" / ("file_" + std::to_string(i))).string()
+                   << '\n';
+        }
+    }
+
+    engine::DeployConfig config;
+    config.mods_dir = tmp / "mods";
+    config.game_dir = tmp / "game";
+    config.ledger_file = tmp / "ledger.tsv";
+    config.backup_root = tmp / "Original_Files";
+
+    auto* widget = new ui::ProtonContentWidget(
+        &platform, &loader, "SkyrimSpecialEdition", "Skyrim Special Edition",
+        config.game_dir, 489830, tmp, "", engine::kDefaultDeployStrategy,
+        config);
+
+    // "Force re-deploy links" asks a modal confirmation first; auto-confirm
+    // it from inside the message box's nested event loop.
+    QTimer::singleShot(0, []() {
+        if (auto* mb = qobject_cast<QMessageBox*>(
+                QApplication::activeModalWidget())) {
+            if (auto* yes = mb->button(QMessageBox::Yes)) yes->click();
+        }
+    });
+    bool clicked = false;
+    for (auto* btn : widget->findChildren<QPushButton*>()) {
+        if (strip_mnemonic(btn->text()) == "Force re-deploy links") {
+            btn->click();
+            clicked = true;
+        }
+    }
+    require(clicked, "deploy task button clicked");
+
+    // Let the worker start and post its first queued progress callbacks.
+    QCoreApplication::processEvents();
+    QThread::msleep(20);
+    QCoreApplication::processEvents();
+
+    // Tab close: the tab container removes the page and the controller
+    // releases it with deleteLater(). The worker is still running here.
+    widget->deleteLater();
+    QCoreApplication::processEvents();  // destructor runs (non-blocking)
+
+    // Drain the event loop: queued callbacks posted before destruction must be
+    // safe no-ops, and the worker must finish without touching the dead widget.
+    QCoreApplication::processEvents();
+    QThread::msleep(100);
+    QCoreApplication::processEvents();
+
+    std::filesystem::remove_all(tmp);
 }
