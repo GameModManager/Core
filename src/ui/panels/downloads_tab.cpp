@@ -480,10 +480,9 @@ void DownloadsTab::set_downloads_dir(const std::filesystem::path& dir) {
 
 void DownloadsTab::showEvent(QShowEvent* event) {
     QWidget::showEvent(event);
-    // Re-scan so archives dropped into the downloads dir while the app is
-    // running appear in the list.
-    scan_downloads_dir();
+    // Directory watcher handles external changes; no rescan needed on tab switch.
 }
+
 
 bool DownloadsTab::has_active_download() const {
     for (const auto& [id, entry] : downloads_) {
