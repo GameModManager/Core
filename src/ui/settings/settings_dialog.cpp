@@ -285,9 +285,9 @@ QWidget* SettingsDialog::build_theme_tab() {
                     .arg(c.red()).arg(c.green()).arg(c.blue()).arg(c.alpha()));
         };
         apply_swatch(initial);
-        QObject::connect(btn, &QPushButton::clicked, btn, [btn, commit, apply_swatch]() {
+        QObject::connect(btn, &QPushButton::clicked, btn, [this, btn, commit, apply_swatch]() {
             QColor result = QColorDialog::getColor(
-                btn->property("current").value<QColor>(), btn,
+                btn->property("current").value<QColor>(), this,
                 tr("Choose color"), QColorDialog::ShowAlphaChannel);
             if (result.isValid()) {
                 btn->setProperty("current", result);
