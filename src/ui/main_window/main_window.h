@@ -60,6 +60,7 @@ class ProfileBar;
 class ModFilterBar;
 class CategoryFilterPanel;
 class RightPanel;
+class MainTabContainer;
 class DeployThread;
 
 // Issue #16 controller split: the controllers own the behavior that used to
@@ -72,6 +73,7 @@ class OverwriteController;
 class QueueController;
 class SettingsController;
 class DownloadsController;
+class TabModeController;
 
 // Forward-declared: fully defined in ui/widgets/profile_bar.h, which owns the
 // FolderKind enum and is included before any use in .cpp files.
@@ -184,6 +186,10 @@ private:
   RightPanel *right_panel_ = nullptr;
   QSplitter *main_splitter_ = nullptr;
   QSplitter *console_splitter_ = nullptr;
+  // Central widget: tab 0 holds console_splitter_ (the Main tab); dynamic
+  // view tabs (Settings, Pipeline, ...) are added by TabModeController when
+  // Full UI mode is ON.
+  MainTabContainer *main_tab_container_ = nullptr;
   ConsolePanel *console_ = nullptr;
   GmmStatusBar *status_bar_ = nullptr;
   PipelineThread *pipeline_thread_ = nullptr;
@@ -437,12 +443,17 @@ private:
   friend class QueueController;
   friend class SettingsController;
   friend class DownloadsController;
+  friend class TabModeController;
   std::unique_ptr<ModListController> mod_list_;
   std::unique_ptr<LaunchController> launch_;
   std::unique_ptr<OverwriteController> overwrite_;
   std::unique_ptr<QueueController> queue_;
   std::unique_ptr<SettingsController> settings_;
   std::unique_ptr<DownloadsController> downloads_;
+  // Full-UI tab host (central widget) and its mode router. Created with the
+  // other controllers; the Main tab is added once the console splitter
+  // exists.
+  std::unique_ptr<TabModeController> tab_mode_;
 };
 
 } // namespace ui

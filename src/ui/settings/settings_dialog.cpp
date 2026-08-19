@@ -12,6 +12,7 @@
 #include <QAbstractItemView>
 #include <QApplication>
 #include <QCheckBox>
+#include <QCloseEvent>
 #include <QColorDialog>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -82,6 +83,13 @@ SettingsDialog::SettingsDialog(engine::StyleManager* style_manager,
     layout->addWidget(btn_box);
 }
 
+void SettingsDialog::closeEvent(QCloseEvent* event) {
+    // Let an embedding host (Full UI tab mode) drop the tab that holds this
+    // dialog when the user closes it (Close button, window X, ...).
+    emit closed();
+    QDialog::closeEvent(event);
+}
+
 // -- General ----------------------------------------------------------------
 
 QWidget* SettingsDialog::build_general_tab() {
@@ -126,16 +134,26 @@ QWidget* SettingsDialog::build_general_tab() {
     smooth_box->setToolTip(tr("Animates wheel scrolling in mod/executable lists."));
     auto* dl_notify_box = new QCheckBox(tr("Show download notifications"), gen_group);
     dl_notify_box->setChecked(s.show_download_notifications());
+    auto* full_ui_box = new QCheckBox(tr("Enable full UI tab mode"), gen_group);
+    full_ui_box->setChecked(s.full_ui_mode());
+    full_ui_box->setToolTip(tr("Opens Settings, Pipeline and other panels as "
+                               "tabs inside the main window instead of popup "
+                               "dialogs."));
     gen_layout->addWidget(update_box);
     gen_layout->addWidget(prerelease_box);
     gen_layout->addWidget(smooth_box);
     gen_layout->addWidget(dl_notify_box);
+    gen_layout->addWidget(full_ui_box);
     layout->addWidget(gen_group);
 
     connect(update_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_check_for_updates(on); });
     connect(prerelease_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_use_prereleases(on); });
     connect(smooth_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_smooth_scrolling(on); });
     connect(dl_notify_box, &QCheckBox::toggled, this, [&s](bool on) { s.set_show_download_notifications(on); });
+    connect(full_ui_box, &QCheckBox::toggled, this, [&s, this](bool on) {
+        s.set_full_ui_mode(on);
+        emit full_ui_mode_toggled(on);
+    });
 
     // Profile defaults ---------------------------------------------------------
     auto* profile_group = new QGroupBox(tr("Profile Defaults"), page);
