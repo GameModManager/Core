@@ -7,6 +7,7 @@
 set(UI_SOURCES
     settings/settings.cpp
     settings/settings_dialog.cpp
+    settings/settings_content_widget.cpp
     settings/source_pages.cpp
     settings/categories_dialog.cpp
     main_window/main_window.cpp
@@ -37,7 +38,9 @@ set(UI_SOURCES
     widgets/instance_switcher_dialog.cpp
     widgets/game_icon_cache.cpp
     widgets/instance_statistics_dialog.cpp
+    widgets/stats_content_widget.cpp
     widgets/debug_window.cpp
+    widgets/pipeline_content_widget.cpp
     widgets/pipeline_window.cpp
     widgets/zoom_controls.cpp
     widgets/mod_filter_bar.cpp

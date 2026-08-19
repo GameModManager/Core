@@ -683,8 +683,8 @@ void SettingsController::connect_menu_actions() {
   });
   connect(w_->menu_bar_, &AppMenuBar::about_qt_requested, this,
           [this]() { QMessageBox::aboutQt(w_, tr("About Qt")); });
-  connect(w_->menu_bar_, &AppMenuBar::instance_statistics_requested, this,
-          &SettingsController::show_instance_statistics);
+  connect(w_->menu_bar_, &AppMenuBar::instance_statistics_requested,
+          w_->tab_mode_.get(), &TabModeController::route_stats);
 }
 
 void SettingsController::save_app_state() {
