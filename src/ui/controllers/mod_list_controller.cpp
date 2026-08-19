@@ -1,4 +1,6 @@
 #include "ui/controllers/mod_list_controller.h"
+#include "engine/profile/profile_creation.h"
+#include <filesystem>
 #include "ui/controllers/launch_controller.h"
 #include "ui/controllers/overwrite_controller.h"
 #include "ui/controllers/queue_controller.h"
@@ -591,6 +593,18 @@ void ModListController::refresh_profiles() {
   const auto profiles_dir = w_->profiles_dir_path();
   if (profiles_dir.empty())
     return;
+
+  // Ensure the Default profile exists and is initialized.
+  // An empty directory (created by earlier code but never populated) is
+  // treated as missing and re-created with defaults.
+  {
+    const auto default_dir = profiles_dir / "Default";
+    if (!std::filesystem::exists(default_dir / "settings.ini")) {
+      if (std::filesystem::exists(default_dir))
+        std::filesystem::remove_all(default_dir);
+      engine::profile::create_fresh_profile(profiles_dir, "Default", nullptr);
+    }
+  }
 
   QStringList names;
   for (const auto &name : engine::profile::list_profiles(profiles_dir))
