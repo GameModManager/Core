@@ -1,65 +1,29 @@
 #include "ui/widgets/instance_switcher_dialog.h"
+#include "ui/widgets/instance_switcher_content_widget.h"
 
-#include <QDialogButtonBox>
 #include <QHBoxLayout>
-#include <QLabel>
-#include <QListWidget>
 #include <QPushButton>
-#include <QScrollArea>
-#include <QStyle>
 #include <QVBoxLayout>
-#include <QPainter>
-
-#include "engine/pipeline/plugin_host/plugin_loader.h"
-#include "engine/core/instance/instance.h"
-#include "engine/core/instance/toml_utils.h"
-#include "ui/widgets/smooth_scroll.h"
-#include "ui/settings/settings.h"
-#include "ui/widgets/game_icon_cache.h"
-
-#include <filesystem>
 
 namespace ui {
 
-InstanceSwitcherDialog::InstanceSwitcherDialog(engine::PluginLoader* plugins, QWidget* parent)
-    : QDialog(parent), plugins_(plugins) {
+InstanceSwitcherDialog::InstanceSwitcherDialog(engine::PluginLoader* plugins,
+                                               QWidget* parent)
+    : QDialog(parent) {
     setWindowTitle(tr("Switch Instance"));
     resize(520, 400);
 
     auto* main_layout = new QVBoxLayout(this);
-    main_layout->setContentsMargins(16, 16, 16, 12);
-    main_layout->setSpacing(12);
+    main_layout->setContentsMargins(0, 0, 0, 0);
+    main_layout->setSpacing(0);
 
-    // Title
-    auto* title = new QLabel(tr("Select an instance"));
-    {
-        QFont f = title->font();
-        f.setPointSize(14);
-        f.setBold(true);
-        title->setFont(f);
-    }
-    main_layout->addWidget(title);
+    // The mode-agnostic content: instance list + create button. The dialog
+    // only adds the OK/Cancel row that carries the accept/reject semantics.
+    content_ = new InstanceSwitcherContentWidget(plugins, this);
+    main_layout->addWidget(content_, 1);
 
-    // Instance list
-    list_ = new QListWidget(this);
-    list_->setSelectionMode(QAbstractItemView::SingleSelection);
-    list_->setSpacing(2);
-    main_layout->addWidget(list_, 1);
-
-    // Bottom buttons row
     auto* bottom_layout = new QHBoxLayout();
-    bottom_layout->setContentsMargins(0, 0, 0, 0);
-
-    auto* create_btn = new QPushButton(this);
-    {
-        auto icon = style()->standardIcon(QStyle::SP_FileDialogNewFolder);
-        if (!icon.isNull()) {
-            create_btn->setIcon(icon);
-        }
-        create_btn->setText(tr("Create new instance"));
-    }
-    bottom_layout->addWidget(create_btn);
-
+    bottom_layout->setContentsMargins(16, 0, 16, 12);
     bottom_layout->addStretch();
 
     auto* ok_btn = new QPushButton(tr("OK"), this);
@@ -73,140 +37,30 @@ InstanceSwitcherDialog::InstanceSwitcherDialog(engine::PluginLoader* plugins, QW
     // Connections
     connect(ok_btn, &QPushButton::clicked, this, &InstanceSwitcherDialog::on_ok);
     connect(cancel_btn, &QPushButton::clicked, this, &QDialog::reject);
-    connect(create_btn, &QPushButton::clicked, this, &InstanceSwitcherDialog::on_create);
-    connect(list_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem*) {
-        on_ok();
-    });
-
-    // Swap an async-downloaded icon into its row when it lands
-    connect(&GameIconCache::instance(), &GameIconCache::icon_ready,
-            this, &InstanceSwitcherDialog::update_icons_for);
-
-    // TODO: gate behind a Settings "Smooth scrolling" checkbox.
-    if (Settings::instance().smooth_scrolling())
-        ui::enable_smooth_scrolling(this);
+    // Double-click on an instance row accepts the dialog with that selection.
+    connect(content_, &InstanceSwitcherContentWidget::instance_selected, this,
+            [this](const QString&) { on_ok(); });
+    // Create button: remember the request and accept so the caller runs the
+    // GameSelectionWidget create flow.
+    connect(content_, &InstanceSwitcherContentWidget::create_new_instance, this,
+            [this]() {
+                create_requested_ = true;
+                emit create_new_instance();
+                accept();
+            });
 }
 
 void InstanceSwitcherDialog::load_instances(const std::string& instances_dir) {
-    instances_dir_ = instances_dir;
-    refresh_list();
+    content_->load_instances(instances_dir);
 }
 
-void InstanceSwitcherDialog::refresh_list() {
-    list_->clear();
-    entries_.clear();
-
-    std::error_code ec;
-    auto dir = std::filesystem::path(instances_dir_);
-    if (!std::filesystem::is_directory(dir, ec)) return;
-
-    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
-        if (!entry.is_directory()) continue;
-        auto toml = entry.path() / "instance.toml";
-        if (!std::filesystem::exists(toml)) continue;
-
-        InstanceSwitcherEntry ie;
-        ie.name = entry.path().filename().string();
-        ie.root = entry.path();
-
-        // Parse instance.toml for game_id and portable flag
-        if (auto tbl = engine::parse_instance_toml(toml)) {
-            if (auto v = (*tbl)["game_id"].value<std::string>()) {
-                ie.game_id = *v;
-            }
-            if (auto v = (*tbl)["portable"].value<bool>()) {
-                ie.portable = *v;
-            }
-        }
-
-        // Resolve display name from plugin
-        std::string display_name;
-        if (plugins_) {
-            display_name = plugins_->display_name_for(ie.game_id);
-        }
-        if (display_name.empty()) {
-            display_name = ie.game_id;
-        }
-
-        // Build the display label - always use the plugin's real display name
-        // (the folder name has colons and other special chars stripped)
-        std::string label = display_name;
-
-        ie.display_name = display_name;
-        entries_.push_back(ie);
-
-        // Create list item with custom widget
-        auto* item_widget = new QWidget();
-        auto* hlay = new QHBoxLayout(item_widget);
-        hlay->setContentsMargins(8, 6, 8, 6);
-        hlay->setSpacing(12);
-
-        // Game icon — declared icon from the global cache, or a letter avatar
-        // while the fetch is in flight (icon_ready() swaps it in).
-        auto* icon_label = new QLabel();
-        icon_label->setFixedSize(36, 36);
-        icon_label->setAlignment(Qt::AlignCenter);
-        auto icon = GameIconCache::instance().icon_for(
-            QString::fromStdString(ie.game_id),
-            QString::fromStdString(display_name), 36);
-        icon_label->setPixmap(icon.pixmap(36, 36));
-        hlay->addWidget(icon_label);
-        entries_.back().icon_label = icon_label;
-
-        // Text column
-        auto* text_layout = new QVBoxLayout();
-        text_layout->setContentsMargins(0, 0, 0, 0);
-        text_layout->setSpacing(2);
-
-        auto* name_label = new QLabel(QString::fromStdString(label));
-        {
-            QFont f = name_label->font();
-            f.setPointSize(11);
-            f.setBold(true);
-            name_label->setFont(f);
-        }
-        text_layout->addWidget(name_label);
-
-        auto* path_label = new QLabel(QString::fromStdString(ie.root.string()));
-        path_label->setObjectName("pathLabel");
-        path_label->setWordWrap(false);
-        text_layout->addWidget(path_label);
-
-        hlay->addLayout(text_layout, 1);
-
-        auto* qitem = new QListWidgetItem(list_);
-        qitem->setSizeHint(item_widget->sizeHint());
-        list_->addItem(qitem);
-        list_->setItemWidget(qitem, item_widget);
-    }
+QString InstanceSwitcherDialog::selected_instance() const {
+    return content_->selected_instance();
 }
 
 void InstanceSwitcherDialog::on_ok() {
-    auto* item = list_->currentItem();
-    if (!item) return;
-    int row = list_->row(item);
-    if (row >= 0 && row < static_cast<int>(entries_.size())) {
-        selected_ = QString::fromStdString(entries_[row].name);
+    if (!content_->selected_instance().isEmpty())
         accept();
-    }
-}
-
-void InstanceSwitcherDialog::on_create() {
-    create_requested_ = true;
-    emit create_new_instance();
-    accept();
-}
-
-void InstanceSwitcherDialog::update_icons_for(const QString& game_id) {
-    std::string gid = game_id.toStdString();
-    for (auto& entry : entries_) {
-        if (entry.game_id == gid && entry.icon_label) {
-            auto icon = GameIconCache::instance().icon_for(
-                QString::fromStdString(entry.game_id),
-                QString::fromStdString(entry.display_name), 36);
-            entry.icon_label->setPixmap(icon.pixmap(36, 36));
-        }
-    }
 }
 
 }  // namespace ui

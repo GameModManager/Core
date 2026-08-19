@@ -6,11 +6,13 @@
 #include <QWidget>
 
 #include "engine/core/instance/instance.h"
+#include "engine/core/instance/instance_utils.h"
 #include "ui/proton/proton_content_widget.h"
 #include "ui/settings/settings.h"
 #include "ui/settings/settings_content_widget.h"
 #include "ui/widgets/exec_controls_bar.h"
 #include "ui/widgets/exec_entry_content_widget.h"
+#include "ui/widgets/instance_switcher_content_widget.h"
 #include "ui/widgets/main_tab_container.h"
 #include "ui/widgets/mod_list_model.h"
 #include "ui/widgets/pipeline_content_widget.h"
@@ -41,6 +43,9 @@ TabModeController::TabModeController(MainWindow *w, QObject *parent)
             } else if (auto *proton =
                            qobject_cast<ProtonContentWidget *>(page)) {
               proton->deleteLater();
+            } else if (auto *switcher = qobject_cast<
+                           InstanceSwitcherContentWidget *>(page)) {
+              switcher->deleteLater();
             }
           });
 
@@ -214,6 +219,41 @@ void TabModeController::route_proton() {
   connect(content, &ProtonContentWidget::cancel_requested, this,
           [this, key]() { close_tab(key); });
   open_in_tab(content, tr("Proton Options"), key);
+}
+
+void TabModeController::route_instance_switcher() {
+  if (!Settings::instance().full_ui_mode()) {
+    // Popup mode: unchanged behavior (modal InstanceSwitcherDialog).
+    w_->settings_->show_instance_switcher();
+    return;
+  }
+
+  const QString key = QStringLiteral("instance_switcher");
+  if (is_tab_open(key)) {
+    w_->main_tab_container_->select_tab(key);
+    return;
+  }
+
+  // Tab mode: embed a fresh InstanceSwitcherContentWidget. Selecting an
+  // instance switches immediately (single click) and drops the tab; the
+  // create button runs the GameSelectionWidget create flow and drops the tab
+  // on success. The tab stays open when the user cancels the create flow or
+  // the switch fails.
+  auto instances_dir = engine::default_instances_dir();
+  auto *content = new InstanceSwitcherContentWidget(w_->plugin_loader_, w_);
+  content->set_immediate_switch(true);
+  content->load_instances(instances_dir.string());
+  connect(content, &InstanceSwitcherContentWidget::instance_selected, this,
+          [this, key](const QString &name) {
+            if (w_->settings_->switch_to_instance(name))
+              close_tab(key);
+          });
+  connect(content, &InstanceSwitcherContentWidget::create_new_instance, this,
+          [this, key]() {
+            if (w_->settings_->create_new_instance())
+              close_tab(key);
+          });
+  open_in_tab(content, tr("Switch Instance"), key);
 }
 
 void TabModeController::open_in_tab(QWidget *content, const QString &title,
