@@ -210,6 +210,61 @@ ProfileCreationResult copy_profile(const std::filesystem::path& profiles_dir, co
     return result;
 }
 
+bool rename_profile(const std::filesystem::path& profiles_dir, const std::string& old_name,
+                    const std::string& new_name, std::string* error) {
+    std::string name_error;
+    if (!is_valid_profile_name(new_name, &name_error)) {
+        if (error) {
+            *error = name_error;
+        }
+        return false;
+    }
+
+    const auto source = profiles_dir / old_name;
+    const auto target = profiles_dir / new_name;
+
+    std::error_code ec;
+    if (!std::filesystem::is_directory(source, ec) || ec) {
+        const std::string msg = "source profile directory " + source.string() + " does not exist";
+        if (error) {
+            *error = msg;
+        }
+        return false;
+    }
+    if (std::filesystem::exists(target, ec)) {
+        const std::string msg = "profile \"" + new_name + "\" already exists";
+        if (error) {
+            *error = msg;
+        }
+        return false;
+    }
+
+    std::filesystem::rename(source, target, ec);
+    if (ec) {
+        const std::string msg =
+            "failed to rename profile to " + target.string() + ": " + ec.message();
+        Logger::instance().error(msg);
+        if (error) {
+            *error = msg;
+        }
+        return false;
+    }
+
+    // Record the new name in settings.ini (the directory name is the profile
+    // identity; the key makes the rename self-describing).
+    Profile profile(target);
+    profile.set_root_setting("ProfileName", new_name);
+    if (!profile.save_settings()) {
+        const std::string msg = "failed to update settings.ini in " + target.string();
+        Logger::instance().error(msg);
+        if (error) {
+            *error = msg;
+        }
+        return false;
+    }
+    return true;
+}
+
 std::vector<std::string> list_profiles(const std::filesystem::path& profiles_dir) {
     std::vector<std::string> names;
     std::error_code ec;

@@ -174,6 +174,12 @@ void SettingsController::set_game_info(
   restore_exec_selection();
   w_->update_title();
 
+  // Populate the profile selector from the instance's profiles dir. Resolves
+  // the startup profile: the passed-in name when it exists, else the saved
+  // default profile, else the first profile (see
+  // ModListController::refresh_profiles).
+  w_->mod_list_->refresh_profiles();
+
   // (Loaded plugin list is logged once by PluginLoader::load_directory)
 
   if (!game_dir.empty() && w_->knowledge_) {
