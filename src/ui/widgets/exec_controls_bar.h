@@ -5,7 +5,7 @@
 #include <QJsonObject>
 #include <filesystem>
 
-#include "ui/widgets/exec_entry_dialog.h"
+#include "ui/widgets/exec_entry_content_widget.h"
 
 class QComboBox;
 class QToolButton;
