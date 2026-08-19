@@ -10,10 +10,9 @@
 // columns stretching to the window bottom, and the register_settings
 // mechanism: plugin options rendered as a Key | Value table (bool-like
 // values as a checkbox, others as plaintext), persisted on edit and read
-// back on reopen. Typed settings declared via register_settings_tab render
-// as rows in the same table (Workspace-o0w) — no VBox form, no separate
-// tab. Source providers must NOT show a settings container in this tab
-// (only the Sources tab) - verified with a registered fake provider.
+// back on reopen. Source providers must NOT show a settings container in
+// this tab (only the Sources tab) - verified with a registered fake
+// provider.
 //
 // Hermetic: plugins are loaded from the argv[1] dir when given (real
 // register_category / register_settings ABI roundtrip); if none load,
@@ -28,14 +27,17 @@
 #include "ui/theme/style_manager.h"
 #include "engine/platform/theme/theme_manager.h"
 
+#include <QAbstractSpinBox>
 #include <QApplication>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QGroupBox>
 #include <QLineEdit>
 #include <QLabel>
 #include <QMetaObject>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QSplitter>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -224,11 +226,9 @@ TEST_CASE("settings plugins tab", "[ui]") {
     }
 
     // --- register_settings: Key | Value table. ---
-    // Scan leaves until the IsaacModSorter-style options table (masterlist_url
-    // + auto_sort_on_load) is found; also note whether a plugin without
-    // options shows the plain "no settings" label.
+    // Scan leaves until one shows a table with options; also note whether a
+    // plugin without options shows the plain "no settings" label.
     bool saw_options = false, saw_no_settings_label = false;
-    int opt_g = -1, opt_c = -1;
     for (int g = 0; g < tree->topLevelItemCount() && !saw_options; ++g) {
         auto* group = tree->topLevelItem(g);
         for (int c = 0; c < group->childCount() && !saw_options; ++c) {
@@ -236,22 +236,11 @@ TEST_CASE("settings plugins tab", "[ui]") {
             app.processEvents();
             if (auto* t = page->findChild<QTableWidget*>()) {
                 if (t->columnCount() == 2 && t->rowCount() > 0) {
-                    bool has_masterlist = false, has_auto = false;
-                    for (int r = 0; r < t->rowCount(); ++r) {
-                        auto* k = t->item(r, 0);
-                        if (!k) continue;
-                        if (k->text() == "masterlist_url") has_masterlist = true;
-                        else if (k->text() == "auto_sort_on_load") has_auto = true;
-                    }
-                    if (has_masterlist && has_auto) {
-                        saw_options = true;
-                        opt_g = g;
-                        opt_c = c;
-                        for (auto* lbl : page->findChildren<QLabel*>())
-                            if (lbl->text() == "This plugin exposes no settings.")
-                                saw_no_settings_label = true;
-                        break;
-                    }
+                    saw_options = true;
+                    for (auto* lbl : page->findChildren<QLabel*>())
+                        if (lbl->text() == "This plugin exposes no settings.")
+                            saw_no_settings_label = true;
+                    break;
                 }
             }
         }
@@ -273,12 +262,18 @@ TEST_CASE("settings plugins tab", "[ui]") {
     check(saw_no_settings_label,
           "plugin without options shows the plain no-settings label");
 
-    // Re-select the options leaf and verify the table headers + rows.
-    check(opt_g >= 0, "re-selected a plugin that exposes options");
-    if (opt_g >= 0) {
-        tree->setCurrentItem(tree->topLevelItem(opt_g)->child(opt_c));
-        app.processEvents();
+    // Select the options leaf again and verify the table headers + rows.
+    int opt_g = -1, opt_c = -1;
+    for (int g = 0; g < tree->topLevelItemCount() && opt_g < 0; ++g) {
+        auto* group = tree->topLevelItem(g);
+        for (int c = 0; c < group->childCount() && opt_g < 0; ++c) {
+            tree->setCurrentItem(group->child(c));
+            app.processEvents();
+            if (auto* t = page->findChild<QTableWidget*>())
+                if (t->columnCount() == 2 && t->rowCount() > 0) { opt_g = g; opt_c = c; }
+        }
     }
+    check(opt_g >= 0, "re-selected a plugin that exposes options");
 
     bool headers_ok = false;
     if (auto* t = page->findChild<QTableWidget*>()) {
@@ -341,11 +336,12 @@ TEST_CASE("settings plugins tab", "[ui]") {
               "http://example/masterlist.yaml",
           "plaintext edit persisted (plugins/settings/<basename>/<key>)");
 
-    // --- P1.5: typed plugin settings (register_settings_tab) render as
-    // key:value rows in the same table as register_settings (Workspace-o0w),
-    // not as native widgets in a VBox form and not as a separate tab. ---
-    // The fixture declares bool/int/string/choice settings; all four plus the
-    // undeclared plain_legacy_key show up as rows in the info pane's table.
+    // --- P1.5: typed plugin settings (register_settings_tab) render inline
+    // in the Plugins info pane (Workspace-363), not as a separate tab. ---
+    // The fixture declares bool/int/string/choice settings rendered as native
+    // widgets, edits persisted through the same per-plugin store, and its
+    // declared keys stop rendering as raw key:value rows in the info pane
+    // (the undeclared plain_legacy_key keeps showing).
     for (int g = 0; tree && g < tree->topLevelItemCount(); ++g) {
         auto* group = tree->topLevelItem(g);
         for (int c = 0; c < group->childCount(); ++c)
@@ -360,33 +356,36 @@ TEST_CASE("settings plugins tab", "[ui]") {
         if (tabs->tabText(i) == "Fixture Settings") has_fixture_tab = true;
     check(!has_fixture_tab, "no plugin settings tab in the dialog (rendered inline)");
 
-    // The fixture's five settings render as rows in the Key | Value table:
-    // bool -> checkbox item, everything else -> plaintext cell.
-    QTableWidget* fixture_table = page ? page->findChild<QTableWidget*>() : nullptr;
-    check(fixture_table != nullptr, "fixture info pane shows the settings table");
-    auto row_for = [](QTableWidget* t, const QString& key) -> QTableWidgetItem* {
-        for (int r = 0; r < t->rowCount(); ++r) {
-            auto* k = t->item(r, 0);
-            if (k && k->text() == key) return t->item(r, 1);
-        }
-        return nullptr;
-    };
-    bool rows_ok = false;
-    if (fixture_table) {
-        auto* previews = row_for(fixture_table, "show_previews");
-        auto* threads = row_for(fixture_table, "max_threads");
-        auto* prefix = row_for(fixture_table, "mod_name_prefix");
-        auto* mode = row_for(fixture_table, "install_mode");
-        auto* legacy = row_for(fixture_table, "plain_legacy_key");
-        rows_ok = fixture_table->rowCount() == 5 && previews && threads && prefix &&
-                  mode && legacy &&
-                  (previews->flags() & Qt::ItemIsUserCheckable) &&
-                  previews->checkState() == Qt::Checked &&
-                  threads->text() == "4" && prefix->text() == "mod_" &&
-                  mode->text() == "Full" && legacy->text() == "legacy_value";
-    }
-    check(rows_ok,
-          "typed settings render as key:value table rows (bool as checkbox)");
+    // The info pane also carries the Enabled checkbox and the filter edit;
+    // exclude those so only the typed settings widgets are counted.
+    const auto checkboxes = [&page] {
+        QList<QCheckBox*> out;
+        for (auto* cb : page->findChildren<QCheckBox*>())
+            if (cb->text() != "Enabled") out << cb;
+        return out;
+    }();
+    const auto spins = page->findChildren<QSpinBox*>();
+    // QSpinBox/QDoubleSpinBox embed a QLineEdit internally; filter those
+    // out so the string setting is the only plain line edit found.
+    const auto edits = [&page] {
+        QList<QLineEdit*> out;
+        for (auto* e : page->findChildren<QLineEdit*>())
+            if (e->objectName() != "pluginFilter" &&
+                !qobject_cast<QAbstractSpinBox*>(e->parentWidget()))
+                out << e;
+        return out;
+    }();
+    const auto combos = page->findChildren<QComboBox*>();
+    check(checkboxes.size() == 1 && checkboxes[0]->isChecked(),
+          "bool setting renders as a checked checkbox");
+    check(spins.size() == 1 && spins[0]->value() == 4 &&
+              spins[0]->minimum() == 1 && spins[0]->maximum() == 8,
+          "int setting renders as a spinbox honoring min:max");
+    check(edits.size() == 1 && edits[0]->text() == "mod_",
+          "string setting renders as a line edit");
+    check(combos.size() == 1 && combos[0]->count() == 3 &&
+              combos[0]->currentText() == "Full",
+          "choice setting renders as a combo box");
 
     QString fixture_basename;
     for (const auto& p : loader.plugins())
@@ -394,54 +393,43 @@ TEST_CASE("settings plugins tab", "[ui]") {
             fixture_basename = QString::fromStdString(
                 std::filesystem::path(p.path).filename().string());
     check(!fixture_basename.isEmpty(), "resolved fixture plugin basename");
-    if (fixture_table && !fixture_basename.isEmpty()) {
+    if (!fixture_basename.isEmpty()) {
         auto& s = Settings::instance();
-        auto* previews = row_for(fixture_table, "show_previews");
-        auto* threads = row_for(fixture_table, "max_threads");
-        auto* prefix = row_for(fixture_table, "mod_name_prefix");
-        auto* mode = row_for(fixture_table, "install_mode");
-        if (previews) {
-            previews->setCheckState(Qt::Unchecked);
+        if (checkboxes.size() == 1) {
+            checkboxes[0]->setChecked(false);
             app.processEvents();
             check(s.plugin_setting(fixture_basename, "show_previews", "1") == "0",
                   "bool edit persisted");
         }
-        if (threads) {
-            threads->setText("6");
+        if (spins.size() == 1) {
+            spins[0]->setValue(6);
             app.processEvents();
             check(s.plugin_setting(fixture_basename, "max_threads", "4") == "6",
                   "int edit persisted");
         }
-        if (prefix) {
-            prefix->setText("bundle_");
+        if (edits.size() == 1) {
+            edits[0]->setText("bundle_");
             app.processEvents();
             check(s.plugin_setting(fixture_basename, "mod_name_prefix", "mod_") == "bundle_",
                   "string edit persisted");
         }
-        if (mode) {
-            mode->setText("Compact");
+        if (combos.size() == 1) {
+            combos[0]->setCurrentText("Compact");
             app.processEvents();
             check(s.plugin_setting(fixture_basename, "install_mode", "Full") == "Compact",
                   "choice edit persisted");
         }
     }
 
-    // All declared keys AND the undeclared plain key render as table rows.
-    bool all_rows_present = false;
+    // Declared keys filtered from the kv table, the undeclared plain key kept.
+    bool only_legacy_row = false;
     if (page) {
         if (auto* t = page->findChild<QTableWidget*>()) {
-            all_rows_present = t->rowCount() == 5;
-            for (const char* key : {"show_previews", "max_threads", "mod_name_prefix",
-                                    "install_mode", "plain_legacy_key"}) {
-                bool found = false;
-                for (int r = 0; r < t->rowCount(); ++r)
-                    if (t->item(r, 0) && t->item(r, 0)->text() == QLatin1String(key))
-                        found = true;
-                all_rows_present = all_rows_present && found;
-            }
+            only_legacy_row = t->rowCount() == 1 && t->item(0, 0) &&
+                              t->item(0, 0)->text() == "plain_legacy_key";
         }
     }
-    check(all_rows_present, "typed and legacy keys all render as table rows");
+    check(only_legacy_row, "declared keys filtered from kv table, undeclared key kept");
 
     // --- Filter ---
     auto* filter = page->findChild<QLineEdit*>("pluginFilter");
@@ -648,17 +636,20 @@ TEST_CASE("settings plugins tab", "[ui]") {
             if (group->child(c)->text(0) == "Settings Tab Fixture") {
                 tree3->setCurrentItem(group->child(c));
                 app.processEvents();
-                if (auto* t = page3->findChild<QTableWidget*>()) {
-                    auto* previews = row_for(t, "show_previews");
-                    auto* threads = row_for(t, "max_threads");
-                    auto* prefix = row_for(t, "mod_name_prefix");
-                    auto* mode = row_for(t, "install_mode");
-                    typed_restored = previews && threads && prefix && mode &&
-                                     previews->checkState() == Qt::Unchecked &&
-                                     threads->text() == "6" &&
-                                     prefix->text() == "bundle_" &&
-                                     mode->text() == "Compact";
-                }
+                QList<QCheckBox*> c3;
+                for (auto* cb : page3->findChildren<QCheckBox*>())
+                    if (cb->text() != "Enabled") c3 << cb;
+                const auto s3 = page3->findChildren<QSpinBox*>();
+                QList<QLineEdit*> e3;
+                for (auto* e : page3->findChildren<QLineEdit*>())
+                    if (e->objectName() != "pluginFilter" &&
+                        !qobject_cast<QAbstractSpinBox*>(e->parentWidget()))
+                        e3 << e;
+                const auto m3 = page3->findChildren<QComboBox*>();
+                typed_restored = c3.size() == 1 && !c3[0]->isChecked() &&
+                                 s3.size() == 1 && s3[0]->value() == 6 &&
+                                 e3.size() == 1 && e3[0]->text() == "bundle_" &&
+                                 m3.size() == 1 && m3[0]->currentText() == "Compact";
             }
         }
     }
