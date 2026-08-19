@@ -21,7 +21,7 @@ CategoryFilterPanel::CategoryFilterPanel(QWidget* parent)
 
     tree_ = new QTreeWidget(this);
     tree_->setHeaderHidden(true);
-    tree_->setMaximumHeight(220);
+    tree_->setMinimumWidth(160);
     layout->addWidget(tree_, 1);
 
     auto* buttons = new QHBoxLayout();

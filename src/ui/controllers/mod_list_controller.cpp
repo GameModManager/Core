@@ -4,6 +4,7 @@
 #include "ui/controllers/queue_controller.h"
 #include "ui/controllers/settings_controller.h"
 #include "ui/settings/categories_dialog.h"
+#include <QSplitter>
 
 #include <QActionGroup>
 #include <QColorDialog>
@@ -545,14 +546,20 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
             mod_header->moveSection(foldLogical, 0);
           });
 
-  left_layout->addWidget(w_->mod_view_, 1);
-
   // Category filter panel (MO2 parity): hidden by default; the << / >> toggle
-  // in the filter bar shows/hides it. Placed between the mod list and the
-  // filter bar so opening it pushes the filter bar down.
+  // in the filter bar shows/hides it. Placed on the LEFT side of the mod list
+  // using a horizontal splitter (standard mod-manager UX pattern).
   w_->category_filter_panel_ = new CategoryFilterPanel(w_);
   w_->category_filter_panel_->hide();
-  left_layout->addWidget(w_->category_filter_panel_);
+  w_->category_filter_panel_->setMinimumWidth(160);
+
+  auto* mod_splitter = new QSplitter(Qt::Horizontal, w_);
+  mod_splitter->addWidget(w_->category_filter_panel_);
+  mod_splitter->addWidget(w_->mod_view_);
+  mod_splitter->setStretchFactor(0, 0);
+  mod_splitter->setStretchFactor(1, 1);
+  mod_splitter->setSizes({220, 800});
+  left_layout->addWidget(mod_splitter, 1);
 
   w_->filter_bar_ = new ModFilterBar(w_);
   left_layout->addWidget(w_->filter_bar_);
@@ -579,16 +586,6 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
               apply_mod_filter();
             }
           });
-  connect(w_->filter_bar_, &ModFilterBar::expand_all_clicked, this, [this]() {
-    for (int i = 0; i < w_->mod_model_->mods().size(); ++i)
-      w_->mod_model_->set_folded(i, false);
-    apply_mod_filter();
-  });
-  connect(w_->filter_bar_, &ModFilterBar::collapse_all_clicked, this, [this]() {
-    for (int i = 0; i < w_->mod_model_->mods().size(); ++i)
-      w_->mod_model_->set_folded(i, true);
-    apply_mod_filter();
-  });
 }
 
 void ModListController::update_status_bar_for_game() {
