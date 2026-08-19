@@ -404,3 +404,67 @@ TEST_CASE("lockedorder skips malformed lines", "[engine]") {
     REQUIRE(locked[0].name == "Good.esm");
     REQUIRE(locked[0].priority == 3);
 }
+
+// ---------------------------------------------------------------------------
+// Deletion
+// ---------------------------------------------------------------------------
+
+TEST_CASE("remove deletes the profile directory recursively", "[engine]") {
+    auto dir = make_temp_dir("remove");
+    write_text(dir / "settings.ini", "LocalSaves=true\n");
+    write_text(dir / "modlist.txt", "+ModA\r\n");
+    fs::create_directories(dir / "saves");
+    write_text(dir / "saves" / "game.sav", "data");
+
+    engine::profile::Profile profile(dir, 50ms);
+    REQUIRE(profile.exists());
+    REQUIRE(profile.remove() == engine::profile::ProfileRemoveResult::Removed);
+    REQUIRE_FALSE(fs::exists(dir));
+    REQUIRE_FALSE(profile.exists());
+}
+
+TEST_CASE("remove returns NotFound for a missing directory", "[engine]") {
+    auto dir = make_temp_dir("remove_missing");
+    fs::remove_all(dir);  // directory never created
+    engine::profile::Profile profile(dir, 50ms);
+    REQUIRE_FALSE(profile.exists());
+    REQUIRE(profile.remove() == engine::profile::ProfileRemoveResult::NotFound);
+}
+
+TEST_CASE("remove refuses the active profile", "[engine]") {
+    auto dir = make_temp_dir("remove_active");
+    engine::profile::Profile profile(dir, 50ms);
+    REQUIRE(profile.remove(/*is_active=*/true) ==
+            engine::profile::ProfileRemoveResult::ActiveProfile);
+    REQUIRE(fs::exists(dir));  // untouched
+}
+
+TEST_CASE("remove cancels a pending modlist write", "[engine]") {
+    auto dir = make_temp_dir("remove_cancel");
+    {
+        engine::profile::Profile profile(dir, 10s);  // long debounce: nothing flushes
+        profile.refresh_mod_status({"ModA"});
+        profile.set_mod_enabled("ModA", false);  // schedules a delayed write
+        REQUIRE(profile.remove() == engine::profile::ProfileRemoveResult::Removed);
+    }  // destructor would flush pending writes — must be a no-op now
+    REQUIRE_FALSE(fs::exists(dir));
+}
+
+TEST_CASE("remove reports partial failure on permission errors", "[engine]") {
+    auto dir = make_temp_dir("remove_partial");
+    fs::create_directories(dir / "locked");
+    write_text(dir / "locked" / "file.txt", "x");
+    fs::permissions(dir / "locked", fs::perms::owner_write | fs::perms::group_write,
+                    fs::perm_options::remove);
+
+    engine::profile::Profile profile(dir, 50ms);
+    const auto result = profile.remove();
+    if (geteuid() == 0) {
+        // Root ignores permission bits — the removal succeeds.
+        REQUIRE(result == engine::profile::ProfileRemoveResult::Removed);
+    } else {
+        REQUIRE(result == engine::profile::ProfileRemoveResult::PartialFailure);
+        REQUIRE(fs::exists(dir));  // the locked subtree remains
+    }
+    fs::permissions(dir / "locked", fs::perms::owner_all, fs::perm_options::replace);
+}
