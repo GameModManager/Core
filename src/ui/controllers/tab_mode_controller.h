@@ -34,6 +34,18 @@ public:
   // modal popup otherwise.
   void route_stats();
 
+  // Routes the executable editor (Modify Executables): tab when Full UI mode
+  // is ON, modal popup otherwise. In tab mode the editor has an explicit Save
+  // button that applies the entries to ExecControlsBar and closes the tab;
+  // popup mode keeps the OK/Cancel dialog behavior.
+  void route_exec_entry();
+
+  // Routes the Proton options panel: tab when Full UI mode is ON, modal popup
+  // otherwise. In tab mode the panel has an explicit Save button that
+  // persists the runner to instance.toml and closes the tab; popup mode keeps
+  // the modal ProtonPanel behavior.
+  void route_proton();
+
   // Generic tab routing: opens `content` in a tab titled `title` (registered
   // under `key`) when Full UI mode is ON; shows it as a standalone popup
   // window otherwise. An already-open tab with the same key is selected
