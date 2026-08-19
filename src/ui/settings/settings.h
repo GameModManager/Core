@@ -67,6 +67,11 @@ public:
     bool confirm_close_with_downloads() const;   // key: close/confirm_downloads
     void set_confirm_close_with_downloads(bool on);
 
+    // Default (startup) profile name for the current instance. Empty when no
+    // default was chosen — the app then falls back to the first profile.
+    QString default_profile() const;             // key: profiles/default
+    void set_default_profile(const QString& name);
+
     // mod list columns --------------------------------------------------------
     // Per-instance set of mod-list columns the user has hidden (by column
     // name, stable across reordering). Missing key = first-run defaults apply.

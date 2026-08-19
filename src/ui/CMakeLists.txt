@@ -30,6 +30,9 @@ set(UI_SOURCES
     widgets/main_toolbar.cpp
     widgets/main_tab_container.cpp
     widgets/profile_bar.cpp
+    profile/profile_create_dialog.cpp
+    profile/profile_manager_dialog.cpp
+    profile/profile_settings_widget.cpp
     widgets/right_panel.cpp
     widgets/exec_controls_bar.cpp
     widgets/exec_entry_content_widget.cpp

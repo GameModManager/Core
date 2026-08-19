@@ -62,6 +62,14 @@ ProfileCreationResult create_fresh_profile(const std::filesystem::path& profiles
 ProfileCreationResult copy_profile(const std::filesystem::path& profiles_dir, const std::string& new_name,
                                    const std::filesystem::path& source_dir);
 
+// Rename an existing profile directory (MO2's Profile::rename). Validates the
+// new name, fails when the target already exists, renames the directory, and
+// updates the ProfileName key in settings.ini so the copy is
+// self-describing. On failure the profile directory is left untouched and
+// false is returned with *error set (when provided).
+[[nodiscard]] bool rename_profile(const std::filesystem::path& profiles_dir, const std::string& old_name,
+                                  const std::string& new_name, std::string* error = nullptr);
+
 // List existing profile names (directories) under profiles_dir, sorted
 // lexicographically. A missing profiles_dir yields an empty list.
 [[nodiscard]] std::vector<std::string> list_profiles(const std::filesystem::path& profiles_dir);

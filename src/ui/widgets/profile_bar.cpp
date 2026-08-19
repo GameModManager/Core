@@ -13,6 +13,12 @@
 
 namespace ui {
 
+namespace {
+// Sentinel entry at the bottom of the profile dropdown that opens the profile
+// manager dialog (MO2's "Manage..." behavior).
+constexpr const char* kManageProfilesText = "<Manage...>";
+}  // namespace
+
 ProfileBar::ProfileBar(QWidget* parent)
     : QWidget(parent) {
     auto* layout = new QHBoxLayout(this);
@@ -122,8 +128,45 @@ ProfileBar::ProfileBar(QWidget* parent)
             m->exec(create_btn_->mapToGlobal(QPoint(0, create_btn_->height())));
     });
 
-    connect(profile_combo_, &QComboBox::currentTextChanged,
-            this, &ProfileBar::profile_changed);
+    connect(profile_combo_, &QComboBox::currentTextChanged, this,
+            [this](const QString& text) {
+                if (text == tr(kManageProfilesText)) {
+                    // Restore the previous real selection; the controller
+                    // opens the manager dialog via manage_profiles_requested.
+                    profile_combo_->blockSignals(true);
+                    profile_combo_->setCurrentText(last_profile_);
+                    profile_combo_->blockSignals(false);
+                    emit manage_profiles_requested();
+                    return;
+                }
+                last_profile_ = text;
+                emit profile_changed(text);
+            });
+}
+
+void ProfileBar::set_profiles(const QStringList& profiles, const QString& current) {
+    profile_combo_->blockSignals(true);
+    profile_combo_->clear();
+    for (const auto& name : profiles) {
+        profile_combo_->addItem(name);
+    }
+    profile_combo_->addItem(tr(kManageProfilesText));
+    if (!current.isEmpty() && profiles.contains(current)) {
+        profile_combo_->setCurrentText(current);
+        last_profile_ = current;
+    } else if (!profiles.isEmpty()) {
+        profile_combo_->setCurrentIndex(0);
+        last_profile_ = profile_combo_->itemText(0);
+    }
+    profile_combo_->blockSignals(false);
+}
+
+QString ProfileBar::current_profile() const {
+    const QString text = profile_combo_->currentText();
+    if (text == tr(kManageProfilesText)) {
+        return {};
+    }
+    return text;
 }
 
 }  // namespace ui
