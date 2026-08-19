@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.20)
 # the plugins (GMM_VERSION, visible in the add_subdirectory'd external/plugins
 # scope below).
 project(GameModManager
-    VERSION 0.3.16
+    VERSION 0.4.0
     DESCRIPTION "Cross-platform game mod manager"
     LANGUAGES CXX C
 )
