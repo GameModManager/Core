@@ -37,6 +37,7 @@ set(UI_SOURCES
     widgets/console_panel.cpp
     widgets/gmm_status_bar.cpp
     widgets/instance_switcher_dialog.cpp
+    widgets/instance_switcher_content_widget.cpp
     widgets/game_icon_cache.cpp
     widgets/instance_statistics_dialog.cpp
     widgets/stats_content_widget.cpp

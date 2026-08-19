@@ -522,9 +522,9 @@ void SettingsController::setup_menu_bar() {
 void SettingsController::connect_menu_actions() {
   // --- File ---
   connect(w_->menu_bar_, &AppMenuBar::new_instance_requested, this,
-          [this]() { show_instance_switcher(); });
+          [this]() { w_->tab_mode_->route_instance_switcher(); });
   connect(w_->menu_bar_, &AppMenuBar::open_instance_requested, this,
-          [this]() { show_instance_switcher(); });
+          [this]() { w_->tab_mode_->route_instance_switcher(); });
   connect(w_->menu_bar_, &AppMenuBar::recent_instance_selected, this,
           [this](const QString &name) { switch_to_instance(name); });
   connect(w_->menu_bar_, &AppMenuBar::import_mods_requested, this, [this]() {
@@ -1061,89 +1061,7 @@ void SettingsController::show_instance_switcher() {
     return;
 
   if (dlg.create_requested()) {
-    std::vector<engine::DetectedGame> installed_games;
-    if (w_->plugin_loader_) {
-      std::vector<std::pair<uint32_t, std::pair<std::string, std::string>>>
-          game_specs;
-      for (const auto &p : w_->plugin_loader_->game_plugins()) {
-        if (p.steam_appid > 0)
-          game_specs.push_back(
-              {p.steam_appid, {p.game_id, p.game_display_name}});
-      }
-      installed_games =
-          engine::GameDetector::detect_steam_games_multi(game_specs);
-    }
-
-    std::vector<ui::GameEntry> installed_entries, available_entries;
-    for (const auto &g : installed_games) {
-      ui::GameEntry e;
-      e.game_id = g.game_id;
-      e.display_name = g.name;
-      e.steam_appid = g.steam_appid;
-      e.installed = true;
-      e.install_path = g.install_path;
-      installed_entries.push_back(e);
-    }
-    if (w_->plugin_loader_) {
-      for (const auto &p : w_->plugin_loader_->game_plugins()) {
-        bool found = false;
-        for (const auto &ie : installed_entries) {
-          if (ie.game_id == p.game_id) {
-            found = true;
-            break;
-          }
-        }
-        if (!found) {
-          ui::GameEntry e;
-          e.game_id = p.game_id;
-          e.display_name = p.game_display_name;
-          e.steam_appid = p.steam_appid;
-          e.installed = false;
-          available_entries.push_back(e);
-        }
-      }
-    }
-
-    QDialog sel_dlg(w_);
-    sel_dlg.setWindowTitle(tr("Create New Instance"));
-    sel_dlg.setMinimumSize(600, 400);
-    auto *layout = new QVBoxLayout(&sel_dlg);
-    auto *selection = new ui::GameSelectionWidget(&sel_dlg);
-    selection->set_games(installed_entries, available_entries);
-    layout->addWidget(selection);
-
-    ui::GameEntry chosen;
-    bool chosen_ok = false;
-    QObject::connect(selection, &ui::GameSelectionWidget::game_selected,
-                     [&](const ui::GameEntry &entry) {
-                       chosen = entry;
-                       chosen_ok = true;
-                       sel_dlg.accept();
-                     });
-
-    if (sel_dlg.exec() != QDialog::Accepted || !chosen_ok)
-      return;
-
-    engine::DetectedGame dg;
-    dg.game_id = chosen.game_id;
-    dg.name = chosen.display_name;
-    dg.steam_appid = chosen.steam_appid;
-    dg.install_path = chosen.install_path;
-
-    auto inst = engine::create_instance_for_game(dg, instances_dir);
-    if (inst.info().game_id.empty()) {
-      QMessageBox::warning(
-          w_, tr("Error"),
-          tr("Failed to create instance for %1")
-              .arg(QString::fromStdString(chosen.display_name)));
-      return;
-    }
-
-    engine::write_last_instance(inst.info().root.filename().string());
-    set_game_info(chosen.game_id, chosen.display_name, "Default",
-                  chosen.install_path, inst.info().root);
-    engine::Logger::instance().debug("Created and switched to instance: " +
-                                     inst.info().root.filename().string());
+    create_new_instance();
     return;
   }
 
@@ -1152,6 +1070,95 @@ void SettingsController::show_instance_switcher() {
     return;
 
   switch_to_instance(QString::fromStdString(selected));
+}
+
+bool SettingsController::create_new_instance() {
+  auto instances_dir = engine::default_instances_dir();
+
+  std::vector<engine::DetectedGame> installed_games;
+  if (w_->plugin_loader_) {
+    std::vector<std::pair<uint32_t, std::pair<std::string, std::string>>>
+        game_specs;
+    for (const auto &p : w_->plugin_loader_->game_plugins()) {
+      if (p.steam_appid > 0)
+        game_specs.push_back(
+            {p.steam_appid, {p.game_id, p.game_display_name}});
+    }
+    installed_games =
+        engine::GameDetector::detect_steam_games_multi(game_specs);
+  }
+
+  std::vector<ui::GameEntry> installed_entries, available_entries;
+  for (const auto &g : installed_games) {
+    ui::GameEntry e;
+    e.game_id = g.game_id;
+    e.display_name = g.name;
+    e.steam_appid = g.steam_appid;
+    e.installed = true;
+    e.install_path = g.install_path;
+    installed_entries.push_back(e);
+  }
+  if (w_->plugin_loader_) {
+    for (const auto &p : w_->plugin_loader_->game_plugins()) {
+      bool found = false;
+      for (const auto &ie : installed_entries) {
+        if (ie.game_id == p.game_id) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        ui::GameEntry e;
+        e.game_id = p.game_id;
+        e.display_name = p.game_display_name;
+        e.steam_appid = p.steam_appid;
+        e.installed = false;
+        available_entries.push_back(e);
+      }
+    }
+  }
+
+  QDialog sel_dlg(w_);
+  sel_dlg.setWindowTitle(tr("Create New Instance"));
+  sel_dlg.setMinimumSize(600, 400);
+  auto *layout = new QVBoxLayout(&sel_dlg);
+  auto *selection = new ui::GameSelectionWidget(&sel_dlg);
+  selection->set_games(installed_entries, available_entries);
+  layout->addWidget(selection);
+
+  ui::GameEntry chosen;
+  bool chosen_ok = false;
+  QObject::connect(selection, &ui::GameSelectionWidget::game_selected,
+                   [&](const ui::GameEntry &entry) {
+                     chosen = entry;
+                     chosen_ok = true;
+                     sel_dlg.accept();
+                   });
+
+  if (sel_dlg.exec() != QDialog::Accepted || !chosen_ok)
+    return false;
+
+  engine::DetectedGame dg;
+  dg.game_id = chosen.game_id;
+  dg.name = chosen.display_name;
+  dg.steam_appid = chosen.steam_appid;
+  dg.install_path = chosen.install_path;
+
+  auto inst = engine::create_instance_for_game(dg, instances_dir);
+  if (inst.info().game_id.empty()) {
+    QMessageBox::warning(
+        w_, tr("Error"),
+        tr("Failed to create instance for %1")
+            .arg(QString::fromStdString(chosen.display_name)));
+    return false;
+  }
+
+  engine::write_last_instance(inst.info().root.filename().string());
+  set_game_info(chosen.game_id, chosen.display_name, "Default",
+                chosen.install_path, inst.info().root);
+  engine::Logger::instance().debug("Created and switched to instance: " +
+                                   inst.info().root.filename().string());
+  return true;
 }
 
 bool SettingsController::switch_to_instance(const QString &name) {
