@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <fstream>
 #include <sstream>
+#include <system_error>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -230,6 +231,42 @@ Profile::Profile(std::filesystem::path directory, std::chrono::milliseconds modl
 }
 
 Profile::~Profile() = default;
+
+// --- deletion --------------------------------------------------------------
+
+ProfileRemoveResult Profile::remove(bool is_active) {
+    if (is_active) {
+        return ProfileRemoveResult::ActiveProfile;
+    }
+
+    // Cancel any pending delayed modlist write: the writer thread must never
+    // recreate files inside a directory that is being deleted.
+    modlist_writer_.cancel();
+
+    std::error_code ec;
+    if (!std::filesystem::exists(directory_, ec)) {
+        if (ec) {
+            Logger::instance().error("failed to stat profile directory: " +
+                                     directory_.string() + ": " + ec.message());
+            return ProfileRemoveResult::PermissionDenied;
+        }
+        return ProfileRemoveResult::NotFound;
+    }
+
+    std::filesystem::remove_all(directory_, ec);
+    if (ec) {
+        Logger::instance().error("failed to remove profile directory: " +
+                                 directory_.string() + ": " + ec.message());
+        // remove_all stops at the first error; some contents may already be
+        // gone. Report PartialFailure when the directory still exists.
+        std::error_code check_ec;
+        if (std::filesystem::exists(directory_, check_ec)) {
+            return ProfileRemoveResult::PartialFailure;
+        }
+        return ProfileRemoveResult::PermissionDenied;
+    }
+    return ProfileRemoveResult::Removed;
+}
 
 // --- settings.ini ----------------------------------------------------------
 
