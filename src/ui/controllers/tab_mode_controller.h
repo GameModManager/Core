@@ -1,7 +1,7 @@
 #pragma once
 
 #include <QObject>
-#include <QSet>
+#include <QPointer>
 #include <QString>
 
 #include "ui/main_window/main_window.h"
@@ -30,6 +30,10 @@ public:
   // otherwise.
   void route_pipeline();
 
+  // Routes the Instance Statistics dialog: tab when Full UI mode is ON,
+  // modal popup otherwise.
+  void route_stats();
+
   // Generic tab routing: opens `content` in a tab titled `title` (registered
   // under `key`) when Full UI mode is ON; shows it as a standalone popup
   // window otherwise. An already-open tab with the same key is selected
@@ -48,11 +52,11 @@ public:
 
 private:
   MainWindow *w_ = nullptr;
-  // Reused windows (PipelineWindow) that already have their Esc -> close_tab
-  // connection installed, so re-embedding them never stacks duplicates. Raw
-  // pointers are safe: the windows are MainWindow-lifetime, as is this
-  // controller.
-  QSet<QWidget *> esc_connected_;
+  // Last current tab page. QTabWidget::currentChanged only reports the NEW
+  // index, so the previous page is tracked here to detect switching AWAY
+  // from the Settings tab (where the dialog-equivalent post-close side
+  // effects must fire). QPointer auto-clears when the page is deleted.
+  QPointer<QWidget> previous_page_;
 };
 
 } // namespace ui

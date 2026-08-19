@@ -205,6 +205,10 @@ gmm_catch2_test(settings_sources_tab_test ui/settings_sources_tab_test.cpp
     UI
     LIBS gmm_ui ${CMAKE_DL_LIBS})
 
+gmm_catch2_test(settings_content_widget_test ui/settings_content_widget_test.cpp
+    UI
+    LIBS gmm_ui Qt6::Test)
+
 gmm_catch2_test(source_tab_test ui/source_tab_test.cpp
     UI
     LIBS gmm_ui)

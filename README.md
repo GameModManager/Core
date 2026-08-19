@@ -207,7 +207,7 @@ src/
 │   ├-- main_window/        # Main window, toolbar, status bar, launch + highlight wiring
 │   ├-- widgets/            # Mod list (ModListModel), filter bar, console, etc.
 │   ├-- panels/             # Plugins/Archives/Data/Saves/Downloads tabs
-│   ├-- settings/           # Settings singleton + 8-tab SettingsDialog
+│   ├-- settings/           # Settings singleton + 8-tab SettingsContentWidget (popup SettingsDialog wrapper)
 │   ├-- overwrite/          # MO2 overwrite dialogs (sync, move-to-mod, query, browser)
 │   ├-- game_selection/     # First-run game picker
 │   └-- pipeline_worker.cpp # Pipeline runs on a worker QThread
