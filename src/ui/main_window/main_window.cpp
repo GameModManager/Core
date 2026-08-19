@@ -84,8 +84,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
   connect(toolbar_, &MainToolbar::settings_clicked, tab_mode_.get(),
           &TabModeController::route_settings);
-  connect(toolbar_, &MainToolbar::instances_clicked, settings_.get(),
-          &SettingsController::show_instance_switcher);
+  connect(toolbar_, &MainToolbar::instances_clicked, tab_mode_.get(),
+          &TabModeController::route_instance_switcher);
   connect(menu_bar_, &AppMenuBar::sort_mods_requested, mod_list_.get(),
           &ModListController::sort_mods);
   connect(toolbar_, &MainToolbar::shortcut_removed, this,

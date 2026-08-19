@@ -46,6 +46,12 @@ public:
   // the modal ProtonPanel behavior.
   void route_proton();
 
+  // Routes the instance switcher: tab when Full UI mode is ON, modal popup
+  // otherwise. In tab mode selecting an instance switches immediately (full
+  // app reload) and drops the tab; the create button runs the
+  // GameSelectionWidget create flow and drops the tab on success.
+  void route_instance_switcher();
+
   // Generic tab routing: opens `content` in a tab titled `title` (registered
   // under `key`) when Full UI mode is ON; shows it as a standalone popup
   // window otherwise. An already-open tab with the same key is selected
