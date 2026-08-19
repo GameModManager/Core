@@ -33,7 +33,7 @@ public:
     // Repopulate the profile dropdown. `profiles` are the existing profile
     // names (from engine::profile::list_profiles); `current` is the active
     // profile and is selected when present (else the first entry). The
-    // '<Manage...>' sentinel is always appended last. Programmatic changes
+    // '<Manage...>' sentinel is always the first entry. Programmatic changes
     // never emit profile_changed.
     void set_profiles(const QStringList& profiles, const QString& current);
 
