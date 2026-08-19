@@ -78,41 +78,42 @@ QToolButton* MainToolbar::add_gmm_button(const QString& tooltip, const QString& 
 
 void MainToolbar::reapply_icons() {
     for (auto* btn : gmm_buttons_) {
-        if (btn == proton_button_) continue;
+        if (btn == instance_options_button_) continue;
         const QString name = btn->property("gmm_icon_name").toString();
         if (name.isEmpty()) continue;
         btn->setIcon(engine::IconManager::instance().resolve_icon(
             name, QStyle::SP_ComputerIcon));
     }
-    if (proton_button_) {
-        proton_button_->setIcon(engine::IconManager::instance().resolve_icon(
+    if (instance_options_button_) {
+        instance_options_button_->setIcon(engine::IconManager::instance().resolve_icon(
             "proton", QStyle::SP_ComputerIcon));
     }
 }
 
-QToolButton* MainToolbar::add_proton_button(const QIcon& icon) {
-    proton_button_ = new QToolButton(this);
-    proton_button_->setToolTip(tr("Proton options"));
-    proton_button_->setIcon(icon);
-    proton_button_->setAutoRaise(true);
-    proton_button_->setIconSize(QSize(current_icon_size_, current_icon_size_));
-    proton_button_->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    // Body click opens the Proton panel; the arrow opens the dropdown menu.
-    proton_button_->setPopupMode(QToolButton::MenuButtonPopup);
-    gmm_buttons_.append(proton_button_);
+QToolButton* MainToolbar::add_instance_options_button(const QIcon& icon) {
+    instance_options_button_ = new QToolButton(this);
+    instance_options_button_->setToolTip(tr("Instance Options"));
+    instance_options_button_->setIcon(icon);
+    instance_options_button_->setAutoRaise(true);
+    instance_options_button_->setIconSize(QSize(current_icon_size_, current_icon_size_));
+    instance_options_button_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    // Body click opens the Instance Options panel; the arrow opens the
+    // dropdown menu.
+    instance_options_button_->setPopupMode(QToolButton::MenuButtonPopup);
+    gmm_buttons_.append(instance_options_button_);
 
     // Belongs with the settings buttons on the left, not the exec shortcuts.
     // Second slot: after Switch Instance, before Settings.
     if (layout_) {
-        layout_->insertWidget(1, proton_button_);
+        layout_->insertWidget(1, instance_options_button_);
     }
 
-    connect(proton_button_, &QToolButton::clicked, this, &MainToolbar::proton_clicked);
-    return proton_button_;
+    connect(instance_options_button_, &QToolButton::clicked, this, &MainToolbar::instance_options_clicked);
+    return instance_options_button_;
 }
 
-void MainToolbar::set_proton_menu(QMenu* menu) {
-    if (proton_button_) proton_button_->setMenu(menu);
+void MainToolbar::set_instance_options_menu(QMenu* menu) {
+    if (instance_options_button_) instance_options_button_->setMenu(menu);
 }
 
 QToolButton* MainToolbar::add_exec_button(const QString& tooltip, const QIcon& icon) {

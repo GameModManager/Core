@@ -15,13 +15,13 @@ namespace ui {
 
 struct ExecEntry;
 
-// Snapshot of everything the Proton options UI needs to construct itself,
+// Snapshot of everything the Instance Options UI needs to construct itself,
 // gathered once from the current instance + game knowledge (instance_utils:
 // single source of truth for direct-symlink deploys). Shared by the popup
-// path (show_proton_panel) and the Full UI tab path
-// (TabModeController::route_proton) so both embed the exact same
-// ProtonContentWidget.
-struct ProtonPanelParams {
+// path (show_instance_options) and the Full UI tab path
+// (TabModeController::route_instance_options) so both embed the exact same
+// InstanceOptionsWidget.
+struct InstanceOptionsParams {
   std::string game_id;
   std::string game_name;
   std::filesystem::path game_dir;
@@ -111,13 +111,13 @@ public:
   void refresh_process_tree();
   void copy_process_tree();
   // Proton tools
-  void show_proton_panel();
+  void show_instance_options();
   void run_prefix_tool(const QStringList &args);
   void run_exe_in_prefix();
   [[nodiscard]] engine::ProtonToolRequest current_proton_request() const;
-  // Builds the ProtonPanelParams snapshot for the current instance. `valid`
-  // is false when no instance is loaded.
-  [[nodiscard]] ProtonPanelParams proton_panel_params() const;
+  // Builds the InstanceOptionsParams snapshot for the current instance.
+  // `valid` is false when no instance is loaded.
+  [[nodiscard]] InstanceOptionsParams instance_options_params() const;
 
 private:
   // Migration + materialization for toolbar shortcuts (Issue #34): after the

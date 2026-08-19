@@ -1,4 +1,4 @@
-// Offscreen GUI smoke test for the Proton options panel.
+// Offscreen GUI smoke test for the Instance Options dialog.
 //
 // Verifies the dialog constructs, the runner combo lists every discovered
 // Proton runner plus "Automatic", the wine.json recommended packages are
@@ -8,7 +8,7 @@
 // the wine.json shipped with the Skyrim plugin is exercised.
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "platform/platform_interface.h"
-#include "ui/proton/proton_panel.h"
+#include "ui/instance_options/instance_options_panel.h"
 
 #include <QApplication>
 #include <QComboBox>
@@ -33,9 +33,9 @@ void require(bool cond, const char* msg) {
 class StubPlatform : public engine::PlatformInterface {
 public:
     std::string platform_name() const override { return "test"; }
-    fs::path data_dir() const override { return "/tmp/gmm_proton_panel_data"; }
-    fs::path config_dir() const override { return "/tmp/gmm_proton_panel_config"; }
-    fs::path cache_dir() const override { return "/tmp/gmm_proton_panel_cache"; }
+    fs::path data_dir() const override { return "/tmp/gmm_instance_options_panel_data"; }
+    fs::path config_dir() const override { return "/tmp/gmm_instance_options_panel_config"; }
+    fs::path cache_dir() const override { return "/tmp/gmm_instance_options_panel_cache"; }
     fs::path find_steam_root() const override { return {}; }
     bool launch_executable(const fs::path&,
                            const std::vector<std::string>&) const override {
@@ -55,7 +55,7 @@ public:
     fs::path find_proton() const override { return "/steam/Proton 10.0/proton"; }
 };
 
-TEST_CASE("proton panel", "[ui]") {
+TEST_CASE("instance options panel", "[ui]") {
     int test_argc = 1;
     char test_argv0[] = "test";
     char* test_argv[] = {test_argv0, nullptr};
@@ -70,13 +70,13 @@ TEST_CASE("proton panel", "[ui]") {
 
     // Skyrim: wine.json carries vcrun2022.
     {
-        ui::ProtonPanel panel(&platform, &loader, "SkyrimSpecialEdition",
-                              "Skyrim Special Edition",
-                              "/home/petrica/.steam/steam/steamapps/common/"
-                              "Skyrim Special Edition",
-                              489830, "/tmp/gmm_proton_panel_instance", "",
-                              engine::kDefaultDeployStrategy,
-                              engine::DeployConfig{});
+        ui::InstanceOptionsDialog panel(&platform, &loader, "SkyrimSpecialEdition",
+                                        "Skyrim Special Edition",
+                                        "/home/petrica/.steam/steam/steamapps/common/"
+                                        "Skyrim Special Edition",
+                                        489830, "/tmp/gmm_instance_options_panel_instance",
+                                        "", engine::kDefaultDeployStrategy,
+                                        engine::DeployConfig{});
         require(panel.selected_runner().empty(), "Automatic maps to empty runner");
 
         // Find the runner combo by walking children: it must list Automatic
@@ -106,13 +106,15 @@ TEST_CASE("proton panel", "[ui]") {
         require(found_symlink, "deploy strategy combo lists Symlink");
     }
 
-    // Unknown game: no wine.json -> panel still constructs, no crash.
+    // Unknown game: no wine.json -> panel still constructs, no crash. The
+    // runner selector and packages are hidden (steam_appid == 0), but the
+    // combo is still populated so selected_runner() stays well-defined.
     {
-        ui::ProtonPanel panel(&platform, &loader, "UnknownGame", "Unknown Game",
-                              "/tmp/gmm_proton_panel_game", 0,
-                              "/tmp/gmm_proton_panel_instance", "",
-                              engine::kDefaultDeployStrategy,
-                              engine::DeployConfig{});
+        ui::InstanceOptionsDialog panel(&platform, &loader, "UnknownGame", "Unknown Game",
+                                        "/tmp/gmm_instance_options_panel_game", 0,
+                                        "/tmp/gmm_instance_options_panel_instance", "",
+                                        engine::kDefaultDeployStrategy,
+                                        engine::DeployConfig{});
         require(panel.selected_runner().empty(), "unknown game stays Automatic");
     }
 }

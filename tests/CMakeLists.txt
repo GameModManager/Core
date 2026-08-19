@@ -273,12 +273,12 @@ gmm_catch2_test(list_dialog_test ui/list_dialog_test.cpp
     UI
     LIBS gmm_ui Qt6::Test)
 
-gmm_catch2_test(proton_panel_test ui/proton_panel_test.cpp
+gmm_catch2_test(instance_options_panel_test ui/instance_options_panel_test.cpp
     UI
     LIBS gmm_ui ${CMAKE_DL_LIBS}
     DEFINES GMM_PLUGINS_DIR="${CMAKE_BINARY_DIR}/plugins")
 
-gmm_catch2_test(proton_content_widget_test ui/proton_content_widget_test.cpp
+gmm_catch2_test(instance_options_widget_test ui/instance_options_widget_test.cpp
     UI
     LIBS gmm_ui ${CMAKE_DL_LIBS}
     DEFINES GMM_PLUGINS_DIR="${CMAKE_BINARY_DIR}/plugins")

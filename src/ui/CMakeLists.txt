@@ -71,8 +71,8 @@ set(UI_SOURCES
     install/install_progress_dialog.cpp
     fomod/fomod_image_viewer.cpp
     fomod/fomod_wizard_dialog.cpp
-    proton/proton_panel.cpp
-    proton/proton_content_widget.cpp
+    instance_options/instance_options_panel.cpp
+    instance_options/instance_options_widget.cpp
     # Qt-using files relocated from src/engine/ (issue/33) — keeps gmm_engine Qt-free
     ${PROJECT_SOURCE_DIR}/src/ui/theme/style_manager.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/theme/icon_manager.cpp

@@ -7,7 +7,7 @@
 
 #include "engine/core/instance/instance.h"
 #include "engine/core/instance/instance_utils.h"
-#include "ui/proton/proton_content_widget.h"
+#include "ui/instance_options/instance_options_widget.h"
 #include "ui/settings/settings.h"
 #include "ui/settings/settings_content_widget.h"
 #include "ui/widgets/exec_controls_bar.h"
@@ -40,9 +40,9 @@ TabModeController::TabModeController(MainWindow *w, QObject *parent)
             } else if (auto *exec =
                            qobject_cast<ExecEntryContentWidget *>(page)) {
               exec->deleteLater();
-            } else if (auto *proton =
-                           qobject_cast<ProtonContentWidget *>(page)) {
-              proton->deleteLater();
+            } else if (auto *instance_options =
+                           qobject_cast<InstanceOptionsWidget *>(page)) {
+              instance_options->deleteLater();
             } else if (auto *switcher = qobject_cast<
                            InstanceSwitcherContentWidget *>(page)) {
               switcher->deleteLater();
@@ -177,36 +177,36 @@ void TabModeController::route_exec_entry() {
   open_in_tab(content, tr("Modify Executables"), key);
 }
 
-void TabModeController::route_proton() {
+void TabModeController::route_instance_options() {
   if (!Settings::instance().full_ui_mode()) {
-    // Popup mode: unchanged behavior (modal ProtonPanel).
-    w_->launch_->show_proton_panel();
+    // Popup mode: unchanged behavior (modal InstanceOptionsDialog).
+    w_->launch_->show_instance_options();
     return;
   }
 
-  const QString key = QStringLiteral("proton");
+  const QString key = QStringLiteral("instance_options");
   if (is_tab_open(key)) {
     w_->main_tab_container_->select_tab(key);
     return;
   }
 
   // No instance loaded: the popup path shows the "no instance" info box.
-  auto params = w_->launch_->proton_panel_params();
+  auto params = w_->launch_->instance_options_params();
   if (!params.valid) {
-    w_->launch_->show_proton_panel();
+    w_->launch_->show_instance_options();
     return;
   }
 
-  // Tab mode: embed a fresh ProtonContentWidget. The widget never persists
+  // Tab mode: embed a fresh InstanceOptionsWidget. The widget never persists
   // the runner on its own - the explicit Save button persists it to
   // instance.toml and closes the tab; Close just closes the tab, discarding
   // the runner change (the deploy strategy persists immediately on change,
   // matching the popup behavior).
-  auto *content = new ProtonContentWidget(
+  auto *content = new InstanceOptionsWidget(
       w_->platform_, w_->plugin_loader_, params.game_id, params.game_name,
       params.game_dir, params.steam_appid, params.instance_root,
       params.current_runner, params.deploy_strategy, params.deploy_config, w_);
-  connect(content, &ProtonContentWidget::save_requested, this,
+  connect(content, &InstanceOptionsWidget::save_requested, this,
           [this, key, content]() {
             auto runner = content->selected_runner();
             engine::Instance write =
@@ -216,9 +216,9 @@ void TabModeController::route_proton() {
             w_->current_instance_ = write;
             close_tab(key);
           });
-  connect(content, &ProtonContentWidget::cancel_requested, this,
+  connect(content, &InstanceOptionsWidget::cancel_requested, this,
           [this, key]() { close_tab(key); });
-  open_in_tab(content, tr("Proton Options"), key);
+  open_in_tab(content, tr("Instance Options"), key);
 }
 
 void TabModeController::route_instance_switcher() {

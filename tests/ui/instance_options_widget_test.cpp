@@ -1,4 +1,4 @@
-// Offscreen GUI smoke test for the mode-agnostic Proton content widget.
+// Offscreen GUI smoke test for the mode-agnostic Instance Options widget.
 //
 // Verifies the widget constructs, the runner combo lists every discovered
 // Proton runner plus "Automatic", selected_runner() maps the combo back
@@ -8,7 +8,7 @@
 // modal QProgressDialog) and starts hidden.
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "platform/platform_interface.h"
-#include "ui/proton/proton_content_widget.h"
+#include "ui/instance_options/instance_options_widget.h"
 
 #include <QApplication>
 #include <QComboBox>
@@ -45,9 +45,9 @@ QString strip_mnemonic(const QString& text) {
 class StubPlatform : public engine::PlatformInterface {
 public:
     std::string platform_name() const override { return "test"; }
-    fs::path data_dir() const override { return "/tmp/gmm_proton_content_data"; }
-    fs::path config_dir() const override { return "/tmp/gmm_proton_content_config"; }
-    fs::path cache_dir() const override { return "/tmp/gmm_proton_content_cache"; }
+    fs::path data_dir() const override { return "/tmp/gmm_instance_options_widget_data"; }
+    fs::path config_dir() const override { return "/tmp/gmm_instance_options_widget_config"; }
+    fs::path cache_dir() const override { return "/tmp/gmm_instance_options_widget_cache"; }
     fs::path find_steam_root() const override { return {}; }
     bool launch_executable(const fs::path&,
                            const std::vector<std::string>&) const override {
@@ -67,7 +67,7 @@ public:
     fs::path find_proton() const override { return "/steam/Proton 10.0/proton"; }
 };
 
-TEST_CASE("proton content widget", "[ui]") {
+TEST_CASE("instance options widget", "[ui]") {
     int test_argc = 1;
     char test_argv0[] = "test";
     char* test_argv[] = {test_argv0, nullptr};
@@ -80,13 +80,13 @@ TEST_CASE("proton content widget", "[ui]") {
     if (!plugins_dir.empty())
         loader.load_directory(plugins_dir);
 
-    ui::ProtonContentWidget widget(&platform, &loader, "SkyrimSpecialEdition",
-                                   "Skyrim Special Edition",
-                                   "/home/petrica/.steam/steam/steamapps/common/"
-                                   "Skyrim Special Edition",
-                                   489830, "/tmp/gmm_proton_content_instance", "",
-                                   engine::kDefaultDeployStrategy,
-                                   engine::DeployConfig{});
+    ui::InstanceOptionsWidget widget(&platform, &loader, "SkyrimSpecialEdition",
+                                     "Skyrim Special Edition",
+                                     "/home/petrica/.steam/steam/steamapps/common/"
+                                     "Skyrim Special Edition",
+                                     489830, "/tmp/gmm_instance_options_widget_instance",
+                                     "", engine::kDefaultDeployStrategy,
+                                     engine::DeployConfig{});
     require(widget.selected_runner().empty(), "Automatic maps to empty runner");
 
     // The runner combo must list Automatic plus the two stubbed runners.
@@ -111,9 +111,9 @@ TEST_CASE("proton content widget", "[ui]") {
 
     // Save/Close buttons emit the host-facing signals.
     bool saved = false, cancelled = false;
-    QObject::connect(&widget, &ui::ProtonContentWidget::save_requested, &widget,
+    QObject::connect(&widget, &ui::InstanceOptionsWidget::save_requested, &widget,
                      [&saved]() { saved = true; });
-    QObject::connect(&widget, &ui::ProtonContentWidget::cancel_requested, &widget,
+    QObject::connect(&widget, &ui::InstanceOptionsWidget::cancel_requested, &widget,
                      [&cancelled]() { cancelled = true; });
     for (auto* btn : widget.findChildren<QPushButton*>()) {
         if (strip_mnemonic(btn->text()) == "Save") btn->click();
@@ -125,13 +125,13 @@ TEST_CASE("proton content widget", "[ui]") {
     require(cancelled, "Close emits cancel_requested");
 }
 
-// Regression test for the use-after-free when the Proton tab is closed while a
-// deploy/remove task is running (Workspace-3v5.8 blocker). The worker thread
-// posts queued QMetaObject::invokeMethod callbacks targeting the widget; if
-// the widget is destroyed mid-task those callbacks must be safe no-ops
-// (QPointer guard), not dispatches into freed memory, and the destructor must
-// not block the UI thread waiting for the deploy to finish.
-TEST_CASE("proton content widget survives tab close during deploy task", "[ui]") {
+// Regression test for the use-after-free when the Instance Options tab is
+// closed while a deploy/remove task is running (Workspace-3v5.8 blocker). The
+// worker thread posts queued QMetaObject::invokeMethod callbacks targeting the
+// widget; if the widget is destroyed mid-task those callbacks must be safe
+// no-ops (QPointer guard), not dispatches into freed memory, and the
+// destructor must not block the UI thread waiting for the deploy to finish.
+TEST_CASE("instance options widget survives tab close during deploy task", "[ui]") {
     int test_argc = 1;
     char test_argv0[] = "test";
     char* test_argv[] = {test_argv0, nullptr};
@@ -143,7 +143,7 @@ TEST_CASE("proton content widget survives tab close during deploy task", "[ui]")
     // Temp instance/game dirs plus a large deploy ledger so the removal task
     // takes long enough that the worker is still running when the widget is
     // destroyed below (the tab-close-mid-task window).
-    const auto tmp = std::filesystem::temp_directory_path() / "gmm_proton_uaf_test";
+    const auto tmp = std::filesystem::temp_directory_path() / "gmm_instance_options_uaf_test";
     std::filesystem::remove_all(tmp);
     std::filesystem::create_directories(tmp / "game");
     std::filesystem::create_directories(tmp / "mods");
@@ -163,7 +163,7 @@ TEST_CASE("proton content widget survives tab close during deploy task", "[ui]")
     config.ledger_file = tmp / "ledger.tsv";
     config.backup_root = tmp / "Original_Files";
 
-    auto* widget = new ui::ProtonContentWidget(
+    auto* widget = new ui::InstanceOptionsWidget(
         &platform, &loader, "SkyrimSpecialEdition", "Skyrim Special Edition",
         config.game_dir, 489830, tmp, "", engine::kDefaultDeployStrategy,
         config);
