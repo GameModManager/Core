@@ -26,6 +26,17 @@ public:
                    engine::PluginLoader* plugin_loader,
                    QWidget* parent = nullptr);
 
+signals:
+    // Emitted when the "Enable full UI tab mode" checkbox is toggled, so the
+    // TabModeController can react live (tab bar visibility, closing tabs).
+    void full_ui_mode_toggled(bool on);
+    // Emitted when the dialog is closed (Close button, window X, ...). Lets
+    // an embedding host (Full UI tab mode) drop the tab that holds it.
+    void closed();
+
+protected:
+    void closeEvent(QCloseEvent* event) override;
+
 private:
     QWidget* build_general_tab();
     QWidget* build_theme_tab();

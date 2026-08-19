@@ -23,9 +23,11 @@ set(UI_SOURCES
     controllers/downloads_controller.cpp
     controllers/mod_list_controller.cpp
     controllers/settings_controller.cpp
+    controllers/tab_mode_controller.cpp
     widgets/mod_list_model.cpp
     widgets/mod_table_view.cpp
     widgets/main_toolbar.cpp
+    widgets/main_tab_container.cpp
     widgets/profile_bar.cpp
     widgets/right_panel.cpp
     widgets/exec_controls_bar.cpp

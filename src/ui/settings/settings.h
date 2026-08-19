@@ -56,6 +56,11 @@ public:
     void set_hide_api_counter(bool on);
     bool show_change_game_confirmation() const;
     void set_show_change_game_confirmation(bool on);
+    // Full UI tab mode: Settings/Pipeline open as in-window tabs instead of
+    // popup dialogs. Defaults to OFF (popup behavior, identical to the
+    // pre-tab layout).
+    bool full_ui_mode() const;               // key: interface/full_ui_mode
+    void set_full_ui_mode(bool on);
 
     // Ask for confirmation before closing while downloads are still running
     // (the close cancels them). "Don't Ask" persists this as false.

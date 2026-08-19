@@ -167,6 +167,14 @@ void Settings::set_show_change_game_confirmation(bool on) {
     settings_.setValue("interface/show_change_game_confirmation", on);
 }
 
+bool Settings::full_ui_mode() const {
+    return settings_.value("interface/full_ui_mode", false).toBool();
+}
+
+void Settings::set_full_ui_mode(bool on) {
+    settings_.setValue("interface/full_ui_mode", on);
+}
+
 bool Settings::confirm_close_with_downloads() const {
     return settings_.value("close/confirm_downloads", true).toBool();
 }
