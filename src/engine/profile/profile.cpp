@@ -287,6 +287,10 @@ void Profile::set_automatic_archive_invalidation(bool value) {
     set_setting_bool("AutomaticArchiveInvalidation", value);
 }
 
+void Profile::set_root_setting(const std::string& key, const std::string& value) {
+    set_setting(key, value);
+}
+
 bool Profile::save_settings() {
     if (!safe_write_file(settings_path(), serialize_ini(ini_))) {
         Logger::instance().error("failed to write settings.ini: " + settings_path().string());
