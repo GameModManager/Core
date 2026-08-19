@@ -1968,3 +1968,76 @@ TEST_CASE("mod list model", "[ui]") {
               "reset_with_order with a reorder flags exactly the moved rows");
     }
 }
+
+// Regression for the "profiles don't track mod enabled state" P0 bug: the
+// UI restores a profile's modlist.txt state after a scan by setting each
+// mod's enabled state directly. set_mod_enabled() must set (not toggle) the
+// state, must be a no-op for pseudo-rows/separators, and must not touch rows
+// whose state already matches.
+TEST_CASE("mod list model set_mod_enabled", "[ui]") {
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    qputenv("TZ", "UTC");
+    tzset();
+    const std::filesystem::path cfg = "/tmp/gmm_mod_list_model_set_enabled/config";
+    std::filesystem::remove_all("/tmp/gmm_mod_list_model_set_enabled");
+    std::filesystem::create_directories(cfg);
+    qputenv("XDG_CONFIG_HOME", cfg.c_str());
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
+    QCoreApplication::setOrganizationName("GameModManager");
+    QCoreApplication::setApplicationName("GameModManager");
+
+    ui::ModListModel model;
+    QVector<ui::ModEntry> entries;
+    for (const char* id : {"Skyrim.esm", "SkyUI", "Enemy NPCs"}) {
+        ui::ModEntry e;
+        e.id = QString::fromLatin1(id);
+        e.name = e.id;
+        e.enabled = true;
+        e.is_game_native = (id == std::string("Skyrim.esm"));
+        entries.append(e);
+    }
+    ui::ModEntry sep;
+    sep.id = QStringLiteral("Testing_separator");
+    sep.name = QStringLiteral("Testing");
+    sep.enabled = true;
+    sep.is_separator = true;
+    entries.append(sep);
+    ui::ModEntry ow;
+    ow.id = ui::kOverwriteModId;
+    ow.name = ui::kOverwriteModName;
+    ow.enabled = true;
+    ow.is_overwrite = true;
+    entries.append(ow);
+    model.reset_with_order(entries);
+
+    // Set disabled on a regular mod.
+    model.set_mod_enabled(QStringLiteral("SkyUI"), false);
+    check(!model.mods()[row_with_id(model, "SkyUI")].enabled,
+          "set_mod_enabled(false) disables a regular mod");
+    // Setting the same state again is a no-op (no flip).
+    model.set_mod_enabled(QStringLiteral("SkyUI"), false);
+    check(!model.mods()[row_with_id(model, "SkyUI")].enabled,
+          "set_mod_enabled is idempotent (no toggle)");
+    // Set enabled back.
+    model.set_mod_enabled(QStringLiteral("SkyUI"), true);
+    check(model.mods()[row_with_id(model, "SkyUI")].enabled,
+          "set_mod_enabled(true) re-enables a regular mod");
+
+    // Pseudo-rows and separators are never touched.
+    model.set_mod_enabled(QStringLiteral("Skyrim.esm"), false);
+    check(model.mods()[row_with_id(model, "Skyrim.esm")].enabled,
+          "set_mod_enabled is a no-op for game-native rows");
+    model.set_mod_enabled(ui::kOverwriteModId, false);
+    check(model.mods()[row_with_id(model, ui::kOverwriteModId)].enabled,
+          "set_mod_enabled is a no-op for Overwrite");
+    model.set_mod_enabled(QStringLiteral("Testing_separator"), false);
+    check(model.mods()[row_with_id(model, "Testing_separator")].enabled,
+          "set_mod_enabled is a no-op for separators");
+
+    // Unknown ids are ignored.
+    model.set_mod_enabled(QStringLiteral("DoesNotExist"), false);
+    check(model.mods().size() == 5, "set_mod_enabled ignores unknown ids");
+}

@@ -1013,6 +1013,20 @@ void ModListModel::toggle_mod(const QString& id) {
     }
 }
 
+void ModListModel::set_mod_enabled(const QString& id, bool enabled) {
+    for (int i = 0; i < mods_.size(); ++i) {
+        auto& m = mods_[i];
+        if (m.id != id) continue;
+        if (m.is_overwrite || m.is_merged || m.is_game_native || m.is_separator)
+            return;
+        if (m.enabled == enabled) return;
+        m.enabled = enabled;
+        emit dataChanged(index(i, Name), index(i, Name), {Qt::CheckStateRole});
+        emit mod_list_changed();
+        return;
+    }
+}
+
 void ModListModel::set_conflict_stats(const QString& id, int wins, int losses) {
     for (int i = 0; i < mods_.size(); ++i) {
         if (mods_[i].id == id) {

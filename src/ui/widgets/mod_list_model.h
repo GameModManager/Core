@@ -128,6 +128,10 @@ public:
     void remove_all_mods();
     void move_mod(const QString& id, int new_row);
     void toggle_mod(const QString& id);
+    // Set a mod's enabled state directly (no toggle). Used when restoring a
+    // profile's modlist.txt state after a scan. No-op for pseudo-rows
+    // (Overwrite/MERGED/game-native) and separators.
+    void set_mod_enabled(const QString& id, bool enabled);
     // In-place rename that keeps the row where it is (id/priority/position
     // unchanged except the id + display name). MO2 renames the folder on disk,
     // so the id (folder name) changes too - this just updates the row.

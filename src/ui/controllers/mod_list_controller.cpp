@@ -681,11 +681,6 @@ void ModListController::switch_profile(const QString &profile) {
   if (profiles_dir.empty())
     return;
 
-  // The UI tracks only the active profile name; construct the engine model
-  // for the current profile on demand so the switcher can persist it.
-  engine::profile::Profile current_profile(profiles_dir /
-                                           w_->current_profile_name_);
-
   // Live state snapshot for save_current_profile (MO2's saveCurrentProfile):
   // the in-memory mod list is the source of truth for what's installed.
   engine::profile::ProfileSaveState state;
@@ -697,11 +692,25 @@ void ModListController::switch_profile(const QString &profile) {
       state.foreign_mods.push_back(m.id.toStdString());
   }
 
+  // The active profile's engine model is the source of truth for the current
+  // profile's modlist state (toggles persist through it via
+  // sync_mod_enable_state). Ensure it exists and is loaded before the
+  // switcher saves it — a fresh Profile has an empty in-memory list and
+  // would flush an empty modlist.txt over the real per-profile state.
+  if (!w_->active_profile_ ||
+      w_->active_profile_->name() != w_->current_profile_name_) {
+    w_->active_profile_ = std::make_unique<engine::profile::Profile>(
+        profiles_dir / w_->current_profile_name_);
+    w_->active_profile_->refresh_mod_status(state.known_mods,
+                                            state.foreign_mods);
+  }
+
   engine::profile::ProfileSwitchCallbacks callbacks;
   // Re-scan the mods directory and rebuild the mod list (MO2's
   // refreshDirectoryStructure). The scan reads the mods dir; the new
   // profile's modlist.txt state is restored by the switcher into the
-  // engine Profile before this callback runs.
+  // engine Profile before this callback runs, and on_mod_scan_finished
+  // applies it to the UI model via apply_profile_mod_states().
   callbacks.refresh_directory_structure = [this]() { load_mods_from_game(); };
   // Reload the Plugins tab from the new profile's plugin files (MO2's
   // refreshLists). refresh_plugins_tab() applies load_profile itself.
@@ -714,7 +723,7 @@ void ModListController::switch_profile(const QString &profile) {
   callbacks.set_archive_invalidation = {};
 
   auto result = engine::profile::switch_profile(
-      profiles_dir, profile.toStdString(), &current_profile, state,
+      profiles_dir, profile.toStdString(), w_->active_profile_.get(), state,
       &w_->plugins_db_, callbacks);
   if (!result.success) {
     QMessageBox::warning(
@@ -726,7 +735,15 @@ void ModListController::switch_profile(const QString &profile) {
   if (!result.changed)
     return;
 
-  w_->current_profile_name_ = profile.toStdString();
+  // Adopt the new profile's engine model (modlist.txt state already restored
+  // by the switcher). The scan launched by the refresh callback lands after
+  // this, so on_mod_scan_finished applies the new profile's state.
+  w_->active_profile_ = std::move(result.profile);
+
+  // Use the canonical profile name (the actual directory name the switcher
+  // resolved case-insensitively) so the selector and the active-profile
+  // guard agree.
+  w_->current_profile_name_ = w_->active_profile_->name();
   w_->update_title();
   refresh_profiles();
 }
@@ -796,6 +813,14 @@ void ModListController::sync_mod_enable_state(const QString &mod_id,
   } else {
     (void)engine::ModScanner::disable_mod(*w_->knowledge_, w_->current_game_id_,
                                           mod_folder);
+  }
+
+  // Persist the toggle to the active profile's modlist.txt (the per-profile
+  // source of truth for enabled state; the disable.it write above is the
+  // on-disk deploy mechanism). Without this, modlist.txt never records the
+  // toggle and every profile shares the same global state.
+  if (w_->active_profile_) {
+    w_->active_profile_->set_mod_enabled(mod_id.toStdString(), enabled);
   }
 
   // P1.3 event bus: mirror MO2 onModStateChanged. Fires on the UI thread
@@ -986,6 +1011,21 @@ void ModListController::load_mods_from_game() {
       w_->current_game_dir_.empty())
     return;
 
+  // Ensure the active profile's engine model exists and points at the
+  // current profile (first load / instance switch). The scan result
+  // converges it with the mods dir; toggles persist through it. On a
+  // profile switch the switcher replaces active_profile_ with the new
+  // profile before the scan lands, so this guard only fires on first load
+  // / instance switch (the name still matches during the switch's refresh
+  // callback, which runs before current_profile_name_ is updated).
+  if (!w_->current_profile_name_.empty() &&
+      (!w_->active_profile_ ||
+       w_->active_profile_->name() != w_->current_profile_name_)) {
+    w_->active_profile_ = std::make_unique<engine::profile::Profile>(
+        w_->profiles_dir_path() / w_->current_profile_name_);
+    w_->active_profile_->refresh_mod_status({}, {});
+  }
+
   w_->loading_ = true;
 
   // Configure conflict order from plugin hook (before adding mods)
@@ -1150,6 +1190,12 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
     }
   }
 
+  // Apply the active profile's modlist.txt enabled state (the per-profile
+  // source of truth) on top of the scan result (which reflects the global
+  // on-disk disable.it marker). Without this, every profile would show the
+  // same enabled/disabled state regardless of which profile is active.
+  apply_profile_mod_states();
+
   // Load/create meta for each mod. (The one-time MO2 meta.ini import ran on
   // the worker thread as part of the scan; w_ only reads sidecars.)
   load_meta_for_mods();
@@ -1250,6 +1296,40 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
 
   // Populate the Plugins tab from the (now loaded) mod list.
   refresh_plugins_tab();
+}
+
+void ModListController::apply_profile_mod_states() {
+  if (!w_->active_profile_)
+    return;
+
+  // Flush any pending toggle first so the re-read below sees the in-memory
+  // state (the delayed writer may still hold an unflushed change — e.g. the
+  // user toggled a mod and hit Refresh within the ~5s debounce window).
+  w_->active_profile_->write_modlist_now();
+
+  // Converge the profile with the scanned mods dir: mods not yet in the
+  // profile (freshly installed) are appended enabled by default and
+  // persisted (delayed) — MO2's refreshModStatus behavior.
+  std::vector<std::string> known_mods;
+  std::vector<std::string> foreign_mods;
+  for (const auto &m : w_->mod_model_->mods()) {
+    if (m.is_separator || m.is_overwrite || m.is_merged)
+      continue;
+    known_mods.push_back(m.id.toStdString());
+    if (m.is_game_native)
+      foreign_mods.push_back(m.id.toStdString());
+  }
+  w_->active_profile_->refresh_mod_status(known_mods, foreign_mods);
+
+  // Apply the profile's enabled state (the per-profile source of truth) on
+  // top of the scan result (which reflects the global on-disk disable.it
+  // marker). Runs while w_->loading_ is true, so the model-change handlers
+  // (save_order, sync_mod_enable_state) early-return and no disk write is
+  // triggered from here.
+  for (const auto &pm : w_->active_profile_->mods()) {
+    w_->mod_model_->set_mod_enabled(QString::fromStdString(pm.mod_id),
+                                    pm.enabled);
+  }
 }
 
 void ModListController::add_installed_mod(const std::string &folder_name) {

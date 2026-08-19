@@ -161,6 +161,43 @@ TEST_CASE("save_current_profile skips tweaked ini when empty", "[engine]") {
   REQUIRE(fs::exists(created.directory / "archives.txt"));
 }
 
+// Regression for the "profile switch wipes modlist.txt" P0 bug: the Profile
+// constructor only loads settings.ini — mods_ is empty until
+// refresh_mod_status() is called. save_current_profile() must never flush
+// that empty list over a populated modlist.txt (the UI used to construct the
+// current profile without loading it, wiping every profile's enabled state on
+// switch).
+TEST_CASE("save_current_profile preserves an unloaded profile's modlist",
+          "[engine]") {
+  auto root = make_temp_dir("save_unloaded");
+  const auto profiles_dir = root / "profiles";
+  auto created = engine::profile::create_fresh_profile(profiles_dir, "Default");
+  REQUIRE(created.success);
+
+  // Populate the profile's modlist.txt on disk: ModA enabled, ModB disabled.
+  {
+    engine::profile::Profile p(created.directory);
+    p.refresh_mod_status({"ModA", "ModB"});
+    p.set_mod_enabled("ModB", false);
+    p.write_modlist_now();
+  }
+  REQUIRE(read_text(created.directory / "modlist.txt").find("-ModB") !=
+          std::string::npos);
+
+  // A fresh Profile (never loaded — mods_ empty) must not wipe the file.
+  engine::profile::Profile profile(created.directory);
+  engine::profile::ProfileSaveState state;
+  state.known_mods = {"ModA", "ModB"};
+  std::string error;
+  REQUIRE(
+      engine::profile::save_current_profile(profile, state, nullptr, &error));
+  REQUIRE(error.empty());
+
+  const std::string modlist = read_text(created.directory / "modlist.txt");
+  REQUIRE(modlist.find("-ModB") != std::string::npos);
+  REQUIRE(modlist.find("+ModA") != std::string::npos);
+}
+
 TEST_CASE("write_tweaked_ini writes atomically", "[engine]") {
   auto dir = make_temp_dir("tweak");
   std::string error;
@@ -285,6 +322,58 @@ TEST_CASE("switch_profile saves current, restores mod state and refreshes",
           std::vector<std::string>(
               {"set_archive_invalidation:0", "refresh_directory_structure",
                "refresh_plugin_list", "refresh_bsa_list"}));
+}
+
+// Regression for the "profile switch wipes modlist.txt" P0 bug: the UI used
+// to construct the current Profile without loading it (the ctor only reads
+// settings.ini), so switch_profile() flushed an empty modlist.txt over the
+// current profile's real per-mod state. The switch must preserve the current
+// profile's modlist.txt even when the caller never called refresh_mod_status.
+TEST_CASE("switch_profile preserves the current profile's modlist when "
+          "unloaded",
+          "[engine]") {
+  auto root = make_temp_dir("switch_unloaded");
+  const auto profiles_dir = root / "profiles";
+  auto a = engine::profile::create_fresh_profile(profiles_dir, "Alpha");
+  auto b = engine::profile::create_fresh_profile(profiles_dir, "Beta");
+  REQUIRE(a.success);
+  REQUIRE(b.success);
+
+  // Alpha's modlist.txt on disk: ModA enabled, ModB disabled.
+  {
+    engine::profile::Profile pa(a.directory);
+    pa.refresh_mod_status({"ModA", "ModB"});
+    pa.set_mod_enabled("ModB", false);
+    pa.write_modlist_now();
+  }
+  REQUIRE(read_text(a.directory / "modlist.txt").find("-ModB") !=
+          std::string::npos);
+
+  // Current Profile constructed WITHOUT loading (the UI bug: mods_ empty).
+  engine::profile::Profile current(a.directory);
+  engine::profile::ProfileSaveState state;
+  state.known_mods = {"ModA", "ModB"};
+
+  std::vector<std::string> log;
+  auto result = engine::profile::switch_profile(
+      profiles_dir, "Beta", &current, state, nullptr, recording_callbacks(log));
+  REQUIRE(result.success);
+  REQUIRE(result.changed);
+
+  // Alpha's modlist.txt must still carry its per-profile state.
+  const std::string alpha_modlist = read_text(a.directory / "modlist.txt");
+  REQUIRE(alpha_modlist.find("-ModB") != std::string::npos);
+  REQUIRE(alpha_modlist.find("+ModA") != std::string::npos);
+
+  // Beta's restored state: its own (empty) modlist.txt converged with the
+  // known mods — both enabled by default (MO2's refreshModStatus).
+  REQUIRE(result.profile != nullptr);
+  const auto beta_mods = result.profile->mods();
+  REQUIRE(beta_mods.size() == 2);
+  REQUIRE(beta_mods[0].mod_id == "ModA");
+  REQUIRE(beta_mods[0].enabled);
+  REQUIRE(beta_mods[1].mod_id == "ModB");
+  REQUIRE(beta_mods[1].enabled);
 }
 
 TEST_CASE("switch_profile emits profile_changed event", "[engine]") {

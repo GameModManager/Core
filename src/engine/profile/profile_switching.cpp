@@ -53,6 +53,16 @@ bool save_current_profile(Profile &profile, const ProfileSaveState &state,
   //    refresh_mod_status at scan time); the delayed writer must never hold
   //    a profile switch hostage (MO2's writeModlistNow(true) in
   //    refreshDirectoryStructure).
+  //
+  //    Defensive guard: never flush an empty in-memory list over a populated
+  //    modlist.txt. The Profile constructor only loads settings.ini — a
+  //    caller that forgot to refresh_mod_status() would otherwise wipe the
+  //    profile's per-mod enabled/disabled state on every switch. When mods_
+  //    is empty but the file has content, load the file first so the flush
+  //    preserves the on-disk state.
+  if (profile.mods().empty() && std::filesystem::exists(profile.modlist_path())) {
+    profile.refresh_mod_status(state.known_mods, state.foreign_mods);
+  }
   profile.write_modlist_now();
 
   // 2. Plugin state (plugins.txt / loadorder.txt / lockedorder.txt) from
