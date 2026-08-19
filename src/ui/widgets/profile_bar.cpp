@@ -14,7 +14,7 @@
 namespace ui {
 
 namespace {
-// Sentinel entry at the bottom of the profile dropdown that opens the profile
+// Sentinel entry at the top of the profile dropdown that opens the profile
 // manager dialog (MO2's "Manage..." behavior).
 constexpr const char* kManageProfilesText = "<Manage...>";
 }  // namespace
@@ -134,7 +134,10 @@ ProfileBar::ProfileBar(QWidget* parent)
                     // Restore the previous real selection; the controller
                     // opens the manager dialog via manage_profiles_requested.
                     profile_combo_->blockSignals(true);
-                    profile_combo_->setCurrentText(last_profile_);
+                    const int idx = profile_combo_->findText(last_profile_);
+                    // Fall back to the first real profile (index 1, after the
+                    // sentinel) if the last selection is no longer present.
+                    profile_combo_->setCurrentIndex(idx >= 0 ? idx : 1);
                     profile_combo_->blockSignals(false);
                     emit manage_profiles_requested();
                     return;
@@ -147,16 +150,19 @@ ProfileBar::ProfileBar(QWidget* parent)
 void ProfileBar::set_profiles(const QStringList& profiles, const QString& current) {
     profile_combo_->blockSignals(true);
     profile_combo_->clear();
+    // '<Manage...>' is always the first entry so it never shifts position
+    // regardless of how many profiles exist.
+    profile_combo_->addItem(tr(kManageProfilesText));
     for (const auto& name : profiles) {
         profile_combo_->addItem(name);
     }
-    profile_combo_->addItem(tr(kManageProfilesText));
     if (!current.isEmpty() && profiles.contains(current)) {
         profile_combo_->setCurrentText(current);
         last_profile_ = current;
     } else if (!profiles.isEmpty()) {
-        profile_combo_->setCurrentIndex(0);
-        last_profile_ = profile_combo_->itemText(0);
+        // First real profile is at index 1 (index 0 is the sentinel).
+        profile_combo_->setCurrentIndex(1);
+        last_profile_ = profile_combo_->itemText(1);
     }
     profile_combo_->blockSignals(false);
 }
