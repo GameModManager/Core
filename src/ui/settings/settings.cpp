@@ -183,6 +183,14 @@ void Settings::set_confirm_close_with_downloads(bool on) {
     settings_.setValue("close/confirm_downloads", on);
 }
 
+QString Settings::default_profile() const {
+    return settings_.value("profiles/default").toString();
+}
+
+void Settings::set_default_profile(const QString& name) {
+    settings_.setValue("profiles/default", name);
+}
+
 // mod list columns ---------------------------------------------------------
 
 QStringList Settings::modlist_hidden_columns(const QString& instance_name) const {
