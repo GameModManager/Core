@@ -8,6 +8,7 @@
 #include <string>
 
 class QComboBox;
+class QGroupBox;
 class QLabel;
 class QProgressBar;
 class QPushButton;
@@ -21,11 +22,11 @@ class PluginLoader;
 
 namespace ui {
 
-// Mode-agnostic Proton options panel: per-instance Proton runner selector plus
-// the game's recommended wine packages (wine.json shipped with the game
-// plugin). The runner is persisted to instance.toml by the host after
-// save_requested() (QDialog::accept() in popup mode; writing the key + closing
-// the tab in Full UI tab mode), following the SettingsDialog pattern.
+// Mode-agnostic Instance Options panel: per-instance runner selector plus the
+// game's recommended wine packages (wine.json shipped with the game plugin).
+// The runner is persisted to instance.toml by the host after save_requested()
+// (QDialog::accept() in popup mode; writing the key + closing the tab in Full
+// UI tab mode), following the SettingsDialog pattern.
 //
 // It also hosts a "Deploy management" section: a "Deployment strategy" dropdown
 // (only the strategies the program + host actually support are listed) whose
@@ -40,27 +41,31 @@ namespace ui {
 // main thread). The inline bar replaces the modal QProgressDialog the popup
 // used, so the same widget works embedded in a tab.
 //
-// Extracted from ProtonPanel so the same content can be embedded either in a
-// popup QDialog (ProtonPanel) or as a tab page inside MainTabContainer (Full
-// UI tab mode). The widget never applies the runner selection by itself: the
-// bottom Save/Close buttons emit save_requested() / cancel_requested() and the
-// host decides what saving means.
-class ProtonContentWidget : public QWidget {
+// The runner selector and the recommended packages live in a "Runtime
+// Environment" group that is hidden for non-Steam games (steam_appid == 0),
+// which have no Proton prefix to configure.
+//
+// Extracted from InstanceOptionsDialog so the same content can be embedded
+// either in a popup QDialog (InstanceOptionsDialog) or as a tab page inside
+// MainTabContainer (Full UI tab mode). The widget never applies the runner
+// selection by itself: the bottom Save/Close buttons emit save_requested() /
+// cancel_requested() and the host decides what saving means.
+class InstanceOptionsWidget : public QWidget {
   Q_OBJECT
 public:
-  ProtonContentWidget(engine::PlatformInterface *platform,
-                      engine::PluginLoader *plugin_loader,
-                      const std::string &game_id,
-                      const std::string &game_display_name,
-                      const std::filesystem::path &game_dir,
-                      uint32_t steam_appid,
-                      const std::filesystem::path &instance_root,
-                      const std::string &current_runner,
-                      const std::string &current_deploy_strategy,
-                      const engine::DeployConfig &deploy_config,
-                      QWidget *parent = nullptr);
+  InstanceOptionsWidget(engine::PlatformInterface *platform,
+                        engine::PluginLoader *plugin_loader,
+                        const std::string &game_id,
+                        const std::string &game_display_name,
+                        const std::filesystem::path &game_dir,
+                        uint32_t steam_appid,
+                        const std::filesystem::path &instance_root,
+                        const std::string &current_runner,
+                        const std::string &current_deploy_strategy,
+                        const engine::DeployConfig &deploy_config,
+                        QWidget *parent = nullptr);
 
-  ~ProtonContentWidget() override;
+  ~InstanceOptionsWidget() override;
 
   // Runner selected in the widget (display name or absolute path).
   // Empty = automatic (Steam per-game override, then latest).

@@ -1,4 +1,4 @@
-#include "ui/proton/proton_content_widget.h"
+#include "ui/instance_options/instance_options_widget.h"
 
 #include "engine/deploy/deploy_utils.h"
 #include "engine/core/instance/instance.h"
@@ -30,7 +30,7 @@
 
 namespace ui {
 
-ProtonContentWidget::ProtonContentWidget(
+InstanceOptionsWidget::InstanceOptionsWidget(
     engine::PlatformInterface *platform, engine::PluginLoader *plugin_loader,
     const std::string &game_id, const std::string &game_display_name,
     const std::filesystem::path &game_dir, uint32_t steam_appid,
@@ -52,32 +52,37 @@ ProtonContentWidget::ProtonContentWidget(
 
   auto *root = new QVBoxLayout(this);
 
-  // --- Proton runner selector (inline, not boxed) ---
+  // --- Runtime Environment: runner selector (boxed) ---
+  auto *runtime_group = new QGroupBox(tr("Runtime Environment"), this);
+  auto *runtime_layout = new QVBoxLayout(runtime_group);
   auto *runner_row = new QHBoxLayout;
-  runner_row->addWidget(new QLabel(tr("Proton runner:"), this));
-  runner_combo_ = new QComboBox(this);
+  runner_row->addWidget(new QLabel(tr("Runner:"), runtime_group));
+  runner_combo_ = new QComboBox(runtime_group);
   runner_row->addWidget(runner_combo_, 1);
-  root->addLayout(runner_row);
+  runtime_layout->addLayout(runner_row);
 
-  runner_detail_ = new QLabel(this);
+  runner_detail_ = new QLabel(runtime_group);
   runner_detail_->setWordWrap(true);
   runner_detail_->setTextFormat(Qt::PlainText);
-  root->addWidget(runner_detail_);
+  runtime_layout->addWidget(runner_detail_);
+  root->addWidget(runtime_group);
 
   connect(runner_combo_, &QComboBox::currentIndexChanged, this,
-          &ProtonContentWidget::update_runner_detail);
-
-  // --- Divider between the runner selector and the packages ---
-  auto *divider = new QFrame(this);
-  divider->setFrameShape(QFrame::HLine);
-  divider->setFrameShadow(QFrame::Sunken);
-  root->addWidget(divider);
+          &InstanceOptionsWidget::update_runner_detail);
 
   // --- Recommended packages (wine.json shipped with the game plugin) ---
   auto *packages_group = new QGroupBox(tr("Recommended Wine Packages"), this);
   auto *packages_layout = new QVBoxLayout(packages_group);
   packages_layout_ = packages_layout;
   root->addWidget(packages_group);
+
+  // Non-Steam games (steam_appid == 0) have no Proton prefix to configure:
+  // the runner selector and the recommended packages are irrelevant, so hide
+  // them. The deploy management section below still applies to every game.
+  if (steam_appid_ == 0) {
+    runtime_group->hide();
+    packages_group->hide();
+  }
 
   // --- Deploy management (symlink-deploy games only) ---
   build_deploy_management();
@@ -101,16 +106,16 @@ ProtonContentWidget::ProtonContentWidget(
   auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
   auto *save = buttons->addButton(tr("Save"), QDialogButtonBox::AcceptRole);
   connect(buttons, &QDialogButtonBox::rejected, this,
-          &ProtonContentWidget::cancel_requested);
+          &InstanceOptionsWidget::cancel_requested);
   connect(save, &QPushButton::clicked, this,
-          &ProtonContentWidget::save_requested);
+          &InstanceOptionsWidget::save_requested);
   root->addWidget(buttons);
 
   refresh_runners();
   load_recommended_packages();
 }
 
-ProtonContentWidget::~ProtonContentWidget() {
+InstanceOptionsWidget::~InstanceOptionsWidget() {
   // A deploy/remove task may still be running when the widget is destroyed
   // (tab closed mid-task). We deliberately do NOT quit()+wait() here: that
   // would block the UI thread until the deploy finishes (potentially minutes
@@ -124,7 +129,7 @@ ProtonContentWidget::~ProtonContentWidget() {
   // than aborting a deploy mid-way.
 }
 
-std::string ProtonContentWidget::selected_runner() const {
+std::string InstanceOptionsWidget::selected_runner() const {
   if (!runner_combo_) return {};
   // Item 0 is "Automatic"; everything else is a discovered runner name.
   int idx = runner_combo_->currentIndex();
@@ -132,7 +137,7 @@ std::string ProtonContentWidget::selected_runner() const {
   return runner_combo_->itemText(idx).toStdString();
 }
 
-void ProtonContentWidget::refresh_runners() {
+void InstanceOptionsWidget::refresh_runners() {
   runner_combo_->clear();
   runner_combo_->addItem(tr("Automatic (Steam default)"));
 
@@ -159,7 +164,7 @@ void ProtonContentWidget::refresh_runners() {
   update_runner_detail();
 }
 
-void ProtonContentWidget::update_runner_detail() {
+void InstanceOptionsWidget::update_runner_detail() {
   if (!runner_detail_ || !platform_) return;
 
   QString resolved;
@@ -182,7 +187,7 @@ void ProtonContentWidget::update_runner_detail() {
   runner_detail_->setText(tr("Resolves to: %1").arg(resolved));
 }
 
-std::filesystem::path ProtonContentWidget::recommended_packages_path() const {
+std::filesystem::path InstanceOptionsWidget::recommended_packages_path() const {
   if (!plugin_loader_ || game_id_.empty()) return {};
   for (const auto &p : plugin_loader_->plugins()) {
     if (p.game_id == game_id_) {
@@ -196,7 +201,7 @@ std::filesystem::path ProtonContentWidget::recommended_packages_path() const {
   return {};
 }
 
-void ProtonContentWidget::load_recommended_packages() {
+void InstanceOptionsWidget::load_recommended_packages() {
   if (!packages_layout_) return;
 
   auto path = recommended_packages_path();
@@ -267,7 +272,7 @@ void ProtonContentWidget::load_recommended_packages() {
   }
 }
 
-void ProtonContentWidget::install_packages(const QStringList &verbs) {
+void InstanceOptionsWidget::install_packages(const QStringList &verbs) {
   if (verbs.isEmpty()) return;
 
   engine::ProtonToolRequest request;
@@ -281,7 +286,7 @@ void ProtonContentWidget::install_packages(const QStringList &verbs) {
 
   int64_t pid = engine::run_proton_tool(request, args);
   if (pid < 0) {
-    QMessageBox::warning(this, tr("Proton Options"),
+    QMessageBox::warning(this, tr("Instance Options"),
                          tr("No protontricks / winetricks available to install packages.\n"
                             "Install protontricks to manage Proton prefixes."));
     return;
@@ -292,7 +297,7 @@ void ProtonContentWidget::install_packages(const QStringList &verbs) {
   }
 }
 
-void ProtonContentWidget::build_deploy_management() {
+void InstanceOptionsWidget::build_deploy_management() {
   auto *root = qobject_cast<QVBoxLayout *>(this->layout());
   if (!root) return;
 
@@ -351,7 +356,7 @@ void ProtonContentWidget::build_deploy_management() {
   update_deploy_actions_enabled();
 }
 
-void ProtonContentWidget::update_deploy_actions_enabled() {
+void InstanceOptionsWidget::update_deploy_actions_enabled() {
   // The direct-deploy actions (re-deploy / remove links) only make sense for
   // strategies that touch game_dir: Symlink and Direct. OverlayFS never
   // touches game_dir. While a task runs, the whole deploy section is locked
@@ -367,7 +372,7 @@ void ProtonContentWidget::update_deploy_actions_enabled() {
     deploy_strategy_combo_->setEnabled(!deploy_task_running_);
 }
 
-void ProtonContentWidget::run_deploy_task(DeployTaskKind kind) {
+void InstanceOptionsWidget::run_deploy_task(DeployTaskKind kind) {
   if (deploy_thread_) return; // a task is already running
 
   const bool remove_only = (kind == DeployTaskKind::Remove);
@@ -400,7 +405,7 @@ void ProtonContentWidget::run_deploy_task(DeployTaskKind kind) {
   // mid-deploy): the worker captures a QPointer instead of a raw `this`, so
   // once the widget is gone the pointer is null and every queued callback is
   // a no-op instead of a use-after-free.
-  QPointer<ProtonContentWidget> self(this);
+  QPointer<InstanceOptionsWidget> self(this);
   auto *thread = QThread::create([self, kind, config, remove_only]() {
     const auto on_progress = [self](int done, int total) {
       if (!self) return; // widget destroyed while the task was running
@@ -445,7 +450,7 @@ void ProtonContentWidget::run_deploy_task(DeployTaskKind kind) {
   thread->start();
 }
 
-void ProtonContentWidget::finish_deploy_task(DeployTaskKind kind, bool ok) {
+void InstanceOptionsWidget::finish_deploy_task(DeployTaskKind kind, bool ok) {
   deploy_thread_ = nullptr;
   deploy_task_running_ = false;
   deploy_progress_->hide();

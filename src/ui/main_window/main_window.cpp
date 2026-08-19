@@ -96,38 +96,39 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
             mod_list_->save_order();
           });
 
-  // --- Proton button: body opens the Proton options panel, arrow the menu ---
+  // --- Instance Options button: body opens the Instance Options panel, arrow
+  // the menu ---
   {
-    QIcon proton_icon = engine::IconManager::instance().resolve_icon(
+    QIcon instance_options_icon = engine::IconManager::instance().resolve_icon(
         "proton", QStyle::SP_ComputerIcon);
-    toolbar_->add_proton_button(proton_icon);
+    toolbar_->add_instance_options_button(instance_options_icon);
 
-    auto *proton_menu = new QMenu(this);
-    proton_menu->addAction(tr("Run winecfg"), this,
-                           [this]() { launch_->run_prefix_tool({"winecfg"}); });
-    proton_menu->addAction(tr("Run winetricks"), this,
-                           [this]() { launch_->run_prefix_tool({}); });
-    proton_menu->addAction(tr("Run an .exe in this prefix..."), this,
-                           [this]() { launch_->run_exe_in_prefix(); });
+    auto *instance_options_menu = new QMenu(this);
+    instance_options_menu->addAction(tr("Run winecfg"), this,
+                                     [this]() { launch_->run_prefix_tool({"winecfg"}); });
+    instance_options_menu->addAction(tr("Run winetricks"), this,
+                                     [this]() { launch_->run_prefix_tool({}); });
+    instance_options_menu->addAction(tr("Run an .exe in this prefix..."), this,
+                                     [this]() { launch_->run_exe_in_prefix(); });
 
-    proton_menu->addSeparator();
+    instance_options_menu->addSeparator();
 
-    proton_menu->addAction(tr("Open Wine Registry"), this,
-                           [this]() { launch_->run_prefix_tool({"regedit"}); });
-    proton_menu->addAction(tr("Install a DLL..."), this, [this]() {
+    instance_options_menu->addAction(tr("Open Wine Registry"), this,
+                                     [this]() { launch_->run_prefix_tool({"regedit"}); });
+    instance_options_menu->addAction(tr("Install a DLL..."), this, [this]() {
       // winetricks `dlls` lands straight on the "Install a Windows DLL
       // or component" picker.
       launch_->run_prefix_tool({"dlls"});
     });
 
-    proton_menu->addSeparator();
+    instance_options_menu->addSeparator();
 
-    proton_menu->addAction(tr("Install recommended packages"), this,
-                           [this]() { tab_mode_->route_proton(); });
+    instance_options_menu->addAction(tr("Install recommended packages"), this,
+                                     [this]() { tab_mode_->route_instance_options(); });
 
-    toolbar_->set_proton_menu(proton_menu);
-    connect(toolbar_, &MainToolbar::proton_clicked, tab_mode_.get(),
-            &TabModeController::route_proton);
+    toolbar_->set_instance_options_menu(instance_options_menu);
+    connect(toolbar_, &MainToolbar::instance_options_clicked, tab_mode_.get(),
+            &TabModeController::route_instance_options);
   }
 
   // --- Vertical splitter: main area + console (console hidden by default) ---

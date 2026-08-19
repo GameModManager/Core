@@ -40,11 +40,11 @@ public:
   // popup mode keeps the OK/Cancel dialog behavior.
   void route_exec_entry();
 
-  // Routes the Proton options panel: tab when Full UI mode is ON, modal popup
-  // otherwise. In tab mode the panel has an explicit Save button that
+  // Routes the Instance Options panel: tab when Full UI mode is ON, modal
+  // popup otherwise. In tab mode the panel has an explicit Save button that
   // persists the runner to instance.toml and closes the tab; popup mode keeps
-  // the modal ProtonPanel behavior.
-  void route_proton();
+  // the modal InstanceOptionsDialog behavior.
+  void route_instance_options();
 
   // Routes the instance switcher: tab when Full UI mode is ON, modal popup
   // otherwise. In tab mode selecting an instance switches immediately (full

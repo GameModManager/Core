@@ -60,7 +60,7 @@
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "ui/main_window/deploy_worker.h"
 #include "ui/main_window/main_window.h"
-#include "ui/proton/proton_panel.h"
+#include "ui/instance_options/instance_options_panel.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/exec_controls_bar.h"
 #include "ui/widgets/exec_entry_dialog.h"
@@ -1732,8 +1732,8 @@ void LaunchController::hide_game_lock_overlay() {
   w_->game_lock_overlay_->hide();
 }
 
-ProtonPanelParams LaunchController::proton_panel_params() const {
-  ProtonPanelParams p;
+InstanceOptionsParams LaunchController::instance_options_params() const {
+  InstanceOptionsParams p;
   if (w_->current_instance_root_.empty())
     return p;
 
@@ -1775,17 +1775,18 @@ ProtonPanelParams LaunchController::proton_panel_params() const {
   return p;
 }
 
-void LaunchController::show_proton_panel() {
-  ProtonPanelParams p = proton_panel_params();
+void LaunchController::show_instance_options() {
+  InstanceOptionsParams p = instance_options_params();
   if (!p.valid) {
-    QMessageBox::information(w_, tr("Proton Options"),
+    QMessageBox::information(w_, tr("Instance Options"),
                              tr("No instance is currently loaded."));
     return;
   }
 
-  ui::ProtonPanel dlg(w_->platform_, w_->plugin_loader_, p.game_id, p.game_name,
-                      p.game_dir, p.steam_appid, p.instance_root,
-                      p.current_runner, p.deploy_strategy, p.deploy_config, w_);
+  ui::InstanceOptionsDialog dlg(w_->platform_, w_->plugin_loader_, p.game_id,
+                                p.game_name, p.game_dir, p.steam_appid,
+                                p.instance_root, p.current_runner,
+                                p.deploy_strategy, p.deploy_config, w_);
   if (dlg.exec() == QDialog::Accepted) {
     auto runner = dlg.selected_runner();
     engine::Instance write = engine::Instance::from_root(p.instance_root);

@@ -19,16 +19,17 @@ public:
     void remove_exec_button(QToolButton* btn);
     void clear_exec_buttons();
 
-    // Proton button: body click emits proton_clicked() (opens the Proton
-    // panel); the attached dropdown arrow shows `menu` (set via set_proton_menu).
-    QToolButton* add_proton_button(const QIcon& icon);
-    void set_proton_menu(QMenu* menu);
+    // Instance Options button: body click emits instance_options_clicked()
+    // (opens the Instance Options panel); the attached dropdown arrow shows
+    // `menu` (set via set_instance_options_menu).
+    QToolButton* add_instance_options_button(const QIcon& icon);
+    void set_instance_options_menu(QMenu* menu);
 
     void set_vertical(bool vertical);
     void set_icon_size(int size);
 
-    // Re-resolve the built-in buttons (Switch Instance, Settings, Proton)
-    // through IconManager after the icon-pack setting changes.
+    // Re-resolve the built-in buttons (Switch Instance, Settings, Instance
+    // Options) through IconManager after the icon-pack setting changes.
     void reapply_icons();
 
     [[nodiscard]] bool is_vertical() const { return vertical_; }
@@ -37,7 +38,7 @@ public:
 signals:
     void settings_clicked();
     void instances_clicked();
-    void proton_clicked();
+    void instance_options_clicked();
     void shortcut_removed(const QString& path);
 
 private:
@@ -45,7 +46,7 @@ private:
     int current_icon_size_ = 24;  // last icon size applied via set_icon_size
     QBoxLayout* layout_ = nullptr;
     QFrame* separator_ = nullptr;
-    QToolButton* proton_button_ = nullptr;
+    QToolButton* instance_options_button_ = nullptr;
     QList<QToolButton*> gmm_buttons_;
     QList<QToolButton*> exec_buttons_;
 };
