@@ -30,6 +30,19 @@ struct LockedPlugin {
     int priority = 0;
 };
 
+// Outcome of Profile::remove(). The engine is Qt-free and never shows
+// dialogs: the caller (UI) is expected to confirm with the user BEFORE
+// calling remove() and to react to the result afterwards (MO2 shows a
+// QMessageBox before deleting; the result enum replaces the dialog's
+// success/failure handling).
+enum class ProfileRemoveResult {
+    Removed,          // directory and all contents deleted
+    NotFound,         // directory did not exist (nothing to delete)
+    ActiveProfile,    // refused: the profile is the active one
+    PermissionDenied, // could not delete (permissions, locked files, I/O error)
+    PartialFailure,   // some contents deleted, the directory still exists
+};
+
 // Ordered INI model of settings.ini (root section first, keys in file order).
 // Unknown keys/sections are preserved on save (read-before-write — never
 // overwrite a shared config with a partial view).
@@ -86,6 +99,23 @@ public:
     [[nodiscard]] const std::filesystem::path& directory() const { return directory_; }
     [[nodiscard]] std::string name() const { return directory_.filename().string(); }
     [[nodiscard]] bool exists() const { return std::filesystem::exists(directory_); }
+
+    // Permanently delete the profile directory and all its contents
+    // (settings.ini, modlist.txt, plugins.txt, profile-specific save games,
+    // ...) — MO2's "remove profile" behavior.
+    //
+    // is_active must be true when this profile is the currently active one:
+    // deletion is then refused with ActiveProfile. The caller is expected to
+    // check first (defense in depth — MO2 refuses in the dialog too).
+    //
+    // Any pending delayed modlist write is cancelled first so the
+    // DelayedFileWriter thread never recreates files inside a directory that
+    // is being deleted. After a successful removal the Profile object is a
+    // shell: exists() returns false and the caller should drop it.
+    //
+    // The caller is responsible for removing the profile from any in-memory
+    // list and cleaning up references (UI list, active-profile state).
+    ProfileRemoveResult remove(bool is_active = false);
 
     // --- settings.ini ------------------------------------------------------
     // Values are cached in memory (loaded at construction) and persisted by
