@@ -27,8 +27,8 @@
 #include <QTreeWidget>
 #include <QVBoxLayout>
 #include <QWidget>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
@@ -43,21 +43,21 @@
 #include <sys/wait.h>
 #endif
 
-#include "engine/core/util/debug_env.h"
-#include "engine/deploy/strategy.h"
 #include "engine/core/events/event_bus.h"
-#include "engine/core/util/fs_utils.h"
 #include "engine/core/instance/instance.h"
 #include "engine/core/instance/instance_utils.h"
 #include "engine/core/instance/toml_utils.h"
 #include "engine/core/log/logger.h"
+#include "engine/core/trace/trace_recorder.h"
+#include "engine/core/util/debug_env.h"
+#include "engine/core/util/fs_utils.h"
+#include "engine/deploy/launch/proton_tools.h"
+#include "engine/deploy/strategy.h"
+#include "engine/game/plugins/plugin_database.h"
+#include "engine/game/registry/game_knowledge.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/mod/overwrite/overwrite_utils.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
-#include "engine/game/plugins/plugin_database.h"
-#include "engine/deploy/launch/proton_tools.h"
-#include "engine/game/registry/game_knowledge.h"
-#include "engine/core/trace/trace_recorder.h"
 #include "ui/main_window/deploy_worker.h"
 #include "ui/main_window/main_window.h"
 #include "ui/proton/proton_panel.h"
@@ -124,8 +124,7 @@ std::vector<std::string> split_arguments(const QString &args) {
       if (i < s.size())
         ++i; // consume closing quote
     } else {
-      while (i < s.size() &&
-             !std::isspace(static_cast<unsigned char>(s[i])))
+      while (i < s.size() && !std::isspace(static_cast<unsigned char>(s[i])))
         token += s[i++];
     }
     if (!token.empty())
@@ -138,9 +137,8 @@ std::vector<std::string> split_arguments(const QString &args) {
 // Empty -> empty (the engine defaults to game_dir); relative -> game_dir +
 // start_in; absolute -> as-is. The engine normalizes/validates further and
 // downgrades a broken cwd to game_dir rather than aborting the launch.
-std::filesystem::path
-resolve_start_in(const std::filesystem::path &game_dir,
-                 const QString &start_in) {
+std::filesystem::path resolve_start_in(const std::filesystem::path &game_dir,
+                                       const QString &start_in) {
   if (start_in.isEmpty())
     return {};
   std::filesystem::path p(start_in.toStdString());
@@ -1339,8 +1337,8 @@ void LaunchController::add_shortcut_to_desktop() {
   auto desktop_file = desktop + "/" + base_name + ".desktop";
   int suffix = 2;
   while (QFile::exists(desktop_file)) {
-    desktop_file = desktop + "/" + base_name + "_" +
-                   QString::number(suffix) + ".desktop";
+    desktop_file =
+        desktop + "/" + base_name + "_" + QString::number(suffix) + ".desktop";
     ++suffix;
   }
 
@@ -1444,6 +1442,23 @@ QString LaunchController::write_desktop_wrapper(
 }
 
 void LaunchController::on_add_entry_requested() {
+  auto icon_cache = w_->cache_thumbnails_dir_path();
+
+  // Entries are never auto-pruned here: with merged-view (deploy-relative)
+  // paths a "missing" file usually just means its mod is disabled, and it
+  // must not be deleted on that basis. A "Clean entries" sweep (MO2-style)
+  // is planned separately.
+  auto existing = w_->right_panel_->exec_controls()->executable_entries();
+
+  ExecEntryDialog dlg(w_->current_game_dir_, output_mod_list(), existing,
+                      icon_cache, w_);
+  if (dlg.exec() != QDialog::Accepted)
+    return;
+
+  apply_exec_entries(dlg.entries());
+}
+
+QVector<QPair<QString, QString>> LaunchController::output_mod_list() const {
   // Collect mod list for the "Output to mod" dropdown
   QVector<QPair<QString, QString>> mod_list;
   if (w_->mod_model_) {
@@ -1453,29 +1468,17 @@ void LaunchController::on_add_entry_requested() {
       }
     }
   }
+  return mod_list;
+}
 
-  auto icon_cache = w_->cache_thumbnails_dir_path();
-
-  // Entries are never auto-pruned here: with merged-view (deploy-relative)
-  // paths a "missing" file usually just means its mod is disabled, and it
-  // must not be deleted on that basis. A "Clean entries" sweep (MO2-style)
-  // is planned separately.
-  auto existing = w_->right_panel_->exec_controls()->executable_entries();
-
-  ExecEntryDialog dlg(w_->current_game_dir_, mod_list, existing, icon_cache,
-                      w_);
-  if (dlg.exec() != QDialog::Accepted)
-    return;
-
-  auto all_entries = dlg.entries();
-
+void LaunchController::apply_exec_entries(const QVector<ExecEntry> &entries) {
   // Replace the entire combo content, then re-apply the selection the user
   // had before opening the editor. Editing must not move the combo to the
   // first or last entry - the selection follows the user until app close.
   auto *bar = w_->right_panel_->exec_controls();
   auto prev_selection = bar->current_executable();
   bar->clear_executables();
-  for (const auto &e : all_entries) {
+  for (const auto &e : entries) {
     bar->add_entry(e);
   }
   if (!prev_selection.isEmpty())
@@ -1729,16 +1732,21 @@ void LaunchController::hide_game_lock_overlay() {
   w_->game_lock_overlay_->hide();
 }
 
-void LaunchController::show_proton_panel() {
-  if (w_->current_instance_root_.empty()) {
-    QMessageBox::information(w_, tr("Proton Options"),
-                             tr("No instance is currently loaded."));
-    return;
-  }
+ProtonPanelParams LaunchController::proton_panel_params() const {
+  ProtonPanelParams p;
+  if (w_->current_instance_root_.empty())
+    return p;
 
   engine::Instance inst =
       engine::Instance::from_root(w_->current_instance_root_);
   inst.read_toml();
+
+  p.game_id = w_->current_game_id_;
+  p.game_name = w_->current_game_name_.empty() ? w_->current_game_id_
+                                               : w_->current_game_name_;
+  p.game_dir = w_->current_game_dir_;
+  p.instance_root = w_->current_instance_root_;
+  p.current_runner = inst.info().proton_runner;
 
   uint32_t steam_appid = inst.info().steam_appid;
   if (steam_appid == 0 && w_->knowledge_) {
@@ -1750,9 +1758,7 @@ void LaunchController::show_proton_panel() {
       }
     }
   }
-  const std::string game_name = w_->current_game_name_.empty()
-                                    ? w_->current_game_id_
-                                    : w_->current_game_name_;
+  p.steam_appid = steam_appid;
 
   // Snapshot the game knowledge (read-only after plugin registration) so the
   // panel's deploy management section uses the exact same effective strategy
@@ -1760,20 +1766,29 @@ void LaunchController::show_proton_panel() {
   // truth for direct-symlink deploys).
   engine::GameKnowledge knowledge =
       w_->knowledge_ ? *w_->knowledge_ : engine::GameKnowledge();
-  const std::string deploy_strategy = engine::effective_deploy_strategy(
+  p.deploy_strategy = engine::effective_deploy_strategy(
       w_->current_instance_root_, knowledge, w_->current_game_id_);
-  const engine::DeployConfig deploy_config = engine::deploy_config_for(
+  p.deploy_config = engine::deploy_config_for(
       w_->current_instance_root_, w_->current_game_dir_, knowledge,
       w_->current_game_id_);
+  p.valid = true;
+  return p;
+}
 
-  ui::ProtonPanel dlg(w_->platform_, w_->plugin_loader_, w_->current_game_id_,
-                      game_name, w_->current_game_dir_, steam_appid,
-                      w_->current_instance_root_, inst.info().proton_runner,
-                      deploy_strategy, deploy_config, w_);
+void LaunchController::show_proton_panel() {
+  ProtonPanelParams p = proton_panel_params();
+  if (!p.valid) {
+    QMessageBox::information(w_, tr("Proton Options"),
+                             tr("No instance is currently loaded."));
+    return;
+  }
+
+  ui::ProtonPanel dlg(w_->platform_, w_->plugin_loader_, p.game_id, p.game_name,
+                      p.game_dir, p.steam_appid, p.instance_root,
+                      p.current_runner, p.deploy_strategy, p.deploy_config, w_);
   if (dlg.exec() == QDialog::Accepted) {
     auto runner = dlg.selected_runner();
-    engine::Instance write =
-        engine::Instance::from_root(w_->current_instance_root_);
+    engine::Instance write = engine::Instance::from_root(p.instance_root);
     write.read_toml();
     write.write_key("proton_runner", runner);
     w_->current_instance_ = write;

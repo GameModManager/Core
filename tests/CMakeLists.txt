@@ -278,6 +278,11 @@ gmm_catch2_test(proton_panel_test ui/proton_panel_test.cpp
     LIBS gmm_ui ${CMAKE_DL_LIBS}
     DEFINES GMM_PLUGINS_DIR="${CMAKE_BINARY_DIR}/plugins")
 
+gmm_catch2_test(proton_content_widget_test ui/proton_content_widget_test.cpp
+    UI
+    LIBS gmm_ui ${CMAKE_DL_LIBS}
+    DEFINES GMM_PLUGINS_DIR="${CMAKE_BINARY_DIR}/plugins")
+
 gmm_catch2_test(install_progress_dialog_test ui/install_progress_dialog_test.cpp
     UI
     LIBS gmm_ui)

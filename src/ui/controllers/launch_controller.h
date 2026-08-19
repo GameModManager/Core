@@ -8,11 +8,32 @@
 #include <string>
 #include <vector>
 
+#include "engine/core/instance/instance_utils.h"
 #include "ui/main_window/main_window.h"
 
 namespace ui {
 
 struct ExecEntry;
+
+// Snapshot of everything the Proton options UI needs to construct itself,
+// gathered once from the current instance + game knowledge (instance_utils:
+// single source of truth for direct-symlink deploys). Shared by the popup
+// path (show_proton_panel) and the Full UI tab path
+// (TabModeController::route_proton) so both embed the exact same
+// ProtonContentWidget.
+struct ProtonPanelParams {
+  std::string game_id;
+  std::string game_name;
+  std::filesystem::path game_dir;
+  std::filesystem::path instance_root;
+  uint32_t steam_appid = 0;
+  std::string current_runner;
+  std::string deploy_strategy;
+  engine::DeployConfig deploy_config;
+  // False when no instance is loaded (callers show the "no instance" info
+  // box instead of constructing a panel).
+  bool valid = false;
+};
 
 // Parses the `executables` array from instance.toml content and returns each
 // entry as a JSON string (the format consumed by ExecControlsBar). Handles
@@ -37,10 +58,11 @@ public slots:
   void load_executables();
   void populate_executables();
   void launch_game();
-  // Launch an executable with the full ExecEntry configuration. `output_mod_dir`
-  // is the explicit output-to-mod target (empty = resolve from the entries /
-  // Overwrite capture); `arguments` / `start_in` / `environment` come from the
-  // referenced ExecEntry and are applied to the launched process (Issue #34).
+  // Launch an executable with the full ExecEntry configuration.
+  // `output_mod_dir` is the explicit output-to-mod target (empty = resolve from
+  // the entries / Overwrite capture); `arguments` / `start_in` / `environment`
+  // come from the referenced ExecEntry and are applied to the launched process
+  // (Issue #34).
   void launch_with_executable(const QString &full_path,
                               const std::filesystem::path &output_mod_dir = {},
                               const QString &arguments = {},
@@ -74,6 +96,14 @@ public slots:
   // (Q_DECLARE_METATYPE ordering in mocs_compilation.cpp).
 public:
   void on_launch_params_prepared(engine::LaunchParams params);
+  // Builds the "Output to mod" combo list from the current mod model
+  // (id, display name) for the executable editor. Shared by the popup dialog
+  // and the Full UI tab editor.
+  QVector<QPair<QString, QString>> output_mod_list() const;
+  // Applies a full entry set to the executables combo: replaces the combo
+  // content, restores the previous selection and persists. Shared by the
+  // popup dialog accept and the Full UI tab Save.
+  void apply_exec_entries(const QVector<ExecEntry> &entries);
   // Game-lock overlay
   void create_game_lock_overlay();
   void show_game_lock_overlay(const QString &binary_name, int64_t pid);
@@ -85,6 +115,9 @@ public:
   void run_prefix_tool(const QStringList &args);
   void run_exe_in_prefix();
   [[nodiscard]] engine::ProtonToolRequest current_proton_request() const;
+  // Builds the ProtonPanelParams snapshot for the current instance. `valid`
+  // is false when no instance is loaded.
+  [[nodiscard]] ProtonPanelParams proton_panel_params() const;
 
 private:
   // Migration + materialization for toolbar shortcuts (Issue #34): after the

@@ -123,11 +123,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     proton_menu->addSeparator();
 
     proton_menu->addAction(tr("Install recommended packages"), this,
-                           [this]() { launch_->show_proton_panel(); });
+                           [this]() { tab_mode_->route_proton(); });
 
     toolbar_->set_proton_menu(proton_menu);
-    connect(toolbar_, &MainToolbar::proton_clicked, launch_.get(),
-            &LaunchController::show_proton_panel);
+    connect(toolbar_, &MainToolbar::proton_clicked, tab_mode_.get(),
+            &TabModeController::route_proton);
   }
 
   // --- Vertical splitter: main area + console (console hidden by default) ---
@@ -205,8 +205,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   connect(right_panel_->exec_controls(), &ExecControlsBar::shortcut_to_desktop,
           launch_.get(), &LaunchController::add_shortcut_to_desktop);
 
+  // "<Edit...>" in the executables combo opens the executable editor. Routed
+  // through TabModeController so Full UI mode embeds it as a tab and popup
+  // mode keeps the modal ExecEntryDialog.
   connect(right_panel_->exec_controls(), &ExecControlsBar::add_entry_requested,
-          launch_.get(), &LaunchController::on_add_entry_requested);
+          tab_mode_.get(), &TabModeController::route_exec_entry);
 
   // Keep the persisted per-instance selection in sync with the live combo
   connect(right_panel_->exec_controls(),

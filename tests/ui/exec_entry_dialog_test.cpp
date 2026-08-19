@@ -6,10 +6,12 @@
 //     binaries outside the game dir never match (they fall back to Overwrite).
 //     This is what routes toolbar-shortcut and Data-tab Execute launches into
 //     the configured output mod.
+//   - ExecEntryContentWidget (the mode-agnostic editor extracted from
+//     ExecEntryDialog) constructs and exposes the initial entries.
 //
 // Hermetic: all file trees live under /tmp, no network, no user config access.
 // QT_QPA_PLATFORM=offscreen via the test property.
-#include "ui/widgets/exec_entry_dialog.h"
+#include "ui/widgets/exec_entry_content_widget.h"
 
 #include <QApplication>
 #include <QJsonArray>
@@ -199,6 +201,19 @@ TEST_CASE("exec entry dialog", "[ui]") {
               "empty game dir resolves no environment");
         check(ui::environment_for_path(entries, game, QString()).isEmpty(),
               "empty path resolves no environment");
+    }
+
+    // ---- ExecEntryContentWidget extraction ----------------------------------
+    {
+        ui::ExecEntry e;
+        e.path = "Data/Tools/Tool.exe";
+        e.title = "Tool";
+        e.output_mod = "Tools OUT";
+        ui::ExecEntryContentWidget w(std::filesystem::path{}, {}, {e}, {}, nullptr);
+        check(w.entries().size() == 1 && w.entries()[0].path == "Data/Tools/Tool.exe",
+              "content widget exposes the initial entries");
+        check(w.entries()[0].output_mod == "Tools OUT",
+              "content widget preserves entry metadata");
     }
 
     // ---- symlink-canonicalized game dir --------------------------------------

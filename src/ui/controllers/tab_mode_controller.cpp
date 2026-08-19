@@ -1,14 +1,20 @@
 #include "ui/controllers/tab_mode_controller.h"
+#include "ui/controllers/launch_controller.h"
 #include "ui/controllers/settings_controller.h"
 
 #include <QDialog>
 #include <QWidget>
 
+#include "engine/core/instance/instance.h"
+#include "ui/proton/proton_content_widget.h"
 #include "ui/settings/settings.h"
 #include "ui/settings/settings_content_widget.h"
+#include "ui/widgets/exec_controls_bar.h"
+#include "ui/widgets/exec_entry_content_widget.h"
 #include "ui/widgets/main_tab_container.h"
 #include "ui/widgets/mod_list_model.h"
 #include "ui/widgets/pipeline_content_widget.h"
+#include "ui/widgets/right_panel.h"
 #include "ui/widgets/stats_content_widget.h"
 
 namespace ui {
@@ -29,6 +35,12 @@ TabModeController::TabModeController(MainWindow *w, QObject *parent)
             } else if (auto *pipeline =
                            qobject_cast<PipelineContentWidget *>(page)) {
               pipeline->deleteLater();
+            } else if (auto *exec =
+                           qobject_cast<ExecEntryContentWidget *>(page)) {
+              exec->deleteLater();
+            } else if (auto *proton =
+                           qobject_cast<ProtonContentWidget *>(page)) {
+              proton->deleteLater();
             }
           });
 
@@ -126,6 +138,82 @@ void TabModeController::route_stats() {
   connect(stats, &StatsContentWidget::close_requested, this,
           [this, key]() { close_tab(key); });
   w_->main_tab_container_->add_view_tab(stats, tr("Instance Statistics"), key);
+}
+
+void TabModeController::route_exec_entry() {
+  if (!Settings::instance().full_ui_mode()) {
+    // Popup mode: unchanged behavior (modal ExecEntryDialog).
+    w_->launch_->on_add_entry_requested();
+    return;
+  }
+
+  const QString key = QStringLiteral("exec_entry");
+  if (is_tab_open(key)) {
+    w_->main_tab_container_->select_tab(key);
+    return;
+  }
+
+  // Tab mode: embed a fresh ExecEntryContentWidget. The editor never applies
+  // anything on its own - the explicit Save button applies the entries to
+  // ExecControlsBar (incrementally, the tab stays open for further edits) and
+  // closes the tab; Cancel just closes the tab, discarding the edits.
+  auto icon_cache = w_->cache_thumbnails_dir_path();
+  auto existing = w_->right_panel_->exec_controls()->executable_entries();
+  auto *content = new ExecEntryContentWidget(w_->current_game_dir_,
+                                             w_->launch_->output_mod_list(),
+                                             existing, icon_cache, w_);
+  connect(content, &ExecEntryContentWidget::save_requested, this,
+          [this, key, content]() {
+            w_->launch_->apply_exec_entries(content->entries());
+            close_tab(key);
+          });
+  connect(content, &ExecEntryContentWidget::cancel_requested, this,
+          [this, key]() { close_tab(key); });
+  open_in_tab(content, tr("Modify Executables"), key);
+}
+
+void TabModeController::route_proton() {
+  if (!Settings::instance().full_ui_mode()) {
+    // Popup mode: unchanged behavior (modal ProtonPanel).
+    w_->launch_->show_proton_panel();
+    return;
+  }
+
+  const QString key = QStringLiteral("proton");
+  if (is_tab_open(key)) {
+    w_->main_tab_container_->select_tab(key);
+    return;
+  }
+
+  // No instance loaded: the popup path shows the "no instance" info box.
+  auto params = w_->launch_->proton_panel_params();
+  if (!params.valid) {
+    w_->launch_->show_proton_panel();
+    return;
+  }
+
+  // Tab mode: embed a fresh ProtonContentWidget. The widget never persists
+  // the runner on its own - the explicit Save button persists it to
+  // instance.toml and closes the tab; Close just closes the tab, discarding
+  // the runner change (the deploy strategy persists immediately on change,
+  // matching the popup behavior).
+  auto *content = new ProtonContentWidget(
+      w_->platform_, w_->plugin_loader_, params.game_id, params.game_name,
+      params.game_dir, params.steam_appid, params.instance_root,
+      params.current_runner, params.deploy_strategy, params.deploy_config, w_);
+  connect(content, &ProtonContentWidget::save_requested, this,
+          [this, key, content]() {
+            auto runner = content->selected_runner();
+            engine::Instance write =
+                engine::Instance::from_root(w_->current_instance_root_);
+            write.read_toml();
+            write.write_key("proton_runner", runner);
+            w_->current_instance_ = write;
+            close_tab(key);
+          });
+  connect(content, &ProtonContentWidget::cancel_requested, this,
+          [this, key]() { close_tab(key); });
+  open_in_tab(content, tr("Proton Options"), key);
 }
 
 void TabModeController::open_in_tab(QWidget *content, const QString &title,
