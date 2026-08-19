@@ -268,6 +268,46 @@ ProfileRemoveResult Profile::remove(bool is_active) {
     return ProfileRemoveResult::Removed;
 }
 
+// --- repair ----------------------------------------------------------------
+
+std::vector<std::string> Profile::repair() {
+    std::vector<std::string> generated;
+
+    // settings.ini — create with defaults when missing. save_settings()
+    // logs its own failure; the file is only reported as generated on
+    // success.
+    if (!std::filesystem::exists(settings_path())) {
+        set_local_saves(false);
+        set_local_settings(false);
+        set_automatic_archive_invalidation(false);
+        if (save_settings()) {
+            generated.push_back("settings.ini");
+        }
+    }
+
+    // modlist.txt — create empty when missing.
+    if (!std::filesystem::exists(modlist_path())) {
+        if (safe_write_file(modlist_path(), "")) {
+            generated.push_back("modlist.txt");
+        } else {
+            Logger::instance().error("repair: failed to create modlist.txt: " +
+                                     modlist_path().string());
+        }
+    }
+
+    // archives.txt — create empty when missing.
+    if (!std::filesystem::exists(archives_path())) {
+        if (safe_write_file(archives_path(), "")) {
+            generated.push_back("archives.txt");
+        } else {
+            Logger::instance().error("repair: failed to create archives.txt: " +
+                                     archives_path().string());
+        }
+    }
+
+    return generated;
+}
+
 // --- settings.ini ----------------------------------------------------------
 
 std::string Profile::get_setting(const std::string& key) const {

@@ -8,6 +8,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -132,6 +133,77 @@ TEST_CASE("settings.ini preserves unknown keys and sections", "[engine]") {
     REQUIRE(content.find("CustomRootKey=hello") != std::string::npos);
     REQUIRE(content.find("[Game]") != std::string::npos);
     REQUIRE(content.find("bSomething=1") != std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// Repair
+// ---------------------------------------------------------------------------
+
+TEST_CASE("repair creates all missing required files with defaults", "[engine]") {
+    auto dir = make_temp_dir("repair_missing");
+    engine::profile::Profile profile(dir, 50ms);
+
+    const auto generated = profile.repair();
+    REQUIRE(generated.size() == 3);
+    REQUIRE(std::find(generated.begin(), generated.end(), "settings.ini") != generated.end());
+    REQUIRE(std::find(generated.begin(), generated.end(), "modlist.txt") != generated.end());
+    REQUIRE(std::find(generated.begin(), generated.end(), "archives.txt") != generated.end());
+
+    // settings.ini carries the documented defaults.
+    REQUIRE(fs::exists(dir / "settings.ini"));
+    REQUIRE_FALSE(profile.local_saves());
+    REQUIRE_FALSE(profile.local_settings());
+    REQUIRE_FALSE(profile.automatic_archive_invalidation());
+    const std::string settings = read_text(dir / "settings.ini");
+    REQUIRE(settings.find("LocalSaves=false") != std::string::npos);
+    REQUIRE(settings.find("LocalSettings=false") != std::string::npos);
+    REQUIRE(settings.find("AutomaticArchiveInvalidation=false") != std::string::npos);
+
+    // modlist.txt and archives.txt exist and are empty.
+    REQUIRE(fs::exists(dir / "modlist.txt"));
+    REQUIRE(read_text(dir / "modlist.txt").empty());
+    REQUIRE(fs::exists(dir / "archives.txt"));
+    REQUIRE(read_text(dir / "archives.txt").empty());
+}
+
+TEST_CASE("repair is a no-op when all required files exist", "[engine]") {
+    auto dir = make_temp_dir("repair_complete");
+    write_text(dir / "settings.ini", "LocalSaves=true\n");
+    write_text(dir / "modlist.txt", "+ModA\r\n");
+    write_text(dir / "archives.txt", "Skyrim - Textures.bsa\n");
+
+    engine::profile::Profile profile(dir, 50ms);
+    REQUIRE(profile.repair().empty());
+
+    // Existing content is untouched.
+    REQUIRE(read_text(dir / "settings.ini").find("LocalSaves=true") != std::string::npos);
+    REQUIRE(read_text(dir / "modlist.txt").find("+ModA") != std::string::npos);
+    REQUIRE(read_text(dir / "archives.txt").find("Skyrim - Textures.bsa") != std::string::npos);
+}
+
+TEST_CASE("repair fills only the missing files", "[engine]") {
+    auto dir = make_temp_dir("repair_partial");
+    write_text(dir / "modlist.txt", "+ModA\r\n");
+
+    engine::profile::Profile profile(dir, 50ms);
+    const auto generated = profile.repair();
+
+    REQUIRE(generated.size() == 2);
+    REQUIRE(std::find(generated.begin(), generated.end(), "settings.ini") != generated.end());
+    REQUIRE(std::find(generated.begin(), generated.end(), "archives.txt") != generated.end());
+    REQUIRE(std::find(generated.begin(), generated.end(), "modlist.txt") == generated.end());
+
+    // The existing modlist is preserved.
+    REQUIRE(read_text(dir / "modlist.txt").find("+ModA") != std::string::npos);
+}
+
+TEST_CASE("repair is idempotent", "[engine]") {
+    auto dir = make_temp_dir("repair_idempotent");
+    engine::profile::Profile profile(dir, 50ms);
+
+    REQUIRE(profile.repair().size() == 3);
+    REQUIRE(profile.repair().empty());  // second pass finds nothing to do
+    REQUIRE(profile.repair().empty());
 }
 
 // ---------------------------------------------------------------------------
