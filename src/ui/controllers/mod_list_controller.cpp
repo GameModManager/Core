@@ -594,15 +594,30 @@ void ModListController::refresh_profiles() {
   if (profiles_dir.empty())
     return;
 
-  // Ensure the Default profile exists and is initialized.
-  // An empty directory (created by earlier code but never populated) is
-  // treated as missing and re-created with defaults.
+  // Ensure the Default profile exists and is initialized. A missing Default
+  // directory (or one that is not a directory at all) is bootstrapped with
+  // defaults; a directory that exists but is missing required files is
+  // repaired in place below.
   {
     const auto default_dir = profiles_dir / "Default";
-    if (!std::filesystem::exists(default_dir / "settings.ini")) {
+    if (!std::filesystem::is_directory(default_dir)) {
       if (std::filesystem::exists(default_dir))
         std::filesystem::remove_all(default_dir);
       engine::profile::create_fresh_profile(profiles_dir, "Default", nullptr);
+    }
+  }
+
+  // Auto-repair every profile directory: create any missing required files
+  // (settings.ini, modlist.txt, archives.txt) with sensible defaults instead
+  // of failing silently later. repair() never touches existing files, so a
+  // partially-populated profile keeps its mod list and settings.
+  for (const auto &name : engine::profile::list_profiles(profiles_dir)) {
+    engine::profile::Profile profile(profiles_dir / name);
+    const auto generated = profile.repair();
+    if (!generated.empty()) {
+      engine::Logger::instance().info(
+          "Repaired profile \"" + name + "\": created " +
+          std::to_string(generated.size()) + " missing file(s)");
     }
   }
 

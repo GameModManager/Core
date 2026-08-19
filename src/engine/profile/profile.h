@@ -117,6 +117,20 @@ public:
     // list and cleaning up references (UI list, active-profile state).
     ProfileRemoveResult remove(bool is_active = false);
 
+    // --- repair ------------------------------------------------------------
+
+    // Repair a broken profile directory: create any missing required files
+    // (settings.ini, modlist.txt, archives.txt) with sensible defaults —
+    // settings.ini gets LocalSaves=false, LocalSettings=false,
+    // AutomaticArchiveInvalidation=false; modlist.txt and archives.txt are
+    // created empty. Existing files are never touched or overwritten.
+    //
+    // Returns the list of filenames that were generated (empty when the
+    // profile was already complete). Failures are logged and omitted from
+    // the result, so a caller can detect a still-broken profile by comparing
+    // the result against the required set.
+    [[nodiscard]] std::vector<std::string> repair();
+
     // --- settings.ini ------------------------------------------------------
     // Values are cached in memory (loaded at construction) and persisted by
     // save_settings(). Unknown keys/sections are preserved on write
