@@ -24,6 +24,7 @@
 #include "engine/game/plugins/plugin_database.h"
 #include "engine/deploy/launch/proton_tools.h"
 #include "engine/game/registry/game_knowledge.h"
+#include "engine/profile/profile.h"
 #include "platform/platform_interface.h"
 
 class QSplitter;
@@ -209,6 +210,13 @@ private:
   std::filesystem::path current_game_dir_;
   std::filesystem::path current_instance_root_;
   bool loading_ = false;
+  // The active profile's engine model (modlist.txt state). Owned by the
+  // window; created on instance load, replaced on profile switch. The UI's
+  // ModListModel is converged with it after every scan
+  // (on_mod_scan_finished) and every toggle (sync_mod_enable_state), so the
+  // profile's modlist.txt is the per-profile source of truth for enabled
+  // state — never the global on-disk disable.it marker.
+  std::unique_ptr<engine::profile::Profile> active_profile_;
   // Plugin database driving the Plugins tab (empty until a plugin-capable
   // game is loaded). Rebuilt on refresh; toggles/moves save the profile.
   engine::PluginDatabase plugins_db_;

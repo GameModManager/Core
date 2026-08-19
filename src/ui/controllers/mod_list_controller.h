@@ -107,6 +107,10 @@ public slots:
   // Mod scan (THREADING.md §3.5/§3.6, P8.2).
   void on_mod_scan_finished(ui::ModScanResult result, quint64 generation);
   ui::ModScanRequest build_mod_scan_request();
+  // Apply the active profile's modlist.txt enabled state to the UI model
+  // after a scan. The scan result reflects the global on-disk disable.it
+  // marker; the profile's modlist.txt is the per-profile source of truth.
+  void apply_profile_mod_states();
   // Plugin-DB preload (THREADING.md §3.5, P8.5/T6).
   void launch_plugin_db_preload();
   void on_plugin_db_preloaded(engine::PluginDatabase db, quint64 generation);
