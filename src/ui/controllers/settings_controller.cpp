@@ -2,6 +2,7 @@
 #include "ui/controllers/downloads_controller.h"
 #include "ui/controllers/launch_controller.h"
 #include "ui/controllers/mod_list_controller.h"
+#include "ui/controllers/tab_mode_controller.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -538,8 +539,8 @@ void SettingsController::connect_menu_actions() {
   });
   connect(w_->menu_bar_, &AppMenuBar::export_mods_requested, this,
           [this]() { w_->mod_list_->export_modlist(); });
-  connect(w_->menu_bar_, &AppMenuBar::settings_requested, this,
-          &SettingsController::show_settings_dialog);
+  connect(w_->menu_bar_, &AppMenuBar::settings_requested, w_->tab_mode_.get(),
+          &TabModeController::route_settings);
   connect(w_->menu_bar_, &AppMenuBar::exit_requested, this,
           [this]() { QApplication::quit(); });
 
@@ -584,10 +585,10 @@ void SettingsController::connect_menu_actions() {
               w_->console_splitter_->setSizes({700, 0});
             }
           });
-  connect(w_->menu_bar_, &AppMenuBar::pipeline_requested, this,
-          &SettingsController::show_pipeline_window);
-  connect(w_->status_bar_, &GmmStatusBar::pipeline_clicked, this,
-          &SettingsController::show_pipeline_window);
+  connect(w_->menu_bar_, &AppMenuBar::pipeline_requested, w_->tab_mode_.get(),
+          &TabModeController::route_pipeline);
+  connect(w_->status_bar_, &GmmStatusBar::pipeline_clicked, w_->tab_mode_.get(),
+          &TabModeController::route_pipeline);
   connect(w_->menu_bar_, &AppMenuBar::refresh_requested, this, [this]() {
     if (w_->current_game_id_.empty())
       return;
@@ -976,6 +977,10 @@ void SettingsController::show_settings_dialog() {
   SettingsDialog dlg(w_->style_manager_, w_->native_style_name_,
                      w_->current_instance_root_, w_->plugin_loader_, w_);
   dlg.exec();
+  apply_settings_changes();
+}
+
+void SettingsController::apply_settings_changes() {
   // Per-folder path overrides may have changed in the dialog.
   if (!w_->current_instance_root_.empty()) {
     w_->current_instance_ =
@@ -1037,6 +1042,9 @@ void SettingsController::show_pipeline_window() {
   if (!w_->pipeline_window_) {
     w_->pipeline_window_ = new PipelineWindow(w_);
   }
+  // Restore the top-level window flag in case the window was previously
+  // embedded as a tab page (Full UI tab mode).
+  w_->pipeline_window_->setWindowFlag(Qt::Window, true);
   w_->pipeline_window_->refresh();
   w_->pipeline_window_->show();
   w_->pipeline_window_->raise();

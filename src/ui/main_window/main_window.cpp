@@ -21,12 +21,14 @@
 #include "ui/controllers/overwrite_controller.h"
 #include "ui/controllers/queue_controller.h"
 #include "ui/controllers/settings_controller.h"
+#include "ui/controllers/tab_mode_controller.h"
 #include "ui/workers/pipeline_worker.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/smooth_scroll.h"
 #include "ui/widgets/console_panel.h"
 #include "ui/widgets/exec_controls_bar.h"
 #include "ui/widgets/gmm_status_bar.h"
+#include "ui/widgets/main_tab_container.h"
 #include "ui/widgets/main_toolbar.h"
 #include "ui/widgets/menu_bar.h"
 #include "ui/widgets/profile_bar.h"
@@ -46,6 +48,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   downloads_ = std::make_unique<DownloadsController>(this, this);
   mod_list_ = std::make_unique<ModListController>(this, this);
   settings_ = std::make_unique<SettingsController>(this, this);
+  // Full-UI tab host: created before TabModeController so it can connect to
+  // the container in its ctor; the Main tab is added once the console
+  // splitter exists (below).
+  main_tab_container_ = new MainTabContainer(this);
+  tab_mode_ = std::make_unique<TabModeController>(this, this);
 
   // Conflict recompute infra (P8.1, THREADING.md §3.6): debounce + worker
   // thread so toggling/reordering a mod never blocks the UI on a full scan.
@@ -75,8 +82,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
             toolbar_->set_vertical(orient == Qt::Vertical);
           });
 
-  connect(toolbar_, &MainToolbar::settings_clicked, settings_.get(),
-          &SettingsController::show_settings_dialog);
+  connect(toolbar_, &MainToolbar::settings_clicked, tab_mode_.get(),
+          &TabModeController::route_settings);
   connect(toolbar_, &MainToolbar::instances_clicked, settings_.get(),
           &SettingsController::show_instance_switcher);
   connect(menu_bar_, &AppMenuBar::sort_mods_requested, mod_list_.get(),
@@ -163,7 +170,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   console_splitter_->setStretchFactor(1, 0);
   console_splitter_->setSizes({700, 0});
 
-  setCentralWidget(console_splitter_);
+  // Full-UI tab host: the console splitter becomes the permanent Main tab;
+  // dynamic view tabs (Settings, Pipeline, ...) are added on top when Full
+  // UI mode is ON. With the mode OFF the tab bar stays hidden and the window
+  // looks exactly like the pre-tab layout.
+  main_tab_container_->add_main_tab(console_splitter_);
+  setCentralWidget(main_tab_container_);
 
   // Game-lock overlay (hidden until game launches)
   launch_->create_game_lock_overlay();
