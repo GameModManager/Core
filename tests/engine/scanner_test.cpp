@@ -302,3 +302,23 @@ TEST_CASE("scanner", "[engine]") {
                 "changed_time reflects a file write after install");
     }
 }
+
+TEST_CASE("delayed_disable_for", "[engine]") {
+    // Default: no plugin declares delayed_disable -> false (Skyrim and all
+    // other games keep the immediate disk-write behavior).
+    engine::GameKnowledge knowledge;
+    REQUIRE(!engine::delayed_disable_for(knowledge, "skyrimse"));
+    REQUIRE(!engine::delayed_disable_for(knowledge, "isaac"));
+
+    // A plugin declaring the hook with "true" opts in (Isaac's Direct mode).
+    knowledge.set("isaac", "delayed_disable", "true");
+    REQUIRE(engine::delayed_disable_for(knowledge, "isaac"));
+    // Other games are unaffected by Isaac's declaration.
+    REQUIRE(!engine::delayed_disable_for(knowledge, "skyrimse"));
+
+    // Any value other than the exact "true" string is not opted in.
+    knowledge.set("skyrimse", "delayed_disable", "1");
+    REQUIRE(!engine::delayed_disable_for(knowledge, "skyrimse"));
+    knowledge.set("skyrimse", "delayed_disable", "TRUE");
+    REQUIRE(!engine::delayed_disable_for(knowledge, "skyrimse"));
+}

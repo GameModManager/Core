@@ -740,6 +740,24 @@ void ModListController::switch_profile(const QString &profile) {
   // this, so on_mod_scan_finished applies the new profile's state.
   w_->active_profile_ = std::move(result.profile);
 
+  // Delayed disable capability: queue the FULL desired state of the new
+  // profile so the next Run reconciles the on-disk sentinels with the profile.
+  // Idempotent (writing an existing sentinel / removing an absent one is a
+  // no-op) and self-healing — it also satisfies the "multiple profile swaps
+  // accumulate the final state" criterion without a delta against the old
+  // on-disk state. The full state supersedes any earlier queued toggles.
+  if (w_->knowledge_ && !w_->current_game_id_.empty() &&
+      engine::delayed_disable_for(*w_->knowledge_, w_->current_game_id_)) {
+    w_->deferred_disable_queue_.clear();
+    for (const auto &pm : w_->active_profile_->mods()) {
+      w_->deferred_disable_queue_.push_back({pm.mod_id, pm.enabled});
+    }
+    engine::Logger::instance().debug(
+        "Delayed disable: queued full profile state for '" +
+        w_->active_profile_->name() + "' (" +
+        std::to_string(w_->deferred_disable_queue_.size()) + " mods)");
+  }
+
   // Use the canonical profile name (the actual directory name the switcher
   // resolved case-insensitively) so the selector and the active-profile
   // guard agree.
@@ -797,6 +815,42 @@ void ModListController::sync_mod_enable_state(const QString &mod_id,
         "Queued toggle for " + mod_id.toStdString() + " -> " +
         (enabled ? "enabled" : "disabled") + " (" +
         std::to_string(w_->pending_changes_.size()) + " pending)");
+    return;
+  }
+
+  // Delayed disable capability (plugin-declared hook, e.g. Isaac's Direct
+  // deploy mode): skip the immediate on-disk sentinel write. The toggle is
+  // recorded in the deferred queue (latest-wins per mod_id) and applied at the
+  // next Run, when launch_with_executable flushes the queue before the deploy
+  // worker starts. The profile modlist.txt is still updated now — it is the
+  // per-profile source of truth; the on-disk sentinel is reconciled at launch.
+  if (engine::delayed_disable_for(*w_->knowledge_, w_->current_game_id_)) {
+    auto it = std::remove_if(
+        w_->deferred_disable_queue_.begin(), w_->deferred_disable_queue_.end(),
+        [&](const DeferredDisable &dd) {
+          return dd.mod_id == mod_id.toStdString();
+        });
+    w_->deferred_disable_queue_.erase(it, w_->deferred_disable_queue_.end());
+    w_->deferred_disable_queue_.push_back({mod_id.toStdString(), enabled});
+
+    // Persist the toggle to the active profile's modlist.txt (the per-profile
+    // source of truth for enabled state).
+    if (w_->active_profile_) {
+      w_->active_profile_->set_mod_enabled(mod_id.toStdString(), enabled);
+    }
+
+    engine::Logger::instance().debug(
+        "Delayed disable: queued toggle for " + mod_id.toStdString() + " -> " +
+        (enabled ? "enabled" : "disabled") + " (" +
+        std::to_string(w_->deferred_disable_queue_.size()) + " deferred)");
+
+    // P1.3 event bus: mirror MO2 onModStateChanged. Fires on the UI thread
+    // after the profile state change; a plugin handler must not block.
+    engine::EventBus::instance().dispatch(engine::events::kModStateChanged,
+                                          engine::json_obj({
+                                              {"mod", mod_id.toStdString()},
+                                              {"enabled", enabled ? "1" : "0"},
+                                          }));
     return;
   }
 

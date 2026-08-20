@@ -126,6 +126,12 @@ private:
   // resolves and stays editable; legacy per-shortcut icons recorded by
   // add_toolbar_shortcut_from_path are folded into the referenced entry.
   void materialize_toolbar_shortcuts();
+  // Flushes the deferred disable/enable queue (delayed_disable games) by
+  // writing/removing the on-disk disable sentinel for every queued mod. Runs
+  // synchronously on the UI thread in launch_with_executable BEFORE the
+  // DeployWorker starts, so the deploy (which reads on-disk sentinels) sees
+  // the reconciled state. Clears the queue after the flush.
+  void flush_deferred_disable_queue();
   // Writes a shell wrapper (under the instance cache) that exports the
   // entry's environment variables and execs the real command with the
   // working directory. Used by add_shortcut_to_desktop for entries with env
