@@ -46,15 +46,14 @@ FiletreeTab::FiletreeTab(QWidget* parent) : ModInfoTab(parent) {
     tree_->setContextMenuPolicy(Qt::CustomContextMenu);
     tree_->setUniformRowHeights(true);
     tree_->setHeaderHidden(false);
+    model_ = new QFileSystemModel(this);
+    model_->setReadOnly(true);
+    tree_->setModel(model_);
     tree_->header()->setStretchLastSection(false);
     tree_->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     tree_->header()->setSectionResizeMode(1, QHeaderView::Interactive);
     tree_->header()->setSectionResizeMode(2, QHeaderView::Interactive);
     tree_->header()->setSectionResizeMode(3, QHeaderView::Interactive);
-
-    model_ = new QFileSystemModel(this);
-    model_->setReadOnly(true);
-    tree_->setModel(model_);
 
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
