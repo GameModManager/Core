@@ -308,15 +308,20 @@ void SettingsController::set_game_info(
     // the single source of truth for the launch path and the Deploy
     // Management selector; report it here so the startup log matches the
     // configured strategy instead of the host's overlay capability.
+    // Snapshot the game knowledge with a null guard (same pattern as the
+    // launch path) so a missing knowledge registry degrades to defaults
+    // instead of dereferencing null.
+    engine::GameKnowledge knowledge =
+        w_->knowledge_ ? *w_->knowledge_ : engine::GameKnowledge();
     const std::string deploy_strategy_name = engine::effective_deploy_strategy(
-        w_->current_instance_root_, *w_->knowledge_, w_->current_game_id_);
+        w_->current_instance_root_, knowledge, w_->current_game_id_);
     ctx.deploy_prefix =
-        w_->knowledge_->get(w_->current_game_id_, "deploy_prefix", "Data");
-    auto inc_id = w_->knowledge_->get(w_->current_game_id_,
-                                      "deploy_include_mod_id", "false");
+        knowledge.get(w_->current_game_id_, "deploy_prefix", "Data");
+    auto inc_id = knowledge.get(w_->current_game_id_,
+                                "deploy_include_mod_id", "false");
     ctx.deploy_include_mod_id = (inc_id == "true");
     bool case_sensitive =
-        w_->knowledge_->get(w_->current_game_id_, "case_sensitive", "true") !=
+        knowledge.get(w_->current_game_id_, "case_sensitive", "true") !=
         "false";
     std::unique_ptr<engine::DeploymentStrategy> deploy_strategy;
     std::string deploy_strategy_label;
