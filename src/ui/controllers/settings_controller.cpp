@@ -664,33 +664,6 @@ void SettingsController::connect_menu_actions() {
                                               tool->executable_name);
             }
           });
-  connect(w_->menu_bar_, &AppMenuBar::open_instance_folder_requested, this,
-          [this]() {
-            if (w_->current_instance_root_.empty())
-              return;
-            auto url = QUrl::fromLocalFile(
-                QString::fromStdString(w_->current_instance_root_.string()));
-            QDesktopServices::openUrl(url);
-          });
-  connect(w_->menu_bar_, &AppMenuBar::open_mods_folder_requested, this,
-          [this]() {
-            if (w_->current_game_dir_.empty())
-              return;
-            auto path = w_->mods_dir_path();
-            QDesktopServices::openUrl(
-                QUrl::fromLocalFile(QString::fromStdString(path.string())));
-          });
-  connect(w_->menu_bar_, &AppMenuBar::open_downloads_folder_requested, this,
-          [this]() {
-            if (w_->current_instance_root_.empty())
-              return;
-            auto dl_dir = w_->downloads_dir_path();
-            std::error_code ec;
-            if (!std::filesystem::exists(dl_dir, ec))
-              std::filesystem::create_directories(dl_dir, ec);
-            QDesktopServices::openUrl(
-                QUrl::fromLocalFile(QString::fromStdString(dl_dir.string())));
-          });
 
   // --- Help ---
   connect(w_->menu_bar_, &AppMenuBar::about_requested, this, [this]() {

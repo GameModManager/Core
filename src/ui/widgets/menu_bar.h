@@ -53,9 +53,6 @@ signals:
     // Tools
     void tool_requested(const QString& tool_id, const QString& game_id);
     void sort_mods_requested();
-    void open_instance_folder_requested();
-    void open_mods_folder_requested();
-    void open_downloads_folder_requested();
 
     // Help
     void about_requested();
