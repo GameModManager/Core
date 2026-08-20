@@ -3,8 +3,10 @@
 #include "engine/core/instance/instance_utils.h"
 #include "engine/deploy/launch/launcher.h"
 #include "engine/core/log/logger.h"
+#include "engine/game/detect/mod_scanner.h"
 #include "engine/game/plugins/plugin_database.h"
 #include "engine/game/registry/game_knowledge.h"
+#include "engine/profile/profile.h"
 
 #include <chrono>
 #include <filesystem>
@@ -15,6 +17,87 @@
 namespace fs = std::filesystem;
 
 namespace cli {
+
+namespace {
+
+// Delayed disable (plugin-declared capability, e.g. Isaac's Direct mode): the
+// GUI defers disable-sentinel writes until Run and flushes its in-memory
+// deferred queue before the deploy worker starts (LaunchController::
+// flush_deferred_disable_queue). The CLI has no queue — the active profile's
+// modlist.txt is the per-profile source of truth, so reconcile the on-disk
+// sentinels against it directly. Idempotent (writing an existing sentinel /
+// removing an absent one is a no-op) and a no-op for games that do not
+// declare delayed_disable.
+void reconcile_deferred_disable_sentinels(const HeadlessConfig& cfg) {
+    if (!cfg.knowledge || cfg.game_id.empty())
+        return;
+    if (!engine::delayed_disable_for(*cfg.knowledge, cfg.game_id))
+        return;
+
+    // Resolve the instance's profiles dir (honors the instance.toml override).
+    engine::Instance inst = engine::Instance::from_root(cfg.instance_root);
+    const auto profiles_dir = inst.path_for(engine::InstanceKind::Profiles);
+    if (!fs::is_directory(profiles_dir))
+        return;
+
+    // Active profile: "Default" when present, else the first profile dir
+    // (mirrors the GUI's refresh_profiles fallback chain; the CLI has no
+    // "current profile" state).
+    fs::path profile_dir;
+    std::error_code ec;
+    for (const auto& entry : fs::directory_iterator(profiles_dir, ec)) {
+        if (!entry.is_directory())
+            continue;
+        if (entry.path().filename() == "Default") {
+            profile_dir = entry.path();
+            break;
+        }
+        if (profile_dir.empty())
+            profile_dir = entry.path();
+    }
+    if (profile_dir.empty()) {
+        engine::Logger::instance().warn(
+            "Delayed disable: no profile found under " + profiles_dir.string() +
+            ", skipping sentinel reconciliation");
+        return;
+    }
+
+    // Read the profile's modlist.txt (the per-profile source of truth for
+    // enabled state). refresh_mod_status({}) loads exactly the file entries —
+    // no known_mods to append.
+    engine::profile::Profile profile(profile_dir);
+    profile.refresh_mod_status({});
+    const auto mods = profile.mods();
+    if (mods.empty())
+        return;
+
+    const auto mods_dir = inst.path_for(engine::InstanceKind::Mods);
+    const auto mods_subpath = cfg.knowledge->get(cfg.game_id, "mods_subpath", "");
+
+    int reconciled = 0;
+    for (const auto& m : mods) {
+        if (m.foreign)
+            continue;  // unmanaged (DLC etc.) — never written as +/- toggle
+        auto folder = mods_dir / m.mod_id;
+        if (!fs::exists(folder) && !mods_subpath.empty()) {
+            auto fallback = cfg.game_dir / mods_subpath / m.mod_id;
+            if (fs::exists(fallback))
+                folder = fallback;
+        }
+        if (m.enabled) {
+            (void)engine::ModScanner::enable_mod(*cfg.knowledge, cfg.game_id, folder);
+        } else {
+            (void)engine::ModScanner::disable_mod(*cfg.knowledge, cfg.game_id, folder);
+        }
+        ++reconciled;
+    }
+    engine::Logger::instance().debug(
+        "Delayed disable: reconciled " + std::to_string(reconciled) +
+        " sentinel(s) from profile '" + profile_dir.filename().string() +
+        "' before launch");
+}
+
+}  // namespace
 
 int launch_game_headless(const HeadlessConfig& cfg) {
     engine::Logger::instance().enable_console();
