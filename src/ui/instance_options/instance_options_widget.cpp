@@ -129,6 +129,11 @@ InstanceOptionsWidget::~InstanceOptionsWidget() {
   // than aborting a deploy mid-way.
 }
 
+void InstanceOptionsWidget::set_flush_deferred_disable_queue(
+    std::function<void()> flush) {
+  flush_deferred_disable_queue_ = std::move(flush);
+}
+
 std::string InstanceOptionsWidget::selected_runner() const {
   if (!runner_combo_) return {};
   // Item 0 is "Automatic"; everything else is a discovered runner name.
@@ -447,6 +452,16 @@ void InstanceOptionsWidget::run_deploy_task(DeployTaskKind kind) {
   thread->setObjectName(QStringLiteral("gmm-deploy-management"));
   deploy_thread_ = thread;
   connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+
+  // Delayed disable (plugin-declared capability): apply any deferred
+  // disable/enable operations to disk NOW, synchronously on the UI thread,
+  // before the deploy worker starts. The deploy reads on-disk sentinels, so it
+  // must see the reconciled state; the flush completing before the worker
+  // starts means there is no concurrency issue (same contract as the launch
+  // path in launch_with_executable).
+  if (flush_deferred_disable_queue_)
+    flush_deferred_disable_queue_();
+
   thread->start();
 }
 
