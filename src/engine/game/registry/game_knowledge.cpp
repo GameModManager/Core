@@ -65,4 +65,9 @@ std::string deploy_strategy_for(const GameKnowledge& knowledge,
     return kDefaultDeployStrategy;
 }
 
+bool delayed_disable_for(const GameKnowledge& knowledge,
+                         const std::string& game_id) {
+    return knowledge.get(game_id, "delayed_disable", "") == "true";
+}
+
 }  // namespace engine

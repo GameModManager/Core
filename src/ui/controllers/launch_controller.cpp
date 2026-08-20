@@ -53,6 +53,7 @@
 #include "engine/core/util/fs_utils.h"
 #include "engine/deploy/launch/proton_tools.h"
 #include "engine/deploy/strategy.h"
+#include "engine/game/detect/mod_scanner.h"
 #include "engine/game/plugins/plugin_database.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/mod/meta/mod_meta.h"
@@ -539,6 +540,13 @@ void LaunchController::launch_with_executable(
   w_->mod_list_->sync_priorities();
   trace.end_stage("launch", true, "Disk order matches UI");
 
+  // Delayed disable (plugin-declared capability): apply any deferred
+  // disable/enable operations to disk NOW, synchronously on the UI thread,
+  // before the DeployWorker starts. The deploy reads on-disk sentinels, so it
+  // must see the reconciled state; the flush completing before the worker
+  // starts means there is no concurrency issue.
+  flush_deferred_disable_queue();
+
   // Read steam_appid from game plugin hooks - 0 if not registered
   uint32_t steam_appid = 0;
   if (w_->knowledge_) {
@@ -592,6 +600,44 @@ void LaunchController::launch_with_executable(
   w_->output_session_scratch_.clear();
   w_->launch_deploy_thread_->start(std::move(req));
   // Returns immediately; the launch continues in on_launch_params_prepared.
+}
+
+void LaunchController::flush_deferred_disable_queue() {
+  if (w_->deferred_disable_queue_.empty())
+    return;
+  if (!w_->knowledge_ || w_->current_game_id_.empty() ||
+      w_->current_game_dir_.empty())
+    return;
+
+  auto mods_subpath =
+      w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "");
+  if (mods_subpath.empty()) {
+    engine::Logger::instance().warn(
+        "Cannot flush deferred disable queue: mods_subpath is empty");
+    w_->deferred_disable_queue_.clear();
+    return;
+  }
+
+  engine::Logger::instance().debug(
+      "Flushing " + std::to_string(w_->deferred_disable_queue_.size()) +
+      " deferred disable/enable operations before launch");
+
+  // Apply the queued toggles (latest state per mod wins - already deduplicated
+  // by sync_mod_enable_state / switch_profile). The deploy worker starts only
+  // after this returns, so it reads the reconciled on-disk sentinels.
+  for (const auto &op : w_->deferred_disable_queue_) {
+    auto mod_folder = w_->resolve_mod_folder(op.mod_id, mods_subpath);
+    if (op.enabled) {
+      (void)engine::ModScanner::enable_mod(*w_->knowledge_,
+                                           w_->current_game_id_, mod_folder);
+    } else {
+      (void)engine::ModScanner::disable_mod(*w_->knowledge_,
+                                            w_->current_game_id_, mod_folder);
+    }
+  }
+
+  w_->deferred_disable_queue_.clear();
+  engine::Logger::instance().debug("Deferred disable queue flushed");
 }
 
 void LaunchController::on_deploy_progress(int files_done, int files_total) {
