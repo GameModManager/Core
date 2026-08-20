@@ -303,7 +303,13 @@ void SettingsController::set_game_info(
       return ui::ask_install_name(suggested_name, archive_filename, w_);
     };
 
-    // Set up deploy strategy
+    // Set up deploy strategy. The effective strategy (per-instance
+    // instance.toml override, else the game plugin's knowledge default) is
+    // the single source of truth for the launch path and the Deploy
+    // Management selector; report it here so the startup log matches the
+    // configured strategy instead of the host's overlay capability.
+    const std::string deploy_strategy_name = engine::effective_deploy_strategy(
+        w_->current_instance_root_, *w_->knowledge_, w_->current_game_id_);
     ctx.deploy_prefix =
         w_->knowledge_->get(w_->current_game_id_, "deploy_prefix", "Data");
     auto inc_id = w_->knowledge_->get(w_->current_game_id_,
@@ -313,8 +319,10 @@ void SettingsController::set_game_info(
         w_->knowledge_->get(w_->current_game_id_, "case_sensitive", "true") !=
         "false";
     std::unique_ptr<engine::DeploymentStrategy> deploy_strategy;
+    std::string deploy_strategy_label;
 #ifdef GMM_PLATFORM_LINUX
-    if (engine::OverlayFsLauncher::is_supported(w_->overwrite_dir_path())) {
+    if (deploy_strategy_name == engine::kDeployStrategyOverlayFs &&
+        engine::OverlayFsLauncher::is_supported(w_->overwrite_dir_path())) {
       // OverlayFS: deploy symlinks into staging dir (not game_dir)
       auto staging = w_->current_instance_root_ / ".gmm_staging";
       ctx.staging_dir = staging;
@@ -322,15 +330,17 @@ void SettingsController::set_game_info(
           staging, case_sensitive);
       w_->staging_dir_ = staging;
       deploy_strategy = std::move(ovl_strat);
-      engine::Logger::instance().info("Deploy strategy: OverlayFS");
+      deploy_strategy_label = "OverlayFS";
     } else
 #endif
     {
       deploy_strategy =
           std::make_unique<engine::SymlinkStrategy>(case_sensitive);
-      engine::Logger::instance().info(
-          "Deploy strategy: Symlink (direct to game_dir)");
+      deploy_strategy_label =
+          (deploy_strategy_name == engine::kDeployStrategyDirect) ? "Direct"
+                                                                  : "Symlink";
     }
+    engine::Logger::instance().info("Deploy strategy: " + deploy_strategy_label);
     ctx.deploy_strategy = deploy_strategy.get();
 
     // Build the install pipeline from the 3-stage template.  A plugin
