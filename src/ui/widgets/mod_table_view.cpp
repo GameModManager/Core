@@ -11,6 +11,7 @@
 #include <QHeaderView>
 #include <QHelpEvent>
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QStyle>
 #include <QStyleOptionSlider>
@@ -290,6 +291,21 @@ void ModTableView::setHeader(QHeaderView* header) {
                     logical == ModListModel::Flags)
                     scheduleDelayedItemsLayout();
             });
+}
+
+void ModTableView::mouseDoubleClickEvent(QMouseEvent* event) {
+    // MO2 parity (modlistview.cpp): Ctrl+Double-Click opens the OS file
+    // explorer at the mod's folder. The controller resolves the folder and
+    // opens it; the event is consumed so the plain double-click behavior
+    // (Mod Info popup) does not also fire.
+    if (event->modifiers() & Qt::ControlModifier) {
+        const QModelIndex index = indexAt(event->pos());
+        if (index.isValid()) {
+            emit ctrl_double_clicked(index);
+            return;
+        }
+    }
+    QTreeView::mouseDoubleClickEvent(event);
 }
 
 void ModTableView::dragEnterEvent(QDragEnterEvent* event) {
