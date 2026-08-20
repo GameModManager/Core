@@ -28,6 +28,7 @@
 #include <regex>
 #include <set>
 #include <sstream>
+#include <nlohmann/json.hpp>
 
 #include "engine/core/events/event_bus.h"
 #include "engine/core/instance/instance.h"
@@ -1598,6 +1599,48 @@ void ModListController::load_meta_for_mods() {
     }
     if (category_ids.isEmpty() && primary > 0)
       category_ids.append(primary);
+
+    // Workshop tag → category fallback: when [General] category is empty,
+    // check [SteamWorkshop] tags and map them via the workshop_tag_categories
+    // hook. This auto-assigns categories to mods downloaded from Steam Workshop
+    // based on their declared tags.
+    if (category_ids.isEmpty()) {
+      auto tags_csv = QString::fromStdString(
+          meta.get("SteamWorkshop", "tags"));
+      if (!tags_csv.isEmpty()) {
+        auto tag_mapping = w_->knowledge_->get(
+            w_->current_game_id_, "workshop_tag_categories", "");
+        if (!tag_mapping.empty()) {
+          auto tags = tags_csv.split(QLatin1Char(','), Qt::SkipEmptyParts);
+          try {
+            auto mapping = nlohmann::json::parse(tag_mapping);
+            if (mapping.is_object()) {
+              for (const auto &tag : tags) {
+                auto lower_tag = tag.toLower().toStdString();
+                auto it = mapping.find(lower_tag);
+                if (it != mapping.end() && it->is_number_integer()) {
+                  int cat_id = it->get<int>();
+                  if (!category_ids.contains(cat_id))
+                    category_ids.append(cat_id);
+                }
+              }
+              // Persist mapped categories to meta.ini so future scans
+              // don't need to re-map.
+              if (!category_ids.isEmpty()) {
+                QStringList id_strs;
+                for (int cid : category_ids) id_strs << QString::number(cid);
+                meta.set("General", "category",
+                         id_strs.join(QLatin1Char(',')).toStdString());
+                meta.save(meta_dir, folder_name);
+                if (primary <= 0 && !category_ids.isEmpty())
+                  primary = category_ids.first();
+              }
+            }
+          } catch (...) {}
+        }
+      }
+    }
+
     if (!category_ids.isEmpty())
       w_->mod_model_->set_category_ids(mod.id, category_ids);
 
