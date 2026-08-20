@@ -15,6 +15,7 @@ struct WorkshopItem {
     std::string title;
     std::string preview_url;
     std::string description;
+    std::vector<std::string> tags;
     double created_at = 0;
     double updated_at = 0;
     std::string status;  // "ok", "dead"

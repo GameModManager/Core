@@ -35,6 +35,9 @@ struct ScannedMod {
     // MO2's validated marker ([General] validated=true in the folder's
     // meta.ini, the file markValidated writes). Suppresses the flags above.
     bool validated = false;
+    // Category IDs auto-assigned from Steam Workshop tags via the
+    // workshop_tag_categories hook. Empty when no mapping is available.
+    std::vector<int> category_ids;
 };
 
 // Generic mod scanner - reads ALL game-specific config from GameKnowledge.
