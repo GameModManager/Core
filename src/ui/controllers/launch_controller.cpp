@@ -3,6 +3,7 @@
 #include "ui/controllers/queue_controller.h"
 
 #include <QApplication>
+#include "ui/instance_options/instance_options_widget.h"
 #include <QCheckBox>
 #include <QClipboard>
 #include <QFile>
