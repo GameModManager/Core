@@ -1517,8 +1517,22 @@ void ModListController::load_meta_for_mods() {
 
     if (!meta.has_section("General") && !meta.has_section("GameModManager")) {
       // No meta file exists - create a default one (already at
-      // CURRENT_META_VERSION)
-      meta = engine::ModMeta::from_default(folder_name, "manual", "");
+      // CURRENT_META_VERSION). Detect Steam Workshop mods from the folder
+      // name pattern so the source column shows Steam, not "manual".
+      std::string source_type = "manual";
+      std::string source_id;
+      if (!workshop_pattern.empty()) {
+        try {
+          std::regex pattern(workshop_pattern);
+          std::smatch m;
+          if (std::regex_search(folder_name, m, pattern) && m.size() > 1) {
+            source_type = "steam";
+            source_id = m[1].str();
+          }
+        } catch (...) {
+        }
+      }
+      meta = engine::ModMeta::from_default(folder_name, source_type, source_id);
       meta.save(meta_dir, folder_name);
 
     } else {
@@ -1536,6 +1550,11 @@ void ModListController::load_meta_for_mods() {
             if (std::regex_search(folder_name, m, pattern) && m.size() > 1) {
               if (meta.get("SteamWorkshop", "workshop_id").empty()) {
                 meta.set("SteamWorkshop", "workshop_id", m[1].str());
+              }
+              // Register Steam source so the source column shows Steam
+              if (meta.source_type().empty() || meta.source_type() == "manual") {
+                meta.set("GameModManager", "source_type", "steam");
+                meta.set("GameModManager", "source_id", m[1].str());
               }
             }
           } catch (...) {
