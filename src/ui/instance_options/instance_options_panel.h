@@ -46,6 +46,10 @@ public:
     // Empty = automatic (Steam per-game override, then latest).
     [[nodiscard]] std::string selected_runner() const;
 
+    // The embedded content widget, so the host can wire host-owned
+    // capabilities (e.g. the deferred disable queue flush) onto it.
+    [[nodiscard]] InstanceOptionsWidget* content() const { return content_; }
+
 private:
     InstanceOptionsWidget* content_ = nullptr;
 };
