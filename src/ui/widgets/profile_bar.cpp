@@ -34,6 +34,9 @@ ProfileBar::ProfileBar(QWidget* parent)
     profile_combo_->setMinimumWidth(120);
     layout->addWidget(profile_combo_, 1);
 
+    // One separator between the profile selector and the button group; the
+    // three buttons themselves rely on the uniform layout spacing (4 px) so
+    // they stay evenly spaced.
     layout->addSpacing(8);
 
     // Open folders button - hosts all the important instance paths
@@ -104,8 +107,6 @@ ProfileBar::ProfileBar(QWidget* parent)
             this, &ProfileBar::export_modlist_clicked);
     connect(import_action, &QAction::triggered,
             this, &ProfileBar::import_modlist_clicked);
-
-    layout->addSpacing(8);
 
     // Create dropdown (icon only, no text)
     create_btn_ = new QToolButton(this);
