@@ -15,6 +15,7 @@
 
 class QAbstractItemModel;
 class QAbstractItemView;
+class QMouseEvent;
 
 namespace ui {
 
@@ -167,11 +168,16 @@ signals:
     // `mod_row` (0-based into ModListModel). The view only reports drops it
     // recognized as living under the Overwrite directory.
     void overwrite_files_dropped(const QStringList& paths, int mod_row);
+    // Ctrl+Double-Click on a mod row (MO2 parity): the controller opens the
+    // OS file explorer at the mod's folder. Emitted only while the Ctrl
+    // modifier is held; the plain double-click (Mod Info popup) is untouched.
+    void ctrl_double_clicked(const QModelIndex& index);
 
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dragMoveEvent(QDragMoveEvent* event) override;
     void dropEvent(QDropEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
 
 private:
     bool is_under_overwrite(const QString& path) const;
