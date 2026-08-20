@@ -108,6 +108,18 @@ struct PendingToggle {
   bool enabled = false;
 };
 
+// One deferred disable/enable operation for a delayed_disable game (e.g.
+// Isaac's Direct deploy mode). The engine skips the immediate on-disk sentinel
+// write on toggle and records the desired state here instead; the queue is
+// flushed synchronously in launch_with_executable before the deploy worker
+// starts, so the deploy (which reads on-disk sentinels) sees the reconciled
+// state. Latest-wins per mod_id; a profile switch queues the FULL desired
+// profile state (idempotent, self-healing).
+struct DeferredDisable {
+  std::string mod_id;
+  bool enabled = false;
+};
+
 class MainWindow : public QMainWindow {
   Q_OBJECT
 public:
@@ -424,6 +436,11 @@ private:
   // Pending changes queue (deferred until game exits)
   std::vector<PendingToggle> pending_changes_;
   QLabel *pending_queue_label_ = nullptr;
+
+  // Deferred disable/enable queue for delayed_disable games (see
+  // DeferredDisable above). Distinct from pending_changes_: this queue is
+  // flushed at the next Run (launch_with_executable), never at game exit.
+  std::vector<DeferredDisable> deferred_disable_queue_;
 
   // Game-lock overlay
   QWidget *game_lock_overlay_ = nullptr;

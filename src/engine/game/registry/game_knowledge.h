@@ -48,6 +48,16 @@ inline constexpr const char* kDefaultDisableMechanism = ".gmmdisabled";
 [[nodiscard]] std::string disable_mechanism_for(const GameKnowledge& knowledge,
                                                 const std::string& game_id);
 
+// True when the game plugin declares delayed_disable=true: the engine must
+// defer disable-sentinel disk writes until the Run/deploy phase. Games that
+// deploy directly into the game dir (e.g. Isaac's Direct mode) declare it so
+// toggling a mod never touches the game dir while the game may be reading it;
+// the sentinel is reconciled from the profile at launch instead. All other
+// games (Skyrim, ...) leave it undeclared -> false -> immediate disk writes
+// (current behavior).
+[[nodiscard]] bool delayed_disable_for(const GameKnowledge& knowledge,
+                                       const std::string& game_id);
+
 // Deploy strategy names for the per-game "deploy_strategy" knowledge key.
 // The default is Symlink (direct symlinks into game_dir); a game opts out of
 // that by setting the key to kDeployStrategyOverlayFs, which deploys into a
