@@ -3,20 +3,21 @@
 #include <QDialog>
 
 #include <filesystem>
-#include <string>
 
 namespace engine {
 class PluginLoader;
 class StyleManager;
 }
 
-class QTabWidget;
 class QWidget;
 
-// Tabbed settings panel. Mirrors MO2's settings dialog layout (General,
-// Theme, Mod List, Paths, Sources, Plugins, Workarounds, Diagnostics).
-// Controls write their setting immediately on change; restart-required
-// items show an inline hint.
+namespace ui {
+class SettingsContentWidget;
+}
+
+// Thin QDialog wrapper around SettingsContentWidget.  Used when Full UI mode
+// is OFF (standalone window); Full UI tab mode embeds the content widget
+// directly in MainTabContainer.
 class SettingsDialog : public QDialog {
     Q_OBJECT
 public:
@@ -27,17 +28,5 @@ public:
                    QWidget* parent = nullptr);
 
 private:
-    QWidget* build_general_tab();
-    QWidget* build_theme_tab();
-    QWidget* build_modlist_tab();
-    QWidget* build_paths_tab();
-    QWidget* build_sources_tab();
-    QWidget* build_plugins_tab();
-    QWidget* build_workarounds_tab();
-    QWidget* build_diagnostics_tab();
-
-    engine::StyleManager* style_manager_;
-    QString native_style_name_;
-    std::filesystem::path instance_root_;
-    engine::PluginLoader* plugin_loader_ = nullptr;
+    ui::SettingsContentWidget* content_ = nullptr;
 };
