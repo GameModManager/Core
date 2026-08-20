@@ -281,16 +281,6 @@ ExecEntryContentWidget::ExecEntryContentWidget(
   }
   form->addRow(tr("Output to mod:"), output_mod_combo_);
 
-  env_edit_ = new QPlainTextEdit(right_panel);
-  env_edit_->setPlaceholderText(
-      tr("NAME=VALUE per line, e.g.\nWINEDEBUG=+file"));
-  env_edit_->setFixedHeight(70);
-  env_edit_->setToolTip(
-      tr("Environment variables set for the launched process, one NAME=VALUE\n"
-         "per line. Leave empty to inherit the parent environment. Useful for\n"
-         "debugging (e.g. WINEDEBUG=+file to trace wine file access)."));
-  form->addRow(tr("Environment:"), env_edit_);
-
   // Icon row: checkbox + preview + button
   auto *icon_row = new QHBoxLayout;
   use_app_icon_check_ =
@@ -306,6 +296,20 @@ ExecEntryContentWidget::ExecEntryContentWidget(
   icon_row->addWidget(change_icon_btn_);
   icon_row->addStretch();
   form->addRow("", icon_row);
+
+  // Environment: the only row that expands vertically. It is added last so it
+  // absorbs the dialog's surplus vertical space below the other fields; when
+  // no row can expand, QFormLayout spreads the surplus evenly across every
+  // row gap, which makes the fields drift apart on resize.
+  env_edit_ = new QPlainTextEdit(right_panel);
+  env_edit_->setPlaceholderText(
+      tr("NAME=VALUE per line, e.g.\nWINEDEBUG=+file"));
+  env_edit_->setMinimumHeight(70);
+  env_edit_->setToolTip(
+      tr("Environment variables set for the launched process, one NAME=VALUE\n"
+         "per line. Leave empty to inherit the parent environment. Useful for\n"
+         "debugging (e.g. WINEDEBUG=+file to trace wine file access)."));
+  form->addRow(tr("Environment:"), env_edit_);
 
   right_panel->setMinimumWidth(300);
   splitter->addWidget(right_panel);
