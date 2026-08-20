@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <nlohmann/json.hpp>
 #include <sqlite3.h>
+#include <sstream>
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
@@ -35,10 +36,16 @@ void WorkshopClient::ensure_schema() {
         "  title TEXT DEFAULT '',"
         "  preview_url TEXT DEFAULT '',"
         "  description TEXT DEFAULT '',"
+        "  tags TEXT DEFAULT '',"
         "  created_at REAL,"
         "  updated_at REAL,"
         "  status TEXT DEFAULT ''"
         ")",
+        nullptr, nullptr, nullptr);
+
+    // Migration: add tags column if missing (pre-tags databases)
+    sqlite3_exec(db,
+        "ALTER TABLE workshop_items ADD COLUMN tags TEXT DEFAULT ''",
         nullptr, nullptr, nullptr);
 
     sqlite3_close(db);
@@ -98,7 +105,7 @@ std::optional<WorkshopItem> WorkshopClient::get_cached(int64_t workshop_id) cons
 
     sqlite3_stmt* stmt = nullptr;
     const char* sql = "SELECT id, title, preview_url, description, "
-                      "created_at, updated_at, status "
+                      "tags, created_at, updated_at, status "
                       "FROM workshop_items WHERE id = ?";
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         sqlite3_close(db);
@@ -116,9 +123,18 @@ std::optional<WorkshopItem> WorkshopClient::get_cached(int64_t workshop_id) cons
         item.title = text(stmt, 1);
         item.preview_url = text(stmt, 2);
         item.description = text(stmt, 3);
-        item.created_at = sqlite3_column_double(stmt, 4);
-        item.updated_at = sqlite3_column_double(stmt, 5);
-        item.status = text(stmt, 6);
+        // Tags stored as comma-separated string
+        auto tags_str = text(stmt, 4);
+        if (!tags_str.empty()) {
+            std::istringstream ss(tags_str);
+            std::string tag;
+            while (std::getline(ss, tag, ',')) {
+                if (!tag.empty()) item.tags.push_back(tag);
+            }
+        }
+        item.created_at = sqlite3_column_double(stmt, 5);
+        item.updated_at = sqlite3_column_double(stmt, 6);
+        item.status = text(stmt, 7);
         sqlite3_finalize(stmt);
         sqlite3_close(db);
 
@@ -180,6 +196,15 @@ std::optional<WorkshopItem> WorkshopClient::fetch_from_steam(int64_t workshop_id
         wi.title = item.value("title", "");
         wi.preview_url = item.value("preview_url", "");
         wi.description = item.value("short_description", "");
+        // Parse tags from Steam API response — "tags" is an array of
+        // objects with a "tag" string field (e.g. [{"tag":"Lua"}, ...]).
+        if (item.contains("tags") && item["tags"].is_array()) {
+            for (const auto& t : item["tags"]) {
+                if (t.contains("tag") && t["tag"].is_string()) {
+                    wi.tags.push_back(t["tag"].get<std::string>());
+                }
+            }
+        }
         wi.created_at = item.value("time_created", 0.0);
         wi.updated_at = item.value("time_updated", 0.0);
         wi.status = "ok";
@@ -193,18 +218,27 @@ void WorkshopClient::save_to_cache(const WorkshopItem& item) {
     sqlite3* db = nullptr;
     if (sqlite3_open(db_path_.c_str(), &db) != SQLITE_OK) return;
 
+    // Join tags into comma-separated string
+    std::string tags_csv;
+    for (size_t i = 0; i < item.tags.size(); ++i) {
+        if (i > 0) tags_csv += ',';
+        tags_csv += item.tags[i];
+    }
+
     sqlite3_stmt* stmt = nullptr;
     const char* sql = "INSERT OR REPLACE INTO workshop_items "
-                      "(id, title, preview_url, description, created_at, updated_at, status) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?)";
+                      "(id, title, preview_url, description, tags, "
+                      "created_at, updated_at, status) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
         sqlite3_bind_int64(stmt, 1, item.workshop_id);
         sqlite3_bind_text(stmt, 2, item.title.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_text(stmt, 3, item.preview_url.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_text(stmt, 4, item.description.c_str(), -1, SQLITE_STATIC);
-        sqlite3_bind_double(stmt, 5, item.created_at);
-        sqlite3_bind_double(stmt, 6, item.updated_at);
-        sqlite3_bind_text(stmt, 7, item.status.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 5, tags_csv.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_double(stmt, 6, item.created_at);
+        sqlite3_bind_double(stmt, 7, item.updated_at);
+        sqlite3_bind_text(stmt, 8, item.status.c_str(), -1, SQLITE_STATIC);
         sqlite3_step(stmt);
         sqlite3_finalize(stmt);
     }

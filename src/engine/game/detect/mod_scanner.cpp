@@ -11,6 +11,7 @@
 #include <optional>
 #include <sstream>
 #include <regex>
+#include <nlohmann/json.hpp>
 
 #if defined(__linux__)
 #include <fcntl.h>
@@ -115,6 +116,41 @@ static void folder_timestamps(const std::filesystem::path& dir, int64_t& install
 
 // --- ModScanner ---
 
+// Map Steam Workshop tags to internal category IDs using the
+// workshop_tag_categories hook (JSON: {"lowercase_tag": category_id}).
+// Tags are compared case-insensitively. Returns empty when no mapping
+// is configured or no tags match.
+static std::vector<int> map_workshop_tags_to_categories(
+    const std::vector<std::string>& tags,
+    const std::string& mapping_json) {
+    std::vector<int> result;
+    if (mapping_json.empty() || tags.empty()) return result;
+
+    try {
+        auto mapping = nlohmann::json::parse(mapping_json);
+        if (!mapping.is_object()) return result;
+
+        for (const auto& tag : tags) {
+            // Lowercase the tag for case-insensitive matching
+            std::string lower_tag = tag;
+            std::transform(lower_tag.begin(), lower_tag.end(),
+                          lower_tag.begin(),
+                          [](unsigned char c) { return std::tolower(c); });
+
+            auto it = mapping.find(lower_tag);
+            if (it != mapping.end() && it->is_number_integer()) {
+                int cat_id = it->get<int>();
+                // Deduplicate
+                if (std::find(result.begin(), result.end(), cat_id) == result.end())
+                    result.push_back(cat_id);
+            }
+        }
+    } catch (...) {
+        // Malformed JSON — no categories assigned
+    }
+    return result;
+}
+
 // Per-game settings read from GameKnowledge hooks, shared by the directory scan
 // and the single-folder scan so both classify a mod identically.
 struct ScanConfig {
@@ -131,6 +167,9 @@ struct ScanConfig {
     // Both empty → no checker registered → no folder can look invalid.
     std::vector<std::string> valid_dirs;
     std::vector<std::string> valid_exts;
+    // Steam Workshop tag → category mapping (JSON: {"lowercase_tag": cat_id}).
+    // Empty when the game doesn't register the workshop_tag_categories hook.
+    std::string workshop_tag_categories;
 };
 
 // MO2's GamebryoModDataChecker::dataLooksValid analogue: a folder has valid
@@ -187,6 +226,8 @@ static ScanConfig make_scan_config(const GameKnowledge& knowledge,
     cfg.valid_exts = split_csv(knowledge.get(game_id, "mod_valid_exts", ""));
 
     cfg.ignored = split_csv(ignored_csv);
+    // Steam Workshop tag → category mapping (optional per-game hook)
+    cfg.workshop_tag_categories = knowledge.get(game_id, "workshop_tag_categories", "");
     // Always ignore system directories during directory scanning
     cfg.ignored.emplace_back("overwrite");
     if (!cfg.metadata_file.empty() && should_ignore(cfg.metadata_file, cfg.ignored) == false) {
@@ -420,6 +461,26 @@ static std::optional<ScannedMod> scan_entry(
     if (!cfg.disable_file.empty()) {
         auto disable_path = entry_path / cfg.disable_file;
         mod.enabled = !std::filesystem::exists(disable_path);
+    }
+
+    // Map Steam Workshop tags to category IDs when the game provides
+    // a workshop_tag_categories hook. Tags are stored in meta.ini by the
+    // SteamWorkshopProvider during download; the mapping is a JSON object
+    // of {lowercase_tag: category_id} registered via the plugin hook.
+    if (!cfg.workshop_tag_categories.empty()) {
+        auto meta_path = entry_path / "meta.ini";
+        auto meta_content = read_file_text(meta_path);
+        if (!meta_content.empty()) {
+            engine::ModMeta meta;
+            if (meta.parse(meta_content)) {
+                auto tags_csv = meta.get("SteamWorkshop", "tags");
+                if (!tags_csv.empty()) {
+                    auto tags = split_csv(tags_csv);
+                    mod.category_ids = map_workshop_tags_to_categories(
+                        tags, cfg.workshop_tag_categories);
+                }
+            }
+        }
     }
 
     return mod;

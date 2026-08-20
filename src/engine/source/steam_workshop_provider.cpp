@@ -5,6 +5,7 @@
 #include "engine/core/log/logger.h"
 
 #include <cstdio>
+#include <sstream>
 
 namespace engine {
 
@@ -66,6 +67,15 @@ bool SteamWorkshopProvider::fetch(const Mod& mod, PipelineContext& ctx,
     std::snprintf(buf, sizeof(buf), "%.0f", item->updated_at);
     meta.set("SteamWorkshop", "updated_at", buf);
     meta.set("SteamWorkshop", "status", item->status);
+    // Store tags as comma-separated list for category auto-assignment
+    if (!item->tags.empty()) {
+        std::string tags_csv;
+        for (size_t i = 0; i < item->tags.size(); ++i) {
+            if (i > 0) tags_csv += ',';
+            tags_csv += item->tags[i];
+        }
+        meta.set("SteamWorkshop", "tags", tags_csv);
+    }
     meta.set("GameModManager", "source_type", "steam");
     meta.set("GameModManager", "source_id", std::to_string(workshop_id));
 
