@@ -159,15 +159,6 @@ void AppMenuBar::build_tools_menu() {
     sort_action_ = tools_menu_->addAction(tr("Sort Mods"));
     sort_action_->setVisible(false);
     connect(sort_action_, &QAction::triggered, this, &AppMenuBar::sort_mods_requested);
-
-    auto* open_inst = tools_menu_->addAction(tr("Open Instance Folder"));
-    connect(open_inst, &QAction::triggered, this, &AppMenuBar::open_instance_folder_requested);
-
-    auto* open_mods = tools_menu_->addAction(tr("Open Mods Folder"));
-    connect(open_mods, &QAction::triggered, this, &AppMenuBar::open_mods_folder_requested);
-
-    auto* open_dl = tools_menu_->addAction(tr("Open Downloads Folder"));
-    connect(open_dl, &QAction::triggered, this, &AppMenuBar::open_downloads_folder_requested);
 }
 
 void AppMenuBar::update_tools_for_game(
