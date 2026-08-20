@@ -461,6 +461,40 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
             on_data_mod_info(entry.id, tab);
           });
 
+  // MO2 parity: Ctrl+Double-Click opens the OS file explorer at the mod's
+  // folder (ModTableView::ctrl_double_clicked). Regular mods open their
+  // folder in the instance mods dir; the Overwrite row opens the Overwrite
+  // dir. Foreign/unmanaged (game-native) rows, separators and MERGED do
+  // nothing.
+  connect(w_->mod_view_, &ModTableView::ctrl_double_clicked, this,
+          [this](const QModelIndex &idx) {
+            if (!idx.isValid())
+              return;
+            int row = idx.row();
+            if (row < 0 || row >= w_->mod_model_->mods().size())
+              return;
+            const auto &entry = w_->mod_model_->mods()[row];
+            if (entry.is_separator || entry.is_merged || entry.is_game_native)
+              return;
+
+            std::filesystem::path folder;
+            if (entry.is_overwrite) {
+              folder = w_->overwrite_dir_path();
+            } else {
+              const auto mods_subpath =
+                  w_->knowledge_
+                      ? w_->knowledge_->get(w_->current_game_id_,
+                                            "mods_subpath", "")
+                      : "";
+              folder = w_->resolve_mod_folder(entry.id.toStdString(),
+                                              mods_subpath);
+            }
+            if (folder.empty())
+              return;
+            QDesktopServices::openUrl(QUrl::fromLocalFile(
+                QString::fromStdString(folder.string())));
+          });
+
   // Drag-and-drop archives onto the mod list to install manually
   connect(w_->mod_view_, &ModTableView::files_dropped, this,
           [this](const QStringList &paths) { import_archives(paths); });
