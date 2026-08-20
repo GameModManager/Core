@@ -9,6 +9,7 @@
 #include <QSplitter>
 
 #include <QActionGroup>
+#include <QApplication>
 #include <QColorDialog>
 #include <QDesktopServices>
 #include <QFile>
@@ -424,6 +425,10 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   // default-action behavior for the Overwrite entry). Mod rows map the
   // clicked column to a Mod Info tab (MO2's modlistview.cpp double-click):
   // Version → Nexus, Flags → Conflicts, anything else → last-used tab.
+  // Shift+Double-Click (MO2 parity) opens the mod's source page in the
+  // default browser instead of the Mod Info dialog; rows without a
+  // resolvable source (Overwrite, separators, game-native, unknown source)
+  // do nothing.
   connect(w_->mod_view_, &QTreeView::doubleClicked, this,
           [this](const QModelIndex &idx) {
             if (!idx.isValid())
@@ -432,6 +437,19 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
             if (row < 0 || row >= w_->mod_model_->mods().size())
               return;
             const auto &entry = w_->mod_model_->mods()[row];
+
+            if (QApplication::keyboardModifiers() & Qt::ShiftModifier) {
+              if (!entry.is_overwrite && !entry.is_separator &&
+                  !entry.is_game_native) {
+                auto src = source_visit_info(entry.source_type,
+                                             entry.source_id,
+                                             entry.source_page_url);
+                if (!src.url.isEmpty())
+                  QDesktopServices::openUrl(QUrl(src.url));
+              }
+              return;
+            }
+
             if (entry.is_overwrite) {
               w_->overwrite_->show_overwrite_info_dialog();
               return;
