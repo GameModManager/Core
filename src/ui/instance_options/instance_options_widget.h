@@ -5,6 +5,7 @@
 #include <QWidget>
 
 #include <filesystem>
+#include <functional>
 #include <string>
 
 class QComboBox;
@@ -71,6 +72,14 @@ public:
   // Empty = automatic (Steam per-game override, then latest).
   [[nodiscard]] std::string selected_runner() const;
 
+  // Installs the host's deferred disable/enable queue flush (delayed_disable
+  // games). The widget itself is mode-agnostic and never touches MainWindow
+  // internals; the host (LaunchController / TabModeController) supplies the
+  // flush so the Force re-deploy / Remove actions apply queued toggles to the
+  // on-disk sentinels BEFORE the deploy worker starts. Without this the deploy
+  // would read stale sentinels and ignore toggles queued since the last Run.
+  void set_flush_deferred_disable_queue(std::function<void()> flush);
+
 signals:
   // Emitted when the user clicks Save. The host decides what saving means:
   // QDialog::accept() in popup mode, persisting the runner to instance.toml +
@@ -118,6 +127,9 @@ private:
   QLabel *deploy_status_ = nullptr;
   QThread *deploy_thread_ = nullptr;
   bool deploy_task_running_ = false;
+  // Host-supplied flush of the deferred disable/enable queue; empty when the
+  // host did not install one (the deploy actions then behave as before).
+  std::function<void()> flush_deferred_disable_queue_;
 };
 
 } // namespace ui

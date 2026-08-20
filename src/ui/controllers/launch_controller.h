@@ -118,6 +118,15 @@ public:
   // Builds the InstanceOptionsParams snapshot for the current instance.
   // `valid` is false when no instance is loaded.
   [[nodiscard]] InstanceOptionsParams instance_options_params() const;
+  // Flushes the deferred disable/enable queue (delayed_disable games) by
+  // writing/removing the on-disk disable sentinel for every queued mod. Runs
+  // synchronously on the UI thread in launch_with_executable BEFORE the
+  // DeployWorker starts, so the deploy (which reads on-disk sentinels) sees
+  // the reconciled state. Also invoked by the Instance Options deploy
+  // management (Force re-deploy / Remove) before its deploy worker starts, so
+  // a queued toggle followed by Force re-deploy is not ignored. Clears the
+  // queue after the flush.
+  void flush_deferred_disable_queue();
 
 private:
   // Migration + materialization for toolbar shortcuts (Issue #34): after the
@@ -126,12 +135,6 @@ private:
   // resolves and stays editable; legacy per-shortcut icons recorded by
   // add_toolbar_shortcut_from_path are folded into the referenced entry.
   void materialize_toolbar_shortcuts();
-  // Flushes the deferred disable/enable queue (delayed_disable games) by
-  // writing/removing the on-disk disable sentinel for every queued mod. Runs
-  // synchronously on the UI thread in launch_with_executable BEFORE the
-  // DeployWorker starts, so the deploy (which reads on-disk sentinels) sees
-  // the reconciled state. Clears the queue after the flush.
-  void flush_deferred_disable_queue();
   // Writes a shell wrapper (under the instance cache) that exports the
   // entry's environment variables and execs the real command with the
   // working directory. Used by add_shortcut_to_desktop for entries with env

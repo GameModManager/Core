@@ -1833,6 +1833,11 @@ void LaunchController::show_instance_options() {
                                 p.game_name, p.game_dir, p.steam_appid,
                                 p.instance_root, p.current_runner,
                                 p.deploy_strategy, p.deploy_config, w_);
+  // The deploy management section must flush the deferred disable queue before
+  // Force re-deploy / Remove, exactly like the launch path does (the deploy
+  // reads on-disk sentinels, so queued toggles must be applied first).
+  dlg.content()->set_flush_deferred_disable_queue(
+      [this]() { flush_deferred_disable_queue(); });
   if (dlg.exec() == QDialog::Accepted) {
     auto runner = dlg.selected_runner();
     engine::Instance write = engine::Instance::from_root(p.instance_root);

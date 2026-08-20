@@ -206,6 +206,11 @@ void TabModeController::route_instance_options() {
       w_->platform_, w_->plugin_loader_, params.game_id, params.game_name,
       params.game_dir, params.steam_appid, params.instance_root,
       params.current_runner, params.deploy_strategy, params.deploy_config, w_);
+  // The deploy management section must flush the deferred disable queue before
+  // Force re-deploy / Remove, exactly like the launch path does (the deploy
+  // reads on-disk sentinels, so queued toggles must be applied first).
+  content->set_flush_deferred_disable_queue(
+      [this]() { w_->launch_->flush_deferred_disable_queue(); });
   connect(content, &InstanceOptionsWidget::save_requested, this,
           [this, key, content]() {
             auto runner = content->selected_runner();
