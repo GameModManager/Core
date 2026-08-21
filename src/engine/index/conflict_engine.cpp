@@ -64,7 +64,7 @@ std::string ConflictEngine::compute_quick_token(const std::filesystem::path& mod
 
     // Stable token: mtime epoch + entry count
     auto epoch = ftime.time_since_epoch().count();
-    return std::to_string(epoch) + "_" + std::to_string(count);
+    return std::to_string(static_cast<long long>(epoch)) + "_" + std::to_string(count);
 }
 
 // ---------------------------------------------------------------------------
