@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 # macOS deployment target — must be set before project()/enable_language() so
 # every compiler invocation and toolchain probe targets the same OS version.
 if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS deployment target")
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS deployment target")
 endif()
 
 # Single source of truth for the app version. Every consumer reads
