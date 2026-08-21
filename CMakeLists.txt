@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 
+# macOS deployment target — must be set before project()/enable_language() so
+# every compiler invocation and toolchain probe targets the same OS version.
+if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS deployment target")
+endif()
+
 # Single source of truth for the app version. Every consumer reads
 # PROJECT_VERSION: the VERSION compile definition (PUBLIC on gmm_engine), the
 # NSIS installer (package_installer passes -DVERSION=${PROJECT_VERSION}), and
@@ -30,6 +36,33 @@ else()
     set(GMM_PLATFORM "linux")
 endif()
 
+# Homebrew pkg-config discovery — must run before any find_package /
+# pkg_check_modules call. Keg-only formulae (libarchive, sqlite3, curl, …)
+# expose their .pc files only under ${HOMEBREW_PREFIX}/opt/<formula>/, so the
+# generic prefix dirs alone are not enough on a stock Homebrew install.
+if(APPLE)
+    execute_process(COMMAND brew --prefix
+        OUTPUT_VARIABLE HOMEBREW_PREFIX
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        RESULT_VARIABLE _HOMEBREW_RESULT)
+    if(_HOMEBREW_RESULT EQUAL 0 AND HOMEBREW_PREFIX)
+        file(GLOB _HOMEBREW_PC_DIRS
+            LIST_DIRECTORIES true
+            "${HOMEBREW_PREFIX}/lib/pkgconfig"
+            "${HOMEBREW_PREFIX}/share/pkgconfig"
+            "${HOMEBREW_PREFIX}/opt/*/lib/pkgconfig"
+            "${HOMEBREW_PREFIX}/opt/*/share/pkgconfig")
+        list(JOIN _HOMEBREW_PC_DIRS ":" _HOMEBREW_PC_PATH)
+        if(_HOMEBREW_PC_PATH)
+            set(ENV{PKG_CONFIG_PATH} "${_HOMEBREW_PC_PATH}:$ENV{PKG_CONFIG_PATH}")
+        endif()
+    endif()
+    unset(_HOMEBREW_RESULT)
+    unset(_HOMEBREW_PC_DIRS)
+    unset(_HOMEBREW_PC_PATH)
+endif()
+
 # Qt6 — required components plus optional modules
 find_package(Qt6 REQUIRED COMPONENTS Widgets Network Test LinguistTools)
 
@@ -41,6 +74,17 @@ find_package(Qt6 COMPONENTS Multimedia MultimediaWidgets QUIET)
 # QtKeychain OS keyring (Secret Service / KWallet / macOS Keychain / Windows
 # Credential Locker) — pulled on every platform that ships it.
 find_package(Qt6Keychain QUIET)
+
+# macOS Keychain backing frameworks — QtKeychain talks to Security (via
+# CoreFoundation); link them explicitly so keyring code resolves regardless of
+# how the Qt6Keychain package was built. Applies to targets defined below.
+if(APPLE)
+    find_library(SECURITY_FRAMEWORK Security)
+    find_library(COREFOUNDATION_FRAMEWORK CoreFoundation)
+    if(SECURITY_FRAMEWORK AND COREFOUNDATION_FRAMEWORK)
+        link_libraries(${SECURITY_FRAMEWORK} ${COREFOUNDATION_FRAMEWORK})
+    endif()
+endif()
 
 # KSyntaxHighlighting (KDE) — OPTIONAL syntax highlighting for the Mod Info
 # text/config editors. There is no KF6 for Windows or macOS, so when absent
@@ -134,7 +178,11 @@ else()
     pkg_check_modules(TOMLPLUSPLUS REQUIRED IMPORTED_TARGET tomlplusplus)
     pkg_check_modules(ZLIB REQUIRED IMPORTED_TARGET zlib)
     pkg_check_modules(LZ4 REQUIRED IMPORTED_TARGET liblz4)
-    pkg_check_modules(FUSE3 IMPORTED_TARGET fuse3)
+    # fuse3 is Linux-only (macOS ships no pkg-config fuse3); every consumer
+    # guards on FUSE3_FOUND and the VFS deploy strategy degrades without it.
+    if(NOT APPLE)
+        pkg_check_modules(FUSE3 IMPORTED_TARGET fuse3)
+    endif()
 endif()
 
 # Python embedding via pybind11
