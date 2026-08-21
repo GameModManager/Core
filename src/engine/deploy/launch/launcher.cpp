@@ -19,8 +19,11 @@
 #include <memory>
 #include <signal.h>
 #include <thread>
+#include <unistd.h>  // getpid/getuid (was pulled in transitively by sys/prctl.h on Linux)
 #include <unordered_set>
-#include <sys/prctl.h>
+#ifdef GMM_PLATFORM_LINUX
+#include <sys/prctl.h>  // PR_SET_CHILD_SUBREAPER (Linux-only; macOS skips it)
+#endif
 #include <sys/wait.h>
 
 namespace fs = std::filesystem;

@@ -25,6 +25,19 @@ struct CapturedProcess {
 };
 
 #ifndef _WIN32
+// pipe2() equivalent: macOS lacks pipe2(), so create the pipe there and set
+// FD_CLOEXEC on both ends via fcntl(). Linux/other POSIX use pipe2 directly.
+inline int pipe_cloexec(int fds[2]) {
+#ifdef GMM_PLATFORM_MACOS
+    if (pipe(fds) != 0) return -1;
+    fcntl(fds[0], F_SETFD, FD_CLOEXEC);
+    fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+    return 0;
+#else
+    return pipe2(fds, O_CLOEXEC);
+#endif
+}
+
 // Run `args` (argv[0] resolved through PATH via execvp), capturing stdout and
 // stderr fully, and wait for exit. stdin is redirected from /dev/null so a
 // tool that would otherwise prompt interactively (e.g. unrar asking for a
@@ -36,8 +49,8 @@ inline CapturedProcess run_captured(const std::vector<std::string>& args) {
 
     int out_fds[2] = {-1, -1};
     int err_fds[2] = {-1, -1};
-    if (pipe2(out_fds, O_CLOEXEC) != 0) return result;
-    if (pipe2(err_fds, O_CLOEXEC) != 0) {
+    if (pipe_cloexec(out_fds) != 0) return result;
+    if (pipe_cloexec(err_fds) != 0) {
         close(out_fds[0]);
         close(out_fds[1]);
         return result;
