@@ -236,10 +236,18 @@ endif()
 # LootSorter is compiled regardless of this option and reports the missing
 # binary as a clear error.
 if(GMM_WITH_LOOT)
+    # 0.29.6's undefined_group_error.h uses std::string without including
+    # <string>; GCC hides this (transitive include), Apple Clang does not.
+    # cmake/libloot_string_patch.cmake inserts it — idempotent, and portable
+    # where sed -i is not (macOS vs GNU syntax).
     FetchContent_Declare(
         libloot
         GIT_REPOSITORY https://github.com/loot/libloot.git
         GIT_TAG        0.29.6
+        PATCH_COMMAND
+            ${CMAKE_COMMAND}
+            -DSRC_FILE=<SOURCE_DIR>/cpp/include/loot/exception/undefined_group_error.h
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/libloot_string_patch.cmake
     )
     FetchContent_Populate(libloot)
     set(LIBLOOT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
