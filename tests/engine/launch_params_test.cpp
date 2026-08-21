@@ -601,9 +601,11 @@ TEST_CASE("launch params", "[engine]") {
 
     // Overlay-mode checks: graceful skip on filesystems that cannot host an
     // overlay upperdir (kernel < 5.11 or no user xattr).
+#ifdef GMM_PLATFORM_LINUX
     if (!engine::OverlayFsLauncher::is_supported(base / "probe")) {
         SKIP("overlay not supported here");
     }
+#endif
 
     check_deploy(base / "instances" / "Flat", false, "flat deploy");
     check_deploy(base / "instances" / "ByMod", true, "include-mod-id deploy");

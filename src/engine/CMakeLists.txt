@@ -55,7 +55,6 @@ set(ENGINE_SOURCES
     deploy/deploy_ledger.cpp
     deploy/deploy_utils.cpp
     deploy/root_override.cpp
-    deploy/launch/overlay_launcher.cpp
     pipeline/pipeline.cpp
     pipeline/fetch_stage.cpp
     pipeline/extract_stage.cpp
@@ -124,6 +123,14 @@ if(NOT WIN32 AND FUSE3_FOUND)
     list(APPEND ENGINE_SOURCES
         deploy/strategy_vfs.cpp
         deploy/strategy_overlayfs.cpp
+    )
+endif()
+
+# OverlayFS launcher — Linux-only APIs (clone, mount namespaces, setxattr,
+# /proc/*); excluded on macOS/Windows rather than ifdef'd per-error.
+if(NOT APPLE)
+    list(APPEND ENGINE_SOURCES
+        deploy/launch/overlay_launcher.cpp
     )
 endif()
 
