@@ -50,9 +50,7 @@ struct RootView: View {
             case .settings:
                 StubView(title: "Settings", systemImage: "gearshape",
                          note: "Data root, sources, categories, theme and keyring.")
-            case .diagnostics:
-                StubView(title: "Diagnostics", systemImage: "stethoscope",
-                         note: "Logs, traces and notifications.")
+            case .diagnostics: DiagnosticsView()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .gmmRefresh)) { _ in state.refresh() }
@@ -325,9 +323,9 @@ struct ModListPanel: View {
         }
     }
 
-    /// MO2 display order: highest priority first (top row wins conflicts).
+    /// Display order: ascending — priority 1 (lowest) first.
     private var displayedMods: [ModRow] {
-        (state.snapshot?.mods.sorted(by: { $0.order > $1.order })) ?? []
+        (state.snapshot?.mods.sorted(by: { $0.order < $1.order })) ?? []
     }
 
     /// Profile switcher plus lifecycle actions (create/rename/delete).
@@ -490,5 +488,58 @@ struct ShortcutsSheet: View {
             }
         }
         .frame(minWidth: 380, minHeight: 280)
+    }
+}
+
+/// Diagnostics: live engine log stream (replayed history + live tail).
+struct DiagnosticsView: View {
+    @StateObject private var log = LogStore()
+    @State private var autoScroll = true
+    private let levels = ["Debug", "Info", "Warn", "Error"]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Picker("Level", selection: $log.minLevel) {
+                    ForEach(0..<4) { Text(levels[$0]).tag($0) }
+                }
+                .pickerStyle(.segmented).frame(width: 260)
+                Toggle("Auto-scroll", isOn: $autoScroll)
+                Spacer()
+                Button("Clear") { log.clear() }
+            }.padding(8)
+            ScrollViewReader { proxy in
+                List(log.filtered) { entry in
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(entry.levelLabel)
+                            .font(.caption.bold().monospaced())
+                            .foregroundStyle(levelColor(entry.level))
+                            .frame(width: 44, alignment: .leading)
+                        Text(entry.timestamp)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 150, alignment: .leading)
+                        Text(entry.message)
+                            .font(.system(size: 11, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                    }
+                    .id(entry.id)
+                }
+                .onChange(of: log.entries.count) { _, _ in
+                    guard autoScroll, let last = log.entries.last else { return }
+                    proxy.scrollTo(last.id, anchor: .bottom)
+                }
+            }
+        }
+    }
+
+    private func levelColor(_ level: Int) -> Color {
+        switch level {
+        case 3: .red
+        case 2: .orange
+        case 1: .primary
+        default: .secondary
+        }
     }
 }

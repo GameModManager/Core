@@ -2,12 +2,33 @@ import Foundation
 import Combine
 import GmmSwiftBridge
 
-extension Notification.Name { static let gmmRefresh = Notification.Name("gmm.refresh") }
+extension Notification.Name {
+    static let gmmRefresh = Notification.Name("gmm.refresh")
+    static let gmmLog = Notification.Name("gmm.log")
+}
 
 private let refreshCallback: GmmSwiftRefreshFn = { event, payload, _ in
     // The bridge owns copied strings before this callback crosses to MainActor.
     let values = [event.map(String.init(cString:)) ?? "", payload.map(String.init(cString:)) ?? ""]
     Task { @MainActor in NotificationCenter.default.post(name: .gmmRefresh, object: values) }
+}
+
+/// Engine log trampoline: level/timestamp/message cross as plain strings.
+private let logCallback: GmmSwiftLogFn = { level, timestamp, message in
+    let values = [
+        String(level),
+        timestamp.map(String.init(cString:)) ?? "",
+        message.map(String.init(cString:)) ?? "",
+    ]
+    Task { @MainActor in NotificationCenter.default.post(name: .gmmLog, object: values) }
+}
+
+struct LogEntry: Identifiable, Sendable {
+    let id = UUID()
+    let level: Int
+    let timestamp: String
+    let message: String
+    var levelLabel: String { ["Debug", "Info", "Warn", "Error"][max(0, min(3, level))] }
 }
 
 struct ModRow: Identifiable, Sendable {
@@ -48,6 +69,7 @@ actor EngineClient {
             engine = gmm_swift_engine_create(nil, nil)
         }
         gmm_swift_subscribe_refresh(engine, refreshCallback, nil)
+        gmm_swift_subscribe_logs(logCallback)
     }
 
     deinit { gmm_swift_engine_destroy(engine) }
@@ -253,6 +275,38 @@ actor EngineClient {
 
 enum BridgeError: LocalizedError { case message(String); var errorDescription: String? { if case let .message(value) = self { return value }; return nil } }
 
+/// Live engine log feed for the Diagnostics page. Ring-buffers the most
+/// recent entries so a long session cannot grow memory without bound.
+@MainActor
+final class LogStore: ObservableObject {
+    static let capacity = 5000
+    @Published private(set) var entries: [LogEntry] = []
+    @Published var minLevel: Int = 0
+
+    init() {
+        NotificationCenter.default.addObserver(
+            forName: .gmmLog, object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let values = notification.object as? [String], values.count == 3,
+                  let level = Int(values[0]) else { return }
+            self?.append(LogEntry(level: level, timestamp: values[1], message: values[2]))
+        }
+    }
+
+    var filtered: [LogEntry] {
+        minLevel == 0 ? entries : entries.filter { $0.level >= minLevel }
+    }
+
+    func append(_ entry: LogEntry) {
+        entries.append(entry)
+        if entries.count > Self.capacity {
+            entries.removeFirst(entries.count - Self.capacity)
+        }
+    }
+
+    func clear() { entries = [] }
+}
+
 @MainActor
 final class BrowserState: ObservableObject {
     @Published var page: SidebarPage = .main
@@ -422,18 +476,16 @@ final class BrowserState: ObservableObject {
             instanceID: current.instanceID, profileID: current.profileID, folders: folders) }
     }
 
-    /// Moves a mod to a display position (0 = top of the list). The list shows
-    /// highest priority first, so display position inverts to engine priority:
-    /// enginePriority = count - 1 - destination.
+    /// Moves a mod to a display position. The list shows ascending priority,
+    /// so display position == engine priority (0 = top row = "1").
     func moveModTo(id: String, destination: Int) {
         guard !isBusy, let snapshot = snapshot,
               destination >= 0, destination <= snapshot.mods.count,
               let target = snapshot.mods.first(where: { $0.id == id }) else { return }
-        let enginePriority = snapshot.mods.count - 1 - destination
-        guard enginePriority >= 0, enginePriority != target.order else { return }
+        guard destination != target.order else { return }
         runMutation { try await self.client.moveMod(
             instanceID: snapshot.instanceID, profileID: snapshot.profileID,
-            modID: id, newPriority: enginePriority) }
+            modID: id, newPriority: destination) }
     }
 
     /// Moves a mod up (delta -1) or down (delta +1) in the profile order.

@@ -5,6 +5,7 @@
 #include "engine/core/instance/instance_utils.h"
 #include "engine/core/instance/toml_utils.h"
 #include "engine/game/detect/mod_scanner.h"
+#include "engine/core/log/logger.h"
 #include "engine/game/plugins/plugin_database.h"
 #include "engine/deploy/launch/launcher.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
@@ -629,4 +630,20 @@ extern "C" uint64_t gmm_swift_subscribe_refresh(GmmSwiftEngineHandle engine,
 }
 extern "C" void gmm_swift_unsubscribe_refresh(GmmSwiftEngineHandle engine, uint64_t token) {
     if (engine && token) engine::EventBus::instance().unsubscribe(token);
+}
+
+extern "C" void gmm_swift_subscribe_logs(GmmSwiftLogFn callback) {
+    if (!callback) return;
+    static std::atomic_bool subscribed{false};
+    bool expected = false;
+    if (!subscribed.compare_exchange_strong(expected, true)) return;
+    // The trampoline captures nothing: safe for the process lifetime even if
+    // every engine handle is destroyed.
+    engine::Logger::instance().add_callback(
+        [callback](engine::LogLevel level, const std::string& timestamp,
+                   const std::string& message) {
+            const auto copied_ts = timestamp;
+            const auto copied_msg = message;
+            callback(static_cast<int>(level), copied_ts.c_str(), copied_msg.c_str());
+        });
 }

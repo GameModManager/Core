@@ -135,6 +135,14 @@ uint64_t gmm_swift_subscribe_refresh(GmmSwiftEngineHandle engine,
                                      void* user_data);
 void gmm_swift_unsubscribe_refresh(GmmSwiftEngineHandle engine, uint64_t token);
 
+// Live engine log tap. The callback receives (level 0=Debug..3=Error,
+// timestamp, message) on the emitting thread — strings are copied before the
+// call, and the registration is process-global (subscribe once; no
+// unsubscribe needed because the trampoline captures nothing). Replays up to
+// 256 earlier messages on subscribe.
+typedef void (*GmmSwiftLogFn)(int level, const char* timestamp, const char* message);
+void gmm_swift_subscribe_logs(GmmSwiftLogFn callback);
+
 #ifdef __cplusplus
 }
 #endif
