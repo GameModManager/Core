@@ -320,7 +320,23 @@ void test_windows_paths_case_insensitive()
 
 }  // namespace
 
+// Probe for a case-sensitive filesystem. macOS APFS is case-insensitive by
+// default, so tests that assert case-variant dirs/files coexist cannot pass.
+static bool is_case_sensitive_fs() {
+    const fs::path base = fs::temp_directory_path() / "gmm_case_probe";
+    std::error_code ec;
+    fs::create_directories(base / "A", ec);
+    const bool result = !fs::exists(base / "a", ec); // CI fs -> "a" exists
+    fs::remove_all(base, ec);
+    return result;
+}
+
 TEST_CASE("fomod installer", "[engine]") {
+    if (!is_case_sensitive_fs()) {
+        WARN("Skipping: filesystem is case-insensitive (macOS APFS default)");
+        return;
+    }
+
     test_priority_remap_and_folders();
     test_folder_empty_destination();
     test_path_traversal_guard();
