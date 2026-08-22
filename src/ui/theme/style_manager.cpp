@@ -8,6 +8,7 @@
 #include <QString>
 #include <QStyle>
 #include <QStyleFactory>
+#include <QtGlobal>
 
 namespace engine {
 
@@ -267,6 +268,9 @@ bool StyleManager::load_theme(const ThemeManager::ThemeInfo& theme) {
     // declare a base style (e.g. "Fusion") render consistently everywhere.
     // If the style is unavailable on this system, log a warning and continue
     // with whatever style is currently active.
+    // macOS: keep the native style - forcing Fusion overrides it and makes
+    // the app look alien there (Workspace-5go.9.1).
+#ifndef Q_OS_MACOS
     if (!theme.base_style.empty()) {
         if (QStyle* st = QStyleFactory::create(QString::fromStdString(theme.base_style))) {
             qApp->setStyle(st);
@@ -276,6 +280,11 @@ bool StyleManager::load_theme(const ThemeManager::ThemeInfo& theme) {
                 theme.base_style);
         }
     }
+#else
+    if (!theme.base_style.empty())
+        engine::Logger::instance().debug(
+            "macOS: keeping native style, ignoring theme base style: " + theme.base_style);
+#endif
 
     if (!theme.tokens_path.empty()) {
         theme_manager_.load_tokens(theme.tokens_path);
