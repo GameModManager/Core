@@ -5,6 +5,7 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QFontDatabase>
 #include <QPlainTextEdit>
 #include <QPointer>
 #include <QScrollBar>
@@ -28,7 +29,7 @@ ConsolePanel::ConsolePanel(QWidget* parent)
     output_ = new QPlainTextEdit(this);
     output_->setReadOnly(true);
     output_->setUndoRedoEnabled(false);
-    output_->setFont(QFont("Monospace", 9));
+    output_->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     output_->setFocusPolicy(Qt::StrongFocus);
     output_->setLineWrapMode(QPlainTextEdit::NoWrap);
     output_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
