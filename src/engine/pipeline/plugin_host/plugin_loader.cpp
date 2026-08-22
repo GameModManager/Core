@@ -716,17 +716,15 @@ bool PluginLoader::load_directory(const std::string& dir_path) {
         const auto& path = entry.path();
         auto ext = path.extension().string();
 
-        // Platform-appropriate shared library extensions
-#ifdef __linux__
-        if (ext == ".so") {
-            if (load_plugin(path.string())) loaded++;
-        }
-#elif defined(_WIN32)
+        // Platform-appropriate shared library extensions. CMake MODULE
+        // libraries keep the ".so" suffix even on macOS, so Apple accepts
+        // both spellings (dlopen loads either).
+#if defined(_WIN32)
         if (ext == ".dll") {
             if (load_plugin(path.string())) loaded++;
         }
-#elif defined(__APPLE__)
-        if (ext == ".dylib") {
+#else
+        if (ext == ".so" || ext == ".dylib") {
             if (load_plugin(path.string())) loaded++;
         }
 #endif
