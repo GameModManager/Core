@@ -19,6 +19,15 @@ project(GameModManager
 
 set(GMM_VERSION "${PROJECT_VERSION}")
 
+# Fail fast when submodules aren't initialized (e.g. fresh worktree) —
+# otherwise every ABI-including TU dies with a cryptic "'gmm_abi_v1.h'
+# file not found" instead of pointing at the real problem.
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include/gmm_abi_v1.h")
+    message(FATAL_ERROR
+        "external/abi submodule not initialized (gmm_abi_v1.h missing).\n"
+        "Run: git submodule update --init --recursive")
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
