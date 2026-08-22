@@ -6,6 +6,7 @@
 #include "engine/game/detect/mod_scanner.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "engine/profile/profile.h"
+#include "engine/profile/profile_creation.h"
 
 #include <algorithm>
 #include <atomic>
@@ -302,6 +303,93 @@ extern "C" GmmSwiftMutationResultHandle gmm_swift_move_mod(
         profile.write_modlist_now();
         return true;
     });
+}
+
+namespace {
+// Shared plumbing for profile lifecycle mutations: same begin/cancel/stale
+// handling as mutate(), but no modlist pre-check and the returned snapshot
+// targets view_profile so the UI keeps its current selection.
+GmmSwiftMutationResultHandle profile_mutate(
+    GmmSwiftEngine* engine, const char* instance_id, const char* view_profile,
+    GmmSwiftOperationHandle operation,
+    const std::function<bool(engine::Instance&, std::string&)>& action) {
+    if (!engine) return result(GMM_SWIFT_RESULT_ERROR, "engine is required");
+    if (!begin(engine, operation))
+        return result(cancelled(operation) ? GMM_SWIFT_RESULT_CANCELLED : GMM_SWIFT_RESULT_STALE);
+    try {
+        const auto root = engine::resolve_instance_path(instance_id ? instance_id : "");
+        if (root.empty()) return result(GMM_SWIFT_RESULT_ERROR, "instance was not found");
+        auto instance = engine::Instance::from_root(root);
+        if (!instance.read_toml() || instance.info().game_id.empty())
+            return result(GMM_SWIFT_RESULT_ERROR, "instance.toml is invalid");
+        std::string error;
+        if (!action(instance, error)) return result(GMM_SWIFT_RESULT_ERROR, std::move(error));
+        if (cancelled(operation) || stale(engine, operation))
+            return result(cancelled(operation) ? GMM_SWIFT_RESULT_CANCELLED : GMM_SWIFT_RESULT_STALE);
+        return result(GMM_SWIFT_RESULT_OK, {},
+                      make_snapshot(engine, instance_id, view_profile, nullptr));
+    } catch (const std::exception& error) {
+        return result(GMM_SWIFT_RESULT_ERROR, error.what());
+    }
+}
+}  // namespace
+
+extern "C" GmmSwiftMutationResultHandle gmm_swift_create_profile(
+    GmmSwiftEngineHandle e, const char* instance_id, const char* name,
+    const char* view_profile, GmmSwiftOperationHandle operation) {
+    return profile_mutate(e, instance_id, view_profile, operation,
+                          [=](engine::Instance& instance, std::string& error) {
+            if (!name || !*name) { error = "profile name is required"; return false; }
+            const auto created =
+                engine::profile::create_fresh_profile(profiles_dir(instance), name);
+            if (!created.success) { error = created.error; return false; }
+            return true;
+        });
+}
+
+extern "C" GmmSwiftMutationResultHandle gmm_swift_rename_profile(
+    GmmSwiftEngineHandle e, const char* instance_id, const char* old_name,
+    const char* new_name, const char* view_profile, GmmSwiftOperationHandle operation) {
+    return profile_mutate(e, instance_id, view_profile, operation,
+                          [=](engine::Instance& instance, std::string& error) {
+            if (!old_name || !*old_name || !new_name || !*new_name) {
+                error = "old and new profile names are required";
+                return false;
+            }
+            if (!engine::profile::rename_profile(profiles_dir(instance), old_name,
+                                                 new_name, &error)) {
+                return false;
+            }
+            return true;
+        });
+}
+
+extern "C" GmmSwiftMutationResultHandle gmm_swift_delete_profile(
+    GmmSwiftEngineHandle e, const char* instance_id, const char* name, int is_active,
+    const char* view_profile, GmmSwiftOperationHandle operation) {
+    return profile_mutate(e, instance_id, view_profile, operation,
+                          [=](engine::Instance& instance, std::string& error) {
+            if (!name || !*name) { error = "profile name is required"; return false; }
+            engine::profile::Profile profile(profiles_dir(instance) / name);
+            switch (profile.remove(is_active != 0)) {
+            case engine::profile::ProfileRemoveResult::Removed:
+                return true;
+            case engine::profile::ProfileRemoveResult::NotFound:
+                error = "profile directory does not exist";
+                return false;
+            case engine::profile::ProfileRemoveResult::ActiveProfile:
+                error = "the active profile cannot be deleted";
+                return false;
+            case engine::profile::ProfileRemoveResult::PermissionDenied:
+                error = "could not delete the profile directory";
+                return false;
+            case engine::profile::ProfileRemoveResult::PartialFailure:
+                error = "some profile contents were deleted, but the directory still exists";
+                return false;
+            }
+            error = "could not delete the profile directory";
+            return false;
+        });
 }
 
 extern "C" const char* gmm_swift_last_error(GmmSwiftEngineHandle engine) {

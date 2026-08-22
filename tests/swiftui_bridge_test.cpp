@@ -151,3 +151,99 @@ TEST_CASE("Swift bridge reorders mods and reports not-found", "[macos][swiftui]"
     gmm_swift_engine_destroy(engine);
     fs::remove_all(root);
 }
+
+TEST_CASE("Swift bridge creates, renames, and deletes profiles", "[macos][swiftui]") {
+    const auto root = fixture_root();
+    const auto profiles = root / "instances" / "Fixture" / "profiles";
+    auto* engine = gmm_swift_engine_create(
+        (root / "instances").c_str(), GMM_SWIFT_TEST_PLUGINS_DIR);
+    REQUIRE(engine != nullptr);
+
+    // Create round-trip: directory with defaults exists and the refreshed
+    // snapshot keeps the viewed profile selected.
+    auto* created = gmm_swift_create_profile(engine, "Fixture", "Testing", "Default", nullptr);
+    REQUIRE(created != nullptr);
+    REQUIRE(gmm_swift_result_code(created) == GMM_SWIFT_RESULT_OK);
+    auto* created_snapshot = gmm_swift_result_snapshot(created);
+    REQUIRE(created_snapshot != nullptr);
+    REQUIRE(gmm_swift_snapshot_profile_count(created_snapshot) == 2);
+    REQUIRE(std::string(gmm_swift_snapshot_profile_at(created_snapshot, 0)) == "Default");
+    REQUIRE(std::string(gmm_swift_snapshot_profile_at(created_snapshot, 1)) == "Testing");
+    REQUIRE(std::string(gmm_swift_snapshot_profile_id(created_snapshot)) == "Default");
+    REQUIRE(fs::exists(profiles / "Testing" / "settings.ini"));
+    REQUIRE(fs::exists(profiles / "Testing" / "modlist.txt"));
+    gmm_swift_result_destroy(created);
+
+    // Duplicate create fails explicitly and leaves the existing profile alone.
+    auto* duplicate = gmm_swift_create_profile(engine, "Fixture", "Testing", "Default", nullptr);
+    REQUIRE(duplicate != nullptr);
+    REQUIRE(gmm_swift_result_code(duplicate) == GMM_SWIFT_RESULT_ERROR);
+    const char* duplicate_error = gmm_swift_result_error(duplicate);
+    REQUIRE(duplicate_error != nullptr);
+    REQUIRE(std::string(duplicate_error).find("already exists") != std::string::npos);
+    gmm_swift_result_destroy(duplicate);
+
+    // Empty name is rejected up front.
+    auto* empty = gmm_swift_create_profile(engine, "Fixture", "", "Default", nullptr);
+    REQUIRE(empty != nullptr);
+    REQUIRE(gmm_swift_result_code(empty) == GMM_SWIFT_RESULT_ERROR);
+    gmm_swift_result_destroy(empty);
+
+    // Rename round-trip: directory moves and the snapshot follows the new name.
+    auto* renamed =
+        gmm_swift_rename_profile(engine, "Fixture", "Testing", "Renamed", "Renamed", nullptr);
+    REQUIRE(renamed != nullptr);
+    REQUIRE(gmm_swift_result_code(renamed) == GMM_SWIFT_RESULT_OK);
+    auto* renamed_snapshot = gmm_swift_result_snapshot(renamed);
+    REQUIRE(renamed_snapshot != nullptr);
+    REQUIRE(std::string(gmm_swift_snapshot_profile_id(renamed_snapshot)) == "Renamed");
+    REQUIRE(gmm_swift_snapshot_profile_count(renamed_snapshot) == 2);
+    REQUIRE(fs::exists(profiles / "Renamed" / "settings.ini"));
+    REQUIRE(!fs::exists(profiles / "Testing"));
+    gmm_swift_result_destroy(renamed);
+
+    // Deleting the active profile is refused.
+    auto* active = gmm_swift_delete_profile(engine, "Fixture", "Default", 1, "Default", nullptr);
+    REQUIRE(active != nullptr);
+    REQUIRE(gmm_swift_result_code(active) == GMM_SWIFT_RESULT_ERROR);
+    const char* active_error = gmm_swift_result_error(active);
+    REQUIRE(active_error != nullptr);
+    REQUIRE(std::string(active_error).find("cannot be deleted") != std::string::npos);
+    gmm_swift_result_destroy(active);
+    REQUIRE(fs::exists(profiles / "Default"));
+
+    // Missing profile reports not-found instead of corrupting state.
+    auto* missing = gmm_swift_delete_profile(engine, "Fixture", "Ghost", 0, "Default", nullptr);
+    REQUIRE(missing != nullptr);
+    REQUIRE(gmm_swift_result_code(missing) == GMM_SWIFT_RESULT_ERROR);
+    const char* missing_error = gmm_swift_result_error(missing);
+    REQUIRE(missing_error != nullptr);
+    REQUIRE(std::string(missing_error).find("does not exist") != std::string::npos);
+    gmm_swift_result_destroy(missing);
+
+    // Cancelled before the mutation runs: nothing is created or deleted.
+    auto* cancelled_operation = gmm_swift_operation_create();
+    gmm_swift_operation_cancel(cancelled_operation);
+    auto* cancelled =
+        gmm_swift_create_profile(engine, "Fixture", "Never", "Default", cancelled_operation);
+    REQUIRE(cancelled != nullptr);
+    REQUIRE(gmm_swift_result_code(cancelled) == GMM_SWIFT_RESULT_CANCELLED);
+    gmm_swift_result_destroy(cancelled);
+    gmm_swift_operation_destroy(cancelled_operation);
+
+    // Delete round-trip back to a single profile; Default is untouched.
+    auto* deleted = gmm_swift_delete_profile(engine, "Fixture", "Renamed", 0, "Default", nullptr);
+    REQUIRE(deleted != nullptr);
+    REQUIRE(gmm_swift_result_code(deleted) == GMM_SWIFT_RESULT_OK);
+    auto* deleted_snapshot = gmm_swift_result_snapshot(deleted);
+    REQUIRE(deleted_snapshot != nullptr);
+    REQUIRE(gmm_swift_snapshot_profile_count(deleted_snapshot) == 1);
+    REQUIRE(std::string(gmm_swift_snapshot_profile_id(deleted_snapshot)) == "Default");
+    gmm_swift_result_destroy(deleted);
+    REQUIRE(!fs::exists(profiles / "Renamed"));
+    // The surviving profile's modlist is never touched by lifecycle ops.
+    REQUIRE(read_text(profiles / "Default" / "modlist.txt") == "+Beta\n-Alpha\n");
+
+    gmm_swift_engine_destroy(engine);
+    fs::remove_all(root);
+}

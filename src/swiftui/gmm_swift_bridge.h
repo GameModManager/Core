@@ -71,6 +71,23 @@ GmmSwiftMutationResultHandle gmm_swift_move_mod(
     GmmSwiftEngineHandle engine, const char* instance_id, const char* profile_id,
     const char* mod_id, int32_t new_priority, GmmSwiftOperationHandle operation);
 
+// Profile lifecycle mutations (MO2 parity: the caller refuses rename/delete
+// of the viewed profile in the UI; delete additionally takes is_active as
+// defense in depth). view_profile names the profile the browser is showing —
+// the returned snapshot re-reads it so the UI keeps its selection.
+GmmSwiftMutationResultHandle gmm_swift_create_profile(
+    GmmSwiftEngineHandle engine, const char* instance_id, const char* name,
+    const char* view_profile, GmmSwiftOperationHandle operation);
+
+GmmSwiftMutationResultHandle gmm_swift_rename_profile(
+    GmmSwiftEngineHandle engine, const char* instance_id, const char* old_name,
+    const char* new_name, const char* view_profile,
+    GmmSwiftOperationHandle operation);
+
+GmmSwiftMutationResultHandle gmm_swift_delete_profile(
+    GmmSwiftEngineHandle engine, const char* instance_id, const char* name,
+    int is_active, const char* view_profile, GmmSwiftOperationHandle operation);
+
 const char* gmm_swift_last_error(GmmSwiftEngineHandle engine);
 void gmm_swift_free_string(const char* value);
 
