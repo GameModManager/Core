@@ -11,6 +11,7 @@ extern "C" {
 typedef struct GmmSwiftEngine* GmmSwiftEngineHandle;
 typedef struct GmmSwiftSnapshot* GmmSwiftSnapshotHandle;
 typedef struct GmmSwiftOperation* GmmSwiftOperationHandle;
+typedef struct GmmSwiftMutationResult* GmmSwiftMutationResultHandle;
 
 typedef struct {
     const char* id;
@@ -18,6 +19,13 @@ typedef struct {
     int32_t order;
     int enabled;
 } GmmSwiftMod;
+
+typedef enum {
+    GMM_SWIFT_RESULT_OK = 0,
+    GMM_SWIFT_RESULT_CANCELLED = 1,
+    GMM_SWIFT_RESULT_STALE = 2,
+    GMM_SWIFT_RESULT_ERROR = 3,
+} GmmSwiftResultCode;
 
 typedef void (*GmmSwiftRefreshFn)(const char* event_id, const char* payload,
                                   void* user_data);
@@ -32,17 +40,32 @@ const char* gmm_swift_instance_id(GmmSwiftEngineHandle engine, size_t index);
 GmmSwiftSnapshotHandle gmm_swift_snapshot_create(GmmSwiftEngineHandle engine,
                                                  const char* instance_id,
                                                  GmmSwiftOperationHandle operation);
+GmmSwiftSnapshotHandle gmm_swift_snapshot_create_for_profile(
+    GmmSwiftEngineHandle engine, const char* instance_id, const char* profile_id,
+    GmmSwiftOperationHandle operation);
 void gmm_swift_snapshot_destroy(GmmSwiftSnapshotHandle snapshot);
 const char* gmm_swift_snapshot_instance_id(GmmSwiftSnapshotHandle snapshot);
 const char* gmm_swift_snapshot_game_id(GmmSwiftSnapshotHandle snapshot);
 const char* gmm_swift_snapshot_profile_id(GmmSwiftSnapshotHandle snapshot);
 size_t gmm_swift_snapshot_mod_count(GmmSwiftSnapshotHandle snapshot);
 GmmSwiftMod gmm_swift_snapshot_mod_at(GmmSwiftSnapshotHandle snapshot, size_t index);
+size_t gmm_swift_snapshot_profile_count(GmmSwiftSnapshotHandle snapshot);
+const char* gmm_swift_snapshot_profile_at(GmmSwiftSnapshotHandle snapshot, size_t index);
 
 GmmSwiftOperationHandle gmm_swift_operation_create(void);
+GmmSwiftOperationHandle gmm_swift_operation_create_for_generation(uint64_t generation);
 void gmm_swift_operation_cancel(GmmSwiftOperationHandle operation);
 int gmm_swift_operation_is_cancelled(GmmSwiftOperationHandle operation);
 void gmm_swift_operation_destroy(GmmSwiftOperationHandle operation);
+
+GmmSwiftResultCode gmm_swift_result_code(GmmSwiftMutationResultHandle result);
+GmmSwiftSnapshotHandle gmm_swift_result_snapshot(GmmSwiftMutationResultHandle result);
+const char* gmm_swift_result_error(GmmSwiftMutationResultHandle result);
+void gmm_swift_result_destroy(GmmSwiftMutationResultHandle result);
+
+GmmSwiftMutationResultHandle gmm_swift_set_mod_enabled(
+    GmmSwiftEngineHandle engine, const char* instance_id, const char* profile_id,
+    const char* mod_id, int enabled, GmmSwiftOperationHandle operation);
 
 const char* gmm_swift_last_error(GmmSwiftEngineHandle engine);
 void gmm_swift_free_string(const char* value);
