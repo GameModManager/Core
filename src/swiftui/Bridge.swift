@@ -422,15 +422,18 @@ final class BrowserState: ObservableObject {
             instanceID: current.instanceID, profileID: current.profileID, folders: folders) }
     }
 
-    /// Moves a mod to an absolute position (0-based index from drag & drop).
+    /// Moves a mod to a display position (0 = top of the list). The list shows
+    /// highest priority first, so display position inverts to engine priority:
+    /// enginePriority = count - 1 - destination.
     func moveModTo(id: String, destination: Int) {
-        guard !isBusy, let snapshot = snapshot, snapshot.profiles.count >= 0,
-              let target = snapshot.mods.first(where: { $0.id == id }),
-              snapshot.mods.indices.contains(destination),
-              destination != target.order else { return }
+        guard !isBusy, let snapshot = snapshot,
+              destination >= 0, destination <= snapshot.mods.count,
+              let target = snapshot.mods.first(where: { $0.id == id }) else { return }
+        let enginePriority = snapshot.mods.count - 1 - destination
+        guard enginePriority >= 0, enginePriority != target.order else { return }
         runMutation { try await self.client.moveMod(
             instanceID: snapshot.instanceID, profileID: snapshot.profileID,
-            modID: id, newPriority: destination) }
+            modID: id, newPriority: enginePriority) }
     }
 
     /// Moves a mod up (delta -1) or down (delta +1) in the profile order.

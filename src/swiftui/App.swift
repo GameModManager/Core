@@ -301,21 +301,19 @@ struct ModListPanel: View {
 
     private var modList: some View {
         List {
-            // Column header (MO2-style table).
+            // Column header (MO2-style table, priority descending).
             HStack {
                 Text("").frame(width: 28)
-                Text("#").frame(width: 32, alignment: .trailing)
                 Text("Mod").frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                Text("State").frame(width: 70, alignment: .leading)
+                Text("Priority").frame(width: 64, alignment: .trailing)
             }
             .font(.caption).foregroundStyle(.secondary).listRowSeparator(.hidden)
-            ForEach(state.snapshot?.mods.sorted(by: { $0.order > $1.order }) ?? [], id: \.id) { mod in
+            ForEach(displayedMods, id: \.id) { mod in
                 ModRowView(mod: mod)
             }
             .onMove { source, destination in
-                guard let id = source.first.flatMap({
-                    state.snapshot?.mods.sorted(by: { $0.order > $1.order })[$0].id
-                }), state.snapshot?.mods.indices.contains(destination) == true else { return }
+                guard let id = source.first.flatMap({ displayedMods[$0].id }),
+                      displayedMods.indices.contains(destination) else { return }
                 state.moveModTo(id: id, destination: destination)
             }
         }
@@ -325,6 +323,11 @@ struct ModListPanel: View {
                 ContentUnavailableView("No mods", systemImage: "shippingbox")
             }
         }
+    }
+
+    /// MO2 display order: highest priority first (top row wins conflicts).
+    private var displayedMods: [ModRow] {
+        (state.snapshot?.mods.sorted(by: { $0.order > $1.order })) ?? []
     }
 
     /// Profile switcher plus lifecycle actions (create/rename/delete).
@@ -362,7 +365,7 @@ struct ModListPanel: View {
     }
 }
 
-/// One mod row: enable checkbox, priority number, name, state column.
+/// One mod row: enable checkbox, name, priority column (descending display).
 struct ModRowView: View {
     @EnvironmentObject private var state: BrowserState
     let mod: ModRow
@@ -375,17 +378,16 @@ struct ModRowView: View {
             ))
             .labelsHidden().toggleStyle(.checkbox)
             .disabled(state.isBusy)
-            Text("\(mod.order)").frame(width: 32, alignment: .trailing)
-                .foregroundStyle(.secondary).font(.callout.monospacedDigit())
             if mod.id.hasSuffix("_separator") {
                 Label(String(mod.id.dropLast("_separator".count)), systemImage: "line.3.horizontal")
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             } else {
                 Text(mod.id)
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             }
-            Spacer(minLength: 8)
-            Text(mod.enabled ? "Enabled" : "Disabled")
-                .frame(width: 70, alignment: .leading)
-                .foregroundStyle(mod.enabled ? .primary : .secondary)
+            Text("\(mod.order + 1)")
+                .frame(width: 64, alignment: .trailing)
+                .foregroundStyle(.secondary).font(.callout.monospacedDigit())
         }
         .contentShape(Rectangle())
     }
