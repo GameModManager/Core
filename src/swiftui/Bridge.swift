@@ -21,6 +21,9 @@ struct BrowserSnapshot: Sendable {
     let gameID: String
     let profileID: String
     let profiles: [String]
+    let gameDir: String
+    let steamAppid: UInt32
+    let executables: [String]
     let mods: [ModRow]
 }
 
@@ -144,6 +147,37 @@ actor EngineClient {
         }
     }
 
+    /// Launches through the canonical engine path (prepare_launch_params
+    /// deploys enabled mods, then launch_game). The deploy runs on this actor
+    /// thread — never MainActor. Returns the launched process id.
+    func launch(instanceID: String, executable: String) throws -> Int64 {
+        if Task.isCancelled { throw CancellationError() }
+        let operation = gmm_swift_operation_create()
+        defer { gmm_swift_operation_destroy(operation) }
+        let result = instanceID.withCString { instance in
+            executable.withCString { exe in
+                gmm_swift_launch(self.engine, instance, exe, operation)
+            }
+        }
+        guard let result else { throw BridgeError.message("launch failed") }
+        defer { gmm_swift_launch_destroy(result) }
+        switch gmm_swift_launch_code(result) {
+        case GMM_SWIFT_RESULT_OK:
+            let pid = gmm_swift_launch_pid(result)
+            guard pid > 0 else { throw BridgeError.message("launch returned no process") }
+            return pid
+        case GMM_SWIFT_RESULT_CANCELLED:
+            throw CancellationError()
+        default:
+            let message = gmm_swift_launch_error(result).map(String.init(cString:)) ?? "launch failed"
+            throw BridgeError.message(message)
+        }
+    }
+
+    func isProcessAlive(pid: Int64) -> Bool {
+        gmm_swift_process_alive(pid) != 0
+    }
+
     private static func readSnapshot(_ handle: GmmSwiftSnapshotHandle) throws -> BrowserSnapshot {
         let mods = (0..<gmm_swift_snapshot_mod_count(handle)).compactMap { index -> ModRow? in
             let mod = gmm_swift_snapshot_mod_at(handle, index)
@@ -153,11 +187,17 @@ actor EngineClient {
         let profiles = (0..<gmm_swift_snapshot_profile_count(handle)).compactMap { index -> String? in
             gmm_swift_snapshot_profile_at(handle, index).map(String.init(cString:))
         }
+        let executables = (0..<gmm_swift_snapshot_executable_count(handle)).compactMap { index -> String? in
+            gmm_swift_snapshot_executable_at(handle, index).map(String.init(cString:))
+        }
         return BrowserSnapshot(
             instanceID: String(cString: gmm_swift_snapshot_instance_id(handle)!),
             gameID: String(cString: gmm_swift_snapshot_game_id(handle)!),
             profileID: String(cString: gmm_swift_snapshot_profile_id(handle)!),
-            profiles: profiles, mods: mods)
+            profiles: profiles,
+            gameDir: gmm_swift_snapshot_game_dir(handle).map(String.init(cString:)) ?? "",
+            steamAppid: gmm_swift_snapshot_steam_appid(handle),
+            executables: executables, mods: mods)
     }
 }
 
@@ -168,6 +208,8 @@ final class BrowserState: ObservableObject {
     @Published var instances = [String]()
     @Published var selectedInstance: String?
     @Published var selectedProfile: String?
+    @Published var selectedExecutable: String?
+    @Published var runningPID: Int64?
     @Published var snapshot: BrowserSnapshot?
     @Published var isLoading = false
     @Published var error: String?
@@ -252,6 +294,52 @@ final class BrowserState: ObservableObject {
             viewProfile: viewed) }
     }
 
+    /// Launches the selected executable through the canonical engine path.
+    /// Keeps isMutating until the process is up, then monitors it in the
+    /// background and refreshes once it exits (post-exit state may have
+    /// changed — overwrite capture, deferred disables).
+    func launch(executable: String) {
+        guard let snapshot, !isBusy, runningPID == nil, !executable.isEmpty,
+              snapshot.executables.contains(executable) else { return }
+        generation += 1
+        work?.cancel()
+        let current = generation
+        let instanceID = snapshot.instanceID
+        isMutating = true
+        actionError = nil
+        Task {
+            do {
+                let pid = try await client.launch(instanceID: instanceID, executable: executable)
+                guard current == generation else { return }
+                isMutating = false
+                runningPID = pid
+                monitor(pid: pid, generation: current)
+            } catch is CancellationError {
+                if current == generation { isMutating = false }
+            } catch {
+                if current == generation {
+                    isMutating = false
+                    actionError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    /// Polls the launched process off MainActor until it exits or the user
+    /// navigates away (generation bump), then refreshes the snapshot.
+    private func monitor(pid: Int64, generation atGeneration: Int) {
+        work?.cancel()
+        work = Task {
+            while await client.isProcessAlive(pid: pid) {
+                if atGeneration != generation || Task.isCancelled { return }
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+            guard atGeneration == generation, !Task.isCancelled else { return }
+            runningPID = nil
+            refresh()
+        }
+    }
+
     /// Moves a mod up (delta -1) or down (delta +1) in the profile order.
     /// Bumps the generation so any in-flight refresh result is rejected as stale.
     func moveMod(id: String, delta: Int) {
@@ -291,6 +379,12 @@ final class BrowserState: ObservableObject {
                 guard current == generation else { return }
                 instances = values; selectedInstance = selected; snapshot = result
                 selectedProfile = result?.profileID
+                if let execs = result?.executables, !execs.isEmpty {
+                    if let chosen = selectedExecutable, execs.contains(chosen) { /* keep */ }
+                    else { selectedExecutable = execs.first }
+                } else {
+                    selectedExecutable = nil
+                }
                 if selected != nil && result == nil { error = "Unable to read the selected instance." }
             } catch is CancellationError { }
             catch let failure { if current == generation { self.error = failure.localizedDescription } }

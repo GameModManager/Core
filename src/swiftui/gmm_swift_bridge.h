@@ -51,6 +51,12 @@ size_t gmm_swift_snapshot_mod_count(GmmSwiftSnapshotHandle snapshot);
 GmmSwiftMod gmm_swift_snapshot_mod_at(GmmSwiftSnapshotHandle snapshot, size_t index);
 size_t gmm_swift_snapshot_profile_count(GmmSwiftSnapshotHandle snapshot);
 const char* gmm_swift_snapshot_profile_at(GmmSwiftSnapshotHandle snapshot, size_t index);
+const char* gmm_swift_snapshot_game_dir(GmmSwiftSnapshotHandle snapshot);
+uint32_t gmm_swift_snapshot_steam_appid(GmmSwiftSnapshotHandle snapshot);
+// Saved executables from instance.toml (`executables` array); falls back to
+// the game plugin's known executables on first launch (Qt parity).
+size_t gmm_swift_snapshot_executable_count(GmmSwiftSnapshotHandle snapshot);
+const char* gmm_swift_snapshot_executable_at(GmmSwiftSnapshotHandle snapshot, size_t index);
 
 GmmSwiftOperationHandle gmm_swift_operation_create(void);
 GmmSwiftOperationHandle gmm_swift_operation_create_for_generation(uint64_t generation);
@@ -87,6 +93,22 @@ GmmSwiftMutationResultHandle gmm_swift_rename_profile(
 GmmSwiftMutationResultHandle gmm_swift_delete_profile(
     GmmSwiftEngineHandle engine, const char* instance_id, const char* name,
     int is_active, const char* view_profile, GmmSwiftOperationHandle operation);
+
+// Launch through the canonical engine path: prepare_launch_params (deploys
+// enabled mods — symlink strategy on macOS) then launch_game. Runs
+// synchronously on the calling thread; Swift must call this off MainActor.
+typedef struct GmmSwiftLaunchResult* GmmSwiftLaunchResultHandle;
+GmmSwiftLaunchResultHandle gmm_swift_launch(GmmSwiftEngineHandle engine,
+                                            const char* instance_id,
+                                            const char* executable,
+                                            GmmSwiftOperationHandle operation);
+GmmSwiftResultCode gmm_swift_launch_code(GmmSwiftLaunchResultHandle result);
+int64_t gmm_swift_launch_pid(GmmSwiftLaunchResultHandle result);
+int gmm_swift_launch_overlay(GmmSwiftLaunchResultHandle result);
+const char* gmm_swift_launch_error(GmmSwiftLaunchResultHandle result);
+void gmm_swift_launch_destroy(GmmSwiftLaunchResultHandle result);
+
+int gmm_swift_process_alive(int64_t pid);
 
 const char* gmm_swift_last_error(GmmSwiftEngineHandle engine);
 void gmm_swift_free_string(const char* value);

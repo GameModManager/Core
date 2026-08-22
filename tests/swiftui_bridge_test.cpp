@@ -24,11 +24,28 @@ fs::path fixture_root() {
     fs::create_directories(root / "instances" / "Fixture" / "profiles" / "Default");
     fs::create_directories(root / "instances" / "Fixture" / "mods" / "Alpha" / "meshes");
     fs::create_directories(root / "instances" / "Fixture" / "mods" / "Beta" / "meshes");
+    // Deploys walk files, not empty dirs — give Beta real content.
+    std::ofstream(root / "instances" / "Fixture" / "mods" / "Beta" / "meshes" / "scene.nif")
+        << "stub\n";
+    const auto game_dir = root / "instances" / "Fixture" / "game";
+    fs::create_directories(game_dir);
 
     std::ofstream(root / "instances" / "Fixture" / "instance.toml")
-        << "game_id = \"SkyrimSpecialEdition\"\n";
+        << "game_id = \"SkyrimSpecialEdition\"\n"
+        << "game_dir = \"" << game_dir.string() << "\"\n"
+        << "steam_appid = 72850\n"
+        << "executables = [{path = \"StubGame\"}]\n";
     std::ofstream(root / "instances" / "Fixture" / "profiles" / "Default" / "modlist.txt")
         << "+Beta\n-Alpha\n";
+
+    // Harmless native stub the launch path can exec.
+    const auto stub = game_dir / "StubGame";
+    {
+        std::ofstream out(stub, std::ios::binary);
+        out << "#!/bin/sh\nexit 0\n";
+    }
+    fs::permissions(stub, fs::perms::owner_exec | fs::perms::owner_read |
+                              fs::perms::owner_write);
     return root;
 }
 
@@ -243,6 +260,71 @@ TEST_CASE("Swift bridge creates, renames, and deletes profiles", "[macos][swiftu
     REQUIRE(!fs::exists(profiles / "Renamed"));
     // The surviving profile's modlist is never touched by lifecycle ops.
     REQUIRE(read_text(profiles / "Default" / "modlist.txt") == "+Beta\n-Alpha\n");
+
+    gmm_swift_engine_destroy(engine);
+    fs::remove_all(root);
+}
+
+TEST_CASE("Swift bridge launches through prepare_launch_params", "[macos][swiftui]") {
+    const auto root = fixture_root();
+    const auto game_dir = root / "instances" / "Fixture" / "game";
+    const auto stub = (game_dir / "StubGame").string();
+    auto* engine = gmm_swift_engine_create(
+        (root / "instances").c_str(), GMM_SWIFT_TEST_PLUGINS_DIR);
+    REQUIRE(engine != nullptr);
+
+    // Snapshot exposes the launch-relevant instance fields.
+    auto* snapshot = gmm_swift_snapshot_create(engine, "Fixture", nullptr);
+    REQUIRE(snapshot != nullptr);
+    REQUIRE(std::string(gmm_swift_snapshot_game_dir(snapshot)) == game_dir.string());
+    REQUIRE(gmm_swift_snapshot_steam_appid(snapshot) == 72850);
+    REQUIRE(gmm_swift_snapshot_executable_count(snapshot) == 1);
+    REQUIRE(std::string(gmm_swift_snapshot_executable_at(snapshot, 0)) == "StubGame");
+    gmm_swift_snapshot_destroy(snapshot);
+    REQUIRE(!fs::exists(game_dir / "meshes"));
+
+    // Launch round-trip: enabled mod Beta is deployed into the game dir and
+    // the stub process starts.
+    auto* launch = gmm_swift_launch(engine, "Fixture", stub.c_str(), nullptr);
+    REQUIRE(launch != nullptr);
+    REQUIRE(gmm_swift_launch_code(launch) == GMM_SWIFT_RESULT_OK);
+    REQUIRE(gmm_swift_launch_pid(launch) > 0);
+    REQUIRE(gmm_swift_launch_overlay(launch) == 0);  // OverlayFS is Linux-only
+    gmm_swift_launch_destroy(launch);
+    // Beta (enabled) deployed into the game dir's deploy prefix (Skyrim:
+    // Data/), Alpha (disabled in modlist... folder sentinel governs deploy).
+    REQUIRE(fs::exists(game_dir / "Data" / "meshes" / "scene.nif"));
+    // The stub itself is untouched by the deploy.
+    REQUIRE(fs::exists(stub));
+
+    // Empty executable is rejected before any engine work.
+    auto* empty = gmm_swift_launch(engine, "Fixture", "", nullptr);
+    REQUIRE(empty != nullptr);
+    REQUIRE(gmm_swift_launch_code(empty) == GMM_SWIFT_RESULT_ERROR);
+    const char* empty_error = gmm_swift_launch_error(empty);
+    REQUIRE(empty_error != nullptr);
+    REQUIRE(std::string(empty_error).find("executable is required") != std::string::npos);
+    gmm_swift_launch_destroy(empty);
+
+    // Cancelled before launch: no new process, explicit cancelled code.
+    auto* operation = gmm_swift_operation_create();
+    gmm_swift_operation_cancel(operation);
+    auto* cancelled = gmm_swift_launch(engine, "Fixture", stub.c_str(), operation);
+    REQUIRE(cancelled != nullptr);
+    REQUIRE(gmm_swift_launch_code(cancelled) == GMM_SWIFT_RESULT_CANCELLED);
+    gmm_swift_launch_destroy(cancelled);
+    gmm_swift_operation_destroy(operation);
+
+    // Missing game dir reports a clean error instead of launching.
+    auto* missing = gmm_swift_launch(engine, "Fixture", "/nonexistent/exe", nullptr);
+    REQUIRE(missing != nullptr);
+    REQUIRE(gmm_swift_launch_code(missing) == GMM_SWIFT_RESULT_ERROR);
+    gmm_swift_launch_destroy(missing);
+
+    // Process liveness probe: self is alive, nonsense pid is not.
+    REQUIRE(gmm_swift_process_alive(getpid()) == 1);
+    REQUIRE(gmm_swift_process_alive(-1) == 0);
+    REQUIRE(gmm_swift_process_alive(0) == 0);
 
     gmm_swift_engine_destroy(engine);
     fs::remove_all(root);

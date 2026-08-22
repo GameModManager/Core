@@ -3,19 +3,27 @@
 #include "engine/core/events/event_bus.h"
 #include "engine/core/instance/instance.h"
 #include "engine/core/instance/instance_utils.h"
+#include "engine/core/instance/toml_utils.h"
 #include "engine/game/detect/mod_scanner.h"
+#include "engine/game/plugins/plugin_database.h"
+#include "engine/deploy/launch/launcher.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "engine/profile/profile.h"
 #include "engine/profile/profile_creation.h"
+#include "platform/macos/macos_platform.h"
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
+#include <csignal>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -30,6 +38,8 @@ struct GmmSwiftSnapshot {
     std::string instance_id;
     std::string game_id;
     std::string profile_id;
+    std::string game_dir;
+    uint32_t steam_appid = 0;
     struct Mod {
         std::string id;
         int order = 0;
@@ -37,6 +47,7 @@ struct GmmSwiftSnapshot {
     };
     std::vector<Mod> mods;
     std::vector<std::string> profiles;
+    std::vector<std::string> executables;
 };
 
 struct GmmSwiftMutationResult {
@@ -45,8 +56,16 @@ struct GmmSwiftMutationResult {
     GmmSwiftSnapshotHandle snapshot = nullptr;
 };
 
+struct GmmSwiftLaunchResult {
+    GmmSwiftResultCode code = GMM_SWIFT_RESULT_ERROR;
+    std::string error;
+    int64_t pid = -1;
+    bool overlay_launched = false;
+};
+
 struct GmmSwiftEngine {
     engine::PluginLoader plugins;
+    std::unique_ptr<engine::PlatformInterface> platform;
     std::vector<std::string> instances;
     std::mutex mutex;
     std::string error;
@@ -108,6 +127,38 @@ std::vector<std::string> known_mods(GmmSwiftEngine* engine, const engine::Instan
     return ids;
 }
 
+// Saved executables from instance.toml's `executables` array (inline tables
+// with a "path" key, or legacy plain strings). Falls back to the game
+// plugin's known-executables CSV on first launch — same seeding order as the
+// Qt ExecControlsBar.
+std::vector<std::string> instance_executables(const engine::Instance& instance,
+                                              const engine::GameKnowledge& knowledge) {
+    std::vector<std::string> paths;
+    if (auto tbl = engine::parse_instance_toml(instance.toml_path())) {
+        if (auto arr = (*tbl)["executables"].as_array()) {
+            for (const auto& elem : *arr) {
+                if (auto entry = elem.as_table()) {
+                    if (auto value = entry->get("path")->value<std::string>())
+                        paths.push_back(*value);
+                } else if (auto value = elem.value<std::string>()) {
+                    paths.push_back(*value);
+                }
+            }
+        }
+    }
+    if (!paths.empty()) return paths;
+    const auto csv = knowledge.get(instance.info().game_id, "executables", "");
+    std::istringstream stream(csv);
+    std::string token;
+    while (std::getline(stream, token, ',')) {
+        const auto first = token.find_first_not_of(" \t");
+        const auto last = token.find_last_not_of(" \t");
+        if (first != std::string::npos && last != std::string::npos)
+            paths.push_back(token.substr(first, last - first + 1));
+    }
+    return paths;
+}
+
 GmmSwiftMutationResultHandle mutate(GmmSwiftEngine* engine, const char* instance_id,
                                      const char* profile_id, GmmSwiftOperationHandle operation,
                                      const std::function<bool(engine::Instance&, const std::string&, std::string&)>& action) {
@@ -136,6 +187,7 @@ extern "C" GmmSwiftEngineHandle gmm_swift_engine_create(
     const char* instances_dir, const char* plugins_dir) {
     try {
         auto engine = std::make_unique<GmmSwiftEngine>();
+        engine->platform = std::make_unique<engine::MacOSPlatform>();
         if (instances_dir && *instances_dir)
             engine::set_instances_dir_override(instances_dir);
         if (plugins_dir && *plugins_dir && fs::is_directory(plugins_dir) &&
@@ -192,6 +244,9 @@ GmmSwiftSnapshotHandle make_snapshot(GmmSwiftEngine* engine, const char* instanc
         auto snapshot = std::make_unique<GmmSwiftSnapshot>();
         snapshot->instance_id = root.filename().string();
         snapshot->game_id = instance.info().game_id;
+        snapshot->game_dir = instance.info().game_dir.string();
+        snapshot->steam_appid = instance.info().steam_appid;
+        snapshot->executables = instance_executables(instance, engine->plugins.knowledge());
 
         std::vector<std::string> profiles;
         std::error_code ec;
@@ -246,6 +301,19 @@ extern "C" size_t gmm_swift_snapshot_profile_count(GmmSwiftSnapshotHandle s) {
 }
 extern "C" const char* gmm_swift_snapshot_profile_at(GmmSwiftSnapshotHandle s, size_t i) {
     return s && i < s->profiles.size() ? s->profiles[i].c_str() : nullptr;
+}
+
+extern "C" const char* gmm_swift_snapshot_game_dir(GmmSwiftSnapshotHandle s) {
+    return s && !s->game_dir.empty() ? s->game_dir.c_str() : nullptr;
+}
+extern "C" uint32_t gmm_swift_snapshot_steam_appid(GmmSwiftSnapshotHandle s) {
+    return s ? s->steam_appid : 0;
+}
+extern "C" size_t gmm_swift_snapshot_executable_count(GmmSwiftSnapshotHandle s) {
+    return s ? s->executables.size() : 0;
+}
+extern "C" const char* gmm_swift_snapshot_executable_at(GmmSwiftSnapshotHandle s, size_t i) {
+    return s && i < s->executables.size() ? s->executables[i].c_str() : nullptr;
 }
 
 extern "C" GmmSwiftOperationHandle gmm_swift_operation_create(void) { return new GmmSwiftOperation; }
@@ -390,6 +458,86 @@ extern "C" GmmSwiftMutationResultHandle gmm_swift_delete_profile(
             error = "could not delete the profile directory";
             return false;
         });
+}
+
+namespace {
+GmmSwiftLaunchResultHandle launch_result(GmmSwiftResultCode code, std::string error = {},
+                                         int64_t pid = -1, bool overlay = false) {
+    auto* value = new GmmSwiftLaunchResult;
+    value->code = code;
+    value->error = std::move(error);
+    value->pid = pid;
+    value->overlay_launched = overlay;
+    return value;
+}
+}  // namespace
+
+extern "C" GmmSwiftLaunchResultHandle gmm_swift_launch(GmmSwiftEngineHandle engine,
+                                                       const char* instance_id,
+                                                       const char* executable,
+                                                       GmmSwiftOperationHandle operation) {
+    if (!engine) return launch_result(GMM_SWIFT_RESULT_ERROR, "engine is required");
+    if (!begin(engine, operation))
+        return launch_result(cancelled(operation) ? GMM_SWIFT_RESULT_CANCELLED : GMM_SWIFT_RESULT_STALE);
+    try {
+        if (!executable || !*executable)
+            return launch_result(GMM_SWIFT_RESULT_ERROR, "executable is required");
+        const auto root = engine::resolve_instance_path(instance_id ? instance_id : "");
+        if (root.empty()) return launch_result(GMM_SWIFT_RESULT_ERROR, "instance was not found");
+        auto instance = engine::Instance::from_root(root);
+        if (!instance.read_toml() || instance.info().game_id.empty())
+            return launch_result(GMM_SWIFT_RESULT_ERROR, "instance.toml is invalid");
+        const auto info = instance.info();
+        if (info.game_dir.empty() || !fs::is_directory(info.game_dir))
+            return launch_result(GMM_SWIFT_RESULT_ERROR, "game directory was not found");
+
+        // Canonical path parity with Qt/cli: full LaunchPrepRequest snapshot,
+        // engine-side deploy + params assembly, then launch_game. No deploy
+        // logic lives here.
+        engine::LaunchPrepRequest req;
+        req.instance_root = root;
+        req.game_dir = info.game_dir;
+        req.executable = executable;
+        req.knowledge = engine->plugins.knowledge();
+        req.game_id = info.game_id;
+        req.steam_appid = info.steam_appid;
+        const std::string extension = fs::path(executable).extension().string();
+        req.is_windows_exe = extension == ".exe" || extension == ".EXE";
+        req.local_saves_enabled = false;  // settings arrive with the Stage 6 slice
+        req.platform = engine->platform.get();
+
+        auto params = engine::prepare_launch_params(req);
+        params.platform = engine->platform.get();
+        // MO2-equivalent plugin order written right before launch (no-op for
+        // games without plugin support).
+        engine::PluginDatabase::write_plugins_txt_for_launch(
+            info.game_dir, root, info.game_id, info.steam_appid,
+            engine->plugins.knowledge(), engine->platform.get());
+
+        const auto result = engine::launch_game(params);
+        if (result.pid <= 0)
+            return launch_result(GMM_SWIFT_RESULT_ERROR, "failed to launch the game");
+        return launch_result(GMM_SWIFT_RESULT_OK, {}, result.pid, result.overlay_launched);
+    } catch (const std::exception& error) {
+        return launch_result(GMM_SWIFT_RESULT_ERROR, error.what());
+    }
+}
+
+extern "C" GmmSwiftResultCode gmm_swift_launch_code(GmmSwiftLaunchResultHandle r) {
+    return r ? r->code : GMM_SWIFT_RESULT_ERROR;
+}
+extern "C" int64_t gmm_swift_launch_pid(GmmSwiftLaunchResultHandle r) { return r ? r->pid : -1; }
+extern "C" int gmm_swift_launch_overlay(GmmSwiftLaunchResultHandle r) {
+    return r && r->overlay_launched ? 1 : 0;
+}
+extern "C" const char* gmm_swift_launch_error(GmmSwiftLaunchResultHandle r) {
+    return r && !r->error.empty() ? r->error.c_str() : nullptr;
+}
+extern "C" void gmm_swift_launch_destroy(GmmSwiftLaunchResultHandle r) { delete r; }
+
+extern "C" int gmm_swift_process_alive(int64_t pid) {
+    if (pid <= 0) return 0;
+    return kill(static_cast<pid_t>(pid), 0) == 0 || errno == EPERM ? 1 : 0;
 }
 
 extern "C" const char* gmm_swift_last_error(GmmSwiftEngineHandle engine) {

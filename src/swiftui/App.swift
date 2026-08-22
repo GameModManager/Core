@@ -18,8 +18,16 @@ struct BrowserView: View {
             VStack(alignment: .leading) {
                 HStack {
                     profileMenu
-                    if state.isMutating { ProgressView().controlSize(.small) }
                     Spacer()
+                    executableMenu
+                    if state.runningPID != nil {
+                        ProgressView().controlSize(.small)
+                        Text("Running…").foregroundStyle(.secondary)
+                    }
+                    Button("Launch") {
+                        if let exe = state.selectedExecutable { state.launch(executable: exe) }
+                    }
+                    .disabled(state.selectedExecutable == nil || state.isBusy || state.runningPID != nil)
                     Button(state.isLoading ? "Cancel" : "Refresh") { state.isLoading ? state.cancel() : state.refresh() }
                 }
                 if state.isLoading { ProgressView("Scanning…") }
@@ -74,6 +82,30 @@ struct BrowserView: View {
             }
         }.onReceive(NotificationCenter.default.publisher(for: .gmmRefresh)) { _ in state.refresh() }
             .onChange(of: state.selectedInstance) { _, _ in state.refresh() }
+    }
+
+    /// Executable picker (saved instance.toml entries, or the game plugin's
+    /// known executables on first launch).
+    private var executableMenu: some View {
+        Menu {
+            ForEach(state.snapshot?.executables ?? [], id: \.self) { path in
+                Button {
+                    state.selectedExecutable = path
+                } label: {
+                    if path == state.selectedExecutable {
+                        Label(fileName(of: path), systemImage: "checkmark")
+                    } else { Text(fileName(of: path)) }
+                }
+            }
+        } label: {
+            Label(state.selectedExecutable.map { fileName(of: $0) } ?? "No Executable",
+                  systemImage: "app.badge")
+        }
+        .disabled((state.snapshot?.executables.isEmpty ?? true) || state.isBusy)
+    }
+
+    private func fileName(of path: String) -> String {
+        (path as NSString).lastPathComponent
     }
 
     /// Profile switcher plus lifecycle actions (create/rename/delete).
