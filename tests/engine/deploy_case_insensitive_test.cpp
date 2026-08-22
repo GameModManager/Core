@@ -168,7 +168,23 @@ static void deploy_and_merge(const fs::path& base, bool case_sensitive,
     }
 }
 
+// Probe for a case-sensitive filesystem. macOS APFS is case-insensitive by
+// default, so tests that assert case-variant dirs/files coexist cannot pass.
+static bool is_case_sensitive_fs() {
+    const fs::path base = fs::temp_directory_path() / "gmm_case_probe";
+    std::error_code ec;
+    fs::create_directories(base / "A", ec);
+    const bool result = !fs::exists(base / "a", ec); // CI fs -> "a" exists
+    fs::remove_all(base, ec);
+    return result;
+}
+
 TEST_CASE("deploy case insensitive", "[engine]") {
+    if (!is_case_sensitive_fs()) {
+        WARN("Skipping: filesystem is case-insensitive (macOS APFS default)");
+        return;
+    }
+
     const fs::path base =
         fs::current_path() / ("gmm_deploy_ci_" + std::to_string(getpid()));
     fs::remove_all(base);
