@@ -340,3 +340,12 @@ if(UNIX AND NOT APPLE)
     add_test(NAME ci_intercept_test COMMAND ci_intercept_test)
     set_tests_properties(ci_intercept_test PROPERTIES ENVIRONMENT "TZ=UTC")
 endif()
+
+# SwiftUI bridge tests exercise the Apple-only C ABI without involving Qt or
+# XCTest; Catch2 keeps them in the existing CTest convention.
+if(APPLE)
+    gmm_catch2_test(swiftui_bridge_test swiftui_bridge_test.cpp
+        LIBS gmm_swift_bridge
+        DEFINES GMM_SWIFT_TEST_PLUGINS_DIR="${CMAKE_BINARY_DIR}/plugins")
+    add_dependencies(swiftui_bridge_test SkyrimSpecialEdition)
+endif()
