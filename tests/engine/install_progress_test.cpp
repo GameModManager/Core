@@ -255,10 +255,12 @@ TEST_CASE("install progress", "[engine]") {
         REQUIRE(engine::is_rar_archive(archive));
 
         // The real install path needs `unrar` on PATH too; skip gracefully when
-        // it is absent so the rest of the suite still runs elsewhere.
+        // it is absent so the rest of the suite still runs elsewhere. `ok` only
+        // means fork+waitpid succeeded - a missing binary still exits 127 via
+        // the execvp-failure path, so require exit_code == 0 as well.
         const bool unrar_present = [] {
             const engine::CapturedProcess p = engine::run_captured({"unrar", "--version"});
-            return p.ok;
+            return p.ok && p.exit_code == 0;
         }();
         if (!unrar_present) {
             SKIP("unrar not on PATH");
