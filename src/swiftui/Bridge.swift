@@ -65,15 +65,50 @@ actor EngineClient {
         }
         defer { gmm_swift_snapshot_destroy(snapshot) }
         if Task.isCancelled { throw CancellationError() }
-        let mods = (0..<gmm_swift_snapshot_mod_count(snapshot)).compactMap { index -> ModRow? in
-            let mod = gmm_swift_snapshot_mod_at(snapshot, index)
+        return try Self.readSnapshot(snapshot)
+    }
+
+    /// Moves a mod to a new priority within a profile. Serialized by the actor;
+    /// returns the refreshed immutable snapshot on success.
+    func moveMod(instanceID: String, profileID: String, modID: String, newPriority: Int) throws
+        -> BrowserSnapshot
+    {
+        if Task.isCancelled { throw CancellationError() }
+        let operation = gmm_swift_operation_create()
+        defer { gmm_swift_operation_destroy(operation) }
+        let result = instanceID.withCString { instance in
+            profileID.withCString { profile in
+                modID.withCString { mod in
+                    gmm_swift_move_mod(self.engine, instance, profile, mod, Int32(newPriority), operation)
+                }
+            }
+        }
+        guard let result else { throw BridgeError.message("move failed") }
+        defer { gmm_swift_result_destroy(result) }
+        switch gmm_swift_result_code(result) {
+        case GMM_SWIFT_RESULT_OK:
+            guard let snapshot = gmm_swift_result_snapshot(result) else {
+                throw BridgeError.message("move returned no snapshot")
+            }
+            return try Self.readSnapshot(snapshot)
+        case GMM_SWIFT_RESULT_CANCELLED:
+            throw CancellationError()
+        default:
+            let message = gmm_swift_result_error(result).map(String.init(cString:)) ?? "move failed"
+            throw BridgeError.message(message)
+        }
+    }
+
+    private static func readSnapshot(_ handle: GmmSwiftSnapshotHandle) throws -> BrowserSnapshot {
+        let mods = (0..<gmm_swift_snapshot_mod_count(handle)).compactMap { index -> ModRow? in
+            let mod = gmm_swift_snapshot_mod_at(handle, index)
             guard let id = mod.id else { return nil }
             return ModRow(id: String(cString: id), order: Int(mod.order), enabled: mod.enabled != 0)
         }
         return BrowserSnapshot(
-            instanceID: String(cString: gmm_swift_snapshot_instance_id(snapshot)!),
-            gameID: String(cString: gmm_swift_snapshot_game_id(snapshot)!),
-            profileID: String(cString: gmm_swift_snapshot_profile_id(snapshot)!), mods: mods)
+            instanceID: String(cString: gmm_swift_snapshot_instance_id(handle)!),
+            gameID: String(cString: gmm_swift_snapshot_game_id(handle)!),
+            profileID: String(cString: gmm_swift_snapshot_profile_id(handle)!), mods: mods)
     }
 }
 
@@ -86,6 +121,9 @@ final class BrowserState: ObservableObject {
     @Published var snapshot: BrowserSnapshot?
     @Published var isLoading = false
     @Published var error: String?
+    @Published var isMutating = false
+    @Published var actionError: String?
+    var isBusy: Bool { isLoading || isMutating }
     private var generation = 0
     private var work: Task<Void, Never>?
     let client = EngineClient()
@@ -94,6 +132,33 @@ final class BrowserState: ObservableObject {
         generation += 1
         work?.cancel()
         isLoading = false
+    }
+
+    /// Moves a mod up (delta -1) or down (delta +1) in the profile order.
+    /// Bumps the generation so any in-flight refresh result is rejected as stale.
+    func moveMod(id: String, delta: Int) {
+        guard !isBusy, let snapshot = snapshot,
+              let index = snapshot.mods.firstIndex(where: { $0.id == id }),
+              snapshot.mods.indices.contains(index + delta) else { return }
+        generation += 1
+        work?.cancel()
+        let current = generation
+        let priority = snapshot.mods[index + delta].order
+        isMutating = true
+        actionError = nil
+        Task {
+            defer { if current == generation { isMutating = false } }
+            do {
+                let updated = try await client.moveMod(
+                    instanceID: snapshot.instanceID, profileID: snapshot.profileID,
+                    modID: id, newPriority: priority)
+                guard current == generation else { return }
+                self.snapshot = updated
+            } catch is CancellationError {
+            } catch {
+                if current == generation { actionError = error.localizedDescription }
+            }
+        }
     }
 
     func refresh() {
