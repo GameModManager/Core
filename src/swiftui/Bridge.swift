@@ -22,6 +22,9 @@ struct BrowserSnapshot: Sendable {
     let profileID: String
     let profiles: [String]
     let gameDir: String
+    let instanceRoot: String
+    let modsDir: String
+    let profilesDir: String
     let steamAppid: UInt32
     let executables: [String]
     let mods: [ModRow]
@@ -178,6 +181,50 @@ actor EngineClient {
         gmm_swift_process_alive(pid) != 0
     }
 
+    /// Enables or disables a mod in the profile.
+    func setModEnabled(instanceID: String, profileID: String, modID: String, enabled: Bool) throws
+        -> BrowserSnapshot
+    {
+        try performMutation(instanceID: instanceID, viewProfile: profileID) { engine, instance, view, operation in
+            modID.withCString { mod in
+                gmm_swift_set_mod_enabled(engine, instance, view, mod, enabled ? 1 : 0, operation)
+            }
+        }
+    }
+
+    /// Creates a separator pseudo-mod folder in the instance's mods directory.
+    func createSeparator(instanceID: String, name: String) throws -> BrowserSnapshot {
+        try performMutation(instanceID: instanceID, viewProfile: nil) { engine, instance, view, operation in
+            name.withCString { sep in
+                gmm_swift_create_separator(engine, instance, sep, operation)
+            }
+        }
+    }
+
+    /// Applies an imported modlist order (folder names, highest priority first
+    /// as written by export). Unknown folders are skipped by the bridge.
+    func applyModlistOrder(instanceID: String, profileID: String, folders: [String]) throws
+        -> BrowserSnapshot
+    {
+        try withArrayOfCStrings(folders) { array, count in
+            try performMutation(instanceID: instanceID, viewProfile: profileID) { engine, instance, view, operation in
+                gmm_swift_apply_modlist(engine, instance, view, array, count, operation)
+            }
+        }
+    }
+
+    private func withArrayOfCStrings<R>(
+        _ strings: [String], _ body: (UnsafePointer<UnsafePointer<CChar>?>?, Int) throws -> R
+    ) rethrows -> R {
+        let copies: [UnsafeMutablePointer<CChar>?] = strings.map { strdup($0) }
+        defer { for copy in copies { free(copy) } }
+        var pointers: [UnsafePointer<CChar>?] = copies.map { UnsafePointer($0!) }
+        pointers.append(nil)
+        return try pointers.withUnsafeBufferPointer { buffer in
+            try body(buffer.baseAddress, strings.count)
+        }
+    }
+
     private static func readSnapshot(_ handle: GmmSwiftSnapshotHandle) throws -> BrowserSnapshot {
         let mods = (0..<gmm_swift_snapshot_mod_count(handle)).compactMap { index -> ModRow? in
             let mod = gmm_swift_snapshot_mod_at(handle, index)
@@ -196,6 +243,9 @@ actor EngineClient {
             profileID: String(cString: gmm_swift_snapshot_profile_id(handle)!),
             profiles: profiles,
             gameDir: gmm_swift_snapshot_game_dir(handle).map(String.init(cString:)) ?? "",
+            instanceRoot: gmm_swift_snapshot_instance_root(handle).map(String.init(cString:)) ?? "",
+            modsDir: gmm_swift_snapshot_mods_dir(handle).map(String.init(cString:)) ?? "",
+            profilesDir: gmm_swift_snapshot_profiles_dir(handle).map(String.init(cString:)) ?? "",
             steamAppid: gmm_swift_snapshot_steam_appid(handle),
             executables: executables, mods: mods)
     }
@@ -346,6 +396,41 @@ final class BrowserState: ObservableObject {
             runningPID = nil
             refresh()
         }
+    }
+
+    /// Toggles a mod's enabled state in the viewed profile.
+    func toggleMod(id: String, enabled: Bool) {
+        guard canMutateProfiles, let current = snapshot,
+              current.mods.contains(where: { $0.id == id }) else { return }
+        runMutation { try await self.client.setModEnabled(
+            instanceID: current.instanceID, profileID: current.profileID,
+            modID: id, enabled: enabled) }
+    }
+
+    /// Creates a separator pseudo-mod and refreshes the mod list.
+    func createSeparator(name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard canMutateProfiles, !trimmed.isEmpty, let current = snapshot else { return }
+        runMutation { try await self.client.createSeparator(
+            instanceID: current.instanceID, name: trimmed) }
+    }
+
+    /// Applies an imported modlist order (folder names, highest first).
+    func importModlistOrder(_ folders: [String]) {
+        guard canMutateProfiles, !folders.isEmpty, let current = snapshot else { return }
+        runMutation { try await self.client.applyModlistOrder(
+            instanceID: current.instanceID, profileID: current.profileID, folders: folders) }
+    }
+
+    /// Moves a mod to an absolute position (0-based index from drag & drop).
+    func moveModTo(id: String, destination: Int) {
+        guard !isBusy, let snapshot = snapshot, snapshot.profiles.count >= 0,
+              let target = snapshot.mods.first(where: { $0.id == id }),
+              snapshot.mods.indices.contains(destination),
+              destination != target.order else { return }
+        runMutation { try await self.client.moveMod(
+            instanceID: snapshot.instanceID, profileID: snapshot.profileID,
+            modID: id, newPriority: destination) }
     }
 
     /// Moves a mod up (delta -1) or down (delta +1) in the profile order.
