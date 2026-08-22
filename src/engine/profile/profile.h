@@ -166,7 +166,8 @@ public:
     // When new mods are added the file is rewritten (delayed, batched) so the
     // on-disk state converges — MO2's refreshModStatus behavior.
     void refresh_mod_status(const std::vector<std::string>& known_mods,
-                            const std::vector<std::string>& foreign_mods = {});
+                            const std::vector<std::string>& foreign_mods = {},
+                            bool persist_new_mods = true);
 
     // Mods sorted by priority ascending (index 0 = lowest priority). Returns
     // a copy: the live collection is protected by mods_mutex_ and must never

@@ -1,0 +1,4 @@
+module GmmSwiftBridge {
+    header "gmm_swift_bridge.h"
+    export *
+}

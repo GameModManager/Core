@@ -379,7 +379,8 @@ bool Profile::save_settings() {
 // --- modlist.txt -----------------------------------------------------------
 
 void Profile::refresh_mod_status(const std::vector<std::string>& known_mods,
-                                 const std::vector<std::string>& foreign_mods) {
+                                 const std::vector<std::string>& foreign_mods,
+                                 bool persist_new_mods) {
     std::lock_guard lock(mods_mutex_);
 
     std::string content;
@@ -443,7 +444,7 @@ void Profile::refresh_mod_status(const std::vector<std::string>& known_mods,
               [](const ModListEntry& a, const ModListEntry& b) { return a.priority < b.priority; });
 
     // Persist newly added mods (delayed, batched) so the file converges.
-    if (modified) {
+    if (modified && persist_new_mods) {
         modlist_writer_.write();
     }
 }

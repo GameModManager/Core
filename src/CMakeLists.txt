@@ -8,6 +8,32 @@ add_subdirectory(engine)
 add_subdirectory(ui)
 add_subdirectory(cli)
 
+if(APPLE)
+    add_library(gmm_swift_bridge STATIC swiftui/gmm_swift_bridge.cpp)
+    target_include_directories(gmm_swift_bridge PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/swiftui)
+    target_link_libraries(gmm_swift_bridge PRIVATE
+        gmm_engine gmm_runtime gmm_platform
+        PkgConfig::LIBARCHIVE PkgConfig::SQLITE3 PkgConfig::YAMLCPP PkgConfig::CURL
+        PkgConfig::NLOHMANN_JSON PkgConfig::TOMLPLUSPLUS PkgConfig::ZLIB PkgConfig::LZ4
+        pybind11::embed Python3::Python ${CMAKE_DL_LIBS})
+
+    enable_language(Swift)
+    add_executable(gmm_swift_app swiftui/App.swift swiftui/Bridge.swift)
+    set_target_properties(gmm_swift_app PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_GUI_IDENTIFIER "org.gamemodmanager.swiftui"
+        MACOSX_BUNDLE_BUNDLE_NAME "GameModManager SwiftUI"
+        SWIFT_VERSION 5.9
+        AUTOMOC OFF
+        SWIFT_OBJC_BRIDGING_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/swiftui/gmm_swift_bridge.h")
+    target_include_directories(gmm_swift_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/swiftui)
+    target_compile_options(gmm_swift_app PRIVATE
+        "$<$<COMPILE_LANGUAGE:Swift>:-Xcc>"
+        "$<$<COMPILE_LANGUAGE:Swift>:-fmodule-map-file=${CMAKE_CURRENT_SOURCE_DIR}/swiftui/module.modulemap>")
+    target_link_libraries(gmm_swift_app PRIVATE gmm_swift_bridge)
+endif()
+
 # ---------------------------------------------------------------------------
 # App entry point — thin main() + wiring only
 # ---------------------------------------------------------------------------
