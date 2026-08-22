@@ -148,6 +148,14 @@ target_include_directories(gmm_engine PUBLIC
 # and flows to every consumer through this PUBLIC definition.
 target_compile_definitions(gmm_engine PUBLIC VERSION="${PROJECT_VERSION}")
 
+# nlohmann_json is header-only and leaks through the PUBLIC engine header
+# mod/fomod/fomod_view_model.h, so consumers compiling that header need its
+# include dir — it must be PUBLIC, not PRIVATE (PRIVATE would propagate to
+# the link line only).
+target_link_libraries(gmm_engine PUBLIC
+    PkgConfig::NLOHMANN_JSON
+)
+
 # Link libraries — PRIVATE deps of a static library propagate as link-only
 # dependencies to consumers, so tests that link gmm_engine get the system
 # libraries they need without re-listing them.
@@ -158,7 +166,6 @@ target_link_libraries(gmm_engine PRIVATE
     PkgConfig::SQLITE3
     PkgConfig::YAMLCPP
     PkgConfig::CURL
-    PkgConfig::NLOHMANN_JSON
     PkgConfig::TOMLPLUSPLUS
     PkgConfig::ZLIB
     PkgConfig::LZ4
