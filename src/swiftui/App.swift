@@ -4,84 +4,157 @@ import SwiftUI
 struct GameModManagerSwiftUIApp: App {
     @StateObject private var state = BrowserState()
     var body: some Scene {
-        WindowGroup("GameModManager") { BrowserView().environmentObject(state).onAppear { state.refresh() } }
+        WindowGroup("GameModManager") { RootView().environmentObject(state).onAppear { state.refresh() } }
+    }
+}
+
+/// Sidebar pages — the Qt popups/dialogs promoted to navigation destinations.
+enum SidebarPage: String, Hashable {
+    case main
+    case instanceOptions
+    case executables
+    case settings
+    case diagnostics
+}
+
+struct RootView: View {
+    @EnvironmentObject private var state: BrowserState
+    var body: some View {
+        NavigationSplitView {
+            List(selection: $state.page) {
+                Label("Main", systemImage: "house").tag(SidebarPage.main)
+                Label("Instance Options", systemImage: "slider.horizontal.3").tag(SidebarPage.instanceOptions)
+                Label("Executables", systemImage: "app.badge").tag(SidebarPage.executables)
+                Label("Settings", systemImage: "gearshape").tag(SidebarPage.settings)
+                Label("Diagnostics", systemImage: "stethoscope").tag(SidebarPage.diagnostics)
+
+                // Change Instance LAST — the MO2-style switcher pinned to the
+                // bottom of the sidebar, not a page.
+                changeInstanceMenu
+            }
+            .navigationTitle("GameModManager")
+        } detail: {
+            switch state.page {
+            case .main: BrowserView()
+            case .instanceOptions:
+                StubView(title: "Instance Options", systemImage: "slider.horizontal.3",
+                         note: "Deploy strategy, folder overrides, Proton runner and instance paths.")
+            case .executables:
+                StubView(title: "Executables", systemImage: "app.badge",
+                         note: "Add, edit and pin executables — title, path, arguments, environment, working directory.")
+            case .settings:
+                StubView(title: "Settings", systemImage: "gearshape",
+                         note: "Data root, sources, categories, theme and keyring.")
+            case .diagnostics:
+                StubView(title: "Diagnostics", systemImage: "stethoscope",
+                         note: "Logs, traces and notifications.")
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .gmmRefresh)) { _ in state.refresh() }
+            .onChange(of: state.selectedInstance) { _, _ in state.refresh() }
+    }
+
+    private var changeInstanceMenu: some View {
+        Menu {
+            ForEach(state.instances, id: \.self) { name in
+                Button {
+                    state.selectedInstance = name
+                } label: {
+                    if name == state.selectedInstance {
+                        Label(name, systemImage: "checkmark")
+                    } else { Text(name) }
+                }
+            }
+        } label: {
+            Label(state.selectedInstance ?? "Change Instance",
+                  systemImage: "arrow.left.arrow.right")
+        }
+    }
+}
+
+/// Placeholder for a page whose features are ported after the UI shell is
+/// complete.
+struct StubView: View {
+    let title: String
+    let systemImage: String
+    let note: String
+    var body: some View {
+        ContentUnavailableView {
+            Label(title, systemImage: systemImage)
+        } description: {
+            Text("\(note)\n\nThis page is a stub — features land here after the shell is finished.")
+        }
     }
 }
 
 struct BrowserView: View {
     @EnvironmentObject private var state: BrowserState
     var body: some View {
-        NavigationSplitView {
-            List(state.instances, id: \.self, selection: $state.selectedInstance) { Text($0) }
-                .navigationTitle("Instances")
-        } detail: {
-            VStack(alignment: .leading) {
-                HStack {
-                    profileMenu
-                    Spacer()
-                    executableMenu
-                    if state.runningPID != nil {
-                        ProgressView().controlSize(.small)
-                        Text("Running…").foregroundStyle(.secondary)
-                    }
-                    Button("Launch") {
-                        if let exe = state.selectedExecutable { state.launch(executable: exe) }
-                    }
-                    .disabled(state.selectedExecutable == nil || state.isBusy || state.runningPID != nil)
-                    Button(state.isLoading ? "Cancel" : "Refresh") { state.isLoading ? state.cancel() : state.refresh() }
+        VStack(alignment: .leading) {
+            HStack {
+                profileMenu
+                Spacer()
+                executableMenu
+                if state.runningPID != nil {
+                    ProgressView().controlSize(.small)
+                    Text("Running…").foregroundStyle(.secondary)
                 }
-                if state.isLoading { ProgressView("Scanning…") }
-                if let actionError = state.actionError { Text(actionError).foregroundStyle(.red).font(.caption) }
-                if let error = state.error, !state.isLoading {
-                    ContentUnavailableView("Could not load", systemImage: "exclamationmark.triangle", description: Text(error))
-                } else if let snapshot = state.snapshot, snapshot.mods.isEmpty {
-                    ContentUnavailableView("No mods", systemImage: "shippingbox")
-                } else {
-                    let mods = state.snapshot?.mods ?? []
-                    List(Array(mods.enumerated()), id: \.element.id) { index, mod in
-                        HStack {
-                            Text("\(mod.order)").frame(width: 40, alignment: .trailing)
-                            Text(mod.id)
-                            Spacer()
-                            Text(mod.enabled ? "Enabled" : "Disabled")
-                            Button { state.moveMod(id: mod.id, delta: -1) } label: { Image(systemName: "chevron.up") }
-                                .buttonStyle(.borderless).disabled(index == 0 || state.isBusy)
-                            Button { state.moveMod(id: mod.id, delta: 1) } label: { Image(systemName: "chevron.down") }
-                                .buttonStyle(.borderless).disabled(index == mods.count - 1 || state.isBusy)
-                        }
-                    }
+                Button("Launch") {
+                    if let exe = state.selectedExecutable { state.launch(executable: exe) }
                 }
-            }.padding()
-            .alert("New Profile", isPresented: $state.isCreatingProfile) {
-                TextField("Name", text: $state.profileNameInput)
-                Button("Create") {
-                    state.createProfile(name: state.profileNameInput)
-                    state.profileNameInput = ""
-                }
-                Button("Cancel", role: .cancel) { state.profileNameInput = "" }
-            } message: { Text("Creates an empty profile.") }
-            .alert("Rename Profile", isPresented: $state.isRenamingProfile) {
-                TextField("Name", text: $state.profileNameInput)
-                Button("Rename") {
-                    state.renameSelectedProfile(to: state.profileNameInput)
-                    state.profileNameInput = ""
-                }
-                Button("Cancel", role: .cancel) { state.profileNameInput = "" }
+                .disabled(state.selectedExecutable == nil || state.isBusy || state.runningPID != nil)
+                Button(state.isLoading ? "Cancel" : "Refresh") { state.isLoading ? state.cancel() : state.refresh() }
             }
-            .confirmationDialog(
-                "Delete Profile", isPresented: $state.confirmingDeleteProfile,
-                titleVisibility: .visible
-            ) {
-                ForEach(state.snapshot?.profiles.filter { $0 != state.selectedProfile } ?? [], id: \.self) {
-                    name in
-                    Button("Delete \"\(name)\"", role: .destructive) { state.deleteProfile(name) }
+            if state.isLoading { ProgressView("Scanning…") }
+            if let actionError = state.actionError { Text(actionError).foregroundStyle(.red).font(.caption) }
+            if let error = state.error, !state.isLoading {
+                ContentUnavailableView("Could not load", systemImage: "exclamationmark.triangle", description: Text(error))
+            } else if let snapshot = state.snapshot, snapshot.mods.isEmpty {
+                ContentUnavailableView("No mods", systemImage: "shippingbox")
+            } else {
+                let mods = state.snapshot?.mods ?? []
+                List(Array(mods.enumerated()), id: \.element.id) { index, mod in
+                    HStack {
+                        Text("\(mod.order)").frame(width: 40, alignment: .trailing)
+                        Text(mod.id)
+                        Spacer()
+                        Text(mod.enabled ? "Enabled" : "Disabled")
+                        Button { state.moveMod(id: mod.id, delta: -1) } label: { Image(systemName: "chevron.up") }
+                            .buttonStyle(.borderless).disabled(index == 0 || state.isBusy)
+                        Button { state.moveMod(id: mod.id, delta: 1) } label: { Image(systemName: "chevron.down") }
+                            .buttonStyle(.borderless).disabled(index == mods.count - 1 || state.isBusy)
+                    }
                 }
-                Button("Cancel", role: .cancel) { }
-            } message: {
-                Text("Removes the profile directory and all profile-specific files.")
             }
-        }.onReceive(NotificationCenter.default.publisher(for: .gmmRefresh)) { _ in state.refresh() }
-            .onChange(of: state.selectedInstance) { _, _ in state.refresh() }
+        }.padding()
+        .alert("New Profile", isPresented: $state.isCreatingProfile) {
+            TextField("Name", text: $state.profileNameInput)
+            Button("Create") {
+                state.createProfile(name: state.profileNameInput)
+                state.profileNameInput = ""
+            }
+            Button("Cancel", role: .cancel) { state.profileNameInput = "" }
+        } message: { Text("Creates an empty profile.") }
+        .alert("Rename Profile", isPresented: $state.isRenamingProfile) {
+            TextField("Name", text: $state.profileNameInput)
+            Button("Rename") {
+                state.renameSelectedProfile(to: state.profileNameInput)
+                state.profileNameInput = ""
+            }
+            Button("Cancel", role: .cancel) { state.profileNameInput = "" }
+        }
+        .confirmationDialog(
+            "Delete Profile", isPresented: $state.confirmingDeleteProfile,
+            titleVisibility: .visible
+        ) {
+            ForEach(state.snapshot?.profiles.filter { $0 != state.selectedProfile } ?? [], id: \.self) {
+                name in
+                Button("Delete \"\(name)\"", role: .destructive) { state.deleteProfile(name) }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Removes the profile directory and all profile-specific files.")
+        }
     }
 
     /// Executable picker (saved instance.toml entries, or the game plugin's

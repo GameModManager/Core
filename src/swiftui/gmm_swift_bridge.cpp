@@ -10,6 +10,7 @@
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "engine/profile/profile.h"
 #include "engine/profile/profile_creation.h"
+#include "engine/core/util/fs_utils.h"
 #include "platform/macos/macos_platform.h"
 
 #include <algorithm>
@@ -39,6 +40,9 @@ struct GmmSwiftSnapshot {
     std::string game_id;
     std::string profile_id;
     std::string game_dir;
+    std::string instance_root;
+    std::string mods_dir;
+    std::string profiles_dir;
     uint32_t steam_appid = 0;
     struct Mod {
         std::string id;
@@ -245,6 +249,9 @@ GmmSwiftSnapshotHandle make_snapshot(GmmSwiftEngine* engine, const char* instanc
         snapshot->instance_id = root.filename().string();
         snapshot->game_id = instance.info().game_id;
         snapshot->game_dir = instance.info().game_dir.string();
+        snapshot->instance_root = root.string();
+        snapshot->mods_dir = instance.path_for(engine::InstanceKind::Mods).string();
+        snapshot->profiles_dir = instance.path_for(engine::InstanceKind::Profiles).string();
         snapshot->steam_appid = instance.info().steam_appid;
         snapshot->executables = instance_executables(instance, engine->plugins.knowledge());
 
@@ -305,6 +312,15 @@ extern "C" const char* gmm_swift_snapshot_profile_at(GmmSwiftSnapshotHandle s, s
 
 extern "C" const char* gmm_swift_snapshot_game_dir(GmmSwiftSnapshotHandle s) {
     return s && !s->game_dir.empty() ? s->game_dir.c_str() : nullptr;
+}
+extern "C" const char* gmm_swift_snapshot_instance_root(GmmSwiftSnapshotHandle s) {
+    return s && !s->instance_root.empty() ? s->instance_root.c_str() : nullptr;
+}
+extern "C" const char* gmm_swift_snapshot_mods_dir(GmmSwiftSnapshotHandle s) {
+    return s && !s->mods_dir.empty() ? s->mods_dir.c_str() : nullptr;
+}
+extern "C" const char* gmm_swift_snapshot_profiles_dir(GmmSwiftSnapshotHandle s) {
+    return s && !s->profiles_dir.empty() ? s->profiles_dir.c_str() : nullptr;
 }
 extern "C" uint32_t gmm_swift_snapshot_steam_appid(GmmSwiftSnapshotHandle s) {
     return s ? s->steam_appid : 0;
@@ -538,6 +554,56 @@ extern "C" void gmm_swift_launch_destroy(GmmSwiftLaunchResultHandle r) { delete 
 extern "C" int gmm_swift_process_alive(int64_t pid) {
     if (pid <= 0) return 0;
     return kill(static_cast<pid_t>(pid), 0) == 0 || errno == EPERM ? 1 : 0;
+}
+
+extern "C" GmmSwiftMutationResultHandle gmm_swift_create_separator(
+    GmmSwiftEngineHandle e, const char* instance_id, const char* name,
+    GmmSwiftOperationHandle operation) {
+    return profile_mutate(e, instance_id, nullptr, operation,
+                          [=](engine::Instance& instance, std::string& error) {
+            if (!name || !*name) { error = "separator name is required"; return false; }
+            const auto sanitized = engine::sanitize_directory_name(name);
+            if (sanitized.empty()) { error = "separator name is invalid"; return false; }
+            const auto suffix = e->plugins.knowledge().get(
+                instance.info().game_id, "separator_suffix", "_separator");
+            const auto dir = instance.path_for(engine::InstanceKind::Mods) /
+                             (sanitized + suffix);
+            std::error_code ec;
+            if (fs::exists(dir)) {
+                error = "a separator named \"" + sanitized + "\" already exists";
+                return false;
+            }
+            fs::create_directories(dir, ec);
+            if (ec) { error = "failed to create the separator directory"; return false; }
+            // No metadata file needed: the display name derives from the
+            // folder name minus the separator suffix (Qt parity).
+            return true;
+        });
+}
+
+extern "C" GmmSwiftMutationResultHandle gmm_swift_apply_modlist(
+    GmmSwiftEngineHandle e, const char* instance_id, const char* profile_id,
+    const char* const* folders, size_t count, GmmSwiftOperationHandle operation) {
+    return mutate(e, instance_id, profile_id, operation,
+                  [=](engine::Instance& instance, const std::string& profile, std::string& error) {
+            if (!folders || count == 0 || profile.empty()) {
+                error = "profile and modlist entries are required";
+                return false;
+            }
+            engine::profile::Profile prof(profiles_dir(instance) / profile);
+            const auto known = known_mods(e, instance);
+            prof.refresh_mod_status(known, {}, false);
+            size_t applied = 0;
+            for (size_t i = 0; i < count; ++i) {
+                if (!folders[i] || !*folders[i]) continue;
+                if (prof.priority_of(folders[i]) < 0) continue;  // unknown: skipped
+                prof.set_mod_priority(folders[i], static_cast<int>(applied));
+                ++applied;
+            }
+            if (applied == 0) { error = "no listed mods were found"; return false; }
+            prof.write_modlist_now();
+            return true;
+        });
 }
 
 extern "C" const char* gmm_swift_last_error(GmmSwiftEngineHandle engine) {

@@ -52,6 +52,9 @@ GmmSwiftMod gmm_swift_snapshot_mod_at(GmmSwiftSnapshotHandle snapshot, size_t in
 size_t gmm_swift_snapshot_profile_count(GmmSwiftSnapshotHandle snapshot);
 const char* gmm_swift_snapshot_profile_at(GmmSwiftSnapshotHandle snapshot, size_t index);
 const char* gmm_swift_snapshot_game_dir(GmmSwiftSnapshotHandle snapshot);
+const char* gmm_swift_snapshot_instance_root(GmmSwiftSnapshotHandle snapshot);
+const char* gmm_swift_snapshot_mods_dir(GmmSwiftSnapshotHandle snapshot);
+const char* gmm_swift_snapshot_profiles_dir(GmmSwiftSnapshotHandle snapshot);
 uint32_t gmm_swift_snapshot_steam_appid(GmmSwiftSnapshotHandle snapshot);
 // Saved executables from instance.toml (`executables` array); falls back to
 // the game plugin's known executables on first launch (Qt parity).
@@ -93,6 +96,20 @@ GmmSwiftMutationResultHandle gmm_swift_rename_profile(
 GmmSwiftMutationResultHandle gmm_swift_delete_profile(
     GmmSwiftEngineHandle engine, const char* instance_id, const char* name,
     int is_active, const char* view_profile, GmmSwiftOperationHandle operation);
+
+// Creates a separator pseudo-mod folder (<name><separator_suffix>) in the
+// instance's mods directory (MO2 parity: display name = folder minus suffix).
+GmmSwiftMutationResultHandle gmm_swift_create_separator(
+    GmmSwiftEngineHandle engine, const char* instance_id, const char* name,
+    GmmSwiftOperationHandle operation);
+
+// Applies an imported modlist ORDER to a profile: folders[i] gets priority i
+// for every entry matching a known mod folder; unknown entries are skipped.
+// Enabled states are not changed (Qt import parity). Returns the refreshed
+// snapshot on success.
+GmmSwiftMutationResultHandle gmm_swift_apply_modlist(
+    GmmSwiftEngineHandle engine, const char* instance_id, const char* profile_id,
+    const char* const* folders, size_t count, GmmSwiftOperationHandle operation);
 
 // Launch through the canonical engine path: prepare_launch_params (deploys
 // enabled mods — symlink strategy on macOS) then launch_game. Runs

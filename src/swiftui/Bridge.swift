@@ -205,6 +205,7 @@ enum BridgeError: LocalizedError { case message(String); var errorDescription: S
 
 @MainActor
 final class BrowserState: ObservableObject {
+    @Published var page: SidebarPage = .main
     @Published var instances = [String]()
     @Published var selectedInstance: String?
     @Published var selectedProfile: String?
