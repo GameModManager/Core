@@ -241,6 +241,13 @@ final class BrowserState: ObservableObject {
         refresh()
     }
 
+    /// Switches the active instance (Change Instance page) and returns to Main.
+    func selectInstance(_ name: String) {
+        guard name != selectedInstance else { return }
+        selectedInstance = name
+        page = .main
+    }
+
     /// Shared mutation plumbing: bumps the generation so any in-flight or
     /// late-arriving result is rejected as stale, keeps work off MainActor,
     /// and assigns the refreshed immutable snapshot on success.

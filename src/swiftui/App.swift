@@ -15,6 +15,7 @@ enum SidebarPage: String, Hashable {
     case executables
     case settings
     case diagnostics
+    case changeInstance
 }
 
 struct RootView: View {
@@ -28,14 +29,16 @@ struct RootView: View {
                 Label("Settings", systemImage: "gearshape").tag(SidebarPage.settings)
                 Label("Diagnostics", systemImage: "stethoscope").tag(SidebarPage.diagnostics)
 
-                // Change Instance LAST — the MO2-style switcher pinned to the
-                // bottom of the sidebar, not a page.
-                changeInstanceMenu
+                // Change Instance LAST — full instance manager (Qt's
+                // InstanceSwitcher), not a dropdown.
+                Label("Change Instance", systemImage: "arrow.left.arrow.right")
+                    .tag(SidebarPage.changeInstance)
             }
             .navigationTitle("GameModManager")
         } detail: {
             switch state.page {
             case .main: BrowserView()
+            case .changeInstance: InstancesView()
             case .instanceOptions:
                 StubView(title: "Instance Options", systemImage: "slider.horizontal.3",
                          note: "Deploy strategy, folder overrides, Proton runner and instance paths.")
@@ -53,21 +56,45 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .gmmRefresh)) { _ in state.refresh() }
             .onChange(of: state.selectedInstance) { _, _ in state.refresh() }
     }
+}
 
-    private var changeInstanceMenu: some View {
-        Menu {
-            ForEach(state.instances, id: \.self) { name in
-                Button {
-                    state.selectedInstance = name
-                } label: {
-                    if name == state.selectedInstance {
-                        Label(name, systemImage: "checkmark")
-                    } else { Text(name) }
+/// Full instance manager (Qt's InstanceSwitcherContentWidget parity): the
+/// complete instance list plus creation entry points. Selecting an instance
+/// loads it and returns to Main.
+struct InstancesView: View {
+    @EnvironmentObject private var state: BrowserState
+    var body: some View {
+        VStack(alignment: .leading) {
+            HStack {
+                Text("Instances").font(.title2)
+                Spacer()
+                Button("Add Installed Instance…") { }
+                    .disabled(true)
+                Button("Add Portable Instance…") { }
+                    .disabled(true)
+            }
+            if state.instances.isEmpty && !state.isLoading {
+                ContentUnavailableView(
+                    "No instances", systemImage: "square.stack.3d.up.slash",
+                    description: Text("Create an installed or portable instance to get started."))
+            } else {
+                List(state.instances, id: \.self, selection: $state.selectedInstance) { name in
+                    HStack {
+                        Label(name, systemImage: "square.stack.3d.up")
+                        Spacer()
+                        if name == state.selectedInstance {
+                            Image(systemName: "checkmark").foregroundStyle(.tint)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture { state.selectInstance(name) }
                 }
             }
-        } label: {
-            Label(state.selectedInstance ?? "Change Instance",
-                  systemImage: "arrow.left.arrow.right")
+        }.padding()
+        .overlay {
+            // Creation flows (game detection, per-game setup) land here after
+            // the shell — stubbed so the layout is reviewable now.
+            if false { EmptyView() }
         }
     }
 }
