@@ -287,6 +287,23 @@ extern "C" GmmSwiftMutationResultHandle gmm_swift_set_mod_enabled(
     });
 }
 
+extern "C" GmmSwiftMutationResultHandle gmm_swift_move_mod(
+    GmmSwiftEngineHandle e, const char* instance_id, const char* profile_id,
+    const char* mod_id, int32_t new_priority, GmmSwiftOperationHandle operation) {
+    return mutate(e, instance_id, profile_id, operation,
+                  [=](engine::Instance& instance, const std::string& profile_id, std::string& error) {
+        if (!mod_id || !*mod_id || profile_id.empty()) { error = "mod and profile are required"; return false; }
+        engine::profile::Profile profile(profiles_dir(instance) / profile_id);
+        profile.refresh_mod_status(known_mods(e, instance), {}, false);
+        if (profile.priority_of(mod_id) < 0) { error = "mod was not found"; return false; }
+        // set_mod_priority clamps and is a no-op when the priority is
+        // unchanged; both are fine — the refreshed snapshot reports the truth.
+        profile.set_mod_priority(mod_id, new_priority);
+        profile.write_modlist_now();
+        return true;
+    });
+}
+
 extern "C" const char* gmm_swift_last_error(GmmSwiftEngineHandle engine) {
     if (!engine) return nullptr;
     std::lock_guard lock(engine->mutex);

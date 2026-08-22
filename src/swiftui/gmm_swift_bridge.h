@@ -67,6 +67,10 @@ GmmSwiftMutationResultHandle gmm_swift_set_mod_enabled(
     GmmSwiftEngineHandle engine, const char* instance_id, const char* profile_id,
     const char* mod_id, int enabled, GmmSwiftOperationHandle operation);
 
+GmmSwiftMutationResultHandle gmm_swift_move_mod(
+    GmmSwiftEngineHandle engine, const char* instance_id, const char* profile_id,
+    const char* mod_id, int32_t new_priority, GmmSwiftOperationHandle operation);
+
 const char* gmm_swift_last_error(GmmSwiftEngineHandle engine);
 void gmm_swift_free_string(const char* value);
 
