@@ -260,15 +260,23 @@ TEST_CASE("install progress", "[engine]") {
         // surfaces as exit_code 127 with ok == true.
         {
             const char* old_path = std::getenv("PATH");
-            REQUIRE(old_path != nullptr);
+            struct PathGuard {
+                std::string value;
+                bool had_value = false;
+                ~PathGuard() {
+                    if (had_value) setenv("PATH", value.c_str(), 1);
+                    else unsetenv("PATH");
+                }
+            } path_guard{old_path ? std::string(old_path) : std::string(),
+                         old_path != nullptr};
+            REQUIRE(path_guard.had_value);
             setenv("PATH", "/nonexistent-gmm-test", 1);
             std::vector<engine::ExtractedFile> missing_files;
             std::string missing_error;
             REQUIRE_FALSE(engine::ArchiveExtractor::extract(
                 archive, tmp.root / "out-missing", missing_files, missing_error));
             REQUIRE(missing_error.find("not available") != std::string::npos);
-            setenv("PATH", old_path, 1);
-        }
+        }  // PATH restored here even if an assertion above fails
 
         // The real install path needs `unrar` on PATH too; skip gracefully when
         // it is absent so the rest of the suite still runs elsewhere. `ok` only
