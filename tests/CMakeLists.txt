@@ -261,6 +261,7 @@ endif()
 
 gmm_catch2_test(plugins_tab_test ui/plugins_tab_test.cpp
     UI
+    DEFINES GMM_TEST_RESOURCES_DIR="${PROJECT_SOURCE_DIR}/resources"
     LIBS gmm_ui Qt6::Test)
 
 gmm_catch2_test(saves_tab_test ui/saves_tab_test.cpp
