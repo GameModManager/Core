@@ -259,6 +259,10 @@ if(KF6SyntaxHighlighting_FOUND)
     target_link_libraries(generic_files_tab_test PRIVATE KF6::SyntaxHighlighting)
 endif()
 
+gmm_catch2_test(filetree_tab_test ui/filetree_tab_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(plugins_tab_test ui/plugins_tab_test.cpp
     UI
     DEFINES GMM_TEST_RESOURCES_DIR="${PROJECT_SOURCE_DIR}/resources"
