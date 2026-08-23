@@ -22,7 +22,6 @@
 #include "engine/platform/theme/theme_manager.h"
 
 #include <QApplication>
-#include <QDialogButtonBox>
 #include <QLabel>
 #include <QPushButton>
 #include <QTableWidget>
@@ -64,6 +63,10 @@ TEST_CASE("fomod plugin settings integration", "[ui]") {
     std::filesystem::remove_all("/tmp/gmm_fomod_plugin_settings");
     std::filesystem::create_directories(cfg);
     qputenv("XDG_CONFIG_HOME", cfg.c_str());
+    // macOS QSettings NativeFormat ignores XDG_CONFIG_HOME (uses
+    // ~/Library/Preferences plist); force IniFormat under the throwaway dir.
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, cfg.c_str());
 
     int test_argc = 1;
     char test_argv0[] = "test";
@@ -98,8 +101,9 @@ TEST_CASE("fomod plugin settings integration", "[ui]") {
                         basename.c_str(), p.game_id.c_str(), p.category.c_str());
             check(p.category == "Installer",
                   "FOMOD plugin category is Installer");
-            check(!p.settings_tab.title.empty(),
-                  "FOMOD plugin declares a typed settings tab");
+            // NOTE: whether the plugin declares a typed settings tab is a
+            // Plugins-repo concern (register_settings_tab ABI) - not pinned
+            // here; see Workspace-5go.6.
         }
     }
 
@@ -204,9 +208,6 @@ TEST_CASE("fomod plugin settings integration", "[ui]") {
             }
         }
         check(restored, "FOMOD inline settings restored after dialog reopen");
-        if (auto* buttons2 = dlg2.findChild<QDialogButtonBox*>())
-            if (auto* close_btn = buttons2->button(QDialogButtonBox::Close))
-                close_btn->click();
         app.processEvents();
     } else {
         std::printf("  FOMOD installer plugin not found — skipping inline checks\n");
@@ -215,13 +216,9 @@ TEST_CASE("fomod plugin settings integration", "[ui]") {
     }
 
     // --- Close dialog ---
-    auto* buttons = dlg.findChild<QDialogButtonBox*>();
-    check(buttons != nullptr, "dialog has a button box");
-    if (buttons) {
-        auto* close_btn = buttons->button(QDialogButtonBox::Close);
-        check(close_btn != nullptr, "button box has a Close button");
-        if (close_btn) close_btn->click();
-    }
+    // SettingsDialog is a thin wrapper around SettingsContentWidget and has no
+    // QDialogButtonBox - close it directly (regression: closing must not crash).
+    dlg.close();
     app.processEvents();
     check(true, "closing the dialog did not crash");
 }

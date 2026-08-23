@@ -204,7 +204,12 @@ LaunchParams prepare_launch_params(
     const bool use_overlay = (deploy_strategy_name == kDeployStrategyOverlayFs);
     const bool use_direct = (deploy_strategy_name == kDeployStrategyDirect);
     params.use_overlay = use_overlay;
-    if (use_overlay && !OverlayFsLauncher::is_supported(params.overwrite_dir)) {
+#ifdef GMM_PLATFORM_LINUX
+    const bool overlay_supported = OverlayFsLauncher::is_supported(params.overwrite_dir);
+#else
+    const bool overlay_supported = false;  // OverlayFS launcher is Linux-only
+#endif
+    if (use_overlay && !overlay_supported) {
         Logger::instance().warn("OverlayFS not supported, launching without overlay");
         return params;
     }

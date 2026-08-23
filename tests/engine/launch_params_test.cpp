@@ -583,6 +583,35 @@ static void check_effective_strategy(const fs::path& root) {
             "effective strategy with empty instance root uses knowledge");
 }
 
+// Off Linux (macOS) the OverlayFS launcher does not exist, so an overlayfs
+// deploy_strategy cannot deploy at all: prepare_launch_params warns and
+// returns bare passthrough params - empty extra_lowerdirs, no staging dir,
+// nothing deployed anywhere.
+static void check_overlay_unavailable(const fs::path& root) {
+    make_instance(root);
+    const fs::path game_dir = root / "game";
+    fs::create_directories(game_dir);
+    const fs::path exe = game_dir / "Game.exe";
+    write_file(exe, "bin");
+
+    const auto params = engine::prepare_launch_params(
+        root, game_dir, exe, make_knowledge(false),
+        "testgame", 12345, true);
+
+    require(params.executable == exe, "no-overlay: executable passthrough");
+    require(params.game_dir == game_dir, "no-overlay: game_dir passthrough");
+    require(params.steam_appid == 12345, "no-overlay: steam_appid passthrough");
+    require(params.is_windows_exe, "no-overlay: is_windows_exe passthrough");
+    require(params.overwrite_dir == root / "overwrite",
+            "no-overlay: overwrite_dir is <root>/overwrite");
+    require(params.extra_lowerdirs.empty(),
+            "no-overlay: overlayfs strategy yields no lowerdirs off Linux");
+    require(!fs::exists(root / ".gmm_staging"),
+            "no-overlay: no staging dir created off Linux");
+    require(!fs::exists(game_dir / "Data"),
+            "no-overlay: nothing deployed into game_dir either");
+}
+
 TEST_CASE("launch params", "[engine]") {
     const fs::path base =
         fs::current_path() / ("gmm_test_launch_params_" + std::to_string(getpid()));
@@ -599,6 +628,7 @@ TEST_CASE("launch params", "[engine]") {
     check_direct_executable_copy(base / "instances" / "DirectExe", "direct executable copy");
     check_direct_backup_restore(base / "instances" / "DirectBackup", "direct backup restore");
 
+#ifdef GMM_PLATFORM_LINUX
     // Overlay-mode checks: graceful skip on filesystems that cannot host an
     // overlay upperdir (kernel < 5.11 or no user xattr).
     if (!engine::OverlayFsLauncher::is_supported(base / "probe")) {
@@ -609,6 +639,11 @@ TEST_CASE("launch params", "[engine]") {
     check_deploy(base / "instances" / "ByMod", true, "include-mod-id deploy");
     check_deploy_request(base / "instances" / "Request", "request overload");
     check_ci_deploy(base / "instances" / "CI", "ci deploy");
+#else
+    // The overlay assertions only hold where the OverlayFS launcher exists;
+    // off Linux pin the degraded contract instead.
+    check_overlay_unavailable(base / "instances" / "NoOverlay");
+#endif
 
     fs::remove_all(base);
 }

@@ -4,9 +4,12 @@
 #include <filesystem>
 #include <fstream>
 
-#if defined(__unix__)
-#include <unistd.h>
 #include <catch2/catch_test_macros.hpp>
+
+// unistd.h is POSIX, not Windows; __unix__ is not defined on Apple Clang,
+// so the guard must not be used for the Catch2 include above either.
+#ifndef _WIN32
+#include <unistd.h>
 #endif
 
 namespace fs = std::filesystem;

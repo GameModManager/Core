@@ -19,6 +19,15 @@ project(GameModManager
 
 set(GMM_VERSION "${PROJECT_VERSION}")
 
+# Fail fast when submodules aren't initialized (e.g. fresh worktree) —
+# otherwise every ABI-including TU dies with a cryptic "'gmm_abi_v1.h'
+# file not found" instead of pointing at the real problem.
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/abi/include/gmm_abi_v1.h")
+    message(FATAL_ERROR
+        "external/abi submodule not initialized (gmm_abi_v1.h missing).\n"
+        "Run: git submodule update --init --recursive")
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -175,7 +184,17 @@ else()
     pkg_check_modules(YAMLCPP REQUIRED IMPORTED_TARGET yaml-cpp)
     pkg_check_modules(CURL REQUIRED IMPORTED_TARGET libcurl)
     pkg_check_modules(NLOHMANN_JSON REQUIRED IMPORTED_TARGET nlohmann_json)
-    pkg_check_modules(TOMLPLUSPLUS REQUIRED IMPORTED_TARGET tomlplusplus)
+    if(APPLE)
+        # Homebrew libtomlplusplus.dylib lacks typeinfo for toml::parse_error
+        # — catch() never matches, crashes on malformed TOML. Use header-only.
+        find_path(_TOML_INCLUDE_DIR toml++/toml.hpp)
+        add_library(PkgConfig::TOMLPLUSPLUS INTERFACE IMPORTED)
+        set_target_properties(PkgConfig::TOMLPLUSPLUS PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${_TOML_INCLUDE_DIR}"
+            INTERFACE_COMPILE_DEFINITIONS "TOML_HEADER_ONLY=1")
+    else()
+        pkg_check_modules(TOMLPLUSPLUS REQUIRED IMPORTED_TARGET tomlplusplus)
+    endif()
     pkg_check_modules(ZLIB REQUIRED IMPORTED_TARGET zlib)
     pkg_check_modules(LZ4 REQUIRED IMPORTED_TARGET liblz4)
     # fuse3 is Linux-only (macOS ships no pkg-config fuse3); every consumer

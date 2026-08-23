@@ -1830,8 +1830,14 @@ TEST_CASE("mod list model", "[ui]") {
         mv.clearFocus();
         QCoreApplication::processEvents();
         const QImage mshot = mv.viewport()->grab().toImage();
-        const int indW = QApplication::style()->pixelMetric(QStyle::PM_IndicatorWidth);
-        auto text_start = [&](const QImage& cell) -> int {
+        // Measure the TEXT's right edge by scanning from the cell's right
+        // side: the checkbox lives at the far left, so a right-to-left scan
+        // never touches it (a left-side scan would - platform styles draw
+        // indicators wider than PM_IndicatorWidth reports, which made any
+        // fixed skip land inside the checkbox glyph). The child's name is
+        // shifted a full kIndentStep right of the parent's, so its right edge
+        // must sit strictly right of the parent's on every style.
+        auto text_end = [&](const QImage& cell) -> int {
             const QRgb bg = cell.pixel(0, 0);
             auto content = [&](int x) {
                 for (int y = cell.height() / 3; y <= (2 * cell.height()) / 3; ++y) {
@@ -1843,11 +1849,7 @@ TEST_CASE("mod list model", "[ui]") {
                 }
                 return false;
             };
-            int cb_left = -1;
-            for (int x = 0; x < cell.width(); ++x)
-                if (content(x)) { cb_left = x; break; }
-            if (cb_left < 0) return -1;
-            for (int x = cb_left + indW + 2; x < cell.width(); ++x)
+            for (int x = cell.width() - 1; x >= 0; --x)
                 if (content(x)) return x;
             return -1;
         };
@@ -1855,12 +1857,12 @@ TEST_CASE("mod list model", "[ui]") {
             mv.visualRect(mm.index(row_with_id(mm, "P"), ui::ModListModel::Name));
         const QRect ccell =
             mv.visualRect(mm.index(row_with_id(mm, "C"), ui::ModListModel::Name));
-        const int ptl = text_start(mshot.copy(pcell));
-        const int ctl = text_start(mshot.copy(ccell));
-        if (ptl >= 0 && ctl >= 0)
-            check(ctl - ptl >= 14,
-                  "first nested mod's text steps a full kIndentStep right of "
-                  "its parent's text (checkbox width added, not maxed)");
+        const int pte = text_end(mshot.copy(pcell));
+        const int cte = text_end(mshot.copy(ccell));
+        if (pte >= 0 && cte >= 0)
+            check(cte > pte,
+                  "first nested mod's text sits right of its parent's text "
+                  "(indent shift clears the checkbox width)");
         else
             check(false, "nested mod indent render geometry valid");
     }

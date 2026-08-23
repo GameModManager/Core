@@ -86,6 +86,10 @@ TEST_CASE("plugins tab", "[ui]") {
     std::filesystem::remove_all("/tmp/gmm_plugins_tab");
     std::filesystem::create_directories(cfg);
     qputenv("XDG_CONFIG_HOME", cfg.c_str());
+    // macOS QSettings NativeFormat ignores XDG_CONFIG_HOME (uses
+    // ~/Library/Preferences plist); force IniFormat under the throwaway dir.
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, cfg.c_str());
     int test_argc = 1;
     char test_argv0[] = "test";
     char* test_argv[] = {test_argv0, nullptr};

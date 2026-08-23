@@ -92,8 +92,7 @@ gmm_catch2_test(save_parser_test engine/save_parser_test.cpp
     LIBS PkgConfig::ZLIB PkgConfig::LZ4)
 gmm_catch2_test(filetree_test engine/filetree_test.cpp
     LIBS PkgConfig::LIBARCHIVE)
-gmm_catch2_test(fomod_installer_test engine/fomod_installer_test.cpp
-    LIBS PkgConfig::NLOHMANN_JSON)
+gmm_catch2_test(fomod_installer_test engine/fomod_installer_test.cpp)
 
 # Proton tool-running: runner override resolution + run guards (needs runtime).
 gmm_catch2_test(proton_tools_test engine/proton_tools_test.cpp
@@ -158,6 +157,15 @@ set_target_properties(gmm_settings_tab_plugin PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/test_plugins"
 )
 
+# Fixture plugins resolve the host's gmm_* accessors through dlopen, so their
+# undefined symbols are expected. Linux .so links allow that by default; macOS
+# two-level namespace does not — opt into load-time flat lookup.
+if(APPLE)
+    foreach(_fixture gmm_override_mod_data_checker gmm_fomod_stage_plugin gmm_settings_tab_plugin)
+        target_link_options(${_fixture} PRIVATE -undefined dynamic_lookup)
+    endforeach()
+endif()
+
 # P1.2 GameFeatureRegistry — priority + replace registration, combined
 # ModDataChecker, and the exit criterion (a test plugin overrides the Skyrim
 # plugin's data-checker).
@@ -175,7 +183,12 @@ gmm_catch2_test(fomod_stage_plugin_test engine/fomod_stage_plugin_test.cpp
     DEFINES
         GMM_FOMOD_PLUGIN_PATH="${CMAKE_BINARY_DIR}/test_plugins/gmm_fomod_stage_plugin${CMAKE_SHARED_LIBRARY_SUFFIX}"
 )
-if(NOT WIN32 AND NOT APPLE)
+# The fixture plugin resolves gmm_* accessors through dlopen — same export
+# requirement as the app. Linux needs -rdynamic; macOS needs -export_dynamic
+# or the bundle's load-time flat lookup can't see the executable's symbols.
+if(APPLE)
+    target_link_options(fomod_stage_plugin_test PRIVATE -Wl,-export_dynamic)
+elseif(NOT WIN32)
     target_link_options(fomod_stage_plugin_test PRIVATE -rdynamic)
 endif()
 add_dependencies(fomod_stage_plugin_test gmm_fomod_stage_plugin)
