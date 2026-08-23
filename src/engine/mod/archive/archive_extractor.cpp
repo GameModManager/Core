@@ -74,7 +74,10 @@ bool extract_with_unrar(const std::filesystem::path& archive,
     CapturedProcess proc = run_captured(
         {"unrar", "x", "-o+", "-y", "-p-", "-idq", archive.string(),
          dest_dir.string() + "/"});
-    if (!proc.ok) {
+    // ok only means fork+waitpid succeeded; a missing unrar still exits 127
+    // via the execvp-failure path (real unrar uses its own codes 0-10), so
+    // 127 means "not installed", not a genuine extraction failure.
+    if (!proc.ok || proc.exit_code == 127) {
         error = "unrar not available (install the 'unrar' package)";
         return false;
     }
