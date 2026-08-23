@@ -20,7 +20,6 @@ public:
     ~FiletreeTab() override;
 
     void set_mod(const ModInfoData& data) override;
-    void first_activation() override;
 
 private:
     void show_menu(const QPoint& pos);
