@@ -97,11 +97,12 @@ TEST_CASE("plugins tab", "[ui]") {
     QCoreApplication::setOrganizationName("GameModManager");
     QCoreApplication::setApplicationName("GameModManager");
 
-    // IconManager resolves icons from <build>/../resources. Without this the
-    // tier chain is empty and the lock pin (base pack) comes back null on the
-    // offscreen platform.
-    engine::IconManager::instance().discover_packs(
-        std::filesystem::path(QCoreApplication::applicationDirPath().toStdString()));
+    // IconManager resolves icons from <app_dir>/../resources; the test binary
+    // lives in <build>/tests, so pass <build> to land on Core/resources.
+    // Without this the tier chain is empty and the lock pin (base pack) comes
+    // back null on the offscreen platform.
+    engine::IconManager::instance().discover_packs(std::filesystem::path(
+        QCoreApplication::applicationDirPath().toStdString()).parent_path());
 
     engine::GamePlugin native;  // game-native: pinned
     native.name = "Skyrim.esm";
