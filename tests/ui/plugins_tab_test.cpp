@@ -97,11 +97,11 @@ TEST_CASE("plugins tab", "[ui]") {
     QCoreApplication::setOrganizationName("GameModManager");
     QCoreApplication::setApplicationName("GameModManager");
 
-    // IconManager resolves icons from <build>/../resources. Without this the
-    // tier chain is empty and the lock pin (base pack) comes back null on the
-    // offscreen platform.
-    engine::IconManager::instance().discover_packs(
-        std::filesystem::path(QCoreApplication::applicationDirPath().toStdString()));
+    // IconManager resolves icons from <arg>/../resources; CMake hands us the
+    // source-tree resources/ dir so the pack chain is found in any build
+    // layout (in-tree or out-of-tree). Without it the lock pin (base pack)
+    // comes back null on the offscreen platform.
+    engine::IconManager::instance().discover_packs(GMM_TEST_RESOURCES_DIR);
 
     engine::GamePlugin native;  // game-native: pinned
     native.name = "Skyrim.esm";
