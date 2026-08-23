@@ -322,11 +322,13 @@ void InstanceOptionsWidget::build_deploy_management() {
   deploy_strategy_combo_->addItem(
       tr("Direct"),
       QString::fromLatin1(engine::kDeployStrategyDirect));
+#ifdef GMM_PLATFORM_LINUX
   if (engine::OverlayFsLauncher::is_supported(instance_root_ / "overwrite")) {
     deploy_strategy_combo_->addItem(
         tr("OverlayFS"),
         QString::fromLatin1(engine::kDeployStrategyOverlayFs));
   }
+#endif
   int idx = deploy_strategy_combo_->findData(
       QString::fromStdString(current_deploy_strategy_));
   deploy_strategy_combo_->setCurrentIndex(idx >= 0 ? idx : 0);

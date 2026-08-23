@@ -55,7 +55,6 @@ set(ENGINE_SOURCES
     deploy/deploy_ledger.cpp
     deploy/deploy_utils.cpp
     deploy/root_override.cpp
-    deploy/launch/overlay_launcher.cpp
     pipeline/pipeline.cpp
     pipeline/fetch_stage.cpp
     pipeline/extract_stage.cpp
@@ -127,6 +126,14 @@ if(NOT WIN32 AND FUSE3_FOUND)
     )
 endif()
 
+# OverlayFS launcher — Linux-only APIs (clone, mount namespaces, setxattr,
+# /proc/*); excluded on macOS/Windows rather than ifdef'd per-error.
+if(NOT APPLE)
+    list(APPEND ENGINE_SOURCES
+        deploy/launch/overlay_launcher.cpp
+    )
+endif()
+
 add_library(gmm_engine STATIC ${ENGINE_SOURCES})
 
 # Include dirs are PUBLIC so consumers (gmm_ui, gmm_cli, tests, the app) get
@@ -141,6 +148,14 @@ target_include_directories(gmm_engine PUBLIC
 # and flows to every consumer through this PUBLIC definition.
 target_compile_definitions(gmm_engine PUBLIC VERSION="${PROJECT_VERSION}")
 
+# nlohmann_json is header-only and leaks through the PUBLIC engine header
+# mod/fomod/fomod_view_model.h, so consumers compiling that header need its
+# include dir — it must be PUBLIC, not PRIVATE (PRIVATE would propagate to
+# the link line only).
+target_link_libraries(gmm_engine PUBLIC
+    PkgConfig::NLOHMANN_JSON
+)
+
 # Link libraries — PRIVATE deps of a static library propagate as link-only
 # dependencies to consumers, so tests that link gmm_engine get the system
 # libraries they need without re-listing them.
@@ -151,7 +166,6 @@ target_link_libraries(gmm_engine PRIVATE
     PkgConfig::SQLITE3
     PkgConfig::YAMLCPP
     PkgConfig::CURL
-    PkgConfig::NLOHMANN_JSON
     PkgConfig::TOMLPLUSPLUS
     PkgConfig::ZLIB
     PkgConfig::LZ4

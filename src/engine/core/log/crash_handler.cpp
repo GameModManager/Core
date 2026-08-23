@@ -11,7 +11,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <execinfo.h>
-#include <ucontext.h>
 
 namespace engine {
 
