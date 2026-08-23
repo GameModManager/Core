@@ -180,8 +180,15 @@ add_dependencies(game_feature_registry_test SkyrimSpecialEdition gmm_override_mo
 # install through GmmHostUi::fomod_wizard. The fixture plugin resolves the
 # gmm_* accessors through dlopen — same export requirement as the app.
 gmm_catch2_test(fomod_stage_plugin_test engine/fomod_stage_plugin_test.cpp
+    # abi_bridge.cpp defines the gmm_* accessors but nothing in the host
+    # references them, so the static linker never pulls it out of
+    # libgmm_engine.a — compile it in directly (qtkeychain_test pattern) so
+    # -export_dynamic/-rdynamic below actually has symbols to export.
+    ${PROJECT_SOURCE_DIR}/src/engine/pipeline/plugin_host/abi_bridge.cpp
     DEFINES
-        GMM_FOMOD_PLUGIN_PATH="${CMAKE_BINARY_DIR}/test_plugins/gmm_fomod_stage_plugin${CMAKE_SHARED_LIBRARY_SUFFIX}"
+        # MODULE targets use the module suffix (.so on macOS), not the shared-
+        # library suffix (.dylib) — dlopen gets this path verbatim.
+        GMM_FOMOD_PLUGIN_PATH="${CMAKE_BINARY_DIR}/test_plugins/gmm_fomod_stage_plugin${CMAKE_SHARED_MODULE_SUFFIX}"
 )
 # The fixture plugin resolves gmm_* accessors through dlopen — same export
 # requirement as the app. Linux needs -rdynamic; macOS needs -export_dynamic
