@@ -171,8 +171,8 @@ endif()
 # plugin's data-checker).
 gmm_catch2_test(game_feature_registry_test engine/game_feature_registry_test.cpp
     DEFINES
-        GMM_OVERRIDE_PLUGIN_PATH="${CMAKE_BINARY_DIR}/test_plugins/gmm_override_mod_data_checker${CMAKE_SHARED_LIBRARY_SUFFIX}"
-        GMM_SKYRIM_PLUGIN_PATH="${CMAKE_BINARY_DIR}/plugins/SkyrimSpecialEdition${CMAKE_SHARED_LIBRARY_SUFFIX}"
+        GMM_OVERRIDE_PLUGIN_PATH="$<TARGET_FILE:gmm_override_mod_data_checker>"
+        GMM_SKYRIM_PLUGIN_PATH="$<TARGET_FILE:SkyrimSpecialEdition>"
 )
 add_dependencies(game_feature_registry_test SkyrimSpecialEdition gmm_override_mod_data_checker)
 
@@ -180,23 +180,19 @@ add_dependencies(game_feature_registry_test SkyrimSpecialEdition gmm_override_mo
 # install through GmmHostUi::fomod_wizard. The fixture plugin resolves the
 # gmm_* accessors through dlopen — same export requirement as the app.
 gmm_catch2_test(fomod_stage_plugin_test engine/fomod_stage_plugin_test.cpp
-    # abi_bridge.cpp defines the gmm_* accessors but nothing in the host
-    # references them, so the static linker never pulls it out of
-    # libgmm_engine.a — compile it in directly (qtkeychain_test pattern) so
-    # -export_dynamic/-rdynamic below actually has symbols to export.
-    ${PROJECT_SOURCE_DIR}/src/engine/pipeline/plugin_host/abi_bridge.cpp
     DEFINES
-        # MODULE targets use the module suffix (.so on macOS), not the shared-
-        # library suffix (.dylib) — dlopen gets this path verbatim.
-        GMM_FOMOD_PLUGIN_PATH="${CMAKE_BINARY_DIR}/test_plugins/gmm_fomod_stage_plugin${CMAKE_SHARED_MODULE_SUFFIX}"
+        GMM_FOMOD_PLUGIN_PATH="$<TARGET_FILE:gmm_fomod_stage_plugin>"
 )
 # The fixture plugin resolves gmm_* accessors through dlopen — same export
 # requirement as the app. Linux needs -rdynamic; macOS needs -export_dynamic
 # or the bundle's load-time flat lookup can't see the executable's symbols.
+# Nothing references abi_bridge.cpp at link time, so also force its archive
+# member out of libgmm_engine (-u) or the accessors are absent entirely and
+# the plugin fails to load with "symbol not found in flat namespace".
 if(APPLE)
-    target_link_options(fomod_stage_plugin_test PRIVATE -Wl,-export_dynamic)
+    target_link_options(fomod_stage_plugin_test PRIVATE -Wl,-export_dynamic -Wl,-u,_gmm_instance_game_id)
 elseif(NOT WIN32)
-    target_link_options(fomod_stage_plugin_test PRIVATE -rdynamic)
+    target_link_options(fomod_stage_plugin_test PRIVATE -rdynamic -Wl,-u,gmm_instance_game_id)
 endif()
 add_dependencies(fomod_stage_plugin_test gmm_fomod_stage_plugin)
 
@@ -265,6 +261,7 @@ endif()
 
 gmm_catch2_test(plugins_tab_test ui/plugins_tab_test.cpp
     UI
+    DEFINES GMM_TEST_RESOURCES_DIR="${PROJECT_SOURCE_DIR}/resources"
     LIBS gmm_ui Qt6::Test)
 
 gmm_catch2_test(saves_tab_test ui/saves_tab_test.cpp
