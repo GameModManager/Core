@@ -69,15 +69,15 @@ FiletreeTab::FiletreeTab(QWidget* parent) : ModInfoTab(parent) {
 FiletreeTab::~FiletreeTab() = default;
 
 void FiletreeTab::set_mod(const ModInfoData& data) {
+    // Wire the view here, not in first_activation(): set_mod() is the only
+    // refresh hook a tab gets on mod switch (first_activation runs once per
+    // dialog session), so this must re-root the tree every time.
+    if (!data.mod_dir.exists()) return;
     root_path_ = data.mod_dir.absolutePath();
-    set_has_data(true);
-}
-
-void FiletreeTab::first_activation() {
-    if (root_path_.isEmpty()) return;
     model_->setRootPath(root_path_);
     tree_->setRootIndex(model_->index(root_path_));
     tree_->expandToDepth(0);
+    set_has_data(true);
 }
 
 QString FiletreeTab::selected_path() const {
