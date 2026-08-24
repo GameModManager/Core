@@ -8,6 +8,9 @@
 //      priority sync) work without a game dir — they only need the
 //      instance's mods dir.
 //
+// Workspace-wk8 adds: the mod list itself loads for a game-less instance —
+// ModScanWorker replaces the game-dir scan with the instance mods-dir scan.
+//
 // Hermetic: offscreen platform, throwaway /tmp instance root, an empty
 // GameKnowledge seeded with just mods_subpath. No network, no plugins.
 #include "engine/core/instance/instance.h"
@@ -18,6 +21,9 @@
 #include "ui/widgets/mod_list_model.h"
 
 #include <QApplication>
+#include <QElapsedTimer>
+#include <QEventLoop>
+#include <QThread>
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -93,6 +99,18 @@ TEST_CASE("instance-owned mod ops work without a game dir", "[ui]") {
     w.show();
     w.set_game_info("testgame", "Test Game", "", {}, root);
 
+    // Workspace-wk8: set_game_info now launches the instance mods-dir scan
+    // even without a game dir. It runs on ModScanThread; pump events until
+    // it lands - sync_priorities skips its write while loading_.
+    QElapsedTimer timer;
+    timer.start();
+    while (w.is_loading()) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        QThread::msleep(2);
+        if (timer.elapsed() > 10000)
+            FAIL("instance mods-dir scan never landed");
+    }
+
     auto* ctrl = w.findChild<ui::ModListController*>();
     REQUIRE(ctrl != nullptr);
     auto* model = w.findChild<ui::ModListModel*>();
@@ -123,4 +141,52 @@ TEST_CASE("instance-owned mod ops work without a game dir", "[ui]") {
     model->move_mod(QString("Renamed_separator"), 1);
     ctrl->sync_priorities();
     CHECK(std::filesystem::exists(root / "meta" / "Renamed_separator.ini"));
+}
+
+// Workspace-wk8: the mod list loads for a game-less instance. The scan
+// runs against the instance mods dir (ModScanWorker swaps it in when
+// game_dir is empty), so a mod folder seeded there shows up.
+TEST_CASE("mod list loads from instance mods dir without a game dir", "[ui]") {
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
+    QCoreApplication::setOrganizationName("GameModManager");
+    QCoreApplication::setApplicationName("GameModManager");
+
+    const auto root = make_instance();
+    const auto mods_dir =
+        engine::Instance::from_root(root).path_for(engine::InstanceKind::Mods);
+
+    // Seed one mod folder before the load - exactly what an install into a
+    // game-less instance would leave behind.
+    std::error_code ec;
+    std::filesystem::create_directories(mods_dir / "Foo_mod", ec);
+    REQUIRE(ec == std::error_code{});
+
+    ui::MainWindow w;
+    engine::GameKnowledge knowledge;
+    knowledge.set("testgame", "mods_subpath", "Mods");
+    w.set_game_knowledge(&knowledge);
+    w.show();
+    w.set_game_info("testgame", "Test Game", "", {}, root);
+
+    auto* model = w.findChild<ui::ModListModel*>();
+    REQUIRE(model != nullptr);
+
+    // The scan is async (ModScanThread); pump events until the result
+    // converges into the model.
+    QElapsedTimer timer;
+    timer.start();
+    bool found = false;
+    while (!found) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        QThread::msleep(2);
+        const auto &mods = model->mods();
+        found = std::any_of(mods.cbegin(), mods.cend(),
+                            [](const auto &m) { return m.id == "Foo_mod"; });
+        if (!found && timer.elapsed() > 10000)
+            FAIL("mod scan never landed for the game-less instance");
+    }
 }

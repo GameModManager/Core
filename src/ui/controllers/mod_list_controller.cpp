@@ -1116,8 +1116,12 @@ void ModListController::sort_mods() {
 }
 
 void ModListController::load_mods_from_game() {
+  // No game_dir requirement (Workspace-wk8): with an empty game dir the
+  // scan runs against the instance mods dir instead (ModScanWorker handles
+  // the swap). An instance root is still mandatory - there is nothing to
+  // scan without one.
   if (!w_->knowledge_ || w_->current_game_id_.empty() ||
-      w_->current_game_dir_.empty())
+      w_->current_instance_root_.empty())
     return;
 
   // Ensure the active profile's engine model exists and points at the

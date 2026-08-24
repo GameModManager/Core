@@ -1,6 +1,5 @@
 #include "ui/widgets/game_path_banner.h"
 
-#include <QFileDialog>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
@@ -28,12 +27,8 @@ GamePathBanner::GamePathBanner(QWidget *parent) : QWidget(parent) {
   layout->addStretch(1);
   layout->addWidget(button);
 
-  connect(button, &QPushButton::clicked, this, [this]() {
-    const QString dir =
-        QFileDialog::getExistingDirectory(this, tr("Choose game directory"));
-    if (!dir.isEmpty())
-      emit game_path_picked(dir);
-  });
+  connect(button, &QPushButton::clicked, this,
+          [this]() { emit pick_requested(); });
 
   // Hidden until an instance without a game dir is loaded.
   hide();
