@@ -42,6 +42,7 @@ set(UI_SOURCES
     widgets/instance_switcher_dialog.cpp
     widgets/instance_switcher_content_widget.cpp
     widgets/game_icon_cache.cpp
+    widgets/game_path_banner.cpp
     widgets/instance_statistics_dialog.cpp
     widgets/stats_content_widget.cpp
     widgets/debug_window.cpp

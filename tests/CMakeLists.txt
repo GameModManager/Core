@@ -308,6 +308,12 @@ gmm_catch2_test(list_dialog_test ui/list_dialog_test.cpp
     UI
     LIBS gmm_ui Qt6::Test)
 
+# Workspace-tnj: set_game_info guard teardown — banner visibility + game-less
+# instance mod ops.
+gmm_catch2_test(game_path_banner_test ui/game_path_banner_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(instance_options_panel_test ui/instance_options_panel_test.cpp
     UI
     LIBS gmm_ui ${CMAKE_DL_LIBS}

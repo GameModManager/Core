@@ -27,6 +27,7 @@
 #include "ui/widgets/smooth_scroll.h"
 #include "ui/widgets/console_panel.h"
 #include "ui/widgets/exec_controls_bar.h"
+#include "ui/widgets/game_path_banner.h"
 #include "ui/widgets/gmm_status_bar.h"
 #include "ui/widgets/main_tab_container.h"
 #include "ui/widgets/main_toolbar.h"
@@ -140,6 +141,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   main_layout->setContentsMargins(0, 0, 0, 0);
   main_layout->setSpacing(0);
 
+  // "Set Game Path" banner (Workspace-tnj): hidden until a game-less
+  // instance is loaded; sits above the splitter so it is always visible.
+  game_path_banner_ = new GamePathBanner(main_area);
+  main_layout->addWidget(game_path_banner_);
+
   // --- Left panel: profile bar, mod list, filter bar stacked vertically.
   // ModListController::setup_mod_list fills it (Issue #16). ---
   auto *left_panel = new QWidget(this);
@@ -233,6 +239,26 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
             write.write_key("last_tab", capability.toStdString());
             write.info().last_tab = capability.toStdString();
             current_instance_ = write;
+          });
+
+  // Banner picker (Workspace-tnj): persist the chosen game dir into
+  // instance.toml (read-before-write, same pattern as above) and reload the
+  // instance through the normal set_game_info path.
+  connect(game_path_banner_, &GamePathBanner::game_path_picked, this,
+          [this](const QString &dir) {
+            if (dir.isEmpty() || current_instance_root_.empty())
+              return;
+            auto inst = engine::Instance::installed(
+                current_instance_root_.filename().string(),
+                current_instance_root_.parent_path());
+            if (!inst.read_toml())
+              return;
+            inst.info().game_dir = dir.toStdString();
+            inst.write_toml();
+            settings_->set_game_info(current_game_id_, current_game_name_,
+                                     current_profile_name_,
+                                     dir.toStdString(),
+                                     current_instance_root_);
           });
 
   // Start IPC server to receive nxm:// URLs from other GMM processes

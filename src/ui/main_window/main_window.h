@@ -63,6 +63,7 @@ class CategoryFilterPanel;
 class RightPanel;
 class MainTabContainer;
 class DeployThread;
+class GamePathBanner;
 
 // Issue #16 controller split: the controllers own the behavior that used to
 // live in the 7211-line main_window.cpp; MainWindow is the composer (<300
@@ -205,6 +206,9 @@ private:
   MainTabContainer *main_tab_container_ = nullptr;
   ConsolePanel *console_ = nullptr;
   GmmStatusBar *status_bar_ = nullptr;
+  // "Set Game Path" banner (Workspace-tnj): visible while a game-less
+  // instance is loaded; lives at the top of the main area.
+  GamePathBanner *game_path_banner_ = nullptr;
   PipelineThread *pipeline_thread_ = nullptr;
   engine::GameKnowledge *knowledge_ = nullptr;
   engine::PluginLoader *plugin_loader_ = nullptr;
