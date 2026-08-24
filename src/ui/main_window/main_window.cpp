@@ -248,13 +248,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
           [this](const QString &dir) {
             if (dir.isEmpty() || current_instance_root_.empty())
               return;
-            auto inst = engine::Instance::installed(
-                current_instance_root_.filename().string(),
-                current_instance_root_.parent_path());
-            if (!inst.read_toml())
-              return;
-            inst.info().game_dir = dir.toStdString();
-            inst.write_toml();
+            // write_key read-modify-writes the whole file, so app-owned
+            // sections ([executables], ...) survive; write_toml() would
+            // clobber them.
+            engine::Instance::from_root(current_instance_root_)
+                .write_key("game_dir", dir.toStdString());
             settings_->set_game_info(current_game_id_, current_game_name_,
                                      current_profile_name_,
                                      dir.toStdString(),
