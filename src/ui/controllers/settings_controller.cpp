@@ -1148,6 +1148,8 @@ bool SettingsController::create_new_instance() {
   }
 
   engine::write_last_instance(inst.info().root.filename().string());
+  Settings::instance().ensure_modlist_column_defaults(
+      QString::fromStdString(inst.info().root.filename().string()));
   set_game_info(chosen.game_id, chosen.display_name, "Default",
                 chosen.install_path, inst.info().root);
   engine::Logger::instance().debug("Created and switched to instance: " +

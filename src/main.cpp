@@ -530,6 +530,9 @@ int main(int argc, char *argv[])
                 auto new_inst = engine::create_instance_for_game(detected);
                 if (new_inst.info().game_id.empty()) return;
                 engine::write_last_instance(new_inst.info().root.filename().string());
+                Settings::instance().ensure_modlist_column_defaults(
+                    QString::fromStdString(
+                        new_inst.info().root.filename().string()));
 
                 // Transition to MainWindow
                 main_window = new ui::MainWindow();
