@@ -202,6 +202,15 @@ void Settings::set_modlist_hidden_columns(const QString& instance_name,
     settings_.setValue("modlist/columns/" + instance_name, hidden);
 }
 
+void Settings::ensure_modlist_column_defaults(const QString& instance_name) {
+    // contains(), not emptiness: a user who deliberately unhides every column
+    // persists an empty list under an existing key and must keep it.
+    if (!settings_.contains("modlist/columns/" + instance_name))
+        set_modlist_hidden_columns(instance_name,
+                                   {"Category", "Source", "Source ID",
+                                    "Installation", "Changed"});
+}
+
 bool Settings::modlist_nested(const QString& instance_name) const {
     return settings_.value("modlist/nested/" + instance_name, false).toBool();
 }
