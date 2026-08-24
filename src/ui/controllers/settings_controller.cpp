@@ -63,6 +63,7 @@
 #include "ui/widgets/console_panel.h"
 #include "ui/widgets/debug_window.h"
 #include "ui/widgets/exec_controls_bar.h"
+#include "ui/widgets/game_path_banner.h"
 #include "ui/widgets/gmm_status_bar.h"
 #include "ui/widgets/instance_statistics_dialog.h"
 #include "ui/widgets/instance_switcher_dialog.h"
@@ -174,6 +175,11 @@ void SettingsController::set_game_info(
   restore_exec_selection();
   w_->update_title();
 
+  // Game-path banner (Workspace-tnj): visible iff an instance is loaded but
+  // has no game dir. Hidden again by any later load that carries a path.
+  w_->game_path_banner_->set_instance_state(!instance_root.empty(),
+                                            !game_dir.empty());
+
   // Populate the profile selector from the instance's profiles dir. Resolves
   // the startup profile: the passed-in name when it exists, else the saved
   // default profile, else the first profile (see
@@ -182,36 +188,43 @@ void SettingsController::set_game_info(
 
   // (Loaded plugin list is logged once by PluginLoader::load_directory)
 
+  // --- Always-run wiring (Workspace-tnj): everything below only needs the
+  // instance root (read above) or the game id — never game_dir. It used to
+  // sit behind the !game_dir.empty() guard, which silently disabled the whole
+  // UI for game-less instances. ---
+  w_->mod_list_->update_status_bar_for_game();
+
+  // Rebuild right-panel tabs for this game. Tab existence is capability-
+  // driven: an empty/unknown game id yields an empty panel (generic
+  // capability registration is Workspace-efv); every wire_* call below
+  // no-ops safely when its tab is absent.
+  if (w_->plugin_loader_)
+    w_->right_panel_->set_capabilities(&w_->plugin_loader_->capabilities());
+  w_->right_panel_->set_game(w_->current_game_id_);
+
+  // Restore the last selected right-panel tab for this instance (Issue
+  // #21). current_instance_ was read from instance.toml above; empty or
+  // unsupported values fall back to the first tab.
+  w_->right_panel_->restore_tab(w_->current_instance_.info().last_tab);
+
+  // Connect conflicts tab signals (tab created during set_game)
+  auto *ct = w_->right_panel_->conflicts_tab();
+  if (ct) {
+    connect(ct, &ui::ConflictsTab::image_diff_requested, w_->mod_list_.get(),
+            &ModListController::on_image_diff_requested);
+  }
+
+  // The Downloads tab was freshly created by set_game: load its manifest,
+  // point it at this instance's downloads dir (which starts the directory
+  // watchdog) and connect its signals. The downloads dir is INSTANCE-owned,
+  // so this works without a game path.
+  w_->downloads_->wire_downloads_tab();
+
   if (!game_dir.empty() && w_->knowledge_) {
-    w_->mod_list_->update_status_bar_for_game();
-
-    // Rebuild right-panel tabs for w_ game
-    if (w_->plugin_loader_)
-      w_->right_panel_->set_capabilities(&w_->plugin_loader_->capabilities());
-    w_->right_panel_->set_game(w_->current_game_id_);
-
-    // Restore the last selected right-panel tab for this instance (Issue
-    // #21). current_instance_ was read from instance.toml above; empty or
-    // unsupported values fall back to the first tab.
-    w_->right_panel_->restore_tab(w_->current_instance_.info().last_tab);
-
-    // Connect conflicts tab signals (tab created during set_game)
-    auto *ct = w_->right_panel_->conflicts_tab();
-    if (ct) {
-      connect(ct, &ui::ConflictsTab::image_diff_requested, w_->mod_list_.get(),
-              &ModListController::on_image_diff_requested);
-    }
-
     // Wire the freshly created Data tab: resolve real file paths and run
     // Open/Execute/Preview/Add-as-Executable/Mod Info/Hide from the
     // context menu, plus "Reveal in file manager" and refresh.
     w_->mod_list_->wire_data_tab();
-
-    // The Downloads tab was also freshly created by set_game: load its
-    // manifest, point it at w_ instance's downloads dir (which starts
-    // the directory watchdog) and connect its signals. Without w_, a
-    // switched instance shows a dead tab.
-    w_->downloads_->wire_downloads_tab();
 
     // The Saves tab (if the game supports it) was freshly created too:
     // point it at the game's saves dir, connect refresh/delete, and run an
@@ -430,68 +443,70 @@ void SettingsController::set_game_info(
     engine::TraceRecorder::instance().declare_flow(
         "install", "Mod install pipeline", std::move(flow_stages));
 
-    // The download flow is fetch-only (downloads are decoupled from
-    // installs); PipelineWorker::download_mod runs it.
-    engine::TraceRecorder::instance().declare_flow(
-        "download", "Mod download",
-        {
-            {"Fetch", "core",
-             "Downloads the archive into the instance downloads dir "
-             "(pause/resume supported)"},
-        });
-
-    // Declare the sort + launch flows eagerly too - the pipeline window
-    // must show the full stage list (and who provides what) before either
-    // flow has ever run.  sort_mods()/launch_with_executable() only
-    // begin_flow() at run time.
-    engine::TraceRecorder::instance().declare_flow(
-        "sort", "Auto-sort",
-        {
-            {"Gather mod info", "core",
-             "Collects folder names, display names and workshop IDs from the "
-             "mod list"},
-            {"Run sort provider", "core",
-             "Invokes the game's registered sort provider"},
-            {"Apply order", "core",
-             "Reorders the mod list per the provider's result"},
-            {"Save order", "core", "Writes the new load order to disk"},
-        });
-    engine::TraceRecorder::instance().declare_flow(
-        "launch", "Game launch",
-        {
-            {"Sync disk order", "core",
-             "Writes the UI's load order to disk before launch"},
-            {"Prepare launch environment", "core",
-             "Sets up the overlay / Proton environment and deploys enabled "
-             "mods"},
-            {"Launch executable", "core",
-             "Starts the game through the launch tier chain"},
-            {"Monitor process", "core",
-             "Watches the running game and captures writes on exit"},
-        });
-
     w_->pipeline_thread_->worker()->set_pipeline(std::move(pipeline));
     w_->pipeline_thread_->worker()->set_context(ctx);
 
     // Keep strategy alive for the lifetime of w_ session
     w_->deploy_strategy_ = std::move(deploy_strategy);
-
-    // Populate Tools menu with game-specific tools
-    if (w_->plugin_loader_) {
-      w_->menu_bar_->update_tools_for_game(
-          w_->current_game_id_,
-          w_->plugin_loader_->tool_registry().tools_for_game(
-              w_->current_game_id_));
-    }
-
-    // Prompt to register w_ game for nxm:// handling if not already managed
-    prompt_nxm_registration();
   } else {
     // No game to load here. Any in-flight mod scan's result was just
     // dropped by the generation bump above, so clear the loading flag it
     // would otherwise leave stuck.
     w_->loading_ = false;
   }
+
+  // The download flow is fetch-only (downloads are decoupled from
+  // installs); PipelineWorker::download_mod runs it.
+  engine::TraceRecorder::instance().declare_flow(
+      "download", "Mod download",
+      {
+          {"Fetch", "core",
+           "Downloads the archive into the instance downloads dir "
+           "(pause/resume supported)"},
+      });
+
+  // Declare the sort + launch flows eagerly too - the pipeline window
+  // must show the full stage list (and who provides what) before either
+  // flow has ever run.  sort_mods()/launch_with_executable() only
+  // begin_flow() at run time.
+  engine::TraceRecorder::instance().declare_flow(
+      "sort", "Auto-sort",
+      {
+          {"Gather mod info", "core",
+           "Collects folder names, display names and workshop IDs from the "
+           "mod list"},
+          {"Run sort provider", "core",
+           "Invokes the game's registered sort provider"},
+          {"Apply order", "core",
+           "Reorders the mod list per the provider's result"},
+          {"Save order", "core", "Writes the new load order to disk"},
+      });
+  engine::TraceRecorder::instance().declare_flow(
+      "launch", "Game launch",
+      {
+          {"Sync disk order", "core",
+           "Writes the UI's load order to disk before launch"},
+          {"Prepare launch environment", "core",
+           "Sets up the overlay / Proton environment and deploys enabled "
+           "mods"},
+          {"Launch executable", "core",
+           "Starts the game through the launch tier chain"},
+          {"Monitor process", "core",
+           "Watches the running game and captures writes on exit"},
+      });
+
+  // Populate Tools menu with game-specific tools (game_id-keyed registry
+  // lookup — works without a game dir).
+  if (w_->plugin_loader_) {
+    w_->menu_bar_->update_tools_for_game(
+        w_->current_game_id_,
+        w_->plugin_loader_->tool_registry().tools_for_game(
+            w_->current_game_id_));
+  }
+
+  // Prompt to register this game for nxm:// handling if not already managed
+  // (self-guards on an empty game id).
+  prompt_nxm_registration();
 
   // Restore saved app state now that w_->current_instance_root_ is known
   restore_app_state();
