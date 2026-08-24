@@ -942,8 +942,10 @@ void ModListController::sync_mod_enable_state(const QString &mod_id,
 void ModListController::sync_priorities() {
   if (w_->loading_)
     return;
-  if (!w_->knowledge_ || w_->current_game_id_.empty() ||
-      w_->current_game_dir_.empty())
+  // Instance-owned persistence: priorities go to the meta sidecars (and the
+  // game-native metadata write below self-guards on mods_subpath), so no
+  // game dir is required (Workspace-tnj).
+  if (!w_->knowledge_ || w_->current_game_id_.empty())
     return;
 
   // Game is running - skip disk write; full order saved at flush
@@ -2218,7 +2220,9 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
   // lands, so no eager reload with stale data here.
   data.refresh_conflicts = [this]() { recompute_conflicts(); };
   data.delete_mod = [this, mod_id = mod.id, mods_subpath]() -> bool {
-    if (!mods_subpath.empty() && !w_->current_game_dir_.empty()) {
+    // The mods dir is INSTANCE-owned (Workspace-tnj): physical removal needs
+    // mods_dir_path(), not the game dir.
+    if (!mods_subpath.empty() && !w_->mods_dir_path().empty()) {
       auto mod_folder = w_->mods_dir_path() / mod_id.toStdString();
       if (!engine::remove_path(mod_folder)) {
         engine::Logger::instance().error(
@@ -3166,7 +3170,9 @@ void ModListController::remove_selected_mods() {
     if (entry.is_overwrite)
       continue;
 
-    if (!mods_subpath.empty() && !w_->current_game_dir_.empty()) {
+    // The mods dir is INSTANCE-owned (Workspace-tnj): physical removal needs
+    // mods_dir_path(), not the game dir.
+    if (!mods_subpath.empty() && !w_->mods_dir_path().empty()) {
       auto mod_folder = w_->mods_dir_path() / entry.id.toStdString();
       if (!engine::remove_path(mod_folder)) {
         engine::Logger::instance().error(
@@ -3421,8 +3427,9 @@ ModListController::source_visit_info(const QString &source_type,
 
 QString ModListController::create_separator_named(const QString &name,
                                                   const QString &color) {
-  if (!w_->knowledge_ || w_->current_game_id_.empty() ||
-      w_->current_game_dir_.empty())
+  // Separators are instance-owned (folder under the instance mods dir);
+  // no game dir required (Workspace-tnj).
+  if (!w_->knowledge_ || w_->current_game_id_.empty())
     return {};
 
   auto mods_subpath =
@@ -3464,8 +3471,8 @@ QString ModListController::create_separator_named(const QString &name,
 }
 
 void ModListController::create_separator() {
-  if (!w_->knowledge_ || w_->current_game_id_.empty() ||
-      w_->current_game_dir_.empty())
+  // Instance-owned (Workspace-tnj) — see create_separator_named.
+  if (!w_->knowledge_ || w_->current_game_id_.empty())
     return;
 
   // MO2 createSeparator (modlistviewactions.cpp:152-204): a name-only prompt
@@ -3502,8 +3509,9 @@ void ModListController::create_separator() {
 }
 
 void ModListController::create_empty_mod() {
-  if (!w_->knowledge_ || w_->current_game_id_.empty() ||
-      w_->current_game_dir_.empty())
+  // Instance-owned: the empty mod folder is written into the instance mods
+  // dir; no game dir required (Workspace-tnj).
+  if (!w_->knowledge_ || w_->current_game_id_.empty())
     return;
 
   bool ok;
@@ -3822,8 +3830,8 @@ void ModListController::open_folder(ui::FolderKind kind) {
 }
 
 void ModListController::create_separator_at_row(int row) {
-  if (!w_->knowledge_ || w_->current_game_id_.empty() ||
-      w_->current_game_dir_.empty())
+  // Instance-owned (Workspace-tnj) — see create_separator_named.
+  if (!w_->knowledge_ || w_->current_game_id_.empty())
     return;
 
   // Same MO2 flow as create_separator(): name-only prompt, previous color.
@@ -3895,8 +3903,9 @@ void ModListController::apply_rename(int row, const QString &name) {
     return;
   } // unchanged
 
-  if (!w_->knowledge_ || w_->current_game_id_.empty() ||
-      w_->current_game_dir_.empty()) {
+  // Instance-owned: the rename moves the folder under the instance mods dir
+  // (+ meta sidecar); no game dir required (Workspace-tnj).
+  if (!w_->knowledge_ || w_->current_game_id_.empty()) {
     revert();
     return;
   }
@@ -4002,13 +4011,15 @@ void ModListController::delete_separator(int row) {
   if (reply != QMessageBox::Yes)
     return;
 
-  if (!w_->knowledge_ || w_->current_game_id_.empty() ||
-      w_->current_game_dir_.empty())
+  // Separators are pure UI/model constructs (+ an optional folder in the
+  // instance mods dir), so deletion must proceed even without a game dir
+  // (Workspace-tnj) — only knowledge/game_id gate the disk access below.
+  if (!w_->knowledge_ || w_->current_game_id_.empty())
     return;
 
   auto mods_subpath =
       w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "");
-  if (!mods_subpath.empty() && !w_->current_game_dir_.empty()) {
+  if (!mods_subpath.empty() && !w_->mods_dir_path().empty()) {
     auto sep_folder = w_->mods_dir_path() / mod.id.toStdString();
     if (!engine::remove_path(sep_folder)) {
       engine::Logger::instance().error(
