@@ -231,15 +231,20 @@ void SettingsController::set_game_info(
     // initial scan.
     w_->downloads_->wire_saves_tab();
 
-    w_->mod_list_->load_mods_from_game();
-    // Plugin-DB disk load runs CONCURRENTLY with the mod scan (T6/P8.5):
-    // the two independent startup loads overlap instead of the plugin DB
-    // waiting for the scan to land and then reading the same disk
-    // sequentially. refresh_plugins_tab() adopts the preload when it's
-    // ready, and falls back to a synchronous read otherwise.
+    // Plugin-DB preload scans the game's plugin dirs and executable
+    // detection needs the game dir - both stay gated on a real path.
     w_->mod_list_->launch_plugin_db_preload();
     w_->launch_->load_executables();
     w_->launch_->populate_executables();
+  }
+
+  // Mod scan + install pipeline (Workspace-wk8): both work without a game
+  // dir. ModScanWorker replaces the game-dir scan with the instance
+  // mods-dir scan when game_dir is empty, and the install stages read the
+  // archive and write into ctx.mods_dir (instance-owned) only. They need
+  // an instance root + knowledge, never game_dir.
+  if (w_->knowledge_ && !w_->current_instance_root_.empty()) {
+    w_->mod_list_->load_mods_from_game();
 
     // Check if a sort provider is available for w_ game
     bool has_sort_provider =
@@ -449,9 +454,9 @@ void SettingsController::set_game_info(
     // Keep strategy alive for the lifetime of w_ session
     w_->deploy_strategy_ = std::move(deploy_strategy);
   } else {
-    // No game to load here. Any in-flight mod scan's result was just
-    // dropped by the generation bump above, so clear the loading flag it
-    // would otherwise leave stuck.
+    // No knowledge registry or no instance loaded. Any in-flight mod
+    // scan's result was just dropped by the generation bump above, so
+    // clear the loading flag it would otherwise leave stuck.
     w_->loading_ = false;
   }
 

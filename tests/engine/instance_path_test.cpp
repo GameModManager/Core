@@ -4,11 +4,22 @@
 // cache-derived archives/thumbnails), set_path_override clearing back to the
 // default, and the instance.toml roundtrip (only non-empty overrides are
 // persisted; a read-back instance resolves the same paths).
+//
+// Also covers Workspace-wk8 (generic instance creation): a game-less
+// instance (empty install_path) is creatable and round-trips, and
+// deploy_config_for leaves backup_root empty instead of deriving a
+// CWD-relative path.
 #include "engine/core/instance/instance.h"
+#include "engine/core/instance/instance_utils.h"
+#include "engine/deploy/deploy_utils.h"
+#include "engine/game/detect/game_detector.h"
+#include "engine/game/registry/game_knowledge.h"
 
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <catch2/catch_test_macros.hpp>
 
 namespace fs = std::filesystem;
@@ -186,4 +197,65 @@ TEST_CASE("instance path", "[engine]") {
     require(tab_cleared.read_toml(), "read_toml after clearing last_tab succeeds");
     require(tab_cleared.info().last_tab.empty(),
             "cleared last_tab reads empty");
+}
+
+// Workspace-wk8: instance creation must not require a game path. A
+// DetectedGame with an empty install_path creates a working game-less
+// instance: directories + instance.toml exist, and the toml round-trips
+// without a game_dir key (empty = omitted).
+TEST_CASE("create_instance_for_game without a game path", "[engine]") {
+    using engine::Instance;
+
+    const fs::path instances_root = "/tmp/gmm_instance_path/wk8_instances";
+    fs::remove_all(instances_root);
+
+    engine::DetectedGame game;
+    game.game_id = "testgame";
+    game.name = "Test Game";
+    // install_path deliberately empty - the whole point.
+
+    Instance inst = engine::create_instance_for_game(game, instances_root);
+    REQUIRE(!inst.info().root.empty());
+    REQUIRE(fs::is_directory(inst.info().root / "mods"));
+    REQUIRE(fs::is_regular_file(inst.info().root / "instance.toml"));
+
+    // Round-trip: no game_dir key on disk, reads back empty.
+    std::string toml;
+    {
+        std::ifstream f(inst.info().root / "instance.toml");
+        REQUIRE(f.is_open());
+        std::ostringstream ss;
+        ss << f.rdbuf();
+        toml = ss.str();
+    }
+    INFO("instance.toml: " << toml);
+    REQUIRE(toml.find("game_dir") == std::string::npos);
+
+    Instance read_back = Instance::from_root(inst.info().root);
+    REQUIRE(read_back.read_toml());
+    REQUIRE(read_back.info().game_id == "testgame");
+    REQUIRE(read_back.info().game_dir.empty());
+
+    fs::remove_all(instances_root);
+}
+
+// Workspace-wk8: with an empty game_dir, backup_root must stay empty (the
+// documented "caller opts out" state) instead of becoming the CWD-relative
+// "Original_Files".
+TEST_CASE("deploy_config_for without a game path", "[engine]") {
+    engine::GameKnowledge knowledge;
+    const fs::path instance_root = "/tmp/gmm_instance_path/wk8_deploy_inst";
+
+    const engine::DeployConfig cfg =
+        engine::deploy_config_for(instance_root, {}, knowledge, "testgame");
+    REQUIRE(cfg.game_dir.empty());
+    REQUIRE(cfg.backup_root.empty());
+    REQUIRE(!cfg.mods_dir.empty());
+    REQUIRE(!cfg.ledger_file.empty());
+
+    // A real game dir still yields <game_dir>/Original_Files.
+    const engine::DeployConfig with_dir = engine::deploy_config_for(
+        instance_root, "/games/test", knowledge, "testgame");
+    REQUIRE(with_dir.backup_root ==
+            fs::path("/games/test") / engine::kOriginalFilesDirName);
 }
