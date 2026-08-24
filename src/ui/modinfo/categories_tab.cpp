@@ -2,6 +2,7 @@
 
 #include "engine/mod/meta/categories.h"
 #include "engine/mod/meta/mod_meta.h"
+#include "engine/pipeline/plugin_host/category_factory.h"
 
 #include <QComboBox>
 #include <QHBoxLayout>
@@ -42,16 +43,22 @@ CategoriesTab::CategoriesTab(QWidget* parent) : ModInfoTab(parent) {
 CategoriesTab::~CategoriesTab() = default;
 
 void CategoriesTab::set_mod(const ModInfoData& data) {
+    // Guard stays up for the whole rebuild: building the tree fires
+    // itemChanged per item, and on_item_changed would otherwise spuriously
+    // auto-check ancestors and save mid-rebuild (same pattern as
+    // CategoryFilterPanel::rebuild()).
     rebuilding_ = true;
     tree_->clear();
     primary_->clear();
-    rebuilding_ = false;
 
-    // Category DB lives beside the mods dir (same instance root).
+    // Category DB lives beside the mods dir (same instance root); kept for the
+    // Nexus-category fallback below. The displayed/assignable tree is the
+    // instance-scoped registry (CategoryFactory), refreshed by
+    // SettingsController::set_game_info() on every instance/game switch.
     categories_ = std::make_shared<engine::Categories>(
         engine::Categories::load(current().instance_root.toStdString()));
-    const auto& categories = *categories_;
-    if (categories.categories().empty()) {
+    if (engine::CategoryFactory::instance().categories().empty()) {
+        rebuilding_ = false;
         set_has_data(false);
         return;
     }
@@ -73,7 +80,7 @@ void CategoriesTab::set_mod(const ModInfoData& data) {
             QString::fromStdString(data.load_meta().get("Nexusmods", "nexuscategory"))
                 .toInt();
         if (nexus_id > 0) {
-            if (const auto* cat = categories.category_for_nexus(nexus_id)) {
+            if (const auto* cat = categories_->category_for_nexus(nexus_id)) {
                 enabled.insert(cat->id);
                 primary = cat->id;
             }
@@ -94,14 +101,29 @@ void CategoriesTab::set_mod(const ModInfoData& data) {
     };
     apply(tree_->invisibleRootItem());
     tree_->expandAll();
+    rebuilding_ = false;
 
     set_has_data(true);
     update_primary();
 }
 
 void CategoriesTab::add_children(QTreeWidgetItem* root, int parent_id) {
-    if (!categories_) return;
-    const auto children = categories_->children_of(parent_id);
+    const auto& cats = engine::CategoryFactory::instance().categories();
+
+    // Children of `parent_id`, sorted by name (case-insensitive) so the tree
+    // reads like MO2's alphabetized category list rather than raw id order.
+    std::vector<const engine::CategoryFactory::Category*> children;
+    for (const auto& [id, cat] : cats) {
+        Q_UNUSED(id)
+        if (cat.parent_id == parent_id) children.push_back(&cat);
+    }
+    std::sort(children.begin(), children.end(),
+              [](const auto* a, const auto* b) {
+                  return QString::fromStdString(a->name)
+                             .compare(QString::fromStdString(b->name),
+                                      Qt::CaseInsensitive) < 0;
+              });
+
     for (const auto* cat : children) {
         auto* item = new QTreeWidgetItem(root);
         item->setText(0, QString::fromStdString(cat->name));
