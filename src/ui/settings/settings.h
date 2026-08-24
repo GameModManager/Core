@@ -79,6 +79,11 @@ public:
     QStringList modlist_hidden_columns(const QString& instance_name) const;
     void set_modlist_hidden_columns(const QString& instance_name,
                                     const QStringList& hidden);
+    // Write-once initialization for a newly created instance: seeds the
+    // default hidden columns (Category, Source, Source ID, Installation,
+    // Changed) only when no per-instance key exists yet. Existing saved
+    // preferences are never overwritten.
+    void ensure_modlist_column_defaults(const QString& instance_name);
     // Per-instance "nested mod list" toggle: allows dragging mods onto mods and
     // separators onto separators to build a visual nesting (indented, foldable
     // children) without changing load order / priorities. Defaults to off.
