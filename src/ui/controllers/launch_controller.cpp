@@ -409,13 +409,18 @@ void LaunchController::launch_game() {
     return;
   }
 
+  // Game-less instance (Workspace-wk8): prompt for the path BEFORE the
+  // executable check - the exec combo is empty without a game dir, so the
+  // "No executable selected" warning would fire misleadingly. A successful
+  // pick reloads the instance (populating the exec list) and falls through.
+  if (w_->current_game_dir_.empty()) {
+    if (!w_->prompt_for_game_path())
+      return; // user canceled - nothing to launch into
+  }
+
   auto entry = w_->right_panel_->exec_controls()->current_entry();
   if (entry.path.isEmpty() || entry.path == kAddNewEntryText) {
     QMessageBox::warning(w_, tr("Launch"), tr("No executable selected."));
-    return;
-  }
-  if (w_->current_game_dir_.empty()) {
-    QMessageBox::warning(w_, tr("Launch"), tr("Game directory not set."));
     return;
   }
 
@@ -1825,6 +1830,14 @@ void LaunchController::show_instance_options() {
                              tr("No instance is currently loaded."));
     return;
   }
+
+  // Game-less instance (Workspace-wk8): Deploy Management would operate on
+  // an empty game dir. Prompt up front so the panel is built with a valid
+  // DeployConfig; canceling skips the dialog entirely.
+  if (p.game_dir.empty() && !w_->prompt_for_game_path())
+    return;
+  if (p.game_dir.empty())
+    p = instance_options_params(); // re-read with the freshly picked dir
 
   ui::InstanceOptionsDialog dlg(w_->platform_, w_->plugin_loader_, p.game_id,
                                 p.game_name, p.game_dir, p.steam_appid,

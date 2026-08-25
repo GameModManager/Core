@@ -382,6 +382,15 @@ void InstanceOptionsWidget::update_deploy_actions_enabled() {
 void InstanceOptionsWidget::run_deploy_task(DeployTaskKind kind) {
   if (deploy_thread_) return; // a task is already running
 
+  // Game-less instance (Workspace-wk8): the engine would resolve paths
+  // against the CWD. The host prompts before this panel is even shown;
+  // this bail is the safety net for any host that skips that.
+  if (deploy_config_.game_dir.empty()) {
+    QMessageBox::warning(this, tr("Deploy Management"),
+                         tr("No game directory is set for this instance."));
+    return;
+  }
+
   const bool remove_only = (kind == DeployTaskKind::Remove);
   const QString confirm = remove_only
       ? tr("Remove all deployed files and restore the original game files?\n\n"

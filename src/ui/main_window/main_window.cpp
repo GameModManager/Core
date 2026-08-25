@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QEvent>
+#include <QFileDialog>
 #include <QIcon>
 #include <QMenu>
 #include <QResizeEvent>
@@ -241,25 +242,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
             current_instance_ = write;
           });
 
-  // Banner picker (Workspace-tnj): persist the chosen game dir into
-  // instance.toml (read-before-write, same pattern as above) and reload the
-  // instance through the normal set_game_info path.
-  connect(game_path_banner_, &GamePathBanner::game_path_picked, this,
-          [this](const QString &dir) {
-            if (dir.isEmpty() || current_instance_root_.empty())
-              return;
-            auto inst = engine::Instance::installed(
-                current_instance_root_.filename().string(),
-                current_instance_root_.parent_path());
-            if (!inst.read_toml())
-              return;
-            inst.info().game_dir = dir.toStdString();
-            inst.write_toml();
-            settings_->set_game_info(current_game_id_, current_game_name_,
-                                     current_profile_name_,
-                                     dir.toStdString(),
-                                     current_instance_root_);
-          });
+  // Banner picker (Workspace-tnj): the host owns the picker so the
+  // launch/deploy guards reuse the same flow (prompt_for_game_path).
+  connect(game_path_banner_, &GamePathBanner::pick_requested, this,
+          [this]() { prompt_for_game_path(); });
 
   // Start IPC server to receive nxm:// URLs from other GMM processes
   downloads_->setup_nxm_ipc();
@@ -289,6 +275,21 @@ void MainWindow::set_game_info(const std::string &game_id,
   // config, app-state restore) lives in SettingsController::set_game_info.
   settings_->set_game_info(game_id, game_display_name, profile_name, game_dir,
                            instance_root);
+}
+
+bool MainWindow::prompt_for_game_path() {
+  const QString dir =
+      QFileDialog::getExistingDirectory(this, tr("Choose game directory"));
+  if (dir.isEmpty() || current_instance_root_.empty())
+    return false;
+  // write_key read-modify-writes the whole file, so app-owned sections
+  // ([executables], ...) survive; write_toml() would clobber them.
+  engine::Instance::from_root(current_instance_root_)
+      .write_key("game_dir", dir.toStdString());
+  settings_->set_game_info(current_game_id_, current_game_name_,
+                           current_profile_name_, dir.toStdString(),
+                           current_instance_root_);
+  return true;
 }
 
 void MainWindow::handle_nxm_download(const engine::NxmLink &link) {

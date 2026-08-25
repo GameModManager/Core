@@ -33,11 +33,16 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
             ? std::vector<std::filesystem::path>{}
             : std::vector<std::filesystem::path>{request.instance_root};
 
-    // Scan game's native mods directory.
-    scanned = engine::ModScanner::scan(knowledge, game_id, request.game_dir,
-                                       ignore_symlink_targets);
-    engine::Logger::instance().debug("ModScanWorker: game-dir scan found " +
-                             std::to_string(scanned.size()) + " mod(s)");
+    // Scan game's native mods directory. Skipped for game-less instances
+    // (Workspace-wk8): an empty path would resolve against the CWD. The
+    // instance-mode block below replaces the scan with the instance mods
+    // dir anyway.
+    if (!request.game_dir.empty()) {
+        scanned = engine::ModScanner::scan(knowledge, game_id, request.game_dir,
+                                           ignore_symlink_targets);
+        engine::Logger::instance().debug("ModScanWorker: game-dir scan found " +
+                                 std::to_string(scanned.size()) + " mod(s)");
+    }
 
     // Instance mode: the mod list comes from the instance mods dir ONLY. The
     // game's own mods subpath is never a mod source - its folders (e.g.
@@ -72,8 +77,9 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
     // mod<->plugin selection highlight round-trips for files with no owning
     // mod. A file a mod folder already covers is skipped here - the ownership
     // join (GamePlugin::owner_mod) decides which row highlights for shadowed
-    // strays instead.
-    {
+    // strays instead. Game-less instances skip the whole block: native_dir
+    // would be a CWD-relative path (Workspace-wk8).
+    if (!request.game_dir.empty()) {
         auto native_plugins = engine::native_plugins_csv(knowledge, game_id);
         if (!native_plugins.empty()) {
             auto game_mods_subpath = knowledge.get(game_id, "mods_subpath", "");
@@ -163,8 +169,9 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
     // manages itself (DLC/CC folders, plugin-less game dirs) that a plugin
     // declares and that must appear in the list as unmanaged rows. A file or
     // folder with the declared internal name inside the game's mods dir
-    // becomes a row; anything a scan row already covers is skipped.
-    {
+    // becomes a row; anything a scan row already covers is skipped. Also
+    // game-dir-dependent - skipped for game-less instances (Workspace-wk8).
+    if (!request.game_dir.empty()) {
         auto unmanaged = engine::unmanaged_mods_for(game_id);
         if (!unmanaged.empty()) {
             auto game_mods_subpath = knowledge.get(game_id, "mods_subpath", "");
