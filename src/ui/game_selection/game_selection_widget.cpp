@@ -89,6 +89,22 @@ GameSelectionWidget::GameSelectionWidget(QWidget* parent)
     available_grid_ = new QWidget();
     layout->addWidget(available_grid_);
 
+    layout->addSpacing(16);
+
+    // -- General section (Workspace-6up): the game-less "Generic Instance"
+    // card, always shown — no game install required to start managing mods.
+    general_label_ = new QLabel(tr("General"));
+    {
+        QFont f = general_label_->font();
+        f.setPointSize(13);
+        f.setBold(true);
+        general_label_->setFont(f);
+    }
+    layout->addWidget(general_label_);
+
+    general_grid_ = new QWidget();
+    layout->addWidget(general_grid_);
+
     layout->addStretch(1);
 
     scroll->setWidget(container);
@@ -158,6 +174,13 @@ void GameSelectionWidget::set_games(const std::vector<GameEntry>& installed,
 
     populate_grid(installed_grid_, installed, true);
     populate_grid(available_grid_, available, false);
+
+    // The game-less instance card (Workspace-6up): game_id "generic", no
+    // install path — creation flows already treat an empty path as valid.
+    GameEntry generic;
+    generic.game_id = "generic";
+    generic.display_name = "Generic Instance";
+    populate_grid(general_grid_, {generic}, false);
 
     // Show/hide sections
     installed_label_->setVisible(!installed.empty());

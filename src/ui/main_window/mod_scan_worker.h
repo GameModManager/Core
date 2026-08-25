@@ -21,6 +21,9 @@ struct ModScanRequest {
     engine::GameKnowledge knowledge;  // per-game hooks, copied
     std::string game_id;
     std::filesystem::path game_dir;      // game install dir
+    // The game's actual mods dir (instance.toml "game_mods_dir" override,
+    // Workspace-6up). Empty = derive game_dir/mods_subpath as before.
+    std::filesystem::path game_mods_dir;
     std::filesystem::path instance_root; // empty = portable (no-instance) mode
     std::filesystem::path mods_dir;      // resolved mods_dir_path() (instance or game)
     std::filesystem::path meta_dir;      // resolved meta_dir_path(), empty in portable mode

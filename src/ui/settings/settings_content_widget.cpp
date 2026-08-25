@@ -718,8 +718,9 @@ QWidget *SettingsContentWidget::build_paths_tab() {
           instance_root_.filename().string(), instance_root_.parent_path());
       if (!inst.read_toml())
         return;
-      inst.info().game_dir = new_dir.toStdString();
-      inst.write_toml();
+      // Surgical key write (not write_toml): a full rewrite would drop
+      // app-owned sections like [executables] (see b55b411).
+      inst.write_key("game_dir", new_dir.toStdString());
     };
     connect(game_edit, &QLineEdit::editingFinished, this, commit_game);
     connect(game_browse, &QPushButton::clicked, this,
@@ -730,6 +731,44 @@ QWidget *SettingsContentWidget::build_paths_tab() {
               if (!dir.isEmpty()) {
                 game_edit->setText(dir);
                 commit_game();
+              }
+            });
+
+    // Game Mods Directory (Workspace-6up) — the deploy target for games
+    // whose mod folder lives outside the install dir (Isaac on macOS).
+    // Empty = deploy into the game dir via the plugin's deploy_prefix.
+    auto *gmods_edit = new QLineEdit(page);
+    gmods_edit->setPlaceholderText(tr("Leave empty to use the game directory"));
+    gmods_edit->setToolTip(
+        tr("Choose where mods should be deployed to (the game's actual mod "
+           "folder). Leave empty to use the game directory."));
+    auto *gmods_browse = new QPushButton(tr("Browse..."), page);
+    auto *gmods_row = new QHBoxLayout;
+    gmods_row->addWidget(gmods_edit, 1);
+    gmods_row->addWidget(gmods_browse);
+    base_form->addRow(tr("Game Mods Directory"), gmods_row);
+    {
+      auto inst = engine::Instance::installed(
+          instance_root_.filename().string(), instance_root_.parent_path());
+      if (inst.read_toml() && !inst.info().game_mods_dir.empty())
+        gmods_edit->setText(
+            QString::fromStdString(inst.info().game_mods_dir.string()));
+    }
+    auto commit_gmods = [this, gmods_edit]() {
+      // Empty clears the key (write_key contract) -> game-dir fallback.
+      auto inst = engine::Instance::installed(
+          instance_root_.filename().string(), instance_root_.parent_path());
+      inst.write_key("game_mods_dir", gmods_edit->text().trimmed().toStdString());
+    };
+    connect(gmods_edit, &QLineEdit::editingFinished, this, commit_gmods);
+    connect(gmods_browse, &QPushButton::clicked, this,
+            [gmods_edit, commit_gmods]() {
+              const QString dir = QFileDialog::getExistingDirectory(
+                  gmods_edit, QObject::tr("Choose game mods directory"),
+                  gmods_edit->text());
+              if (!dir.isEmpty()) {
+                gmods_edit->setText(dir);
+                commit_gmods();
               }
             });
 
