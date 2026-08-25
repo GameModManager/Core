@@ -258,3 +258,93 @@ TEST_CASE("mod scan worker game mods dir override", "[ui]") {
 
   fs::remove_all(base, ec);
 }
+
+// Workspace-8j8: when game_mods_dir is set, the game-dir scan found REAL
+// deployed mods and must NOT be replaced by the instance mods-dir scan.
+// The instance mods dir (GMM storage for downloaded-but-not-yet-deployed
+// mods) merges IN, deduped by folder name.
+TEST_CASE("mod scan worker merge keeps game mods dir results", "[ui]") {
+  int test_argc = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QCoreApplication app(test_argc, test_argv);
+  (void)app;
+
+  const fs::path base = fs::current_path() / ("gmm_test_mod_scan_worker_mg_" +
+                                              std::to_string(getpid()));
+  const fs::path game_dir = base / "game";
+  const fs::path data_dir = game_dir / "Data";
+  // The actual mods folder, OUTSIDE the game dir (Isaac-on-macOS shape).
+  const fs::path external_mods = base / "Isaac Mods";
+  // GMM's own storage inside the instance root.
+  const fs::path mods_dir = base / "mods";
+  std::error_code ec;
+  fs::create_directories(data_dir, ec);
+  fs::create_directories(external_mods, ec);
+  fs::create_directories(mods_dir, ec);
+
+  // Real deployed mods in the game's mods folder...
+  fs::create_directories(external_mods / "DeployedA", ec);
+  write_file(external_mods / "DeployedA" / "mod.json", "{}");
+  fs::create_directories(external_mods / "DeployedB", ec);
+  write_file(external_mods / "DeployedB" / "mod.json", "{}");
+  // ...plus one whose name also exists in the instance mods dir (the
+  // downloaded copy of the same mod) - must appear exactly once.
+  fs::create_directories(external_mods / "Shared", ec);
+  write_file(external_mods / "Shared" / "mod.json", "{}");
+  // A mod stored by GMM but not yet deployed.
+  fs::create_directories(mods_dir / "StoredOnly", ec);
+  write_file(mods_dir / "StoredOnly" / "mod.json", "{}");
+  fs::create_directories(mods_dir / "Shared", ec);
+  write_file(mods_dir / "Shared" / "mod.json", "{}");
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Data");
+
+  ui::ModScanRequest req;
+  req.knowledge = knowledge;
+  req.game_id = "testgame";
+  req.game_dir = game_dir;
+  req.game_mods_dir = external_mods; // set => results are real, keep them
+  req.instance_root = base;
+  req.mods_dir = mods_dir;
+
+  struct ScanResult {
+    ui::ModScanResult result;
+    quint64 generation = 0;
+  };
+  std::vector<ScanResult> results;
+  ui::ModScanThread thread(&app);
+  ui::ModScanWorker *worker = thread.worker();
+  QObject::connect(worker, &ui::ModScanWorker::finished, &app,
+                   [&](ui::ModScanResult result, quint64 generation) {
+                     results.push_back({std::move(result), generation});
+                   });
+
+  thread.start(std::move(req), /*generation=*/1);
+
+  QElapsedTimer timer;
+  timer.start();
+  while (results.empty()) {
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    QThread::msleep(2);
+    if (timer.elapsed() > 10000) {
+      FAIL("scan never landed");
+    }
+  }
+
+  const auto &scanned = results[0].result.scanned;
+  check(by_folder(scanned, "DeployedA") != nullptr,
+        "game-mods-dir mod DeployedA survives the instance-mode scan");
+  check(by_folder(scanned, "DeployedB") != nullptr,
+        "game-mods-dir mod DeployedB survives the instance-mode scan");
+  check(by_folder(scanned, "StoredOnly") != nullptr,
+        "instance-stored mod is merged in");
+  int shared_count = 0;
+  for (const auto &m : scanned)
+    if (m.folder_name == "Shared")
+      ++shared_count;
+  check(shared_count == 1, "folder present in both dirs appears exactly once");
+
+  fs::remove_all(base, ec);
+}

@@ -34,9 +34,10 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
             : std::vector<std::filesystem::path>{request.instance_root};
 
     // Scan game's native mods directory. Skipped for game-less instances
-    // (Workspace-wk8): an empty path would resolve against the CWD. The
-    // instance-mode block below replaces the scan with the instance mods
-    // dir anyway.
+    // (Workspace-wk8): an empty path would resolve against the CWD. When the
+    // resolved dir is an explicit external mods folder this scan finds the
+    // real deployed mods; otherwise (plain game_dir/mods_subpath) the
+    // instance-mode block below replaces it with the instance mods dir.
     if (!request.game_dir.empty()) {
         // Workspace-93m: scan() resolves through resolve_game_mods_dir —
         // instance override > plugin "game_mods_dir" hook > game_dir/mods_subpath.
@@ -48,11 +49,17 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
                                  std::to_string(scanned.size()) + " mod(s)");
     }
 
-    // Instance mode: the mod list comes from the instance mods dir ONLY. The
-    // game's own mods subpath is never a mod source - its folders (e.g.
-    // Skyrim's Data/Scripts, Data/Video) are vanilla game content, not mods,
-    // and would otherwise be listed (and flagged) as mods. MO2 lists only
-    // <instance>/mods.
+    // Instance mode: when the game's mods dir is an explicit external folder
+    // (instance.toml override or plugin "game_mods_dir" hook, Workspace-6up),
+    // the game-dir scan above already found the real deployed mods - keep it
+    // and merge in what GMM stores in the instance mods dir (downloaded but
+    // not yet deployed), deduped by folder name (Workspace-8j8). When the
+    // game dir resolved to plain game_dir/mods_subpath instead, its folders
+    // are vanilla game content, not mods (e.g. Skyrim's Data/Scripts,
+    // Data/Video) - MO2 lists only <instance>/mods, so replace.
+    const bool explicit_game_mods_dir =
+        !request.game_mods_dir.empty() ||
+        !engine::plugin_game_mods_dir(knowledge, game_id).empty();
     if (!request.instance_root.empty()) {
         // Game-native mods dir: instance.toml override > plugin-declared
         // "game_mods_dir" hook > game_dir/mods_subpath (Workspace-otx).
@@ -69,10 +76,26 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
             " game_mods_dir=" + game_canon.string() +
             " same=" + std::to_string(inst_canon == game_canon ? 1 : 0));
         if (inst_canon != game_canon) {
-            scanned = engine::ModScanner::scan_dir(knowledge, game_id, request.mods_dir,
-                                                   std::vector<std::filesystem::path>{});
-            engine::Logger::instance().debug("ModScanWorker: game-dir scan REPLACED by instance mods dir, " +
-                                     std::to_string(scanned.size()) + " mod(s)");
+            auto inst_scanned = engine::ModScanner::scan_dir(
+                knowledge, game_id, request.mods_dir,
+                std::vector<std::filesystem::path>{});
+            if (explicit_game_mods_dir) {
+                const auto kept = scanned.size();
+                std::unordered_set<std::string> existing;
+                for (const auto& m : scanned)
+                    existing.insert(m.folder_name);
+                for (auto& m : inst_scanned)
+                    if (existing.insert(m.folder_name).second)
+                        scanned.push_back(std::move(m));
+                engine::Logger::instance().debug(
+                    "ModScanWorker: merged instance mods dir into game-mods-dir scan, " +
+                    std::to_string(scanned.size() - kept) + " added, " +
+                    std::to_string(scanned.size()) + " total");
+            } else {
+                scanned = std::move(inst_scanned);
+                engine::Logger::instance().debug("ModScanWorker: game-dir scan REPLACED by instance mods dir, " +
+                                         std::to_string(scanned.size()) + " mod(s)");
+            }
         } else {
             engine::Logger::instance().debug("ModScanWorker: instance mods dir == game mods dir, keeping game-dir scan");
         }
