@@ -7,6 +7,7 @@
 #include <QStyle>
 #include <QVBoxLayout>
 
+#include "engine/core/instance/instance_utils.h"
 #include "engine/core/instance/toml_utils.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "ui/settings/settings.h"
@@ -136,9 +137,11 @@ void InstanceSwitcherContentWidget::refresh_list() {
             display_name = ie.game_id;
         }
 
-        // Build the display label - always use the plugin's real display name
-        // (the folder name has colons and other special chars stripped)
-        std::string label = display_name;
+        // Build the display label: the instance's own user-chosen name
+        // (Workspace-l6w). The plugin's game display name would be identical
+        // on every row once several instances of the same game exist; the
+        // game name still drives the icon lookup below.
+        std::string label = engine::instance_display_name(entry.path());
 
         ie.display_name = display_name;
         entries_.push_back(ie);

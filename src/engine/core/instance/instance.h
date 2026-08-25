@@ -22,6 +22,12 @@ enum class InstanceKind {
 
 struct InstanceInfo {
     std::string game_id;
+    // User-friendly instance name as the user typed it (may contain spaces,
+    // colons, ...). Persisted to instance.toml as "name"; the folder uses the
+    // sanitized form (see Instance::to_instance_name). Empty for instances
+    // created before the field existed — display falls back to the folder
+    // basename (instance_display_name()).
+    std::string display_name;
     std::filesystem::path root;
     std::filesystem::path game_dir;  // path to the actual game install (e.g. steamapps/common/...)
     // The game's actual mods folder — the deploy target — when it lives
@@ -90,7 +96,13 @@ public:
     bool read_toml();
 
     // Convert a display name to a filesystem-safe instance folder name.
-    // "The Binding of Isaac: Rebirth" → "The_Binding_of_Isaac_Rebirth"
+    // Spaces are kept (safe on all platforms); stripped: /\:*?"<>| and
+    // control characters (incl. NUL); leading/trailing dots and whitespace
+    // are trimmed so ".", ".." and "..." degrade to "".
+    // "The Binding of Isaac: Rebirth" → "The Binding of Isaac Rebirth"
+    // "My Skyrim Setup"               → "My Skyrim Setup"
+    // Returns "" for degenerate input; callers pick a fallback
+    // (unique_instance_name does).
     static std::string to_instance_name(const std::string& display_name);
 
     static std::filesystem::path resolve_portable_root(
