@@ -1,9 +1,19 @@
 #include "ui/game_selection/game_selection_widget.h"
 
-#include <QGridLayout>
-#include <QLabel>
-#include <QScrollArea>
+#include <algorithm>
 
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFrame>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QScrollArea>
+#include <QVBoxLayout>
+
+#include "engine/core/instance/instance_utils.h"
+#include "engine/core/util/fs_utils.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/widgets/game_icon_cache.h"
 
@@ -25,30 +35,122 @@ QIcon GameSelectionWidget::resolve_icon(const GameEntry& entry) {
         QString::fromStdString(entry.display_name), 64);
 }
 
+// -- Instance name prompt (Workspace-4fu) --
+
+std::string prompt_instance_name(QWidget* parent, const QString& game_name) {
+    const auto existing = engine::scan_instances();
+
+    QDialog dialog(parent);
+    dialog.setWindowTitle(QObject::tr("Instance Name"));
+    auto* layout = new QVBoxLayout(&dialog);
+
+    layout->addWidget(new QLabel(QObject::tr("Instance name:"), &dialog));
+
+    auto* input = new QLineEdit(game_name, &dialog);
+    layout->addWidget(input);
+
+    // Live validation message (Workspace-y9c); hidden while the name is valid.
+    auto* error = new QLabel(&dialog);
+    error->setStyleSheet(QStringLiteral("color: red;"));
+    error->setWordWrap(true);
+    error->hide();
+    layout->addWidget(error);
+
+    auto* buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    layout->addWidget(buttons);
+
+    const QString bad_chars = QStringLiteral("\\/:*?\"<>|");
+    std::string result;
+
+    // Real-time validation (Workspace-y9c): red border + message below the
+    // input while the name is illegal, OK disabled until it passes.
+    auto validate = [&](const QString& text) {
+        QString problem;
+        const QString trimmed = text.trimmed();
+        if (trimmed.isEmpty()) {
+            problem = QObject::tr("Instance name cannot be empty.");
+        } else if (trimmed == QLatin1String(".") ||
+                   trimmed == QLatin1String("..")) {
+            problem = QObject::tr("\"%1\" is a reserved name.").arg(trimmed);
+        } else {
+            QString found;
+            bool has_control = false;
+            for (const QChar c : trimmed) {
+                if (c.unicode() < 32) {
+                    has_control = true;
+                } else if (bad_chars.contains(c) && !found.contains(c)) {
+                    found += c;
+                }
+            }
+            if (!found.isEmpty()) {
+                for (int i = found.size() - 1; i > 0; --i)
+                    found.insert(i, QLatin1Char(' '));
+            }
+            if (!found.isEmpty() || has_control) {
+                if (has_control) {
+                    if (!found.isEmpty()) found += QLatin1Char(' ');
+                    found += QObject::tr("control characters");
+                }
+                problem = QObject::tr("You cannot use these characters: %1")
+                              .arg(found);
+            }
+        }
+        const bool valid = problem.isEmpty();
+        input->setStyleSheet(valid ? QString()
+                                   : QStringLiteral("QLineEdit { border: "
+                                                    "2px solid red; }"));
+        error->setText(problem);
+        error->setVisible(!valid);
+        buttons->button(QDialogButtonBox::Ok)->setEnabled(valid);
+    };
+    QObject::connect(input, &QLineEdit::textChanged, &dialog, validate);
+    validate(input->text());
+
+    // Same sanitize + uniqueness gate as before, but reported inline instead
+    // of via a modal warning box so the dialog stays open.
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, [&]() {
+        const std::string sanitized =
+            engine::sanitize_directory_name(input->text().toStdString());
+        if (sanitized.empty()) {
+            error->setText(QObject::tr("Please enter a valid name."));
+            error->setVisible(true);
+            return;
+        }
+        if (std::find(existing.begin(), existing.end(), sanitized) !=
+            existing.end()) {
+            error->setText(
+                QObject::tr("An instance named \"%1\" already exists.")
+                    .arg(QString::fromStdString(sanitized)));
+            error->setVisible(true);
+            return;
+        }
+        result = sanitized;
+        dialog.accept();
+    });
+    QObject::connect(buttons, &QDialogButtonBox::rejected,
+                     &dialog, &QDialog::reject);
+
+    dialog.exec();
+    return result;
+}
+
 // -- GameSelectionWidget --
 
 GameSelectionWidget::GameSelectionWidget(QWidget* parent)
     : QWidget(parent) {
-    auto* scroll = new QScrollArea(this);
-    scroll->setWidgetResizable(true);
-    scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    auto* outer = new QVBoxLayout(this);
+    outer->setContentsMargins(40, 30, 40, 30);
+    outer->setSpacing(12);
 
-    auto* container = new QWidget();
-    auto* layout = new QVBoxLayout(container);
-    layout->setContentsMargins(40, 30, 40, 30);
-    layout->setSpacing(16);
-
-    // -- Title --
-    title_ = new QLabel(tr("Welcome to GameModManager"));
-    QFont title_font = title_->font();
+    // -- Header --
+    auto* title = new QLabel(tr("Welcome to GameModManager"));
+    QFont title_font = title->font();
     title_font.setPointSize(18);
     title_font.setBold(true);
-    title_->setFont(title_font);
-    title_->setAlignment(Qt::AlignCenter);
-    layout->addWidget(title_);
-
-    layout->addSpacing(10);
+    title->setFont(title_font);
+    title->setAlignment(Qt::AlignCenter);
+    outer->addWidget(title);
 
     auto* subtitle = new QLabel(tr("Select a game to manage"));
     subtitle->setObjectName("gameSelectionSubtitle");
@@ -57,61 +159,38 @@ GameSelectionWidget::GameSelectionWidget(QWidget* parent)
     sub_font.setItalic(true);
     subtitle->setFont(sub_font);
     subtitle->setAlignment(Qt::AlignCenter);
-    layout->addWidget(subtitle);
+    outer->addWidget(subtitle);
 
-    layout->addSpacing(20);
+    // Divider between header area and list (Workspace-4fu).
+    auto* divider = new QFrame();
+    divider->setFrameShape(QFrame::HLine);
+    divider->setFrameShadow(QFrame::Sunken);
+    outer->addWidget(divider);
 
-    // -- Installed Games section --
-    installed_label_ = new QLabel(tr("Installed Games"));
-    {
-        QFont f = installed_label_->font();
-        f.setPointSize(13);
-        f.setBold(true);
-        installed_label_->setFont(f);
-    }
-    layout->addWidget(installed_label_);
+    // -- Filter bar --
+    filter_ = new QLineEdit(this);
+    filter_->setPlaceholderText(tr("Filter..."));
+    filter_->setClearButtonEnabled(true);
+    outer->addWidget(filter_);
+    connect(filter_, &QLineEdit::textChanged,
+            this, &GameSelectionWidget::apply_filter);
 
-    installed_grid_ = new QWidget();
-    layout->addWidget(installed_grid_);
+    // -- Scrollable game list --
+    auto* scroll = new QScrollArea(this);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
-    layout->addSpacing(16);
+    list_ = new QWidget();
+    scroll->setWidget(list_);
 
-    // -- Available Games section --
-    available_label_ = new QLabel(tr("Available Games"));
-    {
-        QFont f = available_label_->font();
-        f.setPointSize(13);
-        f.setBold(true);
-        available_label_->setFont(f);
-    }
-    layout->addWidget(available_label_);
+    status_ = new QLabel(this);
+    status_->setAlignment(Qt::AlignCenter);
+    status_->setObjectName("gameSelectionNoMatch");
+    status_->hide();
 
-    available_grid_ = new QWidget();
-    layout->addWidget(available_grid_);
-
-    layout->addSpacing(16);
-
-    // -- General section (Workspace-6up): the game-less "Generic Instance"
-    // card, always shown — no game install required to start managing mods.
-    general_label_ = new QLabel(tr("General"));
-    {
-        QFont f = general_label_->font();
-        f.setPointSize(13);
-        f.setBold(true);
-        general_label_->setFont(f);
-    }
-    layout->addWidget(general_label_);
-
-    general_grid_ = new QWidget();
-    layout->addWidget(general_grid_);
-
-    layout->addStretch(1);
-
-    scroll->setWidget(container);
-
-    auto* outer = new QVBoxLayout(this);
-    outer->setContentsMargins(0, 0, 0, 0);
-    outer->addWidget(scroll);
+    outer->addWidget(scroll, 1);
+    outer->addWidget(status_);
 
     // Swap an async-downloaded icon into its matching card(s) when it lands
     connect(&GameIconCache::instance(), &GameIconCache::icon_ready,
@@ -127,66 +206,64 @@ void GameSelectionWidget::on_icon_ready(const QString& game_id) {
     }
 }
 
+void GameSelectionWidget::apply_filter(const QString& text) {
+    const QString needle = text.trimmed();
+    bool any_visible = false;
+    for (auto& card : cards_) {
+        if (!card) continue;
+        const bool match = needle.isEmpty() ||
+            QString::fromStdString(card->entry().display_name)
+                .contains(needle, Qt::CaseInsensitive);
+        card->setVisible(match);
+        any_visible = any_visible || match;
+    }
+    status_->setVisible(!any_visible);
+    if (!any_visible) {
+        status_->setText(tr("No games match \"%1\"").arg(needle));
+    }
+}
+
 void GameSelectionWidget::set_games(const std::vector<GameEntry>& installed,
                                      const std::vector<GameEntry>& available) {
-    // Cards are rebuilt below; drop the old QPointers.
+    // Cards are rebuilt below; drop the old QPointers and the old rows.
     cards_.clear();
-
-    // Helper to populate a grid
-    auto populate_grid = [&](QWidget* grid, const std::vector<GameEntry>& games, bool installed_section) {
-        // Clear existing
-        auto* old_layout = grid->layout();
-        if (old_layout) {
-            QLayoutItem* item;
-            while ((item = old_layout->takeAt(0)) != nullptr) {
-                if (item->widget()) item->widget()->deleteLater();
-                delete item;
-            }
-            delete old_layout;
+    if (auto* old_layout = list_->layout()) {
+        while (auto* item = old_layout->takeAt(0)) {
+            if (item->widget()) item->widget()->deleteLater();
+            delete item;
         }
+        delete old_layout;
+    }
 
-        if (games.empty()) {
-            auto* lbl = new QLabel(
-                installed_section
-                    ? "No games detected. Install a supported game on Steam."
-                    : "No additional games available.",
-                grid);
-            lbl->setObjectName("gameSelectionNoInstall");
-            lbl->setAlignment(Qt::AlignCenter);
-            auto* lay = new QVBoxLayout(grid);
-            lay->addWidget(lbl);
-            return;
-        }
-
-        auto* grid_layout = new QGridLayout(grid);
-        grid_layout->setContentsMargins(0, 0, 0, 0);
-        grid_layout->setSpacing(16);
-        int col = 0;
-        for (const auto& entry : games) {
-            auto* card = new GameCard(entry, grid);
-            card->set_icon(resolve_icon(entry));
-            cards_.push_back(card);
-            connect(card, &GameCard::clicked, this, &GameSelectionWidget::game_selected);
-            grid_layout->addWidget(card, col / 3, col % 3);
-            col++;
-        }
-    };
-
-    populate_grid(installed_grid_, installed, true);
-    populate_grid(available_grid_, available, false);
-
-    // The game-less instance card (Workspace-6up): game_id "generic", no
-    // install path — creation flows already treat an empty path as valid.
+    // One merged, alphabetically sorted list (Workspace-4fu). The game-less
+    // "Generic Instance" entry (game_id "generic", no install path — creation
+    // flows treat an empty path as valid) is always appended LAST.
+    std::vector<GameEntry> all = installed;
+    all.insert(all.end(), available.begin(), available.end());
+    std::sort(all.begin(), all.end(),
+              [](const GameEntry& a, const GameEntry& b) {
+                  return QString::fromStdString(a.display_name).compare(
+                             QString::fromStdString(b.display_name),
+                             Qt::CaseInsensitive) < 0;
+              });
     GameEntry generic;
     generic.game_id = "generic";
     generic.display_name = "Generic Instance";
-    populate_grid(general_grid_, {generic}, false);
+    all.push_back(generic);
 
-    // Show/hide sections
-    installed_label_->setVisible(!installed.empty());
-    installed_grid_->setVisible(!installed.empty());
-    available_label_->setVisible(!available.empty());
-    available_grid_->setVisible(!available.empty());
+    auto* list_layout = new QVBoxLayout(list_);
+    list_layout->setContentsMargins(0, 0, 0, 0);
+    list_layout->setSpacing(2);
+    for (const auto& entry : all) {
+        auto* card = new GameCard(entry, list_);
+        card->set_icon(resolve_icon(entry));
+        cards_.push_back(card);
+        connect(card, &GameCard::clicked, this, &GameSelectionWidget::game_selected);
+        list_layout->addWidget(card);
+    }
+    list_layout->addStretch(1);
+
+    apply_filter(filter_->text());
 }
 
 }  // namespace ui

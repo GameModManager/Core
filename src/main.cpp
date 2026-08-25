@@ -508,6 +508,12 @@ int main(int argc, char *argv[])
             [&](const ui::GameEntry& entry) {
                 engine::Logger::instance().info("Game selected: " + entry.game_id);
 
+                // Workspace-4fu: user-chosen instance name (default = game
+                // name), unique among existing instances; empty = cancelled.
+                const std::string inst_name =
+                    ui::prompt_instance_name(&stack, QString::fromStdString(entry.display_name));
+                if (inst_name.empty()) return;
+
                 // Find the full DetectedGame for this entry
                 engine::DetectedGame detected;
                 bool is_detected = false;
@@ -527,7 +533,8 @@ int main(int argc, char *argv[])
                 }
 
                 // Create the instance
-                auto new_inst = engine::create_instance_for_game(detected);
+                auto new_inst = engine::create_instance_for_game(
+                    detected, engine::default_instances_dir(), inst_name);
                 if (new_inst.info().game_id.empty()) return;
                 engine::write_last_instance(new_inst.info().root.filename().string());
                 Settings::instance().ensure_modlist_column_defaults(

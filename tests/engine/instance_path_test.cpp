@@ -199,6 +199,61 @@ TEST_CASE("instance path", "[engine]") {
             "cleared last_tab reads empty");
 }
 
+// Workspace-4fu: user-chosen instance names. The display name is sanitized
+// with spaces preserved (it becomes the folder name), an unsanitizable/empty
+// name fails, and creating over an existing instance.toml is refused instead
+// of clobbering it.
+TEST_CASE("create_instance_for_game custom display name", "[engine]") {
+    using engine::Instance;
+
+    const fs::path instances_root = "/tmp/gmm_instance_path/wk4fu_instances";
+    fs::remove_all(instances_root);
+
+    engine::DetectedGame game;
+    game.game_id = "testgame";
+    game.name = "Test Game";
+
+    // Spaces survive sanitization; the folder IS the (sanitized) name.
+    Instance inst = engine::create_instance_for_game(
+        game, instances_root, "My Skyrim Setup");
+    require(inst.info().root.filename() == "My Skyrim Setup",
+            "custom name becomes the folder name, spaces preserved");
+    require(fs::is_regular_file(inst.info().root / "instance.toml"),
+            "instance.toml written for the custom-named instance");
+
+    // Filesystem-unsafe characters are sanitized away.
+    Instance unsafe = engine::create_instance_for_game(
+        game, instances_root, "a/b:c?d");
+    require(unsafe.info().root.filename() == "a_b_c_d",
+            "unsafe chars replaced during sanitization");
+
+    // Uniqueness: creating again with the same name must fail, leaving the
+    // original instance.toml untouched.
+    const std::string toml_before = [&] {
+        std::ifstream f(inst.info().root / "instance.toml");
+        std::ostringstream ss;
+        ss << f.rdbuf();
+        return ss.str();
+    }();
+    Instance dup = engine::create_instance_for_game(
+        game, instances_root, "My Skyrim Setup");
+    require(dup.info().game_id.empty(),
+            "duplicate instance name refused");
+    std::ifstream after(inst.info().root / "instance.toml");
+    std::ostringstream ss_after;
+    ss_after << after.rdbuf();
+    require(ss_after.str() == toml_before,
+            "existing instance.toml not clobbered");
+
+    // Empty/unusable names fail cleanly.
+    Instance blank = engine::create_instance_for_game(game, instances_root, "");
+    require(blank.info().game_id.empty(), "empty custom name refused");
+    Instance dots = engine::create_instance_for_game(game, instances_root, "..");
+    require(dots.info().game_id.empty(), "dot-only name refused");
+
+    fs::remove_all(instances_root);
+}
+
 // Workspace-wk8: instance creation must not require a game path. A
 // DetectedGame with an empty install_path creates a working game-less
 // instance: directories + instance.toml exist, and the toml round-trips
