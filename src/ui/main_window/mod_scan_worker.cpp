@@ -38,8 +38,12 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
     // instance-mode block below replaces the scan with the instance mods
     // dir anyway.
     if (!request.game_dir.empty()) {
+        // Workspace-93m: scan() resolves through resolve_game_mods_dir —
+        // instance override > plugin "game_mods_dir" hook > game_dir/mods_subpath.
+        // A set game_mods_dir IS the mods folder; nothing is appended.
         scanned = engine::ModScanner::scan(knowledge, game_id, request.game_dir,
-                                           ignore_symlink_targets);
+                                           ignore_symlink_targets,
+                                           request.game_mods_dir);
         engine::Logger::instance().debug("ModScanWorker: game-dir scan found " +
                                  std::to_string(scanned.size()) + " mod(s)");
     }

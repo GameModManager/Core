@@ -47,11 +47,16 @@ class ModScanner {
 public:
     // Scan a game's mods directory using settings from GameKnowledge.
     // game_id is used to look up hooks in knowledge.
+    // Mods-dir resolution goes through resolve_game_mods_dir: the per-instance
+    // "game_mods_dir" override (override_mods_dir), then the plugin-declared
+    // "game_mods_dir" hook, then game_install_dir/mods_subpath. A set
+    // game_mods_dir IS the mods folder - nothing is appended to it.
     [[nodiscard]] static std::vector<ScannedMod> scan(
         const GameKnowledge& knowledge,
         const std::string& game_id,
         const std::filesystem::path& game_install_dir,
-        const std::vector<std::filesystem::path>& ignore_symlink_targets = {});
+        const std::vector<std::filesystem::path>& ignore_symlink_targets = {},
+        const std::filesystem::path& override_mods_dir = {});
 
     // Scan a specific mods directory directly (bypasses mods_subpath resolution).
     [[nodiscard]] static std::vector<ScannedMod> scan_dir(
