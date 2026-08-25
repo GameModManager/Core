@@ -18,8 +18,10 @@ public:
   void set_instance_state(bool instance_loaded, bool has_game_dir);
 
 signals:
-  // The user picked a game directory in the banner's picker.
-  void game_path_picked(const QString &dir);
+  // The user clicked "Set Game Path...". The host owns the directory
+  // picker (MainWindow::prompt_for_game_path) so the launch/deploy guards
+  // (Workspace-wk8) reuse the exact same flow.
+  void pick_requested();
 };
 
 } // namespace ui

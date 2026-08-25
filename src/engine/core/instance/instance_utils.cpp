@@ -125,7 +125,11 @@ DeployConfig deploy_config_for(const fs::path& instance_root,
     if (const char* cs = std::getenv("GMM_CASE_SENSITIVE"); cs)
         cfg.case_sensitive = (std::string(cs) == "1");
     cfg.ledger_file = instance_root / ".gmm_deploy_ledger";
-    cfg.backup_root = game_dir / kOriginalFilesDirName;
+    // Empty game_dir -> empty backup_root (documented "caller opts out"):
+    // "" / kOriginalFilesDirName would be a CWD-relative path that engine
+    // file ops would happily create (Workspace-wk8).
+    if (!game_dir.empty())
+        cfg.backup_root = game_dir / kOriginalFilesDirName;
     return cfg;
 }
 

@@ -136,6 +136,12 @@ public:
                      const std::filesystem::path &game_dir = {},
                      const std::filesystem::path &instance_root = {});
 
+  // Opens the game-directory picker, persists the choice to instance.toml
+  // (read-before-write) and reloads through set_game_info. Returns true
+  // when a game dir is now set. Shared by the banner (Workspace-tnj) and
+  // the launch/deploy guards (Workspace-wk8).
+  bool prompt_for_game_path();
+
   void set_game_knowledge(engine::GameKnowledge *knowledge) {
     knowledge_ = knowledge;
   }
@@ -162,6 +168,11 @@ public:
   [[nodiscard]] QSplitter *console_splitter() const {
     return console_splitter_;
   }
+
+  // True while a mod scan / install pipeline stage owns the UI state
+  // (loading_ flag). Tests and controllers use it to defer disk-effect
+  // assertions until the async instance scan has landed.
+  [[nodiscard]] bool is_loading() const { return loading_; }
 
   // Lock or unlock the whole mod manager interface. Locking blocks user
   // interaction (mouse + keyboard) across the main window and greys it out,
