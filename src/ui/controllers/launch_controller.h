@@ -44,6 +44,21 @@ struct InstanceOptionsParams {
 // bracket-depth scan (Issue #34) is superseded by a real TOML parser.
 std::vector<std::string> extract_executables(const std::string &content);
 
+// First-launch seed list for the executables combo (Workspace-421). Keeps the
+// plugin-declared names that physically exist under game_dir (Workspace-6su),
+// then scans `extra_roots` with the same declarations - on macOS these are
+// ~/Applications and /Applications, where Steam can install the game's .app
+// bundle outside game_dir. Extra-root hits are appended as ABSOLUTE paths:
+// every consumer resolves `game_dir / entry.path`, which an absolute path
+// bypasses by design (legacy pre-#34 entries worked the same way), so launch,
+// icons and shortcuts reach the bundle with no new plumbing. Basename-dedupe
+// keeps the game_dir hit when both copies exist. Free function so it tests
+// without a full MainWindow; roots are parameters so the merge is testable on
+// any platform.
+std::vector<std::string> seed_executable_candidates(
+    const std::filesystem::path &game_dir, const std::string &declared,
+    const std::vector<std::filesystem::path> &extra_roots);
+
 // Game launching: executable list persistence, deploy-before-launch
 // (DeployThread), process watch + game-lock overlay, "output to mod" capture,
 // toolbar/desktop shortcuts, and Proton prefix tools. Split out of the
