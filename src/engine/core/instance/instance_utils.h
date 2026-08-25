@@ -44,9 +44,16 @@ void write_last_instance(const std::string& name);
 // Create an instance for a detected game under the given instances root.
 // Returns the fully initialized Instance (dirs created, toml written).
 // Returns an Instance with empty game_id on failure.
+//
+// display_name (Workspace-4fu): user-chosen instance name. It is sanitized
+// with sanitize_directory_name() (spaces preserved) and becomes the folder
+// name; creation fails when an instance with that folder already exists.
+// Empty = legacy behavior: folder derived from the game name via
+// Instance::to_instance_name (spaces folded to underscores).
 [[nodiscard]] Instance create_instance_for_game(
     const DetectedGame& game,
-    const std::filesystem::path& instances_root);
+    const std::filesystem::path& instances_root,
+    const std::string& display_name = {});
 
 // Overload: uses default_instances_dir() as root
 [[nodiscard]] inline Instance create_instance_for_game(

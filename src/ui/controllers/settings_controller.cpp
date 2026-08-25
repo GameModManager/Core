@@ -1152,13 +1152,20 @@ bool SettingsController::create_new_instance() {
   if (sel_dlg.exec() != QDialog::Accepted || !chosen_ok)
     return false;
 
+  // Workspace-4fu: user-chosen instance name (default = game name), unique
+  // among existing instances; empty = cancelled.
+  const std::string inst_name =
+      ui::prompt_instance_name(w_, QString::fromStdString(chosen.display_name));
+  if (inst_name.empty())
+    return false;
+
   engine::DetectedGame dg;
   dg.game_id = chosen.game_id;
   dg.name = chosen.display_name;
   dg.steam_appid = chosen.steam_appid;
   dg.install_path = chosen.install_path;
 
-  auto inst = engine::create_instance_for_game(dg, instances_dir);
+  auto inst = engine::create_instance_for_game(dg, instances_dir, inst_name);
   if (inst.info().game_id.empty()) {
     QMessageBox::warning(
         w_, tr("Error"),
