@@ -297,6 +297,12 @@ gmm_catch2_test(exec_entry_dialog_test ui/exec_entry_dialog_test.cpp
     UI
     LIBS gmm_ui)
 
+# Workspace-vwa: "<Edit...>" sentinel must open the editor even with 0
+# executables; rebuilds must never open it.
+gmm_catch2_test(exec_controls_bar_test ui/exec_controls_bar_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(executables_parser_test ui/executables_parser_test.cpp
     UI
     LIBS gmm_ui)
