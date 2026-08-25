@@ -34,6 +34,23 @@ void write_last_instance(const std::string& name);
 // Scan for existing instances. Returns instance names (directory basenames).
 [[nodiscard]] std::vector<std::string> scan_instances();
 
+// Sanitize a user-chosen instance name into a filesystem-safe folder name
+// (Instance::to_instance_name) and make it unique under instances_root by
+// appending " 2", " 3", ... while a directory or file of that name exists.
+// The existence check goes through the filesystem, so it is case-aware on
+// case-insensitive volumes (macOS). Degenerate names ("...", "") fall back
+// to "New Instance". Never returns empty.
+// The creation dialog calls this for live validation; create_instance_for_game
+// calls it before creating the directory.
+[[nodiscard]] std::string unique_instance_name(
+    const std::string& display_name,
+    const std::filesystem::path& instances_root);
+
+// User-friendly instance name for display: the "name" key from
+// instance.toml when set, else the folder basename (legacy instances).
+[[nodiscard]] std::string instance_display_name(
+    const std::filesystem::path& instance_root);
+
 // Resolve an instance path from a short name or absolute path.
 // If name_or_path is absolute, checks if instance.toml exists at that path.
 // If relative, checks under default_instances_dir()/name_or_path.
