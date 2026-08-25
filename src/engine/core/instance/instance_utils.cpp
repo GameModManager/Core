@@ -8,6 +8,7 @@
 #include "engine/game/registry/game_features/game_feature_registry.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/game/saves/local_saves.h"
+#include "engine/core/util/fs_utils.h"
 #include "platform/platform_interface.h"
 
 #include <cstdlib>
@@ -86,9 +87,31 @@ fs::path resolve_instance_path(const std::string& name_or_path) {
 }
 
 Instance create_instance_for_game(const DetectedGame& game,
-                                   const fs::path& instances_root) {
-    std::string inst_name = Instance::to_instance_name(game.name.empty() ? game.game_id : game.name);
+                                   const fs::path& instances_root,
+                                   const std::string& display_name) {
+    // Workspace-4fu: user-chosen names are sanitized with spaces preserved;
+    // the legacy path keeps to_instance_name's space->underscore folding.
+    std::string inst_name = display_name.empty()
+        ? Instance::to_instance_name(game.name.empty() ? game.game_id : game.name)
+        : sanitize_directory_name(display_name);
+    if (inst_name.empty()) {
+        Logger::instance().error(
+            "create_instance_for_game: empty instance name for game=" +
+            game.game_id);
+        return Instance::portable({});
+    }
     Instance inst = Instance::installed(inst_name, instances_root);
+
+    // Uniqueness guard: never clobber an existing instance.toml. The UI
+    // pre-checks names against scan_instances(), but this is the choke point
+    // every caller routes through.
+    std::error_code exists_ec;
+    if (fs::exists(inst.info().root / "instance.toml", exists_ec)) {
+        Logger::instance().error(
+            "create_instance_for_game: instance already exists: " + inst_name);
+        return Instance::portable({});
+    }
+
     inst.info().game_id = game.game_id;
     inst.info().game_dir = game.install_path;
     inst.info().steam_appid = game.steam_appid;
