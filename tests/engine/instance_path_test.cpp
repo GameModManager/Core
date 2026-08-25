@@ -306,6 +306,10 @@ TEST_CASE("game mods dir override", "[engine]") {
                                            knowledge, "testgame");
         REQUIRE(cfg.game_mods_dir == override_dir);
         REQUIRE(cfg.deploy_target() == override_dir);
+        // Override IS the mods folder: deploy_prefix must be cleared or
+        // target_base = deploy_target() / deploy_prefix double-nests
+        // (override/"Data") instead of landing files directly.
+        REQUIRE(cfg.deploy_prefix.empty());
         REQUIRE(cfg.game_dir == fs::path("/games/test"));
         // Backups still park next to the game install, not inside the
         // external mods folder.
