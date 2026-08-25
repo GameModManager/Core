@@ -2686,14 +2686,12 @@ void ModListController::on_image_diff_requested(const QString &relative_path) {
   source_paths.reserve(owners.size());
 
   auto mods_dir = w_->mods_dir_path();
-  std::filesystem::path game_mods_dir;
-  if (!w_->current_game_dir_.empty() && w_->knowledge_) {
-    auto subpath =
-        w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "");
-    game_mods_dir = w_->current_game_dir_;
-    if (!subpath.empty())
-      game_mods_dir /= subpath;
-  }
+  const std::filesystem::path game_mods_dir =
+      w_->knowledge_
+          ? engine::resolve_game_mods_dir(w_->current_game_id_,
+                                          w_->current_game_dir_,
+                                          *w_->knowledge_)
+          : std::filesystem::path{};
 
   for (const auto &[mod_name, _] : owners) {
     // Check instance mods dir first, then game native mods dir
