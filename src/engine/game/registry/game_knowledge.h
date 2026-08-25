@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -73,5 +74,25 @@ inline constexpr const char* kDeployStrategyDirect = "direct";
 // kDefaultDeployStrategy when the game plugin declares nothing.
 [[nodiscard]] std::string deploy_strategy_for(const GameKnowledge& knowledge,
                                               const std::string& game_id);
+
+// Plugin-declared absolute game-mods directory ("game_mods_dir" hook, e.g.
+// Isaac on macOS reads mods from ~/Library/Application Support/...), with a
+// leading ~ expanded against $HOME. Empty when the plugin declares nothing.
+[[nodiscard]] std::string plugin_game_mods_dir(const GameKnowledge& knowledge,
+                                               const std::string& game_id);
+
+// The game's native mods directory, resolved once for every consumer:
+//   1. override_dir (the instance.toml "game_mods_dir") when non-empty,
+//   2. the plugin-declared "game_mods_dir" hook (~-expanded),
+//   3. game_dir / "mods_subpath" when the plugin declares one,
+//   4. game_dir.
+// Deploy is the exception: it consumes only steps 1-2 (via
+// plugin_game_mods_dir) because folding mods_subpath into the deploy root
+// would misplace root-override mods that must land in the game root.
+[[nodiscard]] std::filesystem::path resolve_game_mods_dir(
+    const std::string& game_id,
+    const std::filesystem::path& game_dir,
+    const GameKnowledge& knowledge,
+    const std::string& override_dir = "");
 
 }  // namespace engine

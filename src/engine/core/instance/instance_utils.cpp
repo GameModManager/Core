@@ -93,22 +93,6 @@ Instance create_instance_for_game(const DetectedGame& game,
     inst.info().game_dir = game.install_path;
     inst.info().steam_appid = game.steam_appid;
 
-#ifdef __APPLE__
-    // Isaac keeps its mod folder outside the install dir on macOS. When the
-    // standard folder exists, pre-set the deploy-target override so deploys
-    // land where the game actually reads mods (user can override in
-    // Settings > Paths afterwards; never overrides an explicit value).
-    if (game.game_id == "TheBindingOfIsaacRebirth") {
-        if (const char* home = std::getenv("HOME")) {
-            std::error_code guess_ec;
-            const fs::path guess = fs::path(home) /
-                "Library/Application Support/Binding of Isaac Afterbirth+ Mods";
-            if (fs::is_directory(guess, guess_ec))
-                inst.info().game_mods_dir = guess;
-        }
-    }
-#endif
-
     if (!inst.create_directories()) {
         Logger::instance().error(
             "Failed to create instance directories for " + inst_name);
@@ -147,6 +131,15 @@ DeployConfig deploy_config_for(const fs::path& instance_root,
         if (inst.read_toml())
             cfg.game_mods_dir = inst.info().game_mods_dir;
     }
+    // Plugin-declared absolute target (Workspace-otx, e.g. Isaac on macOS
+    // reads mods from ~/Library/Application Support/...): honored when the
+    // user did not override. Classic layout otherwise — game_dir +
+    // deploy_prefix, which is also how the plugin-declared mods_subpath
+    // (Skyrim "Data", Isaac "mods") is honored. Deliberately NOT folding
+    // mods_subpath into the root here: that would misplace root-override
+    // mods that must land in the game root.
+    if (cfg.game_mods_dir.empty())
+        cfg.game_mods_dir = plugin_game_mods_dir(knowledge, game_id);
     if (!cfg.game_mods_dir.empty() && cfg.game_mods_dir == cfg.mods_dir)
         cfg.game_mods_dir.clear();  // self-referential deploy guard
     cfg.deploy_prefix = knowledge.get(game_id, "deploy_prefix", "Data");

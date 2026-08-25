@@ -409,19 +409,15 @@ private:
     return folder; // return the instance path even if it doesn't exist
   }
   // Game-native mods dir: the instance.toml "game_mods_dir" override when
-  // set (Workspace-6up), else mods_subpath under the game dir. Empty when it
-  // equals the instance mods dir or no game is loaded.
+  // set (Workspace-6up), else the plugin-declared "game_mods_dir" hook or
+  // mods_subpath under the game dir (Workspace-otx resolution chain). Empty
+  // when it equals the instance mods dir or no game is loaded.
   std::filesystem::path current_game_mods_dir() const {
     std::filesystem::path game_mods_dir;
-    if (!current_instance_root_.empty())
-      game_mods_dir = current_instance_.info().game_mods_dir;
-    if (game_mods_dir.empty() && !current_game_dir_.empty() && knowledge_) {
-      auto game_mods_subpath =
-          knowledge_->get(current_game_id_, "mods_subpath", "");
-      game_mods_dir = current_game_dir_;
-      if (!game_mods_subpath.empty())
-        game_mods_dir /= game_mods_subpath;
-    }
+    if (knowledge_)
+      game_mods_dir = engine::resolve_game_mods_dir(
+          current_game_id_, current_game_dir_, *knowledge_,
+          current_instance_.info().game_mods_dir.string());
     // Only pass as extra dir if it differs from the instance mods dir
     if (!game_mods_dir.empty() && game_mods_dir == mods_dir_path())
       game_mods_dir.clear();

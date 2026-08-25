@@ -1,5 +1,7 @@
 #include "engine/game/registry/game_knowledge.h"
 
+#include <cstdlib>
+
 namespace engine {
 
 void GameKnowledge::set(const std::string& game_id,
@@ -68,6 +70,34 @@ std::string deploy_strategy_for(const GameKnowledge& knowledge,
 bool delayed_disable_for(const GameKnowledge& knowledge,
                          const std::string& game_id) {
     return knowledge.get(game_id, "delayed_disable", "") == "true";
+}
+
+std::string plugin_game_mods_dir(const GameKnowledge& knowledge,
+                                 const std::string& game_id) {
+    std::string dir = knowledge.get(game_id, "game_mods_dir", "");
+    // Expand a leading ~ against $HOME at resolution time (the plugin only
+    // declares the literal path; HOME may differ between registration and use).
+    if (!dir.empty() && dir.front() == '~') {
+        if (const char* home = std::getenv("HOME"))
+            dir = std::string(home) + dir.substr(1);
+    }
+    return dir;
+}
+
+std::filesystem::path resolve_game_mods_dir(
+    const std::string& game_id,
+    const std::filesystem::path& game_dir,
+    const GameKnowledge& knowledge,
+    const std::string& override_dir) {
+    // 1. Per-instance user override (instance.toml "game_mods_dir") wins.
+    if (!override_dir.empty()) return std::filesystem::path(override_dir);
+    // 2. Plugin-declared absolute dir (e.g. Isaac on macOS).
+    const std::string declared = plugin_game_mods_dir(knowledge, game_id);
+    if (!declared.empty()) return std::filesystem::path(declared);
+    // 3./4. Subpath under the game install, else the game dir itself.
+    const std::string subpath = knowledge.get(game_id, "mods_subpath", "");
+    if (subpath.empty()) return game_dir;
+    return game_dir / subpath;
 }
 
 }  // namespace engine
