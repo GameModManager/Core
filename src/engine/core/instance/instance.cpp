@@ -103,6 +103,9 @@ bool Instance::create_directories() const {
 bool Instance::write_toml() const {
     toml::table tbl;
     tbl.emplace("game_id", info_.game_id);
+    if (!info_.display_name.empty()) {
+        tbl.emplace("name", info_.display_name);
+    }
     tbl.emplace("portable", info_.portable);
     if (info_.steam_appid > 0) {
         tbl.emplace("steam_appid", static_cast<int64_t>(info_.steam_appid));
@@ -154,6 +157,9 @@ bool Instance::read_toml() {
 
     if (auto v = (*tbl)["game_id"].value<std::string>()) {
         info_.game_id = *v;
+    }
+    if (auto v = (*tbl)["name"].value<std::string>()) {
+        info_.display_name = *v;
     }
     if (auto v = (*tbl)["game_dir"].value<std::string>()) {
         info_.game_dir = *v;
@@ -223,10 +229,20 @@ std::string Instance::to_instance_name(const std::string& display_name) {
     std::string result;
     result.reserve(display_name.size());
     for (char c : display_name) {
-        if (c == ' ') result += '_';
-        else if (invalid.find(c) != std::string::npos) continue;
-        else result += c;
+        // Control characters (incl. NUL) are never filesystem-safe.
+        if (static_cast<unsigned char>(c) < 0x20 || c == '\x7f') continue;
+        if (invalid.find(c) != std::string::npos) continue;
+        result += c;
     }
+    // Trim dots and whitespace at both ends: leading dots would hide the
+    // folder on Unix, trailing dots/spaces are illegal on Windows, and
+    // trimming is what turns ".", ".." and "..." into "" (degenerate input).
+    const auto is_trim = [](unsigned char c) {
+        return c == '.' || c == ' ' || c == '\t';
+    };
+    while (!result.empty() && is_trim(result.front()))
+        result.erase(result.begin());
+    while (!result.empty() && is_trim(result.back())) result.pop_back();
     return result;
 }
 

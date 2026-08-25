@@ -85,11 +85,40 @@ fs::path resolve_instance_path(const std::string& name_or_path) {
     return {};
 }
 
+std::string unique_instance_name(const std::string& display_name,
+                                 const fs::path& instances_root) {
+    std::string base = Instance::to_instance_name(display_name);
+    if (base.empty()) base = "New Instance";
+    const auto taken = [&](const std::string& name) {
+        std::error_code ec;
+        return fs::exists(instances_root / name, ec);
+    };
+    if (!taken(base)) return base;
+    for (int i = 2;; ++i) {
+        const std::string candidate = base + " " + std::to_string(i);
+        if (!taken(candidate)) return candidate;
+    }
+}
+
+std::string instance_display_name(const fs::path& instance_root) {
+    if (!instance_root.empty()) {
+        Instance inst = Instance::from_root(instance_root);
+        if (inst.read_toml() && !inst.info().display_name.empty())
+            return inst.info().display_name;
+    }
+    return instance_root.filename().string();
+}
+
 Instance create_instance_for_game(const DetectedGame& game,
                                    const fs::path& instances_root) {
-    std::string inst_name = Instance::to_instance_name(game.name.empty() ? game.game_id : game.name);
+    // Folder = sanitized unique form of the user-chosen name; the raw
+    // display name rides along in instance.toml ("name") for the UI.
+    const std::string display =
+        game.name.empty() ? game.game_id : game.name;
+    const std::string inst_name = unique_instance_name(display, instances_root);
     Instance inst = Instance::installed(inst_name, instances_root);
     inst.info().game_id = game.game_id;
+    inst.info().display_name = display;
     inst.info().game_dir = game.install_path;
     inst.info().steam_appid = game.steam_appid;
 
