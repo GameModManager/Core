@@ -539,16 +539,18 @@ std::vector<ScannedMod> ModScanner::scan(
     const GameKnowledge& knowledge,
     const std::string& game_id,
     const std::filesystem::path& game_install_dir,
-    const std::vector<std::filesystem::path>& ignore_symlink_targets) {
+    const std::vector<std::filesystem::path>& ignore_symlink_targets,
+    const std::filesystem::path& override_mods_dir) {
 
-    auto mods_subpath = knowledge.get(game_id, "mods_subpath", "");
-    std::filesystem::path mods_dir;
-    if (!mods_subpath.empty()) {
-        mods_dir = game_install_dir / mods_subpath;
-    } else {
-        mods_dir = game_install_dir;
-    }
-    return scan_impl(knowledge, game_id, mods_dir, ignore_symlink_targets);
+    // Workspace-93m: resolve through the single resolution point instead of
+    // appending mods_subpath here. When game_mods_dir is set (instance
+    // override or plugin hook) it IS the mods folder - nothing may be
+    // appended to it. Empty game_mods_dir keeps the classic
+    // game_install_dir/mods_subpath layout (e.g. Skyrim's Data/).
+    return scan_impl(knowledge, game_id,
+                     resolve_game_mods_dir(game_id, game_install_dir, knowledge,
+                                           override_mods_dir.string()),
+                     ignore_symlink_targets);
 }
 
 std::vector<ScannedMod> ModScanner::scan_dir(
