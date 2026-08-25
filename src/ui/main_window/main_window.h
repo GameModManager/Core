@@ -206,6 +206,9 @@ private:
   // Hidden by default; the << / >> toggle in the filter bar shows/hides it.
   CategoryFilterPanel *category_filter_panel_ = nullptr;
   ModTableView *mod_view_ = nullptr;
+  // MO2-style digital counter above the mod list ("enabled / total"),
+  // right-aligned; updated by ModListController on list/toggle changes.
+  QLabel *mod_count_label_ = nullptr;
   ColumnToggleHeaderView *mod_header_ = nullptr;
   ModListModel *mod_model_ = nullptr;
   RightPanel *right_panel_ = nullptr;

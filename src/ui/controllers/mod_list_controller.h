@@ -170,6 +170,10 @@ private:
   // are updated.
   void switch_profile(const QString &profile);
 
+  // Recomputes "enabled / total" and updates w_->mod_count_label_. Called on
+  // dataChanged (toggles) and mod_list_changed (add/remove/move/load).
+  void update_mod_count_label();
+
   MainWindow *w_ = nullptr;
 };
 
