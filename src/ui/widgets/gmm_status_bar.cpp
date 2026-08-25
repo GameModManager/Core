@@ -40,11 +40,7 @@ GmmStatusBar::GmmStatusBar(QWidget* parent)
     connect(pipeline_button_, &QToolButton::clicked,
             this, &GmmStatusBar::pipeline_clicked);
 
-    // Right side: counter + sources (populated dynamically)
-    counter_label_ = new QLabel(this);
-    counter_label_->setObjectName("counterLabel");
-    layout_->addWidget(counter_label_);
-
+    // Right side: sources (populated dynamically)
     separator_ = new QFrame();
     separator_->setFrameShape(QFrame::VLine);
     separator_->setFrameShadow(QFrame::Sunken);
@@ -60,18 +56,6 @@ GmmStatusBar::GmmStatusBar(QWidget* parent)
 
 void GmmStatusBar::set_status(const QString& text) {
     status_label_->setText(text);
-}
-
-void GmmStatusBar::set_counter_label(const QString& label) {
-    counter_label_->setText(label + ": 0");
-}
-
-void GmmStatusBar::set_counter_value(int count) {
-    auto text = counter_label_->text();
-    auto colon = text.indexOf(':');
-    if (colon >= 0) {
-        counter_label_->setText(text.left(colon + 1) + " " + QString::number(count));
-    }
 }
 
 void GmmStatusBar::set_sources(const QStringList& sources) {
