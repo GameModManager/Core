@@ -6,8 +6,6 @@
 #include <QFrame>
 #include <QIcon>
 #include <QLabel>
-#include <QPushButton>
-#include <QVBoxLayout>
 
 namespace ui {
 
@@ -20,8 +18,8 @@ struct GameEntry {
     std::filesystem::path install_path;
 };
 
-// A clickable card showing a game's icon and name.
-// Two visual states: installed (solid highlight) and available (muted).
+// A clickable row showing a game's icon and name (Workspace-4fu list layout).
+// Not-installed entries render with a muted name.
 class GameCard : public QFrame {
     Q_OBJECT
 
