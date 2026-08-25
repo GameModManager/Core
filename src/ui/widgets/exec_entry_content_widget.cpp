@@ -50,6 +50,43 @@ static QStringList parse_environment_text(const QString &text) {
   return out;
 }
 
+// Name filter for the "Select Executable" pickers. On macOS, .app bundles
+// are directories, so *.app is only offered there (see select_executable_path).
+static QString executable_filter() {
+#ifdef Q_OS_WIN
+  return ExecEntryContentWidget::tr("Executables (*.exe);;All Files (*)");
+#elif defined(Q_OS_MACOS)
+  return ExecEntryContentWidget::tr(
+      "Executables (*.app *.exe *.AppImage *.bin *.elf *.sh);;All Files (*)");
+#else
+  return ExecEntryContentWidget::tr(
+      "Executables (*.exe *.AppImage *.bin *.elf *.sh);;All Files (*)");
+#endif
+}
+
+// Shared picker for the two "Select Executable" flows. On macOS, native open
+// panels refuse to return .app bundles (they are directories), so fall back
+// to the Qt widget dialog where a directory matching the name filter is
+// selectable like a file.
+static QString select_executable_path(QWidget *parent, const QString &caption,
+                                      const QString &dir,
+                                      const QString &filter) {
+#ifdef Q_OS_MACOS
+  QFileDialog dlg(parent);
+  // Options must be set before other properties (Qt docs).
+  dlg.setOption(QFileDialog::DontUseNativeDialog);
+  dlg.setWindowTitle(caption);
+  dlg.setDirectory(dir);
+  dlg.setNameFilter(filter);
+  dlg.setFileMode(QFileDialog::ExistingFile);
+  if (dlg.exec() != QDialog::Accepted || dlg.selectedFiles().isEmpty())
+    return {};
+  return dlg.selectedFiles().constFirst();
+#else
+  return QFileDialog::getOpenFileName(parent, caption, dir, filter);
+#endif
+}
+
 // ---------------------------------------------------------------------------
 // ExecEntry
 // ---------------------------------------------------------------------------
@@ -485,15 +522,8 @@ void ExecEntryContentWidget::on_add_from_file() {
                        ? QDir::homePath()
                        : QString::fromStdString(game_dir_.string());
 
-#ifdef Q_OS_WIN
-  QString filter = tr("Executables (*.exe);;All Files (*)");
-#else
-  QString filter =
-      tr("Executables (*.exe *.AppImage *.bin *.elf *.sh);;All Files (*)");
-#endif
-
-  auto path = QFileDialog::getOpenFileName(this, tr("Select Executable"),
-                                           start_dir, filter);
+  auto path = select_executable_path(this, tr("Select Executable"), start_dir,
+                                     executable_filter());
   if (path.isEmpty())
     return;
 
@@ -814,15 +844,8 @@ void ExecEntryContentWidget::browse_binary() {
                        ? QDir::homePath()
                        : QString::fromStdString(game_dir_.string());
 
-#ifdef Q_OS_WIN
-  QString filter = tr("Executables (*.exe);;All Files (*)");
-#else
-  QString filter =
-      tr("Executables (*.exe *.AppImage *.bin *.elf *.sh);;All Files (*)");
-#endif
-
-  auto path = QFileDialog::getOpenFileName(this, tr("Select Executable"),
-                                           start_dir, filter);
+  auto path = select_executable_path(this, tr("Select Executable"), start_dir,
+                                     executable_filter());
   if (path.isEmpty())
     return;
 
