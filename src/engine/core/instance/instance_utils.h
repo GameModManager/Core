@@ -48,12 +48,18 @@ void write_last_instance(const std::string& name);
 // display_name (Workspace-4fu): user-chosen instance name. It is sanitized
 // with sanitize_directory_name() (spaces preserved) and becomes the folder
 // name; creation fails when an instance with that folder already exists.
-// Empty = legacy behavior: folder derived from the game name via
-// Instance::to_instance_name (spaces folded to underscores).
+// An empty or dot-only display_name is refused (returns an Instance with
+// empty game_id).
 [[nodiscard]] Instance create_instance_for_game(
     const DetectedGame& game,
     const std::filesystem::path& instances_root,
-    const std::string& display_name = {});
+    const std::string& display_name);
+
+// Legacy form: no custom name — folder derived from the game name via
+// Instance::to_instance_name (spaces folded to underscores).
+[[nodiscard]] Instance create_instance_for_game(
+    const DetectedGame& game,
+    const std::filesystem::path& instances_root);
 
 // Overload: uses default_instances_dir() as root
 [[nodiscard]] inline Instance create_instance_for_game(

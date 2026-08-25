@@ -90,10 +90,8 @@ Instance create_instance_for_game(const DetectedGame& game,
                                    const fs::path& instances_root,
                                    const std::string& display_name) {
     // Workspace-4fu: user-chosen names are sanitized with spaces preserved;
-    // the legacy path keeps to_instance_name's space->underscore folding.
-    std::string inst_name = display_name.empty()
-        ? Instance::to_instance_name(game.name.empty() ? game.game_id : game.name)
-        : sanitize_directory_name(display_name);
+    // empty or dot-only custom names are refused.
+    std::string inst_name = sanitize_directory_name(display_name);
     if (inst_name.empty()) {
         Logger::instance().error(
             "create_instance_for_game: empty instance name for game=" +
@@ -131,6 +129,16 @@ Instance create_instance_for_game(const DetectedGame& game,
         "Instance created: " + inst_name + " (game=" + game.game_id +
         ") at " + inst.info().root.string());
     return inst;
+}
+
+Instance create_instance_for_game(const DetectedGame& game,
+                                   const fs::path& instances_root) {
+    // Legacy path: derive the folder name from the game name, keeping
+    // to_instance_name's space->underscore folding.
+    return create_instance_for_game(
+        game, instances_root,
+        Instance::to_instance_name(
+            game.name.empty() ? game.game_id : game.name));
 }
 
 DeployConfig deploy_config_for(const fs::path& instance_root,
