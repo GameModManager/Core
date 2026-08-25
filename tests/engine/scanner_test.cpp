@@ -322,3 +322,48 @@ TEST_CASE("delayed_disable_for", "[engine]") {
     knowledge.set("skyrimse", "delayed_disable", "TRUE");
     REQUIRE(!engine::delayed_disable_for(knowledge, "skyrimse"));
 }
+
+// Workspace-93m: a set game_mods_dir (plugin hook or instance override) IS
+// the mods folder. ModScanner::scan must use it literally - appending
+// mods_subpath produced "{game_mods_dir}/mods", which does not exist.
+TEST_CASE("scan uses game_mods_dir literally", "[engine]") {
+    const fs::path root = "/tmp/gmm_scanner_test_gmd";
+    fs::remove_all(root);
+    fs::create_directories(root);
+
+    // The literal mods dir holds a mod; "{literal}/mods" does NOT exist, so
+    // any append would warn "mods directory not found" and return empty.
+    const fs::path native = root / "Isaac Mods";
+    fs::create_directories(native / "SomeMod");
+    write_file(native / "SomeMod" / "meta.ini", "[General]\nversion = 1.0\n");
+
+    engine::GameKnowledge isaac;
+    isaac.set("isaacmac", "mods_subpath", "mods");
+    isaac.set("isaacmac", "game_mods_dir", native.string());
+
+    // Plugin hook: scanned literally, nothing appended.
+    auto mods = engine::ModScanner::scan(isaac, "isaacmac", root / "install");
+    require(by_folder(mods, "SomeMod") != nullptr,
+            "hook dir scanned as-is (no /mods appended)");
+
+    // Instance override beats the hook, also literal.
+    const fs::path overridden = root / "Custom Mods";
+    fs::create_directories(overridden / "OtherMod");
+    write_file(overridden / "OtherMod" / "meta.ini", "[General]\nversion = 2.0\n");
+    mods = engine::ModScanner::scan(isaac, "isaacmac", root / "install",
+                                    {}, overridden);
+    require(by_folder(mods, "OtherMod") != nullptr,
+            "instance override scanned as-is");
+
+    // No hook/override: classic game_dir/mods_subpath fallback still works.
+    engine::GameKnowledge skyrim;
+    skyrim.set("skyrim", "mods_subpath", "Data");
+    fs::create_directories(root / "install" / "Data" / "DataMod");
+    write_file(root / "install" / "Data" / "DataMod" / "meta.ini",
+               "[General]\nversion = 1.0\n");
+    mods = engine::ModScanner::scan(skyrim, "skyrim", root / "install");
+    require(by_folder(mods, "DataMod") != nullptr,
+            "mods_subpath fallback unchanged when no game_mods_dir");
+
+    fs::remove_all(root);
+}
