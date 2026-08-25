@@ -86,31 +86,49 @@ fs::path resolve_instance_path(const std::string& name_or_path) {
     return {};
 }
 
+std::string unique_instance_name(const std::string& display_name,
+                                 const fs::path& instances_root) {
+    std::string base = Instance::to_instance_name(display_name);
+    if (base.empty()) base = "New Instance";
+    const auto taken = [&](const std::string& name) {
+        std::error_code ec;
+        return fs::exists(instances_root / name, ec);
+    };
+    if (!taken(base)) return base;
+    for (int i = 2;; ++i) {
+        const std::string candidate = base + " " + std::to_string(i);
+        if (!taken(candidate)) return candidate;
+    }
+}
+
+std::string instance_display_name(const fs::path& instance_root) {
+    if (!instance_root.empty()) {
+        Instance inst = Instance::from_root(instance_root);
+        if (inst.read_toml() && !inst.info().display_name.empty())
+            return inst.info().display_name;
+    }
+    return instance_root.filename().string();
+}
+
 Instance create_instance_for_game(const DetectedGame& game,
                                    const fs::path& instances_root,
                                    const std::string& display_name) {
     // Workspace-4fu: user-chosen names are sanitized with spaces preserved;
     // empty or dot-only custom names are refused.
-    std::string inst_name = sanitize_directory_name(display_name);
-    if (inst_name.empty()) {
+    // Workspace-l6w: folder name is made unique via unique_instance_name().
+    const std::string sanitized = sanitize_directory_name(display_name);
+    if (sanitized.empty()) {
         Logger::instance().error(
             "create_instance_for_game: empty instance name for game=" +
             game.game_id);
         return Instance::portable({});
     }
+    const std::string inst_name =
+        unique_instance_name(sanitized, instances_root);
     Instance inst = Instance::installed(inst_name, instances_root);
 
-    // Uniqueness guard: never clobber an existing instance.toml. The UI
-    // pre-checks names against scan_instances(), but this is the choke point
-    // every caller routes through.
-    std::error_code exists_ec;
-    if (fs::exists(inst.info().root / "instance.toml", exists_ec)) {
-        Logger::instance().error(
-            "create_instance_for_game: instance already exists: " + inst_name);
-        return Instance::portable({});
-    }
-
     inst.info().game_id = game.game_id;
+    inst.info().display_name = display_name;
     inst.info().game_dir = game.install_path;
     inst.info().steam_appid = game.steam_appid;
 

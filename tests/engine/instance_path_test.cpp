@@ -467,3 +467,89 @@ TEST_CASE("plugin declared game mods dir", "[engine]") {
 
     fs::remove_all(instances_root);
 }
+
+// Workspace-l6w: instance names are user-chosen and may contain spaces.
+// to_instance_name keeps spaces, strips filesystem-unsafe chars (including
+// control chars/NUL), trims dots/whitespace at both ends so ".", ".." and
+// "..." degrade to "".
+TEST_CASE("to_instance_name sanitization", "[engine]") {
+    using engine::Instance;
+
+    // Spaces are filesystem-safe and preserved.
+    REQUIRE(Instance::to_instance_name("My Skyrim Setup") == "My Skyrim Setup");
+    // Invalid chars stripped, inner content kept.
+    REQUIRE(Instance::to_instance_name(R"(a/b\c:d*e?f"g<h>i|j)") ==
+            "abcdefghij");
+    // Control characters (incl. NUL) stripped.
+    REQUIRE(Instance::to_instance_name(std::string("a\x01" "b\x7f" "c")) == "abc");
+    REQUIRE(Instance::to_instance_name(std::string("a\0b", 3)) == "ab");
+    // Dot-only and degenerate names sanitize to empty.
+    REQUIRE(Instance::to_instance_name(".") == "");
+    REQUIRE(Instance::to_instance_name("..") == "");
+    REQUIRE(Instance::to_instance_name("...") == "");
+    REQUIRE(Instance::to_instance_name("") == "");
+    REQUIRE(Instance::to_instance_name("   ") == "");
+    // Leading/trailing dots and whitespace trimmed; inner dots survive.
+    REQUIRE(Instance::to_instance_name(" .name. ") == "name");
+    REQUIRE(Instance::to_instance_name("The.Dot.Game") == "The.Dot.Game");
+}
+
+// Workspace-l6w: creation-time uniqueness. Names disambiguate with " 2",
+// " 3", ... against anything existing under the root (dirs AND files), and
+// degenerate names fall back instead of producing an empty folder name.
+TEST_CASE("unique_instance_name", "[engine]") {
+    namespace fs = std::filesystem;
+    using engine::unique_instance_name;
+
+    const fs::path root = "/tmp/gmm_instance_path/l6w_unique";
+    fs::remove_all(root);
+    fs::create_directories(root);
+
+    REQUIRE(unique_instance_name("My Setup", root) == "My Setup");
+    fs::create_directory(root / "My Setup");
+    REQUIRE(unique_instance_name("My Setup", root) == "My Setup 2");
+    fs::create_directory(root / "My Setup 2");
+    REQUIRE(unique_instance_name("My Setup", root) == "My Setup 3");
+
+    // Plain files block a name too (an instance dir can't be created there).
+    { std::ofstream f(root / "Other"); f << "x"; }
+    REQUIRE(unique_instance_name("Other", root) == "Other 2");
+
+    // Degenerate input falls back to a usable name.
+    REQUIRE(unique_instance_name("...", root) == "New Instance");
+
+    fs::remove_all(root);
+}
+
+// Workspace-l6w: create_instance_for_game derives a unique folder per call
+// and persists the raw display name as instance.toml "name"; the display
+// helper falls back to the folder basename for legacy instances.
+TEST_CASE("create_instance_for_game unique names and display name",
+          "[engine]") {
+    using engine::Instance;
+
+    const fs::path instances_root = "/tmp/gmm_instance_path/l6w_create";
+    fs::remove_all(instances_root);
+
+    engine::DetectedGame game;
+    game.game_id = "testgame";
+    game.name = "Test Game";
+
+    Instance first = engine::create_instance_for_game(game, instances_root);
+    REQUIRE(first.info().root.filename() == "Test Game");
+    REQUIRE(first.info().display_name == "Test Game");
+
+    Instance second = engine::create_instance_for_game(game, instances_root);
+    REQUIRE(second.info().root.filename() == "Test Game 2");
+    REQUIRE(fs::is_regular_file(second.info().root / "instance.toml"));
+
+    // Display name round-trips through instance.toml.
+    REQUIRE(engine::instance_display_name(second.info().root) == "Test Game");
+
+    // Legacy fallback: no "name" key -> folder basename.
+    REQUIRE(first.write_key("name", ""));
+    REQUIRE(engine::instance_display_name(first.info().root) ==
+            first.info().root.filename().string());
+
+    fs::remove_all(instances_root);
+}
