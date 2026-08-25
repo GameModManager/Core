@@ -426,7 +426,7 @@ TEST_CASE("to_instance_name sanitization", "[engine]") {
     REQUIRE(Instance::to_instance_name(R"(a/b\c:d*e?f"g<h>i|j)") ==
             "abcdefghij");
     // Control characters (incl. NUL) stripped.
-    REQUIRE(Instance::to_instance_name(std::string("a\x01b\x7f" "c")) == "abc");
+    REQUIRE(Instance::to_instance_name(std::string("a\x01" "b\x7f" "c")) == "abc");
     REQUIRE(Instance::to_instance_name(std::string("a\0b", 3)) == "ab");
     // Dot-only and degenerate names sanitize to empty.
     REQUIRE(Instance::to_instance_name(".") == "");
