@@ -252,6 +252,28 @@ std::vector<std::string> extract_executables(const std::string &content) {
   return out;
 }
 
+std::vector<std::string> seed_executable_candidates(
+    const std::filesystem::path &game_dir, const std::string &declared,
+    const std::vector<std::filesystem::path> &extra_roots) {
+  auto names = engine::filter_existing_executables(game_dir, declared);
+  for (const auto &root : extra_roots) {
+    for (const auto &name :
+         engine::filter_existing_executables(root, declared)) {
+      const auto base = (root / name).filename();
+      bool seen = false;
+      for (const auto &n : names) {
+        if (std::filesystem::path(n).filename() == base) {
+          seen = true;
+          break;
+        }
+      }
+      if (!seen)
+        names.push_back((root / name).string());
+    }
+  }
+  return names;
+}
+
 void LaunchController::save_executables() {
   if (w_->current_instance_root_.empty())
     return;
@@ -315,10 +337,20 @@ void LaunchController::populate_executables() {
     // only names that physically exist in the game dir (Workspace-6su). The
     // scan is the platform filter: a Windows .exe simply does not exist on a
     // macOS game dir and vice versa. Nothing found -> empty list (sentinel-
-    // only combo), user adds entries manually.
-    for (const auto &name : engine::filter_existing_executables(
-             w_->current_game_dir_,
-             w_->knowledge_->get(w_->current_game_id_, "executables", "")))
+    // only combo), user adds entries manually. On macOS the game's .app
+    // bundle may also live outside game_dir (Workspace-421): Steam can
+    // install it into ~/Applications or /Applications, so those roots are
+    // scanned as fallbacks and their hits stored as absolute paths.
+    const std::string declared =
+        w_->knowledge_->get(w_->current_game_id_, "executables", "");
+    std::vector<std::filesystem::path> fallback_roots;
+#ifdef __APPLE__
+    if (const char *home = std::getenv("HOME"); home && *home)
+      fallback_roots.push_back(std::filesystem::path(home) / "Applications");
+    fallback_roots.push_back("/Applications");
+#endif
+    for (const auto &name : seed_executable_candidates(
+             w_->current_game_dir_, declared, fallback_roots))
       exec_list.append(QString::fromStdString(name));
   }
 
