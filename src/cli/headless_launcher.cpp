@@ -72,15 +72,21 @@ void reconcile_deferred_disable_sentinels(const HeadlessConfig& cfg) {
         return;
 
     const auto mods_dir = inst.path_for(engine::InstanceKind::Mods);
-    const auto mods_subpath = cfg.knowledge->get(cfg.game_id, "mods_subpath", "");
+    // Game-native mods dir (Workspace-otx chain): instance.toml override >
+    // plugin-declared "game_mods_dir" hook > game_dir/mods_subpath.
+    std::string inst_mods_override;
+    if (inst.read_toml())
+        inst_mods_override = inst.info().game_mods_dir.string();
+    const auto native_mods_dir = engine::resolve_game_mods_dir(
+        cfg.game_id, cfg.game_dir, *cfg.knowledge, inst_mods_override);
 
     int reconciled = 0;
     for (const auto& m : mods) {
         if (m.foreign)
             continue;  // unmanaged (DLC etc.) — never written as +/- toggle
         auto folder = mods_dir / m.mod_id;
-        if (!fs::exists(folder) && !mods_subpath.empty()) {
-            auto fallback = cfg.game_dir / mods_subpath / m.mod_id;
+        if (!fs::exists(folder)) {
+            auto fallback = native_mods_dir / m.mod_id;
             if (fs::exists(fallback))
                 folder = fallback;
         }

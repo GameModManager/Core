@@ -338,3 +338,77 @@ TEST_CASE("game mods dir override", "[engine]") {
 
     fs::remove_all(instances_root);
 }
+
+// Workspace-otx: game-specific absolute mods dirs come from the plugin's
+// "game_mods_dir" knowledge hook (Isaac on macOS), not from hardcoded engine
+// checks. resolve_game_mods_dir is the single resolution chain for scan/UI
+// consumers; deploy consumes only the override/plugin steps (never folding
+// mods_subpath into the deploy root).
+TEST_CASE("plugin declared game mods dir", "[engine]") {
+    using engine::GameKnowledge;
+    using engine::plugin_game_mods_dir;
+    using engine::resolve_game_mods_dir;
+
+    // --- Undeclared: empty accessor, chain falls through to subpath/game_dir.
+    GameKnowledge plain;
+    plain.set("testgame", "mods_subpath", "Data");
+    REQUIRE(plugin_game_mods_dir(plain, "testgame").empty());
+    REQUIRE(resolve_game_mods_dir("testgame", "/games/test", plain) ==
+            fs::path("/games/test") / "Data");
+    REQUIRE(resolve_game_mods_dir("othergame", "/games/test", plain) ==
+            fs::path("/games/test"));
+
+    // --- Plugin-declared ~ path expands against $HOME. ---
+    GameKnowledge isaac;
+    isaac.set("TheBindingOfIsaacRebirth", "game_mods_dir",
+              "~/Library/Application Support/Binding of Isaac Afterbirth+ Mods");
+    const auto expanded =
+        fs::path(std::getenv("HOME") ? std::getenv("HOME") : "") /
+        "Library/Application Support/Binding of Isaac Afterbirth+ Mods";
+    REQUIRE(plugin_game_mods_dir(isaac, "TheBindingOfIsaacRebirth") ==
+            expanded.string());
+    REQUIRE(resolve_game_mods_dir("TheBindingOfIsaacRebirth", "/games/isaac",
+                                  isaac) == expanded);
+    // Other games are unaffected by the declaration.
+    REQUIRE(resolve_game_mods_dir("testgame", "/games/test", isaac) ==
+            fs::path("/games/test"));
+
+    // --- Instance override beats the plugin declaration. ---
+    REQUIRE(resolve_game_mods_dir("TheBindingOfIsaacRebirth", "/games/isaac",
+                                  isaac, "/custom/mods") ==
+            fs::path("/custom/mods"));
+
+    // --- Deploy honors the plugin key only when the user did not override,
+    // and never folds mods_subpath into the deploy root. ---
+    const fs::path instances_root = "/tmp/gmm_instance_path/wkotx_instances";
+    fs::remove_all(instances_root);
+    engine::DetectedGame game;
+    game.game_id = "testgame";
+    game.name = "Test Game";
+    engine::Instance inst = engine::create_instance_for_game(game, instances_root);
+    REQUIRE(!inst.info().root.empty());
+
+    {
+        const auto cfg = engine::deploy_config_for(
+            inst.info().root, "/games/test", isaac, "TheBindingOfIsaacRebirth");
+        REQUIRE(cfg.game_mods_dir == expanded);
+        REQUIRE(cfg.deploy_target() == expanded);
+    }
+    {
+        // mods_subpath-only games keep the classic layout (prefix carries it).
+        const auto cfg = engine::deploy_config_for(
+            inst.info().root, "/games/test", plain, "testgame");
+        REQUIRE(cfg.game_mods_dir.empty());
+        REQUIRE(cfg.deploy_target() == fs::path("/games/test"));
+        REQUIRE(cfg.deploy_prefix == "Data");
+    }
+    // User override in instance.toml still wins over the plugin key.
+    REQUIRE(inst.write_key("game_mods_dir", "/custom/mods"));
+    {
+        const auto cfg = engine::deploy_config_for(
+            inst.info().root, "/games/test", isaac, "TheBindingOfIsaacRebirth");
+        REQUIRE(cfg.game_mods_dir == fs::path("/custom/mods"));
+    }
+
+    fs::remove_all(instances_root);
+}
