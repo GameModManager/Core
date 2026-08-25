@@ -282,15 +282,10 @@ bool MainWindow::prompt_for_game_path() {
       QFileDialog::getExistingDirectory(this, tr("Choose game directory"));
   if (dir.isEmpty() || current_instance_root_.empty())
     return false;
-  // Persist into instance.toml (read-before-write so app-owned keys
-  // survive) and reload through the normal set_game_info path.
-  auto inst = engine::Instance::installed(
-      current_instance_root_.filename().string(),
-      current_instance_root_.parent_path());
-  if (!inst.read_toml())
-    return false;
-  inst.info().game_dir = dir.toStdString();
-  inst.write_toml();
+  // write_key read-modify-writes the whole file, so app-owned sections
+  // ([executables], ...) survive; write_toml() would clobber them.
+  engine::Instance::from_root(current_instance_root_)
+      .write_key("game_dir", dir.toStdString());
   settings_->set_game_info(current_game_id_, current_game_name_,
                            current_profile_name_, dir.toStdString(),
                            current_instance_root_);
