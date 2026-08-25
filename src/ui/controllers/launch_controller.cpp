@@ -311,19 +311,15 @@ void LaunchController::populate_executables() {
     for (const auto &s : w_->saved_executables_)
       exec_list.append(QString::fromStdString(s));
   } else {
-    // First launch - seed from game plugin's known executables
-    auto execs_csv =
-        w_->knowledge_->get(w_->current_game_id_, "executables", "");
-    if (!execs_csv.empty()) {
-      std::istringstream ss(execs_csv);
-      std::string token;
-      while (std::getline(ss, token, ',')) {
-        auto s = token.find_first_not_of(" \t");
-        auto e = token.find_last_not_of(" \t");
-        if (s != std::string::npos && e != std::string::npos)
-          exec_list.append(QString::fromStdString(token.substr(s, e - s + 1)));
-      }
-    }
+    // First launch - seed from the game plugin's known executables, keeping
+    // only names that physically exist in the game dir (Workspace-6su). The
+    // scan is the platform filter: a Windows .exe simply does not exist on a
+    // macOS game dir and vice versa. Nothing found -> empty list (sentinel-
+    // only combo), user adds entries manually.
+    for (const auto &name : engine::filter_existing_executables(
+             w_->current_game_dir_,
+             w_->knowledge_->get(w_->current_game_id_, "executables", "")))
+      exec_list.append(QString::fromStdString(name));
   }
 
   auto icon_cache = w_->cache_thumbnails_dir_path();

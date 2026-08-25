@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <sstream>
 #include <string>
 #include <system_error>
+#include <vector>
 
 namespace engine {
 
@@ -212,6 +214,41 @@ namespace engine {
     }
     return cur;
 #endif
+}
+
+// Filter a plugin's comma-separated executable declarations down to the ones
+// that physically exist under game_dir (detection only - never consults the
+// deploy overlay; use merged_view_file_exists for that). Kept entries retain
+// their declared game-relative spelling and declaration order (first = the
+// default). A candidate counts as found when resolve_path() locates it AND it
+// is launchable-shaped: a regular file, or - for macOS app bundles - a
+// ".app"-suffixed directory. Missing names are silently dropped, so one
+// declaration list doubles as a cross-platform candidate set: the scan itself
+// is the platform filter.
+[[nodiscard]] inline std::vector<std::string> filter_existing_executables(
+    const std::filesystem::path& game_dir, const std::string& csv)
+{
+    std::vector<std::string> out;
+    if (game_dir.empty() || csv.empty()) return out;
+    std::istringstream ss(csv);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        const auto first = token.find_first_not_of(" \t");
+        if (first == std::string::npos) continue;
+        const auto last = token.find_last_not_of(" \t");
+        const std::string name = token.substr(first, last - first + 1);
+        bool escaped = false;
+        const auto resolved = resolve_path(game_dir, name, &escaped);
+        if (escaped || resolved.empty()) continue;
+        std::error_code ec;
+        const bool is_app = name.size() >= 4 &&
+            toLower(name.substr(name.size() - 4)) == ".app";
+        if ((std::filesystem::is_regular_file(resolved, ec) && !ec) ||
+            (is_app && std::filesystem::is_directory(resolved, ec) && !ec)) {
+            out.push_back(name);
+        }
+    }
+    return out;
 }
 
 // Hidden-file markers. GMM hides a mod file by renaming it to <name>.gmmhidden;
