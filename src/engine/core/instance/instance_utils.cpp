@@ -93,6 +93,22 @@ Instance create_instance_for_game(const DetectedGame& game,
     inst.info().game_dir = game.install_path;
     inst.info().steam_appid = game.steam_appid;
 
+#ifdef __APPLE__
+    // Isaac keeps its mod folder outside the install dir on macOS. When the
+    // standard folder exists, pre-set the deploy-target override so deploys
+    // land where the game actually reads mods (user can override in
+    // Settings > Paths afterwards; never overrides an explicit value).
+    if (game.game_id == "TheBindingOfIsaacRebirth") {
+        if (const char* home = std::getenv("HOME")) {
+            std::error_code guess_ec;
+            const fs::path guess = fs::path(home) /
+                "Library/Application Support/Binding of Isaac Afterbirth+ Mods";
+            if (fs::is_directory(guess, guess_ec))
+                inst.info().game_mods_dir = guess;
+        }
+    }
+#endif
+
     if (!inst.create_directories()) {
         Logger::instance().error(
             "Failed to create instance directories for " + inst_name);
@@ -117,6 +133,22 @@ DeployConfig deploy_config_for(const fs::path& instance_root,
     DeployConfig cfg;
     cfg.mods_dir = instance_root / "mods";
     cfg.game_dir = game_dir;
+    // Deploy-target override (Workspace-6up): instance.toml "game_mods_dir"
+    // points at the game's actual mods folder when it lives outside the
+    // install dir. When set it replaces both game_dir and deploy_prefix as
+    // the deploy root (mod files land directly in it). When empty the
+    // classic layout applies unchanged: game_dir + deploy_prefix, which is
+    // also how the plugin-declared mods_subpath (Skyrim "Data", Isaac
+    // "mods") is honored — deploy_prefix carries it, so no separate
+    // resolution here (folding mods_subpath into the root would misplace
+    // root-override mods that must land in the game root).
+    if (!instance_root.empty()) {
+        Instance inst = Instance::from_root(instance_root);
+        if (inst.read_toml())
+            cfg.game_mods_dir = inst.info().game_mods_dir;
+    }
+    if (!cfg.game_mods_dir.empty() && cfg.game_mods_dir == cfg.mods_dir)
+        cfg.game_mods_dir.clear();  // self-referential deploy guard
     cfg.deploy_prefix = knowledge.get(game_id, "deploy_prefix", "Data");
     cfg.deploy_include_mod_id =
         knowledge.get(game_id, "deploy_include_mod_id", "false") == "true";
@@ -263,7 +295,7 @@ LaunchParams prepare_launch_params(
         // deploy-management actions on the same class.
         DirectDeployStrategy::Config cfg;
         cfg.mods_dir = deploy_cfg.mods_dir;
-        cfg.game_dir = deploy_cfg.game_dir;
+        cfg.game_dir = deploy_cfg.deploy_target();
         cfg.deploy_prefix = deploy_cfg.deploy_prefix;
         cfg.deploy_include_mod_id = deploy_cfg.deploy_include_mod_id;
         cfg.disable_mechanism = deploy_cfg.disable_mechanism;
@@ -275,7 +307,7 @@ LaunchParams prepare_launch_params(
         if (!deployed) {
             Logger::instance().warn("Some mods failed to deploy into game_dir - continuing anyway");
         }
-        Logger::instance().debug("Launch: direct deploy into " + deploy_cfg.game_dir.string());
+        Logger::instance().debug("Launch: direct deploy into " + deploy_cfg.deploy_target().string());
     } else {
         // Direct-symlink mode: deploy into game_dir. The ledger persists at
         // the instance root (outside the session-wiped .gmm_staging), so a
@@ -284,14 +316,15 @@ LaunchParams prepare_launch_params(
         // deploy displaces are parked in <game_dir>/Original_Files, never
         // deleted.
         deployed = deploy_all_enabled_mods_direct(
-            deploy_cfg.mods_dir, deploy_cfg.game_dir, deploy_cfg.deploy_prefix,
+            deploy_cfg.mods_dir, deploy_cfg.deploy_target(),
+            deploy_cfg.deploy_prefix,
             deploy_cfg.deploy_include_mod_id, deploy_cfg.disable_mechanism,
             deploy_cfg.case_sensitive, deploy_cfg.ledger_file,
             deploy_cfg.backup_root, 0, progress);
         if (!deployed) {
             Logger::instance().warn("Some mods failed to deploy into game_dir - continuing anyway");
         }
-        Logger::instance().debug("Launch: direct-symlink deploy into " + deploy_cfg.game_dir.string());
+        Logger::instance().debug("Launch: direct-symlink deploy into " + deploy_cfg.deploy_target().string());
     }
 
     // Per-profile local saves (P4): when enabled for a Windows game with a
