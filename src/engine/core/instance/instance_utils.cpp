@@ -150,6 +150,11 @@ DeployConfig deploy_config_for(const fs::path& instance_root,
     if (!cfg.game_mods_dir.empty() && cfg.game_mods_dir == cfg.mods_dir)
         cfg.game_mods_dir.clear();  // self-referential deploy guard
     cfg.deploy_prefix = knowledge.get(game_id, "deploy_prefix", "Data");
+    // game_mods_dir IS the mods folder — appending deploy_prefix would
+    // double-nest (game_mods_dir/"mods"). Enforce what the DeployConfig
+    // comment promises instead of relying on every consumer remembering.
+    if (!cfg.game_mods_dir.empty())
+        cfg.deploy_prefix.clear();
     cfg.deploy_include_mod_id =
         knowledge.get(game_id, "deploy_include_mod_id", "false") == "true";
     cfg.disable_mechanism = disable_mechanism_for(knowledge, game_id);
