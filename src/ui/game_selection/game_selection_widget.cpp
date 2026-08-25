@@ -2,12 +2,13 @@
 
 #include <algorithm>
 
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QFrame>
 #include <QHBoxLayout>
-#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
-#include <QMessageBox>
+#include <QPushButton>
 #include <QScrollArea>
 #include <QVBoxLayout>
 
@@ -38,32 +39,100 @@ QIcon GameSelectionWidget::resolve_icon(const GameEntry& entry) {
 
 std::string prompt_instance_name(QWidget* parent, const QString& game_name) {
     const auto existing = engine::scan_instances();
-    QString input = game_name;
-    for (;;) {
-        bool ok = false;
-        input = QInputDialog::getText(
-            parent, QObject::tr("Instance Name"),
-            QObject::tr("Instance name:"),
-            QLineEdit::Normal, input, &ok);
-        if (!ok) return {};
 
+    QDialog dialog(parent);
+    dialog.setWindowTitle(QObject::tr("Instance Name"));
+    auto* layout = new QVBoxLayout(&dialog);
+
+    layout->addWidget(new QLabel(QObject::tr("Instance name:"), &dialog));
+
+    auto* input = new QLineEdit(game_name, &dialog);
+    layout->addWidget(input);
+
+    // Live validation message (Workspace-y9c); hidden while the name is valid.
+    auto* error = new QLabel(&dialog);
+    error->setStyleSheet(QStringLiteral("color: red;"));
+    error->setWordWrap(true);
+    error->hide();
+    layout->addWidget(error);
+
+    auto* buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    layout->addWidget(buttons);
+
+    const QString bad_chars = QStringLiteral("\\/:*?\"<>|");
+    std::string result;
+
+    // Real-time validation (Workspace-y9c): red border + message below the
+    // input while the name is illegal, OK disabled until it passes.
+    auto validate = [&](const QString& text) {
+        QString problem;
+        const QString trimmed = text.trimmed();
+        if (trimmed.isEmpty()) {
+            problem = QObject::tr("Instance name cannot be empty.");
+        } else if (trimmed == QLatin1String(".") ||
+                   trimmed == QLatin1String("..")) {
+            problem = QObject::tr("\"%1\" is a reserved name.").arg(trimmed);
+        } else {
+            QString found;
+            bool has_control = false;
+            for (const QChar c : trimmed) {
+                if (c.unicode() < 32) {
+                    has_control = true;
+                } else if (bad_chars.contains(c) && !found.contains(c)) {
+                    found += c;
+                }
+            }
+            if (!found.isEmpty()) {
+                for (int i = found.size() - 1; i > 0; --i)
+                    found.insert(i, QLatin1Char(' '));
+            }
+            if (!found.isEmpty() || has_control) {
+                if (has_control) {
+                    if (!found.isEmpty()) found += QLatin1Char(' ');
+                    found += QObject::tr("control characters");
+                }
+                problem = QObject::tr("You cannot use these characters: %1")
+                              .arg(found);
+            }
+        }
+        const bool valid = problem.isEmpty();
+        input->setStyleSheet(valid ? QString()
+                                   : QStringLiteral("QLineEdit { border: "
+                                                    "2px solid red; }"));
+        error->setText(problem);
+        error->setVisible(!valid);
+        buttons->button(QDialogButtonBox::Ok)->setEnabled(valid);
+    };
+    QObject::connect(input, &QLineEdit::textChanged, &dialog, validate);
+    validate(input->text());
+
+    // Same sanitize + uniqueness gate as before, but reported inline instead
+    // of via a modal warning box so the dialog stays open.
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, [&]() {
         const std::string sanitized =
-            engine::sanitize_directory_name(input.toStdString());
+            engine::sanitize_directory_name(input->text().toStdString());
         if (sanitized.empty()) {
-            QMessageBox::warning(parent, QObject::tr("Invalid Name"),
-                                 QObject::tr("Please enter a valid name."));
-            continue;
+            error->setText(QObject::tr("Please enter a valid name."));
+            error->setVisible(true);
+            return;
         }
         if (std::find(existing.begin(), existing.end(), sanitized) !=
             existing.end()) {
-            QMessageBox::warning(
-                parent, QObject::tr("Name In Use"),
+            error->setText(
                 QObject::tr("An instance named \"%1\" already exists.")
                     .arg(QString::fromStdString(sanitized)));
-            continue;
+            error->setVisible(true);
+            return;
         }
-        return sanitized;
-    }
+        result = sanitized;
+        dialog.accept();
+    });
+    QObject::connect(buttons, &QDialogButtonBox::rejected,
+                     &dialog, &QDialog::reject);
+
+    dialog.exec();
+    return result;
 }
 
 // -- GameSelectionWidget --

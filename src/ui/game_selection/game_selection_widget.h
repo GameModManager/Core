@@ -44,9 +44,12 @@ private:
 };
 
 // Ask for a new instance name (MO2-style custom naming). Pre-fills with
-// game_name and re-prompts until the filesystem-sanitized name is non-empty
-// and unique among existing instances (scan_instances()). Returns the
-// sanitized name, or empty when cancelled.
+// game_name and validates live as the user types (Workspace-y9c): illegal
+// filename characters, reserved names, and empty input get a red border and
+// an inline error message with OK disabled. On accept the name is sanitized
+// (sanitize_directory_name()) and checked against existing instances
+// (scan_instances()); failures are reported inline and keep the dialog open.
+// Returns the sanitized name, or empty when cancelled.
 [[nodiscard]] std::string prompt_instance_name(QWidget* parent,
                                                const QString& game_name);
 
