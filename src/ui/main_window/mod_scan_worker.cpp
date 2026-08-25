@@ -50,12 +50,11 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
     // and would otherwise be listed (and flagged) as mods. MO2 lists only
     // <instance>/mods.
     if (!request.instance_root.empty()) {
-        // Game-native mods dir: the instance.toml override when set
-        // (Workspace-6up), else the knowledge-derived subpath.
-        auto game_mods_dir = request.game_mods_dir;
-        if (game_mods_dir.empty())
-            game_mods_dir = request.game_dir /
-                knowledge.get(game_id, "mods_subpath", "");
+        // Game-native mods dir: instance.toml override > plugin-declared
+        // "game_mods_dir" hook > game_dir/mods_subpath (Workspace-otx).
+        auto game_mods_dir = engine::resolve_game_mods_dir(
+            game_id, request.game_dir, knowledge,
+            request.game_mods_dir.string());
         // Only scan separately if they're different directories
         std::error_code ec_canon;
         auto inst_canon = std::filesystem::weakly_canonical(request.mods_dir, ec_canon);
@@ -86,13 +85,9 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
     if (!request.game_dir.empty()) {
         auto native_plugins = engine::native_plugins_csv(knowledge, game_id);
         if (!native_plugins.empty()) {
-            std::filesystem::path native_dir = request.game_mods_dir;
-            if (native_dir.empty()) {
-                native_dir = request.game_dir;
-                auto game_mods_subpath = knowledge.get(game_id, "mods_subpath", "");
-                if (!game_mods_subpath.empty())
-                    native_dir /= game_mods_subpath;
-            }
+            std::filesystem::path native_dir = engine::resolve_game_mods_dir(
+                game_id, request.game_dir, knowledge,
+                request.game_mods_dir.string());
 
             std::unordered_set<std::string> existing;
             for (const auto& m : scanned)
@@ -181,13 +176,9 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
     if (!request.game_dir.empty()) {
         auto unmanaged = engine::unmanaged_mods_for(game_id);
         if (!unmanaged.empty()) {
-            std::filesystem::path native_dir = request.game_mods_dir;
-            if (native_dir.empty()) {
-                native_dir = request.game_dir;
-                auto game_mods_subpath = knowledge.get(game_id, "mods_subpath", "");
-                if (!game_mods_subpath.empty())
-                    native_dir /= game_mods_subpath;
-            }
+            std::filesystem::path native_dir = engine::resolve_game_mods_dir(
+                game_id, request.game_dir, knowledge,
+                request.game_mods_dir.string());
 
             std::unordered_set<std::string> existing;
             for (const auto& m : scanned)
