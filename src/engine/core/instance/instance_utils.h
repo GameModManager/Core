@@ -91,6 +91,13 @@ struct LaunchPrepRequest {
 struct DeployConfig {
     std::filesystem::path mods_dir;
     std::filesystem::path game_dir;
+    // Deploy-target override (instance.toml "game_mods_dir"): the game's
+    // actual mods folder when it lives outside the install dir (Isaac on
+    // macOS). Empty = deploy into game_dir via deploy_prefix, exactly like
+    // before this field existed. When set it IS the mods folder: mod files
+    // land directly in it and deploy_prefix is not appended (see
+    // deploy_config_for).
+    std::filesystem::path game_mods_dir;
     std::string deploy_prefix;
     bool deploy_include_mod_id = false;
     std::string disable_mechanism;
@@ -99,6 +106,13 @@ struct DeployConfig {
     // Where originals displaced by the deploy are parked (<game_dir>/
     // kOriginalFilesDirName); empty when a caller opts out of backup/restore.
     std::filesystem::path backup_root;
+
+    // Effective deploy root for direct/symlink strategies: the override when
+    // set, else game_dir. The single resolution point every deploy consumer
+    // (prepare_launch_params, Deploy Management) goes through.
+    [[nodiscard]] std::filesystem::path deploy_target() const {
+        return game_mods_dir.empty() ? game_dir : game_mods_dir;
+    }
 };
 
 // Gather the DeployConfig for a direct-symlink deploy of an instance's enabled

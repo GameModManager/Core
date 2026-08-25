@@ -440,15 +440,15 @@ void InstanceOptionsWidget::run_deploy_task(DeployTaskKind kind) {
     bool ok;
     if (remove_only) {
       ok = engine::remove_deployed_files(
-          config.game_dir, config.backup_root, config.ledger_file, 0,
+          config.deploy_target(), config.backup_root, config.ledger_file, 0,
           on_progress);
     } else {
       ok = engine::remove_deployed_files(
-          config.game_dir, config.backup_root, config.ledger_file, 0,
+          config.deploy_target(), config.backup_root, config.ledger_file, 0,
           on_progress);
       if (ok) {
         ok = engine::deploy_all_enabled_mods_direct(
-            config.mods_dir, config.game_dir, config.deploy_prefix,
+            config.mods_dir, config.deploy_target(), config.deploy_prefix,
             config.deploy_include_mod_id, config.disable_mechanism,
             config.case_sensitive, config.ledger_file, config.backup_root, 0,
             on_progress);

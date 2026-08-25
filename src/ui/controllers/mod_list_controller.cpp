@@ -1168,6 +1168,9 @@ ui::ModScanRequest ModListController::build_mod_scan_request() {
       *w_->knowledge_; // snapshot — read-only after plugin registration
   request.game_id = w_->current_game_id_;
   request.game_dir = w_->current_game_dir_;
+  // Game-native mods dir override (Workspace-6up): instance.toml
+  // "game_mods_dir" when set, else the worker derives game_dir/mods_subpath.
+  request.game_mods_dir = w_->current_game_mods_dir();
   request.instance_root = w_->current_instance_root_;
   request.mods_dir = w_->mods_dir_path();
   request.meta_dir = w_->meta_dir_path();

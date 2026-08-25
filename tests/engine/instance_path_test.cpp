@@ -259,3 +259,82 @@ TEST_CASE("deploy_config_for without a game path", "[engine]") {
     REQUIRE(with_dir.backup_root ==
             fs::path("/games/test") / engine::kOriginalFilesDirName);
 }
+
+// Workspace-6up: the "game_mods_dir" deploy-target override. Round-trips
+// through instance.toml, and deploy_config_for resolves it into
+// DeployConfig.game_mods_dir so every deploy consumer's deploy_target() is
+// the actual mods folder while game_dir/backup_root keep their raw meaning.
+TEST_CASE("game mods dir override", "[engine]") {
+    using engine::Instance;
+    using engine::deploy_config_for;
+
+    const fs::path instances_root = "/tmp/gmm_instance_path/wk6up_instances";
+    fs::remove_all(instances_root);
+
+    engine::DetectedGame game;
+    game.game_id = "testgame";
+    game.name = "Test Game";
+    Instance inst = engine::create_instance_for_game(game, instances_root);
+    REQUIRE(!inst.info().root.empty());
+
+    engine::GameKnowledge knowledge;
+    knowledge.set("testgame", "mods_subpath", "Data");
+
+    // --- No override: deploy target falls back to game_dir. ---
+    {
+        const auto cfg = deploy_config_for(inst.info().root, "/games/test",
+                                           knowledge, "testgame");
+        REQUIRE(cfg.game_mods_dir.empty());
+        REQUIRE(cfg.deploy_target() == fs::path("/games/test"));
+        // The plugin-declared data subdir still rides on deploy_prefix.
+        REQUIRE(cfg.deploy_prefix == "Data");
+        REQUIRE(cfg.backup_root ==
+                fs::path("/games/test") / engine::kOriginalFilesDirName);
+    }
+
+    // --- Override set: it becomes the deploy target; game_dir-derived
+    // fields stay raw. ---
+    const fs::path override_dir =
+        "/Users/test/Library/Application Support/Binding of Isaac Afterbirth+ Mods";
+    REQUIRE(inst.write_key("game_mods_dir", override_dir.string()));
+    {
+        Instance back = Instance::from_root(inst.info().root);
+        REQUIRE(back.read_toml());
+        REQUIRE(back.info().game_mods_dir == override_dir);
+
+        const auto cfg = deploy_config_for(inst.info().root, "/games/test",
+                                           knowledge, "testgame");
+        REQUIRE(cfg.game_mods_dir == override_dir);
+        REQUIRE(cfg.deploy_target() == override_dir);
+        // Override IS the mods folder: deploy_prefix must be cleared or
+        // target_base = deploy_target() / deploy_prefix double-nests
+        // (override/"Data") instead of landing files directly.
+        REQUIRE(cfg.deploy_prefix.empty());
+        REQUIRE(cfg.game_dir == fs::path("/games/test"));
+        // Backups still park next to the game install, not inside the
+        // external mods folder.
+        REQUIRE(cfg.backup_root ==
+                fs::path("/games/test") / engine::kOriginalFilesDirName);
+    }
+
+    // --- Self-referential guard: override == instance mods dir is dropped
+    // (deploying the mods dir into itself). ---
+    REQUIRE(inst.write_key("game_mods_dir",
+                           (inst.info().root / "mods").string()));
+    {
+        const auto cfg = deploy_config_for(inst.info().root, "/games/test",
+                                           knowledge, "testgame");
+        REQUIRE(cfg.game_mods_dir.empty());
+        REQUIRE(cfg.deploy_target() == fs::path("/games/test"));
+    }
+
+    // --- Clearing the key restores the fallback. ---
+    REQUIRE(inst.write_key("game_mods_dir", ""));
+    {
+        Instance back = Instance::from_root(inst.info().root);
+        REQUIRE(back.read_toml());
+        REQUIRE(back.info().game_mods_dir.empty());
+    }
+
+    fs::remove_all(instances_root);
+}
