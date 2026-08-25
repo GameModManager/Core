@@ -174,22 +174,24 @@ ExecControlsBar::ExecControlsBar(QWidget* parent)
     connect(shortcut_btn_, &QToolButton::clicked,
             this, &ExecControlsBar::shortcut_to_toolbar);
 
-    // When "<Edit...>" is chosen, emit signal and restore previous selection
+    // When "<Edit...>" ends up selected, snap back to the previous real
+    // selection. The editor itself opens via the activated() connection below.
     connect(exec_combo_, &QComboBox::currentIndexChanged, this, [this](int index) {
         if (index < 0) return;
-        if (exec_combo_->itemData(index).toJsonObject().isEmpty()
-            && exec_combo_->count() > 1) {
+        if (exec_combo_->itemData(index).toJsonObject().isEmpty()) {
             // Sentinel (index 0). Keep the combo on the last real selection,
             // NOT the entry right after the sentinel, and don't report this
             // artificial restore as a user selection change - it would clobber
-            // the in-memory selection with the wrong executable.
-            int restore = (last_real_index_ >= 1 && last_real_index_ < exec_combo_->count())
-                ? last_real_index_ : 1;
-            {
-                QSignalBlocker blocker(exec_combo_);
-                exec_combo_->setCurrentIndex(restore);
+            // the in-memory selection with the wrong executable. With no real
+            // entries there is nothing to restore.
+            if (exec_combo_->count() > 1) {
+                int restore = (last_real_index_ >= 1 && last_real_index_ < exec_combo_->count())
+                    ? last_real_index_ : 1;
+                {
+                    QSignalBlocker blocker(exec_combo_);
+                    exec_combo_->setCurrentIndex(restore);
+                }
             }
-            emit add_entry_requested();
             return;
         }
         if (index >= 1)
@@ -199,6 +201,14 @@ ExecControlsBar::ExecControlsBar(QWidget* parent)
         // persisted selection before the real entries are populated.
         if (!current_executable().isEmpty())
             emit current_executable_changed();
+    });
+    // User chose "<Edit...>" (index 0 is always the sentinel). activated()
+    // fires even when the sentinel was already current - the 0-executables
+    // case, where no currentIndexChanged ever fires - and never fires for
+    // programmatic changes, so rebuilds cannot open the dialog.
+    connect(exec_combo_, &QComboBox::activated, this, [this](int index) {
+        if (index == 0)
+            emit add_entry_requested();
     });
 }
 
@@ -275,6 +285,9 @@ ExecEntry ExecControlsBar::current_entry() const {
 }
 
 void ExecControlsBar::clear_executables() {
+    // Programmatic rebuild: suppress currentIndexChanged so re-adding the
+    // sentinel never looks like a selection change.
+    QSignalBlocker blocker(exec_combo_);
     exec_combo_->clear();
     // Re-add the sentinel so add_entry() works
     exec_combo_->addItem(tr(kAddNewEntryText), QVariant(QJsonObject()));
@@ -295,9 +308,14 @@ void ExecControlsBar::set_executables(const QStringList& names, const QString& d
                                        const std::filesystem::path& game_dir,
                                        const std::filesystem::path& icon_cache_dir,
                                        const std::filesystem::path& staging_dir) {
-    exec_combo_->clear();
-    // Sentinel stays first (index 0); real executables are appended after it
-    exec_combo_->addItem(tr(kAddNewEntryText), QVariant(QJsonObject()));
+    // Programmatic rebuild: suppress currentIndexChanged while resetting to
+    // the bare sentinel so it never looks like a selection change.
+    {
+        QSignalBlocker blocker(exec_combo_);
+        exec_combo_->clear();
+        // Sentinel stays first (index 0); real executables are appended after it
+        exec_combo_->addItem(tr(kAddNewEntryText), QVariant(QJsonObject()));
+    }
 
     // Keep the resolution context for later add_entry() calls (dialog accept,
     // missing-exe prune) so every rebuild path resolves icons identically.
