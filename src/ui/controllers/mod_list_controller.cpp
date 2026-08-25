@@ -16,6 +16,9 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QInputDialog>
+#include <QFontDatabase>
+#include <QHBoxLayout>
+#include <QLabel>
 #include <QMenu>
 #include <QMessageBox>
 #include <QRegularExpression>
@@ -366,15 +369,15 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
                   Qt::Checked;
               sync_mod_enable_state(id, enabled);
 
-              // Update status bar mod count
-              int count = 0;
-              for (const auto &m : w_->mod_model_->mods()) {
-                if (!m.is_separator && !m.is_overwrite && m.enabled)
-                  ++count;
-              }
-              w_->status_bar_->set_counter_value(count);
+              // Update the mod-list counter (enabled / total)
+              update_mod_count_label();
             }
           });
+
+  // Counter follows add/remove/move/load (mod_list_changed fires once per
+  // structural change; toggles are covered by the dataChanged handler above).
+  connect(w_->mod_model_, &ModListModel::mod_list_changed, this,
+          [this]() { update_mod_count_label(); });
 
   // Sync priority rewrites to metadata files after reorder; plugin discovery
   // for the Plugins tab follows any mod-list change (install/remove/toggle).
@@ -607,9 +610,30 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   w_->category_filter_panel_->hide();
   w_->category_filter_panel_->setMinimumWidth(160);
 
+  // MO2-style digital counter above the mod list ("enabled / total"),
+  // right-aligned. Fixed system font gives the monospace/digital look
+  // without hardcoding a font family; colors come from the palette.
+  w_->mod_count_label_ = new QLabel("0 / 0", w_);
+  w_->mod_count_label_->setObjectName("modCountLabel");
+  w_->mod_count_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+  w_->mod_count_label_->setFont(
+      QFontDatabase::systemFont(QFontDatabase::FixedFont));
+
+  auto* count_row = new QHBoxLayout;
+  count_row->setContentsMargins(4, 2, 4, 2);
+  count_row->addStretch(1);
+  count_row->addWidget(w_->mod_count_label_);
+
+  auto* mod_list_pane = new QWidget(w_);
+  auto* pane_layout = new QVBoxLayout(mod_list_pane);
+  pane_layout->setContentsMargins(0, 0, 0, 0);
+  pane_layout->setSpacing(2);
+  pane_layout->addLayout(count_row);
+  pane_layout->addWidget(w_->mod_view_, 1);
+
   auto* mod_splitter = new QSplitter(Qt::Horizontal, w_);
   mod_splitter->addWidget(w_->category_filter_panel_);
-  mod_splitter->addWidget(w_->mod_view_);
+  mod_splitter->addWidget(mod_list_pane);
   mod_splitter->setStretchFactor(0, 0);
   mod_splitter->setStretchFactor(1, 1);
   mod_splitter->setSizes({220, 800});
@@ -823,11 +847,6 @@ void ModListController::update_status_bar_for_game() {
   if (!w_->knowledge_ || w_->current_game_id_.empty())
     return;
 
-  // Counter label: "Mods" for folder-based games, "Plugins" for ESM/ESP games
-  auto counter_label =
-      w_->knowledge_->get(w_->current_game_id_, "mod_counter_label", "Mods");
-  w_->status_bar_->set_counter_label(QString::fromStdString(counter_label));
-
   // Download sources: comma-separated list (e.g. "Nexus,Steam")
   auto sources_csv =
       w_->knowledge_->get(w_->current_game_id_, "download_sources", "");
@@ -839,6 +858,24 @@ void ModListController::update_status_bar_for_game() {
     }
   }
   w_->status_bar_->set_sources(sources);
+}
+
+void ModListController::update_mod_count_label() {
+  if (!w_->mod_count_label_)
+    return;
+  // Same row filter as the old status-bar counter: separators and the
+  // Overwrite pseudo-row are not mods.
+  int enabled = 0;
+  int total = 0;
+  for (const auto &m : w_->mod_model_->mods()) {
+    if (m.is_separator || m.is_overwrite)
+      continue;
+    ++total;
+    if (m.enabled)
+      ++enabled;
+  }
+  w_->mod_count_label_->setText(
+      QString("%1 / %2").arg(enabled).arg(total));
 }
 
 void ModListController::sync_mod_enable_state(const QString &mod_id,
@@ -1398,13 +1435,8 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
   engine::Logger::instance().debug("Loaded " + std::to_string(scanned.size()) +
                                    " mods for " + w_->current_game_name_);
 
-  // Update status bar mod count
-  int count = 0;
-  for (const auto &m : w_->mod_model_->mods()) {
-    if (!m.is_separator && !m.is_overwrite && m.enabled)
-      ++count;
-  }
-  w_->status_bar_->set_counter_value(count);
+  // Update the mod-list counter after the game switch / refresh
+  update_mod_count_label();
 
   // Compute conflict stats for all mods (debounced entry; the scan runs off
   // the main thread per P8.1).
@@ -1536,13 +1568,8 @@ void ModListController::add_installed_mod(const std::string &folder_name) {
   });
   refresh_plugins_tab();
 
-  // Update status bar mod count
-  int count = 0;
-  for (const auto &m : w_->mod_model_->mods()) {
-    if (!m.is_separator && !m.is_overwrite && m.enabled)
-      ++count;
-  }
-  w_->status_bar_->set_counter_value(count);
+  // Update the mod-list counter after the install
+  update_mod_count_label();
 
   engine::Logger::instance().debug("Added installed mod row: " + folder_name);
 }
