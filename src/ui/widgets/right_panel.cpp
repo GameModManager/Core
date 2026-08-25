@@ -232,23 +232,33 @@ void RightPanel::set_game(const std::string& game_id) {
     suppress_tab_save_ = true;
     clear_tabs();
 
-    if (!capabilities_) {
-        suppress_tab_save_ = false;
-        return;
-    }
+    if (capabilities_) {
+        auto caps = capabilities_->sorted_capabilities_for(game_id);
 
-    auto caps = capabilities_->sorted_capabilities_for(game_id);
+        // Remove Data from index 0 - re-add at correct sorted position
+        tab_widget_->removeTab(0);
 
-    // Remove Data from index 0 - re-add at correct sorted position
-    tab_widget_->removeTab(0);
-
-    for (const auto& info : caps) {
-        if (info.capability == "data") {
-    tab_widget_->addTab(data_tab_, tr("Data"));
-        } else {
-            ensure_tab(info.capability, QString::fromStdString(info.display_name));
+        for (const auto& info : caps) {
+            if (info.capability == "data") {
+                tab_widget_->addTab(data_tab_, tr("Data"));
+            } else {
+                ensure_tab(info.capability,
+                           QString::fromStdString(info.display_name));
+            }
         }
     }
+
+    // Always-present tabs - instance-owned, not game-capability-owned.
+    // Data: universal view of the managed game dir. Already in the tab bar
+    // for known games (added by the loop above); unknown/game-less games
+    // have an empty capability list, so ensure it is present.
+    if (tab_widget_->indexOf(data_tab_) < 0) {
+        tab_widget_->addTab(data_tab_, tr("Data"));
+    }
+    // Downloads: downloads_dir_path() belongs to the instance, not to any
+    // game's capabilities - always visible regardless of game_id.
+    ensure_tab("downloads", tr("Downloads"));
+
     suppress_tab_save_ = false;
 }
 
