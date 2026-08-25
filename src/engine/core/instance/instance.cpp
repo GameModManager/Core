@@ -110,6 +110,9 @@ bool Instance::write_toml() const {
     if (!info_.game_dir.empty()) {
         tbl.emplace("game_dir", info_.game_dir.string());
     }
+    if (!info_.game_mods_dir.empty()) {
+        tbl.emplace("game_mods_dir", info_.game_mods_dir.string());
+    }
     // Per-folder overrides; only non-empty overrides are written.
     if (!info_.mods_dir.empty()) {
         tbl.emplace("mods_dir", info_.mods_dir.string());
@@ -154,6 +157,9 @@ bool Instance::read_toml() {
     }
     if (auto v = (*tbl)["game_dir"].value<std::string>()) {
         info_.game_dir = *v;
+    }
+    if (auto v = (*tbl)["game_mods_dir"].value<std::string>()) {
+        info_.game_mods_dir = *v;
     }
     if (auto v = (*tbl)["mods_dir"].value<std::string>()) {
         info_.mods_dir = *v;

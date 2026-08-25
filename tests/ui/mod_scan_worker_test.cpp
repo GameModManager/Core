@@ -180,3 +180,81 @@ TEST_CASE("mod scan worker stray plugins", "[ui]") {
 
   fs::remove_all(base, ec);
 }
+
+// Workspace-6up: the ModScanRequest.game_mods_dir override redirects the
+// game-native mods dir (stray-plugin synthesis) away from
+// game_dir/mods_subpath — the Isaac-on-macOS shape where the real mods
+// folder lives outside the install dir.
+TEST_CASE("mod scan worker game mods dir override", "[ui]") {
+  int test_argc = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QCoreApplication app(test_argc, test_argv);
+  (void)app;
+
+  const fs::path base = fs::current_path() / ("gmm_test_mod_scan_worker_ov_" +
+                                              std::to_string(getpid()));
+  const fs::path game_dir = base / "game";
+  const fs::path data_dir = game_dir / "Data";
+  // The actual mods folder, OUTSIDE the game dir.
+  const fs::path external_mods =
+      base / "Binding of Isaac Afterbirth+ Mods";
+  const fs::path mods_dir = base / "mods";
+  const fs::path meta_dir = base / "meta";
+  std::error_code ec;
+  fs::create_directories(data_dir, ec);
+  fs::create_directories(external_mods, ec);
+  fs::create_directories(mods_dir, ec);
+  fs::create_directories(meta_dir, ec);
+
+  // A stray plugin in the EXTERNAL mods folder only.
+  write_file(external_mods / "ExternalStray.esp", "TES4");
+  // And one in the classic Data dir that must NOT be picked up while the
+  // override points elsewhere.
+  write_file(data_dir / "DataStray.esp", "TES4");
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Data");
+  knowledge.set("testgame", "game_native_plugins", "Skyrim.esm");
+
+  ui::ModScanRequest req;
+  req.knowledge = knowledge;
+  req.game_id = "testgame";
+  req.game_dir = game_dir;
+  req.game_mods_dir = external_mods; // the override under test
+  req.instance_root = base;
+  req.mods_dir = mods_dir;
+  req.meta_dir = meta_dir;
+
+  struct ScanResult {
+    ui::ModScanResult result;
+    quint64 generation = 0;
+  };
+  std::vector<ScanResult> results;
+  ui::ModScanThread thread(&app);
+  ui::ModScanWorker *worker = thread.worker();
+  QObject::connect(worker, &ui::ModScanWorker::finished, &app,
+                   [&](ui::ModScanResult result, quint64 generation) {
+                     results.push_back({std::move(result), generation});
+                   });
+
+  thread.start(std::move(req), /*generation=*/1);
+
+  QElapsedTimer timer;
+  timer.start();
+  while (results.empty()) {
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    QThread::msleep(2);
+    if (timer.elapsed() > 10000) {
+      FAIL("scan never landed");
+    }
+  }
+
+  const auto &scanned = results[0].result.scanned;
+  check(by_folder(scanned, "ExternalStray.esp") != nullptr,
+        "stray plugin in the overridden mods dir is synthesized");
+  check(by_folder(scanned, "DataStray.esp") == nullptr,
+        "stray plugin in the old game_dir/Data location is ignored");
+
+  fs::remove_all(base, ec);
+}

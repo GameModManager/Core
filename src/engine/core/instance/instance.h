@@ -24,6 +24,14 @@ struct InstanceInfo {
     std::string game_id;
     std::filesystem::path root;
     std::filesystem::path game_dir;  // path to the actual game install (e.g. steamapps/common/...)
+    // The game's actual mods folder — the deploy target — for games that
+    // keep mods outside the install dir (Isaac on macOS:
+    // ~/Library/Application Support/Binding of Isaac Afterbirth+ Mods).
+    // Empty = deploy into game_dir via the plugin's deploy_prefix, exactly
+    // like before this field existed. When set it IS the mods folder: mod
+    // files land directly in it (no deploy_prefix appended). Persisted to
+    // instance.toml only when non-empty.
+    std::filesystem::path game_mods_dir;
     uint32_t steam_appid = 0;
     bool portable = true;
     // Per-folder overrides for the instance's working directories. Empty

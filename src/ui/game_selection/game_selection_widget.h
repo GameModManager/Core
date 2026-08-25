@@ -38,6 +38,8 @@ private:
     QWidget* installed_grid_ = nullptr;
     QLabel* available_label_ = nullptr;
     QWidget* available_grid_ = nullptr;
+    QLabel* general_label_ = nullptr;
+    QWidget* general_grid_ = nullptr;
     std::vector<QPointer<GameCard>> cards_;
 };
 
