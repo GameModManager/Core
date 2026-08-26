@@ -55,6 +55,7 @@ std::vector<SaveGame> scan_saves(const std::filesystem::path& dir,
             continue;
         }
         try {
+            if (!parse_fn) continue;
             out.push_back(parse_fn(p));
         } catch (const SaveParseError&) {
             // Not a real save (e.g. the .skse co-save) or corrupt: skip it,
