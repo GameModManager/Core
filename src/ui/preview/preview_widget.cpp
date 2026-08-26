@@ -8,6 +8,10 @@
 #include <QPainterPath>
 #include <QPalette>
 
+#include "engine/game/registry/game_features/game_feature.h"
+#include "engine/game/registry/game_features/game_feature_registry.h"
+#include <filesystem>
+
 namespace ui::preview {
 
 // Single checkerboard tile (8px squares).
@@ -50,7 +54,7 @@ QPixmap checker_pixmap(const QString& mode) {
 
 PreviewWidget::PreviewWidget(QWidget* parent)
     : QLabel(parent, Qt::ToolTip | Qt::FramelessWindowHint)
-    , anm2_parser_(std::make_unique<Anm2Parser>()) {
+{
     setAttribute(Qt::WA_TranslucentBackground);
     apply_style();
     hide();
@@ -176,7 +180,15 @@ bool PreviewWidget::try_load_png(const QString& path) {
 }
 
 bool PreviewWidget::try_load_anm2(const QString& path) {
-    auto data = anm2_parser_->parse(path.toStdString());
+    /* Resolve the animation parser from the game feature registry.
+     * Falls back to the built-in Anm2Parser when no plugin has registered
+     * one (backward compatibility during the transition). */
+    auto feature = ::engine::GameFeatureRegistry::instance()
+        .resolve_feature<::engine::AnimationParserFeature>("isaac");
+    if (!feature) return false;
+
+    std::string base_dir = std::filesystem::path(path.toStdString()).parent_path().string();
+    auto data = feature->parse(path.toStdString(), base_dir);
     if (!data) return false;
 
     if (!animate_anm2_ || data->frames.size() <= 1) {
@@ -187,8 +199,12 @@ bool PreviewWidget::try_load_anm2(const QString& path) {
                       QImage::Format_ARGB32_Premultiplied);
         canvas.fill(Qt::transparent);
         QPainter painter(&canvas);
-        for (const auto& item : first_frame.items) {
-            painter.drawImage(item.position.toPoint(), item.sprite);
+        for (const auto& layer : first_frame.layers) {
+            QImage sprite(layer.rgba_pixels.data(),
+                          layer.width, layer.height,
+                          QImage::Format_RGBA8888);
+            painter.drawImage(QPoint(static_cast<int>(layer.x),
+                                     static_cast<int>(layer.y)), sprite);
         }
         painter.end();
 
@@ -210,8 +226,12 @@ bool PreviewWidget::try_load_anm2(const QString& path) {
                       QImage::Format_ARGB32_Premultiplied);
         canvas.fill(Qt::transparent);
         QPainter painter(&canvas);
-        for (const auto& item : frame.items) {
-            painter.drawImage(item.position.toPoint(), item.sprite);
+        for (const auto& layer : frame.layers) {
+            QImage sprite(layer.rgba_pixels.data(),
+                          layer.width, layer.height,
+                          QImage::Format_RGBA8888);
+            painter.drawImage(QPoint(static_cast<int>(layer.x),
+                                     static_cast<int>(layer.y)), sprite);
         }
         painter.end();
 
