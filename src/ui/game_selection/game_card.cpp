@@ -28,7 +28,8 @@ GameCard::GameCard(const GameEntry& entry, QWidget* parent)
     // are registered but not detected-installed keep a muted name.
     setStyleSheet(
         "GameCard { border-radius: 6px; }"
-        "GameCard:hover { background: palette(highlight); }");
+        "GameCard:hover { background: palette(highlight); }"
+        "GameCard[isGeneric=true] QLabel { font-weight: bold; }");
     if (!entry.installed) {
         name_label_->setEnabled(false);
     }

@@ -144,7 +144,7 @@ GameSelectionWidget::GameSelectionWidget(QWidget* parent)
     outer->setSpacing(12);
 
     // -- Header --
-    auto* title = new QLabel(tr("Welcome to GameModManager"));
+    auto* title = new QLabel(tr("Create an instance"));
     QFont title_font = title->font();
     title_font.setPointSize(18);
     title_font.setBold(true);
@@ -178,7 +178,8 @@ GameSelectionWidget::GameSelectionWidget(QWidget* parent)
     // -- Scrollable game list --
     auto* scroll = new QScrollArea(this);
     scroll->setWidgetResizable(true);
-    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setFrameShape(QFrame::StyledPanel);
+    scroll->setFrameShadow(QFrame::Sunken);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
     list_ = new QWidget();
@@ -248,6 +249,7 @@ void GameSelectionWidget::set_games(const std::vector<GameEntry>& installed,
               });
     GameEntry generic;
     generic.game_id = "generic";
+    generic.installed = true;  // always shown in normal color
     generic.display_name = "Generic Instance";
     all.push_back(generic);
 
@@ -256,6 +258,9 @@ void GameSelectionWidget::set_games(const std::vector<GameEntry>& installed,
     list_layout->setSpacing(2);
     for (const auto& entry : all) {
         auto* card = new GameCard(entry, list_);
+        if (entry.game_id == "generic") {
+            card->setProperty("isGeneric", true);
+        }
         card->set_icon(resolve_icon(entry));
         cards_.push_back(card);
         connect(card, &GameCard::clicked, this, &GameSelectionWidget::game_selected);

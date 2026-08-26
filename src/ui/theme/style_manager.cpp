@@ -191,7 +191,7 @@ QLabel#statLabel {
 /* -- Game selection ------------------------------ */
 
 #gameSelectionSubtitle {
-    color: palette(mid);
+    color: palette(windowText);
 }
 
 #gameSelectionNoInstall {
