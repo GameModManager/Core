@@ -72,3 +72,9 @@ Testing/
 resources/icons/mo2icons/
 # CocoIndex Code (ccc)
 /.cocoindex_code/
+
+# macOS metadata
+.DS_Store
+
+# Build-time symlinks
+external/Core
