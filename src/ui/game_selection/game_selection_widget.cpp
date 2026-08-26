@@ -181,6 +181,7 @@ GameSelectionWidget::GameSelectionWidget(QWidget* parent)
     scroll->setFrameShape(QFrame::StyledPanel);
     scroll->setFrameShadow(QFrame::Sunken);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setStyleSheet("QScrollArea { background: palette(base); }");
 
     list_ = new QWidget();
     scroll->setWidget(list_);
