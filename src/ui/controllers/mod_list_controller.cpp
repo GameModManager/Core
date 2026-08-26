@@ -2392,7 +2392,8 @@ void ModListController::refresh_plugins_tab() {
     w_->plugins_db_.refresh(w_->current_game_dir_, w_->mods_dir_path(),
                             w_->meta_dir_path(), disable_mechanism,
                             game_native);
-    w_->plugins_db_.load_creation_club(w_->current_game_dir_);
+    w_->plugins_db_.load_creation_club(w_->current_game_dir_,
+                            engine::creation_club_file_for(*w_->knowledge_, w_->current_game_id_));
     w_->plugins_db_.sort_load_order();
   }
 
