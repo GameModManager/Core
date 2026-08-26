@@ -45,44 +45,117 @@ void Categories::seed_default() {
     categories_.clear();
     nexus_map_.clear();
 
-    // MO2's loadDefaultCategories() — order defines the combo-box order.
-    // Entry order (and the duplicate id 39 for "Voice"/"Tattoos") is preserved
-    // exactly as MO2 produces it, so files round-trip byte-identically.
+    // Default category set — universal, game-agnostic categories merged from
+    // Bethesda/MO2 and Isaac sets, with additional categories drawn from real
+    // modding load orders. IDs 1000+ avoid collisions with legacy per-game sets.
     struct Def {
         int id;
         const char* name;
         int parent;
     };
     static constexpr Def kDefaults[] = {
-        {1, "Animations", 0},        {52, "Poses", 1},
-        {2, "Armour", 0},            {53, "Power Armor", 2},
-        {3, "Audio", 0},             {38, "Music", 0},
-        {39, "Voice", 0},            {5, "Clothing", 0},
-        {41, "Jewelry", 5},          {42, "Backpacks", 5},
-        {6, "Collectables", 0},      {28, "Companions", 0},
-        {7, "Creatures, Mounts, & Vehicles", 0}, {8, "Factions", 0},
-        {9, "Gameplay", 0},          {27, "Combat", 9},
-        {43, "Crafting", 9},         {48, "Overhauls", 9},
-        {49, "Perks", 9},            {54, "Radio", 9},
-        {55, "Shouts", 9},           {22, "Skills & Levelling", 9},
-        {58, "Weather & Lighting", 9}, {44, "Equipment", 43},
-        {45, "Home/Settlement", 43}, {10, "Body, Face, & Hair", 0},
-        {39, "Tattoos", 10},         {40, "Character Presets", 0},
-        {11, "Items", 0},            {32, "Mercantile", 0},
-        {37, "Ammo", 11},            {19, "Weapons", 11},
-        {36, "Weapon & Armour Sets", 11}, {23, "Player Homes", 0},
-        {25, "Castles & Mansions", 23}, {51, "Settlements", 23},
-        {12, "Locations", 0},        {4, "Cities", 12},
-        {31, "Landscape Changes", 0}, {29, "Environment", 0},
-        {30, "Immersion", 0},        {20, "Magic", 0},
-        {21, "Models & Textures", 0}, {33, "Modders resources", 0},
-        {13, "NPCs", 0},             {24, "Bugfixes", 0},
-        {14, "Patches", 24},         {35, "Utilities", 0},
-        {26, "Cheats", 0},           {15, "Quests", 0},
-        {16, "Races & Classes", 0},  {34, "Stealth", 0},
-        {17, "UI", 0},               {18, "Visuals", 0},
-        {50, "Pip-Boy", 18},         {46, "Shader Presets", 0},
-        {47, "Miscellaneous", 0},
+        // --- Gameplay (1000) ---
+        {1000, "Gameplay", 0},
+        {1001, "Combat", 1000},
+        {1002, "Skills & Leveling", 1000},
+        {1003, "Quests", 1000},
+        {1004, "Magic & Abilities", 1000},
+        {1005, "Stealth", 1000},
+        {1006, "Crafting", 1000},
+        {1007, "AI & Behavior", 1000},
+        {1008, "Difficulty & Balance", 1000},
+        {1009, "Overhauls", 1000},
+        {1010, "Immersion", 1000},
+        {1011, "Quality of Life", 1000},
+        {1012, "New Mechanics", 1000},
+
+        // --- Animation & Physics (1050) ---
+        {1050, "Animation & Physics", 0},
+        {1051, "Animation Replacers", 1050},
+        {1052, "Animation Frameworks", 1050},
+        {1053, "Movement", 1050},
+        {1054, "Physics", 1050},
+        {1055, "Paired Animations", 1050},
+
+        // --- Items & Equipment (1100) ---
+        {1100, "Items & Equipment", 0},
+        {1101, "Weapons", 1100},
+        {1102, "Armour & Shields", 1100},
+        {1103, "Clothing & Accessories", 1100},
+        {1104, "Consumables", 1100},
+        {1105, "Items & Collectibles", 1100},
+        {1106, "Furniture & Structures", 1100},
+        {1107, "Weapon & Armour Sets", 1100},
+        {1108, "Equipment Overhaul", 1100},
+
+        // --- Body & Character Systems (1150) ---
+        {1150, "Body & Character Systems", 0},
+        {1151, "Body Models", 1150},
+        {1152, "Character Creation", 1150},
+        {1153, "Body Sliders & Presets", 1150},
+        {1154, "Tattoos & Marks", 1150},
+        {1155, "Skeleton & Rig", 1150},
+
+        // --- Characters & NPCs (1200) ---
+        {1200, "Characters & NPCs", 0},
+        {1201, "Companions & Followers", 1200},
+        {1202, "Enemies & Creatures", 1200},
+        {1203, "NPCs", 1200},
+        {1204, "Factions", 1200},
+
+        // --- World & Environment (1300) ---
+        {1300, "World & Environment", 0},
+        {1301, "Locations", 1300},
+        {1302, "Cities & Towns", 1300},
+        {1303, "Landscape & Terrain", 1300},
+        {1304, "Flora & Vegetation", 1300},
+        {1305, "Water & Ice", 1300},
+        {1306, "Weather & Lighting", 1300},
+        {1307, "Environment", 1300},
+        {1308, "Player Homes", 1300},
+        {1309, "World Maps", 1300},
+        {1310, "Shrines & Statues", 1300},
+        {1311, "Interiors", 1300},
+
+        // --- Visuals (1400) ---
+        {1400, "Visuals", 0},
+        {1401, "Models & Textures", 1400},
+        {1402, "Food & Ingredients", 1400},
+        {1403, "Potions & Consumables", 1400},
+        {1404, "Clutter & Miscellaneous", 1400},
+        {1405, "Shaders & Presets", 1400},
+        {1406, "Visual Effects", 1400},
+        {1407, "LOD", 1400},
+
+        // --- Audio (1500) ---
+        {1500, "Audio", 0},
+        {1501, "Music", 1500},
+        {1502, "Sound Effects", 1500},
+        {1503, "Voice & Dialogue", 1500},
+
+        // --- Interface (1600) ---
+        {1600, "Interface", 0},
+        {1601, "UI Overhaul", 1600},
+        {1602, "HUD", 1600},
+        {1603, "Menus", 1600},
+        {1604, "Controls", 1600},
+        {1605, "Camera", 1600},
+        {1606, "Tooltips & Info", 1600},
+
+        // --- Technical (1700) ---
+        {1700, "Technical", 0},
+        {1701, "Bug Fixes", 1700},
+        {1702, "Patches & Compatibility", 1700},
+        {1703, "Performance", 1700},
+        {1704, "Utilities", 1700},
+        {1705, "Cheats & Console", 1700},
+
+        // --- Modding (1800) — sub of Technical ---
+        {1800, "Modding", 1700},
+        {1801, "Modders Resources", 1800},
+        {1802, "Frameworks & Libraries", 1800},
+        {1803, "Tutorials & Docs", 1800},
+        {1804, "Modding Utilities", 1800},
     };
     for (const auto& d : kDefaults)
         categories_.push_back({d.id, d.name, {}, d.parent, false});

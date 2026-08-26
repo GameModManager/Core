@@ -29,22 +29,23 @@ static void write_file(const fs::path& path, const std::string& content) {
 TEST_CASE("categories", "[engine]") {
     using engine::Categories;
 
-    // --- Default seed (MO2's loadDefaultCategories). ---
+    // --- Default seed (universal category set). ---
     Categories seeded;
-    require(seeded.contains(1) && seeded.contains(47), "seed contains MO2 ids");
+    require(seeded.contains(1000) && seeded.contains(1804),
+            "seed contains Default category ids");
     require(!seeded.contains(0), "id 0 (None) is implicit, not in list");
-    const auto* animations = seeded.find(1);
-    require(animations && animations->name == "Animations",
-            "category 1 is Animations");
-    require(animations->parent_id == 0, "Animations is a top-level category");
-    const auto* poses = seeded.find(52);
-    require(poses && poses->parent_id == 1, "Poses is a child of Animations");
-    auto children = seeded.children_of(1);
-    require(children.size() == 1 && children[0]->id == 52,
-            "Animations has exactly one child: Poses");
-    const auto* tats = seeded.find(39);
-    require(tats && tats->name == "Tattoos",
-            "duplicate id 39 resolves to the last entry (Tattoos)");
+    const auto* gameplay = seeded.find(1000);
+    require(gameplay && gameplay->name == "Gameplay",
+            "category 1000 is Gameplay");
+    require(gameplay->parent_id == 0, "Gameplay is a top-level category");
+    const auto* combat = seeded.find(1001);
+    require(combat && combat->parent_id == 1000, "Combat is a child of Gameplay");
+    auto children = seeded.children_of(1000);
+    require(children.size() == 12,
+            "Gameplay has 12 children");
+    const auto* modding = seeded.find(1800);
+    require(modding && modding->parent_id == 1700,
+            "Modding is a child of Technical");
 
     // --- Round-trip the real MO2 categories.dat (3-cell form). ---
     const fs::path root = "/tmp/gmm_categories_test/instances/Skyrim";
