@@ -52,16 +52,16 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
 
   // When mod_scan_subpath is empty, the resolved scan dir is
   // game_dir/mods_subpath (the game's Data folder) — not a real mods
-  // directory. Skip it in instance mode; the instance mods dir scan below
-  // provides the actual mods. The \x01 default ensures that when
+  // directory. Clear the game-dir scan entirely: the instance mods dir scan
+  // below provides the actual mods. The \x01 default ensures that when
   // mod_scan_subpath is NOT registered (old plugins), the check doesn't
   // trigger (backwards compat).
   const std::string scan_subpath =
       knowledge.get(game_id, "mod_scan_subpath", "\x01");
-  if (scan_subpath.empty() && !request.instance_root.empty()) {
+  if (scan_subpath.empty()) {
     scanned.clear();
     engine::Logger::instance().debug("ModScanWorker: cleared game-dir scan "
-                                     "(mod_scan_subpath empty, instance mode)");
+                                     "(mod_scan_subpath empty)");
   }
 
   // Instance mode: when the game's mods dir is an explicit external folder
