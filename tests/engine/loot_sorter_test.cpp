@@ -106,6 +106,7 @@ void run_success_case(const fs::path& base) {
     request.profile_dir = base / "profile";
     request.cli_path = cli;
     request.platform = new FakePlatform(base / "data");
+    request.update_masterlists = false;
     request.plugins = {
         {"SkyUI_SE.esp", "/fake/path/SkyUI_SE.esp"},
         {"RaceMenu.esp", "/fake/path/RaceMenu.esp"},
@@ -166,6 +167,7 @@ void run_failure_case(const fs::path& base) {
     request.profile_dir = base / "profile2";
     request.cli_path = cli;
     request.platform = new FakePlatform(base / "data2");
+    request.update_masterlists = false;
     request.plugins = {{"SkyUI_SE.esp", "/fake/path/SkyUI_SE.esp"}};
 
     const engine::LootResult result = engine::run_loot_sort(request);
@@ -188,6 +190,7 @@ void run_missing_cli_case(const fs::path& base) {
     request.profile_dir = base / "profile3";
     request.cli_path = base / "does_not_exist";
     request.platform = new FakePlatform(base / "data3");
+    request.update_masterlists = false;
     request.plugins = {{"SkyUI_SE.esp", "/fake/path/SkyUI_SE.esp"}};
 
     const engine::LootResult result = engine::run_loot_sort(request);
