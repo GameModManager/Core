@@ -16,9 +16,9 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QInputDialog>
-#include <QFontDatabase>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLCDNumber>
 #include <QMenu>
 #include <QMessageBox>
 #include <QRegularExpression>
@@ -611,18 +611,24 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   w_->category_filter_panel_->setMinimumWidth(160);
 
   // MO2-style digital counter above the mod list ("enabled / total"),
-  // right-aligned. Fixed system font gives the monospace/digital look
-  // without hardcoding a font family; colors come from the palette.
-  w_->mod_count_label_ = new QLabel("0 / 0", w_);
-  w_->mod_count_label_->setObjectName("modCountLabel");
-  w_->mod_count_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-  w_->mod_count_label_->setFont(
-      QFontDatabase::systemFont(QFontDatabase::FixedFont));
+  // right-aligned. QLCDNumber gives the seven-segment "lcd" look (same as
+  // the plugins-tab counter); colors come from the palette. QLCDNumber has
+  // no "/" glyph, so the separator is a plain label between two displays.
+  w_->mod_count_enabled_ = new QLCDNumber(w_);
+  w_->mod_count_enabled_->setObjectName("mo2CounterLabel");
+  w_->mod_count_enabled_->setDigitCount(5);
+  w_->mod_count_enabled_->display(0);
+  w_->mod_count_total_ = new QLCDNumber(w_);
+  w_->mod_count_total_->setObjectName("mo2CounterLabel");
+  w_->mod_count_total_->setDigitCount(5);
+  w_->mod_count_total_->display(0);
 
   auto* count_row = new QHBoxLayout;
   count_row->setContentsMargins(4, 2, 4, 2);
   count_row->addStretch(1);
-  count_row->addWidget(w_->mod_count_label_);
+  count_row->addWidget(w_->mod_count_enabled_);
+  count_row->addWidget(new QLabel("/", w_));
+  count_row->addWidget(w_->mod_count_total_);
 
   auto* mod_list_pane = new QWidget(w_);
   auto* pane_layout = new QVBoxLayout(mod_list_pane);
@@ -861,7 +867,7 @@ void ModListController::update_status_bar_for_game() {
 }
 
 void ModListController::update_mod_count_label() {
-  if (!w_->mod_count_label_)
+  if (!w_->mod_count_enabled_ || !w_->mod_count_total_)
     return;
   // Same row filter as the old status-bar counter: separators and the
   // Overwrite pseudo-row are not mods.
@@ -874,8 +880,8 @@ void ModListController::update_mod_count_label() {
     if (m.enabled)
       ++enabled;
   }
-  w_->mod_count_label_->setText(
-      QString("%1 / %2").arg(enabled).arg(total));
+  w_->mod_count_enabled_->display(enabled);
+  w_->mod_count_total_->display(total);
 }
 
 void ModListController::sync_mod_enable_state(const QString &mod_id,
