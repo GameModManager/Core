@@ -9,6 +9,9 @@
 #include "engine/pipeline/pipeline.h"
 #include "engine/game/plugins/plugin_database.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
+#include "engine/game/registry/game_features/game_feature.h"
+#include "engine/game/saves/skyrim_save.h"
+#include "engine/game/saves/save_reader.h"
 #include "engine/sort/sort_registry.h"
 #include "engine/sort/abi_sort_provider.h"
 
@@ -17,6 +20,7 @@
 #include <cstdio>
 #include <cstring>
 #include <dlfcn.h>
+#include <optional>
 #include <filesystem>
 
 namespace engine {
@@ -188,6 +192,114 @@ static void cb_register_diagnostics(GmmRegistrationCtx* ctx,
 
     DiagnosticsRegistry::instance().register_provider(
         bridge->current_plugin->game_id, fn, user_data);
+}
+
+static void cb_register_save_parser(GmmRegistrationCtx* ctx,
+                                        const char* game_id,
+                                        GmmSaveParserFn fn,
+                                        int priority,
+                                        void* user_data) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge || !bridge->current_plugin) return;
+
+    std::string gid = game_id ? game_id : bridge->current_plugin->game_id;
+    if (gid.empty() || !fn) {
+        Logger::instance().warn("Save parser registered with empty game_id or null fn");
+        return;
+    }
+
+    std::string source = bridge->current_plugin->path;
+    auto feature = std::make_shared<SaveParserFeature>(
+        [fn, user_data](const std::filesystem::path& path,
+                        const std::string& game_id) -> SaveGame {
+            GmmSaveGameC c_out = {};
+            if (!fn(path.string().c_str(), game_id.c_str(), &c_out, user_data)) {
+                throw SaveParseError("plugin parser returned 0");
+            }
+            SaveGame out;
+            out.file_path = c_out.file_path ? c_out.file_path : "";
+            out.game_id = c_out.game_id ? c_out.game_id : game_id;
+            out.creation_time = c_out.creation_time;
+            out.pc_name = c_out.pc_name ? c_out.pc_name : "";
+            out.pc_level = c_out.pc_level;
+            out.pc_location = c_out.pc_location ? c_out.pc_location : "";
+            out.save_number = c_out.save_number;
+            for (uint32_t i = 0; i < c_out.plugin_count && i < GMM_SAVE_MAX_PLUGINS; ++i) {
+                out.plugins.push_back(c_out.plugins[i] ? c_out.plugins[i] : "");
+                free(c_out.plugins[i]);
+            }
+            for (uint32_t i = 0; i < c_out.light_plugin_count && i < GMM_SAVE_MAX_PLUGINS; ++i) {
+                out.light_plugins.push_back(c_out.light_plugins[i] ? c_out.light_plugins[i] : "");
+                free(c_out.light_plugins[i]);
+            }
+            free(c_out.file_path);
+            free(c_out.game_id);
+            free(c_out.pc_name);
+            free(c_out.pc_location);
+            return out;
+        });
+
+    GameFeatureRegistry::instance().register_feature(
+        gid, "save_parser", priority, std::move(feature), source);
+    Logger::instance().debug("Plugin registered save parser for game=" + gid);
+}
+
+static void cb_register_animation_parser(GmmRegistrationCtx* ctx,
+                                         const char* game_id,
+                                         const char* file_extension,
+                                         GmmAnimationParserFn fn,
+                                         int priority,
+                                         void* user_data) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge || !bridge->current_plugin) return;
+
+    std::string gid = game_id ? game_id : bridge->current_plugin->game_id;
+    if (gid.empty() || !fn) {
+        Logger::instance().warn("Animation parser registered with empty game_id or null fn");
+        return;
+    }
+
+    std::string source = bridge->current_plugin->path;
+    auto feature = std::make_shared<AnimationParserFeature>(
+        [fn, user_data](const std::string& file_path,
+                        const std::string& base_dir)
+            -> std::optional<AnimationParserFeature::AnimationData> {
+            GmmAnimationDataC c_out = {};
+            if (!fn(file_path.c_str(), base_dir.c_str(), &c_out, user_data)) {
+                return std::nullopt;
+            }
+            AnimationParserFeature::AnimationData data;
+            data.fps = c_out.fps;
+            data.canvas_width = c_out.canvas_width;
+            data.canvas_height = c_out.canvas_height;
+            for (size_t fi = 0; fi < c_out.frame_count; ++fi) {
+                auto& cf = c_out.frames[fi];
+                AnimationParserFeature::Frame frame;
+                frame.delay_ms = cf.delay_ms;
+                for (size_t li = 0; li < cf.layer_count; ++li) {
+                    auto& cl = cf.layers[li];
+                    AnimationParserFeature::LayerItem layer;
+                    layer.x = cl.x;
+                    layer.y = cl.y;
+                    layer.width = cl.width;
+                    layer.height = cl.height;
+                    if (cl.rgba_pixels && cl.pixel_count > 0) {
+                        layer.rgba_pixels.assign(cl.rgba_pixels,
+                            cl.rgba_pixels + cl.pixel_count);
+                        free(cl.rgba_pixels);
+                    }
+                    frame.layers.push_back(std::move(layer));
+                }
+                data.frames.push_back(std::move(frame));
+                free(cf.layers);
+            }
+            free(c_out.frames);
+            return data;
+        });
+
+    GameFeatureRegistry::instance().register_feature(
+        gid, "animation_parser", priority, std::move(feature), source);
+    Logger::instance().debug("Plugin registered animation parser for game=" + gid);
 }
 
 static void cb_register_game_feature(GmmRegistrationCtx* ctx,
@@ -681,6 +793,8 @@ bool PluginLoader::load_plugin(const std::string& path) {
     ctx.register_diagnostics = cb_register_diagnostics;
     ctx.register_game_feature = cb_register_game_feature;
     ctx.register_game_feature_data = cb_register_game_feature_data;
+    ctx.register_save_parser = cb_register_save_parser;
+    ctx.register_animation_parser = cb_register_animation_parser;
     ctx.subscribe_event = cb_subscribe_event;
     ctx.host_ui.fomod_wizard = cb_fomod_wizard;
     ctx.register_wildcard_stage_claim = cb_register_wildcard_stage_claim;
@@ -740,6 +854,35 @@ bool PluginLoader::load_directory(const std::string& dir_path) {
     }
 
     Logger::instance().debug("Loaded " + std::to_string(loaded) + " plugins from " + dir_path);
+
+    /* Register built-in save parsers for Skyrim games as fallbacks.
+     * If a plugin already registered a parser (same game_id, same or higher
+     * priority), the plugin's parser wins. These register at priority 0
+     * (lowest) so any plugin override supersedes them. */
+    if (!GameFeatureRegistry::instance().resolve_feature<SaveParserFeature>("skyrim")) {
+        auto le_parser = std::make_shared<SaveParserFeature>(
+            [](const std::filesystem::path& path, const std::string& game_id) {
+                return parse_skyrim_save(path);
+            });
+        GameFeatureRegistry::instance().register_feature(
+            "skyrim", "save_parser", 0, le_parser, "engine:builtin");
+    }
+    if (!GameFeatureRegistry::instance().resolve_feature<SaveParserFeature>("skyrimse")) {
+        auto se_parser = std::make_shared<SaveParserFeature>(
+            [](const std::filesystem::path& path, const std::string& game_id) {
+                return parse_skyrimse_save(path, game_id);
+            });
+        GameFeatureRegistry::instance().register_feature(
+            "skyrimse", "save_parser", 0, se_parser, "engine:builtin");
+    }
+    if (!GameFeatureRegistry::instance().resolve_feature<SaveParserFeature>("skyrimvr")) {
+        auto vr_parser = std::make_shared<SaveParserFeature>(
+            [](const std::filesystem::path& path, const std::string& game_id) {
+                return parse_skyrimse_save(path, game_id);
+            });
+        GameFeatureRegistry::instance().register_feature(
+            "skyrimvr", "save_parser", 0, vr_parser, "engine:builtin");
+    }
 
     std::string list_str;
     for (size_t i = 0; i < plugins_.size(); ++i) {

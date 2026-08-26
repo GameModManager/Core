@@ -22,6 +22,11 @@
 // Qt-free.
 
 #include <algorithm>
+#include <filesystem>
+#include <optional>
+#include <functional>
+
+#include "engine/game/saves/save_game.h"
 #include <memory>
 #include <string>
 #include <utility>
@@ -290,6 +295,76 @@ public:
 private:
     std::string bsa_name_;
     std::string bsa_version_;
+};
+
+// Save-game parser feature: a game plugin registers a parser function that
+// reads a save file at a given path and returns a populated SaveGame. The
+// engine's Saves tab / scan worker resolves this per game_id through the
+// GameFeatureRegistry instead of hardcoding game-specific parsers.
+class SaveParserFeature : public GameFeature {
+public:
+    // Parser signature: takes a save file path + game_id, returns a parsed
+    // SaveGame. Throws SaveParseError on malformed input.
+    using ParserFn = std::function<SaveGame(const std::filesystem::path&,
+                                            const std::string& game_id)>;
+
+    explicit SaveParserFeature(ParserFn parser)
+        : parser_(std::move(parser)) {}
+
+    static constexpr const char* type_key() { return "save_parser"; }
+    const char* type_name() const override { return type_key(); }
+
+    SaveGame parse(const std::filesystem::path& path,
+                   const std::string& game_id) const {
+        return parser_(path, game_id);
+    }
+
+private:
+    ParserFn parser_;
+};
+
+// Animation parser feature: a game plugin registers a parser that reads an
+// animation file (e.g. Isaac .anm2) and returns Qt-free frame data. The
+// UI preview widget resolves this per file extension through the
+// GameFeatureRegistry and converts raw RGBA pixels to QImage for display.
+class AnimationParserFeature : public GameFeature {
+public:
+    struct LayerItem {
+        float x = 0, y = 0;       // composited position on canvas
+        int width = 0, height = 0;
+        std::vector<std::uint8_t> rgba_pixels;  // raw RGBA data
+    };
+
+    struct Frame {
+        std::vector<LayerItem> layers;
+        int delay_ms = 33;         // frame duration
+    };
+
+    struct AnimationData {
+        std::vector<Frame> frames;
+        int canvas_width = 0;
+        int canvas_height = 0;
+        int fps = 30;
+    };
+
+    // Parser signature: takes file path + base directory for resource
+    // resolution. Returns nullopt on parse failure.
+    using ParserFn = std::function<std::optional<AnimationData>(
+        const std::string& file_path, const std::string& base_dir)>;
+
+    explicit AnimationParserFeature(ParserFn parser)
+        : parser_(std::move(parser)) {}
+
+    static constexpr const char* type_key() { return "animation_parser"; }
+    const char* type_name() const override { return type_key(); }
+
+    std::optional<AnimationData> parse(const std::string& file_path,
+                                       const std::string& base_dir) const {
+        return parser_(file_path, base_dir);
+    }
+
+private:
+    ParserFn parser_;
 };
 
 }  // namespace engine

@@ -63,7 +63,7 @@ TEST_CASE("phase04", "[engine]") {
     std::printf("PASS: profile_test\n");
 
     // --- OrderEncodingHook test ---
-    SkyrimPluginsTxtHook hook;
+    PlainTextOrderHook hook;
     auto output_dir = fs::temp_directory_path() / "gmm_test_order";
     fs::create_directories(output_dir);
     auto output_path = output_dir / "plugins.txt";

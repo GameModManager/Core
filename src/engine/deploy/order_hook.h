@@ -15,7 +15,7 @@ public:
                              const std::filesystem::path& output_path) = 0;
 };
 
-class SkyrimPluginsTxtHook : public OrderEncodingHook {
+class PlainTextOrderHook : public OrderEncodingHook {
 public:
     bool write_order(const std::vector<std::string>& ordered_mod_ids,
                      const std::filesystem::path& output_path) override;
