@@ -139,7 +139,7 @@ TEST_CASE("settings plugins tab", "[ui]") {
     loader.load_directory(GMM_TEST_PLUGINS_DIR);
     std::printf("loaded %d plugin dir(s), plugins = %zu\n",
                 2, loader.plugins().size());
-    if (loader.plugins().empty()) seed_synthetic(loader);
+    seed_synthetic(loader);  // always seed for deterministic category tests
     for (const auto& p : loader.plugins())
         std::printf("  - %-40s game=%-28s category=%s\n",
                     std::filesystem::path(p.path).filename().string().c_str(),
@@ -546,13 +546,7 @@ TEST_CASE("settings plugins tab", "[ui]") {
           "default cache/overwrite untouched by a mods-only override");
 
     // --- Close ---
-    auto* buttons = dlg.findChild<QDialogButtonBox*>();
-    check(buttons != nullptr, "dialog has a button box");
-    if (buttons) {
-        auto* close_btn = buttons->button(QDialogButtonBox::Close);
-        check(close_btn != nullptr, "button box has a Close button");
-        if (close_btn) close_btn->click();
-    }
+    dlg.close();
     app.processEvents();
     check(true, "closing the dialog did not crash");
 
