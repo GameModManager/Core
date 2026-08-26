@@ -4,7 +4,7 @@
 
 namespace engine {
 
-bool SkyrimPluginsTxtHook::write_order(
+bool PlainTextOrderHook::write_order(
     const std::vector<std::string>& ordered_mod_ids,
     const std::filesystem::path& output_path) {
     std::ofstream out(output_path);
