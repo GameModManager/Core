@@ -7,7 +7,7 @@
 // include/uibase/isavegame.h) + GamebryoSaveGame
 // (REFERENCES/modorganizer-game_bethesda/src/gamebryo/gamebryosavegame.{h,cpp}).
 // It is a plain data struct, not an interface: the UI reads it directly, the
-// parsers (skyrim_save.{h,cpp}) fill it, and the missing-assets resolver
+// parsers (registered via SaveParserFeature) fill it, and the missing-assets resolver
 // (save_missing_assets.{h,cpp}) consumes it.
 //
 // Layout notes (all little-endian, verified against real Skyrim SE saves on

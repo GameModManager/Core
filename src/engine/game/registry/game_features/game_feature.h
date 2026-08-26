@@ -22,6 +22,10 @@
 // Qt-free.
 
 #include <algorithm>
+#include <filesystem>
+#include <functional>
+
+#include "engine/game/saves/save_game.h"
 #include <memory>
 #include <string>
 #include <utility>
@@ -290,6 +294,32 @@ public:
 private:
     std::string bsa_name_;
     std::string bsa_version_;
+};
+
+// Save-game parser feature: a game plugin registers a parser function that
+// reads a save file at a given path and returns a populated SaveGame. The
+// engine's Saves tab / scan worker resolves this per game_id through the
+// GameFeatureRegistry instead of hardcoding game-specific parsers.
+class SaveParserFeature : public GameFeature {
+public:
+    // Parser signature: takes a save file path + game_id, returns a parsed
+    // SaveGame. Throws SaveParseError on malformed input.
+    using ParserFn = std::function<SaveGame(const std::filesystem::path&,
+                                            const std::string& game_id)>;
+
+    explicit SaveParserFeature(ParserFn parser)
+        : parser_(std::move(parser)) {}
+
+    static constexpr const char* type_key() { return "save_parser"; }
+    const char* type_name() const override { return type_key(); }
+
+    SaveGame parse(const std::filesystem::path& path,
+                   const std::string& game_id) const {
+        return parser_(path, game_id);
+    }
+
+private:
+    ParserFn parser_;
 };
 
 }  // namespace engine

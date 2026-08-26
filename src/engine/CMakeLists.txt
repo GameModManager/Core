@@ -95,7 +95,6 @@ set(ENGINE_SOURCES
     game/plugins/plugin_database.cpp
     game/saves/save_game.cpp
     game/saves/save_reader.cpp
-    game/saves/skyrim_save.cpp
     game/saves/save_scanner.cpp
     game/saves/save_missing_assets.cpp
     game/saves/local_saves.cpp

@@ -1,7 +1,8 @@
 #include "ui/main_window/saves_scan_worker.h"
 
+#include "engine/game/registry/game_features/game_feature.h"
+#include "engine/game/registry/game_features/game_feature_registry.h"
 #include "engine/game/saves/save_scanner.h"
-#include "engine/game/saves/skyrim_save.h"
 
 #include <QMetaObject>
 #include <QThread>
@@ -16,11 +17,19 @@ void SavesScanWorker::run(SavesScanRequest request) {
     result.saves_dir = request.saves_dir;
     if (!request.saves_dir.empty() &&
         std::filesystem::is_directory(request.saves_dir)) {
+        /* Resolve the save parser from the game feature registry.
+         * Falls back to a no-op parser that returns empty saves when
+         * no plugin has registered a parser for this game. */
+        std::string game_id = request.game_id;
+        auto feature = engine::GameFeatureRegistry::instance()
+            .resolve_feature<engine::SaveParserFeature>(game_id);
+        auto parses = feature
+            ? [feature, game_id](const std::filesystem::path& p) {
+                  return feature->parse(p, game_id);
+              }
+            : engine::SaveParseFn{};  // empty — scan_saves skips unparseable
         auto saves = engine::scan_saves(
-            request.saves_dir, request.extensions,
-            [game_id = std::move(request.game_id)](const std::filesystem::path& p) {
-                return engine::parse_skyrimse_save(p, game_id);
-            });
+            request.saves_dir, request.extensions, parses);
         for (auto& save : saves) {
             SavesScanResultEntry entry;
             entry.save = std::move(save);
