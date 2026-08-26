@@ -60,6 +60,12 @@ std::string disable_mechanism_for(const GameKnowledge& knowledge,
     return kDefaultDisableMechanism;
 }
 
+
+std::string creation_club_file_for(const GameKnowledge& knowledge,
+                                   const std::string& game_id) {
+    return knowledge.get(game_id, "creation_club_file", "skyrim.ccc");
+}
+
 std::string deploy_strategy_for(const GameKnowledge& knowledge,
                                 const std::string& game_id) {
     const std::string declared = knowledge.get(game_id, "deploy_strategy", "");

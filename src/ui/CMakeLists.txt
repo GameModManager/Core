@@ -62,7 +62,6 @@ set(UI_SOURCES
     panels/saves_tab.cpp
     panels/conflicts_tab.cpp
     workers/pipeline_worker.cpp
-    preview/anm2_parser.cpp
     preview/preview_widget.cpp
     preview/preview_window.cpp
     game_selection/game_card.cpp

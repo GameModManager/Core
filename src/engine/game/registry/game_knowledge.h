@@ -70,6 +70,11 @@ inline constexpr const char* kDefaultDeployStrategy = "symlink";
 inline constexpr const char* kDeployStrategyOverlayFs = "overlayfs";
 inline constexpr const char* kDeployStrategyDirect = "direct";
 
+// Creation club file name for the given game (e.g. "skyrim.ccc").
+// Falls back to "skyrim.ccc" when the plugin declares nothing.
+[[nodiscard]] std::string creation_club_file_for(const GameKnowledge& knowledge,
+                                                 const std::string& game_id);
+
 // Deploy strategy declared for the given game. Falls back to
 // kDefaultDeployStrategy when the game plugin declares nothing.
 [[nodiscard]] std::string deploy_strategy_for(const GameKnowledge& knowledge,

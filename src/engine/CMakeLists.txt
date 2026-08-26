@@ -38,7 +38,7 @@ set(ENGINE_SOURCES
     game/detect/mod_scanner.cpp
     mod/archive/archive_extractor.cpp
     index/conflict_index.cpp
-    index/isaac_conflict_index.cpp
+    index/conflict_index.cpp
     index/conflict_engine.cpp
     mod/model/profile.cpp
     profile/profile.cpp
@@ -95,8 +95,8 @@ set(ENGINE_SOURCES
     game/plugins/plugin_database.cpp
     game/saves/save_game.cpp
     game/saves/save_reader.cpp
-    game/saves/skyrim_save.cpp
     game/saves/save_scanner.cpp
+    game/saves/skyrim_save.cpp
     game/saves/save_missing_assets.cpp
     game/saves/local_saves.cpp
     sort/loot/loot_sorter.cpp
