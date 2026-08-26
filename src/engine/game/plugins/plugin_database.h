@@ -29,9 +29,11 @@ public:
                  const std::string& disable_mechanism,
                  const std::string& game_native_plugins);
 
-    // Read Skyrim.ccc (game root, then Data/) and mark listed content as CC
+    // Read creation club file (game root, then Data/) and mark listed content as CC
     // (force-loaded, excluded from plugins.txt). Call before sort_load_order().
-    void load_creation_club(const std::filesystem::path& game_dir);
+    // The filename comes from the "creation_club_file" knowledge key (default: skyrim.ccc).
+    void load_creation_club(const std::filesystem::path& game_dir,
+                            const std::string& ccc_filename = "skyrim.ccc");
 
     // Parse TES4 headers for all discovered plugins (extension fallbacks
     // apply when a file can't be parsed). Called by refresh().
@@ -170,7 +172,7 @@ private:
 
     // Game-native plugins in the order declared by the game module.
     std::vector<std::string> native_order_;
-    // CC plugins in the order listed by Skyrim.ccc.
+    // CC plugins in the order listed by the creation club file.
     std::vector<std::string> ccc_order_;
 };
 
