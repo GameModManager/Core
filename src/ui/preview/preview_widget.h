@@ -5,8 +5,9 @@
 #include <QPixmap>
 #include <QTimer>
 #include <QPoint>
+#include <filesystem>
 
-#include "ui/preview/anm2_parser.h"
+
 
 namespace ui::preview {
 
@@ -66,7 +67,7 @@ private:
     QString border_color_;
 
     // ANM2 animation state
-    std::unique_ptr<Anm2Parser> anm2_parser_;
+
     std::vector<QPixmap> anm2_frames_;
     std::vector<int> anm2_delays_;
     size_t anm2_index_ = 0;

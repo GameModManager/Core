@@ -89,18 +89,8 @@ gmm_catch2_test(perf_benchmark perf/benchmark_test.cpp)
 # Tests that include third-party headers directly need those include dirs at
 # compile time (the engine library's PRIVATE deps only propagate to the link
 # line, not to consumers' compile step).
-# save_parser_test needs the Skyrim save parser implementations from Plugins
-add_library(skyrim_save_parser STATIC
-    ${CMAKE_SOURCE_DIR}/external/plugins/src/plugins/SkyrimSpecialEdition/Saves/skyrim_save.cpp
-)
-target_include_directories(skyrim_save_parser PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/external/abi/include
-)
-target_link_libraries(skyrim_save_parser PRIVATE gmm_engine)
-
 gmm_catch2_test(save_parser_test engine/save_parser_test.cpp
-    LIBS PkgConfig::ZLIB PkgConfig::LZ4 skyrim_save_parser)
+    LIBS PkgConfig::ZLIB PkgConfig::LZ4)
 gmm_catch2_test(filetree_test engine/filetree_test.cpp
     LIBS PkgConfig::LIBARCHIVE)
 gmm_catch2_test(fomod_installer_test engine/fomod_installer_test.cpp)
