@@ -23,8 +23,14 @@ set_target_properties(gamemodmanager PROPERTIES
 # dlopen, so the executable must export them to its dynamic symbol table.
 # Without this a plugin calling gmm_mod_name()/gmm_instance_game_id() etc.
 # fails to load with "undefined symbol".
-if(NOT WIN32 AND NOT APPLE)
-    target_link_options(gamemodmanager PRIVATE -rdynamic)
+#
+# abi_bridge.cpp is a static-archive member (gmm_engine STATIC) that nothing
+# references at link time, so the linker never pulls it in.  -u forces a
+# symbol out of the archive, which cascades to the whole object file.
+if(APPLE)
+    target_link_options(gamemodmanager PRIVATE -Wl,-export_dynamic -Wl,-u,_gmm_instance_game_id)
+elseif(NOT WIN32)
+    target_link_options(gamemodmanager PRIVATE -rdynamic -Wl,-u,gmm_instance_game_id)
 endif()
 
 # OS keyring (QtKeychain) — compiled in wherever the library is available
