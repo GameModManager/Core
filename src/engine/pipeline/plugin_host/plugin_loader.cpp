@@ -648,7 +648,9 @@ static void cb_register_tool(GmmRegistrationCtx* ctx,
     ExternalTool tool;
     tool.tool_id = tool_id ? tool_id : "";
     tool.game_id = bridge->current_plugin->game_id;
-    tool.display_name = tool.tool_id;
+    tool.display_name = !bridge->current_plugin->plugin_name.empty()
+                            ? bridge->current_plugin->plugin_name
+                            : tool.tool_id;
 
     std::string kind_str = kind ? kind : "advisory";
     tool.kind = (kind_str == "workshop") ? ToolKind::Workshop : ToolKind::Advisory;
@@ -1232,7 +1234,9 @@ static void cb_v2_register_tool(GmmRegistrationCtxV2* ctx,
     ExternalTool tool;
     tool.tool_id = tool_id ? tool_id : "";
     tool.game_id = bridge->current_plugin->game_id;
-    tool.display_name = tool.tool_id;
+    tool.display_name = !bridge->current_plugin->plugin_name.empty()
+                            ? bridge->current_plugin->plugin_name
+                            : tool.tool_id;
 
     std::string kind_str = kind ? kind : "advisory";
     tool.kind = (kind_str == "workshop") ? ToolKind::Workshop : ToolKind::Advisory;
