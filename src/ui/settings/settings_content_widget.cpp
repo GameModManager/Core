@@ -758,7 +758,8 @@ QWidget *SettingsContentWidget::build_paths_tab() {
       // Empty clears the key (write_key contract) -> game-dir fallback.
       auto inst = engine::Instance::installed(
           instance_root_.filename().string(), instance_root_.parent_path());
-      inst.write_key("game_mods_dir", gmods_edit->text().trimmed().toStdString());
+      inst.write_key("game_mods_dir",
+                     gmods_edit->text().trimmed().toStdString());
     };
     connect(gmods_edit, &QLineEdit::editingFinished, this, commit_gmods);
     connect(gmods_browse, &QPushButton::clicked, this,
@@ -928,9 +929,9 @@ QWidget *SettingsContentWidget::build_plugins_tab() {
   // Indices 0-7 = plugin categories (matching declared strings), 8 = sources,
   // 9 = uncategorized fallback.
   const std::vector<const char *> group_ids = {
-      "Game Support", "Installer",     "Tool",     "Diagnostics",
-      "Preview",      "File Mapper",   "Mod Page", "Settings Page",
-      "Sources",      "Uncategorized",
+      "Game Support", "Installer",   "Tool",          "Diagnostics",
+      "Preview",      "File Mapper", "Mod Page",      "Settings Page",
+      "File Support", "Sources",     "Uncategorized",
   };
   constexpr int kSourcesGroup = 8;
   constexpr int kUncategorizedGroup = 9;
