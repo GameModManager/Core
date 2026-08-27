@@ -16,6 +16,7 @@
 #include "engine/sort/abi_sort_provider.h"
 #include "engine/pipeline/plugin_host/order_encoding_registry.h"
 #include "engine/pipeline/plugin_host/deploy_strategy_registry.h"
+#include "engine/pipeline/plugin_host/hook_registry.h"
 
 #include "gmm_abi_v1.h"
 #include "gmm_abi_v2.h"
@@ -982,6 +983,13 @@ static void cb_v2_register_hook(GmmRegistrationCtxV2* ctx,
         priority,
         bridge->current_plugin->path);
 
+    // Also register the raw v2 ABI hook into the v2 HookRegistry singleton so
+    // the pipeline can dispatch it directly via HookRegistry::instance().dispatch()
+    // with an arbitrary data pointer (the v2 GmmHookFnV2 contract).
+    ::HookRegistry::instance().register_hook(
+        hook_tag.c_str(), fn, priority, user_data,
+        bridge->current_plugin->path.c_str());
+
     Logger::instance().debug("Plugin registered knowledge: " + hook_tag +
         " (game=" + game_id + ", data=" + hook_data + ")");
 }
@@ -1487,6 +1495,9 @@ void PluginLoader::unload_all() {
         EventBus::instance().clear_source(p.path);
         // Clear hooks registered by this plugin.
         hook_registry_.clear_plugin_hooks(p.path);
+        // Clear v2 behavior-injection hooks registered by this plugin so the
+        // v2 HookRegistry singleton never holds a dangling function pointer.
+        ::HookRegistry::instance().clear_plugin(p.path.c_str());
         // Clear v2 order-encoding / deploy-strategy callbacks registered by
         // this plugin (dangling after dlclose).
         OrderEncodingRegistry::instance().clear_plugin(p.path);

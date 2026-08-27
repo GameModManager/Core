@@ -78,6 +78,7 @@ set(ENGINE_SOURCES
     pipeline/plugin_host/diagnostics_registry.cpp
     pipeline/plugin_host/order_encoding_registry.cpp
     pipeline/plugin_host/deploy_strategy_registry.cpp
+    pipeline/plugin_host/hook_registry.cpp
     pipeline/registry/stage_registry.cpp
     pipeline/registry/hook_registry.cpp
     game/registry/game_capabilities.cpp
