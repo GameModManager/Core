@@ -18,6 +18,9 @@ public:
     // Get the sort provider for a game (or nullptr if none)
     [[nodiscard]] SortProvider* get_provider(const std::string& game_id) const;
 
+    // Drop every registered provider (process shutdown / full reload).
+    void clear();
+
 private:
     SortRegistry() = default;
     std::vector<std::pair<std::string, std::unique_ptr<SortProvider>>> providers_;
