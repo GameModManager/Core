@@ -497,6 +497,13 @@ scan_entry(const std::filesystem::path &entry_path, const ScanConfig &cfg,
   mod.no_metadata = mod.no_metadata && !mod.validated;
   mod.invalid_data = !mod.validated && !content_looks_valid(cfg, entry_path);
 
+  // Whitelist filter (MO2 parity): folders with metadata are ALWAYS listed
+  // (managed mods). Folders WITHOUT metadata must contain recognized mod
+  // content to be listed — this filters out vanilla game directories.
+  if (mod.no_metadata && mod.invalid_data) {
+    return std::nullopt; // No metadata AND no valid content → not a mod
+  }
+
   // Check for disable sentinel
   if (!cfg.disable_file.empty()) {
     auto disable_path = entry_path / cfg.disable_file;
