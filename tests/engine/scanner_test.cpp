@@ -198,15 +198,17 @@ TEST_CASE("scanner", "[engine]") {
   const auto *bc = by_folder(modsC, "BadContent");
   require(bc == nullptr, "empty content folder with no metadata is NOT listed");
 
-  // A folder with a recognized data dir is valid content but still has no
-  // manager metadata (the two flags are independent).
+  // A folder with a game plugin file is valid content but still has no
+  // manager metadata (the two flags are independent). Subdirectories alone
+  // (meshes/, scripts/, etc.) are NOT enough — vanilla game dirs have those.
   fs::create_directories(root / "GoodContent");
   fs::create_directories(root / "GoodContent" / "textures");
+  write_file(root / "GoodContent" / "modfile.esp", "");
   const auto modsC2 = engine::ModScanner::scan_dir(checker, "skyrim", root);
   const auto *gc = by_folder(modsC2, "GoodContent");
   require(gc != nullptr && !gc->invalid_data,
-          "textures/ folder is valid content");
-  require(gc->no_metadata, "textures/ folder still flagged no_metadata");
+          "folder with .esp and textures/ is valid content");
+  require(gc->no_metadata, "folder with .esp still flagged no_metadata");
 
   // A meta.ini-only folder is valid content (metadata presence counts,
   // mirroring MO2's Bethesda checker accepting meta.ini via "ini").
@@ -244,14 +246,15 @@ TEST_CASE("scanner", "[engine]") {
   require(xm->display_name == "My Xml Mod", "xml name parsed");
   require(!xm->invalid_data, "metadata presence makes content valid");
 
-  // resources-dlc3/ alone (no metadata.xml) is valid content, still
-  // no_metadata.
+  // resources-dlc3/ with a plugin file (no metadata.xml) is valid content,
+  // still no_metadata.
   fs::create_directories(root / "XmlResOnly");
   fs::create_directories(root / "XmlResOnly" / "resources-dlc3");
+  write_file(root / "XmlResOnly" / "modfile.esm", "");
   const auto modsX3 = engine::ModScanner::scan_dir(xml_know, "isaac", root);
   const auto *xr = by_folder(modsX3, "XmlResOnly");
   require(xr != nullptr && !xr->invalid_data,
-          "resources-dlc3/ folder is valid content");
+          "resources-dlc3/ folder with .esm is valid content");
   require(xr->no_metadata, "resources-dlc3/ folder still flagged no_metadata");
 
   // MO2 "Ignore missing data" persists [General] validated=true in the

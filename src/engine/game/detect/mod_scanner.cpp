@@ -183,11 +183,11 @@ struct ScanConfig {
 };
 
 // MO2's GamebryoModDataChecker::dataLooksValid analogue: a folder has valid
-// game data if it contains any top-level directory named in mod_valid_dirs,
-// or the game's own metadata file (Isaac mods are identified by
-// metadata.xml). No allow-lists registered → nothing can look invalid.
-// Case-insensitive, mirroring the Windows filesystem games shipped on (Skyrim
-// registers case_sensitive=false).
+// game data if it contains a recognized metadata file (managed mod) OR at
+// least one game plugin / archive file (.esp/.esm/.esl/.bsa/.ba2) at the top
+// level. Having subdirectories alone (meshes/, scripts/, etc.) is NOT enough
+// — vanilla game directories also have these. No allow-lists registered →
+// nothing can look invalid.
 static bool content_looks_valid(const ScanConfig &cfg,
                                 const std::filesystem::path &entry_path) {
   if (cfg.valid_dirs.empty())
@@ -197,15 +197,23 @@ static bool content_looks_valid(const ScanConfig &cfg,
       std::filesystem::exists(entry_path / cfg.metadata_file))
     return true;
 
+  // Require at least one game plugin or archive file at the top level.
+  // Subdirectories (meshes/, scripts/, etc.) alone are not sufficient.
+  static const std::vector<std::string> kPluginExts = {"esp", "esm", "esl",
+                                                       "bsa", "ba2"};
+
   std::error_code ec;
   for (const auto &entry :
        std::filesystem::directory_iterator(entry_path, ec)) {
-    const auto name = entry.path().filename().string();
-    if (entry.is_directory(ec)) {
-      for (const auto &d : cfg.valid_dirs)
-        if (ci_equals(name, d))
-          return true;
-    }
+    if (!entry.is_regular_file(ec))
+      continue;
+    auto dot = entry.path().filename().string().find_last_of('.');
+    if (dot == std::string::npos)
+      continue;
+    auto ext = entry.path().filename().string().substr(dot + 1);
+    for (const auto &pe : kPluginExts)
+      if (ci_equals(ext, pe))
+        return true;
   }
   return false;
 }
