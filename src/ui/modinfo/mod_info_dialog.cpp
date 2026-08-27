@@ -175,6 +175,7 @@ void ModInfoDialog::switch_to(int index) {
     if (data_builder_) {
         current_mod_data_ = data_builder_(target_id);
         tab_loaded_.assign(tab_order_.size(), false);
+        tab_activated_.assign(tab_order_.size(), false);
         // Re-init the currently visible tab: currentChanged only fires on index
         // change, so without this the visible tab would keep stale data and its
         // save_state() would be skipped (tab_loaded_ reset to false).
@@ -209,6 +210,7 @@ void ModInfoDialog::reload_current(ModInfoData data) {
 
     // Mark all tabs as needing reload.
     tab_loaded_.assign(tab_order_.size(), false);
+    tab_activated_.assign(tab_order_.size(), false);
     // Re-init the currently visible tab (same rationale as switch_to()).
     int vis = tabs_->currentIndex();
     if (vis >= 0 && vis < static_cast<int>(tab_order_.size())) {
