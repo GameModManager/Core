@@ -46,7 +46,10 @@ std::string prompt_instance_name(QWidget* parent, const QString& game_name) {
 
     layout->addWidget(new QLabel(QObject::tr("Instance name:"), &dialog));
 
-    auto* input = new QLineEdit(game_name, &dialog);
+    auto* input = new QLineEdit(
+        QString::fromStdString(
+            engine::sanitize_directory_name(game_name.toStdString())),
+        &dialog);
     layout->addWidget(input);
 
     // Live validation message (Workspace-y9c); hidden while the name is valid.

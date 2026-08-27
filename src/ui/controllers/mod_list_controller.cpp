@@ -1489,6 +1489,23 @@ void ModListController::apply_profile_mod_states() {
     w_->mod_model_->set_mod_enabled(QString::fromStdString(pm.mod_id),
                                     pm.enabled);
   }
+
+  // Re-apply the on-disk disable.it marker: the profile is the per-profile
+  // source of truth, but the global disable sentinel always wins. Without
+  // this, a new instance (empty profile) would show all mods enabled even
+  // if they have a disable.it file.
+  const std::string disable_file =
+      engine::disable_mechanism_for(*w_->knowledge_, w_->current_game_id_);
+  if (!disable_file.empty()) {
+    const auto mods_dir = w_->mods_dir_path();
+    for (const auto &pm : w_->active_profile_->mods()) {
+      std::error_code ec;
+      if (std::filesystem::exists(mods_dir / pm.mod_id / disable_file, ec)) {
+        w_->mod_model_->set_mod_enabled(QString::fromStdString(pm.mod_id),
+                                        false);
+      }
+    }
+  }
 }
 
 void ModListController::add_installed_mod(const std::string &folder_name) {
