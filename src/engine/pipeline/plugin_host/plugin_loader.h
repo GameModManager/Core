@@ -27,6 +27,42 @@ namespace engine {
 
 class PluginDatabase;
 
+// v2 ABI registration storage. These concepts have no v1-equivalent registry;
+// the loader captures them on the PluginInfo so the engine can consume them
+// once the corresponding subsystems land. Function pointers are stored as
+// void* (the real v2 types live in gmm_abi_v2.h, which is only included by
+// plugin_loader.cpp) and are safe for the plugin's loaded lifetime.
+struct PluginRequirement {
+    std::string type;     // "plugin", "game", "diagnose"
+    std::string name;     // required plugin/game name
+    std::string message;  // error message if not met
+};
+
+struct PluginPreview {
+    std::string file_extension;
+    void* preview_data = nullptr;
+    void* fn = nullptr;
+    void* user_data = nullptr;
+};
+
+struct PluginModPage {
+    std::string url;
+    void* fn = nullptr;
+    void* user_data = nullptr;
+};
+
+struct PluginFileMapper {
+    std::string game_id;
+    void* fn = nullptr;
+    void* user_data = nullptr;
+};
+
+struct PluginDiagnostics {
+    std::string game_id;
+    void* fn = nullptr;
+    void* user_data = nullptr;
+};
+
 struct PluginInfo {
     std::string path;
     std::string game_id;
@@ -37,6 +73,13 @@ struct PluginInfo {
     std::string category;           // optional, via register_category
     uint32_t steam_appid = 0;
     std::string nexus_domain;
+    // v2-only identity fields (populated by register_game / register_plugin).
+    std::string plugin_name;   // the plugin's own name (v2 register_plugin)
+    std::string gog_id;
+    std::string epic_namespace;
+    std::string exe_windows;
+    std::string exe_linux;
+    std::string exe_macos;
     // True only when the plugin called register_identity — i.e. it provides
     // game support (a game to create instances for). Tool/feature plugins
     // (ImageDiff, IsaacModSorter, ...) never do; their game_id is just the
@@ -71,6 +114,13 @@ struct PluginInfo {
         std::vector<SettingTabEntry> settings;
     };
     SettingTab settings_tab;
+
+    // v2-only registration captures (no v1-equivalent registry yet).
+    std::vector<PluginRequirement> requirements;
+    std::vector<PluginPreview> previews;
+    std::vector<PluginModPage> modpages;
+    std::vector<PluginFileMapper> file_mappers;
+    std::vector<PluginDiagnostics> diagnostics_v2;
 };
 
 class PluginLoader {
