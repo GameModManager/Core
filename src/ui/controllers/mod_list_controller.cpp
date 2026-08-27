@@ -1,12 +1,12 @@
 #include "ui/controllers/mod_list_controller.h"
 #include "engine/profile/profile_creation.h"
-#include <filesystem>
 #include "ui/controllers/launch_controller.h"
 #include "ui/controllers/overwrite_controller.h"
 #include "ui/controllers/queue_controller.h"
 #include "ui/controllers/settings_controller.h"
 #include "ui/settings/categories_dialog.h"
 #include <QSplitter>
+#include <filesystem>
 
 #include <QActionGroup>
 #include <QApplication>
@@ -15,11 +15,12 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
-#include <QInputDialog>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLCDNumber>
 #include <QMenu>
 #include <QMessageBox>
+#include <QPalette>
 #include <QRegularExpression>
 #include <QSet>
 #include <QTableWidget>
@@ -28,10 +29,10 @@
 #include <algorithm>
 #include <fstream>
 #include <iterator>
+#include <nlohmann/json.hpp>
 #include <regex>
 #include <set>
 #include <sstream>
-#include <nlohmann/json.hpp>
 
 #include "engine/core/events/event_bus.h"
 #include "engine/core/instance/instance.h"
@@ -443,8 +444,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
             if (QApplication::keyboardModifiers() & Qt::ShiftModifier) {
               if (!entry.is_overwrite && !entry.is_separator &&
                   !entry.is_game_native) {
-                auto src = source_visit_info(entry.source_type,
-                                             entry.source_id,
+                auto src = source_visit_info(entry.source_type, entry.source_id,
                                              entry.source_page_url);
                 if (!src.url.isEmpty())
                   QDesktopServices::openUrl(QUrl(src.url));
@@ -502,17 +502,16 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
               folder = w_->overwrite_dir_path();
             } else {
               const auto mods_subpath =
-                  w_->knowledge_
-                      ? w_->knowledge_->get(w_->current_game_id_,
-                                            "mods_subpath", "")
-                      : "";
-              folder = w_->resolve_mod_folder(entry.id.toStdString(),
-                                              mods_subpath);
+                  w_->knowledge_ ? w_->knowledge_->get(w_->current_game_id_,
+                                                       "mods_subpath", "")
+                                 : "";
+              folder =
+                  w_->resolve_mod_folder(entry.id.toStdString(), mods_subpath);
             }
             if (folder.empty())
               return;
-            QDesktopServices::openUrl(QUrl::fromLocalFile(
-                QString::fromStdString(folder.string())));
+            QDesktopServices::openUrl(
+                QUrl::fromLocalFile(QString::fromStdString(folder.string())));
           });
 
   // Drag-and-drop archives onto the mod list to install manually
@@ -616,20 +615,25 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   w_->mod_count_enabled_->setObjectName("mo2CounterLabel");
   w_->mod_count_enabled_->setDigitCount(5);
   w_->mod_count_enabled_->display(0);
+  // Ensure the LCD digits use the palette foreground color (same as the
+  // plugins-tab counter) instead of the default black segment color.
+  QPalette pal = w_->mod_count_enabled_->palette();
+  pal.setColor(QPalette::WindowText, pal.color(QPalette::Text));
+  w_->mod_count_enabled_->setPalette(pal);
 
-  auto* count_row = new QHBoxLayout;
+  auto *count_row = new QHBoxLayout;
   count_row->setContentsMargins(4, 2, 4, 2);
   count_row->addStretch(1); // push the counter to the right edge
   count_row->addWidget(w_->mod_count_enabled_);
 
-  auto* mod_list_pane = new QWidget(w_);
-  auto* pane_layout = new QVBoxLayout(mod_list_pane);
+  auto *mod_list_pane = new QWidget(w_);
+  auto *pane_layout = new QVBoxLayout(mod_list_pane);
   pane_layout->setContentsMargins(0, 0, 0, 0);
   pane_layout->setSpacing(2);
   pane_layout->addLayout(count_row);
   pane_layout->addWidget(w_->mod_view_, 1);
 
-  auto* mod_splitter = new QSplitter(Qt::Horizontal, w_);
+  auto *mod_splitter = new QSplitter(Qt::Horizontal, w_);
   mod_splitter->addWidget(w_->category_filter_panel_);
   mod_splitter->addWidget(mod_list_pane);
   mod_splitter->setStretchFactor(0, 0);
@@ -864,13 +868,30 @@ void ModListController::update_mod_count_label() {
   // Same row filter as the old status-bar counter: separators and the
   // Overwrite pseudo-row are not mods.
   int enabled = 0;
+  int total = 0;
   for (const auto &m : w_->mod_model_->mods()) {
     if (m.is_separator || m.is_overwrite)
       continue;
+    ++total;
     if (m.enabled)
       ++enabled;
   }
   w_->mod_count_enabled_->display(enabled);
+
+  // MO2-style breakdown tooltip: enabled / total mods.
+  w_->mod_count_enabled_->setToolTip(
+      tr("<table cellspacing=\"6\">"
+         "<tr><th>%1</th><th>%2</th><th>%3</th></tr>"
+         "<tr><td>All mods:</td><td align=\"right\">%4</td>"
+         "<td align=\"right\">%5</td></tr>"
+         "<tr><td>Active:</td><td align=\"right\">%6</td>"
+         "<td align=\"right\">%7</td></tr>"
+         "</table>")
+          .arg(tr("Type"), tr("Active"), tr("Total"))
+          .arg(enabled)
+          .arg(total)
+          .arg(enabled)
+          .arg(total));
 }
 
 void ModListController::sync_mod_enable_state(const QString &mod_id,
@@ -910,11 +931,11 @@ void ModListController::sync_mod_enable_state(const QString &mod_id,
   // worker starts. The profile modlist.txt is still updated now — it is the
   // per-profile source of truth; the on-disk sentinel is reconciled at launch.
   if (engine::delayed_disable_for(*w_->knowledge_, w_->current_game_id_)) {
-    auto it = std::remove_if(
-        w_->deferred_disable_queue_.begin(), w_->deferred_disable_queue_.end(),
-        [&](const DeferredDisable &dd) {
-          return dd.mod_id == mod_id.toStdString();
-        });
+    auto it = std::remove_if(w_->deferred_disable_queue_.begin(),
+                             w_->deferred_disable_queue_.end(),
+                             [&](const DeferredDisable &dd) {
+                               return dd.mod_id == mod_id.toStdString();
+                             });
     w_->deferred_disable_queue_.erase(it, w_->deferred_disable_queue_.end());
     w_->deferred_disable_queue_.push_back({mod_id.toStdString(), enabled});
 
@@ -1635,7 +1656,8 @@ void ModListController::load_meta_for_mods() {
                 meta.set("SteamWorkshop", "workshop_id", m[1].str());
               }
               // Register Steam source so the source column shows Steam
-              if (meta.source_type().empty() || meta.source_type() == "manual") {
+              if (meta.source_type().empty() ||
+                  meta.source_type() == "manual") {
                 meta.set("GameModManager", "source_type", "steam");
                 meta.set("GameModManager", "source_id", m[1].str());
               }
@@ -1707,11 +1729,10 @@ void ModListController::load_meta_for_mods() {
     // hook. This auto-assigns categories to mods downloaded from Steam Workshop
     // based on their declared tags.
     if (category_ids.isEmpty()) {
-      auto tags_csv = QString::fromStdString(
-          meta.get("SteamWorkshop", "tags"));
+      auto tags_csv = QString::fromStdString(meta.get("SteamWorkshop", "tags"));
       if (!tags_csv.isEmpty()) {
-        auto tag_mapping = w_->knowledge_->get(
-            w_->current_game_id_, "workshop_tag_categories", "");
+        auto tag_mapping = w_->knowledge_->get(w_->current_game_id_,
+                                               "workshop_tag_categories", "");
         if (!tag_mapping.empty()) {
           auto tags = tags_csv.split(QLatin1Char(','), Qt::SkipEmptyParts);
           try {
@@ -1730,7 +1751,8 @@ void ModListController::load_meta_for_mods() {
               // don't need to re-map.
               if (!category_ids.isEmpty()) {
                 QStringList id_strs;
-                for (int cid : category_ids) id_strs << QString::number(cid);
+                for (int cid : category_ids)
+                  id_strs << QString::number(cid);
                 meta.set("General", "category",
                          id_strs.join(QLatin1Char(',')).toStdString());
                 meta.save(meta_dir, folder_name);
@@ -1738,7 +1760,8 @@ void ModListController::load_meta_for_mods() {
                   primary = category_ids.first();
               }
             }
-          } catch (...) {}
+          } catch (...) {
+          }
         }
       }
     }
@@ -2392,8 +2415,9 @@ void ModListController::refresh_plugins_tab() {
     w_->plugins_db_.refresh(w_->current_game_dir_, w_->mods_dir_path(),
                             w_->meta_dir_path(), disable_mechanism,
                             game_native);
-    w_->plugins_db_.load_creation_club(w_->current_game_dir_,
-                            engine::creation_club_file_for(*w_->knowledge_, w_->current_game_id_));
+    w_->plugins_db_.load_creation_club(
+        w_->current_game_dir_,
+        engine::creation_club_file_for(*w_->knowledge_, w_->current_game_id_));
     w_->plugins_db_.sort_load_order();
   }
 
@@ -2710,11 +2734,10 @@ void ModListController::on_image_diff_requested(const QString &relative_path) {
 
   auto mods_dir = w_->mods_dir_path();
   const std::filesystem::path game_mods_dir =
-      w_->knowledge_
-          ? engine::resolve_game_mods_dir(w_->current_game_id_,
-                                          w_->current_game_dir_,
-                                          *w_->knowledge_)
-          : std::filesystem::path{};
+      w_->knowledge_ ? engine::resolve_game_mods_dir(w_->current_game_id_,
+                                                     w_->current_game_dir_,
+                                                     *w_->knowledge_)
+                     : std::filesystem::path{};
 
   for (const auto &[mod_name, _] : owners) {
     // Check instance mods dir first, then game native mods dir
