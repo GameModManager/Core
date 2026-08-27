@@ -22,7 +22,7 @@ bool has_extension(const QString& path, const QStringList& exts) {
 }
 
 const QStringList& image_extensions() {
-    static const QStringList exts = {"png", "jpg", "jpeg", "webp", "bmp", "gif"};
+    static const QStringList exts = {"png", "jpg", "jpeg", "webp", "bmp", "gif", "anm2"};
     return exts;
 }
 
