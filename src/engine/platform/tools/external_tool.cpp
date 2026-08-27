@@ -30,13 +30,21 @@ std::vector<ExternalTool> ToolRegistry::tools_for_game(const std::string& game_i
 
 const ExternalTool* ToolRegistry::get_tool(const std::string& game_id,
                                             const std::string& tool_id) const {
+    // Game-specific lookup first
     auto game_it = tools_.find(game_id);
-    if (game_it == tools_.end()) return nullptr;
+    if (game_it != tools_.end()) {
+        auto tool_it = game_it->second.find(tool_id);
+        if (tool_it != game_it->second.end()) return &tool_it->second;
+    }
 
-    auto tool_it = game_it->second.find(tool_id);
-    if (tool_it == game_it->second.end()) return nullptr;
+    // Fallback to global bucket (empty game_id)
+    auto global_it = tools_.find("");
+    if (global_it != tools_.end()) {
+        auto tool_it = global_it->second.find(tool_id);
+        if (tool_it != global_it->second.end()) return &tool_it->second;
+    }
 
-    return &tool_it->second;
+    return nullptr;
 }
 
 std::vector<ExternalTool> ToolRegistry::advisory_tools_for(const std::string& game_id) const {
