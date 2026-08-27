@@ -78,9 +78,12 @@ std::string sanitize_directory_name(std::string name) {
         unsigned char uc = static_cast<unsigned char>(c);
         if (invalid_chars.find(c) != std::string::npos ||
             !std::isprint(uc)) {
-            c = '_';
+            c = '\0';
         }
     }
+
+    // Remove erased characters (replaced with null above).
+    name.erase(std::remove(name.begin(), name.end(), '\0'), name.end());
 
     // Strip leading dots and trailing dots/spaces.
     while (!name.empty() && name.front() == '.')
