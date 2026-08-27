@@ -20,6 +20,7 @@
 #include "engine/pipeline/plugin_host/order_encoding_registry.h"
 #include "engine/pipeline/plugin_host/deploy_strategy_registry.h"
 #include "engine/pipeline/plugin_host/hook_registry.h"
+#include "engine/pipeline/plugin_host/plugin_settings_registry.h"
 
 #include "gmm_abi_v1.h"
 #include "gmm_abi_v2.h"
@@ -158,6 +159,13 @@ static void cb_register_settings(GmmRegistrationCtx* ctx,
         if (!keys[i] || !values[i]) continue;
         settings.emplace_back(keys[i], values[i]);
     }
+
+    // Persist the declaration in the process-wide settings registry so the host
+    // callbacks can read/write these keys at runtime (v2 parity for v1 plugins).
+    const std::string basename =
+        std::filesystem::path(bridge->current_plugin->path).filename().string();
+    PluginSettingsRegistry::instance().register_settings(basename, keys, values, count);
+    PluginSettingsRegistry::instance().register_alias(bridge->current_plugin->game_id, basename);
 }
 
 static void cb_register_settings_tab(GmmRegistrationCtx* ctx,
@@ -195,6 +203,14 @@ static void cb_register_settings_tab(GmmRegistrationCtx* ctx,
         tab.settings.push_back(std::move(entry));
     }
     bridge->current_plugin->settings_tab = std::move(tab);
+
+    // Persist the declaration in the process-wide settings registry so the host
+    // callbacks can read/write these keys at runtime (v2 parity for v1 plugins).
+    const std::string basename =
+        std::filesystem::path(bridge->current_plugin->path).filename().string();
+    PluginSettingsRegistry::instance().register_settings_tab(
+        basename, title, keys, types, defaults, options, count);
+    PluginSettingsRegistry::instance().register_alias(bridge->current_plugin->game_id, basename);
 }
 
 static void cb_register_diagnostics(GmmRegistrationCtx* ctx,
@@ -766,6 +782,14 @@ static void cb_v2_register_plugin(GmmRegistrationCtxV2* ctx, GmmPluginInfo info)
     if (info.author) bridge->current_plugin->author = info.author;
     if (info.version) bridge->current_plugin->version = info.version;
     if (info.description) bridge->current_plugin->description = info.description;
+
+    // Map the plugin's own name to its basename so host_get_setting(plugin_name,
+    // key) resolves to the same QSettings store the UI persists under.
+    if (info.name) {
+        const std::string basename =
+            std::filesystem::path(bridge->current_plugin->path).filename().string();
+        PluginSettingsRegistry::instance().register_alias(info.name, basename);
+    }
 }
 
 static void cb_v2_register_settings(GmmRegistrationCtxV2* ctx,
@@ -780,6 +804,14 @@ static void cb_v2_register_settings(GmmRegistrationCtxV2* ctx,
         if (!keys[i] || !values[i]) continue;
         settings.emplace_back(keys[i], values[i]);
     }
+
+    // Persist the declaration in the process-wide settings registry so the host
+    // callbacks can read/write these keys at runtime.
+    const std::string basename =
+        std::filesystem::path(bridge->current_plugin->path).filename().string();
+    PluginSettingsRegistry::instance().register_settings(basename, keys, values, count);
+    PluginSettingsRegistry::instance().register_alias(bridge->current_plugin->game_id, basename);
+    PluginSettingsRegistry::instance().register_alias(bridge->current_plugin->plugin_name, basename);
 }
 
 static void cb_v2_register_settings_tab(GmmRegistrationCtxV2* ctx,
@@ -816,6 +848,15 @@ static void cb_v2_register_settings_tab(GmmRegistrationCtxV2* ctx,
         tab.settings.push_back(std::move(entry));
     }
     bridge->current_plugin->settings_tab = std::move(tab);
+
+    // Persist the declaration in the process-wide settings registry so the host
+    // callbacks can read/write these keys at runtime.
+    const std::string basename =
+        std::filesystem::path(bridge->current_plugin->path).filename().string();
+    PluginSettingsRegistry::instance().register_settings_tab(
+        basename, title, keys, types, defaults, options, count);
+    PluginSettingsRegistry::instance().register_alias(bridge->current_plugin->game_id, basename);
+    PluginSettingsRegistry::instance().register_alias(bridge->current_plugin->plugin_name, basename);
 }
 
 static void cb_v2_register_requirements(GmmRegistrationCtxV2* ctx,
