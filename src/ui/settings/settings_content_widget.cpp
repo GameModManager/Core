@@ -926,15 +926,15 @@ QWidget *SettingsContentWidget::build_plugins_tab() {
   auto *info_layout = new QVBoxLayout(info_pane);
 
   // Foldable category headers, MO2 plugin types in display order.
-  // Indices 0-7 = plugin categories (matching declared strings), 8 = sources,
-  // 9 = uncategorized fallback.
+  // Indices 0-8 = plugin categories (matching declared strings), 9 = sources,
+  // 10 = uncategorized fallback.
   const std::vector<const char *> group_ids = {
       "Game Support", "Installer",   "Tool",          "Diagnostics",
       "Preview",      "File Mapper", "Mod Page",      "Settings Page",
       "File Support", "Sources",     "Uncategorized",
   };
-  constexpr int kSourcesGroup = 8;
-  constexpr int kUncategorizedGroup = 9;
+  constexpr int kSourcesGroup = 9;
+  constexpr int kUncategorizedGroup = 10;
 
   auto group_for = [&group_ids](const Entry &e) -> int {
     if (!e.is_plugin)
