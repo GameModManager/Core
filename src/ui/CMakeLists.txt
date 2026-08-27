@@ -64,6 +64,7 @@ set(UI_SOURCES
     workers/pipeline_worker.cpp
     preview/preview_widget.cpp
     preview/preview_window.cpp
+    preview/preview_registry.cpp
     game_selection/game_card.cpp
     game_selection/game_selection_widget.cpp
     overwrite/sync_overwrite_dialog.cpp

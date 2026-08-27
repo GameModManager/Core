@@ -14,6 +14,7 @@ class QPushButton;
 class QScrollArea;
 class QStackedWidget;
 class QTextBrowser;
+class QVBoxLayout;
 
 namespace ui::preview {
 
@@ -50,6 +51,9 @@ private:
   bool load_image(const QString &path);
   bool load_anm2(const QString &path);
   bool load_text(const QString &path);
+  // Try a plugin-provided preview (v2 IPluginPreview) for the file's extension.
+  // Returns true and embeds the plugin's QWidget* if a plugin claimed it.
+  bool load_plugin_preview(const QString &path);
   void show_unsupported();
   void apply_zoom();
   void set_fit();
@@ -64,6 +68,11 @@ private:
   QLabel *image_label_ = nullptr;
   QTextBrowser *text_view_ = nullptr;
   QLabel *unsupported_label_ = nullptr;
+  // Plugin-provided preview page (v2 IPluginPreview). Holds whatever QWidget*
+  // a plugin returned for the selected file's extension.
+  QWidget *plugin_page_ = nullptr;
+  QVBoxLayout *plugin_layout_ = nullptr;
+  QWidget *plugin_widget_ = nullptr;
   QPushButton *prev_button_ = nullptr;
   QPushButton *next_button_ = nullptr;
 
