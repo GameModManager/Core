@@ -3,6 +3,7 @@
 #include "engine/pipeline/plugin_host/python_loader.h"
 #include "engine/pipeline/plugin_host/diagnostics_registry.h"
 #include "engine/pipeline/plugin_host/diagnose_registry.h"
+#include "engine/pipeline/plugin_host/file_mapper_registry.h"
 #include "engine/core/events/event_bus.h"
 #include "engine/core/log/logger.h"
 #include "engine/mod/model/mod.h"
@@ -1059,6 +1060,14 @@ static void cb_v2_register_file_mapper(GmmRegistrationCtxV2* ctx,
     m.user_data = user_data;
     bridge->current_plugin->file_mappers.push_back(std::move(m));
 
+    // Also register into the process-wide FileMapperRegistry so the deploy
+    // pipeline can aggregate virtual file overlays across all plugins via
+    // FileMapperRegistry::instance().get_mappings(game_id). The registry stores
+    // the raw GmmFileMapperFn + user_data and drops it on unload (clear_plugin),
+    // so the pointer never outlives the .so that owns fn.
+    FileMapperRegistry::instance().register_mapper(
+        gid, fn, user_data, bridge->current_plugin->path);
+
     Logger::instance().debug("Plugin registered v2 file mapper for game=" + gid);
 }
 
@@ -1526,6 +1535,9 @@ void PluginLoader::unload_all() {
         // Clear v2 diagnose providers registered by this plugin so the
         // DiagnoseRegistry never holds a dangling function pointer.
         DiagnoseRegistry::instance().clear_plugin(p.path);
+        // Clear v2 file mappers registered by this plugin so the
+        // FileMapperRegistry never holds a dangling function pointer.
+        FileMapperRegistry::instance().clear_plugin(p.path);
         if (p.handle) {
             dlclose(p.handle);
             p.handle = nullptr;
