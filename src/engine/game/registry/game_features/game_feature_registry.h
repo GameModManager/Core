@@ -71,10 +71,18 @@ public:
     // Typed resolve for any feature class exposing a static type_key(): the
     // highest-priority registered feature of T's type, else nullptr. E.g.
     // resolve_feature<ScriptExtenderFeature>(game_id).
+    //
+    // Wildcard fallback: if no feature is registered for the exact game_id,
+    // retry with the empty game_id. Features registered under the empty
+    // game_id are global / non-game-specific (e.g. a file-format animation
+    // parser that applies to every game), so they are returned when no
+    // game-specific feature exists. This is what lets a generic plugin such as
+    // Anm2Support serve any game without being re-registered per game.
     template <class T>
     [[nodiscard]] std::shared_ptr<const T> resolve_feature(
         const std::string& game_id) const {
         auto f = resolve(game_id, T::type_key());
+        if (!f) f = resolve("", T::type_key());  // global / wildcard fallback
         return std::dynamic_pointer_cast<const T>(f);
     }
 

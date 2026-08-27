@@ -253,9 +253,14 @@ static void cb_register_animation_parser(GmmRegistrationCtx* ctx,
     auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
     if (!bridge || !bridge->current_plugin) return;
 
-    std::string gid = game_id ? game_id : bridge->current_plugin->game_id;
-    if (gid.empty() || !fn) {
-        Logger::instance().warn("Animation parser registered with empty game_id or null fn");
+    // A NULL game_id means the parser is non-game-specific (file-format based,
+    // applies to every game) and is registered under the empty/global game_id.
+    // This is what lets a generic plugin such as Anm2Support serve any game
+    // without being re-registered per game. An explicit game_id scopes the
+    // parser to that one game (and overrides any global parser for it).
+    std::string gid = game_id ? game_id : "";
+    if (!fn) {
+        Logger::instance().warn("Animation parser registered with null fn");
         return;
     }
 

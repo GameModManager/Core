@@ -44,6 +44,11 @@ public:
     void set_background_color(const QString& color);
     void set_border_color(const QString& color);
 
+    // Game id used to resolve the animation parser from the registry. Mirrors
+    // PreviewWindow::set_game_id(): when empty, the global (non-game-specific)
+    // parser is used via the registry's wildcard fallback.
+    void set_game_id(const std::string& id) { game_id_ = id; }
+
 protected:
     void paintEvent(QPaintEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
@@ -77,6 +82,9 @@ private:
     QTimer debounce_timer_;
     QString pending_path_;
     QPoint pending_pos_;
+
+    // Game id used to resolve the animation parser (empty = global/wildcard).
+    std::string game_id_;
 
     // Static checker cache - lazy-initialized in get_checker_pixmap()
     // (not static members: QPixmap requires QApplication at construction time)
