@@ -514,6 +514,11 @@ static int cb_fomod_wizard(GmmModHandle mod,
     return 1;
 }
 
+/* v2 wrapper: casts void* back to GmmModHandle for the v1 cb_fomod_wizard */
+static int cb_fomod_wizard_v2(void* mod, char* out_json, size_t out_capacity) {
+    return cb_fomod_wizard(static_cast<GmmModHandle>(mod), out_json, out_capacity);
+}
+
 static void cb_register_stage_claim(GmmRegistrationCtx* ctx,
                                      const char* stage_name,
                                      GmmStageFn fn,
@@ -1508,7 +1513,7 @@ bool PluginLoader::load_plugin(const std::string& path) {
         ctx.register_category = cb_v2_register_category;
         ctx.register_categories = cb_v2_register_categories;
         ctx.register_tab = cb_v2_register_tab;
-        ctx.host_ui.fomod_wizard = cb_fomod_wizard;
+        ctx.host_ui.fomod_wizard = cb_fomod_wizard_v2;
 
         register_fn(&ctx);
 
