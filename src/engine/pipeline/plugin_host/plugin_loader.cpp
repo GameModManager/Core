@@ -1310,6 +1310,132 @@ static void cb_v2_register_save_parser(GmmRegistrationCtxV2* ctx,
     Logger::instance().debug("Plugin registered v2 save parser for game=" + gid);
 }
 
+static void cb_v2_register_animation_parser(GmmRegistrationCtxV2* ctx,
+                                            const char* game_id,
+                                            const char* file_extension,
+                                            GmmAnimationParserFn fn,
+                                            int priority,
+                                            void* user_data) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge || !bridge->current_plugin) return;
+
+    // A NULL game_id means the parser is non-game-specific (file-format based,
+    // applies to every game) and is registered under the empty/global game_id.
+    // This is what lets a generic plugin such as Anm2Support serve any game
+    // without being re-registered per game. An explicit game_id scopes the
+    // parser to that one game (and overrides any global parser for it).
+    std::string gid = game_id ? game_id : "";
+    if (!fn) {
+        Logger::instance().warn("Animation parser registered with null fn");
+        return;
+    }
+
+    std::string source = bridge->current_plugin->path;
+    auto feature = std::make_shared<AnimationParserFeature>(
+        [fn, user_data](const std::string& file_path,
+                        const std::string& base_dir)
+            -> std::optional<AnimationParserFeature::AnimationData> {
+            GmmAnimationDataC c_out = {};
+            if (!fn(file_path.c_str(), base_dir.c_str(), &c_out, user_data)) {
+                return std::nullopt;
+            }
+            AnimationParserFeature::AnimationData data;
+            data.fps = c_out.fps;
+            data.canvas_width = c_out.canvas_width;
+            data.canvas_height = c_out.canvas_height;
+            for (size_t fi = 0; fi < c_out.frame_count; ++fi) {
+                auto& cf = c_out.frames[fi];
+                AnimationParserFeature::Frame frame;
+                frame.delay_ms = cf.delay_ms;
+                for (size_t li = 0; li < cf.layer_count; ++li) {
+                    auto& cl = cf.layers[li];
+                    AnimationParserFeature::LayerItem layer;
+                    layer.x = cl.x;
+                    layer.y = cl.y;
+                    layer.width = cl.width;
+                    layer.height = cl.height;
+                    if (cl.rgba_pixels && cl.pixel_count > 0) {
+                        layer.rgba_pixels.assign(cl.rgba_pixels,
+                            cl.rgba_pixels + cl.pixel_count);
+                        free(cl.rgba_pixels);
+                    }
+                    frame.layers.push_back(std::move(layer));
+                }
+                data.frames.push_back(std::move(frame));
+                free(cf.layers);
+            }
+            free(c_out.frames);
+            return data;
+        });
+
+    GameFeatureRegistry::instance().register_feature(
+        gid, "animation_parser", priority, std::move(feature), source);
+    Logger::instance().debug("Plugin registered v2 animation parser for game=" + gid);
+}
+
+static void cb_v2_register_category(GmmRegistrationCtxV2* ctx,
+                                    const char* category) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge || !bridge->current_plugin) return;
+
+    if (category) bridge->current_plugin->category = category;
+}
+
+static void cb_v2_register_categories(GmmRegistrationCtxV2* ctx, const int* ids,
+                                      const char* const* names,
+                                      const int* parent_ids, size_t count) {
+    if (!ids || !names || count == 0) return;
+
+    CategoryFactory::instance().merge(ids, names, parent_ids, count);
+
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (bridge && bridge->current_plugin) {
+        Logger::instance().debug(
+            "Plugin registered " + std::to_string(count) +
+            " categories (plugin=" + bridge->current_plugin->game_id + ")");
+    }
+}
+
+static void cb_v2_register_tab(GmmRegistrationCtxV2* ctx,
+                               const char* capability,
+                               const char* display_name,
+                               const char* data_path,
+                               const char* description,
+                               const char* protocol_handler,
+                               const char* website_domain,
+                               const char* supported_platforms,
+                               const char* insert_before,
+                               const char* insert_after) {
+    auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
+    if (!bridge || !bridge->current_plugin) return;
+
+    CapabilityInfo info;
+    info.game_id = bridge->current_plugin->game_id;
+    info.capability = capability ? capability : "";
+    info.display_name = display_name ? display_name : capability ? capability : "";
+    info.data_path = data_path ? data_path : "";
+    info.description = description ? description : "";
+    info.protocol_handler = protocol_handler ? protocol_handler : "";
+    info.website_domain = website_domain ? website_domain : "";
+    info.insert_before = insert_before ? insert_before : "";
+    info.insert_after = insert_after ? insert_after : "";
+
+    // Parse comma-separated platforms
+    if (supported_platforms) {
+        std::string platforms_str = supported_platforms;
+        size_t pos = 0;
+        while ((pos = platforms_str.find(',')) != std::string::npos) {
+            info.supported_platforms.push_back(platforms_str.substr(0, pos));
+            platforms_str.erase(0, pos + 1);
+        }
+        if (!platforms_str.empty()) {
+            info.supported_platforms.push_back(platforms_str);
+        }
+    }
+
+    bridge->loader->capabilities().register_capability(info);
+}
+
 PluginLoader::~PluginLoader() {
     unload_all();
 }
@@ -1442,6 +1568,11 @@ bool PluginLoader::load_plugin(const std::string& path) {
         ctx.register_tool = cb_v2_register_tool;
         ctx.register_modpage = cb_v2_register_modpage;
         ctx.register_save_parser = cb_v2_register_save_parser;
+        ctx.register_animation_parser = cb_v2_register_animation_parser;
+        ctx.register_category = cb_v2_register_category;
+        ctx.register_categories = cb_v2_register_categories;
+        ctx.register_tab = cb_v2_register_tab;
+        ctx.host_ui.fomod_wizard = cb_fomod_wizard;
 
         register_fn(&ctx);
 
