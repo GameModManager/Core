@@ -2127,6 +2127,7 @@ void ModListController::on_data_preview(const QString &file_path,
                                         const QStringList &provider_names) {
   if (!w_->preview_window_)
     w_->preview_window_ = new ui::preview::PreviewWindow(w_);
+  w_->preview_window_->set_game_id(w_->current_game_id_);
   w_->preview_window_->show_file(file_path, provider_paths, provider_names);
   w_->preview_window_->show();
   w_->preview_window_->raise();
