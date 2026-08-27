@@ -117,7 +117,7 @@ void sort_dirs_first(QTreeWidgetItem* parent) {
 // formats PreviewWindow can render (images + text).
 static bool can_preview(const QString& path) {
     const QString ext = QFileInfo(path).suffix().toLower();
-    static const QStringList image_exts = {"png", "jpg", "jpeg", "webp", "bmp", "gif"};
+    static const QStringList image_exts = {"png", "jpg", "jpeg", "webp", "bmp", "gif", "anm2"};
     static const QStringList text_exts = {"txt", "ini", "cfg", "log", "json", "xml", "meta", "md"};
     return image_exts.contains(ext) || text_exts.contains(ext);
 }
