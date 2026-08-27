@@ -243,6 +243,15 @@ static ScanConfig make_scan_config(const GameKnowledge &knowledge,
   cfg.valid_exts = split_csv(knowledge.get(game_id, "mod_valid_exts", ""));
 
   cfg.ignored = split_csv(ignored_csv);
+  // Game-registered vanilla directories (e.g. Scripts/, Meshes/) that must
+  // not appear as mods.  The "ignored_dirs" hook is a CSV of folder names
+  // the engine should skip during directory scanning — same semantics as
+  // ignored_files but scoped to subdirectories of the mods dir.
+  auto ignored_dirs = split_csv(knowledge.get(game_id, "ignored_dirs", ""));
+  for (auto &d : ignored_dirs) {
+    if (!should_ignore(d, cfg.ignored))
+      cfg.ignored.push_back(std::move(d));
+  }
   // Steam Workshop tag → category mapping (optional per-game hook)
   cfg.workshop_tag_categories =
       knowledge.get(game_id, "workshop_tag_categories", "");
@@ -486,20 +495,7 @@ scan_entry(const std::filesystem::path &entry_path, const ScanConfig &cfg,
     }
   }
   mod.no_metadata = mod.no_metadata && !mod.validated;
-
-  // Whitelist approach (MO2 parity): folders with metadata are ALWAYS listed
-  // (managed mods), but flagged if content looks wrong. Folders WITHOUT
-  // metadata must contain recognized mod content to be listed — this
-  // naturally filters out vanilla game directories (Scripts/, SKSE/, etc.).
-  if (!mod.no_metadata) {
-    // Has metadata — always list, but flag invalid content
-    mod.invalid_data = !mod.validated && !content_looks_valid(cfg, entry_path);
-  } else {
-    // No metadata — only list if folder contains recognized mod content
-    if (!content_looks_valid(cfg, entry_path)) {
-      return std::nullopt; // Not a mod, don't list
-    }
-  }
+  mod.invalid_data = !mod.validated && !content_looks_valid(cfg, entry_path);
 
   // Check for disable sentinel
   if (!cfg.disable_file.empty()) {
