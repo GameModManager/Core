@@ -66,15 +66,6 @@ static std::vector<std::string> split_csv(const std::string &s) {
   return result;
 }
 
-static bool should_ignore(const std::string &name,
-                          const std::vector<std::string> &ignored) {
-  for (const auto &ig : ignored) {
-    if (name == ig)
-      return true;
-  }
-  return false;
-}
-
 static bool ci_equals(const std::string &a, const std::string &b) {
   if (a.size() != b.size())
     return false;
@@ -84,6 +75,15 @@ static bool ci_equals(const std::string &a, const std::string &b) {
       return false;
   }
   return true;
+}
+
+static bool should_ignore(const std::string &name,
+                          const std::vector<std::string> &ignored) {
+  for (const auto &ig : ignored) {
+    if (ci_equals(name, ig))
+      return true;
+  }
+  return false;
 }
 
 // Folder timestamps for the mod list's Installation/Changed columns. MO2's
@@ -184,14 +184,13 @@ struct ScanConfig {
 
 // MO2's GamebryoModDataChecker::dataLooksValid analogue: a folder has valid
 // game data if it contains any top-level directory named in mod_valid_dirs,
-// any top-level file whose extension is in mod_valid_exts, or the game's own
-// metadata file (Isaac mods are identified by metadata.xml; MO2's Bethesda
-// checker accepts meta.ini via the "ini" extension rule). No allow-lists
-// registered → nothing can look invalid. Case-insensitive, mirroring the
-// Windows filesystem games shipped on (Skyrim registers case_sensitive=false).
+// or the game's own metadata file (Isaac mods are identified by
+// metadata.xml). No allow-lists registered → nothing can look invalid.
+// Case-insensitive, mirroring the Windows filesystem games shipped on (Skyrim
+// registers case_sensitive=false).
 static bool content_looks_valid(const ScanConfig &cfg,
                                 const std::filesystem::path &entry_path) {
-  if (cfg.valid_dirs.empty() && cfg.valid_exts.empty())
+  if (cfg.valid_dirs.empty())
     return true;
 
   if (!cfg.metadata_file.empty() &&
@@ -205,14 +204,6 @@ static bool content_looks_valid(const ScanConfig &cfg,
     if (entry.is_directory(ec)) {
       for (const auto &d : cfg.valid_dirs)
         if (ci_equals(name, d))
-          return true;
-    } else if (entry.is_regular_file(ec)) {
-      auto dot = name.find_last_of('.');
-      if (dot == std::string::npos)
-        continue;
-      auto ext = name.substr(dot + 1);
-      for (const auto &e : cfg.valid_exts)
-        if (ci_equals(ext, e))
           return true;
     }
   }
