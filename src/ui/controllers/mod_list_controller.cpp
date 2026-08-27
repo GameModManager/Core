@@ -1493,14 +1493,20 @@ void ModListController::apply_profile_mod_states() {
   // Re-apply the on-disk disable.it marker: the profile is the per-profile
   // source of truth, but the global disable sentinel always wins. Without
   // this, a new instance (empty profile) would show all mods enabled even
-  // if they have a disable.it file.
+  // if they have a disable.it file.  Check both the instance mods dir and
+  // the game's native mods dir (e.g. Isaac workshop mods live in
+  // game_dir/mods/, not <instance>/mods/).
   const std::string disable_file =
       engine::disable_mechanism_for(*w_->knowledge_, w_->current_game_id_);
   if (!disable_file.empty()) {
-    const auto mods_dir = w_->mods_dir_path();
+    const auto inst_mods = w_->mods_dir_path();
+    const auto game_mods = w_->current_game_mods_dir();
     for (const auto &pm : w_->active_profile_->mods()) {
       std::error_code ec;
-      if (std::filesystem::exists(mods_dir / pm.mod_id / disable_file, ec)) {
+      const bool disabled =
+          std::filesystem::exists(inst_mods / pm.mod_id / disable_file, ec) ||
+          std::filesystem::exists(game_mods / pm.mod_id / disable_file, ec);
+      if (disabled) {
         w_->mod_model_->set_mod_enabled(QString::fromStdString(pm.mod_id),
                                         false);
       }
