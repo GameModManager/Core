@@ -1,6 +1,7 @@
 #include "engine/core/events/event_bus.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 
 namespace engine {
@@ -30,8 +31,21 @@ bool EventBus::unsubscribe(uint64_t token) {
 }
 
 void EventBus::dispatch(const std::string& event_id,
-                    const std::string& payload_json) const {
+                        const std::string& payload_json) const {
     if (event_id.empty()) return;
+
+    // Record into the history ring buffer (always, even with no subscribers) so
+    // viewers can show recent activity. Bounded to kMaxHistory entries.
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        history_.push_back(
+            {event_id, payload_json, std::chrono::system_clock::now()});
+        if (history_.size() > kMaxHistory) {
+            const size_t excess = history_.size() - kMaxHistory;
+            history_.erase(history_.begin(), history_.begin() + excess);
+        }
+    }
+
     // Copy the matching handlers under the lock, then invoke each OUTSIDE it:
     // a handler that re-emits or unsubscribes must never deadlock, and plugin
     // code must never run under a bus lock.
@@ -67,6 +81,12 @@ size_t EventBus::subscriber_count(const std::string& event_id) const {
     for (const auto& s : subs_)
         if (s.event_id == event_id) ++n;
     return n;
+}
+
+std::vector<EventRecord> EventBus::recent_events(size_t max) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (max == 0 || max >= history_.size()) return history_;
+    return std::vector<EventRecord>(history_.end() - max, history_.end());
 }
 
 namespace {

@@ -17,6 +17,7 @@
 //   - Any thread may emit (pipeline worker, scan worker, main thread); the bus
 //     never blocks the UI — emission is a vector copy + direct calls.
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <mutex>
@@ -49,6 +50,15 @@ inline constexpr const char* kGameLaunched = "game_launched";
 inline constexpr const char* kGameFinished = "game_finished";
 }  // namespace events
 
+// A single recorded event, retained in a bounded ring buffer so tooling (e.g.
+// the Event Bus Viewer plugin) can show recent bus activity without having
+// subscribed to every event.
+struct EventRecord {
+    std::string event_id;
+    std::string payload;
+    std::chrono::system_clock::time_point timestamp;
+};
+
 class EventBus {
 public:
     using Handler = std::function<void(const std::string& event_id,
@@ -80,6 +90,12 @@ public:
 
     [[nodiscard]] size_t subscriber_count(const std::string& event_id) const;
 
+    // Recent dispatched events, most-recent last, capped at kMaxHistory. Used by
+    // tooling such as the Event Bus Viewer plugin.
+    static constexpr size_t kMaxHistory = 500;
+    [[nodiscard]] std::vector<EventRecord> recent_events(
+        size_t max = kMaxHistory) const;
+
 private:
     EventBus() = default;
 
@@ -91,6 +107,7 @@ private:
     };
 
     std::vector<Subscription> subs_;
+    mutable std::vector<EventRecord> history_;  // guarded by mutex_
     mutable std::mutex mutex_;
     uint64_t next_token_ = 1;
 };
