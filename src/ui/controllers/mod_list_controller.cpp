@@ -613,7 +613,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   // look (same as the plugins-tab counter); colors come from the palette.
   w_->mod_count_enabled_ = new QLCDNumber(w_);
   w_->mod_count_enabled_->setObjectName("mo2CounterLabel");
-  w_->mod_count_enabled_->setDigitCount(5);
+  w_->mod_count_enabled_->setDigitCount(4);
   w_->mod_count_enabled_->display(0);
 
   auto *count_row = new QHBoxLayout;
