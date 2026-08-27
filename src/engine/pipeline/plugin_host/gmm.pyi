@@ -118,12 +118,20 @@ class RegistrationContext:
         """
         ...
 
-    def register_diagnostics(self, fn: Callable[[str], str | list[str]]) -> None:
-        """Register a diagnostics provider for this plugin's game.
+    def register_diagnostics(
+        self, game_id: str = "", fn: Callable[[], str | list[str] | list[object]] | None = None
+    ) -> None:
+        """Register a diagnostics provider (IPluginDiagnose, v2).
 
-        Called once per plugin on every Plugins-tab refresh with the plugin's
-        file name; return a message string or list of messages to append to
-        that plugin's hover tooltip (below an <hr> separator).
+        fn() is called with no arguments and must return either:
+          - a string / list[str] of short problem messages, or
+          - a list of problems, each a (short, full) tuple or a dict with keys
+            "short_description", "full_description", "has_guided_fix" (int 0/1),
+            and optionally "start_guided_fix" (a callable invoked to fix it).
+
+        game_id scopes the provider to one game ("" = this plugin's game).
+        Registered into both the v1 DiagnosticsRegistry (Plugins-tab tooltip)
+        and the v2 DiagnoseRegistry.
         """
         ...
 
@@ -159,12 +167,29 @@ class RegistrationContext:
         """
         ...
 
-    def register_order_encoding_hook(self) -> None:
-        """Register a load-order writer (plugins.txt / metadata.xml style)."""
+    def register_order_encoding(self, fn: Callable[[list[str], str], int]) -> None:
+        """Register a load-order writer (IPluginGame, v2).
+
+        fn(ordered_mod_ids: list[str], output_path: str) -> int — write the
+        game's load-order file (plugins.txt / metadata.xml, ...). Return 1 on
+        success, 0 on failure. Registered into the OrderEncodingRegistry; the
+        pipeline calls it when writing load order instead of the built-in hook.
+        """
         ...
 
-    def register_deploy_strategy(self) -> None:
-        """Register a custom deployment strategy (symlink / hardlink / vfs)."""
+    def register_deploy_strategy(
+        self,
+        deploy_fn: Callable[[str, str], int],
+        remove_fn: Callable[[str], int] | None = None,
+    ) -> None:
+        """Register a custom deployment strategy (IPluginGame, v2).
+
+        deploy_fn(source: str, target: str) -> int places a single mod file
+        into the game data directory; remove_fn(target: str) -> int removes it.
+        Return 1 on success, 0 on failure. Registered into the
+        DeployStrategyRegistry; the pipeline uses it instead of the built-in
+        DeploymentStrategy.
+        """
         ...
 
     def register_image_diff(self) -> None:
@@ -174,10 +199,118 @@ class RegistrationContext:
         """
         ...
 
-    def register_tool(self, tool_id: str, kind: str) -> None:
-        """Register an external tool (LOOT, BodySlide, etc.).
+    def register_tool(
+        self, tool_id: str, kind: str, fn: Callable[[], None] | None = None
+    ) -> None:
+        """Register an external tool (IPluginTool, v2).
 
-        kind: "advisory" (output feeds into pipeline) or "workshop" (user launches directly).
+        kind: "advisory" (output feeds into pipeline) or "workshop" (user
+        launches directly). fn, if given, is invoked when the tool runs
+        (registered into the v2 PluginToolRegistry and the Tools menu).
+        """
+        ...
+
+    def register_requirements(
+        self, fn: Callable[[], list[tuple[str, str, str]]]
+    ) -> None:
+        """Declare plugin requirements (IPlugin requirements, v2).
+
+        fn() -> list of (type, name, message) tuples, where type is one of
+        "plugin", "game", "diagnose". The loader evaluates them once all plugins
+        are loaded and surfaces any that are unmet.
+        """
+        ...
+
+    def register_file_mapper(
+        self, game_id: str = "", fn: Callable[[], list[tuple[str, str]]] = ...
+    ) -> None:
+        """Register a virtual file overlay mapper (IPluginFileMapper, v2).
+
+        fn() -> list of (source, target) virtual-path pairs that the deploy
+        pipeline turns into virtual file overlays. game_id scopes the mapper
+        ("" = this plugin's game). Registered into the FileMapperRegistry.
+        """
+        ...
+
+    def register_save_parser(
+        self,
+        game_id: str = "",
+        fn: Callable[[str, str], dict] | None = None,
+        priority: int = 0,
+    ) -> None:
+        """Register a save-game parser (IPluginSaveParser, v2).
+
+        fn(path: str, game_id: str) -> dict | None — parse a save file and
+        return a dict with keys file_path, game_id, creation_time (int),
+        pc_name, pc_level (int), pc_location, save_number (int), plugins
+        (list[str]), light_plugins (list[str]). Return None to decline. Higher
+        priority wins on resolve. Registered into the SaveParserRegistry.
+        """
+        ...
+
+    def register_hook(
+        self,
+        tag: str,
+        data: str = "",
+        fn: Callable[[str, str], None] | None = None,
+        priority: int = 0,
+    ) -> None:
+        """Register a behavior-injection hook (IPluginGame, v2).
+
+        fn(tag: str, data: str) is fired at pipeline points (before_deploy,
+        after_scan, conflict_resolution) in priority order. Also stored as game
+        knowledge (data payload). Registered into the v2 HookRegistry.
+        """
+        ...
+
+    def register_preview(
+        self, extension: str, fn: Callable[[str], int]
+    ) -> None:
+        """Register a file preview generator (IPluginPreview, v2).
+
+        fn(file_path: str) -> int returns the raw QWidget* (e.g. obtained via
+        shiboken6.getCppPointer(widget)[0] when building the widget with
+        PySide6). The engine embeds the widget in the preview panel exactly like
+        a C plugin. Registered into the UI PreviewRegistry.
+        """
+        ...
+
+    def register_modpage(
+        self, url: str, fn: Callable[[str, str], int]
+    ) -> None:
+        """Register a ModPage download handler (IPluginModPage, v2).
+
+        fn(url: str, output_path: str) -> int downloads the page/archive to
+        output_path. Return 1 on success, 0 on failure.
+        """
+        ...
+
+    def register_sort_provider(
+        self, fn: Callable[[list[str]], list[str]]
+    ) -> None:
+        """Register a load-order sort provider (IPluginGame, v2).
+
+        fn(mod_folders: list[str]) -> list[str] returns the sorted mod folder
+        names. Registered into the SortRegistry for this plugin's game.
+        """
+        ...
+
+    def register_game(
+        self,
+        game_id: str,
+        display_name: str = "",
+        steam_appid: int = 0,
+        nexus_domain: str = "",
+        gog_id: str = "",
+        epic_namespace: str = "",
+        exe_windows: str = "",
+        exe_linux: str = "",
+        exe_macos: str = "",
+    ) -> None:
+        """Register this plugin as a game module (IPluginGame identity, v2).
+
+        Sets the game id, display name, and store/app ids. Marks the plugin as
+        providing game support (so it can back an instance).
         """
         ...
 

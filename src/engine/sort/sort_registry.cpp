@@ -27,4 +27,8 @@ SortProvider* SortRegistry::get_provider(const std::string& game_id) const {
     return nullptr;
 }
 
+void SortRegistry::clear() {
+    providers_.clear();
+}
+
 }  // namespace engine
