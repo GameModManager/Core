@@ -14,6 +14,8 @@
 #include "engine/game/saves/save_reader.h"
 #include "engine/sort/sort_registry.h"
 #include "engine/sort/abi_sort_provider.h"
+#include "engine/pipeline/plugin_host/order_encoding_registry.h"
+#include "engine/pipeline/plugin_host/deploy_strategy_registry.h"
 
 #include "gmm_abi_v1.h"
 #include "gmm_abi_v2.h"
@@ -553,11 +555,11 @@ static void cb_register_wildcard_stage_claim(GmmRegistrationCtx* ctx,
 }
 
 static void cb_register_hook(GmmRegistrationCtx* ctx,
-                              const char* tag,
-                              const char* data,
-                              GmmHookFn fn,
-                              int priority,
-                              void* user_data) {
+                               const char* tag,
+                               const char* data,
+                               GmmHookFn fn,
+                               int priority,
+                               void* user_data) {
     auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
     if (!bridge || !bridge->current_plugin) return;
 
@@ -568,9 +570,20 @@ static void cb_register_hook(GmmRegistrationCtx* ctx,
     // Store as game knowledge - key=tag, value=data
     bridge->loader->knowledge().set(game_id, hook_tag, hook_data);
 
+    // Register the hook function into HookRegistry so the engine can fire
+    // it at pipeline points (before_deploy, after_scan, conflict_resolution).
+    // Note: GmmHookFn expects void* data, so we const_cast the string data.
+    bridge->loader->hook_registry().register_hook(
+        hook_tag,
+        [fn, user_data, hook_tag, hook_data](Mod& mod, PipelineContext& ctx) {
+            (void)mod; (void)ctx;
+            if (fn) fn(hook_tag.c_str(), const_cast<char*>(hook_data.c_str()), user_data);
+        },
+        priority,
+        bridge->current_plugin->path);
+
     Logger::instance().debug("Plugin registered knowledge: " + hook_tag +
         " (game=" + game_id + ", data=" + hook_data + ")");
-    (void)fn; (void)priority; (void)user_data;
 }
 
 static void cb_register_order_encoding(GmmRegistrationCtx* ctx,
@@ -952,32 +965,65 @@ static void cb_v2_register_hook(GmmRegistrationCtxV2* ctx,
     std::string hook_tag = tag ? tag : "";
     std::string hook_data = data ? data : "";
 
+    // Store as game knowledge (data payload) — the v1 path's behaviour.
     bridge->loader->knowledge().set(game_id, hook_tag, hook_data);
+
+    // Register the hook function into the instance-based engine::HookRegistry
+    // (v1-style) so the engine can fire it at pipeline points
+    // (before_deploy, after_scan, conflict_resolution) through the existing
+    // fire() path. The hook fires with the tag + data + user_data the plugin
+    // provided.
+    bridge->loader->hook_registry().register_hook(
+        hook_tag,
+        [fn, user_data, hook_tag, hook_data](Mod& mod, PipelineContext& ctx) {
+            (void)mod; (void)ctx;
+            if (fn) fn(hook_tag.c_str(), (void*)hook_data.data(), user_data);
+        },
+        priority,
+        bridge->current_plugin->path);
 
     Logger::instance().debug("Plugin registered knowledge: " + hook_tag +
         " (game=" + game_id + ", data=" + hook_data + ")");
-    (void)fn; (void)priority; (void)user_data;
 }
 
 static void cb_v2_register_order_encoding(GmmRegistrationCtxV2* ctx,
-                                          GmmOrderEncodingFnV2 fn,
-                                          void* user_data) {
+                                            GmmOrderEncodingFnV2 fn,
+                                            void* user_data) {
     auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
-    if (!bridge) return;
+    if (!bridge || !bridge->current_plugin) return;
 
-    Logger::instance().debug("Plugin registered v2 order encoding hook");
-    (void)fn; (void)user_data;
+    const std::string& game_id = bridge->current_plugin->game_id;
+    bridge->current_plugin->order_encoding_fn = fn;
+    bridge->current_plugin->order_encoding_user_data = user_data;
+
+    // Store the callback in the order-encoding registry so the pipeline can
+    // retrieve and call it when writing load-order files (plugins.txt, ...).
+    OrderEncodingRegistry::instance().register_provider(
+        game_id, fn, user_data, bridge->current_plugin->path);
+
+    Logger::instance().debug("Plugin registered v2 order encoding hook (game=" +
+        game_id + ")");
 }
 
 static void cb_v2_register_deploy_strategy(GmmRegistrationCtxV2* ctx,
-                                           GmmDeployFnV2 deploy_fn,
-                                           GmmRemoveFnV2 remove_fn,
-                                           void* user_data) {
+                                             GmmDeployFnV2 deploy_fn,
+                                             GmmRemoveFnV2 remove_fn,
+                                             void* user_data) {
     auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
-    if (!bridge) return;
+    if (!bridge || !bridge->current_plugin) return;
 
-    Logger::instance().debug("Plugin registered v2 deploy strategy");
-    (void)deploy_fn; (void)remove_fn; (void)user_data;
+    const std::string& game_id = bridge->current_plugin->game_id;
+    bridge->current_plugin->deploy_fn = deploy_fn;
+    bridge->current_plugin->remove_fn = remove_fn;
+    bridge->current_plugin->deploy_user_data = user_data;
+
+    // Store the callbacks in the deploy-strategy registry so the pipeline can
+    // retrieve and call them instead of the built-in DeploymentStrategy.
+    DeployStrategyRegistry::instance().register_provider(
+        game_id, deploy_fn, remove_fn, user_data, bridge->current_plugin->path);
+
+    Logger::instance().debug("Plugin registered v2 deploy strategy (game=" +
+        game_id + ")");
 }
 
 static void cb_v2_register_file_mapper(GmmRegistrationCtxV2* ctx,
@@ -1439,6 +1485,12 @@ void PluginLoader::unload_all() {
         // Drop this plugin's event subscriptions BEFORE dlclose so no bus
         // callback can ever run against unloaded .so code.
         EventBus::instance().clear_source(p.path);
+        // Clear hooks registered by this plugin.
+        hook_registry_.clear_plugin_hooks(p.path);
+        // Clear v2 order-encoding / deploy-strategy callbacks registered by
+        // this plugin (dangling after dlclose).
+        OrderEncodingRegistry::instance().clear_plugin(p.path);
+        DeployStrategyRegistry::instance().clear_plugin(p.path);
         if (p.handle) {
             dlclose(p.handle);
             p.handle = nullptr;
