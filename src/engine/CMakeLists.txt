@@ -76,6 +76,7 @@ set(ENGINE_SOURCES
     pipeline/plugin_host/plugin_loader.cpp
     pipeline/plugin_host/category_factory.cpp
     pipeline/plugin_host/diagnostics_registry.cpp
+    pipeline/plugin_host/diagnose_registry.cpp
     pipeline/plugin_host/order_encoding_registry.cpp
     pipeline/plugin_host/deploy_strategy_registry.cpp
     pipeline/plugin_host/hook_registry.cpp

@@ -2,6 +2,7 @@
 #include "engine/pipeline/plugin_host/category_factory.h"
 #include "engine/pipeline/plugin_host/python_loader.h"
 #include "engine/pipeline/plugin_host/diagnostics_registry.h"
+#include "engine/pipeline/plugin_host/diagnose_registry.h"
 #include "engine/core/events/event_bus.h"
 #include "engine/core/log/logger.h"
 #include "engine/mod/model/mod.h"
@@ -851,6 +852,11 @@ static void cb_v2_register_diagnostics(GmmRegistrationCtxV2* ctx,
     d.user_data = user_data;
     bridge->current_plugin->diagnostics_v2.push_back(std::move(d));
 
+    // Register into the process-wide v2 DiagnoseRegistry so the engine can
+    // collect problems for this game via DiagnoseRegistry::collect_diagnostics.
+    DiagnoseRegistry::instance().register_diagnostics(
+        gid, fn, user_data, bridge->current_plugin->path);
+
     Logger::instance().debug("Plugin registered v2 diagnostics for game=" + gid);
 }
 
@@ -1517,6 +1523,9 @@ void PluginLoader::unload_all() {
         // Clear v2 preview generators registered by this plugin so the
         // PreviewRegistry never holds a dangling function pointer.
         ui::preview::PreviewRegistry::instance().clear_plugin(p.path);
+        // Clear v2 diagnose providers registered by this plugin so the
+        // DiagnoseRegistry never holds a dangling function pointer.
+        DiagnoseRegistry::instance().clear_plugin(p.path);
         if (p.handle) {
             dlclose(p.handle);
             p.handle = nullptr;
