@@ -22,6 +22,7 @@
 #include "engine/pipeline/plugin_host/hook_registry.h"
 #include "engine/pipeline/plugin_host/plugin_settings_registry.h"
 #include "engine/pipeline/plugin_host/save_parser_registry.h"
+#include "engine/pipeline/plugin_host/tool_registry.h"
 
 #include "gmm_abi_v1.h"
 #include "gmm_abi_v2.h"
@@ -1232,6 +1233,14 @@ static void cb_v2_register_tool(GmmRegistrationCtxV2* ctx,
 
     bridge->loader->tool_registry().register_tool(tool);
 
+    // Also register into the v2 IPluginTool registry — the canonical store of
+    // plugin-provided tool callbacks (raw fn + user_data + owning plugin path,
+    // used for unload cleanup). The platform/tools ToolRegistry above drives the
+    // Tools menu; this one is the v2 source of truth.
+    PluginToolRegistry::instance().register_tool(
+        tool.tool_id, kind_str, fn, user_data,
+        bridge->current_plugin->path);
+
     Logger::instance().debug("Plugin registered v2 tool: " + tool.tool_id +
         " (" + kind_str + ") for game=" + tool.game_id);
 }
@@ -1599,6 +1608,9 @@ void PluginLoader::unload_all() {
         // Clear save parsers registered by this plugin so the
         // SaveParserRegistry never holds a dangling ABI function pointer.
         SaveParserRegistry::instance().clear_plugin(p.path);
+        // Clear v2 IPluginTool callbacks registered by this plugin so the
+        // ToolRegistry never holds a dangling function pointer.
+        PluginToolRegistry::instance().clear_plugin(p.path);
         if (p.handle) {
             dlclose(p.handle);
             p.handle = nullptr;
