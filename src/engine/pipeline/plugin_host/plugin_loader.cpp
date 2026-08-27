@@ -21,6 +21,11 @@
 #include "gmm_abi_v1.h"
 #include "gmm_abi_v2.h"
 
+// v2 IPluginPreview backing store. Header-only + Qt-free so the engine can
+// populate it without linking the UI library (keeps gmm_engine Qt-free and
+// avoids an engine->ui link cycle). The UI casts the returned void* to QWidget*.
+#include "ui/preview/preview_registry.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -1142,6 +1147,13 @@ static void cb_v2_register_preview(GmmRegistrationCtxV2* ctx,
     p.user_data = user_data;
     bridge->current_plugin->previews.push_back(std::move(p));
 
+    // Mirror the registration into the UI-side PreviewRegistry so the preview
+    // window can embed the plugin-provided QWidget* for this extension. The
+    // registry stores the opaque fn + user_data; the engine never sees QWidget.
+    ui::preview::PreviewRegistry::instance().register_preview(
+        p.file_extension, fn, info.preview_data, user_data,
+        bridge->current_plugin->path);
+
     Logger::instance().debug("Plugin registered v2 preview for extension=" +
         p.file_extension);
 }
@@ -1502,6 +1514,9 @@ void PluginLoader::unload_all() {
         // this plugin (dangling after dlclose).
         OrderEncodingRegistry::instance().clear_plugin(p.path);
         DeployStrategyRegistry::instance().clear_plugin(p.path);
+        // Clear v2 preview generators registered by this plugin so the
+        // PreviewRegistry never holds a dangling function pointer.
+        ui::preview::PreviewRegistry::instance().clear_plugin(p.path);
         if (p.handle) {
             dlclose(p.handle);
             p.handle = nullptr;

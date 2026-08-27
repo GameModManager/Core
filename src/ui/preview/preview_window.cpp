@@ -1,4 +1,5 @@
 #include "ui/preview/preview_window.h"
+#include "ui/preview/preview_registry.h"
 #include "ui/preview/preview_widget.h"
 
 #include <QFile>
@@ -47,7 +48,9 @@ const QStringList &text_extensions() {
 bool PreviewWindow::supports(const QString &file_path) {
   return has_extension(file_path, image_extensions()) ||
          has_extension(file_path, animation_extensions()) ||
-         has_extension(file_path, text_extensions());
+         has_extension(file_path, text_extensions()) ||
+         ui::preview::PreviewRegistry::instance().has_preview(
+             file_path.toStdString());
 }
 
 PreviewWindow::PreviewWindow(QWidget *parent) : QDialog(parent) {
@@ -119,6 +122,14 @@ PreviewWindow::PreviewWindow(QWidget *parent) : QDialog(parent) {
   unsupported_label_->setAlignment(Qt::AlignCenter);
   unsupported_label_->setEnabled(false);
   stack_->addWidget(unsupported_label_);
+
+  // Plugin-provided preview page (v2 IPluginPreview). A plugin returns a
+  // QWidget* for a registered extension; we embed it here. Created empty and
+  // populated on demand by load_plugin_preview().
+  plugin_page_ = new QWidget(this);
+  plugin_layout_ = new QVBoxLayout(plugin_page_);
+  plugin_layout_->setContentsMargins(0, 0, 0, 0);
+  stack_->addWidget(plugin_page_);
 
   layout->addWidget(stack_, 1);
 
@@ -194,7 +205,8 @@ void PreviewWindow::reload() {
   anm2_frames_.clear();
   anm2_delays_.clear();
   anm2_index_ = 0;
-  if (load_image(path) || load_anm2(path) || load_text(path))
+  if (load_plugin_preview(path) || load_image(path) || load_anm2(path) ||
+      load_text(path))
     return;
   show_unsupported();
 }
@@ -287,12 +299,39 @@ bool PreviewWindow::load_text(const QString &path) {
   return true;
 }
 
+bool PreviewWindow::load_plugin_preview(const QString &path) {
+  // Drop any previously embedded plugin widget before resolving the new file so
+  // a fallback to a built-in preview doesn't leave a stale widget behind.
+  if (plugin_widget_) {
+    plugin_layout_->removeWidget(plugin_widget_);
+    delete plugin_widget_;
+    plugin_widget_ = nullptr;
+  }
+
+  // Ask the v2 IPluginPreview registry for this file's extension. A plugin that
+  // claimed the extension returns a QWidget* (as opaque void*); we embed it.
+  void *w = ui::preview::PreviewRegistry::instance().create_preview(
+      path.toStdString());
+  if (!w)
+    return false;
+
+  plugin_widget_ = reinterpret_cast<QWidget *>(w);
+  plugin_layout_->addWidget(plugin_widget_);
+  stack_->setCurrentWidget(plugin_page_);
+  return true;
+}
+
 void PreviewWindow::show_unsupported() {
   anm2_timer_.stop();
   anm2_frames_.clear();
   anm2_delays_.clear();
   anm2_index_ = 0;
   current_pixmap_ = QPixmap();
+  if (plugin_widget_) {
+    plugin_layout_->removeWidget(plugin_widget_);
+    delete plugin_widget_;
+    plugin_widget_ = nullptr;
+  }
   stack_->setCurrentWidget(unsupported_label_);
 }
 
