@@ -7,11 +7,21 @@ void ToolRegistry::register_tool(const ExternalTool& tool) {
 }
 
 std::vector<ExternalTool> ToolRegistry::tools_for_game(const std::string& game_id) const {
-    auto it = tools_.find(game_id);
-    if (it == tools_.end()) return {};
-
     std::vector<ExternalTool> result;
-    result.reserve(it->second.size());
+
+    // Always include global tools (registered under empty game_id)
+    auto global_it = tools_.find("");
+    if (global_it != tools_.end()) {
+        result.reserve(global_it->second.size());
+        for (const auto& [id, tool] : global_it->second) {
+            result.push_back(tool);
+        }
+    }
+
+    // Add game-specific tools
+    auto it = tools_.find(game_id);
+    if (it == tools_.end()) return result;
+
     for (const auto& [id, tool] : it->second) {
         result.push_back(tool);
     }
