@@ -106,7 +106,24 @@ static void cb_register_identity(GmmRegistrationCtx* ctx,
         bridge->current_plugin->game_display_name = display_name;
     // register_identity is THE game-support marker: only game plugins call it,
     // so game_plugins() / the create-instance list keys off this flag.
-    bridge->current_plugin->game_support = true;
+    // Only the first plugin to register a given game_id gets game_support = true;
+    // a secondary registrant (e.g. a Tool plugin that also calls register_identity
+    // to scope its sort provider) still gets its game_id set but doesn't appear in
+    // the "Create New Instance" game list.
+    const std::string gid = bridge->current_plugin->game_id;
+    bool duplicate = false;
+    if (bridge->loader) {
+        for (const auto& other : bridge->loader->plugins()) {
+            if (&other == bridge->current_plugin) continue;
+            if (other.game_support && other.game_id == gid) {
+                duplicate = true;
+                break;
+            }
+        }
+    }
+    if (!duplicate) {
+        bridge->current_plugin->game_support = true;
+    }
 
     Logger::instance().debug("Plugin registered identity: appid=" +
         std::to_string(steam_appid) +
@@ -924,8 +941,26 @@ static void cb_v2_register_game(GmmRegistrationCtxV2* ctx, GmmGameInfo info) {
     if (info.exe_windows) bridge->current_plugin->exe_windows = info.exe_windows;
     if (info.exe_linux) bridge->current_plugin->exe_linux = info.exe_linux;
     if (info.exe_macos) bridge->current_plugin->exe_macos = info.exe_macos;
+
     // register_game is THE game-support marker for v2 (MO2 IPluginGame parity).
-    bridge->current_plugin->game_support = true;
+    // Only the first plugin to register a given game_id gets game_support = true;
+    // secondary registrants (e.g. a Tool plugin that also calls register_game to
+    // scope its sort provider) still get their game_id set but don't appear in
+    // the "Create New Instance" game list.
+    const std::string gid = info.game_id ? info.game_id : "";
+    bool duplicate = false;
+    if (bridge->loader) {
+        for (const auto& other : bridge->loader->plugins()) {
+            if (&other == bridge->current_plugin) continue;
+            if (other.game_support && other.game_id == gid) {
+                duplicate = true;
+                break;
+            }
+        }
+    }
+    if (!duplicate) {
+        bridge->current_plugin->game_support = true;
+    }
 
     Logger::instance().debug("Plugin registered game: id=" +
         bridge->current_plugin->game_id +
