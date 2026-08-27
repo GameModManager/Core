@@ -21,6 +21,7 @@
 #include "engine/pipeline/plugin_host/deploy_strategy_registry.h"
 #include "engine/pipeline/plugin_host/hook_registry.h"
 #include "engine/pipeline/plugin_host/plugin_settings_registry.h"
+#include "engine/pipeline/plugin_host/save_parser_registry.h"
 
 #include "gmm_abi_v1.h"
 #include "gmm_abi_v2.h"
@@ -238,7 +239,8 @@ static void cb_register_save_parser(GmmRegistrationCtx* ctx,
     }
 
     std::string source = bridge->current_plugin->path;
-    auto feature = std::make_shared<SaveParserFeature>(
+    SaveParserRegistry::instance().register_parser(
+        gid, priority,
         [fn, user_data](const std::filesystem::path& path,
                         const std::string& game_id) -> SaveGame {
             GmmSaveGameC c_out = {};
@@ -266,10 +268,8 @@ static void cb_register_save_parser(GmmRegistrationCtx* ctx,
             free(c_out.pc_name);
             free(c_out.pc_location);
             return out;
-        });
-
-    GameFeatureRegistry::instance().register_feature(
-        gid, "save_parser", priority, std::move(feature), source);
+        },
+        user_data, source);
     Logger::instance().debug("Plugin registered save parser for game=" + gid);
 }
 
@@ -1267,7 +1267,8 @@ static void cb_v2_register_save_parser(GmmRegistrationCtxV2* ctx,
     }
 
     std::string source = bridge->current_plugin->path;
-    auto feature = std::make_shared<SaveParserFeature>(
+    SaveParserRegistry::instance().register_parser(
+        gid, priority,
         [fn, user_data](const std::filesystem::path& path,
                         const std::string& game_id) -> SaveGame {
             GmmSaveDataV2 c_out = {};
@@ -1295,10 +1296,8 @@ static void cb_v2_register_save_parser(GmmRegistrationCtxV2* ctx,
             free(c_out.pc_name);
             free(c_out.pc_location);
             return out;
-        });
-
-    GameFeatureRegistry::instance().register_feature(
-        gid, "save_parser", priority, std::move(feature), source);
+        },
+        user_data, source);
     Logger::instance().debug("Plugin registered v2 save parser for game=" + gid);
 }
 
@@ -1494,30 +1493,32 @@ bool PluginLoader::load_directory(const std::string& dir_path) {
     /* Register built-in save parsers for Skyrim games as fallbacks.
      * If a plugin already registered a parser (same game_id, same or higher
      * priority), the plugin's parser wins. These register at priority 0
-     * (lowest) so any plugin override supersedes them. */
-    if (!GameFeatureRegistry::instance().resolve_feature<SaveParserFeature>("skyrim")) {
-        auto le_parser = std::make_shared<SaveParserFeature>(
-            [](const std::filesystem::path& path, const std::string& game_id) {
+     * (lowest) so any plugin override supersedes them. has_parser() guards
+     * against re-adding on repeated load_directory calls (the builtins are
+     * never cleared on unload, so they persist across reloads). */
+    if (!SaveParserRegistry::instance().has_parser("skyrim")) {
+        SaveParserRegistry::instance().register_parser(
+            "skyrim", 0,
+            [](const std::filesystem::path& path, const std::string&) {
                 return parse_skyrim_save(path);
-            });
-        GameFeatureRegistry::instance().register_feature(
-            "skyrim", "save_parser", 0, le_parser, "engine:builtin");
+            },
+            nullptr, "engine:builtin");
     }
-    if (!GameFeatureRegistry::instance().resolve_feature<SaveParserFeature>("skyrimse")) {
-        auto se_parser = std::make_shared<SaveParserFeature>(
+    if (!SaveParserRegistry::instance().has_parser("skyrimse")) {
+        SaveParserRegistry::instance().register_parser(
+            "skyrimse", 0,
             [](const std::filesystem::path& path, const std::string& game_id) {
                 return parse_skyrimse_save(path, game_id);
-            });
-        GameFeatureRegistry::instance().register_feature(
-            "skyrimse", "save_parser", 0, se_parser, "engine:builtin");
+            },
+            nullptr, "engine:builtin");
     }
-    if (!GameFeatureRegistry::instance().resolve_feature<SaveParserFeature>("skyrimvr")) {
-        auto vr_parser = std::make_shared<SaveParserFeature>(
+    if (!SaveParserRegistry::instance().has_parser("skyrimvr")) {
+        SaveParserRegistry::instance().register_parser(
+            "skyrimvr", 0,
             [](const std::filesystem::path& path, const std::string& game_id) {
                 return parse_skyrimse_save(path, game_id);
-            });
-        GameFeatureRegistry::instance().register_feature(
-            "skyrimvr", "save_parser", 0, vr_parser, "engine:builtin");
+            },
+            nullptr, "engine:builtin");
     }
 
     std::string list_str;
@@ -1595,6 +1596,9 @@ void PluginLoader::unload_all() {
         // Clear v2 requirement providers registered by this plugin so the
         // RequirementsRegistry never holds a dangling function pointer.
         RequirementsRegistry::instance().clear_plugin(p.path);
+        // Clear save parsers registered by this plugin so the
+        // SaveParserRegistry never holds a dangling ABI function pointer.
+        SaveParserRegistry::instance().clear_plugin(p.path);
         if (p.handle) {
             dlclose(p.handle);
             p.handle = nullptr;

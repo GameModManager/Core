@@ -1,8 +1,8 @@
 #include "ui/main_window/saves_scan_worker.h"
 
-#include "engine/game/registry/game_features/game_feature.h"
-#include "engine/game/registry/game_features/game_feature_registry.h"
+#include "engine/game/saves/save_reader.h"
 #include "engine/game/saves/save_scanner.h"
+#include "engine/pipeline/plugin_host/save_parser_registry.h"
 
 #include <QMetaObject>
 #include <QThread>
@@ -17,17 +17,21 @@ void SavesScanWorker::run(SavesScanRequest request) {
     result.saves_dir = request.saves_dir;
     if (!request.saves_dir.empty() &&
         std::filesystem::is_directory(request.saves_dir)) {
-        /* Resolve the save parser from the game feature registry.
-         * Falls back to a no-op parser that returns empty saves when
-         * no plugin has registered a parser for this game. */
+        /* Resolve the save parser from the save-parser registry (populated by
+         * v1/v2 plugins and the engine builtins). Falls back to a no-op parser
+         * that returns empty saves when no parser is registered for this game. */
         std::string game_id = request.game_id;
-        auto feature = engine::GameFeatureRegistry::instance()
-            .resolve_feature<engine::SaveParserFeature>(game_id);
-        auto parses = feature
-            ? [feature, game_id](const std::filesystem::path& p) {
-                  return feature->parse(p, game_id);
-              }
-            : engine::SaveParseFn{};  // empty — scan_saves skips unparseable
+        auto parses = engine::SaveParseFn{};
+        if (engine::SaveParserRegistry::instance().has_parser(game_id)) {
+            parses = [game_id](const std::filesystem::path& p) -> engine::SaveGame {
+                auto result =
+                    engine::SaveParserRegistry::instance().parse_save(p, game_id);
+                if (!result) {
+                    throw engine::SaveParseError("no save parser for " + game_id);
+                }
+                return *result;
+            };
+        }
         auto saves = engine::scan_saves(
             request.saves_dir, request.extensions, parses);
         for (auto& save : saves) {
