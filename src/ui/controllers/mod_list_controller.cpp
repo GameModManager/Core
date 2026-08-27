@@ -615,11 +615,6 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   w_->mod_count_enabled_->setObjectName("mo2CounterLabel");
   w_->mod_count_enabled_->setDigitCount(5);
   w_->mod_count_enabled_->display(0);
-  // Ensure the LCD digits use the palette foreground color (same as the
-  // plugins-tab counter) instead of the default black segment color.
-  QPalette pal = w_->mod_count_enabled_->palette();
-  pal.setColor(QPalette::WindowText, pal.color(QPalette::Text));
-  w_->mod_count_enabled_->setPalette(pal);
 
   auto *count_row = new QHBoxLayout;
   count_row->setContentsMargins(4, 2, 4, 2);
