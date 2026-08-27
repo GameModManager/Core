@@ -72,18 +72,15 @@ std::string deploy_strategy_for(const GameKnowledge &knowledge,
   return kDefaultDeployStrategy;
 }
 
-
-std::string creation_club_file_for(const GameKnowledge& knowledge,
-                                   const std::string& game_id) {
-    return knowledge.get(game_id, "creation_club_file", "skyrim.ccc");
+std::string creation_club_file_for(const GameKnowledge &knowledge,
+                                   const std::string &game_id) {
+  return knowledge.get(game_id, "creation_club_file", "skyrim.ccc");
 }
 
 bool delayed_disable_for(const GameKnowledge &knowledge,
                          const std::string &game_id) {
   return knowledge.get(game_id, "delayed_disable", "") == "true";
 }
-}
-
 std::string plugin_game_mods_dir(const GameKnowledge &knowledge,
                                  const std::string &game_id) {
   std::string dir = knowledge.get(game_id, "game_mods_dir", "");
