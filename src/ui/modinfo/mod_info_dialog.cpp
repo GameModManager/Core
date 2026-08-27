@@ -184,6 +184,11 @@ void ModInfoDialog::switch_to(int index) {
             tab_loaded_[static_cast<size_t>(vis)] = true;
             tab_order_[static_cast<size_t>(vis)]->set_current(current_mod_data_);
             tab_order_[static_cast<size_t>(vis)]->set_mod(current_mod_data_);
+            // Re-activate the visible tab: first_activation() is the only place
+            // ImagesTab loads its pixmaps. currentChanged does not fire here
+            // (same tab index), so without this thumbnails stay text-only.
+            tab_activated_[static_cast<size_t>(vis)] = true;
+            tab_order_[static_cast<size_t>(vis)]->first_activation();
         }
     }
 
@@ -217,6 +222,9 @@ void ModInfoDialog::reload_current(ModInfoData data) {
         tab_loaded_[static_cast<size_t>(vis)] = true;
         tab_order_[static_cast<size_t>(vis)]->set_current(current_mod_data_);
         tab_order_[static_cast<size_t>(vis)]->set_mod(current_mod_data_);
+        // Re-activate the visible tab (see switch_to() for rationale).
+        tab_activated_[static_cast<size_t>(vis)] = true;
+        tab_order_[static_cast<size_t>(vis)]->first_activation();
     }
 
     load_index(nav_index_);
