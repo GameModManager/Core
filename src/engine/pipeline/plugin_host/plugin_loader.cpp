@@ -658,6 +658,12 @@ static void cb_register_tool(GmmRegistrationCtx* ctx,
         tool.invoke_user_data = user_data;
     }
 
+    // Non-game plugins have game_id == module stem — register as global
+    const std::string stem = std::filesystem::path(bridge->current_plugin->path).stem().string();
+    if (tool.game_id == stem) {
+        tool.game_id = "";
+    }
+
     bridge->loader->tool_registry().register_tool(tool);
 
     Logger::instance().debug("Plugin registered tool: " + tool.tool_id +
@@ -1234,6 +1240,13 @@ static void cb_v2_register_tool(GmmRegistrationCtxV2* ctx,
     if (fn) {
         tool.invoke_fn = [fn](void* ud) { fn(ud); };
         tool.invoke_user_data = user_data;
+    }
+
+    // Non-game plugins have game_id == module stem (never called register_identity).
+    // Register their tools under "" (global) so they show for all games.
+    const std::string stem = std::filesystem::path(bridge->current_plugin->path).stem().string();
+    if (tool.game_id == stem) {
+        tool.game_id = "";
     }
 
     bridge->loader->tool_registry().register_tool(tool);
