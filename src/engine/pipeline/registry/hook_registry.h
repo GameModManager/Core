@@ -35,6 +35,9 @@ public:
     // Check if any hooks exist for a tag
     [[nodiscard]] bool has_hooks(const std::string& tag) const;
 
+    // Remove all hooks registered by a specific plugin
+    void clear_plugin_hooks(const std::string& plugin_id);
+
     void clear();
 
 private:

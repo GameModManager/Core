@@ -14,6 +14,16 @@
 // Forward declare ABI image diff callback type
 typedef void (*GmmImageDiffFn)(const char* const*, size_t, const char*, void*);
 
+// v2 ABI callback types — forward declared so plugin_loader.h can reference
+// them in PluginInfo without dragging the v2 header into every translation
+// unit. The real definitions live in gmm_abi_v2.h (included by
+// plugin_loader.cpp). Function pointers are valid across translation units
+// as long as the call site (plugin_loader.cpp) sees the actual type.
+typedef int (*GmmOrderEncodingFnV2)(const char* const*, size_t, const char*, void*);
+typedef int (*GmmDeployFnV2)(const char*, const char*, void*);
+typedef int (*GmmRemoveFnV2)(const char*, void*);
+typedef void (*GmmHookFnV2)(const char*, void*, void*);
+
 // A provider registered by a tool plugin for merging conflicting files
 struct ImageDiffProvider {
     GmmImageDiffFn fn = nullptr;
@@ -121,6 +131,19 @@ struct PluginInfo {
     std::vector<PluginModPage> modpages;
     std::vector<PluginFileMapper> file_mappers;
     std::vector<PluginDiagnostics> diagnostics_v2;
+
+    // v2 order encoding callback + user data (registered via
+    // register_order_encoding). The pipeline invokes this when writing
+    // load-order files (plugins.txt, metadata.xml, etc.).
+    GmmOrderEncodingFnV2 order_encoding_fn = nullptr;
+    void* order_encoding_user_data = nullptr;
+
+    // v2 deploy strategy callbacks + user data (registered via
+    // register_deploy_strategy). The deploy pipeline uses these instead
+    // of the default copy/symlink strategy.
+    GmmDeployFnV2 deploy_fn = nullptr;
+    GmmRemoveFnV2 remove_fn = nullptr;
+    void* deploy_user_data = nullptr;
 };
 
 class PluginLoader {

@@ -6,9 +6,9 @@
 namespace engine {
 
 void HookRegistry::register_hook(const std::string& tag,
-                                  HookFn handler,
-                                  int priority,
-                                  const std::string& plugin_id) {
+                                 HookFn handler,
+                                 int priority,
+                                 const std::string& plugin_id) {
     HookEntry entry;
     entry.tag = tag;
     entry.handler = std::move(handler);
@@ -54,6 +54,15 @@ bool HookRegistry::has_hooks(const std::string& tag) const {
         if (hook.tag == tag) return true;
     }
     return false;
+}
+
+void HookRegistry::clear_plugin_hooks(const std::string& plugin_id) {
+    hooks_.erase(
+        std::remove_if(hooks_.begin(), hooks_.end(),
+            [&plugin_id](const HookEntry& entry) {
+                return entry.plugin_id == plugin_id;
+            }),
+        hooks_.end());
 }
 
 void HookRegistry::clear() {
