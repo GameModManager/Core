@@ -82,6 +82,7 @@ set(ENGINE_SOURCES
     pipeline/plugin_host/order_encoding_registry.cpp
     pipeline/plugin_host/deploy_strategy_registry.cpp
     pipeline/plugin_host/hook_registry.cpp
+    pipeline/plugin_host/plugin_settings_registry.cpp
     pipeline/registry/stage_registry.cpp
     pipeline/registry/hook_registry.cpp
     game/registry/game_capabilities.cpp
@@ -169,6 +170,7 @@ target_link_libraries(gmm_engine PUBLIC
 target_link_libraries(gmm_engine PRIVATE
     gmm_runtime
     gmm_platform
+    Qt6::Core
     PkgConfig::LIBARCHIVE
     PkgConfig::SQLITE3
     PkgConfig::YAMLCPP
