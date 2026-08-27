@@ -4,6 +4,7 @@
 #include "engine/pipeline/plugin_host/diagnostics_registry.h"
 #include "engine/pipeline/plugin_host/diagnose_registry.h"
 #include "engine/pipeline/plugin_host/file_mapper_registry.h"
+#include "engine/pipeline/plugin_host/requirements_registry.h"
 #include "engine/core/events/event_bus.h"
 #include "engine/core/log/logger.h"
 #include "engine/mod/model/mod.h"
@@ -818,25 +819,19 @@ static void cb_v2_register_settings_tab(GmmRegistrationCtxV2* ctx,
 }
 
 static void cb_v2_register_requirements(GmmRegistrationCtxV2* ctx,
-                                        GmmRequirementsFn fn,
-                                        void* user_data) {
+                                         GmmRequirementsFn fn,
+                                         void* user_data) {
     auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
     if (!bridge || !bridge->current_plugin || !fn) return;
 
-    size_t count = 0;
-    GmmPluginRequirement* reqs = fn(&count, user_data);
-    if (!reqs) return;
-
-    for (size_t i = 0; i < count; ++i) {
-        PluginRequirement r;
-        r.type = reqs[i].type ? reqs[i].type : "";
-        r.name = reqs[i].name ? reqs[i].name : "";
-        r.message = reqs[i].message ? reqs[i].message : "";
-        bridge->current_plugin->requirements.push_back(std::move(r));
-    }
-    // The plugin owns the returned array; the engine only copied the strings.
-    Logger::instance().debug("Plugin registered " + std::to_string(count) +
-        " requirements");
+    // Defer evaluation: store the provider in the process-wide registry and
+    // let the loader run check_requirements() once every plugin is loaded, so
+    // cross-plugin / cross-game dependencies can be resolved correctly (a
+    // requirement declared by plugin A may only be satisfiable by plugin B,
+    // which loads later). The provider is keyed by plugin path so it can be
+    // dropped on unload before dlclose.
+    RequirementsRegistry::instance().register_requirements(
+        bridge->current_plugin->path, fn, user_data);
 }
 
 static void cb_v2_register_diagnostics(GmmRegistrationCtxV2* ctx,
@@ -1490,6 +1485,24 @@ bool PluginLoader::load_directory(const std::string& dir_path) {
         list_str += plugins_[i].game_display_name;
     }
     Logger::instance().debug("Loaded plugins: [" + list_str + "]");
+
+    // Evaluate plugin dependency requirements now that every plugin is loaded.
+    // check_requirements() calls each registered provider and returns the
+    // requirements that are not satisfied by the loaded plugin/game set.
+    auto unmet = RequirementsRegistry::instance().check_requirements(plugins_);
+    for (const auto& u : unmet) {
+        std::string msg = u.message.empty()
+            ? ("requires " + (u.type.empty() ? "dependency" : u.type) +
+               (u.name.empty() ? "" : " '" + u.name + "'"))
+            : u.message;
+        Logger::instance().warn("Plugin requirement unmet (" + u.plugin_path +
+            "): " + msg);
+    }
+    if (!unmet.empty()) {
+        Logger::instance().warn(std::to_string(unmet.size()) +
+            " plugin requirement(s) unmet across loaded plugins");
+    }
+
     return loaded > 0;
 }
 
@@ -1538,6 +1551,9 @@ void PluginLoader::unload_all() {
         // Clear v2 file mappers registered by this plugin so the
         // FileMapperRegistry never holds a dangling function pointer.
         FileMapperRegistry::instance().clear_plugin(p.path);
+        // Clear v2 requirement providers registered by this plugin so the
+        // RequirementsRegistry never holds a dangling function pointer.
+        RequirementsRegistry::instance().clear_plugin(p.path);
         if (p.handle) {
             dlclose(p.handle);
             p.handle = nullptr;
