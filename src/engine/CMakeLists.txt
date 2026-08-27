@@ -25,6 +25,7 @@ set(ENGINE_SOURCES
     core/instance/instance_utils.cpp
     core/instance/toml_utils.cpp
     core/instance/game_icons.cpp
+    core/instance/masterlist_fetch.cpp
     core/util/fs_utils.cpp
     mod/filetree/file_tree.cpp
     mod/filetree/dir_file_tree.cpp
