@@ -2,6 +2,7 @@
 
 #include "engine/core/util/fs_utils.h"
 #include "engine/index/conflict_engine.h"
+#include "engine/core/vfs/path_resolver_registry.h"
 #include "engine/core/log/logger.h"
 #include "engine/mod/meta/mod_meta.h"
 
@@ -552,6 +553,13 @@ std::vector<OverwriteSyncFile> collect_overwrite_sync_files(
     const std::filesystem::path& game_dir) {
     std::vector<OverwriteSyncFile> result;
 
+    // One PathResolver for mods_dir: its index is a cache derived from the
+    // on-disk tree (the conflict registry is the source of truth). normalize()
+    // is the single CI key used here and in the conflict engine, so a file's
+    // registry key and its on-disk sync key can never disagree.
+    auto &resolver = vfs::PathResolverRegistry::instance().resolver(
+        mods_dir, vfs::NameCompare::CaseInsensitive);
+
     std::error_code ec;
     if (!std::filesystem::is_directory(overwrite_dir, ec) || ec) {
         ec.clear();
@@ -612,10 +620,10 @@ std::vector<OverwriteSyncFile> collect_overwrite_sync_files(
         // mods. Iterate and match every entry whose fully-CI key equals ours; each
         // distinct registry entry contributes its owners, preserving the same
         // per-file "winner first, then alternatives" shape as a single-key lookup.
-        const std::string full_key = normalize_ci_full(mod_rel);
+        const std::string full_key = resolver.normalize(mod_rel);
         for (const auto& [registry_key, owners] : registry) {
             (void)registry_key;
-            if (normalize_ci_full(registry_key) != full_key) continue;
+            if (resolver.normalize(registry_key) != full_key) continue;
             for (const auto& [mod_id, priority] : owners) {
                 f.owners.push_back({mod_id, priority});
             }

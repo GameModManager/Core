@@ -2,6 +2,7 @@
 
 #include "engine/mod/filetree/dir_file_tree.h"
 #include "engine/core/util/fs_utils.h"
+#include "engine/core/vfs/path_resolver_registry.h"
 #include "engine/core/log/logger.h"
 
 #include <algorithm>
@@ -304,12 +305,17 @@ std::unordered_map<std::string, ConflictStats> ConflictEngine::compute(
     // game's dual-case mod trees (Meshes/ + meshes/) register as the SAME
     // deployed path - the deploy merges them into one casing, so the registry
     // must not split one logical file into two conflict candidates.
+    // PathResolver::normalize (FULL variant) is the single source of that key;
+    // on a native-CI filesystem it is a no-op, on case-sensitive Linux it
+    // lowercases every component so the registry matches what deploy folds.
+    auto &resolver = vfs::PathResolverRegistry::instance().resolver(
+        mods_dir, vfs::NameCompare::CaseInsensitive);
     PathRegistry path_registry;
     for (const auto& [folder_name, priority] : mods) {
         auto it = file_lists.find(folder_name);
         if (it == file_lists.end()) continue;
         for (const auto& rel_path : it->second) {
-            path_registry[normalize_ci_key(rel_path)].emplace_back(folder_name, priority);
+            path_registry[resolver.normalize(rel_path)].emplace_back(folder_name, priority);
         }
     }
 
@@ -323,7 +329,7 @@ std::unordered_map<std::string, ConflictStats> ConflictEngine::compute(
         stats.total_files = static_cast<int>(it->second.size());
 
         for (const auto& rel_path : it->second) {
-            auto& owners = path_registry[normalize_ci_key(rel_path)];
+            auto& owners = path_registry[resolver.normalize(rel_path)];
             if (owners.size() <= 1) continue;  // no conflict
 
             // The owner with the "winning" priority is:

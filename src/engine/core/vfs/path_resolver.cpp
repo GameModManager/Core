@@ -141,6 +141,78 @@ PathResolver::walk_to_absolute(PathResolver::Impl &self,
 #endif
 }
 
+// Walk `rel` (already separator-normalized, non-absolute, no "..") to the
+// directory that contains its final component, matching every directory
+// component case-insensitively against the tree and caching every directory
+// scanned. Unlike walk_to_absolute, a component that does not exist on disk is
+// kept at its requested spelling (the caller will create it) instead of
+// failing, and the final filename component is never matched. Returns the
+// resolved directory absolute path. On Windows this is a lexical normalize +
+// exists() with no scan.
+std::filesystem::path PathResolver::walk_to_dir(PathResolver::Impl &self,
+                                                const std::string &rel) {
+#ifdef _WIN32
+  return (self.root / std::filesystem::path(rel)).lexically_normal();
+#else
+  std::unique_lock<std::shared_mutex> lock(self.index_mu);
+
+  std::filesystem::path cur = self.root;
+  std::string rel_acc; // original-cased accumulation, for stable cache keys
+  const auto relp = std::filesystem::path(rel);
+  std::vector<std::string> comps;
+  for (const auto &part : relp)
+    comps.push_back(part.string());
+  const size_t n = comps.size();
+  for (size_t i = 0; i + 1 < n; ++i) { // every component but the final filename
+    std::string comp = comps[i];
+    if (comp.empty() || comp == ".")
+      continue;
+    const std::string dir_key = [&] {
+      std::string k = normalize_separators(rel_acc);
+      if (self.cmp == NameCompare::CaseInsensitive)
+        k = to_lower(std::move(k));
+      return k;
+    }();
+
+    std::error_code ec;
+    std::vector<std::string> entries;
+    bool found = false;
+    std::filesystem::path match;
+    const bool ci = self.cmp == NameCompare::CaseInsensitive;
+    for (const auto &e : std::filesystem::directory_iterator(cur, ec)) {
+      if (ec)
+        break;
+      const std::string name = e.path().filename().string();
+      entries.push_back(name);
+      if (!found &&
+          (name == comp || (ci && to_lower(name) == to_lower(comp)))) {
+        match = e.path();
+        found = true;
+      }
+    }
+    self.dir_index[dir_key] = std::move(entries);
+    cur = found ? match : (cur / comp);
+    if (!rel_acc.empty())
+      rel_acc += '/';
+    rel_acc += comp;
+  }
+  return cur;
+#endif
+}
+
+std::filesystem::path
+PathResolver::resolve_dir(std::string_view game_rel) const {
+  const std::string rel = normalize_separators(std::string(game_rel));
+  if (rel.empty())
+    return impl_->root;
+  const std::filesystem::path relp(rel);
+  if (relp.is_absolute())
+    return impl_->root;
+  if (has_parent_escape(rel))
+    return impl_->root;
+  return PathResolver::walk_to_dir(*impl_, rel);
+}
+
 std::optional<GameFile> PathResolver::resolve(std::string_view game_rel) const {
   const std::string rel = normalize_separators(std::string(game_rel));
   if (rel.empty()) {
