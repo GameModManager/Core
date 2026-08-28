@@ -6,6 +6,7 @@
 #include "engine/pipeline/plugin_host/file_mapper_registry.h"
 #include "engine/pipeline/plugin_host/requirements_registry.h"
 #include "engine/core/events/event_bus.h"
+#include "engine/core/util/fs_utils.h"
 #include "engine/core/log/logger.h"
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/fomod_stage.h"
@@ -1248,6 +1249,19 @@ static void cb_v2_register_wildcard_stage_claim(GmmRegistrationCtxV2* ctx,
         priority, bridge->current_plugin->path);
 }
 
+static char* cb_v2_resolve_file(const char* root, const char* relative_path, void* user_data) {
+    if (!root || !relative_path) return nullptr;
+    auto resolved = engine::resolve_path(
+        std::filesystem::path(root), std::string(relative_path));
+    if (resolved.empty()) return nullptr;
+    const std::string s = resolved.string();
+    char* out = static_cast<char*>(std::malloc(s.size() + 1));
+    if (out) {
+        std::memcpy(out, s.c_str(), s.size() + 1);
+    }
+    return out;
+}
+
 static void cb_v2_register_preview(GmmRegistrationCtxV2* ctx,
                                    const char* file_extension,
                                    void* preview_data,
@@ -1592,6 +1606,8 @@ bool PluginLoader::load_plugin(const std::string& path) {
         ctx.register_category = cb_v2_register_category;
         ctx.register_categories = cb_v2_register_categories;
         ctx.register_tab = cb_v2_register_tab;
+        ctx.resolve_file = cb_v2_resolve_file;
+        ctx.resolve_file_user_data = nullptr;
         ctx.host_ui.fomod_wizard = cb_fomod_wizard_v2;
 
         register_fn(&ctx);
