@@ -5,6 +5,7 @@
 #include "engine/mod/model/mod.h"
 #include "engine/source/source_provider.h"
 #include "engine/core/log/logger.h"
+#include "ui/settings/settings.h"
 
 #include <filesystem>
 
@@ -184,6 +185,12 @@ void PipelineWorker::install_mod(const std::string& id, const std::string& zip_p
         [this, id](int percent, const std::string& status) {
             emit install_progress(id, percent, status);
         };
+
+    // Read the extraction-priority toggle on every install (not cached at
+    // startup) and forward it to the engine via PipelineContext. The engine is
+    // Qt-free and never touches QSettings directly.
+    pipeline_->ctx().low_priority_extraction =
+        Settings::instance().extraction_low_priority();
 
     auto result = pipeline_->run(mod);
 

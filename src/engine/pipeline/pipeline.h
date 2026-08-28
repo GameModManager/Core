@@ -161,6 +161,13 @@ struct PipelineContext {
     // Fetch stages set this to the size of an existing partial file so the
     // provider can resume from that offset instead of re-downloading.
     int64_t download_resume_from = 0;
+
+    // Lower the CPU priority of archive extraction so large mod archives don't
+    // monopolize the system. The engine is Qt-free and never reads QSettings
+    // directly, so the UI layer reads the "extraction/low_priority" setting on
+    // each install and supplies it here; ExtractStage forwards it to
+    // ArchiveExtractor::extract. Defaults to true (most users want this).
+    bool low_priority_extraction = true;
 };
 
 class Pipeline {

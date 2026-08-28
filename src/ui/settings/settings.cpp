@@ -237,6 +237,14 @@ void Settings::set_use_prereleases(bool on) {
     settings_.setValue("general/use_prereleases", on);
 }
 
+bool Settings::extraction_low_priority() const {
+    return settings_.value("extraction/low_priority", true).toBool();
+}
+
+void Settings::set_extraction_low_priority(bool on) {
+    settings_.setValue("extraction/low_priority", on);
+}
+
 // profile defaults ----------------------------------------------------------
 
 bool Settings::local_saves() const {
