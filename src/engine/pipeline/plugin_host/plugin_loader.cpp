@@ -1268,8 +1268,10 @@ static void cb_v2_register_preview(GmmRegistrationCtxV2* ctx,
     Logger::instance().debug("[PluginLoader] cb_v2_register_preview: plugin=" +
         bridge->current_plugin->plugin_name + " path=" + bridge->current_plugin->path);
 
+    const std::string ext_str = file_extension ? file_extension : "";
+
     PluginPreview p;
-    p.file_extension = file_extension ? file_extension : "";
+    p.file_extension = ext_str;
     p.preview_data = preview_data;
     p.fn = reinterpret_cast<void*>(fn);
     p.user_data = user_data;
@@ -1278,9 +1280,9 @@ static void cb_v2_register_preview(GmmRegistrationCtxV2* ctx,
     // Mirror the registration into the UI-side PreviewRegistry so the preview
     // window can embed the plugin-provided QWidget* for this extension. The
     // registry stores the opaque fn + user_data; the engine never sees QWidget.
-    Logger::instance().debug("[PluginLoader] cb_v2_register_preview: calling PreviewRegistry::register_preview ext=" + p.file_extension);
+    Logger::instance().debug("[PluginLoader] cb_v2_register_preview: calling PreviewRegistry::register_preview ext=" + ext_str);
     ui::preview::PreviewRegistry::instance().register_preview(
-        p.file_extension, fn, preview_data, user_data,
+        ext_str, fn, preview_data, user_data,
         bridge->current_plugin->path);
 
     Logger::instance().debug("[PluginLoader] cb_v2_register_preview: DONE ext=" +
