@@ -3,6 +3,7 @@
 #include "engine/index/conflict_index.h"
 #include "engine/core/instance/instance.h"
 #include "engine/core/log/logger.h"
+#include "engine/core/vfs/path_resolver.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -29,11 +30,15 @@ std::vector<std::string> SyncStage::capture_overwrite_files(
         std::filesystem::create_directories(overwrite_dir, ec);
     }
 
-    // Build a set of all deployed paths from the ConflictIndex.
-    // The index keys are relative paths like "Data/mymod/texture.dds".
+    // Build a set of all deployed paths from the ConflictIndex. The index keys
+    // are case-accurate on-disk relative paths (e.g. "Data/mymod/x.dds"), while
+    // the walk below yields the game dir's own casing (which may differ, e.g.
+    // "data/mymod/x.dds"). Normalize both sides through the same PathResolver so
+    // a re-cased on-disk layout can never make the lookup miss.
+    engine::vfs::PathResolver resolver(game_dir);
     std::unordered_set<std::string> deployed;
     for (const auto& [path, entries] : conflict_index.all()) {
-        deployed.insert(path);
+        deployed.insert(resolver.normalize(path));
     }
 
     // Walk the game directory
@@ -49,8 +54,11 @@ std::vector<std::string> SyncStage::capture_overwrite_files(
 
         auto rel_str = rel.string();
 
-        // Skip files belonging to deployed mods
-        if (deployed.count(rel_str)) continue;
+        // Skip files belonging to deployed mods. Normalize to the same CI key the
+        // deployed set uses so a casing mismatch between the game dir and the mod
+        // dir can never hide a conflict (the original case-accurate comparison
+        // silently missed re-cased on-disk layouts).
+        if (deployed.count(resolver.normalize(rel_str))) continue;
 
         // Skip common runtime artifacts that shouldn't be captured
         auto ext = entry.path().extension().string();

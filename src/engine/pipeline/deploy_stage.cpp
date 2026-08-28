@@ -2,6 +2,7 @@
 #include "engine/pipeline/pipeline.h"
 #include "engine/deploy/strategy.h"
 #include "engine/core/log/logger.h"
+#include "engine/core/vfs/path_resolver.h"
 
 namespace engine {
 
@@ -24,10 +25,23 @@ bool DeployStage::execute(Mod& mod, PipelineContext& ctx) {
     }
 
     std::filesystem::path target_base;
-    if (!ctx.staging_dir.empty()) {
-        target_base = ctx.staging_dir / ctx.deploy_prefix;
-    } else {
-        target_base = ctx.game_dir / ctx.deploy_prefix;
+    {
+        // Resolve the deploy target base through PathResolver so a re-cased
+        // on-disk layout (e.g. "data" instead of "Data") deploys into the real
+        // directory rather than creating a second, wrongly-cased one. The staging
+        // dir (when used) is GMM-managed but the same casing risk applies, so we
+        // resolve against whichever root actually receives the deploy.
+        const std::filesystem::path& root =
+            ctx.staging_dir.empty() ? ctx.game_dir : ctx.staging_dir;
+        engine::vfs::PathResolver resolver(root);
+        auto resolved = resolver.resolve(ctx.deploy_prefix);
+        std::error_code ec2;
+        if (resolved && resolved->exists() &&
+            std::filesystem::is_directory(resolved->absolute(), ec2)) {
+            target_base = resolved->absolute();
+        } else {
+            target_base = root / ctx.deploy_prefix;  // fallback: create as requested
+        }
     }
     std::error_code ec;
     std::filesystem::create_directories(target_base, ec);

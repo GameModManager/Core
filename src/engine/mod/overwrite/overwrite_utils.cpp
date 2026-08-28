@@ -538,9 +538,9 @@ bool clear_overwrite(const std::filesystem::path& overwrite_dir,
 bool game_has_file(const std::filesystem::path& game_dir,
                    const std::string& overwrite_rel) {
     if (game_dir.empty() || overwrite_rel.empty()) return false;
-    std::error_code ec;
-    auto p = game_dir / std::filesystem::path(overwrite_rel);
-    return std::filesystem::is_regular_file(p, ec) && !ec;
+    // Route through PathResolver so a re-cased on-disk layout (e.g. "data/"
+    // instead of "Data/") still resolves the vanilla game file.
+    return engine::vfs::PathResolver(game_dir).exists(overwrite_rel);
 }
 
 std::vector<OverwriteSyncFile> collect_overwrite_sync_files(
