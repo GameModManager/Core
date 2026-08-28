@@ -46,6 +46,18 @@ public:
   [[nodiscard]] std::optional<GameFile>
   resolve(std::string_view game_rel) const;
 
+  // Resolve the DIRECTORY part of game_rel (every component except the final
+  // filename) case-insensitively against the on-disk tree, keeping the
+  // requested spelling for any component that does not yet exist (so the
+  // caller can create it). The final filename component is NOT matched.
+  // Returns the resolved directory absolute path (or root() when game_rel has
+  // no directory part). This is the directory-resolution half of what the
+  // deploy engine needs: it folds CI-equal directory spellings (Meshes/ +
+  // meshes/) into one on-disk directory while leaving the file name for the
+  // winner map to fold separately (resolve_deploy_target_ci's contract).
+  [[nodiscard]] std::filesystem::path
+  resolve_dir(std::string_view game_rel) const;
+
   // True when game_rel resolves to an existing file.
   [[nodiscard]] bool exists(std::string_view game_rel) const;
 
@@ -81,6 +93,14 @@ private:
   // Impl type). Returns nullopt when a component is not found.
   [[nodiscard]] static std::optional<std::filesystem::path>
   walk_to_absolute(Impl &self, const std::string &rel);
+
+  // Walk a separator-normalized, non-absolute, ".."-free relative path to the
+  // directory containing its final component, matching each directory component
+  // case-insensitively and keeping the requested spelling for any component
+  // that does not yet exist. Defined in the .cpp. Returns the resolved
+  // directory absolute path.
+  [[nodiscard]] static std::filesystem::path
+  walk_to_dir(Impl &self, const std::string &rel);
 };
 
 } // namespace engine::vfs

@@ -30,6 +30,8 @@ set(ENGINE_SOURCES
     core/vfs/game_file.h
     core/vfs/path_resolver.h
     core/vfs/path_resolver.cpp
+    core/vfs/path_resolver_registry.h
+    core/vfs/path_resolver_registry.cpp
     mod/filetree/file_tree.cpp
     mod/filetree/dir_file_tree.cpp
     mod/filetree/data_archive.cpp

@@ -2,6 +2,7 @@
 #include "engine/deploy/strategy.h"
 #include "engine/mod/filetree/dir_file_tree.h"
 #include "engine/core/util/fs_utils.h"
+#include "engine/core/vfs/path_resolver_registry.h"
 #include "engine/core/log/logger.h"
 #include "engine/mod/meta/mod_meta.h"
 
@@ -424,6 +425,14 @@ bool deploy_impl(const path& mods_dir,
     };
 
     std::map<std::filesystem::path, std::filesystem::path> winners;  // target -> source
+
+    // One PathResolver per deploy root: its index is a cache derived from the
+    // on-disk tree (the ledger stays the source of truth). CI games route
+    // directory resolution through it so dual-case mod dirs (Meshes/ + meshes/)
+    // collapse into one on-disk casing, exactly as resolve_deploy_target_ci did.
+    auto &resolver = vfs::PathResolverRegistry::instance().resolver(
+        deploy_root, case_sensitive ? vfs::NameCompare::CaseSensitive
+                                     : vfs::NameCompare::CaseInsensitive);
     if (case_sensitive) {
         for (const auto& m : mods) {
             auto base = deploy_root_for(m);
@@ -431,13 +440,12 @@ bool deploy_impl(const path& mods_dir,
                 winners[base / rel] = source;
         }
     } else {
-        // Case-insensitive games: resolve_deploy_target_ci only matches
-        // existing directory components, so CI-equal spellings (Meshes/ vs
-        // meshes/) merge into the FIRST-created casing. Pre-create every
-        // unique parent directory single-threaded in deterministic order
-        // BEFORE resolving targets, so the later resolution sees the merged
-        // tree and the parallel deploy never races two workers on the same
-        // on-disk directory.
+        // Case-insensitive games: the resolver matches existing directory
+        // components, so CI-equal spellings (Meshes/ vs meshes/) merge into the
+        // FIRST-created casing. Pre-create every unique parent directory
+        // single-threaded in deterministic order BEFORE resolving targets, so
+        // the later resolution sees the merged tree and the parallel deploy
+        // never races two workers on the same on-disk directory.
         std::vector<std::filesystem::path> parents;
         {
             std::unordered_set<std::string> seen;
@@ -450,24 +458,29 @@ bool deploy_impl(const path& mods_dir,
             }
         }
         for (const auto& p : parents) {
-            // resolve_deploy_target_ci leaves the last component unmatched;
-            // probe a sentinel leaf so every real component is CI-matched,
-            // then drop it.
-            auto resolved = resolve_deploy_target_ci(p / ".gmmprobe").parent_path();
+            // resolve_dir leaves the last component unmatched; probe a sentinel
+            // leaf so every real directory component is CI-matched, then drop
+            // it. The resolved directory is the merged on-disk casing.
+            auto rel_p = p.lexically_relative(deploy_root);
+            auto resolved = resolver.resolve_dir((rel_p / ".gmmprobe").string());
             std::filesystem::create_directories(resolved, ec);
         }
         // CI-equal filenames (0_Master.hxk vs 0_master.hxk) must collapse to
         // exactly ONE staged file, not land side-by-side. Fold the whole
-        // target to a case-insensitive map key so a collision erases the
+        // target to a case-insensitive map key (PathResolver::normalize, the
+        // FULL variant: every component lowercased) so a collision erases the
         // earlier-written on-disk target; the last mod in lexicographic folder
         // order therefore wins the slot (matching the contested-target
         // contract above) and its casing is what lands on disk.
         std::map<std::string, std::filesystem::path> canonical;  // fold -> target
         for (const auto& m : mods) {
             auto base = deploy_root_for(m);
+            auto base_rel = base.lexically_relative(deploy_root);
             for (const auto& [rel, source] : m.files) {
-                const auto target = resolve_deploy_target_ci(base / rel);
-                const std::string key = normalize_ci_full(target.string());
+                auto rel_against_root = base_rel / rel;
+                const auto target = resolver.resolve_dir(rel_against_root.string()) /
+                                    std::filesystem::path(rel).filename();
+                const std::string key = resolver.normalize(target.string());
                 if (auto it = canonical.find(key); it != canonical.end())
                     winners.erase(it->second);
                 canonical[key] = target;
@@ -543,7 +556,7 @@ bool deploy_impl(const path& mods_dir,
     // writes into one canonical casing instead of dual-case dirs. Direct mode
     // needs no aliases: the game reads its own (already-cased) game_dir, and
     // Wine/Proton resolve case-insensitively on their own.
-    if (add_ci_aliases) {
+    if (add_ci_aliases && !resolver.is_native_ci()) {
         const std::size_t aliases = add_case_insensitive_aliases(deploy_root);
         if (aliases == 0)
             Logger::instance().debug("case-insensitive aliases: none needed");
