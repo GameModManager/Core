@@ -5,6 +5,7 @@
 #include "engine/mod/fomod/file_installer.h"
 #include "engine/mod/fomod/fomod_utils.h"
 #include "engine/core/log/logger.h"
+#include "engine/core/vfs/path_resolver.h"
 
 #include <QApplication>
 #include <QButtonGroup>
@@ -350,7 +351,7 @@ void FomodWizardDialog::on_install_clicked()
     for (const auto& file : files) {
         // Windows-native FOMOD sources (backslash separators, any casing) are
         // resolved case-insensitively, matching the engine installer exactly.
-        if (engine::resolve_path(content_root_, file.source).empty()) {
+        if (!engine::vfs::PathResolver(content_root_).resolve(file.source).has_value()) {
             missing.emplace_back(QString::fromStdString(file.source));
         }
     }
@@ -429,12 +430,12 @@ void FomodWizardDialog::update_display_for_active_plugin()
         image_label_->clear_image();
         return;
     }
-    const auto resolved = engine::resolve_path(content_root_, image);
-    if (resolved.empty()) {
+    const auto gf = engine::vfs::PathResolver(content_root_).resolve(image);
+    if (!gf) {
         image_label_->clear_image();
         return;
     }
-    image_label_->set_image(QImage(QString::fromStdString(resolved.string())));
+    image_label_->set_image(QImage(QString::fromStdString(gf->absolute().string())));
 }
 
 void FomodWizardDialog::show_image_viewer()
@@ -446,11 +447,11 @@ void FomodWizardDialog::show_image_viewer()
     if (image.empty()) {
         return;
     }
-    const auto image_path = engine::resolve_path(content_root_, image);
-    if (image_path.empty()) {
+    const auto gf = engine::vfs::PathResolver(content_root_).resolve(image);
+    if (!gf) {
         return;
     }
-    auto* viewer = new FomodImageViewer(QImage(QString::fromStdString(image_path.string())), this);
+    auto* viewer = new FomodImageViewer(QImage(QString::fromStdString(gf->absolute().string())), this);
     viewer->showMaximized();
 }
 

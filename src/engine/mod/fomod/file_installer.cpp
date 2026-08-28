@@ -2,6 +2,7 @@
 
 #include "engine/mod/fomod/fomod_utils.h"
 #include "engine/core/log/logger.h"
+#include "engine/core/vfs/path_resolver.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -84,13 +85,20 @@ bool FomodFileInstaller::apply(std::vector<std::string>* missing)
     Logger::instance().info("FomodFileInstaller: installing " +
                             std::to_string(filesToInstall.size()) + " files");
 
+    const vfs::PathResolver resolver(mModRoot);
     for (const auto& file : filesToInstall) {
         // FOMOD sources are Windows-native (backslash separators, arbitrary
-        // case). resolve_path normalizes separators and matches each component
+        // case). PathResolver normalizes separators and matches each component
         // case-insensitively against the on-disk tree.
-        bool escaped = false;
-        const auto sourcePath = resolve_path(mModRoot, file.source, &escaped);
-        if (sourcePath.empty()) {
+        const auto gf = resolver.resolve(file.source);
+        if (!gf) {
+            // Distinguish an escape (absolute / "..") from a plain miss so the
+            // log message matches the old resolve_path contract.
+            const std::filesystem::path rel(normalize_separators(file.source));
+            bool escaped = file.source.empty() || rel.is_absolute();
+            for (const auto& part : rel) {
+                if (part == "..") { escaped = true; break; }
+            }
             if (escaped) {
                 Logger::instance().error("FomodFileInstaller: path escapes mod root, skipping: " + file.source);
                 continue;
@@ -100,6 +108,7 @@ bool FomodFileInstaller::apply(std::vector<std::string>* missing)
                 missing->push_back(file.source);
             continue;
         }
+        const auto sourcePath = gf->absolute();
 
         // Destination defaults to the source path; a non-empty <destination>
         // remaps the file (FOMOD Plus uses it verbatim - no auto Data prefix).

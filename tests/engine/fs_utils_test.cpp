@@ -1,4 +1,5 @@
 #include "engine/core/util/fs_utils.h"
+#include "engine/core/vfs/path_resolver.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -37,70 +38,51 @@ TEST_CASE("fs utils", "[engine]") {
         std::printf("  normalize_separators/toLower: OK\n");
     }
 
-    // --- name_matches_ci / find_file_ci ---------------------------------------
+    // --- name_matches_ci / resolve_regular_file_ci ---------------------------
     {
         REQUIRE(name_matches_ci(fs::path("Meshes"), "meshes"));
         REQUIRE(name_matches_ci(fs::path("meshes"), "MESHES"));
         REQUIRE(!name_matches_ci(fs::path("Meshes"), "meshesx"));
-        REQUIRE(find_file_ci(base / "Fomod", "moduleconfig.xml") ==
+        REQUIRE(resolve_regular_file_ci(base / "Fomod", "moduleconfig.xml") ==
                base / "Fomod" / "ModuleConfig.xml");
-        REQUIRE(find_file_ci(base / "Fomod", "nope.xml").empty());
-        std::printf("  name_matches_ci/find_file_ci: OK\n");
+        REQUIRE(resolve_regular_file_ci(base / "Fomod", "nope.xml").empty());
+        std::printf("  name_matches_ci/resolve_regular_file_ci: OK\n");
     }
 
-    // --- resolve_path: Windows separators + case + spaces ---------------------
+    // --- PathResolver: Windows separators + case + spaces ------------------
     {
-        bool escaped = false;
-        auto p = resolve_path(base, "Meshes\\Armor\\armor.nif", &escaped);
-        REQUIRE((!p.empty() && !escaped));
-        REQUIRE(path_is(p, base / "Meshes" / "Armor" / "armor.nif"));
+        auto gf = vfs::PathResolver(base).resolve("Meshes\\Armor\\armor.nif");
+        REQUIRE(gf.has_value());
+        REQUIRE(path_is(gf->absolute(), base / "Meshes" / "Armor" / "armor.nif"));
 
         // Matches case-insensitively and returns the on-disk casing.
-        p = resolve_path(base, "meshes\\armor\\armor.nif");
-        REQUIRE(!p.empty());
-        REQUIRE(p.filename().string() == "armor.nif");
-        REQUIRE(p.parent_path().filename().string() == "Armor");
+        gf = vfs::PathResolver(base).resolve("meshes\\armor\\armor.nif");
+        REQUIRE(gf.has_value());
+        REQUIRE(gf->absolute().filename().string() == "armor.nif");
+        REQUIRE(gf->absolute().parent_path().filename().string() == "Armor");
 
         // Directory with spaces, resolved as a path.
-        p = resolve_path(base, "Skeleton Rig\\HDT");
-        REQUIRE(!p.empty());
-        REQUIRE(path_is(p, base / "Skeleton Rig" / "HDT"));
+        gf = vfs::PathResolver(base).resolve("Skeleton Rig\\HDT");
+        REQUIRE(gf.has_value());
+        REQUIRE(path_is(gf->absolute(), base / "Skeleton Rig" / "HDT"));
 
         // Trailing slash resolves to the directory itself.
-        p = resolve_path(base, "Meshes\\Armor\\");
-        REQUIRE(!p.empty());
-        REQUIRE(path_is(p, base / "Meshes" / "Armor"));
+        gf = vfs::PathResolver(base).resolve("Meshes\\Armor\\");
+        REQUIRE(gf.has_value());
+        REQUIRE(path_is(gf->absolute(), base / "Meshes" / "Armor"));
 
-        std::printf("  resolve_path separators/case/spaces: OK\n");
+        std::printf("  PathResolver separators/case/spaces: OK\n");
     }
 
-    // --- resolve_path: missing / traversal / absolute / empty -----------------
+    // --- PathResolver: missing / traversal / absolute / empty --------------
     {
-        bool escaped = false;
-        auto p = resolve_path(base, "meshes\\nope\\x.nif", &escaped);
-        REQUIRE((p.empty() && !escaped));  // absent, not an escape
-
-        escaped = false;
-        p = resolve_path(base, "..\\evil.txt", &escaped);
-        REQUIRE((p.empty() && escaped));
-
-        escaped = false;
-        p = resolve_path(base, "Meshes/../../evil.txt", &escaped);
-        REQUIRE((p.empty() && escaped));
-
-        escaped = false;
-        p = resolve_path(base, "/etc/passwd", &escaped);
-        REQUIRE((p.empty() && escaped));
-
-        escaped = false;
-        p = resolve_path(base, "\\\\server\\share", &escaped);  // UNC = absolute
-        REQUIRE((p.empty() && escaped));
-
-        escaped = false;
-        p = resolve_path(base, "", &escaped);
-        REQUIRE((p.empty() && escaped));
-
-        std::printf("  resolve_path missing/traversal/absolute/empty: OK\n");
+        REQUIRE(!vfs::PathResolver(base).resolve("meshes\\nope\\x.nif").has_value()); // absent
+        REQUIRE(!vfs::PathResolver(base).resolve("..\\evil.txt").has_value());        // escape
+        REQUIRE(!vfs::PathResolver(base).resolve("Meshes/../../evil.txt").has_value()); // escape
+        REQUIRE(!vfs::PathResolver(base).resolve("/etc/passwd").has_value());          // absolute
+        REQUIRE(!vfs::PathResolver(base).resolve("\\\\server\\share").has_value());    // UNC = absolute
+        REQUIRE(!vfs::PathResolver(base).resolve("").has_value());                     // empty
+        std::printf("  PathResolver missing/traversal/absolute/empty: OK\n");
     }
 
     // --- relay_output_to_mod: P2 route-everything -------------------------------
