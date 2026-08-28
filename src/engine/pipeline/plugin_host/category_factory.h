@@ -35,6 +35,11 @@ public:
   void merge(const int *ids, const char *const *names, const int *parent_ids,
              size_t count);
 
+  // Populates the factory from a named core set (see CategorySetRegistry).
+  // Existing categories are NOT cleared — the set adds missing categories only
+  // (additive). Returns true when the set was found and applied.
+  bool applyCoreSet(const std::string &set_name);
+
   // --- Lookups ---
   [[nodiscard]] bool categoryExists(int id) const;
   [[nodiscard]] const Category *categoryById(int id) const;

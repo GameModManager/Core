@@ -105,6 +105,7 @@ set(ENGINE_SOURCES
     pipeline/plugin_host/python_loader.cpp
     mod/meta/mod_meta.cpp
     mod/meta/categories.cpp
+    mod/meta/category_set_registry.cpp
     mod/overwrite/overwrite_utils.cpp
     game/plugins/esp_header.cpp
     game/plugins/plugin_database.cpp

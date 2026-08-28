@@ -32,6 +32,7 @@
 #include "engine/core/util/fs_utils.h"
 #include "engine/core/instance/instance.h"
 #include "engine/pipeline/plugin_host/category_factory.h"
+#include "engine/mod/meta/category_set_registry.h"
 #include "engine/core/instance/instance_utils.h"
 #include "engine/core/log/logger.h"
 #include "engine/source/nxm/managed_games.h"
@@ -103,10 +104,24 @@ void SettingsController::set_game_info(
   w_->current_instance_root_ = instance_root;
   if (!instance_root.empty()) {
     // Per-instance category registry (categories.dat): user edits made in the
-    // Categories dialog persist here. load() replaces the plugin-merged set
-    // with the persisted one (which already contains the plugin defaults); a
-    // missing file leaves the registry unchanged (first run).
-    engine::CategoryFactory::instance().load(instance_root / "categories.dat");
+    // Categories dialog persist here. On first run for an instance we seed the
+    // factory from the game plugin's declared core set (or "Default") and
+    // persist it so subsequent loads read the file; on later runs we load the
+    // persisted file directly (user edits preserved).
+    const auto dat_path = instance_root / "categories.dat";
+    if (std::filesystem::exists(dat_path)) {
+      engine::CategoryFactory::instance().load(dat_path);
+    } else {
+      const auto core_set =
+          w_->knowledge_ ? w_->knowledge_->get(game_id, "core_category_set")
+                         : std::string();
+      if (!core_set.empty()) {
+        engine::CategoryFactory::instance().applyCoreSet(core_set);
+      } else {
+        engine::CategoryFactory::instance().applyCoreSet("Default");
+      }
+      engine::CategoryFactory::instance().save(dat_path);
+    }
     w_->current_instance_ = engine::Instance::from_root(instance_root);
     w_->current_instance_.read_toml();
     w_->conflict_cache_path_ =
