@@ -1249,15 +1249,16 @@ static void cb_v2_register_wildcard_stage_claim(GmmRegistrationCtxV2* ctx,
 }
 
 static void cb_v2_register_preview(GmmRegistrationCtxV2* ctx,
-                                   GmmPreviewInfo info,
+                                   const char* file_extension,
+                                   void* preview_data,
                                    GmmPreviewFn fn,
                                    void* user_data) {
     auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
     if (!bridge || !bridge->current_plugin || !fn) return;
 
     PluginPreview p;
-    p.file_extension = info.file_extension ? info.file_extension : "";
-    p.preview_data = info.preview_data;
+    p.file_extension = file_extension ? file_extension : "";
+    p.preview_data = preview_data;
     p.fn = reinterpret_cast<void*>(fn);
     p.user_data = user_data;
     bridge->current_plugin->previews.push_back(std::move(p));
@@ -1266,7 +1267,7 @@ static void cb_v2_register_preview(GmmRegistrationCtxV2* ctx,
     // window can embed the plugin-provided QWidget* for this extension. The
     // registry stores the opaque fn + user_data; the engine never sees QWidget.
     ui::preview::PreviewRegistry::instance().register_preview(
-        p.file_extension, fn, info.preview_data, user_data,
+        p.file_extension, fn, preview_data, user_data,
         bridge->current_plugin->path);
 
     Logger::instance().debug("Plugin registered v2 preview for extension=" +
