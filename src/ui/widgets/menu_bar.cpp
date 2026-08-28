@@ -174,19 +174,21 @@ void AppMenuBar::update_tools_for_game(
         delete act;
     }
 
-    // Add registered tools for this game
+    // Add registered tools for this game (insert before the separator so the
+    // clearing loop above reaches them —addAction appends to the end, past the
+    // separator, which caused duplicates to accumulate on every switch).
     if (!tools.empty()) {
         for (const auto& tool : tools) {
             QString label = QString::fromStdString(
                 tool.display_name.empty() ? tool.tool_id : tool.display_name);
-            auto* act = tools_menu_->addAction(label);
+            auto* act = new QAction(label, tools_menu_);
+            tools_menu_->insertAction(tools_separator_, act);
             QString tid = QString::fromStdString(tool.tool_id);
             QString gid = QString::fromStdString(game_id);
             connect(act, &QAction::triggered, this, [this, tid, gid]() {
                 emit tool_requested(tid, gid);
             });
         }
-        tools_menu_->insertSeparator(tools_separator_);
     }
 }
 
