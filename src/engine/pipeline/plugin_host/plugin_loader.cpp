@@ -651,7 +651,25 @@ static void cb_register_deploy_strategy(GmmRegistrationCtx* ctx,
     if (!bridge) return;
 
     Logger::instance().debug("Plugin registered deploy strategy");
-    (void)deploy_fn; (void)remove_fn;
+    (void)deploy_fn; (void)remove_fn;}
+
+// Convert snake_case tool id to Title Case for display (e.g. "event_bus_viewer" -> "Event Bus Viewer").
+static std::string tool_id_to_display_name(const std::string& id) {
+    std::string result;
+    result.reserve(id.size());
+    bool capitalise = true;
+    for (char c : id) {
+        if (c == '_') {
+            capitalise = true;
+            result += ' ';
+        } else if (capitalise) {
+            result += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            capitalise = false;
+        } else {
+            result += c;
+        }
+    }
+    return result;
 }
 
 static void cb_register_tool(GmmRegistrationCtx* ctx,
@@ -665,7 +683,7 @@ static void cb_register_tool(GmmRegistrationCtx* ctx,
     ExternalTool tool;
     tool.tool_id = tool_id ? tool_id : "";
     tool.game_id = bridge->current_plugin->game_id;
-    tool.display_name = tool.tool_id;
+    tool.display_name = tool_id_to_display_name(tool.tool_id);
 
     std::string kind_str = kind ? kind : "advisory";
     tool.kind = (kind_str == "workshop") ? ToolKind::Workshop : ToolKind::Advisory;
@@ -1266,7 +1284,7 @@ static void cb_v2_register_tool(GmmRegistrationCtxV2* ctx,
     ExternalTool tool;
     tool.tool_id = tool_id ? tool_id : "";
     tool.game_id = bridge->current_plugin->game_id;
-    tool.display_name = tool.tool_id;
+    tool.display_name = tool_id_to_display_name(tool.tool_id);
 
     std::string kind_str = kind ? kind : "advisory";
     tool.kind = (kind_str == "workshop") ? ToolKind::Workshop : ToolKind::Advisory;
