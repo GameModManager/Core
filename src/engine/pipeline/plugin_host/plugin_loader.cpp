@@ -8,6 +8,7 @@
 #include "engine/core/events/event_bus.h"
 #include "engine/core/util/fs_utils.h"
 #include "engine/core/log/logger.h"
+#include "engine/core/vfs/path_resolver.h"
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/fomod_stage.h"
 #include "engine/pipeline/pipeline.h"
@@ -1251,10 +1252,10 @@ static void cb_v2_register_wildcard_stage_claim(GmmRegistrationCtxV2* ctx,
 
 static char* cb_v2_resolve_file(const char* root, const char* relative_path, void* user_data) {
     if (!root || !relative_path) return nullptr;
-    auto resolved = engine::resolve_path(
-        std::filesystem::path(root), std::string(relative_path));
-    if (resolved.empty()) return nullptr;
-    const std::string s = resolved.string();
+    const auto gf = engine::vfs::PathResolver(std::filesystem::path(root))
+                        .resolve(std::string(relative_path));
+    if (!gf) return nullptr;
+    const std::string s = gf->absolute().string();
     char* out = static_cast<char*>(std::malloc(s.size() + 1));
     if (out) {
         std::memcpy(out, s.c_str(), s.size() + 1);

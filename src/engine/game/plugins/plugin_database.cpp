@@ -1,6 +1,7 @@
 #include "engine/game/plugins/plugin_database.h"
 
 #include "engine/core/util/fs_utils.h"
+#include "engine/core/vfs/path_resolver.h"
 #include "engine/core/instance/instance.h"
 #include "engine/core/log/logger.h"
 #include "engine/mod/meta/mod_meta.h"
@@ -217,12 +218,12 @@ void PluginDatabase::load_creation_club(const std::filesystem::path& game_dir,
     std::error_code ec;
     std::vector<std::filesystem::path> candidates;
     if (std::filesystem::is_directory(game_dir, ec)) {
-        const auto root_ccc = find_file_ci(game_dir, ccc_filename);
+        const auto root_ccc = resolve_regular_file_ci(game_dir, ccc_filename);
         if (!root_ccc.empty()) candidates.push_back(root_ccc);
     }
     const auto data_dir = game_dir / "Data";
     if (std::filesystem::is_directory(data_dir, ec)) {
-        const auto data_ccc = find_file_ci(data_dir, ccc_filename);
+        const auto data_ccc = resolve_regular_file_ci(data_dir, ccc_filename);
         if (!data_ccc.empty()) candidates.push_back(data_ccc);
     }
     if (candidates.empty()) return;

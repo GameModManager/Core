@@ -8,6 +8,7 @@
 #include "engine/mod/fomod/module_config.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/core/log/logger.h"
+#include "engine/core/vfs/path_resolver.h"
 
 #include <nlohmann/json.hpp>
 
@@ -17,6 +18,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace engine {
@@ -40,10 +42,10 @@ public:
     {
         // FOMOD paths are Windows-native; resolve case-insensitively so a
         // condition referencing "meshes\Skeleton.nif" matches Meshes/...
-        if (!resolve_path(contentRoot_, fileName).empty()) {
+        if (vfs::PathResolver(contentRoot_).exists(fileName)) {
             return FileDependencyTypeEnum::Active;
         }
-        if (!gameDataDir_.empty() && !resolve_path(gameDataDir_, fileName).empty()) {
+        if (!gameDataDir_.empty() && vfs::PathResolver(gameDataDir_).exists(fileName)) {
             return FileDependencyTypeEnum::Active;
         }
         return FileDependencyTypeEnum::Missing;
@@ -122,7 +124,7 @@ bool FomodStage::execute(Mod& mod, PipelineContext& ctx)
     if (!fomodDir) {
         return true;
     }
-    const auto moduleConfigPath = find_file_ci(*fomodDir, toLower(std::string(fomod_files::MODULE_CONFIG)));
+    const auto moduleConfigPath = resolve_regular_file_ci(*fomodDir, toLower(std::string(fomod_files::MODULE_CONFIG)));
     if (moduleConfigPath.empty()) {
         return true;
     }
@@ -155,7 +157,7 @@ bool FomodStage::execute(Mod& mod, PipelineContext& ctx)
     }
 
     auto infoFile = std::make_unique<FomodInfoFile>();
-    const auto infoPath = find_file_ci(*fomodDir, std::string(fomod_files::INFO_XML));
+    const auto infoPath = resolve_regular_file_ci(*fomodDir, std::string(fomod_files::INFO_XML));
     if (!infoPath.empty()) {
         try {
             infoFile->deserialize(infoPath);

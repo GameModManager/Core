@@ -8,6 +8,8 @@
 #include <system_error>
 #include <vector>
 
+#include "engine/core/vfs/path_resolver.h"
+
 namespace engine {
 
 // ---------------------------------------------------------------------------
@@ -48,62 +50,12 @@ namespace engine {
                                                bool include_mod_id = false,
                                                const std::string &mod_id = {});
 
-// ---------------------------------------------------------------------------
-// Windows-native path resolution
-// ---------------------------------------------------------------------------
-// Every path that comes from a mod or an archive is treated as Windows-native:
-// backslash separators and arbitrary casing must resolve the same way they
-// would on Windows, including on a case-sensitive filesystem (Linux/macOS).
-// resolve_path() is the single canonical resolver for that input - never
-// hand-roll per-site separator/case handling. See PLAN.md (FOMOD plugin:
-// `case_insensitive` bool, default true).
-
 // Lowercase a copy of the string.
 [[nodiscard]] inline std::string toLower(std::string str) {
   std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) {
     return static_cast<char>(std::tolower(c));
   });
   return str;
-}
-
-// Normalize a relative path into the canonical spelling the conflict registry
-// is keyed by: every DIRECTORY component lowercased, the final file name kept
-// on its on-disk casing. This mirrors the deploy's case-insensitive directory
-// merge (resolve_deploy_target_ci) exactly: CI-equal directory trees from
-// Windows-game mods (Meshes/ + meshes/) register as the same deployed paths,
-// while two CI-equal FILE names stay side-by-side (a rare packaging bug the
-// deploy deliberately does not merge). Consumers that look a mod-relative
-// path up in the registry must run it through this first.
-[[nodiscard]] [[deprecated("use engine::vfs::PathResolver")]] inline std::string
-normalize_ci_key(std::string path) {
-  std::replace(path.begin(), path.end(), '\\', '/');
-  const auto last = path.find_last_of('/');
-  if (last == std::string::npos)
-    return path;
-  std::string out;
-  out.reserve(path.size());
-  for (size_t i = 0; i < last; ++i)
-    out += static_cast<char>(std::tolower(static_cast<unsigned char>(path[i])));
-  out += '/';
-  out += path.substr(last + 1);
-  return out;
-}
-
-// Normalize a relative path into a FULLY case-insensitive key: every segment
-// INCLUDING the final filename is lowercased (unlike normalize_ci_key, which
-// keeps the final filename's on-disk casing). This is the ownership-only
-// variant used by the Overwrite->mod association (MO2's shared tree findFile
-// matches dirs AND the final name case-insensitively), so
-// Data/Meshes/ReadMe.txt is owned by a mod storing meshes/readme.txt. The
-// deploy and conflict-registry keys stay on normalize_ci_key (case-different
-// file names remain distinct there); this narrow split is deliberate.
-[[nodiscard]] [[deprecated("use engine::vfs::PathResolver")]] inline std::string
-normalize_ci_full(std::string path) {
-  std::replace(path.begin(), path.end(), '\\', '/');
-  std::transform(path.begin(), path.end(), path.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
-  return path;
 }
 
 // Translate Windows backslash separators to '/'.
@@ -119,107 +71,30 @@ normalize_ci_full(std::string path) {
   return toLower(p.filename().string()) == toLower(name);
 }
 
-// Case-insensitive lookup of a regular file by its lowercase name in a
-// directory. Returns the real on-disk path or an empty path.
-[[nodiscard]] [[deprecated(
-    "use engine::vfs::PathResolver")]] inline std::filesystem::path
-find_file_ci(const std::filesystem::path &dir, const std::string &lowerName) {
-  std::error_code ec;
-  for (const auto &entry : std::filesystem::directory_iterator(dir, ec)) {
-    if (ec) {
-      return {};
-    }
-    if (entry.is_regular_file(ec) && name_matches_ci(entry.path(), lowerName)) {
-      return entry.path();
+// Case-insensitive lookup of a regular file by its (already-lowercased) name in
+// a directory, routed through the canonical PathResolver. Replaces the removed
+// find_file_ci shim: lists the directory via PathResolver and matches the entry
+// filename case-insensitively, requiring a regular file (directories are not a
+// match). `lowerName` is compared case-insensitively against the on-disk name.
+[[nodiscard]] inline std::filesystem::path
+resolve_regular_file_ci(const std::filesystem::path &dir,
+                        const std::string &lowerName) {
+  const auto resolver = vfs::PathResolver(dir);
+  for (const auto &gf : resolver.list("")) {
+    std::error_code ec;
+    if (std::filesystem::is_regular_file(gf.absolute(), ec) &&
+        toLower(gf.absolute().filename().string()) == toLower(lowerName)) {
+      return gf.absolute();
     }
   }
   return {};
-}
-
-// Resolve a Windows-native relative path against a root directory. On Windows
-// the OS already accepts both separators and matches case-insensitively, so
-// the candidate is `root/relative` lexically normalized; on case-sensitive
-// platforms each component is matched case-insensitively against the on-disk
-// tree. Returns the real on-disk path (with the tree's actual casing) or an
-// empty path when not found.
-//
-// Empty, absolute and ".." traversal paths are rejected without touching the
-// filesystem (security is platform-independent); `escaped` is set to true for
-// those rejection reasons so callers can skip the entry silently instead of
-// reporting it missing. A plain absence leaves `escaped` false.
-[[nodiscard]] [[deprecated(
-    "use engine::vfs::PathResolver")]] inline std::filesystem::path
-resolve_path(const std::filesystem::path &root, const std::string &relative,
-             bool *escaped = nullptr) {
-  if (escaped) {
-    *escaped = false;
-  }
-  if (relative.empty()) {
-    if (escaped) {
-      *escaped = true;
-    }
-    return {};
-  }
-
-  const std::filesystem::path rel(normalize_separators(relative));
-  if (rel.is_absolute()) {
-    if (escaped) {
-      *escaped = true;
-    }
-    return {};
-  }
-  for (const auto &part : rel) {
-    if (part == "..") {
-      if (escaped) {
-        *escaped = true;
-      }
-      return {};
-    }
-  }
-
-#if defined(_WIN32)
-  std::error_code ec;
-  const auto candidate = (root / rel).lexically_normal();
-  if (!std::filesystem::exists(candidate, ec)) {
-    return {};
-  }
-  return candidate;
-#else
-  std::filesystem::path cur = root;
-  for (const auto &part : rel) {
-    const std::string comp = part.string();
-    if (comp.empty() || comp == ".") {
-      continue;
-    }
-    const std::string lowerComp = toLower(comp);
-    std::error_code ec;
-    std::filesystem::path match;
-    bool found = false;
-    for (const auto &entry : std::filesystem::directory_iterator(cur, ec)) {
-      if (ec) {
-        return {};
-      }
-      const std::string name = entry.path().filename().string();
-      if (name == comp || toLower(name) == lowerComp) {
-        match = entry.path();
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
-      return {};
-    }
-    cur = match;
-  }
-  return cur;
-#endif
 }
 
 // Filter a plugin's comma-separated executable declarations down to the ones
 // that physically exist under game_dir (detection only - never consults the
 // deploy overlay; use merged_view_file_exists for that). Kept entries retain
 // their declared game-relative spelling and declaration order (first = the
-// default). A candidate counts as found when resolve_path() locates it AND it
+// default). A candidate counts as found when PathResolver locates it AND it
 // is launchable-shaped: a regular file, or - for macOS app bundles - a
 // ".app"-suffixed directory. Missing names are silently dropped, so one
 // declaration list doubles as a cross-platform candidate set: the scan itself
@@ -230,6 +105,7 @@ filter_existing_executables(const std::filesystem::path &game_dir,
   std::vector<std::string> out;
   if (game_dir.empty() || csv.empty())
     return out;
+  const vfs::PathResolver resolver(game_dir);
   std::istringstream ss(csv);
   std::string token;
   while (std::getline(ss, token, ',')) {
@@ -238,15 +114,14 @@ filter_existing_executables(const std::filesystem::path &game_dir,
       continue;
     const auto last = token.find_last_not_of(" \t");
     const std::string name = token.substr(first, last - first + 1);
-    bool escaped = false;
-    const auto resolved = resolve_path(game_dir, name, &escaped);
-    if (escaped || resolved.empty())
+    const auto gf = resolver.resolve(name);
+    if (!gf)
       continue;
     std::error_code ec;
     const bool is_app =
         name.size() >= 4 && toLower(name.substr(name.size() - 4)) == ".app";
-    if ((std::filesystem::is_regular_file(resolved, ec) && !ec) ||
-        (is_app && std::filesystem::is_directory(resolved, ec) && !ec)) {
+    if ((std::filesystem::is_regular_file(gf->absolute(), ec) && !ec) ||
+        (is_app && std::filesystem::is_directory(gf->absolute(), ec) && !ec)) {
       out.push_back(name);
     }
   }
