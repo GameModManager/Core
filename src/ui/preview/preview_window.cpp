@@ -1,5 +1,6 @@
 #include "ui/preview/preview_window.h"
 #include "ui/preview/preview_registry.h"
+#include "engine/core/log/logger.h"
 #include "ui/preview/preview_widget.h"
 
 #include <QFile>
@@ -155,6 +156,8 @@ PreviewWindow::PreviewWindow(QWidget *parent) : QDialog(parent) {
 void PreviewWindow::show_file(const QString &file_path,
                               const QStringList &provider_paths,
                               const QStringList &provider_names) {
+  engine::Logger::instance().debug("[PreviewWindow] show_file: file=" + file_path.toStdString() +
+                           " providers=" + std::to_string(provider_paths.size()));
   paths_.clear();
   names_.clear();
   paths_ << file_path;
@@ -205,9 +208,28 @@ void PreviewWindow::reload() {
   anm2_frames_.clear();
   anm2_delays_.clear();
   anm2_index_ = 0;
-  if (load_plugin_preview(path) || load_image(path) || load_anm2(path) ||
-      load_text(path))
+  engine::Logger::instance().debug("[PreviewWindow] reload: path=" + path.toStdString());
+  engine::Logger::instance().debug("[PreviewWindow] reload: trying load_plugin_preview...");
+  if (load_plugin_preview(path)) {
+    engine::Logger::instance().debug("[PreviewWindow] reload: load_plugin_preview SUCCEEDED");
     return;
+  }
+  engine::Logger::instance().debug("[PreviewWindow] reload: trying load_image...");
+  if (load_image(path)) {
+    engine::Logger::instance().debug("[PreviewWindow] reload: load_image SUCCEEDED");
+    return;
+  }
+  engine::Logger::instance().debug("[PreviewWindow] reload: trying load_anm2...");
+  if (load_anm2(path)) {
+    engine::Logger::instance().debug("[PreviewWindow] reload: load_anm2 SUCCEEDED");
+    return;
+  }
+  engine::Logger::instance().debug("[PreviewWindow] reload: trying load_text...");
+  if (load_text(path)) {
+    engine::Logger::instance().debug("[PreviewWindow] reload: load_text SUCCEEDED");
+    return;
+  }
+  engine::Logger::instance().debug("[PreviewWindow] reload: NO preview found, showing unsupported");
   show_unsupported();
 }
 
@@ -300,6 +322,7 @@ bool PreviewWindow::load_text(const QString &path) {
 }
 
 bool PreviewWindow::load_plugin_preview(const QString &path) {
+  engine::Logger::instance().debug("[PreviewWindow] load_plugin_preview: path=" + path.toStdString());
   // Drop any previously embedded plugin widget before resolving the new file so
   // a fallback to a built-in preview doesn't leave a stale widget behind.
   if (plugin_widget_) {
@@ -310,10 +333,15 @@ bool PreviewWindow::load_plugin_preview(const QString &path) {
 
   // Ask the v2 IPluginPreview registry for this file's extension. A plugin that
   // claimed the extension returns a QWidget* (as opaque void*); we embed it.
+  engine::Logger::instance().debug("[PreviewWindow] load_plugin_preview: calling PreviewRegistry::create_preview");
   void *w = ui::preview::PreviewRegistry::instance().create_preview(
       path.toStdString());
-  if (!w)
+  engine::Logger::instance().debug("[PreviewWindow] load_plugin_preview: create_preview returned w=" +
+                           std::to_string(reinterpret_cast<uintptr_t>(w)));
+  if (!w) {
+    engine::Logger::instance().debug("[PreviewWindow] load_plugin_preview: no plugin preview, returning false");
     return false;
+  }
 
   plugin_widget_ = reinterpret_cast<QWidget *>(w);
   plugin_layout_->addWidget(plugin_widget_);
@@ -322,6 +350,7 @@ bool PreviewWindow::load_plugin_preview(const QString &path) {
 }
 
 void PreviewWindow::show_unsupported() {
+  engine::Logger::instance().debug("[PreviewWindow] show_unsupported: displaying unsupported message");
   anm2_timer_.stop();
   anm2_frames_.clear();
   anm2_delays_.clear();
