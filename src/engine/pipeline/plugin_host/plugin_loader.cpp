@@ -1254,7 +1254,19 @@ static void cb_v2_register_preview(GmmRegistrationCtxV2* ctx,
                                    GmmPreviewFn fn,
                                    void* user_data) {
     auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
-    if (!bridge || !bridge->current_plugin || !fn) return;
+    Logger::instance().debug("[PluginLoader] cb_v2_register_preview: ctx=" +
+        std::to_string(reinterpret_cast<uintptr_t>(ctx)) +
+        " file_extension=" + (file_extension ? std::string(file_extension) : "NULL") +
+        " fn=" + std::to_string(reinterpret_cast<uintptr_t>(fn)) +
+        " user_data=" + std::to_string(reinterpret_cast<uintptr_t>(user_data)));
+    if (!bridge || !bridge->current_plugin || !fn) {
+        Logger::instance().debug("[PluginLoader] cb_v2_register_preview: ABORT bridge=" +
+            std::to_string(reinterpret_cast<uintptr_t>(bridge)) +
+            " plugin=" + (bridge && bridge->current_plugin ? "valid" : "NULL"));
+        return;
+    }
+    Logger::instance().debug("[PluginLoader] cb_v2_register_preview: plugin=" +
+        bridge->current_plugin->plugin_name + " path=" + bridge->current_plugin->path);
 
     PluginPreview p;
     p.file_extension = file_extension ? file_extension : "";
@@ -1266,11 +1278,12 @@ static void cb_v2_register_preview(GmmRegistrationCtxV2* ctx,
     // Mirror the registration into the UI-side PreviewRegistry so the preview
     // window can embed the plugin-provided QWidget* for this extension. The
     // registry stores the opaque fn + user_data; the engine never sees QWidget.
+    Logger::instance().debug("[PluginLoader] cb_v2_register_preview: calling PreviewRegistry::register_preview ext=" + p.file_extension);
     ui::preview::PreviewRegistry::instance().register_preview(
         p.file_extension, fn, preview_data, user_data,
         bridge->current_plugin->path);
 
-    Logger::instance().debug("Plugin registered v2 preview for extension=" +
+    Logger::instance().debug("[PluginLoader] cb_v2_register_preview: DONE ext=" +
         p.file_extension);
 }
 

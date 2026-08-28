@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "gmm_abi_v2.h" // GmmPreviewFn
+#include "engine/core/log/logger.h"
 
 // ---------------------------------------------------------------------------
 // PreviewRegistry — v2 IPluginPreview backing store.
@@ -55,10 +56,15 @@ public:
                         const std::string &plugin_path) {
     if (!fn)
       return;
+    const std::string norm = normalize_extension(extension);
+    engine::Logger::instance().debug("[PreviewRegistry] register_preview: ext=" + norm +
+                             " fn=" + std::to_string(reinterpret_cast<uintptr_t>(fn)) +
+                             " plugin=" + plugin_path);
     std::lock_guard<std::mutex> lock(mutex_);
-    entries_.push_back(PreviewRegistryEntry{normalize_extension(extension), fn,
-                                            preview_data, user_data,
+    entries_.push_back(PreviewRegistryEntry{norm, fn, preview_data, user_data,
                                             plugin_path});
+    engine::Logger::instance().debug("[PreviewRegistry] total entries after register: " +
+                             std::to_string(entries_.size()));
   }
 
   // Drop every entry owned by a plugin (called from PluginLoader::unload_all
@@ -76,13 +82,20 @@ public:
   [[nodiscard]] bool has_preview(const std::string &file_path) const {
     const std::string ext = normalize_extension(
         std::filesystem::path(file_path).extension().string());
-    if (ext.empty())
+    engine::Logger::instance().debug("[PreviewRegistry] has_preview: file=" + file_path +
+                             " ext=" + ext + " entries_count=" + std::to_string(entries_.size()));
+    if (ext.empty()) {
+      engine::Logger::instance().debug("[PreviewRegistry] has_preview: ext empty, returning false");
       return false;
+    }
     std::lock_guard<std::mutex> lock(mutex_);
-    return std::any_of(entries_.begin(), entries_.end(),
-                       [&](const PreviewRegistryEntry &e) {
-                         return e.extension == ext;
-                       });
+    bool found = std::any_of(entries_.begin(), entries_.end(),
+                             [&](const PreviewRegistryEntry &e) {
+                               engine::Logger::instance().debug("[PreviewRegistry] has_preview: checking entry ext=" + e.extension);
+                               return e.extension == ext;
+                             });
+    engine::Logger::instance().debug("[PreviewRegistry] has_preview: result=" + std::string(found ? "TRUE" : "FALSE"));
+    return found;
   }
 
   // Invoke the registered generator for file_path's extension. Returns the
@@ -91,15 +104,28 @@ public:
   [[nodiscard]] void *create_preview(const std::string &file_path) const {
     const std::string ext = normalize_extension(
         std::filesystem::path(file_path).extension().string());
-    if (ext.empty())
+    engine::Logger::instance().debug("[PreviewRegistry] create_preview: file=" + file_path +
+                             " ext=" + ext + " entries_count=" + std::to_string(entries_.size()));
+    if (ext.empty()) {
+      engine::Logger::instance().debug("[PreviewRegistry] create_preview: ext empty, returning nullptr");
       return nullptr;
+    }
     std::lock_guard<std::mutex> lock(mutex_);
+    for (size_t i = 0; i < entries_.size(); ++i) {
+      const auto &e = entries_[i];
+      engine::Logger::instance().debug("[PreviewRegistry] create_preview: entry[" + std::to_string(i) +
+                               "] ext=" + e.extension + " fn=" +
+                               std::to_string(reinterpret_cast<uintptr_t>(e.fn)));
+    }
     auto it = std::find_if(entries_.begin(), entries_.end(),
                            [&](const PreviewRegistryEntry &e) {
                              return e.extension == ext && e.fn != nullptr;
                            });
-    if (it == entries_.end())
+    if (it == entries_.end()) {
+      engine::Logger::instance().debug("[PreviewRegistry] create_preview: no match found, returning nullptr");
       return nullptr;
+    }
+    engine::Logger::instance().debug("[PreviewRegistry] create_preview: match found, calling fn");
     return it->fn(file_path.c_str(), it->preview_data, it->user_data);
   }
 
