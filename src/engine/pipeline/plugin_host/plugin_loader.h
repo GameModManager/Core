@@ -157,6 +157,14 @@ public:
     bool load_plugin(const std::string& path);
     bool load_directory(const std::string& dir_path);
 
+    // After all plugins are loaded: decide which core category set (if any)
+    // populates the global CategoryFactory. Called from load_directory().
+    // Logic: if a game-support plugin declared a core_category_set hook and no
+    // plugin registered categories directly, apply that set; otherwise if no
+    // categories were registered at all, apply "Default"; otherwise leave the
+    // directly-registered categories untouched.
+    void finalize_category_sets();
+
     // Plugin basenames (e.g. "SkyrimSpecialEdition.so") skipped on load.
     void set_disabled_plugins(const std::vector<std::string>& names) {
         disabled_plugins_ = names;

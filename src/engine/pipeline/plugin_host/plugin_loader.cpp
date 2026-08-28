@@ -1,5 +1,6 @@
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "engine/pipeline/plugin_host/category_factory.h"
+#include "engine/mod/meta/category_set_registry.h"
 #include "engine/pipeline/plugin_host/python_loader.h"
 #include "engine/pipeline/plugin_host/diagnostics_registry.h"
 #include "engine/pipeline/plugin_host/diagnose_registry.h"
@@ -1722,7 +1723,37 @@ bool PluginLoader::load_directory(const std::string& dir_path) {
             " plugin requirement(s) unmet across loaded plugins");
     }
 
+    // Decide which core category set (if any) populates the global factory now
+    // that every plugin has registered its categories and/or declared a
+    // core_category_set hook.
+    finalize_category_sets();
+
     return loaded > 0;
+}
+
+void PluginLoader::finalize_category_sets() {
+    const bool any_registered =
+        !CategoryFactory::instance().categories().empty();
+
+    std::string core_set_name;
+    for (const auto& p : plugins_) {
+        if (!p.game_support)
+            continue;
+        const auto cs = knowledge_.get(p.game_id, "core_category_set");
+        if (!cs.empty()) {
+            core_set_name = cs;
+            break;  // first game-support plugin with a core set wins
+        }
+    }
+
+    if (!core_set_name.empty() && !any_registered) {
+        // No plugin registered categories; apply the declared core set.
+        CategoryFactory::instance().applyCoreSet(core_set_name);
+    } else if (!any_registered) {
+        // No categories at all -- apply Default (empty).
+        CategoryFactory::instance().applyCoreSet("Default");
+    }
+    // else: plugins registered categories directly -- use those.
 }
 
 bool PluginLoader::is_loaded(const std::string& path) const {

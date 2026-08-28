@@ -1,4 +1,5 @@
 #include "engine/pipeline/plugin_host/category_factory.h"
+#include "engine/mod/meta/category_set_registry.h"
 
 #include <fstream>
 #include <sstream>
@@ -97,6 +98,26 @@ void CategoryFactory::merge(const int *ids, const char *const *names,
     categories_.emplace(id, std::move(cat));
   }
   rebuildTree();
+}
+
+bool CategoryFactory::applyCoreSet(const std::string &set_name) {
+  const auto *set = CategorySetRegistry::instance().find(set_name);
+  if (!set)
+    return false;
+
+  for (const auto &entry : set->categories) {
+    if (entry.id == 0)
+      continue;
+    if (!categories_.count(entry.id)) {
+      Category cat;
+      cat.id = entry.id;
+      cat.name = entry.name;
+      cat.parent_id = entry.parent_id;
+      categories_.emplace(entry.id, std::move(cat));
+    }
+  }
+  rebuildTree();
+  return true;
 }
 
 bool CategoryFactory::categoryExists(int id) const {
