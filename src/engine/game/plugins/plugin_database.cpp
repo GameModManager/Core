@@ -114,11 +114,18 @@ bool PluginDatabase::refresh(const std::filesystem::path& game_dir,
     // Game Data files that are NOT shadowed by a mod. Mod files win the name
     // conflict (they are what the virtual Data serves).
     std::map<std::string, std::filesystem::path> game_data_files;
-    if (std::filesystem::is_directory(game_dir / "Data", ec)) {
-        for (const auto& entry : std::filesystem::directory_iterator(game_dir / "Data", ec)) {
-            if (!entry.is_regular_file(ec)) continue;
-            if (is_plugin_file(entry.path())) {
-                game_data_files[entry.path().filename().string()] = entry.path();
+    {
+        // Resolve the Data directory through PathResolver so a re-cased on-disk
+        // layout (e.g. "data/" or "DATA/") still yields the game's plugins
+        // instead of producing an empty plugin database.
+        engine::vfs::PathResolver resolver(game_dir);
+        auto data_gf = resolver.resolve("Data");
+        if (data_gf && data_gf->exists()) {
+            for (const auto& entry : std::filesystem::directory_iterator(data_gf->absolute(), ec)) {
+                if (!entry.is_regular_file(ec)) continue;
+                if (is_plugin_file(entry.path())) {
+                    game_data_files[entry.path().filename().string()] = entry.path();
+                }
             }
         }
     }
@@ -217,13 +224,18 @@ void PluginDatabase::load_creation_club(const std::filesystem::path& game_dir,
 
     std::error_code ec;
     std::vector<std::filesystem::path> candidates;
+    engine::vfs::PathResolver resolver(game_dir);
     if (std::filesystem::is_directory(game_dir, ec)) {
         const auto root_ccc = resolve_regular_file_ci(game_dir, ccc_filename);
         if (!root_ccc.empty()) candidates.push_back(root_ccc);
     }
-    const auto data_dir = game_dir / "Data";
-    if (std::filesystem::is_directory(data_dir, ec)) {
-        const auto data_ccc = resolve_regular_file_ci(data_dir, ccc_filename);
+    // Resolve the Data directory through PathResolver so a re-cased on-disk
+    // layout (e.g. "data/" or "DATA/") still finds the creation-club file.
+    auto data_gf = resolver.resolve("Data");
+    if (data_gf && data_gf->exists() &&
+        std::filesystem::is_directory(data_gf->absolute(), ec)) {
+        const auto data_ccc =
+            resolve_regular_file_ci(data_gf->absolute(), ccc_filename);
         if (!data_ccc.empty()) candidates.push_back(data_ccc);
     }
     if (candidates.empty()) return;
