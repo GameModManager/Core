@@ -27,6 +27,7 @@ set(ENGINE_SOURCES
     core/instance/game_icons.cpp
     core/instance/masterlist_fetch.cpp
     core/util/fs_utils.cpp
+    core/util/thread_priority.cpp
     core/vfs/game_file.h
     core/vfs/path_resolver.h
     core/vfs/path_resolver.cpp

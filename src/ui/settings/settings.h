@@ -96,6 +96,13 @@ public:
     bool use_prereleases() const;
     void set_use_prereleases(bool on);
 
+    // extraction -------------------------------------------------------------
+    // Lower the CPU priority of archive extraction so large mod archives don't
+    // max out the system while installing. Defaults to ON (most users want
+    // this); read on every install, never cached at startup.
+    bool extraction_low_priority() const;          // key: extraction/low_priority
+    void set_extraction_low_priority(bool on);
+
     // profile defaults -------------------------------------------------------
     bool local_saves() const;
     void set_local_saves(bool on);

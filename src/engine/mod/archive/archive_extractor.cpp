@@ -1,6 +1,7 @@
 #include "engine/mod/archive/archive_extractor.h"
 #include "engine/core/util/fs_utils.h"
 #include "engine/core/util/process_utils.h"
+#include "engine/core/util/thread_priority.h"
 
 #include <archive.h>
 #include <archive_entry.h>
@@ -111,8 +112,17 @@ bool ArchiveExtractor::extract(const std::filesystem::path& archive,
                                 const std::filesystem::path& dest_dir,
                                 std::vector<ExtractedFile>& out_files,
                                 std::string& error,
-                                const ExtractProgressFn& on_progress) {
+                                const ExtractProgressFn& on_progress,
+                                bool low_priority) {
     error.clear();
+
+    // Lower CPU priority up front so the whole extraction (header pre-pass, the
+    // read/decompress loop, and the unrar fallback) yields to the rest of the
+    // system. Runs on the worker thread that drives the pipeline. Best-effort:
+    // a failure here is non-fatal and extraction proceeds at normal priority.
+    if (low_priority) {
+        set_low_priority();
+    }
 
     // Two-pass progress: sum entry sizes up front (header-only, cheap), then
     // report bytes written against that total while extracting.

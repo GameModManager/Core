@@ -87,7 +87,8 @@ bool ExtractStage::execute(Mod& mod, PipelineContext& ctx) {
             }
             const int pct = static_cast<int>(done * 100 / total);
             ctx.on_stage_progress(std::clamp(pct, 0, 100), extract_status);
-        });
+        },
+        ctx.low_priority_extraction);
     if (!extracted_ok) {
         Logger::instance().error("ExtractStage: extraction failed for " +
                                  archive_path.string() + " into " +

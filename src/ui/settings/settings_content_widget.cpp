@@ -121,11 +121,18 @@ QWidget *SettingsContentWidget::build_general_tab() {
   full_ui_box->setToolTip(tr("Opens Settings, Pipeline and other panels as "
                              "tabs inside the main window instead of popup "
                              "dialogs."));
+  auto *extract_prio_box =
+      new QCheckBox(tr("Lower priority during extraction"), gen_group);
+  extract_prio_box->setChecked(s.extraction_low_priority());
+  extract_prio_box->setToolTip(
+      tr("Uses less CPU while extracting mod archives. May be slightly "
+         "slower but keeps your system responsive."));
   gen_layout->addWidget(update_box);
   gen_layout->addWidget(prerelease_box);
   gen_layout->addWidget(smooth_box);
   gen_layout->addWidget(dl_notify_box);
   gen_layout->addWidget(full_ui_box);
+  gen_layout->addWidget(extract_prio_box);
   layout->addWidget(gen_group);
 
   connect(update_box, &QCheckBox::toggled, this,
@@ -140,6 +147,8 @@ QWidget *SettingsContentWidget::build_general_tab() {
     s.set_full_ui_mode(on);
     emit full_ui_mode_toggled(on);
   });
+  connect(extract_prio_box, &QCheckBox::toggled, this,
+          [&s](bool on) { s.set_extraction_low_priority(on); });
 
   // Profile defaults ---------------------------------------------------------
   auto *profile_group = new QGroupBox(tr("Profile Defaults"), page);
