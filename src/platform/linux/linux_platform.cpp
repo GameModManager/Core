@@ -1,3 +1,7 @@
+#ifndef __linux__
+#error "This file should only be compiled on the correct platform"
+#endif
+
 #include "platform/linux/linux_platform.h"
 
 #include <algorithm>
