@@ -151,6 +151,16 @@ if(NOT APPLE)
     )
 endif()
 
+# USVFS — Windows-only (LoadLibraryW + GetProcAddress + VFS controller).
+# Headers compile everywhere (stub on non-Windows) but the .cpp files are
+# Windows-only.
+if(WIN32)
+    list(APPEND ENGINE_SOURCES
+        deploy/launch/usvfs_library.cpp
+        deploy/launch/usvfs_connector.cpp
+    )
+endif()
+
 add_library(gmm_engine STATIC ${ENGINE_SOURCES})
 
 # Include dirs are PUBLIC so consumers (gmm_ui, gmm_cli, tests, the app) get
