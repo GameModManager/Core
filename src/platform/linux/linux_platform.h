@@ -38,6 +38,10 @@ public:
     [[nodiscard]] bool symlinks_available() const override { return true; }
     [[nodiscard]] bool junctions_available() const override { return false; }
 
+    [[nodiscard]] std::filesystem::path home_dir() const override;
+    [[nodiscard]] std::filesystem::path temp_dir() const override;
+    void set_thread_low_priority() const override;
+
     // NXM protocol handler registration (XDG compliant)
     [[nodiscard]] static bool register_nxm_handler(const std::filesystem::path& exe_path);
     [[nodiscard]] static bool unregister_nxm_handler();

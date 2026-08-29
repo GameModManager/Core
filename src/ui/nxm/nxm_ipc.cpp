@@ -1,5 +1,6 @@
 #include "ui/nxm/nxm_ipc.h"
 #include "engine/core/log/logger.h"
+#include "platform/platform_interface.h"
 
 #include <QLocalServer>
 #include <QLocalSocket>
@@ -11,10 +12,7 @@
 namespace {
 
 std::string socket_path() {
-    const char* home = std::getenv("HOME");
-    std::string base = home
-        ? std::string(home) + "/.local/share/GameModManager"
-        : "/tmp/gamemodmanager";
+    std::string base = engine::safe_home_dir().string() + "/.local/share/GameModManager";
     std::error_code ec;
     std::filesystem::create_directories(base, ec);
     return base + "/gmm.sock";

@@ -1,4 +1,5 @@
 #include "ui/controllers/launch_controller.h"
+#include "platform/platform_interface.h"
 #include "ui/controllers/mod_list_controller.h"
 #include "ui/controllers/queue_controller.h"
 
@@ -345,8 +346,7 @@ void LaunchController::populate_executables() {
         w_->knowledge_->get(w_->current_game_id_, "executables", "");
     std::vector<std::filesystem::path> fallback_roots;
 #ifdef __APPLE__
-    if (const char *home = std::getenv("HOME"); home && *home)
-      fallback_roots.push_back(std::filesystem::path(home) / "Applications");
+    fallback_roots.push_back(engine::safe_home_dir() / "Applications");
     fallback_roots.push_back("/Applications");
 #endif
     for (const auto &name : seed_executable_candidates(
@@ -1380,9 +1380,7 @@ void LaunchController::add_shortcut_to_desktop() {
   auto desktop =
       QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
   if (desktop.isEmpty()) {
-    auto *home = std::getenv("HOME");
-    if (home)
-      desktop = QString::fromUtf8(home) + "/Desktop";
+    desktop = QString::fromStdString(engine::safe_home_dir().string()) + "/Desktop";
   }
   if (desktop.isEmpty()) {
     QMessageBox::warning(w_, tr("Shortcut"),

@@ -3,6 +3,7 @@
 #include "ui/fomod/fomod_wizard_dialog.h"
 #include "ui/install/install_name_dialog.h"
 #include "ui/overwrite/query_overwrite_dialog.h"
+#include "platform/platform_interface.h"
 
 #include <QAbstractButton>
 #include <QMessageBox>
@@ -174,10 +175,8 @@ void DownloadsController::setup_pipeline() {
   engine::SourceRegistry::instance().register_provider(
       std::make_unique<engine::LoversLabProvider>());
 
-  auto home = std::getenv("HOME");
-  std::string ws_db = home ? (std::string(home) +
-                              "/.local/share/GameModManager/workshop_cache.db")
-                           : "workshop_cache.db";
+  std::string ws_db = engine::safe_home_dir().string() +
+                      "/.local/share/GameModManager/workshop_cache.db";
   engine::SourceRegistry::instance().register_provider(
       std::make_unique<engine::SteamWorkshopProvider>(
           ws_db, Settings::instance().workshop_rate_limit_per_hour()));

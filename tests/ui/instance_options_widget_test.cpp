@@ -48,6 +48,8 @@ public:
     fs::path data_dir() const override { return "/tmp/gmm_instance_options_widget_data"; }
     fs::path config_dir() const override { return "/tmp/gmm_instance_options_widget_config"; }
     fs::path cache_dir() const override { return "/tmp/gmm_instance_options_widget_cache"; }
+    fs::path home_dir() const override { return data_dir(); }
+    fs::path temp_dir() const override { return data_dir(); }
     fs::path find_steam_root() const override { return {}; }
     bool launch_executable(const fs::path&,
                            const std::vector<std::string>&) const override {

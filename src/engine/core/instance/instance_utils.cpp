@@ -27,9 +27,7 @@ fs::path instances_dir_override_;
 fs::path default_instances_dir() {
     if (!instances_dir_override_.empty())
         return instances_dir_override_;
-    const char* home = std::getenv("HOME");
-    if (!home) return "/tmp/gamemodmanager/instances";
-    return std::string(home) + "/.local/share/GameModManager/instances";
+    return safe_home_dir() / ".local/share/GameModManager/instances";
 }
 
 void set_instances_dir_override(const fs::path& dir) {
@@ -37,9 +35,7 @@ void set_instances_dir_override(const fs::path& dir) {
 }
 
 fs::path last_instance_file_path() {
-    const char* home = std::getenv("HOME");
-    if (!home) return "/tmp/gamemodmanager/last_instance";
-    return std::string(home) + "/.local/share/GameModManager/last_instance";
+    return safe_home_dir() / ".local/share/GameModManager/last_instance";
 }
 
 std::string read_last_instance() {

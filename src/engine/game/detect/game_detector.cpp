@@ -1,4 +1,5 @@
 #include "engine/game/detect/game_detector.h"
+#include "platform/platform_interface.h"
 
 #include <algorithm>
 #include <fstream>
@@ -43,10 +44,7 @@ std::vector<std::filesystem::path> default_steam_roots() {
     roots.push_back(LR"(C:\Program Files\Steam)");
 #else
     // Linux / macOS
-    auto home = std::getenv("HOME");
-    if (!home) return roots;
-
-    std::filesystem::path home_path(home);
+    std::filesystem::path home_path = safe_home_dir();
     roots.push_back(home_path / ".local" / "share" / "Steam");
     roots.push_back(home_path / ".steam" / "steam");
     roots.push_back(home_path / ".steam" / "debian-installation");

@@ -192,6 +192,28 @@ bool WindowsPlatform::symlinks_available() const {
     return is_elevated();
 }
 
+// --- Home / temp / thread priority ---
+
+std::filesystem::path WindowsPlatform::home_dir() const {
+    wchar_t buf[MAX_PATH];
+    DWORD len = GetEnvironmentVariableW(L"USERPROFILE", buf, MAX_PATH);
+    if (len > 0 && len <= MAX_PATH)
+        return std::filesystem::path(std::wstring(buf, len));
+    return std::filesystem::temp_directory_path();
+}
+
+std::filesystem::path WindowsPlatform::temp_dir() const {
+    wchar_t buf[MAX_PATH];
+    DWORD len = GetEnvironmentVariableW(L"TEMP", buf, MAX_PATH);
+    if (len > 0 && len <= MAX_PATH)
+        return std::filesystem::path(std::wstring(buf, len));
+    return std::filesystem::temp_directory_path();
+}
+
+void WindowsPlatform::set_thread_low_priority() const {
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+}
+
 // --- nxm:// protocol handler registration ---
 
 bool WindowsPlatform::register_nxm_handler(

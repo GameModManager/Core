@@ -32,6 +32,10 @@ public:
     [[nodiscard]] bool symlinks_available() const override;
     [[nodiscard]] bool junctions_available() const override { return true; }
 
+    [[nodiscard]] std::filesystem::path home_dir() const override;
+    [[nodiscard]] std::filesystem::path temp_dir() const override;
+    void set_thread_low_priority() const override;
+
     // Windows-specific: read a string value from the Windows registry.
     // Returns empty path if the key/value doesn't exist or on error.
     [[nodiscard]] static std::filesystem::path registry_read_string(
