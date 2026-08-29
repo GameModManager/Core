@@ -71,10 +71,11 @@ static std::string data_dir() {
 
 static std::string log_path() { return data_dir() + "/gamemodmanager.log"; }
 
-static std::string crash_dir() { return data_dir() + "/crashes"; }
-
 int main(int argc, char *argv[]) {
-  engine::CrashHandler::install(crash_dir());
+  // Install the cross-platform crash handler as early as possible, before any
+  // UI or engine setup, so crashes during startup are captured too. Dumps are
+  // written to the platform cache dir's crash_dumps/ subdirectory.
+  engine::install_crash_handler();
 
   QApplication app(argc, argv);
   app.setApplicationName("GameModManager");
