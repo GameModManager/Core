@@ -10,6 +10,8 @@ A cross-platform, plugin-driven game mod manager with an MO2-style UI. Drop in a
 
 </div>
 
+!["Main UI Preview"](./assets/GMM2.png)
+
 ---
 
 ## Chapters
