@@ -1,5 +1,7 @@
 #include <QApplication>
 
+#include "platform/platform_interface.h"
+
 #ifdef GMM_HAS_QTKEYCHAIN
 #include "keyring/qtkeychain_keyring.h"
 #endif
@@ -64,10 +66,7 @@ static void qt_message_filter(QtMsgType type, const QMessageLogContext &ctx,
 namespace fs = std::filesystem;
 
 static std::string data_dir() {
-  const char *home = std::getenv("HOME");
-  if (!home)
-    return "/tmp/gamemodmanager";
-  return std::string(home) + "/.local/share/GameModManager";
+  return engine::safe_home_dir().string() + "/.local/share/GameModManager";
 }
 
 static std::string log_path() { return data_dir() + "/gamemodmanager.log"; }

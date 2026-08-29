@@ -3,11 +3,13 @@
 #include "engine/core/util/debug_env.h"
 #include "engine/core/util/fs_utils.h"
 #include "engine/core/log/logger.h"
+#include "platform/platform_interface.h"
 
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits.h>
 #include <string>
 #include <vector>
 #include <system_error>
@@ -288,7 +290,11 @@ int64_t OverlayFsLauncher::launch(const std::filesystem::path& executable,
 
             if (!valid.empty()) {
                 // Preserve original game_dir by bind-mounting it to a temp location
-                char tmpl[] = "/tmp/gmm_orig_XXXXXX";
+                std::string tmpl_str =
+                    (std::filesystem::temp_directory_path() / "gmm_orig_XXXXXX").string();
+                char tmpl[PATH_MAX];
+                std::strncpy(tmpl, tmpl_str.c_str(), sizeof(tmpl) - 1);
+                tmpl[sizeof(tmpl) - 1] = '\0';
                 if (!mkdtemp(tmpl)) _exit(15);
                 orig_dir = tmpl;
                 if (mount(ca->game_dir.c_str(), orig_dir.c_str(), "", MS_BIND, NULL) != 0) {

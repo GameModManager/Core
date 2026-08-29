@@ -1,6 +1,7 @@
 #include "engine/source/loverslab_auth.h"
 
 #include "engine/core/log/logger.h"
+#include "platform/platform_interface.h"
 
 #include <cctype>
 #include <cstdlib>
@@ -45,10 +46,7 @@ std::filesystem::path LoversLabAuth::config_dir() {
     const char* xdg = std::getenv("XDG_CONFIG_HOME");
     if (xdg && *xdg)
         return std::filesystem::path(xdg) / "GameModManager";
-    const char* home = std::getenv("HOME");
-    if (home)
-        return std::filesystem::path(home) / ".config" / "GameModManager";
-    return std::filesystem::path("/tmp") / "GameModManager";
+    return safe_home_dir() / ".config" / "GameModManager";
 }
 
 LoversLabAuth::LoversLabAuth()

@@ -1,5 +1,6 @@
 #include "engine/core/log/logger.h"
 #include "engine/core/util/debug_env.h"
+#include "platform/platform_interface.h"
 
 #include <chrono>
 #include <cstdio>
@@ -12,8 +13,7 @@
 namespace engine {
 
 Logger::Logger() {
-    auto* home = std::getenv("HOME");
-    if (home) home_dir_ = home;
+    home_dir_ = safe_home_dir().string();
 }
 
 Logger& Logger::instance() {

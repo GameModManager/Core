@@ -1,4 +1,5 @@
 #include "engine/game/registry/game_knowledge.h"
+#include "platform/platform_interface.h"
 
 #include <cstdlib>
 
@@ -87,8 +88,7 @@ std::string plugin_game_mods_dir(const GameKnowledge &knowledge,
   // Expand a leading ~ against $HOME at resolution time (the plugin only
   // declares the literal path; HOME may differ between registration and use).
   if (!dir.empty() && dir.front() == '~') {
-    if (const char *home = std::getenv("HOME"))
-      dir = std::string(home) + dir.substr(1);
+    dir = safe_home_dir().string() + dir.substr(1);
   }
   return dir;
 }

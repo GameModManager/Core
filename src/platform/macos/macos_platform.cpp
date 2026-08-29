@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include <sys/resource.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -89,6 +90,22 @@ bool MacOSPlatform::launch_executable(
 
 bool MacOSPlatform::is_elevated() const {
     return geteuid() == 0;
+}
+
+// --- Home / temp / thread priority ---
+
+std::filesystem::path MacOSPlatform::home_dir() const {
+    if (const char* home = std::getenv("HOME"); home && home[0] != '\0')
+        return std::filesystem::path(home);
+    return std::filesystem::temp_directory_path();
+}
+
+std::filesystem::path MacOSPlatform::temp_dir() const {
+    return std::filesystem::temp_directory_path();
+}
+
+void MacOSPlatform::set_thread_low_priority() const {
+    setpriority(PRIO_PROCESS, 0, 10);
 }
 
 }  // namespace engine

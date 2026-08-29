@@ -1,5 +1,6 @@
 #include "engine/core/util/fs_utils.h"
 #include "engine/core/log/logger.h"
+#include "platform/platform_interface.h"
 
 #include <chrono>
 #include <cstdio>
@@ -144,9 +145,7 @@ std::string trash_root() {
     const char* data_home = std::getenv("XDG_DATA_HOME");
     if (data_home && *data_home)
         return std::string(data_home) + "/Trash";
-    const char* home = std::getenv("HOME");
-    if (!home) return {};
-    return std::string(home) + "/.local/share/Trash";
+    return safe_home_dir().string() + "/.local/share/Trash";
 }
 
 // freedesktop.org Trash spec (Linux).

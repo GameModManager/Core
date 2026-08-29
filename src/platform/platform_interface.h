@@ -1,8 +1,13 @@
 #pragma once
 
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <vector>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 namespace engine {
 
@@ -102,6 +107,28 @@ public:
 
     // Check if NTFS junctions are available (Windows only, always true there).
     [[nodiscard]] virtual bool junctions_available() const { return false; }
+
+    // Home directory — Linux/macOS: $HOME, Windows: %USERPROFILE%
+    [[nodiscard]] virtual std::filesystem::path home_dir() const = 0;
+
+    // Temporary directory
+    [[nodiscard]] virtual std::filesystem::path temp_dir() const = 0;
+
+    // Lower the current thread's CPU priority
+    virtual void set_thread_low_priority() const {}
 };
+
+// Centralized home dir lookup for code paths without a PlatformInterface pointer.
+inline std::filesystem::path safe_home_dir() {
+#ifdef _WIN32
+    wchar_t buf[MAX_PATH + 1];
+    if (GetEnvironmentVariableW(L"USERPROFILE", buf, MAX_PATH))
+        return std::filesystem::path(buf);
+#else
+    if (const char* home = std::getenv("HOME"))
+        return std::filesystem::path(home);
+#endif
+    return std::filesystem::temp_directory_path();
+}
 
 }  // namespace engine
