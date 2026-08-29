@@ -106,10 +106,10 @@ static void folder_timestamps(const std::filesystem::path &dir,
   // Unix epoch on libstdc++ (__file_clock). Convert explicitly via the
   // standard to_sys()/from_sys() pair, or the raw duration is garbage.
   const int64_t mtime_sec = static_cast<int64_t>(
-      std::chrono::duration_cast<std::chrono::seconds>(
-          std::filesystem::file_time_type::clock::to_sys(mtime)
-              .time_since_epoch())
-          .count());
+       std::chrono::duration_cast<std::chrono::seconds>(
+           std::chrono::clock_cast<std::chrono::system_clock>(mtime)
+               .time_since_epoch())
+           .count());
   changed = mtime_sec;
 
 #if defined(__linux__)

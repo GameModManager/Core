@@ -14,6 +14,7 @@
 #include <vector>
 #include <system_error>
 
+#ifndef _WIN32
 #include <fcntl.h>
 #include <sched.h>
 #include <sys/mount.h>
@@ -22,6 +23,12 @@
 #include <unistd.h>
 
 #include <sys/xattr.h>
+#endif
+
+#ifdef _WIN32
+using uid_t = int;
+using gid_t = int;
+#endif
 
 namespace engine {
 
