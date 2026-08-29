@@ -11,8 +11,14 @@
 #include <chrono>
 #include <filesystem>
 #include <thread>
+#ifndef _WIN32
 #include <unistd.h>
 #include <sys/wait.h>
+#endif
+
+#ifdef _WIN32
+using pid_t = int;
+#endif
 
 namespace fs = std::filesystem;
 

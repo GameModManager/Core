@@ -8,6 +8,26 @@
 #include <filesystem>
 #include <vector>
 
+#ifndef REPARSE_DATA_BUFFER_DEFINED
+#define REPARSE_DATA_BUFFER_DEFINED
+typedef struct _REPARSE_DATA_BUFFER {
+    USHORT ReparseTag;
+    USHORT ReparseDataLength;
+    USHORT Reserved;
+    union {
+        struct {
+            USHORT SubstituteNameOffset;
+            USHORT SubstituteNameLength;
+            USHORT PrintNameOffset;
+            USHORT PrintNameLength;
+            WCHAR PathBuffer[1];
+        } MountPointReparseBuffer;
+    };
+} REPARSE_DATA_BUFFER;
+#define MOUNT_POINT_REPARSE_BUFFER_HEADER_SIZE \
+    (sizeof(REPARSE_DATA_BUFFER) - sizeof(WCHAR))
+#endif
+
 namespace engine {
 
 namespace {

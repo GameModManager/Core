@@ -4,10 +4,28 @@
 #include <chrono>
 #include <cstdio>
 #include <ctime>
-#include <fcntl.h>
-#include <unistd.h>
 #include <cstdlib>
 #include <cstring>
+
+#ifdef _WIN32
+#include <io.h>
+#include <fcntl.h>
+#define open _open
+#define write _write
+#define close _close
+#define O_WRONLY _O_WRONLY
+#define O_CREAT _O_CREAT
+#define O_TRUNC _O_TRUNC
+#define O_RDONLY _O_RDONLY
+// For mode_t:
+#ifndef S_IRUSR
+#define S_IRUSR _S_IREAD
+#define S_IWUSR _S_IWRITE
+#endif
+#else
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 namespace engine {
 
@@ -129,7 +147,11 @@ std::string Logger::make_timestamp() const {
     auto ms = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
 
     struct tm tm_buf{};
+#ifdef _WIN32
+    localtime_s(&tm_buf, &time_t_now);
+#else
     localtime_r(&time_t_now, &tm_buf);
+#endif
 
     char buf[16];
     std::snprintf(buf, sizeof(buf), "%02d:%02d:%02d",
