@@ -26,7 +26,7 @@ public:
         archive_read_support_filter_all(a);
         archive_read_support_format_all(a);
 
-        const int open_rc = archive_read_open_filename(a, m_path.c_str(), 10240);
+        const int open_rc = archive_read_open_filename(a, m_path.string().c_str(), 10240);
         if (open_rc != ARCHIVE_OK) {
             if (error) {
                 *error = std::string("cannot open archive: ") +

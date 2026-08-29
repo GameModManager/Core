@@ -13,18 +13,30 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#ifndef _WIN32
 #include <dirent.h>
+#endif
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#ifndef _WIN32
 #include <signal.h>
+#endif
 #include <thread>
+#ifndef _WIN32
 #include <unistd.h>  // getpid/getuid (was pulled in transitively by sys/prctl.h on Linux)
+#endif
 #include <unordered_set>
 #ifdef GMM_PLATFORM_LINUX
 #include <sys/prctl.h>  // PR_SET_CHILD_SUBREAPER (Linux-only; macOS skips it)
 #endif
+#ifndef _WIN32
 #include <sys/wait.h>
+#endif
+
+#ifdef _WIN32
+using pid_t = int;
+#endif
 
 namespace fs = std::filesystem;
 

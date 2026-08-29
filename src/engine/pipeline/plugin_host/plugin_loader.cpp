@@ -38,9 +38,20 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <dlfcn.h>
 #include <optional>
 #include <filesystem>
+
+#ifdef _WIN32
+#include <windows.h>
+#define RTLD_NOW 0
+#define RTLD_LOCAL 0
+inline void* dlopen(const char* path, int) { return static_cast<void*>(LoadLibraryA(path)); }
+inline void* dlsym(void* handle, const char* name) { return reinterpret_cast<void*>(GetProcAddress(static_cast<HMODULE>(handle), name)); }
+inline int dlclose(void* handle) { return FreeLibrary(static_cast<HMODULE>(handle)); }
+inline const char* dlerror() { return "dlopen failed"; }
+#else
+#include <dlfcn.h>
+#endif
 
 namespace engine {
 

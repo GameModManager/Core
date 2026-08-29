@@ -46,9 +46,9 @@ void RemoteCache::set_free(std::function<void(void*)> fn) {
 bool RemoteCache::is_fresh() const {
     if (!fs::exists(cache_path_)) return false;
     auto mtime = fs::last_write_time(cache_path_);
-    auto age = std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::system_clock::now().time_since_epoch()
-        - std::chrono::file_clock::to_sys(mtime).time_since_epoch());
+     auto age = std::chrono::duration_cast<std::chrono::seconds>(
+         std::chrono::system_clock::now().time_since_epoch()
+         - std::chrono::clock_cast<std::chrono::system_clock>(mtime).time_since_epoch());
     return age <= ttl_;
 }
 
