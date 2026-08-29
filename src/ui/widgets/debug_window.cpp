@@ -13,7 +13,9 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 namespace ui {
 

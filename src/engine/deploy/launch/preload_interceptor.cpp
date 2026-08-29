@@ -9,9 +9,15 @@
 #include <filesystem>
 #include <string>
 
+#ifndef _WIN32
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#endif
+
+#ifdef _WIN32
+using pid_t = int;
+#endif
 
 namespace engine {
 

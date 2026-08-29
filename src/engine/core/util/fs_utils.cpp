@@ -188,7 +188,11 @@ bool move_to_trash_linux(const std::filesystem::path& path) {
     char offset_buf[16];
     const auto now = std::time(nullptr);
     std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &now);
+#else
     localtime_r(&now, &tm);
+#endif
     std::strftime(date_buf, sizeof(date_buf), "%Y-%m-%dT%H:%M:%S", &tm);
     std::strftime(offset_buf, sizeof(offset_buf), "%z", &tm);  // +HHMM / -HHMM
     std::string offset(offset_buf);
