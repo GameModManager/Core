@@ -11,6 +11,9 @@
 
 #ifndef _WIN32
 #include <unistd.h>
+
+#ifndef _WIN32  // POSIX-only — guarded for MSVC compatibility
+
 #endif
 
 namespace fs = std::filesystem;
@@ -203,3 +206,6 @@ int64_t run_proton_exe(const ProtonToolRequest& request,
 }
 
 }  // namespace engine
+
+
+#endif  // !_WIN32

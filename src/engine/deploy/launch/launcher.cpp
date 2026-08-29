@@ -42,6 +42,9 @@ namespace fs = std::filesystem;
 
 namespace engine {
 
+#ifndef _WIN32  // POSIX-only launcher — Windows USVFS launch is ticket Workspace-3br4
+
+
 // Returns true when a live game chain (other than ourselves) shares our
 // launch cgroup.  Used after the OverlayFS wrapper exits during the grace
 // poll: Proton's `waitforexitandrun` hands a Steam game off and exits 0
@@ -756,3 +759,5 @@ void cgroup_remove(const CgroupHandle& h) {
 
 }  // namespace engine
 
+
+#endif  // !_WIN32  // end of POSIX-only launcher

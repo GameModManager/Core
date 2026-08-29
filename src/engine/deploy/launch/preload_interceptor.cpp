@@ -13,6 +13,9 @@
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+#ifndef _WIN32  // POSIX-only — guarded for MSVC compatibility
+
 #endif
 
 #ifdef _WIN32
@@ -205,3 +208,6 @@ bool PreloadInterceptor::has_exited(int64_t pid) {
 }
 
 }  // namespace engine
+
+
+#endif  // !_WIN32

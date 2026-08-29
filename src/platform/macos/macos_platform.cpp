@@ -1,3 +1,7 @@
+#ifndef __APPLE__
+#error "This file should only be compiled on the correct platform"
+#endif
+
 #include "platform/macos/macos_platform.h"
 
 #include <cstdlib>
