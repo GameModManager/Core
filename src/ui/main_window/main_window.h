@@ -26,6 +26,7 @@
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/profile/profile.h"
 #include "platform/platform.h"
+#include "ui/ui_locker.h"
 
 class QSplitter;
 class QToolBar;
@@ -487,6 +488,9 @@ private:
   friend class SettingsController;
   friend class DownloadsController;
   friend class TabModeController;
+
+  // UI Locker for disabling/enabling the interface during operations
+  friend class Locker;
   std::unique_ptr<ModListController> mod_list_;
   std::unique_ptr<LaunchController> launch_;
   std::unique_ptr<OverwriteController> overwrite_;
@@ -497,6 +501,8 @@ private:
   // other controllers; the Main tab is added once the console splitter
   // exists.
   std::unique_ptr<TabModeController> tab_mode_;
+  // UI Locker instance for disabling/enabling the interface during operations
+  std::unique_ptr<Locker> locker_;
 };
 
 } // namespace ui
