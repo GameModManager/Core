@@ -702,7 +702,7 @@ Living document tracking MO2 feature parity and GMM-exclusive features.
 | PathResolver (canonical paths) | ❌ | 🚀 `PathResolver` + `PathResolverRegistry` | 🚀 |
 | Keyring (OS-backed + file fallback) | ❌ | 🚀 `Keyring` + `FileKeyring` (XOR+base64) | 🚀 |
 | Thread priority (low) | ❌ | 🚀 `set_low_priority()` | 🚀 |
-| Headless launcher (CLI) | ❌ | 🚀 `HeadlessLauncher` (HeadlessConfig) | 🚀 |
+| Headless launcher (CLI) | ❌ | 🚀 `cli::HeadlessLauncher` (`HeadlessLauncher::Config`) | 🚀 |
 | Proton version discovery | ❌ | 🚀 `find_proton()`, `enumerate_proton_versions()` | 🚀 |
 | Wine binary discovery | ❌ | 🚀 `find_wine()` | 🚀 |
 | Admin elevation check | ❌ | 🚀 `is_elevated()` | 🚀 |
