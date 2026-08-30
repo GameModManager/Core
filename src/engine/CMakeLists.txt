@@ -54,6 +54,7 @@ set(ENGINE_SOURCES
     profile/delayed_file_writer.cpp
     profile/safe_write_file.cpp
     deploy/order_hook.cpp
+    deploy/core.cpp
     deploy/strategy_symlink.cpp
     deploy/strategy_direct.cpp
     deploy/strategy_hardlink.cpp

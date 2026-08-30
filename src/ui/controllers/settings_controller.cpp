@@ -32,6 +32,7 @@
 #include "engine/core/log/logger.h"
 #include "engine/core/trace/trace_recorder.h"
 #include "engine/core/util/fs_utils.h"
+#include "engine/deploy/core.h"
 #include "engine/deploy/interface.h"
 #include "engine/deploy/overlay_fs_deploy.h"
 #include "engine/deploy/symlink.h"
@@ -363,23 +364,20 @@ void SettingsController::set_game_info(
     std::string deploy_strategy_label;
 #ifdef GMM_PLATFORM_LINUX
     if (deploy_strategy_name == engine::kDeployStrategyOverlayFs &&
-        engine::OverlayFsLauncher::is_supported(w_->overwrite_dir_path())) {
+        Deploy::Core::overlay_supported(w_->overwrite_dir_path())) {
       // OverlayFS: deploy symlinks into staging dir (not game_dir)
       auto staging = w_->current_instance_root_ / ".gmm_staging";
       ctx.staging_dir = staging;
-      auto ovl_strat =
-          std::make_unique<Deploy::OverlayFsDeploy>(staging, case_sensitive);
+      deploy_strategy =
+          Deploy::Core::create(deploy_strategy_name, case_sensitive, staging);
       w_->staging_dir_ = staging;
-      deploy_strategy = std::move(ovl_strat);
-      deploy_strategy_label = "OverlayFS";
     } else
 #endif
     {
-      deploy_strategy = std::make_unique<Deploy::Symlink>(case_sensitive);
-      deploy_strategy_label =
-          (deploy_strategy_name == engine::kDeployStrategyDirect) ? "Direct"
-                                                                  : "Symlink";
+      deploy_strategy =
+          Deploy::Core::create(deploy_strategy_name, case_sensitive);
     }
+    deploy_strategy_label = Deploy::Core::label(deploy_strategy_name);
     engine::Logger::instance().info("Deploy strategy: " +
                                     deploy_strategy_label);
     ctx.deploy_strategy = deploy_strategy.get();
