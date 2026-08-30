@@ -305,11 +305,11 @@ InstanceRegistry::validate(const Entry &entry) const {
   if (!tbl)
     return ValidationStatus::CorruptedToml;
 
-  // 4. Check if game_id is recognized by GameFeatureRegistry
+  // 4. Check if game_id is recognized by Game::Features::Registry
   // Note: This check may return UnregisteredGame for new games not yet
   // registered by plugins. This is a soft warning, not a hard error.
   if (!entry.game_id.empty()) {
-    auto &registry = GameFeatureRegistry::instance();
+    auto &registry = Game::Features::Registry::instance();
     auto features = registry.features_for(entry.game_id, "mod_data_checker");
     if (features.empty()) {
       // Also check for any feature type for this game
