@@ -23,6 +23,8 @@ set(UI_SOURCES
     controllers/overwrite_controller.cpp
     controllers/downloads_controller.cpp
     controllers/mod_list_controller.cpp
+    controllers/mod_actions.cpp
+    controllers/mod_context_menu.cpp
     controllers/settings_controller.cpp
     controllers/tab_mode_controller.cpp
     widgets/mod_list_model.cpp
