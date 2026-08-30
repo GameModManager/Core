@@ -8,8 +8,12 @@
 class QPlainTextEdit;
 class QWidget;
 
+namespace engine::Source {
+class Interface;
+}
+
 namespace engine {
-class SourceProvider;
+using SourceProvider = Source::Interface;
 }
 
 namespace ui {
