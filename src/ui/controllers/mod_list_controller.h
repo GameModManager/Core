@@ -88,7 +88,7 @@ public slots:
   // LOOT advisory-tool sort (PLAN.md §7.1).
   void run_loot_sort();
   void on_loot_progress(int stage, const QString &message);
-  void on_loot_finished(engine::LootResult result);
+  void on_loot_finished(engine::Sorter::Loot::Result result);
   void refresh_data_tab();
   void wire_data_tab();
   void on_data_open(const QString &file_path);

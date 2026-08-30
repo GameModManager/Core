@@ -2490,7 +2490,7 @@ void ModListController::run_loot_sort() {
   // request must carry each plugin's current winning path.
   refresh_plugins_tab();
 
-  engine::LootRequest request;
+  engine::Sorter::Loot::Request request;
   request.game_id = w_->current_game_id_;
   request.loot_game_id = loot_game_id;
   request.masterlist_repo = w_->knowledge_->get(
@@ -2556,7 +2556,7 @@ void ModListController::on_loot_progress(int stage, const QString &) {
     w_->status_bar_->set_status(kStageNames.at(stage));
 }
 
-void ModListController::on_loot_finished(engine::LootResult result) {
+void ModListController::on_loot_finished(engine::Sorter::Loot::Result result) {
   if (!result.ok) {
     engine::Logger::instance().warn("LOOT sort failed: " + result.error);
     if (w_->status_bar_)

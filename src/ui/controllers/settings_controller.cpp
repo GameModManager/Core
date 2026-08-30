@@ -676,7 +676,7 @@ void SettingsController::connect_menu_actions() {
                 " for game: " + game_id.toStdString());
             if (tool_id == QStringLiteral("loot")) {
               // LOOT is an advisory tool the engine drives itself: build a
-              // LootRequest from the current plugin DB and run gmm_lootcli off
+              // Sorter::Loot::Request from the current plugin DB and run gmm_lootcli off
               // the UI thread (PLAN.md §7.1).
               w_->mod_list_->run_loot_sort();
               return;

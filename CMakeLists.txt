@@ -102,7 +102,7 @@ find_package(KF6SyntaxHighlighting QUIET)
 
 # LOOT load-order sorting. gmm_lootcli links libloot, a Rust crate built from
 # source via its own cpp/CMakeLists.txt (invokes cargo). Optional: when cargo
-# is absent GMM_WITH_LOOT defaults OFF and the engine's LootSorter surfaces a
+# is absent GMM_WITH_LOOT defaults OFF and the engine's Sorter::Loot surfaces a
 # "binary missing" error at runtime.
 find_program(CARGO_EXECUTABLE cargo)
 set(GMM_WITH_LOOT_DEFAULT OFF)
@@ -252,7 +252,7 @@ endif()
 # whose C++ wrapper is a Rust crate built from source (its own cpp/CMakeLists.txt
 # invokes `cargo build`; Rust is build-time only). 0.29.6 ships no root
 # CMakeLists.txt, so populate and add the cpp/ subdir directly. The engine
-# LootSorter is compiled regardless of this option and reports the missing
+# Sorter::Loot is compiled regardless of this option and reports the missing
 # binary as a clear error.
 if(GMM_WITH_LOOT)
     # 0.29.6's undefined_group_error.h uses std::string without including

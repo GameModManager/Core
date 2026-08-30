@@ -271,7 +271,7 @@ Living document tracking MO2 feature parity and GMM-exclusive features.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| LOOT sort execution | ✅ `Loot::sort()` | ✅ `LootSorter` | ✅ |
+| LOOT sort execution | ✅ `Loot::sort()` | ✅ `Sorter::Loot` | ✅ |
 | LOOT report generation | ✅ `Loot::createReport()` | ❌ | ❌ |
 | LOOT report viewer (markdown + web) | ✅ `LootDialog` + `MarkdownDocument` | ❌ | ❌ |
 | LOOT progress display | ✅ `LootDialog::setProgress()` | ❌ | ❌ |
@@ -555,7 +555,7 @@ Living document tracking MO2 feature parity and GMM-exclusive features.
 |---------|-----|-----|--------|
 | Sort provider / registry | ❌ | 🚀 `SortProvider` + `SortRegistry` | 🚀 |
 | C ABI sort provider | ❌ | 🚀 `AbiSortProvider` | 🚀 |
-| LOOT sorter | ❌ | 🚀 `LootSorter` (run_loot_sort with progress) | 🚀 |
+| LOOT sorter | ❌ | 🚀 `Sorter::Loot` (run_sort with progress) | 🚀 |
 | Masterlist manager | ❌ | 🚀 `MasterlistManager` (GitHub branch walk-down, 24h TTL) | 🚀 |
 
 ## 29. Instance Management

@@ -1,4 +1,4 @@
-// Hermetic engine LootSorter tests (PLAN.md §7.1, Phase 5.5): a fake
+// Hermetic engine Sorter::Loot tests (PLAN.md §7.1, Phase 5.5): a fake
 // gmm_lootcli shell script stands in for the real binary, so nothing here
 // needs libloot/cargo. Covers: winning-path request building, stdout protocol
 // parsing, progress streaming, sorted-output reading, CLI failure surfacing,
@@ -100,7 +100,7 @@ void run_success_case(const fs::path& base) {
     fs::create_directories(cli_dir);
     const fs::path cli = make_fake_cli(cli_dir, 0);
 
-    engine::LootRequest request;
+    engine::Sorter::Loot::Request request;
     request.game_id = "SkyrimSpecialEdition";
     request.loot_game_id = "skyrimse";
     request.masterlist_repo = "skyrimse";
@@ -116,7 +116,7 @@ void run_success_case(const fs::path& base) {
     };
 
     std::vector<int> stages;
-    const engine::LootResult result = engine::run_loot_sort(
+    const engine::Sorter::Loot::Result result = engine::Sorter::Loot::run_sort(
         request, [&stages](int stage, const std::string&) { stages.push_back(stage); });
 
     require(result.ok, "successful sort");
@@ -161,7 +161,7 @@ void run_failure_case(const fs::path& base) {
     fs::create_directories(cli_dir);
     const fs::path cli = make_fake_cli(cli_dir, 3);
 
-    engine::LootRequest request;
+    engine::Sorter::Loot::Request request;
     request.game_id = "SkyrimSpecialEdition";
     request.loot_game_id = "skyrimse";
     request.masterlist_repo = "skyrimse";
@@ -172,7 +172,7 @@ void run_failure_case(const fs::path& base) {
     request.update_masterlists = false;
     request.plugins = {{"SkyUI_SE.esp", "/fake/path/SkyUI_SE.esp"}};
 
-    const engine::LootResult result = engine::run_loot_sort(request);
+    const engine::Sorter::Loot::Result result = engine::Sorter::Loot::run_sort(request);
 
     require(!result.ok, "CLI failure surfaces");
     require(result.sorted_names.empty(), "no sorted names on failure");
@@ -184,7 +184,7 @@ void run_failure_case(const fs::path& base) {
 }
 
 void run_missing_cli_case(const fs::path& base) {
-    engine::LootRequest request;
+    engine::Sorter::Loot::Request request;
     request.game_id = "SkyrimSpecialEdition";
     request.loot_game_id = "skyrimse";
     request.masterlist_repo = "skyrimse";
@@ -195,7 +195,7 @@ void run_missing_cli_case(const fs::path& base) {
     request.update_masterlists = false;
     request.plugins = {{"SkyUI_SE.esp", "/fake/path/SkyUI_SE.esp"}};
 
-    const engine::LootResult result = engine::run_loot_sort(request);
+    const engine::Sorter::Loot::Result result = engine::Sorter::Loot::run_sort(request);
 
     require(!result.ok, "missing CLI surfaces");
     require(result.error.find("gmm_lootcli") != std::string::npos,
@@ -212,7 +212,7 @@ void run_masterlist_fallback_case(const fs::path& base) {
     fs::create_directories(cli_dir);
     const fs::path cli = make_fake_cli(cli_dir, 0);
 
-    engine::LootRequest request;
+    engine::Sorter::Loot::Request request;
     request.game_id = "SkyrimSpecialEdition";
     request.loot_game_id = "skyrimse";
     request.masterlist_repo = "skyrimse";
@@ -222,7 +222,7 @@ void run_masterlist_fallback_case(const fs::path& base) {
     request.platform = nullptr;
     request.plugins = {{"SkyUI_SE.esp", "/fake/path/SkyUI_SE.esp"}};
 
-    const engine::LootResult result = engine::run_loot_sort(request);
+    const engine::Sorter::Loot::Result result = engine::Sorter::Loot::run_sort(request);
 
     require(!result.ok, "no platform -> masterlists unavailable");
     require(!result.error.empty(), "error explains the failure");
