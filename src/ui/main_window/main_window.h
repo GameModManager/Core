@@ -82,7 +82,7 @@ class TabModeController;
 // FolderKind enum and is included before any use in .cpp files.
 enum class FolderKind;
 class ConsolePanel;
-class GmmStatusBar;
+class StatusBar;
 class PipelineThread;
 class AppMenuBar;
 class PipelineWindow;
@@ -220,7 +220,7 @@ private:
   // Full UI mode is ON.
   MainTabContainer *main_tab_container_ = nullptr;
   ConsolePanel *console_ = nullptr;
-  GmmStatusBar *status_bar_ = nullptr;
+  StatusBar *status_bar_ = nullptr;
   // "Set Game Path" banner (Workspace-tnj): visible while a game-less
   // instance is loaded; lives at the top of the main area.
   GamePathBanner *game_path_banner_ = nullptr;

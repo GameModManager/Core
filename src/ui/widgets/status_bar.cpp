@@ -1,4 +1,4 @@
-#include "ui/widgets/gmm_status_bar.h"
+#include "ui/widgets/status_bar.h"
 
 #include "engine/source/nexus_auth.h"
 #include "engine/core/trace/trace_recorder.h"
@@ -18,7 +18,7 @@ const char* kFlowTitles[] = {"Launch", "Install", "Sort"};
 const char* kRateSourceName = "Nexus";
 }  // namespace
 
-GmmStatusBar::GmmStatusBar(QWidget* parent)
+StatusBar::StatusBar(QWidget* parent)
     : QWidget(parent) {
     layout_ = new QHBoxLayout(this);
     layout_->setContentsMargins(6, 2, 6, 2);
@@ -38,7 +38,7 @@ GmmStatusBar::GmmStatusBar(QWidget* parent)
     pipeline_button_->setAutoRaise(true);
     layout_->addWidget(pipeline_button_);
     connect(pipeline_button_, &QToolButton::clicked,
-            this, &GmmStatusBar::pipeline_clicked);
+            this, &StatusBar::pipeline_clicked);
 
     // Right side: sources (populated dynamically)
     separator_ = new QFrame();
@@ -48,17 +48,17 @@ GmmStatusBar::GmmStatusBar(QWidget* parent)
 
     pipeline_timer_ = new QTimer(this);
     connect(pipeline_timer_, &QTimer::timeout,
-            this, &GmmStatusBar::refresh_pipeline_indicator);
+            this, &StatusBar::refresh_pipeline_indicator);
     pipeline_timer_->start(2000);
 
     refresh_pipeline_indicator();
 }
 
-void GmmStatusBar::set_status(const QString& text) {
+void StatusBar::set_status(const QString& text) {
     status_label_->setText(text);
 }
 
-void GmmStatusBar::set_sources(const QStringList& sources) {
+void StatusBar::set_sources(const QStringList& sources) {
     // Remove old source labels
     for (auto* label : source_labels_) {
         layout_->removeWidget(label);
@@ -94,7 +94,7 @@ void GmmStatusBar::set_sources(const QStringList& sources) {
     refresh_nexus_source();
 }
 
-void GmmStatusBar::refresh_nexus_source() {
+void StatusBar::refresh_nexus_source() {
     auto it = source_labels_by_name_.find(kRateSourceName);
     if (it == source_labels_by_name_.end()) return;
 
@@ -110,7 +110,7 @@ void GmmStatusBar::refresh_nexus_source() {
         QString("%1: %2/%3").arg(kRateSourceName).arg(rl.hourly_remaining).arg(rl.daily_remaining));
 }
 
-void GmmStatusBar::refresh_pipeline_indicator() {
+void StatusBar::refresh_pipeline_indicator() {
     refresh_nexus_source();
 
     auto& trace = engine::TraceRecorder::instance();

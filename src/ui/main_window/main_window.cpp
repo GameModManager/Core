@@ -29,7 +29,7 @@
 #include "ui/widgets/console_panel.h"
 #include "ui/widgets/exec_controls_bar.h"
 #include "ui/widgets/game_path_banner.h"
-#include "ui/widgets/gmm_status_bar.h"
+#include "ui/widgets/status_bar.h"
 #include "ui/widgets/main_tab_container.h"
 #include "ui/widgets/main_toolbar.h"
 #include "ui/widgets/menu_bar.h"
@@ -189,7 +189,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   launch_->create_game_lock_overlay();
 
   // --- Status bar ---
-  status_bar_ = new GmmStatusBar(this);
+  status_bar_ = new StatusBar(this);
   statusBar()->addWidget(status_bar_, 1);
 
   // Global event filter for Konami code (child widgets may eat arrow keys).
