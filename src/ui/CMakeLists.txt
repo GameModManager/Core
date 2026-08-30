@@ -1,7 +1,7 @@
 # UI — Qt lives here. Static library linking Qt6 and the Qt-free engine.
 # The Qt-using files that used to live under src/engine/ (theme/style_manager,
 # theme/icon_manager, notify/notification_backend, nxm/nxm_ipc,
-# app/single_instance) were relocated here (issue/33) so gmm_engine stays
+# app/multi_process) were relocated here (issue/33) so gmm_engine stays
 # Qt-free at the CMake level.
 
 set(UI_SOURCES
@@ -82,7 +82,7 @@ set(UI_SOURCES
     ${PROJECT_SOURCE_DIR}/src/ui/theme/icon_manager.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/notify/notification_backend.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/nxm/nxm_ipc.cpp
-    ${PROJECT_SOURCE_DIR}/src/ui/app/single_instance.cpp
+    ${PROJECT_SOURCE_DIR}/src/ui/app/multi_process.cpp
 )
 
 # FileViewer module — reusable file viewers (image/video/3D-scene). The video

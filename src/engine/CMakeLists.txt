@@ -1,7 +1,7 @@
 # Engine — Qt-free static library. No Qt6::* target is linked here and no
 # Qt include directory is exposed. The Qt-using files (theme/style_manager,
 # theme/icon_manager, notify/notification_backend, nxm/nxm_ipc,
-# launch/single_instance) live under src/ui/ and are compiled into gmm_ui
+# launch/multi_process) live under src/ui/ and are compiled into gmm_ui
 # instead, keeping this target Qt-free at the CMake level.
 #
 # Directory groups (issue/33): core/, mod/, source/, game/, pipeline/,

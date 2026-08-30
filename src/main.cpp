@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-#include "ui/app/single_instance.h"
+#include "ui/app/multi_process.h"
 
 static void qt_message_filter(QtMsgType type, const QMessageLogContext &ctx,
                               const QString &msg) {
@@ -505,7 +505,7 @@ int main(int argc, char *argv[]) {
   }
 
   // -- Single-instance guard (GUI mode only, not headless) ----------------
-  engine::SingleInstanceGuard instance_guard;
+  engine::MultiProcess instance_guard;
   if (!headless && !instance_guard.tryAcquire()) {
     instance_guard.requestFocus();
     engine::Logger::instance().info(
@@ -636,7 +636,7 @@ int main(int argc, char *argv[]) {
 
           // Forward focus requests from other instances to this window
           QObject::connect(&instance_guard,
-                           &engine::SingleInstanceGuard::focusRequested,
+                           &engine::MultiProcess::focusRequested,
                            main_window, [main_window]() {
                              main_window->raise();
                              main_window->activateWindow();
@@ -683,7 +683,7 @@ int main(int argc, char *argv[]) {
 
   // Forward focus requests from other instances to this window
   QObject::connect(&instance_guard,
-                   &engine::SingleInstanceGuard::focusRequested, &window,
+                   &engine::MultiProcess::focusRequested, &window,
                    [&window]() {
                      window.raise();
                      window.activateWindow();
