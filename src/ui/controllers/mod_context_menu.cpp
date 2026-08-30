@@ -382,7 +382,7 @@ void ModContextMenu::add_category_menus(QMenu &menu, const QString &mod_id) {
     QString primary_name;
     if (!ids.isEmpty()) {
       if (const auto *cat =
-              engine::CategoryFactory::instance().categoryById(ids.first()))
+              engine::Category::Factory::instance().categoryById(ids.first()))
         primary_name = QString::fromStdString(cat->name);
     }
     w_->mod_model_->set_category(mod_id, primary_name);
@@ -402,8 +402,9 @@ void ModContextMenu::add_category_menus(QMenu &menu, const QString &mod_id) {
   auto *change_menu = menu.addMenu(
       engine::IconManager::instance().resolve_icon("preferences-other"),
       QObject::tr("Change Categories"));
-  std::vector<const engine::CategoryFactory::Category *> cats;
-  for (const auto &[id, cat] : engine::CategoryFactory::instance().categories())
+  std::vector<const engine::Category::Factory::Entry *> cats;
+  for (const auto &[id, cat] :
+       engine::Category::Factory::instance().categories())
     if (id != 0)
       cats.push_back(&cat);
   std::sort(cats.begin(), cats.end(), [](const auto *a, const auto *b) {
@@ -437,7 +438,7 @@ void ModContextMenu::add_category_menus(QMenu &menu, const QString &mod_id) {
   } else {
     auto *group = new QActionGroup(primary_menu);
     for (int id : current) {
-      const auto *cat = engine::CategoryFactory::instance().categoryById(id);
+      const auto *cat = engine::Category::Factory::instance().categoryById(id);
       auto *act = primary_menu->addAction(
           cat ? QString::fromStdString(cat->name) : QString::number(id));
       act->setCheckable(true);

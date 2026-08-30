@@ -1,5 +1,5 @@
-// P1.2 GameFeatureRegistry test — MO2's IGameFeatures analogue (PLAN.md §19.4
-// P1.2). Pins:
+// P1.2 Game::Features::Registry test — MO2's IGameFeatures analogue (PLAN.md
+// §19.4 P1.2). Pins:
 //   - priority + replace registration: the game plugin's own feature is the
 //     lowest-priority baseline; a higher-priority registration supersedes it
 //     for resolve(); equal priority = last registered wins,
@@ -80,7 +80,7 @@ make_checker(std::vector<std::string> folders, std::vector<std::string> exts) {
 
 static void test_registry_semantics() {
   std::printf("=== test_registry_semantics ===\n");
-  auto &reg = engine::GameFeatureRegistry::instance();
+  auto &reg = engine::Game::Features::Registry::instance();
   reg.clear();
 
   check(reg.resolve("skyrim", "mod_data_checker") == nullptr,
@@ -175,7 +175,7 @@ static void test_registry_semantics() {
 
 static void test_scanner_integration() {
   std::printf("=== test_scanner_integration ===\n");
-  auto &reg = engine::GameFeatureRegistry::instance();
+  auto &reg = engine::Game::Features::Registry::instance();
   reg.clear();
 
   const fs::path root = "/tmp/gmm_feature_registry_test";
@@ -217,7 +217,7 @@ static void test_scanner_integration() {
 
 static void test_native_plugins_resolution() {
   std::printf("=== test_native_plugins_resolution ===\n");
-  auto &reg = engine::GameFeatureRegistry::instance();
+  auto &reg = engine::Game::Features::Registry::instance();
   reg.clear();
 
   engine::GameKnowledge knowledge;
@@ -262,7 +262,7 @@ static void test_native_plugins_resolution() {
 
 static void test_all_feature_types() {
   std::printf("=== test_all_feature_types ===\n");
-  auto &reg = engine::GameFeatureRegistry::instance();
+  auto &reg = engine::Game::Features::Registry::instance();
   reg.clear();
 
   // Empty/unknown registrations are refused (logged).
@@ -398,7 +398,7 @@ static void test_all_feature_types() {
 
 static void test_mod_data_content_classifier() {
   std::printf("=== test_mod_data_content_classifier ===\n");
-  auto &reg = engine::GameFeatureRegistry::instance();
+  auto &reg = engine::Game::Features::Registry::instance();
   reg.clear();
 
   const fs::path root = "/tmp/gmm_feature_content_test";
@@ -476,7 +476,7 @@ static void test_mod_data_content_classifier() {
 
 static void test_override_via_c_abi() {
   std::printf("=== test_override_via_c_abi ===\n");
-  auto &reg = engine::GameFeatureRegistry::instance();
+  auto &reg = engine::Game::Features::Registry::instance();
   reg.clear();
 
   engine::PluginLoader loader;

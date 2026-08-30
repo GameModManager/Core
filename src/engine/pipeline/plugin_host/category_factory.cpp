@@ -30,12 +30,12 @@ bool split_row(const std::string &line, int min_cells,
 
 } // namespace
 
-void CategoryFactory::load(const std::filesystem::path &path) {
+void Category::Factory::load(const std::filesystem::path &path) {
   std::ifstream in(path);
   if (!in)
     return; // missing/unreadable file: keep the current set
 
-  std::map<int, Category> loaded;
+  std::map<int, Entry> loaded;
   std::string line;
   while (std::getline(in, line)) {
     if (!line.empty() && line.back() == '\r')
@@ -60,7 +60,7 @@ void CategoryFactory::load(const std::filesystem::path &path) {
     if (id == 0)
       continue; // "None" is implicit
 
-    Category cat;
+    Entry cat;
     cat.id = id;
     cat.name = cells[1];
     cat.parent_id = parent;
@@ -71,7 +71,7 @@ void CategoryFactory::load(const std::filesystem::path &path) {
   rebuildTree();
 }
 
-void CategoryFactory::save(const std::filesystem::path &path) const {
+void Category::Factory::save(const std::filesystem::path &path) const {
   std::error_code ec;
   std::filesystem::create_directories(path.parent_path(), ec);
 
@@ -83,15 +83,15 @@ void CategoryFactory::save(const std::filesystem::path &path) const {
   }
 }
 
-void CategoryFactory::merge(const int *ids, const char *const *names,
-                            const int *parent_ids, size_t count) {
+void Category::Factory::merge(const int *ids, const char *const *names,
+                              const int *parent_ids, size_t count) {
   for (size_t i = 0; i < count; ++i) {
     if (!ids || !names)
       continue;
     int id = ids[i];
     if (categories_.count(id))
       continue; // skip duplicate
-    Category cat;
+    Entry cat;
     cat.id = id;
     cat.name = names[i] ? names[i] : "";
     cat.parent_id = (parent_ids && parent_ids[i]) ? parent_ids[i] : 0;
@@ -100,7 +100,7 @@ void CategoryFactory::merge(const int *ids, const char *const *names,
   rebuildTree();
 }
 
-bool CategoryFactory::applyCoreSet(const std::string &set_name) {
+bool Category::Factory::applyCoreSet(const std::string &set_name) {
   const auto *set = CategorySetRegistry::instance().find(set_name);
   if (!set)
     return false;
@@ -109,7 +109,7 @@ bool CategoryFactory::applyCoreSet(const std::string &set_name) {
     if (entry.id == 0)
       continue;
     if (!categories_.count(entry.id)) {
-      Category cat;
+      Entry cat;
       cat.id = entry.id;
       cat.name = entry.name;
       cat.parent_id = entry.parent_id;
@@ -120,20 +120,20 @@ bool CategoryFactory::applyCoreSet(const std::string &set_name) {
   return true;
 }
 
-bool CategoryFactory::categoryExists(int id) const {
+bool Category::Factory::categoryExists(int id) const {
   return categories_.count(id) > 0;
 }
 
-const CategoryFactory::Category *CategoryFactory::categoryById(int id) const {
+const Category::Factory::Entry *Category::Factory::categoryById(int id) const {
   auto it = categories_.find(id);
   return it != categories_.end() ? &it->second : nullptr;
 }
 
-void CategoryFactory::addCategory(int id, const std::string &name,
-                                  int parent_id) {
+void Category::Factory::addCategory(int id, const std::string &name,
+                                    int parent_id) {
   if (id == 0 || categories_.count(id))
     return; // "None" is implicit; duplicates are skipped
-  Category cat;
+  Entry cat;
   cat.id = id;
   cat.name = name;
   cat.parent_id = parent_id;
@@ -141,7 +141,7 @@ void CategoryFactory::addCategory(int id, const std::string &name,
   rebuildTree();
 }
 
-void CategoryFactory::removeCategory(int id) {
+void Category::Factory::removeCategory(int id) {
   if (!categories_.erase(id))
     return;
   // Re-parent direct children to root so the tree stays valid.
@@ -151,8 +151,8 @@ void CategoryFactory::removeCategory(int id) {
   rebuildTree();
 }
 
-void CategoryFactory::updateCategory(int id, const std::string &name,
-                                     int parent_id) {
+void Category::Factory::updateCategory(int id, const std::string &name,
+                                       int parent_id) {
   auto it = categories_.find(id);
   if (it == categories_.end())
     return;
@@ -161,9 +161,9 @@ void CategoryFactory::updateCategory(int id, const std::string &name,
   rebuildTree();
 }
 
-void CategoryFactory::rebuildTree() { updateHasChildren(); }
+void Category::Factory::rebuildTree() { updateHasChildren(); }
 
-void CategoryFactory::updateHasChildren() {
+void Category::Factory::updateHasChildren() {
   for (auto &entry : categories_)
     entry.second.hasChildren = false;
   for (const auto &entry : categories_)

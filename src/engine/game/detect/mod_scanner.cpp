@@ -106,10 +106,10 @@ static void folder_timestamps(const std::filesystem::path &dir,
   // Unix epoch on libstdc++ (__file_clock). Convert explicitly via the
   // standard to_sys()/from_sys() pair, or the raw duration is garbage.
   const int64_t mtime_sec = static_cast<int64_t>(
-       std::chrono::duration_cast<std::chrono::seconds>(
-           std::chrono::clock_cast<std::chrono::system_clock>(mtime)
-               .time_since_epoch())
-           .count());
+      std::chrono::duration_cast<std::chrono::seconds>(
+          std::chrono::clock_cast<std::chrono::system_clock>(mtime)
+              .time_since_epoch())
+          .count());
   changed = mtime_sec;
 
 #if defined(__linux__)
@@ -265,14 +265,14 @@ static ScanConfig make_scan_config(const GameKnowledge &knowledge,
     cfg.ignored.push_back(cfg.disable_file);
   }
   // Content-validity allow-lists drive MO2's FLAG_INVALID ("No valid game
-  // data"). The P1.2 GameFeatureRegistry is the override seam: any plugin
+  // data"). The P1.2 Game::Features::Registry is the override seam: any plugin
   // can register a mod_data_checker for this game (priority + replace, MO2
   // IGameFeatures — combined across all registered checkers). A registered
   // checker wins; the per-game CSV hooks (mod_valid_dirs/mod_valid_exts)
   // remain the fallback for games whose plugin still uses them (Isaac) and
   // for the scanner's own knowledge-driven tests.
   auto checker =
-      GameFeatureRegistry::instance().resolve_mod_data_checker(game_id);
+      Game::Features::Registry::instance().resolve_mod_data_checker(game_id);
   if (checker) {
     cfg.valid_dirs = checker->folder_names();
     cfg.valid_exts = checker->file_extensions();

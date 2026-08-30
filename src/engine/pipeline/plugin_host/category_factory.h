@@ -6,21 +6,23 @@
 
 namespace engine {
 
+namespace Category {
+
 // Global category registry — one shared set across all games.
 // Plugins register categories via the ABI register_categories callback;
 // this factory merges them by ID (no duplicates). Parent ID 0 = root.
 // Persisted to categories.dat as pipe-delimited rows: ID|Name|ParentID.
-class CategoryFactory {
+class Factory {
 public:
-  struct Category {
+  struct Entry {
     int id = 0;
     std::string name;
     int parent_id = 0;
     bool hasChildren = false; // computed by rebuildTree()
   };
 
-  static CategoryFactory &instance() {
-    static CategoryFactory s;
+  static Factory &instance() {
+    static Factory s;
     return s;
   }
 
@@ -42,8 +44,8 @@ public:
 
   // --- Lookups ---
   [[nodiscard]] bool categoryExists(int id) const;
-  [[nodiscard]] const Category *categoryById(int id) const;
-  [[nodiscard]] const std::map<int, Category> &categories() const {
+  [[nodiscard]] const Entry *categoryById(int id) const;
+  [[nodiscard]] const std::map<int, Entry> &categories() const {
     return categories_;
   }
 
@@ -59,10 +61,15 @@ public:
   void rebuildTree();
 
 private:
-  CategoryFactory() = default;
+  Factory() = default;
   void updateHasChildren();
 
-  std::map<int, Category> categories_;
+  std::map<int, Entry> categories_;
 };
+
+} // namespace Category
+
+// Backward-compatible alias for existing consumers
+using CategoryFactory = Category::Factory;
 
 } // namespace engine
