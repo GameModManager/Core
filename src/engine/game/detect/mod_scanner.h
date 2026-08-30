@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/mod/model/mod.h"
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -14,6 +15,7 @@ struct ScannedMod {
     std::string raw_name;        // from metadata, as-is (with priority prefix)
     std::string version;         // from metadata
     std::string separator_color; // hex color for separators (e.g. "#888888"), empty for mods
+    ModType type = ModType::Regular;
     int priority = -1;           // extracted from name prefix via priority_prefix_re, -1 = none
     int64_t workshop_id = 0;     // extracted from folder name via workshop_id_pattern, 0 = none
     // Folder birth time (statx btime, MO2 COL_INSTALLTIME semantics; falls
