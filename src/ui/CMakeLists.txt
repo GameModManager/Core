@@ -79,6 +79,7 @@ set(UI_SOURCES
     fomod/fomod_wizard_dialog.cpp
     instance_options/instance_options_panel.cpp
     instance_options/instance_options_widget.cpp
+    ui_locker.cpp
     # Qt-using files relocated from src/engine/ (issue/33) — keeps gmm_engine Qt-free
     ${PROJECT_SOURCE_DIR}/src/ui/theme/style_manager.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/theme/icon_manager.cpp

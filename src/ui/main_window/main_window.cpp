@@ -56,6 +56,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   main_tab_container_ = new MainTabContainer(this);
   tab_mode_ = std::make_unique<TabModeController>(this, this);
 
+  // UI Locker for disabling/enabling the interface during operations
+  locker_ = std::make_unique<Locker>(this);
+
   // Conflict recompute infra (P8.1, THREADING.md §3.6): debounce + worker
   // thread so toggling/reordering a mod never blocks the UI on a full scan.
   conflict_debounce_timer_ = new QTimer(this);
@@ -319,21 +322,8 @@ void MainWindow::resizeEvent(QResizeEvent *event) {
 }
 
 void MainWindow::set_ui_enabled(bool enabled) {
-  // Lock or unlock the whole manager surface (mod list, panels, console,
-  // menus, toolbars). The install dialogs (FOMOD wizard, name confirm,
-  // overwrite query, progress popup) are top-level children of `this`, NOT
-  // of the disabled content widgets, so they stay interactive while the
-  // manager itself is greyed out - the same shape MO2's UILocker produces.
-  if (centralWidget())
-    centralWidget()->setEnabled(enabled);
-  if (menu_bar_)
-    menu_bar_->setEnabled(enabled);
-  if (toolbar_area_)
-    toolbar_area_->setEnabled(enabled);
-  if (profile_bar_)
-    profile_bar_->setEnabled(enabled);
-  if (status_bar_)
-    status_bar_->setEnabled(enabled);
+  // Delegate to the UI Locker which handles the actual enable/disable logic
+  locker_->set_enabled(enabled);
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
