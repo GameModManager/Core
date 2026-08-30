@@ -7,7 +7,7 @@
 // and the inline deploy progress bar exists (the tab-mode replacement for the
 // modal QProgressDialog) and starts hidden.
 #include "engine/pipeline/plugin_host/plugin_loader.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 #include "ui/instance_options/instance_options_widget.h"
 
 #include <QApplication>
@@ -42,7 +42,7 @@ QString strip_mnemonic(const QString& text) {
 }
 }
 
-class StubPlatform : public engine::PlatformInterface {
+class StubPlatform : public engine::Platform {
 public:
     std::string platform_name() const override { return "test"; }
     fs::path data_dir() const override { return "/tmp/gmm_instance_options_widget_data"; }

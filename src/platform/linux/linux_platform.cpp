@@ -77,7 +77,7 @@ std::filesystem::path LinuxPlatform::find_steam_root() const {
 
 // --- Proton discovery ---
 
-std::vector<PlatformInterface::ProtonVersionInfo>
+std::vector<Platform::ProtonVersionInfo>
 LinuxPlatform::scan_proton_runners() const {
     std::vector<ProtonVersionInfo> result;
     auto steam_root = find_steam_root();
@@ -154,7 +154,7 @@ std::filesystem::path LinuxPlatform::find_proton() const {
     return best;
 }
 
-std::vector<PlatformInterface::ProtonVersionInfo>
+std::vector<Platform::ProtonVersionInfo>
 LinuxPlatform::enumerate_proton_versions() const {
     return scan_proton_runners();
 }

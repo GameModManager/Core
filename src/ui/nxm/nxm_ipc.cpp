@@ -1,6 +1,6 @@
 #include "ui/nxm/nxm_ipc.h"
 #include "engine/core/log/logger.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <QLocalServer>
 #include <QLocalSocket>

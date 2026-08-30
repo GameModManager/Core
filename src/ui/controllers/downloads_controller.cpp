@@ -3,7 +3,7 @@
 #include "ui/fomod/fomod_wizard_dialog.h"
 #include "ui/install/install_name_dialog.h"
 #include "ui/overwrite/query_overwrite_dialog.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <QAbstractButton>
 #include <QMessageBox>

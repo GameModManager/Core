@@ -7,7 +7,7 @@
 
 namespace engine {
 
-class PlatformInterface;
+class Platform;
 
 // Per-game LOOT masterlist + prelude management (PLAN.md §7.1). The engine owns
 // masterlists so gmm_lootcli stays networking-free: files land in
@@ -17,7 +17,7 @@ class PlatformInterface;
 // No-network fallback: a previously cached copy is kept and reused.
 class MasterlistManager {
 public:
-    explicit MasterlistManager(const PlatformInterface* platform);
+    explicit MasterlistManager(const Platform* platform);
 
     struct Masterlists {
         std::filesystem::path masterlist;
@@ -57,7 +57,7 @@ private:
                                bool force,
                                std::string* error);
 
-    const PlatformInterface* platform_;
+    const Platform* platform_;
 };
 
 }  // namespace engine

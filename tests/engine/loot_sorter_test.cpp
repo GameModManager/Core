@@ -6,7 +6,7 @@
 
 #include "engine/sort/loot/loot_sorter.h"
 #include "engine/sort/loot/masterlists.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -30,7 +30,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-class FakePlatform : public engine::PlatformInterface {
+class FakePlatform : public engine::Platform {
 public:
     explicit FakePlatform(fs::path data_dir) : data_dir_(std::move(data_dir)) {}
     std::string platform_name() const override { return "fake"; }

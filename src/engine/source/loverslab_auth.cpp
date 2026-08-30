@@ -1,7 +1,7 @@
 #include "engine/source/loverslab_auth.h"
 
 #include "engine/core/log/logger.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <cctype>
 #include <cstdlib>

@@ -6,7 +6,7 @@
 #include "engine/deploy/launch/overlay_launcher.h"
 #include "engine/mod/overwrite/overwrite_utils.h"
 #include "engine/deploy/launch/preload_interceptor.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 #include "runtime/runtime.h"
 
 #include <algorithm>

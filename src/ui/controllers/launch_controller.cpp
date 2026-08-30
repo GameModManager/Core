@@ -1,5 +1,5 @@
 #include "ui/controllers/launch_controller.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 #include "ui/controllers/mod_list_controller.h"
 #include "ui/controllers/queue_controller.h"
 

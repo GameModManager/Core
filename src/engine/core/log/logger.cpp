@@ -1,6 +1,6 @@
 #include "engine/core/log/logger.h"
 #include "engine/core/util/debug_env.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <chrono>
 #include <cstdio>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -10,7 +10,7 @@
 namespace engine {
 
 // macOS platform module - Library paths, Steam discovery, fork+exec launch.
-class MacOSPlatform : public PlatformInterface {
+class MacOSPlatform : public Platform {
 public:
     [[nodiscard]] std::string platform_name() const override { return "macos"; }
 

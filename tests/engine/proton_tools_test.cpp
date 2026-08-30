@@ -5,7 +5,7 @@
 // the guard cases of run_proton_exe. The exec paths themselves are thin
 // fork+execvp orchestrations over platform discovery — not unit-tested here.
 #include "engine/deploy/launch/proton_tools.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -25,7 +25,7 @@ void require(bool cond, const char* msg) {
 }
 
 // --- Stub platform: controllable proton discovery ---
-class StubPlatform : public engine::PlatformInterface {
+class StubPlatform : public engine::Platform {
 public:
     std::string platform_name() const override { return "test"; }
     fs::path data_dir() const override { return "/tmp/gmm_proton_test_data"; }

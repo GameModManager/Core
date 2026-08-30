@@ -12,7 +12,7 @@ public:
     static void install(const std::string& dump_dir);
     static void uninstall();
 
-    // Compute the default crash dump directory: PlatformInterface::cache_dir()
+    // Compute the default crash dump directory: Platform::cache_dir()
     // / "crash_dumps", falling back to safe_home_dir() when the relevant
     // environment variable is unset. Mirrors the per-platform cache_dir()
     // logic so dumps land next to the rest of the app's cached data.

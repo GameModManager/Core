@@ -1,6 +1,6 @@
 #include "engine/core/util/fs_utils.h"
 #include "engine/core/log/logger.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <chrono>
 #include <cstdio>

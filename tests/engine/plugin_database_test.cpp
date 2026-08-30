@@ -14,7 +14,7 @@
 #include "engine/game/plugins/plugin_database.h"
 #include "engine/game/plugins/esp_header.h"
 #include "engine/game/registry/game_knowledge.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -35,7 +35,7 @@ void require(bool cond, const char* msg) {
 }
 
 // --- Fake platform for launch-target resolution ---
-class StubPlatform : public engine::PlatformInterface {
+class StubPlatform : public engine::Platform {
 public:
     std::string platform_name() const override { return "test"; }
     fs::path data_dir() const override { return "/tmp/gmm_plugin_test_data"; }

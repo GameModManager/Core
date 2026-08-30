@@ -7,13 +7,13 @@
 
 namespace engine {
 
-class PlatformInterface;
+class Platform;
 
 // Per-instance context for running wine/protontricks tools against a game's
 // Proton prefix. All discovery goes through `platform`; when `steam_appid` is
 // non-zero the tool runs inside that game's prefix.
 struct ProtonToolRequest {
-    const PlatformInterface* platform = nullptr;
+    const Platform* platform = nullptr;
     uint32_t steam_appid = 0;
     std::filesystem::path game_dir;
     // Selected runner (display name or absolute path to a `proton` script).
