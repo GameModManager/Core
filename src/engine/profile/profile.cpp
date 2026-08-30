@@ -215,10 +215,10 @@ bool write_lines(const std::filesystem::path& path, const std::vector<std::strin
 }  // namespace
 
 // ---------------------------------------------------------------------------
-// Profile
+// ProfileManager
 // ---------------------------------------------------------------------------
 
-Profile::Profile(std::filesystem::path directory, std::chrono::milliseconds modlist_delay)
+ProfileManager::ProfileManager(std::filesystem::path directory, std::chrono::milliseconds modlist_delay)
     : directory_(std::move(directory)),
       modlist_writer_([this] { do_write_modlist(); }, modlist_delay) {
     // Load settings.ini into the ordered INI model (missing file -> empty).
@@ -230,11 +230,11 @@ Profile::Profile(std::filesystem::path directory, std::chrono::milliseconds modl
     }
 }
 
-Profile::~Profile() = default;
+ProfileManager::~ProfileManager() = default;
 
 // --- deletion --------------------------------------------------------------
 
-ProfileRemoveResult Profile::remove(bool is_active) {
+ProfileRemoveResult ProfileManager::remove(bool is_active) {
     if (is_active) {
         return ProfileRemoveResult::ActiveProfile;
     }
@@ -270,7 +270,7 @@ ProfileRemoveResult Profile::remove(bool is_active) {
 
 // --- repair ----------------------------------------------------------------
 
-std::vector<std::string> Profile::repair() {
+std::vector<std::string> ProfileManager::repair() {
     std::vector<std::string> generated;
 
     // settings.ini — create with defaults when missing. save_settings()
@@ -310,7 +310,7 @@ std::vector<std::string> Profile::repair() {
 
 // --- settings.ini ----------------------------------------------------------
 
-std::string Profile::get_setting(const std::string& key) const {
+std::string ProfileManager::get_setting(const std::string& key) const {
     for (const auto& section : ini_) {
         if (!section.name.empty()) {
             continue;  // root section only
@@ -324,7 +324,7 @@ std::string Profile::get_setting(const std::string& key) const {
     return {};
 }
 
-void Profile::set_setting(const std::string& key, const std::string& value) {
+void ProfileManager::set_setting(const std::string& key, const std::string& value) {
     for (auto& section : ini_) {
         if (!section.name.empty()) {
             continue;
@@ -342,33 +342,33 @@ void Profile::set_setting(const std::string& key, const std::string& value) {
     ini_.insert(ini_.begin(), IniSection{"", {{key, value}}});
 }
 
-bool Profile::get_setting_bool(const std::string& key) const {
+bool ProfileManager::get_setting_bool(const std::string& key) const {
     const std::string v = get_setting(key);
     return v == "true" || v == "1";
 }
 
-void Profile::set_setting_bool(const std::string& key, bool value) {
+void ProfileManager::set_setting_bool(const std::string& key, bool value) {
     set_setting(key, value ? "true" : "false");
 }
 
-bool Profile::local_saves() const { return get_setting_bool("LocalSaves"); }
-void Profile::set_local_saves(bool value) { set_setting_bool("LocalSaves", value); }
+bool ProfileManager::local_saves() const { return get_setting_bool("LocalSaves"); }
+void ProfileManager::set_local_saves(bool value) { set_setting_bool("LocalSaves", value); }
 
-bool Profile::local_settings() const { return get_setting_bool("LocalSettings"); }
-void Profile::set_local_settings(bool value) { set_setting_bool("LocalSettings", value); }
+bool ProfileManager::local_settings() const { return get_setting_bool("LocalSettings"); }
+void ProfileManager::set_local_settings(bool value) { set_setting_bool("LocalSettings", value); }
 
-bool Profile::automatic_archive_invalidation() const {
+bool ProfileManager::automatic_archive_invalidation() const {
     return get_setting_bool("AutomaticArchiveInvalidation");
 }
-void Profile::set_automatic_archive_invalidation(bool value) {
+void ProfileManager::set_automatic_archive_invalidation(bool value) {
     set_setting_bool("AutomaticArchiveInvalidation", value);
 }
 
-void Profile::set_root_setting(const std::string& key, const std::string& value) {
+void ProfileManager::set_root_setting(const std::string& key, const std::string& value) {
     set_setting(key, value);
 }
 
-bool Profile::save_settings() {
+bool ProfileManager::save_settings() {
     if (!safe_write_file(settings_path(), serialize_ini(ini_))) {
         Logger::instance().error("failed to write settings.ini: " + settings_path().string());
         return false;
@@ -378,7 +378,7 @@ bool Profile::save_settings() {
 
 // --- modlist.txt -----------------------------------------------------------
 
-void Profile::refresh_mod_status(const std::vector<std::string>& known_mods,
+void ProfileManager::refresh_mod_status(const std::vector<std::string>& known_mods,
                                  const std::vector<std::string>& foreign_mods) {
     std::lock_guard lock(mods_mutex_);
 
@@ -448,12 +448,12 @@ void Profile::refresh_mod_status(const std::vector<std::string>& known_mods,
     }
 }
 
-std::vector<ModListEntry> Profile::mods() const {
+std::vector<ModListEntry> ProfileManager::mods() const {
     std::lock_guard lock(mods_mutex_);
     return mods_;
 }
 
-int Profile::priority_of(const std::string& mod_id) const {
+int ProfileManager::priority_of(const std::string& mod_id) const {
     std::lock_guard lock(mods_mutex_);
     for (const auto& m : mods_) {
         if (m.mod_id == mod_id) {
@@ -463,7 +463,7 @@ int Profile::priority_of(const std::string& mod_id) const {
     return -1;
 }
 
-void Profile::set_mod_enabled(const std::string& mod_id, bool enabled) {
+void ProfileManager::set_mod_enabled(const std::string& mod_id, bool enabled) {
     bool changed = false;
     {
         std::lock_guard lock(mods_mutex_);
@@ -482,7 +482,7 @@ void Profile::set_mod_enabled(const std::string& mod_id, bool enabled) {
     }
 }
 
-bool Profile::set_mod_priority(const std::string& mod_id, int new_priority) {
+bool ProfileManager::set_mod_priority(const std::string& mod_id, int new_priority) {
     std::lock_guard lock(mods_mutex_);
     auto it = std::find_if(mods_.begin(), mods_.end(),
                            [&](const ModListEntry& m) { return m.mod_id == mod_id; });
@@ -505,11 +505,11 @@ bool Profile::set_mod_priority(const std::string& mod_id, int new_priority) {
     return true;
 }
 
-void Profile::write_modlist() { modlist_writer_.write(); }
-void Profile::write_modlist_now() { modlist_writer_.write_immediately(); }
-void Profile::cancel_modlist_write() { modlist_writer_.cancel(); }
+void ProfileManager::write_modlist() { modlist_writer_.write(); }
+void ProfileManager::write_modlist_now() { modlist_writer_.write_immediately(); }
+void ProfileManager::cancel_modlist_write() { modlist_writer_.cancel(); }
 
-void Profile::do_write_modlist() {
+void ProfileManager::do_write_modlist() {
     std::lock_guard lock(mods_mutex_);
     if (!std::filesystem::exists(directory_)) {
         return;
@@ -530,17 +530,17 @@ void Profile::do_write_modlist() {
 
 // --- plugins.txt / loadorder.txt / lockedorder.txt / archives.txt ----------
 
-std::vector<std::string> Profile::read_plugins() const { return read_lines(plugins_path()); }
-bool Profile::write_plugins(const std::vector<std::string>& plugins) {
+std::vector<std::string> ProfileManager::read_plugins() const { return read_lines(plugins_path()); }
+bool ProfileManager::write_plugins(const std::vector<std::string>& plugins) {
     return write_lines(plugins_path(), plugins);
 }
 
-std::vector<std::string> Profile::read_load_order() const { return read_lines(loadorder_path()); }
-bool Profile::write_load_order(const std::vector<std::string>& order) {
+std::vector<std::string> ProfileManager::read_load_order() const { return read_lines(loadorder_path()); }
+bool ProfileManager::write_load_order(const std::vector<std::string>& order) {
     return write_lines(loadorder_path(), order);
 }
 
-std::vector<LockedPlugin> Profile::read_locked_order() const {
+std::vector<LockedPlugin> ProfileManager::read_locked_order() const {
     std::vector<LockedPlugin> result;
     for (const auto& line : read_lines(lockedorder_path())) {
         const auto sep = line.find('|');
@@ -557,7 +557,7 @@ std::vector<LockedPlugin> Profile::read_locked_order() const {
     return result;
 }
 
-bool Profile::write_locked_order(const std::vector<LockedPlugin>& locked) {
+bool ProfileManager::write_locked_order(const std::vector<LockedPlugin>& locked) {
     std::string content;
     for (const auto& entry : locked) {
         content += entry.name + "|" + std::to_string(entry.priority) + "\n";
@@ -565,8 +565,8 @@ bool Profile::write_locked_order(const std::vector<LockedPlugin>& locked) {
     return safe_write_file(lockedorder_path(), content);
 }
 
-std::vector<std::string> Profile::read_archives() const { return read_lines(archives_path()); }
-bool Profile::write_archives(const std::vector<std::string>& archives) {
+std::vector<std::string> ProfileManager::read_archives() const { return read_lines(archives_path()); }
+bool ProfileManager::write_archives(const std::vector<std::string>& archives) {
     return write_lines(archives_path(), archives);
 }
 

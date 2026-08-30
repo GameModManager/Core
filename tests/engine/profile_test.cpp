@@ -79,7 +79,7 @@ bool wait_until(const std::function<bool()>& pred, std::chrono::milliseconds tim
 
 TEST_CASE("profile constructs from directory", "[engine]") {
     auto dir = make_temp_dir("ctor");
-    engine::profile::Profile profile(dir);
+    engine::profile::ProfileManager profile(dir);
     REQUIRE(profile.exists());
     REQUIRE(profile.name() == dir.filename().string());
     REQUIRE(profile.directory() == dir);
@@ -99,7 +99,7 @@ TEST_CASE("profile constructs from directory", "[engine]") {
 TEST_CASE("settings.ini round-trips the three profile settings", "[engine]") {
     auto dir = make_temp_dir("settings");
     {
-        engine::profile::Profile profile(dir);
+        engine::profile::ProfileManager profile(dir);
         REQUIRE_FALSE(profile.local_saves());
         REQUIRE_FALSE(profile.local_settings());
         REQUIRE_FALSE(profile.automatic_archive_invalidation());
@@ -110,7 +110,7 @@ TEST_CASE("settings.ini round-trips the three profile settings", "[engine]") {
         REQUIRE(profile.save_settings());
     }
     {
-        engine::profile::Profile profile(dir);
+        engine::profile::ProfileManager profile(dir);
         REQUIRE(profile.local_saves());
         REQUIRE(profile.local_settings());
         REQUIRE(profile.automatic_archive_invalidation());
@@ -124,7 +124,7 @@ TEST_CASE("settings.ini preserves unknown keys and sections", "[engine]") {
                "CustomRootKey=hello\n"
                "[Game]\n"
                "bSomething=1\n");
-    engine::profile::Profile profile(dir);
+    engine::profile::ProfileManager profile(dir);
     profile.set_local_saves(true);
     REQUIRE(profile.save_settings());
 
@@ -141,7 +141,7 @@ TEST_CASE("settings.ini preserves unknown keys and sections", "[engine]") {
 
 TEST_CASE("repair creates all missing required files with defaults", "[engine]") {
     auto dir = make_temp_dir("repair_missing");
-    engine::profile::Profile profile(dir, 50ms);
+    engine::profile::ProfileManager profile(dir, 50ms);
 
     const auto generated = profile.repair();
     REQUIRE(generated.size() == 3);
@@ -172,7 +172,7 @@ TEST_CASE("repair is a no-op when all required files exist", "[engine]") {
     write_text(dir / "modlist.txt", "+ModA\r\n");
     write_text(dir / "archives.txt", "Skyrim - Textures.bsa\n");
 
-    engine::profile::Profile profile(dir, 50ms);
+    engine::profile::ProfileManager profile(dir, 50ms);
     REQUIRE(profile.repair().empty());
 
     // Existing content is untouched.
@@ -185,7 +185,7 @@ TEST_CASE("repair fills only the missing files", "[engine]") {
     auto dir = make_temp_dir("repair_partial");
     write_text(dir / "modlist.txt", "+ModA\r\n");
 
-    engine::profile::Profile profile(dir, 50ms);
+    engine::profile::ProfileManager profile(dir, 50ms);
     const auto generated = profile.repair();
 
     REQUIRE(generated.size() == 2);
@@ -199,7 +199,7 @@ TEST_CASE("repair fills only the missing files", "[engine]") {
 
 TEST_CASE("repair is idempotent", "[engine]") {
     auto dir = make_temp_dir("repair_idempotent");
-    engine::profile::Profile profile(dir, 50ms);
+    engine::profile::ProfileManager profile(dir, 50ms);
 
     REQUIRE(profile.repair().size() == 3);
     REQUIRE(profile.repair().empty());  // second pass finds nothing to do
@@ -219,7 +219,7 @@ TEST_CASE("modlist.txt parses enabled/disabled/foreign", "[engine]") {
                "*DLC1\r\n"
                "\r\n"
                "BareName\r\n");
-    engine::profile::Profile profile(dir, 50ms);
+    engine::profile::ProfileManager profile(dir, 50ms);
     profile.refresh_mod_status({});
 
     // File order: ModA(0), ModB(1), DLC1(2), BareName(3) -> priorities
@@ -240,7 +240,7 @@ TEST_CASE("modlist.txt parses enabled/disabled/foreign", "[engine]") {
 
 TEST_CASE("modlist.txt writes in priority order (highest first)", "[engine]") {
     auto dir = make_temp_dir("write_order");
-    engine::profile::Profile profile(dir, 50ms);
+    engine::profile::ProfileManager profile(dir, 50ms);
     profile.refresh_mod_status({"Low", "Mid", "High"});
     profile.write_modlist_now();
 
@@ -258,7 +258,7 @@ TEST_CASE("modlist.txt writes in priority order (highest first)", "[engine]") {
 TEST_CASE("refresh_mod_status builds priority map from file order", "[engine]") {
     auto dir = make_temp_dir("priority");
     write_text(dir / "modlist.txt", "+Top\r\n+Middle\r\n-Bottom\r\n");
-    engine::profile::Profile profile(dir, 50ms);
+    engine::profile::ProfileManager profile(dir, 50ms);
     profile.refresh_mod_status({"Top", "Middle", "Bottom"});
 
     REQUIRE(profile.priority_of("Top") == 2);      // first line = highest
@@ -270,7 +270,7 @@ TEST_CASE("refresh_mod_status builds priority map from file order", "[engine]") 
 TEST_CASE("refresh_mod_status handles mods not in file", "[engine]") {
     auto dir = make_temp_dir("refresh");
     write_text(dir / "modlist.txt", "+ModB\r\n-ModA\r\n");
-    engine::profile::Profile profile(dir, 50ms);
+    engine::profile::ProfileManager profile(dir, 50ms);
     profile.refresh_mod_status({"ModA", "ModB", "NewMod", "DLC1"}, {"DLC1"});
 
     // File mods: ModB=1, ModA=0 (inverted). Not in file: DLC1 (foreign) gets
@@ -294,7 +294,7 @@ TEST_CASE("refresh_mod_status persists newly added mods", "[engine]") {
     auto dir = make_temp_dir("refresh_persist");
     write_text(dir / "modlist.txt", "+ModA\r\n");
     {
-        engine::profile::Profile profile(dir, 30ms);
+        engine::profile::ProfileManager profile(dir, 30ms);
         profile.refresh_mod_status({"ModA", "NewMod"});
         REQUIRE(wait_until([&] {
             return read_text(dir / "modlist.txt").find("+NewMod") != std::string::npos;
@@ -305,7 +305,7 @@ TEST_CASE("refresh_mod_status persists newly added mods", "[engine]") {
 TEST_CASE("set_mod_enabled toggles and writes", "[engine]") {
     auto dir = make_temp_dir("toggle");
     write_text(dir / "modlist.txt", "+ModA\r\n+ModB\r\n");
-    engine::profile::Profile profile(dir, 50ms);
+    engine::profile::ProfileManager profile(dir, 50ms);
     profile.refresh_mod_status({"ModA", "ModB"});
 
     profile.set_mod_enabled("ModA", false);
@@ -319,7 +319,7 @@ TEST_CASE("set_mod_enabled toggles and writes", "[engine]") {
 TEST_CASE("set_mod_priority reorders and renumbers", "[engine]") {
     auto dir = make_temp_dir("reorder");
     write_text(dir / "modlist.txt", "+ModA\r\n+ModB\r\n+ModC\r\n");
-    engine::profile::Profile profile(dir, 50ms);
+    engine::profile::ProfileManager profile(dir, 50ms);
     profile.refresh_mod_status({"ModA", "ModB", "ModC"});
     REQUIRE(profile.priority_of("ModA") == 2);
     REQUIRE(profile.priority_of("ModC") == 0);
@@ -354,7 +354,7 @@ TEST_CASE("safe_write_file writes atomically", "[engine]") {
 
 TEST_CASE("atomic modlist writes leave no temp files", "[engine]") {
     auto dir = make_temp_dir("atomic");
-    engine::profile::Profile profile(dir, 50ms);
+    engine::profile::ProfileManager profile(dir, 50ms);
     profile.refresh_mod_status({"ModA"});
     profile.write_modlist_now();
     REQUIRE(fs::exists(dir / "modlist.txt"));
@@ -418,7 +418,7 @@ TEST_CASE("modlist delayed write batches changes", "[engine]") {
     auto dir = make_temp_dir("delayed");
     write_text(dir / "modlist.txt", "+ModA\r\n+ModB\r\n");
     {
-        engine::profile::Profile profile(dir, 50ms);
+        engine::profile::ProfileManager profile(dir, 50ms);
         profile.refresh_mod_status({"ModA", "ModB"});
         profile.set_mod_enabled("ModA", false);  // schedules a delayed write
         REQUIRE(read_text(dir / "modlist.txt").find("-ModA") == std::string::npos);
@@ -432,7 +432,7 @@ TEST_CASE("modlist delayed write batches changes", "[engine]") {
 TEST_CASE("Profile destructor flushes pending modlist write", "[engine]") {
     auto dir = make_temp_dir("dtor_flush");
     {
-        engine::profile::Profile profile(dir, 10s);  // long delay: nothing flushes
+        engine::profile::ProfileManager profile(dir, 10s);  // long delay: nothing flushes
         profile.refresh_mod_status({"ModA"});
         profile.set_mod_enabled("ModA", false);
         REQUIRE_FALSE(fs::exists(dir / "modlist.txt"));
@@ -447,7 +447,7 @@ TEST_CASE("Profile destructor flushes pending modlist write", "[engine]") {
 
 TEST_CASE("plugins/loadorder/lockedorder/archives round-trip", "[engine]") {
     auto dir = make_temp_dir("game_files");
-    engine::profile::Profile profile(dir, 50ms);
+    engine::profile::ProfileManager profile(dir, 50ms);
 
     REQUIRE(profile.write_plugins({"Skyrim.esm", "Update.esm"}));
     REQUIRE(profile.read_plugins() == std::vector<std::string>({"Skyrim.esm", "Update.esm"}));
@@ -470,7 +470,7 @@ TEST_CASE("plugins/loadorder/lockedorder/archives round-trip", "[engine]") {
 TEST_CASE("lockedorder skips malformed lines", "[engine]") {
     auto dir = make_temp_dir("locked_malformed");
     write_text(dir / "lockedorder.txt", "Good.esm|3\nBadNoPipe\nBadPrio.esm|notanumber\n");
-    engine::profile::Profile profile(dir, 50ms);
+    engine::profile::ProfileManager profile(dir, 50ms);
     const auto locked = profile.read_locked_order();
     REQUIRE(locked.size() == 1);
     REQUIRE(locked[0].name == "Good.esm");
@@ -488,7 +488,7 @@ TEST_CASE("remove deletes the profile directory recursively", "[engine]") {
     fs::create_directories(dir / "saves");
     write_text(dir / "saves" / "game.sav", "data");
 
-    engine::profile::Profile profile(dir, 50ms);
+    engine::profile::ProfileManager profile(dir, 50ms);
     REQUIRE(profile.exists());
     REQUIRE(profile.remove() == engine::profile::ProfileRemoveResult::Removed);
     REQUIRE_FALSE(fs::exists(dir));
@@ -498,14 +498,14 @@ TEST_CASE("remove deletes the profile directory recursively", "[engine]") {
 TEST_CASE("remove returns NotFound for a missing directory", "[engine]") {
     auto dir = make_temp_dir("remove_missing");
     fs::remove_all(dir);  // directory never created
-    engine::profile::Profile profile(dir, 50ms);
+    engine::profile::ProfileManager profile(dir, 50ms);
     REQUIRE_FALSE(profile.exists());
     REQUIRE(profile.remove() == engine::profile::ProfileRemoveResult::NotFound);
 }
 
 TEST_CASE("remove refuses the active profile", "[engine]") {
     auto dir = make_temp_dir("remove_active");
-    engine::profile::Profile profile(dir, 50ms);
+    engine::profile::ProfileManager profile(dir, 50ms);
     REQUIRE(profile.remove(/*is_active=*/true) ==
             engine::profile::ProfileRemoveResult::ActiveProfile);
     REQUIRE(fs::exists(dir));  // untouched
@@ -514,7 +514,7 @@ TEST_CASE("remove refuses the active profile", "[engine]") {
 TEST_CASE("remove cancels a pending modlist write", "[engine]") {
     auto dir = make_temp_dir("remove_cancel");
     {
-        engine::profile::Profile profile(dir, 10s);  // long debounce: nothing flushes
+        engine::profile::ProfileManager profile(dir, 10s);  // long debounce: nothing flushes
         profile.refresh_mod_status({"ModA"});
         profile.set_mod_enabled("ModA", false);  // schedules a delayed write
         REQUIRE(profile.remove() == engine::profile::ProfileRemoveResult::Removed);
@@ -529,7 +529,7 @@ TEST_CASE("remove reports partial failure on permission errors", "[engine]") {
     fs::permissions(dir / "locked", fs::perms::owner_write | fs::perms::group_write,
                     fs::perm_options::remove);
 
-    engine::profile::Profile profile(dir, 50ms);
+    engine::profile::ProfileManager profile(dir, 50ms);
     const auto result = profile.remove();
     if (geteuid() == 0) {
         // Root ignores permission bits — the removal succeeds.

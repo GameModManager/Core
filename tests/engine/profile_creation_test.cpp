@@ -82,7 +82,7 @@ TEST_CASE("fresh profile loads into Profile with defaults", "[engine]") {
     auto result = engine::profile::create_fresh_profile(profiles_dir, "Test");
     REQUIRE(result.success);
 
-    engine::profile::Profile profile(result.directory);
+    engine::profile::ProfileManager profile(result.directory);
     REQUIRE_FALSE(profile.local_saves());
     REQUIRE_FALSE(profile.local_settings());
     REQUIRE_FALSE(profile.automatic_archive_invalidation());
@@ -103,7 +103,7 @@ TEST_CASE("fresh profile calls game init and auto-detects local settings", "[eng
     REQUIRE(result.success);
     REQUIRE(init_called);
 
-    engine::profile::Profile profile(result.directory);
+    engine::profile::ProfileManager profile(result.directory);
     REQUIRE(profile.local_saves());     // saves/ exists
     REQUIRE(profile.local_settings());  // game INI present
     REQUIRE_FALSE(profile.automatic_archive_invalidation());
@@ -117,7 +117,7 @@ TEST_CASE("fresh profile detects _saves as local saves off", "[engine]") {
         profiles_dir, "NoLocalSaves", [](const fs::path& dir) { fs::create_directories(dir / "_saves"); });
     REQUIRE(result.success);
 
-    engine::profile::Profile profile(result.directory);
+    engine::profile::ProfileManager profile(result.directory);
     REQUIRE_FALSE(profile.local_saves());
 }
 
@@ -128,7 +128,7 @@ TEST_CASE("fresh profile without game init keeps defaults", "[engine]") {
     auto result = engine::profile::create_fresh_profile(profiles_dir, "Plain");
     REQUIRE(result.success);
 
-    engine::profile::Profile profile(result.directory);
+    engine::profile::ProfileManager profile(result.directory);
     REQUIRE_FALSE(profile.local_saves());
     REQUIRE_FALSE(profile.local_settings());
 }
@@ -226,7 +226,7 @@ TEST_CASE("copy profile preserves local saves/settings flags", "[engine]") {
     auto result = engine::profile::copy_profile(profiles_dir, "Copy", source.directory);
     REQUIRE(result.success);
 
-    engine::profile::Profile copied(result.directory);
+    engine::profile::ProfileManager copied(result.directory);
     REQUIRE(copied.local_saves());
     REQUIRE(copied.local_settings());
     REQUIRE(copied.name() == "Copy");

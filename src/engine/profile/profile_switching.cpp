@@ -45,7 +45,7 @@ bool write_tweaked_ini(const std::filesystem::path &profile_dir,
   return true;
 }
 
-bool save_current_profile(Profile &profile, const ProfileSaveState &state,
+bool save_current_profile(ProfileManager &profile, const ProfileSaveState &state,
                           engine::PluginDatabase *plugin_db,
                           std::string *error) {
   // 1. Flush modlist.txt immediately. The in-memory mod list is the source
@@ -55,7 +55,7 @@ bool save_current_profile(Profile &profile, const ProfileSaveState &state,
   //    refreshDirectoryStructure).
   //
   //    Defensive guard: never flush an empty in-memory list over a populated
-  //    modlist.txt. The Profile constructor only loads settings.ini — a
+  //    modlist.txt. The ProfileManager constructor only loads settings.ini — a
   //    caller that forgot to refresh_mod_status() would otherwise wipe the
   //    profile's per-mod enabled/disabled state on every switch. When mods_
   //    is empty but the file has content, load the file first so the flush
@@ -107,7 +107,7 @@ bool save_current_profile(Profile &profile, const ProfileSaveState &state,
 }
 
 ProfileSwitchResult switch_profile(const std::filesystem::path &profiles_dir,
-                                   const std::string &name, Profile *current,
+                                   const std::string &name, ProfileManager *current,
                                    const ProfileSaveState &current_state,
                                    engine::PluginDatabase *plugin_db,
                                    const ProfileSwitchCallbacks &callbacks) {
@@ -143,7 +143,7 @@ ProfileSwitchResult switch_profile(const std::filesystem::path &profiles_dir,
   }
 
   // Save the current profile's state before switching away. On failure the
-  // current profile is left untouched — the new Profile is only constructed
+  // current profile is left untouched — the new ProfileManager is only constructed
   // after the save succeeded.
   if (current != nullptr) {
     std::string save_error;
@@ -155,13 +155,13 @@ ProfileSwitchResult switch_profile(const std::filesystem::path &profiles_dir,
     }
   }
 
-  // Construct the new Profile from its directory (MO2's
-  // make_unique<Profile>(profileDir, ...)).
-  auto new_profile = std::make_unique<Profile>(profile_dir);
+  // Construct the new ProfileManager from its directory (MO2's
+  // make_unique<ProfileManager>(profileDir, ...)).
+  auto new_profile = std::make_unique<ProfileManager>(profile_dir);
 
   // Restore mod enable/disable + priorities from the new profile's
   // modlist.txt (MO2's refreshModStatus on profile load). This is the
-  // "set profile on ModList" step: the Profile's in-memory mod list now
+  // "set profile on ModList" step: the ProfileManager's in-memory mod list now
   // mirrors the new profile, and the UI rebuilds its ModListModel in the
   // refresh_directory_structure callback.
   new_profile->refresh_mod_status(current_state.known_mods,

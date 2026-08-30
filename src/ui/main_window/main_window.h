@@ -247,7 +247,7 @@ private:
   // (on_mod_scan_finished) and every toggle (sync_mod_enable_state), so the
   // profile's modlist.txt is the per-profile source of truth for enabled
   // state — never the global on-disk disable.it marker.
-  std::unique_ptr<engine::profile::Profile> active_profile_;
+  std::unique_ptr<engine::profile::ProfileManager> active_profile_;
   // Plugin database driving the Plugins tab (empty until a plugin-capable
   // game is loaded). Rebuilt on refresh; toggles/moves save the profile.
   engine::PluginDatabase plugins_db_;

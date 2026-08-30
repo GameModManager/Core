@@ -95,7 +95,7 @@ ProfileManagerDialog::ProfileManagerDialog(const std::filesystem::path& profiles
                 if (name.isEmpty()) {
                     return;
                 }
-                engine::profile::Profile profile(profiles_dir_ / name.toStdString());
+                engine::profile::ProfileManager profile(profiles_dir_ / name.toStdString());
                 profile.set_local_saves(settings_widget_->local_saves());
                 profile.set_local_settings(settings_widget_->local_settings());
                 profile.set_automatic_archive_invalidation(
@@ -249,7 +249,7 @@ void ProfileManagerDialog::on_delete_profile() {
         return;
     }
 
-    engine::profile::Profile profile(profiles_dir_ / name.toStdString());
+    engine::profile::ProfileManager profile(profiles_dir_ / name.toStdString());
     const auto result = profile.remove(/*is_active=*/false);
     switch (result) {
     case engine::profile::ProfileRemoveResult::Removed:

@@ -72,10 +72,10 @@ struct IniSection {
 // set_mod_priority) and read by the DelayedFileWriter thread
 // (do_write_modlist); mods_ is protected by mods_mutex_.
 //
-// NOTE: this class is distinct from engine::Profile (mod/model/profile.h),
+// NOTE: this class is distinct from engine::ProfileModel (mod/model/profile.h),
 // which is the in-memory mod-list model exposed to plugins via the ABI
 // bridge. This class owns the profile DIRECTORY and its files.
-class Profile {
+class ProfileManager {
 public:
     // Default debounce delay for modlist.txt writes (MO2 parity).
     static constexpr std::chrono::milliseconds kModlistWriteDelay{5000};
@@ -85,14 +85,14 @@ public:
     // methods return empty state and write methods create the directory on
     // demand. `modlist_delay` is the DelayedFileWriter debounce (tests pass a
     // short delay).
-    explicit Profile(std::filesystem::path directory,
+    explicit ProfileManager(std::filesystem::path directory,
                      std::chrono::milliseconds modlist_delay = kModlistWriteDelay);
-    ~Profile();
+    ~ProfileManager();
 
-    Profile(const Profile&) = delete;
-    Profile& operator=(const Profile&) = delete;
-    Profile(Profile&&) = delete;
-    Profile& operator=(Profile&&) = delete;
+    ProfileManager(const ProfileManager&) = delete;
+    ProfileManager& operator=(const ProfileManager&) = delete;
+    ProfileManager(ProfileManager&&) = delete;
+    ProfileManager& operator=(ProfileManager&&) = delete;
 
     // --- directory ---------------------------------------------------------
 
@@ -239,5 +239,8 @@ private:
 
     DelayedFileWriter modlist_writer_;
 };
+
+// Backward-compat alias — remove once all call sites use ProfileManager.
+using Profile = ProfileManager;
 
 }  // namespace engine::profile

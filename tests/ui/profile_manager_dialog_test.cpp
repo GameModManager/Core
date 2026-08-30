@@ -108,7 +108,7 @@ TEST_CASE("profile manager dialog", "[ui]") {
     SECTION("per-profile settings read from settings.ini") {
         // Give "Modded" non-default settings on disk first.
         {
-            engine::profile::Profile profile(profiles_dir / "Modded");
+            engine::profile::ProfileManager profile(profiles_dir / "Modded");
             profile.set_local_saves(true);
             profile.set_local_settings(true);
             profile.set_automatic_archive_invalidation(true);
@@ -142,7 +142,7 @@ TEST_CASE("profile manager dialog", "[ui]") {
         saves->setChecked(true);
 
         // The toggle handler writes settings.ini immediately.
-        engine::profile::Profile profile(profiles_dir / "Modded");
+        engine::profile::ProfileManager profile(profiles_dir / "Modded");
         REQUIRE(profile.local_saves());
     }
 

@@ -10,7 +10,7 @@ namespace ui {
 
 // Per-profile settings editor (MO2's ProfilesDialog checkboxes): Local Saves,
 // Local Settings and Archive Invalidation. Values are read from and written
-// to the profile's settings.ini through engine::profile::Profile.
+// to the profile's settings.ini through engine::profile::ProfileManager.
 //
 // set_profile() loads the values for a profile directory; toggling a checkbox
 // emits settings_changed() so the owner can persist the change (the widget

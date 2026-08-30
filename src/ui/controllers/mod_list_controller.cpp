@@ -686,7 +686,7 @@ void ModListController::refresh_profiles() {
   // of failing silently later. repair() never touches existing files, so a
   // partially-populated profile keeps its mod list and settings.
   for (const auto &name : engine::profile::list_profiles(profiles_dir)) {
-    engine::profile::Profile profile(profiles_dir / name);
+    engine::profile::ProfileManager profile(profiles_dir / name);
     const auto generated = profile.repair();
     if (!generated.empty()) {
       engine::Logger::instance().info(
@@ -773,7 +773,7 @@ void ModListController::switch_profile(const QString &profile) {
   // would flush an empty modlist.txt over the real per-profile state.
   if (!w_->active_profile_ ||
       w_->active_profile_->name() != w_->current_profile_name_) {
-    w_->active_profile_ = std::make_unique<engine::profile::Profile>(
+    w_->active_profile_ = std::make_unique<engine::profile::ProfileManager>(
         profiles_dir / w_->current_profile_name_);
     w_->active_profile_->refresh_mod_status(state.known_mods,
                                             state.foreign_mods);
@@ -1182,7 +1182,7 @@ void ModListController::load_mods_from_game() {
   if (!w_->current_profile_name_.empty() &&
       (!w_->active_profile_ ||
        w_->active_profile_->name() != w_->current_profile_name_)) {
-    w_->active_profile_ = std::make_unique<engine::profile::Profile>(
+    w_->active_profile_ = std::make_unique<engine::profile::ProfileManager>(
         w_->profiles_dir_path() / w_->current_profile_name_);
     w_->active_profile_->refresh_mod_status({}, {});
   }

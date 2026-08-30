@@ -23,7 +23,7 @@ struct ProfileSwitchResult {
   bool success = false;
   bool changed = false;
   std::string error;
-  std::unique_ptr<Profile> profile;
+  std::unique_ptr<ProfileManager> profile;
 };
 
 // Live state snapshot of the current profile, gathered by the caller (UI)
@@ -76,7 +76,7 @@ struct ProfileSwitchCallbacks {
 //   4. initweaks.ini when state.tweaked_ini is non-empty.
 //   5. settings.ini.
 // Returns false with *error set on the first failure.
-bool save_current_profile(Profile &profile, const ProfileSaveState &state,
+bool save_current_profile(ProfileManager &profile, const ProfileSaveState &state,
                           engine::PluginDatabase *plugin_db = nullptr,
                           std::string *error = nullptr);
 
@@ -113,7 +113,7 @@ bool write_tweaked_ini(const std::filesystem::path &profile_dir,
 // the new Profile is constructed) and the result carries a human-readable
 // error.
 ProfileSwitchResult switch_profile(const std::filesystem::path &profiles_dir,
-                                   const std::string &name, Profile *current,
+                                   const std::string &name, ProfileManager *current,
                                    const ProfileSaveState &current_state,
                                    engine::PluginDatabase *plugin_db,
                                    const ProfileSwitchCallbacks &callbacks);
