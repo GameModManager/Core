@@ -271,7 +271,7 @@ class RegistrationContext:
         fn(file_path: str) -> int returns the raw QWidget* (e.g. obtained via
         shiboken6.getCppPointer(widget)[0] when building the widget with
         PySide6). The engine embeds the widget in the preview panel exactly like
-        a C plugin. Registered into the UI PreviewRegistry.
+        a C plugin. Registered into the UI Registry.
         """
         ...
 

@@ -1,4 +1,4 @@
-// PreviewRegistry implementation.
+// Registry implementation.
 //
 // The class is intentionally header-only (see preview_registry.h for the
 // rationale: the Qt-free engine must be able to populate it without linking the
