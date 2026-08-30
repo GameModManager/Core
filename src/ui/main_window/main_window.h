@@ -39,12 +39,15 @@ class QCheckBox;
 class QTreeWidget;
 class QTimer;
 
+namespace engine::Source {
+struct NxmLink;
+}
 namespace engine {
 class GameKnowledge;
 class PluginLoader;
 class ManagedGames;
 class NxmIpcServer;
-struct NxmLink;
+using NxmLink = Source::NxmLink;
 struct ConflictStats;
 class StyleManager;
 class Platform;

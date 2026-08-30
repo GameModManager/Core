@@ -1,15 +1,15 @@
-#include "engine/source/nexus_account.h"
+#include "engine/source/nexus/account.h"
 
 #include "engine/core/log/logger.h"
-#include "engine/source/nexus_auth.h"
-#include "engine/source/nexus_http.h"
+#include "engine/source/nexus/auth.h"
+#include "engine/source/nexus/http.h"
 
 #include <nlohmann/json.hpp>
 
 #include <cctype>
 #include <string>
 
-namespace engine {
+namespace engine::Source::Nexus::Account {
 
 namespace {
 constexpr const char* kValidateUrl =
@@ -53,7 +53,7 @@ void parse_rate_limits(const std::string& headers) {
     int64_t hourly_reset    = pick("x-rl-authenticated-hourly-reset", "x-rl-hourly-reset");
 
     if (daily_limit > 0 || hourly_limit > 0) {
-        NexusAuth::instance().update_rate_limit(
+        Auth::instance().update_rate_limit(
             static_cast<int>(hourly_limit),
             static_cast<int>(hourly_remaining),
             hourly_reset,
@@ -65,7 +65,7 @@ void parse_rate_limits(const std::string& headers) {
 
 NexusValidateResult validate_nexus_account() {
     NexusValidateResult result;
-    auto& auth = NexusAuth::instance();
+    auto& auth = Auth::instance();
 
     if (!auth.has_api_key()) {
         result.message = "No API key stored - enter one first.";
@@ -84,7 +84,7 @@ NexusValidateResult validate_nexus_account() {
     std::string response;
     std::string resp_headers;
     long http_code = 0;
-    const bool ok = nexus_http_request(kValidateUrl, "", response, http_code,
+    const bool ok = Http::nexus_http_request(kValidateUrl, "", response, http_code,
                                        headers, &resp_headers, 10);
     curl_slist_free_all(headers);
 
@@ -137,4 +137,4 @@ NexusValidateResult validate_nexus_account() {
     return result;
 }
 
-} // namespace engine
+} // namespace engine::Source::Nexus::Account
