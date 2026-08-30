@@ -19,7 +19,7 @@ class QMouseEvent;
 
 namespace ui {
 
-class ModListModel;
+class ModList;
 
 // Flag-icon wrap math, shared by FlagsDelegate::paint and ::sizeHint so the
 // two can never disagree and the logic is unit-testable without a widget.
@@ -146,10 +146,10 @@ private:
     static constexpr int kIndentStep = 20;  // px per nesting level (visible at depth 1)
 };
 
-class ModTableView : public QTreeView {
+class ModView : public QTreeView {
     Q_OBJECT
 public:
-    explicit ModTableView(QWidget* parent = nullptr);
+    explicit ModView(QWidget* parent = nullptr);
 
     // Re-apply the always-on / as-needed policy for the separator scrollbar
     // coloring setting (called after the Settings dialog closes).
@@ -159,13 +159,13 @@ public:
     // Re-layout rows whenever the Flags column is resized: the flag icons wrap
     // to extra lines (growing the row) based on the column width, and the
     // cached row heights must follow the drag. Hides the (non-virtual)
-    // QTreeView::setHeader; main_window calls it through ModTableView*.
+    // QTreeView::setHeader; main_window calls it through ModView*.
     void setHeader(QHeaderView* header);
 
 signals:
     void files_dropped(const QStringList& paths);
     // Files/folders dragged out of the Overwrite info dialog onto mod row
-    // `mod_row` (0-based into ModListModel). The view only reports drops it
+    // `mod_row` (0-based into ModList). The view only reports drops it
     // recognized as living under the Overwrite directory.
     void overwrite_files_dropped(const QStringList& paths, int mod_row);
     // Ctrl+Double-Click on a mod row (MO2 parity): the controller opens the
@@ -182,5 +182,8 @@ protected:
 private:
     bool is_under_overwrite(const QString& path) const;
 };
+
+// Backward-compat alias
+using ModTableView = ModView;
 
 }  // namespace ui

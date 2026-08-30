@@ -59,8 +59,8 @@ struct LaunchParams;
 namespace ui {
 
 class DebugWindow;
-class ModListModel;
-class ModTableView;
+class ModList;
+class ModView;
 class ColumnToggleHeaderView;
 class MainToolbar;
 class ProfileBar;
@@ -168,7 +168,7 @@ public:
   // public entry point used by main.cpp.
   void handle_nxm_download(const engine::NxmLink &link);
 
-  [[nodiscard]] ModTableView *mod_view() const { return mod_view_; }
+  [[nodiscard]] ModView *mod_view() const { return mod_view_; }
   [[nodiscard]] QSplitter *console_splitter() const {
     return console_splitter_;
   }
@@ -209,12 +209,12 @@ private:
   // MO2-style category filter panel (checkable category tree + Clear/Edit).
   // Hidden by default; the << / >> toggle in the filter bar shows/hides it.
   CategoryFilterPanel *category_filter_panel_ = nullptr;
-  ModTableView *mod_view_ = nullptr;
+  ModView *mod_view_ = nullptr;
   // MO2-style digital counter above the mod list (enabled mod count),
   // right-aligned; updated by ModListController on list/toggle changes.
   QLCDNumber *mod_count_enabled_ = nullptr;
   ColumnToggleHeaderView *mod_header_ = nullptr;
-  ModListModel *mod_model_ = nullptr;
+  ModList *mod_model_ = nullptr;
   RightPanel *right_panel_ = nullptr;
   QSplitter *main_splitter_ = nullptr;
   QSplitter *console_splitter_ = nullptr;
@@ -246,7 +246,7 @@ private:
   bool loading_ = false;
   // The active profile's engine model (modlist.txt state). Owned by the
   // window; created on instance load, replaced on profile switch. The UI's
-  // ModListModel is converged with it after every scan
+  // ModList is converged with it after every scan
   // (on_mod_scan_finished) and every toggle (sync_mod_enable_state), so the
   // profile's modlist.txt is the per-profile source of truth for enabled
   // state — never the global on-disk disable.it marker.

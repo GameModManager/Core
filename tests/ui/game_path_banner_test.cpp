@@ -113,7 +113,7 @@ TEST_CASE("instance-owned mod ops work without a game dir", "[ui]") {
 
     auto* ctrl = w.findChild<ui::ModListController*>();
     REQUIRE(ctrl != nullptr);
-    auto* model = w.findChild<ui::ModListModel*>();
+    auto* model = w.findChild<ui::ModList*>();
     REQUIRE(model != nullptr);
 
     // Separator creation used to be blocked by the empty-game_dir guard.
@@ -172,7 +172,7 @@ TEST_CASE("mod list loads from instance mods dir without a game dir", "[ui]") {
     w.show();
     w.set_game_info("testgame", "Test Game", "", {}, root);
 
-    auto* model = w.findChild<ui::ModListModel*>();
+    auto* model = w.findChild<ui::ModList*>();
     REQUIRE(model != nullptr);
 
     // The scan is async (ModScanThread); pump events until the result
