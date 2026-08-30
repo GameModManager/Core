@@ -147,7 +147,7 @@ int HeadlessLauncher::run() {
     // MO2-equivalent plugin order: build + write the game's Plugins.txt (and
     // the instance profile) right before launch. No-op for games without
     // plugin support (no localappdata_folder hook).
-    engine::PluginDatabase::write_plugins_txt_for_launch(
+    engine::PluginDb::Database::write_plugins_txt_for_launch(
         config_.game_dir, config_.instance_root, config_.game_id, config_.steam_appid,
         config_.knowledge ? *config_.knowledge : engine::GameKnowledge(), platform_);
 

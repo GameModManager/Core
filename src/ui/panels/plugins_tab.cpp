@@ -438,6 +438,11 @@ PluginsTab::PluginsTab(QWidget *parent) : QWidget(parent) {
   connect(table_, &QTableWidget::customContextMenuRequested, this,
           &PluginsTab::on_custom_context_menu);
 
+  // Extracted context menu (lock/unlock actions).
+  context_menu_ = std::make_unique<engine::PluginDb::ContextMenu>(this);
+  connect(context_menu_.get(), &engine::PluginDb::ContextMenu::lock_requested,
+          this, &PluginsTab::lock_requested);
+
   // Header row: MO2-style refresh button (left) + active-plugin counter
   // (right, PluginListView::updatePluginCount parity).
   auto *header = new QHBoxLayout;
@@ -607,6 +612,17 @@ void PluginsTab::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
   syncing_ = false;
   apply_highlights();   // rows were rebuilt; re-tint selected-mod/master rows
   relayout_flag_rows(); // row heights follow the emblem wrap math
+  // Populate the extracted context menu with per-row metadata.
+  std::vector<engine::PluginDb::RowInfo> row_infos;
+  row_infos.reserve(names_.size());
+  for (size_t i = 0; i < names_.size(); ++i) {
+    engine::PluginDb::RowInfo ri;
+    ri.name = names_[i];
+    ri.locked = i < rows_locked_.size() && rows_locked_[i];
+    ri.force_loaded = i < rows_force_loaded_.size() && rows_force_loaded_[i];
+    row_infos.push_back(std::move(ri));
+  }
+  context_menu_->set_rows(std::move(row_infos));
   refresh_counters();
 }
 
@@ -723,22 +739,7 @@ void PluginsTab::refresh_counters() {
 }
 
 void PluginsTab::add_context_menu_actions(QMenu &menu, int row) {
-  if (row < 0 || row >= static_cast<int>(names_.size()))
-    return;
-  const size_t r = static_cast<size_t>(row);
-
-  // MO2's lock actions (PluginListContextMenu): "Lock load order" for
-  // unlocked plugins, "Unlock load order" for locked ones. Core rows cannot
-  // be locked (the engine refuses).
-  const bool locked = r < rows_locked_.size() && rows_locked_[r];
-  const bool core = r < rows_force_loaded_.size() && rows_force_loaded_[r];
-  if (!locked && !core) {
-    menu.addAction(tr("Lock load order"), this,
-                   [this, r]() { emit lock_requested(names_[r], true); });
-  } else if (locked) {
-    menu.addAction(tr("Unlock load order"), this,
-                   [this, r]() { emit lock_requested(names_[r], false); });
-  }
+  context_menu_->add_actions(menu, row);
 }
 
 void PluginsTab::on_custom_context_menu(const QPoint &pos) {

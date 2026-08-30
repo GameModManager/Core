@@ -10,7 +10,7 @@ namespace ui {
 PluginDbLoadWorker::PluginDbLoadWorker(QObject* parent) : QObject(parent) {}
 
 void PluginDbLoadWorker::run(PluginDbLoadRequest request, quint64 generation) {
-    engine::PluginDatabase db;
+    engine::PluginDb::Database db;
     db.refresh(request.game_dir, request.mods_dir, request.meta_dir,
                request.disable_mechanism, request.game_native);
     db.load_creation_club(request.game_dir);
@@ -23,7 +23,7 @@ void PluginDbLoadWorker::run(PluginDbLoadRequest request, quint64 generation) {
 }
 
 PluginDbLoadThread::PluginDbLoadThread(QObject* parent) : QObject(parent) {
-    qRegisterMetaType<engine::PluginDatabase>();
+    qRegisterMetaType<engine::PluginDb::Database>();
     thread_ = new QThread(this);
     thread_->setObjectName(QStringLiteral("gmm-plugin-db"));
     worker_ = new PluginDbLoadWorker(nullptr);

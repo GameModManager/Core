@@ -13,7 +13,9 @@ namespace engine {
 class GameKnowledge;
 class Platform;
 
-class PluginDatabase {
+namespace PluginDb {
+
+class Database {
 public:
     // Discover + parse all plugins from the game's merged Data view.
     //   game_dir   - game install root (Data/ holds vanilla + game-native plugins)
@@ -175,5 +177,10 @@ private:
     // CC plugins in the order listed by the creation club file.
     std::vector<std::string> ccc_order_;
 };
+
+}  // namespace PluginDb
+
+// Backward-compat alias so existing consumers compile without changes.
+using PluginDatabase = PluginDb::Database;
 
 }  // namespace engine

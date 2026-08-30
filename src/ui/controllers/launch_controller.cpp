@@ -713,7 +713,7 @@ void LaunchController::on_launch_params_prepared(engine::LaunchParams lparams) {
   // the instance profile) right before launch. No-op for games without
   // plugin support (no localappdata_folder hook).
   trace.begin_stage("launch", "Sync plugin order");
-  engine::PluginDatabase::write_plugins_txt_for_launch(
+  engine::PluginDb::Database::write_plugins_txt_for_launch(
       w_->current_game_dir_, w_->current_instance_root_, w_->current_game_id_,
       lparams.steam_appid,
       w_->knowledge_ ? *w_->knowledge_ : engine::GameKnowledge(),

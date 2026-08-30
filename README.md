@@ -194,7 +194,7 @@ src/
 │   ├-- overwrite/          # Overwrite movers/sync logic
 │   ├-- pipeline/           # 8-stage pipeline (fetch→...→launch)
 │   ├-- plugin_host/        # dlopen loader + Python embedding
-│   ├-- plugins/            # PluginDatabase (MO2 PluginList port), TES4 header parser
+│   ├-- plugins/            # PluginDb::Database (MO2 PluginList port), TES4 header parser
 │   ├-- registry/           # Stage registry, hook registry, GameKnowledge
 │   ├-- source/             # Source providers: Nexus, Steam Workshop
 │   ├-- sort/               # Generic sort provider + ABI wrapper

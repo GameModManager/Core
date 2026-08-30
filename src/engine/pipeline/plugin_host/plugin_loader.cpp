@@ -1785,7 +1785,7 @@ void PluginLoader::add_loaded_plugin(PluginInfo info) {
     plugins_.push_back(std::move(info));
 }
 
-void PluginLoader::collect_diagnostics(const std::string& game_id, PluginDatabase& db) {
+void PluginLoader::collect_diagnostics(const std::string& game_id, PluginDb::Database& db) {
     DiagnosticsRegistry::instance().collect(game_id, db);
 }
 
