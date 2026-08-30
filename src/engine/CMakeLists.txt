@@ -118,7 +118,8 @@ set(ENGINE_SOURCES
     game/saves/local_saves.cpp
     sort/loot/loot_sorter.cpp
     sort/loot/masterlists.cpp
-    source/source_provider.cpp
+    source/registry.cpp
+    source/http_util.cpp
     source/nexus_provider.cpp
     source/nexus_account.cpp
     source/nexus_http.cpp
