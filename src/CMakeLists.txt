@@ -11,7 +11,11 @@ add_subdirectory(cli)
 # ---------------------------------------------------------------------------
 # App entry point — thin main() + wiring only
 # ---------------------------------------------------------------------------
-add_executable(gamemodmanager main.cpp)
+add_executable(gamemodmanager
+    main.cpp
+    cli/command_line.cpp
+    core/core.cpp
+)
 
 # Keep the binary at <build>/gamemodmanager (documented in README.md), same
 # as the pre-split layout where the app was defined at the repo root.
