@@ -130,6 +130,14 @@ set(ENGINE_SOURCES
     source/nexus_auth.cpp
     source/loverslab_auth.cpp
     source/download/curl_download.cpp
+    update/self_updater.cpp
+    update/windows_self_updater.cpp
+    update/linux_self_updater.cpp
+    update/macos_self_updater.cpp
+    update/flatpak_updater.cpp
+    update/appimage_updater.cpp
+    update/deb_rpm_updater.cpp
+    update/aur_updater.cpp
     core/keyring/keyring.cpp
     deploy/launch/preload_interceptor.cpp
     deploy/launch/launcher.cpp
