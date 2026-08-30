@@ -68,7 +68,7 @@ inline constexpr const char *kDefaultDisableMechanism = ".gmmdisabled";
 // that by setting the key to kDeployStrategyOverlayFs, which deploys into a
 // staging dir and overlays it onto the game at launch (Linux only).
 // kDeployStrategyDirect is the lifecycle-object form of the symlink default:
-// it deploys straight into game_dir through DirectDeployStrategy (the same
+// it deploys straight into game_dir through Deploy::Direct (the same
 // on-disk result, but with deploy_all/undeploy/sync as first-class methods).
 inline constexpr const char *kDefaultDeployStrategy = "symlink";
 inline constexpr const char *kDeployStrategyOverlayFs = "overlayfs";
@@ -76,8 +76,8 @@ inline constexpr const char *kDeployStrategyDirect = "direct";
 
 // Creation club file name for the given game (e.g. "skyrim.ccc").
 // Falls back to "skyrim.ccc" when the plugin declares nothing.
-[[nodiscard]] std::string creation_club_file_for(const GameKnowledge& knowledge,
-                                                 const std::string& game_id);
+[[nodiscard]] std::string creation_club_file_for(const GameKnowledge &knowledge,
+                                                 const std::string &game_id);
 
 // Deploy strategy declared for the given game. Falls back to
 // kDefaultDeployStrategy when the game plugin declares nothing.

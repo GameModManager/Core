@@ -16,15 +16,15 @@
 #include <unordered_set>
 #include <vector>
 
-#include "engine/deploy/strategy.h"
-#include "engine/index/conflict_engine.h"
 #include "engine/core/instance/instance.h"
-#include "engine/mod/meta/mod_meta.h"
-#include "engine/source/nxm/nxm_router.h"
-#include "engine/game/plugins/plugin_database.h"
+#include "engine/deploy/interface.h"
 #include "engine/deploy/launch/proton_tools.h"
+#include "engine/game/plugins/plugin_database.h"
 #include "engine/game/registry/game_knowledge.h"
+#include "engine/index/conflict_engine.h"
+#include "engine/mod/meta/mod_meta.h"
 #include "engine/profile/profile.h"
+#include "engine/source/nxm/nxm_router.h"
 #include "platform/platform.h"
 #include "ui/ui_locker.h"
 
@@ -48,7 +48,11 @@ struct NxmLink;
 struct ConflictStats;
 class StyleManager;
 class Platform;
-namespace Sorter { namespace Loot { struct Result; } }
+namespace Sorter {
+namespace Loot {
+struct Result;
+}
+} // namespace Sorter
 struct LaunchParams;
 } // namespace engine
 
@@ -152,9 +156,7 @@ public:
   }
   void set_managed_games(engine::ManagedGames *mg) { managed_games_ = mg; }
   void set_style_manager(engine::StyleManager *sm) { style_manager_ = sm; }
-  void set_platform(engine::Platform *platform) {
-    platform_ = platform;
-  }
+  void set_platform(engine::Platform *platform) { platform_ = platform; }
 
   // The QApplication's initial (native platform) style name, captured before
   // any user-selected style is applied. Used to restore "Default (system)"
@@ -233,7 +235,7 @@ private:
   engine::StyleManager *style_manager_ = nullptr;
   engine::Platform *platform_ = nullptr;
   engine::NxmIpcServer *nxm_ipc_ = nullptr;
-  std::unique_ptr<engine::DeploymentStrategy> deploy_strategy_;
+  std::unique_ptr<Deploy::Interface> deploy_strategy_;
   bool nxm_handler_check_done_ = false;
 
   std::string current_game_id_;
