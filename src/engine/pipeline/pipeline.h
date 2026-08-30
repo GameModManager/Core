@@ -13,7 +13,7 @@ namespace engine {
 
 class Instance;
 class ConflictIndex;
-class Profile;
+class ProfileModel;
 class DeploymentStrategy;
 class OrderEncodingHook;
 class FomodViewModel;
@@ -58,7 +58,7 @@ enum class PipelineResult {
 struct PipelineContext {
     Instance* instance = nullptr;
     ConflictIndex* conflict_index = nullptr;
-    Profile* profile = nullptr;
+    ProfileModel* profile = nullptr;
     DeploymentStrategy* deploy_strategy = nullptr;
     OrderEncodingHook* order_hook = nullptr;
     std::filesystem::path game_dir;  // live game directory (for Overwrite capture)

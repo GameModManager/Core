@@ -4,11 +4,11 @@
 
 namespace engine {
 
-Profile::Profile() {
+ProfileModel::ProfileModel() {
     ensure_overwrite_pinned();
 }
 
-void Profile::add_mod(const std::string& mod_id, bool enabled) {
+void ProfileModel::add_mod(const std::string& mod_id, bool enabled) {
     if (is_overwrite(mod_id)) return;  // cannot add Overwrite manually
     remove_mod(mod_id);
     // Insert before the Overwrite entry (which is always last)
@@ -24,7 +24,7 @@ void Profile::add_mod(const std::string& mod_id, bool enabled) {
     }
 }
 
-void Profile::remove_mod(const std::string& mod_id) {
+void ProfileModel::remove_mod(const std::string& mod_id) {
     if (is_overwrite(mod_id)) return;  // cannot remove Overwrite
     mods_.erase(
         std::remove_if(mods_.begin(), mods_.end(),
@@ -32,7 +32,7 @@ void Profile::remove_mod(const std::string& mod_id) {
         mods_.end());
 }
 
-void Profile::set_enabled(const std::string& mod_id, bool enabled) {
+void ProfileModel::set_enabled(const std::string& mod_id, bool enabled) {
     if (is_overwrite(mod_id)) return;  // Overwrite is always enabled
     for (auto& m : mods_) {
         if (m.mod_id == mod_id) {
@@ -42,7 +42,7 @@ void Profile::set_enabled(const std::string& mod_id, bool enabled) {
     }
 }
 
-void Profile::move_mod(const std::string& mod_id, uint32_t new_position) {
+void ProfileModel::move_mod(const std::string& mod_id, uint32_t new_position) {
     if (is_overwrite(mod_id)) return;  // cannot move Overwrite
 
     auto it = std::find_if(mods_.begin(), mods_.end(),
@@ -68,14 +68,14 @@ void Profile::move_mod(const std::string& mod_id, uint32_t new_position) {
     }
 }
 
-uint32_t Profile::priority_of(const std::string& mod_id) const {
+uint32_t ProfileModel::priority_of(const std::string& mod_id) const {
     for (uint32_t i = 0; i < mods_.size(); ++i) {
         if (mods_[i].mod_id == mod_id) return i;
     }
     return 0;
 }
 
-std::vector<std::string> Profile::enabled_in_order() const {
+std::vector<std::string> ProfileModel::enabled_in_order() const {
     std::vector<std::string> result;
     for (const auto& m : mods_) {
         if (m.enabled) result.push_back(m.mod_id);
@@ -83,18 +83,18 @@ std::vector<std::string> Profile::enabled_in_order() const {
     return result;
 }
 
-void Profile::ensure_overwrite_pinned() {
+void ProfileModel::ensure_overwrite_pinned() {
     for (const auto& m : mods_) {
         if (m.mod_id == kProfileOverwriteId) return;  // already present
     }
     mods_.push_back({kProfileOverwriteId, true});
 }
 
-bool Profile::is_overwrite(const std::string& mod_id) const {
+bool ProfileModel::is_overwrite(const std::string& mod_id) const {
     return mod_id == kProfileOverwriteId;
 }
 
-int Profile::overwrite_index() const {
+int ProfileModel::overwrite_index() const {
     for (int i = 0; i < static_cast<int>(mods_.size()); ++i) {
         if (mods_[i].mod_id == kProfileOverwriteId) return i;
     }

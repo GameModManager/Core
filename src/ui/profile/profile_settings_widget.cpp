@@ -41,7 +41,7 @@ void ProfileSettingsWidget::set_profile(const std::filesystem::path& profile_dir
         local_settings_box_->setEnabled(false);
         invalidation_box_->setEnabled(false);
     } else {
-        engine::profile::Profile profile(profile_dir);
+        engine::profile::ProfileManager profile(profile_dir);
         local_saves_box_->setChecked(profile.local_saves());
         local_settings_box_->setChecked(profile.local_settings());
         invalidation_box_->setChecked(profile.automatic_archive_invalidation());

@@ -35,7 +35,7 @@ bool is_game_ini(const std::filesystem::path& path) {
 // The caller writes the defaults first, then this overrides what the
 // directory state proves (MO2 only detects when the setting is unset, which
 // is the case for a fresh profile).
-void detect_local_settings(Profile& profile) {
+void detect_local_settings(ProfileManager& profile) {
     const auto dir = profile.directory();
 
     if (std::filesystem::is_directory(dir / "saves")) {
@@ -132,7 +132,7 @@ ProfileCreationResult create_fresh_profile(const std::filesystem::path& profiles
         game_init(target);
     }
 
-    Profile profile(target);
+    ProfileManager profile(target);
     // Defaults first (MO2's useDefaultSettings / PREFER_DEFAULTS), then
     // auto-detection overrides what the directory state proves.
     profile.set_local_saves(false);
@@ -197,7 +197,7 @@ ProfileCreationResult copy_profile(const std::filesystem::path& profiles_dir, co
     // profile identity; the key makes the copy self-describing). All other
     // settings — LocalSaves, LocalSettings, AutomaticArchiveInvalidation,
     // forced_libraries, unknown keys — are preserved verbatim by the copy.
-    Profile profile(target);
+    ProfileManager profile(target);
     profile.set_root_setting("ProfileName", new_name);
     if (!profile.save_settings()) {
         result.error = "failed to update settings.ini in " + target.string();
@@ -252,7 +252,7 @@ bool rename_profile(const std::filesystem::path& profiles_dir, const std::string
 
     // Record the new name in settings.ini (the directory name is the profile
     // identity; the key makes the rename self-describing).
-    Profile profile(target);
+    ProfileManager profile(target);
     profile.set_root_setting("ProfileName", new_name);
     if (!profile.save_settings()) {
         const std::string msg = "failed to update settings.ini in " + target.string();

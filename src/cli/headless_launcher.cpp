@@ -71,7 +71,7 @@ void reconcile_deferred_disable_sentinels(const HeadlessLauncher::Config& cfg) {
     // Read the profile's modlist.txt (the per-profile source of truth for
     // enabled state). refresh_mod_status({}) loads exactly the file entries —
     // no known_mods to append.
-    engine::profile::Profile profile(profile_dir);
+    engine::profile::ProfileManager profile(profile_dir);
     profile.refresh_mod_status({});
     const auto mods = profile.mods();
     if (mods.empty())
