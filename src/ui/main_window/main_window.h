@@ -25,7 +25,7 @@
 #include "engine/deploy/launch/proton_tools.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/profile/profile.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 class QSplitter;
 class QToolBar;
@@ -46,7 +46,7 @@ class NxmIpcServer;
 struct NxmLink;
 struct ConflictStats;
 class StyleManager;
-class PlatformInterface;
+class Platform;
 struct LootResult;
 struct LaunchParams;
 } // namespace engine
@@ -151,7 +151,7 @@ public:
   }
   void set_managed_games(engine::ManagedGames *mg) { managed_games_ = mg; }
   void set_style_manager(engine::StyleManager *sm) { style_manager_ = sm; }
-  void set_platform(engine::PlatformInterface *platform) {
+  void set_platform(engine::Platform *platform) {
     platform_ = platform;
   }
 
@@ -230,7 +230,7 @@ private:
   engine::ManagedGames *managed_games_ = nullptr;
   QString native_style_name_;
   engine::StyleManager *style_manager_ = nullptr;
-  engine::PlatformInterface *platform_ = nullptr;
+  engine::Platform *platform_ = nullptr;
   engine::NxmIpcServer *nxm_ipc_ = nullptr;
   std::unique_ptr<engine::DeploymentStrategy> deploy_strategy_;
   bool nxm_handler_check_done_ = false;

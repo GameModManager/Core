@@ -8,7 +8,7 @@
 #include "engine/game/plugins/esp_header.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
 #include "engine/game/registry/game_knowledge.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <algorithm>
 #include <cctype>
@@ -909,7 +909,7 @@ std::filesystem::path PluginDatabase::resolve_plugins_txt_target(
     const GameKnowledge& knowledge,
     const std::string& game_id,
     uint32_t steam_appid,
-    const PlatformInterface* platform,
+    const Platform* platform,
     const std::filesystem::path& override_path) {
     if (!override_path.empty()) return override_path;
 
@@ -927,7 +927,7 @@ bool PluginDatabase::write_plugins_txt_for_launch(
     const std::string& game_id,
     uint32_t steam_appid,
     const GameKnowledge& knowledge,
-    const PlatformInterface* platform) {
+    const Platform* platform) {
     Instance inst = Instance::from_root(instance_root);
     std::filesystem::path override_path;
     if (inst.read_toml()) override_path = inst.info().plugins_txt_path;

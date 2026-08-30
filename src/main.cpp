@@ -1,6 +1,6 @@
 #include <QApplication>
 
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #ifdef GMM_HAS_QTKEYCHAIN
 #include "keyring/qtkeychain_keyring.h"
@@ -222,7 +222,7 @@ int main(int argc, char *argv[]) {
 
   // Platform services (Steam/Proton discovery, prefix resolution, user dirs).
   // Single instance owned here, injected into everything that needs it.
-  std::unique_ptr<engine::PlatformInterface> platform;
+  std::unique_ptr<engine::Platform> platform;
 #if defined(GMM_PLATFORM_LINUX)
   platform = std::make_unique<engine::LinuxPlatform>();
 #elif defined(GMM_PLATFORM_WINDOWS)

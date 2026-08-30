@@ -7,7 +7,7 @@
 
 namespace engine {
 
-class PlatformInterface;
+class Platform;
 
 // One plugin fed to the LOOT sorter. `full_path` is the winning on-disk file
 // the game sees (mod-over-game resolution already happened in
@@ -27,7 +27,7 @@ struct LootRequest {
     std::filesystem::path game_dir;    // game install root
     std::filesystem::path profile_dir; // MO2-format profile (loadorder.txt/plugins.txt)
     std::filesystem::path cli_path;    // gmm_lootcli binary; empty = not built
-    const PlatformInterface* platform = nullptr;  // data_dir() for masterlist cache
+    const Platform* platform = nullptr;  // data_dir() for masterlist cache
     std::vector<LootPlugin> plugins;   // every plugin (natives + CC + user), winning paths
     bool update_masterlists = true;    // refresh stale masterlists before sorting
 };

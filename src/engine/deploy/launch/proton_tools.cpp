@@ -1,6 +1,6 @@
 #include "engine/deploy/launch/proton_tools.h"
 
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 #include "runtime/runtime.h"
 
 #include <cstdlib>

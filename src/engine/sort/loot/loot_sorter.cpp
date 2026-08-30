@@ -3,7 +3,7 @@
 #include "engine/core/log/logger.h"
 #include "engine/core/util/process_utils.h"
 #include "engine/sort/loot/masterlists.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <cstdint>
 #include <cstring>

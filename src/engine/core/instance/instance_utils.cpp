@@ -9,7 +9,7 @@
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/game/saves/local_saves.h"
 #include "engine/core/util/fs_utils.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <cstdlib>
 #include <fstream>

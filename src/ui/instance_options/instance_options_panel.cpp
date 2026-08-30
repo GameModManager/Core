@@ -7,7 +7,7 @@
 namespace ui {
 
 InstanceOptionsDialog::InstanceOptionsDialog(
-    engine::PlatformInterface* platform, engine::PluginLoader* plugin_loader,
+    engine::Platform* platform, engine::PluginLoader* plugin_loader,
     const std::string& game_id, const std::string& game_display_name,
     const std::filesystem::path& game_dir, uint32_t steam_appid,
     const std::filesystem::path& instance_root,

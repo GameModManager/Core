@@ -1,5 +1,5 @@
 #include "engine/game/registry/game_knowledge.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <cstdlib>
 
