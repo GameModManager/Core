@@ -139,6 +139,8 @@ set(ENGINE_SOURCES
     update/deb_rpm_updater.cpp
     update/aur_updater.cpp
     core/keyring/keyring.cpp
+    core/github.cpp
+    core/module.cpp
     deploy/launch/preload_interceptor.cpp
     deploy/launch/launcher.cpp
     deploy/launch/usvfs_mapping.cpp
