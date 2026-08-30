@@ -79,12 +79,24 @@ std::string sanitize_directory_name(std::string name) {
         unsigned char uc = static_cast<unsigned char>(c);
         if (invalid_chars.find(c) != std::string::npos ||
             !std::isprint(uc)) {
-            c = '\0';
+            c = '_';
         }
     }
 
-    // Remove erased characters (replaced with null above).
-    name.erase(std::remove(name.begin(), name.end(), '\0'), name.end());
+    // Collapse consecutive underscores into a single one.
+    std::string result;
+    result.reserve(name.size());
+    bool last_underscore = false;
+    for (char c : name) {
+        if (c == '_') {
+            if (!last_underscore) result += c;
+            last_underscore = true;
+        } else {
+            result += c;
+            last_underscore = false;
+        }
+    }
+    name = std::move(result);
 
     // Strip leading dots and trailing dots/spaces.
     while (!name.empty() && name.front() == '.')

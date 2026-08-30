@@ -183,10 +183,10 @@ struct ScanConfig {
 };
 
 // MO2's GamebryoModDataChecker::dataLooksValid analogue: a folder has valid
-// game data if it contains a recognized metadata file (managed mod) OR at
+// game data if it contains a recognized metadata file (managed mod), at
 // least one game plugin / archive file (.esp/.esm/.esl/.bsa/.ba2) at the top
-// level. Having subdirectories alone (meshes/, scripts/, etc.) is NOT enough
-// — vanilla game directories also have these. No allow-lists registered →
+// level, OR a top-level subdirectory whose name matches a recognized data
+// directory from the checker's allow-list. No allow-lists registered →
 // nothing can look invalid.
 static bool content_looks_valid(const ScanConfig &cfg,
                                 const std::filesystem::path &entry_path) {
@@ -197,14 +197,21 @@ static bool content_looks_valid(const ScanConfig &cfg,
       std::filesystem::exists(entry_path / cfg.metadata_file))
     return true;
 
-  // Require at least one game plugin or archive file at the top level.
-  // Subdirectories (meshes/, scripts/, etc.) alone are not sufficient.
   static const std::vector<std::string> kPluginExts = {"esp", "esm", "esl",
                                                        "bsa", "ba2"};
 
   std::error_code ec;
   for (const auto &entry :
        std::filesystem::directory_iterator(entry_path, ec)) {
+    // Check for recognized data subdirectories (MO2 GamebryoModDataChecker
+    // allows mods with recognized folder names like textures/, meshes/, etc.)
+    if (entry.is_directory(ec)) {
+      auto dir_name = entry.path().filename().string();
+      for (const auto &vd : cfg.valid_dirs)
+        if (ci_equals(dir_name, vd))
+          return true;
+    }
+    // Check for game plugin / archive files at the top level
     if (!entry.is_regular_file(ec))
       continue;
     auto dot = entry.path().filename().string().find_last_of('.');
@@ -495,13 +502,6 @@ scan_entry(const std::filesystem::path &entry_path, const ScanConfig &cfg,
   }
   mod.no_metadata = mod.no_metadata && !mod.validated;
   mod.invalid_data = !mod.validated && !content_looks_valid(cfg, entry_path);
-
-  // Whitelist filter (MO2 parity): folders with metadata are ALWAYS listed
-  // (managed mods). Folders WITHOUT metadata must contain recognized mod
-  // content to be listed — this filters out vanilla game directories.
-  if (mod.no_metadata && mod.invalid_data) {
-    return std::nullopt; // No metadata AND no valid content → not a mod
-  }
 
   // Check for disable sentinel
   if (!cfg.disable_file.empty()) {
