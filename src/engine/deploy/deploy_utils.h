@@ -36,40 +36,42 @@ using std::filesystem::path;
 //
 // Inline so deploy consumers (strategy_symlink.cpp, strategy_overlayfs_deploy
 // .cpp, deploy_utils.cpp) need no extra link dependencies.
-[[nodiscard]] inline std::filesystem::path resolve_deploy_target_ci(
-    const std::filesystem::path& target) {
-    std::error_code ec;
-    std::filesystem::path cur = target.root_path();
-    if (cur.empty()) {
-        // Not absolute (shouldn't happen for deploy targets): fall back to the
-        // first component's parent so the walk still works.
-        cur = target.begin()->parent_path();
-    }
-    std::vector<std::filesystem::path> comps;
-    for (const auto& part : target.relative_path()) comps.push_back(part);
+[[nodiscard]] inline std::filesystem::path
+resolve_deploy_target_ci(const std::filesystem::path &target) {
+  std::error_code ec;
+  std::filesystem::path cur = target.root_path();
+  if (cur.empty()) {
+    // Not absolute (shouldn't happen for deploy targets): fall back to the
+    // first component's parent so the walk still works.
+    cur = target.begin()->parent_path();
+  }
+  std::vector<std::filesystem::path> comps;
+  for (const auto &part : target.relative_path())
+    comps.push_back(part);
 
-    // Match every directory component (all but the final file name).
-    for (size_t i = 0; i + 1 < comps.size(); ++i) {
-        const auto& comp = comps[i];
-        const std::filesystem::path exact = cur / comp;
-        if (std::filesystem::exists(exact, ec) || ec) {
-            cur = exact;
-            continue;
-        }
-        // Exact casing absent: reuse an existing CI-matching entry's casing.
-        std::filesystem::path match;
-        bool found = false;
-        for (const auto& entry : std::filesystem::directory_iterator(cur, ec)) {
-            if (ec) break;
-            if (name_matches_ci(entry.path(), comp.string())) {
-                match = entry.path();
-                found = true;
-                break;
-            }
-        }
-        cur = found ? match : exact;
+  // Match every directory component (all but the final file name).
+  for (size_t i = 0; i + 1 < comps.size(); ++i) {
+    const auto &comp = comps[i];
+    const std::filesystem::path exact = cur / comp;
+    if (std::filesystem::exists(exact, ec) || ec) {
+      cur = exact;
+      continue;
     }
-    return cur / comps.back();
+    // Exact casing absent: reuse an existing CI-matching entry's casing.
+    std::filesystem::path match;
+    bool found = false;
+    for (const auto &entry : std::filesystem::directory_iterator(cur, ec)) {
+      if (ec)
+        break;
+      if (name_matches_ci(entry.path(), comp.string())) {
+        match = entry.path();
+        found = true;
+        break;
+      }
+    }
+    cur = found ? match : exact;
+  }
+  return cur / comps.back();
 }
 
 // True when a mod file must be a REAL file (copied) in the staging tree rather
@@ -81,24 +83,24 @@ using std::filesystem::path;
 // .exe (PE via Proton/Wine), .elf, .sh, and extensionless files that are
 // either ELF binaries or #! scripts. Everything else (meshes, textures, DDS,
 // .bin blobs, plugins) stays symlinked - it is only ever read, never run.
-[[nodiscard]] bool is_executable_binary(const std::filesystem::path& path);
+[[nodiscard]] bool is_executable_binary(const std::filesystem::path &path);
 
 // Deploy all enabled (non-disabled) mods from instance_root/mods/ to the
 // overlay staging dir. staging_dir is created if it doesn't exist. Uses
-// OverlayFsDeployStrategy internally to create symlinks under
+// Deploy::OverlayFsDeploy internally to create symlinks under
 // staging_dir/deploy_prefix/[mod_id/].
-// disable_mechanism: the sentinel filename (e.g. ".disable") that marks a mod as disabled.
-// case_sensitive: true (default) preserves each mod's on-disk casing in the
-// staging tree; false routes every target through resolve_deploy_target_ci for
-// games whose filesystem is case-insensitive (Windows games).
-// Returns true if all mods deployed successfully (or nothing to deploy).
-[[nodiscard]] bool deploy_all_enabled_mods(
-    const path& mods_dir,
-    const path& staging_dir,
-    const std::string& deploy_prefix,
-    bool deploy_include_mod_id,
-    const std::string& disable_mechanism,
-    bool case_sensitive = true);
+// disable_mechanism: the sentinel filename (e.g. ".disable") that marks a mod
+// as disabled. case_sensitive: true (default) preserves each mod's on-disk
+// casing in the staging tree; false routes every target through
+// resolve_deploy_target_ci for games whose filesystem is case-insensitive
+// (Windows games). Returns true if all mods deployed successfully (or nothing
+// to deploy).
+[[nodiscard]] bool deploy_all_enabled_mods(const path &mods_dir,
+                                           const path &staging_dir,
+                                           const std::string &deploy_prefix,
+                                           bool deploy_include_mod_id,
+                                           const std::string &disable_mechanism,
+                                           bool case_sensitive = true);
 
 // Parallel variant of deploy_all_enabled_mods (PLAN §13.3, P8.4): the same
 // contract, but the per-mod tree walks and the per-file link/unlink operations
@@ -124,18 +126,14 @@ using std::filesystem::path;
 // 16. progress (if set) is invoked with (done, total) as link operations
 // complete; total==0 means nothing to do.
 [[nodiscard]] bool deploy_all_enabled_mods_parallel(
-    const path& mods_dir,
-    const path& staging_dir,
-    const std::string& deploy_prefix,
-    bool deploy_include_mod_id,
-    const std::string& disable_mechanism,
-    bool case_sensitive = true,
-    unsigned int num_threads = 0,
-    const DeployProgressFn& progress = {});
+    const path &mods_dir, const path &staging_dir,
+    const std::string &deploy_prefix, bool deploy_include_mod_id,
+    const std::string &disable_mechanism, bool case_sensitive = true,
+    unsigned int num_threads = 0, const DeployProgressFn &progress = {});
 
 // Direct-symlink variant (the "deploy_strategy = symlink" default): mods are
 // deployed straight into the game's own directory tree (game_dir), not a
-// staging dir. Uses SymlinkStrategy internally, so targets under
+// staging dir. Uses Deploy::Symlink internally, so targets under
 // game_dir/deploy_prefix/[mod_id/] are symlinks back to the mod folder and
 // executables are real (copied) files.
 //
@@ -161,21 +159,16 @@ using std::filesystem::path;
 // backup_root), and "remove deployed files" restores it. Empty = no backup
 // behavior (pure overlay/symlink semantics for callers that opt out).
 [[nodiscard]] bool deploy_all_enabled_mods_direct(
-    const path& mods_dir,
-    const path& game_dir,
-    const std::string& deploy_prefix,
-    bool deploy_include_mod_id,
-    const std::string& disable_mechanism,
-    bool case_sensitive,
-    const path& ledger_file,
-    const path& backup_root = {},
-    unsigned int num_threads = 0,
-    const DeployProgressFn& progress = {});
+    const path &mods_dir, const path &game_dir,
+    const std::string &deploy_prefix, bool deploy_include_mod_id,
+    const std::string &disable_mechanism, bool case_sensitive,
+    const path &ledger_file, const path &backup_root = {},
+    unsigned int num_threads = 0, const DeployProgressFn &progress = {});
 
 // Directory name (inside the game's root) where direct-symlink deploys park
 // original game files that a mod overrides. Everything there is a restore
 // candidate: remove_deployed_files() moves each back to its game_dir location.
-inline constexpr const char* kOriginalFilesDirName = "Original_Files";
+inline constexpr const char *kOriginalFilesDirName = "Original_Files";
 
 // Load the persistent deploy ledger (target -> source TSV) written by
 // deploy_all_enabled_mods_* / remove_deployed_files. Returns an empty map when
@@ -183,7 +176,7 @@ inline constexpr const char* kOriginalFilesDirName = "Original_Files";
 // deployed (e.g. the mod scan's stray-plugin synthesis) use this instead of
 // re-deriving the ledger path or format.
 [[nodiscard]] std::map<std::filesystem::path, std::filesystem::path>
-load_deploy_ledger(const std::filesystem::path& ledger_file);
+load_deploy_ledger(const std::filesystem::path &ledger_file);
 
 // Remove every file the ledger says was deployed from game_dir and restore the
 // original files the deploy parked in backup_root. Backs the UI's "Remove
@@ -198,12 +191,11 @@ load_deploy_ledger(const std::filesystem::path& ledger_file);
 // failure it is preserved so a later deploy re-checks everything.
 //
 // num_threads/progress behave as in deploy_all_enabled_mods_parallel.
-[[nodiscard]] bool remove_deployed_files(
-    const path& game_dir,
-    const path& backup_root,
-    const path& ledger_file,
-    unsigned int num_threads = 0,
-    const DeployProgressFn& progress = {});
+[[nodiscard]] bool remove_deployed_files(const path &game_dir,
+                                         const path &backup_root,
+                                         const path &ledger_file,
+                                         unsigned int num_threads = 0,
+                                         const DeployProgressFn &progress = {});
 
 // Create lowercase symlink aliases inside a freshly deployed staging tree so a
 // Windows (case-insensitive) game's path lookups resolve on the case-sensitive
@@ -219,8 +211,7 @@ load_deploy_ledger(const std::filesystem::path& ledger_file);
 // (it is already the canonical spelling); a stale generated alias is replaced.
 // Runs on the caller's thread after the (possibly parallel) link phase.
 // Returns the number of aliases created.
-[[nodiscard]] std::size_t add_case_insensitive_aliases(
-    const std::filesystem::path& staging_dir);
+[[nodiscard]] std::size_t
+add_case_insensitive_aliases(const std::filesystem::path &staging_dir);
 
-}
-
+} // namespace engine

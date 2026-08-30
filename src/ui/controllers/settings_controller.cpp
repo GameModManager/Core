@@ -26,46 +26,46 @@
 #include <iterator>
 #include <vector>
 
-#include "engine/deploy/strategy.h"
-#include "engine/game/detect/game_detector.h"
 #include "engine/core/events/event_bus.h"
-#include "engine/core/util/fs_utils.h"
 #include "engine/core/instance/instance.h"
-#include "engine/pipeline/plugin_host/category_factory.h"
-#include "engine/mod/meta/category_set_registry.h"
 #include "engine/core/instance/instance_utils.h"
 #include "engine/core/log/logger.h"
-#include "engine/source/nxm/managed_games.h"
-#include "ui/nxm/nxm_ipc.h"
+#include "engine/core/trace/trace_recorder.h"
+#include "engine/core/util/fs_utils.h"
+#include "engine/deploy/interface.h"
+#include "engine/deploy/overlay_fs_deploy.h"
+#include "engine/deploy/symlink.h"
+#include "engine/game/detect/game_detector.h"
+#include "engine/game/registry/game_knowledge.h"
+#include "engine/mod/meta/category_set_registry.h"
 #include "engine/mod/overwrite/overwrite_utils.h"
 #include "engine/pipeline/extract_stage.h"
 #include "engine/pipeline/fomod_stage.h"
 #include "engine/pipeline/install_stage.h"
 #include "engine/pipeline/plugin_claim_stage.h"
-#include "engine/pipeline/sync_stage.h"
+#include "engine/pipeline/plugin_host/category_factory.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
-#include "engine/game/registry/game_knowledge.h"
+#include "engine/pipeline/sync_stage.h"
 #include "engine/sort/sort_registry.h"
 #include "engine/source/loverslab_provider.h"
 #include "engine/source/nexus_provider.h"
+#include "engine/source/nxm/managed_games.h"
 #include "engine/source/steam_workshop_provider.h"
-#include "ui/theme/icon_manager.h"
-#include "ui/theme/style_manager.h"
-#include "engine/core/trace/trace_recorder.h"
 #include "ui/fomod/fomod_wizard_dialog.h"
 #include "ui/game_selection/game_selection_widget.h"
 #include "ui/install/install_name_dialog.h"
 #include "ui/main_window/main_window.h"
+#include "ui/nxm/nxm_ipc.h"
 #include "ui/overwrite/query_overwrite_dialog.h"
 #include "ui/panels/tab_panels.h"
-#include "ui/workers/pipeline_worker.h"
 #include "ui/settings/settings.h"
 #include "ui/settings/settings_dialog.h"
+#include "ui/theme/icon_manager.h"
+#include "ui/theme/style_manager.h"
 #include "ui/widgets/console_panel.h"
 #include "ui/widgets/debug_window.h"
 #include "ui/widgets/exec_controls_bar.h"
 #include "ui/widgets/game_path_banner.h"
-#include "ui/widgets/status_bar.h"
 #include "ui/widgets/instance_statistics_dialog.h"
 #include "ui/widgets/instance_switcher_dialog.h"
 #include "ui/widgets/main_toolbar.h"
@@ -74,6 +74,8 @@
 #include "ui/widgets/mod_table_view.h"
 #include "ui/widgets/pipeline_window.h"
 #include "ui/widgets/right_panel.h"
+#include "ui/widgets/status_bar.h"
+#include "ui/workers/pipeline_worker.h"
 
 #ifdef GMM_PLATFORM_LINUX
 #include "engine/deploy/launch/overlay_launcher.h"
@@ -310,19 +312,21 @@ void SettingsController::set_game_info(
           bool show_images = s.show_fomod_images();
           if (w_->plugin_loader_) {
             for (const auto &p : w_->plugin_loader_->plugins()) {
-              if (p.settings_tab.title != "FOMOD") continue;
+              if (p.settings_tab.title != "FOMOD")
+                continue;
               const QString basename = QString::fromStdString(
                   std::filesystem::path(p.path).filename().string());
               always_restore =
-                  s.plugin_setting(basename, "Restore previous choices", "1") == "1";
+                  s.plugin_setting(basename, "Restore previous choices", "1") ==
+                  "1";
               show_images =
                   s.plugin_setting(basename, "Show FOMOD images", "1") == "1";
               break;
             }
           }
-          return ui::ask_fomod(
-              view_model, content_root, suggested_name, previous_choices,
-              always_restore, show_images, w_);
+          return ui::ask_fomod(view_model, content_root, suggested_name,
+                               previous_choices, always_restore, show_images,
+                               w_);
         };
 
     // Non-FOMOD installs confirm the mod name before copying (MO2's
@@ -350,13 +354,12 @@ void SettingsController::set_game_info(
         w_->current_instance_root_, knowledge, w_->current_game_id_);
     ctx.deploy_prefix =
         knowledge.get(w_->current_game_id_, "deploy_prefix", "Data");
-    auto inc_id = knowledge.get(w_->current_game_id_,
-                                "deploy_include_mod_id", "false");
+    auto inc_id =
+        knowledge.get(w_->current_game_id_, "deploy_include_mod_id", "false");
     ctx.deploy_include_mod_id = (inc_id == "true");
-    bool case_sensitive =
-        knowledge.get(w_->current_game_id_, "case_sensitive", "true") !=
-        "false";
-    std::unique_ptr<engine::DeploymentStrategy> deploy_strategy;
+    bool case_sensitive = knowledge.get(w_->current_game_id_, "case_sensitive",
+                                        "true") != "false";
+    std::unique_ptr<Deploy::Interface> deploy_strategy;
     std::string deploy_strategy_label;
 #ifdef GMM_PLATFORM_LINUX
     if (deploy_strategy_name == engine::kDeployStrategyOverlayFs &&
@@ -364,21 +367,21 @@ void SettingsController::set_game_info(
       // OverlayFS: deploy symlinks into staging dir (not game_dir)
       auto staging = w_->current_instance_root_ / ".gmm_staging";
       ctx.staging_dir = staging;
-      auto ovl_strat = std::make_unique<engine::OverlayFsDeployStrategy>(
-          staging, case_sensitive);
+      auto ovl_strat =
+          std::make_unique<Deploy::OverlayFsDeploy>(staging, case_sensitive);
       w_->staging_dir_ = staging;
       deploy_strategy = std::move(ovl_strat);
       deploy_strategy_label = "OverlayFS";
     } else
 #endif
     {
-      deploy_strategy =
-          std::make_unique<engine::SymlinkStrategy>(case_sensitive);
+      deploy_strategy = std::make_unique<Deploy::Symlink>(case_sensitive);
       deploy_strategy_label =
           (deploy_strategy_name == engine::kDeployStrategyDirect) ? "Direct"
                                                                   : "Symlink";
     }
-    engine::Logger::instance().info("Deploy strategy: " + deploy_strategy_label);
+    engine::Logger::instance().info("Deploy strategy: " +
+                                    deploy_strategy_label);
     ctx.deploy_strategy = deploy_strategy.get();
 
     // Build the install pipeline from the 3-stage template.  A plugin
@@ -395,11 +398,13 @@ void SettingsController::set_game_info(
         return std::nullopt;
       std::optional<engine::StageClaim> best;
       for (const auto &c : w_->plugin_loader_->stage_registry().claims()) {
-        if (c.stage_name != stage_name) continue;
+        if (c.stage_name != stage_name)
+          continue;
         // An empty game_id is a wildcard claim matching any game; at equal
         // priority a game-specific claim wins over a wildcard.
         const bool wildcard = c.game_id.empty();
-        if (!wildcard && c.game_id != w_->current_game_id_) continue;
+        if (!wildcard && c.game_id != w_->current_game_id_)
+          continue;
         if (!best) {
           best = c;
         } else if (c.priority > best->priority ||
@@ -676,8 +681,8 @@ void SettingsController::connect_menu_actions() {
                 " for game: " + game_id.toStdString());
             if (tool_id == QStringLiteral("loot")) {
               // LOOT is an advisory tool the engine drives itself: build a
-              // Sorter::Loot::Request from the current plugin DB and run gmm_lootcli off
-              // the UI thread (PLAN.md §7.1).
+              // Sorter::Loot::Request from the current plugin DB and run
+              // gmm_lootcli off the UI thread (PLAN.md §7.1).
               w_->mod_list_->run_loot_sort();
               return;
             }
@@ -1110,8 +1115,7 @@ bool SettingsController::create_new_instance() {
         game_specs;
     for (const auto &p : w_->plugin_loader_->game_plugins()) {
       if (p.steam_appid > 0)
-        game_specs.push_back(
-            {p.steam_appid, {p.game_id, p.game_display_name}});
+        game_specs.push_back({p.steam_appid, {p.game_id, p.game_display_name}});
     }
     installed_games =
         engine::GameDetector::detect_steam_games_multi(game_specs);
@@ -1182,10 +1186,9 @@ bool SettingsController::create_new_instance() {
 
   auto inst = engine::create_instance_for_game(dg, instances_dir, inst_name);
   if (inst.info().game_id.empty()) {
-    QMessageBox::warning(
-        w_, tr("Error"),
-        tr("Failed to create instance for %1")
-            .arg(QString::fromStdString(chosen.display_name)));
+    QMessageBox::warning(w_, tr("Error"),
+                         tr("Failed to create instance for %1")
+                             .arg(QString::fromStdString(chosen.display_name)));
     return false;
   }
 

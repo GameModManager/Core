@@ -3,8 +3,8 @@
 #include "ui/controllers/mod_list_controller.h"
 #include "ui/controllers/queue_controller.h"
 
-#include <QApplication>
 #include "ui/instance_options/instance_options_widget.h"
+#include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
 #include <QFile>
@@ -53,17 +53,17 @@
 #include "engine/core/trace/trace_recorder.h"
 #include "engine/core/util/debug_env.h"
 #include "engine/core/util/fs_utils.h"
+#include "engine/deploy/interface.h"
 #include "engine/deploy/launch/proton_tools.h"
-#include "engine/deploy/strategy.h"
 #include "engine/game/detect/mod_scanner.h"
 #include "engine/game/plugins/plugin_database.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/mod/overwrite/overwrite_utils.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
+#include "ui/instance_options/instance_options_panel.h"
 #include "ui/main_window/deploy_worker.h"
 #include "ui/main_window/main_window.h"
-#include "ui/instance_options/instance_options_panel.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/exec_controls_bar.h"
 #include "ui/widgets/executables_dialog.h"
@@ -103,10 +103,10 @@ int reap_supervisor(pid_t pid) {
 
 } // anonymous namespace
 
-// Splits an Executables::Entry "args" string into argv tokens the way a shell would:
-// whitespace-separated, double quotes group tokens (quotes removed, backslash
-// escapes the next char). Empty input -> empty vector. This is the exact argv
-// the launched process sees after the executable path (Issue #34).
+// Splits an Executables::Entry "args" string into argv tokens the way a shell
+// would: whitespace-separated, double quotes group tokens (quotes removed,
+// backslash escapes the next char). Empty input -> empty vector. This is the
+// exact argv the launched process sees after the executable path (Issue #34).
 std::vector<std::string> split_arguments(const QString &args) {
   std::vector<std::string> out;
   const std::string s = args.toStdString();
@@ -136,8 +136,8 @@ std::vector<std::string> split_arguments(const QString &args) {
   return out;
 }
 
-// Resolves an Executables::Entry "start_in" working directory against the game dir.
-// Empty -> empty (the engine defaults to game_dir); relative -> game_dir +
+// Resolves an Executables::Entry "start_in" working directory against the game
+// dir. Empty -> empty (the engine defaults to game_dir); relative -> game_dir +
 // start_in; absolute -> as-is. The engine normalizes/validates further and
 // downgrades a broken cwd to game_dir rather than aborting the launch.
 std::filesystem::path resolve_start_in(const std::filesystem::path &game_dir,
@@ -182,8 +182,9 @@ LaunchController::LaunchController(MainWindow *w, QObject *parent)
 // Executables persistence (instance.toml `executables` array)
 // ---------------------------------------------------------------------------
 
-// Converts an Executables::Entry to a TOML inline table. The array is stored as valid
-// TOML (bare keys, `=` separators) — the pre-toml++ JSON-style inline tables
+// Converts an Executables::Entry to a TOML inline table. The array is stored as
+// valid TOML (bare keys, `=` separators) — the pre-toml++ JSON-style inline
+// tables
 // ({"path":"..."}) were invalid TOML and are migrated on read.
 toml::table exec_entry_to_toml(const Executables::Entry &e) {
   toml::table t;
@@ -472,8 +473,9 @@ void LaunchController::launch_game() {
   // Output-to-mod routing: resolve the target mod folder, auto-creating it
   // (when it doesn't exist yet).
   const auto output_mod_dir = ensure_output_mod_dir(entry.output_mod);
-  // Full Executables::Entry config (args, cwd, env) rides along with the launch so the
-  // game receives the exact command line the user configured (Issue #34).
+  // Full Executables::Entry config (args, cwd, env) rides along with the launch
+  // so the game receives the exact command line the user configured (Issue
+  // #34).
   launch_with_executable(QString::fromStdString(exec_path.string()),
                          output_mod_dir, entry.arguments, entry.start_in,
                          entry.environment);
@@ -1249,9 +1251,10 @@ void LaunchController::add_toolbar_shortcut_from_path(
   if (w_->toolbar_shortcut_paths_.contains(rel_path))
     return;
 
-  // Resolve the referenced Executables::Entry for the icon/tooltip. During instance
-  // restore this runs before the executables combo is populated, so the
-  // lookup may be empty - then we fall back to the legacy icon / extraction.
+  // Resolve the referenced Executables::Entry for the icon/tooltip. During
+  // instance restore this runs before the executables combo is populated, so
+  // the lookup may be empty - then we fall back to the legacy icon /
+  // extraction.
   Executables::Entry entry;
   for (const auto &e :
        w_->right_panel_->exec_controls()->executable_entries()) {
@@ -1313,9 +1316,9 @@ void LaunchController::launch_toolbar_shortcut(const QString &rel_path) {
     return;
   }
 
-  // Resolve the referenced Executables::Entry (first-match wins, consistent with
-  // output_mod_for_path). A deleted entry keeps the pin and falls back to a
-  // path-only launch - the same behavior as before the reference schema.
+  // Resolve the referenced Executables::Entry (first-match wins, consistent
+  // with output_mod_for_path). A deleted entry keeps the pin and falls back to
+  // a path-only launch - the same behavior as before the reference schema.
   Executables::Entry entry;
   for (const auto &e :
        w_->right_panel_->exec_controls()->executable_entries()) {
@@ -1380,7 +1383,8 @@ void LaunchController::add_shortcut_to_desktop() {
   auto desktop =
       QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
   if (desktop.isEmpty()) {
-    desktop = QString::fromStdString(engine::safe_home_dir().string()) + "/Desktop";
+    desktop =
+        QString::fromStdString(engine::safe_home_dir().string()) + "/Desktop";
   }
   if (desktop.isEmpty()) {
     QMessageBox::warning(w_, tr("Shortcut"),
@@ -1529,7 +1533,7 @@ void LaunchController::on_add_entry_requested() {
   auto existing = w_->right_panel_->exec_controls()->executable_entries();
 
   Executables::Dialog dlg(w_->current_game_dir_, output_mod_list(), existing,
-                      icon_cache, w_);
+                          icon_cache, w_);
   if (dlg.exec() != QDialog::Accepted)
     return;
 
@@ -1549,7 +1553,8 @@ QVector<QPair<QString, QString>> LaunchController::output_mod_list() const {
   return mod_list;
 }
 
-void LaunchController::apply_exec_entries(const QVector<Executables::Entry> &entries) {
+void LaunchController::apply_exec_entries(
+    const QVector<Executables::Entry> &entries) {
   // Replace the entire combo content, then re-apply the selection the user
   // had before opening the editor. Editing must not move the combo to the
   // first or last entry - the selection follows the user until app close.
@@ -1846,9 +1851,9 @@ InstanceOptionsParams LaunchController::instance_options_params() const {
       w_->knowledge_ ? *w_->knowledge_ : engine::GameKnowledge();
   p.deploy_strategy = engine::effective_deploy_strategy(
       w_->current_instance_root_, knowledge, w_->current_game_id_);
-  p.deploy_config = engine::deploy_config_for(
-      w_->current_instance_root_, w_->current_game_dir_, knowledge,
-      w_->current_game_id_);
+  p.deploy_config = engine::deploy_config_for(w_->current_instance_root_,
+                                              w_->current_game_dir_, knowledge,
+                                              w_->current_game_id_);
   p.valid = true;
   return p;
 }

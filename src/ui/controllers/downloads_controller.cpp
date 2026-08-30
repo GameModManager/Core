@@ -1,9 +1,9 @@
 #include "ui/controllers/downloads_controller.h"
+#include "platform/platform.h"
 #include "ui/controllers/mod_list_controller.h"
 #include "ui/fomod/fomod_wizard_dialog.h"
 #include "ui/install/install_name_dialog.h"
 #include "ui/overwrite/query_overwrite_dialog.h"
-#include "platform/platform.h"
 
 #include <QAbstractButton>
 #include <QMessageBox>
@@ -16,32 +16,32 @@
 #include <optional>
 #include <vector>
 
-#include "engine/deploy/strategy.h"
 #include "engine/core/events/event_bus.h"
-#include "engine/core/util/fs_utils.h"
 #include "engine/core/log/logger.h"
-#include "engine/source/loverslab_auth.h"
-#include "engine/source/nxm/managed_games.h"
-#include "ui/nxm/nxm_ipc.h"
-#include "engine/source/nxm/nxm_router.h"
+#include "engine/core/trace/trace_recorder.h"
+#include "engine/core/util/fs_utils.h"
+#include "engine/deploy/interface.h"
 #include "engine/deploy/launch/overlay_launcher.h"
+#include "engine/game/registry/game_knowledge.h"
 #include "engine/pipeline/extract_stage.h"
 #include "engine/pipeline/fomod_stage.h"
 #include "engine/pipeline/install_stage.h"
 #include "engine/pipeline/plugin_claim_stage.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
-#include "engine/game/registry/game_knowledge.h"
 #include "engine/pipeline/registry/stage_registry.h"
+#include "engine/source/loverslab_auth.h"
 #include "engine/source/loverslab_provider.h"
 #include "engine/source/nexus_provider.h"
+#include "engine/source/nxm/managed_games.h"
+#include "engine/source/nxm/nxm_router.h"
 #include "engine/source/steam_workshop_provider.h"
-#include "engine/core/trace/trace_recorder.h"
 #include "ui/install/install_progress_dialog.h"
 #include "ui/main_window/main_window.h"
+#include "ui/nxm/nxm_ipc.h"
 #include "ui/panels/tab_panels.h"
-#include "ui/workers/pipeline_worker.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/right_panel.h"
+#include "ui/workers/pipeline_worker.h"
 
 namespace ui {
 
