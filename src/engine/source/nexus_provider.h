@@ -4,9 +4,13 @@
 
 #include <string>
 
-namespace engine {
-
+namespace engine::Source {
 struct NxmLink;
+}
+
+namespace engine {
+// Backward-compat: NxmLink is now in Source:: but consumers may reference engine::NxmLink
+using NxmLink = Source::NxmLink;
 
 // Result of a mods/{game}/mods/{id}.json query. `available` is false when the
 // request failed (no API key, HTTP error, unparseable body).
