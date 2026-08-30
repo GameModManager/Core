@@ -35,8 +35,10 @@ set(UI_SOURCES
     profile/profile_settings_widget.cpp
     widgets/right_panel.cpp
     widgets/exec_controls_bar.cpp
-    widgets/exec_entry_content_widget.cpp
-    widgets/exec_entry_dialog.cpp
+    widgets/executables_entry.h
+    widgets/executables_content_widget.cpp
+    widgets/executables_dialog.h
+    widgets/executables_dialog.cpp
     widgets/console_panel.cpp
     widgets/status_bar.cpp
     widgets/instance_switcher_dialog.cpp

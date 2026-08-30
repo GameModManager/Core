@@ -107,21 +107,21 @@ Living document tracking MO2 feature parity and GMM-exclusive features.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Custom executables list | ✅ `ExecutablesList` (CRUD) | ✅ `ExecEntry` + `ExecControlsBar` | ✅ |
-| Per-executable arguments | ✅ `Executable::arguments` | ✅ `ExecEntry::arguments` | ✅ |
-| Per-executable working directory | ✅ `Executable::workingDirectory` | ✅ `ExecEntry::start_in` | ✅ |
+| Custom executables list | ✅ `ExecutablesList` (CRUD) | ✅ `Executables::Entry` + `ExecControlsBar` | ✅ |
+| Per-executable arguments | ✅ `Executable::arguments` | ✅ `Executables::Entry::arguments` | ✅ |
+| Per-executable working directory | ✅ `Executable::workingDirectory` | ✅ `Executables::Entry::start_in` | ✅ |
 | Per-executable Steam App ID | ✅ `Executable::steamAppID` | ❌ | ❌ |
 | Per-executable custom overwrite | ✅ `Executable::customOverwrites` | ❌ | ❌ |
 | Per-executable forced libraries | ✅ `Executable::forcedLibraries` | ❌ | ❌ |
-| Per-executable environment variables | ❌ | 🚀 `ExecEntry::environment` (KEY=VALUE) | 🚀 |
-| Per-executable output-to-mod routing | ❌ | 🚀 `ExecEntry::output_mod` | 🚀 |
+| Per-executable environment variables | ❌ | 🚀 `Executables::Entry::environment` (KEY=VALUE) | 🚀 |
+| Per-executable output-to-mod routing | ❌ | 🚀 `Executables::Entry::output_mod` | 🚀 |
 | Toolbar pinning | ✅ `ShowInToolbar` flag | ✅ `add_shortcut_to_toolbar()` | ✅ |
 | Desktop shortcut creation | ❌ | 🚀 `add_shortcut_to_desktop()` (.desktop file) | 🚀 |
 | Executable ordering (up/down) | ✅ `EditExecutablesDialog` | ✅ up/down buttons + drag-drop | ✅ |
 | Clone executable | ✅ `EditExecutablesDialog::clone()` | ✅ `on_clone_selected()` | ✅ |
 | JAR binary detection | ✅ `setJarBinary` + `findJavaInstallation` | ❌ | ❌ |
 | Icon extraction (wrestool/QFileIconProvider) | ❌ | 🚀 `extractExeIcon()` | 🚀 |
-| Executable editor widget | ✅ `EditExecutablesDialog` | ✅ `ExecEntryContentWidget` (mode-agnostic) | ✅ |
+| Executable editor widget | ✅ `EditExecutablesDialog` | ✅ `Executables::ContentWidget` (mode-agnostic) | ✅ |
 
 ## 6. Mod Management
 

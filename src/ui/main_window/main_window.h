@@ -266,7 +266,7 @@ private:
   QHash<QString, int> plugin_row_by_name_;
   // Toolbar shortcut pins: game-relative executable paths referencing the
   // executables list (Issue #34). The icon, args/cwd/env, output mod and
-  // title are inherited from the referenced ExecEntry at click time.
+  // title are inherited from the referenced Executables::Entry at click time.
   QStringList toolbar_shortcut_paths_;
   std::vector<std::string> saved_executables_;
   std::string pending_nxm_url_;

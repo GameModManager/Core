@@ -215,7 +215,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
   // "<Edit...>" in the executables combo opens the executable editor. Routed
   // through TabModeController so Full UI mode embeds it as a tab and popup
-  // mode keeps the modal ExecEntryDialog.
+  // mode keeps the modal Executables::Dialog.
   connect(right_panel_->exec_controls(), &ExecControlsBar::add_entry_requested,
           tab_mode_.get(), &TabModeController::route_exec_entry);
 
