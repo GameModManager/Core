@@ -24,6 +24,7 @@ set(ENGINE_SOURCES
     core/instance/instance.cpp
     core/instance/instance_utils.cpp
     core/instance/instance_manager.cpp
+    core/instance/instance_registry.cpp
     core/instance/mo2_importer.cpp
     core/instance/toml_utils.cpp
     core/instance/game_icons.cpp
