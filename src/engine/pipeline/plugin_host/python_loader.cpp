@@ -998,7 +998,7 @@ public:
         p.user_data = user_data;
         plugin_->previews.push_back(std::move(p));
 
-        ui::preview::PreviewRegistry::instance().register_preview(
+        ui::preview::Registry::instance().register_preview(
             extension, py_preview_bridge, nullptr, user_data, plugin_->path);
         engine::Logger::instance().debug("Python plugin registered preview for extension=" + extension);
     }

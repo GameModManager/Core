@@ -1304,11 +1304,11 @@ static void cb_v2_register_preview(GmmRegistrationCtxV2* ctx,
     p.user_data = user_data;
     bridge->current_plugin->previews.push_back(std::move(p));
 
-    // Mirror the registration into the UI-side PreviewRegistry so the preview
+    // Mirror the registration into the UI-side Registry so the preview
     // window can embed the plugin-provided QWidget* for this extension. The
     // registry stores the opaque fn + user_data; the engine never sees QWidget.
-    Logger::instance().debug("[PluginLoader] cb_v2_register_preview: calling PreviewRegistry::register_preview ext=" + ext_str);
-    ui::preview::PreviewRegistry::instance().register_preview(
+    Logger::instance().debug("[PluginLoader] cb_v2_register_preview: calling Registry::register_preview ext=" + ext_str);
+    ui::preview::Registry::instance().register_preview(
         ext_str, fn, preview_data, user_data,
         bridge->current_plugin->path);
 
@@ -1804,8 +1804,8 @@ void PluginLoader::unload_all() {
         OrderEncodingRegistry::instance().clear_plugin(p.path);
         DeployStrategyRegistry::instance().clear_plugin(p.path);
         // Clear v2 preview generators registered by this plugin so the
-        // PreviewRegistry never holds a dangling function pointer.
-        ui::preview::PreviewRegistry::instance().clear_plugin(p.path);
+        // Registry never holds a dangling function pointer.
+        ui::preview::Registry::instance().clear_plugin(p.path);
         // Clear v2 diagnose providers registered by this plugin so the
         // DiagnoseRegistry never holds a dangling function pointer.
         DiagnoseRegistry::instance().clear_plugin(p.path);

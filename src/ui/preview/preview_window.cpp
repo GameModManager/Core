@@ -50,7 +50,7 @@ bool PreviewWindow::supports(const QString &file_path) {
   return has_extension(file_path, image_extensions()) ||
          has_extension(file_path, animation_extensions()) ||
          has_extension(file_path, text_extensions()) ||
-         ui::preview::PreviewRegistry::instance().has_preview(
+         ui::preview::Registry::instance().has_preview(
              file_path.toStdString());
 }
 
@@ -333,8 +333,8 @@ bool PreviewWindow::load_plugin_preview(const QString &path) {
 
   // Ask the v2 IPluginPreview registry for this file's extension. A plugin that
   // claimed the extension returns a QWidget* (as opaque void*); we embed it.
-  engine::Logger::instance().debug("[PreviewWindow] load_plugin_preview: calling PreviewRegistry::create_preview");
-  void *w = ui::preview::PreviewRegistry::instance().create_preview(
+  engine::Logger::instance().debug("[PreviewWindow] load_plugin_preview: calling Registry::create_preview");
+  void *w = ui::preview::Registry::instance().create_preview(
       path.toStdString());
   engine::Logger::instance().debug("[PreviewWindow] load_plugin_preview: create_preview returned w=" +
                            std::to_string(reinterpret_cast<uintptr_t>(w)));
