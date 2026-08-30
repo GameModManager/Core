@@ -60,6 +60,7 @@ set(UI_SOURCES
     widgets/list_dialog.cpp
     widgets/menu_bar.cpp
     panels/downloads_tab.cpp
+    panels/plugin_view.cpp
     panels/plugins_tab.cpp
     panels/plugin_context_menu.cpp
     panels/archives_tab.cpp
