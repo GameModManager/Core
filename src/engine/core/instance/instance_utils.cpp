@@ -119,7 +119,51 @@ Instance create_instance_for_game(const DetectedGame &game,
                                   const std::string &display_name) {
   // Workspace-4fu: user-chosen names are sanitized with spaces preserved;
   // empty or dot-only custom names are refused.
-  // Workspace-l6w: folder name is made unique via unique_instance_name().
+  // Workspace-l6w: explicit names are refused when an instance.toml already
+  // exists at the target path (no auto-disambiguation for user-chosen names).
+  const std::string sanitized = sanitize_directory_name(display_name);
+  if (sanitized.empty()) {
+    Logger::instance().error(
+        "create_instance_for_game: empty instance name for game=" +
+        game.game_id);
+    return Instance::portable({});
+  }
+  // Refuse if an instance already exists at this exact path.
+  if (fs::exists(instances_root / sanitized / "instance.toml")) {
+    Logger::instance().warn(
+        "create_instance_for_game: instance already exists: " + sanitized);
+    return Instance::portable({});
+  }
+  Instance inst = Instance::installed(sanitized, instances_root);
+
+  inst.info().game_id = game.game_id;
+  inst.info().display_name = display_name;
+  inst.info().game_dir = game.install_path;
+  inst.info().steam_appid = game.steam_appid;
+
+  if (!inst.create_directories()) {
+    Logger::instance().error("Failed to create instance directories for " +
+                             sanitized);
+    return Instance::portable({});
+  }
+  if (!inst.write_toml()) {
+    Logger::instance().error("Failed to write instance.toml for " + sanitized);
+    return Instance::portable({});
+  }
+
+  Logger::instance().debug("Instance created: " + sanitized + " (game=" +
+                           game.game_id + ") at " + inst.info().root.string());
+  return inst;
+}
+
+Instance create_instance_for_game(const DetectedGame &game,
+                                  const fs::path &instances_root) {
+  // Legacy path: derive the folder name from the game name, keeping
+  // to_instance_name's space->underscore folding. Auto-disambiguates with
+  // " 2", " 3", etc. when the name is taken (unlike the explicit-name
+  // overload which refuses duplicates).
+  const std::string display_name =
+      Instance::to_instance_name(game.name.empty() ? game.game_id : game.name);
   const std::string sanitized = sanitize_directory_name(display_name);
   if (sanitized.empty()) {
     Logger::instance().error(
@@ -148,15 +192,6 @@ Instance create_instance_for_game(const DetectedGame &game,
   Logger::instance().debug("Instance created: " + inst_name + " (game=" +
                            game.game_id + ") at " + inst.info().root.string());
   return inst;
-}
-
-Instance create_instance_for_game(const DetectedGame &game,
-                                  const fs::path &instances_root) {
-  // Legacy path: derive the folder name from the game name, keeping
-  // to_instance_name's space->underscore folding.
-  return create_instance_for_game(
-      game, instances_root,
-      Instance::to_instance_name(game.name.empty() ? game.game_id : game.name));
 }
 
 DeployConfig deploy_config_for(const fs::path &instance_root,

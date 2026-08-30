@@ -18,33 +18,33 @@ namespace ui {
 // round-trip real ids instead of re-resolving display names. Geometry is
 // saved/restored via Settings::listdialog_window_geometry.
 class ListDialog : public QDialog {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit ListDialog(QWidget* parent = nullptr);
+  explicit ListDialog(QWidget *parent = nullptr);
 
-    int exec() override;  // saves and restores geometry
+  int exec() override; // saves and restores geometry
 
-    void setChoices(const QStringList& choices);
-    // Optional parallel payloads, one per choice (length must match choices).
-    void setChoiceData(const QList<QVariant>& data);
-    void setCurrentRow(int row);
+  void setChoices(const QStringList &choices);
+  // Optional parallel payloads, one per choice (length must match choices).
+  void setChoiceData(const QList<QVariant> &data);
+  void setCurrentRow(int row);
 
-    // Selected item text, or empty when nothing is selected.
-    QString getChoice() const;
-    // Selected item payload (invalid when nothing is selected / no data set).
-    QVariant getChoiceData() const;
+  // Selected item text, or empty when nothing is selected.
+  QString getChoice() const;
+  // Selected item payload (invalid when nothing is selected / no data set).
+  QVariant getChoiceData() const;
 
 private slots:
-    void on_filter_textChanged(const QString& filter);
+  void on_filter_textChanged(const QString &filter);
 
 private:
-    void apply_filter();
+  void apply_filter();
 
-    QListWidget* list_ = nullptr;
-    QLineEdit* filter_ = nullptr;
-    QDialogButtonBox* buttons_ = nullptr;
-    QStringList choices_;
-    QList<QVariant> data_;
+  QListWidget *list_ = nullptr;
+  QLineEdit *filter_ = nullptr;
+  QDialogButtonBox *buttons_ = nullptr;
+  QStringList choices_;
+  QList<QVariant> data_;
 };
 
-}  // namespace ui
+} // namespace ui
