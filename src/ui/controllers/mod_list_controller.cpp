@@ -1292,7 +1292,7 @@ void ModListController::launch_plugin_db_preload() {
                                     w_->plugin_db_generation_);
 }
 
-void ModListController::on_plugin_db_preloaded(engine::PluginDatabase db,
+void ModListController::on_plugin_db_preloaded(engine::PluginDb::Database db,
                                                quint64 generation) {
   if (generation != w_->plugin_db_generation_ || !w_->preload_pending_) {
     // Superseded by an instance switch or already consumed/superseded by a
@@ -2435,7 +2435,7 @@ void ModListController::refresh_plugins_tab() {
       engine::native_plugins_csv(*w_->knowledge_, w_->current_game_id_);
   if (game_native
           .empty()) { // tab exists but the module declares no plugin hooks
-    w_->plugins_db_ = engine::PluginDatabase{};
+    w_->plugins_db_ = engine::PluginDb::Database{};
     w_->plugin_owner_index_.clear();
     w_->plugin_row_by_name_.clear();
     pt->set_plugins({});

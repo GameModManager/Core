@@ -8,8 +8,11 @@
 #include <string>
 #include <vector>
 
+namespace engine::PluginDb {
+class Database;
+}
 namespace engine {
-class PluginDatabase;
+using PluginDatabase = PluginDb::Database;  // backward-compat alias
 }
 
 namespace engine::profile {

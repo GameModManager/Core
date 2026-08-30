@@ -35,7 +35,9 @@ struct ImageDiffProvider {
 
 namespace engine {
 
-class PluginDatabase;
+namespace PluginDb {
+class Database;
+}
 
 // v2 ABI registration storage. These concepts have no v1-equivalent registry;
 // the loader captures them on the PluginInfo so the engine can consume them
@@ -220,7 +222,7 @@ public:
     // Run every registered diagnostics provider for game_id over db, replacing
     // each plugin's GamePlugin::messages. Call after the plugin database
     // refreshes so the Plugins tab tooltip can render them.
-    void collect_diagnostics(const std::string& game_id, PluginDatabase& db);
+    void collect_diagnostics(const std::string& game_id, PluginDb::Database& db);
 
 private:
     void* dlopen_handle(const std::string& path);

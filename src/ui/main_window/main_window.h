@@ -258,7 +258,7 @@ private:
   std::unique_ptr<engine::profile::ProfileManager> active_profile_;
   // Plugin database driving the Plugins tab (empty until a plugin-capable
   // game is loaded). Rebuilt on refresh; toggles/moves save the profile.
-  engine::PluginDatabase plugins_db_;
+  engine::PluginDb::Database plugins_db_;
   ui::PluginsTab *plugins_tab_widget_ = nullptr;
   // Long-lived LOOT sort worker thread (created on first use, reused).
   ui::LootSortThread *loot_sort_thread_ = nullptr;
@@ -329,7 +329,7 @@ private:
   ui::PluginDbLoadThread *plugin_db_load_thread_ = nullptr;
   quint64 plugin_db_generation_ = 0;
   bool preload_pending_ = false;
-  std::optional<engine::PluginDatabase> preloaded_plugin_db_;
+  std::optional<engine::PluginDb::Database> preloaded_plugin_db_;
   std::filesystem::path preloaded_plugin_db_game_dir_;
   // Launch deploy machinery (P8.4): launch_with_executable() builds a
   // LaunchPrepRequest snapshot and runs prepare_launch_params on DeployThread

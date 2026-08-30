@@ -61,6 +61,7 @@ set(UI_SOURCES
     widgets/menu_bar.cpp
     panels/downloads_tab.cpp
     panels/plugins_tab.cpp
+    panels/plugin_context_menu.cpp
     panels/archives_tab.cpp
     panels/data_tab.cpp
     panels/saves_tab.cpp

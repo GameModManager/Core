@@ -25,7 +25,7 @@ void DiagnosticsRegistry::register_provider(const std::string& game_id,
 }
 
 void DiagnosticsRegistry::collect(const std::string& game_id,
-                                  PluginDatabase& db) const {
+                                   PluginDb::Database& db) const {
     auto& ps = db.plugins_mutable();
     for (auto& p : ps) p.messages.clear();
 

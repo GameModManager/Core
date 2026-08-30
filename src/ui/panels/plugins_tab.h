@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/game/plugins/plugin_info.h"
+#include "ui/panels/plugin_context_menu.h"
 
 #include <QPoint>
 #include <QSet>
@@ -9,6 +10,7 @@
 #include <QVector>
 #include <QWidget>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -110,6 +112,8 @@ private:
     QSet<QString> contained_names_;
     QSet<QString> master_names_;
     bool syncing_ = false;
+    // Extracted context menu (lock/unlock actions).
+    std::unique_ptr<engine::PluginDb::ContextMenu> context_menu_;
 };
 
 }  // namespace ui

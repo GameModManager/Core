@@ -116,7 +116,7 @@ public slots:
   void apply_profile_mod_states();
   // Plugin-DB preload (THREADING.md §3.5, P8.5/T6).
   void launch_plugin_db_preload();
-  void on_plugin_db_preloaded(engine::PluginDatabase db, quint64 generation);
+  void on_plugin_db_preloaded(engine::PluginDb::Database db, quint64 generation);
   bool adopt_preloaded_plugin_db();
   void load_meta_for_mods();
   void restore_mod_column_visibility();
