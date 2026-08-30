@@ -6,6 +6,16 @@
 
 namespace engine {
 
+enum class ModType {
+    Regular,      // standard managed mod
+    Foreign,      // DLC/CC: game-native
+    Separator,    // separator row
+    Backup,       // backup mod
+    Overwrite,    // overwrite pseudo-row
+    Merged,       // MERGED pseudo-row
+    GameNative,   // unmanaged game plugin
+};
+
 enum class ModState {
     Downloaded,
     Extracted,
@@ -23,6 +33,7 @@ struct Mod {
     std::string id;
     std::string name;
     std::string version;
+    ModType type = ModType::Regular;
     ModState state = ModState::Downloaded;
     std::vector<ModFile> files;
 

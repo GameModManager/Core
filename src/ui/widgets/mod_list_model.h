@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/mod/model/mod_info.h"
 #include <QAbstractTableModel>
 #include <QColor>
 #include <QHash>
@@ -27,6 +28,7 @@ struct ModEntry {
     QString id;
     QString name;
     QString version;
+    engine::ModType type = engine::ModType::Regular;
     QString separator_color;
     bool enabled = true;
     int priority = 0;
