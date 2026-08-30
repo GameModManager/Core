@@ -188,7 +188,7 @@ class RegistrationContext:
         into the game data directory; remove_fn(target: str) -> int removes it.
         Return 1 on success, 0 on failure. Registered into the
         DeployStrategyRegistry; the pipeline uses it instead of the built-in
-        DeploymentStrategy.
+        Deploy::Interface.
         """
         ...
 

@@ -46,7 +46,7 @@ bool write_tweaked_ini(const std::filesystem::path &profile_dir,
 }
 
 bool save_current_profile(ProfileManager &profile, const ProfileSaveState &state,
-                          engine::PluginDatabase *plugin_db,
+                          engine::PluginDb::Database *plugin_db,
                           std::string *error) {
   // 1. Flush modlist.txt immediately. The in-memory mod list is the source
   //    of truth (the UI converges it with the mods dir via
@@ -109,7 +109,7 @@ bool save_current_profile(ProfileManager &profile, const ProfileSaveState &state
 ProfileSwitchResult switch_profile(const std::filesystem::path &profiles_dir,
                                    const std::string &name, ProfileManager *current,
                                    const ProfileSaveState &current_state,
-                                   engine::PluginDatabase *plugin_db,
+                                   engine::PluginDb::Database *plugin_db,
                                    const ProfileSwitchCallbacks &callbacks) {
   ProfileSwitchResult result;
 

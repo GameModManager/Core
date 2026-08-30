@@ -15,7 +15,6 @@ namespace engine {
 class Instance;
 class ConflictIndex;
 class ProfileModel;
-using DeploymentStrategy = ::Deploy::Interface;
 class OrderEncodingHook;
 class FomodViewModel;
 
@@ -60,7 +59,7 @@ struct PipelineContext {
   Instance *instance = nullptr;
   ConflictIndex *conflict_index = nullptr;
   ProfileModel *profile = nullptr;
-  DeploymentStrategy *deploy_strategy = nullptr;
+  Deploy::Interface *deploy_strategy = nullptr;
   OrderEncodingHook *order_hook = nullptr;
   std::filesystem::path game_dir; // live game directory (for Overwrite capture)
   std::filesystem::path meta_dir; // instance meta/ directory
