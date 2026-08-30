@@ -9,20 +9,21 @@
 namespace engine {
 
 // C ABI sort function type
-typedef const char* const* (*SortFn)(const char* const* mod_folders, size_t count, void* user_data);
+typedef const char *const *(*SortFn)(const char *const *mod_folders,
+                                     size_t count, void *user_data);
 
-// Wrapper that converts C ABI sort function to SortProvider
-class AbiSortProvider : public SortProvider {
+// Wrapper that converts C ABI sort function to Sorter::Interface
+class AbiSortProvider : public Sorter::Interface {
 public:
-    AbiSortProvider(const char* game_id, SortFn sort_fn, void* user_data);
+  AbiSortProvider(const char *game_id, SortFn sort_fn, void *user_data);
 
-    ModSortResult sort(const std::vector<SortModInfo>& mods) const override;
-    const char* name() const override { return "ABI Sort Provider"; }
+  ModSortResult sort(const std::vector<SortModInfo> &mods) const override;
+  const char *name() const override { return "ABI Sort Provider"; }
 
 private:
-    std::string game_id_;
-    SortFn sort_fn_;
-    void* user_data_;
+  std::string game_id_;
+  SortFn sort_fn_;
+  void *user_data_;
 };
 
-}  // namespace engine
+} // namespace engine
