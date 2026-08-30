@@ -1,4 +1,4 @@
-#include "engine/source/steam_workshop_provider.h"
+#include "engine/source/steam/provider.h"
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/mod/meta/mod_meta.h"
@@ -7,14 +7,14 @@
 #include <cstdio>
 #include <sstream>
 
-namespace engine {
+namespace engine::Source::Steam {
 
-SteamWorkshopProvider::SteamWorkshopProvider(const std::string& db_path,
-                                             int rate_limit, int rate_window)
+Provider::Provider(const std::string& db_path,
+                   int rate_limit, int rate_window)
     : db_path_(db_path), rate_limit_(rate_limit), rate_window_(rate_window) {}
 
-bool SteamWorkshopProvider::fetch(const Mod& mod, PipelineContext& ctx,
-                                   const std::filesystem::path& dest_path) {
+bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
+                      const std::filesystem::path& dest_path) {
     (void)dest_path;
     if (mod.download_source_type != "steam") return false;
 
@@ -88,14 +88,14 @@ bool SteamWorkshopProvider::fetch(const Mod& mod, PipelineContext& ctx,
     return true;
 }
 
-std::string SteamWorkshopProvider::display_name() const {
+std::string Provider::display_name() const {
     return "Steam Workshop";
 }
 
-void SteamWorkshopProvider::set_rate_limit(int limit, int window) {
+void Provider::set_rate_limit(int limit, int window) {
     rate_limit_ = limit;
     rate_window_ = window;
     if (client_) client_->set_rate_limit(limit, window);
 }
 
-} // namespace engine
+} // namespace engine::Source::Steam

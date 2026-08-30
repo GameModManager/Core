@@ -1,4 +1,4 @@
-#include "engine/source/loverslab_auth.h"
+#include "engine/source/loverslab/auth.h"
 
 #include "engine/core/log/logger.h"
 #include "platform/platform.h"
@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-namespace engine {
+namespace engine::Source::LoversLab {
 
 namespace {
 constexpr const char* kCookieName = "loverslab-cookie";
@@ -42,32 +42,32 @@ std::string unquote(std::string t) {
 
 } // namespace
 
-std::filesystem::path LoversLabAuth::config_dir() {
+std::filesystem::path Auth::config_dir() {
     const char* xdg = std::getenv("XDG_CONFIG_HOME");
     if (xdg && *xdg)
         return std::filesystem::path(xdg) / "GameModManager";
     return safe_home_dir() / ".config" / "GameModManager";
 }
 
-LoversLabAuth::LoversLabAuth()
+Auth::Auth()
     : fallback_(config_dir()) {}
 
-LoversLabAuth& LoversLabAuth::instance() {
-    static LoversLabAuth inst;
+Auth& Auth::instance() {
+    static Auth inst;
     return inst;
 }
 
-void LoversLabAuth::set_keyring(std::unique_ptr<Keyring> keyring) {
+void Auth::set_keyring(std::unique_ptr<Keyring> keyring) {
     keyring_ = std::move(keyring);
 }
 
-Keyring& LoversLabAuth::effective_keyring() const {
+Keyring& Auth::effective_keyring() const {
     if (keyring_ && keyring_->available())
         return *keyring_;
     return fallback_;
 }
 
-bool LoversLabAuth::has_cookie() const {
+bool Auth::has_cookie() const {
     try {
         return effective_keyring().has(kCookieName);
     } catch (const std::exception& e) {
@@ -77,7 +77,7 @@ bool LoversLabAuth::has_cookie() const {
     }
 }
 
-std::string LoversLabAuth::get_cookie() const {
+std::string Auth::get_cookie() const {
     try {
         Keyring& kr = effective_keyring();
         if (!kr.available()) {
@@ -94,7 +94,7 @@ std::string LoversLabAuth::get_cookie() const {
     }
 }
 
-void LoversLabAuth::set_cookie(const std::string& cookie) {
+void Auth::set_cookie(const std::string& cookie) {
     try {
         Keyring& kr = effective_keyring();
         if (!kr.available()) {
@@ -111,7 +111,7 @@ void LoversLabAuth::set_cookie(const std::string& cookie) {
     }
 }
 
-void LoversLabAuth::clear_cookie() {
+void Auth::clear_cookie() {
     try {
         effective_keyring().remove(kCookieName);
     } catch (const std::exception& e) {
@@ -120,7 +120,7 @@ void LoversLabAuth::clear_cookie() {
     }
 }
 
-std::string LoversLabAuth::redact(const std::string& cookie) {
+std::string Auth::redact(const std::string& cookie) {
     if (cookie.empty()) return "<empty>";
     const std::size_t eq = cookie.find('=');
     const std::string name =
@@ -128,7 +128,7 @@ std::string LoversLabAuth::redact(const std::string& cookie) {
     return name + "=… (" + std::to_string(cookie.size()) + " bytes)";
 }
 
-std::string LoversLabAuth::sanitize_cookie(const std::string& raw) {
+std::string Auth::sanitize_cookie(const std::string& raw) {
     if (raw.empty()) return {};
 
     auto add_pair = [](std::vector<std::pair<std::string, std::string>>& pairs,
@@ -217,4 +217,4 @@ std::string LoversLabAuth::sanitize_cookie(const std::string& raw) {
     return out;
 }
 
-} // namespace engine
+} // namespace engine::Source::LoversLab

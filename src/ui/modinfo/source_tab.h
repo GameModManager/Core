@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/modinfo/mod_info_tab.h"
+#include "engine/source/nexus_provider.h"
 
 #include <QString>
 
@@ -10,7 +11,6 @@ class Interface;
 
 namespace engine {
 using SourceProvider = Source::Interface;
-struct ModInfoResult;
 }
 
 class QCheckBox;

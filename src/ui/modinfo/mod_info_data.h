@@ -10,7 +10,8 @@
 
 namespace engine {
 class ModMeta;
-struct ModInfoResult;
+namespace Source::Nexus { struct ModInfoResult; }
+using ModInfoResult = Source::Nexus::ModInfoResult;
 }
 
 namespace ui {
