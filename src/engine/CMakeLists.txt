@@ -141,6 +141,7 @@ set(ENGINE_SOURCES
     core/keyring/keyring.cpp
     core/github.cpp
     core/module.cpp
+    core/directory_refresher.cpp
     deploy/launch/preload_interceptor.cpp
     deploy/launch/launcher.cpp
     deploy/launch/usvfs_mapping.cpp
