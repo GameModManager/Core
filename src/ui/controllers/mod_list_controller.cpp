@@ -4193,7 +4193,7 @@ void ModListController::save_order() {
 
   // Toolbar shortcuts (Issue #34): game-relative executable paths referencing
   // the executables list. The icon, args/cwd/env, output mod and title are
-  // inherited from the referenced ExecEntry - no per-shortcut config is
+  // inherited from the referenced Executables::Entry - no per-shortcut config is
   // duplicated here anymore. toolbar_shortcut_icons was removed with the
   // schema change (legacy files are migrated on load).
   auto ts = toml::array{};
@@ -4511,7 +4511,7 @@ void ModListController::load_order() {
   // paths (and a parallel toolbar_shortcut_icons array) - migrate absolute
   // pins to game-relative refs when they resolve under the game dir, keep the
   // legacy icon as a fallback until materialize_toolbar_shortcuts folds it
-  // into the referenced ExecEntry.
+  // into the referenced Executables::Entry.
   engine::Logger::instance().begin_group(engine::LogLevel::Debug,
                                          "Restored toolbar shortcuts");
   for (size_t i = 0; i < toolbar_paths.size(); ++i) {

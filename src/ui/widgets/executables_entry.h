@@ -19,8 +19,9 @@ class QPlainTextEdit;
 class QToolButton;
 
 namespace ui {
+namespace Executables {
 
-struct ExecEntry {
+struct Entry {
   QString path;       // relative path from game_dir
   QString title;      // display name (empty = derive from path filename)
   QString arguments;  // CLI arguments
@@ -31,32 +32,32 @@ struct ExecEntry {
       environment; // "KEY=VALUE" per entry, set for the launched process
 
   QJsonObject toJson() const;
-  static ExecEntry fromJson(const QJsonObject &obj);
-  static ExecEntry fromLegacyPath(const QString &relPath);
+  static Entry fromJson(const QJsonObject &obj);
+  static Entry fromLegacyPath(const QString &relPath);
 };
 
 // Display name for a list row / combo item: explicit title, else the binary
 // filename, else "Untitled". Shared by the editor, the combo bar and logging.
-QString exec_entry_display_name(const ExecEntry &e);
+QString exec_entry_display_name(const Entry &e);
 
 // Resolves the output-to-mod routing for a launched binary (MO2 getByBinary
 // parity): returns the first entry whose binary path matches the given absolute
 // path, compared as a game-relative path, case-insensitively. Empty when no
 // entry declares an output mod for that binary (caller falls back to
 // Overwrite).
-QString output_mod_for_path(const QVector<ExecEntry> &entries,
+QString output_mod_for_path(const QVector<Entry> &entries,
                             const std::filesystem::path &game_dir,
                             const QString &full_path);
 
 // Resolves the per-executable environment ("KEY=VALUE" list) for a launched
 // binary, with the same first-match path semantics as output_mod_for_path.
 // Empty when no entry matches (caller launches with the inherited environment).
-QStringList environment_for_path(const QVector<ExecEntry> &entries,
+QStringList environment_for_path(const QVector<Entry> &entries,
                                  const std::filesystem::path &game_dir,
                                  const QString &full_path);
 
-// Mode-agnostic executable editor. Extracted from ExecEntryDialog so the same
-// content can be embedded either in a popup QDialog (ExecEntryDialog) or as a
+// Mode-agnostic executable editor. Extracted from Dialog so the same
+// content can be embedded either in a popup QDialog (Dialog) or as a
 // tab page inside MainTabContainer (Full UI tab mode). Complex editor:
 // QListWidget (entry list) + detail form (title, binary, args, start-in,
 // output mod, environment) + add/remove/clone/reorder buttons + drag-drop +
@@ -68,17 +69,17 @@ QStringList environment_for_path(const QVector<ExecEntry> &entries,
 // ExecControlsBar + closing the tab in Full UI tab mode). This gives tab mode
 // an explicit Save (no save-on-change) while popup mode keeps OK/Cancel
 // semantics.
-class ExecEntryContentWidget : public QWidget {
+class ContentWidget : public QWidget {
   Q_OBJECT
 public:
-  explicit ExecEntryContentWidget(
+  explicit ContentWidget(
       const std::filesystem::path &game_dir,
       const QVector<QPair<QString, QString>> &mod_list,
-      const QVector<ExecEntry> &initial_entries,
+      const QVector<Entry> &initial_entries,
       const std::filesystem::path &icon_cache_dir = {},
       QWidget *parent = nullptr);
 
-  [[nodiscard]] QVector<ExecEntry> entries() const;
+  [[nodiscard]] QVector<Entry> entries() const;
 
 signals:
   // Emitted after the user clicks Save and validation passes. The host
@@ -121,14 +122,14 @@ private:
                      const QModelIndex &destination, int row);
 
   // Appends a new entry (deduped title), selects it, updates move buttons.
-  void add_new_entry(const ExecEntry &entry);
+  void add_new_entry(const Entry &entry);
   QString make_non_conflicting_title(const QString &base) const;
   void update_move_buttons();
   void restamp_list_indices();
 
   std::filesystem::path game_dir_;
   std::filesystem::path icon_cache_dir_;
-  QVector<ExecEntry> entries_;
+  QVector<Entry> entries_;
   int current_index_ = InvalidIndex;
 
   QListWidget *entry_list_ = nullptr;
@@ -152,4 +153,5 @@ private:
   bool reordering_ = false;
 };
 
+} // namespace Executables
 } // namespace ui

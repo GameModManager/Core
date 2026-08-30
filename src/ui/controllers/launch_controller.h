@@ -13,7 +13,7 @@
 
 namespace ui {
 
-struct ExecEntry;
+namespace Executables { struct Entry; }
 
 // Snapshot of everything the Instance Options UI needs to construct itself,
 // gathered once from the current instance + game knowledge (instance_utils:
@@ -73,10 +73,10 @@ public slots:
   void load_executables();
   void populate_executables();
   void launch_game();
-  // Launch an executable with the full ExecEntry configuration.
+  // Launch an executable with the full Executables::Entry configuration.
   // `output_mod_dir` is the explicit output-to-mod target (empty = resolve from
   // the entries / Overwrite capture); `arguments` / `start_in` / `environment`
-  // come from the referenced ExecEntry and are applied to the launched process
+  // come from the referenced Executables::Entry and are applied to the launched process
   // (Issue #34).
   void launch_with_executable(const QString &full_path,
                               const std::filesystem::path &output_mod_dir = {},
@@ -90,11 +90,11 @@ public slots:
   // Adds a toolbar shortcut referencing an executable by game-relative path.
   // `legacy_icon` is only used when restoring a pre-#34 instance.toml that
   // stored per-shortcut icons (the schema now inherits the icon from the
-  // referenced ExecEntry); new shortcuts pass an empty icon.
+  // referenced Executables::Entry); new shortcuts pass an empty icon.
   void add_toolbar_shortcut_from_path(const QString &rel_path,
                                       const QString &legacy_icon = {});
   // Launches the executable referenced by a toolbar shortcut. Resolves the
-  // full ExecEntry configuration (args, cwd, env, output mod, icon) at click
+  // full Executables::Entry configuration (args, cwd, env, output mod, icon) at click
   // time so shortcuts stay in sync with the executables list.
   void launch_toolbar_shortcut(const QString &rel_path);
   void add_shortcut_to_desktop();
@@ -118,7 +118,7 @@ public:
   // Applies a full entry set to the executables combo: replaces the combo
   // content, restores the previous selection and persists. Shared by the
   // popup dialog accept and the Full UI tab Save.
-  void apply_exec_entries(const QVector<ExecEntry> &entries);
+  void apply_exec_entries(const QVector<Executables::Entry> &entries);
   // Game-lock overlay
   void create_game_lock_overlay();
   void show_game_lock_overlay(const QString &binary_name, int64_t pid);
@@ -146,7 +146,7 @@ public:
 private:
   // Migration + materialization for toolbar shortcuts (Issue #34): after the
   // executables combo is populated, every pinned path that has no matching
-  // ExecEntry gets a minimal path-only entry materialized so the reference
+  // Executables::Entry gets a minimal path-only entry materialized so the reference
   // resolves and stays editable; legacy per-shortcut icons recorded by
   // add_toolbar_shortcut_from_path are folded into the referenced entry.
   void materialize_toolbar_shortcuts();
@@ -156,7 +156,7 @@ private:
   // vars - a .desktop Exec= line cannot set environment variables. Returns
   // the wrapper path, or empty on failure. `base_name` keys the wrapper
   // filename so it matches the .desktop file it belongs to.
-  QString write_desktop_wrapper(const ExecEntry &entry,
+  QString write_desktop_wrapper(const Executables::Entry &entry,
                                 const std::filesystem::path &exec_path,
                                 const std::filesystem::path &work_dir,
                                 const QString &base_name);
