@@ -2335,7 +2335,7 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
   const QString domain = data.nexus_domain;
   const QString src_id = mod.source_id;
   data.fetch_nexus_info = [domain, src_id]() {
-    auto *provider = dynamic_cast<engine::NexusProvider *>(
+    auto *provider = dynamic_cast<engine::Source::Nexus::Provider *>(
         engine::SourceRegistry::instance().provider_for("nexus"));
     if (!provider || domain.isEmpty() || src_id.isEmpty())
       return engine::ModInfoResult{};

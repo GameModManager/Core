@@ -101,7 +101,7 @@ Application::Application(int &argc, char **argv)
   // otherwise. Must run on the main thread — do it now, before any download
   // worker can touch the key.
 #ifdef GMM_HAS_QTKEYCHAIN
-  engine::NexusAuth::instance().set_keyring(
+  engine::Source::Nexus::Auth::instance().set_keyring(
       std::make_unique<engine::QtKeychainKeyring>());
   engine::LoversLabAuth::instance().set_keyring(
       std::make_unique<engine::QtKeychainKeyring>());

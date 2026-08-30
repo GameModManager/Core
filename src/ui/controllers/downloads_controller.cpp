@@ -171,7 +171,7 @@ void DownloadsController::setup_pipeline() {
 
   // Register built-in source providers
   engine::SourceRegistry::instance().register_provider(
-      std::make_unique<engine::NexusProvider>());
+      std::make_unique<engine::Source::Nexus::Provider>());
   engine::SourceRegistry::instance().register_provider(
       std::make_unique<engine::LoversLabProvider>());
 
