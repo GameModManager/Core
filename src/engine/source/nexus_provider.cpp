@@ -16,7 +16,7 @@
 #include <cctype>
 #include <sstream>
 
-namespace engine {
+namespace engine::Source::Nexus {
 
 static bool contains_ci(const std::string& haystack, const std::string& needle) {
     std::string h = haystack, n = needle;
@@ -26,11 +26,11 @@ static bool contains_ci(const std::string& haystack, const std::string& needle) 
 }
 
 // ---------------------------------------------------------------------------
-// NexusProvider::fetch
+// Provider::fetch
 // ---------------------------------------------------------------------------
 
-bool NexusProvider::fetch(const Mod& mod, PipelineContext& ctx,
-                          const std::filesystem::path& dest_path) {
+bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
+                     const std::filesystem::path& dest_path) {
     if (mod.download_source_type != "nexus") return false;
 
     const auto& nxm = mod.download_nxm;
@@ -46,7 +46,7 @@ bool NexusProvider::fetch(const Mod& mod, PipelineContext& ctx,
         return false;
     }
 
-    bool use_api_key  = nxm.key.empty() && NexusAuth::instance().has_api_key();
+    bool use_api_key  = nxm.key.empty() && Auth::instance().has_api_key();
     bool use_nxm_auth = !nxm.key.empty();
 
     if (!use_api_key && !use_nxm_auth) {
@@ -88,7 +88,7 @@ bool NexusProvider::fetch(const Mod& mod, PipelineContext& ctx,
                 if (name.empty()) name = long_name;
                 const bool premium = contains_ci(long_name, "Premium");
                 if (!name.empty())
-                    NexusServers::instance().record_discovered(name, premium);
+                    Servers::instance().record_discovered(name, premium);
                 entries.push_back({name, premium, uri});
             }
 
@@ -100,8 +100,8 @@ bool NexusProvider::fetch(const Mod& mod, PipelineContext& ctx,
 
             std::stable_sort(entries.begin(), entries.end(),
                              [](const Entry& a, const Entry& b) {
-                const int pa = NexusServers::instance().preferred_rank(a.name);
-                const int pb = NexusServers::instance().preferred_rank(b.name);
+                const int pa = Servers::instance().preferred_rank(a.name);
+                const int pb = Servers::instance().preferred_rank(b.name);
                 if (pa != pb) return pa > pb;
                 const bool cda = contains_ci(a.name, "CDN");
                 const bool cdb = contains_ci(b.name, "CDN");
@@ -130,7 +130,7 @@ bool NexusProvider::fetch(const Mod& mod, PipelineContext& ctx,
             + mod.download_source_id + "/files/"
             + std::to_string(nxm.file_id) + "/download_link.json";
 
-        std::string api_key = NexusAuth::instance().get_api_key();
+        std::string api_key = Auth::instance().get_api_key();
         if (api_key.empty()) {
             Logger::instance().error("NexusProvider: API key file exists but is empty");
             return false;
@@ -144,11 +144,11 @@ bool NexusProvider::fetch(const Mod& mod, PipelineContext& ctx,
         std::string resp_headers;
         long http_code = 0;
 
-        bool ok = nexus_http_request(api_url, "", response, http_code, headers, &resp_headers);
+        bool ok = Http::nexus_http_request(api_url, "", response, http_code, headers, &resp_headers);
         curl_slist_free_all(headers);
 
         if (resp_headers.size() > 20)  // sanity check - don't parse empty/trivial
-            parse_rate_limits(resp_headers);
+            Account::parse_rate_limits(resp_headers);
 
         if (!ok) {
             Logger::instance().error("NexusProvider: API-key request failed (curl error)");
@@ -190,7 +190,7 @@ bool NexusProvider::fetch(const Mod& mod, PipelineContext& ctx,
 
         curl_slist* headers = nullptr;
         headers = curl_slist_append(headers, "Accept: application/json");
-        std::string api_key = NexusAuth::instance().get_api_key();
+        std::string api_key = Auth::instance().get_api_key();
         if (!api_key.empty())
             headers = curl_slist_append(headers, ("apikey: " + api_key).c_str());
 
@@ -198,11 +198,11 @@ bool NexusProvider::fetch(const Mod& mod, PipelineContext& ctx,
         std::string resp_headers;
         long http_code = 0;
 
-        bool ok = nexus_http_request(api_url, "", api_response, http_code, headers, &resp_headers);
+        bool ok = Http::nexus_http_request(api_url, "", api_response, http_code, headers, &resp_headers);
         curl_slist_free_all(headers);
 
         if (resp_headers.size() > 20)  // sanity check - don't parse empty/trivial
-            parse_rate_limits(resp_headers);
+            Account::parse_rate_limits(resp_headers);
 
         if (!ok) {
             Logger::instance().error("NexusProvider: NXM-auth request failed (curl error)");
@@ -229,14 +229,14 @@ bool NexusProvider::fetch(const Mod& mod, PipelineContext& ctx,
     return download_from_url(download_url, ctx, dest_path, server_name);
 }
 
-bool NexusProvider::download_from_url(const std::string& download_url,
-                                      PipelineContext& ctx,
-                                      const std::filesystem::path& dest_path,
-                                      const std::string& server_name) {
+bool Provider::download_from_url(const std::string& download_url,
+                                 PipelineContext& ctx,
+                                 const std::filesystem::path& dest_path,
+                                 const std::string& server_name) {
     Logger::instance().debug("NexusProvider: downloading from Nexus...");
     long dl_code = 0;
 
-    engine::download::Progress dp;
+    engine::Source::DownloadManager::Progress dp;
     dp.callback = ctx.on_progress;
     dp.should_abort = ctx.should_abort;
     dp.resume_base = ctx.download_resume_from;
@@ -245,11 +245,11 @@ bool NexusProvider::download_from_url(const std::string& download_url,
     // Large archives routinely exceed a fixed transfer timeout (Nexus is
     // often slow). long_lived removes the overall cap - only the connect
     // timeout applies - matching LoversLabProvider's large-file handling.
-    engine::download::Options opts;
+    engine::Source::DownloadManager::Options opts;
     opts.long_lived = true;
 
     bool aborted = false;
-    if (!engine::download::curl_download(
+    if (!engine::Source::DownloadManager::curl_download(
             download_url, dest_path, dl_code, opts, &dp,
             ctx.download_resume_from, &aborted)) {
         if (aborted) {
@@ -277,7 +277,7 @@ bool NexusProvider::download_from_url(const std::string& download_url,
             const double bytes = static_cast<double>(size)
                                  - static_cast<double>(dp.resume_base);
             if (bytes > 0)
-                NexusServers::instance().record_speed(server_name, bytes / elapsed);
+                Servers::instance().record_speed(server_name, bytes / elapsed);
         }
     }
 
@@ -286,10 +286,10 @@ bool NexusProvider::download_from_url(const std::string& download_url,
 }
 
 // ---------------------------------------------------------------------------
-// NexusProvider::resolve_download_info
+// Provider::resolve_download_info
 // ---------------------------------------------------------------------------
 
-SourceDownloadInfo NexusProvider::resolve_download_info(const Mod& mod) const {
+SourceDownloadInfo Provider::resolve_download_info(const Mod& mod) const {
     SourceDownloadInfo info;
     if (mod.download_source_type != "nexus") return info;
     const auto& nxm = mod.download_nxm;
@@ -298,9 +298,9 @@ SourceDownloadInfo NexusProvider::resolve_download_info(const Mod& mod) const {
     // The file-metadata endpoint works on free accounts (unlike
     // download_link.json); it needs the API key. No key -> keep the default
     // names (fetch() will fail anyway without one, except via NXM auth).
-    if (!NexusAuth::instance().has_api_key()) return info;
+    if (!Auth::instance().has_api_key()) return info;
 
-    std::string api_key = NexusAuth::instance().get_api_key();
+    std::string api_key = Auth::instance().get_api_key();
     if (api_key.empty()) return info;
 
     std::string url =
@@ -316,11 +316,11 @@ SourceDownloadInfo NexusProvider::resolve_download_info(const Mod& mod) const {
     std::string response;
     std::string resp_headers;
     long http_code = 0;
-    bool ok = nexus_http_request(url, "", response, http_code, headers, &resp_headers);
+    bool ok = Http::nexus_http_request(url, "", response, http_code, headers, &resp_headers);
     curl_slist_free_all(headers);
 
     if (resp_headers.size() > 20)  // sanity check - don't parse empty/trivial
-        parse_rate_limits(resp_headers);
+        Account::parse_rate_limits(resp_headers);
 
     if (!ok || http_code != 200) {
         Logger::instance().debug(
@@ -349,25 +349,25 @@ SourceDownloadInfo NexusProvider::resolve_download_info(const Mod& mod) const {
     }
 }
 
-std::string NexusProvider::display_name() const {
+std::string Provider::display_name() const {
     return "Nexus Mods";
 }
 
 // ---------------------------------------------------------------------------
-// NexusProvider::fetch_mod_info
+// Provider::fetch_mod_info
 // ---------------------------------------------------------------------------
 
-ModInfoResult NexusProvider::fetch_mod_info(const std::string& nexus_domain,
-                                            const std::string& mod_id) const {
+ModInfoResult Provider::fetch_mod_info(const std::string& nexus_domain,
+                                       const std::string& mod_id) const {
     ModInfoResult result;
     if (nexus_domain.empty() || mod_id.empty()) return result;
-    if (!NexusAuth::instance().has_api_key()) {
+    if (!Auth::instance().has_api_key()) {
         Logger::instance().debug(
             "NexusProvider: fetch_mod_info skipped (no API key configured)");
         return result;
     }
 
-    const std::string api_key = NexusAuth::instance().get_api_key();
+    const std::string api_key = Auth::instance().get_api_key();
     if (api_key.empty()) return result;
 
     const std::string url = "https://api.nexusmods.com/v1/games/"
@@ -380,12 +380,12 @@ ModInfoResult NexusProvider::fetch_mod_info(const std::string& nexus_domain,
     std::string response;
     std::string resp_headers;
     long http_code = 0;
-    const bool ok = nexus_http_request(url, "", response, http_code, headers,
+    const bool ok = Http::nexus_http_request(url, "", response, http_code, headers,
                                        &resp_headers);
     curl_slist_free_all(headers);
 
     if (resp_headers.size() > 20)  // sanity check - don't parse empty/trivial
-        parse_rate_limits(resp_headers);
+        Account::parse_rate_limits(resp_headers);
 
     if (!ok || http_code != 200) {
         Logger::instance().debug(
@@ -397,7 +397,7 @@ ModInfoResult NexusProvider::fetch_mod_info(const std::string& nexus_domain,
     return parse_mod_info(response);
 }
 
-ModInfoResult NexusProvider::parse_mod_info(const std::string& body) {
+ModInfoResult Provider::parse_mod_info(const std::string& body) {
     ModInfoResult result;
     try {
         auto j = nlohmann::json::parse(body);
@@ -421,4 +421,4 @@ ModInfoResult NexusProvider::parse_mod_info(const std::string& body) {
     }
 }
 
-} // namespace engine
+} // namespace engine::Source::Nexus

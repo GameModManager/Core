@@ -1,11 +1,10 @@
-#include "engine/source/loverslab_provider.h"
-
+#include "engine/source/loverslab/provider.h"
 #include "engine/source/download/curl_download.h"
-#include "engine/source/loverslab_auth.h"
+#include "engine/source/loverslab/auth.h"
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/core/log/logger.h"
-#include "engine/source/nexus_http.h"  // encode_url_path
+#include "engine/source/http_util.h"
 
 #include <curl/curl.h>
 
@@ -14,7 +13,7 @@
 #include <filesystem>
 #include <string>
 
-namespace engine {
+namespace engine::Source::LoversLab {
 
 namespace {
 
@@ -39,7 +38,7 @@ Probe probe_download(const std::string& url, const std::string& cookie) {
     auto* curl = curl_easy_init();
     if (!curl) return p;
 
-    const std::string encoded = engine::encode_url_path(url);
+    const std::string encoded = Http::encode_url_path(url);
     curl_easy_setopt(curl, CURLOPT_URL, encoded.c_str());
     if (!cookie.empty())
         curl_easy_setopt(curl, CURLOPT_COOKIE, cookie.c_str());
@@ -84,7 +83,7 @@ std::string to_lower(const std::string& in) {
 
 } // namespace
 
-bool LoversLabProvider::is_loverslab_url(const std::string& url) {
+bool Provider::is_loverslab_url(const std::string& url) {
     std::size_t start = url.find("://");
     start = (start == std::string::npos) ? 0 : start + 3;
     const std::size_t end = url.find_first_of("/?#", start);
@@ -100,7 +99,7 @@ bool LoversLabProvider::is_loverslab_url(const std::string& url) {
     return url.find("/files/file/") != std::string::npos;
 }
 
-std::string LoversLabProvider::extract_file_id(const std::string& url) {
+std::string Provider::extract_file_id(const std::string& url) {
     const std::string marker = "/files/file/";
     const std::size_t pos = url.find(marker);
     if (pos == std::string::npos) return {};
@@ -117,13 +116,13 @@ std::string LoversLabProvider::extract_file_id(const std::string& url) {
     return id;
 }
 
-std::string LoversLabProvider::mod_page_url(const std::string& url) {
+std::string Provider::mod_page_url(const std::string& url) {
     const auto cut = url.find_first_of("?#");
     return url.substr(0, cut);
 }
 
-bool LoversLabProvider::fetch(const Mod& mod, PipelineContext& ctx,
-                              const std::filesystem::path& dest_path) {
+bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
+                      const std::filesystem::path& dest_path) {
     if (mod.download_source_type != "loverslab") return false;
 
     if (mod.download_url.empty()) {
@@ -131,7 +130,7 @@ bool LoversLabProvider::fetch(const Mod& mod, PipelineContext& ctx,
         return false;
     }
 
-    const std::string cookie = LoversLabAuth::instance().get_cookie();
+    const std::string cookie = Auth::instance().get_cookie();
     if (cookie.empty()) {
         Logger::instance().error(
             "LoversLabProvider: no session cookie configured "
@@ -188,12 +187,12 @@ bool LoversLabProvider::fetch(const Mod& mod, PipelineContext& ctx,
     return true;
 }
 
-SourceDownloadInfo LoversLabProvider::resolve_download_info(const Mod& mod) const {
+SourceDownloadInfo Provider::resolve_download_info(const Mod& mod) const {
     SourceDownloadInfo info;
     if (mod.download_source_type != "loverslab" || mod.download_url.empty())
         return info;
 
-    const std::string cookie = LoversLabAuth::instance().get_cookie();
+    const std::string cookie = Auth::instance().get_cookie();
     if (cookie.empty()) return info;
 
     const Probe p = probe_download(mod.download_url, cookie);
@@ -227,8 +226,8 @@ SourceDownloadInfo LoversLabProvider::resolve_download_info(const Mod& mod) cons
     return info;
 }
 
-std::string LoversLabProvider::display_name() const {
+std::string Provider::display_name() const {
     return "LoversLab";
 }
 
-} // namespace engine
+} // namespace engine::Source::LoversLab
