@@ -2,10 +2,10 @@
 
 #include "engine/core/log/logger.h"
 #include "engine/core/util/fs_utils.h"
+#include "engine/deploy/core.h"
 #include "engine/deploy/deploy_utils.h"
 #include "engine/deploy/direct.h"
 #include "engine/deploy/launch/launcher.h"
-#include "engine/deploy/launch/overlay_launcher.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/game/saves/local_saves.h"
@@ -285,12 +285,8 @@ LaunchParams prepare_launch_params(const LaunchPrepRequest &req,
   const bool use_overlay = (deploy_strategy_name == kDeployStrategyOverlayFs);
   const bool use_direct = (deploy_strategy_name == kDeployStrategyDirect);
   params.use_overlay = use_overlay;
-#ifdef GMM_PLATFORM_LINUX
   const bool overlay_supported =
-      OverlayFsLauncher::is_supported(params.overwrite_dir);
-#else
-  const bool overlay_supported = false; // OverlayFS launcher is Linux-only
-#endif
+      Deploy::Core::overlay_supported(params.overwrite_dir);
   if (use_overlay && !overlay_supported) {
     Logger::instance().warn(
         "OverlayFS not supported, launching without overlay");
