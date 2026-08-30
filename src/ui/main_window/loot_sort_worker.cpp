@@ -9,8 +9,8 @@ namespace ui {
 
 LootSortWorker::LootSortWorker(QObject* parent) : QObject(parent) {}
 
-void LootSortWorker::run(engine::LootRequest request) {
-    engine::LootResult result = engine::run_loot_sort(
+void LootSortWorker::run(engine::Sorter::Loot::Request request) {
+    engine::Sorter::Loot::Result result = engine::Sorter::Loot::run_sort(
         request, [this](int stage, const std::string& message) {
             emit progress(stage, QString::fromStdString(message));
         });
@@ -18,7 +18,7 @@ void LootSortWorker::run(engine::LootRequest request) {
 }
 
 LootSortThread::LootSortThread(QObject* parent) : QObject(parent) {
-    qRegisterMetaType<engine::LootResult>();
+    qRegisterMetaType<engine::Sorter::Loot::Result>();
     thread_ = new QThread(this);
     thread_->setObjectName(QStringLiteral("gmm-loot-sort"));
     worker_ = new LootSortWorker(nullptr);
@@ -33,7 +33,7 @@ LootSortThread::~LootSortThread() {
     thread_->wait();
 }
 
-void LootSortThread::start(engine::LootRequest request) {
+void LootSortThread::start(engine::Sorter::Loot::Request request) {
     LootSortWorker* worker = worker_;
     QMetaObject::invokeMethod(
         worker,

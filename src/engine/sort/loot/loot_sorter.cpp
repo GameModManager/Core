@@ -15,6 +15,9 @@ namespace fs = std::filesystem;
 
 namespace engine {
 
+namespace Sorter {
+namespace Loot {
+
 namespace {
 
 constexpr const char* kPluginPathsFile = "loot_plugin_paths.txt";
@@ -25,7 +28,7 @@ constexpr const char* kReportFile = "loot_report.json";
 //   [progress] N    stage marker, N = lootcli Progress enum
 //   [level] msg     log line, level in {trace,debug,info,warning,error}
 
-void parse_line(const std::string& line, LootProgressFn& progress,
+void parse_line(const std::string& line, ProgressFn& progress,
                 std::vector<std::string>& messages) {
     if (line.rfind("[progress] ", 0) == 0) {
         const std::string value = line.substr(11);
@@ -70,8 +73,8 @@ fs::path make_scratch_dir(const fs::path& profile_dir) {
 
 }  // namespace
 
-LootResult run_loot_sort(const LootRequest& request, LootProgressFn progress) {
-    LootResult result;
+Result run_sort(const Request& request, ProgressFn progress) {
+    Result result;
 
     if (request.cli_path.empty() || !fs::is_regular_file(request.cli_path)) {
         result.error =
@@ -199,5 +202,8 @@ LootResult run_loot_sort(const LootRequest& request, LootProgressFn progress) {
     if (progress) progress(8, "");  // Done
     return result;
 }
+
+}  // namespace Loot
+}  // namespace Sorter
 
 }  // namespace engine

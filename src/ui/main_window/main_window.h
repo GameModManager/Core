@@ -47,7 +47,7 @@ struct NxmLink;
 struct ConflictStats;
 class StyleManager;
 class Platform;
-struct LootResult;
+namespace Sorter { namespace Loot { struct Result; } }
 struct LaunchParams;
 } // namespace engine
 
