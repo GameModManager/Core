@@ -88,25 +88,25 @@ namespace {
 
 QString mod_column_name(int column) {
   switch (column) {
-  case ModListModel::Name:
+  case ModList::Name:
     return "Name";
-  case ModListModel::Conflicts:
+  case ModList::Conflicts:
     return "Conflicts";
-  case ModListModel::Flags:
+  case ModList::Flags:
     return "Flags";
-  case ModListModel::Category:
+  case ModList::Category:
     return "Category";
-  case ModListModel::Source:
+  case ModList::Source:
     return "Source";
-  case ModListModel::SourceId:
+  case ModList::SourceId:
     return "Source ID";
-  case ModListModel::Version:
+  case ModList::Version:
     return "Version";
-  case ModListModel::Installation:
+  case ModList::Installation:
     return "Installation";
-  case ModListModel::Changed:
+  case ModList::Changed:
     return "Changed";
-  case ModListModel::Priority:
+  case ModList::Priority:
     return "Priority";
   }
   return {};
@@ -303,8 +303,8 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   connect(w_->profile_bar_, &ProfileBar::import_modlist_clicked, this,
           [this]() { import_modlist(); });
 
-  w_->mod_model_ = new ModListModel(w_);
-  w_->mod_view_ = new ModTableView(w_);
+  w_->mod_model_ = new ModList(w_);
+  w_->mod_view_ = new ModView(w_);
   w_->mod_model_->set_view(w_->mod_view_);
   w_->mod_view_->setModel(w_->mod_model_);
 
@@ -358,10 +358,10 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
                  const QVector<int> &roles) {
             (void)bottomRight;
             if (roles.contains(Qt::CheckStateRole) &&
-                topLeft.column() == ModListModel::Name) {
+                topLeft.column() == ModList::Name) {
               auto id =
                   w_->mod_model_
-                      ->data(topLeft.sibling(topLeft.row(), ModListModel::Name),
+                      ->data(topLeft.sibling(topLeft.row(), ModList::Name),
                              Qt::EditRole)
                       .toString();
               bool enabled =
@@ -376,18 +376,18 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
 
   // Counter follows add/remove/move/load (mod_list_changed fires once per
   // structural change; toggles are covered by the dataChanged handler above).
-  connect(w_->mod_model_, &ModListModel::mod_list_changed, this,
+  connect(w_->mod_model_, &ModList::mod_list_changed, this,
           [this]() { update_mod_count_label(); });
 
   // Sync priority rewrites to metadata files after reorder; plugin discovery
   // for the Plugins tab follows any mod-list change (install/remove/toggle).
-  connect(w_->mod_model_, &ModListModel::mod_list_changed, this, [this]() {
+  connect(w_->mod_model_, &ModList::mod_list_changed, this, [this]() {
     sync_priorities();
     refresh_plugins_tab();
   });
 
   // Save order on every model change
-  connect(w_->mod_model_, &ModListModel::mod_list_changed, this, [this]() {
+  connect(w_->mod_model_, &ModList::mod_list_changed, this, [this]() {
     if (w_->loading_)
       return;
     save_order();
@@ -402,7 +402,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
 
   // Inline rename (MO2 renameMod): the handler renames the folder on disk
   // and updates the row in place; on failure it reverts the editor.
-  connect(w_->mod_model_, &ModListModel::rename_requested, this,
+  connect(w_->mod_model_, &ModList::rename_requested, this,
           [this](int row, const QString &name) { apply_rename(row, name); });
 
   // Fold/unfold on the Fold column ONLY (the dedicated arrow cell, left of
@@ -412,7 +412,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   // a mod with children folds the same way (hides its subtree).
   connect(w_->mod_view_, &QTreeView::clicked, this,
           [this](const QModelIndex &idx) {
-            if (!idx.isValid() || idx.column() != ModListModel::Fold)
+            if (!idx.isValid() || idx.column() != ModList::Fold)
               return;
             int row = idx.row();
             if (row < 0 || row >= w_->mod_model_->mods().size())
@@ -461,18 +461,18 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
 
             int tab = -1;
             switch (idx.column()) {
-            case ModListModel::Conflicts:
+            case ModList::Conflicts:
               tab = static_cast<int>(ui::ModInfoTabId::Conflicts);
               break;
-            case ModListModel::Flags:
+            case ModList::Flags:
               tab = static_cast<int>(ui::ModInfoTabId::Conflicts);
               break;
-            case ModListModel::Category:
+            case ModList::Category:
               tab = static_cast<int>(ui::ModInfoTabId::Categories);
               break;
-            case ModListModel::Source:
-            case ModListModel::SourceId:
-            case ModListModel::Version:
+            case ModList::Source:
+            case ModList::SourceId:
+            case ModList::Version:
               tab = static_cast<int>(ui::ModInfoTabId::Source);
               break;
             default:
@@ -482,11 +482,11 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
           });
 
   // MO2 parity: Ctrl+Double-Click opens the OS file explorer at the mod's
-  // folder (ModTableView::ctrl_double_clicked). Regular mods open their
+  // folder (ModView::ctrl_double_clicked). Regular mods open their
   // folder in the instance mods dir; the Overwrite row opens the Overwrite
   // dir. Foreign/unmanaged (game-native) rows, separators and MERGED do
   // nothing.
-  connect(w_->mod_view_, &ModTableView::ctrl_double_clicked, this,
+  connect(w_->mod_view_, &ModView::ctrl_double_clicked, this,
           [this](const QModelIndex &idx) {
             if (!idx.isValid())
               return;
@@ -515,12 +515,12 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
           });
 
   // Drag-and-drop archives onto the mod list to install manually
-  connect(w_->mod_view_, &ModTableView::files_dropped, this,
+  connect(w_->mod_view_, &ModView::files_dropped, this,
           [this](const QStringList &paths) { import_archives(paths); });
 
   // Drag-and-drop files/folders out of the Overwrite info dialog onto a mod
   // row moves them into that mod (MO2's drop-to-mod).
-  connect(w_->mod_view_, &ModTableView::overwrite_files_dropped, this,
+  connect(w_->mod_view_, &ModView::overwrite_files_dropped, this,
           [this](const QStringList &paths, int mod_row) {
             w_->overwrite_->move_dropped_overwrite_files(paths, mod_row);
           });
@@ -550,30 +550,30 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   // The Fold arrow column is pinned to the left edge: fixed 24px cell,
   // always visible, and re-snapped to visual index 0 if the user tries to
   // drag another column past it (the arrow must stay aligned to the edge).
-  mod_header->setSectionResizeMode(ModListModel::Fold, QHeaderView::Fixed);
-  mod_header->resizeSection(ModListModel::Fold, 24);
-  mod_header->setSectionResizeMode(ModListModel::Name, QHeaderView::Stretch);
-  for (int c = ModListModel::Conflicts; c < ModListModel::ColumnCount; ++c)
+  mod_header->setSectionResizeMode(ModList::Fold, QHeaderView::Fixed);
+  mod_header->resizeSection(ModList::Fold, 24);
+  mod_header->setSectionResizeMode(ModList::Name, QHeaderView::Stretch);
+  for (int c = ModList::Conflicts; c < ModList::ColumnCount; ++c)
     mod_header->setSectionResizeMode(c, QHeaderView::Interactive);
-  mod_header->resizeSection(ModListModel::Conflicts, 80);
-  mod_header->resizeSection(ModListModel::Flags, 80);
-  mod_header->resizeSection(ModListModel::Category, 120);
-  mod_header->resizeSection(ModListModel::Source, 40);
-  mod_header->resizeSection(ModListModel::SourceId, 70);
-  mod_header->resizeSection(ModListModel::Version, 80);
-  mod_header->resizeSection(ModListModel::Installation, 90);
-  mod_header->resizeSection(ModListModel::Changed, 90);
-  mod_header->resizeSection(ModListModel::Priority, 60);
+  mod_header->resizeSection(ModList::Conflicts, 80);
+  mod_header->resizeSection(ModList::Flags, 80);
+  mod_header->resizeSection(ModList::Category, 120);
+  mod_header->resizeSection(ModList::Source, 40);
+  mod_header->resizeSection(ModList::SourceId, 70);
+  mod_header->resizeSection(ModList::Version, 80);
+  mod_header->resizeSection(ModList::Installation, 90);
+  mod_header->resizeSection(ModList::Changed, 90);
+  mod_header->resizeSection(ModList::Priority, 60);
 
   // The Name and Fold columns can never be hidden (the context menu shows
   // them checked + disabled). Persist user visibility toggles per instance;
   // the restore happens on scan finish when the instance name is known.
-  mod_header->set_locked_section(ModListModel::Name);
-  mod_header->set_locked_section(ModListModel::Fold);
+  mod_header->set_locked_section(ModList::Name);
+  mod_header->set_locked_section(ModList::Fold);
   connect(
       mod_header, &ColumnToggleHeaderView::section_toggled, this,
       [this](int logical, bool hidden) {
-        if (logical == ModListModel::Name || logical == ModListModel::Fold ||
+        if (logical == ModList::Name || logical == ModList::Fold ||
             w_->current_instance_root_.empty())
           return;
         const auto key = QString::fromStdString(
@@ -595,7 +595,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   // Fold already at 0 and returns, so w_ cannot loop.
   connect(mod_header, &QHeaderView::sectionMoved, this,
           [mod_header](int, int, int) {
-            const int foldLogical = ModListModel::Fold;
+            const int foldLogical = ModList::Fold;
             if (mod_header->visualIndex(foldLogical) == 0)
               return;
             mod_header->moveSection(foldLogical, 0);
@@ -1804,7 +1804,7 @@ void ModListController::restore_mod_column_visibility() {
   const auto stored = Settings::instance().modlist_hidden_columns(key);
   const auto hidden_set = QSet<QString>(stored.cbegin(), stored.cend());
 
-  for (int c = ModListModel::Name; c < ModListModel::ColumnCount; ++c) {
+  for (int c = ModList::Name; c < ModList::ColumnCount; ++c) {
     const QString name = mod_column_name(c);
     if (name.isEmpty())
       continue;
@@ -3410,7 +3410,7 @@ void ModListController::toggle_selected_mods(bool enabled) {
     if (entry.enabled == enabled)
       continue;
 
-    w_->mod_model_->setData(w_->mod_model_->index(r, ModListModel::Name),
+    w_->mod_model_->setData(w_->mod_model_->index(r, ModList::Name),
                             enabled ? Qt::Checked : Qt::Unchecked,
                             Qt::CheckStateRole);
     sync_mod_enable_state(entry.id, enabled);
@@ -3950,14 +3950,14 @@ void ModListController::rename_mod_inline(int row) {
   const auto &mod = w_->mod_model_->mods()[row];
   if (mod.is_overwrite || mod.is_merged || mod.is_game_native)
     return;
-  w_->mod_view_->edit(w_->mod_model_->index(row, ModListModel::Name));
+  w_->mod_view_->edit(w_->mod_model_->index(row, ModList::Name));
 }
 
 void ModListController::apply_rename(int row, const QString &name) {
   const auto revert = [this, row]() {
     emit w_->mod_model_->dataChanged(
-        w_->mod_model_->index(row, ModListModel::Name),
-        w_->mod_model_->index(row, ModListModel::Version));
+        w_->mod_model_->index(row, ModList::Name),
+        w_->mod_model_->index(row, ModList::Version));
   };
 
   if (row < 0 || row >= w_->mod_model_->mods().size())

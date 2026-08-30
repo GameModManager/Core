@@ -78,7 +78,7 @@ struct ConflictPairs {
     QStringList loses_to;
 };
 
-class ModListModel : public QAbstractTableModel {
+class ModList : public QAbstractTableModel {
     Q_OBJECT
 public:
     // Column order is the display order: Fold first (never hideable, pinned to
@@ -104,7 +104,7 @@ public:
     // The IndentDelegate consumes this to shift the name text right.
     static constexpr int kIndentDepthRole = Qt::UserRole + 3;
 
-    explicit ModListModel(QObject* parent = nullptr);
+    explicit ModList(QObject* parent = nullptr);
 
     int rowCount(const QModelIndex& parent = {}) const override;
     int columnCount(const QModelIndex& parent = {}) const override;
@@ -304,5 +304,8 @@ private:
     QString overwrite_path_;
     QSet<QString> dirty_priority_ids_;
 };
+
+// Backward-compat alias
+using ModListModel = ModList;
 
 }  // namespace ui

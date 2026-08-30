@@ -6,7 +6,7 @@
 
 namespace engine {
 
-// Well-known mod IDs - must match ModListModel constants
+// Well-known mod IDs - must match ModList constants
 constexpr const char* kProfileOverwriteId = "__overwrite__";
 
 struct ProfileMod {

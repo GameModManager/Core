@@ -162,7 +162,7 @@ ProfileSwitchResult switch_profile(const std::filesystem::path &profiles_dir,
   // Restore mod enable/disable + priorities from the new profile's
   // modlist.txt (MO2's refreshModStatus on profile load). This is the
   // "set profile on ModList" step: the ProfileManager's in-memory mod list now
-  // mirrors the new profile, and the UI rebuilds its ModListModel in the
+  // mirrors the new profile, and the UI rebuilds its ModList in the
   // refresh_directory_structure callback.
   new_profile->refresh_mod_status(current_state.known_mods,
                                   current_state.foreign_mods);

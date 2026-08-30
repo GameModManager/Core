@@ -52,7 +52,7 @@ struct ProfileSaveState {
 struct ProfileSwitchCallbacks {
   // Re-scan the mods directory and rebuild the mod list (MO2's
   // refreshDirectoryStructure). Called after the new profile's mod state
-  // is restored so the UI's ModListModel reflects the new profile.
+  // is restored so the UI's ModList reflects the new profile.
   std::function<void()> refresh_directory_structure;
   // Reload the Plugins tab from the new profile's plugin files (MO2's
   // refreshLists). Called after the plugin state was restored.
@@ -99,7 +99,7 @@ bool write_tweaked_ini(const std::filesystem::path &profile_dir,
 //   4. Construct the new Profile from its directory.
 //   5. Restore mod enable/disable + priorities from the new profile's
 //      modlist.txt (refresh_mod_status — the "set profile on ModList" step;
-//      the UI rebuilds its ModListModel in refresh_directory_structure).
+//      the UI rebuilds its ModList in refresh_directory_structure).
 //   6. Restore plugin state (plugins.txt / loadorder.txt / lockedorder.txt)
 //      via PluginDatabase::load_profile when `plugin_db` is set.
 //   7. Activate/deactivate archive invalidation per the new profile's

@@ -1,4 +1,4 @@
-// Offscreen GUI test for the ModListModel game-native (unmanaged) band.
+// Offscreen GUI test for the ModList game-native (unmanaged) band.
 //
 // Regression for the "Unmanaged mod landed below user mods" bug: game-native
 // entries must be a pinned top band that user mods can never move above. The
@@ -46,7 +46,7 @@ void check(bool cond, const char* what) {
 }
 }
 
-static int row_with_id(const ui::ModListModel& model, const char* id) {
+static int row_with_id(const ui::ModList& model, const char* id) {
     const auto& mods = model.mods();
     for (int i = 0; i < mods.size(); ++i)
         if (mods[i].id == QLatin1String(id)) return i;
@@ -70,7 +70,7 @@ TEST_CASE("mod list model", "[ui]") {
     QCoreApplication::setOrganizationName("GameModManager");
     QCoreApplication::setApplicationName("GameModManager");
 
-    ui::ModListModel model;
+    ui::ModList model;
 
     // Simulate the post-load state: game-native band on top, user mods below.
     QVector<ui::ModEntry> entries;
@@ -120,10 +120,10 @@ TEST_CASE("mod list model", "[ui]") {
         int r = row_with_id(model, "Testing_separator");
         check(r >= 0, "separator row present");
         if (r >= 0) {
-            QVariant name = model.data(model.index(r, ui::ModListModel::Name), Qt::DisplayRole);
+            QVariant name = model.data(model.index(r, ui::ModList::Name), Qt::DisplayRole);
             check(name.isValid() && name.toString() == QStringLiteral("Testing"),
                   "separator Name cell is the plain name (no arrow prefix)");
-            QVariant edit = model.data(model.index(r, ui::ModListModel::Name), Qt::EditRole);
+            QVariant edit = model.data(model.index(r, ui::ModList::Name), Qt::EditRole);
             check(edit.isValid() && edit.toString() == QStringLiteral("Testing"),
                   "separator EditRole carries raw name");
         }
@@ -131,14 +131,14 @@ TEST_CASE("mod list model", "[ui]") {
         // band -> no content to hide -> Fold cell empty and not foldable.
         check(!model.has_content(r), "appended separator has an empty band");
         if (r >= 0) {
-            QVariant fold = model.data(model.index(r, ui::ModListModel::Fold), Qt::DisplayRole);
+            QVariant fold = model.data(model.index(r, ui::ModList::Fold), Qt::DisplayRole);
             check(fold.isValid() && fold.toString().isEmpty(),
                   "empty-band separator shows no arrow in Fold column");
         }
         // Non-separator rows never carry an arrow.
         const int skyui = row_with_id(model, "SkyUI");
         if (skyui >= 0) {
-            QVariant fold = model.data(model.index(skyui, ui::ModListModel::Fold), Qt::DisplayRole);
+            QVariant fold = model.data(model.index(skyui, ui::ModList::Fold), Qt::DisplayRole);
             check(fold.toString().isEmpty(),
                   "regular mod Fold cell is empty");
             check(!model.has_content(skyui),
@@ -154,7 +154,7 @@ TEST_CASE("mod list model", "[ui]") {
         const int sep_row = row_with_id(model, "Testing_separator");
         check(sep_row >= 0, "separator row present for fold test");
         int change_count = 0;
-        QObject::connect(&model, &ui::ModListModel::mod_list_changed,
+        QObject::connect(&model, &ui::ModList::mod_list_changed,
                          [&]() { ++change_count; });
         check(!model.mods()[sep_row].folded, "separator starts unfolded");
         model.set_folded(sep_row, true);
@@ -171,7 +171,7 @@ TEST_CASE("mod list model", "[ui]") {
         // The lambda captures change_count by reference; tear the connection
         // down before this block ends, or a later mod_list_changed emission
         // (rename_mod_in_place, moves, ...) writes through the dangling ref.
-        QObject::disconnect(&model, &ui::ModListModel::mod_list_changed,
+        QObject::disconnect(&model, &ui::ModList::mod_list_changed,
                             nullptr, nullptr);
     }
 
@@ -179,7 +179,7 @@ TEST_CASE("mod list model", "[ui]") {
     // glyph in the Fold column and it flips with fold state; a separator whose
     // band ends at Overwrite has nothing to hide.
     {
-        ui::ModListModel m2;
+        ui::ModList m2;
         QVector<ui::ModEntry> e2;
         ui::ModEntry s;
         s.id = QStringLiteral("Section");
@@ -203,33 +203,33 @@ TEST_CASE("mod list model", "[ui]") {
 
         check(m2.has_content(0), "separator with a mod below has content");
         const QVariant fold_open =
-            m2.data(m2.index(0, ui::ModListModel::Fold), Qt::DisplayRole);
+            m2.data(m2.index(0, ui::ModList::Fold), Qt::DisplayRole);
         check(fold_open.isValid() && fold_open.toString() == QStringLiteral("\u25BC"),
               "unfolded separator shows down-arrow in Fold column");
         m2.set_folded(0, true);
         const QVariant fold_closed =
-            m2.data(m2.index(0, ui::ModListModel::Fold), Qt::DisplayRole);
+            m2.data(m2.index(0, ui::ModList::Fold), Qt::DisplayRole);
         check(fold_closed.isValid() && fold_closed.toString() == QStringLiteral("\u25B6"),
               "folded separator shows right-arrow in Fold column");
         // The Name cell never shows the arrow, regardless of fold state.
         const QVariant name_disp =
-            m2.data(m2.index(0, ui::ModListModel::Name), Qt::DisplayRole);
+            m2.data(m2.index(0, ui::ModList::Name), Qt::DisplayRole);
         check(name_disp.isValid() && name_disp.toString() == QStringLiteral("Section"),
               "folded separator Name cell stays the plain name");
         // Fold column alignment is always centered (separator and mod rows).
         const QVariant align_sep = m2.data(
-            m2.index(0, ui::ModListModel::Fold), Qt::TextAlignmentRole);
+            m2.index(0, ui::ModList::Fold), Qt::TextAlignmentRole);
         check(align_sep.isValid() &&
                   align_sep.toInt() == static_cast<int>(Qt::AlignCenter),
               "separator Fold cell centered");
         const QVariant align_mod = m2.data(
-            m2.index(1, ui::ModListModel::Fold), Qt::TextAlignmentRole);
+            m2.index(1, ui::ModList::Fold), Qt::TextAlignmentRole);
         check(align_mod.isValid() &&
                   align_mod.toInt() == static_cast<int>(Qt::AlignCenter),
               "mod Fold cell centered");
 
         // Overwrite is never content: a separator directly above it hides nothing.
-        ui::ModListModel m3;
+        ui::ModList m3;
         QVector<ui::ModEntry> e3;
         ui::ModEntry s3;
         s3.id = QStringLiteral("Solo");
@@ -265,7 +265,7 @@ TEST_CASE("mod list model", "[ui]") {
     // Current order: Skyrim.esm(0), Update.esm(1), Enemy NPCs(2), SkyUI(3)
     QModelIndexList idxs;
     for (int r = 0; r < 4; ++r)
-        idxs.append(model.index(r, ui::ModListModel::Name));
+        idxs.append(model.index(r, ui::ModList::Name));
     QMimeData* mime = model.mimeData(idxs);
     check(mime != nullptr, "mime data produced");
     if (mime) {
@@ -300,7 +300,7 @@ TEST_CASE("mod list model", "[ui]") {
 
     // --- Separators above the game-native band (fold hides the native mods) ---
     {
-        ui::ModListModel m2;
+        ui::ModList m2;
         QVector<ui::ModEntry> e2;
         for (const char* id : {"Skyrim.esm", "Update.esm"}) {
             ui::ModEntry n;
@@ -381,7 +381,7 @@ TEST_CASE("mod list model", "[ui]") {
 
     // --- Center text on separators (Theme > Design, default on) ---
     {
-        ui::ModListModel m3;
+        ui::ModList m3;
         QVector<ui::ModEntry> e3;
         for (const char* id : {"Skyrim.esm"}) {
             ui::ModEntry n;
@@ -418,12 +418,12 @@ TEST_CASE("mod list model", "[ui]") {
               "center_separator_text defaults to on");
 
         // Setting on: every separator cell is centered.
-        const QVariant on_name = m3.data(m3.index(sep_row, ui::ModListModel::Name),
+        const QVariant on_name = m3.data(m3.index(sep_row, ui::ModList::Name),
                                          Qt::TextAlignmentRole);
         check(on_name.isValid() &&
                   on_name.toInt() == static_cast<int>(Qt::AlignCenter),
               "separator Name centered with the setting on");
-        const QVariant on_prio = m3.data(m3.index(sep_row, ui::ModListModel::Priority),
+        const QVariant on_prio = m3.data(m3.index(sep_row, ui::ModList::Priority),
                                          Qt::TextAlignmentRole);
         check(on_prio.isValid() &&
                   on_prio.toInt() == static_cast<int>(Qt::AlignCenter),
@@ -431,18 +431,18 @@ TEST_CASE("mod list model", "[ui]") {
 
         // Setting off: separator text falls back to left alignment.
         Settings::instance().set_center_separator_text(false);
-        const QVariant off_name = m3.data(m3.index(sep_row, ui::ModListModel::Name),
+        const QVariant off_name = m3.data(m3.index(sep_row, ui::ModList::Name),
                                           Qt::TextAlignmentRole);
         check(!off_name.isValid(),
               "separator Name left-aligned with the setting off");
-        const QVariant off_prio = m3.data(m3.index(sep_row, ui::ModListModel::Priority),
+        const QVariant off_prio = m3.data(m3.index(sep_row, ui::ModList::Priority),
                                           Qt::TextAlignmentRole);
         check(off_prio.isValid() &&
                   off_prio.toInt() == static_cast<int>(Qt::AlignCenter),
               "separator Priority stays centered regardless");
 
         // Regular mods are never centered by the separator setting.
-        const QVariant mod_align = m3.data(m3.index(mod_row, ui::ModListModel::Name),
+        const QVariant mod_align = m3.data(m3.index(mod_row, ui::ModList::Name),
                                            Qt::TextAlignmentRole);
         check(!mod_align.isValid(), "regular mod Name never centered");
         Settings::instance().set_center_separator_text(true);
@@ -457,17 +457,17 @@ TEST_CASE("mod list model", "[ui]") {
         const int hl_row = row_with_id(model, "SkyUI");
         const int other_row = row_with_id(model, "Enemy NPCs");
         const QVariant mark = model.data(
-            model.index(hl_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+            model.index(hl_row, ui::ModList::Name), ui::ModList::kScrollMarkRole);
         check(mark.canConvert<QColor>() && mark.value<QColor>() == hl,
               "scroll mark for highlighted mod");
         const QVariant no_mark = model.data(
-            model.index(other_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+            model.index(other_row, ui::ModList::Name), ui::ModList::kScrollMarkRole);
         check(!no_mark.isValid() || !no_mark.value<QColor>().isValid(),
               "no scroll mark for unhighlighted mod");
 
         // BackgroundRole: the highlighted row tints.
         const QVariant bg = model.data(
-            model.index(hl_row, ui::ModListModel::Flags), Qt::BackgroundRole);
+            model.index(hl_row, ui::ModList::Flags), Qt::BackgroundRole);
         check(bg.canConvert<QBrush>() && bg.value<QBrush>().color() == hl,
               "background tint for highlighted mod");
 
@@ -477,7 +477,7 @@ TEST_CASE("mod list model", "[ui]") {
         model.set_conflict_pairs({{QStringLiteral("Enemy NPCs"), pairs}});
         model.set_selected_mods({QStringLiteral("Enemy NPCs")});
         const QVariant conflict_bg = model.data(
-            model.index(hl_row, ui::ModListModel::Flags), Qt::BackgroundRole);
+            model.index(hl_row, ui::ModList::Flags), Qt::BackgroundRole);
         check(conflict_bg.canConvert<QBrush>() &&
                   conflict_bg.value<QBrush>().color() == hl,
               "plugin highlight beats conflict color");
@@ -485,7 +485,7 @@ TEST_CASE("mod list model", "[ui]") {
         // Clearing the highlight reveals the conflict color underneath.
         model.set_highlighted_mods({});
         const QVariant after_clear = model.data(
-            model.index(hl_row, ui::ModListModel::Flags), Qt::BackgroundRole);
+            model.index(hl_row, ui::ModList::Flags), Qt::BackgroundRole);
         check(after_clear.canConvert<QBrush>() &&
                   after_clear.value<QBrush>().color() ==
                       Settings::instance().modlist_overwriting_loose(),
@@ -516,23 +516,23 @@ TEST_CASE("mod list model", "[ui]") {
         const int update_row = row_with_id(model, "Update.esm");
         const int skyrim_row = row_with_id(model, "Skyrim.esm");
         const QVariant red_mark = model.data(
-            model.index(skyui_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+            model.index(skyui_row, ui::ModList::Name), ui::ModList::kScrollMarkRole);
         check(red_mark.canConvert<QColor>() &&
                   red_mark.value<QColor>() == Settings::instance().modlist_overwriting_loose(),
               "scroll mark: red for the mod overwriting the selection");
         const QVariant green_mark = model.data(
-            model.index(update_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+            model.index(update_row, ui::ModList::Name), ui::ModList::kScrollMarkRole);
         check(green_mark.canConvert<QColor>() &&
                   green_mark.value<QColor>() == Settings::instance().modlist_overwritten_loose(),
               "scroll mark: green for the mod the selection overwrites");
         const QVariant none_mark = model.data(
-            model.index(skyrim_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+            model.index(skyrim_row, ui::ModList::Name), ui::ModList::kScrollMarkRole);
         check(!none_mark.isValid() || !none_mark.value<QColor>().isValid(),
               "no scroll mark for an unconcerned mod");
         // BackgroundRole follows the same union (MO2 markerColor drives both
         // the row tint and the scrollbar ticks).
         const QVariant bg = model.data(
-            model.index(skyui_row, ui::ModListModel::Flags), Qt::BackgroundRole);
+            model.index(skyui_row, ui::ModList::Flags), Qt::BackgroundRole);
         check(bg.canConvert<QBrush>() &&
                   bg.value<QBrush>().color() == Settings::instance().modlist_overwriting_loose(),
               "background tint shares the union color");
@@ -542,24 +542,24 @@ TEST_CASE("mod list model", "[ui]") {
         // Update.esm is green via Enemy NPCs and red via Skyrim.esm — red wins
         // globally (MO2 markerColor precedence: overwritten > overwrite).
         const QVariant union_mark = model.data(
-            model.index(update_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+            model.index(update_row, ui::ModList::Name), ui::ModList::kScrollMarkRole);
         check(union_mark.canConvert<QColor>() &&
                   union_mark.value<QColor>() == Settings::instance().modlist_overwriting_loose(),
               "red beats green when a row wins one pair and loses another");
         const QVariant skyui_union = model.data(
-            model.index(skyui_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+            model.index(skyui_row, ui::ModList::Name), ui::ModList::kScrollMarkRole);
         check(skyui_union.canConvert<QColor>() &&
                   skyui_union.value<QColor>() == Settings::instance().modlist_overwriting_loose(),
               "union marks a partner of the other selection too");
         const QVariant sel_self = model.data(
-            model.index(skyrim_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+            model.index(skyrim_row, ui::ModList::Name), ui::ModList::kScrollMarkRole);
         check(!sel_self.isValid() || !sel_self.value<QColor>().isValid(),
               "a selected mod that conflicts with nothing gets no self-mark");
 
         // Plugin highlight beats the conflict tick (MO2 markerColor order).
         model.set_highlighted_mods({QStringLiteral("SkyUI")});
         const QVariant hl_mark = model.data(
-            model.index(skyui_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+            model.index(skyui_row, ui::ModList::Name), ui::ModList::kScrollMarkRole);
         check(hl_mark.canConvert<QColor>() &&
                   hl_mark.value<QColor>() == Settings::instance().modlist_contains_file(),
               "plugin highlight beats the conflict scroll mark");
@@ -568,7 +568,7 @@ TEST_CASE("mod list model", "[ui]") {
         model.set_selected_mods({});
         model.set_highlighted_mods({});
         const QVariant cleared = model.data(
-            model.index(skyui_row, ui::ModListModel::Name), ui::ModListModel::kScrollMarkRole);
+            model.index(skyui_row, ui::ModList::Name), ui::ModList::kScrollMarkRole);
         check(!cleared.isValid() || !cleared.value<QColor>().isValid(),
               "clearing the selection clears the scroll marks");
         model.set_conflict_pairs({});
@@ -579,14 +579,14 @@ TEST_CASE("mod list model", "[ui]") {
     {
         Settings::instance().set_color_separator_scrollbar(false);
         const QVariant sep_mark = model.data(
-            model.index(row_with_id(model, "Testing_separator"), ui::ModListModel::Name),
-            ui::ModListModel::kScrollMarkRole);
+            model.index(row_with_id(model, "Testing_separator"), ui::ModList::Name),
+            ui::ModList::kScrollMarkRole);
         check(!sep_mark.isValid() || !sep_mark.value<QColor>().isValid(),
               "separator mark hidden when separator coloring off");
         model.set_highlighted_mods({QStringLiteral("SkyUI")});
         const QVariant hl_mark = model.data(
-            model.index(row_with_id(model, "SkyUI"), ui::ModListModel::Name),
-            ui::ModListModel::kScrollMarkRole);
+            model.index(row_with_id(model, "SkyUI"), ui::ModList::Name),
+            ui::ModList::kScrollMarkRole);
         check(hl_mark.canConvert<QColor>() &&
                   hl_mark.value<QColor>() == Settings::instance().modlist_contains_file(),
               "highlight mark independent of separator coloring");
@@ -604,26 +604,26 @@ TEST_CASE("mod list model", "[ui]") {
 
         // ItemIsEditable on the Name column for separators and regular mods,
         // never for Overwrite / game-native rows.
-        const auto sep_flags = model.flags(model.index(sep_row, ui::ModListModel::Name));
+        const auto sep_flags = model.flags(model.index(sep_row, ui::ModList::Name));
         check(sep_flags & Qt::ItemIsEditable, "separator Name cell is editable");
-        const auto mod_flags = model.flags(model.index(mod_row, ui::ModListModel::Name));
+        const auto mod_flags = model.flags(model.index(mod_row, ui::ModList::Name));
         check(mod_flags & Qt::ItemIsEditable, "mod Name cell is editable");
-        const auto ow_flags = model.flags(model.index(ow_row, ui::ModListModel::Name));
+        const auto ow_flags = model.flags(model.index(ow_row, ui::ModList::Name));
         check(!(ow_flags & Qt::ItemIsEditable), "Overwrite Name cell is not editable");
         const int native_row = row_with_id(model, "Skyrim.esm");
-        const auto nat_flags = model.flags(model.index(native_row, ui::ModListModel::Name));
+        const auto nat_flags = model.flags(model.index(native_row, ui::ModList::Name));
         check(!(nat_flags & Qt::ItemIsEditable), "game-native Name cell is not editable");
 
         // setData(EditRole) emits rename_requested with the trimmed name and
         // does not mutate the row itself (the window handler owns the rename).
         QString requested;
         int requested_row = -1;
-        QObject::connect(&model, &ui::ModListModel::rename_requested,
+        QObject::connect(&model, &ui::ModList::rename_requested,
                          [&](int row, const QString& name) {
                              requested_row = row;
                              requested = name;
                          });
-        check(model.setData(model.index(mod_row, ui::ModListModel::Name),
+        check(model.setData(model.index(mod_row, ui::ModList::Name),
                             QStringLiteral("  SkyUI  "), Qt::EditRole),
               "setData EditRole accepted");
         check(requested_row == mod_row && requested == QStringLiteral("SkyUI"),
@@ -632,18 +632,18 @@ TEST_CASE("mod list model", "[ui]") {
               "setData EditRole does not mutate the row");
 
         // Overwrite / game-native rows reject edits outright.
-        check(!model.setData(model.index(ow_row, ui::ModListModel::Name),
+        check(!model.setData(model.index(ow_row, ui::ModList::Name),
                              QStringLiteral("x"), Qt::EditRole),
               "Overwrite rejects EditRole");
-        check(!model.setData(model.index(native_row, ui::ModListModel::Name),
+        check(!model.setData(model.index(native_row, ui::ModList::Name),
                              QStringLiteral("x"), Qt::EditRole),
               "game-native row rejects EditRole");
 
         // Separators are still not checkable/toggleable.
-        check(!model.setData(model.index(sep_row, ui::ModListModel::Name),
+        check(!model.setData(model.index(sep_row, ui::ModList::Name),
                              Qt::Checked, Qt::CheckStateRole),
               "separator rejects CheckStateRole");
-        QObject::disconnect(&model, &ui::ModListModel::rename_requested, nullptr, nullptr);
+        QObject::disconnect(&model, &ui::ModList::rename_requested, nullptr, nullptr);
     }
 
     // rename_mod_in_place: keeps the row where it is (id + name updated).
@@ -662,7 +662,7 @@ TEST_CASE("mod list model", "[ui]") {
         const QColor teal(0, 128, 128, 200);
         model.set_mod_color(QStringLiteral("Testing_separator"), teal);
         const QVariant bg = model.data(
-            model.index(sep_row, ui::ModListModel::Name), Qt::BackgroundRole);
+            model.index(sep_row, ui::ModList::Name), Qt::BackgroundRole);
         check(bg.canConvert<QBrush>() && bg.value<QBrush>().color() == teal,
               "set_mod_color tints the separator row");
         check(model.mods()[sep_row].separator_color == teal.name(QColor::HexArgb),
@@ -672,7 +672,7 @@ TEST_CASE("mod list model", "[ui]") {
         check(model.mods()[sep_row].separator_color.isEmpty(),
               "clear_mod_color empties the stored color");
         const QVariant bg2 = model.data(
-            model.index(sep_row, ui::ModListModel::Name), Qt::BackgroundRole);
+            model.index(sep_row, ui::ModList::Name), Qt::BackgroundRole);
         check(bg2.canConvert<QBrush>() &&
                   bg2.value<QBrush>().color() == QColor(QStringLiteral("#888888")),
               "cleared separator falls back to the render default");
@@ -702,30 +702,30 @@ TEST_CASE("mod list model", "[ui]") {
         // invalid-data only: flag icon + tooltip + italic gray name (MO2).
         model.set_invalid_data(QStringLiteral("GhostMod"), true);
         QList<QIcon> icons = model.data(
-            model.index(gr, ui::ModListModel::Flags),
-            ui::ModListModel::kFlagIconsRole).value<QList<QIcon>>();
+            model.index(gr, ui::ModList::Flags),
+            ui::ModList::kFlagIconsRole).value<QList<QIcon>>();
         check(icons.size() == 1, "invalid-data adds one flag icon");
         const QString tip = model.data(
-            model.index(gr, ui::ModListModel::Flags), Qt::ToolTipRole).toString();
+            model.index(gr, ui::ModList::Flags), Qt::ToolTipRole).toString();
         check(tip.contains(QStringLiteral("No valid game data")),
               "invalid-data tooltip");
         const QVariant fnt = model.data(
-            model.index(gr, ui::ModListModel::Name), Qt::FontRole);
+            model.index(gr, ui::ModList::Name), Qt::FontRole);
         check(fnt.canConvert<QFont>() && fnt.value<QFont>().italic(),
               "invalid-data name is italic");
         const QVariant fg = model.data(
-            model.index(gr, ui::ModListModel::Name), Qt::ForegroundRole);
+            model.index(gr, ui::ModList::Name), Qt::ForegroundRole);
         check(fg.canConvert<QColor>() && fg.value<QColor>().isValid(),
               "invalid-data name is tinted");
 
         // no_metadata: same single icon, own tooltip line; name stays normal.
         model.set_no_metadata(QStringLiteral("GhostMod"), true);
         icons = model.data(
-            model.index(gr, ui::ModListModel::Flags),
-            ui::ModListModel::kFlagIconsRole).value<QList<QIcon>>();
+            model.index(gr, ui::ModList::Flags),
+            ui::ModList::kFlagIconsRole).value<QList<QIcon>>();
         check(icons.size() == 1, "both flags still render a single icon");
         const QString tip2 = model.data(
-            model.index(gr, ui::ModListModel::Flags), Qt::ToolTipRole).toString();
+            model.index(gr, ui::ModList::Flags), Qt::ToolTipRole).toString();
         check(tip2.contains(QStringLiteral("Not installed by the manager")),
               "no_metadata tooltip");
         check(tip2.contains(QStringLiteral("No valid game data")),
@@ -735,11 +735,11 @@ TEST_CASE("mod list model", "[ui]") {
         model.set_invalid_data(QStringLiteral("GhostMod"), false);
         model.set_no_metadata(QStringLiteral("GhostMod"), false);
         icons = model.data(
-            model.index(gr, ui::ModListModel::Flags),
-            ui::ModListModel::kFlagIconsRole).value<QList<QIcon>>();
+            model.index(gr, ui::ModList::Flags),
+            ui::ModList::kFlagIconsRole).value<QList<QIcon>>();
         check(icons.isEmpty(), "clearing the flags removes the icon");
         const QVariant fnt2 = model.data(
-            model.index(gr, ui::ModListModel::Name), Qt::FontRole);
+            model.index(gr, ui::ModList::Name), Qt::FontRole);
         check(!fnt2.isValid() || !fnt2.value<QFont>().italic(),
               "clearing invalid-data restores the non-italic name");
     }
@@ -753,7 +753,7 @@ TEST_CASE("mod list model", "[ui]") {
                                 "Changed", "Priority"};
         for (int c = 0; c < 11; ++c) {
             const QVariant hd = model.headerData(c, Qt::Horizontal, Qt::DisplayRole);
-            if (c == ui::ModListModel::Fold) {
+            if (c == ui::ModList::Fold) {
                 check(!hd.isValid() || hd.toString().isEmpty(),
                       "Fold column has no header label");
                 continue;
@@ -774,7 +774,7 @@ TEST_CASE("mod list model", "[ui]") {
         // Category renders in the Category column.
         model.set_category(QStringLiteral("Timed"), QStringLiteral("Gameplay"));
         const QVariant cat = model.data(
-            model.index(tr, ui::ModListModel::Category), Qt::DisplayRole);
+            model.index(tr, ui::ModList::Category), Qt::DisplayRole);
         check(cat.isValid() && cat.toString() == QLatin1String("Gameplay"),
               "set_category renders in the Category column");
         model.set_category(QStringLiteral("Timed"), QStringLiteral("Gameplay"));
@@ -785,16 +785,16 @@ TEST_CASE("mod list model", "[ui]") {
         // set_timestamps updates the entry and the two date columns.
         model.set_timestamps(QStringLiteral("Timed"), 1700000000, 1700005000);
         const QVariant inst = model.data(
-            model.index(tr, ui::ModListModel::Installation), Qt::DisplayRole);
+            model.index(tr, ui::ModList::Installation), Qt::DisplayRole);
         const QVariant chg = model.data(
-            model.index(tr, ui::ModListModel::Changed), Qt::DisplayRole);
+            model.index(tr, ui::ModList::Changed), Qt::DisplayRole);
         check(inst.toString() == QLatin1String("2023-11-14 22:13:20"),
               "Installation renders folder birth time as local datetime");
         check(chg.toString() == QLatin1String("2023-11-14 23:36:40"),
               "Changed renders folder mtime as local datetime");
         model.set_timestamps(QStringLiteral("Timed"), 0, 0);
         const QVariant inst0 = model.data(
-            model.index(tr, ui::ModListModel::Installation), Qt::DisplayRole);
+            model.index(tr, ui::ModList::Installation), Qt::DisplayRole);
         check(inst0.toString().isEmpty(),
               "zero timestamps render empty cells");
 
@@ -802,11 +802,11 @@ TEST_CASE("mod list model", "[ui]") {
         model.set_source_info(QStringLiteral("Timed"), QStringLiteral("nexusmods"),
                               QStringLiteral("12345"), QStringLiteral("https://nxm/"));
         const QVariant sid = model.data(
-            model.index(tr, ui::ModListModel::SourceId), Qt::DisplayRole);
+            model.index(tr, ui::ModList::SourceId), Qt::DisplayRole);
         check(sid.isValid() && sid.toString() == QLatin1String("12345"),
               "Source ID renders the numeric id");
         const QVariant tip = model.data(
-            model.index(tr, ui::ModListModel::Source), Qt::ToolTipRole);
+            model.index(tr, ui::ModList::Source), Qt::ToolTipRole);
         check(tip.isValid() && tip.toString() == QLatin1String("nexusmods"),
               "Source tooltip shows the vendor name");
         // Icon only when the icon pack actually resolves the vendor badge:
@@ -814,18 +814,18 @@ TEST_CASE("mod list model", "[ui]") {
         // (null in a hermetic test with no icon pack, non-null otherwise).
         const QIcon vendor = engine::IconManager::instance().resolve_icon("nexusmods");
         const QVariant dec = model.data(
-            model.index(tr, ui::ModListModel::Source), Qt::DecorationRole);
+            model.index(tr, ui::ModList::Source), Qt::DecorationRole);
         const QIcon dec_icon = dec.canConvert<QIcon>() ? dec.value<QIcon>() : QIcon();
         check(dec_icon.isNull() == vendor.isNull(),
               "Source DecorationRole matches the resolved vendor icon");
 
         // Version and Priority keep rendering after the enum reorder.
         const QVariant ver = model.data(
-            model.index(tr, ui::ModListModel::Version), Qt::DisplayRole);
+            model.index(tr, ui::ModList::Version), Qt::DisplayRole);
         check(ver.isValid() && ver.toString() == QLatin1String("1.0"),
               "Version renders after column reorder");
         const QVariant prio = model.data(
-            model.index(tr, ui::ModListModel::Priority), Qt::DisplayRole);
+            model.index(tr, ui::ModList::Priority), Qt::DisplayRole);
         check(prio.isValid() && prio.toInt() == 7,
               "Priority renders after column reorder");
     }
@@ -902,7 +902,7 @@ TEST_CASE("mod list model", "[ui]") {
     // Mod-to-mod nesting: on-item single-source drops of the same kind become
     // children (parent_id + indentation + a fold arrow that hides the subtree).
     {
-        ui::ModListModel m;
+        ui::ModList m;
         check(!m.nesting_enabled(), "nesting gate defaults to off");
         m.set_nesting_enabled(true);
         check(m.nesting_enabled(), "nesting gate can be enabled");
@@ -937,7 +937,7 @@ TEST_CASE("mod list model", "[ui]") {
         check(m.nesting_depth(rid("ModB")) == 1, "nested mod depth 1");
         check(rid("ModB") == rid("ModA") + 1, "nested mod lands directly below its parent");
         check(m.has_content(rid("ModA")), "parent mod with a child has content");
-        check(m.data(m.index(rid("ModA"), ui::ModListModel::Fold), Qt::DisplayRole)
+        check(m.data(m.index(rid("ModA"), ui::ModList::Fold), Qt::DisplayRole)
                       .toString() == QStringLiteral("\u25BC"),
               "mod with children shows down-arrow in Fold column");
 
@@ -957,7 +957,7 @@ TEST_CASE("mod list model", "[ui]") {
         check(m.is_row_fold_hidden(rid("ModB")) && m.is_row_fold_hidden(rid("ModC")),
               "folding the root hides the whole subtree");
         check(!m.is_row_fold_hidden(rid("ModD")), "unrelated mod stays visible");
-        check(m.data(m.index(rid("ModA"), ui::ModListModel::Fold), Qt::DisplayRole)
+        check(m.data(m.index(rid("ModA"), ui::ModList::Fold), Qt::DisplayRole)
                       .toString() == QStringLiteral("\u25B6"),
               "folded mod shows right-arrow in Fold column");
         m.set_folded(rid("ModA"), false);
@@ -997,7 +997,7 @@ TEST_CASE("mod list model", "[ui]") {
     // directly below the parent (which would make it the first child and stack
     // the children in reverse drop order).
     {
-        ui::ModListModel m;
+        ui::ModList m;
         m.set_nesting_enabled(true);
         QVector<ui::ModEntry> e;
         for (const char* id : {"ModA", "ModB", "ModC"}) {
@@ -1038,7 +1038,7 @@ TEST_CASE("mod list model", "[ui]") {
 
         // Separator variant of the same rule: dropping 02.x separators onto a
         // parent separator keeps them in drop order, not reversed.
-        ui::ModListModel s;
+        ui::ModList s;
         s.set_nesting_enabled(true);
         QVector<ui::ModEntry> se;
         for (const char* id : {"SepP_separator", "SepC_separator", "SepD_separator"}) {
@@ -1079,7 +1079,7 @@ TEST_CASE("mod list model", "[ui]") {
     // The new separator lands after the bottom separator's whole fold band
     // (below its mods) and takes nothing with it.
     {
-        ui::ModListModel m;
+        ui::ModList m;
         m.set_nesting_enabled(true);
         QVector<ui::ModEntry> e;
         for (const char* id : {"P_separator", "S1_separator", "ModM1", "ModM2", "S2_separator"}) {
@@ -1136,7 +1136,7 @@ TEST_CASE("mod list model", "[ui]") {
     // behavior only nested single-row drags - a multi-separator selection
     // dropped onto a separator fell back to a flat move.
     {
-        ui::ModListModel m;
+        ui::ModList m;
         m.set_nesting_enabled(true);
         QVector<ui::ModEntry> e;
         for (const char* id : {"SepA", "SepB", "SepC", "SepD"}) {
@@ -1171,7 +1171,7 @@ TEST_CASE("mod list model", "[ui]") {
               "both nested separators sit at depth 1");
 
         // Multi-mod variant: two mods dropped onto a mod.
-        ui::ModListModel m2;
+        ui::ModList m2;
         m2.set_nesting_enabled(true);
         QVector<ui::ModEntry> e2;
         for (const char* id : {"ModP", "ModQ", "ModR"}) {
@@ -1201,7 +1201,7 @@ TEST_CASE("mod list model", "[ui]") {
               "dragged mods land directly below the parent in drag order");
 
         // Mixed drag (mod + separator): explicitly NOT nested - flat move only.
-        ui::ModListModel m3;
+        ui::ModList m3;
         m3.set_nesting_enabled(true);
         QVector<ui::ModEntry> e3;
         for (const char* id : {"SepTarget_separator", "SepX_separator"}) {
@@ -1240,7 +1240,7 @@ TEST_CASE("mod list model", "[ui]") {
     // its band up to the next NON-descendant separator; nested separators and
     // their bands are swallowed by the parent's fold.
     {
-        ui::ModListModel m;
+        ui::ModList m;
         m.set_nesting_enabled(true);
         QVector<ui::ModEntry> e;
         ui::ModEntry sepP;
@@ -1353,7 +1353,7 @@ TEST_CASE("mod list model", "[ui]") {
     // unpinnable targets (Overwrite/MERGED/game-native) never nest.
     {
         // Clean model (no native band): flush-below-separator and no-link rules.
-        ui::ModListModel m;
+        ui::ModList m;
         m.set_nesting_enabled(true);
         QVector<ui::ModEntry> e;
         ui::ModEntry sep;
@@ -1432,7 +1432,7 @@ TEST_CASE("mod list model", "[ui]") {
               "gate-off drops indentation to 0");
         check(!m.has_content(rid("ModP")),
               "gate-off hides mod content/arrows");
-        check(m.data(m.index(rid("ModP"), ui::ModListModel::Fold), Qt::DisplayRole)
+        check(m.data(m.index(rid("ModP"), ui::ModList::Fold), Qt::DisplayRole)
                       .toString().isEmpty(),
               "gate-off shows no fold arrow on a mod with preserved children");
         m.set_folded(rid("ModP"), true);
@@ -1459,7 +1459,7 @@ TEST_CASE("mod list model", "[ui]") {
     // Game-native target (with a native band present): never a parent, and the
     // drop clamps below the band as usual.
     {
-        ui::ModListModel m;
+        ui::ModList m;
         m.set_nesting_enabled(true);
         QVector<ui::ModEntry> e;
         ui::ModEntry nat;
@@ -1494,7 +1494,7 @@ TEST_CASE("mod list model", "[ui]") {
     // cycled, overwrite/native-parented and missing links are all cleared;
     // valid chains survive.
     {
-        ui::ModListModel m;
+        ui::ModList m;
         QVector<ui::ModEntry> e;
         for (const char* id : {"ModA", "ModB", "ModC", "ModD", "ModE", "ModF",
                                "ModG", "ModH", "ModI", "ModJ"}) {
@@ -1558,7 +1558,7 @@ TEST_CASE("mod list model", "[ui]") {
     // Persistence/lifecycle: restore_parent_links (the instance.toml load
     // path), remove_mod subtree detach, rename_mod_in_place link cascade.
     {
-        ui::ModListModel m;
+        ui::ModList m;
         m.add_mod(QStringLiteral("ModA"), QStringLiteral("ModA"), QString());
         m.add_mod(QStringLiteral("ModB"), QStringLiteral("ModB"), QString());
         m.add_mod(QStringLiteral("ModC"), QStringLiteral("ModC"), QString());
@@ -1596,7 +1596,7 @@ TEST_CASE("mod list model", "[ui]") {
     // whole block (children + grandchildren) contiguously even when unrelated
     // rows sit between them; gate-off degrades to the flat single-row move.
     {
-        ui::ModListModel m;
+        ui::ModList m;
         // Interleaved on purpose: block rows sit at 1 (P), 3 (C), 4 (G).
         for (const char* id : {"U", "P", "V", "C", "G"})
             m.add_mod(QString::fromLatin1(id), QString::fromLatin1(id), QString());
@@ -1639,7 +1639,7 @@ TEST_CASE("mod list model", "[ui]") {
     // re-runs initStyleOption (re-reading CheckStateRole) and drew the checkbox
     // TWICE - once at the normal spot, once shifted next to the name.
     {
-        ui::ModListModel rm;
+        ui::ModList rm;
         rm.set_nesting_enabled(true);
         QVector<ui::ModEntry> re;
         for (const char* id : {"Parent", "Child"}) {
@@ -1656,7 +1656,7 @@ TEST_CASE("mod list model", "[ui]") {
         row2.is_overwrite = true;
         re.append(row2);
         rm.reset_with_order(re);
-        ui::ModTableView rview;
+        ui::ModView rview;
         rview.setModel(&rm);
         rview.setAlternatingRowColors(false);
         QMimeData rd;
@@ -1672,9 +1672,9 @@ TEST_CASE("mod list model", "[ui]") {
         QCoreApplication::processEvents();
         const QImage shot = rview.viewport()->grab().toImage();
         const QRect cell0 =
-            rview.visualRect(rm.index(row_with_id(rm, "Parent"), ui::ModListModel::Name));
+            rview.visualRect(rm.index(row_with_id(rm, "Parent"), ui::ModList::Name));
         const QRect cell1 =
-            rview.visualRect(rm.index(row_with_id(rm, "Child"), ui::ModListModel::Name));
+            rview.visualRect(rm.index(row_with_id(rm, "Child"), ui::ModList::Name));
         if (cell0.isValid() && cell1.isValid() && !shot.isNull()) {
             const QImage c0 = shot.copy(cell0);
             const QImage c1 = shot.copy(cell1);
@@ -1697,7 +1697,7 @@ TEST_CASE("mod list model", "[ui]") {
     {
         const bool old_center = Settings::instance().center_separator_text();
         Settings::instance().set_center_separator_text(true);
-        ui::ModListModel sm;
+        ui::ModList sm;
         sm.set_nesting_enabled(true);
         QVector<ui::ModEntry> se;
         for (const char* id : {"A", "B", "C", "D", "E"}) {
@@ -1729,10 +1729,10 @@ TEST_CASE("mod list model", "[ui]") {
         nest_onto("E", "D");
         check(sm.nesting_depth(row_with_id(sm, "E")) == 4,
               "5-deep separator chain nests to depth 4");
-        ui::ModTableView sv;
+        ui::ModView sv;
         sv.setModel(&sm);
         sv.setAlternatingRowColors(false);
-        sv.setColumnWidth(ui::ModListModel::Name, 260);
+        sv.setColumnWidth(ui::ModList::Name, 260);
         sv.resize(700, 180);
         sv.show();
         sv.setCurrentIndex(QModelIndex());
@@ -1757,7 +1757,7 @@ TEST_CASE("mod list model", "[ui]") {
         bool geom_ok = !sshot.isNull();
         for (const char* id : {"A", "B", "C", "D", "E"}) {
             const QRect cell = sv.visualRect(sm.index(row_with_id(sm, id),
-                                                      ui::ModListModel::Name));
+                                                      ui::ModList::Name));
             if (!cell.isValid()) {
                 geom_ok = false;
                 break;
@@ -1796,7 +1796,7 @@ TEST_CASE("mod list model", "[ui]") {
     // its parent ("mod 2 is 2-3px left of its parent"). The shift now ADDS the
     // checkbox width, so the child lands a full step right of the parent.
     {
-        ui::ModListModel mm;
+        ui::ModList mm;
         mm.set_nesting_enabled(true);
         QVector<ui::ModEntry> me;
         for (const char* id : {"P", "C"}) {
@@ -1820,10 +1820,10 @@ TEST_CASE("mod list model", "[ui]") {
                         mm.index(row_with_id(mm, "P"), 0));
         check(mm.nesting_depth(row_with_id(mm, "C")) == 1,
               "nested mod renders at depth 1");
-        ui::ModTableView mv;
+        ui::ModView mv;
         mv.setModel(&mm);
         mv.setAlternatingRowColors(false);
-        mv.setColumnWidth(ui::ModListModel::Name, 260);
+        mv.setColumnWidth(ui::ModList::Name, 260);
         mv.resize(700, 120);
         mv.show();
         mv.setCurrentIndex(QModelIndex());
@@ -1854,9 +1854,9 @@ TEST_CASE("mod list model", "[ui]") {
             return -1;
         };
         const QRect pcell =
-            mv.visualRect(mm.index(row_with_id(mm, "P"), ui::ModListModel::Name));
+            mv.visualRect(mm.index(row_with_id(mm, "P"), ui::ModList::Name));
         const QRect ccell =
-            mv.visualRect(mm.index(row_with_id(mm, "C"), ui::ModListModel::Name));
+            mv.visualRect(mm.index(row_with_id(mm, "C"), ui::ModList::Name));
         const int pte = text_end(mshot.copy(pcell));
         const int cte = text_end(mshot.copy(ccell));
         if (pte >= 0 && cte >= 0)
@@ -1871,7 +1871,7 @@ TEST_CASE("mod list model", "[ui]") {
     // block sits at the TOP of the list (row 0), so the always-winning
     // pseudo-mod is the winner for low-priority-wins games.
     {
-        ui::ModListModel mm;
+        ui::ModList mm;
         mm.set_conflict_order_reversed(true);
         mm.set_uses_merged(true);  // Isaac pins MERGED too
         QVector<ui::ModEntry> entries;
@@ -1911,7 +1911,7 @@ TEST_CASE("mod list model", "[ui]") {
     // set so a reorder writes only the moved rows' meta.ini (MO2 parity: the
     // profile is the in-memory source of truth, not per-move disk reads).
     {
-        ui::ModListModel dm;
+        ui::ModList dm;
         // Deterministic layout: ModA 0, ModB 1, ModC 2, Overwrite pinned last.
         QVector<ui::ModEntry> base;
         for (const char* id : {"ModA", "ModB", "ModC"}) {
@@ -1991,7 +1991,7 @@ TEST_CASE("mod list model set_mod_enabled", "[ui]") {
     QCoreApplication::setOrganizationName("GameModManager");
     QCoreApplication::setApplicationName("GameModManager");
 
-    ui::ModListModel model;
+    ui::ModList model;
     QVector<ui::ModEntry> entries;
     for (const char* id : {"Skyrim.esm", "SkyUI", "Enemy NPCs"}) {
         ui::ModEntry e;
