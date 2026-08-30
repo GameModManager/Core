@@ -379,7 +379,7 @@ Living document tracking MO2 feature parity and GMM-exclusive features.
 | Filter persistence | ✅ `saveFilters` | ❌ | ❌ |
 | Filter AND/OR mode | ✅ `FilterAnd`/`FilterOr` | ❌ | ❌ |
 | Column visibility toggle | ✅ `setColumnVisible()` | ✅ `column_toggle_header` | ✅ |
-| Mod counter display | ✅ `ModCounters` (LCD) | ✅ `gmm_status_bar` (counts) | ✅ |
+| Mod counter display | ✅ `ModCounters` (LCD) | ✅ `status_bar` (counts) | ✅ |
 | Create separator | ✅ | ✅ `create_separator()` / `create_separator_named()` | ✅ |
 | Create empty mod | ✅ `createEmptyMod` | ✅ `create_empty_mod()` | ✅ |
 | Import archives | ✅ | ✅ `import_archives()` | ✅ |
@@ -600,7 +600,7 @@ Living document tracking MO2 feature parity and GMM-exclusive features.
 | Zoom controls | ❌ | 🚀 `zoom_controls` | 🚀 |
 | Column toggle header | ❌ | 🚀 `column_toggle_header` | 🚀 |
 | Game path banner | ❌ | 🚀 `game_path_banner` | 🚀 |
-| Status bar (custom) | ✅ `StatusBar` | 🚀 `gmm_status_bar` | 🚀 |
+| Status bar (custom) | ✅ `StatusBar` | 🚀 `status_bar` | 🚀 |
 | Notification backend | ❌ | 🚀 `notification_backend` | 🚀 |
 | Single instance guard | ❌ | 🚀 `single_instance` (QtSingleApplication) | 🚀 |
 | BBCode parser (Nexus descriptions) | ✅ | ✅ `bbcode` | ✅ |

@@ -12,10 +12,10 @@ class QToolButton;
 
 namespace ui {
 
-class GmmStatusBar : public QWidget {
+class StatusBar : public QWidget {
     Q_OBJECT
 public:
-    explicit GmmStatusBar(QWidget* parent = nullptr);
+    explicit StatusBar(QWidget* parent = nullptr);
 
     void set_status(const QString& text);
 

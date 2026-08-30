@@ -74,7 +74,7 @@
 #include "ui/widgets/category_filter_panel.h"
 #include "ui/widgets/column_toggle_header.h"
 #include "ui/widgets/exec_controls_bar.h"
-#include "ui/widgets/gmm_status_bar.h"
+#include "ui/widgets/status_bar.h"
 #include "ui/widgets/list_dialog.h"
 #include "ui/widgets/mod_filter_bar.h"
 #include "ui/widgets/mod_list_model.h"

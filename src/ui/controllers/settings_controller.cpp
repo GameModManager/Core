@@ -65,7 +65,7 @@
 #include "ui/widgets/debug_window.h"
 #include "ui/widgets/exec_controls_bar.h"
 #include "ui/widgets/game_path_banner.h"
-#include "ui/widgets/gmm_status_bar.h"
+#include "ui/widgets/status_bar.h"
 #include "ui/widgets/instance_statistics_dialog.h"
 #include "ui/widgets/instance_switcher_dialog.h"
 #include "ui/widgets/main_toolbar.h"
@@ -643,7 +643,7 @@ void SettingsController::connect_menu_actions() {
           });
   connect(w_->menu_bar_, &AppMenuBar::pipeline_requested, w_->tab_mode_.get(),
           &TabModeController::route_pipeline);
-  connect(w_->status_bar_, &GmmStatusBar::pipeline_clicked, w_->tab_mode_.get(),
+  connect(w_->status_bar_, &StatusBar::pipeline_clicked, w_->tab_mode_.get(),
           &TabModeController::route_pipeline);
   connect(w_->menu_bar_, &AppMenuBar::refresh_requested, this, [this]() {
     if (w_->current_game_id_.empty())
