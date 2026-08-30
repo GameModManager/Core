@@ -413,7 +413,7 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    cli::HeadlessConfig cfg;
+    cli::HeadlessLauncher::Config cfg;
     cfg.executable = exec_path;
     cfg.game_dir = inst.info().game_dir;
     cfg.instance_root = inst.info().root;
@@ -421,9 +421,9 @@ int main(int argc, char *argv[]) {
     cfg.is_windows_exe = is_windows_exe;
     cfg.knowledge = &plugin_loader.knowledge();
     cfg.game_id = inst.info().game_id;
-    cfg.platform = platform.get();
 
-    int exit_code = cli::launch_game_headless(cfg);
+    cli::HeadlessLauncher launcher(cfg, platform.get());
+    int exit_code = launcher.run();
     engine::Logger::instance().debug("Headless: exit code " +
                                      std::to_string(exit_code));
     engine::CrashHandler::uninstall();
