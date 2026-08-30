@@ -390,8 +390,8 @@ LaunchParams prepare_launch_params(const LaunchPrepRequest &req,
     params.bind_mount_source = std::filesystem::path();
     params.bind_mount_target = std::filesystem::path();
     const auto feature =
-        GameFeatureRegistry::instance().resolve_feature<LocalSavegamesFeature>(
-            req.game_id);
+        Game::Features::Registry::instance()
+            .resolve_feature<LocalSavegamesFeature>(req.game_id);
     const std::string ini_file = feature ? feature->ini_file() : std::string();
     const std::string sub =
         req.knowledge.get(req.game_id, "mygames_folder", "");

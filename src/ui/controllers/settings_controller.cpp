@@ -113,17 +113,17 @@ void SettingsController::set_game_info(
     // persisted file directly (user edits preserved).
     const auto dat_path = instance_root / "categories.dat";
     if (std::filesystem::exists(dat_path)) {
-      engine::CategoryFactory::instance().load(dat_path);
+      engine::Category::Factory::instance().load(dat_path);
     } else {
       const auto core_set =
           w_->knowledge_ ? w_->knowledge_->get(game_id, "core_category_set")
                          : std::string();
       if (!core_set.empty()) {
-        engine::CategoryFactory::instance().applyCoreSet(core_set);
+        engine::Category::Factory::instance().applyCoreSet(core_set);
       } else {
-        engine::CategoryFactory::instance().applyCoreSet("Default");
+        engine::Category::Factory::instance().applyCoreSet("Default");
       }
-      engine::CategoryFactory::instance().save(dat_path);
+      engine::Category::Factory::instance().save(dat_path);
     }
     w_->current_instance_ = engine::Instance::from_root(instance_root);
     w_->current_instance_.read_toml();

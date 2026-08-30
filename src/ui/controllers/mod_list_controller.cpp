@@ -674,7 +674,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   connect(w_->category_filter_panel_,
           &CategoryFilterPanel::edit_categories_clicked, this, [this]() {
             // MO2 parity: the Categories dialog edits the global category
-            // registry (engine::CategoryFactory) and persists it to the
+            // registry (engine::Category::Factory) and persists it to the
             // instance's categories.dat. On accept the filter tree is rebuilt
             // (the checked set is reset — removed categories can no longer be
             // checked) and the mod filter is re-applied.

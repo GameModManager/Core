@@ -162,7 +162,7 @@ Living document tracking MO2 feature parity and GMM-exclusive features.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Category tree system | ✅ `Categories` (hierarchical) | ✅ `CategoryFactory` | ✅ |
+| Category tree system | ✅ `Categories` (hierarchical) | ✅ `Category::Factory` | ✅ |
 | Nexus category mapping | ✅ `NexusCategory` + `resolveNexusID` | ✅ `NexusCat` mapping | ✅ |
 | Category import/export | ✅ `CategoryImportDialog` | ❌ | ❌ |
 | Multi-category assignment | ✅ `ModInfo::setCategories` | ❌ | ❌ |

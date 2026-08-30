@@ -177,7 +177,7 @@ def register(ctx):
   fs::remove_all(tmp);
 }
 
-// P1.2 GameFeatureRegistry pybind mirror: a Python plugin calls
+// P1.2 Game::Features::Registry pybind mirror: a Python plugin calls
 // ctx.register_game_feature() to register (or, with a higher priority,
 // override) a per-game mod_data_checker. The mirror must feed the same
 // engine registry the C ABI feeds — so a mod whose only content is the
@@ -185,7 +185,7 @@ def register(ctx):
 static void test_python_register_game_feature() {
   std::cout << "=== test_python_register_game_feature ===" << std::endl;
 
-  engine::GameFeatureRegistry::instance().clear();
+  engine::Game::Features::Registry::instance().clear();
 
   fs::path tmp = fs::temp_directory_path() / "gmm_python_feature";
   fs::create_directories(tmp);
@@ -221,7 +221,7 @@ def register(ctx):
           "python plugin with register_game_feature loads");
 
   auto combined =
-      engine::GameFeatureRegistry::instance().resolve_mod_data_checker(
+      engine::Game::Features::Registry::instance().resolve_mod_data_checker(
           "skyrim");
   require(combined != nullptr, "python-registered checker resolves");
   require(combined && !combined->folder_names().empty() &&
@@ -409,7 +409,7 @@ def register(ctx):
 static void test_python_game_plugins() {
   std::cout << "=== test_python_game_plugins ===" << std::endl;
 
-  engine::GameFeatureRegistry::instance().clear();
+  engine::Game::Features::Registry::instance().clear();
 
   fs::path tmp = fs::temp_directory_path() / "gmm_python_game_plugins";
   fs::remove_all(tmp);

@@ -1,9 +1,10 @@
 #pragma once
 
-// P1.2 GameFeatureRegistry — MO2's IGameFeatures analogue (PLAN.md §19.3 gap 2
-// / §19.4 P1.2). Mirrors SortRegistry/diagnostics_registry: a process-wide
-// singleton (Qt-free) plugins populate through register_game_feature (C ABI)
-// or its pybind mirror, and the engine queries at use sites.
+// P1.2 Game::Features::Registry — MO2's IGameFeatures analogue (PLAN.md §19.3
+// gap 2 / §19.4 P1.2). Mirrors SortRegistry/diagnostics_registry: a
+// process-wide singleton (Qt-free) plugins populate through
+// register_game_feature (C ABI) or its pybind mirror, and the engine queries at
+// use sites.
 //
 // Semantics, matching REFERENCES/modorganizer/src/game_features.{h,cpp}:
 //   - register_feature(): priority + replace. Higher priority wins resolve();
@@ -130,8 +131,9 @@ unmanaged_mods_for(const std::string &game_id);
 // register_game_feature_data ABI entry (and its pybind mirror) land here, so
 // the parse logic lives once and is directly testable. This is the path for
 // the seven structured-data feature types; the two array-payload types
-// (mod_data_checker, game_plugins) go through GameFeatureRegistry directly.
-// Keys per feature_type (see gmm_abi_v1.h register_game_feature_data):
+// (mod_data_checker, game_plugins) go through Game::Features::Registry
+// directly. Keys per feature_type (see gmm_abi_v1.h
+// register_game_feature_data):
 //   mod_data_content  — "enabled" (comma-separated catalog IDs),
 //                       "content:<id>" = "name|icon|filter_only" (override).
 //   data_archives     — "vanilla_archives" (comma-separated archive names).
