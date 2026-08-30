@@ -338,7 +338,7 @@ add_case_insensitive_aliases(const std::filesystem::path &staging_dir) {
 bool deploy_impl(const path &mods_dir, const path &deploy_root,
                  const std::string &deploy_prefix, bool deploy_include_mod_id,
                  const std::string &disable_mechanism, bool case_sensitive,
-                 DeploymentStrategy &strategy, const path &ledger_file,
+                 Deploy::Interface &strategy, const path &ledger_file,
                  bool add_ci_aliases, const path &backup_root,
                  unsigned int num_threads, const DeployProgressFn &progress) {
   std::error_code ec;

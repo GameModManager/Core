@@ -424,9 +424,9 @@ QListWidgetItem* NexusPanel::make_server_item(const engine::NexusServer& srv) co
 void NexusPanel::refresh_servers() {
     known_list_->clear();
     preferred_list_->clear();
-    for (const auto& srv : engine::NexusServers::instance().known())
+    for (const auto& srv : engine::Source::Nexus::Servers::instance().known())
         known_list_->addItem(make_server_item(srv));
-    for (const auto& srv : engine::NexusServers::instance().preferred())
+    for (const auto& srv : engine::Source::Nexus::Servers::instance().preferred())
         preferred_list_->addItem(make_server_item(srv));
 }
 
@@ -438,7 +438,7 @@ void NexusPanel::persist_server_preferences() {
         const QString name = preferred_list_->item(i)->data(Qt::UserRole).toString();
         if (!name.isEmpty()) ordered.push_back(name.toStdString());
     }
-    engine::NexusServers::instance().set_preferred(ordered);
+    engine::Source::Nexus::Servers::instance().set_preferred(ordered);
 }
 
 void NexusPanel::connect_to_nexus() {

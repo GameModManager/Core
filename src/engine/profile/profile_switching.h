@@ -11,9 +11,6 @@
 namespace engine::PluginDb {
 class Database;
 }
-namespace engine {
-using PluginDatabase = PluginDb::Database;  // backward-compat alias
-}
 
 namespace engine::profile {
 
@@ -80,7 +77,7 @@ struct ProfileSwitchCallbacks {
 //   5. settings.ini.
 // Returns false with *error set on the first failure.
 bool save_current_profile(ProfileManager &profile, const ProfileSaveState &state,
-                          engine::PluginDatabase *plugin_db = nullptr,
+                          engine::PluginDb::Database *plugin_db = nullptr,
                           std::string *error = nullptr);
 
 // Atomically write the profile's tweaked INI file (initweaks.ini). The
@@ -118,7 +115,7 @@ bool write_tweaked_ini(const std::filesystem::path &profile_dir,
 ProfileSwitchResult switch_profile(const std::filesystem::path &profiles_dir,
                                    const std::string &name, ProfileManager *current,
                                    const ProfileSaveState &current_state,
-                                   engine::PluginDatabase *plugin_db,
+                                   engine::PluginDb::Database *plugin_db,
                                    const ProfileSwitchCallbacks &callbacks);
 
 } // namespace engine::profile
