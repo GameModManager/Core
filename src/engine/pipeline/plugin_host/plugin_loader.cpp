@@ -1567,6 +1567,43 @@ static void cb_v2_register_animation_parser(GmmRegistrationCtxV2 *ctx,
           free(cf.layers);
         }
         free(c_out.frames);
+
+        /* Convert named animation states (new in ABI v2.1) */
+        for (size_t si = 0; si < c_out.state_count; ++si) {
+          auto &cs = c_out.states[si];
+          AnimationParserFeature::AnimationState state;
+          if (cs.name) {
+            state.name = std::string(cs.name);
+            free(cs.name);
+          }
+          state.canvas_width = cs.canvas_width;
+          state.canvas_height = cs.canvas_height;
+          for (size_t fi = 0; fi < cs.frame_count; ++fi) {
+            auto &cf = cs.frames[fi];
+            AnimationParserFeature::Frame frame;
+            frame.delay_ms = cf.delay_ms;
+            for (size_t li = 0; li < cf.layer_count; ++li) {
+              auto &cl = cf.layers[li];
+              AnimationParserFeature::LayerItem layer;
+              layer.x = cl.x;
+              layer.y = cl.y;
+              layer.width = cl.width;
+              layer.height = cl.height;
+              if (cl.rgba_pixels && cl.pixel_count > 0) {
+                layer.rgba_pixels.assign(cl.rgba_pixels,
+                                         cl.rgba_pixels + cl.pixel_count);
+                free(cl.rgba_pixels);
+              }
+              frame.layers.push_back(std::move(layer));
+            }
+            state.frames.push_back(std::move(frame));
+            free(cf.layers);
+          }
+          free(cs.frames);
+          data.states.push_back(std::move(state));
+        }
+        free(c_out.states);
+
         return data;
       });
 
