@@ -1,51 +1,41 @@
-
-> [!WARNING]  
-> This project is under active development and will break often. Please do not try to use it in it's current state beyond just a simple preview.
-
-<div align="center">
-
 # GameModManager
 
-A cross-platform, plugin-driven game mod manager with an MO2-style UI. Drop in a game plugin - no core rebuild needed.
+A cross-platform, plugin-driven game mod manager. Game-specific logic lives in
+shared libraries loaded at runtime, so adding a new game never requires a core
+rebuild.
 
-</div>
+> [!WARNING]
+> This project is under active development and may break between releases.
 
-!["Main UI Preview"](./assets/GMM2.png)
-
----
-
-## Chapters
-
-1. [Features](#features)
-2. [Supported Games](#supported-games)
-3. [Building from Source](#building-from-source)
-4. [Running](#running)
-5. [Architecture](#architecture)
-6. [Writing a Game Plugin](#writing-a-game-plugin)
-7. [Tests](#tests)
-8. [Known Issues & Roadmap](#known-issues--roadmap)
+![Main UI Preview](./assets/GMM2.png)
 
 ---
 
-## Features
+## Overview
 
-- **MO2-style mod list** - virtual mod list with drag-and-drop reordering, a fixed game-native (unmanaged) band pinned above user mods, separators with fold arrows, conflict status icons
-- **Plugin-based game support** - each game is a separate shared library loaded via the stable C ABI (dlopen/LoadLibrary)
-- **Multi-instance support** (portable and global)
-- **Deploy strategies:**
-    - [x] OverlayFS (Linux default)
-    - [x] symlink
-    - [ ] Direct (Copy/In Place)
-    - [ ] hardlink
-    - [ ] NTFS junction (Windows)
-    - [ ] UVFS (Windows)
-    - [ ] FUSE VFS (Linux)
-- **Conflict detection** with priority-ordered file overwrites and conflict-resolution dialogs 
-- **Downloads tab** - Nexus + Steam Workshop sources, per-file progress/Pause, `nxm://` link routing via IPC, untracked-archive scan
-- **Themeable** via QSS token templates (Dark + Nord bundled, plus Qt built-in styles)
-- **Python scripting tier** via pybind11
-- **Headless CLI** - launch games without the UI, handle `nxm://` & `gmm://` links for cross-mod manager routing 
-- Cross-platform: Linux, Windows & (macOS planned)
+GameModManager is a mod manager built around a stable C ABI and a Qt-free
+engine core. It runs on Linux and Windows, with macOS planned. The UI follows
+the familiar MO2-style layout, while the engine keeps platform-specific logic
+behind a clean abstraction layer.
+
+### Notable Features
+
+- **Plugin-driven game support** - each game is a separate shared library
+  loaded via a stable C ABI (`dlopen`/`LoadLibrary`). No core rebuild to add a
+  game.
+- **Cross-platform deploy strategies** - OverlayFS (Linux default), symlink,
+  hardlink, and FUSE VFS, with Windows USVFS and NTFS junction planned.
+- **MO2-style mod list** - virtual mod list with drag-and-drop reordering, a
+  fixed game-native band, separators, and conflict status icons.
+- **Conflict detection** - priority-ordered file overwrites with resolution
+  dialogs.
+- **Downloads** - Nexus and Steam Workshop sources, per-file progress and
+  pause, `nxm://` link routing via IPC.
+- **Headless CLI** - launch games and handle `nxm://` / `gmm://` links without
+  the UI.
+- **Themeable UI** - QSS token templates (Dark and Nord bundled).
+- **Python scripting** - embedded via pybind11.
+- **Multi-instance** - portable and global instances.
 
 ---
 
@@ -68,15 +58,15 @@ Adding a new game requires only a new plugin file.
 
 | Library | Version | Purpose |
 |---------|---------|---------|
-| Qt 6 | ≥ 6.0 | UI framework |
-| Qt6Keychain | ≥ 0.14 | OS keyring backend |
+| Qt 6 | >= 6.0 | UI framework |
+| Qt6Keychain | >= 0.14 | OS keyring backend |
 | libzip | - | Archive extraction |
 | sqlite3 | - | Mod cache |
 | yaml-cpp | - | Config / masterlist parsing |
 | libcurl | - | HTTP downloads |
 | nlohmann/json | - | JSON parsing |
 | pybind11 | 2.13.6 (fetched) | Python embedding |
-| Python 3 | ≥ 3.10 | Plugin scripting |
+| Python 3 | >= 3.10 | Plugin scripting |
 | libfuse3 | (optional) | VFS/OverlayFS deploy |
 
 ### Linux (Ubuntu/Debian)
@@ -126,7 +116,8 @@ cmake --build build --config Release
 ### macOS
 
 > [!NOTE]
-> macOS support is planned. The build should work but platform-specific paths and native launch are not yet implemented.
+> macOS support is planned. The build should work, but platform-specific paths
+> and native launch are not yet implemented.
 
 ```bash
 # Install dependencies via Homebrew
@@ -146,143 +137,57 @@ cmake --build build -j$(sysctl -n hw.ncpu)
 
 ---
 
-## Running
+## Thank You
 
-```bash
-# Normal launch (opens the last-used instance)
-./build/gamemodmanager
+GameModManager would not exist without the incredible work of the modding
+community. We stand on the shoulders of giants, and we want to give credit where
+it is due.
 
-# Launch a specific instance
-./build/gamemodmanager --instance The_Binding_of_Isaac_Rebirth
+### ModOrganizer 2 Community
 
-# Headless launch: deploy mods and start a game without the UI
-GMM_DEBUG=1 ./build/gamemodmanager --launch --instance Skyrim_Special_Edition \
-    --exe skse64_loader.exe
+The single biggest inspiration for this project. MO2's architecture, plugin
+system, virtual filesystem, and UX have shaped GameModManager at every level.
 
-# Route an nxm:// download link to the running instance (or queue it headless)
-./build/gamemodmanager --handle-nxm "nxm://skyrimspecialedition/mods/..."
-```
+- [ModOrganizer2 / modorganizer](https://github.com/ModOrganizer2/modorganizer) - the core MO2 application
+- [ModOrganizer2 / usvfs](https://github.com/ModOrganizer2/usvfs) - the USVFS virtual filesystem layer
+- [ModOrganizer2 / modorganizer-archive](https://github.com/ModOrganizer2/modorganizer-archive) - archive handling
+- [ModOrganizer2 / modorganizer-game_bethesda](https://github.com/ModOrganizer2/modorganizer-game_bethesda) - Bethesda game support
+- [ModOrganizer2 / modorganizer-installer_fomod](https://github.com/ModOrganizer2/modorganizer-installer_fomod) - FOMOD installer
+- [ModOrganizer2 / modorganizer-installer_fomod_csharp](https://github.com/ModOrganizer2/modorganizer-installer_fomod_csharp) - C# FOMOD installer
+- [ModOrganizer2 / modorganizer-installer_quick](https://github.com/ModOrganizer2/modorganizer-installer_quick) - quick installer
+- [ModOrganizer2 / modorganizer-lootcli](https://github.com/ModOrganizer2/modorganizer-lootcli) - LOOT CLI integration
+- [ModOrganizer2 / modorganizer-nxmhandler](https://github.com/ModOrganizer2/modorganizer-nxmhandler) - NXM link handler
+- [ModOrganizer2 / modorganizer-preview_dds](https://github.com/ModOrganizer2/modorganizer-preview_dds) - DDS preview
 
-CLI flags: `--instance <name|path>`, `--launch`, `--exe <relative path>`, `--handle-nxm <url>`, `--handle-gmm <url>`, `--help`.
+### Plugin & Tool Authors
 
-On first run, the app shows a game selection screen. After selecting a game, an instance is created under `~/.local/share/GameModManager/instances/`.
+- [gabriel-andreescu / modorganizer-preview_nif](https://github.com/gabriel-andreescu/modorganizer-preview_nif) - NIF 3D mesh preview (the basis for our NIF viewer)
+- [Exit-9B / modorganizer-bsplugins](https://github.com/Exit-9B/modorganizer-bsplugins) - Bethesda plugin manager (BSPlugins)
+- [aglowinthefield / mo2-fomod-plus](https://github.com/aglowinthefield/mo2-fomod-plus) - enhanced FOMOD installer
 
-`GMM_DEBUG=1` shows debug-level log lines in the console (the log file always has full verbosity). Crash dumps land in `~/.local/share/GameModManager/crashes/`.
+### NIFSkope
 
----
+The NIF file format library and tools. Our shader lighting math is derivative of
+NIFSkope's work and is used under its BSD license.
 
-## Architecture
+- [NIF File Format Library and Tools](https://github.com/niftools/nifskope) - NIFSkope
 
-```
-src/
-├-- cli/                    # Headless CLI (--launch, --handle-nxm)
-├-- engine/                 # Qt-free core - no Qt headers allowed here
-│   ├-- archive/            # Zip extraction
-│   ├-- cache/              # SQLite mod cache
-│   ├-- deploy/             # OverlayFS, symlink, hardlink, junction, FUSE strategies + deploy ledger
-│   ├-- detect/             # Game detection, mod scanning
-│   ├-- index/              # Conflict index
-│   ├-- instance/           # Instance management (portable + installed)
-│   ├-- keyring.{h,cpp}     # Keyring interface + secure file fallback
-│   ├-- launcher.{h,cpp}    # Shared game-launch chain (process-group watch, overlay tiers)
-│   ├-- log/                # Logger + crash handler
-│   ├-- meta/               # Metadata parsers
-│   ├-- model/              # Profile model
-│   ├-- notify/             # Notification backends
-│   ├-- nxm/                # nxm:// router + IPC server (single-instance guard)
-│   ├-- overlay_launcher / preload_interceptor # OverlayFS 3-tier capture chain
-│   ├-- overwrite/          # Overwrite movers/sync logic
-│   ├-- pipeline/           # 8-stage pipeline (fetch→...→launch)
-│   ├-- plugin_host/        # dlopen loader + Python embedding
-│   ├-- plugins/            # PluginDb::Database (MO2 PluginList port), TES4 header parser
-│   ├-- registry/           # Stage registry, hook registry, GameKnowledge
-│   ├-- source/             # Source providers: Nexus, Steam Workshop
-│   ├-- sort/               # Generic sort provider + ABI wrapper
-│   ├-- theme/              # QSS token-template engine
-│   ├-- trace/              # Pipeline trace recorder
-│   ├-- workshop/           # Steam Workshop / remote cache
-│   └-- nexus_auth.{h,cpp}  # Nexus API auth + rate limits
-├-- keyring/                # QtKeychain backend (Qt-bound; engine stays Qt-free)
-├-- platform/               # OS-specific (linux/, windows/, macos/)
-├-- runtime/                # ProtonRuntime, NativeRuntime, WineRuntime
-├-- ui/                     # Qt Widgets - lives here, never in engine/
-│   ├-- main_window/        # Main window, toolbar, status bar, launch + highlight wiring
-│   ├-- widgets/            # Mod list (ModListModel), filter bar, console, etc.
-│   ├-- panels/             # Plugins/Archives/Data/Saves/Downloads tabs
-│   ├-- settings/           # Settings singleton + 8-tab SettingsContentWidget (popup SettingsDialog wrapper)
-│   ├-- overwrite/          # MO2 overwrite dialogs (sync, move-to-mod, query, browser)
-│   ├-- game_selection/     # First-run game picker
-│   └-- pipeline_worker.cpp # Pipeline runs on a worker QThread
-└-- main.cpp                # Entry point
-```
+### Nexus Mods
 
-### Plugin System
+- [Nexus-Mods / NexusMods.App](https://github.com/Nexus-Mods/NexusMods.App) - the Nexus Mods app, a source of inspiration for modern mod management UX
 
-Game-specific logic lives in shared libraries under `external/plugins/`. Each plugin implements `gmm_register_v1()` from the ABI header and registers identity, hooks, tabs, and metadata via the `GmmRegistrationCtx` callbacks. The engine discovers and loads plugins at startup via `dlopen`/`LoadLibrary`, and a version guard (`gmm_abi_version`) checks ABI compatibility.
+### Other Mod Managers
 
-```
-external/
-├-- abi/                            # Stable C ABI header (gmm_abi_v1.h, GMM_ABI_VERSION=1)
-└-- plugins/
-    ├-- CMakeLists.txt
-    ├-- SkyrimSpecialEdition/       # Skyrim SE: plugins.txt load order, Data/ layout
-    ├-- TheBindingOfIsaacRebirth/   # Isaac: mods/ layout, metadata.xml parsing
-    └-- Tools/                      # ImageDiff, IsaacModSorter
-```
+- [ChrisDKN / Amethyst-Mod-Manager](https://github.com/ChrisDKN/Amethyst-Mod-Manager) - an open-source mod manager we reference for ideas
 
----
+### Game Studios
 
-## Writing a Game Plugin
+- **Bethesda Game Studios** - for creating the Elder Scrolls and Fallout series, and for the modding-friendly file formats (NIF, BSA/BA2, ESP/ESM) that this project supports
+- **Valve** - for Steam, the Steamworks SDK, and for fostering a modding ecosystem
+- **Edmund McMillen & Nicalis** - for The Binding of Isaac, and for the ANM2 animation format our viewer supports
 
-Create a C/C++ file in `external/plugins/yourgame/`:
+### The Modding Community
 
-```cpp
-#include "gmm_abi_v1.h"
-
-static const uint32_t STEAM_APPID = 12345;
-
-/* plugins.txt / metadata.xml writer */
-static int order_encoding(const char* const* ordered_ids, size_t count,
-                          const char* output_path, void* user_data) {
-    /* ...write the load order file... */
-    return 1;
-}
-
-extern "C" void gmm_register_v1(GmmRegistrationCtx* ctx) {
-    ctx->register_identity(ctx, STEAM_APPID,
-        NULL, NULL,              /* gog_id, epic_namespace */
-        "yournexusdomain",       /* nexus_domain */
-        "Your Game", NULL, NULL, NULL);
-
-    if (ctx->register_meta)
-        ctx->register_meta(ctx, "You", "0.1.0", "Your Game support");
-    if (ctx->register_category)
-        ctx->register_category(ctx, "Game Support");
-
-    ctx->register_hook(ctx, "mods_subpath", "Data", NULL, 0, NULL);
-
-    ctx->register_tab(ctx, "plugins", "Plugins", "Data/",
-        "ESP/ESM plugin files", NULL, NULL, NULL, NULL, NULL);
-
-    ctx->register_order_encoding(ctx, order_encoding);
-}
-
-extern "C" uint32_t gmm_abi_version(void) {
-    return GMM_ABI_VERSION;
-}
-```
-
-Build it as a shared library and drop it into the `plugins/` directory. The core will pick it up on next launch - no recompilation needed.
-
-See `external/plugins/SkyrimSpecialEdition/GameSupport/SkyrimSpecialEdition.cpp` for a complete real-world example. Registering metadata/category/settings callbacks is optional - NULL-check them so plugins built against older headers keep loading (ABI stays v1).
-
----
-
-## Known Issues & Roadmap
-
-- [ ] macOS platform module (Phase 4) - build works, platform paths/native launch pending
-- [ ] Windows native launch + UVFS tier (Phase 3)
-- [ ] Non-Steam game detection (GOG, Epic via Heroic/Lutris)
-- [ ] Portable instance renaming
-- [ ] Additional game plugins
-- [ ] More source providers (DirectURL, LocalArchive)
+To every mod author, every tool creator, every wiki contributor, and every
+player who has ever installed a mod - thank you. This project exists because of
+you.
