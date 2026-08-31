@@ -10,6 +10,7 @@
 #include <QJsonObject>
 #include <QMenu>
 #include <QProcess>
+#include <QShortcut>
 #include <QStandardPaths>
 #include <QStyle>
 #include <QTemporaryDir>
@@ -157,7 +158,7 @@ ExecControlsBar::ExecControlsBar(QWidget *parent) : QWidget(parent) {
   layout->addWidget(exec_combo_, 0, 0, 2, 1);
 
   run_btn_ = new QToolButton(this);
-  run_btn_->setText(tr("Run"));
+  run_btn_->setText(tr("&Run"));
   run_btn_->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
   run_btn_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
   run_btn_->setMinimumHeight(24);
@@ -165,7 +166,7 @@ ExecControlsBar::ExecControlsBar(QWidget *parent) : QWidget(parent) {
   layout->addWidget(run_btn_, 0, 1);
 
   shortcut_btn_ = new QToolButton(this);
-  shortcut_btn_->setText(tr("Shortcut"));
+  shortcut_btn_->setText(tr("S&hortcut"));
   shortcut_btn_->setIcon(style()->standardIcon(QStyle::SP_FileLinkIcon));
   shortcut_btn_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
   shortcut_btn_->setMinimumHeight(24);
@@ -188,6 +189,21 @@ ExecControlsBar::ExecControlsBar(QWidget *parent) : QWidget(parent) {
   connect(run_btn_, &QToolButton::clicked, this, &ExecControlsBar::run_clicked);
   connect(shortcut_btn_, &QToolButton::clicked, this,
           &ExecControlsBar::shortcut_to_toolbar);
+
+  // Keyboard-only navigation shortcuts (Workspace-w35b)
+  run_shortcut_ = new QShortcut(QKeySequence(Qt::ALT | Qt::Key_R), this);
+  connect(run_shortcut_, &QShortcut::activated, this,
+          &ExecControlsBar::run_clicked);
+
+  shortcut_menu_shortcut_ =
+      new QShortcut(QKeySequence(Qt::ALT | Qt::Key_S), this);
+  connect(shortcut_menu_shortcut_, &QShortcut::activated, this, [this]() {
+    // Show the shortcut button's dropdown menu at its position
+    if (shortcut_btn_->menu()) {
+      shortcut_btn_->menu()->popup(
+          shortcut_btn_->mapToGlobal(QPoint(0, shortcut_btn_->height())));
+    }
+  });
 
   // When "<Edit...>" ends up selected, snap back to the previous real
   // selection and open the executable editor. The editor is wired here
@@ -301,7 +317,8 @@ void ExecControlsBar::add_executable(const QString &display_name,
   e.title = display_name;
   e.path = rel_path;
   int insert_pos = 1; // right after the sentinel (index 0)
-  exec_combo_->insertItem(insert_pos, icon, Executables::exec_entry_display_name(e),
+  exec_combo_->insertItem(insert_pos, icon,
+                          Executables::exec_entry_display_name(e),
                           QVariant(e.toJson()));
   exec_combo_->setCurrentIndex(insert_pos);
 }
@@ -313,7 +330,8 @@ void ExecControlsBar::add_entry(const Executables::Entry &entry) {
   // Append at the end (after the sentinel) so the combo order matches the
   // order entries were added in - full rebuilds must not reverse the list.
   int insert_pos = exec_combo_->count();
-  exec_combo_->insertItem(insert_pos, icon, Executables::exec_entry_display_name(entry),
+  exec_combo_->insertItem(insert_pos, icon,
+                          Executables::exec_entry_display_name(entry),
                           QVariant(entry.toJson()));
   exec_combo_->setCurrentIndex(insert_pos);
 }
