@@ -243,6 +243,12 @@ void PreviewWindow::reload() {
   if (load_plugin_preview(path)) {
     engine::Logger::instance().debug(
         "[PreviewWindow] reload: load_plugin_preview SUCCEEDED");
+    // For ANM2 files, the plugin provides the sprite widget, but we also need
+    // the host's controls panel (animation list, speed slider, play/pause,
+    // etc.).
+    if (has_extension(path, animation_extensions())) {
+      parse_anm2_data(path);
+    }
     return;
   }
   engine::Logger::instance().debug(
@@ -295,7 +301,7 @@ bool PreviewWindow::load_image(const QString &path) {
   return true;
 }
 
-bool PreviewWindow::load_anm2(const QString &path) {
+bool PreviewWindow::parse_anm2_data(const QString &path) {
   if (!has_extension(path, animation_extensions()))
     return false;
 
@@ -365,9 +371,7 @@ bool PreviewWindow::load_anm2(const QString &path) {
     anm2_anim_list_->blockSignals(false);
   }
 
-  // Show ANM2 controls, switch stack to image page for the animation preview.
-  stack_->setVisible(true);
-  stack_->setCurrentWidget(image_page_);
+  // Show ANM2 controls panel.
   build_anm2_controls();
   anm2_controls_->setVisible(true);
 
@@ -391,10 +395,20 @@ bool PreviewWindow::load_anm2(const QString &path) {
 
   if (!anm2_frames_.empty()) {
     current_pixmap_ = anm2_frames_.front();
-    apply_zoom();
   }
 
   update_anm2_ui();
+  return true;
+}
+
+bool PreviewWindow::load_anm2(const QString &path) {
+  if (!parse_anm2_data(path))
+    return false;
+
+  // Switch the stack to the image page for the animation preview.
+  stack_->setVisible(true);
+  stack_->setCurrentWidget(image_page_);
+  apply_zoom();
   return true;
 }
 
