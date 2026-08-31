@@ -223,18 +223,27 @@ void AppMenuBar::set_icon_size(int size) {
 // --------- View checkbox sync ---------
 
 void AppMenuBar::set_toolbar_checked(bool checked) {
-  if (toggle_toolbar_action_)
+  if (toggle_toolbar_action_) {
+    toggle_toolbar_action_->blockSignals(true);
     toggle_toolbar_action_->setChecked(checked);
+    toggle_toolbar_action_->blockSignals(false);
+  }
 }
 
 void AppMenuBar::set_status_bar_checked(bool checked) {
-  if (toggle_status_bar_action_)
+  if (toggle_status_bar_action_) {
+    toggle_status_bar_action_->blockSignals(true);
     toggle_status_bar_action_->setChecked(checked);
+    toggle_status_bar_action_->blockSignals(false);
+  }
 }
 
 void AppMenuBar::set_console_checked(bool checked) {
-  if (toggle_console_action_)
+  if (toggle_console_action_) {
+    toggle_console_action_->blockSignals(true);
     toggle_console_action_->setChecked(checked);
+    toggle_console_action_->blockSignals(false);
+  }
 }
 
 // --------- Help ---------
