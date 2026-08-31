@@ -235,7 +235,7 @@ void py_diag_v1_bridge(const char *plugin_name, char *out_buffer,
     return;
   py::gil_scoped_acquire acquire;
   try {
-    py::object result = p->fn();
+    py::object result = p->fn(py::str(plugin_name));
     std::vector<std::string> messages;
     if (py::isinstance<py::list>(result)) {
       for (auto item : py::cast<py::list>(result)) {
@@ -688,7 +688,7 @@ public:
   // options) tuple; options is None except for type "choice" (a list of
   // candidate choices) or "int" (the "min:max" range string).
   void register_settings_tab(const std::string &title,
-                             const std::vector<py::tuple> &settings) {
+                             py::object settings_obj) {
     if (title.empty()) {
       engine::Logger::instance().warn(
           "register_settings_tab: empty title - ignored");
@@ -697,19 +697,20 @@ public:
     engine::PluginInfo::SettingTab tab;
     tab.title = title;
     std::vector<const char *> keys, types, defaults, options;
-    for (const auto &t : settings) {
-      if (t.size() < 3)
+    py::list settings = settings_obj.cast<py::list>();
+    for (const auto &item : settings) {
+      py::tuple t = py::reinterpret_borrow<py::tuple>(item);
+      if (py::len(t) < 3)
         continue;
       engine::PluginInfo::SettingTabEntry entry;
       entry.key = py::cast<std::string>(t[0]);
       entry.type = py::cast<std::string>(t[1]);
       entry.default_value = py::cast<std::string>(t[2]);
       std::string opt;
-      if (t.size() >= 4 && !t[3].is_none()) {
+      if (py::len(t) >= 4 && !t[3].is_none()) {
         if (entry.type == "choice") {
           for (const auto &o : py::cast<std::vector<std::string>>(t[3]))
             entry.choices.push_back(o);
-          opt = py::cast<std::string>(t[3]); // newline-joined below
           std::string joined;
           for (size_t i = 0; i < entry.choices.size(); ++i) {
             if (i)
@@ -758,7 +759,7 @@ public:
 
   // -- v2 IPluginDiagnose (registers into both the v1 DiagnosticsRegistry for
   //    the Plugins tab and the v2 DiagnoseRegistry) --
-  void register_diagnostics(const std::string &game_id, py::object fn) {
+  void register_diagnostics(py::object fn, const std::string &game_id = "") {
     if (!py::isinstance<py::function>(fn)) {
       engine::Logger::instance().warn(
           "register_diagnostics: fn is not a callable - ignored");
@@ -1238,12 +1239,11 @@ PYBIND11_EMBEDDED_MODULE(gmm, m) {
       .def("register_settings", &PyRegistrationContext::register_settings,
            py::arg("settings"))
       .def("register_settings_tab",
-           &PyRegistrationContext::register_settings_tab, py::arg("title"),
-           py::arg("settings"))
+           &PyRegistrationContext::register_settings_tab)
       .def("register_requirements",
            &PyRegistrationContext::register_requirements, py::arg("fn"))
       .def("register_diagnostics", &PyRegistrationContext::register_diagnostics,
-           py::arg("game_id") = "", py::arg("fn"))
+           py::arg("fn"), py::arg("game_id") = "")
       .def("register_file_mapper", &PyRegistrationContext::register_file_mapper,
            py::arg("game_id") = "", py::arg("fn"))
       .def("register_save_parser", &PyRegistrationContext::register_save_parser,
