@@ -28,7 +28,8 @@
 namespace ui::preview {
 
 // ---------------------------------------------------------------------------
-// SpeedSlider - custom QSlider with a "1x" tick mark and min/max labels
+// SpeedSlider + SpeedTickStrip - slider with snap values and a tick strip
+// below it that draws vertical sticks and labels aligned to the groove.
 // ---------------------------------------------------------------------------
 
 static constexpr int kSnapValues[] = {25, 50, 75, 100, 150, 200, 300, 400};
@@ -37,44 +38,87 @@ static constexpr int kSnapThreshold = 5;
 SpeedSlider::SpeedSlider(QWidget *parent) : QSlider(Qt::Horizontal, parent) {
   setRange(25, 400);
   setValue(100);
-  setToolTip(tr("Playback speed: 0.25x to 4.0x (drag near 1x to snap)"));
+  setToolTip(tr("Playback speed: 0.25x to 4.0x (drag near a tick to snap)"));
 }
 
-int SpeedSlider::valueToPixel(int val) const {
-  // Map value to a 0..1 ratio within our range
-  double ratio = static_cast<double>(val - minimum()) /
-                 static_cast<double>(maximum() - minimum());
-  // The groove area is inset by a few pixels from the widget edges.
-  // style()->subControlRect gives us the exact groove rect, but a
-  // simpler approximation works well enough for the tick mark.
-  int margin = 6; // typical QSlider groove margin
+// ---------------------------------------------------------------------------
+// SpeedTickStrip
+// ---------------------------------------------------------------------------
+
+SpeedTickStrip::SpeedTickStrip(QWidget *parent) : QWidget(parent) {
+  setFixedHeight(22);
+  setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+}
+
+QSize SpeedTickStrip::sizeHint() const { return QSize(100, 22); }
+
+int SpeedTickStrip::valueToPixel(int val) const {
+  double ratio = static_cast<double>(val - 25) / static_cast<double>(400 - 25);
+  int margin = 6;
   int w = width() - margin * 2;
+  if (w <= 0)
+    return margin;
   return margin + static_cast<int>(ratio * w);
 }
 
-void SpeedSlider::paintEvent(QPaintEvent *event) {
-  QSlider::paintEvent(event);
+QString SpeedTickStrip::labelForValue(int val) const {
+  switch (val) {
+  case 25:
+    return QStringLiteral("0.25x");
+  case 50:
+    return QStringLiteral("0.5x");
+  case 75:
+    return QStringLiteral("0.75x");
+  case 100:
+    return QStringLiteral("1x");
+  case 150:
+    return QStringLiteral("1.5x");
+  case 200:
+    return QStringLiteral("2x");
+  case 300:
+    return QStringLiteral("3x");
+  case 400:
+    return QStringLiteral("4x");
+  default:
+    return QString::number(val / 100.0, 'g', 3) + QStringLiteral("x");
+  }
+}
 
+void SpeedTickStrip::paintEvent(QPaintEvent * /*event*/) {
   QPainter p(this);
   p.setRenderHint(QPainter::Antialiasing, true);
 
-  // Draw a vertical tick mark and "1x" label at the 1x position (value=100)
-  int tick_x = valueToPixel(100);
-  int groove_y = height() / 2 + 8; // below the groove center
-  int tick_top = groove_y;
-  int tick_bot = height() - 2;
-
-  p.setPen(QPen(palette().color(QPalette::Mid), 1));
-  p.drawLine(tick_x, tick_top, tick_x, tick_bot);
-
-  // "1x" label centered below the tick
   QFont f = p.font();
-  f.setPointSizeF(f.pointSizeF() * 0.85);
+  f.setPointSizeF(f.pointSizeF() * 0.72);
   p.setFont(f);
-  p.setPen(palette().color(QPalette::Text));
-  p.drawText(QRect(tick_x - 12, tick_bot - 12, 24, 14),
-             Qt::AlignHCenter | Qt::AlignTop, QStringLiteral("1x"));
-  p.end();
+  QFontMetrics fm(f);
+
+  const QColor tick_color = palette().color(QPalette::Mid);
+  const QColor text_color = palette().color(QPalette::Text);
+
+  const int tick_top = 0;
+  const int tick_bot = 7;
+  const int label_y = tick_bot + 1;
+  const int label_h = height() - label_y;
+
+  for (int val : kSnapValues) {
+    int x = valueToPixel(val);
+
+    p.setPen(QPen(tick_color, 1));
+    p.drawLine(x, tick_top, x, tick_bot);
+
+    // Only label key values: 0.25x (left), 1x (middle), 4x (right).
+    // Intermediate snap positions still have ticks for snapping but no text.
+    if (val == 25 || val == 100 || val == 400) {
+      QString label = labelForValue(val);
+      int tw = fm.horizontalAdvance(label);
+      int lx = x - tw / 2;
+      lx = std::clamp(lx, 0, std::max(0, width() - tw));
+      p.setPen(text_color);
+      p.drawText(QRect(lx, label_y, tw, label_h),
+                 Qt::AlignHCenter | Qt::AlignTop, label);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -530,8 +574,9 @@ bool PreviewWindow::parse_anm2_data(const QString &path) {
     anm2_play_btn_->setText(tr("Pause"));
 
   // Store on-demand render callback for smooth interpolated playback.
-  // Prefer the per-state callback (which captures the state's own raw_animation)
-  // over the top-level one (which captures the first state's pointer).
+  // Prefer the per-state callback (which captures the state's own
+  // raw_animation) over the top-level one (which captures the first state's
+  // pointer).
   if (!anm2_state_renders_.empty() && anm2_state_renders_[0].render_frame) {
     const auto &rd = anm2_state_renders_[0];
     anm2_render_fn_ = rd.render_frame;
@@ -621,9 +666,9 @@ void PreviewWindow::on_anm2_frame_timeout() {
       apply_zoom();
     }
 
-    double speed = anm2_speed_slider_ ? anm2_speed_slider_->value() / 100.0 : 1.0;
-    int interval =
-        static_cast<int>(1000.0 / (anm2_on_demand_fps_ * speed));
+    double speed =
+        anm2_speed_slider_ ? anm2_speed_slider_->value() / 100.0 : 1.0;
+    int interval = static_cast<int>(1000.0 / (anm2_on_demand_fps_ * speed));
     anm2_timer_.start(std::max(interval, 1));
     update_anm2_ui();
     return;
@@ -808,19 +853,18 @@ void PreviewWindow::build_anm2_controls() {
   anm2_anim_list_->setMaximumHeight(120);
   ctrl->addWidget(anm2_anim_list_);
 
-  // Speed slider row with min/max labels
+  // Speed slider + tick strip. The slider and the strip share the same
+  // width via a vertical container so the "|" ticks align with the groove.
   auto *speed_row = new QHBoxLayout;
   speed_row->addWidget(new QLabel(tr("Speed:"), anm2_controls_));
-  auto *speed_min_label = new QLabel(tr("0.25x"), anm2_controls_);
-  speed_min_label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-  speed_min_label->setFixedWidth(36);
-  speed_row->addWidget(speed_min_label);
+  auto *speed_col = new QVBoxLayout;
+  speed_col->setContentsMargins(0, 0, 0, 0);
+  speed_col->setSpacing(1);
   anm2_speed_slider_ = new SpeedSlider(anm2_controls_);
-  speed_row->addWidget(anm2_speed_slider_, 1);
-  auto *speed_max_label = new QLabel(tr("4x"), anm2_controls_);
-  speed_max_label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-  speed_max_label->setFixedWidth(24);
-  speed_row->addWidget(speed_max_label);
+  speed_col->addWidget(anm2_speed_slider_);
+  auto *speed_ticks = new SpeedTickStrip(anm2_controls_);
+  speed_col->addWidget(speed_ticks);
+  speed_row->addLayout(speed_col, 1);
   ctrl->addLayout(speed_row);
 
   // Play/Pause + frame counter + step buttons row
@@ -847,7 +891,9 @@ void PreviewWindow::build_anm2_controls() {
   ctrl->addWidget(anm2_progress_);
 
   // Experimental notice
-  auto* anm2_notice = new QLabel(tr("ANM2 preview is experimental — may not render all animations correctly"), anm2_controls_);
+  auto *anm2_notice = new QLabel(tr("ANM2 preview is experimental - may not "
+                                    "render all animations correctly"),
+                                 anm2_controls_);
   anm2_notice->setAlignment(Qt::AlignCenter);
   anm2_notice->setStyleSheet("color: gray; font-style: italic;");
   anm2_notice->setWordWrap(true);
@@ -968,8 +1014,7 @@ void PreviewWindow::build_anm2_controls() {
         apply_zoom();
       }
     } else if (!anm2_frames_.empty()) {
-      int frame =
-          static_cast<int>(value * (anm2_frames_.size() - 1) / 1000.0);
+      int frame = static_cast<int>(value * (anm2_frames_.size() - 1) / 1000.0);
       anm2_index_ = static_cast<std::size_t>(frame);
       current_pixmap_ = anm2_frames_[anm2_index_];
       apply_zoom();
@@ -1045,11 +1090,10 @@ void PreviewWindow::switch_anm2_state(int index) {
 
   // Update the info label with the selected state's details.
   if (anm2_info_label_) {
-    int display_frames =
-        anm2_render_fn_ ? anm2_on_demand_frame_count_
-                        : static_cast<int>(state.frames.size());
-    int display_fps =
-        anm2_render_fn_ ? anm2_on_demand_fps_ : state.fps;
+    int display_frames = anm2_render_fn_
+                             ? anm2_on_demand_frame_count_
+                             : static_cast<int>(state.frames.size());
+    int display_fps = anm2_render_fn_ ? anm2_on_demand_fps_ : state.fps;
     anm2_info_label_->setText(tr("%1 - %2 frames, %3 fps")
                                   .arg(state.name)
                                   .arg(display_frames)

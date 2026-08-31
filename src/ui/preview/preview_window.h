@@ -25,20 +25,31 @@ namespace ui::preview {
 
 class DebugImageLabel;
 
-// Custom QSlider that draws a vertical "1x" tick mark and snaps to common
-// speed values (0.25x, 0.5x, 1x, 2x, 4x) when dragged nearby.
+// Custom QSlider that snaps to common speed values (0.25x, 0.5x, 0.75x, 1x,
+// 1.5x, 2x, 3x, 4x) when dragged nearby. The visual tick marks are drawn by
+// SpeedTickStrip below the slider.
 class SpeedSlider : public QSlider {
   Q_OBJECT
 public:
   explicit SpeedSlider(QWidget *parent = nullptr);
+};
+
+// Widget drawn directly below the SpeedSlider. Shows a vertical tick "|" at
+// each snap position and the speed label (0.25x, 0.5x, etc.) centered below
+// it, aligned to the same valueToPixel mapping as the slider's groove.
+class SpeedTickStrip : public QWidget {
+  Q_OBJECT
+public:
+  explicit SpeedTickStrip(QWidget *parent = nullptr);
+
+  QSize sizeHint() const override;
 
 protected:
   void paintEvent(QPaintEvent *event) override;
 
 private:
-  // Map slider value (25..400) to the horizontal pixel position within the
-  // groove, accounting for the slider's internal margin.
   int valueToPixel(int val) const;
+  QString labelForValue(int val) const;
 };
 
 // Persistent floating preview window (MO2's PreviewDialog). Renders images
