@@ -10,12 +10,8 @@
 #include <cstddef>
 #include <vector>
 
-#include "engine/game/registry/game_features/game_feature.h"
-
-class QComboBox;
 class QPushButton;
 class QScrollArea;
-class QSlider;
 class QStackedWidget;
 class QTextBrowser;
 class QVBoxLayout;
@@ -49,8 +45,6 @@ protected:
 
 private slots:
   void on_anm2_frame_timeout();
-  void on_state_changed(int index);
-  void on_speed_changed(int value);
 
 private:
   void reload();
@@ -64,12 +58,6 @@ private:
   void apply_zoom();
   void set_fit();
   void zoom_by(double factor);
-
-  // Rebuild anm2_frames_ / anm2_delays_ from the given animation state (or
-  // the top-level frames when state_index == -1). Updates the frame counter.
-  void build_anm2_frames(int state_index);
-  // Update the frame counter label to reflect the current frame.
-  void update_frame_counter();
 
   QLabel *name_label_ = nullptr;
   QLabel *source_label_ = nullptr;
@@ -88,12 +76,6 @@ private:
   QPushButton *prev_button_ = nullptr;
   QPushButton *next_button_ = nullptr;
 
-  // ANM2 animation controls
-  QComboBox *state_combo_ = nullptr;
-  QSlider *speed_slider_ = nullptr;
-  QLabel *speed_label_ = nullptr;
-  QLabel *frame_counter_label_ = nullptr;
-
   QStringList paths_; // variant on-disk copies, aligned with names_
   QStringList names_; // variant labels (mod ids / display names)
   int variant_ = 0;
@@ -102,13 +84,11 @@ private:
   QPixmap current_pixmap_;
 
   // ANM2 animation state
-  ::engine::AnimationParserFeature::AnimationData anm2_data_;
   std::vector<QPixmap> anm2_frames_;
   std::vector<int> anm2_delays_;
   std::size_t anm2_index_ = 0;
   QTimer anm2_timer_;
   std::string game_id_;
-  double anm2_speed_ = 1.0; // playback speed multiplier (0.25x - 4.0x)
 };
 
 } // namespace ui::preview
