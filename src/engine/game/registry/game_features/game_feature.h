@@ -330,6 +330,10 @@ private:
 // animation file (e.g. Isaac .anm2) and returns Qt-free frame data. The
 // UI preview widget resolves this per file extension through the
 // Game::Features::Registry and converts raw RGBA pixels to QImage for display.
+//
+// When the plugin provides on-demand rendering (raw_animation is non-null),
+// the host should call render_frame() for each frame instead of using the
+// pre-baked frames. This enables proper interpolation and a fixed canvas size.
 class AnimationParserFeature : public GameFeature {
 public:
   struct LayerItem {
@@ -350,6 +354,16 @@ public:
     std::vector<Frame> frames;
     int canvas_width = 0;
     int canvas_height = 0;
+    // On-demand rendering support: opaque pointer to plugin-owned data.
+    // When non-null, the host should prefer render_frame over pre-baked frames.
+    void* raw_animation = nullptr;
+  };
+
+  // Result of an on-demand render call: raw RGBA pixels + dimensions.
+  struct RenderResult {
+    std::vector<std::uint8_t> pixels;
+    int width = 0;
+    int height = 0;
   };
 
   struct AnimationData {
@@ -361,6 +375,28 @@ public:
     // should present a state selector and use frames from the selected
     // state instead of the top-level frames vector.
     std::vector<AnimationState> states;
+
+    // On-demand rendering: opaque pointer to plugin-owned raw animation data.
+    // When non-null, render_frame can be called for on-demand frame generation.
+    void* raw_animation = nullptr;
+
+    // On-demand render callback: renders a single frame at the given time
+    // (in milliseconds, 0-based from animation start). Returns raw RGBA
+    // pixels composited onto a transparent canvas. The canvas dimensions
+    // are fixed for the entire animation (use on_demand_canvas_width/height).
+    // When null, the host falls back to pre-baked frames.
+    using RenderFrameFn = std::function<RenderResult(float time_ms)>;
+    RenderFrameFn render_frame;
+
+    // Fixed canvas dimensions for on-demand rendering.
+    int on_demand_canvas_width = 0;
+    int on_demand_canvas_height = 0;
+
+    // On-demand FPS for the animation (from the render callback).
+    int on_demand_fps = 0;
+
+    // On-demand total frame count (sum of keyframe durations).
+    int on_demand_frame_count = 0;
   };
 
   // Parser signature: takes file path + base directory for resource

@@ -332,6 +332,12 @@ void PreviewWindow::reload() {
   anm2_states_.clear();
   anm2_current_state_ = 0;
   anm2_playing_ = false;
+  anm2_render_fn_ = nullptr;
+  anm2_on_demand_canvas_w_ = 0;
+  anm2_on_demand_canvas_h_ = 0;
+  anm2_on_demand_fps_ = 0;
+  anm2_on_demand_frame_count_ = 0;
+  anm2_time_ = 0.0f;
   if (anm2_play_btn_)
     anm2_play_btn_->setText(tr("Play"));
   // Hide ANM2 controls by default; load_anm2() will re-show them.
@@ -459,11 +465,20 @@ bool PreviewWindow::parse_anm2_data(const QString &path) {
     anm2_states_.push_back(std::move(state));
   }
 
+  // Store on-demand render callback from the top-level data.
+  // When available, the host uses this for smooth interpolated playback
+  // instead of pre-baked frames.
+  bool has_on_demand = data->raw_animation && data->render_frame &&
+                       data->on_demand_frame_count > 0;
+
   // Set the debug overlay canvas size from the first state's dimensions.
   if (image_label_ && !anm2_states_.empty()) {
     int cw = 0;
     int ch = 0;
-    if (!data->states.empty()) {
+    if (has_on_demand) {
+      cw = data->on_demand_canvas_width;
+      ch = data->on_demand_canvas_height;
+    } else if (!data->states.empty()) {
       cw = data->states.front().canvas_width;
       ch = data->states.front().canvas_height;
     } else {
@@ -499,8 +514,22 @@ bool PreviewWindow::parse_anm2_data(const QString &path) {
   if (anm2_play_btn_)
     anm2_play_btn_->setText(tr("Pause"));
 
+  // Store on-demand render callback for smooth interpolated playback.
+  anm2_render_fn_ = data->render_frame;
+  anm2_on_demand_canvas_w_ = data->on_demand_canvas_width;
+  anm2_on_demand_canvas_h_ = data->on_demand_canvas_height;
+  anm2_on_demand_fps_ = data->on_demand_fps;
+  anm2_on_demand_frame_count_ = data->on_demand_frame_count;
+  anm2_time_ = 0.0f;
+
   // Start playback immediately.
-  if (!anm2_frames_.empty()) {
+  if (has_on_demand && anm2_on_demand_fps_ > 0) {
+    // On-demand mode: use the plugin's FPS for consistent timing
+    double speed =
+        anm2_speed_slider_ ? anm2_speed_slider_->value() / 100.0 : 1.0;
+    int interval = static_cast<int>(1000.0 / (anm2_on_demand_fps_ * speed));
+    anm2_timer_.start(std::max(interval, 1));
+  } else if (!anm2_frames_.empty()) {
     double speed =
         anm2_speed_slider_ ? anm2_speed_slider_->value() / 100.0 : 1.0;
     int interval = static_cast<int>(anm2_delays_.front() / speed);
@@ -510,13 +539,24 @@ bool PreviewWindow::parse_anm2_data(const QString &path) {
   // Update info label: "name, X frames, Y fps"
   if (anm2_info_label_) {
     const auto &state = anm2_states_.front();
+    int display_frames = has_on_demand ? anm2_on_demand_frame_count_
+                                       : static_cast<int>(state.frames.size());
+    int display_fps = has_on_demand ? anm2_on_demand_fps_ : state.fps;
     anm2_info_label_->setText(tr("%1 - %2 frames, %3 fps")
                                   .arg(state.name)
-                                  .arg(static_cast<int>(state.frames.size()))
-                                  .arg(state.fps));
+                                  .arg(display_frames)
+                                  .arg(display_fps));
   }
 
-  if (!anm2_frames_.empty()) {
+  if (has_on_demand && anm2_on_demand_canvas_w_ > 0) {
+    // On-demand mode: render the first frame using the callback
+    auto result = anm2_render_fn_(0.0f);
+    if (result.width > 0 && result.height > 0 && !result.pixels.empty()) {
+      QImage img(result.pixels.data(), result.width, result.height,
+                 QImage::Format_RGBA8888);
+      current_pixmap_ = QPixmap::fromImage(img.copy());
+    }
+  } else if (!anm2_frames_.empty()) {
     current_pixmap_ = anm2_frames_.front();
   }
 
@@ -536,13 +576,38 @@ bool PreviewWindow::load_anm2(const QString &path) {
 }
 
 void PreviewWindow::on_anm2_frame_timeout() {
-  if (anm2_frames_.empty())
+  if (anm2_frames_.empty() && !anm2_render_fn_)
     return;
+
+  // On-demand rendering: use the plugin's render callback for smooth
+  // interpolated playback with fixed canvas size.
+  if (anm2_render_fn_ && anm2_on_demand_fps_ > 0 &&
+      anm2_on_demand_frame_count_ > 0) {
+    anm2_time_ += 1.0f; // advance by 1 frame
+    if (anm2_time_ >= static_cast<float>(anm2_on_demand_frame_count_))
+      anm2_time_ = 0.0f;
+
+    auto result = anm2_render_fn_(anm2_time_);
+    if (result.width > 0 && result.height > 0 && !result.pixels.empty()) {
+      QImage img(result.pixels.data(), result.width, result.height,
+                 QImage::Format_RGBA8888);
+      current_pixmap_ = QPixmap::fromImage(img.copy());
+      apply_zoom();
+    }
+
+    double speed = anm2_speed_slider_ ? anm2_speed_slider_->value() / 100.0 : 1.0;
+    int interval =
+        static_cast<int>(1000.0 / (anm2_on_demand_fps_ * speed));
+    anm2_timer_.start(std::max(interval, 1));
+    update_anm2_ui();
+    return;
+  }
+
+  // Fallback: pre-baked frame playback
   anm2_index_ = (anm2_index_ + 1) % anm2_frames_.size();
   current_pixmap_ = anm2_frames_[anm2_index_];
   apply_zoom();
 
-  // Apply speed multiplier to the next interval.
   double speed = anm2_speed_slider_ ? anm2_speed_slider_->value() / 100.0 : 1.0;
   int interval = static_cast<int>(anm2_delays_[anm2_index_] / speed);
   anm2_timer_.start(std::max(interval, 1));
@@ -764,10 +829,15 @@ void PreviewWindow::build_anm2_controls() {
           });
 
   connect(anm2_speed_slider_, &QSlider::valueChanged, this, [this](int val) {
-    if (anm2_playing_ && !anm2_frames_.empty()) {
+    if (anm2_playing_) {
       double speed = val / 100.0;
-      int interval = static_cast<int>(anm2_delays_[anm2_index_] / speed);
-      anm2_timer_.start(std::max(interval, 1));
+      if (anm2_render_fn_ && anm2_on_demand_fps_ > 0) {
+        int interval = static_cast<int>(1000.0 / (anm2_on_demand_fps_ * speed));
+        anm2_timer_.start(std::max(interval, 1));
+      } else if (!anm2_frames_.empty()) {
+        int interval = static_cast<int>(anm2_delays_[anm2_index_] / speed);
+        anm2_timer_.start(std::max(interval, 1));
+      }
     }
   });
 
@@ -777,11 +847,16 @@ void PreviewWindow::build_anm2_controls() {
       if (std::abs(pos - snap) <= kSnapThreshold) {
         QSignalBlocker blocker(anm2_speed_slider_);
         anm2_speed_slider_->setValue(snap);
-        // Manually trigger the speed update since signals are blocked
-        if (anm2_playing_ && !anm2_frames_.empty()) {
+        if (anm2_playing_) {
           double speed = snap / 100.0;
-          int interval = static_cast<int>(anm2_delays_[anm2_index_] / speed);
-          anm2_timer_.start(std::max(interval, 1));
+          if (anm2_render_fn_ && anm2_on_demand_fps_ > 0) {
+            int interval =
+                static_cast<int>(1000.0 / (anm2_on_demand_fps_ * speed));
+            anm2_timer_.start(std::max(interval, 1));
+          } else if (!anm2_frames_.empty()) {
+            int interval = static_cast<int>(anm2_delays_[anm2_index_] / speed);
+            anm2_timer_.start(std::max(interval, 1));
+          }
         }
         break;
       }
@@ -792,8 +867,11 @@ void PreviewWindow::build_anm2_controls() {
     anm2_playing_ = !anm2_playing_;
     anm2_play_btn_->setText(anm2_playing_ ? tr("Pause") : tr("Play"));
     if (anm2_playing_) {
-      if (!anm2_frames_.empty()) {
-        double speed = anm2_speed_slider_->value() / 100.0;
+      double speed = anm2_speed_slider_->value() / 100.0;
+      if (anm2_render_fn_ && anm2_on_demand_fps_ > 0) {
+        int interval = static_cast<int>(1000.0 / (anm2_on_demand_fps_ * speed));
+        anm2_timer_.start(std::max(interval, 1));
+      } else if (!anm2_frames_.empty()) {
         int interval = static_cast<int>(anm2_delays_[anm2_index_] / speed);
         anm2_timer_.start(std::max(interval, 1));
       }
@@ -803,33 +881,65 @@ void PreviewWindow::build_anm2_controls() {
   });
 
   connect(anm2_step_back_, &QPushButton::clicked, this, [this]() {
-    if (anm2_frames_.empty())
-      return;
-    anm2_index_ = (anm2_index_ + anm2_frames_.size() - 1) % anm2_frames_.size();
-    current_pixmap_ = anm2_frames_[anm2_index_];
-    apply_zoom();
+    if (anm2_render_fn_ && anm2_on_demand_frame_count_ > 0) {
+      anm2_time_ -= 1.0f;
+      if (anm2_time_ < 0.0f)
+        anm2_time_ = static_cast<float>(anm2_on_demand_frame_count_ - 1);
+      auto result = anm2_render_fn_(anm2_time_);
+      if (result.width > 0 && result.height > 0 && !result.pixels.empty()) {
+        QImage img(result.pixels.data(), result.width, result.height,
+                   QImage::Format_RGBA8888);
+        current_pixmap_ = QPixmap::fromImage(img.copy());
+        apply_zoom();
+      }
+    } else if (!anm2_frames_.empty()) {
+      anm2_index_ =
+          (anm2_index_ + anm2_frames_.size() - 1) % anm2_frames_.size();
+      current_pixmap_ = anm2_frames_[anm2_index_];
+      apply_zoom();
+    }
     update_anm2_ui();
   });
 
   connect(anm2_step_fwd_, &QPushButton::clicked, this, [this]() {
-    if (anm2_frames_.empty())
-      return;
-    anm2_index_ = (anm2_index_ + 1) % anm2_frames_.size();
-    current_pixmap_ = anm2_frames_[anm2_index_];
-    apply_zoom();
+    if (anm2_render_fn_ && anm2_on_demand_frame_count_ > 0) {
+      anm2_time_ += 1.0f;
+      if (anm2_time_ >= static_cast<float>(anm2_on_demand_frame_count_))
+        anm2_time_ = 0.0f;
+      auto result = anm2_render_fn_(anm2_time_);
+      if (result.width > 0 && result.height > 0 && !result.pixels.empty()) {
+        QImage img(result.pixels.data(), result.width, result.height,
+                   QImage::Format_RGBA8888);
+        current_pixmap_ = QPixmap::fromImage(img.copy());
+        apply_zoom();
+      }
+    } else if (!anm2_frames_.empty()) {
+      anm2_index_ = (anm2_index_ + 1) % anm2_frames_.size();
+      current_pixmap_ = anm2_frames_[anm2_index_];
+      apply_zoom();
+    }
     update_anm2_ui();
   });
 
   // Use valueChanged so clicking the scrubber also seeks (not just dragging).
   // update_anm2_ui() blocks signals on the slider to prevent feedback loops.
   connect(anm2_progress_, &QSlider::valueChanged, this, [this](int value) {
-    if (anm2_frames_.empty())
-      return;
-    // Map 0-1000 to frame index
-    int frame = static_cast<int>(value * (anm2_frames_.size() - 1) / 1000.0);
-    anm2_index_ = static_cast<std::size_t>(frame);
-    current_pixmap_ = anm2_frames_[anm2_index_];
-    apply_zoom();
+    if (anm2_render_fn_ && anm2_on_demand_frame_count_ > 0) {
+      anm2_time_ = value * (anm2_on_demand_frame_count_ - 1) / 1000.0f;
+      auto result = anm2_render_fn_(anm2_time_);
+      if (result.width > 0 && result.height > 0 && !result.pixels.empty()) {
+        QImage img(result.pixels.data(), result.width, result.height,
+                   QImage::Format_RGBA8888);
+        current_pixmap_ = QPixmap::fromImage(img.copy());
+        apply_zoom();
+      }
+    } else if (!anm2_frames_.empty()) {
+      int frame =
+          static_cast<int>(value * (anm2_frames_.size() - 1) / 1000.0);
+      anm2_index_ = static_cast<std::size_t>(frame);
+      current_pixmap_ = anm2_frames_[anm2_index_];
+      apply_zoom();
+    }
     update_anm2_ui();
   });
 
@@ -837,10 +947,15 @@ void PreviewWindow::build_anm2_controls() {
   connect(anm2_progress_, &QSlider::sliderPressed, this,
           [this]() { anm2_timer_.stop(); });
   connect(anm2_progress_, &QSlider::sliderReleased, this, [this]() {
-    if (anm2_playing_ && !anm2_frames_.empty()) {
+    if (anm2_playing_) {
       double speed = anm2_speed_slider_->value() / 100.0;
-      int interval = static_cast<int>(anm2_delays_[anm2_index_] / speed);
-      anm2_timer_.start(std::max(interval, 1));
+      if (anm2_render_fn_ && anm2_on_demand_fps_ > 0) {
+        int interval = static_cast<int>(1000.0 / (anm2_on_demand_fps_ * speed));
+        anm2_timer_.start(std::max(interval, 1));
+      } else if (!anm2_frames_.empty()) {
+        int interval = static_cast<int>(anm2_delays_[anm2_index_] / speed);
+        anm2_timer_.start(std::max(interval, 1));
+      }
     }
   });
 }
@@ -877,17 +992,35 @@ void PreviewWindow::switch_anm2_state(int index) {
 }
 
 void PreviewWindow::update_anm2_ui() {
+  // On-demand rendering mode
+  if (anm2_render_fn_ && anm2_on_demand_frame_count_ > 0) {
+    int cur_frame = static_cast<int>(anm2_time_) + 1;
+    if (anm2_frame_label_) {
+      anm2_frame_label_->setText(
+          tr("%1/%2").arg(cur_frame).arg(anm2_on_demand_frame_count_));
+    }
+    if (anm2_progress_ && !anm2_progress_->isSliderDown()) {
+      int pos = anm2_on_demand_frame_count_ > 1
+                    ? static_cast<int>(anm2_time_ * 1000 /
+                                       (anm2_on_demand_frame_count_ - 1))
+                    : 0;
+      anm2_progress_->blockSignals(true);
+      anm2_progress_->setValue(pos);
+      anm2_progress_->blockSignals(false);
+    }
+    return;
+  }
+
+  // Pre-baked frame playback mode
   if (anm2_frames_.empty())
     return;
 
-  // Frame counter: "3/12"
   if (anm2_frame_label_) {
     anm2_frame_label_->setText(tr("%1/%2")
                                    .arg(static_cast<int>(anm2_index_) + 1)
                                    .arg(static_cast<int>(anm2_frames_.size())));
   }
 
-  // Progress scrubber - block signals to avoid feedback loop with valueChanged
   if (anm2_progress_ && !anm2_progress_->isSliderDown()) {
     int pos =
         anm2_frames_.size() > 1
