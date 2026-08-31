@@ -114,7 +114,7 @@ TEST_CASE("save_current_profile flushes modlist and writes archives/settings",
   auto created = engine::profile::create_fresh_profile(profiles_dir, "Default");
   REQUIRE(created.success);
 
-  engine::profile::Profile profile(created.directory,
+  engine::profile::ProfileManager profile(created.directory,
                                    std::chrono::milliseconds(10s));
   profile.refresh_mod_status({"ModA", "ModB"});
   profile.set_mod_enabled("ModA", false); // schedules a delayed write
@@ -148,7 +148,7 @@ TEST_CASE("save_current_profile skips tweaked ini when empty", "[engine]") {
   auto created = engine::profile::create_fresh_profile(profiles_dir, "Default");
   REQUIRE(created.success);
 
-  engine::profile::Profile profile(created.directory);
+  engine::profile::ProfileManager profile(created.directory);
   engine::profile::ProfileSaveState state;
   state.known_mods = {"ModA"};
   state.archives = {};
@@ -176,7 +176,7 @@ TEST_CASE("save_current_profile preserves an unloaded profile's modlist",
 
   // Populate the profile's modlist.txt on disk: ModA enabled, ModB disabled.
   {
-    engine::profile::Profile p(created.directory);
+    engine::profile::ProfileManager p(created.directory);
     p.refresh_mod_status({"ModA", "ModB"});
     p.set_mod_enabled("ModB", false);
     p.write_modlist_now();
@@ -185,7 +185,7 @@ TEST_CASE("save_current_profile preserves an unloaded profile's modlist",
           std::string::npos);
 
   // A fresh Profile (never loaded — mods_ empty) must not wipe the file.
-  engine::profile::Profile profile(created.directory);
+  engine::profile::ProfileManager profile(created.directory);
   engine::profile::ProfileSaveState state;
   state.known_mods = {"ModA", "ModB"};
   std::string error;
@@ -218,7 +218,7 @@ TEST_CASE("switch_profile is a no-op for the current profile", "[engine]") {
   auto created = engine::profile::create_fresh_profile(profiles_dir, "Default");
   REQUIRE(created.success);
 
-  engine::profile::Profile current(created.directory);
+  engine::profile::ProfileManager current(created.directory);
   std::vector<std::string> log;
   auto result = engine::profile::switch_profile(
       profiles_dir, "Default", &current, {}, nullptr, recording_callbacks(log));
@@ -258,7 +258,7 @@ TEST_CASE("switch_profile saves current, restores mod state and refreshes",
   auto a = engine::profile::create_fresh_profile(profiles_dir, "Alpha");
   REQUIRE(a.success);
   {
-    engine::profile::Profile pa(a.directory);
+    engine::profile::ProfileManager pa(a.directory);
     pa.refresh_mod_status({"ModA", "ModB"});
     pa.set_mod_enabled("ModB", false);
     pa.write_modlist_now();
@@ -270,7 +270,7 @@ TEST_CASE("switch_profile saves current, restores mod state and refreshes",
   auto b = engine::profile::create_fresh_profile(profiles_dir, "Beta");
   REQUIRE(b.success);
   {
-    engine::profile::Profile pb(b.directory);
+    engine::profile::ProfileManager pb(b.directory);
     pb.refresh_mod_status({"ModA", "ModB"});
     pb.set_mod_enabled("ModA", false);
     pb.write_modlist_now();
@@ -279,7 +279,7 @@ TEST_CASE("switch_profile saves current, restores mod state and refreshes",
   }
 
   // Current profile is Alpha with a pending (unflushed) modlist change.
-  engine::profile::Profile current(a.directory, std::chrono::milliseconds(10s));
+  engine::profile::ProfileManager current(a.directory, std::chrono::milliseconds(10s));
   current.refresh_mod_status({"ModA", "ModB"});
   current.set_mod_enabled("ModA", false); // pending delayed write
 
@@ -341,7 +341,7 @@ TEST_CASE("switch_profile preserves the current profile's modlist when "
 
   // Alpha's modlist.txt on disk: ModA enabled, ModB disabled.
   {
-    engine::profile::Profile pa(a.directory);
+    engine::profile::ProfileManager pa(a.directory);
     pa.refresh_mod_status({"ModA", "ModB"});
     pa.set_mod_enabled("ModB", false);
     pa.write_modlist_now();
@@ -350,7 +350,7 @@ TEST_CASE("switch_profile preserves the current profile's modlist when "
           std::string::npos);
 
   // Current Profile constructed WITHOUT loading (the UI bug: mods_ empty).
-  engine::profile::Profile current(a.directory);
+  engine::profile::ProfileManager current(a.directory);
   engine::profile::ProfileSaveState state;
   state.known_mods = {"ModA", "ModB"};
 
@@ -393,7 +393,7 @@ TEST_CASE("switch_profile emits profile_changed event", "[engine]") {
         received_payload = payload;
       });
 
-  engine::profile::Profile current(a.directory);
+  engine::profile::ProfileManager current(a.directory);
   engine::profile::ProfileSaveState state;
   state.known_mods = {"ModA"};
   std::vector<std::string> log;
@@ -435,7 +435,7 @@ TEST_CASE("switch_profile saves and restores plugin state via PluginDatabase",
   REQUIRE(db.set_enabled("Beta.esp", false)); // Beta disabled in Alpha
 
   // Save Alpha's plugin state through the switcher.
-  engine::profile::Profile current(a.directory);
+  engine::profile::ProfileManager current(a.directory);
   engine::profile::ProfileSaveState state;
   state.known_mods = {};
   std::string error;
@@ -452,7 +452,7 @@ TEST_CASE("switch_profile saves and restores plugin state via PluginDatabase",
   // back on in the UI, then the profile is saved.
   REQUIRE(db.set_enabled("Beta.esp", true));
   {
-    engine::profile::Profile pb(b.directory);
+    engine::profile::ProfileManager pb(b.directory);
     engine::profile::ProfileSaveState bstate;
     bstate.known_mods = {};
     REQUIRE(engine::profile::save_current_profile(pb, bstate, &db, &error));

@@ -24,6 +24,9 @@
 // is needed here (the engine still links them for the reader).
 #include "ui/panels/tab_panels.h"
 
+#include "engine/game/saves/skyrim_save.h"
+#include "engine/pipeline/plugin_host/save_parser_registry.h"
+
 #include <QApplication>
 #include <QEvent>
 #include <QEventLoop>
@@ -134,6 +137,19 @@ TEST_CASE("saves tab", "[ui]") {
     QApplication app(test_argc, test_argv);
     QCoreApplication::setOrganizationName("GameModManager");
     QCoreApplication::setApplicationName("GameModManager");
+
+    // Register built-in save parsers so scan_saves can parse the fixtures.
+    // These are normally registered by PluginLoader::load_directory(), but
+    // tests run without a full plugin load.
+    if (!engine::SaveParserRegistry::instance().has_parser("skyrimse")) {
+        engine::SaveParserRegistry::instance().register_parser(
+            "skyrimse", 0,
+            [](const std::filesystem::path& path,
+               const std::string& game_id) {
+                return engine::parse_skyrimse_save(path, game_id);
+            },
+            nullptr, "test:builtin");
+    }
 
     // --- Part 1: set_saves() population + missing-column rendering ---
     ui::SavesTab tab;

@@ -5,7 +5,7 @@
 #include <QJsonObject>
 #include <filesystem>
 
-#include "ui/widgets/exec_entry_content_widget.h"
+#include "ui/widgets/executables_entry.h"
 
 class QComboBox;
 class QToolButton;
@@ -37,17 +37,17 @@ public:
     [[nodiscard]] int current_executable_index() const;
     [[nodiscard]] QStringList executable_paths() const;
 
-    // Returns the full ExecEntry for each item (excluding the sentinel)
-    [[nodiscard]] QVector<ExecEntry> executable_entries() const;
+    // Returns the full Executables::Entry for each item (excluding the sentinel)
+    [[nodiscard]] QVector<Executables::Entry> executable_entries() const;
 
-    // Returns the ExecEntry for the currently selected item
-    [[nodiscard]] ExecEntry current_entry() const;
+    // Returns the Executables::Entry for the currently selected item
+    [[nodiscard]] Executables::Entry current_entry() const;
 
     // Legacy: adds an entry with just a path (no extra metadata)
     void add_executable(const QString& display_name, const QString& rel_path, const QIcon& icon = {});
 
     // New: adds a full entry with metadata
-    void add_entry(const ExecEntry& entry);
+    void add_entry(const Executables::Entry& entry);
 
     // Restores the combo selection to the entry whose path matches. Returns
     // false if no such entry exists. Fires current_executable_changed() so the

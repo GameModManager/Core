@@ -4,9 +4,9 @@
 #include <cctype>
 #include <vector>
 
-namespace engine {
+namespace engine::Source {
 
-NxmLink NxmRouter::parse(const std::string& url) {
+NxmLink Router::parse(const std::string& url) {
     NxmLink link;
     link.full_url = url;
 
@@ -162,7 +162,7 @@ NxmLink NxmRouter::parse(const std::string& url) {
     return link;
 }
 
-std::string NxmRouter::match_game(
+std::string Router::match_game(
     const std::string& nexus_domain,
     const std::vector<std::pair<std::string, std::string>>& plugin_domains) {
     // plugin_domains: vector of (game_id, nexus_domain) from loaded plugins
@@ -172,4 +172,4 @@ std::string NxmRouter::match_game(
     return {};
 }
 
-}  // namespace engine
+} // namespace engine::Source

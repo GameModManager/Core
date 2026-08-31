@@ -191,12 +191,13 @@ TEST_CASE("scanner", "[engine]") {
   checker.set("skyrim", "mod_valid_exts", "esp,esm");
 
   // Whitelist approach: empty folder with no metadata and no valid game data
-  // is NOT listed at all (MO2 parity — only folders with recognized content
-  // appear in the mod list).
+  // is listed but flagged invalid (MO2 parity — every folder appears in the
+  // mod list, but recognized content is required to clear FLAG_INVALID).
   fs::create_directories(root / "BadContent");
   const auto modsC = engine::ModScanner::scan_dir(checker, "skyrim", root);
   const auto *bc = by_folder(modsC, "BadContent");
-  require(bc == nullptr, "empty content folder with no metadata is NOT listed");
+  require(bc != nullptr, "empty content folder is still listed");
+  require(bc->invalid_data, "empty content folder flagged invalid");
 
   // A folder with a game plugin file is valid content but still has no
   // manager metadata (the two flags are independent). Subdirectories alone
@@ -228,12 +229,15 @@ TEST_CASE("scanner", "[engine]") {
   xml_know.set("isaac", "mod_valid_dirs", "resources,resources-dlc3");
 
   // Whitelist approach: folder without metadata.xml and no valid content
-  // is NOT listed at all.
+  // is listed but flagged invalid (MO2 parity).
   fs::create_directories(root / "XmlNoMeta");
   const auto modsX = engine::ModScanner::scan_dir(xml_know, "isaac", root);
   const auto *xn = by_folder(modsX, "XmlNoMeta");
-  require(xn == nullptr,
-          "xml folder without metadata.xml and no valid content is NOT listed");
+  require(
+      xn != nullptr,
+      "xml folder without metadata.xml and no valid content is still listed");
+  require(xn->invalid_data, "xml folder without metadata.xml and no valid "
+                            "content is flagged invalid");
 
   // Folder with metadata.xml: parsed normally, not no_metadata, content valid.
   fs::create_directories(root / "XmlMod");

@@ -1,5 +1,5 @@
 #include "engine/game/detect/game_detector.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <algorithm>
 #include <fstream>

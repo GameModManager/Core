@@ -15,7 +15,6 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
-#include "ui/theme/icon_manager.h"
 #include "ui/controllers/downloads_controller.h"
 #include "ui/controllers/launch_controller.h"
 #include "ui/controllers/mod_list_controller.h"
@@ -23,18 +22,19 @@
 #include "ui/controllers/queue_controller.h"
 #include "ui/controllers/settings_controller.h"
 #include "ui/controllers/tab_mode_controller.h"
-#include "ui/workers/pipeline_worker.h"
 #include "ui/settings/settings.h"
-#include "ui/widgets/smooth_scroll.h"
+#include "ui/theme/icon_manager.h"
 #include "ui/widgets/console_panel.h"
 #include "ui/widgets/exec_controls_bar.h"
 #include "ui/widgets/game_path_banner.h"
-#include "ui/widgets/gmm_status_bar.h"
 #include "ui/widgets/main_tab_container.h"
 #include "ui/widgets/main_toolbar.h"
 #include "ui/widgets/menu_bar.h"
 #include "ui/widgets/profile_bar.h"
 #include "ui/widgets/right_panel.h"
+#include "ui/widgets/smooth_scroll.h"
+#include "ui/widgets/status_bar.h"
+#include "ui/workers/pipeline_worker.h"
 
 namespace ui {
 
@@ -55,6 +55,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   // splitter exists (below).
   main_tab_container_ = new MainTabContainer(this);
   tab_mode_ = std::make_unique<TabModeController>(this, this);
+
+  // UI Locker for disabling/enabling the interface during operations
+  locker_ = std::make_unique<Locker>(this);
 
   // Conflict recompute infra (P8.1, THREADING.md §3.6): debounce + worker
   // thread so toggling/reordering a mod never blocks the UI on a full scan.
@@ -106,17 +109,20 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     toolbar_->add_instance_options_button(instance_options_icon);
 
     auto *instance_options_menu = new QMenu(this);
-    instance_options_menu->addAction(tr("Run winecfg"), this,
-                                     [this]() { launch_->run_prefix_tool({"winecfg"}); });
-    instance_options_menu->addAction(tr("Run winetricks"), this,
-                                     [this]() { launch_->run_prefix_tool({}); });
-    instance_options_menu->addAction(tr("Run an .exe in this prefix..."), this,
-                                     [this]() { launch_->run_exe_in_prefix(); });
+    instance_options_menu->addAction(tr("Run winecfg"), this, [this]() {
+      launch_->run_prefix_tool({"winecfg"});
+    });
+    instance_options_menu->addAction(
+        tr("Run winetricks"), this, [this]() { launch_->run_prefix_tool({}); });
+    instance_options_menu->addAction(
+        tr("Run an .exe in this prefix..."), this,
+        [this]() { launch_->run_exe_in_prefix(); });
 
     instance_options_menu->addSeparator();
 
-    instance_options_menu->addAction(tr("Open Wine Registry"), this,
-                                     [this]() { launch_->run_prefix_tool({"regedit"}); });
+    instance_options_menu->addAction(tr("Open Wine Registry"), this, [this]() {
+      launch_->run_prefix_tool({"regedit"});
+    });
     instance_options_menu->addAction(tr("Install a DLL..."), this, [this]() {
       // winetricks `dlls` lands straight on the "Install a Windows DLL
       // or component" picker.
@@ -125,8 +131,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
     instance_options_menu->addSeparator();
 
-    instance_options_menu->addAction(tr("Install recommended packages"), this,
-                                     [this]() { tab_mode_->route_instance_options(); });
+    instance_options_menu->addAction(
+        tr("Install recommended packages"), this,
+        [this]() { tab_mode_->route_instance_options(); });
 
     toolbar_->set_instance_options_menu(instance_options_menu);
     connect(toolbar_, &MainToolbar::instance_options_clicked, tab_mode_.get(),
@@ -189,7 +196,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   launch_->create_game_lock_overlay();
 
   // --- Status bar ---
-  status_bar_ = new GmmStatusBar(this);
+  status_bar_ = new StatusBar(this);
   statusBar()->addWidget(status_bar_, 1);
 
   // Global event filter for Konami code (child widgets may eat arrow keys).
@@ -215,7 +222,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
   // "<Edit...>" in the executables combo opens the executable editor. Routed
   // through TabModeController so Full UI mode embeds it as a tab and popup
-  // mode keeps the modal ExecEntryDialog.
+  // mode keeps the modal Executables::Dialog.
   connect(right_panel_->exec_controls(), &ExecControlsBar::add_entry_requested,
           tab_mode_.get(), &TabModeController::route_exec_entry);
 
@@ -319,21 +326,8 @@ void MainWindow::resizeEvent(QResizeEvent *event) {
 }
 
 void MainWindow::set_ui_enabled(bool enabled) {
-  // Lock or unlock the whole manager surface (mod list, panels, console,
-  // menus, toolbars). The install dialogs (FOMOD wizard, name confirm,
-  // overwrite query, progress popup) are top-level children of `this`, NOT
-  // of the disabled content widgets, so they stay interactive while the
-  // manager itself is greyed out - the same shape MO2's UILocker produces.
-  if (centralWidget())
-    centralWidget()->setEnabled(enabled);
-  if (menu_bar_)
-    menu_bar_->setEnabled(enabled);
-  if (toolbar_area_)
-    toolbar_area_->setEnabled(enabled);
-  if (profile_bar_)
-    profile_bar_->setEnabled(enabled);
-  if (status_bar_)
-    status_bar_->setEnabled(enabled);
+  // Delegate to the UI Locker which handles the actual enable/disable logic
+  locker_->set_enabled(enabled);
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {

@@ -2,7 +2,7 @@
 
 #include "engine/source/download/curl_download.h"
 #include "engine/core/log/logger.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <chrono>
 #include <optional>
@@ -67,7 +67,7 @@ std::optional<std::string> download_from_branches(const std::string& repo,
 
 }  // namespace
 
-MasterlistManager::MasterlistManager(const PlatformInterface* platform)
+MasterlistManager::MasterlistManager(const Platform* platform)
     : platform_(platform) {}
 
 const std::vector<std::string>& MasterlistManager::branch_candidates() {

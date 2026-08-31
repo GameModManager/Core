@@ -8,11 +8,11 @@ namespace engine {
 // Ensures only one instance of the application runs at a time.
 // Uses QLockFile for instance detection and QLocalServer/QLocalSocket for
 // cross-process focus requests. Completely independent of NXM IPC.
-class SingleInstanceGuard : public QObject {
+class MultiProcess : public QObject {
     Q_OBJECT
 public:
-    explicit SingleInstanceGuard(QObject* parent = nullptr);
-    ~SingleInstanceGuard() override;
+    explicit MultiProcess(QObject* parent = nullptr);
+    ~MultiProcess() override;
 
     // Try to acquire the singleton lock.
     // Returns true if we are the sole instance (lock acquired, focus server started).

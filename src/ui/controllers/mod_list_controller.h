@@ -6,9 +6,12 @@
 #include <QStringList>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "ui/controllers/mod_actions.h"
+#include "ui/controllers/mod_context_menu.h"
 #include "ui/main_window/main_window.h"
 
 class QMenu;
@@ -88,7 +91,7 @@ public slots:
   // LOOT advisory-tool sort (PLAN.md §7.1).
   void run_loot_sort();
   void on_loot_progress(int stage, const QString &message);
-  void on_loot_finished(engine::LootResult result);
+  void on_loot_finished(engine::Sorter::Loot::Result result);
   void refresh_data_tab();
   void wire_data_tab();
   void on_data_open(const QString &file_path);
@@ -113,7 +116,7 @@ public slots:
   void apply_profile_mod_states();
   // Plugin-DB preload (THREADING.md §3.5, P8.5/T6).
   void launch_plugin_db_preload();
-  void on_plugin_db_preloaded(engine::PluginDatabase db, quint64 generation);
+  void on_plugin_db_preloaded(engine::PluginDb::Database db, quint64 generation);
   bool adopt_preloaded_plugin_db();
   void load_meta_for_mods();
   void restore_mod_column_visibility();
@@ -176,6 +179,10 @@ private:
   void update_mod_count_label();
 
   MainWindow *w_ = nullptr;
+
+  // Extracted sub-controllers for mod actions and context menu.
+  std::unique_ptr<ModActions> mod_actions_;
+  std::unique_ptr<ModContextMenu> mod_context_menu_;
 };
 
 } // namespace ui

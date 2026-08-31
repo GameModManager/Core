@@ -11,7 +11,7 @@
 
 namespace engine {
 struct LaunchParams;
-class PlatformInterface;
+class Platform;
 }
 
 namespace engine {
@@ -102,7 +102,7 @@ struct LaunchPrepRequest {
     // when the overlay launcher is available (a bind mount needs the mount
     // namespace). Empty platform = skipped.
     bool local_saves_enabled = false;
-    const class PlatformInterface* platform = nullptr;
+    const class Platform* platform = nullptr;
     // Per-executable environment overrides ("KEY=VALUE"), forwarded verbatim to
     // LaunchParams so the launched process gets them (empty = inherit).
     std::vector<std::string> environment;

@@ -7,7 +7,7 @@
 // platform + a real PluginLoader pointed at the built plugins directory, so
 // the wine.json shipped with the Skyrim plugin is exercised.
 #include "engine/pipeline/plugin_host/plugin_loader.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 #include "ui/instance_options/instance_options_panel.h"
 
 #include <QApplication>
@@ -30,7 +30,7 @@ void require(bool cond, const char* msg) {
 }
 }
 
-class StubPlatform : public engine::PlatformInterface {
+class StubPlatform : public engine::Platform {
 public:
     std::string platform_name() const override { return "test"; }
     fs::path data_dir() const override { return "/tmp/gmm_instance_options_panel_data"; }

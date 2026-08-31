@@ -11,7 +11,7 @@
 #include "ui/settings/settings.h"
 #include "ui/settings/settings_content_widget.h"
 #include "ui/widgets/exec_controls_bar.h"
-#include "ui/widgets/exec_entry_content_widget.h"
+#include "ui/widgets/executables_entry.h"
 #include "ui/widgets/instance_switcher_content_widget.h"
 #include "ui/widgets/main_tab_container.h"
 #include "ui/widgets/mod_list_model.h"
@@ -38,7 +38,7 @@ TabModeController::TabModeController(MainWindow *w, QObject *parent)
                            qobject_cast<PipelineContentWidget *>(page)) {
               pipeline->deleteLater();
             } else if (auto *exec =
-                           qobject_cast<ExecEntryContentWidget *>(page)) {
+                           qobject_cast<Executables::ContentWidget *>(page)) {
               exec->deleteLater();
             } else if (auto *instance_options =
                            qobject_cast<InstanceOptionsWidget *>(page)) {
@@ -147,7 +147,7 @@ void TabModeController::route_stats() {
 
 void TabModeController::route_exec_entry() {
   if (!Settings::instance().full_ui_mode()) {
-    // Popup mode: unchanged behavior (modal ExecEntryDialog).
+    // Popup mode: unchanged behavior (modal Executables::Dialog).
     w_->launch_->on_add_entry_requested();
     return;
   }
@@ -158,21 +158,21 @@ void TabModeController::route_exec_entry() {
     return;
   }
 
-  // Tab mode: embed a fresh ExecEntryContentWidget. The editor never applies
+  // Tab mode: embed a fresh Executables::ContentWidget. The editor never applies
   // anything on its own - the explicit Save button applies the entries to
   // ExecControlsBar (incrementally, the tab stays open for further edits) and
   // closes the tab; Cancel just closes the tab, discarding the edits.
   auto icon_cache = w_->cache_thumbnails_dir_path();
   auto existing = w_->right_panel_->exec_controls()->executable_entries();
-  auto *content = new ExecEntryContentWidget(w_->current_game_dir_,
+  auto *content = new Executables::ContentWidget(w_->current_game_dir_,
                                              w_->launch_->output_mod_list(),
                                              existing, icon_cache, w_);
-  connect(content, &ExecEntryContentWidget::save_requested, this,
+  connect(content, &Executables::ContentWidget::save_requested, this,
           [this, key, content]() {
             w_->launch_->apply_exec_entries(content->entries());
             close_tab(key);
           });
-  connect(content, &ExecEntryContentWidget::cancel_requested, this,
+  connect(content, &Executables::ContentWidget::cancel_requested, this,
           [this, key]() { close_tab(key); });
   open_in_tab(content, tr("Modify Executables"), key);
 }

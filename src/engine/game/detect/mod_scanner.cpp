@@ -106,10 +106,10 @@ static void folder_timestamps(const std::filesystem::path &dir,
   // Unix epoch on libstdc++ (__file_clock). Convert explicitly via the
   // standard to_sys()/from_sys() pair, or the raw duration is garbage.
   const int64_t mtime_sec = static_cast<int64_t>(
-       std::chrono::duration_cast<std::chrono::seconds>(
-           std::chrono::clock_cast<std::chrono::system_clock>(mtime)
-               .time_since_epoch())
-           .count());
+      std::chrono::duration_cast<std::chrono::seconds>(
+          std::chrono::clock_cast<std::chrono::system_clock>(mtime)
+              .time_since_epoch())
+          .count());
   changed = mtime_sec;
 
 #if defined(__linux__)
@@ -183,10 +183,10 @@ struct ScanConfig {
 };
 
 // MO2's GamebryoModDataChecker::dataLooksValid analogue: a folder has valid
-// game data if it contains a recognized metadata file (managed mod) OR at
+// game data if it contains a recognized metadata file (managed mod), at
 // least one game plugin / archive file (.esp/.esm/.esl/.bsa/.ba2) at the top
-// level. Having subdirectories alone (meshes/, scripts/, etc.) is NOT enough
-// — vanilla game directories also have these. No allow-lists registered →
+// level, OR a top-level subdirectory whose name matches a recognized data
+// directory from the checker's allow-list. No allow-lists registered →
 // nothing can look invalid.
 static bool content_looks_valid(const ScanConfig &cfg,
                                 const std::filesystem::path &entry_path) {
@@ -197,14 +197,21 @@ static bool content_looks_valid(const ScanConfig &cfg,
       std::filesystem::exists(entry_path / cfg.metadata_file))
     return true;
 
-  // Require at least one game plugin or archive file at the top level.
-  // Subdirectories (meshes/, scripts/, etc.) alone are not sufficient.
   static const std::vector<std::string> kPluginExts = {"esp", "esm", "esl",
                                                        "bsa", "ba2"};
 
   std::error_code ec;
   for (const auto &entry :
        std::filesystem::directory_iterator(entry_path, ec)) {
+    // Check for recognized data subdirectories (MO2 GamebryoModDataChecker
+    // allows mods with recognized folder names like textures/, meshes/, etc.)
+    if (entry.is_directory(ec)) {
+      auto dir_name = entry.path().filename().string();
+      for (const auto &vd : cfg.valid_dirs)
+        if (ci_equals(dir_name, vd))
+          return true;
+    }
+    // Check for game plugin / archive files at the top level
     if (!entry.is_regular_file(ec))
       continue;
     auto dot = entry.path().filename().string().find_last_of('.');
@@ -265,14 +272,14 @@ static ScanConfig make_scan_config(const GameKnowledge &knowledge,
     cfg.ignored.push_back(cfg.disable_file);
   }
   // Content-validity allow-lists drive MO2's FLAG_INVALID ("No valid game
-  // data"). The P1.2 GameFeatureRegistry is the override seam: any plugin
+  // data"). The P1.2 Game::Features::Registry is the override seam: any plugin
   // can register a mod_data_checker for this game (priority + replace, MO2
   // IGameFeatures — combined across all registered checkers). A registered
   // checker wins; the per-game CSV hooks (mod_valid_dirs/mod_valid_exts)
   // remain the fallback for games whose plugin still uses them (Isaac) and
   // for the scanner's own knowledge-driven tests.
   auto checker =
-      GameFeatureRegistry::instance().resolve_mod_data_checker(game_id);
+      Game::Features::Registry::instance().resolve_mod_data_checker(game_id);
   if (checker) {
     cfg.valid_dirs = checker->folder_names();
     cfg.valid_exts = checker->file_extensions();
@@ -495,13 +502,6 @@ scan_entry(const std::filesystem::path &entry_path, const ScanConfig &cfg,
   }
   mod.no_metadata = mod.no_metadata && !mod.validated;
   mod.invalid_data = !mod.validated && !content_looks_valid(cfg, entry_path);
-
-  // Whitelist filter (MO2 parity): folders with metadata are ALWAYS listed
-  // (managed mods). Folders WITHOUT metadata must contain recognized mod
-  // content to be listed — this filters out vanilla game directories.
-  if (mod.no_metadata && mod.invalid_data) {
-    return std::nullopt; // No metadata AND no valid content → not a mod
-  }
 
   // Check for disable sentinel
   if (!cfg.disable_file.empty()) {

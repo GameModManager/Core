@@ -16,16 +16,17 @@
 #include <unordered_set>
 #include <vector>
 
-#include "engine/deploy/strategy.h"
-#include "engine/index/conflict_engine.h"
 #include "engine/core/instance/instance.h"
-#include "engine/mod/meta/mod_meta.h"
-#include "engine/source/nxm/nxm_router.h"
-#include "engine/game/plugins/plugin_database.h"
+#include "engine/deploy/interface.h"
 #include "engine/deploy/launch/proton_tools.h"
+#include "engine/game/plugins/plugin_database.h"
 #include "engine/game/registry/game_knowledge.h"
+#include "engine/index/conflict_engine.h"
+#include "engine/mod/meta/mod_meta.h"
 #include "engine/profile/profile.h"
-#include "platform/platform_interface.h"
+#include "engine/source/nxm/nxm_router.h"
+#include "platform/platform.h"
+#include "ui/ui_locker.h"
 
 class QSplitter;
 class QToolBar;
@@ -38,24 +39,31 @@ class QCheckBox;
 class QTreeWidget;
 class QTimer;
 
+namespace engine::Source {
+struct NxmLink;
+}
 namespace engine {
 class GameKnowledge;
 class PluginLoader;
 class ManagedGames;
 class NxmIpcServer;
-struct NxmLink;
+using NxmLink = Source::NxmLink;
 struct ConflictStats;
 class StyleManager;
-class PlatformInterface;
-struct LootResult;
+class Platform;
+namespace Sorter {
+namespace Loot {
+struct Result;
+}
+} // namespace Sorter
 struct LaunchParams;
 } // namespace engine
 
 namespace ui {
 
 class DebugWindow;
-class ModListModel;
-class ModTableView;
+class ModList;
+class ModView;
 class ColumnToggleHeaderView;
 class MainToolbar;
 class ProfileBar;
@@ -77,12 +85,14 @@ class QueueController;
 class SettingsController;
 class DownloadsController;
 class TabModeController;
+class ModActions;
+class ModContextMenu;
 
 // Forward-declared: fully defined in ui/widgets/profile_bar.h, which owns the
 // FolderKind enum and is included before any use in .cpp files.
 enum class FolderKind;
 class ConsolePanel;
-class GmmStatusBar;
+class StatusBar;
 class PipelineThread;
 class AppMenuBar;
 class PipelineWindow;
@@ -151,9 +161,7 @@ public:
   }
   void set_managed_games(engine::ManagedGames *mg) { managed_games_ = mg; }
   void set_style_manager(engine::StyleManager *sm) { style_manager_ = sm; }
-  void set_platform(engine::PlatformInterface *platform) {
-    platform_ = platform;
-  }
+  void set_platform(engine::Platform *platform) { platform_ = platform; }
 
   // The QApplication's initial (native platform) style name, captured before
   // any user-selected style is applied. Used to restore "Default (system)"
@@ -165,7 +173,7 @@ public:
   // public entry point used by main.cpp.
   void handle_nxm_download(const engine::NxmLink &link);
 
-  [[nodiscard]] ModTableView *mod_view() const { return mod_view_; }
+  [[nodiscard]] ModView *mod_view() const { return mod_view_; }
   [[nodiscard]] QSplitter *console_splitter() const {
     return console_splitter_;
   }
@@ -206,12 +214,12 @@ private:
   // MO2-style category filter panel (checkable category tree + Clear/Edit).
   // Hidden by default; the << / >> toggle in the filter bar shows/hides it.
   CategoryFilterPanel *category_filter_panel_ = nullptr;
-  ModTableView *mod_view_ = nullptr;
+  ModView *mod_view_ = nullptr;
   // MO2-style digital counter above the mod list (enabled mod count),
   // right-aligned; updated by ModListController on list/toggle changes.
   QLCDNumber *mod_count_enabled_ = nullptr;
   ColumnToggleHeaderView *mod_header_ = nullptr;
-  ModListModel *mod_model_ = nullptr;
+  ModList *mod_model_ = nullptr;
   RightPanel *right_panel_ = nullptr;
   QSplitter *main_splitter_ = nullptr;
   QSplitter *console_splitter_ = nullptr;
@@ -220,7 +228,7 @@ private:
   // Full UI mode is ON.
   MainTabContainer *main_tab_container_ = nullptr;
   ConsolePanel *console_ = nullptr;
-  GmmStatusBar *status_bar_ = nullptr;
+  StatusBar *status_bar_ = nullptr;
   // "Set Game Path" banner (Workspace-tnj): visible while a game-less
   // instance is loaded; lives at the top of the main area.
   GamePathBanner *game_path_banner_ = nullptr;
@@ -230,9 +238,9 @@ private:
   engine::ManagedGames *managed_games_ = nullptr;
   QString native_style_name_;
   engine::StyleManager *style_manager_ = nullptr;
-  engine::PlatformInterface *platform_ = nullptr;
+  engine::Platform *platform_ = nullptr;
   engine::NxmIpcServer *nxm_ipc_ = nullptr;
-  std::unique_ptr<engine::DeploymentStrategy> deploy_strategy_;
+  std::unique_ptr<Deploy::Interface> deploy_strategy_;
   bool nxm_handler_check_done_ = false;
 
   std::string current_game_id_;
@@ -243,14 +251,14 @@ private:
   bool loading_ = false;
   // The active profile's engine model (modlist.txt state). Owned by the
   // window; created on instance load, replaced on profile switch. The UI's
-  // ModListModel is converged with it after every scan
+  // ModList is converged with it after every scan
   // (on_mod_scan_finished) and every toggle (sync_mod_enable_state), so the
   // profile's modlist.txt is the per-profile source of truth for enabled
   // state — never the global on-disk disable.it marker.
-  std::unique_ptr<engine::profile::Profile> active_profile_;
+  std::unique_ptr<engine::profile::ProfileManager> active_profile_;
   // Plugin database driving the Plugins tab (empty until a plugin-capable
   // game is loaded). Rebuilt on refresh; toggles/moves save the profile.
-  engine::PluginDatabase plugins_db_;
+  engine::PluginDb::Database plugins_db_;
   ui::PluginsTab *plugins_tab_widget_ = nullptr;
   // Long-lived LOOT sort worker thread (created on first use, reused).
   ui::LootSortThread *loot_sort_thread_ = nullptr;
@@ -266,7 +274,7 @@ private:
   QHash<QString, int> plugin_row_by_name_;
   // Toolbar shortcut pins: game-relative executable paths referencing the
   // executables list (Issue #34). The icon, args/cwd/env, output mod and
-  // title are inherited from the referenced ExecEntry at click time.
+  // title are inherited from the referenced Executables::Entry at click time.
   QStringList toolbar_shortcut_paths_;
   std::vector<std::string> saved_executables_;
   std::string pending_nxm_url_;
@@ -321,7 +329,7 @@ private:
   ui::PluginDbLoadThread *plugin_db_load_thread_ = nullptr;
   quint64 plugin_db_generation_ = 0;
   bool preload_pending_ = false;
-  std::optional<engine::PluginDatabase> preloaded_plugin_db_;
+  std::optional<engine::PluginDb::Database> preloaded_plugin_db_;
   std::filesystem::path preloaded_plugin_db_game_dir_;
   // Launch deploy machinery (P8.4): launch_with_executable() builds a
   // LaunchPrepRequest snapshot and runs prepare_launch_params on DeployThread
@@ -487,6 +495,11 @@ private:
   friend class SettingsController;
   friend class DownloadsController;
   friend class TabModeController;
+  friend class ModActions;
+  friend class ModContextMenu;
+
+  // UI Locker for disabling/enabling the interface during operations
+  friend class Locker;
   std::unique_ptr<ModListController> mod_list_;
   std::unique_ptr<LaunchController> launch_;
   std::unique_ptr<OverwriteController> overwrite_;
@@ -497,6 +510,8 @@ private:
   // other controllers; the Main tab is added once the console splitter
   // exists.
   std::unique_ptr<TabModeController> tab_mode_;
+  // UI Locker instance for disabling/enabling the interface during operations
+  std::unique_ptr<Locker> locker_;
 };
 
 } // namespace ui

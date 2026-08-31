@@ -11,7 +11,7 @@
 #include "engine/core/log/logger.h"
 
 // ---------------------------------------------------------------------------
-// PreviewRegistry — v2 IPluginPreview backing store.
+// Registry — v2 IPluginPreview backing store.
 //
 // This is a header-only singleton on purpose: the engine's plugin loader
 // (gmm_engine, which is Qt-free and must NOT link the UI library) populates it
@@ -30,7 +30,7 @@
 
 namespace ui::preview {
 
-struct PreviewRegistryEntry {
+struct RegistryEntry {
   std::string extension;     // normalized: lowercase, leading dot (e.g. ".dds")
   GmmPreviewFn fn = nullptr; // plugin generator: (file_path, preview_data,
                              // user_data) -> QWidget*
@@ -40,10 +40,10 @@ struct PreviewRegistryEntry {
       plugin_path; // owning plugin path; used to drop the entry on unload
 };
 
-class PreviewRegistry {
+class Registry {
 public:
-  static PreviewRegistry &instance() {
-    static PreviewRegistry reg;
+  static Registry &instance() {
+    static Registry reg;
     return reg;
   }
 
@@ -57,13 +57,13 @@ public:
     if (!fn)
       return;
     const std::string norm = normalize_extension(extension);
-    engine::Logger::instance().debug("[PreviewRegistry] register_preview: ext=" + norm +
+    engine::Logger::instance().debug("[Registry] register_preview: ext=" + norm +
                              " fn=" + std::to_string(reinterpret_cast<uintptr_t>(fn)) +
                              " plugin=" + plugin_path);
     std::lock_guard<std::mutex> lock(mutex_);
-    entries_.push_back(PreviewRegistryEntry{norm, fn, preview_data, user_data,
+    entries_.push_back(RegistryEntry{norm, fn, preview_data, user_data,
                                             plugin_path});
-    engine::Logger::instance().debug("[PreviewRegistry] total entries after register: " +
+    engine::Logger::instance().debug("[Registry] total entries after register: " +
                              std::to_string(entries_.size()));
   }
 
@@ -73,7 +73,7 @@ public:
     if (plugin_path.empty())
       return;
     std::lock_guard<std::mutex> lock(mutex_);
-    std::erase_if(entries_, [&](const PreviewRegistryEntry &e) {
+    std::erase_if(entries_, [&](const RegistryEntry &e) {
       return e.plugin_path == plugin_path;
     });
   }
@@ -82,19 +82,19 @@ public:
   [[nodiscard]] bool has_preview(const std::string &file_path) const {
     const std::string ext = normalize_extension(
         std::filesystem::path(file_path).extension().string());
-    engine::Logger::instance().debug("[PreviewRegistry] has_preview: file=" + file_path +
+    engine::Logger::instance().debug("[Registry] has_preview: file=" + file_path +
                              " ext=" + ext + " entries_count=" + std::to_string(entries_.size()));
     if (ext.empty()) {
-      engine::Logger::instance().debug("[PreviewRegistry] has_preview: ext empty, returning false");
+      engine::Logger::instance().debug("[Registry] has_preview: ext empty, returning false");
       return false;
     }
     std::lock_guard<std::mutex> lock(mutex_);
     bool found = std::any_of(entries_.begin(), entries_.end(),
-                             [&](const PreviewRegistryEntry &e) {
-                               engine::Logger::instance().debug("[PreviewRegistry] has_preview: checking entry ext=" + e.extension);
+                             [&](const RegistryEntry &e) {
+                               engine::Logger::instance().debug("[Registry] has_preview: checking entry ext=" + e.extension);
                                return e.extension == ext;
                              });
-    engine::Logger::instance().debug("[PreviewRegistry] has_preview: result=" + std::string(found ? "TRUE" : "FALSE"));
+    engine::Logger::instance().debug("[Registry] has_preview: result=" + std::string(found ? "TRUE" : "FALSE"));
     return found;
   }
 
@@ -104,35 +104,35 @@ public:
   [[nodiscard]] void *create_preview(const std::string &file_path) const {
     const std::string ext = normalize_extension(
         std::filesystem::path(file_path).extension().string());
-    engine::Logger::instance().debug("[PreviewRegistry] create_preview: file=" + file_path +
+    engine::Logger::instance().debug("[Registry] create_preview: file=" + file_path +
                              " ext=" + ext + " entries_count=" + std::to_string(entries_.size()));
     if (ext.empty()) {
-      engine::Logger::instance().debug("[PreviewRegistry] create_preview: ext empty, returning nullptr");
+      engine::Logger::instance().debug("[Registry] create_preview: ext empty, returning nullptr");
       return nullptr;
     }
     std::lock_guard<std::mutex> lock(mutex_);
     for (size_t i = 0; i < entries_.size(); ++i) {
       const auto &e = entries_[i];
-      engine::Logger::instance().debug("[PreviewRegistry] create_preview: entry[" + std::to_string(i) +
+      engine::Logger::instance().debug("[Registry] create_preview: entry[" + std::to_string(i) +
                                "] ext=" + e.extension + " fn=" +
                                std::to_string(reinterpret_cast<uintptr_t>(e.fn)));
     }
     auto it = std::find_if(entries_.begin(), entries_.end(),
-                           [&](const PreviewRegistryEntry &e) {
+                           [&](const RegistryEntry &e) {
                              return e.extension == ext && e.fn != nullptr;
                            });
     if (it == entries_.end()) {
-      engine::Logger::instance().debug("[PreviewRegistry] create_preview: no match found, returning nullptr");
+      engine::Logger::instance().debug("[Registry] create_preview: no match found, returning nullptr");
       return nullptr;
     }
-    engine::Logger::instance().debug("[PreviewRegistry] create_preview: match found, calling fn");
+    engine::Logger::instance().debug("[Registry] create_preview: match found, calling fn");
     return it->fn(file_path.c_str(), it->preview_data, it->user_data);
   }
 
 private:
-  PreviewRegistry() = default;
-  PreviewRegistry(const PreviewRegistry &) = delete;
-  PreviewRegistry &operator=(const PreviewRegistry &) = delete;
+  Registry() = default;
+  Registry(const Registry &) = delete;
+  Registry &operator=(const Registry &) = delete;
 
   static std::string normalize_extension(std::string ext) {
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
@@ -144,7 +144,7 @@ private:
   }
 
   mutable std::mutex mutex_;
-  std::vector<PreviewRegistryEntry> entries_;
+  std::vector<RegistryEntry> entries_;
 };
 
 } // namespace ui::preview

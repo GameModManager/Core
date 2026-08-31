@@ -34,7 +34,7 @@ namespace {
 // sentinels against it directly. Idempotent (writing an existing sentinel /
 // removing an absent one is a no-op) and a no-op for games that do not
 // declare delayed_disable.
-void reconcile_deferred_disable_sentinels(const HeadlessConfig& cfg) {
+void reconcile_deferred_disable_sentinels(const HeadlessLauncher::Config& cfg) {
     if (!cfg.knowledge || cfg.game_id.empty())
         return;
     if (!engine::delayed_disable_for(*cfg.knowledge, cfg.game_id))
@@ -71,7 +71,7 @@ void reconcile_deferred_disable_sentinels(const HeadlessConfig& cfg) {
     // Read the profile's modlist.txt (the per-profile source of truth for
     // enabled state). refresh_mod_status({}) loads exactly the file entries —
     // no known_mods to append.
-    engine::profile::Profile profile(profile_dir);
+    engine::profile::ProfileManager profile(profile_dir);
     profile.refresh_mod_status({});
     const auto mods = profile.mods();
     if (mods.empty())
@@ -111,16 +111,20 @@ void reconcile_deferred_disable_sentinels(const HeadlessConfig& cfg) {
 
 }  // namespace
 
-int launch_game_headless(const HeadlessConfig& cfg) {
+HeadlessLauncher::HeadlessLauncher(const Config& config,
+                                   engine::Platform* platform)
+    : config_(config), platform_(platform) {}
+
+int HeadlessLauncher::run() {
     engine::Logger::instance().enable_console();
     engine::Logger::instance().debug("GameModManager - headless launch");
     engine::Logger::instance().debug(
-        "  game_dir: " + cfg.game_dir.string());
+        "  game_dir: " + config_.game_dir.string());
     engine::Logger::instance().debug(
-        "  instance_root: " + cfg.instance_root.string());
+        "  instance_root: " + config_.instance_root.string());
     engine::Logger::instance().debug(
-        "  appid: " + std::to_string(cfg.steam_appid) +
-        "  windows: " + (cfg.is_windows_exe ? "yes" : "no"));
+        "  appid: " + std::to_string(config_.steam_appid) +
+        "  windows: " + (config_.is_windows_exe ? "yes" : "no"));
 
     // No pre-check here: the executable may only exist in the merged view
     // (deployed into .gmm_staging). prepare_launch_params populates staging;
@@ -128,24 +132,24 @@ int launch_game_headless(const HeadlessConfig& cfg) {
 
     // Build launch params through the shared workflow (same as GUI "Run" path)
     engine::LaunchPrepRequest req;
-    req.instance_root = cfg.instance_root;
-    req.game_dir = cfg.game_dir;
-    req.executable = cfg.executable;
-    req.knowledge = cfg.knowledge ? *cfg.knowledge : engine::GameKnowledge();
-    req.game_id = cfg.game_id;
-    req.steam_appid = cfg.steam_appid;
-    req.is_windows_exe = cfg.is_windows_exe;
-    req.local_saves_enabled = cfg.local_saves_enabled;
-    req.platform = cfg.platform;
+    req.instance_root = config_.instance_root;
+    req.game_dir = config_.game_dir;
+    req.executable = config_.executable;
+    req.knowledge = config_.knowledge ? *config_.knowledge : engine::GameKnowledge();
+    req.game_id = config_.game_id;
+    req.steam_appid = config_.steam_appid;
+    req.is_windows_exe = config_.is_windows_exe;
+    req.local_saves_enabled = config_.local_saves_enabled;
+    req.platform = platform_;
     auto lparams = engine::prepare_launch_params(req);
-    lparams.platform = cfg.platform;
+    lparams.platform = platform_;
 
     // MO2-equivalent plugin order: build + write the game's Plugins.txt (and
     // the instance profile) right before launch. No-op for games without
     // plugin support (no localappdata_folder hook).
-    engine::PluginDatabase::write_plugins_txt_for_launch(
-        cfg.game_dir, cfg.instance_root, cfg.game_id, cfg.steam_appid,
-        cfg.knowledge ? *cfg.knowledge : engine::GameKnowledge(), cfg.platform);
+    engine::PluginDb::Database::write_plugins_txt_for_launch(
+        config_.game_dir, config_.instance_root, config_.game_id, config_.steam_appid,
+        config_.knowledge ? *config_.knowledge : engine::GameKnowledge(), platform_);
 
     auto launch_time = fs::file_time_type::clock::now();
     auto result = engine::launch_game(lparams);
@@ -181,9 +185,9 @@ int launch_game_headless(const HeadlessConfig& cfg) {
     // files out of game_dir into Overwrite.
     if (lparams.use_overlay) {
         bool case_insensitive =
-            cfg.knowledge &&
-            cfg.knowledge->get(cfg.game_id, "case_sensitive", "true") == "false";
-        engine::capture_overwrite(cfg.game_dir, lparams.overwrite_dir, launch_time,
+            config_.knowledge &&
+            config_.knowledge->get(config_.game_id, "case_sensitive", "true") == "false";
+        engine::capture_overwrite(config_.game_dir, lparams.overwrite_dir, launch_time,
                                   case_insensitive);
     }
 

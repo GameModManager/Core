@@ -1,7 +1,7 @@
-#include "engine/source/nexus_auth.h"
+#include "engine/source/nexus/auth.h"
 
 #include "engine/core/log/logger.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <nlohmann/json.hpp>
 
@@ -10,7 +10,7 @@
 #include <fstream>
 #include <sstream>
 
-namespace engine {
+namespace engine::Source::Nexus {
 
 namespace {
 constexpr const char* kKeyName = "nexus-api-key";
@@ -20,7 +20,7 @@ constexpr const char* kKeyName = "nexus-api-key";
 // Config directory / storage paths
 // -----------------------------------------------------------------------
 
-std::filesystem::path NexusAuth::config_dir() {
+std::filesystem::path Auth::config_dir() {
     const char* xdg = std::getenv("XDG_CONFIG_HOME");
     if (xdg && *xdg)
         return std::filesystem::path(xdg) / "GameModManager";
@@ -31,14 +31,14 @@ std::filesystem::path NexusAuth::config_dir() {
 // Keyring selection
 // -----------------------------------------------------------------------
 
-NexusAuth::NexusAuth()
+Auth::Auth()
     : fallback_(config_dir()) {}
 
-void NexusAuth::set_keyring(std::unique_ptr<Keyring> keyring) {
+void Auth::set_keyring(std::unique_ptr<Keyring> keyring) {
     keyring_ = std::move(keyring);
 }
 
-Keyring& NexusAuth::effective_keyring() const {
+Keyring& Auth::effective_keyring() const {
     if (keyring_ && keyring_->available())
         return *keyring_;
     return fallback_;
@@ -48,12 +48,12 @@ Keyring& NexusAuth::effective_keyring() const {
 // Public API - API key
 // -----------------------------------------------------------------------
 
-NexusAuth& NexusAuth::instance() {
-    static NexusAuth inst;
+Auth& Auth::instance() {
+    static Auth inst;
     return inst;
 }
 
-bool NexusAuth::has_api_key() const {
+bool Auth::has_api_key() const {
     try {
         return effective_keyring().has(kKeyName);
     } catch (const std::exception& e) {
@@ -63,7 +63,7 @@ bool NexusAuth::has_api_key() const {
     }
 }
 
-std::string NexusAuth::get_api_key() const {
+std::string Auth::get_api_key() const {
     try {
         Keyring& kr = effective_keyring();
         if (!kr.available()) {
@@ -95,7 +95,7 @@ std::string NexusAuth::get_api_key() const {
     }
 }
 
-void NexusAuth::set_api_key(const std::string& key) {
+void Auth::set_api_key(const std::string& key) {
     try {
         Keyring& kr = effective_keyring();
         if (kr.set(kKeyName, key)) {
@@ -110,7 +110,7 @@ void NexusAuth::set_api_key(const std::string& key) {
     }
 }
 
-void NexusAuth::clear_api_key() {
+void Auth::clear_api_key() {
     try {
         effective_keyring().remove(kKeyName);
     } catch (const std::exception& e) {
@@ -124,7 +124,7 @@ void NexusAuth::clear_api_key() {
 // Public API - rate limits
 // -----------------------------------------------------------------------
 
-RateLimitInfo NexusAuth::get_rate_limit() const {
+RateLimitInfo Auth::get_rate_limit() const {
     RateLimitInfo info;
     std::ifstream f(config_dir() / "nexus_rate.json");
     if (!f) return info;
@@ -158,8 +158,8 @@ RateLimitInfo NexusAuth::get_rate_limit() const {
     return info;
 }
 
-void NexusAuth::update_rate_limit(int hourly_limit, int hourly_remaining, int64_t hourly_reset,
-                                  int daily_limit, int daily_remaining, int64_t daily_reset) {
+void Auth::update_rate_limit(int hourly_limit, int hourly_remaining, int64_t hourly_reset,
+                              int daily_limit, int daily_remaining, int64_t daily_reset) {
     std::error_code ec;
     std::filesystem::create_directories(config_dir(), ec);
 
@@ -180,11 +180,11 @@ void NexusAuth::update_rate_limit(int hourly_limit, int hourly_remaining, int64_
 // Public API - user account info
 // -----------------------------------------------------------------------
 
-bool NexusAuth::has_user_info() const {
+bool Auth::has_user_info() const {
     return std::filesystem::exists(config_dir() / "nexus_user.json");
 }
 
-NexusUserInfo NexusAuth::get_user_info() const {
+NexusUserInfo Auth::get_user_info() const {
     NexusUserInfo info;
     std::ifstream f(config_dir() / "nexus_user.json");
     if (!f) return info;
@@ -213,7 +213,7 @@ NexusUserInfo NexusAuth::get_user_info() const {
     return info;
 }
 
-void NexusAuth::set_user_info(const NexusUserInfo& info) {
+void Auth::set_user_info(const NexusUserInfo& info) {
     std::error_code ec;
     std::filesystem::create_directories(config_dir(), ec);
 
@@ -230,9 +230,9 @@ void NexusAuth::set_user_info(const NexusUserInfo& info) {
     f << j.dump(2) << "\n";
 }
 
-void NexusAuth::clear_user_info() {
+void Auth::clear_user_info() {
     std::error_code ec;
     std::filesystem::remove(config_dir() / "nexus_user.json", ec);
 }
 
-} // namespace engine
+} // namespace engine::Source::Nexus

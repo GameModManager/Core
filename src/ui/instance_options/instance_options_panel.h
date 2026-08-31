@@ -8,7 +8,7 @@
 #include <string>
 
 namespace engine {
-class PlatformInterface;
+class Platform;
 class PluginLoader;
 }
 
@@ -28,7 +28,7 @@ class InstanceOptionsWidget;
 class InstanceOptionsDialog : public QDialog {
     Q_OBJECT
 public:
-    InstanceOptionsDialog(engine::PlatformInterface* platform,
+    InstanceOptionsDialog(engine::Platform* platform,
                           engine::PluginLoader* plugin_loader,
                           const std::string& game_id,
                           const std::string& game_display_name,

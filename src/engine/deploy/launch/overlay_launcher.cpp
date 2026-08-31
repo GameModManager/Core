@@ -3,7 +3,7 @@
 #include "engine/core/util/debug_env.h"
 #include "engine/core/util/fs_utils.h"
 #include "engine/core/log/logger.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <cstdlib>
 #include <cstring>

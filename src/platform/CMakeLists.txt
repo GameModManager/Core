@@ -1,5 +1,5 @@
 # Platform module — Qt-free static library. Compiles only the current OS's
-# implementation (LinuxPlatform / WindowsPlatform behind PlatformInterface).
+# implementation (LinuxPlatform / WindowsPlatform behind Platform).
 
 add_library(gmm_platform STATIC
     ${GMM_PLATFORM}/${GMM_PLATFORM}_platform.cpp
