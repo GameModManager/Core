@@ -3,6 +3,7 @@
 #include <QDialog>
 #include <QLabel>
 #include <QPixmap>
+#include <QSlider>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -13,12 +14,27 @@
 class QListWidget;
 class QPushButton;
 class QScrollArea;
-class QSlider;
 class QStackedWidget;
 class QTextBrowser;
 class QVBoxLayout;
 
 namespace ui::preview {
+
+// Custom QSlider that draws a vertical "1x" tick mark and snaps to common
+// speed values (0.25x, 0.5x, 1x, 2x, 4x) when dragged nearby.
+class SpeedSlider : public QSlider {
+  Q_OBJECT
+public:
+  explicit SpeedSlider(QWidget *parent = nullptr);
+
+protected:
+  void paintEvent(QPaintEvent *event) override;
+
+private:
+  // Map slider value (25..400) to the horizontal pixel position within the
+  // groove, accounting for the slider's internal margin.
+  int valueToPixel(int val) const;
+};
 
 // Persistent floating preview window (MO2's PreviewDialog). Renders images
 // (checkerboard background, zoom/fit controls) and text files, and browses
@@ -95,7 +111,7 @@ private:
   // ANM2 playback controls (two-column layout)
   QWidget *anm2_controls_ = nullptr;
   QListWidget *anm2_anim_list_ = nullptr;
-  QSlider *anm2_speed_slider_ = nullptr;
+  SpeedSlider *anm2_speed_slider_ = nullptr;
   QPushButton *anm2_play_btn_ = nullptr;
   QPushButton *anm2_step_back_ = nullptr;
   QPushButton *anm2_step_fwd_ = nullptr;

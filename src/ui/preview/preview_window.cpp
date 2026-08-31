@@ -17,12 +17,63 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 
 #include "engine/game/registry/game_features/game_feature.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
 
 namespace ui::preview {
+
+// ---------------------------------------------------------------------------
+// SpeedSlider - custom QSlider with a "1x" tick mark and min/max labels
+// ---------------------------------------------------------------------------
+
+static constexpr int kSnapValues[] = {25, 50, 75, 100, 150, 200, 300, 400};
+static constexpr int kSnapThreshold = 5;
+
+SpeedSlider::SpeedSlider(QWidget *parent) : QSlider(Qt::Horizontal, parent) {
+  setRange(25, 400);
+  setValue(100);
+  setToolTip(tr("Playback speed: 0.25x to 4.0x (drag near 1x to snap)"));
+}
+
+int SpeedSlider::valueToPixel(int val) const {
+  // Map value to a 0..1 ratio within our range
+  double ratio = static_cast<double>(val - minimum()) /
+                 static_cast<double>(maximum() - minimum());
+  // The groove area is inset by a few pixels from the widget edges.
+  // style()->subControlRect gives us the exact groove rect, but a
+  // simpler approximation works well enough for the tick mark.
+  int margin = 6; // typical QSlider groove margin
+  int w = width() - margin * 2;
+  return margin + static_cast<int>(ratio * w);
+}
+
+void SpeedSlider::paintEvent(QPaintEvent *event) {
+  QSlider::paintEvent(event);
+
+  QPainter p(this);
+  p.setRenderHint(QPainter::Antialiasing, true);
+
+  // Draw a vertical tick mark and "1x" label at the 1x position (value=100)
+  int tick_x = valueToPixel(100);
+  int groove_y = height() / 2 + 8; // below the groove center
+  int tick_top = groove_y;
+  int tick_bot = height() - 2;
+
+  p.setPen(QPen(palette().color(QPalette::Mid), 1));
+  p.drawLine(tick_x, tick_top, tick_x, tick_bot);
+
+  // "1x" label centered below the tick
+  QFont f = p.font();
+  f.setPointSizeF(f.pointSizeF() * 0.85);
+  p.setFont(f);
+  p.setPen(palette().color(QPalette::Text));
+  p.drawText(QRect(tick_x - 12, tick_bot - 12, 24, 14),
+             Qt::AlignHCenter | Qt::AlignTop, QStringLiteral("1x"));
+  p.end();
+}
 
 namespace {
 
@@ -546,10 +597,12 @@ void PreviewWindow::apply_zoom() {
     target = current_pixmap_.size() * zoom_;
   }
   target = target.expandedTo(QSize(1, 1));
-  // Constrain to the available column width so the sprite never overflows
-  // the panel when the window is small.
-  if (int col_w = scroll_->viewport()->width(); col_w > 0)
-    target.setWidth(std::min(target.width(), col_w));
+  // Constrain to the available column width only in fit mode so that
+  // zoomed-in views can scroll beyond the viewport edge.
+  if (fit_) {
+    if (int col_w = scroll_->viewport()->width(); col_w > 0)
+      target.setWidth(std::min(target.width(), col_w));
+  }
   image_label_->setPixmap(current_pixmap_.scaled(target, Qt::KeepAspectRatio,
                                                  Qt::SmoothTransformation));
   if (!fit_)
@@ -585,14 +638,19 @@ void PreviewWindow::build_anm2_controls() {
   anm2_anim_list_->setMaximumHeight(120);
   ctrl->addWidget(anm2_anim_list_);
 
-  // Speed slider row
+  // Speed slider row with min/max labels
   auto *speed_row = new QHBoxLayout;
   speed_row->addWidget(new QLabel(tr("Speed:"), anm2_controls_));
-  anm2_speed_slider_ = new QSlider(Qt::Horizontal, anm2_controls_);
-  anm2_speed_slider_->setRange(25, 400); // 0.25x to 4.0x in steps of 25
-  anm2_speed_slider_->setValue(100);     // 1.0x default
-  anm2_speed_slider_->setToolTip(tr("Playback speed: 0.25x to 4.0x"));
+  auto *speed_min_label = new QLabel(tr("0.25x"), anm2_controls_);
+  speed_min_label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+  speed_min_label->setFixedWidth(36);
+  speed_row->addWidget(speed_min_label);
+  anm2_speed_slider_ = new SpeedSlider(anm2_controls_);
   speed_row->addWidget(anm2_speed_slider_, 1);
+  auto *speed_max_label = new QLabel(tr("4x"), anm2_controls_);
+  speed_max_label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+  speed_max_label->setFixedWidth(24);
+  speed_row->addWidget(speed_max_label);
   ctrl->addLayout(speed_row);
 
   // Play/Pause + frame counter + step buttons row
@@ -632,6 +690,23 @@ void PreviewWindow::build_anm2_controls() {
       double speed = val / 100.0;
       int interval = static_cast<int>(anm2_delays_[anm2_index_] / speed);
       anm2_timer_.start(std::max(interval, 1));
+    }
+  });
+
+  // Magnetic snapping: when the user drags near a key speed, snap to it.
+  connect(anm2_speed_slider_, &QSlider::sliderMoved, this, [this](int pos) {
+    for (int snap : kSnapValues) {
+      if (std::abs(pos - snap) <= kSnapThreshold) {
+        QSignalBlocker blocker(anm2_speed_slider_);
+        anm2_speed_slider_->setValue(snap);
+        // Manually trigger the speed update since signals are blocked
+        if (anm2_playing_ && !anm2_frames_.empty()) {
+          double speed = snap / 100.0;
+          int interval = static_cast<int>(anm2_delays_[anm2_index_] / speed);
+          anm2_timer_.start(std::max(interval, 1));
+        }
+        break;
+      }
     }
   });
 
