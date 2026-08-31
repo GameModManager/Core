@@ -359,6 +359,20 @@ void MainWindow::closeEvent(QCloseEvent *event) {
 bool MainWindow::eventFilter(QObject *obj, QEvent *event) {
   if (settings_->handle_global_event(obj, event))
     return true;
+
+  // Sync View menu checkboxes when panel visibility changes by any means
+  // (splitter drag, programmatic show/hide, window state restore, etc.)
+  if (menu_bar_ &&
+      (event->type() == QEvent::Show || event->type() == QEvent::Hide)) {
+    if (obj == toolbar_area_) {
+      menu_bar_->set_toolbar_checked(event->type() == QEvent::Show);
+    } else if (obj == statusBar()) {
+      menu_bar_->set_status_bar_checked(event->type() == QEvent::Show);
+    } else if (obj == console_) {
+      menu_bar_->set_console_checked(event->type() == QEvent::Show);
+    }
+  }
+
   return QMainWindow::eventFilter(obj, event);
 }
 
