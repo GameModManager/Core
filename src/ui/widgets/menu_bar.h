@@ -14,64 +14,74 @@ class MainWindow;
 // Created once per MainWindow, lives at the top of the window.
 // Actions emit signals; MainWindow connects them to actual behavior.
 class AppMenuBar : public QMenuBar {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit AppMenuBar(MainWindow* parent);
+  explicit AppMenuBar(MainWindow *parent);
 
-    void set_recent_instances(const std::vector<std::string>& instances);
-    void update_tools_for_game(const std::string& game_id,
-                               const std::vector<engine::ExternalTool>& tools);
-    void set_sort_available(bool available);
-    void set_icon_size(int size);
+  void set_recent_instances(const std::vector<std::string> &instances);
+  void update_tools_for_game(const std::string &game_id,
+                             const std::vector<engine::ExternalTool> &tools);
+  void set_sort_available(bool available);
+  void set_icon_size(int size);
+
+  // View menu checkbox sync - update checked state without re-emitting toggled
+  void set_toolbar_checked(bool checked);
+  void set_status_bar_checked(bool checked);
+  void set_console_checked(bool checked);
 
 signals:
-    // File
-    void new_instance_requested();
-    void open_instance_requested();
-    void recent_instance_selected(const QString& name);
-    void import_mods_requested();
-    void export_mods_requested();
-    void settings_requested();
-    void exit_requested();
+  // File
+  void new_instance_requested();
+  void open_instance_requested();
+  void recent_instance_selected(const QString &name);
+  void import_mods_requested();
+  void export_mods_requested();
+  void settings_requested();
+  void exit_requested();
 
-    // Edit
-    void select_all_requested();
-    void deselect_all_requested();
-    void enable_selected_requested();
-    void disable_selected_requested();
-    void priority_up_requested();
-    void priority_down_requested();
+  // Edit
+  void select_all_requested();
+  void deselect_all_requested();
+  void enable_selected_requested();
+  void disable_selected_requested();
+  void priority_up_requested();
+  void priority_down_requested();
 
-    // View
-    void toggle_toolbar(bool visible);
-    void toggle_status_bar(bool visible);
-    void toggle_console(bool visible);
-    void pipeline_requested();
-    void icon_size_requested(int size);
-    void refresh_requested();
+  // View
+  void toggle_toolbar(bool visible);
+  void toggle_status_bar(bool visible);
+  void toggle_console(bool visible);
+  void pipeline_requested();
+  void icon_size_requested(int size);
+  void refresh_requested();
 
-    // Tools
-    void tool_requested(const QString& tool_id, const QString& game_id);
-    void sort_mods_requested();
+  // Tools
+  void tool_requested(const QString &tool_id, const QString &game_id);
+  void sort_mods_requested();
 
-    // Help
-    void about_requested();
-    void about_qt_requested();
-    void instance_statistics_requested();
+  // Help
+  void about_requested();
+  void about_qt_requested();
+  void instance_statistics_requested();
 
 private:
-    void build_file_menu();
-    void build_edit_menu();
-    void build_view_menu();
-    void build_tools_menu();
-    void build_help_menu();
+  void build_file_menu();
+  void build_edit_menu();
+  void build_view_menu();
+  void build_tools_menu();
+  void build_help_menu();
 
-    QMenu* recent_menu_ = nullptr;
-    QMenu* tools_menu_ = nullptr;
-    QMenu* icons_menu_ = nullptr;
-    QAction* tools_separator_ = nullptr;
-    QAction* sort_action_ = nullptr;
-    std::string current_game_id_;
+  QMenu *recent_menu_ = nullptr;
+  QMenu *tools_menu_ = nullptr;
+  QMenu *icons_menu_ = nullptr;
+  QAction *tools_separator_ = nullptr;
+  QAction *sort_action_ = nullptr;
+  // View menu actions - stored so their checked state can be synced
+  // with actual panel visibility from any code path
+  QAction *toggle_toolbar_action_ = nullptr;
+  QAction *toggle_status_bar_action_ = nullptr;
+  QAction *toggle_console_action_ = nullptr;
+  std::string current_game_id_;
 };
 
-}  // namespace ui
+} // namespace ui

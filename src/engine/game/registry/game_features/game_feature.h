@@ -343,11 +343,24 @@ public:
     int delay_ms = 33; // frame duration
   };
 
-  struct AnimationData {
+  // A named animation state (e.g. "Idle", "Walk", "Run", "Attack").
+  // Each state contains its own sequence of frames and canvas dimensions.
+  struct AnimationState {
+    std::string name;
     std::vector<Frame> frames;
     int canvas_width = 0;
     int canvas_height = 0;
+  };
+
+  struct AnimationData {
+    std::vector<Frame> frames; // default/first state (backward compat)
+    int canvas_width = 0;
+    int canvas_height = 0;
     int fps = 30;
+    // All named animation states from the file. When non-empty, the UI
+    // should present a state selector and use frames from the selected
+    // state instead of the top-level frames vector.
+    std::vector<AnimationState> states;
   };
 
   // Parser signature: takes file path + base directory for resource
