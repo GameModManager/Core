@@ -3,6 +3,7 @@
 #include "ui/preview/preview_registry.h"
 #include "ui/preview/preview_widget.h"
 
+#include <QComboBox>
 #include <QFile>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -10,6 +11,7 @@
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
+#include <QSlider>
 #include <QStackedWidget>
 #include <QTextBrowser>
 #include <QVBoxLayout>
@@ -74,6 +76,39 @@ PreviewWindow::PreviewWindow(QWidget *parent) : QDialog(parent) {
   source_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
   source_label_->setEnabled(false);
   layout->addWidget(source_label_);
+
+  // ANM2 animation controls bar (hidden until an .anm2 file is loaded).
+  auto *anim_bar = new QHBoxLayout;
+  state_combo_ = new QComboBox(this);
+  state_combo_->setToolTip(tr("Animation state"));
+  state_combo_->setMinimumWidth(120);
+  anim_bar->addWidget(new QLabel(tr("State:"), this));
+  anim_bar->addWidget(state_combo_);
+
+  anim_bar->addSpacing(8);
+
+  speed_slider_ = new QSlider(Qt::Horizontal, this);
+  speed_slider_->setRange(25, 400); // 0.25x .. 4.0x mapped via /100
+  speed_slider_->setValue(100);
+  speed_slider_->setToolTip(tr("Playback speed"));
+  speed_slider_->setFixedWidth(120);
+  speed_label_ = new QLabel("1.0x", this);
+  speed_label_->setFixedWidth(36);
+  anim_bar->addWidget(new QLabel(tr("Speed:"), this));
+  anim_bar->addWidget(speed_slider_);
+  anim_bar->addWidget(speed_label_);
+
+  anim_bar->addSpacing(8);
+
+  frame_counter_label_ = new QLabel("0/0", this);
+  frame_counter_label_->setToolTip(tr("Current frame / total frames"));
+  anim_bar->addWidget(frame_counter_label_);
+
+  anim_bar->addStretch(1);
+  layout->addLayout(anim_bar);
+
+  // Initially hide the animation bar until an .anm2 file is loaded.
+  state_combo_->parentWidget()->setVisible(false);
 
   stack_ = new QStackedWidget(this);
 
@@ -150,6 +185,10 @@ PreviewWindow::PreviewWindow(QWidget *parent) : QDialog(parent) {
   });
   connect(&anm2_timer_, &QTimer::timeout, this,
           &PreviewWindow::on_anm2_frame_timeout);
+  connect(state_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+          this, &PreviewWindow::on_state_changed);
+  connect(speed_slider_, &QSlider::valueChanged, this,
+          &PreviewWindow::on_speed_changed);
 }
 
 void PreviewWindow::show_file(const QString &file_path,
@@ -208,6 +247,10 @@ void PreviewWindow::reload() {
   anm2_frames_.clear();
   anm2_delays_.clear();
   anm2_index_ = 0;
+  anm2_speed_ = 1.0;
+  speed_slider_->setValue(100);
+  speed_label_->setText("1.0x");
+  frame_counter_label_->setText("0/0");
   engine::Logger::instance().debug("[PreviewWindow] reload: path=" +
                                    path.toStdString());
   engine::Logger::instance().debug(
@@ -254,6 +297,8 @@ bool PreviewWindow::load_image(const QString &path) {
   anm2_frames_.clear();
   anm2_delays_.clear();
   anm2_index_ = 0;
+  state_combo_->parentWidget()->setVisible(false);
+  frame_counter_label_->setText("0/0");
   stack_->setCurrentWidget(image_page_);
   apply_zoom();
   return true;
@@ -275,12 +320,104 @@ bool PreviewWindow::load_anm2(const QString &path) {
   if (!data || data->frames.empty())
     return false;
 
+  anm2_data_ = std::move(*data);
+
+  // Populate state selector from named states (if any).
+  state_combo_->blockSignals(true);
+  state_combo_->clear();
+  if (!anm2_data_.states.empty()) {
+    for (const auto &state : anm2_data_.states) {
+      state_combo_->addItem(QString::fromStdString(state.name));
+    }
+    // Also add a "Default" entry for the top-level frames if they differ.
+    state_combo_->addItem(tr("Default"));
+  }
+  state_combo_->blockSignals(false);
+
+  // Show the animation controls bar.
+  state_combo_->parentWidget()->setVisible(!anm2_data_.states.empty());
+
+  // Build frames from the first named state, or top-level frames.
+  int initial_state = anm2_data_.states.empty() ? -1 : 0;
+  build_anm2_frames(initial_state);
+
+  // Select the first state in the combo.
+  if (!anm2_data_.states.empty())
+    state_combo_->setCurrentIndex(0);
+
+  anm2_index_ = 0;
+  current_pixmap_ = anm2_frames_.empty() ? QPixmap() : anm2_frames_.front();
+  stack_->setCurrentWidget(image_page_);
+  apply_zoom();
+  update_frame_counter();
+
+  if (anm2_frames_.size() > 1) {
+    anm2_timer_.start(static_cast<int>(anm2_delays_.front() / anm2_speed_));
+  }
+  return true;
+}
+
+void PreviewWindow::on_anm2_frame_timeout() {
+  if (anm2_frames_.empty())
+    return;
+  anm2_index_ = (anm2_index_ + 1) % anm2_frames_.size();
+  current_pixmap_ = anm2_frames_[anm2_index_];
+  apply_zoom();
+  update_frame_counter();
+  anm2_timer_.setInterval(
+      static_cast<int>(anm2_delays_[anm2_index_] / anm2_speed_));
+}
+
+void PreviewWindow::on_state_changed(int index) {
+  if (index < 0)
+    return;
+  anm2_timer_.stop();
+  anm2_index_ = 0;
+
+  // Index < states.size() means a named state; the last entry is "Default"
+  // which maps to the top-level frames vector.
+  int state_index = index;
+  if (!anm2_data_.states.empty() &&
+      index >= static_cast<int>(anm2_data_.states.size())) {
+    state_index = -1; // "Default" -> top-level frames
+  }
+
+  build_anm2_frames(state_index);
+
+  current_pixmap_ = anm2_frames_.empty() ? QPixmap() : anm2_frames_.front();
+  apply_zoom();
+  update_frame_counter();
+
+  if (anm2_frames_.size() > 1) {
+    anm2_timer_.start(static_cast<int>(anm2_delays_.front() / anm2_speed_));
+  }
+}
+
+void PreviewWindow::on_speed_changed(int value) {
+  anm2_speed_ = value / 100.0;
+  speed_label_->setText(QString::number(anm2_speed_, 'f', 1) + "x");
+  // Restart the timer with the new speed if animation is running.
+  if (anm2_timer_.isActive() && !anm2_frames_.empty()) {
+    anm2_timer_.setInterval(
+        static_cast<int>(anm2_delays_[anm2_index_] / anm2_speed_));
+  }
+}
+
+void PreviewWindow::build_anm2_frames(int state_index) {
   anm2_frames_.clear();
   anm2_delays_.clear();
 
-  for (const auto &frame : data->frames) {
-    QImage canvas(data->canvas_width, data->canvas_height,
-                  QImage::Format_ARGB32_Premultiplied);
+  const auto *state = (state_index >= 0 &&
+                       state_index < static_cast<int>(anm2_data_.states.size()))
+                          ? &anm2_data_.states[state_index]
+                          : nullptr;
+
+  const auto &frames = state ? state->frames : anm2_data_.frames;
+  const int cw = state ? state->canvas_width : anm2_data_.canvas_width;
+  const int ch = state ? state->canvas_height : anm2_data_.canvas_height;
+
+  for (const auto &frame : frames) {
+    QImage canvas(cw, ch, QImage::Format_ARGB32_Premultiplied);
     canvas.fill(Qt::transparent);
     QPainter painter(&canvas);
     for (const auto &layer : frame.layers) {
@@ -294,25 +431,17 @@ bool PreviewWindow::load_anm2(const QString &path) {
     anm2_frames_.push_back(QPixmap::fromImage(canvas));
     anm2_delays_.push_back(frame.delay_ms);
   }
-
-  anm2_index_ = 0;
-  current_pixmap_ = anm2_frames_.front();
-  stack_->setCurrentWidget(image_page_);
-  apply_zoom();
-
-  if (anm2_frames_.size() > 1) {
-    anm2_timer_.start(anm2_delays_.front());
-  }
-  return true;
 }
 
-void PreviewWindow::on_anm2_frame_timeout() {
-  if (anm2_frames_.empty())
-    return;
-  anm2_index_ = (anm2_index_ + 1) % anm2_frames_.size();
-  current_pixmap_ = anm2_frames_[anm2_index_];
-  apply_zoom();
-  anm2_timer_.setInterval(anm2_delays_[anm2_index_]);
+void PreviewWindow::update_frame_counter() {
+  if (anm2_frames_.empty()) {
+    frame_counter_label_->setText("0/0");
+  } else {
+    frame_counter_label_->setText(
+        QString("%1/%2")
+            .arg(static_cast<int>(anm2_index_) + 1)
+            .arg(static_cast<int>(anm2_frames_.size())));
+  }
 }
 
 bool PreviewWindow::load_text(const QString &path) {
@@ -327,6 +456,8 @@ bool PreviewWindow::load_text(const QString &path) {
   if (data.size() > limit)
     data = data.left(limit);
   text_view_->setPlainText(QString::fromUtf8(data));
+  state_combo_->parentWidget()->setVisible(false);
+  frame_counter_label_->setText("0/0");
   stack_->setCurrentWidget(text_view_);
   return true;
 }
@@ -359,6 +490,8 @@ bool PreviewWindow::load_plugin_preview(const QString &path) {
 
   plugin_widget_ = reinterpret_cast<QWidget *>(w);
   plugin_layout_->addWidget(plugin_widget_);
+  state_combo_->parentWidget()->setVisible(false);
+  frame_counter_label_->setText("0/0");
   stack_->setCurrentWidget(plugin_page_);
   return true;
 }
@@ -371,6 +504,8 @@ void PreviewWindow::show_unsupported() {
   anm2_delays_.clear();
   anm2_index_ = 0;
   current_pixmap_ = QPixmap();
+  state_combo_->parentWidget()->setVisible(false);
+  frame_counter_label_->setText("0/0");
   if (plugin_widget_) {
     plugin_layout_->removeWidget(plugin_widget_);
     delete plugin_widget_;
