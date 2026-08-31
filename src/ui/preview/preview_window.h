@@ -20,6 +20,8 @@ class QVBoxLayout;
 
 namespace ui::preview {
 
+class DebugImageLabel;
+
 // Custom QSlider that draws a vertical "1x" tick mark and snaps to common
 // speed values (0.25x, 0.5x, 1x, 2x, 4x) when dragged nearby.
 class SpeedSlider : public QSlider {
@@ -60,6 +62,7 @@ public:
 
 protected:
   void resizeEvent(QResizeEvent *event) override;
+  void keyPressEvent(QKeyEvent *event) override;
 
 private slots:
   void on_anm2_frame_timeout();
@@ -83,7 +86,7 @@ private:
   QStackedWidget *stack_ = nullptr;
   QWidget *image_page_ = nullptr;
   QScrollArea *scroll_ = nullptr;
-  QLabel *image_label_ = nullptr;
+  DebugImageLabel *image_label_ = nullptr;
   QTextBrowser *text_view_ = nullptr;
   QLabel *unsupported_label_ = nullptr;
   // Plugin-provided preview page (v2 IPluginPreview). Holds whatever QWidget*
@@ -129,6 +132,9 @@ private:
   std::vector<AnimationState> anm2_states_;
   int anm2_current_state_ = 0;
   bool anm2_playing_ = false;
+
+  // Debug bounding-box overlay (F12 toggle).
+  bool debug_overlay_enabled_ = false;
 
   // Parse ANM2 data and set up the host controls panel (animation list, speed
   // slider, play/pause, scrubber, step buttons). Does NOT switch the stack
