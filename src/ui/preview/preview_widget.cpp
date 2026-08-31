@@ -191,7 +191,7 @@ bool PreviewWidget::try_load_anm2(const QString &path) {
   /* Resolve the animation parser from the game feature registry. When no
    * game-specific parser is registered, the registry's wildcard fallback
    * returns the global (non-game-specific) parser registered by a file-format
-   * plugin such as Anm2Support. game_id_ may be empty (e.g. before set_game_id
+   * plugin such as ANM2. game_id_ may be empty (e.g. before set_game_id
    * is called), in which case resolve_feature uses the global parser directly.
    */
   auto feature =

@@ -351,7 +351,7 @@ static void cb_register_animation_parser(GmmRegistrationCtx *ctx,
 
   // A NULL game_id means the parser is non-game-specific (file-format based,
   // applies to every game) and is registered under the empty/global game_id.
-  // This is what lets a generic plugin such as Anm2Support serve any game
+  // This is what lets a generic plugin such as ANM2 serve any game
   // without being re-registered per game. An explicit game_id scopes the
   // parser to that one game (and overrides any global parser for it).
   std::string gid = game_id ? game_id : "";
@@ -1516,6 +1516,66 @@ static void cb_v2_register_save_parser(GmmRegistrationCtxV2 *ctx,
   Logger::instance().debug("Plugin registered v2 save parser for game=" + gid);
 }
 
+static void cb_v2_register_animation_parser(GmmRegistrationCtxV2 *ctx,
+                                             const char *game_id,
+                                             const char *file_extension,
+                                             GmmAnimationParserFnV2 fn,
+                                             int priority, void *user_data) {
+  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+  if (!bridge || !bridge->current_plugin)
+    return;
+
+  // A NULL game_id means the parser is non-game-specific (file-format based,
+  // applies to every game) and is registered under the empty/global game_id.
+  std::string gid = game_id ? game_id : "";
+  if (!fn) {
+    Logger::instance().warn("Animation parser registered with null fn");
+    return;
+  }
+
+  std::string source = bridge->current_plugin->path;
+  auto feature = std::make_shared<AnimationParserFeature>(
+      [fn, user_data](const std::string &file_path, const std::string &base_dir)
+          -> std::optional<AnimationParserFeature::AnimationData> {
+        GmmAnimationDataV2 c_out = {};
+        if (!fn(file_path.c_str(), base_dir.c_str(), &c_out, user_data)) {
+          return std::nullopt;
+        }
+        AnimationParserFeature::AnimationData data;
+        data.fps = c_out.fps;
+        data.canvas_width = c_out.canvas_width;
+        data.canvas_height = c_out.canvas_height;
+        for (size_t fi = 0; fi < c_out.frame_count; ++fi) {
+          auto &cf = c_out.frames[fi];
+          AnimationParserFeature::Frame frame;
+          frame.delay_ms = cf.delay_ms;
+          for (size_t li = 0; li < cf.layer_count; ++li) {
+            auto &cl = cf.layers[li];
+            AnimationParserFeature::LayerItem layer;
+            layer.x = cl.x;
+            layer.y = cl.y;
+            layer.width = cl.width;
+            layer.height = cl.height;
+            if (cl.rgba_pixels && cl.pixel_count > 0) {
+              layer.rgba_pixels.assign(cl.rgba_pixels,
+                                       cl.rgba_pixels + cl.pixel_count);
+              free(cl.rgba_pixels);
+            }
+            frame.layers.push_back(std::move(layer));
+          }
+          data.frames.push_back(std::move(frame));
+          free(cf.layers);
+        }
+        free(c_out.frames);
+        return data;
+      });
+
+  Game::Features::Registry::instance().register_feature(
+      gid, "animation_parser", priority, std::move(feature), source);
+  Logger::instance().debug("Plugin registered v2 animation parser for game=" +
+                           gid);
+}
+
 static void cb_v2_register_category(GmmRegistrationCtxV2 *ctx,
                                     const char *category) {
   auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
@@ -1716,6 +1776,7 @@ bool PluginLoader::load_plugin(const std::string &path) {
     ctx.register_tool = cb_v2_register_tool;
     ctx.register_modpage = cb_v2_register_modpage;
     ctx.register_save_parser = cb_v2_register_save_parser;
+    ctx.register_animation_parser = cb_v2_register_animation_parser;
     ctx.register_category = cb_v2_register_category;
     ctx.register_categories = cb_v2_register_categories;
     ctx.register_tab = cb_v2_register_tab;
