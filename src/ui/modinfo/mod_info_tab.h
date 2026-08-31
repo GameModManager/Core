@@ -32,6 +32,8 @@ public:
     // host (or a test driving a tab standalone) can set the data too.
     void set_current(const ModInfoData& data) { current_ = data; }
 
+    [[nodiscard]] bool has_data() const { return has_data_; }
+
 protected:
     const ModInfoData& current() const { return current_; }
 
@@ -42,7 +44,7 @@ protected:
 private:
     ModInfoData current_;
     ModInfoTabId tab_id_ = ModInfoTabId::TextFiles;
-    bool has_data_ = false;
+    bool has_data_ = true;
 };
 
 }  // namespace ui
