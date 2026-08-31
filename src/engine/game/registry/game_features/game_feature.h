@@ -347,6 +347,18 @@ public:
     int delay_ms = 33; // frame duration
   };
 
+  // Result of an on-demand render call: raw RGBA pixels + dimensions.
+  struct RenderResult {
+    std::vector<std::uint8_t> pixels;
+    int width = 0;
+    int height = 0;
+  };
+
+  // On-demand render callback type: renders a single frame at the given time
+  // (in milliseconds, 0-based from animation start). Returns raw RGBA
+  // pixels composited onto a transparent canvas.
+  using RenderFrameFn = std::function<RenderResult(float time_ms)>;
+
   // A named animation state (e.g. "Idle", "Walk", "Run", "Attack").
   // Each state contains its own sequence of frames and canvas dimensions.
   struct AnimationState {
@@ -357,13 +369,13 @@ public:
     // On-demand rendering support: opaque pointer to plugin-owned data.
     // When non-null, the host should prefer render_frame over pre-baked frames.
     void* raw_animation = nullptr;
-  };
-
-  // Result of an on-demand render call: raw RGBA pixels + dimensions.
-  struct RenderResult {
-    std::vector<std::uint8_t> pixels;
-    int width = 0;
-    int height = 0;
+    // On-demand render callback for this specific state.
+    // Captures this state's raw_animation pointer in its closure.
+    RenderFrameFn render_frame;
+    int on_demand_canvas_width = 0;
+    int on_demand_canvas_height = 0;
+    int on_demand_fps = 0;
+    int on_demand_frame_count = 0;
   };
 
   struct AnimationData {
@@ -385,7 +397,7 @@ public:
     // pixels composited onto a transparent canvas. The canvas dimensions
     // are fixed for the entire animation (use on_demand_canvas_width/height).
     // When null, the host falls back to pre-baked frames.
-    using RenderFrameFn = std::function<RenderResult(float time_ms)>;
+    // Uses the class-level RenderFrameFn typedef.
     RenderFrameFn render_frame;
 
     // Fixed canvas dimensions for on-demand rendering.

@@ -138,12 +138,23 @@ private:
 
   // On-demand rendering support (when available, renders frames on the fly
   // with proper interpolation instead of using pre-baked frames)
-  ::engine::AnimationParserFeature::AnimationData::RenderFrameFn anm2_render_fn_;
+  ::engine::AnimationParserFeature::RenderFrameFn anm2_render_fn_;
   int anm2_on_demand_canvas_w_ = 0;
   int anm2_on_demand_canvas_h_ = 0;
   int anm2_on_demand_fps_ = 0;
   int anm2_on_demand_frame_count_ = 0;
   float anm2_time_ = 0.0f; // float time counter for on-demand rendering
+
+  // Per-state on-demand render data. When the user switches animation states,
+  // the active render callback and canvas dimensions are swapped from here.
+  struct StateRenderData {
+    ::engine::AnimationParserFeature::RenderFrameFn render_frame;
+    int canvas_w = 0;
+    int canvas_h = 0;
+    int fps = 0;
+    int frame_count = 0;
+  };
+  std::vector<StateRenderData> anm2_state_renders_;
 
   // Debug bounding-box overlay (F12 toggle).
   bool debug_overlay_enabled_ = false;
