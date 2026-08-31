@@ -846,6 +846,13 @@ void PreviewWindow::build_anm2_controls() {
   anm2_progress_->setToolTip(tr("Drag to scrub through frames"));
   ctrl->addWidget(anm2_progress_);
 
+  // Experimental notice
+  auto* anm2_notice = new QLabel(tr("ANM2 preview is experimental — may not render all animations correctly"), anm2_controls_);
+  anm2_notice->setAlignment(Qt::AlignCenter);
+  anm2_notice->setStyleSheet("color: gray; font-style: italic;");
+  anm2_notice->setWordWrap(true);
+  ctrl->addWidget(anm2_notice);
+
   ctrl->addStretch(1);
 
   // Wire up signals
