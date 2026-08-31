@@ -114,6 +114,10 @@ private:
   int anm2_current_state_ = 0;
   bool anm2_playing_ = false;
 
+  // Parse ANM2 data and set up the host controls panel (animation list, speed
+  // slider, play/pause, scrubber, step buttons). Does NOT switch the stack
+  // page.
+  bool parse_anm2_data(const QString &path);
   // Build the ANM2 controls panel (created once, shown/hidden as needed).
   void build_anm2_controls();
   // Switch to the given animation state index and reset playback.
