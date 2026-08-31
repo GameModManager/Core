@@ -380,9 +380,17 @@ bool PreviewWindow::parse_anm2_data(const QString &path) {
   anm2_frames_ = anm2_states_.front().frames;
   anm2_delays_ = anm2_states_.front().delays;
   anm2_index_ = 0;
-  anm2_playing_ = false;
+  anm2_playing_ = true;
   if (anm2_play_btn_)
-    anm2_play_btn_->setText(tr("Play"));
+    anm2_play_btn_->setText(tr("Pause"));
+
+  // Start playback immediately.
+  if (!anm2_frames_.empty()) {
+    double speed =
+        anm2_speed_slider_ ? anm2_speed_slider_->value() / 100.0 : 1.0;
+    int interval = static_cast<int>(anm2_delays_.front() / speed);
+    anm2_timer_.start(std::max(interval, 1));
+  }
 
   // Update info label: "name, X frames, Y fps"
   if (anm2_info_label_) {
@@ -539,6 +547,10 @@ void PreviewWindow::apply_zoom() {
     target = current_pixmap_.size() * zoom_;
   }
   target = target.expandedTo(QSize(1, 1));
+  // Constrain to the available column width so the sprite never overflows
+  // the panel when the window is small.
+  if (int col_w = scroll_->viewport()->width(); col_w > 0)
+    target.setWidth(std::min(target.width(), col_w));
   image_label_->setPixmap(current_pixmap_.scaled(target, Qt::KeepAspectRatio,
                                                  Qt::SmoothTransformation));
   if (!fit_)
@@ -567,7 +579,6 @@ void PreviewWindow::build_anm2_controls() {
 
   // Info label: "name, X frames, Y fps"
   anm2_info_label_ = new QLabel(anm2_controls_);
-  anm2_info_label_->setEnabled(false);
   ctrl->addWidget(anm2_info_label_);
 
   // Scrollable animation list
@@ -694,6 +705,14 @@ void PreviewWindow::switch_anm2_state(int index) {
   anm2_frames_ = state.frames;
   anm2_delays_ = state.delays;
   anm2_index_ = 0;
+
+  // Update the info label with the selected state's details.
+  if (anm2_info_label_) {
+    anm2_info_label_->setText(tr("%1 - %2 frames, %3 fps")
+                                  .arg(state.name)
+                                  .arg(static_cast<int>(state.frames.size()))
+                                  .arg(state.fps));
+  }
 
   if (!anm2_frames_.empty()) {
     current_pixmap_ = anm2_frames_.front();
