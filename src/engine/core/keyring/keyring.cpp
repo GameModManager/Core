@@ -9,6 +9,10 @@
 #include <cstdint>
 #include <fstream>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 namespace engine {
 
 namespace {
@@ -57,6 +61,28 @@ std::string FileKeyring::machine_id() {
         std::string id;
         f >> id;
         if (!id.empty()) return id;
+    }
+#elif defined(_WIN32)
+    // Windows: read MachineGuid from the registry
+    HKEY hkey;
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
+                      L"SOFTWARE\\Microsoft\\Cryptography",
+                      0, KEY_READ, &hkey) == ERROR_SUCCESS) {
+        wchar_t buf[256];
+        DWORD buf_size = sizeof(buf);
+        DWORD type = REG_SZ;
+        if (RegQueryValueExW(hkey, L"MachineGuid", nullptr, &type,
+                            reinterpret_cast<LPBYTE>(buf),
+                            &buf_size) == ERROR_SUCCESS && type == REG_SZ) {
+            RegCloseKey(hkey);
+            std::wstring guid(buf, buf_size / sizeof(wchar_t));
+            // Convert wide string to narrow for hashing
+            std::string narrow;
+            narrow.reserve(guid.size());
+            for (wchar_t wc : guid) narrow += static_cast<char>(wc);
+            return narrow;
+        }
+        RegCloseKey(hkey);
     }
 #endif
     return "gmm-generic-seed-2024";

@@ -48,7 +48,6 @@ set(ENGINE_SOURCES
     game/detect/mod_scanner.cpp
     mod/archive/archive_extractor.cpp
     index/conflict_index.cpp
-    index/conflict_index.cpp
     index/conflict_engine.cpp
     mod/model/profile.cpp
     profile/profile.cpp

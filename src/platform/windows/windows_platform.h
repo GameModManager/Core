@@ -49,8 +49,8 @@ public:
     [[nodiscard]] static bool unregister_nxm_handler();
 
 private:
-    static std::filesystem::path appdata_dir() const;
-    static std::filesystem::path localappdata_dir() const;
+    std::filesystem::path appdata_dir() const;
+    std::filesystem::path localappdata_dir() const;
 };
 
 }  // namespace engine
