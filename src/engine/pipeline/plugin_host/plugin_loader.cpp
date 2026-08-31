@@ -1545,6 +1545,35 @@ static void cb_v2_register_animation_parser(GmmRegistrationCtxV2 *ctx,
         data.fps = c_out.fps;
         data.canvas_width = c_out.canvas_width;
         data.canvas_height = c_out.canvas_height;
+
+        // Pass through the raw animation pointer from the plugin for
+        // on-demand rendering. The plugin owns this memory.
+        data.raw_animation = c_out.raw_animation;
+        data.on_demand_canvas_width = c_out.canvas_width;
+        data.on_demand_canvas_height = c_out.canvas_height;
+        data.on_demand_fps = static_cast<int>(c_out.fps);
+        data.on_demand_frame_count = static_cast<int>(c_out.frame_count);
+
+        // Wrap the plugin's render callback for on-demand frame generation.
+        if (c_out.render_frame && c_out.raw_animation) {
+          auto *raw = c_out.raw_animation;
+          auto *render_fn = c_out.render_frame;
+          data.render_frame =
+              [raw, render_fn](float time_ms)
+              -> AnimationParserFeature::RenderResult {
+            AnimationParserFeature::RenderResult result;
+            int32_t w = 0, h = 0;
+            uint8_t *pixels = render_fn(raw, time_ms, &w, &h);
+            if (pixels && w > 0 && h > 0) {
+              result.pixels.assign(pixels, pixels + (static_cast<size_t>(w) * static_cast<size_t>(h) * 4));
+              result.width = w;
+              result.height = h;
+              free(pixels);
+            }
+            return result;
+          };
+        }
+
         for (size_t fi = 0; fi < c_out.frame_count; ++fi) {
           auto &cf = c_out.frames[fi];
           AnimationParserFeature::Frame frame;
@@ -1578,6 +1607,7 @@ static void cb_v2_register_animation_parser(GmmRegistrationCtxV2 *ctx,
           }
           state.canvas_width = cs.canvas_width;
           state.canvas_height = cs.canvas_height;
+          state.raw_animation = cs.raw_animation;
           for (size_t fi = 0; fi < cs.frame_count; ++fi) {
             auto &cf = cs.frames[fi];
             AnimationParserFeature::Frame frame;

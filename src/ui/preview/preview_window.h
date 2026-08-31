@@ -9,7 +9,10 @@
 #include <QTimer>
 
 #include <cstddef>
+#include <functional>
 #include <vector>
+
+#include "engine/game/registry/game_features/game_feature.h"
 
 class QListWidget;
 class QPushButton;
@@ -132,6 +135,15 @@ private:
   std::vector<AnimationState> anm2_states_;
   int anm2_current_state_ = 0;
   bool anm2_playing_ = false;
+
+  // On-demand rendering support (when available, renders frames on the fly
+  // with proper interpolation instead of using pre-baked frames)
+  ::engine::AnimationParserFeature::AnimationData::RenderFrameFn anm2_render_fn_;
+  int anm2_on_demand_canvas_w_ = 0;
+  int anm2_on_demand_canvas_h_ = 0;
+  int anm2_on_demand_fps_ = 0;
+  int anm2_on_demand_frame_count_ = 0;
+  float anm2_time_ = 0.0f; // float time counter for on-demand rendering
 
   // Debug bounding-box overlay (F12 toggle).
   bool debug_overlay_enabled_ = false;
