@@ -50,6 +50,7 @@ protected:
 private:
     void load_index(int index);
     void switch_to(int index);
+    void update_tab_enabled_states();
     // Nearest non-separator mod index in direction `dir` (+1 next, -1 prev)
     // from `from`, or -1 when there is none. Separators are never worth
     // viewing, so prev/next cycle past them.
