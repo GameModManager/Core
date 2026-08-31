@@ -10,8 +10,10 @@
 #include <cstddef>
 #include <vector>
 
+class QListWidget;
 class QPushButton;
 class QScrollArea;
+class QSlider;
 class QStackedWidget;
 class QTextBrowser;
 class QVBoxLayout;
@@ -89,6 +91,35 @@ private:
   std::size_t anm2_index_ = 0;
   QTimer anm2_timer_;
   std::string game_id_;
+
+  // ANM2 playback controls (two-column layout)
+  QWidget *anm2_controls_ = nullptr;
+  QListWidget *anm2_anim_list_ = nullptr;
+  QSlider *anm2_speed_slider_ = nullptr;
+  QPushButton *anm2_play_btn_ = nullptr;
+  QPushButton *anm2_step_back_ = nullptr;
+  QPushButton *anm2_step_fwd_ = nullptr;
+  QSlider *anm2_progress_ = nullptr;
+  QLabel *anm2_info_label_ = nullptr;
+  QLabel *anm2_frame_label_ = nullptr;
+
+  // Parsed animation states from ANM2 file
+  struct AnimationState {
+    QString name;
+    std::vector<QPixmap> frames;
+    std::vector<int> delays;
+    int fps = 30;
+  };
+  std::vector<AnimationState> anm2_states_;
+  int anm2_current_state_ = 0;
+  bool anm2_playing_ = false;
+
+  // Build the ANM2 controls panel (created once, shown/hidden as needed).
+  void build_anm2_controls();
+  // Switch to the given animation state index and reset playback.
+  void switch_anm2_state(int index);
+  // Update the frame counter label and progress scrubber position.
+  void update_anm2_ui();
 };
 
 } // namespace ui::preview

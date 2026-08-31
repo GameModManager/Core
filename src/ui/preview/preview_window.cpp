@@ -6,10 +6,12 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QListWidget>
 #include <QPainter>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
+#include <QSlider>
 #include <QStackedWidget>
 #include <QTextBrowser>
 #include <QVBoxLayout>
@@ -58,22 +60,32 @@ PreviewWindow::PreviewWindow(QWidget *parent) : QDialog(parent) {
   setMinimumSize(440, 380);
   resize(680, 520);
 
-  auto *layout = new QVBoxLayout(this);
+  auto *main_layout = new QVBoxLayout(this);
 
-  auto *top = new QHBoxLayout;
+  // Filename label
   name_label_ = new QLabel(this);
   name_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-  top->addWidget(name_label_, 1);
+  main_layout->addWidget(name_label_);
+
+  // Previous / Next variant buttons
+  auto *nav_row = new QHBoxLayout;
   prev_button_ = new QPushButton(tr("Previous"), this);
   next_button_ = new QPushButton(tr("Next"), this);
-  top->addWidget(prev_button_);
-  top->addWidget(next_button_);
-  layout->addLayout(top);
+  nav_row->addWidget(prev_button_);
+  nav_row->addWidget(next_button_);
+  nav_row->addStretch(1);
+  main_layout->addLayout(nav_row);
 
+  // Source / variant info
   source_label_ = new QLabel(this);
   source_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
   source_label_->setEnabled(false);
-  layout->addWidget(source_label_);
+  main_layout->addWidget(source_label_);
+
+  // Two-column content area: image/animation preview (left) + ANM2 controls
+  // (right).  The controls widget is hidden for non-ANM2 files so the stack
+  // gets the full width.
+  auto *content_row = new QHBoxLayout;
 
   stack_ = new QStackedWidget(this);
 
@@ -131,7 +143,14 @@ PreviewWindow::PreviewWindow(QWidget *parent) : QDialog(parent) {
   plugin_layout_->setContentsMargins(0, 0, 0, 0);
   stack_->addWidget(plugin_page_);
 
-  layout->addWidget(stack_, 1);
+  content_row->addWidget(stack_, 2);
+
+  // ANM2 controls panel (right column). Hidden for non-ANM2 files.
+  build_anm2_controls();
+  anm2_controls_->setVisible(false);
+  content_row->addWidget(anm2_controls_, 1);
+
+  main_layout->addLayout(content_row, 1);
 
   connect(fit_button, &QPushButton::clicked, this, &PreviewWindow::set_fit);
   connect(zoom_in_button, &QPushButton::clicked, this,
@@ -208,6 +227,15 @@ void PreviewWindow::reload() {
   anm2_frames_.clear();
   anm2_delays_.clear();
   anm2_index_ = 0;
+  anm2_states_.clear();
+  anm2_current_state_ = 0;
+  anm2_playing_ = false;
+  if (anm2_play_btn_)
+    anm2_play_btn_->setText(tr("Play"));
+  // Hide ANM2 controls by default; load_anm2() will re-show them.
+  if (anm2_controls_)
+    anm2_controls_->setVisible(false);
+  stack_->setVisible(true);
   engine::Logger::instance().debug("[PreviewWindow] reload: path=" +
                                    path.toStdString());
   engine::Logger::instance().debug(
@@ -254,6 +282,14 @@ bool PreviewWindow::load_image(const QString &path) {
   anm2_frames_.clear();
   anm2_delays_.clear();
   anm2_index_ = 0;
+  anm2_states_.clear();
+  anm2_current_state_ = 0;
+  anm2_playing_ = false;
+  if (anm2_play_btn_)
+    anm2_play_btn_->setText(tr("Play"));
+  if (anm2_controls_)
+    anm2_controls_->setVisible(false);
+  stack_->setVisible(true);
   stack_->setCurrentWidget(image_page_);
   apply_zoom();
   return true;
@@ -275,34 +311,90 @@ bool PreviewWindow::load_anm2(const QString &path) {
   if (!data || data->frames.empty())
     return false;
 
-  anm2_frames_.clear();
-  anm2_delays_.clear();
+  anm2_states_.clear();
 
-  for (const auto &frame : data->frames) {
-    QImage canvas(data->canvas_width, data->canvas_height,
-                  QImage::Format_ARGB32_Premultiplied);
-    canvas.fill(Qt::transparent);
-    QPainter painter(&canvas);
-    for (const auto &layer : frame.layers) {
-      QImage sprite(layer.rgba_pixels.data(), layer.width, layer.height,
-                    QImage::Format_RGBA8888);
-      painter.drawImage(
-          QPoint(static_cast<int>(layer.x), static_cast<int>(layer.y)), sprite);
+  // Helper lambda to convert a list of raw frames into QPixmaps.
+  auto convert_frames =
+      [&](const std::vector<::engine::AnimationParserFeature::Frame> &src,
+          int cw, int ch) {
+        AnimationState state;
+        state.fps = data->fps;
+        for (const auto &frame : src) {
+          QImage canvas(cw, ch, QImage::Format_ARGB32_Premultiplied);
+          canvas.fill(Qt::transparent);
+          QPainter painter(&canvas);
+          for (const auto &layer : frame.layers) {
+            QImage sprite(layer.rgba_pixels.data(), layer.width, layer.height,
+                          QImage::Format_RGBA8888);
+            painter.drawImage(
+                QPoint(static_cast<int>(layer.x), static_cast<int>(layer.y)),
+                sprite);
+          }
+          painter.end();
+          state.frames.push_back(QPixmap::fromImage(canvas));
+          state.delays.push_back(frame.delay_ms);
+        }
+        return state;
+      };
+
+  // If the file provides named animation states, use them.
+  if (!data->states.empty()) {
+    for (const auto &s : data->states) {
+      auto state = convert_frames(s.frames, s.canvas_width, s.canvas_height);
+      state.name = QString::fromStdString(s.name);
+      anm2_states_.push_back(std::move(state));
     }
-    painter.end();
-
-    anm2_frames_.push_back(QPixmap::fromImage(canvas));
-    anm2_delays_.push_back(frame.delay_ms);
+  } else {
+    // Fallback: single unnamed state from top-level frames.
+    auto state =
+        convert_frames(data->frames, data->canvas_width, data->canvas_height);
+    state.name = tr("Default");
+    anm2_states_.push_back(std::move(state));
   }
 
-  anm2_index_ = 0;
-  current_pixmap_ = anm2_frames_.front();
+  // Populate the animation list widget.
+  if (anm2_anim_list_) {
+    anm2_anim_list_->blockSignals(true);
+    anm2_anim_list_->clear();
+    for (const auto &s : anm2_states_) {
+      int frame_count = static_cast<int>(s.frames.size());
+      anm2_anim_list_->addItem(
+          tr("%1 (%2 frames)").arg(s.name).arg(frame_count));
+    }
+    anm2_anim_list_->setCurrentRow(0);
+    anm2_anim_list_->blockSignals(false);
+  }
+
+  // Show ANM2 controls, switch stack to image page for the animation preview.
+  stack_->setVisible(true);
   stack_->setCurrentWidget(image_page_);
-  apply_zoom();
+  build_anm2_controls();
+  anm2_controls_->setVisible(true);
 
-  if (anm2_frames_.size() > 1) {
-    anm2_timer_.start(anm2_delays_.front());
+  // Switch to the first animation state.
+  anm2_current_state_ = 0;
+  anm2_frames_ = anm2_states_.front().frames;
+  anm2_delays_ = anm2_states_.front().delays;
+  anm2_index_ = 0;
+  anm2_playing_ = false;
+  if (anm2_play_btn_)
+    anm2_play_btn_->setText(tr("Play"));
+
+  // Update info label: "name, X frames, Y fps"
+  if (anm2_info_label_) {
+    const auto &state = anm2_states_.front();
+    anm2_info_label_->setText(tr("%1 - %2 frames, %3 fps")
+                                  .arg(state.name)
+                                  .arg(static_cast<int>(state.frames.size()))
+                                  .arg(state.fps));
   }
+
+  if (!anm2_frames_.empty()) {
+    current_pixmap_ = anm2_frames_.front();
+    apply_zoom();
+  }
+
+  update_anm2_ui();
   return true;
 }
 
@@ -312,7 +404,13 @@ void PreviewWindow::on_anm2_frame_timeout() {
   anm2_index_ = (anm2_index_ + 1) % anm2_frames_.size();
   current_pixmap_ = anm2_frames_[anm2_index_];
   apply_zoom();
-  anm2_timer_.setInterval(anm2_delays_[anm2_index_]);
+
+  // Apply speed multiplier to the next interval.
+  double speed = anm2_speed_slider_ ? anm2_speed_slider_->value() / 100.0 : 1.0;
+  int interval = static_cast<int>(anm2_delays_[anm2_index_] / speed);
+  anm2_timer_.start(std::max(interval, 1));
+
+  update_anm2_ui();
 }
 
 bool PreviewWindow::load_text(const QString &path) {
@@ -327,6 +425,10 @@ bool PreviewWindow::load_text(const QString &path) {
   if (data.size() > limit)
     data = data.left(limit);
   text_view_->setPlainText(QString::fromUtf8(data));
+  // Hide ANM2 controls; show the stack for the text page.
+  if (anm2_controls_)
+    anm2_controls_->setVisible(false);
+  stack_->setVisible(true);
   stack_->setCurrentWidget(text_view_);
   return true;
 }
@@ -370,6 +472,14 @@ void PreviewWindow::show_unsupported() {
   anm2_frames_.clear();
   anm2_delays_.clear();
   anm2_index_ = 0;
+  anm2_states_.clear();
+  anm2_current_state_ = 0;
+  anm2_playing_ = false;
+  if (anm2_play_btn_)
+    anm2_play_btn_->setText(tr("Play"));
+  if (anm2_controls_)
+    anm2_controls_->setVisible(false);
+  stack_->setVisible(true);
   current_pixmap_ = QPixmap();
   if (plugin_widget_) {
     plugin_layout_->removeWidget(plugin_widget_);
@@ -425,8 +535,179 @@ void PreviewWindow::apply_zoom() {
 
 void PreviewWindow::resizeEvent(QResizeEvent *event) {
   QDialog::resizeEvent(event);
-  if (fit_ && stack_ && stack_->currentWidget() == image_page_)
+  if (fit_ && !anm2_frames_.empty()) {
     apply_zoom();
+  } else if (fit_ && stack_ && stack_->isVisible() &&
+             stack_->currentWidget() == image_page_) {
+    apply_zoom();
+  }
+}
+
+void PreviewWindow::build_anm2_controls() {
+  if (anm2_controls_)
+    return;
+
+  anm2_controls_ = new QWidget(this);
+  auto *ctrl = new QVBoxLayout(anm2_controls_);
+  ctrl->setContentsMargins(0, 0, 0, 0);
+
+  // Info label: "name, X frames, Y fps"
+  anm2_info_label_ = new QLabel(anm2_controls_);
+  anm2_info_label_->setEnabled(false);
+  ctrl->addWidget(anm2_info_label_);
+
+  // Scrollable animation list
+  anm2_anim_list_ = new QListWidget(anm2_controls_);
+  anm2_anim_list_->setMaximumHeight(120);
+  ctrl->addWidget(anm2_anim_list_);
+
+  // Speed slider row
+  auto *speed_row = new QHBoxLayout;
+  speed_row->addWidget(new QLabel(tr("Speed:"), anm2_controls_));
+  anm2_speed_slider_ = new QSlider(Qt::Horizontal, anm2_controls_);
+  anm2_speed_slider_->setRange(25, 400); // 0.25x to 4.0x in steps of 25
+  anm2_speed_slider_->setValue(100);     // 1.0x default
+  anm2_speed_slider_->setToolTip(tr("Playback speed: 0.25x to 4.0x"));
+  speed_row->addWidget(anm2_speed_slider_, 1);
+  ctrl->addLayout(speed_row);
+
+  // Play/Pause + frame counter + step buttons row
+  auto *transport_row = new QHBoxLayout;
+  anm2_play_btn_ = new QPushButton(tr("Play"), anm2_controls_);
+  anm2_play_btn_->setCheckable(true);
+  transport_row->addWidget(anm2_play_btn_);
+  anm2_frame_label_ = new QLabel(tr("0/0"), anm2_controls_);
+  anm2_frame_label_->setAlignment(Qt::AlignCenter);
+  transport_row->addWidget(anm2_frame_label_);
+  anm2_step_back_ = new QPushButton(tr("<"), anm2_controls_);
+  anm2_step_back_->setToolTip(tr("Step back 1 frame"));
+  transport_row->addWidget(anm2_step_back_);
+  anm2_step_fwd_ = new QPushButton(tr(">"), anm2_controls_);
+  anm2_step_fwd_->setToolTip(tr("Step forward 1 frame"));
+  transport_row->addWidget(anm2_step_fwd_);
+  ctrl->addLayout(transport_row);
+
+  // Progress scrubber
+  anm2_progress_ = new QSlider(Qt::Horizontal, anm2_controls_);
+  anm2_progress_->setRange(0, 1000);
+  anm2_progress_->setValue(0);
+  anm2_progress_->setToolTip(tr("Drag to scrub through frames"));
+  ctrl->addWidget(anm2_progress_);
+
+  ctrl->addStretch(1);
+
+  // Wire up signals
+  connect(anm2_anim_list_, &QListWidget::currentRowChanged, this,
+          [this](int row) {
+            if (row >= 0 && row < static_cast<int>(anm2_states_.size()))
+              switch_anm2_state(row);
+          });
+
+  connect(anm2_speed_slider_, &QSlider::valueChanged, this, [this](int val) {
+    if (anm2_playing_ && !anm2_frames_.empty()) {
+      double speed = val / 100.0;
+      int interval = static_cast<int>(anm2_delays_[anm2_index_] / speed);
+      anm2_timer_.start(std::max(interval, 1));
+    }
+  });
+
+  connect(anm2_play_btn_, &QPushButton::clicked, this, [this]() {
+    anm2_playing_ = !anm2_playing_;
+    anm2_play_btn_->setText(anm2_playing_ ? tr("Pause") : tr("Play"));
+    if (anm2_playing_) {
+      if (!anm2_frames_.empty()) {
+        double speed = anm2_speed_slider_->value() / 100.0;
+        int interval = static_cast<int>(anm2_delays_[anm2_index_] / speed);
+        anm2_timer_.start(std::max(interval, 1));
+      }
+    } else {
+      anm2_timer_.stop();
+    }
+  });
+
+  connect(anm2_step_back_, &QPushButton::clicked, this, [this]() {
+    if (anm2_frames_.empty())
+      return;
+    anm2_index_ = (anm2_index_ + anm2_frames_.size() - 1) % anm2_frames_.size();
+    current_pixmap_ = anm2_frames_[anm2_index_];
+    apply_zoom();
+    update_anm2_ui();
+  });
+
+  connect(anm2_step_fwd_, &QPushButton::clicked, this, [this]() {
+    if (anm2_frames_.empty())
+      return;
+    anm2_index_ = (anm2_index_ + 1) % anm2_frames_.size();
+    current_pixmap_ = anm2_frames_[anm2_index_];
+    apply_zoom();
+    update_anm2_ui();
+  });
+
+  connect(anm2_progress_, &QSlider::sliderMoved, this, [this](int value) {
+    if (anm2_frames_.empty())
+      return;
+    // Map 0-1000 to frame index
+    int frame = static_cast<int>(value * (anm2_frames_.size() - 1) / 1000.0);
+    anm2_index_ = static_cast<std::size_t>(frame);
+    current_pixmap_ = anm2_frames_[anm2_index_];
+    apply_zoom();
+    update_anm2_ui();
+  });
+
+  // Prevent timer-driven updates while user drags the scrubber
+  connect(anm2_progress_, &QSlider::sliderPressed, this,
+          [this]() { anm2_timer_.stop(); });
+  connect(anm2_progress_, &QSlider::sliderReleased, this, [this]() {
+    if (anm2_playing_ && !anm2_frames_.empty()) {
+      double speed = anm2_speed_slider_->value() / 100.0;
+      int interval = static_cast<int>(anm2_delays_[anm2_index_] / speed);
+      anm2_timer_.start(std::max(interval, 1));
+    }
+  });
+}
+
+void PreviewWindow::switch_anm2_state(int index) {
+  if (index < 0 || index >= static_cast<int>(anm2_states_.size()))
+    return;
+
+  anm2_current_state_ = index;
+  anm2_timer_.stop();
+  anm2_playing_ = false;
+  if (anm2_play_btn_)
+    anm2_play_btn_->setText(tr("Play"));
+
+  const auto &state = anm2_states_[index];
+  anm2_frames_ = state.frames;
+  anm2_delays_ = state.delays;
+  anm2_index_ = 0;
+
+  if (!anm2_frames_.empty()) {
+    current_pixmap_ = anm2_frames_.front();
+    apply_zoom();
+  }
+
+  update_anm2_ui();
+}
+
+void PreviewWindow::update_anm2_ui() {
+  if (anm2_frames_.empty())
+    return;
+
+  // Frame counter: "3/12"
+  if (anm2_frame_label_) {
+    anm2_frame_label_->setText(tr("%1/%2")
+                                   .arg(static_cast<int>(anm2_index_) + 1)
+                                   .arg(static_cast<int>(anm2_frames_.size())));
+  }
+
+  // Progress scrubber
+  if (anm2_progress_ && !anm2_progress_->isSliderDown()) {
+    int pos =
+        anm2_frames_.size() > 1
+            ? static_cast<int>(anm2_index_ * 1000 / (anm2_frames_.size() - 1))
+            : 0;
+    anm2_progress_->setValue(pos);
+  }
 }
 
 } // namespace ui::preview
