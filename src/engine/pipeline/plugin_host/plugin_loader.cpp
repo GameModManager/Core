@@ -441,7 +441,7 @@ static void cb_register_game_feature(
   } else if (type == "game_plugins") {
     // The game's vanilla plugin files (MO2 GamePlugins::gamePlugins()):
     // Skyrim's ESMs + _ResourcePack.esl head the unmanaged top band. The
-    // plugin names ride the folder_names array slot — the ABI's two string
+    // plugin names ride the folder_names array slot - the ABI's two string
     // arrays are generic payload slots interpreted per feature type.
     std::vector<std::string> plugins;
     if (folder_names) {
@@ -530,7 +530,7 @@ static void cb_subscribe_event(GmmRegistrationCtx *ctx, const char *event_id,
       " (plugin=" + bridge->current_plugin->game_id + ")");
 }
 
-// P1.4 — GmmHostUi::fomod_wizard: the plugin's Fomod stage handler asks the
+// P1.4 - GmmHostUi::fomod_wizard: the plugin's Fomod stage handler asks the
 // host to run the FOMOD wizard + install for the mod it is processing. The
 // engine's Qt-free FomodStage does all the work (detect fomod/, parse
 // ModuleConfig.xml, apply the chosen options to the staging dir, flatten);
@@ -540,7 +540,7 @@ static void cb_subscribe_event(GmmRegistrationCtx *ctx, const char *event_id,
 //
 // No ctx is passed: the pipeline context of the plugin's running stage comes
 // from the thread-local set around the handler invocation, so the plugin can
-// call this from a handler it cached the function pointer of — never from a
+// call this from a handler it cached the function pointer of - never from a
 // cached GmmRegistrationCtx (that is host storage, valid only for
 // gmm_register_v1).
 static int cb_fomod_wizard(GmmModHandle mod, char *out_json,
@@ -757,7 +757,7 @@ static void cb_register_tool(GmmRegistrationCtx *ctx, const char *tool_id,
     tool.invoke_user_data = user_data;
   }
 
-  // Plugins that never called register_game have game_support=false — register
+  // Plugins that never called register_game have game_support=false - register
   // their tools as global
   if (!bridge->current_plugin->game_support) {
     tool.game_id = "";
@@ -1171,7 +1171,7 @@ static void cb_v2_register_hook(GmmRegistrationCtxV2 *ctx, const char *tag,
   std::string hook_tag = tag ? tag : "";
   std::string hook_data = data ? data : "";
 
-  // Store as game knowledge (data payload) — the v1 path's behaviour.
+  // Store as game knowledge (data payload) - the v1 path's behaviour.
   bridge->loader->knowledge().set(game_id, hook_tag, hook_data);
 
   // Register the hook function into the instance-based engine::HookRegistry
@@ -1431,7 +1431,7 @@ static void cb_v2_register_tool(GmmRegistrationCtxV2 *ctx, const char *tool_id,
     tool.invoke_user_data = user_data;
   }
 
-  // Plugins that never called register_game have game_support=false — register
+  // Plugins that never called register_game have game_support=false - register
   // their tools as global
   if (!bridge->current_plugin->game_support) {
     tool.game_id = "";
@@ -1439,7 +1439,7 @@ static void cb_v2_register_tool(GmmRegistrationCtxV2 *ctx, const char *tool_id,
 
   bridge->loader->tool_registry().register_tool(tool);
 
-  // Also register into the v2 IPluginTool registry — the canonical store of
+  // Also register into the v2 IPluginTool registry - the canonical store of
   // plugin-provided tool callbacks (raw fn + user_data + owning plugin path,
   // used for unload cleanup). The platform/tools ToolRegistry above drives the
   // Tools menu; this one is the v2 source of truth.

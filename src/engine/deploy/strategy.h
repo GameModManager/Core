@@ -1,4 +1,4 @@
-// Backward-compatible shim — include the canonical headers instead.
+// Backward-compatible shim - include the canonical headers instead.
 #pragma once
 
 #include "engine/deploy/interface.h"

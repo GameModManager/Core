@@ -10,9 +10,9 @@
 
 namespace engine {
 
-// Map a source identity — a provider source_type ("nexus", "steam",
+// Map a source identity - a provider source_type ("nexus", "steam",
 // "loverslab") or a Downloads-tab display string ("Nexus Mods", "Steam
-// Workshop") — to the vendor icon key, which resolves from
+// Workshop") - to the vendor icon key, which resolves from
 // resources/icons/vendor/<key>.ico through resolve_icon(). Empty string means
 // no branded icon exists for this source (e.g. "Manual").
 std::string vendor_icon_key(const std::string& source);

@@ -10,7 +10,7 @@
 // signal, and the main thread only touches QTreeWidget items.
 //
 // The pure-compute helpers (build_data_row and friends) are declared here so
-// DataTab::apply_mod() can build single rows on the main thread too — the
+// DataTab::apply_mod() can build single rows on the main thread too - the
 // incremental install path shares exactly the same row semantics as the
 // background full build.
 

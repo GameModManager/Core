@@ -32,13 +32,13 @@ public:
     // User-friendly instance name as the user typed it (may contain spaces,
     // colons, ...). Persisted to instance.toml as "name"; the folder uses the
     // sanitized form (see Instance::to_instance_name). Empty for instances
-    // created before the field existed — display falls back to the folder
+    // created before the field existed - display falls back to the folder
     // basename (instance_display_name()).
     std::string display_name;
     std::filesystem::path root;
     std::filesystem::path
         game_dir; // path to the actual game install (e.g. steamapps/common/...)
-    // The game's actual mods folder — the deploy target — when it lives
+    // The game's actual mods folder - the deploy target - when it lives
     // outside the install dir. Resolution order (Workspace-otx): this
     // per-instance override first, then the plugin-declared "game_mods_dir"
     // knowledge hook (Isaac on macOS:
@@ -124,7 +124,7 @@ private:
   Info info_;
 };
 
-// Backward-compat alias (deprecated — use Instance::Info directly).
+// Backward-compat alias (deprecated - use Instance::Info directly).
 using InstanceInfo = Instance::Info;
 
 } // namespace engine

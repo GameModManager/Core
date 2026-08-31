@@ -235,7 +235,7 @@ bool CategoriesDialog::commit_changes() {
 
   // Remove factory categories that are no longer in the table. validate_table
   // guarantees no remaining row references a removed id, so the factory's
-  // re-parent-to-root is a no-op for the survivors. Ids are collected first —
+  // re-parent-to-root is a no-op for the survivors. Ids are collected first -
   // removeCategory erases from the map, so iterating while removing would
   // invalidate the iterator.
   std::vector<int> removed_ids;

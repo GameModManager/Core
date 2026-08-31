@@ -40,7 +40,7 @@ struct ModScanResult {
 
 // Runs the mods-dir scan (ModScanner::scan/scan_dir), the game-native plugin
 // synthesis + stray-plugin scan, and the one-time MO2 meta import on the
-// worker thread — the load path's directory walking. The result crosses back
+// worker thread - the load path's directory walking. The result crosses back
 // once via finished(); `generation` tags which scan the result belongs to so a
 // newer refresh / instance switch can drop an older in-flight result.
 class ModScanWorker : public QObject {

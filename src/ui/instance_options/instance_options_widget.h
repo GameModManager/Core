@@ -31,8 +31,8 @@ namespace ui {
 //
 // It also hosts a "Deploy management" section: a "Deployment strategy" dropdown
 // (only the strategies the program + host actually support are listed) whose
-// selection is persisted to instance.toml immediately on change, plus — for
-// direct (symlink) deploys only — "Force re-deploy links" (tears down the
+// selection is persisted to instance.toml immediately on change, plus - for
+// direct (symlink) deploys only - "Force re-deploy links" (tears down the
 // current deploy, restoring any original game files parked in
 // <game_dir>/Original_Files, then re-deploys all enabled mods) and "Remove
 // deployed files" (teardown only, returning the game to its pristine unmodded

@@ -12,7 +12,7 @@ class ProfileSettingsWidget;
 
 // MO2's ProfilesDialog: list all profiles, create/copy/rename/delete, mark a
 // default (startup) profile, and edit per-profile settings (Local Saves,
-// Local Settings, Archive Invalidation). The engine stays Qt-free — this
+// Local Settings, Archive Invalidation). The engine stays Qt-free - this
 // dialog drives engine::profile directly.
 //
 // The dialog never switches the active profile itself: the caller reads

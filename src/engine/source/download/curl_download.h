@@ -1,11 +1,11 @@
 #pragma once
 
-// Backward-compat wrapper — consumers should migrate to engine/source/download/manager.h
+// Backward-compat wrapper - consumers should migrate to engine/source/download/manager.h
 #include "engine/source/download/manager.h"
 
 namespace engine::download {
 
-// Backward-compat aliases (deprecated — use Source::DownloadManager::*)
+// Backward-compat aliases (deprecated - use Source::DownloadManager::*)
 using engine::Source::DownloadManager::curl_download;
 using engine::Source::DownloadManager::Progress;
 using engine::Source::DownloadManager::Options;

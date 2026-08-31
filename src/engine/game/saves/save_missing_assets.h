@@ -29,12 +29,12 @@ struct SaveMissingAsset {
 };
 
 // Finds save plugins the current load order can't satisfy.
-//   plugins      — PluginDatabase::plugins(); the `enabled` flag decides
+//   plugins      - PluginDatabase::plugins(); the `enabled` flag decides
 //                  active vs inactive (MO2 STATE_ACTIVE/INACTIVE).
-//   mods_dir     — instance mods dir; every subdirectory is one mod, searched
+//   mods_dir     - instance mods dir; every subdirectory is one mod, searched
 //                  at its top level only (matches MO2's entryList(espFilter)
 //                  and our install layout, where installers peel the Data/).
-//   overwrite_dir — instance overwrite dir; a same-named plugin file there
+//   overwrite_dir - instance overwrite dir; a same-named plugin file there
 //                  contributes the "<overwrite>" candidate like MO2. May be
 //                  empty to skip the overwrite scan.
 // Plugin names are matched case-insensitively (Windows filesystems), the same

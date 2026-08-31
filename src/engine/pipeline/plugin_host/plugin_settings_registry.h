@@ -69,7 +69,7 @@ public:
     // store the UI persists under the plugin's filename.
     void register_alias(const std::string& alias, const std::string& basename);
 
-    // Host callbacks — read/write a plugin's setting at runtime. plugin_id may
+    // Host callbacks - read/write a plugin's setting at runtime. plugin_id may
     // be the basename or any registered alias. get_setting returns the persisted
     // value, or the registered default when unset, or "" when unknown.
     std::string get_setting(const std::string& plugin_id, const std::string& key) const;

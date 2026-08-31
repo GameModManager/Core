@@ -63,7 +63,7 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
   // hidden-files/FOMOD/root-override/invalid badges. Each is an individual
   // QIcon under kFlagIconsRole; the FlagsDelegate paints them one-by-one at
   // native size and wraps to extra lines (growing the row) when they exceed
-  // the column width — never stacked into one icon.
+  // the column width - never stacked into one icon.
   if (role == kFlagIconsRole &&
       (index.column() == Conflicts || index.column() == Flags)) {
     const auto &m = mods_[index.row()];
@@ -856,7 +856,7 @@ void ModList::add_mod(const QString &id, const QString &name,
   if (priority < 0) {
     renumber_priorities();
     // The fresh mod's priority field equals its row index, so the renumber
-    // pass above won't flag it — but there is no persisted priority on disk
+    // pass above won't flag it - but there is no persisted priority on disk
     // yet. Mark it dirty so sync_priorities() writes meta.ini and the order
     // survives restarts (MO2 bottom-of-band rule).
     dirty_priority_ids_.insert(id);
@@ -1734,7 +1734,7 @@ QColor ModList::conflict_highlight_color(const QString &id) const {
     return {};
   // Two passes so red wins globally (MO2 markerColor: overwritten >
   // overwrite) even when the same row loses to one selection and wins over
-  // another — a per-selection loses-first check would return green early.
+  // another - a per-selection loses-first check would return green early.
   for (const auto &sel : selected_mod_ids_) {
     const auto it = conflict_pairs_.constFind(sel);
     if (it == conflict_pairs_.constEnd())

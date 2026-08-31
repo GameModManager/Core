@@ -29,7 +29,7 @@ public:
         layout->setContentsMargins(0, 0, 0, 0);
         layout->addWidget(viewer_);
         if (!viewer_->open(path)) {
-            // Unsupported preview type — fall back to the default app.
+            // Unsupported preview type - fall back to the default app.
             QDesktopServices::openUrl(QUrl::fromLocalFile(path));
             reject();
         }

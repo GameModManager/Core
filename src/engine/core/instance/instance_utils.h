@@ -72,7 +72,7 @@ void write_last_instance(const std::string& name);
     const std::filesystem::path& instances_root,
     const std::string& display_name);
 
-// Legacy form: no custom name — folder derived from the game name via
+// Legacy form: no custom name - folder derived from the game name via
 // Instance::to_instance_name (spaces folded to underscores).
 [[nodiscard]] Instance create_instance_for_game(
     const DetectedGame& game,

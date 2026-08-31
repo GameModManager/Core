@@ -38,7 +38,7 @@ private:
     std::vector<ProfileMod> mods_;
 };
 
-// Backward-compat alias — remove once all call sites use ProfileModel.
+// Backward-compat alias - remove once all call sites use ProfileModel.
 using Profile = ProfileModel;
 
 }  // namespace engine

@@ -683,7 +683,7 @@ public:
         plugin_->plugin_name, basename);
   }
 
-  // P1.5 typed settings tab — the pybind mirror of the ABI
+  // P1.5 typed settings tab - the pybind mirror of the ABI
   // register_settings_tab entry. Each entry is a (key, type, default,
   // options) tuple; options is None except for type "choice" (a list of
   // candidate choices) or "int" (the "min:max" range string).

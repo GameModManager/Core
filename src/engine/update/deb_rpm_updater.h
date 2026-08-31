@@ -4,7 +4,7 @@
 
 namespace engine::update {
 
-// Debian/RPM updater — downloads and installs .deb or .rpm packages.
+// Debian/RPM updater - downloads and installs .deb or .rpm packages.
 class DebRpmUpdater : public SelfUpdater {
 public:
   // pkg_type should be "deb" or "rpm".

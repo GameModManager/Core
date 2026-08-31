@@ -8,7 +8,7 @@
 namespace engine::update {
 
 // ---------------------------------------------------------------------------
-// Self-updater strategy pattern — platform-specific update implementations
+// Self-updater strategy pattern - platform-specific update implementations
 // ---------------------------------------------------------------------------
 // The base class defines the interface; factory::create() returns the concrete
 // updater for the current platform and distribution type.

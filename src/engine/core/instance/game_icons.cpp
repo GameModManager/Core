@@ -39,7 +39,7 @@ bool ensure_icon_cached(const std::string& game_id,
     if (cached_ok) return true;
 
     // A zero-byte leftover from a previously aborted transfer would be treated
-    // as "cached" by the size check — clear it so the download starts fresh.
+    // as "cached" by the size check - clear it so the download starts fresh.
     fs::remove(path, ec);
 
     std::error_code mk;

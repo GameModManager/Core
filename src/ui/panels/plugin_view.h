@@ -43,7 +43,7 @@ public:
   /// MO2-style plugin counter (PluginListView::updatePluginCount parity).
   void refresh_counters();
 
-  /// MO2 parity — highlight rows owned by the selected mod / master plugins.
+  /// MO2 parity - highlight rows owned by the selected mod / master plugins.
   void set_contained_plugins(const QVector<QString> &contained);
   void set_master_plugins(const QVector<QString> &masters);
 

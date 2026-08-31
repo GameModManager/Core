@@ -1,6 +1,6 @@
 #pragma once
 
-// P1.2 Game::Features::Registry — MO2's IGameFeatures analogue.
+// P1.2 Game::Features::Registry - MO2's IGameFeatures analogue.
 //
 // MO2's real per-game extension mechanism is nine behavior classes
 // (ModDataChecker, ModDataContent, DataArchives, ScriptExtender,
@@ -13,7 +13,7 @@
 // game's built-in feature is the baseline everything else overrides).
 //
 // All nine types are now registered features (0.2.26): ModDataChecker (the
-// first extraction — content_looks_valid/mod_valid_dirs was its body),
+// first extraction - content_looks_valid/mod_valid_dirs was its body),
 // GamePlugins (the game_native_plugins hook's body), plus the seven
 // structured-data features (mod_data_content, data_archives, script_extender,
 // save_game_info, local_savegames, unmanaged_mods, bsa_invalidation) that
@@ -48,7 +48,7 @@ public:
 };
 
 // Port of MO2's ModDataChecker (GamebryoModDataChecker): decides whether a
-// file tree already looks like a game's Data folder. Instance-based — the
+// file tree already looks like a game's Data folder. Instance-based - the
 // allow-sets come from whoever registered the feature (the game plugin, or an
 // overriding plugin), so the same class serves the base checker and the
 // override. The engine's own static utility (ModDataChecker) stays untouched
@@ -83,7 +83,7 @@ private:
 // Port of MO2's GamePlugins::gamePlugins(): the plugin files the game ships
 // with and always enables (Skyrim's vanilla ESMs + _ResourcePack.esl). These
 // appear as unmanaged mods in the list (cannot be removed/reordered) and head
-// the fixed top band of the mod list / load order. Instance-based — the list
+// the fixed top band of the mod list / load order. Instance-based - the list
 // comes from whoever registered the feature (the game plugin, or an overriding
 // plugin).
 class GamePluginsFeature : public GameFeature {
@@ -102,9 +102,9 @@ private:
 
 // Port of MO2's ModDataContent (GamebryoModDataContent): the content
 // categories a mod can hold, shown in the mod list's content column/badges.
-// The standard Bethesda catalog is the shared engine-side default — identical
+// The standard Bethesda catalog is the shared engine-side default - identical
 // across all Bethesda games, exactly like MO2 keeps it in the shared gamebryo
-// code — and the registered feature carries which categories are enabled for
+// code - and the registered feature carries which categories are enabled for
 // this game (Skyrim SE disables SKYPROC) plus any name/icon overrides a plugin
 // adds. contents_for() is the engine's generic classifier (a data-driven port
 // of MO2's gamebryomoddatacontent.cpp), so changing how a game's mods are

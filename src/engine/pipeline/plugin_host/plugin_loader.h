@@ -15,7 +15,7 @@
 typedef void (*GmmImageDiffFn)(const char *const *, size_t, const char *,
                                void *);
 
-// v2 ABI callback types — forward declared so plugin_loader.h can reference
+// v2 ABI callback types - forward declared so plugin_loader.h can reference
 // them in PluginInfo without dragging the v2 header into every translation
 // unit. The real definitions live in gmm_abi_v2.h (included by
 // plugin_loader.cpp). Function pointers are valid across translation units
@@ -94,7 +94,7 @@ struct PluginInfo {
   std::string exe_windows;
   std::string exe_linux;
   std::string exe_macos;
-  // True only when the plugin called register_identity — i.e. it provides
+  // True only when the plugin called register_identity - i.e. it provides
   // game support (a game to create instances for). Tool/feature plugins
   // (ImageDiff, IsaacModSorter, ...) never do; their game_id is just the
   // module stem, so gate any "list of games" on this, never on game_id.
@@ -106,7 +106,7 @@ struct PluginInfo {
 
   // User-facing options declared via register_settings as plain
   // key:value pairs (key = label, value = default). Source providers
-  // do not use this — their settings live in the Sources tab.
+  // do not use this - their settings live in the Sources tab.
   std::vector<std::pair<std::string, std::string>> settings;
 
   // Typed settings (P1.5) declared via register_settings_tab. When
@@ -181,7 +181,7 @@ public:
   const std::vector<PluginInfo> &plugins() const { return plugins_; }
   std::vector<PluginInfo> &plugins_mutable() { return plugins_; }
 
-  // Only the plugins that registered game support (register_identity) —
+  // Only the plugins that registered game support (register_identity) -
   // the ones that can back an instance. Feature/tool plugins are excluded.
   [[nodiscard]] std::vector<PluginInfo> game_plugins() const {
     std::vector<PluginInfo> games;

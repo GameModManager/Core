@@ -207,7 +207,7 @@ void SettingsController::set_game_info(
   // (Loaded plugin list is logged once by PluginLoader::load_directory)
 
   // --- Always-run wiring (Workspace-tnj): everything below only needs the
-  // instance root (read above) or the game id — never game_dir. It used to
+  // instance root (read above) or the game id - never game_dir. It used to
   // sit behind the !game_dir.empty() guard, which silently disabled the whole
   // UI for game-less instances. ---
   w_->mod_list_->update_status_bar_for_game();
@@ -519,7 +519,7 @@ void SettingsController::set_game_info(
       });
 
   // Populate Tools menu with game-specific tools (game_id-keyed registry
-  // lookup — works without a game dir).
+  // lookup - works without a game dir).
   if (w_->plugin_loader_) {
     w_->menu_bar_->update_tools_for_game(
         w_->current_game_id_,
@@ -973,7 +973,7 @@ void SettingsController::ensure_nxm_handler_default() {
       QCoreApplication::applicationFilePath().toStdString());
 
   engine::Logger::instance().info(
-      "nxm:// handler check: GameModManager is NOT the default — prompting");
+      "nxm:// handler check: GameModManager is NOT the default - prompting");
   QMessageBox msg(w_);
   msg.setWindowTitle(tr("NXM Protocol Handler"));
   msg.setText(tr("GameModManager is no longer the default app for "

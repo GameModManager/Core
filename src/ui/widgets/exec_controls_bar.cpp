@@ -194,7 +194,7 @@ ExecControlsBar::ExecControlsBar(QWidget *parent) : QWidget(parent) {
   // (not only in activated) because Qt's hidePopup() emits
   // activated(currentIndex()) *after* setCurrentIndex, which means the
   // currentIndexChanged handler's restore may shift currentIndex before
-  // activated fires — making activated()'s index parameter unreliable for
+  // activated fires - making activated()'s index parameter unreliable for
   // detecting the sentinel in the entries-present case.
   connect(exec_combo_, &QComboBox::currentIndexChanged, this,
           [this](int index) {

@@ -13,7 +13,7 @@ class QTreeWidget;
 
 namespace ui {
 
-// MO2's Conflicts tab (general view): three two-column lists — files this mod
+// MO2's Conflicts tab (general view): three two-column lists - files this mod
 // wins, files it loses, and files with no conflict. Each row shows File |
 // Provider (all owner mods, comma-joined). Each list has a filter and a count.
 // Right-click offers Open / Explore / Hide / Unhide (the latter recomputes

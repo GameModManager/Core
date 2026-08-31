@@ -254,7 +254,7 @@ private:
   // ModList is converged with it after every scan
   // (on_mod_scan_finished) and every toggle (sync_mod_enable_state), so the
   // profile's modlist.txt is the per-profile source of truth for enabled
-  // state — never the global on-disk disable.it marker.
+  // state - never the global on-disk disable.it marker.
   std::unique_ptr<engine::profile::ProfileManager> active_profile_;
   // Plugin database driving the Plugins tab (empty until a plugin-capable
   // game is loaded). Rebuilt on refresh; toggles/moves save the profile.
@@ -314,7 +314,7 @@ private:
   std::vector<std::function<void()>> conflict_scan_active_follow_ups_;
   // Mod scan machinery (P8.2): load_mods_from_game() launches the scan on
   // ModScanThread; generation drops a stale result (refresh or instance
-  // switch superseded it). No reentrancy flag needed — the model is only
+  // switch superseded it). No reentrancy flag needed - the model is only
   // touched from on_mod_scan_finished on the main thread, and the worker
   // thread serializes queued scans.
   ui::ModScanThread *mod_scan_thread_ = nullptr;
@@ -323,7 +323,7 @@ private:
   // the plugin-DB disk load concurrently with the mod scan on
   // PluginDbLoadThread (gmm-plugin-db). plugin_db_generation_ drops a stale
   // load (instance switch bumps it); preload_pending_ is true only between a
-  // launch and its consumption — either adoption by refresh_plugins_tab() or
+  // launch and its consumption - either adoption by refresh_plugins_tab() or
   // a synchronous fallback read (which discards the pending preload so it
   // can't land late and clobber fresher data).
   ui::PluginDbLoadThread *plugin_db_load_thread_ = nullptr;
@@ -487,7 +487,7 @@ private:
   QTimer *install_progress_show_timer_ = nullptr;
   std::string active_install_progress_id_;
 
-  // Issue #16 controllers — the composer delegates behavior to these.
+  // Issue #16 controllers - the composer delegates behavior to these.
   friend class ModListController;
   friend class LaunchController;
   friend class OverwriteController;

@@ -29,7 +29,7 @@ namespace {
 // Delayed disable (plugin-declared capability, e.g. Isaac's Direct mode): the
 // GUI defers disable-sentinel writes until Run and flushes its in-memory
 // deferred queue before the deploy worker starts (LaunchController::
-// flush_deferred_disable_queue). The CLI has no queue — the active profile's
+// flush_deferred_disable_queue). The CLI has no queue - the active profile's
 // modlist.txt is the per-profile source of truth, so reconcile the on-disk
 // sentinels against it directly. Idempotent (writing an existing sentinel /
 // removing an absent one is a no-op) and a no-op for games that do not
@@ -69,7 +69,7 @@ void reconcile_deferred_disable_sentinels(const HeadlessLauncher::Config& cfg) {
     }
 
     // Read the profile's modlist.txt (the per-profile source of truth for
-    // enabled state). refresh_mod_status({}) loads exactly the file entries —
+    // enabled state). refresh_mod_status({}) loads exactly the file entries -
     // no known_mods to append.
     engine::profile::ProfileManager profile(profile_dir);
     profile.refresh_mod_status({});
@@ -89,7 +89,7 @@ void reconcile_deferred_disable_sentinels(const HeadlessLauncher::Config& cfg) {
     int reconciled = 0;
     for (const auto& m : mods) {
         if (m.foreign)
-            continue;  // unmanaged (DLC etc.) — never written as +/- toggle
+            continue;  // unmanaged (DLC etc.) - never written as +/- toggle
         auto folder = mods_dir / m.mod_id;
         if (!fs::exists(folder)) {
             auto fallback = native_mods_dir / m.mod_id;

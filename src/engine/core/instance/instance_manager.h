@@ -74,7 +74,7 @@ public:
   ImportResult import_from_mo2(const std::filesystem::path &mo2_instance_dir,
                                const std::string &display_name = "");
 
-  // Import from path (generic — wraps an existing directory as an instance)
+  // Import from path (generic - wraps an existing directory as an instance)
   ImportResult import_from_path(const std::filesystem::path &external_root,
                                 const std::string &display_name);
 

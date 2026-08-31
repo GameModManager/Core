@@ -10,7 +10,7 @@
 namespace engine {
 
 // ---------------------------------------------------------------------------
-// GitHub API client — fetches releases, compares versions, downloads assets.
+// GitHub API client - fetches releases, compares versions, downloads assets.
 // ---------------------------------------------------------------------------
 class GitHub {
 public:

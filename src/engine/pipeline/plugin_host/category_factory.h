@@ -8,7 +8,7 @@ namespace engine {
 
 namespace Category {
 
-// Global category registry — one shared set across all games.
+// Global category registry - one shared set across all games.
 // Plugins register categories via the ABI register_categories callback;
 // this factory merges them by ID (no duplicates). Parent ID 0 = root.
 // Persisted to categories.dat as pipe-delimited rows: ID|Name|ParentID.
@@ -38,7 +38,7 @@ public:
              size_t count);
 
   // Populates the factory from a named core set (see CategorySetRegistry).
-  // Existing categories are NOT cleared — the set adds missing categories only
+  // Existing categories are NOT cleared - the set adds missing categories only
   // (additive). Returns true when the set was found and applied.
   bool applyCoreSet(const std::string &set_name);
 

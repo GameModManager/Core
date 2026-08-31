@@ -35,7 +35,7 @@ StageFn StageRegistry::get_handler(const std::string& game_id,
         if (claim.stage_name != stage_name) continue;
 
         if (claim.game_id.empty()) {
-            // Wildcard claim — applies to all games
+            // Wildcard claim - applies to all games
             if (claim.priority > best_wildcard_priority) {
                 best_wildcard_priority = claim.priority;
                 best_wildcard_handler = claim.handler;
@@ -44,7 +44,7 @@ StageFn StageRegistry::get_handler(const std::string& game_id,
                     stage_name + " - same priority, keeping first");
             }
         } else if (claim.game_id == game_id) {
-            // Exact-match claim — game-specific
+            // Exact-match claim - game-specific
             if (claim.priority > best_exact_priority) {
                 best_exact_priority = claim.priority;
                 best_exact_handler = claim.handler;

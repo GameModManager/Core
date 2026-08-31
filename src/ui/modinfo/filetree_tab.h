@@ -11,7 +11,7 @@ namespace ui {
 
 // MO2's Filetree tab: the mod's whole folder tree with a right-click menu for
 // Open / Preview / Explore / Rename / Delete / Hide / New Folder. All actions
-// work on the real filesystem (no VFS — mirrors the Data tab's "no VFS"
+// work on the real filesystem (no VFS - mirrors the Data tab's "no VFS"
 // stance). The tree auto-updates via QFileSystemModel's watcher.
 class FiletreeTab : public ModInfoTab {
     Q_OBJECT

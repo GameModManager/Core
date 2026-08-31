@@ -11,7 +11,7 @@ namespace engine {
 // Lives in the config directory as instance_registry.toml.
 class InstanceRegistry {
 public:
-  // Registry entry — one per tracked instance
+  // Registry entry - one per tracked instance
   struct Entry {
     std::string name;         // folder name (unique key)
     std::string root;         // absolute path to instance root
@@ -40,7 +40,7 @@ public:
     ValidationStatus status;
   };
 
-  // Construction — loads the registry from disk
+  // Construction - loads the registry from disk
   InstanceRegistry();
   ~InstanceRegistry();
 
@@ -80,7 +80,7 @@ public:
   // Validate a single entry
   [[nodiscard]] ValidationStatus validate(const Entry &entry) const;
 
-  // Handle a missing instance — called by UI when validation finds MissingRoot
+  // Handle a missing instance - called by UI when validation finds MissingRoot
   struct RepairResult {
     bool repaired = false;
     bool removed = false;

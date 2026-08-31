@@ -58,7 +58,7 @@ public:
     // --- Per-mod UI state (manager sidecar) ---
     // Tree-view collapse state and visual-nesting parent link. These live in
     // the manager sidecar's [GameModManager] section ({instance_root}/meta/
-    // {folder_name}.ini) — NOT the mod's own MO2-format meta.ini, which is
+    // {folder_name}.ini) - NOT the mod's own MO2-format meta.ini, which is
     // game-visible. folded is explicit true/false; parent_id is absent for
     // top-level rows (unset() clears it back to "absent").
     [[nodiscard]] bool folded() const;

@@ -10,7 +10,7 @@ struct ValidateResult {
   std::string message; // human-readable failure reason (empty on success)
 };
 
-// Backward-compat alias (deprecated — use ValidateResult directly).
+// Backward-compat alias (deprecated - use ValidateResult directly).
 using NexusValidateResult = ValidateResult;
 
 // Account namespace: validates the stored API key and parses rate-limit

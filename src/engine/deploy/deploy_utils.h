@@ -104,7 +104,7 @@ resolve_deploy_target_ci(const std::filesystem::path &target) {
 
 // Parallel variant of deploy_all_enabled_mods (PLAN §13.3, P8.4): the same
 // contract, but the per-mod tree walks and the per-file link/unlink operations
-// are farmed across a thread pool — link/unlink is IO+syscall bound and
+// are farmed across a thread pool - link/unlink is IO+syscall bound and
 // embarrassingly parallel across independent paths, so the first-ever full
 // deploy of a large modlist scales with the available cores.
 //
@@ -119,7 +119,7 @@ resolve_deploy_target_ci(const std::filesystem::path &target) {
 // skipped; only new/re-pointed/missing files are touched, and entries that
 // stopped being winners (disabled/removed mod) are unlinked so a disabled
 // mod's files can't linger in the overlay. The ledger lives inside staging, so
-// the session-end wipe that clears .gmm_staging clears it too — the next
+// the session-end wipe that clears .gmm_staging clears it too - the next
 // launch is a full (parallel) deploy by design.
 //
 // num_threads: 0 (default) = std::thread::hardware_concurrency(), capped at
@@ -139,7 +139,7 @@ resolve_deploy_target_ci(const std::filesystem::path &target) {
 //
 // Same winner determinism and incremental O(Δ) redeploy contract as the
 // parallel overlay variant, with two differences:
-//   - The ledger persists at ledger_file (the caller's choice — typically
+//   - The ledger persists at ledger_file (the caller's choice - typically
 //     <instance>/.gmm_deploy_ledger, OUTSIDE the session-wiped .gmm_staging),
 //     so conflict-resolution owner changes across sessions are detected: a
 //     file whose winner changed is re-pointed, and a file whose winner

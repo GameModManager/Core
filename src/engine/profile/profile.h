@@ -13,7 +13,7 @@ namespace engine::profile {
 
 // One entry of the profile's mod list (modlist.txt).
 //
-// mod_id is the mod's on-disk folder name (mod identity — never the display
+// mod_id is the mod's on-disk folder name (mod identity - never the display
 // name). priority is 0-based; higher priority wins conflicts and is written
 // FIRST in modlist.txt (MO2 convention: the file's first line is the highest
 // priority mod).
@@ -44,14 +44,14 @@ enum class ProfileRemoveResult {
 };
 
 // Ordered INI model of settings.ini (root section first, keys in file order).
-// Unknown keys/sections are preserved on save (read-before-write — never
+// Unknown keys/sections are preserved on save (read-before-write - never
 // overwrite a shared config with a partial view).
 struct IniSection {
     std::string name;  // empty = root section (before any [header])
     std::vector<std::pair<std::string, std::string>> entries;
 };
 
-// Profile directory manager — the core data model of the profile system.
+// Profile directory manager - the core data model of the profile system.
 //
 // A profile is a directory holding:
 //   settings.ini    QSettings INI format (LocalSaves, LocalSettings,
@@ -102,11 +102,11 @@ public:
 
     // Permanently delete the profile directory and all its contents
     // (settings.ini, modlist.txt, plugins.txt, profile-specific save games,
-    // ...) — MO2's "remove profile" behavior.
+    // ...) - MO2's "remove profile" behavior.
     //
     // is_active must be true when this profile is the currently active one:
     // deletion is then refused with ActiveProfile. The caller is expected to
-    // check first (defense in depth — MO2 refuses in the dialog too).
+    // check first (defense in depth - MO2 refuses in the dialog too).
     //
     // Any pending delayed modlist write is cancelled first so the
     // DelayedFileWriter thread never recreates files inside a directory that
@@ -120,7 +120,7 @@ public:
     // --- repair ------------------------------------------------------------
 
     // Repair a broken profile directory: create any missing required files
-    // (settings.ini, modlist.txt, archives.txt) with sensible defaults —
+    // (settings.ini, modlist.txt, archives.txt) with sensible defaults -
     // settings.ini gets LocalSaves=false, LocalSettings=false,
     // AutomaticArchiveInvalidation=false; modlist.txt and archives.txt are
     // created empty. Existing files are never touched or overwritten.
@@ -134,7 +134,7 @@ public:
     // --- settings.ini ------------------------------------------------------
     // Values are cached in memory (loaded at construction) and persisted by
     // save_settings(). Unknown keys/sections are preserved on write
-    // (read-before-write — never overwrite a shared config with a partial
+    // (read-before-write - never overwrite a shared config with a partial
     // view).
 
     [[nodiscard]] bool local_saves() const;
@@ -164,7 +164,7 @@ public:
     // Mods NOT in the file are appended: foreign mods get the lowest
     // priorities, managed (new) mods the highest, both enabled by default.
     // When new mods are added the file is rewritten (delayed, batched) so the
-    // on-disk state converges — MO2's refreshModStatus behavior.
+    // on-disk state converges - MO2's refreshModStatus behavior.
     void refresh_mod_status(const std::vector<std::string>& known_mods,
                             const std::vector<std::string>& foreign_mods = {});
 
@@ -232,7 +232,7 @@ private:
     // Ordered INI model of settings.ini (see IniSection above).
     std::vector<IniSection> ini_;
 
-    // Mod list state — protected by mods_mutex_ (UI thread mutates,
+    // Mod list state - protected by mods_mutex_ (UI thread mutates,
     // DelayedFileWriter thread reads).
     mutable std::mutex mods_mutex_;
     std::vector<ModListEntry> mods_;
@@ -240,7 +240,7 @@ private:
     DelayedFileWriter modlist_writer_;
 };
 
-// Backward-compat alias — remove once all call sites use ProfileManager.
+// Backward-compat alias - remove once all call sites use ProfileManager.
 using Profile = ProfileManager;
 
 }  // namespace engine::profile

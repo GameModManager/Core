@@ -77,7 +77,7 @@ public slots:
   void sync_mod_ui_state();
   void group_mods_by_separator();
   void apply_mod_filter();
-  // Conflict recompute (THREADING.md §3.6, P8.1) — see MainWindow comments.
+  // Conflict recompute (THREADING.md §3.6, P8.1) - see MainWindow comments.
   void recompute_conflicts();
   void request_conflict_scan(std::function<void()> follow_up);
   void start_conflict_scan();

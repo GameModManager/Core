@@ -16,7 +16,7 @@ namespace Deploy {
 std::unique_ptr<Interface>
 Core::create(const std::string &name, bool case_sensitive,
              const std::filesystem::path &staging_dir) {
-  // "overlayfs" — Linux-only OverlayFsDeploy when the platform supports it.
+  // "overlayfs" - Linux-only OverlayFsDeploy when the platform supports it.
 #ifdef GMM_PLATFORM_LINUX
   if (name == engine::kDeployStrategyOverlayFs) {
     // overlay_supported() is the gatekeeper; callers should have checked
@@ -47,7 +47,7 @@ Core::create(const std::string &name, bool case_sensitive,
     return std::make_unique<Symlink>(case_sensitive);
   }
 
-  // Unknown name — log and degrade to Symlink.
+  // Unknown name - log and degrade to Symlink.
   if (!name.empty()) {
     engine::Logger::instance().warn("Deploy::Core::create: unknown strategy '" +
                                     name + "', falling back to Symlink");

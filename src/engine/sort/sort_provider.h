@@ -38,7 +38,7 @@ public:
 
 } // namespace Sorter
 
-// Backward-compat alias — old code refers to SortProvider directly
+// Backward-compat alias - old code refers to SortProvider directly
 using SortProvider = Sorter::Interface;
 
 } // namespace engine

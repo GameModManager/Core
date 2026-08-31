@@ -51,7 +51,7 @@ void QueueController::flush_pending_changes() {
                                             w_->current_game_id_, mod_folder);
     }
     // P1.3 event bus: mirror MO2 onModStateChanged for the deferred
-    // (game-running) toggle path — the state only actually changed on disk
+    // (game-running) toggle path - the state only actually changed on disk
     // here, so this is the moment to emit, not at queue time.
     engine::EventBus::instance().dispatch(
         engine::events::kModStateChanged,

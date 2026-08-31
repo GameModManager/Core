@@ -14,7 +14,7 @@ namespace ui {
 //
 // set_profile() loads the values for a profile directory; toggling a checkbox
 // emits settings_changed() so the owner can persist the change (the widget
-// itself does not write — the owner knows which profile is selected).
+// itself does not write - the owner knows which profile is selected).
 class ProfileSettingsWidget : public QWidget {
     Q_OBJECT
 public:

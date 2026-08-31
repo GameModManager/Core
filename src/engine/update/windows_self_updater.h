@@ -4,7 +4,7 @@
 
 namespace engine::update {
 
-// Windows updater — handles .exe/.msi installer-based updates.
+// Windows updater - handles .exe/.msi installer-based updates.
 class WindowsSelfUpdater : public SelfUpdater {
 public:
   UpdateInfo check_for_update() override;

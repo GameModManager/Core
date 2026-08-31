@@ -206,7 +206,7 @@ public:
     [[nodiscard]] int priority_of(const QString& id) const;
     // Rows whose persisted priority may have diverged from their row index
     // (marked by renumber_priorities for every row whose priority field changed).
-    // sync_priorities() persists only these to meta.ini — a reorder writes the
+    // sync_priorities() persists only these to meta.ini - a reorder writes the
     // moved rows instead of re-reading every mod's metadata (MO2 parity: the
     // profile is the in-memory source of truth, not per-move disk reads).
     [[nodiscard]] QSet<QString> dirty_priority_ids() const { return dirty_priority_ids_; }

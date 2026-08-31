@@ -17,7 +17,7 @@ namespace engine::profile {
 // Result of a profile switch attempt. On success `profile` owns the new
 // active Profile (the caller takes ownership and drops its previous one);
 // `changed` is false when the requested profile was already active (MO2's
-// early return in OrganizerCore::setCurrentProfile) — the caller keeps its
+// early return in OrganizerCore::setCurrentProfile) - the caller keeps its
 // current Profile and `profile` is null.
 struct ProfileSwitchResult {
   bool success = false;
@@ -34,7 +34,7 @@ struct ProfileSwitchResult {
 struct ProfileSaveState {
   // All mod ids present in the instance's mods directory, and the subset
   // that is unmanaged (DLC etc.). Used to converge modlist.txt
-  // (refresh_mod_status) before the immediate flush — mods not yet in the
+  // (refresh_mod_status) before the immediate flush - mods not yet in the
   // file are appended so the on-disk state matches the mods dir.
   std::vector<std::string> known_mods;
   std::vector<std::string> foreign_mods;
@@ -66,7 +66,7 @@ struct ProfileSwitchCallbacks {
 };
 
 // Persist the current profile's state (MO2's saveCurrentProfile):
-//   1. modlist.txt flushed immediately (write_modlist_now — the in-memory
+//   1. modlist.txt flushed immediately (write_modlist_now - the in-memory
 //      mod list is the source of truth; the delayed writer never holds a
 //      switch hostage).
 //   2. plugins.txt / loadorder.txt / lockedorder.txt via
@@ -91,14 +91,14 @@ bool write_tweaked_ini(const std::filesystem::path &profile_dir,
 // OrganizerCore::setCurrentProfile). Handles the full transition:
 //
 //   1. No-op when `name` is already the current profile's name.
-//   2. Resolve the real profile directory (case-insensitive walk — the UI
+//   2. Resolve the real profile directory (case-insensitive walk - the UI
 //      combo box walks directories on its own and may pass a differently
 //      cased name).
 //   3. Save the current profile (when `current` is non-null) via
 //      save_current_profile with `current_state`.
 //   4. Construct the new Profile from its directory.
 //   5. Restore mod enable/disable + priorities from the new profile's
-//      modlist.txt (refresh_mod_status — the "set profile on ModList" step;
+//      modlist.txt (refresh_mod_status - the "set profile on ModList" step;
 //      the UI rebuilds its ModList in refresh_directory_structure).
 //   6. Restore plugin state (plugins.txt / loadorder.txt / lockedorder.txt)
 //      via PluginDatabase::load_profile when `plugin_db` is set.

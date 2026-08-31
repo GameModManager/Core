@@ -1,7 +1,7 @@
 #pragma once
 
 // Internal helpers shared across self-updater implementations. Not part of the
-// public API — include only from engine/update/*.cpp files.
+// public API - include only from engine/update/*.cpp files.
 
 #include "engine/update/self_updater.h"
 

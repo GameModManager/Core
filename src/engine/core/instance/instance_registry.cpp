@@ -208,7 +208,7 @@ void InstanceRegistry::register_instance(const std::string &name,
                                          const std::string &type,
                                          const std::string &game_id,
                                          const std::string &display_name) {
-  // Check if already registered — update if so
+  // Check if already registered - update if so
   for (auto &e : entries_) {
     if (e.name == name) {
       e.root = root.string();
@@ -325,7 +325,7 @@ InstanceRegistry::validate(const Entry &entry) const {
 InstanceRegistry::RepairResult
 InstanceRegistry::repair_missing(const std::string &name) {
   // This method is called by the UI when validation finds MissingRoot.
-  // The UI handles the dialog — this just provides the mutation methods.
+  // The UI handles the dialog - this just provides the mutation methods.
   // For now, we just check if the entry exists and return a result.
   auto entry = find_by_name(name);
   if (!entry)

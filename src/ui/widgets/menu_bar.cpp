@@ -175,7 +175,7 @@ void AppMenuBar::update_tools_for_game(
     }
 
     // Add registered tools for this game (insert before the separator so the
-    // clearing loop above reaches them —addAction appends to the end, past the
+    // clearing loop above reaches them -addAction appends to the end, past the
     // separator, which caused duplicates to accumulate on every switch).
     if (!tools.empty()) {
         for (const auto& tool : tools) {

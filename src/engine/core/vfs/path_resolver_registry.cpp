@@ -29,7 +29,7 @@ PathResolverRegistry::PathResolverRegistry() {
   // Any change to the merged mod view invalidates every cached resolver index:
   // a mod enable/disable, reorder, install, removal, or a profile switch all
   // change which file wins a given path, so the derived caches must be dropped.
-  // PathResolver's index is a cache, not the authority — the deploy ledger and
+  // PathResolver's index is a cache, not the authority - the deploy ledger and
   // the on-disk tree remain the source of truth, so a stale cache can only
   // cost a re-scan, never a wrong deploy.
   auto handler = [](const std::string &, const std::string &) {

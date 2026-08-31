@@ -98,7 +98,7 @@ Application::Application(int &argc, char **argv)
 
   // Store secrets in the OS keyring (QtKeychain: Secret Service / KWallet)
   // when available, falling back to insecure file storage with a warning
-  // otherwise. Must run on the main thread — do it now, before any download
+  // otherwise. Must run on the main thread - do it now, before any download
   // worker can touch the key.
 #ifdef GMM_HAS_QTKEYCHAIN
   engine::Source::Nexus::Auth::instance().set_keyring(
@@ -150,7 +150,7 @@ Application::Application(int &argc, char **argv)
     engine::Logger::instance().set_level(engine::LogLevel::Error);
   // "info" is the default.
 
-  // Initialize theme system — default uses palette() so desktop colors apply.
+  // Initialize theme system - default uses palette() so desktop colors apply.
   // Capture the native (platform) style name in canonical QStyleFactory
   // casing before any user-selected style is applied.
   native_style_name_ = app_.style()->objectName();
@@ -335,7 +335,7 @@ int Application::run() {
   // Check for existing instances
   auto existing_instances = engine::scan_instances();
 
-  // Mutable instance name — may be set by NXM/GMM URL handling below
+  // Mutable instance name - may be set by NXM/GMM URL handling below
   QString instance_name = args.instance_name;
 
   // -- Download URL handling: try IPC to running instance first --
@@ -412,7 +412,7 @@ int Application::run() {
   }
 
   // Game icons (instance switcher / game selector) resolve their declared
-  // URLs from game knowledge — point the shared icon cache at the loaded
+  // URLs from game knowledge - point the shared icon cache at the loaded
   // plugins' store.
   ui::GameIconCache::set_knowledge(&plugin_loader_->knowledge());
 

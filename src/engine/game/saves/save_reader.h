@@ -5,18 +5,18 @@
 // (REFERENCES/modorganizer-game_bethesda/src/gamebryo/gamebryosavegame.cpp).
 //
 // Design: the whole save file is read into memory once (saves are a few MB at
-// most), then all reads — raw file region or the decompressed data region —
+// most), then all reads - raw file region or the decompressed data region -
 // go through the same primitives. This mirrors MO2's behavior (its FileWrapper
 // also switches its read source between the QFile and a decompressed
 // QDataStream) without any streaming complexity.
 //
 // Compression (set by the parser after reading the screenshot, MO2
 // setCompressionType + openCompressedData):
-//   type 0 — data region is raw in the file
-//   type 1 — a sequence of independent zlib/gzip streams; each stream is read
+//   type 0 - data region is raw in the file
+//   type 1 - a sequence of independent zlib/gzip streams; each stream is read
 //            from the file at a 16-byte-aligned offset, its decompressed
 //            output concatenated (MO2 readNextChunk + CHUNK 16384)
-//   type 2 — one LZ4 block (u32 uncompressed size, u32 compressed size, bytes)
+//   type 2 - one LZ4 block (u32 uncompressed size, u32 compressed size, bytes)
 
 #include <cstdint>
 #include <filesystem>

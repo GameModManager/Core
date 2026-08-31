@@ -17,7 +17,7 @@ namespace ui {
 // Everything ConflictEngine::compute() needs, copied off the UI thread at
 // request time (THREADING.md §3.6: snapshot, never share mutable state).
 // `invalidate` lists mods whose cached file list must be dropped before
-// scanning — a hidden-file rename inside a subdir does not change the mod
+// scanning - a hidden-file rename inside a subdir does not change the mod
 // folder's quick token, so the stale cached list would otherwise win.
 struct ConflictScanRequest {
     std::filesystem::path mods_dir;

@@ -1,6 +1,6 @@
 #pragma once
 
-// v2 IPluginTool registry — tracks plugin-provided tool callbacks keyed by
+// v2 IPluginTool registry - tracks plugin-provided tool callbacks keyed by
 // tool_id, with the owning plugin path so the loader can drop a plugin's tools
 // on unload (before dlclose) and never invoke a dangling function pointer.
 //

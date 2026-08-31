@@ -43,12 +43,12 @@ private:
 // Default disable sentinel filename used when a game plugin declares no
 // "disable_mechanism" hook. The engine writes this file into a mod folder to
 // mark it disabled, and every consumer (deploy, plugin DB, mod scanner) treats
-// it as authoritative — so "disabled" never silently becomes a no-op for games
+// it as authoritative - so "disabled" never silently becomes a no-op for games
 // that ship no game-native marker (Skyrim) the way Isaac's "disable.it" does.
 inline constexpr const char *kDefaultDisableMechanism = ".gmmdisabled";
 
 // Sentinel filename marking a mod disabled for the given game. Falls back to
-// kDefaultDisableMechanism when the game plugin declares nothing — a game's
+// kDefaultDisableMechanism when the game plugin declares nothing - a game's
 // declared mechanism (e.g. Isaac's "disable.it") always takes precedence.
 [[nodiscard]] std::string disable_mechanism_for(const GameKnowledge &knowledge,
                                                 const std::string &game_id);

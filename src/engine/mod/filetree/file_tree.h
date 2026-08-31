@@ -167,7 +167,7 @@ public:
         iterator v;
     };
 
-    // — factories ------------------------------------------------------------
+    // - factories ------------------------------------------------------------
     // Tree over a directory on disk (MO2 QDirFileTree). Lazily enumerated;
     // when `ignore_meta_ini` is set, a root-level meta.ini is hidden (MO2's
     // ignoreRootMeta for mod-folder roots; subdirectory meta.ini is kept).
@@ -182,7 +182,7 @@ public:
         const std::filesystem::path& archive, std::string* error = nullptr,
         NameCompare cmp = NameCompare::CaseInsensitive);
 
-    // — iteration ------------------------------------------------------------
+    // - iteration ------------------------------------------------------------
     iterator begin() { return {std::cbegin(entries())}; }
     const_iterator begin() const { return {std::cbegin(entries())}; }
     const_iterator cbegin() const { return {std::cbegin(entries())}; }
@@ -198,7 +198,7 @@ public:
     value_type at(std::size_t i);
     const_reference at(std::size_t i) const;
 
-    // — lookup ---------------------------------------------------------------
+    // - lookup ---------------------------------------------------------------
     // Paths are '/'- or '\\'-separated (Windows-native archive paths).
     bool exists(const std::string& path) const;
     value_type find(const std::string& path);
@@ -213,7 +213,7 @@ public:
     std::string path_to(const const_reference& entry,
                         std::string_view sep = "/") const;
 
-    // — walking --------------------------------------------------------------
+    // - walking --------------------------------------------------------------
     enum class WalkReturn {
         // Continue walking normally.
         Continue,

@@ -4,7 +4,7 @@
 
 namespace engine::update {
 
-// Flatpak updater — uses `flatpak update` for the installed app.
+// Flatpak updater - uses `flatpak update` for the installed app.
 class FlatpakUpdater : public SelfUpdater {
 public:
   UpdateInfo check_for_update() override;

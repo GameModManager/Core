@@ -22,7 +22,7 @@ enum class NameCompare {
 
 // One canonical path resolver per logical root (a game dir, a mod dir, the
 // overwrite dir, ...). Every subsystem that needs to turn a game-relative path
-// into a real file must go through here — there is no other public way to get a
+// into a real file must go through here - there is no other public way to get a
 // GameFile. This is the foundation of the centralized path-resolution work:
 // it owns case-insensitive matching, the identity/dedup key (normalize), and an
 // incremental cache that can be invalidated when the tree changes.

@@ -1,6 +1,6 @@
 #pragma once
 
-// P1.2 Game::Features::Registry — MO2's IGameFeatures analogue (PLAN.md §19.3
+// P1.2 Game::Features::Registry - MO2's IGameFeatures analogue (PLAN.md §19.3
 // gap 2 / §19.4 P1.2). Mirrors SortRegistry/diagnostics_registry: a
 // process-wide singleton (Qt-free) plugins populate through
 // register_game_feature (C ABI) or its pybind mirror, and the engine queries at
@@ -12,10 +12,10 @@
 //     at the LOWEST priority (the baseline everything else overrides).
 //   - resolve(): the single highest-priority registered feature (MO2
 //     gameFeature<T>() returning the front of the priority-sorted list).
-//   - resolve_mod_data_checker(): MO2's CombinedModDataChecker — ALL registered
+//   - resolve_mod_data_checker(): MO2's CombinedModDataChecker - ALL registered
 //     checkers OR together (ANY checker VALID -> VALID). The union's allow-set
 //     drives the mod list's FLAG_INVALID ("No valid game data").
-//   - resolve_game_plugins(): MO2's GamePlugins::gamePlugins() — the game's
+//   - resolve_game_plugins(): MO2's GamePlugins::gamePlugins() - the game's
 //     vanilla plugin files (unmanaged top band); a registered feature replaces
 //     the old game_native_plugins knowledge hook. Consumers go through the free
 //     native_plugins_csv() helper below (registry-first, hook fallback).
@@ -109,7 +109,7 @@ private:
 // Backward-compatible alias for existing consumers
 using GameFeatureRegistry = Game::Features::Registry;
 
-// The game's native (unmanaged) plugin list as comma-separated CSV — the
+// The game's native (unmanaged) plugin list as comma-separated CSV - the
 // format every consumer already parses (PluginDatabase::refresh,
 // MainWindow preload/refresh, ModScanWorker unmanaged-row synthesis).
 // Resolved registry-first: a registered "game_plugins" feature (MO2
@@ -127,22 +127,22 @@ using GameFeatureRegistry = Game::Features::Registry;
 [[nodiscard]] std::vector<std::string>
 unmanaged_mods_for(const std::string &game_id);
 
-// Register a game feature whose payload is key/value pairs — the
+// Register a game feature whose payload is key/value pairs - the
 // register_game_feature_data ABI entry (and its pybind mirror) land here, so
 // the parse logic lives once and is directly testable. This is the path for
 // the seven structured-data feature types; the two array-payload types
 // (mod_data_checker, game_plugins) go through Game::Features::Registry
 // directly. Keys per feature_type (see gmm_abi_v1.h
 // register_game_feature_data):
-//   mod_data_content  — "enabled" (comma-separated catalog IDs),
+//   mod_data_content  - "enabled" (comma-separated catalog IDs),
 //                       "content:<id>" = "name|icon|filter_only" (override).
-//   data_archives     — "vanilla_archives" (comma-separated archive names).
-//   script_extender   — "binary", "plugin_path", "loader_name",
+//   data_archives     - "vanilla_archives" (comma-separated archive names).
+//   script_extender   - "binary", "plugin_path", "loader_name",
 //                       "savegame_extension".
-//   save_game_info    — "extensions" (comma-separated save extensions).
-//   local_savegames   — "saves_subpath", "ini_file".
-//   unmanaged_mods    — "mods" (comma-separated internal mod names).
-//   bsa_invalidation  — "bsa_name", "bsa_version".
+//   save_game_info    - "extensions" (comma-separated save extensions).
+//   local_savegames   - "saves_subpath", "ini_file".
+//   unmanaged_mods    - "mods" (comma-separated internal mod names).
+//   bsa_invalidation  - "bsa_name", "bsa_version".
 // Unknown feature_type or an empty game_id/type is logged and returns false.
 [[nodiscard]] bool register_game_feature_data(
     const std::string &game_id, const std::string &feature_type, int priority,

@@ -43,7 +43,7 @@ using ProfileGameInitFn = std::function<void(const std::filesystem::path&)>;
 //      AutomaticArchiveInvalidation=false).
 //
 // On failure the partially-created directory is removed and the error is
-// returned. The created profile is NOT loaded into a Profile object — callers
+// returned. The created profile is NOT loaded into a Profile object - callers
 // construct one from `directory` when they need to mutate it.
 ProfileCreationResult create_fresh_profile(const std::filesystem::path& profiles_dir, const std::string& name,
                                            ProfileGameInitFn game_init = {});
@@ -54,7 +54,7 @@ ProfileCreationResult create_fresh_profile(const std::filesystem::path& profiles
 // - Validates the new name and fails when the target already exists.
 // - Recursively copies the source profile directory (modlist.txt,
 //   plugins.txt, loadorder.txt, lockedorder.txt, archives.txt, saves/, game
-//   INIs — all mod/plugin state is preserved verbatim).
+//   INIs - all mod/plugin state is preserved verbatim).
 // - Updates settings.ini with the new profile name (root key "ProfileName").
 //
 // On failure the partially-copied directory is removed and the error is

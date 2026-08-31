@@ -1,4 +1,4 @@
-# UI — Qt lives here. Static library linking Qt6 and the Qt-free engine.
+# UI - Qt lives here. Static library linking Qt6 and the Qt-free engine.
 # The Qt-using files that used to live under src/engine/ (theme/style_manager,
 # theme/icon_manager, notify/notification_backend, nxm/nxm_ipc,
 # app/multi_process) were relocated here (issue/33) so gmm_engine stays
@@ -85,7 +85,7 @@ set(UI_SOURCES
     instance_options/instance_options_widget.cpp
     system_tray/system_tray_manager.cpp
     ui_locker.cpp
-    # Qt-using files relocated from src/engine/ (issue/33) — keeps gmm_engine Qt-free
+    # Qt-using files relocated from src/engine/ (issue/33) - keeps gmm_engine Qt-free
     ${PROJECT_SOURCE_DIR}/src/ui/theme/style_manager.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/theme/icon_manager.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/notify/notification_backend.cpp
@@ -93,7 +93,7 @@ set(UI_SOURCES
     ${PROJECT_SOURCE_DIR}/src/ui/app/multi_process.cpp
 )
 
-# FileViewer module — reusable file viewers (image/video/3D-scene). The video
+# FileViewer module - reusable file viewers (image/video/3D-scene). The video
 # page needs QtMultimedia; without it the container shows the unsupported page.
 set(FILE_VIEWER_SOURCES
     viewer/file_viewer_widget.cpp
@@ -106,7 +106,7 @@ if(Qt6Multimedia_FOUND)
 endif()
 list(APPEND UI_SOURCES ${FILE_VIEWER_SOURCES})
 
-# Mod Info dialog — the 9 MO2-parity tabs plus the dialog shell.
+# Mod Info dialog - the 9 MO2-parity tabs plus the dialog shell.
 set(MODINFO_SOURCES
     modinfo/mod_info_data.cpp
     modinfo/mod_info_tab.cpp

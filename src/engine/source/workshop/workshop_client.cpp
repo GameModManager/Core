@@ -196,7 +196,7 @@ std::optional<WorkshopItem> WorkshopClient::fetch_from_steam(int64_t workshop_id
         wi.title = item.value("title", "");
         wi.preview_url = item.value("preview_url", "");
         wi.description = item.value("short_description", "");
-        // Parse tags from Steam API response — "tags" is an array of
+        // Parse tags from Steam API response - "tags" is an array of
         // objects with a "tag" string field (e.g. [{"tag":"Lua"}, ...]).
         if (item.contains("tags") && item["tags"].is_array()) {
             for (const auto& t : item["tags"]) {

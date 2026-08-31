@@ -14,12 +14,12 @@
 #include <unistd.h>
 
 // ============================================================================
-// BROKEN FEATURE — DO NOT ENABLE
+// BROKEN FEATURE - DO NOT ENABLE
 //
 // This LD_PRELOAD case-insensitive interposer is BROKEN and must not be used.
 // It shadows Wine's own (correct) case-insensitive path handling: its ENOENT
 // re-resolution actively breaks Windows tools that read the deployed game
-// tree — the Pandora "Could not find file Z:\...\Data\meshes\actors\..."
+// tree - the Pandora "Could not find file Z:\...\Data\meshes\actors\..."
 // failures (2026-08-09) were caused by this shim, not by missing files.
 // Wine/Proton resolve case-insensitive lookups natively on Linux; injecting
 // this library only fights the runtime.

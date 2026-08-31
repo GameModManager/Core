@@ -25,7 +25,7 @@ struct PluginDbLoadRequest {
 
 // Runs the plugin-DB disk load (PluginDatabase::refresh -> parse headers ->
 // scan plugin assets, then load_creation_club + sort_load_order) on the worker
-// thread — the startup path's other directory walk / header parse, so it can
+// thread - the startup path's other directory walk / header parse, so it can
 // overlap the mod scan instead of running after it. The result crosses back
 // once via finished(); `generation` tags which load the result belongs to so a
 // newer instance switch can drop an in-flight result. Profile load + mod-index

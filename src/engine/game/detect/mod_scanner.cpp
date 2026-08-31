@@ -156,7 +156,7 @@ map_workshop_tags_to_categories(const std::vector<std::string> &tags,
       }
     }
   } catch (...) {
-    // Malformed JSON — no categories assigned
+    // Malformed JSON - no categories assigned
   }
   return result;
 }
@@ -251,7 +251,7 @@ static ScanConfig make_scan_config(const GameKnowledge &knowledge,
   cfg.ignored = split_csv(ignored_csv);
   // Game-registered vanilla directories (e.g. Scripts/, Meshes/) that must
   // not appear as mods.  The "ignored_dirs" hook is a CSV of folder names
-  // the engine should skip during directory scanning — same semantics as
+  // the engine should skip during directory scanning - same semantics as
   // ignored_files but scoped to subdirectories of the mods dir.
   auto ignored_dirs = split_csv(knowledge.get(game_id, "ignored_dirs", ""));
   for (auto &d : ignored_dirs) {
@@ -274,7 +274,7 @@ static ScanConfig make_scan_config(const GameKnowledge &knowledge,
   // Content-validity allow-lists drive MO2's FLAG_INVALID ("No valid game
   // data"). The P1.2 Game::Features::Registry is the override seam: any plugin
   // can register a mod_data_checker for this game (priority + replace, MO2
-  // IGameFeatures — combined across all registered checkers). A registered
+  // IGameFeatures - combined across all registered checkers). A registered
   // checker wins; the per-game CSV hooks (mod_valid_dirs/mod_valid_exts)
   // remain the fallback for games whose plugin still uses them (Isaac) and
   // for the scanner's own knowledge-driven tests.

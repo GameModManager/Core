@@ -16,7 +16,7 @@ namespace engine {
 namespace {
 
 // ---------------------------------------------------------------------------
-// curl write callback — appends received data to a std::string
+// curl write callback - appends received data to a std::string
 // ---------------------------------------------------------------------------
 size_t write_to_string(void *ptr, size_t size, size_t nmemb, void *userdata) {
   auto *out = static_cast<std::string *>(userdata);
@@ -26,7 +26,7 @@ size_t write_to_string(void *ptr, size_t size, size_t nmemb, void *userdata) {
 }
 
 // ---------------------------------------------------------------------------
-// curl write callback — writes to an output file stream
+// curl write callback - writes to an output file stream
 // ---------------------------------------------------------------------------
 size_t write_to_file(void *ptr, size_t size, size_t nmemb, void *userdata) {
   auto *file = static_cast<std::ofstream *>(userdata);
@@ -38,7 +38,7 @@ size_t write_to_file(void *ptr, size_t size, size_t nmemb, void *userdata) {
 }
 
 // ---------------------------------------------------------------------------
-// curl xferinfo callback — progress reporting for downloads
+// curl xferinfo callback - progress reporting for downloads
 // ---------------------------------------------------------------------------
 struct DownloadProgress {
   std::function<void(float)> callback;
@@ -54,7 +54,7 @@ int download_xferinfo(void *user_data, curl_off_t dltotal, curl_off_t dlnow,
 }
 
 // ---------------------------------------------------------------------------
-// HTTP GET — fetch a URL into a string. Returns true on success.
+// HTTP GET - fetch a URL into a string. Returns true on success.
 // ---------------------------------------------------------------------------
 bool http_get(const std::string &url, std::string &response_body,
               long &http_code) {

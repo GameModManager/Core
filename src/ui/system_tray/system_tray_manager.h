@@ -11,7 +11,7 @@ namespace ui {
 class MainWindow;
 
 // ---------------------------------------------------------------------------
-// SystemTrayManager — manages the system tray icon and its context menu.
+// SystemTrayManager - manages the system tray icon and its context menu.
 // ---------------------------------------------------------------------------
 class SystemTrayManager : public QObject {
   Q_OBJECT

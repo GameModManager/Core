@@ -30,7 +30,7 @@ ModuleInfo ModuleInfo::from_path(const std::filesystem::path &path) {
 }
 
 // ---------------------------------------------------------------------------
-// Module — platform-specific handle management
+// Module - platform-specific handle management
 // ---------------------------------------------------------------------------
 Module::Module(const ModuleInfo &info) : info_(info) {
 #ifdef _WIN32

@@ -127,7 +127,7 @@ void GenericFilesTab::rebuild_list() {
     }
     list_->setModel(model);
     // setModel() swaps in a fresh selection model, which orphans the
-    // constructor-time connection — re-connect so selecting a row loads the
+    // constructor-time connection - re-connect so selecting a row loads the
     // file into the editor.
     connect(list_->selectionModel(), &QItemSelectionModel::currentRowChanged,
             this, &GenericFilesTab::select_file);

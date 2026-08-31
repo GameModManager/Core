@@ -42,7 +42,7 @@ QString SavesTab::missing_tooltip(const SavesScanResultEntry& entry) {
             QStringList providers;
             for (const auto& m : asset.providing_mods)
                 providers << QString::fromStdString(m);
-            line += " — " + providers.join(", ");
+            line += " - " + providers.join(", ");
         }
         lines << line;
     }

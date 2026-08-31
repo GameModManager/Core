@@ -189,7 +189,7 @@ void ModContextMenu::setup_mod_list_context_menu() {
         // Send to... submenu (MO2 modlistcontextmenu.cpp:285-338): priority
         // moves + the separator picker. The separator picker opens the shared
         // ListDialog (MO2 sendModsToSeparator, listdialog.ui) instead of an
-        // inline submenu entry per separator — a submenu with many separators
+        // inline submenu entry per separator - a submenu with many separators
         // (or long names) grew to cover the whole screen.
         auto *send_to = menu.addMenu(
             engine::IconManager::instance().resolve_icon("view-sort"),
@@ -388,7 +388,7 @@ void ModContextMenu::add_category_menus(QMenu &menu, const QString &mod_id) {
     w_->mod_model_->set_category(mod_id, primary_name);
     w_->mod_model_->set_category_ids(mod_id, ids);
     // Re-apply the filter via ModListController callback.
-    // This is a bit awkward — we need ModListController to call
+    // This is a bit awkward - we need ModListController to call
     // apply_mod_filter. For now, we'll emit a signal or use a callback.
     // TODO: This should be wired through ModListController.
   };

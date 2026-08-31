@@ -22,7 +22,7 @@ void cleanup_failed(const std::filesystem::path& dir) {
     }
 }
 
-// True when `path` names a game INI inside a profile directory — any *.ini
+// True when `path` names a game INI inside a profile directory - any *.ini
 // other than the profile's own settings.ini (MO2's findProfileSettings
 // detects local settings by the presence of the game's INI files).
 bool is_game_ini(const std::filesystem::path& path) {
@@ -195,8 +195,8 @@ ProfileCreationResult copy_profile(const std::filesystem::path& profiles_dir, co
 
     // Record the new profile name in settings.ini (the directory name is the
     // profile identity; the key makes the copy self-describing). All other
-    // settings — LocalSaves, LocalSettings, AutomaticArchiveInvalidation,
-    // forced_libraries, unknown keys — are preserved verbatim by the copy.
+    // settings - LocalSaves, LocalSettings, AutomaticArchiveInvalidation,
+    // forced_libraries, unknown keys - are preserved verbatim by the copy.
     ProfileManager profile(target);
     profile.set_root_setting("ProfileName", new_name);
     if (!profile.save_settings()) {
