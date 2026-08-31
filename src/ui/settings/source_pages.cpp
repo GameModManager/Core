@@ -86,7 +86,7 @@ void apply_nexus_queue_default() {
     // The user's explicit choice wins - the tier default is applied only
     // while the value has never been set manually.
     if (s.nexus_queue_downloads_set()) return;
-    auto& auth = engine::NexusAuth::instance();
+    auto& auth = engine::Source::Nexus::Auth::instance();
     const auto type = auth.has_user_info()
         ? auth.get_user_info().account_type
         : engine::NexusUserInfo::AccountType::None;
@@ -198,7 +198,7 @@ private:
 
 NexusPanel::NexusPanel(QWidget* parent)
     : QWidget(parent) {
-    auto& auth = engine::NexusAuth::instance();
+    auto& auth = engine::Source::Nexus::Auth::instance();
     auto& s = Settings::instance();
 
     auto* outer = new QVBoxLayout(this);
@@ -375,7 +375,7 @@ void NexusPanel::log_clear() {
 }
 
 void NexusPanel::refresh_account_and_stats() {
-    auto& auth = engine::NexusAuth::instance();
+    auto& auth = engine::Source::Nexus::Auth::instance();
 
     if (auth.has_user_info()) {
         const auto info = auth.get_user_info();
@@ -400,7 +400,7 @@ void NexusPanel::refresh_account_and_stats() {
 }
 
 void NexusPanel::refresh_buttons() {
-    const bool has_key = engine::NexusAuth::instance().has_api_key();
+    const bool has_key = engine::Source::Nexus::Auth::instance().has_api_key();
     // connect_btn_ stays permanently disabled: validate_nexus_account() soft-crashes
     // the app (see implementation.md Log 2026-08-01).
     disconnect_btn_->setEnabled(has_key);
@@ -424,9 +424,9 @@ QListWidgetItem* NexusPanel::make_server_item(const engine::NexusServer& srv) co
 void NexusPanel::refresh_servers() {
     known_list_->clear();
     preferred_list_->clear();
-    for (const auto& srv : engine::NexusServers::instance().known())
+    for (const auto& srv : engine::Source::Nexus::Servers::instance().known())
         known_list_->addItem(make_server_item(srv));
-    for (const auto& srv : engine::NexusServers::instance().preferred())
+    for (const auto& srv : engine::Source::Nexus::Servers::instance().preferred())
         preferred_list_->addItem(make_server_item(srv));
 }
 
@@ -438,7 +438,7 @@ void NexusPanel::persist_server_preferences() {
         const QString name = preferred_list_->item(i)->data(Qt::UserRole).toString();
         if (!name.isEmpty()) ordered.push_back(name.toStdString());
     }
-    engine::NexusServers::instance().set_preferred(ordered);
+    engine::Source::Nexus::Servers::instance().set_preferred(ordered);
 }
 
 void NexusPanel::connect_to_nexus() {
@@ -469,13 +469,13 @@ void NexusPanel::enter_key_manually() {
         disconnect_from_nexus();
         return;
     }
-    engine::NexusAuth::instance().set_api_key(key.toStdString());
+    engine::Source::Nexus::Auth::instance().set_api_key(key.toStdString());
     engine::Logger::instance().info("Nexus API key stored");
     connect_to_nexus();
 }
 
 void NexusPanel::disconnect_from_nexus() {
-    auto& auth = engine::NexusAuth::instance();
+    auto& auth = engine::Source::Nexus::Auth::instance();
     auth.clear_api_key();
     auth.clear_user_info();
     log_clear();

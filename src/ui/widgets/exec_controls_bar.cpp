@@ -28,7 +28,7 @@ QString findWrestool() {
   return {};
 }
 
-QIcon resolveEntryIcon(const ui::ExecEntry &entry,
+QIcon resolveEntryIcon(const ui::Executables::Entry &entry,
                        const std::filesystem::path &game_dir,
                        const std::filesystem::path &icon_cache_dir,
                        const std::filesystem::path &staging_dir) {
@@ -256,7 +256,7 @@ QJsonObject ExecControlsBar::item_data(int index) const {
   // Legacy: plain string path
   QString s = var.toString();
   if (!s.isEmpty())
-    return ExecEntry::fromLegacyPath(s).toJson();
+    return Executables::Entry::fromLegacyPath(s).toJson();
   return {};
 }
 
@@ -284,12 +284,12 @@ QStringList ExecControlsBar::executable_paths() const {
   return paths;
 }
 
-QVector<ExecEntry> ExecControlsBar::executable_entries() const {
-  QVector<ExecEntry> entries;
+QVector<Executables::Entry> ExecControlsBar::executable_entries() const {
+  QVector<Executables::Entry> entries;
   for (int i = 1; i < exec_combo_->count(); ++i) {
     auto obj = item_data(i);
     if (!obj.isEmpty())
-      entries.append(ExecEntry::fromJson(obj));
+      entries.append(Executables::Entry::fromJson(obj));
   }
   return entries;
 }
@@ -297,32 +297,32 @@ QVector<ExecEntry> ExecControlsBar::executable_entries() const {
 void ExecControlsBar::add_executable(const QString &display_name,
                                      const QString &rel_path,
                                      const QIcon &icon) {
-  ExecEntry e;
+  Executables::Entry e;
   e.title = display_name;
   e.path = rel_path;
   int insert_pos = 1; // right after the sentinel (index 0)
-  exec_combo_->insertItem(insert_pos, icon, exec_entry_display_name(e),
+  exec_combo_->insertItem(insert_pos, icon, Executables::exec_entry_display_name(e),
                           QVariant(e.toJson()));
   exec_combo_->setCurrentIndex(insert_pos);
 }
 
-void ExecControlsBar::add_entry(const ExecEntry &entry) {
+void ExecControlsBar::add_entry(const Executables::Entry &entry) {
   QIcon icon =
       resolveEntryIcon(entry, game_dir_, icon_cache_dir_, staging_dir_);
 
   // Append at the end (after the sentinel) so the combo order matches the
   // order entries were added in - full rebuilds must not reverse the list.
   int insert_pos = exec_combo_->count();
-  exec_combo_->insertItem(insert_pos, icon, exec_entry_display_name(entry),
+  exec_combo_->insertItem(insert_pos, icon, Executables::exec_entry_display_name(entry),
                           QVariant(entry.toJson()));
   exec_combo_->setCurrentIndex(insert_pos);
 }
 
-ExecEntry ExecControlsBar::current_entry() const {
+Executables::Entry ExecControlsBar::current_entry() const {
   int idx = exec_combo_->currentIndex();
   if (idx <= 0) // index 0 is the sentinel, not an executable
     return {};
-  return ExecEntry::fromJson(item_data(idx));
+  return Executables::Entry::fromJson(item_data(idx));
 }
 
 void ExecControlsBar::clear_executables() {
@@ -370,19 +370,19 @@ void ExecControlsBar::set_executables(
     auto raw = names[i];
 
     // Detect JSON string vs plain legacy path
-    ExecEntry entry;
+    Executables::Entry entry;
     if (raw.startsWith('{')) {
       QJsonDocument doc = QJsonDocument::fromJson(raw.toUtf8());
       if (doc.isObject()) {
-        entry = ExecEntry::fromJson(doc.object());
+        entry = Executables::Entry::fromJson(doc.object());
       } else {
-        entry = ExecEntry::fromLegacyPath(raw);
+        entry = Executables::Entry::fromLegacyPath(raw);
       }
     } else {
-      entry = ExecEntry::fromLegacyPath(raw);
+      entry = Executables::Entry::fromLegacyPath(raw);
     }
 
-    auto display = exec_entry_display_name(entry);
+    auto display = Executables::exec_entry_display_name(entry);
     exec_combo_->addItem(
         resolveEntryIcon(entry, game_dir_, icon_cache_dir_, staging_dir_),
         display, QVariant(entry.toJson()));

@@ -8,7 +8,7 @@
 #include "engine/game/plugins/esp_header.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
 #include "engine/game/registry/game_knowledge.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <algorithm>
 #include <cctype>
@@ -17,7 +17,7 @@
 #include <set>
 #include <sstream>
 
-namespace engine {
+namespace engine::PluginDb {
 
 namespace {
 
@@ -95,7 +95,7 @@ void scan_plugin_assets(GamePlugin& p) {
 
 }  // namespace
 
-bool PluginDatabase::refresh(const std::filesystem::path& game_dir,
+bool Database::refresh(const std::filesystem::path& game_dir,
                              const std::filesystem::path& mods_dir,
                              const std::filesystem::path& meta_dir,
                              const std::string& disable_mechanism,
@@ -209,7 +209,7 @@ bool PluginDatabase::refresh(const std::filesystem::path& game_dir,
     return true;
 }
 
-void PluginDatabase::rebuild_index() {
+void Database::rebuild_index() {
     by_name_.clear();
     by_name_ci_.clear();
     for (size_t i = 0; i < plugins_.size(); ++i) {
@@ -218,7 +218,7 @@ void PluginDatabase::rebuild_index() {
     }
 }
 
-void PluginDatabase::load_creation_club(const std::filesystem::path& game_dir,
+void Database::load_creation_club(const std::filesystem::path& game_dir,
                             const std::string& ccc_filename) {
     ccc_order_.clear();
 
@@ -264,7 +264,7 @@ void PluginDatabase::load_creation_club(const std::filesystem::path& game_dir,
     }
 }
 
-void PluginDatabase::parse_headers() {
+void Database::parse_headers() {
     for (auto& p : plugins_) {
         const auto hdr = read_esp_header(p.full_path);
         if (hdr.valid) {
@@ -291,7 +291,7 @@ void PluginDatabase::parse_headers() {
     }
 }
 
-void PluginDatabase::sort_load_order() {
+void Database::sort_load_order() {
     if (plugins_.empty()) return;
 
     const size_t n = plugins_.size();
@@ -383,7 +383,7 @@ void PluginDatabase::sort_load_order() {
     set_missing_masters();
 }
 
-bool PluginDatabase::reassert_band() {
+bool Database::reassert_band() {
     const size_t n = plugins_.size();
     if (n == 0) return false;
 
@@ -431,7 +431,7 @@ bool PluginDatabase::reassert_band() {
     return true;
 }
 
-bool PluginDatabase::apply_load_order(const std::vector<std::string>& order,
+bool Database::apply_load_order(const std::vector<std::string>& order,
                                       std::string* error) {
     const size_t n = plugins_.size();
     if (n == 0) return true;
@@ -500,7 +500,7 @@ bool PluginDatabase::apply_load_order(const std::vector<std::string>& order,
     return true;
 }
 
-void PluginDatabase::set_all_enabled() {
+void Database::set_all_enabled() {
     // First run (no persisted profile): load everything whose masters are
     // present. A plugin whose required master is absent - not installed at all
     // - stays disabled: the game could not load it anyway, and enabling it
@@ -519,7 +519,7 @@ void PluginDatabase::set_all_enabled() {
     }
 }
 
-void PluginDatabase::set_missing_masters() {
+void Database::set_missing_masters() {
     for (auto& p : plugins_) {
         p.missing_master = false;
         p.missing_masters.clear();
@@ -532,7 +532,7 @@ void PluginDatabase::set_missing_masters() {
     }
 }
 
-void PluginDatabase::generate_mod_indexes() {
+void Database::generate_mod_indexes() {
     uint32_t full_index = 0;
     uint32_t light_index = 0;
     uint32_t medium_index = 0;
@@ -553,7 +553,7 @@ void PluginDatabase::generate_mod_indexes() {
     }
 }
 
-bool PluginDatabase::set_enabled(const std::string& name, bool enabled, std::string* error) {
+bool Database::set_enabled(const std::string& name, bool enabled, std::string* error) {
     const auto it = by_name_.find(name);
     if (it == by_name_.end()) {
         if (error) *error = "Unknown plugin: " + name;
@@ -612,7 +612,7 @@ bool PluginDatabase::set_enabled(const std::string& name, bool enabled, std::str
     return true;
 }
 
-bool PluginDatabase::move_plugin(int from_row, int to_row, std::string* error) {
+bool Database::move_plugin(int from_row, int to_row, std::string* error) {
     const int n = static_cast<int>(plugins_.size());
     if (from_row < 0 || from_row >= n) {
         if (error) *error = "move_plugin: source row " + std::to_string(from_row) + " out of range";
@@ -654,7 +654,7 @@ bool PluginDatabase::move_plugin(int from_row, int to_row, std::string* error) {
     return true;
 }
 
-bool PluginDatabase::set_locked(const std::string& name, bool lock, std::string* error) {
+bool Database::set_locked(const std::string& name, bool lock, std::string* error) {
     const auto it = by_name_ci_.find(to_lower(name));
     if (it == by_name_ci_.end()) {
         if (error) *error = name + " is not in the plugin list";
@@ -674,12 +674,12 @@ bool PluginDatabase::set_locked(const std::string& name, bool lock, std::string*
     return true;
 }
 
-bool PluginDatabase::is_locked(const std::string& name) const {
+bool Database::is_locked(const std::string& name) const {
     const auto it = by_name_ci_.find(to_lower(name));
     return it != by_name_ci_.end() && plugins_[it->second].locked;
 }
 
-void PluginDatabase::apply_locked_order() {
+void Database::apply_locked_order() {
     if (locked_order_.empty()) return;
 
     // Locked plugins re-inserted in ascending locked priority, so earlier pins
@@ -734,7 +734,7 @@ void PluginDatabase::apply_locked_order() {
     }
 }
 
-bool PluginDatabase::load_profile(const std::filesystem::path& profiles_dir,
+bool Database::load_profile(const std::filesystem::path& profiles_dir,
                                   const std::string& profile_name,
                                   bool* repaired) {
     const auto dir = profiles_dir / profile_name;
@@ -862,7 +862,7 @@ bool PluginDatabase::load_profile(const std::filesystem::path& profiles_dir,
     return applied;
 }
 
-void PluginDatabase::save_profile(const std::filesystem::path& profiles_dir,
+void Database::save_profile(const std::filesystem::path& profiles_dir,
                                   const std::string& profile_name) const {
     const auto dir = profiles_dir / profile_name;
     std::error_code ec;
@@ -880,7 +880,7 @@ void PluginDatabase::save_profile(const std::filesystem::path& profiles_dir,
     }
 }
 
-bool PluginDatabase::write_game_plugins_txt(const std::filesystem::path& path) const {
+bool Database::write_game_plugins_txt(const std::filesystem::path& path) const {
     std::ofstream out(path);
     if (!out) return false;
     out << "# This file is used by Skyrim to keep track of your downloaded content.\n";
@@ -892,7 +892,7 @@ bool PluginDatabase::write_game_plugins_txt(const std::filesystem::path& path) c
     return out.good();
 }
 
-bool PluginDatabase::write_load_order_txt(const std::filesystem::path& path) const {
+bool Database::write_load_order_txt(const std::filesystem::path& path) const {
     std::ofstream out(path);
     if (!out) return false;
     out << "# This file was automatically generated by GameModManager.\n";
@@ -900,16 +900,16 @@ bool PluginDatabase::write_load_order_txt(const std::filesystem::path& path) con
     return out.good();
 }
 
-const GamePlugin* PluginDatabase::find(const std::string& name) const {
+const GamePlugin* Database::find(const std::string& name) const {
     const auto it = by_name_.find(name);
     return it == by_name_.end() ? nullptr : &plugins_[it->second];
 }
 
-std::filesystem::path PluginDatabase::resolve_plugins_txt_target(
+std::filesystem::path Database::resolve_plugins_txt_target(
     const GameKnowledge& knowledge,
     const std::string& game_id,
     uint32_t steam_appid,
-    const PlatformInterface* platform,
+    const Platform* platform,
     const std::filesystem::path& override_path) {
     if (!override_path.empty()) return override_path;
 
@@ -921,13 +921,13 @@ std::filesystem::path PluginDatabase::resolve_plugins_txt_target(
     return base / subdir / "Plugins.txt";
 }
 
-bool PluginDatabase::write_plugins_txt_for_launch(
+bool Database::write_plugins_txt_for_launch(
     const std::filesystem::path& game_dir,
     const std::filesystem::path& instance_root,
     const std::string& game_id,
     uint32_t steam_appid,
     const GameKnowledge& knowledge,
-    const PlatformInterface* platform) {
+    const Platform* platform) {
     Instance inst = Instance::from_root(instance_root);
     std::filesystem::path override_path;
     if (inst.read_toml()) override_path = inst.info().plugins_txt_path;
@@ -936,17 +936,17 @@ bool PluginDatabase::write_plugins_txt_for_launch(
                                                    platform, override_path);
     if (target.empty()) {
         Logger::instance().debug(
-            "PluginDatabase: no plugins.txt target for game " + game_id + " - skipping");
+            "Plugin::Database: no plugins.txt target for game " + game_id + " - skipping");
         return false;
     }
 
     const std::string disable_mechanism = disable_mechanism_for(knowledge, game_id);
     const std::string game_native = native_plugins_csv(knowledge, game_id);
 
-    PluginDatabase db;
+    Database db;
     if (!db.refresh(game_dir, inst.path_for(InstanceKind::Mods),
                     inst.path_for(InstanceKind::Meta), disable_mechanism, game_native)) {
-        Logger::instance().warn("PluginDatabase: plugin discovery failed");
+        Logger::instance().warn("Plugin::Database: plugin discovery failed");
         return false;
     }
     db.load_creation_club(game_dir);
@@ -966,13 +966,13 @@ bool PluginDatabase::write_plugins_txt_for_launch(
     const bool ok = db.write_game_plugins_txt(target);
     db.write_load_order_txt(profiles_dir / kDefaultProfile / "loadorder.txt");
     if (ok) {
-        Logger::instance().debug("PluginDatabase: wrote " +
+        Logger::instance().debug("Plugin::Database: wrote " +
                                  std::to_string(db.plugins().size()) +
                                  " plugins to " + target.string());
     } else {
-        Logger::instance().error("PluginDatabase: failed to write " + target.string());
+        Logger::instance().error("Plugin::Database: failed to write " + target.string());
     }
     return ok;
 }
 
-}  // namespace engine
+}  // namespace engine::PluginDb

@@ -107,21 +107,21 @@ Living document tracking MO2 feature parity and GMM-exclusive features.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Custom executables list | ✅ `ExecutablesList` (CRUD) | ✅ `ExecEntry` + `ExecControlsBar` | ✅ |
-| Per-executable arguments | ✅ `Executable::arguments` | ✅ `ExecEntry::arguments` | ✅ |
-| Per-executable working directory | ✅ `Executable::workingDirectory` | ✅ `ExecEntry::start_in` | ✅ |
+| Custom executables list | ✅ `ExecutablesList` (CRUD) | ✅ `Executables::Entry` + `ExecControlsBar` | ✅ |
+| Per-executable arguments | ✅ `Executable::arguments` | ✅ `Executables::Entry::arguments` | ✅ |
+| Per-executable working directory | ✅ `Executable::workingDirectory` | ✅ `Executables::Entry::start_in` | ✅ |
 | Per-executable Steam App ID | ✅ `Executable::steamAppID` | ❌ | ❌ |
 | Per-executable custom overwrite | ✅ `Executable::customOverwrites` | ❌ | ❌ |
 | Per-executable forced libraries | ✅ `Executable::forcedLibraries` | ❌ | ❌ |
-| Per-executable environment variables | ❌ | 🚀 `ExecEntry::environment` (KEY=VALUE) | 🚀 |
-| Per-executable output-to-mod routing | ❌ | 🚀 `ExecEntry::output_mod` | 🚀 |
+| Per-executable environment variables | ❌ | 🚀 `Executables::Entry::environment` (KEY=VALUE) | 🚀 |
+| Per-executable output-to-mod routing | ❌ | 🚀 `Executables::Entry::output_mod` | 🚀 |
 | Toolbar pinning | ✅ `ShowInToolbar` flag | ✅ `add_shortcut_to_toolbar()` | ✅ |
 | Desktop shortcut creation | ❌ | 🚀 `add_shortcut_to_desktop()` (.desktop file) | 🚀 |
 | Executable ordering (up/down) | ✅ `EditExecutablesDialog` | ✅ up/down buttons + drag-drop | ✅ |
 | Clone executable | ✅ `EditExecutablesDialog::clone()` | ✅ `on_clone_selected()` | ✅ |
 | JAR binary detection | ✅ `setJarBinary` + `findJavaInstallation` | ❌ | ❌ |
 | Icon extraction (wrestool/QFileIconProvider) | ❌ | 🚀 `extractExeIcon()` | 🚀 |
-| Executable editor widget | ✅ `EditExecutablesDialog` | ✅ `ExecEntryContentWidget` (mode-agnostic) | ✅ |
+| Executable editor widget | ✅ `EditExecutablesDialog` | ✅ `Executables::ContentWidget` (mode-agnostic) | ✅ |
 
 ## 6. Mod Management
 
@@ -162,7 +162,7 @@ Living document tracking MO2 feature parity and GMM-exclusive features.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Category tree system | ✅ `Categories` (hierarchical) | ✅ `CategoryFactory` | ✅ |
+| Category tree system | ✅ `Categories` (hierarchical) | ✅ `Category::Factory` | ✅ |
 | Nexus category mapping | ✅ `NexusCategory` + `resolveNexusID` | ✅ `NexusCat` mapping | ✅ |
 | Category import/export | ✅ `CategoryImportDialog` | ❌ | ❌ |
 | Multi-category assignment | ✅ `ModInfo::setCategories` | ❌ | ❌ |
@@ -271,7 +271,7 @@ Living document tracking MO2 feature parity and GMM-exclusive features.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| LOOT sort execution | ✅ `Loot::sort()` | ✅ `LootSorter` | ✅ |
+| LOOT sort execution | ✅ `Loot::sort()` | ✅ `Sorter::Loot` | ✅ |
 | LOOT report generation | ✅ `Loot::createReport()` | ❌ | ❌ |
 | LOOT report viewer (markdown + web) | ✅ `LootDialog` + `MarkdownDocument` | ❌ | ❌ |
 | LOOT progress display | ✅ `LootDialog::setProgress()` | ❌ | ❌ |
@@ -379,7 +379,7 @@ Living document tracking MO2 feature parity and GMM-exclusive features.
 | Filter persistence | ✅ `saveFilters` | ❌ | ❌ |
 | Filter AND/OR mode | ✅ `FilterAnd`/`FilterOr` | ❌ | ❌ |
 | Column visibility toggle | ✅ `setColumnVisible()` | ✅ `column_toggle_header` | ✅ |
-| Mod counter display | ✅ `ModCounters` (LCD) | ✅ `gmm_status_bar` (counts) | ✅ |
+| Mod counter display | ✅ `ModCounters` (LCD) | ✅ `status_bar` (counts) | ✅ |
 | Create separator | ✅ | ✅ `create_separator()` / `create_separator_named()` | ✅ |
 | Create empty mod | ✅ `createEmptyMod` | ✅ `create_empty_mod()` | ✅ |
 | Import archives | ✅ | ✅ `import_archives()` | ✅ |
@@ -555,7 +555,7 @@ Living document tracking MO2 feature parity and GMM-exclusive features.
 |---------|-----|-----|--------|
 | Sort provider / registry | ❌ | 🚀 `SortProvider` + `SortRegistry` | 🚀 |
 | C ABI sort provider | ❌ | 🚀 `AbiSortProvider` | 🚀 |
-| LOOT sorter | ❌ | 🚀 `LootSorter` (run_loot_sort with progress) | 🚀 |
+| LOOT sorter | ❌ | 🚀 `Sorter::Loot` (run_sort with progress) | 🚀 |
 | Masterlist manager | ❌ | 🚀 `MasterlistManager` (GitHub branch walk-down, 24h TTL) | 🚀 |
 
 ## 29. Instance Management
@@ -600,7 +600,7 @@ Living document tracking MO2 feature parity and GMM-exclusive features.
 | Zoom controls | ❌ | 🚀 `zoom_controls` | 🚀 |
 | Column toggle header | ❌ | 🚀 `column_toggle_header` | 🚀 |
 | Game path banner | ❌ | 🚀 `game_path_banner` | 🚀 |
-| Status bar (custom) | ✅ `StatusBar` | 🚀 `gmm_status_bar` | 🚀 |
+| Status bar (custom) | ✅ `StatusBar` | 🚀 `status_bar` | 🚀 |
 | Notification backend | ❌ | 🚀 `notification_backend` | 🚀 |
 | Single instance guard | ❌ | 🚀 `single_instance` (QtSingleApplication) | 🚀 |
 | BBCode parser (Nexus descriptions) | ✅ | ✅ `bbcode` | ✅ |
@@ -702,7 +702,7 @@ Living document tracking MO2 feature parity and GMM-exclusive features.
 | PathResolver (canonical paths) | ❌ | 🚀 `PathResolver` + `PathResolverRegistry` | 🚀 |
 | Keyring (OS-backed + file fallback) | ❌ | 🚀 `Keyring` + `FileKeyring` (XOR+base64) | 🚀 |
 | Thread priority (low) | ❌ | 🚀 `set_low_priority()` | 🚀 |
-| Headless launcher (CLI) | ❌ | 🚀 `HeadlessLauncher` (HeadlessConfig) | 🚀 |
+| Headless launcher (CLI) | ❌ | 🚀 `cli::HeadlessLauncher` (`HeadlessLauncher::Config`) | 🚀 |
 | Proton version discovery | ❌ | 🚀 `find_proton()`, `enumerate_proton_versions()` | 🚀 |
 | Wine binary discovery | ❌ | 🚀 `find_wine()` | 🚀 |
 | Admin elevation check | ❌ | 🚀 `is_elevated()` | 🚀 |

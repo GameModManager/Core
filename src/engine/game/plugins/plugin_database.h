@@ -11,9 +11,11 @@
 namespace engine {
 
 class GameKnowledge;
-class PlatformInterface;
+class Platform;
 
-class PluginDatabase {
+namespace PluginDb {
+
+class Database {
 public:
     // Discover + parse all plugins from the game's merged Data view.
     //   game_dir   - game install root (Data/ holds vanilla + game-native plugins)
@@ -121,7 +123,7 @@ public:
         const GameKnowledge& knowledge,
         const std::string& game_id,
         uint32_t steam_appid,
-        const PlatformInterface* platform,
+        const Platform* platform,
         const std::filesystem::path& override_path = {});
 
     // Build the plugin list from on-disk state and write plugins.txt to the
@@ -135,7 +137,7 @@ public:
         const std::string& game_id,
         uint32_t steam_appid,
         const GameKnowledge& knowledge,
-        const PlatformInterface* platform);
+        const Platform* platform);
 
     // Default profile name (matches MO2's "Default" profile).
     static constexpr const char* kDefaultProfile = "Default";
@@ -175,5 +177,10 @@ private:
     // CC plugins in the order listed by the creation club file.
     std::vector<std::string> ccc_order_;
 };
+
+}  // namespace PluginDb
+
+// Backward-compat alias so existing consumers compile without changes.
+using PluginDatabase = PluginDb::Database;
 
 }  // namespace engine

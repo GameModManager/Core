@@ -25,7 +25,7 @@
 #pragma comment(lib, "dbghelp.lib")
 #endif
 
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 namespace engine {
 
@@ -34,7 +34,7 @@ std::string CrashHandler::dump_dir_;
 // ---------------------------------------------------------------------------
 // Default dump directory
 //
-// Mirrors PlatformInterface::cache_dir() / "crash_dumps" on every platform so
+// Mirrors Platform::cache_dir() / "crash_dumps" on every platform so
 // crash dumps land next to the rest of the app's cached data. Falls back to
 // safe_home_dir() when the platform-specific environment variable is unset.
 // ---------------------------------------------------------------------------

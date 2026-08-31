@@ -1,6 +1,6 @@
 #include "ui/preview/preview_window.h"
-#include "ui/preview/preview_registry.h"
 #include "engine/core/log/logger.h"
+#include "ui/preview/preview_registry.h"
 #include "ui/preview/preview_widget.h"
 
 #include <QFile>
@@ -50,8 +50,7 @@ bool PreviewWindow::supports(const QString &file_path) {
   return has_extension(file_path, image_extensions()) ||
          has_extension(file_path, animation_extensions()) ||
          has_extension(file_path, text_extensions()) ||
-         ui::preview::PreviewRegistry::instance().has_preview(
-             file_path.toStdString());
+         ui::preview::Registry::instance().has_preview(file_path.toStdString());
 }
 
 PreviewWindow::PreviewWindow(QWidget *parent) : QDialog(parent) {
@@ -156,8 +155,9 @@ PreviewWindow::PreviewWindow(QWidget *parent) : QDialog(parent) {
 void PreviewWindow::show_file(const QString &file_path,
                               const QStringList &provider_paths,
                               const QStringList &provider_names) {
-  engine::Logger::instance().debug("[PreviewWindow] show_file: file=" + file_path.toStdString() +
-                           " providers=" + std::to_string(provider_paths.size()));
+  engine::Logger::instance().debug(
+      "[PreviewWindow] show_file: file=" + file_path.toStdString() +
+      " providers=" + std::to_string(provider_paths.size()));
   paths_.clear();
   names_.clear();
   paths_ << file_path;
@@ -208,28 +208,38 @@ void PreviewWindow::reload() {
   anm2_frames_.clear();
   anm2_delays_.clear();
   anm2_index_ = 0;
-  engine::Logger::instance().debug("[PreviewWindow] reload: path=" + path.toStdString());
-  engine::Logger::instance().debug("[PreviewWindow] reload: trying load_plugin_preview...");
+  engine::Logger::instance().debug("[PreviewWindow] reload: path=" +
+                                   path.toStdString());
+  engine::Logger::instance().debug(
+      "[PreviewWindow] reload: trying load_plugin_preview...");
   if (load_plugin_preview(path)) {
-    engine::Logger::instance().debug("[PreviewWindow] reload: load_plugin_preview SUCCEEDED");
+    engine::Logger::instance().debug(
+        "[PreviewWindow] reload: load_plugin_preview SUCCEEDED");
     return;
   }
-  engine::Logger::instance().debug("[PreviewWindow] reload: trying load_image...");
+  engine::Logger::instance().debug(
+      "[PreviewWindow] reload: trying load_image...");
   if (load_image(path)) {
-    engine::Logger::instance().debug("[PreviewWindow] reload: load_image SUCCEEDED");
+    engine::Logger::instance().debug(
+        "[PreviewWindow] reload: load_image SUCCEEDED");
     return;
   }
-  engine::Logger::instance().debug("[PreviewWindow] reload: trying load_anm2...");
+  engine::Logger::instance().debug(
+      "[PreviewWindow] reload: trying load_anm2...");
   if (load_anm2(path)) {
-    engine::Logger::instance().debug("[PreviewWindow] reload: load_anm2 SUCCEEDED");
+    engine::Logger::instance().debug(
+        "[PreviewWindow] reload: load_anm2 SUCCEEDED");
     return;
   }
-  engine::Logger::instance().debug("[PreviewWindow] reload: trying load_text...");
+  engine::Logger::instance().debug(
+      "[PreviewWindow] reload: trying load_text...");
   if (load_text(path)) {
-    engine::Logger::instance().debug("[PreviewWindow] reload: load_text SUCCEEDED");
+    engine::Logger::instance().debug(
+        "[PreviewWindow] reload: load_text SUCCEEDED");
     return;
   }
-  engine::Logger::instance().debug("[PreviewWindow] reload: NO preview found, showing unsupported");
+  engine::Logger::instance().debug(
+      "[PreviewWindow] reload: NO preview found, showing unsupported");
   show_unsupported();
 }
 
@@ -254,7 +264,7 @@ bool PreviewWindow::load_anm2(const QString &path) {
     return false;
 
   auto feature =
-      ::engine::GameFeatureRegistry::instance()
+      ::engine::Game::Features::Registry::instance()
           .resolve_feature<::engine::AnimationParserFeature>(game_id_);
   if (!feature)
     return false;
@@ -322,7 +332,8 @@ bool PreviewWindow::load_text(const QString &path) {
 }
 
 bool PreviewWindow::load_plugin_preview(const QString &path) {
-  engine::Logger::instance().debug("[PreviewWindow] load_plugin_preview: path=" + path.toStdString());
+  engine::Logger::instance().debug(
+      "[PreviewWindow] load_plugin_preview: path=" + path.toStdString());
   // Drop any previously embedded plugin widget before resolving the new file so
   // a fallback to a built-in preview doesn't leave a stale widget behind.
   if (plugin_widget_) {
@@ -333,13 +344,16 @@ bool PreviewWindow::load_plugin_preview(const QString &path) {
 
   // Ask the v2 IPluginPreview registry for this file's extension. A plugin that
   // claimed the extension returns a QWidget* (as opaque void*); we embed it.
-  engine::Logger::instance().debug("[PreviewWindow] load_plugin_preview: calling PreviewRegistry::create_preview");
-  void *w = ui::preview::PreviewRegistry::instance().create_preview(
-      path.toStdString());
-  engine::Logger::instance().debug("[PreviewWindow] load_plugin_preview: create_preview returned w=" +
-                           std::to_string(reinterpret_cast<uintptr_t>(w)));
+  engine::Logger::instance().debug(
+      "[PreviewWindow] load_plugin_preview: calling Registry::create_preview");
+  void *w =
+      ui::preview::Registry::instance().create_preview(path.toStdString());
+  engine::Logger::instance().debug(
+      "[PreviewWindow] load_plugin_preview: create_preview returned w=" +
+      std::to_string(reinterpret_cast<uintptr_t>(w)));
   if (!w) {
-    engine::Logger::instance().debug("[PreviewWindow] load_plugin_preview: no plugin preview, returning false");
+    engine::Logger::instance().debug("[PreviewWindow] load_plugin_preview: no "
+                                     "plugin preview, returning false");
     return false;
   }
 
@@ -350,7 +364,8 @@ bool PreviewWindow::load_plugin_preview(const QString &path) {
 }
 
 void PreviewWindow::show_unsupported() {
-  engine::Logger::instance().debug("[PreviewWindow] show_unsupported: displaying unsupported message");
+  engine::Logger::instance().debug(
+      "[PreviewWindow] show_unsupported: displaying unsupported message");
   anm2_timer_.stop();
   anm2_frames_.clear();
   anm2_delays_.clear();

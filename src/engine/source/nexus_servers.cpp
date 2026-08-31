@@ -1,6 +1,6 @@
-#include "engine/source/nexus_servers.h"
+#include "engine/source/nexus/servers.h"
 
-#include "engine/source/nexus_auth.h"
+#include "engine/source/nexus/auth.h"
 
 #include <nlohmann/json.hpp>
 
@@ -10,13 +10,13 @@
 #include <filesystem>
 #include <fstream>
 
-namespace engine {
+namespace engine::Source::Nexus {
 
 namespace {
 constexpr int kMaxSamples = 5;
 
 std::filesystem::path storage_file() {
-    return NexusAuth::config_dir() / "nexus_servers.json";
+    return Auth::config_dir() / "nexus_servers.json";
 }
 
 int today() {
@@ -38,12 +38,12 @@ int NexusServer::average_speed() const {
     return static_cast<int>(total / static_cast<long long>(speeds.size()));
 }
 
-NexusServers& NexusServers::instance() {
-    static NexusServers s;
+Servers& Servers::instance() {
+    static Servers s;
     return s;
 }
 
-void NexusServers::load_locked() const {
+void Servers::load_locked() const {
     servers_.clear();
     std::ifstream f(storage_file());
     if (!f) return;
@@ -67,9 +67,9 @@ void NexusServers::load_locked() const {
     }
 }
 
-void NexusServers::save_locked() const {
+void Servers::save_locked() const {
     std::error_code ec;
-    std::filesystem::create_directories(NexusAuth::config_dir(), ec);
+    std::filesystem::create_directories(Auth::config_dir(), ec);
 
     nlohmann::json arr = nlohmann::json::array();
     for (const auto& s : servers_) {
@@ -83,14 +83,14 @@ void NexusServers::save_locked() const {
     if (f) f << arr.dump(2) << "\n";
 }
 
-std::vector<NexusServer> NexusServers::all() const {
+std::vector<NexusServer> Servers::all() const {
     std::lock_guard<std::mutex> g(mutex_);
     if (!loaded_) load_locked();
     loaded_ = true;
     return servers_;
 }
 
-int NexusServers::preferred_rank(const std::string& name) const {
+int Servers::preferred_rank(const std::string& name) const {
     std::lock_guard<std::mutex> g(mutex_);
     if (!loaded_) load_locked();
     loaded_ = true;
@@ -99,14 +99,14 @@ int NexusServers::preferred_rank(const std::string& name) const {
     return 0;
 }
 
-std::vector<NexusServer> NexusServers::known() const {
+std::vector<NexusServer> Servers::known() const {
     std::vector<NexusServer> out;
     for (const auto& s : all())
         if (s.preferred <= 0) out.push_back(s);
     return out;
 }
 
-std::vector<NexusServer> NexusServers::preferred() const {
+std::vector<NexusServer> Servers::preferred() const {
     std::vector<NexusServer> out;
     for (const auto& s : all())
         if (s.preferred > 0) out.push_back(s);
@@ -117,7 +117,7 @@ std::vector<NexusServer> NexusServers::preferred() const {
     return out;
 }
 
-void NexusServers::record_discovered(const std::string& name, bool premium) {
+void Servers::record_discovered(const std::string& name, bool premium) {
     if (name.empty()) return;
     std::lock_guard<std::mutex> g(mutex_);
     if (!loaded_) load_locked();
@@ -143,7 +143,7 @@ void NexusServers::record_discovered(const std::string& name, bool premium) {
     save_locked();
 }
 
-void NexusServers::record_speed(const std::string& name, double bps) {
+void Servers::record_speed(const std::string& name, double bps) {
     if (name.empty() || bps <= 0) return;
     std::lock_guard<std::mutex> g(mutex_);
     if (!loaded_) load_locked();
@@ -174,7 +174,7 @@ void NexusServers::record_speed(const std::string& name, double bps) {
     save_locked();
 }
 
-void NexusServers::set_preferred(const std::vector<std::string>& ordered_names) {
+void Servers::set_preferred(const std::vector<std::string>& ordered_names) {
     std::lock_guard<std::mutex> g(mutex_);
     if (!loaded_) load_locked();
     loaded_ = true;
@@ -194,11 +194,11 @@ void NexusServers::set_preferred(const std::vector<std::string>& ordered_names) 
     save_locked();
 }
 
-void NexusServers::clear_all() {
+void Servers::clear_all() {
     std::lock_guard<std::mutex> g(mutex_);
     servers_.clear();
     loaded_ = true;
     save_locked();
 }
 
-} // namespace engine
+} // namespace engine::Source::Nexus

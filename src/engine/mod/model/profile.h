@@ -6,7 +6,7 @@
 
 namespace engine {
 
-// Well-known mod IDs - must match ModListModel constants
+// Well-known mod IDs - must match ModList constants
 constexpr const char* kProfileOverwriteId = "__overwrite__";
 
 struct ProfileMod {
@@ -14,9 +14,9 @@ struct ProfileMod {
     bool enabled = true;
 };
 
-class Profile {
+class ProfileModel {
 public:
-    Profile();
+    ProfileModel();
 
     void add_mod(const std::string& mod_id, bool enabled = true);
     void remove_mod(const std::string& mod_id);
@@ -37,5 +37,8 @@ public:
 private:
     std::vector<ProfileMod> mods_;
 };
+
+// Backward-compat alias — remove once all call sites use ProfileModel.
+using Profile = ProfileModel;
 
 }  // namespace engine

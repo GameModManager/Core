@@ -1,6 +1,8 @@
 #include "ui/controllers/mod_list_controller.h"
 #include "engine/profile/profile_creation.h"
 #include "ui/controllers/launch_controller.h"
+#include "ui/controllers/mod_actions.h"
+#include "ui/controllers/mod_context_menu.h"
 #include "ui/controllers/overwrite_controller.h"
 #include "ui/controllers/queue_controller.h"
 #include "ui/controllers/settings_controller.h"
@@ -74,13 +76,13 @@
 #include "ui/widgets/category_filter_panel.h"
 #include "ui/widgets/column_toggle_header.h"
 #include "ui/widgets/exec_controls_bar.h"
-#include "ui/widgets/gmm_status_bar.h"
 #include "ui/widgets/list_dialog.h"
 #include "ui/widgets/mod_filter_bar.h"
 #include "ui/widgets/mod_list_model.h"
 #include "ui/widgets/mod_table_view.h"
 #include "ui/widgets/profile_bar.h"
 #include "ui/widgets/right_panel.h"
+#include "ui/widgets/status_bar.h"
 
 namespace ui {
 
@@ -88,25 +90,25 @@ namespace {
 
 QString mod_column_name(int column) {
   switch (column) {
-  case ModListModel::Name:
+  case ModList::Name:
     return "Name";
-  case ModListModel::Conflicts:
+  case ModList::Conflicts:
     return "Conflicts";
-  case ModListModel::Flags:
+  case ModList::Flags:
     return "Flags";
-  case ModListModel::Category:
+  case ModList::Category:
     return "Category";
-  case ModListModel::Source:
+  case ModList::Source:
     return "Source";
-  case ModListModel::SourceId:
+  case ModList::SourceId:
     return "Source ID";
-  case ModListModel::Version:
+  case ModList::Version:
     return "Version";
-  case ModListModel::Installation:
+  case ModList::Installation:
     return "Installation";
-  case ModListModel::Changed:
+  case ModList::Changed:
     return "Changed";
-  case ModListModel::Priority:
+  case ModList::Priority:
     return "Priority";
   }
   return {};
@@ -280,7 +282,28 @@ QString to_game_relative_path(const std::filesystem::path &game_dir,
 } // anonymous namespace
 
 ModListController::ModListController(MainWindow *w, QObject *parent)
-    : QObject(parent), w_(w) {}
+    : QObject(parent), w_(w) {
+  // Initialize the extracted sub-controllers.
+  mod_actions_ = std::make_unique<ModActions>(w);
+  mod_actions_->set_sync_mod_enable_state(
+      [this](const QString &mod_id, bool enabled) {
+        sync_mod_enable_state(mod_id, enabled);
+      });
+  mod_actions_->set_refresh_data_tab([this]() { refresh_data_tab(); });
+  mod_actions_->set_apply_mod_filter([this]() { apply_mod_filter(); });
+  mod_actions_->set_load_mods_from_game([this]() { load_mods_from_game(); });
+
+  mod_context_menu_ = std::make_unique<ModContextMenu>(w, mod_actions_.get());
+  mod_context_menu_->set_on_data_mod_info(
+      [this](const QString &mod_id, int tab) {
+        on_data_mod_info(mod_id, tab);
+      });
+  mod_context_menu_->set_source_visit_info(
+      [this](const QString &source_type, const QString &source_id,
+             const QString &page_url) -> SourceVisitInfo {
+        return source_visit_info(source_type, source_id, page_url);
+      });
+}
 
 void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   w_->profile_bar_ = new ProfileBar(w_);
@@ -303,8 +326,8 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   connect(w_->profile_bar_, &ProfileBar::import_modlist_clicked, this,
           [this]() { import_modlist(); });
 
-  w_->mod_model_ = new ModListModel(w_);
-  w_->mod_view_ = new ModTableView(w_);
+  w_->mod_model_ = new ModList(w_);
+  w_->mod_view_ = new ModView(w_);
   w_->mod_model_->set_view(w_->mod_view_);
   w_->mod_view_->setModel(w_->mod_model_);
 
@@ -358,10 +381,10 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
                  const QVector<int> &roles) {
             (void)bottomRight;
             if (roles.contains(Qt::CheckStateRole) &&
-                topLeft.column() == ModListModel::Name) {
+                topLeft.column() == ModList::Name) {
               auto id =
                   w_->mod_model_
-                      ->data(topLeft.sibling(topLeft.row(), ModListModel::Name),
+                      ->data(topLeft.sibling(topLeft.row(), ModList::Name),
                              Qt::EditRole)
                       .toString();
               bool enabled =
@@ -376,18 +399,18 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
 
   // Counter follows add/remove/move/load (mod_list_changed fires once per
   // structural change; toggles are covered by the dataChanged handler above).
-  connect(w_->mod_model_, &ModListModel::mod_list_changed, this,
+  connect(w_->mod_model_, &ModList::mod_list_changed, this,
           [this]() { update_mod_count_label(); });
 
   // Sync priority rewrites to metadata files after reorder; plugin discovery
   // for the Plugins tab follows any mod-list change (install/remove/toggle).
-  connect(w_->mod_model_, &ModListModel::mod_list_changed, this, [this]() {
+  connect(w_->mod_model_, &ModList::mod_list_changed, this, [this]() {
     sync_priorities();
     refresh_plugins_tab();
   });
 
   // Save order on every model change
-  connect(w_->mod_model_, &ModListModel::mod_list_changed, this, [this]() {
+  connect(w_->mod_model_, &ModList::mod_list_changed, this, [this]() {
     if (w_->loading_)
       return;
     save_order();
@@ -402,7 +425,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
 
   // Inline rename (MO2 renameMod): the handler renames the folder on disk
   // and updates the row in place; on failure it reverts the editor.
-  connect(w_->mod_model_, &ModListModel::rename_requested, this,
+  connect(w_->mod_model_, &ModList::rename_requested, this,
           [this](int row, const QString &name) { apply_rename(row, name); });
 
   // Fold/unfold on the Fold column ONLY (the dedicated arrow cell, left of
@@ -412,7 +435,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   // a mod with children folds the same way (hides its subtree).
   connect(w_->mod_view_, &QTreeView::clicked, this,
           [this](const QModelIndex &idx) {
-            if (!idx.isValid() || idx.column() != ModListModel::Fold)
+            if (!idx.isValid() || idx.column() != ModList::Fold)
               return;
             int row = idx.row();
             if (row < 0 || row >= w_->mod_model_->mods().size())
@@ -461,18 +484,18 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
 
             int tab = -1;
             switch (idx.column()) {
-            case ModListModel::Conflicts:
+            case ModList::Conflicts:
               tab = static_cast<int>(ui::ModInfoTabId::Conflicts);
               break;
-            case ModListModel::Flags:
+            case ModList::Flags:
               tab = static_cast<int>(ui::ModInfoTabId::Conflicts);
               break;
-            case ModListModel::Category:
+            case ModList::Category:
               tab = static_cast<int>(ui::ModInfoTabId::Categories);
               break;
-            case ModListModel::Source:
-            case ModListModel::SourceId:
-            case ModListModel::Version:
+            case ModList::Source:
+            case ModList::SourceId:
+            case ModList::Version:
               tab = static_cast<int>(ui::ModInfoTabId::Source);
               break;
             default:
@@ -482,11 +505,11 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
           });
 
   // MO2 parity: Ctrl+Double-Click opens the OS file explorer at the mod's
-  // folder (ModTableView::ctrl_double_clicked). Regular mods open their
+  // folder (ModView::ctrl_double_clicked). Regular mods open their
   // folder in the instance mods dir; the Overwrite row opens the Overwrite
   // dir. Foreign/unmanaged (game-native) rows, separators and MERGED do
   // nothing.
-  connect(w_->mod_view_, &ModTableView::ctrl_double_clicked, this,
+  connect(w_->mod_view_, &ModView::ctrl_double_clicked, this,
           [this](const QModelIndex &idx) {
             if (!idx.isValid())
               return;
@@ -515,12 +538,12 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
           });
 
   // Drag-and-drop archives onto the mod list to install manually
-  connect(w_->mod_view_, &ModTableView::files_dropped, this,
+  connect(w_->mod_view_, &ModView::files_dropped, this,
           [this](const QStringList &paths) { import_archives(paths); });
 
   // Drag-and-drop files/folders out of the Overwrite info dialog onto a mod
   // row moves them into that mod (MO2's drop-to-mod).
-  connect(w_->mod_view_, &ModTableView::overwrite_files_dropped, this,
+  connect(w_->mod_view_, &ModView::overwrite_files_dropped, this,
           [this](const QStringList &paths, int mod_row) {
             w_->overwrite_->move_dropped_overwrite_files(paths, mod_row);
           });
@@ -550,44 +573,44 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   // The Fold arrow column is pinned to the left edge: fixed 24px cell,
   // always visible, and re-snapped to visual index 0 if the user tries to
   // drag another column past it (the arrow must stay aligned to the edge).
-  mod_header->setSectionResizeMode(ModListModel::Fold, QHeaderView::Fixed);
-  mod_header->resizeSection(ModListModel::Fold, 24);
-  mod_header->setSectionResizeMode(ModListModel::Name, QHeaderView::Stretch);
-  for (int c = ModListModel::Conflicts; c < ModListModel::ColumnCount; ++c)
+  mod_header->setSectionResizeMode(ModList::Fold, QHeaderView::Fixed);
+  mod_header->resizeSection(ModList::Fold, 24);
+  mod_header->setSectionResizeMode(ModList::Name, QHeaderView::Stretch);
+  for (int c = ModList::Conflicts; c < ModList::ColumnCount; ++c)
     mod_header->setSectionResizeMode(c, QHeaderView::Interactive);
-  mod_header->resizeSection(ModListModel::Conflicts, 80);
-  mod_header->resizeSection(ModListModel::Flags, 80);
-  mod_header->resizeSection(ModListModel::Category, 120);
-  mod_header->resizeSection(ModListModel::Source, 40);
-  mod_header->resizeSection(ModListModel::SourceId, 70);
-  mod_header->resizeSection(ModListModel::Version, 80);
-  mod_header->resizeSection(ModListModel::Installation, 90);
-  mod_header->resizeSection(ModListModel::Changed, 90);
-  mod_header->resizeSection(ModListModel::Priority, 60);
+  mod_header->resizeSection(ModList::Conflicts, 80);
+  mod_header->resizeSection(ModList::Flags, 80);
+  mod_header->resizeSection(ModList::Category, 120);
+  mod_header->resizeSection(ModList::Source, 40);
+  mod_header->resizeSection(ModList::SourceId, 70);
+  mod_header->resizeSection(ModList::Version, 80);
+  mod_header->resizeSection(ModList::Installation, 90);
+  mod_header->resizeSection(ModList::Changed, 90);
+  mod_header->resizeSection(ModList::Priority, 60);
 
   // The Name and Fold columns can never be hidden (the context menu shows
   // them checked + disabled). Persist user visibility toggles per instance;
   // the restore happens on scan finish when the instance name is known.
-  mod_header->set_locked_section(ModListModel::Name);
-  mod_header->set_locked_section(ModListModel::Fold);
-  connect(
-      mod_header, &ColumnToggleHeaderView::section_toggled, this,
-      [this](int logical, bool hidden) {
-        if (logical == ModListModel::Name || logical == ModListModel::Fold ||
-            w_->current_instance_root_.empty())
-          return;
-        const auto key = QString::fromStdString(
-            w_->current_instance_root_.filename().string());
-        const auto stored = Settings::instance().modlist_hidden_columns(key);
-        auto hidden_set = QSet<QString>(stored.cbegin(), stored.cend());
-        const QString name = mod_column_name(logical);
-        if (hidden)
-          hidden_set.insert(name);
-        else
-          hidden_set.remove(name);
-        Settings::instance().set_modlist_hidden_columns(key,
-                                                        hidden_set.values());
-      });
+  mod_header->set_locked_section(ModList::Name);
+  mod_header->set_locked_section(ModList::Fold);
+  connect(mod_header, &ColumnToggleHeaderView::section_toggled, this,
+          [this](int logical, bool hidden) {
+            if (logical == ModList::Name || logical == ModList::Fold ||
+                w_->current_instance_root_.empty())
+              return;
+            const auto key = QString::fromStdString(
+                w_->current_instance_root_.filename().string());
+            const auto stored =
+                Settings::instance().modlist_hidden_columns(key);
+            auto hidden_set = QSet<QString>(stored.cbegin(), stored.cend());
+            const QString name = mod_column_name(logical);
+            if (hidden)
+              hidden_set.insert(name);
+            else
+              hidden_set.remove(name);
+            Settings::instance().set_modlist_hidden_columns(
+                key, hidden_set.values());
+          });
 
   // Non-negotiable: the Fold arrow column stays at the left edge. Other
   // columns stay draggable, but any drag that displaces Fold from visual
@@ -595,7 +618,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   // Fold already at 0 and returns, so w_ cannot loop.
   connect(mod_header, &QHeaderView::sectionMoved, this,
           [mod_header](int, int, int) {
-            const int foldLogical = ModListModel::Fold;
+            const int foldLogical = ModList::Fold;
             if (mod_header->visualIndex(foldLogical) == 0)
               return;
             mod_header->moveSection(foldLogical, 0);
@@ -651,7 +674,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   connect(w_->category_filter_panel_,
           &CategoryFilterPanel::edit_categories_clicked, this, [this]() {
             // MO2 parity: the Categories dialog edits the global category
-            // registry (engine::CategoryFactory) and persists it to the
+            // registry (engine::Category::Factory) and persists it to the
             // instance's categories.dat. On accept the filter tree is rebuilt
             // (the checked set is reset — removed categories can no longer be
             // checked) and the mod filter is re-applied.
@@ -686,7 +709,7 @@ void ModListController::refresh_profiles() {
   // of failing silently later. repair() never touches existing files, so a
   // partially-populated profile keeps its mod list and settings.
   for (const auto &name : engine::profile::list_profiles(profiles_dir)) {
-    engine::profile::Profile profile(profiles_dir / name);
+    engine::profile::ProfileManager profile(profiles_dir / name);
     const auto generated = profile.repair();
     if (!generated.empty()) {
       engine::Logger::instance().info(
@@ -773,7 +796,7 @@ void ModListController::switch_profile(const QString &profile) {
   // would flush an empty modlist.txt over the real per-profile state.
   if (!w_->active_profile_ ||
       w_->active_profile_->name() != w_->current_profile_name_) {
-    w_->active_profile_ = std::make_unique<engine::profile::Profile>(
+    w_->active_profile_ = std::make_unique<engine::profile::ProfileManager>(
         profiles_dir / w_->current_profile_name_);
     w_->active_profile_->refresh_mod_status(state.known_mods,
                                             state.foreign_mods);
@@ -1182,7 +1205,7 @@ void ModListController::load_mods_from_game() {
   if (!w_->current_profile_name_.empty() &&
       (!w_->active_profile_ ||
        w_->active_profile_->name() != w_->current_profile_name_)) {
-    w_->active_profile_ = std::make_unique<engine::profile::Profile>(
+    w_->active_profile_ = std::make_unique<engine::profile::ProfileManager>(
         w_->profiles_dir_path() / w_->current_profile_name_);
     w_->active_profile_->refresh_mod_status({}, {});
   }
@@ -1269,7 +1292,7 @@ void ModListController::launch_plugin_db_preload() {
                                     w_->plugin_db_generation_);
 }
 
-void ModListController::on_plugin_db_preloaded(engine::PluginDatabase db,
+void ModListController::on_plugin_db_preloaded(engine::PluginDb::Database db,
                                                quint64 generation) {
   if (generation != w_->plugin_db_generation_ || !w_->preload_pending_) {
     // Superseded by an instance switch or already consumed/superseded by a
@@ -1804,7 +1827,7 @@ void ModListController::restore_mod_column_visibility() {
   const auto stored = Settings::instance().modlist_hidden_columns(key);
   const auto hidden_set = QSet<QString>(stored.cbegin(), stored.cend());
 
-  for (int c = ModListModel::Name; c < ModListModel::ColumnCount; ++c) {
+  for (int c = ModList::Name; c < ModList::ColumnCount; ++c) {
     const QString name = mod_column_name(c);
     if (name.isEmpty())
       continue;
@@ -2312,7 +2335,7 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
   const QString domain = data.nexus_domain;
   const QString src_id = mod.source_id;
   data.fetch_nexus_info = [domain, src_id]() {
-    auto *provider = dynamic_cast<engine::NexusProvider *>(
+    auto *provider = dynamic_cast<engine::Source::Nexus::Provider *>(
         engine::SourceRegistry::instance().provider_for("nexus"));
     if (!provider || domain.isEmpty() || src_id.isEmpty())
       return engine::ModInfoResult{};
@@ -2412,7 +2435,7 @@ void ModListController::refresh_plugins_tab() {
       engine::native_plugins_csv(*w_->knowledge_, w_->current_game_id_);
   if (game_native
           .empty()) { // tab exists but the module declares no plugin hooks
-    w_->plugins_db_ = engine::PluginDatabase{};
+    w_->plugins_db_ = engine::PluginDb::Database{};
     w_->plugin_owner_index_.clear();
     w_->plugin_row_by_name_.clear();
     pt->set_plugins({});
@@ -2490,7 +2513,7 @@ void ModListController::run_loot_sort() {
   // request must carry each plugin's current winning path.
   refresh_plugins_tab();
 
-  engine::LootRequest request;
+  engine::Sorter::Loot::Request request;
   request.game_id = w_->current_game_id_;
   request.loot_game_id = loot_game_id;
   request.masterlist_repo = w_->knowledge_->get(
@@ -2556,7 +2579,7 @@ void ModListController::on_loot_progress(int stage, const QString &) {
     w_->status_bar_->set_status(kStageNames.at(stage));
 }
 
-void ModListController::on_loot_finished(engine::LootResult result) {
+void ModListController::on_loot_finished(engine::Sorter::Loot::Result result) {
   if (!result.ok) {
     engine::Logger::instance().warn("LOOT sort failed: " + result.error);
     if (w_->status_bar_)
@@ -2799,651 +2822,52 @@ void ModListController::on_image_diff_requested(const QString &relative_path) {
 }
 
 void ModListController::setup_mod_list_context_menu() {
-  w_->mod_view_->setContextMenuPolicy(Qt::CustomContextMenu);
-
-  connect(
-      w_->mod_view_, &QWidget::customContextMenuRequested, this,
-      [this](const QPoint &pos) {
-        auto idx = w_->mod_view_->indexAt(pos);
-        if (!idx.isValid())
-          return;
-
-        int row = idx.row();
-        if (row < 0 || row >= w_->mod_model_->mods().size())
-          return;
-        const auto &entry = w_->mod_model_->mods()[row];
-
-        QMenu menu;
-
-        if (entry.is_overwrite) {
-          // MO2 ModListContextMenu::addOverwriteActions. The move/sync/clear
-          // actions only make sense when Overwrite has content; Open in
-          // Explorer and Information always apply. Gating mirrors MO2's
-          // `QDir(...).count() > 2` via overwrite_is_empty().
-          auto ow_subpath = w_->knowledge_
-                                ? w_->knowledge_->get(w_->current_game_id_,
-                                                      "mods_subpath", "")
-                                : std::string();
-          const bool has_content =
-              !engine::overwrite_is_empty(w_->overwrite_dir_path(), ow_subpath);
-
-          auto *sync_act = menu.addAction(
-              engine::IconManager::instance().resolve_icon("merge"),
-              tr("Sync to Mods..."), w_,
-              [this]() { w_->overwrite_->sync_overwrite_to_mods(); });
-          auto *create_act = menu.addAction(
-              engine::IconManager::instance().resolve_icon("document-new"),
-              tr("Create Mod..."), w_,
-              [this]() { w_->overwrite_->create_mod_from_overwrite(); });
-          auto *move_act = menu.addAction(
-              engine::IconManager::instance().resolve_icon("go-down"),
-              tr("Move content to Mod..."), w_,
-              [this]() { w_->overwrite_->move_overwrite_content_to_mod(); });
-          auto *clear_act = menu.addAction(
-              engine::IconManager::instance().resolve_icon("edit-clear"),
-              tr("Clear Overwrite..."), w_,
-              [this]() { w_->overwrite_->clear_overwrite(); });
-          for (auto *act : {sync_act, create_act, move_act, clear_act})
-            act->setEnabled(has_content);
-
-          menu.addAction(engine::IconManager::instance().resolve_icon("folder"),
-                         tr("Open in File Manager"), w_, [this]() {
-                           w_->overwrite_->open_overwrite_in_file_manager();
-                         });
-
-          menu.addSeparator();
-          menu.addAction(engine::IconManager::instance().resolve_icon(
-                             "dialog-information"),
-                         tr("Information..."), w_, [this]() {
-                           w_->overwrite_->show_overwrite_info_dialog();
-                         });
-
-          menu.exec(w_->mod_view_->viewport()->mapToGlobal(pos));
-          return;
-        }
-
-        if (entry.is_separator) {
-          // MO2's separator context menu (modlistcontextmenu.cpp:381-409):
-          // Rename (inline edit) / Remove / Select Color / Reset Color.
-          menu.addAction(
-              engine::IconManager::instance().resolve_icon("document-edit"),
-              tr("Rename Separator..."), w_,
-              [this, row]() { rename_mod_inline(row); });
-          menu.addAction(
-              engine::IconManager::instance().resolve_icon("edit-delete"),
-              tr("Remove Separator..."), w_,
-              [this, row]() { delete_separator(row); });
-          menu.addSeparator();
-          menu.addAction(
-              engine::IconManager::instance().resolve_icon("color-picker"),
-              tr("Select Color..."), w_,
-              [this]() { select_color_for_selected(); });
-          if (!entry.separator_color.isEmpty()) {
-            menu.addAction(
-                engine::IconManager::instance().resolve_icon("edit-clear"),
-                tr("Reset Color"), w_,
-                [this]() { reset_color_for_selected(); });
-          }
-          menu.exec(w_->mod_view_->viewport()->mapToGlobal(pos));
-          return;
-        }
-
-        // --- Mod rows below ---
-        auto sel = w_->mod_view_->selectionModel()->selectedRows();
-        bool multi = sel.size() > 1;
-
-        if (multi) {
-          menu.addAction(
-              engine::IconManager::instance().resolve_icon("dialog-ok"),
-              tr("Enable Selected"), w_,
-              [this]() { toggle_selected_mods(true); });
-          menu.addAction(
-              engine::IconManager::instance().resolve_icon("dialog-cancel"),
-              tr("Disable Selected"), w_,
-              [this]() { toggle_selected_mods(false); });
-          // Tweaks submenu: applies to every selected mod. Checked only when
-          // ALL of them share the state; clicking applies the inverse.
-          {
-            QList<int> rows;
-            bool any_on = false;
-            bool any_off = false;
-            for (const auto &si : sel) {
-              if (si.row() < 0 || si.row() >= w_->mod_model_->mods().size())
-                continue;
-              const auto &m = w_->mod_model_->mods()[si.row()];
-              if (m.is_separator || m.is_overwrite || m.is_merged ||
-                  m.is_game_native)
-                continue;
-              rows << si.row();
-              if (m.root_override)
-                any_on = true;
-              else
-                any_off = true;
-            }
-            auto *tweaks =
-                menu.addMenu(engine::IconManager::instance().resolve_icon(
-                                 "preferences-other"),
-                             tr("Tweaks"));
-            auto *root_act = tweaks->addAction(tr("Treat mod as root dir"));
-            root_act->setCheckable(true);
-            const bool all_on = any_on && !any_off;
-            root_act->setChecked(all_on);
-            root_act->setEnabled(!rows.isEmpty());
-            connect(root_act, &QAction::triggered, this,
-                    [this, rows, all_on]() {
-                      toggle_root_override(rows, !all_on);
-                    });
-          }
-          menu.addSeparator();
-          menu.addAction(
-              engine::IconManager::instance().resolve_icon("edit-delete"),
-              tr("Remove"), w_, [this]() { remove_selected_mods(); });
-          menu.exec(w_->mod_view_->viewport()->mapToGlobal(pos));
-          return;
-        }
-
-        // Single mod - full menu
-        auto mod_id = entry.id;
-
-        // Send to... submenu (MO2 modlistcontextmenu.cpp:285-338): priority
-        // moves + the separator picker. The separator picker opens the shared
-        // ListDialog (MO2 sendModsToSeparator, listdialog.ui) instead of an
-        // inline submenu entry per separator — a submenu with many separators
-        // (or long names) grew to cover the whole screen.
-        auto *send_to = menu.addMenu(
-            engine::IconManager::instance().resolve_icon("view-sort"),
-            tr("Send to..."));
-        send_to->addAction(
-            engine::IconManager::instance().resolve_icon("go-top"),
-            tr("Send to Highest Priority"), w_,
-            [this, mod_id]() { send_to_highest_priority(mod_id); });
-        send_to->addAction(
-            engine::IconManager::instance().resolve_icon("go-bottom"),
-            tr("Send to Lowest Priority"), w_,
-            [this, mod_id]() { send_to_lowest_priority(mod_id); });
-        bool any_seps = false;
-        for (const auto &m : w_->mod_model_->mods())
-          if (m.is_separator) {
-            any_seps = true;
-            break;
-          }
-        auto *sep_act = send_to->addAction(
-            engine::IconManager::instance().resolve_icon("view-sort"),
-            tr("Separator..."), w_,
-            [this, mod_id]() { send_to_separator(mod_id); });
-        sep_act->setEnabled(any_seps);
-        if (!entry.separator_id.isEmpty() &&
-            w_->mod_model_->has_conflicts_within_separator(mod_id)) {
-          send_to->addAction(
-              engine::IconManager::instance().resolve_icon("go-up"),
-              tr("Send to Highest in Separator"), w_,
-              [this, mod_id]() { send_to_highest_in_separator(mod_id); });
-          send_to->addAction(
-              engine::IconManager::instance().resolve_icon("go-down"),
-              tr("Send to Lowest in Separator"), w_,
-              [this, mod_id]() { send_to_lowest_in_separator(mod_id); });
-        }
-
-        menu.addAction(engine::IconManager::instance().resolve_icon("list-add"),
-                       tr("Create Separator"), w_,
-                       [this, row]() { create_separator_at_row(row); });
-
-        // MO2's "Change Categories" (checkboxes) + "Primary Category" (radio
-        // buttons) submenus (modlistcontextmenu.cpp:341-379). Both edit the
-        // mod's [General] "category" CSV (primary first) in the manager
-        // sidecar meta and refresh the mod list filter on change.
-        add_category_menus(menu, mod_id);
-
-        // MO2's "Ignore missing data" (modlistcontextmenu + modlistviewactions
-        // ignoreMissingData): offered only on flagged rows (no valid game data
-        // and/or no manager metadata). Persists [General] validated=true in the
-        // mod's own meta.ini so the flags stay cleared on rescan.
-        if (entry.invalid_data || entry.no_metadata) {
-          menu.addSeparator();
-          menu.addAction(
-              engine::IconManager::instance().resolve_icon("dialog-ok"),
-              tr("Ignore missing data"), w_, [this, mod_id]() {
-                auto folder = w_->mods_dir_path() / mod_id.toStdString();
-                if (engine::ModScanner::mark_validated(folder)) {
-                  w_->mod_model_->set_invalid_data(mod_id, false);
-                  w_->mod_model_->set_no_metadata(mod_id, false);
-                }
-              });
-        }
-
-        menu.addSeparator();
-        menu.addAction(
-            engine::IconManager::instance().resolve_icon("dialog-ok"),
-            tr("Enable Selected"), w_,
-            [this]() { toggle_selected_mods(true); });
-        menu.addAction(
-            engine::IconManager::instance().resolve_icon("dialog-cancel"),
-            tr("Disable Selected"), w_,
-            [this]() { toggle_selected_mods(false); });
-
-        menu.addSeparator();
-        menu.addAction(
-            engine::IconManager::instance().resolve_icon("document-edit"),
-            tr("Rename Mod..."), w_, [this, row]() { rename_mod_inline(row); });
-
-        // Tweaks submenu - per-mod deploy options (MO2's per-mod tweaks).
-        {
-          auto *tweaks = menu.addMenu(
-              engine::IconManager::instance().resolve_icon("preferences-other"),
-              tr("Tweaks"));
-          auto *root_act = tweaks->addAction(tr("Treat mod as root dir"));
-          root_act->setCheckable(true);
-          root_act->setChecked(entry.root_override);
-          root_act->setEnabled(!entry.is_separator && !entry.is_overwrite &&
-                               !entry.is_merged && !entry.is_game_native);
-          root_act->setStatusTip(tr("Deploy w_ mod's files to the game root "
-                                    "instead of the data dir"));
-          connect(root_act, &QAction::triggered, this, [this, row]() {
-            toggle_root_override({row},
-                                 !w_->mod_model_->mods()[row].root_override);
-          });
-        }
-
-        menu.addSeparator();
-        if (!entry.source_type.isEmpty()) {
-          auto src = source_visit_info(entry.source_type, entry.source_id,
-                                       entry.source_page_url);
-          if (!src.label.isEmpty()) {
-            auto *visit_act = menu.addAction(
-                engine::IconManager::instance().resolve_icon("text-html"),
-                src.label, w_, [this, src]() {
-                  if (!src.url.isEmpty())
-                    QDesktopServices::openUrl(QUrl(src.url));
-                });
-            visit_act->setEnabled(!src.url.isEmpty());
-          }
-        }
-        menu.addAction(
-            engine::IconManager::instance().resolve_icon("folder"),
-            tr("Open in File Manager"), w_, [this, mod_id]() {
-              auto folder = w_->mods_dir_path() / mod_id.toStdString();
-              std::error_code ec;
-              if (!std::filesystem::exists(folder, ec)) {
-                // Fall back to game's native mods directory
-                auto game_mods_subpath =
-                    w_->knowledge_ ? w_->knowledge_->get(w_->current_game_id_,
-                                                         "mods_subpath", "")
-                                   : "";
-                auto fallback = w_->current_game_dir_;
-                if (!game_mods_subpath.empty())
-                  fallback /= game_mods_subpath;
-                folder = fallback / mod_id.toStdString();
-              }
-              QDesktopServices::openUrl(
-                  QUrl::fromLocalFile(QString::fromStdString(folder.string())));
-            });
-
-        menu.addSeparator();
-        menu.addAction(
-            engine::IconManager::instance().resolve_icon("edit-delete"),
-            tr("Remove"), w_, [this]() { remove_selected_mods(); });
-
-        // MO2 puts Information last (modlistcontextmenu.cpp:267-273), the
-        // default action after all per-type actions.
-        menu.addSeparator();
-        menu.addAction(
-            engine::IconManager::instance().resolve_icon("dialog-information"),
-            tr("Information..."), w_,
-            [this, mod_id]() { on_data_mod_info(mod_id); });
-
-        menu.exec(w_->mod_view_->viewport()->mapToGlobal(pos));
-      });
+  mod_context_menu_->setup_mod_list_context_menu();
 }
 
 void ModListController::add_category_menus(QMenu &menu, const QString &mod_id) {
-  const auto meta_dir = w_->meta_dir_path();
-  if (meta_dir.empty())
-    return;
-
-  // Current [General] "category" CSV (primary first) from the manager sidecar.
-  // Re-read on every toggle so sequential checkbox changes accumulate instead
-  // of each overwriting the menu-open snapshot (MO2 mutates the mod info
-  // object directly; the sidecar is our equivalent source of truth).
-  auto load_current = [meta_dir, mod_id]() {
-    auto meta = engine::ModMeta::load(meta_dir, mod_id.toStdString());
-    QVector<int> ids;
-    const QString csv = QString::fromStdString(meta.get("General", "category"));
-    for (const auto &part : csv.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
-      bool ok = false;
-      const int id = part.toInt(&ok);
-      if (ok && id > 0 && !ids.contains(id))
-        ids.append(id);
-    }
-    return ids;
-  };
-
-  // Persist a new CSV (primary first), update the Category column + filter
-  // ids, and re-apply the mod filter so a category-filtered list reacts
-  // immediately (MO2 refreshFilter parity).
-  auto apply = [this, meta_dir, mod_id](const QVector<int> &ids) {
-    QStringList parts;
-    for (int id : ids)
-      parts << QString::number(id);
-    auto meta = engine::ModMeta::load(meta_dir, mod_id.toStdString());
-    meta.set("General", "category", parts.join(QLatin1Char(',')).toStdString());
-    meta.save(meta_dir, mod_id.toStdString());
-
-    QString primary_name;
-    if (!ids.isEmpty()) {
-      if (const auto *cat =
-              engine::CategoryFactory::instance().categoryById(ids.first()))
-        primary_name = QString::fromStdString(cat->name);
-    }
-    w_->mod_model_->set_category(mod_id, primary_name);
-    w_->mod_model_->set_category_ids(mod_id, ids);
-    apply_mod_filter();
-  };
-
-  const QVector<int> current = load_current();
-
-  // "Change Categories": one checkable action per category, alphabetized like
-  // the filter panel (MO2's flat category list). Checking appends the id
-  // (first checked becomes primary); unchecking removes it and the first
-  // remaining id becomes primary.
-  auto *change_menu = menu.addMenu(
-      engine::IconManager::instance().resolve_icon("preferences-other"),
-      tr("Change Categories"));
-  std::vector<const engine::CategoryFactory::Category *> cats;
-  for (const auto &[id, cat] : engine::CategoryFactory::instance().categories())
-    if (id != 0)
-      cats.push_back(&cat);
-  std::sort(cats.begin(), cats.end(), [](const auto *a, const auto *b) {
-    return QString::fromStdString(a->name).compare(
-               QString::fromStdString(b->name), Qt::CaseInsensitive) < 0;
-  });
-  for (const auto *cat : cats) {
-    auto *act = change_menu->addAction(QString::fromStdString(cat->name));
-    act->setCheckable(true);
-    act->setChecked(current.contains(cat->id));
-    connect(act, &QAction::triggered, this,
-            [this, mod_id, cat, load_current, apply](bool checked) {
-              QVector<int> ids = load_current();
-              if (checked) {
-                if (!ids.contains(cat->id))
-                  ids.append(cat->id);
-              } else {
-                ids.removeAll(cat->id);
-              }
-              apply(ids);
-            });
-  }
-
-  // "Primary Category": radio buttons for the checked categories only (MO2
-  // parity). Selecting one moves it to the front of the CSV.
-  auto *primary_menu =
-      menu.addMenu(engine::IconManager::instance().resolve_icon("view-sort"),
-                   tr("Primary Category"));
-  if (current.isEmpty()) {
-    primary_menu->setEnabled(false);
-  } else {
-    auto *group = new QActionGroup(primary_menu);
-    for (int id : current) {
-      const auto *cat = engine::CategoryFactory::instance().categoryById(id);
-      auto *act = primary_menu->addAction(
-          cat ? QString::fromStdString(cat->name) : QString::number(id));
-      act->setCheckable(true);
-      act->setChecked(id == current.first());
-      group->addAction(act);
-      connect(act, &QAction::triggered, this,
-              [this, mod_id, id, load_current, apply]() {
-                QVector<int> ids = load_current();
-                ids.removeAll(id);
-                ids.prepend(id);
-                apply(ids);
-              });
-    }
-  }
+  mod_context_menu_->add_category_menus(menu, mod_id);
 }
 
 void ModListController::remove_selected_mods() {
-  auto sel = w_->mod_view_->selectionModel()->selectedRows();
-  if (sel.isEmpty())
-    return;
-
-  QStringList names;
-  for (const auto &idx : sel) {
-    int r = idx.row();
-    if (r < 0 || r >= w_->mod_model_->mods().size())
-      continue;
-    if (w_->mod_model_->mods()[r].is_overwrite)
-      continue;
-    names.append(w_->mod_model_->mods()[r].name);
-  }
-  if (names.isEmpty())
-    return;
-
-  auto reply = QMessageBox::question(
-      w_, tr("Remove Mods"),
-      tr("Move %1 mod(s) to the trash bin?\n\n%2\n\nTheir files stay in the "
-         "system trash and can be restored.")
-          .arg(names.size())
-          .arg(names.join("\n")),
-      QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-  if (reply != QMessageBox::Yes)
-    return;
-
-  auto mods_subpath = w_->knowledge_ ? w_->knowledge_->get(w_->current_game_id_,
-                                                           "mods_subpath", "")
-                                     : std::string();
-  auto meta_dir = w_->meta_dir_path();
-
-  for (const auto &idx : sel) {
-    int r = idx.row();
-    if (r < 0 || r >= w_->mod_model_->mods().size())
-      continue;
-    const auto &entry = w_->mod_model_->mods()[r];
-    if (entry.is_overwrite)
-      continue;
-
-    // The mods dir is INSTANCE-owned (Workspace-tnj): physical removal needs
-    // mods_dir_path(), not the game dir.
-    if (!mods_subpath.empty() && !w_->mods_dir_path().empty()) {
-      auto mod_folder = w_->mods_dir_path() / entry.id.toStdString();
-      if (!engine::remove_path(mod_folder)) {
-        engine::Logger::instance().error(
-            "Failed to move mod folder to trash: " + mod_folder.string());
-      }
-    }
-    // Delete cleanup: drop the manager sidecar so a removed mod leaves no
-    // orphaned metadata. Children's parent_id is cleared by the model detach
-    // and rewritten by sync_mod_ui_state() via mod_list_changed.
-    remove_sidecar(meta_dir, entry.id);
-    w_->mod_model_->remove_mod(entry.id);
-  }
+  mod_actions_->remove_selected_mods();
 }
 
 void ModListController::move_to_separator(const QString &mod_id,
                                           const QString &sep_id) {
-  w_->mod_model_->set_separator_id(mod_id, sep_id);
-
-  // Move mod row to right after the separator row
-  const auto &mods = w_->mod_model_->mods();
-  int sep_row = -1;
-  for (int i = 0; i < mods.size(); ++i) {
-    if (mods[i].is_separator && mods[i].id == sep_id) {
-      sep_row = i;
-      break;
-    }
-  }
-  if (sep_row >= 0)
-    w_->mod_model_->move_mod(mod_id, sep_row + 1);
+  mod_actions_->move_to_separator(mod_id, sep_id);
 }
 
 void ModListController::send_to_separator(const QString &mod_id) {
-  // MO2 sendModsToSeparator (modlistviewactions.cpp:661-701): collect the
-  // separators in mod-list order into the shared ListDialog and move the mod
-  // to the chosen one. Ids ride item data so duplicate display names can't
-  // misresolve.
-  QStringList names;
-  QList<QVariant> ids;
-  for (const auto &m : w_->mod_model_->mods()) {
-    if (m.is_separator) {
-      names << m.name;
-      ids << m.id;
-    }
-  }
-  if (names.isEmpty())
-    return;
-
-  ui::ListDialog dlg(w_);
-  dlg.setWindowTitle(tr("Select a separator..."));
-  dlg.setChoices(names);
-  dlg.setChoiceData(ids);
-  if (dlg.exec() != QDialog::Accepted)
-    return;
-  const QString sep_id = dlg.getChoiceData().toString();
-  if (!sep_id.isEmpty())
-    move_to_separator(mod_id, sep_id);
+  mod_actions_->send_to_separator(mod_id);
 }
 
 void ModListController::send_to_highest_priority(const QString &id) {
-  if (w_->mod_model_->is_conflict_order_reversed()) {
-    // Isaac: lowest priority number = highest priority = top of list
-    w_->mod_model_->move_mod(id, 0);
-  } else {
-    // Standard (MO2): highest priority number = highest priority = bottom of
-    // list
-    int ow_row = w_->mod_model_->overwrite_row();
-    int target = ow_row >= 0 ? ow_row - 1 : w_->mod_model_->mods().size() - 1;
-    if (target < 0)
-      target = 0;
-    w_->mod_model_->move_mod(id, target);
-  }
+  mod_actions_->send_to_highest_priority(id);
 }
 
 void ModListController::send_to_lowest_priority(const QString &id) {
-  if (w_->mod_model_->is_conflict_order_reversed()) {
-    // Isaac: highest priority number = lowest priority = bottom of list
-    // (below the pinned Overwrite/MERGED which sit at the top).
-    w_->mod_model_->move_mod(id, w_->mod_model_->mods().size() - 1);
-  } else {
-    // Standard (MO2): lowest priority number = lowest priority = top of list
-    w_->mod_model_->move_mod(id, 0);
-  }
+  mod_actions_->send_to_lowest_priority(id);
 }
 
 void ModListController::send_to_highest_in_separator(const QString &id) {
-  const auto &mods = w_->mod_model_->mods();
-  int mod_row = w_->mod_model_->priority_of(id);
-  if (mod_row < 0)
-    return;
-
-  QString sep_id = mods[mod_row].separator_id;
-  if (sep_id.isEmpty())
-    return;
-
-  int sep_row = -1;
-  for (int i = mod_row - 1; i >= 0; --i) {
-    if (mods[i].is_separator && mods[i].id == sep_id) {
-      sep_row = i;
-      break;
-    }
-  }
-  if (sep_row < 0)
-    return;
-  w_->mod_model_->move_mod(id, sep_row + 1);
+  mod_actions_->send_to_highest_in_separator(id);
 }
 
 void ModListController::send_to_lowest_in_separator(const QString &id) {
-  const auto &mods = w_->mod_model_->mods();
-  int mod_row = w_->mod_model_->priority_of(id);
-  if (mod_row < 0)
-    return;
-
-  QString sep_id = mods[mod_row].separator_id;
-  if (sep_id.isEmpty())
-    return;
-
-  int ow_row = w_->mod_model_->overwrite_row();
-  int target = w_->mod_model_->is_conflict_order_reversed()
-                   ? mods.size()
-                   : (ow_row >= 0 ? ow_row : mods.size());
-
-  for (int i = mod_row + 1; i < mods.size(); ++i) {
-    if (mods[i].is_separator) {
-      target = i;
-      break;
-    }
-  }
-  w_->mod_model_->move_mod(id, target - 1);
+  mod_actions_->send_to_lowest_in_separator(id);
 }
 
 void ModListController::priority_move_selected(int step) {
-  auto sel = w_->mod_view_->selectionModel()->selectedRows();
-  if (sel.isEmpty())
-    return;
-
-  int r = sel.first().row();
-  const auto &mods = w_->mod_model_->mods();
-  if (r < 0 || r >= mods.size())
-    return;
-  const auto &e = mods[r];
-  if (e.is_separator || e.is_overwrite || e.is_merged)
-    return;
-
-  int target = r + step;
-  if (target < 0 || target >= mods.size())
-    return;
-  if (mods[target].is_separator || mods[target].is_overwrite ||
-      mods[target].is_merged)
-    return;
-
-  w_->mod_model_->move_mod(e.id, target);
+  mod_actions_->priority_move_selected(step);
 }
 
 void ModListController::toggle_selected_mods(bool enabled) {
-  auto sel = w_->mod_view_->selectionModel()->selectedRows();
-  for (const auto &idx : sel) {
-    int r = idx.row();
-    if (r < 0 || r >= w_->mod_model_->mods().size())
-      continue;
-    const auto &entry = w_->mod_model_->mods()[r];
-    if (entry.is_separator || entry.is_overwrite || entry.is_game_native)
-      continue;
-
-    // Check if state would actually change
-    if (entry.enabled == enabled)
-      continue;
-
-    w_->mod_model_->setData(w_->mod_model_->index(r, ModListModel::Name),
-                            enabled ? Qt::Checked : Qt::Unchecked,
-                            Qt::CheckStateRole);
-    sync_mod_enable_state(entry.id, enabled);
-  }
+  mod_actions_->toggle_selected_mods(enabled);
 }
 
 void ModListController::toggle_root_override(const QList<int> &rows, bool on) {
-  for (int r : rows) {
-    if (r < 0 || r >= w_->mod_model_->mods().size())
-      continue;
-    const auto &entry = w_->mod_model_->mods()[r];
-    if (entry.is_separator || entry.is_overwrite || entry.is_merged ||
-        entry.is_game_native)
-      continue;
-    if (entry.root_override == on)
-      continue;
-
-    auto mod_dir = w_->mods_dir_path() / entry.id.toStdString();
-    auto meta_ini = mod_dir / "meta.ini";
-    std::error_code ec;
-    engine::ModMeta meta;
-    if (std::filesystem::is_regular_file(meta_ini, ec)) {
-      meta = engine::ModMeta::load_file(meta_ini);
-    }
-    meta.set("General", "rootOverride", on ? "1" : "0");
-    if (!meta.save_file(meta_ini)) {
-      engine::Logger::instance().warn("toggle_root_override: failed to write " +
-                                      meta_ini.string());
-      continue;
-    }
-    w_->mod_model_->set_root_override(entry.id, on);
-  }
-  refresh_data_tab();
+  mod_actions_->toggle_root_override(rows, on);
 }
 
 QString ModListController::current_nexus_domain() const {
@@ -3497,151 +2921,12 @@ ModListController::source_visit_info(const QString &source_type,
 
 QString ModListController::create_separator_named(const QString &name,
                                                   const QString &color) {
-  // Separators are instance-owned (folder under the instance mods dir);
-  // no game dir required (Workspace-tnj).
-  if (!w_->knowledge_ || w_->current_game_id_.empty())
-    return {};
-
-  auto mods_subpath =
-      w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "");
-  auto separator_suffix = w_->knowledge_->get(w_->current_game_id_,
-                                              "separator_suffix", "_separator");
-  if (mods_subpath.empty())
-    return {};
-
-  // Guard against duplicate names
-  if (w_->mod_model_->existing_separator_names().contains(name))
-    return {};
-
-  auto folder_name = name.toStdString() + separator_suffix;
-  auto sep_dir = w_->mods_dir_path() / folder_name;
-
-  // Create the separator folder
-  std::error_code ec;
-  std::filesystem::create_directories(sep_dir, ec);
-  if (ec)
-    return {};
-
-  // MO2 writes separator metadata into the mod folder's meta.ini; the only
-  // persistent field GMM uses is the color. The display name derives from
-  // the folder name minus the separator suffix (ModList::getDisplayName),
-  // so no explicit name key is needed.
-  if (!color.isEmpty()) {
-    if (!write_separator_color_file(sep_dir, color)) {
-      std::filesystem::remove_all(sep_dir, ec);
-      return {};
-    }
-  }
-
-  // Add to model
-  auto id = QString::fromStdString(folder_name);
-  w_->mod_model_->add_separator(id, name, color);
-  engine::Logger::instance().debug("Separator created: " + name.toStdString());
-  return id;
+  return mod_actions_->create_separator_named(name, color);
 }
 
-void ModListController::create_separator() {
-  // Instance-owned (Workspace-tnj) — see create_separator_named.
-  if (!w_->knowledge_ || w_->current_game_id_.empty())
-    return;
+void ModListController::create_separator() { mod_actions_->create_separator(); }
 
-  // MO2 createSeparator (modlistviewactions.cpp:152-204): a name-only prompt
-  // filtered through fixDirectoryName; the previously used separator color is
-  // inherited automatically - there is no color picker in w_ step.
-  QString name;
-  while (true) {
-    bool ok = false;
-    name = QInputDialog::getText(
-        w_, tr("Create Separator..."),
-        tr("This will create a new separator.\nPlease enter a name:"),
-        QLineEdit::Normal, name, &ok);
-    if (!ok)
-      return;
-    name = QString::fromStdString(
-        engine::sanitize_directory_name(name.toStdString()));
-    if (!name.isEmpty())
-      break;
-  }
-
-  // Check for duplicate names
-  if (w_->mod_model_->existing_separator_names().contains(name)) {
-    QMessageBox::warning(w_, tr("Create Separator..."),
-                         tr("A separator with w_ name already exists."));
-    return;
-  }
-
-  auto previous = Settings::instance().previous_separator_color();
-  const QString color = previous ? previous->name(QColor::HexArgb) : QString();
-  if (create_separator_named(name, color).isEmpty()) {
-    QMessageBox::warning(w_, tr("Create Separator..."),
-                         tr("Failed to create separator directory."));
-  }
-}
-
-void ModListController::create_empty_mod() {
-  // Instance-owned: the empty mod folder is written into the instance mods
-  // dir; no game dir required (Workspace-tnj).
-  if (!w_->knowledge_ || w_->current_game_id_.empty())
-    return;
-
-  bool ok;
-  auto name = QInputDialog::getText(w_, tr("Create Empty Mod"), tr("Mod name:"),
-                                    QLineEdit::Normal, QString(), &ok);
-  if (!ok || name.trimmed().isEmpty())
-    return;
-
-  // Check for duplicate names
-  QString trimmed = name.trimmed();
-  for (const auto &m : w_->mod_model_->mods()) {
-    if (!m.is_separator && !m.is_overwrite && !m.is_merged &&
-        (m.name.compare(trimmed, Qt::CaseInsensitive) == 0 ||
-         m.id.compare(trimmed, Qt::CaseInsensitive) == 0)) {
-      QMessageBox::warning(w_, tr("Create Empty Mod"),
-                           tr("A mod with w_ name already exists."));
-      return;
-    }
-  }
-
-  // Sanitize the folder name (drop path separators and reserved characters)
-  QString folder = trimmed;
-  folder.replace(QRegularExpression(R"([/\\:*?"<>|])"), "_");
-
-  auto mods_dir = w_->mods_dir_path();
-  std::error_code ec;
-  std::filesystem::create_directories(mods_dir, ec);
-  if (ec) {
-    QMessageBox::warning(w_, tr("Create Empty Mod"),
-                         tr("Failed to create mods directory."));
-    return;
-  }
-
-  auto mod_dir = mods_dir / folder.toStdString();
-  if (std::filesystem::exists(mod_dir, ec)) {
-    QMessageBox::warning(
-        w_, tr("Create Empty Mod"),
-        tr("A folder named %1 already exists in the mods directory.")
-            .arg(folder));
-    return;
-  }
-  std::filesystem::create_directories(mod_dir, ec);
-  if (ec) {
-    QMessageBox::warning(w_, tr("Create Empty Mod"),
-                         tr("Failed to create mod folder."));
-    return;
-  }
-
-  // Write the game's metadata file into the mod folder so ModScanner picks
-  // the mod up. MO2-style games get a meta.ini (same keys MO2 and
-  // InstallStage write); XML games (Isaac) get their metadata.xml.
-  auto metadata_file =
-      w_->knowledge_->get(w_->current_game_id_, "metadata_file", "meta.ini");
-  engine::ModMeta::write_game_metadata(mod_dir, metadata_file,
-                                       trimmed.toStdString(), "1.0", "0");
-
-  engine::Logger::instance().debug("Empty mod created: " +
-                                   folder.toStdString());
-  load_mods_from_game();
-}
+void ModListController::create_empty_mod() { mod_actions_->create_empty_mod(); }
 
 void ModListController::import_archives(const QStringList &paths) {
   if (w_->current_instance_root_.empty())
@@ -3900,270 +3185,27 @@ void ModListController::open_folder(ui::FolderKind kind) {
 }
 
 void ModListController::create_separator_at_row(int row) {
-  // Instance-owned (Workspace-tnj) — see create_separator_named.
-  if (!w_->knowledge_ || w_->current_game_id_.empty())
-    return;
-
-  // Same MO2 flow as create_separator(): name-only prompt, previous color.
-  QString name;
-  while (true) {
-    bool ok = false;
-    name = QInputDialog::getText(
-        w_, tr("Create Separator..."),
-        tr("This will create a new separator.\nPlease enter a name:"),
-        QLineEdit::Normal, name, &ok);
-    if (!ok)
-      return;
-    name = QString::fromStdString(
-        engine::sanitize_directory_name(name.toStdString()));
-    if (!name.isEmpty())
-      break;
-  }
-
-  // Check for duplicate names
-  if (w_->mod_model_->existing_separator_names().contains(name)) {
-    QMessageBox::warning(w_, tr("Create Separator..."),
-                         tr("A separator with w_ name already exists."));
-    return;
-  }
-
-  auto previous = Settings::instance().previous_separator_color();
-  const QString color = previous ? previous->name(QColor::HexArgb) : QString();
-  auto id = create_separator_named(name, color);
-  if (id.isEmpty()) {
-    QMessageBox::warning(w_, tr("Create Separator..."),
-                         tr("Failed to create separator directory."));
-    return;
-  }
-
-  // Move the new separator to the target row (below the clicked row)
-  int insert_row = row + 1;
-  w_->mod_model_->move_mod(id, insert_row);
-  engine::Logger::instance().debug("Separator created at row " +
-                                   std::to_string(insert_row) + ": " +
-                                   name.toStdString());
+  mod_actions_->create_separator_at_row(row);
 }
 
 void ModListController::rename_mod_inline(int row) {
-  if (row < 0 || row >= w_->mod_model_->mods().size())
-    return;
-  const auto &mod = w_->mod_model_->mods()[row];
-  if (mod.is_overwrite || mod.is_merged || mod.is_game_native)
-    return;
-  w_->mod_view_->edit(w_->mod_model_->index(row, ModListModel::Name));
+  mod_actions_->rename_mod_inline(row);
 }
 
 void ModListController::apply_rename(int row, const QString &name) {
-  const auto revert = [this, row]() {
-    emit w_->mod_model_->dataChanged(
-        w_->mod_model_->index(row, ModListModel::Name),
-        w_->mod_model_->index(row, ModListModel::Version));
-  };
-
-  if (row < 0 || row >= w_->mod_model_->mods().size())
-    return;
-  const auto &entry = w_->mod_model_->mods()[row];
-  if (entry.is_overwrite || entry.is_merged || entry.is_game_native) {
-    revert();
-    return;
-  }
-
-  if (name == entry.name) {
-    revert();
-    return;
-  } // unchanged
-
-  // Instance-owned: the rename moves the folder under the instance mods dir
-  // (+ meta sidecar); no game dir required (Workspace-tnj).
-  if (!w_->knowledge_ || w_->current_game_id_.empty()) {
-    revert();
-    return;
-  }
-
-  auto mods_subpath =
-      w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "");
-  auto separator_suffix = w_->knowledge_->get(w_->current_game_id_,
-                                              "separator_suffix", "_separator");
-  if (mods_subpath.empty()) {
-    revert();
-    return;
-  }
-
-  // Internal name = folder name on disk (MO2 makeInternalName): separators
-  // get the suffix appended, everything else is the raw name.
-  auto clean = engine::sanitize_directory_name(name.toStdString());
-  if (clean.empty()) {
-    QMessageBox::warning(w_, tr("Rename"), tr("Invalid name."));
-    revert();
-    return;
-  }
-  const QString display_name = QString::fromStdString(clean);
-  std::string internal = clean;
-  if (entry.is_separator)
-    internal += separator_suffix;
-  const QString new_id = QString::fromStdString(internal);
-
-  if (new_id == entry.id) {
-    revert();
-    return;
-  } // sanitized back to the same folder
-
-  // Duplicate check (case-insensitive, excluding self) - MO2 renameMod.
-  for (const auto &m : w_->mod_model_->mods()) {
-    if (m.id == entry.id)
-      continue;
-    if (m.id.compare(new_id, Qt::CaseInsensitive) == 0) {
-      QMessageBox::warning(w_, tr("Rename"),
-                           tr("Name is already in use by another mod."));
-      revert();
-      return;
-    }
-  }
-
-  auto mods_dir = w_->mods_dir_path();
-  const auto old_path = mods_dir / entry.id.toStdString();
-  const auto new_path = mods_dir / new_id.toStdString();
-
-  std::error_code ec;
-  if (std::filesystem::exists(new_path, ec)) {
-    QMessageBox::warning(
-        w_, tr("Rename"),
-        tr("A folder named %1 already exists in the mods directory.")
-            .arg(new_id));
-    revert();
-    return;
-  }
-
-  if (std::filesystem::exists(old_path, ec)) {
-    std::filesystem::rename(old_path, new_path, ec);
-    if (ec) {
-      QMessageBox::warning(w_, tr("Rename"),
-                           tr("Failed to rename mod folder."));
-      revert();
-      return;
-    }
-  }
-
-  // Move the instance-meta sidecar along with the folder so source/separator
-  // info isn't lost; keep its [GameModManager] folder key in sync.
-  auto meta_dir = w_->meta_dir_path();
-  if (!meta_dir.empty()) {
-    auto old_meta = meta_dir / (entry.id.toStdString() + ".ini");
-    auto new_meta = meta_dir / (new_id.toStdString() + ".ini");
-    if (std::filesystem::exists(old_meta, ec)) {
-      std::filesystem::rename(old_meta, new_meta, ec);
-      if (!ec) {
-        auto meta = engine::ModMeta::load(meta_dir, new_id.toStdString());
-        meta.set("GameModManager", "folder", new_id.toStdString());
-        meta.save(meta_dir, new_id.toStdString());
-      }
-    }
-  }
-
-  w_->mod_model_->rename_mod_in_place(row, new_id, display_name);
-  engine::Logger::instance().debug("Renamed mod: " + entry.name.toStdString() +
-                                   " -> " + display_name.toStdString());
+  mod_actions_->apply_rename(row, name);
 }
 
 void ModListController::delete_separator(int row) {
-  if (row < 0 || row >= w_->mod_model_->mods().size())
-    return;
-  const auto &mod = w_->mod_model_->mods()[row];
-  if (!mod.is_separator)
-    return;
-
-  auto reply = QMessageBox::question(
-      w_, tr("Delete Separator"),
-      tr("Move separator \"%1\" to the trash bin?\n\nIt can be restored from "
-         "the system trash.")
-          .arg(mod.name),
-      QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-  if (reply != QMessageBox::Yes)
-    return;
-
-  // Separators are pure UI/model constructs (+ an optional folder in the
-  // instance mods dir), so deletion must proceed even without a game dir
-  // (Workspace-tnj) — only knowledge/game_id gate the disk access below.
-  if (!w_->knowledge_ || w_->current_game_id_.empty())
-    return;
-
-  auto mods_subpath =
-      w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "");
-  if (!mods_subpath.empty() && !w_->mods_dir_path().empty()) {
-    auto sep_folder = w_->mods_dir_path() / mod.id.toStdString();
-    if (!engine::remove_path(sep_folder)) {
-      engine::Logger::instance().error(
-          "Failed to move separator folder to trash: " + sep_folder.string());
-    }
-  }
-
-  // Delete cleanup: drop the manager sidecar. Children of the separator are
-  // detached by the model (parent_id cleared) and their sidecars rewritten by
-  // sync_mod_ui_state() via mod_list_changed.
-  remove_sidecar(w_->meta_dir_path(), mod.id);
-  w_->mod_model_->remove_mod(mod.id);
-  engine::Logger::instance().debug("Separator deleted: " +
-                                   mod.name.toStdString());
+  mod_actions_->delete_separator(row);
 }
 
 void ModListController::select_color_for_selected() {
-  auto sel = w_->mod_view_->selectionModel()->selectedRows();
-  if (sel.isEmpty())
-    return;
-
-  const auto &ref = w_->mod_model_->mods()[sel.first().row()];
-  QColor current;
-  if (ref.is_separator && !ref.separator_color.isEmpty())
-    current = QColor(ref.separator_color);
-
-  // MO2 setColor (modlistviewactions.cpp:1195-1224): standalone color dialog
-  // with alpha; prefills the current color or the remembered previous one.
-  QColorDialog dialog(w_);
-  dialog.setOption(QColorDialog::ShowAlphaChannel);
-  if (current.isValid()) {
-    dialog.setCurrentColor(current);
-  } else if (auto prev = Settings::instance().previous_separator_color()) {
-    dialog.setCurrentColor(*prev);
-  }
-  if (dialog.exec() != QDialog::Accepted)
-    return;
-
-  const auto color = dialog.currentColor();
-  if (!color.isValid())
-    return;
-
-  Settings::instance().set_previous_separator_color(color);
-  const QString hex = color.name(QColor::HexArgb);
-
-  for (const auto &idx : sel) {
-    int row = idx.row();
-    if (row < 0 || row >= w_->mod_model_->mods().size())
-      continue;
-    const auto &mod = w_->mod_model_->mods()[row];
-    if (!mod.is_separator)
-      continue;
-    write_separator_color_file(w_->mods_dir_path() / mod.id.toStdString(), hex);
-    w_->mod_model_->set_mod_color(mod.id, color);
-  }
+  mod_actions_->select_color_for_selected();
 }
 
 void ModListController::reset_color_for_selected() {
-  auto sel = w_->mod_view_->selectionModel()->selectedRows();
-  if (sel.isEmpty())
-    return;
-
-  for (const auto &idx : sel) {
-    int row = idx.row();
-    if (row < 0 || row >= w_->mod_model_->mods().size())
-      continue;
-    const auto &mod = w_->mod_model_->mods()[row];
-    if (!mod.is_separator)
-      continue;
-    write_separator_color_file(w_->mods_dir_path() / mod.id.toStdString(),
-                               QString());
-    w_->mod_model_->clear_mod_color(mod.id);
-  }
-  Settings::instance().remove_previous_separator_color();
+  mod_actions_->reset_color_for_selected();
 }
 
 void ModListController::save_order() {
@@ -4193,8 +3235,8 @@ void ModListController::save_order() {
 
   // Toolbar shortcuts (Issue #34): game-relative executable paths referencing
   // the executables list. The icon, args/cwd/env, output mod and title are
-  // inherited from the referenced ExecEntry - no per-shortcut config is
-  // duplicated here anymore. toolbar_shortcut_icons was removed with the
+  // inherited from the referenced Executables::Entry - no per-shortcut config
+  // is duplicated here anymore. toolbar_shortcut_icons was removed with the
   // schema change (legacy files are migrated on load).
   auto ts = toml::array{};
   for (const auto &path : w_->toolbar_shortcut_paths_)
@@ -4511,7 +3553,7 @@ void ModListController::load_order() {
   // paths (and a parallel toolbar_shortcut_icons array) - migrate absolute
   // pins to game-relative refs when they resolve under the game dir, keep the
   // legacy icon as a fallback until materialize_toolbar_shortcuts folds it
-  // into the referenced ExecEntry.
+  // into the referenced Executables::Entry.
   engine::Logger::instance().begin_group(engine::LogLevel::Debug,
                                          "Restored toolbar shortcuts");
   for (size_t i = 0; i < toolbar_paths.size(); ++i) {

@@ -1,7 +1,7 @@
 # Engine — Qt-free static library. No Qt6::* target is linked here and no
 # Qt include directory is exposed. The Qt-using files (theme/style_manager,
 # theme/icon_manager, notify/notification_backend, nxm/nxm_ipc,
-# launch/single_instance) live under src/ui/ and are compiled into gmm_ui
+# launch/multi_process) live under src/ui/ and are compiled into gmm_ui
 # instead, keeping this target Qt-free at the CMake level.
 #
 # Directory groups (issue/33): core/, mod/, source/, game/, pipeline/,
@@ -23,6 +23,9 @@ set(FOMOD_ENGINE_SOURCES
 set(ENGINE_SOURCES
     core/instance/instance.cpp
     core/instance/instance_utils.cpp
+    core/instance/instance_manager.cpp
+    core/instance/instance_registry.cpp
+    core/instance/mo2_importer.cpp
     core/instance/toml_utils.cpp
     core/instance/game_icons.cpp
     core/instance/masterlist_fetch.cpp
@@ -54,6 +57,7 @@ set(ENGINE_SOURCES
     profile/delayed_file_writer.cpp
     profile/safe_write_file.cpp
     deploy/order_hook.cpp
+    deploy/core.cpp
     deploy/strategy_symlink.cpp
     deploy/strategy_direct.cpp
     deploy/strategy_hardlink.cpp
@@ -118,7 +122,8 @@ set(ENGINE_SOURCES
     game/saves/local_saves.cpp
     sort/loot/loot_sorter.cpp
     sort/loot/masterlists.cpp
-    source/source_provider.cpp
+    source/registry.cpp
+    source/http_util.cpp
     source/nexus_provider.cpp
     source/nexus_account.cpp
     source/nexus_http.cpp
@@ -128,7 +133,18 @@ set(ENGINE_SOURCES
     source/nexus_auth.cpp
     source/loverslab_auth.cpp
     source/download/curl_download.cpp
+    update/self_updater.cpp
+    update/windows_self_updater.cpp
+    update/linux_self_updater.cpp
+    update/macos_self_updater.cpp
+    update/flatpak_updater.cpp
+    update/appimage_updater.cpp
+    update/deb_rpm_updater.cpp
+    update/aur_updater.cpp
     core/keyring/keyring.cpp
+    core/github.cpp
+    core/module.cpp
+    core/directory_refresher.cpp
     deploy/launch/preload_interceptor.cpp
     deploy/launch/launcher.cpp
     deploy/launch/usvfs_mapping.cpp

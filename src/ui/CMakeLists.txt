@@ -1,7 +1,7 @@
 # UI — Qt lives here. Static library linking Qt6 and the Qt-free engine.
 # The Qt-using files that used to live under src/engine/ (theme/style_manager,
 # theme/icon_manager, notify/notification_backend, nxm/nxm_ipc,
-# app/single_instance) were relocated here (issue/33) so gmm_engine stays
+# app/multi_process) were relocated here (issue/33) so gmm_engine stays
 # Qt-free at the CMake level.
 
 set(UI_SOURCES
@@ -23,6 +23,8 @@ set(UI_SOURCES
     controllers/overwrite_controller.cpp
     controllers/downloads_controller.cpp
     controllers/mod_list_controller.cpp
+    controllers/mod_actions.cpp
+    controllers/mod_context_menu.cpp
     controllers/settings_controller.cpp
     controllers/tab_mode_controller.cpp
     widgets/mod_list_model.cpp
@@ -35,10 +37,12 @@ set(UI_SOURCES
     profile/profile_settings_widget.cpp
     widgets/right_panel.cpp
     widgets/exec_controls_bar.cpp
-    widgets/exec_entry_content_widget.cpp
-    widgets/exec_entry_dialog.cpp
+    widgets/executables_entry.h
+    widgets/executables_content_widget.cpp
+    widgets/executables_dialog.h
+    widgets/executables_dialog.cpp
     widgets/console_panel.cpp
-    widgets/gmm_status_bar.cpp
+    widgets/status_bar.cpp
     widgets/instance_switcher_dialog.cpp
     widgets/instance_switcher_content_widget.cpp
     widgets/game_icon_cache.cpp
@@ -56,7 +60,9 @@ set(UI_SOURCES
     widgets/list_dialog.cpp
     widgets/menu_bar.cpp
     panels/downloads_tab.cpp
+    panels/plugin_view.cpp
     panels/plugins_tab.cpp
+    panels/plugin_context_menu.cpp
     panels/archives_tab.cpp
     panels/data_tab.cpp
     panels/saves_tab.cpp
@@ -77,12 +83,14 @@ set(UI_SOURCES
     fomod/fomod_wizard_dialog.cpp
     instance_options/instance_options_panel.cpp
     instance_options/instance_options_widget.cpp
+    system_tray/system_tray_manager.cpp
+    ui_locker.cpp
     # Qt-using files relocated from src/engine/ (issue/33) — keeps gmm_engine Qt-free
     ${PROJECT_SOURCE_DIR}/src/ui/theme/style_manager.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/theme/icon_manager.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/notify/notification_backend.cpp
     ${PROJECT_SOURCE_DIR}/src/ui/nxm/nxm_ipc.cpp
-    ${PROJECT_SOURCE_DIR}/src/ui/app/single_instance.cpp
+    ${PROJECT_SOURCE_DIR}/src/ui/app/multi_process.cpp
 )
 
 # FileViewer module — reusable file viewers (image/video/3D-scene). The video

@@ -1,6 +1,6 @@
 #include "runtime/runtime.h"
 
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -86,7 +86,7 @@ bool NativeRuntime::is_available() const {
 
 // --- ProtonRuntime ---
 
-ProtonRuntime::ProtonRuntime(const PlatformInterface* platform)
+ProtonRuntime::ProtonRuntime(const Platform* platform)
     : platform_(platform) {}
 
 bool ProtonRuntime::launch(const std::filesystem::path& executable,
@@ -128,7 +128,7 @@ bool ProtonRuntime::launch(const std::filesystem::path& executable,
 
 // --- Static helpers ---
 
-std::filesystem::path ProtonRuntime::find_proton_binary(const PlatformInterface* platform,
+std::filesystem::path ProtonRuntime::find_proton_binary(const Platform* platform,
                                                         uint32_t steam_appid,
                                                         const std::string& runner_override) {
     if (!platform) return {};
@@ -145,7 +145,7 @@ std::filesystem::path ProtonRuntime::find_proton_binary(const PlatformInterface*
     return platform->find_proton();
 }
 
-bool ProtonRuntime::prepare_proton_environment(const PlatformInterface* platform,
+bool ProtonRuntime::prepare_proton_environment(const Platform* platform,
                                                const std::filesystem::path& game_dir,
                                                uint32_t steam_appid) {
     if (!platform) return false;

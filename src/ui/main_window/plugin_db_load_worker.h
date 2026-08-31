@@ -39,7 +39,7 @@ public:
     void run(PluginDbLoadRequest request, quint64 generation);
 
 signals:
-    void finished(engine::PluginDatabase db, quint64 generation);
+    void finished(engine::PluginDb::Database db, quint64 generation);
 };
 
 // Long-lived worker thread reusing the ModScanThread/ConflictScanThread shape.
@@ -63,4 +63,4 @@ private:
 
 }  // namespace ui
 
-Q_DECLARE_METATYPE(engine::PluginDatabase)
+Q_DECLARE_METATYPE(engine::PluginDb::Database)

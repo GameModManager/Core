@@ -1,6 +1,6 @@
-#include "ui/app/single_instance.h"
+#include "ui/app/multi_process.h"
 #include "engine/core/log/logger.h"
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <QLocalServer>
 #include <QLocalSocket>
@@ -32,14 +32,14 @@ std::string focus_socket_path() {
 
 namespace engine {
 
-class SingleInstanceGuard::Impl {
+class MultiProcess::Impl {
 public:
     QLockFile lock_file{QString::fromStdString(lock_file_path())};
     QLocalServer focus_server;
     bool locked = false;
 };
 
-SingleInstanceGuard::SingleInstanceGuard(QObject* parent)
+MultiProcess::MultiProcess(QObject* parent)
     : QObject(parent), impl_(std::make_unique<Impl>()) {
     connect(&impl_->focus_server, &QLocalServer::newConnection, this, [this]() {
         auto* sock = impl_->focus_server.nextPendingConnection();
@@ -47,7 +47,7 @@ SingleInstanceGuard::SingleInstanceGuard(QObject* parent)
         connect(sock, &QLocalSocket::readyRead, this, [this, sock]() {
             auto data = sock->readAll();
             if (data == "focus\n") {
-                Logger::instance().debug("SingleInstanceGuard: focus request received");
+                Logger::instance().debug("MultiProcess: focus request received");
                 emit focusRequested();
             }
             sock->disconnectFromServer();
@@ -55,7 +55,7 @@ SingleInstanceGuard::SingleInstanceGuard(QObject* parent)
     });
 }
 
-SingleInstanceGuard::~SingleInstanceGuard() {
+MultiProcess::~MultiProcess() {
     if (impl_->locked) {
         impl_->lock_file.unlock();
     }
@@ -66,13 +66,13 @@ SingleInstanceGuard::~SingleInstanceGuard() {
     }
 }
 
-bool SingleInstanceGuard::tryAcquire(int staleLockTimeoutMs) {
+bool MultiProcess::tryAcquire(int staleLockTimeoutMs) {
     if (impl_->locked) return true;
 
     // Try the lock. If it fails and the timeout > 0, QLockFile will attempt
     // to steal a stale lock (lock file whose PID no longer exists).
     if (!impl_->lock_file.tryLock(staleLockTimeoutMs)) {
-        Logger::instance().debug("SingleInstanceGuard: another instance holds the lock");
+        Logger::instance().debug("MultiProcess: another instance holds the lock");
         return false;
     }
 
@@ -83,34 +83,34 @@ bool SingleInstanceGuard::tryAcquire(int staleLockTimeoutMs) {
     QLocalServer::removeServer(path);
 
     if (!impl_->focus_server.listen(path)) {
-        Logger::instance().error("SingleInstanceGuard: failed to start focus server: " +
+        Logger::instance().error("MultiProcess: failed to start focus server: " +
             impl_->focus_server.errorString().toStdString());
         // Even if the server fails, we still hold the lock - proceed
         return true;
     }
 
-    Logger::instance().debug("SingleInstanceGuard: lock acquired, focus server started");
+    Logger::instance().debug("MultiProcess: lock acquired, focus server started");
     return true;
 }
 
-bool SingleInstanceGuard::requestFocus() {
+bool MultiProcess::requestFocus() {
     auto path = QString::fromStdString(focus_socket_path());
 
     QLocalSocket socket;
     socket.connectToServer(path);
     if (!socket.waitForConnected(1000)) {
-        Logger::instance().warn("SingleInstanceGuard: running instance not reachable");
+        Logger::instance().warn("MultiProcess: running instance not reachable");
         return false;
     }
 
     socket.write("focus\n");
     if (!socket.waitForBytesWritten(1000)) {
-        Logger::instance().warn("SingleInstanceGuard: failed to send focus request");
+        Logger::instance().warn("MultiProcess: failed to send focus request");
         return false;
     }
 
     socket.disconnectFromServer();
-    Logger::instance().debug("SingleInstanceGuard: focus request sent");
+    Logger::instance().debug("MultiProcess: focus request sent");
     return true;
 }
 

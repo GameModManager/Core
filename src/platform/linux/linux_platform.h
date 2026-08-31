@@ -1,6 +1,6 @@
 #pragma once
 
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -11,7 +11,7 @@
 namespace engine {
 
 // Linux platform module - XDG paths, Proton/Wine discovery, FUSE capabilities.
-class LinuxPlatform : public PlatformInterface {
+class LinuxPlatform : public Platform {
 public:
     [[nodiscard]] std::string platform_name() const override { return "linux"; }
 

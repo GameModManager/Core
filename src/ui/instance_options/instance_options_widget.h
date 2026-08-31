@@ -17,7 +17,7 @@ class QThread;
 class QVBoxLayout;
 
 namespace engine {
-class PlatformInterface;
+class Platform;
 class PluginLoader;
 } // namespace engine
 
@@ -54,7 +54,7 @@ namespace ui {
 class InstanceOptionsWidget : public QWidget {
   Q_OBJECT
 public:
-  InstanceOptionsWidget(engine::PlatformInterface *platform,
+  InstanceOptionsWidget(engine::Platform *platform,
                         engine::PluginLoader *plugin_loader,
                         const std::string &game_id,
                         const std::string &game_display_name,
@@ -103,7 +103,7 @@ private:
   void finish_deploy_task(DeployTaskKind kind, bool ok);
   [[nodiscard]] std::filesystem::path recommended_packages_path() const;
 
-  engine::PlatformInterface *platform_ = nullptr;
+  engine::Platform *platform_ = nullptr;
   engine::PluginLoader *plugin_loader_ = nullptr;
   std::string game_id_;
   std::string game_display_name_;

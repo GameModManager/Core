@@ -1,6 +1,6 @@
 #pragma once
 
-#include "platform/platform_interface.h"
+#include "platform/platform.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -11,7 +11,7 @@ namespace engine {
 // Windows platform module - registry paths, native launch, Steam detection via
 // registry or common paths. Does NOT compile on Linux (per PLAN.md §11 - platform
 // code is only in the translation units for its own OS).
-class WindowsPlatform : public PlatformInterface {
+class WindowsPlatform : public Platform {
 public:
     [[nodiscard]] std::string platform_name() const override { return "windows"; }
 

@@ -9,7 +9,9 @@
 
 namespace engine {
 
-class PluginDatabase;
+namespace PluginDb {
+class Database;
+}
 
 // Per-game plugin diagnostics providers (MO2 addInformation parity). C
 // plugins register a GmmDiagnosticsFn via the ABI register_diagnostics;
@@ -29,7 +31,7 @@ public:
 
     // Re-run every matching provider over all plugins in db, replacing each
     // plugin's messages. No-op when no provider matches game_id.
-    void collect(const std::string& game_id, PluginDatabase& db) const;
+    void collect(const std::string& game_id, PluginDb::Database& db) const;
 
     // Drop all providers (Python shutdown path; acquire the GIL first).
     void clear();

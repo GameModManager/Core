@@ -219,7 +219,7 @@ void ModMarkingScrollBar::paintEvent(QPaintEvent* event) {
     QPainter painter(this);
     for (int i = 0; i < visible_rows.size(); ++i) {
         const QVariant color_variant =
-            view_->model()->index(visible_rows[i], 0).data(ModListModel::kScrollMarkRole);
+            view_->model()->index(visible_rows[i], 0).data(ModList::kScrollMarkRole);
         if (!color_variant.canConvert<QColor>()) continue;
         const QColor color = color_variant.value<QColor>();
         if (!color.isValid()) continue;
@@ -228,7 +228,7 @@ void ModMarkingScrollBar::paintEvent(QPaintEvent* event) {
     }
 }
 
-ModTableView::ModTableView(QWidget* parent)
+ModView::ModView(QWidget* parent)
     : QTreeView(parent) {
     setRootIsDecorated(false);
     setIndentation(0);
@@ -256,30 +256,30 @@ ModTableView::ModTableView(QWidget* parent)
     // same kFlagIconsRole, filtered per column by the model. No tooltips role
     // (second arg 0): mod rows keep the delegate's default helpEvent so
     // per-row descriptions still come from the item's tooltip.
-    setItemDelegateForColumn(ModListModel::Conflicts,
-                             new FlagsDelegate(ModListModel::kFlagIconsRole, 0, this));
-    setItemDelegateForColumn(ModListModel::Flags,
-                             new FlagsDelegate(ModListModel::kFlagIconsRole, 0, this));
+    setItemDelegateForColumn(ModList::Conflicts,
+                             new FlagsDelegate(ModList::kFlagIconsRole, 0, this));
+    setItemDelegateForColumn(ModList::Flags,
+                             new FlagsDelegate(ModList::kFlagIconsRole, 0, this));
     // Name column: nesting indentation (shifts the name right under its parent,
     // purely visual). Depth 0 renders exactly like the default cell.
-    setItemDelegateForColumn(ModListModel::Name,
-                             new IndentDelegate(ModListModel::kIndentDepthRole, this));
+    setItemDelegateForColumn(ModList::Name,
+                             new IndentDelegate(ModList::kIndentDepthRole, this));
 }
 
-void ModTableView::apply_scrollbar_policy() {
+void ModView::apply_scrollbar_policy() {
     setVerticalScrollBarPolicy(
         Settings::instance().color_separator_scrollbar()
             ? Qt::ScrollBarAlwaysOn
             : Qt::ScrollBarAsNeeded);
 }
 
-void ModTableView::setModel(QAbstractItemModel* model) {
+void ModView::setModel(QAbstractItemModel* model) {
     QTreeView::setModel(model);
     if (auto* marking = qobject_cast<ModMarkingScrollBar*>(verticalScrollBar()))
         marking->set_model(model);
 }
 
-void ModTableView::setHeader(QHeaderView* header) {
+void ModView::setHeader(QHeaderView* header) {
     QTreeView::setHeader(header);
     if (!header) return;
     // Flag icons wrap based on the Conflicts/Flags column width (growing the
@@ -287,13 +287,13 @@ void ModTableView::setHeader(QHeaderView* header) {
     // drags it.
     connect(header, &QHeaderView::sectionResized, this,
             [this](int logical, int, int) {
-                if (logical == ModListModel::Conflicts ||
-                    logical == ModListModel::Flags)
+                if (logical == ModList::Conflicts ||
+                    logical == ModList::Flags)
                     scheduleDelayedItemsLayout();
             });
 }
 
-void ModTableView::mouseDoubleClickEvent(QMouseEvent* event) {
+void ModView::mouseDoubleClickEvent(QMouseEvent* event) {
     // MO2 parity (modlistview.cpp): Ctrl+Double-Click opens the OS file
     // explorer at the mod's folder. The controller resolves the folder and
     // opens it; the event is consumed so the plain double-click behavior
@@ -308,7 +308,7 @@ void ModTableView::mouseDoubleClickEvent(QMouseEvent* event) {
     QTreeView::mouseDoubleClickEvent(event);
 }
 
-void ModTableView::dragEnterEvent(QDragEnterEvent* event) {
+void ModView::dragEnterEvent(QDragEnterEvent* event) {
     if (event->mimeData()->hasUrls()) {
         for (const auto& url : event->mimeData()->urls()) {
             if (!url.isLocalFile()) continue;
@@ -322,7 +322,7 @@ void ModTableView::dragEnterEvent(QDragEnterEvent* event) {
     QTreeView::dragEnterEvent(event);
 }
 
-void ModTableView::dragMoveEvent(QDragMoveEvent* event) {
+void ModView::dragMoveEvent(QDragMoveEvent* event) {
     if (event->mimeData()->hasUrls()) {
         for (const auto& url : event->mimeData()->urls()) {
             if (!url.isLocalFile()) continue;
@@ -336,7 +336,7 @@ void ModTableView::dragMoveEvent(QDragMoveEvent* event) {
     QTreeView::dragMoveEvent(event);
 }
 
-void ModTableView::dropEvent(QDropEvent* event) {
+void ModView::dropEvent(QDropEvent* event) {
     if (event->mimeData()->hasUrls()) {
         QStringList archives;
         QStringList overwrite_paths;
@@ -366,8 +366,8 @@ void ModTableView::dropEvent(QDropEvent* event) {
     QTreeView::dropEvent(event);
 }
 
-bool ModTableView::is_under_overwrite(const QString& path) const {
-    const auto* model = qobject_cast<const ModListModel*>(this->model());
+bool ModView::is_under_overwrite(const QString& path) const {
+    const auto* model = qobject_cast<const ModList*>(this->model());
     if (!model) return false;
     const auto ow = model->overwrite_path();
     if (ow.isEmpty()) return false;

@@ -1,4 +1,4 @@
-// Engine test for the global CategoryFactory registry.
+// Engine test for the global Category::Factory registry.
 //
 // Covers: merge from parallel arrays (duplicates skipped by ID), load/save of
 // the pipe-delimited categories.dat (ID|Name|ParentID), parent-child hierarchy
@@ -24,12 +24,12 @@ static void write_file(const fs::path &path, const std::string &content) {
 }
 
 TEST_CASE("category_factory", "[engine]") {
-  using engine::CategoryFactory;
+  using engine::Category::Factory;
 
   // The factory is a singleton; each CTest test runs in its own process, but
   // reset the ids this test touches so it also passes when the binary is run
   // directly (all TEST_CASEs in one process).
-  CategoryFactory &f = CategoryFactory::instance();
+  Factory &f = Factory::instance();
   f.removeCategory(1);
   f.removeCategory(2);
   f.removeCategory(3);
@@ -96,55 +96,63 @@ TEST_CASE("category_factory", "[engine]") {
 }
 
 TEST_CASE("category_factory_apply_core_set", "[engine]") {
-  using engine::CategoryFactory;
+  using engine::Category::Factory;
 
-  CategoryFactory& f = CategoryFactory::instance();
+  Factory &f = Factory::instance();
 
-  // All ids the core sets may introduce, so each scenario starts clean even when
-  // every TEST_CASE runs in one process.
+  // All ids the core sets may introduce, so each scenario starts clean even
+  // when every TEST_CASE runs in one process.
   std::vector<int> bethesda_ids;
-  for (int i = 1; i <= 58; ++i) bethesda_ids.push_back(i);
+  for (int i = 1; i <= 58; ++i)
+    bethesda_ids.push_back(i);
   std::vector<int> isaac_ids;
-  for (int i = 1000; i <= 1021; ++i) isaac_ids.push_back(i);
+  for (int i = 1000; i <= 1021; ++i)
+    isaac_ids.push_back(i);
 
   auto clear_all = [&]() {
-    for (int id : bethesda_ids) f.removeCategory(id);
-    for (int id : isaac_ids) f.removeCategory(id);
+    for (int id : bethesda_ids)
+      f.removeCategory(id);
+    for (int id : isaac_ids)
+      f.removeCategory(id);
     f.removeCategory(5000);
   };
 
   // --- Unknown set: returns false and adds nothing. ---
   clear_all();
-  require(!f.applyCoreSet("NoSuchSet"), "applyCoreSet returns false for unknown");
+  require(!f.applyCoreSet("NoSuchSet"),
+          "applyCoreSet returns false for unknown");
   require(f.categories().empty(), "unknown set adds no categories");
 
   // --- "Isaac" set: 22 categories applied, returns true. ---
   clear_all();
   require(f.applyCoreSet("Isaac"), "applyCoreSet(Isaac) returns true");
   require(f.categories().size() == 22, "Isaac set adds 22 categories");
-  const auto* items = f.categoryById(1000);
+  const auto *items = f.categoryById(1000);
   require(items && items->name == "Items" && items->parent_id == 0,
           "Isaac Items (1000) applied as root");
-  const auto* active = f.categoryById(1001);
+  const auto *active = f.categoryById(1001);
   require(active && active->name == "Active Items" && active->parent_id == 1000,
           "Isaac Active Items (1001) applied under Items");
   require(items && items->hasChildren, "parent hasChildren recomputed");
 
-  // --- Additive: applying again (or a second set) does not remove existing. ---
+  // --- Additive: applying again (or a second set) does not remove existing.
+  // ---
   f.addCategory(5000, "User Category", 0);
   require(f.applyCoreSet("Isaac"), "re-applying Isaac is a no-op success");
   require(f.categoryExists(5000), "user category preserved across re-apply");
   require(f.categories().size() == 23, "no duplicate Isaac ids added");
 
   // --- "Bethesda" set: 57 entries (MO2 repeats id 39 for Voice/Tattoos), so 56
-  // unique categories survive the by-id dedupe. Separate id space from Isaac. ---
+  // unique categories survive the by-id dedupe. Separate id space from Isaac.
+  // ---
   clear_all();
   require(f.applyCoreSet("Bethesda"), "applyCoreSet(Bethesda) returns true");
-  require(f.categories().size() == 56, "Bethesda set adds 56 unique categories");
-  const auto* anim = f.categoryById(1);
+  require(f.categories().size() == 56,
+          "Bethesda set adds 56 unique categories");
+  const auto *anim = f.categoryById(1);
   require(anim && anim->name == "Animations" && anim->parent_id == 0,
           "Bethesda Animations (1) applied as root");
-  const auto* combat = f.categoryById(27);
+  const auto *combat = f.categoryById(27);
   require(combat && combat->name == "Combat" && combat->parent_id == 9,
           "Bethesda Combat (27) applied under Gameplay (9)");
 

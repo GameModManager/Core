@@ -1,7 +1,7 @@
 #include "engine/source/download/curl_download.h"
 
 #include "engine/core/log/logger.h"
-#include "engine/source/nexus_http.h"  // encode_url_path (shared URL helper)
+#include "engine/source/http_util.h"  // encode_url_path (shared URL helper)
 
 #include <curl/curl.h>
 
@@ -9,7 +9,7 @@
 #include <fstream>
 #include <sstream>
 
-namespace engine::download {
+namespace engine::Source::DownloadManager {
 
 namespace {
 
@@ -180,7 +180,7 @@ bool curl_download(const std::string& url,
         return false;
     }
 
-    const std::string encoded_url = engine::encode_url_path(url);
+    const std::string encoded_url = engine::Source::Http::encode_url_path(url);
     curl_easy_setopt(curl, CURLOPT_URL, encoded_url.c_str());
     curl_easy_setopt(curl, CURLOPT_USERAGENT,
                      opts.user_agent.empty()
@@ -240,4 +240,4 @@ bool curl_download(const std::string& url,
     return true;
 }
 
-} // namespace engine::download
+} // namespace engine::Source::DownloadManager
