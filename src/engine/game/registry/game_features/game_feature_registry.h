@@ -79,7 +79,7 @@ public:
   // game_id are global / non-game-specific (e.g. a file-format animation
   // parser that applies to every game), so they are returned when no
   // game-specific feature exists. This is what lets a generic plugin such as
-  // Anm2Support serve any game without being re-registered per game.
+  // ANM2 serve any game without being re-registered per game.
   template <class T>
   [[nodiscard]] std::shared_ptr<const T>
   resolve_feature(const std::string &game_id) const {
