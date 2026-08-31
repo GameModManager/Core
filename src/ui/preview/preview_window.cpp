@@ -240,15 +240,14 @@ void PreviewWindow::reload() {
                                    path.toStdString());
   engine::Logger::instance().debug(
       "[PreviewWindow] reload: trying load_plugin_preview...");
-  if (load_plugin_preview(path)) {
+  // ANM2 files must use the host's load_anm2() path so the controls panel
+  // (speed slider, play/pause, scrubber) drives the visible image_label_
+  // animation. Plugin previews for ANM2 show their own internal widget which
+  // is not connected to the host controls.
+  if (!has_extension(path, animation_extensions()) &&
+      load_plugin_preview(path)) {
     engine::Logger::instance().debug(
         "[PreviewWindow] reload: load_plugin_preview SUCCEEDED");
-    // For ANM2 files, the plugin provides the sprite widget, but we also need
-    // the host's controls panel (animation list, speed slider, play/pause,
-    // etc.).
-    if (has_extension(path, animation_extensions())) {
-      parse_anm2_data(path);
-    }
     return;
   }
   engine::Logger::instance().debug(
@@ -668,7 +667,9 @@ void PreviewWindow::build_anm2_controls() {
     update_anm2_ui();
   });
 
-  connect(anm2_progress_, &QSlider::sliderMoved, this, [this](int value) {
+  // Use valueChanged so clicking the scrubber also seeks (not just dragging).
+  // update_anm2_ui() blocks signals on the slider to prevent feedback loops.
+  connect(anm2_progress_, &QSlider::valueChanged, this, [this](int value) {
     if (anm2_frames_.empty())
       return;
     // Map 0-1000 to frame index
@@ -733,13 +734,15 @@ void PreviewWindow::update_anm2_ui() {
                                    .arg(static_cast<int>(anm2_frames_.size())));
   }
 
-  // Progress scrubber
+  // Progress scrubber - block signals to avoid feedback loop with valueChanged
   if (anm2_progress_ && !anm2_progress_->isSliderDown()) {
     int pos =
         anm2_frames_.size() > 1
             ? static_cast<int>(anm2_index_ * 1000 / (anm2_frames_.size() - 1))
             : 0;
+    anm2_progress_->blockSignals(true);
     anm2_progress_->setValue(pos);
+    anm2_progress_->blockSignals(false);
   }
 }
 
