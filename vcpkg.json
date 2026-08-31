@@ -1,0 +1,54 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "gamemodmanager",
+  "version-string": "0.4.0",
+  "description": "Game Mod Manager — cross-platform mod management with MO2-parity",
+  "homepage": "https://github.com/GameModManager/Core",
+  "supports": "x64 | arm64",
+  "dependencies": [
+    {
+      "name": "qtbase",
+      "version>=": "6.8.0"
+    },
+    {
+      "name": "qttools",
+      "version>=": "6.8.0"
+    },
+    "libarchive",
+    "sqlite3",
+    "yaml-cpp",
+    "curl",
+    "nlohmann-json",
+    "tomlplusplus",
+    "zlib",
+    "lz4",
+    "python3"
+  ],
+  "features": {
+    "multimedia": {
+      "description": "Qt6 Multimedia support (video previews)",
+      "dependencies": [
+        {
+          "name": "qtmultimedia",
+          "version>=": "6.8.0"
+        }
+      ]
+    },
+    "keychain": {
+      "description": "Qt6 Keychain for secure credential storage",
+      "dependencies": [
+        "qtkeychain-qt6"
+      ]
+    },
+    "syntax-highlighting": {
+      "description": "KDE Frameworks 6 Syntax Highlighting for config file editors",
+      "dependencies": [
+        "kf6-syntax-highlighting"
+      ]
+    },
+    "loot": {
+      "description": "LOOT load-order sorting (requires Rust/cargo on PATH)",
+      "dependencies": []
+    }
+  }
+}
