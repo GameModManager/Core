@@ -17,6 +17,13 @@
 
 namespace engine {
 
+// Platform-aware null device path for stdin redirection.
+#ifdef _WIN32
+constexpr auto DEV_NULL = "nul";
+#else
+constexpr auto DEV_NULL = "/dev/null";
+#endif
+
 struct CapturedProcess {
     bool ok = false;
     int exit_code = -1;
@@ -71,7 +78,7 @@ inline CapturedProcess run_captured(const std::vector<std::string>& args) {
         dup2(err_fds[1], STDERR_FILENO);
         close(out_fds[1]);
         close(err_fds[1]);
-        const int devnull = open("/dev/null", O_RDONLY);
+        const int devnull = open(DEV_NULL, O_RDONLY);
         if (devnull >= 0) {
             dup2(devnull, STDIN_FILENO);
             close(devnull);

@@ -78,10 +78,6 @@ std::filesystem::path WindowsPlatform::game_local_appdata_dir(uint32_t /*steam_a
     return path;
 }
 
-std::filesystem::path WindowsPlatform::cache_dir() const {
-    return localappdata_dir() / L"cache";
-}
-
 // --- Steam discovery ---
 
 std::filesystem::path WindowsPlatform::find_steam_root() const {
