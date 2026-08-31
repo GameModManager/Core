@@ -6,8 +6,10 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QKeyEvent>
 #include <QListWidget>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
@@ -74,6 +76,55 @@ void SpeedSlider::paintEvent(QPaintEvent *event) {
              Qt::AlignHCenter | Qt::AlignTop, QStringLiteral("1x"));
   p.end();
 }
+
+// ---------------------------------------------------------------------------
+// DebugImageLabel - QLabel subclass that draws bounding-box overlays for ANM2
+// sprite diagnostics.  The three boxes show:
+//   Red   = actual pixmap bounds (what's being painted)
+//   Green = logical ANM2 canvas size (from the parser)
+// Toggle with F12 (handled in PreviewWindow::keyPressEvent).
+// ---------------------------------------------------------------------------
+
+class DebugImageLabel : public QLabel {
+public:
+  using QLabel::QLabel;
+
+  void set_canvas_size(const QSize &s) { canvas_size_ = s; }
+
+  void set_overlay_enabled(bool enabled) {
+    overlay_enabled_ = enabled;
+    update();
+  }
+
+  [[nodiscard]] bool overlay_enabled() const { return overlay_enabled_; }
+
+protected:
+  void paintEvent(QPaintEvent *event) override {
+    QLabel::paintEvent(event);
+    if (!overlay_enabled_)
+      return;
+
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing, false);
+
+    // Red dashed box around the pixmap
+    if (!pixmap().isNull()) {
+      QRect pixmap_rect = pixmap().rect();
+      p.setPen(QPen(Qt::red, 2, Qt::DashLine));
+      p.drawRect(pixmap_rect);
+    }
+
+    // Green dashed box around the logical ANM2 canvas size
+    if (canvas_size_.isValid()) {
+      p.setPen(QPen(Qt::green, 2, Qt::DashLine));
+      p.drawRect(QRect(QPoint(0, 0), canvas_size_));
+    }
+  }
+
+private:
+  QSize canvas_size_;
+  bool overlay_enabled_ = false;
+};
 
 namespace {
 
@@ -147,7 +198,7 @@ PreviewWindow::PreviewWindow(QWidget *parent) : QDialog(parent) {
   scroll_ = new QScrollArea(image_page_);
   scroll_->setWidgetResizable(true);
   scroll_->setAlignment(Qt::AlignCenter);
-  image_label_ = new QLabel(scroll_);
+  image_label_ = new DebugImageLabel(scroll_);
   image_label_->setAlignment(Qt::AlignCenter);
   auto pal = image_label_->palette();
   pal.setBrush(QPalette::Base, QBrush(checker_pixmap("auto")));
@@ -408,6 +459,20 @@ bool PreviewWindow::parse_anm2_data(const QString &path) {
     anm2_states_.push_back(std::move(state));
   }
 
+  // Set the debug overlay canvas size from the first state's dimensions.
+  if (image_label_ && !anm2_states_.empty()) {
+    int cw = 0;
+    int ch = 0;
+    if (!data->states.empty()) {
+      cw = data->states.front().canvas_width;
+      ch = data->states.front().canvas_height;
+    } else {
+      cw = data->canvas_width;
+      ch = data->canvas_height;
+    }
+    image_label_->set_canvas_size(QSize(cw, ch));
+  }
+
   // Populate the animation list widget.
   if (anm2_anim_list_) {
     anm2_anim_list_->blockSignals(true);
@@ -619,6 +684,19 @@ void PreviewWindow::resizeEvent(QResizeEvent *event) {
              stack_->currentWidget() == image_page_) {
     apply_zoom();
   }
+}
+
+void PreviewWindow::keyPressEvent(QKeyEvent *event) {
+  if (event->key() == Qt::Key_F12) {
+    debug_overlay_enabled_ = !debug_overlay_enabled_;
+    if (image_label_)
+      image_label_->set_overlay_enabled(debug_overlay_enabled_);
+    engine::Logger::instance().debug(
+        "[PreviewWindow] Debug bounding-box overlay: " +
+        std::string(debug_overlay_enabled_ ? "ON" : "OFF"));
+    return;
+  }
+  QDialog::keyPressEvent(event);
 }
 
 void PreviewWindow::build_anm2_controls() {
