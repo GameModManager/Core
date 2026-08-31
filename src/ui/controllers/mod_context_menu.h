@@ -13,7 +13,7 @@ class ModActions;
 // Forward declaration of SourceVisitInfo (defined in mod_list_controller.h).
 struct SourceVisitInfo;
 
-// Mod::ContextMenu — extracted context menu builder for the mod list.
+// Mod::ContextMenu - extracted context menu builder for the mod list.
 //
 // Builds the right-click context menu for mod list rows and adds category
 // submenus. Depends on ModActions for action methods and on ModListController

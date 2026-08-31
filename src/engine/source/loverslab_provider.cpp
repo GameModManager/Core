@@ -31,7 +31,7 @@ struct Probe {
 
 // Header-only GET: follow redirects, capture the final Content-Disposition and
 // URL, abort before reading any body. Used to learn the real archive name
-// (LoversLab serves .7z/.rar/.zip — the generic <id>.zip default would break
+// (LoversLab serves .7z/.rar/.zip - the generic <id>.zip default would break
 // extraction) and to sanity-check the session cookie.
 Probe probe_download(const std::string& url, const std::string& cookie) {
     Probe p;

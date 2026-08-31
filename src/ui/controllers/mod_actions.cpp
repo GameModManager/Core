@@ -402,7 +402,7 @@ QString ModActions::create_separator_named(const QString &name,
 }
 
 void ModActions::create_separator() {
-  // Instance-owned (Workspace-tnj) — see create_separator_named.
+  // Instance-owned (Workspace-tnj) - see create_separator_named.
   if (!w_->knowledge_ || w_->current_game_id_.empty())
     return;
 
@@ -508,7 +508,7 @@ void ModActions::create_empty_mod() {
 }
 
 void ModActions::create_separator_at_row(int row) {
-  // Instance-owned (Workspace-tnj) — see create_separator_named.
+  // Instance-owned (Workspace-tnj) - see create_separator_named.
   if (!w_->knowledge_ || w_->current_game_id_.empty())
     return;
 
@@ -694,7 +694,7 @@ void ModActions::delete_separator(int row) {
 
   // Separators are pure UI/model constructs (+ an optional folder in the
   // instance mods dir), so deletion must proceed even without a game dir
-  // (Workspace-tnj) — only knowledge/game_id gate the disk access below.
+  // (Workspace-tnj) - only knowledge/game_id gate the disk access below.
   if (!w_->knowledge_ || w_->current_game_id_.empty())
     return;
 

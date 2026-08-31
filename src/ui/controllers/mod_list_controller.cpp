@@ -676,7 +676,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
             // MO2 parity: the Categories dialog edits the global category
             // registry (engine::Category::Factory) and persists it to the
             // instance's categories.dat. On accept the filter tree is rebuilt
-            // (the checked set is reset — removed categories can no longer be
+            // (the checked set is reset - removed categories can no longer be
             // checked) and the mod filter is re-applied.
             ui::CategoriesDialog dlg(w_->current_instance_root_, w_);
             if (dlg.exec() == QDialog::Accepted) {
@@ -792,7 +792,7 @@ void ModListController::switch_profile(const QString &profile) {
   // The active profile's engine model is the source of truth for the current
   // profile's modlist state (toggles persist through it via
   // sync_mod_enable_state). Ensure it exists and is loaded before the
-  // switcher saves it — a fresh Profile has an empty in-memory list and
+  // switcher saves it - a fresh Profile has an empty in-memory list and
   // would flush an empty modlist.txt over the real per-profile state.
   if (!w_->active_profile_ ||
       w_->active_profile_->name() != w_->current_profile_name_) {
@@ -840,7 +840,7 @@ void ModListController::switch_profile(const QString &profile) {
   // Delayed disable capability: queue the FULL desired state of the new
   // profile so the next Run reconciles the on-disk sentinels with the profile.
   // Idempotent (writing an existing sentinel / removing an absent one is a
-  // no-op) and self-healing — it also satisfies the "multiple profile swaps
+  // no-op) and self-healing - it also satisfies the "multiple profile swaps
   // accumulate the final state" criterion without a delta against the old
   // on-disk state. The full state supersedes any earlier queued toggles.
   if (w_->knowledge_ && !w_->current_game_id_.empty() &&
@@ -946,7 +946,7 @@ void ModListController::sync_mod_enable_state(const QString &mod_id,
   // deploy mode): skip the immediate on-disk sentinel write. The toggle is
   // recorded in the deferred queue (latest-wins per mod_id) and applied at the
   // next Run, when launch_with_executable flushes the queue before the deploy
-  // worker starts. The profile modlist.txt is still updated now — it is the
+  // worker starts. The profile modlist.txt is still updated now - it is the
   // per-profile source of truth; the on-disk sentinel is reconciled at launch.
   if (engine::delayed_disable_for(*w_->knowledge_, w_->current_game_id_)) {
     auto it = std::remove_if(w_->deferred_disable_queue_.begin(),
@@ -1037,7 +1037,7 @@ void ModListController::sync_priorities() {
       if (old_priority != i) {
         meta.set_priority(i);
         meta.save(meta_dir, mods[i].id.toStdString());
-        // P1.3 event bus: mirror MO2 onModMoved — fired only for real
+        // P1.3 event bus: mirror MO2 onModMoved - fired only for real
         // moves, on the UI thread, after the priority persisted.
         if (old_priority >= 0 && !mods[i].is_overwrite &&
             !mods[i].is_separator) {
@@ -1220,7 +1220,7 @@ void ModListController::load_mods_from_game() {
   // Any in-flight scan belongs to an older state (a refresh supersedes the
   // previous refresh; set_game_info bumps on instance switches too): bump
   // the generation so its result is dropped when it lands. The scan itself
-  // runs on ModScanThread — the main thread does no directory walking here
+  // runs on ModScanThread - the main thread does no directory walking here
   // (P8.2, THREADING.md §3.5/§3.6).
   w_->mod_scan_generation_ = w_->mod_scan_generation_ + 1;
 
@@ -1236,7 +1236,7 @@ void ModListController::load_mods_from_game() {
 ui::ModScanRequest ModListController::build_mod_scan_request() {
   ui::ModScanRequest request;
   request.knowledge =
-      *w_->knowledge_; // snapshot — read-only after plugin registration
+      *w_->knowledge_; // snapshot - read-only after plugin registration
   request.game_id = w_->current_game_id_;
   request.game_dir = w_->current_game_dir_;
   // Game-native mods dir override (Workspace-6up): instance.toml
@@ -1270,7 +1270,7 @@ void ModListController::launch_plugin_db_preload() {
   const auto game_native =
       engine::native_plugins_csv(*w_->knowledge_, w_->current_game_id_);
   if (game_native.empty())
-    return; // game declares no plugin hooks — nothing to preload
+    return; // game declares no plugin hooks - nothing to preload
 
   ui::PluginDbLoadRequest request;
   request.game_dir = w_->current_game_dir_;
@@ -1296,7 +1296,7 @@ void ModListController::on_plugin_db_preloaded(engine::PluginDb::Database db,
                                                quint64 generation) {
   if (generation != w_->plugin_db_generation_ || !w_->preload_pending_) {
     // Superseded by an instance switch or already consumed/superseded by a
-    // synchronous fallback read — never adopt stale disk state.
+    // synchronous fallback read - never adopt stale disk state.
     return;
   }
   w_->preloaded_plugin_db_ = std::move(db);
@@ -1306,7 +1306,7 @@ bool ModListController::adopt_preloaded_plugin_db() {
   if (!w_->preload_pending_ || !w_->preloaded_plugin_db_)
     return false;
   // The preload belongs to a different instance's game dir (paranoia; the
-  // generation check above already covers switches) — refuse it.
+  // generation check above already covers switches) - refuse it.
   if (w_->preloaded_plugin_db_game_dir_ != w_->current_game_dir_)
     return false;
   w_->plugins_db_ = std::move(*w_->preloaded_plugin_db_);
@@ -1319,7 +1319,7 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
                                              quint64 generation) {
   if (generation != w_->mod_scan_generation_) {
     // Superseded (a newer refresh or instance switch launched another
-    // scan): never apply a stale mod list. w_->loading_ stays true — the newer
+    // scan): never apply a stale mod list. w_->loading_ stays true - the newer
     // scan's result clears it when it lands.
     return;
   }
@@ -1485,13 +1485,13 @@ void ModListController::apply_profile_mod_states() {
     return;
 
   // Flush any pending toggle first so the re-read below sees the in-memory
-  // state (the delayed writer may still hold an unflushed change — e.g. the
+  // state (the delayed writer may still hold an unflushed change - e.g. the
   // user toggled a mod and hit Refresh within the ~5s debounce window).
   w_->active_profile_->write_modlist_now();
 
   // Converge the profile with the scanned mods dir: mods not yet in the
   // profile (freshly installed) are appended enabled by default and
-  // persisted (delayed) — MO2's refreshModStatus behavior.
+  // persisted (delayed) - MO2's refreshModStatus behavior.
   std::vector<std::string> known_mods;
   std::vector<std::string> foreign_mods;
   for (const auto &m : w_->mod_model_->mods()) {
@@ -1727,7 +1727,7 @@ void ModListController::load_meta_for_mods() {
           QString::fromStdString(meta.source_page_url()));
     }
 
-    // Category column: same resolution as the Categories tab — [General]
+    // Category column: same resolution as the Categories tab - [General]
     // "category" CSV primary first, else the Nexus category mapping. Both
     // names come from the per-instance category DB.
     QString category_name;
@@ -1878,7 +1878,7 @@ void ModListController::launch_conflict_scan_batch(
   ui::ConflictScanRequest request = build_conflict_scan_request();
   if (request.mod_infos.empty()) {
     // Nothing enabled to scan: mirror the old compute_conflict_state()
-    // early-return — the registry is cleared, follow-ups still run so the
+    // early-return - the registry is cleared, follow-ups still run so the
     // Data tab (and any incremental install apply) empties.
     w_->last_conflict_registry_.clear();
     for (auto &f : follow_ups)
@@ -2233,7 +2233,7 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
   data.nexus_domain = current_nexus_domain();
 
   // Sources the current game supports (download_sources knowledge, display
-  // names like "Nexus") — gates which sub-tabs the Source tab shows.
+  // names like "Nexus") - gates which sub-tabs the Source tab shows.
   const auto sources_csv =
       w_->knowledge_
           ? w_->knowledge_->get(w_->current_game_id_, "download_sources", "")
@@ -2444,7 +2444,7 @@ void ModListController::refresh_plugins_tab() {
 
   // T6: when the concurrently-preloaded DB (launch_plugin_db_preload) is
   // ready, adopt it and skip the synchronous disk read entirely. Otherwise
-  // fall back to it — and drop the pending preload so a late-landing result
+  // fall back to it - and drop the pending preload so a late-landing result
   // can't clobber the fresher synchronous read.
   bool adopted = adopt_preloaded_plugin_db();
   if (!adopted && w_->preload_pending_) {
@@ -3223,8 +3223,8 @@ void ModListController::save_order() {
 
   // Remove old mod_order / folded_separators / folded_mods / mod_parents /
   // toolbar_shortcut_icons keys. The three UI-state keys
-  // (folded_separators/folded_mods/mod_parents) are no longer written — per-mod
-  // fold/parent state lives in the manager sidecar (Issue #35) — but legacy
+  // (folded_separators/folded_mods/mod_parents) are no longer written - per-mod
+  // fold/parent state lives in the manager sidecar (Issue #35) - but legacy
   // keys are stripped here so the next save heals old instance.toml files.
   // The icons key is only stripped for backward compat with pre-#34 files; it
   // is no longer written either.
@@ -3516,7 +3516,7 @@ void ModListController::load_order() {
   // Ensure apply_fold_state() reflects current flags
   w_->mod_model_->apply_fold_state();
 
-  // Delete cleanup (self-healing): drop orphaned sidecars — files in the
+  // Delete cleanup (self-healing): drop orphaned sidecars - files in the
   // meta dir whose mod folder no longer exists in the model (deleted outside
   // the manager, or rows removed while it was closed). Pseudo-row sidecars
   // (Overwrite/MERGED, created by sync_priorities) are kept. Children of a

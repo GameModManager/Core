@@ -1,4 +1,4 @@
-# Core sources — one static library per subsystem, plus the app executable.
+# Core sources - one static library per subsystem, plus the app executable.
 # Dependency direction: ui -> engine -> runtime -> platform (Qt lives only in
 # the ui and app layers; engine/runtime/platform/cli are Qt-free).
 
@@ -9,7 +9,7 @@ add_subdirectory(ui)
 add_subdirectory(cli)
 
 # ---------------------------------------------------------------------------
-# App entry point — thin main() + wiring only
+# App entry point - thin main() + wiring only
 # ---------------------------------------------------------------------------
 add_executable(gamemodmanager
     main.cpp
@@ -37,7 +37,7 @@ elseif(NOT WIN32)
     target_link_options(gamemodmanager PRIVATE -rdynamic -Wl,-u,gmm_instance_game_id)
 endif()
 
-# OS keyring (QtKeychain) — compiled in wherever the library is available
+# OS keyring (QtKeychain) - compiled in wherever the library is available
 if(Qt6Keychain_FOUND)
     target_sources(gamemodmanager PRIVATE keyring/qtkeychain_keyring.cpp)
     target_compile_definitions(gamemodmanager PRIVATE GMM_HAS_QTKEYCHAIN=1)
@@ -62,7 +62,7 @@ qt_add_translations(gamemodmanager
     RESOURCE_PREFIX /i18n
 )
 
-# Link libraries — the subsystem libraries carry their own transitive deps
+# Link libraries - the subsystem libraries carry their own transitive deps
 # (engine -> libarchive/sqlite3/yaml-cpp/curl/nlohmann_json/zlib/lz4/python;
 # ui -> Qt6 + engine). The app links Qt directly for main.cpp and repeats the
 # pkg-config deps explicitly so the final link line is self-documenting.
@@ -97,7 +97,7 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
-# LD_PRELOAD intercept libraries — Linux-only, C, built as shared libs
+# LD_PRELOAD intercept libraries - Linux-only, C, built as shared libs
 # ---------------------------------------------------------------------------
 if(UNIX AND NOT APPLE)
     add_library(gmm_overlay_intercept SHARED engine/deploy/launch/overlay_intercept.c)
@@ -108,7 +108,7 @@ if(UNIX AND NOT APPLE)
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
     )
 
-    # === BROKEN FEATURE — DO NOT ENABLE ===
+    # === BROKEN FEATURE - DO NOT ENABLE ===
     # libgmm_ci_intercept.so is a case-insensitive syscall interposer that is
     # broken: it shadows Wine's own case-insensitivity and broke Pandora's
     # game-tree reads (2026-08-09). It is built + unit-tested only as

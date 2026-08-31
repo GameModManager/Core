@@ -1,4 +1,4 @@
-# CLI — Qt-free headless launcher (the `--launch` mode of gamemodmanager).
+# CLI - Qt-free headless launcher (the `--launch` mode of gamemodmanager).
 # Compiled as a static library and linked into the app executable so the CLI
 # and GUI share one binary, exactly as before the CMake split.
 

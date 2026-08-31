@@ -4,7 +4,7 @@
 
 namespace engine::update {
 
-// AUR updater — uses yay or paru to update the pacman-installed package.
+// AUR updater - uses yay or paru to update the pacman-installed package.
 class AurUpdater : public SelfUpdater {
 public:
   UpdateInfo check_for_update() override;

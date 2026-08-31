@@ -232,7 +232,7 @@ std::vector<std::uint8_t> SaveReader::inflate_chunks(
             next += kAlign - (next % kAlign);
         }
         if (next == pos) {
-            break;  // no forward progress — guard against an infinite loop
+            break;  // no forward progress - guard against an infinite loop
         }
         pos = next;
     }

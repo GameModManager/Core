@@ -1,6 +1,6 @@
 #pragma once
 
-// DirectoryRefresher — a coordinator/facade that manages all background scan
+// DirectoryRefresher - a coordinator/facade that manages all background scan
 // workers from one place. Rather than creating ad-hoc QThread+worker pairs in
 // MainWindow, callers request a refresh through this single entry point.
 //
@@ -10,7 +10,7 @@
 // classes; it is a coordinator that uses them, not a replacement.
 //
 // Thread safety: all public methods are expected to be called from the main
-// (UI) thread.  The coordinator is a QObject — connect signals/slots normally.
+// (UI) thread.  The coordinator is a QObject - connect signals/slots normally.
 
 #include <QObject>
 #include <QString>
@@ -64,7 +64,7 @@ public:
 
   // Trigger a refresh.  `targets` is a bitmask of RefreshTarget flags.
   // Non-blocking: workers run in the background and signal completion.
-  // Calling refresh() while already busy is allowed — a second set of workers
+  // Calling refresh() while already busy is allowed - a second set of workers
   // is spawned; there is no queuing or deduplication.
   void refresh(RefreshTargets targets);
 

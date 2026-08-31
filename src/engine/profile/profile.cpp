@@ -68,7 +68,7 @@ bool parse_int(const std::string& s, int& out) {
 }
 
 // ---------------------------------------------------------------------------
-// settings.ini — minimal QSettings-compatible INI model
+// settings.ini - minimal QSettings-compatible INI model
 // ---------------------------------------------------------------------------
 // QSettings IniFormat writes root-section keys at the top of the file (no
 // [header]), then [Section] blocks. Comments start with ';' (QSettings also
@@ -273,7 +273,7 @@ ProfileRemoveResult ProfileManager::remove(bool is_active) {
 std::vector<std::string> ProfileManager::repair() {
     std::vector<std::string> generated;
 
-    // settings.ini — create with defaults when missing. save_settings()
+    // settings.ini - create with defaults when missing. save_settings()
     // logs its own failure; the file is only reported as generated on
     // success.
     if (!std::filesystem::exists(settings_path())) {
@@ -285,7 +285,7 @@ std::vector<std::string> ProfileManager::repair() {
         }
     }
 
-    // modlist.txt — create empty when missing.
+    // modlist.txt - create empty when missing.
     if (!std::filesystem::exists(modlist_path())) {
         if (safe_write_file(modlist_path(), "")) {
             generated.push_back("modlist.txt");
@@ -295,7 +295,7 @@ std::vector<std::string> ProfileManager::repair() {
         }
     }
 
-    // archives.txt — create empty when missing.
+    // archives.txt - create empty when missing.
     if (!std::filesystem::exists(archives_path())) {
         if (safe_write_file(archives_path(), "")) {
             generated.push_back("archives.txt");
@@ -338,7 +338,7 @@ void ProfileManager::set_setting(const std::string& key, const std::string& valu
         section.entries.emplace_back(key, value);
         return;
     }
-    // No root section yet — it must serialize before any [Section] block.
+    // No root section yet - it must serialize before any [Section] block.
     ini_.insert(ini_.begin(), IniSection{"", {{key, value}}});
 }
 
@@ -403,7 +403,7 @@ void ProfileManager::refresh_mod_status(const std::vector<std::string>& known_mo
 
     // Mods not in the file: foreign mods get the lowest priorities (below all
     // file mods), managed (new) mods the highest (above all file mods), both
-    // enabled by default — MO2's refreshModStatus behavior.
+    // enabled by default - MO2's refreshModStatus behavior.
     std::unordered_set<std::string> foreign_set(foreign_mods.begin(), foreign_mods.end());
     int next_high = num_file;
     int next_low = -1;

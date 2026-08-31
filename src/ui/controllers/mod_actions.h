@@ -8,7 +8,7 @@ namespace ui {
 
 class MainWindow;
 
-// Mod::Actions — extracted action methods for mod operations (remove, move,
+// Mod::Actions - extracted action methods for mod operations (remove, move,
 // toggle, create separator, rename, color, etc.).
 //
 // Each action operates on the model via MainWindow's mod_model_ and mod_view_.

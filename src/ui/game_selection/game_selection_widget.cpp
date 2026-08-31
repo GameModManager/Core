@@ -241,7 +241,7 @@ void GameSelectionWidget::set_games(const std::vector<GameEntry>& installed,
     }
 
     // One merged, alphabetically sorted list (Workspace-4fu). The game-less
-    // "Generic Instance" entry (game_id "generic", no install path — creation
+    // "Generic Instance" entry (game_id "generic", no install path - creation
     // flows treat an empty path as valid) is always appended LAST.
     std::vector<GameEntry> all = installed;
     all.insert(all.end(), available.begin(), available.end());

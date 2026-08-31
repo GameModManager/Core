@@ -4,7 +4,7 @@
 
 namespace engine::update {
 
-// AppImage updater — downloads a new AppImage and replaces the running one.
+// AppImage updater - downloads a new AppImage and replaces the running one.
 class AppImageUpdater : public SelfUpdater {
 public:
   UpdateInfo check_for_update() override;

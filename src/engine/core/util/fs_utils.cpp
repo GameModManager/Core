@@ -377,7 +377,7 @@ size_t relay_output_to_mod(const std::filesystem::path& scratch_dir,
         auto mod_rel = overwrite_to_mod_rel(rel_str, mods_subpath,
                                            include_mod_id, mod_id);
         if (mod_rel.empty()) {
-            // A path that maps onto the mod root itself (bare "Data") — the
+            // A path that maps onto the mod root itself (bare "Data") - the
             // file is the mapping root: keep its name, drop nothing.
             mod_rel = rel_str;
         }

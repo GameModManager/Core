@@ -5,7 +5,7 @@
 
 namespace engine {
 
-// A single category within a named core set. Pure data — no behavior.
+// A single category within a named core set. Pure data - no behavior.
 // Mirrors the fields the Category::Factory stores (id, name, parent_id) so a
 // set can be applied to the factory without transformation.
 struct CategorySetEntry {

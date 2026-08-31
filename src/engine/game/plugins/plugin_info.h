@@ -46,7 +46,7 @@ struct GamePlugin {
 
     // Type checks: header flag OR extension, matching the flag meaning that
     // older GMM versions collapsed into a single bool (.esh has no extension
-    // field — it maps straight to is_medium_flagged).
+    // field - it maps straight to is_medium_flagged).
     [[nodiscard]] bool is_master() const { return is_master_flagged || has_master_ext; }
     [[nodiscard]] bool is_light() const { return is_light_flagged || has_light_ext; }
     [[nodiscard]] bool is_medium() const { return is_medium_flagged; }

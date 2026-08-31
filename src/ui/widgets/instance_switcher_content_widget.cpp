@@ -152,7 +152,7 @@ void InstanceSwitcherContentWidget::refresh_list() {
         hlay->setContentsMargins(8, 6, 8, 6);
         hlay->setSpacing(12);
 
-        // Game icon — declared icon from the global cache, or a letter avatar
+        // Game icon - declared icon from the global cache, or a letter avatar
         // while the fetch is in flight (icon_ready() swaps it in).
         auto* icon_label = new QLabel();
         icon_label->setFixedSize(36, 36);

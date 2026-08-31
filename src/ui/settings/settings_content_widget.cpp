@@ -539,7 +539,7 @@ QWidget *SettingsContentWidget::build_paths_tab() {
   auto *page = new QWidget(this);
   auto *layout = new QVBoxLayout(page);
 
-  // Instances Directory — bare row, no group box (MO2 layout)
+  // Instances Directory - bare row, no group box (MO2 layout)
   auto *inst_label = new QLabel(tr("Instances Directory"), page);
   auto *dir_edit = new QLineEdit(s.instances_dir(), page);
   dir_edit->setPlaceholderText(
@@ -575,7 +575,7 @@ QWidget *SettingsContentWidget::build_paths_tab() {
     auto *base_form = new QFormLayout;
     base_form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
 
-    // Base Directory — editable; committing a different path relocates the
+    // Base Directory - editable; committing a different path relocates the
     // instance
     auto *base_edit =
         new QLineEdit(QString::fromStdString(instance_root_.string()), page);
@@ -705,7 +705,7 @@ QWidget *SettingsContentWidget::build_paths_tab() {
               }
             });
 
-    // Managed Game — writes game_dir back into instance.toml
+    // Managed Game - writes game_dir back into instance.toml
     auto *game_edit = new QLineEdit(page);
     auto *game_browse = new QPushButton(tr("Browse..."), page);
     auto *game_row = new QHBoxLayout;
@@ -743,7 +743,7 @@ QWidget *SettingsContentWidget::build_paths_tab() {
               }
             });
 
-    // Game Mods Directory (Workspace-6up) — the deploy target for games
+    // Game Mods Directory (Workspace-6up) - the deploy target for games
     // whose mod folder lives outside the install dir (Isaac on macOS).
     // Empty = deploy into the game dir via the plugin's deploy_prefix.
     auto *gmods_edit = new QLineEdit(page);
@@ -871,7 +871,7 @@ QWidget *SettingsContentWidget::build_plugins_tab() {
           std::filesystem::path(p.path).filename().string());
       e.enabled = Settings::instance().plugin_enabled(e.enabled_basename);
       // P1.5: typed settings declared via register_settings_tab merge
-      // into the same key:value rows as register_settings — the table
+      // into the same key:value rows as register_settings - the table
       // is the only rendering path for plugin settings.
       e.settings_tab = p.settings_tab;
       const auto tab_key = [&p](const std::string &key) {

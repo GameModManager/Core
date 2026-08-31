@@ -9,7 +9,7 @@
 namespace engine {
 
 // =========================================================================
-// PlaceholderWorker — scaffolding for coordinator-only compilation.
+// PlaceholderWorker - scaffolding for coordinator-only compilation.
 // Will be replaced by concrete workers when MainWindow migrates.
 // =========================================================================
 

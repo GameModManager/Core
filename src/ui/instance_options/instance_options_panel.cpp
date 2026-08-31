@@ -16,7 +16,7 @@ InstanceOptionsDialog::InstanceOptionsDialog(
     const engine::DeployConfig& deploy_config, QWidget* parent)
     : QDialog(parent) {
     setWindowTitle(
-        tr("Instance Options — %1").arg(QString::fromStdString(game_display_name)));
+        tr("Instance Options - %1").arg(QString::fromStdString(game_display_name)));
 
     auto* layout = new QVBoxLayout(this);
     content_ = new InstanceOptionsWidget(platform, plugin_loader, game_id,

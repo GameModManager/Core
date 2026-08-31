@@ -40,7 +40,7 @@ struct InstanceOptionsParams {
 // TOML inline tables and legacy plain-string entries; legacy JSON-style
 // inline tables ({"path":"..."}) are repaired by
 // engine::parse_instance_toml_content. Empty when the key is missing or the
-// content is unparseable. Backed by toml++ (Issue #5e8) — the pre-toml++
+// content is unparseable. Backed by toml++ (Issue #5e8) - the pre-toml++
 // bracket-depth scan (Issue #34) is superseded by a real TOML parser.
 std::vector<std::string> extract_executables(const std::string &content);
 

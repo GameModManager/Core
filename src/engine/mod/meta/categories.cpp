@@ -46,7 +46,7 @@ void Categories::seed_default() {
   categories_.clear();
   nexus_map_.clear();
 
-  // Default category set — universal, game-agnostic categories merged from
+  // Default category set - universal, game-agnostic categories merged from
   // Bethesda/MO2 and Isaac sets, with additional categories drawn from real
   // modding load orders. IDs 1000+ avoid collisions with legacy per-game sets.
   struct Def {
@@ -151,14 +151,14 @@ void Categories::seed_default() {
       {1704, "Utilities", 1700},
       {1705, "Cheats & Console", 1700},
 
-      // --- Modding (1800) — sub of Technical ---
+      // --- Modding (1800) - sub of Technical ---
       {1800, "Modding", 1700},
       {1801, "Modders Resources", 1800},
       {1802, "Frameworks & Libraries", 1800},
       {1803, "Tutorials & Docs", 1800},
       {1804, "Modding Utilities", 1800},
 
-      // --- File Support (1900) — file-format parsers & helpers ---
+      // --- File Support (1900) - file-format parsers & helpers ---
       {1900, "File Support", 0},
   };
   for (const auto &d : kDefaults)

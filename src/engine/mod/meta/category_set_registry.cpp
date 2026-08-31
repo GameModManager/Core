@@ -25,7 +25,7 @@ bool CategorySetRegistry::has(const std::string& set_name) const {
 }
 
 void CategorySetRegistry::register_builtin_sets() {
-    // --- "Default" — empty fallback for plugins that declare nothing. ---
+    // --- "Default" - empty fallback for plugins that declare nothing. ---
     // The user-provided universal category list will populate this set later;
     // until then it seeds nothing so the factory stays empty for unknown games.
     {
@@ -36,11 +36,11 @@ void CategorySetRegistry::register_builtin_sets() {
         register_set(std::move(def));
     }
 
-    // --- "Bethesda" — MO2/Nexus Bethesda (Skyrim-style) 58-category list. ---
+    // --- "Bethesda" - MO2/Nexus Bethesda (Skyrim-style) 58-category list. ---
     // Source-of-truth moved here from the old Categories::seed_default().
     // IDs are the classic MO2 ids (1..58). Note: MO2's list historically
     // repeats id 39 ("Voice" then "Tattoos"); the factory dedupes by id, so
-    // only the first (Voice) survives — matching the prior register_categories
+    // only the first (Voice) survives - matching the prior register_categories
     // behavior. Kept verbatim for fidelity with MO2's category file format.
     {
         static const CategorySetEntry kBethesda[] = {
@@ -82,7 +82,7 @@ void CategorySetRegistry::register_builtin_sets() {
         register_set(std::move(def));
     }
 
-    // --- "Isaac" — The Binding of Isaac: Rebirth Steam Workshop categories. ---
+    // --- "Isaac" - The Binding of Isaac: Rebirth Steam Workshop categories. ---
     // Moved here from the Isaac plugin (previously 22 register_categories calls).
     // IDs 1000..1021, parent hierarchy as in the plugin.
     {

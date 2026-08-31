@@ -68,7 +68,7 @@ public:
     void set_confirm_close_with_downloads(bool on);
 
     // Default (startup) profile name for the current instance. Empty when no
-    // default was chosen — the app then falls back to the first profile.
+    // default was chosen - the app then falls back to the first profile.
     QString default_profile() const;             // key: profiles/default
     void set_default_profile(const QString& name);
 
@@ -160,7 +160,7 @@ public:
     // throttled to ~1.5MB/s, so parallel transfers don't help them; only
     // Premium lifts the cap. Defaults to ON (multithreading OFF by default).
     // On login the tier-derived default is applied ONLY while the user has
-    // never set the value explicitly — a manual choice survives later logins.
+    // never set the value explicitly - a manual choice survives later logins.
     bool nexus_queue_downloads() const;           // key: nexus/queue_downloads
     void set_nexus_queue_downloads(bool on);
     bool nexus_queue_downloads_set() const;       // user explicitly chose a value
@@ -260,7 +260,7 @@ public:
     int modinfo_last_tab() const;                // key: modinfo/last_tab
     void set_modinfo_last_tab(int index);
 
-    // ListDialog (generic choice picker) geometry — restored on next open.
+    // ListDialog (generic choice picker) geometry - restored on next open.
     QByteArray listdialog_window_geometry() const;  // key: listdialog/window_geometry
     void set_listdialog_window_geometry(const QByteArray& g);
 

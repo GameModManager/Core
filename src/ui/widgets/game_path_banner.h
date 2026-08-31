@@ -7,7 +7,7 @@ namespace ui {
 // Prominent "Set Game Path" banner shown at the top of the main window while
 // a game-less instance is loaded (Workspace-tnj): downloads and instance-side
 // management work, but scanning, deployment and launching need a game
-// directory. Native widgets only — prominence comes from placement and copy,
+// directory. Native widgets only - prominence comes from placement and copy,
 // not hardcoded colors (QPalette-first convention).
 class GamePathBanner : public QWidget {
   Q_OBJECT

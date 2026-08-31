@@ -11,14 +11,14 @@
 #include "engine/core/log/logger.h"
 
 // ---------------------------------------------------------------------------
-// Registry — v2 IPluginPreview backing store.
+// Registry - v2 IPluginPreview backing store.
 //
 // This is a header-only singleton on purpose: the engine's plugin loader
 // (gmm_engine, which is Qt-free and must NOT link the UI library) populates it
 // from the v2 register_preview callback, while the UI's PreviewWindow queries
 // it. Keeping the implementation inline (and the stored types opaque: function
 // pointers + void*) means neither side needs a link or Qt dependency on the
-// other — the engine only ever sees void* and GmmPreviewFn, and the UI casts
+// other - the engine only ever sees void* and GmmPreviewFn, and the UI casts
 // the returned void* to QWidget*.
 //
 // A plugin registers a generator for a file extension (e.g. ".dds", ".nif").

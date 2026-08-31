@@ -15,7 +15,7 @@
 namespace ui {
 
 // --- Pure row-building compute. Runs on the worker thread (full build) or on
-// the main thread (incremental install path) — never touches widgets.
+// the main thread (incremental install path) - never touches widgets.
 
 // On-disk path of a provider's copy: instance mods dir first, then the
 // game-native mods dir fallback. The registry key is CI-normalized (directory

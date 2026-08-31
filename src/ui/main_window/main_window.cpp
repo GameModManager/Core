@@ -42,7 +42,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   setWindowTitle(tr("GameModManager"));
   resize(1200, 800);
 
-  // Issue #16 controllers — the composer delegates behavior to these. Each
+  // Issue #16 controllers - the composer delegates behavior to these. Each
   // controller reaches the shared members below through w_-> (friend).
   launch_ = std::make_unique<LaunchController>(this, this);
   queue_ = std::make_unique<QueueController>(this, this);

@@ -159,7 +159,7 @@ merged_view_file_resolve(const std::filesystem::path &game_dir,
                          const std::filesystem::path &staging_dir,
                          const std::filesystem::path &exec_path);
 
-// True when `exec_path` resolves in the merged view to a regular file — the
+// True when `exec_path` resolves in the merged view to a regular file - the
 // launchable-executable check. Rejects directories and special entries (e.g.
 // a mod's bin/ folder) that the launchers cannot exec.
 [[nodiscard]] bool

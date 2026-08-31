@@ -1,4 +1,4 @@
-# Engine — Qt-free static library. No Qt6::* target is linked here and no
+# Engine - Qt-free static library. No Qt6::* target is linked here and no
 # Qt include directory is exposed. The Qt-using files (theme/style_manager,
 # theme/icon_manager, notify/notification_backend, nxm/nxm_ipc,
 # launch/multi_process) live under src/ui/ and are compiled into gmm_ui
@@ -152,7 +152,7 @@ set(ENGINE_SOURCES
     ${FOMOD_ENGINE_SOURCES}
 )
 
-# FUSE/VFS strategies — Linux only
+# FUSE/VFS strategies - Linux only
 if(NOT WIN32 AND FUSE3_FOUND)
     list(APPEND ENGINE_SOURCES
         deploy/strategy_vfs.cpp
@@ -160,7 +160,7 @@ if(NOT WIN32 AND FUSE3_FOUND)
     )
 endif()
 
-# OverlayFS launcher — Linux-only APIs (clone, mount namespaces, setxattr,
+# OverlayFS launcher - Linux-only APIs (clone, mount namespaces, setxattr,
 # /proc/*); excluded on macOS/Windows rather than ifdef'd per-error.
 if(NOT APPLE)
     list(APPEND ENGINE_SOURCES
@@ -184,13 +184,13 @@ target_compile_definitions(gmm_engine PUBLIC VERSION="${PROJECT_VERSION}")
 
 # nlohmann_json is header-only and leaks through the PUBLIC engine header
 # mod/fomod/fomod_view_model.h, so consumers compiling that header need its
-# include dir — it must be PUBLIC, not PRIVATE (PRIVATE would propagate to
+# include dir - it must be PUBLIC, not PRIVATE (PRIVATE would propagate to
 # the link line only).
 target_link_libraries(gmm_engine PUBLIC
     PkgConfig::NLOHMANN_JSON
 )
 
-# Link libraries — PRIVATE deps of a static library propagate as link-only
+# Link libraries - PRIVATE deps of a static library propagate as link-only
 # dependencies to consumers, so tests that link gmm_engine get the system
 # libraries they need without re-listing them.
 target_link_libraries(gmm_engine PRIVATE

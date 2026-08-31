@@ -7,7 +7,7 @@
 namespace engine {
 
 // ---------------------------------------------------------------------------
-// ModuleInfo — metadata about a loadable module (shared library / plugin).
+// ModuleInfo - metadata about a loadable module (shared library / plugin).
 // ---------------------------------------------------------------------------
 struct ModuleInfo {
   std::filesystem::path path;
@@ -21,7 +21,7 @@ struct ModuleInfo {
 };
 
 // ---------------------------------------------------------------------------
-// Module — RAII wrapper around a platform-specific shared library handle.
+// Module - RAII wrapper around a platform-specific shared library handle.
 // ---------------------------------------------------------------------------
 class Module {
 public:

@@ -12,7 +12,7 @@ namespace ui {
 
 // Runs a caller-supplied Nexus mod-info fetch (network round-trip + JSON
 // parse) on a dedicated worker thread and crosses the result back via a
-// queued signal (P8.3 — SourceTab's Refresh used to block the main thread
+// queued signal (P8.3 - SourceTab's Refresh used to block the main thread
 // behind a WaitCursor). The fetch callable is delivered per-run through a
 // queued functor (LootSortThread shape), so the worker owns no mutable state
 // the UI thread could race with; `generation` tags which run a result belongs
@@ -36,7 +36,7 @@ signals:
 //
 // Lifetime note: the thread is quit+waited on destruction, so destroying the
 // owning SourceTab while a fetch is in flight blocks until the network call
-// returns (bounded by the HTTP timeout) — the same trade the other worker
+// returns (bounded by the HTTP timeout) - the same trade the other worker
 // threads accept; the worker is never left running into a dead receiver.
 class SourceFetchThread : public QObject {
     Q_OBJECT

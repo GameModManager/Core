@@ -69,14 +69,14 @@ find_save_missing_assets(const SaveGame &save,
   const auto consider = [&](const std::string &name) {
     const auto it = by_name.find(to_lower(name));
     if (it != by_name.end() && it->second->enabled) {
-      return; // STATE_ACTIVE — the save's dependency is satisfied.
+      return; // STATE_ACTIVE - the save's dependency is satisfied.
     }
     SaveMissingAsset asset;
     asset.plugin_name = name;
     if (it != by_name.end()) {
-      asset.inactive = true; // STATE_INACTIVE — present but disabled.
+      asset.inactive = true; // STATE_INACTIVE - present but disabled.
       asset.origin_mod = it->second->owner_mod;
-    } // else STATE_MISSING — absent from the load order entirely.
+    } // else STATE_MISSING - absent from the load order entirely.
     missing.push_back(std::move(asset));
     missing_keys.push_back(to_lower(name));
   };

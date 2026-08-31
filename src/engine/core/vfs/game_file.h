@@ -8,7 +8,7 @@ namespace engine::vfs {
 class PathResolver;
 
 // A resolved on-disk file. Constructed only by PathResolver, so every instance
-// is guaranteed to have come through the single canonical resolution seam — raw
+// is guaranteed to have come through the single canonical resolution seam - raw
 // game-relative filesystem access is structurally impossible once callers adopt
 // this type. The three string/path views describe the same file from three
 // angles:

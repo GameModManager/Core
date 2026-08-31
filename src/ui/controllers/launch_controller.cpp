@@ -183,7 +183,7 @@ LaunchController::LaunchController(MainWindow *w, QObject *parent)
 // ---------------------------------------------------------------------------
 
 // Converts an Executables::Entry to a TOML inline table. The array is stored as
-// valid TOML (bare keys, `=` separators) — the pre-toml++ JSON-style inline
+// valid TOML (bare keys, `=` separators) - the pre-toml++ JSON-style inline
 // tables
 // ({"path":"..."}) were invalid TOML and are migrated on read.
 toml::table exec_entry_to_toml(const Executables::Entry &e) {
@@ -799,7 +799,7 @@ void LaunchController::on_launch_params_prepared(engine::LaunchParams lparams) {
   w_->cgroup_path_ = lresult.cgroup_path;
   w_->launch_time_ = std::filesystem::file_time_type::clock::now();
 
-  // P1.3 event bus: mirror MO2 onAboutToRun — emitted only once the launch
+  // P1.3 event bus: mirror MO2 onAboutToRun - emitted only once the launch
   // actually succeeded (a PID exists) so a failed launch is not reported.
   engine::EventBus::instance().dispatch(engine::events::kGameLaunched,
                                         engine::json_obj({
@@ -1922,7 +1922,7 @@ void LaunchController::run_prefix_tool(const QStringList &args) {
   if (request.platform == nullptr || request.steam_appid == 0) {
     QMessageBox::information(
         w_, tr("Proton Tools"),
-        tr("No Steam game is loaded — a Proton prefix is required."));
+        tr("No Steam game is loaded - a Proton prefix is required."));
     return;
   }
 
@@ -1943,7 +1943,7 @@ void LaunchController::run_exe_in_prefix() {
   if (request.platform == nullptr || request.steam_appid == 0) {
     QMessageBox::information(
         w_, tr("Proton Tools"),
-        tr("No Steam game is loaded — a Proton prefix is required."));
+        tr("No Steam game is loaded - a Proton prefix is required."));
     return;
   }
 

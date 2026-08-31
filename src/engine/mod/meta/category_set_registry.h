@@ -20,7 +20,7 @@ public:
   // Register (or replace) a named set.
   void register_set(CategorySetDefinition set);
 
-  // Look up a set by name. Returns nullptr when unknown — callers handle
+  // Look up a set by name. Returns nullptr when unknown - callers handle
   // gracefully (e.g. fall back to "Default").
   [[nodiscard]] const CategorySetDefinition *
   find(const std::string &set_name) const;

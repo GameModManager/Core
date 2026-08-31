@@ -53,9 +53,9 @@ struct LaunchParams {
   std::filesystem::path bind_mount_source;
   std::filesystem::path bind_mount_target;
 
-  // === BROKEN FEATURE — DO NOT ENABLE ===
+  // === BROKEN FEATURE - DO NOT ENABLE ===
   // Historical arm switch for the libgmm_ci_intercept.so case-insensitive
-  // interposer. The shim is broken — it shadows Wine's own case-insensitive
+  // interposer. The shim is broken - it shadows Wine's own case-insensitive
   // path handling and broke Pandora's game-tree reads (2026-08-09). do_launch
   // never preloads it unless GMM_ENABLE_BROKEN_CI_SHIM is explicitly set to a
   // truthy value. Kept only so the old wiring stays documented; do not build
@@ -86,7 +86,7 @@ struct LaunchResult {
   // Cgroup v2 path for reliable process tracking (empty = not available).
   // When non-empty, all game descendants are members of this cgroup.
   // Contains a std::string: never serialize LaunchResult across the
-  // fork() result pipe as raw bytes — send only the POD fields (pid,
+  // fork() result pipe as raw bytes - send only the POD fields (pid,
   // overlay_launched) and rebuild this from the parent's CgroupHandle.
   std::string cgroup_path;
 };

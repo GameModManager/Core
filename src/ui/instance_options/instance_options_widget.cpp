@@ -178,7 +178,7 @@ void InstanceOptionsWidget::update_runner_detail() {
     auto proton =
         engine::ProtonRuntime::find_proton_binary(platform_, steam_appid_);
     if (proton.empty())
-      resolved = tr("no Proton runner found — falls back to standalone Wine");
+      resolved = tr("no Proton runner found - falls back to standalone Wine");
     else
       resolved = QString::fromStdString(proton.string());
   } else {
@@ -273,7 +273,7 @@ void InstanceOptionsWidget::load_recommended_packages() {
   request.game_dir = game_dir_;
   if (!engine::proton_tooling_available(request)) {
     packages_status_->setText(
-        tr("protontricks is not installed — recommended packages cannot be installed."));
+        tr("protontricks is not installed - recommended packages cannot be installed."));
   }
 }
 

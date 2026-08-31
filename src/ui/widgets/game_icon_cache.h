@@ -14,7 +14,7 @@ class QThread;
 namespace ui {
 
 // Worker that runs on the gmm-icon-fetch thread. Downloads a game icon into
-// the global cache (Qt-free work: curl + filesystem only — never touches a
+// the global cache (Qt-free work: curl + filesystem only - never touches a
 // widget). One fetch per invocation; the thread owns no mutable state the UI
 // thread could race with.
 class GameIconFetcher : public QObject {
@@ -30,8 +30,8 @@ signals:
 };
 
 // Main-thread facade for game icons (instance switcher rows + game selection
-// cards). Resolves an icon synchronously from the global cache — or a built-in
-// letter avatar while a download is in flight — and fetches missing icons on a
+// cards). Resolves an icon synchronously from the global cache - or a built-in
+// letter avatar while a download is in flight - and fetches missing icons on a
 // dedicated worker thread, emitting icon_ready(game_id) when a download lands
 // so widgets can re-resolve. Singleton so the first-run screen and the instance
 // switcher share one cache and one worker thread.

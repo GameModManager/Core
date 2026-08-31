@@ -38,7 +38,7 @@ bool Direct::undeploy(const engine::DeployProgressFn &progress) {
 }
 
 // Incremental sync: deploy_impl already performs the O(Δ) diff internally via
-// the ledger — unchanged entries are skipped (one stat), new/re-pointed
+// the ledger - unchanged entries are skipped (one stat), new/re-pointed
 // entries are linked, stale entries are unlinked. We wrap deploy_all and
 // derive the SyncResult counts by diffing the ledger before/after.
 SyncResult Direct::sync(const engine::DeployProgressFn &progress) {

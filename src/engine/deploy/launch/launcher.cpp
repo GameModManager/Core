@@ -42,7 +42,7 @@ namespace fs = std::filesystem;
 
 namespace engine {
 
-#ifndef _WIN32 // POSIX-only launcher — Windows USVFS launch is ticket
+#ifndef _WIN32 // POSIX-only launcher - Windows USVFS launch is ticket
                // Workspace-3br4
 
 // Returns true when a live game chain (other than ourselves) shares our
@@ -342,18 +342,18 @@ static LaunchResult do_launch(const LaunchParams &params) {
     Logger::instance().debug("Launch env: " + key + "=" + value);
   }
 
-  // === BROKEN FEATURE — DO NOT ENABLE ===
+  // === BROKEN FEATURE - DO NOT ENABLE ===
   // The custom case-insensitive interposer (libgmm_ci_intercept.so) is
   // broken and must NEVER be preloaded. It shadows Wine's own (correct)
   // case-insensitive path handling: its ENOENT re-resolution actively
   // breaks Windows tools that read the deployed game tree. The Pandora
   // "Could not find file Z:\...\Data\meshes\actors\..." failures
-  // (2026-08-09) were caused by THIS shim, not by missing files — Wine's
+  // (2026-08-09) were caused by THIS shim, not by missing files - Wine's
   // native case-insensitivity resolves those lookups correctly. Our shim
   // only fights the runtime it is injected into.
   // The library, its build target and its unit test are kept in-tree purely
   // as reference. It stays inert unless GMM_ENABLE_BROKEN_CI_SHIM is set to
-  // a truthy value — re-enabling it without a genuine case-sensitivity bug
+  // a truthy value - re-enabling it without a genuine case-sensitivity bug
   // that Wine itself cannot handle is a mistake. (If you do, remove the
   // stale GMM_NO_CI_SHIM entries from executable Environment fields first.)
   const bool ci_shim_enabled =
@@ -406,7 +406,7 @@ static LaunchResult do_launch(const LaunchParams &params) {
       if (!proton.empty()) {
         ProtonRuntime::prepare_proton_environment(
             params.platform, params.game_dir, params.steam_appid);
-        // proton waitforexitandrun <exe> <args...> — the per-executable
+        // proton waitforexitandrun <exe> <args...> - the per-executable
         // args are appended after the executable so the game receives them.
         std::vector<std::string> ovl_args = {
             proton.string(), "waitforexitandrun", exec_path.string()};

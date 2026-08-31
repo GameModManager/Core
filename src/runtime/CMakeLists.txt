@@ -1,4 +1,4 @@
-# Runtime — Qt-free static library (Proton/Wine runtime discovery and launch).
+# Runtime - Qt-free static library (Proton/Wine runtime discovery and launch).
 # Depends on the platform interface for Steam root / prefix lookups.
 
 add_library(gmm_runtime STATIC

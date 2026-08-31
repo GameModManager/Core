@@ -14,7 +14,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#ifndef _WIN32  // POSIX-only — guarded for MSVC compatibility
+#ifndef _WIN32  // POSIX-only - guarded for MSVC compatibility
 
 #endif
 

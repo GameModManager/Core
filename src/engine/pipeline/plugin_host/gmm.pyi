@@ -143,7 +143,7 @@ class RegistrationContext:
         fn is called as fn(event_id, payload) whenever the host emits the
         event; payload is a plain dict of str -> str (the bus payload is a
         JSON object of string values, decoded by the bridge). Canonical
-        event ids and their payload keys — see gmm_abi_v1.h subscribe_event:
+        event ids and their payload keys - see gmm_abi_v1.h subscribe_event:
 
           mod_installed      {"mod", "name"}
           mod_removed        {"mod"}
@@ -170,7 +170,7 @@ class RegistrationContext:
     def register_order_encoding(self, fn: Callable[[list[str], str], int]) -> None:
         """Register a load-order writer (IPluginGame, v2).
 
-        fn(ordered_mod_ids: list[str], output_path: str) -> int — write the
+        fn(ordered_mod_ids: list[str], output_path: str) -> int - write the
         game's load-order file (plugins.txt / metadata.xml, ...). Return 1 on
         success, 0 on failure. Registered into the OrderEncodingRegistry; the
         pipeline calls it when writing load order instead of the built-in hook.
@@ -240,7 +240,7 @@ class RegistrationContext:
     ) -> None:
         """Register a save-game parser (IPluginSaveParser, v2).
 
-        fn(path: str, game_id: str) -> dict | None — parse a save file and
+        fn(path: str, game_id: str) -> dict | None - parse a save file and
         return a dict with keys file_path, game_id, creation_time (int),
         pc_name, pc_level (int), pc_location, save_number (int), plugins
         (list[str]), light_plugins (list[str]). Return None to decline. Higher
@@ -365,18 +365,18 @@ class RegistrationContext:
         array-payload types). Same priority + replace semantics.
 
         Keys per feature_type (see gmm_abi_v1.h register_game_feature_data):
-          "mod_data_content"  — "enabled": comma-separated catalog content IDs
+          "mod_data_content"  - "enabled": comma-separated catalog content IDs
                                 (plugin, optional, interface, mesh, bsa,
                                 script, skse, skse_files, skyproc, sound,
                                 texture, mcm, ini, facegen, modgroup);
                                 "content:<id>": "name|icon|filter_only".
-          "data_archives"     — "vanilla_archives": comma-separated archive names.
-          "script_extender"   — "binary", "plugin_path", "loader_name",
+          "data_archives"     - "vanilla_archives": comma-separated archive names.
+          "script_extender"   - "binary", "plugin_path", "loader_name",
                                 "savegame_extension".
-          "save_game_info"    — "extensions": comma-separated save extensions.
-          "local_savegames"   — "saves_subpath", "ini_file".
-          "unmanaged_mods"    — "mods": comma-separated internal mod names.
-          "bsa_invalidation"  — "bsa_name", "bsa_version".
+          "save_game_info"    - "extensions": comma-separated save extensions.
+          "local_savegames"   - "saves_subpath", "ini_file".
+          "unmanaged_mods"    - "mods": comma-separated internal mod names.
+          "bsa_invalidation"  - "bsa_name", "bsa_version".
         game_id: the game this feature serves ("" = this plugin's own game).
         """
         ...

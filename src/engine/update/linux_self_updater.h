@@ -4,7 +4,7 @@
 
 namespace engine::update {
 
-// Generic Linux updater — fallback for non-store/non-package installs.
+// Generic Linux updater - fallback for non-store/non-package installs.
 // Downloads a tarball or binary from GitHub and replaces in-place.
 class LinuxSelfUpdater : public SelfUpdater {
 public:

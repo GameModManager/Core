@@ -4,7 +4,7 @@
 
 namespace engine::update {
 
-// macOS updater — handles .dmg-based updates.
+// macOS updater - handles .dmg-based updates.
 class MacOSSelfUpdater : public SelfUpdater {
 public:
   UpdateInfo check_for_update() override;

@@ -20,7 +20,7 @@ public:
     virtual void remove(const std::string& name) = 0;
 };
 
-// Obfuscated file-backed storage (XOR + base64). NOT real crypto — a last
+// Obfuscated file-backed storage (XOR + base64). NOT real crypto - a last
 // resort for systems without an OS keyring. Logs a prominent warning so callers
 // know the stored secret is recoverable from the binary.
 class FileKeyring : public Keyring {

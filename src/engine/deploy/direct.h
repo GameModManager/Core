@@ -79,7 +79,7 @@ public:
 
   // Incremental sync: re-evaluates winners, deploys only what changed.
   // Returns a SyncResult with counts of what happened.
-  // This is the O(Δ) path — same as deploy_all but fast when most files
+  // This is the O(Δ) path - same as deploy_all but fast when most files
   // are unchanged (stat-only for unchanged entries).
   [[nodiscard]] SyncResult sync(const engine::DeployProgressFn &progress = {});
 
@@ -87,7 +87,7 @@ public:
   [[nodiscard]] bool is_deployed(const std::filesystem::path &target) const;
 
   // Query: get the source mod for a deployed target.
-  // NOTE: returns nullptr in the initial implementation — the ledger is a
+  // NOTE: returns nullptr in the initial implementation - the ledger is a
   // value map, so a pointer-to-view would dangle. Callers should use
   // list_deployed()/current_ledger() instead.
   [[nodiscard]] const DeployedFileInfo *

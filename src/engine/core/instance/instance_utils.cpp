@@ -207,7 +207,7 @@ DeployConfig deploy_config_for(const fs::path &instance_root,
   // the deploy root (mod files land directly in it). When empty the
   // classic layout applies unchanged: game_dir + deploy_prefix, which is
   // also how the plugin-declared mods_subpath (Skyrim "Data", Isaac
-  // "mods") is honored — deploy_prefix carries it, so no separate
+  // "mods") is honored - deploy_prefix carries it, so no separate
   // resolution here (folding mods_subpath into the root would misplace
   // root-override mods that must land in the game root).
   if (!instance_root.empty()) {
@@ -217,7 +217,7 @@ DeployConfig deploy_config_for(const fs::path &instance_root,
   }
   // Plugin-declared absolute target (Workspace-otx, e.g. Isaac on macOS
   // reads mods from ~/Library/Application Support/...): honored when the
-  // user did not override. Classic layout otherwise — game_dir +
+  // user did not override. Classic layout otherwise - game_dir +
   // deploy_prefix, which is also how the plugin-declared mods_subpath
   // (Skyrim "Data", Isaac "mods") is honored. Deliberately NOT folding
   // mods_subpath into the root here: that would misplace root-override
@@ -227,7 +227,7 @@ DeployConfig deploy_config_for(const fs::path &instance_root,
   if (!cfg.game_mods_dir.empty() && cfg.game_mods_dir == cfg.mods_dir)
     cfg.game_mods_dir.clear(); // self-referential deploy guard
   cfg.deploy_prefix = knowledge.get(game_id, "deploy_prefix", "Data");
-  // game_mods_dir IS the mods folder — appending deploy_prefix would
+  // game_mods_dir IS the mods folder - appending deploy_prefix would
   // double-nest (game_mods_dir/"mods"). Enforce what the DeployConfig
   // comment promises instead of relying on every consumer remembering.
   if (!cfg.game_mods_dir.empty())
@@ -333,7 +333,7 @@ LaunchParams prepare_launch_params(const LaunchPrepRequest &req,
   // same values (knowledge keys + GMM_CASE_SENSITIVE override included).
   const DeployConfig deploy_cfg = deploy_config_for(
       req.instance_root, req.game_dir, req.knowledge, req.game_id);
-  // === BROKEN FEATURE — DO NOT ENABLE ===
+  // === BROKEN FEATURE - DO NOT ENABLE ===
   // Historical arm switch for the libgmm_ci_intercept.so case-insensitive
   // interposer. The shim is broken (shadows Wine's own case-insensitivity,
   // broke Pandora, 2026-08-09) and do_launch only honors ci_resolve when
@@ -370,7 +370,7 @@ LaunchParams prepare_launch_params(const LaunchPrepRequest &req,
     // "direct" strategy: the lifecycle-object form of the symlink
     // default. Deploy::Direct owns the same DeployConfig values and
     // wraps deploy_all_enabled_mods_direct, so the on-disk result is
-    // identical to the symlink path below — but the strategy object is
+    // identical to the symlink path below - but the strategy object is
     // what resolves the name, keeping the launch path and the UI's
     // deploy-management actions on the same class.
     Deploy::Direct::Config cfg;

@@ -10,7 +10,7 @@ namespace ui {
 
 // Important instance paths, mirroring MO2's openFolderMenu() (MO2
 // mainwindow.cpp openFolderMenu). "Install" stays disabled until GMM is
-// actually installed somewhere — the app currently runs from the build dir.
+// actually installed somewhere - the app currently runs from the build dir.
 enum class FolderKind {
     Game,       // the game install folder
     MyGames,    // prefix Documents/My Games/<game>

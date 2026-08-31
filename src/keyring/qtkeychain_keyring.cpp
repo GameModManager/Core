@@ -60,7 +60,7 @@ void QtKeychainKeyring::remove(const std::string& name) {
 }
 
 // -----------------------------------------------------------------------
-// Main-thread implementations — each runs one QtKeychain job synchronously
+// Main-thread implementations - each runs one QtKeychain job synchronously
 // by pumping a nested event loop until the job's finished signal arrives.
 // -----------------------------------------------------------------------
 

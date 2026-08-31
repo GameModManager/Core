@@ -1,6 +1,6 @@
 #pragma once
 
-// P2.5 Saves subsystem — Qt-free save-game model.
+// P2.5 Saves subsystem - Qt-free save-game model.
 //
 // This is the engine-side analogue of MOBase::ISaveGame
 // (REFERENCES/modorganizer-preview_nif-gman-plugins++/mo2-abi/2.5.3beta11/
@@ -14,7 +14,7 @@
 // /mnt/SSD):
 //   - Magic "TESV_SAVEGAME" (13 bytes: ...GAME), then per-game header fields.
 //   - Strings are u16 byte-length + raw bytes (UTF-8). They are NOT UTF-16
-//     despite the "wstring" name in UESP/MO2 — a real save's "Vanilla Vanny"
+//     despite the "wstring" name in UESP/MO2 - a real save's "Vanilla Vanny"
 //     is 13 bytes of ASCII with no NUL interleaving (hexdump-verified). MO2's
 //     FileWrapper::read<QString> reads the same length+bytes and decodes UTF-8.
 //   - The 8-byte FILETIME at the end of the header encodes the GAME'S LOCAL
@@ -22,7 +22,7 @@
 //     matches the save filename's embedded timestamp exactly). filetime_to_epoch
 //     converts it to epoch seconds with NO timezone adjustment, so the result
 //     IS the wall-clock time the game displayed when saving. This deliberately
-//     deviates from MO2's SkyrimSESaveGame, which subtracts 2.16e11 (6h) — a
+//     deviates from MO2's SkyrimSESaveGame, which subtracts 2.16e11 (6h) - a
 //     machine-specific hack that produces a wrong displayed time on any
 //     non-UTC+2 machine. See implementation.md Log 2026-08-06.
 //   - SE (version 12) writes width/height, a u16 compression type, then an RGBA
@@ -48,7 +48,7 @@ using SaveEpochSeconds = std::int64_t;
 // data region is read (always by the default parsers).
 struct SaveGame {
     std::filesystem::path file_path;
-    std::string game_id;  // "skyrim" | "skyrimse" | "skyrimvr" — parser tag
+    std::string game_id;  // "skyrim" | "skyrimse" | "skyrimvr" - parser tag
 
     // Header fields (MO2 ISaveGame + GamebryoSaveGame simple getters).
     SaveEpochSeconds creation_time = 0;

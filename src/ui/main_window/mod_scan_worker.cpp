@@ -39,7 +39,7 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
   // real deployed mods; otherwise (plain game_dir/mods_subpath) the
   // instance-mode block below replaces it with the instance mods dir.
   if (!request.game_dir.empty()) {
-    // Workspace-93m: scan() resolves through resolve_game_mods_dir —
+    // Workspace-93m: scan() resolves through resolve_game_mods_dir -
     // instance override > plugin "game_mods_dir" hook > game_dir/mods_subpath.
     // A set game_mods_dir IS the mods folder; nothing is appended.
     scanned =
@@ -51,7 +51,7 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
   }
 
   // When mod_scan_subpath is empty, the resolved scan dir is
-  // game_dir/mods_subpath (the game's Data folder) — not a real mods
+  // game_dir/mods_subpath (the game's Data folder) - not a real mods
   // directory. Clear the game-dir scan entirely: the instance mods dir scan
   // below provides the actual mods. The \x01 default ensures that when
   // mod_scan_subpath is NOT registered (old plugins), the check doesn't

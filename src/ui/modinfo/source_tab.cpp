@@ -304,7 +304,7 @@ void SourceTab::on_refresh() {
 
     ++refresh_generation_;
     if (fetch_in_flight_) {
-        // A refresh is already on the wire: coalesce — relaunch once it
+        // A refresh is already on the wire: coalesce - relaunch once it
         // lands, so rapid Re-clicks queue at most one follow-up fetch and a
         // stale result never writes meta.
         refresh_pending_ = true;

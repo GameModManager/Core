@@ -89,7 +89,7 @@ QIcon GameIconCache::icon_for(const QString& game_id, const QString& name,
             if (!pm.isNull()) return QIcon(enforce_size(pm, size));
         }
         // Not cached (or unreadable): fetch in the background, show the avatar
-        // for now — icon_ready() fires when the download lands.
+        // for now - icon_ready() fires when the download lands.
         request_fetch(gid, url);
     }
     return make_placeholder(game_id, name, size);

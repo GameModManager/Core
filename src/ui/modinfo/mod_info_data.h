@@ -16,7 +16,7 @@ using ModInfoResult = Source::Nexus::ModInfoResult;
 
 namespace ui {
 
-// MO2's ModInfoTabIDs — tab order must match ModInfoDialog's tab construction.
+// MO2's ModInfoTabIDs - tab order must match ModInfoDialog's tab construction.
 enum class ModInfoTabId {
     TextFiles = 0,
     ConfigFiles,
@@ -84,7 +84,7 @@ struct ModInfoData {
     std::function<engine::ModInfoResult()> fetch_nexus_info;
 
     // The mod's Data directory (mod_dir + data_subpath), if a game ever keeps
-    // mods under one. Note: file-walking tabs scan data.mod_dir directly — the
+    // mods under one. Note: file-walking tabs scan data.mod_dir directly - the
     // mod folder root IS the game-data root (MO2 layout), so data_dir() is
     // currently unused.
     [[nodiscard]] QDir data_dir() const {

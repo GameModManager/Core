@@ -1,4 +1,4 @@
-// Backward-compatible shim — include the canonical header instead.
+// Backward-compatible shim - include the canonical header instead.
 #pragma once
 
 #include "engine/deploy/direct.h"

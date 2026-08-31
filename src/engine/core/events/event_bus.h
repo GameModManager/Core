@@ -1,10 +1,10 @@
 #pragma once
 
-// P1.3 plugin event bus (PLAN.md §19.4 P1.3). Qt-free, thread-safe — a plugin
+// P1.3 plugin event bus (PLAN.md §19.4 P1.3). Qt-free, thread-safe - a plugin
 // subscribes through the subscribe_event ABI (or its pybind mirror) and the
 // host emits into it at the existing mod/plugin/profile signal points. Mirrors
 // MO2's boost::signals2 plugin-facing subscription surface (onModInstalled,
-// onModStateChanged, onProfileChanged, ... — REFERENCES/modorganizer/src/
+// onModStateChanged, onProfileChanged, ... - REFERENCES/modorganizer/src/
 // {modlist,pluginlist,organizercore,downloadmanager}.h).
 //
 // Contract:
@@ -15,7 +15,7 @@
 //     json_obj() helper below; a C plugin parses it with its own JSON code, a
 //     Python plugin receives a dict (the pybind mirror json.loads it).
 //   - Any thread may emit (pipeline worker, scan worker, main thread); the bus
-//     never blocks the UI — emission is a vector copy + direct calls.
+//     never blocks the UI - emission is a vector copy + direct calls.
 
 #include <chrono>
 #include <cstdint>
@@ -27,7 +27,7 @@
 
 namespace engine {
 
-// Canonical event ids — the host emits exactly these; plugins subscribe to
+// Canonical event ids - the host emits exactly these; plugins subscribe to
 // them by name. Each carries a JSON-object payload (documented per id in
 // gmm_abi_v1.h subscribe_event and in the ABI doc header).
 namespace events {

@@ -124,7 +124,7 @@ public:
   // Check if NTFS junctions are available (Windows only, always true there).
   [[nodiscard]] virtual bool junctions_available() const { return false; }
 
-  // Home directory — Linux/macOS: $HOME, Windows: %USERPROFILE%
+  // Home directory - Linux/macOS: $HOME, Windows: %USERPROFILE%
   [[nodiscard]] virtual std::filesystem::path home_dir() const = 0;
 
   // Temporary directory

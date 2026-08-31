@@ -98,7 +98,7 @@ void StatusBar::refresh_nexus_source() {
     auto it = source_labels_by_name_.find(kRateSourceName);
     if (it == source_labels_by_name_.end()) return;
 
-    // Format: "Nexus: <hourly remaining>/<daily remaining>" — the Nexus API
+    // Format: "Nexus: <hourly remaining>/<daily remaining>" - the Nexus API
     // budget left this hour/day (same numbers the Settings > Sources panel
     // shows, remaining out of limit).
     const auto rl = engine::Source::Nexus::Auth::instance().get_rate_limit();

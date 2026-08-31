@@ -22,22 +22,22 @@ public:
   // Create a strategy object for the given name.
   //
   // Recognized names (case-sensitive):
-  //   "overlayfs" — OverlayFsDeploy (Linux only; falls back to Symlink
+  //   "overlayfs" - OverlayFsDeploy (Linux only; falls back to Symlink
   //                  when the platform does not support overlayfs).
-  //   "direct"    — Symlink (same on-disk result as the default, but
+  //   "direct"    - Symlink (same on-disk result as the default, but
   //                  routed through the Direct lifecycle object in
   //                  callers that need deploy_all/undeploy/sync).
-  //   "symlink"   — Symlink (the default).
-  //   ""          — Symlink (empty = default).
+  //   "symlink"   - Symlink (the default).
+  //   ""          - Symlink (empty = default).
   //
   // The caller owns the returned strategy.  Returns nullptr only if
   // `name` is an unrecognized non-empty string (defensive; callers
   // should validate against the known set).
   //
   // Parameters:
-  //   name            — strategy name from instance.toml / game knowledge.
-  //   case_sensitive  — forwarded to Symlink / OverlayFsDeploy constructors.
-  //   staging_dir     — staging root for OverlayFsDeploy (only used when
+  //   name            - strategy name from instance.toml / game knowledge.
+  //   case_sensitive  - forwarded to Symlink / OverlayFsDeploy constructors.
+  //   staging_dir     - staging root for OverlayFsDeploy (only used when
   //                     name == "overlayfs" and the platform supports it).
   //                     When empty and overlayfs is requested, the factory
   //                     uses a default under the process's current dir

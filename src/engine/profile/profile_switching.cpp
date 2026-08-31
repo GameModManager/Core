@@ -14,7 +14,7 @@ namespace engine::profile {
 namespace {
 
 // Case-insensitive string equality (profile names are compared
-// case-insensitively — MO2 walks directories and matches with
+// case-insensitively - MO2 walks directories and matches with
 // Qt::CaseInsensitive).
 bool iequals(const std::string &a, const std::string &b) {
   if (a.size() != b.size()) {
@@ -55,7 +55,7 @@ bool save_current_profile(ProfileManager &profile, const ProfileSaveState &state
   //    refreshDirectoryStructure).
   //
   //    Defensive guard: never flush an empty in-memory list over a populated
-  //    modlist.txt. The ProfileManager constructor only loads settings.ini — a
+  //    modlist.txt. The ProfileManager constructor only loads settings.ini - a
   //    caller that forgot to refresh_mod_status() would otherwise wipe the
   //    profile's per-mod enabled/disabled state on every switch. When mods_
   //    is empty but the file has content, load the file first so the flush
@@ -66,7 +66,7 @@ bool save_current_profile(ProfileManager &profile, const ProfileSaveState &state
   profile.write_modlist_now();
 
   // 2. Plugin state (plugins.txt / loadorder.txt / lockedorder.txt) from
-  //    the live plugin database — the in-memory plugin list is the source
+  //    the live plugin database - the in-memory plugin list is the source
   //    of truth, not per-toggle disk reads.
   if (plugin_db != nullptr) {
     const auto profiles_dir = profile.directory().parent_path();
@@ -84,7 +84,7 @@ bool save_current_profile(ProfileManager &profile, const ProfileSaveState &state
     return false;
   }
 
-  // 4. Tweaked INI file (initweaks.ini) — only when the caller gathered
+  // 4. Tweaked INI file (initweaks.ini) - only when the caller gathered
   //    tweaks (MO2's createTweakedIniFile "if needed").
   if (!state.tweaked_ini.empty() &&
       !write_tweaked_ini(profile.directory(), state.tweaked_ini, error)) {
@@ -143,7 +143,7 @@ ProfileSwitchResult switch_profile(const std::filesystem::path &profiles_dir,
   }
 
   // Save the current profile's state before switching away. On failure the
-  // current profile is left untouched — the new ProfileManager is only constructed
+  // current profile is left untouched - the new ProfileManager is only constructed
   // after the save succeeded.
   if (current != nullptr) {
     std::string save_error;

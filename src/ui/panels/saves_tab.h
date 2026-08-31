@@ -57,7 +57,7 @@ public:
     static constexpr int kColumnMissing = 2;
 
 signals:
-    // Delete the named save files (and their .skse co-saves) — MainWindow
+    // Delete the named save files (and their .skse co-saves) - MainWindow
     // routes through engine::remove_path (trash), then re-scans.
     void delete_requested(const QStringList& filepaths);
 
