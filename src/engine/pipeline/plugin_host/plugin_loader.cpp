@@ -1608,6 +1608,31 @@ static void cb_v2_register_animation_parser(GmmRegistrationCtxV2 *ctx,
           state.canvas_width = cs.canvas_width;
           state.canvas_height = cs.canvas_height;
           state.raw_animation = cs.raw_animation;
+          // Create per-state render callback that captures this state's own
+          // raw_animation pointer (not the top-level one which is the first state).
+          if (cs.render_frame && cs.raw_animation) {
+            auto *raw = cs.raw_animation;
+            auto *render_fn = cs.render_frame;
+            state.render_frame =
+                [raw, render_fn](float time_ms)
+                -> AnimationParserFeature::RenderResult {
+              AnimationParserFeature::RenderResult result;
+              int32_t w = 0, h = 0;
+              uint8_t *pixels = render_fn(raw, time_ms, &w, &h);
+              if (pixels && w > 0 && h > 0) {
+                result.pixels.assign(pixels,
+                    pixels + (static_cast<size_t>(w) * static_cast<size_t>(h) * 4));
+                result.width = w;
+                result.height = h;
+                free(pixels);
+              }
+              return result;
+            };
+            state.on_demand_canvas_width = cs.canvas_width;
+            state.on_demand_canvas_height = cs.canvas_height;
+            state.on_demand_fps = static_cast<int>(c_out.fps);
+            state.on_demand_frame_count = static_cast<int>(cs.frame_count);
+          }
           for (size_t fi = 0; fi < cs.frame_count; ++fi) {
             auto &cf = cs.frames[fi];
             AnimationParserFeature::Frame frame;

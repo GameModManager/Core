@@ -330,6 +330,7 @@ void PreviewWindow::reload() {
   anm2_delays_.clear();
   anm2_index_ = 0;
   anm2_states_.clear();
+  anm2_state_renders_.clear();
   anm2_current_state_ = 0;
   anm2_playing_ = false;
   anm2_render_fn_ = nullptr;
@@ -396,6 +397,7 @@ bool PreviewWindow::load_image(const QString &path) {
   anm2_delays_.clear();
   anm2_index_ = 0;
   anm2_states_.clear();
+  anm2_state_renders_.clear();
   anm2_current_state_ = 0;
   anm2_playing_ = false;
   if (anm2_play_btn_)
@@ -465,6 +467,19 @@ bool PreviewWindow::parse_anm2_data(const QString &path) {
     anm2_states_.push_back(std::move(state));
   }
 
+  // Store per-state on-demand render callbacks. Each state carries its own
+  // render_frame closure that captures the state's raw_animation pointer.
+  anm2_state_renders_.clear();
+  for (const auto &s : data->states) {
+    StateRenderData rd;
+    rd.render_frame = s.render_frame;
+    rd.canvas_w = s.on_demand_canvas_width;
+    rd.canvas_h = s.on_demand_canvas_height;
+    rd.fps = s.on_demand_fps;
+    rd.frame_count = s.on_demand_frame_count;
+    anm2_state_renders_.push_back(std::move(rd));
+  }
+
   // Store on-demand render callback from the top-level data.
   // When available, the host uses this for smooth interpolated playback
   // instead of pre-baked frames.
@@ -515,11 +530,22 @@ bool PreviewWindow::parse_anm2_data(const QString &path) {
     anm2_play_btn_->setText(tr("Pause"));
 
   // Store on-demand render callback for smooth interpolated playback.
-  anm2_render_fn_ = data->render_frame;
-  anm2_on_demand_canvas_w_ = data->on_demand_canvas_width;
-  anm2_on_demand_canvas_h_ = data->on_demand_canvas_height;
-  anm2_on_demand_fps_ = data->on_demand_fps;
-  anm2_on_demand_frame_count_ = data->on_demand_frame_count;
+  // Prefer the per-state callback (which captures the state's own raw_animation)
+  // over the top-level one (which captures the first state's pointer).
+  if (!anm2_state_renders_.empty() && anm2_state_renders_[0].render_frame) {
+    const auto &rd = anm2_state_renders_[0];
+    anm2_render_fn_ = rd.render_frame;
+    anm2_on_demand_canvas_w_ = rd.canvas_w;
+    anm2_on_demand_canvas_h_ = rd.canvas_h;
+    anm2_on_demand_fps_ = rd.fps;
+    anm2_on_demand_frame_count_ = rd.frame_count;
+  } else {
+    anm2_render_fn_ = data->render_frame;
+    anm2_on_demand_canvas_w_ = data->on_demand_canvas_width;
+    anm2_on_demand_canvas_h_ = data->on_demand_canvas_height;
+    anm2_on_demand_fps_ = data->on_demand_fps;
+    anm2_on_demand_frame_count_ = data->on_demand_frame_count;
+  }
   anm2_time_ = 0.0f;
 
   // Start playback immediately.
@@ -675,6 +701,7 @@ void PreviewWindow::show_unsupported() {
   anm2_delays_.clear();
   anm2_index_ = 0;
   anm2_states_.clear();
+  anm2_state_renders_.clear();
   anm2_current_state_ = 0;
   anm2_playing_ = false;
   if (anm2_play_btn_)
@@ -974,18 +1001,52 @@ void PreviewWindow::switch_anm2_state(int index) {
   anm2_frames_ = state.frames;
   anm2_delays_ = state.delays;
   anm2_index_ = 0;
+  anm2_time_ = 0.0f;
+
+  // Swap the on-demand render callback to the selected state's callback.
+  // Each state has its own closure capturing the state's raw_animation pointer.
+  if (index >= 0 && index < static_cast<int>(anm2_state_renders_.size())) {
+    const auto &rd = anm2_state_renders_[index];
+    anm2_render_fn_ = rd.render_frame;
+    anm2_on_demand_canvas_w_ = rd.canvas_w;
+    anm2_on_demand_canvas_h_ = rd.canvas_h;
+    anm2_on_demand_fps_ = rd.fps;
+    anm2_on_demand_frame_count_ = rd.frame_count;
+
+    // Render the first frame of the new state to show immediately.
+    if (anm2_render_fn_ && anm2_on_demand_canvas_w_ > 0) {
+      auto result = anm2_render_fn_(0.0f);
+      if (result.width > 0 && result.height > 0 && !result.pixels.empty()) {
+        QImage img(result.pixels.data(), result.width, result.height,
+                   QImage::Format_RGBA8888);
+        current_pixmap_ = QPixmap::fromImage(img.copy());
+        apply_zoom();
+      }
+    }
+  } else {
+    // Fallback: no per-state on-demand data available, clear the callback.
+    anm2_render_fn_ = nullptr;
+    anm2_on_demand_canvas_w_ = 0;
+    anm2_on_demand_canvas_h_ = 0;
+    anm2_on_demand_fps_ = 0;
+    anm2_on_demand_frame_count_ = 0;
+    if (!anm2_frames_.empty()) {
+      current_pixmap_ = anm2_frames_.front();
+      apply_zoom();
+    }
+  }
 
   // Update the info label with the selected state's details.
   if (anm2_info_label_) {
+    int display_frames =
+        anm2_render_fn_ ? anm2_on_demand_frame_count_
+                        : static_cast<int>(state.frames.size());
+    int display_fps =
+        anm2_render_fn_ ? anm2_on_demand_fps_ : state.fps;
     anm2_info_label_->setText(tr("%1 - %2 frames, %3 fps")
                                   .arg(state.name)
-                                  .arg(static_cast<int>(state.frames.size()))
-                                  .arg(state.fps));
-  }
-
-  if (!anm2_frames_.empty()) {
-    current_pixmap_ = anm2_frames_.front();
-    apply_zoom();
+                                  .arg(display_frames)
+                                  .arg(display_fps));
   }
 
   update_anm2_ui();
