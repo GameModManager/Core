@@ -21,8 +21,15 @@ struct ModScanRequest {
     engine::GameKnowledge knowledge;  // per-game hooks, copied
     std::string game_id;
     std::filesystem::path game_dir;      // game install dir
-    // The game's actual mods dir (instance.toml "game_mods_dir" override,
-    // Workspace-6up). Empty = derive game_dir/mods_subpath as before.
+    // The game's mods dir when it is genuinely external: instance.toml
+    // "game_mods_dir" override (Workspace-6up) or the plugin-declared
+    // "game_mods_dir" hook (Workspace-otx). Empty = no external mods dir
+    // for this game; the only legitimate scan source is the instance
+    // mods dir (or the portable-mode mods dir). Workspace-s3hn removed
+    // the game_dir/mods_subpath fallback that used to live here: walking
+    // the install root as a scan source would synthesize vanilla game
+    // content (Data/, SKSE, Scripts, Meshes, Source, ...) as ScannedMod
+    // rows, contrary to MO2.
     std::filesystem::path game_mods_dir;
     std::filesystem::path instance_root; // empty = portable (no-instance) mode
     std::filesystem::path mods_dir;      // resolved mods_dir_path() (instance or game)

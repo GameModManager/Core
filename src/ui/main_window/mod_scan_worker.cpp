@@ -16,6 +16,45 @@
 
 namespace ui {
 
+namespace {
+
+// Where loose plugin files (vanilla ESMs, stray unmanaged esp/esm/esl) and
+// IUnmanagedMods-declared folders live on disk - i.e. the game's actual
+// data dir, NOT a mods source. Distinct from resolve_game_mods_dir, which
+// resolves the SCAN SOURCE and intentionally returns empty for games that
+// only declare mods_subpath (deploy-only): walking the install root as a
+// scan source would synthesize vanilla content (Data/, SKSE, Scripts,
+// Meshes, Source, ...) as ScannedMod rows, which is exactly the MO2
+// behavior the bug ticket is fixing. Per-file synthesis (unmanaged
+// plugins, vanilla ESMs) does NOT walk the folder - it just stats one
+// file at a time - so it is safe to derive native_dir from
+// game_dir/mods_subpath here.
+//
+// When the caller supplied an override or the plugin declared an explicit
+// "game_mods_dir" hook (Isaac on macOS), that path IS the data dir -
+// loose plugins and the game's vanilla ESMs live there, not in
+// game_dir/mods_subpath. The override / plugin hook always wins so the
+// stray-plugin synthesis keeps matching the plugin's actual on-disk
+// reality.
+std::filesystem::path
+native_dir_for(const std::string &game_id,
+               const std::filesystem::path &game_dir,
+               const engine::GameKnowledge &knowledge,
+               const std::filesystem::path &override_dir) {
+  if (!override_dir.empty())
+    return override_dir;
+  const std::string plugin_declared =
+      engine::plugin_game_mods_dir(knowledge, game_id);
+  if (!plugin_declared.empty())
+    return std::filesystem::path(plugin_declared);
+  const std::string subpath = knowledge.get(game_id, "mods_subpath", "");
+  if (subpath.empty())
+    return game_dir;
+  return game_dir / subpath;
+}
+
+} // namespace
+
 ModScanWorker::ModScanWorker(QObject *parent) : QObject(parent) {}
 
 void ModScanWorker::run(ModScanRequest request, quint64 generation) {
@@ -25,114 +64,88 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
   const auto &knowledge = request.knowledge;
   const auto &game_id = request.game_id;
 
-  // Ignore symlink targets: in instance mode the instance mods dir lives
-  // under the instance root, which ModScanner::scan must not follow back
-  // into duplicate entries.
-  const std::vector<std::filesystem::path> ignore_symlink_targets =
-      request.instance_root.empty()
-          ? std::vector<std::filesystem::path>{}
-          : std::vector<std::filesystem::path>{request.instance_root};
-
-  // Scan game's native mods directory. Skipped for game-less instances
-  // (Workspace-wk8): an empty path would resolve against the CWD. When the
-  // resolved dir is an explicit external mods folder this scan finds the
-  // real deployed mods; otherwise (plain game_dir/mods_subpath) the
-  // instance-mode block below replaces it with the instance mods dir.
-  if (!request.game_dir.empty()) {
-    // Workspace-93m: scan() resolves through resolve_game_mods_dir -
-    // instance override > plugin "game_mods_dir" hook > game_dir/mods_subpath.
-    // A set game_mods_dir IS the mods folder; nothing is appended.
-    scanned =
-        engine::ModScanner::scan(knowledge, game_id, request.game_dir,
-                                 ignore_symlink_targets, request.game_mods_dir);
-    engine::Logger::instance().debug("ModScanWorker: game-dir scan found " +
-                                     std::to_string(scanned.size()) +
-                                     " mod(s)");
-  }
-
-  // When mod_scan_subpath is empty, the resolved scan dir is
-  // game_dir/mods_subpath (the game's Data folder) - not a real mods
-  // directory. Clear the game-dir scan entirely: the instance mods dir scan
-  // below provides the actual mods. The \x01 default ensures that when
-  // mod_scan_subpath is NOT registered (old plugins), the check doesn't
-  // trigger (backwards compat).
-  const std::string scan_subpath =
-      knowledge.get(game_id, "mod_scan_subpath", "\x01");
-  if (scan_subpath.empty()) {
-    scanned.clear();
-    engine::Logger::instance().debug("ModScanWorker: cleared game-dir scan "
-                                     "(mod_scan_subpath empty)");
-  }
-
-  // Instance mode: when the game's mods dir is an explicit external folder
-  // (instance.toml override or plugin "game_mods_dir" hook, Workspace-6up),
-  // the game-dir scan above already found the real deployed mods - keep it
-  // and merge in what GMM stores in the instance mods dir (downloaded but
-  // not yet deployed), deduped by folder name (Workspace-8j8). When the
-  // game dir resolved to plain game_dir/mods_subpath instead, its folders
-  // are vanilla game content, not mods (e.g. Skyrim's Data/Scripts,
-  // Data/Video) - MO2 lists only <instance>/mods, so replace.
+  // Mod sources, MO2-style:
+  //   - In instance mode: the instance's own mods dir (<instance>/mods) is
+  //     the ONLY legitimate scan source for mod folders.
+  //   - When a plugin declares a real external "game_mods_dir" hook (Isaac
+  //     on macOS) or the user set the instance.toml "game_mods_dir"
+  //     override to a genuinely external folder, that folder is also a
+  //     scan source - it is, by construction, a mods-only staging folder.
+  //   - The game's install root / Data/ is NEVER a scan source. Its
+  //     vanilla content is read-only. Loose plugin files (esp/esm/esl)
+  //     there are picked up below the per-file synthesis blocks, never as
+  //     a folder-level scan.
+  // The previous code walked game_dir unconditionally and then either
+  // merged or replaced the result via the mod_scan_subpath/mods_subpath
+  // fallback chain. That whole branch is gone: a folder-level scan
+  // against the game install is exactly the regression the ticket is
+  // fixing.
   const bool explicit_game_mods_dir =
       !request.game_mods_dir.empty() ||
       !engine::plugin_game_mods_dir(knowledge, game_id).empty();
-  if (!request.instance_root.empty()) {
-    // Game-native mods dir: instance.toml override > plugin-declared
-    // "game_mods_dir" hook > game_dir/mods_subpath (Workspace-otx).
-    auto game_mods_dir = engine::resolve_game_mods_dir(
-        game_id, request.game_dir, knowledge, request.game_mods_dir.string());
-    // Only scan separately if they're different directories
-    std::error_code ec_canon;
-    auto inst_canon =
-        std::filesystem::weakly_canonical(request.mods_dir, ec_canon);
-    auto game_canon =
-        std::filesystem::weakly_canonical(game_mods_dir, ec_canon);
+
+  // 1. Primary scan: instance mods dir when one exists (always - this is
+  //    the only legitimate mod source in instance mode). Portable mode
+  //    (no instance_root) skips the scan; the caller can fall back to
+  //    its own scan via game_mods_dir below if it wishes.
+  if (!request.instance_root.empty() && !request.mods_dir.empty()) {
+    auto inst_scanned =
+        engine::ModScanner::scan_dir(knowledge, game_id, request.mods_dir,
+                                     std::vector<std::filesystem::path>{});
     engine::Logger::instance().debug(
-        "ModScanWorker: instance mode (instance_root=" +
-        request.instance_root.string() + ") inst_mods_dir=" +
-        inst_canon.string() + " game_mods_dir=" + game_canon.string() +
-        " same=" + std::to_string(inst_canon == game_canon ? 1 : 0));
-    if (inst_canon != game_canon) {
-      auto inst_scanned =
-          engine::ModScanner::scan_dir(knowledge, game_id, request.mods_dir,
-                                       std::vector<std::filesystem::path>{});
-      if (explicit_game_mods_dir) {
-        const auto kept = scanned.size();
-        std::unordered_set<std::string> existing;
-        for (const auto &m : scanned)
-          existing.insert(m.folder_name);
-        for (auto &m : inst_scanned)
-          if (existing.insert(m.folder_name).second)
-            scanned.push_back(std::move(m));
-        engine::Logger::instance().debug(
-            "ModScanWorker: merged instance mods dir into game-mods-dir "
-            "scan, " +
-            std::to_string(scanned.size() - kept) + " added, " +
-            std::to_string(scanned.size()) + " total");
-      } else {
-        scanned = std::move(inst_scanned);
-        engine::Logger::instance().debug(
-            "ModScanWorker: game-dir scan REPLACED by instance mods dir, " +
-            std::to_string(scanned.size()) + " mod(s)");
-      }
-    } else {
-      engine::Logger::instance().debug("ModScanWorker: instance mods dir == "
-                                       "game mods dir, keeping game-dir scan");
+        "ModScanWorker: instance mods dir scan found " +
+        std::to_string(inst_scanned.size()) + " mod(s) at " +
+        request.mods_dir.string());
+    scanned = std::move(inst_scanned);
+  }
+
+  // 2. External game-mods dir (genuinely external, set via the plugin
+  //    "game_mods_dir" hook or the instance.toml override). Folder-level
+  //    scan ONLY when this is the legitimately-external case - never
+  //    when the resolved dir would be game_dir or game_dir/mods_subpath
+  //    (those are vanilla game content, not a mods source). Merging in
+  //    is safe because the folder is by construction a mods-only
+  //    staging dir (no vanilla content), and dedup-by-folder-name keeps
+  //    a mod already in the instance mods dir from appearing twice.
+  if (explicit_game_mods_dir) {
+    // Use the caller-provided override path verbatim: callers
+    // (current_game_mods_dir in main_window) already suppress the
+    // resolution when game_mods_dir == mods_dir_path().
+    const auto &external =
+        !request.game_mods_dir.empty()
+            ? request.game_mods_dir
+            : std::filesystem::path(
+                  engine::plugin_game_mods_dir(knowledge, game_id));
+    if (!external.empty() && external != request.mods_dir) {
+      auto ext_scanned = engine::ModScanner::scan_dir(
+          knowledge, game_id, external, std::vector<std::filesystem::path>{});
+      const auto kept = scanned.size();
+      std::unordered_set<std::string> existing;
+      for (const auto &m : scanned)
+        existing.insert(m.folder_name);
+      for (auto &m : ext_scanned)
+        if (existing.insert(m.folder_name).second)
+          scanned.push_back(std::move(m));
+      engine::Logger::instance().debug(
+          "ModScanWorker: merged external game-mods-dir scan, " +
+          std::to_string(scanned.size() - kept) + " added, " +
+          std::to_string(scanned.size()) + " total");
     }
   }
 
-  // Detect game-native plugins (e.g. vanilla ESMs) from the game's mods
-  // directory, and synthesize unmanaged rows for stray plugins dropped
-  // straight into the game's Data dir (MO2's UnmanagedMods behavior) so the
-  // mod<->plugin selection highlight round-trips for files with no owning
-  // mod. A file a mod folder already covers is skipped here - the ownership
-  // join (GamePlugin::owner_mod) decides which row highlights for shadowed
-  // strays instead. Game-less instances skip the whole block: native_dir
-  // would be a CWD-relative path (Workspace-wk8).
+  // Detect game-native plugins (e.g. vanilla ESMs) and synthesize
+  // unmanaged rows for stray plugins dropped straight into the game's
+  // Data dir (MO2's UnmanagedMods behavior) so the mod<->plugin
+  // selection highlight round-trips for files with no owning mod. A
+  // file a mod folder already covers is skipped here - the ownership
+  // join (GamePlugin::owner_mod) decides which row highlights for
+  // shadowed strays instead. Game-less instances skip the whole block:
+  // there is no game_dir to look at (Workspace-wk8).
   if (!request.game_dir.empty()) {
     auto native_plugins = engine::native_plugins_csv(knowledge, game_id);
     if (!native_plugins.empty()) {
-      std::filesystem::path native_dir = engine::resolve_game_mods_dir(
-          game_id, request.game_dir, knowledge, request.game_mods_dir.string());
+      const std::filesystem::path native_dir = native_dir_for(
+          game_id, request.game_dir, knowledge, request.game_mods_dir);
 
       std::unordered_set<std::string> existing;
       for (const auto &m : scanned)
@@ -231,8 +244,8 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
   if (!request.game_dir.empty()) {
     auto unmanaged = engine::unmanaged_mods_for(game_id);
     if (!unmanaged.empty()) {
-      std::filesystem::path native_dir = engine::resolve_game_mods_dir(
-          game_id, request.game_dir, knowledge, request.game_mods_dir.string());
+      const std::filesystem::path native_dir = native_dir_for(
+          game_id, request.game_dir, knowledge, request.game_mods_dir);
 
       std::unordered_set<std::string> existing;
       for (const auto &m : scanned)

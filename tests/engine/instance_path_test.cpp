@@ -397,21 +397,30 @@ TEST_CASE("game mods dir override", "[engine]") {
 // Workspace-otx: game-specific absolute mods dirs come from the plugin's
 // "game_mods_dir" knowledge hook (Isaac on macOS), not from hardcoded engine
 // checks. resolve_game_mods_dir is the single resolution chain for scan/UI
-// consumers; deploy consumes only the override/plugin steps (never folding
-// mods_subpath into the deploy root).
+// consumers; deploy consumes only the override/plugin steps.
+//
+// Workspace-s3hn: the chain stops being a "fallback to game_dir or
+// game_dir/mods_subpath" once mods_subpath is a DEPLOY target. mods_subpath
+// is intentionally NOT a scan source - falling back to it (or to game_dir
+// itself when both are empty) would walk vanilla game content (Data/,
+// SKSE, Scripts, Meshes, Source, ...) and synthesize it as ScannedMod rows,
+// contrary to MO2 (which only reads mods from <profile>/mods/). When a game
+// declares no "game_mods_dir" hook, no instance.toml override, and no
+// "mod_scan_subpath", the resolution returns an empty path: there is no
+// game-dir scan source, full stop.
 TEST_CASE("plugin declared game mods dir", "[engine]") {
     using engine::GameKnowledge;
     using engine::plugin_game_mods_dir;
     using engine::resolve_game_mods_dir;
 
-    // --- Undeclared: empty accessor, chain falls through to subpath/game_dir.
+    // --- Undeclared: empty accessor; chain returns empty path (no game-dir
+    //     scan source - the scanner falls back to the instance mods dir).
+    //     mods_subpath is a deploy target and is not consulted here.
     GameKnowledge plain;
     plain.set("testgame", "mods_subpath", "Data");
     REQUIRE(plugin_game_mods_dir(plain, "testgame").empty());
-    REQUIRE(resolve_game_mods_dir("testgame", "/games/test", plain) ==
-            fs::path("/games/test") / "Data");
-    REQUIRE(resolve_game_mods_dir("othergame", "/games/test", plain) ==
-            fs::path("/games/test"));
+    REQUIRE(resolve_game_mods_dir("testgame", "/games/test", plain).empty());
+    REQUIRE(resolve_game_mods_dir("othergame", "/games/test", plain).empty());
 
     // --- Plugin-declared ~ path expands against $HOME. ---
     GameKnowledge isaac;
@@ -424,9 +433,9 @@ TEST_CASE("plugin declared game mods dir", "[engine]") {
             expanded.string());
     REQUIRE(resolve_game_mods_dir("TheBindingOfIsaacRebirth", "/games/isaac",
                                   isaac) == expanded);
-    // Other games are unaffected by the declaration.
-    REQUIRE(resolve_game_mods_dir("testgame", "/games/test", isaac) ==
-            fs::path("/games/test"));
+    // Other games are unaffected by the declaration: still no game-dir scan
+    // source (no "game_mods_dir" or "mod_scan_subpath" for testgame).
+    REQUIRE(resolve_game_mods_dir("testgame", "/games/test", isaac).empty());
 
     // --- Instance override beats the plugin declaration. ---
     REQUIRE(resolve_game_mods_dir("TheBindingOfIsaacRebirth", "/games/isaac",
