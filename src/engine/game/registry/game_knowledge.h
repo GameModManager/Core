@@ -93,9 +93,16 @@ inline constexpr const char *kDeployStrategyDirect = "direct";
 // The game's native mods directory, resolved once for every consumer:
 //   1. override_dir (the instance.toml "game_mods_dir") when non-empty,
 //   2. the plugin-declared "game_mods_dir" hook (~-expanded),
-//   3. game_dir / "mod_scan_subpath" when the plugin declares one (scan only),
-//   4. game_dir / "mods_subpath" when the plugin declares one,
-//   5. game_dir.
+//   3. game_dir / "mod_scan_subpath" when the plugin declares one (scan only).
+// mods_subpath is intentionally NOT in this chain: it is a deploy target
+// (where mod files get symlinked/copied/overlaid), not a scan source. A
+// fallback to game_dir or game_dir/mods_subpath would walk vanilla game
+// content (Data/, SKSE, Scripts, Meshes, Source, ...) and synthesize it
+// as ScannedMod rows (MO2 never enumerates the game's own install/Data
+// folder as a source of mods - mods only ever come from <profile>/mods/).
+// Returns an empty path when no game-dir scan source is configured;
+// callers either fall back to the instance mods dir, or skip the
+// folder-level game-dir scan entirely.
 // Deploy is the exception: it consumes only steps 1-2 (via
 // plugin_game_mods_dir) because folding mods_subpath into the deploy root
 // would misplace root-override mods that must land in the game root.
