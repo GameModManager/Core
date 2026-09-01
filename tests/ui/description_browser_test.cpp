@@ -9,11 +9,17 @@
 //   2. The instance can be constructed and a QApplication lives long
 //      enough to exercise the override (proves MOC + Qt linkage is OK
 //      in the test binary).
+//   3. REGRESSION: loadResource must not recurse into itself via
+//      QTextDocument::resource(). Calling doc->resource() directly on a
+//      browser that has a remote http URL must return without crashing
+//      (recursion -> stack overflow -> SIGSEGV on the buggy code).
 
 #include "ui/modinfo/description_browser.h"
 
 #include <QApplication>
+#include <QTextDocument>
 #include <QUrl>
+#include <QVariant>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -69,6 +75,51 @@ TEST_CASE("description_browser: setHtml with a remote [img] does not crash",
   // through whatever path it can in this offline environment.
   QCoreApplication::processEvents();
   // clean_image_cache: must not crash even with no in-flight replies.
+  browser.clear_image_cache();
+  CHECK(true);
+}
+
+TEST_CASE("description_browser: doc->resource() on a remote URL does not recurse",
+          "[ui][description_browser]") {
+  // REGRESSION TEST for Workspace-78oo (P1 crash). The previous
+  // implementation of loadResource() ended with an unconditional
+  // doc->resource() call. QTextDocument::resource() falls back to
+  // loadResource() when nothing is cached, which (because loadResource
+  // is virtual) dispatched back into DescriptionBrowser::loadResource
+  // and recursed until the stack overflowed. setHtml() does not
+  // synchronously trigger image resource loading, so the previous smoke
+  // test never exercised the bug. This test forces the recursion path
+  // by calling doc->resource() directly, which is exactly what the
+  // document layout does on the very first paint of a real description.
+  int argc = 0;
+  static QApplication app(argc, nullptr);
+  ui::DescriptionBrowser browser;
+  const QUrl url(QStringLiteral("http://127.0.0.1:1/none.png"));
+  // setHtml so document() is non-null and the layout is willing to
+  // resolve the resource at all. Port 1 is reserved and unreachable;
+  // the GET is allowed to time out in the background.
+  browser.setHtml(
+      QStringLiteral("<html><body><img src=\"http://127.0.0.1:1/none.png\" "
+                     "alt=\"\"></body></html>"));
+  check(browser.document() != nullptr, "document exists after setHtml");
+  // The recursion trigger: ask the document for the resource directly.
+  // On the buggy code this recurses forever (stack overflow, SIGSEGV);
+  // after the fix it returns an invalid QVariant because the url has
+  // not been fetched yet. The point of the test is that we get here
+  // and back at all.
+  const QVariant v = browser.document()->resource(
+      QTextDocument::ImageResource, url);
+  check(!v.isValid(),
+        "first lookup misses the cache: the network reply has not landed");
+  // A second lookup for the same url must also be safe (still no
+  // recursion, still a miss).
+  const QVariant v2 = browser.document()->resource(
+      QTextDocument::ImageResource, url);
+  check(!v2.isValid(), "second lookup also misses the cache");
+  // Drain pending events so any in-flight reply (which will error out
+  // on the unreachable host) is cleaned up; clear_image_cache then
+  // tears down the in_flight_ bookkeeping safely.
+  QCoreApplication::processEvents();
   browser.clear_image_cache();
   CHECK(true);
 }
