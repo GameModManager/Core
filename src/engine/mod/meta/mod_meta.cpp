@@ -21,6 +21,63 @@ static std::string trim(std::string s) {
     return s.substr(first, last - first + 1);
 }
 
+// ---------------------------------------------------------------------------
+// INI value escaping
+// ---------------------------------------------------------------------------
+//
+// The INI format has no native way to embed a literal newline inside a value:
+// any newline is a record separator, not part of the value. Raw Nexus / Steam
+// descriptions are multi-line BBCode, so we MUST encode newlines when writing
+// and decode them when reading, otherwise:
+//   - serialize() injects a literal newline mid-value, breaking INI structure
+//     (anything after the first newline is re-parsed as a new section header
+//     / key-value / comment, silently corrupting subsequent data)
+//   - On re-parse, the value is truncated at the first newline and the rest
+//     leaks into other keys / sections. Nexus descriptions are typically
+//     several paragraphs of BBCode, so almost every fetch would lose data.
+//
+// Convention: backslash-escape a small set of control characters. We use
+// the same two-character sequences as JSON-ish strings:
+//   '\n' (LF)   -> "\\n"
+//   '\r' (CR)   -> "\\r"
+//   '\\' (literal backslash) -> "\\\\"
+// All other bytes are emitted verbatim. Order matters: encode the backslash
+// FIRST so a value containing "\n" becomes "\\\\n" (one literal backslash
+// followed by 'n'), not a real newline. This is intentionally minimal - we
+// don't need to escape " or ' or anything else that the INI grammar accepts
+// in values.
+static std::string ini_escape_value(const std::string& v) {
+    std::string out;
+    out.reserve(v.size());
+    for (char c : v) {
+        switch (c) {
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            default:   out += c;      break;
+        }
+    }
+    return out;
+}
+
+static std::string ini_unescape_value(const std::string& v) {
+    std::string out;
+    out.reserve(v.size());
+    for (size_t i = 0; i < v.size(); ++i) {
+        if (v[i] == '\\' && i + 1 < v.size()) {
+            char next = v[i + 1];
+            switch (next) {
+                case 'n':  out += '\n'; ++i; continue;
+                case 'r':  out += '\r'; ++i; continue;
+                case '\\': out += '\\'; ++i; continue;
+                default:   break;  // unknown escape: keep the backslash
+            }
+        }
+        out += v[i];
+    }
+    return out;
+}
+
 static std::string current_timestamp() {
     auto now = std::chrono::system_clock::now();
     auto tt = std::chrono::system_clock::to_time_t(now);
@@ -118,7 +175,11 @@ std::string ModMeta::serialize() const {
         first = false;
         out << "[" << section << "]\n";
         for (const auto& [key, value] : kv) {
-            out << key << " = " << value << "\n";
+            // Escape control bytes that would otherwise corrupt the INI
+            // structure. A raw '\n' would end the value mid-line, so the
+            // parser re-reads the rest as a new section / key, silently
+            // losing data. See ini_escape_value() above for the encoding.
+            out << key << " = " << ini_escape_value(value) << "\n";
         }
     }
     return out.str();
@@ -161,6 +222,13 @@ bool ModMeta::parse(const std::string& content) {
         auto key = trim(trimmed_line.substr(0, eq));
         auto val = trim(trimmed_line.substr(eq + 1));
         if (key.empty()) continue;
+
+        // Reverse the encode applied in serialize(): backslash-escaped
+        // control bytes (\\n, \\r, \\\\) in the raw text become real
+        // bytes here. Without this round-trip, every multi-line value
+        // (e.g. raw Nexus / Steam BBCode descriptions) would come back
+        // truncated at the first literal newline.
+        val = ini_unescape_value(val);
 
         int idx = ensure_section(sections_, current_section);
         sections_[idx].second[key] = val;
