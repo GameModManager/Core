@@ -14,6 +14,7 @@
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/source/nexus_provider.h"
 #include "engine/source/source_provider.h"
+#include "ui/modinfo/source_panels/nexus_source_panel.h"
 #include "ui/modinfo/source_tab.h"
 
 #include <QApplication>
@@ -232,5 +233,165 @@ TEST_CASE("source tab", "[ui]") {
                       .get("Nexusmods", "nexusdescription") ==
                   "second result",
               "meta holds only the newer result (no torn write)");
+    }
+}
+
+// Source-attribution regression for the Source tab (Workspace-rvld).
+//
+// Two related bugs are guarded here:
+//
+//   1) NexusSourcePanel::has_data() used to return true whenever any of
+//      {data_.source_id, [General]version, [Nexusmods]modid} was
+//      non-empty. Every install writes a version (default 1.0), so
+//      has_data() was ALWAYS true - the Source tab's red-dot in the
+//      mod list fired for every mod, manual or otherwise, and any
+//      "Nexus has data" aggregation in SourceTab::set_mod() was
+//      polluted. The fix checks source_type=="nexus" OR a non-zero
+//      [Nexusmods]modid.
+//
+//   2) SourceTab::populate() used to derive the visible source tabs
+//      ONLY from the game's knowledge-hook "download_sources". When
+//      Skyrim's hook only names "Nexus", a LoversLab mod that does
+//      carry a [LoversLab] section loses its provenance in the UI.
+//      The fix unions supported_sources with the sections actually
+//      present in the mod's meta so LoversLab / Steam tabs surface
+//      whenever the mod actually has that provenance, regardless of
+//      the game hook.
+TEST_CASE("source tab has_data and union", "[ui]") {
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    const std::filesystem::path cfg = "/tmp/gmm_source_tab_union/config";
+    std::filesystem::remove_all("/tmp/gmm_source_tab_union");
+    std::filesystem::create_directories(cfg);
+    qputenv("XDG_CONFIG_HOME", cfg.c_str());
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
+    QCoreApplication::setOrganizationName("GameModManager");
+    QCoreApplication::setApplicationName("GameModManager");
+
+    const std::filesystem::path instance =
+        "/tmp/gmm_source_tab_union/instances/Test";
+    const std::filesystem::path meta_dir = instance / "meta";
+    std::filesystem::create_directories(meta_dir);
+
+    // Register the same fake Nexus provider the other scenario uses so
+    // find_provider() can match "Test Nexus".
+    engine::SourceRegistry::instance().register_provider(
+        std::make_unique<FakeNexusProvider>());
+
+    // --- Scenario 1: a manual mod with only a default version has
+    // NO Nexus data, so the Nexus panel must report has_data()==false.
+    // Before the fix, version alone (always "1.0") was enough to make
+    // has_data() return true. ---
+    {
+        engine::ModMeta manual;
+        manual.set("General", "version", "1.0");
+        manual.set("GameModManager", "source_type", "manual");
+        manual.save(meta_dir, "ManualMod");
+
+        ui::ModInfoData data;
+        data.id = QStringLiteral("ManualMod");
+        data.name = QStringLiteral("ManualMod");
+        // source_id empty, source_type=manual: nothing Nexus-sourced.
+        data.source_type = QStringLiteral("manual");
+        data.source_id = QString();
+        data.nexus_domain = QString();
+        data.supported_sources = QStringList{QStringLiteral("Test Nexus")};
+        data.load_meta = [meta_dir] {
+            return engine::ModMeta::load(meta_dir, "ManualMod");
+        };
+        data.save_meta = [meta_dir](const engine::ModMeta& m) {
+            return m.save(meta_dir, "ManualMod");
+        };
+
+        ui::SourceTab tab;
+        tab.set_current(data);
+        tab.set_mod(data);
+        tab.first_activation();
+        QApplication::processEvents();
+
+        // Find the Nexus panel among the created tabs.
+        ui::NexusSourcePanel* nexus = nullptr;
+        for (auto* p : tab.findChildren<ui::NexusSourcePanel*>())
+            nexus = p;
+        check(nexus != nullptr,
+              "manual mod: Nexus panel is created (provider registered)");
+        check(nexus && !nexus->has_data(),
+              "manual mod: Nexus panel has_data()==false "
+              "(version alone does not imply Nexus provenance)");
+    }
+
+    // --- Scenario 2: a mod marked source_type=="nexus" with a real
+    // source_id has has_data()==true. ---
+    {
+        engine::ModMeta nexus_mod;
+        nexus_mod.set("General", "version", "1.0");
+        nexus_mod.set("GameModManager", "source_type", "nexus");
+        nexus_mod.set("GameModManager", "source_id", "12345");
+        nexus_mod.set("Nexusmods", "modid", "12345");
+        nexus_mod.save(meta_dir, "NexusMod");
+
+        ui::ModInfoData data;
+        data.id = QStringLiteral("NexusMod");
+        data.name = QStringLiteral("NexusMod");
+        data.source_type = QStringLiteral("nexus");
+        data.source_id = QStringLiteral("12345");
+        data.nexus_domain = QStringLiteral("testgame");
+        data.supported_sources = QStringList{QStringLiteral("Test Nexus")};
+        data.load_meta = [meta_dir] {
+            return engine::ModMeta::load(meta_dir, "NexusMod");
+        };
+        data.save_meta = [meta_dir](const engine::ModMeta& m) {
+            return m.save(meta_dir, "NexusMod");
+        };
+
+        ui::SourceTab tab;
+        tab.set_current(data);
+        tab.set_mod(data);
+        tab.first_activation();
+        QApplication::processEvents();
+
+        ui::NexusSourcePanel* nexus = nullptr;
+        for (auto* p : tab.findChildren<ui::NexusSourcePanel*>())
+            nexus = p;
+        check(nexus && nexus->has_data(),
+              "nexus mod: Nexus panel has_data()==true");
+    }
+
+    // --- Scenario 3: a mod with [Nexusmods]modid="0" is NOT Nexus
+    // (MO2's "no Nexus id" sentinel). ---
+    {
+        engine::ModMeta fake;
+        fake.set("General", "version", "1.0");
+        fake.set("GameModManager", "source_type", "manual");
+        fake.set("Nexusmods", "modid", "0");
+        fake.save(meta_dir, "ZeroModidMod");
+
+        ui::ModInfoData data;
+        data.id = QStringLiteral("ZeroModidMod");
+        data.name = QStringLiteral("ZeroModidMod");
+        data.source_type = QStringLiteral("manual");
+        data.source_id = QString();
+        data.nexus_domain = QString();
+        data.supported_sources = QStringList{QStringLiteral("Test Nexus")};
+        data.load_meta = [meta_dir] {
+            return engine::ModMeta::load(meta_dir, "ZeroModidMod");
+        };
+        data.save_meta = [meta_dir](const engine::ModMeta& m) {
+            return m.save(meta_dir, "ZeroModidMod");
+        };
+
+        ui::SourceTab tab;
+        tab.set_current(data);
+        tab.set_mod(data);
+        tab.first_activation();
+        QApplication::processEvents();
+
+        ui::NexusSourcePanel* nexus = nullptr;
+        for (auto* p : tab.findChildren<ui::NexusSourcePanel*>())
+            nexus = p;
+        check(nexus && !nexus->has_data(),
+              "modid=0 sentinel: Nexus panel has_data()==false");
     }
 }

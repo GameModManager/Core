@@ -74,7 +74,44 @@ void SourceTab::populate() {
     delete page;
   }
 
-  const QStringList sources = current().supported_sources;
+  // Build the visible source list from the union of the game hook's
+  // supported_sources AND the sections actually present in this mod's
+  // meta. Reason (Workspace-rvld): a game's download_sources knowledge
+  // hook only names the providers the game's plugin wired up
+  // (SkyrimSpecialEdition declares only "Nexus"; Isaac declares
+  // "Nexus,Steam"). When a LoversLab mod is installed under Skyrim,
+  // its [LoversLab] section is silently ignored and the user sees
+  // only the Nexus tab - provenance is hidden. Without the union the
+  // tab would have to chase the Plugins repo to teach every plugin
+  // about every provider; with the union, provenance is visible the
+  // moment the meta carries it.
+  QStringList sources = current().supported_sources;
+  if (current().load_meta) {
+    auto meta = current().load_meta();
+    auto add_unique = [&sources](const QString &s) {
+      if (s.isEmpty()) return;
+      if (!sources.contains(s)) sources.append(s);
+    };
+    if (meta.has_section("Nexusmods")) {
+      add_unique(QStringLiteral("Nexus Mods"));
+    }
+    if (meta.has_section("LoversLab")) {
+      add_unique(QStringLiteral("LoversLab"));
+    }
+    if (meta.has_section("SteamWorkshop")) {
+      add_unique(QStringLiteral("Steam Workshop"));
+    }
+    const QString actual_type =
+        QString::fromStdString(meta.source_type()).toLower();
+    if (actual_type == QLatin1String("nexus")) {
+      add_unique(QStringLiteral("Nexus Mods"));
+    } else if (actual_type == QLatin1String("loverslab")) {
+      add_unique(QStringLiteral("LoversLab"));
+    } else if (actual_type == QLatin1String("steam") ||
+               actual_type == QLatin1String("steamworkshop")) {
+      add_unique(QStringLiteral("Steam Workshop"));
+    }
+  }
   if (sources.isEmpty()) {
     auto *hint = new QLabel(
         tr("No download sources are available for this game."), sources_);

@@ -115,9 +115,21 @@ void NexusSourcePanel::populate() {
 }
 
 bool NexusSourcePanel::has_data() const {
-  return !data_.source_id.isEmpty() ||
-         !meta_value("General", "version").isEmpty() ||
-         !meta_value("Nexusmods", "modid").isEmpty();
+  // has_data gates the Source tab's red-dot in the mod list (Workspace-rvld):
+  // returning true just because a version string exists caused EVERY mod -
+  // including manual / Steam / LoversLab installs, all of which get a
+  // "1.0" default version - to report "Nexus has data", which polluted the
+  // Source-tab visibility check. The Nexus panel truly has data only when
+  // the mod is actually Nexus-sourced:
+  //   - data_.source_type is "nexus" (set by load_meta_for_mods), OR
+  //   - a real Nexus mod id is stored in [Nexusmods] (numeric, > "0").
+  // "0" / empty are MO2's "no Nexus id" sentinels and must NOT count.
+  if (data_.source_type == QLatin1String("nexus") && !data_.source_id.isEmpty())
+    return true;
+  const QString modid = meta_value("Nexusmods", "modid");
+  if (!modid.isEmpty() && modid != QLatin1String("0"))
+    return modid.toLongLong() > 0;
+  return false;
 }
 
 void NexusSourcePanel::save_state() {
@@ -293,9 +305,31 @@ void NexusSourcePanel::persist_fields() {
     return;
   if (mod_id_ == nullptr)
     return;
-  set_meta_value("Nexusmods", "modid", mod_id_->text().trimmed());
+  // Workspace-rvld: do not fabricate a [Nexusmods] section for mods that
+  // are NOT actually from Nexus. The panel can render for a non-Nexus mod
+  // (LoversLab / Steam / manual) when SourceTab unions present meta
+  // sources with the game hook's supported_sources so provenance is
+  // never hidden - in that case the fields are blank and any accidental
+  // edit here must NOT be persisted as Nexus meta. Only allow the write
+  // when this mod is already marked as Nexus-sourced OR already has a
+  // [Nexusmods] section (legacy data).
+  const QString modid_text = mod_id_->text().trimmed();
+  const QString existing_modid = meta_value("Nexusmods", "modid");
+  const bool is_nexus_mod =
+      (data_.source_type == QLatin1String("nexus")) ||
+      !existing_modid.isEmpty();
+  if (is_nexus_mod) {
+    set_meta_value("Nexusmods", "modid", modid_text);
+  }
+  // version is a [General] key shared by all sources - always persist so
+  // Steam / LoversLab users editing the version field still see their
+  // change land.
   set_meta_value("General", "version", version_->text().trimmed());
-  set_meta_value("Nexusmods", "nexuscategory", category_->text().trimmed());
+  // category belongs to [Nexusmods] - only persist when this is genuinely
+  // a Nexus mod (otherwise we pollute the wrong namespace).
+  if (is_nexus_mod) {
+    set_meta_value("Nexusmods", "nexuscategory", category_->text().trimmed());
+  }
 }
 
 void NexusSourcePanel::persist_custom_url() {
