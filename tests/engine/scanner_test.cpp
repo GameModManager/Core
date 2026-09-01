@@ -370,15 +370,23 @@ TEST_CASE("scan uses game_mods_dir literally", "[engine]") {
   require(by_folder(mods, "OtherMod") != nullptr,
           "instance override scanned as-is");
 
-  // No hook/override: classic game_dir/mods_subpath fallback still works.
+  // Workspace-s3hn: the mods_subpath fallback is intentionally REMOVED from
+  // resolve_game_mods_dir. mods_subpath is a deploy target, not a scan source
+  // - falling back to it would walk vanilla game content (Data/, SKSE,
+  // Scripts, Meshes, Source, ...) and synthesize it as ScannedMod rows,
+  // contrary to MO2 (which only reads mods from <profile>/mods/). A game
+  // declaring only mods_subpath has no game-dir scan source: ModScanner::scan
+  // returns empty and the scanner falls back to the instance mods dir.
   engine::GameKnowledge skyrim;
   skyrim.set("skyrim", "mods_subpath", "Data");
   fs::create_directories(root / "install" / "Data" / "DataMod");
   write_file(root / "install" / "Data" / "DataMod" / "meta.ini",
              "[General]\nversion = 1.0\n");
   mods = engine::ModScanner::scan(skyrim, "skyrim", root / "install");
-  require(by_folder(mods, "DataMod") != nullptr,
-          "mods_subpath fallback unchanged when no game_mods_dir");
+  require(by_folder(mods, "DataMod") == nullptr,
+          "no mods_subpath fallback: vanilla Data/ folders are not mods");
+  require(mods.empty(),
+          "empty result when no game_mods_dir / mod_scan_subpath hook");
 
   fs::remove_all(root);
 }

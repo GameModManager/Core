@@ -79,7 +79,11 @@ void reconcile_deferred_disable_sentinels(const HeadlessLauncher::Config& cfg) {
 
     const auto mods_dir = inst.path_for(engine::InstanceKind::Mods);
     // Game-native mods dir (Workspace-otx chain): instance.toml override >
-    // plugin-declared "game_mods_dir" hook > game_dir/mods_subpath.
+    // plugin-declared "game_mods_dir" hook. Workspace-s3hn removed the
+    // mods_subpath / game_dir fallbacks (mods_subpath is deploy-only) so
+    // for games without an explicit hook or override, native_mods_dir is
+    // empty and the per-folder fallback below is skipped - the only
+    // legitimate location for a mod folder is the instance mods dir.
     std::string inst_mods_override;
     if (inst.read_toml())
         inst_mods_override = inst.info().game_mods_dir.string();
@@ -91,7 +95,7 @@ void reconcile_deferred_disable_sentinels(const HeadlessLauncher::Config& cfg) {
         if (m.foreign)
             continue;  // unmanaged (DLC etc.) - never written as +/- toggle
         auto folder = mods_dir / m.mod_id;
-        if (!fs::exists(folder)) {
+        if (!native_mods_dir.empty() && !fs::exists(folder)) {
             auto fallback = native_mods_dir / m.mod_id;
             if (fs::exists(fallback))
                 folder = fallback;

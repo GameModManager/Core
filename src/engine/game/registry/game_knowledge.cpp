@@ -103,18 +103,23 @@ std::filesystem::path resolve_game_mods_dir(
   const std::string declared = plugin_game_mods_dir(knowledge, game_id);
   if (!declared.empty())
     return std::filesystem::path(declared);
-  // 3. mod_scan_subpath: where the scanner should look for mods. Checked
-  //    before mods_subpath so plugins can decouple scan and deploy paths.
-  //    Empty = don't scan game dir (scanner uses instance mods dir only).
+  // 3. mod_scan_subpath: a plugin-declared subdir of the game install that is
+  //    genuinely a mods-only staging folder (rare). Empty = no game-dir
+  //    scan source; the scanner uses the instance mods dir instead.
+  //    Note: mods_subpath is intentionally NOT consulted here - it is a
+  //    deploy target, not a scan source. Falling back to it (or to game_dir
+  //    itself when both are empty) would walk vanilla game content
+  //    (Data/, SKSE, Scripts, Meshes, Source, ...) and synthesize it as
+  //    mods (MO2 only ever reads mods from <profile>/mods/).
   const std::string scan_subpath =
       knowledge.get(game_id, "mod_scan_subpath", "");
   if (!scan_subpath.empty())
     return game_dir / scan_subpath;
-  // 4. Fallback: mods_subpath (deploy path, backwards compat).
-  const std::string subpath = knowledge.get(game_id, "mods_subpath", "");
-  if (subpath.empty())
-    return game_dir;
-  return game_dir / subpath;
+  // No game-dir mods source: the caller's mods dir (or the instance mods
+  // dir) is the only legitimate scan target. Return an empty path so any
+  // folder-level game-dir scan is suppressed; per-file stray synthesis
+  // (unmanaged esp/esm/esl) runs against game_dir directly when needed.
+  return {};
 }
 
 } // namespace engine

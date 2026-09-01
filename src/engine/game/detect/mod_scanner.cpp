@@ -579,8 +579,14 @@ std::vector<ScannedMod> ModScanner::scan(
   // Workspace-93m: resolve through the single resolution point instead of
   // appending mods_subpath here. When game_mods_dir is set (instance
   // override or plugin hook) it IS the mods folder - nothing may be
-  // appended to it. Empty game_mods_dir keeps the classic
-  // game_install_dir/mods_subpath layout (e.g. Skyrim's Data/).
+  // appended to it.
+  // Workspace-s3hn: the resolution chain intentionally stops at
+  // game_install_dir/mod_scan_subpath. Falling back to mods_subpath or
+  // game_install_dir itself would walk vanilla game content (Data/, SKSE,
+  // Scripts, Meshes, Source, ...) and synthesize it as ScannedMod rows,
+  // contrary to MO2. The empty-result is the right answer for games that
+  // declare no hook: the caller (ModScanWorker) falls back to the
+  // instance mods dir.
   return scan_impl(knowledge, game_id,
                    resolve_game_mods_dir(game_id, game_install_dir, knowledge,
                                          override_mods_dir.string()),
