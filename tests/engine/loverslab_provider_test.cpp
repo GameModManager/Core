@@ -152,4 +152,32 @@ TEST_CASE("loverslab provider", "[engine]") {
   LoversLabModInfoResult garbage =
       LoversLabProvider::parse_mod_info("just some text, no html at all");
   require(!garbage.available, "garbage body: available=false");
+
+  // --- Attribute-order-agnostic <meta>: some themes emit the content
+  // attribute BEFORE the property/name attribute. The og:* fallback path
+  // must pick the content value regardless of attribute order.
+  const std::string content_first =
+      R"(<html><head>
+<meta content="Reversed Title" property="og:title">
+<meta content="Reversed description text" property="og:description">
+</head></html>)";
+  LoversLabModInfoResult cf = LoversLabProvider::parse_mod_info(content_first);
+  require(cf.available,
+          "content-first meta: available (regex handles reversed order)");
+  require(cf.name == "Reversed Title", "content-first meta: og:title picked");
+  require(cf.description == "Reversed description text",
+          "content-first meta: og:description picked");
+
+  // --- Same with name= instead of property= (some themes use name for
+  // og:* tags). property= is conventional but accept both.
+  const std::string name_first =
+      R"(<html><head>
+<meta name="og:title" content="Named Title">
+<meta name="og:description" content="Named description text">
+</head></html>)";
+  LoversLabModInfoResult nf = LoversLabProvider::parse_mod_info(name_first);
+  require(nf.available, "name= meta: available");
+  require(nf.name == "Named Title", "name= meta: og:title picked");
+  require(nf.description == "Named description text",
+          "name= meta: og:description picked");
 }

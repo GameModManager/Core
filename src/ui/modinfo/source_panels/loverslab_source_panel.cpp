@@ -9,9 +9,8 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QScopedValueRollback>
+#include <QTimeZone>
 #include <QVBoxLayout>
-
-#include <ctime>
 
 namespace ui {
 
@@ -61,17 +60,14 @@ QDate parse_date_modified(const QString &raw) {
 // always normalized to UTC by the page; the install timestamp is the
 // filesystem clock - on Linux btime is wall clock UTC. We compare at day
 // granularity so timezone offsets cannot push a same-day install into
-// the "page is newer" bucket.
+// the "page is newer" bucket. Uses QDateTime instead of gmtime_r so the
+// build is portable to MSVC (which lacks gmtime_r) and to keep with the
+// rest of the Qt-using panel. Uses QTimeZone::UTC rather than the
+// deprecated Qt::TimeSpec overload.
 QDate epoch_to_date(qint64 ts) {
   if (ts <= 0)
     return {};
-  const std::time_t t = static_cast<std::time_t>(ts);
-  std::tm tm{};
-  gmtime_r(&t, &tm);
-  char buf[16];
-  std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
-  return QDate::fromString(QString::fromLatin1(buf),
-                           QStringLiteral("yyyy-MM-dd"));
+  return QDateTime::fromSecsSinceEpoch(ts, QTimeZone::UTC).date();
 }
 
 } // namespace

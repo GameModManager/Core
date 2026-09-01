@@ -9,8 +9,6 @@
 #include <QLineEdit>
 #include <QPushButton>
 
-#include <cstdint>
-
 namespace ui {
 
 class DescriptionBrowser;

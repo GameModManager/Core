@@ -6,19 +6,31 @@
 #include <nlohmann/json.hpp>
 
 #include <cctype>
-#include <chrono>
 #include <regex>
-#include <sstream>
 #include <string>
 
 namespace engine::Source::LoversLab {
 
 namespace {
 
+// Cap on the response body we'll buffer. LoversLab mod pages are well under
+// 100 KB; anything past a few MB is either a misconfigured server or hostile.
+// Once we hit the cap we abort the transfer (returning 0 from the libcurl
+// write callback is documented as the way to signal an abort).
+constexpr size_t kMaxBodyBytes = 10 * 1024 * 1024;
+
 // libcurl write callback that accumulates the response body into a string.
+// Aborts the transfer (returns 0) once we have buffered kMaxBodyBytes so a
+// hostile or misconfigured server cannot push us into OOM.
 size_t append_body(char *ptr, size_t size, size_t nmemb, void *userdata) {
   auto *out = static_cast<std::string *>(userdata);
   const size_t total = size * nmemb;
+  if (out->size() + total > kMaxBodyBytes) {
+    // Truncate to the cap and abort the transfer.
+    if (out->size() < kMaxBodyBytes)
+      out->append(ptr, kMaxBodyBytes - out->size());
+    return 0; // signals libcurl to abort with CURLE_WRITE_ERROR
+  }
   out->append(ptr, total);
   return total;
 }
@@ -50,20 +62,31 @@ std::string trim(const std::string &s) {
 // string does not carry "&quot;" etc. Only used as a last-resort fallback
 // when JSON-LD is missing or malformed.
 std::string read_meta(const std::string &html, const std::string &attr) {
-  // Build a tolerant regex that matches either attribute order:
+  // Build a tolerant regex that matches any attribute order. Real HTML
+  // pages emit either:
   //   <meta property="og:..." content="...">
-  //   <meta name="og:..." content="...">
-  // og:* tags conventionally use `property=`, but some themes emit
-  // `name=`; accept both.
+  //   <meta content="..." property="og:...">
+  // and the same two with name= instead of property=. We allow any
+  // whitespace between attributes and accept both orderings via two
+  // alternatives joined with `|`. The capture group is the content= value.
   std::string body = html;
-  const std::regex kMeta("<meta\\s+(?:property|name)=[\"']" + attr +
+  const std::string key = "(?:property|name)";
+  const std::regex kMeta("<meta\\s+(?:"
+                             // property/name first, content second
+                             + key + "=[\"']" + attr +
+                             "[\"']\\s+content=[\"']([^\"']*)[\"']"
+                             "|" +
+                             // content first, property/name second
+                             "content=[\"']([^\"']*)[\"']\\s+" + key +
+                             "=[\"']" + attr +
                              "[\"']"
-                             "\\s+content=[\"']([^\"']*)[\"']",
+                             ")",
                          std::regex::icase);
   std::smatch m;
   if (!std::regex_search(body, m, kMeta))
     return {};
-  std::string raw = m[1].str();
+  // Pick whichever capture group the match populated.
+  std::string raw = m[1].matched ? m[1].str() : m[2].str();
   auto replace_all = [](std::string &s, const std::string &from,
                         const std::string &to) {
     size_t pos = 0;
@@ -197,7 +220,8 @@ ModInfoResult Provider::parse_mod_info(const std::string &html_body) {
             result.author = trim(a.get<std::string>());
         }
         // url: canonical /files/file/{id}/ (or whatever the page
-        // advertised). Trim a trailing slash for consistency.
+        // advertised). Stored verbatim - the visit fallback in the panel
+        // adds its own trailing slash when needed.
         auto url = j_str(j, "url");
         if (!url.empty())
           result.page_url = url;
@@ -283,6 +307,18 @@ Provider::fetch_mod_info(const std::string &file_id_or_url) const {
   // may trigger a captcha challenge.
   curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
   curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
+  // Restrict redirect protocols to HTTP(S). Without this libcurl will follow
+  // a 302 to file://, ftp://, gopher://, etc - we only ever want to follow
+  // to a web URL. The initial URL is also pre-validated against
+  // is_loverslab_url() so a hostile redirect to 169.254.169.254 or
+  // 127.0.0.1 is blocked at the protocol layer before any host check.
+  curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS,
+                   CURLPROTO_HTTPS | CURLPROTO_HTTP);
+  // Cap the response body. LoversLab mod pages are well under 100 KB; the
+  // write callback aborts the transfer if append_body() exceeds kMaxBodyBytes.
+  // Belt-and-braces: libcurl also enforces a separate ceiling here.
+  curl_easy_setopt(curl, CURLOPT_MAXFILESIZE_LARGE,
+                   static_cast<curl_off_t>(kMaxBodyBytes));
   curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L); // guest fetch - keep tight
   curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append_body);
