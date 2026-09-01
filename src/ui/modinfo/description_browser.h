@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QHash>
+#include <QSet>
 #include <QTextBrowser>
 #include <QUrl>
 
@@ -41,6 +42,12 @@ private:
   QNetworkAccessManager *nam_ = nullptr;
   // url -> reply (so we can disconnect on cache clear / teardown)
   QHash<QUrl, QNetworkReply *> in_flight_;
+  // urls whose image bytes have already been handed to the document via
+  // doc->addResource(). loadResource() only consults doc->resource() for
+  // urls in this set; doing so unconditionally would recurse because
+  // QTextDocument::resource() internally dispatches back to the virtual
+  // loadResource() when nothing is cached.
+  QSet<QUrl> cached_images_;
 };
 
 } // namespace ui
