@@ -2,6 +2,7 @@
 
 #include "engine/mod/meta/xml_util.h"
 #include "ui/modinfo/bbcode.h"
+#include "ui/modinfo/description_browser.h"
 
 #include <QFile>
 #include <QFormLayout>
@@ -34,9 +35,12 @@ QString load_metadata_content(const ModInfoData &data) {
   return content;
 }
 
-void set_description_html(QTextBrowser *browser, const QString &desc) {
+void set_description_html(DescriptionBrowser *browser, const QString &desc) {
   if (browser == nullptr)
     return;
+  // Drop any in-flight image fetches / cached resources from the previous
+  // render so we never display a picture from the prior mod here.
+  browser->clear_image_cache();
   if (desc.isEmpty()) {
     browser->setHtml(QStringLiteral(
         "<div style=\"text-align:center; color:grey; padding-top:24px;\">"
@@ -50,9 +54,11 @@ void set_description_html(QTextBrowser *browser, const QString &desc) {
   // pre-wrap keeps raw \n newlines in the BBCode source visible at render
   // time - libcbb doesn't convert \n to <br>, and without pre-wrap the
   // browser would collapse every paragraph break to a single space.
-  browser->setHtml(QStringLiteral(
-      "<html><body style=\"font-family:sans-serif; white-space:pre-wrap;\">"
-      "%1</body></html>").arg(bbcode_to_html(desc)));
+  browser->setHtml(
+      QStringLiteral(
+          "<html><body style=\"font-family:sans-serif; white-space:pre-wrap;\">"
+          "%1</body></html>")
+          .arg(bbcode_to_html(desc)));
 }
 
 } // namespace
@@ -93,7 +99,7 @@ SteamSourcePanel::SteamSourcePanel(const ModInfoData &data, QWidget *parent)
   custom_row->addWidget(visit_custom_);
   layout->addLayout(custom_row);
 
-  description_ = new QTextBrowser(this);
+  description_ = new DescriptionBrowser(this);
   description_->setOpenExternalLinks(true);
   layout->addWidget(description_, 1);
 

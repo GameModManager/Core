@@ -133,6 +133,7 @@ set(MODINFO_SOURCES
     modinfo/source_panels/steam_source_panel.cpp
     modinfo/notes_tab.cpp
     modinfo/filetree_tab.cpp
+    modinfo/description_browser.cpp
     modinfo/bbcode.cpp
 )
 list(APPEND UI_SOURCES ${MODINFO_SOURCES})
