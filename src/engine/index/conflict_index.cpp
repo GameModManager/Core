@@ -163,11 +163,19 @@ void ConflictIndex::add_file(const std::string& relative_path,
                              const std::string& mod_id, int priority) {
     priorities_[mod_id] = priority;
     mod_files_[mod_id].insert(relative_path);
-    conflicts_[relative_path].push_back({mod_id, priority});
-    // Keep sorted by priority descending (highest number = wins)
+    // Maintain the winner incrementally: front() is always the entry with the
+    // highest priority, the rest are in insertion order. Since add_file only
+    // ever adds entries (priorities never decrease in-place), a single compare-
+    // and-swap with the back is sufficient to keep front() as the winner.
+    // This makes the common bulk-insert path O(1) per call instead of O(k log k)
+    // from a full std::sort over the growing vector. remove_mod(), scan(),
+    // and rescan_mod() rebuild the index and re-sort there, so the invariant
+    // for their outputs is unaffected.
     auto& entries = conflicts_[relative_path];
-    std::sort(entries.begin(), entries.end(),
-              [](const auto& a, const auto& b) { return a.second > b.second; });
+    entries.push_back({mod_id, priority});
+    if (entries.size() > 1 && priority > entries.front().second) {
+        std::swap(entries.front(), entries.back());
+    }
 }
 
 void ConflictIndex::clear() {
