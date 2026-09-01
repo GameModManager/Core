@@ -54,6 +54,9 @@ void DescriptionBrowser::clear_image_cache() {
       r->deleteLater();
     }
   }
+  // Forget every url we previously handed to the document; the next
+  // description will rebuild its own image set.
+  cached_images_.clear();
 }
 
 QVariant DescriptionBrowser::loadResource(int type, const QUrl &name) {
@@ -101,6 +104,11 @@ QVariant DescriptionBrowser::loadResource(int type, const QUrl &name) {
       // Install into the document and trigger a repaint.
       if (auto *doc = document()) {
         doc->addResource(QTextDocument::ImageResource, name, QVariant(img));
+        // Mark the url as cached BEFORE any subsequent loadResource()
+        // call can recurse. cached_images_ is what gates the doc->
+        // resource() lookup below; without this, the very next layout
+        // pass would loop: loadResource -> resource() -> loadResource.
+        cached_images_.insert(name);
         // The image lives inside a specific QTextImageFormat; the
         // cheapest reliable repaint is the whole document. The browser
         // is sized to the description pane so the cost is bounded.
@@ -111,10 +119,18 @@ QVariant DescriptionBrowser::loadResource(int type, const QUrl &name) {
   // QTextBrowser expects a synchronous answer; return the image if the
   // document already has it cached, otherwise return an invalid QVariant
   // (broken-image placeholder) until the network reply lands.
-  if (auto *doc = document()) {
-    const QVariant cached = doc->resource(QTextDocument::ImageResource, name);
-    if (cached.isValid())
-      return cached;
+  //
+  // Only consult doc->resource() for urls we ourselves have already
+  // installed via addResource(). QTextDocument::resource() dispatches
+  // back to the virtual loadResource() when the cache is empty, so
+  // calling it unconditionally here would recurse forever and crash
+  // with a stack overflow.
+  if (cached_images_.contains(name)) {
+    if (auto *doc = document()) {
+      const QVariant cached = doc->resource(QTextDocument::ImageResource, name);
+      if (cached.isValid())
+        return cached;
+    }
   }
   return {};
 }
