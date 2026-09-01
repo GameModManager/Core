@@ -43,10 +43,12 @@ native_dir_for(const std::string &game_id,
                const std::filesystem::path &override_dir) {
   if (!override_dir.empty())
     return override_dir;
-  const std::string plugin_declared =
-      engine::plugin_game_mods_dir(knowledge, game_id);
+  // Plugin hook (absolute OR relative -> game_dir). Anchors Isaac on
+  // Linux/Windows "mods" to game_dir/mods, matching the scan/deploy target.
+  const auto plugin_declared =
+      engine::resolve_plugin_game_mods_dir(game_id, game_dir, knowledge);
   if (!plugin_declared.empty())
-    return std::filesystem::path(plugin_declared);
+    return plugin_declared;
   const std::string subpath = knowledge.get(game_id, "mods_subpath", "");
   if (subpath.empty())
     return game_dir;
@@ -108,14 +110,13 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
   //    staging dir (no vanilla content), and dedup-by-folder-name keeps
   //    a mod already in the instance mods dir from appearing twice.
   if (explicit_game_mods_dir) {
-    // Use the caller-provided override path verbatim: callers
-    // (current_game_mods_dir in main_window) already suppress the
-    // resolution when game_mods_dir == mods_dir_path().
-    const auto &external =
-        !request.game_mods_dir.empty()
-            ? request.game_mods_dir
-            : std::filesystem::path(
-                  engine::plugin_game_mods_dir(knowledge, game_id));
+    // Resolve the full chain (override -> plugin hook [absolute or
+    // relative-to-game_dir]) so a relative plugin declaration
+    // (Isaac on Linux/Windows "mods") lands at game_dir/mods. The
+    // override path is passed as-is so callers that already suppress
+    // resolution (current_game_mods_dir in main_window) keep working.
+    const std::filesystem::path external = engine::resolve_game_mods_dir(
+        game_id, request.game_dir, knowledge, request.game_mods_dir.string());
     if (!external.empty() && external != request.mods_dir) {
       auto ext_scanned = engine::ModScanner::scan_dir(
           knowledge, game_id, external, std::vector<std::filesystem::path>{});
