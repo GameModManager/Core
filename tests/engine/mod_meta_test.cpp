@@ -131,3 +131,126 @@ TEST_CASE("mod_meta_category_csv", "[engine]") {
             "missing sidecar has no category CSV");
   }
 }
+
+TEST_CASE("mod_meta_multiline_values", "[engine]") {
+  using engine::ModMeta;
+
+  // Regression for the Nexus description mangling bug
+  // (Workspace-a51p): the INI writer used to write multi-line BBCode values
+  // verbatim, injecting literal newlines that broke INI structure on
+  // re-parse - the value came back truncated to the first line and the rest
+  // leaked into other sections. Round-trip must preserve every byte of a
+  // multi-line raw BBCode payload exactly.
+
+  // Realistic raw Nexus / Steam BBCode: paragraphs, lists, URLs, images.
+  const std::string raw_bbc =
+      "[url=https://ibb.co/zhWRV6F8][/url]\n"
+      "[center][url=https://ibb.co/zhWRV6F8]"
+      "[img]https://i.ibb.co/3y5NmRvf/photo-collage-png.png[/img][/url][/center]\n"
+      "[list]\n"
+      "[*] First feature\n"
+      "[*] Second feature\n"
+      "[*] Third feature\n"
+      "[/list]\n"
+      "[b]Heading[/b] trailing text on a new line.";
+
+  // --- In-memory serialize/parse round trip. ---
+  {
+    ModMeta meta;
+    meta.set("Nexusmods", "nexusdescription", raw_bbc);
+    const std::string serialized = meta.serialize();
+
+    // The serialized form must be a single line per key/value pair - no
+    // raw newlines mid-value would mean subsequent sections get
+    // mis-parsed as new section headers. We assert this directly: the
+    // 'nexusdescription' line itself must be one physical line.
+    bool found_desc_line = false;
+    bool desc_line_is_one_physical_line = false;
+    {
+      // Find the start of the nexusdescription line, then walk forward
+      // until the next '\n' (or end-of-string). The substring between
+      // those two points must not itself contain any '\n'.
+      const std::string key_prefix = "nexusdescription = ";
+      size_t start = serialized.find(key_prefix);
+      require(start != std::string::npos,
+              "serialized form contains the nexusdescription key");
+      found_desc_line = true;
+      size_t end = serialized.find('\n', start);
+      if (end == std::string::npos) end = serialized.size();
+      desc_line_is_one_physical_line =
+          serialized.find('\n', start + key_prefix.size()) >= end;
+    }
+    require(found_desc_line && desc_line_is_one_physical_line,
+            "nexusdescription is a single physical line in the file "
+            "(no embedded raw newlines)");
+
+    // Round-trip restores the full multi-line payload.
+    ModMeta parsed;
+    require(parsed.parse(serialized),
+            "multi-line BBCode description serializes/parses cleanly");
+    require(parsed.get("Nexusmods", "nexusdescription") == raw_bbc,
+            "full multi-line BBCode survives serialize/parse round trip");
+  }
+
+  // --- Sidecar file save/load round trip (the real bug repro). ---
+  {
+    const fs::path root = "/tmp/gmm_mod_meta_multiline/meta";
+    fs::remove_all(root.parent_path());
+    fs::create_directories(root);
+
+    ModMeta meta;
+    meta.set("General", "name", "Oathvein UI");
+    meta.set("Nexusmods", "nexusdescription", raw_bbc);
+    require(meta.save(root, "MultilineMod"), "sidecar save succeeds");
+
+    // The on-disk file must contain the escape sequences, NOT literal
+    // newlines inside the value. A literal '\n' after '[url=...]' would
+    // turn the next line into a [section] header, corrupting the file.
+    std::ifstream f(root / "MultilineMod.ini");
+    std::stringstream ss;
+    ss << f.rdbuf();
+    const std::string on_disk = ss.str();
+    require(on_disk.find("\n[center]") == std::string::npos,
+            "no literal newline before [center] (would re-parse as section)");
+    require(on_disk.find("\\n") != std::string::npos,
+            "stored value contains the '\\n' escape sequence");
+
+    // And loading the sidecar gives back the full original value.
+    auto loaded = ModMeta::load(root, "MultilineMod");
+    require(loaded.get("General", "name") == "Oathvein UI",
+            "name survives the round trip");
+    require(loaded.get("Nexusmods", "nexusdescription") == raw_bbc,
+            "multi-line BBCode survives sidecar save/load round trip");
+  }
+
+  // --- A literal backslash in the value must not be lost. ---
+  {
+    ModMeta meta;
+    meta.set("General", "path", "C:\\Users\\Mod\\nexusdescription");
+    ModMeta parsed;
+    require(parsed.parse(meta.serialize()),
+            "backslash-containing value parses");
+    require(parsed.get("General", "path") ==
+                "C:\\Users\\Mod\\nexusdescription",
+            "literal backslashes survive the escape/unescape round trip");
+  }
+
+  // --- A value with no control characters is unchanged. ---
+  {
+    ModMeta meta;
+    meta.set("General", "version", "1.2.3");
+    const std::string s = meta.serialize();
+    require(s.find("version = 1.2.3\n") != std::string::npos,
+            "plain values serialize verbatim (no spurious escapes)");
+  }
+
+  // --- \r and \r\n both round-trip. ---
+  {
+    ModMeta meta;
+    meta.set("General", "crlf", "line1\r\nline2\nline3");
+    ModMeta parsed;
+    require(parsed.parse(meta.serialize()), "CRLF value parses");
+    require(parsed.get("General", "crlf") == "line1\r\nline2\nline3",
+            "CR and CRLF survive the round trip");
+  }
+}
