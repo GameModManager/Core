@@ -60,6 +60,7 @@
 #include "engine/sort/sort_provider.h"
 #include "engine/sort/sort_registry.h"
 #include "engine/source/nexus_provider.h"
+#include "engine/source/loverslab/provider.h"
 #include "engine/source/nxm/managed_games.h"
 #include "engine/source/source_provider.h"
 #include "ui/main_window/conflict_scan_worker.h"
@@ -2227,6 +2228,10 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
 
   data.source_type = mod.source_type;
   data.source_id = mod.source_id;
+  data.source_page_url = mod.source_page_url;
+  // Folder birth time, used by the LoversLab Source panel to detect
+  // out-of-date mods (compare [LoversLab]date_modified against this).
+  data.installation_ts = mod.installation_ts;
   // From the plugin identity, not a knowledge hook (there is none named
   // "nexus_domain") - drives the Source-tab Visit-on-Nexus URL AND the
   // Nexus Refresh API call (games/{domain}/mods/{id}.json).
@@ -2346,6 +2351,27 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
     if (!provider || domain.isEmpty() || src_id.isEmpty())
       return engine::ModInfoResult{};
     return provider->fetch_mod_info(domain.toStdString(), src_id.toStdString());
+  };
+
+  // Live LoversLab lookup for the LoversLab tab's Refresh button.
+  // Prefer the page URL (carries the slug); fall back to the bare file
+  // id. Both are accepted by Provider::fetch_mod_info. The fetcher is
+  // only wired when the LoversLab provider is registered (it always is
+  // in the app, but tests can swap providers and the panel should not
+  // crash on a missing one).
+  const QString ll_src_id = mod.source_id;
+  const QString ll_page_url = mod.source_page_url;
+  data.fetch_loverslab_info = [ll_src_id, ll_page_url]() {
+    auto *provider = dynamic_cast<engine::Source::LoversLab::Provider *>(
+        engine::SourceRegistry::instance().provider_for("loverslab"));
+    if (!provider)
+      return engine::LoversLabModInfoResult{};
+    // Prefer the full page URL when we have one - the slug survives the
+    // round-trip and the JSON-LD `url` field will agree.
+    const std::string arg =
+        !ll_page_url.isEmpty() ? ll_page_url.toStdString()
+                               : ll_src_id.toStdString();
+    return provider->fetch_mod_info(arg);
   };
 
   return data;
