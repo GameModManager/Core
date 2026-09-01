@@ -127,10 +127,12 @@ set(MODINFO_SOURCES
     modinfo/categories_tab.cpp
     modinfo/source_tab.cpp
     modinfo/source_fetch_worker.cpp
+    modinfo/loverslab_fetch_worker.cpp
     modinfo/source_panels/source_info_panel.cpp
     modinfo/source_panels/generic_source_panel.cpp
     modinfo/source_panels/nexus_source_panel.cpp
     modinfo/source_panels/steam_source_panel.cpp
+    modinfo/source_panels/loverslab_source_panel.cpp
     modinfo/notes_tab.cpp
     modinfo/filetree_tab.cpp
     modinfo/description_browser.cpp

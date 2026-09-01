@@ -11,7 +11,9 @@
 namespace engine {
 class ModMeta;
 namespace Source::Nexus { struct ModInfoResult; }
+namespace Source::LoversLab { struct ModInfoResult; }
 using ModInfoResult = Source::Nexus::ModInfoResult;
+using LoversLabModInfoResult = Source::LoversLab::ModInfoResult;
 }
 
 namespace ui {
@@ -51,6 +53,15 @@ struct ModInfoData {
     QString nexus_domain;       // from game knowledge, e.g. "skyrimspecialedition"
     QStringList supported_sources;  // game's download_sources knowledge (display names)
     QString metadata_file;          // from GameKnowledge metadata_file hook, e.g. "metadata.xml" or "meta.ini"
+    // Source page URL persisted in the mod's per-source meta section
+    // (LoversLab: the page the download came from). Used by "Visit on ...".
+    QString source_page_url;
+    // Installation (folder birth time) and Changed (folder last-write time).
+    // 0 = unavailable (separators, Overwrite/MERGED pseudo-rows). Used for
+    // out-of-date detection against dateModified scraped from LoversLab
+    // (compare normalized to date granularity so date-without-time beats a
+    // mid-day install).
+    qint64 installation_ts = 0;
 
     // --- paths ---
     QDir mod_dir;               // <instance>/mods/<id>
@@ -83,6 +94,12 @@ struct ModInfoData {
     // Live Nexus mod-info fetch for the Nexus tab's Refresh button (domain and
     // mod id are captured by the caller). available=false on any failure.
     std::function<engine::ModInfoResult()> fetch_nexus_info;
+
+    // Live LoversLab mod-info fetch for the LoversLab tab's Refresh button.
+    // Captures the file id or page URL (LoversLab has no domain like Nexus's
+    // skyrimspecialedition; the file id IS the identifier). Same
+    // available=false failure semantics.
+    std::function<engine::LoversLabModInfoResult()> fetch_loverslab_info;
 
     // The mod's Data directory (mod_dir + data_subpath), if a game ever keeps
     // mods under one. Note: file-walking tabs scan data.mod_dir directly - the
