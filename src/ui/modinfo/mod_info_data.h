@@ -50,6 +50,7 @@ struct ModInfoData {
     QString source_id;
     QString nexus_domain;       // from game knowledge, e.g. "skyrimspecialedition"
     QStringList supported_sources;  // game's download_sources knowledge (display names)
+    QString metadata_file;          // from GameKnowledge metadata_file hook, e.g. "metadata.xml" or "meta.ini"
 
     // --- paths ---
     QDir mod_dir;               // <instance>/mods/<id>

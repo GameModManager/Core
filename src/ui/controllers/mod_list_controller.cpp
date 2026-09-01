@@ -2242,6 +2242,12 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
        QString::fromStdString(sources_csv).split(',', Qt::SkipEmptyParts))
     data.supported_sources.append(part.trimmed());
 
+  const auto metadata_file =
+      w_->knowledge_
+          ? w_->knowledge_->get(w_->current_game_id_, "metadata_file", "meta.ini")
+          : std::string("meta.ini");
+  data.metadata_file = QString::fromStdString(metadata_file);
+
   const auto mods_subpath =
       w_->knowledge_
           ? w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "")

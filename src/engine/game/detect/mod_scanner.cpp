@@ -3,6 +3,7 @@
 #include "engine/game/registry/game_features/game_feature_registry.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/mod/meta/mod_meta.h"
+#include "engine/mod/meta/xml_util.h"
 
 #include <algorithm>
 #include <chrono>
@@ -19,27 +20,6 @@
 #endif
 
 namespace engine {
-
-// --- Simple XML tag extraction (no libxml/Qt dependency) ---
-
-static std::string xml_find_tag(const std::string &xml,
-                                const std::string &tag) {
-  auto open = "<" + tag + ">";
-  auto close = "</" + tag + ">";
-  auto pos = xml.find(open);
-  if (pos == std::string::npos)
-    return {};
-  pos += open.size();
-  auto end = xml.find(close, pos);
-  if (end == std::string::npos)
-    return {};
-  auto content = xml.substr(pos, end - pos);
-  auto first = content.find_first_not_of(" \t\n\r");
-  if (first == std::string::npos)
-    return {};
-  auto last = content.find_last_not_of(" \t\n\r");
-  return content.substr(first, last - first + 1);
-}
 
 static std::string read_file_text(const std::filesystem::path &path) {
   std::ifstream f(path);
