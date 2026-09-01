@@ -2,6 +2,7 @@
 
 #include "engine/source/source_provider.h"
 #include "ui/modinfo/source_panels/generic_source_panel.h"
+#include "ui/modinfo/source_panels/loverslab_source_panel.h"
 #include "ui/modinfo/source_panels/nexus_source_panel.h"
 #include "ui/modinfo/source_panels/source_info_panel.h"
 #include "ui/modinfo/source_panels/steam_source_panel.h"
@@ -149,6 +150,8 @@ void SourceTab::populate() {
       page = new NexusSourcePanel(current(), sources_);
     } else if (st == "steam" || st == "steamworkshop") {
       page = new SteamSourcePanel(current(), sources_);
+    } else if (st == "loverslab") {
+      page = new LoversLabSourcePanel(current(), sources_);
     } else {
       page = new GenericSourcePanel(current(), provider, sources_);
     }
