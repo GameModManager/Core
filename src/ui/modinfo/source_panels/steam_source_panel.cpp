@@ -46,11 +46,13 @@ void set_description_html(QTextBrowser *browser, const QString &desc) {
   }
   // Steam Workshop descriptions are BBCode (b/i/u/url/img/quote/etc), same
   // dialect the Nexus source panel parses. The old plain-text-escape path
-  // hid all of that from the user; libcbb now renders it.
-  browser->setHtml(
-      QStringLiteral(
-          "<html><body style=\"font-family:sans-serif;\">%1</body></html>")
-          .arg(bbcode_to_html(desc)));
+  // hid all of that from the user; libcbb now renders it. white-space:
+  // pre-wrap keeps raw \n newlines in the BBCode source visible at render
+  // time - libcbb doesn't convert \n to <br>, and without pre-wrap the
+  // browser would collapse every paragraph break to a single space.
+  browser->setHtml(QStringLiteral(
+      "<html><body style=\"font-family:sans-serif; white-space:pre-wrap;\">"
+      "%1</body></html>").arg(bbcode_to_html(desc)));
 }
 
 } // namespace
