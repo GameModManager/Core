@@ -215,15 +215,20 @@ DeployConfig deploy_config_for(const fs::path &instance_root,
     if (inst.read_toml())
       cfg.game_mods_dir = inst.info().game_mods_dir;
   }
-  // Plugin-declared absolute target (Workspace-otx, e.g. Isaac on macOS
-  // reads mods from ~/Library/Application Support/...): honored when the
-  // user did not override. Classic layout otherwise - game_dir +
-  // deploy_prefix, which is also how the plugin-declared mods_subpath
-  // (Skyrim "Data", Isaac "mods") is honored. Deliberately NOT folding
-  // mods_subpath into the root here: that would misplace root-override
-  // mods that must land in the game root.
+  // Plugin-declared target (Workspace-otx): honored when the user did not
+  // override. Absolute values (Isaac on macOS:
+  // ~/Library/Application Support/...) and relative values (Isaac on
+  // Linux/Windows "mods") both resolve through
+  // resolve_plugin_game_mods_dir so a relative "mods" becomes
+  // game_dir/mods - the SAME target the previous game_dir + deploy_prefix
+  // "mods" layout produced, now via the explicit hook. Classic layout
+  // otherwise - game_dir + deploy_prefix, which is also how the
+  // plugin-declared mods_subpath (Skyrim "Data") is honored. Deliberately
+  // NOT folding mods_subpath into the root here: that would misplace
+  // root-override mods that must land in the game root.
   if (cfg.game_mods_dir.empty())
-    cfg.game_mods_dir = plugin_game_mods_dir(knowledge, game_id);
+    cfg.game_mods_dir =
+        resolve_plugin_game_mods_dir(game_id, game_dir, knowledge);
   if (!cfg.game_mods_dir.empty() && cfg.game_mods_dir == cfg.mods_dir)
     cfg.game_mods_dir.clear(); // self-referential deploy guard
   cfg.deploy_prefix = knowledge.get(game_id, "deploy_prefix", "Data");
