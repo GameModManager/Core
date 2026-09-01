@@ -107,6 +107,13 @@ endif()
 list(APPEND UI_SOURCES ${FILE_VIEWER_SOURCES})
 
 # Mod Info dialog - the 9 MO2-parity tabs plus the dialog shell.
+#
+# bbcode.cpp stays at the END of the list so it sees the consumers
+# (nexus_source_panel.cpp / steam_source_panel.cpp) above it - matches the
+# pre-Workspace-1qc layout. Either order would work for the linker today
+# because bbcode_to_html is declared in namespace ui (the mangled symbol
+# is unique); keeping it last is a defensive habit against future TUs
+# that might add new forward references.
 set(MODINFO_SOURCES
     modinfo/mod_info_data.cpp
     modinfo/mod_info_tab.cpp
@@ -120,11 +127,22 @@ set(MODINFO_SOURCES
     modinfo/categories_tab.cpp
     modinfo/source_tab.cpp
     modinfo/source_fetch_worker.cpp
+    modinfo/source_panels/source_info_panel.cpp
+    modinfo/source_panels/generic_source_panel.cpp
+    modinfo/source_panels/nexus_source_panel.cpp
+    modinfo/source_panels/steam_source_panel.cpp
     modinfo/notes_tab.cpp
     modinfo/filetree_tab.cpp
     modinfo/bbcode.cpp
 )
 list(APPEND UI_SOURCES ${MODINFO_SOURCES})
+
+# libcbb - single-header BBCode-to-HTML library (vendored from
+# third_party/libcbb/, see Workspace-jw4i). The header is included from
+# ui/modinfo/bbcode.cpp; the implementation TU (third_party/libcbb/libcbb.c)
+# must be compiled exactly once. It's pure C11, so add it as a C source
+# alongside the C++ UI sources.
+list(APPEND UI_SOURCES ../../third_party/libcbb/libcbb.c)
 
 add_library(gmm_ui STATIC ${UI_SOURCES})
 
@@ -132,6 +150,11 @@ target_include_directories(gmm_ui PUBLIC
     ${PROJECT_SOURCE_DIR}/src
     ${PROJECT_SOURCE_DIR}/external/abi/include
     ${PROJECT_SOURCE_DIR}/third_party/pugixml
+)
+# libcbb is a vendored C header only needed by bbcode.cpp - keep it PRIVATE
+# so it does not leak into every gmm_ui consumer's include path.
+target_include_directories(gmm_ui PRIVATE
+    ${PROJECT_SOURCE_DIR}/third_party/libcbb
 )
 
 target_compile_definitions(gmm_ui PUBLIC VERSION="${PROJECT_VERSION}")

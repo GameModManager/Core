@@ -1,5 +1,6 @@
 #include "engine/pipeline/extract_stage.h"
 #include "engine/pipeline/pipeline.h"
+#include "engine/mod/meta/xml_util.h"
 #include "engine/mod/model/mod.h"
 #include "engine/mod/archive/archive_extractor.h"
 #include "engine/mod/filetree/staging_layout.h"
@@ -11,22 +12,6 @@
 #include <regex>
 
 namespace engine {
-
-// Simple XML tag extraction (no XML library dependency)
-static std::string xml_find_tag(const std::string& xml, const std::string& tag) {
-    auto open = "<" + tag + ">";
-    auto close = "</" + tag + ">";
-    auto pos = xml.find(open);
-    if (pos == std::string::npos) return {};
-    pos += open.size();
-    auto end = xml.find(close, pos);
-    if (end == std::string::npos) return {};
-    auto content = xml.substr(pos, end - pos);
-    auto first = content.find_first_not_of(" \t\n\r");
-    if (first == std::string::npos) return {};
-    auto last = content.find_last_not_of(" \t\n\r");
-    return content.substr(first, last - first + 1);
-}
 
 // Try to read a text file, return empty if missing
 static std::string read_file_text(const std::filesystem::path& path) {

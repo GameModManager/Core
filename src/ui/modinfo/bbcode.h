@@ -4,11 +4,14 @@
 
 namespace ui {
 
-// Minimal BBCode → HTML converter for Nexus mod descriptions. Supports the
-// tags Nexus actually emits: b/i/u/s, color, size, url, img, quote, code,
-// list/olist/*, hr, center, spoiler, headings, sub/sup, font. Unknown tags are
-// dropped, unclosed tags are closed at the end, and the output is escaped.
-// Pure function - no Qt widgets involved.
-QString bbcode_to_html(const QString& input);
+// Thin Qt adapter over the vendored libcbb single-header BBCode-to-HTML
+// library (third_party/libcbb/libcbb.h). Converts QString <-> std::string
+// around cbb_to_html() and frees the malloc'd C string with cbb_free().
+//
+// Note: libcbb rejects javascript:/data: URLs (security hardening over the
+// old in-house bbcode.cpp converter) and strips CSS meta-characters from
+// [color]/[size]/[font] arguments. [code] and [noparse] both imply noparse
+// semantics - inner tags are not processed.
+QString bbcode_to_html(const QString &input);
 
-}  // namespace ui
+} // namespace ui
