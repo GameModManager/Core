@@ -834,3 +834,203 @@ TEST_CASE("downloads tab", "[ui]") {
               "hide-installed alone keeps uninstalled row");
     }
 }
+
+// Source-attribution regression for the Downloads tab (Workspace-rvld).
+//
+// source_info_for() used to trust the Source column's literal string
+// alone. A bare "Nexus Mods" label with no parent_mod_id / no
+// nexus_domain / no file_id was still treated as a Nexus install,
+// which the install path then propagated as a fake Nexus modid in
+// mods/{folder}/meta.ini and a [Nexusmods] sidecar. Same shape for
+// LoversLab: a row labelled "LoversLab" with no page_url / no id was
+// silently treated as LoversLab-attributable. The fix only returns a
+// source_type when ALL the fields needed to actually re-fetch the
+// file are present; otherwise it returns empty (treated as Manual
+// local archive). deserialize() also repairs legacy manifests that
+// carried the bare labels without origin fields.
+//
+// The install_requested signal is the public observable that carries
+// the source_type out of the tab into the pipeline worker, so we
+// drive double-click flows and assert the emitted source_type /
+// source_id / page_url. Internal source_info_for() is private and
+// only ever runs as a step inside the double-click handler, so the
+// emitted signal is a faithful witness of its return value.
+TEST_CASE("downloads source attribution", "[ui]") {
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    const std::filesystem::path cfg = "/tmp/gmm_source_attr/config";
+    std::filesystem::remove_all("/tmp/gmm_source_attr");
+    std::filesystem::create_directories(cfg);
+    qputenv("XDG_CONFIG_HOME", cfg.c_str());
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
+    QCoreApplication::setOrganizationName("GameModManager");
+    QCoreApplication::setApplicationName("GameModManager");
+
+    const std::filesystem::path dl_dir = "/tmp/gmm_source_attr/dl";
+    std::filesystem::create_directories(dl_dir);
+
+    // Drive a double-click on the row with the given name and return
+    // the install_requested fields the tab emitted.
+    struct Captured {
+        bool fired = false;
+        std::string source_type;
+        std::string source_id;
+        int file_id = 0;
+        std::string page_url;
+    };
+    auto double_click_and_capture = [&](TestDownloadsTab& tab,
+                                         const char* name) -> Captured {
+        Captured c;
+        QObject::connect(&tab, &ui::DownloadsTab::install_requested,
+            [&](const std::string&, const std::filesystem::path&,
+                const std::string& st, const std::string& sid,
+                int fid, const std::string&, const std::string& page) {
+                c.fired = true;
+                c.source_type = st;
+                c.source_id = sid;
+                c.file_id = fid;
+                c.page_url = page;
+            });
+        int row = -1;
+        for (int r = 0; r < tab.table()->rowCount(); ++r) {
+            auto* it = tab.table()->item(r, 0);
+            if (it && it->text() == QLatin1String(name)) row = r;
+        }
+        if (row < 0) return c;
+        QMetaObject::invokeMethod(tab.table(), "cellDoubleClicked",
+                                  Qt::DirectConnection,
+                                  Q_ARG(int, row), Q_ARG(int, 0));
+        app.processEvents();
+        return c;
+    };
+
+    // --- A complete Nexus row (id, file_id, domain all present) is
+    // attributed to Nexus. ---
+    {
+        const auto zip = dl_dir / "Nexus Complete.zip";
+        write_file(zip, 256);
+        TestDownloadsTab tab;
+        tab.add_download("32444-1234", "Nexus Complete", "Nexus Mods",
+                         zip, "skyrimspecialedition", 1234, "32444");
+        tab.mark_complete("32444-1234", true);
+        const auto c = double_click_and_capture(tab, "Nexus Complete");
+        check(c.fired && c.source_type == "nexus" && c.source_id == "32444" &&
+                  c.file_id == 1234,
+              "complete Nexus row: install carries nexus+id+file_id");
+    }
+
+    // --- A Nexus-labelled row with NO origin fields is treated as
+    // local (no source). This is the exact shape stale manifests used
+    // to carry, and it was the source of the auto-Nexus injection. ---
+    {
+        const auto zip = dl_dir / "Nexus Stale.zip";
+        write_file(zip, 256);
+        TestDownloadsTab tab;
+        // Label says "Nexus Mods" but no domain / parent_mod_id / file_id.
+        tab.add_download("stale-nexus-1", "Nexus Stale", "Nexus Mods", zip);
+        tab.mark_complete("stale-nexus-1", true);
+        const auto c = double_click_and_capture(tab, "Nexus Stale");
+        check(c.fired && c.source_type.empty() && c.source_id.empty() &&
+                  c.file_id == 0,
+              "stale Nexus label with no origin: install is manual "
+              "(no fabricated Nexus)");
+    }
+
+    // --- A LoversLab row with a page_url and an id is attributed to
+    // LoversLab. ---
+    {
+        const auto zip = dl_dir / "LoversLab Complete.zip";
+        write_file(zip, 256);
+        const std::string ll_page =
+            "https://www.loverslab.com/files/file/4242-skooma-se/";
+        TestDownloadsTab tab;
+        tab.add_download("ll-4242", "LoversLab Complete", "LoversLab",
+                         zip, {}, 0, {}, ll_page);
+        tab.mark_complete("ll-4242", true);
+        const auto c = double_click_and_capture(tab, "LoversLab Complete");
+        check(c.fired && c.source_type == "loverslab" &&
+                  c.source_id == "ll-4242" && c.page_url == ll_page,
+              "complete LoversLab row: install carries loverslab+id+page");
+    }
+
+    // --- A LoversLab-labelled row with no page_url / no id is treated
+    // as local. ---
+    {
+        const auto zip = dl_dir / "LoversLab Stale.zip";
+        write_file(zip, 256);
+        TestDownloadsTab tab;
+        tab.add_download("stale-ll-1", "LoversLab Stale", "LoversLab", zip);
+        tab.mark_complete("stale-ll-1", true);
+        const auto c = double_click_and_capture(tab, "LoversLab Stale");
+        check(c.fired && c.source_type.empty(),
+              "stale LoversLab label with no page_url/id: install is manual");
+    }
+
+    // --- A Manual row stays empty. ---
+    {
+        const auto zip = dl_dir / "Manual.zip";
+        write_file(zip, 256);
+        TestDownloadsTab tab;
+        tab.add_download("manual-1", "Manual", "Manual", zip);
+        tab.mark_complete("manual-1", true);
+        const auto c = double_click_and_capture(tab, "Manual");
+        check(c.fired && c.source_type.empty(),
+              "manual row: install is manual (empty source_type)");
+    }
+
+    // --- Manifest repair: a deserialized entry with source="Nexus Mods"
+    // but no origin fields is coerced to "Manual" on the row, and
+    // double-clicking it emits a manual install (no fabricated Nexus). ---
+    {
+        const auto zip = dl_dir / "StaleNexus.zip";
+        write_file(zip, 256);
+        TestDownloadsTab tab;
+        const std::string stale_json =
+            "[{\"id\":\"stale-1\",\"name\":\"StaleNexus\",\"source\":\"Nexus Mods\","
+            "\"file_path\":\"" + zip.string() + "\","
+            "\"state\":2,\"total_size\":0,\"parent_mod_id\":\"\","
+            "\"file_id\":0,\"domain\":\"\",\"category\":\"\",\"page_url\":\"\"}]";
+        tab.deserialize(stale_json, dl_dir);
+
+        // Row surfaced under the original name, with the coerced label.
+        int row = -1;
+        for (int r = 0; r < tab.table()->rowCount(); ++r) {
+            auto* it = tab.table()->item(r, 0);
+            if (it && it->text() == QLatin1String("StaleNexus")) row = r;
+        }
+        check(row >= 0, "manifest repair: stale Nexus row surfaces");
+        if (row >= 0) {
+            check(tab.table()->item(row, 1)->text() == "Manual",
+                  "manifest repair: stale Nexus label coerced to Manual");
+        }
+        const auto c = double_click_and_capture(tab, "StaleNexus");
+        check(c.fired && c.source_type.empty(),
+              "manifest repair: install is manual (no fabricated Nexus)");
+    }
+
+    // --- Manifest repair: LoversLab without page_url -> Manual. ---
+    {
+        const auto zip = dl_dir / "StaleLL.zip";
+        write_file(zip, 256);
+        TestDownloadsTab tab;
+        const std::string stale_ll_json =
+            "[{\"id\":\"stale-ll\",\"name\":\"StaleLL\",\"source\":\"LoversLab\","
+            "\"file_path\":\"" + zip.string() + "\","
+            "\"state\":2,\"total_size\":0,\"parent_mod_id\":\"\","
+            "\"file_id\":0,\"domain\":\"\",\"category\":\"\",\"page_url\":\"\"}]";
+        tab.deserialize(stale_ll_json, dl_dir);
+
+        int row = -1;
+        for (int r = 0; r < tab.table()->rowCount(); ++r) {
+            auto* it = tab.table()->item(r, 0);
+            if (it && it->text() == QLatin1String("StaleLL")) row = r;
+        }
+        check(row >= 0, "manifest repair: stale LoversLab row surfaces");
+        if (row >= 0) {
+            check(tab.table()->item(row, 1)->text() == "Manual",
+                  "manifest repair: stale LoversLab label coerced to Manual");
+        }
+    }
+}

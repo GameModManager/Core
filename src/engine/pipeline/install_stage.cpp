@@ -233,9 +233,17 @@ bool InstallationManager::execute(Mod &mod, PipelineContext &ctx) {
   // same file with the same keys); metadata.xml is an Isaac-only trick - the
   // Isaac engine reads it from mod folders directly - and is written only
   // for games that registered the metadata_file hook.
+  //
+  // The MO2 meta.ini [General] modid= field is the Nexus id namespace ONLY.
+  // write_game_metadata takes the Nexus mod id (download_source_id when the
+  // source is Nexus, empty otherwise) so a Steam workshop id or LoversLab
+  // file id does NOT get written into meta.ini as a fake Nexus mod id and
+  // mis-attribute the mod's provenance to MO2 / downstream readers.
   std::string display_name = mod.name.empty() ? folder_name : mod.name;
+  const std::string nexus_mod_id =
+      (mod.download_source_type == "nexus") ? mod.download_source_id : "";
   ModMeta::write_game_metadata(dest_dir, ctx.metadata_file, display_name,
-                               mod.version, mod.download_source_id,
+                               mod.version, nexus_mod_id,
                                mod.archive_filename);
 
   // FOMOD choice persistence: record the installer's selections in the mod

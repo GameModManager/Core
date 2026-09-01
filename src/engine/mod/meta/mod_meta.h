@@ -98,11 +98,21 @@ public:
     // MO2's installers write); games that registered the metadata_file hook
     // (Isaac) get their XML metadata file. No-op if the file already exists.
     // Returns true on success (or if it already existed).
+    //
+    // `nexus_mod_id` is the Nexus mod id for this mod, when the mod was
+    // installed from Nexus. It is ONLY written into the MO2-style meta.ini
+    // [General] modid= field - the field MO2 reads to look up the mod on
+    // Nexus. For mods NOT from Nexus (Steam Workshop, LoversLab, manual
+    // archives) callers MUST pass an empty string here: writing a
+    // LoversLab file id or Steam workshop id as "modid" makes MO2 / any
+    // reader interpret it as a Nexus id and silently mis-attribute the
+    // mod's provenance. For non-Nexus providers this function writes
+    // modid=0, the "no Nexus id" sentinel MO2 understands.
     static bool write_game_metadata(const std::filesystem::path& mod_dir,
                                     const std::string& metadata_file,
                                     const std::string& display_name,
                                     const std::string& version,
-                                    const std::string& modid = {},
+                                    const std::string& nexus_mod_id = {},
                                     const std::string& installation_file = {});
 
     // --- Versioning ---

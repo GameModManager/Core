@@ -500,7 +500,7 @@ LaunchController::ensure_output_mod_dir(const QString &mod_name) {
                                                    "metadata_file", "meta.ini")
                              : "meta.ini";
     engine::ModMeta::write_game_metadata(output_mod_dir, metadata_file,
-                                         mod_name.toStdString(), "1.0", "0");
+                                         mod_name.toStdString(), "1.0", "");
     engine::Logger::instance().debug("Output-to-mod: created mod folder " +
                                      output_mod_dir.string());
   }

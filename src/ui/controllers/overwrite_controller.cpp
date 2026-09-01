@@ -80,7 +80,7 @@ void OverwriteController::create_mod_from_overwrite() {
     auto metadata_file =
         w_->knowledge_->get(w_->current_game_id_, "metadata_file", "meta.ini");
     engine::ModMeta::write_game_metadata(mod_dir, metadata_file,
-                                         name.toStdString(), "1.0", "0");
+                                         name.toStdString(), "1.0", "");
     auto id = name;
     w_->mod_model_->add_mod(id, name, "");
     engine::Logger::instance().debug("Promote Overwrite to mod: " +

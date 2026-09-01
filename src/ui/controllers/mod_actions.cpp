@@ -496,10 +496,14 @@ void ModActions::create_empty_mod() {
   // Write the game's metadata file into the mod folder so ModScanner picks
   // the mod up. MO2-style games get a meta.ini (same keys MO2 and
   // InstallStage write); XML games (Isaac) get their metadata.xml.
+  // Empty mod: no Nexus provenance, so the meta.ini modid slot must be
+  // empty (writes "0", the MO2 "no Nexus id" sentinel). Without this
+  // the user's mod would inherit a fake Nexus attribution just because
+  // it has a folder (Workspace-rvld).
   auto metadata_file =
       w_->knowledge_->get(w_->current_game_id_, "metadata_file", "meta.ini");
   engine::ModMeta::write_game_metadata(mod_dir, metadata_file,
-                                       trimmed.toStdString(), "1.0", "0");
+                                       trimmed.toStdString(), "1.0", "");
 
   engine::Logger::instance().debug("Empty mod created: " +
                                    folder.toStdString());

@@ -511,7 +511,7 @@ bool ModMeta::write_game_metadata(const std::filesystem::path& mod_dir,
                                   const std::string& metadata_file,
                                   const std::string& display_name,
                                   const std::string& version,
-                                  const std::string& modid,
+                                  const std::string& nexus_mod_id,
                                   const std::string& installation_file) {
     if (mod_dir.empty()) return false;
 
@@ -520,8 +520,16 @@ bool ModMeta::write_game_metadata(const std::filesystem::path& mod_dir,
         if (std::filesystem::exists(meta_ini)) return true;
         std::ofstream mf(meta_ini);
         if (!mf) return false;
+        // `nexus_mod_id` is the Nexus mod id when the mod came from Nexus
+        // and an empty string for every other source (Steam workshop id,
+        // LoversLab file id, manual archive, ...). The MO2 meta.ini modid=
+        // field is the Nexus id namespace specifically; writing a
+        // non-Nexus id here makes any MO2-style reader (and our own
+        // importers) treat the mod as Nexus-valid. Empty -> "0", the
+        // MO2 sentinel for "no Nexus id", so manual / Steam / LoversLab
+        // mods do NOT inherit a fake Nexus attribution.
         mf << "[General]\n";
-        mf << "modid=" << (modid.empty() ? "0" : modid) << "\n";
+        mf << "modid=" << (nexus_mod_id.empty() ? "0" : nexus_mod_id) << "\n";
         mf << "version=" << (version.empty() ? "1.0" : version) << "\n";
         mf << "newestVersion=" << (version.empty() ? "1.0" : version) << "\n";
         mf << "category=0\n";

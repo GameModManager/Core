@@ -674,8 +674,13 @@ size_t apply_sync_plan(const std::vector<OverwriteSyncTarget>& targets,
                 continue;
             }
             if (ensured.insert(target.mod_folder).second && !metadata_file.empty()) {
+                // Promoted Overwrite folders have no Nexus provenance - the
+                // modid slot in MO2's meta.ini is the Nexus id namespace, so
+                // leave it empty (-> writes "0" in the file, the MO2 "no
+                // Nexus id" sentinel). Anything else would fake a Nexus
+                // attribution on a folder that came from the game dir.
                 ModMeta::write_game_metadata(mod_dir, metadata_file,
-                                             target.mod_folder, "1.0", "0");
+                                             target.mod_folder, "1.0", "");
             }
         }
 
