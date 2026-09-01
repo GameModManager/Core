@@ -254,3 +254,141 @@ TEST_CASE("mod_meta_multiline_values", "[engine]") {
             "CR and CRLF survive the round trip");
   }
 }
+
+// Namespace-isolation regression for write_game_metadata (Workspace-rvld).
+//
+// The MO2-style meta.ini [General] modid= field is the Nexus mod id
+// namespace specifically. write_game_metadata used to accept a generic
+// "modid" parameter and write it verbatim, so a LoversLab file id
+// (e.g. 12345) or a Steam workshop id (e.g. 6789) ended up in
+// mods/{folder}/meta.ini as "modid=12345" / "modid=6789", which MO2 and
+// any reader interprets as a Nexus mod id. The fix renames the
+// parameter to nexus_mod_id and requires callers to pass an empty
+// string for every non-Nexus source. Empty -> "0" in the file, MO2's
+// "no Nexus id" sentinel.
+TEST_CASE("mod_meta_write_game_metadata_namespace_isolation", "[engine]") {
+  using engine::ModMeta;
+
+  // --- Helper: read the [General] modid= value out of a written meta.ini. ---
+  auto read_modid = [](const fs::path& mod_dir) -> std::string {
+    std::ifstream f(mod_dir / "meta.ini");
+    std::string line;
+    while (std::getline(f, line)) {
+      if (line.rfind("modid=", 0) == 0) return line.substr(6);
+    }
+    return {};
+  };
+
+  const fs::path root = "/tmp/gmm_mod_meta_namespace_isolation";
+  fs::remove_all(root);
+
+  // --- Nexus source: id IS the Nexus mod id, written as modid=<id>. ---
+  {
+    const auto mod_dir = root / "NexusMod";
+    fs::create_directories(mod_dir);
+    require(ModMeta::write_game_metadata(mod_dir, "meta.ini",
+                                          "Some Nexus Mod", "1.0",
+                                          "12345"),
+            "Nexus: write_game_metadata succeeds");
+    require(read_modid(mod_dir) == "12345",
+            "Nexus: meta.ini modid= is the actual Nexus mod id");
+  }
+
+  // --- LoversLab: source id is a LoversLab file id; meta.ini modid
+  //     must NOT carry it (would fake a Nexus attribution). ---
+  {
+    const auto mod_dir = root / "LoversLabMod";
+    fs::create_directories(mod_dir);
+    // Caller passes empty (the install path now does this for any
+    // non-nexus source).
+    require(ModMeta::write_game_metadata(mod_dir, "meta.ini",
+                                          "LoversLab Mod", "1.0",
+                                          ""),
+            "LoversLab: write_game_metadata succeeds");
+    require(read_modid(mod_dir) == "0",
+            "LoversLab: meta.ini modid=0 (no Nexus attribution)");
+  }
+
+  // --- Steam: source id is a Steam workshop id; meta.ini modid must
+  //     NOT carry it. ---
+  {
+    const auto mod_dir = root / "SteamMod";
+    fs::create_directories(mod_dir);
+    require(ModMeta::write_game_metadata(mod_dir, "meta.ini",
+                                          "Steam Workshop Mod", "1.0",
+                                          ""),
+            "Steam: write_game_metadata succeeds");
+    require(read_modid(mod_dir) == "0",
+            "Steam: meta.ini modid=0 (no Nexus attribution)");
+  }
+
+  // --- Manual: no source at all; meta.ini modid must be 0. ---
+  {
+    const auto mod_dir = root / "ManualMod";
+    fs::create_directories(mod_dir);
+    require(ModMeta::write_game_metadata(mod_dir, "meta.ini",
+                                          "Manual Mod", "1.0",
+                                          ""),
+            "Manual: write_game_metadata succeeds");
+    require(read_modid(mod_dir) == "0",
+            "Manual: meta.ini modid=0 (no Nexus attribution)");
+  }
+
+  // --- The full file content for a LoversLab/Steam/Manual install has
+  //     the [General] block and no Nexus-like modid. ---
+  {
+    const auto mod_dir = root / "FullFileMod";
+    fs::create_directories(mod_dir);
+    require(ModMeta::write_game_metadata(mod_dir, "meta.ini",
+                                          "Full File Mod", "1.0",
+                                          ""),
+            "FullFile: write_game_metadata succeeds");
+    std::ifstream f(mod_dir / "meta.ini");
+    std::stringstream ss;
+    ss << f.rdbuf();
+    const std::string content = ss.str();
+    require(content.find("[General]\n") != std::string::npos,
+            "non-Nexus install: meta.ini has [General] section");
+    require(content.find("modid=0\n") != std::string::npos,
+            "non-Nexus install: meta.ini has explicit modid=0 sentinel");
+    require(content.find("version=1.0\n") != std::string::npos,
+            "non-Nexus install: meta.ini has version line");
+  }
+
+  // --- Empty-moddir / empty-metadata (the create_empty_mod path). ---
+  {
+    const auto mod_dir = root / "EmptyMod";
+    fs::create_directories(mod_dir);
+    require(ModMeta::write_game_metadata(mod_dir, "meta.ini",
+                                          "Empty", "1.0",
+                                          ""),
+            "Empty: write_game_metadata succeeds for create_empty_mod");
+    require(read_modid(mod_dir) == "0",
+            "Empty: meta.ini modid=0 (no Nexus attribution)");
+  }
+
+  // --- Overwrite -> mod: also passes empty (the promote-overwrite
+  //     folder has no Nexus provenance). ---
+  {
+    const auto mod_dir = root / "OverwriteMod";
+    fs::create_directories(mod_dir);
+    require(ModMeta::write_game_metadata(mod_dir, "meta.ini",
+                                          "OverwriteMod", "1.0",
+                                          ""),
+            "Overwrite: write_game_metadata succeeds");
+    require(read_modid(mod_dir) == "0",
+            "Overwrite: meta.ini modid=0 (no Nexus attribution)");
+  }
+
+  // --- Idempotence: re-calling on an existing meta.ini is a no-op
+  //     (returns true, does not rewrite). The Nexus id stays put. ---
+  {
+    const auto mod_dir = root / "NexusMod";
+    require(ModMeta::write_game_metadata(mod_dir, "meta.ini",
+                                          "Different Name", "9.9",
+                                          "99999"),
+            "Nexus: re-write on existing meta.ini is a no-op success");
+    require(read_modid(mod_dir) == "12345",
+            "Nexus: re-write does not change an existing modid");
+  }
+}

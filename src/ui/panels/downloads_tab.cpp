@@ -757,16 +757,41 @@ DownloadsTab::SourceInfo DownloadsTab::source_info_for(
     SourceInfo info;
     const QString source_text =
         entry.source_item ? entry.source_item->text() : QString();
+
+    // Source attribution must match the entry's actual origin. The Source
+    // column is filled with literal strings ("Nexus Mods", "LoversLab",
+    // "Manual"), but a bare label is NOT enough - older manifests (or
+    // entries added with a half-populated row) can carry "Nexus Mods" with
+    // no nexus_domain / parent_mod_id / file_id, which is exactly what the
+    // bug reported in Workspace-rvld was: a LoversLab / Steam / Isaac mod
+    // whose Source cell said "Nexus Mods" because a stale row was reused
+    // and downstream code treated it as Nexus-valid. Treat such rows as
+    // local-only installs (no source) and let the install path write a
+    // "manual" sidecar instead. Same defensive check for LoversLab: a row
+    // labelled LoversLab without a file id / page URL is meaningless.
     if (source_text == QStringLiteral("Nexus Mods")) {
-        info.source_type = "nexus";
-        info.source_id = entry.parent_mod_id;
-        info.file_id = entry.file_id;
+        const bool nexus_complete =
+            !entry.parent_mod_id.empty() &&
+            !entry.nexus_domain.empty() &&
+            entry.file_id > 0;
+        if (nexus_complete) {
+            info.source_type = "nexus";
+            info.source_id = entry.parent_mod_id;
+            info.file_id = entry.file_id;
+        }
+        // else: leave info empty -> caller treats as manual local archive.
     } else if (source_text == QStringLiteral("LoversLab")) {
-        // The entry id is the file id (or an ll-<hash> fallback when the URL
-        // carried none); page_url is the mod page the download came from.
-        info.source_type = "loverslab";
-        info.source_id = id;
-        info.page_url = entry.page_url;
+        const bool loverslab_complete =
+            !id.empty() && !entry.page_url.empty();
+        if (loverslab_complete) {
+            // The entry id is the file id (or an ll-<hash> fallback when the
+            // URL carried none); page_url is the mod page the download
+            // came from.
+            info.source_type = "loverslab";
+            info.source_id = id;
+            info.page_url = entry.page_url;
+        }
+        // else: leave info empty.
     }
     return info;
 }
@@ -941,6 +966,33 @@ void DownloadsTab::deserialize(const std::string& json,
         auto file_path = std::filesystem::path(obj["file_path"].toString().toStdString());
         auto state = static_cast<DownloadState>(obj["state"].toInt());
         auto total_size = static_cast<int64_t>(obj["total_size"].toDouble());
+        const auto file_id = obj["file_id"].toInt();
+        const auto parent_mod_id = obj["parent_mod_id"].toString().toStdString();
+        const auto nexus_domain = obj["domain"].toString().toStdString();
+        const auto page_url = obj["page_url"].toString().toStdString();
+
+        // Manifest repair for Workspace-rvld: older builds persisted
+        // "Nexus Mods" as the source string even for LoversLab / Steam /
+        // Isaac rows that had no real Nexus origin (no parent_mod_id,
+        // no nexus_domain, no file_id). The Source label was the only
+        // truth, so the deserialized row kept saying "Nexus Mods" and
+        // source_info_for returned source_type="nexus" forever. Detect
+        // that exact shape and coerce the label to "Manual" so the row
+        // is treated as a local archive from now on. Same for LoversLab
+        // rows that lost their page_url / file id.
+        if (source == "Nexus Mods" &&
+            parent_mod_id.empty() && nexus_domain.empty() && file_id == 0) {
+            source = "Manual";
+            engine::Logger::instance().debug(
+                "downloads: repaired legacy manifest entry '" + id +
+                "' (Nexus Mods label without origin -> Manual)");
+        } else if (source == "LoversLab" &&
+                   (page_url.empty() || id.empty())) {
+            source = "Manual";
+            engine::Logger::instance().debug(
+                "downloads: repaired legacy manifest entry '" + id +
+                "' (LoversLab label without page_url/id -> Manual)");
+        }
 
         // Skip if already loaded
         if (downloads_.count(id)) continue;
@@ -961,11 +1013,11 @@ void DownloadsTab::deserialize(const std::string& json,
         entry.file_path = file_path;
         entry.state = state;
         entry.total_size = total_size;
-        entry.parent_mod_id = obj["parent_mod_id"].toString().toStdString();
-        entry.file_id = obj["file_id"].toInt();
-        entry.nexus_domain = obj["domain"].toString().toStdString();
+        entry.parent_mod_id = parent_mod_id;
+        entry.file_id = file_id;
+        entry.nexus_domain = nexus_domain;
         entry.category = obj["category"].toString().toStdString();
-        entry.page_url = obj["page_url"].toString().toStdString();
+        entry.page_url = page_url;
 
         table_->insertRow(entry.row);
 
