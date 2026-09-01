@@ -51,8 +51,15 @@ public:
     // game_id is used to look up hooks in knowledge.
     // Mods-dir resolution goes through resolve_game_mods_dir: the per-instance
     // "game_mods_dir" override (override_mods_dir), then the plugin-declared
-    // "game_mods_dir" hook, then game_install_dir/mods_subpath. A set
+    // "game_mods_dir" hook, then game_install_dir/mod_scan_subpath. A set
     // game_mods_dir IS the mods folder - nothing is appended to it.
+    // Workspace-s3hn: mods_subpath and the game_install_dir fallbacks are
+    // intentionally NOT in this chain. mods_subpath is a deploy target,
+    // never a scan source; falling back to it (or to game_install_dir
+    // itself) would walk vanilla game content (Data/, SKSE, Scripts,
+    // Meshes, Source, ...) and synthesize it as ScannedMod rows. When the
+    // resolution returns an empty path, the scan returns empty and the
+    // caller is expected to fall back to the instance mods dir.
     [[nodiscard]] static std::vector<ScannedMod> scan(
         const GameKnowledge& knowledge,
         const std::string& game_id,

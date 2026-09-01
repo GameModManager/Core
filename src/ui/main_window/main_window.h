@@ -421,9 +421,12 @@ private:
     return folder; // return the instance path even if it doesn't exist
   }
   // Game-native mods dir: the instance.toml "game_mods_dir" override when
-  // set (Workspace-6up), else the plugin-declared "game_mods_dir" hook or
-  // mods_subpath under the game dir (Workspace-otx resolution chain). Empty
-  // when it equals the instance mods dir or no game is loaded.
+  // set (Workspace-6up), else the plugin-declared "game_mods_dir" hook
+  // (Workspace-otx). Empty when it equals the instance mods dir or no game
+  // is loaded. Workspace-s3hn removed the mods_subpath / game_dir fallbacks
+  // from resolve_game_mods_dir, so for a game with no explicit hook or
+  // override this returns empty - the mod scan uses the instance mods dir
+  // alone.
   std::filesystem::path current_game_mods_dir() const {
     std::filesystem::path game_mods_dir;
     if (knowledge_)
