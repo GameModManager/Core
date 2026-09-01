@@ -43,7 +43,13 @@ public:
     [[nodiscard]] const ConflictMap& conflicts() const { return conflicts_; }
     [[nodiscard]] const ConflictMap& all() const { return conflicts_; }
 
-    // Query: which mods own a specific relative path
+    // Query: which mods own a specific relative path.
+    // Ordering contract: when populated via scan()/rescan_mod()/remove_mod(),
+    // entries are sorted by priority ascending (lowest priority number first,
+    // so index 0 is the winner). When populated incrementally via add_file(),
+    // only the front entry is guaranteed to be the winner; the remaining
+    // entries are in insertion order, NOT sorted. Callers that need a sorted
+    // list must sort the returned vector themselves.
     [[nodiscard]] std::vector<std::pair<std::string, int>>
     owners_of(const std::string& relative_path) const;
 
@@ -61,7 +67,12 @@ public:
     // Total number of conflicting paths
     [[nodiscard]] size_t conflict_count() const { return conflicts_.size(); }
 
-    // Add a file entry for a mod (for manual index building without scanning)
+    // Add a file entry for a mod (for manual index building without scanning).
+    // O(1) amortised: the winner (highest priority) is maintained at the front
+    // of the path's owner vector via a single compare-and-swap with the back
+    // on each insert. After this call, owners_of(path).front() is the winner
+    // for that path, and winner_of(path) returns the front entry's mod id.
+    // The remaining entries (if any) are in insertion order.
     void add_file(const std::string& relative_path, const std::string& mod_id, int priority);
 
     // Clear everything
