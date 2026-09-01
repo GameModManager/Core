@@ -6,9 +6,11 @@
 //     "https://www.loverslab.com/files/file/11488-the-xims-magazine/" \
 //     -o tests/engine/fixtures/loverslab_page.html
 //
-// The fixture is not committed (guest-visible page data can shift between
-// captures), and the test is opt-in by fixture presence so CI does not
-// flake on absent local state.
+// The fixture is committed at tests/engine/fixtures/loverslab_page.html
+// (a captured Xims Magazine page); the test runs deterministically against
+// it on every build. To refresh the fixture, re-capture and overwrite.
+// The test is opt-in by fixture presence so CI does not flake on absent
+// local state when the file is removed.
 #include "engine/source/loverslab_provider.h"
 
 #include <cstdio>
