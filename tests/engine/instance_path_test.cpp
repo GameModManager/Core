@@ -477,6 +477,78 @@ TEST_CASE("plugin declared game mods dir", "[engine]") {
     fs::remove_all(instances_root);
 }
 
+// Workspace-9szv: relative plugin "game_mods_dir" declarations resolve
+// against game_dir. Isaac on Linux/Windows declares "mods" (relative -
+// Steam Workshop) and on macOS declares an absolute ~/Library/Application
+// Support path. resolve_plugin_game_mods_dir anchors relative values to
+// game_dir so the resulting absolute path matches what the deploy target
+// and scan worker see.
+TEST_CASE("plugin game_mods_dir resolves relative paths against game_dir",
+          "[engine]") {
+    using engine::GameKnowledge;
+    using engine::resolve_plugin_game_mods_dir;
+    using engine::resolve_game_mods_dir;
+
+    const fs::path game_dir = "/games/isaac";
+
+    // Relative "mods" -> game_dir/mods (Isaac on Linux/Windows).
+    GameKnowledge isaac_linux;
+    isaac_linux.set("TheBindingOfIsaacRebirth", "game_mods_dir", "mods");
+    REQUIRE(resolve_plugin_game_mods_dir(
+                "TheBindingOfIsaacRebirth", game_dir, isaac_linux) ==
+            game_dir / "mods");
+    // resolve_game_mods_dir (full scan chain) honors the same hook and
+    // returns the anchored absolute path.
+    REQUIRE(resolve_game_mods_dir("TheBindingOfIsaacRebirth", game_dir,
+                                  isaac_linux) == game_dir / "mods");
+
+    // Absolute declaration (Isaac on macOS) passes through unchanged.
+    GameKnowledge isaac_mac;
+    isaac_mac.set("TheBindingOfIsaacRebirth", "game_mods_dir",
+                  "/Library/Application Support/Binding of Isaac Afterbirth+ Mods");
+    REQUIRE(resolve_plugin_game_mods_dir(
+                "TheBindingOfIsaacRebirth", game_dir, isaac_mac) ==
+            fs::path("/Library/Application Support/Binding of Isaac Afterbirth+ Mods"));
+
+    // Empty declaration: both helpers return an empty path so the chain
+    // falls through to mod_scan_subpath / no scan source. A relative hook
+    // with no game_dir also returns empty - we have nothing to anchor to.
+    GameKnowledge plain;
+    REQUIRE(resolve_plugin_game_mods_dir("anygame", game_dir, plain).empty());
+    REQUIRE(resolve_plugin_game_mods_dir("anygame", {}, isaac_linux).empty());
+
+    // Instance override beats the relative plugin declaration (the
+    // override is always treated as absolute; the caller - main_window -
+    // is responsible for refusing an override equal to the instance mods
+    // dir).
+    REQUIRE(resolve_game_mods_dir("TheBindingOfIsaacRebirth", game_dir,
+                                  isaac_linux, "/custom/mods") ==
+            fs::path("/custom/mods"));
+
+    // Deploy target mirrors the anchored absolute path: a relative
+    // plugin hook resolves to game_dir/mods (same target the previous
+    // game_dir + deploy_prefix "mods" layout produced), with deploy_prefix
+    // cleared so we do not double-nest.
+    const fs::path instances_root =
+        "/tmp/gmm_instance_path/w9szv_relative_instances";
+    fs::remove_all(instances_root);
+    engine::DetectedGame game;
+    game.game_id = "TheBindingOfIsaacRebirth";
+    game.name = "Isaac";
+    engine::Instance inst =
+        engine::create_instance_for_game(game, instances_root);
+    REQUIRE(!inst.info().root.empty());
+    {
+        const auto cfg = engine::deploy_config_for(
+            inst.info().root, game_dir, isaac_linux,
+            "TheBindingOfIsaacRebirth");
+        REQUIRE(cfg.game_mods_dir == game_dir / "mods");
+        REQUIRE(cfg.deploy_prefix.empty());
+        REQUIRE(cfg.deploy_target() == game_dir / "mods");
+    }
+    fs::remove_all(instances_root);
+}
+
 // Workspace-l6w: instance names are user-chosen and may contain spaces.
 // to_instance_name keeps spaces, strips filesystem-unsafe chars (including
 // control chars/NUL), trims dots/whitespace at both ends so ".", ".." and

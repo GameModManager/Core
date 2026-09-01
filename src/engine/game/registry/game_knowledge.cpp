@@ -93,16 +93,37 @@ std::string plugin_game_mods_dir(const GameKnowledge &knowledge,
   return dir;
 }
 
+std::filesystem::path
+resolve_plugin_game_mods_dir(const std::string &game_id,
+                             const std::filesystem::path &game_dir,
+                             const GameKnowledge &knowledge) {
+  const std::string declared = plugin_game_mods_dir(knowledge, game_id);
+  if (declared.empty())
+    return {};
+  std::filesystem::path p(declared);
+  // plugin_game_mods_dir has already ~-expanded the string for us; a
+  // relative declaration (e.g. Isaac on Linux/Windows "mods") is anchored
+  // to game_dir so the returned path is always absolute or empty.
+  if (p.is_absolute())
+    return p;
+  if (game_dir.empty())
+    return {};
+  return game_dir / p;
+}
+
 std::filesystem::path resolve_game_mods_dir(
     const std::string &game_id, const std::filesystem::path &game_dir,
     const GameKnowledge &knowledge, const std::string &override_dir) {
   // 1. Per-instance user override (instance.toml "game_mods_dir") wins.
   if (!override_dir.empty())
     return std::filesystem::path(override_dir);
-  // 2. Plugin-declared absolute dir (e.g. Isaac on macOS).
-  const std::string declared = plugin_game_mods_dir(knowledge, game_id);
+  // 2. Plugin-declared hook: absolute (Isaac on macOS) or relative
+  //    (Isaac on Linux/Windows "mods" -> game_dir/mods). Relative values
+  //    are resolved against game_dir via resolve_plugin_game_mods_dir.
+  const auto declared =
+      resolve_plugin_game_mods_dir(game_id, game_dir, knowledge);
   if (!declared.empty())
-    return std::filesystem::path(declared);
+    return declared;
   // 3. mod_scan_subpath: a plugin-declared subdir of the game install that is
   //    genuinely a mods-only staging folder (rare). Empty = no game-dir
   //    scan source; the scanner uses the instance mods dir instead.

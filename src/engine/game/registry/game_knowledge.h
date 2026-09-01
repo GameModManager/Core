@@ -84,9 +84,23 @@ inline constexpr const char *kDeployStrategyDirect = "direct";
 [[nodiscard]] std::string deploy_strategy_for(const GameKnowledge &knowledge,
                                               const std::string &game_id);
 
-// Plugin-declared absolute game-mods directory ("game_mods_dir" hook, e.g.
-// Isaac on macOS reads mods from ~/Library/Application Support/...), with a
-// leading ~ expanded against $HOME. Empty when the plugin declares nothing.
+// Plugin-declared game-mods directory ("game_mods_dir" hook). Plugins may
+// declare either an absolute path (Isaac on macOS:
+// ~/Library/Application Support/Binding of Isaac Afterbirth+ Mods) or a
+// relative subpath of the install (Isaac on Linux/Windows: "mods"). A
+// leading ~ is expanded against $HOME; relative declarations are resolved
+// against game_dir and returned as an absolute path. Empty when the plugin
+// declares nothing.
+[[nodiscard]] std::filesystem::path
+resolve_plugin_game_mods_dir(const std::string &game_id,
+                             const std::filesystem::path &game_dir,
+                             const GameKnowledge &knowledge);
+
+// Plugin-declared raw game-mods directory hook value, ~-expanded when the
+// declared value starts with ~. Empty when the plugin declares nothing.
+// Useful when a caller needs the raw token (absolute OR relative) without
+// anchoring it to game_dir - prefer resolve_plugin_game_mods_dir for any
+// filesystem read.
 [[nodiscard]] std::string plugin_game_mods_dir(const GameKnowledge &knowledge,
                                                const std::string &game_id);
 
