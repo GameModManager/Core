@@ -266,6 +266,21 @@ gmm_catch2_test(filetree_tab_test ui/filetree_tab_test.cpp
     UI
     LIBS gmm_ui)
 
+# BBCode adapter + entity/BR normalization (ui/modinfo/bbcode.cpp). Pure
+# logic - no QApplication, no panel, no event loop. Reaches gmm_ui for
+# the bbcode_to_html symbol but does not need the QT_QPA_PLATFORM=offscreen
+# environment.
+gmm_catch2_test(bbcode_test ui/bbcode_test.cpp
+    LIBS gmm_ui)
+
+# DescriptionBrowser (ui/modinfo/description_browser.cpp) - the QTextBrowser
+# subclass that loads remote [img] URLs via QNetworkAccessManager. Needs a
+# QApplication for the loadResource override to be exercisable, so this is
+# a UI test (offscreen).
+gmm_catch2_test(description_browser_test ui/description_browser_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(plugins_tab_test ui/plugins_tab_test.cpp
     UI
     DEFINES GMM_TEST_RESOURCES_DIR="${PROJECT_SOURCE_DIR}/resources"

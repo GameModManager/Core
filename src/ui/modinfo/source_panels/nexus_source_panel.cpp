@@ -1,6 +1,7 @@
 #include "ui/modinfo/source_panels/nexus_source_panel.h"
 
 #include "ui/modinfo/bbcode.h"
+#include "ui/modinfo/description_browser.h"
 #include "ui/modinfo/source_fetch_worker.h"
 #include "ui/settings/settings.h"
 
@@ -61,7 +62,7 @@ NexusSourcePanel::NexusSourcePanel(const ModInfoData &data, QWidget *parent)
   custom_row->addWidget(visit_custom_);
   layout->addLayout(custom_row);
 
-  description_ = new QTextBrowser(this);
+  description_ = new DescriptionBrowser(this);
   description_->setOpenExternalLinks(true);
   layout->addWidget(description_, 1);
 
@@ -141,6 +142,10 @@ void NexusSourcePanel::update_version_color() {
 void NexusSourcePanel::render_description() {
   if (description_ == nullptr)
     return;
+  // Drop any in-flight image fetches and resource cache from the
+  // previous render - the next mod's description is unrelated and
+  // late-arriving bytes would race the new document.
+  description_->clear_image_cache();
   const QString stored = meta_value("Nexusmods", "nexusdescription");
   if (stored.isEmpty()) {
     description_->setHtml(QStringLiteral(
@@ -156,9 +161,11 @@ void NexusSourcePanel::render_description() {
   // giant run-on. Block-level BBCode tags ([center], [list], [b], ...) still
   // render as proper block elements because pre-wrap only preserves
   // whitespace inside inline flow.
-  description_->setHtml(QStringLiteral(
-      "<html><body style=\"font-family:sans-serif; white-space:pre-wrap;\">"
-      "%1</body></html>").arg(bbcode_to_html(stored)));
+  description_->setHtml(
+      QStringLiteral(
+          "<html><body style=\"font-family:sans-serif; white-space:pre-wrap;\">"
+          "%1</body></html>")
+          .arg(bbcode_to_html(stored)));
 }
 
 void NexusSourcePanel::on_refresh() {
