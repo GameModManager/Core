@@ -5,9 +5,10 @@
 #include <QCheckBox>
 #include <QLineEdit>
 #include <QPushButton>
-#include <QTextBrowser>
 
 namespace ui {
+
+class DescriptionBrowser;
 
 // Steam Workshop Source panel. Mirrors the Nexus layout but omits
 // the Source Game row and the Endorse/Track buttons. Fields are bound
@@ -41,7 +42,7 @@ private:
   QCheckBox *custom_url_toggle_ = nullptr;
   QLineEdit *custom_url_ = nullptr;
   QPushButton *visit_custom_ = nullptr;
-  QTextBrowser *description_ = nullptr;
+  DescriptionBrowser *description_ = nullptr;
 };
 
 } // namespace ui
