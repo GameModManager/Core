@@ -129,6 +129,7 @@ set(ENGINE_SOURCES
     source/nexus_servers.cpp
     source/steam_workshop_provider.cpp
     source/loverslab_provider.cpp
+    source/loverslab/provider.cpp
     source/nexus_auth.cpp
     source/loverslab_auth.cpp
     source/download/curl_download.cpp

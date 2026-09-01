@@ -85,6 +85,8 @@ gmm_catch2_test(deploy_direct_test engine/deploy_direct_test.cpp)
 gmm_catch2_test(nexus_http_test engine/nexus_http_test.cpp)
 gmm_catch2_test(nexus_provider_test engine/nexus_provider_test.cpp)
 gmm_catch2_test(loverslab_auth_test engine/loverslab_auth_test.cpp)
+gmm_catch2_test(loverslab_provider_test engine/loverslab_provider_test.cpp)
+gmm_catch2_test(loverslab_real_test engine/loverslab_real_test.cpp)
 gmm_catch2_test(install_progress_test engine/install_progress_test.cpp)
 gmm_catch2_test(perf_benchmark perf/benchmark_test.cpp)
 
@@ -235,6 +237,10 @@ gmm_catch2_test(settings_content_widget_test ui/settings_content_widget_test.cpp
     LIBS gmm_ui Qt6::Test)
 
 gmm_catch2_test(source_tab_test ui/source_tab_test.cpp
+    UI
+    LIBS gmm_ui)
+
+gmm_catch2_test(loverslab_source_panel_test ui/loverslab_source_panel_test.cpp
     UI
     LIBS gmm_ui)
 

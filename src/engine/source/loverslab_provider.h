@@ -1,6 +1,7 @@
 #pragma once
 
-// Backward-compat wrapper - consumers should migrate to engine/source/loverslab/provider.h
+// Backward-compat wrapper - consumers should migrate to
+// engine/source/loverslab/provider.h
 #include "engine/source/loverslab/provider.h"
 
 #include "engine/source/source_provider.h"
@@ -9,7 +10,9 @@
 
 namespace engine {
 
-// Backward-compat alias (deprecated - use Source::LoversLab::Provider)
+// Backward-compat aliases (deprecated - use Source::LoversLab::Provider /
+// Source::LoversLab::ModInfoResult).
 using LoversLabProvider = Source::LoversLab::Provider;
+using LoversLabModInfoResult = Source::LoversLab::ModInfoResult;
 
 } // namespace engine
