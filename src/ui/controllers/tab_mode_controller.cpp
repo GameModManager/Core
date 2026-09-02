@@ -84,6 +84,13 @@ void TabModeController::route_settings() {
   // Toggling the mode inside the panel updates the tab bar live.
   connect(content, &SettingsContentWidget::full_ui_mode_toggled, this,
           &TabModeController::on_mode_changed);
+  // Wire the Diagnostics tab's "Show DEBUG Panel" button to the settings
+  // controller (which owns the DebugWindow). Mirrors the popup-mode wiring
+  // done inside SettingsDialog's ctor.
+  if (w_->settings_) {
+    connect(content, &SettingsContentWidget::open_debug_panel_requested,
+            w_->settings_.get(), &SettingsController::show_debug_window);
+  }
   // Closing the tab (close button, or close_all_view_tabs when the mode is
   // turned OFF) is handled by the view_tab_removed connection above: it
   // re-applies the settings and releases the panel.

@@ -47,6 +47,10 @@ public slots:
   void apply_nesting_setting();
   void show_instance_statistics();
   void show_pipeline_window();
+  // Shows the DEBUG panel (DebugWindow) for the current instance. Lazily
+  // creates the window owned by MainWindow the first time it is requested.
+  // Exposed as a slot so the Diagnostics tab button can wire to it.
+  void show_debug_window();
   void show_instance_switcher();
   bool switch_to_instance(const QString &name);
   // Runs the "Create new instance" flow: detects installed games, shows the

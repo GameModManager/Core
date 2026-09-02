@@ -1320,7 +1320,23 @@ QWidget *SettingsContentWidget::build_diagnostics_tab() {
   form->addRow(tr("Maximum crash dumps kept"), dumps_spin);
   form->addRow(tr("Crash dump type"), type_combo);
   form->addRow(QString(), level_hint);
+
+  // DEBUG panel launcher: sits below the log/crash-dump rows. The DEBUG panel
+  // is normally reachable via the Konami code easter egg (see SettingsController
+  // handle_global_event); this button is the discoverable entry point for
+  // support/diagnostics workflows.
+  auto *debug_btn = new QPushButton(tr("Show DEBUG Panel"), group);
+  debug_btn->setToolTip(
+      tr("Open the DEBUG panel (CPU/RAM/disk stats, plugin list, UI reload)."));
+  auto *debug_row = new QHBoxLayout;
+  debug_row->setContentsMargins(0, 0, 0, 0);
+  debug_row->addWidget(debug_btn);
+  debug_row->addStretch(1);
+  form->addRow(QString(), debug_row);
   layout->addWidget(group);
+
+  connect(debug_btn, &QPushButton::clicked, this,
+          &SettingsContentWidget::open_debug_panel_requested);
 
   connect(level_combo, &QComboBox::currentIndexChanged, this,
           [&s, level_combo](int index) {
