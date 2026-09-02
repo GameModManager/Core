@@ -1,15 +1,24 @@
 #pragma once
 
 #include <QWidget>
-#include <array>
-#include <chrono>
 #include <deque>
-#include <string>
 
+// When Qt6 Charts is available the widget renders via QChart/QChartView/
+// QLineSeries. The headers live in the QtCharts namespace and the canonical
+// include path is <QtCharts/QChart> etc., so they are pulled in only from
+// the .cpp under the GMM_HAS_QTCHARTS guard. A forward declaration at
+// global scope (bare `class QChart`) does NOT match the real type
+// (QtCharts::QChart) and would fail to compile when QtCharts is linked,
+// which the QPainter fallback path hides. We therefore declare them inside
+// the QtCharts namespace so the qualified type matches the include path.
+#ifdef GMM_HAS_QTCHARTS
+namespace QtCharts {
 class QChart;
 class QChartView;
 class QLineSeries;
 class QValueAxis;
+} // namespace QtCharts
+#endif
 
 // Lightweight rolling 60s chart for the DebugWindow. Each chart is a fixed
 // 60-second window that scrolls left as time passes; the X axis spans the
@@ -69,11 +78,16 @@ private:
 #ifdef GMM_HAS_QTCHARTS
   void rebuild_qtchart();
   void apply_qtchart_axis();
-  QChart *chart_ = nullptr;
-  QChartView *chart_view_ = nullptr;
-  QLineSeries *series_ = nullptr;
-  QValueAxis *axis_x_ = nullptr;
-  QValueAxis *axis_y_ = nullptr;
+  // Members are QtCharts::QChart etc. (forward-declared above in the
+  // QtCharts namespace block). Qualifying with the namespace here is
+  // mandatory: the Q_OBJECT moc-generated code references them in the
+  // namespace-qualified form, and unqualified bare `QChart *` would not
+  // match the real type when Qt6::Charts is linked.
+  QtCharts::QChart *chart_ = nullptr;
+  QtCharts::QChartView *chart_view_ = nullptr;
+  QtCharts::QLineSeries *series_ = nullptr;
+  QtCharts::QValueAxis *axis_x_ = nullptr;
+  QtCharts::QValueAxis *axis_y_ = nullptr;
   double y_min_ = 0.0;
   double y_max_ = 0.0;
   bool y_range_set_ = false;

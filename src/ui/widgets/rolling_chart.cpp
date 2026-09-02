@@ -8,11 +8,15 @@
 #include <QPen>
 
 #ifdef GMM_HAS_QTCHARTS
-#include <QChart>
-#include <QChartView>
-#include <QLineSeries>
-#include <QValueAxis>
+// Canonical Qt6 path: include the per-class headers under QtCharts/. The
+// `using namespace QtCharts` below brings the types into scope so the rest
+// of this file can keep the unqualified names used by the QPainter fallback.
+#include <QtCharts/QChart>
+#include <QtCharts/QChartView>
+#include <QtCharts/QLineSeries>
+#include <QtCharts/QValueAxis>
 #include <QtMath>
+using namespace QtCharts;
 #endif
 
 namespace ui {

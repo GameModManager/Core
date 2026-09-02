@@ -9,11 +9,28 @@
 #include <QSizePolicy>
 #include <catch2/catch_test_macros.hpp>
 
+namespace {
+
+// Qt allows exactly one QApplication per process. Constructing one per
+// TEST_CASE is technically UB (destroy/recreate across cases), so use a
+// shared instance across the whole binary - Catch2 runs TEST_CASEs in
+// sequence and we don't need a per-case app. We guard with
+// QCoreApplication::instance() so re-entry from a test fixture is safe.
+QApplication *ensure_app() {
+  static int argc = 1;
+  static char app_name[] = "rolling_chart_test";
+  static char *argv[] = {app_name, nullptr};
+  if (auto *existing =
+          qobject_cast<QApplication *>(QCoreApplication::instance()))
+    return existing;
+  return new QApplication(argc, argv);
+}
+
+} // namespace
+
 TEST_CASE("rolling_chart: defaults are sane", "[rolling_chart][ui]") {
-  int argc = 1;
-  char app_name[] = "rolling_chart_test";
-  char *argv[] = {app_name, nullptr};
-  QApplication app(argc, argv);
+  QApplication *app = ensure_app();
+  (void)app;
   ui::RollingChartWidget chart;
   // Windowing defaults match the DebugWindow's chart tab layout.
   CHECK(chart.minimumHeight() >= 100);
@@ -24,10 +41,8 @@ TEST_CASE("rolling_chart: defaults are sane", "[rolling_chart][ui]") {
 
 TEST_CASE("rolling_chart: push_sample works without crashing",
           "[rolling_chart][ui]") {
-  int argc = 1;
-  char app_name[] = "rolling_chart_test";
-  char *argv[] = {app_name, nullptr};
-  QApplication app(argc, argv);
+  QApplication *app = ensure_app();
+  (void)app;
   ui::RollingChartWidget chart;
   chart.resize(400, 160);
   chart.show();
@@ -42,10 +57,8 @@ TEST_CASE("rolling_chart: push_sample works without crashing",
 }
 
 TEST_CASE("rolling_chart: setters do not crash", "[rolling_chart][ui]") {
-  int argc = 1;
-  char app_name[] = "rolling_chart_test";
-  char *argv[] = {app_name, nullptr};
-  QApplication app(argc, argv);
+  QApplication *app = ensure_app();
+  (void)app;
   ui::RollingChartWidget chart;
   chart.set_y_range(0.0, 100.0);
   chart.set_y_label(QStringLiteral("%"));

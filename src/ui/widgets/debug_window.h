@@ -2,6 +2,7 @@
 
 #include <QDialog>
 #include <QElapsedTimer>
+#include <QShowEvent>
 #include <QString>
 #include <filesystem>
 #include <functional>
@@ -49,22 +50,36 @@ public:
   // construction so we don't have to expand the constructor signature.
   void set_instance_registry(engine::InstanceRegistry *registry) {
     instance_registry_ = registry;
-    populate_info();
+    refresh_populated();
   }
   void set_game_knowledge(engine::GameKnowledge *knowledge) {
     knowledge_ = knowledge;
-    populate_info();
+    refresh_populated();
   }
   void set_active_profile(engine::profile::ProfileManager *profile) {
     active_profile_ = profile;
-    populate_info();
+    refresh_populated();
   }
   // Late-bind the current Instance object so the Paths tab can show
   // effective per-folder overrides (mods_dir override, downloads_dir
-  // override, ...) in addition to the defaults.
+  // override, ...) in addition to the defaults. Tracks the instance root
+  // so a showEvent() can detect an instance switch and repopulate.
   void set_current_instance(const engine::Instance *inst) {
     current_instance_ = inst;
-    populate_paths();
+    refresh_populated();
+  }
+  // Convenience used by MainWindow::switch_to_instance() to re-bind the
+  // new instance/game/profile in one shot. Updates the cached root + game
+  // IDs and refreshes both tables if the window is currently visible
+  // (so the next show is in sync). The constructor already calls the
+  // per-tab populators, so callers don't need to chain them.
+  void rebind_for_instance(const std::filesystem::path &instance_root,
+                           const std::string &game_id,
+                           const std::string &game_name) {
+    instance_root_ = instance_root;
+    game_id_ = game_id;
+    game_name_ = game_name;
+    refresh_populated();
   }
 
 private:
@@ -72,6 +87,15 @@ private:
   void setup_charts_tab();
   void setup_paths_tab();
   void setup_info_tab();
+
+  // Re-runs both tab populators. Called whenever any of the late-bound
+  // inputs change (registry, knowledge, profile, current Instance) and
+  // from rebind_for_instance() when MainWindow::set_game_info() runs.
+  void refresh_populated();
+
+  // Safety net: if the cached instance root diverges from the one the
+  // caller pushed via rebind_for_instance(), repopulate on show.
+  void showEvent(QShowEvent *event) override;
 
   // Refresh the label group (CPU%/RAM/MiB/disk/uptime). Runs on
   // refresh_timer_ (default 2 s, user-tunable). Also pushes to charts.
@@ -143,17 +167,30 @@ private:
   int refresh_interval_ = 2; // seconds for labels; charts always 1 Hz
 
   // --- Persistent state for delta-based metrics ---
-  bool first_cpu_ = true;
-  unsigned long prev_proc_ticks_ = 0;
-  unsigned long prev_sys_total_ = 0;
-  bool first_io_ = true;
-  unsigned long long prev_read_bytes_ = 0;
-  unsigned long long prev_write_bytes_ = 0;
-  bool first_net_ = true;
-  unsigned long long prev_rx_bytes_ = 0;
-  unsigned long long prev_tx_bytes_ = 0;
+  // refresh_charts() runs at 1 Hz (chart_timer_); refresh_stats() runs on
+  // refresh_timer_ at the user-tunable label interval (1-60 s). The two
+  // paths used to share these prev_* members and so each timer would
+  // clobber the other's baseline: label deltas could be computed against
+  // a baseline that the chart path had just rewritten. Splitting them
+  // gives each path its own baseline and removes the race.
+  bool first_cpu_chart_ = true;
+  unsigned long prev_proc_ticks_chart_ = 0;
+  unsigned long prev_sys_total_chart_ = 0;
+  bool first_io_chart_ = true;
+  unsigned long long prev_read_bytes_chart_ = 0;
+  unsigned long long prev_write_bytes_chart_ = 0;
+  bool first_net_chart_ = true;
+  unsigned long long prev_rx_bytes_chart_ = 0;
+  unsigned long long prev_tx_bytes_chart_ = 0;
   QElapsedTimer jitter_timer_;
   bool first_jitter_ = true;
+
+  bool first_cpu_label_ = true;
+  unsigned long prev_proc_ticks_label_ = 0;
+  unsigned long prev_sys_total_label_ = 0;
+  bool first_io_label_ = true;
+  unsigned long long prev_read_bytes_label_ = 0;
+  unsigned long long prev_write_bytes_label_ = 0;
 
   // --- Constructor-time args / late-bound pointers ---
   std::filesystem::path instance_root_;
