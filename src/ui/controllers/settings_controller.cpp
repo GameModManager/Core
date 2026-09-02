@@ -1007,7 +1007,7 @@ void SettingsController::ensure_nxm_handler_default() {
 
 void SettingsController::show_settings_dialog() {
   SettingsDialog dlg(w_->style_manager_, w_->native_style_name_,
-                     w_->current_instance_root_, w_->plugin_loader_, w_);
+                     w_->current_instance_root_, w_->plugin_loader_, this, w_);
   dlg.exec();
   apply_settings_changes();
 }
@@ -1081,6 +1081,30 @@ void SettingsController::show_pipeline_window() {
   w_->pipeline_window_->show();
   w_->pipeline_window_->raise();
   w_->pipeline_window_->activateWindow();
+}
+
+void SettingsController::show_debug_window() {
+  if (w_->current_instance_root_.empty()) {
+    QMessageBox::information(
+        w_, tr("Debug Panel"),
+        tr("No instance is currently loaded. The debug panel is only "
+           "available while a game instance is active."));
+    return;
+  }
+
+  if (!w_->debug_window_) {
+    w_->debug_window_ = new DebugWindow(
+        w_->current_instance_root_, w_->current_game_id_,
+        w_->current_game_name_, w_->plugin_loader_,
+        [this]() {
+          if (w_->style_manager_)
+            w_->style_manager_->reload_current();
+        },
+        w_);
+  }
+  w_->debug_window_->show();
+  w_->debug_window_->raise();
+  w_->debug_window_->activateWindow();
 }
 
 void SettingsController::show_instance_switcher() {

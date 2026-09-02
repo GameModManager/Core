@@ -13,6 +13,7 @@ class QWidget;
 
 namespace ui {
 class SettingsContentWidget;
+class SettingsController;
 }
 
 // Thin QDialog wrapper around SettingsContentWidget.  Used when Full UI mode
@@ -25,6 +26,7 @@ public:
                    const QString& native_style_name,
                    const std::filesystem::path& instance_root,
                    engine::PluginLoader* plugin_loader,
+                   ui::SettingsController* settings_controller = nullptr,
                    QWidget* parent = nullptr);
 
 private:
