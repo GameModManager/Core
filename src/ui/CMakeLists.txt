@@ -59,6 +59,7 @@ set(UI_SOURCES
     widgets/column_toggle_header.cpp
     widgets/list_dialog.cpp
     widgets/menu_bar.cpp
+    widgets/rolling_chart.cpp
     panels/downloads_tab.cpp
     panels/plugin_view.cpp
     panels/plugins_tab.cpp
@@ -181,4 +182,12 @@ endif()
 if(KF6SyntaxHighlighting_FOUND)
     target_compile_definitions(gmm_ui PUBLIC GMM_HAS_SYNTAX_HIGHLIGHTING=1)
     target_link_libraries(gmm_ui PRIVATE KF6::SyntaxHighlighting)
+endif()
+# DebugWindow charts: Qt6::Charts is optional. When found, the RollingChart
+# widget uses QChartView/QLineSeries; when missing it falls back to a
+# QPainter polyline. GMM_HAS_QTCHARTS guards the chart-using code in
+# rolling_chart.h so the file always compiles.
+if(Qt6Charts_FOUND)
+    target_compile_definitions(gmm_ui PUBLIC GMM_HAS_QTCHARTS=1)
+    target_link_libraries(gmm_ui PRIVATE Qt6::Charts)
 endif()
