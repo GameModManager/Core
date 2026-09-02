@@ -248,9 +248,22 @@ ModMeta ModMeta::from_mo2_import(const std::string& content,
 
     ModMeta meta;
 
-    // Detect source
+    // Detect source. Workspace-fqf5: a meta.ini that says repository=Nexus
+    // but carries modid=0 (or empty / unparsable) is MO2's "no Nexus id"
+    // sentinel - NOT a real Nexus attribution. Tagging such a mod as nexus
+    // would fabricate provenance the same way write_game_metadata used to.
+    // Require a positive numeric modid before we believe the Nexus claim.
     std::string repository = raw.get("General", "repository");
-    bool is_nexus = (repository == "Nexus");
+    std::string raw_modid = raw.get("General", "modid");
+    long long modid_value = 0;
+    if (!raw_modid.empty()) {
+        try {
+            modid_value = std::stoll(raw_modid);
+        } catch (...) {
+            modid_value = 0;
+        }
+    }
+    bool is_nexus = (repository == "Nexus") && (modid_value > 0);
 
     // Copy [General] fields, splitting Nexus-specific ones
     std::string source_type = "manual";

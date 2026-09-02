@@ -392,3 +392,97 @@ TEST_CASE("mod_meta_write_game_metadata_namespace_isolation", "[engine]") {
             "Nexus: re-write does not change an existing modid");
   }
 }
+
+// Workspace-fqf5: from_mo2_import's is_nexus detector used to trust the
+// MO2 repository string alone. A legacy meta.ini that says
+// repository=Nexus but carries modid=0 (the MO2 "no Nexus id" sentinel
+// after Workspace-rvld) would be tagged source_type="nexus" with an
+// empty source_id and a [Nexusmods] section keyed off an empty modid -
+// fabricating Nexus provenance for a mod that has none.
+//
+// The fix is a positive-modid guard: only tag a MO2 import as nexus
+// when both repository=="Nexus" AND modid is a positive integer.
+TEST_CASE("mod_meta_from_mo2_import_modid_guard", "[engine]") {
+  using engine::ModMeta;
+
+  // Helper to build the most minimal MO2 meta.ini content for the test.
+  auto make_mo2_meta = [](const std::string &repository,
+                          const std::string &modid,
+                          const std::string &gamename = "Skyrim") {
+    std::string s;
+    s += "[General]\n";
+    s += "gameName=" + gamename + "\n";
+    if (!repository.empty())
+      s += "repository=" + repository + "\n";
+    if (!modid.empty())
+      s += "modid=" + modid + "\n";
+    s += "version=1.0\n";
+    return s;
+  };
+
+  // --- 1) repository=Nexus, modid=0 -> manual (the fqf5 regression). ---
+  {
+    const std::string content = make_mo2_meta("Nexus", "0");
+    ModMeta m = ModMeta::from_mo2_import(content, "LegacyNexusZero");
+    require(m.source_type() == "manual",
+            "repository=Nexus with modid=0 falls through to manual");
+    require(m.source_id().empty(),
+            "repository=Nexus with modid=0 produces empty source_id");
+    require(!m.has_section("Nexusmods"),
+            "repository=Nexus with modid=0 writes NO [Nexusmods] section");
+  }
+
+  // --- 2) repository=Nexus, modid empty -> manual. ---
+  {
+    const std::string content = make_mo2_meta("Nexus", "");
+    ModMeta m = ModMeta::from_mo2_import(content, "LegacyNexusEmpty");
+    require(m.source_type() == "manual",
+            "repository=Nexus with empty modid falls through to manual");
+    require(!m.has_section("Nexusmods"),
+            "repository=Nexus with empty modid writes NO [Nexusmods] section");
+  }
+
+  // --- 3) repository=Nexus, modid=12345 -> nexus (positive id). ---
+  {
+    const std::string content = make_mo2_meta("Nexus", "12345");
+    ModMeta m = ModMeta::from_mo2_import(content, "LegacyNexusValid");
+    require(m.source_type() == "nexus",
+            "repository=Nexus with positive modid is tagged nexus");
+    require(m.source_id() == "12345",
+            "source_id is the modid value");
+    require(m.has_section("Nexusmods"),
+            "positive modid writes [Nexusmods] section");
+    require(m.get("Nexusmods", "modid") == "12345",
+            "[Nexusmods]modid mirrors the MO2 modid");
+  }
+
+  // --- 4) repository=Nexus, modid is non-numeric -> manual. ---
+  {
+    const std::string content = make_mo2_meta("Nexus", "abc");
+    ModMeta m = ModMeta::from_mo2_import(content, "LegacyNexusGarbage");
+    require(m.source_type() == "manual",
+            "repository=Nexus with non-numeric modid falls through to manual");
+    require(!m.has_section("Nexusmods"),
+            "non-numeric modid writes NO [Nexusmods] section");
+  }
+
+  // --- 5) repository=Nexus, modid is negative -> manual. ---
+  {
+    const std::string content = make_mo2_meta("Nexus", "-1");
+    ModMeta m = ModMeta::from_mo2_import(content, "LegacyNexusNegative");
+    require(m.source_type() == "manual",
+            "repository=Nexus with negative modid falls through to manual");
+    require(!m.has_section("Nexusmods"),
+            "negative modid writes NO [Nexusmods] section");
+  }
+
+  // --- 6) No repository at all -> manual regardless. (Sanity check.) ---
+  {
+    const std::string content = make_mo2_meta("", "12345");
+    ModMeta m = ModMeta::from_mo2_import(content, "LegacyNoRepo");
+    require(m.source_type() == "manual",
+            "no repository field falls through to manual");
+    require(!m.has_section("Nexusmods"),
+            "no repository field writes NO [Nexusmods] section");
+  }
+}
