@@ -80,6 +80,17 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Network Test LinguistTools)
 # "unsupported" page otherwise.
 find_package(Qt6 COMPONENTS Multimedia MultimediaWidgets QUIET)
 
+# Optional Qt6 Charts (QChart/QLineSeries) for the DebugWindow's 60s rolling
+# charts. When absent, DebugWindow falls back to a QPainter polyline widget
+# so the panel still works. setup.sh installs qt6-charts on supported
+# distros; CI without the package compiles the fallback path.
+find_package(Qt6 COMPONENTS Charts QUIET)
+if(Qt6Charts_FOUND)
+    message(STATUS "Qt6 Charts found - DebugWindow will use QChart for charts")
+else()
+    message(STATUS "Qt6 Charts not found - DebugWindow will use QPainter fallback")
+endif()
+
 # QtKeychain OS keyring (Secret Service / KWallet / macOS Keychain / Windows
 # Credential Locker) — pulled on every platform that ships it.
 find_package(Qt6Keychain QUIET)

@@ -549,14 +549,7 @@ void SettingsController::set_game_info(
     auto flag = w_->current_instance_root_ / "debugging.enabled";
     if (std::filesystem::exists(flag)) {
       if (!w_->debug_window_) {
-        w_->debug_window_ = new DebugWindow(
-            w_->current_instance_root_, w_->current_game_id_,
-            w_->current_game_name_, w_->plugin_loader_,
-            [this]() {
-              if (w_->style_manager_)
-                w_->style_manager_->reload_current();
-            },
-            w_);
+        w_->debug_window_ = create_debug_window();
       }
       w_->debug_window_->show();
       w_->debug_window_->raise();
@@ -1083,6 +1076,29 @@ void SettingsController::show_pipeline_window() {
   w_->pipeline_window_->activateWindow();
 }
 
+DebugWindow *SettingsController::create_debug_window() {
+  auto *dw = new DebugWindow(
+      w_->current_instance_root_, w_->current_game_id_, w_->current_game_name_,
+      w_->plugin_loader_,
+      [this]() {
+        if (w_->style_manager_)
+          w_->style_manager_->reload_current();
+      },
+      w_);
+  // Wire the late-bound pointers so the Info tab can populate every hidden
+  // metadata row (registry, knowledge keys, active profile, ...).
+  dw->set_game_knowledge(w_->knowledge_);
+  dw->set_active_profile(w_->active_profile_.get());
+  // The Paths tab can show effective overrides only when it has the
+  // current Instance object. Setting it also triggers a populate_paths()
+  // refresh inside the DebugWindow.
+  dw->set_current_instance(&w_->current_instance_);
+  // InstanceRegistry is not yet wired into MainWindow; the DebugWindow
+  // lazily creates a temporary one from the on-disk file. Leave the slot
+  // set to nullptr so the lazy path runs.
+  return dw;
+}
+
 void SettingsController::show_debug_window() {
   if (w_->current_instance_root_.empty()) {
     QMessageBox::information(
@@ -1093,14 +1109,7 @@ void SettingsController::show_debug_window() {
   }
 
   if (!w_->debug_window_) {
-    w_->debug_window_ = new DebugWindow(
-        w_->current_instance_root_, w_->current_game_id_,
-        w_->current_game_name_, w_->plugin_loader_,
-        [this]() {
-          if (w_->style_manager_)
-            w_->style_manager_->reload_current();
-        },
-        w_);
+    w_->debug_window_ = create_debug_window();
   }
   w_->debug_window_->show();
   w_->debug_window_->raise();
@@ -1315,14 +1324,7 @@ bool SettingsController::handle_global_event(QObject *obj, QEvent *event) {
       bool enabled = std::filesystem::exists(flag);
       if (enabled) {
         if (!w_->debug_window_) {
-          w_->debug_window_ = new DebugWindow(
-              w_->current_instance_root_, w_->current_game_id_,
-              w_->current_game_name_, w_->plugin_loader_,
-              [this]() {
-                if (w_->style_manager_)
-                  w_->style_manager_->reload_current();
-              },
-              w_);
+          w_->debug_window_ = create_debug_window();
         }
         w_->debug_window_->show();
         w_->debug_window_->raise();
