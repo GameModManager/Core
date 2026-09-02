@@ -33,6 +33,7 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSemaphore>
+#include <QTabWidget>
 #include <QTextBrowser>
 #include <QThread>
 
@@ -313,6 +314,13 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
   // ---- Scenario 5: has_data() mirrors the Workspace-rvld guard - a
   // mod with only a default version (no [LoversLab] section, not
   // LoversLab-sourced) must NOT report LoversLab has_data.
+  //
+  // Workspace-fqf5 update: the SourceTab no longer creates a LoversLab
+  // panel for a manual mod at all - the panel is only created when the
+  // mod is actually LoversLab-sourced. So we now assert (a) the panel
+  // is not constructed (no LoversLab panel among the tab's children)
+  // and (b) the tab renders exactly the Manual placeholder + "+"
+  // affordance, with no LoversLab children.
   {
     engine::ModMeta m;
     m.set("General", "version", "1.0");
@@ -340,7 +348,11 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
     ui::LoversLabSourcePanel *ll = nullptr;
     for (auto *p : tab.findChildren<ui::LoversLabSourcePanel *>())
       ll = p;
-    check(ll && !ll->has_data(),
-          "manual mod: LoversLab panel has_data()==false");
+    check(ll == nullptr,
+          "manual mod: no LoversLab panel created (single-source tab)");
+
+    auto *qtw = tab.findChild<QTabWidget *>();
+    check(qtw && qtw->count() == 2,
+          "manual mod: 2 tabs (Manual placeholder + '+' affordance)");
   }
 }
