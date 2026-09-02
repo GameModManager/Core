@@ -14,15 +14,17 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
-#include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMap>
 #include <QPushButton>
 #include <QStackedWidget>
 #include <QTabBar>
 #include <QTabWidget>
+#include <QUrl>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <cctype>
 #include <optional>
 #include <string>
@@ -179,6 +181,18 @@ std::optional<SourceDisplay> display_for_source(const QString &source_type) {
 // We keep the dialog deliberately minimal: a provider combo, a small form
 // with the fields each known provider needs, and OK / Cancel. The visible
 // form changes when the combo selection changes.
+//
+// Provider mapping strategy (Workspace-fqf5 review fix):
+//   The combo stores each item's canonical source_type ("nexus" /
+//   "loverslab" / "steam" / ...) in Qt::UserRole via addItem(display,
+//   canonical). chosen_source_type() simply reads currentData(). This
+//   avoids hardcoded positional indices and survives arbitrary registry
+//   orderings or missing providers (e.g. a Nexus-only build with no
+//   LoversLab registered). Priority order in the combo (Nexus first,
+//   then LoversLab, then Steam, then everything else in registration
+//   order) is enforced by sorting an Entry{display,canonical} vector
+//   before populating the combo - no in-place re-ordering that could
+//   mis-track other items' indices.
 class AddSourceDialog : public QDialog {
 public:
   AddSourceDialog(const ModInfoData &data, QWidget *parent)
@@ -196,45 +210,44 @@ public:
 
     auto *form = new QFormLayout();
     provider_combo_ = new QComboBox(this);
-    int nexus_index = -1;
-    int loverslab_index = -1;
-    int steam_index = -1;
-    for (auto *provider : engine::SourceRegistry::instance().providers()) {
-      provider_combo_->addItem(
-          QString::fromStdString(provider->display_name()));
-      const QString pt =
-          QString::fromStdString(provider->source_type()).toLower();
-      if (pt == QLatin1String("nexus"))
-        nexus_index = provider_combo_->count() - 1;
-      else if (pt == QLatin1String("loverslab"))
-        loverslab_index = provider_combo_->count() - 1;
-      else if (pt == QLatin1String("steam") ||
-               pt == QLatin1String("steamworkshop"))
-        steam_index = provider_combo_->count() - 1;
-    }
-    // Re-order so the three well-known providers come first. Anything else
-    // (custom plugins) appears after.
-    auto push_to_front = [this](int from_index) {
-      if (from_index <= 0) return;
-      const QString text = provider_combo_->itemText(from_index);
-      provider_combo_->removeItem(from_index);
-      provider_combo_->insertItem(0, text);
-      provider_combo_->setCurrentIndex(0);
+
+    // Build the sorted Entry list from the registry. We normalize
+    // "steamworkshop" -> "steam" so the canonical key the rest of the
+    // codebase expects (and that SourceInfoPanel guards on) is consistent
+    // regardless of how a Steam plugin reports itself.
+    struct Entry {
+      QString display;
+      QString canonical;
+      int priority = 0;
     };
-    // Push the three known providers to the front in priority order:
-    // Steam, LoversLab, Nexus. The most commonly re-attached sources are
-    // first so the user does not have to scroll.
-    if (steam_index >= 0) {
-      push_to_front(steam_index);
-      loverslab_index++;
-      nexus_index++;
+    auto priority_for = [](const QString &canonical) {
+      if (canonical == QLatin1String("nexus"))
+        return 0;
+      if (canonical == QLatin1String("loverslab"))
+        return 1;
+      if (canonical == QLatin1String("steam"))
+        return 2;
+      return 3;
+    };
+    QList<Entry> entries;
+    for (auto *provider : engine::SourceRegistry::instance().providers()) {
+      Entry e;
+      e.display = QString::fromStdString(provider->display_name());
+      QString pt = QString::fromStdString(provider->source_type()).toLower();
+      if (pt == QLatin1String("steamworkshop"))
+        pt = QStringLiteral("steam");
+      e.canonical = pt;
+      e.priority = priority_for(pt);
+      entries.append(e);
     }
-    if (loverslab_index >= 0) {
-      push_to_front(loverslab_index);
-      nexus_index++;
-    }
-    if (nexus_index >= 0) {
-      push_to_front(nexus_index);
+    std::sort(entries.begin(), entries.end(),
+              [](const Entry &a, const Entry &b) {
+                if (a.priority != b.priority)
+                  return a.priority < b.priority;
+                return a.display.compare(b.display, Qt::CaseInsensitive) < 0;
+              });
+    for (const auto &e : entries) {
+      provider_combo_->addItem(e.display, e.canonical);
     }
     form->addRow(tr("Provider:"), provider_combo_);
     layout->addLayout(form);
@@ -251,8 +264,11 @@ public:
     field_stack_->addWidget(nexus_page_);
     field_stack_->addWidget(loverslab_page_);
     field_stack_->addWidget(steam_page_);
-    // Map combo index -> field page. Unknown providers (custom plugins)
+    // Map canonical -> field page index. Unknown providers (custom plugins)
     // get an empty page with an "edit in meta.ini" hint.
+    page_by_canonical_[QStringLiteral("nexus")] = 0;
+    page_by_canonical_[QStringLiteral("loverslab")] = 1;
+    page_by_canonical_[QStringLiteral("steam")] = 2;
     unknown_page_ = new QLabel(tr(
         "This provider has no editable fields here. After confirming, the "
         "mod's source_type will be set and you can finish configuration by "
@@ -260,6 +276,7 @@ public:
         this);
     unknown_page_->setWordWrap(true);
     field_stack_->addWidget(unknown_page_);
+    page_by_canonical_[QString()] = field_stack_->count() - 1;
 
     connect(provider_combo_, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &AddSourceDialog::on_provider_changed);
@@ -287,11 +304,12 @@ public:
 
   // The provider that the user picked, in the canonical short form used
   // for [GameModManager]source_type ("nexus" / "loverslab" / "steam" / ...).
+  // Reads the canonical token stored in Qt::UserRole itemData, so the
+  // answer is stable regardless of the combo's visible order.
   QString chosen_source_type() const {
-    const int idx = provider_combo_->currentIndex();
-    if (idx < 0)
+    if (!provider_combo_)
       return {};
-    return provider_index_to_canonical(idx);
+    return provider_combo_->currentData().toString();
   }
 
   // Identifier for the chosen provider. For Nexus this is the mod id; for
@@ -342,7 +360,7 @@ private:
     auto *hint = new QLabel(tr(
         "The numeric file id from the LoversLab file URL. The page URL "
         "lets the panel open the exact page; otherwise the bare-id URL is "
-        "used."),
+        "used. When provided, must start with http:// or https://."),
         page);
     hint->setWordWrap(true);
     form->addRow(hint);
@@ -363,37 +381,17 @@ private:
     return page;
   }
 
-  // Map a combo index to its canonical provider-type token. Mirrors the
-  // re-ordering done in the constructor: index 0 = Nexus (after re-order),
-  // 1 = LoversLab, 2 = Steam, 3+ = any other registered provider in
-  // SourceRegistry iteration order.
-  QString provider_index_to_canonical(int idx) const {
-    if (idx == 0)
-      return QStringLiteral("nexus");
-    if (idx == 1)
-      return QStringLiteral("loverslab");
-    if (idx == 2)
-      return QStringLiteral("steam");
-    // For unknown providers we cannot reliably know their source_type()
-    // without re-iterating the registry; the simplest stable mapping is to
-    // store a parallel array at construction time. For now this branch is
-    // only hit when an instance has 4+ providers registered - rare.
-    return {};
-  }
-
   void on_provider_changed(int idx) {
     Q_UNUSED(idx);
     if (!field_stack_)
       return;
     const QString t = chosen_source_type();
-    if (t == QLatin1String("nexus"))
-      field_stack_->setCurrentWidget(nexus_page_);
-    else if (t == QLatin1String("loverslab"))
-      field_stack_->setCurrentWidget(loverslab_page_);
-    else if (t == QLatin1String("steam"))
-      field_stack_->setCurrentWidget(steam_page_);
-    else
+    auto it = page_by_canonical_.find(t);
+    if (it != page_by_canonical_.end()) {
+      field_stack_->setCurrentIndex(it.value());
+    } else {
       field_stack_->setCurrentWidget(unknown_page_);
+    }
     refresh_accept_enabled();
   }
 
@@ -407,6 +405,21 @@ private:
       } else if (t == QLatin1String("loverslab")) {
         const QString v = loverslab_fileid_->text().trimmed();
         ok = !v.isEmpty() && v.toLongLong() > 0;
+        if (ok) {
+          // Optional page_url: when provided, must be http(s). We only
+          // reject when the user typed something but it parses to a
+          // non-web scheme (file://, javascript:, data:, ...). The URL
+          // is later handed to QDesktopServices::openUrl().
+          const QString url = loverslab_page_url_->text().trimmed();
+          if (!url.isEmpty()) {
+            const QUrl parsed(url);
+            const QString scheme = parsed.scheme().toLower();
+            if (scheme != QLatin1String("https") &&
+                scheme != QLatin1String("http")) {
+              ok = false;
+            }
+          }
+        }
       } else if (t == QLatin1String("steam")) {
         const QString v = steam_workshop_id_->text().trimmed();
         ok = !v.isEmpty() && v.toLongLong() > 0;
@@ -429,6 +442,10 @@ private:
   QLineEdit *loverslab_fileid_ = nullptr;
   QLineEdit *loverslab_page_url_ = nullptr;
   QLineEdit *steam_workshop_id_ = nullptr;
+  // Canonical source_type -> index in field_stack_. Always populated
+  // for the well-known providers; an empty-string entry points at the
+  // unknown-provider hint page.
+  QMap<QString, int> page_by_canonical_;
 };
 
 }  // namespace
