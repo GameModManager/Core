@@ -13,12 +13,14 @@
 #include <QClipboard>
 #include <QFontDatabase>
 #include <QGroupBox>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QString>
+#include <QSysInfo>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTimer>
@@ -31,6 +33,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <sstream>
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -147,7 +150,14 @@ NetCounters sum_net_counters() {
     auto colon = line.find(':');
     if (colon == std::string::npos)
       continue;
-    const std::string iface = line.substr(0, colon);
+    // /proc/net/dev lines are indented ("    lo: ..."), so trim leading
+    // whitespace before the comparison - without this "lo" never matches
+    // and the loopback counters inflate the system total.
+    std::string iface = line.substr(0, colon);
+    auto first = iface.find_first_not_of(" \t");
+    if (first == std::string::npos)
+      continue;
+    iface = iface.substr(first);
     if (iface == "lo")
       continue;
     // 16 columns on Linux: name rx_bytes rx_packets ... rx_errs rx_drop
@@ -168,6 +178,10 @@ NetCounters sum_net_counters() {
     out.rx += rx;
     out.tx += tx;
   }
+  // Note: the sum above is system-wide and includes docker0 / veth* / br-*
+  // noise from any containers/netns. For per-process byte counters on
+  // Linux use /proc/<pid>/net/dev (out of scope here). On non-Linux
+  // platforms this returns zero and the chart shows "(unsupported)".
 #endif
   return out;
 }
@@ -360,11 +374,15 @@ void DebugWindow::setup_charts_tab() {
   cpu_chart_->set_y_range(0.0, 100.0);
   cpu_chart_->set_y_label(QStringLiteral("%"));
   cpu_chart_->set_title(QStringLiteral("%1 cores").arg(online_cpu_count()));
-  ram_chart_->set_y_range(0.0, 1024.0);
+  // RAM and Heap are auto-scaled: a fixed 0..1024 MiB clip hides any
+  // process that grows past 1 GiB (very common during long sessions,
+  // indexing, or Steam Workshop downloads). Disk/net already auto-scale;
+  // jitter stays fixed at -50..+50 ms by design.
   ram_chart_->set_y_label(QStringLiteral("MiB"));
-  heap_chart_->set_y_range(0.0, 1024.0);
   heap_chart_->set_y_label(QStringLiteral("MiB"));
-  // disk/net: auto-scale (start at 0,0)
+  // disk/net: auto-scale (start at 0,0); both push a single R+W / RX+TX
+  // sum so the chart line stays readable even with one series. The header
+  // labels keep R/W (or RX/TX) separate so the user can see the split.
   disk_chart_->set_y_label(QStringLiteral("KiB/s"));
   net_chart_->set_y_label(QStringLiteral("KiB/s"));
   // jitter: signed -50..+50 ms
@@ -390,8 +408,7 @@ void DebugWindow::setup_paths_tab() {
   auto *hh = paths_table_->horizontalHeader();
   hh->setStretchLastSection(true);
   hh->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-  hh->setSectionResizeMode(1, QHeaderView::Interactive);
-  paths_table_->setColumnWidth(1, 380);
+  hh->setSectionResizeMode(1, QHeaderView::ResizeToContents);
   // Ctrl+C copies the focused (or selected) row's value.
   paths_table_->setContextMenuPolicy(Qt::CustomContextMenu);
   connect(paths_table_, &QWidget::customContextMenuRequested, this,
@@ -690,9 +707,19 @@ void DebugWindow::populate_info() {
              QString::fromStdString(game_name_), true);
   add_kv_row(info_table_, tr("Folder name"),
              QString::fromStdString(instance_root_.filename().string()), true);
-  add_kv_row(info_table_, tr("Portable"),
-             bool_text(instance_root_.filename() == fs::path("ModOrganizer")),
-             false);
+  // Use Instance::Info::portable as the source of truth (matches the Paths
+  // tab). The previous filename=="ModOrganizer" heuristic was wrong for any
+  // portable instance whose folder was named something else, and could
+  // disagree with the Paths tab on the same window.
+  bool portable = false;
+  if (current_instance_) {
+    portable = current_instance_->info().portable;
+  } else if (instance_registry_) {
+    auto entry = instance_registry_->find_by_root(instance_root_);
+    if (entry)
+      portable = (entry->type == "portable");
+  }
+  add_kv_row(info_table_, tr("Portable"), bool_text(portable), false);
 
   // Group: InstanceRegistry
   add_group_header(info_table_, tr("Registry"));
@@ -931,6 +958,26 @@ void DebugWindow::populate_info() {
 // stays continuous regardless of label cadence.
 // ---------------------------------------------------------------------------
 
+void DebugWindow::refresh_populated() {
+  // Both tabs rebuild from the cached state. Cheap (the registry/path
+  // readers are bounded) and called only on instance/registry/profile
+  // changes, not on every timer tick.
+  populate_paths();
+  populate_info();
+}
+
+void DebugWindow::showEvent(QShowEvent *event) {
+  QDialog::showEvent(event);
+  // Safety net for "instance switched while the debug window was hidden":
+  // SettingsController::set_game_info() pushes the new state via
+  // rebind_for_instance() which already repopulates. But if a caller
+  // forgot (or rebuilt the DebugWindow), the cached tables would be stale
+  // until the next refresh tick. Re-running the populators on every show
+  // is cheap and harmless when nothing changed (QTableWidget::setRowCount
+  // is a no-op for empty rebuilds).
+  refresh_populated();
+}
+
 void DebugWindow::refresh_charts() {
   if (!cpu_chart_)
     return;
@@ -964,15 +1011,15 @@ void DebugWindow::refresh_charts() {
                     &su, &sn, &ss, &sid, &siow, &sir, &sq, &sst);
     if (got == 8) {
       unsigned long sys_total = su + sn + ss + sid + siow + sir + sq + sst;
-      if (!first_cpu_) {
-        unsigned long dp = proc_ticks - prev_proc_ticks_;
-        unsigned long ds = sys_total - prev_sys_total_;
+      if (!first_cpu_chart_) {
+        unsigned long dp = proc_ticks - prev_proc_ticks_chart_;
+        unsigned long ds = sys_total - prev_sys_total_chart_;
         if (ds > 0)
           cpu_pct = 100.0 * static_cast<double>(dp) / static_cast<double>(ds);
       }
-      first_cpu_ = false;
-      prev_proc_ticks_ = proc_ticks;
-      prev_sys_total_ = sys_total;
+      first_cpu_chart_ = false;
+      prev_proc_ticks_chart_ = proc_ticks;
+      prev_sys_total_chart_ = sys_total;
     }
   }
 
@@ -985,28 +1032,28 @@ void DebugWindow::refresh_charts() {
   if (!io_str.empty()) {
     unsigned long long r = parse_io_value(io_str, "read_bytes:");
     unsigned long long w = parse_io_value(io_str, "write_bytes:");
-    if (!first_io_) {
-      unsigned long long dr = r - prev_read_bytes_;
-      unsigned long long dw = w - prev_write_bytes_;
+    if (!first_io_chart_) {
+      unsigned long long dr = r - prev_read_bytes_chart_;
+      unsigned long long dw = w - prev_write_bytes_chart_;
       disk_read_kbs = static_cast<double>(dr) / 1024.0;
       disk_write_kbs = static_cast<double>(dw) / 1024.0;
     }
-    first_io_ = false;
-    prev_read_bytes_ = r;
-    prev_write_bytes_ = w;
+    first_io_chart_ = false;
+    prev_read_bytes_chart_ = r;
+    prev_write_bytes_chart_ = w;
   }
 
   // --- Network IO ---
   auto net = sum_net_counters();
-  if (!first_net_) {
-    double dr = static_cast<double>(net.rx - prev_rx_bytes_);
-    double dw = static_cast<double>(net.tx - prev_tx_bytes_);
+  if (!first_net_chart_) {
+    double dr = static_cast<double>(net.rx - prev_rx_bytes_chart_);
+    double dw = static_cast<double>(net.tx - prev_tx_bytes_chart_);
     rx_kbs = dr / 1024.0;
     tx_kbs = dw / 1024.0;
   }
-  first_net_ = false;
-  prev_rx_bytes_ = net.rx;
-  prev_tx_bytes_ = net.tx;
+  first_net_chart_ = false;
+  prev_rx_bytes_chart_ = net.rx;
+  prev_tx_bytes_chart_ = net.tx;
 
   // --- Event-loop jitter (ms deviation from 1000 ms target). ---
   if (!first_jitter_) {
@@ -1091,9 +1138,9 @@ void DebugWindow::refresh_stats() {
                     &su, &sn, &ss, &sid, &siow, &sir, &sq, &sst);
     if (got == 8) {
       unsigned long sys_total = su + sn + ss + sid + siow + sir + sq + sst;
-      if (!first_cpu_) {
-        unsigned long dp = proc_ticks - prev_proc_ticks_;
-        unsigned long ds = sys_total - prev_sys_total_;
+      if (!first_cpu_label_) {
+        unsigned long dp = proc_ticks - prev_proc_ticks_label_;
+        unsigned long ds = sys_total - prev_sys_total_label_;
         double pct =
             ds > 0 ? 100.0 * static_cast<double>(dp) / static_cast<double>(ds)
                    : 0.0;
@@ -1102,9 +1149,9 @@ void DebugWindow::refresh_stats() {
         if (cpu_label_)
           cpu_label_->setText(QString::fromUtf8(buf));
       }
-      first_cpu_ = false;
-      prev_proc_ticks_ = proc_ticks;
-      prev_sys_total_ = sys_total;
+      first_cpu_label_ = false;
+      prev_proc_ticks_label_ = proc_ticks;
+      prev_sys_total_label_ = sys_total;
     }
   }
 
@@ -1120,9 +1167,9 @@ void DebugWindow::refresh_stats() {
   if (!io_str.empty()) {
     unsigned long long cur_read = parse_io_value(io_str, "read_bytes:");
     unsigned long long cur_write = parse_io_value(io_str, "write_bytes:");
-    if (!first_io_) {
-      auto delta_read = cur_read - prev_read_bytes_;
-      auto delta_write = cur_write - prev_write_bytes_;
+    if (!first_io_label_) {
+      auto delta_read = cur_read - prev_read_bytes_label_;
+      auto delta_write = cur_write - prev_write_bytes_label_;
       // The label refresh interval may be >1s, so the deltas are
       // accumulated over refresh_interval_; divide by it for B/s.
       double interval_s = static_cast<double>(refresh_interval_);
@@ -1142,12 +1189,13 @@ void DebugWindow::refresh_stats() {
                                    .arg(static_cast<int>(write_bs)));
       }
     }
-    first_io_ = false;
-    prev_read_bytes_ = cur_read;
-    prev_write_bytes_ = cur_write;
+    first_io_label_ = false;
+    prev_read_bytes_label_ = cur_read;
+    prev_write_bytes_label_ = cur_write;
   }
 
   // --- Process uptime ---
+#ifdef __linux__
   if (!proc_stat.empty()) {
     auto start_ticks = parse_after(proc_stat, 21);
     long hz = ::sysconf(_SC_CLK_TCK);
@@ -1182,6 +1230,13 @@ void DebugWindow::refresh_stats() {
         uptime_label_->setText(s);
     }
   }
+#else
+  // Non-Linux: procfs not available. Show a placeholder so the row still
+  // looks like a stat rather than an empty cell. The charts/headers in
+  // refresh_charts() handle their own non-Linux fallbacks.
+  if (uptime_label_)
+    uptime_label_->setText(QStringLiteral("(unsupported)"));
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -1224,4 +1279,7 @@ unsigned long DebugWindow::parse_after(const std::string &s, int field_index) {
 
 } // namespace ui
 
-#include "moc_debug_window.cpp"
+// AUTOMOC (set in CMakeLists.txt) generates and includes the moc output
+// automatically; an explicit #include "moc_debug_window.cpp" would create
+// a duplicate symbol and rely on the AUTOMOC include-path search. Every
+// other Q_OBJECT widget in this codebase relies on AUTOMOC alone.

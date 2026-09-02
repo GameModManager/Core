@@ -551,6 +551,26 @@ void SettingsController::set_game_info(
       if (!w_->debug_window_) {
         w_->debug_window_ = create_debug_window();
       }
+      // Rebind the cached instance root / game id / display name every
+      // time set_game_info runs, regardless of whether the window is
+      // currently shown. switch_to_instance() can replace the active
+      // instance while the debug window is hidden; the next showEvent
+      // then renders the correct Paths/Info. rebind_for_instance() also
+      // calls refresh_populated() so an already-visible window reflects
+      // the new instance immediately.
+      w_->debug_window_->rebind_for_instance(w_->current_instance_root_,
+                                             w_->current_game_id_,
+                                             w_->current_game_name_);
+      // active_profile_ may have changed since the last populate (the
+      // profile combo refreshes late in this method). Re-bind it so the
+      // Info tab profile group updates too.
+      if (w_->active_profile_)
+        w_->debug_window_->set_active_profile(w_->active_profile_.get());
+      // Re-bind the late current Instance so any per-instance overrides
+      // apply. The pointer inside DebugWindow already tracks
+      // w_->current_instance_ (see create_debug_window), so this is a
+      // no-op for that field but it triggers a populate_paths() refresh.
+      w_->debug_window_->set_current_instance(&w_->current_instance_);
       w_->debug_window_->show();
       w_->debug_window_->raise();
     } else if (w_->debug_window_) {
@@ -1011,6 +1031,11 @@ void SettingsController::apply_settings_changes() {
     w_->current_instance_ =
         engine::Instance::from_root(w_->current_instance_root_);
     w_->current_instance_.read_toml();
+    // Re-bind the live Instance on any open debug window so the Paths tab
+    // reflects the new overrides without waiting for the next instance
+    // switch.
+    if (w_->debug_window_)
+      w_->debug_window_->set_current_instance(&w_->current_instance_);
   }
   // The icon-pack (and theme) settings may have changed in the dialog:
   // re-sync IconManager and re-apply the persistent window/toolbar icons.
@@ -1326,6 +1351,17 @@ bool SettingsController::handle_global_event(QObject *obj, QEvent *event) {
         if (!w_->debug_window_) {
           w_->debug_window_ = create_debug_window();
         }
+        // Same rebind as set_game_info(): the Konami toggle can fire while
+        // the active instance has changed since the window was last
+        // shown. Refresh the cached identity and repopulate so the
+        // user sees the current instance, not the one bound at first
+        // construction.
+        w_->debug_window_->rebind_for_instance(w_->current_instance_root_,
+                                               w_->current_game_id_,
+                                               w_->current_game_name_);
+        if (w_->active_profile_)
+          w_->debug_window_->set_active_profile(w_->active_profile_.get());
+        w_->debug_window_->set_current_instance(&w_->current_instance_);
         w_->debug_window_->show();
         w_->debug_window_->raise();
       } else if (w_->debug_window_) {
