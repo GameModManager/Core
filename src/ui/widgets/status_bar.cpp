@@ -14,8 +14,8 @@ const char* kFlowIds[] = {"launch", "install", "sort"};
 const char* kFlowTitles[] = {"Launch", "Install", "Sort"};
 
 // The Nexus source label shows the API budget consumed this hour/day.
-// Matches the "Nexus" entry of the game's download_sources knowledge key.
-const char* kRateSourceName = "Nexus";
+// Matches the "Nexus Mods" entry of the game's download_sources knowledge key.
+const char* kRateSourceName = "Nexus Mods";
 }  // namespace
 
 StatusBar::StatusBar(QWidget* parent)

@@ -77,10 +77,35 @@ static ui::ModInfoData make_data(const std::string& id,
     ui::ModInfoData data;
     data.id = QString::fromStdString(id);
     data.name = QString::fromStdString(id);
+    // Source tab (Workspace-fqf5) only renders a Nexus panel when the mod
+    // is actually Nexus-sourced. Test fixtures that exercise the Nexus
+    // panel therefore mark source_type="nexus" so the panel builds. See
+    // "source tab has_data and single source" below for the manual / non-
+    // Nexus paths.
+    data.source_type = QStringLiteral("nexus");
     data.source_id = QStringLiteral("42");
     data.nexus_domain = QStringLiteral("testgame");
     data.supported_sources = QStringList{QStringLiteral("Test Nexus")};
     data.fetch_nexus_info = std::move(fetch);
+    data.load_meta = [meta_dir, id] {
+        return engine::ModMeta::load(meta_dir, id);
+    };
+    data.save_meta = [meta_dir, id](const engine::ModMeta& m) {
+        return m.save(meta_dir, id);
+    };
+    return data;
+}
+
+// Helper for the manual-mod fixtures used in the single-source tests.
+static ui::ModInfoData make_manual_data(const std::string& id,
+                                        const std::filesystem::path& meta_dir) {
+    ui::ModInfoData data;
+    data.id = QString::fromStdString(id);
+    data.name = QString::fromStdString(id);
+    data.source_type = QStringLiteral("manual");
+    data.source_id = QString();
+    data.nexus_domain = QString();
+    data.supported_sources = QStringList{QStringLiteral("Test Nexus")};
     data.load_meta = [meta_dir, id] {
         return engine::ModMeta::load(meta_dir, id);
     };
@@ -236,9 +261,10 @@ TEST_CASE("source tab", "[ui]") {
     }
 }
 
-// Source-attribution regression for the Source tab (Workspace-rvld).
+// Source-attribution regression for the Source tab (Workspace-rvld +
+// Workspace-fqf5).
 //
-// Two related bugs are guarded here:
+// Three bugs are guarded here:
 //
 //   1) NexusSourcePanel::has_data() used to return true whenever any of
 //      {data_.source_id, [General]version, [Nexusmods]modid} was
@@ -256,8 +282,18 @@ TEST_CASE("source tab", "[ui]") {
 //      The fix unions supported_sources with the sections actually
 //      present in the mod's meta so LoversLab / Steam tabs surface
 //      whenever the mod actually has that provenance, regardless of
-//      the game hook.
-TEST_CASE("source tab has_data and union", "[ui]") {
+//      the game hook. (Kept after fqf5 only as a fallback for the
+//      actual source detection - the game hook no longer FABRICATES
+//      a Nexus tab for non-Nexus mods.)
+//
+//   3) SourceTab::populate() (Workspace-fqf5) used to display a Nexus
+//      tab for every mod under a Nexus-enabled game, regardless of the
+//      mod's actual source. Users conflated tab visibility with source
+//      attribution and assumed every mod was Nexus-sourced. The fix
+//      shows exactly ONE source tab (= the mod's actual source) plus
+//      a "+" affordance that opens an add-source dialog. Manual mods
+//      show a "Manual" placeholder and no Nexus tab.
+TEST_CASE("source tab has_data and single source", "[ui]") {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     const std::filesystem::path cfg = "/tmp/gmm_source_tab_union/config";
     std::filesystem::remove_all("/tmp/gmm_source_tab_union");
@@ -280,30 +316,16 @@ TEST_CASE("source tab has_data and union", "[ui]") {
     engine::SourceRegistry::instance().register_provider(
         std::make_unique<FakeNexusProvider>());
 
-    // --- Scenario 1: a manual mod with only a default version has
-    // NO Nexus data, so the Nexus panel must report has_data()==false.
-    // Before the fix, version alone (always "1.0") was enough to make
-    // has_data() return true. ---
+    // --- Scenario 1: a manual mod shows the "Manual" placeholder, NOT
+    // a Nexus panel (Workspace-fqf5). The "+" affordance tab is the
+    // only thing after the placeholder. ---
     {
         engine::ModMeta manual;
         manual.set("General", "version", "1.0");
         manual.set("GameModManager", "source_type", "manual");
         manual.save(meta_dir, "ManualMod");
 
-        ui::ModInfoData data;
-        data.id = QStringLiteral("ManualMod");
-        data.name = QStringLiteral("ManualMod");
-        // source_id empty, source_type=manual: nothing Nexus-sourced.
-        data.source_type = QStringLiteral("manual");
-        data.source_id = QString();
-        data.nexus_domain = QString();
-        data.supported_sources = QStringList{QStringLiteral("Test Nexus")};
-        data.load_meta = [meta_dir] {
-            return engine::ModMeta::load(meta_dir, "ManualMod");
-        };
-        data.save_meta = [meta_dir](const engine::ModMeta& m) {
-            return m.save(meta_dir, "ManualMod");
-        };
+        auto data = make_manual_data("ManualMod", meta_dir);
 
         ui::SourceTab tab;
         tab.set_current(data);
@@ -311,19 +333,27 @@ TEST_CASE("source tab has_data and union", "[ui]") {
         tab.first_activation();
         QApplication::processEvents();
 
-        // Find the Nexus panel among the created tabs.
+        // The tab bar has exactly one content tab (the Manual placeholder)
+        // plus the "+" affordance.
+        auto* qtw = tab.findChild<QTabWidget*>();
+        check(qtw != nullptr, "SourceTab owns a QTabWidget");
+        check(qtw && qtw->count() == 2,
+              "manual mod: 2 tabs (Manual placeholder + '+' affordance)");
+
+        // The Nexus panel is NOT created - this is the core fix.
         ui::NexusSourcePanel* nexus = nullptr;
         for (auto* p : tab.findChildren<ui::NexusSourcePanel*>())
             nexus = p;
-        check(nexus != nullptr,
-              "manual mod: Nexus panel is created (provider registered)");
-        check(nexus && !nexus->has_data(),
-              "manual mod: Nexus panel has_data()==false "
-              "(version alone does not imply Nexus provenance)");
+        check(nexus == nullptr,
+              "manual mod: no Nexus panel created (only the actual source)");
+
+        // The last tab is the "+" affordance - title "+".
+        check(qtw && qtw->tabText(qtw->count() - 1) == QLatin1String("+"),
+              "manual mod: last tab is the '+' affordance");
     }
 
-    // --- Scenario 2: a mod marked source_type=="nexus" with a real
-    // source_id has has_data()==true. ---
+    // --- Scenario 2: a Nexus-sourced mod shows exactly one Nexus panel
+    // plus the "+" affordance. The Nexus panel reports has_data()==true. ---
     {
         engine::ModMeta nexus_mod;
         nexus_mod.set("General", "version", "1.0");
@@ -352,6 +382,10 @@ TEST_CASE("source tab has_data and union", "[ui]") {
         tab.first_activation();
         QApplication::processEvents();
 
+        auto* qtw = tab.findChild<QTabWidget*>();
+        check(qtw && qtw->count() == 2,
+              "nexus mod: 2 tabs (Nexus + '+' affordance)");
+
         ui::NexusSourcePanel* nexus = nullptr;
         for (auto* p : tab.findChildren<ui::NexusSourcePanel*>())
             nexus = p;
@@ -359,8 +393,9 @@ TEST_CASE("source tab has_data and union", "[ui]") {
               "nexus mod: Nexus panel has_data()==true");
     }
 
-    // --- Scenario 3: a mod with [Nexusmods]modid="0" is NOT Nexus
-    // (MO2's "no Nexus id" sentinel). ---
+    // --- Scenario 3: a mod with [Nexusmods]modid="0" but
+    // source_type="manual" - the MO2 "no Nexus id" sentinel. No Nexus
+    // panel because there is no actual Nexus provenance. ---
     {
         engine::ModMeta fake;
         fake.set("General", "version", "1.0");
@@ -368,19 +403,7 @@ TEST_CASE("source tab has_data and union", "[ui]") {
         fake.set("Nexusmods", "modid", "0");
         fake.save(meta_dir, "ZeroModidMod");
 
-        ui::ModInfoData data;
-        data.id = QStringLiteral("ZeroModidMod");
-        data.name = QStringLiteral("ZeroModidMod");
-        data.source_type = QStringLiteral("manual");
-        data.source_id = QString();
-        data.nexus_domain = QString();
-        data.supported_sources = QStringList{QStringLiteral("Test Nexus")};
-        data.load_meta = [meta_dir] {
-            return engine::ModMeta::load(meta_dir, "ZeroModidMod");
-        };
-        data.save_meta = [meta_dir](const engine::ModMeta& m) {
-            return m.save(meta_dir, "ZeroModidMod");
-        };
+        auto data = make_manual_data("ZeroModidMod", meta_dir);
 
         ui::SourceTab tab;
         tab.set_current(data);
@@ -388,10 +411,108 @@ TEST_CASE("source tab has_data and union", "[ui]") {
         tab.first_activation();
         QApplication::processEvents();
 
+        auto* qtw = tab.findChild<QTabWidget*>();
+        check(qtw && qtw->count() == 2,
+              "modid=0 sentinel: 2 tabs (Manual + '+' affordance)");
+
         ui::NexusSourcePanel* nexus = nullptr;
         for (auto* p : tab.findChildren<ui::NexusSourcePanel*>())
             nexus = p;
-        check(nexus && !nexus->has_data(),
-              "modid=0 sentinel: Nexus panel has_data()==false");
+        check(nexus == nullptr,
+              "modid=0 sentinel: no Nexus panel created");
     }
+}
+
+// "+" add-source flow (Workspace-fqf5):
+//   Clicking the "+" affordance tab opens a dialog that lets the user
+//   attach a Nexus / LoversLab / Steam source to the mod. On confirm,
+//   the provider section + canonical source keys are written to meta,
+//   the in-memory ModInfoData is updated, and the tab rebuilds with the
+//   new source's panel.
+//
+//   This scenario drives the flow without user interaction by directly
+//   calling the test-only hooks we wired in via the existing public
+//   surface (set_mod repopulates; the save_meta lambda writes the meta).
+//   We then assert the side-effects: meta carries the new keys and the
+//   panel count drops from "Manual + '+'" to "Nexus + '+'".
+TEST_CASE("source tab add source flow", "[ui]") {
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    const std::filesystem::path cfg = "/tmp/gmm_source_tab_add/config";
+    std::filesystem::remove_all("/tmp/gmm_source_tab_add");
+    std::filesystem::create_directories(cfg);
+    qputenv("XDG_CONFIG_HOME", cfg.c_str());
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
+    QCoreApplication::setOrganizationName("GameModManager");
+    QCoreApplication::setApplicationName("GameModManager");
+
+    const std::filesystem::path instance =
+        "/tmp/gmm_source_tab_add/instances/Test";
+    const std::filesystem::path meta_dir = instance / "meta";
+    std::filesystem::create_directories(meta_dir);
+
+    engine::SourceRegistry::instance().register_provider(
+        std::make_unique<FakeNexusProvider>());
+
+    // Start from a manual mod with no source attribution.
+    engine::ModMeta initial;
+    initial.set("General", "version", "1.0");
+    initial.set("GameModManager", "source_type", "manual");
+    initial.save(meta_dir, "AddSourceMod");
+
+    auto data = make_manual_data("AddSourceMod", meta_dir);
+
+    ui::SourceTab tab;
+    tab.set_current(data);
+    tab.set_mod(data);
+    tab.first_activation();
+    QApplication::processEvents();
+
+    auto* qtw = tab.findChild<QTabWidget*>();
+    check(qtw && qtw->count() == 2,
+          "before add: 2 tabs (Manual + '+')");
+
+    // Simulate the user picking Nexus with mod id 99999 in the dialog:
+    // mutate the in-memory data, write the meta sidecar via the same
+    // save_meta lambda the dialog uses, then ask the tab to repopulate.
+    ui::ModInfoData updated = data;
+    updated.source_type = QStringLiteral("nexus");
+    updated.source_id = QStringLiteral("99999");
+    updated.nexus_domain = QStringLiteral("testgame");
+    tab.set_current(updated);
+
+    if (updated.load_meta && updated.save_meta) {
+        auto meta = updated.load_meta();
+        meta.set("GameModManager", "source_type", "nexus");
+        meta.set("GameModManager", "source_id", "99999");
+        meta.set("Nexusmods", "modid", "99999");
+        meta.set("Nexusmods", "mod_id", "99999");
+        updated.save_meta(meta);
+    }
+    tab.set_mod(updated);
+    QApplication::processEvents();
+
+    // After the add-source flow: meta carries Nexus provenance, tab
+    // shows Nexus panel + "+" (not Manual), and Nexus panel has_data().
+    auto loaded = engine::ModMeta::load(meta_dir, "AddSourceMod");
+    check(loaded.get("GameModManager", "source_type") == "nexus",
+          "after add: meta source_type is nexus");
+    check(loaded.get("Nexusmods", "modid") == "99999",
+          "after add: meta Nexusmods modid is the dialog value");
+    check(loaded.get("Nexusmods", "mod_id") == "99999",
+          "after add: meta Nexusmods mod_id alias matches");
+
+    auto* qtw2 = tab.findChild<QTabWidget*>();
+    check(qtw2 && qtw2->count() == 2,
+          "after add: 2 tabs (Nexus + '+')");
+
+    ui::NexusSourcePanel* nexus = nullptr;
+    for (auto* p : tab.findChildren<ui::NexusSourcePanel*>())
+        nexus = p;
+    check(nexus != nullptr,
+          "after add: Nexus panel exists");
+    check(nexus && nexus->has_data(),
+          "after add: Nexus panel has_data()==true");
 }

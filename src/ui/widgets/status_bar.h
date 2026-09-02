@@ -20,7 +20,7 @@ public:
     void set_status(const QString& text);
 
     // Configure what the status bar shows for the current game
-    void set_sources(const QStringList& sources);  // e.g. {"Nexus", "Steam"}
+    void set_sources(const QStringList& sources);  // e.g. {"Nexus Mods", "Steam"}
 
 signals:
     void pipeline_clicked();
