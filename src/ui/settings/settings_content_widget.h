@@ -43,6 +43,11 @@ signals:
   // Emitted when the "Enable full UI tab mode" checkbox is toggled, so the
   // TabModeController can react live (tab bar visibility, closing tabs).
   void full_ui_mode_toggled(bool on);
+  // Emitted when the user clicks the "Show DEBUG Panel" button in the
+  // Diagnostics tab. Wired by the host (SettingsDialog in popup mode, the
+  // tab-mode controller in Full UI mode) to SettingsController, which owns
+  // the DebugWindow.
+  void open_debug_panel_requested();
 
 private:
   QWidget *build_general_tab();
