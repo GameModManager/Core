@@ -344,6 +344,13 @@ gmm_catch2_test(list_dialog_test ui/list_dialog_test.cpp
     UI
     LIBS gmm_ui Qt6::Test)
 
+# Workspace-0713: DebugWindow overhaul smoke test. Pushes samples into the
+# rolling chart widget to make sure neither QtCharts nor the QPainter
+# fallback path crashes.
+gmm_catch2_test(rolling_chart_test ui/rolling_chart_test.cpp
+    UI
+    LIBS gmm_ui)
+
 # Workspace-tnj: set_game_info guard teardown — banner visibility + game-less
 # instance mod ops.
 gmm_catch2_test(game_path_banner_test ui/game_path_banner_test.cpp
