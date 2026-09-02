@@ -69,6 +69,12 @@ public slots:
   bool handle_global_event(QObject *obj, QEvent *event);
 
 private:
+  // Constructs the DebugWindow (parented to MainWindow) and wires the
+  // late-bound pointers (game knowledge, profile manager) so the Info tab
+  // has the metadata it needs. Centralized so every DebugWindow creation
+  // site gets the same wiring.
+  class DebugWindow *create_debug_window();
+
   MainWindow *w_ = nullptr;
 };
 
