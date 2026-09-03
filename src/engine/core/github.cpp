@@ -1,8 +1,8 @@
 #include "engine/core/github.h"
 
 #include "engine/core/log/logger.h"
+#include "engine/network/network_manager.h"
 
-#include <curl/curl.h>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -14,76 +14,6 @@
 namespace engine {
 
 namespace {
-
-// ---------------------------------------------------------------------------
-// curl write callback - appends received data to a std::string
-// ---------------------------------------------------------------------------
-size_t write_to_string(void *ptr, size_t size, size_t nmemb, void *userdata) {
-  auto *out = static_cast<std::string *>(userdata);
-  const size_t bytes = size * nmemb;
-  out->append(static_cast<const char *>(ptr), bytes);
-  return bytes;
-}
-
-// ---------------------------------------------------------------------------
-// curl write callback - writes to an output file stream
-// ---------------------------------------------------------------------------
-size_t write_to_file(void *ptr, size_t size, size_t nmemb, void *userdata) {
-  auto *file = static_cast<std::ofstream *>(userdata);
-  if (!file || !file->is_open())
-    return 0;
-  const auto written = static_cast<std::streamsize>(size * nmemb);
-  file->write(static_cast<const char *>(ptr), written);
-  return file->good() ? (size * nmemb) : 0;
-}
-
-// ---------------------------------------------------------------------------
-// curl xferinfo callback - progress reporting for downloads
-// ---------------------------------------------------------------------------
-struct DownloadProgress {
-  std::function<void(float)> callback;
-};
-
-int download_xferinfo(void *user_data, curl_off_t dltotal, curl_off_t dlnow,
-                      curl_off_t /*ultotal*/, curl_off_t /*ulnow*/) {
-  auto *dp = static_cast<DownloadProgress *>(user_data);
-  if (dp && dp->callback && dltotal > 0) {
-    dp->callback(static_cast<float>(dlnow) / static_cast<float>(dltotal));
-  }
-  return 0;
-}
-
-// ---------------------------------------------------------------------------
-// HTTP GET - fetch a URL into a string. Returns true on success.
-// ---------------------------------------------------------------------------
-bool http_get(const std::string &url, std::string &response_body,
-              long &http_code) {
-  auto *curl = curl_easy_init();
-  if (!curl)
-    return false;
-
-  std::string body;
-  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-  curl_easy_setopt(curl, CURLOPT_USERAGENT, "GameModManager/0.1");
-  curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-  curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_string);
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
-
-  CURLcode res = curl_easy_perform(curl);
-  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-  curl_easy_cleanup(curl);
-
-  if (res != CURLE_OK || http_code >= 400) {
-    Logger::instance().error("GitHub API GET failed: " + url +
-                             " (curl=" + std::string(curl_easy_strerror(res)) +
-                             ", http=" + std::to_string(http_code) + ")");
-    return false;
-  }
-
-  response_body = std::move(body);
-  return true;
-}
 
 // ---------------------------------------------------------------------------
 // Parse a semantic version string into components.
@@ -199,13 +129,25 @@ GitHub::latest_release(const std::string &owner, const std::string &repo,
   if (!include_prereleases)
     url += "/latest";
 
-  std::string body;
-  long http_code = 0;
-  if (!http_get(url, body, http_code))
+  // Network:: applies timeout, redirect, log redaction uniformly. The body
+  // comes back as a string ready for JSON parsing.
+  network::Request req;
+  req.url = url;
+  req.caller = NET_CALLER;
+  req.timeout = std::chrono::seconds(30);
+  req.follow_redirect = true;
+  req.headers.push_back("User-Agent: GameModManager/0.1");
+  auto resp = network::instance().request(req);
+  if (!resp.error.empty() || resp.http_code >= 400) {
+    Logger::instance().error(
+        "GitHub API GET failed: " + url +
+        " (http=" + std::to_string(resp.http_code) +
+        (!resp.error.empty() ? ", curl=" + resp.error : "") + ")");
     return std::nullopt;
+  }
 
   try {
-    auto json = nlohmann::json::parse(body);
+    auto json = nlohmann::json::parse(resp.body);
 
     if (include_prereleases) {
       // The /releases endpoint returns an array; find the first entry
@@ -262,46 +204,32 @@ int GitHub::compare_versions(const std::string &a, const std::string &b) {
 bool GitHub::download(const std::string &url,
                       const std::filesystem::path &dest,
                       std::function<void(float)> progress_cb) {
-  auto *curl = curl_easy_init();
-  if (!curl)
-    return false;
-
-  std::ofstream file(dest, std::ios::binary);
-  if (!file) {
-    curl_easy_cleanup(curl);
-    return false;
+  // Map the existing float-progress API onto Network::'s (bytes,total,bps)
+  // callback. Network:: handles the file open, write, error cleanup, and
+  // logs the full URL/method/timing through Network::'s request log.
+  network::DownloadRequest req;
+  req.url = url;
+  req.dest = dest;
+  req.caller = NET_CALLER;
+  req.long_lived = true;  // large self-update archive
+  req.headers.push_back("User-Agent: GameModManager/0.1");
+  if (progress_cb) {
+    req.progress.on = [cb = std::move(progress_cb)](std::int64_t current,
+                                                   std::int64_t total,
+                                                   double /*bps*/) {
+      if (total > 0) cb(static_cast<float>(current) /
+                        static_cast<float>(total));
+    };
   }
 
-  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-  curl_easy_setopt(curl, CURLOPT_USERAGENT, "GameModManager/0.1");
-  curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-  curl_easy_setopt(curl, CURLOPT_TIMEOUT, 300L);
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_file);
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &file);
-
-  DownloadProgress dp;
-  dp.callback = std::move(progress_cb);
-  if (dp.callback) {
-    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
-    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, download_xferinfo);
-    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &dp);
-  }
-
-  CURLcode res = curl_easy_perform(curl);
-  long http_code = 0;
-  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-  curl_easy_cleanup(curl);
-  file.close();
-
-  if (res != CURLE_OK || http_code >= 400) {
-    Logger::instance().error("GitHub download failed: " + url +
-                             " (curl=" + std::string(curl_easy_strerror(res)) +
-                             ", http=" + std::to_string(http_code) + ")");
-    std::error_code ec;
-    std::filesystem::remove(dest, ec);
+  auto res = network::instance().download(req);
+  if (!res.ok) {
+    Logger::instance().error(
+        "GitHub download failed: " + url +
+        " (http=" + std::to_string(res.http_code) +
+        (!res.error.empty() ? ", curl=" + res.error : "") + ")");
     return false;
   }
-
   return true;
 }
 

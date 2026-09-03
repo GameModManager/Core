@@ -83,10 +83,11 @@ public:
   }
 
 private:
-  // Builds the 3 tabs. Called from the constructor; never again.
+  // Builds the 4 tabs. Called from the constructor; never again.
   void setup_charts_tab();
   void setup_paths_tab();
   void setup_info_tab();
+  void setup_network_tab();
 
   // Re-runs both tab populators. Called whenever any of the late-bound
   // inputs change (registry, knowledge, profile, current Instance) and
@@ -112,6 +113,10 @@ private:
   // deploy + game knowledge + app).
   void populate_info();
 
+  // Rebuild the Network log table from engine::network::log_snapshot().
+  // Called whenever refresh_stats runs (every refresh_interval seconds).
+  void populate_network();
+
   // Append a row to a QTableWidget with key + value (monospace). When
   // `copyable` is true, the value gets a tooltip + TextSelectableByMouse +
   // double-click-to-copy handler.
@@ -134,6 +139,7 @@ private:
   QTabWidget *tabs_ = nullptr;
   QTableWidget *paths_table_ = nullptr;
   QTableWidget *info_table_ = nullptr;
+  QTableWidget *network_table_ = nullptr;
 
   // Charts
   RollingChartWidget *cpu_chart_ = nullptr;

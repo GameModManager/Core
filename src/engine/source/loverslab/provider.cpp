@@ -1,8 +1,8 @@
 #include "engine/source/loverslab/provider.h"
 #include "engine/core/log/logger.h"
+#include "engine/network/network_manager.h"
 #include "engine/source/http_util.h"
 
-#include <curl/curl.h>
 #include <nlohmann/json.hpp>
 
 #include <cctype>
@@ -290,59 +290,39 @@ Provider::fetch_mod_info(const std::string &file_id_or_url) const {
     url = build_page_url(file_id_or_url);
   }
 
-  auto *curl = curl_easy_init();
-  if (!curl)
-    return result;
-
-  const std::string encoded = Http::encode_url_path(url);
-  std::string body;
-
-  curl_easy_setopt(curl, CURLOPT_URL, encoded.c_str());
-  curl_easy_setopt(curl, CURLOPT_USERAGENT,
-                   "GameModManager/0.1 (LoversLab Provider)");
-  // Metadata is guest-visible; we deliberately do NOT send the user's
-  // session cookie here. Downloads require cookie auth (handled in
-  // Provider::fetch); metadata does not. Sending the cookie to a GET
-  // would tie the request to a Cloudflare cf_clearance fingerprint and
-  // may trigger a captcha challenge.
-  curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-  curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
-  // Restrict redirect protocols to HTTP(S). Without this libcurl will follow
-  // a 302 to file://, ftp://, gopher://, etc - we only ever want to follow
-  // to a web URL. The initial URL is also pre-validated against
-  // is_loverslab_url() so a hostile redirect to 169.254.169.254 or
-  // 127.0.0.1 is blocked at the protocol layer before any host check.
-  curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS,
-                   CURLPROTO_HTTPS | CURLPROTO_HTTP);
+  // Route the guest scrape through Network::. Metadata is guest-visible; we
+  // deliberately do NOT send the user's session cookie here. Downloads
+  // require cookie auth (handled in Provider::fetch); metadata does not.
+  // Sending the cookie to a GET would tie the request to a Cloudflare
+  // cf_clearance fingerprint and may trigger a captcha challenge.
+  network::Request req;
+  req.url = Http::encode_url_path(url);
+  req.caller = NET_CALLER;
+  req.timeout = std::chrono::seconds(15);
+  req.follow_redirect = true;
   // Cap the response body. LoversLab mod pages are well under 100 KB; the
   // write callback aborts the transfer if append_body() exceeds kMaxBodyBytes.
-  // Belt-and-braces: libcurl also enforces a separate ceiling here.
-  curl_easy_setopt(curl, CURLOPT_MAXFILESIZE_LARGE,
-                   static_cast<curl_off_t>(kMaxBodyBytes));
-  curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L); // guest fetch - keep tight
-  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append_body);
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
-  // Don't bother reading headers - we only need the body to parse.
+  // Belt-and-braces: Network:: also enforces a separate ceiling via
+  // max_bytes so a misconfigured server cannot push us into OOM.
+  req.max_bytes = static_cast<std::int64_t>(kMaxBodyBytes);
+  req.headers.push_back(
+      "User-Agent: GameModManager/0.1 (LoversLab Provider)");
 
-  const CURLcode res = curl_easy_perform(curl);
-  long http_code = 0;
-  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-  curl_easy_cleanup(curl);
-
-  if (res != CURLE_OK) {
-    Logger::instance().debug("LoversLabProvider: fetch_mod_info curl error: " +
-                             std::string(curl_easy_strerror(res)));
+  auto resp = network::instance().request(req);
+  if (!resp.error.empty()) {
+    Logger::instance().debug(
+        "LoversLabProvider: fetch_mod_info curl error: " + resp.error);
     return result;
   }
-  if (http_code != 200) {
+  if (resp.http_code != 200) {
     Logger::instance().debug(
-        "LoversLabProvider: fetch_mod_info HTTP " + std::to_string(http_code) +
+        "LoversLabProvider: fetch_mod_info HTTP " +
+        std::to_string(resp.http_code) +
         " - site may require a browser or the mod id is invalid");
     return result;
   }
 
-  result = parse_mod_info(body);
+  result = parse_mod_info(resp.body);
   // Pin page_url to the URL we fetched (parse_mod_info may have set it
   // from the JSON-LD `url` field, which usually agrees but is not
   // guaranteed).
