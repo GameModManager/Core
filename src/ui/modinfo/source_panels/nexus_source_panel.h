@@ -9,6 +9,8 @@
 #include <QLineEdit>
 #include <QPushButton>
 
+#include <atomic>
+
 namespace ui {
 
 class SourceFetchThread;
@@ -57,6 +59,16 @@ private:
   QString refresh_mod_id_;
   bool fetch_in_flight_ = false;
   bool refresh_pending_ = false;
+
+  // Monotonic counter incremented every time render_description() dispatches
+  // a BBCode parse to the thread pool. The async callback compares against
+  // the current value to drop stale results when the user clicks rapidly
+  // through the mod list and an older parse finishes after a newer one.
+  // DECLARATION ORDER: must be after description_ so the atomic is destroyed
+  // before the browser during panel teardown. The async lambda captures a raw
+  // pointer to this atomic; the QPointer guard prevents reaching the
+  // dereference.
+  std::atomic<unsigned> description_generation_{0};
 };
 
 } // namespace ui

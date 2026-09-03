@@ -10,6 +10,8 @@
 #include <QScopedValueRollback>
 #include <QVBoxLayout>
 
+#include <atomic>
+
 namespace ui {
 
 namespace {
@@ -35,7 +37,8 @@ QString load_metadata_content(const ModInfoData &data) {
   return content;
 }
 
-void set_description_html(DescriptionBrowser *browser, const QString &desc) {
+void set_description_html(DescriptionBrowser *browser, const QString &desc,
+                          std::atomic<unsigned> *gen) {
   if (browser == nullptr)
     return;
   // Drop any in-flight image fetches / cached resources from the previous
@@ -50,15 +53,13 @@ void set_description_html(DescriptionBrowser *browser, const QString &desc) {
   }
   // Steam Workshop descriptions are BBCode (b/i/u/url/img/quote/etc), same
   // dialect the Nexus source panel parses. The old plain-text-escape path
-  // hid all of that from the user; libcbb now renders it. white-space:
-  // pre-wrap keeps raw \n newlines in the BBCode source visible at render
-  // time - libcbb doesn't convert \n to <br>, and without pre-wrap the
-  // browser would collapse every paragraph break to a single space.
-  browser->setHtml(
-      QStringLiteral(
-          "<html><body style=\"font-family:sans-serif; white-space:pre-wrap;\">"
-          "%1</body></html>")
-          .arg(bbcode_to_html(desc)));
+  // hid all of that from the user; libcbb now renders it. The async
+  // helper moves the parse + QTextBrowser layout off the UI thread for
+  // descriptions >= 1 KB and uses `gen` to drop stale results when the
+  // user clicks rapidly through the mod list.
+  if (gen != nullptr)
+    ++*gen;
+  set_bbcode_html_async(browser, desc, gen);
 }
 
 } // namespace
@@ -209,7 +210,7 @@ void SteamSourcePanel::render_description() {
   if (desc.isEmpty())
     desc = meta_value("SteamWorkshop", "description");
 
-  set_description_html(description_, desc);
+  set_description_html(description_, desc, &description_generation_);
 }
 
 void SteamSourcePanel::on_refresh() {
@@ -246,7 +247,7 @@ void SteamSourcePanel::on_refresh() {
   QString desc = xml_desc;
   if (desc.isEmpty())
     desc = meta_value("SteamWorkshop", "description");
-  set_description_html(description_, desc);
+  set_description_html(description_, desc, &description_generation_);
   update_version_color();
 }
 

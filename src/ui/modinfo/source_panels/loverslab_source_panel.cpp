@@ -12,11 +12,14 @@
 #include <QTimeZone>
 #include <QVBoxLayout>
 
+#include <atomic>
+
 namespace ui {
 
 namespace {
 
-void set_description_html(DescriptionBrowser *browser, const QString &desc) {
+void set_description_html(DescriptionBrowser *browser, const QString &desc,
+                          std::atomic<unsigned> *gen) {
   if (browser == nullptr)
     return;
   // Drop any in-flight image fetches / cached resources from the previous
@@ -32,11 +35,12 @@ void set_description_html(DescriptionBrowser *browser, const QString &desc) {
         "<b>Refresh</b> to fetch it live.</p></div>"));
     return;
   }
-  browser->setHtml(
-      QStringLiteral(
-          "<html><body style=\"font-family:sans-serif; white-space:pre-wrap;\">"
-          "%1</body></html>")
-          .arg(bbcode_to_html(desc)));
+  // BBCode parse + QTextBrowser layout moves off the UI thread for
+  // descriptions >= 1 KB. The async helper uses `gen` to drop stale
+  // results when the user clicks rapidly through the mod list.
+  if (gen != nullptr)
+    ++*gen;
+  set_bbcode_html_async(browser, desc, gen);
 }
 
 // Parse the page's dateModified into a QDate. Accepts the two shapes the
@@ -285,7 +289,7 @@ void LoversLabSourcePanel::render_description() {
   if (description_ == nullptr)
     return;
   const QString stored = meta_value("LoversLab", "description");
-  set_description_html(description_, stored);
+  set_description_html(description_, stored, &description_generation_);
 }
 
 void LoversLabSourcePanel::on_refresh() {
