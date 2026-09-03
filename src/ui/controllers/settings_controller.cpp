@@ -61,6 +61,7 @@
 #include "ui/panels/tab_panels.h"
 #include "ui/settings/settings.h"
 #include "ui/settings/settings_dialog.h"
+#include "ui/network/network_options_bridge.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/theme/style_manager.h"
 #include "ui/widgets/console_panel.h"
@@ -1059,6 +1060,10 @@ void SettingsController::apply_settings_changes() {
   // the new value into the fetch pool.
   w_->pipeline_thread_->worker()->set_nexus_queue_downloads(
       Settings::instance().nexus_queue_downloads());
+  // Network-affecting settings (offline_mode, use_proxy, proxy_host/port)
+  // flow through here too - push them into the Network:: gateway so the
+  // next request / download sees the new values.
+  engine::network::push_settings_to_network();
 }
 
 void SettingsController::apply_nesting_setting() {

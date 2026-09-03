@@ -1,25 +1,25 @@
+// =============================================================================
+// engine::Nexus::Http::nexus_http_request - thin wrapper around Network::
+// -----------------------------------------------------------------------------
+// Preserved for the existing call sites (NexusProvider, NexusAccount, Nexus
+// rate-limit parsing). Internally it delegates to the centralized Network::
+// gateway so every Nexus API request shows up in the Debug panel Network tab.
+//
+// Behaviour parity with the pre-Network:: implementation:
+//   * 30-second default timeout (overridable via timeout_seconds).
+//   * application-name / application-version headers added on top of the
+//     caller's curl_slist (Nexus AUP, help.nexusmods.com/article/114).
+//   * Returns ok = (CURLcode == CURLE_OK); the caller still checks
+//     http_code for the HTTP status.
+//   * response_headers, when requested, capture the full headers block -
+//     NexusAccount uses it to parse x-rl-* rate-limit headers.
+// =============================================================================
+
 #include "engine/source/nexus/http.h"
 
-#include <cctype>
-#include <cstddef>
+#include "engine/network/network_manager.h"
 
 namespace engine::Source::Nexus::Http {
-
-namespace {
-
-static size_t write_to_string(void* ptr, size_t size, size_t nmemb, void* stream) {
-    auto* str = static_cast<std::string*>(stream);
-    str->append(static_cast<const char*>(ptr), size * nmemb);
-    return size * nmemb;
-}
-
-static size_t header_callback(void* ptr, size_t size, size_t nmemb, void* user_data) {
-    auto* headers = static_cast<std::string*>(user_data);
-    headers->append(static_cast<const char*>(ptr), size * nmemb);
-    return size * nmemb;
-}
-
-} // namespace
 
 bool nexus_http_request(const std::string& url,
                         const std::string& post_body,
@@ -28,45 +28,29 @@ bool nexus_http_request(const std::string& url,
                         curl_slist* headers,
                         std::string* response_headers,
                         long timeout_seconds) {
-    auto* curl = curl_easy_init();
-    if (!curl) return false;
+    network::Request req;
+    req.url = url;
+    req.caller = NET_CALLER;
+    req.timeout = std::chrono::seconds(timeout_seconds);
+    req.body = post_body;
+    if (!post_body.empty()) req.method = network::Method::Post;
 
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_USERAGENT,
-                     "GameModManager/0.1 (Nexus Provider)");
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_seconds);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_string);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_body);
-
-    // Nexus API AUP (help.nexusmods.com/article/114) requires apps to identify
-    // themselves via application-name/application-version headers. They are
-    // appended on top of any caller-supplied headers (apikey etc. survive).
-    curl_slist* effective = nullptr;
-    for (curl_slist* h = headers; h; h = h->next)
-        effective = curl_slist_append(effective, h->data);
-    effective = curl_slist_append(effective, "application-name: GameModManager");
-    effective = curl_slist_append(effective, "application-version: " VERSION);
-    if (effective)
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, effective);
-
-    if (response_headers) {
-        curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_callback);
-        curl_easy_setopt(curl, CURLOPT_HEADERDATA, response_headers);
+    // Walk the legacy curl_slist and turn it into Network:: Headers. Each
+    // entry is a "Name: value" line; the network manager will redact at log
+    // time so secrets never reach the ring buffer.
+    if (headers) {
+        for (curl_slist* h = headers; h != nullptr; h = h->next) {
+            if (h->data) req.headers.emplace_back(h->data);
+        }
     }
 
-    if (!post_body.empty()) {
-        curl_easy_setopt(curl, CURLOPT_POST, 1L);
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_body.c_str());
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, post_body.size());
-    }
-
-    CURLcode res = curl_easy_perform(curl);
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-    curl_slist_free_all(effective);
-    curl_easy_cleanup(curl);
-
-    return (res == CURLE_OK);
+    auto resp = network::instance().request(req);
+    response_body = std::move(resp.body);
+    http_code = resp.http_code;
+    if (response_headers) *response_headers = std::move(resp.response_headers);
+    // Surface the libcurl error string for diagnostics; Network:: sets it on
+    // transport failures, so the caller can still log it.
+    return resp.error.empty() && resp.http_code > 0;
 }
 
 } // namespace engine::Source::Nexus::Http

@@ -2,8 +2,10 @@
 
 #include <QDialog>
 #include <QElapsedTimer>
+#include <QHideEvent>
 #include <QShowEvent>
 #include <QString>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <string>
@@ -83,10 +85,11 @@ public:
   }
 
 private:
-  // Builds the 3 tabs. Called from the constructor; never again.
+  // Builds the 4 tabs. Called from the constructor; never again.
   void setup_charts_tab();
   void setup_paths_tab();
   void setup_info_tab();
+  void setup_network_tab();
 
   // Re-runs both tab populators. Called whenever any of the late-bound
   // inputs change (registry, knowledge, profile, current Instance) and
@@ -96,6 +99,9 @@ private:
   // Safety net: if the cached instance root diverges from the one the
   // caller pushed via rebind_for_instance(), repopulate on show.
   void showEvent(QShowEvent *event) override;
+  // Pause the periodic refresh while the dialog is hidden so the table
+  // rebuild doesn't burn CPU on a panel nobody is looking at.
+  void hideEvent(QHideEvent *event) override;
 
   // Refresh the label group (CPU%/RAM/MiB/disk/uptime). Runs on
   // refresh_timer_ (default 2 s, user-tunable). Also pushes to charts.
@@ -111,6 +117,10 @@ private:
   // Rebuild the Info table (instance + registry + categories + profile +
   // deploy + game knowledge + app).
   void populate_info();
+
+  // Rebuild the Network log table from engine::network::log_snapshot().
+  // Called whenever refresh_stats runs (every refresh_interval seconds).
+  void populate_network();
 
   // Append a row to a QTableWidget with key + value (monospace). When
   // `copyable` is true, the value gets a tooltip + TextSelectableByMouse +
@@ -134,6 +144,19 @@ private:
   QTabWidget *tabs_ = nullptr;
   QTableWidget *paths_table_ = nullptr;
   QTableWidget *info_table_ = nullptr;
+  QTableWidget *network_table_ = nullptr;
+
+  // Index of the Network tab in `tabs_`. -1 means the tab has not been
+  // built yet (set on first call to setup_network_tab). populate_network
+  // uses this to skip the table rebuild when the tab is not visible -
+  // the single largest source of the "giga-freeze" reported in the
+  // nfpb review.
+  int network_tab_index_ = -1;
+
+  // Track the last (newest) log id we rendered so we can detect "no new
+  // entries" and skip the table rebuild entirely. Keeps the UI idle
+  // when there's no traffic.
+  std::uint64_t last_network_log_id_ = 0;
 
   // Charts
   RollingChartWidget *cpu_chart_ = nullptr;
