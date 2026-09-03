@@ -103,6 +103,14 @@ public:
     bool extraction_low_priority() const;          // key: extraction/low_priority
     void set_extraction_low_priority(bool on);
 
+    // performance ------------------------------------------------------------
+    // Enable multi-core processing for per-item CPU work (mod scanning, etc.).
+    // Defaults to ON; off forces engine::parallel::for_each to fall back to
+    // the sequential loop for debugging / single-core-equivalent behavior.
+    // Note: deploy stays always-parallel regardless of this toggle.
+    bool performance_multi_core() const;           // key: performance/enable_multicore
+    void set_performance_multi_core(bool on);
+
     // profile defaults -------------------------------------------------------
     bool local_saves() const;
     void set_local_saves(bool on);
