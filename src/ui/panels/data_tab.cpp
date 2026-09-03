@@ -431,9 +431,11 @@ void DataTab::apply_chunk_step() {
     // row set was cleared and a fresh build was queued instead.
     if (pending_rows_.empty()) return;
 
-    // Fill the next ~1000 rows in one event-loop turn (with the tree's updates
-    // suspended, so one repaint per chunk) and re-queue for the next turn.
-    constexpr int kChunk = 1000;
+    // Fill the next ~100 rows in one event-loop turn (with the tree's updates
+    // suspended, so one repaint per chunk) and re-queue for the next turn. A
+    // small chunk keeps the first paint snappy on large instances - the rest
+    // streams in across subsequent event-loop turns.
+    constexpr int kChunk = 100;
     tree_->setUpdatesEnabled(false);
     int n = 0;
     while (pending_pos_ < pending_rows_.size() && n < kChunk) {
