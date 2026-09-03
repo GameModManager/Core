@@ -1,11 +1,16 @@
 #include "engine/index/conflict_index.h"
 
+#include "engine/parallel/parallel.h"
+
 #include <algorithm>
 #include <filesystem>
 #include <functional>
+#include <mutex>
 #include <optional>
 #include <sqlite3.h>
 #include <sstream>
+#include <unordered_set>
+#include <utility>
 
 namespace fs = std::filesystem;
 
@@ -31,7 +36,11 @@ void ConflictIndex::scan(const std::string& db_path) {
 
     if (!fs::exists(mods_path_) || !fs::is_directory(mods_path_)) return;
 
-    // Enumerate mod folders and assign priorities (alphabetical = default Isaac order)
+    // Enumerate mod folders and assign priorities (alphabetical = default
+    // Isaac order). The directory_iterator pass must stay on one thread:
+    // the per-mod name filter is trivial, but starting multiple
+    // directory_iterators over the same parent directory at the same time is
+    // not guaranteed safe on every filesystem.
     std::vector<std::string> mod_folders;
     for (const auto& entry : fs::directory_iterator(mods_path_)) {
         if (entry.is_directory()) {
@@ -44,34 +53,88 @@ void ConflictIndex::scan(const std::string& db_path) {
         priorities_[mod_folders[i]] = i;
     }
 
-    // Scan each mod folder
-    for (const auto& folder : mod_folders) {
+    // Per-mod work is embarrassingly parallel: each mod's directory is
+    // independent, the filesystem read is read-only, and the SQLite cache
+    // access is either a per-mod primary-key lookup (WAL allows concurrent
+    // readers) or an INSERT OR REPLACE that we collect and apply sequentially
+    // after the parallel phase to keep write contention off the hot path.
+    //
+    // Layout:
+    //   - mod_files_per_thread[i]  - the unordered_set of relative paths for
+    //                                mod_folders[i], written only by one
+    //                                worker. Pre-sized slots avoid any mutex
+    //                                on the hot path; the final move into
+    //                                mod_files_ is sequential.
+    //   - pending_writes           - cache entries that need INSERT OR
+    //                                REPLACE; drained sequentially after the
+    //                                parallel phase (SQLite single-writer
+    //                                contract).
+    //   - no shared mutation: mod_files_/conflicts_ are written after join.
+    struct PendingCacheWrite {
+        std::string folder;
+        std::string fingerprint;
+        std::vector<std::string> files;
+        std::string token;
+    };
+
+    const size_t n = mod_folders.size();
+    std::vector<std::unordered_set<std::string>> mod_files_per_thread(n);
+    std::vector<PendingCacheWrite> pending_writes;
+    pending_writes.reserve(n);
+    std::mutex pending_mu;
+
+    parallel::for_each(n, [&](size_t i) {
+        const std::string& folder = mod_folders[i];
         fs::path mod_path = fs::path(mods_path_) / folder;
 
         // Quick token check - skip full walk if unchanged
         std::string token = quick_token(mod_path.string());
         auto cached = load_cache(db_path, folder);
         if (cached && cached->token == token) {
-            // Use cached file list
-            mod_files_[folder] = {};
+            // Cache hit - parse the stored file list into our local slot.
+            // No SQLite write, no mutex needed.
             std::istringstream ss(cached->files_json);
             std::string file;
             while (std::getline(ss, file, '\n')) {
                 if (!file.empty()) {
-                    mod_files_[folder].insert(file);
+                    mod_files_per_thread[i].insert(file);
                 }
             }
         } else {
-            // Full walk
-            auto files = walk_mod(mod_path.string());
-            mod_files_[folder] = files;
+            // Cache miss - full walk into our local slot, defer the
+            // fingerprint save until the sequential post-join phase so we
+            // never have two threads issuing INSERT OR REPLACE against the
+            // same SQLite file at once.
+            auto& slot = mod_files_per_thread[i];
+            slot = walk_mod(mod_path.string());
 
-            // Save to cache
-            std::vector<std::string> sorted_files(files.begin(), files.end());
+            std::vector<std::string> sorted_files(slot.begin(), slot.end());
             std::sort(sorted_files.begin(), sorted_files.end());
-            save_cache(db_path, folder, fingerprint_folder(mod_path.string()),
-                       sorted_files, token);
+
+            PendingCacheWrite w;
+            w.folder = folder;
+            w.fingerprint = fingerprint_folder(mod_path.string());
+            w.files = std::move(sorted_files);
+            w.token = std::move(token);
+            std::lock_guard<std::mutex> lock(pending_mu);
+            pending_writes.push_back(std::move(w));
         }
+    });
+
+    // Drain pending cache writes sequentially (SQLite single-writer contract).
+    // WAL mode from ensure_schema lets readers proceed concurrently, but
+    // INSERT OR REPLACE still serializes internally; doing it here keeps the
+    // contention off the parallel phase entirely.
+    for (auto& w : pending_writes) {
+        save_cache(db_path, w.folder, w.fingerprint, w.files, w.token);
+    }
+
+    // Move per-thread slots into mod_files_ in folder order (priority order)
+    // so any downstream code that depends on insertion order stays
+    // deterministic.
+    mod_files_.reserve(n);
+    for (size_t i = 0; i < n; i++) {
+        mod_files_[mod_folders[i]] = std::move(mod_files_per_thread[i]);
     }
 
     // Build conflict index
