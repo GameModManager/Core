@@ -1,13 +1,18 @@
 #include "ui/modinfo/bbcode.h"
 
+#include "engine/parallel/parallel.h"
 #include "libcbb.h"
+#include "ui/modinfo/description_browser.h"
 
 #include <QByteArray>
 #include <QChar>
+#include <QMetaObject>
+#include <QPointer>
 #include <QRegularExpression>
 #include <QString>
 #include <QStringList>
 #include <QStringView>
+#include <QThreadPool>
 
 #include <string>
 
@@ -130,10 +135,15 @@ QString unescape_html_entities(const QString &s) {
 //
 // Case-insensitive on the tag name, flexible on the trailing slash and
 // whitespace. Matches: <br>, <br/>, <br />, <BR>, <Br   />.
+//
+// QRegularExpression is reentrant but NOT thread-safe to share across
+// concurrent s.replace() calls - the implicit-shared private match state
+// races. bbcode_to_html() runs on QThreadPool workers when dispatched from
+// set_bbcode_html_async(), so the regex is constructed per-call. Cheap to
+// build (single literal pattern) and stays inside the function's stack.
 void br_tags_to_newlines(QString &s) {
-  static const QRegularExpression kBr(
-      QStringLiteral("<\\s*br\\s*/?\\s*>"),
-      QRegularExpression::CaseInsensitiveOption);
+  const QRegularExpression kBr(QStringLiteral("<\\s*br\\s*/?\\s*>"),
+                               QRegularExpression::CaseInsensitiveOption);
   s.replace(kBr, QStringLiteral("\n"));
 }
 
@@ -168,6 +178,97 @@ QString bbcode_to_html(const QString &input) {
   const QString html = QString::fromUtf8(raw);
   cbb_free(raw);
   return html;
+}
+
+namespace {
+
+// Length threshold below which bbcode_to_html + QTextBrowser layout cost
+// less than the QThreadPool dispatch + queued-invoke round-trip. 1 KB
+// catches tiny placeholder snippets + single-paragraph mods; everything
+// longer goes through the async path. Nexus / Steam descriptions are
+// typically 5-50 KB so they always land on the async side.
+constexpr int kSyncThresholdBytes = 1024;
+
+QString wrap_html(const QString &body) {
+  return QStringLiteral("<html><body style=\"font-family:sans-serif; "
+                        "white-space:pre-wrap;\">"
+                        "%1</body></html>")
+      .arg(body);
+}
+
+QString empty_placeholder_html() {
+  return QStringLiteral(
+      "<div style=\"text-align:center; color:grey; padding-top:24px;\">"
+      "<p>No description available for this mod.</p></div>");
+}
+
+} // namespace
+
+void set_bbcode_html_async(DescriptionBrowser *browser, const QString &desc,
+                           std::atomic<unsigned> *request_token) {
+  if (browser == nullptr)
+    return;
+  // Drop any in-flight image fetches / cached resources from the previous
+  // render synchronously so stale pictures cannot survive into the new
+  // document. The async HTML install lands later via the queued invoke;
+  // clear_image_cache is itself synchronous so any subsequent loadResource
+  // during the new layout sees an empty cache.
+  browser->clear_image_cache();
+  if (desc.isEmpty()) {
+    browser->setHtml(empty_placeholder_html());
+    return;
+  }
+
+  // Fast path: short descriptions parse + lay out faster than the
+  // thread-pool dispatch + queued invoke round-trip takes. The async path
+  // is only a win when bbcode_to_html costs more than ~1-2 ms.
+  //
+  // Multi-core toggle gate: when the user has disabled multi-core
+  // processing (Settings > Performance > Enable multi-core processing),
+  // run synchronously on the UI thread exactly like the pre-async
+  // implementation. Bypassing the thread pool here guarantees "Off" means
+  // today's single-core behavior for debugging - no dispatch, no queued
+  // invoke, no QPointer race window, no token book-keeping.
+  if (desc.size() < kSyncThresholdBytes || !engine::parallel::enabled()) {
+    browser->setHtml(wrap_html(bbcode_to_html(desc)));
+    return;
+  }
+
+  // Snapshot the request token at dispatch time. The UI-thread callback
+  // compares against the caller's current value to detect stale results
+  // (user moved to another mod while we were parsing). request_token may
+  // be nullptr for callers that don't care about ordering.
+  const unsigned token = request_token != nullptr
+                             ? request_token->load(std::memory_order_relaxed)
+                             : 0u;
+
+  // QPointer is captured by value so the worker holds a non-null guard
+  // for the duration of the parse. self.data() may be null even when
+  // self is non-null (object destroyed after the QPointer was captured),
+  // and we re-check both before the queued invoke and inside the queued
+  // lambda: the panel can be torn down between dispatch and the queued
+  // event firing.
+  QPointer<DescriptionBrowser> self(browser);
+  const QString desc_copy = desc;
+  auto run = [self, desc_copy, token, request_token]() {
+    const QString html = wrap_html(bbcode_to_html(desc_copy));
+    QMetaObject::invokeMethod(
+        self.data(),
+        [self, html, token, request_token]() {
+          if (!self)
+            return;
+          // Stale-result check: the panel has rendered a newer description
+          // since we started; drop this HTML on the floor so the user
+          // doesn't see old content flicker in after the new one.
+          if (request_token != nullptr &&
+              token != request_token->load(std::memory_order_relaxed)) {
+            return;
+          }
+          self->setHtml(html);
+        },
+        Qt::QueuedConnection);
+  };
+  QThreadPool::globalInstance()->start(run);
 }
 
 } // namespace ui

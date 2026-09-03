@@ -166,18 +166,13 @@ void NexusSourcePanel::render_description() {
         "<b>Refresh</b> to fetch it live.</p></div>"));
     return;
   }
-  // white-space:pre-wrap keeps the raw \n characters in the BBCode source
-  // visible at render time. libcbb does NOT convert \n to <br> - it only
-  // HTML-escapes <, >, &, ", ' - so without pre-wrap the browser collapses
-  // every paragraph break to a single space and the description reads as one
-  // giant run-on. Block-level BBCode tags ([center], [list], [b], ...) still
-  // render as proper block elements because pre-wrap only preserves
-  // whitespace inside inline flow.
-  description_->setHtml(
-      QStringLiteral(
-          "<html><body style=\"font-family:sans-serif; white-space:pre-wrap;\">"
-          "%1</body></html>")
-          .arg(bbcode_to_html(stored)));
+  // BBCode parse + QTextBrowser layout is moved off the UI thread for
+  // descriptions >= 1 KB (most Nexus descriptions). The async helper
+  // posts the wrapped HTML back via QMetaObject::invokeMethod and uses
+  // description_generation_ to discard stale results when the user
+  // clicks rapidly through the mod list.
+  ++description_generation_;
+  set_bbcode_html_async(description_, stored, &description_generation_);
 }
 
 void NexusSourcePanel::on_refresh() {
