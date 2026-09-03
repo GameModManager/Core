@@ -2,6 +2,7 @@
 
 #include "engine/deploy/deploy_utils.h"
 #include "engine/core/util/fs_utils.h"
+#include "engine/parallel/parallel.h"
 #include "ui/widgets/mod_list_model.h"
 
 #include <QCoreApplication>
@@ -225,23 +226,64 @@ static bool dirs_first_less(const QString& ap, const QString& bp, const QSet<QSt
 }
 
 std::vector<DataTabRow> build_data_tab_rows(const DataTabBuildRequest& request) {
-    std::vector<DataTabRow> rows;
-    rows.reserve(request.registry.size());
-    for (const auto& [path, owners] : request.registry) {
-        if (owners.empty()) continue;
-        const auto cls = engine::classify_registry_path(
-            path, owners, request.root_override_mods, request.deploy_prefix);
-        if (request.root_view && cls.space != engine::DeploySpace::Root) continue;
-        if (!request.root_view && cls.space != engine::DeploySpace::Data) continue;
-        rows.push_back(build_data_row(path, cls.display_path, owners, request.display_names,
-                                      request.conflict_reversed, request.mods_dir,
-                                      request.game_mods_dir, cls.space,
-                                      request.deploy_prefix, request.deploy_include_mod_id,
-                                      request.root_override_mods));
+    // Snapshot the registry into an index vector so the heavy per-row work
+    // (classify + stat + provider enumeration) can fan out across threads via
+    // parallel::for_each. The registry is an unordered_map, so the snapshot is
+    // just a flat list of pointers - the original keys/owners are read-only
+    // for the duration of this pass.
+    struct EntryRef {
+        const std::string* key;
+        const std::vector<std::pair<std::string, int>>* owners;
+    };
+    std::vector<EntryRef> entries;
+    entries.reserve(request.registry.size());
+    for (const auto& kv : request.registry) {
+        if (kv.second.empty()) continue;
+        entries.push_back({&kv.first, &kv.second});
     }
+
+    // Pre-sized slots so each worker thread writes into a unique index
+    // without contention. Rows that fail the view filter stay as default-
+    // constructed (empty path) sentinels and are dropped in the compact step.
+    std::vector<DataTabRow> rows(entries.size());
+
+    // Per-row work: classify + build. Read-only access to the registry, the
+    // display-names map, and root_override_mods - the only write is to the
+    // worker's own `rows[i]` slot, so no external synchronization is needed.
+    const auto& display_names = request.display_names;
+    const auto& root_override_mods = request.root_override_mods;
+    const auto& mods_dir = request.mods_dir;
+    const auto& game_mods_dir = request.game_mods_dir;
+    const bool conflict_reversed = request.conflict_reversed;
+    const bool root_view = request.root_view;
+    const auto& deploy_prefix = request.deploy_prefix;
+    const bool deploy_include_mod_id = request.deploy_include_mod_id;
+    engine::parallel::for_each(entries.size(), [&](size_t i) {
+        const auto& key = *entries[i].key;
+        const auto& owners = *entries[i].owners;
+        const auto cls = engine::classify_registry_path(
+            key, owners, root_override_mods, deploy_prefix);
+        if (root_view && cls.space != engine::DeploySpace::Root) return;
+        if (!root_view && cls.space != engine::DeploySpace::Data) return;
+        rows[i] = build_data_row(key, cls.display_path, owners, display_names,
+                                 conflict_reversed, mods_dir, game_mods_dir,
+                                 cls.space, deploy_prefix,
+                                 deploy_include_mod_id, root_override_mods);
+    });
+
+    // Compact: drop the empty-path sentinels left behind by filtered rows.
+    // Cheap compared to the per-row stat pass above.
+    std::vector<DataTabRow> kept;
+    kept.reserve(rows.size());
+    for (auto& r : rows) {
+        if (!r.path.isEmpty()) kept.push_back(std::move(r));
+    }
+    rows = std::move(kept);
 
     // Game-native root files only exist at the game root (skse64_loader.exe,
     // ControlMap_Custom.txt, ...); the data dir shows mod content alone.
+    // This filesystem walk stays sequential - it has to push in tree order,
+    // and the recursive directory_iterator is hard to parallelize safely.
     if (request.root_view && !request.game_root_dir.empty()) {
         collect_native_root_rows(request.game_root_dir, request.game_root_dir,
                                  request.mods_subpath, rows);
