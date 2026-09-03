@@ -1,6 +1,7 @@
 #include "engine/source/workshop/remote_cache.h"
 
-#include <curl/curl.h>
+#include "engine/network/network_manager.h"
+
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -8,13 +9,6 @@
 namespace fs = std::filesystem;
 
 namespace engine {
-
-// libcurl write callback
-static size_t write_callback(char* ptr, size_t size, size_t nmemb, void* userdata) {
-    auto* ss = static_cast<std::string*>(userdata);
-    ss->append(ptr, size * nmemb);
-    return size * nmemb;
-}
 
 RemoteCache::RemoteCache(const std::string& url,
                          const std::string& cache_path,
@@ -26,7 +20,10 @@ RemoteCache::RemoteCache(const std::string& url,
     , bundled_path_(bundled_path)
     , ttl_(ttl)
     , user_agent_(user_agent) {
-    curl_global_init(CURL_GLOBAL_DEFAULT);
+    // curl_global_init() used to live here; libcurl refcounts it so
+    // Network::Manager already initialises globals when the first Manager
+    // is constructed. The init call here is unnecessary and dragged in
+    // <curl/curl.h> as a transitive leak - dropped.
 }
 
 RemoteCache::~RemoteCache() {
@@ -97,34 +94,30 @@ void RemoteCache::invalidate() {
 }
 
 void* RemoteCache::try_fetch() {
-    CURL* curl = curl_easy_init();
-    if (!curl) return nullptr;
+    // Single GET via Network::. Network:: enforces timeout / proxy / log
+    // redaction uniformly; the body comes back as a string ready to feed
+    // the parser. No raw curl handle here.
+    network::Request req;
+    req.url = url_;
+    req.caller = NET_CALLER;
+    req.timeout = std::chrono::seconds(10);
+    req.follow_redirect = true;
+    if (!user_agent_.empty())
+        req.headers.push_back("User-Agent: " + user_agent_);
 
-    std::string response;
-    curl_easy_setopt(curl, CURLOPT_URL, url_.c_str());
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, user_agent_.c_str());
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-
-    CURLcode res = curl_easy_perform(curl);
-    long http_code = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-    curl_easy_cleanup(curl);
-
-    if (res != CURLE_OK || http_code != 200) return nullptr;
-    if (response.empty()) return nullptr;
+    auto resp = network::instance().request(req);
+    if (!resp.error.empty() || resp.http_code != 200) return nullptr;
+    if (resp.body.empty()) return nullptr;
 
     // Save to cache
     fs::create_directories(fs::path(cache_path_).parent_path());
     std::ofstream ofs(cache_path_);
     if (ofs.is_open()) {
-        ofs << response;
+        ofs << resp.body;
     }
 
     if (!parse_fn_) return nullptr;
-    return parse_fn_(response);
+    return parse_fn_(resp.body);
 }
 
 void* RemoteCache::try_cache() {

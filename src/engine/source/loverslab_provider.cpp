@@ -2,11 +2,10 @@
 #include "engine/source/download/curl_download.h"
 #include "engine/source/loverslab/auth.h"
 #include "engine/mod/model/mod.h"
+#include "engine/network/network_manager.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/core/log/logger.h"
 #include "engine/source/http_util.h"
-
-#include <curl/curl.h>
 
 #include <chrono>
 #include <cctype>
@@ -17,47 +16,32 @@ namespace engine::Source::LoversLab {
 
 namespace {
 
-// Discard the response body (we only want the headers). Returning 0 aborts
-// the transfer once the body starts; headers were already delivered.
-size_t discard_body(void*, size_t, size_t, void*) {
-    return 0;
-}
-
 struct Probe {
     std::string content_disposition;
     std::string effective_url;
     long http_code = 0;
 };
 
-// Header-only GET: follow redirects, capture the final Content-Disposition and
-// URL, abort before reading any body. Used to learn the real archive name
-// (LoversLab serves .7z/.rar/.zip - the generic <id>.zip default would break
-// extraction) and to sanity-check the session cookie.
+// Header-only GET via Network:: - we want only the Content-Disposition
+// header (and the final URL after redirects), so we cap the body to 1 byte
+// to abort after the headers. Network:: applies redaction + logging
+// automatically; the cookie is sent as a regular Cookie header and never
+// reaches the log.
 Probe probe_download(const std::string& url, const std::string& cookie) {
     Probe p;
-    auto* curl = curl_easy_init();
-    if (!curl) return p;
-
-    const std::string encoded = Http::encode_url_path(url);
-    curl_easy_setopt(curl, CURLOPT_URL, encoded.c_str());
+    network::Request req;
+    req.url = Http::encode_url_path(url);
+    req.caller = NET_CALLER;
+    req.timeout = std::chrono::seconds(30);
+    req.follow_redirect = true;
+    req.max_bytes = 1;  // abort the body, headers already captured
     if (!cookie.empty())
-        curl_easy_setopt(curl, CURLOPT_COOKIE, cookie.c_str());
-    curl_easy_setopt(curl, CURLOPT_USERAGENT,
-                     "GameModManager/0.1 (LoversLab Provider)");
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_body);
-    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION,
-                     download::capture_content_disposition);
-    curl_easy_setopt(curl, CURLOPT_HEADERDATA, &p.content_disposition);
+        req.headers.push_back("Cookie: " + cookie);
 
-    const CURLcode res = curl_easy_perform(curl);
-    (void)res;  // CURLE_WRITE_ERROR is expected (body discard)
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &p.http_code);
-    char* eff = nullptr;
-    curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &eff);
-    if (eff) p.effective_url = eff;
-    curl_easy_cleanup(curl);
+    auto r = network::instance().request(req);
+    p.http_code = r.http_code;
+    p.effective_url = r.effective_url;
+    p.content_disposition = r.content_disposition;
     return p;
 }
 

@@ -85,6 +85,7 @@ set(UI_SOURCES
     instance_options/instance_options_panel.cpp
     instance_options/instance_options_widget.cpp
     system_tray/system_tray_manager.cpp
+    network/network_options_bridge.cpp
     ui_locker.cpp
     # Qt-using files relocated from src/engine/ (issue/33) - keeps gmm_engine Qt-free
     ${PROJECT_SOURCE_DIR}/src/ui/theme/style_manager.cpp

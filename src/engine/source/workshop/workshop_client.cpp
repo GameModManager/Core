@@ -1,8 +1,9 @@
 #include "engine/source/workshop/workshop_client.h"
 
+#include "engine/network/network_manager.h"
+
 #include <algorithm>
 #include <chrono>
-#include <curl/curl.h>
 #include <filesystem>
 #include <nlohmann/json.hpp>
 #include <sqlite3.h>
@@ -12,12 +13,6 @@ namespace fs = std::filesystem;
 using json = nlohmann::json;
 
 namespace engine {
-
-static size_t curl_write_string(char* ptr, size_t size, size_t nmemb, void* userdata) {
-    auto* s = static_cast<std::string*>(userdata);
-    s->append(ptr, size * nmemb);
-    return size * nmemb;
-}
 
 WorkshopClient::WorkshopClient(const std::string& db_path, int rate_limit, int rate_window)
     : db_path_(db_path), rate_limit_(rate_limit), rate_window_(rate_window) {
@@ -148,37 +143,25 @@ std::optional<WorkshopItem> WorkshopClient::get_cached(int64_t workshop_id) cons
 }
 
 std::optional<WorkshopItem> WorkshopClient::fetch_from_steam(int64_t workshop_id) {
-    CURL* curl = curl_easy_init();
-    if (!curl) return std::nullopt;
+    // POST with form data via Network::. The form body and the URL are
+    // recorded in the request log; no headers carry secrets.
+    network::Request req;
+    req.method = network::Method::Post;
+    req.url = "https://api.steampowered.com/ISteamRemoteStorage/"
+              "GetPublishedFileDetails/v1/";
+    req.caller = NET_CALLER;
+    req.timeout = std::chrono::seconds(10);
+    req.body = "itemcount=1&publishedfileids[0]=" + std::to_string(workshop_id);
+    req.headers.push_back("User-Agent: GameModManager/1.0");
+    req.follow_redirect = true;
 
-    // Build the API URL
-    std::string url = "https://api.steampowered.com/ISteamRemoteStorage/"
-                      "GetPublishedFileDetails/v1/";
-
-    // POST with form data
-    std::string postfields =
-        "itemcount=1&publishedfileids[0]=" + std::to_string(workshop_id);
-
-    std::string response;
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postfields.c_str());
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_string);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "GameModManager/1.0");
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-
-    CURLcode res = curl_easy_perform(curl);
-    long http_code = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-    curl_easy_cleanup(curl);
-
-    if (res != CURLE_OK || http_code != 200 || response.empty()) {
+    auto resp = network::instance().request(req);
+    if (!resp.error.empty() || resp.http_code != 200 || resp.body.empty()) {
         return std::nullopt;
     }
 
     try {
-        auto j = json::parse(response);
+        auto j = json::parse(resp.body);
         auto& details = j["response"]["publishedfiledetails"];
         if (!details.is_array() || details.empty()) return std::nullopt;
 

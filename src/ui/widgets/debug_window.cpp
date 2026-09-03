@@ -4,6 +4,7 @@
 #include "engine/core/instance/instance_registry.h"
 #include "engine/core/instance/instance_utils.h"
 #include "engine/game/registry/game_knowledge.h"
+#include "engine/network/network_manager.h"
 #include "engine/pipeline/plugin_host/category_factory.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "engine/profile/profile.h"
@@ -217,6 +218,7 @@ DebugWindow::DebugWindow(const fs::path &instance_root,
   setup_charts_tab();
   setup_paths_tab();
   setup_info_tab();
+  setup_network_tab();
   root->addWidget(tabs_, 1);
 
   // --- Interval controls (kept; only affects the legacy labels now) ---
@@ -964,6 +966,9 @@ void DebugWindow::refresh_populated() {
   // changes, not on every timer tick.
   populate_paths();
   populate_info();
+  // Network log is appended every refresh_stats tick; the populate here
+  // keeps it fresh on instance switches / registry rebuilds too.
+  populate_network();
 }
 
 void DebugWindow::showEvent(QShowEvent *event) {
@@ -976,6 +981,20 @@ void DebugWindow::showEvent(QShowEvent *event) {
   // is cheap and harmless when nothing changed (QTableWidget::setRowCount
   // is a no-op for empty rebuilds).
   refresh_populated();
+  // Restart the periodic timers so a previously hidden dialog resumes
+  // refreshing. hideEvent() pauses them.
+  if (refresh_timer_) refresh_timer_->start(refresh_interval_ * 1000);
+  if (chart_timer_) chart_timer_->start(1000);
+}
+
+void DebugWindow::hideEvent(QHideEvent *event) {
+  // Pause the periodic refreshes while hidden so we don't burn CPU on a
+  // dialog nobody is looking at. populate_network() in particular would
+  // otherwise rebuild 500 rows x 6 cells every refresh tick (1-2s),
+  // which manifested as a UI giga-freeze in the nfpb review.
+  if (refresh_timer_) refresh_timer_->stop();
+  if (chart_timer_) chart_timer_->stop();
+  QDialog::hideEvent(event);
 }
 
 void DebugWindow::refresh_charts() {
@@ -1237,6 +1256,123 @@ void DebugWindow::refresh_stats() {
   if (uptime_label_)
     uptime_label_->setText(QStringLiteral("(unsupported)"));
 #endif
+  // Refresh the Network log every tick. The ring buffer is bounded so the
+  // cost is negligible and the user sees new requests without having to
+  // close/reopen the dialog.
+  populate_network();
+}
+
+// ---------------------------------------------------------------------------
+// Network tab - the request log surfaced by engine::network::
+// ---------------------------------------------------------------------------
+
+void DebugWindow::setup_network_tab() {
+  auto *tab = new QWidget;
+  auto *v = new QVBoxLayout(tab);
+  v->setContentsMargins(4, 4, 4, 4);
+
+  network_table_ = new QTableWidget(0, 6, tab);
+  network_table_->setHorizontalHeaderLabels(
+      {tr("Caller"), tr("Method"), tr("URL (redacted)"), tr("Status"),
+       tr("Time (ms)"), tr("Error")});
+  network_table_->verticalHeader()->hide();
+  network_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  network_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
+  network_table_->setSelectionMode(QAbstractItemView::SingleSelection);
+  network_table_->setAlternatingRowColors(true);
+  network_table_->setShowGrid(false);
+  network_table_->setWordWrap(false);
+  auto *hh = network_table_->horizontalHeader();
+  hh->setStretchLastSection(true);
+  hh->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+  hh->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+  hh->setSectionResizeMode(2, QHeaderView::Stretch);
+  hh->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+  hh->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+  hh->setSectionResizeMode(5, QHeaderView::ResizeToContents);
+
+  // Copy / context menu - same pattern as Paths / Info tabs.
+  network_table_->setContextMenuPolicy(Qt::CustomContextMenu);
+  connect(network_table_, &QWidget::customContextMenuRequested, this,
+          [this](const QPoint &pos) {
+            auto *item = network_table_->itemAt(pos);
+            if (!item)
+              return;
+            QStringList row;
+            for (int c = 0; c < network_table_->columnCount(); ++c) {
+              auto *cell = network_table_->item(item->row(), c);
+              row << (cell ? cell->text() : QString());
+            }
+            QGuiApplication::clipboard()->setText(row.join(QStringLiteral(" | ")));
+          });
+
+  v->addWidget(network_table_);
+  network_tab_index_ = tabs_->addTab(tab, tr("Network"));
+
+  populate_network();
+}
+
+void DebugWindow::populate_network() {
+  if (!network_table_)
+    return;
+
+  // nfpb perf fix: skip the table rebuild entirely when the Network tab
+  // is not currently visible. refresh_stats() still fires on the
+  // label-timer (1-2s by default), but doing the rebuild burns ~3000
+  // QTableWidgetItem allocations + mutex contention for a tab nobody is
+  // looking at. hideEvent() also pauses the timer; this is the belt to
+  // those braces.
+  if (network_tab_index_ < 0 || tabs_ == nullptr ||
+      tabs_->currentIndex() != network_tab_index_) {
+    return;
+  }
+
+  // Pull a bounded snapshot (100 rows, not 500) so the table stays light
+  // even on busy networks. The ring buffer still holds 2000 entries
+  // internally; users wanting the full history can scroll/filter later.
+  constexpr std::size_t kMaxRows = 100;
+  auto entries = engine::network::instance().log_snapshot(kMaxRows);
+  if (entries.empty()) {
+    if (network_table_->rowCount() != 0) {
+      network_table_->setRowCount(0);
+      last_network_log_id_ = 0;
+    }
+    return;
+  }
+
+  // Diff-based skip: if the newest entry id hasn't advanced since the
+  // last rebuild, do nothing. The id is monotonic so equality implies
+  // nothing new arrived. Empty log -> id 0, also fine.
+  const std::uint64_t newest_id = entries.front().id;
+  if (newest_id == last_network_log_id_ &&
+      network_table_->rowCount() == static_cast<int>(entries.size())) {
+    return;
+  }
+
+  network_table_->setRowCount(static_cast<int>(entries.size()));
+  for (std::size_t i = 0; i < entries.size(); ++i) {
+    const auto &e = entries[i];
+    int row = static_cast<int>(i);
+    auto set_cell = [&](int col, const QString &s) {
+      auto *it = new QTableWidgetItem(s);
+      it->setFlags(it->flags() & ~Qt::ItemIsEditable);
+      network_table_->setItem(row, col, it);
+    };
+    set_cell(0, QString::fromStdString(e.caller));
+    set_cell(1, QString::fromStdString(e.method));
+    set_cell(2, QString::fromStdString(e.url_redacted));
+    if (e.http_code > 0) {
+      set_cell(3, QString::number(e.http_code));
+    } else {
+      set_cell(3, QStringLiteral("-"));
+    }
+    set_cell(4, QString::number(e.total_time_ms, 'f', 1));
+    set_cell(5, QString::fromStdString(e.curl_error));
+  }
+  // Scroll to the top - newest first.
+  if (network_table_->rowCount() > 0)
+    network_table_->scrollToTop();
+  last_network_log_id_ = newest_id;
 }
 
 // ---------------------------------------------------------------------------
