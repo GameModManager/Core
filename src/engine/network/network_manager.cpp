@@ -17,15 +17,20 @@
 //     request.
 // =============================================================================
 
+// libcurl BEFORE our header so its typedefs (CURL, curl_slist, CURLSH)
+// are already in scope; the header forward-declares them only when curl.h
+// has not been pulled in yet.
+#include <curl/curl.h>
+
 #include "engine/network/network_manager.h"
 
 #include "engine/core/log/logger.h"
 
-#include <curl/curl.h>
-
 #include <algorithm>
 #include <cctype>
+#include <ctime>
 #include <fstream>
+#include <iomanip>
 #include <sstream>
 #include <thread>
 
@@ -73,19 +78,100 @@ std::string redact_header_line(const std::string& line) {
     return name + ": <redacted>";
 }
 
+namespace {
+
+// M3 helper: true if `seg` looks like a long opaque secret token rather
+// than a numeric id or normal path part. Catches hex/base64 tokens in
+// URL paths (e.g. /v1/tokens/abc123.../data). Conservative on purpose:
+// requires length >= 24, mix of letters+digits, no URL-special chars.
+bool looks_like_token(const std::string& seg) {
+    if (seg.size() < 24) return false;
+    bool has_letter = false, has_digit = false;
+    for (char c : seg) {
+        const bool ok = (c >= '0' && c <= '9') ||
+                         (c >= 'a' && c <= 'z') ||
+                         (c >= 'A' && c <= 'Z') ||
+                         c == '-' || c == '_' || c == '.';
+        if (!ok) return false;
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
+            has_letter = true;
+        if (c >= '0' && c <= '9') has_digit = true;
+    }
+    return has_letter && has_digit;
+}
+
+} // namespace
+
 std::string redact_url(const std::string& url) {
-    // Redact sensitive query params (apikey, key, token, csrf, ...).
+    // Redact sensitive query params (apikey, key, token, csrf, ...) AND
+    // (M3) path segments that look like secrets (e.g. bearer tokens
+    // embedded directly in the path).
     const auto scheme_end = url.find("://");
     if (scheme_end == std::string::npos) return url;
-    const auto q = url.find('?', scheme_end + 3);
-    if (q == std::string::npos) return url;
-    const auto frag = url.find('#', q);
 
-    std::string prefix = url.substr(0, q + 1);
+    // Walk the path between host and query/fragment. For each segment,
+    // check whether the *previous* segment's name matches a sensitive
+    // key (e.g. ".../token/abc/data") or whether the segment itself
+    // looks like a long opaque token. Each `segment` substring already
+    // includes its leading '/' so we don't re-add a separator below.
+    std::string rewritten = url;
+    const auto host_end = url.find('/', scheme_end + 3);
+    if (host_end != std::string::npos) {
+        std::string out;
+        out.reserve(url.size());
+        out.append(url, 0, host_end);  // scheme + host (no trailing /)
+        std::size_t prev_name_start = std::string::npos;
+        std::size_t i = host_end;
+        while (i < url.size() && url[i] != '?' && url[i] != '#') {
+            const std::size_t seg_start = i;
+            std::size_t seg_end = url.find('/', i + 1);
+            if (seg_end == std::string::npos) seg_end = url.size();
+            const std::string segment = url.substr(
+                seg_start, seg_end - seg_start);
+            // Compare against the previous segment's NAME (without its
+            // leading '/'). prev_name_start points at that '/'.
+            bool redact = false;
+            if (prev_name_start != std::string::npos) {
+                const std::size_t name_start = prev_name_start + 1;
+                const std::string prev_name = url.substr(
+                    name_start, seg_start - name_start);
+                if (is_sensitive_header(prev_name)) redact = true;
+            }
+            // Token-shape check uses the segment name only (strip the
+            // leading '/'), otherwise the leading slash would always
+            // fail the "alphanumeric only" check.
+            if (!redact) {
+                const std::string seg_name =
+                    segment.size() && segment.front() == '/'
+                        ? segment.substr(1)
+                        : segment;
+                if (looks_like_token(seg_name)) redact = true;
+            }
+            if (redact && segment.size() > 1) {
+                // segment starts with '/' - replace the name part only.
+                out += "/<redacted>";
+            } else {
+                out += segment;
+                prev_name_start = seg_start;
+            }
+            i = seg_end;
+        }
+        // Append query + fragment suffix for the query-redaction pass.
+        if (i < url.size()) out.append(url, i, std::string::npos);
+        rewritten = std::move(out);
+    }
+
+    // Query redaction (the original code).
+    const auto q = rewritten.find('?', scheme_end + 3);
+    if (q == std::string::npos) return rewritten;
+
+    const auto frag = rewritten.find('#', q);
+    std::string prefix = rewritten.substr(0, q + 1);
     std::string query = (frag == std::string::npos)
-        ? url.substr(q + 1)
-        : url.substr(q + 1, frag - q - 1);
-    std::string suffix = (frag == std::string::npos) ? "" : url.substr(frag);
+        ? rewritten.substr(q + 1)
+        : rewritten.substr(q + 1, frag - q - 1);
+    std::string frag_suffix =
+        (frag == std::string::npos) ? "" : rewritten.substr(frag);
 
     std::string out_query;
     out_query.reserve(query.size());
@@ -112,7 +198,7 @@ std::string redact_url(const std::string& url) {
         }
         pos = amp + 1;
     }
-    return prefix + out_query + suffix;
+    return prefix + out_query + frag_suffix;
 }
 
 std::string redact_body(const std::string& body, std::size_t preview_bytes) {
@@ -251,18 +337,106 @@ size_t write_to_string(char* ptr, std::size_t size, std::size_t nmemb, void* use
     return bytes;
 }
 
-// Append response headers to a string. Strips trailing CRLFs.
+// Single header callback. libcurl only allows ONE CURLOPT_HEADERFUNCTION per
+// easy handle, so this struct + callback captures the raw "Name: value\r\n"
+// text into `response_headers` AND extracts the Content-Disposition value
+// on the fly. Older code set CURLOPT_HEADERFUNCTION twice (once for headers,
+// once for Content-Disposition) which silently dropped whichever callback
+// was registered last; this consolidates them into one pass so both
+// response_headers and content_disposition always get populated.
+struct HeaderCapture {
+    std::string* response_headers = nullptr;  // raw CRLF-delimited text
+    std::string* content_disposition = nullptr;  // final Content-Disposition value
+};
+
+// Per-handle scratch carried in CURLOPT_PRIVATE. The slist owns the
+// request header strings; the HeaderCapture carries the response header
+// pointers. Both must outlive curl_easy_perform; both are freed by the
+// caller via curl_easy_getinfo(curl, CURLINFO_PRIVATE, ...).
+struct PrivateData {
+    curl_slist* slist = nullptr;
+    HeaderCapture* cap = nullptr;
+};
+
 size_t capture_headers(char* ptr, std::size_t size, std::size_t nmemb, void* userdata) {
-    auto* s = static_cast<std::string*>(userdata);
     const std::size_t bytes = size * nmemb;
-    s->append(ptr, bytes);
+    auto* cap = static_cast<HeaderCapture*>(userdata);
+    if (cap && cap->response_headers) {
+        cap->response_headers->append(ptr, bytes);
+    }
+    if (cap && cap->content_disposition) {
+        // Strip trailing CRLFs so we can match the header line prefix cleanly.
+        std::string_view line(ptr, bytes);
+        while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
+            line.remove_suffix(1);
+        }
+        // Case-insensitive prefix check (servers sometimes emit
+        // "content-disposition: ..." lowercase).
+        constexpr std::string_view kPrefix = "Content-Disposition:";
+        bool match = line.size() > kPrefix.size();
+        if (match) {
+            for (std::size_t i = 0; i < kPrefix.size(); ++i) {
+                char a = line[i];
+                char b = kPrefix[i];
+                if (a >= 'A' && a <= 'Z') a = static_cast<char>(a + ('a' - 'A'));
+                if (b >= 'A' && b <= 'Z') b = static_cast<char>(b + ('a' - 'A'));
+                if (a != b) { match = false; break; }
+            }
+        }
+        if (match) {
+            std::size_t start = kPrefix.size();
+            while (start < line.size() && (line[start] == ' ' || line[start] == '\t')) {
+                ++start;
+            }
+            // Last hop wins: a redirect hop may set one that the final
+            // response then overrides.
+            cap->content_disposition->assign(line.substr(start));
+        }
+    }
     return bytes;
+}
+
+// Progress callback for downloads. Forwards to ProgressCb and respects
+// should_abort (returns 1 to abort, partial file kept). Computes a real
+// bytes-per-second value from the wall-clock elapsed time + bytes received
+// since the transfer started (previous code passed a constant 0.0 - UI
+// Download tab was always 0 bps).
+struct ProgressForwarder {
+    ProgressCb* cb = nullptr;
+    std::chrono::steady_clock::time_point started{};
+};
+
+int xfer_forwarder(void* userdata, curl_off_t dltotal, curl_off_t dlnow,
+                 curl_off_t ultotal, curl_off_t ulnow) {
+    (void)ultotal; (void)ulnow;
+    auto* pf = static_cast<ProgressForwarder*>(userdata);
+    if (!pf || !pf->cb) return 0;
+    if (pf->cb->should_abort && pf->cb->should_abort()) {
+        return 1;  // abort, partial file kept
+    }
+    if (pf->cb->on) {
+        const auto now = std::chrono::steady_clock::now();
+        const double seconds =
+            std::chrono::duration<double>(now - pf->started).count();
+        // Avoid divide-by-zero / nonsense 1-2 sample bps spike on the very
+        // first tick (<= 100ms): report 0 until we have a meaningful sample.
+        double bps = 0.0;
+        if (seconds > 0.1 && dlnow > 0) {
+            bps = static_cast<double>(dlnow) / seconds;
+        }
+        pf->cb->on(pf->cb->resume_base + dlnow,
+                   pf->cb->resume_base + dltotal, bps);
+    }
+    return 0;
 }
 
 // File write callback. Returns 0 to abort the transfer on file error.
 struct FileWriteState {
     std::ofstream* file = nullptr;
     std::int64_t bytes_written = 0;
+    ProgressForwarder* progress = nullptr;
+    std::chrono::steady_clock::time_point started{};
+    std::uint64_t last_speed_update_ms = 0;
 };
 
 size_t write_to_file(char* ptr, std::size_t size, std::size_t nmemb, void* userdata) {
@@ -275,45 +449,6 @@ size_t write_to_file(char* ptr, std::size_t size, std::size_t nmemb, void* userd
     return bytes;
 }
 
-// Capture Content-Disposition into a string.
-size_t capture_content_disposition(char* ptr, std::size_t size, std::size_t nmemb, void* userdata) {
-    auto* out = static_cast<std::string*>(userdata);
-    std::string line(ptr, size * nmemb);
-    while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
-    const std::string prefix = "Content-Disposition:";
-    if (line.size() > prefix.size() &&
-        line.compare(0, prefix.size(), prefix) == 0) {
-        std::size_t start = prefix.size();
-        while (start < line.size() && (line[start] == ' ' || line[start] == '\t')) ++start;
-        *out = line.substr(start);
-    }
-    return size * nmemb;
-}
-
-// Progress callback for downloads. Forwards to ProgressCb and respects
-// should_abort (returns 1 to abort, partial file kept).
-struct ProgressForwarder {
-    ProgressCb* cb = nullptr;
-};
-
-int xfer_forwarder(void* userdata, curl_off_t dltotal, curl_off_t dlnow,
-                 curl_off_t ultotal, curl_off_t ulnow) {
-    (void)ultotal; (void)ulnow;
-    auto* pf = static_cast<ProgressForwarder*>(userdata);
-    if (!pf || !pf->cb) return 0;
-    if (pf->cb->should_abort && pf->cb->should_abort()) {
-        return 1;  // abort, partial file kept
-    }
-    if (pf->cb->on) {
-        const double speed = (dlnow > 0)
-            ? static_cast<double>(dlnow) / 0.001  // caller uses resume_base + bytes
-            : 0.0;
-        (void)speed;
-        pf->cb->on(pf->cb->resume_base + dlnow, pf->cb->resume_base + dltotal, 0.0);
-    }
-    return 0;
-}
-
 std::string join_headers(const std::vector<std::string>& headers) {
     std::string out;
     for (const auto& h : headers) {
@@ -321,6 +456,106 @@ std::string join_headers(const std::vector<std::string>& headers) {
         if (!h.empty() && h.back() != '\n') out += "\r\n";
     }
     return out;
+}
+
+// Parse the Retry-After response header (seconds OR HTTP-date) and return
+// the millisecond delay it implies. Returns 0 when the header is missing,
+// unparseable, or negative. Caps at 24h so a hostile or buggy server can't
+// park us indefinitely.
+int parse_retry_after_ms(const std::string& response_headers) {
+    constexpr int kMaxRetryAfterMs = 24 * 60 * 60 * 1000;
+    // Find the "Retry-After:" header (case-insensitive).
+    std::size_t pos = std::string::npos;
+    std::size_t value_start = std::string::npos;
+    for (std::size_t i = 0; i + 11 < response_headers.size(); ++i) {
+        if (response_headers[i] == '\n' || response_headers[i] == '\r') continue;
+        // Try matching "Retry-After:" at position i (case-insensitive)
+        static const char needle[] = "retry-after:";
+        bool match = true;
+        for (std::size_t k = 0; k < sizeof(needle) - 1; ++k) {
+            char a = response_headers[i + k];
+            char b = needle[k];
+            if (a >= 'A' && a <= 'Z') a = static_cast<char>(a + ('a' - 'A'));
+            if (a != b) { match = false; break; }
+        }
+        if (match) {
+            pos = i + sizeof(needle) - 1;
+            break;
+        }
+    }
+    if (pos == std::string::npos) return 0;
+    // Skip whitespace.
+    while (pos < response_headers.size() &&
+           (response_headers[pos] == ' ' || response_headers[pos] == '\t')) {
+        ++pos;
+    }
+    // Read up to the next CRLF or comma (commas separate multiple Retry-After
+    // values; we take the first).
+    value_start = pos;
+    while (pos < response_headers.size() &&
+           response_headers[pos] != '\r' && response_headers[pos] != '\n' &&
+           response_headers[pos] != ',') {
+        ++pos;
+    }
+    if (pos == value_start) return 0;
+    std::string value(response_headers, value_start, pos - value_start);
+    // Trim trailing whitespace.
+    while (!value.empty() && (value.back() == ' ' || value.back() == '\t')) {
+        value.pop_back();
+    }
+    if (value.empty()) return 0;
+    // Numeric form: "120" -> 120 seconds.
+    bool all_digits = std::all_of(value.begin(), value.end(), [](unsigned char c) {
+        return c >= '0' && c <= '9';
+    });
+    if (all_digits) {
+        long secs = 0;
+        try { secs = std::stol(value); } catch (...) { return 0; }
+        if (secs <= 0) return 0;
+        return static_cast<int>(std::min<long>(secs * 1000, kMaxRetryAfterMs));
+    }
+    // HTTP-date form: try to parse via get_time; if it fails, give up.
+    std::tm tm{};
+    std::istringstream iss(value);
+    iss >> std::get_time(&tm, "%a, %d %b %Y %H:%M:%S");
+    if (iss.fail()) {
+        iss.clear();
+        iss >> std::get_time(&tm, "%A, %d-%b-%y %H:%M:%S");
+    }
+    if (iss.fail()) {
+        iss.clear();
+        iss >> std::get_time(&tm, "%a %b %d %H:%M:%S %Y");
+    }
+    if (iss.fail()) return 0;
+    // tm is in local time; convert to time_t, then to delta from now.
+    std::time_t target = std::mktime(&tm);
+    if (target == -1) return 0;
+    const auto now = std::chrono::system_clock::now();
+    const auto delta = std::chrono::system_clock::from_time_t(target) - now;
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(delta).count();
+    if (ms <= 0) return 0;
+    if (ms > kMaxRetryAfterMs) ms = kMaxRetryAfterMs;
+    return static_cast<int>(ms);
+}
+
+// CURLSH lock callbacks. libcurl invokes these whenever any thread that
+// holds an easy handle attached to our share touches DNS / SSL-session /
+// connection state. Without these set, libcurl docs are explicit that
+// concurrent use of a share handle is undefined behaviour - in practice
+// it manifests as spurious hangs under load.
+void share_lock_cb(CURL* /*handle*/, curl_lock_data data,
+                   curl_lock_access /*access*/, void* userptr) {
+    if (!userptr) return;
+    auto* locks = static_cast<std::unordered_map<int, std::mutex>*>(userptr);
+    auto it = locks->find(static_cast<int>(data));
+    if (it != locks->end()) it->second.lock();
+}
+
+void share_unlock_cb(CURL* /*handle*/, curl_lock_data data, void* userptr) {
+    if (!userptr) return;
+    auto* locks = static_cast<std::unordered_map<int, std::mutex>*>(userptr);
+    auto it = locks->find(static_cast<int>(data));
+    if (it != locks->end()) it->second.unlock();
 }
 
 } // anonymous namespace (libcurl callbacks)
@@ -343,6 +578,13 @@ Manager::Manager() {
     curl_share_setopt(share_, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS);
     curl_share_setopt(share_, CURLSHOPT_SHARE, CURL_LOCK_DATA_SSL_SESSION);
     curl_share_setopt(share_, CURLSHOPT_SHARE, CURL_LOCK_DATA_CONNECT);
+    // libcurl documents that any share handle used across threads MUST
+    // have CURLSHOPT_LOCKFUNC/UNLOCKFUNC set; without them, accessing the
+    // DNS/SSL/connection caches from multiple threads is a data race
+    // (libcurl does not lock internally). One mutex per lock data kind.
+    curl_share_setopt(share_, CURLSHOPT_LOCKFUNC, share_lock_cb);
+    curl_share_setopt(share_, CURLSHOPT_UNLOCKFUNC, share_unlock_cb);
+    curl_share_setopt(share_, CURLSHOPT_USERDATA, &share_locks_);
 }
 
 Manager::~Manager() {
@@ -355,8 +597,16 @@ Manager::~Manager() {
 
 void Manager::apply_options(CURL* curl) const {
     if (opts_.use_proxy && !opts_.proxy_host.empty()) {
-        const std::string url = opts_.proxy_host + ":" + std::to_string(opts_.proxy_port);
-        curl_easy_setopt(curl, CURLOPT_PROXY, url.c_str());
+        // libcurl expects a scheme ("http://", "socks5://") on CURLOPT_PROXY;
+        // a bare "host:port" string is mis-parsed by libcurl and silently
+        // ignored on most versions. Prepend http:// unless the host already
+        // carries a scheme (rare, but supported).
+        std::string proxy_url = opts_.proxy_host;
+        if (proxy_url.find("://") == std::string::npos) {
+            proxy_url = "http://" + proxy_url;
+        }
+        proxy_url += ":" + std::to_string(opts_.proxy_port);
+        curl_easy_setopt(curl, CURLOPT_PROXY, proxy_url.c_str());
     }
     curl_easy_setopt(curl, CURLOPT_USERAGENT,
                      "GameModManager/" VERSION);
@@ -376,8 +626,8 @@ CURL* Manager::prepare_request(const Request& req, Response& out_resp,
     }
 
     // URL with redaction-friendly view (the original goes on the wire;
-    // redaction only happens when logging).
-    const std::string url_redacted = redaction::redact_url(req.url);
+    // redaction only happens when logging - the LogEntry is built in
+    // Manager::request() from a fresh redact_url() pass).
     out_resp.effective_url = req.url;
 
     curl_easy_setopt(curl, CURLOPT_URL, req.url.c_str());
@@ -443,30 +693,26 @@ CURL* Manager::prepare_request(const Request& req, Response& out_resp,
         break;
     }
 
-    // Capture response headers for downstream consumers (Nexus rate limits,
-    // Content-Disposition, ...).
+    // Single header callback: writes raw header text into response_headers
+    // AND extracts Content-Disposition into content_disposition. Older code
+    // set CURLOPT_HEADERFUNCTION twice which silently dropped whichever was
+    // registered second; this consolidates them so both fields are
+    // populated for every request. LoversLab's probe no longer needs the
+    // special-case branch.
+    HeaderCapture cap;
+    cap.response_headers = &out_resp.response_headers;
+    cap.content_disposition = &out_resp.content_disposition;
     curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, capture_headers);
-    curl_easy_setopt(curl, CURLOPT_HEADERDATA, &out_resp.response_headers);
-    // Special-case Content-Disposition capture into its own field.
-    // Headers callback already handles it; we add a second pass for the
-    // specific "Content-Disposition" parsing used by LoversLab.
-    if (req.url.find("loverslab.com") != std::string::npos) {
-        curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, capture_content_disposition);
-        curl_easy_setopt(curl, CURLOPT_HEADERDATA, &out_resp.content_disposition);
-    }
+    curl_easy_setopt(curl, CURLOPT_HEADERDATA, &cap);
+    // The cap struct lives on prepare_request's stack; curl_easy_perform
+    // is synchronous, so the pointer is safe across the transfer. Wrap
+    // it + the slist into a heap-allocated PrivateData and round-trip via
+    // CURLOPT_PRIVATE so the caller can free both after the perform.
+    auto* priv = new PrivateData{slist, &cap};
+    curl_easy_setopt(curl, CURLOPT_PRIVATE, priv);
 
     apply_options(curl);
 
-    // Stash for cleanup by the caller (we return curl but the slist owns
-    // the header strings). Caller must curl_slist_free_all after
-    // curl_easy_perform.
-    // Trick: encode the slist pointer into a private header to retrieve
-    // later. Simpler approach: detach the slist and free it in a wrapper.
-    // Here we use CURLOPT_PRIVATE to round-trip the slist*.
-    curl_easy_setopt(curl, CURLOPT_PRIVATE, slist);
-
-    // silence "unused" complaint when neither add_header ever fires.
-    (void)url_redacted;
     return curl;
 }
 
@@ -505,24 +751,51 @@ CURL* Manager::prepare_download(DownloadRequest& req,
                          static_cast<curl_off_t>(req.resume_from));
     }
 
-    static thread_local FileWriteState fws;
+    // Stack-allocated file write + progress state. Previously these were
+    // `static thread_local`, which is fine in serial use but leaves stale
+    // pointers around if an early return skipped the reassignment; the
+    // stack version has well-bounded lifetime aligned with the easy handle.
+    FileWriteState fws;
     fws.file = &out_file;
     fws.bytes_written = 0;
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_file);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &fws);
 
-    static thread_local ProgressForwarder pf;
+    ProgressForwarder pf;
     pf.cb = &req.progress;
+    pf.started = std::chrono::steady_clock::now();
     if (req.progress.on || (req.progress.should_abort)) {
         curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
         curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, xfer_forwarder);
         curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &pf);
     }
 
+    // Capture response headers + Content-Disposition + final effective URL.
+    // LoversLab's curl_download passes opts.effective_url back to the
+    // provider; this restores that contract (B-04).
+    // Pluse the header capture callback. The capture structs live in the
+    // caller's DownloadResult (lifetime managed by Manager::download), so
+    // prepare_download only takes their addresses and writes through them.
+    // Doing this via stack-locals was tempting but the strings would
+    // dangle once prepare_download returns and curl_easy_perform fires the
+    // callback later.
+    HeaderCapture cap;
+    cap.response_headers = &out_res.response_headers;
+    cap.content_disposition = &out_res.content_disposition;
+    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, capture_headers);
+    curl_easy_setopt(curl, CURLOPT_HEADERDATA, &cap);
+
     curl_slist* slist = nullptr;
     for (const auto& h : req.headers) slist = curl_slist_append(slist, h.c_str());
     if (slist) curl_easy_setopt(curl, CURLOPT_HTTPHEADER, slist);
-    curl_easy_setopt(curl, CURLOPT_PRIVATE, slist);
+    // Heap-allocate the lifetime-managed bundle so we can carry both the
+    // header slist and the header capture pointers across the perform.
+    // After curl_easy_perform, Manager::download reads back response
+    // headers + Content-Disposition through priv->cap->* and copies them
+    // into out_res. effective_url is pulled via CURLINFO_EFFECTIVE_URL
+    // (separate from this struct).
+    auto* priv = new PrivateData{slist, &cap};
+    curl_easy_setopt(curl, CURLOPT_PRIVATE, priv);
 
     apply_options(curl);
 
@@ -581,14 +854,27 @@ Response Manager::request(const Request& req) {
         return resp;
     }
 
-    // Retry loop with simple exponential backoff. Honours Retry-After.
+    // Retry loop with simple exponential backoff. Honours Retry-After
+    // when present (M1), breaks on auth failure (401/403 - M2, no point
+    // retrying a rejected credential), and clears the body/headers before
+    // each retry so we don't append the second response onto the first
+    // (B-03, would corrupt JSON and double the redaction cost).
     int attempts = std::max(1, opts_.max_retries + 1);
-    int backoff_ms = opts_.retry_backoff_ms;
+    int backoff_ms = std::max(1, opts_.retry_backoff_ms);
+    constexpr int kMaxBackoffMs = 8000;
     bool succeeded = false;
     std::string last_curl_error;
     long last_http = 0;
 
     for (int i = 0; i < attempts; ++i) {
+        if (i > 0) {
+            // Reset body/headers/effective_url so the next attempt does not
+            // append to / overwrite the previous attempt's data.
+            resp.body.clear();
+            resp.response_headers.clear();
+            resp.effective_url.clear();
+            resp.content_disposition.clear();
+        }
         const CURLcode res = curl_easy_perform(curl);
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &resp.http_code);
         char* eff = nullptr;
@@ -598,8 +884,17 @@ Response Manager::request(const Request& req) {
         curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME, &tt);
         resp.total_time_ms = tt * 1000.0;
 
+        // Success: transport OK and the server didn't 5xx us.
         if (res == CURLE_OK && resp.http_code < 500) {
             succeeded = true;
+            last_http = resp.http_code;
+            break;
+        }
+        // Auth failure: the server explicitly rejected the credential.
+        // Retrying is wasteful and risks rate-limiting. Break out
+        // immediately.
+        if (res == CURLE_OK && (resp.http_code == 401 || resp.http_code == 403)) {
+            last_curl_error = "auth rejected";
             last_http = resp.http_code;
             break;
         }
@@ -607,15 +902,24 @@ Response Manager::request(const Request& req) {
         last_http = resp.http_code;
 
         if (i + 1 >= attempts) break;
-        std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
-        backoff_ms = std::min(backoff_ms * 2, backoff_ms * 8);
+        // Prefer the server-provided Retry-After (seconds) when present,
+        // capped at kMaxBackoffMs so a hostile server can't park us for
+        // hours. Fall back to exponential backoff (capped) otherwise.
+        int sleep_ms = backoff_ms;
+        const auto ra_ms = parse_retry_after_ms(resp.response_headers);
+        if (ra_ms > 0) sleep_ms = std::min(ra_ms, kMaxBackoffMs);
+        std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+        backoff_ms = std::min(backoff_ms * 2, kMaxBackoffMs);
     }
 
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &resp.http_code);
     {
-        curl_slist* slist = nullptr;
-        curl_easy_getinfo(curl, CURLINFO_PRIVATE, &slist);
-        if (slist) curl_slist_free_all(slist);
+        PrivateData* priv = nullptr;
+        curl_easy_getinfo(curl, CURLINFO_PRIVATE, &priv);
+        if (priv) {
+            if (priv->slist) curl_slist_free_all(priv->slist);
+            delete priv;
+        }
     }
     curl_easy_cleanup(curl);
 
@@ -713,11 +1017,18 @@ DownloadResult Manager::download(DownloadRequest& req) {
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &res.http_code);
     double tt = 0.0;
     curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME, &tt);
+    char* eff = nullptr;
+    curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &eff);
+    if (eff) res.effective_url = eff;
 
-    {
-        curl_slist* slist = nullptr;
-        curl_easy_getinfo(curl, CURLINFO_PRIVATE, &slist);
-        if (slist) curl_slist_free_all(slist);
+    // Pull back the request-header slist from PrivateData and free the
+    // wrapper. The header-capture strings live directly in res (managed
+    // by Manager::download's caller), so there is nothing to copy here.
+    PrivateData* priv = nullptr;
+    curl_easy_getinfo(curl, CURLINFO_PRIVATE, &priv);
+    if (priv) {
+        if (priv->slist) curl_slist_free_all(priv->slist);
+        delete priv;
     }
     curl_easy_cleanup(curl);
 
@@ -742,6 +1053,25 @@ DownloadResult Manager::download(DownloadRequest& req) {
     entry.caller = req.caller;
     entry.method = "GET";
     entry.url_redacted = redaction::redact_url(req.url);
+    entry.request_headers_redacted = join_headers(
+        [&]() {
+            std::vector<std::string> v;
+            for (const auto& h : req.headers) v.push_back(redaction::redact_header_line(h));
+            return v;
+        }()
+    );
+    entry.response_headers_redacted = [&]() {
+        std::string s;
+        for (std::size_t i = 0; i < res.response_headers.size() && s.size() < 2048; ++i) {
+            const char c = res.response_headers[i];
+            const char next = (i + 1 < res.response_headers.size()) ? res.response_headers[i + 1] : '\0';
+            if (c == '\r' && next == '\n') continue;
+            if (c == '\n') continue;
+            s.push_back(c);
+        }
+        return s;
+    }();
+    entry.effective_url = res.effective_url;
     entry.http_code = res.http_code;
     entry.curl_error = res.error;
     entry.total_time_ms = tt * 1000.0;
@@ -807,7 +1137,20 @@ NetworkOptions Manager::options() const {
 }
 
 void Manager::cancel_all() {
+    // Set the kill switch. Once flipped, every new request()/download()
+    // call short-circuits with error="cancelled" until reset_cancel() is
+    // called. In-flight requests are aborted via their should_abort
+    // callback when the next xfer_forwarder tick fires (or via the
+    // response when the easy handle next yields).
     cancelled_ = true;
+}
+
+void Manager::reset_cancel() {
+    // Clear the kill switch so future requests can proceed. Production
+    // code that calls cancel_all() usually destroys the Manager
+    // immediately after, but tests reuse a single Manager across cases
+    // and would otherwise see every request blocked.
+    cancelled_ = false;
 }
 
 LogEntry Manager::record_entry(const LogEntry& entry) {
@@ -858,18 +1201,25 @@ DownloadResult FakeNetworkManager::download(DownloadRequest& req) {
 // -----------------------------------------------------------------------------
 
 namespace {
-std::unique_ptr<Interface> g_instance;
+// B-06 (singleton race): two threads calling instance() simultaneously
+// when g_instance is null used to race the unsynchronised check +
+// assignment, double-constructing a Manager and leaking the second one's
+// CURLSH handle. Meyers singleton (function-local static) gives us
+// thread-safe lazy init for free under C++11.
+std::unique_ptr<Interface>& slot() {
+    static std::unique_ptr<Interface> p;
+    return p;
+}
 }
 
 Interface& instance() {
-    if (!g_instance) {
-        g_instance = std::make_unique<Manager>();
-    }
-    return *g_instance;
+    auto& p = slot();
+    if (!p) p = std::make_unique<Manager>();
+    return *p;
 }
 
 void set_instance(std::unique_ptr<Interface> net) {
-    g_instance = std::move(net);
+    slot() = std::move(net);
 }
 
 } // namespace engine::network

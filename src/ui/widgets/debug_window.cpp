@@ -981,6 +981,20 @@ void DebugWindow::showEvent(QShowEvent *event) {
   // is cheap and harmless when nothing changed (QTableWidget::setRowCount
   // is a no-op for empty rebuilds).
   refresh_populated();
+  // Restart the periodic timers so a previously hidden dialog resumes
+  // refreshing. hideEvent() pauses them.
+  if (refresh_timer_) refresh_timer_->start(refresh_interval_ * 1000);
+  if (chart_timer_) chart_timer_->start(1000);
+}
+
+void DebugWindow::hideEvent(QHideEvent *event) {
+  // Pause the periodic refreshes while hidden so we don't burn CPU on a
+  // dialog nobody is looking at. populate_network() in particular would
+  // otherwise rebuild 500 rows x 6 cells every refresh tick (1-2s),
+  // which manifested as a UI giga-freeze in the nfpb review.
+  if (refresh_timer_) refresh_timer_->stop();
+  if (chart_timer_) chart_timer_->stop();
+  QDialog::hideEvent(event);
 }
 
 void DebugWindow::refresh_charts() {
@@ -1293,7 +1307,7 @@ void DebugWindow::setup_network_tab() {
           });
 
   v->addWidget(network_table_);
-  tabs_->addTab(tab, tr("Network"));
+  network_tab_index_ = tabs_->addTab(tab, tr("Network"));
 
   populate_network();
 }
@@ -1302,10 +1316,38 @@ void DebugWindow::populate_network() {
   if (!network_table_)
     return;
 
-  // Pull the latest snapshot from the gateway. Default to 500 rows so the
-  // tab stays readable; the ring buffer holds 2000 entries so anything
-  // older has scrolled off and is not visible here anyway.
-  auto entries = engine::network::instance().log_snapshot(500);
+  // nfpb perf fix: skip the table rebuild entirely when the Network tab
+  // is not currently visible. refresh_stats() still fires on the
+  // label-timer (1-2s by default), but doing the rebuild burns ~3000
+  // QTableWidgetItem allocations + mutex contention for a tab nobody is
+  // looking at. hideEvent() also pauses the timer; this is the belt to
+  // those braces.
+  if (network_tab_index_ < 0 || tabs_ == nullptr ||
+      tabs_->currentIndex() != network_tab_index_) {
+    return;
+  }
+
+  // Pull a bounded snapshot (100 rows, not 500) so the table stays light
+  // even on busy networks. The ring buffer still holds 2000 entries
+  // internally; users wanting the full history can scroll/filter later.
+  constexpr std::size_t kMaxRows = 100;
+  auto entries = engine::network::instance().log_snapshot(kMaxRows);
+  if (entries.empty()) {
+    if (network_table_->rowCount() != 0) {
+      network_table_->setRowCount(0);
+      last_network_log_id_ = 0;
+    }
+    return;
+  }
+
+  // Diff-based skip: if the newest entry id hasn't advanced since the
+  // last rebuild, do nothing. The id is monotonic so equality implies
+  // nothing new arrived. Empty log -> id 0, also fine.
+  const std::uint64_t newest_id = entries.front().id;
+  if (newest_id == last_network_log_id_ &&
+      network_table_->rowCount() == static_cast<int>(entries.size())) {
+    return;
+  }
 
   network_table_->setRowCount(static_cast<int>(entries.size()));
   for (std::size_t i = 0; i < entries.size(); ++i) {
@@ -1330,6 +1372,7 @@ void DebugWindow::populate_network() {
   // Scroll to the top - newest first.
   if (network_table_->rowCount() > 0)
     network_table_->scrollToTop();
+  last_network_log_id_ = newest_id;
 }
 
 // ---------------------------------------------------------------------------

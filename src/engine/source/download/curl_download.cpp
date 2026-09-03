@@ -63,10 +63,20 @@ size_t capture_content_disposition(void* ptr, size_t size, size_t nmemb,
     while (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
         line.pop_back();
 
-    const std::string prefix = "Content-Disposition:";
-    if (line.size() <= prefix.size() ||
-        line.compare(0, prefix.size(), prefix) != 0) {
-        return size * nmemb;
+    // Case-insensitive prefix check: the original code matched the
+    // title-cased form only, which dropped the header for any server
+    // that sent lowercase or mixed-case. Network:: now captures
+    // Content-Disposition itself, so this helper is dead in the main
+    // path - but keep the old contract intact in case external callers
+    // (or a future reintroduction) use it.
+    constexpr std::string_view prefix = "Content-Disposition:";
+    if (line.size() <= prefix.size()) return size * nmemb;
+    for (std::size_t i = 0; i < prefix.size(); ++i) {
+        char a = line[i];
+        char b = prefix[i];
+        if (a >= 'A' && a <= 'Z') a = static_cast<char>(a + ('a' - 'A'));
+        if (b >= 'A' && b <= 'Z') b = static_cast<char>(b + ('a' - 'A'));
+        if (a != b) return size * nmemb;
     }
     // The last hop's value wins: a redirect hop may set one that the final
     // response then overrides.

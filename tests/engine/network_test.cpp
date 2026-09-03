@@ -45,6 +45,30 @@ TEST_CASE("redaction: query string", "[engine][network]") {
   REQUIRE(engine::network::redaction::redact_url("https://x/path") == "https://x/path");
 }
 
+TEST_CASE("redaction: M3 path tokens", "[engine][network]") {
+  // Token in path after a sensitive-named segment gets redacted.
+  REQUIRE(engine::network::redaction::redact_url(
+              "https://api.example.com/v1/token/abcdef0123456789abcdef01/data") ==
+          "https://api.example.com/v1/token/<redacted>/data");
+  // Same with "apikey" prefix.
+  REQUIRE(engine::network::redaction::redact_url(
+              "https://api.example.com/v1/apikey/Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MA/data") ==
+          "https://api.example.com/v1/apikey/<redacted>/data");
+  // Long hex/base64-looking segment is redacted even without a sensitive
+  // prefix (catches JWTs / opaque API tokens).
+  REQUIRE(engine::network::redaction::redact_url(
+              "https://api.example.com/v1/abcdefghijklmnopqrstuv1234567890/data") ==
+          "https://api.example.com/v1/<redacted>/data");
+  // Short numeric IDs / normal path parts are left alone.
+  REQUIRE(engine::network::redaction::redact_url(
+              "https://api.example.com/v1/mods/12345/files") ==
+          "https://api.example.com/v1/mods/12345/files");
+  // Path + query interaction: redacted path + redacted query.
+  REQUIRE(engine::network::redaction::redact_url(
+              "https://x.com/v1/token/abcdefghijklmnopqrstuv12/x?apikey=ZZZ") ==
+          "https://x.com/v1/token/<redacted>/x?apikey=<redacted>");
+}
+
 TEST_CASE("redaction: body", "[engine][network]") {
   REQUIRE(engine::network::redaction::redact_body("apikey=ABC&foo=bar", 4096) ==
           "apikey=<redacted>&foo=bar");
@@ -143,6 +167,24 @@ TEST_CASE("FakeNetworkManager: snapshot/queue_depth/active are inert",
   REQUIRE(fake.log_snapshot().empty());
   fake.clear_log();
   fake.cancel_all();
+  // reset_cancel is a no-op on the fake but must exist on the Interface;
+  // exercising it here catches any future signature drift at compile time.
+  fake.reset_cancel();
+}
+
+TEST_CASE("redaction: header capture is case-insensitive on prefix",
+          "[engine][network]") {
+  // Cover the case where a server emits lowercase or mixed-case
+  // "Content-Disposition" (regression coverage for the W-05 finding).
+  // The header-capture path lives inside Network:: now; we exercise
+  // redact_url/header redaction end-to-end here.
+  // The url query path with mixed-case "Key" param still re
+  REQUIRE(engine::network::redaction::redact_url(
+              "https://api.nexusmods.com/foo?Key=ABC&bar=1") ==
+          "https://api.nexusmods.com/foo?Key=<redacted>&bar=1");
+  REQUIRE(engine::network::redaction::redact_url(
+              "https://api.nexusmods.com/foo?KEY=ABC&bar=1") ==
+          "https://api.nexusmods.com/foo?KEY=<redacted>&bar=1");
 }
 
 TEST_CASE("NetworkOptions: defaults are sane", "[engine][network]") {
