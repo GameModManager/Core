@@ -23,6 +23,7 @@ auto run_on_main(const QObject* ctx, F&& fn) -> std::invoke_result_t<F> {
     if constexpr (std::is_void_v<std::invoke_result_t<F>>) {
         QMetaObject::invokeMethod(const_cast<QObject*>(ctx), [&] { fn(); },
                                   Qt::BlockingQueuedConnection);
+        return;
     } else {
         std::invoke_result_t<F> result{};
         const bool ok = QMetaObject::invokeMethod(

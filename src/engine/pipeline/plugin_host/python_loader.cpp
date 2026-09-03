@@ -1363,13 +1363,17 @@ bool engine::python_load_plugin(PluginLoader *loader, const std::string &path) {
     register_fn(ctx);
 
     info.registered = true;
+    // Capture fields needed by the post-move debug log before moving info.
+    const std::string display_name = info.game_display_name;
+    const std::string game_id = info.game_id;
+    const uint32_t steam_appid = info.steam_appid;
     loader->add_loaded_plugin(std::move(info));
     g_loaded_plugin_paths.push_back(path);
 
     Logger::instance().debug(
-        "Python plugin registered: " + info.game_display_name + " (" + path +
-        ", game=" + info.game_id +
-        ", appid=" + std::to_string(info.steam_appid) + ")");
+        "Python plugin registered: " + display_name + " (" + path +
+        ", game=" + game_id +
+        ", appid=" + std::to_string(steam_appid) + ")");
     return true;
 
   } catch (const py::error_already_set &e) {

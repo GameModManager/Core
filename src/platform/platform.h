@@ -53,7 +53,7 @@ public:
   // Per-game Proton runner selection, respecting Steam's per-game compat
   // tool override. Falls back to the latest Proton when no override exists.
   [[nodiscard]] virtual std::filesystem::path
-  find_proton_for_game(uint32_t steam_appid) const {
+  find_proton_for_game([[maybe_unused]] uint32_t steam_appid) const {
     return find_proton();
   }
 
@@ -69,14 +69,14 @@ public:
   // runner's display name (searched among installed runners). Empty when
   // the runner cannot be found.
   [[nodiscard]] virtual std::filesystem::path
-  find_proton_named(const std::string &name) const {
+  find_proton_named([[maybe_unused]] const std::string &name) const {
     return {};
   }
 
   // Proton prefix (compatdata) directory for a game. Empty when not
   // applicable (no Steam, or the platform has no Proton).
   [[nodiscard]] virtual std::filesystem::path
-  resolve_proton_prefix(uint32_t steam_appid) const {
+  resolve_proton_prefix([[maybe_unused]] uint32_t steam_appid) const {
     return {};
   }
 
@@ -93,7 +93,7 @@ public:
   // (drive_c/users/<user>/Documents); on Windows the native
   // %USERPROFILE%\Documents. Empty when not applicable.
   [[nodiscard]] virtual std::filesystem::path
-  game_documents_dir(uint32_t steam_appid) const {
+  game_documents_dir([[maybe_unused]] uint32_t steam_appid) const {
     return {};
   }
 
@@ -102,7 +102,7 @@ public:
   // (drive_c/users/<user>/AppData/Local); on Windows the native
   // %LOCALAPPDATA%. Empty when not applicable.
   [[nodiscard]] virtual std::filesystem::path
-  game_local_appdata_dir(uint32_t steam_appid) const {
+  game_local_appdata_dir([[maybe_unused]] uint32_t steam_appid) const {
     return {};
   }
 

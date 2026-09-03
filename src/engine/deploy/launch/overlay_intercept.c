@@ -75,11 +75,18 @@ void gmm_overlay_init(void) {
     gmm_debug = gmm_debug_enabled();
 
     gmm_game_dir = strdup(game);
+    if (!gmm_game_dir) return;
     gmm_game_dir_len = strlen(gmm_game_dir);
     while (gmm_game_dir_len > 0 && gmm_game_dir[gmm_game_dir_len - 1] == '/')
         gmm_game_dir[--gmm_game_dir_len] = '\0';
 
     gmm_overwrite_dir = strdup(overwrite);
+    if (!gmm_overwrite_dir) {
+        free(gmm_game_dir);
+        gmm_game_dir = NULL;
+        gmm_game_dir_len = 0;
+        return;
+    }
     gmm_overwrite_dir_len = strlen(gmm_overwrite_dir);
     while (gmm_overwrite_dir_len > 0 && gmm_overwrite_dir[gmm_overwrite_dir_len - 1] == '/')
         gmm_overwrite_dir[--gmm_overwrite_dir_len] = '\0';
