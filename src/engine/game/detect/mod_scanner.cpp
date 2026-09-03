@@ -4,11 +4,13 @@
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/mod/meta/xml_util.h"
+#include "engine/parallel/parallel.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <mutex>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <regex>
@@ -529,6 +531,10 @@ scan_impl(const GameKnowledge &knowledge, const std::string &game_id,
     return mods;
   }
 
+  // Collect candidate entry paths sequentially. directory_iterator is
+  // not safe to walk concurrently across threads on the same directory,
+  // and the .gmm_* scratch filter must run before parallel dispatch.
+  std::vector<std::filesystem::path> candidates;
   for (const auto &entry : std::filesystem::directory_iterator(mods_dir)) {
     try {
       if (!entry.is_directory())
@@ -544,10 +550,23 @@ scan_impl(const GameKnowledge &knowledge, const std::string &game_id,
     if (entry.path().filename().string().starts_with(".gmm_"))
       continue;
 
-    auto mod = scan_entry(entry.path(), cfg, ignore_symlink_targets);
-    if (mod)
-      mods.push_back(std::move(*mod));
+    candidates.push_back(entry.path());
   }
+
+  // Per-mod work is embarrassingly parallel: read-only filesystem stats,
+  // meta.ini parse, regex, no shared mutation. The only shared state is
+  // `mods` (push_back under a mutex - the scan itself is the bulk of the
+  // time, the lock is uncontended for most of it) and the Logger (already
+  // mutex-guarded).
+  std::mutex mods_mu;
+  const size_t n = candidates.size();
+  parallel::for_each(n, [&](size_t i) {
+    auto mod = scan_entry(candidates[i], cfg, ignore_symlink_targets);
+    if (!mod)
+      return;
+    std::lock_guard<std::mutex> lock(mods_mu);
+    mods.push_back(std::move(*mod));
+  });
 
   // Sort: separators first (in insertion order), then by priority if available,
   // else alphabetical

@@ -2,6 +2,7 @@
 #include "engine/core/instance/instance.h"
 #include "engine/core/instance/instance_utils.h"
 #include "engine/core/log/logger.h"
+#include "engine/parallel/parallel.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "engine/source/source_provider.h"
 #include "ui/settings/settings.h"
@@ -127,12 +128,22 @@ QWidget *SettingsContentWidget::build_general_tab() {
   extract_prio_box->setToolTip(
       tr("Uses less CPU while extracting mod archives. May be slightly "
          "slower but keeps your system responsive."));
+  auto *multicore_box =
+      new QCheckBox(tr("Enable multi-core processing"), gen_group);
+  multicore_box->setChecked(s.performance_multi_core());
+  multicore_box->setToolTip(
+      tr("Spread CPU-heavy work (mod scanning) across multiple cores for a "
+         "snappier launch. Off = single-core sequential fallback for "
+         "debugging. Deploy stays parallel either way."));
+  // Push the persisted toggle value into the engine so the next scan uses it.
+  engine::parallel::set_enabled(s.performance_multi_core());
   gen_layout->addWidget(update_box);
   gen_layout->addWidget(prerelease_box);
   gen_layout->addWidget(smooth_box);
   gen_layout->addWidget(dl_notify_box);
   gen_layout->addWidget(full_ui_box);
   gen_layout->addWidget(extract_prio_box);
+  gen_layout->addWidget(multicore_box);
   layout->addWidget(gen_group);
 
   connect(update_box, &QCheckBox::toggled, this,
@@ -149,6 +160,10 @@ QWidget *SettingsContentWidget::build_general_tab() {
   });
   connect(extract_prio_box, &QCheckBox::toggled, this,
           [&s](bool on) { s.set_extraction_low_priority(on); });
+  connect(multicore_box, &QCheckBox::toggled, this, [&s](bool on) {
+    s.set_performance_multi_core(on);
+    engine::parallel::set_enabled(on);
+  });
 
   // Profile defaults ---------------------------------------------------------
   auto *profile_group = new QGroupBox(tr("Profile Defaults"), page);
@@ -1322,9 +1337,9 @@ QWidget *SettingsContentWidget::build_diagnostics_tab() {
   form->addRow(QString(), level_hint);
 
   // DEBUG panel launcher: sits below the log/crash-dump rows. The DEBUG panel
-  // is normally reachable via the Konami code easter egg (see SettingsController
-  // handle_global_event); this button is the discoverable entry point for
-  // support/diagnostics workflows.
+  // is normally reachable via the Konami code easter egg (see
+  // SettingsController handle_global_event); this button is the discoverable
+  // entry point for support/diagnostics workflows.
   auto *debug_btn = new QPushButton(tr("Show DEBUG Panel"), group);
   debug_btn->setToolTip(
       tr("Open the DEBUG panel (CPU/RAM/disk stats, plugin list, UI reload)."));

@@ -245,6 +245,14 @@ void Settings::set_extraction_low_priority(bool on) {
     settings_.setValue("extraction/low_priority", on);
 }
 
+bool Settings::performance_multi_core() const {
+    return settings_.value("performance/enable_multicore", true).toBool();
+}
+
+void Settings::set_performance_multi_core(bool on) {
+    settings_.setValue("performance/enable_multicore", on);
+}
+
 // profile defaults ----------------------------------------------------------
 
 bool Settings::local_saves() const {
