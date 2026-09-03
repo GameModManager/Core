@@ -966,11 +966,14 @@ Response Manager::request(const Request& req) {
     entry.curl_error = resp.error;
     entry.total_time_ms = resp.total_time_ms;
     entry.ok = succeeded && resp.http_code < 400;
+    // Capture fields needed by the post-move debug log before moving entry.
+    const std::string method_for_log = entry.method;
+    const std::string url_for_log = entry.url_redacted;
     record_entry(std::move(entry));
 
     if (!resp.error.empty()) {
         Logger::instance().debug(
-            "Network:: " + entry.method + " " + entry.url_redacted +
+            "Network:: " + method_for_log + " " + url_for_log +
             " failed: " + resp.error + " (HTTP " + std::to_string(resp.http_code) + ")");
     }
     (void)last_http;
