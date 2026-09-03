@@ -1,5 +1,21 @@
 #include "ui/modinfo/description_browser.h"
 
+// =============================================================================
+// DescriptionBrowser's QNAM is a documented exception to the engine's
+// "Network:: is the only gateway" rule. Reason: QTextBrowser::loadResource()
+// is a synchronous QVariant-returning hook that Qt calls from the layout pass;
+// the cleanest integration is a per-instance QNAM whose replies install
+// QImage resources back into the document. Routing through the engine would
+// add a future / a worker thread for no functional gain. We accept the
+// leak in exchange for the simpler model.
+//
+// Future direction (out of scope here): wrap this in a tiny QObject that
+// translates nam_->get(reply) into Network::request() and emits a signal
+// back to DescriptionBrowser; until that lands, the grep guardrail in
+// engine/network/network_manager.h documents this file as the lone
+// exception.
+// =============================================================================
+
 #include <QImage>
 #include <QImageReader>
 #include <QNetworkAccessManager>

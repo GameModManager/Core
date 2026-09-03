@@ -42,6 +42,7 @@
 #include "ui/settings/settings.h"
 #include "ui/widgets/right_panel.h"
 #include "ui/workers/pipeline_worker.h"
+#include "ui/network/network_options_bridge.h"
 
 namespace ui {
 
@@ -56,6 +57,9 @@ void DownloadsController::setup_pipeline() {
   // startup and re-pushed after the settings dialog closes.
   w_->pipeline_thread_->worker()->set_nexus_queue_downloads(
       Settings::instance().nexus_queue_downloads());
+  // Push the network options once at startup so any startup-time fetch
+  // (masterlists, update check, icon cache) sees the current Settings.
+  engine::network::push_settings_to_network();
 
   // Download finished (download-only, MO2 model): the row becomes Complete
   // with a real file path; installation is a separate user-triggered step.

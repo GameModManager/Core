@@ -133,6 +133,7 @@ set(ENGINE_SOURCES
     source/nexus_auth.cpp
     source/loverslab_auth.cpp
     source/download/curl_download.cpp
+    network/network_manager.cpp
     update/self_updater.cpp
     update/windows_self_updater.cpp
     update/linux_self_updater.cpp
