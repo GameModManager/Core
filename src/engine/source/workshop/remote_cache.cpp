@@ -20,7 +20,10 @@ RemoteCache::RemoteCache(const std::string& url,
     , bundled_path_(bundled_path)
     , ttl_(ttl)
     , user_agent_(user_agent) {
-    curl_global_init(CURL_GLOBAL_DEFAULT);
+    // curl_global_init() used to live here; libcurl refcounts it so
+    // Network::Manager already initialises globals when the first Manager
+    // is constructed. The init call here is unnecessary and dragged in
+    // <curl/curl.h> as a transitive leak - dropped.
 }
 
 RemoteCache::~RemoteCache() {

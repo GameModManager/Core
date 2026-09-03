@@ -42,7 +42,18 @@
 //   reaches into QSettings; the UI builds a NetworkOptions from Settings on
 //   startup and on changes and pushes it in.
 
-#include <curl/curl.h>
+// Forward declaration only. Including <curl/curl.h> here would leak libcurl
+// types into every translation unit that depends on network_manager.h.
+// prepare_request/prepare_download are private helpers so callers never see
+// the underlying handle. When this header is included by the
+// implementation file (which does pull the real libcurl headers), the
+// typedefs already exist - skip them to avoid a redefinition error.
+// CURLINC_CURL_H is libcurl's own include guard (set in <curl/curl.h>).
+#if !defined(CURLINC_CURL_H)
+typedef struct CURL CURL;
+typedef struct curl_slist curl_slist;
+typedef struct CURLSH CURLSH;
+#endif
 
 #include <atomic>
 #include <chrono>
@@ -198,6 +209,17 @@ struct DownloadResult {
     bool aborted = false;             // pause: partial file kept
     std::int64_t bytes_downloaded = 0;
     std::int64_t bytes_total = 0;
+    // Final URL after redirects. Empty if no redirect happened.
+    std::string effective_url;
+    // Server-provided Content-Disposition value, if any (LoversLab uses
+    // this to name downloaded archives when the URL is opaque).
+    std::string content_disposition;
+    // Raw response headers, written through the same single-header pass that
+    // also extracts the Content-Disposition above. Lives in DownloadResult
+    // so its address is stable for the entire download lifetime; a
+    // previous stack-local version dangled once prepare_download
+    // returned and corrupted the destination string.
+    std::string response_headers;
 };
 
 // One ring-buffer entry per request (active + finished). Logged to file and
@@ -272,8 +294,18 @@ public:
     virtual void set_options(NetworkOptions opts) = 0;
     virtual NetworkOptions options() const = 0;
 
-    // Cancel every in-flight and queued request. Used on shutdown.
+    // Cancel every in-flight and queued request. After this returns, all
+    // NEW request()/download() calls also short-circuit with
+    // error="cancelled" until reset_cancel() is called. Used for clean
+    // shutdown (typically paired with reset_cancel() in tests, or
+    // followed by destroying the Manager entirely in production).
     virtual void cancel_all() = 0;
+
+    // Clears the cancel flag set by cancel_all() so future requests can
+    // proceed. Mostly useful for tests and for re-using a Manager across
+    // shutdown cycles - production code that intends to discard the
+    // Manager can simply destroy it instead.
+    virtual void reset_cancel() = 0;
 };
 
 // -----------------------------------------------------------------------------
@@ -300,6 +332,7 @@ public:
     void set_options(NetworkOptions opts) override;
     NetworkOptions options() const override;
     void cancel_all() override;
+    void reset_cancel() override;
 
     // For unit tests: number of ring slots filled. Equivalent to
     // log_snapshot().size() but cheaper.
@@ -341,6 +374,16 @@ private:
     // connection pool across easy handles. Created once per Manager.
     CURLSH* share_ = nullptr;
 
+    // Per-data-kind mutexes for the share handle's lock callbacks (DNS,
+    // SSL session, connection). curl_share_setopt only stores a single
+    // userdata pointer, so we point it at this map of mutexes.
+    mutable std::unordered_map<int, std::mutex> share_locks_;
+
+    // H2: cancel_all() previously flipped an atomic<bool> and never reset
+    // it, which permanently blocked every subsequent request() /
+    // download() (every caller received error="cancelled"). The flag is
+    // now paired with reset_cancel() and the doc comment makes the
+    // session-scope kill-switch nature explicit.
     std::atomic<bool> cancelled_{false};
 };
 
@@ -368,6 +411,7 @@ public:
     }
     NetworkOptions options() const override { return opts_; }
     void cancel_all() override {}
+    void reset_cancel() override {}
 
     // Configure the next response that request() will return. Popped FIFO.
     void enqueue_response(Response r) { responses_.push_back(std::move(r)); }
