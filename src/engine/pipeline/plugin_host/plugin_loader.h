@@ -84,7 +84,13 @@ struct PluginInfo {
   std::string author;            // optional, via register_meta
   std::string version;           // optional, via register_meta
   std::string description;       // optional, via register_meta
-  std::string category;          // optional, via register_category
+  std::string category;          // optional, primary category (via register_category)
+  // Optional list of additional categories declared via
+  // register_categories(categories). The first entry is mirrored into
+  // `category` for legacy consumers; the full list lives here so
+  // batched registrations are not lossy. Empty when the plugin only
+  // called register_category once or not at all.
+  std::vector<std::string> categories;
   uint32_t steam_appid = 0;
   std::string nexus_domain;
   // v2-only identity fields (populated by register_game / register_plugin).
