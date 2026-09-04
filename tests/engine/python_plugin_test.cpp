@@ -19,14 +19,17 @@ namespace fs = std::filesystem;
 // Release builds compile out assert() (-DNDEBUG), so the plugin-loading checks
 // above use it loosely; the register_game_feature mirror test below uses this
 // hard require (exits non-zero on failure) so ctest actually catches it.
-namespace {
-void require(bool cond, const std::string &msg) {
+namespace
+{
+void require(bool cond, const std::string& msg)
+{
   INFO(msg);
   REQUIRE(cond);
 }
-} // namespace
+}  // namespace
 
-static void test_python_plugin_load() {
+static void test_python_plugin_load()
+{
   std::cout << "=== test_python_plugin_load ===" << std::endl;
 
   // Create a temp directory with a Python plugin
@@ -71,7 +74,7 @@ def register(ctx):
 
   // Verify registration
   assert(loader.plugins().size() == 1);
-  const auto &info = loader.plugins()[0];
+  const auto& info = loader.plugins()[0];
   assert(info.game_id == "testgame");
   assert(info.steam_appid == 12345);
   assert(info.registered);
@@ -87,7 +90,7 @@ def register(ctx):
   // callable once per plugin and lands its messages in GamePlugin::messages.
   {
     engine::PluginDatabase db;
-    auto &ps = db.plugins_mutable();
+    auto& ps = db.plugins_mutable();
     engine::GamePlugin target;
     target.name = "Target.esp";
     engine::GamePlugin other;
@@ -115,7 +118,8 @@ def register(ctx):
   fs::remove_all(tmp);
 }
 
-static void test_python_plugin_missing_register() {
+static void test_python_plugin_missing_register()
+{
   std::cout << "=== test_python_plugin_missing_register ===" << std::endl;
 
   fs::path tmp = fs::temp_directory_path() / "gmm_python_test2";
@@ -143,7 +147,8 @@ static void test_python_plugin_missing_register() {
   fs::remove_all(tmp);
 }
 
-static void test_python_plugin_duplicate_load() {
+static void test_python_plugin_duplicate_load()
+{
   std::cout << "=== test_python_plugin_duplicate_load ===" << std::endl;
 
   fs::path tmp = fs::temp_directory_path() / "gmm_python_test3";
@@ -182,7 +187,8 @@ def register(ctx):
 // override) a per-game mod_data_checker. The mirror must feed the same
 // engine registry the C ABI feeds — so a mod whose only content is the
 // registered folder is no longer "No valid game data" (FLAG_INVALID).
-static void test_python_register_game_feature() {
+static void test_python_register_game_feature()
+{
   std::cout << "=== test_python_register_game_feature ===" << std::endl;
 
   engine::Game::Features::Registry::instance().clear();
@@ -221,17 +227,15 @@ def register(ctx):
           "python plugin with register_game_feature loads");
 
   auto combined =
-      engine::Game::Features::Registry::instance().resolve_mod_data_checker(
-          "skyrim");
+      engine::Game::Features::Registry::instance().resolve_mod_data_checker("skyrim");
   require(combined != nullptr, "python-registered checker resolves");
   require(combined && !combined->folder_names().empty() &&
               combined->folder_names()[0] == "customstuff",
           "python folder_names reached the engine registry");
 
-  auto mods =
-      engine::ModScanner::scan_dir(engine::GameKnowledge{}, "skyrim", root);
+  auto mods = engine::ModScanner::scan_dir(engine::GameKnowledge{}, "skyrim", root);
   bool found_custom = false;
-  for (const auto &m : mods) {
+  for (const auto& m : mods) {
     if (m.folder_name == "CustomMod") {
       found_custom = true;
       require(!m.invalid_data,
@@ -242,8 +246,7 @@ def register(ctx):
   // no metadata + no valid content → filtered out by the whitelist.
   require(found_custom, "custom mod with .esp is scanned");
 
-  std::cout << "  python register_game_feature feeds the engine registry"
-            << std::endl;
+  std::cout << "  python register_game_feature feeds the engine registry" << std::endl;
   std::cout << "  PASSED" << std::endl;
 
   engine::python_shutdown();
@@ -255,7 +258,8 @@ def register(ctx):
 // bus during register(); the test drives the SAME public dispatch() the UI
 // calls, and asserts the Python handler received both events with the right
 // dict payloads (logged to a file by the plugin itself).
-static void test_python_subscribe_event() {
+static void test_python_subscribe_event()
+{
   std::cout << "=== test_python_subscribe_event ===" << std::endl;
 
   engine::EventBus::instance().clear();
@@ -291,8 +295,7 @@ def register(ctx):
   require(loader.plugins().size() == 1, "listener plugin registered");
   require(engine::EventBus::instance().subscriber_count("mod_installed") == 1,
           "python subscription landed on the bus (mod_installed)");
-  require(engine::EventBus::instance().subscriber_count("mod_state_changed") ==
-              1,
+  require(engine::EventBus::instance().subscriber_count("mod_state_changed") == 1,
           "python subscription landed on the bus (mod_state_changed)");
 
   // Drive the same public emit the UI uses (MainWindow install/state points).
@@ -316,8 +319,7 @@ def register(ctx):
   require(lines[1] == "mod_state_changed|SkyUI|1",
           "state-change logged with enabled=1");
 
-  std::cout << "  python plugin logged install + state-change via the bus"
-            << std::endl;
+  std::cout << "  python plugin logged install + state-change via the bus" << std::endl;
   std::cout << "  PASSED" << std::endl;
 
   engine::python_shutdown();
@@ -329,7 +331,8 @@ def register(ctx):
 // typed settings tab; the loader parses it into PluginInfo::settings_tab the
 // same way the C ABI path does (choices split into a list, int range kept as
 // a string, no options for bool/string).
-static void test_python_settings_tab() {
+static void test_python_settings_tab()
+{
   std::cout << "=== test_python_settings_tab ===" << std::endl;
 
   fs::path tmp = fs::temp_directory_path() / "gmm_python_settings_tab";
@@ -359,34 +362,32 @@ def register(ctx):
   require(engine::python_load_plugin(&loader, plugin_path.string()),
           "python plugin with register_settings_tab loads");
   require(loader.plugins().size() == 1, "settings-tab plugin registered");
-  const auto &info = loader.plugins()[0];
+  const auto& info = loader.plugins()[0];
 
   require(info.settings_tab.title == "Python Fixture Settings",
           "settings_tab.title parsed from the Python declaration");
-  require(info.settings_tab.settings.size() == 4,
-          "all four typed settings parsed");
+  require(info.settings_tab.settings.size() == 4, "all four typed settings parsed");
 
-  const auto &show = info.settings_tab.settings[0];
+  const auto& show = info.settings_tab.settings[0];
   require(show.key == "show_previews" && show.type == "bool" &&
               show.default_value == "1" && show.choices.empty() &&
               show.int_range.empty(),
           "bool entry parsed (no options)");
 
-  const auto &thr = info.settings_tab.settings[1];
-  require(thr.key == "max_threads" && thr.type == "int" &&
-              thr.default_value == "4" && thr.int_range == "1:8",
+  const auto& thr = info.settings_tab.settings[1];
+  require(thr.key == "max_threads" && thr.type == "int" && thr.default_value == "4" &&
+              thr.int_range == "1:8",
           "int entry parsed with min:max range");
 
-  const auto &pre = info.settings_tab.settings[2];
+  const auto& pre = info.settings_tab.settings[2];
   require(pre.key == "mod_name_prefix" && pre.type == "string" &&
               pre.default_value == "mod_",
           "string entry parsed");
 
-  const auto &mode = info.settings_tab.settings[3];
+  const auto& mode = info.settings_tab.settings[3];
   require(mode.key == "install_mode" && mode.type == "choice" &&
               mode.default_value == "Full" &&
-              mode.choices ==
-                  std::vector<std::string>{"Full", "Compact", "Minimal"},
+              mode.choices == std::vector<std::string>{"Full", "Compact", "Minimal"},
           "choice entry parsed with candidate list");
 
   require(info.settings.size() == 1 &&
@@ -406,7 +407,8 @@ def register(ctx):
 // called register_identity (ImageDiff, IsaacModSorter) showed up as creatable
 // games. game_support is set ONLY by register_identity; game_plugins() must
 // return exactly the identity-registered plugins.
-static void test_python_game_plugins() {
+static void test_python_game_plugins()
+{
   std::cout << "=== test_python_game_plugins ===" << std::endl;
 
   engine::Game::Features::Registry::instance().clear();
@@ -445,7 +447,7 @@ def register(ctx):
   require(loader.plugins().size() == 2, "both plugins registered");
 
   bool saw_game = false, saw_tool = false;
-  for (const auto &p : loader.plugins()) {
+  for (const auto& p : loader.plugins()) {
     if (p.game_id == "game") {
       saw_game = true;
       require(p.game_support, "register_identity sets game_support");
@@ -462,15 +464,310 @@ def register(ctx):
   require(games[0].steam_appid == 777 && games[0].game_display_name == "game",
           "game_plugins() carries identity data");
 
-  std::cout << "  game_plugins() filters out non-game tool plugins"
-            << std::endl;
+  std::cout << "  game_plugins() filters out non-game tool plugins" << std::endl;
   std::cout << "  PASSED" << std::endl;
 
   engine::python_shutdown();
   fs::remove_all(tmp);
 }
 
-TEST_CASE("python plugin", "[engine]") {
+// Test the Plugin base class DX: subclass gmm.Plugin, implement game_info(),
+// tabs(), features().  The loader instantiates the class and calls the methods.
+// Uses the legacy register(ctx) pattern that manually calls plugin methods.
+static void test_python_plugin_base_class()
+{
+  std::cout << "=== test_python_plugin_base_class ===" << std::endl;
+
+  engine::Game::Features::Registry::instance().clear();
+
+  fs::path tmp = fs::temp_directory_path() / "gmm_python_plugin_base";
+  fs::remove_all(tmp);
+  fs::create_directories(tmp);
+
+  const fs::path plugin_path = tmp / "base_plugin.py";
+  {
+    std::ofstream f(plugin_path);
+    f << R"(
+import gmm
+
+class MyPlugin(gmm.Plugin):
+    def game_info(self):
+        return {
+            "game_id": "basegame",
+            "display_name": "Base Game Plugin",
+            "steam_appid": 55555,
+            "nexus_domain": "basegame",
+        }
+
+    def tabs(self):
+        return [
+            {"capability": "plugins", "display_name": "Plugins",
+             "data_path": "Data/"},
+            {"capability": "saves", "display_name": "Saves",
+             "data_path": "Saves/"},
+        ]
+
+    def categories(self):
+        return ["Core", "Utilities"]
+
+    def features(self, ctx):
+        ctx.register_game_feature(
+            game_id="basegame",
+            feature_type="mod_data_checker",
+            priority=3,
+            folder_names=["base_stuff"],
+            file_extensions=["basext"],
+        )
+
+_plugin = MyPlugin()
+
+def register(ctx):
+    gi = _plugin.game_info()
+    ctx.register_game(
+        game_id=gi["game_id"],
+        display_name=gi["display_name"],
+        steam_appid=gi.get("steam_appid", 0),
+        nexus_domain=gi.get("nexus_domain", ""),
+    )
+    for tab in _plugin.tabs():
+        ctx.register_tab(
+            tab["capability"],
+            display_name=tab.get("display_name", ""),
+            data_path=tab.get("data_path", ""),
+        )
+    _plugin.features(ctx)
+)";
+  }
+
+  engine::python_init();
+
+  engine::PluginLoader loader;
+  bool loaded = engine::python_load_plugin(&loader, plugin_path.string());
+  if (!loaded) {
+    std::cout << "  FAILED to load base class plugin" << std::endl;
+  }
+  require(loaded, "python plugin with Plugin base class loads");
+  require(loader.plugins().size() == 1, "base class plugin registered");
+
+  const auto& info = loader.plugins()[0];
+  require(info.game_id == "basegame", "game_id from game_info()");
+  require(info.game_display_name == "Base Game Plugin",
+          "display_name from game_info()");
+  require(info.steam_appid == 55555, "steam_appid from game_info()");
+  require(info.nexus_domain == "basegame", "nexus_domain from game_info()");
+  require(info.game_support, "game_support set by game_info()");
+
+  // Verify tabs registered (order may vary)
+  auto game_caps = loader.capabilities().capabilities_for("basegame");
+  require(game_caps.size() == 2, "two tabs registered from tabs()");
+  bool has_plugins = false, has_saves = false;
+  for (const auto& cap : game_caps) {
+    if (cap.capability == "plugins")
+      has_plugins = true;
+    if (cap.capability == "saves")
+      has_saves = true;
+  }
+  require(has_plugins, "has plugins tab");
+  require(has_saves, "has saves tab");
+
+  // Verify game feature registered
+  auto combined =
+      engine::Game::Features::Registry::instance().resolve_mod_data_checker("basegame");
+  require(combined != nullptr, "python base class checker resolves");
+  require(combined && !combined->folder_names().empty() &&
+              combined->folder_names()[0] == "base_stuff",
+          "python folder_names reached the engine registry");
+
+  std::cout << "  game_id: " << info.game_id << std::endl;
+  std::cout << "  display_name: " << info.game_display_name << std::endl;
+  std::cout << "  tabs: " << game_caps.size() << std::endl;
+  std::cout << "  PASSED" << std::endl;
+
+  engine::python_shutdown();
+  fs::remove_all(tmp);
+}
+
+// Test fluent chaining: ctx.game({...}).tabs([...]).feature(...)
+static void test_python_fluent_chaining()
+{
+  std::cout << "=== test_python_fluent_chaining ===" << std::endl;
+
+  fs::path tmp = fs::temp_directory_path() / "gmm_python_fluent";
+  fs::remove_all(tmp);
+  fs::create_directories(tmp);
+
+  const fs::path plugin_path = tmp / "fluent.py";
+  {
+    std::ofstream f(plugin_path);
+    f << R"(
+import gmm
+
+def register(ctx):
+    ctx.register_identity(
+        steam_appid=66666,
+        nexus_domain="fluentgame",
+    ).register_meta(
+        author="Test",
+        version="1.0",
+        description="Fluent chaining test",
+    ).register_category("Fluent").register_tab(
+        "plugins", display_name="Plugins", data_path="Data/"
+    )
+)";
+  }
+
+  engine::python_init();
+  engine::PluginLoader loader;
+  require(engine::python_load_plugin(&loader, plugin_path.string()),
+          "python plugin with fluent chaining loads");
+  require(loader.plugins().size() == 1, "fluent plugin registered");
+
+  const auto& info = loader.plugins()[0];
+  require(info.steam_appid == 66666, "identity from fluent chain");
+  require(info.nexus_domain == "fluentgame", "nexus from fluent chain");
+  require(info.author == "Test", "author from fluent chain");
+  require(info.version == "1.0", "version from fluent chain");
+  require(info.description == "Fluent chaining test", "description from fluent chain");
+  require(info.category == "Fluent", "category from fluent chain");
+
+  auto game_caps = loader.capabilities().capabilities_for(info.game_id);
+  require(game_caps.size() == 1, "tab from fluent chain");
+  require(game_caps[0].capability == "plugins", "tab capability");
+
+  std::cout << "  fluent chaining works end-to-end" << std::endl;
+  std::cout << "  PASSED" << std::endl;
+
+  engine::python_shutdown();
+  fs::remove_all(tmp);
+}
+
+// Test batched tabs: ctx.register_tabs([...])
+static void test_python_batched_tabs()
+{
+  std::cout << "=== test_python_batched_tabs ===" << std::endl;
+
+  fs::path tmp = fs::temp_directory_path() / "gmm_python_batched";
+  fs::remove_all(tmp);
+  fs::create_directories(tmp);
+
+  const fs::path plugin_path = tmp / "batched.py";
+  {
+    std::ofstream f(plugin_path);
+    f << R"(
+import gmm
+
+def register(ctx):
+    ctx.register_identity(steam_appid=77777, nexus_domain="batchgame")
+    ctx.register_tabs([
+        {"capability": "plugins", "display_name": "Plugins",
+         "data_path": "Data/"},
+        {"capability": "saves", "display_name": "Saves",
+         "data_path": "Saves/"},
+        {"capability": "mods", "display_name": "Mods",
+         "data_path": "mods/"},
+    ])
+)";
+  }
+
+  engine::python_init();
+  engine::PluginLoader loader;
+  require(engine::python_load_plugin(&loader, plugin_path.string()),
+          "python plugin with batched tabs loads");
+
+  const auto& info = loader.plugins()[0];
+  auto game_caps   = loader.capabilities().capabilities_for(info.game_id);
+  require(game_caps.size() == 3, "three tabs from register_tabs()");
+  // Check all three exist (order may differ)
+  bool has_plugins = false, has_saves = false, has_mods = false;
+  for (const auto& cap : game_caps) {
+    if (cap.capability == "plugins")
+      has_plugins = true;
+    if (cap.capability == "saves")
+      has_saves = true;
+    if (cap.capability == "mods")
+      has_mods = true;
+  }
+  require(has_plugins, "has plugins tab");
+  require(has_saves, "has saves tab");
+  require(has_mods, "has mods tab");
+
+  std::cout << "  batched tabs registered " << game_caps.size() << " tabs" << std::endl;
+  std::cout << "  PASSED" << std::endl;
+
+  engine::python_shutdown();
+  fs::remove_all(tmp);
+}
+
+// Regression: a Plugin-class plugin that succeeded must NOT leave its entry
+// in gmm._registered_plugins for the next load to silently inherit. Repro:
+// load a good gmm.register() plugin, then load a broken plugin (no
+// register(), no gmm.register()) in the same interpreter. The broken plugin
+// must be rejected.
+static void test_python_plugin_registered_list_isolation()
+{
+  std::cout << "=== test_python_plugin_registered_list_isolation ===" << std::endl;
+
+  fs::path tmp = fs::temp_directory_path() / "gmm_python_isolation";
+  fs::remove_all(tmp);
+  fs::create_directories(tmp);
+
+  // Plugin A: a well-formed Plugin subclass registered via gmm.register.
+  const fs::path good_path = tmp / "goodgame.py";
+  {
+    std::ofstream f(good_path);
+    f << R"(
+import gmm
+
+class GoodPlugin(gmm.Plugin):
+    def game_info(self):
+        return {"game_id": "goodgame", "display_name": "Good Game",
+                "steam_appid": 11111, "nexus_domain": "goodgame"}
+
+    def features(self, ctx):
+        ctx.register_identity(
+            steam_appid=11111,
+            nexus_domain="goodgame",
+            display_name="Good Game",
+        )
+
+gmm.register(GoodPlugin)
+)";
+  }
+
+  // Plugin B: a broken plugin with neither a top-level register() function
+  // nor a gmm.register() call. Pre-fix, this would silently inherit the
+  // previous plugin's _registered_plugins entry and load as a duplicate
+  // of GoodPlugin.
+  const fs::path bad_path = tmp / "badgame.py";
+  {
+    std::ofstream f(bad_path);
+    f << "# broken: no register(), no gmm.register()\nsome_var = 42\n";
+  }
+
+  engine::python_init();
+
+  engine::PluginLoader loader;
+  require(engine::python_load_plugin(&loader, good_path.string()),
+          "good Plugin subclass loads");
+  require(loader.plugins().size() == 1, "exactly one plugin after good load");
+  require(loader.plugins()[0].game_id == "goodgame",
+          "good plugin's game_id is preserved");
+
+  bool ok_broken = engine::python_load_plugin(&loader, bad_path.string());
+  require(!ok_broken, "broken plugin (no register / no gmm.register) is rejected");
+  require(loader.plugins().size() == 1, "broken plugin did NOT add a duplicate entry");
+  require(loader.plugins()[0].game_id == "goodgame",
+          "good plugin's identity still intact after broken load");
+
+  std::cout << "  broken plugin cannot inherit the previous load's entry" << std::endl;
+  std::cout << "  PASSED" << std::endl;
+
+  engine::python_shutdown();
+  fs::remove_all(tmp);
+}
+
+TEST_CASE("python plugin", "[engine]")
+{
   std::cout << "Python plugin tests" << std::endl;
 
   test_python_plugin_load();
@@ -480,4 +777,8 @@ TEST_CASE("python plugin", "[engine]") {
   test_python_subscribe_event();
   test_python_settings_tab();
   test_python_game_plugins();
+  test_python_plugin_base_class();
+  test_python_fluent_chaining();
+  test_python_batched_tabs();
+  test_python_plugin_registered_list_isolation();
 }
