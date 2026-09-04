@@ -378,16 +378,27 @@ void DebugWindow::setup_charts_tab() {
   cpu_chart_->set_title(QStringLiteral("%1 cores").arg(online_cpu_count()));
   // RAM and Heap are auto-scaled: a fixed 0..1024 MiB clip hides any
   // process that grows past 1 GiB (very common during long sessions,
-  // indexing, or Steam Workshop downloads). Disk/net already auto-scale;
-  // jitter stays fixed at -50..+50 ms by design.
+  // indexing, or Steam Workshop downloads). Both metrics are clamped
+  // to a non-negative lower bound - RSS and VmData cannot go below 0.
+  ram_chart_->set_clamp_negative(true);
   ram_chart_->set_y_label(QStringLiteral("MiB"));
+  heap_chart_->set_clamp_negative(true);
   heap_chart_->set_y_label(QStringLiteral("MiB"));
-  // disk/net: auto-scale (start at 0,0); both push a single R+W / RX+TX
-  // sum so the chart line stays readable even with one series. The header
-  // labels keep R/W (or RX/TX) separate so the user can see the split.
+  // Disk and Net: split into two series (Read/Write and RX/TX) so the
+  // trends are visible independently instead of a single sum that
+  // cancels out spikes, and clamp the lower bound to 0 so an idle
+  // chart never shows negative KiB/s. Legend labels make the two
+  // series visually distinguishable.
+  disk_chart_->set_clamp_negative(true);
   disk_chart_->set_y_label(QStringLiteral("KiB/s"));
+  disk_chart_->set_legend(QStringLiteral("Read"));
+  disk_chart_->set_legend2(QStringLiteral("Write"));
+  net_chart_->set_clamp_negative(true);
   net_chart_->set_y_label(QStringLiteral("KiB/s"));
-  // jitter: signed -50..+50 ms
+  net_chart_->set_legend(QStringLiteral("RX"));
+  net_chart_->set_legend2(QStringLiteral("TX"));
+  // jitter: signed -50..+50 ms - must NOT be clamped so the +/- range
+  // is preserved (jitter is the only signed metric on this panel).
   jitter_chart_->set_y_range(-50.0, 50.0);
   jitter_chart_->set_y_label(QStringLiteral("ms"));
 
@@ -1093,12 +1104,12 @@ void DebugWindow::refresh_charts() {
   cpu_chart_->push_sample(cpu_pct);
   ram_chart_->push_sample(static_cast<double>(pss_kb) / 1024.0);
   heap_chart_->push_sample(static_cast<double>(vmdata_kb) / 1024.0);
-  // Disk series: encode (R, W) on the same chart by pushing sum and the
-  // individual samples on a second series would need a second series per
-  // chart; here we collapse to one number (R+W) for the chart line so the
-  // trend is visible. The header label keeps both.
-  disk_chart_->push_sample(disk_read_kbs + disk_write_kbs);
-  net_chart_->push_sample(rx_kbs + tx_kbs);
+  // Disk and Net use the two-series push so Read/Write (RX/TX) trend
+  // independently instead of cancelling inside a single sum. The chart
+  // widget's auto-scale honors clamp_negative so the Y lower bound
+  // cannot drop below 0 even when both flows are idle.
+  disk_chart_->push_samples(disk_read_kbs, disk_write_kbs);
+  net_chart_->push_samples(rx_kbs, tx_kbs);
   jitter_chart_->push_sample(jitter_ms);
 
   // Headers.
