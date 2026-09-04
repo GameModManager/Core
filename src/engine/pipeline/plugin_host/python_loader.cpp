@@ -922,12 +922,15 @@ public:
       defaults.push_back(tab.settings.back().default_value.c_str());
       options.push_back(opt.empty() ? nullptr : opt.c_str());
     }
-    plugin_->settings_tab = std::move(tab);
+    // Capture size before moving `tab`; the moved-from vector is left
+    // in a valid-but-unspecified state (size()==0 on libstdc++).
+    const size_t settings_count = tab.settings.size();
+    plugin_->settings_tab       = std::move(tab);
 
     const std::string basename = basename_of(plugin_->path);
     engine::PluginSettingsRegistry::instance().register_settings_tab(
         basename, title.c_str(), keys.data(), types.data(), defaults.data(),
-        options.data(), tab.settings.size());
+        options.data(), settings_count);
     engine::PluginSettingsRegistry::instance().register_alias(plugin_->game_id,
                                                               basename);
     engine::PluginSettingsRegistry::instance().register_alias(plugin_->plugin_name,
