@@ -56,6 +56,12 @@ public:
   void removeCategory(int id);
   // Updates the name and parent of an existing category; no-op when missing.
   void updateCategory(int id, const std::string &name, int parent_id);
+  // Drops every entry. Use this when transitioning between two sources of
+  // truth that own the factory (per-instance state via set_game_info() does
+  // this so the previous instance's categories do not leak into the next
+  // one - applyCoreSet() is additive by design and load() only replaces
+  // when categories.dat exists).
+  void clear();
 
   // Recomputes the hasChildren flags after any structural change.
   void rebuildTree();
