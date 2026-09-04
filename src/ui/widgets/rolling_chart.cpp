@@ -8,6 +8,10 @@
 #include <QPen>
 #include <QVBoxLayout>
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
 #ifdef GMM_HAS_QTCHARTS
 // Canonical Qt6 path: include the per-class headers under QtCharts/.
 #include <QtCharts/QChart>
@@ -18,6 +22,71 @@
 #endif
 
 namespace ui {
+
+namespace {
+
+// Compute the auto-scaled Y range from one or two sample sequences.
+// When clamp_negative is true the lower bound is clamped to 0 (for
+// quantities that cannot physically be negative: Disk IO, Network IO,
+// RSS, heap, CPU%). Both series are folded into one range so the
+// chart always shows the larger of the two.
+//
+// Idle-trace special case: when all samples collapse to a single
+// value (including 0) we still draw a useful range. The clamp-
+// negative path picks [0, 1] so the trace hugs the bottom; the
+// un-clamped path (jitter) keeps the +/-1 floor so a steady-state
+// trace centres.
+struct AutoRange {
+  double lo;
+  double hi;
+};
+AutoRange auto_range_from(const std::deque<double> &a,
+                          const std::deque<double> &b, bool clamp_negative) {
+  AutoRange r{0.0, 1.0};
+  if (a.empty() && b.empty())
+    return r;
+  double lo = std::numeric_limits<double>::infinity();
+  double hi = -std::numeric_limits<double>::infinity();
+  for (double v : a) {
+    if (v < lo)
+      lo = v;
+    if (v > hi)
+      hi = v;
+  }
+  for (double v : b) {
+    if (v < lo)
+      lo = v;
+    if (v > hi)
+      hi = v;
+  }
+  if (!std::isfinite(lo) || !std::isfinite(hi))
+    return r;
+  if (qFuzzyCompare(1.0 + lo, 1.0 + hi)) {
+    // Flat trace: keep a small floor so the line still draws. When
+    // clamp_negative is set we anchor the floor at 0 so an idle
+    // chart never shows negative values.
+    if (clamp_negative && lo <= 0.0) {
+      r.lo = 0.0;
+      r.hi = std::max(hi, 1.0);
+    } else {
+      r.lo = lo - 1.0;
+      r.hi = hi + 1.0;
+    }
+    return r;
+  }
+  // Pad both sides by 10% of the range, then clamp the lower bound
+  // when requested. The clamp is the bug fix: previously lo -= pad
+  // pushed the axis below 0 even when every sample was >= 0, and
+  // qFuzzyCompare + lo -= 1.0 made the idle chart show [-1, +1].
+  const double pad = (hi - lo) * 0.1;
+  r.lo = lo - pad;
+  r.hi = hi + pad;
+  if (clamp_negative && r.lo < 0.0)
+    r.lo = 0.0;
+  return r;
+}
+
+} // namespace
 
 RollingChartWidget::RollingChartWidget(QWidget *parent) : QWidget(parent) {
   setMinimumHeight(140);
@@ -64,11 +133,26 @@ void RollingChartWidget::set_legend(const QString &legend) {
   this->update();
 }
 
+void RollingChartWidget::set_legend2(const QString &legend) {
+  legend2_ = legend;
+  this->update();
+}
+
+void RollingChartWidget::set_clamp_negative(bool clamp) {
+  clamp_negative_ = clamp;
+  // Force an immediate axis re-evaluation on the next push so the
+  // toggle reflects in the rendered chart without waiting for a tick.
+  this->update();
+}
+
 void RollingChartWidget::reset() {
   samples_.clear();
+  samples2_.clear();
 #ifdef GMM_HAS_QTCHARTS
   if (series_)
     series_->replace(QList<QPointF>{});
+  if (series2_)
+    series2_->replace(QList<QPointF>{});
 #endif
   this->update();
 }
@@ -104,26 +188,60 @@ void RollingChartWidget::push_sample(double value) {
     }
     series_->replace(points);
     if (!y_range_set_) {
-      // Auto-scale Y to the visible sample range with a small floor so
-      // a flat-at-zero trace still draws (avoid axis range 0..0).
-      double lo = samples_.front();
-      double hi = samples_.front();
-      for (double v : samples_) {
-        if (v < lo)
-          lo = v;
-        if (v > hi)
-          hi = v;
-      }
-      if (qFuzzyCompare(lo, hi)) {
-        lo -= 1.0;
-        hi += 1.0;
-      } else {
-        const double pad = (hi - lo) * 0.1;
-        lo -= pad;
-        hi += pad;
-      }
+      // Auto-scale Y to the visible sample range. The helper honours
+      // clamp_negative_ so non-negative quantities (Disk/Network IO,
+      // RSS, heap, CPU%) cannot end up with a negative lower bound.
+      auto r = auto_range_from(samples_, samples2_, clamp_negative_);
       if (axis_y_) {
-        axis_y_->setRange(lo, hi);
+        axis_y_->setRange(r.lo, r.hi);
+      }
+    }
+  }
+#endif
+  this->update();
+}
+
+void RollingChartWidget::push_samples(double a, double b) {
+  // Two-series mode: keep both deques in lock-step with the same X.
+  // The single-series API is still supported for legacy callers
+  // (CPU, RAM, heap, jitter) - this overload is opt-in by use.
+  auto append = [this](std::deque<double> &q, double v) {
+    if (q.empty()) {
+      q.assign(kCapacity, v);
+    } else {
+      if (q.size() >= kCapacity)
+        q.pop_front();
+      q.push_back(v);
+    }
+  };
+  append(samples_, a);
+  append(samples2_, b);
+
+#ifdef GMM_HAS_QTCHARTS
+  if (series_ && series2_) {
+    QList<QPointF> points_a;
+    QList<QPointF> points_b;
+    points_a.reserve(static_cast<int>(samples_.size()));
+    points_b.reserve(static_cast<int>(samples2_.size()));
+    const double n = static_cast<double>(samples_.size());
+    const int cap = static_cast<int>(kCapacity);
+    const double base_x = cap - n;
+    int i = 0;
+    auto it_b = samples2_.begin();
+    for (double v : samples_) {
+      points_a.append(QPointF(base_x + i, v));
+      if (it_b != samples2_.end()) {
+        points_b.append(QPointF(base_x + i, *it_b));
+        ++it_b;
+      }
+      ++i;
+    }
+    series_->replace(points_a);
+    series2_->replace(points_b);
+    if (!y_range_set_) {
+      auto r = auto_range_from(samples_, samples2_, clamp_negative_);
+      if (axis_y_) {
+        axis_y_->setRange(r.lo, r.hi);
       }
     }
   }
@@ -141,6 +259,12 @@ void RollingChartWidget::rebuild_qtchart() {
 
   series_ = new QLineSeries(chart_);
   chart_->addSeries(series_);
+  // Second series shares the X / Y axes with the first; it is
+  // created up front (rather than lazily on the first push_samples
+  // call) so the legend / colours / axis attachments are stable and
+  // the chart does not flicker when the caller switches modes.
+  series2_ = new QLineSeries(chart_);
+  chart_->addSeries(series2_);
 
   axis_x_ = new QValueAxis(chart_);
   axis_x_->setRange(0, kCapacity);
@@ -148,11 +272,13 @@ void RollingChartWidget::rebuild_qtchart() {
   axis_x_->setTitleText(QStringLiteral("s ago"));
   chart_->addAxis(axis_x_, Qt::AlignBottom);
   series_->attachAxis(axis_x_);
+  series2_->attachAxis(axis_x_);
 
   axis_y_ = new QValueAxis(chart_);
   axis_y_->setRange(0, 100);
   chart_->addAxis(axis_y_, Qt::AlignLeft);
   series_->attachAxis(axis_y_);
+  series2_->attachAxis(axis_y_);
 
   // Palette colors: chart background = window, plot area = base, line =
   // highlight, axis labels = windowText. This keeps the chart themed by
@@ -177,6 +303,16 @@ void RollingChartWidget::rebuild_qtchart() {
   series_pen.setWidthF(1.5);
   series_->setPen(series_pen);
   series_->setColor(p.highlight().color());
+
+  // Primary series uses highlight (the standard "main metric" colour).
+  // Secondary series uses Link - a palette role that contrasts with
+  // highlight in both light and dark themes (blue vs the typical
+  // orange highlight), so the two flows are visually distinguishable
+  // without hardcoding RGB.
+  QPen series2_pen(p.link().color());
+  series2_pen.setWidthF(1.5);
+  series2_->setPen(series2_pen);
+  series2_->setColor(p.link().color());
 
   chart_view_ = new QChartView(chart_, this);
   chart_view_->setRenderHint(QPainter::Antialiasing);
@@ -223,31 +359,15 @@ void RollingChartWidget::paintEvent(QPaintEvent * /*event*/) {
     p.drawText(plot_area, Qt::AlignLeft | Qt::AlignTop, title_);
   }
 
-  // Y range (fixed or auto). When auto, derive from samples with padding.
+  // Y range (fixed or auto). When auto, derive from samples with
+  // padding and honour clamp_negative so non-negative metrics never
+  // draw below 0.
   double lo = y_min_;
   double hi = y_max_;
   if (!y_range_set_) {
-    if (samples_.empty()) {
-      lo = 0.0;
-      hi = 1.0;
-    } else {
-      lo = samples_.front();
-      hi = samples_.front();
-      for (double v : samples_) {
-        if (v < lo)
-          lo = v;
-        if (hi < v)
-          hi = v;
-      }
-      if (qFuzzyCompare(1.0 + lo, 1.0 + hi)) {
-        lo -= 1.0;
-        hi += 1.0;
-      } else {
-        const double pad = (hi - lo) * 0.1;
-        lo -= pad;
-        hi += pad;
-      }
-    }
+    auto r = auto_range_from(samples_, samples2_, clamp_negative_);
+    lo = r.lo;
+    hi = r.hi;
   }
 
   // Grid + axis box
@@ -275,7 +395,9 @@ void RollingChartWidget::paintEvent(QPaintEvent * /*event*/) {
     p.setFont(title_font);
   }
 
-  // Plot polyline
+  // Plot polylines. Both series share the same X scale (the rolling
+  // window) and the same Y range (auto-scaled from the union of
+  // both).
   if (samples_.empty())
     return;
   const double range = hi - lo;
@@ -293,22 +415,29 @@ void RollingChartWidget::paintEvent(QPaintEvent * /*event*/) {
     return plot_area.left() + t * plot_area.width();
   };
 
-  QPainterPath path;
-  bool first = true;
-  std::size_t i = 0;
-  for (double v : samples_) {
-    const double x = to_x(i);
-    const double y = to_y(v);
-    if (first) {
-      path.moveTo(x, y);
-      first = false;
-    } else {
-      path.lineTo(x, y);
+  auto draw_polyline = [&](const std::deque<double> &q, const QColor &color) {
+    QPainterPath path;
+    bool first = true;
+    std::size_t i = 0;
+    for (double v : q) {
+      const double x = to_x(i);
+      const double y = to_y(v);
+      if (first) {
+        path.moveTo(x, y);
+        first = false;
+      } else {
+        path.lineTo(x, y);
+      }
+      ++i;
     }
-    ++i;
+    p.setPen(QPen(color, 1.5));
+    p.drawPath(path);
+  };
+
+  draw_polyline(samples_, pal.highlight().color());
+  if (!samples2_.empty()) {
+    draw_polyline(samples2_, pal.link().color());
   }
-  p.setPen(QPen(pal.highlight().color(), 1.5));
-  p.drawPath(path);
 }
 
 #endif // GMM_HAS_QTCHARTS
