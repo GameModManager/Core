@@ -112,6 +112,16 @@ void SettingsController::set_game_info(
     // factory from the game plugin's declared core set (or "Default") and
     // persist it so subsequent loads read the file; on later runs we load the
     // persisted file directly (user edits preserved).
+    //
+    // Reset the factory first: the previous instance's categories must not
+    // leak into the new one. applyCoreSet() is additive by design and load()
+    // only replaces when categories.dat exists - a previous instance with a
+    // categories.dat loads cleanly, but the no-dat fallback (applyCoreSet
+    // with the new game's core set) would otherwise stack on top of the
+    // previous instance's state. Same outcome on the categories.dat path:
+    // clearing first keeps the factory in a deterministic state and matches
+    // what every UI consumer expects (the active instance's categories).
+    engine::Category::Factory::instance().clear();
     const auto dat_path = instance_root / "categories.dat";
     if (std::filesystem::exists(dat_path)) {
       engine::Category::Factory::instance().load(dat_path);
