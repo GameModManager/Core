@@ -26,7 +26,7 @@ class QValueAxis;
 // (highlight for the line, windowText for axis labels, alternateBase for
 // the grid) - never hardcoded - so the charts respect the theme.
 //
-// Usage:
+// Usage (single series):
 //   auto* chart = new ui::RollingChartWidget();
 //   chart->set_y_range(0.0, 100.0);
 //   chart->set_y_label("%");
@@ -34,6 +34,14 @@ class QValueAxis;
 //   // Each tick:
 //   chart->push_sample(value);
 //   chart->set_legend("user");
+//
+// Usage (two series, e.g. Read/Write or RX/TX):
+//   auto* chart = new ui::RollingChartWidget();
+//   chart->set_clamp_negative(true); // Disk/Net cannot go below 0
+//   chart->set_legend("Read");
+//   chart->set_legend2("Write");
+//   // Each tick:
+//   chart->push_samples(read_value, write_value);
 namespace ui {
 
 class RollingChartWidget : public QWidget {
@@ -47,6 +55,14 @@ public:
   // so the line starts as a flat baseline.
   void push_sample(double value);
 
+  // Two-series variant: pushes (a, b) into the rolling window in
+  // lock-step. Both series share the same X axis (the 1 Hz sample
+  // clock). Use for Read/Write, RX/TX, or any two non-negative
+  // quantities that should be drawn on the same chart. The second
+  // series is only drawn when push_samples() has been called; legacy
+  // single-series callers (CPU, RAM, heap, jitter) keep working.
+  void push_samples(double a, double b);
+
   // Set fixed Y axis range (use 0,0 for auto-scale).
   void set_y_range(double min, double max);
 
@@ -57,9 +73,21 @@ public:
   // the QPainter fallback). Empty hides it.
   void set_title(const QString &title);
 
-  // Set legend label for the single series (shown in tooltip / hover).
+  // Set legend label for the first series (shown in tooltip / hover).
   // Currently used only by the QPainter fallback.
   void set_legend(const QString &legend);
+  // Second-series label (paired with push_samples(a, b)). Ignored when
+  // only one series is being pushed.
+  void set_legend2(const QString &legend);
+
+  // When true, the auto-scaled Y axis clamps the lower bound to 0. Use
+  // for any quantity that cannot physically be negative (Disk IO,
+  // Network IO, RSS, heap, CPU%). Has no effect on a fixed range set
+  // via set_y_range(); only the auto-scaler respects the clamp. The
+  // signed jitter chart must leave this off so the +/- 50 ms range
+  // works.
+  void set_clamp_negative(bool clamp);
+  bool clamp_negative() const { return clamp_negative_; }
 
   // Clear all samples (and history) - useful when the active instance
   // changes and the old chart history no longer makes sense.
@@ -80,6 +108,7 @@ private:
   QChart *chart_ = nullptr;
   QChartView *chart_view_ = nullptr;
   QLineSeries *series_ = nullptr;
+  QLineSeries *series2_ = nullptr;
   QValueAxis *axis_x_ = nullptr;
   QValueAxis *axis_y_ = nullptr;
   double y_min_ = 0.0;
@@ -88,16 +117,22 @@ private:
   QString y_label_;
   QString title_;
   QString legend_;
-  std::deque<double> samples_; // back() = newest; size() <= kCapacity
+  QString legend2_;
+  bool clamp_negative_ = false;
+  std::deque<double> samples_;  // back() = newest; size() <= kCapacity
+  std::deque<double> samples2_; // paired with samples_; same length
 #else
   void paintEvent(QPaintEvent *event) override;
   QString title_;
   QString y_label_;
   QString legend_;
+  QString legend2_;
   double y_min_ = 0.0;
   double y_max_ = 0.0;
   bool y_range_set_ = false;
+  bool clamp_negative_ = false;
   std::deque<double> samples_;
+  std::deque<double> samples2_;
 #endif
 };
 
