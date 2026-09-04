@@ -164,3 +164,53 @@ TEST_CASE("category_factory_apply_core_set", "[engine]") {
   // Final cleanup.
   clear_all();
 }
+
+TEST_CASE("category_factory_clear_drops_all_entries", "[engine]") {
+  using engine::Category::Factory;
+
+  Factory &f = Factory::instance();
+
+  // Seed with two distinct sets so the test starts from a known non-empty
+  // state regardless of test order (CTest runs each binary in its own
+  // process, but the tests above already exercise the applyCoreSet paths).
+  std::vector<int> bethesda_ids;
+  for (int i = 1; i <= 58; ++i)
+    bethesda_ids.push_back(i);
+  std::vector<int> isaac_ids;
+  for (int i = 1000; i <= 1021; ++i)
+    isaac_ids.push_back(i);
+
+  auto reset = [&]() {
+    for (int id : bethesda_ids)
+      f.removeCategory(id);
+    for (int id : isaac_ids)
+      f.removeCategory(id);
+  };
+
+  // --- Two sets layered on top of each other. ---
+  reset();
+  require(f.applyCoreSet("Bethesda"), "Bethesda applied");
+  require(f.applyCoreSet("Isaac"), "Isaac applied on top of Bethesda");
+  require(f.categoryExists(1), "Bethesda entry present (Animations)");
+  require(f.categoryExists(1000), "Isaac entry present (Items)");
+
+  // --- clear() drops every entry. ---
+  f.clear();
+  require(f.categories().empty(), "clear empties the factory");
+  require(!f.categoryExists(1), "Bethesda entry gone after clear");
+  require(!f.categoryExists(1000), "Isaac entry gone after clear");
+
+  // --- applyCoreSet after clear produces exactly the set (no leakage). ---
+  require(f.applyCoreSet("Bethesda"),
+          "Bethesda applied again after clear");
+  require(!f.categoryExists(1000),
+          "no Isaac categories leak after clear+applyCoreSet(Bethesda)");
+  require(f.categoryById(1) && f.categoryById(1)->name == "Animations",
+          "Bethesda Animations present");
+
+  // --- reset hasChildren is consistent after clear. ---
+  f.clear();
+  require(!f.categoryById(1), "no entries means no hasChildren flags");
+
+  reset();
+}

@@ -163,6 +163,13 @@ void Category::Factory::updateCategory(int id, const std::string &name,
 
 void Category::Factory::rebuildTree() { updateHasChildren(); }
 
+void Category::Factory::clear() {
+  // hasChildren flags go with the entries - emptying the map is enough.
+  // No need to walk updateHasChildren() after, every flag is false once
+  // the map is empty.
+  categories_.clear();
+}
+
 void Category::Factory::updateHasChildren() {
   for (auto &entry : categories_)
     entry.second.hasChildren = false;
