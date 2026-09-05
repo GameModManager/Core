@@ -7,7 +7,6 @@
 #include "engine/game/registry/game_features/game_feature.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
 #include "engine/game/saves/save_reader.h"
-#include "engine/game/saves/skyrim_save.h"
 #include "engine/mod/meta/category_set_registry.h"
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/fomod_stage.h"
@@ -1939,37 +1938,6 @@ bool PluginLoader::load_directory(const std::string &dir_path) {
 
   Logger::instance().debug("Loaded " + std::to_string(loaded) +
                            " plugins from " + dir_path);
-
-  /* Register built-in save parsers for Skyrim games as fallbacks.
-   * If a plugin already registered a parser (same game_id, same or higher
-   * priority), the plugin's parser wins. These register at priority 0
-   * (lowest) so any plugin override supersedes them. has_parser() guards
-   * against re-adding on repeated load_directory calls (the builtins are
-   * never cleared on unload, so they persist across reloads). */
-  if (!SaveParserRegistry::instance().has_parser("skyrim")) {
-    SaveParserRegistry::instance().register_parser(
-        "skyrim", 0,
-        [](const std::filesystem::path &path, const std::string &) {
-          return parse_skyrim_save(path);
-        },
-        nullptr, "engine:builtin");
-  }
-  if (!SaveParserRegistry::instance().has_parser("skyrimse")) {
-    SaveParserRegistry::instance().register_parser(
-        "skyrimse", 0,
-        [](const std::filesystem::path &path, const std::string &game_id) {
-          return parse_skyrimse_save(path, game_id);
-        },
-        nullptr, "engine:builtin");
-  }
-  if (!SaveParserRegistry::instance().has_parser("skyrimvr")) {
-    SaveParserRegistry::instance().register_parser(
-        "skyrimvr", 0,
-        [](const std::filesystem::path &path, const std::string &game_id) {
-          return parse_skyrimse_save(path, game_id);
-        },
-        nullptr, "engine:builtin");
-  }
 
   std::string list_str;
   for (size_t i = 0; i < plugins_.size(); ++i) {

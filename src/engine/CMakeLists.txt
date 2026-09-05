@@ -116,7 +116,6 @@ set(ENGINE_SOURCES
     game/saves/save_game.cpp
     game/saves/save_reader.cpp
     game/saves/save_scanner.cpp
-    game/saves/skyrim_save.cpp
     game/saves/save_missing_assets.cpp
     game/saves/local_saves.cpp
     sort/loot/loot_sorter.cpp

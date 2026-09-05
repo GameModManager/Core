@@ -24,7 +24,8 @@
 // is needed here (the engine still links them for the reader).
 #include "ui/panels/tab_panels.h"
 
-#include "engine/game/saves/skyrim_save.h"
+#include "engine/game/saves/save_game.h"
+#include "engine/game/saves/save_reader.h"
 #include "engine/pipeline/plugin_host/save_parser_registry.h"
 
 #include <QApplication>
@@ -118,6 +119,90 @@ static void write_file(const fs::path& p, const std::string& data) {
                                              static_cast<std::streamsize>(data.size()));
 }
 
+// --- minimal reader for the write_save fixture format above ---
+// Production Gamebryo parsing moved to the Plugins shared packet; this test
+// only needs to round-trip its own fixtures (registry dispatch + tab
+// rendering are what is under test, not TES field layouts).
+namespace {
+struct FixtureCursor {
+    const std::vector<uint8_t>& b;
+    size_t at = 0;
+    uint8_t u8() {
+        if (at + 1 > b.size()) throw engine::SaveParseError("eof");
+        return b[at++];
+    }
+    uint16_t u16() {
+        if (at + 2 > b.size()) throw engine::SaveParseError("eof");
+        uint16_t v = static_cast<uint16_t>(b[at] | (b[at + 1] << 8));
+        at += 2;
+        return v;
+    }
+    uint32_t u32() {
+        if (at + 4 > b.size()) throw engine::SaveParseError("eof");
+        uint32_t v = static_cast<uint32_t>(b[at]) |
+                     (static_cast<uint32_t>(b[at + 1]) << 8) |
+                     (static_cast<uint32_t>(b[at + 2]) << 16) |
+                     (static_cast<uint32_t>(b[at + 3]) << 24);
+        at += 4;
+        return v;
+    }
+    uint64_t u64() {
+        uint64_t lo = u32();
+        uint64_t hi = u32();
+        return lo | (hi << 32);
+    }
+    std::string str() {
+        uint16_t n = u16();
+        if (at + n > b.size()) throw engine::SaveParseError("eof");
+        std::string s(reinterpret_cast<const char*>(&b[at]), n);
+        at += n;
+        return s;
+    }
+    void skip(size_t n) {
+        if (at + n > b.size()) throw engine::SaveParseError("eof");
+        at += n;
+    }
+};
+
+engine::SaveGame parse_fixture_save(const fs::path& path,
+                                    const std::string& game_id) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) throw engine::SaveParseError("open");
+    std::vector<uint8_t> b((std::istreambuf_iterator<char>(in)),
+                           std::istreambuf_iterator<char>());
+    FixtureCursor c{b};
+    const char* magic = "TESV_SAVEGAME";
+    for (int i = 0; i < 13; ++i)
+        if (c.u8() != static_cast<uint8_t>(magic[i]))
+            throw engine::SaveParseError("magic");
+    c.u32();  // header size (unused)
+    c.u32();  // version
+    engine::SaveGame out;
+    out.file_path = path;
+    out.game_id = game_id;
+    out.save_number = c.u32();
+    out.pc_name = c.str();
+    out.pc_level = static_cast<uint16_t>(c.u32());
+    out.pc_location = c.str();
+    c.str();  // playtime
+    c.str();  // race
+    c.u16();  // gender
+    c.skip(8);  // xp
+    out.creation_time = engine::filetime_to_epoch(c.u64());
+    const uint32_t w = c.u32();
+    const uint32_t h = c.u32();
+    c.u16();  // compression (0 = raw)
+    c.skip(static_cast<size_t>(w) * h * 4);  // RGBA screenshot
+    c.u8();  // form version
+    c.u8();  // plugin info size (unused)
+    c.u16();
+    c.u8();
+    const int n = c.u8();
+    for (int i = 0; i < n; ++i) out.plugins.push_back(c.str());
+    return out;
+}
+}  // namespace
+
 static QWidget* find_tooltip_widget() {
     for (QWidget* w : QApplication::topLevelWidgets()) {
         if (w->windowType() == Qt::ToolTip) return w;
@@ -138,17 +223,19 @@ TEST_CASE("saves tab", "[ui]") {
     QCoreApplication::setOrganizationName("GameModManager");
     QCoreApplication::setApplicationName("GameModManager");
 
-    // Register built-in save parsers so scan_saves can parse the fixtures.
-    // These are normally registered by PluginLoader::load_directory(), but
-    // tests run without a full plugin load.
+    // Register the fixture parser so scan_saves can parse the fixtures.
+    // Production Gamebryo parsing lives in the Plugins shared packet and is
+    // registered by the game plugin; tests run without a full plugin load,
+    // so the test-local fixture reader above stands in. It reads exactly
+    // what write_save writes.
     if (!engine::SaveParserRegistry::instance().has_parser("skyrimse")) {
         engine::SaveParserRegistry::instance().register_parser(
             "skyrimse", 0,
             [](const std::filesystem::path& path,
                const std::string& game_id) {
-                return engine::parse_skyrimse_save(path, game_id);
+                return parse_fixture_save(path, game_id);
             },
-            nullptr, "test:builtin");
+            nullptr, "test:fixture");
     }
 
     // --- Part 1: set_saves() population + missing-column rendering ---
