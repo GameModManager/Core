@@ -339,3 +339,83 @@ TEST_CASE("saves tab", "[ui]") {
 
     fs::remove_all("/tmp/gmm_saves_tab");
 }
+
+// Workspace-c48h: when no save parser is registered for the active game, the
+// scanner used to silently skip every file (scan_saves guards against an
+// empty parse_fn with `continue`), so the Saves tab was always empty even
+// when the directory held .ess files. The worker now falls back to a stub
+// parser that returns a minimal SaveGame (file_path + filesystem mtime), so
+// the user at least sees the file listed - preferrable to a silent empty tab
+// when the game's plugin didn't ship a parser.
+TEST_CASE("saves tab no-parser fallback lists files", "[ui]") {
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    const fs::path cfg = "/tmp/gmm_saves_tab_noparser/config";
+    const fs::path saves = "/tmp/gmm_saves_tab_noparser/saves";
+    fs::remove_all("/tmp/gmm_saves_tab_noparser");
+    fs::create_directories(cfg);
+    fs::create_directories(saves);
+    qputenv("XDG_CONFIG_HOME", cfg.c_str());
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
+    QCoreApplication::setOrganizationName("GameModManager");
+    QCoreApplication::setApplicationName("GameModManager");
+
+    // The registry is process-wide; nothing else in this binary registers
+    // "noparsergame", so the worker must take the no-parser fallback. The
+    // "skyrimse" parser the other test case registers is irrelevant (we
+    // look up "noparsergame" by exact game_id match).
+    check(!engine::SaveParserRegistry::instance().has_parser("noparsergame"),
+          "test precondition: no parser registered for noparsergame");
+    // The .ess files in `saves` are deliberately NOT valid save files (a
+    // registered parser would throw SaveParseError and skip them - we want
+    // the fallback to claim them as files, not parse them).
+    write_file(saves / "Quicksave_20260101_1_1.ess", "not a real save");
+    write_file(saves / "Autosave_20260102_2_3.ess", "also not real");
+
+    ui::SavesTab tab;
+    auto* table = tab.table();
+    check(table->rowCount() == 0, "fresh tab starts empty");
+
+    ui::SavesScanRequest request;
+    request.saves_dir = saves;
+    request.extensions = {"ess"};
+    request.game_id = "noparsergame";
+    // No plugin snapshot - the stub SaveGame has empty plugins/light_plugins
+    // and find_save_missing_assets returns empty for that.
+    tab.request_scan(std::move(request));
+
+    // Wait for the worker to land the result.
+    QEventLoop loop;
+    QTimer timeout;
+    timeout.setSingleShot(true);
+    QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+    timeout.start(5000);
+    while (table->rowCount() != 2) {
+        if (!timeout.isActive()) break;
+        loop.processEvents();
+    }
+    timeout.stop();
+
+    check(table->rowCount() == 2,
+          "no-parser fallback still lists both .ess files (regression for "
+          "Workspace-c48h: Saves tab showed nothing)");
+    if (table->rowCount() == 2) {
+        // The stub populates only file_path + creation_time; the file column
+        // carries the basename and the creation_time is the filesystem mtime.
+        check(table->item(0, 1)->text() == "Quicksave_20260101_1_1.ess" ||
+                  table->item(0, 1)->text() == "Autosave_20260102_2_3.ess",
+              "file column carries the basename");
+        const auto* save = tab.save_at(0);
+        check(save != nullptr && save->file_path.extension() == ".ess",
+              "save_at resolves the stub SaveGame and it points at the file");
+        check(save != nullptr && save->creation_time > 0,
+              "stub SaveGame carries a non-zero mtime as creation_time");
+        // The missing-assets column is empty for a stub (no plugins listed).
+        check(table->item(0, 2)->text().isEmpty(),
+              "missing-assets column is empty for a stub (no plugins)");
+    }
+
+    fs::remove_all("/tmp/gmm_saves_tab_noparser");
+}
