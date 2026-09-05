@@ -318,6 +318,16 @@ TEST_CASE("save missing assets", "[engine]") {
         p.owner_mod = "SomeOtherMod";
         plugins.push_back(p);
     }
+    {
+        // Force-loaded base master: disabled in the snapshot but always
+        // active in-game, so never missing.
+        GamePlugin p;
+        p.name = "Update.esm";
+        p.enabled = false;
+        p.force_loaded = true;
+        p.owner_mod = "";
+        plugins.push_back(p);
+    }
 
     // Mods dir: "SkyUI" (disabled plugin), "GoneMod" (missing plugin),
     // "NoPlugins" (nothing relevant). Overwrite holds the missing plugin.
@@ -334,7 +344,7 @@ TEST_CASE("save missing assets", "[engine]") {
 
     SaveGame save;
     save.plugins = {"Skyrim.esm", "SkyUI_SE.esp", "GonePlugin.esp",
-                    "AlsoMissing.esm"};
+                    "AlsoMissing.esm", "Update.esm"};
     auto missing = find_save_missing_assets(save, plugins, am, ow);
 
     check(missing.size() == 3, "missing asset count");
