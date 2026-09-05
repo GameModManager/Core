@@ -68,7 +68,10 @@ find_save_missing_assets(const SaveGame &save,
   std::vector<std::string> missing_keys; // lowercased, parallel to `missing`
   const auto consider = [&](const std::string &name) {
     const auto it = by_name.find(to_lower(name));
-    if (it != by_name.end() && it->second->enabled) {
+    // Force-loaded (game-native/CC) plugins are always active in-game and
+    // can never be missing, regardless of the snapshot's enabled flag.
+    if (it != by_name.end() &&
+        (it->second->enabled || it->second->force_loaded)) {
       return; // STATE_ACTIVE - the save's dependency is satisfied.
     }
     SaveMissingAsset asset;

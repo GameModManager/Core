@@ -1,4 +1,5 @@
 #include "ui/controllers/mod_list_controller.h"
+#include "ui/controllers/downloads_controller.h"
 #include "engine/profile/profile_creation.h"
 #include "ui/controllers/launch_controller.h"
 #include "ui/controllers/mod_actions.h"
@@ -1479,6 +1480,11 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
 
   // Populate the Plugins tab from the (now loaded) mod list.
   refresh_plugins_tab();
+  // The Saves tab snapshot may predate this load (initial scan races profile
+  // apply), leaving stale missing flags. Re-scan now that the db is final.
+  // No-ops safely when the Saves tab is not wired yet.
+  if (w_->downloads_)
+    w_->downloads_->on_saves_refresh_requested();
 }
 
 void ModListController::apply_profile_mod_states() {
