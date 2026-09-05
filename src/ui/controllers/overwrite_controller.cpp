@@ -59,7 +59,7 @@ void OverwriteController::create_mod_from_overwrite() {
   if (mods_subpath.empty())
     return;
 
-  if (engine::overwrite_is_empty(overwrite_dir)) {
+  if (engine::overwrite_is_empty(overwrite_dir, mods_subpath)) {
     QMessageBox::information(w_, tr("Create Mod"),
                              tr("Overwrite folder is empty."));
     return;
@@ -103,7 +103,7 @@ void OverwriteController::move_overwrite_content_to_mod() {
                                      : std::string();
   if (mods_subpath.empty())
     return;
-  if (engine::overwrite_is_empty(overwrite_dir)) {
+  if (engine::overwrite_is_empty(overwrite_dir, mods_subpath)) {
     QMessageBox::information(w_, tr("Move content"),
                              tr("Overwrite folder is empty."));
     return;
@@ -152,7 +152,7 @@ void OverwriteController::sync_overwrite_to_mods() {
       w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "");
   if (mods_subpath.empty())
     return;
-  if (engine::overwrite_is_empty(overwrite_dir)) {
+  if (engine::overwrite_is_empty(overwrite_dir, mods_subpath)) {
     QMessageBox::information(w_, tr("Sync to Mods"),
                              tr("Overwrite folder is empty."));
     return;
