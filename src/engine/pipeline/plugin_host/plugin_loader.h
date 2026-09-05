@@ -154,7 +154,54 @@ struct PluginInfo {
   GmmDeployFnV2 deploy_fn = nullptr;
   GmmRemoveFnV2 remove_fn = nullptr;
   void *deploy_user_data = nullptr;
+
+  // -- v2.1+ additive tail-append (GmmSaveDataV2 features) --
+  //
+  // Feature bitmask discovered at load time by dlsym'ing the optional
+  // gmm_abi_features symbol on the plugin's .so. Plugins built before
+  // v2.1 do NOT export it; treat its absence as "no new features" and
+  // read only the pre-v2.1 fields. Bits are defined in this file next
+  // to the canonical feature names; the canonical enum will move into
+  // gmm_abi_v2.h once the ABI ships the bit definitions.
+  //
+  // See GMM_FEATURE_* constants below.
+  uint64_t features = 0;
+
+  // Per-game save overlay builder (GmmSaveOverlayFnV2). Set by
+  // register_save_overlay. The save-parser wrapper invokes this after
+  // each successful parse and copies the returned kv rows into
+  // SaveGame::overlay. Null when no overlay is registered (engine
+  // falls back to the default metadata view in the Saves tab).
+  // Stored as void* to avoid dragging the full v2 header into this
+  // forward-declared header; cast back to GmmSaveOverlayFnV2 in the
+  // .cpp.
+  void *save_overlay_fn = nullptr;
+  void *save_overlay_user_data = nullptr;
+
+  // Per-game validator (GmmLooksValidFn) and named variants
+  // (Steam/GOG/Epic), both set by the matching v2.1 register_* slots.
+  // The validator is stored as void* for the same forward-decl reason
+  // as save_overlay_fn; cast to GmmLooksValidFn in the .cpp. variants
+  // is plain data (no callbacks) and lives here.
+  void *game_validator_fn = nullptr;
+  void *game_validator_user_data = nullptr;
+  struct GameVariant {
+    std::string variant_id;   // "Steam", "GOG", "Epic"
+    std::string display_name; // "Steam", "GOG Galaxy", "Epic Games Store"
+  };
+  std::vector<GameVariant> variants;
 };
+
+// ---- v2.1 feature bits (probe via dlsym "gmm_abi_features") ----
+//
+// Discovered at load time on a per-plugin basis. Bit values are stable;
+// future additions go in the next free bit. The canonical enum will
+// move into gmm_abi_v2.h when the ABI ships the bit definitions.
+static constexpr uint64_t GMM_FEATURE_SAVE_SCREENSHOT = 1ull << 0; // GmmSaveDataV2.screenshot_rgba
+static constexpr uint64_t GMM_FEATURE_SAVE_ALL_FILES = 1ull << 1; // GmmSaveDataV2.all_files
+static constexpr uint64_t GMM_FEATURE_SAVE_MEDIUM    = 1ull << 2; // GmmSaveDataV2.medium_plugins
+static constexpr uint64_t GMM_FEATURE_SAVE_OVERLAY   = 1ull << 3; // register_save_overlay
+static constexpr uint64_t GMM_FEATURE_GAME_VARIANTS  = 1ull << 4; // register_game_variant
 
 class PluginLoader {
 public:
@@ -195,6 +242,20 @@ public:
       if (p.game_support)
         games.push_back(p);
     return games;
+  }
+
+  // Variants a registered game has named (e.g. "Steam" / "GOG" / "Epic"
+  // for SkyrimSE). Returns the first plugin's list for the given
+  // game_id; empty when no plugin declared variants. Used by the
+  // instance/game model to show a "storefront" sub-picker when more
+  // than one variant is on offer.
+  [[nodiscard]] std::vector<PluginInfo::GameVariant>
+  game_variants(const std::string &game_id) const {
+    for (const auto &p : plugins_) {
+      if (p.game_support && p.game_id == game_id && !p.variants.empty())
+        return p.variants;
+    }
+    return {};
   }
 
   bool is_loaded(const std::string &path) const;

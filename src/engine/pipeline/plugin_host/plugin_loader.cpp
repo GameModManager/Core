@@ -1480,10 +1480,27 @@ static void cb_v2_register_save_parser(GmmRegistrationCtxV2 *ctx,
   }
 
   std::string source = bridge->current_plugin->path;
+  // Snapshot the registering plugin's v2.1 feature bits so the bridge
+  // copies new GmmSaveDataV2 fields ONLY when the plugin proves support
+  // via gmm_abi_features. Plugins built before v2.1 leave this at 0 and
+  // get the pre-v2.1 copy path (no new fields read). Load-time only, so
+  // no concurrency concern.
+  const uint64_t features = bridge->current_plugin->features;
+  const bool has_screenshot = (features & GMM_FEATURE_SAVE_SCREENSHOT) != 0;
+  const bool has_medium = (features & GMM_FEATURE_SAVE_MEDIUM) != 0;
+  const bool has_all_files = (features & GMM_FEATURE_SAVE_ALL_FILES) != 0;
+  // Keep a reference to the loader so the wrapper can resolve the
+  // overlay fn at parse time (register_save_overlay may fire AFTER
+  // register_save_parser inside the plugin, so we cannot capture the
+  // overlay fn at registration time). Loader pointer outlives the
+  // lambda: load_directory finishes before any save scan runs.
+  PluginLoader *loader = bridge->loader;
+
   SaveParserRegistry::instance().register_parser(
       gid, priority,
-      [fn, user_data](const std::filesystem::path &path,
-                      const std::string &game_id) -> SaveGame {
+      [fn, user_data, has_screenshot, has_medium, has_all_files, gid,
+       loader](const std::filesystem::path &path,
+               const std::string &game_id) -> SaveGame {
         GmmSaveDataV2 c_out = {};
         if (!fn(path.string().c_str(), game_id.c_str(), &c_out, user_data)) {
           throw SaveParseError("plugin v2 parser returned 0");
@@ -1505,14 +1522,175 @@ static void cb_v2_register_save_parser(GmmRegistrationCtxV2 *ctx,
               c_out.light_plugins[i] ? c_out.light_plugins[i] : "");
           free(c_out.light_plugins[i]);
         }
+
+        // v2.1+ tail-append fields: gate on the plugin's feature bits.
+        // Pre-v2.1 plugins never set these bits, so the engine reads
+        // them as zeroed struct members (memset at function start) and
+        // leaves the SaveGame fields empty - exactly the v2.0 behavior.
+        if (has_screenshot && c_out.screenshot_rgba && c_out.screenshot_size &&
+            c_out.screenshot_width > 0 && c_out.screenshot_height > 0) {
+          const size_t expected =
+              static_cast<size_t>(c_out.screenshot_width) *
+              c_out.screenshot_height * 4;
+          if (c_out.screenshot_size >= expected) {
+            out.screenshot.assign(c_out.screenshot_rgba,
+                                  c_out.screenshot_rgba + expected);
+            out.screenshot_width = c_out.screenshot_width;
+            out.screenshot_height = c_out.screenshot_height;
+          }
+        }
+        if (has_medium) {
+          for (uint32_t i = 0;
+               i < c_out.medium_plugin_count && i < GMM_SAVE_MAX_PLUGINS; ++i) {
+            out.medium_plugins.push_back(c_out.medium_plugins[i]
+                                             ? c_out.medium_plugins[i]
+                                             : "");
+            free(c_out.medium_plugins[i]);
+          }
+        }
+        if (has_all_files && c_out.all_files) {
+          for (uint32_t i = 0; i < c_out.all_files_count; ++i) {
+            out.all_files.push_back(c_out.all_files[i] ? c_out.all_files[i]
+                                                       : "");
+            free(c_out.all_files[i]);
+          }
+          // The outer char** array itself is plugin-malloc'd per the ABI
+          // ownership comment; free it now that we've copied all strings.
+          free(c_out.all_files);
+        }
+
+        // Save overlay: if some plugin registered an overlay fn for this
+        // game, invoke it on the freshly-parsed GmmSaveDataV2 and copy
+        // the kv rows into SaveGame::overlay. The overlay builder owns
+        // the malloc'd GmmSaveOverlayV2 + its strings; we free them all
+        // before returning. Mirrors the pre-v2.1 field ownership.
+        if (loader) {
+          for (const auto &p : loader->plugins()) {
+            if (p.save_overlay_fn && p.game_id == gid) {
+              auto overlay_fn = reinterpret_cast<GmmSaveOverlayFnV2>(
+                  p.save_overlay_fn);
+              if (GmmSaveOverlayV2 *ov = overlay_fn(&c_out, p.save_overlay_user_data)) {
+                if (ov->kv_keys && ov->kv_values) {
+                  for (uint32_t i = 0; i < ov->kv_count; ++i) {
+                    out.overlay.push_back({ov->kv_keys[i] ? ov->kv_keys[i] : "",
+                                           ov->kv_values[i] ? ov->kv_values[i]
+                                                            : ""});
+                    free(ov->kv_keys[i]);
+                    free(ov->kv_values[i]);
+                  }
+                }
+                free(ov->kv_keys);
+                free(ov->kv_values);
+                free(ov->title);
+                free(ov->subtitle);
+                free(ov);
+              }
+              break; // first overlay wins (single-registration contract)
+            }
+          }
+        }
+
+        // Free the pre-v2.1 string fields.
         free(c_out.file_path);
         free(c_out.game_id);
         free(c_out.pc_name);
         free(c_out.pc_location);
+        // Free v2.1+ plugin-malloc'd buffers (screenshot + medium strings
+        // were either copied above and we must still free the plugin's
+        // copy, OR not copied because the feature bit was off - in which
+        // case they're zeroed by the struct-init above and free(NULL)
+        // is well-defined).
+        free(c_out.screenshot_rgba);
         return out;
       },
       user_data, source);
   Logger::instance().debug("Plugin registered v2 save parser for game=" + gid);
+}
+
+// v2.1+ additive tail-append slots. See gmm_abi_v2.h 3a1484c + Workspace-vc69.
+// Each callback mirrors the MO2 IPluginGame / IPluginSaveParser registration
+// shape (no Qt types across the ABI, plain data + function pointers only).
+// The engine stores the captured data on PluginInfo; consumers (game
+// detection, instance/game model, Saves tab) reach in there. We deliberately
+// do NOT invoke these callbacks at registration time beyond capturing them -
+// they're cheap to keep and the rest of the engine consults them lazily.
+static void cb_v2_register_game_validator(GmmRegistrationCtxV2 *ctx,
+                                           const char *game_id,
+                                           GmmLooksValidFn fn, void *user_data) {
+  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+  if (!bridge || !bridge->current_plugin)
+    return;
+
+  std::string gid = game_id ? game_id : bridge->current_plugin->game_id;
+  if (gid.empty() || !fn) {
+    Logger::instance().warn(
+        "Game validator registered with empty game_id or null fn");
+    return;
+  }
+
+  // Engine-side: store the validator for the engine's game-detection path
+  // to consult when it next needs to test whether a directory looks like a
+  // valid install of this game. Today the detector (game_detector.cpp) only
+  // looks at Steam libraryfolders.vdf + appmanifest; wiring the ABI fn in
+  // there is the cheap-next-step. For now we capture it on the plugin so
+  // the next detection pass can use it (or a debug tool can introspect it).
+  // ponytail: hook into game detection when we need non-Steam installs.
+  bridge->current_plugin->game_validator_fn =
+      reinterpret_cast<void *>(fn);
+  bridge->current_plugin->game_validator_user_data = user_data;
+  Logger::instance().debug("Plugin registered v2 game validator for game=" + gid);
+}
+
+static void cb_v2_register_game_variant(GmmRegistrationCtxV2 *ctx,
+                                         const char *game_id,
+                                         const char *variant_id,
+                                         const char *display_name) {
+  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+  if (!bridge || !bridge->current_plugin)
+    return;
+
+  std::string gid = game_id ? game_id : bridge->current_plugin->game_id;
+  std::string vid = variant_id ? variant_id : "";
+  if (gid.empty() || vid.empty()) {
+    Logger::instance().warn(
+        "Game variant registered with empty game_id or variant_id");
+    return;
+  }
+
+  // Capture on the plugin's variant list. The instance/game model and
+  // create-instance flow consult this list to offer "Steam / GOG / Epic"
+  // disambiguation when a game has more than one variant. Mirrors
+  // IPluginGame::setGameVariant in MO2.
+  bridge->current_plugin->variants.push_back(
+      {std::move(vid), display_name ? display_name : ""});
+  Logger::instance().debug("Plugin registered v2 game variant: game=" + gid +
+                           " variant=" + bridge->current_plugin->variants.back().variant_id);
+}
+
+static void cb_v2_register_save_overlay(GmmRegistrationCtxV2 *ctx,
+                                         const char *game_id,
+                                         GmmSaveOverlayFnV2 fn, int priority,
+                                         void *user_data) {
+  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+  if (!bridge || !bridge->current_plugin)
+    return;
+
+  std::string gid = game_id ? game_id : bridge->current_plugin->game_id;
+  if (gid.empty() || !fn) {
+    Logger::instance().warn(
+        "Save overlay registered with empty game_id or null fn");
+    return;
+  }
+
+  // The Saves tab invokes this on every parsed save. Higher-priority
+  // overlays win; the engine currently keeps the LAST registration
+  // (plugin load order is the priority) - good enough for the single-
+  // overlay-per-game contract MO2 uses. Stored as void* in PluginInfo
+  // so this header doesn't drag the full v2 header in.
+  bridge->current_plugin->save_overlay_fn = reinterpret_cast<void *>(fn);
+  bridge->current_plugin->save_overlay_user_data = user_data;
+  Logger::instance().debug("Plugin registered v2 save overlay for game=" + gid +
+                           " priority=" + std::to_string(priority));
 }
 
 static void cb_v2_register_animation_parser(GmmRegistrationCtxV2 *ctx,
@@ -1763,6 +1941,20 @@ bool PluginLoader::load_plugin(const std::string &path) {
 
   uint32_t plugin_abi = version_fn();
 
+  // Probe for the optional gmm_abi_features symbol. v2.1+ plugins export it
+  // as `uint64_t gmm_abi_features(void)` returning a bitmask of the additive
+  // v2.1 tail-append features they support (see GMM_FEATURE_* in
+  // plugin_loader.h). Plugins built before v2.1 do NOT export this symbol;
+  // the dlsym returns NULL and the engine treats the plugin as v2.0 baseline,
+  // reading only the pre-v2.1 GmmSaveDataV2 fields. Stored on PluginInfo
+  // and consulted at the parse-time bridge to decide whether to copy the
+  // new fields. Load-time only, so no concurrency concern.
+  uint64_t plugin_features = 0;
+  if (auto features_fn = reinterpret_cast<uint64_t (*)()>(
+          dlsym(handle, "gmm_abi_features"))) {
+    plugin_features = features_fn();
+  }
+
   if (plugin_abi == 1) {
     // ---- v1 path (unchanged) ----
     auto register_fn = reinterpret_cast<void (*)(GmmRegistrationCtx *)>(
@@ -1779,6 +1971,7 @@ bool PluginLoader::load_plugin(const std::string &path) {
     info.game_display_name =
         info.game_id; // fallback, overridden by register_identity
     info.abi_version = plugin_abi;
+    info.features = plugin_features;
     info.loaded = true;
     info.handle = handle;
 
@@ -1839,6 +2032,7 @@ bool PluginLoader::load_plugin(const std::string &path) {
     info.game_display_name =
         info.game_id; // fallback, overridden by register_game
     info.abi_version = plugin_abi;
+    info.features = plugin_features;
     info.loaded = true;
     info.handle = handle;
 
@@ -1874,6 +2068,14 @@ bool PluginLoader::load_plugin(const std::string &path) {
     ctx.resolve_file = cb_v2_resolve_file;
     ctx.resolve_file_user_data = nullptr;
     ctx.host_ui.fomod_wizard = cb_fomod_wizard_v2;
+    // v2.1+ additive tail-append slots. The ctx struct grew these fields
+    // in gmm_abi_v2.h 3a1484c; zero-initialised above so the .so can be
+    // called even on plugins that were built without them (dlsym'd
+    // gmm_abi_features will be 0, the ctx slot is NULL, the plugin
+    // doesn't touch it).
+    ctx.register_game_validator = cb_v2_register_game_validator;
+    ctx.register_game_variant = cb_v2_register_game_variant;
+    ctx.register_save_overlay = cb_v2_register_save_overlay;
 
     register_fn(&ctx);
 

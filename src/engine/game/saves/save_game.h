@@ -65,6 +65,20 @@ struct SaveGame {
     int screenshot_width = 0;
     int screenshot_height = 0;
 
+    // v2.1+ additive fields (GmmSaveDataV2 tail-append). The bridge copies
+    // these ONLY when the registering plugin proves feature support via
+    // gmm_abi_features (see engine::GMM_FEATURE_SAVE_* in plugin_loader.h).
+    // Empty when the plugin predates the fields or doesn't set the bit -
+    // the Saves tab treats empty all_files/overlay as "fall back to defaults".
+    std::vector<std::string> all_files;  // ess + co-saves + facegen + SE co-files
+    // Save-overlay key/value rows built by register_save_overlay. The Saves
+    // tab renders these as additional rows below the default metadata.
+    struct OverlayRow {
+        std::string key;
+        std::string value;
+    };
+    std::vector<OverlayRow> overlay;
+
     // MO2 GamebryoSaveGame::getName(): "%1, #%2, Level %3, %4".
     [[nodiscard]] std::string display_name() const;
     // MO2 getSaveGroupIdentifier(): groups saves per character.
