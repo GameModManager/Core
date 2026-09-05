@@ -196,6 +196,22 @@ void SavesTab::show_save_info(int row) {
                               QDateTime::fromSecsSinceEpoch(save->creation_time),
                               QLocale::ShortFormat));
 
+    // v2.1+ save overlay: per-game plugin-supplied kv rows (MO2
+    // ISaveGameInfoWidget parity). The plugin that registered the parser
+    // for this game can supply extra metadata (e.g. quest stage, weather,
+    // current cell). Only shown when the overlay is non-empty; otherwise
+    // the default metadata view (above) is the only info.
+    if (!save->overlay.empty()) {
+        v->addWidget(new QLabel(tr("<i>Details</i>"), popup));
+        for (const auto& row : save->overlay) {
+            v->addWidget(new QLabel(
+                QString("    <b>%1</b> %2")
+                    .arg(QString::fromStdString(row.key).toHtmlEscaped(),
+                         QString::fromStdString(row.value).toHtmlEscaped()),
+                popup));
+        }
+    }
+
     if (save->has_script_extender_file()) {
         auto* skse = new QLabel(tr("<b>Has Script Extender Data</b>"), popup);
         v->addWidget(skse);

@@ -31,6 +31,7 @@
 #include <QApplication>
 #include <QEvent>
 #include <QEventLoop>
+#include <QLabel>
 #include <QSignalSpy>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -293,6 +294,48 @@ TEST_CASE("saves tab", "[ui]") {
     check(tab.save_at(2) == nullptr, "save_at out of range → null");
     check(tab.missing_at(0) && tab.missing_at(0)->size() == 1,
           "missing_at resolves row 0");
+
+    // --- Part 1b: v2.1+ save overlay (kv rows) renders in the hover info ---
+    // A plugin's register_save_overlay fn builds a GmmSaveOverlayV2 which the
+    // engine flattens into SaveGame::overlay. The Saves tab then renders
+    // these rows below the default metadata. Verify they show up.
+    engine::SaveGame ov;
+    ov.file_path = "/tmp/gmm_saves_tab/part1b/Overlay.ess";
+    ov.pc_name = "Overlayed";
+    ov.pc_level = 12;
+    ov.pc_location = "TestCell";
+    ov.save_number = 7;
+    ov.overlay = {
+        {"Quest", "Main Questline"},
+        {"Weather", "Clear"},
+        {"Cell", "WhiterunDragonsreach"},
+    };
+    ui::SavesScanResultEntry eo;
+    eo.save = ov;
+    ui::SavesScanResult r2;
+    r2.entries = {eo};
+    tab.set_saves(std::move(r2));
+    // Trigger the hover popup and look for the overlay rows.
+    QTableWidget* overlay_table = tab.table();
+    overlay_table->itemEntered(overlay_table->item(0, 0));
+    QWidget* overlay_popup = find_tooltip_widget();
+    check(overlay_popup != nullptr, "hover on overlay row creates the popup");
+    if (overlay_popup) {
+        QStringList texts;
+        for (QLabel* lbl : overlay_popup->findChildren<QLabel*>()) {
+            texts << lbl->text();
+        }
+        const QString joined = texts.join('\n');
+        check(joined.contains("Quest") &&
+                  joined.contains("Main Questline"),
+              "overlay row 'Quest' rendered");
+        check(joined.contains("Weather") &&
+                  joined.contains("Clear"),
+              "overlay row 'Weather' rendered");
+        check(joined.contains("Cell") &&
+                  joined.contains("WhiterunDragonsreach"),
+              "overlay row 'Cell' rendered");
+    }
 
     // --- Part 2: end-to-end scan through the worker thread ---
     const fs::path saves = "/tmp/gmm_saves_tab/saves";
