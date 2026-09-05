@@ -188,7 +188,7 @@ TEST_CASE("overwrite utils", "[engine]") {
     std::printf("  overwrite_is_empty: OK\n");
   }
 
-  // --- clear_overwrite (keeps mapping root, sends content to trash) --------
+  // --- clear_overwrite (drops the now-empty mapping root too) -------------
   {
     const fs::path ow = base / "ow_clear";
     fs::create_directories(ow / "Data" / "ShaderCache");
@@ -197,11 +197,12 @@ TEST_CASE("overwrite utils", "[engine]") {
     touch(ow / "top.txt");
 
     REQUIRE(clear_overwrite(ow, "Data"));
-    REQUIRE(fs::exists(ow / "Data"));        // mapping root preserved
+    REQUIRE(!fs::exists(ow / "Data"));       // empty mapping root removed
     REQUIRE(count_files_recursive(ow) == 0); // everything inside gone
+    REQUIRE(overwrite_is_empty(ow, "Data")); // UI reports empty
     REQUIRE(fs::exists(trash / "Trash" / "files" / "loose.esp"));
     REQUIRE(fs::exists(trash / "Trash" / "files" / "top.txt"));
-    REQUIRE(!fs::exists(trash / "Trash" / "files" / "Data")); // dir kept
+    REQUIRE(!fs::exists(trash / "Trash" / "files" / "Data"));
 
     std::printf("  clear_overwrite: OK\n");
   }

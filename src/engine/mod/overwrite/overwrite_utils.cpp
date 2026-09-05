@@ -517,7 +517,9 @@ bool clear_overwrite(const std::filesystem::path& overwrite_dir,
     while (it != end && !ec) {
         const auto& entry = *it;
         if (entry.is_directory() && is_mapping_root(entry.path(), mods_subpath)) {
-            // Keep the mapping root itself; delete its contents.
+            // Empty the mapping root, then drop the root itself if no real
+            // content remained. std::filesystem::remove only succeeds when
+            // the dir is empty, so a stray file keeps the dir alive.
             std::error_code sub_ec;
             std::filesystem::directory_iterator sub(entry.path(), sub_ec);
             auto sub_end = std::filesystem::directory_iterator();
@@ -526,6 +528,8 @@ bool clear_overwrite(const std::filesystem::path& overwrite_dir,
                 sub.increment(sub_ec);
                 if (sub_ec) sub_ec.clear();
             }
+            std::filesystem::remove(entry.path(), sub_ec);
+            if (sub_ec) sub_ec.clear();
         } else {
             if (!remove_path(entry.path())) ok = false;
         }
