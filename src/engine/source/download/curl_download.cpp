@@ -109,6 +109,22 @@ std::string percent_decode(const std::string& in) {
     return out;
 }
 
+std::string url_path_basename(const std::string& url) {
+    // Skip "scheme://" if present, otherwise the first '/' is the start of
+    // the path. Bare paths (no scheme) work the same way.
+    const std::size_t scheme = url.find("://");
+    const std::size_t start = (scheme == std::string::npos) ? 0 : scheme + 3;
+    const std::size_t slash = url.find('/', start);
+    if (slash == std::string::npos) return {};
+    // Strip query / fragment from the path - we only want the file leaf.
+    const std::size_t q = url.find_first_of("?#", slash);
+    std::string path = url.substr(
+        slash + 1, (q == std::string::npos) ? std::string::npos : q - slash - 1);
+    const std::size_t last = path.find_last_of('/');
+    if (last != std::string::npos) path = path.substr(last + 1);
+    return percent_decode(path);
+}
+
 std::string parse_content_disposition_filename(const std::string& header_value) {
     // RFC 6266 / 5987 forms, matched case-insensitively:
     //   filename="foo.7z"

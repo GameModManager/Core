@@ -38,7 +38,8 @@ NxmIpcServer::NxmIpcServer(QObject* parent)
             auto data = sock->readAll();
             auto url = QString::fromUtf8(data);
             if (!url.isEmpty()) {
-                Logger::instance().debug("IPC: received nxm URL: " + url.toStdString());
+                Logger::instance().debug("IPC: received URL: " + url.toStdString());
+                emit urlReceived(url);
                 emit nxmUrlReceived(url);
             }
             sock->disconnectFromServer();

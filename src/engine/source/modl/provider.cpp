@@ -12,25 +12,6 @@
 
 namespace engine::Source::Modl {
 
-namespace {
-
-// Same basename-extraction loverslab uses for its effective_url: the last
-// path segment with query/fragment stripped, percent-decoded.
-std::string url_path_basename(const std::string& url) {
-    const std::size_t scheme = url.find("://");
-    const std::size_t start = (scheme == std::string::npos) ? 0 : scheme + 3;
-    const std::size_t slash = url.find('/', start);
-    if (slash == std::string::npos) return {};
-    const std::size_t q = url.find_first_of("?#", slash);
-    std::string path = url.substr(
-        slash + 1, (q == std::string::npos) ? std::string::npos : q - slash - 1);
-    const std::size_t last = path.find_last_of('/');
-    if (last != std::string::npos) path = path.substr(last + 1);
-    return DownloadManager::percent_decode(path);
-}
-
-} // namespace
-
 bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
                      const std::filesystem::path& dest_path) {
     if (mod.download_source_type != "modl") return false;
@@ -91,7 +72,15 @@ SourceDownloadInfo Provider::resolve_download_info(const Mod& mod) const {
     // Content-Disposition probes are reserved for sources that lack a known
     // file name (Nexus API). The basename still gives the Downloads tab a
     // reasonable placeholder when nothing else resolves a name.
-    const std::string fname = url_path_basename(mod.download_url);
+    //
+    // ponytail: v1 tradeoff - curl_download's header capture records the
+    // final Content-Disposition, but resolve_download_info runs before
+    // the transfer and has no probe to read it. The Downloads tab shows
+    // the basename placeholder, and FetchStage overwrites it from
+    // on_download_meta when the header lands. Upgrade path: pipe
+    // captured content-disposition into SourceDownloadInfo when the
+    // header-only probe is cheap enough to add per-queue.
+    const std::string fname = DownloadManager::url_path_basename(mod.download_url);
     if (fname.empty()) return info;
     info.archive_name = fname;
     info.display_name = std::filesystem::path(fname).stem().string();
