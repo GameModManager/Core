@@ -12,7 +12,7 @@ enum class LogLevel { Debug, Info, Warn, Error };
 
 // A single captured log message, kept for late subscribers.
 struct LogEntry {
-    LogLevel level;
+    LogLevel level = LogLevel::Info;
     std::string timestamp;
     std::string message;
 };

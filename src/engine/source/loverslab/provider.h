@@ -54,14 +54,26 @@ public:
     // guest-visible, downloads are not). Accepts either a full
     // loverslab.com/files/file/... URL or a bare file id (string of digits).
     // Returns ModInfoResult::available=false on any failure (network error,
-    // HTTP != 200, parse failure). Never throws.
-    ModInfoResult fetch_mod_info(const std::string& file_id_or_url) const;
+    // HTTP != 200, parse failure). Never throws. Pure: does not touch any
+    // member state, so callers can dispatch through the registry handle
+    // (`Provider::fetch_mod_info(...)`) without holding a Provider*.
+    static ModInfoResult fetch_mod_info(const std::string& file_id_or_url);
 
     // Pure body parser for the fetched page - extracted so the mapping is
     // unit-testable without the network. Pulls the schema.org WebApplication
     // JSON-LD block (with og:* meta fallback) and fills the result. Sets
     // available=true only when a name AND description are present.
     static ModInfoResult parse_mod_info(const std::string& html_body);
+
+    // Pure body parser that pulls the rich-text description block out of
+    // the page (Invision Community's "About This File" div, class
+    // `ipsType_richText`) and converts it to a BBCode-ish string suitable
+    // for feeding into the shared ui::bbcode_to_html() pipeline. The
+    // conversion is intentionally minimal - HTML anchors become
+    // [url=...]...[/url], <br> becomes '\n', <p>...</p> becomes '\n\n',
+    // and other tags are stripped. Returns empty when the page has no
+    // recognizable description block.
+    static std::string parse_description_html(const std::string& html_body);
 };
 
 } // namespace engine::Source::LoversLab
