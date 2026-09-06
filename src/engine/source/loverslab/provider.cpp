@@ -310,8 +310,12 @@ std::string extract_rich_description(const std::string &html_body) {
   // `</div>` at the same depth by counting opens. That keeps the
   // matching depth-aware in the simple case where ipsType_richText
   // contains inline `<div>`s for embeds.
+  // Match either single- or double-quoted class attribute - LL pages
+  // have rendered both shapes over the years (and mod.pub sometimes
+  // uses single quotes). The character class ["'] matches the open
+  // quote, the back-ref via ["'] keeps the close quote the same.
   static const std::regex kOpen(
-      "<div\\b[^>]*\\bclass\\s*=\\s*\"[^\"]*ipsType_richText[^\"]*\"[^>]*>",
+      "<div\\b[^>]*\\bclass\\s*=\\s*[\"'][^\"']*ipsType_richText[^\"']*[\"'][^>]*>",
       std::regex::icase);
   std::smatch m;
   if (!std::regex_search(html_body, m, kOpen))
@@ -403,20 +407,22 @@ ModInfoResult Provider::parse_mod_info(const std::string &html_body) {
     }
   }
 
-  // --- Step 2: prefer the rich-text description block over the
-  // JSON-LD plain-text one. The Invision Community content area
-  // (class="ipsType_richText", the "About This File" container)
-  // carries the real HTML the user sees: <a> anchors, <strong>,
-  // mentions. JSON-LD's `description` is plain text by the schema.org
-  // contract, so any link or mention in the on-site view is lost when
-  // we use it. parse_description_html() converts the inner HTML to a
-  // BBCode-ish string the UI's bbcode_to_html can further normalize
-  // (CRLF, dedup, autolink, @mentions).
-  if (result.description.empty()) {
-    const std::string rich = parse_description_html(html_body);
-    if (!rich.empty())
-      result.description = rich;
-  }
+  // --- Step 2: ALWAYS prefer the rich-text description block over
+  // the JSON-LD plain-text one when we can extract it. The Invision
+  // Community content area (class="ipsType_richText", the "About This
+  // File" container) carries the real HTML the user sees: <a> anchors,
+  // <strong>, mentions. JSON-LD's `description` is plain text by the
+  // schema.org contract, so any link or mention in the on-site view is
+  // lost when we use it. parse_description_html() converts the inner
+  // HTML to a BBCode-ish string the UI's bbcode_to_html can further
+  // normalize (CRLF, dedup, autolink, @mentions).
+  // The previous gate (`if (result.description.empty())`) made the
+  // rich path a fallback that almost never ran - JSON-LD is present
+  // on every LL page - so links/mentions stayed lost. Spec says
+  // prefer rich when available; this does that unconditionally.
+  const std::string rich = parse_description_html(html_body);
+  if (!rich.empty())
+    result.description = rich;
 
   // --- Step 3: fallback to og:* meta tags. ---
   // Used when JSON-LD is absent or did not produce a name. Description and
