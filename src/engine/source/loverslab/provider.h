@@ -62,6 +62,16 @@ public:
     // JSON-LD block (with og:* meta fallback) and fills the result. Sets
     // available=true only when a name AND description are present.
     static ModInfoResult parse_mod_info(const std::string& html_body);
+
+    // Pure body parser that pulls the rich-text description block out of
+    // the page (Invision Community's "About This File" div, class
+    // `ipsType_richText`) and converts it to a BBCode-ish string suitable
+    // for feeding into the shared ui::bbcode_to_html() pipeline. The
+    // conversion is intentionally minimal - HTML anchors become
+    // [url=...]...[/url], <br> becomes '\n', <p>...</p> becomes '\n\n',
+    // and other tags are stripped. Returns empty when the page has no
+    // recognizable description block.
+    static std::string parse_description_html(const std::string& html_body);
 };
 
 } // namespace engine::Source::LoversLab
