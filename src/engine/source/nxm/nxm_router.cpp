@@ -250,7 +250,7 @@ ModlLink Router::parse_modl(const std::string& url) {
     while (rest.size() > 1 && rest[0] == '/') rest.erase(0, 1);
 
     // Host = up to first '/', '?'.
-    const auto host_end = rest.find_first_of("/?");
+    const auto host_end = rest.find_first_of("/?#");
     const std::string host =
         (host_end == std::string::npos) ? rest : rest.substr(0, host_end);
     if (host.empty()) return link;
