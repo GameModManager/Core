@@ -214,6 +214,63 @@ TEST_CASE("bbcode: 3+ blank lines collapse to a single paragraph break", "[ui][b
   check_html_equals(QStringLiteral("a\n\nb"), QStringLiteral("a\n\nb"));
 }
 
+TEST_CASE("bbcode: list items collapse blank lines to a single break", "[ui][bbcode]")
+{
+  // Permissions-style lists (Nexus / LL) frequently have blank lines
+  // between [*] items because the site editor uses a separate paragraph
+  // for each. Under the pre-wrap wrapper, a '\n\n' between items adds
+  // a visible blank line on top of the <li> margin, producing "double
+  // spacing" inside the list. The list-tightening pass collapses
+  // \n{2,} immediately before a list-item marker so the visual matches
+  // a hand-written list.
+  //
+  // libcbb emits: [list] -> <ul>, [*]item -> <li>item</li>, [/list] ->
+  // </ul>. libcbb preserves '\n' inside the <li> content (the author
+  // typed a newline after the item text), so the literal substring
+  // <li>a</li><li>b</li> is not what we get. We assert on the absence
+  // of the inflation pattern: the output must not contain \n\n or
+  // \n\n\n anywhere inside the <ul>...</ul> span.
+  const QString two_blanks =
+      ui::bbcode_to_html(QStringLiteral("[list]\n[*]a\n\n[*]b\n[/list]"));
+  INFO("two_blanks=" + two_blanks.toStdString());
+  // The double-newline inflation pattern is gone from the output.
+  REQUIRE(!two_blanks.contains(QStringLiteral("</li>\n\n<li>")));
+  REQUIRE(!two_blanks.contains(QStringLiteral("</li>\n\n</ul>")));
+  // Each item text is present (libcbb inserts a '\n' between the
+  // item text and the </li> close, so we cannot match "<li>a</li>"
+  // literally - assert on the item text directly).
+  REQUIRE(two_blanks.contains(QStringLiteral("<li>a")));
+  REQUIRE(two_blanks.contains(QStringLiteral("<li>b")));
+  // Five blank lines (the example from the Permissions list) collapse
+  // the same way: \n\n\n\n\n[*] -> \n[*], and the trailing \n before
+  // [/list] is also collapsed.
+  const QString five_blanks =
+      ui::bbcode_to_html(QStringLiteral("[list]\n[*]first\n\n\n\n\n[*]second\n\n\n\n\n[*]third\n[/list]"));
+  INFO("five_blanks=" + five_blanks.toStdString());
+  REQUIRE(five_blanks.contains(QStringLiteral("<li>first")));
+  REQUIRE(five_blanks.contains(QStringLiteral("<li>second")));
+  REQUIRE(five_blanks.contains(QStringLiteral("<li>third")));
+  REQUIRE(!five_blanks.contains(QStringLiteral("</li>\n\n<li>")));
+  REQUIRE(!five_blanks.contains(QStringLiteral("</li>\n\n</ul>")));
+  // The [li] / [/li] forms (not just [*]) get the same treatment.
+  const QString li_form =
+      ui::bbcode_to_html(QStringLiteral("[list][li]x\n\n[li]y[/list]"));
+  INFO("li_form=" + li_form.toStdString());
+  REQUIRE(li_form.contains(QStringLiteral("<li>x")));
+  REQUIRE(li_form.contains(QStringLiteral("<li>y")));
+  REQUIRE(!li_form.contains(QStringLiteral("</li>\n\n<li>")));
+  // Blank lines OUTSIDE a list are still paragraph breaks (a\n\n\nb
+  // -> a\n\nb). The list tightening pass must not affect them.
+  check_html_equals(QStringLiteral("a\n\n\nb"), QStringLiteral("a\n\nb"));
+  // Blank lines AFTER [/list] are not affected: the list-close and the
+  // next paragraph are still separated by a visible blank line.
+  const QString after =
+      ui::bbcode_to_html(QStringLiteral("[list]\n[*]a\n[/list]\n\nnext"));
+  INFO("after=" + after.toStdString());
+  REQUIRE(after.contains(QStringLiteral("</ul>")));
+  REQUIRE(after.contains(QStringLiteral("\n\nnext")));
+}
+
 TEST_CASE("bbcode: raw HTML <a href> anchors are converted to BBCode", "[ui][bbcode]")
 {
   // The LoversLab / Mod.pub scrapes feed HTML into the parser via

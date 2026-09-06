@@ -5,6 +5,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cctype>
 #include <cstring>
 #include <regex>
@@ -36,11 +37,13 @@ size_t append_body(char *ptr, size_t size, size_t nmemb, void *userdata) {
   return total;
 }
 
-// Lowercase ASCII. Avoids pulling in <algorithm> for a one-shot helper.
+// Lowercase ASCII. std::transform over <ctype.h>'s tolower with the
+// unsigned-char cast avoids the locale-dependent sign-extension trap.
 std::string to_lower_ascii(const std::string &in) {
   std::string out(in);
-  for (auto &c : out)
-    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
   return out;
 }
 
@@ -159,10 +162,10 @@ std::string find_webapp_json_ld(const std::string &html) {
       if (check(j))
         return body;
       if (j.is_object() && j.contains("@graph") && j["@graph"].is_array()) {
-        for (const auto &node : j["@graph"]) {
-          if (check(node))
-            return node.dump();
-        }
+        const auto found = std::find_if(
+            j["@graph"].begin(), j["@graph"].end(), check);
+        if (found != j["@graph"].end())
+          return found->dump();
       }
     } catch (const std::exception &) {
       // Malformed JSON-LD block - skip and try the next one.
@@ -440,7 +443,7 @@ ModInfoResult Provider::parse_mod_info(const std::string &html_body) {
 }
 
 ModInfoResult
-Provider::fetch_mod_info(const std::string &file_id_or_url) const {
+Provider::fetch_mod_info(const std::string &file_id_or_url) {
   ModInfoResult result;
   if (file_id_or_url.empty())
     return result;
@@ -458,13 +461,11 @@ Provider::fetch_mod_info(const std::string &file_id_or_url) const {
     if (url.empty())
       return result;
   } else {
-    bool digits_only = !file_id_or_url.empty();
-    for (const char c : file_id_or_url) {
-      if (!std::isdigit(static_cast<unsigned char>(c))) {
-        digits_only = false;
-        break;
-      }
-    }
+    // std::all_of on an empty range returns true, so the empty case is
+    // already covered - no separate `!empty()` guard needed.
+    const bool digits_only = std::all_of(
+        file_id_or_url.begin(), file_id_or_url.end(),
+        [](unsigned char c) { return std::isdigit(c); });
     if (!digits_only) {
       Logger::instance().debug(
           "LoversLabProvider: fetch_mod_info id is not numeric");
