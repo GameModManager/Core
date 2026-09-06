@@ -34,7 +34,6 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
-#include <sstream>
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -129,62 +128,6 @@ std::string cpu_model_name() {
   }
 #endif
   return {};
-}
-
-// Sum of rx_bytes (column 1) and tx_bytes (column 9) across all interfaces
-// in /proc/net/dev except lo. Returns {rx, tx}; zero on non-Linux.
-struct NetCounters {
-  unsigned long long rx = 0;
-  unsigned long long tx = 0;
-};
-NetCounters sum_net_counters() {
-  NetCounters out;
-#ifdef __linux__
-  std::ifstream f("/proc/net/dev");
-  if (!f)
-    return out;
-  std::string line;
-  // Skip the two header lines.
-  std::getline(f, line);
-  std::getline(f, line);
-  while (std::getline(f, line)) {
-    auto colon = line.find(':');
-    if (colon == std::string::npos)
-      continue;
-    // /proc/net/dev lines are indented ("    lo: ..."), so trim leading
-    // whitespace before the comparison - without this "lo" never matches
-    // and the loopback counters inflate the system total.
-    std::string iface = line.substr(0, colon);
-    auto first = iface.find_first_not_of(" \t");
-    if (first == std::string::npos)
-      continue;
-    iface = iface.substr(first);
-    if (iface == "lo")
-      continue;
-    // 16 columns on Linux: name rx_bytes rx_packets ... rx_errs rx_drop
-    // rx_fifo rx_frame rx_compressed rx_multicast tx_bytes ...
-    // We need columns 1 (rx_bytes) and 9 (tx_bytes) when the interface
-    // name is at column 0.
-    unsigned long long rx = 0, tx = 0;
-    std::istringstream iss(line.substr(colon + 1));
-    int col = 0;
-    unsigned long long v;
-    while (iss >> v) {
-      if (col == 0)
-        rx = v;
-      if (col == 8)
-        tx = v;
-      ++col;
-    }
-    out.rx += rx;
-    out.tx += tx;
-  }
-  // Note: the sum above is system-wide and includes docker0 / veth* / br-*
-  // noise from any containers/netns. For per-process byte counters on
-  // Linux use /proc/<pid>/net/dev (out of scope here). On non-Linux
-  // platforms this returns zero and the chart shows "(unsupported)".
-#endif
-  return out;
 }
 
 QString bool_text(bool v) {
@@ -363,8 +306,13 @@ void DebugWindow::setup_charts_tab() {
                   1, 0);
   grid->addWidget(wrap_chart(tr("Disk I/O"), &disk_header_, &disk_chart_), 1,
                   1);
-  grid->addWidget(wrap_chart(tr("Network I/O"), &net_header_, &net_chart_), 2,
-                  0);
+  grid->addWidget(wrap_chart(tr("Network I/O (GMM only)"), &net_header_,
+                            &net_chart_),
+                  2, 0);
+  if (net_header_)
+    net_header_->setToolTip(tr(
+        "Bytes GMM itself put on / pulled off the wire. Excludes QNAM "
+        "image fetches in mod descriptions and any subprocess traffic."));
   grid->addWidget(
       wrap_chart(tr("Event-loop jitter"), &jitter_header_, &jitter_chart_), 2,
       1);
@@ -1073,17 +1021,23 @@ void DebugWindow::refresh_charts() {
     prev_write_bytes_chart_ = w;
   }
 
-  // --- Network IO ---
-  auto net = sum_net_counters();
+  // --- Network IO (GMM-only) ---
+  // Source: engine::Network::Manager's cumulative wire-byte counters
+  // (CURLINFO_SIZE_DOWNLOAD_T / _UPLOAD_T summed across requests). The
+  // previous /proc/net/dev source was host-global and the chart would
+  // move with any traffic on the box; see Workspace-ody1. Excludes
+  // QNAM image bytes (DescriptionBrowser) and subprocess I/O
+  // (gmm_lootcli) - both intentionally out of scope.
+  auto net = engine::network::instance().io_counters();
   if (!first_net_chart_) {
-    double dr = static_cast<double>(net.rx - prev_rx_bytes_chart_);
-    double dw = static_cast<double>(net.tx - prev_tx_bytes_chart_);
+    double dr = static_cast<double>(net.rx_bytes - prev_rx_bytes_chart_);
+    double dw = static_cast<double>(net.tx_bytes - prev_tx_bytes_chart_);
     rx_kbs = dr / 1024.0;
     tx_kbs = dw / 1024.0;
   }
   first_net_chart_ = false;
-  prev_rx_bytes_chart_ = net.rx;
-  prev_tx_bytes_chart_ = net.tx;
+  prev_rx_bytes_chart_ = net.rx_bytes;
+  prev_tx_bytes_chart_ = net.tx_bytes;
 
   // --- Event-loop jitter (ms deviation from 1000 ms target). ---
   if (!first_jitter_) {
