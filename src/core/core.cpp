@@ -28,6 +28,7 @@
 #include "engine/source/nexus_auth.h"
 #include "engine/source/nxm/managed_games.h"
 #include "engine/source/nxm/nxm_router.h"
+#include "engine/source/router.h"
 #include "platform/platform.h"
 #include "ui/app/multi_process.h"
 #include "ui/game_selection/game_selection_widget.h"
@@ -179,8 +180,25 @@ Application::Application(int &argc, char **argv)
     style_manager_->apply_theme(Settings::instance().theme().toStdString());
   }
 
-  // Compute pending URL from parsed args
+  // Compute pending URL from parsed args. Mutual exclusion: at most one
+  // --handle-* flag per invocation. A combination (--handle-nxm ... --handle-
+  // modl ...) silently dropping the second URL is the kind of footgun the
+  // user notices three days later. Set the early-exit flag here and let
+  // run() handle the actual return code (constructors can't return values).
   const auto &args = command_line_.args();
+  const int handle_count =
+      (args.handle_nxm ? 1 : 0) + (args.handle_gmm ? 1 : 0) +
+      (args.handle_modl ? 1 : 0);
+  if (handle_count > 1) {
+    engine::Logger::instance().error(
+        "Cannot combine multiple --handle-* flags; pass exactly one.");
+    fprintf(stderr,
+            "GameModManager: cannot combine --handle-nxm/--handle-gmm/"
+            "--handle-modl. Pass exactly one.\n");
+    early_exit_ = true;
+    early_exit_code_ = 1;
+    return;
+  }
   if (args.handle_nxm) {
     pending_url_ = args.nxm_url.toStdString();
   } else if (args.handle_gmm) {
@@ -191,6 +209,8 @@ Application::Application(int &argc, char **argv)
     } else {
       engine::Logger::instance().warn("Unknown gmm:// scheme: " + raw);
     }
+  } else if (args.handle_modl) {
+    pending_url_ = args.modl_url.toStdString();
   }
 
   // Ensure data directories exist
@@ -240,11 +260,28 @@ int Application::run() {
   // If --help was printed during construction, exit early
   if (command_line_.should_exit())
     return command_line_.exit_code();
+  // If the constructor rejected conflicting --handle-* flags, exit early
+  // with the recorded code (the QApplication ctor is not allowed to
+  // return a value itself).
+  if (early_exit_)
+    return early_exit_code_;
 
   const auto &args = command_line_.args();
 
   // -- Headless launch mode ---------------------------------------------
   if (args.headless) {
+    // --launch and --handle-* are mutually exclusive: the launcher path
+    // never initiates a download, so silently dropping the URL would be
+    // a footgun. Reject the combination up front.
+    if (args.handle_nxm || args.handle_gmm || args.handle_modl) {
+      engine::Logger::instance().error(
+          "--launch cannot be combined with --handle-nxm/--handle-gmm/"
+          "--handle-modl.");
+      fprintf(stderr,
+              "GameModManager: --launch is for game launch only. Drop the "
+              "--handle-* flag and try again.\n");
+      return 1;
+    }
     engine::Logger::instance().debug("GameModManager - headless launch");
 
     std::string instance_str = args.instance_name.toStdString();
@@ -346,15 +383,10 @@ int Application::run() {
       return 1;
     }
 
-    // Try to send to a running GMM instance via local socket
-    if (engine::send_nxm_to_running_instance(
-            QString::fromStdString(pending_url_))) {
-      engine::Logger::instance().info(
-          "Download URL forwarded to running instance");
-      return 0;
-    }
-
-    // No running instance - resolve the game and find/create the instance
+    // Resolve the game BEFORE forwarding via IPC. A bogus nexus_domain
+    // (no plugin matches) should not be silently sent to the running
+    // instance and trigger a "no game supports this" dialog in the wrong
+    // process.
     std::string matched_game_id;
     for (const auto &p : plugin_loader_->plugins()) {
       if (p.nexus_domain == link.nexus_domain) {
@@ -369,6 +401,14 @@ int Application::run() {
       fprintf(stderr, "GameModManager: no game supports Nexus domain '%s'\n",
               link.nexus_domain.c_str());
       return 1;
+    }
+
+    // Try to send to a running GMM instance via local socket
+    if (engine::send_url_to_running_instance(
+            QString::fromStdString(pending_url_))) {
+      engine::Logger::instance().info(
+          "Download URL forwarded to running instance");
+      return 0;
     }
 
     // Find an existing instance for this game
@@ -400,6 +440,77 @@ int Application::run() {
     engine::Logger::instance().debug("Download URL: resolved to instance " +
                                      target_instance +
                                      " (game=" + matched_game_id + ")");
+  } else if (args.handle_modl) {
+    // modl:// mirrors the nxm path with one key difference: the host is a MO2
+    // GameShortName (not a Nexus domain) and "other" means "last instance".
+    auto link = engine::Source::Router::parse_modl(pending_url_);
+    if (!link.valid()) {
+      engine::Logger::instance().error("Invalid modl:// URL: " + pending_url_);
+      return 1;
+    }
+
+    // Resolve the game BEFORE forwarding via IPC. A bogus host (no plugin
+    // matches) should not be silently sent to the running instance and
+    // trigger a "no game supports this" dialog in the wrong process.
+    // "other" is the catch-all and always passes this check.
+    std::string matched_game_id;
+    if (link.game_id != "other") {
+      for (const auto &p : plugin_loader_->plugins()) {
+        if (p.game_id == link.game_id) {
+          matched_game_id = p.game_id;
+          break;
+        }
+      }
+      if (matched_game_id.empty()) {
+        engine::Logger::instance().error(
+            "No game plugin supports modl host: " + link.game_id);
+        fprintf(stderr,
+                "GameModManager: no game supports modl host '%s'\n",
+                link.game_id.c_str());
+        return 1;
+      }
+    }
+
+    if (engine::send_url_to_running_instance(
+            QString::fromStdString(pending_url_))) {
+      engine::Logger::instance().info(
+          "modl:// URL forwarded to running instance");
+      return 0;
+    }
+
+    // "other" -> last instance; otherwise find an instance for the matched
+    // game.
+    std::string target_instance;
+    if (link.game_id == "other") {
+      target_instance = engine::read_last_instance();
+    } else {
+      for (const auto &inst_name : existing_instances) {
+        auto inst = engine::Instance::installed(
+            inst_name, engine::default_instances_dir());
+        if (inst.read_toml() && inst.info().game_id == matched_game_id) {
+          target_instance = inst_name;
+          break;
+        }
+      }
+    }
+
+    if (target_instance.empty() ||
+        !fs::exists(engine::default_instances_dir() / target_instance /
+                    "instance.toml")) {
+      engine::Logger::instance().error(
+          "No instance available for modl:// link "
+          "(open GameModManager and create an instance first)");
+      fprintf(stderr,
+              "GameModManager: no instance available for modl:// link. "
+              "Open GameModManager and create an instance first.\n");
+      return 1;
+    }
+
+    instance_name = QString::fromStdString(target_instance);
+    engine::Logger::instance().debug(
+        "modl:// URL: resolved to instance " + target_instance +
+        (matched_game_id.empty() ? " (other)" :
+                                    " (game=" + matched_game_id + ")"));
   }
 
   // -- Single-instance guard (GUI mode only, not headless) ----------------
@@ -542,8 +653,13 @@ int Application::run() {
 
           // If a download link was passed, queue it for this instance
           if (!pending_url_.empty()) {
-            main_window->handle_nxm_download(
-                engine::NxmRouter::parse(pending_url_));
+            if (args.handle_modl) {
+              main_window->handle_modl_download(
+                  engine::Source::Router::parse_modl(pending_url_));
+            } else {
+              main_window->handle_nxm_download(
+                  engine::NxmRouter::parse(pending_url_));
+            }
             pending_url_.clear();
           }
         });
@@ -626,7 +742,12 @@ int Application::run() {
 
   // If a download link was passed, queue it for the active instance
   if (!pending_url_.empty()) {
-    window.handle_nxm_download(engine::NxmRouter::parse(pending_url_));
+    if (args.handle_modl) {
+      window.handle_modl_download(
+          engine::Source::Router::parse_modl(pending_url_));
+    } else {
+      window.handle_nxm_download(engine::NxmRouter::parse(pending_url_));
+    }
   }
 
   int rc = app_.exec();

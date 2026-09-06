@@ -251,6 +251,37 @@ void PipelineWorker::download_mod_url(const std::string& id,
     dispatch_fetch({id, std::move(mod), mods_dir, meta_dir});
 }
 
+void PipelineWorker::download_modl(const std::string& id,
+                                    const engine::Source::ModlLink& link,
+                                    const std::string& game_id,
+                                    const std::string& mods_dir,
+                                    const std::string& meta_dir) {
+    (void)game_id;
+    if (!link.valid()) {
+        engine::Logger::instance().warn("download_modl: invalid modl link for " + id);
+        emit download_complete(id, false, {}, {});
+        return;
+    }
+    engine::Logger::instance().debug("Downloading modl: " + id + " game=" + link.game_id);
+
+    engine::Mod mod;
+    mod.id = id;
+    mod.name = "Mod file " + id;
+    mod.state = engine::ModState::Downloaded;
+    mod.download_source_type = "modl";
+    // source_id is the basename of the direct URL when we can derive one -
+    // gives the on-disk archive a meaningful default name when the
+    // Content-Disposition probe is unavailable.
+    const auto slash = link.direct_url.find_last_of('/');
+    mod.download_source_id = (slash == std::string::npos)
+        ? link.direct_url
+        : link.direct_url.substr(slash + 1);
+    mod.download_url = link.direct_url;
+    mod.download_page_url = link.full_url;
+
+    dispatch_fetch({id, std::move(mod), mods_dir, meta_dir});
+}
+
 void PipelineWorker::dispatch_fetch(PendingDownload&& pd) {
     // Per-source queueing: when enabled, a Nexus download waits while any
     // other Nexus download is still in flight, even if a pool slot is free.

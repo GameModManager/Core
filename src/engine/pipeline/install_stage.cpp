@@ -307,6 +307,20 @@ bool InstallationManager::execute(Mod &mod, PipelineContext &ctx) {
         meta.set("LoversLab", "archive_filename", mod.archive_filename);
     }
 
+    // modl:// (mod.pub + anywhere) has no API either. Persist the direct
+    // download URL, the original modl:// link (page_url), and the host's
+    // game id so a reinstall can find the matching instance later.
+    if (mod.download_source_type == "modl") {
+      if (!mod.download_url.empty())
+        meta.set("Modl", "file_url", mod.download_url);
+      if (!mod.download_page_url.empty())
+        meta.set("Modl", "page_url", mod.download_page_url);
+      if (!mod.download_source_id.empty())
+        meta.set("Modl", "source_id", mod.download_source_id);
+      if (!mod.name.empty())
+        meta.set("Modl", "display_name", mod.name);
+    }
+
     if (!meta.save(meta_dir, folder_name)) {
       Logger::instance().warn("InstallStage: failed to write meta.ini for " +
                               folder_name);
