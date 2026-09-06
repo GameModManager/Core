@@ -89,6 +89,7 @@ gmm_catch2_test(loverslab_auth_test engine/loverslab_auth_test.cpp)
 gmm_catch2_test(loverslab_provider_test engine/loverslab_provider_test.cpp)
 gmm_catch2_test(modpub_provider_test engine/modpub_provider_test.cpp)
 gmm_catch2_test(loverslab_real_test engine/loverslab_real_test.cpp)
+gmm_catch2_test(mod_update_db_client_test engine/mod_update_db_client_test.cpp)
 gmm_catch2_test(install_progress_test engine/install_progress_test.cpp)
 gmm_catch2_test(perf_benchmark perf/benchmark_test.cpp)
 
