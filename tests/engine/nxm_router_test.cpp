@@ -1,5 +1,6 @@
-// Test for engine::NxmRouter::parse.
+// Test for engine::NxmRouter::parse + Source::Router::parse_modl.
 #include "engine/source/nxm/nxm_router.h"
+#include "engine/source/router.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -16,6 +17,15 @@ void expect_link(const std::string& url, const std::string& domain, long long mo
     REQUIRE(link.file_id == file);
     REQUIRE(link.key == key);
     REQUIRE(link.expire == expire);
+}
+
+void expect_modl(const std::string& url, const std::string& game,
+                 const std::string& direct) {
+    const auto link = engine::Source::Router::parse_modl(url);
+    INFO(url);
+    REQUIRE(link.valid());
+    REQUIRE(link.game_id == game);
+    REQUIRE(link.direct_url == direct);
 }
 
 }  // namespace
@@ -52,4 +62,54 @@ TEST_CASE("nxm router parse", "[engine]") {
     REQUIRE(legacy.nexus_domain == "nexus");
     REQUIRE(legacy.mod_id == 68);
     REQUIRE(legacy.file_id == 0);
+}
+
+TEST_CASE("modl router parse", "[engine]") {
+    // Canonical form: modl://<host>/?url=<percent-encoded https URL>
+    expect_modl("modl://falloutnv/?url=https%3A%2F%2Fcdn.mod.pub%2Ffile.7z",
+                "falloutnv", "https://cdn.mod.pub/file.7z");
+    expect_modl(
+        "modl://skyrimse/?url=https%3A%2F%2Fexample.com%2Fpath%2FMod%20Name.7z",
+        "skyrimse", "https://example.com/path/Mod Name.7z");
+
+    // MO2 alias normalization (case-insensitive on input).
+    expect_modl("modl://FalloutNV/?url=https%3A%2F%2Fa.b%2Fc",
+                "falloutnv", "https://a.b/c");
+    expect_modl("modl://SkyrimSpecialEdition/?url=https%3A%2F%2Fa.b%2Fc",
+                "skyrimse", "https://a.b/c");
+    expect_modl("modl://newvegas/?url=https%3A%2F%2Fa.b%2Fc",
+                "falloutnv", "https://a.b/c");
+    expect_modl("modl://other/?url=https%3A%2F%2Fa.b%2Fc",
+                "other", "https://a.b/c");
+
+    // Triple-slash tolerance (browser/portal layers).
+    expect_modl("modl:///falloutnv/?url=https%3A%2F%2Fa.b%2Fc",
+                "falloutnv", "https://a.b/c");
+
+    // "other" + starfield present in aliases.
+    expect_modl("modl://starfield/?url=https%3A%2F%2Fa.b%2Fc",
+                "starfield", "https://a.b/c");
+
+    // Malformed: empty host, missing url param, non-https scheme, wrong scheme.
+    const auto no_url = engine::Source::Router::parse_modl("modl://falloutnv/");
+    REQUIRE_FALSE(no_url.valid());
+
+    const auto wrong_scheme = engine::Source::Router::parse_modl(
+        "modl://falloutnv/?url=http%3A%2F%2Fa.b%2Fc");
+    REQUIRE_FALSE(wrong_scheme.valid());
+
+    const auto no_scheme = engine::Source::Router::parse_modl(
+        "modl://falloutnv/?url=javascript%3Aalert(1)");
+    REQUIRE_FALSE(no_scheme.valid());
+
+    const auto nxm_misparse = engine::Source::Router::parse_modl(
+        "nxm://skyrimspecialedition/mods/68/files/528");
+    REQUIRE_FALSE(nxm_misparse.valid());
+
+    // Unrecognized host passes through (caller checks plugin game_id match).
+    const auto unknown = engine::Source::Router::parse_modl(
+        "modl://notagame/?url=https%3A%2F%2Fa.b%2Fc");
+    REQUIRE(unknown.valid());
+    REQUIRE(unknown.game_id == "notagame");
+    REQUIRE(unknown.direct_url == "https://a.b/c");
 }

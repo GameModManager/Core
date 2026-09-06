@@ -800,4 +800,75 @@ bool LinuxPlatform::is_gmm_handler_registered() {
     return first == (std::string(GMM_DESKTOP_ID) + ".desktop");
 }
 
-}  // namespace engine
+// --- modl:// protocol handler registration (XDG) ---
+
+static const char* MODL_DESKTOP_FILE = "gamemodmanager-modl.desktop";
+static const char* MODL_DESKTOP_ID = "gamemodmanager-modl";
+
+static std::filesystem::path modl_desktop_path() {
+    auto home = std::getenv("HOME");
+    if (!home) return {};
+    return std::filesystem::path(home) / ".local" / "share" / "applications" / MODL_DESKTOP_FILE;
+}
+
+bool LinuxPlatform::register_modl_handler(const std::filesystem::path& exe_path) {
+    auto desktop = modl_desktop_path();
+    if (desktop.empty()) return false;
+
+    std::error_code ec;
+    std::filesystem::create_directories(desktop.parent_path(), ec);
+
+    std::ofstream f(desktop);
+    if (!f) return false;
+
+    // Same quoting rule as register_nxm_handler: only quote when the path
+    // contains whitespace so xdg-mime can resolve this entry.
+    const std::string exe = exe_path.string();
+    const bool quote = exe.find_first_of(" \t") != std::string::npos;
+
+    f << "[Desktop Entry]\n"
+      << "Type=Application\n"
+      << "Name=GameModManager (modl://)\n"
+      << "Comment=Download mods via modl:// links (mod.pub and other sites)\n"
+      << "Exec=" << (quote ? "\"" : "") << exe << (quote ? "\"" : "") << " --handle-modl %u\n"
+      << "Terminal=false\n"
+      << "MimeType=x-scheme-handler/modl;\n"
+      << "NoDisplay=true\n"
+      << "Categories=Game;\n";
+
+    f.close();
+    if (!f.good()) return false;
+
+    std::string cmd = "xdg-mime default " + std::string(MODL_DESKTOP_ID) + ".desktop x-scheme-handler/modl 2>/dev/null";
+    std::system(cmd.c_str());
+
+    // Same KDE-aware propagation as the nxm/gmm registration paths.
+    set_mimeapps_defaults("x-scheme-handler/modl", MODL_DESKTOP_ID);
+    std::system("kbuildsycoca6 --noincremental 2>/dev/null");
+
+    return true;
+}
+
+bool LinuxPlatform::unregister_modl_handler() {
+    auto desktop = modl_desktop_path();
+    if (!desktop.empty()) {
+        std::error_code ec;
+        std::filesystem::remove(desktop, ec);
+    }
+
+    std::string cmd = "xdg-mime default org.gnome.Nautilus.desktop x-scheme-handler/modl 2>/dev/null";
+    std::system(cmd.c_str());
+    return true;
+}
+
+bool LinuxPlatform::is_modl_handler_registered() {
+    auto desktop = modl_desktop_path();
+    if (!std::filesystem::exists(desktop)) return false;
+
+    const std::string value = default_for_scheme("x-scheme-handler/modl");
+    if (value.empty()) return false;
+    const auto first = value.substr(0, value.find(';'));
+    return first == (std::string(MODL_DESKTOP_ID) + ".desktop");
+}
+
+} // namespace engine

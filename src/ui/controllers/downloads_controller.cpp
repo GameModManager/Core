@@ -31,6 +31,7 @@
 #include "engine/pipeline/registry/stage_registry.h"
 #include "engine/source/loverslab_auth.h"
 #include "engine/source/loverslab_provider.h"
+#include "engine/source/modl/provider.h"
 #include "engine/source/nexus_provider.h"
 #include "engine/source/nxm/managed_games.h"
 #include "engine/source/nxm/nxm_router.h"
@@ -178,6 +179,8 @@ void DownloadsController::setup_pipeline() {
       std::make_unique<engine::Source::Nexus::Provider>());
   engine::SourceRegistry::instance().register_provider(
       std::make_unique<engine::LoversLabProvider>());
+  engine::SourceRegistry::instance().register_provider(
+      std::make_unique<engine::Source::Modl::Provider>());
 
   std::string ws_db = engine::safe_home_dir().string() +
                       "/.local/share/GameModManager/workshop_cache.db";
@@ -197,9 +200,17 @@ void DownloadsController::setup_nxm_ipc() {
               static const std::string gmm_pre = "gmm://nexus/";
               if (raw.compare(0, gmm_pre.size(), gmm_pre) == 0)
                 raw = "nxm://" + raw.substr(gmm_pre.size());
-              auto link = engine::NxmRouter::parse(raw);
-              if (link.valid()) {
-                handle_nxm_download(link);
+              // Try nxm first; fall back to modl (the protocol is a
+              // generic URL forwarder, not nxm-specific - keep the signal
+              // name for backward-compat with older builds).
+              auto nxm = engine::NxmRouter::parse(raw);
+              if (nxm.valid()) {
+                handle_nxm_download(nxm);
+                return;
+              }
+              auto modl = engine::Source::Router::parse_modl(raw);
+              if (modl.valid()) {
+                handle_modl_download(modl);
               }
             });
   }
@@ -343,6 +354,19 @@ void DownloadsController::wire_downloads_tab() {
               Qt::QueuedConnection);
           return;
         }
+        // ...modl:// downloads resume with their original link.
+        auto it_modl = w_->modl_links_.find(id);
+        if (it_modl != w_->modl_links_.end()) {
+          auto link = it_modl->second;
+          QMetaObject::invokeMethod(
+              w_->pipeline_thread_->worker(),
+              [this, id, link, mods_dir, meta_dir]() {
+                w_->pipeline_thread_->worker()->download_modl(
+                    id, link, w_->current_game_id_, mods_dir, meta_dir);
+              },
+              Qt::QueuedConnection);
+          return;
+        }
         // ...LoversLab downloads resume with their original URL.
         auto it_url = w_->url_downloads_.find(id);
         if (it_url != w_->url_downloads_.end()) {
@@ -359,6 +383,7 @@ void DownloadsController::wire_downloads_tab() {
   connect(dt, &DownloadsTab::entry_removed, this,
           [this](const std::string &id) {
             w_->nxm_links_.erase(id);
+            w_->modl_links_.erase(id);
             w_->url_downloads_.erase(id);
             save_download_manifest();
           });
@@ -598,6 +623,94 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
 
   engine::Logger::instance().debug("Download queued for mod " + mod_id +
                                    " file " + file_id);
+}
+
+void DownloadsController::handle_modl_download(const engine::Source::ModlLink &link) {
+  if (!link.valid()) {
+    engine::Logger::instance().warn("Invalid modl link received");
+    return;
+  }
+
+  // modl:// has no API or auth secrets in the URL itself - the host is the
+  // MO2 GameShortName and the only payload is a percent-encoded https URL.
+  // Log the full URL safely; redacting it would hide what we're about to
+  // download.
+  engine::Logger::instance().debug(
+      "modl download: game=" + link.game_id + " url=" + link.direct_url);
+
+  // Match the host against loaded plugin game_ids. modl is site-agnostic
+  // (mod.pub + anywhere), so there is no managed_games.json lookup to do
+  // and no Nexus-style "is_managed" gate - the host is the source of truth.
+  std::string matched_game_id;
+  if (w_->plugin_loader_) {
+    for (const auto &p : w_->plugin_loader_->plugins()) {
+      if (p.game_id == link.game_id) {
+        matched_game_id = p.game_id;
+        break;
+      }
+    }
+  }
+
+  if (matched_game_id.empty() && link.game_id != "other") {
+    QMessageBox::warning(
+        w_, tr("Modl Download"),
+        tr("Unknown modl host: %1\nNo game plugin supports this game id.")
+            .arg(QString::fromStdString(link.game_id)));
+    return;
+  }
+
+  // Active instance must match the host. "other" is the catch-all: fall
+  // through to the active instance without changing it.
+  if (matched_game_id != w_->current_game_id_ && link.game_id != "other") {
+    QMessageBox::information(
+        w_, tr("Modl Download"),
+        tr("This mod is for %1, but the active instance is %2.\n"
+           "Switch to the correct instance first.")
+            .arg(QString::fromStdString(
+                w_->plugin_loader_->display_name_for(matched_game_id)))
+            .arg(QString::fromStdString(w_->current_game_name_)));
+    return;
+  }
+
+  // Entry key: hash the direct URL to keep map keys free of '/' (and
+  // idempotent across re-clicks of the same modl link).
+  const std::string key =
+      "modl-" + std::to_string(std::hash<std::string>{}(link.direct_url));
+
+  auto *dt = w_->right_panel_->downloads_tab();
+  if (dt) {
+    // Source column is the literal "Modl" (display_name from the provider);
+    // install provenance flows through [Modl] meta.ini section.
+    dt->add_download(key, tr("Modl download").toStdString(), "Modl", {},
+                     {}, 0, {}, link.full_url);
+  }
+
+  // Surface the download: bring the window to front and switch to the
+  // Downloads tab so the user sees the new entry start.
+  if (w_->isMinimized()) {
+    w_->showNormal();
+  }
+  w_->raise();
+  w_->activateWindow();
+  w_->right_panel_->show_downloads_tab();
+
+  // Keep the modl link so a paused download can be resumed later.
+  w_->modl_links_[key] = link;
+
+  auto mods_dir = w_->mods_dir_path();
+  auto meta_dir = w_->current_instance_root_.empty()
+                      ? ""
+                      : (w_->current_instance_root_ / "meta").string();
+
+  QMetaObject::invokeMethod(
+      w_->pipeline_thread_->worker(),
+      [this, key, link, mods_dir, meta_dir]() {
+        w_->pipeline_thread_->worker()->download_modl(
+            key, link, w_->current_game_id_, mods_dir.string(), meta_dir);
+      },
+      Qt::QueuedConnection);
+
+  engine::Logger::instance().debug("modl download queued: " + key);
 }
 
 void DownloadsController::start_loverslab_download(const std::string &url) {

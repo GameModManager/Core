@@ -95,7 +95,7 @@ bool NxmIpcServer::isListening() const {
 
 // -- Client --
 
-bool send_nxm_to_running_instance(const QString& url) {
+bool send_url_to_running_instance(const QString& url) {
     auto path = QString::fromStdString(socket_path());
 
     QLocalSocket socket;
@@ -109,6 +109,10 @@ bool send_nxm_to_running_instance(const QString& url) {
     socket.waitForBytesWritten(1000);
     socket.disconnectFromServer();
     return true;
+}
+
+bool send_nxm_to_running_instance(const QString& url) {
+    return send_url_to_running_instance(url);
 }
 
 }  // namespace engine

@@ -248,6 +248,42 @@ bool WindowsPlatform::unregister_nxm_handler() {
     return r == ERROR_SUCCESS;
 }
 
-}  // namespace engine
+// --- modl:// protocol handler registration ---
+
+bool WindowsPlatform::register_modl_handler(
+    const std::filesystem::path& exe_path) {
+    std::wstring exe_w = exe_path.wstring();
+
+    auto set_reg = [](const wchar_t* key, const wchar_t* name,
+                      const wchar_t* value) {
+        HKEY hkey;
+        LONG r = RegCreateKeyExW(HKEY_CURRENT_USER, key, 0, nullptr,
+                                 REG_OPTION_NON_VOLATILE, KEY_SET_VALUE,
+                                 nullptr, &hkey, nullptr);
+        if (r != ERROR_SUCCESS) return false;
+        r = RegSetValueExW(hkey, name, 0, REG_SZ,
+                           reinterpret_cast<const BYTE*>(value),
+                           (DWORD)((wcslen(value) + 1) * sizeof(wchar_t)));
+        RegCloseKey(hkey);
+        return r == ERROR_SUCCESS;
+    };
+
+    std::wstring shell_cmd = L"\"" + exe_w + L"\" --handle-modl \"%1\"";
+
+    bool ok = true;
+    ok &= set_reg(LR"(Software\Classes\modl)", nullptr, L"URL:MODL Protocol");
+    ok &= set_reg(LR"(Software\Classes\modl)", L"URL Protocol", L"");
+    ok &= set_reg(LR"(Software\Classes\modl\shell\open\command)",
+                  nullptr, shell_cmd.c_str());
+    return ok;
+}
+
+bool WindowsPlatform::unregister_modl_handler() {
+    LONG r = RegDeleteTreeW(HKEY_CURRENT_USER,
+                            LR"(Software\Classes\modl)");
+    return r == ERROR_SUCCESS;
+}
+
+} // namespace engine
 
 #endif  // _WIN32

@@ -11,10 +11,12 @@ struct ParsedArgs {
   bool headless = false;
   bool handle_nxm = false;
   bool handle_gmm = false;
+  bool handle_modl = false;
   QString instance_name;
   QString exe_path;
   QString nxm_url;
   QString gmm_url;
+  QString modl_url;
 };
 
 class CommandLine {

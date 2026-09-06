@@ -3,6 +3,7 @@
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/source/nxm/nxm_router.h"
+#include "engine/source/router.h"
 
 #include <QObject>
 #include <QThread>
@@ -126,6 +127,17 @@ public slots:
                           const std::string& game_id,
                           const std::string& mods_dir,
                           const std::string& meta_dir);
+
+    // Download only, via a modl:// link (mod.pub / MO2 modlhandler). The
+    // decoded https direct URL lives in link.direct_url; the page URL
+    // (full modl:// form) goes in download_page_url for the meta.ini [Modl]
+    // section. Same pause/progress/resume contract as download_mod_url.
+    // Not gated by the Nexus one-at-a-time rule.
+    void download_modl(const std::string& id,
+                       const engine::Source::ModlLink& link,
+                       const std::string& game_id,
+                       const std::string& mods_dir,
+                       const std::string& meta_dir);
 
     // Request a pause of an in-flight download (cooperative: the transfer
     // callback polls the flag and aborts, keeping the partial file). Also

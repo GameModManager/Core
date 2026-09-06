@@ -35,4 +35,9 @@ private:
 // Returns true if the URL was delivered.
 bool send_nxm_to_running_instance(const QString& url);
 
+// Generic URL forwarder (used for both nxm:// and modl://). Identical wire
+// format to send_nxm_to_running_instance; the receiving side tries
+// NxmRouter::parse first, then Router::parse_modl.
+bool send_url_to_running_instance(const QString& url);
+
 }  // namespace engine

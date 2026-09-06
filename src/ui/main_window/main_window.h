@@ -25,6 +25,7 @@
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/profile/profile.h"
 #include "engine/source/nxm/nxm_router.h"
+#include "engine/source/router.h"
 #include "platform/platform.h"
 #include "ui/ui_locker.h"
 
@@ -173,6 +174,10 @@ public:
   // public entry point used by main.cpp.
   void handle_nxm_download(const engine::NxmLink &link);
 
+  // modl:// download routing - call when a modl:// link is received. Same
+  // delegation pattern as handle_nxm_download.
+  void handle_modl_download(const engine::Source::ModlLink &link);
+
   [[nodiscard]] ModView *mod_view() const { return mod_view_; }
   [[nodiscard]] QSplitter *console_splitter() const {
     return console_splitter_;
@@ -281,6 +286,9 @@ private:
   // In-flight/known Nexus downloads keyed by "<mod_id>-<file_id>", kept so a
   // paused download can be resumed with its original NXM link.
   std::unordered_map<std::string, engine::NxmLink> nxm_links_;
+  // In-flight/known modl:// downloads keyed by the download id, kept so a
+  // paused download can be resumed with its original modl link.
+  std::unordered_map<std::string, engine::Source::ModlLink> modl_links_;
   // In-flight/known LoversLab downloads keyed by the download id, kept so a
   // paused download can be resumed with its original ?do=download URL.
   std::unordered_map<std::string, std::string> url_downloads_;

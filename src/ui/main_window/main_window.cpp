@@ -303,6 +303,10 @@ void MainWindow::handle_nxm_download(const engine::NxmLink &link) {
   downloads_->handle_nxm_download(link);
 }
 
+void MainWindow::handle_modl_download(const engine::Source::ModlLink &link) {
+  downloads_->handle_modl_download(link);
+}
+
 void MainWindow::on_notification(const QString &title, const QString &message) {
   status_bar_->set_status(title + ": " + message);
 }
