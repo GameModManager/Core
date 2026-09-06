@@ -301,6 +301,34 @@ TEST_CASE("bbcode: raw HTML <a href> anchors are converted to BBCode", "[ui][bbc
   REQUIRE(js_out.contains(QStringLiteral("bad")));
   REQUIRE(js_out.contains(QStringLiteral("prefix")));
   REQUIRE(js_out.contains(QStringLiteral("suffix")));
+  // Multiple anchors in one string: regression for the stale-offset
+  // bug in convert_html_anchors_to_bbcode where the search_from used
+  // the OLD-string capturedEnd() and skipped or duplicated anchors
+  // after the first successful replacement.
+  {
+    const QString got = ui::bbcode_to_html(QStringLiteral(
+        "<a href=\"https://a.example\">A</a> and <a href=\"https://b.example\">B</a> and "
+        "<a href=\"https://c.example\">C</a>"));
+    INFO("got=" + got.toStdString());
+    REQUIRE(got.contains(
+        QStringLiteral("<a href=\"https://a.example\">A</a>")));
+    REQUIRE(got.contains(
+        QStringLiteral("<a href=\"https://b.example\">B</a>")));
+    REQUIRE(got.contains(
+        QStringLiteral("<a href=\"https://c.example\">C</a>")));
+  }
+  // Mixed quoted and unquoted forms in one string (single + double
+  // pass). The single-quoted pass must not be skipped when there is
+  // also a double-quoted one in the same buffer.
+  {
+    const QString got = ui::bbcode_to_html(QStringLiteral(
+        "<a href=\"https://a.example\">A</a> <a href='https://b.example'>B</a>"));
+    INFO("got=" + got.toStdString());
+    REQUIRE(got.contains(
+        QStringLiteral("<a href=\"https://a.example\">A</a>")));
+    REQUIRE(got.contains(
+        QStringLiteral("<a href=\"https://b.example\">B</a>")));
+  }
 }
 
 TEST_CASE("bbcode: bare https URLs are autolinked", "[ui][bbcode]")
@@ -334,6 +362,32 @@ TEST_CASE("bbcode: bare https URLs are autolinked", "[ui][bbcode]")
       ui::bbcode_to_html(QStringLiteral("see javascript:alert(1) here"));
   REQUIRE(!js_bare.contains(QStringLiteral("<a ")));
   REQUIRE(js_bare.contains(QStringLiteral("javascript:alert(1)")));
+  // Trailing prose punctuation: the URL character class above
+  // excludes ')' and '!' (so "example.com)" and "example.com!" are
+  // already trimmed by the regex) but includes '.' ';' ':' '?'.
+  // We strip those after the match so "see example.com." links
+  // "example.com" and leaves the period as plain text outside the
+  // <a> tag - otherwise the period ends up inside the href and
+  // 404s.
+  {
+    const QString got =
+        ui::bbcode_to_html(QStringLiteral("see https://example.com. next"));
+    INFO("got=" + got.toStdString());
+    REQUIRE(got.contains(
+        QStringLiteral("<a href=\"https://example.com\">https://example.com</a>")));
+    // The period is OUTSIDE the </a> close.
+    REQUIRE(got.contains(QStringLiteral("</a>. next")));
+  }
+  // A trailing '?' in a URL we treat as prose (e.g. "see x.com?")
+  // - link without the '?'.
+  {
+    const QString got =
+        ui::bbcode_to_html(QStringLiteral("see https://example.com? maybe"));
+    INFO("got=" + got.toStdString());
+    REQUIRE(got.contains(
+        QStringLiteral("<a href=\"https://example.com\">https://example.com</a>")));
+    REQUIRE(got.contains(QStringLiteral("</a>? maybe")));
+  }
 }
 
 TEST_CASE("bbcode: @mentions are linkified to profile search", "[ui][bbcode]")
@@ -342,30 +396,55 @@ TEST_CASE("bbcode: @mentions are linkified to profile search", "[ui][bbcode]")
   // After linkify_mentions the @username becomes a [url=...]...[/url]
   // pointing at the LoversLab profile search, which resolves to the
   // real profile if the username exists.
-  check_html(QStringLiteral("thanks @samuelga24 for the work"),
-             QStringLiteral("samuelga24</a>"));
+  //
+  // Regression: a previous iteration replaced ONLY the username (not
+  // the leading '@'), emitting "@[url]@bob[/url]" -> "@@bob" in the
+  // browser. The link must contain exactly one '@' and there must
+  // not be a stray '@' immediately before the <a> tag.
+  {
+    const QString got = ui::bbcode_to_html(QStringLiteral("thanks @samuelga24 for the work"));
+    INFO("got=" + got.toStdString());
+    REQUIRE(got.contains(QStringLiteral(">@samuelga24</a>")));
+    REQUIRE(!got.contains(QStringLiteral("@@")));
+  }
   // The URL must be the LL profile-search prefix - confirms we are
   // not making up an arbitrary external service. The '&' inside the
   // URL gets re-escaped to '&amp;' by libcbb on the way to the
   // browser; check for the escaped form.
-  const QString got = ui::bbcode_to_html(QStringLiteral("hi @INueve"));
-  REQUIRE(got.contains(
-      QStringLiteral("https://www.loverslab.com/profile/?do=find&amp;search=INueve")));
+  {
+    const QString got = ui::bbcode_to_html(QStringLiteral("hi @INueve"));
+    INFO("got=" + got.toStdString());
+    REQUIRE(got.contains(
+        QStringLiteral("https://www.loverslab.com/profile/?do=find&amp;search=INueve")));
+    // Inside the link the visible text is exactly "@INueve" - no
+    // double-@, no missing-@.
+    REQUIRE(got.contains(QStringLiteral(">@INueve</a>")));
+  }
   // @ at the very start (no leading whitespace) is also matched.
-  const QString at_start =
-      ui::bbcode_to_html(QStringLiteral("@samuelga24 created this"));
-  REQUIRE(at_start.contains(QStringLiteral("samuelga24</a>")));
+  {
+    const QString at_start =
+        ui::bbcode_to_html(QStringLiteral("@samuelga24 created this"));
+    INFO("got=" + at_start.toStdString());
+    REQUIRE(at_start.contains(QStringLiteral(">@samuelga24</a>")));
+    REQUIRE(!at_start.contains(QStringLiteral("@@")));
+  }
   // Email address must NOT be linkified as a mention.
-  const QString email =
-      ui::bbcode_to_html(QStringLiteral("contact me at user@example.com"));
-  REQUIRE(!email.contains(QStringLiteral("user</a>")));
+  {
+    const QString email =
+        ui::bbcode_to_html(QStringLiteral("contact me at user@example.com"));
+    REQUIRE(!email.contains(QStringLiteral("user</a>")));
+  }
   // Punctuation boundary: trailing '.' or ',' does not get pulled into
-  // the username.
-  const QString trailing =
-      ui::bbcode_to_html(QStringLiteral("thanks @alice, also @bob."));
-  INFO("trailing=" + trailing.toStdString());
-  REQUIRE(trailing.contains(QStringLiteral("@alice</a>")));
-  REQUIRE(trailing.contains(QStringLiteral("@bob</a>")));
+  // the username. The visible text inside the <a> is "@alice" / "@bob"
+  // (with the punctuation outside the link).
+  {
+    const QString trailing =
+        ui::bbcode_to_html(QStringLiteral("thanks @alice, also @bob."));
+    INFO("trailing=" + trailing.toStdString());
+    REQUIRE(trailing.contains(QStringLiteral(">@alice</a>")));
+    REQUIRE(trailing.contains(QStringLiteral(">@bob</a>")));
+    REQUIRE(!trailing.contains(QStringLiteral("@@")));
+  }
 }
 
 TEST_CASE("bbcode: combined realistic Skooma-style description", "[ui][bbcode]")

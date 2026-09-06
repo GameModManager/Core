@@ -181,6 +181,31 @@ TEST_CASE("loverslab provider", "[engine]")
   require(nf.name == "Named Title", "name= meta: og:title picked");
   require(nf.description == "Named description text",
           "name= meta: og:description picked");
+
+  // --- When BOTH JSON-LD and the rich-text block carry a description,
+  // the rich-text version WINS - schema.org `description` is plain
+  // text by contract, so any link/mention the page actually shows
+  // would be lost if we trusted JSON-LD. The earlier `if
+  // (result.description.empty())` gate made rich a fallback that
+  // almost never ran (JSON-LD is present on every LL page); the
+  // spec-correct precedence is "rich always when available".
+  const std::string both =
+      R"(<html><head>
+<script type="application/ld+json">
+{"@type":"WebApplication","name":"Both Mod","description":"plain text JSON-LD"}
+</script>
+</head><body>
+<div class="ipsType_richText"><p>rich <a href="https://www.example.com">link</a> text</p></div>
+</body></html>)";
+  LoversLabModInfoResult b = LoversLabProvider::parse_mod_info(both);
+  require(b.available, "both: available");
+  require(b.name == "Both Mod", "both: JSON-LD name used for name");
+  // Rich text wins for description: the string "plain text JSON-LD"
+  // must NOT appear; the link "https://www.example.com" MUST.
+  require(b.description.find("plain text JSON-LD") == std::string::npos,
+          "both: rich text beats JSON-LD plain-text description");
+  require(b.description.find("https://www.example.com") != std::string::npos,
+          "both: rich text preserves the link the user sees on-site");
 }
 
 TEST_CASE("loverslab provider description_html block", "[engine][loverslab]")
@@ -243,4 +268,16 @@ TEST_CASE("loverslab provider description_html block", "[engine][loverslab]")
   require(LoversLabProvider::parse_description_html("just text").empty(),
           "no block: empty");
   require(LoversLabProvider::parse_description_html({}).empty(), "empty body: empty");
+
+  // --- Single-quoted class attribute. Some LL themes / mod.pub render
+  // the class attribute with single quotes; the regex used to require
+  // a double quote and silently dropped the block. The fix matches
+  // either quote.
+  const std::string single_quote =
+      R"DELIM(<div class='ipsType_richText'><p>quoted class survives</p></div>)DELIM";
+  const std::string sq_got =
+      LoversLabProvider::parse_description_html(single_quote);
+  require(!sq_got.empty(), "single-quoted class: block extracted");
+  require(sq_got.find("quoted class survives") != std::string::npos,
+          "single-quoted class: text preserved");
 }

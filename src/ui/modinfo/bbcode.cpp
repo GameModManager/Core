@@ -284,10 +284,11 @@ void convert_html_anchors_to_bbcode(QString &s) {
       }
       s.replace(m.capturedStart(), m.capturedLength(), replacement);
       // Step past the replaced span (which can be longer or shorter
-      // than the original). The next regex match starts at the old
-      // end so we always make forward progress even when replacement
-      // is empty.
-      search_from = m.capturedEnd();
+      // than the original). Compute the new offset from the match's
+      // START plus the new length - using m.capturedEnd() would point
+      // into the OLD string layout and skip or re-process content
+      // after every successful replacement.
+      search_from = m.capturedStart() + replacement.size();
     }
   };
   run_pass(QLatin1Char('"'));
@@ -316,12 +317,39 @@ void autolink_bare_urls(QString &s) {
     QRegularExpressionMatch m = re.match(s, search_from);
     if (!m.hasMatch())
       break;
-    const QString url = m.captured(1);
+    const QString raw_capture = m.captured(1);
+    QString url = raw_capture;
+    // Strip trailing prose punctuation so the link does not swallow
+    // a period/comma/etc. that the URL does not actually contain.
+    // The regex character class above already excludes ')', ',', '!',
+    // and '"'; '.' ';' ':' '?' remain valid URL characters and would
+    // be captured. We keep the stripped characters so they survive as
+    // plain text AFTER the </a> tag (otherwise "see example.com."
+    // would render as "see example.com" with the period silently
+    // dropped).
+    QString trailing;
+    while (!url.isEmpty()) {
+      const QChar last = url.at(url.size() - 1);
+      if (last == QLatin1Char('.') || last == QLatin1Char(';') ||
+          last == QLatin1Char(':') || last == QLatin1Char('?') ||
+          last == QLatin1Char(')')) {
+        trailing.prepend(last);
+        url.chop(1);
+      } else {
+        break;
+      }
+    }
+    if (url.isEmpty()) {
+      // All trailing punctuation - skip past the original match so we
+      // don't loop on a non-URL.
+      search_from = m.capturedStart(1) + raw_capture.size();
+      continue;
+    }
     if (is_url_scheme_ok(url)) {
       const int url_start = m.capturedStart(1);
-      const int url_len = url.size();
+      const int url_len = raw_capture.size();
       const QString replacement =
-          QStringLiteral("[url=%1]%2[/url]").arg(url, url);
+          QStringLiteral("[url=%1]%2[/url]%3").arg(url, url, trailing);
       s.replace(url_start, url_len, replacement);
       // Skip past the inserted text so we don't recurse into the href
       // we just added.
@@ -329,7 +357,7 @@ void autolink_bare_urls(QString &s) {
     } else {
       // Skip past this match so the next iteration finds a different
       // URL (or terminates).
-      search_from = m.capturedStart(1) + url.size();
+      search_from = m.capturedStart(1) + raw_capture.size();
     }
   }
 }
@@ -362,15 +390,21 @@ void linkify_mentions(QString &s) {
       break;
     const QString name = m.captured(1);
     const QString href = QString::fromLatin1(kLoverslabProfileSearch) + name;
-    const int name_start = m.capturedStart(1);
-    const int name_len = name.size();
+    // The leading '@' sits one position before the captured username
+    // (the regex consumes it implicitly via the non-capturing
+    // context group). Replace BOTH the '@' and the username so the
+    // output is exactly one '@' inside the new [url] tag - without
+    // this we'd leave the original '@' in place and emit "@[url]@bob
+    // [/url]".
+    const int at_pos = m.capturedStart(1) - 1;
+    const int span_len = name.size() + 1;
     const QString replacement =
         QStringLiteral("[url=%1]@%2[/url]").arg(href, name);
-    s.replace(name_start, name_len, replacement);
+    s.replace(at_pos, span_len, replacement);
     // Step past the inserted text so the regex doesn't re-match the
     // '@' we just wrapped. The replacement length is the authoritative
     // forward progress.
-    search_from = name_start + replacement.size();
+    search_from = at_pos + replacement.size();
   }
 }
 
