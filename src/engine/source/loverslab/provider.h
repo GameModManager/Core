@@ -54,8 +54,10 @@ public:
     // guest-visible, downloads are not). Accepts either a full
     // loverslab.com/files/file/... URL or a bare file id (string of digits).
     // Returns ModInfoResult::available=false on any failure (network error,
-    // HTTP != 200, parse failure). Never throws.
-    ModInfoResult fetch_mod_info(const std::string& file_id_or_url) const;
+    // HTTP != 200, parse failure). Never throws. Pure: does not touch any
+    // member state, so callers can dispatch through the registry handle
+    // (`Provider::fetch_mod_info(...)`) without holding a Provider*.
+    static ModInfoResult fetch_mod_info(const std::string& file_id_or_url);
 
     // Pure body parser for the fetched page - extracted so the mapping is
     // unit-testable without the network. Pulls the schema.org WebApplication

@@ -14,6 +14,8 @@
 #include <QStringView>
 #include <QThreadPool>
 
+#include <algorithm>
+#include <array>
 #include <string>
 
 namespace ui {
@@ -182,10 +184,27 @@ void br_tags_to_newlines(QString &s) {
 // renders every preserved '\n' as a visible break; we want at most one
 // blank line between paragraphs, matching what a browser shows for
 // `<p>A</p><p>B</p>`.
+//
+// List-block pass: inside a [list]...[/list] span, <li> already
+// carries its own visual margin in QTextBrowser, so any '\n{2,}'
+// immediately before the next `[*]` / `[li]` (or before `[/list]`) is
+// pure inflation. The Nexus / LL permissions list example arrives as
+// `[*]item1\r\n\r\n[*]item2\r\n\r\n[*]item3` with the author using a
+// separate paragraph for each item; without this pass every item gets
+// a visible blank line on top of the <li> margin. The case-insensitive
+// flag covers [LIST] / [LI] variants. The lookahead keeps the marker
+// itself outside the match so we only consume the newline run.
 void collapse_blank_lines(QString &s) {
   // "\n{3,}" -> "\n\n"
   const QRegularExpression kThreePlus(QStringLiteral("\n{3,}"));
   s.replace(kThreePlus, QStringLiteral("\n\n"));
+  // Inside list blocks: collapse \n{2,} immediately before a list-item
+  // marker or a list-close. Lookahead keeps the marker untouched and
+  // lets us replace the run with a single '\n'.
+  const QRegularExpression kListTighten(
+      QStringLiteral(R"(\n{2,}(?=\[\*\]|\[li\]|\[/li\]|\[/list\]))"),
+      QRegularExpression::CaseInsensitiveOption);
+  s.replace(kListTighten, QStringLiteral("\n"));
   // Strip leading and trailing whitespace; cheap O(n) scan and avoids
   // rendering a stray blank line before / after the description.
   int start = 0;
@@ -204,19 +223,19 @@ void collapse_blank_lines(QString &s) {
 // and bare-URL linkification so javascript:, data:, vbscript:, etc. never
 // reach libcbb as live hrefs. Anchor hrefs and bare URLs that fail this
 // check are left as plain text (libcbb will then re-escape the '&' etc.).
+constexpr std::array<QStringView, 5> kAllowedSchemes = {
+    QStringView(u"http://"), QStringView(u"https://"),
+    QStringView(u"mailto:"), QStringView(u"ftp://"),
+    QStringView(u"ftps://")};
+
 bool is_url_scheme_ok(const QString &url) {
   if (url.isEmpty())
     return false;
   // Case-insensitive scheme prefix. Whitelist: http(s), mailto, ftp(s).
   const auto lower = url.toLower();
-  for (const QStringView prefix :
-       {QStringView(u"http://"), QStringView(u"https://"),
-        QStringView(u"mailto:"), QStringView(u"ftp://"),
-        QStringView(u"ftps://")}) {
-    if (lower.startsWith(prefix))
-      return true;
-  }
-  return false;
+  return std::any_of(
+      kAllowedSchemes.begin(), kAllowedSchemes.end(),
+      [&lower](QStringView prefix) { return lower.startsWith(prefix); });
 }
 
 // Convert raw HTML <a href="...">text</a> anchors into BBCode
