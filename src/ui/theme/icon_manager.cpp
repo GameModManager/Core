@@ -22,6 +22,7 @@ std::string vendor_icon_key(const std::string& source) {
     if (low == "loverslab") return "loverslab";
     if (low == "steam" || low == "steamworkshop") return "steam";
     if (low == "moddb") return "moddb";
+    if (low == "modpub") return "modpub";
     return "";
 }
 
