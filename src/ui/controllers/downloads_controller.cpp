@@ -45,6 +45,7 @@
 #include "ui/panels/tab_panels.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/right_panel.h"
+#include "ui/widgets/save_info_dialog.h"
 #include "ui/workers/pipeline_worker.h"
 #include "ui/network/network_options_bridge.h"
 
@@ -439,6 +440,8 @@ void DownloadsController::wire_saves_tab() {
   // missing-asset column now reflects launch-time load order only.
   connect(st, &ui::SavesTab::delete_requested, this,
           &DownloadsController::on_saves_delete_requested);
+  connect(st, &ui::SavesTab::information_requested, this,
+          &DownloadsController::on_save_information_requested);
 
   // Initial fill (the delete flow triggers the only later scan).
   on_saves_refresh_requested();
@@ -472,6 +475,28 @@ void DownloadsController::on_saves_delete_requested(
   }
   // The saved state no longer matches disk; re-scan.
   on_saves_refresh_requested();
+}
+
+void DownloadsController::on_save_information_requested(int row) {
+  // The Saves tab is the source of truth for the current selection's data;
+  // pull the parsed SaveGame + the scan's missing-assets list from there.
+  // We take a LIVE snapshot of the load order here (not the scan-time one
+  // baked into the request) so toggles since the scan show up.
+  auto *st = w_->right_panel_->saves_tab();
+  if (!st)
+    return;
+  const engine::SaveGame *save = st->save_at(row);
+  const std::vector<engine::SaveMissingAsset> *missing = st->missing_at(row);
+  if (!save)
+    return;
+
+  // ponytail: stack-alloc the dialog, run modal exec(); the dialog's
+  // geometry is persisted via Settings so it remembers size/position.
+  ui::SaveInfoDialog dlg(*save, w_->plugins_db_.plugins(),
+                         missing ? *missing
+                                 : std::vector<engine::SaveMissingAsset>{},
+                         w_);
+  dlg.exec();
 }
 
 void DownloadsController::update_install_progress(const std::string &mod_id,

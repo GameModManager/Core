@@ -44,6 +44,11 @@ public slots:
   void wire_saves_tab();
   void on_saves_refresh_requested();
   void on_saves_delete_requested(const QStringList &filepaths);
+  // User picked a save > Information... Opens the Save Information dialog
+  // with a LIVE snapshot of the current load order (PluginDb::Database).
+  // The snapshot is taken at click time, not at scan time, so toggles that
+  // happened between scan and click are reflected.
+  void on_save_information_requested(int row);
   void update_install_progress(const std::string &mod_id, int percent,
                                const std::string &status);
   void hide_install_progress();
