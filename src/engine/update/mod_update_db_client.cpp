@@ -6,6 +6,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cassert>
 #include <cctype>
 #include <fstream>
 #include <sstream>
@@ -128,6 +129,38 @@ namespace
   // "Unparseable" in this context means the string is non-empty but does
   // not look like a date - in which case we return 0 and the caller treats
   // it as "don't badge".
+  // Strip a trailing "+HH:MM" or "-HH:MM" offset and replace with "Z"
+  // so lex compare matches chrono compare. The DB always emits Z; some
+  // local sources (legacy LoversLab scrape) emit "+00:00" instead. The
+  // scraper-side contract is that local updated fields are also Z by the
+  // time they reach this client, but we tolerate +00:00 defensively.
+  std::string normalize_offset_to_z(std::string s)
+  {
+    // Minimum plausible timestamp with offset is 20 chars:
+    // "YYYY-MM-DDTHH:MM:SS+HH:MM" (no fractional seconds).
+    if (s.size() < 20)
+      return s;
+    const std::size_t pos = s.size() - 6;  // start of "+HH:MM" / "-HH:MM"
+    const char c          = s[pos];
+    if (c != '+' && c != '-')
+      return s;
+    // Must be exactly 5 chars after the sign: two digits, ':', two digits.
+    for (std::size_t i = pos + 1; i < s.size(); ++i) {
+      const char x        = s[i];
+      const bool is_digit = x >= '0' && x <= '9';
+      const bool is_colon = x == ':';
+      if (i == pos + 3) {
+        if (!is_colon)
+          return s;
+      } else if (!is_digit) {
+        return s;
+      }
+    }
+    s.resize(pos);
+    s.push_back('Z');
+    return s;
+  }
+
   int compare_iso8601(const std::string& a, const std::string& b)
   {
     if (a.empty() && b.empty())
@@ -138,13 +171,16 @@ namespace
       return 1;
     if (!looks_like_iso8601(a) || !looks_like_iso8601(b))
       return 0;  // incomparable; has_update will refuse to flag
-    if (a.size() < b.size())
-      return -1;  // YYYY-MM-DD < YYYY-MM-DDTHH:MM:SS lexicographically
-    if (a.size() > b.size())
-      return 1;
-    if (a < b)
+    // Lex compare on Z-normalized forms. We do NOT short-circuit on
+    // size: a day-only "2025-06-05" is a prefix of the full form, so
+    // the shorter one is naturally lex-smaller and the longer one is
+    // naturally lex-greater. A size-only compare mis-orders cross-day
+    // pairs like db="2025-06-04T23:59:59Z" vs local="2025-06-05".
+    const std::string an = normalize_offset_to_z(a);
+    const std::string bn = normalize_offset_to_z(b);
+    if (an < bn)
       return -1;
-    if (a > b)
+    if (an > bn)
       return 1;
     return 0;
   }
@@ -160,6 +196,13 @@ fs::path ModUpdateDbClient::cache_root()
 
 fs::path ModUpdateDbClient::cache_dir_for(const std::string& gmm_game_id)
 {
+  // gmm_game_id becomes a single path component. Internal callers go
+  // through db_game_for() which returns controlled tags ("SE", "FO4",
+  // ...); a stray "/" or ".." would escape the cache root, so we
+  // assert the invariant in debug builds.
+  assert(!gmm_game_id.empty());
+  assert(gmm_game_id.find('/') == std::string::npos);
+  assert(gmm_game_id.find("..") == std::string::npos);
   return cache_root() / gmm_game_id;
 }
 
@@ -214,9 +257,12 @@ std::string ModUpdateDbClient::index_url(const std::string& db_game)
   return std::string(kBaseUrl) + "/" + kIndexPrefix + "." + db_game + kIndexExt;
 }
 
-std::string ModUpdateDbClient::shard_url(const std::string& db_game,
+std::string ModUpdateDbClient::shard_url([[maybe_unused]] const std::string& db_game,
                                          std::int64_t file_id)
 {
+  // Shards are global across DB games (by_game == false in the manifest),
+  // so db_game does not participate in the URL. Kept in the signature
+  // for symmetry with index_url and the abstract interface.
   return std::string(kBaseUrl) + "/" + kShardPrefix + shard_filename(file_id);
 }
 
@@ -555,7 +601,7 @@ std::string NetworkModUpdateDbClient::extract_etag(const std::string& response_h
     if (colon == std::string::npos)
       continue;
     const std::string name = line.substr(0, colon);
-    if (!iequals(name, "etag") && !starts_with_i(name, "etag"))
+    if (!iequals(name, "etag"))
       continue;
     std::string value = line.substr(colon + 1);
     value             = trim(value);
