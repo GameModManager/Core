@@ -272,6 +272,10 @@ public:
     QByteArray listdialog_window_geometry() const;  // key: listdialog/window_geometry
     void set_listdialog_window_geometry(const QByteArray& g);
 
+    // SaveInfoDialog (right-click save > Information) geometry - restored on next open.
+    QByteArray saveinfo_window_geometry() const;  // key: saveinfo/window_geometry
+    void set_saveinfo_window_geometry(const QByteArray& g);
+
 private:
     Settings() = default;
     QSettings settings_{"GameModManager", "GameModManager"};
