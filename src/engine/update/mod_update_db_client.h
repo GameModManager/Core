@@ -160,9 +160,10 @@ public:
   // ("SE"), NOT the GMM game_id; callers should go through db_game_for().
   [[nodiscard]] static std::string index_url(const std::string& db_game);
 
-  // Construct the shard URL for a file_id.
-  [[nodiscard]] static std::string shard_url(const std::string& db_game,
-                                             std::int64_t file_id);
+  // Construct the shard URL for a file_id. db_game is unused: shards
+  // are global across DB games (by_game == false in the manifest).
+  [[nodiscard]] static std::string
+  shard_url([[maybe_unused]] const std::string& db_game, std::int64_t file_id);
 
   // --- Pure parsers (testable without the network) ---
 

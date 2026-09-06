@@ -249,6 +249,26 @@ TEST_CASE("mod_update_db: has_update truth table", "[engine][update]")
     // The full string is lexicographically greater, so db > local.
     REQUIRE(ModUpdateDbClient::has_update(idx, 1234, "2025-06-05"));
   }
+  SECTION("cross-day day-only vs full: db earlier than local -> no badge")
+  {
+    // Regression: a size-first compare in compare_iso8601 misordered
+    // this pair (shorter day-only was assumed earlier; in fact a
+    // same-month earlier day with a time is earlier). The correct
+    // answer: db (2025-06-04 23:59:59Z) is chronologically BEFORE
+    // local (2025-06-05), so no update is available.
+    ModUpdateIndex cross;
+    cross.updated_by_id = {{7777, "2025-06-04T23:59:59Z"}};
+    REQUIRE_FALSE(ModUpdateDbClient::has_update(cross, 7777, "2025-06-05"));
+  }
+  SECTION("trailing offset +00:00 is normalized to Z for compare")
+  {
+    // Local sources may emit "+00:00" instead of "Z" (legacy LL scrape).
+    // Both timestamps refer to the same instant, so no badge.
+    ModUpdateIndex plus;
+    plus.updated_by_id = {{8888, "2025-06-05T14:23:11Z"}};
+    REQUIRE_FALSE(
+        ModUpdateDbClient::has_update(plus, 8888, "2025-06-05T14:23:11+00:00"));
+  }
   SECTION("db timestamp empty -> false (cannot decide)")
   {
     REQUIRE_FALSE(ModUpdateDbClient::has_update(idx, 9999, "2025-01-01T00:00:00Z"));
