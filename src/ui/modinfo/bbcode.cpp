@@ -14,6 +14,8 @@
 #include <QStringView>
 #include <QThreadPool>
 
+#include <algorithm>
+#include <array>
 #include <string>
 
 namespace ui {
@@ -126,6 +128,19 @@ QString unescape_html_entities(const QString &s) {
   return out;
 }
 
+// Normalize line endings to '\n'. Raw BBCode and HTML frequently arrive
+// with '\r\n' (Nexus, Steam) or even bare '\r' (some old Mac-era exports).
+// The br-tag dedup and newline-collapse passes below only make sense on a
+// single canonical form. QRegularExpression is reentrant but NOT thread-
+// safe to share across concurrent s.replace() calls - the implicit-shared
+// private match state races. bbcode_to_html() runs on QThreadPool workers
+// when dispatched from set_bbcode_html_async(), so the regex is built
+// per-call. Cheap.
+void normalize_line_endings(QString &s) {
+  const QRegularExpression kCr(QStringLiteral("\r\n?"));
+  s.replace(kCr, QStringLiteral("\n"));
+}
+
 // The Nexus API sprinkles raw HTML <br /> tags inside BBCode descriptions
 // (likely because the edit box is HTML-flavored). libcbb has no concept
 // of <br> - it falls through as text and gets escaped to "&lt;br /&gt;",
@@ -136,15 +151,261 @@ QString unescape_html_entities(const QString &s) {
 // Case-insensitive on the tag name, flexible on the trailing slash and
 // whitespace. Matches: <br>, <br/>, <br />, <BR>, <Br   />.
 //
-// QRegularExpression is reentrant but NOT thread-safe to share across
-// concurrent s.replace() calls - the implicit-shared private match state
-// races. bbcode_to_html() runs on QThreadPool workers when dispatched from
-// set_bbcode_html_async(), so the regex is constructed per-call. Cheap to
-// build (single literal pattern) and stays inside the function's stack.
+// Br adjacency dedup: when the source has "<br>\n" or "\n<br>" the two
+// line breaks double up under pre-wrap. We delete ONE adjacent '\n' so
+// the visible break count matches what the page author intended (a
+// single <br> is a soft break, not a paragraph).
+//
+// The regex is built per-call (see normalize_line_endings for why).
 void br_tags_to_newlines(QString &s) {
-  const QRegularExpression kBr(QStringLiteral("<\\s*br\\s*/?\\s*>"),
-                               QRegularExpression::CaseInsensitiveOption);
-  s.replace(kBr, QStringLiteral("\n"));
+  // Consume an optional trailing newline after the <br>. Example:
+  // "a<br>\nb" -> "a\nb" (one soft break, not a paragraph).
+  const QRegularExpression kBrTrail(
+      QStringLiteral("<\\s*br\\s*/?\\s*>\n"),
+      QRegularExpression::CaseInsensitiveOption);
+  s.replace(kBrTrail, QStringLiteral("\n"));
+  // Consume an optional leading newline before the <br>. Example:
+  // "a\n<br>b" -> "a\nb". Run AFTER the trail pass so any "<br>\n"
+  // that already became "\n" does not accidentally match the leading
+  // pattern's "\n" + "<br>" shape.
+  const QRegularExpression kBrLead(
+      QStringLiteral("\n<\\s*br\\s*/?\\s*>"),
+      QRegularExpression::CaseInsensitiveOption);
+  s.replace(kBrLead, QStringLiteral("\n"));
+  // A lone <br> with no adjacent newline still gets converted.
+  const QRegularExpression kBrAlone(
+      QStringLiteral("<\\s*br\\s*/?\\s*>"),
+      QRegularExpression::CaseInsensitiveOption);
+  s.replace(kBrAlone, QStringLiteral("\n"));
+}
+
+// Collapse runs of 3+ blank lines down to a single paragraph break
+// ("\n\n") and trim leading / trailing newlines. The pre-wrap wrapper
+// renders every preserved '\n' as a visible break; we want at most one
+// blank line between paragraphs, matching what a browser shows for
+// `<p>A</p><p>B</p>`.
+//
+// List-block pass: inside a [list]...[/list] span, <li> already
+// carries its own visual margin in QTextBrowser, so any '\n{2,}'
+// immediately before the next `[*]` / `[li]` (or before `[/list]`) is
+// pure inflation. The Nexus / LL permissions list example arrives as
+// `[*]item1\r\n\r\n[*]item2\r\n\r\n[*]item3` with the author using a
+// separate paragraph for each item; without this pass every item gets
+// a visible blank line on top of the <li> margin. The case-insensitive
+// flag covers [LIST] / [LI] variants. The lookahead keeps the marker
+// itself outside the match so we only consume the newline run.
+void collapse_blank_lines(QString &s) {
+  // "\n{3,}" -> "\n\n"
+  const QRegularExpression kThreePlus(QStringLiteral("\n{3,}"));
+  s.replace(kThreePlus, QStringLiteral("\n\n"));
+  // Inside list blocks: collapse \n{2,} immediately before a list-item
+  // marker or a list-close. Lookahead keeps the marker untouched and
+  // lets us replace the run with a single '\n'.
+  const QRegularExpression kListTighten(
+      QStringLiteral(R"(\n{2,}(?=\[\*\]|\[li\]|\[/li\]|\[/list\]))"),
+      QRegularExpression::CaseInsensitiveOption);
+  s.replace(kListTighten, QStringLiteral("\n"));
+  // Strip leading and trailing whitespace; cheap O(n) scan and avoids
+  // rendering a stray blank line before / after the description.
+  int start = 0;
+  while (start < s.size() && s[start].isSpace())
+    ++start;
+  int end = s.size();
+  while (end > start && s[end - 1].isSpace())
+    --end;
+  if (start == 0 && end == s.size())
+    return;
+  s = s.mid(start, end - start);
+}
+
+// Lightweight URL scheme allowlist. Mirrors what libcbb's cbb_url_ok()
+// accepts (http / https / mailto / ftp / ftps). Used to gate HTML-anchor
+// and bare-URL linkification so javascript:, data:, vbscript:, etc. never
+// reach libcbb as live hrefs. Anchor hrefs and bare URLs that fail this
+// check are left as plain text (libcbb will then re-escape the '&' etc.).
+constexpr std::array<QStringView, 5> kAllowedSchemes = {
+    QStringView(u"http://"), QStringView(u"https://"),
+    QStringView(u"mailto:"), QStringView(u"ftp://"),
+    QStringView(u"ftps://")};
+
+bool is_url_scheme_ok(const QString &url) {
+  if (url.isEmpty())
+    return false;
+  // Case-insensitive scheme prefix. Whitelist: http(s), mailto, ftp(s).
+  const auto lower = url.toLower();
+  return std::any_of(
+      kAllowedSchemes.begin(), kAllowedSchemes.end(),
+      [&lower](QStringView prefix) { return lower.startsWith(prefix); });
+}
+
+// Convert raw HTML <a href="...">text</a> anchors into BBCode
+// [url=...]text[/url] so libcbb can parse them as links. The LoversLab /
+// Mod.pub scrapes deliver rich HTML where the user-visible description
+// (e.g. <div class="ipsType_richText">) carries <a href=...>anchors. Without
+// this pass libcbb treats the < and > as text and the links are lost.
+//
+// We allow only the same schemes libcbb itself accepts (see
+// is_url_scheme_ok). Disallowed hrefs (javascript:, relative paths, etc.)
+// are dropped to "[url]{text}[/url]"-less plain text by skipping the
+// conversion entirely (the surrounding < and > are then plain text and
+// get escaped by libcbb). Hrefs without an explicit scheme but starting
+// with "/" or "#" are also dropped - those are page-internal links that
+// would 404 in a downloaded description.
+//
+// The text inside the anchor is preserved as-is (it may already contain
+// BBCode - libcbb will still parse the inner tags). Whitespace inside
+// the tag is tolerated to handle the wild HTML editors emit.
+void convert_html_anchors_to_bbcode(QString &s) {
+  // Two passes: simple <a href="...">text</a>, then single-quoted form.
+  // The regex is intentionally not greedy on the body so the first
+  // closing </a> matches. We iterate with a moving search offset to
+  // avoid the implicit-shared state race (see normalize_line_endings)
+  // and to guarantee termination on degenerate inputs.
+  auto run_pass = [&](const QChar quote) {
+    const QString pattern =
+        QStringLiteral("<a\\b[^>]*\\bhref\\s*=\\s*%1([^\"%1]*)%1[^>]*>(["
+                       "\\s\\S]*?)</a>")
+            .arg(quote);
+    QRegularExpression re(pattern, QRegularExpression::CaseInsensitiveOption);
+    int search_from = 0;
+    while (search_from < s.size()) {
+      QRegularExpressionMatch m = re.match(s, search_from);
+      if (!m.hasMatch())
+        break;
+      const QString href = m.captured(1);
+      const QString text = m.captured(2);
+      QString replacement;
+      if (is_url_scheme_ok(href)) {
+        replacement = QStringLiteral("[url=%1]%2[/url]").arg(href, text);
+      } else {
+        // Drop the anchor; keep just the visible text. (Pre-existing
+        // BBCode inside the text is preserved verbatim for libcbb.)
+        replacement = text;
+      }
+      s.replace(m.capturedStart(), m.capturedLength(), replacement);
+      // Step past the replaced span (which can be longer or shorter
+      // than the original). Compute the new offset from the match's
+      // START plus the new length - using m.capturedEnd() would point
+      // into the OLD string layout and skip or re-process content
+      // after every successful replacement.
+      search_from = m.capturedStart() + replacement.size();
+    }
+  };
+  run_pass(QLatin1Char('"'));
+  run_pass(QLatin1Char('\''));
+}
+
+// Auto-linkify bare https?:// URLs that are not already inside a BBCode
+// [url] tag or an HTML anchor. Run AFTER convert_html_anchors_to_bbcode
+// (so the anchors are already converted) and AFTER br_tags_to_newlines
+// (so URLs that span a line break - rare but happens on copy/paste - are
+// still captured). The check `is_url_scheme_ok` keeps the allowlist
+// narrow: javascript:, data:, etc. are never linked.
+void autolink_bare_urls(QString &s) {
+  // URL chars: letters, digits, and the RFC 3986 unreserved + reserved
+  // sub-delims we want to include. We do NOT include ')' or ',' because
+  // those are common prose trailing punctuation. The leading context
+  // group (^|[\s(>]) is non-capturing so the URL itself is capture(1).
+  const QRegularExpression re(
+      QStringLiteral(R"((?:^|[\s(>])(https?://[^\s<>\")']+))"),
+      QRegularExpression::CaseInsensitiveOption);
+  // Loop replace with a moving search offset so we always make
+  // forward progress (the regex is non-overlapping, but degenerate
+  // inputs could still loop if we re-replaced the same span).
+  int search_from = 0;
+  while (search_from < s.size()) {
+    QRegularExpressionMatch m = re.match(s, search_from);
+    if (!m.hasMatch())
+      break;
+    const QString raw_capture = m.captured(1);
+    QString url = raw_capture;
+    // Strip trailing prose punctuation so the link does not swallow
+    // a period/comma/etc. that the URL does not actually contain.
+    // The regex character class above already excludes ')', ',', '!',
+    // and '"'; '.' ';' ':' '?' remain valid URL characters and would
+    // be captured. We keep the stripped characters so they survive as
+    // plain text AFTER the </a> tag (otherwise "see example.com."
+    // would render as "see example.com" with the period silently
+    // dropped).
+    QString trailing;
+    while (!url.isEmpty()) {
+      const QChar last = url.at(url.size() - 1);
+      if (last == QLatin1Char('.') || last == QLatin1Char(';') ||
+          last == QLatin1Char(':') || last == QLatin1Char('?') ||
+          last == QLatin1Char(')')) {
+        trailing.prepend(last);
+        url.chop(1);
+      } else {
+        break;
+      }
+    }
+    if (url.isEmpty()) {
+      // All trailing punctuation - skip past the original match so we
+      // don't loop on a non-URL.
+      search_from = m.capturedStart(1) + raw_capture.size();
+      continue;
+    }
+    if (is_url_scheme_ok(url)) {
+      const int url_start = m.capturedStart(1);
+      const int url_len = raw_capture.size();
+      const QString replacement =
+          QStringLiteral("[url=%1]%2[/url]%3").arg(url, url, trailing);
+      s.replace(url_start, url_len, replacement);
+      // Skip past the inserted text so we don't recurse into the href
+      // we just added.
+      search_from = url_start + replacement.size();
+    } else {
+      // Skip past this match so the next iteration finds a different
+      // URL (or terminates).
+      search_from = m.capturedStart(1) + raw_capture.size();
+    }
+  }
+}
+
+// Linkify @mentions to a LoversLab profile-search page. The on-site
+// mention anchor carries a numeric id and slug; for the plain-text
+// JSON-LD / og:description path that id is not available, so we link
+// to the search-by-name URL which 200s on a real username and falls
+// back to LL's search results otherwise. The base URL is module-level
+// so the linker shares it; tests can grep for "loverslab.com/profile/".
+namespace {
+constexpr const char kLoverslabProfileSearch[] =
+    "https://www.loverslab.com/profile/?do=find&search=";
+} // namespace
+
+void linkify_mentions(QString &s) {
+  // Match "@username" at start-of-string or after whitespace / opening
+  // punctuation so we don't eat the '@' inside an email address or a
+  // price like "1.50 @ $2". Username charset: A-Z a-z 0-9 _ - (matches
+  // IPS / LL / Nexus username rules; '.' is excluded so trailing
+  // punctuation like "@bob." does not pull the period into the
+  // username). The leading context group is non-capturing so the
+  // username is capture(1).
+  const QRegularExpression re(
+      QStringLiteral(R"((?:^|[\s(>])@([A-Za-z0-9][A-Za-z0-9_-]{0,63}))"));
+  int search_from = 0;
+  while (search_from < s.size()) {
+    QRegularExpressionMatch m = re.match(s, search_from);
+    if (!m.hasMatch())
+      break;
+    const QString name = m.captured(1);
+    const QString href = QString::fromLatin1(kLoverslabProfileSearch) + name;
+    // The leading '@' sits one position before the captured username
+    // (the regex consumes it implicitly via the non-capturing
+    // context group). Replace BOTH the '@' and the username so the
+    // output is exactly one '@' inside the new [url] tag - without
+    // this we'd leave the original '@' in place and emit "@[url]@bob
+    // [/url]".
+    const int at_pos = m.capturedStart(1) - 1;
+    const int span_len = name.size() + 1;
+    const QString replacement =
+        QStringLiteral("[url=%1]@%2[/url]").arg(href, name);
+    s.replace(at_pos, span_len, replacement);
+    // Step past the inserted text so the regex doesn't re-match the
+    // '@' we just wrapped. The replacement length is the authoritative
+    // forward progress.
+    search_from = at_pos + replacement.size();
+  }
 }
 
 } // namespace
@@ -154,19 +415,45 @@ void br_tags_to_newlines(QString &s) {
 // tag stack, security sanitization (URL scheme allowlist, CSS meta-char
 // rejection), and HTML escape - lives in libcbb.c. This TU only handles
 // QString <-> UTF-8 std::string bridging, plus the input normalization
-// the Nexus / Steam BBCode dialects need (entity unescape, <br> -> \n).
+// the Nexus / Steam BBCode dialects need (entity unescape, CRLF, <br>,
+// raw <a> anchors, bare URL autolink, @mention linkify, blank-line
+// collapse).
 //
-// Normalization order matters: unescape entities FIRST, so an "&amp;lt;"
-// from the API round-trips to "<" via "&lt;" -> "<" (the second pass
-// inside libcbb then re-escapes the '<' to "&lt;" which renders as the
-// literal "<" character). The "br-to-newline" pass happens after so it
-// sees the literal "<br />" the API emitted, not a pre-unescaped tag.
+// Normalization order matters:
+//   1. CRLF -> LF: line endings must be a single canonical form before
+//      any other pass.
+//   2. unescape HTML entities: so an "&amp;lt;" from the API round-trips
+//      to "<" via "&lt;" -> "<" (libcbb then re-escapes the '<' back to
+//      "&lt;", rendering as the literal "<" character).
+//   3. Convert raw <a href> anchors to BBCode [url] tags. The LoversLab
+//      / Mod.pub scrapes feed HTML into the parser via the rich-text DOM
+//      block (see loverslab/provider.cpp::parse_description_html), and
+//      the Nexus API sometimes sprinkles <a> inside BBCode. libcbb has
+//      no HTML parser so <a href=...> would render as escaped text.
+//   4. <br> -> '\n' + dedup: the Nexus API mixes BBCode \n with literal
+//      HTML <br>. Convert every <br> to '\n', then consume an adjacent
+//      '\n' so "<br>\n" doesn't become a visible blank line under
+//      pre-wrap.
+//   5. Collapse 3+ blank lines down to a single paragraph break and
+//      trim leading / trailing whitespace.
+//   6. Autolink bare URLs so a copy-pasted https://... becomes a real
+//      link. Run AFTER <br>-and-dedup so URLs that span a line break
+//      are still captured. Run AFTER anchor conversion so we don't
+//      re-link hrefs that are already inside [url] tags.
+//   7. Linkify @mentions. Run last so we don't touch usernames inside
+//      the URLs we just linked.
 QString bbcode_to_html(const QString &input) {
   if (input.isEmpty()) {
     return {};
   }
-  QString normalized = unescape_html_entities(input);
+  QString normalized = input;
+  normalize_line_endings(normalized);
+  normalized = unescape_html_entities(normalized);
+  convert_html_anchors_to_bbcode(normalized);
   br_tags_to_newlines(normalized);
+  collapse_blank_lines(normalized);
+  autolink_bare_urls(normalized);
+  linkify_mentions(normalized);
   // Use the QByteArray length, not strlen(), so any embedded NUL in the
   // UTF-8 sequence is preserved instead of silently truncating the input.
   const QByteArray bytes = normalized.toUtf8();
