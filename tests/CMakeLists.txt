@@ -299,6 +299,10 @@ gmm_catch2_test(saves_tab_test ui/saves_tab_test.cpp
     UI
     LIBS gmm_ui Qt6::Test)
 
+gmm_catch2_test(save_info_dialog_test ui/save_info_dialog_test.cpp
+    UI
+    LIBS gmm_ui Qt6::Test)
+
 gmm_catch2_test(mod_list_model_test ui/mod_list_model_test.cpp
     UI
     LIBS gmm_ui)
