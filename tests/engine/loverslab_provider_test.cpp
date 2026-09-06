@@ -9,14 +9,17 @@
 #include <cstdio>
 #include <string>
 
-namespace {
-void require(bool cond, const char *msg) {
+namespace
+{
+void require(bool cond, const char* msg)
+{
   INFO(msg);
   REQUIRE(cond);
 }
-} // namespace
+}  // namespace
 
-TEST_CASE("loverslab provider", "[engine]") {
+TEST_CASE("loverslab provider", "[engine]")
+{
   using engine::LoversLabModInfoResult;
   using engine::LoversLabProvider;
 
@@ -128,8 +131,7 @@ TEST_CASE("loverslab provider", "[engine]") {
 </head></html>)";
   LoversLabModInfoResult m = LoversLabProvider::parse_mod_info(malformed);
   require(m.available, "malformed JSON-LD: og fallback works");
-  require(m.name == "After Bad JSON",
-          "malformed JSON-LD: og:title used as name");
+  require(m.name == "After Bad JSON", "malformed JSON-LD: og:title used as name");
   require(m.description == "Recovered description",
           "malformed JSON-LD: og:description used");
 
@@ -162,8 +164,7 @@ TEST_CASE("loverslab provider", "[engine]") {
 <meta content="Reversed description text" property="og:description">
 </head></html>)";
   LoversLabModInfoResult cf = LoversLabProvider::parse_mod_info(content_first);
-  require(cf.available,
-          "content-first meta: available (regex handles reversed order)");
+  require(cf.available, "content-first meta: available (regex handles reversed order)");
   require(cf.name == "Reversed Title", "content-first meta: og:title picked");
   require(cf.description == "Reversed description text",
           "content-first meta: og:description picked");
@@ -180,4 +181,66 @@ TEST_CASE("loverslab provider", "[engine]") {
   require(nf.name == "Named Title", "name= meta: og:title picked");
   require(nf.description == "Named description text",
           "name= meta: og:description picked");
+}
+
+TEST_CASE("loverslab provider description_html block", "[engine][loverslab]")
+{
+  using engine::LoversLabProvider;
+  // --- Realistic Invision Community "About This File" block: the
+  // class="ipsType_richText" container holds <p>...</p> paragraphs, a
+  // real <a href> anchor, and a plain text run. The parser must:
+  //   - locate the right <div> (not the changelog's, not unrelated
+  //     widgets on the page),
+  //   - convert the anchor to BBCode [url=...]...[/url],
+  //   - drop IPS chrome tags (<span>, <strong>), and
+  //   - leave the visible text intact so the user sees a real
+  //     description (not a "go to the site" stub).
+  const std::string body =
+      R"(<html><body>
+<section class="ipsType_normal">
+  <h2>About This File</h2>
+  <div class="ipsType_richText ipsContained ipsType_break ipsSpacer_bottom">
+    <p>Hi all, attached is the latest issue.</p>
+    <p>The original CC can be found at <a href="https://www.example.com/foo">https://www.example.com/foo</a> (credit to the original creator).</p>
+    <p>Thanks <span style="color:#f1c40f;"><strong>wtrshpdwn</strong></span> for the assist.</p>
+  </div>
+</section>
+<section>
+  <h2>What's New</h2>
+  <div class="ipsType_richText">
+    <p>No changelog available for this version.</p>
+  </div>
+</section>
+</body></html>)";
+  const std::string got = LoversLabProvider::parse_description_html(body);
+  require(!got.empty(), "rich-text block extracted");
+  // The link survived as BBCode so the UI's bbcode_to_html will emit
+  // a real <a> tag.
+  require(got.find("[url=https://www.example.com/foo]") != std::string::npos,
+          "anchor converted to [url=...]");
+  // The HTML <p> tags became paragraph breaks (\n\n).
+  require(got.find("\n\n") != std::string::npos, "paragraphs separated by blank line");
+  // Inner text (no <span>, no <strong>) is preserved.
+  require(got.find("wtrshpdwn") != std::string::npos,
+          "inner text of <strong> preserved");
+  // The changelog block (also ipsType_richText but further down) is
+  // NOT picked - we only want the first one and that's the "About
+  // This File" container, not the changelog.
+  require(got.find("changelog") == std::string::npos,
+          "changelog block is not extracted");
+
+  // --- Anchors with disallowed schemes: javascript:, data:, relative
+  // paths. The anchor tag is dropped to plain text (no [url=...]).
+  const std::string bad =
+      R"DELIM(<div class="ipsType_richText">before <a href="javascript:alert(1)">bad</a> after</div>)DELIM";
+  const std::string bad_got = LoversLabProvider::parse_description_html(bad);
+  require(bad_got.find("javascript") == std::string::npos,
+          "javascript: scheme is dropped");
+  require(bad_got.find("bad") != std::string::npos,
+          "link text preserved when scheme is bad");
+
+  // --- No rich-text block at all: empty result, no crash.
+  require(LoversLabProvider::parse_description_html("just text").empty(),
+          "no block: empty");
+  require(LoversLabProvider::parse_description_html({}).empty(), "empty body: empty");
 }
