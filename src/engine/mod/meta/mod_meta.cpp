@@ -394,6 +394,13 @@ std::string ModMeta::source_page_url() const {
         auto url = get("Modl", "page_url");
         if (!url.empty()) return url;
     }
+    // ModPub is metadata-only; the page URL is the only way to point at
+    // the mod (it carries both the game-slug and the slug-suffix, neither
+    // of which can be reconstructed from the bare numeric mod id).
+    if (has_section("ModPub")) {
+        auto url = get("ModPub", "page_url");
+        if (!url.empty()) return url;
+    }
     return {};
 }
 

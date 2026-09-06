@@ -792,6 +792,19 @@ DownloadsTab::SourceInfo DownloadsTab::source_info_for(
             info.page_url = entry.page_url;
         }
         // else: leave info empty.
+    } else if (source_text == QStringLiteral("ModPub")) {
+        // ModPub is metadata-only; the actual download row arrives via
+        // the modl:// flow. A row labeled "ModPub" without a page_url
+        // is meaningless (we have no way to point at the mod) - treat
+        // it as local-only install like the LoversLab/Steam gate above.
+        const bool modpub_complete =
+            !id.empty() && !entry.page_url.empty();
+        if (modpub_complete) {
+            info.source_type = "modpub";
+            info.source_id = id;
+            info.page_url = entry.page_url;
+        }
+        // else: leave info empty.
     }
     return info;
 }
@@ -869,15 +882,21 @@ void DownloadsTab::add_context_menu_actions(QMenu& menu, const std::string& id) 
 
     // Open on <Source>: LoversLab rows open the stored mod page URL (the
     // download link minus the ?do=download query, persisted in the manifest);
-    // Nexus rows build the page from domain + mod id. Local ("Manual") rows
-    // have no page and get no action.
+    // Nexus rows build the page from domain + mod id; ModPub rows open
+    // the stored mod.pub page URL (carries the game-slug + slug-suffix).
+    // Local ("Manual") rows have no page and get no action.
     const QString source_text =
         entry.source_item ? entry.source_item->text() : QString();
     QString page_url;
     QString page_label;
     if (!entry.page_url.empty()) {
-        page_label = tr("Open on %1").arg(
-            source_text.isEmpty() ? tr("LoversLab") : source_text);
+        // Fall back to "LoversLab" only when the row has a page URL but
+        // no source label at all (legacy data). All other rows use their
+        // own source label (Nexus / ModPub / Steam / ...).
+        QString fallback_source = source_text;
+        if (fallback_source.isEmpty())
+            fallback_source = tr("LoversLab");
+        page_label = tr("Open on %1").arg(fallback_source);
         page_url = QString::fromStdString(entry.page_url);
     } else if (!entry.nexus_domain.empty() && !entry.parent_mod_id.empty()) {
         page_label = tr("Open on Nexus");
@@ -992,6 +1011,14 @@ void DownloadsTab::deserialize(const std::string& json,
             engine::Logger::instance().debug(
                 "downloads: repaired legacy manifest entry '" + id +
                 "' (LoversLab label without page_url/id -> Manual)");
+        } else if (source == "ModPub" &&
+                   (page_url.empty() || id.empty())) {
+            // ModPub rows without a page URL or id carry no provenance -
+            // same defensive treatment as the LoversLab/Steam gate.
+            source = "Manual";
+            engine::Logger::instance().debug(
+                "downloads: repaired legacy manifest entry '" + id +
+                "' (ModPub label without page_url/id -> Manual)");
         }
 
         // Skip if already loaded
