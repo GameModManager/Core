@@ -12,8 +12,14 @@ namespace engine {
 class ModMeta;
 namespace Source::Nexus { struct ModInfoResult; }
 namespace Source::LoversLab { struct ModInfoResult; }
+namespace Source::ModPub { struct ModInfoResult; }
 using ModInfoResult = Source::Nexus::ModInfoResult;
 using LoversLabModInfoResult = Source::LoversLab::ModInfoResult;
+// ModPubModInfoResult is defined in engine/source/modpub/provider.h
+// (kept there so the engine fetch worker can use it without a UI
+// include dependency). Consumers that need the full definition (the
+// panel, the fetch worker) include the provider header directly.
+using ModPubModInfoResult = Source::ModPub::ModInfoResult;
 }
 
 namespace ui {
@@ -100,6 +106,13 @@ struct ModInfoData {
     // skyrimspecialedition; the file id IS the identifier). Same
     // available=false failure semantics.
     std::function<engine::LoversLabModInfoResult()> fetch_loverslab_info;
+
+    // Live mod.pub mod-info fetch for the ModPub tab's Refresh button.
+    // Captures the mod id and the page URL (the page URL carries the
+    // game-slug + slug-suffix; the bare id is acceptable as a fallback).
+    // ModPub is metadata-only; downloads route through modl://, not
+    // this fetcher. Same available=false failure semantics.
+    std::function<engine::ModPubModInfoResult()> fetch_modpub_info;
 
     // The mod's Data directory (mod_dir + data_subpath), if a game ever keeps
     // mods under one. Note: file-walking tabs scan data.mod_dir directly - the

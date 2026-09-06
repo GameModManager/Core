@@ -62,6 +62,7 @@
 #include "engine/sort/sort_registry.h"
 #include "engine/source/nexus_provider.h"
 #include "engine/source/loverslab/provider.h"
+#include "engine/source/modpub/provider.h"
 #include "engine/source/nxm/managed_games.h"
 #include "engine/source/source_provider.h"
 #include "ui/main_window/conflict_scan_worker.h"
@@ -2380,6 +2381,25 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
     return provider->fetch_mod_info(arg);
   };
 
+  // Live ModPub lookup for the ModPub tab's Refresh button. Prefer the
+  // page URL (carries the game-slug and the slug-suffix); fall back to
+  // the bare numeric mod id. mod.pub has no API, so the fetcher is
+  // guest-only (the page is guest-visible, downloads are not).
+  const QString mp_src_id = mod.source_id;
+  const QString mp_page_url = mod.source_page_url;
+  data.fetch_modpub_info = [mp_src_id, mp_page_url]() {
+    auto *provider = dynamic_cast<engine::Source::ModPub::Provider *>(
+        engine::SourceRegistry::instance().provider_for("modpub"));
+    if (!provider)
+      return engine::ModPubModInfoResult{};
+    // Prefer the full page URL when we have one - the JSON-LD `url`
+    // field will agree and the parser back-fills game_slug from it.
+    const std::string arg =
+        !mp_page_url.isEmpty() ? mp_page_url.toStdString()
+                               : mp_src_id.toStdString();
+    return provider->fetch_mod_info(arg);
+  };
+
   return data;
 }
 
@@ -2949,6 +2969,16 @@ ModListController::source_visit_info(const QString &source_type,
   if (source_type == "moddb") {
     return {tr("Visit on ModDB"),
             QString("https://www.moddb.com/mods/%1").arg(source_id)};
+  }
+  if (source_type == "modpub") {
+    // The stored page URL (carries the game-slug and the slug-suffix) wins
+    // - the slug cannot be reconstructed from the bare mod id alone.
+    // Fall back to the bare https://mod.pub/<id>/ form when only the id
+    // is known (panel lazy init, no page URL yet).
+    QString url = page_url;
+    if (url.isEmpty() && !source_id.isEmpty())
+      url = QString("https://mod.pub/mods/%1/").arg(source_id);
+    return {tr("Visit on ModPub"), url};
   }
   auto label = source_type;
   if (!label.isEmpty()) {
