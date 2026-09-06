@@ -143,6 +143,7 @@ set(ENGINE_SOURCES
     update/appimage_updater.cpp
     update/deb_rpm_updater.cpp
     update/aur_updater.cpp
+    update/mod_update_db_client.cpp
     core/keyring/keyring.cpp
     core/github.cpp
     core/module.cpp
