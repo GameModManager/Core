@@ -56,6 +56,11 @@ public:
     // Windows-specific: unregister the modl:// protocol handler.
     [[nodiscard]] static bool unregister_modl_handler();
 
+    // Windows-specific: report whether the modl:// protocol handler points at
+    // our binary. Mirrors is_nxm_handler_registered on Linux so the UI can
+    // query status the same way on every platform.
+    [[nodiscard]] static bool is_modl_handler_registered();
+
 private:
     std::filesystem::path appdata_dir() const;
     std::filesystem::path localappdata_dir() const;

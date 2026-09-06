@@ -23,7 +23,13 @@ public:
     [[nodiscard]] bool isListening() const;
 
 signals:
-    // Emitted when another process sends an nxm:// URL.
+    // Emitted when another process sends a URL (nxm://, modl://, or gmm://).
+    // The receiver tries NxmRouter::parse first, then Router::parse_modl.
+    void urlReceived(const QString& url);
+
+    // Backward-compat alias for the historical signal name. Connects from
+    // existing code (and out-of-tree plugins) keep working - it just
+    // re-emits as urlReceived. Prefer urlReceived in new code.
     void nxmUrlReceived(const QString& url);
 
 private:

@@ -180,8 +180,25 @@ Application::Application(int &argc, char **argv)
     style_manager_->apply_theme(Settings::instance().theme().toStdString());
   }
 
-  // Compute pending URL from parsed args
+  // Compute pending URL from parsed args. Mutual exclusion: at most one
+  // --handle-* flag per invocation. A combination (--handle-nxm ... --handle-
+  // modl ...) silently dropping the second URL is the kind of footgun the
+  // user notices three days later. Set the early-exit flag here and let
+  // run() handle the actual return code (constructors can't return values).
   const auto &args = command_line_.args();
+  const int handle_count =
+      (args.handle_nxm ? 1 : 0) + (args.handle_gmm ? 1 : 0) +
+      (args.handle_modl ? 1 : 0);
+  if (handle_count > 1) {
+    engine::Logger::instance().error(
+        "Cannot combine multiple --handle-* flags; pass exactly one.");
+    fprintf(stderr,
+            "GameModManager: cannot combine --handle-nxm/--handle-gmm/"
+            "--handle-modl. Pass exactly one.\n");
+    early_exit_ = true;
+    early_exit_code_ = 1;
+    return;
+  }
   if (args.handle_nxm) {
     pending_url_ = args.nxm_url.toStdString();
   } else if (args.handle_gmm) {
@@ -243,11 +260,28 @@ int Application::run() {
   // If --help was printed during construction, exit early
   if (command_line_.should_exit())
     return command_line_.exit_code();
+  // If the constructor rejected conflicting --handle-* flags, exit early
+  // with the recorded code (the QApplication ctor is not allowed to
+  // return a value itself).
+  if (early_exit_)
+    return early_exit_code_;
 
   const auto &args = command_line_.args();
 
   // -- Headless launch mode ---------------------------------------------
   if (args.headless) {
+    // --launch and --handle-* are mutually exclusive: the launcher path
+    // never initiates a download, so silently dropping the URL would be
+    // a footgun. Reject the combination up front.
+    if (args.handle_nxm || args.handle_gmm || args.handle_modl) {
+      engine::Logger::instance().error(
+          "--launch cannot be combined with --handle-nxm/--handle-gmm/"
+          "--handle-modl.");
+      fprintf(stderr,
+              "GameModManager: --launch is for game launch only. Drop the "
+              "--handle-* flag and try again.\n");
+      return 1;
+    }
     engine::Logger::instance().debug("GameModManager - headless launch");
 
     std::string instance_str = args.instance_name.toStdString();
@@ -349,15 +383,10 @@ int Application::run() {
       return 1;
     }
 
-    // Try to send to a running GMM instance via local socket
-    if (engine::send_url_to_running_instance(
-            QString::fromStdString(pending_url_))) {
-      engine::Logger::instance().info(
-          "Download URL forwarded to running instance");
-      return 0;
-    }
-
-    // No running instance - resolve the game and find/create the instance
+    // Resolve the game BEFORE forwarding via IPC. A bogus nexus_domain
+    // (no plugin matches) should not be silently sent to the running
+    // instance and trigger a "no game supports this" dialog in the wrong
+    // process.
     std::string matched_game_id;
     for (const auto &p : plugin_loader_->plugins()) {
       if (p.nexus_domain == link.nexus_domain) {
@@ -372,6 +401,14 @@ int Application::run() {
       fprintf(stderr, "GameModManager: no game supports Nexus domain '%s'\n",
               link.nexus_domain.c_str());
       return 1;
+    }
+
+    // Try to send to a running GMM instance via local socket
+    if (engine::send_url_to_running_instance(
+            QString::fromStdString(pending_url_))) {
+      engine::Logger::instance().info(
+          "Download URL forwarded to running instance");
+      return 0;
     }
 
     // Find an existing instance for this game
@@ -412,16 +449,10 @@ int Application::run() {
       return 1;
     }
 
-    if (engine::send_url_to_running_instance(
-            QString::fromStdString(pending_url_))) {
-      engine::Logger::instance().info(
-          "modl:// URL forwarded to running instance");
-      return 0;
-    }
-
-    // Resolve the game: match the (normalized) host against plugin game_ids.
-    // "other" falls through to the last-used instance (MO2 modlhandler
-    // behavior) - modl is site-agnostic so a generic host is the catch-all.
+    // Resolve the game BEFORE forwarding via IPC. A bogus host (no plugin
+    // matches) should not be silently sent to the running instance and
+    // trigger a "no game supports this" dialog in the wrong process.
+    // "other" is the catch-all and always passes this check.
     std::string matched_game_id;
     if (link.game_id != "other") {
       for (const auto &p : plugin_loader_->plugins()) {
@@ -430,15 +461,21 @@ int Application::run() {
           break;
         }
       }
+      if (matched_game_id.empty()) {
+        engine::Logger::instance().error(
+            "No game plugin supports modl host: " + link.game_id);
+        fprintf(stderr,
+                "GameModManager: no game supports modl host '%s'\n",
+                link.game_id.c_str());
+        return 1;
+      }
     }
 
-    if (matched_game_id.empty() && link.game_id != "other") {
-      engine::Logger::instance().error(
-          "No game plugin supports modl host: " + link.game_id);
-      fprintf(stderr,
-              "GameModManager: no game supports modl host '%s'\n",
-              link.game_id.c_str());
-      return 1;
+    if (engine::send_url_to_running_instance(
+            QString::fromStdString(pending_url_))) {
+      engine::Logger::instance().info(
+          "modl:// URL forwarded to running instance");
+      return 0;
     }
 
     // "other" -> last instance; otherwise find an instance for the matched

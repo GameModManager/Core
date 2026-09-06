@@ -9,6 +9,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QTimer>
+#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -33,6 +34,7 @@
 #include "engine/source/loverslab_provider.h"
 #include "engine/source/modl/provider.h"
 #include "engine/source/nexus_provider.h"
+#include "engine/source/registry.h"
 #include "engine/source/nxm/managed_games.h"
 #include "engine/source/nxm/nxm_router.h"
 #include "engine/source/steam_workshop_provider.h"
@@ -46,6 +48,23 @@
 #include "ui/network/network_options_bridge.h"
 
 namespace ui {
+
+namespace {
+
+// FNV-1a 64-bit. std::hash<std::string> is implementation-defined and (on
+// libstdc++) randomized per-process via SipHash, so manifest keys derived
+// from it change between runs and break resume / produce duplicates on a
+// re-click. FNV-1a is process-stable and good enough as a map key.
+uint64_t stable_hash64(const std::string &s) {
+    uint64_t h = 0xcbf29ce484222325ULL;
+    for (unsigned char c : s) {
+        h ^= c;
+        h *= 0x100000001b3ULL;
+    }
+    return h;
+}
+
+} // namespace
 
 DownloadsController::DownloadsController(MainWindow *w, QObject *parent)
     : QObject(parent), w_(w) {}
@@ -633,10 +652,16 @@ void DownloadsController::handle_modl_download(const engine::Source::ModlLink &l
 
   // modl:// has no API or auth secrets in the URL itself - the host is the
   // MO2 GameShortName and the only payload is a percent-encoded https URL.
-  // Log the full URL safely; redacting it would hide what we're about to
-  // download.
+  // We still redact the query string before logging: the direct URL may
+  // carry site-specific tokens (?token=, ?key=, ?signature=) that are
+  // session-bound and should not land in plain-text log files.
+  std::string log_url = link.direct_url;
+  {
+    const auto q = log_url.find('?');
+    if (q != std::string::npos) log_url = log_url.substr(0, q) + "?<redacted>";
+  }
   engine::Logger::instance().debug(
-      "modl download: game=" + link.game_id + " url=" + link.direct_url);
+      "modl download: game=" + link.game_id + " url=" + log_url);
 
   // Match the host against loaded plugin game_ids. modl is site-agnostic
   // (mod.pub + anywhere), so there is no managed_games.json lookup to do
@@ -673,15 +698,22 @@ void DownloadsController::handle_modl_download(const engine::Source::ModlLink &l
   }
 
   // Entry key: hash the direct URL to keep map keys free of '/' (and
-  // idempotent across re-clicks of the same modl link).
+  // idempotent across re-clicks of the same modl link). Use a process-
+  // stable hash so the manifest key survives a restart - resume would
+  // otherwise look up a different id and re-fetch from byte zero.
   const std::string key =
-      "modl-" + std::to_string(std::hash<std::string>{}(link.direct_url));
+      "modl-" + std::to_string(stable_hash64(link.direct_url));
 
   auto *dt = w_->right_panel_->downloads_tab();
   if (dt) {
-    // Source column is the literal "Modl" (display_name from the provider);
+    // Source column is the provider's display_name() (currently "Modl");
     // install provenance flows through [Modl] meta.ini section.
-    dt->add_download(key, tr("Modl download").toStdString(), "Modl", {},
+    const std::string source_label =
+        engine::SourceRegistry::instance()
+            .provider_for("modl")
+            ? engine::SourceRegistry::instance().provider_for("modl")->display_name()
+            : std::string("Modl");
+    dt->add_download(key, tr("Modl download").toStdString(), source_label, {},
                      {}, 0, {}, link.full_url);
   }
 
@@ -747,10 +779,11 @@ void DownloadsController::start_loverslab_download(const std::string &url) {
 
   // Entry key is the file id when the URL carries one, else a stable hash
   // (keeps map keys and archive-name fallbacks free of '/' characters).
+  // Use a process-stable hash so a paused LoversLab download can be resumed
+  // after a restart - std::hash<std::string> is randomized on libstdc++.
   std::string file_id = engine::LoversLabProvider::extract_file_id(url);
   const std::string key =
-      file_id.empty() ? "ll-" + std::to_string(std::hash<std::string>{}(url))
-                      : file_id;
+      file_id.empty() ? "ll-" + std::to_string(stable_hash64(url)) : file_id;
 
   auto *dt = w_->right_panel_->downloads_tab();
   if (dt) {

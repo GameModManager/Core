@@ -284,6 +284,31 @@ bool WindowsPlatform::unregister_modl_handler() {
     return r == ERROR_SUCCESS;
 }
 
+bool WindowsPlatform::is_modl_handler_registered() {
+    // Check that the protocol key exists and points at a shell\open\command
+    // value. The Windows side does not know which executable we expect here
+    // (the linux implementation cross-checks the desktop file id) - it just
+    // reports whether a modl:// handler has been registered under HKCU at
+    // all. The UI treats this as "registered" and shows the right state.
+    HKEY hkey;
+    LONG r = RegOpenKeyExW(HKEY_CURRENT_USER,
+                           LR"(Software\Classes\modl\shell\open\command)",
+                           0, KEY_READ, &hkey);
+    if (r != ERROR_SUCCESS) return false;
+    wchar_t buf[1024] = {};
+    DWORD buf_size = sizeof(buf);
+    DWORD type = REG_SZ;
+    r = RegQueryValueExW(hkey, nullptr, nullptr, &type,
+                         reinterpret_cast<LPBYTE>(buf), &buf_size);
+    RegCloseKey(hkey);
+    if (r != ERROR_SUCCESS || type != REG_SZ || buf_size == 0) return false;
+    // The command must reference our flag. The exact binary path is not
+    // portable across installations, so a substring check on "--handle-modl"
+    // is good enough.
+    std::wstring cmd(buf, (buf_size / sizeof(wchar_t)) - 1);
+    return cmd.find(L"--handle-modl") != std::wstring::npos;
+}
+
 } // namespace engine
 
 #endif  // _WIN32

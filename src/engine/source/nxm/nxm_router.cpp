@@ -5,7 +5,9 @@
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
+#include <cstring>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace engine::Source {
@@ -211,9 +213,27 @@ std::string to_lower_ascii(std::string s) {
 
 std::string Router::normalize_modl_game_id(const std::string& host) {
     const auto& m = modl_aliases();
-    auto it = m.find(to_lower_ascii(host));
+    const std::string lower = to_lower_ascii(host);
+    auto it = m.find(lower);
     if (it != m.end()) return it->second;
-    return host;  // passthrough - caller decides if it matches a plugin
+    return lower;  // passthrough (lowercased) - caller decides if it matches a plugin
+}
+
+// ponytail: only_ascii - case-insensitive ASCII compare via the two-arg form
+// of std::equal. Rejects HTTPS://, Https://, etc. without a temporary copy.
+static bool istarts_with_ascii(const std::string& s, const char* prefix) {
+    const std::size_t n = std::strlen(prefix);
+    if (s.size() < n) return false;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (static_cast<unsigned char>(s[i]) !=
+            static_cast<unsigned char>(prefix[i])) {
+            // Allow case-insensitive only for the scheme letters [A-Za-z]
+            const unsigned char a = static_cast<unsigned char>(s[i]);
+            const unsigned char b = static_cast<unsigned char>(prefix[i]);
+            if (std::tolower(a) != std::tolower(b)) return false;
+        }
+    }
+    return true;
 }
 
 ModlLink Router::parse_modl(const std::string& url) {
@@ -229,8 +249,8 @@ ModlLink Router::parse_modl(const std::string& url) {
     auto rest = url.substr(prefix.size());
     while (rest.size() > 1 && rest[0] == '/') rest.erase(0, 1);
 
-    // Host = up to first '/', '?', or '#'.
-    const auto host_end = rest.find_first_of("/?#");
+    // Host = up to first '/', '?'.
+    const auto host_end = rest.find_first_of("/?");
     const std::string host =
         (host_end == std::string::npos) ? rest : rest.substr(0, host_end);
     if (host.empty()) return link;
@@ -260,12 +280,22 @@ ModlLink Router::parse_modl(const std::string& url) {
     }
     if (raw_value.empty()) return link;
 
-    std::string decoded = DownloadManager::percent_decode(raw_value);
-    // Cap decoded length to keep a hostile link from blowing up a log line or
-    // the pipeline worker; real mod.pub links are sub-kilobyte.
+    // Cap the raw value BEFORE decoding so a hostile modl://.../?url=<1M chars>
+    // does not allocate 1M just to be rejected. %XX triples up to 3 bytes per
+    // input char, so 4k decoded => 12k encoded is the worst case.
     constexpr std::size_t kMaxDecoded = 4096;
+    if (raw_value.size() > kMaxDecoded * 3) return link;
+
+    std::string decoded = DownloadManager::percent_decode(raw_value);
     if (decoded.empty() || decoded.size() > kMaxDecoded) return link;
-    if (decoded.compare(0, 8, "https://") != 0) return link;  // reject non-https
+    // The decoded https:// URL may itself carry a #fragment (when the
+    // originating site percent-encoded the fragment as %23). We never
+    // want it to bleed into the direct_url we fetch or log.
+    if (const auto h = decoded.find('#'); h != std::string::npos)
+        decoded.resize(h);
+    // Case-insensitive on the scheme (RFC 3986 says schemes are ASCII
+    // case-insensitive; HTTPS:// is valid even if every site emits lower).
+    if (!istarts_with_ascii(decoded, "https://")) return link;
     link.direct_url = std::move(decoded);
     return link;
 }

@@ -37,6 +37,11 @@ private:
 
   QString native_style_name_;
   std::string pending_url_;
+  // True when the constructor detected a CLI error (e.g. conflicting
+  // --handle-* flags) and run() should exit immediately with
+  // early_exit_code_. The QApplication ctor is not allowed to return values.
+  bool early_exit_ = false;
+  int early_exit_code_ = 0;
 };
 
 } // namespace Core

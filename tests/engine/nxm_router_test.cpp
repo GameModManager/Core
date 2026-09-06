@@ -90,6 +90,32 @@ TEST_CASE("modl router parse", "[engine]") {
     expect_modl("modl://starfield/?url=https%3A%2F%2Fa.b%2Fc",
                 "starfield", "https://a.b/c");
 
+    // Edge: & in place of ? for the query separator. modlhandler tolerates
+    // it and so do we - the lookup still finds url=...
+    expect_modl("modl://falloutnv/&url=https%3A%2F%2Fa.b%2Fc",
+                "falloutnv", "https://a.b/c");
+
+    // Edge: empty host. modl:///?url=... is a malformed link with no game.
+    const auto empty_host = engine::Source::Router::parse_modl(
+        "modl:///?url=https%3A%2F%2Fa.b%2Fc");
+    REQUIRE_FALSE(empty_host.valid());
+
+    // Edge: scheme case insensitivity (HTTPS:// is valid per RFC 3986).
+    expect_modl("modl://falloutnv/?url=HTTPS%3A%2F%2Fa.b%2Fc",
+                "falloutnv", "HTTPS://a.b/c");
+
+    // Edge: URL fragment must be stripped from the decoded direct_url.
+    expect_modl("modl://falloutnv/?url=https%3A%2F%2Fa.b%2Fpath%23frag",
+                "falloutnv", "https://a.b/path");
+
+    // Edge: over-long URL > 4k decoded is rejected before allocating.
+    // (Raw value > 12k; the encoded form is padded with safe ASCII.)
+    const std::string too_long_url =
+        "modl://falloutnv/?url=https%3A%2F%2Fa.b%2F" +
+        std::string(15000, 'a');
+    const auto too_long = engine::Source::Router::parse_modl(too_long_url);
+    REQUIRE_FALSE(too_long.valid());
+
     // Malformed: empty host, missing url param, non-https scheme, wrong scheme.
     const auto no_url = engine::Source::Router::parse_modl("modl://falloutnv/");
     REQUIRE_FALSE(no_url.valid());
@@ -107,8 +133,9 @@ TEST_CASE("modl router parse", "[engine]") {
     REQUIRE_FALSE(nxm_misparse.valid());
 
     // Unrecognized host passes through (caller checks plugin game_id match).
+    // The passthrough is lowercased so callers can compare case-insensitively.
     const auto unknown = engine::Source::Router::parse_modl(
-        "modl://notagame/?url=https%3A%2F%2Fa.b%2Fc");
+        "modl://NotAGame/?url=https%3A%2F%2Fa.b%2Fc");
     REQUIRE(unknown.valid());
     REQUIRE(unknown.game_id == "notagame");
     REQUIRE(unknown.direct_url == "https://a.b/c");
