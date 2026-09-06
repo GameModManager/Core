@@ -321,6 +321,20 @@ bool InstallationManager::execute(Mod &mod, PipelineContext &ctx) {
         meta.set("Modl", "display_name", mod.name);
     }
 
+    // ModPub is metadata-only - downloads route through modl://. Persist
+    // the mod id, the canonical mod.pub page URL (carries game-slug + the
+    // slug-suffix, both unrecoverable from the bare id), and the display
+    // name. source_type stays "modpub" (single-source rule fqf5: modpub
+    // is its own source, never folded into nexus).
+    if (mod.download_source_type == "modpub") {
+      if (!mod.download_source_id.empty())
+        meta.set("ModPub", "mod_id", mod.download_source_id);
+      if (!mod.download_page_url.empty())
+        meta.set("ModPub", "page_url", mod.download_page_url);
+      if (!mod.name.empty())
+        meta.set("ModPub", "display_name", mod.name);
+    }
+
     if (!meta.save(meta_dir, folder_name)) {
       Logger::instance().warn("InstallStage: failed to write meta.ini for " +
                               folder_name);

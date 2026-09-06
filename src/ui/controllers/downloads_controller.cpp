@@ -33,6 +33,7 @@
 #include "engine/source/loverslab_auth.h"
 #include "engine/source/loverslab_provider.h"
 #include "engine/source/modl/provider.h"
+#include "engine/source/modpub/provider.h"
 #include "engine/source/nexus_provider.h"
 #include "engine/source/registry.h"
 #include "engine/source/nxm/managed_games.h"
@@ -200,6 +201,14 @@ void DownloadsController::setup_pipeline() {
       std::make_unique<engine::LoversLabProvider>());
   engine::SourceRegistry::instance().register_provider(
       std::make_unique<engine::Source::Modl::Provider>());
+  // ModPub is metadata-only (mod.pub has no public download API; the
+  // companion modl:// protocol is the actual download path). The
+  // provider is registered so the SourceTab / AddSourceDialog can
+  // attribute a mod to "modpub" and the metadata panel can scrape the
+  // page (single-source rule fqf5: modpub is its own source, never
+  // folded into nexus).
+  engine::SourceRegistry::instance().register_provider(
+      std::make_unique<engine::Source::ModPub::Provider>());
 
   std::string ws_db = engine::safe_home_dir().string() +
                       "/.local/share/GameModManager/workshop_cache.db";
