@@ -1,7 +1,5 @@
 #pragma once
 
-#include "engine/source/modpub/provider.h"
-
 #include <QColor>
 #include <QDir>
 #include <QString>
@@ -14,11 +12,14 @@ namespace engine {
 class ModMeta;
 namespace Source::Nexus { struct ModInfoResult; }
 namespace Source::LoversLab { struct ModInfoResult; }
+namespace Source::ModPub { struct ModInfoResult; }
 using ModInfoResult = Source::Nexus::ModInfoResult;
 using LoversLabModInfoResult = Source::LoversLab::ModInfoResult;
 // ModPubModInfoResult is defined in engine/source/modpub/provider.h
 // (kept there so the engine fetch worker can use it without a UI
-// include dependency).
+// include dependency). Consumers that need the full definition (the
+// panel, the fetch worker) include the provider header directly.
+using ModPubModInfoResult = Source::ModPub::ModInfoResult;
 }
 
 namespace ui {
