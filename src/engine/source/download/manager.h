@@ -65,5 +65,11 @@ std::string percent_decode(const std::string& in);
 size_t capture_content_disposition(void* ptr, size_t size, size_t nmemb,
                                    void* userdata);
 
+// Last path segment of a URL, with query/fragment stripped and the result
+// percent-decoded. Used by the loverslab and modl providers as a fallback
+// when no Content-Disposition probe is available. Returns empty if the URL
+// has no path.
+std::string url_path_basename(const std::string& url);
+
 } // namespace DownloadManager
 } // namespace engine::Source

@@ -387,6 +387,13 @@ std::string ModMeta::source_page_url() const {
         auto url = get("LoversLab", "page_url");
         if (!url.empty()) return url;
     }
+    // modl:// persists the original modl:// URL (the page that emitted it)
+    // as page_url - the decoded direct download URL goes in file_url. A
+    // reinstall can re-derive the modl link from page_url.
+    if (has_section("Modl")) {
+        auto url = get("Modl", "page_url");
+        if (!url.empty()) return url;
+    }
     return {};
 }
 

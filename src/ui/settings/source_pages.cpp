@@ -490,9 +490,12 @@ void NexusPanel::associate_with_nxm() {
     const auto app_path = std::filesystem::path(
         QCoreApplication::applicationFilePath().toStdString());
     if (engine::LinuxPlatform::register_nxm_handler(app_path)) {
-        if (engine::LinuxPlatform::register_gmm_handler(app_path))
+        if (engine::LinuxPlatform::register_gmm_handler(app_path)) {
+            // modl:// rides along with the nxm/gmm registration so a single
+            // user opt-in covers every protocol GameModManager owns.
+            (void)engine::LinuxPlatform::register_modl_handler(app_path);
             Settings::instance().set_nxm_handler_check("dont_ask");
-        else
+        } else
             engine::Logger::instance().error(
                 "Failed to register GameModManager as an x-scheme-handler for nxm://");
         add_log(tr("Associated GameModManager with \"Download with manager\" links."));

@@ -38,7 +38,8 @@ NxmIpcServer::NxmIpcServer(QObject* parent)
             auto data = sock->readAll();
             auto url = QString::fromUtf8(data);
             if (!url.isEmpty()) {
-                Logger::instance().debug("IPC: received nxm URL: " + url.toStdString());
+                Logger::instance().debug("IPC: received URL: " + url.toStdString());
+                emit urlReceived(url);
                 emit nxmUrlReceived(url);
             }
             sock->disconnectFromServer();
@@ -95,7 +96,7 @@ bool NxmIpcServer::isListening() const {
 
 // -- Client --
 
-bool send_nxm_to_running_instance(const QString& url) {
+bool send_url_to_running_instance(const QString& url) {
     auto path = QString::fromStdString(socket_path());
 
     QLocalSocket socket;
@@ -109,6 +110,10 @@ bool send_nxm_to_running_instance(const QString& url) {
     socket.waitForBytesWritten(1000);
     socket.disconnectFromServer();
     return true;
+}
+
+bool send_nxm_to_running_instance(const QString& url) {
+    return send_url_to_running_instance(url);
 }
 
 }  // namespace engine
