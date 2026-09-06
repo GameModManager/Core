@@ -60,6 +60,10 @@ signals:
     // Delete the named save files (and their .skse co-saves) - MainWindow
     // routes through engine::remove_path (trash), then re-scans.
     void delete_requested(const QStringList& filepaths);
+    // User picked "Information..." in the right-click menu on a single row.
+    // The controller (which owns the live plugin-db snapshot) opens the
+    // dialog; SavesTab just hands off the row index.
+    void information_requested(int row);
 
 protected:
     // Drop the hover info panel when the pointer leaves or the window blurs.
@@ -72,6 +76,7 @@ private:
     void show_save_info(int row);
     void hide_save_info();
     void on_delete_key();
+    void on_information_action();
     void on_context_menu(const QPoint& pos);
     // Missing-column tooltip: plugin → provider summary (MO2 tooltip spirit).
     static QString missing_tooltip(const SavesScanResultEntry& entry);

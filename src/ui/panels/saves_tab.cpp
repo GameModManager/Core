@@ -328,6 +328,14 @@ void SavesTab::on_context_menu(const QPoint& pos) {
     if (selected.isEmpty()) return;
 
     QMenu menu(this);
+    // Information... only makes sense for a single row: it opens a dialog
+    // showing that save's plugins/basic info. For multi-select it's hidden,
+    // matching MO2's "Open in Explorer" / detail windows that always target
+    // a single save.
+    auto* info_action = menu.addAction(tr("Information..."), this,
+                                       &SavesTab::on_information_action);
+    info_action->setEnabled(selected.size() == 1);
+    menu.addSeparator();
     menu.addAction(tr("Delete %n save(s)", "", selected.size()),
                    this, &SavesTab::on_delete_key);
     menu.addAction(tr("Open in file manager"), this, [this] {
@@ -339,6 +347,12 @@ void SavesTab::on_context_menu(const QPoint& pos) {
             QString::fromStdString(save->file_path.parent_path().string())));
     });
     menu.exec(table_->viewport()->mapToGlobal(pos));
+}
+
+void SavesTab::on_information_action() {
+    const auto sel = table_->selectionModel()->selectedRows();
+    if (sel.size() != 1) return;
+    emit information_requested(sel.first().row());
 }
 
 }  // namespace ui
