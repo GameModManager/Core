@@ -254,6 +254,18 @@ struct ActiveRequest {
     std::chrono::system_clock::time_point started{};
 };
 
+// Cumulative bytes GMM itself put on the wire and pulled off it. Reported by
+// the Manager after each curl_easy_perform from CURLINFO_SIZE_DOWNLOAD_T /
+// CURLINFO_SIZE_UPLOAD_T. The Debug Network IO chart polls this to render
+// GMM-only traffic (the previous /proc/net/dev source was host-global and
+// moved with anything on the box). Excludes QNAM image bytes used by
+// DescriptionBrowser (see header L17-19) and any subprocess I/O (e.g.
+// gmm_lootcli) - both intentionally out of scope for this counter.
+struct NetworkIoCounters {
+    std::uint64_t rx_bytes = 0;
+    std::uint64_t tx_bytes = 0;
+};
+
 // -----------------------------------------------------------------------------
 // Interface - the network gateway contract. Every consumer goes through this,
 // not libcurl directly. Tests use FakeNetworkManager to avoid the wire.
@@ -306,6 +318,11 @@ public:
     // shutdown cycles - production code that intends to discard the
     // Manager can simply destroy it instead.
     virtual void reset_cancel() = 0;
+
+    // Cumulative GMM wire bytes since process start. Polled by the Debug
+    // window's Network IO chart. Default returns zero so out-of-tree
+    // Interface implementations stay source-compatible.
+    virtual NetworkIoCounters io_counters() const { return {}; }
 };
 
 // -----------------------------------------------------------------------------
@@ -333,6 +350,7 @@ public:
     NetworkOptions options() const override;
     void cancel_all() override;
     void reset_cancel() override;
+    NetworkIoCounters io_counters() const override;
 
     // For unit tests: number of ring slots filled. Equivalent to
     // log_snapshot().size() but cheaper.
@@ -385,6 +403,14 @@ private:
     // now paired with reset_cancel() and the doc comment makes the
     // session-scope kill-switch nature explicit.
     std::atomic<bool> cancelled_{false};
+
+    // Cumulative wire bytes GMM itself produced. Updated after each
+    // curl_easy_perform from CURLINFO_SIZE_DOWNLOAD_T / CURLINFO_SIZE_UPLOAD_T
+    // (see request() / download() implementations). Relaxed ordering is
+    // fine - the Debug panel only needs an eventually-consistent total
+    // and the chart deltas it computes hide any single-tick skew.
+    std::atomic<std::uint64_t> total_rx_bytes_{0};
+    std::atomic<std::uint64_t> total_tx_bytes_{0};
 };
 
 // -----------------------------------------------------------------------------
@@ -412,9 +438,15 @@ public:
     NetworkOptions options() const override { return opts_; }
     void cancel_all() override {}
     void reset_cancel() override {}
+    NetworkIoCounters io_counters() const override { return {total_rx_bytes_.load(), total_tx_bytes_.load()}; }
 
     // Configure the next response that request() will return. Popped FIFO.
-    void enqueue_response(Response r) { responses_.push_back(std::move(r)); }
+    void enqueue_response(Response r) {
+        // Mirror the response body's wire-bytes for tests that need
+        // io_counters() to be non-zero without going through libcurl.
+        total_rx_bytes_.fetch_add(r.body.size(), std::memory_order_relaxed);
+        responses_.push_back(std::move(r));
+    }
 
     // Record of every request handed to request()/download() since the
     // fake was constructed (or since clear_calls()).
@@ -432,6 +464,11 @@ private:
     std::vector<DownloadRequest> seen_downloads_;
     NetworkOptions opts_;
     bool offline_ = false;
+    // Same wire-byte contract as Manager: incremented by enqueue_response
+    // so tests can verify io_counters() without going through libcurl.
+    // Default-constructs to zero on every fresh fake.
+    std::atomic<std::uint64_t> total_rx_bytes_{0};
+    std::atomic<std::uint64_t> total_tx_bytes_{0};
 };
 
 // -----------------------------------------------------------------------------

@@ -799,8 +799,6 @@ CURL* Manager::prepare_download(DownloadRequest& req,
 
     apply_options(curl);
 
-    out_res.bytes_downloaded = 0;
-    out_res.bytes_total = 0;
     (void)out_err;
     return curl;
 }
@@ -883,6 +881,20 @@ Response Manager::request(const Request& req) {
         double tt = 0.0;
         curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME, &tt);
         resp.total_time_ms = tt * 1000.0;
+        // Wire-byte counters: sum across every retry so the Debug chart
+        // reflects the actual bytes GMM put on/off the wire (including
+        // failed attempts), not just the last successful one. These come
+        // from libcurl itself and include headers + retransmits - closer
+        // to "what the network actually saw" than body/header sizes.
+        curl_off_t dl_bytes = 0, ul_bytes = 0;
+        curl_easy_getinfo(curl, CURLINFO_SIZE_DOWNLOAD_T, &dl_bytes);
+        curl_easy_getinfo(curl, CURLINFO_SIZE_UPLOAD_T, &ul_bytes);
+        if (dl_bytes > 0)
+            total_rx_bytes_.fetch_add(static_cast<std::uint64_t>(dl_bytes),
+                                      std::memory_order_relaxed);
+        if (ul_bytes > 0)
+            total_tx_bytes_.fetch_add(static_cast<std::uint64_t>(ul_bytes),
+                                      std::memory_order_relaxed);
 
         // Success: transport OK and the server didn't 5xx us.
         if (res == CURLE_OK && resp.http_code < 500) {
@@ -913,6 +925,13 @@ Response Manager::request(const Request& req) {
     }
 
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &resp.http_code);
+    // Per-request bytes for the Network log UI. Captured BEFORE
+    // curl_easy_cleanup (the handle is needed for getinfo) and reflects
+    // the last attempt; the cumulative Manager counters above already
+    // cover all attempts.
+    curl_off_t dl_last = 0, cl_last = 0;
+    curl_easy_getinfo(curl, CURLINFO_SIZE_DOWNLOAD_T, &dl_last);
+    curl_easy_getinfo(curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &cl_last);
     {
         PrivateData* priv = nullptr;
         curl_easy_getinfo(curl, CURLINFO_PRIVATE, &priv);
@@ -965,6 +984,8 @@ Response Manager::request(const Request& req) {
     entry.http_code = resp.http_code;
     entry.curl_error = resp.error;
     entry.total_time_ms = resp.total_time_ms;
+    entry.bytes_downloaded = dl_last;
+    entry.bytes_total = cl_last;
     entry.ok = succeeded && resp.http_code < 400;
     // Capture fields needed by the post-move debug log before moving entry.
     const std::string method_for_log = entry.method;
@@ -1023,6 +1044,22 @@ DownloadResult Manager::download(DownloadRequest& req) {
     char* eff = nullptr;
     curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &eff);
     if (eff) res.effective_url = eff;
+    // Wire-byte counters: feeds the Debug Network IO chart and the per-
+    // request LogEntry below. CURLINFO_SIZE_*_T includes headers +
+    // retransmits and matches what an outside observer would count on
+    // the wire. Pulled before curl_easy_cleanup.
+    curl_off_t dl_bytes = 0, ul_bytes = 0, cl_bytes = 0;
+    curl_easy_getinfo(curl, CURLINFO_SIZE_DOWNLOAD_T, &dl_bytes);
+    curl_easy_getinfo(curl, CURLINFO_SIZE_UPLOAD_T, &ul_bytes);
+    curl_easy_getinfo(curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &cl_bytes);
+    if (dl_bytes > 0)
+        total_rx_bytes_.fetch_add(static_cast<std::uint64_t>(dl_bytes),
+                                  std::memory_order_relaxed);
+    if (ul_bytes > 0)
+        total_tx_bytes_.fetch_add(static_cast<std::uint64_t>(ul_bytes),
+                                  std::memory_order_relaxed);
+    res.bytes_downloaded = dl_bytes;
+    res.bytes_total = cl_bytes;
 
     // Pull back the request-header slist from PrivateData and free the
     // wrapper. The header-capture strings live directly in res (managed
@@ -1078,6 +1115,8 @@ DownloadResult Manager::download(DownloadRequest& req) {
     entry.http_code = res.http_code;
     entry.curl_error = res.error;
     entry.total_time_ms = tt * 1000.0;
+    entry.bytes_downloaded = res.bytes_downloaded;
+    entry.bytes_total = res.bytes_total;
     entry.ok = res.ok;
     entry.aborted = aborted;
     record_entry(std::move(entry));
@@ -1154,6 +1193,14 @@ void Manager::reset_cancel() {
     // immediately after, but tests reuse a single Manager across cases
     // and would otherwise see every request blocked.
     cancelled_ = false;
+}
+
+NetworkIoCounters Manager::io_counters() const {
+    // Relaxed atomic loads: the Debug panel's chart only needs an
+    // eventually-consistent total and computes per-second deltas on top,
+    // so any single-tick skew hides itself in the next sample.
+    return {total_rx_bytes_.load(std::memory_order_relaxed),
+            total_tx_bytes_.load(std::memory_order_relaxed)};
 }
 
 LogEntry Manager::record_entry(const LogEntry& entry) {
