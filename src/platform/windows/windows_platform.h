@@ -48,6 +48,14 @@ public:
     // Windows-specific: unregister the nxm:// protocol handler.
     [[nodiscard]] static bool unregister_nxm_handler();
 
+    // Windows-specific: register a modl:// protocol handler
+    // (mod.pub / MO2 modlhandler).
+    [[nodiscard]] static bool register_modl_handler(
+        const std::filesystem::path& exe_path);
+
+    // Windows-specific: unregister the modl:// protocol handler.
+    [[nodiscard]] static bool unregister_modl_handler();
+
 private:
     std::filesystem::path appdata_dir() const;
     std::filesystem::path localappdata_dir() const;

@@ -34,6 +34,10 @@ CommandLine::CommandLine(int /*argc*/, char ** /*argv*/) {
   QCommandLineOption gmmOpt("handle-gmm", "Handle a gmm:// download link",
                             "url");
   parser_.addOption(gmmOpt);
+
+  QCommandLineOption modlOpt("handle-modl", "Handle a modl:// download link",
+                             "url");
+  parser_.addOption(modlOpt);
 }
 
 bool CommandLine::parse() {
@@ -43,6 +47,7 @@ bool CommandLine::parse() {
   args_.headless = parser_.isSet("launch");
   args_.handle_nxm = parser_.isSet("handle-nxm");
   args_.handle_gmm = parser_.isSet("handle-gmm");
+  args_.handle_modl = parser_.isSet("handle-modl");
 
   if (parser_.isSet("instance"))
     args_.instance_name = parser_.value("instance");
@@ -55,6 +60,9 @@ bool CommandLine::parse() {
 
   if (parser_.isSet("handle-gmm"))
     args_.gmm_url = parser_.value("handle-gmm");
+
+  if (parser_.isSet("handle-modl"))
+    args_.modl_url = parser_.value("handle-modl");
 
   if (args_.show_help) {
     // ANSI color codes
@@ -85,6 +93,10 @@ bool CommandLine::parse() {
             "gmm:// download link\n",
             O, D, B, D);
     fprintf(stdout,
+            "  gamemodmanager %s--handle-modl%s %s<url>%s     # Handle a "
+            "modl:// download link\n",
+            O, D, B, D);
+    fprintf(stdout,
             "  gamemodmanager %s--launch%s %s--instance%s %s<path>%s "
             "%s--exe%s %s<path>%s\n",
             O, D, O, D, B, D, O, D, B, D);
@@ -112,6 +124,10 @@ bool CommandLine::parse() {
             O, D, B, D);
     fprintf(stdout,
             "  %s--handle-gmm%s %s<url>%s  Handle a gmm:// download "
+            "link\n",
+            O, D, B, D);
+    fprintf(stdout,
+            "  %s--handle-modl%s %s<url>%s  Handle a modl:// download "
             "link\n",
             O, D, B, D);
 

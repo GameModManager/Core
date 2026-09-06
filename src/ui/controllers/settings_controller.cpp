@@ -1014,6 +1014,7 @@ void SettingsController::ensure_nxm_handler_default() {
   if (msg.clickedButton() == yes) {
     (void)engine::LinuxPlatform::register_nxm_handler(app_path);
     (void)engine::LinuxPlatform::register_gmm_handler(app_path);
+    (void)engine::LinuxPlatform::register_modl_handler(app_path);
     engine::Logger::instance().info(
         "nxm:// handler registered: GameModManager");
   } else if (msg.clickedButton() == dont_show) {

@@ -52,6 +52,11 @@ public:
     [[nodiscard]] static bool unregister_gmm_handler();
     [[nodiscard]] static bool is_gmm_handler_registered();
 
+    // modl:// protocol handler registration (mod.pub / MO2 modlhandler).
+    [[nodiscard]] static bool register_modl_handler(const std::filesystem::path& exe_path);
+    [[nodiscard]] static bool unregister_modl_handler();
+    [[nodiscard]] static bool is_modl_handler_registered();
+
 private:
     static std::filesystem::path resolve_env_dir(
         const char* env_var, const std::filesystem::path& fallback);

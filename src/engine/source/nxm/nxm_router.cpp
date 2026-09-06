@@ -1,7 +1,11 @@
 #include "engine/source/nxm/nxm_router.h"
 
+#include "engine/source/download/manager.h"
+
 #include <algorithm>
 #include <cctype>
+#include <cstddef>
+#include <string>
 #include <vector>
 
 namespace engine::Source {
@@ -170,6 +174,100 @@ std::string Router::match_game(
         if (domain == nexus_domain) return game_id;
     }
     return {};
+}
+
+namespace {
+
+// MO2 GameShortName alias map. Mirrors modlhandler's HandlerStorage::knownGames
+// (case-insensitive on input, normalized to the canonical game_id the GMM
+// plugin registers). Keep the keys lowercase - normalize_modl_game_id lower-
+// cases input first.
+const std::unordered_map<std::string, std::string>& modl_aliases() {
+    static const std::unordered_map<std::string, std::string> kMap = {
+        {"morrowind", "morrowind"},
+        {"oblivion", "oblivion"},
+        {"fallout3", "fallout3"},
+        {"fallout4", "fallout4"},
+        {"falloutnv", "falloutnv"},
+        {"newvegas", "falloutnv"},
+        {"skyrim", "skyrim"},
+        {"skyrimse", "skyrimse"},
+        {"skyrimspecialedition", "skyrimse"},
+        {"enderal", "enderal"},
+        {"enderalse", "enderalse"},
+        {"enderalspecialedition", "enderalse"},
+        {"starfield", "starfield"},
+        {"other", "other"},
+    };
+    return kMap;
+}
+
+std::string to_lower_ascii(std::string s) {
+    for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+}
+
+} // namespace
+
+std::string Router::normalize_modl_game_id(const std::string& host) {
+    const auto& m = modl_aliases();
+    auto it = m.find(to_lower_ascii(host));
+    if (it != m.end()) return it->second;
+    return host;  // passthrough - caller decides if it matches a plugin
+}
+
+ModlLink Router::parse_modl(const std::string& url) {
+    ModlLink link;
+    link.full_url = url;
+
+    // modl://<host>/?url=<percent-encoded https://...>
+    // Tolerate modl:/// (browser/portal layers) the same way parse() does.
+    static const std::string prefix = "modl://";
+    if (url.size() <= prefix.size()) return link;
+    if (url.compare(0, prefix.size(), prefix) != 0) return link;
+
+    auto rest = url.substr(prefix.size());
+    while (rest.size() > 1 && rest[0] == '/') rest.erase(0, 1);
+
+    // Host = up to first '/', '?', or '#'.
+    const auto host_end = rest.find_first_of("/?#");
+    const std::string host =
+        (host_end == std::string::npos) ? rest : rest.substr(0, host_end);
+    if (host.empty()) return link;
+    link.game_id = normalize_modl_game_id(host);
+
+    // Find the `url=` query parameter. The query string may begin with '?'
+    // (canonical) or '&' (modlhandler tolerates it - some sites serialize
+    // modl links without the leading '?').
+    const auto qpos = rest.find_first_of("?&");
+    if (qpos == std::string::npos) return link;
+    const std::string query = rest.substr(qpos + 1);
+
+    std::string raw_value;
+    std::size_t p = 0;
+    while (p < query.size()) {
+        const auto eq = query.find('=', p);
+        if (eq == std::string::npos) break;
+        const auto amp = query.find('&', eq + 1);
+        const auto val_end = (amp == std::string::npos) ? query.size() : amp;
+        const std::string key = query.substr(p, eq - p);
+        if (key == "url") {
+            raw_value = query.substr(eq + 1, val_end - eq - 1);
+            break;
+        }
+        if (amp == std::string::npos) break;
+        p = amp + 1;
+    }
+    if (raw_value.empty()) return link;
+
+    std::string decoded = DownloadManager::percent_decode(raw_value);
+    // Cap decoded length to keep a hostile link from blowing up a log line or
+    // the pipeline worker; real mod.pub links are sub-kilobyte.
+    constexpr std::size_t kMaxDecoded = 4096;
+    if (decoded.empty() || decoded.size() > kMaxDecoded) return link;
+    if (decoded.compare(0, 8, "https://") != 0) return link;  // reject non-https
+    link.direct_url = std::move(decoded);
+    return link;
 }
 
 } // namespace engine::Source
