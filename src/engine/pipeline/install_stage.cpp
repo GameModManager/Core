@@ -4,6 +4,7 @@
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
+#include "engine/source/modpub/provider.h"
 
 #include <algorithm>
 #include <fstream>
@@ -323,14 +324,21 @@ bool InstallationManager::execute(Mod &mod, PipelineContext &ctx) {
 
     // ModPub is metadata-only - downloads route through modl://. Persist
     // the mod id, the canonical mod.pub page URL (carries game-slug + the
-    // slug-suffix, both unrecoverable from the bare id), and the display
-    // name. source_type stays "modpub" (single-source rule fqf5: modpub
-    // is its own source, never folded into nexus).
+    // slug-suffix, both unrecoverable from the bare id), the game-slug
+    // itself (so the panel's Visit fallback can build a correct URL
+    // before the first Refresh), and the display name. source_type stays
+    // "modpub" (single-source rule fqf5: modpub is its own source, never
+    // folded into nexus).
     if (mod.download_source_type == "modpub") {
       if (!mod.download_source_id.empty())
         meta.set("ModPub", "mod_id", mod.download_source_id);
       if (!mod.download_page_url.empty())
         meta.set("ModPub", "page_url", mod.download_page_url);
+      const std::string slug =
+          engine::Source::ModPub::Provider::extract_game_slug(
+              mod.download_page_url);
+      if (!slug.empty())
+        meta.set("ModPub", "game_slug", slug);
       if (!mod.name.empty())
         meta.set("ModPub", "display_name", mod.name);
     }

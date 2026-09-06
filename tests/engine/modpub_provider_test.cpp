@@ -157,6 +157,30 @@ TEST_CASE("modpub provider parse_mod_info", "[engine]") {
   require(!garbage.available, "garbage body: available=false");
 }
 
+TEST_CASE("modpub provider host matching", "[engine]") {
+  using engine::Source::ModPub::Provider;
+
+  // is_modpub_url gate: a URL that looks mod.pub-shaped but the
+  // host has an unexpected suffix is rejected (preventing
+  // "https://mod.pub.evil.com" from being treated as mod.pub).
+  require(!Provider::is_modpub_url("https://mod.pub.evil.com/skyrim/22"),
+          "evil suffix host: not recognized as mod.pub");
+  // Subdomain trick: "evil.mod.pub" is also not the canonical host.
+  // The current is_modpub_url requires the exact "://mod.pub/" or
+  // bare "mod.pub/" form; "evil.mod.pub/" does not match.
+  require(!Provider::is_modpub_url("https://evil.mod.pub/skyrim/22"),
+          "subdomain attack: not recognized as mod.pub");
+  // A URL with no second path segment ("files" rather than a mod
+  // page) is not a mod page either; is_modpub_url still accepts it
+  // for forward-compat (the URL parser later rejects via no-second-
+  // segment in extract_mod_id). This documents the contract.
+  require(Provider::is_modpub_url("https://mod.pub/files/foo"),
+          "is_modpub_url accepts non-mod paths (parser enforces the shape)");
+  // extract_mod_id rejects it (no numeric second segment).
+  require(Provider::extract_mod_id("https://mod.pub/files/foo").empty(),
+          "non-mod path: extract_mod_id empty");
+}
+
 TEST_CASE("modpub provider URL parsing", "[engine]") {
   using engine::Source::ModPub::Provider;
 

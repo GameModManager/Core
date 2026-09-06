@@ -56,6 +56,10 @@ std::string read_meta(const std::string &html, const std::string &attr) {
   // and the same two with name= instead of property=. We allow any
   // whitespace between attributes and accept both orderings via two
   // alternatives joined with `|`. The capture group is the content= value.
+  // The regex is reconstructed on each call (mod.pub emits 4-5 og:*
+  // tags per page; LoversLab follows the same pattern). A static
+  // std::regex would need a placeholder+replace dance that std::regex
+  // does not support natively.
   const std::string key = "(?:property|name)";
   const std::regex kMeta("<meta\\s+(?:"
                              // property/name first, content second
@@ -100,15 +104,14 @@ std::string j_str(const nlohmann::json &j, const char *key) {
   return {};
 }
 
-// Build the canonical mod page URL from a (game_slug, mod_id) pair.
-// Always the bare "https://mod.pub/<slug>/<id>/" form (no slug suffix);
-// the user-pasted URL can have a suffix and we preserve it via
-// mod_page_url(), but the bare form is the form we synthesize when the
-// page didn't advertise one.
+// Build the canonical mod page URL from a (game_slug, mod_id) pair,
+// always the bare "https://mod.pub/<slug>/<id>/" form. mod.pub's URL
+// shape is "<game>/<id>-<slug-suffix>"; the suffix is reconstructible
+// only by re-fetching the mod list, so we synthesize the bare form
+// (no suffix) and let the parser's fallback overwrite page_url with
+// the JSON-LD `url` field on success.
 std::string build_page_url(const std::string &game_slug,
                            const std::string &mod_id) {
-  if (game_slug.empty())
-    return "https://mod.pub/mods/" + mod_id + "/";
   return "https://mod.pub/" + game_slug + "/" + mod_id + "/";
 }
 
@@ -395,6 +398,13 @@ ModInfoResult Provider::fetch_mod_info(const std::string &url_or_id) const {
       url = mod_page_url(url_or_id);
       if (url.empty())
         return result;
+      // Normalize bare-host pastes ("mod.pub/skyrim-se/22-foo") by
+      // prepending https:// - is_modpub_url accepts that form but
+      // libcurl would reject it as a relative URL otherwise.
+      if (url.compare(0, 7, "http://") != 0 &&
+          url.compare(0, 8, "https://") != 0) {
+        url = "https://" + url;
+      }
       game_slug = extract_game_slug(url_or_id);
       // mod_id is recoverable from the URL but we do not need it here
       // - the URL is already the page the provider will GET. Kept for
@@ -425,7 +435,17 @@ ModInfoResult Provider::fetch_mod_info(const std::string &url_or_id) const {
       url = build_page_url(game_slug, mod_id);
     }
   } else {
-    // Bare numeric id - the same shape LoversLab's provider accepts.
+    // Bare numeric id. mod.pub's URL shape is
+    //   https://mod.pub/<game-slug>/<id>-<slug-suffix>
+    // - the game-slug is part of the mod's identity and is NOT
+    // reconstructible from the id alone. A bare-id paste therefore
+    // cannot be resolved to a real mod page (the synthetic
+    // https://mod.pub/mods/<id>/ 404s). The provider requires either
+    // a full URL or a "game/id" pair; this branch exists only to keep
+    // the API symmetric with LoversLab's bare-id acceptance, where
+    // /files/file/<id>/ is canonical. We surface a debug log and bail
+    // out so the panel can show "page URL required" via the
+    // available=false gate.
     bool digits_only = !url_or_id.empty();
     for (const char c : url_or_id) {
       if (!std::isdigit(static_cast<unsigned char>(c))) {
@@ -438,8 +458,11 @@ ModInfoResult Provider::fetch_mod_info(const std::string &url_or_id) const {
           "ModPubProvider: fetch_mod_info id is not numeric");
       return result;
     }
-    mod_id = url_or_id;
-    url = build_page_url({}, mod_id);
+    Logger::instance().debug(
+        "ModPubProvider: fetch_mod_info got a bare numeric id - mod.pub "
+        "requires a full URL or 'game/id' pair (game-slug is part of the "
+        "mod identity and cannot be reconstructed from the id alone)");
+    return result;
   }
 
   // Guest scrape. Metadata is guest-visible; we deliberately do NOT send
