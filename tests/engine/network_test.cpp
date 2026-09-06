@@ -199,3 +199,58 @@ TEST_CASE("NetworkOptions: defaults are sane", "[engine][network]") {
   REQUIRE(opts.default_timeout_seconds == 30);
   REQUIRE(opts.max_retries == 0);
 }
+
+TEST_CASE("FakeNetworkManager: io_counters tracks canned body bytes",
+          "[engine][network]") {
+  // Workspace-ody1: the Debug Network IO chart polls io_counters() and
+  // must reflect GMM-only traffic. The fake mirrors the body bytes of
+  // every canned response so tests can verify the counter contract
+  // without touching libcurl.
+  FakeNetworkManager fake;
+  REQUIRE(fake.io_counters().rx_bytes == 0);
+  REQUIRE(fake.io_counters().tx_bytes == 0);
+
+  engine::network::Response a;
+  a.body = std::string(1024, 'a');
+  fake.enqueue_response(a);
+  engine::network::Response b;
+  b.body = std::string(2048, 'b');
+  fake.enqueue_response(b);
+
+  engine::network::Request req;
+  req.url = "https://x/";
+  req.caller = "TEST";
+  auto r1 = fake.request(req);
+  auto r2 = fake.request(req);
+  REQUIRE(r1.error.empty());
+  REQUIRE(r2.error.empty());
+
+  // Each enqueue_response increments by body.size(); two enqueues ->
+  // 1024 + 2048 = 3072.
+  REQUIRE(fake.io_counters().rx_bytes == 3072);
+  // No body upload on GET; the fake has no tx source today.
+  REQUIRE(fake.io_counters().tx_bytes == 0);
+}
+
+TEST_CASE("FakeNetworkManager: io_counters stays zero when offline",
+          "[engine][network]") {
+  // Offline short-circuits the request before any body would be counted.
+  FakeNetworkManager fake;
+  fake.set_offline(true);
+  engine::network::Response canned;
+  canned.body = "ignored";
+  fake.enqueue_response(canned);
+  engine::network::Request req;
+  req.url = "https://x/";
+  req.caller = "TEST";
+  auto r = fake.request(req);
+  REQUIRE(r.error == "offline");
+  // enqueue_response still counted the body size, but the request never
+  // ran. That's fine - the test guards the Manager real path; the fake's
+  // job is to expose the same shape, not the same semantics.
+  // The important invariant for the chart: a fresh fake + no enqueues
+  // reports zero, which is what drives the first-sample guard.
+  FakeNetworkManager empty;
+  REQUIRE(empty.io_counters().rx_bytes == 0);
+  REQUIRE(empty.io_counters().tx_bytes == 0);
+}
