@@ -200,9 +200,10 @@ void SavesTab::show_save_info(int row) {
     // ISaveGameInfoWidget parity). The plugin that registered the parser
     // for this game can supply extra metadata (e.g. quest stage, weather,
     // current cell). Only shown when the overlay is non-empty; otherwise
-    // the default metadata view (above) is the only info.
+    // the default metadata view (above) is the only info. The bare
+    // "Details" header was floating with no context - removed; the row
+    // keys already self-describe.
     if (!save->overlay.empty()) {
-        v->addWidget(new QLabel(tr("<i>Details</i>"), popup));
         for (const auto& row : save->overlay) {
             v->addWidget(new QLabel(
                 QString("    <b>%1</b> %2")
