@@ -176,8 +176,18 @@ TEST_CASE("save info dialog", "[ui]")
   check(joined.contains("Whiterun"), "basic info shows pc_location");
   check(joined.contains("Main Questline"),
         "v2.1+ overlay row rendered in the basic info block");
-  check(joined.contains("Manual0_20260802_1_1.ess"),
-        "basic info shows the file basename");
+  // The File row uses an ElidedLabel: the visible text shrinks to fit the
+  // cell while the full path lives in the tooltip (the cell is zero-width
+  // in offscreen mode, so we cannot inspect the elided text here - just
+  // verify the tooltip carries the full filename).
+  bool file_tooltip_ok = false;
+  for (QLabel* lbl : dlg.findChildren<QLabel*>()) {
+    if (lbl->toolTip().contains("Manual0_20260802_1_1.ess")) {
+      file_tooltip_ok = true;
+      break;
+    }
+  }
+  check(file_tooltip_ok, "basic info shows the file basename (via tooltip)");
 
   // --- Screenshot decoded ------------------------------------------------
   QLabel* thumb = thumb_of(dlg);
