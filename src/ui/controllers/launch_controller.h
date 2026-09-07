@@ -125,6 +125,10 @@ public:
   void hide_game_lock_overlay();
   void refresh_process_tree();
   void copy_process_tree();
+  // Workspace-k53a: when the game had the lock overlay, re-run the saves
+  // scan at game-finished so the freshly written save lands in the tab.
+  // No-op when the overlay never showed (silent launch, instant crash).
+  void trigger_saves_rescan_if_locked();
   // Proton tools
   void show_instance_options();
   void run_prefix_tool(const QStringList &args);

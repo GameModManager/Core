@@ -487,6 +487,11 @@ private:
   QCheckBox *process_tree_checkbox_ = nullptr;
   QTreeWidget *process_tree_ = nullptr;
   int64_t locked_pid_ = -1;
+  // Workspace-k53a: latched true when the overlay is shown and stays true
+  // through a normal game exit. Drives the game-finished saves rescan - a
+  // game that never showed the overlay (silent launch, instant crash) does
+  // not trigger a redundant scan.
+  bool had_lock_overlay_ = false;
   bool show_process_tree_ = false;
 
   // Install-progress popup state. Lazily created on the first install;

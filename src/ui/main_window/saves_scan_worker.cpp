@@ -60,12 +60,17 @@ void SavesScanWorker::run(SavesScanRequest request) {
         };
         auto saves = engine::scan_saves(
             request.saves_dir, request.extensions, parses);
+        // Build the provider index once for the whole scan. Without this, the
+        // per-save find_save_missing_assets call re-walks the entire mods dir
+        // for every save (Workspace-6kn7: 106 saves × 200 mods of redundant IO).
+        const auto provider_index = engine::build_save_provider_index(
+            request.mods_dir, request.overwrite_dir);
+        result.entries.reserve(saves.size());
         for (auto& save : saves) {
             SavesScanResultEntry entry;
             entry.save = std::move(save);
             entry.missing = engine::find_save_missing_assets(
-                entry.save, request.plugins, request.mods_dir,
-                request.overwrite_dir);
+                entry.save, request.plugins, provider_index);
             result.entries.push_back(std::move(entry));
         }
     }
