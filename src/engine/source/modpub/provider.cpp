@@ -4,10 +4,13 @@
 #include "engine/mod/model/mod.h"
 #include "engine/network/network_manager.h"
 #include "engine/pipeline/pipeline.h"
+#include "engine/source/download/curl_download.h"
+#include "engine/source/download/manager.h"
 #include "engine/source/http_util.h"
 
 #include <nlohmann/json.hpp>
 
+#include <chrono>
 #include <cctype>
 #include <regex>
 #include <string>
@@ -517,28 +520,70 @@ ModInfoResult Provider::fetch_mod_info(const std::string &url_or_id) const {
 
 bool Provider::fetch(const ::engine::Mod &mod, ::engine::PipelineContext &ctx,
                      const std::filesystem::path &dest_path) {
-  (void)ctx;
-  (void)dest_path;
-  // ModPub is metadata-only. The download path for a ModPub mod is the
-  // companion modl:// protocol: the user's browser hands the app a
-  // modl://... URL via the OS handler, and the modl Provider does the
-  // actual fetch. If the pipeline ever routes a "modpub"-sourced mod
-  // through here (it should not), we refuse so the FetchStage aborts
-  // cleanly rather than silently misbehaving.
-  if (mod.download_source_type == "modpub") {
+  // mod.pub has no public download API, but the companion modl:// protocol
+  // (or a future "open in app" link) hands us a pre-resolved direct https
+  // URL on the Mod. When the URL is set we curl it directly - this is the
+  // qnmf completion path: a mod.pub page that triggers a modl:// download
+  // stamps source_type="modpub" so the [ModPub] meta section and source
+  // panel are wired up, while the actual bytes still come from the URL in
+  // mod.download_url. Without a URL we refuse (the metadata-only path: no
+  // file to produce).
+  if (mod.download_source_type != "modpub") return false;
+  if (mod.download_url.empty()) {
     Logger::instance().error(
-        "ModPubProvider: fetch() called for a ModPub-sourced mod - "
-        "ModPub has no public download API; use modl:// for downloads");
+        "ModPubProvider: fetch() called for a ModPub-sourced mod with no "
+        "download URL - mod.pub has no public download API; trigger a "
+        "modl:// link from the mod page to install");
+    return false;
   }
-  return false;
+
+  DownloadManager::Progress dp;
+  dp.callback = ctx.on_progress;
+  dp.should_abort = ctx.should_abort;
+  dp.resume_base = ctx.download_resume_from;
+  dp.start = std::chrono::steady_clock::now();
+
+  DownloadManager::Options opts;
+  opts.user_agent = "GameModManager/0.1 (ModPub Provider)";
+  opts.long_lived = true;
+
+  long http_code = 0;
+  bool aborted = false;
+  if (!DownloadManager::curl_download(mod.download_url, dest_path, http_code,
+                                      opts, &dp, ctx.download_resume_from,
+                                      &aborted)) {
+    if (aborted) {
+      ctx.download_paused = true;
+      Logger::instance().debug(
+          "ModPubProvider: download aborted (pause), partial kept at " +
+          dest_path.string());
+    } else {
+      Logger::instance().error(
+          "ModPubProvider: download failed (HTTP " +
+          std::to_string(http_code) + ")");
+    }
+    return false;
+  }
+  Logger::instance().debug("ModPubProvider: download complete -> " +
+                           dest_path.string());
+  return true;
 }
 
 SourceDownloadInfo
 Provider::resolve_download_info(const ::engine::Mod &mod) const {
-  (void)mod;
-  // No archive to resolve (the metadata-only design). The Downloads tab
-  // synthesizes a placeholder from the page URL via the modl flow.
-  return {};
+  // Best-effort name when the modl flow populated download_url: use the
+  // URL's basename as a placeholder. FetchStage's on_download_meta overwrites
+  // it from the actual Content-Disposition header once the transfer starts.
+  SourceDownloadInfo info;
+  if (!mod.download_url.empty()) {
+    const std::string fname =
+        DownloadManager::url_path_basename(mod.download_url);
+    if (!fname.empty()) {
+      info.archive_name = fname;
+      info.display_name = std::filesystem::path(fname).stem().string();
+    }
+  }
+  return info;
 }
 
 std::string Provider::display_name() const { return "ModPub"; }

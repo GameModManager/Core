@@ -140,3 +140,87 @@ TEST_CASE("modl router parse", "[engine]") {
     REQUIRE(unknown.game_id == "notagame");
     REQUIRE(unknown.direct_url == "https://a.b/c");
 }
+
+TEST_CASE("Router::derive_source_from_direct_url - modl transport source attribution", "[engine]") {
+    using engine::Source::Router;
+    {
+        // Empty input -> empty result.
+        const auto d = Router::derive_source_from_direct_url("");
+        REQUIRE(d.source_type.empty());
+        REQUIRE(d.source_id.empty());
+        REQUIRE(d.page_url.empty());
+    }
+    {
+        // Canonical mod.pub direct URL -> modpub.
+        const auto d = Router::derive_source_from_direct_url(
+            "https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng.zip");
+        REQUIRE(d.source_type == "modpub");
+        REQUIRE(d.page_url == "https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng.zip");
+    }
+    {
+        // www.mod.pub -> modpub (www prefix stripped).
+        const auto d = Router::derive_source_from_direct_url(
+            "https://www.mod.pub/skyrim-se/22.zip");
+        REQUIRE(d.source_type == "modpub");
+    }
+    {
+        // Case-insensitive host match: HTTPS://MOD.PUB/...
+        const auto d = Router::derive_source_from_direct_url(
+            "HTTPS://MOD.PUB/skyrim-se/22.zip");
+        REQUIRE(d.source_type == "modpub");
+    }
+    {
+        // mod.pub with query string -> modpub.
+        const auto d = Router::derive_source_from_direct_url(
+            "https://mod.pub/skyrim-se/22.zip?token=abc");
+        REQUIRE(d.source_type == "modpub");
+    }
+    {
+        // mod.pub with an explicit port -> modpub (port stripped before
+        // host compare; hosts that include ':' would otherwise fail).
+        const auto d = Router::derive_source_from_direct_url(
+            "https://mod.pub:443/skyrim-se/22.zip");
+        REQUIRE(d.source_type == "modpub");
+        const auto d8443 = Router::derive_source_from_direct_url(
+            "https://mod.pub:8443/skyrim-se/22.zip");
+        REQUIRE(d8443.source_type == "modpub");
+    }
+    {
+        // mod.pub.evil.com MUST NOT match (subdomain-attack guard).
+        const auto d = Router::derive_source_from_direct_url(
+            "https://mod.pub.evil.com/x.zip");
+        REQUIRE(d.source_type.empty());
+    }
+    {
+        // evil.mod.pub MUST NOT match either.
+        const auto d = Router::derive_source_from_direct_url(
+            "https://evil.mod.pub/x.zip");
+        REQUIRE(d.source_type.empty());
+    }
+    {
+        // Generic host -> no source_type (manual fallback).
+        const auto d = Router::derive_source_from_direct_url(
+            "https://example.com/path/Mod.7z");
+        REQUIRE(d.source_type.empty());
+        REQUIRE(d.page_url == "https://example.com/path/Mod.7z");
+    }
+    {
+        // Generic host on a non-default port still maps to manual.
+        const auto d = Router::derive_source_from_direct_url(
+            "https://example.com:8443/path/Mod.7z");
+        REQUIRE(d.source_type.empty());
+    }
+    {
+        // CDN that mod.pub sometimes fronts (eddoursul mirror) is a
+        // known limitation: a mod.pub page that links to a non-mod.pub
+        // payload becomes manual. Documented as a ceiling.
+        const auto d = Router::derive_source_from_direct_url(
+            "https://cdn.example.org/files/22.zip");
+        REQUIRE(d.source_type.empty());
+    }
+    {
+        // No scheme -> empty (we only accept scheme://host).
+        const auto d = Router::derive_source_from_direct_url("mod.pub/x.zip");
+        REQUIRE(d.source_type.empty());
+    }
+}

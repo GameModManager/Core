@@ -308,19 +308,13 @@ bool InstallationManager::execute(Mod &mod, PipelineContext &ctx) {
         meta.set("LoversLab", "archive_filename", mod.archive_filename);
     }
 
-    // modl:// (mod.pub + anywhere) has no API either. Persist the direct
-    // download URL, the original modl:// link (page_url), and the host's
-    // game id so a reinstall can find the matching instance later.
-    if (mod.download_source_type == "modl") {
-      if (!mod.download_url.empty())
-        meta.set("Modl", "file_url", mod.download_url);
-      if (!mod.download_page_url.empty())
-        meta.set("Modl", "page_url", mod.download_page_url);
-      if (!mod.download_source_id.empty())
-        meta.set("Modl", "source_id", mod.download_source_id);
-      if (!mod.name.empty())
-        meta.set("Modl", "display_name", mod.name);
-    }
+    // modl:// is a transport protocol, not a source - the [Modl] section
+    // is no longer written. Source attribution for modl-derived downloads
+    // comes from the direct URL's host (see Router::derive_source_from_direct_url):
+    // a mod.pub direct URL -> [ModPub] below; an arbitrary https URL ->
+    // [GameModManager] source_type="direct" only, with no provider section.
+    // Legacy mods with a [Modl] section still read it via source_page_url()
+    // for backward compatibility; the section is never overwritten.
 
     // ModPub is metadata-only - downloads route through modl://. Persist
     // the mod id, the canonical mod.pub page URL (carries game-slug + the
