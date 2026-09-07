@@ -93,6 +93,12 @@ QString resolve_actual_source(const ModInfoData &data) {
         t == QLatin1String("steam") || t == QLatin1String("modpub")) {
       return t;
     }
+    // Legacy: "modl" was misregistered as a source (qvi6). Old mods may
+    // still carry it; fall through to the section checks below (which
+    // pick up [ModPub] if the modl link was actually a mod.pub page) or
+    // return empty (-> manual, no source panel). The [Modl] section
+    // remains readable via source_page_url() for the "open source page"
+    // action, so legacy mods do not lose their link.
     // No declared source_type, but a provider section may exist. Prefer
     // the section with the strongest signal (an actual id stored in it).
     if (meta.has_section("Nexusmods")) {
@@ -248,6 +254,11 @@ public:
       QString pt = QString::fromStdString(provider->source_type()).toLower();
       if (pt == QLatin1String("steamworkshop"))
         pt = QStringLiteral("steam");
+      // "direct" is the transport-only provider used by the modl:// flow;
+      // it is not a user-attributable source (a "Direct" tag carries no
+      // useful identity). Skip it in the Add Source combo.
+      if (pt == QLatin1String("direct"))
+        continue;
       e.canonical = pt;
       e.priority = priority_for(pt);
       entries.append(e);

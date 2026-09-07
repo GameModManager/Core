@@ -3,6 +3,9 @@
 #include "engine/pipeline/fetch_stage.h"
 #include "engine/pipeline/stage.h"
 #include "engine/mod/model/mod.h"
+#include "engine/source/download/manager.h"
+#include "engine/source/modpub/provider.h"
+#include "engine/source/router.h"
 #include "engine/source/source_provider.h"
 #include "engine/core/log/logger.h"
 #include "ui/settings/settings.h"
@@ -268,16 +271,34 @@ void PipelineWorker::download_modl(const std::string& id,
     mod.id = id;
     mod.name = "Mod file " + id;
     mod.state = engine::ModState::Downloaded;
-    mod.download_source_type = "modl";
-    // source_id is the basename of the direct URL when we can derive one -
-    // gives the on-disk archive a meaningful default name when the
-    // Content-Disposition probe is unavailable.
-    const auto slash = link.direct_url.find_last_of('/');
-    mod.download_source_id = (slash == std::string::npos)
-        ? link.direct_url
-        : link.direct_url.substr(slash + 1);
+    // Source attribution comes from the direct URL's host (modl is a
+    // transport, not a source). mod.pub -> "modpub" (fetched by the ModPub
+    // provider using the direct URL it has pre-resolved); anything else ->
+    // "direct" (the modl transport provider, which is the curl helper for
+    // arbitrary https URLs).
+    const auto derived =
+        engine::Source::Router::derive_source_from_direct_url(link.direct_url);
+    mod.download_source_type = derived.source_type.empty()
+                                  ? std::string("direct")
+                                  : derived.source_type;
+    // source_id:
+    //   * modpub -> the numeric mod id extracted from the canonical page URL
+    //     (install_stage writes it to [ModPub]mod_id and the panel uses it
+    //     for Visit/Refresh).
+    //   * direct (generic modl) -> the URL basename, ?query/#fragment
+    //     stripped and percent-decoded via the existing helper, so a
+    //     download_url like ".../file.zip?token=abc" yields "file.zip" and
+    //     the on-disk archive has a meaningful default name.
+    if (derived.source_type == "modpub") {
+        mod.download_source_id =
+            engine::Source::ModPub::Provider::extract_mod_id(derived.page_url);
+        mod.download_page_url = derived.page_url;  // canonical https page
+    } else {
+        mod.download_source_id =
+            engine::Source::DownloadManager::url_path_basename(link.direct_url);
+        mod.download_page_url = link.full_url;     // modl:// audit trail
+    }
     mod.download_url = link.direct_url;
-    mod.download_page_url = link.full_url;
 
     dispatch_fetch({id, std::move(mod), mods_dir, meta_dir});
 }

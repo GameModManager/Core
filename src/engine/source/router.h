@@ -57,6 +57,23 @@ public:
         const std::string& nexus_domain,
         const std::vector<std::pair<std::string, std::string>>& plugin_domains);
         // ^ (game_id, nexus_domain) pairs from loaded plugins
+
+    // Derive the source attribution for a modl:// link's direct https URL.
+    // modl:// is a TRANSPORT, not a source - the real source is wherever the
+    // direct URL was hosted. Maps host -> source_type:
+    //   mod.pub (with optional www. prefix) -> "modpub"
+    //   anything else                       -> "" (manual / no dedicated source)
+    // The returned source_id is empty for mod.pub (the mod id is not in the
+    // URL); page_url is the direct URL when known, empty otherwise. Exposed
+    // here next to parse_modl so both transport parsing and source attribution
+    // live in one testable header.
+    struct DerivedSource {
+        std::string source_type;   // "modpub" or "" (manual)
+        std::string source_id;     // currently empty for the modl flow
+        std::string page_url;      // the direct https URL (for [ModPub] page_url)
+    };
+    [[nodiscard]] static DerivedSource derive_source_from_direct_url(
+        const std::string& direct_url);
 };
 
 } // namespace engine::Source

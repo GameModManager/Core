@@ -56,10 +56,11 @@ struct ModInfoResult {
 //     modpub into nexus)
 //   * the panel's Refresh button (guest GET + JSON-LD scrape)
 //   * source_page_url / Visit routing
-// `fetch()` and `resolve_download_info()` are stubs: they refuse to run so
-// FetchStage aborts cleanly if anything ever does route a "modpub" mod
-// through the pipeline (the actual install path is "modl" - DownloadsTab
-// hands the file to the modl provider).
+// `fetch()` downloads the direct https URL carried in `mod.download_url`
+// (the modl:// transport hands GMM a pre-resolved URL). When
+// `download_url` is empty we refuse - the metadata-only path has no file
+// to produce and the caller should fall back to a manual download.
+// `resolve_download_info()` is still a stub (no API to query for a name).
 class Provider : public Interface {
 public:
     std::string source_type() const override { return "modpub"; }
