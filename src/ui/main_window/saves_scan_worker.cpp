@@ -14,8 +14,7 @@ namespace ui {
 SavesScanWorker::SavesScanWorker(QObject* parent) : QObject(parent) {}
 
 void SavesScanWorker::run(SavesScanRequest request) {
-    SavesScanResult result;
-    result.saves_dir = request.saves_dir;
+    int emitted = 0;
     if (!request.saves_dir.empty() &&
         std::filesystem::is_directory(request.saves_dir)) {
         /* Resolve the save parser from the save-parser registry (populated by
@@ -58,28 +57,43 @@ void SavesScanWorker::run(SavesScanRequest request) {
             }
             return stub;
         };
-        auto saves = engine::scan_saves(
-            request.saves_dir, request.extensions, parses);
+
         // Build the provider index once for the whole scan. Without this, the
         // per-save find_save_missing_assets call re-walks the entire mods dir
         // for every save (Workspace-6kn7: 106 saves × 200 mods of redundant IO).
         const auto provider_index = engine::build_save_provider_index(
             request.mods_dir, request.overwrite_dir);
-        result.entries.reserve(saves.size());
-        for (auto& save : saves) {
-            SavesScanResultEntry entry;
-            entry.save = std::move(save);
-            entry.missing = engine::find_save_missing_assets(
-                entry.save, request.plugins, provider_index);
-            result.entries.push_back(std::move(entry));
-        }
+
+        // Total count for the progress signal: how many paths the scanner
+        // will try. We enumerate first (single-threaded, fast) and use that
+        // for the upper bound; the streaming parse below may produce fewer
+        // entryReady signals (parse failures are silently dropped, like
+        // scan_saves does).
+        const auto paths = engine::enumerate_save_paths(
+            request.saves_dir, request.extensions);
+        const int total = static_cast<int>(paths.size());
+
+        // Per-save streaming (Workspace-0owv): emit entryReady from the
+        // worker thread as each save finishes parsing + missing-assets
+        // resolution. The UI slot is connected with Qt::QueuedConnection so
+        // the table insert runs on the main thread. `done` is 1-based.
+        int done = 0;
+        engine::scan_saves_streaming(
+            request.saves_dir, request.extensions, parses,
+            [&](engine::SaveGame save) {
+                SavesScanResultEntry entry;
+                entry.save = std::move(save);
+                entry.missing = engine::find_save_missing_assets(
+                    entry.save, request.plugins, provider_index);
+                emit entryReady(std::move(entry), ++done, total);
+                ++emitted;
+            });
     }
-    emit finished(std::move(result));
+    emit finished(emitted);
 }
 
 SavesScanThread::SavesScanThread(QObject* parent) : QObject(parent) {
     qRegisterMetaType<ui::SavesScanResultEntry>();
-    qRegisterMetaType<ui::SavesScanResult>();
     thread_ = new QThread(this);
     thread_->setObjectName(QStringLiteral("gmm-saves-scan"));
     worker_ = new SavesScanWorker(nullptr);
