@@ -322,6 +322,11 @@ Router::DerivedSource Router::derive_source_from_direct_url(
     // Strip an optional "www." prefix so a CMS-fronted mirror is treated the
     // same as the canonical host.
     if (host.rfind("www.", 0) == 0) host = host.substr(4);
+    // Strip an explicit port so a URL like https://mod.pub:443/x still
+    // matches the canonical host (the path/query bounds above do not
+    // include ':', so a port would otherwise become part of the host).
+    if (const auto colon = host.find(':'); colon != std::string::npos)
+        host.resize(colon);
 
     // mod.pub (with or without www, case-insensitive) is the only host the
     // modl flow currently knows how to attribute to a real source. Anything
