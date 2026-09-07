@@ -30,7 +30,9 @@ public:
 
     // Replace the save list contents (a SavesScanThread result, delivered via
     // its finished signal). Missing-column text and hover info derive from the
-    // per-save missing-assets data.
+    // per-save missing-assets data. Production code now uses per-entry
+    // streaming (on_entry_ready); this batch path is kept for tests that
+    // construct a SavesScanResult directly (tests/ui/saves_tab_test.cpp).
     void set_saves(SavesScanResult result);
 
     // The saves directory (used by MainWindow when it builds a scan request).
@@ -52,6 +54,10 @@ public:
     [[nodiscard]] const engine::SaveGame* save_at(int row) const;
     [[nodiscard]] const std::vector<engine::SaveMissingAsset>* missing_at(int row) const;
 
+    // Underlying scan worker (test-only: lets QSignalSpy observe
+    // entryReady / finished). Production callers don't need this.
+    [[nodiscard]] SavesScanThread* scan_thread() const { return scan_thread_; }
+
     // Columns (RightPanel sets the toggle header labels).
     static constexpr int kColumnName = 0;
     static constexpr int kColumnFile = 1;
@@ -71,7 +77,17 @@ protected:
     bool eventFilter(QObject* object, QEvent* event) override;
 
 private:
-    void on_scan_finished(SavesScanResult result);
+    // Streaming scan's final "done" signal: the worker emits entryReady per
+    // save plus one finished(int count) at the end. We use this to flip
+    // scanning_=false and drain any coalesced pending_request_.
+    void on_scan_complete(int count);
+    // Per-save streaming slot (Workspace-0owv). Connected to the worker's
+    // entryReady signal with Qt::QueuedConnection; runs on the main thread.
+    // `done` and `total` are the worker's progress counters (1-based and
+    // total-enumerated, respectively). Each call inserts one row via binary
+    // search on creation_time, so the table and saves_.entries stay sorted
+    // newest-first without a final re-sort barrier.
+    void on_entry_ready(SavesScanResultEntry entry, int done, int total);
     void on_item_entered(QTableWidgetItem* item);
     void on_selection_changed();
     void show_save_info(int row);

@@ -41,6 +41,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <string>
 #include <vector>
 #include <catch2/catch_test_macros.hpp>
@@ -657,4 +658,100 @@ TEST_CASE("saves tab coalesces overlapping scan requests", "[ui]") {
           "three rapid requests still settle at one final scan (3 rows)");
 
     fs::remove_all("/tmp/gmm_saves_tab_coalesce");
+}
+
+// Workspace-0owv: the worker streams saves via entryReady and SavesTab
+// inserts each one in sorted order (newest first). The test verifies the
+// STREAMING MECHANISM (QSignalSpy counts 3 entryReady emissions on the
+// worker, not 1 finished-with-batch) and the SORT ORDER (binary-insert
+// keeps the table sorted even when the worker delivers entries out of
+// parse order). We do NOT assert incremental rowCount growth: synthetic
+// SE saves parse in microseconds, so the worker drains its queue before
+// the main thread's next processEvents tick - a single 0->3 jump is the
+// correct user-visible behavior for tiny fixtures, even though the
+// underlying signal stream is one-per-save. Real Skyrim saves with
+// compressed data take ~100ms each and the streaming is observable.
+TEST_CASE("saves tab streams saves as they load", "[ui]") {
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    const fs::path root = "/tmp/gmm_saves_tab_stream";
+    const fs::path cfg = root / "config";
+    const fs::path saves = root / "saves";
+    const fs::path mods = root / "mods";
+    const fs::path ow = root / "ow";
+    fs::remove_all(root);
+    fs::create_directories(cfg);
+    fs::create_directories(saves);
+    fs::create_directories(mods);
+    fs::create_directories(ow);
+    qputenv("XDG_CONFIG_HOME", cfg.c_str());
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
+    QCoreApplication::setOrganizationName("GameModManager");
+    QCoreApplication::setApplicationName("GameModManager");
+
+    // 3 saves with distinct filetimes so creation_time orders them
+    // deterministically. Filenames are decoupled from filetimes: file
+    // "Stream_20260802_1" carries the LATEST filetime, "Stream_20260804_3"
+    // carries the EARLIEST. The worker's parallel parse may complete them
+    // in any order; the binary insert must still land them in
+    // creation_time desc order at rows 0/1/2.
+    write_save(saves, "Stream_20260802_1", "P1", 1, "L1", 1, 0x01DD228200000000ULL,
+               {"Skyrim.esm"});
+    write_save(saves, "Stream_20260803_2", "P1", 2, "L2", 2, 0x01DD228100000000ULL,
+               {"Skyrim.esm"});
+    write_save(saves, "Stream_20260804_3", "P1", 3, "L3", 3, 0x01DD228000000000ULL,
+               {"Skyrim.esm"});
+
+    ui::SavesTab tab;
+    // Spy on the worker's entryReady to prove the streaming signal fires
+    // once per save (not one batched finished with N entries).
+    QSignalSpy entry_spy(tab.scan_thread()->worker(), &ui::SavesScanWorker::entryReady);
+    QSignalSpy finished_spy(tab.scan_thread()->worker(), &ui::SavesScanWorker::finished);
+    REQUIRE(entry_spy.isValid());
+    REQUIRE(finished_spy.isValid());
+
+    ui::SavesScanRequest request;
+    request.saves_dir = saves;
+    request.extensions = {"ess"};
+    request.game_id = "skyrimse";
+    request.mods_dir = mods;
+    request.overwrite_dir = ow;
+    tab.request_scan(std::move(request));
+
+    // Wait for the final finished signal: the worker emits entryReady per
+    // save and a single finished(int) at the end.
+    QEventLoop loop;
+    QTimer timeout;
+    timeout.setSingleShot(true);
+    QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+    timeout.start(5000);
+    while (finished_spy.count() == 0) {
+        if (!timeout.isActive()) break;
+        QTimer::singleShot(5, &loop, &QEventLoop::quit);
+        loop.exec();
+    }
+    timeout.stop();
+
+    auto* table = tab.table();
+    check(table->rowCount() == 3, "scan finishes with all 3 rows");
+    // Streaming contract: 3 entryReady emissions, 1 finished. The old batch
+    // path had 0 entryReady + 1 finished(SavesScanResult) carrying all 3.
+    check(entry_spy.count() == 3,
+          "worker emitted entryReady 3 times (one per save, streaming)");
+    check(finished_spy.count() == 1, "worker emitted finished once at the end");
+    // Binary-insert keeps the table in creation_time desc order even when
+    // the worker delivers entries in parse-completion order (which may
+    // differ from creation_time because the worker parallelizes parses).
+    // Filenames above carry filetimes 0x82, 0x81, 0x80 (desc) so the
+    // expected sorted order is 02_1 (newest), 03_2, 04_3 (oldest).
+    check(table->item(0, 1)->text() == "Stream_20260802_1.ess",
+          "largest filetime lands at row 0 (binary insert sorts, not parse order)");
+    check(table->item(1, 1)->text() == "Stream_20260803_2.ess",
+          "middle filetime at row 1");
+    check(table->item(2, 1)->text() == "Stream_20260804_3.ess",
+          "smallest filetime at row 2");
+
+    fs::remove_all(root);
 }

@@ -66,8 +66,13 @@ SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
     // never in the background (a watched Proton-prefix Saves dir churns and
     // spammed 1-per-second re-scans).
     scan_thread_ = new SavesScanThread(this);
+    // Per-save streaming (Workspace-0owv): one queued insert per parsed save
+    // so the user sees rows fill in as they load. The final finished(int)
+    // signal flips scanning_=false and drains any coalesced pending request.
+    connect(scan_thread_->worker(), &SavesScanWorker::entryReady,
+            this, &SavesTab::on_entry_ready, Qt::QueuedConnection);
     connect(scan_thread_->worker(), &SavesScanWorker::finished,
-            this, &SavesTab::on_scan_finished, Qt::QueuedConnection);
+            this, &SavesTab::on_scan_complete, Qt::QueuedConnection);
 
     connect(table_, &QTableWidget::itemEntered,
             this, &SavesTab::on_item_entered);
@@ -89,6 +94,11 @@ void SavesTab::set_saves_dir(const std::filesystem::path& dir) {
 }
 
 void SavesTab::set_saves(SavesScanResult result) {
+    // Batch path (kept for tests/ui/saves_tab_test.cpp which build a result
+    // directly). Production scans now go through on_entry_ready + binary
+    // insert. We rely on saves_.entries already being sorted newest-first
+    // (the scanner's contract) so a single sequential insert is equivalent
+    // to the streaming path.
     scanning_ = false;
     saves_ = std::move(result);
     table_->setRowCount(0);
@@ -140,13 +150,64 @@ void SavesTab::request_scan(SavesScanRequest request) {
         pending_request_ = std::move(request);
         return;
     }
+    // Drop any stale rows so the streaming insert starts on a clean table.
+    // A subsequent request_scan while scanning_=true does NOT clear (it
+    // coalesces); clearing only on the new-scan branch keeps any in-flight
+    // stream intact until the worker emits its first entryReady.
+    saves_ = {};
+    saves_.saves_dir = request.saves_dir;
+    table_->setRowCount(0);
     scanning_ = true;
     scan_thread_->start(std::move(request));
 }
 
-void SavesTab::on_scan_finished(SavesScanResult result) {
-    set_saves(std::move(result));
+void SavesTab::on_entry_ready(SavesScanResultEntry entry, int done, int total) {
+    // Binary search by creation_time desc (matches the scanner's sort).
+    // saves_.entries and the table are kept in lockstep so save_at(row) and
+    // missing_at(row) stay correct as the table grows.
+    const auto t = entry.save.creation_time;
+    int lo = 0;
+    int hi = saves_.entries.size();
+    while (lo < hi) {
+        const int mid = (lo + hi) / 2;
+        if (saves_.entries[mid].save.creation_time > t) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    const int row = lo;
+    table_->insertRow(row);
+    saves_.entries.insert(saves_.entries.begin() + row, std::move(entry));
+    const auto& inserted = saves_.entries[row];
+    auto* name = new QTableWidgetItem(
+        QString::fromStdString(inserted.save.display_name()));
+    auto* file = new QTableWidgetItem(
+        QString::fromStdString(inserted.save.file_path.filename().string()));
+    file->setToolTip(QString::fromStdString(inserted.save.file_path.string()));
+    const int missing = static_cast<int>(inserted.missing.size());
+    auto* miss = new QTableWidgetItem(missing > 0 ? QString::number(missing)
+                                                   : QString());
+    miss->setToolTip(missing_tooltip(inserted));
+    table_->setItem(row, kColumnName, name);
+    table_->setItem(row, kColumnFile, file);
+    table_->setItem(row, kColumnMissing, miss);
+    // Hide the hover popup if the inserted row pushed the previously-hovered
+    // row off-position. Cheaper than recomputing: the next mouse move will
+    // re-show it via itemEntered.
+    if (info_popup_ && row <= 0) {
+        hide_save_info();
+    }
+    (void)done;
+    (void)total;
+}
+
+void SavesTab::on_scan_complete(int count) {
     scanning_ = false;
+    engine::Logger::instance().debug(
+        "Saves scan landed: " + std::to_string(count) + " save(s) from " +
+        saves_.saves_dir.string());
+    hide_save_info();
     if (pending_request_) {
         auto next = std::move(*pending_request_);
         pending_request_.reset();
