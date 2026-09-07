@@ -4,6 +4,7 @@
 
 #include <QDateTime>
 #include <QDialogButtonBox>
+#include <QFontMetrics>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QImage>
@@ -12,6 +13,7 @@
 #include <QListWidgetItem>
 #include <QLocale>
 #include <QPixmap>
+#include <QResizeEvent>
 #include <QStyle>
 #include <QVBoxLayout>
 
@@ -19,6 +21,43 @@
 #include <cctype>
 #include <string>
 #include <unordered_map>
+
+namespace
+{
+
+// QLabel has no built-in elide. A path row like the Save "File:" entry can
+// be 80+ chars and would otherwise wrap (when wordWrap=true) or push the
+// dialog wide. Re-elide on resize so the visible text always fits the cell.
+class ElidedLabel : public QLabel
+{
+public:
+  using QLabel::QLabel;
+  void setFullText(const QString& s)
+  {
+    full_ = s;
+    update_elision();
+  }
+
+protected:
+  void resizeEvent(QResizeEvent* e) override
+  {
+    QLabel::resizeEvent(e);
+    update_elision();
+  }
+
+private:
+  void update_elision()
+  {
+    if (full_.isEmpty()) {
+      return;
+    }
+    const QFontMetrics fm(fontMetrics());
+    setText(fm.elidedText(full_, Qt::ElideMiddle, std::max(width(), 1)));
+  }
+  QString full_;
+};
+
+}  // namespace
 
 namespace ui
 {
@@ -73,21 +112,27 @@ SaveInfoDialog::SaveInfoDialog(const engine::SaveGame& save,
   columns->setSpacing(12);
 
   // --- Left column: thumbnail on top, basic info underneath ---------------
-  auto* left = new QVBoxLayout();
+  // Wrap the left column in a fixed-width container so a long file path (or
+  // future wide row) cannot stretch the dialog. The right column gets all
+  // remaining width via stretch 1.
+  auto* leftContainer = new QWidget(this);
+  leftContainer->setFixedWidth(340);
+  auto* left = new QVBoxLayout(leftContainer);
+  left->setContentsMargins(0, 0, 0, 0);
   left->setSpacing(8);
 
-  auto* thumb = new QLabel(this);
+  auto* thumb = new QLabel(leftContainer);
   thumb->setAlignment(Qt::AlignCenter);
   thumb->setMinimumSize(320, 180);
   thumb->setMaximumHeight(220);
   build_thumbnail(thumb);
   left->addWidget(thumb);
 
-  auto* info = new QWidget(this);
+  auto* info = new QWidget(leftContainer);
   build_basic_info(info);
   left->addWidget(info, 1);
 
-  columns->addLayout(left, 1);
+  columns->addWidget(leftContainer, 0);
 
   // --- Right column: header + plugin list --------------------------------
   auto* right = new QVBoxLayout();
@@ -161,7 +206,19 @@ void SaveInfoDialog::build_basic_info(QWidget* container) const
   add_row(tr("Time:"),
           QLocale().toString(QDateTime::fromSecsSinceEpoch(save_.creation_time),
                              QLocale::ShortFormat));
-  add_row(tr("File:"), QString::fromStdString(save_.file_path.filename().string()));
+
+  // File row: long Skyrim/FO4 save filenames routinely run 50+ chars. Elide
+  // middle so the user can still see the prefix and extension, and show the
+  // full path on hover.
+  {
+    const QString full = QString::fromStdString(save_.file_path.string());
+    auto* lbl          = new ElidedLabel(container);
+    lbl->setFullText(QString::fromStdString(save_.file_path.filename().string()));
+    lbl->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    lbl->setToolTip(full);
+    form->addRow(new QLabel(tr("<b>File:</b>"), container), lbl);
+  }
+
   add_row(tr("Has Script Extender Data:"),
           save_.has_script_extender_file() ? tr("Yes") : tr("No"));
 
@@ -170,19 +227,11 @@ void SaveInfoDialog::build_basic_info(QWidget* container) const
   }
 
   if (!save_.overlay.empty()) {
-    // v2.1+ plugin-supplied extra rows. The header is plain text, not a
-    // form label, so it doesn't reuse add_row.
-    auto* hdr = new QLabel(tr("<i>Details</i>"), container);
-    form->addRow(hdr);
+    // v2.1+ plugin-supplied extra rows. Route through add_row so the key
+    // sits in the left column and the value in the right (same pattern as
+    // every other row), instead of spanning both columns via addRow(QS, lbl).
     for (const auto& row : save_.overlay) {
-      auto* lbl =
-          new QLabel(QString("<b>%1</b> %2")
-                         .arg(QString::fromStdString(row.key).toHtmlEscaped(),
-                              QString::fromStdString(row.value).toHtmlEscaped()),
-                     container);
-      lbl->setTextInteractionFlags(Qt::TextSelectableByMouse);
-      lbl->setWordWrap(true);
-      form->addRow(QString(), lbl);
+      add_row(QString::fromStdString(row.key), QString::fromStdString(row.value));
     }
   }
 }
