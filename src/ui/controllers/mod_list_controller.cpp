@@ -64,6 +64,7 @@
 #include "engine/source/loverslab/provider.h"
 #include "engine/source/modpub/provider.h"
 #include "engine/source/nxm/managed_games.h"
+#include "engine/source/router.h"
 #include "engine/source/source_provider.h"
 #include "ui/main_window/conflict_scan_worker.h"
 #include "ui/main_window/loot_sort_worker.h"
@@ -1725,6 +1726,50 @@ void ModListController::load_meta_for_mods() {
 
         meta.set_meta_version(engine::ModMeta::CURRENT_META_VERSION);
         upgraded = true;
+      }
+
+      // Lazy migration for the qvi6 fix: older installs stamped
+      // [GameModManager]source_type="modl" (modl was misregistered as a
+      // source). Re-derive the real source from the [Modl] file_url's host
+      // and stamp the right type, so the Source tab + icon + panel light
+      // up correctly. A no-op for any mod that has already been migrated
+      // (source_type != "modl").
+      //
+      // Known ceiling: mod.pub sometimes fronts downloads on a CDN
+      // (e.g. cdn.mod.pub, third-party mirrors). In that case
+      // extract_mod_id returns empty because file_url is a direct
+      // download, not a page URL - we cannot synthesize a valid
+      // [ModPub] section, so we downgrade to "manual" and the user
+      // can attach the source manually via the Add Source dialog.
+      if (meta.source_type() == "modl" && meta.has_section("Modl")) {
+        const std::string file_url = meta.get("Modl", "file_url");
+        const auto derived =
+            engine::Source::Router::derive_source_from_direct_url(file_url);
+        if (derived.source_type == "modpub") {
+          // Only commit "modpub" if we can actually synthesize a usable
+          // [ModPub] section (mod_id + page_url). Otherwise the panel
+          // would render with empty fields and Refresh would fail.
+          const std::string mid =
+              engine::Source::ModPub::Provider::extract_mod_id(file_url);
+          if (!mid.empty() && !meta.has_section("ModPub")) {
+            meta.set("GameModManager", "source_type", "modpub");
+            meta.set("ModPub", "mod_id", mid);
+            if (!derived.page_url.empty())
+              meta.set("ModPub", "page_url", derived.page_url);
+            upgraded = true;
+          } else if (mid.empty()) {
+            // CDN-fronted mod.pub download: file_url is not a page URL,
+            // we cannot extract the mod id. Downgrade to manual so
+            // source_info_for / FetchStage do not try to dispatch
+            // through a half-formed ModPub section.
+            meta.set("GameModManager", "source_type", "manual");
+            upgraded = true;
+          }
+        } else {
+          // No recognized host - downgrade to manual.
+          meta.set("GameModManager", "source_type", "manual");
+          upgraded = true;
+        }
       }
 
       if (upgraded) {

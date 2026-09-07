@@ -1019,6 +1019,17 @@ void DownloadsTab::deserialize(const std::string& json,
             engine::Logger::instance().debug(
                 "downloads: repaired legacy manifest entry '" + id +
                 "' (ModPub label without page_url/id -> Manual)");
+        } else if (source == "Modl" || source == "Modl download" ||
+                   source == "Direct" || source == "Direct download") {
+            // modl is a transport, not a source - it is no longer written
+            // to the manifest. Any row carrying this label predates the
+            // qvi6 fix; coerce to "Manual" so the source column reads
+            // correctly and source_info_for does not try to dispatch it
+            // through a (now-removed) "modl" provider lookup.
+            source = "Manual";
+            engine::Logger::instance().debug(
+                "downloads: repaired legacy manifest entry '" + id +
+                "' (modl/direct label without source attribution -> Manual)");
         }
 
         // Skip if already loaded
