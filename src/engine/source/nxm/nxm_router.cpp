@@ -300,4 +300,38 @@ ModlLink Router::parse_modl(const std::string& url) {
     return link;
 }
 
+Router::DerivedSource Router::derive_source_from_direct_url(
+    const std::string& direct_url) {
+    DerivedSource out;
+    if (direct_url.empty()) return out;
+    out.page_url = direct_url;
+
+    // Extract host: between "://" and first '/', '?', '#'. Lowercase ASCII.
+    const auto scheme_end = direct_url.find("://");
+    if (scheme_end == std::string::npos) return out;
+    const auto host_start = scheme_end + 3;
+    const auto host_end =
+        direct_url.find_first_of("/?#", host_start);
+    std::string host = direct_url.substr(
+        host_start,
+        (host_end == std::string::npos) ? std::string::npos
+                                        : host_end - host_start);
+    for (auto& c : host)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+    // Strip an optional "www." prefix so a CMS-fronted mirror is treated the
+    // same as the canonical host.
+    if (host.rfind("www.", 0) == 0) host = host.substr(4);
+
+    // mod.pub (with or without www, case-insensitive) is the only host the
+    // modl flow currently knows how to attribute to a real source. Anything
+    // else falls through to manual - the URL still downloads, but no
+    // dedicated provider panel is shown (single-source rule fqf5). Exact
+    // host match on purpose: "mod.pub.evil.com" must not match.
+    if (host == "mod.pub") {
+        out.source_type = "modpub";
+    }
+    return out;
+}
+
 } // namespace engine::Source

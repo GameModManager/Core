@@ -14,7 +14,10 @@ namespace engine::Source::Modl {
 
 bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
                      const std::filesystem::path& dest_path) {
-    if (mod.download_source_type != "modl") return false;
+    // The transport: any source_type routed through the modl flow arrives
+    // here with a direct https URL in mod.download_url. The actual source
+    // attribution (modpub / manual / ...) is the mod's download_source_type;
+    // this class only cares that there is a URL to fetch.
     if (mod.download_url.empty()) {
         Logger::instance().error("ModlProvider: no download URL");
         return false;
@@ -63,8 +66,7 @@ bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
 
 SourceDownloadInfo Provider::resolve_download_info(const Mod& mod) const {
     SourceDownloadInfo info;
-    if (mod.download_source_type != "modl" || mod.download_url.empty())
-        return info;
+    if (mod.download_url.empty()) return info;
 
     // The modl link is the direct download URL with no extra API call, so the
     // basename is the best fallback we can do without an HTTP probe (which
@@ -88,7 +90,10 @@ SourceDownloadInfo Provider::resolve_download_info(const Mod& mod) const {
 }
 
 std::string Provider::display_name() const {
-    return "Modl";
+    // Transport helper - this string is only used as a fallback label for
+    // the direct provider entry; the user-facing source attribution comes
+    // from the mod's actual download_source_type (modpub / manual / ...).
+    return "Direct";
 }
 
 } // namespace engine::Source::Modl

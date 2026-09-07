@@ -38,6 +38,7 @@
 #include "engine/source/registry.h"
 #include "engine/source/nxm/managed_games.h"
 #include "engine/source/nxm/nxm_router.h"
+#include "engine/source/router.h"
 #include "engine/source/steam_workshop_provider.h"
 #include "ui/install/install_progress_dialog.h"
 #include "ui/main_window/main_window.h"
@@ -202,6 +203,10 @@ void DownloadsController::setup_pipeline() {
       std::make_unique<engine::LoversLabProvider>());
   engine::SourceRegistry::instance().register_provider(
       std::make_unique<engine::Source::Modl::Provider>());
+  // The modl::Provider now acts as a transport helper (source_type
+  // "direct") for non-mod.pub hosts - the modl:// flow stamps
+  // "modpub" or "direct" on the mod and the registered provider
+  // dispatches the actual curl_download via FetchStage.
   // ModPub is metadata-only (mod.pub has no public download API; the
   // companion modl:// protocol is the actual download path). The
   // provider is registered so the SourceTab / AddSourceDialog can
@@ -738,17 +743,29 @@ void DownloadsController::handle_modl_download(const engine::Source::ModlLink &l
   const std::string key =
       "modl-" + std::to_string(stable_hash64(link.direct_url));
 
+  // Source attribution comes from the direct URL's host (modl is a
+  // transport, not a source). mod.pub -> ModPub; anything else -> Manual.
+  const auto derived = engine::Source::Router::derive_source_from_direct_url(
+      link.direct_url);
+  std::string source_label;
+  std::string row_name;
+  std::string page_url;
+  if (derived.source_type == "modpub") {
+    source_label = "ModPub";
+    row_name = tr("ModPub download").toStdString();
+    // Use the modl:// URL (carries game_id context) as the page URL until
+    // the mod.pub page is visited; the install path will fall back to it.
+    page_url = link.full_url;
+  } else {
+    source_label = "Manual";
+    row_name = tr("Download").toStdString();
+    page_url = link.direct_url;
+  }
+
   auto *dt = w_->right_panel_->downloads_tab();
   if (dt) {
-    // Source column is the provider's display_name() (currently "Modl");
-    // install provenance flows through [Modl] meta.ini section.
-    const std::string source_label =
-        engine::SourceRegistry::instance()
-            .provider_for("modl")
-            ? engine::SourceRegistry::instance().provider_for("modl")->display_name()
-            : std::string("Modl");
-    dt->add_download(key, tr("Modl download").toStdString(), source_label, {},
-                     {}, 0, {}, link.full_url);
+    dt->add_download(key, row_name, source_label, {},
+                     {}, 0, {}, page_url);
   }
 
   // Surface the download: bring the window to front and switch to the

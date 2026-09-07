@@ -38,7 +38,7 @@ struct Mod {
     std::vector<ModFile> files;
 
     // Download metadata (populated before pipeline run for remote sources)
-    std::string download_source_type;  // "nexus", "steam", "loverslab", "modl", "manual"
+    std::string download_source_type;  // "nexus", "steam", "loverslab", "modpub", "direct", "manual"
     std::string download_source_id;    // Nexus mod_id or Steam workshop_id
     struct {
         int64_t file_id = 0;

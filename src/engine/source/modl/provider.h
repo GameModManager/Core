@@ -6,14 +6,20 @@
 
 namespace engine::Source::Modl {
 
-// Downloads modl:// links - mod.pub + any site that emits a modl:// URL
-// pointing at a direct https download. There is no API: the modlhandler
-// already extracted the direct URL, so fetch() is a plain curl_download
-// with no cookie/auth in v1. If a future site requires a session cookie,
-// it can be added here alongside the LoversLab pattern.
+// Transport helper for the modl:// protocol. modl:// is a transport, not a
+// source - this class exists so FetchStage can dispatch a direct-URL
+// download when a mod carries `download_source_type == "direct"`. The actual
+// source attribution (mod.pub vs. arbitrary host vs. manual) is derived from
+// the direct URL's host by Router::derive_source_from_direct_url and stamped
+// on the mod before the pipeline runs.
+//
+// Kept in the engine::Source::Modl namespace so the curl mechanics stay
+// alongside the parse_modl code path; the registered source_type() is
+// "direct" so the SourceRegistry lookup in FetchStage succeeds for any
+// direct-URL download regardless of origin.
 class Provider : public Interface {
 public:
-    std::string source_type() const override { return "modl"; }
+    std::string source_type() const override { return "direct"; }
     bool fetch(const ::engine::Mod& mod, ::engine::PipelineContext& ctx,
                const std::filesystem::path& dest_path) override;
     SourceDownloadInfo resolve_download_info(const ::engine::Mod& mod) const override;
