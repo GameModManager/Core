@@ -6,7 +6,9 @@
 // main thread (THREADING.md §0). The request is a value snapshot taken on the
 // main thread (saves dir, extensions, the current plugin load order, mods
 // dir); the worker copies the game's save files and computes per-save missing
-// assets, then hands back a full result via a queued signal.
+// assets, then streams the result back as one entryReady signal per save so
+// the UI can render them progressively (Workspace-0owv) instead of waiting
+// for the full batch.
 
 #include "engine/game/plugins/plugin_info.h"
 #include "engine/game/saves/save_game.h"
@@ -56,7 +58,17 @@ public:
     void run(SavesScanRequest request);
 
 signals:
-    void finished(SavesScanResult result);
+    // One entry per successfully parsed save. Fired on the worker thread
+    // (SavesScanThread::start) - the UI connects with Qt::QueuedConnection so
+    // the slot runs on the main thread. `done` is 1-based, `total` is the
+    // path-enumeration count (used to drive a progress bar; equals the count
+    // of files that matched the extension filter, including ones that failed
+    // to parse).
+    void entryReady(SavesScanResultEntry entry, int done, int total);
+    // Final signal: the scan completed (or had no work to do). `count` is the
+    // number of entryReady signals actually fired. UI uses this to flip
+    // scanning_=false and drain any coalesced pending_request_.
+    void finished(int count);
 };
 
 // Long-lived worker thread reusing the PipelineThread/LootSortThread shape.
@@ -83,4 +95,3 @@ private:
 }  // namespace ui
 
 Q_DECLARE_METATYPE(ui::SavesScanResultEntry)
-Q_DECLARE_METATYPE(ui::SavesScanResult)
