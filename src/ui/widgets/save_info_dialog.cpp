@@ -227,19 +227,11 @@ void SaveInfoDialog::build_basic_info(QWidget* container) const
   }
 
   if (!save_.overlay.empty()) {
-    // v2.1+ plugin-supplied extra rows. The previous "Details" header was
-    // a single-column FormLayout row that left a visual gap and gave no
-    // context about which system owned the rows; the row keys (e.g.
-    // "Quest:", "Cell:") already self-describe, so the header is dropped.
+    // v2.1+ plugin-supplied extra rows. Route through add_row so the key
+    // sits in the left column and the value in the right (same pattern as
+    // every other row), instead of spanning both columns via addRow(QS, lbl).
     for (const auto& row : save_.overlay) {
-      auto* lbl =
-          new QLabel(QString("<b>%1</b> %2")
-                         .arg(QString::fromStdString(row.key).toHtmlEscaped(),
-                              QString::fromStdString(row.value).toHtmlEscaped()),
-                     container);
-      lbl->setTextInteractionFlags(Qt::TextSelectableByMouse);
-      lbl->setWordWrap(true);
-      form->addRow(QString(), lbl);
+      add_row(QString::fromStdString(row.key), QString::fromStdString(row.value));
     }
   }
 }
