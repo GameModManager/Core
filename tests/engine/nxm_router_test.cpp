@@ -176,6 +176,16 @@ TEST_CASE("Router::derive_source_from_direct_url - modl transport source attribu
         REQUIRE(d.source_type == "modpub");
     }
     {
+        // mod.pub with an explicit port -> modpub (port stripped before
+        // host compare; hosts that include ':' would otherwise fail).
+        const auto d = Router::derive_source_from_direct_url(
+            "https://mod.pub:443/skyrim-se/22.zip");
+        REQUIRE(d.source_type == "modpub");
+        const auto d8443 = Router::derive_source_from_direct_url(
+            "https://mod.pub:8443/skyrim-se/22.zip");
+        REQUIRE(d8443.source_type == "modpub");
+    }
+    {
         // mod.pub.evil.com MUST NOT match (subdomain-attack guard).
         const auto d = Router::derive_source_from_direct_url(
             "https://mod.pub.evil.com/x.zip");

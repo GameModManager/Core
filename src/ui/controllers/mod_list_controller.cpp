@@ -1746,23 +1746,27 @@ void ModListController::load_meta_for_mods() {
         const auto derived =
             engine::Source::Router::derive_source_from_direct_url(file_url);
         if (derived.source_type == "modpub") {
-          // Only commit "modpub" if we can actually synthesize a usable
-          // [ModPub] section (mod_id + page_url). Otherwise the panel
-          // would render with empty fields and Refresh would fail.
+          // Commit "modpub" if we can extract a numeric mod id. The
+          // [ModPub] section is only seeded when absent - existing keys
+          // (from a manually-attached section or a previous qnmf run) are
+          // left alone. source_type is updated regardless so a stale
+          // "modl" never leaves the mod orphaned on the manual fallback.
           const std::string mid =
               engine::Source::ModPub::Provider::extract_mod_id(file_url);
-          if (!mid.empty() && !meta.has_section("ModPub")) {
-            meta.set("GameModManager", "source_type", "modpub");
-            meta.set("ModPub", "mod_id", mid);
-            if (!derived.page_url.empty())
-              meta.set("ModPub", "page_url", derived.page_url);
-            upgraded = true;
-          } else if (mid.empty()) {
+          if (mid.empty()) {
             // CDN-fronted mod.pub download: file_url is not a page URL,
             // we cannot extract the mod id. Downgrade to manual so
             // source_info_for / FetchStage do not try to dispatch
             // through a half-formed ModPub section.
             meta.set("GameModManager", "source_type", "manual");
+            upgraded = true;
+          } else {
+            meta.set("GameModManager", "source_type", "modpub");
+            if (!meta.has_section("ModPub")) {
+              meta.set("ModPub", "mod_id", mid);
+              if (!derived.page_url.empty())
+                meta.set("ModPub", "page_url", derived.page_url);
+            }
             upgraded = true;
           }
         } else {
