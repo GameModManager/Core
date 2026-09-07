@@ -132,12 +132,26 @@ const std::vector<engine::SaveMissingAsset>* SavesTab::missing_at(int row) const
 }
 
 void SavesTab::request_scan(SavesScanRequest request) {
+    if (scanning_) {
+        // Coalesce: the in-flight scan will pick up the latest request when it
+        // finishes (k53a). A second request arriving during a scan replaces
+        // any earlier pending one - the user only ever cares about the most
+        // recent state, not every intermediate one.
+        pending_request_ = std::move(request);
+        return;
+    }
     scanning_ = true;
     scan_thread_->start(std::move(request));
 }
 
 void SavesTab::on_scan_finished(SavesScanResult result) {
     set_saves(std::move(result));
+    scanning_ = false;
+    if (pending_request_) {
+        auto next = std::move(*pending_request_);
+        pending_request_.reset();
+        request_scan(std::move(next));
+    }
 }
 
 void SavesTab::on_item_entered(QTableWidgetItem* item) {

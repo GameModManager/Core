@@ -382,3 +382,88 @@ TEST_CASE("save missing assets", "[engine]") {
 
     fs::remove_all(root);
 }
+
+// --- Workspace-6kn7: build_save_provider_index + indexed find overload ---
+// The worker now builds the provider index once and runs every save through
+// the indexed overload, instead of re-walking the mods dir per save. Verify
+// the indexed path produces the same missing-asset view as the original
+// on-disk walk.
+TEST_CASE("save provider index: build once, reuse for many saves", "[engine]") {
+    const fs::path root = fs::temp_directory_path() / "gmm_provider_index_test";
+    fs::remove_all(root);
+    fs::create_directories(root);
+
+    const fs::path am = root / "am_mods";
+    const fs::path ow = root / "am_overwrite";
+    fs::create_directories(am / "SkyUI");
+    fs::create_directories(am / "GoneMod");
+    write_file(am / "SkyUI" / "SkyUI_SE.esp", "x");
+    write_file(am / "GoneMod" / "GonePlugin.esp", "x");
+    fs::create_directories(ow);
+    write_file(ow / "Other.esp", "x");
+
+    const auto index = build_save_provider_index(am, ow);
+    check(index.count("skyui_se.esp") == 1, "SkyUI_SE.esp indexed under lower key");
+    check(index.count("goneplugin.esp") == 1, "GonePlugin.esp indexed under lower key");
+    check(index.count("other.esp") == 1, "Other.esp from overwrite indexed");
+    check(std::find(index.at("skyui_se.esp").begin(),
+                    index.at("skyui_se.esp").end(),
+                    "SkyUI") != index.at("skyui_se.esp").end(),
+          "SkyUI_SE.esp provider names SkyUI");
+    check(std::find(index.at("other.esp").begin(),
+                    index.at("other.esp").end(),
+                    "<overwrite>") != index.at("other.esp").end(),
+          "Other.esp provider is <overwrite>");
+
+    // The same load order and save as the on-disk-walk test above, fed
+    // through the indexed overload - same missing-asset view.
+    std::vector<GamePlugin> plugins;
+    {
+        GamePlugin p; p.name = "Skyrim.esm"; p.enabled = true;
+        plugins.push_back(p);
+    }
+    {
+        GamePlugin p; p.name = "SkyUI_SE.esp"; p.enabled = false;
+        p.owner_mod = "SkyUI"; plugins.push_back(p);
+    }
+    SaveGame save;
+    save.plugins = {"Skyrim.esm", "SkyUI_SE.esp", "GonePlugin.esp",
+                    "AlsoMissing.esm"};
+    auto missing = find_save_missing_assets(save, plugins, index);
+
+    std::map<std::string, const SaveMissingAsset*> by_name;
+    for (const auto& m : missing) by_name[m.plugin_name] = &m;
+    check(missing.size() == 3, "indexed overload: same 3 missing plugins");
+    check(by_name.count("Skyrim.esm") == 0,
+          "indexed overload: active plugin not missing");
+    auto it = by_name.find("SkyUI_SE.esp");
+    check(it != by_name.end() && it->second->inactive,
+          "indexed overload: inactive plugin flagged");
+    check(std::find(it->second->providing_mods.begin(),
+                    it->second->providing_mods.end(), "SkyUI") !=
+              it->second->providing_mods.end(),
+          "indexed overload: provider comes from the index");
+    it = by_name.find("GonePlugin.esp");
+    check(it != by_name.end() &&
+              std::find(it->second->providing_mods.begin(),
+                        it->second->providing_mods.end(),
+                        "GoneMod") != it->second->providing_mods.end(),
+          "indexed overload: GonePlugin still has GoneMod provider");
+    it = by_name.find("AlsoMissing.esm");
+    check(it != by_name.end() && it->second->providing_mods.empty(),
+          "indexed overload: truly-missing plugin has no provider");
+
+    // Empty paths are tolerated: an instance with no mods dir or no overwrite
+    // should still classify save plugins correctly, just without providers.
+    const auto empty_index = build_save_provider_index({}, {});
+    auto missing2 =
+        find_save_missing_assets(save, plugins, empty_index);
+    check(missing2.size() == 3,
+          "empty index: still classifies missing plugins");
+    for (const auto& m : missing2) {
+        check(m.providing_mods.empty(),
+              "empty index: no provider for any missing plugin");
+    }
+
+    fs::remove_all(root);
+}

@@ -11,6 +11,7 @@
 #include <QWidget>
 
 #include <filesystem>
+#include <optional>
 #include <vector>
 
 class QTableWidget;
@@ -86,6 +87,10 @@ private:
     SavesScanResult saves_;
     std::filesystem::path saves_dir_;
     bool scanning_ = false;
+    // Coalesce: a scan request that arrives while one is in flight replaces
+    // the latest pending request. Avoids the double-fire on boot (k53a) and
+    // overlapping scans when the user mashes Refresh.
+    std::optional<SavesScanRequest> pending_request_;
     // Hover info popup (MO2 GamebryoSaveGameInfoWidget port). Recreated per
     // hover so content never goes stale.
     QPointer<QWidget> info_popup_;

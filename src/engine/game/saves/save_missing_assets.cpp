@@ -50,6 +50,27 @@ void collect_providers(
   }
 }
 
+// Build the (mod_name, lower_name) entries for one directory into the index.
+void index_directory(const std::filesystem::path &dir,
+                     const std::string &mod_name,
+                     SaveProviderIndex &out) {
+  vfs::PathResolver resolver(dir);
+  for (const auto &gf : resolver.list("")) {
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(gf.absolute(), ec) || ec)
+      continue;
+    if (!is_plugin_file(gf.absolute()))
+      continue;
+    const std::string lower_name =
+        std::filesystem::path(gf.normalized()).filename().string();
+    auto &providers = out[lower_name];
+    if (std::find(providers.begin(), providers.end(), mod_name) ==
+        providers.end()) {
+      providers.push_back(mod_name);
+    }
+  }
+}
+
 } // namespace
 
 std::vector<SaveMissingAsset>
@@ -116,6 +137,72 @@ find_save_missing_assets(const SaveGame &save,
     collect_providers(overwrite_resolver, "", "<overwrite>", missing_by_lower);
   }
 
+  return missing;
+}
+
+SaveProviderIndex build_save_provider_index(
+    const std::filesystem::path &mods_dir,
+    const std::filesystem::path &overwrite_dir) {
+  SaveProviderIndex index;
+  if (!mods_dir.empty()) {
+    std::error_code ec;
+    for (const auto &entry :
+         std::filesystem::directory_iterator(mods_dir, ec)) {
+      if (ec)
+        break;
+      if (!entry.is_directory(ec))
+        continue;
+      const auto mod_name = entry.path().filename().string();
+      index_directory(entry.path(), mod_name, index);
+    }
+  }
+  if (!overwrite_dir.empty()) {
+    index_directory(overwrite_dir, "<overwrite>", index);
+  }
+  return index;
+}
+
+std::vector<SaveMissingAsset>
+find_save_missing_assets(const SaveGame &save,
+                         const std::vector<GamePlugin> &plugins,
+                         const SaveProviderIndex &provider_index) {
+  // Case-insensitive index of the current load order.
+  std::map<std::string, const GamePlugin *> by_name;
+  for (const auto &p : plugins) {
+    by_name[to_lower(p.name)] = &p;
+  }
+
+  // Pass 1: classify the save's plugins (MO2 state machine) - same as the
+  // non-indexed overload.
+  std::vector<SaveMissingAsset> missing;
+  std::vector<std::string> missing_keys;
+  const auto consider = [&](const std::string &name) {
+    const auto it = by_name.find(to_lower(name));
+    if (it != by_name.end() &&
+        (it->second->enabled || it->second->force_loaded)) {
+      return;
+    }
+    SaveMissingAsset asset;
+    asset.plugin_name = name;
+    if (it != by_name.end()) {
+      asset.inactive = true;
+      asset.origin_mod = it->second->owner_mod;
+    }
+    missing.push_back(std::move(asset));
+    missing_keys.push_back(to_lower(name));
+  };
+  for (const auto &name : save.plugins)
+    consider(name);
+  for (const auto &name : save.light_plugins)
+    consider(name);
+
+  // Pass 2: look up providers in the prebuilt index. No directory walks.
+  for (std::size_t i = 0; i < missing.size(); ++i) {
+    const auto it = provider_index.find(missing_keys[i]);
+    if (it != provider_index.end()) {
+      missing[i].providing_mods = it->second;
+    }
+  }
   return missing;
 }
 

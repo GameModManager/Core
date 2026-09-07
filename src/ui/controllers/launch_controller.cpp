@@ -1,5 +1,6 @@
 #include "ui/controllers/launch_controller.h"
 #include "platform/platform.h"
+#include "ui/controllers/downloads_controller.h"
 #include "ui/controllers/mod_list_controller.h"
 #include "ui/controllers/queue_controller.h"
 
@@ -852,6 +853,12 @@ void LaunchController::check_running_process() {
     trace.end_flow("launch", true, "Game session finished");
     engine::EventBus::instance().dispatch(
         engine::events::kGameFinished, engine::json_obj({{"exit_code", "0"}}));
+    // Workspace-k53a: refresh the Saves tab now that the game has written
+    // a new save. Only fires if the lock overlay actually showed (the
+    // had_lock_overlay_ latch is set in show_game_lock_overlay, cleared
+    // inside trigger_saves_rescan_if_locked so a normal launch produces
+    // exactly one rescan).
+    trigger_saves_rescan_if_locked();
     if (!w_->staging_dir_.empty()) {
       std::error_code ec;
       std::filesystem::remove_all(w_->staging_dir_, ec);
@@ -920,6 +927,8 @@ void LaunchController::check_running_process() {
       engine::EventBus::instance().dispatch(
           engine::events::kGameFinished,
           engine::json_obj({{"exit_code", std::to_string(supervisor_exit)}}));
+      // Workspace-k53a: see the Windows branch for the rationale.
+      trigger_saves_rescan_if_locked();
       if (!w_->staging_dir_.empty()) {
         std::error_code ec;
         std::filesystem::remove_all(w_->staging_dir_, ec);
@@ -1006,6 +1015,8 @@ void LaunchController::check_running_process() {
           {{"exit_code", WIFEXITED(reap_status)
                              ? std::to_string(WEXITSTATUS(reap_status))
                              : "-1"}}));
+  // Workspace-k53a: see the Windows branch for the rationale.
+  trigger_saves_rescan_if_locked();
   if (!w_->staging_dir_.empty()) {
     std::error_code ec;
     std::filesystem::remove_all(w_->staging_dir_, ec);
@@ -1785,6 +1796,7 @@ void LaunchController::create_game_lock_overlay() {
 void LaunchController::show_game_lock_overlay(const QString &binary_name,
                                               int64_t pid) {
   w_->locked_pid_ = pid;
+  w_->had_lock_overlay_ = true;
   w_->pending_changes_.clear();
   if (w_->pending_queue_label_)
     w_->pending_queue_label_->hide();
@@ -1813,6 +1825,18 @@ void LaunchController::hide_game_lock_overlay() {
   if (w_->game_lock_overlay_ && w_->game_lock_overlay_->isVisible())
     w_->game_lock_overlay_->releaseKeyboard();
   w_->game_lock_overlay_->hide();
+  // had_lock_overlay_ stays latched until the game-finished dispatch
+  // (k53a). Reset there via trigger_saves_rescan_if_locked - that way a
+  // normal launch (show -> hide -> kGameFinished -> rescan -> clear) and
+  // a manual unlock both leave the latch armed for the exit-time rescan.
+}
+
+void LaunchController::trigger_saves_rescan_if_locked() {
+  if (!w_->had_lock_overlay_)
+    return;
+  w_->had_lock_overlay_ = false;
+  if (w_->downloads_)
+    w_->downloads_->on_saves_refresh_requested();
 }
 
 InstanceOptionsParams LaunchController::instance_options_params() const {

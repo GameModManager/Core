@@ -1481,11 +1481,17 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
 
   // Populate the Plugins tab from the (now loaded) mod list.
   refresh_plugins_tab();
-  // The Saves tab snapshot may predate this load (initial scan races profile
-  // apply), leaving stale missing flags. Re-scan now that the db is final.
-  // No-ops safely when the Saves tab is not wired yet.
-  if (w_->downloads_)
-    w_->downloads_->on_saves_refresh_requested();
+  // Workspace-k53a: the original code re-ran on_saves_refresh_requested here
+  // "because the Saves tab snapshot may predate this load". In practice the
+  // boot path is:
+  //   settings_controller::set_game() -> wire_saves_tab() (queues scan #1) ->
+  //   load_mods_from_game() -> on_mod_scan_finished() (was queuing scan #2)
+  // Both scans ran seconds apart for 106-save dirs, costing ~24s of duplicate
+  // work. The first scan (Trigger A, in wire_saves_tab) sees the snapshot it
+  // captured at queue time. We no longer try to chase that snapshot here;
+  // the game-finished rescan (k53a follow-up) is the only legitimate second
+  // trigger. SavesTab::request_scan coalesces overlapping requests as a
+  // belt-and-braces guard.
 }
 
 void ModListController::apply_profile_mod_states() {
