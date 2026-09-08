@@ -294,8 +294,9 @@ TEST_CASE("save missing assets", "[engine]") {
     fs::remove_all(root);
     fs::create_directories(root);
 
-    // Load order with one active plugin, one inactive (present, disabled)
-    // and everything else absent.
+    // Load order with one active plugin, one present-but-disabled, and
+    // everything else absent. Present plugins are not missing regardless
+    // of enabled state.
     std::vector<GamePlugin> plugins;
     {
         GamePlugin p;
@@ -347,20 +348,16 @@ TEST_CASE("save missing assets", "[engine]") {
                     "AlsoMissing.esm", "Update.esm"};
     auto missing = find_save_missing_assets(save, plugins, am, ow);
 
-    check(missing.size() == 3, "missing asset count");
+    check(missing.size() == 2, "missing asset count");
     std::map<std::string, const SaveMissingAsset*> by_name;
     for (const auto& m : missing) by_name[m.plugin_name] = &m;
 
-    auto it = by_name.find("SkyUI_SE.esp");
-    check(it != by_name.end(), "inactive plugin is missing");
-    check(it->second->inactive, "inactive flag set");
-    check(it->second->origin_mod == "SkyUI", "inactive origin mod");
-    check(std::find(it->second->providing_mods.begin(),
-                    it->second->providing_mods.end(),
-                    "SkyUI") != it->second->providing_mods.end(),
-          "inactive provider found");
+    check(by_name.find("SkyUI_SE.esp") == by_name.end(),
+          "present-but-disabled plugin is not missing");
+    check(by_name.find("Skyrim.esm") == by_name.end(),
+          "active plugin is not missing");
 
-    it = by_name.find("GonePlugin.esp");
+    auto it = by_name.find("GonePlugin.esp");
     check(it != by_name.end(), "absent plugin is missing");
     check(!it->second->inactive, "absent plugin not flagged inactive");
     check(it->second->origin_mod.empty(), "absent plugin has no origin");
@@ -376,9 +373,6 @@ TEST_CASE("save missing assets", "[engine]") {
     it = by_name.find("AlsoMissing.esm");
     check(it != by_name.end(), "second absent plugin is missing");
     check(it->second->providing_mods.empty(), "no provider for AlsoMissing");
-
-    check(by_name.find("Skyrim.esm") == by_name.end(),
-          "active plugin is not missing");
 
     fs::remove_all(root);
 }
@@ -433,17 +427,12 @@ TEST_CASE("save provider index: build once, reuse for many saves", "[engine]") {
 
     std::map<std::string, const SaveMissingAsset*> by_name;
     for (const auto& m : missing) by_name[m.plugin_name] = &m;
-    check(missing.size() == 3, "indexed overload: same 3 missing plugins");
+    check(missing.size() == 2, "indexed overload: only truly absent plugins missing");
     check(by_name.count("Skyrim.esm") == 0,
           "indexed overload: active plugin not missing");
-    auto it = by_name.find("SkyUI_SE.esp");
-    check(it != by_name.end() && it->second->inactive,
-          "indexed overload: inactive plugin flagged");
-    check(std::find(it->second->providing_mods.begin(),
-                    it->second->providing_mods.end(), "SkyUI") !=
-              it->second->providing_mods.end(),
-          "indexed overload: provider comes from the index");
-    it = by_name.find("GonePlugin.esp");
+    check(by_name.count("SkyUI_SE.esp") == 0,
+          "indexed overload: present-but-disabled plugin not missing");
+    auto it = by_name.find("GonePlugin.esp");
     check(it != by_name.end() &&
               std::find(it->second->providing_mods.begin(),
                         it->second->providing_mods.end(),
@@ -458,7 +447,7 @@ TEST_CASE("save provider index: build once, reuse for many saves", "[engine]") {
     const auto empty_index = build_save_provider_index({}, {});
     auto missing2 =
         find_save_missing_assets(save, plugins, empty_index);
-    check(missing2.size() == 3,
+    check(missing2.size() == 2,
           "empty index: still classifies missing plugins");
     for (const auto& m : missing2) {
         check(m.providing_mods.empty(),
