@@ -287,6 +287,21 @@ if(GMM_WITH_LOOT)
     # directory must be given explicitly.
     add_subdirectory(${libloot_SOURCE_DIR}/cpp ${libloot_BINARY_DIR}/cpp)
 
+    # Ensure cxxbridge symlinks exist after cargo build. cargo's incremental
+    # build may skip the cxx-build build.rs, leaving stale or missing symlinks
+    # in target/cxxbridge/ that break the C++ include chain.
+    set(_LIBLOOT_TARGET_PATH "${libloot_SOURCE_DIR}/target")
+    set(_LIBLOOT_CXXBRIDGE_DIR "${_LIBLOOT_TARGET_PATH}/cxxbridge")
+    add_custom_target(libloot_ensure_cxxbridge ALL
+        COMMAND ${CMAKE_COMMAND}
+            -DLIBLOOT_TARGET_PATH=${_LIBLOOT_TARGET_PATH}
+            -DLIBLOOT_CXXBRIDGE_DIR=${_LIBLOOT_CXXBRIDGE_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/libloot_ensure_cxxbridge.cmake
+        COMMENT "Ensuring libloot cxxbridge symlinks"
+    )
+    add_dependencies(libloot_ensure_cxxbridge libloot_cargo)
+    add_dependencies(libloot libloot_ensure_cxxbridge)
+
     add_executable(gmm_lootcli
         tools/gmm_lootcli/src/main.cpp
     )
