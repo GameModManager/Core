@@ -1,16 +1,17 @@
-#include "engine/sort/abi_sort_provider.h"
+#include "engine/sort/sorter/abi.h"
 
 #include <cstring>
 
 namespace engine {
+namespace Sorter {
 
-AbiSortProvider::AbiSortProvider(const char* game_id, SortFn sort_fn, void* user_data)
+Abi::Abi(const char* game_id, SortFn sort_fn, void* user_data)
     : game_id_(game_id ? game_id : "")
     , sort_fn_(sort_fn)
     , user_data_(user_data) {}
 
-ModSortResult AbiSortProvider::sort(const std::vector<SortModInfo>& mods) const {
-    ModSortResult result;
+Result Abi::sort(const std::vector<ModInfo>& mods) const {
+    Result result;
 
     if (!sort_fn_) return result;
 
@@ -33,4 +34,5 @@ ModSortResult AbiSortProvider::sort(const std::vector<SortModInfo>& mods) const 
     return result;
 }
 
+}  // namespace Sorter
 }  // namespace engine

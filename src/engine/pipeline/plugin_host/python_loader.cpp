@@ -16,8 +16,8 @@
 #include "engine/pipeline/plugin_host/requirements_registry.h"
 #include "engine/pipeline/plugin_host/save_parser_registry.h"
 #include "engine/pipeline/plugin_host/tool_registry.h"
-#include "engine/sort/abi_sort_provider.h"
-#include "engine/sort/sort_registry.h"
+#include "engine/sort/sorter/abi.h"
+#include "engine/sort/sorter/registry.h"
 #include "ui/preview/preview_registry.h"
 
 #include "gmm_abi_v2.h"
@@ -1318,8 +1318,8 @@ public:
           "register_sort_provider: empty game_id - ignored");
       return *this;
     }
-    engine::SortRegistry::instance().register_provider(
-        gid, std::make_unique<engine::AbiSortProvider>(gid.c_str(), py_sort_bridge,
+    engine::Sorter::Registry::instance().register_provider(
+        gid, std::make_unique<engine::Sorter::Abi>(gid.c_str(), py_sort_bridge,
                                                        user_data));
     engine::Logger::instance().debug(
         "Python plugin registered sort provider for game=" + gid);
@@ -2039,7 +2039,7 @@ void engine::python_shutdown()
     DiagnosticsRegistry::instance().clear();
     Game::Features::Registry::instance().clear();
     PluginSettingsRegistry::instance().clear();
-    SortRegistry::instance().clear();
+    Sorter::Registry::instance().clear();
     for (const auto& p : g_loaded_plugin_paths) {
       DiagnoseRegistry::instance().clear_plugin(p);
       FileMapperRegistry::instance().clear_plugin(p);

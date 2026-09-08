@@ -1,32 +1,34 @@
 #pragma once
 
-#include "engine/sort/sort_provider.h"
+#include "engine/sort/sorter/interface.h"
 
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace engine {
+namespace Sorter {
 
-class SortRegistry {
+class Registry {
 public:
-  static SortRegistry &instance();
+  static Registry &instance();
 
   // Register a sort provider for a game
   void register_provider(const std::string &game_id,
-                         std::unique_ptr<Sorter::Interface> provider);
+                         std::unique_ptr<Interface> provider);
 
   // Get the sort provider for a game (or nullptr if none)
-  [[nodiscard]] Sorter::Interface *
+  [[nodiscard]] Interface *
   get_provider(const std::string &game_id) const;
 
   // Drop every registered provider (process shutdown / full reload).
   void clear();
 
 private:
-  SortRegistry() = default;
-  std::vector<std::pair<std::string, std::unique_ptr<Sorter::Interface>>>
+  Registry() = default;
+  std::vector<std::pair<std::string, std::unique_ptr<Interface>>>
       providers_;
 };
 
+} // namespace Sorter
 } // namespace engine

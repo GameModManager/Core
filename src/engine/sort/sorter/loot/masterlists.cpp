@@ -1,4 +1,4 @@
-#include "engine/sort/loot/masterlists.h"
+#include "engine/sort/sorter/loot/masterlists.h"
 
 #include "engine/source/download/curl_download.h"
 #include "engine/core/log/logger.h"
@@ -11,6 +11,8 @@
 namespace fs = std::filesystem;
 
 namespace engine {
+namespace Sorter {
+namespace Loot {
 
 namespace {
 
@@ -178,4 +180,6 @@ MasterlistManager::Masterlists MasterlistManager::fetch_or_cache(
     return out;
 }
 
+}  // namespace Loot
+}  // namespace Sorter
 }  // namespace engine

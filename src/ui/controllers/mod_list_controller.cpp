@@ -58,8 +58,8 @@
 #include "engine/profile/profile.h"
 #include "engine/profile/profile_creation.h"
 #include "engine/profile/profile_switching.h"
-#include "engine/sort/sort_provider.h"
-#include "engine/sort/sort_registry.h"
+#include "engine/sort/sorter/interface.h"
+#include "engine/sort/sorter/registry.h"
 #include "engine/source/nexus_provider.h"
 #include "engine/source/loverslab/provider.h"
 #include "engine/source/modpub/provider.h"
@@ -1079,7 +1079,7 @@ void ModListController::sort_mods() {
   trace.begin_flow("sort");
 
   auto *provider =
-      engine::SortRegistry::instance().get_provider(w_->current_game_id_);
+      engine::Sorter::Registry::instance().get_provider(w_->current_game_id_);
   if (!provider) {
     engine::Logger::instance().warn("No sort provider registered for game: " +
                                     w_->current_game_id_);
@@ -1090,13 +1090,13 @@ void ModListController::sort_mods() {
 
   // Build mod info list from current model
   trace.begin_stage("sort", "Gather mod info");
-  std::vector<engine::SortModInfo> mod_infos;
+  std::vector<engine::Sorter::ModInfo> mod_infos;
   for (const auto &mod : w_->mod_model_->mods()) {
     if (mod.is_separator || mod.is_overwrite || mod.id == kOverwriteModId ||
         mod.is_game_native)
       continue;
 
-    engine::SortModInfo info;
+    engine::Sorter::ModInfo info;
     info.folder_name = mod.id.toStdString();
     info.display_name = mod.name.toStdString();
 

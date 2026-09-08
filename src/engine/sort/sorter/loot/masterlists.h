@@ -9,7 +9,10 @@ namespace engine {
 
 class Platform;
 
-// Per-game LOOT masterlist + prelude management (PLAN.md §7.1). The engine owns
+namespace Sorter {
+namespace Loot {
+
+// Per-game LOOT masterlist + prelude management (PLAN.md 7.1). The engine owns
 // masterlists so gmm_lootcli stays networking-free: files land in
 // <data_dir>/loot/<game_id>/{masterlist.yaml,prelude.yaml}, fetched from the
 // game's official loot/<repo> GitHub repo with a version-branch walk-down
@@ -59,5 +62,8 @@ private:
 
     const Platform* platform_;
 };
+
+}  // namespace Loot
+}  // namespace Sorter
 
 }  // namespace engine

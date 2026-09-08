@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/sort/sort_provider.h"
+#include "engine/sort/sorter/interface.h"
 
 #include <functional>
 #include <string>
@@ -12,12 +12,14 @@ namespace engine {
 typedef const char *const *(*SortFn)(const char *const *mod_folders,
                                      size_t count, void *user_data);
 
-// Wrapper that converts C ABI sort function to Sorter::Interface
-class AbiSortProvider : public Sorter::Interface {
-public:
-  AbiSortProvider(const char *game_id, SortFn sort_fn, void *user_data);
+namespace Sorter {
 
-  ModSortResult sort(const std::vector<SortModInfo> &mods) const override;
+// Wrapper that converts C ABI sort function to Sorter::Interface
+class Abi : public Interface {
+public:
+  Abi(const char *game_id, SortFn sort_fn, void *user_data);
+
+  Result sort(const std::vector<ModInfo> &mods) const override;
   const char *name() const override { return "ABI Sort Provider"; }
 
 private:
@@ -26,4 +28,5 @@ private:
   void *user_data_;
 };
 
+} // namespace Sorter
 } // namespace engine
