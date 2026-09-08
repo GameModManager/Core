@@ -47,7 +47,7 @@
 #include "engine/pipeline/plugin_host/category_factory.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "engine/pipeline/sync_stage.h"
-#include "engine/sort/sort_registry.h"
+#include "engine/sort/sorter/registry.h"
 #include "engine/source/loverslab_provider.h"
 #include "engine/source/nexus_provider.h"
 #include "engine/source/nxm/managed_games.h"
@@ -277,7 +277,7 @@ void SettingsController::set_game_info(
 
     // Check if a sort provider is available for w_ game
     bool has_sort_provider =
-        engine::SortRegistry::instance().get_provider(game_id) != nullptr;
+        engine::Sorter::Registry::instance().get_provider(game_id) != nullptr;
     w_->menu_bar_->set_sort_available(has_sort_provider);
 
     // Configure pipeline for w_ game instance

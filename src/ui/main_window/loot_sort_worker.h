@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine/sort/loot/loot_sorter.h"
+#include "engine/sort/sorter/loot/sorter.h"
 
 #include <QObject>
 #include <QString>

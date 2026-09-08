@@ -4,8 +4,8 @@
 // parsing, progress streaming, sorted-output reading, CLI failure surfacing,
 // and the missing-binary error.
 
-#include "engine/sort/loot/loot_sorter.h"
-#include "engine/sort/loot/masterlists.h"
+#include "engine/sort/sorter/loot/sorter.h"
+#include "engine/sort/sorter/loot/masterlists.h"
 #include "platform/platform.h"
 
 #include <catch2/catch_test_macros.hpp>
