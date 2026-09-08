@@ -36,6 +36,7 @@ ModList::ModList(QObject *parent) : QAbstractTableModel(parent) {
   fomod_icon_ = icons.resolve_icon("save");
   root_override_icon_ = icons.resolve_icon("root-dir");
   invalid_icon_ = icons.resolve_icon("mod-invalid");
+  empty_icon_ = icons.resolve_icon("plugin-dummy");
   // Vendor icons for the Source column (MO2 COL_GAME analogue): resolved
   // through the same vendor_icon_key() mapping the Source tab uses.
   for (const char *key : {"nexusmods", "loverslab", "steam", "moddb"}) {
@@ -92,6 +93,8 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
     }
     if (m.has_hidden_files)
       icons << hidden_icon_;
+    if (m.is_empty)
+      icons << empty_icon_;
     if (m.is_fomod)
       icons << fomod_icon_;
     if (m.root_override)
@@ -330,7 +333,7 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
     return mod.source_type;
   if (role == Qt::ToolTipRole && index.column() == Flags &&
       (!mod.tags.isEmpty() || mod.is_fomod || mod.root_override ||
-       mod.invalid_data || mod.no_metadata)) {
+       mod.invalid_data || mod.no_metadata || mod.is_empty)) {
     QStringList lines;
     if (mod.invalid_data) {
       lines << tr("No valid game data");
@@ -338,8 +341,11 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
     if (mod.no_metadata) {
       lines << tr("Not installed by the manager (no metadata file)");
     }
+    if (mod.is_empty) {
+      lines << tr("Empty mod: this mod contains no files");
+    }
     if (mod.is_fomod) {
-      lines << tr("FOMOD saved: installed with selected options");
+      lines << tr("FOMOD options saved");
     }
     if (mod.root_override) {
       lines << tr("Deploys to the game root directory");
@@ -1150,6 +1156,17 @@ void ModList::set_hidden_files(const QString &id, bool has_hidden) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id && mods_[i].has_hidden_files != has_hidden) {
       mods_[i].has_hidden_files = has_hidden;
+      emit dataChanged(index(i, Flags), index(i, Flags),
+                       {Qt::SizeHintRole, kFlagIconsRole});
+      return;
+    }
+  }
+}
+
+void ModList::set_empty(const QString &id, bool on) {
+  for (int i = 0; i < mods_.size(); ++i) {
+    if (mods_[i].id == id && mods_[i].is_empty != on) {
+      mods_[i].is_empty = on;
       emit dataChanged(index(i, Flags), index(i, Flags),
                        {Qt::SizeHintRole, kFlagIconsRole});
       return;

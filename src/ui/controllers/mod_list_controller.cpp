@@ -1375,6 +1375,12 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
       if (mod.no_metadata) {
         w_->mod_model_->set_no_metadata(id, true);
       }
+      if (mod.has_hidden_files) {
+        w_->mod_model_->set_hidden_files(id, true);
+      }
+      if (mod.is_empty) {
+        w_->mod_model_->set_empty(id, true);
+      }
       if (!mod.enabled) {
         w_->mod_model_->toggle_mod(id);
       }
@@ -2372,9 +2378,22 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
   data.open_url = [](const QString &url) {
     QDesktopServices::openUrl(QUrl(url));
   };
-  data.hide_file = [](const QString &abs, bool hide) {
+  data.hide_file = [this, mod_id = mod.id, mod_folder](const QString &abs, bool hide) {
     const std::filesystem::path p(abs.toStdString());
-    return hide ? engine::hide_file(p) : engine::unhide_file(p);
+    bool ok = hide ? engine::hide_file(p) : engine::unhide_file(p);
+    if (ok) {
+      bool has_any_hidden = false;
+      std::error_code ec;
+      for (const auto &entry :
+           std::filesystem::recursive_directory_iterator(mod_folder, ec)) {
+        if (entry.is_regular_file() && engine::is_hidden_file(entry.path())) {
+          has_any_hidden = true;
+          break;
+        }
+      }
+      w_->mod_model_->set_hidden_files(mod_id, has_any_hidden);
+    }
+    return ok;
   };
   data.set_mod_color = [this, mod_id = mod.id](const QColor &c) {
     if (c.isValid())

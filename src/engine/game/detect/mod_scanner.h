@@ -37,6 +37,10 @@ struct ScannedMod {
     // MO2's validated marker ([General] validated=true in the folder's
     // meta.ini, the file markValidated writes). Suppresses the flags above.
     bool validated = false;
+    // Folder contains files hidden via .gmmhidden/.mohidden suffix.
+    bool has_hidden_files = false;
+    // No real files outside meta.ini/metadata.xml (empty mod shell).
+    bool is_empty = false;
     // Category IDs auto-assigned from Steam Workshop tags via the
     // workshop_tag_categories hook. Empty when no mapping is available.
     std::vector<int> category_ids;
