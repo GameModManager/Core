@@ -35,7 +35,7 @@ struct ModEntry {
     int conflict_wins = 0;
     int conflict_losses = 0;
     bool redundant = false;       // every file this mod provides is overridden by a higher-priority owner
-    bool has_hidden_files = false;  // some files are hidden by the (not yet implemented) hidden-files feature
+    bool has_hidden_files = false;  // some files are hidden via .gmmhidden/.mohidden
     QVector<ModTag> tags;
     QString source_type;
     QString source_id;
@@ -51,6 +51,7 @@ struct ModEntry {
     bool root_override = false;   // deploys to the game root instead of the data dir
     bool invalid_data = false;    // MO2 FLAG_INVALID: folder holds no recognized game data
     bool no_metadata = false;     // no manager metadata file in the folder (not a managed install)
+    bool is_empty = false;        // no real files outside meta.ini/metadata.xml
     bool folded = false;
     // Visual nesting (the per-instance "Nested mod list" setting): id of the
     // parent mod/separator this row is indented under. Empty = top-level.
@@ -144,6 +145,7 @@ public:
     void set_conflict_stats(const QString& id, int wins, int losses);
     void set_conflict_redundant(const QString& id, bool redundant);
     void set_hidden_files(const QString& id, bool has_hidden);
+    void set_empty(const QString& id, bool on);
     void set_fomod(const QString& id, bool on);
     void set_root_override(const QString& id, bool on);
     // MO2 FLAG_INVALID / missing-metadata markers (see ModEntry).
@@ -292,6 +294,7 @@ private:
     QIcon fomod_icon_;
     QIcon root_override_icon_;
     QIcon invalid_icon_;
+    QIcon empty_icon_;
     // source icon-key ("nexusmods", "loverslab", "steam", "moddb") -> badge.
     QHash<QString, QIcon> vendor_icons_;
     QAbstractItemView* mod_view_ = nullptr;

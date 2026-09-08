@@ -1,5 +1,6 @@
 #include "engine/game/detect/mod_scanner.h"
 #include "engine/core/log/logger.h"
+#include "engine/core/util/fs_utils.h"
 #include "engine/game/registry/game_features/game_feature_registry.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "engine/mod/meta/mod_meta.h"
@@ -484,6 +485,25 @@ scan_entry(const std::filesystem::path &entry_path, const ScanConfig &cfg,
   }
   mod.no_metadata = mod.no_metadata && !mod.validated;
   mod.invalid_data = !mod.validated && !content_looks_valid(cfg, entry_path);
+
+  // Walk the folder recursively to detect hidden files and empty mods.
+  // Mods store game files in subdirectories (textures/, meshes/, scripts/).
+  bool found_real_file = false;
+  std::error_code walk_ec;
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator(entry_path, walk_ec)) {
+    if (!entry.is_regular_file())
+      continue;
+    if (engine::is_hidden_file(entry.path()))
+      mod.has_hidden_files = true;
+    auto fname = entry.path().filename().string();
+    if (fname != "meta.ini" && fname != "metadata.xml")
+      found_real_file = true;
+    if (mod.has_hidden_files && found_real_file)
+      break;
+  }
+  mod.is_empty =
+      !found_real_file && !mod.is_separator && !mod.is_overwrite;
 
   // Check for disable sentinel
   if (!cfg.disable_file.empty()) {
