@@ -31,6 +31,9 @@ behind a clean abstraction layer.
   dialogs.
 - **Downloads** - Nexus and Steam Workshop sources, per-file progress and
   pause, `nxm://` link routing via IPC.
+- **`modl://` protocol** - Mod.Pub link handler: paste a `modl://` URL into the
+  app or CLI to trigger a download. Source attribution distinguishes Mod.Pub
+  from arbitrary direct URLs.
 - **Headless CLI** - launch games and handle `nxm://` / `gmm://` links without
   the UI.
 - **Themeable UI** - QSS token templates (Dark and Nord bundled).
