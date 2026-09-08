@@ -340,7 +340,7 @@ void DataTab::show_data(
     stored_deploy_include_mod_id_ = deploy_include_mod_id;
 
     if (inputs_changed) dirty_ = true;
-    if (dirty_ && isVisible()) request_populate();
+    if (dirty_) request_populate();
 }
 
 void DataTab::switch_view(View v) {
@@ -349,7 +349,7 @@ void DataTab::switch_view(View v) {
     // A different view shows a different row set - always repopulate, even if
     // the stored inputs are unchanged.
     dirty_ = true;
-    if (isVisible()) request_populate();
+    request_populate();
 }
 
 void DataTab::showEvent(QShowEvent*) {
