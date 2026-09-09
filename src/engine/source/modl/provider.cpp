@@ -4,6 +4,7 @@
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/source/download/curl_download.h"
+#include "engine/network/network_manager.h"
 
 #include <chrono>
 #include <filesystem>
@@ -35,11 +36,11 @@ bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
     opts.user_agent = "GameModManager/0.1 (modl Provider)";
     opts.long_lived = true;
 
-    long http_code = 0;
+long http_code = 0;
     bool aborted = false;
     if (!engine::download::curl_download(mod.download_url, dest_path, http_code,
-                                        opts, &dp, ctx.download_resume_from,
-                                        &aborted)) {
+                                         opts, &dp, ctx.download_resume_from,
+                                         &aborted, NET_CALLER)) {
         if (aborted) {
             ctx.download_paused = true;
             Logger::instance().debug(

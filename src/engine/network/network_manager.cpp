@@ -1030,14 +1030,21 @@ Response Manager::request(const Request& req) {
 }
 
 DownloadResult Manager::download(DownloadRequest& req) {
+    Logger::instance().debug("[Network::Manager] download: caller=" + req.caller +
+                             " url=" + req.url +
+                             " dest=" + req.dest.string() +
+                             " resume_from=" + std::to_string(req.resume_from) +
+                             " long_lived=" + (req.long_lived ? "true" : "false"));
     DownloadResult res;
     if (cancelled_) {
+        Logger::instance().debug("[Network::Manager] download: cancelled_ flag set, returning cancelled");
         res.error = "cancelled";
         return res;
     }
     {
         std::lock_guard<std::mutex> lock(mu_);
         if (opts_.offline_mode) {
+            Logger::instance().debug("[Network::Manager] download: offline_mode enabled, returning offline");
             res.error = "offline";
             return res;
         }
@@ -1065,6 +1072,9 @@ DownloadResult Manager::download(DownloadRequest& req) {
     }
 
     const CURLcode rc = curl_easy_perform(curl);
+    Logger::instance().debug("[Network::Manager] curl_easy_perform returned: rc=" + std::to_string(rc) +
+                             " (" + curl_easy_strerror(rc) + ")" +
+                             " http_code=" + std::to_string(res.http_code));
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &res.http_code);
     // Protocol version for the Network tab.
     long http_version_raw = 0;

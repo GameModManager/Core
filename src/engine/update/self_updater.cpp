@@ -7,6 +7,7 @@
 
 #include "engine/core/log/logger.h"
 #include "engine/source/download/curl_download.h"
+#include "engine/network/network_manager.h"
 
 namespace engine::update {
 
@@ -26,7 +27,7 @@ bool fetch_github_latest(nlohmann::json &out) {
   dl::Options opts;
   opts.user_agent = kUserAgent;
 
-  bool ok = dl::curl_download(kGitHubApiUrl, tmp, http_code, opts);
+  bool ok = dl::curl_download(kGitHubApiUrl, tmp, http_code, opts, nullptr, 0, nullptr, NET_CALLER);
   if (!ok || http_code >= 400) {
     Logger::instance().error("SelfUpdater: GitHub API request failed (HTTP " +
                              std::to_string(http_code) + ")");

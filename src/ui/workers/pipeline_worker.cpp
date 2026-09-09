@@ -49,6 +49,9 @@ void FetchRunner::stop() {
 
 void FetchRunner::run(const std::string& id, engine::Mod mod,
                       const std::string& mods_dir, const std::string& meta_dir) {
+    engine::Logger::instance().debug("[Fetch] run started: id=" + id +
+                                     " source=" + mod.download_source_type +
+                                     " source_id=" + mod.download_source_id);
     auto& ctx = fetch_pipeline_->ctx();
 
     // Reset the pause/resume fields for this run (the worker reset the cancel
@@ -74,15 +77,17 @@ void FetchRunner::run(const std::string& id, engine::Mod mod,
             emit download_meta(id, archive_name, display_name);
         };
 
+    engine::Logger::instance().debug("[Fetch] Starting pipeline run for id=" + id);
     const bool success =
         fetch_pipeline_->run(mod) == engine::PipelineResult::Success;
+    engine::Logger::instance().debug("[Fetch] Pipeline run completed for id=" + id + " success=" + (success ? "true" : "false"));
 
     // Clean up progress callbacks
     ctx.on_progress = nullptr;
     ctx.on_download_meta = nullptr;
 
     if (ctx.download_paused) {
-        engine::Logger::instance().debug("Download paused: " + id);
+        engine::Logger::instance().debug("[Fetch] Download paused: " + id);
         emit paused(id);
         emit fetch_finished(id);
         return;
@@ -100,10 +105,10 @@ void FetchRunner::run(const std::string& id, engine::Mod mod,
         (mod.name == "Mod file " + id) ? std::string{} : mod.name;
 
     if (success) {
-        engine::Logger::instance().debug("Download complete: " + id);
+        engine::Logger::instance().debug("[Fetch] Download complete: " + id + " path=" + archive_path);
         emit download_complete(id, true, archive_path, display_name);
     } else {
-        engine::Logger::instance().error("Download failed: " + id);
+        engine::Logger::instance().error("[Fetch] Download failed: " + id);
         emit download_complete(id, false, archive_path, display_name);
     }
     emit fetch_finished(id);
@@ -218,7 +223,10 @@ void PipelineWorker::download_mod(const std::string& id,
                                    const std::string& mods_dir,
                                    const std::string& meta_dir) {
     (void)game_id;
-    engine::Logger::instance().debug("Downloading mod file: " + id);
+    engine::Logger::instance().debug("[Pipeline] download_mod called: id=" + id +
+                                     " mod_id=" + std::to_string(link.mod_id) +
+                                     " file_id=" + std::to_string(link.file_id) +
+                                     " domain=" + link.nexus_domain);
 
     engine::Mod mod;
     mod.id = id;
@@ -304,11 +312,19 @@ void PipelineWorker::download_modl(const std::string& id,
 }
 
 void PipelineWorker::dispatch_fetch(PendingDownload&& pd) {
+    engine::Logger::instance().debug("[Pipeline] dispatch_fetch: id=" + pd.id +
+                                     " source=" + pd.mod.download_source_type +
+                                     " source_id=" + pd.mod.download_source_id +
+                                     " nexus_queue=" + (nexus_queue_downloads_.load() ? "on" : "off") +
+                                     " nexus_in_flight=" + std::to_string(nexus_in_flight_.size()) +
+                                     " free_slots=" + std::to_string(std::count_if(runners_.begin(), runners_.end(),
+                                         [](const auto& r) { return !r->busy().load(); })));
     // Per-source queueing: when enabled, a Nexus download waits while any
     // other Nexus download is still in flight, even if a pool slot is free.
     // Other sources ignore the rule (a LoversLab download may run alongside).
     if (pd.mod.download_source_type == "nexus" && nexus_queue_downloads_.load() &&
         !nexus_in_flight_.empty()) {
+        engine::Logger::instance().debug("[Pipeline] dispatch_fetch: QUEUED (nexus one-at-a-time) id=" + pd.id);
         pending_.push_back(std::move(pd));
         return;
     }
@@ -319,15 +335,19 @@ void PipelineWorker::dispatch_fetch(PendingDownload&& pd) {
         if (runner->busy().load())
             continue;
         next_runner_ = (next_runner_ + i + 1) % runners_.size();
+        engine::Logger::instance().debug("[Pipeline] dispatch_fetch: DISPATCHED to runner slot " + std::to_string((next_runner_ + i) % runners_.size()) + " id=" + pd.id);
         start_fetch_on(runner, std::move(pd));
         return;
     }
     // Every slot is busy: park it. on_fetch_finished drains the queue in order
     // (FIFO - earlier downloads keep their place over later ones).
+    engine::Logger::instance().debug("[Pipeline] dispatch_fetch: QUEUED (all slots busy) id=" + pd.id);
     pending_.push_back(std::move(pd));
 }
 
 void PipelineWorker::start_fetch_on(FetchRunner* runner, PendingDownload&& pd) {
+    engine::Logger::instance().debug("[Pipeline] start_fetch_on: id=" + pd.id +
+                                     " source=" + pd.mod.download_source_type);
     runner->busy().store(true);
     // Reset the cooperative-pause flag BEFORE dispatch so a stale flag from a
     // previous run on this slot can't abort the new download. A pause arriving
@@ -344,15 +364,19 @@ void PipelineWorker::start_fetch_on(FetchRunner* runner, PendingDownload&& pd) {
         [runner, id, mod = std::move(pd.mod),
          mods_dir = std::move(pd.mods_dir),
          meta_dir = std::move(pd.meta_dir)]() mutable {
+            engine::Logger::instance().debug("[Pipeline] FetchRunner lambda executing, calling run() for id=" + id);
             runner->run(id, std::move(mod), mods_dir, meta_dir);
         },
         Qt::QueuedConnection);
 }
 
 void PipelineWorker::on_fetch_finished(const std::string& id) {
+    engine::Logger::instance().debug("[Pipeline] on_fetch_finished: id=" + id);
     auto it = running_.find(id);
-    if (it == running_.end())
+    if (it == running_.end()) {
+        engine::Logger::instance().warn("[Pipeline] on_fetch_finished: id not found in running_: " + id);
         return;
+    }
     FetchRunner* runner = it->second;
     running_.erase(it);
     runner->busy().store(false);
@@ -370,10 +394,12 @@ void PipelineWorker::on_fetch_finished(const std::string& id) {
                 continue;
             auto pd = std::move(*pit);
             pending_.erase(pit);
+            engine::Logger::instance().debug("[Pipeline] on_fetch_finished: dequeuing next id=" + pd.id);
             start_fetch_on(runner, std::move(pd));
             return;
         }
     }
+    engine::Logger::instance().debug("[Pipeline] on_fetch_finished: no pending downloads to dequeue");
 }
 
 void PipelineWorker::pause_download(const std::string& id) {
