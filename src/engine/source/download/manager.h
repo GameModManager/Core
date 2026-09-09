@@ -7,10 +7,7 @@
 #include <functional>
 #include <string>
 
-namespace engine::Source {
-
-// Download types and free functions, formerly in engine::download.
-namespace DownloadManager {
+namespace engine::download {
 
 // Progress reporting for a curl transfer (the UI's pause/progress plumbing).
 struct Progress {
@@ -71,5 +68,4 @@ size_t capture_content_disposition(void* ptr, size_t size, size_t nmemb,
 // has no path.
 std::string url_path_basename(const std::string& url);
 
-} // namespace DownloadManager
-} // namespace engine::Source
+} // namespace engine::download
