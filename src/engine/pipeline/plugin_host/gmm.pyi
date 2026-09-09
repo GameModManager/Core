@@ -460,7 +460,7 @@ class RegistrationContext:
         """Register a load-order sort provider.
 
         ``fn(mod_folders)`` returns the sorted mod folder names.
-        Registered into the SortRegistry for this plugin's game.
+        Registered into the Sorter::Registry for this plugin's game.
         """
         ...
 

@@ -1,7 +1,7 @@
 #pragma once
 
 // P1.2 Game::Features::Registry - MO2's IGameFeatures analogue (PLAN.md §19.3
-// gap 2 / §19.4 P1.2). Mirrors SortRegistry/diagnostics_registry: a
+// gap 2 / §19.4 P1.2). Mirrors Sorter::Registry/diagnostics_registry: a
 // process-wide singleton (Qt-free) plugins populate through
 // register_game_feature (C ABI) or its pybind mirror, and the engine queries at
 // use sites.

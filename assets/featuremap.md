@@ -553,8 +553,8 @@ Living document tracking MO2 feature parity and GMM-exclusive features.
 
 | Feature | MO2 | GMM | Status |
 |---------|-----|-----|--------|
-| Sort provider / registry | ❌ | 🚀 `SortProvider` + `SortRegistry` | 🚀 |
-| C ABI sort provider | ❌ | 🚀 `AbiSortProvider` | 🚀 |
+| Sort provider / registry | ❌ | 🚀 `Sorter::Interface` + `Sorter::Registry` | 🚀 |
+| C ABI sort provider | ❌ | 🚀 `Sorter::Abi` | 🚀 |
 | LOOT sorter | ❌ | 🚀 `Sorter::Loot` (run_sort with progress) | 🚀 |
 | Masterlist manager | ❌ | 🚀 `MasterlistManager` (GitHub branch walk-down, 24h TTL) | 🚀 |
 
