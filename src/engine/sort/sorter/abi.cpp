@@ -1,7 +1,5 @@
 #include "engine/sort/sorter/abi.h"
 
-#include <cstring>
-
 namespace engine {
 namespace Sorter {
 

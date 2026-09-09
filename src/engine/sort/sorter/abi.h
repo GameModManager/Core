@@ -2,7 +2,7 @@
 
 #include "engine/sort/sorter/interface.h"
 
-#include <functional>
+#include <cstddef>
 #include <string>
 #include <vector>
 

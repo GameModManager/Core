@@ -1319,8 +1319,7 @@ public:
       return *this;
     }
     engine::Sorter::Registry::instance().register_provider(
-        gid, std::make_unique<engine::Sorter::Abi>(gid.c_str(), py_sort_bridge,
-                                                       user_data));
+        gid, std::make_unique<engine::Sorter::Abi>(gid.c_str(), py_sort_bridge, user_data));
     engine::Logger::instance().debug(
         "Python plugin registered sort provider for game=" + gid);
     return *this;
