@@ -620,11 +620,7 @@ void Manager::apply_options(CURL* curl) const {
     if (!opts_.use_proxy && opts_.use_happy_eyeballs) {
         curl_easy_setopt(curl, CURLOPT_HAPPY_EYEBALLS_TIMEOUT_MS, 250L);
     }
-    // HTTP/3 preference with automatic h2/h1.1 fallback. Same proxy guard.
-    if (!opts_.use_proxy && opts_.use_http3) {
-        curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_3);
     }
-}
 
 CURL* Manager::prepare_request(const Request& req, Response& out_resp,
                                std::string& out_err) {
@@ -645,6 +641,11 @@ CURL* Manager::prepare_request(const Request& req, Response& out_resp,
     if (req.max_bytes > 0) {
         curl_easy_setopt(curl, CURLOPT_MAXFILESIZE_LARGE,
                          static_cast<curl_off_t>(req.max_bytes));
+    }
+    // HTTP/3 (QUIC) only works over HTTPS. Set per-request where URL is known.
+    if (!opts_.use_proxy && opts_.use_http3 &&
+        req.url.rfind("https://", 0) == 0) {
+        curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_3);
     }
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_string);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &out_resp.body);
@@ -748,6 +749,11 @@ CURL* Manager::prepare_download(DownloadRequest& req,
     curl_easy_setopt(curl, CURLOPT_URL, req.url.c_str());
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
+    // HTTP/3 (QUIC) only works over HTTPS. Set per-request where URL is known.
+    if (!opts_.use_proxy && opts_.use_http3 &&
+        req.url.rfind("https://", 0) == 0) {
+        curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_3);
+    }
     if (req.long_lived) {
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);
         // No overall timeout - large archives routinely exceed fixed caps.
@@ -938,11 +944,12 @@ Response Manager::request(const Request& req) {
     long http_version_raw = 0;
     curl_easy_getinfo(curl, CURLINFO_HTTP_VERSION, &http_version_raw);
     switch (http_version_raw) {
-        case CURL_HTTP_VERSION_3:    resp.http_version = "http/3"; break;
-        case CURL_HTTP_VERSION_2TLS: resp.http_version = "http/2"; break;
-        case CURL_HTTP_VERSION_1_1:  resp.http_version = "http/1.1"; break;
-        case CURL_HTTP_VERSION_1_0:  resp.http_version = "http/1.0"; break;
-        default:                     resp.http_version = "unknown"; break;
+        case CURL_HTTP_VERSION_3:           resp.http_version = "http/3"; break;
+        case CURL_HTTP_VERSION_2_0:         resp.http_version = "http/2"; break;
+        case CURL_HTTP_VERSION_2_PRIOR_KNOWLEDGE: resp.http_version = "http/2"; break;
+        case CURL_HTTP_VERSION_1_1:         resp.http_version = "http/1.1"; break;
+        case CURL_HTTP_VERSION_1_0:         resp.http_version = "http/1.0"; break;
+        default:                            resp.http_version = "unknown"; break;
     }
     // Per-request bytes for the Network log UI. Captured BEFORE
     // curl_easy_cleanup (the handle is needed for getinfo) and reflects
@@ -1063,11 +1070,12 @@ DownloadResult Manager::download(DownloadRequest& req) {
     long http_version_raw = 0;
     curl_easy_getinfo(curl, CURLINFO_HTTP_VERSION, &http_version_raw);
     switch (http_version_raw) {
-        case CURL_HTTP_VERSION_3:    res.http_version = "http/3"; break;
-        case CURL_HTTP_VERSION_2TLS: res.http_version = "http/2"; break;
-        case CURL_HTTP_VERSION_1_1:  res.http_version = "http/1.1"; break;
-        case CURL_HTTP_VERSION_1_0:  res.http_version = "http/1.0"; break;
-        default:                     res.http_version = "unknown"; break;
+        case CURL_HTTP_VERSION_3:           res.http_version = "http/3"; break;
+        case CURL_HTTP_VERSION_2_0:         res.http_version = "http/2"; break;
+        case CURL_HTTP_VERSION_2_PRIOR_KNOWLEDGE: res.http_version = "http/2"; break;
+        case CURL_HTTP_VERSION_1_1:         res.http_version = "http/1.1"; break;
+        case CURL_HTTP_VERSION_1_0:         res.http_version = "http/1.0"; break;
+        default:                            res.http_version = "unknown"; break;
     }
     double tt = 0.0;
     curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME, &tt);
