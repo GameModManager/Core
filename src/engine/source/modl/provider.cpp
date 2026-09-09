@@ -4,7 +4,6 @@
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/source/download/curl_download.h"
-#include "engine/source/download/manager.h"
 
 #include <chrono>
 #include <filesystem>
@@ -26,19 +25,19 @@ bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
     // modl:// links are assumed to point at a plain https archive (mod.pub
     // does this in the article). v1 sends no cookie; sites that need auth
     // can be added later by mirroring LoversLab's cookie_header pattern.
-    DownloadManager::Progress dp;
+    engine::download::Progress dp;
     dp.callback = ctx.on_progress;
     dp.should_abort = ctx.should_abort;
     dp.resume_base = ctx.download_resume_from;
     dp.start = std::chrono::steady_clock::now();
 
-    DownloadManager::Options opts;
+    engine::download::Options opts;
     opts.user_agent = "GameModManager/0.1 (modl Provider)";
     opts.long_lived = true;
 
     long http_code = 0;
     bool aborted = false;
-    if (!DownloadManager::curl_download(mod.download_url, dest_path, http_code,
+    if (!engine::download::curl_download(mod.download_url, dest_path, http_code,
                                         opts, &dp, ctx.download_resume_from,
                                         &aborted)) {
         if (aborted) {
@@ -82,7 +81,7 @@ SourceDownloadInfo Provider::resolve_download_info(const Mod& mod) const {
     // on_download_meta when the header lands. Upgrade path: pipe
     // captured content-disposition into SourceDownloadInfo when the
     // header-only probe is cheap enough to add per-queue.
-    const std::string fname = DownloadManager::url_path_basename(mod.download_url);
+    const std::string fname = engine::download::url_path_basename(mod.download_url);
     if (fname.empty()) return info;
     info.archive_name = fname;
     info.display_name = std::filesystem::path(fname).stem().string();

@@ -236,7 +236,7 @@ bool Provider::download_from_url(const std::string& download_url,
     Logger::instance().debug("NexusProvider: downloading from Nexus...");
     long dl_code = 0;
 
-    engine::Source::DownloadManager::Progress dp;
+    engine::download::Progress dp;
     dp.callback = ctx.on_progress;
     dp.should_abort = ctx.should_abort;
     dp.resume_base = ctx.download_resume_from;
@@ -245,11 +245,11 @@ bool Provider::download_from_url(const std::string& download_url,
     // Large archives routinely exceed a fixed transfer timeout (Nexus is
     // often slow). long_lived removes the overall cap - only the connect
     // timeout applies - matching LoversLabProvider's large-file handling.
-    engine::Source::DownloadManager::Options opts;
+    engine::download::Options opts;
     opts.long_lived = true;
 
     bool aborted = false;
-    if (!engine::Source::DownloadManager::curl_download(
+    if (!engine::download::curl_download(
             download_url, dest_path, dl_code, opts, &dp,
             ctx.download_resume_from, &aborted)) {
         if (aborted) {
