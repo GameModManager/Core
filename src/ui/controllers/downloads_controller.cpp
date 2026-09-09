@@ -230,21 +230,34 @@ void DownloadsController::setup_nxm_ipc() {
     connect(w_->nxm_ipc_, &engine::NxmIpcServer::nxmUrlReceived, this,
             [this](const QString &url) {
               std::string raw = url.toStdString();
+              engine::Logger::instance().debug("[NXM-Parse] Raw URL received: " + raw);
               // Accept gmm:// URLs too - convert to nxm:// for the parser
               static const std::string gmm_pre = "gmm://nexus/";
-              if (raw.compare(0, gmm_pre.size(), gmm_pre) == 0)
+              if (raw.compare(0, gmm_pre.size(), gmm_pre) == 0) {
                 raw = "nxm://" + raw.substr(gmm_pre.size());
+                engine::Logger::instance().debug("[NXM-Parse] Converted gmm:// to nxm://: " + raw);
+              }
               // Try nxm first; fall back to modl (the protocol is a
               // generic URL forwarder, not nxm-specific - keep the signal
               // name for backward-compat with older builds).
               auto nxm = engine::NxmRouter::parse(raw);
               if (nxm.valid()) {
+                engine::Logger::instance().debug("[NXM-Parse] Parsed NXM link: domain=" + nxm.nexus_domain +
+                                                 " mod_id=" + std::to_string(nxm.mod_id) +
+                                                 " file_id=" + std::to_string(nxm.file_id) +
+                                                 " key=" + (nxm.key.empty() ? "absent" : "present") +
+                                                 " expire=" + (nxm.expire > 0 ? std::to_string(nxm.expire) : "none"));
                 handle_nxm_download(nxm);
                 return;
               }
+              engine::Logger::instance().debug("[NXM-Parse] NXM parse failed, trying modl://");
               auto modl = engine::Source::Router::parse_modl(raw);
               if (modl.valid()) {
+                engine::Logger::instance().debug("[NXM-Parse] Parsed modl link: game_id=" + modl.game_id +
+                                                 " direct_url=" + modl.direct_url);
                 handle_modl_download(modl);
+              } else {
+                engine::Logger::instance().warn("[NXM-Parse] Failed to parse URL as nxm:// or modl://: " + raw);
               }
             });
   }
@@ -550,8 +563,9 @@ void DownloadsController::hide_install_progress() {
 }
 
 void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
+  engine::Logger::instance().debug("[NXM-Download] handle_nxm_download called");
   if (!link.valid()) {
-    engine::Logger::instance().warn("Invalid NXM link received");
+    engine::Logger::instance().warn("[NXM-Download] Invalid NXM link received (empty nexus_domain)");
     return;
   }
 
@@ -568,44 +582,55 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
     }
   }
 
-  engine::Logger::instance().debug(
-      "NXM download: domain=" + link.nexus_domain +
-      " mod=" + std::to_string(link.mod_id) +
-      " file=" + std::to_string(link.file_id) + " key=" +
-      (link.key.empty() ? "absent"
-                        : "present(" + std::to_string(link.key.size()) + "B)") +
-      " expires=" + (link.expire > 0 ? std::to_string(link.expire) : "none") +
-      " url=" + log_url);
+  engine::Logger::instance().debug("[NXM-Download] Parsed link: domain=" + link.nexus_domain +
+                                   " mod_id=" + std::to_string(link.mod_id) +
+                                   " file_id=" + std::to_string(link.file_id) +
+                                   " key=" + (link.key.empty() ? "absent" : "present(" + std::to_string(link.key.size()) + "B)") +
+                                   " expire=" + (link.expire > 0 ? std::to_string(link.expire) : "none") +
+                                   " user_id=" + (link.user_id > 0 ? std::to_string(link.user_id) : "none") +
+                                   " url=" + log_url);
 
   // Find which game_id owns this nexus_domain via managed games
   std::string matched_game_id;
   if (w_->managed_games_) {
     matched_game_id = w_->managed_games_->game_id_for_domain(link.nexus_domain);
+    engine::Logger::instance().debug("[NXM-Download] Managed games lookup for domain '" + link.nexus_domain + "': " +
+                                     (matched_game_id.empty() ? "no match" : "matched " + matched_game_id));
+  } else {
+    engine::Logger::instance().debug("[NXM-Download] No managed_games_ available for domain lookup");
   }
 
   // Fallback: try matching via loaded plugins
   if (matched_game_id.empty() && w_->plugin_loader_) {
+    engine::Logger::instance().debug("[NXM-Download] Falling back to plugin loader for domain '" + link.nexus_domain + "'");
     for (const auto &p : w_->plugin_loader_->plugins()) {
       if (p.nexus_domain == link.nexus_domain) {
         matched_game_id = p.game_id;
+        engine::Logger::instance().debug("[NXM-Download] Plugin fallback matched: game_id=" + matched_game_id);
         break;
       }
+    }
+    if (matched_game_id.empty()) {
+      engine::Logger::instance().debug("[NXM-Download] Plugin fallback: no plugin matches domain '" + link.nexus_domain + "'");
     }
   }
 
   if (matched_game_id.empty()) {
+    engine::Logger::instance().warn("[NXM-Download] No game found for domain: " + link.nexus_domain);
     QMessageBox::warning(w_, tr("NXM Download"),
                          tr("Unknown Nexus Mods domain: %1\nNo game plugin "
                             "supports this domain.")
-                             .arg(QString::fromStdString(link.nexus_domain)));
+                          .arg(QString::fromStdString(link.nexus_domain)));
     return;
   }
 
   // Is this game managed by us?
   bool is_managed =
       w_->managed_games_ && w_->managed_games_->is_managed(matched_game_id);
+  engine::Logger::instance().debug("[NXM-Download] Game '" + matched_game_id + "' managed: " + (is_managed ? "yes" : "no"));
 
   if (!is_managed) {
+    engine::Logger::instance().warn("[NXM-Download] Game not managed: " + matched_game_id);
     QMessageBox::information(
         w_, tr("NXM Download"),
         tr("This mod is for %1, but GameModManager is not managing this "
@@ -619,6 +644,7 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
 
   // Game is managed - but is the active instance the right one?
   if (matched_game_id != w_->current_game_id_) {
+    engine::Logger::instance().warn("[NXM-Download] Active instance mismatch: expected " + matched_game_id + ", current " + w_->current_game_id_);
     QMessageBox::information(
         w_, tr("NXM Download"),
         tr("This mod is for %1, but the active instance is %2.\n"
@@ -630,10 +656,9 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
   }
 
   // Route to the active instance - start download via pipeline worker
-  engine::Logger::instance().debug(
-      "Starting download: " + w_->current_game_name_ +
-      " (mod_id=" + std::to_string(link.mod_id) +
-      ", file_id=" + std::to_string(link.file_id) + ")");
+  engine::Logger::instance().debug("[NXM-Download] Starting download for game: " + w_->current_game_name_ +
+                                   " (mod_id=" + std::to_string(link.mod_id) +
+                                   ", file_id=" + std::to_string(link.file_id) + ")");
 
   // Show in DownloadsTab immediately. The entry key is "<mod_id>-<file_id>"
   // so Main and Optional files of the same mod page stay separate entries.
@@ -649,6 +674,9 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
                          .arg(link.file_id)
                          .toStdString(),
                      "Nexus Mods", {}, link.nexus_domain, link.file_id, mod_id);
+    engine::Logger::instance().debug("[NXM-Download] Added download entry to DownloadsTab: " + key);
+  } else {
+    engine::Logger::instance().warn("[NXM-Download] DownloadsTab not available, cannot add entry");
   }
 
   // Surface the download: bring the window to front and switch to the
@@ -668,19 +696,26 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
   auto meta_dir = w_->current_instance_root_.empty()
                       ? ""
                       : (w_->current_instance_root_ / "meta").string();
+  engine::Logger::instance().debug("[NXM-Download] Pipeline paths: mods_dir=" + mods_dir.string() +
+                                   " meta_dir=" + meta_dir);
 
   // Invoke the pipeline worker asynchronously (download only - install is a
   // separate user-triggered step)
+  if (!w_->pipeline_thread_) {
+    engine::Logger::instance().error("[NXM-Download] pipeline_thread_ is null! Cannot start download.");
+    return;
+  }
+  engine::Logger::instance().debug("[NXM-Download] Invoking download_mod on pipeline worker");
   QMetaObject::invokeMethod(
       w_->pipeline_thread_->worker(),
       [this, key, link, mods_dir, meta_dir]() {
+        engine::Logger::instance().debug("[NXM-Download] Lambda executing on worker thread, calling download_mod");
         w_->pipeline_thread_->worker()->download_mod(
             key, link, w_->current_game_id_, mods_dir.string(), meta_dir);
       },
       Qt::QueuedConnection);
 
-  engine::Logger::instance().debug("Download queued for mod " + mod_id +
-                                   " file " + file_id);
+  engine::Logger::instance().debug("[NXM-Download] Download queued for mod " + mod_id + " file " + file_id);
 }
 
 void DownloadsController::handle_modl_download(const engine::Source::ModlLink &link) {

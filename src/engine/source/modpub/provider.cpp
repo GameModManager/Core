@@ -546,11 +546,11 @@ engine::download::Progress dp;
    opts.user_agent = "GameModManager/0.1 (ModPub Provider)";
    opts.long_lived = true;
 
-   long http_code = 0;
-   bool aborted = false;
-   if (!engine::download::curl_download(mod.download_url, dest_path, http_code,
-                                       opts, &dp, ctx.download_resume_from,
-                                       &aborted)) {
+long http_code = 0;
+    bool aborted = false;
+    if (!engine::download::curl_download(mod.download_url, dest_path, http_code,
+                                        opts, &dp, ctx.download_resume_from,
+                                        &aborted, NET_CALLER)) {
     if (aborted) {
       ctx.download_paused = true;
       Logger::instance().debug(

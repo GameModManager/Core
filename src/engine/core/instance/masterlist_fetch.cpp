@@ -3,6 +3,7 @@
 #include "engine/core/instance/instance_utils.h"
 #include "engine/core/log/logger.h"
 #include "engine/source/download/curl_download.h"
+#include "engine/network/network_manager.h"
 
 #include <filesystem>
 #include <fstream>
@@ -53,7 +54,7 @@ bool ensure_masterlist_cached(const std::string &game_id,
   fs::create_directories(path.parent_path(), mk);
 
   long http_code = 0;
-  if (!engine::download::curl_download(url, path, http_code)) {
+  if (!engine::download::curl_download(url, path, http_code, {}, nullptr, 0, nullptr, NET_CALLER)) {
     error = "download failed (HTTP " + std::to_string(http_code) + ")";
     return false;
   }

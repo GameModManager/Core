@@ -36,13 +36,15 @@ struct Options {
 // On an abort (pause) the partial file is KEPT so a later run can resume via
 // HTTP Range; on any other failure the partial file is removed. http_code
 // receives the final HTTP status. Returns false on curl error / HTTP >= 400.
+// caller: optional identifier for the Debug panel Network tab (use NET_CALLER at call site).
 bool curl_download(const std::string& url,
                    const std::filesystem::path& dest_path,
                    long& http_code,
                    const Options& opts = {},
                    Progress* progress = nullptr,
                    int64_t resume_from = 0,
-                   bool* aborted = nullptr);
+                   bool* aborted = nullptr,
+                   const std::string& caller = {});
 
 // Extract the filename from a "Content-Disposition" header value, e.g.
 //   attachment; filename="mod.7z"          -> "mod.7z"
