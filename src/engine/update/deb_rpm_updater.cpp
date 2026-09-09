@@ -44,7 +44,7 @@ DebRpmUpdater::install_update(const UpdateInfo &info,
   if (progress_cb)
     progress_cb(0.0f);
 
-  namespace dl = engine::Source::DownloadManager;
+  namespace dl = engine::download;
   long http_code = 0;
   dl::Options opts;
   opts.user_agent = "GameModManager/SelfUpdater";

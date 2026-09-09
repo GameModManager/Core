@@ -286,7 +286,7 @@ ModlLink Router::parse_modl(const std::string& url) {
     constexpr std::size_t kMaxDecoded = 4096;
     if (raw_value.size() > kMaxDecoded * 3) return link;
 
-    std::string decoded = DownloadManager::percent_decode(raw_value);
+    std::string decoded = engine::download::percent_decode(raw_value);
     if (decoded.empty() || decoded.size() > kMaxDecoded) return link;
     // The decoded https:// URL may itself carry a #fragment (when the
     // originating site percent-encoded the fragment as %23). We never

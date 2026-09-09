@@ -1,5 +1,5 @@
 // =============================================================================
-// engine::curl_download - thin wrapper around Network::
+// engine::download - thin wrapper around Network::
 // -----------------------------------------------------------------------------
 // Preserved for the existing call sites (Nexus, LoversLab, self-updater, LOOT
 // masterlists, icon fetcher, instance masterlist cache). Internally it now
@@ -22,17 +22,17 @@
 #include <chrono>
 #include <filesystem>
 
-namespace engine::Source::DownloadManager {
+namespace engine::download {
 
 namespace {
 
 // Translate a libcurl-ish "Options" struct into a Network:: DownloadRequest.
 network::DownloadRequest to_request(const std::string& url,
-                                   const std::filesystem::path& dest_path,
-                                   const Options& opts,
-                                   Progress* progress,
-                                   int64_t resume_from,
-                                   const std::string& caller) {
+                                    const std::filesystem::path& dest_path,
+                                    const Options& opts,
+                                    Progress* progress,
+                                    int64_t resume_from,
+                                    const std::string& caller) {
     network::DownloadRequest r;
     // The original helper URL-encodes the path component, so we mirror that
     // before handing it to libcurl - same behaviour as the pre-Network:: code.
@@ -226,4 +226,4 @@ bool curl_download(const std::string& url,
     return true;
 }
 
-} // namespace engine::Source::DownloadManager
+} // namespace engine::download

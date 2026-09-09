@@ -295,7 +295,7 @@ void PipelineWorker::download_modl(const std::string& id,
         mod.download_page_url = derived.page_url;  // canonical https page
     } else {
         mod.download_source_id =
-            engine::Source::DownloadManager::url_path_basename(link.direct_url);
+            engine::download::url_path_basename(link.direct_url);
         mod.download_page_url = link.full_url;     // modl:// audit trail
     }
     mod.download_url = link.direct_url;

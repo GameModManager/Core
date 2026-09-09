@@ -44,7 +44,7 @@ InstallResult AppImageUpdater::install_update(
   if (progress_cb)
     progress_cb(0.0f);
 
-  namespace dl = engine::Source::DownloadManager;
+  namespace dl = engine::download;
   long http_code = 0;
   dl::Options opts;
   opts.user_agent = "GameModManager/SelfUpdater";
