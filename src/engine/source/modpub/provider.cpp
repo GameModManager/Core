@@ -5,7 +5,6 @@
 #include "engine/network/network_manager.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/source/download/curl_download.h"
-#include "engine/source/download/manager.h"
 #include "engine/source/http_util.h"
 
 #include <nlohmann/json.hpp>
@@ -537,21 +536,21 @@ bool Provider::fetch(const ::engine::Mod &mod, ::engine::PipelineContext &ctx,
     return false;
   }
 
-  DownloadManager::Progress dp;
-  dp.callback = ctx.on_progress;
-  dp.should_abort = ctx.should_abort;
-  dp.resume_base = ctx.download_resume_from;
-  dp.start = std::chrono::steady_clock::now();
+engine::download::Progress dp;
+   dp.callback = ctx.on_progress;
+   dp.should_abort = ctx.should_abort;
+   dp.resume_base = ctx.download_resume_from;
+   dp.start = std::chrono::steady_clock::now();
 
-  DownloadManager::Options opts;
-  opts.user_agent = "GameModManager/0.1 (ModPub Provider)";
-  opts.long_lived = true;
+   engine::download::Options opts;
+   opts.user_agent = "GameModManager/0.1 (ModPub Provider)";
+   opts.long_lived = true;
 
-  long http_code = 0;
-  bool aborted = false;
-  if (!DownloadManager::curl_download(mod.download_url, dest_path, http_code,
-                                      opts, &dp, ctx.download_resume_from,
-                                      &aborted)) {
+   long http_code = 0;
+   bool aborted = false;
+   if (!engine::download::curl_download(mod.download_url, dest_path, http_code,
+                                       opts, &dp, ctx.download_resume_from,
+                                       &aborted)) {
     if (aborted) {
       ctx.download_paused = true;
       Logger::instance().debug(
@@ -577,7 +576,7 @@ Provider::resolve_download_info(const ::engine::Mod &mod) const {
   SourceDownloadInfo info;
   if (!mod.download_url.empty()) {
     const std::string fname =
-        DownloadManager::url_path_basename(mod.download_url);
+        engine::download::url_path_basename(mod.download_url);
     if (!fname.empty()) {
       info.archive_name = fname;
       info.display_name = std::filesystem::path(fname).stem().string();

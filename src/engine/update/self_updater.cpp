@@ -19,7 +19,7 @@ constexpr const char *kUserAgent = "GameModManager/SelfUpdater";
 
 // Fetch the raw JSON body from the GitHub releases API.
 bool fetch_github_latest(nlohmann::json &out) {
-  namespace dl = engine::Source::DownloadManager;
+  namespace dl = engine::download;
 
   const auto tmp = std::filesystem::temp_directory_path() / "gmm_update.json";
   long http_code = 0;

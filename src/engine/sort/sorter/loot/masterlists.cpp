@@ -34,7 +34,7 @@ bool fetch_file(const std::string& url, const fs::path& dest) {
     std::error_code ec;
     fs::remove(tmp, ec);
     long http_code = 0;
-    const bool ok = download::curl_download(url, tmp, http_code);
+    const bool ok = engine::download::curl_download(url, tmp, http_code);
     if (!ok) {
         fs::remove(tmp, ec);  // curl_download already does; belt and braces
         return false;

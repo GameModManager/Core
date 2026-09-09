@@ -56,7 +56,7 @@ std::string url_path_basename(const std::string& url) {
         slash + 1, (q == std::string::npos) ? std::string::npos : q - slash - 1);
     const std::size_t last = path.find_last_of('/');
     if (last != std::string::npos) path = path.substr(last + 1);
-    return download::percent_decode(path);
+    return engine::download::percent_decode(path);
 }
 
 std::string to_lower(const std::string& in) {
@@ -122,13 +122,13 @@ bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
         return false;
     }
 
-    download::Progress dp;
+    engine::download::Progress dp;
     dp.callback = ctx.on_progress;
     dp.should_abort = ctx.should_abort;
     dp.resume_base = ctx.download_resume_from;
     dp.start = std::chrono::steady_clock::now();
 
-    download::Options opts;
+    engine::download::Options opts;
     opts.cookie_header = cookie;
     opts.user_agent = "GameModManager/0.1 (LoversLab Provider)";
     opts.long_lived = true;
@@ -138,7 +138,7 @@ bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
 
     long http_code = 0;
     bool aborted = false;
-    if (!download::curl_download(mod.download_url, dest_path, http_code, opts,
+    if (!engine::download::curl_download(mod.download_url, dest_path, http_code, opts,
                                  &dp, ctx.download_resume_from, &aborted)) {
         if (aborted) {
             // Pause requested - partial file is kept for resume.
@@ -195,7 +195,7 @@ SourceDownloadInfo Provider::resolve_download_info(const Mod& mod) const {
     }
 
     std::string fname =
-        download::parse_content_disposition_filename(p.content_disposition);
+        engine::download::parse_content_disposition_filename(p.content_disposition);
     if (fname.empty()) fname = url_path_basename(p.effective_url);
     if (fname.empty()) return info;
 
