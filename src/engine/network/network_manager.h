@@ -155,6 +155,12 @@ struct NetworkOptions {
     int max_retries = 0;
     // Initial backoff in milliseconds (doubles each attempt up to 8x).
     int retry_backoff_ms = 500;
+    // Happy Eyeballs: race IPv6 vs IPv4 connections (RFC 8305).
+    // Disabled when use_proxy is true (QUIC/UDP cannot tunnel through proxies).
+    bool use_happy_eyeballs = true;
+    // HTTP/3 preference: try QUIC first, fall back to h2/h1.1.
+    // Disabled when use_proxy is true.
+    bool use_http3 = true;
 };
 
 // In-memory request (GET/POST for APIs, JSON fetches, probes).
@@ -180,6 +186,7 @@ struct Response {
     std::string error;            // libcurl error string on failure
     double total_time_ms = 0.0;
     std::uint64_t request_id = 0; // matches LogEntry::id for cross-reference
+    std::string http_version;     // "http/3", "http/2", "http/1.1" etc.
 };
 
 // File download (with resume, progress callback, queue + parallel limit).
@@ -220,6 +227,7 @@ struct DownloadResult {
     // previous stack-local version dangled once prepare_download
     // returned and corrupted the destination string.
     std::string response_headers;
+    std::string http_version;         // protocol version used for this download
 };
 
 // One ring-buffer entry per request (active + finished). Logged to file and
@@ -243,6 +251,7 @@ struct LogEntry {
     double total_time_ms = 0.0;
     bool ok = false;
     bool aborted = false;                        // pause / should_abort
+    std::string http_version;                    // protocol version used for this request
 };
 
 // Live snapshot of an in-flight request for the Debug panel.

@@ -1236,10 +1236,10 @@ void DebugWindow::setup_network_tab() {
   auto *v = new QVBoxLayout(tab);
   v->setContentsMargins(4, 4, 4, 4);
 
-  network_table_ = new QTableWidget(0, 6, tab);
+  network_table_ = new QTableWidget(0, 7, tab);
   network_table_->setHorizontalHeaderLabels(
       {tr("Caller"), tr("Method"), tr("URL (redacted)"), tr("Status"),
-       tr("Time (ms)"), tr("Error")});
+       tr("Time (ms)"), tr("Protocol"), tr("Error")});
   network_table_->verticalHeader()->hide();
   network_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
   network_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -1255,6 +1255,7 @@ void DebugWindow::setup_network_tab() {
   hh->setSectionResizeMode(3, QHeaderView::ResizeToContents);
   hh->setSectionResizeMode(4, QHeaderView::ResizeToContents);
   hh->setSectionResizeMode(5, QHeaderView::ResizeToContents);
+  hh->setSectionResizeMode(6, QHeaderView::ResizeToContents);
 
   // Copy / context menu - same pattern as Paths / Info tabs.
   network_table_->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -1332,7 +1333,8 @@ void DebugWindow::populate_network() {
       set_cell(3, QStringLiteral("-"));
     }
     set_cell(4, QString::number(e.total_time_ms, 'f', 1));
-    set_cell(5, QString::fromStdString(e.curl_error));
+    set_cell(5, QString::fromStdString(e.http_version));
+    set_cell(6, QString::fromStdString(e.curl_error));
   }
   // Scroll to the top - newest first.
   if (network_table_->rowCount() > 0)
