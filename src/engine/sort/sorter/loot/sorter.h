@@ -15,13 +15,13 @@ namespace Loot {
 // One plugin fed to the LOOT sorter. `full_path` is the winning on-disk file
 // the game sees (mod-over-game resolution already happened in
 // PluginDatabase::refresh) - no VFS or merged Data dir is needed (PLAN.md
-// §7.1).
+// 7.1).
 struct Plugin {
     std::string name;               // filename, e.g. "SkyUI_SE.esp"
     std::filesystem::path full_path;
 };
 
-// Input for one "sort with LOOT" run (PLAN.md §7.1). The UI builds this from
+// Input for one "sort with LOOT" run (PLAN.md 7.1). The UI builds this from
 // a refreshed PluginDatabase and applies the result back onto its rows.
 struct Request {
     std::string game_id;            // GMM game_id, e.g. "SkyrimSpecialEdition"

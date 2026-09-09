@@ -100,8 +100,10 @@ set(ENGINE_SOURCES
     game/registry/game_knowledge.cpp
     source/nxm/nxm_router.cpp
     source/nxm/managed_games.cpp
-    sort/abi_sort_provider.cpp
-    sort/sort_registry.cpp
+    sort/sorter/abi.cpp
+    sort/sorter/registry.cpp
+    sort/sorter/loot/sorter.cpp
+    sort/sorter/loot/masterlists.cpp
     source/workshop/remote_cache.cpp
     source/workshop/workshop_client.cpp
     platform/theme/theme_manager.cpp
@@ -118,8 +120,6 @@ set(ENGINE_SOURCES
     game/saves/save_scanner.cpp
     game/saves/save_missing_assets.cpp
     game/saves/local_saves.cpp
-    sort/loot/loot_sorter.cpp
-    sort/loot/masterlists.cpp
     source/registry.cpp
     source/http_util.cpp
     source/nexus_provider.cpp

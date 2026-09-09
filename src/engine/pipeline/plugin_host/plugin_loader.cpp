@@ -23,8 +23,8 @@
 #include "engine/pipeline/plugin_host/requirements_registry.h"
 #include "engine/pipeline/plugin_host/save_parser_registry.h"
 #include "engine/pipeline/plugin_host/tool_registry.h"
-#include "engine/sort/abi_sort_provider.h"
-#include "engine/sort/sort_registry.h"
+#include "engine/sort/sorter/abi.h"
+#include "engine/sort/sorter/registry.h"
 
 #include "gmm_abi_v1.h"
 #include "gmm_abi_v2.h"
@@ -793,8 +793,8 @@ static void cb_register_sort_provider(GmmRegistrationCtx *ctx,
   }
 
   auto provider =
-      std::make_unique<AbiSortProvider>(gid.c_str(), sort_fn, user_data);
-  SortRegistry::instance().register_provider(gid, std::move(provider));
+      std::make_unique<Sorter::Abi>(gid.c_str(), sort_fn, user_data);
+  Sorter::Registry::instance().register_provider(gid, std::move(provider));
 
   Logger::instance().debug("Plugin registered sort provider for game=" + gid);
 }
@@ -1281,8 +1281,8 @@ static void cb_v2_register_sort_provider(GmmRegistrationCtxV2 *ctx,
   }
 
   auto provider =
-      std::make_unique<AbiSortProvider>(gid.c_str(), sort_fn, user_data);
-  SortRegistry::instance().register_provider(gid, std::move(provider));
+      std::make_unique<Sorter::Abi>(gid.c_str(), sort_fn, user_data);
+  Sorter::Registry::instance().register_provider(gid, std::move(provider));
 
   Logger::instance().debug("Plugin registered v2 sort provider for game=" +
                            gid);
