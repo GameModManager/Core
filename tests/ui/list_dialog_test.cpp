@@ -131,14 +131,14 @@ TEST_CASE("list dialog", "[ui]") {
             const auto center = list->visualItemRect(list->item(1)).center();
             // Deliver the double-click event straight to the viewport (QTest's
             // mouse routing to a top-level offscreen dialog doesn't land).
-            QMouseEvent press(QEvent::MouseButtonPress, center, Qt::LeftButton,
-                              Qt::LeftButton, Qt::NoModifier);
+            QMouseEvent press(QEvent::MouseButtonPress, center, center,
+                              Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
             QApplication::sendEvent(list->viewport(), &press);
-            QMouseEvent release(QEvent::MouseButtonRelease, center, Qt::LeftButton,
-                                Qt::LeftButton, Qt::NoModifier);
+            QMouseEvent release(QEvent::MouseButtonRelease, center, center,
+                                Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
             QApplication::sendEvent(list->viewport(), &release);
-            QMouseEvent dbl(QEvent::MouseButtonDblClick, center, Qt::LeftButton,
-                            Qt::LeftButton, Qt::NoModifier);
+            QMouseEvent dbl(QEvent::MouseButtonDblClick, center, center,
+                            Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
             QApplication::sendEvent(list->viewport(), &dbl);
             QCoreApplication::processEvents();
         }
