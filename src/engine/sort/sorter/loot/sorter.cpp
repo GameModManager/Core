@@ -1,8 +1,8 @@
-#include "engine/sort/loot/loot_sorter.h"
+#include "engine/sort/sorter/loot/sorter.h"
 
 #include "engine/core/log/logger.h"
 #include "engine/core/util/process_utils.h"
-#include "engine/sort/loot/masterlists.h"
+#include "engine/sort/sorter/loot/masterlists.h"
 #include "platform/platform.h"
 
 #include <cstdint>
@@ -14,7 +14,6 @@
 namespace fs = std::filesystem;
 
 namespace engine {
-
 namespace Sorter {
 namespace Loot {
 
