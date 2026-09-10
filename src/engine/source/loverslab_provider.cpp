@@ -139,7 +139,7 @@ bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
     long http_code = 0;
     bool aborted = false;
     if (!engine::download::curl_download(mod.download_url, dest_path, http_code, opts,
-                                 &dp, ctx.download_resume_from, &aborted)) {
+                                 &dp, ctx.download_resume_from, &aborted, NET_CALLER)) {
         if (aborted) {
             // Pause requested - partial file is kept for resume.
             ctx.download_paused = true;
