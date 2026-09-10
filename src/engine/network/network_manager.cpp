@@ -351,11 +351,17 @@ struct HeaderCapture {
 
 // Per-handle scratch carried in CURLOPT_PRIVATE. The slist owns the
 // request header strings; the HeaderCapture carries the response header
-// pointers. Both must outlive curl_easy_perform; both are freed by the
+// pointers; FileWriteState and ProgressForwarder carry download callback
+// state. All must outlive curl_easy_perform; all are freed by the
 // caller via curl_easy_getinfo(curl, CURLINFO_PRIVATE, ...).
+struct FileWriteState;
+struct ProgressForwarder;
+
 struct PrivateData {
     curl_slist* slist = nullptr;
     HeaderCapture* cap = nullptr;
+    FileWriteState* fws = nullptr;
+    ProgressForwarder* pf = nullptr;
 };
 
 size_t capture_headers(char* ptr, std::size_t size, std::size_t nmemb, void* userdata) {
@@ -709,16 +715,18 @@ CURL* Manager::prepare_request(const Request& req, Response& out_resp,
     // registered second; this consolidates them so both fields are
     // populated for every request. LoversLab's probe no longer needs the
     // special-case branch.
-    HeaderCapture cap;
-    cap.response_headers = &out_resp.response_headers;
-    cap.content_disposition = &out_resp.content_disposition;
+    // Heap-allocate so it outlives prepare_request() and survives until
+    // curl_easy_perform() completes in Manager::request(). Owned by
+    // PrivateData and freed there after perform.
+    auto* cap = new HeaderCapture;
+    cap->response_headers = &out_resp.response_headers;
+    cap->content_disposition = &out_resp.content_disposition;
     curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, capture_headers);
-    curl_easy_setopt(curl, CURLOPT_HEADERDATA, &cap);
-    // The cap struct lives on prepare_request's stack; curl_easy_perform
-    // is synchronous, so the pointer is safe across the transfer. Wrap
-    // it + the slist into a heap-allocated PrivateData and round-trip via
-    // CURLOPT_PRIVATE so the caller can free both after the perform.
-    auto* priv = new PrivateData{slist, &cap};
+    curl_easy_setopt(curl, CURLOPT_HEADERDATA, cap);
+    // Wrap the slist and header capture into a heap-allocated PrivateData
+    // and round-trip via CURLOPT_PRIVATE so the caller can free both after
+    // the perform.
+    auto* priv = new PrivateData{slist, cap, nullptr, nullptr};
     curl_easy_setopt(curl, CURLOPT_PRIVATE, priv);
 
     apply_options(curl);
@@ -766,50 +774,43 @@ CURL* Manager::prepare_download(DownloadRequest& req,
                          static_cast<curl_off_t>(req.resume_from));
     }
 
-    // Stack-allocated file write + progress state. Previously these were
-    // `static thread_local`, which is fine in serial use but leaves stale
-    // pointers around if an early return skipped the reassignment; the
-    // stack version has well-bounded lifetime aligned with the easy handle.
-    FileWriteState fws;
-    fws.file = &out_file;
-    fws.bytes_written = 0;
+    // Heap-allocate callback state so it outlives prepare_download() and
+    // survives until curl_easy_perform() completes in Manager::download().
+    // All three are owned by PrivateData and freed there after perform.
+    auto* fws = new FileWriteState;
+    fws->file = &out_file;
+    fws->bytes_written = 0;
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_file);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &fws);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, fws);
 
-    ProgressForwarder pf;
-    pf.cb = &req.progress;
-    pf.started = std::chrono::steady_clock::now();
+    auto* pf = new ProgressForwarder;
+    pf->cb = &req.progress;
+    pf->started = std::chrono::steady_clock::now();
     if (req.progress.on || (req.progress.should_abort)) {
         curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
         curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, xfer_forwarder);
-        curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &pf);
+        curl_easy_setopt(curl, CURLOPT_XFERINFODATA, pf);
     }
 
     // Capture response headers + Content-Disposition + final effective URL.
     // LoversLab's curl_download passes opts.effective_url back to the
     // provider; this restores that contract (B-04).
-    // Pluse the header capture callback. The capture structs live in the
-    // caller's DownloadResult (lifetime managed by Manager::download), so
-    // prepare_download only takes their addresses and writes through them.
-    // Doing this via stack-locals was tempting but the strings would
-    // dangle once prepare_download returns and curl_easy_perform fires the
-    // callback later.
-    HeaderCapture cap;
-    cap.response_headers = &out_res.response_headers;
-    cap.content_disposition = &out_res.content_disposition;
+    auto* cap = new HeaderCapture;
+    cap->response_headers = &out_res.response_headers;
+    cap->content_disposition = &out_res.content_disposition;
     curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, capture_headers);
-    curl_easy_setopt(curl, CURLOPT_HEADERDATA, &cap);
+    curl_easy_setopt(curl, CURLOPT_HEADERDATA, cap);
 
     curl_slist* slist = nullptr;
     for (const auto& h : req.headers) slist = curl_slist_append(slist, h.c_str());
     if (slist) curl_easy_setopt(curl, CURLOPT_HTTPHEADER, slist);
-    // Heap-allocate the lifetime-managed bundle so we can carry both the
-    // header slist and the header capture pointers across the perform.
+    // Heap-allocate the lifetime-managed bundle so we can carry the
+    // header slist and all callback state pointers across the perform.
     // After curl_easy_perform, Manager::download reads back response
     // headers + Content-Disposition through priv->cap->* and copies them
     // into out_res. effective_url is pulled via CURLINFO_EFFECTIVE_URL
     // (separate from this struct).
-    auto* priv = new PrivateData{slist, &cap};
+    auto* priv = new PrivateData{slist, cap, fws, pf};
     curl_easy_setopt(curl, CURLOPT_PRIVATE, priv);
 
     apply_options(curl);
@@ -849,6 +850,17 @@ Response Manager::request(const Request& req) {
     std::string prep_err;
     CURL* curl = prepare_request(req, resp, prep_err);
     if (!curl) {
+        // prepare_request may have allocated PrivateData + cap before
+        // failing. Retrieve and free to avoid leaks.
+        PrivateData* priv = nullptr;
+        curl_easy_getinfo(curl, CURLINFO_PRIVATE, &priv);
+        if (priv) {
+            if (priv->slist) curl_slist_free_all(priv->slist);
+            delete priv->cap;
+            delete priv;
+        }
+        curl_easy_cleanup(curl);
+
         resp.error = prep_err;
         {
             std::lock_guard<std::mutex> lock(mu_);
@@ -963,6 +975,7 @@ Response Manager::request(const Request& req) {
         curl_easy_getinfo(curl, CURLINFO_PRIVATE, &priv);
         if (priv) {
             if (priv->slist) curl_slist_free_all(priv->slist);
+            delete priv->cap;
             delete priv;
         }
     }
@@ -1057,6 +1070,20 @@ DownloadResult Manager::download(DownloadRequest& req) {
     std::string prep_err;
     CURL* curl = prepare_download(req, res, file, prep_err);
     if (!curl) {
+        // prepare_download may have allocated PrivateData + callback state
+        // before failing (e.g. file open failed after allocation). Retrieve
+        // and free it to avoid leaks.
+        PrivateData* priv = nullptr;
+        curl_easy_getinfo(curl, CURLINFO_PRIVATE, &priv);
+        if (priv) {
+            if (priv->slist) curl_slist_free_all(priv->slist);
+            delete priv->fws;
+            delete priv->pf;
+            delete priv->cap;
+            delete priv;
+        }
+        curl_easy_cleanup(curl);
+
         res.error = prep_err;
         LogEntry entry;
         entry.id = id;
@@ -1109,13 +1136,17 @@ DownloadResult Manager::download(DownloadRequest& req) {
     res.bytes_downloaded = dl_bytes;
     res.bytes_total = cl_bytes;
 
-    // Pull back the request-header slist from PrivateData and free the
-    // wrapper. The header-capture strings live directly in res (managed
-    // by Manager::download's caller), so there is nothing to copy here.
+    // Pull back the request-header slist and callback state from
+    // PrivateData and free everything. The header-capture strings live
+    // directly in res (managed by Manager::download's caller), so there
+    // is nothing to copy here.
     PrivateData* priv = nullptr;
     curl_easy_getinfo(curl, CURLINFO_PRIVATE, &priv);
     if (priv) {
         if (priv->slist) curl_slist_free_all(priv->slist);
+        delete priv->fws;
+        delete priv->pf;
+        delete priv->cap;
         delete priv;
     }
     curl_easy_cleanup(curl);
