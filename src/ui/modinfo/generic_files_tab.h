@@ -6,9 +6,11 @@
 
 #include <vector>
 
+// LineNumberPlainTextEdit is a concrete type used only as a pointer member;
+// a forward declaration suffices here.
+
 class QLineEdit;
 class QListView;
-class QPlainTextEdit;
 class QPushButton;
 class QSplitter;
 
@@ -20,6 +22,8 @@ class SyntaxHighlighter;
 #endif
 
 namespace ui {
+
+class LineNumberPlainTextEdit;
 
 // MO2's GenericFilesTab: a filterable list of files (matched by a subclass
 // predicate) on the left and an inline plain-text editor on the right. Dirty
@@ -63,7 +67,7 @@ private:
     QSplitter* splitter_ = nullptr;
     QListView* list_ = nullptr;
     QLineEdit* filter_ = nullptr;
-    QPlainTextEdit* editor_ = nullptr;
+    LineNumberPlainTextEdit* editor_ = nullptr;
     QPushButton* save_btn_ = nullptr;
 #ifdef GMM_HAS_SYNTAX_HIGHLIGHTING
     KSyntaxHighlighting::Repository* repository_ = nullptr;

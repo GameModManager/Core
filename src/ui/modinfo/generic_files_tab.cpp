@@ -1,5 +1,7 @@
 #include "ui/modinfo/generic_files_tab.h"
 
+#include "ui/widgets/line_number_edit.h"
+
 #ifdef GMM_HAS_SYNTAX_HIGHLIGHTING
 #include <KSyntaxHighlighting/Definition>
 #include <KSyntaxHighlighting/Repository>
@@ -44,7 +46,7 @@ GenericFilesTab::GenericFilesTab(QWidget* parent) : ModInfoTab(parent) {
     auto* right = new QWidget(this);
     auto* right_layout = new QVBoxLayout(right);
     right_layout->setContentsMargins(0, 0, 0, 0);
-    editor_ = new QPlainTextEdit(right);
+    editor_ = new LineNumberPlainTextEdit(right);
     QFont mono = editor_->font();
     mono.setFamily(QStringLiteral("monospace"));
     editor_->setFont(mono);

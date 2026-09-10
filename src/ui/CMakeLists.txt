@@ -61,6 +61,7 @@ set(UI_SOURCES
     widgets/save_info_dialog.cpp
     widgets/menu_bar.cpp
     widgets/rolling_chart.cpp
+    widgets/line_number_edit.cpp
     panels/downloads_tab.cpp
     panels/plugin_view.cpp
     panels/plugins_tab.cpp
