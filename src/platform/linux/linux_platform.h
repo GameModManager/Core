@@ -46,16 +46,22 @@ public:
     [[nodiscard]] static bool register_nxm_handler(const std::filesystem::path& exe_path);
     [[nodiscard]] static bool unregister_nxm_handler();
     [[nodiscard]] static bool is_nxm_handler_registered();
+    [[nodiscard]] static std::string nxm_runtime_default_handler();
+    [[nodiscard]] static std::string nxm_file_based_default_handler();
 
     // GMM custom protocol handler registration (for gmm:// links)
     [[nodiscard]] static bool register_gmm_handler(const std::filesystem::path& exe_path);
     [[nodiscard]] static bool unregister_gmm_handler();
     [[nodiscard]] static bool is_gmm_handler_registered();
+    [[nodiscard]] static std::string gmm_runtime_default_handler();
+    [[nodiscard]] static std::string gmm_file_based_default_handler();
 
     // modl:// protocol handler registration (mod.pub / MO2 modlhandler).
     [[nodiscard]] static bool register_modl_handler(const std::filesystem::path& exe_path);
     [[nodiscard]] static bool unregister_modl_handler();
     [[nodiscard]] static bool is_modl_handler_registered();
+    [[nodiscard]] static std::string modl_runtime_default_handler();
+    [[nodiscard]] static std::string modl_file_based_default_handler();
 
 private:
     static std::filesystem::path resolve_env_dir(
