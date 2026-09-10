@@ -2,6 +2,7 @@
 
 #include "engine/source/download/curl_download.h"
 #include "engine/core/log/logger.h"
+#include "engine/network/network_manager.h"
 #include "platform/platform.h"
 
 #include <chrono>
@@ -34,7 +35,7 @@ bool fetch_file(const std::string& url, const fs::path& dest) {
     std::error_code ec;
     fs::remove(tmp, ec);
     long http_code = 0;
-    const bool ok = engine::download::curl_download(url, tmp, http_code);
+    const bool ok = engine::download::curl_download(url, tmp, http_code, {}, nullptr, 0, nullptr, NET_CALLER);
     if (!ok) {
         fs::remove(tmp, ec);  // curl_download already does; belt and braces
         return false;

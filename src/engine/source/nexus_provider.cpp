@@ -8,6 +8,7 @@
 #include "engine/source/nexus_account.h"
 #include "engine/source/nexus_http.h"
 #include "engine/source/nexus_servers.h"
+#include "engine/network/network_manager.h"
 
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
@@ -31,27 +32,39 @@ static bool contains_ci(const std::string& haystack, const std::string& needle) 
 
 bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
                      const std::filesystem::path& dest_path) {
-    if (mod.download_source_type != "nexus") return false;
+    Logger::instance().debug("[NexusProvider] fetch called: mod_id=" + mod.download_source_id +
+                             " file_id=" + std::to_string(mod.download_nxm.file_id) +
+                             " domain=" + mod.download_nxm.nexus_domain);
+    if (mod.download_source_type != "nexus") {
+        Logger::instance().warn("[NexusProvider] fetch called with non-nexus source_type: " + mod.download_source_type);
+        return false;
+    }
 
     const auto& nxm = mod.download_nxm;
 
     // Direct-URL path: the caller already resolved a working download URL, so
     // no API auth or URL resolution is needed.
     if (!mod.download_url.empty()) {
+        Logger::instance().debug("[NexusProvider] Direct URL path, calling download_from_url");
         return download_from_url(mod.download_url, ctx, dest_path);
     }
 
     if (nxm.file_id <= 0) {
-        Logger::instance().error("NexusProvider: invalid file_id");
+        Logger::instance().error("[NexusProvider] Invalid file_id: " + std::to_string(nxm.file_id));
         return false;
     }
 
     bool use_api_key  = nxm.key.empty() && Auth::instance().has_api_key();
     bool use_nxm_auth = !nxm.key.empty();
 
+    Logger::instance().debug("[NexusProvider] Auth: use_api_key=" + std::string(use_api_key ? "true" : "false") +
+                             " use_nxm_auth=" + std::string(use_nxm_auth ? "true" : "false") +
+                             " has_api_key=" + std::string(Auth::instance().has_api_key() ? "true" : "false") +
+                             " key_empty=" + std::string(nxm.key.empty() ? "true" : "false"));
+
     if (!use_api_key && !use_nxm_auth) {
         Logger::instance().error(
-            "NexusProvider: no NXM download key and no API key configured");
+            "[NexusProvider] No NXM download key and no API key configured");
         return false;
     }
 
@@ -67,7 +80,7 @@ bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
             auto j = nlohmann::json::parse(body);
             if (!j.is_array()) {
                 Logger::instance().error(
-                    "NexusProvider: unexpected download-link response format");
+                    "[NexusProvider] Unexpected download-link response format (not array)");
                 return false;
             }
 
@@ -94,7 +107,7 @@ bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
 
             if (entries.empty()) {
                 Logger::instance().error(
-                    "NexusProvider: no usable download server in response");
+                    "[NexusProvider] No usable download server in response");
                 return false;
             }
 
@@ -111,10 +124,11 @@ bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
 
             download_url = entries.front().uri;
             server_name = entries.front().name;
+            Logger::instance().debug("[NexusProvider] Selected server: " + server_name + " url=" + download_url);
             return true;
         } catch (const std::exception& e) {
             Logger::instance().error(
-                "NexusProvider: failed to parse download-link response: " +
+                "[NexusProvider] Failed to parse download-link response: " +
                 std::string(e.what()));
             return false;
         }
@@ -130,9 +144,11 @@ bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
             + mod.download_source_id + "/files/"
             + std::to_string(nxm.file_id) + "/download_link.json";
 
+        Logger::instance().debug("[NexusProvider] API-key path: requesting download_link.json for mod=" + mod.download_source_id + " file=" + std::to_string(nxm.file_id));
+
         std::string api_key = Auth::instance().get_api_key();
         if (api_key.empty()) {
-            Logger::instance().error("NexusProvider: API key file exists but is empty");
+            Logger::instance().error("[NexusProvider] API key file exists but is empty");
             return false;
         }
 
@@ -151,17 +167,17 @@ bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
             Account::parse_rate_limits(resp_headers);
 
         if (!ok) {
-            Logger::instance().error("NexusProvider: API-key request failed (curl error)");
+            Logger::instance().error("[NexusProvider] API-key request failed (curl error)");
             return false;
         }
         if (http_code == 403) {
             Logger::instance().error(
-                "NexusProvider: API key rejected (HTTP 403) - check your key at "
+                "[NexusProvider] API key rejected (HTTP 403) - check your key at "
                 "nexusmods.com/users/myaccount?tab=api");
             return false;
         }
         if (http_code != 200) {
-            Logger::instance().error("NexusProvider: Nexus API returned HTTP " +
+            Logger::instance().error("[NexusProvider] Nexus API returned HTTP " +
                                      std::to_string(http_code) + " for API-key request");
             return false;
         }
@@ -184,6 +200,8 @@ bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
             + mod.download_source_id + "/files/"
             + std::to_string(nxm.file_id) + "/download_link";
 
+        Logger::instance().debug("[NexusProvider] NXM-auth path: requesting download_link for mod=" + mod.download_source_id + " file=" + std::to_string(nxm.file_id));
+
         api_url += "?key=" + nxm.key;
         if (nxm.expire > 0)
             api_url += "&expires=" + std::to_string(nxm.expire);
@@ -205,7 +223,7 @@ bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
             Account::parse_rate_limits(resp_headers);
 
         if (!ok) {
-            Logger::instance().error("NexusProvider: NXM-auth request failed (curl error)");
+            Logger::instance().error("[NexusProvider] NXM-auth request failed (curl error)");
             return false;
         }
         if (http_code == 403) {
@@ -226,6 +244,7 @@ bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
     }
 
     // ---- Step 2: Download the file ----
+    Logger::instance().debug("[NexusProvider] Step 2: Downloading file from URL: " + download_url);
     return download_from_url(download_url, ctx, dest_path, server_name);
 }
 
@@ -233,7 +252,10 @@ bool Provider::download_from_url(const std::string& download_url,
                                  PipelineContext& ctx,
                                  const std::filesystem::path& dest_path,
                                  const std::string& server_name) {
-    Logger::instance().debug("NexusProvider: downloading from Nexus...");
+    Logger::instance().debug("[NexusProvider] download_from_url: url=" + download_url +
+                             " dest=" + dest_path.string() +
+                             " server=" + server_name +
+                             " resume_from=" + std::to_string(ctx.download_resume_from));
     long dl_code = 0;
 
     engine::download::Progress dp;
@@ -249,17 +271,18 @@ bool Provider::download_from_url(const std::string& download_url,
     opts.long_lived = true;
 
     bool aborted = false;
+    Logger::instance().debug("[NexusProvider] Calling engine::download::curl_download");
     if (!engine::download::curl_download(
             download_url, dest_path, dl_code, opts, &dp,
-            ctx.download_resume_from, &aborted)) {
+            ctx.download_resume_from, &aborted, NET_CALLER)) {
         if (aborted) {
             // Pause requested - partial file is kept for resume.
             ctx.download_paused = true;
             Logger::instance().debug(
-                "NexusProvider: download aborted (pause), partial kept at " +
+                "[NexusProvider] Download aborted (pause), partial kept at " +
                 dest_path.string());
         } else {
-            Logger::instance().error("NexusProvider: download failed (HTTP " +
+            Logger::instance().error("[NexusProvider] Download failed (HTTP " +
                                      std::to_string(dl_code) + ")");
         }
         return false;
@@ -281,7 +304,7 @@ bool Provider::download_from_url(const std::string& download_url,
         }
     }
 
-    Logger::instance().debug("NexusProvider: download complete -> " + dest_path.string());
+    Logger::instance().debug("[NexusProvider] Download complete -> " + dest_path.string());
     return true;
 }
 

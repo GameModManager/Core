@@ -10,8 +10,12 @@
 namespace engine {
 
 bool FetchStage::execute(Mod& mod, PipelineContext& ctx) {
+    Logger::instance().debug("[FetchStage] execute: id=" + mod.id +
+                             " source_type=" + mod.download_source_type +
+                             " source_id=" + mod.download_source_id);
     // No download info → nothing to fetch
     if (mod.download_source_type.empty()) {
+        Logger::instance().debug("[FetchStage] No download_source_type, marking as Downloaded");
         mod.state = ModState::Downloaded;
         return true;
     }
@@ -19,10 +23,12 @@ bool FetchStage::execute(Mod& mod, PipelineContext& ctx) {
     // Find provider for this source type
     auto* provider = SourceRegistry::instance().provider_for(mod.download_source_type);
     if (!provider) {
-        Logger::instance().error("FetchStage: no provider for source type '" +
+        Logger::instance().error("[FetchStage] No provider for source type '" +
                                  mod.download_source_type + "'");
         return false;
     }
+    Logger::instance().debug("[FetchStage] Found provider: " + provider->display_name() +
+                             " for source_type=" + mod.download_source_type);
 
     // Determine download destination
     std::filesystem::path dest_dir;
@@ -70,18 +76,19 @@ bool FetchStage::execute(Mod& mod, PipelineContext& ctx) {
         auto sz = std::filesystem::file_size(dest_path, ec);
         if (!ec && sz > 0) {
             ctx.download_resume_from = static_cast<int64_t>(sz);
-            Logger::instance().debug("FetchStage: resuming partial download of " +
+            Logger::instance().debug("[FetchStage] Resuming partial download of " +
                                      mod.download_source_id + " at byte " +
                                      std::to_string(ctx.download_resume_from));
         }
     }
 
-    Logger::instance().debug("FetchStage: downloading " + mod.download_source_type +
+    Logger::instance().debug("[FetchStage] Starting download: " + mod.download_source_type +
                             " mod " + mod.download_source_id +
-                            " to " + dest_path.string());
+                            " to " + dest_path.string() +
+                            " resume_from=" + std::to_string(ctx.download_resume_from));
 
     if (!provider->fetch(mod, ctx, dest_path)) {
-        Logger::instance().error("FetchStage: download failed");
+        Logger::instance().error("[FetchStage] Provider fetch returned false for " + mod.id);
         return false;
     }
 
@@ -89,7 +96,7 @@ bool FetchStage::execute(Mod& mod, PipelineContext& ctx) {
     if (!std::filesystem::exists(dest_path)) {
         mod.archive_filename.clear();
         mod.state = ModState::Downloaded;
-        Logger::instance().debug("FetchStage: metadata updated, no archive file");
+        Logger::instance().debug("[FetchStage] Metadata updated, no archive file");
         return true;
     }
 
@@ -99,7 +106,7 @@ bool FetchStage::execute(Mod& mod, PipelineContext& ctx) {
     mod.files.push_back(mf);
 
     mod.state = ModState::Downloaded;
-    Logger::instance().debug("FetchStage: download complete");
+    Logger::instance().debug("[FetchStage] Download complete: " + mod.id + " -> " + dest_path.string());
     return true;
 }
 

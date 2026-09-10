@@ -11,6 +11,7 @@
 
 #include "engine/core/log/logger.h"
 #include "engine/source/download/curl_download.h"
+#include "engine/network/network_manager.h"
 
 namespace engine::update {
 
@@ -53,7 +54,7 @@ InstallResult WindowsSelfUpdater::install_update(
   dl_progress.start = std::chrono::steady_clock::now();
 
   bool ok = dl::curl_download(info.download_url, installer_path, http_code,
-                              opts, &dl_progress);
+                              opts, &dl_progress, 0, nullptr, NET_CALLER);
   if (!ok || http_code >= 400) {
     result.error_message =
         "Download failed (HTTP " + std::to_string(http_code) + ")";

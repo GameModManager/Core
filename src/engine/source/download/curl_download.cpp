@@ -197,14 +197,19 @@ std::string parse_content_disposition_filename(const std::string& header_value) 
 }
 
 bool curl_download(const std::string& url,
-                   const std::filesystem::path& dest_path,
-                   long& http_code,
-                   const Options& opts,
-                   Progress* progress,
-                   int64_t resume_from,
-                   bool* aborted) {
+                    const std::filesystem::path& dest_path,
+                    long& http_code,
+                    const Options& opts,
+                    Progress* progress,
+                    int64_t resume_from,
+                    bool* aborted,
+                    const std::string& caller) {
+    Logger::instance().debug("[curl_download] Entry: url=" + url +
+                             " dest=" + dest_path.string() +
+                             " resume_from=" + std::to_string(resume_from) +
+                             " caller=" + caller);
     network::DownloadRequest req = to_request(url, dest_path, opts, progress,
-                                              resume_from, NET_CALLER);
+                                              resume_from, caller.empty() ? NET_CALLER : caller);
 
     auto res = network::instance().download(req);
     http_code = res.http_code;
@@ -212,17 +217,18 @@ bool curl_download(const std::string& url,
 
     if (!res.ok) {
         if (res.aborted) {
-            // Pause requested - partial file is kept.
+            Logger::instance().debug("[curl_download] Aborted (pause): url=" + url);
             return false;
         }
         // Network:: already removed the partial file on failure. We mirror
         // the original helper's behaviour by logging through Logger::error
         // so callers don't need to change their diagnostics.
         Logger::instance().error(
-            "curl_download error: " + res.error +
-            " (http_code=" + std::to_string(res.http_code) + ")");
+            "[curl_download] Error: " + res.error +
+            " (http_code=" + std::to_string(res.http_code) + ") url=" + url);
         return false;
     }
+    Logger::instance().debug("[curl_download] Success: url=" + url + " http_code=" + std::to_string(http_code));
     return true;
 }
 
