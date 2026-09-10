@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -637,6 +638,23 @@ std::string default_for_scheme(const std::string& scheme) {
     return {};
 }
 
+// Runtime default handler for `scheme` via xdg-mime query default.
+// Returns empty string on failure (xdg-mime missing, error, etc.).
+std::string runtime_default_for_scheme(const std::string& scheme) {
+    std::string cmd = "xdg-mime query default " + scheme + " 2>/dev/null";
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (!pipe) return {};
+    char buf[256];
+    std::string result;
+    while (fgets(buf, sizeof(buf), pipe)) result += buf;
+    pclose(pipe);
+    while (!result.empty() &&
+           (result.back() == '\n' || result.back() == '\r' ||
+            result.back() == ' '))
+        result.pop_back();
+    return result;
+}
+
 }  // namespace
 
 // --- NXM protocol handler registration (XDG) ---
@@ -725,7 +743,31 @@ bool LinuxPlatform::is_nxm_handler_registered() {
     const std::string value = default_for_scheme("x-scheme-handler/nxm");
     if (value.empty()) return false;
     const auto first = value.substr(0, value.find(';'));
-    return first == (std::string(NXM_DESKTOP_ID) + ".desktop");
+    if (first != (std::string(NXM_DESKTOP_ID) + ".desktop"))
+        return false;
+
+    // Layer 2: KDE runtime resolution agrees (xdg-mime query default).
+    // Without this, a stale competitor desktop entry (e.g. amethyst) can
+    // win at runtime while our entry sits unused in the mimeapps files.
+    // Run xdg-mime and compare the result; on failure (xdg-mime missing),
+    // fall back to the file-based check.
+    FILE* pipe = popen("xdg-mime query default x-scheme-handler/nxm 2>/dev/null", "r");
+    if (pipe) {
+        char buf[256];
+        std::string runtime_default;
+        while (fgets(buf, sizeof(buf), pipe)) runtime_default += buf;
+        pclose(pipe);
+        // Trim trailing whitespace/newline
+        while (!runtime_default.empty() &&
+               (runtime_default.back() == '\n' || runtime_default.back() == '\r' ||
+                runtime_default.back() == ' '))
+            runtime_default.pop_back();
+        if (!runtime_default.empty() && runtime_default != first) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 // --- GMM protocol handler registration (XDG) ---
@@ -797,7 +839,26 @@ bool LinuxPlatform::is_gmm_handler_registered() {
     const std::string value = default_for_scheme("x-scheme-handler/gmm");
     if (value.empty()) return false;
     const auto first = value.substr(0, value.find(';'));
-    return first == (std::string(GMM_DESKTOP_ID) + ".desktop");
+    if (first != (std::string(GMM_DESKTOP_ID) + ".desktop"))
+        return false;
+
+    // Layer 2: KDE runtime resolution agrees (xdg-mime query default).
+    FILE* pipe = popen("xdg-mime query default x-scheme-handler/gmm 2>/dev/null", "r");
+    if (pipe) {
+        char buf[256];
+        std::string runtime_default;
+        while (fgets(buf, sizeof(buf), pipe)) runtime_default += buf;
+        pclose(pipe);
+        while (!runtime_default.empty() &&
+               (runtime_default.back() == '\n' || runtime_default.back() == '\r' ||
+                runtime_default.back() == ' '))
+            runtime_default.pop_back();
+        if (!runtime_default.empty() && runtime_default != first) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 // --- modl:// protocol handler registration (XDG) ---
@@ -868,7 +929,50 @@ bool LinuxPlatform::is_modl_handler_registered() {
     const std::string value = default_for_scheme("x-scheme-handler/modl");
     if (value.empty()) return false;
     const auto first = value.substr(0, value.find(';'));
-    return first == (std::string(MODL_DESKTOP_ID) + ".desktop");
+    if (first != (std::string(MODL_DESKTOP_ID) + ".desktop"))
+        return false;
+
+    // Layer 2: KDE runtime resolution agrees (xdg-mime query default).
+    FILE* pipe = popen("xdg-mime query default x-scheme-handler/modl 2>/dev/null", "r");
+    if (pipe) {
+        char buf[256];
+        std::string runtime_default;
+        while (fgets(buf, sizeof(buf), pipe)) runtime_default += buf;
+        pclose(pipe);
+        while (!runtime_default.empty() &&
+               (runtime_default.back() == '\n' || runtime_default.back() == '\r' ||
+                runtime_default.back() == ' '))
+            runtime_default.pop_back();
+        if (!runtime_default.empty() && runtime_default != first) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+std::string LinuxPlatform::nxm_runtime_default_handler() {
+    return runtime_default_for_scheme("x-scheme-handler/nxm");
+}
+
+std::string LinuxPlatform::nxm_file_based_default_handler() {
+    return default_for_scheme("x-scheme-handler/nxm");
+}
+
+std::string LinuxPlatform::gmm_runtime_default_handler() {
+    return runtime_default_for_scheme("x-scheme-handler/gmm");
+}
+
+std::string LinuxPlatform::gmm_file_based_default_handler() {
+    return default_for_scheme("x-scheme-handler/gmm");
+}
+
+std::string LinuxPlatform::modl_runtime_default_handler() {
+    return runtime_default_for_scheme("x-scheme-handler/modl");
+}
+
+std::string LinuxPlatform::modl_file_based_default_handler() {
+    return default_for_scheme("x-scheme-handler/modl");
 }
 
 } // namespace engine

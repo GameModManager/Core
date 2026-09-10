@@ -996,13 +996,23 @@ void SettingsController::ensure_nxm_handler_default() {
   auto app_path = std::filesystem::path(
       QCoreApplication::applicationFilePath().toStdString());
 
+  // Get the current runtime default handler for display
+  std::string runtime_default =
+      engine::LinuxPlatform::nxm_runtime_default_handler();
+  QString current_handler = QString::fromStdString(runtime_default);
+  if (current_handler.isEmpty())
+    current_handler = tr("unknown");
+
   engine::Logger::instance().info(
-      "nxm:// handler check: GameModManager is NOT the default - prompting");
+      "nxm:// handler check: GameModManager is NOT the default (runtime: " +
+      runtime_default + ") - prompting");
   QMessageBox msg(w_);
   msg.setWindowTitle(tr("NXM Protocol Handler"));
   msg.setText(tr("GameModManager is no longer the default app for "
                  "<b>nxm://</b> download links from Nexus Mods.\n\n"
-                 "Make it the default again?"));
+                 "Current handler: <b>%1</b>\n\n"
+                 "Make GameModManager the default again?")
+                  .arg(current_handler));
   msg.setTextFormat(Qt::RichText);
   msg.setIcon(QMessageBox::Question);
   auto *yes = msg.addButton(tr("Yes"), QMessageBox::YesRole);
