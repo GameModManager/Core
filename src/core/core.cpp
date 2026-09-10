@@ -2,6 +2,7 @@
 
 #include <QCommandLineParser>
 #include <QDir>
+#include <QFontDatabase>
 #include <QIcon>
 #include <QMessageLogContext>
 #include <QStackedWidget>
@@ -83,6 +84,13 @@ Application::Application(int &argc, char **argv)
 
   app_.setApplicationName("GameModManager");
   app_.setApplicationVersion(VERSION);
+
+  // Register bundled fallback fonts (Noto Sans + CJK) before any widgets are
+  // created. Qt's glyph fallback searches ALL registered fonts for missing
+  // characters, so these ensure CJK and special characters render on systems
+  // without native CJK font support.
+  QFontDatabase::addApplicationFont(":/fonts/NotoSans-Regular.ttf");
+  QFontDatabase::addApplicationFont(":/fonts/NotoSansSC-Regular.otf");
 
   // Central icon resolution (icon packs). Set up before the window icon so
   // the app icon itself resolves through the pack chain.

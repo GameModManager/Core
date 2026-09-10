@@ -62,6 +62,18 @@ qt_add_translations(gamemodmanager
     RESOURCE_PREFIX /i18n
 )
 
+# Bundled fonts - Noto Sans (Regular + CJK SC subset) for glyph fallback.
+# Qt searches all registered fonts for missing characters, so bundling these
+# ensures CJK and special characters render on systems without CJK fonts.
+set(GMM_FONTS_DIR ${PROJECT_SOURCE_DIR}/resources/fonts)
+qt_add_resources(gamemodmanager "fonts"
+    PREFIX "/fonts"
+    BASE "${GMM_FONTS_DIR}"
+    FILES
+        "${GMM_FONTS_DIR}/NotoSans-Regular.ttf"
+        "${GMM_FONTS_DIR}/NotoSansSC-Regular.otf"
+)
+
 # Link libraries - the subsystem libraries carry their own transitive deps
 # (engine -> libarchive/sqlite3/yaml-cpp/curl/nlohmann_json/zlib/lz4/python;
 # ui -> Qt6 + engine). The app links Qt directly for main.cpp and repeats the
