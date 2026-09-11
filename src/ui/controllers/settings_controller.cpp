@@ -302,7 +302,7 @@ void SettingsController::set_game_info(
       // progress, not while a decision is pending).
       w_->downloads_->hide_install_progress();
       return ui::ask_overwrite(QString::fromStdString(mod_name),
-                               /*default_backup=*/true, w_);
+                               /*default_backup=*/false, w_);
     };
 
     // A FOMOD archive opens the install wizard. It drives the
