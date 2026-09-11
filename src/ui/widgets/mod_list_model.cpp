@@ -742,10 +742,58 @@ bool ModList::dropMimeData(const QMimeData *data, Qt::DropAction action,
       if (e.parent_id.isEmpty() || !moved_ids.contains(e.parent_id))
         e.parent_id = new_parent_id;
     }
+  } else if (!on_item) {
+    // Genuine between-row drop.  Parenting is ONLY granted by:
+    //   1) dropping ON a parent (handled above), or
+    //   2) dropping between a parent separator and its first child.
+    // Reordering within the same parent's band preserves the link.
+    // Everything else unparents.
+    QSet<QString> moved_ids;
+    for (const auto &e : toMove)
+      moved_ids.insert(e.id);
+
+    // Probe the row above the drop position.
+    // If it's a parent (separator or item whose child follows below),
+    // the dropped mod nests under it.  If it's a non-parent item and
+    // the dragged mod shares its parent, the link is preserved.
+    // Everything else unparents.
+    QString above_parent_id;     // non-empty if row above is a parent
+    QString above_child_parent;  // non-empty if row above is a non-parent child
+    if (targetRow > 0 && targetRow <= mods_.size()) {
+      const auto &above = mods_[targetRow - 1];
+      if (!moved_ids.contains(above.id)) {
+        if (above.is_separator) {
+          above_parent_id = above.id;
+        } else if (targetRow < mods_.size() &&
+                   !moved_ids.contains(mods_[targetRow].id) &&
+                   mods_[targetRow].parent_id == above.id) {
+          // Row above has its child immediately below -> it's a parent
+          above_parent_id = above.id;
+        } else if (!above.parent_id.isEmpty()) {
+          // Row above is a non-parent child; remember its parent for
+          // same-parent reorder detection.
+          above_child_parent = above.parent_id;
+        }
+      }
+    }
+
+    for (auto &e : toMove) {
+      if (moved_ids.contains(e.parent_id))
+        continue;  // internal subtree link - keep as-is
+      if (!above_parent_id.isEmpty()) {
+        // Between a parent and its child -> nest under that parent
+        e.parent_id = above_parent_id;
+      } else if (!above_child_parent.isEmpty() &&
+                 above_child_parent == e.parent_id) {
+        // Reordering within same parent's band -> preserve
+      } else {
+        e.parent_id.clear();
+      }
+    }
   } else {
-    // Flat drop (between rows, not ON an item): clear any existing parent link
-    // so the mod becomes top-level at its new position.  Internal subtree links
-    // (parent_id pointing to another entry in the moved block) are preserved.
+    // ON-item drop where nesting was rejected (mixed drag, cycle guard,
+    // non-nestable target).  Preserve existing parent links for internal
+    // subtree entries; clear external ones for a flat move.
     QSet<QString> moved_ids;
     for (const auto &e : toMove)
       moved_ids.insert(e.id);
@@ -1054,22 +1102,29 @@ void ModList::move_mod(const QString &id, int new_row) {
 
     beginMoveRows({}, src, src, {}, new_row + (new_row >= src ? 1 : 0));
     auto item = mods_.takeAt(src);
-    // Clear parent_id if the moved row no longer sits under its declared
-    // parent at the destination - a flat move to a top-level position.
-    if (!item.parent_id.isEmpty()) {
-      bool parent_before = false;
-      for (int i = 0; i < mods_.size(); ++i) {
-        if (mods_[i].id == item.parent_id) {
-          // The parent must be before the new position in the flat list.
-          // After takeAt(src), new_row is in post-removal coordinates, and
-          // the item will be inserted at that index, so the parent's current
-          // index in the post-removal list must be < new_row.
-          parent_before = (i < new_row);
-          break;
+    // Context-aware parent resolution: rules match dropMimeData.
+    {
+      QString above_parent_id;
+      QString above_child_parent;
+      if (new_row > 0 && new_row <= mods_.size()) {
+        const auto &above = mods_[new_row - 1];
+        if (above.is_separator) {
+          above_parent_id = above.id;
+        } else if (new_row < mods_.size() &&
+                   mods_[new_row].parent_id == above.id) {
+          above_parent_id = above.id;
+        } else if (!above.parent_id.isEmpty()) {
+          above_child_parent = above.parent_id;
         }
       }
-      if (!parent_before)
+      if (!above_parent_id.isEmpty()) {
+        item.parent_id = above_parent_id;
+      } else if (!above_child_parent.isEmpty() &&
+                 above_child_parent == item.parent_id) {
+        // Reordering within same parent's band -> preserve
+      } else {
         item.parent_id.clear();
+      }
     }
     mods_.insert(new_row, std::move(item));
     endMoveRows();
@@ -1119,24 +1174,43 @@ void ModList::move_mod(const QString &id, int new_row) {
     if (nb_last >= 0 && targetRow <= nb_last)
       targetRow = nb_last + 1;
   }
-  // Clear parent_id for block entries whose declared parent lives outside the
-  // block and is no longer before the destination in the flat list (the same
-  // condition as the single-row path above).
+  // Determine the correct parent for block entries from context: look at the
+  // row above the insertion point to figure out which nesting level they
+  // should belong to. Internal subtree links (parent_id pointing to another
+  // entry in the moved block) are preserved.
   QSet<QString> block_ids;
   for (const auto &e : blockEntries)
     block_ids.insert(e.id);
-  for (auto &e : blockEntries) {
-    if (e.parent_id.isEmpty() || block_ids.contains(e.parent_id))
-      continue; // top-level or internal link - keep as-is
-    bool parent_before_target = false;
-    for (int i = 0; i < mods_.size(); ++i) {
-      if (mods_[i].id == e.parent_id) {
-        parent_before_target = (i < targetRow);
-        break;
+
+  // Context-aware parent resolution for the block.  Rules match dropMimeData.
+  QString above_parent_id;
+  QString above_child_parent;
+  if (targetRow > 0 && targetRow <= mods_.size()) {
+    const auto &above = mods_[targetRow - 1];
+    if (!block_ids.contains(above.id)) {
+      if (above.is_separator) {
+        above_parent_id = above.id;
+      } else if (targetRow < mods_.size() &&
+                 !block_ids.contains(mods_[targetRow].id) &&
+                 mods_[targetRow].parent_id == above.id) {
+        above_parent_id = above.id;
+      } else if (!above.parent_id.isEmpty()) {
+        above_child_parent = above.parent_id;
       }
     }
-    if (!parent_before_target)
+  }
+
+  for (auto &e : blockEntries) {
+    if (block_ids.contains(e.parent_id))
+      continue;  // internal subtree link - keep as-is
+    if (!above_parent_id.isEmpty()) {
+      e.parent_id = above_parent_id;
+    } else if (!above_child_parent.isEmpty() &&
+               above_child_parent == e.parent_id) {
+      // Reordering within same parent -> preserve
+    } else {
       e.parent_id.clear();
+    }
   }
 
   for (int i = 0; i < blockEntries.size(); ++i) {
