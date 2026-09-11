@@ -1,7 +1,7 @@
 #pragma once
 
 #include "engine/mod/model/mod_info.h"
-#include <QAbstractTableModel>
+#include <QAbstractItemModel>
 #include <QColor>
 #include <QHash>
 #include <QIcon>
@@ -79,7 +79,7 @@ struct ConflictPairs {
     QStringList loses_to;
 };
 
-class ModList : public QAbstractTableModel {
+class ModList : public QAbstractItemModel {
     Q_OBJECT
 public:
     // Column order is the display order: Fold first (never hideable, pinned to
@@ -107,6 +107,9 @@ public:
 
     explicit ModList(QObject* parent = nullptr);
 
+    QModelIndex index(int row, int column,
+                      const QModelIndex& parent = {}) const override;
+    QModelIndex parent(const QModelIndex& index) const override;
     int rowCount(const QModelIndex& parent = {}) const override;
     int columnCount(const QModelIndex& parent = {}) const override;
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
