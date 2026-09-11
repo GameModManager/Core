@@ -21,7 +21,7 @@ static QString format_epoch_ts(qint64 ts) {
   return QDateTime::fromSecsSinceEpoch(ts).toString("yyyy-MM-dd HH:mm:ss");
 }
 
-ModList::ModList(QObject *parent) : QAbstractTableModel(parent) {
+ModList::ModList(QObject *parent) : QAbstractItemModel(parent) {
   ensure_overwrite_present();
   ensure_merged_present();
 
@@ -44,6 +44,29 @@ ModList::ModList(QObject *parent) : QAbstractTableModel(parent) {
     if (!icon.isNull())
       vendor_icons_[QString::fromLatin1(key)] = icon;
   }
+}
+
+QModelIndex ModList::index(int row, int column,
+                          const QModelIndex &parent) const {
+  // Tree items: the invisible root holds all entries.  Children are tracked
+  // via parent_id but stored in the same flat list; parent() always returns
+  // QModelIndex() so QTreeView never descends into sub-trees.  This keeps
+  // the flat access pattern (model.index(row, col)) identical to the old
+  // QAbstractTableModel while giving us a proper QAbstractItemModel base for
+  // future tree features.
+  if (parent.isValid())
+    return QModelIndex(); // no sub-tree indices
+  if (row < 0 || row >= mods_.size() || column < 0 || column >= ColumnCount)
+    return QModelIndex();
+  return createIndex(row, column);
+}
+
+QModelIndex ModList::parent(const QModelIndex &index) const {
+  Q_UNUSED(index);
+  // All entries live as direct children of the invisible root.  The tree
+  // structure (parent_id) is purely presentational - indentation and fold
+  // arrows - not represented in the model hierarchy.
+  return QModelIndex();
 }
 
 int ModList::rowCount(const QModelIndex &parent) const {
@@ -459,7 +482,7 @@ QVariant ModList::headerData(int section, Qt::Orientation, int role) const {
 }
 
 Qt::ItemFlags ModList::flags(const QModelIndex &index) const {
-  auto f = QAbstractTableModel::flags(index);
+  auto f = QAbstractItemModel::flags(index);
   if (!index.isValid())
     return f | Qt::ItemIsDropEnabled;
 
