@@ -736,7 +736,8 @@ void DownloadsTab::on_cell_double_clicked(int row, int column) {
     for (const auto& [id, entry] : downloads_) {
         if (entry.row == row) {
             if (entry.state == DownloadState::Complete ||
-                entry.state == DownloadState::Failed) {
+                entry.state == DownloadState::Failed ||
+                entry.state == DownloadState::Installed) {
                 if (!entry.file_path.empty() &&
                     std::filesystem::exists(entry.file_path)) {
                     auto src = source_info_for(id, entry);
