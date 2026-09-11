@@ -2146,9 +2146,145 @@ TEST_CASE("mod list model unparent via flat drop", "[ui]") {
     check(m.mods()[rid("ModA")].parent_id == QLatin1String("ModP"),
           "reset restores ModA under ModP");
 
-    // --- Test 3: move_mod within subtree preserves parent_id ---
-    // Move ModA from row 1 to row 2 (still under ModP, between ModP and ModB).
+    // --- Test 3: move_mod to top-level position unparents ---
+    // Move ModA from row 1 to row 2 (after ModB, a top-level item).
+    // Context: row above the insertion is ModB (top-level), so ModA
+    // becomes top-level.
     m.move_mod(QStringLiteral("ModA"), 2);
-    check(m.mods()[rid("ModA")].parent_id == QLatin1String("ModP"),
-          "move_mod within parent subtree preserves parent_id");
+    check(m.mods()[rid("ModA")].parent_id.isEmpty(),
+          "move_mod to top-level position clears parent_id");
+}
+
+// Multi-level nesting: 3-level deep drop and move.
+// Verifies that context-aware parent resolution works across nesting levels.
+//
+// Allowed links: mod->mod, separator->separator (no cross-kind).
+// Setup:
+//   ModP   (top-level mod)
+//   ModA   (child of ModP, level 1)
+//   ModSub (child of ModA, level 2)
+//   ModB   (child of ModA, level 2)
+//   ModC   (child of ModP, level 1)
+//
+TEST_CASE("mod list model multi-level nesting drop", "[ui]") {
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    qputenv("TZ", "UTC");
+    tzset();
+    const std::filesystem::path cfg = "/tmp/gmm_mod_list_model_nesting_drop/config";
+    std::filesystem::remove_all("/tmp/gmm_mod_list_model_nesting_drop");
+    std::filesystem::create_directories(cfg);
+    qputenv("XDG_CONFIG_HOME", cfg.c_str());
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
+    QCoreApplication::setOrganizationName("GameModManager");
+    QCoreApplication::setApplicationName("GameModManager");
+
+    ui::ModList m;
+    m.set_nesting_enabled(true);
+
+    // Build the 3-level nesting structure (mod->mod links only).
+    QVector<ui::ModEntry> e;
+    auto add = [&](const char* id, const char* parent) {
+        ui::ModEntry mod;
+        mod.id = QString::fromLatin1(id);
+        mod.name = mod.id;
+        mod.enabled = true;
+        if (parent) mod.parent_id = QString::fromLatin1(parent);
+        e.append(mod);
+    };
+
+    add("ModP", nullptr);      // 0: top-level
+    add("ModA", "ModP");       // 1: level 1 child of ModP
+    add("ModSub", "ModA");     // 2: level 2 child of ModA
+    add("ModB", "ModA");       // 3: level 2 child of ModA
+    add("ModC", "ModP");       // 4: level 1 child of ModP
+    m.reset_with_order(e);
+
+    auto rid = [&](const char* id) { return row_with_id(m, id); };
+
+    // Verify initial nesting depths.
+    check(m.nesting_depth(rid("ModP")) == 0, "ModP at depth 0");
+    check(m.nesting_depth(rid("ModA")) == 1, "ModA at depth 1");
+    check(m.nesting_depth(rid("ModSub")) == 2, "ModSub at depth 2");
+    check(m.nesting_depth(rid("ModB")) == 2, "ModB at depth 2");
+    check(m.nesting_depth(rid("ModC")) == 1, "ModC at depth 1");
+
+    // --- Test 1: move from level 2 to after a level-1 child unparents ---
+    // Move ModB (level 2, parent=ModA) to after ModC (level 1, parent=ModP).
+    // After takeAt(ModB=3): [ModP, ModA, ModSub, ModC]
+    // new_row = 4 (after ModC). Row above (index 3) = ModC (parent=ModP).
+    // ModC has no child below it, so no parent detected. ModB's parent
+    // (ModA) != ModC's parent (ModP) -> unparent.
+    m.move_mod(QStringLiteral("ModB"), 4);
+    check(m.mods()[rid("ModB")].parent_id.isEmpty(),
+          "move_mod level 2 -> after level-1 child unparents");
+    check(m.nesting_depth(rid("ModB")) == 0,
+          "ModB is at depth 0 after unparenting");
+
+    // Reset.
+    m.reset_with_order(e);
+    check(m.nesting_depth(rid("ModB")) == 2, "reset restores ModB at depth 2");
+
+    // --- Test 2: move from level 2 to top-level position via move_mod ---
+    // Move ModB (level 2, parent=ModA) to row 0 (before ModP).
+    // After takeAt(3): [ModP, ModA, ModSub, ModC]
+    // new_row = 0. Row above: none (new_row == 0). context_parent_id = empty.
+    m.move_mod(QStringLiteral("ModB"), 0);
+    check(m.mods()[rid("ModB")].parent_id.isEmpty(),
+          "move_mod level 2 -> top-level clears parent_id");
+    check(m.nesting_depth(rid("ModB")) == 0,
+          "ModB is at depth 0 after unparenting");
+
+    // Reset.
+    m.reset_with_order(e);
+    check(m.nesting_depth(rid("ModB")) == 2, "reset restores ModB at depth 2");
+
+    // --- Test 3: reorder within level 2 preserves parent ---
+    // Swap ModSub and ModB (both children of ModA).
+    // Move ModSub from row 2 to after ModB (row 3).
+    // After takeAt(2): [ModP, ModA, ModB, ModC]
+    // new_row = 3 (insert before ModC). Row above (index 2) = ModB (parent=ModA).
+    // context_parent_id = ModA.
+    m.move_mod(QStringLiteral("ModSub"), 3);
+    check(m.mods()[rid("ModSub")].parent_id == QLatin1String("ModA"),
+          "move_mod within level 2 preserves parent ModA");
+    check(m.nesting_depth(rid("ModSub")) == 2,
+          "ModSub stays at depth 2 after reorder");
+
+    // Reset.
+    m.reset_with_order(e);
+    check(m.nesting_depth(rid("ModB")) == 2, "reset restores ModB at depth 2");
+
+    // --- Test 4: dropMimeData between a parent and its child ---
+    // Drag ModB (level 2, child of ModA) to between ModA and ModSub.
+    // After removal of ModB: [ModP, ModA, ModSub, ModC]
+    // targetRow = 2 (between ModA and ModSub). Row above (index 1) = ModA.
+    // mods_[2] = ModSub (parent_id = ModA) -> ModA is a parent.
+    // ModB nests under ModA.
+    QMimeData d;
+    d.setData(QLatin1String(ui::kModListMimeType),
+              QByteArray::number(rid("ModB")));
+    int drop_target = rid("ModA") + 1;  // right after ModA
+    check(m.dropMimeData(&d, Qt::MoveAction, drop_target, 0, {}),
+          "drop between parent and child accepted");
+    check(m.mods()[rid("ModB")].parent_id == QLatin1String("ModA"),
+          "drop between parent ModA and child ModSub nests under ModA");
+
+    // Reset.
+    m.reset_with_order(e);
+
+    // --- Test 5: dropMimeData after another level-2 child preserves parent ---
+    // Drag ModB (level 2, child of ModA) to between ModSub and ModC.
+    // After removal: [ModP, ModA, ModSub, ModC]
+    // targetRow = 3 (between ModSub and ModC). Row above (index 2) = ModSub
+    // (parent=ModA). context_parent_id = ModA. ModB keeps parent ModA.
+    d.setData(QLatin1String(ui::kModListMimeType),
+              QByteArray::number(rid("ModB")));
+    int drop_target5 = rid("ModSub") + 1;  // right after ModSub
+    check(m.dropMimeData(&d, Qt::MoveAction, drop_target5, 0, {}),
+          "drop after sibling child accepted");
+    check(m.mods()[rid("ModB")].parent_id == QLatin1String("ModA"),
+          "drop after sibling child preserves parent ModA");
 }
