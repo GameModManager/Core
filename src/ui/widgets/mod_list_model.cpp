@@ -742,6 +742,17 @@ bool ModList::dropMimeData(const QMimeData *data, Qt::DropAction action,
       if (e.parent_id.isEmpty() || !moved_ids.contains(e.parent_id))
         e.parent_id = new_parent_id;
     }
+  } else {
+    // Flat drop (between rows, not ON an item): clear any existing parent link
+    // so the mod becomes top-level at its new position.  Internal subtree links
+    // (parent_id pointing to another entry in the moved block) are preserved.
+    QSet<QString> moved_ids;
+    for (const auto &e : toMove)
+      moved_ids.insert(e.id);
+    for (auto &e : toMove) {
+      if (!e.parent_id.isEmpty() && !moved_ids.contains(e.parent_id))
+        e.parent_id.clear();
+    }
   }
 
   for (int i = 0; i < toMove.size(); ++i) {
@@ -1043,6 +1054,23 @@ void ModList::move_mod(const QString &id, int new_row) {
 
     beginMoveRows({}, src, src, {}, new_row + (new_row >= src ? 1 : 0));
     auto item = mods_.takeAt(src);
+    // Clear parent_id if the moved row no longer sits under its declared
+    // parent at the destination - a flat move to a top-level position.
+    if (!item.parent_id.isEmpty()) {
+      bool parent_before = false;
+      for (int i = 0; i < mods_.size(); ++i) {
+        if (mods_[i].id == item.parent_id) {
+          // The parent must be before the new position in the flat list.
+          // After takeAt(src), new_row is in post-removal coordinates, and
+          // the item will be inserted at that index, so the parent's current
+          // index in the post-removal list must be < new_row.
+          parent_before = (i < new_row);
+          break;
+        }
+      }
+      if (!parent_before)
+        item.parent_id.clear();
+    }
     mods_.insert(new_row, std::move(item));
     endMoveRows();
 
@@ -1090,6 +1118,25 @@ void ModList::move_mod(const QString &id, int new_row) {
     int nb_last = native_band_last();
     if (nb_last >= 0 && targetRow <= nb_last)
       targetRow = nb_last + 1;
+  }
+  // Clear parent_id for block entries whose declared parent lives outside the
+  // block and is no longer before the destination in the flat list (the same
+  // condition as the single-row path above).
+  QSet<QString> block_ids;
+  for (const auto &e : blockEntries)
+    block_ids.insert(e.id);
+  for (auto &e : blockEntries) {
+    if (e.parent_id.isEmpty() || block_ids.contains(e.parent_id))
+      continue; // top-level or internal link - keep as-is
+    bool parent_before_target = false;
+    for (int i = 0; i < mods_.size(); ++i) {
+      if (mods_[i].id == e.parent_id) {
+        parent_before_target = (i < targetRow);
+        break;
+      }
+    }
+    if (!parent_before_target)
+      e.parent_id.clear();
   }
 
   for (int i = 0; i < blockEntries.size(); ++i) {

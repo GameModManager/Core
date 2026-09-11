@@ -2043,3 +2043,112 @@ TEST_CASE("mod list model set_mod_enabled", "[ui]") {
     model.set_mod_enabled(QStringLiteral("DoesNotExist"), false);
     check(model.mods().size() == 5, "set_mod_enabled ignores unknown ids");
 }
+
+
+// Regression: dragging a nested mod to a between-rows position at the top level
+// must clear parent_id so the mod becomes top-level and unindented. Covers
+// both dropMimeData (drag-and-drop) and move_mod (keyboard/priority arrows).
+TEST_CASE("mod list model unparent via flat drop", "[ui]") {
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    qputenv("TZ", "UTC");
+    tzset();
+    const std::filesystem::path cfg = "/tmp/gmm_mod_list_model_unparent/config";
+    std::filesystem::remove_all("/tmp/gmm_mod_list_model_unparent");
+    std::filesystem::create_directories(cfg);
+    qputenv("XDG_CONFIG_HOME", cfg.c_str());
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
+    QCoreApplication::setOrganizationName("GameModManager");
+    QCoreApplication::setApplicationName("GameModManager");
+
+    ui::ModList m;
+    m.set_nesting_enabled(true);
+
+    // Setup: ModP (parent mod), ModA (child of ModP), ModB, ModC, Overwrite.
+    // Nesting rule: mod->mod only (never mod->separator).
+    QVector<ui::ModEntry> e;
+    {
+        ui::ModEntry mod;
+        mod.id = QStringLiteral("ModP");
+        mod.name = QStringLiteral("ModP");
+        mod.enabled = true;
+        e.append(mod);
+    }
+    {
+        ui::ModEntry mod;
+        mod.id = QStringLiteral("ModA");
+        mod.name = QStringLiteral("ModA");
+        mod.enabled = true;
+        mod.parent_id = QStringLiteral("ModP");
+        e.append(mod);
+    }
+    {
+        ui::ModEntry mod;
+        mod.id = QStringLiteral("ModB");
+        mod.name = QStringLiteral("ModB");
+        mod.enabled = true;
+        e.append(mod);
+    }
+    {
+        ui::ModEntry mod;
+        mod.id = QStringLiteral("ModC");
+        mod.name = QStringLiteral("ModC");
+        mod.enabled = true;
+        e.append(mod);
+    }
+    ui::ModEntry ow;
+    ow.id = ui::kOverwriteModId;
+    ow.name = ui::kOverwriteModName;
+    ow.enabled = true;
+    ow.is_overwrite = true;
+    e.append(ow);
+    m.reset_with_order(e);
+    // Rows: ModP(0), ModA(1, child of ModP), ModB(2), ModC(3), Overwrite(4).
+
+    auto rid = [&](const char* id) { return row_with_id(m, id); };
+
+    // Verify initial state: ModA is nested under ModP.
+    check(m.mods()[rid("ModA")].parent_id == QLatin1String("ModP"),
+          "ModA starts nested under ModP");
+    check(m.nesting_depth(rid("ModA")) == 1, "ModA starts at depth 1");
+
+    // --- Test 1: dropMimeData flat drop unparents ---
+    // Drag ModA to a between-rows position (row=3, between ModB and ModC).
+    // Use dropMimeData with parent index {} (invalid = between-rows).
+    QMimeData d;
+    d.setData(QLatin1String(ui::kModListMimeType), QByteArrayLiteral("1"));
+    check(m.dropMimeData(&d, Qt::MoveAction, 3, 0, {}),
+          "flat drop of nested ModA accepted");
+    check(m.mods()[rid("ModA")].parent_id.isEmpty(),
+          "dropMimeData flat drop clears parent_id");
+    check(m.nesting_depth(rid("ModA")) == 0,
+          "ModA is top-level after flat drop");
+    int pos = rid("ModA");
+    check(pos >= rid("ModB") && pos <= rid("ModC") + 1,
+          "ModA lands at the requested between-rows position");
+
+    // --- Reset for test 2 ---
+    m.reset_with_order(e);
+    check(m.mods()[rid("ModA")].parent_id == QLatin1String("ModP"),
+          "reset restores ModA under ModP");
+
+    // --- Test 2: move_mod above parent unparents ---
+    // move_mod(ModA, 0) moves ModA to the top of the list (above ModP).
+    // Parent ModP is at row 0, so after moving to row 0, parent is NOT before.
+    m.move_mod(QStringLiteral("ModA"), 0);
+    check(m.mods()[rid("ModA")].parent_id.isEmpty(),
+          "move_mod above parent clears parent_id");
+
+    // --- Reset for test 3 ---
+    m.reset_with_order(e);
+    check(m.mods()[rid("ModA")].parent_id == QLatin1String("ModP"),
+          "reset restores ModA under ModP");
+
+    // --- Test 3: move_mod within subtree preserves parent_id ---
+    // Move ModA from row 1 to row 2 (still under ModP, between ModP and ModB).
+    m.move_mod(QStringLiteral("ModA"), 2);
+    check(m.mods()[rid("ModA")].parent_id == QLatin1String("ModP"),
+          "move_mod within parent subtree preserves parent_id");
+}
