@@ -4,6 +4,9 @@
 
 #include "platform/linux/linux_platform.h"
 
+#include "engine/platform/file_type_dispatch.h"
+#include "platform/linux/linux_file_type_dispatch.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -423,13 +426,11 @@ bool LinuxPlatform::launch_executable(
     const std::vector<std::string>& args) const {
     if (!std::filesystem::exists(executable)) return false;
 
-    std::string cmd = "\"" + executable.string() + "\"";
-    for (const auto& arg : args) {
-        cmd += " \"" + arg + "\"";
-    }
-    cmd += " &";
-
-    return std::system(cmd.c_str()) == 0;
+    LinuxFileTypeDispatcher dispatcher;
+    LaunchOptions opts;
+    opts.args = args;
+    opts.background = true;
+    return dispatcher.launch(executable, opts).ok;
 }
 
 // --- Privilege check ---
