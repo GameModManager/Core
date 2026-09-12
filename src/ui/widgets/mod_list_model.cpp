@@ -150,6 +150,25 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
   if (role == kIndentDepthRole && index.column() == Name)
     return nesting_depth(index.row());
 
+  // Whether this row is the last child of its parent (for tree connector
+  // lines in IndentDelegate). False for top-level, pseudo-rows, and
+  // separators.
+  if (role == kIsLastChildRole && index.column() == Name) {
+    if (mod.parent_id.isEmpty() || mod.is_separator || mod.is_overwrite ||
+        mod.is_merged || mod.is_game_native)
+      return false;
+    for (int i = index.row() + 1; i < mods_.size(); ++i) {
+      if (mods_[i].parent_id == mod.parent_id)
+        return false;
+    }
+    return true;
+  }
+
+  // Whether this row is a separator (connectors are not drawn on separator
+  // rows - they are structural parents).
+  if (role == kIsSeparatorRole && index.column() == Name)
+    return mod.is_separator;
+
   // --- Separator: colored background spans all columns ---
   if (mod.is_separator) {
     if (role == Qt::BackgroundRole) {

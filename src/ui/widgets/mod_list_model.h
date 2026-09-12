@@ -105,6 +105,18 @@ public:
     // The IndentDelegate consumes this to shift the name text right.
     static constexpr int kIndentDepthRole = Qt::UserRole + 3;
 
+    // Whether this row is the last child of its parent (for tree connector
+    // painting in IndentDelegate). Returns true when the row has a non-empty
+    // parent_id and no subsequent row shares the same parent_id. False for
+    // top-level rows, pseudo-rows (Overwrite/MERGED/game-native), and
+    // separators.
+    static constexpr int kIsLastChildRole = Qt::UserRole + 4;
+
+    // Whether this row is a separator (for tree connector painting).
+    // Separators are structural parents; connectors are not drawn on their
+    // own rows.
+    static constexpr int kIsSeparatorRole = Qt::UserRole + 5;
+
     explicit ModList(QObject* parent = nullptr);
 
     int rowCount(const QModelIndex& parent = {}) const override;
