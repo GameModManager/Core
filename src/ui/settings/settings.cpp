@@ -504,7 +504,7 @@ void Settings::set_log_level(const QString& level) {
 }
 
 int Settings::max_core_dumps() const {
-    return settings_.value("diagnostics/max_core_dumps", 20).toInt();
+    return settings_.value("diagnostics/max_core_dumps", 3).toInt();
 }
 
 void Settings::set_max_core_dumps(int n) {

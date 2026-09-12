@@ -18,6 +18,13 @@ public:
     // logic so dumps land next to the rest of the app's cached data.
     [[nodiscard]] static std::string default_dump_dir();
 
+    // Remove old crash dumps so at most `max_kept` remain. Files are sorted
+    // by last-write time (newest kept, oldest deleted). Called once at
+    // startup after install(). `dump_dir` is the directory to prune;
+    // pass empty string to use the currently-installed dump_dir_.
+    static void prune_old_dumps(int max_kept,
+                                const std::string& dump_dir = "");
+
 private:
     // POSIX signal handler. On macOS this is installed with SA_SIGINFO, so it
     // takes the extended (siginfo) signature; on Linux the simple one-arg form

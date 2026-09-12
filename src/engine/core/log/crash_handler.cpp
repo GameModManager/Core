@@ -1,11 +1,13 @@
 #include "engine/core/log/crash_handler.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <filesystem>
+#include <vector>
 
 // POSIX-only system headers. These must be included at global scope so the
 // C library symbols (open/write/close, signal, backtrace, ...) land in the
@@ -61,6 +63,46 @@ std::string CrashHandler::default_dump_dir() {
     }
     return (base / "GameModManager" / "crash_dumps").string();
 #endif
+}
+
+// ---------------------------------------------------------------------------
+// Prune old crash dumps at startup
+// ---------------------------------------------------------------------------
+
+void CrashHandler::prune_old_dumps(int max_kept, const std::string& dump_dir) {
+    if (max_kept <= 0) return;  // 0 = disable pruning entirely
+
+    const std::string dir = dump_dir.empty() ? dump_dir_ : dump_dir;
+    if (dir.empty()) return;
+
+    std::error_code ec;
+    std::filesystem::path dir_path(dir);
+    if (!std::filesystem::is_directory(dir_path, ec)) return;
+
+    // Collect all .dmp files in the directory
+    std::vector<std::filesystem::directory_entry> dumps;
+    for (const auto& entry : std::filesystem::directory_iterator(dir_path, ec)) {
+        if (!entry.is_regular_file()) continue;
+        auto ext = entry.path().extension().string();
+        // Case-insensitive extension match
+        for (auto& c : ext) c = static_cast<char>(std::tolower(c));
+        if (ext == ".dmp")
+            dumps.push_back(entry);
+    }
+
+    if (static_cast<int>(dumps.size()) <= max_kept) return;
+
+    // Sort newest-first by last write time
+    std::sort(dumps.begin(), dumps.end(),
+              [&ec](const std::filesystem::directory_entry& a,
+                    const std::filesystem::directory_entry& b) {
+                  return a.last_write_time(ec) > b.last_write_time(ec);
+              });
+
+    // Delete oldest entries beyond the limit
+    for (auto it = dumps.begin() + max_kept; it != dumps.end(); ++it) {
+        std::filesystem::remove(it->path(), ec);
+    }
 }
 
 // ---------------------------------------------------------------------------
