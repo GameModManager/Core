@@ -634,3 +634,67 @@ TEST_CASE("create_instance_for_game unique names and display name",
 
     fs::remove_all(instances_root);
 }
+
+// Workspace-ldh: write_toml() must preserve app-owned TOML sections (e.g.
+// `executables`) that it does not manage.  Before this fix write_toml()
+// built a fresh table from scratch, silently dropping any extra keys.
+TEST_CASE("write_toml preserves unknown sections", "[engine]") {
+    using engine::Instance;
+
+    const fs::path root = "/tmp/gmm_instance_path/ldh_clobber";
+    fs::remove_all(root);
+    fs::create_directories(root);
+
+    // Seed a toml with a known key AND an app-owned section.
+    {
+        std::ofstream out(root / "instance.toml");
+        out << "game_id = \"skyrim\"\n"
+               "name = \"My Setup\"\n"
+               "portable = false\n"
+               "\n"
+               "[[executables]]\n"
+               "path = \"SkyrimSE.exe\"\n"
+               "\n"
+               "[[executables]]\n"
+               "path = \"SKSE64_loader.exe\"\n";
+    }
+
+    // Load, tweak a known field, write back.
+    Instance inst = Instance::from_root(root);
+    REQUIRE(inst.read_toml());
+    REQUIRE(inst.info().game_id == "skyrim");
+    inst.info().deploy_strategy = "overlayfs";
+    REQUIRE(inst.write_toml());
+
+    // Re-read: deploy_strategy must round-trip AND executables must survive.
+    Instance back = Instance::from_root(root);
+    REQUIRE(back.read_toml());
+    REQUIRE(back.info().deploy_strategy == "overlayfs");
+    REQUIRE(back.info().game_id == "skyrim");
+    REQUIRE(back.info().display_name == "My Setup");
+
+    // Verify executables section survived by reading raw file content.
+    std::ifstream in(root / "instance.toml");
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    const std::string raw = ss.str();
+    REQUIRE(raw.find("[[executables]]") != std::string::npos);
+    REQUIRE(raw.find("SkyrimSE.exe") != std::string::npos);
+    REQUIRE(raw.find("SKSE64_loader.exe") != std::string::npos);
+
+    // Clearing a field removes it from toml (erase-on-empty).
+    inst.info().deploy_strategy = "";
+    REQUIRE(inst.write_toml());
+    Instance cleared = Instance::from_root(root);
+    REQUIRE(cleared.read_toml());
+    REQUIRE(cleared.info().deploy_strategy.empty());
+    REQUIRE(cleared.info().game_id == "skyrim");
+
+    // executables still there after clearing deploy_strategy.
+    std::ifstream in2(root / "instance.toml");
+    std::ostringstream ss2;
+    ss2 << in2.rdbuf();
+    REQUIRE(ss2.str().find("[[executables]]") != std::string::npos);
+
+    fs::remove_all(root);
+}

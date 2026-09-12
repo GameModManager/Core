@@ -132,54 +132,60 @@ bool Instance::create_directories() const {
 }
 
 bool Instance::write_toml() const {
-  toml::table tbl;
-  tbl.emplace("game_id", info_.game_id);
-  if (!info_.display_name.empty()) {
-    tbl.emplace("name", info_.display_name);
+  // Read-modify-write: parse the existing file first so that app-owned
+  // sections (e.g. `executables`) survive untouched.  A missing or
+  // unparseable file starts from an empty table (fresh creation path).
+  auto tbl = parse_instance_toml(toml_path());
+  if (!tbl) {
+    tbl = toml::table{};
   }
-  tbl.emplace("portable", info_.portable);
+
+  tbl->insert_or_assign("game_id", info_.game_id);
+  tbl->insert_or_assign("name", info_.display_name);
+  tbl->insert_or_assign("portable", info_.portable);
+
   if (info_.steam_appid > 0) {
-    tbl.emplace("steam_appid", static_cast<int64_t>(info_.steam_appid));
+    tbl->insert_or_assign("steam_appid",
+                          static_cast<int64_t>(info_.steam_appid));
+  } else {
+    tbl->erase("steam_appid");
   }
-  if (!info_.game_dir.empty()) {
-    tbl.emplace("game_dir", info_.game_dir.string());
-  }
-  if (!info_.game_mods_dir.empty()) {
-    tbl.emplace("game_mods_dir", info_.game_mods_dir.string());
-  }
-  // Per-folder overrides; only non-empty overrides are written.
-  if (!info_.mods_dir.empty()) {
-    tbl.emplace("mods_dir", info_.mods_dir.string());
-  }
-  if (!info_.downloads_dir.empty()) {
-    tbl.emplace("downloads_dir", info_.downloads_dir.string());
-  }
-  if (!info_.cache_dir.empty()) {
-    tbl.emplace("cache_dir", info_.cache_dir.string());
-  }
-  if (!info_.profiles_dir.empty()) {
-    tbl.emplace("profiles_dir", info_.profiles_dir.string());
-  }
-  if (!info_.overwrite_dir.empty()) {
-    tbl.emplace("overwrite_dir", info_.overwrite_dir.string());
-  }
-  if (!info_.plugins_txt_path.empty()) {
-    tbl.emplace("plugins_txt_path", info_.plugins_txt_path.string());
-  }
-  if (!info_.proton_runner.empty()) {
-    tbl.emplace("proton_runner", info_.proton_runner);
-  }
-  if (!info_.deploy_strategy.empty()) {
-    tbl.emplace("deploy_strategy", info_.deploy_strategy);
-  }
-  if (!info_.last_tab.empty()) {
-    tbl.emplace("last_tab", info_.last_tab);
-  }
+
+  auto assign_or_erase = [&](const std::string &key,
+                             const std::filesystem::path &val) {
+    if (val.empty())
+      tbl->erase(key);
+    else
+      tbl->insert_or_assign(key, val.string());
+  };
+
+  assign_or_erase("game_dir", info_.game_dir);
+  assign_or_erase("game_mods_dir", info_.game_mods_dir);
+
+  // Per-folder overrides.
+  assign_or_erase("mods_dir", info_.mods_dir);
+  assign_or_erase("downloads_dir", info_.downloads_dir);
+  assign_or_erase("cache_dir", info_.cache_dir);
+  assign_or_erase("profiles_dir", info_.profiles_dir);
+  assign_or_erase("overwrite_dir", info_.overwrite_dir);
+  assign_or_erase("plugins_txt_path", info_.plugins_txt_path);
+
+  auto assign_str_or_erase = [&](const std::string &key,
+                                 const std::string &val) {
+    if (val.empty())
+      tbl->erase(key);
+    else
+      tbl->insert_or_assign(key, val);
+  };
+
+  assign_str_or_erase("proton_runner", info_.proton_runner);
+  assign_str_or_erase("deploy_strategy", info_.deploy_strategy);
+  assign_str_or_erase("last_tab", info_.last_tab);
 
   std::ofstream out(toml_path());
   if (!out)
     return false;
-  out << serialize_instance_toml(tbl);
+  out << serialize_instance_toml(*tbl);
   return out.good();
 }
 
