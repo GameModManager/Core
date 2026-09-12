@@ -149,7 +149,7 @@ public:
 class DependencyPattern final : public XmlDeserializable {
 public:
     CompositeDependency dependencies;
-    PluginTypeEnum type;
+    PluginTypeEnum type = PluginTypeEnum::Optional;
 
     bool deserialize(pugi::xml_node& node) override;
 };
@@ -172,7 +172,7 @@ public:
 class TypeDescriptor final : public XmlDeserializable {
 public:
     DependencyPluginType dependencyType;
-    PluginTypeEnum type;
+    PluginTypeEnum type = PluginTypeEnum::Optional;
 
     bool deserialize(pugi::xml_node& node) override;
 };
