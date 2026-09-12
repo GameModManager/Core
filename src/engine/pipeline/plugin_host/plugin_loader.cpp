@@ -1406,7 +1406,7 @@ static void cb_v2_register_preview(GmmRegistrationCtxV2 *ctx,
       ext_str, fn, preview_data, user_data, bridge->current_plugin->path);
 
   Logger::instance().debug("[PluginLoader] cb_v2_register_preview: DONE ext=" +
-                           p.file_extension);
+                           ext_str);
 }
 
 static void cb_v2_register_tool(GmmRegistrationCtxV2 *ctx, const char *tool_id,
@@ -1459,9 +1459,11 @@ static void cb_v2_register_modpage(GmmRegistrationCtxV2 *ctx, const char *url,
   m.url = url ? url : "";
   m.fn = reinterpret_cast<void *>(fn);
   m.user_data = user_data;
+  // Capture url before moving m into the plugin's modpages vector.
+  const std::string modpage_url = m.url;
   bridge->current_plugin->modpages.push_back(std::move(m));
 
-  Logger::instance().debug("Plugin registered v2 modpage for url=" + m.url);
+  Logger::instance().debug("Plugin registered v2 modpage for url=" + modpage_url);
 }
 
 static void cb_v2_register_save_parser(GmmRegistrationCtxV2 *ctx,
