@@ -13,6 +13,7 @@
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPen>
 #include <QStyle>
 #include <QStyleOptionSlider>
 #include <QToolTip>
@@ -114,8 +115,12 @@ static bool is_supported_archive(const QString& path) {
     return false;
 }
 
-IndentDelegate::IndentDelegate(int indent_depth_role, QWidget* parent)
-    : QStyledItemDelegate(parent), indent_depth_role_(indent_depth_role) {}
+IndentDelegate::IndentDelegate(int indent_depth_role, int is_last_child_role,
+                               int is_separator_role, QWidget* parent)
+    : QStyledItemDelegate(parent),
+      indent_depth_role_(indent_depth_role),
+      is_last_child_role_(is_last_child_role),
+      is_separator_role_(is_separator_role) {}
 
 void IndentDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option,
                            const QModelIndex& index) const {
@@ -135,47 +140,104 @@ void IndentDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option
         style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, widget);
         return;
     }
-    int shift = depth * kIndentStep;
-    // Centered text (separators with "Center text on separators" on, the
-    // default) moves only HALF the rect shift: the text centers within
-    // [L+shift, R], whose center is C + shift/2. Double the shift so a centered
-    // row indents the same full kIndentStep per level a left-aligned row does -
-    // without this, nested separators looked flat until ~4 levels deep.
+
+    // indentShift is the pure gutter width (depth * kIndentStep). The checkbox
+    // and connector lines use this. Centered text (separators with "Center text
+    // on separators" on, the default) doubles so a centered row indents the
+    // same full kIndentStep per level a left-aligned row does.
+    int indentShift = depth * kIndentStep;
+    int shift = indentShift;
     if (opt.displayAlignment & Qt::AlignHCenter)
         shift *= 2;
-    // The checkbox stays at its normal (left) position, so the shifted name
-    // must clear it - ADD the checkbox width rather than max()ing with it:
-    // Pass 2 suppresses the checkbox, so the style reserves no space for it and
-    // the name would otherwise start exactly where the PARENT's text starts
-    // (the parent's own text is already past its checkbox). max(shift, cbw)
-    // made the depth-1 shift degenerate to exactly the checkbox width, so the
-    // first nested mod rendered ~0px past its parent ("mod 2 is 2-3px left of
-    // its parent"); only depth 2+ stepped.
+
+    // Measure checkbox width if present (needed for text offset past the
+    // shifted checkbox).
+    int checkboxWidth = 0;
     if (opt.features & QStyleOptionViewItem::HasCheckIndicator) {
         const QRect check =
             style->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &opt, widget);
-        shift += check.right() - opt.rect.left() + 1;
+        checkboxWidth = check.right() - opt.rect.left() + 1;
     }
 
-    // Pass 1: full-width background + the checkbox at its NORMAL position (the
-    // left edge, exactly where a flat row draws it) - no text/icon, so the
-    // indentation gutter keeps the row highlight and the checkbox NEVER shifts
-    // with the name.
+    // Pass 1: full-width background only (no checkbox, no text, no focus).
+    // The selection/alternate tint fills the entire cell so the indent gutter
+    // is never a gap in the row highlight.
     QStyleOptionViewItem bg = opt;
     bg.text.clear();
     bg.icon = QIcon();
     bg.features &= ~QStyleOptionViewItem::HasDisplay;
+    bg.features &= ~QStyleOptionViewItem::HasCheckIndicator;
     bg.state &= ~QStyle::State_HasFocus;
     style->drawControl(QStyle::CE_ItemViewItem, &bg, painter, widget);
 
-    // Pass 2: text + icon shifted right into the remaining width (right edge
+    // Pass 2: checkbox shifted right by the indent gutter width. The checkbox
+    // moves WITH the name text so nested rows look properly indented under
+    // their parent.
+    if (checkboxWidth > 0) {
+        QStyleOptionViewItem checkOpt = opt;
+        QRect checkRect =
+            style->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &opt, widget);
+        checkRect.moveLeft(opt.rect.left() + indentShift);
+        checkOpt.rect = checkRect;
+        // PE_IndicatorItemViewItemCheck reads State_On/State_Off from state,
+        // not from checkState - initStyleOption only sets checkState.
+        checkOpt.state &= ~(QStyle::State_On | QStyle::State_Off |
+                             QStyle::State_NoChange);
+        if (checkOpt.checkState == Qt::Checked)
+            checkOpt.state |= QStyle::State_On;
+        else if (checkOpt.checkState == Qt::PartiallyChecked)
+            checkOpt.state |= QStyle::State_NoChange;
+        else
+            checkOpt.state |= QStyle::State_Off;
+        style->drawPrimitive(QStyle::PE_IndicatorItemViewItemCheck,
+                             &checkOpt, painter, widget);
+    }
+
+    // Pass 3: text + icon shifted right past the shifted checkbox (right edge
     // stays put, so nothing bleeds into the next column). Checkbox suppressed -
-    // Pass 1 already drew it at the normal position.
+    // Pass 2 already drew it at the shifted position.
     QStyleOptionViewItem content = opt;
-    content.rect.setLeft(content.rect.left() + shift);
+    content.rect.setLeft(content.rect.left() + shift + checkboxWidth);
     if (content.rect.width() > 0) {
         content.features &= ~QStyleOptionViewItem::HasCheckIndicator;
         style->drawControl(QStyle::CE_ItemViewItem, &content, painter, widget);
+    }
+
+    // Pass 4: KDE-style tree connector lines in the indent gutter. Separators
+    // are structural parents and never get connectors on their own rows; only
+    // mod rows (non-separator children) get the visual nesting lines.
+    const bool is_separator = index.data(is_separator_role_).toBool();
+    if (!is_separator) {
+        const int checkbox_left = opt.rect.left() + indentShift;
+        const int row_top = opt.rect.top();
+        const int row_bottom = opt.rect.bottom();
+        const int row_mid = (row_top + row_bottom) / 2;
+        const bool is_last_child = index.data(is_last_child_role_).toBool();
+
+        const QPalette pal = widget ? widget->palette() : QApplication::palette();
+        // ponytail: PlaceholderText is mid-gray on both light and dark themes;
+        // QPalette::Mid is nearly invisible on dark backgrounds.
+        painter->setPen(QPen(pal.color(QPalette::PlaceholderText), 1));
+
+        for (int i = 0; i < depth; ++i) {
+            const int x = opt.rect.left() + kIndentStep * i + kCenterOffset;
+            if (i < depth - 1) {
+                // Ancestor level: continuous vertical line through the row.
+                painter->drawLine(x, row_top, x, row_bottom);
+            } else {
+                // Immediate parent level: horizontal from the vertical line
+                // to the shifted checkbox (start of content area).
+                if (is_last_child) {
+                    // L-connector: vertical from top to center, then horizontal.
+                    painter->drawLine(x, row_top, x, row_mid);
+                    painter->drawLine(x, row_mid, checkbox_left, row_mid);
+                } else {
+                    // T-connector: vertical full height, horizontal at center.
+                    painter->drawLine(x, row_top, x, row_bottom);
+                    painter->drawLine(x, row_mid, checkbox_left, row_mid);
+                }
+            }
+        }
     }
 }
 
@@ -261,9 +323,13 @@ ModView::ModView(QWidget* parent)
     setItemDelegateForColumn(ModList::Flags,
                              new FlagsDelegate(ModList::kFlagIconsRole, 0, this));
     // Name column: nesting indentation (shifts the name right under its parent,
-    // purely visual). Depth 0 renders exactly like the default cell.
+    // purely visual). Depth 0 renders exactly like the default cell. Tree
+    // connector lines are drawn in the indent gutter for depth > 0.
     setItemDelegateForColumn(ModList::Name,
-                             new IndentDelegate(ModList::kIndentDepthRole, this));
+                             new IndentDelegate(ModList::kIndentDepthRole,
+                                                ModList::kIsLastChildRole,
+                                                ModList::kIsSeparatorRole,
+                                                this));
 }
 
 void ModView::apply_scrollbar_policy() {
