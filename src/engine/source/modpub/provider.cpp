@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <cctype>
+#include <cstring>
 #include <regex>
 #include <string>
 
@@ -193,6 +194,148 @@ std::string find_softwareapp_json_ld(const std::string &html) {
   return {};
 }
 
+// Pure HTML-attribute allowlist for the rich-text description block.
+// Mirrors the scheme list the BBCode layer uses (see
+// ui/modinfo/bbcode.cpp::is_url_scheme_ok). javascript:, data:, etc.
+// are dropped - the link text survives as plain text and the
+// surrounding page is never handed an executable URL.
+bool is_safe_description_url(const std::string &url) {
+  if (url.empty())
+    return false;
+  auto starts_with_ci = [](const std::string &s, const char *prefix) {
+    const size_t n = std::strlen(prefix);
+    if (s.size() < n)
+      return false;
+    for (size_t i = 0; i < n; ++i) {
+      char a = s[i];
+      char b = prefix[i];
+      if (a >= 'A' && a <= 'Z')
+        a = static_cast<char>(a - 'A' + 'a');
+      if (b >= 'A' && b <= 'Z')
+        b = static_cast<char>(b - 'A' + 'a');
+      if (a != b)
+        return false;
+    }
+    return true;
+  };
+  return starts_with_ci(url, "http://") ||
+         starts_with_ci(url, "https://") ||
+         starts_with_ci(url, "mailto:") ||
+         starts_with_ci(url, "ftp://") ||
+         starts_with_ci(url, "ftps://");
+}
+
+// Convert a single HTML anchor tag into a BBCode [url=...]text[/url] or,
+// when the href is unsafe, into the visible text alone. Operates on the
+// first match in `html`; the caller iterates until no match remains.
+// Returns true if a replacement was made.
+bool convert_anchor_once(std::string &html) {
+  static const std::regex kAnchorDq(
+      "<a\\b[^>]*\\bhref\\s*=\\s*\"([^\"]*)\"[^>]*>([\\s\\S]*?)</a>",
+      std::regex::icase);
+  static const std::regex kAnchorSq(
+      "<a\\b[^>]*\\bhref\\s*=\\s*'([^']*)'[^>]*>([\\s\\S]*?)</a>",
+      std::regex::icase);
+  std::smatch m;
+  if (std::regex_search(html, m, kAnchorDq)) {
+    const std::string href = m[1].str();
+    const std::string text = m[2].str();
+    const std::string repl = is_safe_description_url(href)
+                                 ? ("[url=" + href + "]" + text + "[/url]")
+                                 : text;
+    html.replace(m.position(), m.length(), repl);
+    return true;
+  }
+  if (std::regex_search(html, m, kAnchorSq)) {
+    const std::string href = m[1].str();
+    const std::string text = m[2].str();
+    const std::string repl = is_safe_description_url(href)
+                                 ? ("[url=" + href + "]" + text + "[/url]")
+                                 : text;
+    html.replace(m.position(), m.length(), repl);
+    return true;
+  }
+  return false;
+}
+
+// Strip every HTML tag from `html` EXCEPT <a>, <br>, and <p> which are
+// converted to BBCode equivalents (the anchor pass already converted
+// <a>). Other tags are stripped and their inner text preserved. Runs of
+// >2 newlines (the <p> pass introduces them) are collapsed to one
+// paragraph break.
+void strip_unwanted_tags(std::string &html) {
+  static const std::regex kBr("<\\s*br\\s*/?\\s*>", std::regex::icase);
+  html = std::regex_replace(html, kBr, "\n");
+  static const std::regex kP(
+      "<p\\b[^>]*>([\\s\\S]*?)</p>", std::regex::icase);
+  html = std::regex_replace(html, kP, "\n\n$1\n\n");
+  static const std::regex kAnyTag("<[^>]+>");
+  html = std::regex_replace(html, kAnyTag, "");
+  static const std::regex kThreeNl("\n{3,}");
+  html = std::regex_replace(html, kThreeNl, "\n\n");
+  auto first = html.find_first_not_of(" \t\r\n");
+  if (first == std::string::npos) {
+    html.clear();
+    return;
+  }
+  auto last = html.find_last_not_of(" \t\r\n");
+  html = html.substr(first, last - first + 1);
+}
+
+// Extract the first "gray-box user-content" rich-text block from the
+// mod.pub page HTML and return a BBCode-ish string the UI's
+// bbcode_to_html can further normalize. mod.pub wraps the description
+// in <div class="gray-box user-content">...</div>. We pick the first
+// such block (the Credits section also uses "user-content" but inside a
+// card-body, which does not match "gray-box").
+std::string extract_rich_description(const std::string &html_body) {
+  if (html_body.empty())
+    return {};
+  // Match either single- or double-quoted class attribute.
+  static const std::regex kOpen(
+      "<div\\b[^>]*\\bclass\\s*=\\s*[\"'][^\"']*"
+      "gray-box\\s+user-content[^\"']*[\"'][^>]*>",
+      std::regex::icase);
+  std::smatch m;
+  if (!std::regex_search(html_body, m, kOpen))
+    return {};
+  const size_t open_end = m.position() + m.length();
+  // Depth-aware walk to the matching </div>.
+  size_t depth = 1;
+  size_t pos = open_end;
+  static const std::regex kDivOpen("<div\\b", std::regex::icase);
+  static const std::regex kDivClose("</div\\s*>", std::regex::icase);
+  while (depth > 0 && pos < html_body.size()) {
+    auto find_next = [&](const std::regex &re) -> size_t {
+      const std::string rest = html_body.substr(pos);
+      std::smatch r;
+      return std::regex_search(rest, r, re)
+                 ? size_t(r.position()) + pos
+                 : std::string::npos;
+    };
+    const size_t next_open = find_next(kDivOpen);
+    const size_t next_close = find_next(kDivClose);
+    if (next_close == std::string::npos)
+      break; // malformed; bail out
+    if (next_open != std::string::npos && next_open < next_close) {
+      ++depth;
+      pos = next_open + std::strlen("<div");
+    } else {
+      --depth;
+      pos = next_close + std::strlen("</div");
+      if (depth == 0) {
+        std::string inner = html_body.substr(
+            open_end, (pos - std::strlen("</div")) - open_end);
+        while (convert_anchor_once(inner)) {
+        }
+        strip_unwanted_tags(inner);
+        return inner;
+      }
+    }
+  }
+  return {};
+}
+
 } // namespace
 
 bool Provider::is_modpub_url(const std::string &url) {
@@ -303,6 +446,10 @@ std::string Provider::mod_page_url(const std::string &url) {
   return page;
 }
 
+std::string Provider::parse_description_html(const std::string &html_body) {
+  return extract_rich_description(html_body);
+}
+
 ModInfoResult Provider::parse_mod_info(const std::string &html_body,
                                        const std::string &fallback_url) {
   ModInfoResult result;
@@ -348,6 +495,17 @@ ModInfoResult Provider::parse_mod_info(const std::string &html_body,
     if (!tag.empty())
       result.category = tag;
   }
+
+  // --- Step 2b: prefer the rich-text description block over the JSON-LD
+  // plain-text one when we can extract it. The "gray-box user-content"
+  // div carries the real HTML the user sees: <a> anchors, <strong>,
+  // mentions. JSON-LD's `description` is plain text by the schema.org
+  // contract, so any link or mention in the on-site view is lost when we
+  // use it. parse_description_html() converts the inner HTML to a
+  // BBCode-ish string the UI's bbcode_to_html can further normalize.
+  const std::string rich = parse_description_html(html_body);
+  if (!rich.empty())
+    result.description = rich;
 
   // --- Step 3: fallback to og:* meta tags. Used when JSON-LD is absent
   // or did not produce a name. description and dateModified remain
