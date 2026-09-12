@@ -126,16 +126,21 @@ private:
     QTreeView* view_ = nullptr;
 };
 
-// Delegate for the Name column: shifts the cell content right by the nesting
-// depth (kIndentDepthRole) so nested mods read as indented under their parent.
-// Purely visual - load order / priorities are untouched. The full-row
-// background (selection / alternate tint) is drawn first on the unshifted
-// rect, so the indentation gutter is never a gap in the row highlight; the
-// checkbox + text + vendor glyph are then drawn shifted right.
+// Delegate for the Name column: shifts the checkbox, text, and vendor glyph
+// right by the nesting depth (kIndentDepthRole) so nested mods read as
+// indented under their parent. Purely visual - load order / priorities are
+// untouched. The full-row background (selection / alternate tint) is drawn
+// first on the unshifted rect, so the indentation gutter is never a gap in
+// the row highlight; the checkbox and text are then drawn shifted right
+// together. When the row has a nesting depth > 0, KDE-style tree connector
+// lines are painted in the indent gutter: the horizontal connector runs from
+// the fold arrow area (left edge) to the shifted checkbox.
 class IndentDelegate : public QStyledItemDelegate {
     Q_OBJECT
 public:
-    explicit IndentDelegate(int indent_depth_role, QWidget* parent = nullptr);
+    explicit IndentDelegate(int indent_depth_role, int is_last_child_role,
+                           int is_separator_role,
+                           QWidget* parent = nullptr);
 
 protected:
     void paint(QPainter* painter, const QStyleOptionViewItem& option,
@@ -143,7 +148,10 @@ protected:
 
 private:
     int indent_depth_role_ = Qt::UserRole;
+    int is_last_child_role_ = Qt::UserRole;
+    int is_separator_role_ = Qt::UserRole;
     static constexpr int kIndentStep = 20;  // px per nesting level (visible at depth 1)
+    static constexpr int kCenterOffset = kIndentStep / 2;  // center of each indentation zone
 };
 
 class ModView : public QTreeView {
