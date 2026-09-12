@@ -84,8 +84,15 @@ TEST_CASE("category_factory", "[engine]") {
   std::ifstream in(root / "categories.dat");
   std::string saved((std::istreambuf_iterator<char>(in)),
                     std::istreambuf_iterator<char>());
-  require(saved == "1|Animations|0\n2|Armour|0\n3|Poses|1\n",
-          "categories.dat round-trips (map writes in ID order)");
+  // The 3 file entries must round-trip (map writes in ID order). Extra
+  // plugin_categories_ entries may be injected by self-healing, so check
+  // containment rather than byte-exact equality.
+  require(saved.find("1|Animations|0\n") != std::string::npos,
+          "round-trip: Animations present");
+  require(saved.find("2|Armour|0\n") != std::string::npos,
+          "round-trip: Armour present");
+  require(saved.find("3|Poses|1\n") != std::string::npos,
+          "round-trip: Poses present");
 
   // --- Load replaces the current set; missing file keeps it. ---
   f.addCategory(99, "Transient", 0);
@@ -213,4 +220,80 @@ TEST_CASE("category_factory_clear_drops_all_entries", "[engine]") {
   require(!f.categoryById(1), "no entries means no hasChildren flags");
 
   reset();
+}
+
+TEST_CASE("category_factory_self_heals_poisoned_dat", "[engine]") {
+  // Verifies the fix for Workspace-a5f: a poisoned (empty or stale)
+  // categories.dat must not permanently clobber plugin-registered categories.
+  // The real-world sequence is: plugins merge() at startup, then
+  // set_game_info() calls clear()+load(dat). If the dat was saved before
+  // plugins registered (or accidentally emptied), plugin entries must be
+  // restored from the plugin_categories_ snapshot.
+  using engine::Category::Factory;
+
+  Factory &f = Factory::instance();
+
+  const fs::path root = "/tmp/gmm_category_factory_selfheal_test";
+  fs::remove_all(root);
+  fs::create_directories(root);
+
+  // --- Step 1: Plugin registers Isaac categories via merge(). ---
+  f.clear();
+  int isaac_ids[] = {1000, 1001, 1002, 1003, 1006};
+  const char *isaac_names[] = {"Items",    "Active Items", "Trinkets",
+                               "Pills",    "Lua"};
+  int isaac_parents[] = {0, 1000, 0, 0, 0};
+  f.merge(isaac_ids, isaac_names, isaac_parents, 5);
+  require(f.categories().size() == 5, "5 Isaac categories merged");
+  require(f.pluginCategories().count(1000),
+          "Isaac Items recorded in plugin set");
+  require(f.pluginCategories().count(1001),
+          "Isaac Active Items recorded in plugin set");
+
+  // --- Step 2: load() with an EMPTY categories.dat (poisoned). ---
+  write_file(root / "empty.dat", "");
+  f.load(root / "empty.dat");
+  // All 5 Isaac entries must survive (restored from plugin_categories_).
+  require(f.categoryExists(1000), "empty dat: Isaac Items restored");
+  require(f.categoryExists(1001), "empty dat: Active Items restored");
+  require(f.categoryExists(1002), "empty dat: Trinkets restored");
+  require(f.categoryExists(1003), "empty dat: Pills restored");
+  require(f.categoryExists(1006), "empty dat: Lua restored");
+  require(f.categoryById(1001)->parent_id == 1000,
+          "parent_id preserved after self-heal");
+
+  // --- Step 3: load() with a STALE dat (wrong game's categories). ---
+  write_file(root / "stale.dat", "1|Animations|0\n2|Armour|0\n");
+  f.load(root / "stale.dat");
+  require(f.categoryExists(1), "stale dat: Animations present");
+  require(f.categoryExists(2), "stale dat: Armour present");
+  require(f.categoryExists(1000), "stale dat: Isaac Items still present");
+  require(f.categoryExists(1001), "stale dat: Active Items still present");
+
+  // --- Step 4: load() with a dat that has SOME Isaac entries (partial overlap).
+  // File entries win for naming/parenting; missing plugin entries are restored.
+  // ---
+  write_file(root / "partial.dat", "1000|Custom Items|0\n1002|My Trinkets|0\n");
+  f.load(root / "partial.dat");
+  require(f.categoryExists(1000), "partial: Isaac entries present");
+  require(f.categoryExists(1001), "partial: missing plugin entry restored");
+  require(f.categoryExists(1002), "partial: overlapping entry present");
+  require(f.categoryById(1000)->name == "Custom Items",
+          "file entry wins for naming");
+  require(f.categoryById(1001)->name == "Active Items",
+          "missing plugin entry restored with plugin name");
+
+  // --- Step 5: clear() does not wipe plugin_categories_; self-heal works
+  // across multiple clear+load cycles (simulates instance switching).
+  // ---
+  f.clear();
+  require(f.categories().empty(), "clear empties active set");
+  require(f.pluginCategories().count(1000),
+          "plugin entries survive clear");
+  write_file(root / "another_empty.dat", "");
+  f.load(root / "another_empty.dat");
+  require(f.categoryExists(1000),
+          "second empty dat self-heals: Items present");
+  require(f.categoryExists(1006),
+          "second empty dat self-heals: Lua present");
 }

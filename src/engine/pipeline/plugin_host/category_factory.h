@@ -56,12 +56,16 @@ public:
   void removeCategory(int id);
   // Updates the name and parent of an existing category; no-op when missing.
   void updateCategory(int id, const std::string &name, int parent_id);
-  // Drops every entry. Use this when transitioning between two sources of
-  // truth that own the factory (per-instance state via set_game_info() does
-  // this so the previous instance's categories do not leak into the next
-  // one - applyCoreSet() is additive by design and load() only replaces
-  // when categories.dat exists).
+  // Drops every instance-scoped entry. Plugin-registered entries
+  // (plugin_categories_) survive so that load() can self-heal a poisoned
+  // categories.dat by restoring missing plugin entries.
   void clear();
+
+  // Categories registered by plugins this session. Survives clear() so
+  // load() can re-add missing plugin entries after a stale/empty dat.
+  [[nodiscard]] const std::map<int, Entry> &pluginCategories() const {
+    return plugin_categories_;
+  }
 
   // Recomputes the hasChildren flags after any structural change.
   void rebuildTree();
@@ -71,6 +75,7 @@ private:
   void updateHasChildren();
 
   std::map<int, Entry> categories_;
+  std::map<int, Entry> plugin_categories_; // survives clear() for self-healing
 };
 
 } // namespace Category
