@@ -164,7 +164,7 @@ public:
         // Takes the vector's own const_iterator (the iterator typedef), so no
         // implicit conversions are involved.
         const_iterator(iterator v) : v(v) {}
-        iterator v;
+        iterator v = {};
     };
 
     // - factories ------------------------------------------------------------
