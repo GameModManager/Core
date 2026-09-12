@@ -80,6 +80,8 @@ Application::Application(int &argc, char **argv)
   // Install the cross-platform crash handler as early as possible, before any
   // UI or engine setup, so crashes during startup are captured too.
   engine::install_crash_handler();
+  engine::CrashHandler::prune_old_dumps(
+      Settings::instance().max_core_dumps());
 
   app_.setApplicationName("GameModManager");
   app_.setApplicationVersion(VERSION);
