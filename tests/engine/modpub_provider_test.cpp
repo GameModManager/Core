@@ -235,3 +235,97 @@ TEST_CASE("modpub provider URL parsing", "[engine]") {
               "https://mod.pub/enderalse/9-bare/",
           "no trailing slash -> added");
 }
+
+TEST_CASE("modpub parse_description_html", "[engine]") {
+  using engine::Source::ModPub::Provider;
+
+  // --- Basic extraction: the "gray-box user-content" div's inner HTML
+  // is extracted, anchors converted to [url], other tags stripped.
+  const std::string basic =
+      R"(<div class="gray-box user-content">)"
+      R"(<a href="https://example.com">Click here</a><br />)"
+      R"(<strong>Bold text</strong></div>)";
+  std::string r = Provider::parse_description_html(basic);
+  require(!r.empty(), "basic: extracted");
+  require(r.find("[url=https://example.com]Click here[/url]") != std::string::npos,
+          "basic: anchor converted to BBCode url");
+  require(r.find("Bold text") != std::string::npos,
+          "basic: strong tag stripped, text preserved");
+  require(r.find("<strong>") == std::string::npos,
+          "basic: HTML tags stripped");
+
+  // --- javascript: href dropped (link text preserved, href not in output).
+  const std::string js =
+      R"TAG(<div class="gray-box user-content">)TAG"
+      R"TAG(<a href="javascript:alert(1)">XSS</a></div>)TAG";
+  std::string js_r = Provider::parse_description_html(js);
+  require(js_r.find("XSS") != std::string::npos,
+          "javascript: link text preserved");
+  require(js_r.find("[url=") == std::string::npos,
+          "javascript: href not wrapped in [url]");
+  require(js_r.find("javascript:") == std::string::npos,
+          "javascript: scheme completely absent from output");
+
+  // --- Single-quoted class attribute.
+  const std::string sq =
+      R"(<div class='gray-box user-content'>)"
+      R"(<a href="https://example.com">Link</a></div>)";
+  std::string sq_r = Provider::parse_description_html(sq);
+  require(!sq_r.empty(), "single-quoted class: extracted");
+  require(sq_r.find("[url=https://example.com]") != std::string::npos,
+          "single-quoted class: anchor converted");
+
+  // --- Mention survival: @username is preserved as text.
+  const std::string mention =
+      R"(<div class="gray-box user-content">)"
+      R"(<p>Great mod! Thanks @AuthorName for this.</p></div>)";
+  std::string m_r = Provider::parse_description_html(mention);
+  require(m_r.find("@AuthorName") != std::string::npos,
+          "mention: @AuthorName survives extraction");
+  require(m_r.find("Great mod!") != std::string::npos,
+          "mention: surrounding text preserved");
+
+  // --- No matching div: returns empty.
+  require(Provider::parse_description_html("just some text").empty(),
+          "no gray-box div: empty");
+
+  // --- Empty body: returns empty.
+  require(Provider::parse_description_html({}).empty(), "empty body: empty");
+
+  // --- Nested divs: depth-aware walk does not bail early.
+  const std::string nested =
+      R"(<div class="gray-box user-content">)"
+      R"(<p>Outer</p><div class="inner">Inner content</div><p>More</p></div>)";
+  std::string n_r = Provider::parse_description_html(nested);
+  require(!n_r.empty(), "nested divs: extracted");
+  require(n_r.find("Outer") != std::string::npos, "nested: outer text");
+  require(n_r.find("Inner content") != std::string::npos,
+          "nested: inner text preserved");
+  require(n_r.find("More") != std::string::npos, "nested: text after inner div");
+
+  // --- parse_mod_info prefers rich description over JSON-LD.
+  // The gray-box user-content div carries the real HTML (anchors,
+  // mentions); parse_mod_info must prefer it over the plain-text
+  // JSON-LD description field.
+  const std::string full_page =
+      "<html><head>"
+      "<script type=\"application/ld+json\">"
+      "{\"@type\":\"SoftwareApplication\","
+      "\"name\":\"Test Mod\","
+      "\"description\":\"Plain text from JSON-LD\","
+      "\"applicationCategory\":\"GameMod\","
+      "\"author\":{\"name\":\"Tester\"}}"
+      "</script>"
+      "</head><body>"
+      "<div class=\"gray-box user-content\">"
+      "<a href=\"https://example.com\">Rich</a> description with a link"
+      "</div>"
+      "</body></html>";
+  auto ri = engine::Source::ModPub::Provider::parse_mod_info(
+      full_page, "https://mod.pub/skyrim/1-test-mod/");
+  require(!ri.name.empty(), "parse_mod_info: name populated");
+  require(!ri.description.empty(), "parse_mod_info: description populated");
+  require(ri.available, "parse_mod_info: available with rich desc");
+  require(ri.description.find("[url=https://example.com]") != std::string::npos,
+          "parse_mod_info: rich description preferred over JSON-LD");
+}
