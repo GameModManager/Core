@@ -14,6 +14,12 @@
 #include <vector>
 #include <system_error>
 
+#ifdef _WIN32
+using pid_t = int;
+using uid_t = int;
+using gid_t = int;
+#endif
+
 #ifndef _WIN32
 #include <fcntl.h>
 #include <sched.h>
@@ -23,15 +29,6 @@
 #include <unistd.h>
 
 #include <sys/xattr.h>
-
-#ifndef _WIN32  // POSIX-only - guarded for MSVC compatibility
-
-#endif
-
-#ifdef _WIN32
-using uid_t = int;
-using gid_t = int;
-#endif
 
 namespace engine {
 
@@ -526,5 +523,29 @@ bool OverlayFsLauncher::has_exited(int64_t pid) {
 
 }  // namespace engine
 
+#else  // _WIN32 -- stub implementations (OverlayFS is Linux-only)
+
+namespace engine {
+
+bool OverlayFsLauncher::is_supported(const std::filesystem::path& /*upper_dir*/) {
+    return false;  // OverlayFS is Linux-only
+}
+
+int64_t OverlayFsLauncher::launch(const std::filesystem::path& /*executable*/,
+                                   const std::filesystem::path& /*game_dir*/,
+                                   const std::filesystem::path& /*upper_dir*/,
+                                   const std::vector<std::string>& /*args*/,
+                                   const std::vector<std::filesystem::path>& /*extra_lowerdirs*/,
+                                   const std::filesystem::path& /*bind_mount_source*/,
+                                   const std::filesystem::path& /*bind_mount_target*/,
+                                   const std::filesystem::path& /*cwd*/) {
+    return -1;  // OverlayFS is Linux-only
+}
+
+bool OverlayFsLauncher::has_exited(int64_t /*pid*/) {
+    return true;  // No process tracking on Windows stub
+}
+
+}  // namespace engine
 
 #endif  // !_WIN32
