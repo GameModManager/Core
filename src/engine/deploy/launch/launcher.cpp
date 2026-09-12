@@ -829,6 +829,75 @@ void cgroup_remove(const CgroupHandle &h) {
   fs::remove(h.path, ec);
 }
 
-} // namespace engine
+#else // _WIN32 -- stub implementations (POSIX process/cgroup APIs unavailable)
 
-#endif // !_WIN32  // end of POSIX-only launcher
+// Windows stub: the full Windows launch path (USVFS) is ticket Workspace-3br4.
+// These stubs satisfy the linker; callers on Windows will get empty/default
+// results until the native Windows launch is implemented.
+
+// -- ProcessRunner --
+
+ProcessRunner::ProcessRunner(LaunchParams params)
+    : params_(std::move(params)) {}
+
+LaunchResult ProcessRunner::run() {
+  last_result_ = launch_game(params_);
+  return last_result_;
+}
+
+const LaunchParams &ProcessRunner::params() const { return params_; }
+
+const LaunchResult &ProcessRunner::last_result() const { return last_result_; }
+
+// -- Backward-compatible free function --
+
+LaunchResult launch_game(const LaunchParams &params) {
+  Logger::instance().debug("launch_game: Windows stub - launch not yet implemented");
+  (void)params;
+  return {};
+}
+
+// -- Overwrite capture (cross-platform std::filesystem, but cgroup path unused on Windows) --
+
+void capture_overwrite(const fs::path & /*game_dir*/,
+                       const fs::path & /*overwrite_dir*/,
+                       fs::file_time_type /*capture_time*/,
+                       bool /*case_insensitive*/) {
+  // No-op on Windows until the Windows launch path is implemented.
+}
+
+// -- Cgroup v2 (Linux-only) --
+
+CgroupHandle create_launch_cgroup(const std::string & /*name*/) {
+  return {};
+}
+
+void cgroup_add_pid(const CgroupHandle & /*h*/, int64_t /*pid*/) {}
+
+std::vector<int64_t> cgroup_members(const CgroupHandle & /*h*/) {
+  return {};
+}
+
+bool cgroup_is_empty(const CgroupHandle & /*h*/) {
+  return true;
+}
+
+void cgroup_kill(const CgroupHandle & /*h*/) {}
+
+void cgroup_remove(const CgroupHandle & /*h*/) {}
+
+// -- Process group monitoring (Linux-only, /proc-based) --
+
+bool is_process_group_alive(int64_t /*pgid*/) {
+  return false;
+}
+
+void wait_for_process_group(int64_t /*pgid*/, int /*poll_ms*/) {}
+
+std::vector<int64_t> get_process_descendants(int64_t /*root_pid*/) {
+  return {};
+}
+
+#endif // !_WIN32
+
+} // namespace engine

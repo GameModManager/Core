@@ -9,18 +9,14 @@
 #include <filesystem>
 #include <string>
 
+#ifdef _WIN32
+using pid_t = int;
+#endif
+
 #ifndef _WIN32
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <unistd.h>
-
-#ifndef _WIN32  // POSIX-only - guarded for MSVC compatibility
-
-#endif
-
-#ifdef _WIN32
-using pid_t = int;
-#endif
 
 namespace engine {
 
@@ -209,5 +205,34 @@ bool PreloadInterceptor::has_exited(int64_t pid) {
 
 }  // namespace engine
 
+#else  // _WIN32 -- stub implementations (LD_PRELOAD is Linux-only)
+
+namespace engine {
+
+static std::filesystem::path find_so() {
+    return {};  // LD_PRELOAD interceptor is Linux-only
+}
+
+bool PreloadInterceptor::is_supported() {
+    return false;  // LD_PRELOAD is Linux-only
+}
+
+std::filesystem::path PreloadInterceptor::so_path() {
+    return {};  // LD_PRELOAD is Linux-only
+}
+
+int64_t PreloadInterceptor::launch(const std::filesystem::path& /*executable*/,
+                                    const std::filesystem::path& /*game_dir*/,
+                                    const std::filesystem::path& /*overwrite_dir*/,
+                                    const std::vector<std::string>& /*args*/,
+                                    const std::filesystem::path& /*cwd*/) {
+    return -1;  // LD_PRELOAD is Linux-only
+}
+
+bool PreloadInterceptor::has_exited(int64_t /*pid*/) {
+    return true;  // No process tracking on Windows stub
+}
+
+}  // namespace engine
 
 #endif  // !_WIN32
