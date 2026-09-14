@@ -16,23 +16,31 @@ constexpr const char* kService = "GameModManager";
 
 // Runs fn on the main thread (blocking) when called from another thread.
 // QtKeychain jobs require an event loop, and the Qt main thread has one.
+// Two overloads via SFINAE so cppcheck sees clear return paths on both.
 template <typename F>
-auto run_on_main(const QObject* ctx, F&& fn) -> std::invoke_result_t<F> {
+auto run_on_main(const QObject* ctx, F&& fn)
+    -> std::enable_if_t<!std::is_void_v<std::invoke_result_t<F>>,
+                        std::invoke_result_t<F>> {
     if (QThread::currentThread() == ctx->thread())
         return fn();
-    if constexpr (std::is_void_v<std::invoke_result_t<F>>) {
-        QMetaObject::invokeMethod(const_cast<QObject*>(ctx), [&] { fn(); },
-                                  Qt::BlockingQueuedConnection);
+    std::invoke_result_t<F> result{};
+    const bool ok = QMetaObject::invokeMethod(
+        const_cast<QObject*>(ctx), [&] { result = fn(); },
+        Qt::BlockingQueuedConnection);
+    if (!ok)
+        return fn();
+    return result;
+}
+
+template <typename F>
+auto run_on_main(const QObject* ctx, F&& fn)
+    -> std::enable_if_t<std::is_void_v<std::invoke_result_t<F>>> {
+    if (QThread::currentThread() == ctx->thread()) {
+        fn();
         return;
-    } else {
-        std::invoke_result_t<F> result{};
-        const bool ok = QMetaObject::invokeMethod(
-            const_cast<QObject*>(ctx), [&] { result = fn(); },
-            Qt::BlockingQueuedConnection);
-        if (!ok)
-            return fn();
-        return result;
     }
+    QMetaObject::invokeMethod(const_cast<QObject*>(ctx), [&] { fn(); },
+                              Qt::BlockingQueuedConnection);
 }
 
 } // namespace

@@ -112,24 +112,20 @@ void ManagedGames::add_source(const std::string& game_id, const GameSource& sour
 }
 
 void ManagedGames::remove_source(const std::string& game_id, const std::string& source_id) {
-    for (auto it = entries_.begin(); it != entries_.end(); ) {
-        if (it->game_id != game_id) {
-            ++it;
-            continue;
-        }
-        it->sources.erase(
-            std::remove_if(it->sources.begin(), it->sources.end(),
-                [&](const GameSource& s) { return s.source_id == source_id; }),
-            it->sources.end());
-        // Remove the game entry entirely if no sources left
-        if (it->sources.empty()) {
-            it = entries_.erase(it);
-        } else {
-            ++it;
-        }
-        save();
+    auto it = std::find_if(entries_.begin(), entries_.end(),
+        [&](const ManagedGameEntry& e) { return e.game_id == game_id; });
+    if (it == entries_.end())
         return;
-    }
+
+    it->sources.erase(
+        std::remove_if(it->sources.begin(), it->sources.end(),
+            [&](const GameSource& s) { return s.source_id == source_id; }),
+        it->sources.end());
+
+    if (it->sources.empty())
+        entries_.erase(it);
+
+    save();
 }
 
 std::string ManagedGames::game_id_for_domain(const std::string& nexus_domain) const {
