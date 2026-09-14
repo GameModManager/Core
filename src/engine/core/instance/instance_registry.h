@@ -37,7 +37,7 @@ public:
 
   struct ValidatedEntry {
     Entry entry;
-    ValidationStatus status;
+    ValidationStatus status = ValidationStatus::Valid;
   };
 
   // Construction - loads the registry from disk
