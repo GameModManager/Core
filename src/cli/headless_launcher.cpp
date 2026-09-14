@@ -167,7 +167,8 @@ int HeadlessLauncher::run() {
         "Headless: game launched (pid=" + std::to_string(result.pid) +
         "). Waiting for exit...");
 
-    int status;
+#ifndef _WIN32
+    int status = 0;
     pid_t child = static_cast<pid_t>(result.pid);
     pid_t ret;
     do {
@@ -177,6 +178,15 @@ int HeadlessLauncher::run() {
     // Remove the launch cgroup now that every process has exited
     // (best-effort; empty cgroup v2 dirs otherwise accumulate).
     engine::cgroup_remove({result.cgroup_path});
+#else
+    // Windows: waitpid not available. The Windows launch path (Workspace-3br4)
+    // will provide WaitForSingleObject-based waiting. For now, just sleep
+    // briefly since the Windows launch stub returns pid=-1 (handled above).
+    int status = 0;
+    pid_t ret = 0;
+    (void)status;
+    (void)ret;
+#endif
 
     engine::Logger::instance().info(
         "Headless: game exited, waiting 3s for delayed writes");
@@ -192,11 +202,15 @@ int HeadlessLauncher::run() {
             config_.knowledge &&
             config_.knowledge->get(config_.game_id, "case_sensitive", "true") == "false";
         engine::capture_overwrite(config_.game_dir, lparams.overwrite_dir, launch_time,
-                                  case_insensitive);
+                                   case_insensitive);
     }
 
     engine::Logger::instance().debug("Headless: done");
+#ifndef _WIN32
     return (ret > 0 && WIFEXITED(status)) ? WEXITSTATUS(status) : 1;
+#else
+    return 0;
+#endif
 }
 
 }
