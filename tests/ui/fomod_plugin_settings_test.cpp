@@ -8,9 +8,11 @@
 //   4. The FOMOD settings are persisted through the typed settings API
 //
 // This test loads the real FomodInstaller plugin from the build/plugins
-// directory alongside the test fixture plugins. It exercises the full round-
-// trip: plugin load → register_settings_tab → Plugins-tab table render →
-// user edits → persist → reopen → values restored.
+// directory alongside the test fixture plugins. If the real plugin is not
+// present (Core-only build without the Plugins repo), a synthetic entry is
+// seeded so the checkbox rendering and persistence paths are still exercised.
+// It exercises the full round-trip: plugin load → register_settings →
+// Plugins-tab table render → user edits → persist → reopen → values restored.
 //
 // UI test: requires QApplication offscreen, links gmm_ui.
 
@@ -46,6 +48,33 @@ static QTabWidget* find_tabs(QDialog& dlg) {
     for (auto* t : dlg.findChildren<QTabWidget*>())
         return t;
     return nullptr;
+}
+
+// Seed a synthetic FOMOD installer plugin when the real one is not available
+// (Core-only build without the Plugins repo). The synthetic entry mirrors the
+// real FomodInstaller's register_settings output so the checkbox rendering and
+// persistence paths are exercised identically.
+static void seed_synthetic_fomod(engine::PluginLoader& loader) {
+    for (const auto& p : loader.plugins()) {
+        const std::string bn = std::filesystem::path(p.path).filename().string();
+        if (bn.find("FomodInstaller") != std::string::npos ||
+            bn.find("fomod_installer") != std::string::npos)
+            return;  // real plugin already loaded
+    }
+    engine::PluginInfo fomod;
+    fomod.game_display_name = "FOMOD Installer";
+    fomod.game_id = "fomod_installer";
+    fomod.plugin_name = "FOMOD Installer";
+    fomod.author = "GameModManager Team";
+    fomod.version = "1.0";
+    fomod.description = "FOMOD installer (synthetic test fixture)";
+    fomod.category = "Installer";
+    fomod.abi_version = 2;
+    fomod.path = "/synthetic/FomodInstaller.so";
+    fomod.settings = {{"Restore previous choices", "1"},
+                      {"Show FOMOD images", "1"}};
+    loader.add_loaded_plugin(std::move(fomod));
+    std::printf("seeded synthetic FOMOD installer plugin\n");
 }
 
 static QWidget* find_plugins_page(QTabWidget* tabs) {
@@ -84,6 +113,7 @@ TEST_CASE("fomod plugin settings integration", "[ui]") {
     engine::PluginLoader loader;
     loader.load_directory(GMM_PLUGINS_DIR);
     loader.load_directory(GMM_TEST_PLUGINS_DIR);
+    seed_synthetic_fomod(loader);
     std::printf("loaded plugins = %zu\n", loader.plugins().size());
 
     // Check if FomodInstaller is among the loaded plugins.
