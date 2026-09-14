@@ -170,14 +170,22 @@ TEST_CASE("instance options widget survives tab close during deploy task", "[ui]
         config.game_dir, 489830, tmp, "", engine::kDefaultDeployStrategy,
         config);
 
-    // "Force re-deploy links" asks a modal confirmation first; auto-confirm
-    // it from inside the message box's nested event loop.
-    QTimer::singleShot(0, []() {
+    // Auto-dismiss the deploy confirmation QMessageBox that appears during
+    // the test.  The completion notification (finish_deploy_task) is
+    // parented to the widget and cleaned up automatically by Qt's
+    // parent-child ownership when the widget is destroyed.
+    QTimer auto_dismiss;
+    QObject::connect(&auto_dismiss, &QTimer::timeout, []() {
         if (auto* mb = qobject_cast<QMessageBox*>(
                 QApplication::activeModalWidget())) {
-            if (auto* yes = mb->button(QMessageBox::Yes)) yes->click();
+            if (auto* btn = mb->button(QMessageBox::Yes))
+                btn->click();
+            else if (auto* btn = mb->button(QMessageBox::Ok))
+                btn->click();
         }
     });
+    auto_dismiss.start(10);
+
     bool clicked = false;
     for (auto* btn : widget->findChildren<QPushButton*>()) {
         if (strip_mnemonic(btn->text()) == "Force re-deploy links") {
@@ -193,7 +201,9 @@ TEST_CASE("instance options widget survives tab close during deploy task", "[ui]
     QCoreApplication::processEvents();
 
     // Tab close: the tab container removes the page and the controller
-    // releases it with deleteLater(). The worker is still running here.
+    // releases it with deleteLater(). The worker may or may not still be
+    // running here depending on build speed (Release on fast storage can
+    // finish the ledger scan in <20ms).  Either path must be safe.
     widget->deleteLater();
     QCoreApplication::processEvents();  // destructor runs (non-blocking)
 
@@ -202,6 +212,9 @@ TEST_CASE("instance options widget survives tab close during deploy task", "[ui]
     QCoreApplication::processEvents();
     QThread::msleep(100);
     QCoreApplication::processEvents();
+
+    // Stop the auto-dismiss timer before cleanup.
+    auto_dismiss.stop();
 
     std::filesystem::remove_all(tmp);
 }
