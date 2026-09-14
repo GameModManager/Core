@@ -108,16 +108,13 @@ public:
                                         const std::string& fallback_url);
 
     // Pure body parser that extracts a rich-text description block from
-    // the page (mod.pub's content area). Returns empty when the page
-    // has no recognizable block - the parser prefers the JSON-LD
-    // description in that case. The shared bbcode_to_html() pipeline
-    // improvements (anchor pass, autolink, mentions) still benefit any
-    // HTML that does arrive, so callers that already have HTML do not
-    // need to special-case it.
-    static std::string parse_description_html(const std::string& html_body) {
-      (void)html_body;
-      return {};
-    }
+    // the page (mod.pub's "gray-box user-content" div). Returns empty
+    // when the page has no recognizable block - the parser prefers the
+    // JSON-LD description in that case. The shared bbcode_to_html()
+    // pipeline improvements (anchor pass, autolink, mentions) still
+    // benefit any HTML that does arrive, so callers that already have
+    // HTML do not need to special-case it.
+    static std::string parse_description_html(const std::string& html_body);
 };
 
 } // namespace engine::Source::ModPub
