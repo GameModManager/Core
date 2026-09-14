@@ -15,9 +15,9 @@
 // without wrapping in a std::function.
 struct HookRegistration {
     std::string tag;
-    GmmHookFnV2 fn;  // from gmm_abi_v2.h
-    int priority;
-    void* user_data;
+    GmmHookFnV2 fn = nullptr;  // from gmm_abi_v2.h
+    int priority = 0;
+    void* user_data = nullptr;
     std::string plugin_path;
 };
 
