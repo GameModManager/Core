@@ -491,7 +491,20 @@ void InstanceOptionsWidget::finish_deploy_task(DeployTaskKind kind, bool ok) {
       : (kind == DeployTaskKind::Remove
              ? tr("Removal finished with errors - see the log.")
              : tr("Re-deploy finished with errors - see the log."));
-  QMessageBox::information(this, tr("Deploy Management"), text);
+  // Heap-allocate a notification dialog and parent it to `this` so Qt's
+  // parent-child ownership is correct: ~QObject() -> deleteChildren()
+  // safely deletes the heap-allocated QMessageBox when the widget is
+  // destroyed.  open() (not exec()) keeps the event loop unblocked so
+  // the UI stays responsive.  The old QMessageBox::information(this, ...)
+  // static helper was stack-allocated and parented to `this`; if the
+  // widget was destroyed during its nested event loop, deleteChildren()
+  // would call `delete` on a stack address, causing
+  // "munmap_chunk(): invalid pointer" in Release builds.
+  auto *box = new QMessageBox(QMessageBox::Information,
+                              tr("Deploy Management"), text, QMessageBox::Ok,
+                              this);
+  box->setAttribute(Qt::WA_DeleteOnClose);
+  box->open();
 }
 
 } // namespace ui
