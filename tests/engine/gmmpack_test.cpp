@@ -705,6 +705,355 @@ TEST_CASE("gmmpack validates manifest with all optional fields",
     REQUIRE(diag.empty());
 }
 
+// ---------------------------------------------------------------------------
+// Referential integrity: patch modId vs filename cross-check
+// ---------------------------------------------------------------------------
+
+TEST_CASE("gmmpack referential integrity catches patch modId mismatch",
+          "[gmmpack]") {
+    gmmpack::Gmmpack pack;
+    pack.mods.push_back(gmmpack::parse_mod_entry(
+        nlohmann::json::parse(make_mod_json("skyui"))));
+
+    gmmpack::PatchEntry patch;
+    patch.mod_id = "wrong-mod";  // doesn't match filename
+    patch.archive_path = "patches/skyui.json";
+    patch.target_path = "SkyUI.esp";
+    patch.base_file_sha256 =
+        "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+    patch.algorithm = "bsdiff";
+    patch.payload_base64 = "dGVzdA==";
+    pack.patches.push_back(patch);
+
+    auto diag = gmmpack::check_referential_integrity(pack);
+    REQUIRE_FALSE(diag.empty());
+    bool found_mismatch = false;
+    for (const auto& d : diag) {
+        if (d.message.find("modId mismatch") != std::string::npos) {
+            found_mismatch = true;
+            break;
+        }
+    }
+    REQUIRE(found_mismatch);
+}
+
+TEST_CASE("gmmpack referential integrity passes for matching patch modId",
+          "[gmmpack]") {
+    gmmpack::Gmmpack pack;
+    pack.mods.push_back(gmmpack::parse_mod_entry(
+        nlohmann::json::parse(make_mod_json("skyui"))));
+
+    gmmpack::PatchEntry patch;
+    patch.mod_id = "skyui";
+    patch.archive_path = "patches/skyui.json";
+    patch.target_path = "SkyUI.esp";
+    patch.base_file_sha256 =
+        "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+    patch.algorithm = "bsdiff";
+    patch.payload_base64 = "dGVzdA==";
+    pack.patches.push_back(patch);
+
+    auto diag = gmmpack::check_referential_integrity(pack);
+    for (const auto& d : diag) {
+        // Should have no modId mismatch errors
+        REQUIRE(d.message.find("modId mismatch") == std::string::npos);
+    }
+}
+
+TEST_CASE(
+    "gmmpack referential integrity catches chained patch modId mismatch",
+    "[gmmpack]") {
+    gmmpack::Gmmpack pack;
+    pack.mods.push_back(gmmpack::parse_mod_entry(
+        nlohmann::json::parse(make_mod_json("awesome-mod"))));
+
+    gmmpack::PatchEntry patch;
+    patch.mod_id = "wrong-mod";
+    patch.sequence = 1;
+    patch.archive_path = "patches/awesome-mod-1.json";
+    patch.target_path = "AwesomeMod.esp";
+    patch.base_file_sha256 =
+        "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+    patch.algorithm = "bsdiff";
+    patch.payload_base64 = "dGVzdA==";
+    pack.patches.push_back(patch);
+
+    auto diag = gmmpack::check_referential_integrity(pack);
+    bool found_mismatch = false;
+    for (const auto& d : diag) {
+        if (d.message.find("modId mismatch") != std::string::npos) {
+            found_mismatch = true;
+            break;
+        }
+    }
+    REQUIRE(found_mismatch);
+}
+
+// ---------------------------------------------------------------------------
+// Referential integrity: INI edits sourceModId validation
+// ---------------------------------------------------------------------------
+
+TEST_CASE("gmmpack referential integrity catches dangling ini sourceModId",
+          "[gmmpack]") {
+    gmmpack::Gmmpack pack;
+    pack.mods.push_back(gmmpack::parse_mod_entry(
+        nlohmann::json::parse(make_mod_json("skyui"))));
+
+    gmmpack::IniEntry ini;
+    ini.target_file = "Skyrim.ini";
+    gmmpack::IniEdit edit;
+    edit.section = "Display";
+    edit.key = "iMaxAnisotropy";
+    edit.value = "16";
+    edit.source_mod_id = "nonexistent-mod";
+    edit.has_source_mod_id = true;
+    ini.edits.push_back(edit);
+    pack.ini_edits.push_back(ini);
+
+    auto diag = gmmpack::check_referential_integrity(pack);
+    REQUIRE_FALSE(diag.empty());
+    bool found = false;
+    for (const auto& d : diag) {
+        if (d.message.find("unknown mod id") != std::string::npos &&
+            d.path.find("sourceModId") != std::string::npos) {
+            found = true;
+            break;
+        }
+    }
+    REQUIRE(found);
+}
+
+TEST_CASE("gmmpack referential integrity passes for valid ini sourceModId",
+          "[gmmpack]") {
+    gmmpack::Gmmpack pack;
+    pack.mods.push_back(gmmpack::parse_mod_entry(
+        nlohmann::json::parse(make_mod_json("skyui"))));
+
+    gmmpack::IniEntry ini;
+    ini.target_file = "Skyrim.ini";
+    gmmpack::IniEdit edit;
+    edit.section = "Display";
+    edit.key = "iMaxAnisotropy";
+    edit.value = "16";
+    edit.source_mod_id = "skyui";
+    edit.has_source_mod_id = true;
+    ini.edits.push_back(edit);
+    pack.ini_edits.push_back(ini);
+
+    auto diag = gmmpack::check_referential_integrity(pack);
+    for (const auto& d : diag) {
+        if (d.path.find("sourceModId") != std::string::npos) {
+            REQUIRE(d.message.find("unknown mod id") == std::string::npos);
+        }
+    }
+}
+
+TEST_CASE(
+    "gmmpack referential integrity allows null ini sourceModId (pack-author)",
+    "[gmmpack]") {
+    gmmpack::Gmmpack pack;
+    gmmpack::IniEntry ini;
+    ini.target_file = "Skyrim.ini";
+    gmmpack::IniEdit edit;
+    edit.section = "Display";
+    edit.key = "iMaxAnisotropy";
+    edit.value = "16";
+    edit.source_mod_id = "";
+    edit.has_source_mod_id = false;
+    ini.edits.push_back(edit);
+    pack.ini_edits.push_back(ini);
+
+    auto diag = gmmpack::check_referential_integrity(pack);
+    for (const auto& d : diag) {
+        if (d.path.find("sourceModId") != std::string::npos) {
+            REQUIRE(false);  // should not produce errors for null sourceModId
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Referential integrity: platform prefixFiles sourceModId validation
+// ---------------------------------------------------------------------------
+
+TEST_CASE("gmmpack referential integrity catches dangling platform prefixFile "
+          "sourceModId",
+          "[gmmpack]") {
+    gmmpack::Gmmpack pack;
+    pack.mods.push_back(gmmpack::parse_mod_entry(
+        nlohmann::json::parse(make_mod_json("skyui"))));
+
+    gmmpack::PlatformPrefixFile pf;
+    pf.path = "drive_c/users/steamuser/AppData/Local/ENB/enblocal.ini";
+    pf.source_mod_id = "nonexistent-enb";
+    gmmpack::PlatformOverride po;
+    po.prefix_files.push_back(pf);
+    pack.manifest.platform.linux_plat = po;
+
+    auto diag = gmmpack::check_referential_integrity(pack);
+    REQUIRE_FALSE(diag.empty());
+    bool found = false;
+    for (const auto& d : diag) {
+        if (d.message.find("unknown mod id") != std::string::npos &&
+            d.path.find("prefixFiles") != std::string::npos) {
+            found = true;
+            break;
+        }
+    }
+    REQUIRE(found);
+}
+
+TEST_CASE("gmmpack referential integrity passes for valid platform prefixFile "
+          "sourceModId",
+          "[gmmpack]") {
+    gmmpack::Gmmpack pack;
+    pack.mods.push_back(gmmpack::parse_mod_entry(
+        nlohmann::json::parse(make_mod_json("enb-preset"))));
+
+    gmmpack::PlatformPrefixFile pf;
+    pf.path = "drive_c/users/steamuser/AppData/Local/ENB/enblocal.ini";
+    pf.source_mod_id = "enb-preset";
+    gmmpack::PlatformOverride po;
+    po.prefix_files.push_back(pf);
+    pack.manifest.platform.linux_plat = po;
+
+    auto diag = gmmpack::check_referential_integrity(pack);
+    for (const auto& d : diag) {
+        if (d.path.find("prefixFiles") != std::string::npos) {
+            REQUIRE(d.message.find("unknown mod id") == std::string::npos);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Referential integrity: executable sourceModId
+// ---------------------------------------------------------------------------
+
+TEST_CASE("gmmpack referential integrity catches dangling executable "
+          "sourceModId",
+          "[gmmpack]") {
+    gmmpack::Gmmpack pack;
+    pack.mods.push_back(gmmpack::parse_mod_entry(
+        nlohmann::json::parse(make_mod_json("skyui"))));
+
+    gmmpack::ExecutableEntry exe;
+    exe.id = "nemesis";
+    exe.source_mod_id = "nonexistent-mod";
+    exe.role = "setup";
+    pack.executables.push_back(exe);
+
+    auto diag = gmmpack::check_referential_integrity(pack);
+    REQUIRE_FALSE(diag.empty());
+    bool found = false;
+    for (const auto& d : diag) {
+        if (d.message.find("unknown mod id") != std::string::npos &&
+            d.path.find("sourceModId") != std::string::npos &&
+            d.path.find("executables") != std::string::npos) {
+            found = true;
+            break;
+        }
+    }
+    REQUIRE(found);
+}
+
+// ---------------------------------------------------------------------------
+// Referential integrity: multiple errors collected (not fail-fast)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("gmmpack referential integrity collects all errors", "[gmmpack]") {
+    gmmpack::Gmmpack pack;
+
+    // Rule with both from and to dangling
+    gmmpack::ManifestRule rule;
+    rule.type = "requires";
+    rule.from = "ghost-from";
+    rule.to = "ghost-to";
+    pack.manifest.rules.push_back(rule);
+
+    // Tree with dangling mod
+    gmmpack::ModNode mn;
+    mn.id = "ghost-tree";
+    mn.enabled = true;
+    pack.tree.nodes.push_back(gmmpack::TreeNode{mn});
+
+    auto diag = gmmpack::check_referential_integrity(pack);
+
+    // Should have at least 3 errors: from, to, and tree mod
+    size_t error_count = 0;
+    for (const auto& d : diag) {
+        if (d.severity == gmmpack::Diagnostic::Severity::Error) {
+            error_count++;
+        }
+    }
+    REQUIRE(error_count >= 3);
+}
+
+// ---------------------------------------------------------------------------
+// Referential integrity: valid pack passes cleanly
+// ---------------------------------------------------------------------------
+
+TEST_CASE("gmmpack referential integrity passes for valid complete pack",
+          "[gmmpack]") {
+    gmmpack::Gmmpack pack;
+
+    // Two mods
+    pack.mods.push_back(gmmpack::parse_mod_entry(
+        nlohmann::json::parse(make_mod_json("skyui"))));
+    pack.mods.push_back(gmmpack::parse_mod_entry(
+        nlohmann::json::parse(make_mod_json("awesome-mod"))));
+
+    // Rule between valid mods
+    gmmpack::ManifestRule rule;
+    rule.type = "requires";
+    rule.from = "skyui";
+    rule.to = "awesome-mod";
+    pack.manifest.rules.push_back(rule);
+
+    // Choice group with valid members
+    gmmpack::ChoiceGroup cg;
+    cg.id = "test-group";
+    cg.name = "Test";
+    cg.mode = "exactly-one";
+    cg.member_mod_ids = {"skyui", "awesome-mod"};
+    pack.manifest.choice_groups.push_back(cg);
+
+    // Tree with valid mods
+    gmmpack::ModNode mn;
+    mn.id = "skyui";
+    mn.enabled = true;
+    pack.tree.nodes.push_back(gmmpack::TreeNode{mn});
+
+    gmmpack::ModNode mn2;
+    mn2.id = "awesome-mod";
+    mn2.enabled = true;
+    pack.tree.nodes.push_back(gmmpack::TreeNode{mn2});
+
+    // Patch with valid modId and matching filename
+    gmmpack::PatchEntry patch;
+    patch.mod_id = "skyui";
+    patch.archive_path = "patches/skyui.json";
+    patch.target_path = "SkyUI.esp";
+    patch.base_file_sha256 =
+        "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+    patch.algorithm = "bsdiff";
+    patch.payload_base64 = "dGVzdA==";
+    pack.patches.push_back(patch);
+
+    // INI edit with valid sourceModId
+    gmmpack::IniEntry ini;
+    ini.target_file = "Skyrim.ini";
+    gmmpack::IniEdit edit;
+    edit.section = "Display";
+    edit.key = "iMaxAnisotropy";
+    edit.value = "16";
+    edit.source_mod_id = "skyui";
+    edit.has_source_mod_id = true;
+    ini.edits.push_back(edit);
+    pack.ini_edits.push_back(ini);
+
+    auto diag = gmmpack::check_referential_integrity(pack);
+    REQUIRE(diag.empty());
+}
+
 TEST_CASE("gmmpack rejects manifest with invalid UUID", "[gmmpack]") {
     auto schemas = load_schemas();
     REQUIRE(schemas.count("manifest.schema.json"));
