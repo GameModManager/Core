@@ -131,6 +131,10 @@ endif()
 # Python plugin test — requires pybind11 embed + Python (propagated by gmm_engine).
 gmm_catch2_test(python_plugin_test engine/python_plugin_test.cpp)
 
+gmm_catch2_test(gmmpack_test engine/gmmpack_test.cpp
+    LIBS PkgConfig::LIBARCHIVE OpenSSL::Crypto
+    DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+
 # ---------------------------------------------------------------------------
 # Test fixture plugins (MODULE libraries) — built into test_plugins/ and
 # loaded ONLY by the tests below; never shipped to the app's plugins dir.
