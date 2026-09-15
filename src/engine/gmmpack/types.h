@@ -211,6 +211,7 @@ struct PatchEntry {
     std::string base_file_sha256;
     std::string algorithm;  // "bsdiff"
     std::string payload_base64;
+    std::string archive_path;  // original path in the archive (e.g. "patches/skyui.json")
 };
 
 // ---------------------------------------------------------------------------
