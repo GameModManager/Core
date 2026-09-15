@@ -153,6 +153,8 @@ set(ENGINE_SOURCES
     deploy/launch/usvfs_mapping.cpp
     deploy/launch/usvfs_mapping.h
     deploy/launch/proton_tools.cpp
+    gmmpack/schema_validator.cpp
+    gmmpack/unpacker.cpp
     ${FOMOD_ENGINE_SOURCES}
 )
 
@@ -208,6 +210,7 @@ target_link_libraries(gmm_engine PRIVATE
     PkgConfig::TOMLPLUSPLUS
     PkgConfig::ZLIB
     PkgConfig::LZ4
+    OpenSSL::Crypto
     pybind11::embed
     Python3::Python
 )
