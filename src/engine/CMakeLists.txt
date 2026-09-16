@@ -48,6 +48,9 @@ set(ENGINE_SOURCES
     game/detect/game_detector.cpp
     game/detect/mod_scanner.cpp
     mod/archive/archive_extractor.cpp
+    gmmpack/sha256.cpp
+    gmmpack/bsdiff.cpp
+    gmmpack/patch.cpp
     index/conflict_index.cpp
     index/conflict_engine.cpp
     mod/model/profile.cpp
