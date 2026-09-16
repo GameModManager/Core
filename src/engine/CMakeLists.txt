@@ -28,6 +28,7 @@ set(ENGINE_SOURCES
     core/instance/mo2_importer.cpp
     core/instance/toml_utils.cpp
     core/instance/mod_state.cpp
+    core/instance/instance_snapshot.cpp
     core/instance/game_icons.cpp
     core/instance/masterlist_fetch.cpp
     core/util/fs_utils.cpp
