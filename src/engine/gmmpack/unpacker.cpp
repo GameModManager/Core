@@ -376,15 +376,51 @@ Diagnostics check_referential_integrity(const Gmmpack& pack) {
         };
     check_tree(pack.tree.nodes, "");
 
-    // patches/*.json: modId must match filename id
+    // patches/*.json: modId must resolve to a real mod id
     for (const auto& p : pack.patches) {
-        // Filename is patches/<id>[-N].json, extract id from the path
-        // We store the mod_id from the parsed entry
         if (!is_valid_mod_id(p.mod_id)) {
             diag.push_back(
                 {Diagnostic::Severity::Error,
-                 "patches/" + p.mod_id + ".json.modId",
+                 p.archive_path.empty()
+                     ? "patches/<unknown>.json.modId"
+                     : p.archive_path + ".modId",
                  "unknown mod id: " + p.mod_id});
+        }
+    }
+
+    // patches/*.json: modId must match filename-derived id
+    // Filename is patches/<id>.json or patches/<id>-<N>.json
+    for (const auto& p : pack.patches) {
+        if (p.archive_path.empty()) continue;
+
+        // Extract id from "patches/<id>[-<N>].json"
+        auto slash = p.archive_path.find('/');
+        auto dot = p.archive_path.rfind(".json");
+        if (slash == std::string::npos || dot == std::string::npos ||
+            dot <= slash)
+            continue;
+
+        std::string stem = p.archive_path.substr(slash + 1, dot - slash - 1);
+
+        // Strip trailing -<N> sequence suffix if present
+        std::string expected_id = stem;
+        auto dash = stem.rfind('-');
+        if (dash != std::string::npos) {
+            std::string suffix = stem.substr(dash + 1);
+            bool all_digits = !suffix.empty() &&
+                              std::all_of(suffix.begin(), suffix.end(),
+                                          ::isdigit);
+            if (all_digits && suffix != "0") {
+                expected_id = stem.substr(0, dash);
+            }
+        }
+
+        if (p.mod_id != expected_id) {
+            diag.push_back(
+                {Diagnostic::Severity::Error,
+                 p.archive_path + ".modId",
+                 "modId mismatch: file is '" + expected_id +
+                     "' but modId is '" + p.mod_id + "'"});
         }
     }
 
@@ -409,6 +445,45 @@ Diagnostics check_referential_integrity(const Gmmpack& pack) {
             }
         }
     }
+
+    // ini/*.json: sourceModId must resolve to a real mod id (when non-null)
+    for (size_t i = 0; i < pack.ini_edits.size(); ++i) {
+        const auto& ini = pack.ini_edits[i];
+        for (size_t j = 0; j < ini.edits.size(); ++j) {
+            const auto& edit = ini.edits[j];
+            if (edit.has_source_mod_id && !edit.source_mod_id.empty()) {
+                if (!is_valid_mod_id(edit.source_mod_id)) {
+                    std::string prefix =
+                        "ini/" + ini.target_file + ".edits[" +
+                        std::to_string(j) + "].sourceModId";
+                    diag.push_back(
+                        {Diagnostic::Severity::Error, prefix,
+                         "unknown mod id: " + edit.source_mod_id});
+                }
+            }
+        }
+    }
+
+    // platform.prefixFiles[].sourceModId must resolve to a real mod id
+    auto check_platform_prefix_files =
+        [&](const std::optional<PlatformOverride>& plat,
+            const std::string& os_name) {
+            if (!plat) return;
+            for (size_t i = 0; i < plat->prefix_files.size(); ++i) {
+                const auto& pf = plat->prefix_files[i];
+                if (!pf.source_mod_id.empty() &&
+                    !is_valid_mod_id(pf.source_mod_id)) {
+                    diag.push_back(
+                        {Diagnostic::Severity::Error,
+                         "platform." + os_name + ".prefixFiles[" +
+                             std::to_string(i) + "].sourceModId",
+                         "unknown mod id: " + pf.source_mod_id});
+                }
+            }
+        };
+    check_platform_prefix_files(pack.manifest.platform.linux_plat, "linux");
+    check_platform_prefix_files(pack.manifest.platform.macos, "macos");
+    check_platform_prefix_files(pack.manifest.platform.windows, "windows");
 
     return diag;
 }
@@ -826,7 +901,9 @@ UnpackResult unpack_gmmpack(const std::filesystem::path& archive_path,
         } else if (f.path.rfind("executables/", 0) == 0) {
             result.pack.executables.push_back(parse_executable_entry(parsed));
         } else if (f.path.rfind("patches/", 0) == 0) {
-            result.pack.patches.push_back(parse_patch_entry(parsed));
+            auto patch = parse_patch_entry(parsed);
+            patch.archive_path = f.path;
+            result.pack.patches.push_back(std::move(patch));
         } else if (f.path.rfind("ini/", 0) == 0) {
             result.pack.ini_edits.push_back(parse_ini_entry(parsed));
         } else if (f.path == "tree.json") {
