@@ -122,6 +122,7 @@ set(ENGINE_SOURCES
     game/saves/save_missing_assets.cpp
     game/saves/local_saves.cpp
     source/registry.cpp
+    source/update_policy.cpp
     source/http_util.cpp
     source/nexus_provider.cpp
     source/nexus_account.cpp
