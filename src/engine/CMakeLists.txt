@@ -124,6 +124,8 @@ set(ENGINE_SOURCES
     install/game_match_validator.cpp
     install/instance_router.cpp
     install/conflict_resolver.cpp
+    install/fresh_install.cpp
+    install/append_install.cpp
     game/plugins/esp_header.cpp
     game/plugins/plugin_database.cpp
     game/saves/save_game.cpp

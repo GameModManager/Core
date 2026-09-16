@@ -50,11 +50,10 @@ struct RouteDecision
 route_pack_install(const std::string& pack_game_id, bool has_active_instance,
                    const std::string& active_instance_game_id = {});
 
-// Append seam for Workspace-pe40: reservation for "add this pack's mods to
-// the existing instance, respecting existing state". Returns ok == false
-// until pe40 implements it; the game-match check is enforced here so the
-// future implementation (and any early caller) can never append across
-// games. Pure descriptor - no disk or network touched.
+// Append gate for Workspace-pe40: ok == true means the pack may be appended
+// to the instance (games match; the detailed planning lives in
+// append_install.h). A game mismatch reports ok == false so no caller can
+// ever append across games. Pure descriptor - no disk or network touched.
 struct AppendPlan
 {
   bool ok = false;
