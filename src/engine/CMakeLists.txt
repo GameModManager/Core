@@ -17,6 +17,7 @@ set(FOMOD_ENGINE_SOURCES
     mod/fomod/condition_tester.cpp
     mod/fomod/fomod_view_model.cpp
     mod/fomod/file_installer.cpp
+    mod/fomod/headless_replay.cpp
     ${PROJECT_SOURCE_DIR}/third_party/pugixml/pugixml.cpp
 )
 
@@ -27,6 +28,7 @@ set(ENGINE_SOURCES
     core/instance/instance_registry.cpp
     core/instance/mo2_importer.cpp
     core/instance/toml_utils.cpp
+    core/instance/installed_pack_state.cpp
     core/instance/game_icons.cpp
     core/instance/masterlist_fetch.cpp
     core/util/fs_utils.cpp
@@ -47,6 +49,9 @@ set(ENGINE_SOURCES
     game/detect/game_detector.cpp
     game/detect/mod_scanner.cpp
     mod/archive/archive_extractor.cpp
+    gmmpack/sha256.cpp
+    gmmpack/bsdiff.cpp
+    gmmpack/patch.cpp
     index/conflict_index.cpp
     index/conflict_engine.cpp
     mod/model/profile.cpp
@@ -113,9 +118,12 @@ set(ENGINE_SOURCES
     mod/meta/categories.cpp
     mod/meta/category_set_registry.cpp
     mod/overwrite/overwrite_utils.cpp
+    modpack/ini_edits.cpp
+    modpack/incremental_update.cpp
     pack/adapter.cpp
     install/game_match_validator.cpp
     install/instance_router.cpp
+    install/conflict_resolver.cpp
     game/plugins/esp_header.cpp
     game/plugins/plugin_database.cpp
     game/saves/save_game.cpp
@@ -156,6 +164,11 @@ set(ENGINE_SOURCES
     deploy/launch/usvfs_mapping.cpp
     deploy/launch/usvfs_mapping.h
     deploy/launch/proton_tools.cpp
+    gmmpack/schema_validator.cpp
+    gmmpack/unpacker.cpp
+    gmmpack/ini_edit_parser.cpp
+    gmmpack/executable_pipeline.cpp
+    collection/choice_groups.cpp
     ${FOMOD_ENGINE_SOURCES}
 )
 
@@ -211,6 +224,7 @@ target_link_libraries(gmm_engine PRIVATE
     PkgConfig::TOMLPLUSPLUS
     PkgConfig::ZLIB
     PkgConfig::LZ4
+    OpenSSL::Crypto
     pybind11::embed
     Python3::Python
 )
