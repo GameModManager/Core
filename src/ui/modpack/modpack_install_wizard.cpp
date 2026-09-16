@@ -33,6 +33,7 @@
 #include "engine/collection/download_router.h"
 #include "engine/collection/nexus/adapter.h"
 #include "engine/core/log/logger.h"
+#include "engine/gmmpack/unpacker.h"
 #include "engine/mod/model/mod.h"
 #include "engine/pipeline/pipeline.h"
 #include "engine/source/loverslab/provider.h"
@@ -489,12 +490,7 @@ ModpackInstallWizard::ModpackInstallWizard(engine::gmmpack::Gmmpack pack,
         download_status_[QString::fromStdString(mod.id)] =
             QStringLiteral("pending");
     }
-    for (const auto& patch : pack_.patches) {
-        const QString key = QString::fromStdString(patch.mod_id) +
-                            QStringLiteral("|") +
-                            QString::fromStdString(patch.target_path);
-        patch_allowed_[key] = false;  // Deny by default.
-    }
+    rebuild_patch_plan();
     for (const auto& exe : pack_.executables) {
         if (exe.role == "setup" && exe.auto_run) {
             tool_status_[QString::fromStdString(exe.id)] =
@@ -568,8 +564,29 @@ ModpackInstallWizard::~ModpackInstallWizard() {
     }
 }
 
-std::vector<QString> ModpackInstallWizard::ordered_download_ids() const {
-    std::vector<const ModEntry*> ordered;
+// Validated patch plan: group the pack's raw patches into per-mod chains
+// (sequence-sorted, contiguity-checked). Chains still display when
+// validation reports errors so consent stays usable; the errors surface as
+// a warning above the table.
+void ModpackInstallWizard::rebuild_patch_plan() {
+    auto [chains, diagnostics] =
+        engine::gmmpack::build_patch_chains(pack_.patches);
+    patch_chains_ = std::move(chains);
+    QStringList errors;
+    for (const auto& d : diagnostics) {
+        if (d.severity == engine::gmmpack::Diagnostic::Severity::Error) {
+            errors << QString::fromStdString(d.path + ": " + d.message);
+        }
+    }
+    patch_plan_error_ = errors.join(QStringLiteral("\n"));
+    patch_allowed_.clear();
+    for (const auto& chain : patch_chains_) {
+        patch_allowed_[QString::fromStdString(chain.mod_id)] =
+            false;  // Deny by default.
+    }
+}
+
+std::vector<QString> ModpackInstallWizard::ordered_download_ids() const {    std::vector<const ModEntry*> ordered;
     for (const auto& mod : pack_.mods) ordered.push_back(&mod);
     std::stable_sort(ordered.begin(), ordered.end(),
                      [](const ModEntry* a, const ModEntry* b) {
@@ -1190,7 +1207,7 @@ QWidget* ModpackInstallWizard::build_run_tools_page() {
 }
 
 QWidget* ModpackInstallWizard::build_patches_page() {
-    if (pack_.patches.empty()) {
+    if (patch_chains_.empty()) {
         return make_empty_note(tr("No binary patches."));
     }
     auto* page = new QWidget();
@@ -1198,43 +1215,53 @@ QWidget* ModpackInstallWizard::build_patches_page() {
     layout->addWidget(new QLabel(
         tr("These patches modify mod files. Allow only patches you trust."),
         page));
+    if (!patch_plan_error_.isEmpty()) {
+        auto* warning = new QLabel(
+            tr("Patch validation reported errors:\n%1")
+                .arg(patch_plan_error_),
+            page);
+        warning->setWordWrap(true);
+        layout->addWidget(warning);
+    }
 
     patches_table_ = new QTableWidget(page);
     patches_table_->setColumnCount(4);
     patches_table_->setHorizontalHeaderLabels(
-        {tr("Mod"), tr("Patch"), tr("Status"), tr("File")});
+        {tr("Mod"), tr("Target file"), tr("Steps"), tr("Status")});
     patches_table_->horizontalHeader()->setStretchLastSection(true);
     patches_table_->horizontalHeader()->setSectionResizeMode(
         1, QHeaderView::Stretch);
     patches_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    patches_table_->setRowCount(static_cast<int>(pack_.patches.size()));
+    patches_table_->setRowCount(static_cast<int>(patch_chains_.size()));
     int row = 0;
-    for (const auto& patch : pack_.patches) {
-        const QString key = QString::fromStdString(patch.mod_id) +
-                            QStringLiteral("|") +
-                            QString::fromStdString(patch.target_path);
+    for (const auto& chain : patch_chains_) {
+        const QString key = QString::fromStdString(chain.mod_id);
+        QStringList targets;
+        for (const auto& patch : chain.patches) {
+            const QString target =
+                QString::fromStdString(patch.target_path);
+            if (!targets.contains(target)) targets << target;
+        }
         patches_table_->setItem(
-            row, 0,
-            new QTableWidgetItem(mod_display_name(patch.mod_id)));
+            row, 0, new QTableWidgetItem(mod_display_name(chain.mod_id)));
         patches_table_->setItem(
             row, 1,
-            new QTableWidgetItem(
-                QString::fromStdString(patch.archive_path)));
+            new QTableWidgetItem(targets.join(QStringLiteral(", "))));
+        patches_table_->setItem(
+            row, 2,
+            new QTableWidgetItem(tr("%n step(s)", nullptr,
+                                    static_cast<int>(chain.patches.size()))));
         auto* status = new QTableWidgetItem(
             patch_allowed_.value(key) ? tr("Allow") : tr("Deny"));
         status->setData(Qt::UserRole, key);
-        patches_table_->setItem(row, 2, status);
-        patches_table_->setItem(
-            row, 3,
-            new QTableWidgetItem(
-                QString::fromStdString(patch.target_path)));
+        patches_table_->setItem(row, 3, status);
         ++row;
     }
     connect(patches_table_, &QTableWidget::cellChanged, this,
             &ModpackInstallWizard::on_patch_cell_changed);
     connect(patches_table_, &QTableWidget::cellClicked, this,
             [this](int row, int column) {
-                if (column != 2 || patches_table_ == nullptr) return;
+                if (column != 3 || patches_table_ == nullptr) return;
                 auto* item = patches_table_->item(row, column);
                 if (item == nullptr) return;
                 const QString key = item->data(Qt::UserRole).toString();
@@ -1718,7 +1745,7 @@ void ModpackInstallWizard::on_patch_allow_all() {
     if (patches_table_ != nullptr) {
         const bool blocked = patches_table_->blockSignals(true);
         for (int row = 0; row < patches_table_->rowCount(); ++row) {
-            patches_table_->item(row, 2)->setText(tr("Allow"));
+            patches_table_->item(row, 3)->setText(tr("Allow"));
         }
         patches_table_->blockSignals(blocked);
     }
@@ -1731,14 +1758,14 @@ void ModpackInstallWizard::on_patch_deny_all() {
     if (patches_table_ != nullptr) {
         const bool blocked = patches_table_->blockSignals(true);
         for (int row = 0; row < patches_table_->rowCount(); ++row) {
-            patches_table_->item(row, 2)->setText(tr("Deny"));
+            patches_table_->item(row, 3)->setText(tr("Deny"));
         }
         patches_table_->blockSignals(blocked);
     }
 }
 
 void ModpackInstallWizard::on_patch_cell_changed(int row, int column) {
-    if (patches_table_ == nullptr || column != 2) return;
+    if (patches_table_ == nullptr || column != 3) return;
     auto* item = patches_table_->item(row, column);
     if (item == nullptr) return;
     // Status cell cycles Allow/Deny on double-click edit; single click on

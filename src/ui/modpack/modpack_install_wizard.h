@@ -195,8 +195,15 @@ private:
     QString tool_running_id_;
     int tool_sim_ticks_ = 0;
 
-    // Step 7 widgets.
+    // Step 7 widgets. patch_chains_ is the validated plan from
+    // build_patch_chains() over pack_.patches (grouped by mod,
+    // sequence-sorted, contiguity-checked); consent is per chain keyed by
+    // mod id. patch_plan_error_ carries validation errors - chains still
+    // display so consent stays usable.
     QTableWidget* patches_table_ = nullptr;
+    std::vector<engine::gmmpack::PatchChain> patch_chains_;
+    QString patch_plan_error_;
+    void rebuild_patch_plan();
 
     // Step 8 widgets.
     QTableWidget* finishing_table_ = nullptr;
