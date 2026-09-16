@@ -75,6 +75,7 @@ gmm_catch2_test(theme_test engine/theme_test.cpp)
 gmm_catch2_test(keyring_test engine/keyring_test.cpp)
 gmm_catch2_test(conflict_test engine/conflict_test.cpp)
 gmm_catch2_test(overwrite_utils_test engine/overwrite_utils_test.cpp)
+gmm_catch2_test(ini_edits_test engine/ini_edits_test.cpp)
 gmm_catch2_test(fs_utils_test engine/fs_utils_test.cpp)
 gmm_catch2_test(local_saves_test engine/local_saves_test.cpp)
 gmm_catch2_test(deploy_hidden_test engine/deploy_hidden_test.cpp)
@@ -131,6 +132,12 @@ endif()
 
 # Python plugin test — requires pybind11 embed + Python (propagated by gmm_engine).
 gmm_catch2_test(python_plugin_test engine/python_plugin_test.cpp)
+
+gmm_catch2_test(gmmpack_test engine/gmmpack_test.cpp
+    LIBS PkgConfig::LIBARCHIVE OpenSSL::Crypto
+    DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+
+gmm_catch2_test(ini_edit_parser_test engine/ini_edit_parser_test.cpp)
 
 # ---------------------------------------------------------------------------
 # Test fixture plugins (MODULE libraries) — built into test_plugins/ and

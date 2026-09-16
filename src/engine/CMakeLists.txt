@@ -114,6 +114,7 @@ set(ENGINE_SOURCES
     mod/meta/categories.cpp
     mod/meta/category_set_registry.cpp
     mod/overwrite/overwrite_utils.cpp
+    modpack/ini_edits.cpp
     game/plugins/esp_header.cpp
     game/plugins/plugin_database.cpp
     game/saves/save_game.cpp
@@ -154,6 +155,9 @@ set(ENGINE_SOURCES
     deploy/launch/usvfs_mapping.cpp
     deploy/launch/usvfs_mapping.h
     deploy/launch/proton_tools.cpp
+    gmmpack/schema_validator.cpp
+    gmmpack/unpacker.cpp
+    gmmpack/ini_edit_parser.cpp
     ${FOMOD_ENGINE_SOURCES}
 )
 
@@ -209,6 +213,7 @@ target_link_libraries(gmm_engine PRIVATE
     PkgConfig::TOMLPLUSPLUS
     PkgConfig::ZLIB
     PkgConfig::LZ4
+    OpenSSL::Crypto
     pybind11::embed
     Python3::Python
 )
