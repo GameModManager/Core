@@ -31,6 +31,14 @@ struct CapturedProcess {
     std::string err;
 };
 
+// Optional per-run overrides for run_captured. Environment entries are
+// "KEY=VALUE" (same shape as LaunchParams::environment); entries without
+// '=' are ignored. Empty cwd = inherit the parent's working directory.
+struct RunOptions {
+    std::vector<std::string> env;
+    std::string cwd;
+};
+
 #ifndef _WIN32
 // pipe2() equivalent: macOS lacks pipe2(), so create the pipe there and set
 // FD_CLOEXEC on both ends via fcntl(). Linux/other POSIX use pipe2 directly.
@@ -50,7 +58,13 @@ inline int pipe_cloexec(int fds[2]) {
 // tool that would otherwise prompt interactively (e.g. unrar asking for a
 // password) fails instead of hanging the caller. `ok` is false only if the
 // process could not be started; exit_code carries the waitpid status otherwise.
-inline CapturedProcess run_captured(const std::vector<std::string>& args) {
+//
+// `options.env` entries are applied with setenv (overwrite) in the forked
+// child before exec, so they reach the tool without touching the parent's
+// environment. `options.cwd` chdirs the child first; a missing directory
+// falls back to inheriting the parent's cwd.
+inline CapturedProcess run_captured(const std::vector<std::string>& args,
+                                    const RunOptions& options = {}) {
     CapturedProcess result;
     if (args.empty()) return result;
 
@@ -78,6 +92,19 @@ inline CapturedProcess run_captured(const std::vector<std::string>& args) {
         dup2(err_fds[1], STDERR_FILENO);
         close(out_fds[1]);
         close(err_fds[1]);
+        if (!options.cwd.empty()) {
+            // Best-effort: a missing cwd inherits the parent's directory
+            // rather than failing the run (same downgrade rule as the
+            // game-launch path's cwd handling).
+            if (chdir(options.cwd.c_str()) != 0) {
+                // Intentionally ignored: keep the inherited directory.
+            }
+        }
+        for (const auto& var : options.env) {
+            const auto eq = var.find('=');
+            if (eq == std::string::npos || eq == 0) continue;
+            setenv(var.substr(0, eq).c_str(), var.substr(eq + 1).c_str(), 1);
+        }
         const int devnull = open(DEV_NULL, O_RDONLY);
         if (devnull >= 0) {
             dup2(devnull, STDIN_FILENO);
@@ -147,7 +174,8 @@ inline CapturedProcess run_captured(const std::vector<std::string>& args) {
 #else
 // Windows fallback: no subprocess capture yet (the project is Linux-first;
 // the tools that need this are Linux-side). Callers must treat `ok == false`.
-inline CapturedProcess run_captured(const std::vector<std::string>&) {
+inline CapturedProcess run_captured(const std::vector<std::string>&,
+                                    const RunOptions& = {}) {
     return {};
 }
 #endif

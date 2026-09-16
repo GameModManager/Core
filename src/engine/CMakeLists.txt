@@ -159,6 +159,7 @@ set(ENGINE_SOURCES
     gmmpack/schema_validator.cpp
     gmmpack/unpacker.cpp
     gmmpack/ini_edit_parser.cpp
+    gmmpack/executable_pipeline.cpp
     ${FOMOD_ENGINE_SOURCES}
 )
 
