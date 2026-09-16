@@ -116,6 +116,8 @@ set(ENGINE_SOURCES
     mod/overwrite/overwrite_utils.cpp
     modpack/ini_edits.cpp
     modpack/incremental_update.cpp
+    pack/adapter.cpp
+    install/conflict_resolver.cpp
     game/plugins/esp_header.cpp
     game/plugins/plugin_database.cpp
     game/saves/save_game.cpp
