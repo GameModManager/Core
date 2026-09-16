@@ -464,9 +464,31 @@ std::string join_headers(const std::vector<std::string>& headers) {
     return out;
 }
 
-// Parse the Retry-After response header (seconds OR HTTP-date) and return
-// the millisecond delay it implies. Returns 0 when the header is missing,
-// unparseable, or negative. Caps at 24h so a hostile or buggy server can't
+// CURLSH lock callbacks. libcurl invokes these whenever any thread that
+// holds an easy handle attached to our share touches DNS / SSL-session /
+// connection state. Without these set, libcurl docs are explicit that
+// concurrent use of a share handle is undefined behaviour - in practice
+// it manifests as spurious hangs under load.
+void share_lock_cb(CURL* /*handle*/, curl_lock_data data,
+                   curl_lock_access /*access*/, void* userptr) {
+    if (!userptr) return;
+    auto* locks = static_cast<std::unordered_map<int, std::mutex>*>(userptr);
+    auto it = locks->find(static_cast<int>(data));
+    if (it != locks->end()) it->second.lock();
+}
+
+void share_unlock_cb(CURL* /*handle*/, curl_lock_data data, void* userptr) {
+    if (!userptr) return;
+    auto* locks = static_cast<std::unordered_map<int, std::mutex>*>(userptr);
+    auto it = locks->find(static_cast<int>(data));
+    if (it != locks->end()) it->second.unlock();
+}
+
+} // anonymous namespace (libcurl callbacks)
+
+// Public so the nexus_v2 GraphQL client honors Retry-After with the exact
+// same semantics as Manager::request (moved out of the anonymous namespace
+// above, behavior unchanged). Caps at 24h so a hostile or buggy server can't
 // park us indefinitely.
 int parse_retry_after_ms(const std::string& response_headers) {
     constexpr int kMaxRetryAfterMs = 24 * 60 * 60 * 1000;
@@ -543,28 +565,6 @@ int parse_retry_after_ms(const std::string& response_headers) {
     if (ms > kMaxRetryAfterMs) ms = kMaxRetryAfterMs;
     return static_cast<int>(ms);
 }
-
-// CURLSH lock callbacks. libcurl invokes these whenever any thread that
-// holds an easy handle attached to our share touches DNS / SSL-session /
-// connection state. Without these set, libcurl docs are explicit that
-// concurrent use of a share handle is undefined behaviour - in practice
-// it manifests as spurious hangs under load.
-void share_lock_cb(CURL* /*handle*/, curl_lock_data data,
-                   curl_lock_access /*access*/, void* userptr) {
-    if (!userptr) return;
-    auto* locks = static_cast<std::unordered_map<int, std::mutex>*>(userptr);
-    auto it = locks->find(static_cast<int>(data));
-    if (it != locks->end()) it->second.lock();
-}
-
-void share_unlock_cb(CURL* /*handle*/, curl_lock_data data, void* userptr) {
-    if (!userptr) return;
-    auto* locks = static_cast<std::unordered_map<int, std::mutex>*>(userptr);
-    auto it = locks->find(static_cast<int>(data));
-    if (it != locks->end()) it->second.unlock();
-}
-
-} // anonymous namespace (libcurl callbacks)
 
 // -----------------------------------------------------------------------------
 // Manager
