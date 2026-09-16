@@ -1,455 +1,193 @@
-// Tests for the INI edit parser consolidation layer (ini_edit_parser.h/cpp).
+// Tests for the thin INI tweak parser layer (ini_edit_parser.h/cpp).
 //
-// Covers consolidation, retraction (update-algorithm step 5), duplicate
-// detection, and collector helpers.
+// Covers JSON -> IniTweak parsing, conversion to the shared engine structs,
+// delegation to modpack/ini_edits for merge/apply, and referential integrity.
 
 #include "engine/gmmpack/ini_edit_parser.h"
+
 #include "engine/gmmpack/unpacker.h"
+#include "engine/modpack/ini_edits.h"
 
 #include <nlohmann/json.hpp>
 
-#include <algorithm>
 #include <string>
 #include <vector>
 #include <catch2/catch_test_macros.hpp>
 
 namespace gmmpack = engine::gmmpack;
+namespace modpack = engine::modpack;
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-static gmmpack::IniEdit make_edit(const std::string& section,
-                                   const std::string& key,
-                                   const std::string& value,
-                                   const std::string& source_mod_id = "",
-                                   bool has_source = false) {
-    gmmpack::IniEdit e;
-    e.section = section;
-    e.key = key;
-    e.value = value;
-    e.source_mod_id = source_mod_id;
-    e.has_source_mod_id = has_source;
-    return e;
-}
-
-static gmmpack::IniEntry make_entry(
-    const std::string& target,
-    const std::vector<gmmpack::IniEdit>& edits) {
-    gmmpack::IniEntry ie;
-    ie.target_file = target;
-    ie.edits = edits;
-    return ie;
-}
-
-// ---------------------------------------------------------------------------
-// Consolidation
-// ---------------------------------------------------------------------------
-
-TEST_CASE("ini_edit_parser consolidate empty input", "[ini_edit_parser]") {
-    std::vector<gmmpack::IniEntry> entries;
-    auto con = gmmpack::consolidate_ini_edits(entries);
-    REQUIRE(con.by_target.empty());
-    REQUIRE(con.by_source.empty());
-}
-
-TEST_CASE("ini_edit_parser consolidate single target", "[ini_edit_parser]") {
-    gmmpack::IniEntry entry = make_entry("Skyrim.ini", {
-        make_edit("Display", "iMaxAnisotropy", "16"),
-        make_edit("Display", "iShadowMapResolution", "4096"),
-    });
-    auto con = gmmpack::consolidate_ini_edits({entry});
-
-    REQUIRE(con.by_target.size() == 1);
-    REQUIRE(con.by_target.count("Skyrim.ini"));
-    REQUIRE(con.by_target.at("Skyrim.ini").edits.size() == 2);
-
-    // Pack-author edits grouped under empty string
-    REQUIRE(con.by_source.count("") == 1);
-    REQUIRE(con.by_source.at("").size() == 2);
-}
-
-TEST_CASE("ini_edit_parser consolidate multiple targets", "[ini_edit_parser]") {
-    gmmpack::IniEntry e1 = make_entry("Skyrim.ini", {
-        make_edit("Display", "iMaxAnisotropy", "16"),
-    });
-    gmmpack::IniEntry e2 = make_entry("SkyrimPrefs.ini", {
-        make_edit("Grass", "iGrassDensity", "128"),
-    });
-    auto con = gmmpack::consolidate_ini_edits({e1, e2});
-
-    REQUIRE(con.by_target.size() == 2);
-    REQUIRE(con.by_target.count("Skyrim.ini"));
-    REQUIRE(con.by_target.count("SkyrimPrefs.ini"));
-}
-
-TEST_CASE("ini_edit_parser consolidate tracks source attribution",
-          "[ini_edit_parser]") {
-    gmmpack::IniEntry entry = make_entry("Skyrim.ini", {
-        make_edit("Display", "iMaxAnisotropy", "16"),             // pack-author
-        make_edit("Archive", "sResourceArchiveList2", "...", "skyui", true),  // mod
-    });
-    auto con = gmmpack::consolidate_ini_edits({entry});
-
-    // Two source groups: "" (pack-author) and "skyui"
-    REQUIRE(con.by_source.size() == 2);
-    REQUIRE(con.by_source.count("") == 1);
-    REQUIRE(con.by_source.at("").size() == 1);
-    REQUIRE(con.by_source.count("skyui") == 1);
-    REQUIRE(con.by_source.at("skyui").size() == 1);
-}
-
-TEST_CASE("ini_edit_parser consolidate merges duplicate targets",
-          "[ini_edit_parser]") {
-    // Two entries for same target file (consolidated from multiple ini/*.json
-    // that somehow both target the same file)
-    gmmpack::IniEntry e1 = make_entry("Skyrim.ini", {
-        make_edit("Display", "iMaxAnisotropy", "16"),
-    });
-    gmmpack::IniEntry e2 = make_entry("Skyrim.ini", {
-        make_edit("Display", "bFull Screen", "1"),
-    });
-    auto con = gmmpack::consolidate_ini_edits({e1, e2});
-
-    REQUIRE(con.by_target.size() == 1);
-    REQUIRE(con.by_target.at("Skyrim.ini").edits.size() == 2);
-}
-
-// ---------------------------------------------------------------------------
-// Retraction
-// ---------------------------------------------------------------------------
-
-TEST_CASE("ini_edit_parser retract_mod_edits removes mod's edits",
-          "[ini_edit_parser]") {
-    gmmpack::IniEntry entry = make_entry("Skyrim.ini", {
-        make_edit("Display", "iMaxAnisotropy", "16"),                   // pack
-        make_edit("Archive", "sResourceArchiveList2", "...", "skyui", true),  // mod
-    });
-    auto con = gmmpack::consolidate_ini_edits({entry});
-
-    auto retracted = gmmpack::retract_mod_edits(con, "skyui");
-
-    REQUIRE(retracted.size() == 1);
-    REQUIRE(retracted[0].section == "Archive");
-    REQUIRE(retracted[0].key == "sResourceArchiveList2");
-    REQUIRE(con.by_target.at("Skyrim.ini").edits.size() == 1);
-    REQUIRE(con.by_target.at("Skyrim.ini").edits[0].section == "Display");
-}
-
-TEST_CASE("ini_edit_parser retract_mod_edits no-op when mod not present",
-          "[ini_edit_parser]") {
-    gmmpack::IniEntry entry = make_entry("Skyrim.ini", {
-        make_edit("Display", "iMaxAnisotropy", "16"),
-    });
-    auto con = gmmpack::consolidate_ini_edits({entry});
-
-    auto retracted = gmmpack::retract_mod_edits(con, "nonexistent");
-
-    REQUIRE(retracted.empty());
-    REQUIRE(con.by_target.at("Skyrim.ini").edits.size() == 1);
-}
-
-TEST_CASE("ini_edit_parser retract_pack_author_edits with empty mod_id",
-          "[ini_edit_parser]") {
-    gmmpack::IniEntry entry = make_entry("Skyrim.ini", {
-        make_edit("Display", "iMaxAnisotropy", "16"),                   // pack
-        make_edit("Archive", "sResourceArchiveList2", "...", "skyui", true),
-    });
-    auto con = gmmpack::consolidate_ini_edits({entry});
-
-    auto retracted = gmmpack::retract_mod_edits(con, "");
-
-    REQUIRE(retracted.size() == 1);
-    REQUIRE(retracted[0].section == "Display");
-    REQUIRE(con.by_target.at("Skyrim.ini").edits.size() == 1);
-}
-
-TEST_CASE("ini_edit_parser retract_mod_edits across multiple targets",
-          "[ini_edit_parser]") {
-    gmmpack::IniEntry e1 = make_entry("Skyrim.ini", {
-        make_edit("Display", "iMaxAnisotropy", "16"),
-        make_edit("Archive", "sResourceArchiveList2", "...", "skyui", true),
-    });
-    gmmpack::IniEntry e2 = make_entry("SkyrimPrefs.ini", {
-        make_edit("Grass", "iGrassDensity", "128", "skyui", true),
-        make_edit("Water", "bReflectSky", "1"),
-    });
-    auto con = gmmpack::consolidate_ini_edits({e1, e2});
-
-    auto retracted = gmmpack::retract_mod_edits(con, "skyui");
-
-    REQUIRE(retracted.size() == 2);
-    REQUIRE(con.by_target.at("Skyrim.ini").edits.size() == 1);
-    REQUIRE(con.by_target.at("SkyrimPrefs.ini").edits.size() == 1);
-}
-
-TEST_CASE("ini_edit_parser retract rebuilds by_source index",
-          "[ini_edit_parser]") {
-    gmmpack::IniEntry entry = make_entry("Skyrim.ini", {
-        make_edit("Display", "iMaxAnisotropy", "16"),
-        make_edit("Archive", "sResourceArchiveList2", "...", "skyui", true),
-    });
-    auto con = gmmpack::consolidate_ini_edits({entry});
-
-    gmmpack::retract_mod_edits(con, "skyui");
-
-    // by_source should no longer contain "skyui"
-    REQUIRE_FALSE(con.by_source.count("skyui"));
-    // Only pack-author remains
-    REQUIRE(con.by_source.size() == 1);
-    REQUIRE(con.by_source.count(""));
-}
-
-// ---------------------------------------------------------------------------
-// Validation
-// ---------------------------------------------------------------------------
-
-TEST_CASE("ini_edit_parser validate passes on clean edits", "[ini_edit_parser]") {
-    gmmpack::IniEntry entry = make_entry("Skyrim.ini", {
-        make_edit("Display", "iMaxAnisotropy", "16"),
-        make_edit("Display", "iShadowMapResolution", "4096"),
-    });
-    auto con = gmmpack::consolidate_ini_edits({entry});
-
-    auto diag = gmmpack::validate_consolidated_edits(con);
-    REQUIRE(diag.empty());
-}
-
-TEST_CASE("ini_edit_parser validate detects empty section", "[ini_edit_parser]") {
-    gmmpack::IniEntry entry = make_entry("Skyrim.ini", {
-        make_edit("", "iMaxAnisotropy", "16"),
-    });
-    auto con = gmmpack::consolidate_ini_edits({entry});
-
-    auto diag = gmmpack::validate_consolidated_edits(con);
-    REQUIRE_FALSE(diag.empty());
-    bool found = false;
-    for (const auto& d : diag) {
-        if (d.message.find("empty section") != std::string::npos) {
-            found = true;
-            break;
-        }
-    }
-    REQUIRE(found);
-}
-
-TEST_CASE("ini_edit_parser validate detects empty key", "[ini_edit_parser]") {
-    gmmpack::IniEntry entry = make_entry("Skyrim.ini", {
-        make_edit("Display", "", "16"),
-    });
-    auto con = gmmpack::consolidate_ini_edits({entry});
-
-    auto diag = gmmpack::validate_consolidated_edits(con);
-    REQUIRE_FALSE(diag.empty());
-    bool found = false;
-    for (const auto& d : diag) {
-        if (d.message.find("empty key") != std::string::npos) {
-            found = true;
-            break;
-        }
-    }
-    REQUIRE(found);
-}
-
-TEST_CASE("ini_edit_parser validate detects empty value", "[ini_edit_parser]") {
-    gmmpack::IniEntry entry = make_entry("Skyrim.ini", {
-        make_edit("Display", "iMaxAnisotropy", ""),
-    });
-    auto con = gmmpack::consolidate_ini_edits({entry});
-
-    auto diag = gmmpack::validate_consolidated_edits(con);
-    REQUIRE_FALSE(diag.empty());
-    bool found = false;
-    for (const auto& d : diag) {
-        if (d.message.find("empty value") != std::string::npos) {
-            found = true;
-            break;
-        }
-    }
-    REQUIRE(found);
-}
-
-TEST_CASE("ini_edit_parser validate warns on duplicate section/key different value",
-          "[ini_edit_parser]") {
-    gmmpack::IniEntry entry = make_entry("Skyrim.ini", {
-        make_edit("Display", "iMaxAnisotropy", "16", "mod-a", true),
-        make_edit("Display", "iMaxAnisotropy", "32", "mod-b", true),
-    });
-    auto con = gmmpack::consolidate_ini_edits({entry});
-
-    auto diag = gmmpack::validate_consolidated_edits(con);
-    REQUIRE_FALSE(diag.empty());
-    bool found_warning = false;
-    for (const auto& d : diag) {
-        if (d.severity == gmmpack::Diagnostic::Severity::Warning &&
-            d.message.find("duplicate") != std::string::npos) {
-            found_warning = true;
-            break;
-        }
-    }
-    REQUIRE(found_warning);
-}
-
-TEST_CASE("ini_edit_parser validate no warning for same section/key same value",
-          "[ini_edit_parser]") {
-    gmmpack::IniEntry entry = make_entry("Skyrim.ini", {
-        make_edit("Display", "iMaxAnisotropy", "16", "mod-a", true),
-        make_edit("Display", "iMaxAnisotropy", "16", "mod-b", true),
-    });
-    auto con = gmmpack::consolidate_ini_edits({entry});
-
-    auto diag = gmmpack::validate_consolidated_edits(con);
-    REQUIRE(diag.empty());
-}
-
-// ---------------------------------------------------------------------------
-// Collectors
-// ---------------------------------------------------------------------------
-
-TEST_CASE("ini_edit_parser collect_sections", "[ini_edit_parser]") {
-    gmmpack::IniEntry entry = make_entry("Skyrim.ini", {
-        make_edit("Display", "iMaxAnisotropy", "16"),
-        make_edit("Display", "iShadowMapResolution", "4096"),
-        make_edit("Archive", "sResourceArchiveList2", "..."),
-    });
-    auto con = gmmpack::consolidate_ini_edits({entry});
-
-    auto sections = gmmpack::collect_sections(con);
-    REQUIRE(sections.size() == 2);
-    std::sort(sections.begin(), sections.end());
-    REQUIRE(sections[0] == "Archive");
-    REQUIRE(sections[1] == "Display");
-}
-
-TEST_CASE("ini_edit_parser collect_sources", "[ini_edit_parser]") {
-    gmmpack::IniEntry entry = make_entry("Skyrim.ini", {
-        make_edit("Display", "iMaxAnisotropy", "16"),                   // pack
-        make_edit("Archive", "sResourceArchiveList2", "...", "skyui", true),
-    });
-    auto con = gmmpack::consolidate_ini_edits({entry});
-
-    auto sources = gmmpack::collect_sources(con);
-    REQUIRE(sources.size() == 2);
-    std::sort(sources.begin(), sources.end());
-    REQUIRE(sources[0] == "");
-    REQUIRE(sources[1] == "skyui");
-}
-
-// ---------------------------------------------------------------------------
-// parse_ini_entry (in unpacker.cpp, but exercises the round-trip)
+// parse_ini_entry
 // ---------------------------------------------------------------------------
 
 TEST_CASE("ini_edit_parser parse_ini_entry with null sourceModId",
           "[ini_edit_parser]") {
     nlohmann::json j;
     j["targetFile"] = "Skyrim.ini";
-    j["edits"] = {{{"section", "Display"},
-                    {"key", "iMaxAnisotropy"},
-                    {"value", "16"},
-                    {"sourceModId", nullptr}}};
+    j["tweaks"] = {{{"id", "aniso"},
+                    {"name", "Anisotropy"},
+                    {"status", "required"},
+                    {"enabled", true},
+                    {"sourceModId", nullptr},
+                    {"content", "[Display]\niMaxAnisotropy=16\n"}}};
 
     auto entry = gmmpack::parse_ini_entry(j);
     REQUIRE(entry.target_file == "Skyrim.ini");
-    REQUIRE(entry.edits.size() == 1);
-    REQUIRE_FALSE(entry.edits[0].has_source_mod_id);
-    REQUIRE(entry.edits[0].source_mod_id.empty());
+    REQUIRE(entry.tweaks.size() == 1);
+    CHECK(entry.tweaks[0].id == "aniso");
+    CHECK(entry.tweaks[0].name == "Anisotropy");
+    CHECK(entry.tweaks[0].status == "required");
+    CHECK(entry.tweaks[0].enabled);
+    CHECK(entry.tweaks[0].content == "[Display]\niMaxAnisotropy=16\n");
+    REQUIRE_FALSE(entry.tweaks[0].has_source_mod_id);
+    REQUIRE(entry.tweaks[0].source_mod_id.empty());
 }
 
 TEST_CASE("ini_edit_parser parse_ini_entry with string sourceModId",
           "[ini_edit_parser]") {
     nlohmann::json j;
     j["targetFile"] = "Skyrim.ini";
-    j["edits"] = {{{"section", "Archive"},
-                    {"key", "sResourceArchiveList2"},
-                    {"value", "..."},
-                    {"sourceModId", "skyui"}}};
+    j["tweaks"] = {{{"id", "skyui-list"},
+                    {"name", "SkyUI list"},
+                    {"status", "recommended"},
+                    {"enabled", false},
+                    {"sourceModId", "skyui"},
+                    {"content", "[Archive]\nsResourceArchiveList2=...\n"}}};
 
     auto entry = gmmpack::parse_ini_entry(j);
     REQUIRE(entry.target_file == "Skyrim.ini");
-    REQUIRE(entry.edits.size() == 1);
-    REQUIRE(entry.edits[0].has_source_mod_id);
-    REQUIRE(entry.edits[0].source_mod_id == "skyui");
+    REQUIRE(entry.tweaks.size() == 1);
+    REQUIRE(entry.tweaks[0].has_source_mod_id);
+    REQUIRE(entry.tweaks[0].source_mod_id == "skyui");
+    REQUIRE_FALSE(entry.tweaks[0].enabled);
 }
 
-TEST_CASE("ini_edit_parser parse_ini_entry with empty edits array",
+TEST_CASE("ini_edit_parser parse_ini_entry with empty tweaks array",
           "[ini_edit_parser]") {
     nlohmann::json j;
     j["targetFile"] = "Skyrim.ini";
-    j["edits"] = nlohmann::json::array();
+    j["tweaks"] = nlohmann::json::array();
 
     auto entry = gmmpack::parse_ini_entry(j);
     REQUIRE(entry.target_file == "Skyrim.ini");
-    REQUIRE(entry.edits.empty());
+    REQUIRE(entry.tweaks.empty());
 }
 
-TEST_CASE("ini_edit_parser parse_ini_entry multiple edits",
+TEST_CASE("ini_edit_parser parse_ini_entry multiple tweaks",
           "[ini_edit_parser]") {
     nlohmann::json j;
     j["targetFile"] = "SkyrimPrefs.ini";
-    j["edits"] = {
-        {{"section", "Display"}, {"key", "iShadowMapResolution"}, {"value", "4096"}, {"sourceModId", nullptr}},
-        {{"section", "Grass"}, {"key", "iGrassDensity"}, {"value", "128"}, {"sourceModId", "nature-mod"}},
-        {{"section", "Water"}, {"key", "bReflectSky"}, {"value", "1"}, {"sourceModId", nullptr}},
+    j["tweaks"] = {
+        {{"id", "shadows"},
+         {"name", "Shadows"},
+         {"status", "required"},
+         {"enabled", true},
+         {"sourceModId", nullptr},
+         {"content", "[Display]\niShadowMapResolution=4096\n"}},
+        {{"id", "grass"},
+         {"name", "Grass"},
+         {"status", "recommended"},
+         {"enabled", true},
+         {"sourceModId", "nature-mod"},
+         {"content", "[Grass]\niGrassDensity=128\n"}},
     };
 
     auto entry = gmmpack::parse_ini_entry(j);
     REQUIRE(entry.target_file == "SkyrimPrefs.ini");
-    REQUIRE(entry.edits.size() == 3);
-
-    REQUIRE_FALSE(entry.edits[0].has_source_mod_id);
-    REQUIRE(entry.edits[1].has_source_mod_id);
-    REQUIRE(entry.edits[1].source_mod_id == "nature-mod");
-    REQUIRE_FALSE(entry.edits[2].has_source_mod_id);
+    REQUIRE(entry.tweaks.size() == 2);
+    REQUIRE_FALSE(entry.tweaks[0].has_source_mod_id);
+    REQUIRE(entry.tweaks[1].has_source_mod_id);
+    REQUIRE(entry.tweaks[1].source_mod_id == "nature-mod");
 }
 
 // ---------------------------------------------------------------------------
-// End-to-end: parse -> consolidate -> retract -> validate
+// to_edit_file conversion
 // ---------------------------------------------------------------------------
 
-TEST_CASE("ini_edit_parser full pipeline", "[ini_edit_parser]") {
-    // Simulate a pack with two ini files and multiple source mods
-    nlohmann::json j1;
-    j1["targetFile"] = "Skyrim.ini";
-    j1["edits"] = {
-        {{"section", "Display"}, {"key", "iMaxAnisotropy"}, {"value", "16"}, {"sourceModId", nullptr}},
-        {{"section", "Archive"}, {"key", "sResourceArchiveList2"}, {"value", "a.esp,b.esp"}, {"sourceModId", "skyui"}},
+TEST_CASE("ini_edit_parser to_edit_file maps status and source",
+          "[ini_edit_parser]") {
+    gmmpack::IniEntry entry;
+    entry.target_file = "Skyrim.ini";
+    gmmpack::IniTweak req;
+    req.id = "aniso";
+    req.name = "Anisotropy";
+    req.status = "required";
+    req.enabled = true;
+    req.content = "[Display]\niMaxAnisotropy=16\n";
+    gmmpack::IniTweak rec;
+    rec.id = "skyui-list";
+    rec.name = "SkyUI list";
+    rec.status = "recommended";
+    rec.enabled = false;
+    rec.content = "[Archive]\nsResourceArchiveList2=...\n";
+    rec.source_mod_id = "skyui";
+    rec.has_source_mod_id = true;
+    entry.tweaks = {req, rec};
+
+    auto file = gmmpack::to_edit_file(entry);
+    REQUIRE(file.target_file == "Skyrim.ini");
+    REQUIRE(file.tweaks.size() == 2);
+    CHECK(file.tweaks[0].status == modpack::TweakStatus::Required);
+    CHECK(file.tweaks[0].enabled);
+    CHECK(!file.tweaks[0].source_mod_id.has_value());
+    CHECK(file.tweaks[1].status == modpack::TweakStatus::Recommended);
+    CHECK(!file.tweaks[1].enabled);
+    REQUIRE(file.tweaks[1].source_mod_id.has_value());
+    CHECK(*file.tweaks[1].source_mod_id == "skyui");
+}
+
+TEST_CASE("ini_edit_parser to_edit_file defaults unknown status",
+          "[ini_edit_parser]") {
+    gmmpack::IniEntry entry;
+    entry.target_file = "x.ini";
+    gmmpack::IniTweak tweak;
+    tweak.id = "t";
+    tweak.name = "T";
+    tweak.status = "bogus";  // schema-validated input never has this
+    tweak.content = "[S]\nk=v\n";
+    entry.tweaks = {tweak};
+
+    auto file = gmmpack::to_edit_file(entry);
+    REQUIRE(file.tweaks.size() == 1);
+    CHECK(file.tweaks[0].status == modpack::TweakStatus::Recommended);
+}
+
+// ---------------------------------------------------------------------------
+// Delegation: gmmpack parse -> engine merge/apply
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ini_edit_parser delegates merge and apply to the engine",
+          "[ini_edit_parser]") {
+    nlohmann::json j;
+    j["targetFile"] = "Skyrim.ini";
+    j["tweaks"] = {
+        {{"id", "aniso"},
+         {"name", "Anisotropy"},
+         {"status", "required"},
+         {"enabled", true},
+         {"sourceModId", nullptr},
+         {"content", "[Display]\niMaxAnisotropy=16\n"}},
+        {{"id", "off"},
+         {"name", "Disabled"},
+         {"status", "recommended"},
+         {"enabled", false},
+         {"sourceModId", nullptr},
+         {"content", "[Display]\nbFull Screen=0\n"}},
     };
-    nlohmann::json j2;
-    j2["targetFile"] = "SkyrimPrefs.ini";
-    j2["edits"] = {
-        {{"section", "Display"}, {"key", "iShadowMapResolution"}, {"value", "4096"}, {"sourceModId", "shadows-mod"}},
-        {{"section", "Grass"}, {"key", "iGrassDensity"}, {"value", "128"}, {"sourceModId", nullptr}},
-    };
 
-    auto e1 = gmmpack::parse_ini_entry(j1);
-    auto e2 = gmmpack::parse_ini_entry(j2);
+    auto file = gmmpack::to_edit_file(gmmpack::parse_ini_entry(j));
+    auto merged = modpack::merge_ini_edits({file});
+    REQUIRE(merged.size() == 1);
+    REQUIRE(merged[0].edits.size() == 1);  // disabled tweak filtered
+    CHECK(merged[0].edits[0].tweak_id == std::string("aniso"));
 
-    // Consolidate
-    auto con = gmmpack::consolidate_ini_edits({e1, e2});
-    REQUIRE(con.by_target.size() == 2);
-    REQUIRE(con.by_source.size() == 3);  // "", "skyui", "shadows-mod"
-
-    // Retract skyui (mod removed)
-    auto retracted = gmmpack::retract_mod_edits(con, "skyui");
-    REQUIRE(retracted.size() == 1);
-    REQUIRE(retracted[0].key == "sResourceArchiveList2");
-    REQUIRE(con.by_target.at("Skyrim.ini").edits.size() == 1);
-
-    // Retract shadows-mod
-    retracted = gmmpack::retract_mod_edits(con, "shadows-mod");
-    REQUIRE(retracted.size() == 1);
-    REQUIRE(con.by_target.at("SkyrimPrefs.ini").edits.size() == 1);
-
-    // Validate remaining - no warnings or errors
-    auto diag = gmmpack::validate_consolidated_edits(con);
-    REQUIRE(diag.empty());
-
-    // Verify remaining edits are the pack-author ones
-    auto sections = gmmpack::collect_sections(con);
-    REQUIRE(sections.size() == 2);
-    auto sources = gmmpack::collect_sources(con);
-    REQUIRE(sources.size() == 1);
-    REQUIRE(sources[0] == "");  // only pack-author
+    const std::string ini = "[Display]\niMaxAnisotropy=4\nbFull Screen=1\n";
+    auto out = modpack::apply_ini_edits(ini, merged[0]);
+    CHECK(out.text.find("iMaxAnisotropy=16\n") != std::string::npos);
+    CHECK(out.text.find("bFull Screen=1\n") != std::string::npos);
+    REQUIRE(out.applied.size() == 1);
+    CHECK(out.applied[0].tweak_id == std::string("aniso"));
 }
 
 // ---------------------------------------------------------------------------
@@ -465,13 +203,15 @@ TEST_CASE("ini_edit_parser ref integrity catches dangling sourceModId",
 
     gmmpack::IniEntry ini;
     ini.target_file = "Skyrim.ini";
-    gmmpack::IniEdit edit;
-    edit.section = "Display";
-    edit.key = "iMaxAnisotropy";
-    edit.value = "16";
-    edit.source_mod_id = "nonexistent-mod";
-    edit.has_source_mod_id = true;
-    ini.edits.push_back(edit);
+    gmmpack::IniTweak tweak;
+    tweak.id = "bad";
+    tweak.name = "Bad";
+    tweak.status = "recommended";
+    tweak.enabled = true;
+    tweak.content = "[Display]\niMaxAnisotropy=16\n";
+    tweak.source_mod_id = "nonexistent-mod";
+    tweak.has_source_mod_id = true;
+    ini.tweaks.push_back(tweak);
     pack.ini_edits.push_back(ini);
 
     auto diag = gmmpack::check_referential_integrity(pack);
@@ -495,20 +235,52 @@ TEST_CASE("ini_edit_parser ref integrity passes for valid attribution",
 
     gmmpack::IniEntry ini;
     ini.target_file = "Skyrim.ini";
-    gmmpack::IniEdit pack_edit;
-    pack_edit.section = "Display";
-    pack_edit.key = "iMaxAnisotropy";
-    pack_edit.value = "16";
-    ini.edits.push_back(pack_edit);
-    gmmpack::IniEdit mod_edit;
-    mod_edit.section = "Archive";
-    mod_edit.key = "sResourceArchiveList2";
-    mod_edit.value = "a.esp";
-    mod_edit.source_mod_id = "skyui";
-    mod_edit.has_source_mod_id = true;
-    ini.edits.push_back(mod_edit);
+    gmmpack::IniTweak pack_tweak;
+    pack_tweak.id = "aniso";
+    pack_tweak.name = "Anisotropy";
+    pack_tweak.status = "required";
+    pack_tweak.enabled = true;
+    pack_tweak.content = "[Display]\niMaxAnisotropy=16\n";
+    ini.tweaks.push_back(pack_tweak);
+    gmmpack::IniTweak mod_tweak;
+    mod_tweak.id = "skyui-list";
+    mod_tweak.name = "SkyUI list";
+    mod_tweak.status = "recommended";
+    mod_tweak.enabled = true;
+    mod_tweak.content = "[Archive]\nsResourceArchiveList2=a.esp\n";
+    mod_tweak.source_mod_id = "skyui";
+    mod_tweak.has_source_mod_id = true;
+    ini.tweaks.push_back(mod_tweak);
     pack.ini_edits.push_back(ini);
 
     auto diag = gmmpack::check_referential_integrity(pack);
     REQUIRE(diag.empty());
+}
+
+TEST_CASE("ini_edit_parser ref integrity catches duplicate tweak ids",
+          "[ini_edit_parser]") {
+    gmmpack::Gmmpack pack;
+    gmmpack::IniEntry ini;
+    ini.target_file = "Skyrim.ini";
+    for (int i = 0; i < 2; ++i) {
+        gmmpack::IniTweak tweak;
+        tweak.id = "same-id";
+        tweak.name = "Name " + std::to_string(i);
+        tweak.status = "required";
+        tweak.enabled = true;
+        tweak.content = "[Display]\niMaxAnisotropy=16\n";
+        ini.tweaks.push_back(tweak);
+    }
+    pack.ini_edits.push_back(ini);
+
+    auto diag = gmmpack::check_referential_integrity(pack);
+    REQUIRE_FALSE(diag.empty());
+    bool found = false;
+    for (const auto& d : diag) {
+        if (d.message.find("duplicate tweak id") != std::string::npos) {
+            found = true;
+            break;
+        }
+    }
+    REQUIRE(found);
 }

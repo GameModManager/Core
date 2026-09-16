@@ -62,11 +62,11 @@ Diagnostics validate_schemas(const ArchiveContents& archive,
 Diagnostics check_referential_integrity(const Gmmpack& pack);
 
 // Parse validated JSON into typed C++ structs.
+// (parse_ini_entry lives in ini_edit_parser.h: the thin parse-only layer.)
 Manifest parse_manifest(const nlohmann::json& j);
 ModEntry parse_mod_entry(const nlohmann::json& j);
 ExecutableEntry parse_executable_entry(const nlohmann::json& j);
 PatchEntry parse_patch_entry(const nlohmann::json& j);
-IniEntry parse_ini_entry(const nlohmann::json& j);
 TreeRoot parse_tree(const nlohmann::json& j);
 
 }  // namespace engine::gmmpack
