@@ -64,6 +64,7 @@ signals:
   void about_requested();
   void about_qt_requested();
   void instance_statistics_requested();
+  void debug_panel_requested();
 
 private:
   void build_file_menu();

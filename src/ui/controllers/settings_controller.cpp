@@ -746,6 +746,15 @@ void SettingsController::connect_menu_actions() {
           [this]() { QMessageBox::aboutQt(w_, tr("About Qt")); });
   connect(w_->menu_bar_, &AppMenuBar::instance_statistics_requested,
           w_->tab_mode_.get(), &TabModeController::route_stats);
+  // Help > Debug Panel toggles the dock-widget debug panel. There is no
+  // other menu entry for it (the Settings > Diagnostics button and the
+  // Konami code call show_debug_window() directly).
+  connect(w_->menu_bar_, &AppMenuBar::debug_panel_requested, this, [this]() {
+    if (!w_->debug_window_) {
+      w_->debug_window_ = create_debug_window();
+    }
+    w_->debug_window_->toggle_visible();
+  });
 }
 
 void SettingsController::save_app_state() {
