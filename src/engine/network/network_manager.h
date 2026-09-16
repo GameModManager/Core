@@ -109,6 +109,12 @@ std::string redact_cookie(const std::string& cookie);
 
 } // namespace redaction
 
+// Parse the Retry-After response header (seconds OR HTTP-date) into a
+// millisecond delay. Returns 0 when the header is missing, unparseable, or
+// negative. Shared with the nexus_v2 GraphQL client so 429 backoff honors
+// the server-provided delay exactly once.
+int parse_retry_after_ms(const std::string& response_headers);
+
 // -----------------------------------------------------------------------------
 // Public data model
 // -----------------------------------------------------------------------------
