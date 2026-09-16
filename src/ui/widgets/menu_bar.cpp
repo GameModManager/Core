@@ -48,6 +48,10 @@ void AppMenuBar::build_file_menu() {
   connect(export_mods, &QAction::triggered, this,
           &AppMenuBar::export_mods_requested);
 
+  auto *import_modpack = menu->addAction(tr("Import Modpack..."));
+  connect(import_modpack, &QAction::triggered, this,
+          &AppMenuBar::import_modpack_requested);
+
   menu->addSeparator();
 
   auto *settings = menu->addAction(tr("Settings..."));

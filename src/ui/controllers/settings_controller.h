@@ -68,7 +68,10 @@ public slots:
   // consumed; MainWindow::eventFilter falls through to QMainWindow otherwise.
   bool handle_global_event(QObject *obj, QEvent *event);
 
-private:
+ private:
+  // File > Import Modpack flow: import dialog -> instance selection ->
+  // install wizard. Each step cancels the rest when dismissed.
+  void import_modpack();
   // Constructs the DebugWindow (parented to MainWindow) and wires the
   // late-bound pointers (game knowledge, profile manager) so the Info tab
   // has the metadata it needs. Centralized so every DebugWindow creation

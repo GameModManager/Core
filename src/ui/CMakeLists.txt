@@ -83,6 +83,9 @@ set(UI_SOURCES
     overwrite/query_overwrite_dialog.cpp
     install/install_name_dialog.cpp
     install/install_progress_dialog.cpp
+    modpack/modpack_import_dialog.cpp
+    modpack/modpack_instance_dialog.cpp
+    modpack/modpack_install_wizard.cpp
     fomod/fomod_image_viewer.cpp
     fomod/fomod_wizard_dialog.cpp
     instance_options/instance_options_panel.cpp
