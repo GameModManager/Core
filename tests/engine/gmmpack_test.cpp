@@ -1507,13 +1507,14 @@ TEST_CASE("gmmpack referential integrity catches dangling ini sourceModId",
 
     gmmpack::IniEntry ini;
     ini.target_file = "Skyrim.ini";
-    gmmpack::IniEdit edit;
-    edit.section = "Display";
-    edit.key = "iMaxAnisotropy";
-    edit.value = "16";
+    gmmpack::IniTweak edit;
+    edit.id = "aniso";
+    edit.name = "Anisotropy";
+    edit.status = "recommended";
+    edit.content = "[Display]\niMaxAnisotropy=16\n";
     edit.source_mod_id = "nonexistent-mod";
     edit.has_source_mod_id = true;
-    ini.edits.push_back(edit);
+    ini.tweaks.push_back(edit);
     pack.ini_edits.push_back(ini);
 
     auto diag = gmmpack::check_referential_integrity(pack);
@@ -1537,13 +1538,14 @@ TEST_CASE("gmmpack referential integrity passes for valid ini sourceModId",
 
     gmmpack::IniEntry ini;
     ini.target_file = "Skyrim.ini";
-    gmmpack::IniEdit edit;
-    edit.section = "Display";
-    edit.key = "iMaxAnisotropy";
-    edit.value = "16";
+    gmmpack::IniTweak edit;
+    edit.id = "aniso";
+    edit.name = "Anisotropy";
+    edit.status = "recommended";
+    edit.content = "[Display]\niMaxAnisotropy=16\n";
     edit.source_mod_id = "skyui";
     edit.has_source_mod_id = true;
-    ini.edits.push_back(edit);
+    ini.tweaks.push_back(edit);
     pack.ini_edits.push_back(ini);
 
     auto diag = gmmpack::check_referential_integrity(pack);
@@ -1560,13 +1562,14 @@ TEST_CASE(
     gmmpack::Gmmpack pack;
     gmmpack::IniEntry ini;
     ini.target_file = "Skyrim.ini";
-    gmmpack::IniEdit edit;
-    edit.section = "Display";
-    edit.key = "iMaxAnisotropy";
-    edit.value = "16";
+    gmmpack::IniTweak edit;
+    edit.id = "aniso";
+    edit.name = "Anisotropy";
+    edit.status = "recommended";
+    edit.content = "[Display]\niMaxAnisotropy=16\n";
     edit.source_mod_id = "";
     edit.has_source_mod_id = false;
-    ini.edits.push_back(edit);
+    ini.tweaks.push_back(edit);
     pack.ini_edits.push_back(ini);
 
     auto diag = gmmpack::check_referential_integrity(pack);
@@ -1747,13 +1750,14 @@ TEST_CASE("gmmpack referential integrity passes for valid complete pack",
     // INI edit with valid sourceModId
     gmmpack::IniEntry ini;
     ini.target_file = "Skyrim.ini";
-    gmmpack::IniEdit edit;
-    edit.section = "Display";
-    edit.key = "iMaxAnisotropy";
-    edit.value = "16";
+    gmmpack::IniTweak edit;
+    edit.id = "aniso";
+    edit.name = "Anisotropy";
+    edit.status = "recommended";
+    edit.content = "[Display]\niMaxAnisotropy=16\n";
     edit.source_mod_id = "skyui";
     edit.has_source_mod_id = true;
-    ini.edits.push_back(edit);
+    ini.tweaks.push_back(edit);
     pack.ini_edits.push_back(ini);
 
     auto diag = gmmpack::check_referential_integrity(pack);
@@ -1947,7 +1951,7 @@ TEST_CASE("gmmpack referential integrity catches patch filename mismatch",
     gmmpack::ModEntry mod;
     mod.id = "skyui";
     mod.name = "SkyUI";
-    mod.category = "required";
+    mod.category = gmmpack::ModCategory::Required;
     mod.source = gmmpack::ModSourceNexus{};
     pack.mods.push_back(mod);
 
@@ -1979,7 +1983,7 @@ TEST_CASE("gmmpack referential integrity passes patch filename match",
     gmmpack::ModEntry mod;
     mod.id = "skyui";
     mod.name = "SkyUI";
-    mod.category = "required";
+    mod.category = gmmpack::ModCategory::Required;
     mod.source = gmmpack::ModSourceNexus{};
     pack.mods.push_back(mod);
 
