@@ -17,6 +17,7 @@ set(FOMOD_ENGINE_SOURCES
     mod/fomod/condition_tester.cpp
     mod/fomod/fomod_view_model.cpp
     mod/fomod/file_installer.cpp
+    mod/fomod/headless_replay.cpp
     ${PROJECT_SOURCE_DIR}/third_party/pugixml/pugixml.cpp
 )
 
