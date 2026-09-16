@@ -154,6 +154,7 @@ set(ENGINE_SOURCES
     deploy/launch/usvfs_mapping.cpp
     deploy/launch/usvfs_mapping.h
     deploy/launch/proton_tools.cpp
+    collection/choice_groups.cpp
     ${FOMOD_ENGINE_SOURCES}
 )
 
