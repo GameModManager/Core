@@ -55,6 +55,9 @@
 #include "ui/fomod/fomod_wizard_dialog.h"
 #include "ui/game_selection/game_selection_widget.h"
 #include "ui/install/install_name_dialog.h"
+#include "ui/modpack/modpack_import_dialog.h"
+#include "ui/modpack/modpack_instance_dialog.h"
+#include "ui/modpack/modpack_install_wizard.h"
 #include "ui/main_window/main_window.h"
 #include "ui/nxm/nxm_ipc.h"
 #include "ui/overwrite/query_overwrite_dialog.h"
@@ -622,6 +625,8 @@ void SettingsController::connect_menu_actions() {
   });
   connect(w_->menu_bar_, &AppMenuBar::export_mods_requested, this,
           [this]() { w_->mod_list_->export_modlist(); });
+  connect(w_->menu_bar_, &AppMenuBar::import_modpack_requested, this,
+          [this]() { import_modpack(); });
   connect(w_->menu_bar_, &AppMenuBar::settings_requested, w_->tab_mode_.get(),
           &TabModeController::route_settings);
   connect(w_->menu_bar_, &AppMenuBar::exit_requested, this,
@@ -1284,8 +1289,54 @@ bool SettingsController::create_new_instance() {
   return true;
 }
 
-bool SettingsController::switch_to_instance(const QString &name) {
-  auto instances_dir = engine::default_instances_dir();
+void SettingsController::import_modpack() {
+  ModpackImportDialog import_dialog(w_);
+  if (import_dialog.exec() != QDialog::Accepted || !import_dialog.has_pack())
+    return;
+  engine::gmmpack::Gmmpack pack = import_dialog.pack();
+  const std::string game_id = pack.manifest.info.gmm_game_id;
+
+  // Instances matching the pack's game.
+  const auto instances_dir = engine::default_instances_dir();
+  std::vector<ModpackInstanceChoice> choices;
+  for (const auto &name : engine::scan_instances()) {
+    auto inst = engine::Instance::installed(name, instances_dir);
+    if (!inst.read_toml() || inst.info().game_id != game_id)
+      continue;
+    const std::string display = inst.info().display_name.empty()
+                                    ? name
+                                    : inst.info().display_name;
+    choices.push_back({name, display, inst.info().game_id});
+  }
+  std::string active_folder;
+  if (!w_->current_instance_root_.empty())
+    active_folder = w_->current_instance_root_.filename().string();
+
+  QString game_display = QString::fromStdString(game_id);
+  if (w_->plugin_loader_) {
+    const std::string resolved =
+        w_->plugin_loader_->display_name_for(game_id);
+    if (!resolved.empty())
+      game_display = QString::fromStdString(resolved);
+  }
+
+  ModpackInstanceDialog select_dialog(game_id, game_display,
+                                      std::move(choices), active_folder, w_);
+  if (select_dialog.exec() != QDialog::Accepted ||
+      select_dialog.mode() == ModpackInstanceDialog::Mode::Cancelled)
+    return;
+  // Target instance folder for Workspace-on1c (wizard step content).
+  (void)select_dialog.selected_folder();
+
+  const auto wizard_mode =
+      select_dialog.mode() == ModpackInstanceDialog::Mode::Append
+          ? ModpackInstallWizard::Mode::Append
+          : ModpackInstallWizard::Mode::CreateNew;
+  ModpackInstallWizard wizard(std::move(pack), wizard_mode, w_);
+  wizard.exec();
+}
+
+bool SettingsController::switch_to_instance(const QString &name) {  auto instances_dir = engine::default_instances_dir();
   auto selected = name.toStdString();
   if (selected.empty())
     return false;
