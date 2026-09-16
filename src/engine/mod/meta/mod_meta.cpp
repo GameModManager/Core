@@ -450,6 +450,42 @@ void ModMeta::set_parent_id(const std::string& id) {
     set("GameModManager", "parent_id", id);
 }
 
+// ---------------------------------------------------------------------------
+// Collection tracking (manager sidecar, Workspace-5wmu)
+// ---------------------------------------------------------------------------
+
+std::string ModMeta::collection_id() const {
+    return get("GameModManager", "collection_id");
+}
+
+void ModMeta::set_collection_id(const std::string& id) {
+    set("GameModManager", "collection_id", id);
+}
+
+int64_t ModMeta::collection_revision() const {
+    auto v = get("GameModManager", "collection_revision");
+    if (v.empty()) return 0;
+    try { return std::stoll(v); } catch (...) { return 0; }
+}
+
+void ModMeta::set_collection_revision(int64_t revision) {
+    set("GameModManager", "collection_revision", std::to_string(revision));
+}
+
+bool ModMeta::in_collection() const {
+    return get("GameModManager", "in_collection") == "true";
+}
+
+void ModMeta::set_in_collection(bool tracked) {
+    set("GameModManager", "in_collection", tracked ? "true" : "false");
+}
+
+void ModMeta::clear_collection() {
+    unset("GameModManager", "collection_id");
+    unset("GameModManager", "collection_revision");
+    unset("GameModManager", "in_collection");
+}
+
 void ModMeta::unset(const std::string& section, const std::string& key) {
     int idx = section_index(sections_, section);
     if (idx < 0) return;
