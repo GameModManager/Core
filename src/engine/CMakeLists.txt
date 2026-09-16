@@ -146,6 +146,7 @@ set(ENGINE_SOURCES
     update/mod_update_db_client.cpp
     core/keyring/keyring.cpp
     core/github.cpp
+    collection/nexus/parser.cpp
     core/module.cpp
     core/directory_refresher.cpp
     deploy/launch/preload_interceptor.cpp
