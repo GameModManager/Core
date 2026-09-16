@@ -58,6 +58,14 @@ struct Mod {
 
     // Archive filename determined during fetch (e.g. "mod-12345-1-0.zip")
     std::string archive_filename;
+
+    // Collection tracking (Workspace-5wmu). Source-agnostic: set for any mod
+    // installed as part of a collection, regardless of provider (Nexus,
+    // .gmmpack, manual import). Empty collection_id + in_collection=false
+    // means the mod is standalone / untracked.
+    std::string collection_id;      // Manifest::id of the owning collection
+    int64_t collection_revision = 0; // Manifest::revision at install time
+    bool in_collection = false;     // per-mod-in-collection flag
 };
 
 }  // namespace engine
