@@ -2,7 +2,9 @@
 
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <string>
+#include <utility>
 #include <unordered_map>
 
 #include <nlohmann/json.hpp>
@@ -68,5 +70,23 @@ ExecutableEntry parse_executable_entry(const nlohmann::json& j);
 PatchEntry parse_patch_entry(const nlohmann::json& j);
 IniEntry parse_ini_entry(const nlohmann::json& j);
 TreeRoot parse_tree(const nlohmann::json& j);
+
+// ---------------------------------------------------------------------------
+// Patch filename parsing and chain building
+// ---------------------------------------------------------------------------
+
+// Extract mod_id and optional sequence from a patch archive path.
+// Valid patterns: "patches/<mod_id>.json" (single) or "patches/<mod_id>-<N>.json" (chain).
+// Returns nullopt if the path doesn't match the expected pattern.
+std::optional<std::pair<std::string, int>> parse_patch_filename(
+    const std::string& path);
+
+// Group patches by mod_id, sort each group by sequence ascending,
+// and validate contiguity (1, 2, 3...). Single patches (no sequence)
+// become a chain of one. A mod with both single and chained patches is
+// an error. Chains are always returned alongside diagnostics - callers
+// must refuse to apply when diagnostics contain errors.
+std::pair<std::vector<PatchChain>, Diagnostics> build_patch_chains(
+    const std::vector<PatchEntry>& patches);
 
 }  // namespace engine::gmmpack
