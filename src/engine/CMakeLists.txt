@@ -154,6 +154,7 @@ set(ENGINE_SOURCES
     deploy/launch/usvfs_mapping.h
     deploy/launch/proton_tools.cpp
     gmmpack/schema_validator.cpp
+    gmmpack/tree_parser.cpp
     gmmpack/unpacker.cpp
     ${FOMOD_ENGINE_SOURCES}
 )
