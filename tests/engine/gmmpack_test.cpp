@@ -637,7 +637,7 @@ TEST_CASE("gmmpack full round-trip with valid archive", "[gmmpack]") {
     std::string mod_json = make_mod_json();
     std::string tree_json = make_tree_json();
     std::string ini_json =
-        R"({"targetFile":"Skyrim.ini","edits":[{"section":"Display","key":"iMaxAnisotropy","value":"16","sourceModId":null}]})";
+        R"({"targetFile":"Skyrim.ini","tweaks":[{"id":"aniso","name":"Anisotropy","status":"required","enabled":true,"sourceModId":null,"content":"[Display]\niMaxAnisotropy=16\n"}]})";
 
     std::string mod_hash = "sha256:" + sha256_hex(mod_json);
     std::string tree_hash = "sha256:" + sha256_hex(tree_json);
@@ -670,6 +670,8 @@ TEST_CASE("gmmpack full round-trip with valid archive", "[gmmpack]") {
     REQUIRE(result.pack.tree.nodes.size() == 1);
     REQUIRE(result.pack.ini_edits.size() == 1);
     REQUIRE(result.pack.ini_edits[0].target_file == "Skyrim.ini");
+    REQUIRE(result.pack.ini_edits[0].tweaks.size() == 1);
+    REQUIRE(result.pack.ini_edits[0].tweaks[0].id == "aniso");
 }
 
 TEST_CASE("gmmpack rejects archive with unlisted file", "[gmmpack]") {
@@ -1326,15 +1328,35 @@ TEST_CASE("gmmpack validates ini entry", "[gmmpack]") {
 
     nlohmann::json ini;
     ini["targetFile"] = "Skyrim.ini";
-    ini["edits"] = {{{"section", "Display"},
-                      {"key", "iMaxAnisotropy"},
-                      {"value", "16"},
-                      {"sourceModId", nullptr}}};
+    ini["tweaks"] = {{{"id", "aniso"},
+                      {"name", "Anisotropy"},
+                      {"status", "required"},
+                      {"enabled", true},
+                      {"sourceModId", nullptr},
+                      {"content", "[Display]\niMaxAnisotropy=16\n"}}};
 
     gmmpack::SchemaValidator validator;
     auto diag = validator.validate(ini, schemas["ini.schema.json"],
                                    schemas["ini.schema.json"]);
     REQUIRE(diag.empty());
+}
+
+TEST_CASE("gmmpack rejects legacy ini edits shape", "[gmmpack]") {
+    auto schemas = load_schemas();
+    REQUIRE(schemas.count("ini.schema.json"));
+
+    // Pre-tweak format (hard break): edits[] no longer exists.
+    nlohmann::json ini;
+    ini["targetFile"] = "Skyrim.ini";
+    ini["edits"] = {{{"section", "Display"},
+                     {"key", "iMaxAnisotropy"},
+                     {"value", "16"},
+                     {"sourceModId", nullptr}}};
+
+    gmmpack::SchemaValidator validator;
+    auto diag = validator.validate(ini, schemas["ini.schema.json"],
+                                   schemas["ini.schema.json"]);
+    REQUIRE_FALSE(diag.empty());
 }
 
 TEST_CASE("gmmpack rejects patch with bad algorithm", "[gmmpack]") {
