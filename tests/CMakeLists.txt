@@ -110,7 +110,6 @@ gmm_catch2_test(nexus_adapter_test engine/nexus_adapter_test.cpp)
 gmm_catch2_test(gmmpack_patch_test engine/gmmpack_patch_test.cpp)
 gmm_catch2_test(fomod_headless_replay_test engine/fomod_headless_replay_test.cpp)
 gmm_catch2_test(choice_groups_test engine/choice_groups_test.cpp)
->>>>>>> issue/y2ud-choice-groups
 gmm_catch2_test(perf_benchmark perf/benchmark_test.cpp)
 
 # Tests that include third-party headers directly need those include dirs at
@@ -155,10 +154,13 @@ gmm_catch2_test(gmmpack_test engine/gmmpack_test.cpp
     LIBS PkgConfig::LIBARCHIVE OpenSSL::Crypto
     DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
+<<<<<<< HEAD
 gmm_catch2_test(gmmpack_mod_entry_test engine/gmmpack_mod_entry_test.cpp)
 gmm_catch2_test(gmmpack_manifest_parser_test engine/gmmpack_manifest_parser_test.cpp
     DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 gmm_catch2_test(gmmpack_tree_test engine/gmmpack_tree_test.cpp)
+=======
+>>>>>>> issue/iiao-install-widget
 gmm_catch2_test(ini_edit_parser_test engine/ini_edit_parser_test.cpp)
 gmm_catch2_test(executable_pipeline_test engine/executable_pipeline_test.cpp)
 
@@ -402,6 +404,10 @@ gmm_catch2_test(instance_options_widget_test ui/instance_options_widget_test.cpp
     DEFINES GMM_PLUGINS_DIR="${CMAKE_BINARY_DIR}/plugins")
 
 gmm_catch2_test(install_progress_dialog_test ui/install_progress_dialog_test.cpp
+    UI
+    LIBS gmm_ui)
+
+gmm_catch2_test(install_widget_test ui/install_widget_test.cpp
     UI
     LIBS gmm_ui)
 
