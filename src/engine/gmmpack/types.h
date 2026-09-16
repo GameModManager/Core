@@ -147,6 +147,12 @@ using ModSource = std::variant<
     ModSourceDirect
 >;
 
+enum class ModCategory {
+    Required,
+    Optional,
+    Recommended,
+};
+
 struct InstallerChoices {
     std::string type;
     std::unordered_map<std::string, std::vector<std::string>> selections;
@@ -156,7 +162,7 @@ struct ModEntry {
     std::string id;
     std::string name;
     int phase = 0;
-    std::string category;  // "required", "optional", "recommended"
+    ModCategory category = ModCategory::Optional;
     ModSource source;
     std::optional<InstallerChoices> installer_choices;
 };

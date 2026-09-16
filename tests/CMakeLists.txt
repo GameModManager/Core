@@ -136,6 +136,8 @@ gmm_catch2_test(gmmpack_test engine/gmmpack_test.cpp
     LIBS PkgConfig::LIBARCHIVE OpenSSL::Crypto
     DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
+gmm_catch2_test(gmmpack_mod_entry_test engine/gmmpack_mod_entry_test.cpp)
+
 # ---------------------------------------------------------------------------
 # Test fixture plugins (MODULE libraries) — built into test_plugins/ and
 # loaded ONLY by the tests below; never shipped to the app's plugins dir.
