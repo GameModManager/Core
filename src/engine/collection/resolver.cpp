@@ -18,7 +18,8 @@ struct ModSourceMapper {
         mod.download_nxm.file_id = s.file_id;
         mod.download_nxm.nexus_domain = s.game_domain;
         mod.version = s.version;
-        mod.name = s.file_name;
+        if (!s.file_name.empty())
+            mod.name = s.file_name;
         return true;
     }
 
@@ -26,7 +27,8 @@ struct ModSourceMapper {
         mod.download_source_type = "loverslab";
         mod.download_source_id = s.mod_id;
         mod.version = s.version;
-        mod.name = s.file_name;
+        if (!s.file_name.empty())
+            mod.name = s.file_name;
         return true;
     }
 
@@ -34,7 +36,8 @@ struct ModSourceMapper {
         mod.download_source_type = "modpub";
         mod.download_source_id = s.mod_id;
         mod.version = s.version;
-        mod.name = s.file_name;
+        if (!s.file_name.empty())
+            mod.name = s.file_name;
         return true;
     }
 
@@ -49,7 +52,8 @@ struct ModSourceMapper {
         mod.download_source_type = "direct";
         mod.download_url = s.url;
         mod.version = s.version;
-        mod.name = s.file_name;
+        if (!s.file_name.empty())
+            mod.name = s.file_name;
         return true;
     }
 };
