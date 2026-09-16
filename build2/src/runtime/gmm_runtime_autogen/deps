@@ -1,7 +1,0 @@
-gmm_runtime_autogen/timestamp: \
-	/mnt/HDD/GitHub/GameModManager/Workspace/projects/Core/src/runtime/CMakeLists.txt \
-	/mnt/HDD/GitHub/GameModManager/Workspace/projects/Core/src/runtime/runtime.cpp \
-	/mnt/HDD/GitHub/GameModManager/Workspace/projects/Core/src/runtime/runtime.h \
-	/mnt/HDD/GitHub/GameModManager/Workspace/projects/Core/src/runtime/wine_runtime.cpp \
-	/mnt/HDD/GitHub/GameModManager/Workspace/projects/Core/src/runtime/wine_runtime.h \
-	/usr/bin/cmake

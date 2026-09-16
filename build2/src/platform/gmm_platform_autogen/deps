@@ -1,7 +1,0 @@
-gmm_platform_autogen/timestamp: \
-	/mnt/HDD/GitHub/GameModManager/Workspace/projects/Core/src/platform/CMakeLists.txt \
-	/mnt/HDD/GitHub/GameModManager/Workspace/projects/Core/src/platform/linux/linux_file_type_dispatch.cpp \
-	/mnt/HDD/GitHub/GameModManager/Workspace/projects/Core/src/platform/linux/linux_file_type_dispatch.h \
-	/mnt/HDD/GitHub/GameModManager/Workspace/projects/Core/src/platform/linux/linux_platform.cpp \
-	/mnt/HDD/GitHub/GameModManager/Workspace/projects/Core/src/platform/linux/linux_platform.h \
-	/usr/bin/cmake
