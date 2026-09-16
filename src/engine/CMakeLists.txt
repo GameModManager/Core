@@ -105,6 +105,7 @@ core/instance/mod_state.cpp
     pipeline/registry/hook_registry.cpp
     game/registry/game_capabilities.cpp
     game/registry/game_knowledge.cpp
+    pack/source_detector.cpp
     source/nxm/nxm_router.cpp
     source/nxm/managed_games.cpp
     sort/sorter/abi.cpp
