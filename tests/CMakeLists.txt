@@ -91,6 +91,7 @@ gmm_catch2_test(modpub_provider_test engine/modpub_provider_test.cpp)
 gmm_catch2_test(loverslab_real_test engine/loverslab_real_test.cpp)
 gmm_catch2_test(mod_update_db_client_test engine/mod_update_db_client_test.cpp)
 gmm_catch2_test(install_progress_test engine/install_progress_test.cpp)
+gmm_catch2_test(manifest_schema_test engine/manifest_schema_test.cpp)
 gmm_catch2_test(perf_benchmark perf/benchmark_test.cpp)
 
 # Tests that include third-party headers directly need those include dirs at
@@ -134,6 +135,8 @@ gmm_catch2_test(python_plugin_test engine/python_plugin_test.cpp)
 gmm_catch2_test(gmmpack_test engine/gmmpack_test.cpp
     LIBS PkgConfig::LIBARCHIVE OpenSSL::Crypto
     DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+
+gmm_catch2_test(gmmpack_mod_entry_test engine/gmmpack_mod_entry_test.cpp)
 
 # ---------------------------------------------------------------------------
 # Test fixture plugins (MODULE libraries) — built into test_plugins/ and

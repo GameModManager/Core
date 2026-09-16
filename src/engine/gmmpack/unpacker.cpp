@@ -664,12 +664,18 @@ static ModSource parse_mod_source(const nlohmann::json& j) {
     return ModSourceNexus{};
 }
 
+static ModCategory parse_category(const std::string& s) {
+    if (s == "required") return ModCategory::Required;
+    if (s == "recommended") return ModCategory::Recommended;
+    return ModCategory::Optional;
+}
+
 ModEntry parse_mod_entry(const nlohmann::json& j) {
     ModEntry m;
     m.id = j.value("id", "");
     m.name = j.value("name", "");
     m.phase = j.value("phase", 0);
-    m.category = j.value("category", "");
+    m.category = parse_category(j.value("category", ""));
     if (j.contains("source")) m.source = parse_mod_source(j["source"]);
     if (j.contains("installerChoices")) {
         InstallerChoices ic;
