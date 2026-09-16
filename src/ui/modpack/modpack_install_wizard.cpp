@@ -22,9 +22,24 @@
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QTableWidget>
+#include <QThread>
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
+
+#include <filesystem>
+#include <system_error>
+
+#include "engine/collection/download_router.h"
+#include "engine/collection/nexus/adapter.h"
+#include "engine/core/log/logger.h"
+#include "engine/mod/model/mod.h"
+#include "engine/pipeline/pipeline.h"
+#include "engine/source/loverslab/provider.h"
+#include "engine/source/modl/provider.h"
+#include "engine/source/modpub/provider.h"
+#include "engine/source/nexus/provider.h"
+#include "engine/source/registry.h"
 
 namespace ui {
 namespace {
@@ -140,6 +155,306 @@ QScrollArea* wrap_scroll(QWidget* inner) {
     return scroll;
 }
 
+// ---------------------------------------------------------------------------
+// Real download pipeline (step 5).
+//
+// Routing reuses engine::Collection's download router: Nexus entries consult
+// the stored account status (API key present = authenticated, premium tier
+// = auto-download), everything else routes on its declared resolution.
+// Auto entries fetch through the SourceRegistry providers - the same
+// Interface the main-window pipeline drives. Browser entries open the file
+// page for a manual fetch; external-client entries (Steam Workshop) install
+// outside GMM entirely.
+// ---------------------------------------------------------------------------
+
+namespace Collection = engine::Collection;
+
+Collection::SourceResolution declared_resolution(const std::string& raw) {
+    if (raw == "browser") return Collection::SourceResolution::Browser;
+    if (raw == "client-subscription")
+        return Collection::SourceResolution::ClientSubscription;
+    return Collection::SourceResolution::Api;
+}
+
+struct DownloadRoute {
+    Collection::DownloadPath path = Collection::DownloadPath::Auto;
+    QString reason;
+    QString open_url;  // set for Browser rows that have a page to open
+};
+
+QString nexus_file_page(const engine::gmmpack::ModSourceNexus& src) {
+    QString url = QStringLiteral("https://www.nexusmods.com/") +
+                  QString::fromStdString(src.game_domain) +
+                  QStringLiteral("/mods/") + QString::number(src.mod_id) +
+                  QStringLiteral("?tab=files");
+    return url;
+}
+
+DownloadRoute route_for(const ModEntry& mod) {
+    DownloadRoute route;
+    std::visit(
+        [&](const auto& src) {
+            using T = std::decay_t<decltype(src)>;
+            if constexpr (std::is_same_v<T,
+                                         engine::gmmpack::ModSourceNexus>) {
+                const Collection::RouteOutcome outcome =
+                    Collection::route_download(
+                        declared_resolution(src.resolution),
+                        Collection::Nexus::account_status(),
+                        Collection::capabilities_for(
+                            Collection::SourceNexus::kProvider));
+                route.path = outcome.path;
+                route.reason = QString::fromStdString(outcome.reason);
+                if (route.path == Collection::DownloadPath::Browser)
+                    route.open_url = nexus_file_page(src);
+            } else if constexpr (std::is_same_v<
+                                     T, engine::gmmpack::ModSourceDirect>) {
+                const Collection::RouteOutcome outcome =
+                    Collection::route_download(
+                        declared_resolution(src.resolution),
+                        Collection::AccountStatus{},
+                        Collection::capabilities_for(
+                            Collection::SourceDirect::kProvider));
+                route.path = outcome.path;
+                route.reason = QString::fromStdString(outcome.reason);
+                if (route.path == Collection::DownloadPath::Browser)
+                    route.open_url = QString::fromStdString(src.url);
+            } else if constexpr (std::is_same_v<
+                                     T, engine::gmmpack::ModSourceModPub>) {
+                const Collection::RouteOutcome outcome =
+                    Collection::route_download(
+                        declared_resolution(src.resolution),
+                        Collection::AccountStatus{},
+                        Collection::capabilities_for(
+                            Collection::SourceModPub::kProvider));
+                route.path = outcome.path;
+                route.reason = QString::fromStdString(outcome.reason);
+            } else if constexpr (std::is_same_v<
+                                     T, engine::gmmpack::ModSourceLoversLab>) {
+                // LoversLab declares browser-only resolution (no public API).
+                const Collection::RouteOutcome outcome =
+                    Collection::route_download(
+                        Collection::SourceResolution::Browser,
+                        Collection::AccountStatus{},
+                        Collection::capabilities_for(
+                            Collection::SourceLoversLab::kProvider));
+                route.path = outcome.path;
+                route.reason = QString::fromStdString(outcome.reason);
+                // Numeric file ids map to their canonical file page.
+                std::visit(
+                    [&](const auto& id) {
+                        using I = std::decay_t<decltype(id)>;
+                        QString num;
+                        if constexpr (std::is_same_v<I, int64_t>) {
+                            num = QString::number(id);
+                        } else {
+                            bool numeric = !id.empty();
+                            for (char c : id)
+                                numeric = numeric && std::isdigit(
+                                                         static_cast<unsigned char>(
+                                                             c));
+                            if (numeric) num = QString::fromStdString(id);
+                        }
+                        if (!num.isEmpty()) {
+                            route.open_url =
+                                QStringLiteral(
+                                    "https://www.loverslab.com/files/file/") +
+                                num + QStringLiteral("/");
+                        }
+                    },
+                    src.mod_id);
+            } else {
+                // Steam Workshop: subscription lives in the Steam client.
+                route.path = Collection::DownloadPath::ExternalClient;
+                route.reason = QStringLiteral(
+                    "source downloads through an external client subscription");
+            }
+        },
+        mod.source);
+    return route;
+}
+
+// Build the pipeline-ready engine::Mod for an Auto-routed entry. nullopt
+// for Browser/ExternalClient entries (nothing to fetch).
+std::optional<engine::Mod> build_engine_mod(const ModEntry& mod) {
+    engine::Mod out;
+    out.id = mod.id;
+    out.name = mod.name.empty() ? mod.id : mod.name;
+    const bool mapped = std::visit(
+        [&](const auto& src) {
+            using T = std::decay_t<decltype(src)>;
+            if constexpr (std::is_same_v<T,
+                                         engine::gmmpack::ModSourceNexus>) {
+                out.download_source_type = "nexus";
+                out.download_source_id = std::to_string(src.mod_id);
+                out.download_nxm.file_id = src.file_id.value_or(0);
+                out.download_nxm.nexus_domain = src.game_domain;
+                if (src.version) out.version = *src.version;
+                if (src.file_name && !src.file_name->empty())
+                    out.name = *src.file_name;
+                return true;
+            } else if constexpr (std::is_same_v<
+                                     T, engine::gmmpack::ModSourceDirect>) {
+                out.download_source_type = "direct";
+                out.download_url = src.url;
+                if (src.version) out.version = *src.version;
+                if (src.file_name && !src.file_name->empty())
+                    out.name = *src.file_name;
+                return true;
+            } else if constexpr (std::is_same_v<
+                                     T, engine::gmmpack::ModSourceModPub>) {
+                out.download_source_type = "modpub";
+                std::visit(
+                    [&](const auto& id) {
+                        using I = std::decay_t<decltype(id)>;
+                        if constexpr (std::is_same_v<I, int64_t>) {
+                            out.download_source_id = std::to_string(id);
+                        } else {
+                            out.download_source_id = id;
+                        }
+                    },
+                    src.mod_id);
+                if (src.version) out.version = *src.version;
+                if (src.file_name && !src.file_name->empty())
+                    out.name = *src.file_name;
+                return true;
+            } else if constexpr (std::is_same_v<
+                                     T, engine::gmmpack::ModSourceLoversLab>) {
+                out.download_source_type = "loverslab";
+                std::visit(
+                    [&](const auto& id) {
+                        using I = std::decay_t<decltype(id)>;
+                        if constexpr (std::is_same_v<I, int64_t>) {
+                            out.download_source_id = std::to_string(id);
+                        } else {
+                            out.download_source_id = id;
+                        }
+                    },
+                    src.mod_id);
+                if (src.version) out.version = *src.version;
+                if (src.file_name && !src.file_name->empty())
+                    out.name = *src.file_name;
+                return true;
+            }
+            return false;
+        },
+        mod.source);
+    if (!mapped) return std::nullopt;
+    return out;
+}
+
+// The wizard runs outside MainWindow, so its SourceRegistry may not have
+// providers yet. Register the fetch-capable set once (guarded - the main
+// window registers the same providers at startup).
+void ensure_download_providers() {
+    auto& registry = engine::Source::Registry::instance();
+    if (registry.provider_for("nexus") == nullptr)
+        registry.register_provider(
+            std::make_unique<engine::Source::Nexus::Provider>());
+    if (registry.provider_for("loverslab") == nullptr)
+        registry.register_provider(
+            std::make_unique<engine::Source::LoversLab::Provider>());
+    if (registry.provider_for("direct") == nullptr)
+        registry.register_provider(
+            std::make_unique<engine::Source::Modl::Provider>());
+    if (registry.provider_for("modpub") == nullptr)
+        registry.register_provider(
+            std::make_unique<engine::Source::ModPub::Provider>());
+}
+
+// One fetch on a worker thread: provider lookup, archive-name resolution,
+// resume-aware fetch into dest_dir, then a queued completion callback.
+// No Q_OBJECT needed - results travel back via queued functor invokes.
+class FetchThread : public QThread {
+public:
+    using ProgressFn = std::function<void(int64_t, int64_t)>;
+    using MetaFn = std::function<void(const std::string&, const std::string&)>;
+    using DoneFn =
+        std::function<void(bool, const std::string&, const std::string&)>;
+
+    FetchThread(QString id, engine::Mod mod, std::filesystem::path dest_dir,
+                std::atomic_bool* cancel, ProgressFn on_progress,
+                MetaFn on_meta, DoneFn on_done, QObject* parent = nullptr)
+        : QThread(parent),
+          id_(std::move(id)),
+          mod_(std::move(mod)),
+          dest_dir_(std::move(dest_dir)),
+          cancel_(cancel),
+          on_progress_(std::move(on_progress)),
+          on_meta_(std::move(on_meta)),
+          on_done_(std::move(on_done)) {}
+
+    void run() override {
+        auto* provider = engine::Source::Registry::instance().provider_for(
+            mod_.download_source_type);
+        if (provider == nullptr) {
+            on_done_(false, {},
+                     "no download provider for source type '" +
+                         mod_.download_source_type + "'");
+            return;
+        }
+        const engine::Source::SourceDownloadInfo info =
+            provider->resolve_download_info(mod_);
+        on_meta_(info.archive_name, info.display_name);
+
+        std::string filename = info.archive_name;
+        if (filename.empty()) {
+            filename = mod_.download_source_id;
+            if (mod_.download_nxm.file_id > 0)
+                filename += "-" + std::to_string(mod_.download_nxm.file_id);
+            filename += ".zip";
+        }
+        if (!info.display_name.empty()) mod_.name = info.display_name;
+        mod_.archive_filename = filename;
+
+        std::error_code ec;
+        std::filesystem::create_directories(dest_dir_, ec);
+        if (ec) {
+            on_done_(false, {},
+                     "cannot create downloads dir: " + ec.message());
+            return;
+        }
+        const std::filesystem::path dest = dest_dir_ / filename;
+
+        engine::PipelineContext ctx;
+        ctx.download_resume_from = 0;
+        if (std::filesystem::exists(dest, ec)) {
+            const auto size = std::filesystem::file_size(dest, ec);
+            if (!ec && size > 0)
+                ctx.download_resume_from = static_cast<int64_t>(size);
+        }
+        ctx.should_abort = [this]() {
+            return cancel_ != nullptr && cancel_->load();
+        };
+        ctx.on_progress = [this](int64_t downloaded, int64_t total,
+                                 double /*speed*/) {
+            on_progress_(downloaded, total);
+        };
+
+        const bool ok = provider->fetch(mod_, ctx, dest);
+        if (!ok) {
+            const std::string reason =
+                ctx.download_paused ? "download paused" : "download failed";
+            on_done_(false, {}, reason);
+            return;
+        }
+        if (!std::filesystem::exists(dest, ec)) {
+            on_done_(false, {}, "provider reported success but produced no file");
+            return;
+        }
+        on_done_(true, dest.string(), {});
+    }
+
+private:
+    QString id_;
+    engine::Mod mod_;
+    std::filesystem::path dest_dir_;
+    std::atomic_bool* cancel_;
+    ProgressFn on_progress_;
+    MetaFn on_meta_;
+    DoneFn on_done_;
+};
+
 }  // namespace
 
 ModpackInstallWizard::ModpackInstallWizard(engine::gmmpack::Gmmpack pack,
@@ -239,6 +554,119 @@ ModpackInstallWizard::ModpackInstallWizard(engine::gmmpack::Gmmpack pack,
 
     go_to(0);
     refresh_chrome();
+}
+
+ModpackInstallWizard::~ModpackInstallWizard() {
+    // Abort an in-flight fetch and wait for the worker thread before any
+    // member (notably the cancel flag) goes away. Providers poll the flag
+    // per chunk, so the wait is short; resume data stays on disk.
+    fetch_cancel_.store(true);
+    if (fetch_thread_ != nullptr) {
+        fetch_thread_->wait();
+        delete fetch_thread_;
+        fetch_thread_ = nullptr;
+    }
+}
+
+std::vector<QString> ModpackInstallWizard::ordered_download_ids() const {
+    std::vector<const ModEntry*> ordered;
+    for (const auto& mod : pack_.mods) ordered.push_back(&mod);
+    std::stable_sort(ordered.begin(), ordered.end(),
+                     [](const ModEntry* a, const ModEntry* b) {
+                         return a->phase < b->phase;
+                     });
+    std::vector<QString> ids;
+    ids.reserve(ordered.size());
+    for (const ModEntry* mod : ordered)
+        ids.push_back(QString::fromStdString(mod->id));
+    return ids;
+}
+
+void ModpackInstallWizard::pump_download_queue() {
+    if (fetch_thread_ != nullptr) return;  // one in-flight fetch at a time
+    while (!download_queue_.empty()) {
+        const QString next = download_queue_.front();
+        download_queue_.pop_front();
+        const QString status = download_status_.value(next);
+        if (status != QStringLiteral("pending") &&
+            status != QStringLiteral("failed")) {
+            continue;  // skipped or finished while queued
+        }
+        const ModEntry* mod = find_mod(pack_, next.toStdString());
+        if (mod == nullptr) continue;
+        if (route_for(*mod).path != Collection::DownloadPath::Auto) {
+            continue;  // browser/external rows never auto-fetch
+        }
+        start_fetch(next);
+        return;
+    }
+    refresh_downloads_ui();
+}
+
+void ModpackInstallWizard::start_fetch(const QString& mod_id) {
+    const ModEntry* mod = find_mod(pack_, mod_id.toStdString());
+    if (mod == nullptr) return;
+    const std::optional<engine::Mod> engine_mod = build_engine_mod(*mod);
+    if (!engine_mod.has_value()) return;
+    ensure_download_providers();
+
+    QString dest_dir = downloads_dir();
+    if (dest_dir.isEmpty()) {
+        QString base = mods_dir();
+        if (base.isEmpty()) base = instance_root();
+        dest_dir = base.isEmpty() ? QStringLiteral(".")
+                                  : base + QStringLiteral("/../downloads");
+    }
+
+    download_status_[mod_id] = QStringLiteral("downloading");
+    download_error_.remove(mod_id);
+    download_fraction_[mod_id] = 0.0;
+    active_download_id_ = mod_id;
+    fetch_cancel_.store(false);
+    refresh_downloads_ui();
+
+    // Callbacks marshal back onto this (UI) thread; the fetch runs on its
+    // own thread through the SourceRegistry provider.
+    auto on_progress = [this, mod_id](int64_t downloaded, int64_t total) {
+        QMetaObject::invokeMethod(
+            this,
+            [this, mod_id, downloaded, total]() {
+                on_fetch_progress(mod_id, downloaded, total);
+            },
+            Qt::QueuedConnection);
+    };
+    auto on_meta = [this, mod_id](const std::string& archive,
+                                  const std::string& display) {
+        QMetaObject::invokeMethod(
+            this,
+            [this, mod_id, archive, display]() {
+                on_fetch_meta(mod_id, QString::fromStdString(archive),
+                              QString::fromStdString(display));
+            },
+            Qt::QueuedConnection);
+    };
+    auto on_done = [this, mod_id](bool ok, const std::string& archive,
+                                  const std::string& error) {
+        QMetaObject::invokeMethod(
+            this,
+            [this, mod_id, ok, archive, error]() {
+                on_fetch_done(mod_id, ok, QString::fromStdString(archive),
+                              QString::fromStdString(error));
+            },
+            Qt::QueuedConnection);
+    };
+    auto* thread = new FetchThread(
+        mod_id, *engine_mod, std::filesystem::path(dest_dir.toStdString()),
+        &fetch_cancel_, std::move(on_progress), std::move(on_meta),
+        std::move(on_done), this);
+    fetch_thread_ = thread;
+    connect(thread, &QThread::finished, this, [this, thread]() {
+        if (fetch_thread_ != thread) return;  // torn down in the dtor
+        fetch_thread_ = nullptr;
+        thread->deleteLater();
+        pump_download_queue();
+    });
+    thread->start();
 }
 
 QString ModpackInstallWizard::step_title(Step step) {
@@ -665,6 +1093,14 @@ QWidget* ModpackInstallWizard::build_downloads_page() {
     downloads_bar_->setMaximum(100);
     layout->addWidget(downloads_bar_);
 
+    auto* actions = new QHBoxLayout();
+    downloads_start_all_ = new QPushButton(tr("Download All"), page);
+    connect(downloads_start_all_, &QPushButton::clicked, this,
+            &ModpackInstallWizard::on_download_start_all);
+    actions->addWidget(downloads_start_all_);
+    actions->addStretch(1);
+    layout->addLayout(actions);
+
     downloads_table_ = new QTableWidget(page);
     downloads_table_->setColumnCount(5);
     downloads_table_->setHorizontalHeaderLabels(
@@ -676,12 +1112,9 @@ QWidget* ModpackInstallWizard::build_downloads_page() {
     downloads_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     layout->addWidget(downloads_table_, 1);
 
-    auto* hint = new QLabel(
-        tr("Nexus downloads use the API when premium; otherwise the "
-           "browser opens. Next unlocks once all required mods finish."),
-        page);
-    hint->setWordWrap(true);
-    layout->addWidget(hint);
+    downloads_hint_ = new QLabel(page);
+    downloads_hint_->setWordWrap(true);
+    layout->addWidget(downloads_hint_);
 
     refresh_downloads_ui();
     return page;
@@ -901,31 +1334,40 @@ void ModpackInstallWizard::on_page_entered(int index) {
 void ModpackInstallWizard::refresh_downloads_ui() {
     if (downloads_table_ == nullptr) return;
     // Phase-ordered: phase 0 first, then 1, ...
-    std::vector<const ModEntry*> ordered;
-    for (const auto& mod : pack_.mods) ordered.push_back(&mod);
-    std::stable_sort(ordered.begin(), ordered.end(),
-                     [](const ModEntry* a, const ModEntry* b) {
-                         return a->phase < b->phase;
-                     });
+    const std::vector<QString> ids = ordered_download_ids();
 
-    downloads_table_->setRowCount(static_cast<int>(ordered.size()));
+    downloads_table_->setRowCount(static_cast<int>(ids.size()));
     int done = 0;
     int row = 0;
-    for (const ModEntry* mod : ordered) {
-        const QString mid = QString::fromStdString(mod->id);
+    for (const QString& mid : ids) {
+        const ModEntry* mod = find_mod(pack_, mid.toStdString());
+        if (mod == nullptr) continue;
         const QString status =
             download_status_.value(mid, QStringLiteral("pending"));
         if (status == QStringLiteral("downloaded")) ++done;
+        const DownloadRoute route = route_for(*mod);
 
-        const QString label = QStringLiteral("%1 %2").arg(
+        QString label = QStringLiteral("%1 %2").arg(
             status_icon(status),
             QString::fromStdString(
                 mod->name.empty() ? mod->id : mod->name));
+        if (status == QStringLiteral("downloading") &&
+            download_fraction_.contains(mid)) {
+            const int pct =
+                static_cast<int>(download_fraction_.value(mid) * 100.0);
+            label += tr(" (%1%)").arg(pct);
+        }
         downloads_table_->setItem(row, 0, new QTableWidgetItem(
             QStringLiteral("phase %1").arg(mod->phase)));
         auto* name_item = new QTableWidgetItem(label);
         name_item->setData(Qt::UserRole, mid);
-        name_item->setToolTip(category_name(mod->category));
+        QString tip = category_name(mod->category);
+        if (!route.reason.isEmpty()) tip += QStringLiteral(" - ") + route.reason;
+        if (status == QStringLiteral("failed") &&
+            download_error_.contains(mid)) {
+            tip += QStringLiteral("\n") + download_error_.value(mid);
+        }
+        name_item->setToolTip(tip);
         downloads_table_->setItem(row, 1, name_item);
         downloads_table_->setItem(
             row, 2,
@@ -935,8 +1377,78 @@ void ModpackInstallWizard::refresh_downloads_ui() {
             row, 3, new QTableWidgetItem(format_size(source_file_size(*mod))));
 
         QWidget* cell = nullptr;
-        if (status == QStringLiteral("pending") ||
-            status == QStringLiteral("failed")) {
+        const bool is_optional = mod->category == ModCategory::Optional;
+        if (status == QStringLiteral("downloading")) {
+            cell = new QLabel(status_icon(status) + tr(" active..."),
+                              downloads_table_);
+        } else if (status == QStringLiteral("downloaded") ||
+                   status == QStringLiteral("skipped")) {
+            cell = new QLabel(status_icon(status), downloads_table_);
+        } else if (route.path == Collection::DownloadPath::ExternalClient) {
+            // Steam Workshop: the subscription lives outside GMM.
+            auto* box = new QWidget(downloads_table_);
+            auto* box_layout = new QHBoxLayout(box);
+            box_layout->setContentsMargins(0, 0, 0, 0);
+            auto* note = new QLabel(tr("Steam client"), box);
+            note->setToolTip(route.reason);
+            box_layout->addWidget(note);
+            auto* mark = new QPushButton(tr("Mark done"), box);
+            mark->setProperty("mod_id", mid);
+            connect(mark, &QPushButton::clicked, this,
+                    &ModpackInstallWizard::on_download_mark_done);
+            box_layout->addWidget(mark);
+            if (is_optional) {
+                auto* skip = new QPushButton(tr("Skip"), box);
+                skip->setProperty("mod_id", mid);
+                connect(skip, &QPushButton::clicked, this,
+                        &ModpackInstallWizard::on_download_skip_optional);
+                box_layout->addWidget(skip);
+            }
+            cell = box;
+        } else if (route.path == Collection::DownloadPath::Browser) {
+            auto* box = new QWidget(downloads_table_);
+            auto* box_layout = new QHBoxLayout(box);
+            box_layout->setContentsMargins(0, 0, 0, 0);
+            if (!route.open_url.isEmpty()) {
+                auto* open = new QPushButton(tr("Open"), box);
+                open->setProperty("mod_id", mid);
+                open->setToolTip(route.reason);
+                connect(open, &QPushButton::clicked, this,
+                        &ModpackInstallWizard::on_download_open_browser);
+                box_layout->addWidget(open);
+            }
+            auto* mark = new QPushButton(tr("Mark done"), box);
+            mark->setToolTip(tr("Fetch the file in the browser, then mark it done."));
+            mark->setProperty("mod_id", mid);
+            connect(mark, &QPushButton::clicked, this,
+                    &ModpackInstallWizard::on_download_mark_done);
+            box_layout->addWidget(mark);
+            if (is_optional) {
+                auto* skip = new QPushButton(tr("Skip"), box);
+                skip->setProperty("mod_id", mid);
+                connect(skip, &QPushButton::clicked, this,
+                        &ModpackInstallWizard::on_download_skip_optional);
+                box_layout->addWidget(skip);
+            }
+            cell = box;
+        } else if (is_optional) {
+            auto* box = new QWidget(downloads_table_);
+            auto* box_layout = new QHBoxLayout(box);
+            box_layout->setContentsMargins(0, 0, 0, 0);
+            auto* dl = new QPushButton(
+                status == QStringLiteral("failed") ? tr("Retry") : tr("Get"),
+                box);
+            dl->setProperty("mod_id", mid);
+            connect(dl, &QPushButton::clicked, this,
+                    &ModpackInstallWizard::on_download_one);
+            box_layout->addWidget(dl);
+            auto* skip = new QPushButton(tr("Skip"), box);
+            skip->setProperty("mod_id", mid);
+            connect(skip, &QPushButton::clicked, this,
+                    &ModpackInstallWizard::on_download_skip_optional);
+            box_layout->addWidget(skip);
+            cell = box;
+        } else {
             auto* dl = new QPushButton(
                 status == QStringLiteral("failed") ? tr("Retry") : tr("Get"),
                 downloads_table_);
@@ -944,43 +1456,41 @@ void ModpackInstallWizard::refresh_downloads_ui() {
             connect(dl, &QPushButton::clicked, this,
                     &ModpackInstallWizard::on_download_one);
             cell = dl;
-        } else if (status == QStringLiteral("downloading")) {
-            cell = new QLabel(status_icon(status) + tr(" active..."),
-                              downloads_table_);
-        } else if (mod->category == ModCategory::Optional &&
-                   status != QStringLiteral("downloaded")) {
-            auto* skip = new QPushButton(tr("Skip"), downloads_table_);
-            skip->setProperty("mod_id", mid);
-            connect(skip, &QPushButton::clicked, this,
-                    &ModpackInstallWizard::on_download_skip_optional);
-            cell = skip;
-        } else {
-            cell = new QLabel(status_icon(status), downloads_table_);
-        }
-        // Optional pending mods get a skip affordance next to Get: handled
-        // by turning the single cell into a row widget with both buttons.
-        if ((status == QStringLiteral("pending") ||
-             status == QStringLiteral("failed")) &&
-            mod->category == ModCategory::Optional) {
-            auto* box = new QWidget(downloads_table_);
-            auto* box_layout = new QHBoxLayout(box);
-            box_layout->setContentsMargins(0, 0, 0, 0);
-            box_layout->addWidget(cell);
-            auto* skip = new QPushButton(tr("Skip"), box);
-            skip->setProperty("mod_id", mid);
-            connect(skip, &QPushButton::clicked, this,
-                    &ModpackInstallWizard::on_download_skip_optional);
-            box_layout->addWidget(skip);
-            cell = box;
         }
         downloads_table_->setCellWidget(row, 4, cell);
         ++row;
     }
 
-    const int total = static_cast<int>(ordered.size());
+    const int total = static_cast<int>(ids.size());
     downloads_bar_->setMaximum(total == 0 ? 1 : total);
     downloads_bar_->setValue(done);
-    downloads_bar_->setFormat(tr("%1 of %2 downloaded").arg(done).arg(total));
+    if (!active_download_id_.isEmpty() &&
+        download_fraction_.contains(active_download_id_)) {
+        const int pct = static_cast<int>(
+            download_fraction_.value(active_download_id_) * 100.0);
+        downloads_bar_->setFormat(
+            tr("%1 of %2 downloaded - %3 (%4%)")
+                .arg(done)
+                .arg(total)
+                .arg(mod_display_name(active_download_id_.toStdString()))
+                .arg(pct));
+    } else {
+        downloads_bar_->setFormat(tr("%1 of %2 downloaded").arg(done).arg(total));
+    }
+    if (downloads_start_all_ != nullptr) {
+        downloads_start_all_->setEnabled(fetch_thread_ == nullptr &&
+                                         !downloads_complete());
+    }
+    if (downloads_hint_ != nullptr) {
+        const Collection::AccountStatus nexus =
+            Collection::Nexus::account_status();
+        const QString mode = nexus.can_auto_download
+                                 ? tr("Nexus API auto-download (premium)")
+                                 : tr("Nexus via browser (free/anonymous)");
+        downloads_hint_->setText(
+            tr("%1. Downloads run in phase order, one at a time. "
+               "Next unlocks once all required mods finish.").arg(mode));
+    }
     refresh_next_enabled();
 }
 
@@ -1034,22 +1544,106 @@ void ModpackInstallWizard::on_download_one() {
     const auto* button = qobject_cast<const QPushButton*>(sender());
     if (button == nullptr) return;
     const QString mid = button->property("mod_id").toString();
-    download_status_[mid] = QStringLiteral("downloading");
-    refresh_downloads_ui();
-    // Simulated fetch; the real download pipeline wires in here.
-    sim_mod_id_ = mid;
-    sim_ticks_ = 0;
-    disconnect(sim_timer_, nullptr, nullptr, nullptr);
-    connect(sim_timer_, &QTimer::timeout, this,
-            &ModpackInstallWizard::on_download_sim_tick);
-    sim_timer_->start(120);
+    const ModEntry* mod = find_mod(pack_, mid.toStdString());
+    if (mod == nullptr) return;
+    // Browser/external rows never fetch: Get opens the page instead.
+    if (route_for(*mod).path != Collection::DownloadPath::Auto) {
+        on_download_open_browser();
+        return;
+    }
+    download_status_[mid] = QStringLiteral("pending");
+    download_error_.remove(mid);
+    // Front-of-queue: a manual Get jumps ahead of the batch.
+    download_queue_.push_front(mid);
+    pump_download_queue();
 }
 
-void ModpackInstallWizard::on_download_sim_tick() {
-    if (++sim_ticks_ < 4) return;  // brief "active..." state
-    sim_timer_->stop();
-    download_status_[sim_mod_id_] = QStringLiteral("downloaded");
+void ModpackInstallWizard::on_download_start_all() {
+    for (const QString& mid : ordered_download_ids()) {
+        const QString status = download_status_.value(mid);
+        if (status == QStringLiteral("pending") ||
+            status == QStringLiteral("failed")) {
+            download_queue_.push_back(mid);
+        }
+    }
+    pump_download_queue();
+}
+
+void ModpackInstallWizard::on_download_open_browser() {
+    const auto* button = qobject_cast<const QPushButton*>(sender());
+    if (button == nullptr) return;
+    const QString mid = button->property("mod_id").toString();
+    const ModEntry* mod = find_mod(pack_, mid.toStdString());
+    if (mod == nullptr) return;
+    const QString url = route_for(*mod).open_url;
+    if (url.isEmpty()) return;
+    QDesktopServices::openUrl(QUrl(url));
+}
+
+void ModpackInstallWizard::on_download_mark_done() {
+    const auto* button = qobject_cast<const QPushButton*>(sender());
+    if (button == nullptr) return;
+    const QString mid = button->property("mod_id").toString();
+    download_status_[mid] = QStringLiteral("downloaded");
+    download_error_.remove(mid);
     refresh_downloads_ui();
+}
+
+void ModpackInstallWizard::on_fetch_progress(const QString& mod_id,
+                                             int64_t downloaded,
+                                             int64_t total) {
+    if (total > 0) {
+        download_fraction_[mod_id] =
+            static_cast<double>(downloaded) / static_cast<double>(total);
+    }
+    refresh_downloads_ui();
+}
+
+void ModpackInstallWizard::on_fetch_meta(const QString& mod_id,
+                                         const QString& archive_name,
+                                         const QString& display_name) {
+    Q_UNUSED(archive_name);
+    if (!display_name.isEmpty()) {
+        // Surface the provider-resolved name live (mirrors the main-window
+        // download_meta flow). The pack entry itself is left untouched.
+        for (int row = 0; row < downloads_table_->rowCount(); ++row) {
+            auto* item = downloads_table_->item(row, 1);
+            if (item != nullptr &&
+                item->data(Qt::UserRole).toString() == mod_id) {
+                const QString label = QStringLiteral("%1 %2").arg(
+                    status_icon(QStringLiteral("downloading")), display_name);
+                item->setText(label);
+                break;
+            }
+        }
+    }
+}
+
+void ModpackInstallWizard::on_fetch_done(const QString& mod_id, bool ok,
+                                         const QString& archive_path,
+                                         const QString& error) {
+    active_download_id_.clear();
+    download_fraction_.remove(mod_id);
+    if (ok) {
+        download_status_[mod_id] = QStringLiteral("downloaded");
+        download_error_.remove(mod_id);
+        if (!archive_path.isEmpty())
+            download_archive_[mod_id] = archive_path;
+        engine::Logger::instance().debug(
+            "[Modpack] download complete: " + mod_id.toStdString() + " -> " +
+            archive_path.toStdString());
+    } else {
+        download_status_[mod_id] = QStringLiteral("failed");
+        download_error_[mod_id] =
+            error.isEmpty() ? tr("download failed") : error;
+        engine::Logger::instance().warn(
+            "[Modpack] download failed: " + mod_id.toStdString() + ": " +
+            download_error_[mod_id].toStdString());
+    }
+    refresh_downloads_ui();
+    // The finished-thread handler pumps the queue; this only covers the
+    // case where the fetch ran while no thread was tracked.
+    if (fetch_thread_ == nullptr) pump_download_queue();
 }
 
 void ModpackInstallWizard::on_download_skip_optional() {

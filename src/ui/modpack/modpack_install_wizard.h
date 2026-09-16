@@ -5,10 +5,15 @@
 #include <QString>
 #include <QStringList>
 
+#include <atomic>
+#include <cstdint>
+#include <deque>
+#include <filesystem>
 #include <string>
 #include <vector>
 
 #include "engine/gmmpack/types.h"
+#include "engine/mod/model/mod.h"
 
 class QListWidget;
 class QListWidgetItem;
@@ -19,6 +24,7 @@ class QProgressBar;
 class QTableWidget;
 class QLabel;
 class QTimer;
+class QThread;
 
 namespace ui {
 
@@ -50,6 +56,7 @@ public:
 
     ModpackInstallWizard(engine::gmmpack::Gmmpack pack, Mode mode,
                          QWidget* parent = nullptr);
+    ~ModpackInstallWizard() override;
 
     [[nodiscard]] const engine::gmmpack::Gmmpack& pack() const { return pack_; }
     [[nodiscard]] Mode mode() const { return mode_; }
@@ -113,13 +120,21 @@ private slots:
     void on_choice_toggled();
     void on_ini_toggled();
     void on_download_one();
+    void on_download_start_all();
+    void on_download_open_browser();
+    void on_download_mark_done();
     void on_download_skip_optional();
+    void on_fetch_progress(const QString& mod_id, int64_t downloaded,
+                           int64_t total);
+    void on_fetch_meta(const QString& mod_id, const QString& archive_name,
+                       const QString& display_name);
+    void on_fetch_done(const QString& mod_id, bool ok,
+                       const QString& archive_path, const QString& error);
     void on_run_tool_one();
     void on_run_tool_skip();
     void on_patch_allow_all();
     void on_patch_deny_all();
     void on_patch_cell_changed(int row, int column);
-    void on_download_sim_tick();
     void on_tool_sim_tick();
     void on_finishing_tick();
 
@@ -149,6 +164,29 @@ private:
     // Step 5 widgets (refreshed live).
     QProgressBar* downloads_bar_ = nullptr;
     QTableWidget* downloads_table_ = nullptr;
+    QPushButton* downloads_start_all_ = nullptr;
+    QLabel* downloads_hint_ = nullptr;
+
+    // Step 5 real download pipeline: one in-flight fetch at a time, driven
+    // in phase order from download_queue_. The fetch itself runs on
+    // fetch_thread_ through the SourceRegistry providers (the same
+    // Interface the main-window pipeline uses); progress/completion come
+    // back via queued invokes into the on_fetch_* slots.
+    QThread* fetch_thread_ = nullptr;
+    std::deque<QString> download_queue_;
+    QString active_download_id_;
+    std::atomic_bool fetch_cancel_{false};
+    QMap<QString, QString> download_error_;    // mod id -> failure reason
+    QMap<QString, double> download_fraction_;  // mod id -> 0..1 live progress
+    QMap<QString, QString> download_archive_;  // mod id -> fetched file path
+
+    // Phase-ordered mod ids (phase asc, manifest order within a phase).
+    [[nodiscard]] std::vector<QString> ordered_download_ids() const;
+    // Route one pack mod through the download router (premium-vs-free and
+    // browser/external-client splits). Queued for Auto, browser affordance
+    // otherwise.
+    void pump_download_queue();
+    void start_fetch(const QString& mod_id);
 
     // Step 6 widgets.
     QTableWidget* tools_table_ = nullptr;
@@ -166,10 +204,9 @@ private:
     int finishing_tick_ = 0;
     bool finishing_started_ = false;
 
-    // Simulated async progress (real download/run pipelines wire in later).
+    // Simulated async progress for the run-tools/finishing animations
+    // (the downloads step uses the real fetch pipeline above).
     QTimer* sim_timer_ = nullptr;
-    QString sim_mod_id_;
-    int sim_ticks_ = 0;
 };
 
 }  // namespace ui
