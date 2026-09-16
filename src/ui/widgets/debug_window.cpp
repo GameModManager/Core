@@ -14,6 +14,7 @@
 #include <QClipboard>
 #include <QDockWidget>
 #include <QFontDatabase>
+#include <QGridLayout>
 #include <QGroupBox>
 #include <QGuiApplication>
 #include <QHBoxLayout>
@@ -29,6 +30,7 @@
 #include <QSysInfo>
 #include <QTableWidget>
 #include <QTimer>
+#include <QToolBar>
 #include <QVBoxLayout>
 #include <QtGlobal>
 #ifdef __linux__
@@ -157,76 +159,33 @@ DebugWindow::DebugWindow(const fs::path &instance_root,
       plugin_loader_(plugin_loader) {
 
   setWindowTitle(tr("Debug Panel"));
-  setMinimumSize(720, 540);
+  setMinimumSize(900, 600);
   setAttribute(Qt::WA_DeleteOnClose, false);
   setDockNestingEnabled(true);
 
-  // QMainWindow needs a central widget for the dock layout; it hosts the
-  // interval + button controls while the pages live in dock widgets.
-  auto *central = new QWidget(this);
-  auto *root = new QVBoxLayout(central);
-  root->setContentsMargins(6, 6, 6, 6);
-  root->setSpacing(6);
+  // No central widget: the dock widgets expand to fill all available space.
+  // The window controls live in a thin toolbar instead of eating dock area.
+  setCentralWidget(nullptr);
+  auto *toolbar = addToolBar(tr("Controls"));
+  toolbar->setObjectName(QStringLiteral("debug_toolbar"));
 
-  // --- Interval controls (kept; only affects the legacy labels now) ---
-  auto *interval_row = new QHBoxLayout;
-  auto *dec_btn = new QPushButton("-");
-  dec_btn->setFixedWidth(28);
-  interval_label_ = new QLabel(QString::number(refresh_interval_));
-  interval_label_->setObjectName("debugValue");
-  interval_label_->setAlignment(Qt::AlignCenter);
-  interval_label_->setFixedWidth(30);
-  auto *inc_btn = new QPushButton("+");
-  inc_btn->setFixedWidth(28);
-  auto *sec_label = new QLabel(tr("label refresh (s)"));
-  sec_label->setObjectName("debugKey");
-  interval_row->addWidget(dec_btn);
-  interval_row->addWidget(interval_label_);
-  interval_row->addWidget(inc_btn);
-  interval_row->addWidget(sec_label);
-  interval_row->addStretch();
-  root->addLayout(interval_row);
-
-  connect(dec_btn, &QPushButton::clicked, this, [this]() {
-    if (refresh_interval_ > 1) {
-      refresh_interval_ -= 1;
-      interval_label_->setText(QString::number(refresh_interval_));
-      if (refresh_timer_)
-        refresh_timer_->setInterval(refresh_interval_ * 1000);
-    }
-  });
-  connect(inc_btn, &QPushButton::clicked, this, [this]() {
-    if (refresh_interval_ < 60) {
-      refresh_interval_ += 1;
-      interval_label_->setText(QString::number(refresh_interval_));
-      if (refresh_timer_)
-        refresh_timer_->setInterval(refresh_interval_ * 1000);
-    }
-  });
-
-  // --- Button row (Reload UI + Reset Docks + Close) ---
-  auto *btn_row = new QHBoxLayout;
-  btn_row->setAlignment(Qt::AlignCenter);
-  btn_row->setSpacing(12);
-  reload_ui_btn_ = new QPushButton(tr("Reload UI"), central);
+  // --- Toolbar (Reload UI + Reset Docks + Close) ---
+  reload_ui_btn_ = new QPushButton(tr("Reload UI"), this);
   reload_ui_btn_->setToolTip(tr("Re-read debug.qss and apply (Ctrl+Shift+R)"));
   if (on_reload_ui) {
     connect(reload_ui_btn_, &QPushButton::clicked, this,
             [on_reload_ui]() { on_reload_ui(); });
   }
-  btn_row->addWidget(reload_ui_btn_);
-  auto *reset_btn = new QPushButton(tr("Reset Docks"), central);
+  toolbar->addWidget(reload_ui_btn_);
+  auto *reset_btn = new QPushButton(tr("Reset Docks"), this);
   reset_btn->setToolTip(
       tr("Re-show every panel and restore the tabbed layout"));
   connect(reset_btn, &QPushButton::clicked, this,
           &DebugWindow::reset_dock_layout);
-  btn_row->addWidget(reset_btn);
-  auto *close_btn = new QPushButton(tr("Close"), central);
+  toolbar->addWidget(reset_btn);
+  auto *close_btn = new QPushButton(tr("Close"), this);
   connect(close_btn, &QPushButton::clicked, this, [this]() { hide(); });
-  btn_row->addWidget(close_btn);
-  root->addLayout(btn_row);
-  root->addStretch(1);
-  setCentralWidget(central);
+  toolbar->addWidget(close_btn);
 
   // One dockable panel per page; tabified by default so the window opens
   // exactly like the old tab widget, but every panel can float, split,
@@ -249,7 +208,7 @@ DebugWindow::DebugWindow(const fs::path &instance_root,
 
   refresh_timer_ = new QTimer(this);
   connect(refresh_timer_, &QTimer::timeout, this, &DebugWindow::refresh_stats);
-  refresh_timer_->start(refresh_interval_ * 1000);
+  refresh_timer_->start(1000);
 
   chart_timer_ = new QTimer(this);
   connect(chart_timer_, &QTimer::timeout, this, &DebugWindow::refresh_charts);
@@ -264,6 +223,11 @@ QDockWidget *DebugWindow::make_dock(const QString &title, QWidget *content) {
   dock->setFeatures(QDockWidget::DockWidgetMovable |
                     QDockWidget::DockWidgetFloatable |
                     QDockWidget::DockWidgetClosable);
+  // Expanding policies so the docks claim all space left by the (absent)
+  // central widget and grow with the window.
+  dock->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  if (content)
+    content->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   addDockWidget(Qt::TopDockWidgetArea, dock);
   return dock;
 }
@@ -1000,7 +964,7 @@ void DebugWindow::showEvent(QShowEvent *event) {
   refresh_populated();
   // Restart the periodic timers so a previously hidden dialog resumes
   // refreshing. hideEvent() pauses them.
-  if (refresh_timer_) refresh_timer_->start(refresh_interval_ * 1000);
+  if (refresh_timer_) refresh_timer_->start(1000);
   if (chart_timer_) chart_timer_->start(1000);
 }
 
@@ -1158,9 +1122,7 @@ void DebugWindow::refresh_charts() {
         QStringLiteral("%1 ms").arg(QString::asprintf("%+.1f", jitter_ms)));
   }
 
-  // Memory page live sample (1 Hz RSS sparkline + stats). Cheap; honors
-  // the pause toggle.
-  refresh_memory_tick();
+  // Memory page live sample (1 Hz) was folded into refresh_charts.
 }
 
 void DebugWindow::refresh_stats() {
@@ -1216,9 +1178,10 @@ void DebugWindow::refresh_stats() {
     if (!first_io_label_) {
       auto delta_read = cur_read - prev_read_bytes_label_;
       auto delta_write = cur_write - prev_write_bytes_label_;
-      // The label refresh interval may be >1s, so the deltas are
-      // accumulated over refresh_interval_; divide by it for B/s.
-      double interval_s = static_cast<double>(refresh_interval_);
+      // The label timer runs at a fixed 1 s, so the deltas are
+      // accumulated over 1 s; divide by 1 for B/s (kept explicit so the
+      // rate math stays obvious if the interval ever changes).
+      constexpr double interval_s = 1.0;
       auto read_bs = delta_read / interval_s;
       auto write_bs = delta_write / interval_s;
       auto read_kbs = static_cast<unsigned long>(read_bs / 1024.0);
@@ -1340,24 +1303,12 @@ QWidget *DebugWindow::build_memory_page() {
   outer->setContentsMargins(4, 4, 4, 4);
   outer->setSpacing(6);
 
-  // Controls: pause/resume toggle + manual refresh (1 s auto-refresh runs
-  // on chart_timer_ via refresh_memory_tick()).
+  // Controls: manual refresh only (label/chart timers run at fixed 1 s).
   auto *controls = new QHBoxLayout;
-  mem_pause_btn_ = new QPushButton(tr("Pause"), tab);
-  mem_pause_btn_->setCheckable(true);
-  mem_pause_btn_->setToolTip(tr("Pause the 1 s auto-refresh"));
-  connect(mem_pause_btn_, &QPushButton::toggled, this, [this](bool paused) {
-    mem_paused_ = paused;
-    if (mem_pause_btn_)
-      mem_pause_btn_->setText(paused ? tr("Resume") : tr("Pause"));
-  });
-  controls->addWidget(mem_pause_btn_);
   auto *refresh_btn = new QPushButton(tr("Refresh now"), tab);
   refresh_btn->setToolTip(tr("Rebuild every memory table immediately"));
-  connect(refresh_btn, &QPushButton::clicked, this, [this]() {
-    populate_memory();
-    refresh_memory_tick();
-  });
+  connect(refresh_btn, &QPushButton::clicked, this,
+          [this]() { populate_memory(); });
   controls->addWidget(refresh_btn);
   controls->addStretch(1);
   outer->addLayout(controls);
@@ -1366,53 +1317,46 @@ QWidget *DebugWindow::build_memory_page() {
   scroll->setWidgetResizable(true);
   scroll->setFrameShape(QFrame::NoFrame);
   auto *host = new QWidget;
-  auto *v = new QVBoxLayout(host);
-  v->setContentsMargins(0, 0, 0, 0);
-  v->setSpacing(8);
+  // Two-column grid so the page uses the full dock width:
+  // Process | Subsystems on row 0, Objects by type | Allocations on row 1.
+  auto *grid = new QGridLayout(host);
+  grid->setContentsMargins(0, 0, 0, 0);
+  grid->setHorizontalSpacing(8);
+  grid->setVerticalSpacing(8);
+  grid->setColumnStretch(0, 1);
+  grid->setColumnStretch(1, 1);
+  grid->setRowStretch(0, 1);
+  grid->setRowStretch(1, 1);
 
   auto add_section = [&](const QString &title, QTableWidget **out,
-                         const QStringList &headers) {
+                         const QStringList &headers, int row, int col) {
     auto *gb = new QGroupBox(title, host);
+    gb->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto *lv = new QVBoxLayout(gb);
     lv->setContentsMargins(6, 12, 6, 6);
     auto *t = make_kv_table(gb, headers);
+    t->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     *out = t;
     lv->addWidget(t);
-    v->addWidget(gb);
+    grid->addWidget(gb, row, col);
   };
 
-  add_section(tr("Process"), &mem_stats_table_,
-              {tr("Metric"), tr("Value")});
+  add_section(tr("Process"), &mem_stats_table_, {tr("Metric"), tr("Value")}, 0,
+              0);
   add_section(tr("Subsystems"), &mem_subsys_table_,
-              {tr("Subsystem"), tr("Metric"), tr("Value")});
+              {tr("Subsystem"), tr("Metric"), tr("Value")}, 0, 1);
 
   // Per-type counter is sortable so the biggest owners float to the top.
   add_section(tr("Objects by type"), &mem_types_table_,
-              {tr("Type"), tr("Count"), tr("Bytes each"),
-               tr("Total (est.)"), tr("Owner")});
+              {tr("Type"), tr("Count"), tr("Bytes each"), tr("Total (est.)"),
+               tr("Owner")},
+              1, 0);
   if (mem_types_table_)
     mem_types_table_->setSortingEnabled(true);
 
   add_section(tr("Allocations (heap + top mappings)"), &mem_alloc_table_,
-              {tr("Source"), tr("Detail"), tr("Size")});
+              {tr("Source"), tr("Detail"), tr("Size")}, 1, 1);
 
-  // Live RSS sparkline with high-water mark.
-  auto *chart_gb = new QGroupBox(tr("RSS - rolling 60 s"), host);
-  auto *cv = new QVBoxLayout(chart_gb);
-  cv->setContentsMargins(6, 12, 6, 6);
-  mem_rss_header_ = new QLabel(QStringLiteral("-"), chart_gb);
-  mem_rss_header_->setObjectName("debugValue");
-  cv->addWidget(mem_rss_header_);
-  mem_rss_chart_ = new RollingChartWidget(chart_gb);
-  mem_rss_chart_->set_clamp_negative(true);
-  mem_rss_chart_->set_y_label(QStringLiteral("MiB"));
-  cv->addWidget(mem_rss_chart_, 1);
-  mem_hwm_label_ = new QLabel(QStringLiteral("-"), chart_gb);
-  mem_hwm_label_->setObjectName("debugKey");
-  cv->addWidget(mem_hwm_label_);
-  v->addWidget(chart_gb);
-
-  v->addStretch(1);
   scroll->setWidget(host);
   outer->addWidget(scroll, 1);
   return tab;
@@ -1434,8 +1378,6 @@ void DebugWindow::populate_memory() {
   const unsigned long file_kb = parse_kb_line(status, "RssFile:");
   const unsigned long hwm_kb = parse_kb_line(status, "VmHWM:");
   const unsigned long peak_kb = parse_kb_line(status, "VmPeak:");
-  if (rss_kb > mem_peak_rss_kb_)
-    mem_peak_rss_kb_ = rss_kb;
 
   unsigned long mem_total_kb = 0;
   {
@@ -1628,39 +1570,6 @@ void DebugWindow::populate_memory() {
   } else {
     for (std::size_t i = 0; i < maps.size() && i < 20; ++i)
       alloc_row(tr("mapping"), maps[i].name, mib_text(maps[i].rss));
-  }
-}
-
-void DebugWindow::refresh_memory_tick() {
-  if (mem_paused_ || !mem_rss_chart_ || !isVisible())
-    return;
-  const std::string status = read_proc("/proc/self/status");
-  if (status.empty())
-    return;
-  const unsigned long rss_kb = parse_kb_line(status, "VmRSS:");
-  const unsigned long hwm_kb = parse_kb_line(status, "VmHWM:");
-  if (rss_kb > mem_peak_rss_kb_)
-    mem_peak_rss_kb_ = rss_kb;
-  mem_rss_chart_->push_sample(static_cast<double>(rss_kb) / 1024.0);
-  if (mem_rss_header_)
-    mem_rss_header_->setText(
-        QStringLiteral("RSS %1  HWM %2").arg(mib_text(rss_kb), mib_text(hwm_kb)));
-  if (mem_hwm_label_)
-    mem_hwm_label_->setText(
-        QStringLiteral("session peak %1 (60 samples @ 1 Hz)")
-            .arg(mib_text(static_cast<unsigned long>(mem_peak_rss_kb_))));
-  // Keep the top stats table fresh without a full rebuild.
-  if (mem_stats_table_ && mem_stats_table_->rowCount() >= 7 && !mem_paused_) {
-    const std::string stat = read_proc("/proc/self/stat");
-    const unsigned long min_flt = parse_after(stat, 10);
-    const unsigned long maj_flt = parse_after(stat, 12);
-    auto set_val = [&](int row, const QString &v) {
-      if (auto *it = mem_stats_table_->item(row, 1))
-        it->setText(v);
-    };
-    set_val(0, mib_text(rss_kb));
-    set_val(4, mib_text(hwm_kb));
-    set_val(6, QStringLiteral("%1 / %2").arg(min_flt).arg(maj_flt));
   }
 }
 

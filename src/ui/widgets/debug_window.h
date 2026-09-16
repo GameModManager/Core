@@ -127,7 +127,7 @@ private:
   void hideEvent(QHideEvent *event) override;
 
   // Refresh the label group (CPU%/RAM/MiB/disk/uptime). Runs on
-  // refresh_timer_ (default 2 s, user-tunable). Also pushes to charts.
+  // refresh_timer_ at a fixed 1 s interval. Also pushes to charts.
   void refresh_stats();
 
   // Refresh only the chart series; runs at 1 Hz on chart_timer_, decoupled
@@ -146,12 +146,9 @@ private:
   void populate_network();
 
   // Rebuild the Memory page tables (stats + subsystem inventory +
-  // per-type counters + allocation tracker + modpack placeholder).
+  // per-type counters + allocation tracker).
   void populate_memory();
   void populate_modpack();
-  // 1 Hz light-weight memory sample: stats table values + RSS sparkline.
-  // Skipped while mem_paused_.
-  void refresh_memory_tick();
 
   // Append a row to a QTableWidget with key + value (monospace). When
   // `copyable` is true, the value gets a tooltip + TextSelectableByMouse +
@@ -213,7 +210,6 @@ private:
   QLabel *disk_label_ = nullptr;
   QLabel *uptime_label_ = nullptr;
 
-  QLabel *interval_label_ = nullptr;
   QPushButton *reload_ui_btn_ = nullptr;
 
   // --- Memory page widgets ---
@@ -221,12 +217,6 @@ private:
   QTableWidget *mem_subsys_table_ = nullptr;
   QTableWidget *mem_types_table_ = nullptr;
   QTableWidget *mem_alloc_table_ = nullptr;
-  RollingChartWidget *mem_rss_chart_ = nullptr;
-  QLabel *mem_rss_header_ = nullptr;
-  QLabel *mem_hwm_label_ = nullptr;
-  QPushButton *mem_pause_btn_ = nullptr;
-  bool mem_paused_ = false;
-  unsigned long long mem_peak_rss_kb_ = 0;
 
   // --- Modpack page widgets ---
   QLabel *modpack_status_ = nullptr;
@@ -234,11 +224,10 @@ private:
 
   QTimer *refresh_timer_ = nullptr;
   QTimer *chart_timer_ = nullptr;
-  int refresh_interval_ = 2; // seconds for labels; charts always 1 Hz
 
   // --- Persistent state for delta-based metrics ---
   // refresh_charts() runs at 1 Hz (chart_timer_); refresh_stats() runs on
-  // refresh_timer_ at the user-tunable label interval (1-60 s). The two
+  // refresh_timer_ at a fixed 1 s interval. The two
   // paths used to share these prev_* members and so each timer would
   // clobber the other's baseline: label deltas could be computed against
   // a baseline that the chart path had just rewritten. Splitting them
