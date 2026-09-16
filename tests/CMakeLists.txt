@@ -52,7 +52,6 @@ gmm_catch2_test(game_match_validator_test engine/game_match_validator_test.cpp)
 gmm_catch2_test(instance_router_test engine/instance_router_test.cpp)
 gmm_catch2_test(fresh_install_test engine/fresh_install_test.cpp)
 gmm_catch2_test(append_install_test engine/append_install_test.cpp)
->>>>>>> issue/grz6-install-paths
 gmm_catch2_test(pipeline_test engine/pipeline_test.cpp)
 gmm_catch2_test(plugin_database_test engine/plugin_database_test.cpp)
 gmm_catch2_test(loot_sorter_test engine/loot_sorter_test.cpp)
