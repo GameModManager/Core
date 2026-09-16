@@ -166,7 +166,9 @@ Diagnostics verify_archive_integrity(const ArchiveContents& archive,
     Diagnostics diag;
 
     if (!manifest_json.contains("archive") ||
-        !manifest_json["archive"].contains("fileHashes")) {
+        !manifest_json["archive"].is_object() ||
+        !manifest_json["archive"].contains("fileHashes") ||
+        !manifest_json["archive"]["fileHashes"].is_object()) {
         diag.push_back({Diagnostic::Severity::Error, "archive.fileHashes",
                         "missing fileHashes in manifest"});
         return diag;
@@ -177,6 +179,13 @@ Diagnostics verify_archive_integrity(const ArchiveContents& archive,
     // Check every file in fileHashes exists and matches
     for (auto it = hashes.begin(); it != hashes.end(); ++it) {
         std::string path = it.key();
+        if (!it.value().is_string()) {
+            diag.push_back(
+                {Diagnostic::Severity::Error,
+                 "archive.fileHashes." + path,
+                 "hash must be a string"});
+            continue;
+        }
         std::string expected = it.value().get<std::string>();
 
         // Strip "sha256:" prefix
@@ -746,7 +755,8 @@ UnpackResult unpack_gmmpack(const std::filesystem::path& archive_path,
     }
 
     // Reject unknown major versions
-    if (extract.manifest_json.contains("gmmpackSchema")) {
+    if (extract.manifest_json.contains("gmmpackSchema") &&
+        extract.manifest_json["gmmpackSchema"].is_string()) {
         std::string ver = extract.manifest_json["gmmpackSchema"]
                               .get<std::string>();
         auto dot1 = ver.find('.');
