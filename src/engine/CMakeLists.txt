@@ -121,6 +121,7 @@ set(ENGINE_SOURCES
     game/saves/save_missing_assets.cpp
     game/saves/local_saves.cpp
     collection/resolver.cpp
+    collection/batch_installer.cpp
     source/registry.cpp
     source/http_util.cpp
     source/nexus_provider.cpp
