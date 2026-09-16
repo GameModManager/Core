@@ -28,7 +28,8 @@ namespace fs = std::filesystem;
 
 ModpackImportDialog::ModpackImportDialog(QWidget* parent) : QDialog(parent) {
     setWindowTitle(tr("Import Modpack"));
-    setMinimumWidth(480);
+    setMinimumSize(520, 360);
+    setSizeGripEnabled(true);
     setAcceptDrops(true);
 
     auto* layout = new QVBoxLayout(this);
@@ -40,6 +41,13 @@ ModpackImportDialog::ModpackImportDialog(QWidget* parent) : QDialog(parent) {
     picked_file_label_ = new QLabel(tr("No file selected"), file_card);
     picked_file_label_->setWordWrap(true);
     file_layout->addWidget(picked_file_label_);
+    auto* drop_hint = new QLabel(
+        tr("Tip: you can also drag a .gmmpack file onto this dialog - "
+           "or straight onto the main window."),
+        file_card);
+    drop_hint->setWordWrap(true);
+    drop_hint->setEnabled(false);
+    file_layout->addWidget(drop_hint);
     connect(pick_button_, &QPushButton::clicked, this,
             &ModpackImportDialog::on_pick_file);
     layout->addWidget(file_card);
@@ -71,6 +79,11 @@ void ModpackImportDialog::on_pick_file() {
     const QString path = QFileDialog::getOpenFileName(
         this, tr("Import Modpack"), QString(),
         tr("Modpacks (*.gmmpack *.zip);;All files (*)"));
+    if (path.isEmpty()) return;
+    set_picked_file(path);
+}
+
+void ModpackImportDialog::set_picked_file(const QString& path) {
     if (path.isEmpty()) return;
     picked_file_ = path;
     picked_file_label_->setText(path);
@@ -106,14 +119,45 @@ fs::path ModpackImportDialog::resolve_schema_dir() {
 
 void ModpackImportDialog::on_import() {
     const QString url_text = url_edit_->text().trimmed();
+    if (url_text.isEmpty() && picked_file_.isEmpty()) {
+        QMessageBox::information(this, tr("Import Modpack"),
+                                 tr("Pick a .gmmpack file or paste a "
+                                    "collection URL to continue."));
+        return;
+    }
+
+    if (!url_text.isEmpty()) {
+        const QUrl url(url_text);
+        if (!url.isValid() ||
+            (url.scheme() != "http" && url.scheme() != "https")) {
+            QMessageBox::warning(
+                this, tr("Import Modpack"),
+                tr("That doesn't look like a collection URL.\n"
+                   "Expected an https:// link, got: %1")
+                    .arg(url_text));
+            return;
+        }
+    } else {
+        const QFileInfo info(picked_file_);
+        if (!info.exists()) {
+            QMessageBox::warning(
+                this, tr("Import Modpack"),
+                tr("The selected file no longer exists:\n%1\n"
+                   "Pick the file again.")
+                    .arg(picked_file_));
+            return;
+        }
+        if (!info.isFile() || !info.isReadable()) {
+            QMessageBox::warning(
+                this, tr("Import Modpack"),
+                tr("Cannot read the selected file:\n%1").arg(picked_file_));
+            return;
+        }
+    }
+
     const std::string ref = url_text.isEmpty()
                                 ? picked_file_.toStdString()
                                 : url_text.toStdString();
-    if (ref.empty()) {
-        QMessageBox::information(this, tr("Import Modpack"),
-                                 tr("Pick a .gmmpack file or paste a collection URL."));
-        return;
-    }
 
     const engine::Pack::Detection detection =
         engine::Pack::detect_pack_source(ref);
@@ -177,9 +221,13 @@ void ModpackImportDialog::dropEvent(QDropEvent* event) {
         const QString local = url.toLocalFile();
         const QString suffix = QFileInfo(local).suffix().toLower();
         if (!local.isEmpty() && (suffix == "gmmpack" || suffix == "zip")) {
-            picked_file_ = local;
-            picked_file_label_->setText(local);
-            if (!url_edit_->text().trimmed().isEmpty()) url_edit_->clear();
+            if (!QFileInfo::exists(local)) {
+                QMessageBox::warning(
+                    this, tr("Import Modpack"),
+                    tr("The dropped file no longer exists:\n%1").arg(local));
+                return;
+            }
+            set_picked_file(local);
             event->acceptProposedAction();
             return;
         }

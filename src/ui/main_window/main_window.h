@@ -199,10 +199,15 @@ public:
   // restoreGeometry() before platform-window creation is silently ignored.
   void apply_initial_geometry();
 
-protected:
+ protected:
   void closeEvent(QCloseEvent *event) override;
   bool eventFilter(QObject *obj, QEvent *event) override;
   void resizeEvent(QResizeEvent *event) override;
+  // .gmmpack/.zip drops anywhere on the window open the Import Modpack
+  // flow with the file pre-selected (Workspace-pi2p).
+  void dragEnterEvent(QDragEnterEvent *event) override;
+  void dragLeaveEvent(QDragLeaveEvent *event) override;
+  void dropEvent(QDropEvent *event) override;
 
 private slots:
   void on_notification(const QString &title, const QString &message);
@@ -478,6 +483,11 @@ private:
   // DeferredDisable above). Distinct from pending_changes_: this queue is
   // flushed at the next Run (launch_with_executable), never at game exit.
   std::vector<DeferredDisable> deferred_disable_queue_;
+
+  // Drag-and-drop highlight for .gmmpack imports. Lazily created, shown
+  // while a pack file is dragged over the window, hidden on leave/drop.
+  QLabel *drop_overlay_ = nullptr;
+  void set_drop_overlay_visible(bool visible);
 
   // Game-lock overlay
   QWidget *game_lock_overlay_ = nullptr;

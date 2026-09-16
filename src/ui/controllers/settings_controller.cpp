@@ -1289,8 +1289,10 @@ bool SettingsController::create_new_instance() {
   return true;
 }
 
-void SettingsController::import_modpack() {
+void SettingsController::import_modpack(const QString &preset_file) {
   ModpackImportDialog import_dialog(w_);
+  if (!preset_file.isEmpty())
+    import_dialog.set_picked_file(preset_file);
   if (import_dialog.exec() != QDialog::Accepted || !import_dialog.has_pack())
     return;
   engine::gmmpack::Gmmpack pack = import_dialog.pack();

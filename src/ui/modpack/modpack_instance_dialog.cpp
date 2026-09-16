@@ -14,12 +14,21 @@ ModpackInstanceDialog::ModpackInstanceDialog(
     const std::string& active_folder_name, QWidget* parent)
     : QDialog(parent), instances_(std::move(instances)) {
     setWindowTitle(tr("Select Instance"));
-    setMinimumWidth(420);
+    setMinimumSize(440, 180);
+    setSizeGripEnabled(true);
 
     auto* layout = new QVBoxLayout(this);
 
-    auto* target = new QLabel(
-        tr("This pack targets: %1").arg(pack_game_display), this);
+    const QString shown_game =
+        pack_game_display.isEmpty()
+            ? QString::fromStdString(pack_game_id)
+            : pack_game_display;
+    auto* target = new QLabel(tr("This pack targets: %1").arg(shown_game),
+                              this);
+    QFont target_font = target->font();
+    target_font.setBold(true);
+    target->setFont(target_font);
+    target->setWordWrap(true);
     layout->addWidget(target);
     (void)pack_game_id;
 
@@ -27,8 +36,16 @@ ModpackInstanceDialog::ModpackInstanceDialog(
     row->addWidget(new QLabel(tr("Instance:"), this));
     combo_ = new QComboBox(this);
     for (const auto& inst : instances_) {
-        combo_->addItem(QString::fromStdString(inst.display_name),
-                        QString::fromStdString(inst.folder_name));
+        const QString display = QString::fromStdString(inst.display_name);
+        const QString folder = QString::fromStdString(inst.folder_name);
+        // Show the folder id next to the display name when they differ so
+        // two same-named instances stay distinguishable.
+        const QString label =
+            (!display.isEmpty() && display != folder)
+                ? tr("%1 (%2)").arg(display, folder)
+                : (display.isEmpty() ? folder : display);
+        combo_->addItem(label, folder);
+        combo_->setItemData(combo_->count() - 1, folder, Qt::ToolTipRole);
     }
     // Pre-select the active instance when it matches, else the first match.
     int preselect = 0;
@@ -55,9 +72,12 @@ ModpackInstanceDialog::ModpackInstanceDialog(
     buttons->addStretch(1);
     append_button_ = new QPushButton(tr("Append to Instance"), this);
     append_button_->setEnabled(!instances_.empty());
+    append_button_->setDefault(!instances_.empty());
     auto* create_button = new QPushButton(tr("Create New"), this);
+    auto* cancel_button = new QPushButton(tr("Cancel"), this);
     buttons->addWidget(append_button_);
     buttons->addWidget(create_button);
+    buttons->addWidget(cancel_button);
     layout->addLayout(buttons);
 
     connect(append_button_, &QPushButton::clicked, this, [this]() {
@@ -68,6 +88,7 @@ ModpackInstanceDialog::ModpackInstanceDialog(
         mode_ = Mode::CreateNew;
         accept();
     });
+    connect(cancel_button, &QPushButton::clicked, this, &QDialog::reject);
 }
 
 std::string ModpackInstanceDialog::selected_folder() const {
