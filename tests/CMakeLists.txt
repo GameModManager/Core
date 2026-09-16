@@ -390,6 +390,10 @@ gmm_catch2_test(install_progress_dialog_test ui/install_progress_dialog_test.cpp
     UI
     LIBS gmm_ui)
 
+gmm_catch2_test(install_widget_test ui/install_widget_test.cpp
+    UI
+    LIBS gmm_ui)
+
 # FOMOD plugin integration — loads the FomodInstaller plugin, verifies its
 # settings tab appears in the Settings dialog with correct settings and
 # persistence. Also documents whether the old standalone FOMOD tab still exists.

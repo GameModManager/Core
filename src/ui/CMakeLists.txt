@@ -29,6 +29,7 @@ set(UI_SOURCES
     controllers/tab_mode_controller.cpp
     widgets/mod_list_model.cpp
     widgets/mod_table_view.cpp
+    widgets/install_widget.cpp
     widgets/main_toolbar.cpp
     widgets/main_tab_container.cpp
     widgets/profile_bar.cpp
