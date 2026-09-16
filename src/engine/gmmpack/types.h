@@ -211,6 +211,13 @@ struct PatchEntry {
     std::string base_file_sha256;
     std::string algorithm;  // "bsdiff"
     std::string payload_base64;
+    std::string source_filename;  // archive path, e.g. "patches/skyui-1.json"
+};
+
+// A sorted chain of patches for one mod, applied in ascending sequence order.
+struct PatchChain {
+    std::string mod_id;
+    std::vector<PatchEntry> patches;  // sorted by sequence ascending
 };
 
 // ---------------------------------------------------------------------------

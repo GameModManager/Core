@@ -376,23 +376,70 @@ Diagnostics check_referential_integrity(const Gmmpack& pack) {
         };
     check_tree(pack.tree.nodes, "");
 
-    // patches/*.json: modId must match filename id
+    // patches/*.json: modId must match filename id, and filename cross-check
     for (const auto& p : pack.patches) {
-        // Filename is patches/<id>[-N].json, extract id from the path
-        // We store the mod_id from the parsed entry
         if (!is_valid_mod_id(p.mod_id)) {
             diag.push_back(
                 {Diagnostic::Severity::Error,
                  "patches/" + p.mod_id + ".json.modId",
                  "unknown mod id: " + p.mod_id});
         }
+
+        // Cross-check filename mod_id/sequence vs JSON modId/sequence fields
+        if (!p.source_filename.empty()) {
+            auto parsed_name = parse_patch_filename(p.source_filename);
+            if (parsed_name) {
+                const auto& filename_mod_id = parsed_name->first;
+                if (filename_mod_id != p.mod_id) {
+                    diag.push_back(
+                        {Diagnostic::Severity::Error,
+                         p.source_filename,
+                         "filename mod_id '" + filename_mod_id +
+                             "' does not match modId field '" + p.mod_id +
+                             "'"});
+                }
+                int filename_seq = parsed_name->second;
+                if (filename_seq == 0 && p.sequence.has_value()) {
+                    diag.push_back(
+                        {Diagnostic::Severity::Error,
+                         p.source_filename,
+                         "single patch file must not carry a sequence field"});
+                } else if (filename_seq != 0 && !p.sequence.has_value()) {
+                    diag.push_back(
+                        {Diagnostic::Severity::Error,
+                         p.source_filename,
+                         "chain patch file '" + p.source_filename +
+                             "' is missing its sequence field"});
+                } else if (filename_seq != 0 && *p.sequence != filename_seq) {
+                    diag.push_back(
+                        {Diagnostic::Severity::Error,
+                         p.source_filename,
+                         "filename sequence " +
+                             std::to_string(filename_seq) +
+                             " does not match sequence field " +
+                             std::to_string(*p.sequence)});
+                }
+            }
+        }
     }
 
-    // patches: sequences must be contiguous starting at 1
+    // patches: a mod has either one single patch or a chain, never both;
+    // chain sequences must be contiguous starting at 1
     std::unordered_map<std::string, std::vector<int>> patch_sequences;
+    std::unordered_map<std::string, int> patch_single_counts;
     for (const auto& p : pack.patches) {
         if (p.sequence) {
             patch_sequences[p.mod_id].push_back(*p.sequence);
+        } else {
+            patch_single_counts[p.mod_id]++;
+        }
+    }
+    for (const auto& [mod_id, single_count] : patch_single_counts) {
+        if (patch_sequences.contains(mod_id)) {
+            diag.push_back(
+                {Diagnostic::Severity::Error,
+                 "patches/" + mod_id,
+                 "mod has both a single patch and chained patches"});
         }
     }
     for (const auto& [mod_id, seqs] : patch_sequences) {
@@ -679,6 +726,121 @@ PatchEntry parse_patch_entry(const nlohmann::json& j) {
     return p;
 }
 
+// ---------------------------------------------------------------------------
+// Patch filename parsing and chain building
+// ---------------------------------------------------------------------------
+
+std::optional<std::pair<std::string, int>> parse_patch_filename(
+    const std::string& path) {
+    // Expected: "patches/<mod_id>.json" or "patches/<mod_id>-<N>.json"
+    const std::string prefix = "patches/";
+    if (path.rfind(prefix, 0) != 0) return std::nullopt;
+
+    std::string filename = path.substr(prefix.size());
+    const std::string suffix = ".json";
+    if (filename.size() <= suffix.size()) return std::nullopt;
+    if (filename.substr(filename.size() - suffix.size()) != suffix)
+        return std::nullopt;
+
+    filename.resize(filename.size() - suffix.size());
+    if (filename.empty()) return std::nullopt;
+
+    // Check for trailing -<N> sequence suffix
+    auto dash_pos = filename.rfind('-');
+    if (dash_pos != std::string::npos && dash_pos > 0) {
+        std::string num_str = filename.substr(dash_pos + 1);
+        if (!num_str.empty()) {
+            // Verify all digits
+            bool all_digits = true;
+            for (char c : num_str) {
+                if (c < '0' || c > '9') { all_digits = false; break; }
+            }
+            if (all_digits && !num_str.empty()) {
+                int seq = std::stoi(num_str);
+                if (seq >= 1) {
+                    return std::make_pair(
+                        filename.substr(0, dash_pos), seq);
+                }
+            }
+        }
+    }
+
+    // No valid sequence suffix - single patch
+    return std::make_pair(filename, 0);
+}
+
+std::pair<std::vector<PatchChain>, Diagnostics> build_patch_chains(
+    const std::vector<PatchEntry>& patches) {
+    std::vector<PatchChain> chains;
+    Diagnostics diag;
+
+    // Group by mod_id
+    std::unordered_map<std::string, std::vector<const PatchEntry*>> groups;
+    for (const auto& p : patches) {
+        groups[p.mod_id].push_back(&p);
+    }
+
+    for (auto& [mod_id, entries] : groups) {
+        // Separate sequenced from non-sequenced
+        std::vector<PatchEntry> chained;
+        std::vector<PatchEntry> unsequenced;
+        for (const auto* pe : entries) {
+            if (pe->sequence) {
+                chained.push_back(*pe);
+            } else {
+                unsequenced.push_back(*pe);
+            }
+        }
+
+        // Sort chained patches by sequence ascending
+        std::sort(chained.begin(), chained.end(),
+                  [](const PatchEntry& a, const PatchEntry& b) {
+                      return a.sequence.value_or(0) <
+                             b.sequence.value_or(0);
+                  });
+
+        // A mod has either one single patch or a chain, never both
+        if (!chained.empty() && !unsequenced.empty()) {
+            diag.push_back(
+                {Diagnostic::Severity::Error,
+                 "patches/" + mod_id,
+                 "mod has both a single patch and chained patches"});
+        }
+
+        // Validate contiguity for chained patches
+        for (size_t i = 0; i < chained.size(); ++i) {
+            int expected = static_cast<int>(i + 1);
+            if (chained[i].sequence.value_or(0) != expected) {
+                diag.push_back(
+                    {Diagnostic::Severity::Error,
+                     "patches/" + mod_id,
+                     "non-contiguous sequence: expected " +
+                         std::to_string(expected) + ", got " +
+                         std::to_string(
+                             chained[i].sequence.value_or(0))});
+            }
+        }
+
+        // Build chain: unsequenced first (single patches), then sorted chained
+        PatchChain chain;
+        chain.mod_id = mod_id;
+        for (auto& p : unsequenced)
+            chain.patches.push_back(std::move(p));
+        for (auto& p : chained)
+            chain.patches.push_back(std::move(p));
+
+        chains.push_back(std::move(chain));
+    }
+
+    // Sort chains by mod_id for deterministic output
+    std::sort(chains.begin(), chains.end(),
+              [](const PatchChain& a, const PatchChain& b) {
+                  return a.mod_id < b.mod_id;
+              });
+
+    return {std::move(chains), std::move(diag)};
+}
+
 IniEntry parse_ini_entry(const nlohmann::json& j) {
     IniEntry ie;
     ie.target_file = j.value("targetFile", "");
@@ -826,7 +988,9 @@ UnpackResult unpack_gmmpack(const std::filesystem::path& archive_path,
         } else if (f.path.rfind("executables/", 0) == 0) {
             result.pack.executables.push_back(parse_executable_entry(parsed));
         } else if (f.path.rfind("patches/", 0) == 0) {
-            result.pack.patches.push_back(parse_patch_entry(parsed));
+            auto pe = parse_patch_entry(parsed);
+            pe.source_filename = f.path;
+            result.pack.patches.push_back(std::move(pe));
         } else if (f.path.rfind("ini/", 0) == 0) {
             result.pack.ini_edits.push_back(parse_ini_entry(parsed));
         } else if (f.path == "tree.json") {
