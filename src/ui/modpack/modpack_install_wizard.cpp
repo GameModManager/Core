@@ -151,6 +151,7 @@ ModpackInstallWizard::ModpackInstallWizard(engine::gmmpack::Gmmpack pack,
                        ? tr("Install Modpack")
                        : tr("Install Modpack: %1").arg(pack_name));
     resize(900, 600);
+    setMinimumSize(720, 480);
 
     build_steps();
 
@@ -191,6 +192,8 @@ ModpackInstallWizard::ModpackInstallWizard(engine::gmmpack::Gmmpack pack,
     layout->addWidget(splitter);
 
     sidebar_ = new QListWidget(splitter);
+    sidebar_->setMinimumWidth(140);
+    sidebar_->setMaximumWidth(220);
     for (const auto& step : steps_) {
         auto* item = new QListWidgetItem(step.title, sidebar_);
         item->setData(Qt::UserRole, static_cast<int>(step.id));

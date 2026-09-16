@@ -2,16 +2,23 @@
 
 #include <QApplication>
 #include <QCloseEvent>
+#include <QDragEnterEvent>
+#include <QDragLeaveEvent>
+#include <QDropEvent>
 #include <QEvent>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QIcon>
+#include <QLabel>
 #include <QMenu>
+#include <QMimeData>
 #include <QResizeEvent>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QStyle>
 #include <QTimer>
 #include <QToolBar>
+#include <QUrl>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -41,6 +48,7 @@ namespace ui {
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   setWindowTitle(tr("GameModManager"));
   resize(1200, 800);
+  setAcceptDrops(true);
 
   // Issue #16 controllers - the composer delegates behavior to these. Each
   // controller reaches the shared members below through w_-> (friend).
@@ -327,6 +335,81 @@ void MainWindow::resizeEvent(QResizeEvent *event) {
   QMainWindow::resizeEvent(event);
   if (game_lock_overlay_)
     game_lock_overlay_->setGeometry(rect());
+  if (drop_overlay_ && drop_overlay_->isVisible())
+    drop_overlay_->setGeometry(rect());
+}
+
+namespace {
+// A drop is a modpack drop when any dragged URL is a local .gmmpack/.zip.
+bool is_pack_drop(const QMimeData *mime) {
+  if (mime == nullptr || !mime->hasUrls())
+    return false;
+  for (const QUrl &url : mime->urls()) {
+    const QString suffix = QFileInfo(url.toLocalFile()).suffix().toLower();
+    if (suffix == "gmmpack" || suffix == "zip")
+      return true;
+  }
+  return false;
+}
+} // namespace
+
+void MainWindow::dragEnterEvent(QDragEnterEvent *event) {
+  if (!is_pack_drop(event->mimeData()))
+    return;
+  event->acceptProposedAction();
+  set_drop_overlay_visible(true);
+}
+
+void MainWindow::dragLeaveEvent(QDragLeaveEvent *event) {
+  set_drop_overlay_visible(false);
+  QMainWindow::dragLeaveEvent(event);
+}
+
+void MainWindow::dropEvent(QDropEvent *event) {
+  set_drop_overlay_visible(false);
+  if (!is_pack_drop(event->mimeData()))
+    return;
+  for (const QUrl &url : event->mimeData()->urls()) {
+    const QString local = url.toLocalFile();
+    const QString suffix = QFileInfo(local).suffix().toLower();
+    if (!local.isEmpty() && (suffix == "gmmpack" || suffix == "zip")) {
+      event->acceptProposedAction();
+      settings_->import_modpack(local);
+      return;
+    }
+  }
+}
+
+void MainWindow::set_drop_overlay_visible(bool visible) {
+  if (!visible) {
+    if (drop_overlay_ != nullptr)
+      drop_overlay_->hide();
+    return;
+  }
+  if (drop_overlay_ == nullptr) {
+    drop_overlay_ = new QLabel(this);
+    drop_overlay_->setAlignment(Qt::AlignCenter);
+    drop_overlay_->setWordWrap(true);
+    drop_overlay_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    QFont font = drop_overlay_->font();
+    font.setPointSize(font.pointSize() + 8);
+    font.setBold(true);
+    drop_overlay_->setFont(font);
+    const QPalette palette = this->palette();
+    const QColor bg = palette.color(QPalette::Highlight);
+    const QColor fg = palette.color(QPalette::HighlightedText);
+    drop_overlay_->setStyleSheet(
+        QStringLiteral("background-color: rgba(%1, %2, %3, 160); color: %4; "
+                       "border: 3px dashed %4; border-radius: 12px;")
+            .arg(bg.red())
+            .arg(bg.green())
+            .arg(bg.blue())
+            .arg(fg.name()));
+  }
+  drop_overlay_->setText(tr("Drop to import modpack (.gmmpack)"));
+  drop_overlay_->setGeometry(rect());
+  drop_overlay_->raise();
+  drop_overlay_->show();
 }
 
 void MainWindow::set_ui_enabled(bool enabled) {

@@ -29,6 +29,10 @@ public:
     [[nodiscard]] bool has_pack() const { return pack_.has_value(); }
     [[nodiscard]] const engine::gmmpack::Gmmpack& pack() const { return *pack_; }
 
+    // Pre-select a file (used by the main-window drop handler). Ignored
+    // when empty; clears any URL text so the file wins.
+    void set_picked_file(const QString& path);
+
 private:
     void on_pick_file();
     void on_url_edited(const QString& text);
