@@ -120,6 +120,7 @@ set(ENGINE_SOURCES
     game/saves/save_scanner.cpp
     game/saves/save_missing_assets.cpp
     game/saves/local_saves.cpp
+    collection/resolver.cpp
     source/registry.cpp
     source/http_util.cpp
     source/nexus_provider.cpp
