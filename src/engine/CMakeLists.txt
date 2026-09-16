@@ -156,6 +156,7 @@ set(ENGINE_SOURCES
     deploy/launch/proton_tools.cpp
     gmmpack/schema_validator.cpp
     gmmpack/unpacker.cpp
+    gmmpack/ini_edit_parser.cpp
     ${FOMOD_ENGINE_SOURCES}
 )
 

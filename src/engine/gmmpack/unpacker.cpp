@@ -410,6 +410,22 @@ Diagnostics check_referential_integrity(const Gmmpack& pack) {
         }
     }
 
+    // ini/*.json: sourceModId (when non-null) must resolve to a real mod id
+    for (size_t fi = 0; fi < pack.ini_edits.size(); ++fi) {
+        const auto& ini = pack.ini_edits[fi];
+        for (size_t ei = 0; ei < ini.edits.size(); ++ei) {
+            const auto& edit = ini.edits[ei];
+            if (edit.has_source_mod_id &&
+                !is_valid_mod_id(edit.source_mod_id)) {
+                diag.push_back(
+                    {Diagnostic::Severity::Error,
+                     "ini/" + ini.target_file + ".edits[" +
+                         std::to_string(ei) + "].sourceModId",
+                     "unknown mod id: " + edit.source_mod_id});
+            }
+        }
+    }
+
     return diag;
 }
 
