@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -65,6 +66,18 @@ public:
     void set_folded(bool folded_state);
     [[nodiscard]] std::string parent_id() const;
     void set_parent_id(const std::string& id);
+
+    // --- Collection tracking (manager sidecar, Workspace-5wmu) ---
+    // Source-agnostic collection membership persisted per mod in
+    // [GameModManager]: owning collection id, revision at install time, and
+    // the per-mod-in-collection flag. Absent keys = untracked standalone mod.
+    [[nodiscard]] std::string collection_id() const;
+    void set_collection_id(const std::string& id);
+    [[nodiscard]] int64_t collection_revision() const;
+    void set_collection_revision(int64_t revision);
+    [[nodiscard]] bool in_collection() const;
+    void set_in_collection(bool tracked);
+    void clear_collection();
 
     // Remove a single key (and leave the section in place). Used to clear
     // parent_id so a top-level row serializes without the key.
