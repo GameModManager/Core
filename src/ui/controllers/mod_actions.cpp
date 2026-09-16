@@ -167,19 +167,9 @@ void ModActions::remove_selected_mods() {
 
 void ModActions::move_to_separator(const QString &mod_id,
                                    const QString &sep_id) {
-  w_->mod_model_->set_separator_id(mod_id, sep_id);
-
-  // Move mod row to right after the separator row
-  const auto &mods = w_->mod_model_->mods();
-  int sep_row = -1;
-  for (int i = 0; i < mods.size(); ++i) {
-    if (mods[i].is_separator && mods[i].id == sep_id) {
-      sep_row = i;
-      break;
-    }
-  }
-  if (sep_row >= 0)
-    w_->mod_model_->move_mod(mod_id, sep_row + 1);
+  // Placement lives in the model: the mod lands in the LAST slot inside the
+  // separator's band (lowest priority / last top-down), never first.
+  w_->mod_model_->move_to_separator(mod_id, sep_id);
 }
 
 void ModActions::send_to_separator(const QString &mod_id) {

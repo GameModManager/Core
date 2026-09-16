@@ -1434,6 +1434,56 @@ void ModList::set_separator_id(const QString &id, const QString &separator_id) {
   }
 }
 
+int ModList::separator_band_end(int sep_row) const {
+  if (sep_row < 0 || sep_row >= mods_.size() || !mods_[sep_row].is_separator)
+    return mods_.size();
+  int end = sep_row + 1;
+  while (end < mods_.size() && !mods_[end].is_separator &&
+         !mods_[end].is_overwrite && !mods_[end].is_merged)
+    ++end;
+  return end;
+}
+
+void ModList::move_to_separator(const QString &mod_id, const QString &sep_id) {
+  int src = -1;
+  int sep_row = -1;
+  for (int i = 0; i < mods_.size(); ++i) {
+    if (mods_[i].id == mod_id)
+      src = i;
+    if (mods_[i].is_separator && mods_[i].id == sep_id)
+      sep_row = i;
+  }
+  if (src < 0 || sep_row < 0)
+    return;
+  if (mods_[src].is_separator || mods_[src].is_overwrite ||
+      mods_[src].is_merged || mods_[src].is_game_native)
+    return;
+  mods_[src].separator_id = sep_id;
+  // LAST slot inside the band: insert just before the band-ender. move_mod()
+  // takes post-removal coordinates for a single row but pre-removal
+  // "insert before" coordinates for a subtree block, so aim each convention.
+  const int end = separator_band_end(sep_row);
+  bool has_child = false;
+  if (nesting_enabled_) {
+    for (int i = 0; i < mods_.size(); ++i) {
+      if (i != src && is_descendant_of(i, mods_[src].id)) {
+        has_child = true;
+        break;
+      }
+    }
+  }
+  int new_row;
+  if (has_child) {
+    new_row = end;
+  } else {
+    new_row = end - (src < end ? 1 : 0);
+    const int sep_prime = sep_row - (src < sep_row ? 1 : 0);
+    if (new_row <= sep_prime)
+      new_row = sep_prime + 1;
+  }
+  move_mod(mod_id, new_row);
+}
+
 void ModList::set_priority(const QString &id, int priority) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id) {
