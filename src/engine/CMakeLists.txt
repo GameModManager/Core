@@ -122,8 +122,10 @@ core/instance/mod_state.cpp
     mod/overwrite/overwrite_utils.cpp
 modpack/ini_edits.cpp
     pack/adapter.cpp
-    install/conflict_resolver.cpp
+install/conflict_resolver.cpp
     modpack/incremental_update.cpp
+    install/game_match_validator.cpp
+    install/instance_router.cpp
     game/plugins/esp_header.cpp
     game/plugins/plugin_database.cpp
     game/saves/save_game.cpp
