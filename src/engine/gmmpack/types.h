@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cctype>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -302,5 +303,47 @@ struct Gmmpack {
     TreeRoot tree;
     std::optional<std::string> instructions;
 };
+
+// ---------------------------------------------------------------------------
+// Semver validation
+// ---------------------------------------------------------------------------
+
+struct SemverParse {
+    int major = 0;
+    int minor = 0;
+    int patch = 0;
+};
+
+// Parse and validate a semver string "MAJOR.MINOR.PATCH".
+// Returns nullopt on any format error.  Does NOT reject major != 1 - callers
+// decide that policy (the schema doc says "any other major is a hard refusal").
+inline std::optional<SemverParse> parse_semver(const std::string& v) {
+    SemverParse sp;
+    size_t pos = 0;
+
+    auto parse_int = [&](int& out) -> bool {
+        if (pos >= v.size() || !std::isdigit(static_cast<unsigned char>(v[pos])))
+            return false;
+        int val = 0;
+        while (pos < v.size() &&
+               std::isdigit(static_cast<unsigned char>(v[pos]))) {
+            val = val * 10 + (v[pos] - '0');
+            ++pos;
+        }
+        out = val;
+        return true;
+    };
+
+    if (!parse_int(sp.major)) return std::nullopt;
+    if (pos >= v.size() || v[pos] != '.') return std::nullopt;
+    ++pos;
+    if (!parse_int(sp.minor)) return std::nullopt;
+    if (pos >= v.size() || v[pos] != '.') return std::nullopt;
+    ++pos;
+    if (!parse_int(sp.patch)) return std::nullopt;
+    if (pos != v.size()) return std::nullopt;  // trailing junk
+
+    return sp;
+}
 
 }  // namespace engine::gmmpack

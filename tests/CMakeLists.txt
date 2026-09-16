@@ -137,6 +137,8 @@ gmm_catch2_test(gmmpack_test engine/gmmpack_test.cpp
     DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
 gmm_catch2_test(gmmpack_mod_entry_test engine/gmmpack_mod_entry_test.cpp)
+gmm_catch2_test(gmmpack_manifest_parser_test engine/gmmpack_manifest_parser_test.cpp
+    DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
 # ---------------------------------------------------------------------------
 # Test fixture plugins (MODULE libraries) — built into test_plugins/ and
