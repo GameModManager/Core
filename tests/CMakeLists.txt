@@ -47,6 +47,8 @@ endfunction()
 # Engine tests — Qt-free, link the engine library
 # ---------------------------------------------------------------------------
 gmm_catch2_test(pack_adapter_test engine/pack_adapter_test.cpp)
+gmm_catch2_test(game_match_validator_test engine/game_match_validator_test.cpp)
+gmm_catch2_test(instance_router_test engine/instance_router_test.cpp)
 gmm_catch2_test(pipeline_test engine/pipeline_test.cpp)
 gmm_catch2_test(plugin_database_test engine/plugin_database_test.cpp)
 gmm_catch2_test(loot_sorter_test engine/loot_sorter_test.cpp)

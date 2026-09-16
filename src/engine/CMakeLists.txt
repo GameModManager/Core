@@ -114,6 +114,8 @@ set(ENGINE_SOURCES
     mod/meta/category_set_registry.cpp
     mod/overwrite/overwrite_utils.cpp
     pack/adapter.cpp
+    install/game_match_validator.cpp
+    install/instance_router.cpp
     game/plugins/esp_header.cpp
     game/plugins/plugin_database.cpp
     game/saves/save_game.cpp
