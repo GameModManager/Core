@@ -1435,7 +1435,7 @@ TEST_CASE("gmmpack referential integrity catches patch modId mismatch",
     REQUIRE_FALSE(diag.empty());
     bool found_mismatch = false;
     for (const auto& d : diag) {
-        if (d.message.find("modId mismatch") != std::string::npos) {
+        if (d.message.find("does not match modId") != std::string::npos) {
             found_mismatch = true;
             break;
         }
@@ -1462,7 +1462,7 @@ TEST_CASE("gmmpack referential integrity passes for matching patch modId",
     auto diag = gmmpack::check_referential_integrity(pack);
     for (const auto& d : diag) {
         // Should have no modId mismatch errors
-        REQUIRE(d.message.find("modId mismatch") == std::string::npos);
+        REQUIRE(d.message.find("does not match modId") == std::string::npos);
     }
 }
 
@@ -1487,7 +1487,7 @@ TEST_CASE(
     auto diag = gmmpack::check_referential_integrity(pack);
     bool found_mismatch = false;
     for (const auto& d : diag) {
-        if (d.message.find("modId mismatch") != std::string::npos) {
+        if (d.message.find("does not match modId") != std::string::npos) {
             found_mismatch = true;
             break;
         }
