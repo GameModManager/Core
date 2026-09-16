@@ -1,5 +1,6 @@
 #include "engine/gmmpack/unpacker.h"
 #include "engine/gmmpack/schema_validator.h"
+#include "engine/gmmpack/tree_parser.h"
 
 #include <archive.h>
 #include <archive_entry.h>
@@ -698,34 +699,8 @@ IniEntry parse_ini_entry(const nlohmann::json& j) {
     return ie;
 }
 
-static TreeNode parse_tree_node(const nlohmann::json& j) {
-    std::string type = j.value("type", "");
-    if (type == "separator") {
-        SeparatorNode sep;
-        sep.name = j.value("name", "");
-        sep.collapsed = j.value("collapsed", false);
-        if (j.contains("children")) {
-            for (const auto& child : j["children"]) {
-                sep.children.push_back(parse_tree_node(child));
-            }
-        }
-        return TreeNode{sep};
-    }
-    ModNode mod;
-    mod.id = j.value("id", "");
-    mod.enabled = j.value("enabled", true);
-    return TreeNode{mod};
-}
-
-TreeRoot parse_tree(const nlohmann::json& j) {
-    TreeRoot tree;
-    if (j.contains("nodes")) {
-        for (const auto& node : j["nodes"]) {
-            tree.nodes.push_back(parse_tree_node(node));
-        }
-    }
-    return tree;
-}
+// parse_tree() lives in tree_parser.cpp (pure JSON, no archive I/O).
+// unpacker.h re-declares it for backward compatibility.
 
 // ---------------------------------------------------------------------------
 // Top-level: unpack + validate
