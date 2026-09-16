@@ -106,6 +106,9 @@ if(APPLE)
     endif()
 endif()
 
+# OpenSSL (libcrypto) for SHA-256 in the gmmpack archive integrity checker.
+find_package(OpenSSL REQUIRED)
+
 # KSyntaxHighlighting (KDE) — OPTIONAL syntax highlighting for the Mod Info
 # text/config editors. There is no KF6 for Windows or macOS, so when absent
 # the editors degrade to plain text.
