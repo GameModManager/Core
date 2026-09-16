@@ -1,4 +1,5 @@
 #include "engine/gmmpack/unpacker.h"
+#include "engine/gmmpack/ini_edit_parser.h"
 #include "engine/gmmpack/schema_validator.h"
 
 #include <archive.h>
@@ -410,18 +411,25 @@ Diagnostics check_referential_integrity(const Gmmpack& pack) {
         }
     }
 
-    // ini/*.json: sourceModId (when non-null) must resolve to a real mod id
+    // ini/*.json: tweak sourceModId (when non-null) must resolve to a real
+    // mod id; tweak ids must be unique within the file (uniqueness is not
+    // expressible in JSON Schema, so it is checked here).
     for (size_t fi = 0; fi < pack.ini_edits.size(); ++fi) {
         const auto& ini = pack.ini_edits[fi];
-        for (size_t ei = 0; ei < ini.edits.size(); ++ei) {
-            const auto& edit = ini.edits[ei];
-            if (edit.has_source_mod_id &&
-                !is_valid_mod_id(edit.source_mod_id)) {
-                diag.push_back(
-                    {Diagnostic::Severity::Error,
-                     "ini/" + ini.target_file + ".edits[" +
-                         std::to_string(ei) + "].sourceModId",
-                     "unknown mod id: " + edit.source_mod_id});
+        std::unordered_set<std::string> seen_ids;
+        for (size_t ti = 0; ti < ini.tweaks.size(); ++ti) {
+            const auto& tweak = ini.tweaks[ti];
+            const std::string where =
+                "ini/" + ini.target_file + ".tweaks[" + std::to_string(ti) + "]";
+            if (!seen_ids.insert(tweak.id).second) {
+                diag.push_back({Diagnostic::Severity::Error, where + ".id",
+                                "duplicate tweak id: " + tweak.id});
+            }
+            if (tweak.has_source_mod_id &&
+                !is_valid_mod_id(tweak.source_mod_id)) {
+                diag.push_back({Diagnostic::Severity::Error,
+                                where + ".sourceModId",
+                                "unknown mod id: " + tweak.source_mod_id});
             }
         }
     }
@@ -693,25 +701,6 @@ PatchEntry parse_patch_entry(const nlohmann::json& j) {
     p.algorithm = j.value("algorithm", "");
     p.payload_base64 = j.value("payloadBase64", "");
     return p;
-}
-
-IniEntry parse_ini_entry(const nlohmann::json& j) {
-    IniEntry ie;
-    ie.target_file = j.value("targetFile", "");
-    if (j.contains("edits")) {
-        for (const auto& ej : j["edits"]) {
-            IniEdit edit;
-            edit.section = ej.value("section", "");
-            edit.key = ej.value("key", "");
-            edit.value = ej.value("value", "");
-            if (ej.contains("sourceModId") && !ej["sourceModId"].is_null()) {
-                edit.source_mod_id = ej["sourceModId"].get<std::string>();
-                edit.has_source_mod_id = true;
-            }
-            ie.edits.push_back(std::move(edit));
-        }
-    }
-    return ie;
 }
 
 static TreeNode parse_tree_node(const nlohmann::json& j) {
