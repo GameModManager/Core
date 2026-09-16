@@ -229,19 +229,25 @@ struct PatchChain {
 
 // ---------------------------------------------------------------------------
 // INI types (ini/<targetFile>.json)
+//
+// Mirrors the tweak shape in input/ini.schema.json. status is the raw
+// "required"/"recommended" string; the typed enum lives in
+// engine/modpack/ini_edits.h (see to_edit_file() in ini_edit_parser.h).
 // ---------------------------------------------------------------------------
 
-struct IniEdit {
-    std::string section;
-    std::string key;
-    std::string value;
-    std::string source_mod_id;  // empty = null (pack-author edit)
+struct IniTweak {
+    std::string id;  // stable slug; key for diffing/state/retract
+    std::string name;  // human-readable label
+    std::string status;  // "required", "recommended"
+    bool enabled = true;  // author default
+    std::string content;  // plain INI text
+    std::string source_mod_id;  // empty = null (pack-author tweak)
     bool has_source_mod_id = false;
 };
 
 struct IniEntry {
     std::string target_file;
-    std::vector<IniEdit> edits;
+    std::vector<IniTweak> tweaks;
 };
 
 // ---------------------------------------------------------------------------

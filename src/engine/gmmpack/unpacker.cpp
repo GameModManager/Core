@@ -1,4 +1,5 @@
 #include "engine/gmmpack/unpacker.h"
+#include "engine/gmmpack/ini_edit_parser.h"
 #include "engine/gmmpack/schema_validator.h"
 #include "engine/gmmpack/tree_parser.h"
 
@@ -469,20 +470,25 @@ Diagnostics check_referential_integrity(const Gmmpack& pack) {
         }
     }
 
-// ini/*.json: sourceModId must resolve to a real mod id (when non-null)
-    for (size_t i = 0; i < pack.ini_edits.size(); ++i) {
-        const auto& ini = pack.ini_edits[i];
-        for (size_t j = 0; j < ini.edits.size(); ++j) {
-            const auto& edit = ini.edits[j];
-            if (edit.has_source_mod_id && !edit.source_mod_id.empty()) {
-                if (!is_valid_mod_id(edit.source_mod_id)) {
-                    std::string prefix =
-                        "ini/" + ini.target_file + ".edits[" +
-                        std::to_string(j) + "].sourceModId";
-                    diag.push_back(
-                        {Diagnostic::Severity::Error, prefix,
-                         "unknown mod id: " + edit.source_mod_id});
-                }
+// ini/*.json: tweak sourceModId (when non-null) must resolve to a real
+    // mod id; tweak ids must be unique within the file (uniqueness is not
+    // expressible in JSON Schema, so it is checked here).
+    for (size_t fi = 0; fi < pack.ini_edits.size(); ++fi) {
+        const auto& ini = pack.ini_edits[fi];
+        std::unordered_set<std::string> seen_ids;
+        for (size_t ti = 0; ti < ini.tweaks.size(); ++ti) {
+            const auto& tweak = ini.tweaks[ti];
+            const std::string where =
+                "ini/" + ini.target_file + ".tweaks[" + std::to_string(ti) + "]";
+            if (!seen_ids.insert(tweak.id).second) {
+                diag.push_back({Diagnostic::Severity::Error, where + ".id",
+                                "duplicate tweak id: " + tweak.id});
+            }
+            if (tweak.has_source_mod_id &&
+                !is_valid_mod_id(tweak.source_mod_id)) {
+                diag.push_back({Diagnostic::Severity::Error,
+                                where + ".sourceModId",
+                                "unknown mod id: " + tweak.source_mod_id});
             }
         }
     }
@@ -896,25 +902,6 @@ std::pair<std::vector<PatchChain>, Diagnostics> build_patch_chains(
               });
 
     return {std::move(chains), std::move(diag)};
-}
-
-IniEntry parse_ini_entry(const nlohmann::json& j) {
-    IniEntry ie;
-    ie.target_file = j.value("targetFile", "");
-    if (j.contains("edits")) {
-        for (const auto& ej : j["edits"]) {
-            IniEdit edit;
-            edit.section = ej.value("section", "");
-            edit.key = ej.value("key", "");
-            edit.value = ej.value("value", "");
-            if (ej.contains("sourceModId") && !ej["sourceModId"].is_null()) {
-                edit.source_mod_id = ej["sourceModId"].get<std::string>();
-                edit.has_source_mod_id = true;
-            }
-            ie.edits.push_back(std::move(edit));
-        }
-    }
-    return ie;
 }
 
 // parse_tree() lives in tree_parser.cpp (pure JSON, no archive I/O).

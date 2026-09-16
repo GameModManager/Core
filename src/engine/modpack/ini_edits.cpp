@@ -12,9 +12,6 @@
 namespace engine::modpack {
 namespace {
 
-constexpr const char* kEolLf = "\n";
-constexpr const char* kEolCrlf = "\r\n";
-
 // ASCII lowercase copy.
 std::string lower(std::string s) {
     for (auto& c : s)
@@ -61,17 +58,58 @@ size_t comment_pos(const std::string& rhs) {
     return std::string::npos;
 }
 
+// The single INI line grammar. Classifies one raw line; shared by the
+// document model (parse_doc) and the tweak content parser
+// (parse_ini_content) so there is exactly one definition of what an INI
+// line means.
+struct IniLine {
+    enum class Kind { Blank, Comment, Section, Key, Other };
+    Kind kind = Kind::Other;
+    std::string section_name;  // Section: name between brackets, trimmed
+    std::string key;  // Key: trimmed key text (empty = stray "= x" line)
+    std::string value;  // Key: trimmed value, trailing comment stripped
+    std::string comment;  // Key: trailing comment incl. ';', may be empty
+    size_t eq_pos = std::string::npos;  // Key: '=' offset in the raw line
+};
+
+IniLine classify_ini_line(const std::string& raw) {
+    IniLine line;
+    const std::string t = trim(raw);
+    if (t.empty()) {
+        line.kind = IniLine::Kind::Blank;
+    } else if (t[0] == ';' || t[0] == '#') {
+        line.kind = IniLine::Kind::Comment;
+    } else if (t.front() == '[' && t.back() == ']') {
+        line.kind = IniLine::Kind::Section;
+        line.section_name = trim(t.substr(1, t.size() - 2));
+    } else if (const size_t eq = raw.find('='); eq != std::string::npos) {
+        line.kind = IniLine::Kind::Key;
+        line.eq_pos = eq;
+        line.key = trim(raw.substr(0, eq));
+        std::string rhs = raw.substr(eq + 1);
+        if (const size_t c = comment_pos(rhs); c != std::string::npos) {
+            line.comment = rhs.substr(c);
+            rhs = rhs.substr(0, c);
+        }
+        line.value = trim(rhs);
+    }
+    return line;
+}
+
 // Line-preserving INI document: every line keeps its kind so apply/retract
 // rewrite values without touching order, comments, or blank lines.
 struct DocLine {
     enum class Kind { Blank, Comment, Section, Key, Other };
     Kind kind = Kind::Other;
-    std::string text;      // raw line (no EOL)
-    std::string section;   // for Key: enclosing section, raw casing
-    std::string lhs;       // for Key: raw text before '=' (key + spacing)
-    std::string value;     // for Key: trimmed value without trailing comment
-    std::string comment;   // for Key: trailing comment incl. ';', may be empty
+    std::string text;  // raw line (no EOL)
+    std::string section;  // for Key: enclosing section, raw casing
+    std::string lhs;  // for Key: raw text before '=' (key + spacing)
+    std::string value;  // for Key: trimmed value without trailing comment
+    std::string comment;  // for Key: trailing comment incl. ';', may be empty
 };
+
+constexpr const char* kEolLf = "\n";
+constexpr const char* kEolCrlf = "\r\n";
 
 struct IniDoc {
     std::vector<DocLine> lines;
@@ -84,32 +122,34 @@ IniDoc parse_doc(const std::string& text) {
     std::string cur;
     std::string section;
     auto flush = [&] {
+        const IniLine parsed = classify_ini_line(cur);
         DocLine line;
         line.text = cur;
-        const std::string t = trim(cur);
-        if (t.empty()) {
-            line.kind = DocLine::Kind::Blank;
-        } else if (t[0] == ';' || t[0] == '#') {
-            line.kind = DocLine::Kind::Comment;
-        } else if (t.front() == '[' && t.back() == ']') {
-            line.kind = DocLine::Kind::Section;
-            section = trim(t.substr(1, t.size() - 2));
-        } else if (const size_t eq = cur.find('='); eq != std::string::npos) {
-            line.kind = DocLine::Kind::Key;
-            line.section = section;
-            line.lhs = cur.substr(0, eq);
-            // An empty key name is not a setting (e.g. a stray "= x" line).
-            if (trim(line.lhs).empty()) {
-                line.kind = DocLine::Kind::Other;
-                line.lhs.clear();
-            } else {
-                std::string rhs = cur.substr(eq + 1);
-                if (const size_t c = comment_pos(rhs); c != std::string::npos) {
-                    line.comment = rhs.substr(c);
-                    rhs = rhs.substr(0, c);
+        switch (parsed.kind) {
+            case IniLine::Kind::Blank:
+                line.kind = DocLine::Kind::Blank;
+                break;
+            case IniLine::Kind::Comment:
+                line.kind = DocLine::Kind::Comment;
+                break;
+            case IniLine::Kind::Section:
+                line.kind = DocLine::Kind::Section;
+                section = parsed.section_name;
+                break;
+            case IniLine::Kind::Key:
+                // An empty key name is not a setting (e.g. a stray "= x").
+                if (parsed.key.empty()) {
+                    line.kind = DocLine::Kind::Other;
+                } else {
+                    line.kind = DocLine::Kind::Key;
+                    line.section = section;
+                    line.lhs = cur.substr(0, parsed.eq_pos);
+                    line.value = parsed.value;
+                    line.comment = parsed.comment;
                 }
-                line.value = trim(rhs);
-            }
+                break;
+            case IniLine::Kind::Other:
+                break;
         }
         doc.lines.push_back(std::move(line));
         cur.clear();
@@ -221,7 +261,119 @@ void insert_key(IniDoc& doc, const std::string& section, const std::string& key,
     }
 }
 
+// Shared retract core: removes every state entry matching pred, restoring
+// prior values (or dropping added lines); user-changed values are left alone
+// and reported as skipped. Non-matching entries pass through untouched.
+template <typename Pred>
+RetractOutcome retract_matching(const std::string& current_text,
+                                const std::vector<AppliedEdit>& state,
+                                Pred match) {
+    IniDoc doc = parse_doc(current_text);
+    RetractOutcome out;
+    for (const auto& rec : state) {
+        if (!match(rec)) {
+            out.applied.push_back(rec);
+            continue;
+        }
+        const size_t at = find_key(doc, rec.section, rec.key);
+        if (at == std::string::npos)
+            continue;  // already gone: drop the record, nothing to do
+        if (trim(doc.lines[at].value) != trim(rec.applied_value)) {
+            // User changed it after us: leave the value, drop the record.
+            out.skipped.push_back(UserModified{rec.target_file, rec.section,
+                                              rec.key, rec.applied_value,
+                                              doc.lines[at].value});
+            continue;
+        }
+        if (rec.had_prior) {
+            set_key_line(doc.lines[at], rec.prior_value);
+        } else {
+            doc.lines.erase(doc.lines.begin() + at);
+        }
+    }
+    out.text = render_doc(doc);
+    return out;
+}
+
 }  // namespace
+
+std::optional<std::vector<IniEdit>> parse_ini_content(
+    const std::string& content, std::string* error,
+    std::vector<std::string>* warnings) {
+    auto fail = [&](const std::string& msg) -> std::optional<std::vector<IniEdit>> {
+        if (error)
+            *error = msg;
+        return std::nullopt;
+    };
+    std::vector<IniEdit> edits;
+    std::map<std::pair<std::string, std::string>, size_t> slot;  // last-wins
+    std::string section;
+    bool have_section = false;
+    std::string cur;
+    size_t line_no = 0;
+    auto flush = [&]() -> bool {
+        ++line_no;
+        const IniLine parsed = classify_ini_line(cur);
+        cur.clear();
+        switch (parsed.kind) {
+            case IniLine::Kind::Blank:
+            case IniLine::Kind::Comment:
+                break;
+            case IniLine::Kind::Section:
+                section = parsed.section_name;
+                have_section = true;
+                break;
+            case IniLine::Kind::Key: {
+                if (!have_section) {
+                    fail("line " + std::to_string(line_no) +
+                         ": key outside any section");
+                    return false;
+                }
+                if (parsed.key.empty()) {
+                    fail("line " + std::to_string(line_no) + ": empty key");
+                    return false;
+                }
+                const auto k = std::make_pair(norm_token(section),
+                                              norm_token(parsed.key));
+                IniEdit edit{section, parsed.key, parsed.value, std::nullopt,
+                             std::nullopt};
+                if (auto it = slot.find(k); it != slot.end()) {
+                    edits[it->second] = edit;  // last wins
+                    if (warnings)
+                        warnings->push_back(
+                            "line " + std::to_string(line_no) +
+                            ": duplicate key '" + parsed.key + "' in section '" +
+                            section + "': earlier value overridden");
+                } else {
+                    slot[k] = edits.size();
+                    edits.push_back(std::move(edit));
+                }
+                break;
+            }
+            case IniLine::Kind::Other:
+                fail("line " + std::to_string(line_no) +
+                     ": expected key=value");
+                return false;
+        }
+        return true;
+    };
+    for (size_t i = 0; i < content.size(); ++i) {
+        if (content[i] == '\r' && i + 1 < content.size() &&
+            content[i + 1] == '\n')
+            continue;  // CRLF pair handled at '\n'
+        if (content[i] == '\n') {
+            if (!flush())
+                return std::nullopt;
+        } else {
+            cur.push_back(content[i]);
+        }
+    }
+    if (!cur.empty()) {
+        if (!flush())
+            return std::nullopt;
+    }
+    return edits;
+}
 
 std::optional<IniEditFile> parse_ini_edit_file(const std::string& json_text,
                                                std::string* error) {
@@ -240,37 +392,68 @@ std::optional<IniEditFile> parse_ini_edit_file(const std::string& json_text,
         return fail("root must be an object");
     if (!doc.contains("targetFile") || !doc["targetFile"].is_string())
         return fail("missing string 'targetFile'");
-    if (!doc.contains("edits") || !doc["edits"].is_array())
-        return fail("missing array 'edits'");
+    if (!doc.contains("tweaks") || !doc["tweaks"].is_array())
+        return fail("missing array 'tweaks'");
     IniEditFile file;
     file.target_file = doc["targetFile"].get<std::string>();
     if (trim(file.target_file).empty())
         return fail("'targetFile' must not be empty");
+    std::map<std::string, size_t> seen_id;
+    std::map<std::string, size_t> seen_name;
     size_t idx = 0;
-    for (const auto& e : doc["edits"]) {
-        auto efail = [&](const std::string& msg) {
-            return fail("edits[" + std::to_string(idx) + "]: " + msg);
+    for (const auto& t : doc["tweaks"]) {
+        auto tfail = [&](const std::string& msg) {
+            return fail("tweaks[" + std::to_string(idx) + "]: " + msg);
         };
-        if (!e.is_object())
-            return efail("must be an object");
-        for (const char* f : {"section", "key", "value", "sourceModId"}) {
-            if (!e.contains(f))
-                return efail(std::string("missing '") + f + "'");
+        if (!t.is_object())
+            return tfail("must be an object");
+        for (const char* f :
+             {"id", "name", "status", "enabled", "sourceModId", "content"}) {
+            if (!t.contains(f))
+                return tfail(std::string("missing '") + f + "'");
         }
-        if (!e["section"].is_string() || !e["key"].is_string() ||
-            !e["value"].is_string())
-            return efail("'section'/'key'/'value' must be strings");
-        if (!e["sourceModId"].is_null() && !e["sourceModId"].is_string())
-            return efail("'sourceModId' must be a string or null");
-        IniEdit edit;
-        edit.section = e["section"].get<std::string>();
-        edit.key = e["key"].get<std::string>();
-        edit.value = e["value"].get<std::string>();
-        if (trim(edit.key).empty())
-            return efail("'key' must not be empty");
-        if (e["sourceModId"].is_string())
-            edit.source_mod_id = e["sourceModId"].get<std::string>();
-        file.edits.push_back(std::move(edit));
+        if (!t["id"].is_string() || !t["name"].is_string() ||
+            !t["status"].is_string() || !t["content"].is_string())
+            return tfail("'id'/'name'/'status'/'content' must be strings");
+        if (!t["enabled"].is_boolean())
+            return tfail("'enabled' must be a boolean");
+        if (!t["sourceModId"].is_null() && !t["sourceModId"].is_string())
+            return tfail("'sourceModId' must be a string or null");
+        IniTweak tweak;
+        tweak.id = t["id"].get<std::string>();
+        tweak.name = t["name"].get<std::string>();
+        if (trim(tweak.id).empty())
+            return tfail("'id' must not be empty");
+        if (trim(tweak.name).empty())
+            return tfail("'name' must not be empty");
+        if (auto it = seen_id.find(tweak.id); it != seen_id.end())
+            return tfail("duplicate id '" + tweak.id + "' (first at index " +
+                         std::to_string(it->second) + ")");
+        if (auto it = seen_name.find(tweak.name); it != seen_name.end())
+            return tfail("duplicate name '" + tweak.name +
+                         "' (first at index " + std::to_string(it->second) +
+                         ")");
+        seen_id[tweak.id] = idx;
+        seen_name[tweak.name] = idx;
+        const std::string status = t["status"].get<std::string>();
+        if (status == "required") {
+            tweak.status = TweakStatus::Required;
+        } else if (status == "recommended") {
+            tweak.status = TweakStatus::Recommended;
+        } else {
+            return tfail("'status' must be 'required' or 'recommended'");
+        }
+        tweak.enabled = t["enabled"].get<bool>();
+        if (t["sourceModId"].is_string())
+            tweak.source_mod_id = t["sourceModId"].get<std::string>();
+        tweak.content = t["content"].get<std::string>();
+        if (tweak.content.empty())
+            return tfail("'content' must not be empty");
+        std::string content_err;
+        if (!parse_ini_content(tweak.content, &content_err)) {
+            return tfail("tweak '" + tweak.id + "': " + content_err);
+        }
+        file.tweaks.push_back(std::move(tweak));
         ++idx;
     }
     return file;
@@ -314,7 +497,29 @@ IniDirLoad load_ini_dir(const std::filesystem::path& ini_dir) {
 
 std::vector<MergedTarget> merge_ini_edits(
     const std::vector<IniEditFile>& files) {
-    // Group files by normalized target, keeping first-seen order and casing.
+    // Phase A: expand enabled tweaks to edits carrying tweak provenance.
+    struct Provenance {
+        std::string target_file;  // file's casing
+        IniEdit edit;
+    };
+    std::vector<Provenance> expanded;
+    for (const auto& file : files) {
+        for (const auto& tweak : file.tweaks) {
+            if (!tweak.enabled)
+                continue;
+            // Content was validated at load; hand-built files must be valid.
+            auto edits = parse_ini_content(tweak.content);
+            if (!edits)
+                continue;
+            for (auto& edit : *edits) {
+                edit.source_mod_id = tweak.source_mod_id;
+                edit.tweak_id = tweak.id;
+                expanded.push_back(Provenance{file.target_file, edit});
+            }
+        }
+    }
+    // Phase B: key-level merge, unchanged semantics (pack-author beats
+    // mod-attributed, otherwise last in input order wins).
     std::vector<MergedTarget> targets;
     std::map<std::string, size_t> by_target;
     struct KeySlot {
@@ -322,60 +527,63 @@ std::vector<MergedTarget> merge_ini_edits(
         size_t conflict_idx;  // index into MergedTarget::conflicts, or npos
     };
     std::vector<std::map<std::pair<std::string, std::string>, KeySlot>> slots;
-    for (const auto& file : files) {
-        const std::string norm_t = norm_path(file.target_file);
+    for (const auto& item : expanded) {
+        const std::string norm_t = norm_path(item.target_file);
         size_t ti;
         if (auto it = by_target.find(norm_t); it != by_target.end()) {
             ti = it->second;
         } else {
             ti = targets.size();
             by_target[norm_t] = ti;
-            targets.push_back(MergedTarget{file.target_file, {}, {}});
+            targets.push_back(MergedTarget{item.target_file, {}, {}});
             slots.emplace_back();
         }
-        for (const auto& edit : file.edits) {
-            const auto k =
-                std::make_pair(norm_token(edit.section), norm_token(edit.key));
-            auto found = slots[ti].find(k);
-            if (found == slots[ti].end()) {
-                slots[ti][k] = KeySlot{targets[ti].edits.size(),
-                                       std::string::npos};
-                targets[ti].edits.push_back(edit);
-                continue;
-            }
-            // Same target+section+key again: pack-author beats mod-attributed,
-            // otherwise last in input order wins.
-            KeySlot& slot = found->second;
-            IniEdit& cur = targets[ti].edits[slot.edit_idx];
-            const bool incoming_author = !edit.source_mod_id.has_value();
-            const bool current_author = !cur.source_mod_id.has_value();
-            const IniEdit* winner = &edit;
-            const IniEdit* loser = &cur;
-            if (current_author && !incoming_author) {
-                winner = &cur;
-                loser = &edit;
-            }
-            if (trim(winner->value) == trim(loser->value) &&
-                same_source(winner->source_mod_id, loser->source_mod_id))
-                continue;  // identical duplicate, no conflict
-            if (slot.conflict_idx == std::string::npos) {
-                slot.conflict_idx = targets[ti].conflicts.size();
-                IniConflict c;
-                c.target_file = targets[ti].target_file;
-                c.section = winner->section;
-                c.key = winner->key;
-                c.winner = *winner;
-                c.overridden.push_back(*loser);
-                targets[ti].conflicts.push_back(std::move(c));
-            } else {
-                IniConflict& c = targets[ti].conflicts[slot.conflict_idx];
-                c.overridden.push_back(*loser);
-                c.winner = *winner;
-                c.section = winner->section;
-                c.key = winner->key;
-            }
-            cur = *winner;
+        const IniEdit& edit = item.edit;
+        const auto k =
+            std::make_pair(norm_token(edit.section), norm_token(edit.key));
+        auto found = slots[ti].find(k);
+        if (found == slots[ti].end()) {
+            slots[ti][k] = KeySlot{targets[ti].edits.size(),
+                                   std::string::npos};
+            targets[ti].edits.push_back(edit);
+            continue;
         }
+        KeySlot& slot = found->second;
+        IniEdit& cur = targets[ti].edits[slot.edit_idx];
+        const bool incoming_author = !edit.source_mod_id.has_value();
+        const bool current_author = !cur.source_mod_id.has_value();
+        const IniEdit* winner = &edit;
+        const IniEdit* loser = &cur;
+        if (current_author && !incoming_author) {
+            winner = &cur;
+            loser = &edit;
+        }
+        if (trim(winner->value) == trim(loser->value) &&
+            same_source(winner->source_mod_id, loser->source_mod_id))
+            continue;  // identical duplicate, no conflict
+        if (slot.conflict_idx == std::string::npos) {
+            slot.conflict_idx = targets[ti].conflicts.size();
+            IniConflict c;
+            c.target_file = targets[ti].target_file;
+            c.section = winner->section;
+            c.key = winner->key;
+            c.winner = *winner;
+            c.overridden.push_back(*loser);
+            c.winner_tweak_id = winner->tweak_id;
+            c.overridden_tweak_id.push_back(
+                loser->tweak_id.value_or(std::string{}));
+            targets[ti].conflicts.push_back(std::move(c));
+        } else {
+            IniConflict& c = targets[ti].conflicts[slot.conflict_idx];
+            c.overridden.push_back(*loser);
+            c.overridden_tweak_id.push_back(
+                loser->tweak_id.value_or(std::string{}));
+            c.winner = *winner;
+            c.winner_tweak_id = winner->tweak_id;
+            c.section = winner->section;
+            c.key = winner->key;
+        }
+        cur = *winner;
     }
     return targets;
 }
@@ -435,6 +643,7 @@ ApplyOutcome apply_ini_edits(const std::string& current_text,
         }
         rec.applied_value = edit.value;
         rec.source_mod_id = edit.source_mod_id;
+        rec.tweak_id = edit.tweak_id;
         if (exists) {
             if (trim(current) != trim(edit.value))
                 set_key_line(doc.lines[at], edit.value);
@@ -457,31 +666,20 @@ ApplyOutcome apply_ini_edits(const std::string& current_text,
 RetractOutcome retract_ini_edits(
     const std::string& current_text, const std::vector<AppliedEdit>& state,
     const std::optional<std::string>& source) {
-    IniDoc doc = parse_doc(current_text);
-    RetractOutcome out;
-    for (const auto& rec : state) {
-        if (!same_source(rec.source_mod_id, source)) {
-            out.applied.push_back(rec);  // other target/source: untouched
-            continue;
-        }
-        const size_t at = find_key(doc, rec.section, rec.key);
-        if (at == std::string::npos)
-            continue;  // already gone: drop the record, nothing to do
-        if (trim(doc.lines[at].value) != trim(rec.applied_value)) {
-            // User changed it after us: leave the value, drop the record.
-            out.skipped.push_back(UserModified{rec.target_file, rec.section,
-                                              rec.key, rec.applied_value,
-                                              doc.lines[at].value});
-            continue;
-        }
-        if (rec.had_prior) {
-            set_key_line(doc.lines[at], rec.prior_value);
-        } else {
-            doc.lines.erase(doc.lines.begin() + at);
-        }
-    }
-    out.text = render_doc(doc);
-    return out;
+    return retract_matching(current_text, state,
+                            [&](const AppliedEdit& rec) {
+                                return same_source(rec.source_mod_id, source);
+                            });
+}
+
+RetractOutcome retract_ini_tweak(
+    const std::string& current_text, const std::vector<AppliedEdit>& state,
+    const std::string& tweak_id) {
+    return retract_matching(current_text, state,
+                            [&](const AppliedEdit& rec) {
+                                return rec.tweak_id.has_value() &&
+                                       *rec.tweak_id == tweak_id;
+                            });
 }
 
 std::string applied_state_to_json(const std::vector<AppliedEdit>& state) {
@@ -498,6 +696,10 @@ std::string applied_state_to_json(const std::vector<AppliedEdit>& state) {
             o["sourceModId"] = *r.source_mod_id;
         else
             o["sourceModId"] = nullptr;
+        if (r.tweak_id.has_value())
+            o["tweakId"] = *r.tweak_id;
+        else
+            o["tweakId"] = nullptr;
         arr.push_back(std::move(o));
     }
     return arr.dump(2);
@@ -537,6 +739,15 @@ std::vector<AppliedEdit> applied_state_from_json(const std::string& json_text,
             else if (!src.is_null())
                 return fail("entry " + std::to_string(idx) +
                             ": 'sourceModId' must be string or null");
+            // tweakId is additive: pre-tweak state files omit it entirely.
+            if (o.contains("tweakId")) {
+                const auto& tw = o.at("tweakId");
+                if (tw.is_string())
+                    r.tweak_id = tw.get<std::string>();
+                else if (!tw.is_null())
+                    return fail("entry " + std::to_string(idx) +
+                                ": 'tweakId' must be string or null");
+            }
         } catch (const std::exception& e) {
             return fail("entry " + std::to_string(idx) + ": " + e.what());
         }
