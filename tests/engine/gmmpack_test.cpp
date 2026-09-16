@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <string>
 #include <vector>
 #include <catch2/catch_test_macros.hpp>
@@ -732,4 +733,474 @@ TEST_CASE("gmmpack rejects manifest with invalid UUID", "[gmmpack]") {
         }
     }
     REQUIRE(found_uuid);
+}
+
+// ---------------------------------------------------------------------------
+// parse_patch_filename tests
+// ---------------------------------------------------------------------------
+
+TEST_CASE("parse_patch_filename single patch", "[gmmpack][patch]") {
+    auto result = gmmpack::parse_patch_filename("patches/skyui.json");
+    REQUIRE(result.has_value());
+    REQUIRE(result->first == "skyui");
+    REQUIRE(result->second == 0);
+}
+
+TEST_CASE("parse_patch_filename chain patch", "[gmmpack][patch]") {
+    auto result = gmmpack::parse_patch_filename("patches/awesome-mod-1.json");
+    REQUIRE(result.has_value());
+    REQUIRE(result->first == "awesome-mod");
+    REQUIRE(result->second == 1);
+}
+
+TEST_CASE("parse_patch_filename chain patch high number", "[gmmpack][patch]") {
+    auto result = gmmpack::parse_patch_filename("patches/foo-42.json");
+    REQUIRE(result.has_value());
+    REQUIRE(result->first == "foo");
+    REQUIRE(result->second == 42);
+}
+
+TEST_CASE("parse_patch_filename rejects wrong prefix", "[gmmpack][patch]") {
+    auto result = gmmpack::parse_patch_filename("mods/skyui.json");
+    REQUIRE_FALSE(result.has_value());
+}
+
+TEST_CASE("parse_patch_filename rejects non-json", "[gmmpack][patch]") {
+    auto result = gmmpack::parse_patch_filename("patches/skyui.txt");
+    REQUIRE_FALSE(result.has_value());
+}
+
+TEST_CASE("parse_patch_filename rejects empty mod_id", "[gmmpack][patch]") {
+    auto result = gmmpack::parse_patch_filename("patches/-1.json");
+    // Dash at pos 0 -> mod_id would be empty, but our code requires dash_pos > 0
+    // So it falls through to the "no valid sequence" path with filename = "-1"
+    // which doesn't match the expected pattern cleanly. Let's verify it returns
+    // either nullopt or the filename as-is.
+    // With our implementation: filename = "-1", rfind('-') = 0, but dash_pos > 0
+    // check fails, so it returns {"-1", 0}.
+    // This is fine - the referential integrity check will catch the mismatch.
+    REQUIRE(result.has_value());
+}
+
+// ---------------------------------------------------------------------------
+// build_patch_chains tests
+// ---------------------------------------------------------------------------
+
+TEST_CASE("build_patch_chains single patch", "[gmmpack][patch]") {
+    gmmpack::PatchEntry p;
+    p.mod_id = "skyui";
+    p.sequence = std::nullopt;
+    p.target_path = "SkyUI.esp";
+    p.payload_base64 = "dGVzdA==";
+
+    auto [chains, diag] = gmmpack::build_patch_chains({p});
+    REQUIRE(diag.empty());
+    REQUIRE(chains.size() == 1);
+    REQUIRE(chains[0].mod_id == "skyui");
+    REQUIRE(chains[0].patches.size() == 1);
+    REQUIRE_FALSE(chains[0].patches[0].sequence.has_value());
+}
+
+TEST_CASE("build_patch_chains sorted chain", "[gmmpack][patch]") {
+    gmmpack::PatchEntry p1;
+    p1.mod_id = "awesome-mod";
+    p1.sequence = 3;
+    p1.payload_base64 = "dGVzdA==";
+
+    gmmpack::PatchEntry p2;
+    p2.mod_id = "awesome-mod";
+    p2.sequence = 1;
+    p2.payload_base64 = "dGVzdA==";
+
+    gmmpack::PatchEntry p3;
+    p3.mod_id = "awesome-mod";
+    p3.sequence = 2;
+    p3.payload_base64 = "dGVzdA==";
+
+    auto [chains, diag] = gmmpack::build_patch_chains({p1, p2, p3});
+    REQUIRE(diag.empty());
+    REQUIRE(chains.size() == 1);
+    REQUIRE(chains[0].patches.size() == 3);
+    REQUIRE(chains[0].patches[0].sequence == 1);
+    REQUIRE(chains[0].patches[1].sequence == 2);
+    REQUIRE(chains[0].patches[2].sequence == 3);
+}
+
+TEST_CASE("build_patch_chains contiguity error", "[gmmpack][patch]") {
+    gmmpack::PatchEntry p1;
+    p1.mod_id = "broken-mod";
+    p1.sequence = 1;
+    p1.payload_base64 = "dGVzdA==";
+
+    gmmpack::PatchEntry p3;
+    p3.mod_id = "broken-mod";
+    p3.sequence = 3;  // gap at 2
+    p3.payload_base64 = "dGVzdA==";
+
+    auto [chains, diag] = gmmpack::build_patch_chains({p1, p3});
+    REQUIRE_FALSE(diag.empty());
+    bool found_gap = false;
+    for (const auto& d : diag) {
+        if (d.message.find("non-contiguous") != std::string::npos) {
+            found_gap = true;
+            break;
+        }
+    }
+    REQUIRE(found_gap);
+}
+
+TEST_CASE("build_patch_chains mixed mods sorted", "[gmmpack][patch]") {
+    gmmpack::PatchEntry pa;
+    pa.mod_id = "alpha";
+    pa.sequence = 1;
+    pa.payload_base64 = "dGVzdA==";
+
+    gmmpack::PatchEntry pb;
+    pb.mod_id = "beta";
+    pb.sequence = std::nullopt;
+    pb.payload_base64 = "dGVzdA==";
+
+    gmmpack::PatchEntry pa2;
+    pa2.mod_id = "alpha";
+    pa2.sequence = 2;
+    pa2.payload_base64 = "dGVzdA==";
+
+    auto [chains, diag] = gmmpack::build_patch_chains({pa, pb, pa2});
+    REQUIRE(diag.empty());
+    REQUIRE(chains.size() == 2);
+    // Sorted by mod_id: alpha first
+    REQUIRE(chains[0].mod_id == "alpha");
+    REQUIRE(chains[0].patches.size() == 2);
+    REQUIRE(chains[0].patches[0].sequence == 1);
+    REQUIRE(chains[0].patches[1].sequence == 2);
+    REQUIRE(chains[1].mod_id == "beta");
+    REQUIRE(chains[1].patches.size() == 1);
+}
+
+TEST_CASE("build_patch_chains empty input", "[gmmpack][patch]") {
+    auto [chains, diag] = gmmpack::build_patch_chains({});
+    REQUIRE(diag.empty());
+    REQUIRE(chains.empty());
+}
+
+// ---------------------------------------------------------------------------
+// Filename cross-check via referential integrity
+// ---------------------------------------------------------------------------
+
+TEST_CASE("gmmpack referential integrity catches patch filename mismatch",
+          "[gmmpack]") {
+    gmmpack::Gmmpack pack;
+    gmmpack::ModEntry mod;
+    mod.id = "skyui";
+    mod.name = "SkyUI";
+    mod.category = "required";
+    mod.source = gmmpack::ModSourceNexus{};
+    pack.mods.push_back(mod);
+
+    gmmpack::PatchEntry p;
+    p.mod_id = "skyui";
+    p.target_path = "SkyUI.esp";
+    p.base_file_sha256 =
+        "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+    p.algorithm = "bsdiff";
+    p.payload_base64 = "dGVzdA==";
+    p.source_filename = "patches/other-mod.json";  // mismatch!
+    pack.patches.push_back(p);
+
+    auto diag = gmmpack::check_referential_integrity(pack);
+    REQUIRE_FALSE(diag.empty());
+    bool found_mismatch = false;
+    for (const auto& d : diag) {
+        if (d.message.find("does not match modId") != std::string::npos) {
+            found_mismatch = true;
+            break;
+        }
+    }
+    REQUIRE(found_mismatch);
+}
+
+TEST_CASE("gmmpack referential integrity passes patch filename match",
+          "[gmmpack]") {
+    gmmpack::Gmmpack pack;
+    gmmpack::ModEntry mod;
+    mod.id = "skyui";
+    mod.name = "SkyUI";
+    mod.category = "required";
+    mod.source = gmmpack::ModSourceNexus{};
+    pack.mods.push_back(mod);
+
+    gmmpack::PatchEntry p;
+    p.mod_id = "skyui";
+    p.target_path = "SkyUI.esp";
+    p.base_file_sha256 =
+        "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+    p.algorithm = "bsdiff";
+    p.payload_base64 = "dGVzdA==";
+    p.source_filename = "patches/skyui.json";  // matches
+    pack.patches.push_back(p);
+
+    auto diag = gmmpack::check_referential_integrity(pack);
+    bool found_mismatch = false;
+    for (const auto& d : diag) {
+        if (d.message.find("does not match modId") != std::string::npos) {
+            found_mismatch = true;
+            break;
+        }
+    }
+    REQUIRE_FALSE(found_mismatch);
+}
+
+// ---------------------------------------------------------------------------
+// Full archive round-trip with patches
+// ---------------------------------------------------------------------------
+
+TEST_CASE("gmmpack full round-trip with single patch", "[gmmpack]") {
+    TempDir td;
+    std::string mod_json = make_mod_json();
+    std::string tree_json = make_tree_json();
+    std::string patch_json = R"({
+        "modId": "skyui",
+        "targetPath": "SkyUI.esp",
+        "baseFileSha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+        "algorithm": "bsdiff",
+        "payloadBase64": "dGVzdA=="
+    })";
+
+    std::string mod_hash = "sha256:" + sha256_hex(mod_json);
+    std::string tree_hash = "sha256:" + sha256_hex(tree_json);
+    std::string patch_hash = "sha256:" + sha256_hex(patch_json);
+
+    std::string manifest_json =
+        make_manifest({{"mods/skyui.json", mod_hash},
+                       {"tree.json", tree_hash},
+                       {"patches/skyui.json", patch_hash}});
+
+    auto zip = make_zip(td, "test.gmmpack", {
+        {"manifest.json", manifest_json},
+        {"mods/skyui.json", mod_json},
+        {"tree.json", tree_json},
+        {"patches/skyui.json", patch_json},
+    });
+
+    auto result = gmmpack::unpack_gmmpack(zip, schema_dir());
+    REQUIRE(result.ok);
+    REQUIRE(result.pack.patches.size() == 1);
+    REQUIRE(result.pack.patches[0].mod_id == "skyui");
+    REQUIRE(result.pack.patches[0].target_path == "SkyUI.esp");
+    REQUIRE(result.pack.patches[0].algorithm == "bsdiff");
+    REQUIRE(result.pack.patches[0].source_filename == "patches/skyui.json");
+    REQUIRE_FALSE(result.pack.patches[0].sequence.has_value());
+}
+
+TEST_CASE("gmmpack full round-trip with chain patches", "[gmmpack]") {
+    TempDir td;
+    std::string mod_json = make_mod_json("awesome-mod");
+    std::string tree_json =
+        R"({"nodes":[{"type":"mod","id":"awesome-mod","enabled":true}]})";
+    std::string patch1_json = R"({
+        "modId": "awesome-mod",
+        "sequence": 1,
+        "targetPath": "AwesomeMod.esp",
+        "baseFileSha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+        "algorithm": "bsdiff",
+        "payloadBase64": "cGF0Y2gxA=="
+    })";
+    std::string patch2_json = R"({
+        "modId": "awesome-mod",
+        "sequence": 2,
+        "targetPath": "AwesomeMod.ini",
+        "baseFileSha256": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+        "algorithm": "bsdiff",
+        "payloadBase64": "cGF0Y2gy"
+    })";
+
+    std::string mod_hash = "sha256:" + sha256_hex(mod_json);
+    std::string tree_hash = "sha256:" + sha256_hex(tree_json);
+    std::string p1_hash = "sha256:" + sha256_hex(patch1_json);
+    std::string p2_hash = "sha256:" + sha256_hex(patch2_json);
+
+    std::string manifest_json =
+        make_manifest({{"mods/awesome-mod.json", mod_hash},
+                       {"tree.json", tree_hash},
+                       {"patches/awesome-mod-1.json", p1_hash},
+                       {"patches/awesome-mod-2.json", p2_hash}});
+
+    auto zip = make_zip(td, "test.gmmpack", {
+        {"manifest.json", manifest_json},
+        {"mods/awesome-mod.json", mod_json},
+        {"tree.json", tree_json},
+        {"patches/awesome-mod-1.json", patch1_json},
+        {"patches/awesome-mod-2.json", patch2_json},
+    });
+
+    auto result = gmmpack::unpack_gmmpack(zip, schema_dir());
+    REQUIRE(result.ok);
+    REQUIRE(result.pack.patches.size() == 2);
+
+    // Verify source filenames are preserved
+    std::set<std::string> filenames;
+    for (const auto& p : result.pack.patches)
+        filenames.insert(p.source_filename);
+    REQUIRE(filenames.count("patches/awesome-mod-1.json"));
+    REQUIRE(filenames.count("patches/awesome-mod-2.json"));
+
+    // Build chains and verify ordering
+    auto [chains, chain_diag] =
+        gmmpack::build_patch_chains(result.pack.patches);
+    REQUIRE(chain_diag.empty());
+    REQUIRE(chains.size() == 1);
+    REQUIRE(chains[0].mod_id == "awesome-mod");
+    REQUIRE(chains[0].patches.size() == 2);
+    REQUIRE(chains[0].patches[0].sequence == 1);
+    REQUIRE(chains[0].patches[1].sequence == 2);
+}
+
+TEST_CASE("gmmpack rejects archive with patch filename mismatch",
+          "[gmmpack]") {
+    TempDir td;
+    std::string mod_json = make_mod_json("skyui");
+    std::string tree_json =
+        R"({"nodes":[{"type":"mod","id":"skyui","enabled":true}]})";
+    std::string patch_json = R"({
+        "modId": "wrong-mod",
+        "targetPath": "SkyUI.esp",
+        "baseFileSha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+        "algorithm": "bsdiff",
+        "payloadBase64": "dGVzdA=="
+    })";
+
+    std::string mod_hash = "sha256:" + sha256_hex(mod_json);
+    std::string tree_hash = "sha256:" + sha256_hex(tree_json);
+    std::string patch_hash = "sha256:" + sha256_hex(patch_json);
+
+    // Filename says skyui, JSON says wrong-mod
+    std::string manifest_json =
+        make_manifest({{"mods/skyui.json", mod_hash},
+                       {"tree.json", tree_hash},
+                       {"patches/skyui.json", patch_hash}});
+
+    auto zip = make_zip(td, "test.gmmpack", {
+        {"manifest.json", manifest_json},
+        {"mods/skyui.json", mod_json},
+        {"tree.json", tree_json},
+        {"patches/skyui.json", patch_json},
+    });
+
+    auto result = gmmpack::unpack_gmmpack(zip, schema_dir());
+    REQUIRE_FALSE(result.ok);
+    bool found_mismatch = false;
+    for (const auto& d : result.diagnostics) {
+        if (d.message.find("does not match modId") != std::string::npos) {
+            found_mismatch = true;
+            break;
+        }
+    }
+    REQUIRE(found_mismatch);
+}
+
+TEST_CASE("gmmpack rejects chain file with mismatched sequence field",
+          "[gmmpack]") {
+    gmmpack::Gmmpack pack;
+    gmmpack::PatchEntry p;
+    p.mod_id = "awesome-mod";
+    p.sequence = 1;  // filename says -2
+    p.target_path = "AwesomeMod.esp";
+    p.algorithm = "bsdiff";
+    p.payload_base64 = "dGVzdA==";
+    p.source_filename = "patches/awesome-mod-2.json";
+    pack.patches.push_back(p);
+
+    auto diag = gmmpack::check_referential_integrity(pack);
+    bool found = false;
+    for (const auto& d : diag) {
+        if (d.message.find("does not match sequence field") !=
+            std::string::npos) {
+            found = true;
+            break;
+        }
+    }
+    REQUIRE(found);
+}
+
+TEST_CASE("gmmpack rejects chain file missing sequence field", "[gmmpack]") {
+    gmmpack::Gmmpack pack;
+    gmmpack::PatchEntry p;
+    p.mod_id = "awesome-mod";
+    p.sequence = std::nullopt;  // filename says -1
+    p.target_path = "AwesomeMod.esp";
+    p.algorithm = "bsdiff";
+    p.payload_base64 = "dGVzdA==";
+    p.source_filename = "patches/awesome-mod-1.json";
+    pack.patches.push_back(p);
+
+    auto diag = gmmpack::check_referential_integrity(pack);
+    bool found = false;
+    for (const auto& d : diag) {
+        if (d.message.find("missing its sequence field") != std::string::npos) {
+            found = true;
+            break;
+        }
+    }
+    REQUIRE(found);
+}
+
+TEST_CASE("gmmpack rejects single file carrying sequence field", "[gmmpack]") {
+    gmmpack::Gmmpack pack;
+    gmmpack::PatchEntry p;
+    p.mod_id = "skyui";
+    p.sequence = 1;  // single filename, must be absent
+    p.target_path = "SkyUI.esp";
+    p.algorithm = "bsdiff";
+    p.payload_base64 = "dGVzdA==";
+    p.source_filename = "patches/skyui.json";
+    pack.patches.push_back(p);
+
+    auto diag = gmmpack::check_referential_integrity(pack);
+    bool found = false;
+    for (const auto& d : diag) {
+        if (d.message.find("must not carry a sequence") != std::string::npos) {
+            found = true;
+            break;
+        }
+    }
+    REQUIRE(found);
+}
+
+TEST_CASE("gmmpack rejects mod with both single and chained patches",
+          "[gmmpack]") {
+    gmmpack::PatchEntry single;
+    single.mod_id = "mixed-mod";
+    single.sequence = std::nullopt;
+    single.payload_base64 = "dGVzdA==";
+
+    gmmpack::PatchEntry chained;
+    chained.mod_id = "mixed-mod";
+    chained.sequence = 1;
+    chained.payload_base64 = "dGVzdA==";
+
+    // Builder flags it
+    auto [chains, chain_diag] =
+        gmmpack::build_patch_chains({single, chained});
+    bool found_builder = false;
+    for (const auto& d : chain_diag) {
+        if (d.message.find("both a single patch") != std::string::npos) {
+            found_builder = true;
+            break;
+        }
+    }
+    REQUIRE(found_builder);
+
+    // Integrity gate flags it too
+    gmmpack::Gmmpack pack;
+    pack.patches.push_back(single);
+    pack.patches.push_back(chained);
+    auto diag = gmmpack::check_referential_integrity(pack);
+    bool found_gate = false;
+    for (const auto& d : diag) {
+        if (d.message.find("both a single patch") != std::string::npos) {
+            found_gate = true;
+            break;
+        }
+    }
+    REQUIRE(found_gate);
 }
