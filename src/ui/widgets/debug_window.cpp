@@ -12,21 +12,28 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QDockWidget>
 #include <QFontDatabase>
 #include <QGroupBox>
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QMainWindow>
+#include <QMap>
+#include <QModelIndex>
 #include <QPushButton>
+#include <QTreeWidget>
 #include <QScrollArea>
 #include <QString>
 #include <QSysInfo>
-#include <QTabWidget>
 #include <QTableWidget>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QtGlobal>
+#ifdef __linux__
+#include <malloc.h>
+#endif
 
 #include <algorithm>
 #include <charconv>
@@ -145,24 +152,21 @@ DebugWindow::DebugWindow(const fs::path &instance_root,
                          const std::string &game_name,
                          engine::PluginLoader *plugin_loader,
                          std::function<void()> on_reload_ui, QWidget *parent)
-    : QDialog(parent, Qt::Window | Qt::WindowStaysOnTopHint),
+    : QMainWindow(parent, Qt::Window | Qt::WindowStaysOnTopHint),
       instance_root_(instance_root), game_id_(game_id), game_name_(game_name),
       plugin_loader_(plugin_loader) {
 
   setWindowTitle(tr("Debug Panel"));
   setMinimumSize(720, 540);
   setAttribute(Qt::WA_DeleteOnClose, false);
+  setDockNestingEnabled(true);
 
-  auto *root = new QVBoxLayout(this);
+  // QMainWindow needs a central widget for the dock layout; it hosts the
+  // interval + button controls while the pages live in dock widgets.
+  auto *central = new QWidget(this);
+  auto *root = new QVBoxLayout(central);
   root->setContentsMargins(6, 6, 6, 6);
   root->setSpacing(6);
-
-  tabs_ = new QTabWidget(this);
-  setup_charts_tab();
-  setup_paths_tab();
-  setup_info_tab();
-  setup_network_tab();
-  root->addWidget(tabs_, 1);
 
   // --- Interval controls (kept; only affects the legacy labels now) ---
   auto *interval_row = new QHBoxLayout;
@@ -200,25 +204,46 @@ DebugWindow::DebugWindow(const fs::path &instance_root,
     }
   });
 
-  // --- Button row (Reload UI + Close) ---
+  // --- Button row (Reload UI + Reset Docks + Close) ---
   auto *btn_row = new QHBoxLayout;
   btn_row->setAlignment(Qt::AlignCenter);
   btn_row->setSpacing(12);
-  reload_ui_btn_ = new QPushButton(tr("Reload UI"));
+  reload_ui_btn_ = new QPushButton(tr("Reload UI"), central);
   reload_ui_btn_->setToolTip(tr("Re-read debug.qss and apply (Ctrl+Shift+R)"));
   if (on_reload_ui) {
     connect(reload_ui_btn_, &QPushButton::clicked, this,
             [on_reload_ui]() { on_reload_ui(); });
   }
   btn_row->addWidget(reload_ui_btn_);
-  auto *close_btn = new QPushButton(tr("Close"));
+  auto *reset_btn = new QPushButton(tr("Reset Docks"), central);
+  reset_btn->setToolTip(
+      tr("Re-show every panel and restore the tabbed layout"));
+  connect(reset_btn, &QPushButton::clicked, this,
+          &DebugWindow::reset_dock_layout);
+  btn_row->addWidget(reset_btn);
+  auto *close_btn = new QPushButton(tr("Close"), central);
   connect(close_btn, &QPushButton::clicked, this, [this]() { hide(); });
   btn_row->addWidget(close_btn);
   root->addLayout(btn_row);
+  root->addStretch(1);
+  setCentralWidget(central);
+
+  // One dockable panel per page; tabified by default so the window opens
+  // exactly like the old tab widget, but every panel can float, split,
+  // or sit side-by-side.
+  charts_dock_ = make_dock(tr("Charts"), build_charts_page());
+  paths_dock_ = make_dock(tr("Paths"), build_paths_page());
+  info_dock_ = make_dock(tr("Info"), build_info_page());
+  network_dock_ = make_dock(tr("Network"), build_network_page());
+  memory_dock_ = make_dock(tr("Memory"), build_memory_page());
+  modpack_dock_ = make_dock(tr("Modpack"), build_modpack_page());
+  reset_dock_layout();
 
   // Seed charts/paths/info, start the timers.
   populate_paths();
   populate_info();
+  populate_memory();
+  populate_modpack();
   jitter_timer_.start();
   refresh_stats();
 
@@ -229,6 +254,37 @@ DebugWindow::DebugWindow(const fs::path &instance_root,
   chart_timer_ = new QTimer(this);
   connect(chart_timer_, &QTimer::timeout, this, &DebugWindow::refresh_charts);
   chart_timer_->start(1000);
+}
+
+QDockWidget *DebugWindow::make_dock(const QString &title, QWidget *content) {
+  auto *dock = new QDockWidget(title, this);
+  dock->setObjectName(QStringLiteral("debug_dock_") + title);
+  dock->setWidget(content);
+  dock->setAllowedAreas(Qt::AllDockWidgetAreas);
+  dock->setFeatures(QDockWidget::DockWidgetMovable |
+                    QDockWidget::DockWidgetFloatable |
+                    QDockWidget::DockWidgetClosable);
+  addDockWidget(Qt::TopDockWidgetArea, dock);
+  return dock;
+}
+
+void DebugWindow::reset_dock_layout() {
+  QDockWidget *docks[] = {charts_dock_,  paths_dock_,   info_dock_,
+                          network_dock_, memory_dock_, modpack_dock_};
+  for (auto *d : docks) {
+    if (d && !d->isVisible())
+      d->show();
+  }
+  // Tabify everything onto the first dock so the default view matches the
+  // old single-tab layout; the user can then drag panels out side-by-side.
+  for (std::size_t i = 1; i < sizeof(docks) / sizeof(docks[0]); ++i) {
+    if (docks[0] && docks[i])
+      tabifyDockWidget(docks[0], docks[i]);
+  }
+  if (charts_dock_) {
+    charts_dock_->show();
+    charts_dock_->raise();
+  }
 }
 
 DebugWindow::~DebugWindow() {
@@ -265,7 +321,7 @@ QGroupBox *wrap_chart(const QString &title, QLabel **header_out,
 
 } // namespace
 
-void DebugWindow::setup_charts_tab() {
+QWidget *DebugWindow::build_charts_page() {
   auto *tab = new QWidget;
   auto *outer = new QVBoxLayout(tab);
   outer->setContentsMargins(4, 4, 4, 4);
@@ -350,10 +406,10 @@ void DebugWindow::setup_charts_tab() {
   jitter_chart_->set_y_range(-50.0, 50.0);
   jitter_chart_->set_y_label(QStringLiteral("ms"));
 
-  tabs_->addTab(tab, tr("Charts"));
+  return tab;
 }
 
-void DebugWindow::setup_paths_tab() {
+QWidget *DebugWindow::build_paths_page() {
   auto *tab = new QWidget;
   auto *v = new QVBoxLayout(tab);
   v->setContentsMargins(4, 4, 4, 4);
@@ -392,10 +448,10 @@ void DebugWindow::setup_paths_tab() {
               QGuiApplication::clipboard()->setText(it->text());
           });
   v->addWidget(paths_table_);
-  tabs_->addTab(tab, tr("Paths"));
+  return tab;
 }
 
-void DebugWindow::setup_info_tab() {
+QWidget *DebugWindow::build_info_page() {
   auto *tab = new QWidget;
   auto *v = new QVBoxLayout(tab);
   v->setContentsMargins(4, 4, 4, 4);
@@ -430,7 +486,7 @@ void DebugWindow::setup_info_tab() {
               QGuiApplication::clipboard()->setText(it->text());
           });
   v->addWidget(info_table_);
-  tabs_->addTab(tab, tr("Info"));
+  return tab;
 }
 
 // ---------------------------------------------------------------------------
@@ -928,10 +984,12 @@ void DebugWindow::refresh_populated() {
   // Network log is appended every refresh_stats tick; the populate here
   // keeps it fresh on instance switches / registry rebuilds too.
   populate_network();
+  populate_memory();
+  populate_modpack();
 }
 
 void DebugWindow::showEvent(QShowEvent *event) {
-  QDialog::showEvent(event);
+  QMainWindow::showEvent(event);
   // Safety net for "instance switched while the debug window was hidden":
   // SettingsController::set_game_info() pushes the new state via
   // rebind_for_instance() which already repopulates. But if a caller
@@ -953,7 +1011,7 @@ void DebugWindow::hideEvent(QHideEvent *event) {
   // which manifested as a UI giga-freeze in the nfpb review.
   if (refresh_timer_) refresh_timer_->stop();
   if (chart_timer_) chart_timer_->stop();
-  QDialog::hideEvent(event);
+  QMainWindow::hideEvent(event);
 }
 
 void DebugWindow::refresh_charts() {
@@ -1099,6 +1157,10 @@ void DebugWindow::refresh_charts() {
     jitter_header_->setText(
         QStringLiteral("%1 ms").arg(QString::asprintf("%+.1f", jitter_ms)));
   }
+
+  // Memory page live sample (1 Hz RSS sparkline + stats). Cheap; honors
+  // the pause toggle.
+  refresh_memory_tick();
 }
 
 void DebugWindow::refresh_stats() {
@@ -1228,10 +1290,436 @@ void DebugWindow::refresh_stats() {
 }
 
 // ---------------------------------------------------------------------------
+// Memory page - deeply analytical process + subsystem breakdown.
+// Linux-first: /proc/self/status, /proc/self/smaps_rollup, mallinfo2().
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Small helper: builds a 2-column key/value table with the debug panel's
+// copy-friendly conventions.
+QTableWidget *make_kv_table(QWidget *parent, const QStringList &headers) {
+  auto *t = new QTableWidget(0, static_cast<int>(headers.size()), parent);
+  t->setHorizontalHeaderLabels(headers);
+  t->verticalHeader()->hide();
+  t->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  t->setSelectionBehavior(QAbstractItemView::SelectRows);
+  t->setSelectionMode(QAbstractItemView::SingleSelection);
+  t->setAlternatingRowColors(true);
+  t->setShowGrid(false);
+  auto *hh = t->horizontalHeader();
+  hh->setStretchLastSection(true);
+  for (int c = 0; c < headers.size(); ++c)
+    hh->setSectionResizeMode(c, QHeaderView::ResizeToContents);
+  t->setContextMenuPolicy(Qt::CustomContextMenu);
+  QObject::connect(t, &QWidget::customContextMenuRequested, t,
+                   [t](const QPoint &pos) {
+                     auto *item = t->itemAt(pos);
+                     if (!item)
+                       return;
+                     QStringList row;
+                     for (int c = 0; c < t->columnCount(); ++c) {
+                       auto *cell = t->item(item->row(), c);
+                       row << (cell ? cell->text() : QString());
+                     }
+                     QGuiApplication::clipboard()->setText(
+                         row.join(QStringLiteral(" | ")));
+                   });
+  return t;
+}
+
+QString mib_text(unsigned long kb) {
+  return QStringLiteral("%1 MiB").arg(kb / 1024);
+}
+
+} // namespace
+
+QWidget *DebugWindow::build_memory_page() {
+  auto *tab = new QWidget;
+  auto *outer = new QVBoxLayout(tab);
+  outer->setContentsMargins(4, 4, 4, 4);
+  outer->setSpacing(6);
+
+  // Controls: pause/resume toggle + manual refresh (1 s auto-refresh runs
+  // on chart_timer_ via refresh_memory_tick()).
+  auto *controls = new QHBoxLayout;
+  mem_pause_btn_ = new QPushButton(tr("Pause"), tab);
+  mem_pause_btn_->setCheckable(true);
+  mem_pause_btn_->setToolTip(tr("Pause the 1 s auto-refresh"));
+  connect(mem_pause_btn_, &QPushButton::toggled, this, [this](bool paused) {
+    mem_paused_ = paused;
+    if (mem_pause_btn_)
+      mem_pause_btn_->setText(paused ? tr("Resume") : tr("Pause"));
+  });
+  controls->addWidget(mem_pause_btn_);
+  auto *refresh_btn = new QPushButton(tr("Refresh now"), tab);
+  refresh_btn->setToolTip(tr("Rebuild every memory table immediately"));
+  connect(refresh_btn, &QPushButton::clicked, this, [this]() {
+    populate_memory();
+    refresh_memory_tick();
+  });
+  controls->addWidget(refresh_btn);
+  controls->addStretch(1);
+  outer->addLayout(controls);
+
+  auto *scroll = new QScrollArea(tab);
+  scroll->setWidgetResizable(true);
+  scroll->setFrameShape(QFrame::NoFrame);
+  auto *host = new QWidget;
+  auto *v = new QVBoxLayout(host);
+  v->setContentsMargins(0, 0, 0, 0);
+  v->setSpacing(8);
+
+  auto add_section = [&](const QString &title, QTableWidget **out,
+                         const QStringList &headers) {
+    auto *gb = new QGroupBox(title, host);
+    auto *lv = new QVBoxLayout(gb);
+    lv->setContentsMargins(6, 12, 6, 6);
+    auto *t = make_kv_table(gb, headers);
+    *out = t;
+    lv->addWidget(t);
+    v->addWidget(gb);
+  };
+
+  add_section(tr("Process"), &mem_stats_table_,
+              {tr("Metric"), tr("Value")});
+  add_section(tr("Subsystems"), &mem_subsys_table_,
+              {tr("Subsystem"), tr("Metric"), tr("Value")});
+
+  // Per-type counter is sortable so the biggest owners float to the top.
+  add_section(tr("Objects by type"), &mem_types_table_,
+              {tr("Type"), tr("Count"), tr("Bytes each"),
+               tr("Total (est.)"), tr("Owner")});
+  if (mem_types_table_)
+    mem_types_table_->setSortingEnabled(true);
+
+  add_section(tr("Allocations (heap + top mappings)"), &mem_alloc_table_,
+              {tr("Source"), tr("Detail"), tr("Size")});
+
+  // Live RSS sparkline with high-water mark.
+  auto *chart_gb = new QGroupBox(tr("RSS - rolling 60 s"), host);
+  auto *cv = new QVBoxLayout(chart_gb);
+  cv->setContentsMargins(6, 12, 6, 6);
+  mem_rss_header_ = new QLabel(QStringLiteral("-"), chart_gb);
+  mem_rss_header_->setObjectName("debugValue");
+  cv->addWidget(mem_rss_header_);
+  mem_rss_chart_ = new RollingChartWidget(chart_gb);
+  mem_rss_chart_->set_clamp_negative(true);
+  mem_rss_chart_->set_y_label(QStringLiteral("MiB"));
+  cv->addWidget(mem_rss_chart_, 1);
+  mem_hwm_label_ = new QLabel(QStringLiteral("-"), chart_gb);
+  mem_hwm_label_->setObjectName("debugKey");
+  cv->addWidget(mem_hwm_label_);
+  v->addWidget(chart_gb);
+
+  v->addStretch(1);
+  scroll->setWidget(host);
+  outer->addWidget(scroll, 1);
+  return tab;
+}
+
+void DebugWindow::populate_memory() {
+  if (!mem_stats_table_ || !mem_subsys_table_ || !mem_types_table_ ||
+      !mem_alloc_table_)
+    return;
+
+  const std::string status = read_proc("/proc/self/status");
+  const std::string stat = read_proc("/proc/self/stat");
+  const std::string rollup = read_proc("/proc/self/smaps_rollup");
+  const std::string meminfo = read_proc("/proc/meminfo");
+
+  const unsigned long rss_kb = parse_kb_line(status, "VmRSS:");
+  const unsigned long vms_kb = parse_kb_line(status, "VmSize:");
+  const unsigned long shmem_kb = parse_kb_line(status, "RssShmem:");
+  const unsigned long file_kb = parse_kb_line(status, "RssFile:");
+  const unsigned long hwm_kb = parse_kb_line(status, "VmHWM:");
+  const unsigned long peak_kb = parse_kb_line(status, "VmPeak:");
+  if (rss_kb > mem_peak_rss_kb_)
+    mem_peak_rss_kb_ = rss_kb;
+
+  unsigned long mem_total_kb = 0;
+  {
+    auto pos = meminfo.find("MemTotal:");
+    if (pos != std::string::npos)
+      mem_total_kb = parse_kb_line(meminfo.substr(pos), "MemTotal:");
+  }
+  const unsigned long min_flt = parse_after(stat, 10);
+  const unsigned long maj_flt = parse_after(stat, 12);
+
+  // --- Process-level stats ---
+  mem_stats_table_->setRowCount(0);
+  const double pct =
+      mem_total_kb > 0 ? 100.0 * rss_kb / mem_total_kb : 0.0;
+  add_kv_row(mem_stats_table_, tr("RSS (physical)"), mib_text(rss_kb), true);
+  add_kv_row(mem_stats_table_, tr("VMS (virtual)"), mib_text(vms_kb), true);
+  add_kv_row(mem_stats_table_, tr("Shared (file+shmem)"),
+             mib_text(file_kb + shmem_kb), true);
+  add_kv_row(mem_stats_table_, tr("Share of system"),
+             QStringLiteral("%1%").arg(pct, 0, 'f', 2), false);
+  add_kv_row(mem_stats_table_, tr("Peak RSS (VmHWM)"), mib_text(hwm_kb), true);
+  add_kv_row(mem_stats_table_, tr("Peak VMS (VmPeak)"), mib_text(peak_kb),
+             true);
+  add_kv_row(mem_stats_table_, tr("Page faults (minor/major)"),
+             QStringLiteral("%1 / %2").arg(min_flt).arg(maj_flt), false);
+  if (!rollup.empty()) {
+    add_kv_row(mem_stats_table_, tr("Pss (proportional)"),
+               mib_text(parse_kb_line(rollup, "Pss:")), true);
+  }
+
+  // --- Per-subsystem inventory (best effort from live objects) ---
+  mem_subsys_table_->setRowCount(0);
+  auto subsys_row = [&](const QString &sub, const QString &metric,
+                        const QString &val) {
+    int row = mem_subsys_table_->rowCount();
+    mem_subsys_table_->insertRow(row);
+    for (int c = 0; c < 3; ++c) {
+      auto *it = new QTableWidgetItem(
+          c == 0 ? sub : (c == 1 ? metric : val));
+      it->setFlags(it->flags() & ~Qt::ItemIsEditable);
+      mem_subsys_table_->setItem(row, c, it);
+    }
+  };
+
+  const auto widgets = QApplication::allWidgets();
+  QMap<QString, int> widget_kinds;
+  int tree_items = 0;
+  for (auto *w : widgets) {
+    if (!w)
+      continue;
+    widget_kinds[w->metaObject()->className()]++;
+    if (auto *tw = qobject_cast<QTreeWidget *>(w))
+      tree_items += tw->topLevelItemCount();
+  }
+  int reg_entries = 0;
+  if (instance_registry_)
+    reg_entries = static_cast<int>(instance_registry_->all_entries().size());
+  int profile_mods = 0;
+  if (active_profile_)
+    profile_mods = static_cast<int>(active_profile_->mods().size());
+  const auto net_log = engine::network::instance().log_snapshot(2000);
+  const auto net_io = engine::network::instance().io_counters();
+
+  subsys_row(QStringLiteral("Engine"), tr("registry entries"),
+             QString::number(reg_entries));
+  subsys_row(QStringLiteral("Engine"), tr("active profiles"),
+             active_profile_ ? QStringLiteral("1") : QStringLiteral("0"));
+  subsys_row(QStringLiteral("UI"), tr("QWidgets (total)"),
+             QString::number(widgets.size()));
+  subsys_row(QStringLiteral("UI"), tr("QTreeWidget top items"),
+             QString::number(tree_items));
+  subsys_row(QStringLiteral("Network"), tr("logged requests"),
+             QString::number(net_log.size()));
+  subsys_row(QStringLiteral("Network"), tr("wire RX/TX (MiB)"),
+             QStringLiteral("%1 / %2")
+                 .arg(net_io.rx_bytes / 1048576)
+                 .arg(net_io.tx_bytes / 1048576));
+  subsys_row(QStringLiteral("Mod data"), tr("profile mod entries"),
+             QString::number(profile_mods));
+  subsys_row(QStringLiteral("gmmpack"), tr("unpacked buffers"),
+             QStringLiteral("0 (no pack loaded)"));
+  subsys_row(QStringLiteral("Collection"), tr("manifest objects"),
+             QStringLiteral("0 (no pack loaded)"));
+  subsys_row(QStringLiteral("Downloads"), tr("active (see Downloads tab)"),
+             QStringLiteral("-"));
+  subsys_row(QStringLiteral("Instance"), tr("toml loaded"),
+             current_instance_ ? QStringLiteral("yes") : QStringLiteral("no"));
+
+  // --- Per-type object counter (sortable) ---
+  mem_types_table_->setSortingEnabled(false);
+  mem_types_table_->setRowCount(0);
+  auto type_row = [&](const QString &type, long count, long each,
+                      const QString &owner) {
+    int row = mem_types_table_->rowCount();
+    mem_types_table_->insertRow(row);
+    const long total = count * each;
+    const QString cells[5] = {
+        type,
+        QString::number(count),
+        each > 0 ? QString::number(each) : QStringLiteral("-"),
+        each > 0 ? QString::number(total) : QStringLiteral("-"),
+        owner,
+    };
+    for (int c = 0; c < 5; ++c) {
+      auto *it = new QTableWidgetItem(cells[c]);
+      it->setFlags(it->flags() & ~Qt::ItemIsEditable);
+      if (c >= 1 && c <= 3) {
+        const qlonglong sort_key =
+            static_cast<qlonglong>(c == 1 ? count : (c == 2 ? each : total));
+        it->setData(Qt::UserRole, QVariant(sort_key));
+      }
+      mem_types_table_->setItem(row, c, it);
+    }
+  };
+  // Real counts: every live QWidget grouped by concrete type.
+  for (auto it = widget_kinds.constBegin(); it != widget_kinds.constEnd();
+       ++it)
+    type_row(it.key(), it.value(), 0, QStringLiteral("UI"));
+  // Estimated sizes for the hottest Qt value types (sizeof at compile).
+  type_row(QStringLiteral("QTableWidgetItem"),
+           static_cast<long>(tree_items), 64, QStringLiteral("UI"));
+  type_row(QStringLiteral("QString (empty)"), 0,
+           static_cast<long>(sizeof(QString)), QStringLiteral("Qt"));
+  type_row(QStringLiteral("QModelIndex"), 0,
+           static_cast<long>(sizeof(QModelIndex)), QStringLiteral("Qt"));
+  mem_types_table_->setSortingEnabled(true);
+
+  // --- Allocation tracker: heap stats + top mappings ---
+  mem_alloc_table_->setRowCount(0);
+  auto alloc_row = [&](const QString &src, const QString &detail,
+                       const QString &size) {
+    int row = mem_alloc_table_->rowCount();
+    mem_alloc_table_->insertRow(row);
+    const QString cells[3] = {src, detail, size};
+    for (int c = 0; c < 3; ++c) {
+      auto *it = new QTableWidgetItem(cells[c]);
+      it->setFlags(it->flags() & ~Qt::ItemIsEditable);
+      mem_alloc_table_->setItem(row, c, it);
+    }
+  };
+#ifdef __linux__
+  struct mallinfo2 mi = ::mallinfo2();
+  alloc_row(tr("heap"), tr("allocated (uordblks)"),
+            mib_text(static_cast<unsigned long>(mi.uordblks / 1024)));
+  alloc_row(tr("heap"), tr("free (fordblks)"),
+            mib_text(static_cast<unsigned long>(mi.fordblks / 1024)));
+  alloc_row(tr("heap"), tr("arena"), mib_text(static_cast<unsigned long>(
+                                        mi.arena / 1024)));
+  alloc_row(tr("heap"), tr("mmap chunks"),
+            QString::number(mi.hblks));
+#else
+  alloc_row(tr("heap"), tr("(mallinfo2 unavailable on this platform)"),
+            QStringLiteral("-"));
+#endif
+  // Top 20 address mappings by Rss from /proc/self/smaps. Without malloc
+  // hooks we cannot attribute individual allocations, so the resident
+  // mappings are the honest "largest current" view.
+  struct MapEntry {
+    unsigned long rss = 0;
+    QString name;
+  };
+  std::vector<MapEntry> maps;
+#ifdef __linux__
+  {
+    std::ifstream f("/proc/self/smaps");
+    std::string line;
+    QString cur_name;
+    while (std::getline(f, line)) {
+      if (line.find("kB") == std::string::npos) {
+        // Mapping header: "... pathname" or bare addresses.
+        auto sp = line.rfind(' ');
+        cur_name = sp == std::string::npos
+                       ? QStringLiteral("[anon]")
+                       : QString::fromStdString(line.substr(sp + 1));
+        if (cur_name.isEmpty())
+          cur_name = QStringLiteral("[anon]");
+      } else if (line.compare(0, 4, "Rss:") == 0) {
+        unsigned long v = parse_kb_line(line, "Rss:");
+        if (v > 0)
+          maps.push_back({v, cur_name});
+      }
+    }
+  }
+#endif
+  std::sort(maps.begin(), maps.end(),
+            [](const MapEntry &a, const MapEntry &b) { return a.rss > b.rss; });
+  if (maps.empty()) {
+    alloc_row(tr("mappings"), tr("(smaps unavailable on this platform)"),
+              QStringLiteral("-"));
+  } else {
+    for (std::size_t i = 0; i < maps.size() && i < 20; ++i)
+      alloc_row(tr("mapping"), maps[i].name, mib_text(maps[i].rss));
+  }
+}
+
+void DebugWindow::refresh_memory_tick() {
+  if (mem_paused_ || !mem_rss_chart_ || !isVisible())
+    return;
+  const std::string status = read_proc("/proc/self/status");
+  if (status.empty())
+    return;
+  const unsigned long rss_kb = parse_kb_line(status, "VmRSS:");
+  const unsigned long hwm_kb = parse_kb_line(status, "VmHWM:");
+  if (rss_kb > mem_peak_rss_kb_)
+    mem_peak_rss_kb_ = rss_kb;
+  mem_rss_chart_->push_sample(static_cast<double>(rss_kb) / 1024.0);
+  if (mem_rss_header_)
+    mem_rss_header_->setText(
+        QStringLiteral("RSS %1  HWM %2").arg(mib_text(rss_kb), mib_text(hwm_kb)));
+  if (mem_hwm_label_)
+    mem_hwm_label_->setText(
+        QStringLiteral("session peak %1 (60 samples @ 1 Hz)")
+            .arg(mib_text(static_cast<unsigned long>(mem_peak_rss_kb_))));
+  // Keep the top stats table fresh without a full rebuild.
+  if (mem_stats_table_ && mem_stats_table_->rowCount() >= 7 && !mem_paused_) {
+    const std::string stat = read_proc("/proc/self/stat");
+    const unsigned long min_flt = parse_after(stat, 10);
+    const unsigned long maj_flt = parse_after(stat, 12);
+    auto set_val = [&](int row, const QString &v) {
+      if (auto *it = mem_stats_table_->item(row, 1))
+        it->setText(v);
+    };
+    set_val(0, mib_text(rss_kb));
+    set_val(4, mib_text(hwm_kb));
+    set_val(6, QStringLiteral("%1 / %2").arg(min_flt).arg(maj_flt));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Modpack page - collection install data. Placeholder until a pack is
+// loaded: shows "No modpack loaded" with the full section skeleton so the
+// shape of the data is visible ahead of the installer wiring.
+// ---------------------------------------------------------------------------
+
+QWidget *DebugWindow::build_modpack_page() {
+  auto *tab = new QWidget;
+  auto *v = new QVBoxLayout(tab);
+  v->setContentsMargins(4, 4, 4, 4);
+  modpack_status_ = new QLabel(tr("No modpack loaded"), tab);
+  modpack_status_->setObjectName("debugKey");
+  modpack_status_->setAlignment(Qt::AlignCenter);
+  v->addWidget(modpack_status_);
+  modpack_table_ = make_kv_table(tab, {tr("Key"), tr("Value")});
+  v->addWidget(modpack_table_, 1);
+  return tab;
+}
+
+void DebugWindow::populate_modpack() {
+  if (!modpack_table_ || !modpack_status_)
+    return;
+  // No live pack handle is wired into the debug window yet; every section
+  // renders its placeholder until the installer path binds one.
+  modpack_status_->setText(tr("No modpack loaded"));
+  modpack_table_->setRowCount(0);
+  add_group_header(modpack_table_, tr("Pack identity"));
+  add_kv_row(modpack_table_, tr("id"), tr("(none)"), false);
+  add_kv_row(modpack_table_, tr("revision"), tr("(none)"), false);
+  add_kv_row(modpack_table_, tr("schema version"), tr("(none)"), false);
+  add_group_header(modpack_table_, tr("Manifest"));
+  add_kv_row(modpack_table_, tr("name"), tr("(none)"), false);
+  add_kv_row(modpack_table_, tr("author"), tr("(none)"), false);
+  add_kv_row(modpack_table_, tr("game"), tr("(none)"), false);
+  add_kv_row(modpack_table_, tr("dates"), tr("(none)"), false);
+  add_group_header(modpack_table_, tr("Mods"));
+  add_kv_row(modpack_table_, tr("download status"), tr("(no pack)"), false);
+  add_group_header(modpack_table_, tr("Choices"));
+  add_kv_row(modpack_table_, tr("selections"), tr("(no pack)"), false);
+  add_group_header(modpack_table_, tr("INI tweaks"));
+  add_kv_row(modpack_table_, tr("states"), tr("(no pack)"), false);
+  add_group_header(modpack_table_, tr("Patches"));
+  add_kv_row(modpack_table_, tr("consent states"), tr("(no pack)"), false);
+  add_group_header(modpack_table_, tr("Executables"));
+  add_kv_row(modpack_table_, tr("run status"), tr("(no pack)"), false);
+  add_group_header(modpack_table_, tr("Tree"));
+  add_kv_row(modpack_table_, tr("structure"), tr("(no pack)"), false);
+  add_group_header(modpack_table_, tr("Source"));
+  add_kv_row(modpack_table_, tr("collection source"), tr("(none)"), false);
+}
+
+// ---------------------------------------------------------------------------
 // Network tab - the request log surfaced by engine::network::
 // ---------------------------------------------------------------------------
 
-void DebugWindow::setup_network_tab() {
+QWidget *DebugWindow::build_network_page() {
   auto *tab = new QWidget;
   auto *v = new QVBoxLayout(tab);
   v->setContentsMargins(4, 4, 4, 4);
@@ -1273,23 +1761,23 @@ void DebugWindow::setup_network_tab() {
           });
 
   v->addWidget(network_table_);
-  network_tab_index_ = tabs_->addTab(tab, tr("Network"));
-
-  populate_network();
+  // Content only; the caller wraps it in a QDockWidget. The initial
+  // populate runs from the constructor once all docks exist.
+  return tab;
 }
 
 void DebugWindow::populate_network() {
   if (!network_table_)
     return;
 
-  // nfpb perf fix: skip the table rebuild entirely when the Network tab
-  // is not currently visible. refresh_stats() still fires on the
+  // nfpb perf fix: skip the table rebuild entirely when the Network
+  // dock is hidden (user closed it). refresh_stats() still fires on the
   // label-timer (1-2s by default), but doing the rebuild burns ~3000
-  // QTableWidgetItem allocations + mutex contention for a tab nobody is
-  // looking at. hideEvent() also pauses the timer; this is the belt to
-  // those braces.
-  if (network_tab_index_ < 0 || tabs_ == nullptr ||
-      tabs_->currentIndex() != network_tab_index_) {
+  // QTableWidgetItem allocations + mutex contention for a panel nobody
+  // is looking at. hideEvent() also pauses the timer; this is the belt
+  // to those braces. (Tabified-but-background docks still refresh - the
+  // diff-skip below keeps that idle-cheap.)
+  if (network_dock_ && !network_dock_->isVisible()) {
     return;
   }
 

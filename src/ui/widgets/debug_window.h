@@ -1,8 +1,8 @@
 #pragma once
 
-#include <QDialog>
 #include <QElapsedTimer>
 #include <QHideEvent>
+#include <QMainWindow>
 #include <QShowEvent>
 #include <QString>
 #include <cstdint>
@@ -13,7 +13,7 @@
 
 class QLabel;
 class QPushButton;
-class QTabWidget;
+class QDockWidget;
 class QTableWidget;
 class QTimer;
 
@@ -31,12 +31,15 @@ namespace ui {
 
 class RollingChartWidget;
 
-// Debug panel: a 3-tab QDialog surfacing live process stats (Charts), every
-// per-instance filesystem path the engine knows about (Paths), and every
-// piece of metadata that would otherwise be invisible (Info). Replaces the
-// pre-overhaul 4-row label panel with rolling 60-second charts and scrollable
-// key-value tables that copy via Ctrl+C or right-click context menu.
-class DebugWindow : public QDialog {
+// Debug panel: a QMainWindow hosting one QDockWidget per diagnostics section
+// (Charts, Paths, Info, Network, Memory, Modpack). Docks can be rearranged,
+// floated, tabified, or shown side-by-side; the default layout tabifies them
+// all in one dock area. Surfaces live process stats (Charts), every
+// per-instance filesystem path the engine knows about (Paths), otherwise
+// invisible metadata (Info), the network request log (Network), a deeply
+// analytical memory breakdown (Memory), and modpack/collection install data
+// (Modpack).
+class DebugWindow : public QMainWindow {
   Q_OBJECT
 public:
   explicit DebugWindow(const std::filesystem::path &instance_root,
@@ -84,14 +87,34 @@ public:
     refresh_populated();
   }
 
-private:
-  // Builds the 4 tabs. Called from the constructor; never again.
-  void setup_charts_tab();
-  void setup_paths_tab();
-  void setup_info_tab();
-  void setup_network_tab();
+  // Toggles visibility (Help > Debug Panel wiring).
+  void toggle_visible() {
+    if (isVisible()) {
+      hide();
+    } else {
+      show();
+      raise();
+      activateWindow();
+    }
+  }
 
-  // Re-runs both tab populators. Called whenever any of the late-bound
+private:
+  // Builds each page's content widget. Called once from the constructor;
+  // the widgets are then wrapped in QDockWidgets.
+  QWidget *build_charts_page();
+  QWidget *build_paths_page();
+  QWidget *build_info_page();
+  QWidget *build_network_page();
+  QWidget *build_memory_page();
+  QWidget *build_modpack_page();
+
+  // Wraps a page widget in a dockable panel and docks it.
+  QDockWidget *make_dock(const QString &title, QWidget *content);
+
+  // Restores the default tabified layout and re-shows every dock.
+  void reset_dock_layout();
+
+  // Re-runs the tab populators. Called whenever any of the late-bound
   // inputs change (registry, knowledge, profile, current Instance) and
   // from rebind_for_instance() when MainWindow::set_game_info() runs.
   void refresh_populated();
@@ -122,6 +145,14 @@ private:
   // Called whenever refresh_stats runs (every refresh_interval seconds).
   void populate_network();
 
+  // Rebuild the Memory page tables (stats + subsystem inventory +
+  // per-type counters + allocation tracker + modpack placeholder).
+  void populate_memory();
+  void populate_modpack();
+  // 1 Hz light-weight memory sample: stats table values + RSS sparkline.
+  // Skipped while mem_paused_.
+  void refresh_memory_tick();
+
   // Append a row to a QTableWidget with key + value (monospace). When
   // `copyable` is true, the value gets a tooltip + TextSelectableByMouse +
   // double-click-to-copy handler.
@@ -140,18 +171,18 @@ private:
   // after the closing ')' (field 2 is "(comm)" with spaces).
   static unsigned long parse_after(const std::string &s, int field_index);
 
-  // --- UI ---
-  QTabWidget *tabs_ = nullptr;
+  // --- Docks (one per page; tabified by default) ---
+  QDockWidget *charts_dock_ = nullptr;
+  QDockWidget *paths_dock_ = nullptr;
+  QDockWidget *info_dock_ = nullptr;
+  QDockWidget *network_dock_ = nullptr;
+  QDockWidget *memory_dock_ = nullptr;
+  QDockWidget *modpack_dock_ = nullptr;
+
+  // --- Page content ---
   QTableWidget *paths_table_ = nullptr;
   QTableWidget *info_table_ = nullptr;
   QTableWidget *network_table_ = nullptr;
-
-  // Index of the Network tab in `tabs_`. -1 means the tab has not been
-  // built yet (set on first call to setup_network_tab). populate_network
-  // uses this to skip the table rebuild when the tab is not visible -
-  // the single largest source of the "giga-freeze" reported in the
-  // nfpb review.
-  int network_tab_index_ = -1;
 
   // Track the last (newest) log id we rendered so we can detect "no new
   // entries" and skip the table rebuild entirely. Keeps the UI idle
@@ -184,6 +215,22 @@ private:
 
   QLabel *interval_label_ = nullptr;
   QPushButton *reload_ui_btn_ = nullptr;
+
+  // --- Memory page widgets ---
+  QTableWidget *mem_stats_table_ = nullptr;
+  QTableWidget *mem_subsys_table_ = nullptr;
+  QTableWidget *mem_types_table_ = nullptr;
+  QTableWidget *mem_alloc_table_ = nullptr;
+  RollingChartWidget *mem_rss_chart_ = nullptr;
+  QLabel *mem_rss_header_ = nullptr;
+  QLabel *mem_hwm_label_ = nullptr;
+  QPushButton *mem_pause_btn_ = nullptr;
+  bool mem_paused_ = false;
+  unsigned long long mem_peak_rss_kb_ = 0;
+
+  // --- Modpack page widgets ---
+  QLabel *modpack_status_ = nullptr;
+  QTableWidget *modpack_table_ = nullptr;
 
   QTimer *refresh_timer_ = nullptr;
   QTimer *chart_timer_ = nullptr;

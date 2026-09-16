@@ -259,6 +259,11 @@ void AppMenuBar::build_help_menu() {
   connect(stats, &QAction::triggered, this,
           &AppMenuBar::instance_statistics_requested);
 
+  auto *debug = menu->addAction(tr("Debug Panel"));
+  debug->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D));
+  connect(debug, &QAction::triggered, this,
+          &AppMenuBar::debug_panel_requested);
+
   menu->addSeparator();
 
   auto *about = menu->addAction(tr("About GameModManager"));
