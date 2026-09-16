@@ -311,6 +311,112 @@ TEST_CASE("gmmpack archive integrity fails on missing file", "[gmmpack]") {
     REQUIRE(found_missing);
 }
 
+TEST_CASE("gmmpack archive integrity rejects non-string hash", "[gmmpack]") {
+    TempDir td;
+    std::string tree_json = make_tree_json();
+
+    nlohmann::json mj;
+    mj["gmmpackSchema"] = "1.0.0";
+    mj["id"] = "b3f1e2a0-1234-4abc-8def-000000000001";
+    mj["revision"] = 1;
+    mj["info"] = {{"name", "Test Pack"},
+                  {"author", "Test Author"},
+                  {"gmmGameId", "skyrim_se"},
+                  {"createdAt", "2026-09-01T00:00:00Z"},
+                  {"updatedAt", "2026-09-14T00:00:00Z"}};
+    mj["archive"]["fileHashes"]["tree.json"] = 12345;  // not a string!
+    std::string manifest_json = mj.dump();
+
+    auto zip = make_zip(td, "test.gmmpack", {
+        {"manifest.json", manifest_json},
+        {"tree.json", tree_json},
+    });
+
+    auto extract = gmmpack::extract_archive(zip);
+    REQUIRE(extract.ok);
+
+    // Must report an error, not throw.
+    auto diag = gmmpack::verify_archive_integrity(
+        extract.archive, extract.manifest_json);
+    REQUIRE_FALSE(diag.empty());
+    bool found_type = false;
+    for (const auto& d : diag) {
+        if (d.message.find("must be a string") != std::string::npos) {
+            found_type = true;
+            break;
+        }
+    }
+    REQUIRE(found_type);
+}
+
+TEST_CASE("gmmpack archive integrity rejects non-object fileHashes",
+          "[gmmpack]") {
+    TempDir td;
+    std::string tree_json = make_tree_json();
+
+    nlohmann::json mj;
+    mj["gmmpackSchema"] = "1.0.0";
+    mj["id"] = "b3f1e2a0-1234-4abc-8def-000000000001";
+    mj["revision"] = 1;
+    mj["info"] = {{"name", "Test Pack"},
+                  {"author", "Test Author"},
+                  {"gmmGameId", "skyrim_se"},
+                  {"createdAt", "2026-09-01T00:00:00Z"},
+                  {"updatedAt", "2026-09-14T00:00:00Z"}};
+    mj["archive"]["fileHashes"] = "not-an-object";
+    std::string manifest_json = mj.dump();
+
+    auto zip = make_zip(td, "test.gmmpack", {
+        {"manifest.json", manifest_json},
+        {"tree.json", tree_json},
+    });
+
+    auto extract = gmmpack::extract_archive(zip);
+    REQUIRE(extract.ok);
+
+    // Must report an error, not throw.
+    auto diag = gmmpack::verify_archive_integrity(
+        extract.archive, extract.manifest_json);
+    REQUIRE_FALSE(diag.empty());
+    bool found_missing = false;
+    for (const auto& d : diag) {
+        if (d.message.find("missing fileHashes") != std::string::npos) {
+            found_missing = true;
+            break;
+        }
+    }
+    REQUIRE(found_missing);
+}
+
+TEST_CASE("gmmpack unpack fails gracefully on non-string schema version",
+          "[gmmpack]") {
+    TempDir td;
+    std::string tree_json = make_tree_json();
+    std::string tree_hash = "sha256:" + sha256_hex(tree_json);
+
+    nlohmann::json mj;
+    mj["gmmpackSchema"] = 123;  // not a string!
+    mj["id"] = "b3f1e2a0-1234-4abc-8def-000000000001";
+    mj["revision"] = 1;
+    mj["info"] = {{"name", "Test Pack"},
+                  {"author", "Test Author"},
+                  {"gmmGameId", "skyrim_se"},
+                  {"createdAt", "2026-09-01T00:00:00Z"},
+                  {"updatedAt", "2026-09-14T00:00:00Z"}};
+    mj["archive"]["fileHashes"]["tree.json"] = tree_hash;
+    std::string manifest_json = mj.dump();
+
+    auto zip = make_zip(td, "test.gmmpack", {
+        {"manifest.json", manifest_json},
+        {"tree.json", tree_json},
+    });
+
+    // Must fail with diagnostics, not throw.
+    auto result = gmmpack::unpack_gmmpack(zip, schema_dir());
+    REQUIRE_FALSE(result.ok);
+    REQUIRE_FALSE(result.diagnostics.empty());
+}
+
 TEST_CASE("gmmpack schema validation passes for valid mod", "[gmmpack]") {
     auto schemas = load_schemas();
     REQUIRE(schemas.count("mod.schema.json"));
