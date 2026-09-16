@@ -18,8 +18,8 @@ namespace ui {
 //
 // Two stacked cards: pick a .gmmpack file from disk, or paste a collection
 // URL. The Import button validates the input, runs pack source detection,
-// unpacks .gmmpack archives, then accepts with the parsed pack ready.
-// Collection-URL fetching is not implemented yet (error, stubbed).
+// then either unpacks a .gmmpack archive or fetches a Nexus collection
+// through the Nexus adapter (converted to Gmmpack for the install wizard).
 // Accepts .gmmpack/.zip drops directly onto the dialog.
 class ModpackImportDialog : public QDialog {
     Q_OBJECT
