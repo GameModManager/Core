@@ -129,6 +129,11 @@ ResolvedCollection Resolver::resolve(const Manifest& manifest) const {
         rm.entry = &entry;
         rm.mod.id = entry.id;
         rm.mod.name = entry.name;
+        // Workspace-5wmu: stamp collection membership so installs are
+        // tracked to this collection revision from the start.
+        rm.mod.collection_id = manifest.id;
+        rm.mod.collection_revision = manifest.revision;
+        rm.mod.in_collection = true;
 
         if (!populate_mod_source(entry.source, rm.mod)) {
             rm.resolvable = false;
