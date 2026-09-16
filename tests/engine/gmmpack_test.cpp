@@ -618,6 +618,583 @@ TEST_CASE("gmmpack validates executable entry", "[gmmpack]") {
     REQUIRE(diag.empty());
 }
 
+TEST_CASE("gmmpack validates executable minimal required fields", "[gmmpack]") {
+    auto schemas = load_schemas();
+    REQUIRE(schemas.count("executable.schema.json"));
+
+    nlohmann::json exe;
+    exe["id"] = "skse64";
+    exe["sourceModId"] = "skse64";
+    exe["relativePath"] = "skse64_loader.exe";
+    exe["role"] = "launcher";
+
+    gmmpack::SchemaValidator validator;
+    auto diag = validator.validate(exe, schemas["executable.schema.json"],
+                                   schemas["executable.schema.json"]);
+    REQUIRE(diag.empty());
+}
+
+TEST_CASE("gmmpack validates executable rejects bad role enum", "[gmmpack]") {
+    auto schemas = load_schemas();
+    REQUIRE(schemas.count("executable.schema.json"));
+
+    nlohmann::json exe;
+    exe["id"] = "test";
+    exe["sourceModId"] = "test";
+    exe["relativePath"] = "test.exe";
+    exe["role"] = "invalid_role";
+
+    gmmpack::SchemaValidator validator;
+    auto diag = validator.validate(exe, schemas["executable.schema.json"],
+                                   schemas["executable.schema.json"]);
+    REQUIRE_FALSE(diag.empty());
+    bool found_enum = false;
+    for (const auto& d : diag) {
+        if (d.message.find("not in enum") != std::string::npos) {
+            found_enum = true;
+            break;
+        }
+    }
+    REQUIRE(found_enum);
+}
+
+TEST_CASE("gmmpack validates executable rejects missing required field",
+          "[gmmpack]") {
+    auto schemas = load_schemas();
+    REQUIRE(schemas.count("executable.schema.json"));
+
+    nlohmann::json exe;
+    exe["id"] = "test";
+    exe["sourceModId"] = "test";
+    // missing relativePath and role
+
+    gmmpack::SchemaValidator validator;
+    auto diag = validator.validate(exe, schemas["executable.schema.json"],
+                                   schemas["executable.schema.json"]);
+    REQUIRE_FALSE(diag.empty());
+    bool found_required = false;
+    for (const auto& d : diag) {
+        if (d.message.find("missing required") != std::string::npos) {
+            found_required = true;
+            break;
+        }
+    }
+    REQUIRE(found_required);
+}
+
+TEST_CASE("gmmpack validates executable rejects bad id pattern", "[gmmpack]") {
+    auto schemas = load_schemas();
+    REQUIRE(schemas.count("executable.schema.json"));
+
+    nlohmann::json exe;
+    exe["id"] = "UPPERCASE-ID!";
+    exe["sourceModId"] = "test";
+    exe["relativePath"] = "test.exe";
+    exe["role"] = "setup";
+
+    gmmpack::SchemaValidator validator;
+    auto diag = validator.validate(exe, schemas["executable.schema.json"],
+                                   schemas["executable.schema.json"]);
+    REQUIRE_FALSE(diag.empty());
+    bool found_pattern = false;
+    for (const auto& d : diag) {
+        if (d.message.find("pattern") != std::string::npos ||
+            d.message.find("does not match") != std::string::npos) {
+            found_pattern = true;
+            break;
+        }
+    }
+    REQUIRE(found_pattern);
+}
+
+TEST_CASE("gmmpack validates executable rejects unknown property",
+          "[gmmpack]") {
+    auto schemas = load_schemas();
+    REQUIRE(schemas.count("executable.schema.json"));
+
+    nlohmann::json exe;
+    exe["id"] = "test";
+    exe["sourceModId"] = "test";
+    exe["relativePath"] = "test.exe";
+    exe["role"] = "setup";
+    exe["unknownField"] = "should not be here";
+
+    gmmpack::SchemaValidator validator;
+    auto diag = validator.validate(exe, schemas["executable.schema.json"],
+                                   schemas["executable.schema.json"]);
+    REQUIRE_FALSE(diag.empty());
+    bool found_unknown = false;
+    for (const auto& d : diag) {
+        if (d.message.find("unknown property") != std::string::npos) {
+            found_unknown = true;
+            break;
+        }
+    }
+    REQUIRE(found_unknown);
+}
+
+TEST_CASE("gmmpack validates executable with output syntheticMod requires syntheticModId",
+          "[gmmpack]") {
+    auto schemas = load_schemas();
+    REQUIRE(schemas.count("executable.schema.json"));
+
+    nlohmann::json exe;
+    exe["id"] = "nemesis";
+    exe["sourceModId"] = "nemesis";
+    exe["relativePath"] = "Nemesis Engine/Nemesis.exe";
+    exe["role"] = "setup";
+    exe["output"] = {{"path", "Output"},
+                     {"capture", "syntheticMod"}};
+    // missing syntheticModId
+
+    gmmpack::SchemaValidator validator;
+    auto diag = validator.validate(exe, schemas["executable.schema.json"],
+                                   schemas["executable.schema.json"]);
+    REQUIRE_FALSE(diag.empty());
+    bool found_required = false;
+    for (const auto& d : diag) {
+        if (d.message.find("missing required") != std::string::npos) {
+            found_required = true;
+            break;
+        }
+    }
+    REQUIRE(found_required);
+}
+
+TEST_CASE("gmmpack validates executable with output inPlace needs no syntheticModId",
+          "[gmmpack]") {
+    auto schemas = load_schemas();
+    REQUIRE(schemas.count("executable.schema.json"));
+
+    nlohmann::json exe;
+    exe["id"] = "bodyslide";
+    exe["sourceModId"] = "bodyslide";
+    exe["relativePath"] = "Tools/BodySlide x64.exe";
+    exe["role"] = "setup";
+    exe["output"] = {{"path", "Output"},
+                     {"capture", "inPlace"}};
+
+    gmmpack::SchemaValidator validator;
+    auto diag = validator.validate(exe, schemas["executable.schema.json"],
+                                   schemas["executable.schema.json"]);
+    REQUIRE(diag.empty());
+}
+
+TEST_CASE("gmmpack validates executable with platform overrides", "[gmmpack]") {
+    auto schemas = load_schemas();
+    REQUIRE(schemas.count("executable.schema.json"));
+
+    nlohmann::json exe;
+    exe["id"] = "nemesis";
+    exe["sourceModId"] = "nemesis";
+    exe["relativePath"] = "Nemesis Engine/Nemesis.exe";
+    exe["role"] = "setup";
+    exe["envVars"] = {{"SOME_VAR", "value"}};
+    exe["platform"] = {
+        {"linux", {{"envVars", {{"WINEDEBUG", "+file"}}}}},
+        {"windows", {{"launchOptions", ""}}}
+    };
+
+    gmmpack::SchemaValidator validator;
+    auto diag = validator.validate(exe, schemas["executable.schema.json"],
+                                   schemas["executable.schema.json"]);
+    REQUIRE(diag.empty());
+}
+
+TEST_CASE("gmmpack validates executable with all optional fields", "[gmmpack]") {
+    auto schemas = load_schemas();
+    REQUIRE(schemas.count("executable.schema.json"));
+
+    nlohmann::json exe;
+    exe["id"] = "nemesis";
+    exe["sourceModId"] = "nemesis";
+    exe["relativePath"] = "Nemesis Engine/Nemesis.exe";
+    exe["arguments"] = {"-forceD3D9", "--verbose"};
+    exe["envVars"] = {{"SOME_VAR", "value"}};
+    exe["workingDir"] = "Nemesis Engine";
+    exe["role"] = "setup";
+    exe["autoRun"] = true;
+    exe["rerunOnModsetChange"] = true;
+    exe["requiresVirtualFsVisible"] = true;
+    exe["output"] = {{"path", "Nemesis_Engine/Output"},
+                     {"argName", "--output"},
+                     {"capture", "syntheticMod"},
+                     {"syntheticModId", "nemesis-output"}};
+    exe["platform"] = {
+        {"linux", {{"envVars", {{"WINEDEBUG", "+file"}}},
+                   {"launchOptions", "WINEDLLOVERRIDES=\"d3d11=n,b\" %command%"},
+                   {"protonVersionPin", "GE-Proton9-27"},
+                   {"steamOverlay", true}}}
+    };
+
+    gmmpack::SchemaValidator validator;
+    auto diag = validator.validate(exe, schemas["executable.schema.json"],
+                                   schemas["executable.schema.json"]);
+    REQUIRE(diag.empty());
+}
+
+// ---------------------------------------------------------------------------
+// parse_executable_entry() - typed struct parsing tests
+// ---------------------------------------------------------------------------
+
+TEST_CASE("gmmpack parse_executable_entry minimal", "[gmmpack][executable]") {
+    nlohmann::json j;
+    j["id"] = "skse64";
+    j["sourceModId"] = "skse64";
+    j["relativePath"] = "skse64_loader.exe";
+    j["role"] = "launcher";
+
+    auto exe = gmmpack::parse_executable_entry(j);
+    REQUIRE(exe.id == "skse64");
+    REQUIRE(exe.source_mod_id == "skse64");
+    REQUIRE(exe.relative_path == "skse64_loader.exe");
+    REQUIRE(exe.role == "launcher");
+    REQUIRE(exe.arguments.empty());
+    REQUIRE(exe.env_vars.empty());
+    REQUIRE(exe.working_dir.empty());
+    REQUIRE_FALSE(exe.auto_run);
+    REQUIRE_FALSE(exe.rerun_on_modset_change);
+    REQUIRE_FALSE(exe.requires_virtual_fs_visible);
+    REQUIRE_FALSE(exe.output.has_value());
+}
+
+TEST_CASE("gmmpack parse_executable_entry full setup tool", "[gmmpack][executable]") {
+    nlohmann::json j;
+    j["id"] = "nemesis";
+    j["sourceModId"] = "nemesis";
+    j["relativePath"] = "Nemesis Engine/Nemesis.exe";
+    j["arguments"] = {"-forceD3D9", "--verbose"};
+    j["envVars"] = {{"SOME_VAR", "value"}, {"OTHER", "x"}};
+    j["workingDir"] = "Nemesis Engine";
+    j["role"] = "setup";
+    j["autoRun"] = true;
+    j["rerunOnModsetChange"] = true;
+    j["requiresVirtualFsVisible"] = true;
+    j["output"] = {{"path", "Nemesis_Engine/Output"},
+                   {"argName", "--output"},
+                   {"capture", "syntheticMod"},
+                   {"syntheticModId", "nemesis-output"}};
+    j["platform"] = {
+        {"linux", {{"envVars", {{"WINEDEBUG", "+file"}}},
+                   {"launchOptions", "WINEDLLOVERRIDES=\"d3d11=n,b\" %command%"},
+                   {"protonVersionPin", "GE-Proton9-27"},
+                   {"steamOverlay", true}}},
+        {"windows", {{"launchOptions", ""}}}
+    };
+
+    auto exe = gmmpack::parse_executable_entry(j);
+
+    REQUIRE(exe.id == "nemesis");
+    REQUIRE(exe.source_mod_id == "nemesis");
+    REQUIRE(exe.relative_path == "Nemesis Engine/Nemesis.exe");
+    REQUIRE(exe.role == "setup");
+    REQUIRE(exe.auto_run);
+    REQUIRE(exe.rerun_on_modset_change);
+    REQUIRE(exe.requires_virtual_fs_visible);
+
+    // arguments
+    REQUIRE(exe.arguments.size() == 2);
+    REQUIRE(exe.arguments[0] == "-forceD3D9");
+    REQUIRE(exe.arguments[1] == "--verbose");
+
+    // envVars
+    REQUIRE(exe.env_vars.size() == 2);
+    REQUIRE(exe.env_vars.at("SOME_VAR") == "value");
+    REQUIRE(exe.env_vars.at("OTHER") == "x");
+
+    REQUIRE(exe.working_dir == "Nemesis Engine");
+
+    // output
+    REQUIRE(exe.output.has_value());
+    REQUIRE(exe.output->path == "Nemesis_Engine/Output");
+    REQUIRE(exe.output->arg_name == "--output");
+    REQUIRE(exe.output->capture == "syntheticMod");
+    REQUIRE(exe.output->synthetic_mod_id == "nemesis-output");
+
+    // platform.linux
+    REQUIRE(exe.platform.linux_plat.has_value());
+    REQUIRE(exe.platform.linux_plat->env_vars.at("WINEDEBUG") == "+file");
+    REQUIRE(exe.platform.linux_plat->launch_options ==
+            "WINEDLLOVERRIDES=\"d3d11=n,b\" %command%");
+    REQUIRE(exe.platform.linux_plat->proton_version_pin == "GE-Proton9-27");
+    REQUIRE(exe.platform.linux_plat->steam_overlay.has_value());
+    REQUIRE(*exe.platform.linux_plat->steam_overlay);
+
+    // platform.windows
+    REQUIRE(exe.platform.windows.has_value());
+    REQUIRE_FALSE(exe.platform.macos.has_value());
+}
+
+TEST_CASE("gmmpack parse_executable_entry output inPlace", "[gmmpack][executable]") {
+    nlohmann::json j;
+    j["id"] = "bodyslide";
+    j["sourceModId"] = "bodyslide";
+    j["relativePath"] = "Tools/BodySlide x64.exe";
+    j["role"] = "setup";
+    j["output"] = {{"path", "ShapeData"},
+                   {"capture", "inPlace"}};
+
+    auto exe = gmmpack::parse_executable_entry(j);
+    REQUIRE(exe.output.has_value());
+    REQUIRE(exe.output->path == "ShapeData");
+    REQUIRE(exe.output->capture == "inPlace");
+    REQUIRE(exe.output->synthetic_mod_id.empty());
+}
+
+TEST_CASE("gmmpack parse_executable_entry no output block", "[gmmpack][executable]") {
+    nlohmann::json j;
+    j["id"] = "skse64";
+    j["sourceModId"] = "skse64";
+    j["relativePath"] = "skse64_loader.exe";
+    j["role"] = "launcher";
+
+    auto exe = gmmpack::parse_executable_entry(j);
+    REQUIRE_FALSE(exe.output.has_value());
+}
+
+TEST_CASE("gmmpack parse_executable_entry defaults", "[gmmpack][executable]") {
+    nlohmann::json j;
+    j["id"] = "minimal";
+    j["sourceModId"] = "minimal";
+    j["relativePath"] = "tool.exe";
+    j["role"] = "setup";
+
+    auto exe = gmmpack::parse_executable_entry(j);
+    REQUIRE_FALSE(exe.auto_run);
+    REQUIRE_FALSE(exe.rerun_on_modset_change);
+    REQUIRE_FALSE(exe.requires_virtual_fs_visible);
+    REQUIRE(exe.arguments.empty());
+    REQUIRE(exe.env_vars.empty());
+    REQUIRE_FALSE(exe.platform.linux_plat.has_value());
+    REQUIRE_FALSE(exe.platform.macos.has_value());
+    REQUIRE_FALSE(exe.platform.windows.has_value());
+}
+
+// ---------------------------------------------------------------------------
+// Full round-trip: archive with executables
+// ---------------------------------------------------------------------------
+
+static std::string make_exe_json(const std::string& id = "nemesis",
+                                 const std::string& role = "setup") {
+    nlohmann::json j;
+    j["id"] = id;
+    j["sourceModId"] = "nemesis";
+    j["relativePath"] = "Nemesis Engine/Nemesis.exe";
+    j["role"] = role;
+    if (role == "setup") {
+        j["autoRun"] = true;
+        j["output"] = {{"path", "Output"},
+                       {"capture", "syntheticMod"},
+                       {"syntheticModId", id + "-output"}};
+    }
+    return j.dump();
+}
+
+TEST_CASE("gmmpack full round-trip with executables", "[gmmpack]") {
+    TempDir td;
+    std::string mod_json = make_mod_json("nemesis");
+    std::string exe_json = make_exe_json("nemesis", "setup");
+    std::string tree_json =
+        R"({"nodes":[{"type":"mod","id":"nemesis","enabled":true}]})";
+
+    std::string mod_hash = "sha256:" + sha256_hex(mod_json);
+    std::string exe_hash = "sha256:" + sha256_hex(exe_json);
+    std::string tree_hash = "sha256:" + sha256_hex(tree_json);
+
+    std::string manifest_json = make_manifest(
+        {{"mods/nemesis.json", mod_hash},
+         {"executables/nemesis.json", exe_hash},
+         {"tree.json", tree_hash}});
+
+    auto zip = make_zip(td, "test.gmmpack", {
+        {"manifest.json", manifest_json},
+        {"mods/nemesis.json", mod_json},
+        {"executables/nemesis.json", exe_json},
+        {"tree.json", tree_json},
+    });
+
+    auto result = gmmpack::unpack_gmmpack(zip, schema_dir());
+    REQUIRE(result.ok);
+    REQUIRE(result.diagnostics.empty());
+
+    // Verify executable parsed correctly
+    REQUIRE(result.pack.executables.size() == 1);
+    const auto& exe = result.pack.executables[0];
+    REQUIRE(exe.id == "nemesis");
+    REQUIRE(exe.source_mod_id == "nemesis");
+    REQUIRE(exe.relative_path == "Nemesis Engine/Nemesis.exe");
+    REQUIRE(exe.role == "setup");
+    REQUIRE(exe.auto_run);
+    REQUIRE(exe.output.has_value());
+    REQUIRE(exe.output->capture == "syntheticMod");
+    REQUIRE(exe.output->synthetic_mod_id == "nemesis-output");
+}
+
+TEST_CASE("gmmpack full round-trip with launcher executable", "[gmmpack]") {
+    TempDir td;
+    std::string mod_json = make_mod_json("skse64");
+    std::string exe_json =
+        R"({"id":"skse64-launch","sourceModId":"skse64","relativePath":"skse64_loader.exe","role":"launcher"})";
+    std::string tree_json =
+        R"({"nodes":[{"type":"mod","id":"skse64","enabled":true}]})";
+
+    std::string mod_hash = "sha256:" + sha256_hex(mod_json);
+    std::string exe_hash = "sha256:" + sha256_hex(exe_json);
+    std::string tree_hash = "sha256:" + sha256_hex(tree_json);
+
+    std::string manifest_json = make_manifest(
+        {{"mods/skse64.json", mod_hash},
+         {"executables/skse64-launch.json", exe_hash},
+         {"tree.json", tree_hash}});
+
+    auto zip = make_zip(td, "test.gmmpack", {
+        {"manifest.json", manifest_json},
+        {"mods/skse64.json", mod_json},
+        {"executables/skse64-launch.json", exe_json},
+        {"tree.json", tree_json},
+    });
+
+    auto result = gmmpack::unpack_gmmpack(zip, schema_dir());
+    REQUIRE(result.ok);
+    REQUIRE(result.diagnostics.empty());
+
+    REQUIRE(result.pack.executables.size() == 1);
+    REQUIRE(result.pack.executables[0].role == "launcher");
+    REQUIRE_FALSE(result.pack.executables[0].auto_run);
+}
+
+TEST_CASE("gmmpack full round-trip with multiple executables", "[gmmpack]") {
+    TempDir td;
+    std::string mod_json = make_mod_json("nemesis");
+    std::string exe1_json = make_exe_json("nemesis", "setup");
+    std::string exe2_json =
+        R"({"id":"nemesis-launch","sourceModId":"nemesis","relativePath":"Nemesis Engine/Nemesis.exe","role":"launcher"})";
+    std::string tree_json =
+        R"({"nodes":[{"type":"mod","id":"nemesis","enabled":true}]})";
+
+    std::string mod_hash = "sha256:" + sha256_hex(mod_json);
+    std::string exe1_hash = "sha256:" + sha256_hex(exe1_json);
+    std::string exe2_hash = "sha256:" + sha256_hex(exe2_json);
+    std::string tree_hash = "sha256:" + sha256_hex(tree_json);
+
+    std::string manifest_json = make_manifest(
+        {{"mods/nemesis.json", mod_hash},
+         {"executables/nemesis.json", exe1_hash},
+         {"executables/nemesis-launch.json", exe2_hash},
+         {"tree.json", tree_hash}});
+
+    auto zip = make_zip(td, "test.gmmpack", {
+        {"manifest.json", manifest_json},
+        {"mods/nemesis.json", mod_json},
+        {"executables/nemesis.json", exe1_json},
+        {"executables/nemesis-launch.json", exe2_json},
+        {"tree.json", tree_json},
+    });
+
+    auto result = gmmpack::unpack_gmmpack(zip, schema_dir());
+    REQUIRE(result.ok);
+
+    REQUIRE(result.pack.executables.size() == 2);
+    // Find setup and launcher
+    const gmmpack::ExecutableEntry* setup = nullptr;
+    const gmmpack::ExecutableEntry* launcher = nullptr;
+    for (const auto& e : result.pack.executables) {
+        if (e.role == "setup") setup = &e;
+        if (e.role == "launcher") launcher = &e;
+    }
+    REQUIRE(setup != nullptr);
+    REQUIRE(launcher != nullptr);
+    REQUIRE(setup->id == "nemesis");
+    REQUIRE(setup->auto_run);
+    REQUIRE(launcher->id == "nemesis-launch");
+    REQUIRE_FALSE(launcher->auto_run);
+}
+
+// ---------------------------------------------------------------------------
+// Referential integrity: sourceModId validation
+// ---------------------------------------------------------------------------
+
+TEST_CASE("gmmpack referential integrity catches dangling sourceModId",
+          "[gmmpack]") {
+    gmmpack::Gmmpack pack;
+    gmmpack::ExecutableEntry exe;
+    exe.id = "nemesis";
+    exe.source_mod_id = "nonexistent-mod";
+    exe.relative_path = "Nemesis.exe";
+    exe.role = "setup";
+    pack.executables.push_back(exe);
+
+    // No mods in pack -> sourceModId should fail
+    auto diag = gmmpack::check_referential_integrity(pack);
+    REQUIRE_FALSE(diag.empty());
+    bool found_source = false;
+    for (const auto& d : diag) {
+        if (d.path.find("sourceModId") != std::string::npos ||
+            d.message.find("sourceModId") != std::string::npos) {
+            found_source = true;
+            break;
+        }
+    }
+    REQUIRE(found_source);
+}
+
+TEST_CASE("gmmpack referential integrity passes for valid sourceModId",
+          "[gmmpack]") {
+    gmmpack::Gmmpack pack;
+    pack.mods.push_back(gmmpack::parse_mod_entry(
+        nlohmann::json::parse(make_mod_json("nemesis"))));
+    gmmpack::ExecutableEntry exe;
+    exe.id = "nemesis";
+    exe.source_mod_id = "nemesis";
+    exe.relative_path = "Nemesis.exe";
+    exe.role = "setup";
+    pack.executables.push_back(exe);
+
+    auto diag = gmmpack::check_referential_integrity(pack);
+    // Should have no sourceModId errors (may have other unrelated issues
+    // but none related to this executable's sourceModId)
+    bool found_source = false;
+    for (const auto& d : diag) {
+        if (d.path.find("sourceModId") != std::string::npos ||
+            d.message.find("sourceModId") != std::string::npos) {
+            found_source = true;
+            break;
+        }
+    }
+    REQUIRE_FALSE(found_source);
+}
+
+TEST_CASE("gmmpack referential integrity allows rule referencing executable",
+          "[gmmpack]") {
+    gmmpack::Gmmpack pack;
+    pack.mods.push_back(gmmpack::parse_mod_entry(
+        nlohmann::json::parse(make_mod_json("nemesis"))));
+    gmmpack::ExecutableEntry exe;
+    exe.id = "nemesis-setup";
+    exe.source_mod_id = "nemesis";
+    exe.relative_path = "Nemesis.exe";
+    exe.role = "setup";
+    pack.executables.push_back(exe);
+
+    // A rule referencing the executable id (not just mod ids)
+    gmmpack::ManifestRule rule;
+    rule.type = "requires";
+    rule.from = "nemesis-setup";
+    rule.to = "nemesis";
+    pack.manifest.rules.push_back(rule);
+
+    auto diag = gmmpack::check_referential_integrity(pack);
+    bool found_rule_error = false;
+    for (const auto& d : diag) {
+        if (d.path.find("rules") != std::string::npos &&
+            d.message.find("unknown id") != std::string::npos) {
+            found_rule_error = true;
+            break;
+        }
+    }
+    REQUIRE_FALSE(found_rule_error);
+}
+
 TEST_CASE("gmmpack validates patch entry", "[gmmpack]") {
     auto schemas = load_schemas();
     REQUIRE(schemas.count("patch.schema.json"));
