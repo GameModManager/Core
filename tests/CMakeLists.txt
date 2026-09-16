@@ -96,6 +96,7 @@ gmm_catch2_test(manifest_schema_test engine/manifest_schema_test.cpp)
 gmm_catch2_test(nexus_collection_parser_test engine/nexus_collection_parser_test.cpp)
 gmm_catch2_test(collection_download_router_test engine/collection_download_router_test.cpp)
 gmm_catch2_test(collection_provider_test engine/collection_provider_test.cpp)
+gmm_catch2_test(nexus_adapter_test engine/nexus_adapter_test.cpp)
 gmm_catch2_test(perf_benchmark perf/benchmark_test.cpp)
 
 # Tests that include third-party headers directly need those include dirs at
