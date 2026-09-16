@@ -113,6 +113,7 @@ set(ENGINE_SOURCES
     mod/meta/categories.cpp
     mod/meta/category_set_registry.cpp
     mod/overwrite/overwrite_utils.cpp
+    modpack/ini_edits.cpp
     game/plugins/esp_header.cpp
     game/plugins/plugin_database.cpp
     game/saves/save_game.cpp
