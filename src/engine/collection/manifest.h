@@ -102,7 +102,7 @@ struct PlatformDefaults {
 // ---------------------------------------------------------------------------
 
 struct Rule {
-    RuleType type;
+    RuleType type = RuleType::Requires;
     std::string from; // mod or executable id
     std::string to;   // mod or executable id
     std::string note; // optional human note
@@ -123,7 +123,7 @@ struct LoadOrderHint {
 struct ChoiceGroup {
     std::string id; // slug: ^[a-z0-9]+(-[a-z0-9]+)*$
     std::string name;
-    ChoiceMode mode;
+    ChoiceMode mode = ChoiceMode::ExactlyOne;
     std::vector<std::string> member_mod_ids; // >= 2 entries
 };
 
@@ -143,7 +143,7 @@ struct InstallerChoices {
 
 struct SourceNexus {
     static constexpr const char* kProvider = "nexus";
-    SourceResolution resolution;
+    SourceResolution resolution = SourceResolution::Api;
     std::string game_domain;
     int64_t mod_id = 0;
     int64_t file_id = 0;    // required when exact
@@ -167,7 +167,7 @@ struct SourceLoversLab {
 
 struct SourceModPub {
     static constexpr const char* kProvider = "modpub";
-    SourceResolution resolution;
+    SourceResolution resolution = SourceResolution::Api;
     std::string mod_id; // int or string in JSON
     std::string version;
     std::string file_name;
@@ -186,7 +186,7 @@ struct SourceSteamWorkshop {
 
 struct SourceDirect {
     static constexpr const char* kProvider = "direct";
-    SourceResolution resolution;
+    SourceResolution resolution = SourceResolution::Browser;
     std::string url;
     std::string version;
     std::string file_name;
