@@ -17,6 +17,7 @@ set(FOMOD_ENGINE_SOURCES
     mod/fomod/condition_tester.cpp
     mod/fomod/fomod_view_model.cpp
     mod/fomod/file_installer.cpp
+    mod/fomod/headless_replay.cpp
     ${PROJECT_SOURCE_DIR}/third_party/pugixml/pugixml.cpp
 )
 
@@ -167,10 +168,11 @@ collection/batch_installer.cpp
     deploy/launch/usvfs_mapping.cpp
     deploy/launch/usvfs_mapping.h
     deploy/launch/proton_tools.cpp
-    gmmpack/schema_validator.cpp
+gmmpack/schema_validator.cpp
     gmmpack/tree_parser.cpp
     gmmpack/unpacker.cpp
     gmmpack/ini_edit_parser.cpp
+    collection/choice_groups.cpp
     ${FOMOD_ENGINE_SOURCES}
 )
 

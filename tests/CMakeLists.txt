@@ -104,6 +104,9 @@ gmm_catch2_test(collection_sync_test engine/collection_sync_test.cpp)
 gmm_catch2_test(nexus_collection_parser_test engine/nexus_collection_parser_test.cpp)
 gmm_catch2_test(nexus_adapter_test engine/nexus_adapter_test.cpp)
 gmm_catch2_test(gmmpack_patch_test engine/gmmpack_patch_test.cpp)
+gmm_catch2_test(fomod_headless_replay_test engine/fomod_headless_replay_test.cpp)
+gmm_catch2_test(choice_groups_test engine/choice_groups_test.cpp)
+>>>>>>> issue/y2ud-choice-groups
 gmm_catch2_test(perf_benchmark perf/benchmark_test.cpp)
 
 # Tests that include third-party headers directly need those include dirs at
