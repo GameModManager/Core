@@ -97,6 +97,9 @@ gmm_catch2_test(loverslab_real_test engine/loverslab_real_test.cpp)
 gmm_catch2_test(mod_update_db_client_test engine/mod_update_db_client_test.cpp)
 gmm_catch2_test(install_progress_test engine/install_progress_test.cpp)
 gmm_catch2_test(gmmpack_patch_test engine/gmmpack_patch_test.cpp)
+gmm_catch2_test(manifest_schema_test engine/manifest_schema_test.cpp)
+gmm_catch2_test(fomod_headless_replay_test engine/fomod_headless_replay_test.cpp)
+gmm_catch2_test(choice_groups_test engine/choice_groups_test.cpp)
 gmm_catch2_test(perf_benchmark perf/benchmark_test.cpp)
 
 # Tests that include third-party headers directly need those include dirs at
