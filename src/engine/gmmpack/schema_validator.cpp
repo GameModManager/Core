@@ -168,6 +168,25 @@ Diagnostics SchemaValidator::validate_impl(const nlohmann::json& value,
 
     // --- object-specific ---
     if (value.is_object()) {
+        // minProperties / maxProperties
+        if (schema.contains("minProperties")) {
+            if (value.size() < schema["minProperties"].get<size_t>()) {
+                add_error(diag, path,
+                          "object too short: " +
+                              std::to_string(value.size()) +
+                              " < minProperties " +
+                              schema["minProperties"].dump());
+            }
+        }
+        if (schema.contains("maxProperties")) {
+            if (value.size() > schema["maxProperties"].get<size_t>()) {
+                add_error(diag, path,
+                          "object too long: " +
+                              std::to_string(value.size()) +
+                              " > maxProperties " +
+                              schema["maxProperties"].dump());
+            }
+        }
         // required
         if (schema.contains("required")) {
             for (const auto& req : schema["required"]) {
