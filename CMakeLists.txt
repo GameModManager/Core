@@ -208,6 +208,7 @@ else()
     endif()
     pkg_check_modules(ZLIB REQUIRED IMPORTED_TARGET zlib)
     pkg_check_modules(LZ4 REQUIRED IMPORTED_TARGET liblz4)
+    find_package(OpenSSL REQUIRED)
     # fuse3 is Linux-only (macOS ships no pkg-config fuse3); every consumer
     # guards on FUSE3_FOUND and the VFS deploy strategy degrades without it.
     if(NOT APPLE)
