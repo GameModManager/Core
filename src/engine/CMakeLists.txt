@@ -155,6 +155,7 @@ collection/batch_installer.cpp
     core/keyring/keyring.cpp
     core/github.cpp
     collection/nexus/parser.cpp
+    collection/nexus/adapter.cpp
     core/module.cpp
     core/directory_refresher.cpp
     deploy/launch/preload_interceptor.cpp
