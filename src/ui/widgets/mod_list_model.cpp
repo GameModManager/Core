@@ -152,12 +152,16 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
 
   // Whether this row is the last child of its parent (for tree connector
   // lines in IndentDelegate). False for top-level, pseudo-rows, and
-  // separators.
+  // separators. A separator boundary ends the visual subtree: a row below a
+  // separator is never the same subtree as rows above it, even when stale
+  // parent_id links say otherwise (nesting_depth() resets there too).
   if (role == kIsLastChildRole && index.column() == Name) {
     if (mod.parent_id.isEmpty() || mod.is_separator || mod.is_overwrite ||
         mod.is_merged || mod.is_game_native)
       return false;
     for (int i = index.row() + 1; i < mods_.size(); ++i) {
+      if (mods_[i].is_separator)
+        return true;
       if (mods_[i].parent_id == mod.parent_id)
         return false;
     }
@@ -776,13 +780,18 @@ bool ModList::dropMimeData(const QMimeData *data, Qt::DropAction action,
     // the dropped mod nests under it.  If it's a non-parent item and
     // the dragged mod shares its parent, the link is preserved.
     // Everything else unparents.
+    // Same-kind only (mod->mod, separator->separator): a mod dropped below
+    // a separator stays top-level in the band - it never parent-links under
+    // the separator (sanitize_parent_links() treats those as invalid).
     QString above_parent_id;     // non-empty if row above is a parent
     QString above_child_parent;  // non-empty if row above is a non-parent child
+    bool above_is_separator = false;
     if (targetRow > 0 && targetRow <= mods_.size()) {
       const auto &above = mods_[targetRow - 1];
       if (!moved_ids.contains(above.id)) {
         if (above.is_separator) {
           above_parent_id = above.id;
+          above_is_separator = true;
         } else if (targetRow < mods_.size() &&
                    !moved_ids.contains(mods_[targetRow].id) &&
                    mods_[targetRow].parent_id == above.id) {
@@ -799,7 +808,8 @@ bool ModList::dropMimeData(const QMimeData *data, Qt::DropAction action,
     for (auto &e : toMove) {
       if (moved_ids.contains(e.parent_id))
         continue;  // internal subtree link - keep as-is
-      if (!above_parent_id.isEmpty()) {
+      if (!above_parent_id.isEmpty() &&
+          e.is_separator == above_is_separator) {
         // Between a parent and its child -> nest under that parent
         e.parent_id = above_parent_id;
       } else if (!above_child_parent.isEmpty() &&
@@ -1121,14 +1131,18 @@ void ModList::move_mod(const QString &id, int new_row) {
 
     beginMoveRows({}, src, src, {}, new_row + (new_row >= src ? 1 : 0));
     auto item = mods_.takeAt(src);
-    // Context-aware parent resolution: rules match dropMimeData.
+    // Context-aware parent resolution: rules match dropMimeData. Same-kind
+    // only: a mod moved below a separator stays top-level in the band, and a
+    // separator moved below a mod never links under it.
     {
       QString above_parent_id;
       QString above_child_parent;
+      bool above_is_separator = false;
       if (new_row > 0 && new_row <= mods_.size()) {
         const auto &above = mods_[new_row - 1];
         if (above.is_separator) {
           above_parent_id = above.id;
+          above_is_separator = true;
         } else if (new_row < mods_.size() &&
                    mods_[new_row].parent_id == above.id) {
           above_parent_id = above.id;
@@ -1136,7 +1150,8 @@ void ModList::move_mod(const QString &id, int new_row) {
           above_child_parent = above.parent_id;
         }
       }
-      if (!above_parent_id.isEmpty()) {
+      if (!above_parent_id.isEmpty() &&
+          item.is_separator == above_is_separator) {
         item.parent_id = above_parent_id;
       } else if (!above_child_parent.isEmpty() &&
                  above_child_parent == item.parent_id) {
@@ -1202,13 +1217,16 @@ void ModList::move_mod(const QString &id, int new_row) {
     block_ids.insert(e.id);
 
   // Context-aware parent resolution for the block.  Rules match dropMimeData.
+  // Same-kind only: entries never adopt a cross-kind parent from context.
   QString above_parent_id;
   QString above_child_parent;
+  bool above_is_separator = false;
   if (targetRow > 0 && targetRow <= mods_.size()) {
     const auto &above = mods_[targetRow - 1];
     if (!block_ids.contains(above.id)) {
       if (above.is_separator) {
         above_parent_id = above.id;
+        above_is_separator = true;
       } else if (targetRow < mods_.size() &&
                  !block_ids.contains(mods_[targetRow].id) &&
                  mods_[targetRow].parent_id == above.id) {
@@ -1222,7 +1240,8 @@ void ModList::move_mod(const QString &id, int new_row) {
   for (auto &e : blockEntries) {
     if (block_ids.contains(e.parent_id))
       continue;  // internal subtree link - keep as-is
-    if (!above_parent_id.isEmpty()) {
+    if (!above_parent_id.isEmpty() &&
+        e.is_separator == above_is_separator) {
       e.parent_id = above_parent_id;
     } else if (!above_child_parent.isEmpty() &&
                above_child_parent == e.parent_id) {
@@ -1611,9 +1630,15 @@ int ModList::nesting_depth(int row) const {
     return 0;
   if (row < 0 || row >= mods_.size())
     return 0;
+  // A separator boundary RESETS the indent level: a row is never visually
+  // nested under an ancestor from another band (or from above the separator
+  // that owns its band), even when a stale parent_id link says otherwise.
+  // Cross-kind hops (mod under a separator id or vice versa) are invalid
+  // links (see sanitize_parent_links) and end the chain too.
   QString cur = mods_[row].parent_id;
+  int cur_row = row;
   int depth = 0;
-  for (; depth <= mods_.size(); ++depth) {
+  for (int hops = 0; hops <= mods_.size(); ++hops) {
     if (cur.isEmpty())
       return depth;
     int idx = -1;
@@ -1625,6 +1650,25 @@ int ModList::nesting_depth(int row) const {
     }
     if (idx < 0)
       return depth; // dangling link: not nested under anyone
+    if (mods_[idx].is_separator != mods_[cur_row].is_separator)
+      return depth; // cross-kind link: invalid, ends the chain
+    const int lo = idx < cur_row ? idx : cur_row;
+    const int hi = idx < cur_row ? cur_row : idx;
+    for (int i = lo + 1; i < hi; ++i) {
+      if (!mods_[i].is_separator)
+        continue;
+      // A nested separator inside the SAME subtree is not a boundary: the
+      // hop's parent owns it (it descends from the parent) or sits inside
+      // its scope (the parent descends from it) - e.g. stacked children of
+      // one separator parent. Anything else ends the chain here.
+      if (is_descendant_of(i, mods_[idx].id))
+        continue;
+      if (is_descendant_of(idx, mods_[i].id))
+        continue;
+      return depth; // separator boundary: indent resets here
+    }
+    ++depth;
+    cur_row = idx;
     cur = mods_[idx].parent_id;
   }
   return depth;
