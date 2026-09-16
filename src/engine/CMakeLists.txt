@@ -126,6 +126,10 @@ install/conflict_resolver.cpp
     modpack/incremental_update.cpp
     install/game_match_validator.cpp
     install/instance_router.cpp
+    install/fresh_install.cpp
+    install/append_install.cpp
+    install/append_install.cpp
+>>>>>>> issue/grz6-install-paths
     game/plugins/esp_header.cpp
     game/plugins/plugin_database.cpp
     game/saves/save_game.cpp

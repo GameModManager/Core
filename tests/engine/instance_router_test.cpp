@@ -56,12 +56,12 @@ TEST_CASE("instance_router undeclared instance game creates new with reason",
   CHECK_FALSE(d.notice.empty());
 }
 
-TEST_CASE("instance_router append seam blocked until pe40", "[instance_router]")
+TEST_CASE("instance_router append gate opens on game match (pe40)", "[instance_router]")
 {
-  // Matching games reach the stub and report "not implemented" ...
+  // Matching games pass the gate - detailed planning lives in append_install ...
   auto ok = plan_append("skyrimspecialedition", "skyrimse");
-  CHECK_FALSE(ok.ok);
-  CHECK(ok.error.find("pe40") != std::string::npos);
+  CHECK(ok.ok);
+  CHECK(ok.error.empty());
   // ... while mismatched games are rejected by the match gate instead.
   auto blocked = plan_append("skyrimspecialedition", "fallout4");
   CHECK_FALSE(blocked.ok);
