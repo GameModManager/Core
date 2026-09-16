@@ -399,14 +399,14 @@ Diagnostics check_referential_integrity(const Gmmpack& pack) {
         }
 
         // Cross-check filename mod_id/sequence vs JSON modId/sequence fields
-        if (!p.source_filename.empty()) {
-            auto parsed_name = parse_patch_filename(p.source_filename);
+        if (!p.archive_path.empty()) {
+            auto parsed_name = parse_patch_filename(p.archive_path);
             if (parsed_name) {
                 const auto& filename_mod_id = parsed_name->first;
                 if (filename_mod_id != p.mod_id) {
                     diag.push_back(
                         {Diagnostic::Severity::Error,
-                         p.source_filename,
+                         p.archive_path,
                          "filename mod_id '" + filename_mod_id +
                              "' does not match modId field '" + p.mod_id +
                              "'"});
@@ -415,18 +415,18 @@ Diagnostics check_referential_integrity(const Gmmpack& pack) {
                 if (filename_seq == 0 && p.sequence.has_value()) {
                     diag.push_back(
                         {Diagnostic::Severity::Error,
-                         p.source_filename,
+                         p.archive_path,
                          "single patch file must not carry a sequence field"});
                 } else if (filename_seq != 0 && !p.sequence.has_value()) {
                     diag.push_back(
                         {Diagnostic::Severity::Error,
-                         p.source_filename,
-                         "chain patch file '" + p.source_filename +
+                         p.archive_path,
+                         "chain patch file '" + p.archive_path +
                              "' is missing its sequence field"});
                 } else if (filename_seq != 0 && *p.sequence != filename_seq) {
                     diag.push_back(
                         {Diagnostic::Severity::Error,
-                         p.source_filename,
+                         p.archive_path,
                          "filename sequence " +
                              std::to_string(filename_seq) +
                              " does not match sequence field " +

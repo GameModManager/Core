@@ -1,0 +1,8 @@
+<RCC>
+  <qresource prefix="/i18n">
+    <file alias="en_US.qm">/mnt/HDD/GitHub/GameModManager/Workspace/projects/Core/build2/src/en_US.qm</file>
+    <file alias="de_DE.qm">/mnt/HDD/GitHub/GameModManager/Workspace/projects/Core/build2/src/de_DE.qm</file>
+    <file alias="ro_RO.qm">/mnt/HDD/GitHub/GameModManager/Workspace/projects/Core/build2/src/ro_RO.qm</file>
+  </qresource>
+</RCC>
+
