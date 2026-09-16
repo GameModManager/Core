@@ -178,6 +178,14 @@ public:
     // epoch seconds. 0 clears both cells.
     void set_timestamps(const QString& id, qint64 install_ts, qint64 changed_ts);
     void set_separator_id(const QString& id, const QString& separator_id);
+    // Send a mod to a separator: stamps separator_id and moves the row to the
+    // LAST slot inside the separator's band (just before separator_band_end).
+    // No-op for unknown ids, separators, and pseudo/game-native rows.
+    void move_to_separator(const QString& mod_id, const QString& sep_id);
+    // First row index past sep_row that ends the separator's band: the next
+    // separator, Overwrite/MERGED, or mods_.size(). mods_.size() when sep_row
+    // is invalid or not a separator.
+    [[nodiscard]] int separator_band_end(int sep_row) const;
     void set_priority(const QString& id, int priority);
     void renumber_priorities();
     void set_folded(int row, bool folded);

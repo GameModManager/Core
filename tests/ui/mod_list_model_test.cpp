@@ -2288,3 +2288,212 @@ TEST_CASE("mod list model multi-level nesting drop", "[ui]") {
     check(m.mods()[rid("ModB")].parent_id == QLatin1String("ModA"),
           "drop after sibling child preserves parent ModA");
 }
+
+// Send-to-separator puts the mod LAST in the separator's band (Workspace-hcg3).
+//
+// Regression: ModActions::move_to_separator used to insert at sep_row + 1
+// (FIRST child). The model now owns the placement (ModList::move_to_separator
+// + separator_band_end) and aims the last slot: just before the next
+// separator, Overwrite/MERGED, or the end of the list.
+TEST_CASE("mod list model move to separator lands last", "[ui]") {
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    qputenv("TZ", "UTC");
+    tzset();
+    const std::filesystem::path cfg = "/tmp/gmm_mod_list_model_sep_last/config";
+    std::filesystem::remove_all("/tmp/gmm_mod_list_model_sep_last");
+    std::filesystem::create_directories(cfg);
+    qputenv("XDG_CONFIG_HOME", cfg.c_str());
+    int test_argc = 1;
+    char test_argv0[] = "test";
+    char* test_argv[] = {test_argv0, nullptr};
+    QApplication app(test_argc, test_argv);
+    QCoreApplication::setOrganizationName("GameModManager");
+    QCoreApplication::setApplicationName("GameModManager");
+
+    auto build = [](ui::ModList& m) {
+        m.set_nesting_enabled(true);
+        QVector<ui::ModEntry> e;
+        auto add = [&](const char* id, bool sep) {
+            ui::ModEntry ent;
+            ent.id = QString::fromLatin1(id);
+            ent.name = ent.id;
+            ent.enabled = true;
+            ent.is_separator = sep;
+            e.append(ent);
+        };
+        add("Top", false);
+        add("SepA_separator", true);
+        add("M1", false);
+        add("M2", false);
+        add("SepB_separator", true);
+        add("M3", false);
+        ui::ModEntry ow;
+        ow.id = ui::kOverwriteModId;
+        ow.name = ui::kOverwriteModName;
+        ow.enabled = true;
+        ow.is_overwrite = true;
+        e.append(ow);
+        m.reset_with_order(e);
+        // Rows: Top(0), SepA(1), M1(2), M2(3), SepB(4), M3(5), overwrite(6).
+    };
+
+    // Band geometry.
+    {
+        ui::ModList m;
+        build(m);
+        check(m.separator_band_end(row_with_id(m, "SepA_separator")) ==
+                  row_with_id(m, "SepB_separator"),
+              "SepA band ends at the next separator");
+        check(m.separator_band_end(row_with_id(m, "SepB_separator")) ==
+                  row_with_id(m, ui::kOverwriteModId),
+              "SepB band ends at Overwrite");
+        check(m.separator_band_end(999) == m.mods().size(),
+              "band end of an invalid row is the end of the list");
+    }
+
+    // From above: Top lands after M2 (last in SepA), not after SepA.
+    {
+        ui::ModList m;
+        build(m);
+        m.move_to_separator(QStringLiteral("Top"),
+                            QStringLiteral("SepA_separator"));
+        auto rid = [&](const char* id) { return row_with_id(m, id); };
+        check(rid("Top") == rid("M2") + 1, "sent mod lands last in the band");
+        check(rid("Top") < rid("SepB_separator"),
+              "sent mod stays inside the target separator");
+        check(m.mods()[rid("Top")].separator_id ==
+                  QLatin1String("SepA_separator"),
+              "sent mod joins the separator group");
+        check(m.mods()[rid("Top")].parent_id.isEmpty(),
+              "sent mod stays top-level in the band");
+        check(m.nesting_depth(rid("Top")) == 0,
+              "sent mod renders flat in the band");
+    }
+
+    // From below: M3 lands after M2 (last in SepA).
+    {
+        ui::ModList m;
+        build(m);
+        m.move_to_separator(QStringLiteral("M3"),
+                            QStringLiteral("SepA_separator"));
+        auto rid = [&](const char* id) { return row_with_id(m, id); };
+        check(rid("M3") == rid("M2") + 1, "mod from below lands last");
+        check(rid("M3") < rid("SepB_separator"),
+              "mod from below stays inside the target separator");
+    }
+
+    // From within: M1 moves after M2 (last).
+    {
+        ui::ModList m;
+        build(m);
+        m.move_to_separator(QStringLiteral("M1"),
+                            QStringLiteral("SepA_separator"));
+        auto rid = [&](const char* id) { return row_with_id(m, id); };
+        check(rid("M1") == rid("M2") + 1, "reorder within the band goes last");
+    }
+
+    // Already last: no-op.
+    {
+        ui::ModList m;
+        build(m);
+        auto before = [&](const ui::ModList& mm) {
+            QVector<QString> order;
+            for (const auto& mod : mm.mods()) order.append(mod.id);
+            return order;
+        }(m);
+        m.move_to_separator(QStringLiteral("M2"),
+                            QStringLiteral("SepA_separator"));
+        QVector<QString> after;
+        for (const auto& mod : m.mods()) after.append(mod.id);
+        check(after == before, "sending the last mod is a no-op");
+    }
+
+    // Empty band: the mod lands directly below the separator.
+    {
+        ui::ModList m;
+        m.set_nesting_enabled(true);
+        QVector<ui::ModEntry> e;
+        for (const char* id : {"Top", "SepE_separator"}) {
+            ui::ModEntry ent;
+            ent.id = QString::fromLatin1(id);
+            ent.name = ent.id;
+            ent.enabled = true;
+            ent.is_separator = QString::fromLatin1(id).endsWith(
+                QStringLiteral("_separator"));
+            e.append(ent);
+        }
+        ui::ModEntry ow;
+        ow.id = ui::kOverwriteModId;
+        ow.name = ui::kOverwriteModName;
+        ow.enabled = true;
+        ow.is_overwrite = true;
+        e.append(ow);
+        m.reset_with_order(e);
+        // Rows: Top(0), SepE(1), overwrite(2).
+        m.move_to_separator(QStringLiteral("Top"),
+                            QStringLiteral("SepE_separator"));
+        auto rid = [&](const char* id) { return row_with_id(m, id); };
+        check(rid("Top") == rid("SepE_separator") + 1,
+              "empty band: mod lands directly below the separator");
+        check(m.mods()[rid("Top")].parent_id.isEmpty(),
+              "empty band: no parent link under the separator");
+        check(m.nesting_depth(rid("Top")) == 0,
+              "empty band: mod renders flat");
+    }
+
+    // A parent mod rides its subtree along and still lands last.
+    {
+        ui::ModList m;
+        m.set_nesting_enabled(true);
+        QVector<ui::ModEntry> e;
+        auto add = [&](const char* id, const char* parent, bool sep) {
+            ui::ModEntry ent;
+            ent.id = QString::fromLatin1(id);
+            ent.name = ent.id;
+            ent.enabled = true;
+            ent.is_separator = sep;
+            if (parent) ent.parent_id = QString::fromLatin1(parent);
+            e.append(ent);
+        };
+        add("P", nullptr, false);
+        add("C", "P", false);
+        add("SepA_separator", nullptr, true);
+        add("M1", nullptr, false);
+        ui::ModEntry ow;
+        ow.id = ui::kOverwriteModId;
+        ow.name = ui::kOverwriteModName;
+        ow.enabled = true;
+        ow.is_overwrite = true;
+        e.append(ow);
+        m.reset_with_order(e);
+        // Rows: P(0), C(1, child of P), SepA(2), M1(3), overwrite(4).
+        m.move_to_separator(QStringLiteral("P"),
+                            QStringLiteral("SepA_separator"));
+        auto rid = [&](const char* id) { return row_with_id(m, id); };
+        check(rid("P") == rid("M1") + 1, "parent mod lands last in the band");
+        check(rid("C") == rid("P") + 1, "child rides along below its parent");
+        check(m.mods()[rid("C")].parent_id == QLatin1String("P"),
+              "intra-block link survives the send");
+    }
+
+    // Unknown ids are no-ops.
+    {
+        ui::ModList m;
+        build(m);
+        m.move_to_separator(QStringLiteral("ghost"),
+                            QStringLiteral("SepA_separator"));
+        m.move_to_separator(QStringLiteral("Top"),
+                            QStringLiteral("ghost_separator"));
+        check(row_with_id(m, "Top") == 0, "unknown ids change nothing");
+    }
+}
+
+// Separator boundaries reset the visual indent (Workspace-qjos).
+//
+// Regression: a parented mod as the last item above a separator made a
+// non-parented mod placed first inside the separator below appear parented
+// (indented deep). Separators now end the visual subtree in three places:
+//   - move_mod()/dropMimeData() never parent-link a mod under a separator
+//     from positional context (same-kind nesting only),
+//   - nesting_depth() stops the chain at separator boundaries,
+//   - kIsLastChildRole stops its sibling scan at separators.
