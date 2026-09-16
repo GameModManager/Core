@@ -141,6 +141,8 @@ collection/batch_installer.cpp
     source/loverslab_auth.cpp
     source/download/curl_download.cpp
     network/network_manager.cpp
+    network/nexus_v2/client.cpp
+    network/nexus_v2/collection_revision.cpp
     update/self_updater.cpp
     update/windows_self_updater.cpp
     update/linux_self_updater.cpp
