@@ -166,6 +166,7 @@ collection/batch_installer.cpp
     gmmpack/schema_validator.cpp
     gmmpack/tree_parser.cpp
     gmmpack/unpacker.cpp
+    gmmpack/ini_edit_parser.cpp
     ${FOMOD_ENGINE_SOURCES}
 )
 

@@ -469,7 +469,7 @@ Diagnostics check_referential_integrity(const Gmmpack& pack) {
         }
     }
 
-    // ini/*.json: sourceModId must resolve to a real mod id (when non-null)
+// ini/*.json: sourceModId must resolve to a real mod id (when non-null)
     for (size_t i = 0; i < pack.ini_edits.size(); ++i) {
         const auto& ini = pack.ini_edits[i];
         for (size_t j = 0; j < ini.edits.size(); ++j) {
