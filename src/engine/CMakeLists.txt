@@ -175,7 +175,7 @@ collection/batch_installer.cpp
 gmmpack/schema_validator.cpp
     gmmpack/tree_parser.cpp
     gmmpack/unpacker.cpp
-gmmpack/ini_edit_parser.cpp
+    gmmpack/ini_edit_parser.cpp
     collection/choice_groups.cpp
     gmmpack/executable_pipeline.cpp
     ${FOMOD_ENGINE_SOURCES}
