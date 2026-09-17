@@ -112,7 +112,7 @@ void WebViewDescriptionRenderer::set_description(const QString& html)
 void WebViewDescriptionRenderer::clear()
 {
   current_html_.clear();
-  webview_->setHtml(QStringLiteral("<html><body></body></html>"));
+  webview_->setHtml(wrap_web_html(QString(), current_style_));
 }
 
 }  // namespace ui
