@@ -1489,16 +1489,11 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
   // Populate the Plugins tab from the (now loaded) mod list.
   refresh_plugins_tab();
   // Workspace-k53a: the original code re-ran on_saves_refresh_requested here
-  // "because the Saves tab snapshot may predate this load". In practice the
-  // boot path is:
-  //   settings_controller::set_game() -> wire_saves_tab() (queues scan #1) ->
-  //   load_mods_from_game() -> on_mod_scan_finished() (was queuing scan #2)
-  // Both scans ran seconds apart for 106-save dirs, costing ~24s of duplicate
-  // work. The first scan (Trigger A, in wire_saves_tab) sees the snapshot it
-  // captured at queue time. We no longer try to chase that snapshot here;
-  // the game-finished rescan (k53a follow-up) is the only legitimate second
-  // trigger. SavesTab::request_scan coalesces overlapping requests as a
-  // belt-and-braces guard.
+  // "because the Saves tab snapshot may predate this load". Since
+  // Workspace-ugm3 the saves scan is lazy (first tab show), so there is no
+  // eager boot scan to chase here; the game-finished rescan (k53a follow-up)
+  // is the only legitimate second trigger. SavesTab::request_scan coalesces
+  // overlapping requests as a belt-and-braces guard.
 }
 
 void ModListController::apply_profile_mod_states() {
@@ -2423,15 +2418,27 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
     return true;
   };
 
-  // Live Nexus lookup for the Nexus tab's Refresh button.
+  // Live Nexus lookup for the Nexus tab's Refresh button. The source id
+  // is read from the sidecar AT FETCH TIME, not from the dialog-open
+  // snapshot: attaching a source via the Add Source dialog writes the
+  // sidecar mid-session, and a snapshot capture would keep fetching the
+  // old (empty) id until the dialog is closed and reopened (Workspace-xdld).
   const QString domain = data.nexus_domain;
   const QString src_id = mod.source_id;
-  data.fetch_nexus_info = [domain, src_id]() {
+  data.fetch_nexus_info = [domain, src_id, meta_dir, mod_id = mod.id]() {
+    QString live_id = src_id;
+    if (!meta_dir.empty()) {
+      const QString sidecar_id = QString::fromStdString(
+          engine::ModMeta::load(meta_dir, mod_id.toStdString()).source_id());
+      if (!sidecar_id.isEmpty())
+        live_id = sidecar_id;
+    }
     auto *provider = dynamic_cast<engine::Source::Nexus::Provider *>(
         engine::SourceRegistry::instance().provider_for("nexus"));
-    if (!provider || domain.isEmpty() || src_id.isEmpty())
+    if (!provider || domain.isEmpty() || live_id.isEmpty())
       return engine::ModInfoResult{};
-    return provider->fetch_mod_info(domain.toStdString(), src_id.toStdString());
+    return provider->fetch_mod_info(domain.toStdString(),
+                                    live_id.toStdString());
   };
 
   // Live LoversLab lookup for the LoversLab tab's Refresh button.
@@ -2439,10 +2446,26 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
   // id. Both are accepted by Provider::fetch_mod_info. The fetcher is
   // only wired when the LoversLab provider is registered (it always is
   // in the app, but tests can swap providers and the panel should not
-  // crash on a missing one).
+  // crash on a missing one). Like the Nexus fetcher above, both values
+  // are re-read from the sidecar at fetch time (Workspace-xdld).
   const QString ll_src_id = mod.source_id;
   const QString ll_page_url = mod.source_page_url;
-  data.fetch_loverslab_info = [ll_src_id, ll_page_url]() {
+  data.fetch_loverslab_info = [ll_src_id, ll_page_url, meta_dir,
+                               mod_id = mod.id]() {
+    QString live_id = ll_src_id;
+    QString live_url = ll_page_url;
+    if (!meta_dir.empty()) {
+      const auto meta =
+          engine::ModMeta::load(meta_dir, mod_id.toStdString());
+      const QString sidecar_id =
+          QString::fromStdString(meta.source_id());
+      if (!sidecar_id.isEmpty())
+        live_id = sidecar_id;
+      const QString sidecar_url =
+          QString::fromStdString(meta.source_page_url());
+      if (!sidecar_url.isEmpty())
+        live_url = sidecar_url;
+    }
     auto *provider = dynamic_cast<engine::Source::LoversLab::Provider *>(
         engine::SourceRegistry::instance().provider_for("loverslab"));
     if (!provider)
@@ -2450,18 +2473,33 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
     // Prefer the full page URL when we have one - the slug survives the
     // round-trip and the JSON-LD `url` field will agree.
     const std::string arg =
-        !ll_page_url.isEmpty() ? ll_page_url.toStdString()
-                               : ll_src_id.toStdString();
+        !live_url.isEmpty() ? live_url.toStdString() : live_id.toStdString();
     return provider->fetch_mod_info(arg);
   };
 
   // Live ModPub lookup for the ModPub tab's Refresh button. Prefer the
   // page URL (carries the game-slug and the slug-suffix); fall back to
   // the bare numeric mod id. mod.pub has no API, so the fetcher is
-  // guest-only (the page is guest-visible, downloads are not).
+  // guest-only (the page is guest-visible, downloads are not). Values are
+  // re-read from the sidecar at fetch time (Workspace-xdld).
   const QString mp_src_id = mod.source_id;
   const QString mp_page_url = mod.source_page_url;
-  data.fetch_modpub_info = [mp_src_id, mp_page_url]() {
+  data.fetch_modpub_info = [mp_src_id, mp_page_url, meta_dir,
+                            mod_id = mod.id]() {
+    QString live_id = mp_src_id;
+    QString live_url = mp_page_url;
+    if (!meta_dir.empty()) {
+      const auto meta =
+          engine::ModMeta::load(meta_dir, mod_id.toStdString());
+      const QString sidecar_id =
+          QString::fromStdString(meta.source_id());
+      if (!sidecar_id.isEmpty())
+        live_id = sidecar_id;
+      const QString sidecar_url =
+          QString::fromStdString(meta.source_page_url());
+      if (!sidecar_url.isEmpty())
+        live_url = sidecar_url;
+    }
     auto *provider = dynamic_cast<engine::Source::ModPub::Provider *>(
         engine::SourceRegistry::instance().provider_for("modpub"));
     if (!provider)
@@ -2469,8 +2507,7 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
     // Prefer the full page URL when we have one - the JSON-LD `url`
     // field will agree and the parser back-fills game_slug from it.
     const std::string arg =
-        !mp_page_url.isEmpty() ? mp_page_url.toStdString()
-                               : mp_src_id.toStdString();
+        !live_url.isEmpty() ? live_url.toStdString() : live_id.toStdString();
     return provider->fetch_mod_info(arg);
   };
 
@@ -2509,6 +2546,14 @@ void ModListController::on_data_mod_info(const QString &mod_id,
   w_->modinfo_dialog_ = &dlg;
   dlg.exec();
   w_->modinfo_dialog_.clear();
+  // The dialog writes source metadata (Add Source, panel edits) straight to
+  // the sidecar, but the model's ModEntry snapshot predates those writes -
+  // without a re-sync the Source column icon/tooltip and the next dialog's
+  // fetch lambdas stay stale until the next startup scan (Workspace-xdld).
+  // Re-reading the sidecars pushes set_source_info + dataChanged, so the
+  // icon appears immediately. Idempotent: set_source_info only emits when
+  // something actually changed.
+  load_meta_for_mods();
 }
 
 void ModListController::on_data_hide(const QString &file_path,

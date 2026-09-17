@@ -14,6 +14,7 @@
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/source/nexus_provider.h"
 #include "engine/source/source_provider.h"
+#include "ui/modinfo/description_renderer.h"
 #include "ui/modinfo/source_panels/nexus_source_panel.h"
 #include "ui/modinfo/source_tab.h"
 
@@ -22,7 +23,6 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSemaphore>
-#include <QTextBrowser>
 #include <QThread>
 
 #include <atomic>
@@ -187,9 +187,10 @@ TEST_CASE("source tab", "[ui]") {
               "Refresh button re-enabled after the result lands");
 
         bool desc_shown = false;
-        for (auto* tb : tab.findChildren<QTextBrowser*>())
-            if (tb->toPlainText().contains("Fetched description")) desc_shown = true;
-        check(desc_shown, "description browser shows the fetched text");
+        for (auto *renderer : tab.findChildren<ui::DescriptionRenderer *>())
+            if (renderer->current_description().contains("Fetched description"))
+                desc_shown = true;
+        check(desc_shown, "description renderer shows the fetched text");
 
         bool ver_shown = false;
         for (auto* le : tab.findChildren<QLineEdit*>())

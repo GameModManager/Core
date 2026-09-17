@@ -154,6 +154,9 @@ std::string SaveReader::wstring() {
 void SaveReader::begin_compressed(std::uint16_t type) {
     if (type == 0) {
         // Uncompressed data region: keep reading from the file cursor.
+        // buf_ is an exact duplicate of file_ here; drop the raw copy so a
+        // parse never holds the file twice (Workspace-ixns).
+        release_raw_file();
         return;
     }
     if (type == 1) {
@@ -163,6 +166,9 @@ void SaveReader::begin_compressed(std::uint16_t type) {
         std::uint64_t total = u64();
         buf_ = inflate_chunks(chunk_start, total, file_);
         pos_ = 0;
+        // The decompressed region replaces the raw file from here on; free
+        // the raw copy immediately instead of carrying both (Workspace-ixns).
+        release_raw_file();
         return;
     }
     if (type == 2) {
@@ -173,6 +179,7 @@ void SaveReader::begin_compressed(std::uint16_t type) {
         std::string compressed = read_bytes(compressed_size);
         buf_ = lz4_decompress(compressed, uncompressed_size);
         pos_ = 0;
+        release_raw_file();
         return;
     }
     throw SaveParseError("unknown save compression type " + std::to_string(type));

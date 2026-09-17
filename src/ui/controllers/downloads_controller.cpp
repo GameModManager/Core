@@ -451,7 +451,7 @@ void DownloadsController::wire_saves_tab() {
   st->set_saves_dir(saves_dir);
 
   // No directory watcher and no mod-list/plugin-driven rescans: the Saves
-  // dir is scanned exactly once here (at load, when the tab is wired) and
+  // dir is scanned lazily on the tab's first show (Workspace-ugm3) and
   // after a delete. Earlier versions re-scanned on every mod_list_changed
   // (via refresh_plugins_tab) to keep the missing-asset column in sync, but
   // that made a separator fold/unfold trigger a full save scan - so the
@@ -460,9 +460,11 @@ void DownloadsController::wire_saves_tab() {
           &DownloadsController::on_saves_delete_requested);
   connect(st, &ui::SavesTab::information_requested, this,
           &DownloadsController::on_save_information_requested);
-
-  // Initial fill (the delete flow triggers the only later scan).
-  on_saves_refresh_requested();
+  // On-demand fill: the tab emits this once when first shown (plus the
+  // delete flow below re-scans directly). No eager scan at game load -
+  // most sessions never open the Saves tab.
+  connect(st, &ui::SavesTab::scan_requested, this,
+          &DownloadsController::on_saves_refresh_requested);
 }
 
 void DownloadsController::on_saves_refresh_requested() {

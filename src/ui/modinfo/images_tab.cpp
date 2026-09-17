@@ -129,15 +129,30 @@ void ImagesTab::set_mod(const ModInfoData& data) {
 }
 
 void ImagesTab::first_activation() {
+    static const QSize kThumb(96, 96);
     for (int i = 0; i < thumbnails_->count(); ++i) {
         auto* item = thumbnails_->item(i);
         const QString path = item->data(Qt::UserRole).toString();
         if (icon_cache_.contains(path)) continue;
         QImageReader reader(path);
-        const QImage img = reader.read();
+        reader.setAutoTransform(true);
+        // Decode large images directly at thumbnail size instead of full
+        // resolution (a 4096x4096 DDS is 64MB before scaling). Formats that
+        // ignore setScaledSize fall through to the scaled() call below.
+        const QSize native = reader.size();
+        if (native.isValid() && !native.isEmpty() &&
+            (native.width() > kThumb.width() ||
+             native.height() > kThumb.height())) {
+            QSize target = native;
+            target.scale(kThumb, Qt::KeepAspectRatio);
+            reader.setScaledSize(target);
+        }
+        QImage img = reader.read();
         if (img.isNull()) continue;
-        icon_cache_[path] = QIcon(QPixmap::fromImage(img.scaled(
-            96, 96, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
+        if (img.width() > kThumb.width() || img.height() > kThumb.height())
+            img = img.scaled(kThumb, Qt::KeepAspectRatio,
+                             Qt::SmoothTransformation);
+        icon_cache_[path] = QIcon(QPixmap::fromImage(img));
         item->setIcon(icon_cache_[path]);
     }
 }

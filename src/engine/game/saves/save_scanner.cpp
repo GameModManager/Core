@@ -118,25 +118,21 @@ void scan_saves_streaming(const std::filesystem::path& dir,
         return;
     }
 
-    // Same parallel-parse shape as scan_saves, but the per-file callback fires
-    // on the calling thread so the UI can emit one queued signal per save
-    // (Workspace-0owv). Worker threads must NOT call on_entry directly: that
-    // would be a cross-thread QObject emit (or, for non-Qt callers, a
-    // non-thread-safe user callback). We collect into an indexed slot vector
-    // and dispatch sequentially.
-    std::vector<std::optional<SaveGame>> parsed(paths.size());
-    parallel::for_each(paths.size(), [&](std::size_t i) {
+    // Workspace-ixns (256MiB hard cap): parse SEQUENTIALLY, one save at a
+    // time, dispatching each entry immediately. The previous parallel shape
+    // (up to 16 threads per parallel::for_each) held up to 16 concurrent
+    // decompression buffers plus a slot vector retaining EVERY parsed save
+    // (full-res screenshots included) until dispatch - heaptrack showed
+    // 935MB peak. Single-threaded + immediate dispatch bounds the transient
+    // peak to one save in flight, matching MO2 (which parses saves with no
+    // threads at all). The callback still runs on the calling thread, so the
+    // UI's queued-emit contract is unchanged.
+    for (const auto& path : paths) {
         try {
-            parsed[i].emplace(parse_fn(paths[i]));
+            on_entry(parse_fn(path));
         } catch (const SaveParseError&) {
             // Skip unparseable files (.skse co-save, corrupt) - same as
             // scan_saves.
-        }
-    });
-
-    for (auto& slot : parsed) {
-        if (slot) {
-            on_entry(std::move(*slot));
         }
     }
 }
