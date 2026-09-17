@@ -162,10 +162,10 @@ void NexusSourcePanel::update_version_color() {
 void NexusSourcePanel::render_description() {
   if (description_ == nullptr)
     return;
-  // Drop the previous render - the next mod's description is unrelated and
-  // a late-arriving async parse must not race the new document (clear()
-  // also cancels in-flight image fetches on the fallback backend).
-  description_->clear();
+  // set_description() replaces the content atomically - no clear() first,
+  // or the gap exposes the webview's default background as a white flash.
+  // The token bump below discards any late-arriving async parse from the
+  // previous mod instead.
   const QString stored = meta_value("Nexusmods", "nexusdescription");
   if (stored.isEmpty()) {
     description_->set_description(QStringLiteral(

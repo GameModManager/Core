@@ -579,8 +579,12 @@ void SourceTab::set_mod(const ModInfoData &data) {
 }
 
 void SourceTab::populate() {
-  // Tear down the previous layout. The "+" tab's index is also reset here
-  // because every call to populate() rebuilds the full tab bar.
+  // Freeze painting while the tab bar is torn down and rebuilt (every mod
+  // switch deletes the old source panel and constructs a new one, including
+  // a fresh QWebEngineView). Without this the user sees the teardown frames
+  // as a quick close-open flicker of the whole Source tab. Updates are
+  // re-enabled at the end of this function.
+  sources_->setUpdatesEnabled(false);
   plus_index_ = -1;
   while (sources_->count() > 0) {
     QWidget *page = sources_->widget(0);
@@ -631,6 +635,7 @@ auto *plus_page = new QWidget(sources_);
   if (auto *bar = sources_->tabBar()) {
     bar->setTabToolTip(plus_index_, tr("Add a source to this mod"));
   }
+  sources_->setUpdatesEnabled(true);
 }
 
 void SourceTab::first_activation() { populate(); }

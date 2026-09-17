@@ -21,9 +21,10 @@ void set_description_html(DescriptionRenderer *renderer, const QString &desc,
                           std::atomic<unsigned> *gen) {
   if (renderer == nullptr)
     return;
-  // Drop any in-flight work from the previous render so we never display
-  // content from the prior mod here.
-  renderer->clear();
+  // No clear(): set_description() below replaces the content atomically
+  // and the clear-then-set gap flashes the webview's default background.
+  // `gen` still advances so any stale async work from a previous render
+  // is discarded by the token check.
   if (desc.isEmpty()) {
     renderer->set_description(QStringLiteral(
         "<div style=\"text-align:center; color:grey; padding-top:24px;\">"
