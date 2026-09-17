@@ -41,9 +41,9 @@ void set_description_html(DescriptionRenderer *renderer, const QString &desc,
                           std::atomic<unsigned> *gen) {
   if (renderer == nullptr)
     return;
-  // Drop any in-flight work from the previous render so we never display
-  // content from the prior mod here.
-  renderer->clear();
+  // No clear(): set_description()/set_bbcode_html_async() replace the
+  // content atomically; the clear-then-set gap flashes the webview's
+  // default background. The token bump below discards stale async parses.
   if (desc.isEmpty()) {
     renderer->set_description(QStringLiteral(
         "<div style=\"text-align:center; color:grey; padding-top:24px;\">"

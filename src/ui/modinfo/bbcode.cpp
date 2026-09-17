@@ -488,11 +488,11 @@ void set_bbcode_html_async(DescriptionRenderer *renderer, const QString &desc,
                            std::atomic<unsigned> *request_token) {
   if (renderer == nullptr)
     return;
-  // Drop the previous render synchronously so stale content cannot survive
-  // into the new document. The async HTML install lands later via the
-  // queued invoke; clear() also cancels in-flight image fetches on the
-  // fallback backend.
-  renderer->clear();
+  // No clear() here: set_description() below replaces the content
+  // atomically, and any clear-then-set gap exposes the webview's default
+  // background as a white flash. Stale async results are discarded by the
+  // request-token check in the queued callback instead; the panels bump
+  // the token before calling us.
   if (desc.isEmpty()) {
     renderer->set_description(empty_placeholder_html());
     return;

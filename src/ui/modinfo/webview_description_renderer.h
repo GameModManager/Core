@@ -21,7 +21,7 @@ public:
 
   void set_description(const QString& html) override;
   void clear() override;
-  void set_source_style(SourceCSS style) override { current_style_ = style; }
+  void set_source_style(SourceCSS style) override;
   [[nodiscard]] QString current_description() const override
   {
     return current_html_;

@@ -19,11 +19,12 @@ void set_description_html(DescriptionRenderer *renderer, const QString &desc,
                           std::atomic<unsigned> *gen) {
   if (renderer == nullptr)
     return;
-  // Drop any in-flight work from the previous render so we never display
-  // content from the prior mod here. Same sanitization pipeline as the
-  // other source panels: bbcode_to_html strips javascript:/data: URLs and
-  // CSS meta-chars; each renderer wraps the fragment in its own shell.
-  renderer->clear();
+  // No clear(): the install below replaces the content atomically; the
+  // clear-then-set gap flashes the webview's default background. The
+  // token bump discards stale async parses instead. Same sanitization
+  // pipeline as the other source panels: bbcode_to_html strips
+  // javascript:/data: URLs and CSS meta-chars; each renderer wraps the
+  // fragment in its own shell.
   if (desc.isEmpty()) {
     renderer->set_description(QStringLiteral(
         "<div style=\"text-align:center; color:grey; padding-top:24px;\">"

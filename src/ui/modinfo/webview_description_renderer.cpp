@@ -12,6 +12,16 @@ namespace ui
 namespace
 {
 
+// Default page background per source theme. QWebEngine paints its own
+// default (white) until our setHtml CSS lands, so the page background must
+// be dark or every content swap flashes white regardless of the HTML shell.
+QColor page_background(SourceCSS style)
+{
+  if (style == SourceCSS::LoversLab)
+    return QColor(0x2a, 0x2a, 0x2e);
+  return QColor(0x40, 0x40, 0x40);
+}
+
   // MO2-style dark shell around BBCode-generated fragments (Nexus /
   // Steam / mod.pub, plus the Default style). white-space:pre-wrap stays
   // because the pipeline emits raw '\n' newlines (libcbb preserves them);
@@ -96,6 +106,11 @@ WebViewDescriptionRenderer::WebViewDescriptionRenderer(QWidget* parent)
   // QWebEngineView is a QWidget: embed it directly, no window container.
   webview_->setMinimumSize(320, 200);
   webview_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  // Dark page background from the start: Chromium's default is white and
+  // shows through on first paint and during every setHtml swap before the
+  // body CSS lands. This is what the user sees as a white flash.
+  if (webview_->page() != nullptr)
+    webview_->page()->setBackgroundColor(page_background(current_style_));
   auto* layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->addWidget(webview_, 1);
@@ -107,6 +122,15 @@ void WebViewDescriptionRenderer::set_description(const QString& html)
 {
   current_html_ = html;
   webview_->setHtml(wrap_web_html(html, current_style_));
+}
+
+void WebViewDescriptionRenderer::set_source_style(SourceCSS style)
+{
+  current_style_ = style;
+  // Keep the page background in sync so a style switch never exposes the
+  // white default underneath the new theme.
+  if (webview_ != nullptr && webview_->page() != nullptr)
+    webview_->page()->setBackgroundColor(page_background(current_style_));
 }
 
 void WebViewDescriptionRenderer::clear()
