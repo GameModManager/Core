@@ -101,8 +101,39 @@ bool proton_tooling_available(const ProtonToolRequest& request) {
 
 int64_t run_proton_tool(const ProtonToolRequest& request,
                         const std::vector<std::string>& args) {
-    // 1. protontricks (preferred): routes every verb to the correct wine /
-    //    winetricks inside the game's own prefix. Needs a known appid.
+    // 1. Wine builtins (winecfg/regedit) run via the Proton runner's own
+    //    wine (`proton runinprefix`). winetricks cannot run these.
+    if (is_wine_builtin(args)) {
+        auto proton = resolve_proton_runner(request);
+        if (!proton.empty() && request.platform && request.steam_appid != 0) {
+            ProtonRuntime::prepare_proton_environment(request.platform,
+                                                      request.game_dir,
+                                                      request.steam_appid);
+            std::vector<std::string> cmd = {
+                proton.string(), "runinprefix", args[0],
+            };
+            return spawn_detached(cmd);
+        }
+    }
+
+    // 2. Plain winetricks against the prefix (preferred). We already resolve
+    //    the prefix ourselves, so there is no need for protontricks (which
+    //    scans ALL Steam appmanifest files and crashes on any corrupt one).
+    //    winetricks just needs WINEPREFIX set.
+    auto winetricks = find_in_path("winetricks");
+    if (!winetricks.empty() && !is_wine_builtin(args)) {
+        auto prefix = game_prefix(request);
+        if (!prefix.empty()) {
+            setenv("WINEPREFIX", prefix.string().c_str(), 1);
+            std::vector<std::string> cmd = {winetricks.string()};
+            cmd.insert(cmd.end(), args.begin(), args.end());
+            return spawn_detached(cmd);
+        }
+    }
+
+    // 3. protontricks fallback (e.g. winetricks missing, or no resolvable
+    //    prefix). Kept last: it scans ALL Steam appmanifest files and crashes
+    //    on any corrupt one.
     auto protontricks = find_in_path("protontricks");
     if (!protontricks.empty() && request.steam_appid != 0 && request.platform) {
         auto steam_root = request.platform->find_steam_root();
@@ -120,34 +151,6 @@ int64_t run_proton_tool(const ProtonToolRequest& request,
             protontricks.string(), "--no-term",
             std::to_string(request.steam_appid),
         };
-        cmd.insert(cmd.end(), args.begin(), args.end());
-        return spawn_detached(cmd);
-    }
-
-    // 2. No protontricks. Wine builtins (winecfg/regedit) can still run via
-    //    the Proton runner's own wine (`proton runinprefix`).
-    if (is_wine_builtin(args)) {
-        auto proton = resolve_proton_runner(request);
-        if (!proton.empty() && request.platform && request.steam_appid != 0) {
-            ProtonRuntime::prepare_proton_environment(request.platform,
-                                                      request.game_dir,
-                                                      request.steam_appid);
-            std::vector<std::string> cmd = {
-                proton.string(), "runinprefix", args[0],
-            };
-            return spawn_detached(cmd);
-        }
-    }
-
-    // 3. Plain winetricks against the prefix (system wine). Last resort, but
-    //    beats doing nothing when protontricks is missing.
-    auto winetricks = find_in_path("winetricks");
-    if (!winetricks.empty()) {
-        auto prefix = game_prefix(request);
-        if (!prefix.empty()) {
-            setenv("WINEPREFIX", prefix.string().c_str(), 1);
-        }
-        std::vector<std::string> cmd = {winetricks.string()};
         cmd.insert(cmd.end(), args.begin(), args.end());
         return spawn_detached(cmd);
     }

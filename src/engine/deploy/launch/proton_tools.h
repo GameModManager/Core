@@ -22,12 +22,12 @@ struct ProtonToolRequest {
 };
 
 // Run a winetricks-style command against the game's prefix, detached:
-//   - `protontricks <appid> <args...>` when protontricks is on PATH and an
-//     appid is known (preferred - it locates the prefix itself and wires up
-//     the correct wine build),
-//   - `proton runinprefix <args>` for wine builtins (winecfg, regedit) when no
-//     protontricks,
-//   - system `winetricks <args>` with WINEPREFIX set otherwise.
+//   - `proton runinprefix <args>` for wine builtins (winecfg, regedit),
+//   - system `winetricks <args>` with WINEPREFIX set (preferred - we resolve
+//     the prefix ourselves, avoiding protontricks' scan of ALL Steam
+//     appmanifest files which crashes on any corrupt one),
+//   - `protontricks <appid> <args...>` fallback when winetricks is missing
+//     or no prefix resolves.
 // `args` may be a category verb (`dlls` - opens the "Install a Windows DLL or
 // component" picker), a wine builtin (`winecfg`, `regedit`), an install verb
 // (`vcrun2022`, ...), or empty (winetricks main GUI).
