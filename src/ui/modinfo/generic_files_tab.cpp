@@ -124,6 +124,12 @@ void GenericFilesTab::set_mod(const ModInfoData& data) {
 }
 
 void GenericFilesTab::rebuild_list() {
+    // The previous model is parented to this tab, so it would linger as a
+    // child until the tab is destroyed - delete it before swapping in the
+    // new one (QListView::setModel takes no ownership).
+    if (list_->model() && list_->model()->parent() == this) {
+        delete list_->model();
+    }
     auto* model = new QStandardItemModel(this);
     for (const auto& f : files_) {
         model->appendRow(new QStandardItem(f.text));
