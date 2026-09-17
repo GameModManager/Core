@@ -56,13 +56,12 @@ public:
   void removeCategory(int id);
   // Updates the name and parent of an existing category; no-op when missing.
   void updateCategory(int id, const std::string &name, int parent_id);
-  // Drops every instance-scoped entry. Plugin-registered entries
-  // (plugin_categories_) survive so that load() can self-heal a poisoned
-  // categories.dat by restoring missing plugin entries.
+  // Drops every entry, including plugin-registered ones, so switching
+  // instances never leaks one game's categories into another.
   void clear();
 
-  // Categories registered by plugins this session. Survives clear() so
-  // load() can re-add missing plugin entries after a stale/empty dat.
+  // Categories registered by plugins this session. Cleared by clear()
+  // alongside the active set.
   [[nodiscard]] const std::map<int, Entry> &pluginCategories() const {
     return plugin_categories_;
   }
@@ -75,7 +74,7 @@ private:
   void updateHasChildren();
 
   std::map<int, Entry> categories_;
-  std::map<int, Entry> plugin_categories_; // survives clear() for self-healing
+  std::map<int, Entry> plugin_categories_;
 };
 
 } // namespace Category
