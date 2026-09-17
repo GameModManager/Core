@@ -146,9 +146,18 @@ set(MODINFO_SOURCES
     modinfo/notes_tab.cpp
     modinfo/filetree_tab.cpp
     modinfo/description_browser.cpp
+    modinfo/description_renderer.cpp
     modinfo/bbcode.cpp
 )
 list(APPEND UI_SOURCES ${MODINFO_SOURCES})
+
+# QWebEngineView description renderer: compiled only when the Qt6
+# WebEngineWidgets module is available. GMM_HAS_WEBENGINE selects the
+# WebEngine backend in the DescriptionRenderer factory; without it the
+# QTextBrowser fallback is used.
+if(Qt6WebEngineWidgets_FOUND)
+    list(APPEND UI_SOURCES modinfo/webview_description_renderer.cpp)
+endif()
 
 # libcbb - single-header BBCode-to-HTML library (vendored from
 # third_party/libcbb/, see Workspace-jw4i). The header is included from
@@ -199,4 +208,8 @@ endif()
 if(Qt6Charts_FOUND)
     target_compile_definitions(gmm_ui PUBLIC GMM_HAS_QTCHARTS=1)
     target_link_libraries(gmm_ui PRIVATE Qt6::Charts)
+endif()
+if(Qt6WebEngineWidgets_FOUND)
+    target_compile_definitions(gmm_ui PUBLIC GMM_HAS_WEBENGINE=1)
+    target_link_libraries(gmm_ui PRIVATE Qt6::WebEngineWidgets)
 endif()

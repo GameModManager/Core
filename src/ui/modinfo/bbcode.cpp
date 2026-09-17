@@ -2,7 +2,7 @@
 
 #include "engine/parallel/parallel.h"
 #include "libcbb.h"
-#include "ui/modinfo/description_browser.h"
+#include "ui/modinfo/description_renderer.h"
 
 #include <QByteArray>
 #include <QChar>
@@ -469,19 +469,12 @@ QString bbcode_to_html(const QString &input) {
 
 namespace {
 
-// Length threshold below which bbcode_to_html + QTextBrowser layout cost
+// Length threshold below which bbcode_to_html + the renderer's layout cost
 // less than the QThreadPool dispatch + queued-invoke round-trip. 1 KB
 // catches tiny placeholder snippets + single-paragraph mods; everything
 // longer goes through the async path. Nexus / Steam descriptions are
 // typically 5-50 KB so they always land on the async side.
 constexpr int kSyncThresholdBytes = 1024;
-
-QString wrap_html(const QString &body) {
-  return QStringLiteral("<html><body style=\"font-family:sans-serif; "
-                        "white-space:pre-wrap;\">"
-                        "%1</body></html>")
-      .arg(body);
-}
 
 QString empty_placeholder_html() {
   return QStringLiteral(
@@ -491,18 +484,17 @@ QString empty_placeholder_html() {
 
 } // namespace
 
-void set_bbcode_html_async(DescriptionBrowser *browser, const QString &desc,
+void set_bbcode_html_async(DescriptionRenderer *renderer, const QString &desc,
                            std::atomic<unsigned> *request_token) {
-  if (browser == nullptr)
+  if (renderer == nullptr)
     return;
-  // Drop any in-flight image fetches / cached resources from the previous
-  // render synchronously so stale pictures cannot survive into the new
-  // document. The async HTML install lands later via the queued invoke;
-  // clear_image_cache is itself synchronous so any subsequent loadResource
-  // during the new layout sees an empty cache.
-  browser->clear_image_cache();
+  // Drop the previous render synchronously so stale content cannot survive
+  // into the new document. The async HTML install lands later via the
+  // queued invoke; clear() also cancels in-flight image fetches on the
+  // fallback backend.
+  renderer->clear();
   if (desc.isEmpty()) {
-    browser->setHtml(empty_placeholder_html());
+    renderer->set_description(empty_placeholder_html());
     return;
   }
 
@@ -517,7 +509,9 @@ void set_bbcode_html_async(DescriptionBrowser *browser, const QString &desc,
   // today's single-core behavior for debugging - no dispatch, no queued
   // invoke, no QPointer race window, no token book-keeping.
   if (desc.size() < kSyncThresholdBytes || !engine::parallel::enabled()) {
-    browser->setHtml(wrap_html(bbcode_to_html(desc)));
+    // Unwrapped fragment: each DescriptionRenderer backend applies its own
+    // shell (dark CSS for WebEngine, pre-wrap for the text fallback).
+    renderer->set_description(bbcode_to_html(desc));
     return;
   }
 
@@ -535,10 +529,10 @@ void set_bbcode_html_async(DescriptionBrowser *browser, const QString &desc,
   // and we re-check both before the queued invoke and inside the queued
   // lambda: the panel can be torn down between dispatch and the queued
   // event firing.
-  QPointer<DescriptionBrowser> self(browser);
+  QPointer<DescriptionRenderer> self(renderer);
   const QString desc_copy = desc;
   auto run = [self, desc_copy, token, request_token]() {
-    const QString html = wrap_html(bbcode_to_html(desc_copy));
+    const QString html = bbcode_to_html(desc_copy);
     QMetaObject::invokeMethod(
         self.data(),
         [self, html, token, request_token]() {
@@ -551,7 +545,7 @@ void set_bbcode_html_async(DescriptionBrowser *browser, const QString &desc,
               token != request_token->load(std::memory_order_relaxed)) {
             return;
           }
-          self->setHtml(html);
+          self->set_description(html);
         },
         Qt::QueuedConnection);
   };

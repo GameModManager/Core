@@ -1,7 +1,7 @@
 #include "ui/modinfo/source_panels/modpub_source_panel.h"
 
 #include "ui/modinfo/bbcode.h"
-#include "ui/modinfo/description_browser.h"
+#include "ui/modinfo/description_renderer.h"
 #include "ui/modinfo/modpub_fetch_worker.h"
 
 #include <QFormLayout>
@@ -15,29 +15,28 @@ namespace ui {
 
 namespace {
 
-void set_description_html(DescriptionBrowser *browser, const QString &desc,
+void set_description_html(DescriptionRenderer *renderer, const QString &desc,
                           std::atomic<unsigned> *gen) {
-  if (browser == nullptr)
+  if (renderer == nullptr)
     return;
-  // Drop any in-flight image fetches / cached resources from the previous
-  // render so we never display a picture from the prior mod here. Same
-  // sanitization pipeline as the other source panels: bbcode_to_html
-  // strips javascript:/data: URLs and CSS meta-chars, then we wrap in
-  // pre-wrap HTML so raw \n newlines survive.
-  browser->clear_image_cache();
+  // Drop any in-flight work from the previous render so we never display
+  // content from the prior mod here. Same sanitization pipeline as the
+  // other source panels: bbcode_to_html strips javascript:/data: URLs and
+  // CSS meta-chars; each renderer wraps the fragment in its own shell.
+  renderer->clear();
   if (desc.isEmpty()) {
-    browser->setHtml(QStringLiteral(
+    renderer->set_description(QStringLiteral(
         "<div style=\"text-align:center; color:grey; padding-top:24px;\">"
         "<p>No mod.pub description stored for this mod. Press "
         "<b>Refresh</b> to fetch it live.</p></div>"));
     return;
   }
-  // BBCode parse + QTextBrowser layout moves off the UI thread for
-  // descriptions >= 1 KB. The async helper uses `gen` to drop stale
-  // results when the user clicks rapidly through the mod list.
+  // BBCode parse + layout moves off the UI thread for descriptions
+  // >= 1 KB. The async helper uses `gen` to drop stale results when the
+  // user clicks rapidly through the mod list.
   if (gen != nullptr)
     ++*gen;
-  set_bbcode_html_async(browser, desc, gen);
+  set_bbcode_html_async(renderer, desc, gen);
 }
 
 } // namespace
@@ -76,9 +75,17 @@ ModPubSourcePanel::ModPubSourcePanel(const ModInfoData &data, QWidget *parent)
   buttons->addStretch(1);
   layout->addLayout(buttons);
 
-  description_ = new DescriptionBrowser(this);
-  description_->setOpenExternalLinks(true);
+  description_ = create_description_renderer(this);
+  // mod.pub BBCode fragments keep the shared dark shell for now.
+  description_->set_source_style(SourceCSS::ModPub);
   layout->addWidget(description_, 1);
+  // Descriptions never navigate in place: the renderer emits link_clicked
+  // and the URL opens externally, same as the old setOpenExternalLinks.
+  connect(description_, &DescriptionRenderer::link_clicked, this,
+          [this](const QUrl &url) {
+            if (data_.open_url)
+              data_.open_url(url.toString());
+          });
 
   connect(mod_id_, &QLineEdit::editingFinished, this,
           &ModPubSourcePanel::persist_fields);

@@ -9,6 +9,7 @@
 #include <cctype>
 #include <cstring>
 #include <regex>
+#include <sstream>
 #include <string>
 
 namespace engine::Source::LoversLab {
@@ -89,23 +90,12 @@ std::string read_meta(const std::string &html, const std::string &attr) {
   std::smatch m;
   if (!std::regex_search(body, m, kMeta))
     return {};
-  // Pick whichever capture group the match populated.
+  // Pick whichever capture group the match populated. Attribute values
+  // are HTML-encoded - decode entities (shared helper, also covers the
+  // numeric forms the old inline list missed) so the result does not
+  // carry "&quot;" etc.
   std::string raw = m[1].matched ? m[1].str() : m[2].str();
-  auto replace_all = [](std::string &s, const std::string &from,
-                        const std::string &to) {
-    size_t pos = 0;
-    while ((pos = s.find(from, pos)) != std::string::npos) {
-      s.replace(pos, from.size(), to);
-      pos += to.size();
-    }
-  };
-  replace_all(raw, "&amp;", "&");
-  replace_all(raw, "&quot;", "\"");
-  replace_all(raw, "&#39;", "'");
-  replace_all(raw, "&lt;", "<");
-  replace_all(raw, "&gt;", ">");
-  replace_all(raw, "&nbsp;", " ");
-  return trim(raw);
+  return trim(Http::decode_html_entities(raw));
 }
 
 // Pull a string value out of the JSON object by key. Returns empty when the
@@ -117,6 +107,19 @@ std::string j_str(const nlohmann::json &j, const char *key) {
   if (v.is_string())
     return trim(v.get<std::string>());
   return {};
+}
+
+// j_str plus HTML-entity decoding, for human-readable JSON-LD text fields
+// (name / category / author) that the page HTML-escapes - e.g.
+// applicationCategory "Framework &amp; Resources" must display as
+// "Framework & Resources" in the panel. The og:* fallback (read_meta)
+// already decodes, so without this the two paths disagree.
+//
+// Description is deliberately NOT decoded here: the UI bbcode pipeline
+// owns entity handling for descriptions (single-pass by design, so a
+// literal "&amp;amp;" survives) and decoding twice would break that.
+std::string j_text(const nlohmann::json &j, const char *key) {
+  return trim(Http::decode_html_entities(j_str(j, key)));
 }
 
 // Build the canonical mod-page URL from a file id (always the bare
@@ -227,11 +230,49 @@ bool is_safe_description_url(const std::string &url) {
          starts_with_ci(url, "ftps://");
 }
 
+// Sanitize the anchors in a raw-HTML description fragment: <a> tags
+// whose href fails is_safe_description_url() (javascript:, data:,
+// relative paths, ...) collapse to their visible text, while safe
+// anchors (http/https/mailto/ftp) are preserved verbatim so the HTML
+// structure the renderer receives stays intact. Anchors without an
+// href carry no navigation and are left alone.
+void sanitize_anchors_in_html(std::string &html) {
+  // One regex covering both quote styles: group 1/2 is the href
+  // (double- or single-quoted), group 3 the link text. Non-greedy body
+  // so the first </a> closes the tag.
+  static const std::regex kAnchor(
+      "<a\\b[^>]*\\bhref\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')[^>]*>"
+      "([\\s\\S]*?)</a>",
+      std::regex::icase);
+  std::string out;
+  out.reserve(html.size());
+  size_t pos = 0;
+  while (pos < html.size()) {
+    const std::string rest = html.substr(pos);
+    std::smatch m;
+    if (!std::regex_search(rest, m, kAnchor))
+      break;
+    const size_t mpos = static_cast<size_t>(m.position());
+    const std::string href = m[1].matched ? m[1].str() : m[2].str();
+    out.append(rest, 0, mpos);
+    // Safe: keep the whole <a ...>...</a> tag. Unsafe: keep only the
+    // visible text so no executable URL reaches the renderer.
+    out += is_safe_description_url(href) ? m[0].str() : m[3].str();
+    pos += mpos + static_cast<size_t>(m.length());
+  }
+  out += html.substr(pos);
+  html.swap(out);
+}
+
 // Convert a single HTML anchor tag into a BBCode [url=...]text[/url] or,
 // when the href is unsafe, into the visible text alone. Operates on the
 // first match in `html`; the caller iterates until no match remains.
 // Returns true if a replacement was made.
-bool convert_anchor_once(std::string &html) {
+//
+// Retained for the BBCode-path callers (mod.pub carries its own copy;
+// this one stays for any future BBCode consumer). Not used by the raw-
+// HTML description path, hence [[maybe_unused]].
+[[maybe_unused]] bool convert_anchor_once(std::string &html) {
   // Two regexes: double-quoted href, then single-quoted. Both use a
   // non-greedy body so the first </a> closes the tag.
   static const std::regex kAnchorDq(
@@ -265,10 +306,39 @@ bool convert_anchor_once(std::string &html) {
 // Strip every HTML tag from `html` EXCEPT <a>, <br>, and <p> which are
 // converted to BBCode equivalents (the anchor pass already converted
 // <a>). Other tags - IPS chrome (<span>, <strong>, etc.) - are
-// stripped and their inner text preserved. Runs of >2 newlines (the
-// <p> pass introduces them) are collapsed to one paragraph break.
-void strip_unwanted_tags(std::string &html) {
-  // <br> -> '\n' (case-insensitive, flexible on trailing slash / ws).
+// stripped and their inner text preserved. Single paragraph breaks
+// survive; anything more (the <p> pass introduces runs, pretty-printed
+// HTML leaves whitespace-only lines between block tags) collapses.
+//
+// Retained for the BBCode-path callers. Not used by the raw-HTML
+// description path, hence [[maybe_unused]].
+[[maybe_unused]] void strip_unwanted_tags(std::string &html) {
+  // Normalize CRLF/CR -> LF first. Real page bodies use \r\n and the
+  // <br>-adjacency dedup + whitespace-line collapse below only make
+  // sense on a single canonical form (bbcode_to_html normalizes too,
+  // but it runs after we stringify, which is too late for the dedup).
+  std::string norm;
+  norm.reserve(html.size());
+  for (size_t i = 0; i < html.size();) {
+    if (html[i] == '\r') {
+      norm += '\n';
+      i += (i + 1 < html.size() && html[i + 1] == '\n') ? 2 : 1;
+    } else {
+      norm += html[i];
+      ++i;
+    }
+  }
+  html.swap(norm);
+  // <br> -> '\n' with adjacency dedup (mirrors ui/modinfo/bbcode.cpp::
+  // br_tags_to_newlines): pretty-printed HTML puts a literal newline
+  // right after every <br>, and without consuming one adjacent '\n'
+  // each soft break inflates into a visible blank line under pre-wrap.
+  // Trail pass first so an already-consumed "<br>\n" cannot re-match
+  // the lead pattern's "\n<br>" shape.
+  static const std::regex kBrTrail("<\\s*br\\s*/?\\s*>\\n", std::regex::icase);
+  html = std::regex_replace(html, kBrTrail, "\n");
+  static const std::regex kBrLead("\\n<\\s*br\\s*/?\\s*>", std::regex::icase);
+  html = std::regex_replace(html, kBrLead, "\n");
   static const std::regex kBr("<\\s*br\\s*/?\\s*>", std::regex::icase);
   html = std::regex_replace(html, kBr, "\n");
   // <p ...>...</p> -> "\n\n" + inner. Open <p> tags without a matching
@@ -279,9 +349,40 @@ void strip_unwanted_tags(std::string &html) {
   // Any remaining tag is dropped.
   static const std::regex kAnyTag("<[^>]+>");
   html = std::regex_replace(html, kAnyTag, "");
-  // Collapse runs of >2 newlines.
-  static const std::regex kThreeNl("\n{3,}");
-  html = std::regex_replace(html, kThreeNl, "\n\n");
+  // Strip leading/trailing whitespace from each line. Pretty-printed HTML
+  // has indentation whitespace between tags that is meaningless when tags
+  // are stripped but shows up as visible tabs in plain text.
+  {
+    std::string cleaned;
+    cleaned.reserve(html.size());
+    std::istringstream stream(html);
+    std::string line;
+    bool first = true;
+    while (std::getline(stream, line)) {
+      auto start = line.find_first_not_of(" \t\r");
+      if (start == std::string::npos) {
+        // Empty or whitespace-only line: keep as blank
+        if (!first)
+          cleaned += '\n';
+        first = false;
+        continue;
+      }
+      auto end = line.find_last_not_of(" \t\r");
+      if (!first)
+        cleaned += '\n';
+      first = false;
+      cleaned += line.substr(start, end - start + 1);
+    }
+    html.swap(cleaned);
+  }
+  // Collapse whitespace-only lines: pretty-printed HTML leaves
+  // indentation between block tags ("</p>\n    <p>") which would
+  // otherwise render as stray blank-ish rows under pre-wrap. Only
+  // lines with no visible content collapse (this subsumes the old
+  // "\n{3,}" run collapse); leading indentation on content lines
+  // (e.g. indented code) is preserved.
+  static const std::regex kWsLines("\n(?:[ \\t]*\\n)+");
+  html = std::regex_replace(html, kWsLines, "\n\n");
   // Trim surrounding whitespace.
   auto first = html.find_first_not_of(" \t\r\n");
   if (first == std::string::npos) {
@@ -293,8 +394,12 @@ void strip_unwanted_tags(std::string &html) {
 }
 
 // Public: extract the first "About This File" rich-text block from the
-// page HTML and return a BBCode-ish string the UI's bbcode_to_html can
-// further normalize (CRLF, dedup, autolink bare URLs, linkify @mentions).
+// page HTML and return its raw inner HTML for the UI to render as-is
+// (the LoversLab panel hands it straight to the description renderer,
+// bypassing the BBCode pipeline which would escape it). Unsafe anchor
+// hrefs (javascript:, data:, ...) are collapsed to their visible text
+// by sanitize_anchors_in_html(); everything else - lists, bold,
+// tables, images - survives verbatim.
 // The block is identified by class="ipsType_richText" - that's the
 // Invision Community content area for the file description. We pick the
 // FIRST such block because the changelog (also ipsType_richText) sits
@@ -348,14 +453,10 @@ std::string extract_rich_description(const std::string &html_body) {
         // [open_end, pos - strlen("</div")).
         std::string inner = html_body.substr(
             open_end, (pos - std::strlen("</div")) - open_end);
-        // Convert <a> -> [url] (or drop unsafe). The anchor pass
-        // operates on a copy of `inner` to keep the regex state
-        // local to the function.
-        while (convert_anchor_once(inner)) {
-          // Loop until no more anchors. Bounded by the anchor count
-          // in the document.
-        }
-        strip_unwanted_tags(inner);
+        // Raw inner HTML for the renderer's set_description path (no
+        // BBCode conversion, no tag stripping). Unsafe anchor hrefs
+        // are neutralized; the markup itself renders as authored.
+        sanitize_anchors_in_html(inner);
         return inner;
       }
     }
@@ -381,18 +482,18 @@ ModInfoResult Provider::parse_mod_info(const std::string &html_body) {
     try {
       auto j = nlohmann::json::parse(ld_body);
       if (j.is_object()) {
-        result.name = j_str(j, "name");
+        result.name = j_text(j, "name");
         result.version = j_str(j, "softwareVersion");
-        result.category = j_str(j, "applicationCategory");
+        result.category = j_text(j, "applicationCategory");
         result.description = j_str(j, "description");
         result.date_modified = j_str(j, "dateModified");
         // author can be an object {name,url} or a bare string.
         if (j.contains("author")) {
           const auto &a = j.at("author");
           if (a.is_object())
-            result.author = j_str(a, "name");
+            result.author = j_text(a, "name");
           else if (a.is_string())
-            result.author = trim(a.get<std::string>());
+            result.author = trim(Http::decode_html_entities(trim(a.get<std::string>())));
         }
         // url: canonical /files/file/{id}/ (or whatever the page
         // advertised). Stored verbatim - the visit fallback in the panel
@@ -413,9 +514,9 @@ ModInfoResult Provider::parse_mod_info(const std::string &html_body) {
   // File" container) carries the real HTML the user sees: <a> anchors,
   // <strong>, mentions. JSON-LD's `description` is plain text by the
   // schema.org contract, so any link or mention in the on-site view is
-  // lost when we use it. parse_description_html() converts the inner
-  // HTML to a BBCode-ish string the UI's bbcode_to_html can further
-  // normalize (CRLF, dedup, autolink, @mentions).
+  // lost when we use it. parse_description_html() returns the raw inner
+  // HTML (anchor-sanitized) which the LoversLab panel hands straight to
+  // the description renderer - no BBCode conversion.
   // The previous gate (`if (result.description.empty())`) made the
   // rich path a fallback that almost never ran - JSON-LD is present
   // on every LL page - so links/mentions stayed lost. Spec says

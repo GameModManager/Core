@@ -13,7 +13,7 @@
 
 namespace ui {
 
-class DescriptionBrowser;
+class DescriptionRenderer;
 
 // LoversLab Source panel - mirrors the Nexus layout but omits the Source
 // game row and the Endorse/Track buttons. Refresh runs the LoversLab
@@ -71,7 +71,7 @@ private:
   QCheckBox *custom_url_toggle_ = nullptr;
   QLineEdit *custom_url_ = nullptr;
   QPushButton *visit_custom_ = nullptr;
-  DescriptionBrowser *description_ = nullptr;
+  DescriptionRenderer *description_ = nullptr;
 
   LoversLabFetchThread *source_fetch_thread_ = nullptr;
   quint64 refresh_generation_ = 0;

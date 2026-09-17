@@ -54,4 +54,13 @@ TEST_CASE("loverslab provider - real captured fixture", "[engine][live]") {
     REQUIRE(!r.name.empty());
     REQUIRE(!r.description.empty());
     REQUIRE(!r.date_modified.empty());
+
+    // Raw-HTML mode on the real captured page: the description is the
+    // anchor-sanitized inner fragment of the first ipsType_richText
+    // block - markup intact (paragraphs render from real <p> tags),
+    // visible text present, no executable URLs.
+    REQUIRE(r.description.find("<p>") != std::string::npos);
+    REQUIRE(r.description.find("Hi all.") != std::string::npos);
+    REQUIRE(r.description.find("javascript:") == std::string::npos);
+    REQUIRE(r.description.find("data:") == std::string::npos);
 }

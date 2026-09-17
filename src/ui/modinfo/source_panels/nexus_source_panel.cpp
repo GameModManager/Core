@@ -1,7 +1,7 @@
 #include "ui/modinfo/source_panels/nexus_source_panel.h"
 
 #include "ui/modinfo/bbcode.h"
-#include "ui/modinfo/description_browser.h"
+#include "ui/modinfo/description_renderer.h"
 #include "ui/modinfo/source_fetch_worker.h"
 #include "ui/settings/settings.h"
 
@@ -62,9 +62,17 @@ NexusSourcePanel::NexusSourcePanel(const ModInfoData &data, QWidget *parent)
   custom_row->addWidget(visit_custom_);
   layout->addLayout(custom_row);
 
-  description_ = new DescriptionBrowser(this);
-  description_->setOpenExternalLinks(true);
+  description_ = create_description_renderer(this);
+  // BBCode fragments render under the MO2-style dark shell.
+  description_->set_source_style(SourceCSS::Nexus);
   layout->addWidget(description_, 1);
+  // Descriptions never navigate in place: the renderer emits link_clicked
+  // and the URL opens externally, same as the old setOpenExternalLinks.
+  connect(description_, &DescriptionRenderer::link_clicked, this,
+          [this](const QUrl &url) {
+            if (data_.open_url)
+              data_.open_url(url.toString());
+          });
 
   connect(mod_id_, &QLineEdit::editingFinished, this,
           &NexusSourcePanel::persist_fields);
@@ -154,21 +162,21 @@ void NexusSourcePanel::update_version_color() {
 void NexusSourcePanel::render_description() {
   if (description_ == nullptr)
     return;
-  // Drop any in-flight image fetches and resource cache from the
-  // previous render - the next mod's description is unrelated and
-  // late-arriving bytes would race the new document.
-  description_->clear_image_cache();
+  // Drop the previous render - the next mod's description is unrelated and
+  // a late-arriving async parse must not race the new document (clear()
+  // also cancels in-flight image fetches on the fallback backend).
+  description_->clear();
   const QString stored = meta_value("Nexusmods", "nexusdescription");
   if (stored.isEmpty()) {
-    description_->setHtml(QStringLiteral(
+    description_->set_description(QStringLiteral(
         "<div style=\"text-align:center; color:grey; padding-top:24px;\">"
         "<p>No Nexus description stored for this mod. Press "
         "<b>Refresh</b> to fetch it live.</p></div>"));
     return;
   }
-  // BBCode parse + QTextBrowser layout is moved off the UI thread for
-  // descriptions >= 1 KB (most Nexus descriptions). The async helper
-  // posts the wrapped HTML back via QMetaObject::invokeMethod and uses
+  // BBCode parse + layout is moved off the UI thread for descriptions
+  // >= 1 KB (most Nexus descriptions). The async helper posts the HTML
+  // fragment back via QMetaObject::invokeMethod and uses
   // description_generation_ to discard stale results when the user
   // clicks rapidly through the mod list.
   ++description_generation_;

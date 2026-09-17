@@ -85,6 +85,11 @@ endif()
 if(Qt6Multimedia_FOUND)
     target_link_libraries(gamemodmanager PRIVATE Qt6::Multimedia Qt6::MultimediaWidgets)
 endif()
+if(Qt6WebEngineWidgets_FOUND)
+    # gmm_ui links the module PRIVATE, so the executable needs its own link
+    # for the QWebEngineProfile symbol used in main.cpp.
+    target_link_libraries(gamemodmanager PRIVATE Qt6::WebEngineWidgets)
+endif()
 if(NOT WIN32)
     target_link_libraries(gamemodmanager PRIVATE ${CMAKE_DL_LIBS})
     if(FUSE3_FOUND)

@@ -14,7 +14,7 @@
 namespace ui {
 
 class SourceFetchThread;
-class DescriptionBrowser;
+class DescriptionRenderer;
 
 // Full Nexus Source panel - ported from SourceTab::build_nexus_page.
 // Layout matches the original exactly: QForm rows Mod ID / Source game /
@@ -52,7 +52,7 @@ private:
   QCheckBox *custom_url_toggle_ = nullptr;
   QLineEdit *custom_url_ = nullptr;
   QPushButton *visit_custom_ = nullptr;
-  DescriptionBrowser *description_ = nullptr;
+  DescriptionRenderer *description_ = nullptr;
 
   SourceFetchThread *source_fetch_thread_ = nullptr;
   quint64 refresh_generation_ = 0;

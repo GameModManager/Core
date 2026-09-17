@@ -25,6 +25,7 @@
 #include "engine/mod/meta/mod_meta.h"
 #include "engine/source/loverslab_provider.h"
 #include "engine/source/source_provider.h"
+#include "ui/modinfo/description_renderer.h"
 #include "ui/modinfo/source_panels/loverslab_source_panel.h"
 #include "ui/modinfo/source_tab.h"
 
@@ -34,7 +35,6 @@
 #include <QPushButton>
 #include <QSemaphore>
 #include <QTabWidget>
-#include <QTextBrowser>
 #include <QThread>
 
 #include <atomic>
@@ -204,10 +204,10 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
 
     // Description shows the refreshed text.
     bool desc_shown = false;
-    for (auto *tb : tab.findChildren<QTextBrowser *>())
-      if (tb->toPlainText().contains("refreshed mod"))
+    for (auto *renderer : tab.findChildren<ui::DescriptionRenderer *>())
+      if (renderer->current_description().contains("refreshed mod"))
         desc_shown = true;
-    check(desc_shown, "description browser shows the fetched text");
+    check(desc_shown, "description renderer shows the fetched text");
   }
 
   // ---- Scenario 2: superseding refresh drops stale result.

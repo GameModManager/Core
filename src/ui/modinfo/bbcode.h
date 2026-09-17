@@ -4,9 +4,9 @@
 
 #include <atomic>
 
-class DescriptionBrowser;
-
 namespace ui {
+
+class DescriptionRenderer;
 
 // Thin Qt adapter over the vendored libcbb single-header BBCode-to-HTML
 // library (third_party/libcbb/libcbb.h). Converts QString <-> std::string
@@ -21,16 +21,16 @@ namespace ui {
 // reentrant) and is therefore safe to call from worker threads.
 QString bbcode_to_html(const QString &input);
 
-// Parse `desc` as BBCode and set the result on `browser`, off the UI thread
-// when the description is long enough that the parse + QTextBrowser layout
-// pass would otherwise stall the main loop. The previous render's cached
-// images are cleared synchronously before dispatch (same as the sync path)
-// so stale image resources cannot leak into the new document.
+// Parse `desc` as BBCode and set the result on `renderer`, off the UI thread
+// when the description is long enough that the parse + layout pass would
+// otherwise stall the main loop. The previous render is cleared
+// synchronously before dispatch (via DescriptionRenderer::clear(), which
+// also drops in-flight image fetches on the fallback backend) so stale
+// resources cannot leak into the new document.
 //
-// Async dispatch uses QThreadPool::globalInstance() (the same pool
-// DescriptionBrowser uses for image decode) and posts the resulting HTML
-// back to the UI thread via QMetaObject::invokeMethod with a
-// Qt::QueuedConnection. A QPointer<DescriptionBrowser> guard handles the
+// Async dispatch uses QThreadPool::globalInstance() and posts the resulting
+// HTML back to the UI thread via QMetaObject::invokeMethod with a
+// Qt::QueuedConnection. A QPointer<DescriptionRenderer> guard handles the
 // case where the panel is destroyed mid-parse (e.g. the dialog is closed
 // while a worker is running): the queued call becomes a no-op.
 //
@@ -45,7 +45,7 @@ QString bbcode_to_html(const QString &input);
 //
 // Short descriptions (size() < ~1 KB) run synchronously: the thread-pool
 // dispatch + queued-invoke round-trip costs more than the parse itself.
-void set_bbcode_html_async(DescriptionBrowser *browser, const QString &desc,
+void set_bbcode_html_async(DescriptionRenderer *renderer, const QString &desc,
                            std::atomic<unsigned> *request_token);
 
 } // namespace ui
