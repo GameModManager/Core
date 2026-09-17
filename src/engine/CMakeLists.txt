@@ -177,6 +177,7 @@ collection/batch_installer.cpp
     deploy/launch/usvfs_mapping.cpp
     deploy/launch/usvfs_mapping.h
     deploy/launch/proton_tools.cpp
+    proton/proton_tweaks.cpp
 gmmpack/schema_validator.cpp
     gmmpack/tree_parser.cpp
     gmmpack/unpacker.cpp
@@ -231,6 +232,7 @@ target_link_libraries(gmm_engine PRIVATE
     gmm_runtime
     gmm_platform
     Qt6::Core
+    Qt6::Gui # proton_tweaks.cpp: QProcess env + QScreen DPI detection
     PkgConfig::LIBARCHIVE
     PkgConfig::SQLITE3
     PkgConfig::YAMLCPP

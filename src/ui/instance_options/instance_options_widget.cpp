@@ -5,9 +5,11 @@
 #include "engine/deploy/launch/overlay_launcher.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
 #include "engine/deploy/launch/proton_tools.h"
+#include "engine/proton/proton_tweaks.h"
 #include "platform/platform.h"
 #include "runtime/runtime.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFileInfo>
@@ -21,6 +23,7 @@
 #include <QPointer>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QGroupBox>
 #include <QThread>
 #include <QVBoxLayout>
@@ -77,11 +80,14 @@ InstanceOptionsWidget::InstanceOptionsWidget(
   root->addWidget(packages_group);
 
   // Non-Steam games (steam_appid == 0) have no Proton prefix to configure:
-  // the runner selector and the recommended packages are irrelevant, so hide
-  // them. The deploy management section below still applies to every game.
+  // the runner selector, the recommended packages and the Proton tweaks are
+  // irrelevant, so hide them. The deploy management section below still
+  // applies to every game.
+  build_proton_tweaks();
   if (steam_appid_ == 0) {
     runtime_group->hide();
     packages_group->hide();
+    if (tweaks_group_) tweaks_group_->hide();
   }
 
   // --- Deploy management (symlink-deploy games only) ---
@@ -300,6 +306,127 @@ void InstanceOptionsWidget::install_packages(const QStringList &verbs) {
     packages_status_->setText(
         tr("Started installing: %1").arg(verbs.join(", ")));
   }
+}
+
+void InstanceOptionsWidget::build_proton_tweaks() {
+  auto *root = qobject_cast<QVBoxLayout *>(this->layout());
+  if (!root) return;
+
+  tweaks_group_ = new QGroupBox(tr("Proton Tweaks"), this);
+  auto *layout = new QVBoxLayout(tweaks_group_);
+
+  smoothing_check_ =
+      new QCheckBox(tr("Font smoothing (RGB ClearType)"), tweaks_group_);
+  smoothing_check_->setChecked(true);
+  layout->addWidget(smoothing_check_);
+
+  auto *dpi_row = new QHBoxLayout;
+  autodpi_check_ = new QCheckBox(tr("Auto-detect DPI"), tweaks_group_);
+  autodpi_check_->setChecked(true);
+  dpi_row->addWidget(autodpi_check_);
+  dpi_spin_ = new QSpinBox(tweaks_group_);
+  dpi_spin_->setRange(96, 192);
+  dpi_spin_->setValue(96);
+  dpi_spin_->hide();
+  dpi_row->addWidget(dpi_spin_);
+  dpi_row->addStretch(1);
+  layout->addLayout(dpi_row);
+  connect(autodpi_check_, &QCheckBox::toggled, this, [this](bool checked) {
+    if (dpi_spin_) dpi_spin_->setVisible(!checked);
+  });
+
+  auto *btn_row = new QHBoxLayout;
+  apply_tweaks_btn_ = new QPushButton(tr("Apply Proton Tweaks"), this);
+  connect(apply_tweaks_btn_, &QPushButton::clicked, this,
+          &InstanceOptionsWidget::run_proton_tweaks);
+  btn_row->addWidget(apply_tweaks_btn_);
+  btn_row->addStretch(1);
+  layout->addLayout(btn_row);
+
+  tweaks_status_ = new QLabel(tweaks_group_);
+  tweaks_status_->setWordWrap(true);
+  layout->addWidget(tweaks_status_);
+
+  root->addWidget(tweaks_group_);
+}
+
+void InstanceOptionsWidget::run_proton_tweaks() {
+  if (tweaks_thread_) return; // a run is already in progress
+  if (!platform_ || steam_appid_ == 0) {
+    if (tweaks_status_)
+      tweaks_status_->setText(tr("Proton tweaks need a Steam game."));
+    return;
+  }
+
+  // Resolve the wine prefix: <compatdata>/<appid>/pfx when present,
+  // otherwise the compatdata dir itself.
+  std::filesystem::path prefix;
+  if (auto compat = platform_->resolve_proton_prefix(steam_appid_);
+      !compat.empty()) {
+    std::error_code ec;
+    auto pfx = compat / "pfx";
+    prefix = std::filesystem::is_directory(pfx, ec) ? pfx : compat;
+  }
+  {
+    std::error_code ec;
+    if (prefix.empty() || !std::filesystem::exists(prefix, ec)) {
+      if (tweaks_status_)
+        tweaks_status_->setText(
+            tr("Proton prefix not found - launch the game once first."));
+      return;
+    }
+  }
+
+  const bool smoothing = !smoothing_check_ || smoothing_check_->isChecked();
+  const bool auto_dpi = !autodpi_check_ || autodpi_check_->isChecked();
+  // Detect on the GUI thread (QScreen belongs there); the worker then uses
+  // the detected value as force_dpi so it never touches QScreen itself.
+  const int dpi_arg = auto_dpi ? engine::proton::detect_system_dpi()
+                               : (dpi_spin_ ? dpi_spin_->value() : 96);
+
+  if (tweaks_status_)
+    tweaks_status_->setText(
+        tr("Applying Proton tweaks (corefonts may take a few minutes)..."));
+  if (apply_tweaks_btn_) apply_tweaks_btn_->setEnabled(false);
+
+  // Registry writes + corefonts install block (wineserver spin-up,
+  // downloads), so they run on a worker: same QPointer-guarded pattern as
+  // run_deploy_task(), safe if the tab closes mid-run.
+  QPointer<InstanceOptionsWidget> self(this);
+  const uint32_t appid = steam_appid_;
+  auto *thread = QThread::create([self, prefix, appid, smoothing, dpi_arg]() {
+    const bool core = engine::proton::ensure_corefonts(prefix, appid);
+    const bool smooth =
+        !smoothing || engine::proton::ensure_font_smoothing(prefix, appid);
+    const bool dpi = engine::proton::ensure_dpi(prefix, appid, dpi_arg);
+    if (!self) return; // widget destroyed while the task was running
+    QMetaObject::invokeMethod(
+        self,
+        [self, core, smooth, dpi, dpi_arg]() {
+          if (!self) return;
+          self->finish_proton_tweaks(core, smooth, dpi, dpi_arg);
+        },
+        Qt::QueuedConnection);
+  });
+  thread->setObjectName(QStringLiteral("gmm-proton-tweaks"));
+  tweaks_thread_ = thread;
+  connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+  thread->start();
+}
+
+void InstanceOptionsWidget::finish_proton_tweaks(bool core, bool smooth,
+                                                 bool dpi, int dpi_value) {
+  tweaks_thread_ = nullptr;
+  if (apply_tweaks_btn_) apply_tweaks_btn_->setEnabled(true);
+  if (!tweaks_status_) return;
+  const auto part = [this](bool v) {
+    return v ? tr("ok") : tr("failed");
+  };
+  tweaks_status_->setText(
+      tr("Corefonts: %1, font smoothing: %2, DPI %3: %4")
+          .arg(part(core), part(smooth))
+          .arg(dpi_value)
+          .arg(part(dpi)));
 }
 
 void InstanceOptionsWidget::build_deploy_management() {
