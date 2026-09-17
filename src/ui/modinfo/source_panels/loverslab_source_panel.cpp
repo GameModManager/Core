@@ -1,7 +1,6 @@
 #include "ui/modinfo/source_panels/loverslab_source_panel.h"
 
-#include "ui/modinfo/bbcode.h"
-#include "ui/modinfo/description_browser.h"
+#include "ui/modinfo/description_renderer.h"
 #include "ui/modinfo/loverslab_fetch_worker.h"
 
 #include <QDate>
@@ -18,29 +17,29 @@ namespace ui {
 
 namespace {
 
-void set_description_html(DescriptionBrowser *browser, const QString &desc,
+void set_description_html(DescriptionRenderer *renderer, const QString &desc,
                           std::atomic<unsigned> *gen) {
-  if (browser == nullptr)
+  if (renderer == nullptr)
     return;
-  // Drop any in-flight image fetches / cached resources from the previous
-  // render so we never display a picture from the prior mod here. Same
-  // sanitization pipeline as Nexus / Steam descriptions: bbcode_to_html
-  // strips javascript:/data: URLs and CSS meta-chars, then we wrap in
-  // pre-wrap HTML so raw \n newlines survive.
-  browser->clear_image_cache();
+  // Drop any in-flight work from the previous render so we never display
+  // content from the prior mod here.
+  renderer->clear();
   if (desc.isEmpty()) {
-    browser->setHtml(QStringLiteral(
+    renderer->set_description(QStringLiteral(
         "<div style=\"text-align:center; color:grey; padding-top:24px;\">"
         "<p>No LoversLab description stored for this mod. Press "
         "<b>Refresh</b> to fetch it live.</p></div>"));
     return;
   }
-  // BBCode parse + QTextBrowser layout moves off the UI thread for
-  // descriptions >= 1 KB. The async helper uses `gen` to drop stale
-  // results when the user clicks rapidly through the mod list.
+  // LL descriptions are raw Invision Community HTML from
+  // extract_rich_description() - already valid markup for the renderer.
+  // They bypass set_bbcode_html_async() on purpose: bbcode_to_html()
+  // would escape the raw tags. The install is synchronous so there is no
+  // late-arriving parse, but `gen` still advances so any stale async
+  // work from a previous render is discarded by the token check.
   if (gen != nullptr)
     ++*gen;
-  set_bbcode_html_async(browser, desc, gen);
+  renderer->set_description(desc);
 }
 
 // Parse the page's dateModified into a QDate. Accepts the two shapes the
@@ -123,9 +122,17 @@ LoversLabSourcePanel::LoversLabSourcePanel(const ModInfoData &data,
   custom_row->addWidget(visit_custom_);
   layout->addLayout(custom_row);
 
-  description_ = new DescriptionBrowser(this);
-  description_->setOpenExternalLinks(true);
+  description_ = create_description_renderer(this);
+  // Raw Invision HTML renders under the LL dark theme.
+  description_->set_source_style(SourceCSS::LoversLab);
   layout->addWidget(description_, 1);
+  // Descriptions never navigate in place: the renderer emits link_clicked
+  // and the URL opens externally, same as the old setOpenExternalLinks.
+  connect(description_, &DescriptionRenderer::link_clicked, this,
+          [this](const QUrl &url) {
+            if (data_.open_url)
+              data_.open_url(url.toString());
+          });
 
   connect(mod_id_, &QLineEdit::editingFinished, this,
           &LoversLabSourcePanel::persist_fields);

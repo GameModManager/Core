@@ -10,7 +10,7 @@
 
 namespace ui {
 
-class DescriptionBrowser;
+class DescriptionRenderer;
 
 // Steam Workshop Source panel. Mirrors the Nexus layout but omits
 // the Source Game row and the Endorse/Track buttons. Fields are bound
@@ -44,7 +44,7 @@ private:
   QCheckBox *custom_url_toggle_ = nullptr;
   QLineEdit *custom_url_ = nullptr;
   QPushButton *visit_custom_ = nullptr;
-  DescriptionBrowser *description_ = nullptr;
+  DescriptionRenderer *description_ = nullptr;
 
   // Monotonic counter incremented every time render_description() dispatches
   // a BBCode parse to the thread pool. The async callback compares against

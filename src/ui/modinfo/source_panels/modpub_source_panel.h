@@ -12,7 +12,7 @@
 
 namespace ui {
 
-class DescriptionBrowser;
+class DescriptionRenderer;
 
 // ModPub Source panel - mirrors the LoversLab layout (Refresh + Visit +
 // description) but omits the out-of-date badge (mod.pub's dateModified
@@ -54,7 +54,7 @@ private:
   QLineEdit *page_url_ = nullptr;
   QPushButton *refresh_ = nullptr;
   QPushButton *visit_ = nullptr;
-  DescriptionBrowser *description_ = nullptr;
+  DescriptionRenderer *description_ = nullptr;
 
   ModPubFetchThread *source_fetch_thread_ = nullptr;
   quint64 refresh_generation_ = 0;

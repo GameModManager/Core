@@ -216,8 +216,9 @@ TEST_CASE("loverslab provider description_html block", "[engine][loverslab]")
   // real <a href> anchor, and a plain text run. The parser must:
   //   - locate the right <div> (not the changelog's, not unrelated
   //     widgets on the page),
-  //   - convert the anchor to BBCode [url=...]...[/url],
-  //   - drop IPS chrome tags (<span>, <strong>), and
+  //   - return the raw inner HTML verbatim (block + inline tags intact)
+  //     for the renderer's set_description path - no BBCode round-trip,
+  //     no tag stripping - and
   //   - leave the visible text intact so the user sees a real
   //     description (not a "go to the site" stub).
   const std::string body =
@@ -239,13 +240,19 @@ TEST_CASE("loverslab provider description_html block", "[engine][loverslab]")
 </body></html>)";
   const std::string got = LoversLabProvider::parse_description_html(body);
   require(!got.empty(), "rich-text block extracted");
-  // The link survived as BBCode so the UI's bbcode_to_html will emit
-  // a real <a> tag.
-  require(got.find("[url=https://www.example.com/foo]") != std::string::npos,
-          "anchor converted to [url=...]");
-  // The HTML <p> tags became paragraph breaks (\n\n).
-  require(got.find("\n\n") != std::string::npos, "paragraphs separated by blank line");
-  // Inner text (no <span>, no <strong>) is preserved.
+  // Safe links survive as real <a> tags - no BBCode round-trip, so the
+  // renderer receives the markup the site authored.
+  require(got.find("<a href=\"https://www.example.com/foo\">") !=
+              std::string::npos,
+          "safe anchor preserved verbatim");
+  // Block markup survives: paragraphs stay <p> for the renderer (no
+  // '\n\n' join - the tags carry the breaks).
+  require(got.find("<p>Hi all, attached is the latest issue.</p>") !=
+              std::string::npos,
+          "paragraph markup preserved");
+  // Inline formatting tags (<span>, <strong>) survive with their text.
+  require(got.find("<strong>wtrshpdwn</strong>") != std::string::npos,
+          "inline formatting tags preserved");
   require(got.find("wtrshpdwn") != std::string::npos,
           "inner text of <strong> preserved");
   // The changelog block (also ipsType_richText but further down) is
@@ -255,7 +262,8 @@ TEST_CASE("loverslab provider description_html block", "[engine][loverslab]")
           "changelog block is not extracted");
 
   // --- Anchors with disallowed schemes: javascript:, data:, relative
-  // paths. The anchor tag is dropped to plain text (no [url=...]).
+  // paths. The anchor tag collapses to its visible text (no executable
+  // href reaches the renderer).
   const std::string bad =
       R"DELIM(<div class="ipsType_richText">before <a href="javascript:alert(1)">bad</a> after</div>)DELIM";
   const std::string bad_got = LoversLabProvider::parse_description_html(bad);
@@ -263,6 +271,16 @@ TEST_CASE("loverslab provider description_html block", "[engine][loverslab]")
           "javascript: scheme is dropped");
   require(bad_got.find("bad") != std::string::npos,
           "link text preserved when scheme is bad");
+  require(bad_got == "before bad after",
+          "unsafe anchor collapses exactly to its text");
+
+  // --- Single-quoted safe href: preserved verbatim (sanitizer keeps the
+  // whole tag, quotes and all).
+  const std::string sq_anchor =
+      R"DELIM(<div class="ipsType_richText"><a href='https://www.example.com/x'>quoted</a></div>)DELIM";
+  require(LoversLabProvider::parse_description_html(sq_anchor) ==
+              "<a href='https://www.example.com/x'>quoted</a>",
+          "single-quoted safe anchor preserved verbatim");
 
   // --- No rich-text block at all: empty result, no crash.
   require(LoversLabProvider::parse_description_html("just text").empty(),
@@ -280,4 +298,76 @@ TEST_CASE("loverslab provider description_html block", "[engine][loverslab]")
   require(!sq_got.empty(), "single-quoted class: block extracted");
   require(sq_got.find("quoted class survives") != std::string::npos,
           "single-quoted class: text preserved");
+}
+
+TEST_CASE("loverslab description raw html passthrough", "[engine][loverslab]")
+{
+  using engine::LoversLabProvider;
+  // --- Raw-HTML mode: the inner fragment reaches the renderer verbatim.
+  // <br> stays a tag (the WebEngine view renders it natively), so the
+  // old <br>-to-newline dedup no longer applies - what the site
+  // authored is what the user sees.
+  const std::string br_nl =
+      R"DELIM(<div class="ipsType_richText">line1<br>
+line2</div>)DELIM";
+  require(LoversLabProvider::parse_description_html(br_nl) == "line1<br>\nline2",
+          "<br> + newline preserved verbatim");
+
+  // --- Same with CRLF bodies (real HTTP pages use \r\n): verbatim too,
+  // the renderer normalizes line endings.
+  const std::string br_crlf =
+      "<div class=\"ipsType_richText\">line1<br />\r\nline2</div>";
+  require(LoversLabProvider::parse_description_html(br_crlf) ==
+              "line1<br />\r\nline2",
+          "<br /> + CRLF preserved verbatim");
+
+  // --- A doubled <br><br> (author-intended gap) stays two tags.
+  const std::string br_br =
+      R"DELIM(<div class="ipsType_richText">a<br><br>b</div>)DELIM";
+  require(LoversLabProvider::parse_description_html(br_br) == "a<br><br>b",
+          "<br><br> preserved verbatim");
+
+  // --- Pretty-printed paragraphs: block tags and their indentation
+  // survive untouched - the renderer lays them out.
+  const std::string pretty =
+      "<div class=\"ipsType_richText\">\n"
+      "    <p>para1</p>\n"
+      "    <p>para2</p>\n"
+      "  </div>";
+  require(LoversLabProvider::parse_description_html(pretty) ==
+              "\n    <p>para1</p>\n    <p>para2</p>\n  ",
+          "pretty-printed block markup preserved verbatim");
+}
+
+TEST_CASE("loverslab metadata entity decoding", "[engine][loverslab]")
+{
+  using engine::LoversLabModInfoResult;
+  using engine::LoversLabProvider;
+  // --- Workspace-vbx3: JSON-LD text fields arrive HTML-escaped from
+  // the page; the panel shows them verbatim so they must be decoded
+  // at parse time (the og:* fallback path always did).
+  const std::string body =
+      R"(<script type="application/ld+json">
+{"@type":"WebApplication","name":"Swords &amp; Sorcery",
+ "description":"plain description",
+ "applicationCategory":"Framework &amp; Resources",
+ "author":{"name":"Modder &quot;Bob&quot;"}}
+</script>)";
+  LoversLabModInfoResult r = LoversLabProvider::parse_mod_info(body);
+  require(r.available, "entities: available");
+  require(r.name == "Swords & Sorcery", "entities: name decoded");
+  require(r.category == "Framework & Resources", "entities: category decoded");
+  require(r.author == "Modder \"Bob\"", "entities: author decoded");
+
+  // --- og:* fallback with entities still decodes (read_meta refactor
+  // must not regress the path that always worked).
+  const std::string og =
+      R"(<html><head>
+<meta property="og:title" content="Fish &amp; Chips" />
+<meta property="og:description" content="Tasty &lt;food&gt;" />
+</head></html>)";
+  LoversLabModInfoResult o = LoversLabProvider::parse_mod_info(og);
+  require(o.available, "og entities: available");
+  require(o.name == "Fish & Chips", "og entities: title decoded");
+  require(o.description == "Tasty <food>", "og entities: description decoded");
 }

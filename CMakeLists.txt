@@ -91,6 +91,17 @@ else()
     message(STATUS "Qt6 Charts not found - DebugWindow will use QPainter fallback")
 endif()
 
+# Optional Qt6 WebEngineWidgets (QWebEngineView description renderer).
+# When present, the DescriptionRenderer factory returns the WebEngine
+# backend (per-source dark CSS); otherwise the QTextBrowser fallback is
+# used. Follows the same QUIET optional-module pattern as above.
+find_package(Qt6 COMPONENTS WebEngineWidgets QUIET)
+if(Qt6WebEngineWidgets_FOUND)
+    message(STATUS "Qt6 WebEngineWidgets found - WebEngine description renderer enabled")
+else()
+    message(STATUS "Qt6 WebEngineWidgets not found - QTextBrowser fallback renderer")
+endif()
+
 # QtKeychain OS keyring (Secret Service / KWallet / macOS Keychain / Windows
 # Credential Locker) — pulled on every platform that ships it.
 find_package(Qt6Keychain QUIET)

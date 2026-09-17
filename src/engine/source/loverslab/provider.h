@@ -67,11 +67,12 @@ public:
 
     // Pure body parser that pulls the rich-text description block out of
     // the page (Invision Community's "About This File" div, class
-    // `ipsType_richText`) and converts it to a BBCode-ish string suitable
-    // for feeding into the shared ui::bbcode_to_html() pipeline. The
-    // conversion is intentionally minimal - HTML anchors become
-    // [url=...]...[/url], <br> becomes '\n', <p>...</p> becomes '\n\n',
-    // and other tags are stripped. Returns empty when the page has no
+    // `ipsType_richText`) and returns its raw inner HTML for the UI to
+    // render as-is. The LoversLab panel hands the result straight to the
+    // description renderer (no bbcode_to_html - that would escape it).
+    // Unsafe anchor hrefs (javascript:, data:, ...) are collapsed to
+    // their visible text; all other markup (lists, bold, tables, safe
+    // links) survives verbatim. Returns empty when the page has no
     // recognizable description block.
     static std::string parse_description_html(const std::string& html_body);
 };

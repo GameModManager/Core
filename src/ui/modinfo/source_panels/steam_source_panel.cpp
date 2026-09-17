@@ -2,7 +2,7 @@
 
 #include "engine/mod/meta/xml_util.h"
 #include "ui/modinfo/bbcode.h"
-#include "ui/modinfo/description_browser.h"
+#include "ui/modinfo/description_renderer.h"
 
 #include <QFile>
 #include <QFormLayout>
@@ -37,15 +37,15 @@ QString load_metadata_content(const ModInfoData &data) {
   return content;
 }
 
-void set_description_html(DescriptionBrowser *browser, const QString &desc,
+void set_description_html(DescriptionRenderer *renderer, const QString &desc,
                           std::atomic<unsigned> *gen) {
-  if (browser == nullptr)
+  if (renderer == nullptr)
     return;
-  // Drop any in-flight image fetches / cached resources from the previous
-  // render so we never display a picture from the prior mod here.
-  browser->clear_image_cache();
+  // Drop any in-flight work from the previous render so we never display
+  // content from the prior mod here.
+  renderer->clear();
   if (desc.isEmpty()) {
-    browser->setHtml(QStringLiteral(
+    renderer->set_description(QStringLiteral(
         "<div style=\"text-align:center; color:grey; padding-top:24px;\">"
         "<p>No description stored for this mod. Press "
         "<b>Refresh</b> to re-read metadata.</p></div>"));
@@ -54,12 +54,12 @@ void set_description_html(DescriptionBrowser *browser, const QString &desc,
   // Steam Workshop descriptions are BBCode (b/i/u/url/img/quote/etc), same
   // dialect the Nexus source panel parses. The old plain-text-escape path
   // hid all of that from the user; libcbb now renders it. The async
-  // helper moves the parse + QTextBrowser layout off the UI thread for
-  // descriptions >= 1 KB and uses `gen` to drop stale results when the
-  // user clicks rapidly through the mod list.
+  // helper moves the parse + layout off the UI thread for descriptions
+  // >= 1 KB and uses `gen` to drop stale results when the user clicks
+  // rapidly through the mod list.
   if (gen != nullptr)
     ++*gen;
-  set_bbcode_html_async(browser, desc, gen);
+  set_bbcode_html_async(renderer, desc, gen);
 }
 
 } // namespace
@@ -100,9 +100,17 @@ SteamSourcePanel::SteamSourcePanel(const ModInfoData &data, QWidget *parent)
   custom_row->addWidget(visit_custom_);
   layout->addLayout(custom_row);
 
-  description_ = new DescriptionBrowser(this);
-  description_->setOpenExternalLinks(true);
+  description_ = create_description_renderer(this);
+  // Steam BBCode fragments keep the shared dark shell for now.
+  description_->set_source_style(SourceCSS::Steam);
   layout->addWidget(description_, 1);
+  // Descriptions never navigate in place: the renderer emits link_clicked
+  // and the URL opens externally, same as the old setOpenExternalLinks.
+  connect(description_, &DescriptionRenderer::link_clicked, this,
+          [this](const QUrl &url) {
+            if (data_.open_url)
+              data_.open_url(url.toString());
+          });
 
   connect(mod_id_, &QLineEdit::editingFinished, this,
           &SteamSourcePanel::persist_fields);
