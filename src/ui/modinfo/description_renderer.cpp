@@ -5,7 +5,6 @@
 #include "ui/modinfo/webview_description_renderer.h"
 #endif
 
-#include <QDebug>
 #include <QTextBrowser>
 #include <QVBoxLayout>
 
@@ -31,11 +30,8 @@ namespace
 DescriptionRenderer* create_description_renderer(QWidget* parent)
 {
 #ifdef GMM_HAS_WEBENGINE
-  qDebug() << "[DescRenderer] Creating renderer, GMM_HAS_WEBENGINE defined: yes";
   return new WebViewDescriptionRenderer(parent);
 #else
-  qDebug() << "[DescRenderer] Creating renderer, GMM_HAS_WEBENGINE defined: no, "
-              "using QTextBrowser fallback";
   return new TextBrowserDescriptionRenderer(parent);
 #endif
 }

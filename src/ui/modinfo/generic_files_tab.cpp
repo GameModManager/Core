@@ -77,8 +77,9 @@ GenericFilesTab::GenericFilesTab(QWidget* parent) : ModInfoTab(parent) {
     layout->addWidget(splitter_);
 
     connect(filter_, &QLineEdit::textChanged, this, &GenericFilesTab::apply_filter);
-    connect(list_->selectionModel(), &QItemSelectionModel::currentRowChanged,
-            this, &GenericFilesTab::select_file);
+    // NOTE: no selectionModel connection here - QListView has no model yet
+    // so selectionModel() is nullptr (QObject::connect nullptr warning).
+    // rebuild_list() connects after setModel() swaps in a fresh one.
     connect(save_btn_, &QPushButton::clicked, this, &GenericFilesTab::save_editor);
     connect(editor_, &QPlainTextEdit::textChanged, this, [this]() {
         editor_dirty_ = editor_->isEnabled() &&
@@ -129,10 +130,13 @@ void GenericFilesTab::rebuild_list() {
     }
     list_->setModel(model);
     // setModel() swaps in a fresh selection model, which orphans the
-    // constructor-time connection - re-connect so selecting a row loads the
-    // file into the editor.
-    connect(list_->selectionModel(), &QItemSelectionModel::currentRowChanged,
-            this, &GenericFilesTab::select_file);
+    // previous connection - re-connect so selecting a row loads the
+    // file into the editor. Guard: selectionModel() can be null if the
+    // model failed to attach.
+    if (auto* selection = list_->selectionModel()) {
+        connect(selection, &QItemSelectionModel::currentRowChanged, this,
+                &GenericFilesTab::select_file, Qt::UniqueConnection);
+    }
     list_->setEnabled(!files_.empty());
 }
 
