@@ -100,6 +100,13 @@ SyncResult run_sync(const fs::path &program,
   }
   r.exit_code = proc.exitCode();
   r.output = QString::fromLocal8Bit(proc.readAllStandardOutput());
+  if (r.exit_code != 0) {
+    auto err = QString::fromLocal8Bit(proc.readAllStandardError());
+    if (!err.isEmpty()) {
+      if (!r.output.isEmpty()) r.output += "\n--- stderr ---\n";
+      r.output += err;
+    }
+  }
   return r;
 }
 
@@ -171,10 +178,13 @@ std::string ensure_corefonts_impl(const fs::path &prefix, uint32_t appid) {
     if (line == "corefonts") return {};
   }
   if (appid == 0) return "corefonts missing but no Steam appid for routing";
-  auto tricks = find_on_path("protontricks");
+  // Prefer winetricks directly - we already know the WINEPREFIX, so there's
+  // no need for protontricks (which scans ALL Steam appmanifest files and
+  // crashes on any corrupt one). winetricks just needs WINEPREFIX set.
+  auto tricks = find_on_path("winetricks");
   if (tricks.empty()) {
-    tricks = find_on_path("winetricks");
-    if (tricks.empty()) return "neither protontricks nor winetricks found";
+    tricks = find_on_path("protontricks");
+    if (tricks.empty()) return "neither winetricks nor protontricks found";
   }
   std::vector<std::string> args;
   if (tricks.filename() == "protontricks")
@@ -183,9 +193,25 @@ std::string ensure_corefonts_impl(const fs::path &prefix, uint32_t appid) {
     args = {"-q", "corefonts"};
   auto res = run_sync(tricks, args, prefix, kTricksTimeoutMs);
   if (!res.started) return "could not start winetricks backend";
-  if (res.exit_code != 0)
-    return "corefonts install failed (exit " +
-           std::to_string(res.exit_code) + ")";
+  if (res.exit_code != 0) {
+    std::string msg = "corefonts install failed (exit " +
+                      std::to_string(res.exit_code) + ")";
+    auto err = res.output.toStdString();
+    if (!err.empty()) {
+      // Extract the last non-empty, non-stack-trace line as the summary.
+      std::istringstream stream(err);
+      std::string last_meaningful, line;
+      while (std::getline(stream, line)) {
+        if (!line.empty() &&
+            line.find("Traceback") == std::string::npos &&
+            line.find("File \"") == std::string::npos &&
+            line.find("site-packages") == std::string::npos)
+          last_meaningful = line;
+      }
+      if (!last_meaningful.empty()) msg += "\n" + last_meaningful;
+    }
+    return msg;
+  }
   return {};
 }
 
