@@ -274,6 +274,34 @@ add_case_insensitive_aliases(const std::filesystem::path &staging_dir) {
     return 0;
 
   std::size_t created = 0;
+
+  // Create one alias symlink, replacing a stale generated alias but never
+  // clobbering a real entry. Returns true when the alias was created.
+  auto create_alias = [&](const std::filesystem::path &alias,
+                          const std::string &target) -> bool {
+    std::error_code aec;
+    const auto atype = std::filesystem::symlink_status(alias, aec).type();
+    if (aec) {
+      aec.clear();
+    } else if (atype == std::filesystem::file_type::symlink) {
+      // Stale generated alias (its canonical dir was removed by a
+      // redeploy): replace it rather than leave a dangling entry.
+      std::filesystem::remove(alias, aec);
+      aec.clear();
+    } else if (atype != std::filesystem::file_type::not_found) {
+      return false; // real file/dir already owns the alias name: leave it
+    }
+
+    std::filesystem::create_symlink(target, alias, aec);
+    if (aec) {
+      Logger::instance().warn("case-insensitive alias: failed to create " +
+                              alias.string() + " -> " + target + ": " +
+                              aec.message());
+      return false;
+    }
+    return true;
+  };
+
   std::filesystem::recursive_directory_iterator it(
       staging_dir, std::filesystem::directory_options::skip_permission_denied,
       ec);
@@ -291,35 +319,39 @@ add_case_insensitive_aliases(const std::filesystem::path &staging_dir) {
       continue;
 
     const std::string name = it->path().filename().string();
+    const auto parent = it->path().parent_path();
     std::string lower = name;
     std::transform(
         lower.begin(), lower.end(), lower.begin(),
         [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    if (lower == name)
-      continue;
+    std::string upper = name;
+    std::transform(
+        upper.begin(), upper.end(), upper.begin(),
+        [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+    if (lower != name && create_alias(parent / lower, name))
+      ++created;
+    if (upper != name && create_alias(parent / upper, name))
+      ++created;
+  }
 
-    const auto alias = it->path().parent_path() / lower;
-    std::error_code aec;
-    const auto atype = std::filesystem::symlink_status(alias, aec).type();
-    if (aec) {
-      aec.clear();
-    } else if (atype == std::filesystem::file_type::symlink) {
-      // Stale generated alias (its canonical dir was removed by a
-      // redeploy): replace it rather than leave a dangling entry.
-      std::filesystem::remove(alias, aec);
-      aec.clear();
-    } else if (atype != std::filesystem::file_type::not_found) {
-      continue; // real file/dir already owns the alias name: leave it
+  // Self-referential alias: for each top-level real directory, create
+  // <dir>/<basename> -> "." so a lookup for e.g. Data/Data (which the
+  // Creation Engine queries but which never exists) resolves into the
+  // directory itself instead of costing a full scan to prove absent.
+  {
+    std::error_code dec;
+    for (const auto &entry :
+         std::filesystem::directory_iterator(staging_dir, dec)) {
+      if (dec)
+        break;
+      std::error_code sec;
+      const auto st = std::filesystem::symlink_status(entry.path(), sec);
+      if (sec || !std::filesystem::is_directory(st))
+        continue;
+      const std::string base = entry.path().filename().string();
+      if (create_alias(entry.path() / base, "."))
+        ++created;
     }
-
-    std::filesystem::create_symlink(name, alias, aec);
-    if (aec) {
-      Logger::instance().warn("case-insensitive alias: failed to create " +
-                              alias.string() + " -> " + name + ": " +
-                              aec.message());
-      continue;
-    }
-    ++created;
   }
   if (created > 0)
     Logger::instance().debug("case-insensitive aliases created: " +

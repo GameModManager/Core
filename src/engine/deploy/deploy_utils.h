@@ -197,15 +197,19 @@ load_deploy_ledger(const std::filesystem::path &ledger_file);
                                          unsigned int num_threads = 0,
                                          const DeployProgressFn &progress = {});
 
-// Create lowercase symlink aliases inside a freshly deployed staging tree so a
-// Windows (case-insensitive) game's path lookups resolve on the case-sensitive
-// overlay. For every directory whose on-disk name has uppercase letters, an
-// alias symlink <lowercase(name)> -> <name> is created in the same parent
-// (e.g. Data/Interface gains Data/interface; the staging root's Data gains
-// data). A game's lowercase spellings (Modex's relative "data/interface/
-// modex/...", OAR's "data/meshes/...") then resolve through the alias chain
-// into the canonical-case staged files, and its runtime writes funnel into one
-// tree instead of spawning duplicate-case directories in the overwrite layer.
+// Create lowercase AND uppercase symlink aliases inside a freshly deployed
+// staging tree so a Windows (case-insensitive) game's path lookups resolve on
+// the case-sensitive overlay. For every directory whose on-disk name differs
+// from its all-lowercase or all-uppercase spelling, an alias symlink is
+// created in the same parent (e.g. Data/Interface gains Data/interface AND
+// Data/INTERFACE; the staging root's Data gains data AND DATA). A game's
+// lowercase/uppercase spellings then resolve through the alias chain into the
+// canonical-case staged files, and its runtime writes funnel into one tree
+// instead of spawning duplicate-case directories in the overwrite layer. In
+// addition, every top-level directory gains a self-referential alias
+// (<dir>/<basename> -> ".", e.g. Data/Data resolves into Data itself) so the
+// Creation Engine's Data\Data probe - which never exists - resolves without a
+// full directory scan to prove it absent.
 //
 // Idempotent and non-destructive: a real entry at the alias name is left alone
 // (it is already the canonical spelling); a stale generated alias is replaced.
