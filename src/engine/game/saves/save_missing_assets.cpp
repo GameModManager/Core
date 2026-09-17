@@ -89,18 +89,14 @@ find_save_missing_assets(const SaveGame &save,
   std::vector<std::string> missing_keys; // lowercased, parallel to `missing`
   const auto consider = [&](const std::string &name) {
     const auto it = by_name.find(to_lower(name));
-    // Force-loaded (game-native/CC) plugins are always active in-game and
-    // can never be missing, regardless of the snapshot's enabled flag.
-    if (it != by_name.end() &&
-        (it->second->enabled || it->second->force_loaded)) {
-      return; // STATE_ACTIVE - the save's dependency is satisfied.
+    // A plugin present in the load order is not missing, regardless of its
+    // enabled state. Disabled-but-present plugins are inactive, not absent.
+    if (it != by_name.end()) {
+      return;
     }
+    // STATE_MISSING - absent from the load order entirely.
     SaveMissingAsset asset;
     asset.plugin_name = name;
-    if (it != by_name.end()) {
-      asset.inactive = true; // STATE_INACTIVE - present but disabled.
-      asset.origin_mod = it->second->owner_mod;
-    } // else STATE_MISSING - absent from the load order entirely.
     missing.push_back(std::move(asset));
     missing_keys.push_back(to_lower(name));
   };
@@ -178,16 +174,14 @@ find_save_missing_assets(const SaveGame &save,
   std::vector<std::string> missing_keys;
   const auto consider = [&](const std::string &name) {
     const auto it = by_name.find(to_lower(name));
-    if (it != by_name.end() &&
-        (it->second->enabled || it->second->force_loaded)) {
+    // A plugin present in the load order is not missing, regardless of its
+    // enabled state. Disabled-but-present plugins are inactive, not absent.
+    if (it != by_name.end()) {
       return;
     }
+    // STATE_MISSING - absent from the load order entirely.
     SaveMissingAsset asset;
     asset.plugin_name = name;
-    if (it != by_name.end()) {
-      asset.inactive = true;
-      asset.origin_mod = it->second->owner_mod;
-    }
     missing.push_back(std::move(asset));
     missing_keys.push_back(to_lower(name));
   };
