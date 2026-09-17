@@ -98,6 +98,11 @@ static void deploy_and_merge(const fs::path& base, bool case_sensitive,
         check(!fs::is_symlink(staging / "data") &&
                   !fs::exists(staging / "data"),
               (l + ": control creates no root data alias").c_str());
+        check(!fs::is_symlink(staging / "DATA") &&
+                  !fs::exists(staging / "DATA"),
+              (l + ": control creates no root DATA alias").c_str());
+        check(!fs::is_symlink(staging / "Data" / "Data"),
+              (l + ": control creates no self-referential alias").c_str());
     } else {
         // Exactly ONE real directory among the CI-equal spellings; the other
         // may only exist as a lowercase symlink alias.
@@ -127,19 +132,48 @@ static void deploy_and_merge(const fs::path& base, bool case_sensitive,
                   fs::exists(alias / "uppercasesub" / "deep.nif"),
               (l + ": deep dir has its own lowercase alias at every level").c_str());
 
+        // UPPERCASE aliases exist alongside the lowercase ones.
+        const fs::path upper_alias = real_upper ? staging / "Data" / "MESHES"
+                                                : staging / "Data" / "MESHES";
+        check(fs::is_symlink(upper_alias),
+              (l + ": UPPERCASE alias exists for the merged dir").c_str());
+        check(fs::exists(upper_alias / "a.nif") &&
+                  fs::exists(upper_alias / "b.nif") &&
+                  fs::exists(upper_alias / "c.nif"),
+              (l + ": files are reachable through the UPPERCASE alias").c_str());
+        check(fs::is_symlink(dir / "UPPERCASESUB") &&
+                  fs::exists(dir / "UPPERCASESUB" / "deep.nif"),
+              (l + ": deep dir has its own UPPERCASE alias").c_str());
+
         // Root-level `data` -> `Data` alias (games resolve "data/..." relative
         // to their cwd == the overlay root).
         check(fs::is_symlink(staging / "data"),
               (l + ": root data -> Data alias exists").c_str());
+        check(fs::is_symlink(staging / "DATA"),
+              (l + ": root DATA -> Data alias exists").c_str());
         check(fs::exists(staging / "data" / "meshes" / "a.nif") &&
                   fs::exists(staging / "data" / "Meshes" / "b.nif"),
               (l + ": files resolve through the root data alias").c_str());
+        check(fs::exists(staging / "DATA" / "MESHES" / "a.nif") &&
+                  fs::exists(staging / "DATA" / "meshes" / "b.nif"),
+              (l + ": files resolve through the root DATA alias").c_str());
 
-        // No alias for an already-lowercase dir name.
+        // Self-referential alias: Data/Data resolves back into Data itself.
+        check(fs::is_symlink(staging / "Data" / "Data"),
+              (l + ": self-referential Data/Data alias exists").c_str());
+        check(fs::exists(staging / "Data" / "Data"),
+              (l + ": self-referential Data/Data resolves").c_str());
+        check(fs::exists(staging / "Data" / "Data" / "Meshes" / "a.nif"),
+              (l + ": files resolve through the Data/Data alias").c_str());
+
+        // No lowercase alias for an already-lowercase dir name, but the
+        // UPPERCASE variant is created.
         const fs::path real_dir_for_lower =
             real_upper ? staging / "Data" / "Meshes" : staging / "Data" / "meshes";
         check(!fs::is_symlink(real_dir_for_lower / "lowercase"),
               (l + ": no alias created for an already-lowercase dir").c_str());
+        check(fs::is_symlink(real_dir_for_lower / "LOWERCASE"),
+              (l + ": UPPERCASE alias exists for an all-lowercase dir").c_str());
         check(fs::exists(real_dir_for_lower / "lowercase" / "plain.nif"),
               (l + ": lowercase dir content survives").c_str());
 
