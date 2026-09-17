@@ -43,7 +43,8 @@ QColor page_background(SourceCSS style)
         "div.spoiler_content{background:#262626;border:1px dashed "
         "#3b3b3b;padding:10px}"
         "a{overflow-wrap:break-word;color:#8197ec;text-decoration:none}"
-        "details summary::marker{display:none}");
+        "details summary::marker{display:none}"
+        "span{font-size:inherit !important}");
     // Invision Community dark theme (colors sampled from the live LL
     // dark style). Static, hardcoded - no runtime fetching.
     static const QString kLoversLabCss = QStringLiteral(
@@ -71,7 +72,7 @@ QColor page_background(SourceCSS style)
         "th{background:#1e1e22;font-weight:600}");
     const QString css =
         (style == SourceCSS::LoversLab) ? kLoversLabCss : kNexusCss;
-    return QStringLiteral("<html><head><style>%1</style></head><body>%2</body></html>")
+    return QStringLiteral("<!DOCTYPE html><html><head><style>%1</style></head><body>%2</body></html>")
         .arg(css, body);
   }
 
