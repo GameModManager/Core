@@ -9,10 +9,13 @@
 #include <string>
 
 class QComboBox;
+class QCheckBox;
 class QGroupBox;
 class QLabel;
 class QProgressBar;
 class QPushButton;
+class QSpinBox;
+class QString;
 class QThread;
 class QVBoxLayout;
 
@@ -98,6 +101,9 @@ private:
   void load_recommended_packages();
   void install_packages(const QStringList &verbs);
   void build_deploy_management();
+  void build_proton_tweaks();
+  void run_proton_tweaks();
+  void finish_proton_tweaks(bool core, bool smooth, bool dpi, int dpi_value);
   void update_deploy_actions_enabled();
   void run_deploy_task(DeployTaskKind kind);
   void finish_deploy_task(DeployTaskKind kind, bool ok);
@@ -118,6 +124,14 @@ private:
   QPushButton *install_all_btn_ = nullptr;
   QVBoxLayout *packages_layout_ = nullptr;
   QLabel *packages_status_ = nullptr;
+  // Proton tweaks (font smoothing + DPI): Steam games only (steam_appid != 0).
+  QGroupBox *tweaks_group_ = nullptr;
+  QCheckBox *smoothing_check_ = nullptr;
+  QCheckBox *autodpi_check_ = nullptr;
+  QSpinBox *dpi_spin_ = nullptr;
+  QPushButton *apply_tweaks_btn_ = nullptr;
+  QLabel *tweaks_status_ = nullptr;
+  QThread *tweaks_thread_ = nullptr;
   QComboBox *deploy_strategy_combo_ = nullptr;
   QPushButton *redeploy_btn_ = nullptr;
   QPushButton *remove_btn_ = nullptr;
