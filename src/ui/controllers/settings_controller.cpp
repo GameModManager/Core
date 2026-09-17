@@ -128,6 +128,18 @@ void SettingsController::set_game_info(
     const auto dat_path = instance_root / "categories.dat";
     if (std::filesystem::exists(dat_path)) {
       engine::Category::Factory::instance().load(dat_path);
+      // If the dat was empty or stale, seed from the game's core category set.
+      if (engine::Category::Factory::instance().categories().empty()) {
+        const auto core_set_fallback =
+            w_->knowledge_ ? w_->knowledge_->get(game_id, "core_category_set")
+                           : std::string();
+        if (!core_set_fallback.empty()) {
+          engine::Category::Factory::instance().applyCoreSet(core_set_fallback);
+        } else {
+          engine::Category::Factory::instance().applyCoreSet("Default");
+        }
+        engine::Category::Factory::instance().save(dat_path);
+      }
     } else {
       const auto core_set =
           w_->knowledge_ ? w_->knowledge_->get(game_id, "core_category_set")

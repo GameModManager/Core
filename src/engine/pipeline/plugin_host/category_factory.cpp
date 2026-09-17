@@ -69,17 +69,6 @@ void Category::Factory::load(const std::filesystem::path &path) {
 
   categories_ = std::move(loaded);
 
-  // Self-heal: re-add any plugin-registered entries missing from the dat.
-  // This handles poisoned (empty/stale) categories.dat files where a previous
-  // session saved before plugins registered, or the file was accidentally
-  // emptied. Plugin entries provide the game's actual category set; user
-  // renames/re-parents of surviving ids are preserved (file wins for ids
-  // present in both).
-  for (const auto &[id, cat] : plugin_categories_) {
-    if (!categories_.count(id))
-      categories_.emplace(id, cat);
-  }
-
   rebuildTree();
 }
 
@@ -105,7 +94,6 @@ void Category::Factory::merge(const int *ids, const char *const *names,
     cat.id = id;
     cat.name = names[i] ? names[i] : "";
     cat.parent_id = (parent_ids && parent_ids[i]) ? parent_ids[i] : 0;
-    // Track in plugin_categories_ so load() can self-heal a poisoned dat.
     plugin_categories_.insert({id, cat});
     if (categories_.count(id))
       continue; // skip duplicate in the active set
@@ -178,9 +166,8 @@ void Category::Factory::updateCategory(int id, const std::string &name,
 void Category::Factory::rebuildTree() { updateHasChildren(); }
 
 void Category::Factory::clear() {
-  // Only clear the instance-scoped set. plugin_categories_ survives so that
-  // load() can re-add plugin entries missing from a stale/empty categories.dat.
   categories_.clear();
+  plugin_categories_.clear();
 }
 
 void Category::Factory::updateHasChildren() {
