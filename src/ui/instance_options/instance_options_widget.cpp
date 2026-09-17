@@ -21,9 +21,12 @@
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QPointer>
+#include <QProcess>
+#include <QProcessEnvironment>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QStandardPaths>
 #include <QGroupBox>
 #include <QThread>
 #include <QVBoxLayout>
@@ -214,6 +217,7 @@ std::filesystem::path InstanceOptionsWidget::recommended_packages_path() const {
 
 void InstanceOptionsWidget::load_recommended_packages() {
   if (!packages_layout_) return;
+  pkg_install_btns_.clear();
 
   auto path = recommended_packages_path();
   if (path.empty()) {
@@ -247,6 +251,7 @@ void InstanceOptionsWidget::load_recommended_packages() {
     auto *row = new QHBoxLayout;
     row->addWidget(new QLabel(verb, this), 1);
     auto *install = new QPushButton(tr("Install"), this);
+    pkg_install_btns_.append(install);
     connect(install, &QPushButton::clicked, this,
             [this, verb]() { install_packages({verb}); });
     row->addWidget(install);
@@ -268,6 +273,12 @@ void InstanceOptionsWidget::load_recommended_packages() {
   all_row->addWidget(install_all_btn_);
   packages_layout_->addLayout(all_row);
 
+  packages_progress_ = new QProgressBar(this);
+  packages_progress_->setRange(0, 0);
+  packages_progress_->setTextVisible(false);
+  packages_progress_->hide();
+  packages_layout_->addWidget(packages_progress_);
+
   packages_status_ = new QLabel(this);
   packages_status_->setWordWrap(true);
   packages_layout_->addWidget(packages_status_);
@@ -284,27 +295,139 @@ void InstanceOptionsWidget::load_recommended_packages() {
 }
 
 void InstanceOptionsWidget::install_packages(const QStringList &verbs) {
-  if (verbs.isEmpty()) return;
+  if (verbs.isEmpty() || packages_thread_) return;
 
-  engine::ProtonToolRequest request;
-  request.platform = platform_;
-  request.steam_appid = steam_appid_;
-  request.game_dir = game_dir_;
-  request.runner_override = selected_runner();
-
-  std::vector<std::string> args;
-  for (const auto &v : verbs) args.push_back(v.toStdString());
-
-  int64_t pid = engine::run_proton_tool(request, args);
-  if (pid < 0) {
+  // Prefer plain winetricks (we resolve the prefix ourselves, avoiding
+  // protontricks' scan of ALL Steam appmanifest files); fall back to
+  // protontricks when winetricks is missing.
+  QString tool = QStandardPaths::findExecutable(QStringLiteral("winetricks"));
+  const bool use_winetricks = !tool.isEmpty();
+  if (tool.isEmpty())
+    tool = QStandardPaths::findExecutable(QStringLiteral("protontricks"));
+  if (tool.isEmpty()) {
     QMessageBox::warning(this, tr("Instance Options"),
                          tr("No protontricks / winetricks available to install packages.\n"
                             "Install protontricks to manage Proton prefixes."));
     return;
   }
-  if (packages_status_) {
+
+  // Resolve the wine prefix the same way run_proton_tweaks does:
+  // <compatdata>/<appid>/pfx when present, otherwise the compatdata dir.
+  std::filesystem::path prefix;
+  if (platform_ && steam_appid_ != 0) {
+    if (auto compat = platform_->resolve_proton_prefix(steam_appid_);
+        !compat.empty()) {
+      std::error_code ec;
+      auto pfx = compat / "pfx";
+      prefix = std::filesystem::is_directory(pfx, ec) ? pfx : compat;
+    }
+  }
+  if (use_winetricks) {
+    std::error_code ec;
+    if (prefix.empty() || !std::filesystem::exists(prefix, ec)) {
+      if (packages_status_)
+        packages_status_->setText(
+            tr("Proton prefix not found - launch the game once first."));
+      return;
+    }
+  }
+
+  QStringList tool_args;
+  if (use_winetricks) {
+    tool_args << QStringLiteral("-q") << verbs;
+  } else {
+    tool_args << QStringLiteral("--no-term")
+              << QString::number(steam_appid_) << verbs;
+  }
+  const QString prefix_str =
+      prefix.empty() ? QString()
+                     : QString::fromStdString(prefix.string());
+  QString steam_root_str;
+  if (!use_winetricks && platform_) {
+    const auto steam_root = platform_->find_steam_root();
+    if (!steam_root.empty())
+      steam_root_str = QString::fromStdString(steam_root.string());
+  }
+  const QString runner_override =
+      QString::fromStdString(selected_runner());
+
+  if (packages_status_)
+    packages_status_->setText(tr("Installing: %1...").arg(verbs.join(", ")));
+  if (packages_progress_) {
+    packages_progress_->setRange(0, 0);
+    packages_progress_->show();
+  }
+  if (install_all_btn_) install_all_btn_->setEnabled(false);
+  for (auto *btn : pkg_install_btns_) {
+    if (btn) btn->setEnabled(false);
+  }
+
+  // winetricks blocks (downloads, wineserver spin-up), so it runs on a
+  // worker: same QPointer-guarded pattern as run_proton_tweaks(), safe if
+  // the tab closes mid-run.
+  QPointer<InstanceOptionsWidget> self(this);
+  auto *thread = QThread::create(
+      [self, tool, tool_args, prefix_str, steam_root_str, runner_override,
+       verbs, use_winetricks]() {
+        QProcess proc;
+        proc.setProgram(tool);
+        proc.setArguments(tool_args);
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        if (!prefix_str.isEmpty())
+          env.insert(QStringLiteral("WINEPREFIX"), prefix_str);
+        if (!use_winetricks) {
+          if (!steam_root_str.isEmpty())
+            env.insert(QStringLiteral("STEAM_DIR"), steam_root_str);
+          if (!runner_override.isEmpty() && !runner_override.contains('/'))
+            env.insert(QStringLiteral("PROTON_VERSION"), runner_override);
+        }
+        proc.setProcessEnvironment(env);
+        proc.start();
+        QString error;
+        bool ok = false;
+        if (!proc.waitForStarted()) {
+          error = proc.errorString();
+        } else if (!proc.waitForFinished(-1)) {
+          error = proc.errorString();
+        } else {
+          error = QString::fromLocal8Bit(proc.readAllStandardError()).trimmed();
+          if (error.isEmpty())
+            error = QString::fromLocal8Bit(proc.readAllStandardOutput())
+                        .trimmed();
+          ok = (proc.exitStatus() == QProcess::NormalExit &&
+                proc.exitCode() == 0);
+        }
+        if (!self) return; // widget destroyed while the task was running
+        QMetaObject::invokeMethod(
+            self,
+            [self, verbs, ok, error]() {
+              if (!self) return;
+              self->finish_install_packages(verbs, ok, error);
+            },
+            Qt::QueuedConnection);
+      });
+  thread->setObjectName(QStringLiteral("gmm-install-packages"));
+  packages_thread_ = thread;
+  connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+  thread->start();
+}
+
+void InstanceOptionsWidget::finish_install_packages(const QStringList &verbs,
+                                                    bool ok,
+                                                    const QString &error) {
+  packages_thread_ = nullptr;
+  if (packages_progress_) packages_progress_->hide();
+  if (install_all_btn_) install_all_btn_->setEnabled(true);
+  for (auto *btn : pkg_install_btns_) {
+    if (btn) btn->setEnabled(true);
+  }
+  if (!packages_status_) return;
+  if (ok) {
     packages_status_->setText(
-        tr("Started installing: %1").arg(verbs.join(", ")));
+        tr("Successfully installed: %1").arg(verbs.join(", ")));
+  } else {
+    packages_status_->setText(
+        tr("Installation failed: %1\n%2").arg(verbs.join(", "), error));
   }
 }
 

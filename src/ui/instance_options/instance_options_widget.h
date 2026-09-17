@@ -2,6 +2,8 @@
 
 #include "engine/core/instance/instance_utils.h"
 
+#include <QVector>
+#include <QStringList>
 #include <QWidget>
 
 #include <filesystem>
@@ -100,6 +102,8 @@ private:
   void update_runner_detail();
   void load_recommended_packages();
   void install_packages(const QStringList &verbs);
+  void finish_install_packages(const QStringList &verbs, bool ok,
+                               const QString &error);
   void build_deploy_management();
   void build_proton_tweaks();
   void run_proton_tweaks();
@@ -124,6 +128,9 @@ private:
   QPushButton *install_all_btn_ = nullptr;
   QVBoxLayout *packages_layout_ = nullptr;
   QLabel *packages_status_ = nullptr;
+  QProgressBar *packages_progress_ = nullptr;
+  QThread *packages_thread_ = nullptr;
+  QVector<QPushButton *> pkg_install_btns_;
   // Proton tweaks (font smoothing + DPI): Steam games only (steam_appid != 0).
   QGroupBox *tweaks_group_ = nullptr;
   QCheckBox *smoothing_check_ = nullptr;
