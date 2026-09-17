@@ -65,6 +65,13 @@ struct SaveGame {
     int screenshot_width = 0;
     int screenshot_height = 0;
 
+    // Workspace-de5v: lazy heavy data. The scan worker strips the screenshot
+    // after parsing (plugins stay - the Missing column needs them) and sets
+    // this false; the Saves tab re-parses the full save on first hover/click
+    // and caches it. True for every full parse, including tests that build a
+    // SaveGame directly.
+    bool has_heavy_data = true;
+
     // v2.1+ additive fields (GmmSaveDataV2 tail-append). The bridge copies
     // these ONLY when the registering plugin proves feature support via
     // gmm_abi_features (see engine::GMM_FEATURE_SAVE_* in plugin_loader.h).

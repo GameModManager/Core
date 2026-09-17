@@ -29,11 +29,13 @@ ImageViewer::ImageViewer(QWidget* parent) : FileViewerWidget(parent) {
 }
 
 bool ImageViewer::open(const QString& path) {
+    // Release the previous full-res image before decoding the next one so
+    // switching images never holds two full buffers at once.
+    clear();
     QImageReader reader(path);
     reader.setAutoTransform(true);
     QImage img = reader.read();
     if (img.isNull()) {
-        clear();
         return false;
     }
 

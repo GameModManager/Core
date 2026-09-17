@@ -329,3 +329,58 @@ TEST_CASE("modpub parse_description_html", "[engine]") {
   require(ri.description.find("[url=https://example.com]") != std::string::npos,
           "parse_mod_info: rich description preferred over JSON-LD");
 }
+
+TEST_CASE("modpub description newline normalization", "[engine]") {
+  using engine::Source::ModPub::Provider;
+
+  // --- Workspace-kse9 (same bug as LoversLab): a <br> followed by a
+  // literal newline from pretty-printed HTML must stay ONE line break.
+  const std::string br_nl =
+      "<div class=\"gray-box user-content\">line1<br />\nline2</div>";
+  require(Provider::parse_description_html(br_nl) == "line1\nline2",
+          "<br /> + newline stays a single break");
+
+  // --- CRLF bodies (real HTTP pages use \r\n).
+  const std::string br_crlf =
+      "<div class=\"gray-box user-content\">line1<br>\r\nline2</div>";
+  require(Provider::parse_description_html(br_crlf) == "line1\nline2",
+          "<br> + CRLF stays a single break");
+
+  // --- Pretty-printed paragraphs: indentation between block tags must
+  // not survive as whitespace-only lines.
+  const std::string pretty =
+      "<div class=\"gray-box user-content\">\n"
+      "    <p>para1</p>\n"
+      "    <p>para2</p>\n"
+      "  </div>";
+  require(Provider::parse_description_html(pretty) == "para1\n\npara2",
+          "pretty-printed paragraphs join with one blank line");
+}
+
+TEST_CASE("modpub metadata entity decoding", "[engine]") {
+  using ModPubModInfoResult = engine::Source::ModPub::ModInfoResult;
+  using engine::Source::ModPub::Provider;
+
+  // --- Workspace-vbx3: the DOM aside tag arrives HTML-escaped; the
+  // panel shows it verbatim so it must be decoded at parse time.
+  const std::string body =
+      "<html><head>"
+      "<script type=\"application/ld+json\">"
+      "{\"@type\":\"SoftwareApplication\","
+      "\"name\":\"Swords &amp; Sorcery\","
+      "\"description\":\"Plain text from JSON-LD\","
+      "\"applicationCategory\":\"GameMod\","
+      "\"author\":{\"name\":\"Modder &quot;Bob&quot;\"}}"
+      "</script>"
+      "</head><body>"
+      "<aside><b>Tag</b> Framework &amp; Resources</aside>"
+      "</body></html>";
+  ModPubModInfoResult r = Provider::parse_mod_info(
+      body, "https://mod.pub/skyrim/1-test-mod/");
+  require(r.available, "entities: available");
+  require(r.name == "Swords & Sorcery", "entities: JSON-LD name decoded");
+  require(r.category == "Framework & Resources",
+          "entities: aside tag category decoded");
+  require(r.author == "Modder \"Bob\"",
+          "entities: JSON-LD author decoded");
+}

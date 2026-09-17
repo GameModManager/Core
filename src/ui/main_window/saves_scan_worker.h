@@ -19,6 +19,7 @@
 #include <QVector>
 
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -60,11 +61,13 @@ public:
 signals:
     // One entry per successfully parsed save. Fired on the worker thread
     // (SavesScanThread::start) - the UI connects with Qt::QueuedConnection so
-    // the slot runs on the main thread. `done` is 1-based, `total` is the
-    // path-enumeration count (used to drive a progress bar; equals the count
-    // of files that matched the extension filter, including ones that failed
-    // to parse).
-    void entryReady(SavesScanResultEntry entry, int done, int total);
+    // the slot runs on the main thread. Carried as shared_ptr so the queued
+    // connection copies 8 bytes, not the whole SaveGame + missing-assets
+    // (Workspace-3wgp: by-value queued signals deep-copy via QMetaType).
+    // `done` is 1-based, `total` is the path-enumeration count (used to
+    // drive a progress bar; equals the count of files that matched the
+    // extension filter, including ones that failed to parse).
+    void entryReady(std::shared_ptr<SavesScanResultEntry> entry, int done, int total);
     // Final signal: the scan completed (or had no work to do). `count` is the
     // number of entryReady signals actually fired. UI uses this to flip
     // scanning_=false and drain any coalesced pending_request_.
@@ -94,4 +97,4 @@ private:
 
 }  // namespace ui
 
-Q_DECLARE_METATYPE(ui::SavesScanResultEntry)
+Q_DECLARE_METATYPE(std::shared_ptr<ui::SavesScanResultEntry>)

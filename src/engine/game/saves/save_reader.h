@@ -65,6 +65,14 @@ public:
     [[nodiscard]] std::size_t position() const { return pos_; }
     [[nodiscard]] std::size_t size() const { return buf_.size(); }
 
+    // Drops the raw file copy, freeing its memory. Called by
+    // begin_compressed once all subsequent reads come from buf_ (every
+    // compression type, Workspace-ixns). After this, only the
+    // header already consumed plus the (decompressed) working buffer remain.
+    void release_raw_file() {
+        std::vector<std::uint8_t>().swap(file_);
+    }
+
 private:
     static std::vector<std::uint8_t> inflate_chunks(std::uint64_t start,
                                                     std::uint64_t total_uncompressed,

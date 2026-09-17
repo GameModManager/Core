@@ -8,6 +8,7 @@
 #include <QThread>
 
 #include <chrono>
+#include <memory>
 #include <utility>
 namespace ui {
 
@@ -85,7 +86,21 @@ void SavesScanWorker::run(SavesScanRequest request) {
                 entry.save = std::move(save);
                 entry.missing = engine::find_save_missing_assets(
                     entry.save, request.plugins, provider_index);
-                emit entryReady(std::move(entry), ++done, total);
+                // Workspace-de5v: screenshots are the retained-memory hog
+                // (~230KB per SE save after the ixns downscale). The table
+                // only needs header + plugins (Missing column), so drop the
+                // pixels here; the Saves tab re-parses on first hover/click
+                // and caches (SaveGame::has_heavy_data). Saves with no
+                // screenshot (stub path, pre-v2.1 plugins) keep the flag
+                // true so hover never re-parses them pointlessly.
+                if (!entry.save.screenshot.empty()) {
+                    entry.save.screenshot.clear();
+                    entry.save.screenshot.shrink_to_fit();
+                    entry.save.has_heavy_data = false;
+                }
+                auto entry_ptr =
+                    std::make_shared<SavesScanResultEntry>(std::move(entry));
+                emit entryReady(entry_ptr, ++done, total);
                 ++emitted;
             });
     }
@@ -93,7 +108,7 @@ void SavesScanWorker::run(SavesScanRequest request) {
 }
 
 SavesScanThread::SavesScanThread(QObject* parent) : QObject(parent) {
-    qRegisterMetaType<ui::SavesScanResultEntry>();
+    qRegisterMetaType<std::shared_ptr<ui::SavesScanResultEntry>>();
     thread_ = new QThread(this);
     thread_->setObjectName(QStringLiteral("gmm-saves-scan"));
     worker_ = new SavesScanWorker(nullptr);

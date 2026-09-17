@@ -158,7 +158,12 @@ GmmPluginRequirement* py_requirements_bridge(size_t* out_count, void* user_data)
     py::object result = p->fn();
     p->array.clear();
     if (py::isinstance<py::list>(result)) {
-      for (auto item : py::cast<py::list>(result)) {
+      py::list items = py::cast<py::list>(result);
+      // 3 owned strings per item; reserve the upper bound so push_back never
+      // reallocates and invalidates pointers already stored in p->array
+      // (heap-use-after-free, Workspace-olrt).
+      p->owned.reserve(p->owned.size() + static_cast<size_t>(py::len(items)) * 3);
+      for (auto item : items) {
         std::string type, name, message;
         if (py::isinstance<py::tuple>(item) && py::len(item) >= 3) {
           py::tuple t = py::cast<py::tuple>(item);
@@ -298,7 +303,12 @@ GmmDiagnosticProblem* py_diag_v2_bridge(size_t* out_count, void* user_data)
     py::object result = p->fn();
     p->array.clear();
     if (py::isinstance<py::list>(result)) {
-      for (auto item : py::cast<py::list>(result)) {
+      py::list items = py::cast<py::list>(result);
+      // 2 owned strings per item; reserve the upper bound so push_back never
+      // reallocates and invalidates pointers already stored in p->array
+      // (heap-use-after-free, Workspace-olrt).
+      p->owned.reserve(p->owned.size() + static_cast<size_t>(py::len(items)) * 2);
+      for (auto item : items) {
         std::string short_desc, full_desc;
         int has_fix = 0;
         py::object fix_fn;
@@ -376,7 +386,12 @@ GmmFileMapping* py_file_mapper_bridge(size_t* out_count, void* user_data)
     py::object result = p->fn();
     p->array.clear();
     if (py::isinstance<py::list>(result)) {
-      for (auto item : py::cast<py::list>(result)) {
+      py::list items = py::cast<py::list>(result);
+      // 2 owned strings per item; reserve the upper bound so push_back never
+      // reallocates and invalidates pointers already stored in p->array
+      // (heap-use-after-free, Workspace-olrt).
+      p->owned.reserve(p->owned.size() + static_cast<size_t>(py::len(items)) * 2);
+      for (auto item : items) {
         std::string source, target;
         if (py::isinstance<py::tuple>(item) && py::len(item) >= 2) {
           py::tuple t = py::cast<py::tuple>(item);
@@ -654,7 +669,12 @@ const char* const* py_sort_bridge(const char* const* mod_folders, size_t count,
     p->owned.clear();
     p->array.clear();
     if (py::isinstance<py::list>(result)) {
-      for (auto item : py::cast<py::list>(result)) {
+      py::list items = py::cast<py::list>(result);
+      // 1 owned string per item; reserve the upper bound so push_back never
+      // reallocates and invalidates pointers already stored in p->array
+      // (heap-use-after-free, Workspace-olrt).
+      p->owned.reserve(p->owned.size() + static_cast<size_t>(py::len(items)));
+      for (auto item : items) {
         std::string s = py::cast<std::string>(item);
         p->owned.push_back(std::move(s));
         p->array.push_back(p->owned.back().c_str());
@@ -890,7 +910,14 @@ public:
     engine::PluginInfo::SettingTab tab;
     tab.title = title;
     std::vector<const char*> keys, types, defaults, options;
+    // Own every options string here. The registry only borrows the pointers
+    // for the duration of its call, so taking c_str() mid-loop dangles: `opt`
+    // dies each iteration and tab.settings reallocations invalidate earlier
+    // entry pointers (heap-use-after-free, Workspace-olrt). Pointers are
+    // taken after the loop from stable storage instead.
+    std::vector<std::string> owned_options;
     py::list settings = settings_obj.cast<py::list>();
+    owned_options.reserve(static_cast<size_t>(py::len(settings)));
     for (const auto& item : settings) {
       py::tuple t = py::reinterpret_borrow<py::tuple>(item);
       if (py::len(t) < 3)
@@ -917,15 +944,27 @@ public:
         }
       }
       tab.settings.push_back(std::move(entry));
-      keys.push_back(tab.settings.back().key.c_str());
-      types.push_back(tab.settings.back().type.c_str());
-      defaults.push_back(tab.settings.back().default_value.c_str());
-      options.push_back(opt.empty() ? nullptr : opt.c_str());
+      owned_options.push_back(std::move(opt));
     }
     // Capture size before moving `tab`; the moved-from vector is left
     // in a valid-but-unspecified state (size()==0 on libstdc++).
     const size_t settings_count = tab.settings.size();
     plugin_->settings_tab       = std::move(tab);
+
+    // Entries now live in plugin_->settings_tab and options in
+    // owned_options - both stable, so these pointers stay valid through
+    // the registry call below (which copies everything synchronously).
+    keys.reserve(settings_count);
+    types.reserve(settings_count);
+    defaults.reserve(settings_count);
+    options.reserve(settings_count);
+    for (size_t i = 0; i < settings_count; ++i) {
+      const auto& e = plugin_->settings_tab.settings[i];
+      keys.push_back(e.key.c_str());
+      types.push_back(e.type.c_str());
+      defaults.push_back(e.default_value.c_str());
+      options.push_back(owned_options[i].empty() ? nullptr : owned_options[i].c_str());
+    }
 
     const std::string basename = basename_of(plugin_->path);
     engine::PluginSettingsRegistry::instance().register_settings_tab(

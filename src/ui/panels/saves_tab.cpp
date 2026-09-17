@@ -2,6 +2,7 @@
 #include "ui/panels/panel_utils.h"
 
 #include "engine/core/log/logger.h"
+#include "engine/pipeline/plugin_host/save_parser_registry.h"
 
 #include <QCursor>
 #include <QDateTime>
@@ -18,6 +19,7 @@
 #include <QPoint>
 #include <QRect>
 #include <QScreen>
+#include <QShowEvent>
 #include <QStyle>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -62,9 +64,9 @@ SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
     table_->setSelectionBehavior(QAbstractItemView::SelectRows);
     layout->addWidget(table_, 1);
 
-    // No directory watcher: scans run once at game load and after a delete,
-    // never in the background (a watched Proton-prefix Saves dir churns and
-    // spammed 1-per-second re-scans).
+    // No directory watcher: scans run lazily on first show and after a
+    // delete, never in the background (a watched Proton-prefix Saves dir
+    // churns and spammed 1-per-second re-scans).
     scan_thread_ = new SavesScanThread(this);
     // Per-save streaming (Workspace-0owv): one queued insert per parsed save
     // so the user sees rows fill in as they load. The final finished(int)
@@ -91,6 +93,9 @@ SavesTab::~SavesTab() {
 
 void SavesTab::set_saves_dir(const std::filesystem::path& dir) {
     saves_dir_ = dir;
+    // New game/instance, new saves: the lazy-scan latch belongs to the old
+    // dir, so the next first-show scans again (Workspace-ugm3).
+    scanned_once_ = false;
 }
 
 void SavesTab::set_saves(SavesScanResult result) {
@@ -100,7 +105,17 @@ void SavesTab::set_saves(SavesScanResult result) {
     // (the scanner's contract) so a single sequential insert is equivalent
     // to the streaming path.
     scanning_ = false;
+    // Free the previous scan's entries (screenshots included) BEFORE taking
+    // the new result, so peak memory never holds two full save lists at once
+    // (Workspace-x5zg).
+    saves_ = {};
     saves_ = std::move(result);
+    if (saves_.entries.size() > kMaxSavesRetain) {
+        // Batch path receives newest-first (the scanner's contract), so the
+        // tail past the cap is the oldest - drop it with its screenshots.
+        saves_.entries.erase(saves_.entries.begin() + kMaxSavesRetain,
+                             saves_.entries.end());
+    }
     table_->setRowCount(0);
     table_->setRowCount(static_cast<int>(saves_.entries.size()));
     engine::Logger::instance().debug(
@@ -126,9 +141,21 @@ void SavesTab::set_saves(SavesScanResult result) {
 
 void SavesTab::clear_saves() {
     scanning_ = false;
+    scanned_once_ = false;
     saves_ = {};
     table_->setRowCount(0);
     hide_save_info();
+}
+
+void SavesTab::showEvent(QShowEvent* event) {
+    QWidget::showEvent(event);
+    ensure_scanned();
+}
+
+void SavesTab::ensure_scanned() {
+    if (scanned_once_) return;
+    scanned_once_ = true;
+    emit scan_requested();
 }
 
 const engine::SaveGame* SavesTab::save_at(int row) const {
@@ -161,11 +188,13 @@ void SavesTab::request_scan(SavesScanRequest request) {
     scan_thread_->start(std::move(request));
 }
 
-void SavesTab::on_entry_ready(SavesScanResultEntry entry, int done, int total) {
+void SavesTab::on_entry_ready(std::shared_ptr<SavesScanResultEntry> entry, int done,
+                         int total) {
+    if (!entry) return;
     // Binary search by creation_time desc (matches the scanner's sort).
     // saves_.entries and the table are kept in lockstep so save_at(row) and
     // missing_at(row) stay correct as the table grows.
-    const auto t = entry.save.creation_time;
+    const auto t = entry->save.creation_time;
     int lo = 0;
     int hi = saves_.entries.size();
     while (lo < hi) {
@@ -178,7 +207,7 @@ void SavesTab::on_entry_ready(SavesScanResultEntry entry, int done, int total) {
     }
     const int row = lo;
     table_->insertRow(row);
-    saves_.entries.insert(saves_.entries.begin() + row, std::move(entry));
+    saves_.entries.insert(saves_.entries.begin() + row, std::move(*entry));
     const auto& inserted = saves_.entries[row];
     auto* name = new QTableWidgetItem(
         QString::fromStdString(inserted.save.display_name()));
@@ -192,6 +221,12 @@ void SavesTab::on_entry_ready(SavesScanResultEntry entry, int done, int total) {
     table_->setItem(row, kColumnName, name);
     table_->setItem(row, kColumnFile, file);
     table_->setItem(row, kColumnMissing, miss);
+    // Retain cap (Workspace-x5zg): entries stay sorted newest-first, so the
+    // tail is the oldest - evict it (with its screenshot) to bound memory.
+    while (saves_.entries.size() > kMaxSavesRetain) {
+        saves_.entries.removeLast();
+        table_->removeRow(table_->rowCount() - 1);
+    }
     // Hide the hover popup if the inserted row pushed the previously-hovered
     // row off-position. Cheaper than recomputing: the next mouse move will
     // re-show it via itemEntered.
@@ -229,7 +264,28 @@ void SavesTab::on_selection_changed() {
     show_save_info(selected.first().row());
 }
 
+// Workspace-de5v: lazy heavy data. Scan entries carry header + plugins only
+// (screenshot stripped by the worker). On first hover/selection, re-parse
+// the full save through the registry and cache it in place so later hovers
+// are free. Runs on the main thread - one file, ms-scale, same as MO2's
+// on-demand parse. A failed re-parse keeps the header-only entry so the
+// popup still shows what the scan found.
+void SavesTab::ensure_heavy_data(int row) {
+    if (row < 0 || row >= saves_.entries.size()) return;
+    auto& save = saves_.entries[row].save;
+    if (save.has_heavy_data) return;
+    try {
+        auto full = engine::SaveParserRegistry::instance().parse_save(
+            save.file_path, save.game_id);
+        if (full) {
+            save = std::move(*full);
+        }
+    } catch (...) {
+    }
+}
+
 void SavesTab::show_save_info(int row) {
+    ensure_heavy_data(row);
     const auto* save = save_at(row);
     if (!save) return;
     const auto* missing = missing_at(row);
@@ -428,6 +484,9 @@ void SavesTab::on_context_menu(const QPoint& pos) {
 void SavesTab::on_information_action() {
     const auto sel = table_->selectionModel()->selectedRows();
     if (sel.size() != 1) return;
+    // Right-click "Information..." can fire without a prior hover, so load
+    // the screenshot here too - the dialog renders it from save_at(row).
+    ensure_heavy_data(sel.first().row());
     emit information_requested(sel.first().row());
 }
 
