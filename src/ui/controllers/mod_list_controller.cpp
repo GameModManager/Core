@@ -1682,13 +1682,41 @@ void ModListController::load_meta_for_mods() {
 
     // Phantom-row flags cover the known pseudo rows, but never mkdir here
     // for a folder that is not on disk: a save below would promote a stale
-    // row into a real mod on the next scan (Workspace-pmrh H2).
+    // row into a real mod on the next scan (Workspace-pmrh H2). External
+    // game-dir mods (Isaac Steam Workshop mods live ONLY in
+    // game_dir/mods/) have no instance folder - but they may carry a GMM
+    // meta.ini next to themselves (migrated there by the scan worker,
+    // Workspace-7tjz). An instance stub is never created for these rows
+    // (Workspace-pmrh H1).
     std::error_code dir_ec;
-    if (!std::filesystem::is_directory(mods_dir / folder_name, dir_ec))
-      continue;
+    const bool in_instance =
+        std::filesystem::is_directory(mods_dir / folder_name, dir_ec);
+    bool is_external = false;
+    std::filesystem::path external_meta;
+    if (!in_instance) {
+      const auto game_mods_dir = w_->current_game_mods_dir();
+      if (!game_mods_dir.empty() &&
+          std::filesystem::is_directory(game_mods_dir / folder_name,
+                                         dir_ec)) {
+        is_external = true;
+        external_meta = game_mods_dir / folder_name / "meta.ini";
+      } else {
+        continue;
+      }
+    }
+
+    // Persist back where the meta was read from. External mods save to
+    // their game-dir meta.ini (the parent folder exists - no stub
+    // mkdir); instance mods save as before.
+    auto persist_meta = [&](const engine::ModMeta &m) {
+      if (is_external)
+        return m.save_file(external_meta);
+      return m.save(mods_dir, folder_name);
+    };
 
     // Load existing meta (or empty if no file yet)
-    auto meta = engine::ModMeta::load(mods_dir, folder_name);
+    auto meta = is_external ? engine::ModMeta::load_file(external_meta)
+                            : engine::ModMeta::load(mods_dir, folder_name);
 
     if (!meta.has_section("General") && !meta.has_section("GameModManager")) {
       // No meta file exists - create a default one (already at
@@ -1708,7 +1736,7 @@ void ModListController::load_meta_for_mods() {
         }
       }
       meta = engine::ModMeta::from_default(folder_name, source_type, source_id);
-      meta.save(mods_dir, folder_name);
+      persist_meta(meta);
 
     } else {
       // Existing meta - check if upgrade is needed
@@ -1792,7 +1820,7 @@ void ModListController::load_meta_for_mods() {
       }
 
       if (upgraded) {
-        meta.save(mods_dir, folder_name);
+        persist_meta(meta);
       }
     }
 
@@ -1874,7 +1902,7 @@ void ModListController::load_meta_for_mods() {
                   id_strs << QString::number(cid);
                 meta.set("General", "category",
                          id_strs.join(QLatin1Char(',')).toStdString());
-                meta.save(mods_dir, folder_name);
+                persist_meta(meta);
                 if (primary <= 0 && !category_ids.isEmpty())
                   primary = category_ids.first();
               }
@@ -2367,12 +2395,40 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
   // Persistence: the mod's in-folder meta.ini (mods/<id>/meta.ini,
   // MO2-compatible - the same file the rest of MainWindow reads/writes).
   // Tabs use GMM-canonical keys ([Nexusmods] etc.); MO2 ignores the unknown
-  // sections it does not understand.
+  // sections it does not understand. External game-dir mods (Workspace-7tjz)
+  // keep their meta next to themselves in the game-mods dir; saving into
+  // the instance mods dir would mkdir a stub the next scan picks up as a
+  // real mod (Workspace-pmrh H1).
   const auto mods_dir = w_->mods_dir_path();
-  data.load_meta = [mods_dir, mod_id = mod.id]() {
-    return engine::ModMeta::load(mods_dir, mod_id.toStdString());
+  const auto game_mods_dir = w_->current_game_mods_dir();
+  auto external_meta_file = [game_mods_dir](const QString &id) {
+    if (game_mods_dir.empty())
+      return std::filesystem::path{};
+    std::error_code ec;
+    const auto folder = game_mods_dir / id.toStdString();
+    if (!std::filesystem::is_directory(folder, ec))
+      return std::filesystem::path{};
+    return folder / "meta.ini";
   };
-  data.save_meta = [mods_dir, mod_id = mod.id](const engine::ModMeta &meta) {
+  data.load_meta = [mods_dir, external_meta_file, mod_id = mod.id]() {
+    auto meta = engine::ModMeta::load(mods_dir, mod_id.toStdString());
+    if (!meta.has_section("General") &&
+        !meta.has_section("GameModManager")) {
+      const auto ext = external_meta_file(mod_id);
+      if (!ext.empty())
+        meta = engine::ModMeta::load_file(ext);
+    }
+    return meta;
+  };
+  data.save_meta = [mods_dir, external_meta_file,
+                    mod_id = mod.id](const engine::ModMeta &meta) {
+    std::error_code ec;
+    if (!std::filesystem::is_directory(mods_dir / mod_id.toStdString(),
+                                       ec)) {
+      const auto ext = external_meta_file(mod_id);
+      if (!ext.empty())
+        return meta.save_file(ext);
+    }
     return meta.save(mods_dir, mod_id.toStdString());
   };
 

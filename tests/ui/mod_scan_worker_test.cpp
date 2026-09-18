@@ -526,3 +526,114 @@ TEST_CASE("mod scan worker preserves meta.bak across scans", "[ui]") {
 
   fs::remove_all(base, ec);
 }
+
+// Workspace-7tjz: Isaac-style game-dir-only mods must not lose their manager
+// state to the migration orphan sweep. A sidecar whose folder exists ONLY in
+// the external game-mods dir migrates into that folder (never to meta.bak/,
+// never as an instance stub). Rescue copies in meta.bak/ whose folder exists
+// again are restored next to the mod; copies shadowing a newer in-folder
+// meta.ini, or with no folder anywhere, stay in meta.bak/.
+TEST_CASE("mod scan worker keeps game-dir sidecars out of meta.bak", "[ui]") {
+  int test_argc = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QCoreApplication app(test_argc, test_argv);
+  (void)app;
+
+  const fs::path base = fs::current_path() / ("gmm_test_mod_scan_gamedir_" +
+                                              std::to_string(getpid()));
+  const fs::path mods_dir = base / "mods";
+  const fs::path game_mods = base / "game" / "mods";
+  const fs::path legacy_dir = base / "meta";
+  std::error_code ec;
+  fs::create_directories(mods_dir, ec);
+  fs::create_directories(legacy_dir, ec);
+  fs::create_directories(game_mods / "WorkshopMod", ec);
+
+  // Sidecar for a mod that lives only in the game-mods dir (the Isaac
+  // Steam Workshop shape): full manager state that must survive.
+  write_file(legacy_dir / "WorkshopMod.ini",
+             "[GameModManager]\nfolder=WorkshopMod\npriority=3\n"
+             "source_type=steam\nsource_id=12345\n\n[General]\ncategory=7\n");
+
+  // Buried rescue copy whose folder exists again (game-dir only).
+  write_file(base / "meta.bak" / "Buried.ini",
+             "[GameModManager]\nfolder=Buried\npriority=4\n"
+             "source_type=steam\nsource_id=999\n");
+  fs::create_directories(game_mods / "Buried", ec);
+
+  // Rescue copy shadowing a newer in-folder meta.ini: must stay buried.
+  write_file(base / "meta.bak" / "Shadowed.ini",
+             "[GameModManager]\nfolder=Shadowed\npriority=1\n");
+  fs::create_directories(game_mods / "Shadowed", ec);
+  write_file(game_mods / "Shadowed" / "meta.ini",
+             "[General]\nversion=2.0\n\n[GameModManager]\nfolder=Shadowed\n"
+             "priority=8\n");
+
+  // Rescue copy with no folder anywhere: stays in meta.bak/.
+  write_file(base / "meta.bak" / "Ghost.ini",
+             "[GameModManager]\nfolder=Ghost\npriority=1\n");
+
+  engine::GameKnowledge knowledge;
+  ui::ModScanThread thread(&app);
+  ui::ModScanWorker *worker = thread.worker();
+  std::vector<ui::ModScanResult> results;
+  QObject::connect(worker, &ui::ModScanWorker::finished, &app,
+                   [&](ui::ModScanResult result, quint64) {
+                     results.push_back(std::move(result));
+                   });
+  {
+    ui::ModScanRequest req;
+    req.knowledge = knowledge;
+    req.game_id = "testgame";
+    req.instance_root = base;
+    req.mods_dir = mods_dir;
+    req.game_mods_dir = game_mods;
+    thread.start(std::move(req), /*generation=*/1);
+  }
+  QElapsedTimer timer;
+  timer.start();
+  while (results.empty()) {
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    QThread::msleep(2);
+    if (timer.elapsed() > 10000) {
+      FAIL("scan never landed");
+    }
+  }
+
+  // The game-dir sidecar migrated next to its mod - not to meta.bak/.
+  check(!fs::exists(legacy_dir / "WorkshopMod.ini"),
+        "game-dir sidecar leaves meta/");
+  const auto moved =
+      engine::ModMeta::load_file(game_mods / "WorkshopMod" / "meta.ini");
+  check(moved.source_type() == "steam",
+        "migrated game-dir meta keeps source_type");
+  check(moved.source_id() == "12345", "migrated game-dir meta keeps source_id");
+  check(moved.get("General", "category") == "7",
+        "migrated game-dir meta keeps category");
+  check(!fs::exists(base / "meta.bak" / "WorkshopMod.ini"),
+        "game-dir mod is not swept to meta.bak/");
+  check(!fs::exists(mods_dir / "WorkshopMod"),
+        "no instance stub is created for a game-dir mod");
+
+  // The buried rescue copy is restored next to its mod.
+  check(!fs::exists(base / "meta.bak" / "Buried.ini"),
+        "restored rescue copy leaves meta.bak/");
+  const auto revived =
+      engine::ModMeta::load_file(game_mods / "Buried" / "meta.ini");
+  check(revived.source_id() == "999",
+        "restored game-dir meta keeps source_id");
+
+  // Newer in-folder state wins; the rescue copy stays for manual restore.
+  check(fs::exists(base / "meta.bak" / "Shadowed.ini"),
+        "rescue copy shadowing in-folder meta stays in meta.bak/");
+  check(engine::ModMeta::load_file(game_mods / "Shadowed" / "meta.ini")
+            .priority() == 8,
+        "in-folder meta is never overwritten by a rescue copy");
+
+  // No folder anywhere: stays buried.
+  check(fs::exists(base / "meta.bak" / "Ghost.ini"),
+        "rescue copy with no mod folder stays in meta.bak/");
+
+  fs::remove_all(base, ec);
+}
