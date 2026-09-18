@@ -294,9 +294,16 @@ bool InstallationManager::execute(Mod &mod, PipelineContext &ctx) {
     // from_default writes installationfile, write_game_metadata writes
     // installationFile.
     for (const auto& key : fresh.keys("General"))
-      if (key == "installed" || key == "version" || key == "newestVersion" ||
-          key == "installationfile" || key == "installationFile")
+      if (key == "installed" || key == "version" ||
+          key == "installationfile")
         meta.set("General", key, fresh.get("General", key));
+    // newestVersion + installationFile are NOT in fresh (from_default never
+    // writes them - they come from write_game_metadata on fresh installs),
+    // so stamp them explicitly from the manifest or they go stale on Merge.
+    if (!mod.version.empty())
+      meta.set("General", "newestVersion", mod.version);
+    if (!mod.archive_filename.empty())
+      meta.set("General", "installationFile", mod.archive_filename);
     if (existing_priority >= 0)
       meta.set_priority(existing_priority);
 
