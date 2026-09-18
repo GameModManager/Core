@@ -1588,10 +1588,20 @@ void ModList::set_folded(int row, bool folded) {
 }
 
 void ModList::set_all_separators_folded(bool folded) {
-  for (int row = 0; row < mods_.size(); ++row) {
-    if (mods_[row].is_separator)
-      set_folded(row, folded);
+  bool changed = false;
+  for (int i = 0; i < mods_.size(); ++i) {
+    if (!mods_[i].is_separator)
+      continue;
+    if (mods_[i].folded == folded)
+      continue; // already in target state
+    mods_[i].folded = folded;
+    emit dataChanged(index(i, Fold), index(i, Name), {Qt::DisplayRole});
+    changed = true;
   }
+  if (!changed)
+    return;
+  apply_fold_state(); // ONE repaint
+  emit mod_list_changed(); // ONE persistence write
 }
 
 void ModList::set_nesting_enabled(bool on) {
