@@ -67,6 +67,11 @@ struct ModEntry {
     // first), used by the category filter panel. Empty when the mod has no
     // categories assigned (or only a Nexus mapping, which contributes the
     // mapped internal id).
+    // The directory where this mod's actual game content lives. For instance
+    // mods this is empty (resolved via mods_dir_path()). For external mods
+    // (Isaac game_dir/mods/) this points to the game dir path so file open,
+    // mod info, and file manager resolve correctly.
+    QString content_dir;
     QVector<int> category_ids;
     // Installation (folder birth time) and Changed (folder last-write time).
     // 0 = unavailable (separators, Overwrite/MERGED pseudo-rows).
@@ -174,6 +179,7 @@ public:
     // MO2 FLAG_INVALID / missing-metadata markers (see ModEntry).
     void set_invalid_data(const QString& id, bool on);
     void set_no_metadata(const QString& id, bool on);
+    void set_content_dir(const QString& id, const QString& dir);
     void set_tags(const QString& id, const QVector<ModTag>& tags);
     void set_source_info(const QString& id, const QString& source_type,
                          const QString& source_id,

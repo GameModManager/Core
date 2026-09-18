@@ -29,6 +29,7 @@ public:
   void remove_selected_mods();
   void move_to_separator(const QString &mod_id, const QString &sep_id);
   void send_to_separator(const QString &mod_id);
+  void send_selected_to_separator(const QStringList &mod_ids);
   void send_to_highest_priority(const QString &id);
   void send_to_lowest_priority(const QString &id);
   void send_to_highest_in_separator(const QString &id);

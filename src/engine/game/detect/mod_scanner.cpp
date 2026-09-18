@@ -163,6 +163,9 @@ struct ScanConfig {
   // Steam Workshop tag → category mapping (JSON: {"lowercase_tag": cat_id}).
   // Empty when the game doesn't register the workshop_tag_categories hook.
   std::string workshop_tag_categories;
+  // XML element name that contains category tags in the metadata file
+  // (e.g. "tag" for Isaac's <tag id="Lua"/>). Empty = not an XML-tag game.
+  std::string metadata_tag_element;
 };
 
 // MO2's GamebryoModDataChecker::dataLooksValid analogue: a folder has valid
@@ -244,6 +247,10 @@ static ScanConfig make_scan_config(const GameKnowledge &knowledge,
   // Steam Workshop tag → category mapping (optional per-game hook)
   cfg.workshop_tag_categories =
       knowledge.get(game_id, "workshop_tag_categories", "");
+  // XML element name for category tags in metadata (e.g. "tag" for
+  // <tag id="Lua"/>). Only used when use_xml_meta is true.
+  cfg.metadata_tag_element =
+      knowledge.get(game_id, "metadata_tag_element", "");
   // Always ignore system directories during directory scanning
   cfg.ignored.emplace_back("overwrite");
   if (!cfg.metadata_file.empty() &&
@@ -419,6 +426,30 @@ scan_entry(const std::filesystem::path &entry_path, const ScanConfig &cfg,
 
         // Parse version
         mod.version = xml_find_tag(content, cfg.version_tag);
+
+        // Extract category tags from metadata XML element (e.g.
+        // <tag id="Lua"/>). The plugin declares the element name via the
+        // metadata_tag_element hook; "id" attribute values become tag
+        // names that the workshop_tag_categories hook maps to IDs.
+        if (!cfg.metadata_tag_element.empty() &&
+            !cfg.workshop_tag_categories.empty()) {
+          const std::string needle =
+              "<" + cfg.metadata_tag_element + " id=\"";
+          auto npos = std::string::size_type(0);
+          std::vector<std::string> xml_tags;
+          while ((npos = content.find(needle, npos)) !=
+                 std::string::npos) {
+            npos += needle.size();
+            auto end = content.find('"', npos);
+            if (end == std::string::npos) break;
+            xml_tags.push_back(content.substr(npos, end - npos));
+            npos = end + 1;
+          }
+          if (!xml_tags.empty()) {
+            mod.category_ids = map_workshop_tags_to_categories(
+                xml_tags, cfg.workshop_tag_categories);
+          }
+        }
       }
     }
   } else {

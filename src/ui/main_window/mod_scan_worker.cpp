@@ -124,12 +124,49 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
       std::unordered_set<std::string> existing;
       for (const auto &m : scanned)
         existing.insert(m.folder_name);
-      for (auto &m : ext_scanned)
-        if (existing.insert(m.folder_name).second)
+      int upgraded = 0;
+      for (auto &m : ext_scanned) {
+        auto it = existing.find(m.folder_name);
+        if (it == existing.end()) {
+          // New mod from external dir - set its content_dir to the external
+          // path (the actual game files live there).
+          m.content_dir = external / m.folder_name;
+          existing.insert(m.folder_name);
           scanned.push_back(std::move(m));
+        } else {
+          // Duplicate: instance version exists. When the instance version
+          // is metadata-poor (no_metadata=true) and the external version
+          // has real metadata, upgrade the instance entry with the
+          // external metadata. This handles Isaac: instance/mods/ has a
+          // stub folder with only meta.ini, while game_dir/mods/ has the
+          // real metadata.xml, content files, version, etc.
+          for (auto &inst : scanned) {
+            if (inst.folder_name != m.folder_name)
+              continue;
+            if (inst.no_metadata && !m.no_metadata) {
+              // Upgrade metadata from external scan
+              inst.display_name = m.display_name;
+              inst.raw_name = m.raw_name;
+              inst.version = m.version;
+              inst.no_metadata = false;
+              inst.invalid_data = m.invalid_data;
+              inst.has_hidden_files = m.has_hidden_files;
+              inst.is_empty = m.is_empty;
+              inst.category_ids = m.category_ids;
+              inst.workshop_id = m.workshop_id;
+              ++upgraded;
+            }
+            // Content lives in the external dir regardless of metadata.
+            // Path resolution (file open, mod info) needs this.
+            inst.content_dir = external / inst.folder_name;
+            break;
+          }
+        }
+      }
       engine::Logger::instance().debug(
           "ModScanWorker: merged external game-mods-dir scan, " +
           std::to_string(scanned.size() - kept) + " added, " +
+          std::to_string(upgraded) + " upgraded, " +
           std::to_string(scanned.size()) + " total");
     }
   }
