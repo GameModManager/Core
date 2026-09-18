@@ -509,6 +509,8 @@ TEST_CASE("pipeline", "[engine]") {
         auto merged = ModMeta::load_file(mods / "Versioned Mod" / "meta.ini");
         REQUIRE(merged.version() == "2.0");
         REQUIRE(merged.get("General", "installationfile") == "mod-2.0.zip");
+        REQUIRE(merged.get("General", "newestVersion") == "2.0");
+        REQUIRE(merged.get("General", "installationFile") == "mod-2.0.zip");
         std::printf("PASS: pipeline_test — reinstall (Merge) refreshes version from the manifest\n");
     }
 
