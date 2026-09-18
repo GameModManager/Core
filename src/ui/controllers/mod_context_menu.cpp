@@ -123,6 +123,13 @@ void ModContextMenu::setup_mod_list_context_menu() {
                 QObject::tr("Reset Color"), w_,
                 [this]() { actions_->reset_color_for_selected(); });
           }
+          menu.addSeparator();
+          menu.addAction(QObject::tr("Expand All Separators"), [this]() {
+            w_->mod_model_->set_all_separators_folded(false);
+          });
+          menu.addAction(QObject::tr("Collapse All Separators"), [this]() {
+            w_->mod_model_->set_all_separators_folded(true);
+          });
           menu.exec(w_->mod_view_->viewport()->mapToGlobal(pos));
           return;
         }
