@@ -74,6 +74,17 @@ struct ModEntry {
     qint64 changed_ts = 0;
 };
 
+// Phantom rows (Workspace-pmrh H1/H2): Overwrite, +MERGED, and game-native
+// rows have no folder under mods_dir. Writing per-mod meta.ini for them
+// mkdirs mods/{id}/, which the next scan picks up as a real mod. Any path
+// that persists meta must skip these rows. Separators are NOT phantoms:
+// _separator folders are real and carry priority/folded state.
+inline bool is_phantom_row(const ModEntry &e) {
+    return e.is_overwrite || e.is_merged || e.is_game_native ||
+           e.id == QLatin1String(kOverwriteModId) ||
+           e.id == QLatin1String(kMergedModId);
+}
+
 struct ConflictPairs {
     QStringList wins_against;
     QStringList loses_to;

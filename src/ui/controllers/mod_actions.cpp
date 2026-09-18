@@ -72,12 +72,12 @@ bool write_separator_color_file(const std::filesystem::path &mod_dir,
   return out.good();
 }
 
-// Remove the manager sidecar for a mod id (delete cleanup). Logs on failure;
+// Remove the mod's in-folder meta.ini (delete cleanup). Logs on failure;
 // never silently swallows a filesystem error.
-void remove_sidecar(const std::filesystem::path &meta_dir, const QString &id) {
-  if (meta_dir.empty())
+void remove_sidecar(const std::filesystem::path &mods_dir, const QString &id) {
+  if (mods_dir.empty())
     return;
-  auto path = meta_dir / (id.toStdString() + ".ini");
+  auto path = mods_dir / id.toStdString() / "meta.ini";
   std::error_code ec;
   if (std::filesystem::exists(path, ec)) {
     std::filesystem::remove(path, ec);
@@ -138,7 +138,7 @@ void ModActions::remove_selected_mods() {
   auto mods_subpath = w_->knowledge_ ? w_->knowledge_->get(w_->current_game_id_,
                                                            "mods_subpath", "")
                                      : std::string();
-  auto meta_dir = w_->meta_dir_path();
+  auto mods_dir = w_->mods_dir_path();
 
   for (const auto &idx : sel) {
     int r = idx.row();
@@ -157,10 +157,10 @@ void ModActions::remove_selected_mods() {
             "Failed to move mod folder to trash: " + mod_folder.string());
       }
     }
-    // Delete cleanup: drop the manager sidecar so a removed mod leaves no
-    // orphaned metadata. Children's parent_id is cleared by the model detach
-    // and rewritten by sync_mod_ui_state() via mod_list_changed.
-    remove_sidecar(meta_dir, entry.id);
+    // Delete cleanup: drop the mod's in-folder meta.ini so a removed mod
+    // leaves no orphaned metadata. Children's parent_id is cleared by the
+    // model detach and rewritten by sync_mod_ui_state() via mod_list_changed.
+    remove_sidecar(mods_dir, entry.id);
     w_->mod_model_->remove_mod(entry.id);
   }
 }
@@ -649,19 +649,14 @@ void ModActions::apply_rename(int row, const QString &name) {
     }
   }
 
-  // Move the instance-meta sidecar along with the folder so source/separator
-  // info isn't lost; keep its [GameModManager] folder key in sync.
-  auto meta_dir = w_->meta_dir_path();
-  if (!meta_dir.empty()) {
-    auto old_meta = meta_dir / (entry.id.toStdString() + ".ini");
-    auto new_meta = meta_dir / (new_id.toStdString() + ".ini");
-    if (std::filesystem::exists(old_meta, ec)) {
-      std::filesystem::rename(old_meta, new_meta, ec);
-      if (!ec) {
-        auto meta = engine::ModMeta::load(meta_dir, new_id.toStdString());
-        meta.set("GameModManager", "folder", new_id.toStdString());
-        meta.save(meta_dir, new_id.toStdString());
-      }
+  // The folder moved, so the in-folder meta.ini moved with it - just
+  // re-stamp its [GameModManager] folder key to the new id.
+  if (!mods_dir.empty()) {
+    auto meta_path = mods_dir / new_id.toStdString() / "meta.ini";
+    if (std::filesystem::exists(meta_path, ec)) {
+      auto meta = engine::ModMeta::load(mods_dir, new_id.toStdString());
+      meta.set("GameModManager", "folder", new_id.toStdString());
+      meta.save(mods_dir, new_id.toStdString());
     }
   }
 
@@ -702,10 +697,10 @@ void ModActions::delete_separator(int row) {
     }
   }
 
-  // Delete cleanup: drop the manager sidecar. Children of the separator are
-  // detached by the model (parent_id cleared) and their sidecars rewritten by
-  // sync_mod_ui_state() via mod_list_changed.
-  remove_sidecar(w_->meta_dir_path(), mod.id);
+  // Delete cleanup: drop the mod's in-folder meta.ini. Children of the
+  // separator are detached by the model (parent_id cleared) and their
+  // in-folder metas rewritten by sync_mod_ui_state() via mod_list_changed.
+  remove_sidecar(w_->mods_dir_path(), mod.id);
   w_->mod_model_->remove_mod(mod.id);
   engine::Logger::instance().debug("Separator deleted: " +
                                    mod.name.toStdString());

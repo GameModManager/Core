@@ -33,7 +33,9 @@ struct ModScanRequest {
     std::filesystem::path game_mods_dir;
     std::filesystem::path instance_root; // empty = portable (no-instance) mode
     std::filesystem::path mods_dir;      // resolved mods_dir_path() (instance or game)
-    std::filesystem::path meta_dir;      // resolved meta_dir_path(), empty in portable mode
+    // NOTE: per-mod meta.ini lives in-folder at mods/{folder}/meta.ini
+    // (MO2-compatible). Legacy sidecars ({instance_root}/meta/*.ini) are
+    // migrated by ModScanWorker::run from instance_root, no path needed.
     // Direct-symlink deploy ledger (<instance>/.gmm_deploy_ledger). The stray
     // plugin scan consults it so files we deployed ourselves are never
     // synthesized as unmanaged rows. Empty = no ledger (portable mode, or the

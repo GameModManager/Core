@@ -73,7 +73,7 @@ static bool wait_for(const std::function<bool()>& pred, int timeout_ms = 5000) {
 
 static ui::ModInfoData make_data(const std::string& id,
                                  std::function<engine::ModInfoResult()> fetch,
-                                 const std::filesystem::path& meta_dir) {
+                                 const std::filesystem::path& mods_dir) {
     ui::ModInfoData data;
     data.id = QString::fromStdString(id);
     data.name = QString::fromStdString(id);
@@ -87,18 +87,18 @@ static ui::ModInfoData make_data(const std::string& id,
     data.nexus_domain = QStringLiteral("testgame");
     data.supported_sources = QStringList{QStringLiteral("Test Nexus")};
     data.fetch_nexus_info = std::move(fetch);
-    data.load_meta = [meta_dir, id] {
-        return engine::ModMeta::load(meta_dir, id);
+    data.load_meta = [mods_dir, id] {
+        return engine::ModMeta::load(mods_dir, id);
     };
-    data.save_meta = [meta_dir, id](const engine::ModMeta& m) {
-        return m.save(meta_dir, id);
+    data.save_meta = [mods_dir, id](const engine::ModMeta& m) {
+        return m.save(mods_dir, id);
     };
     return data;
 }
 
 // Helper for the manual-mod fixtures used in the single-source tests.
 static ui::ModInfoData make_manual_data(const std::string& id,
-                                        const std::filesystem::path& meta_dir) {
+                                        const std::filesystem::path& mods_dir) {
     ui::ModInfoData data;
     data.id = QString::fromStdString(id);
     data.name = QString::fromStdString(id);
@@ -106,11 +106,11 @@ static ui::ModInfoData make_manual_data(const std::string& id,
     data.source_id = QString();
     data.nexus_domain = QString();
     data.supported_sources = QStringList{QStringLiteral("Test Nexus")};
-    data.load_meta = [meta_dir, id] {
-        return engine::ModMeta::load(meta_dir, id);
+    data.load_meta = [mods_dir, id] {
+        return engine::ModMeta::load(mods_dir, id);
     };
-    data.save_meta = [meta_dir, id](const engine::ModMeta& m) {
-        return m.save(meta_dir, id);
+    data.save_meta = [mods_dir, id](const engine::ModMeta& m) {
+        return m.save(mods_dir, id);
     };
     return data;
 }
@@ -129,8 +129,8 @@ TEST_CASE("source tab", "[ui]") {
     QCoreApplication::setApplicationName("GameModManager");
 
     const std::filesystem::path instance = "/tmp/gmm_source_tab/instances/Test";
-    const std::filesystem::path meta_dir = instance / "meta";
-    std::filesystem::create_directories(meta_dir);
+    const std::filesystem::path mods_dir = instance / "mods";
+    std::filesystem::create_directories(mods_dir);
 
     engine::SourceRegistry::instance().register_provider(
         std::make_unique<FakeNexusProvider>());
@@ -154,7 +154,7 @@ TEST_CASE("source tab", "[ui]") {
                                    r.description = "Fetched description";
                                    return r;
                                },
-                               meta_dir);
+                               mods_dir);
         tab.set_current(data1);
         tab.set_mod(data1);
         tab.first_activation();
@@ -173,7 +173,7 @@ TEST_CASE("source tab", "[ui]") {
         refresh->click();
 
         const bool landed = wait_for([&] {
-            return engine::ModMeta::load(meta_dir, "ModA")
+            return engine::ModMeta::load(mods_dir, "ModA")
                        .get("Nexusmods", "nexusdescription") ==
                    "Fetched description";
         });
@@ -218,7 +218,7 @@ TEST_CASE("source tab", "[ui]") {
                                                     : "first result";
                                    return r;
                                },
-                               meta_dir);
+                               mods_dir);
         tab.set_current(data2);
         tab.set_mod(data2);
         tab.first_activation();
@@ -248,14 +248,14 @@ TEST_CASE("source tab", "[ui]") {
         // follow-up fetch launched with the newer generation.
         gate.release();
         const bool landed = wait_for([&] {
-            return engine::ModMeta::load(meta_dir, "ModB")
+            return engine::ModMeta::load(mods_dir, "ModB")
                        .get("Nexusmods", "nexusdescription") == "second result";
         });
         check(landed,
               "second refresh supersedes the first (stale result dropped)");
         check(on_worker, "superseded fetch also ran on the worker thread");
         check(calls == 2, "coalesced: exactly two fetches, no third");
-        check(engine::ModMeta::load(meta_dir, "ModB")
+        check(engine::ModMeta::load(mods_dir, "ModB")
                       .get("Nexusmods", "nexusdescription") ==
                   "second result",
               "meta holds only the newer result (no torn write)");
@@ -309,8 +309,8 @@ TEST_CASE("source tab has_data and single source", "[ui]") {
 
     const std::filesystem::path instance =
         "/tmp/gmm_source_tab_union/instances/Test";
-    const std::filesystem::path meta_dir = instance / "meta";
-    std::filesystem::create_directories(meta_dir);
+    const std::filesystem::path mods_dir = instance / "mods";
+    std::filesystem::create_directories(mods_dir);
 
     // Register the same fake Nexus provider the other scenario uses so
     // find_provider() can match "Test Nexus".
@@ -324,9 +324,9 @@ TEST_CASE("source tab has_data and single source", "[ui]") {
         engine::ModMeta manual;
         manual.set("General", "version", "1.0");
         manual.set("GameModManager", "source_type", "manual");
-        manual.save(meta_dir, "ManualMod");
+        manual.save(mods_dir, "ManualMod");
 
-        auto data = make_manual_data("ManualMod", meta_dir);
+        auto data = make_manual_data("ManualMod", mods_dir);
 
         ui::SourceTab tab;
         tab.set_current(data);
@@ -361,7 +361,7 @@ TEST_CASE("source tab has_data and single source", "[ui]") {
         nexus_mod.set("GameModManager", "source_type", "nexus");
         nexus_mod.set("GameModManager", "source_id", "12345");
         nexus_mod.set("Nexusmods", "modid", "12345");
-        nexus_mod.save(meta_dir, "NexusMod");
+        nexus_mod.save(mods_dir, "NexusMod");
 
         ui::ModInfoData data;
         data.id = QStringLiteral("NexusMod");
@@ -370,11 +370,11 @@ TEST_CASE("source tab has_data and single source", "[ui]") {
         data.source_id = QStringLiteral("12345");
         data.nexus_domain = QStringLiteral("testgame");
         data.supported_sources = QStringList{QStringLiteral("Test Nexus")};
-        data.load_meta = [meta_dir] {
-            return engine::ModMeta::load(meta_dir, "NexusMod");
+        data.load_meta = [mods_dir] {
+            return engine::ModMeta::load(mods_dir, "NexusMod");
         };
-        data.save_meta = [meta_dir](const engine::ModMeta& m) {
-            return m.save(meta_dir, "NexusMod");
+        data.save_meta = [mods_dir](const engine::ModMeta& m) {
+            return m.save(mods_dir, "NexusMod");
         };
 
         ui::SourceTab tab;
@@ -402,9 +402,9 @@ TEST_CASE("source tab has_data and single source", "[ui]") {
         fake.set("General", "version", "1.0");
         fake.set("GameModManager", "source_type", "manual");
         fake.set("Nexusmods", "modid", "0");
-        fake.save(meta_dir, "ZeroModidMod");
+        fake.save(mods_dir, "ZeroModidMod");
 
-        auto data = make_manual_data("ZeroModidMod", meta_dir);
+        auto data = make_manual_data("ZeroModidMod", mods_dir);
 
         ui::SourceTab tab;
         tab.set_current(data);
@@ -451,8 +451,8 @@ TEST_CASE("source tab add source flow", "[ui]") {
 
     const std::filesystem::path instance =
         "/tmp/gmm_source_tab_add/instances/Test";
-    const std::filesystem::path meta_dir = instance / "meta";
-    std::filesystem::create_directories(meta_dir);
+    const std::filesystem::path mods_dir = instance / "mods";
+    std::filesystem::create_directories(mods_dir);
 
     engine::SourceRegistry::instance().register_provider(
         std::make_unique<FakeNexusProvider>());
@@ -461,9 +461,9 @@ TEST_CASE("source tab add source flow", "[ui]") {
     engine::ModMeta initial;
     initial.set("General", "version", "1.0");
     initial.set("GameModManager", "source_type", "manual");
-    initial.save(meta_dir, "AddSourceMod");
+    initial.save(mods_dir, "AddSourceMod");
 
-    auto data = make_manual_data("AddSourceMod", meta_dir);
+    auto data = make_manual_data("AddSourceMod", mods_dir);
 
     ui::SourceTab tab;
     tab.set_current(data);
@@ -497,7 +497,7 @@ TEST_CASE("source tab add source flow", "[ui]") {
 
     // After the add-source flow: meta carries Nexus provenance, tab
     // shows Nexus panel + "+" (not Manual), and Nexus panel has_data().
-    auto loaded = engine::ModMeta::load(meta_dir, "AddSourceMod");
+    auto loaded = engine::ModMeta::load(mods_dir, "AddSourceMod");
     check(loaded.get("GameModManager", "source_type") == "nexus",
           "after add: meta source_type is nexus");
     check(loaded.get("Nexusmods", "modid") == "99999",

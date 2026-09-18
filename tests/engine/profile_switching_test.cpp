@@ -67,13 +67,12 @@ void write_esp(const fs::path &path) {
 // Build a plugin database with two plugins (Alpha.esp, Beta.esp) from a fake
 // game dir. The DB is the live plugin state the switcher saves/restores.
 engine::PluginDatabase make_plugin_db(const fs::path &game_dir,
-                                      const fs::path &mods_dir,
-                                      const fs::path &meta_dir) {
+                                      const fs::path &mods_dir) {
   fs::create_directories(game_dir / "Data");
   write_esp(game_dir / "Data" / "Alpha.esp");
   write_esp(game_dir / "Data" / "Beta.esp");
   engine::PluginDatabase db;
-  REQUIRE(db.refresh(game_dir, mods_dir, meta_dir, "", ""));
+  REQUIRE(db.refresh(game_dir, mods_dir, "", ""));
   db.sort_load_order();
   db.set_all_enabled();
   db.generate_mod_indexes();
@@ -419,10 +418,8 @@ TEST_CASE("switch_profile saves and restores plugin state via PluginDatabase",
   const auto profiles_dir = root / "profiles";
   const auto game_dir = root / "game";
   const auto mods_dir = root / "mods";
-  const auto meta_dir = root / "meta";
   fs::create_directories(profiles_dir);
   fs::create_directories(mods_dir);
-  fs::create_directories(meta_dir);
 
   auto a = engine::profile::create_fresh_profile(profiles_dir, "Alpha");
   auto b = engine::profile::create_fresh_profile(profiles_dir, "Beta");
@@ -430,7 +427,7 @@ TEST_CASE("switch_profile saves and restores plugin state via PluginDatabase",
   REQUIRE(b.success);
 
   // Live plugin DB: both plugins enabled, Alpha.esp first.
-  auto db = make_plugin_db(game_dir, mods_dir, meta_dir);
+  auto db = make_plugin_db(game_dir, mods_dir);
   REQUIRE(db.plugins().size() == 2);
   REQUIRE(db.set_enabled("Beta.esp", false)); // Beta disabled in Alpha
 

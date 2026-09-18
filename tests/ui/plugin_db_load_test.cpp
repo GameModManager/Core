@@ -103,11 +103,9 @@ TEST_CASE("plugin db load", "[ui]") {
     const fs::path game_dir = base / "game";
     const fs::path data_dir = game_dir / "Data";
     const fs::path mods_dir = base / "mods";
-    const fs::path meta_dir = base / "meta";
     std::error_code ec;
     fs::create_directories(data_dir, ec);
     fs::create_directories(mods_dir, ec);
-    fs::create_directories(meta_dir, ec);
 
     // Game-native plugins: one .esm with a master (Skyrim.esm), one .esl, plus
     // a handful of extra vanilla files so the load is a real disk read (the
@@ -170,7 +168,6 @@ TEST_CASE("plugin db load", "[ui]") {
     ui::PluginDbLoadRequest req;
     req.game_dir = game_dir;
     req.mods_dir = mods_dir;
-    req.meta_dir = meta_dir;
     req.disable_mechanism = "disable.it";
     req.game_native = game_native;
 
@@ -239,7 +236,6 @@ TEST_CASE("plugin db load", "[ui]") {
         ui::PluginDbLoadRequest req2;
         req2.game_dir = game_dir;
         req2.mods_dir = mods_dir;
-        req2.meta_dir = meta_dir;
         req2.disable_mechanism = "disable.it";
         req2.game_native = game_native;
 

@@ -456,7 +456,7 @@ bool deploy_impl(const path &mods_dir, const path &deploy_root,
     }
     auto tree =
         DirectoryFileTree::make_tree(mod_dir, NameCompare::CaseInsensitive,
-                                     /*ignore_meta_ini=*/false);
+                                     /*ignore_meta_ini=*/true);
     tree->walk([&](const std::string &prefix,
                    const FileTree::const_reference &entry) {
       if (!entry->is_file()) {

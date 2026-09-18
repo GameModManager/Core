@@ -165,26 +165,26 @@ bool write_separator_color_file(const std::filesystem::path &mod_dir,
   return out.good();
 }
 
-// Per-row UI state persisted in the manager sidecar
-// ({instance_root}/meta/{folder_name}.ini, [GameModManager] section):
+// Per-row UI state persisted in the mod's in-folder meta.ini
+// ({instance_root}/mods/{folder_name}/meta.ini, [GameModManager] section):
 // folded (tree-view collapse) and parent_id (visual-nesting link; absent =
-// top-level). The sidecar is the single source of truth for these fields;
-// instance.toml's legacy folded_separators/folded_mods/mod_parents are only
-// a one-release read-compat fallback (migrated into the sidecar on load).
+// top-level). The in-folder file is the single source of truth for these
+// fields; instance.toml's legacy folded_separators/folded_mods/mod_parents
+// are only a one-release read-compat fallback (migrated in on load).
 struct SidecarUiState {
-  engine::ModMeta meta; // loaded sidecar (empty when no file exists)
+  engine::ModMeta meta; // loaded in-folder meta (empty when no file exists)
   bool has_folded = false;
   bool folded = false;
   bool has_parent = false;
   QString parent_id;
 };
 
-SidecarUiState load_sidecar_ui_state(const std::filesystem::path &meta_dir,
+SidecarUiState load_sidecar_ui_state(const std::filesystem::path &mods_dir,
                                      const QString &id) {
   SidecarUiState out;
-  if (meta_dir.empty())
+  if (mods_dir.empty())
     return out;
-  out.meta = engine::ModMeta::load(meta_dir, id.toStdString());
+  out.meta = engine::ModMeta::load(mods_dir, id.toStdString());
   for (const auto &key : out.meta.keys("GameModManager")) {
     if (key == "folded") {
       out.has_folded = true;
@@ -200,12 +200,12 @@ SidecarUiState load_sidecar_ui_state(const std::filesystem::path &meta_dir,
   return out;
 }
 
-// Remove the manager sidecar for a mod id (delete cleanup). Logs on failure;
+// Remove the mod's in-folder meta.ini (delete cleanup). Logs on failure;
 // never silently swallows a filesystem error.
-void remove_sidecar(const std::filesystem::path &meta_dir, const QString &id) {
-  if (meta_dir.empty())
+void remove_sidecar(const std::filesystem::path &mods_dir, const QString &id) {
+  if (mods_dir.empty())
     return;
-  auto sidecar = meta_dir / (id.toStdString() + ".ini");
+  auto sidecar = mods_dir / id.toStdString() / "meta.ini";
   std::error_code ec;
   if (std::filesystem::exists(sidecar, ec) &&
       !std::filesystem::remove(sidecar, ec)) {
@@ -1017,9 +1017,9 @@ void ModListController::sync_mod_enable_state(const QString &mod_id,
 void ModListController::sync_priorities() {
   if (w_->loading_)
     return;
-  // Instance-owned persistence: priorities go to the meta sidecars (and the
-  // game-native metadata write below self-guards on mods_subpath), so no
-  // game dir is required (Workspace-tnj).
+  // Instance-owned persistence: priorities go to the mods' in-folder
+  // meta.ini files (and the game-native metadata write below self-guards
+  // on mods_subpath), so no game dir is required (Workspace-tnj).
   if (!w_->knowledge_ || w_->current_game_id_.empty())
     return;
 
@@ -1028,19 +1028,28 @@ void ModListController::sync_priorities() {
     return;
   }
 
-  auto meta_dir = w_->meta_dir_path();
+  auto mods_dir = w_->mods_dir_path();
   auto mods_subpath =
       w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "");
 
   auto &mods = w_->mod_model_->mods();
   for (int i = 0; i < mods.size(); ++i) {
-    // Persist priority to meta.ini for every row (Overwrite, separators, mods)
-    if (!meta_dir.empty()) {
-      auto meta = engine::ModMeta::load(meta_dir, mods[i].id.toStdString());
+    // Persist priority to the mod's in-folder meta.ini. Phantom rows
+    // (Overwrite/MERGED/game-native) have no folder under mods_dir - saving
+    // for them would mkdir mods/{id}/ and the next scan would list it as a
+    // real mod (Workspace-pmrh H1). Separators are real folders: kept.
+    // The is_directory check is belt-and-braces for future row kinds.
+    std::error_code dir_ec;
+    const bool persistable =
+        !mods_dir.empty() && !is_phantom_row(mods[i]) &&
+        std::filesystem::is_directory(mods_dir / mods[i].id.toStdString(),
+                                      dir_ec);
+    if (persistable) {
+      auto meta = engine::ModMeta::load(mods_dir, mods[i].id.toStdString());
       int old_priority = meta.priority();
       if (old_priority != i) {
         meta.set_priority(i);
-        meta.save(meta_dir, mods[i].id.toStdString());
+        meta.save(mods_dir, mods[i].id.toStdString());
         // P1.3 event bus: mirror MO2 onModMoved - fired only for real
         // moves, on the UI thread, after the priority persisted.
         if (old_priority >= 0 && !mods[i].is_overwrite &&
@@ -1058,7 +1067,7 @@ void ModListController::sync_priorities() {
     // Write game-native priority - resolve actual mod folder location.
     // Only games that encode priority into mod-folder metadata (Isaac's
     // NNN prefix in metadata.xml, read by the game itself) get a folder
-    // write; MO2-style games persist priority in the meta dir sidecar
+    // write; MO2-style games persist priority in the in-folder meta.ini
     // above and read load order from their plugins.txt / order encoding.
     if (!mods[i].is_overwrite && !mods[i].is_separator &&
         !mods_subpath.empty()) {
@@ -1248,7 +1257,6 @@ ui::ModScanRequest ModListController::build_mod_scan_request() {
   request.game_mods_dir = w_->current_game_mods_dir();
   request.instance_root = w_->current_instance_root_;
   request.mods_dir = w_->mods_dir_path();
-  request.meta_dir = w_->meta_dir_path();
   // Direct-symlink deploys persist their ledger at the instance root; the
   // stray-plugin scan consults it so deployed .esp files are not synthesized
   // as unmanaged rows. Empty in portable mode (no instance -> no deploy).
@@ -1279,7 +1287,6 @@ void ModListController::launch_plugin_db_preload() {
   ui::PluginDbLoadRequest request;
   request.game_dir = w_->current_game_dir_;
   request.mods_dir = w_->mods_dir_path();
-  request.meta_dir = w_->meta_dir_path();
   request.disable_mechanism =
       engine::disable_mechanism_for(*w_->knowledge_, w_->current_game_id_);
   request.game_native = game_native;
@@ -1403,8 +1410,8 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
   // highest regular priority, just above the pinned Overwrite/MERGED rows.
   // set_priority() only writes the field; load_order() applies it.
   {
-    auto meta_dir = w_->meta_dir_path();
-    if (!meta_dir.empty()) {
+    auto mods_dir = w_->mods_dir_path();
+    if (!mods_dir.empty()) {
       // Game-native (unmanaged) mods own the top band, but a separator
       // may sit ABOVE it (its fold hides the native mods): that
       // separator keeps its persisted priority and the band shifts down
@@ -1414,7 +1421,7 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
       for (const auto &m : w_->mod_model_->mods()) {
         if (!m.is_separator)
           continue;
-        auto sep_meta = engine::ModMeta::load(meta_dir, m.id.toStdString());
+        auto sep_meta = engine::ModMeta::load(mods_dir, m.id.toStdString());
         int sp = sep_meta.priority();
         if (sp >= 0)
           sep_priorities.insert(sp);
@@ -1439,7 +1446,7 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
       for (const auto &m : w_->mod_model_->mods()) {
         if (m.is_game_native)
           continue;
-        auto meta = engine::ModMeta::load(meta_dir, m.id.toStdString());
+        auto meta = engine::ModMeta::load(mods_dir, m.id.toStdString());
         int p = meta.priority();
         if (p < 0)
           p = bottom_priority;
@@ -1648,8 +1655,8 @@ void ModListController::add_installed_mod(const std::string &folder_name) {
 }
 
 void ModListController::load_meta_for_mods() {
-  auto meta_dir = w_->meta_dir_path();
-  if (meta_dir.empty())
+  auto mods_dir = w_->mods_dir_path();
+  if (mods_dir.empty())
     return;
 
   // Workshop ID pattern - used to detect Steam Workshop mods from folder names
@@ -1666,15 +1673,22 @@ void ModListController::load_meta_for_mods() {
   auto mods = w_->mod_model_->mods();
   for (int i = 0; i < mods.size(); ++i) {
     const auto &mod = mods[i];
-    if (mod.is_separator || mod.is_overwrite)
+    if (mod.is_separator || is_phantom_row(mod))
       continue;
 
     auto folder_name = mod.id.toStdString();
     if (folder_name.empty())
       continue;
 
+    // Phantom-row flags cover the known pseudo rows, but never mkdir here
+    // for a folder that is not on disk: a save below would promote a stale
+    // row into a real mod on the next scan (Workspace-pmrh H2).
+    std::error_code dir_ec;
+    if (!std::filesystem::is_directory(mods_dir / folder_name, dir_ec))
+      continue;
+
     // Load existing meta (or empty if no file yet)
-    auto meta = engine::ModMeta::load(meta_dir, folder_name);
+    auto meta = engine::ModMeta::load(mods_dir, folder_name);
 
     if (!meta.has_section("General") && !meta.has_section("GameModManager")) {
       // No meta file exists - create a default one (already at
@@ -1694,7 +1708,7 @@ void ModListController::load_meta_for_mods() {
         }
       }
       meta = engine::ModMeta::from_default(folder_name, source_type, source_id);
-      meta.save(meta_dir, folder_name);
+      meta.save(mods_dir, folder_name);
 
     } else {
       // Existing meta - check if upgrade is needed
@@ -1778,7 +1792,7 @@ void ModListController::load_meta_for_mods() {
       }
 
       if (upgraded) {
-        meta.save(meta_dir, folder_name);
+        meta.save(mods_dir, folder_name);
       }
     }
 
@@ -1860,7 +1874,7 @@ void ModListController::load_meta_for_mods() {
                   id_strs << QString::number(cid);
                 meta.set("General", "category",
                          id_strs.join(QLatin1Char(',')).toStdString());
-                meta.save(meta_dir, folder_name);
+                meta.save(mods_dir, folder_name);
                 if (primary <= 0 && !category_ids.isEmpty())
                   primary = category_ids.first();
               }
@@ -2350,16 +2364,16 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
                                 std::move(owner_list));
   }
 
-  // Persistence: GMM's canonical sidecar meta file (the same one the rest of
-  // MainWindow reads/writes). Not the MO2-visible mods/<id>/meta.ini - tabs
-  // use GMM-canonical keys ([Nexusmods] etc.) and rewriting an MO2-format
-  // file with them would corrupt MO2 compatibility for imported mods.
-  const auto meta_dir = w_->meta_dir_path();
-  data.load_meta = [meta_dir, mod_id = mod.id]() {
-    return engine::ModMeta::load(meta_dir, mod_id.toStdString());
+  // Persistence: the mod's in-folder meta.ini (mods/<id>/meta.ini,
+  // MO2-compatible - the same file the rest of MainWindow reads/writes).
+  // Tabs use GMM-canonical keys ([Nexusmods] etc.); MO2 ignores the unknown
+  // sections it does not understand.
+  const auto mods_dir = w_->mods_dir_path();
+  data.load_meta = [mods_dir, mod_id = mod.id]() {
+    return engine::ModMeta::load(mods_dir, mod_id.toStdString());
   };
-  data.save_meta = [meta_dir, mod_id = mod.id](const engine::ModMeta &meta) {
-    return meta.save(meta_dir, mod_id.toStdString());
+  data.save_meta = [mods_dir, mod_id = mod.id](const engine::ModMeta &meta) {
+    return meta.save(mods_dir, mod_id.toStdString());
   };
 
   // Actions wired to MainWindow.
@@ -2425,11 +2439,11 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
   // old (empty) id until the dialog is closed and reopened (Workspace-xdld).
   const QString domain = data.nexus_domain;
   const QString src_id = mod.source_id;
-  data.fetch_nexus_info = [domain, src_id, meta_dir, mod_id = mod.id]() {
+  data.fetch_nexus_info = [domain, src_id, mods_dir, mod_id = mod.id]() {
     QString live_id = src_id;
-    if (!meta_dir.empty()) {
+    if (!mods_dir.empty()) {
       const QString sidecar_id = QString::fromStdString(
-          engine::ModMeta::load(meta_dir, mod_id.toStdString()).source_id());
+          engine::ModMeta::load(mods_dir, mod_id.toStdString()).source_id());
       if (!sidecar_id.isEmpty())
         live_id = sidecar_id;
     }
@@ -2450,13 +2464,13 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
   // are re-read from the sidecar at fetch time (Workspace-xdld).
   const QString ll_src_id = mod.source_id;
   const QString ll_page_url = mod.source_page_url;
-  data.fetch_loverslab_info = [ll_src_id, ll_page_url, meta_dir,
+  data.fetch_loverslab_info = [ll_src_id, ll_page_url, mods_dir,
                                mod_id = mod.id]() {
     QString live_id = ll_src_id;
     QString live_url = ll_page_url;
-    if (!meta_dir.empty()) {
+    if (!mods_dir.empty()) {
       const auto meta =
-          engine::ModMeta::load(meta_dir, mod_id.toStdString());
+          engine::ModMeta::load(mods_dir, mod_id.toStdString());
       const QString sidecar_id =
           QString::fromStdString(meta.source_id());
       if (!sidecar_id.isEmpty())
@@ -2484,13 +2498,13 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
   // re-read from the sidecar at fetch time (Workspace-xdld).
   const QString mp_src_id = mod.source_id;
   const QString mp_page_url = mod.source_page_url;
-  data.fetch_modpub_info = [mp_src_id, mp_page_url, meta_dir,
+  data.fetch_modpub_info = [mp_src_id, mp_page_url, mods_dir,
                             mod_id = mod.id]() {
     QString live_id = mp_src_id;
     QString live_url = mp_page_url;
-    if (!meta_dir.empty()) {
+    if (!mods_dir.empty()) {
       const auto meta =
-          engine::ModMeta::load(meta_dir, mod_id.toStdString());
+          engine::ModMeta::load(mods_dir, mod_id.toStdString());
       const QString sidecar_id =
           QString::fromStdString(meta.source_id());
       if (!sidecar_id.isEmpty())
@@ -2632,7 +2646,7 @@ void ModListController::refresh_plugins_tab() {
     const auto disable_mechanism =
         engine::disable_mechanism_for(*w_->knowledge_, w_->current_game_id_);
     w_->plugins_db_.refresh(w_->current_game_dir_, w_->mods_dir_path(),
-                            w_->meta_dir_path(), disable_mechanism,
+                            disable_mechanism,
                             game_native);
     w_->plugins_db_.load_creation_club(
         w_->current_game_dir_,
@@ -3518,7 +3532,7 @@ void ModListController::load_order() {
   // into the sidecar here (self-healing). save_order() strips the legacy
   // keys on the next write. Pseudo-rows (Overwrite/MERGED/game-native)
   // never persist fold/parent.
-  auto meta_dir = w_->meta_dir_path();
+  auto mods_dir = w_->mods_dir_path();
   // id -> {folded, parent_id} effective values (sidecar wins, legacy fills
   // the gaps for one release).
   QHash<QString, std::pair<bool, QString>> ui_state;
@@ -3526,7 +3540,7 @@ void ModListController::load_order() {
   for (auto &m : mods) {
     if (m.is_overwrite || m.is_merged || m.is_game_native)
       continue;
-    auto st = load_sidecar_ui_state(meta_dir, m.id);
+    auto st = load_sidecar_ui_state(mods_dir, m.id);
     bool folded = false;
     QString parent;
     bool row_migrated = false;
@@ -3559,7 +3573,7 @@ void ModListController::load_order() {
       }
     }
     if (row_migrated) {
-      if (st.meta.save(meta_dir, m.id.toStdString())) {
+      if (st.meta.save(mods_dir, m.id.toStdString())) {
         migrated = true;
       } else {
         engine::Logger::instance().error(
@@ -3703,38 +3717,6 @@ void ModListController::load_order() {
   // Ensure apply_fold_state() reflects current flags
   w_->mod_model_->apply_fold_state();
 
-  // Delete cleanup (self-healing): drop orphaned sidecars - files in the
-  // meta dir whose mod folder no longer exists in the model (deleted outside
-  // the manager, or rows removed while it was closed). Pseudo-row sidecars
-  // (Overwrite/MERGED, created by sync_priorities) are kept. Children of a
-  // deleted row get their parent_id cleared by the model's detach path, then
-  // rewritten by sync_mod_ui_state().
-  {
-    std::error_code ec;
-    if (!meta_dir.empty() && std::filesystem::exists(meta_dir, ec)) {
-      QSet<QString> valid_ids;
-      for (const auto &m : w_->mod_model_->mods())
-        valid_ids.insert(m.id);
-      for (const auto &entry :
-           std::filesystem::directory_iterator(meta_dir, ec)) {
-        std::error_code entry_ec;
-        if (!entry.is_regular_file(entry_ec))
-          continue;
-        auto fname = entry.path().filename().string();
-        if (fname.size() < 5 || fname.compare(fname.size() - 4, 4, ".ini") != 0)
-          continue;
-        auto folder = QString::fromStdString(fname.substr(0, fname.size() - 4));
-        if (valid_ids.contains(folder))
-          continue;
-        std::error_code remove_ec;
-        if (std::filesystem::remove(entry.path(), remove_ec)) {
-          engine::Logger::instance().debug("Removed orphaned sidecar: " +
-                                           entry.path().string());
-        }
-      }
-    }
-  }
-
   // Restore toolbar shortcuts (Issue #34): pins are game-relative paths
   // referencing the executables list. Legacy pre-#34 files stored absolute
   // paths (and a parallel toolbar_shortcut_icons array) - migrate absolute
@@ -3767,8 +3749,8 @@ void ModListController::load_order() {
 void ModListController::sync_separator_ids() {
   if (w_->current_instance_root_.empty())
     return;
-  auto meta_dir = w_->meta_dir_path();
-  if (meta_dir.empty())
+  auto mods_dir = w_->mods_dir_path();
+  if (mods_dir.empty())
     return;
 
   const auto &mods = w_->mod_model_->mods();
@@ -3786,9 +3768,9 @@ void ModListController::sync_separator_ids() {
         w_->mod_model_->set_separator_id(m.id, new_sid);
         // Persist to meta.ini
         auto folder_name = m.id.toStdString();
-        auto meta = engine::ModMeta::load(meta_dir, folder_name);
+        auto meta = engine::ModMeta::load(mods_dir, folder_name);
         meta.set_separator_id(new_sid.toStdString());
-        meta.save(meta_dir, folder_name);
+        meta.save(mods_dir, folder_name);
       }
     }
   }
@@ -3799,8 +3781,8 @@ void ModListController::sync_mod_ui_state() {
     return;
   if (w_->current_instance_root_.empty())
     return;
-  auto meta_dir = w_->meta_dir_path();
-  if (meta_dir.empty())
+  auto mods_dir = w_->mods_dir_path();
+  if (mods_dir.empty())
     return;
 
   // Persist per-mod UI state (folded + parent_id) to the manager sidecar.
@@ -3811,7 +3793,7 @@ void ModListController::sync_mod_ui_state() {
   for (const auto &m : mods) {
     if (m.is_overwrite || m.is_merged || m.is_game_native)
       continue;
-    auto st = load_sidecar_ui_state(meta_dir, m.id);
+    auto st = load_sidecar_ui_state(mods_dir, m.id);
     bool changed = false;
     if (!st.has_folded || st.folded != m.folded) {
       st.meta.set_folded(m.folded);
@@ -3826,7 +3808,7 @@ void ModListController::sync_mod_ui_state() {
       st.meta.set_parent_id(m.parent_id.toStdString());
       changed = true;
     }
-    if (changed && !st.meta.save(meta_dir, m.id.toStdString())) {
+    if (changed && !st.meta.save(mods_dir, m.id.toStdString())) {
       engine::Logger::instance().error(
           "Failed to persist UI state sidecar for " + m.id.toStdString());
     }
@@ -3837,8 +3819,8 @@ void ModListController::group_mods_by_separator() {
   const auto &mods = w_->mod_model_->mods();
   if (mods.isEmpty())
     return;
-  auto meta_dir = w_->meta_dir_path();
-  if (meta_dir.empty())
+  auto mods_dir = w_->mods_dir_path();
+  if (mods_dir.empty())
     return;
 
   // Collect separators first (in their current order)
@@ -3857,7 +3839,7 @@ void ModListController::group_mods_by_separator() {
       has_overwrite = true;
     } else {
       // Read separator_id from w_ mod's meta.ini
-      auto meta = engine::ModMeta::load(meta_dir, m.id.toStdString());
+      auto meta = engine::ModMeta::load(mods_dir, m.id.toStdString());
       auto sid = QString::fromStdString(meta.separator_id());
       if (!sid.isEmpty()) {
         grouped[sid].append(m);

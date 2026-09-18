@@ -69,16 +69,16 @@ void switch_game(const std::filesystem::path &dat) {
 
 ui::ModInfoData make_data(const std::string &id,
                           const std::filesystem::path &instance_root,
-                          const std::filesystem::path &meta_dir) {
+                          const std::filesystem::path &mods_dir) {
   ui::ModInfoData data;
   data.id = QString::fromStdString(id);
   data.name = QString::fromStdString(id);
   data.instance_root = QString::fromStdString(instance_root.string());
-  data.load_meta = [meta_dir, id] {
-    return engine::ModMeta::load(meta_dir, id);
+  data.load_meta = [mods_dir, id] {
+    return engine::ModMeta::load(mods_dir, id);
   };
-  data.save_meta = [meta_dir, id](const engine::ModMeta &m) {
-    return m.save(meta_dir, id);
+  data.save_meta = [mods_dir, id](const engine::ModMeta &m) {
+    return m.save(mods_dir, id);
   };
   return data;
 }
@@ -115,7 +115,7 @@ TEST_CASE("categories tab", "[ui]") {
   SECTION("renders the current game's registry with hierarchy") {
     switch_game(isaac_dat);
     auto data = make_data("ModA", base / "instances/Isaac",
-                          base / "instances/Isaac/meta");
+                          base / "instances/Isaac/mods");
     tab.set_current(data);
     tab.set_mod(data);
 
@@ -150,7 +150,7 @@ TEST_CASE("categories tab", "[ui]") {
   SECTION("assignment persists ids with ancestors auto-checked") {
     switch_game(isaac_dat);
     auto data = make_data("ModA", base / "instances/Isaac",
-                          base / "instances/Isaac/meta");
+                          base / "instances/Isaac/mods");
     tab.set_current(data);
     tab.set_mod(data);
 
@@ -173,7 +173,7 @@ TEST_CASE("categories tab", "[ui]") {
     // Persisted as MO2's "category" CSV of internal ids (primary first;
     // no explicit primary here, so tree order).
     const auto meta =
-        engine::ModMeta::load(base / "instances/Isaac/meta", "ModA");
+        engine::ModMeta::load(base / "instances/Isaac/mods", "ModA");
     REQUIRE(meta.get("General", "category") == "1000,1001");
 
     // Reloading the mod restores the checked state from the metadata.
@@ -187,7 +187,7 @@ TEST_CASE("categories tab", "[ui]") {
   SECTION("rebuilds after an instance/game switch") {
     switch_game(isaac_dat);
     auto data_a = make_data("ModA", base / "instances/Isaac",
-                            base / "instances/Isaac/meta");
+                            base / "instances/Isaac/mods");
     tab.set_current(data_a);
     tab.set_mod(data_a);
     REQUIRE(nodes_of(tab).size() == 3);
@@ -197,7 +197,7 @@ TEST_CASE("categories tab", "[ui]") {
     // registry, and the next set_mod() must consume it.
     switch_game(skyrim_dat);
     auto data_b = make_data("ModB", base / "instances/Skyrim",
-                            base / "instances/Skyrim/meta");
+                            base / "instances/Skyrim/mods");
     tab.set_current(data_b);
     tab.set_mod(data_b);
 

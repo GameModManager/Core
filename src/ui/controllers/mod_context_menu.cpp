@@ -347,16 +347,17 @@ void ModContextMenu::setup_mod_list_context_menu() {
 }
 
 void ModContextMenu::add_category_menus(QMenu &menu, const QString &mod_id) {
-  const auto meta_dir = w_->meta_dir_path();
-  if (meta_dir.empty())
+  const auto mods_dir = w_->mods_dir_path();
+  if (mods_dir.empty())
     return;
 
-  // Current [General] "category" CSV (primary first) from the manager sidecar.
-  // Re-read on every toggle so sequential checkbox changes accumulate instead
-  // of each overwriting the menu-open snapshot (MO2 mutates the mod info
-  // object directly; the sidecar is our equivalent source of truth).
-  auto load_current = [meta_dir, mod_id]() {
-    auto meta = engine::ModMeta::load(meta_dir, mod_id.toStdString());
+  // Current [General] "category" CSV (primary first) from the mod's
+  // in-folder meta.ini. Re-read on every toggle so sequential checkbox
+  // changes accumulate instead of each overwriting the menu-open snapshot
+  // (MO2 mutates the mod info object directly; the meta.ini is our
+  // equivalent source of truth).
+  auto load_current = [mods_dir, mod_id]() {
+    auto meta = engine::ModMeta::load(mods_dir, mod_id.toStdString());
     QVector<int> ids;
     const QString csv = QString::fromStdString(meta.get("General", "category"));
     for (const auto &part : csv.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
@@ -371,13 +372,13 @@ void ModContextMenu::add_category_menus(QMenu &menu, const QString &mod_id) {
   // Persist a new CSV (primary first), update the Category column + filter
   // ids, and re-apply the mod filter so a category-filtered list reacts
   // immediately (MO2 refreshFilter parity).
-  auto apply = [this, meta_dir, mod_id](const QVector<int> &ids) {
+  auto apply = [this, mods_dir, mod_id](const QVector<int> &ids) {
     QStringList parts;
     for (int id : ids)
       parts << QString::number(id);
-    auto meta = engine::ModMeta::load(meta_dir, mod_id.toStdString());
+    auto meta = engine::ModMeta::load(mods_dir, mod_id.toStdString());
     meta.set("General", "category", parts.join(QLatin1Char(',')).toStdString());
-    meta.save(meta_dir, mod_id.toStdString());
+    meta.save(mods_dir, mod_id.toStdString());
 
     QString primary_name;
     if (!ids.isEmpty()) {
