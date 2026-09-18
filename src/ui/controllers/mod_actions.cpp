@@ -199,6 +199,36 @@ void ModActions::send_to_separator(const QString &mod_id) {
     move_to_separator(mod_id, sep_id);
 }
 
+void ModActions::send_selected_to_separator(const QStringList &mod_ids) {
+  if (mod_ids.isEmpty())
+    return;
+
+  // Collect separators for the list dialog (same as send_to_separator).
+  QStringList names;
+  QList<QVariant> ids;
+  for (const auto &m : w_->mod_model_->mods()) {
+    if (m.is_separator) {
+      names << m.name;
+      ids << m.id;
+    }
+  }
+  if (names.isEmpty())
+    return;
+
+  ui::ListDialog dlg(w_);
+  dlg.setWindowTitle(QObject::tr("Select a separator..."));
+  dlg.setChoices(names);
+  dlg.setChoiceData(ids);
+  if (dlg.exec() != QDialog::Accepted)
+    return;
+  const QString sep_id = dlg.getChoiceData().toString();
+  if (sep_id.isEmpty())
+    return;
+
+  for (const auto &mod_id : mod_ids)
+    move_to_separator(mod_id, sep_id);
+}
+
 void ModActions::send_to_highest_priority(const QString &id) {
   if (w_->mod_model_->is_conflict_order_reversed()) {
     // Isaac: lowest priority number = highest priority = top of list

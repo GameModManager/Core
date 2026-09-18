@@ -51,6 +51,7 @@
 #include "engine/index/conflict_engine.h"
 #include "engine/mod/meta/categories.h"
 #include "engine/mod/meta/mod_meta.h"
+#include "engine/mod/meta/xml_util.h"
 #include "engine/mod/overwrite/overwrite_utils.h"
 #include "engine/pipeline/plugin_host/category_factory.h"
 #include "engine/pipeline/plugin_host/plugin_loader.h"
@@ -533,7 +534,8 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
                                                        "mods_subpath", "")
                                  : "";
               folder =
-                  w_->resolve_mod_folder(entry.id.toStdString(), mods_subpath);
+                  w_->resolve_mod_folder(entry.id.toStdString(), mods_subpath,
+                                         entry.content_dir.toStdString());
             }
             if (folder.empty())
               return;
@@ -1388,6 +1390,10 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
       if (mod.is_empty) {
         w_->mod_model_->set_empty(id, true);
       }
+      if (!mod.content_dir.empty()) {
+        w_->mod_model_->set_content_dir(
+            id, QString::fromStdString(mod.content_dir.string()));
+      }
       if (!mod.enabled) {
         w_->mod_model_->toggle_mod(id);
       }
@@ -1718,6 +1724,53 @@ void ModListController::load_meta_for_mods() {
     auto meta = is_external ? engine::ModMeta::load_file(external_meta)
                             : engine::ModMeta::load(mods_dir, folder_name);
 
+    // Enrich meta.ini from metadata.xml for games that use a non-meta.ini
+    // metadata file (Isaac uses metadata.xml). The scanner already parsed
+    // display_name/version during the scan, but meta.ini may not have these
+    // fields. Read metadata.xml from content_dir and merge missing fields.
+    if (!mod.content_dir.isEmpty()) {
+      auto metadata_file_key = w_->knowledge_
+          ? w_->knowledge_->get(w_->current_game_id_, "metadata_file", "")
+          : "";
+      if (!metadata_file_key.empty() && metadata_file_key != "meta.ini") {
+        auto content_dir_path =
+            std::filesystem::path(mod.content_dir.toStdString());
+        auto metadata_path = content_dir_path / metadata_file_key;
+        std::error_code ec;
+        if (std::filesystem::exists(metadata_path, ec)) {
+          auto content = [&]() -> std::string {
+            std::ifstream f(metadata_path);
+            if (!f) return {};
+            return std::string(std::istreambuf_iterator<char>(f),
+                               std::istreambuf_iterator<char>());
+          }();
+          if (!content.empty()) {
+            bool upgraded = false;
+            auto version_tag = w_->knowledge_->get(
+                w_->current_game_id_, "metadata_version_tag", "version");
+            auto name_tag = w_->knowledge_->get(
+                w_->current_game_id_, "metadata_name_tag", "name");
+            // Merge version if missing in meta.ini
+            auto xml_ver = engine::xml_find_tag(content, version_tag);
+            if (!xml_ver.empty() &&
+                meta.get("General", "version").empty()) {
+              meta.set("General", "version", xml_ver);
+              upgraded = true;
+            }
+            // Merge display name if missing in meta.ini
+            auto xml_name = engine::xml_find_tag(content, name_tag);
+            if (!xml_name.empty() &&
+                meta.get("General", "name").empty()) {
+              meta.set("General", "name", xml_name);
+              upgraded = true;
+            }
+            if (upgraded)
+              persist_meta(meta);
+          }
+        }
+      }
+    }
+
     if (!meta.has_section("General") && !meta.has_section("GameModManager")) {
       // No meta file exists - create a default one (already at
       // CURRENT_META_VERSION). Detect Steam Workshop mods from the folder
@@ -1833,6 +1886,56 @@ void ModListController::load_meta_for_mods() {
           QString::fromStdString(meta.source_page_url()));
     }
 
+    // Steam Workshop tags from metadata XML: games like Isaac put
+    // <tag id="Lua"/> elements in metadata.xml. The plugin declares the
+    // element name via the metadata_tag_element hook. Extract tag names
+    // and write them as [SteamWorkshop] tags so the workshop_tag_categories
+    // mapping below can convert them to category IDs.
+    // This runs AFTER the default/upgrade block to avoid being overwritten.
+    if (meta.get("SteamWorkshop", "tags").empty() &&
+        !mod.content_dir.isEmpty()) {
+      auto metadata_file_key = w_->knowledge_
+          ? w_->knowledge_->get(w_->current_game_id_, "metadata_file", "")
+          : "";
+      auto tag_elem = w_->knowledge_
+          ? w_->knowledge_->get(w_->current_game_id_,
+                               "metadata_tag_element", "")
+          : "";
+      if (!metadata_file_key.empty() && metadata_file_key != "meta.ini" &&
+          !tag_elem.empty()) {
+        auto content_dir_path =
+            std::filesystem::path(mod.content_dir.toStdString());
+        auto metadata_path = content_dir_path / metadata_file_key;
+        std::error_code ec;
+        if (std::filesystem::exists(metadata_path, ec)) {
+          auto content = [&]() -> std::string {
+            std::ifstream f(metadata_path);
+            if (!f) return {};
+            return std::string(std::istreambuf_iterator<char>(f),
+                               std::istreambuf_iterator<char>());
+          }();
+          if (!content.empty()) {
+            const std::string needle = "<" + tag_elem + " id=\"";
+            std::string tags_csv;
+            auto npos = std::string::size_type(0);
+            while ((npos = content.find(needle, npos)) !=
+                   std::string::npos) {
+              npos += needle.size();
+              auto end = content.find('"', npos);
+              if (end == std::string::npos) break;
+              if (!tags_csv.empty()) tags_csv += ',';
+              tags_csv += content.substr(npos, end - npos);
+              npos = end + 1;
+            }
+            if (!tags_csv.empty()) {
+              meta.set("SteamWorkshop", "tags", tags_csv);
+              persist_meta(meta);
+            }
+          }
+        }
+      }
+    }
+
     // Category column: same resolution as the Categories tab - [General]
     // "category" CSV primary first, else the Nexus category mapping. Both
     // names come from the per-instance category DB.
@@ -1946,8 +2049,9 @@ void ModListController::restore_mod_column_visibility() {
 
 void ModListController::recompute_conflicts() {
   if (!w_->knowledge_ || w_->current_game_id_.empty() ||
-      w_->current_game_dir_.empty())
+      w_->current_game_dir_.empty()) {
     return;
+  }
   // Debounce: coalesce rapid toggle/reorder/refresh requests into one scan.
   if (w_->conflict_debounce_timer_->isActive())
     w_->conflict_debounce_timer_->stop();
@@ -2066,7 +2170,7 @@ ui::ConflictScanRequest ModListController::build_conflict_scan_request() {
 }
 
 void ModListController::on_conflict_scan_finished(ui::ConflictScanResult result,
-                                                  quint64 generation) {
+                                                   quint64 generation) {
   if (generation != w_->conflict_scan_generation_) {
     // Superseded (e.g. an instance switch bumped the generation while w_
     // scan was in flight): never apply a stale result, but the worker is
@@ -2368,7 +2472,8 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
   if (mod.is_overwrite)
     mod_folder = w_->overwrite_dir_path();
   else
-    mod_folder = w_->resolve_mod_folder(mod.id.toStdString(), mods_subpath);
+    mod_folder = w_->resolve_mod_folder(mod.id.toStdString(), mods_subpath,
+                                       mod.content_dir.toStdString());
   data.mod_dir = QDir(QString::fromStdString(mod_folder.string()));
   data.instance_root =
       QString::fromStdString(w_->current_instance_root_.string());

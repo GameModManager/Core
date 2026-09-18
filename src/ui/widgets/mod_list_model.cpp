@@ -1379,6 +1379,15 @@ void ModList::set_no_metadata(const QString &id, bool on) {
   }
 }
 
+void ModList::set_content_dir(const QString &id, const QString &dir) {
+  for (int i = 0; i < mods_.size(); ++i) {
+    if (mods_[i].id == id) {
+      mods_[i].content_dir = dir;
+      return;
+    }
+  }
+}
+
 void ModList::set_tags(const QString &id, const QVector<ModTag> &tags) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id) {
