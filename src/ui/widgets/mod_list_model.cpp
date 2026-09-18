@@ -1587,6 +1587,13 @@ void ModList::set_folded(int row, bool folded) {
   emit mod_list_changed();
 }
 
+void ModList::set_all_separators_folded(bool folded) {
+  for (int row = 0; row < mods_.size(); ++row) {
+    if (mods_[row].is_separator)
+      set_folded(row, folded);
+  }
+}
+
 void ModList::set_nesting_enabled(bool on) {
   if (nesting_enabled_ == on)
     return;

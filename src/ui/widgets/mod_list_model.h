@@ -200,6 +200,8 @@ public:
     void set_priority(const QString& id, int priority);
     void renumber_priorities();
     void set_folded(int row, bool folded);
+    // Set folded state for all separator rows.
+    void set_all_separators_folded(bool folded);
     void apply_fold_state();
     // Visual nesting gate (per-instance "Nested mod list" setting). When off,
     // parent_id links are preserved but inert: no indentation, no fold arrows
