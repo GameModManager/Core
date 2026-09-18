@@ -532,3 +532,57 @@ TEST_CASE("mod_meta_in_folder_with_legacy_fallback", "[engine]") {
 
   fs::remove_all(root);
 }
+
+// Workspace-pmrh M2: the one-release legacy-sidecar fallback derives its
+// path from mods_dir's parent, which is {instance_root} only for the
+// standard layout. Under a Mods path override or portable mode (mods_dir
+// pointed elsewhere) the derived path misses and load()/exists() report
+// empty - never a CWD-relative ghost. Empty inputs are safe too.
+TEST_CASE("mod_meta_legacy_fallback_guards", "[engine]") {
+  using engine::ModMeta;
+
+  // --- Empty inputs never touch the filesystem. ---
+  {
+    const fs::path mods = "/tmp/gmm_mod_meta_fallback_guards/mods";
+    fs::remove_all(mods.parent_path());
+    fs::create_directories(mods);
+
+    require(ModMeta::load({}, "SomeMod").priority() < 0,
+            "empty mods_dir loads as empty");
+    require(!ModMeta::exists({}, "SomeMod"),
+            "empty mods_dir exists() is false");
+    require(ModMeta::load(mods, "").priority() < 0,
+            "empty folder loads as empty");
+    require(!ModMeta::exists(mods, ""), "empty folder exists() is false");
+  }
+
+  // --- Portable/override layout: a sidecar at {root}/meta is NOT visible
+  //     through a mods_dir rooted elsewhere (the fallback safely misses). ---
+  {
+    const fs::path root = "/tmp/gmm_mod_meta_fallback_guards";
+    const fs::path game_mods = root / "game" / "mods";
+    fs::create_directories(game_mods);
+
+    ModMeta side;
+    side.set("GameModManager", "folder", "PortedMod");
+    side.set_priority(4);
+    require(side.save_file(root / "meta" / "PortedMod.ini"),
+            "legacy sidecar written at the instance root");
+
+    // The derived lookup (game/meta/PortedMod.ini) does not exist.
+    require(!ModMeta::exists(game_mods, "PortedMod"),
+            "override layout: exists() misses the elsewhere sidecar");
+    require(ModMeta::load(game_mods, "PortedMod").priority() < 0,
+            "override layout: load() misses the elsewhere sidecar");
+
+    // Control: the standard layout still falls back.
+    const fs::path std_mods = root / "mods";
+    fs::create_directories(std_mods);
+    require(ModMeta::exists(std_mods, "PortedMod"),
+            "standard layout: exists() sees the legacy sidecar");
+    require(ModMeta::load(std_mods, "PortedMod").priority() == 4,
+            "standard layout: load() falls back to the legacy sidecar");
+
+    fs::remove_all(root);
+  }
+}

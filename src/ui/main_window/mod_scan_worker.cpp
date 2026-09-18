@@ -288,11 +288,9 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
             ? std::filesystem::path{}
             : request.instance_root / "meta";
 
-    // Last release's orphans are stale - drop them before sweeping anew.
-    if (!request.instance_root.empty()) {
-      std::error_code bak_ec;
-      std::filesystem::remove_all(request.instance_root / "meta.bak", bak_ec);
-    }
+    // NOTE: meta.bak/ is a rescue copy and is never wiped here - it must
+    // survive at least one release (Workspace-pmrh M1). The orphan sweep
+    // below never overwrites an existing rescue copy either.
 
     // Merge a legacy sidecar into the in-folder base: the sidecar was the
     // source of truth for manager state, the folder may hold newer
@@ -410,6 +408,13 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
           continue;
         const auto folder = sentry.path().stem().string();
         if (std::filesystem::is_directory(request.mods_dir / folder, sec))
+          continue;
+        // Never overwrite a previous rescue copy of the same sidecar - the
+        // older copy stays until the user restores or deletes it by hand.
+        // The leftover sidecar is retried (and skipped again) next scan.
+        std::error_code bak_ec;
+        if (std::filesystem::exists(bak_dir / sentry.path().filename(),
+                                    bak_ec))
           continue;
         std::error_code mec;
         std::filesystem::create_directories(bak_dir, mec);

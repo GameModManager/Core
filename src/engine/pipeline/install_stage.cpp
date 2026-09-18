@@ -287,8 +287,15 @@ bool InstallationManager::execute(Mod &mod, PipelineContext &ctx) {
         mod.download_source_id, mod.archive_filename, mod.version);
     for (const auto& key : fresh.keys("GameModManager"))
       meta.set("GameModManager", key, fresh.get("GameModManager", key));
+    // Reinstall/merge must refresh the version stamp from the install
+    // manifest: write_game_metadata early-returns when meta.ini exists
+    // (always true on Merge), so without this the version column goes stale
+    // after an update (Workspace-pmrh M3). Both casings ride along:
+    // from_default writes installationfile, write_game_metadata writes
+    // installationFile.
     for (const auto& key : fresh.keys("General"))
-      if (key == "installed")
+      if (key == "installed" || key == "version" || key == "newestVersion" ||
+          key == "installationfile" || key == "installationFile")
         meta.set("General", key, fresh.get("General", key));
     if (existing_priority >= 0)
       meta.set_priority(existing_priority);
