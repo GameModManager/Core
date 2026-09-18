@@ -49,7 +49,7 @@ public slots:
     // downloads dir, then emits download_complete / paused. Snapshot-by-value
     // input (THREADING §3.5); runs on this runner's own thread.
     void run(const std::string& id, engine::Mod mod,
-             const std::string& mods_dir, const std::string& meta_dir);
+             const std::string& mods_dir);
 
 signals:
     void download_progress(const std::string& mod_id, int64_t bytes_downloaded,
@@ -117,16 +117,14 @@ public slots:
     // parallel); excess downloads queue until a slot frees.
     void download_mod(const std::string& id, const engine::NxmLink& link,
                       const std::string& game_id,
-                      const std::string& mods_dir,
-                      const std::string& meta_dir);
+                      const std::string& mods_dir);
 
     // Download only, by pre-assembled URL (LoversLab and other no-API sites).
     // The provider fetches mod.download_url with the configured session
     // cookie. Same pause/progress/resume contract as download_mod.
     void download_mod_url(const std::string& id, const std::string& url,
                           const std::string& game_id,
-                          const std::string& mods_dir,
-                          const std::string& meta_dir);
+                          const std::string& mods_dir);
 
     // Download only, via a modl:// link (mod.pub / MO2 modlhandler). The
     // decoded https direct URL lives in link.direct_url; the page URL
@@ -136,8 +134,7 @@ public slots:
     void download_modl(const std::string& id,
                        const engine::Source::ModlLink& link,
                        const std::string& game_id,
-                       const std::string& mods_dir,
-                       const std::string& meta_dir);
+                       const std::string& mods_dir);
 
     // Request a pause of an in-flight download (cooperative: the transfer
     // callback polls the flag and aborts, keeping the partial file). Also
@@ -184,7 +181,6 @@ private:
         std::string id;
         engine::Mod mod;
         std::string mods_dir;
-        std::string meta_dir;
     };
 
     // Route a new download to a free pool slot; if every slot is busy, park it

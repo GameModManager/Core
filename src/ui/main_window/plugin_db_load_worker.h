@@ -18,7 +18,6 @@ namespace ui {
 struct PluginDbLoadRequest {
     std::filesystem::path game_dir;   // game install root (Data/ holds vanilla plugins)
     std::filesystem::path mods_dir;   // resolved mods_dir_path() (instance or game)
-    std::filesystem::path meta_dir;   // resolved meta_dir_path(), empty in portable mode
     std::string disable_mechanism;    // sentinel filename marking a mod disabled
     std::string game_native;          // comma-separated vanilla plugins
 };

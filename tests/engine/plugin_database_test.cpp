@@ -167,11 +167,9 @@ void run_synthetic_fixture() {
     fs::remove_all(base, ec);
     const fs::path game = base / "game";
     const fs::path mods = base / "mods";
-    const fs::path meta = base / "meta";
     const fs::path profiles = base / "profiles";
     fs::create_directories(game / "Data", ec);
     fs::create_directories(mods, ec);
-    fs::create_directories(meta, ec);
 
     // Game-native ESMs (declared order in game_native_plugins).
     write_esp(game / "Data" / "Skyrim.esm", true, {});
@@ -211,9 +209,9 @@ void run_synthetic_fixture() {
     // Meta priorities for the mod tiebreak.
     for (const auto& [folder, prio] : std::vector<std::pair<const char*, int>>{
              {"SkyUI", 3}, {"Patch", 5}, {"Lights", 1}}) {
-        auto m = engine::ModMeta::load(meta, folder);
+        auto m = engine::ModMeta::load(mods, folder);
         m.set_priority(prio);
-        require(m.save(meta, folder), "meta priority saved");
+        require(m.save(mods, folder), "meta priority saved");
     }
 
     // A data-only mod folder (no plugins) - must not break discovery.
@@ -224,7 +222,7 @@ void run_synthetic_fixture() {
     }
 
     PluginDatabase db;
-    require(db.refresh(game, mods, meta, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
+    require(db.refresh(game, mods, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
             "refresh on synthetic fixture");
     db.load_creation_club(game);
     db.sort_load_order();
@@ -344,12 +342,12 @@ void run_synthetic_fixture() {
     fs::create_directories(mods / "Broken", ec);
     write_esp(mods / "Broken" / "Broken.esp", false, {"Skyrim.esm", "GoneMaster.esm"});
     {
-        auto m = engine::ModMeta::load(meta, "Broken");
+        auto m = engine::ModMeta::load(mods, "Broken");
         m.set_priority(2);
-        m.save(meta, "Broken");
+        m.save(mods, "Broken");
     }
     PluginDatabase db2;
-    require(db2.refresh(game, mods, meta, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
+    require(db2.refresh(game, mods, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
             "refresh with broken plugin");
     db2.load_creation_club(game);
     db2.sort_load_order();
@@ -370,7 +368,7 @@ void run_synthetic_fixture() {
     // too, and the error names the chain plugin and its missing master.
     write_esp(mods / "Broken" / "BrokenChild.esp", false, {"Skyrim.esm", "Broken.esp"});
     PluginDatabase db2b;
-    require(db2b.refresh(game, mods, meta, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
+    require(db2b.refresh(game, mods, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
             "refresh with transitive broken plugin");
     db2b.load_creation_club(game);
     db2b.sort_load_order();
@@ -392,7 +390,7 @@ void run_synthetic_fixture() {
     fs::create_directories(mods / "CaseClient", ec);
     write_esp(mods / "CaseClient" / "CaseClient.esp", false, {"caselib.esp"});
     PluginDatabase dbc;
-    require(dbc.refresh(game, mods, meta, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
+    require(dbc.refresh(game, mods, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
             "refresh with case-mismatched masters");
     dbc.load_creation_club(game);
     dbc.sort_load_order();
@@ -415,7 +413,7 @@ void run_synthetic_fixture() {
 
     // Profile round-trip: save, flip enable state, load restores it.
     PluginDatabase db3;
-    db3.refresh(game, mods, meta, "", "Skyrim.esm,Update.esm,Dawnguard.esm");
+    db3.refresh(game, mods, "", "Skyrim.esm,Update.esm,Dawnguard.esm");
     db3.load_creation_club(game);
     db3.sort_load_order();
     db3.set_all_enabled();
@@ -481,11 +479,9 @@ void run_synthetic_fixture() {
         const fs::path b = base / "lock";
         const fs::path g = b / "game";
         const fs::path m = b / "mods";
-        const fs::path mt = b / "meta";
         const fs::path pf = b / "profiles";
         fs::create_directories(g / "Data", ec);
         fs::create_directories(m, ec);
-        fs::create_directories(mt, ec);
         fs::create_directories(pf, ec);
         write_esp(g / "Data" / "Skyrim.esm", true, {});
         write_esp(g / "Data" / "Update.esm", true, {"Skyrim.esm"});
@@ -497,7 +493,7 @@ void run_synthetic_fixture() {
         write_esp(m / "ModC" / "ModC.esp", false, {"Skyrim.esm"});
 
         PluginDatabase dbl;
-        require(dbl.refresh(g, m, mt, "", "Skyrim.esm,Update.esm"),
+        require(dbl.refresh(g, m, "", "Skyrim.esm,Update.esm"),
                 "refresh lock fixture");
         dbl.sort_load_order();
         dbl.set_all_enabled();
@@ -543,7 +539,7 @@ void run_synthetic_fixture() {
                 "lockedorder.txt records ModB|row");
 
         PluginDatabase dbk;
-        require(dbk.refresh(g, m, mt, "", "Skyrim.esm,Update.esm"),
+        require(dbk.refresh(g, m, "", "Skyrim.esm,Update.esm"),
                 "refresh lock reload");
         dbk.sort_load_order();
         require(dbk.load_profile(pf, "Default"), "lock profile loads");
@@ -559,7 +555,7 @@ void run_synthetic_fixture() {
             lo << "# a comment\nModC.esp|" << (b_row + 1) << "\n";
         }
         PluginDatabase dbm;
-        require(dbm.refresh(g, m, mt, "", "Skyrim.esm,Update.esm"),
+        require(dbm.refresh(g, m, "", "Skyrim.esm,Update.esm"),
                 "refresh lock handwrite");
         dbm.sort_load_order();
         require(dbm.load_profile(pf, "Default"), "hand-written lock loads");
@@ -581,7 +577,7 @@ void run_synthetic_fixture() {
     // The moved order persists through a profile round-trip.
     db3.save_profile(profiles, "Default");
     PluginDatabase db4;
-    db4.refresh(game, mods, meta, "", "Skyrim.esm,Update.esm,Dawnguard.esm");
+    db4.refresh(game, mods, "", "Skyrim.esm,Update.esm,Dawnguard.esm");
     db4.load_creation_club(game);
     db4.sort_load_order();
     require(db4.load_profile(profiles, "Default"), "profile with moved order loads");
@@ -628,10 +624,8 @@ void run_synthetic_fixture() {
         const fs::path b = base / "bandA";
         const fs::path g = b / "game";
         const fs::path m = b / "mods";
-        const fs::path mt = b / "meta";
         fs::create_directories(g / "Data", ec);
         fs::create_directories(m, ec);
-        fs::create_directories(mt, ec);
         // On-disk names re-cased vs the declared canonical list.
         write_esp(g / "Data" / "skyrim.esm", true, {});
         write_esp(g / "Data" / "update.esm", true, {"Skyrim.esm"});
@@ -641,7 +635,7 @@ void run_synthetic_fixture() {
         write_esp(m / "UserMod" / "UserMod.esp", false, {"skyrim.esm", "update.esm"});
 
         PluginDatabase dba;
-        require(dba.refresh(g, m, mt, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
+        require(dba.refresh(g, m, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
                 "refresh re-cased natives");
         dba.sort_load_order();
         dba.set_all_enabled();
@@ -671,11 +665,9 @@ void run_synthetic_fixture() {
         const fs::path b = base / "bandB";
         const fs::path g = b / "game";
         const fs::path m = b / "mods";
-        const fs::path mt = b / "meta";
         const fs::path pf = b / "profiles";
         fs::create_directories(g / "Data", ec);
         fs::create_directories(m, ec);
-        fs::create_directories(mt, ec);
         fs::create_directories(pf, ec);
         write_esp(g / "Data" / "Skyrim.esm", true, {});
         write_esp(g / "Data" / "Update.esm", true, {"Skyrim.esm"});
@@ -686,7 +678,7 @@ void run_synthetic_fixture() {
         write_esp(m / "Another" / "Another.esp", false, {"Skyrim.esm"});
 
         PluginDatabase dbb;
-        require(dbb.refresh(g, m, mt, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
+        require(dbb.refresh(g, m, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
                 "refresh heal fixture");
         dbb.sort_load_order();
         dbb.set_all_enabled();
@@ -699,7 +691,7 @@ void run_synthetic_fixture() {
             lo << "UserMod.esp\nAnother.esp\nUpdate.esm\nDawnguard.esm\nSkyrim.esm\n";
         }
         PluginDatabase dbc2;
-        require(dbc2.refresh(g, m, mt, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
+        require(dbc2.refresh(g, m, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
                 "refresh heal fixture again");
         dbc2.sort_load_order();
         bool repaired = false;
@@ -722,7 +714,7 @@ void run_synthetic_fixture() {
 
         // A clean profile loads without repair.
         PluginDatabase dbc3;
-        require(dbc3.refresh(g, m, mt, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
+        require(dbc3.refresh(g, m, "", "Skyrim.esm,Update.esm,Dawnguard.esm"),
                 "refresh heal fixture for clean load");
         dbc3.sort_load_order();
         bool repaired2 = true;
@@ -738,11 +730,9 @@ void run_synthetic_fixture() {
         const fs::path b = base / "newplug";
         const fs::path g = b / "game";
         const fs::path m = b / "mods";
-        const fs::path mt = b / "meta";
         const fs::path pf = b / "profiles";
         fs::create_directories(g / "Data", ec);
         fs::create_directories(m, ec);
-        fs::create_directories(mt, ec);
         fs::create_directories(pf / "Default", ec);
         write_esp(g / "Data" / "Skyrim.esm", true, {});
         write_esp(g / "Data" / "Update.esm", true, {"Skyrim.esm"});
@@ -770,7 +760,7 @@ void run_synthetic_fixture() {
         write_esp(m / "Chain" / "ChainPlugin.esp", false, {"Skyrim.esm", "NewPlugin.esp"});
 
         PluginDatabase dbn;
-        require(dbn.refresh(g, m, mt, "", "Skyrim.esm,Update.esm"),
+        require(dbn.refresh(g, m, "", "Skyrim.esm,Update.esm"),
                 "refresh new-plugin fixture");
         dbn.load_creation_club(g);
         dbn.sort_load_order();
@@ -795,10 +785,8 @@ void run_synthetic_fixture() {
         const fs::path b = base / "bootstrap";
         const fs::path g = b / "game";
         const fs::path m = b / "mods";
-        const fs::path mt = b / "meta";
         fs::create_directories(g / "Data", ec);
         fs::create_directories(m, ec);
-        fs::create_directories(mt, ec);
         write_esp(g / "Data" / "Skyrim.esm", true, {});
         fs::create_directories(m / "Ok", ec);
         write_esp(m / "Ok" / "Ok.esp", false, {"Skyrim.esm"});
@@ -806,7 +794,7 @@ void run_synthetic_fixture() {
         write_esp(m / "Borked" / "Borked.esp", false, {"Skyrim.esm", "MissingMaster.esm"});
 
         PluginDatabase dbs;
-        require(dbs.refresh(g, m, mt, "", "Skyrim.esm"), "refresh bootstrap fixture");
+        require(dbs.refresh(g, m, "", "Skyrim.esm"), "refresh bootstrap fixture");
         dbs.load_creation_club(g);
         dbs.sort_load_order();
         dbs.set_all_enabled();
@@ -865,10 +853,8 @@ void run_synthetic_fixture() {
         const fs::path b = base / "cccCase";
         const fs::path g = b / "game";
         const fs::path m = b / "mods";
-        const fs::path mt = b / "meta";
         fs::create_directories(g / "Data", ec);
         fs::create_directories(m, ec);
-        fs::create_directories(mt, ec);
         write_esp(g / "Data" / "Skyrim.esm", true, {});
         // A non-"cc"-prefixed plugin can only be force-loaded via the ccc
         // file, so it discriminates "the file was actually found" from the
@@ -880,7 +866,7 @@ void run_synthetic_fixture() {
             ccc << "ccBGSSSE001-Fish.esm\nSeasonsOfSkyrim.esm\n";
         }
         PluginDatabase dcc;
-        require(dcc.refresh(g, m, mt, "", "Skyrim.esm"),
+        require(dcc.refresh(g, m, "", "Skyrim.esm"),
                 "refresh re-cased ccc fixture");
         dcc.load_creation_club(g);
         dcc.sort_load_order();
@@ -901,15 +887,13 @@ void run_synthetic_fixture() {
         const fs::path b = base / "shadow";
         const fs::path g = b / "game";
         const fs::path m = b / "mods";
-        const fs::path mt = b / "meta";
         fs::create_directories(g / "Data", ec);
         fs::create_directories(m, ec);
-        fs::create_directories(mt, ec);
         write_esp(g / "Data" / "skyrim.esm", true, {});
         fs::create_directories(m / "ShadowMod", ec);
         write_esp(m / "ShadowMod" / "Skyrim.esm", true, {});
         PluginDatabase dsh;
-        require(dsh.refresh(g, m, mt, "", "Skyrim.esm"),
+        require(dsh.refresh(g, m, "", "Skyrim.esm"),
                 "refresh shadow fixture");
         dsh.sort_load_order();
         require(dsh.plugins().size() == 1,
@@ -939,7 +923,7 @@ void run_real_skyrim() {
     }
 
     PluginDatabase db;
-    require(db.refresh(game, inst / "mods", inst / "meta", "",
+    require(db.refresh(game, inst / "mods", "",
                        "Skyrim.esm,Update.esm,Dawnguard.esm,HearthFires.esm,Dragonborn.esm"),
             "refresh on real Skyrim");
     db.load_creation_club(game);
@@ -996,10 +980,8 @@ void run_disabled_mod_fixture() {
     fs::remove_all(base, ec);
     const fs::path game = base / "game";
     const fs::path mods = base / "mods";
-    const fs::path meta = base / "meta";
     fs::create_directories(game / "Data", ec);
     fs::create_directories(mods, ec);
-    fs::create_directories(meta, ec);
 
     write_esp(game / "Data" / "Skyrim.esm", true, {});
     fs::create_directories(mods / "EnabledMod", ec);
@@ -1022,7 +1004,7 @@ void run_disabled_mod_fixture() {
     // Old buggy path: empty mechanism -> the disabled mod's plugin still counts.
     {
         PluginDatabase db;
-        require(db.refresh(game, mods, meta, "", "Skyrim.esm"),
+        require(db.refresh(game, mods, "", "Skyrim.esm"),
                 "refresh with empty mechanism");
         require(db.find("Disabled.esp") != nullptr,
                 "empty mechanism must NOT exclude (guards the regression)");
@@ -1032,7 +1014,7 @@ void run_disabled_mod_fixture() {
     // Correct: the sentinel is honored -> disabled mod contributes nothing.
     {
         PluginDatabase db;
-        require(db.refresh(game, mods, meta, ".gmmdisabled", "Skyrim.esm"),
+        require(db.refresh(game, mods, ".gmmdisabled", "Skyrim.esm"),
                 "refresh with default sentinel");
         require(db.find("Disabled.esp") == nullptr,
                 "disabled mod's plugin is excluded");

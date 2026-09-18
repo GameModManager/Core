@@ -298,7 +298,6 @@ void SettingsController::set_game_info(
     // Configure pipeline for w_ game instance
     engine::PipelineContext ctx;
     ctx.game_dir = w_->current_game_dir_;
-    ctx.meta_dir = w_->current_instance_root_ / "meta";
     ctx.mods_dir = w_->mods_dir_path();
     // Metadata format inside installed mod folders: MO2's meta.ini by
     // default, the game's XML file (Isaac's metadata.xml) if the game

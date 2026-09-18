@@ -97,7 +97,6 @@ void scan_plugin_assets(GamePlugin& p) {
 
 bool Database::refresh(const std::filesystem::path& game_dir,
                              const std::filesystem::path& mods_dir,
-                             const std::filesystem::path& meta_dir,
                              const std::string& disable_mechanism,
                              const std::string& game_native_plugins) {
     plugins_.clear();
@@ -147,7 +146,7 @@ bool Database::refresh(const std::filesystem::path& game_dir,
                 continue;  // disabled mod contributes nothing to the virtual Data
             }
             int priority = -1;
-            if (!meta_dir.empty()) priority = ModMeta::load(meta_dir, folder).priority();
+            if (!mods_dir.empty()) priority = ModMeta::load(mods_dir, folder).priority();
             folders.push_back({folder, priority});
         }
     }
@@ -945,7 +944,7 @@ bool Database::write_plugins_txt_for_launch(
 
     Database db;
     if (!db.refresh(game_dir, inst.path_for(InstanceKind::Mods),
-                    inst.path_for(InstanceKind::Meta), disable_mechanism, game_native)) {
+                    disable_mechanism, game_native)) {
         Logger::instance().warn("Plugin::Database: plugin discovery failed");
         return false;
     }

@@ -43,10 +43,10 @@ bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
         return true;
     }
 
-    // Write metadata to meta.ini
-    auto meta_dir = ctx.meta_dir;
-    if (meta_dir.empty()) {
-        Logger::instance().warn("SteamWorkshopProvider: no meta_dir in context");
+    // Write metadata into the mod folder's own meta.ini (MO2-compatible).
+    auto mods_dir = ctx.mods_dir;
+    if (mods_dir.empty()) {
+        Logger::instance().warn("SteamWorkshopProvider: no mods_dir in context");
         return true;
     }
 
@@ -57,7 +57,7 @@ bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
     if (folder_name.empty()) return true;
 
     // Load existing meta or start fresh
-    auto meta = ModMeta::load(meta_dir, folder_name);
+    auto meta = ModMeta::load(mods_dir, folder_name);
     meta.set("SteamWorkshop", "title", item->title);
     meta.set("SteamWorkshop", "preview_url", item->preview_url);
     meta.set("SteamWorkshop", "description", item->description);
@@ -79,7 +79,7 @@ bool Provider::fetch(const Mod& mod, PipelineContext& ctx,
     meta.set("GameModManager", "source_type", "steam");
     meta.set("GameModManager", "source_id", std::to_string(workshop_id));
 
-    if (!meta.save(meta_dir, folder_name)) {
+    if (!meta.save(mods_dir, folder_name)) {
         Logger::instance().warn("SteamWorkshopProvider: failed to save meta.ini");
     }
 

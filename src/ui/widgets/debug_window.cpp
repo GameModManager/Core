@@ -618,9 +618,6 @@ void DebugWindow::populate_paths() {
       case engine::InstanceKind::Config:
         sub = "config";
         break;
-      case engine::InstanceKind::Meta:
-        sub = "meta";
-        break;
       case engine::InstanceKind::Masterlists:
         sub = "masterlists";
         break;
@@ -639,7 +636,6 @@ void DebugWindow::populate_paths() {
   add_path(tr("Plugins dir"), engine::InstanceKind::Plugins);
   add_path(tr("Logs dir"), engine::InstanceKind::Logs);
   add_path(tr("Config dir"), engine::InstanceKind::Config);
-  add_path(tr("Meta dir"), engine::InstanceKind::Meta);
   add_path(tr("Masterlists dir"), engine::InstanceKind::Masterlists);
 
   // Group: Config

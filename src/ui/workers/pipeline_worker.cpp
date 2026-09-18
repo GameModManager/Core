@@ -48,7 +48,7 @@ void FetchRunner::stop() {
 }
 
 void FetchRunner::run(const std::string& id, engine::Mod mod,
-                      const std::string& mods_dir, const std::string& meta_dir) {
+                      const std::string& mods_dir) {
     engine::Logger::instance().debug("[Fetch] run started: id=" + id +
                                      " source=" + mod.download_source_type +
                                      " source_id=" + mod.download_source_id);
@@ -62,8 +62,6 @@ void FetchRunner::run(const std::string& id, engine::Mod mod,
 
     if (!mods_dir.empty())
         ctx.mods_dir = std::filesystem::path(mods_dir);
-    if (!meta_dir.empty())
-        ctx.meta_dir = std::filesystem::path(meta_dir);
 
     ctx.on_progress = [this, id](int64_t dl, int64_t total, double speed) {
         emit download_progress(id, dl, total, speed);
@@ -220,8 +218,7 @@ void PipelineWorker::install_mod(const std::string& id, const std::string& zip_p
 void PipelineWorker::download_mod(const std::string& id,
                                    const engine::NxmLink& link,
                                    const std::string& game_id,
-                                   const std::string& mods_dir,
-                                   const std::string& meta_dir) {
+                                   const std::string& mods_dir) {
     (void)game_id;
     engine::Logger::instance().debug("[Pipeline] download_mod called: id=" + id +
                                      " mod_id=" + std::to_string(link.mod_id) +
@@ -240,14 +237,13 @@ void PipelineWorker::download_mod(const std::string& id,
     mod.download_nxm.user_id = link.user_id;
     mod.download_nxm.nexus_domain = link.nexus_domain;
 
-    dispatch_fetch({id, std::move(mod), mods_dir, meta_dir});
+    dispatch_fetch({id, std::move(mod), mods_dir});
 }
 
 void PipelineWorker::download_mod_url(const std::string& id,
                                       const std::string& url,
                                       const std::string& game_id,
-                                      const std::string& mods_dir,
-                                      const std::string& meta_dir) {
+                                      const std::string& mods_dir) {
     (void)game_id;
     engine::Logger::instance().debug("Downloading URL: " + id);
 
@@ -259,14 +255,13 @@ void PipelineWorker::download_mod_url(const std::string& id,
     mod.download_source_id = id;
     mod.download_url = url;
 
-    dispatch_fetch({id, std::move(mod), mods_dir, meta_dir});
+    dispatch_fetch({id, std::move(mod), mods_dir});
 }
 
 void PipelineWorker::download_modl(const std::string& id,
                                     const engine::Source::ModlLink& link,
                                     const std::string& game_id,
-                                    const std::string& mods_dir,
-                                    const std::string& meta_dir) {
+                                    const std::string& mods_dir) {
     (void)game_id;
     if (!link.valid()) {
         engine::Logger::instance().warn("download_modl: invalid modl link for " + id);
@@ -308,7 +303,7 @@ void PipelineWorker::download_modl(const std::string& id,
     }
     mod.download_url = link.direct_url;
 
-    dispatch_fetch({id, std::move(mod), mods_dir, meta_dir});
+    dispatch_fetch({id, std::move(mod), mods_dir});
 }
 
 void PipelineWorker::dispatch_fetch(PendingDownload&& pd) {
@@ -362,10 +357,9 @@ void PipelineWorker::start_fetch_on(FetchRunner* runner, PendingDownload&& pd) {
     QMetaObject::invokeMethod(
         runner,
         [runner, id, mod = std::move(pd.mod),
-         mods_dir = std::move(pd.mods_dir),
-         meta_dir = std::move(pd.meta_dir)]() mutable {
+         mods_dir = std::move(pd.mods_dir)]() mutable {
             engine::Logger::instance().debug("[Pipeline] FetchRunner lambda executing, calling run() for id=" + id);
-            runner->run(id, std::move(mod), mods_dir, meta_dir);
+            runner->run(id, std::move(mod), mods_dir);
         },
         Qt::QueuedConnection);
 }

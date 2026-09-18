@@ -268,24 +268,30 @@ bool InstallationManager::execute(Mod &mod, PipelineContext &ctx) {
   std::error_code ec;
   std::filesystem::remove_all(staging_dir, ec);
 
-  // Write meta.ini
-  auto meta_dir = ctx.meta_dir;
-  if (meta_dir.empty() && ctx.instance) {
-    meta_dir = ctx.instance->path_for(InstanceKind::Meta);
-  }
+  // Write manager metadata into the mod folder's own meta.ini
+  // (MO2-compatible in-folder location). The file already exists here:
+  // write_game_metadata created it above (or the merged folder kept its
+  // old one on Merge). Load it, stamp the manager keys on top, and save
+  // back - a single-file merge, never a second sidecar file.
+  if (!mods_dir.empty()) {
+    auto meta_path = mods_dir / folder_name / "meta.ini";
+    auto meta = ModMeta::load_file(meta_path);
 
-  if (!meta_dir.empty()) {
-    auto meta = ModMeta::from_default(
+    // Reinstall (Merge): keep the persisted priority so the mod holds its
+    // load-order position instead of resetting to the top.
+    const int existing_priority = meta.priority();
+
+    auto fresh = ModMeta::from_default(
         folder_name,
         mod.download_source_type.empty() ? "manual" : mod.download_source_type,
         mod.download_source_id, mod.archive_filename, mod.version);
-
-    // Reinstall: preserve the previously persisted priority so the mod keeps
-    // its position in the load order instead of resetting to the top.
-    auto existing = ModMeta::load(meta_dir, folder_name);
-    if (existing.priority() >= 0) {
-      meta.set_priority(existing.priority());
-    }
+    for (const auto& key : fresh.keys("GameModManager"))
+      meta.set("GameModManager", key, fresh.get("GameModManager", key));
+    for (const auto& key : fresh.keys("General"))
+      if (key == "installed")
+        meta.set("General", key, fresh.get("General", key));
+    if (existing_priority >= 0)
+      meta.set_priority(existing_priority);
 
     // For Nexus downloads, add [Nexusmods] section
     if (mod.download_source_type == "nexus" && mod.download_nxm.file_id > 0) {
@@ -337,7 +343,7 @@ bool InstallationManager::execute(Mod &mod, PipelineContext &ctx) {
         meta.set("ModPub", "display_name", mod.name);
     }
 
-    if (!meta.save(meta_dir, folder_name)) {
+    if (!meta.save_file(meta_path)) {
       Logger::instance().warn("InstallStage: failed to write meta.ini for " +
                               folder_name);
     }

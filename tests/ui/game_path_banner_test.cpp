@@ -135,12 +135,12 @@ TEST_CASE("instance-owned mod ops work without a game dir", "[ui]") {
     CHECK(std::filesystem::is_directory(mods_dir / "Renamed_separator"));
     CHECK_FALSE(std::filesystem::exists(mods_dir / "Cool_separator"));
 
-    // Priority sync persists to the meta sidecar without a game dir. The
-    // write only happens when a row's priority actually changes away from
-    // the default 0, so move the separator below the Overwrite row.
+    // Priority sync persists to the mod's in-folder meta.ini without a game
+    // dir. The write only happens when a row's priority actually changes
+    // away from the default 0, so move the separator below the Overwrite row.
     model->move_mod(QString("Renamed_separator"), 1);
     ctrl->sync_priorities();
-    CHECK(std::filesystem::exists(root / "meta" / "Renamed_separator.ini"));
+    CHECK(std::filesystem::exists(mods_dir / "Renamed_separator" / "meta.ini"));
 }
 
 // Workspace-wk8: the mod list loads for a game-less instance. The scan
