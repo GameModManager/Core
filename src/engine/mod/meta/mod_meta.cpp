@@ -499,18 +499,27 @@ void ModMeta::unset(const std::string& section, const std::string& key) {
 ModMeta ModMeta::load(const std::filesystem::path& mods_dir,
                       const std::string& folder_name) {
     ModMeta meta;
+    if (mods_dir.empty() || folder_name.empty())
+        return meta;
     auto filepath = mods_dir / folder_name / "meta.ini";
-    std::ifstream f(filepath);
-    if (f) {
-        std::string content((std::istreambuf_iterator<char>(f)),
-                            std::istreambuf_iterator<char>());
-        meta.parse(content);
+    std::error_code ec;
+    if (std::filesystem::exists(filepath, ec)) {
+        std::ifstream f(filepath);
+        if (f) {
+            std::string content((std::istreambuf_iterator<char>(f)),
+                                std::istreambuf_iterator<char>());
+            meta.parse(content);
+        }
         return meta;
     }
     // One-release fallback: legacy sidecar at {instance_root}/meta/.
-    // mods_dir is normally {instance_root}/mods, so the sidecar lives at
-    // mods_dir/../meta/{folder}.ini.
-    std::error_code ec;
+    // Only when the in-folder file is absent AND the sidecar exists.
+    // NOTE: the sidecar path is derived from mods_dir's parent, which
+    // equals {instance_root} only for the standard layout. Under a Mods
+    // path override or portable mode (mods_dir pointed at the game dir)
+    // the derived path is wrong and the fallback safely misses -
+    // migration (mod_scan_worker, driven by instance_root) is the real
+    // fixup path there (Workspace-pmrh M2).
     auto legacy = mods_dir.parent_path() / "meta" / (folder_name + ".ini");
     if (std::filesystem::exists(legacy, ec)) {
         std::ifstream lf(legacy);
@@ -558,7 +567,9 @@ bool ModMeta::save_file(const std::filesystem::path& ini_file) const {
 }
 
 bool ModMeta::exists(const std::filesystem::path& mods_dir,
-                     const std::string& folder_name) {
+                      const std::string& folder_name) {
+    if (mods_dir.empty() || folder_name.empty())
+        return false;
     std::error_code ec;
     if (std::filesystem::exists(mods_dir / folder_name / "meta.ini", ec))
         return true;

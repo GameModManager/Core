@@ -2731,3 +2731,41 @@ TEST_CASE("mod list model separator boundary resets indent", "[ui]") {
         check(m.nesting_depth(rid("M2")) == 1, "in-band child indents");
     }
 }
+
+// Workspace-pmrh H1/H2: Overwrite/MERGED/game-native rows have no folder
+// under mods_dir, so the meta-persist paths (sync_priorities,
+// load_meta_for_mods) must skip them - saving would mkdir mods/{id}/ and
+// the next scan would list it as a real mod. Separators are real
+// (_separator) folders and are NOT phantoms.
+TEST_CASE("mod list phantom row predicate", "[ui]") {
+    ui::ModEntry regular;
+    regular.id = QLatin1String("SomeMod");
+    check(!ui::is_phantom_row(regular), "regular mod row persists meta");
+
+    ui::ModEntry sep;
+    sep.id = QLatin1String("_separator_1");
+    sep.is_separator = true;
+    check(!ui::is_phantom_row(sep),
+          "separator is a real folder, persists meta");
+
+    ui::ModEntry ow;
+    ow.id = QLatin1String(ui::kOverwriteModId);
+    ow.is_overwrite = true;
+    check(ui::is_phantom_row(ow), "overwrite row never persists meta");
+
+    ui::ModEntry ow_id_only;
+    ow_id_only.id = QLatin1String(ui::kOverwriteModId);
+    check(ui::is_phantom_row(ow_id_only),
+          "overwrite id alone never persists meta");
+
+    ui::ModEntry merged;
+    merged.id = QLatin1String(ui::kMergedModId);
+    merged.is_merged = true;
+    check(ui::is_phantom_row(merged), "MERGED row never persists meta");
+
+    ui::ModEntry native;
+    native.id = QLatin1String("Skyrim.esm");
+    native.is_game_native = true;
+    check(ui::is_phantom_row(native),
+          "game-native row never persists meta");
+}

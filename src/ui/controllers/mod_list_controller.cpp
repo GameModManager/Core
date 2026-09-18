@@ -1034,8 +1034,17 @@ void ModListController::sync_priorities() {
 
   auto &mods = w_->mod_model_->mods();
   for (int i = 0; i < mods.size(); ++i) {
-    // Persist priority to meta.ini for every row (Overwrite, separators, mods)
-    if (!mods_dir.empty()) {
+    // Persist priority to the mod's in-folder meta.ini. Phantom rows
+    // (Overwrite/MERGED/game-native) have no folder under mods_dir - saving
+    // for them would mkdir mods/{id}/ and the next scan would list it as a
+    // real mod (Workspace-pmrh H1). Separators are real folders: kept.
+    // The is_directory check is belt-and-braces for future row kinds.
+    std::error_code dir_ec;
+    const bool persistable =
+        !mods_dir.empty() && !is_phantom_row(mods[i]) &&
+        std::filesystem::is_directory(mods_dir / mods[i].id.toStdString(),
+                                      dir_ec);
+    if (persistable) {
       auto meta = engine::ModMeta::load(mods_dir, mods[i].id.toStdString());
       int old_priority = meta.priority();
       if (old_priority != i) {
@@ -1058,7 +1067,7 @@ void ModListController::sync_priorities() {
     // Write game-native priority - resolve actual mod folder location.
     // Only games that encode priority into mod-folder metadata (Isaac's
     // NNN prefix in metadata.xml, read by the game itself) get a folder
-    // write; MO2-style games persist priority in the meta dir sidecar
+    // write; MO2-style games persist priority in the in-folder meta.ini
     // above and read load order from their plugins.txt / order encoding.
     if (!mods[i].is_overwrite && !mods[i].is_separator &&
         !mods_subpath.empty()) {
@@ -1664,11 +1673,18 @@ void ModListController::load_meta_for_mods() {
   auto mods = w_->mod_model_->mods();
   for (int i = 0; i < mods.size(); ++i) {
     const auto &mod = mods[i];
-    if (mod.is_separator || mod.is_overwrite)
+    if (mod.is_separator || is_phantom_row(mod))
       continue;
 
     auto folder_name = mod.id.toStdString();
     if (folder_name.empty())
+      continue;
+
+    // Phantom-row flags cover the known pseudo rows, but never mkdir here
+    // for a folder that is not on disk: a save below would promote a stale
+    // row into a real mod on the next scan (Workspace-pmrh H2).
+    std::error_code dir_ec;
+    if (!std::filesystem::is_directory(mods_dir / folder_name, dir_ec))
       continue;
 
     // Load existing meta (or empty if no file yet)

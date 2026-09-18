@@ -457,3 +457,72 @@ TEST_CASE("mod scan worker migrates sidecars in-folder", "[ui]") {
 
   fs::remove_all(base, ec);
 }
+
+// Workspace-pmrh M1: meta.bak/ is a rescue copy, not per-scan scratch.
+// A second scan must not wipe it, and the orphan sweep must never
+// overwrite an existing rescue copy with a same-named sidecar.
+TEST_CASE("mod scan worker preserves meta.bak across scans", "[ui]") {
+  int test_argc = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QCoreApplication app(test_argc, test_argv);
+  (void)app;
+
+  const fs::path base = fs::current_path() / ("gmm_test_mod_scan_bak_" +
+                                              std::to_string(getpid()));
+  const fs::path mods_dir = base / "mods";
+  const fs::path legacy_dir = base / "meta";
+  std::error_code ec;
+  fs::create_directories(mods_dir / "ModA", ec);
+  fs::create_directories(legacy_dir, ec);
+
+  // Fresh orphan sidecar + a pre-existing rescue copy of the same name.
+  write_file(legacy_dir / "Orphan.ini",
+             "[GameModManager]\nfolder=Orphan\npriority=1\n");
+  write_file(base / "meta.bak" / "Orphan.ini",
+             "[GameModManager]\nfolder=Orphan\npriority=99\n");
+
+  engine::GameKnowledge knowledge;
+  ui::ModScanThread thread(&app);
+  ui::ModScanWorker *worker = thread.worker();
+  std::vector<ui::ModScanResult> results;
+  QObject::connect(worker, &ui::ModScanWorker::finished, &app,
+                   [&](ui::ModScanResult result, quint64) {
+                     results.push_back(std::move(result));
+                   });
+  auto run_scan = [&](quint64 generation) {
+    ui::ModScanRequest req;
+    req.knowledge = knowledge;
+    req.game_id = "testgame";
+    req.instance_root = base;
+    req.mods_dir = mods_dir;
+    thread.start(std::move(req), generation);
+    QElapsedTimer timer;
+    timer.start();
+    while (results.size() < generation) {
+      QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+      QThread::msleep(2);
+      if (timer.elapsed() > 10000) {
+        FAIL("scan never landed");
+      }
+    }
+  };
+
+  run_scan(1);
+
+  // The rescue copy wins: not overwritten by the same-named sidecar, and
+  // the sidecar is left in place for a later retry.
+  check(engine::ModMeta::load_file(base / "meta.bak" / "Orphan.ini")
+            .priority() == 99,
+        "orphan sweep never overwrites an existing rescue copy");
+  check(fs::exists(legacy_dir / "Orphan.ini"),
+        "skipped orphan sidecar stays in meta/ for the next scan");
+
+  // A second scan must not wipe the rescue window.
+  run_scan(2);
+  check(engine::ModMeta::load_file(base / "meta.bak" / "Orphan.ini")
+            .priority() == 99,
+        "meta.bak/ survives a second scan");
+
+  fs::remove_all(base, ec);
+}

@@ -5,6 +5,7 @@
 #include "engine/pipeline/extract_stage.h"
 #include "engine/pipeline/fomod_stage.h"
 #include "engine/pipeline/install_stage.h"
+#include "engine/mod/meta/mod_meta.h"
 #include "engine/pipeline/stage_stage.h"
 #include "engine/pipeline/resolve_stage.h"
 #include "engine/pipeline/deploy_stage.h"
@@ -457,6 +458,58 @@ TEST_CASE("pipeline", "[engine]") {
             REQUIRE(pipeline->ctx().fomod_choices_json.empty());
         }
         std::printf("PASS: pipeline_test — non-FOMOD install after a FOMOD does not inherit its choices\n");
+    }
+
+    // Workspace-pmrh M3: reinstalling over an existing mod (Merge) refreshes
+    // [General] version/installationfile from the install manifest.
+    // write_game_metadata early-returns when meta.ini exists (always true on
+    // Merge), so without the merge-loop refresh the version column goes
+    // stale after an update.
+    {
+        TempDir env;
+        auto mods = env.root / "mods";
+        std::filesystem::create_directories(mods);
+
+        // InstallStage removes the staging dir per install - fresh one each.
+        auto make_mod = [&](const std::string& tag, const std::string& version,
+                            const std::string& archive) {
+            auto staging = env.root / ("staging_" + tag);
+            std::filesystem::create_directories(staging);
+            std::ofstream(staging / "data.txt") << tag;
+            Mod mod;
+            mod.id = "versioned-mod";
+            mod.name = "Versioned Mod";
+            mod.version = version;
+            mod.archive_filename = archive;
+            mod.state = ModState::Extracted;
+            ModFile f;
+            f.relative_path = staging.string();
+            mod.files.push_back(f);
+            return mod;
+        };
+
+        InstallStage install;
+        PipelineContext ctx;
+        ctx.mods_dir = mods;
+        auto v1 = make_mod("v1", "1.0", "mod-1.0.zip");
+        REQUIRE(install.execute(v1, ctx));
+        REQUIRE(ModMeta::load_file(mods / "Versioned Mod" / "meta.ini").version() == "1.0");
+
+        // Reinstall as Merge (keeps load-order position): the version stamp
+        // must follow the new manifest.
+        PipelineContext ctx2;
+        ctx2.mods_dir = mods;
+        ctx2.overwrite_query_cb = [](const std::string&) {
+            OverwriteDecision d;
+            d.action = OverwriteAction::Merge;
+            return d;
+        };
+        auto v2 = make_mod("v2", "2.0", "mod-2.0.zip");
+        REQUIRE(install.execute(v2, ctx2));
+        auto merged = ModMeta::load_file(mods / "Versioned Mod" / "meta.ini");
+        REQUIRE(merged.version() == "2.0");
+        REQUIRE(merged.get("General", "installationfile") == "mod-2.0.zip");
+        std::printf("PASS: pipeline_test — reinstall (Merge) refreshes version from the manifest\n");
     }
 
     // InstallStage overwrite query flow: when the target mod folder already
