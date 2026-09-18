@@ -314,6 +314,56 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
       }
     };
 
+    // Move a legacy sidecar into folder_dir/meta.ini: merge when the
+    // folder already has one (the sidecar wins manager keys, the folder
+    // wins game keys), plain move otherwise. Stamps steam_appid when
+    // known. Returns true when the sidecar was consumed. Used for
+    // instance folders below, and for external game-dir folders + the
+    // meta.bak/ recovery in the orphan sweep (Workspace-7tjz).
+    auto move_sidecar_into = [&](const std::filesystem::path &sidecar,
+                                 const std::filesystem::path &folder_dir,
+                                 const std::string &folder_name) {
+      const auto in_folder = folder_dir / "meta.ini";
+      std::error_code mec2;
+      if (std::filesystem::exists(in_folder, mec2)) {
+        auto merged = engine::ModMeta::load_file(in_folder);
+        merge_sidecar(merged, engine::ModMeta::load_file(sidecar));
+        if (have_appid)
+          merged.set("GameModManager", "steam_appid", steam_appid_str);
+        if (merged.save_file(in_folder)) {
+          std::filesystem::remove(sidecar, mec2);
+          if (mec2)
+            engine::Logger::instance().warn(
+                "Failed to remove migrated sidecar: " + sidecar.string());
+          return true;
+        }
+        engine::Logger::instance().warn("Failed to save migrated meta: " +
+                                        folder_name);
+        return false;
+      }
+      // Sidecar only (XML-metadata games, separators): move it into
+      // the folder (rename; copy+delete across filesystems).
+      std::error_code mv_ec;
+      std::filesystem::rename(sidecar, in_folder, mv_ec);
+      if (mv_ec) {
+        std::filesystem::copy_file(sidecar, in_folder, mv_ec);
+        if (!mv_ec)
+          std::filesystem::remove(sidecar, mv_ec);
+      }
+      if (mv_ec) {
+        engine::Logger::instance().warn("Failed to migrate sidecar: " +
+                                        folder_name);
+        return false;
+      }
+      auto migrated = engine::ModMeta::load_file(in_folder);
+      if (have_appid)
+        migrated.set("GameModManager", "steam_appid", steam_appid_str);
+      (void)migrated.save_file(in_folder);
+      engine::Logger::instance().debug("Migrated sidecar meta: " +
+                                       folder_name + "/meta.ini");
+      return true;
+    };
+
     std::error_code ec;
     for (const auto &entry :
          std::filesystem::directory_iterator(request.mods_dir)) {
@@ -328,43 +378,7 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
 
       if (has_sidecar) {
         const auto sidecar = legacy_dir / (folder_name + ".ini");
-        if (std::filesystem::exists(in_folder, ec)) {
-          // BOTH exist: merge, save in-folder, drop the sidecar.
-          auto merged = engine::ModMeta::load_file(in_folder);
-          merge_sidecar(merged, engine::ModMeta::load_file(sidecar));
-          if (have_appid)
-            merged.set("GameModManager", "steam_appid", steam_appid_str);
-          if (merged.save_file(in_folder)) {
-            std::filesystem::remove(sidecar, ec);
-            if (ec)
-              engine::Logger::instance().warn(
-                  "Failed to remove migrated sidecar: " + sidecar.string());
-          } else {
-            engine::Logger::instance().warn("Failed to save migrated meta: " +
-                                            folder_name);
-          }
-        } else {
-          // Sidecar only (XML-metadata games, separators): move it into
-          // the folder (rename; copy+delete across filesystems).
-          std::error_code mv_ec;
-          std::filesystem::rename(sidecar, in_folder, mv_ec);
-          if (mv_ec) {
-            std::filesystem::copy_file(sidecar, in_folder, mv_ec);
-            if (!mv_ec)
-              std::filesystem::remove(sidecar, mv_ec);
-          }
-          if (mv_ec) {
-            engine::Logger::instance().warn("Failed to migrate sidecar: " +
-                                            folder_name);
-          } else {
-            auto migrated = engine::ModMeta::load_file(in_folder);
-            if (have_appid)
-              migrated.set("GameModManager", "steam_appid", steam_appid_str);
-            (void)migrated.save_file(in_folder);
-            engine::Logger::instance().debug("Migrated sidecar meta: " +
-                                             folder_name + "/meta.ini");
-          }
-        }
+        (void)move_sidecar_into(sidecar, entry.path(), folder_name);
         continue;
       }
 
@@ -395,11 +409,28 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
       }
     }
 
+    // The external game-mods dir (Isaac's game_dir/mods/ via the plugin
+    // hook or the instance.toml override) - the same resolution the
+    // external scan above uses. Needed below so game-dir-only mods are
+    // not mistaken for orphans (Workspace-7tjz).
+    const std::filesystem::path external_mods_dir =
+        engine::resolve_game_mods_dir(game_id, request.game_dir, knowledge,
+                                      request.game_mods_dir.string());
+    const auto bak_dir = request.instance_root / "meta.bak";
+
     // Orphan sidecars (no matching mod folder - renamed/deleted mods) move
     // to meta.bak/ for one release instead of being deleted outright.
+    // Before orphaning, check the external game-mods dir too: Steam
+    // Workshop mods (e.g. Isaac) live ONLY in game_dir/mods/, never in
+    // the instance mods dir - sweeping their sidecars to meta.bak/ would
+    // lose all manager state (source_type, source_id, categories,
+    // workshop_id). A folder in EITHER dir is migrated next to the mod
+    // it describes (instance folder preferred); an instance stub is never
+    // created for a game-dir mod - mkdir-ing mods/{folder}/ would promote
+    // the row into a scanned instance mod (Workspace-pmrh H1).
     if (!legacy_dir.empty() && std::filesystem::exists(legacy_dir, ec)) {
       int orphans = 0;
-      const auto bak_dir = request.instance_root / "meta.bak";
+      int rescued = 0;
       for (const auto &sentry :
            std::filesystem::directory_iterator(legacy_dir, ec)) {
         std::error_code sec;
@@ -407,8 +438,19 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
             sentry.path().extension() != ".ini")
           continue;
         const auto folder = sentry.path().stem().string();
+        std::filesystem::path target;
         if (std::filesystem::is_directory(request.mods_dir / folder, sec))
+          target = request.mods_dir / folder;
+        else if (!external_mods_dir.empty() &&
+                 external_mods_dir != request.mods_dir &&
+                 std::filesystem::is_directory(external_mods_dir / folder,
+                                               sec))
+          target = external_mods_dir / folder;
+        if (!target.empty()) {
+          if (move_sidecar_into(sentry.path(), target, folder))
+            ++rescued;
           continue;
+        }
         // Never overwrite a previous rescue copy of the same sidecar - the
         // older copy stays until the user restores or deletes it by hand.
         // The leftover sidecar is retried (and skipped again) next scan.
@@ -433,6 +475,61 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
         engine::Logger::instance().debug(
             "Moved " + std::to_string(orphans) +
             " orphan sidecars to meta.bak/");
+      if (rescued > 0)
+        engine::Logger::instance().debug(
+            "Migrated " + std::to_string(rescued) +
+            " game-dir sidecars in-folder (Workspace-7tjz)");
+    }
+
+    // Recovery (Workspace-7tjz): a previous release's orphan sweep may
+    // already have buried live mods' sidecars in meta.bak/ (Isaac
+    // game-dir mods swept before the external-dir check existed). On
+    // every scan, restore any rescue copy whose folder exists again -
+    // instance folder first, then the external game-mods dir. An
+    // existing in-folder meta.ini is newer truth and never overwritten;
+    // that rescue copy stays in meta.bak/ for a manual restore instead.
+    if (!legacy_dir.empty() && std::filesystem::is_directory(bak_dir, ec)) {
+      int restored = 0;
+      for (const auto &bentry :
+           std::filesystem::directory_iterator(bak_dir, ec)) {
+        std::error_code sec;
+        if (!bentry.is_regular_file(sec) ||
+            bentry.path().extension() != ".ini")
+          continue;
+        const auto folder = bentry.path().stem().string();
+        std::filesystem::path target;
+        if (std::filesystem::is_directory(request.mods_dir / folder, sec))
+          target = request.mods_dir / folder;
+        else if (!external_mods_dir.empty() &&
+                 external_mods_dir != request.mods_dir &&
+                 std::filesystem::is_directory(external_mods_dir / folder,
+                                               sec))
+          target = external_mods_dir / folder;
+        if (target.empty())
+          continue;
+        std::error_code tex;
+        if (std::filesystem::exists(target / "meta.ini", tex))
+          continue;
+        std::error_code mv_ec;
+        std::filesystem::rename(bentry.path(), target / "meta.ini", mv_ec);
+        if (mv_ec) {
+          std::filesystem::copy_file(bentry.path(), target / "meta.ini",
+                                     mv_ec);
+          if (!mv_ec)
+            std::filesystem::remove(bentry.path(), mv_ec);
+        }
+        if (!mv_ec) {
+          auto revived = engine::ModMeta::load_file(target / "meta.ini");
+          if (have_appid)
+            revived.set("GameModManager", "steam_appid", steam_appid_str);
+          (void)revived.save_file(target / "meta.ini");
+          ++restored;
+        }
+      }
+      if (restored > 0)
+        engine::Logger::instance().debug(
+            "Restored " + std::to_string(restored) +
+            " sidecars from meta.bak/ (Workspace-7tjz)");
     }
   }
 
