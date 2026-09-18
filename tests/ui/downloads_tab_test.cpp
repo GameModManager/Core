@@ -841,7 +841,7 @@ TEST_CASE("downloads tab", "[ui]") {
 // alone. A bare "Nexus Mods" label with no parent_mod_id / no
 // nexus_domain / no file_id was still treated as a Nexus install,
 // which the install path then propagated as a fake Nexus modid in
-// mods/{folder}/meta.ini and a [Nexusmods] sidecar. Same shape for
+// mods/{folder}/meta.ini and a [Nexusmods] section. Same shape for
 // LoversLab: a row labelled "LoversLab" with no page_url / no id was
 // silently treated as LoversLab-attributable. The fix only returns a
 // source_type when ALL the fields needed to actually re-fetch the

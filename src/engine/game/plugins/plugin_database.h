@@ -19,15 +19,14 @@ class Database {
 public:
     // Discover + parse all plugins from the game's merged Data view.
     //   game_dir   - game install root (Data/ holds vanilla + game-native plugins)
-    //   mods_dir   - instance mods dir
-    //   meta_dir   - instance meta dir (mod priority sidecars; may be empty)
+    //   mods_dir   - instance mods dir (per-mod priority lives in each
+    //                folder's own meta.ini, MO2-compatible)
     //   disable_mechanism - sentinel filename marking a mod disabled (may be empty)
     //   game_native_plugins - comma-separated vanilla plugins (resolved via
     //   engine::native_plugins_csv(): a registered "game_plugins" game feature,
     //   else the game_native_plugins knowledge hook)
     bool refresh(const std::filesystem::path& game_dir,
                  const std::filesystem::path& mods_dir,
-                 const std::filesystem::path& meta_dir,
                  const std::string& disable_mechanism,
                  const std::string& game_native_plugins);
 

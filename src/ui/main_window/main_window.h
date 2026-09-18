@@ -356,11 +356,8 @@ private:
       current_instance_; // loaded per-folder overrides for the active instance
   QPointer<ui::ModInfoDialog> modinfo_dialog_; // alive while the dialog is open
   // --- Path helpers (inlined: the composer stays thin, Issue #16) ---
-  std::filesystem::path meta_dir_path() const {
-    if (current_instance_root_.empty())
-      return {};
-    return current_instance_root_ / "meta";
-  }
+  // NOTE: per-mod meta.ini lives in-folder at mods/{folder}/meta.ini
+  // (MO2-compatible); there is no meta_dir_path() anymore.
   std::filesystem::path mods_dir_path() const {
     if (current_instance_root_.empty() && current_game_dir_.empty())
       return {};

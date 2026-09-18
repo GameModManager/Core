@@ -385,18 +385,15 @@ void DownloadsController::wire_downloads_tab() {
         if (dtab)
           dtab->mark_downloading(id);
         auto mods_dir = w_->mods_dir_path().string();
-        auto meta_dir = w_->current_instance_root_.empty()
-                            ? ""
-                            : (w_->current_instance_root_ / "meta").string();
         // Nexus downloads resume with their original NXM link...
         auto it_nxm = w_->nxm_links_.find(id);
         if (it_nxm != w_->nxm_links_.end()) {
           auto link = it_nxm->second;
           QMetaObject::invokeMethod(
               w_->pipeline_thread_->worker(),
-              [this, id, link, mods_dir, meta_dir]() {
+              [this, id, link, mods_dir]() {
                 w_->pipeline_thread_->worker()->download_mod(
-                    id, link, w_->current_game_id_, mods_dir, meta_dir);
+                    id, link, w_->current_game_id_, mods_dir);
               },
               Qt::QueuedConnection);
           return;
@@ -407,9 +404,9 @@ void DownloadsController::wire_downloads_tab() {
           auto link = it_modl->second;
           QMetaObject::invokeMethod(
               w_->pipeline_thread_->worker(),
-              [this, id, link, mods_dir, meta_dir]() {
+              [this, id, link, mods_dir]() {
                 w_->pipeline_thread_->worker()->download_modl(
-                    id, link, w_->current_game_id_, mods_dir, meta_dir);
+                    id, link, w_->current_game_id_, mods_dir);
               },
               Qt::QueuedConnection);
           return;
@@ -420,9 +417,9 @@ void DownloadsController::wire_downloads_tab() {
           auto url = it_url->second;
           QMetaObject::invokeMethod(
               w_->pipeline_thread_->worker(),
-              [this, id, url, mods_dir, meta_dir]() {
+              [this, id, url, mods_dir]() {
                 w_->pipeline_thread_->worker()->download_mod_url(
-                    id, url, w_->current_game_id_, mods_dir, meta_dir);
+                    id, url, w_->current_game_id_, mods_dir);
               },
               Qt::QueuedConnection);
         }
@@ -695,11 +692,7 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
 
   // Build paths for the pipeline context
   auto mods_dir = w_->mods_dir_path();
-  auto meta_dir = w_->current_instance_root_.empty()
-                      ? ""
-                      : (w_->current_instance_root_ / "meta").string();
-  engine::Logger::instance().debug("[NXM-Download] Pipeline paths: mods_dir=" + mods_dir.string() +
-                                   " meta_dir=" + meta_dir);
+  engine::Logger::instance().debug("[NXM-Download] Pipeline paths: mods_dir=" + mods_dir.string());
 
   // Invoke the pipeline worker asynchronously (download only - install is a
   // separate user-triggered step)
@@ -710,10 +703,10 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
   engine::Logger::instance().debug("[NXM-Download] Invoking download_mod on pipeline worker");
   QMetaObject::invokeMethod(
       w_->pipeline_thread_->worker(),
-      [this, key, link, mods_dir, meta_dir]() {
+      [this, key, link, mods_dir]() {
         engine::Logger::instance().debug("[NXM-Download] Lambda executing on worker thread, calling download_mod");
         w_->pipeline_thread_->worker()->download_mod(
-            key, link, w_->current_game_id_, mods_dir.string(), meta_dir);
+            key, link, w_->current_game_id_, mods_dir.string());
       },
       Qt::QueuedConnection);
 
@@ -818,15 +811,12 @@ void DownloadsController::handle_modl_download(const engine::Source::ModlLink &l
   w_->modl_links_[key] = link;
 
   auto mods_dir = w_->mods_dir_path();
-  auto meta_dir = w_->current_instance_root_.empty()
-                      ? ""
-                      : (w_->current_instance_root_ / "meta").string();
 
   QMetaObject::invokeMethod(
       w_->pipeline_thread_->worker(),
-      [this, key, link, mods_dir, meta_dir]() {
+      [this, key, link, mods_dir]() {
         w_->pipeline_thread_->worker()->download_modl(
-            key, link, w_->current_game_id_, mods_dir.string(), meta_dir);
+            key, link, w_->current_game_id_, mods_dir.string());
       },
       Qt::QueuedConnection);
 
@@ -896,15 +886,12 @@ void DownloadsController::start_loverslab_download(const std::string &url) {
 
   // Build paths for the pipeline context
   auto mods_dir = w_->mods_dir_path();
-  auto meta_dir = w_->current_instance_root_.empty()
-                      ? ""
-                      : (w_->current_instance_root_ / "meta").string();
 
   QMetaObject::invokeMethod(
       w_->pipeline_thread_->worker(),
-      [this, key, url, mods_dir, meta_dir]() {
+      [this, key, url, mods_dir]() {
         w_->pipeline_thread_->worker()->download_mod_url(
-            key, url, w_->current_game_id_, mods_dir.string(), meta_dir);
+            key, url, w_->current_game_id_, mods_dir.string());
       },
       Qt::QueuedConnection);
 

@@ -88,7 +88,7 @@ static ui::ModInfoData
 make_data(const std::string &id, const std::string &file_id,
           const std::string &page_url,
           std::function<engine::LoversLabModInfoResult()> fetch,
-          const std::filesystem::path &meta_dir, qint64 installation_ts = 0) {
+          const std::filesystem::path &mods_dir, qint64 installation_ts = 0) {
   ui::ModInfoData data;
   data.id = QString::fromStdString(id);
   data.name = QString::fromStdString(id);
@@ -98,11 +98,11 @@ make_data(const std::string &id, const std::string &file_id,
   data.supported_sources = QStringList{QStringLiteral("Test LoversLab")};
   data.fetch_loverslab_info = std::move(fetch);
   data.installation_ts = installation_ts;
-  data.load_meta = [meta_dir, id] {
-    return engine::ModMeta::load(meta_dir, id);
+  data.load_meta = [mods_dir, id] {
+    return engine::ModMeta::load(mods_dir, id);
   };
-  data.save_meta = [meta_dir, id](const engine::ModMeta &m) {
-    return m.save(meta_dir, id);
+  data.save_meta = [mods_dir, id](const engine::ModMeta &m) {
+    return m.save(mods_dir, id);
   };
   return data;
 }
@@ -122,8 +122,8 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
 
   const std::filesystem::path instance =
       "/tmp/gmm_ll_source_panel/instances/Test";
-  const std::filesystem::path meta_dir = instance / "meta";
-  std::filesystem::create_directories(meta_dir);
+  const std::filesystem::path mods_dir = instance / "mods";
+  std::filesystem::create_directories(mods_dir);
 
   engine::SourceRegistry::instance().register_provider(
       std::make_unique<FakeLoversLabProvider>());
@@ -155,7 +155,7 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
               "https://www.loverslab.com/files/file/11488-the-xims-magazine/";
           return r;
         },
-        meta_dir, install_ts);
+        mods_dir, install_ts);
     tab.set_current(data);
     tab.set_mod(data);
     tab.first_activation();
@@ -166,14 +166,14 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
     refresh->click();
 
     const bool landed = wait_for([&] {
-      return engine::ModMeta::load(meta_dir, "LLModA")
+      return engine::ModMeta::load(mods_dir, "LLModA")
                  .get("LoversLab", "description") ==
              "Hi all, the refreshed mod.";
     });
     check(landed, "refresh result persisted to the mod's meta");
     check(on_worker, "fetch ran on the worker thread, not the UI thread");
 
-    const auto meta_after = engine::ModMeta::load(meta_dir, "LLModA");
+    const auto meta_after = engine::ModMeta::load(mods_dir, "LLModA");
     check(meta_after.get("LoversLab", "fileid") == "11488",
           "file id persisted (writes happen when source_type==loverslab)");
     check(meta_after.get("General", "version") == "1.1",
@@ -226,7 +226,7 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
           r.description = (calls == 2) ? "second" : "first";
           return r;
         },
-        meta_dir);
+        mods_dir);
     tab.set_current(data);
     tab.set_mod(data);
     tab.first_activation();
@@ -241,7 +241,7 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
     refresh->click();
     gate.release();
     const bool landed = wait_for([&] {
-      return engine::ModMeta::load(meta_dir, "LLModB")
+      return engine::ModMeta::load(mods_dir, "LLModB")
                  .get("LoversLab", "description") == "second";
     });
     check(landed, "second refresh supersedes the first (stale dropped)");
@@ -258,13 +258,13 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
     engine::ModMeta m;
     m.set("LoversLab", "fileid", "99999");
     m.set("LoversLab", "date_modified", "2025-06-05");
-    m.save(meta_dir, "LLModSameDay");
+    m.save(mods_dir, "LLModSameDay");
 
     // 2025-06-05 12:00 UTC.
     const qint64 same_day = 1749124800; // 2025-06-05 12:00 UTC
     auto data = make_data("LLModSameDay", "99999",
                           "https://www.loverslab.com/files/file/99999-x/",
-                          nullptr, meta_dir, same_day);
+                          nullptr, mods_dir, same_day);
     ui::SourceTab tab;
     tab.set_current(data);
     tab.set_mod(data);
@@ -289,12 +289,12 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
     engine::ModMeta m;
     m.set("LoversLab", "fileid", "88888");
     // No date_modified key.
-    m.save(meta_dir, "LLModPreFeature");
+    m.save(mods_dir, "LLModPreFeature");
 
     auto data =
         make_data("LLModPreFeature", "88888",
                   "https://www.loverslab.com/files/file/88888-x/", nullptr,
-                  meta_dir, 1748736000); // 2025-06-01 (pre-feature mod)
+                  mods_dir, 1748736000); // 2025-06-01 (pre-feature mod)
     ui::SourceTab tab;
     tab.set_current(data);
     tab.set_mod(data);
@@ -325,7 +325,7 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
     engine::ModMeta m;
     m.set("General", "version", "1.0");
     m.set("GameModManager", "source_type", "manual");
-    m.save(meta_dir, "ManualMod");
+    m.save(mods_dir, "ManualMod");
 
     ui::ModInfoData data;
     data.id = QStringLiteral("ManualMod");
@@ -333,11 +333,11 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
     data.source_type = QStringLiteral("manual");
     data.source_id = QString();
     data.supported_sources = QStringList{QStringLiteral("Test LoversLab")};
-    data.load_meta = [meta_dir] {
-      return engine::ModMeta::load(meta_dir, "ManualMod");
+    data.load_meta = [mods_dir] {
+      return engine::ModMeta::load(mods_dir, "ManualMod");
     };
-    data.save_meta = [meta_dir](const engine::ModMeta &m) {
-      return m.save(meta_dir, "ManualMod");
+    data.save_meta = [mods_dir](const engine::ModMeta &m) {
+      return m.save(mods_dir, "ManualMod");
     };
 
     ui::SourceTab tab;

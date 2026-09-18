@@ -56,18 +56,18 @@ public:
     void set_priority(int p);
     [[nodiscard]] bool imported_from_mo2() const;
 
-    // --- Per-mod UI state (manager sidecar) ---
+    // --- Per-mod UI state (in-folder meta.ini) ---
     // Tree-view collapse state and visual-nesting parent link. These live in
-    // the manager sidecar's [GameModManager] section ({instance_root}/meta/
-    // {folder_name}.ini) - NOT the mod's own MO2-format meta.ini, which is
-    // game-visible. folded is explicit true/false; parent_id is absent for
+    // the mod's own meta.ini [GameModManager] section
+    // ({instance_root}/mods/{folder_name}/meta.ini, MO2-compatible).
+    // folded is explicit true/false; parent_id is absent for
     // top-level rows (unset() clears it back to "absent").
     [[nodiscard]] bool folded() const;
     void set_folded(bool folded_state);
     [[nodiscard]] std::string parent_id() const;
     void set_parent_id(const std::string& id);
 
-    // --- Collection tracking (manager sidecar, Workspace-5wmu) ---
+    // --- Collection tracking (in-folder meta.ini, Workspace-5wmu) ---
     // Source-agnostic collection membership persisted per mod in
     // [GameModManager]: owning collection id, revision at install time, and
     // the per-mod-in-collection flag. Absent keys = untracked standalone mod.
@@ -84,19 +84,22 @@ public:
     void unset(const std::string& section, const std::string& key);
 
     // --- File I/O ---
-    // Load/save meta file at {meta_dir}/{folder_name}.ini
-    static ModMeta load(const std::filesystem::path& meta_dir,
+    // Load/save meta file at {mods_dir}/{folder_name}/meta.ini
+    // (MO2-compatible in-folder location). load() falls back to the legacy
+    // sidecar {mods_dir}/../meta/{folder_name}.ini for one release so
+    // un-migrated instances keep working; save() always writes in-folder.
+    static ModMeta load(const std::filesystem::path& mods_dir,
                         const std::string& folder_name);
-    bool save(const std::filesystem::path& meta_dir,
+    bool save(const std::filesystem::path& mods_dir,
               const std::string& folder_name) const;
 
-    // Load/save meta at an explicit .ini path (e.g. a mod's own meta.ini,
-    // which lives inside the mod folder rather than the manager sidecar).
+    // Load/save meta at an explicit .ini path (e.g. a mod's own meta.ini
+    // inside the mod folder, or a legacy sidecar path).
     static ModMeta load_file(const std::filesystem::path& ini_file);
     bool save_file(const std::filesystem::path& ini_file) const;
 
-    // Check if a meta file already exists
-    static bool exists(const std::filesystem::path& meta_dir,
+    // Check if a meta file already exists (in-folder or legacy sidecar).
+    static bool exists(const std::filesystem::path& mods_dir,
                        const std::string& folder_name);
 
     // --- MO2 detection ---

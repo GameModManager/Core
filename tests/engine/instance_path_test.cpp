@@ -49,8 +49,8 @@ TEST_CASE("instance path", "[engine]") {
             "default profiles dir is <root>/profiles");
     require(inst.path_for(InstanceKind::Overwrite) == root / "overwrite",
             "default overwrite dir is <root>/overwrite");
-    require(inst.path_for(InstanceKind::Meta) == root / "meta",
-            "default meta dir is <root>/meta");
+    require(inst.path_for(InstanceKind::Plugins) == root / "plugins",
+            "default plugins dir is <root>/plugins");
 
     // --- Overrides replace the defaults. ---
     const fs::path mods = "/data/mods";
@@ -68,10 +68,10 @@ TEST_CASE("instance path", "[engine]") {
     require(inst.path_for(InstanceKind::Cache) == cache, "cache override wins");
     require(inst.path_for(InstanceKind::Profiles) == profiles, "profiles override wins");
     require(inst.path_for(InstanceKind::Overwrite) == overwrite, "overwrite override wins");
-    require(inst.path_for(InstanceKind::Meta) == root / "meta",
+    require(inst.path_for(InstanceKind::Plugins) == root / "plugins",
             "non-overridable kinds keep the default");
     require(inst.path_override(InstanceKind::Mods) == mods, "path_override returns the value");
-    require(inst.path_override(InstanceKind::Meta).empty(),
+    require(inst.path_override(InstanceKind::Plugins).empty(),
             "path_override is empty for non-overridable kinds");
 
     // --- Cache-derived folders follow the cache override. ---
@@ -101,7 +101,7 @@ TEST_CASE("instance path", "[engine]") {
     require(read_back.path_for(InstanceKind::Cache) == cache, "cache override survives toml");
     require(read_back.path_for(InstanceKind::Profiles) == profiles, "profiles override survives toml");
     require(read_back.path_for(InstanceKind::Overwrite) == overwrite, "overwrite override survives toml");
-    require(read_back.path_for(InstanceKind::Meta) == root / "meta",
+    require(read_back.path_for(InstanceKind::Plugins) == root / "plugins",
             "non-overridden kinds stay default after roundtrip");
 
     // Only non-empty overrides are written.

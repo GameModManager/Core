@@ -185,7 +185,6 @@ TEST_CASE("pipeline worker", "[ui]") {
         std::filesystem::current_path() /
         ("gmm_test_pipeline_worker_" + std::to_string(getpid()));
     const std::filesystem::path mods = base / "mods";
-    const std::filesystem::path meta = base / "meta";
     const std::filesystem::path downloads = base / "downloads";
     std::error_code ec;
     std::filesystem::create_directories(mods, ec);
@@ -217,7 +216,7 @@ TEST_CASE("pipeline worker", "[ui]") {
 
     const auto start = [&](const std::string& id) {
         worker.download_mod_url(id, "http://fake.example/" + id, "fake-game",
-                                mods.string(), meta.string());
+                                mods.string());
     };
     // A Nexus download via download_mod (real NxmLink path -> source_type
     // "nexus"). Distinct mod_ids keep the archive filenames unique.
@@ -226,7 +225,7 @@ TEST_CASE("pipeline worker", "[ui]") {
         link.nexus_domain = "skyrimspecialedition";
         link.mod_id = mod_id;
         link.file_id = 1;
-        worker.download_mod(id, link, "skyrim", mods.string(), meta.string());
+        worker.download_mod(id, link, "skyrim", mods.string());
     };
     const auto has_completion = [&](const std::string& id) {
         for (const auto& [cid, ok] : completions)

@@ -58,8 +58,6 @@ std::filesystem::path Instance::path_for(InstanceKind kind) const {
     return info_.root / "logs";
   case InstanceKind::Config:
     return info_.root / "config";
-  case InstanceKind::Meta:
-    return info_.root / "meta";
   case InstanceKind::Masterlists:
     return info_.root / "masterlists";
   }
@@ -121,7 +119,7 @@ bool Instance::create_directories() const {
       InstanceKind::Profiles,      InstanceKind::Downloads,
       InstanceKind::CacheArchives, InstanceKind::CacheThumbnails,
       InstanceKind::Plugins,       InstanceKind::Logs,
-      InstanceKind::Config,        InstanceKind::Meta,
+      InstanceKind::Config,
   };
   for (auto kind : dirs) {
     std::filesystem::create_directories(path_for(kind), ec);
