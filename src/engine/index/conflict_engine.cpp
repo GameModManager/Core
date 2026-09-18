@@ -258,7 +258,10 @@ std::unordered_map<std::string, ConflictStats> ConflictEngine::compute(
     std::unordered_map<std::string, std::vector<std::string>> file_lists;
 
     for (const auto& [folder_name, priority] : mods) {
-        // Resolve actual mod path: try primary dir first, fall back to extra dir
+        // Resolve actual mod path: try primary dir first, fall back to extra dir.
+        // Isaac special case: external mods live in game_dir/mods/ while the
+        // instance mods dir only has a meta.ini stub. Walk BOTH dirs and merge
+        // so the conflict scan sees game content from the extra dir.
         auto mod_path = mods_dir / folder_name;
         std::error_code ec;
         if (!std::filesystem::exists(mod_path, ec) && !extra_mods_dir.empty()) {
@@ -267,15 +270,42 @@ std::unordered_map<std::string, ConflictStats> ConflictEngine::compute(
                 mod_path = std::move(extra_path);
         }
 
-        auto token = compute_quick_token(mod_path);
+        // Quick token must account for BOTH dirs so cache invalidates when
+        // either one changes (e.g. instance has only meta.ini but game dir
+        // content was updated by Steam).
+        std::string token = compute_quick_token(mod_path);
+        if (!extra_mods_dir.empty()) {
+            auto extra_path = extra_mods_dir / folder_name;
+            if (std::filesystem::exists(extra_path, ec) && extra_path != mod_path) {
+                token += "|" + compute_quick_token(extra_path);
+            }
+        }
 
         auto it = cache.find(folder_name);
         if (it != cache.end() && it->second.token == token && !it->second.files.empty()) {
             // Cache hit - use stored files
             file_lists[folder_name] = it->second.files;
         } else {
-            // Cache miss - walk the directory
+            // Walk the primary path
             auto files = walk_mod(mod_path, extensions, ignored, scan_dirs);
+
+            // If the extra dir also has this mod, walk it too and merge.
+            // This covers the case where the instance dir only has meta.ini
+            // (e.g. Isaac external mods whose content lives in game_dir/mods/)
+            // and the extra dir has the actual game files under resources/.
+            if (!extra_mods_dir.empty()) {
+                auto extra_path = extra_mods_dir / folder_name;
+                if (std::filesystem::exists(extra_path, ec) &&
+                    extra_path != mod_path) {
+                    auto extra_files = walk_mod(extra_path, extensions, ignored, scan_dirs);
+                    for (auto& f : extra_files) {
+                        if (std::find(files.begin(), files.end(), f) == files.end())
+                            files.push_back(std::move(f));
+                    }
+                    std::sort(files.begin(), files.end());
+                }
+            }
+
             file_lists[folder_name] = files;
 
             // Update cache

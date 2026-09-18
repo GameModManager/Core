@@ -419,7 +419,15 @@ private:
   }
   std::filesystem::path
   resolve_mod_folder(const std::string &mod_id,
-                     const std::string &mods_subpath) const {
+                     const std::string &mods_subpath,
+                     const std::string &content_dir_str = {}) const {
+    // If the mod has an explicit content_dir (external mods: Isaac
+    // game_dir/mods/), use it directly. The content_dir IS the mod folder.
+    if (!content_dir_str.empty()) {
+      auto content = std::filesystem::path(content_dir_str);
+      if (std::filesystem::exists(content))
+        return content;
+    }
     auto folder = mods_dir_path() / mod_id;
     if (std::filesystem::exists(folder))
       return folder;

@@ -195,6 +195,39 @@ void ModContextMenu::setup_mod_list_context_menu() {
                                actions_->toggle_root_override(rows, !all_on);
                              });
           }
+          // Send to Separator: only available when the selection contains
+          // purely mods (no separators, overwrites, merged, or native).
+          {
+            bool has_separator = false;
+            QStringList mod_ids;
+            for (const auto &si : sel) {
+              if (si.row() < 0 || si.row() >= w_->mod_model_->mods().size())
+                continue;
+              const auto &m = w_->mod_model_->mods()[si.row()];
+              if (m.is_separator || m.is_overwrite || m.is_merged ||
+                  m.is_game_native) {
+                has_separator = true;
+                break;
+              }
+              mod_ids << m.id;
+            }
+            // Check if any separators exist at all in the list.
+            bool any_seps = false;
+            for (const auto &m : w_->mod_model_->mods()) {
+              if (m.is_separator) {
+                any_seps = true;
+                break;
+              }
+            }
+            menu.addSeparator();
+            auto *sep_act = menu.addAction(
+                engine::IconManager::instance().resolve_icon("view-sort"),
+                QObject::tr("Send to Separator..."), w_,
+                [this, mod_ids]() {
+                  actions_->send_selected_to_separator(mod_ids);
+                });
+            sep_act->setEnabled(any_seps && !has_separator && mod_ids.size() > 1);
+          }
           menu.addSeparator();
           menu.addAction(
               engine::IconManager::instance().resolve_icon("edit-delete"),
