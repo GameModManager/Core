@@ -124,12 +124,26 @@ void ModContextMenu::setup_mod_list_context_menu() {
                 [this]() { actions_->reset_color_for_selected(); });
           }
           menu.addSeparator();
-          menu.addAction(QObject::tr("Expand All Separators"), [this]() {
-            w_->mod_model_->set_all_separators_folded(false);
-          });
-          menu.addAction(QObject::tr("Collapse All Separators"), [this]() {
-            w_->mod_model_->set_all_separators_folded(true);
-          });
+          bool any_folded = false;
+          bool any_unfolded = false;
+          for (const auto &mod : w_->mod_model_->mods()) {
+            if (!mod.is_separator)
+              continue;
+            if (mod.folded)
+              any_folded = true;
+            else
+              any_unfolded = true;
+          }
+          auto *expand_action =
+              menu.addAction(QObject::tr("Expand All Separators"), [this]() {
+                w_->mod_model_->set_all_separators_folded(false);
+              });
+          expand_action->setEnabled(any_folded);
+          auto *collapse_action =
+              menu.addAction(QObject::tr("Collapse All Separators"), [this]() {
+                w_->mod_model_->set_all_separators_folded(true);
+              });
+          collapse_action->setEnabled(any_unfolded);
           menu.exec(w_->mod_view_->viewport()->mapToGlobal(pos));
           return;
         }
