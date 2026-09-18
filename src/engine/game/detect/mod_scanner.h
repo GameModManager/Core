@@ -44,6 +44,12 @@ struct ScannedMod {
     // Category IDs auto-assigned from Steam Workshop tags via the
     // workshop_tag_categories hook. Empty when no mapping is available.
     std::vector<int> category_ids;
+    // The directory where this mod's actual game content lives. For most
+    // mods this is the same as the scanned mods_dir. For games with an
+    // external game_mods_dir hook (Isaac), external mods' content lives
+    // in game_dir/mods/ while instance/mods/ only has a meta.ini stub.
+    // Used by path resolution for mod info, file open, and file manager.
+    std::filesystem::path content_dir;
 };
 
 // Generic mod scanner - reads ALL game-specific config from GameKnowledge.
