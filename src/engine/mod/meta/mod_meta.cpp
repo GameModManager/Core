@@ -431,7 +431,7 @@ bool ModMeta::imported_from_mo2() const {
 }
 
 // ---------------------------------------------------------------------------
-// Per-mod UI state (manager sidecar)
+// Per-mod UI state (in-folder meta.ini)
 // ---------------------------------------------------------------------------
 
 bool ModMeta::folded() const {
@@ -451,7 +451,7 @@ void ModMeta::set_parent_id(const std::string& id) {
 }
 
 // ---------------------------------------------------------------------------
-// Collection tracking (manager sidecar, Workspace-5wmu)
+// Collection tracking (in-folder meta.ini, Workspace-5wmu)
 // ---------------------------------------------------------------------------
 
 std::string ModMeta::collection_id() const {
@@ -496,26 +496,41 @@ void ModMeta::unset(const std::string& section, const std::string& key) {
 // File I/O
 // ---------------------------------------------------------------------------
 
-ModMeta ModMeta::load(const std::filesystem::path& meta_dir,
+ModMeta ModMeta::load(const std::filesystem::path& mods_dir,
                       const std::string& folder_name) {
     ModMeta meta;
-    auto filepath = meta_dir / (folder_name + ".ini");
+    auto filepath = mods_dir / folder_name / "meta.ini";
     std::ifstream f(filepath);
-    if (!f) return meta; // empty meta - caller checks has_section("General")
-
-    std::string content((std::istreambuf_iterator<char>(f)),
-                        std::istreambuf_iterator<char>());
-    meta.parse(content);
-    return meta;
+    if (f) {
+        std::string content((std::istreambuf_iterator<char>(f)),
+                            std::istreambuf_iterator<char>());
+        meta.parse(content);
+        return meta;
+    }
+    // One-release fallback: legacy sidecar at {instance_root}/meta/.
+    // mods_dir is normally {instance_root}/mods, so the sidecar lives at
+    // mods_dir/../meta/{folder}.ini.
+    std::error_code ec;
+    auto legacy = mods_dir.parent_path() / "meta" / (folder_name + ".ini");
+    if (std::filesystem::exists(legacy, ec)) {
+        std::ifstream lf(legacy);
+        if (lf) {
+            std::string content((std::istreambuf_iterator<char>(lf)),
+                                std::istreambuf_iterator<char>());
+            meta.parse(content);
+        }
+    }
+    return meta; // empty meta - caller checks has_section("General")
 }
 
-bool ModMeta::save(const std::filesystem::path& meta_dir,
+bool ModMeta::save(const std::filesystem::path& mods_dir,
                    const std::string& folder_name) const {
+    auto dir = mods_dir / folder_name;
     std::error_code ec;
-    std::filesystem::create_directories(meta_dir, ec);
+    std::filesystem::create_directories(dir, ec);
     if (ec) return false;
 
-    auto filepath = meta_dir / (folder_name + ".ini");
+    auto filepath = dir / "meta.ini";
     std::ofstream f(filepath);
     if (!f) return false;
     f << serialize();
@@ -542,9 +557,14 @@ bool ModMeta::save_file(const std::filesystem::path& ini_file) const {
     return f.good();
 }
 
-bool ModMeta::exists(const std::filesystem::path& meta_dir,
+bool ModMeta::exists(const std::filesystem::path& mods_dir,
                      const std::string& folder_name) {
-    return std::filesystem::exists(meta_dir / (folder_name + ".ini"));
+    std::error_code ec;
+    if (std::filesystem::exists(mods_dir / folder_name / "meta.ini", ec))
+        return true;
+    return std::filesystem::exists(mods_dir.parent_path() / "meta" /
+                                   (folder_name + ".ini"),
+                                   ec);
 }
 
 // ---------------------------------------------------------------------------

@@ -17,7 +17,6 @@ enum class InstanceKind {
   Logs,
   Config,
   Overwrite,
-  Meta,
   Masterlists,
 };
 

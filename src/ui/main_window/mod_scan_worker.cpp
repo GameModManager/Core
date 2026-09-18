@@ -269,26 +269,113 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
     }
   }
 
-  // One-time import of MO2 meta.ini sidecars into the manager's meta dir
-  // (migrate_mo2_meta). Runs here so the load path does no directory walking
-  // on the main thread. Idempotent: folders whose meta is already imported
-  // are skipped, so re-runs are cheap.
-  if (!request.meta_dir.empty() && std::filesystem::exists(request.mods_dir)) {
+  // One-time migration of manager sidecars ({instance_root}/meta/*.ini)
+  // into the MO2-compatible in-folder location (mods/{folder}/meta.ini),
+  // plus in-place enrichment of raw MO2 meta.ini files. Runs here so the
+  // load path does no directory walking on the main thread. Idempotent:
+  // folders without a sidecar and already-enriched folders are skipped,
+  // so re-runs are cheap.
+  if (std::filesystem::exists(request.mods_dir)) {
     // Steam appid for this game (needed for Workshop mods)
     auto steam_appid_str = knowledge.get(game_id, "steam_appid", "0");
+    const bool have_appid =
+        !steam_appid_str.empty() && steam_appid_str != "0";
 
+    // Legacy sidecars live at {instance_root}/meta (never overridden -
+    // Instance has no path override for them). Empty in portable mode.
+    const std::filesystem::path legacy_dir =
+        request.instance_root.empty()
+            ? std::filesystem::path{}
+            : request.instance_root / "meta";
+
+    // Last release's orphans are stale - drop them before sweeping anew.
+    if (!request.instance_root.empty()) {
+      std::error_code bak_ec;
+      std::filesystem::remove_all(request.instance_root / "meta.bak", bak_ec);
+    }
+
+    // Merge a legacy sidecar into the in-folder base: the sidecar was the
+    // source of truth for manager state, the folder may hold newer
+    // game-written data (MO2-touched installs).
+    auto merge_sidecar = [](engine::ModMeta &base,
+                            const engine::ModMeta &side) {
+      for (const auto &key : side.keys("GameModManager"))
+        base.set("GameModManager", key, side.get("GameModManager", key));
+      for (const char *sec :
+           {"Nexusmods", "LoversLab", "ModPub", "SteamWorkshop", "Modl"}) {
+        for (const auto &key : side.keys(sec))
+          base.set(sec, key, side.get(sec, key));
+      }
+      // The category CSV is manager state (Categories tab writes it);
+      // install stamps ride along too. The rest of [General] is
+      // game-owned and stays as the folder has it.
+      for (const char *key : {"category", "installed", "installationfile"}) {
+        const auto v = side.get("General", key);
+        if (!v.empty())
+          base.set("General", key, v);
+      }
+    };
+
+    std::error_code ec;
     for (const auto &entry :
          std::filesystem::directory_iterator(request.mods_dir)) {
       if (!entry.is_directory())
         continue;
       auto folder_name = entry.path().filename().string();
+      const auto in_folder = entry.path() / "meta.ini";
 
-      // Skip if meta already imported
-      if (engine::ModMeta::exists(request.meta_dir, folder_name))
+      const bool has_sidecar =
+          !legacy_dir.empty() &&
+          std::filesystem::exists(legacy_dir / (folder_name + ".ini"), ec);
+
+      if (has_sidecar) {
+        const auto sidecar = legacy_dir / (folder_name + ".ini");
+        if (std::filesystem::exists(in_folder, ec)) {
+          // BOTH exist: merge, save in-folder, drop the sidecar.
+          auto merged = engine::ModMeta::load_file(in_folder);
+          merge_sidecar(merged, engine::ModMeta::load_file(sidecar));
+          if (have_appid)
+            merged.set("GameModManager", "steam_appid", steam_appid_str);
+          if (merged.save_file(in_folder)) {
+            std::filesystem::remove(sidecar, ec);
+            if (ec)
+              engine::Logger::instance().warn(
+                  "Failed to remove migrated sidecar: " + sidecar.string());
+          } else {
+            engine::Logger::instance().warn("Failed to save migrated meta: " +
+                                            folder_name);
+          }
+        } else {
+          // Sidecar only (XML-metadata games, separators): move it into
+          // the folder (rename; copy+delete across filesystems).
+          std::error_code mv_ec;
+          std::filesystem::rename(sidecar, in_folder, mv_ec);
+          if (mv_ec) {
+            std::filesystem::copy_file(sidecar, in_folder, mv_ec);
+            if (!mv_ec)
+              std::filesystem::remove(sidecar, mv_ec);
+          }
+          if (mv_ec) {
+            engine::Logger::instance().warn("Failed to migrate sidecar: " +
+                                            folder_name);
+          } else {
+            auto migrated = engine::ModMeta::load_file(in_folder);
+            if (have_appid)
+              migrated.set("GameModManager", "steam_appid", steam_appid_str);
+            (void)migrated.save_file(in_folder);
+            engine::Logger::instance().debug("Migrated sidecar meta: " +
+                                             folder_name + "/meta.ini");
+          }
+        }
         continue;
+      }
 
-      // Check if MO2 meta.ini exists in this mod's folder
+      // No sidecar: enrich a raw MO2 meta.ini in place (first scan of an
+      // MO2-imported instance). Already-enriched folders (a
+      // [GameModManager] section exists) are skipped.
       if (!engine::ModMeta::has_mo2_meta(entry.path()))
+        continue;
+      if (engine::ModMeta::load_file(in_folder).has_section("GameModManager"))
         continue;
 
       // Import
@@ -297,17 +384,50 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
         continue;
 
       // Fill in the steam_appid from game knowledge
-      if (!steam_appid_str.empty() && steam_appid_str != "0") {
+      if (have_appid) {
         meta.set("GameModManager", "steam_appid", steam_appid_str);
       }
 
-      if (meta.save(request.meta_dir, folder_name)) {
+      if (meta.save_file(in_folder)) {
         engine::Logger::instance().debug("Imported MO2 meta: " + folder_name +
                                          "/meta.ini");
       } else {
         engine::Logger::instance().warn("Failed to save imported meta: " +
                                         folder_name);
       }
+    }
+
+    // Orphan sidecars (no matching mod folder - renamed/deleted mods) move
+    // to meta.bak/ for one release instead of being deleted outright.
+    if (!legacy_dir.empty() && std::filesystem::exists(legacy_dir, ec)) {
+      int orphans = 0;
+      const auto bak_dir = request.instance_root / "meta.bak";
+      for (const auto &sentry :
+           std::filesystem::directory_iterator(legacy_dir, ec)) {
+        std::error_code sec;
+        if (!sentry.is_regular_file(sec) ||
+            sentry.path().extension() != ".ini")
+          continue;
+        const auto folder = sentry.path().stem().string();
+        if (std::filesystem::is_directory(request.mods_dir / folder, sec))
+          continue;
+        std::error_code mec;
+        std::filesystem::create_directories(bak_dir, mec);
+        std::filesystem::rename(
+            sentry.path(), bak_dir / sentry.path().filename(), mec);
+        if (mec) {
+          std::filesystem::copy_file(
+              sentry.path(), bak_dir / sentry.path().filename(), mec);
+          if (!mec)
+            std::filesystem::remove(sentry.path(), mec);
+        }
+        if (!mec)
+          ++orphans;
+      }
+      if (orphans > 0)
+        engine::Logger::instance().debug(
+            "Moved " + std::to_string(orphans) +
+            " orphan sidecars to meta.bak/");
     }
   }
 

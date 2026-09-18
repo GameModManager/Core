@@ -1,11 +1,10 @@
-// Engine test for the manager-sidecar per-mod UI state keys added for
+// Engine test for the in-folder per-mod UI state keys added for
 // Issue #35: [GameModManager] folded (tree-view collapse) and parent_id
-// (visual-nesting link; absent = top-level). These live in the manager
-// sidecar ({instance_root}/meta/{folder_name}.ini), NOT the mod's own
-// MO2-format meta.ini.
+// (visual-nesting link; absent = top-level). These live in the mod's own
+// meta.ini ({instance_root}/mods/{folder_name}/meta.ini, MO2-compatible).
 //
 // Covers: folded true/false round-trip through serialize/parse, parent_id
-// set/get, unset() removing a key back to "absent", and the sidecar
+// set/get, unset() removing a key back to "absent", and the in-folder
 // file save/load round trip.
 #include "engine/mod/meta/mod_meta.h"
 
@@ -77,24 +76,24 @@ TEST_CASE("mod_meta_ui_state", "[engine]") {
 
   // --- Sidecar file save/load round trip. ---
   {
-    const fs::path root = "/tmp/gmm_mod_meta_ui_state/meta";
+    const fs::path root = "/tmp/gmm_mod_meta_ui_state/mods";
     fs::remove_all(root.parent_path());
     fs::create_directories(root);
 
     ModMeta meta;
     meta.set_folded(true);
     meta.set_parent_id("ParentMod");
-    require(meta.save(root, "ChildMod"), "sidecar save succeeds");
+    require(meta.save(root, "ChildMod"), "meta save succeeds");
 
     auto loaded = ModMeta::load(root, "ChildMod");
-    require(loaded.folded(), "sidecar load restores folded");
+    require(loaded.folded(), "meta load restores folded");
     require(loaded.parent_id() == "ParentMod",
-            "sidecar load restores parent_id");
+            "meta load restores parent_id");
 
-    // A mod without a sidecar file loads as empty (no fold, no parent).
+    // A mod without a meta file loads as empty (no fold, no parent).
     auto missing = ModMeta::load(root, "NoSuchMod");
     require(!missing.folded() && missing.parent_id().empty(),
-            "missing sidecar loads as unfolded top-level");
+            "missing meta loads as unfolded top-level");
   }
 }
 
@@ -113,22 +112,22 @@ TEST_CASE("mod_meta_category_csv", "[engine]") {
 
   // --- Sidecar file save/load round trip (the context-menu write path). ---
   {
-    const fs::path root = "/tmp/gmm_mod_meta_category/meta";
+    const fs::path root = "/tmp/gmm_mod_meta_category/mods";
     fs::remove_all(root.parent_path());
     fs::create_directories(root);
 
     ModMeta meta;
     meta.set("General", "category", "9,24,14");
-    require(meta.save(root, "ModWithCategories"), "sidecar save succeeds");
+    require(meta.save(root, "ModWithCategories"), "meta save succeeds");
 
     auto loaded = ModMeta::load(root, "ModWithCategories");
     require(loaded.get("General", "category") == "9,24,14",
-            "sidecar load restores the category CSV");
+            "meta load restores the category CSV");
 
     // A mod without categories has no [General] category key.
     auto missing = ModMeta::load(root, "NoSuchMod");
     require(missing.get("General", "category").empty(),
-            "missing sidecar has no category CSV");
+            "missing meta has no category CSV");
   }
 }
 
@@ -194,19 +193,19 @@ TEST_CASE("mod_meta_multiline_values", "[engine]") {
 
   // --- Sidecar file save/load round trip (the real bug repro). ---
   {
-    const fs::path root = "/tmp/gmm_mod_meta_multiline/meta";
+    const fs::path root = "/tmp/gmm_mod_meta_multiline/mods";
     fs::remove_all(root.parent_path());
     fs::create_directories(root);
 
     ModMeta meta;
     meta.set("General", "name", "Oathvein UI");
     meta.set("Nexusmods", "nexusdescription", raw_bbc);
-    require(meta.save(root, "MultilineMod"), "sidecar save succeeds");
+    require(meta.save(root, "MultilineMod"), "meta save succeeds");
 
     // The on-disk file must contain the escape sequences, NOT literal
     // newlines inside the value. A literal '\n' after '[url=...]' would
     // turn the next line into a [section] header, corrupting the file.
-    std::ifstream f(root / "MultilineMod.ini");
+    std::ifstream f(root / "MultilineMod" / "meta.ini");
     std::stringstream ss;
     ss << f.rdbuf();
     const std::string on_disk = ss.str();
@@ -215,12 +214,12 @@ TEST_CASE("mod_meta_multiline_values", "[engine]") {
     require(on_disk.find("\\n") != std::string::npos,
             "stored value contains the '\\n' escape sequence");
 
-    // And loading the sidecar gives back the full original value.
+    // And loading the meta gives back the full original value.
     auto loaded = ModMeta::load(root, "MultilineMod");
     require(loaded.get("General", "name") == "Oathvein UI",
             "name survives the round trip");
     require(loaded.get("Nexusmods", "nexusdescription") == raw_bbc,
-            "multi-line BBCode survives sidecar save/load round trip");
+            "multi-line BBCode survives meta save/load round trip");
   }
 
   // --- A literal backslash in the value must not be lost. ---
@@ -485,4 +484,51 @@ TEST_CASE("mod_meta_from_mo2_import_modid_guard", "[engine]") {
     require(!m.has_section("Nexusmods"),
             "no repository field writes NO [Nexusmods] section");
   }
+}
+
+// In-folder meta.ini is the canonical location; a legacy sidecar at
+// {instance_root}/meta/{folder}.ini is still honored for one release so
+// un-migrated instances keep working, and save() always writes in-folder.
+TEST_CASE("mod_meta_in_folder_with_legacy_fallback", "[engine]") {
+  using engine::ModMeta;
+
+  const fs::path root = "/tmp/gmm_mod_meta_infolder";
+  const fs::path mods = root / "mods";
+  const fs::path legacy = root / "meta";
+  fs::remove_all(root);
+  fs::create_directories(mods);
+
+  // Fresh save lands in-folder.
+  ModMeta meta;
+  meta.set("GameModManager", "folder", "MyMod");
+  meta.set_priority(7);
+  require(meta.save(mods, "MyMod"), "save writes in-folder meta.ini");
+  require(fs::exists(mods / "MyMod" / "meta.ini"),
+          "in-folder meta.ini exists on disk");
+  require(ModMeta::exists(mods, "MyMod"), "exists() sees the in-folder file");
+  require(ModMeta::load(mods, "MyMod").priority() == 7,
+          "load() reads the in-folder file");
+
+  // In-folder wins over a legacy sidecar when both exist.
+  fs::create_directories(legacy);
+  ModMeta side;
+  side.set("GameModManager", "folder", "MyMod");
+  side.set_priority(3);
+  require(side.save_file(legacy / "MyMod.ini"), "legacy sidecar written");
+  require(ModMeta::load(mods, "MyMod").priority() == 7,
+          "in-folder wins over the legacy sidecar");
+
+  // Legacy sidecar alone is found (pre-migration instances).
+  fs::remove_all(mods / "MyMod");
+  require(ModMeta::exists(mods, "MyMod"), "exists() sees the legacy sidecar");
+  require(ModMeta::load(mods, "MyMod").priority() == 3,
+          "load() falls back to the legacy sidecar");
+
+  // Nothing anywhere loads empty.
+  require(!ModMeta::exists(mods, "NoSuchMod"),
+          "exists() is false when neither location has a file");
+  require(ModMeta::load(mods, "NoSuchMod").priority() < 0,
+          "missing mod loads as empty");
+
+  fs::remove_all(root);
 }

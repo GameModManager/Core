@@ -22,6 +22,8 @@
 // dir, knowledge hooks drive the scan (no game plugin needed).
 #include "ui/main_window/mod_scan_worker.h"
 
+#include "engine/mod/meta/mod_meta.h"
+
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QThread>
@@ -74,12 +76,10 @@ TEST_CASE("mod scan worker stray plugins", "[ui]") {
   const fs::path game_dir = base / "game";
   const fs::path data_dir = game_dir / "Data";
   const fs::path mods_dir = base / "mods";
-  const fs::path meta_dir = base / "meta";
   const fs::path ledger_file = base / ".gmm_deploy_ledger";
   std::error_code ec;
   fs::create_directories(data_dir, ec);
   fs::create_directories(mods_dir, ec);
-  fs::create_directories(meta_dir, ec);
 
   // A mod folder owning a plugin, as a real install would produce.
   fs::create_directories(mods_dir / "MyMod", ec);
@@ -129,7 +129,6 @@ TEST_CASE("mod scan worker stray plugins", "[ui]") {
   req.game_dir = game_link; // symlinked spelling
   req.instance_root = base;
   req.mods_dir = mods_dir;
-  req.meta_dir = meta_dir;
   req.ledger_file = ledger_file;
 
   struct ScanResult {
@@ -200,12 +199,10 @@ TEST_CASE("mod scan worker game mods dir override", "[ui]") {
   const fs::path external_mods =
       base / "Binding of Isaac Afterbirth+ Mods";
   const fs::path mods_dir = base / "mods";
-  const fs::path meta_dir = base / "meta";
   std::error_code ec;
   fs::create_directories(data_dir, ec);
   fs::create_directories(external_mods, ec);
   fs::create_directories(mods_dir, ec);
-  fs::create_directories(meta_dir, ec);
 
   // A stray plugin in the EXTERNAL mods folder only.
   write_file(external_mods / "ExternalStray.esp", "TES4");
@@ -224,7 +221,6 @@ TEST_CASE("mod scan worker game mods dir override", "[ui]") {
   req.game_mods_dir = external_mods; // the override under test
   req.instance_root = base;
   req.mods_dir = mods_dir;
-  req.meta_dir = meta_dir;
 
   struct ScanResult {
     ui::ModScanResult result;
@@ -345,6 +341,119 @@ TEST_CASE("mod scan worker merge keeps game mods dir results", "[ui]") {
     if (m.folder_name == "Shared")
       ++shared_count;
   check(shared_count == 1, "folder present in both dirs appears exactly once");
+
+  fs::remove_all(base, ec);
+}
+
+// Workspace-pmrh: legacy sidecars ({root}/meta/*.ini) migrate into the
+// MO2-compatible in-folder location (mods/{folder}/meta.ini) on scan:
+// sidecar-only moves, both-present merges (sidecar wins manager keys, the
+// folder wins game keys), orphans move to meta.bak/, and raw MO2 metas are
+// enriched in place. Idempotent: a second scan changes nothing.
+TEST_CASE("mod scan worker migrates sidecars in-folder", "[ui]") {
+  int test_argc = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QCoreApplication app(test_argc, test_argv);
+  (void)app;
+
+  const fs::path base = fs::current_path() / ("gmm_test_mod_scan_migrate_" +
+                                              std::to_string(getpid()));
+  const fs::path mods_dir = base / "mods";
+  const fs::path legacy_dir = base / "meta";
+  std::error_code ec;
+  fs::create_directories(mods_dir / "ModA", ec);
+  fs::create_directories(mods_dir / "ModB", ec);
+  fs::create_directories(mods_dir / "ModC", ec);
+  fs::create_directories(legacy_dir, ec);
+
+  // ModA: BOTH exist - in-folder holds game data, sidecar holds manager state.
+  write_file(mods_dir / "ModA" / "meta.ini",
+             "[General]\nversion=9.9\n\n[GameModManager]\nfolder=ModA\n");
+  write_file(legacy_dir / "ModA.ini",
+             "[GameModManager]\nfolder=ModA\npriority=5\nsource_type=nexus\n"
+             "source_id=42\n\n[General]\ncategory=7\n");
+  // ModB: sidecar only (the XML-metadata-game shape).
+  write_file(legacy_dir / "ModB.ini",
+             "[GameModManager]\nfolder=ModB\npriority=2\nsource_type=manual\n"
+             "source_id=\n");
+  // Orphan: sidecar with no matching mod folder.
+  write_file(legacy_dir / "Orphan.ini",
+             "[GameModManager]\nfolder=Orphan\npriority=1\n");
+  // ModC: raw MO2 meta, no sidecar - enriched in place.
+  write_file(mods_dir / "ModC" / "meta.ini",
+             "[General]\ngameName=Skyrim\nrepository=Nexus\nmodid=123\n"
+             "version=1.0\n");
+
+  engine::GameKnowledge knowledge;
+
+  ui::ModScanRequest req;
+  req.knowledge = knowledge;
+  req.game_id = "testgame";
+  req.instance_root = base;
+  req.mods_dir = mods_dir;
+
+  struct ScanResult {
+    ui::ModScanResult result;
+    quint64 generation = 0;
+  };
+  std::vector<ScanResult> results;
+  ui::ModScanThread thread(&app);
+  ui::ModScanWorker *worker = thread.worker();
+  QObject::connect(worker, &ui::ModScanWorker::finished, &app,
+                   [&](ui::ModScanResult result, quint64 generation) {
+                     results.push_back({std::move(result), generation});
+                   });
+
+  thread.start(std::move(req), /*generation=*/1);
+
+  QElapsedTimer timer;
+  timer.start();
+  while (results.empty()) {
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    QThread::msleep(2);
+    if (timer.elapsed() > 10000) {
+      FAIL("scan never landed");
+    }
+  }
+
+  // ModA merged: manager keys from the sidecar, game keys from the folder.
+  {
+    const auto merged =
+        engine::ModMeta::load_file(mods_dir / "ModA" / "meta.ini");
+    check(merged.priority() == 5, "merged priority comes from the sidecar");
+    check(merged.source_type() == "nexus", "merged source_type from sidecar");
+    check(merged.source_id() == "42", "merged source_id from sidecar");
+    check(merged.get("General", "category") == "7",
+          "merged category from sidecar");
+    check(merged.get("General", "version") == "9.9",
+          "merged version stays folder-owned");
+    check(!fs::exists(legacy_dir / "ModA.ini"), "sidecar removed after merge");
+  }
+
+  // ModB moved into the folder.
+  {
+    const auto moved =
+        engine::ModMeta::load_file(mods_dir / "ModB" / "meta.ini");
+    check(moved.priority() == 2, "moved sidecar keeps its priority");
+    check(!fs::exists(legacy_dir / "ModB.ini"), "sidecar removed after move");
+  }
+
+  // Orphan swept to meta.bak/, not deleted.
+  check(!fs::exists(legacy_dir / "Orphan.ini"), "orphan leaves meta/");
+  check(fs::exists(base / "meta.bak" / "Orphan.ini"),
+        "orphan sidecar preserved in meta.bak/");
+
+  // ModC enriched in place: GameModManager section stamped, game keys kept.
+  {
+    const auto enriched =
+        engine::ModMeta::load_file(mods_dir / "ModC" / "meta.ini");
+    check(enriched.source_type() == "nexus",
+          "raw MO2 meta enriched with Nexus source");
+    check(enriched.source_id() == "123", "enriched source_id is the modid");
+    check(enriched.get("GameModManager", "folder") == "ModC",
+          "enriched folder key stamped");
+  }
 
   fs::remove_all(base, ec);
 }

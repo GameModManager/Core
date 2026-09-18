@@ -62,8 +62,7 @@ struct PipelineContext {
   Deploy::Interface *deploy_strategy = nullptr;
   OrderEncodingHook *order_hook = nullptr;
   std::filesystem::path game_dir; // live game directory (for Overwrite capture)
-  std::filesystem::path meta_dir; // instance meta/ directory
-  std::filesystem::path mods_dir; // where mod folders live
+  std::filesystem::path mods_dir; // where mod folders live (meta.ini sits inside each folder)
 
   // Game-relative prefix for deployed mod files (e.g. "Data" for Skyrim, "mods"
   // for Isaac)

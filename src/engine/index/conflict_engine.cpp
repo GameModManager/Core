@@ -102,7 +102,7 @@ std::vector<std::string> ConflictEngine::walk_mod(
     // symlinked subdirectory is skipped to match the legacy iterator, which
     // never descends into one.
     auto tree = DirectoryFileTree::make_tree(mod_path, NameCompare::CaseInsensitive,
-                                             /*ignore_meta_ini=*/false);
+                                             /*ignore_meta_ini=*/true);
     tree->walk([&](const std::string& prefix, const FileTree::const_reference& entry) {
         if (!entry->is_file()) {
             auto dir = std::dynamic_pointer_cast<const DirectoryFileTree>(entry);
