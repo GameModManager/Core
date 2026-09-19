@@ -8,6 +8,8 @@
 //     manual mods omitted)
 //   - build_manifest fields (schema, revision, info, timestamps)
 //   - build_mod_entries skips manual, deterministic order
+//   - update_policies override (latest default, exact propagates and
+//     round-trips, steam stays latest)
 //   - build_executables mapping + unresolvable skipped
 //   - build_gmmpack round-trip (serialize -> parse_manifest/parse_mod_entry/
 //     parse_tree back)
@@ -483,13 +485,72 @@ TEST_CASE("packer mod entries: skips manual, deterministic order", "[gmmpack][pa
   track(snap, "Local", 2);
   track(snap, "Alpha", 0);
 
-  auto mods = gmmpack::build_mod_entries(snap, td.root);
+  gmmpack::PackOptions opts;
+  auto mods = gmmpack::build_mod_entries(snap, td.root, opts);
   REQUIRE(mods.size() == 2);
   REQUIRE(mods[0].id == "alpha");
   REQUIRE(mods[1].id == "zeta");
   REQUIRE(mods[0].name == "Alpha");
   REQUIRE(mods[0].category == gmmpack::ModCategory::Optional);
   REQUIRE(mods[0].phase == 0);
+}
+
+TEST_CASE("packer policies: default is latest", "[gmmpack][packer]")
+{
+  TempDir td;
+  nexus_mod(td.root, "SkyUI");
+  auto snap = make_snapshot();
+  track(snap, "SkyUI", 0);
+
+  gmmpack::PackOptions opts;
+  auto mods = gmmpack::build_mod_entries(snap, td.root, opts);
+  REQUIRE(mods.size() == 1);
+  auto* n = std::get_if<gmmpack::ModSourceNexus>(&mods[0].source);
+  REQUIRE(n != nullptr);
+  REQUIRE(n->update_policy == "latest");
+}
+
+TEST_CASE("packer policies: exact override propagates and round-trips",
+          "[gmmpack][packer]")
+{
+  TempDir td;
+  nexus_mod(td.root, "SkyUI");
+  auto snap = make_snapshot();
+  track(snap, "SkyUI", 0);
+
+  gmmpack::PackOptions opts;
+  opts.update_policies["SkyUI"] = "exact";
+  auto pack                     = gmmpack::build_gmmpack(snap, td.root, opts);
+  REQUIRE(pack.mods.size() == 1);
+  auto* n = std::get_if<gmmpack::ModSourceNexus>(&pack.mods[0].source);
+  REQUIRE(n != nullptr);
+  REQUIRE(n->update_policy == "exact");
+
+  // Exact survives serialize -> parse.
+  auto modj = gmmpack::serialize_mod_entry(pack.mods[0]);
+  REQUIRE(modj["source"]["updatePolicy"] == "exact");
+  auto back = gmmpack::parse_mod_entry(modj);
+  auto* bn  = std::get_if<gmmpack::ModSourceNexus>(&back.source);
+  REQUIRE(bn != nullptr);
+  REQUIRE(bn->update_policy == "exact");
+}
+
+TEST_CASE("packer policies: steam stays latest when exact requested",
+          "[gmmpack][packer]")
+{
+  TempDir td;
+  auto meta = engine::ModMeta::from_default("SteamMod", "steam", "12345678");
+  write_meta(td.root, "SteamMod", meta);
+  auto snap = make_snapshot();
+  track(snap, "SteamMod", 0);
+
+  gmmpack::PackOptions opts;
+  opts.update_policies["SteamMod"] = "exact";
+  auto mods = gmmpack::build_mod_entries(snap, td.root, opts);
+  REQUIRE(mods.size() == 1);
+  auto* s = std::get_if<gmmpack::ModSourceSteamWorkshop>(&mods[0].source);
+  REQUIRE(s != nullptr);
+  REQUIRE(s->update_policy == "latest");
 }
 
 // ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@
 #include <unordered_set>
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QFileDialog>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -395,12 +396,18 @@ QWidget* ExportWizard::build_mods_page() {
     layout->addLayout(actions);
 
     mods_table_ = new QTableWidget(page);
-    mods_table_->setColumnCount(3);
+    mods_table_->setColumnCount(4);
     mods_table_->setHorizontalHeaderLabels({tr("Include"), tr("Name"),
-                                            tr("Source")});
-    mods_table_->horizontalHeader()->setStretchLastSection(true);
+                                            tr("Source"), tr("Update Policy")});
+    mods_table_->horizontalHeader()->setStretchLastSection(false);
+    mods_table_->horizontalHeader()->setSectionResizeMode(
+        0, QHeaderView::ResizeToContents);
     mods_table_->horizontalHeader()->setSectionResizeMode(1,
                                                            QHeaderView::Stretch);
+    mods_table_->horizontalHeader()->setSectionResizeMode(
+        2, QHeaderView::ResizeToContents);
+    mods_table_->horizontalHeader()->setSectionResizeMode(
+        3, QHeaderView::ResizeToContents);
     mods_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
     mods_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     mods_table_->setRowCount(static_cast<int>(mods_.size()));
@@ -456,6 +463,23 @@ QWidget* ExportWizard::build_mods_page() {
             source_item->setForeground(dim);
         }
         mods_table_->setItem(row, 2, source_item);
+        // Per-mod update policy. Vanilla masters and manual mods have no
+        // provider to resolve against; steam workshop resolution is
+        // client-subscription based, so those rows stay "latest".
+        auto* policy = new QComboBox(mods_table_);
+        policy->addItem(tr("Latest"));
+        policy->addItem(tr("Exact Version"));
+        policy->setProperty("row", row);
+        const bool steam = mod.source == QStringLiteral("steam") ||
+                           mod.source == QStringLiteral("steam_workshop");
+        if (mod.is_vanilla || mod.is_manual || steam) {
+            policy->setEnabled(false);
+            policy->setToolTip(
+                tr("This mod can only be exported with update policy Latest."));
+        }
+        connect(policy, &QComboBox::currentIndexChanged, this,
+                &ExportWizard::on_policy_changed);
+        mods_table_->setCellWidget(row, 3, policy);
     }
     layout->addWidget(mods_table_, 1);
 
@@ -706,6 +730,15 @@ void ExportWizard::on_mod_include_toggled() {
     refresh_mods_count();
 }
 
+void ExportWizard::on_policy_changed() {
+    const auto* combo = qobject_cast<const QComboBox*>(sender());
+    if (combo == nullptr) return;
+    const int row = combo->property("row").toInt();
+    if (row < 0 || row >= static_cast<int>(mods_.size())) return;
+    mods_[static_cast<size_t>(row)].update_policy =
+        combo->currentIndex() == 1 ? "exact" : "latest";
+}
+
 void ExportWizard::on_exe_include_toggled() {
     const auto* check = qobject_cast<const QCheckBox*>(sender());
     if (check == nullptr) return;
@@ -734,6 +767,12 @@ void ExportWizard::on_export() {
     options.description = desc_edit_->toPlainText().toStdString();
     options.homepage = homepage_edit_->text().toStdString();
     options.instructions = instructions_edit_->toPlainText().toStdString();
+    // Per-mod update policies from the mods table (only included rows
+    // matter - the rest are erased from the filtered snapshot).
+    for (const auto& mod : mods_) {
+        if (mod.included)
+            options.update_policies[mod.folder] = mod.update_policy;
+    }
 
     status_label_->setText(tr("Exporting..."));
     progress_->setRange(0, 0);  // busy; the packer runs synchronously
