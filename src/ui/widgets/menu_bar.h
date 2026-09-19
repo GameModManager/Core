@@ -37,6 +37,7 @@ signals:
   void import_mods_requested();
   void export_mods_requested();
   void import_modpack_requested();
+  void export_modpack_requested();
   void settings_requested();
   void exit_requested();
 

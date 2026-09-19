@@ -74,6 +74,10 @@ public slots:
   // main-window drag-and-drop handler); empty keeps the dialog untouched.
   void import_modpack(const QString &preset_file = {});
 
+  // File > Export Modpack: capture instance snapshot, open export wizard,
+  // produce a .gmmpack archive.
+  void export_modpack();
+
  private:
   // Constructs the DebugWindow (parented to MainWindow) and wires the
   // late-bound pointers (game knowledge, profile manager) so the Info tab
