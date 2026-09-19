@@ -10,6 +10,7 @@
 #include <functional>
 #include <map>
 #include <sstream>
+#include <type_traits>
 #include <unordered_set>
 
 #include "engine/gmmpack/sha256.h"
@@ -159,9 +160,12 @@ std::string mod_slug(const std::string& folder_name)
 // ---------------------------------------------------------------------------
 // resolve_mod_source
 // ---------------------------------------------------------------------------
-// Export uses updatePolicy "latest" throughout: exact pinning needs the
-// download archive's fileSize/sha256, which the installed instance does not
-// retain. latest keeps the output schema-valid without fabricating hashes.
+// resolve_mod_source always yields updatePolicy "latest": exact pinning
+// needs the download archive's fileSize/sha256, which the installed
+// instance does not retain. build_mod_entries upgrades to "exact" only when
+// explicitly requested via PackOptions::update_policies (per-folder user
+// choice from the export wizard); latest keeps the output schema-valid
+// without fabricating hashes.
 
 std::optional<ModSource> resolve_mod_source(const ModMeta& meta,
                                             const std::string& game_id,
@@ -455,7 +459,8 @@ Manifest build_manifest(const InstanceSnapshot& snapshot, const PackOptions& opt
 // ---------------------------------------------------------------------------
 
 std::vector<ModEntry> build_mod_entries(const InstanceSnapshot& snapshot,
-                                        const std::filesystem::path& mods_dir)
+                                        const std::filesystem::path& mods_dir,
+                                        const PackOptions& options)
 {
   auto slugs = slug_all(snapshot.mod_entries);
 
@@ -486,6 +491,19 @@ std::vector<ModEntry> build_mod_entries(const InstanceSnapshot& snapshot,
     auto source  = resolve_mod_source(meta, snapshot.game_id, snapshot.steam_appid);
     if (!source)
       continue;  // manual/unknown: not representable, skip
+    const auto policy = options.update_policies.find(row.folder);
+    if (policy != options.update_policies.end() && policy->second == "exact") {
+      // User asked to pin this mod. Steam workshop resolution is
+      // client-subscription based, so exact is meaningless there: those
+      // sources always stay "latest".
+      std::visit(
+          [](auto& s) {
+            using T = std::decay_t<decltype(s)>;
+            if constexpr (!std::is_same_v<T, ModSourceSteamWorkshop>)
+              s.update_policy = "exact";
+          },
+          *source);
+    }
     ModEntry e;
     e.id       = slugs.at(row.folder);
     e.name     = row.folder;
@@ -795,7 +813,7 @@ Gmmpack build_gmmpack(const InstanceSnapshot& snapshot,
 {
   Gmmpack pack;
   pack.manifest    = build_manifest(snapshot, options);
-  pack.mods        = build_mod_entries(snapshot, mods_dir);
+  pack.mods        = build_mod_entries(snapshot, mods_dir, options);
   pack.executables = build_executables(snapshot, mods_dir);
   pack.tree        = build_tree(snapshot, mods_dir);
   if (!options.instructions.empty())

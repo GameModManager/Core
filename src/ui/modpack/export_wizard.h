@@ -66,6 +66,7 @@ private:
         bool included = true;
         bool is_vanilla = false;   // unmanaged game master (Skyrim.esm etc.)
         bool is_manual = false;    // manual/unknown source - shippable but opt-in
+        std::string update_policy = "latest";  // "latest" or "exact"
     };
 
     struct ExeRow {
@@ -107,6 +108,7 @@ private:
 private slots:
     void on_exclude_disabled();
     void on_mod_include_toggled();
+    void on_policy_changed();
     void on_exe_include_toggled();
     void on_browse_output();
     void on_export();

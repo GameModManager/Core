@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -27,6 +28,10 @@ struct PackOptions
   std::string description;
   std::string homepage;
   std::string instructions;
+  // Per-mod update policy keyed by mod FOLDER ("latest" or "exact").
+  // Absent = "latest". Applied by build_mod_entries after
+  // resolve_mod_source; steam_workshop sources always stay "latest".
+  std::unordered_map<std::string, std::string> update_policies;
 };
 
 struct PackResult
@@ -65,8 +70,12 @@ Manifest build_manifest(const InstanceSnapshot& snapshot, const PackOptions& opt
 
 // One ModEntry per snapshot mod with a resolvable source. Manual/unknown
 // sources are skipped. Order is deterministic (list_position, then folder).
+// options.update_policies (folder -> "latest"|"exact", absent = "latest")
+// overrides the resolved source's update_policy; steam_workshop sources
+// always stay "latest".
 std::vector<ModEntry> build_mod_entries(const InstanceSnapshot& snapshot,
-                                        const std::filesystem::path& mods_dir);
+                                        const std::filesystem::path& mods_dir,
+                                        const PackOptions& options);
 
 // Snapshot executables -> pack executables. Entries whose mod does not
 // resolve to an exported mod (game-root exes, manual mods) are skipped:
