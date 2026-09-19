@@ -6,6 +6,8 @@
 
 #include "engine/core/instance/instance_snapshot.h"
 
+#include "engine/gmmpack/uuid.h"
+
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -767,4 +769,103 @@ TEST_CASE("snapshot - apply preserves unowned toml keys", "[engine]") {
           "last_tab preserved");
 
   fs::remove_all(root);
+}
+
+// ---------------------------------------------------------------------------
+// modpack identity: stable instance UUID + revision counter (Workspace-5o15)
+// ---------------------------------------------------------------------------
+
+namespace {
+bool is_uuid_v4(const std::string& s) {
+  if (s.size() != 36)
+    return false;
+  for (size_t i = 0; i < s.size(); ++i) {
+    char c = s[i];
+    if (i == 8 || i == 13 || i == 18 || i == 23)
+      if (c != '-')
+        return false;
+      else
+        continue;
+    bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+    if (!hex)
+      return false;
+  }
+  if (s[14] != '4')
+    return false;  // version 4
+  if (s[19] != '8' && s[19] != '9' && s[19] != 'a' && s[19] != 'b')
+    return false;  // RFC 4122 variant
+  return true;
+}
+}  // namespace
+
+TEST_CASE("snapshot - modpack identity round-trip", "[engine]") {
+  using engine::Instance;
+  using engine::InstanceSnapshot;
+
+  // UUID helper: valid v4 shape, fresh value per call.
+  const std::string id_a = engine::generate_uuid_v4();
+  const std::string id_b = engine::generate_uuid_v4();
+  require(is_uuid_v4(id_a), "generated id is UUID v4");
+  require(is_uuid_v4(id_b), "second id is UUID v4");
+  require(id_a != id_b, "generated ids are unique");
+
+  // JSON round-trip preserves pack identity.
+  InstanceSnapshot snap;
+  snap.game_id = "TestGame";
+  snap.display_name = "Pack Test";
+  snap.modpack_id = id_a;
+  snap.modpack_revision = 3;
+  auto restored = InstanceSnapshot::from_json(snap.to_json());
+  require(restored.modpack_id == id_a, "modpack_id survives JSON");
+  require(restored.modpack_revision == 3, "modpack_revision survives JSON");
+
+  // Empty identity is omitted from JSON (like deploy_strategy).
+  InstanceSnapshot bare;
+  bare.game_id = "TestGame";
+  auto bare_json = bare.to_json();
+  require(bare_json.contains("modpack_id") == false,
+          "empty modpack_id omitted");
+  require(bare_json.contains("modpack_revision") == false,
+          "zero modpack_revision omitted");
+  auto bare_restored = InstanceSnapshot::from_json(bare_json);
+  require(bare_restored.modpack_id.empty(), "modpack_id defaults empty");
+  require(bare_restored.modpack_revision == 0,
+          "modpack_revision defaults zero");
+
+  // instance.toml persists both fields (write_toml/read_toml).
+  const auto root = test_root("modpack_identity");
+  fs::remove_all(root);
+  fs::create_directories(root);
+  {
+    Instance inst = Instance::from_root(root);
+    inst.info().game_id = "TestGame";
+    inst.info().display_name = "Pack Test";
+    inst.info().modpack_id = id_a;
+    inst.info().modpack_revision = 3;
+    require(inst.write_toml(), "write_toml with pack identity");
+  }
+  {
+    Instance inst = Instance::from_root(root);
+    require(inst.read_toml(), "read_toml succeeds");
+    require(inst.info().modpack_id == id_a, "modpack_id persisted");
+    require(inst.info().modpack_revision == 3, "modpack_revision persisted");
+  }
+
+  // capture() carries the identity; apply() writes it back.
+  Instance inst = Instance::from_root(root);
+  auto captured = InstanceSnapshot::capture(inst);
+  require(captured.modpack_id == id_a, "capture carries modpack_id");
+  require(captured.modpack_revision == 3, "capture carries revision");
+
+  const auto root2 = test_root("modpack_identity_apply");
+  fs::remove_all(root2);
+  fs::create_directories(root2);
+  Instance inst2 = Instance::from_root(root2);
+  require(captured.apply(inst2), "apply succeeds");
+  auto recaptured = InstanceSnapshot::capture(inst2);
+  require(recaptured.modpack_id == id_a, "modpack_id survives apply");
+  require(recaptured.modpack_revision == 3, "revision survives apply");
+
+  fs::remove_all(root);
+  fs::remove_all(root2);
 }

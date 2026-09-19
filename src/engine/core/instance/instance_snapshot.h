@@ -65,6 +65,13 @@ struct InstanceSnapshot {
   std::string deploy_strategy;
   std::string proton_runner;
   uint32_t steam_appid = 0;
+  // Stable modpack identity (UUID v4) carried from instance.toml. Empty =
+  // not yet assigned. The packer reuses this for every export from the
+  // instance instead of generating a fresh id.
+  std::string modpack_id;
+  // Last exported revision counter. The packer emits
+  // modpack_revision + 1 as the new pack's revision.
+  int64_t modpack_revision = 0;
 
   // All mod/separator tracking entries.
   std::unordered_map<std::string, ModTrackingEntry> mod_entries;

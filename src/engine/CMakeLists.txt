@@ -183,6 +183,7 @@ gmmpack/schema_validator.cpp
     gmmpack/unpacker.cpp
     gmmpack/ini_edit_parser.cpp
     gmmpack/packer.cpp
+    gmmpack/uuid.cpp
     collection/choice_groups.cpp
     gmmpack/executable_pipeline.cpp
     ${FOMOD_ENGINE_SOURCES}

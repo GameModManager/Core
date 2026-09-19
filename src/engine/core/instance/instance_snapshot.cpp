@@ -314,6 +314,8 @@ InstanceSnapshot InstanceSnapshot::capture(const Instance& instance) {
   snap.display_name = info.display_name;
   snap.portable = info.portable;
   snap.deploy_strategy = info.deploy_strategy;
+  snap.modpack_id = info.modpack_id;
+  snap.modpack_revision = info.modpack_revision;
   snap.proton_runner = info.proton_runner;
   snap.steam_appid = info.steam_appid;
 
@@ -401,6 +403,14 @@ bool InstanceSnapshot::apply(const Instance& instance) const {
     tbl.insert_or_assign("deploy_strategy", deploy_strategy);
   else
     tbl.erase("deploy_strategy");
+  if (!modpack_id.empty())
+    tbl.insert_or_assign("modpack_id", modpack_id);
+  else
+    tbl.erase("modpack_id");
+  if (modpack_revision > 0)
+    tbl.insert_or_assign("modpack_revision", modpack_revision);
+  else
+    tbl.erase("modpack_revision");
   if (!proton_runner.empty())
     tbl.insert_or_assign("proton_runner", proton_runner);
   else
@@ -510,6 +520,10 @@ nlohmann::json InstanceSnapshot::to_json() const {
   j["portable"] = portable;
   if (!deploy_strategy.empty())
     j["deploy_strategy"] = deploy_strategy;
+  if (!modpack_id.empty())
+    j["modpack_id"] = modpack_id;
+  if (modpack_revision > 0)
+    j["modpack_revision"] = modpack_revision;
   if (!proton_runner.empty())
     j["proton_runner"] = proton_runner;
   if (steam_appid > 0)
@@ -627,6 +641,8 @@ InstanceSnapshot InstanceSnapshot::from_json(const nlohmann::json& j) {
   snap.display_name = j.value("display_name", "");
   snap.portable = j.value("portable", true);
   snap.deploy_strategy = j.value("deploy_strategy", "");
+  snap.modpack_id = j.value("modpack_id", "");
+  snap.modpack_revision = j.value("modpack_revision", int64_t(0));
   snap.proton_runner = j.value("proton_runner", "");
   snap.steam_appid = j.value("steam_appid", 0u);
 
