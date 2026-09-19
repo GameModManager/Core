@@ -371,6 +371,7 @@ TreeRoot build_tree(const InstanceSnapshot& snapshot,
     node.name      = sep;
     auto it        = snapshot.mod_entries.find(sep);
     node.collapsed = it != snapshot.mod_entries.end() && it->second.collapsed;
+    node.color = it != snapshot.mod_entries.end() ? it->second.separator_color : "";
     auto mit       = children.find(sep);
     if (mit != children.end()) {
       for (const auto& m : mit->second)
@@ -438,6 +439,14 @@ Manifest build_manifest(const InstanceSnapshot& snapshot, const PackOptions& opt
   m.info.homepage    = options.homepage;
   m.info.created_at  = utc_now_iso8601();
   m.info.updated_at  = m.info.created_at;
+  // Per-instance settings from snapshot (default-profile settings: the
+  // three flags come from profiles[0], the strategy from the snapshot).
+  auto& prof = snapshot.profiles;
+  m.instance_settings.local_saves = !prof.empty() && prof[0].local_saves;
+  m.instance_settings.local_settings = !prof.empty() && prof[0].local_settings;
+  m.instance_settings.auto_archive_invalidation =
+      !prof.empty() && prof[0].auto_archive_invalidation;
+  m.instance_settings.deploy_strategy = snapshot.deploy_strategy;
   return m;
 }
 
@@ -767,6 +776,13 @@ nlohmann::json serialize_manifest(const Manifest& m)
   for (const auto& [path, hash] : m.archive.file_hashes)
     fh[path] = hash;
   j["archive"] = {{"fileHashes", std::move(fh)}};
+  nlohmann::json is;
+  is["localSaves"] = m.instance_settings.local_saves;
+  is["localSettings"] = m.instance_settings.local_settings;
+  is["automaticArchiveInvalidation"] = m.instance_settings.auto_archive_invalidation;
+  if (!m.instance_settings.deploy_strategy.empty())
+    is["deployStrategy"] = m.instance_settings.deploy_strategy;
+  j["instanceSettings"] = is;
   return j;
 }
 

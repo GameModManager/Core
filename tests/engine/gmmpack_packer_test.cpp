@@ -298,6 +298,41 @@ TEST_CASE("packer tree: manual mods omitted", "[gmmpack][packer]")
   REQUIRE(std::get<gmmpack::ModNode>(tree.nodes[0].data).id == "good");
 }
 
+TEST_CASE("packer tree: separator color round-trips", "[gmmpack][packer]")
+{
+  TempDir td;
+  nexus_mod(td.root, "ENB");
+  nexus_mod(td.root, "Tool");
+  auto snap = make_snapshot();
+  track(snap, "Graphics", 0);
+  snap.mod_entries["Graphics"].separator_color = "#ff0000";
+  track(snap, "ENB", 0, "Graphics");
+  track(snap, "Plain", 1);
+  track(snap, "Tool", 0, "Plain");
+
+  auto tree = gmmpack::build_tree(snap, td.root);
+  REQUIRE(tree.nodes.size() == 2);
+  auto* sep = std::get_if<gmmpack::SeparatorNode>(&tree.nodes[0].data);
+  REQUIRE(sep != nullptr);
+  REQUIRE(sep->color == "#ff0000");
+  auto* plain = std::get_if<gmmpack::SeparatorNode>(&tree.nodes[1].data);
+  REQUIRE(plain != nullptr);
+  REQUIRE(plain->color.empty());
+
+  auto j = gmmpack::serialize_tree(tree);
+  REQUIRE(j["nodes"][0]["color"] == "#ff0000");
+  // Colorless separators omit the key (keeps schema validation green).
+  REQUIRE_FALSE(j["nodes"][1].contains("color"));
+
+  auto back = gmmpack::parse_tree(j);
+  auto* bsep = std::get_if<gmmpack::SeparatorNode>(&back.nodes[0].data);
+  REQUIRE(bsep != nullptr);
+  REQUIRE(bsep->color == "#ff0000");
+  auto* bplain = std::get_if<gmmpack::SeparatorNode>(&back.nodes[1].data);
+  REQUIRE(bplain != nullptr);
+  REQUIRE(bplain->color.empty());
+}
+
 // ---------------------------------------------------------------------------
 // build_manifest
 // ---------------------------------------------------------------------------
@@ -350,6 +385,87 @@ TEST_CASE("packer manifest: fallbacks for empty fields", "[gmmpack][packer]")
   // Optional fields stay empty so serializers omit them.
   REQUIRE(m.info.description.empty());
   REQUIRE(m.info.homepage.empty());
+}
+
+TEST_CASE("packer manifest: picks up default-profile settings", "[gmmpack][packer]")
+{
+  auto snap               = make_snapshot();
+  snap.deploy_strategy    = "symlink";
+  engine::ProfileSnapshot prof;
+  prof.name                        = "Default";
+  prof.local_saves                 = true;
+  prof.local_settings              = false;
+  prof.auto_archive_invalidation   = true;
+  snap.profiles.push_back(prof);
+
+  gmmpack::PackOptions opts;
+  auto m = gmmpack::build_manifest(snap, opts);
+  REQUIRE(m.instance_settings.local_saves);
+  REQUIRE_FALSE(m.instance_settings.local_settings);
+  REQUIRE(m.instance_settings.auto_archive_invalidation);
+  REQUIRE(m.instance_settings.deploy_strategy == "symlink");
+}
+
+TEST_CASE("packer manifest: empty profiles gives default settings",
+          "[gmmpack][packer]")
+{
+  auto snap            = make_snapshot();
+  snap.deploy_strategy = "hardlink";
+  gmmpack::PackOptions opts;
+  auto m = gmmpack::build_manifest(snap, opts);
+  REQUIRE_FALSE(m.instance_settings.local_saves);
+  REQUIRE_FALSE(m.instance_settings.local_settings);
+  REQUIRE_FALSE(m.instance_settings.auto_archive_invalidation);
+  // No profiles: only the snapshot-level strategy survives.
+  REQUIRE(m.instance_settings.deploy_strategy == "hardlink");
+}
+
+TEST_CASE("packer manifest: instance settings round-trip", "[gmmpack][packer]")
+{
+  gmmpack::Manifest m;
+  m.info.name                                  = "P";
+  m.info.author                                = "A";
+  m.info.gmm_game_id                           = "skyrim";
+  m.instance_settings.local_saves              = true;
+  m.instance_settings.local_settings           = true;
+  m.instance_settings.auto_archive_invalidation = true;
+  m.instance_settings.deploy_strategy          = "symlink";
+
+  auto j = gmmpack::serialize_manifest(m);
+  REQUIRE(j.contains("instanceSettings"));
+  REQUIRE(j["instanceSettings"]["localSaves"] == true);
+  REQUIRE(j["instanceSettings"]["localSettings"] == true);
+  REQUIRE(j["instanceSettings"]["automaticArchiveInvalidation"] == true);
+  REQUIRE(j["instanceSettings"]["deployStrategy"] == "symlink");
+
+  auto back = gmmpack::parse_manifest(j);
+  REQUIRE(back.instance_settings.local_saves);
+  REQUIRE(back.instance_settings.local_settings);
+  REQUIRE(back.instance_settings.auto_archive_invalidation);
+  REQUIRE(back.instance_settings.deploy_strategy == "symlink");
+}
+
+TEST_CASE("packer manifest: settings unset omits strategy, parses to defaults",
+          "[gmmpack][packer]")
+{
+  gmmpack::Manifest m;
+  auto j = gmmpack::serialize_manifest(m);
+  REQUIRE(j.contains("instanceSettings"));
+  REQUIRE_FALSE(j["instanceSettings"].contains("deployStrategy"));
+
+  auto back = gmmpack::parse_manifest(j);
+  REQUIRE_FALSE(back.instance_settings.local_saves);
+  REQUIRE_FALSE(back.instance_settings.local_settings);
+  REQUIRE_FALSE(back.instance_settings.auto_archive_invalidation);
+  REQUIRE(back.instance_settings.deploy_strategy.empty());
+
+  // Backward compat: packs exported before instanceSettings existed.
+  j.erase("instanceSettings");
+  auto legacy = gmmpack::parse_manifest(j);
+  REQUIRE_FALSE(legacy.instance_settings.local_saves);
+  REQUIRE_FALSE(legacy.instance_settings.local_settings);
+  REQUIRE_FALSE(legacy.instance_settings.auto_archive_invalidation);
+  REQUIRE(legacy.instance_settings.deploy_strategy.empty());
 }
 
 // ---------------------------------------------------------------------------
