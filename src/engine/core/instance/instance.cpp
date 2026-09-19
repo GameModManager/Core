@@ -176,8 +176,17 @@ bool Instance::write_toml() const {
       tbl->insert_or_assign(key, val);
   };
 
+  auto assign_int_or_erase = [&](const std::string &key, int64_t val) {
+    if (val == 0)
+      tbl->erase(key);
+    else
+      tbl->insert_or_assign(key, val);
+  };
+
   assign_str_or_erase("proton_runner", info_.proton_runner);
   assign_str_or_erase("deploy_strategy", info_.deploy_strategy);
+  assign_str_or_erase("modpack_id", info_.modpack_id);
+  assign_int_or_erase("modpack_revision", info_.modpack_revision);
   assign_str_or_erase("last_tab", info_.last_tab);
 
   std::ofstream out(toml_path());
@@ -227,6 +236,12 @@ bool Instance::read_toml() {
   }
   if (auto v = (*tbl)["deploy_strategy"].value<std::string>()) {
     info_.deploy_strategy = *v;
+  }
+  if (auto v = (*tbl)["modpack_id"].value<std::string>()) {
+    info_.modpack_id = *v;
+  }
+  if (auto v = (*tbl)["modpack_revision"].value<int64_t>()) {
+    info_.modpack_revision = *v;
   }
   if (auto v = (*tbl)["last_tab"].value<std::string>()) {
     info_.last_tab = *v;

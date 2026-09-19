@@ -70,6 +70,17 @@ public:
     // = the game plugin's "deploy_strategy" knowledge default. Persisted to
     // instance.toml; wins over the knowledge key when set.
     std::string deploy_strategy;
+    // Stable modpack identity for this instance (UUID v4). All modpack
+    // exports from this instance reuse it so updated packs are identifiable
+    // as revisions of the same pack. Empty = not yet assigned (assigned
+    // lazily on first export). Persisted to instance.toml only when
+    // non-empty.
+    std::string modpack_id;
+    // Export counter for this instance's modpack. build_manifest() emits
+    // snapshot.modpack_revision + 1 as the new pack revision; the export
+    // call-site writes the bumped value back after a successful export.
+    // Persisted to instance.toml only when non-zero.
+    int64_t modpack_revision = 0;
     // Name of the last selected right-panel tab (capability key, e.g.
     // "plugins", "downloads", "data"). Empty = default to the first tab.
     // Persisted to instance.toml.
