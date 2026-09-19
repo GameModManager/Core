@@ -8,14 +8,13 @@
 #include <chrono>
 #include <ctime>
 #include <functional>
-#include <iomanip>
 #include <map>
-#include <random>
 #include <sstream>
 #include <unordered_set>
 
 #include "engine/gmmpack/sha256.h"
 #include "engine/gmmpack/tree_parser.h"
+#include "engine/gmmpack/uuid.h"
 
 namespace engine::gmmpack
 {
@@ -122,25 +121,6 @@ namespace
     char buf[32];
     std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm);
     return buf;
-  }
-
-  std::string generate_uuid()
-  {
-    std::random_device rd;
-    std::mt19937_64 gen(rd());
-    std::uniform_int_distribution<uint64_t> dist;
-    uint64_t hi = dist(gen);
-    uint64_t lo = dist(gen);
-    // Version 4 + RFC 4122 variant bits.
-    hi = (hi & 0xffffffffffff0fffULL) | 0x0000000000004000ULL;
-    lo = (lo & 0x3fffffffffffffffULL) | 0x8000000000000000ULL;
-
-    std::ostringstream ss;
-    ss << std::hex << std::setfill('0') << std::setw(8) << (hi >> 32) << "-"
-       << std::setw(4) << ((hi >> 16) & 0xffff) << "-" << std::setw(4) << (hi & 0xffff)
-       << "-" << std::setw(4) << (lo >> 48) << "-" << std::setw(12)
-       << (lo & 0xffffffffffffULL);
-    return ss.str();
   }
 
   // ---------------------------------------------------------------------------
@@ -410,11 +390,12 @@ TreeRoot build_tree(const InstanceSnapshot& snapshot,
 
   TreeRoot root;
   // Merge top-level mods and separators by list_position.
-    struct Item {
-        int32_t pos = 0;
-        std::string name;
-        bool is_sep = false;
-    };
+  struct Item
+  {
+    int32_t pos = 0;
+    std::string name;
+    bool is_sep = false;
+  };
   std::vector<Item> items;
   for (const auto& m : top_level) {
     items.push_back({sort_pos(snapshot.mod_entries.at(m).list_position), m, false});
@@ -443,8 +424,12 @@ Manifest build_manifest(const InstanceSnapshot& snapshot, const PackOptions& opt
 {
   Manifest m;
   m.gmmpack_schema = "1.0.0";
-  m.id             = generate_uuid();
-  m.revision       = 1;
+  // Stable pack identity: reuse the instance's modpack_id so re-exports of
+  // the same instance keep one id; fresh UUID v4 only for instances that
+  // have never been assigned one. Revision bumps monotonically from the
+  // instance's last exported revision.
+  m.id = snapshot.modpack_id.empty() ? engine::generate_uuid_v4() : snapshot.modpack_id;
+  m.revision = static_cast<int>(snapshot.modpack_revision + 1);
   m.info.name =
       snapshot.display_name.empty() ? "Exported Modpack" : snapshot.display_name;
   m.info.author      = options.author.empty() ? "Unknown" : options.author;
@@ -471,10 +456,11 @@ std::vector<ModEntry> build_mod_entries(const InstanceSnapshot& snapshot,
       separators.insert(entry.parent_separator);
   }
 
-    struct Row {
-        int32_t pos = 0;
-        std::string folder;
-    };
+  struct Row
+  {
+    int32_t pos = 0;
+    std::string folder;
+  };
   std::vector<Row> rows;
   for (const auto& [folder, entry] : snapshot.mod_entries) {
     if (separators.count(folder))

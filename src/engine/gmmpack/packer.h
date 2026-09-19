@@ -56,9 +56,11 @@ std::string mod_slug(const std::string& folder_name);
 TreeRoot build_tree(const InstanceSnapshot& snapshot,
                     const std::filesystem::path& mods_dir);
 
-// Fresh manifest: UUID v4 id, schema "1.0.0", revision 1, info from
-// snapshot + options, current UTC timestamps. archive.fileHashes is left
-// empty - write_gmmpack_archive fills it after serializing every file.
+// Manifest with stable pack identity: reuses snapshot.modpack_id when set
+// (fresh UUID v4 otherwise), revision = snapshot.modpack_revision + 1,
+// schema "1.0.0", info from snapshot + options, current UTC timestamps.
+// archive.fileHashes is left empty - write_gmmpack_archive fills it after
+// serializing every file.
 Manifest build_manifest(const InstanceSnapshot& snapshot, const PackOptions& options);
 
 // One ModEntry per snapshot mod with a resolvable source. Manual/unknown

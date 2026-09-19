@@ -326,6 +326,19 @@ TEST_CASE("packer manifest: fields", "[gmmpack][packer]")
   REQUIRE(m.info.created_at.back() == 'Z');
 }
 
+TEST_CASE("packer manifest: reuses instance modpack_id and bumps revision",
+          "[gmmpack][packer]")
+{
+  auto snap             = make_snapshot();
+  snap.modpack_id       = "11111111-2222-4333-8444-555555555555";
+  snap.modpack_revision = 4;
+  gmmpack::PackOptions opts;
+
+  auto m = gmmpack::build_manifest(snap, opts);
+  REQUIRE(m.id == "11111111-2222-4333-8444-555555555555");
+  REQUIRE(m.revision == 5);
+}
+
 TEST_CASE("packer manifest: fallbacks for empty fields", "[gmmpack][packer]")
 {
   engine::InstanceSnapshot snap;
