@@ -70,6 +70,17 @@ struct ManifestArchive {
     std::unordered_map<std::string, std::string> file_hashes;
 };
 
+// Per-instance settings carried in manifest.json ("instanceSettings").
+// v1 ships a SINGLE settings block built from the default profile
+// (profiles[0]) + the snapshot deploy_strategy, documented as
+// "default-profile settings". A per-profile array is a later extension.
+struct InstanceSettings {
+    bool local_saves = false;
+    bool local_settings = false;
+    bool auto_archive_invalidation = false;
+    std::string deploy_strategy;
+};
+
 struct Manifest {
     std::string gmmpack_schema;
     std::string id;
@@ -81,6 +92,7 @@ struct Manifest {
     ManifestLoadOrder load_order;
     std::vector<ChoiceGroup> choice_groups;
     ManifestArchive archive;
+    InstanceSettings instance_settings;
 };
 
 // ---------------------------------------------------------------------------
@@ -259,6 +271,7 @@ struct TreeNode;
 struct SeparatorNode {
     std::string name;
     bool collapsed = false;
+    std::string color;  // hex color, empty = none
     std::vector<TreeNode> children;
 };
 

@@ -15,6 +15,7 @@ static TreeNode parse_tree_node(const nlohmann::json& j) {
         SeparatorNode sep;
         sep.name = j.value("name", "");
         sep.collapsed = j.value("collapsed", false);
+        sep.color = j.value("color", "");
         if (j.contains("children")) {
             for (const auto& child : j["children"]) {
                 sep.children.push_back(parse_tree_node(child));
@@ -101,6 +102,8 @@ static nlohmann::json serialize_node(const TreeNode& node) {
         j["type"] = "separator";
         j["name"] = sep->name;
         j["collapsed"] = sep->collapsed;
+        if (!sep->color.empty())
+            j["color"] = sep->color;
         j["children"] = nlohmann::json::array();
         for (const auto& child : sep->children) {
             j["children"].push_back(serialize_node(child));

@@ -617,6 +617,17 @@ Manifest parse_manifest(const nlohmann::json& j) {
         }
     }
 
+    // Absent key = pack exported before per-instance settings existed:
+    // all-false/empty defaults (see InstanceSettings member initializers).
+    if (j.contains("instanceSettings")) {
+        const auto& is = j["instanceSettings"];
+        m.instance_settings.local_saves = is.value("localSaves", false);
+        m.instance_settings.local_settings = is.value("localSettings", false);
+        m.instance_settings.auto_archive_invalidation =
+            is.value("automaticArchiveInvalidation", false);
+        m.instance_settings.deploy_strategy = is.value("deployStrategy", "");
+    }
+
     return m;
 }
 
