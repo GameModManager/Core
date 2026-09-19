@@ -52,6 +52,11 @@ void AppMenuBar::build_file_menu() {
   connect(import_modpack, &QAction::triggered, this,
           &AppMenuBar::import_modpack_requested);
 
+  auto *export_modpack = menu->addAction(tr("Export Modpack..."));
+  export_modpack->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M));
+  connect(export_modpack, &QAction::triggered, this,
+          &AppMenuBar::export_modpack_requested);
+
   menu->addSeparator();
 
   auto *settings = menu->addAction(tr("Settings..."));

@@ -28,6 +28,7 @@
 
 #include "engine/core/events/event_bus.h"
 #include "engine/core/instance/instance.h"
+#include "engine/core/instance/instance_snapshot.h"
 #include "engine/core/instance/instance_utils.h"
 #include "engine/core/log/logger.h"
 #include "engine/core/trace/trace_recorder.h"
@@ -55,6 +56,7 @@
 #include "ui/fomod/fomod_wizard_dialog.h"
 #include "ui/game_selection/game_selection_widget.h"
 #include "ui/install/install_name_dialog.h"
+#include "ui/modpack/export_wizard.h"
 #include "ui/modpack/modpack_import_dialog.h"
 #include "ui/modpack/modpack_instance_dialog.h"
 #include "ui/modpack/modpack_install_wizard.h"
@@ -638,6 +640,8 @@ void SettingsController::connect_menu_actions() {
           [this]() { w_->mod_list_->export_modlist(); });
   connect(w_->menu_bar_, &AppMenuBar::import_modpack_requested, this,
           [this]() { import_modpack(); });
+  connect(w_->menu_bar_, &AppMenuBar::export_modpack_requested, this,
+          [this]() { export_modpack(); });
   connect(w_->menu_bar_, &AppMenuBar::settings_requested, w_->tab_mode_.get(),
           &TabModeController::route_settings);
   connect(w_->menu_bar_, &AppMenuBar::exit_requested, this,
@@ -1355,6 +1359,19 @@ void SettingsController::import_modpack(const QString &preset_file) {
           ? ModpackInstallWizard::Mode::Append
           : ModpackInstallWizard::Mode::CreateNew;
   ModpackInstallWizard wizard(std::move(pack), wizard_mode, w_);
+  wizard.exec();
+}
+
+void SettingsController::export_modpack() {
+  if (w_->current_instance_root_.empty()) {
+    QMessageBox::information(w_, tr("No Instance"),
+                             tr("Load an instance before exporting."));
+    return;
+  }
+  auto inst = engine::Instance::from_root(w_->current_instance_root_);
+  auto snapshot = engine::InstanceSnapshot::capture(inst);
+  auto mods_dir = w_->mods_dir_path();
+  ui::ExportWizard wizard(std::move(snapshot), mods_dir, w_);
   wizard.exec();
 }
 
