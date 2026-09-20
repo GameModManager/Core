@@ -179,40 +179,18 @@ void ModContextMenu::setup_mod_list_context_menu() {
                          QObject::tr("Disable Selected"), w_, [this]() {
                            actions_->toggle_selected_mods(false);
                          });
-          // Mirror/backup (Workspace-0pi5): external mods mirror into
-          // instance/mods/, mirrored ones drop the backup. A mixed
-          // mirrored/unmirrored selection offers both actions.
-          {
-            bool any_mirrorable = false;
-            bool any_mirrored   = false;
-            for (const auto& si : sel) {
-              if (si.row() < 0 || si.row() >= w_->mod_model_->mods().size())
-                continue;
-              const auto& m = w_->mod_model_->mods()[si.row()];
-              if (m.is_separator || m.is_overwrite || m.is_merged || m.is_game_native)
-                continue;
-              if (m.is_mirrored)
-                any_mirrored = true;
-              else if (has_live_external_source(w_, m))
-                any_mirrorable = true;
-            }
-            if (any_mirrorable)
-              menu.addAction(engine::IconManager::instance().resolve_icon("merge"),
-                             QObject::tr("Mirror selected mods"), w_, [this]() {
-                               actions_->mirror_selected_mods();
-                             });
-            if (any_mirrored)
-              menu.addAction(engine::IconManager::instance().resolve_icon("edit-clear"),
-                             QObject::tr("Un-mirror selected mods"), w_, [this]() {
-                               actions_->unmirror_selected_mods();
-                             });
-          }
           // Tweaks submenu: applies to every selected mod. Checked only when
           // ALL of them share the state; clicking applies the inverse.
+          // Mirror/backup (Workspace-0pi5): external mods mirror into
+          // instance/mods/, mirrored ones drop the backup. A mixed
+          // mirrored/unmirrored selection offers both actions (regular
+          // actions, not checkable).
           {
             QList<int> rows;
-            bool any_on  = false;
-            bool any_off = false;
+            bool any_on         = false;
+            bool any_off        = false;
+            bool any_mirrorable = false;
+            bool any_mirrored   = false;
             for (const auto& si : sel) {
               if (si.row() < 0 || si.row() >= w_->mod_model_->mods().size())
                 continue;
@@ -224,6 +202,10 @@ void ModContextMenu::setup_mod_list_context_menu() {
                 any_on = true;
               else
                 any_off = true;
+              if (m.is_mirrored)
+                any_mirrored = true;
+              else if (has_live_external_source(w_, m))
+                any_mirrorable = true;
             }
             auto* tweaks = menu.addMenu(
                 engine::IconManager::instance().resolve_icon("preferences-other"),
@@ -236,6 +218,16 @@ void ModContextMenu::setup_mod_list_context_menu() {
             QObject::connect(root_act, &QAction::triggered, w_, [this, rows, all_on]() {
               actions_->toggle_root_override(rows, !all_on);
             });
+            if (any_mirrorable)
+              tweaks->addAction(QObject::tr("Mirror selected mods to instance"), w_,
+                                [this]() {
+                                  actions_->mirror_selected_mods();
+                                });
+            if (any_mirrored)
+              tweaks->addAction(QObject::tr("Un-mirror selected mods from instance"),
+                                w_, [this]() {
+                                  actions_->unmirror_selected_mods();
+                                });
           }
           // Send to Separator: only available when the selection contains
           // purely mods (no separators, overwrites, merged, or native).
@@ -368,6 +360,8 @@ void ModContextMenu::setup_mod_list_context_menu() {
                        });
 
         // Tweaks submenu - per-mod deploy options (MO2's per-mod tweaks).
+        // Mirror/backup (Workspace-0pi5): "Mirror to instance" checkbox for
+        // external mods (checked when mirrored). Pseudo-rows never mirror.
         {
           auto* tweaks = menu.addMenu(
               engine::IconManager::instance().resolve_icon("preferences-other"),
@@ -377,31 +371,26 @@ void ModContextMenu::setup_mod_list_context_menu() {
           root_act->setChecked(entry.root_override);
           root_act->setEnabled(!entry.is_separator && !entry.is_overwrite &&
                                !entry.is_merged && !entry.is_game_native);
-          root_act->setStatusTip(QObject::tr("Deploy w_ mod's files to the game root "
+          root_act->setStatusTip(QObject::tr("Deploy the mod's files to the game root "
                                              "instead of the data dir"));
           QObject::connect(root_act, &QAction::triggered, w_, [this, row]() {
             actions_->toggle_root_override({row},
                                            !w_->mod_model_->mods()[row].root_override);
           });
-        }
-
-        // Mirror/backup (Workspace-0pi5): "Mirror to Instance" for external
-        // mods that are not mirrored yet, "Unmirror from Instance" for ones
-        // that are. Pseudo-rows never mirror.
-        if (!entry.is_separator && !entry.is_overwrite && !entry.is_merged &&
-            !entry.is_game_native) {
-          if (entry.is_mirrored) {
-            menu.addSeparator();
-            menu.addAction(engine::IconManager::instance().resolve_icon("edit-clear"),
-                           QObject::tr("Unmirror from Instance"), w_, [this, mod_id]() {
-                             actions_->unmirror_mod(mod_id);
-                           });
-          } else if (has_live_external_source(w_, entry)) {
-            menu.addSeparator();
-            menu.addAction(engine::IconManager::instance().resolve_icon("merge"),
-                           QObject::tr("Mirror to Instance"), w_, [this, mod_id]() {
-                             actions_->mirror_mod(mod_id);
-                           });
+          const bool is_pseudo = entry.is_separator || entry.is_overwrite ||
+                                 entry.is_merged || entry.is_game_native;
+          if (!is_pseudo &&
+              (entry.is_mirrored || has_live_external_source(w_, entry))) {
+            auto* mirror_act = tweaks->addAction(QObject::tr("Mirror to instance"));
+            mirror_act->setCheckable(true);
+            mirror_act->setChecked(entry.is_mirrored);
+            QObject::connect(mirror_act, &QAction::triggered, w_,
+                             [this, mod_id](bool checked) {
+                               if (checked)
+                                 actions_->mirror_mod(mod_id);
+                               else
+                                 actions_->unmirror_mod(mod_id);
+                             });
           }
         }
 
