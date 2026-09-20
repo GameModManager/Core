@@ -5,7 +5,7 @@ IndentWidth: 2
 ---
 Language: Cpp
 DeriveLineEnding: false
-UseCRLF: true
+UseCRLF: false
 DerivePointerAlignment: false
 PointerAlignment: Left
 AlignConsecutiveAssignments: true
@@ -18,24 +18,6 @@ AlignTrailingComments: true
 SpacesBeforeTrailingComments: 2
 NamespaceIndentation: Inner
 MaxEmptyLinesToKeep: 1
-BreakBeforeBraces: Custom
-BraceWrapping:
-  AfterCaseLabel: false
-  AfterClass: true
-  AfterControlStatement: false
-  AfterEnum: true
-  AfterFunction: true
-  AfterNamespace: true
-  AfterStruct: true
-  AfterUnion: true
-  AfterExternBlock: true
-  BeforeCatch: false
-  BeforeElse: false
-  BeforeLambdaBody: false
-  BeforeWhile: false
-  IndentBraces: false
-  SplitEmptyFunction: false
-  SplitEmptyRecord: false
-  SplitEmptyNamespace: true
+BreakBeforeBraces: Attach
 ColumnLimit: 88
 ForEachMacros: ['Q_FOREACH', 'foreach']
