@@ -668,7 +668,7 @@ void ExportWizard::refresh_tree()
   const engine::gmmpack::Manifest manifest =
       engine::gmmpack::build_manifest(filtered, options);
   const std::vector<engine::gmmpack::ModEntry> mod_entries =
-      engine::gmmpack::build_mod_entries(filtered, mods_dir_);
+      engine::gmmpack::build_mod_entries(filtered, mods_dir_, options);
   const std::vector<engine::gmmpack::ExecutableEntry> exe_entries =
       engine::gmmpack::build_executables(filtered, mods_dir_);
   const engine::gmmpack::TreeRoot layout =
