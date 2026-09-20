@@ -703,3 +703,81 @@ TEST_CASE("mod scan worker prunes orphaned empty mods", "[ui]") {
 
   fs::remove_all(base, ec);
 }
+
+TEST_CASE("mod scan worker merge unions emptiness with external source", "[ui]") {
+  // Workspace-5jk3 follow-up: a merged row's content lives in the external
+  // dir, so its is_empty must be a union across both locations. A
+  // meta.ini-only instance stub over a healthy external source is NOT
+  // empty (before the fix it stayed is_empty=true and the prune would eat
+  // the stub once tracked); an emptied external source over a stub IS.
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char* test_argv[] = {test_argv0, nullptr};
+  QCoreApplication app(test_argc, test_argv);
+  (void)app;
+
+  const fs::path base =
+      fs::current_path() / ("gmm_test_mod_scan_union_" + std::to_string(getpid()));
+  const fs::path game_dir      = base / "game";
+  const fs::path external_mods = base / "Isaac Mods";
+  const fs::path mods_dir      = base / "mods";
+  std::error_code ec;
+  fs::create_directories(game_dir, ec);
+  fs::create_directories(external_mods, ec);
+  fs::create_directories(mods_dir, ec);
+
+  // Healthy external mod + meta.ini-only instance stub (the Isaac shape).
+  fs::create_directories(external_mods / "HealthyShared", ec);
+  write_file(external_mods / "HealthyShared" / "mod.json", "{}");
+  fs::create_directories(mods_dir / "HealthyShared", ec);
+  write_file(mods_dir / "HealthyShared" / "meta.ini",
+             "[General]\nversion=1.0\n\n[GameModManager]\nsteam_appid=250900\n");
+  // Ghost stub: GMM-managed meta.ini only, external source gone (Steam
+  // unsubscribed and removed the whole folder) - the reported bug.
+  fs::create_directories(mods_dir / "GoneShared", ec);
+  write_file(mods_dir / "GoneShared" / "meta.ini",
+             "[General]\nversion=1.0\n\n[GameModManager]\nsteam_appid=250900\n");
+
+  engine::GameKnowledge knowledge;
+  ui::ModScanThread thread(&app);
+  ui::ModScanWorker* worker = thread.worker();
+  std::vector<ui::ModScanResult> results;
+  QObject::connect(worker, &ui::ModScanWorker::finished, &app,
+                   [&](ui::ModScanResult result, quint64) {
+                     results.push_back(std::move(result));
+                   });
+  {
+    ui::ModScanRequest req;
+    req.knowledge     = knowledge;
+    req.game_id       = "testgame";
+    req.game_dir      = game_dir;
+    req.game_mods_dir = external_mods;
+    req.instance_root = base;
+    req.mods_dir      = mods_dir;
+    thread.start(std::move(req), /*generation=*/1);
+  }
+  QElapsedTimer timer;
+  timer.start();
+  while (results.empty()) {
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    QThread::msleep(2);
+    if (timer.elapsed() > 10000) {
+      FAIL("scan never landed");
+    }
+  }
+
+  const auto& scanned = results.front().scanned;
+  const auto* healthy = by_folder(scanned, "HealthyShared");
+  check(healthy != nullptr, "healthy merged mod present");
+  check(!healthy->is_empty, "stub over healthy external source is not empty");
+  check(healthy->content_dir == external_mods / "HealthyShared",
+        "merged row content_dir points at the external source");
+  // The healthy stub survives the prune that runs inside the same scan.
+  check(fs::is_directory(mods_dir / "HealthyShared"), "healthy stub kept on disk");
+
+  const auto* emptied = by_folder(scanned, "GoneShared");
+  check(emptied == nullptr, "ghost stub pruned and dropped from the result");
+  check(!fs::exists(mods_dir / "GoneShared"), "ghost stub folder removed");
+
+  fs::remove_all(base, ec);
+}
