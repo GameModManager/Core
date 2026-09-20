@@ -309,6 +309,13 @@ gmm_catch2_test(filetree_tab_test ui/filetree_tab_test.cpp
     UI
     LIBS gmm_ui)
 
+# DataTab incremental conflict update on mod reorder (Workspace-z1iu):
+# reordered winners update in place instead of clearing + recreating the
+# whole tree. Offscreen; pumps the worker build + chunked apply.
+gmm_catch2_test(data_tab_reorder_test ui/data_tab_reorder_test.cpp
+    UI
+    LIBS gmm_ui)
+
 # BBCode adapter + entity/BR normalization (ui/modinfo/bbcode.cpp). Pure
 # logic - no QApplication, no panel, no event loop. Reaches gmm_ui for
 # the bbcode_to_html symbol but does not need the QT_QPA_PLATFORM=offscreen
