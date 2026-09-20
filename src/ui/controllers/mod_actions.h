@@ -51,6 +51,13 @@ public:
   void mirror_selected_mods();
   void unmirror_selected_mods();
 
+  // Resolve the live external source folder for a mod row: content_dir
+  // when it is still a directory, else the game's external mods dir.
+  // Empty when neither exists (not an external mod, or its source is
+  // gone). Shared with the context menu's Open in File Manager so both
+  // target the real source, never the instance stub.
+  std::filesystem::path mirror_source_for(const ModEntry& entry);
+
   // Separator creation.
   void create_separator_at_row(int row);
   QString create_separator_named(const QString& name, const QString& color);
@@ -73,7 +80,6 @@ private:
   enum class MirrorResult { Mirrored, AlreadyMirrored, Failed };
   MirrorResult mirror_single(const QString& mod_id);
   MirrorResult unmirror_single(const QString& mod_id);
-  std::filesystem::path mirror_source_for(const ModEntry& entry);
   void set_action_status(const QString& text);
 
   MainWindow* w_ = nullptr;
