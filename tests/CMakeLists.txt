@@ -277,6 +277,13 @@ gmm_catch2_test(settings_content_widget_test ui/settings_content_widget_test.cpp
     UI
     LIBS gmm_ui Qt6::Test)
 
+# Checkerboard transparency grid (PreviewWindow / ImageViewer): reference
+# tile colors, 2x2 menu icons, transparency gating, Settings persistence.
+# Offscreen; throwaway XDG_CONFIG_HOME so the Settings section is hermetic.
+gmm_catch2_test(checkerboard_test ui/checkerboard_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(source_tab_test ui/source_tab_test.cpp
     UI
     LIBS gmm_ui)
