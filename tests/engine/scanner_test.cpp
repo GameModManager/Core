@@ -12,6 +12,7 @@
 #include "engine/core/instance/mod_state.h"
 #include "engine/game/detect/mod_scanner.h"
 #include "engine/game/registry/game_knowledge.h"
+#include "engine/mod/meta/mod_meta.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
@@ -482,6 +483,113 @@ TEST_CASE("prune_orphaned_empty_mods safety gates", "[engine]") {
               .empty(),
           "unreadable tracker prunes nothing");
   require(fs::is_directory(mods / "ShellMod"), "shell survives corrupt tracker");
+
+  fs::remove_all(root);
+}
+
+TEST_CASE("mirror marker round-trip", "[engine]") {
+  // Workspace-0pi5: the [Mirror] section (sourcePath + sourceTimestamp)
+  // survives serialize/parse and clears as a whole section.
+  engine::ModMeta meta;
+  REQUIRE(!meta.is_mirrored());
+  meta.set_mirror("/tmp/opencode/fake_source", 1726843200);
+  REQUIRE(meta.is_mirrored());
+  REQUIRE(meta.mirror_source_path() == "/tmp/opencode/fake_source");
+  REQUIRE(meta.mirror_source_timestamp() == 1726843200);
+
+  engine::ModMeta reparsed;
+  REQUIRE(reparsed.parse(meta.serialize()));
+  REQUIRE(reparsed.is_mirrored());
+  REQUIRE(reparsed.mirror_source_path() == "/tmp/opencode/fake_source");
+  REQUIRE(reparsed.mirror_source_timestamp() == 1726843200);
+
+  reparsed.clear_mirror();
+  REQUIRE(!reparsed.is_mirrored());
+  REQUIRE(!reparsed.has_section("Mirror"));
+}
+
+TEST_CASE("mirrored mod detection", "[engine]") {
+  // Workspace-0pi5: a folder whose meta.ini carries [Mirror] scans as
+  // mirrored; a recorded sourcePath that is gone flags source-missing.
+  const fs::path root = "/tmp/opencode/gmm_mirror_test";
+  fs::remove_all(root);
+  const fs::path source = root / "external_source" / "SomeMod";
+  fs::create_directories(source);
+  write_file(source / "content.txt", "hello");
+
+  const fs::path mods = root / "mods";
+  fs::create_directories(mods / "SomeMod");
+  write_file(mods / "SomeMod" / "meta.ini",
+             "[General]\nversion = 1.0\n[Mirror]\nsourcePath = " + source.string() +
+                 "\nsourceTimestamp = 1726843200\n");
+  fs::create_directories(mods / "GoneMod");
+  write_file(mods / "GoneMod" / "meta.ini",
+             "[General]\nversion = 1.0\n[Mirror]\nsourcePath = " + root.string() +
+                 "/nope\nsourceTimestamp = 1726843200\n");
+  fs::create_directories(mods / "PlainMod");
+  write_file(mods / "PlainMod" / "meta.ini", "[General]\nversion = 1.0\n");
+
+  engine::GameKnowledge knowledge;
+  const auto scanned = engine::ModScanner::scan_dir(knowledge, "testgame", mods);
+
+  const auto* mirrored = by_folder(scanned, "SomeMod");
+  require(mirrored != nullptr, "mirrored mod found");
+  require(mirrored->is_mirrored, "mod with [Mirror] flagged mirrored");
+  require(!mirrored->mirror_source_missing, "live source not flagged missing");
+  require(mirrored->mirror_source_path == source.string(), "source path recorded");
+
+  const auto* gone = by_folder(scanned, "GoneMod");
+  require(gone != nullptr, "orphaned mirror found");
+  require(gone->is_mirrored, "orphaned mirror still flagged mirrored");
+  require(gone->mirror_source_missing, "deleted source flagged missing");
+
+  const auto* plain = by_folder(scanned, "PlainMod");
+  require(plain != nullptr, "plain mod found");
+  require(!plain->is_mirrored, "mod without [Mirror] not flagged");
+  require(!plain->mirror_source_missing, "plain mod never source-missing");
+
+  fs::remove_all(root);
+}
+
+TEST_CASE("mirrored mod is not pruned when its source is gone", "[engine]") {
+  // Workspace-0pi5: prune_orphaned_empty_mods never deletes a mod that has
+  // [Mirror] in meta.ini - even a tracked, empty, source-missing one. The
+  // unmirrored control ghost is still pruned.
+  const fs::path root = "/tmp/opencode/gmm_mirror_prune_test";
+  fs::remove_all(root);
+  const fs::path mods          = root / "mods";
+  const fs::path instance_root = root / "instance";
+  fs::create_directories(instance_root);
+
+  fs::create_directories(mods / "MirroredGhost");
+  write_file(mods / "MirroredGhost" / "meta.ini",
+             "[General]\nversion = 1.0\n[Mirror]\nsourcePath = " + root.string() +
+                 "/gone\nsourceTimestamp = 1726843200\n");
+  fs::create_directories(mods / "PlainGhost");
+  write_file(mods / "PlainGhost" / "meta.ini", "[General]\nversion = 1.0\n");
+
+  engine::GameKnowledge knowledge;
+  const auto scanned = engine::ModScanner::scan_dir(knowledge, "testgame", mods);
+  const auto* mg     = by_folder(scanned, "MirroredGhost");
+  require(mg != nullptr, "mirrored ghost scanned");
+  require(mg->is_empty, "mirrored ghost is empty");
+  require(mg->is_mirrored && mg->mirror_source_missing,
+          "mirrored ghost flagged source-missing");
+  const auto* pg = by_folder(scanned, "PlainGhost");
+  require(pg != nullptr, "plain ghost scanned");
+  require(pg->is_empty, "plain ghost is empty");
+
+  engine::ModStateTracker tracker(instance_root);
+  tracker.record_install("MirroredGhost");
+  tracker.record_install("PlainGhost");
+  require(tracker.save(), "tracker saved");
+
+  const auto pruned =
+      engine::ModScanner::prune_orphaned_empty_mods(scanned, mods, instance_root);
+  require(pruned.size() == 1, "exactly one folder pruned");
+  require(pruned.front() == "PlainGhost", "only the unmirrored ghost is pruned");
+  require(fs::is_directory(mods / "MirroredGhost"), "mirrored ghost survives");
+  require(!fs::exists(mods / "PlainGhost"), "plain ghost removed");
 
   fs::remove_all(root);
 }

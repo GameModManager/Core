@@ -48,6 +48,14 @@ struct ScannedMod {
   // Category IDs auto-assigned from Steam Workshop tags via the
   // workshop_tag_categories hook. Empty when no mapping is available.
   std::vector<int> category_ids;
+  // Mirror/backup tracking (Workspace-0pi5): the folder's meta.ini carries
+  // a [Mirror] section. mirror_source_path is the original external folder
+  // (empty when the section has no sourcePath); mirror_source_missing is
+  // true when that path is no longer on disk (deleted by Steam etc.) and
+  // the scanned folder is the surviving backup copy.
+  bool is_mirrored           = false;
+  bool mirror_source_missing = false;
+  std::string mirror_source_path;
   // The directory where this mod's actual game content lives. For most
   // mods this is the same as the scanned mods_dir. For games with an
   // external game_mods_dir hook (Isaac), external mods' content lives

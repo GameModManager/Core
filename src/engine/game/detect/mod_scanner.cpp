@@ -276,6 +276,26 @@ static ScanConfig make_scan_config(const GameKnowledge& knowledge,
   return cfg;
 }
 
+// Mirror/backup state (Workspace-0pi5): a folder whose meta.ini carries a
+// [Mirror] section is a mirrored source or a mirror backup. The stored
+// sourcePath is checked live: a missing path means the external source is
+// gone (deleted by Steam etc.) and this folder is the surviving backup.
+static void apply_mirror_state(ScannedMod& mod,
+                               const std::filesystem::path& entry_path) {
+  std::error_code ec;
+  auto meta_path = entry_path / "meta.ini";
+  if (!std::filesystem::is_regular_file(meta_path, ec))
+    return;
+  engine::ModMeta meta = engine::ModMeta::load_file(meta_path);
+  if (!meta.is_mirrored())
+    return;
+  mod.is_mirrored        = true;
+  mod.mirror_source_path = meta.mirror_source_path();
+  if (!mod.mirror_source_path.empty() &&
+      !std::filesystem::exists(mod.mirror_source_path, ec))
+    mod.mirror_source_missing = true;
+}
+
 // Classify a single mod folder. Returns nullopt for ignored folders, symlink
 // folders pointing into managed trees (e.g. Overwrite), and folders with no
 // recognized metadata.
@@ -507,6 +527,11 @@ scan_entry(const std::filesystem::path& entry_path, const ScanConfig& cfg,
   }
   mod.no_metadata  = mod.no_metadata && !mod.validated;
   mod.invalid_data = !mod.validated && !content_looks_valid(cfg, entry_path);
+
+  // Mirror/backup marker (Workspace-0pi5): [Mirror] in the folder's own
+  // meta.ini. Read for every game (an XML game's meta.ini is GMM-owned, so
+  // mirrored Isaac sources and their backups are flagged here too).
+  apply_mirror_state(mod, entry_path);
 
   // Walk the folder recursively to detect hidden files and empty mods.
   // Mods store game files in subdirectories (textures/, meshes/, scripts/).
@@ -788,6 +813,18 @@ ModScanner::prune_orphaned_empty_mods(const std::vector<ScannedMod>& scanned,
   for (const auto& mod : scanned) {
     if (!mod.is_empty || mod.is_separator || mod.is_overwrite || mod.is_game_native)
       continue;
+    // Mirror backups (Workspace-0pi5) are NEVER pruned: an empty mirrored
+    // folder is either a source whose content was removed externally (the
+    // backup is the user's fallback) or the backup itself. The [Mirror]
+    // marker in its meta.ini exempts it unconditionally - read live so a
+    // hand-built scan row cannot bypass the exemption either.
+    {
+      std::error_code meta_ec;
+      auto meta_path = mods_dir / mod.folder_name / "meta.ini";
+      if (std::filesystem::is_regular_file(meta_path, meta_ec) &&
+          engine::ModMeta::load_file(meta_path).is_mirrored())
+        continue;
+    }
     // Only real instance folders are eligible: external-only mods (Isaac
     // game_dir/mods/) and synthesized game-native rows have no folder here.
     // Steam owns the external dir - it is never touched.

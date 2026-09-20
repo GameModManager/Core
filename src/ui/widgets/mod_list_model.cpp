@@ -21,40 +21,44 @@ static QString format_epoch_ts(qint64 ts) {
   return QDateTime::fromSecsSinceEpoch(ts).toString("yyyy-MM-dd HH:mm:ss");
 }
 
-ModList::ModList(QObject *parent) : QAbstractTableModel(parent) {
+ModList::ModList(QObject* parent) : QAbstractTableModel(parent) {
   ensure_overwrite_present();
   ensure_merged_present();
 
   // Conflict-status icons resolve through IconManager so a theme or icon
   // pack can override them (the "mo2" pack ships MO2-style badges).
-  auto &icons = engine::IconManager::instance();
-  overwrite_icon_ = icons.resolve_icon("conflict-overwrite");
-  overwritten_icon_ = icons.resolve_icon("conflict-overwritten");
-  mixed_icon_ = icons.resolve_icon("conflict-mixed");
-  redundant_icon_ = icons.resolve_icon("conflict-redundant");
-  hidden_icon_ = icons.resolve_icon("conflict-hidden");
-  fomod_icon_ = icons.resolve_icon("save");
+  auto& icons         = engine::IconManager::instance();
+  overwrite_icon_     = icons.resolve_icon("conflict-overwrite");
+  overwritten_icon_   = icons.resolve_icon("conflict-overwritten");
+  mixed_icon_         = icons.resolve_icon("conflict-mixed");
+  redundant_icon_     = icons.resolve_icon("conflict-redundant");
+  hidden_icon_        = icons.resolve_icon("conflict-hidden");
+  fomod_icon_         = icons.resolve_icon("save");
   root_override_icon_ = icons.resolve_icon("root-dir");
-  invalid_icon_ = icons.resolve_icon("mod-invalid");
-  empty_icon_ = icons.resolve_icon("plugin-dummy");
+  invalid_icon_       = icons.resolve_icon("mod-invalid");
+  empty_icon_         = icons.resolve_icon("plugin-dummy");
+  // Mirror/backup badges (Workspace-0pi5): both keys are in ACTIVE_ICONS.txt
+  // (merge resolves via the Fugue pack fallback, plugin-warning is bundled).
+  mirror_icon_         = icons.resolve_icon("merge");
+  mirror_missing_icon_ = icons.resolve_icon("plugin-warning");
   // Vendor icons for the Source column (MO2 COL_GAME analogue): resolved
   // through the same vendor_icon_key() mapping the Source tab uses.
-  for (const char *key : {"nexusmods", "loverslab", "steam", "moddb"}) {
+  for (const char* key : {"nexusmods", "loverslab", "steam", "moddb"}) {
     QIcon icon = icons.resolve_icon(QString::fromLatin1(key));
     if (!icon.isNull())
       vendor_icons_[QString::fromLatin1(key)] = icon;
   }
 }
 
-int ModList::rowCount(const QModelIndex &parent) const {
+int ModList::rowCount(const QModelIndex& parent) const {
   return parent.isValid() ? 0 : mods_.size();
 }
 
-int ModList::columnCount(const QModelIndex &parent) const {
+int ModList::columnCount(const QModelIndex& parent) const {
   return parent.isValid() ? 0 : ColumnCount;
 }
 
-QVariant ModList::data(const QModelIndex &index, int role) const {
+QVariant ModList::data(const QModelIndex& index, int role) const {
   if (!index.isValid() || index.row() >= mods_.size())
     return {};
 
@@ -67,7 +71,7 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
   // the column width - never stacked into one icon.
   if (role == kFlagIconsRole &&
       (index.column() == Conflicts || index.column() == Flags)) {
-    const auto &m = mods_[index.row()];
+    const auto& m = mods_[index.row()];
     QList<QIcon> icons;
     if (index.column() == Conflicts) {
       if (m.is_separator) {
@@ -99,12 +103,18 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
       icons << fomod_icon_;
     if (m.root_override)
       icons << root_override_icon_;
+    // Mirror/backup badges (Workspace-0pi5): merge while the source is
+    // present (no behavior change), plugin-warning once it is gone.
+    if (m.is_mirrored && !m.mirror_source_missing)
+      icons << mirror_icon_;
+    if (m.is_mirrored && m.mirror_source_missing)
+      icons << mirror_missing_icon_;
     if (m.invalid_data || m.no_metadata)
       icons << invalid_icon_;
     return QVariant::fromValue(icons);
   }
 
-  const auto &mod = mods_[index.row()];
+  const auto& mod = mods_[index.row()];
 
   // --- Scroll mark color for the separator-marking scrollbar ---
   if (role == kScrollMarkRole) {
@@ -114,8 +124,7 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
       // marks below are independent of it.
       if (!Settings::instance().color_separator_scrollbar())
         return {};
-      QColor bg(mod.separator_color.isEmpty() ? "#888888"
-                                              : mod.separator_color);
+      QColor bg(mod.separator_color.isEmpty() ? "#888888" : mod.separator_color);
       return bg;
     }
     // Plugin-selected highlight (MO2 "mod contains selected file") - feeds
@@ -135,8 +144,8 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
   // children render too (their fold hides the subtree). Overwrite/MERGED and
   // game-native rows never render an arrow.
   if (role == Qt::DisplayRole && index.column() == Fold) {
-    const bool nestable_mod = !mod.is_separator && !mod.is_overwrite &&
-                              !mod.is_merged && !mod.is_game_native;
+    const bool nestable_mod =
+        !mod.is_separator && !mod.is_overwrite && !mod.is_merged && !mod.is_game_native;
     if (mod.is_separator || (nesting_enabled_ && nestable_mod))
       return has_content(index.row())
                  ? (mod.folded ? QString("\u25B6") : QString("\u25BC"))
@@ -179,8 +188,7 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
       // Conflict highlight takes precedence if this separator is referenced
       if (const QColor cc = conflict_highlight_color(mod.id); cc.isValid())
         return QBrush(cc);
-      QColor bg(mod.separator_color.isEmpty() ? "#888888"
-                                              : mod.separator_color);
+      QColor bg(mod.separator_color.isEmpty() ? "#888888" : mod.separator_color);
       return QBrush(bg);
     }
     if (role == Qt::ToolTipRole) {
@@ -197,14 +205,12 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
         if (flag == QString("\u00B1"))
           return QColor(255, 180, 0);
       }
-      QColor bg(mod.separator_color.isEmpty() ? "#888888"
-                                              : mod.separator_color);
-      int l = static_cast<int>(0.299 * bg.red() + 0.587 * bg.green() +
-                               0.114 * bg.blue());
+      QColor bg(mod.separator_color.isEmpty() ? "#888888" : mod.separator_color);
+      int l =
+          static_cast<int>(0.299 * bg.red() + 0.587 * bg.green() + 0.114 * bg.blue());
       return QBrush(l > 128 ? QColor(0, 0, 0) : QColor(255, 255, 255));
     }
-    if (role == Qt::FontRole &&
-        (index.column() == Name || index.column() == Fold)) {
+    if (role == Qt::FontRole && (index.column() == Name || index.column() == Fold)) {
       QFont f;
       f.setBold(true);
       return f;
@@ -216,7 +222,7 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
       case Version:
         return QString();
       case Flags:
-        return QString(); // icons come via kFlagIconsRole
+        return QString();  // icons come via kFlagIconsRole
       case Priority:
         return mod.priority;
       }
@@ -282,9 +288,9 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
       if (!overwrite_path_.isEmpty()) {
         QDir dir(overwrite_path_);
         if (dir.exists() && !dir.isEmpty())
-          return QColor(220, 50, 50); // red = has captured files
+          return QColor(220, 50, 50);  // red = has captured files
       }
-      return QColor(160, 160, 160); // gray = empty
+      return QColor(160, 160, 160);  // gray = empty
     }
   }
 
@@ -296,14 +302,14 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
       return f;
     }
     if (role == Qt::ForegroundRole && index.column() == Name) {
-      return QColor(80, 180, 255); // blue
+      return QColor(80, 180, 255);  // blue
     }
   }
 
   // --- Regular mod + Overwrite shared ---
   if (role == Qt::CheckStateRole && index.column() == Name) {
     if (mod.is_overwrite || mod.is_merged || mod.is_game_native)
-      return {}; // never-disableable rows carry no checkbox (MO2 parity)
+      return {};  // never-disableable rows carry no checkbox (MO2 parity)
     return mod.enabled ? Qt::Checked : Qt::Unchecked;
   }
   if (role == Qt::DisplayRole || role == Qt::EditRole) {
@@ -311,20 +317,19 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
     case Name:
       return mod.name;
     case Conflicts:
-      return QString(); // icon via kFlagIconsRole
+      return QString();  // icon via kFlagIconsRole
     case Flags:
-      return QString(); // icon via kFlagIconsRole
+      return QString();  // icon via kFlagIconsRole
     case Category:
       return mod.category;
     case Source:
-      return QString(); // vendor icon via DecorationRole
+      return QString();  // vendor icon via DecorationRole
     case SourceId:
       return mod.source_id;
     case Version:
       return mod.version;
     case Installation:
-      return mod.installation_ts > 0 ? format_epoch_ts(mod.installation_ts)
-                                     : QString();
+      return mod.installation_ts > 0 ? format_epoch_ts(mod.installation_ts) : QString();
     case Changed:
       return mod.changed_ts > 0 ? format_epoch_ts(mod.changed_ts) : QString();
     case Priority:
@@ -333,13 +338,11 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
   }
   // Vendor icon for the Source column (MO2 COL_GAME analogue): the badge of
   // the site the download came from (Nexus/LoversLab/Steam/ModDB).
-  if (role == Qt::DecorationRole && index.column() == Source &&
-      !mod.is_separator) {
+  if (role == Qt::DecorationRole && index.column() == Source && !mod.is_separator) {
     return source_icon(mod.source_type);
   }
   // Conflicts tooltip: what this mod wins/loses against.
-  if (role == Qt::ToolTipRole && index.column() == Conflicts &&
-      !mod.is_separator &&
+  if (role == Qt::ToolTipRole && index.column() == Conflicts && !mod.is_separator &&
       (mod.conflict_wins > 0 || mod.conflict_losses > 0 || mod.redundant)) {
     QStringList lines;
     if (mod.redundant)
@@ -351,13 +354,18 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
     return lines.join("\n");
   }
   // Source tooltip: the download source name.
-  if (role == Qt::ToolTipRole && index.column() == Source &&
-      !mod.source_type.isEmpty())
+  if (role == Qt::ToolTipRole && index.column() == Source && !mod.source_type.isEmpty())
     return mod.source_type;
   if (role == Qt::ToolTipRole && index.column() == Flags &&
-      (!mod.tags.isEmpty() || mod.is_fomod || mod.root_override ||
-       mod.invalid_data || mod.no_metadata || mod.is_empty)) {
+      (!mod.tags.isEmpty() || mod.is_fomod || mod.root_override || mod.invalid_data ||
+       mod.no_metadata || mod.is_empty ||
+       (mod.is_mirrored && mod.mirror_source_missing))) {
     QStringList lines;
+    // Mirrored-but-source-present carries no tooltip (no behavior change).
+    if (mod.is_mirrored && mod.mirror_source_missing) {
+      lines << tr("Source location for this mod is no longer on disk. Backup "
+                  "files still on disk.");
+    }
     if (mod.invalid_data) {
       lines << tr("No valid game data");
     }
@@ -373,31 +381,31 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
     if (mod.root_override) {
       lines << tr("Deploys to the game root directory");
     }
-    for (const auto &tag : mod.tags)
+    for (const auto& tag : mod.tags)
       lines << tr("%1: %2").arg(tag.type.toUpper(), tag.message);
     return lines.join("\n");
   }
   if (role == Qt::ForegroundRole && index.column() == Flags) {
     if (!mod.tags.isEmpty()) {
-      const auto &firstTag = mod.tags.first();
+      const auto& firstTag = mod.tags.first();
       if (firstTag.type == "deprecated" || firstTag.type == "incompatible" ||
           firstTag.type == "dirty") {
-        return QColor(255, 80, 80); // Red
+        return QColor(255, 80, 80);  // Red
       } else if (firstTag.type == "warning") {
-        return QColor(255, 180, 0); // Orange/Yellow
+        return QColor(255, 180, 0);  // Orange/Yellow
       } else if (firstTag.type == "note") {
-        return QColor(80, 180, 255); // Blue
+        return QColor(80, 180, 255);  // Blue
       } else if (firstTag.type == "clean") {
-        return QColor(80, 200, 80); // Green
+        return QColor(80, 200, 80);  // Green
       }
     }
     if (mod.conflict_wins > 0 && mod.conflict_losses > 0)
-      return QColor(255, 180, 0); // Orange - mixed
+      return QColor(255, 180, 0);  // Orange - mixed
     if (mod.conflict_wins > 0)
-      return QColor(80, 200, 80); // Green - wins
+      return QColor(80, 200, 80);  // Green - wins
     if (mod.conflict_losses > 0)
-      return QColor(255, 80, 80); // Red - loses
-    return QColor(160, 160, 160); // Gray - no conflicts
+      return QColor(255, 80, 80);  // Red - loses
+    return QColor(160, 160, 160);  // Gray - no conflicts
   }
   // Centered text/icon columns (MO2 centers everything but Name/Version).
   // Fold is always centered (arrow cell); every other Fold cell is empty.
@@ -426,12 +434,11 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
   return {};
 }
 
-bool ModList::setData(const QModelIndex &index, const QVariant &value,
-                      int role) {
+bool ModList::setData(const QModelIndex& index, const QVariant& value, int role) {
   if (!index.isValid() || index.row() >= mods_.size())
     return false;
 
-  auto &m = mods_[index.row()];
+  auto& m = mods_[index.row()];
   if (m.is_overwrite || m.is_merged || m.is_game_native)
     return false;
 
@@ -481,12 +488,12 @@ QVariant ModList::headerData(int section, Qt::Orientation, int role) const {
   return {};
 }
 
-Qt::ItemFlags ModList::flags(const QModelIndex &index) const {
+Qt::ItemFlags ModList::flags(const QModelIndex& index) const {
   auto f = QAbstractTableModel::flags(index);
   if (!index.isValid())
     return f | Qt::ItemIsDropEnabled;
 
-  const auto &mod = mods_[index.row()];
+  const auto& mod = mods_[index.row()];
 
   if (mod.is_separator) {
     f &= ~Qt::ItemIsUserCheckable;
@@ -511,17 +518,23 @@ Qt::ItemFlags ModList::flags(const QModelIndex &index) const {
   return f;
 }
 
-Qt::DropActions ModList::supportedDropActions() const { return Qt::MoveAction; }
+Qt::DropActions ModList::supportedDropActions() const {
+  return Qt::MoveAction;
+}
 
-Qt::DropActions ModList::supportedDragActions() const { return Qt::MoveAction; }
+Qt::DropActions ModList::supportedDragActions() const {
+  return Qt::MoveAction;
+}
 
-QStringList ModList::mimeTypes() const { return {kModListMimeType}; }
+QStringList ModList::mimeTypes() const {
+  return {kModListMimeType};
+}
 
-QMimeData *ModList::mimeData(const QModelIndexList &indexes) const {
-  auto *mime = new QMimeData;
+QMimeData* ModList::mimeData(const QModelIndexList& indexes) const {
+  auto* mime = new QMimeData;
 
   QList<int> rows;
-  for (const auto &idx : indexes) {
+  for (const auto& idx : indexes) {
     if (idx.isValid() && !rows.contains(idx.row())) {
       int r = idx.row();
       if (r < mods_.size() && !mods_[r].is_overwrite && !mods_[r].is_merged &&
@@ -543,14 +556,14 @@ QMimeData *ModList::mimeData(const QModelIndexList &indexes) const {
   return mime;
 }
 
-bool ModList::dropMimeData(const QMimeData *data, Qt::DropAction action,
-                           int row, int column, const QModelIndex &parent) {
+bool ModList::dropMimeData(const QMimeData* data, Qt::DropAction action, int row,
+                           int column, const QModelIndex& parent) {
   Q_UNUSED(column);
 
   // QTreeView passes parent=valid, row=-1 when dropping ON an item. Convert
   // to between-row semantics (like IsaacMM's FlatDropModel): an OnItem drop
   // lands just below the item (and, with nesting, may link to it).
-  const bool on_item = parent.isValid();
+  const bool on_item        = parent.isValid();
   const int drop_parent_row = on_item ? parent.row() : -1;
   if (on_item) {
     row = drop_parent_row + 1;
@@ -567,10 +580,10 @@ bool ModList::dropMimeData(const QMimeData *data, Qt::DropAction action,
 
   QByteArray encoded = data->data(kModListMimeType);
   QList<int> sourceRows;
-  for (const auto &token : encoded.split(',')) {
+  for (const auto& token : encoded.split(',')) {
     if (!token.isEmpty()) {
       bool ok = false;
-      int r = token.toInt(&ok);
+      int r   = token.toInt(&ok);
       if (ok)
         sourceRows.append(r);
     }
@@ -594,8 +607,7 @@ bool ModList::dropMimeData(const QMimeData *data, Qt::DropAction action,
     validSources.append(r);
     if (nesting_enabled_) {
       for (int j = 0; j < mods_.size(); ++j)
-        if (j != r && !validSources.contains(j) &&
-            is_descendant_of(j, mods_[r].id))
+        if (j != r && !validSources.contains(j) && is_descendant_of(j, mods_[r].id))
           validSources.append(j);
     }
   }
@@ -621,7 +633,7 @@ bool ModList::dropMimeData(const QMimeData *data, Qt::DropAction action,
   QString new_parent_id;
   if (on_item && nesting_enabled_ && drop_parent_row >= 0 &&
       drop_parent_row < mods_.size() && !validSources.isEmpty()) {
-    const auto &tgt = mods_[drop_parent_row];
+    const auto& tgt = mods_[drop_parent_row];
     const bool tgt_nestable =
         !tgt.is_overwrite && !tgt.is_merged && !tgt.is_game_native;
     if (tgt_nestable) {
@@ -632,8 +644,7 @@ bool ModList::dropMimeData(const QMimeData *data, Qt::DropAction action,
       for (int r : sourceRows) {
         if (r < 0 || r >= mods_.size())
           continue;
-        if (mods_[r].is_overwrite || mods_[r].is_merged ||
-            mods_[r].is_game_native)
+        if (mods_[r].is_overwrite || mods_[r].is_merged || mods_[r].is_game_native)
           continue;
         bool inside = false;
         for (int o : sourceRows) {
@@ -657,8 +668,7 @@ bool ModList::dropMimeData(const QMimeData *data, Qt::DropAction action,
       // a dragged row (a parent can never nest under its own child).
       bool target_in_block = false;
       for (int r : validSources) {
-        if (r == drop_parent_row ||
-            is_descendant_of(drop_parent_row, mods_[r].id)) {
+        if (r == drop_parent_row || is_descendant_of(drop_parent_row, mods_[r].id)) {
           target_in_block = true;
           break;
         }
@@ -684,8 +694,8 @@ bool ModList::dropMimeData(const QMimeData *data, Qt::DropAction action,
   // band mods would hand those mods to the new child's fold - the "new
   // separator steals the bottom separator's mods" bug.
   if (!new_parent_id.isEmpty()) {
-    int last_desc = drop_parent_row;
-    const auto &tgt = mods_[drop_parent_row];
+    int last_desc   = drop_parent_row;
+    const auto& tgt = mods_[drop_parent_row];
     if (tgt.is_separator) {
       for (int j = drop_parent_row + 1; j < mods_.size(); ++j) {
         if (mods_[j].is_overwrite || mods_[j].is_merged)
@@ -732,10 +742,10 @@ bool ModList::dropMimeData(const QMimeData *data, Qt::DropAction action,
   if (pinned_at_top()) {
     int pin_end = (mg_row >= 0) ? mg_row : ow_row;
     if (pin_end >= 0 && targetRow <= pin_end)
-      targetRow = pin_end + 1; // drop below the pinned block
+      targetRow = pin_end + 1;  // drop below the pinned block
   } else {
     if (ow_row >= 0 && targetRow > ow_row)
-      targetRow = ow_row; // drop before Overwrite
+      targetRow = ow_row;  // drop before Overwrite
   }
 
   // Game-native (unmanaged) mods stay on top. Only a separator may enter
@@ -744,7 +754,7 @@ bool ModList::dropMimeData(const QMimeData *data, Qt::DropAction action,
   // non-separator in the drag forces the whole drop below the band.
   if (all_separators) {
     int nb_first = native_band_first();
-    int nb_last = native_band_last();
+    int nb_last  = native_band_last();
     if (nb_first >= 0 && targetRow > nb_first && targetRow <= nb_last)
       targetRow = nb_first;
   } else {
@@ -759,9 +769,9 @@ bool ModList::dropMimeData(const QMimeData *data, Qt::DropAction action,
   // block rides along as one unit.
   if (!new_parent_id.isEmpty()) {
     QSet<QString> moved_ids;
-    for (const auto &e : toMove)
+    for (const auto& e : toMove)
       moved_ids.insert(e.id);
-    for (auto &e : toMove) {
+    for (auto& e : toMove) {
       if (e.parent_id.isEmpty() || !moved_ids.contains(e.parent_id))
         e.parent_id = new_parent_id;
     }
@@ -772,7 +782,7 @@ bool ModList::dropMimeData(const QMimeData *data, Qt::DropAction action,
     // Reordering within the same parent's band preserves the link.
     // Everything else unparents.
     QSet<QString> moved_ids;
-    for (const auto &e : toMove)
+    for (const auto& e : toMove)
       moved_ids.insert(e.id);
 
     // Probe the row above the drop position.
@@ -787,10 +797,10 @@ bool ModList::dropMimeData(const QMimeData *data, Qt::DropAction action,
     QString above_child_parent;  // non-empty if row above is a non-parent child
     bool above_is_separator = false;
     if (targetRow > 0 && targetRow <= mods_.size()) {
-      const auto &above = mods_[targetRow - 1];
+      const auto& above = mods_[targetRow - 1];
       if (!moved_ids.contains(above.id)) {
         if (above.is_separator) {
-          above_parent_id = above.id;
+          above_parent_id    = above.id;
           above_is_separator = true;
         } else if (targetRow < mods_.size() &&
                    !moved_ids.contains(mods_[targetRow].id) &&
@@ -805,15 +815,13 @@ bool ModList::dropMimeData(const QMimeData *data, Qt::DropAction action,
       }
     }
 
-    for (auto &e : toMove) {
+    for (auto& e : toMove) {
       if (moved_ids.contains(e.parent_id))
         continue;  // internal subtree link - keep as-is
-      if (!above_parent_id.isEmpty() &&
-          e.is_separator == above_is_separator) {
+      if (!above_parent_id.isEmpty() && e.is_separator == above_is_separator) {
         // Between a parent and its child -> nest under that parent
         e.parent_id = above_parent_id;
-      } else if (!above_child_parent.isEmpty() &&
-                 above_child_parent == e.parent_id) {
+      } else if (!above_child_parent.isEmpty() && above_child_parent == e.parent_id) {
         // Reordering within same parent's band -> preserve
       } else {
         e.parent_id.clear();
@@ -824,9 +832,9 @@ bool ModList::dropMimeData(const QMimeData *data, Qt::DropAction action,
     // non-nestable target).  Preserve existing parent links for internal
     // subtree entries; clear external ones for a flat move.
     QSet<QString> moved_ids;
-    for (const auto &e : toMove)
+    for (const auto& e : toMove)
       moved_ids.insert(e.id);
-    for (auto &e : toMove) {
+    for (auto& e : toMove) {
       if (!e.parent_id.isEmpty() && !moved_ids.contains(e.parent_id))
         e.parent_id.clear();
     }
@@ -843,8 +851,8 @@ bool ModList::dropMimeData(const QMimeData *data, Qt::DropAction action,
   return true;
 }
 
-bool ModList::moveRows(const QModelIndex &srcParent, int srcRow, int count,
-                       const QModelIndex &dstParent, int dstRow) {
+bool ModList::moveRows(const QModelIndex& srcParent, int srcRow, int count,
+                       const QModelIndex& dstParent, int dstRow) {
   if (srcParent.isValid() || dstParent.isValid())
     return false;
   if (srcRow < 0 || srcRow + count > mods_.size())
@@ -879,7 +887,7 @@ bool ModList::moveRows(const QModelIndex &srcParent, int srcRow, int count,
   // dest is in post-removal coordinates, so the band bounds shift up by one
   // when the moved row sat at or above the band.
   int nb_first = native_band_first();
-  int nb_last = native_band_last();
+  int nb_last  = native_band_last();
   if (srcRow <= nb_first) {
     nb_first -= 1;
     nb_last -= 1;
@@ -897,8 +905,7 @@ bool ModList::moveRows(const QModelIndex &srcParent, int srcRow, int count,
   if (dest == srcRow)
     return false;
 
-  beginMoveRows(srcParent, srcRow, srcRow, srcParent,
-                dest + (dest >= srcRow ? 1 : 0));
+  beginMoveRows(srcParent, srcRow, srcRow, srcParent, dest + (dest >= srcRow ? 1 : 0));
   auto item = mods_.takeAt(srcRow);
   mods_.insert(dest, std::move(item));
   endMoveRows();
@@ -908,9 +915,9 @@ bool ModList::moveRows(const QModelIndex &srcParent, int srcRow, int count,
   return true;
 }
 
-void ModList::add_mod(const QString &id, const QString &name,
-                      const QString &version, int priority, bool is_game_native,
-                      qint64 install_ts, qint64 changed_ts) {
+void ModList::add_mod(const QString& id, const QString& name, const QString& version,
+                      int priority, bool is_game_native, qint64 install_ts,
+                      qint64 changed_ts) {
   int insert_pos = mods_.size();
   // MO2 rule (Profile::refreshModStatus): a new mod that isn't in the mod
   // list yet gets the HIGHEST regular priority - placed at the bottom of the
@@ -937,14 +944,14 @@ void ModList::add_mod(const QString &id, const QString &name,
   }
   beginInsertRows({}, insert_pos, insert_pos);
   ModEntry entry;
-  entry.id = id;
-  entry.name = name;
-  entry.version = version;
-  entry.enabled = true;
-  entry.priority = priority >= 0 ? priority : insert_pos;
-  entry.is_game_native = is_game_native;
+  entry.id              = id;
+  entry.name            = name;
+  entry.version         = version;
+  entry.enabled         = true;
+  entry.priority        = priority >= 0 ? priority : insert_pos;
+  entry.is_game_native  = is_game_native;
   entry.installation_ts = install_ts;
-  entry.changed_ts = changed_ts;
+  entry.changed_ts      = changed_ts;
   mods_.insert(insert_pos, entry);
   endInsertRows();
   if (priority < 0) {
@@ -958,35 +965,35 @@ void ModList::add_mod(const QString &id, const QString &name,
   emit mod_list_changed();
 }
 
-void ModList::add_separator(const QString &id, const QString &name,
-                            const QString &color) {
+void ModList::add_separator(const QString& id, const QString& name,
+                            const QString& color) {
   int insert_pos = mods_.size();
   beginInsertRows({}, insert_pos, insert_pos);
   ModEntry entry;
-  entry.id = id;
-  entry.name = name;
+  entry.id              = id;
+  entry.name            = name;
   entry.separator_color = color;
-  entry.is_separator = true;
-  entry.enabled = true;
+  entry.is_separator    = true;
+  entry.enabled         = true;
   mods_.insert(insert_pos, entry);
   endInsertRows();
   renumber_priorities();
   emit mod_list_changed();
 }
 
-void ModList::rename_mod_in_place(int row, const QString &new_id,
-                                  const QString &new_name) {
+void ModList::rename_mod_in_place(int row, const QString& new_id,
+                                  const QString& new_name) {
   if (row < 0 || row >= mods_.size())
     return;
   if (mods_[row].is_overwrite || mods_[row].is_merged)
     return;
   const QString old_id = mods_[row].id;
-  mods_[row].id = new_id;
-  mods_[row].name = new_name;
+  mods_[row].id        = new_id;
+  mods_[row].name      = new_name;
   // Children that pointed at the old id follow the rename: nesting links are
   // id-based, so the persisted sidecar parent_id stays valid after a rename
   // (sync_mod_ui_state rewrites the children's sidecars on mod_list_changed).
-  for (auto &m : mods_) {
+  for (auto& m : mods_) {
     if (m.parent_id == old_id)
       m.parent_id = new_id;
   }
@@ -995,7 +1002,7 @@ void ModList::rename_mod_in_place(int row, const QString &new_id,
   emit mod_list_changed();
 }
 
-void ModList::set_mod_color(const QString &id, const QColor &color) {
+void ModList::set_mod_color(const QString& id, const QColor& color) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id) {
       mods_[i].separator_color =
@@ -1007,11 +1014,11 @@ void ModList::set_mod_color(const QString &id, const QColor &color) {
   }
 }
 
-void ModList::clear_mod_color(const QString &id) {
+void ModList::clear_mod_color(const QString& id) {
   set_mod_color(id, QColor());
 }
 
-void ModList::remove_mod(const QString &id) {
+void ModList::remove_mod(const QString& id) {
   if (id == kOverwriteModId || id == kMergedModId)
     return;
 
@@ -1022,7 +1029,7 @@ void ModList::remove_mod(const QString &id) {
       // removed row go back to top-level so no orphaned indentation is
       // left behind (save_order would otherwise persist a dangling link).
       bool detached = false;
-      for (auto &m : mods_) {
+      for (auto& m : mods_) {
         if (m.parent_id == id) {
           m.parent_id.clear();
           detached = true;
@@ -1061,7 +1068,7 @@ void ModList::remove_all_mods() {
   }
 }
 
-void ModList::move_mod(const QString &id, int new_row) {
+void ModList::move_mod(const QString& id, int new_row) {
   int src = -1;
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id) {
@@ -1111,7 +1118,7 @@ void ModList::move_mod(const QString &id, int new_row) {
     // new_row is in post-removal coordinates, so the band bounds shift up by
     // one when the moved row sat at or above the band.
     int nb_first = native_band_first();
-    int nb_last = native_band_last();
+    int nb_last  = native_band_last();
     if (src <= nb_first) {
       nb_first -= 1;
       nb_last -= 1;
@@ -1139,19 +1146,17 @@ void ModList::move_mod(const QString &id, int new_row) {
       QString above_child_parent;
       bool above_is_separator = false;
       if (new_row > 0 && new_row <= mods_.size()) {
-        const auto &above = mods_[new_row - 1];
+        const auto& above = mods_[new_row - 1];
         if (above.is_separator) {
-          above_parent_id = above.id;
+          above_parent_id    = above.id;
           above_is_separator = true;
-        } else if (new_row < mods_.size() &&
-                   mods_[new_row].parent_id == above.id) {
+        } else if (new_row < mods_.size() && mods_[new_row].parent_id == above.id) {
           above_parent_id = above.id;
         } else if (!above.parent_id.isEmpty()) {
           above_child_parent = above.parent_id;
         }
       }
-      if (!above_parent_id.isEmpty() &&
-          item.is_separator == above_is_separator) {
+      if (!above_parent_id.isEmpty() && item.is_separator == above_is_separator) {
         item.parent_id = above_parent_id;
       } else if (!above_child_parent.isEmpty() &&
                  above_child_parent == item.parent_id) {
@@ -1200,7 +1205,7 @@ void ModList::move_mod(const QString &id, int new_row) {
   // in kind (descendants always match the parent), so src decides the rule.
   if (mods_[src].is_separator) {
     int nb_first = native_band_first();
-    int nb_last = native_band_last();
+    int nb_last  = native_band_last();
     if (nb_first >= 0 && targetRow > nb_first && targetRow <= nb_last)
       targetRow = nb_first;
   } else {
@@ -1213,7 +1218,7 @@ void ModList::move_mod(const QString &id, int new_row) {
   // should belong to. Internal subtree links (parent_id pointing to another
   // entry in the moved block) are preserved.
   QSet<QString> block_ids;
-  for (const auto &e : blockEntries)
+  for (const auto& e : blockEntries)
     block_ids.insert(e.id);
 
   // Context-aware parent resolution for the block.  Rules match dropMimeData.
@@ -1222,13 +1227,12 @@ void ModList::move_mod(const QString &id, int new_row) {
   QString above_child_parent;
   bool above_is_separator = false;
   if (targetRow > 0 && targetRow <= mods_.size()) {
-    const auto &above = mods_[targetRow - 1];
+    const auto& above = mods_[targetRow - 1];
     if (!block_ids.contains(above.id)) {
       if (above.is_separator) {
-        above_parent_id = above.id;
+        above_parent_id    = above.id;
         above_is_separator = true;
-      } else if (targetRow < mods_.size() &&
-                 !block_ids.contains(mods_[targetRow].id) &&
+      } else if (targetRow < mods_.size() && !block_ids.contains(mods_[targetRow].id) &&
                  mods_[targetRow].parent_id == above.id) {
         above_parent_id = above.id;
       } else if (!above.parent_id.isEmpty()) {
@@ -1237,14 +1241,12 @@ void ModList::move_mod(const QString &id, int new_row) {
     }
   }
 
-  for (auto &e : blockEntries) {
+  for (auto& e : blockEntries) {
     if (block_ids.contains(e.parent_id))
       continue;  // internal subtree link - keep as-is
-    if (!above_parent_id.isEmpty() &&
-        e.is_separator == above_is_separator) {
+    if (!above_parent_id.isEmpty() && e.is_separator == above_is_separator) {
       e.parent_id = above_parent_id;
-    } else if (!above_child_parent.isEmpty() &&
-               above_child_parent == e.parent_id) {
+    } else if (!above_child_parent.isEmpty() && above_child_parent == e.parent_id) {
       // Reordering within same parent -> preserve
     } else {
       e.parent_id.clear();
@@ -1261,7 +1263,7 @@ void ModList::move_mod(const QString &id, int new_row) {
   emit mod_list_changed();
 }
 
-void ModList::toggle_mod(const QString &id) {
+void ModList::toggle_mod(const QString& id) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id) {
       mods_[i].enabled = !mods_[i].enabled;
@@ -1272,9 +1274,9 @@ void ModList::toggle_mod(const QString &id) {
   }
 }
 
-void ModList::set_mod_enabled(const QString &id, bool enabled) {
+void ModList::set_mod_enabled(const QString& id, bool enabled) {
   for (int i = 0; i < mods_.size(); ++i) {
-    auto &m = mods_[i];
+    auto& m = mods_[i];
     if (m.id != id)
       continue;
     if (m.is_overwrite || m.is_merged || m.is_game_native || m.is_separator)
@@ -1288,10 +1290,10 @@ void ModList::set_mod_enabled(const QString &id, bool enabled) {
   }
 }
 
-void ModList::set_conflict_stats(const QString &id, int wins, int losses) {
+void ModList::set_conflict_stats(const QString& id, int wins, int losses) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id) {
-      mods_[i].conflict_wins = wins;
+      mods_[i].conflict_wins   = wins;
       mods_[i].conflict_losses = losses;
       emit dataChanged(index(i, Flags), index(i, Flags),
                        {Qt::SizeHintRole, kFlagIconsRole, Qt::ToolTipRole});
@@ -1300,7 +1302,7 @@ void ModList::set_conflict_stats(const QString &id, int wins, int losses) {
   }
 }
 
-void ModList::set_conflict_redundant(const QString &id, bool redundant) {
+void ModList::set_conflict_redundant(const QString& id, bool redundant) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id && mods_[i].redundant != redundant) {
       mods_[i].redundant = redundant;
@@ -1311,7 +1313,7 @@ void ModList::set_conflict_redundant(const QString &id, bool redundant) {
   }
 }
 
-void ModList::set_hidden_files(const QString &id, bool has_hidden) {
+void ModList::set_hidden_files(const QString& id, bool has_hidden) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id && mods_[i].has_hidden_files != has_hidden) {
       mods_[i].has_hidden_files = has_hidden;
@@ -1322,7 +1324,7 @@ void ModList::set_hidden_files(const QString &id, bool has_hidden) {
   }
 }
 
-void ModList::set_empty(const QString &id, bool on) {
+void ModList::set_empty(const QString& id, bool on) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id && mods_[i].is_empty != on) {
       mods_[i].is_empty = on;
@@ -1333,7 +1335,7 @@ void ModList::set_empty(const QString &id, bool on) {
   }
 }
 
-void ModList::set_fomod(const QString &id, bool on) {
+void ModList::set_fomod(const QString& id, bool on) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id && mods_[i].is_fomod != on) {
       mods_[i].is_fomod = on;
@@ -1344,7 +1346,7 @@ void ModList::set_fomod(const QString &id, bool on) {
   }
 }
 
-void ModList::set_root_override(const QString &id, bool on) {
+void ModList::set_root_override(const QString& id, bool on) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id && mods_[i].root_override != on) {
       mods_[i].root_override = on;
@@ -1355,7 +1357,7 @@ void ModList::set_root_override(const QString &id, bool on) {
   }
 }
 
-void ModList::set_invalid_data(const QString &id, bool on) {
+void ModList::set_invalid_data(const QString& id, bool on) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id && mods_[i].invalid_data != on) {
       mods_[i].invalid_data = on;
@@ -1368,7 +1370,7 @@ void ModList::set_invalid_data(const QString &id, bool on) {
   }
 }
 
-void ModList::set_no_metadata(const QString &id, bool on) {
+void ModList::set_no_metadata(const QString& id, bool on) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id && mods_[i].no_metadata != on) {
       mods_[i].no_metadata = on;
@@ -1379,7 +1381,7 @@ void ModList::set_no_metadata(const QString &id, bool on) {
   }
 }
 
-void ModList::set_content_dir(const QString &id, const QString &dir) {
+void ModList::set_content_dir(const QString& id, const QString& dir) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id) {
       mods_[i].content_dir = dir;
@@ -1388,7 +1390,25 @@ void ModList::set_content_dir(const QString &id, const QString &dir) {
   }
 }
 
-void ModList::set_tags(const QString &id, const QVector<ModTag> &tags) {
+void ModList::set_mirror_info(const QString& id, bool mirrored, bool source_missing,
+                              const QString& source_path) {
+  for (int i = 0; i < mods_.size(); ++i) {
+    if (mods_[i].id == id) {
+      auto& m = mods_[i];
+      if (m.is_mirrored == mirrored && m.mirror_source_missing == source_missing &&
+          m.mirror_source_path == source_path)
+        return;
+      m.is_mirrored           = mirrored;
+      m.mirror_source_missing = source_missing;
+      m.mirror_source_path    = source_path;
+      emit dataChanged(index(i, Flags), index(i, Flags),
+                       {Qt::SizeHintRole, kFlagIconsRole, Qt::ToolTipRole});
+      return;
+    }
+  }
+}
+
+void ModList::set_tags(const QString& id, const QVector<ModTag>& tags) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id) {
       mods_[i].tags = tags;
@@ -1399,28 +1419,25 @@ void ModList::set_tags(const QString &id, const QVector<ModTag> &tags) {
   }
 }
 
-void ModList::set_source_info(const QString &id, const QString &source_type,
-                              const QString &source_id,
-                              const QString &page_url) {
+void ModList::set_source_info(const QString& id, const QString& source_type,
+                              const QString& source_id, const QString& page_url) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id) {
-      if (mods_[i].source_type != source_type ||
-          mods_[i].source_id != source_id ||
+      if (mods_[i].source_type != source_type || mods_[i].source_id != source_id ||
           mods_[i].source_page_url != page_url) {
-        mods_[i].source_type = source_type;
-        mods_[i].source_id = source_id;
+        mods_[i].source_type     = source_type;
+        mods_[i].source_id       = source_id;
         mods_[i].source_page_url = page_url;
         // Source icon + Source ID text both derive from this.
-        emit dataChanged(
-            index(i, Source), index(i, SourceId),
-            {Qt::DisplayRole, Qt::DecorationRole, Qt::ToolTipRole});
+        emit dataChanged(index(i, Source), index(i, SourceId),
+                         {Qt::DisplayRole, Qt::DecorationRole, Qt::ToolTipRole});
       }
       return;
     }
   }
 }
 
-void ModList::set_category(const QString &id, const QString &category) {
+void ModList::set_category(const QString& id, const QString& category) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id && mods_[i].category != category) {
       mods_[i].category = category;
@@ -1430,7 +1447,7 @@ void ModList::set_category(const QString &id, const QString &category) {
   }
 }
 
-void ModList::set_category_ids(const QString &id, const QVector<int> &ids) {
+void ModList::set_category_ids(const QString& id, const QVector<int>& ids) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id && mods_[i].category_ids != ids) {
       mods_[i].category_ids = ids;
@@ -1440,20 +1457,19 @@ void ModList::set_category_ids(const QString &id, const QVector<int> &ids) {
   }
 }
 
-void ModList::set_timestamps(const QString &id, qint64 install_ts,
-                             qint64 changed_ts) {
+void ModList::set_timestamps(const QString& id, qint64 install_ts, qint64 changed_ts) {
   for (int i = 0; i < mods_.size(); ++i) {
-    if (mods_[i].id == id && (mods_[i].installation_ts != install_ts ||
-                              mods_[i].changed_ts != changed_ts)) {
+    if (mods_[i].id == id &&
+        (mods_[i].installation_ts != install_ts || mods_[i].changed_ts != changed_ts)) {
       mods_[i].installation_ts = install_ts;
-      mods_[i].changed_ts = changed_ts;
+      mods_[i].changed_ts      = changed_ts;
       emit dataChanged(index(i, Installation), index(i, Changed));
       return;
     }
   }
 }
 
-void ModList::set_separator_id(const QString &id, const QString &separator_id) {
+void ModList::set_separator_id(const QString& id, const QString& separator_id) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id) {
       mods_[i].separator_id = separator_id;
@@ -1466,14 +1482,14 @@ int ModList::separator_band_end(int sep_row) const {
   if (sep_row < 0 || sep_row >= mods_.size() || !mods_[sep_row].is_separator)
     return mods_.size();
   int end = sep_row + 1;
-  while (end < mods_.size() && !mods_[end].is_separator &&
-         !mods_[end].is_overwrite && !mods_[end].is_merged)
+  while (end < mods_.size() && !mods_[end].is_separator && !mods_[end].is_overwrite &&
+         !mods_[end].is_merged)
     ++end;
   return end;
 }
 
-void ModList::move_to_separator(const QString &mod_id, const QString &sep_id) {
-  int src = -1;
+void ModList::move_to_separator(const QString& mod_id, const QString& sep_id) {
+  int src     = -1;
   int sep_row = -1;
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == mod_id)
@@ -1483,14 +1499,14 @@ void ModList::move_to_separator(const QString &mod_id, const QString &sep_id) {
   }
   if (src < 0 || sep_row < 0)
     return;
-  if (mods_[src].is_separator || mods_[src].is_overwrite ||
-      mods_[src].is_merged || mods_[src].is_game_native)
+  if (mods_[src].is_separator || mods_[src].is_overwrite || mods_[src].is_merged ||
+      mods_[src].is_game_native)
     return;
   mods_[src].separator_id = sep_id;
   // LAST slot inside the band: insert just before the band-ender. move_mod()
   // takes post-removal coordinates for a single row but pre-removal
   // "insert before" coordinates for a subtree block, so aim each convention.
-  const int end = separator_band_end(sep_row);
+  const int end  = separator_band_end(sep_row);
   bool has_child = false;
   if (nesting_enabled_) {
     for (int i = 0; i < mods_.size(); ++i) {
@@ -1504,7 +1520,7 @@ void ModList::move_to_separator(const QString &mod_id, const QString &sep_id) {
   if (has_child) {
     new_row = end;
   } else {
-    new_row = end - (src < end ? 1 : 0);
+    new_row             = end - (src < end ? 1 : 0);
     const int sep_prime = sep_row - (src < sep_row ? 1 : 0);
     if (new_row <= sep_prime)
       new_row = sep_prime + 1;
@@ -1512,7 +1528,7 @@ void ModList::move_to_separator(const QString &mod_id, const QString &sep_id) {
   move_mod(mod_id, new_row);
 }
 
-void ModList::set_priority(const QString &id, int priority) {
+void ModList::set_priority(const QString& id, int priority) {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id) {
       if (mods_[i].priority != priority) {
@@ -1539,20 +1555,19 @@ void ModList::renumber_priorities() {
   // not repainted by the row insert/remove/move alone, so refresh the whole
   // Fold column.
   if (!mods_.isEmpty())
-    emit dataChanged(index(0, Fold), index(mods_.size() - 1, Fold),
-                     {Qt::DisplayRole});
+    emit dataChanged(index(0, Fold), index(mods_.size() - 1, Fold), {Qt::DisplayRole});
 }
 
 QStringList ModList::enabled_mod_ids() const {
   QStringList ids;
-  for (const auto &m : mods_) {
+  for (const auto& m : mods_) {
     if (m.enabled && !m.is_separator && !m.is_overwrite && !m.is_merged)
       ids.append(m.id);
   }
   return ids;
 }
 
-int ModList::priority_of(const QString &id) const {
+int ModList::priority_of(const QString& id) const {
   for (int i = 0; i < mods_.size(); ++i) {
     if (mods_[i].id == id)
       return i;
@@ -1575,7 +1590,7 @@ bool ModList::is_overwrite(int row) const {
 void ModList::set_folded(int row, bool folded) {
   if (row < 0 || row >= mods_.size())
     return;
-  const auto &m = mods_[row];
+  const auto& m = mods_[row];
   if (m.is_overwrite || m.is_merged || m.is_game_native)
     return;
   // No nesting gate here: the flag is preserved-but-inert when the feature is
@@ -1602,15 +1617,15 @@ void ModList::set_all_separators_folded(bool folded) {
     if (!mods_[i].is_separator)
       continue;
     if (mods_[i].folded == folded)
-      continue; // already in target state
+      continue;  // already in target state
     mods_[i].folded = folded;
     emit dataChanged(index(i, Fold), index(i, Name), {Qt::DisplayRole});
     changed = true;
   }
   if (!changed)
     return;
-  apply_fold_state(); // ONE repaint
-  emit mod_list_changed(); // ONE persistence write
+  apply_fold_state();       // ONE repaint
+  emit mod_list_changed();  // ONE persistence write
 }
 
 void ModList::set_nesting_enabled(bool on) {
@@ -1624,7 +1639,7 @@ void ModList::set_nesting_enabled(bool on) {
                    {Qt::DisplayRole, kIndentDepthRole});
 }
 
-bool ModList::is_descendant_of(int row, const QString &ancestor_id) const {
+bool ModList::is_descendant_of(int row, const QString& ancestor_id) const {
   if (row < 0 || row >= mods_.size())
     return false;
   if (ancestor_id.isEmpty())
@@ -1648,7 +1663,7 @@ bool ModList::is_descendant_of(int row, const QString &ancestor_id) const {
       return false;
     cur = mods_[idx].parent_id;
   }
-  return false; // cycle guard
+  return false;  // cycle guard
 }
 
 int ModList::nesting_depth(int row) const {
@@ -1663,7 +1678,7 @@ int ModList::nesting_depth(int row) const {
   // links (see sanitize_parent_links) and end the chain too.
   QString cur = mods_[row].parent_id;
   int cur_row = row;
-  int depth = 0;
+  int depth   = 0;
   for (int hops = 0; hops <= mods_.size(); ++hops) {
     if (cur.isEmpty())
       return depth;
@@ -1675,9 +1690,9 @@ int ModList::nesting_depth(int row) const {
       }
     }
     if (idx < 0)
-      return depth; // dangling link: not nested under anyone
+      return depth;  // dangling link: not nested under anyone
     if (mods_[idx].is_separator != mods_[cur_row].is_separator)
-      return depth; // cross-kind link: invalid, ends the chain
+      return depth;  // cross-kind link: invalid, ends the chain
     const int lo = idx < cur_row ? idx : cur_row;
     const int hi = idx < cur_row ? cur_row : idx;
     for (int i = lo + 1; i < hi; ++i) {
@@ -1691,11 +1706,11 @@ int ModList::nesting_depth(int row) const {
         continue;
       if (is_descendant_of(idx, mods_[i].id))
         continue;
-      return depth; // separator boundary: indent resets here
+      return depth;  // separator boundary: indent resets here
     }
     ++depth;
     cur_row = idx;
-    cur = mods_[idx].parent_id;
+    cur     = mods_[idx].parent_id;
   }
   return depth;
 }
@@ -1703,7 +1718,7 @@ int ModList::nesting_depth(int row) const {
 bool ModList::has_content(int row) const {
   if (row < 0 || row >= mods_.size())
     return false;
-  const auto &m = mods_[row];
+  const auto& m = mods_[row];
   if (m.is_overwrite || m.is_merged)
     return false;
   // Legacy flat rule (also the non-nesting behavior): only separators fold,
@@ -1731,8 +1746,8 @@ bool ModList::has_content(int row) const {
         return false;
       if (mods_[i].is_separator) {
         if (is_descendant_of(i, m.id))
-          continue;   // inside the scope
-        return false; // scope ends here
+          continue;    // inside the scope
+        return false;  // scope ends here
       }
       return true;
     }
@@ -1748,19 +1763,19 @@ QVector<bool> ModList::compute_fold_hidden() const {
   bool hiding = false;
   QString hide_root;
   for (int i = 0; i < mods_.size(); ++i) {
-    const auto &m = mods_[i];
+    const auto& m = mods_[i];
     if (hiding) {
       if (m.is_overwrite) {
         hiding = false;
       } else if (m.is_separator && !is_descendant_of(i, hide_root)) {
-        hiding = false; // a non-descendant separator ends the scope
+        hiding = false;  // a non-descendant separator ends the scope
       } else {
         hidden[i] = true;
         continue;
       }
     }
     if (m.is_separator && m.folded) {
-      hiding = true;
+      hiding    = true;
       hide_root = m.id;
     }
   }
@@ -1770,7 +1785,7 @@ QVector<bool> ModList::compute_fold_hidden() const {
   // never hide their subtree (preserve-but-inert).
   if (nesting_enabled_) {
     for (int i = 0; i < mods_.size(); ++i) {
-      const auto &m = mods_[i];
+      const auto& m = mods_[i];
       if (m.is_separator || m.is_overwrite || m.is_merged || m.is_game_native)
         continue;
       if (!m.folded || hidden[i])
@@ -1805,15 +1820,15 @@ void ModList::sanitize_parent_links() {
     }
     bool invalid = false;
     if (pidx < 0) {
-      invalid = true; // dangling
+      invalid = true;  // dangling
     } else if (pidx == i) {
-      invalid = true; // self-link
+      invalid = true;  // self-link
     } else {
-      const auto &p = mods_[pidx];
+      const auto& p = mods_[pidx];
       if (p.is_overwrite || p.is_merged || p.is_game_native) {
-        invalid = true; // unpinnable parent
+        invalid = true;  // unpinnable parent
       } else if (p.is_separator != mods_[i].is_separator) {
-        invalid = true; // kind mismatch (mod<->separator)
+        invalid = true;  // kind mismatch (mod<->separator)
       }
     }
     // A cycle (i is an ancestor of its own parent) also invalidates.
@@ -1832,12 +1847,12 @@ void ModList::sanitize_parent_links() {
   }
 }
 
-void ModList::restore_parent_links(const QHash<QString, QString> &links) {
+void ModList::restore_parent_links(const QHash<QString, QString>& links) {
   if (links.isEmpty())
     return;
-  for (auto &m : mods_) {
+  for (auto& m : mods_) {
     const auto it = links.constFind(m.id);
-    m.parent_id = (it != links.constEnd()) ? it.value() : QString();
+    m.parent_id   = (it != links.constEnd()) ? it.value() : QString();
   }
   sanitize_parent_links();
   if (!mods_.isEmpty())
@@ -1845,19 +1860,17 @@ void ModList::restore_parent_links(const QHash<QString, QString> &links) {
                      {Qt::DisplayRole, kIndentDepthRole});
 }
 
-bool ModList::has_visible_descendant(int row,
-                                     const QVector<bool> &visible) const {
+bool ModList::has_visible_descendant(int row, const QVector<bool>& visible) const {
   if (row < 0 || row >= mods_.size() || !nesting_enabled_)
     return false;
   for (int j = 0; j < mods_.size(); ++j)
-    if (j != row && visible.value(j, false) &&
-        is_descendant_of(j, mods_[row].id))
+    if (j != row && visible.value(j, false) && is_descendant_of(j, mods_[row].id))
       return true;
   return false;
 }
 
 void ModList::apply_fold_state() {
-  auto *tree = qobject_cast<QTreeView *>(mod_view_);
+  auto* tree = qobject_cast<QTreeView*>(mod_view_);
   if (!tree)
     return;
 
@@ -1866,11 +1879,11 @@ void ModList::apply_fold_state() {
     tree->setRowHidden(i, QModelIndex(), hidden[i]);
 }
 
-QIcon ModList::source_icon(const QString &source_type) const {
+QIcon ModList::source_icon(const QString& source_type) const {
   if (source_type.isEmpty())
     return {};
-  const QString key = QString::fromStdString(
-      engine::vendor_icon_key(source_type.toStdString()));
+  const QString key =
+      QString::fromStdString(engine::vendor_icon_key(source_type.toStdString()));
   if (key.isEmpty())
     return {};
   return vendor_icons_.value(key);
@@ -1878,14 +1891,14 @@ QIcon ModList::source_icon(const QString &source_type) const {
 
 QStringList ModList::existing_separator_names() const {
   QStringList names;
-  for (const auto &m : mods_) {
+  for (const auto& m : mods_) {
     if (m.is_separator)
       names.append(m.name);
   }
   return names;
 }
 
-void ModList::reset_with_order(const QVector<ModEntry> &entries) {
+void ModList::reset_with_order(const QVector<ModEntry>& entries) {
   beginResetModel();
   mods_ = entries;
   endResetModel();
@@ -1913,7 +1926,7 @@ void ModList::pin_pinned_rows() {
       rest.append(mods_[i]);
   }
   if (pinned.isEmpty())
-    return; // nothing to pin; keep caller order
+    return;  // nothing to pin; keep caller order
   // Dominant order inside the pinned block: Overwrite is the always-winner,
   // so it must win under both conventions. Under reversed the winner is the
   // LOWEST row, so Overwrite goes first (index 0); under normal the winner
@@ -1922,13 +1935,13 @@ void ModList::pin_pinned_rows() {
   if (pinned_at_top()) {
     pinned_ordered.append(pinned);
     std::sort(pinned_ordered.begin(), pinned_ordered.end(),
-              [](const ModEntry &a, const ModEntry &b) {
+              [](const ModEntry& a, const ModEntry& b) {
                 return a.is_overwrite && !b.is_overwrite;
               });
   } else {
     pinned_ordered = pinned;
     std::sort(pinned_ordered.begin(), pinned_ordered.end(),
-              [](const ModEntry &a, const ModEntry &b) {
+              [](const ModEntry& a, const ModEntry& b) {
                 return !a.is_overwrite && b.is_overwrite;
               });
   }
@@ -1965,13 +1978,13 @@ QString ModList::compute_separator_flags(int row) const {
   return QString();
 }
 
-void ModList::set_conflict_pairs(const QMap<QString, ConflictPairs> &pairs) {
+void ModList::set_conflict_pairs(const QMap<QString, ConflictPairs>& pairs) {
   conflict_pairs_ = pairs;
 }
 
-bool ModList::has_conflicts_within_separator(const QString &mod_id) const {
+bool ModList::has_conflicts_within_separator(const QString& mod_id) const {
   QString sep_id;
-  for (const auto &m : mods_) {
+  for (const auto& m : mods_) {
     if (m.id == mod_id) {
       sep_id = m.separator_id;
       break;
@@ -1982,13 +1995,13 @@ bool ModList::has_conflicts_within_separator(const QString &mod_id) const {
   if (!conflict_pairs_.contains(mod_id))
     return false;
 
-  const auto &pairs = conflict_pairs_[mod_id];
-  for (const auto &other : pairs.wins_against) {
+  const auto& pairs = conflict_pairs_[mod_id];
+  for (const auto& other : pairs.wins_against) {
     int idx = priority_of(other);
     if (idx >= 0 && mods_[idx].separator_id == sep_id)
       return true;
   }
-  for (const auto &other : pairs.loses_to) {
+  for (const auto& other : pairs.loses_to) {
     int idx = priority_of(other);
     if (idx >= 0 && mods_[idx].separator_id == sep_id)
       return true;
@@ -1996,7 +2009,7 @@ bool ModList::has_conflicts_within_separator(const QString &mod_id) const {
   return false;
 }
 
-void ModList::set_selected_mods(const QSet<QString> &ids) {
+void ModList::set_selected_mods(const QSet<QString>& ids) {
   if (selected_mod_ids_ == ids)
     return;
   selected_mod_ids_ = ids;
@@ -2006,20 +2019,20 @@ void ModList::set_selected_mods(const QSet<QString> &ids) {
                    {Qt::BackgroundRole, kScrollMarkRole});
 }
 
-QColor ModList::conflict_highlight_color(const QString &id) const {
+QColor ModList::conflict_highlight_color(const QString& id) const {
   if (selected_mod_ids_.isEmpty())
     return {};
   // Two passes so red wins globally (MO2 markerColor: overwritten >
   // overwrite) even when the same row loses to one selection and wins over
   // another - a per-selection loses-first check would return green early.
-  for (const auto &sel : selected_mod_ids_) {
+  for (const auto& sel : selected_mod_ids_) {
     const auto it = conflict_pairs_.constFind(sel);
     if (it == conflict_pairs_.constEnd())
       continue;
     if (it->loses_to.contains(id))
       return Settings::instance().modlist_overwriting_loose();
   }
-  for (const auto &sel : selected_mod_ids_) {
+  for (const auto& sel : selected_mod_ids_) {
     const auto it = conflict_pairs_.constFind(sel);
     if (it == conflict_pairs_.constEnd())
       continue;
@@ -2029,7 +2042,7 @@ QColor ModList::conflict_highlight_color(const QString &id) const {
   return {};
 }
 
-void ModList::set_highlighted_mods(const QSet<QString> &ids) {
+void ModList::set_highlighted_mods(const QSet<QString>& ids) {
   if (highlighted_mods_ == ids)
     return;
   highlighted_mods_ = ids;
@@ -2039,28 +2052,27 @@ void ModList::set_highlighted_mods(const QSet<QString> &ids) {
                    {Qt::BackgroundRole, kScrollMarkRole});
 }
 
-void ModList::set_overwrite_path(const QString &path) {
+void ModList::set_overwrite_path(const QString& path) {
   if (overwrite_path_ == path)
     return;
   overwrite_path_ = path;
   // Refresh the Overwrite row's name color
   int ow_row = overwrite_row();
   if (ow_row >= 0)
-    emit dataChanged(index(ow_row, Name), index(ow_row, Name),
-                     {Qt::ForegroundRole});
+    emit dataChanged(index(ow_row, Name), index(ow_row, Name), {Qt::ForegroundRole});
 }
 
 void ModList::ensure_overwrite_present() {
-  for (const auto &m : mods_) {
+  for (const auto& m : mods_) {
     if (m.is_overwrite)
       return;
   }
   ModEntry entry;
-  entry.id = kOverwriteModId;
-  entry.name = kOverwriteModName;
-  entry.version = "";
-  entry.enabled = true;
-  entry.priority = 0;
+  entry.id           = kOverwriteModId;
+  entry.name         = kOverwriteModName;
+  entry.version      = "";
+  entry.enabled      = true;
+  entry.priority     = 0;
   entry.is_overwrite = true;
   // Pin at the dominant end: bottom for normal (highest priority wins), top
   // for conflict_order_reversed games (Isaac convention, lowest wins).
@@ -2130,25 +2142,25 @@ void ModList::ensure_merged_present() {
   // Only games that use the merged pseudo-mod (currently Isaac) pin it.
   if (!uses_merged_)
     return;
-  for (const auto &m : mods_) {
+  for (const auto& m : mods_) {
     if (m.is_merged)
       return;
   }
   int overwrite_pos = overwrite_row();
   // MERGED sits just past Overwrite on the dominant end: below it normally,
   // above everything (row 1, after the pinned Overwrite at 0) for reversed.
-  int pos = (overwrite_pos >= 0) ? overwrite_pos + 1
-                                 : (pinned_at_top() ? 0 : mods_.size());
+  int pos =
+      (overwrite_pos >= 0) ? overwrite_pos + 1 : (pinned_at_top() ? 0 : mods_.size());
   ModEntry entry;
-  entry.id = kMergedModId;
-  entry.name = kMergedModName;
-  entry.version = "";
-  entry.enabled = true;
-  entry.priority = 1;
+  entry.id        = kMergedModId;
+  entry.name      = kMergedModName;
+  entry.version   = "";
+  entry.enabled   = true;
+  entry.priority  = 1;
   entry.is_merged = true;
   beginInsertRows({}, pos, pos);
   mods_.insert(pos, entry);
   endInsertRows();
 }
 
-} // namespace ui
+}  // namespace ui

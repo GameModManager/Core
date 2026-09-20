@@ -15,6 +15,8 @@
 #include <QActionGroup>
 #include <QDesktopServices>
 #include <QMenu>
+#include <filesystem>
+#include <system_error>
 
 #include "engine/game/detect/mod_scanner.h"
 #include "engine/source/source_provider.h"
@@ -22,18 +24,31 @@
 
 namespace ui {
 
-ModContextMenu::ModContextMenu(MainWindow *w, ModActions *actions)
+// Whether a mod row has a live external source folder to mirror from:
+// content_dir while it is still a directory, else the game's external mods
+// dir (Workspace-0pi5 menu gating).
+bool ModContextMenu::has_live_external_source(MainWindow* w, const ModEntry& m) {
+  std::error_code ec;
+  if (!m.content_dir.isEmpty() &&
+      std::filesystem::is_directory(std::filesystem::path(m.content_dir.toStdString()),
+                                    ec))
+    return true;
+  const auto game_mods = w->current_game_mods_dir();
+  if (!game_mods.empty() &&
+      std::filesystem::is_directory(game_mods / m.id.toStdString(), ec))
+    return true;
+  return false;
+}
+
+ModContextMenu::ModContextMenu(MainWindow* w, ModActions* actions)
     : w_(w), actions_(actions) {}
 
-void ModContextMenu::set_on_data_mod_info(
-    std::function<void(const QString &, int)> cb) {
+void ModContextMenu::set_on_data_mod_info(std::function<void(const QString&, int)> cb) {
   on_data_mod_info_cb_ = std::move(cb);
 }
 
 void ModContextMenu::set_source_visit_info(
-    std::function<SourceVisitInfo(const QString &, const QString &,
-                                  const QString &)>
-        cb) {
+    std::function<SourceVisitInfo(const QString&, const QString&, const QString&)> cb) {
   source_visit_info_cb_ = std::move(cb);
 }
 
@@ -42,7 +57,7 @@ void ModContextMenu::setup_mod_list_context_menu() {
 
   QObject::connect(
       w_->mod_view_, &QWidget::customContextMenuRequested, w_,
-      [this](const QPoint &pos) {
+      [this](const QPoint& pos) {
         auto idx = w_->mod_view_->indexAt(pos);
         if (!idx.isValid())
           return;
@@ -50,7 +65,7 @@ void ModContextMenu::setup_mod_list_context_menu() {
         int row = idx.row();
         if (row < 0 || row >= w_->mod_model_->mods().size())
           return;
-        const auto &entry = w_->mod_model_->mods()[row];
+        const auto& entry = w_->mod_model_->mods()[row];
 
         QMenu menu;
 
@@ -59,30 +74,33 @@ void ModContextMenu::setup_mod_list_context_menu() {
           // actions only make sense when Overwrite has content; Open in
           // Explorer and Information always apply. Gating mirrors MO2's
           // `QDir(...).count() > 2` via overwrite_is_empty().
-          auto ow_subpath = w_->knowledge_
-                                ? w_->knowledge_->get(w_->current_game_id_,
-                                                      "mods_subpath", "")
-                                : std::string();
+          auto ow_subpath = w_->knowledge_ ? w_->knowledge_->get(w_->current_game_id_,
+                                                                 "mods_subpath", "")
+                                           : std::string();
           const bool has_content =
               !engine::overwrite_is_empty(w_->overwrite_dir_path(), ow_subpath);
 
-          auto *sync_act = menu.addAction(
-              engine::IconManager::instance().resolve_icon("merge"),
-              QObject::tr("Sync to Mods..."), w_,
-              [this]() { w_->overwrite_->sync_overwrite_to_mods(); });
-          auto *create_act = menu.addAction(
+          auto* sync_act =
+              menu.addAction(engine::IconManager::instance().resolve_icon("merge"),
+                             QObject::tr("Sync to Mods..."), w_, [this]() {
+                               w_->overwrite_->sync_overwrite_to_mods();
+                             });
+          auto* create_act = menu.addAction(
               engine::IconManager::instance().resolve_icon("document-new"),
-              QObject::tr("Create Mod..."), w_,
-              [this]() { w_->overwrite_->create_mod_from_overwrite(); });
-          auto *move_act = menu.addAction(
-              engine::IconManager::instance().resolve_icon("go-down"),
-              QObject::tr("Move content to Mod..."), w_,
-              [this]() { w_->overwrite_->move_overwrite_content_to_mod(); });
-          auto *clear_act = menu.addAction(
-              engine::IconManager::instance().resolve_icon("edit-clear"),
-              QObject::tr("Clear Overwrite..."), w_,
-              [this]() { w_->overwrite_->clear_overwrite(); });
-          for (auto *act : {sync_act, create_act, move_act, clear_act})
+              QObject::tr("Create Mod..."), w_, [this]() {
+                w_->overwrite_->create_mod_from_overwrite();
+              });
+          auto* move_act =
+              menu.addAction(engine::IconManager::instance().resolve_icon("go-down"),
+                             QObject::tr("Move content to Mod..."), w_, [this]() {
+                               w_->overwrite_->move_overwrite_content_to_mod();
+                             });
+          auto* clear_act =
+              menu.addAction(engine::IconManager::instance().resolve_icon("edit-clear"),
+                             QObject::tr("Clear Overwrite..."), w_, [this]() {
+                               w_->overwrite_->clear_overwrite();
+                             });
+          for (auto* act : {sync_act, create_act, move_act, clear_act})
             act->setEnabled(has_content);
 
           menu.addAction(engine::IconManager::instance().resolve_icon("folder"),
@@ -91,11 +109,11 @@ void ModContextMenu::setup_mod_list_context_menu() {
                          });
 
           menu.addSeparator();
-          menu.addAction(engine::IconManager::instance().resolve_icon(
-                             "dialog-information"),
-                         QObject::tr("Information..."), w_, [this]() {
-                           w_->overwrite_->show_overwrite_info_dialog();
-                         });
+          menu.addAction(
+              engine::IconManager::instance().resolve_icon("dialog-information"),
+              QObject::tr("Information..."), w_, [this]() {
+                w_->overwrite_->show_overwrite_info_dialog();
+              });
 
           menu.exec(w_->mod_view_->viewport()->mapToGlobal(pos));
           return;
@@ -104,29 +122,29 @@ void ModContextMenu::setup_mod_list_context_menu() {
         if (entry.is_separator) {
           // MO2's separator context menu (modlistcontextmenu.cpp:381-409):
           // Rename (inline edit) / Remove / Select Color / Reset Color.
-          menu.addAction(
-              engine::IconManager::instance().resolve_icon("document-edit"),
-              QObject::tr("Rename Separator..."), w_,
-              [this, row]() { actions_->rename_mod_inline(row); });
-          menu.addAction(
-              engine::IconManager::instance().resolve_icon("edit-delete"),
-              QObject::tr("Remove Separator..."), w_,
-              [this, row]() { actions_->delete_separator(row); });
+          menu.addAction(engine::IconManager::instance().resolve_icon("document-edit"),
+                         QObject::tr("Rename Separator..."), w_, [this, row]() {
+                           actions_->rename_mod_inline(row);
+                         });
+          menu.addAction(engine::IconManager::instance().resolve_icon("edit-delete"),
+                         QObject::tr("Remove Separator..."), w_, [this, row]() {
+                           actions_->delete_separator(row);
+                         });
           menu.addSeparator();
-          menu.addAction(
-              engine::IconManager::instance().resolve_icon("color-picker"),
-              QObject::tr("Select Color..."), w_,
-              [this]() { actions_->select_color_for_selected(); });
+          menu.addAction(engine::IconManager::instance().resolve_icon("color-picker"),
+                         QObject::tr("Select Color..."), w_, [this]() {
+                           actions_->select_color_for_selected();
+                         });
           if (!entry.separator_color.isEmpty()) {
-            menu.addAction(
-                engine::IconManager::instance().resolve_icon("edit-clear"),
-                QObject::tr("Reset Color"), w_,
-                [this]() { actions_->reset_color_for_selected(); });
+            menu.addAction(engine::IconManager::instance().resolve_icon("edit-clear"),
+                           QObject::tr("Reset Color"), w_, [this]() {
+                             actions_->reset_color_for_selected();
+                           });
           }
           menu.addSeparator();
-          bool any_folded = false;
+          bool any_folded   = false;
           bool any_unfolded = false;
-          for (const auto &mod : w_->mod_model_->mods()) {
+          for (const auto& mod : w_->mod_model_->mods()) {
             if (!mod.is_separator)
               continue;
             if (mod.folded)
@@ -134,12 +152,12 @@ void ModContextMenu::setup_mod_list_context_menu() {
             else
               any_unfolded = true;
           }
-          auto *expand_action =
+          auto* expand_action =
               menu.addAction(QObject::tr("Expand All Separators"), [this]() {
                 w_->mod_model_->set_all_separators_folded(false);
               });
           expand_action->setEnabled(any_folded);
-          auto *collapse_action =
+          auto* collapse_action =
               menu.addAction(QObject::tr("Collapse All Separators"), [this]() {
                 w_->mod_model_->set_all_separators_folded(true);
               });
@@ -149,30 +167,57 @@ void ModContextMenu::setup_mod_list_context_menu() {
         }
 
         // --- Mod rows below ---
-        auto sel = w_->mod_view_->selectionModel()->selectedRows();
+        auto sel   = w_->mod_view_->selectionModel()->selectedRows();
         bool multi = sel.size() > 1;
 
         if (multi) {
-          menu.addAction(
-              engine::IconManager::instance().resolve_icon("dialog-ok"),
-              QObject::tr("Enable Selected"), w_,
-              [this]() { actions_->toggle_selected_mods(true); });
-          menu.addAction(
-              engine::IconManager::instance().resolve_icon("dialog-cancel"),
-              QObject::tr("Disable Selected"), w_,
-              [this]() { actions_->toggle_selected_mods(false); });
+          menu.addAction(engine::IconManager::instance().resolve_icon("dialog-ok"),
+                         QObject::tr("Enable Selected"), w_, [this]() {
+                           actions_->toggle_selected_mods(true);
+                         });
+          menu.addAction(engine::IconManager::instance().resolve_icon("dialog-cancel"),
+                         QObject::tr("Disable Selected"), w_, [this]() {
+                           actions_->toggle_selected_mods(false);
+                         });
+          // Mirror/backup (Workspace-0pi5): external mods mirror into
+          // instance/mods/, mirrored ones drop the backup. A mixed
+          // mirrored/unmirrored selection offers both actions.
+          {
+            bool any_mirrorable = false;
+            bool any_mirrored   = false;
+            for (const auto& si : sel) {
+              if (si.row() < 0 || si.row() >= w_->mod_model_->mods().size())
+                continue;
+              const auto& m = w_->mod_model_->mods()[si.row()];
+              if (m.is_separator || m.is_overwrite || m.is_merged || m.is_game_native)
+                continue;
+              if (m.is_mirrored)
+                any_mirrored = true;
+              else if (has_live_external_source(w_, m))
+                any_mirrorable = true;
+            }
+            if (any_mirrorable)
+              menu.addAction(engine::IconManager::instance().resolve_icon("merge"),
+                             QObject::tr("Mirror selected mods"), w_, [this]() {
+                               actions_->mirror_selected_mods();
+                             });
+            if (any_mirrored)
+              menu.addAction(engine::IconManager::instance().resolve_icon("edit-clear"),
+                             QObject::tr("Un-mirror selected mods"), w_, [this]() {
+                               actions_->unmirror_selected_mods();
+                             });
+          }
           // Tweaks submenu: applies to every selected mod. Checked only when
           // ALL of them share the state; clicking applies the inverse.
           {
             QList<int> rows;
-            bool any_on = false;
+            bool any_on  = false;
             bool any_off = false;
-            for (const auto &si : sel) {
+            for (const auto& si : sel) {
               if (si.row() < 0 || si.row() >= w_->mod_model_->mods().size())
                 continue;
-              const auto &m = w_->mod_model_->mods()[si.row()];
-              if (m.is_separator || m.is_overwrite || m.is_merged ||
-                  m.is_game_native)
+              const auto& m = w_->mod_model_->mods()[si.row()];
+              if (m.is_separator || m.is_overwrite || m.is_merged || m.is_game_native)
                 continue;
               rows << si.row();
               if (m.root_override)
@@ -180,32 +225,28 @@ void ModContextMenu::setup_mod_list_context_menu() {
               else
                 any_off = true;
             }
-            auto *tweaks =
-                menu.addMenu(engine::IconManager::instance().resolve_icon(
-                                 "preferences-other"),
-                             QObject::tr("Tweaks"));
-            auto *root_act =
-                tweaks->addAction(QObject::tr("Treat mod as root dir"));
+            auto* tweaks = menu.addMenu(
+                engine::IconManager::instance().resolve_icon("preferences-other"),
+                QObject::tr("Tweaks"));
+            auto* root_act = tweaks->addAction(QObject::tr("Treat mod as root dir"));
             root_act->setCheckable(true);
             const bool all_on = any_on && !any_off;
             root_act->setChecked(all_on);
             root_act->setEnabled(!rows.isEmpty());
-            QObject::connect(root_act, &QAction::triggered, w_,
-                             [this, rows, all_on]() {
-                               actions_->toggle_root_override(rows, !all_on);
-                             });
+            QObject::connect(root_act, &QAction::triggered, w_, [this, rows, all_on]() {
+              actions_->toggle_root_override(rows, !all_on);
+            });
           }
           // Send to Separator: only available when the selection contains
           // purely mods (no separators, overwrites, merged, or native).
           {
             bool has_separator = false;
             QStringList mod_ids;
-            for (const auto &si : sel) {
+            for (const auto& si : sel) {
               if (si.row() < 0 || si.row() >= w_->mod_model_->mods().size())
                 continue;
-              const auto &m = w_->mod_model_->mods()[si.row()];
-              if (m.is_separator || m.is_overwrite || m.is_merged ||
-                  m.is_game_native) {
+              const auto& m = w_->mod_model_->mods()[si.row()];
+              if (m.is_separator || m.is_overwrite || m.is_merged || m.is_game_native) {
                 has_separator = true;
                 break;
               }
@@ -213,26 +254,25 @@ void ModContextMenu::setup_mod_list_context_menu() {
             }
             // Check if any separators exist at all in the list.
             bool any_seps = false;
-            for (const auto &m : w_->mod_model_->mods()) {
+            for (const auto& m : w_->mod_model_->mods()) {
               if (m.is_separator) {
                 any_seps = true;
                 break;
               }
             }
             menu.addSeparator();
-            auto *sep_act = menu.addAction(
+            auto* sep_act = menu.addAction(
                 engine::IconManager::instance().resolve_icon("view-sort"),
-                QObject::tr("Send to Separator..."), w_,
-                [this, mod_ids]() {
+                QObject::tr("Send to Separator..."), w_, [this, mod_ids]() {
                   actions_->send_selected_to_separator(mod_ids);
                 });
             sep_act->setEnabled(any_seps && !has_separator && mod_ids.size() > 1);
           }
           menu.addSeparator();
-          menu.addAction(
-              engine::IconManager::instance().resolve_icon("edit-delete"),
-              QObject::tr("Remove"), w_,
-              [this]() { actions_->remove_selected_mods(); });
+          menu.addAction(engine::IconManager::instance().resolve_icon("edit-delete"),
+                         QObject::tr("Remove"), w_, [this]() {
+                           actions_->remove_selected_mods();
+                         });
           menu.exec(w_->mod_view_->viewport()->mapToGlobal(pos));
           return;
         }
@@ -245,41 +285,43 @@ void ModContextMenu::setup_mod_list_context_menu() {
         // ListDialog (MO2 sendModsToSeparator, listdialog.ui) instead of an
         // inline submenu entry per separator - a submenu with many separators
         // (or long names) grew to cover the whole screen.
-        auto *send_to = menu.addMenu(
-            engine::IconManager::instance().resolve_icon("view-sort"),
-            QObject::tr("Send to..."));
-        send_to->addAction(
-            engine::IconManager::instance().resolve_icon("go-top"),
-            QObject::tr("Send to Highest Priority"), w_,
-            [this, mod_id]() { actions_->send_to_highest_priority(mod_id); });
-        send_to->addAction(
-            engine::IconManager::instance().resolve_icon("go-bottom"),
-            QObject::tr("Send to Lowest Priority"), w_,
-            [this, mod_id]() { actions_->send_to_lowest_priority(mod_id); });
+        auto* send_to =
+            menu.addMenu(engine::IconManager::instance().resolve_icon("view-sort"),
+                         QObject::tr("Send to..."));
+        send_to->addAction(engine::IconManager::instance().resolve_icon("go-top"),
+                           QObject::tr("Send to Highest Priority"), w_,
+                           [this, mod_id]() {
+                             actions_->send_to_highest_priority(mod_id);
+                           });
+        send_to->addAction(engine::IconManager::instance().resolve_icon("go-bottom"),
+                           QObject::tr("Send to Lowest Priority"), w_,
+                           [this, mod_id]() {
+                             actions_->send_to_lowest_priority(mod_id);
+                           });
         bool any_seps = false;
-        for (const auto &m : w_->mod_model_->mods())
+        for (const auto& m : w_->mod_model_->mods())
           if (m.is_separator) {
             any_seps = true;
             break;
           }
-        auto *sep_act = send_to->addAction(
+        auto* sep_act = send_to->addAction(
             engine::IconManager::instance().resolve_icon("view-sort"),
-            QObject::tr("Separator..."), w_,
-            [this, mod_id]() { actions_->send_to_separator(mod_id); });
+            QObject::tr("Separator..."), w_, [this, mod_id]() {
+              actions_->send_to_separator(mod_id);
+            });
         sep_act->setEnabled(any_seps);
         if (!entry.separator_id.isEmpty() &&
             w_->mod_model_->has_conflicts_within_separator(mod_id)) {
-          send_to->addAction(
-              engine::IconManager::instance().resolve_icon("go-up"),
-              QObject::tr("Send to Highest in Separator"), w_,
-              [this, mod_id]() {
-                actions_->send_to_highest_in_separator(mod_id);
-              });
-          send_to->addAction(
-              engine::IconManager::instance().resolve_icon("go-down"),
-              QObject::tr("Send to Lowest in Separator"), w_, [this, mod_id]() {
-                actions_->send_to_lowest_in_separator(mod_id);
-              });
+          send_to->addAction(engine::IconManager::instance().resolve_icon("go-up"),
+                             QObject::tr("Send to Highest in Separator"), w_,
+                             [this, mod_id]() {
+                               actions_->send_to_highest_in_separator(mod_id);
+                             });
+          send_to->addAction(engine::IconManager::instance().resolve_icon("go-down"),
+                             QObject::tr("Send to Lowest in Separator"), w_,
+                             [this, mod_id]() {
+                               actions_->send_to_lowest_in_separator(mod_id);
+                             });
         }
 
         menu.addAction(engine::IconManager::instance().resolve_icon("list-add"),
@@ -299,51 +341,68 @@ void ModContextMenu::setup_mod_list_context_menu() {
         // mod's own meta.ini so the flags stay cleared on rescan.
         if (entry.invalid_data || entry.no_metadata) {
           menu.addSeparator();
-          menu.addAction(
-              engine::IconManager::instance().resolve_icon("dialog-ok"),
-              QObject::tr("Ignore missing data"), w_, [this, mod_id]() {
-                auto folder = w_->mods_dir_path() / mod_id.toStdString();
-                if (engine::ModScanner::mark_validated(folder)) {
-                  w_->mod_model_->set_invalid_data(mod_id, false);
-                  w_->mod_model_->set_no_metadata(mod_id, false);
-                }
-              });
+          menu.addAction(engine::IconManager::instance().resolve_icon("dialog-ok"),
+                         QObject::tr("Ignore missing data"), w_, [this, mod_id]() {
+                           auto folder = w_->mods_dir_path() / mod_id.toStdString();
+                           if (engine::ModScanner::mark_validated(folder)) {
+                             w_->mod_model_->set_invalid_data(mod_id, false);
+                             w_->mod_model_->set_no_metadata(mod_id, false);
+                           }
+                         });
         }
 
         menu.addSeparator();
-        menu.addAction(
-            engine::IconManager::instance().resolve_icon("dialog-ok"),
-            QObject::tr("Enable Selected"), w_,
-            [this]() { actions_->toggle_selected_mods(true); });
-        menu.addAction(
-            engine::IconManager::instance().resolve_icon("dialog-cancel"),
-            QObject::tr("Disable Selected"), w_,
-            [this]() { actions_->toggle_selected_mods(false); });
+        menu.addAction(engine::IconManager::instance().resolve_icon("dialog-ok"),
+                       QObject::tr("Enable Selected"), w_, [this]() {
+                         actions_->toggle_selected_mods(true);
+                       });
+        menu.addAction(engine::IconManager::instance().resolve_icon("dialog-cancel"),
+                       QObject::tr("Disable Selected"), w_, [this]() {
+                         actions_->toggle_selected_mods(false);
+                       });
 
         menu.addSeparator();
-        menu.addAction(
-            engine::IconManager::instance().resolve_icon("document-edit"),
-            QObject::tr("Rename Mod..."), w_,
-            [this, row]() { actions_->rename_mod_inline(row); });
+        menu.addAction(engine::IconManager::instance().resolve_icon("document-edit"),
+                       QObject::tr("Rename Mod..."), w_, [this, row]() {
+                         actions_->rename_mod_inline(row);
+                       });
 
         // Tweaks submenu - per-mod deploy options (MO2's per-mod tweaks).
         {
-          auto *tweaks = menu.addMenu(
+          auto* tweaks = menu.addMenu(
               engine::IconManager::instance().resolve_icon("preferences-other"),
               QObject::tr("Tweaks"));
-          auto *root_act =
-              tweaks->addAction(QObject::tr("Treat mod as root dir"));
+          auto* root_act = tweaks->addAction(QObject::tr("Treat mod as root dir"));
           root_act->setCheckable(true);
           root_act->setChecked(entry.root_override);
           root_act->setEnabled(!entry.is_separator && !entry.is_overwrite &&
                                !entry.is_merged && !entry.is_game_native);
-          root_act->setStatusTip(
-              QObject::tr("Deploy w_ mod's files to the game root "
-                          "instead of the data dir"));
+          root_act->setStatusTip(QObject::tr("Deploy w_ mod's files to the game root "
+                                             "instead of the data dir"));
           QObject::connect(root_act, &QAction::triggered, w_, [this, row]() {
-            actions_->toggle_root_override(
-                {row}, !w_->mod_model_->mods()[row].root_override);
+            actions_->toggle_root_override({row},
+                                           !w_->mod_model_->mods()[row].root_override);
           });
+        }
+
+        // Mirror/backup (Workspace-0pi5): "Mirror to Instance" for external
+        // mods that are not mirrored yet, "Unmirror from Instance" for ones
+        // that are. Pseudo-rows never mirror.
+        if (!entry.is_separator && !entry.is_overwrite && !entry.is_merged &&
+            !entry.is_game_native) {
+          if (entry.is_mirrored) {
+            menu.addSeparator();
+            menu.addAction(engine::IconManager::instance().resolve_icon("edit-clear"),
+                           QObject::tr("Unmirror from Instance"), w_, [this, mod_id]() {
+                             actions_->unmirror_mod(mod_id);
+                           });
+          } else if (has_live_external_source(w_, entry)) {
+            menu.addSeparator();
+            menu.addAction(engine::IconManager::instance().resolve_icon("merge"),
+                           QObject::tr("Mirror to Instance"), w_, [this, mod_id]() {
+                             actions_->mirror_mod(mod_id);
+                           });
+          }
         }
 
         menu.addSeparator();
@@ -351,9 +410,9 @@ void ModContextMenu::setup_mod_list_context_menu() {
           auto src = source_visit_info_cb_(entry.source_type, entry.source_id,
                                            entry.source_page_url);
           if (!src.label.isEmpty()) {
-            auto *visit_act = menu.addAction(
-                engine::IconManager::instance().resolve_icon("text-html"),
-                src.label, w_, [src]() {
+            auto* visit_act = menu.addAction(
+                engine::IconManager::instance().resolve_icon("text-html"), src.label,
+                w_, [src]() {
                   if (!src.url.isEmpty())
                     QDesktopServices::openUrl(QUrl(src.url));
                 });
@@ -368,9 +427,9 @@ void ModContextMenu::setup_mod_list_context_menu() {
               if (!std::filesystem::exists(folder, ec)) {
                 // Fall back to game's native mods directory
                 auto game_mods_subpath =
-                    w_->knowledge_ ? w_->knowledge_->get(w_->current_game_id_,
-                                                         "mods_subpath", "")
-                                   : "";
+                    w_->knowledge_
+                        ? w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "")
+                        : "";
                 auto fallback = w_->current_game_dir_;
                 if (!game_mods_subpath.empty())
                   fallback /= game_mods_subpath;
@@ -381,10 +440,10 @@ void ModContextMenu::setup_mod_list_context_menu() {
             });
 
         menu.addSeparator();
-        menu.addAction(
-            engine::IconManager::instance().resolve_icon("edit-delete"),
-            QObject::tr("Remove"), w_,
-            [this]() { actions_->remove_selected_mods(); });
+        menu.addAction(engine::IconManager::instance().resolve_icon("edit-delete"),
+                       QObject::tr("Remove"), w_, [this]() {
+                         actions_->remove_selected_mods();
+                       });
 
         // MO2 puts Information last (modlistcontextmenu.cpp:267-273), the
         // default action after all per-type actions.
@@ -400,7 +459,7 @@ void ModContextMenu::setup_mod_list_context_menu() {
       });
 }
 
-void ModContextMenu::add_category_menus(QMenu &menu, const QString &mod_id) {
+void ModContextMenu::add_category_menus(QMenu& menu, const QString& mod_id) {
   const auto mods_dir = w_->mods_dir_path();
   if (mods_dir.empty())
     return;
@@ -414,8 +473,8 @@ void ModContextMenu::add_category_menus(QMenu &menu, const QString &mod_id) {
     auto meta = engine::ModMeta::load(mods_dir, mod_id.toStdString());
     QVector<int> ids;
     const QString csv = QString::fromStdString(meta.get("General", "category"));
-    for (const auto &part : csv.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
-      bool ok = false;
+    for (const auto& part : csv.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+      bool ok      = false;
       const int id = part.toInt(&ok);
       if (ok && id > 0 && !ids.contains(id))
         ids.append(id);
@@ -426,7 +485,7 @@ void ModContextMenu::add_category_menus(QMenu &menu, const QString &mod_id) {
   // Persist a new CSV (primary first), update the Category column + filter
   // ids, and re-apply the mod filter so a category-filtered list reacts
   // immediately (MO2 refreshFilter parity).
-  auto apply = [this, mods_dir, mod_id](const QVector<int> &ids) {
+  auto apply = [this, mods_dir, mod_id](const QVector<int>& ids) {
     QStringList parts;
     for (int id : ids)
       parts << QString::number(id);
@@ -436,7 +495,7 @@ void ModContextMenu::add_category_menus(QMenu &menu, const QString &mod_id) {
 
     QString primary_name;
     if (!ids.isEmpty()) {
-      if (const auto *cat =
+      if (const auto* cat =
               engine::Category::Factory::instance().categoryById(ids.first()))
         primary_name = QString::fromStdString(cat->name);
     }
@@ -454,20 +513,19 @@ void ModContextMenu::add_category_menus(QMenu &menu, const QString &mod_id) {
   // the filter panel (MO2's flat category list). Checking appends the id
   // (first checked becomes primary); unchecking removes it and the first
   // remaining id becomes primary.
-  auto *change_menu = menu.addMenu(
-      engine::IconManager::instance().resolve_icon("preferences-other"),
-      QObject::tr("Change Categories"));
-  std::vector<const engine::Category::Factory::Entry *> cats;
-  for (const auto &[id, cat] :
-       engine::Category::Factory::instance().categories())
+  auto* change_menu =
+      menu.addMenu(engine::IconManager::instance().resolve_icon("preferences-other"),
+                   QObject::tr("Change Categories"));
+  std::vector<const engine::Category::Factory::Entry*> cats;
+  for (const auto& [id, cat] : engine::Category::Factory::instance().categories())
     if (id != 0)
       cats.push_back(&cat);
-  std::sort(cats.begin(), cats.end(), [](const auto *a, const auto *b) {
-    return QString::fromStdString(a->name).compare(
-               QString::fromStdString(b->name), Qt::CaseInsensitive) < 0;
+  std::sort(cats.begin(), cats.end(), [](const auto* a, const auto* b) {
+    return QString::fromStdString(a->name).compare(QString::fromStdString(b->name),
+                                                   Qt::CaseInsensitive) < 0;
   });
-  for (const auto *cat : cats) {
-    auto *act = change_menu->addAction(QString::fromStdString(cat->name));
+  for (const auto* cat : cats) {
+    auto* act = change_menu->addAction(QString::fromStdString(cat->name));
     act->setCheckable(true);
     act->setChecked(current.contains(cat->id));
     QObject::connect(act, &QAction::triggered, w_,
@@ -485,17 +543,17 @@ void ModContextMenu::add_category_menus(QMenu &menu, const QString &mod_id) {
 
   // "Primary Category": radio buttons for the checked categories only (MO2
   // parity). Selecting one moves it to the front of the CSV.
-  auto *primary_menu =
+  auto* primary_menu =
       menu.addMenu(engine::IconManager::instance().resolve_icon("view-sort"),
                    QObject::tr("Primary Category"));
   if (current.isEmpty()) {
     primary_menu->setEnabled(false);
   } else {
-    auto *group = new QActionGroup(primary_menu);
+    auto* group = new QActionGroup(primary_menu);
     for (int id : current) {
-      const auto *cat = engine::Category::Factory::instance().categoryById(id);
-      auto *act = primary_menu->addAction(
-          cat ? QString::fromStdString(cat->name) : QString::number(id));
+      const auto* cat = engine::Category::Factory::instance().categoryById(id);
+      auto* act       = primary_menu->addAction(cat ? QString::fromStdString(cat->name)
+                                                    : QString::number(id));
       act->setCheckable(true);
       act->setChecked(id == current.first());
       group->addAction(act);
@@ -510,4 +568,4 @@ void ModContextMenu::add_category_menus(QMenu &menu, const QString &mod_id) {
   }
 }
 
-} // namespace ui
+}  // namespace ui

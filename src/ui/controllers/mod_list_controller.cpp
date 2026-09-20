@@ -1400,6 +1400,12 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
         w_->mod_model_->set_content_dir(
             id, QString::fromStdString(mod.content_dir.string()));
       }
+      // Mirror/backup state (Workspace-0pi5): badge + tooltip. The
+      // source-missing uncheck happens below, after the profile states.
+      if (mod.is_mirrored) {
+        w_->mod_model_->set_mirror_info(id, true, mod.mirror_source_missing,
+                                        QString::fromStdString(mod.mirror_source_path));
+      }
       if (!mod.enabled) {
         w_->mod_model_->toggle_mod(id);
       }
@@ -1415,6 +1421,40 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
   // Load/create meta for each mod. (The one-time MO2 meta.ini import ran on
   // the worker thread as part of the scan; w_ only reads sidecars.)
   load_meta_for_mods();
+
+  // Mirror/backup source-missing handling (Workspace-0pi5): the row stays
+  // but its checkbox is turned off, so the vanished source contributes
+  // nothing (conflict scan only feeds enabled rows) and the Flags badge +
+  // tooltip point at the surviving backup. The disable sentinel is written
+  // into the backup folder so the deploy (which reads disk, not UI state)
+  // skips it too - the user re-enables to use the backup files. Runs while
+  // w_->loading_ is true so no model-change handler fires from here.
+  {
+    const std::string disable_file =
+        (w_->knowledge_ && !w_->current_game_id_.empty())
+            ? engine::disable_mechanism_for(*w_->knowledge_, w_->current_game_id_)
+            : std::string();
+    const auto mods_dir = w_->mods_dir_path();
+    for (const auto& mod : scanned) {
+      if (!mod.is_mirrored || !mod.mirror_source_missing)
+        continue;
+      const auto id = QString::fromStdString(mod.folder_name);
+      w_->mod_model_->set_mod_enabled(id, false);
+      if (!disable_file.empty() && !mods_dir.empty()) {
+        const auto backup = mods_dir / mod.folder_name;
+        std::error_code ec;
+        if (std::filesystem::is_directory(backup, ec) &&
+            !std::filesystem::exists(backup / disable_file, ec)) {
+          std::ofstream sentinel(backup / disable_file);
+          if (!sentinel)
+            engine::Logger::instance().warn(
+                "on_mod_scan_finished: failed to write disable sentinel for "
+                "source-missing mirror '" +
+                mod.folder_name + "'");
+        }
+      }
+    }
+  }
 
   // Read persisted priority from meta.ini for ALL entries (including
   // separators, Overwrite). Mods without a persisted priority (e.g. freshly
@@ -1724,6 +1764,13 @@ void ModListController::load_meta_for_mods() {
     auto meta = is_external ? engine::ModMeta::load_file(external_meta)
                             : engine::ModMeta::load(mods_dir, folder_name);
 
+    // A [Mirror]-only meta (mirrored folder whose source never had a
+    // manager meta) must survive the default-meta creation below: carry
+    // the marker across so the row keeps its mirror state.
+    const bool keep_mirror             = meta.is_mirrored();
+    const std::string keep_mirror_path = meta.mirror_source_path();
+    const int64_t keep_mirror_ts       = meta.mirror_source_timestamp();
+
     // Enrich meta.ini from metadata.xml for games that use a non-meta.ini
     // metadata file (Isaac uses metadata.xml). The scanner already parsed
     // display_name/version during the scan, but meta.ini may not have these
@@ -1788,6 +1835,8 @@ void ModListController::load_meta_for_mods() {
         }
       }
       meta = engine::ModMeta::from_default(folder_name, source_type, source_id);
+      if (keep_mirror)
+        meta.set_mirror(keep_mirror_path, keep_mirror_ts);
       persist_meta(meta);
 
     } else {
