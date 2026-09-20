@@ -9,6 +9,7 @@
 //     is stored - it is never defaulted to "#888888" anymore (that fallback
 //     lives in the UI model rendering),
 //   - regular mods are scanned from meta.ini and carry no color.
+#include "engine/core/instance/mod_state.h"
 #include "engine/game/detect/mod_scanner.h"
 #include "engine/game/registry/game_knowledge.h"
 
@@ -25,23 +26,22 @@
 namespace fs = std::filesystem;
 
 namespace {
-void require(bool cond, const std::string &msg) {
+void require(bool cond, const std::string& msg) {
   INFO(msg);
   REQUIRE(cond);
 }
-} // namespace
+}  // namespace
 
-static void write_file(const fs::path &p, const std::string &contents) {
+static void write_file(const fs::path& p, const std::string& contents) {
   fs::create_directories(p.parent_path());
   std::ofstream out(p);
   out << contents;
   require(out.good(), "write_file failed for " + p.string());
 }
 
-static const engine::ScannedMod *
-by_folder(const std::vector<engine::ScannedMod> &mods,
-          const std::string &folder) {
-  for (const auto &m : mods)
+static const engine::ScannedMod* by_folder(const std::vector<engine::ScannedMod>& mods,
+                                           const std::string& folder) {
+  for (const auto& m : mods)
     if (m.folder_name == folder)
       return &m;
   return nullptr;
@@ -54,21 +54,19 @@ TEST_CASE("scanner", "[engine]") {
 
   // Separator with a color in its meta.ini.
   fs::create_directories(root / "My Mods_separator");
-  write_file(root / "My Mods_separator" / "meta.ini",
-             "[General]\ncolor = #ff888888\n");
+  write_file(root / "My Mods_separator" / "meta.ini", "[General]\ncolor = #ff888888\n");
 
   // Separator with no meta.ini at all - no color.
   fs::create_directories(root / "Plain_separator");
 
   // Regular mod with a meta.ini - has a [General] section but no color.
   fs::create_directories(root / "SomeMod");
-  write_file(root / "SomeMod" / "meta.ini",
-             "[General]\nversion = 1.0\nmodid = 0\n");
+  write_file(root / "SomeMod" / "meta.ini", "[General]\nversion = 1.0\nmodid = 0\n");
 
   engine::GameKnowledge knowledge;
   const auto mods = engine::ModScanner::scan_dir(knowledge, "testgame", root);
 
-  const auto *colored = by_folder(mods, "My Mods_separator");
+  const auto* colored = by_folder(mods, "My Mods_separator");
   require(colored != nullptr, "colored separator found");
   require(colored->is_separator, "My Mods_separator is a separator");
   require(colored->display_name == "My Mods",
@@ -76,14 +74,14 @@ TEST_CASE("scanner", "[engine]") {
   require(colored->separator_color == "#ff888888",
           "color read from meta.ini [General] color");
 
-  const auto *plain = by_folder(mods, "Plain_separator");
+  const auto* plain = by_folder(mods, "Plain_separator");
   require(plain != nullptr, "plain separator found");
   require(plain->is_separator, "Plain_separator is a separator");
   require(plain->display_name == "Plain", "plain separator display name");
   require(plain->separator_color.empty(),
           "no color default - separator_color stays empty");
 
-  const auto *mod = by_folder(mods, "SomeMod");
+  const auto* mod = by_folder(mods, "SomeMod");
   require(mod != nullptr, "regular mod found");
   require(!mod->is_separator, "SomeMod is not a separator");
   require(mod->display_name == "SomeMod", "mod display name is the folder");
@@ -96,7 +94,7 @@ TEST_CASE("scanner", "[engine]") {
   write_file(root / "FomodMod" / "meta.ini",
              "[General]\nversion = 2.0\n[fomod]\nchoices = {\"step\":\"x\"}\n");
   const auto mods3 = engine::ModScanner::scan_dir(knowledge, "testgame", root);
-  const auto *fm = by_folder(mods3, "FomodMod");
+  const auto* fm   = by_folder(mods3, "FomodMod");
   require(fm != nullptr, "fomod mod found");
   require(fm->is_fomod, "mod with [fomod] choices is flagged FOMOD");
   require(fm->version == "2.0", "fomod mod keeps its version");
@@ -107,7 +105,7 @@ TEST_CASE("scanner", "[engine]") {
   write_file(root / "EmptyFomod" / "meta.ini",
              "[General]\n[fomod]\nalwaysRestore = 1\n");
   const auto mods4 = engine::ModScanner::scan_dir(knowledge, "testgame", root);
-  const auto *ef = by_folder(mods4, "EmptyFomod");
+  const auto* ef   = by_folder(mods4, "EmptyFomod");
   require(ef != nullptr, "empty-fomod mod found");
   require(!ef->is_fomod, "[fomod] without choices is not flagged FOMOD");
 
@@ -115,7 +113,7 @@ TEST_CASE("scanner", "[engine]") {
   fs::create_directories(root / "NoColor_separator");
   write_file(root / "NoColor_separator" / "meta.ini", "[General]\n");
   const auto mods2 = engine::ModScanner::scan_dir(knowledge, "testgame", root);
-  const auto *nc = by_folder(mods2, "NoColor_separator");
+  const auto* nc   = by_folder(mods2, "NoColor_separator");
   require(nc != nullptr, "no-color separator found");
   require(nc->separator_color.empty(),
           "meta.ini without a color key yields an empty color");
@@ -127,7 +125,7 @@ TEST_CASE("scanner", "[engine]") {
   write_file(root / "DisabledMod" / "meta.ini", "[General]\n");
   write_file(root / "DisabledMod" / ".gmmdisabled", "");
   const auto mods5 = engine::ModScanner::scan_dir(knowledge, "testgame", root);
-  const auto *dm = by_folder(mods5, "DisabledMod");
+  const auto* dm   = by_folder(mods5, "DisabledMod");
   require(dm != nullptr, "disabled mod found");
   require(!dm->enabled, "mod carrying .gmmdisabled is disabled by default");
 
@@ -146,7 +144,7 @@ TEST_CASE("scanner", "[engine]") {
   fs::create_directories(root / "RootMod");
   write_file(root / "RootMod" / "meta.ini", "[General]\nrootOverride = 1\n");
   const auto mods6 = engine::ModScanner::scan_dir(knowledge, "testgame", root);
-  const auto *rm = by_folder(mods6, "RootMod");
+  const auto* rm   = by_folder(mods6, "RootMod");
   require(rm != nullptr, "root-flagged mod found");
   require(rm->root_override, "mod with [General] rootOverride=1 is flagged");
 
@@ -154,7 +152,7 @@ TEST_CASE("scanner", "[engine]") {
   fs::create_directories(root / "FlatMod");
   write_file(root / "FlatMod" / "meta.ini", "[General]\n");
   const auto mods7 = engine::ModScanner::scan_dir(knowledge, "testgame", root);
-  const auto *flat = by_folder(mods7, "FlatMod");
+  const auto* flat = by_folder(mods7, "FlatMod");
   require(flat != nullptr, "flat mod found");
   require(!flat->root_override, "mod without rootOverride stays unflagged");
 
@@ -163,25 +161,22 @@ TEST_CASE("scanner", "[engine]") {
   // installed by the manager. Was silently invisible before.
   fs::create_directories(root / "DroppedFolder");
   const auto modsA = engine::ModScanner::scan_dir(knowledge, "testgame", root);
-  const auto *df = by_folder(modsA, "DroppedFolder");
+  const auto* df   = by_folder(modsA, "DroppedFolder");
   require(df != nullptr, "meta-less folder is still listed");
   require(df->no_metadata, "meta-less folder flagged no_metadata");
   require(df->display_name == "DroppedFolder",
           "meta-less folder display name is the folder");
-  require(!df->invalid_data,
-          "no checker registered -> nothing can look invalid");
+  require(!df->invalid_data, "no checker registered -> nothing can look invalid");
 
   // A malformed meta.ini must not hide the folder either (MO2's QSettings
   // reads it as empty): it keeps its defaults instead of vanishing.
   fs::create_directories(root / "BrokenMeta");
   write_file(root / "BrokenMeta" / "meta.ini", "this is {{{ not valid ini ]]]");
   const auto modsB = engine::ModScanner::scan_dir(knowledge, "testgame", root);
-  const auto *bm = by_folder(modsB, "BrokenMeta");
+  const auto* bm   = by_folder(modsB, "BrokenMeta");
   require(bm != nullptr, "malformed meta.ini folder still listed");
-  require(!bm->no_metadata,
-          "malformed meta.ini still counts as metadata present");
-  require(!bm->invalid_data,
-          "no checker registered -> malformed folder not invalid");
+  require(!bm->no_metadata, "malformed meta.ini still counts as metadata present");
+  require(!bm->invalid_data, "no checker registered -> malformed folder not invalid");
 
   // Content-validity markers come from per-game hooks (the engine never
   // hardcodes them): mod_valid_dirs + mod_valid_exts model the Bethesda
@@ -195,7 +190,7 @@ TEST_CASE("scanner", "[engine]") {
   // mod list, but recognized content is required to clear FLAG_INVALID).
   fs::create_directories(root / "BadContent");
   const auto modsC = engine::ModScanner::scan_dir(checker, "skyrim", root);
-  const auto *bc = by_folder(modsC, "BadContent");
+  const auto* bc   = by_folder(modsC, "BadContent");
   require(bc != nullptr, "empty content folder is still listed");
   require(bc->invalid_data, "empty content folder flagged invalid");
 
@@ -206,7 +201,7 @@ TEST_CASE("scanner", "[engine]") {
   fs::create_directories(root / "GoodContent" / "textures");
   write_file(root / "GoodContent" / "modfile.esp", "");
   const auto modsC2 = engine::ModScanner::scan_dir(checker, "skyrim", root);
-  const auto *gc = by_folder(modsC2, "GoodContent");
+  const auto* gc    = by_folder(modsC2, "GoodContent");
   require(gc != nullptr && !gc->invalid_data,
           "folder with .esp and textures/ is valid content");
   require(gc->no_metadata, "folder with .esp still flagged no_metadata");
@@ -216,9 +211,8 @@ TEST_CASE("scanner", "[engine]") {
   fs::create_directories(root / "MetaOnly");
   write_file(root / "MetaOnly" / "meta.ini", "[General]\n");
   const auto modsC3 = engine::ModScanner::scan_dir(checker, "skyrim", root);
-  const auto *mo = by_folder(modsC3, "MetaOnly");
-  require(mo != nullptr && !mo->invalid_data,
-          "meta.ini-only folder is valid content");
+  const auto* mo    = by_folder(modsC3, "MetaOnly");
+  require(mo != nullptr && !mo->invalid_data, "meta.ini-only folder is valid content");
   require(!mo->no_metadata, "meta.ini-only folder has metadata");
 
   // XML metadata games (Isaac): metadata_file hook + Isaac's content markers.
@@ -232,10 +226,9 @@ TEST_CASE("scanner", "[engine]") {
   // is listed but flagged invalid (MO2 parity).
   fs::create_directories(root / "XmlNoMeta");
   const auto modsX = engine::ModScanner::scan_dir(xml_know, "isaac", root);
-  const auto *xn = by_folder(modsX, "XmlNoMeta");
-  require(
-      xn != nullptr,
-      "xml folder without metadata.xml and no valid content is still listed");
+  const auto* xn   = by_folder(modsX, "XmlNoMeta");
+  require(xn != nullptr,
+          "xml folder without metadata.xml and no valid content is still listed");
   require(xn->invalid_data, "xml folder without metadata.xml and no valid "
                             "content is flagged invalid");
 
@@ -244,7 +237,7 @@ TEST_CASE("scanner", "[engine]") {
   write_file(root / "XmlMod" / "metadata.xml",
              "<mod><name>My Xml Mod</name><version>1.0</version></mod>");
   const auto modsX2 = engine::ModScanner::scan_dir(xml_know, "isaac", root);
-  const auto *xm = by_folder(modsX2, "XmlMod");
+  const auto* xm    = by_folder(modsX2, "XmlMod");
   require(xm != nullptr && !xm->no_metadata,
           "xml mod with metadata listed, has metadata");
   require(xm->display_name == "My Xml Mod", "xml name parsed");
@@ -256,7 +249,7 @@ TEST_CASE("scanner", "[engine]") {
   fs::create_directories(root / "XmlResOnly" / "resources-dlc3");
   write_file(root / "XmlResOnly" / "modfile.esm", "");
   const auto modsX3 = engine::ModScanner::scan_dir(xml_know, "isaac", root);
-  const auto *xr = by_folder(modsX3, "XmlResOnly");
+  const auto* xr    = by_folder(modsX3, "XmlResOnly");
   require(xr != nullptr && !xr->invalid_data,
           "resources-dlc3/ folder with .esm is valid content");
   require(xr->no_metadata, "resources-dlc3/ folder still flagged no_metadata");
@@ -266,10 +259,9 @@ TEST_CASE("scanner", "[engine]") {
   // meta.ini is GMM-owned, so it suppresses both flags on a folder that has
   // neither metadata.xml nor resources.
   fs::create_directories(root / "XmlValidated");
-  write_file(root / "XmlValidated" / "meta.ini",
-             "[General]\nvalidated = true\n");
+  write_file(root / "XmlValidated" / "meta.ini", "[General]\nvalidated = true\n");
   const auto modsV = engine::ModScanner::scan_dir(xml_know, "isaac", root);
-  const auto *xv = by_folder(modsV, "XmlValidated");
+  const auto* xv   = by_folder(modsV, "XmlValidated");
   require(xv != nullptr && !xv->invalid_data,
           "validated=true suppresses the invalid flag");
   require(!xv->no_metadata, "validated=true suppresses the no_metadata flag");
@@ -287,22 +279,21 @@ TEST_CASE("scanner", "[engine]") {
             "mark_validated persisted 'validated' in meta.ini");
   }
   const auto modsV2 = engine::ModScanner::scan_dir(checker, "skyrim", root);
-  const auto *mv = by_folder(modsV2, "MarkedValid");
+  const auto* mv    = by_folder(modsV2, "MarkedValid");
   require(mv != nullptr && !mv->no_metadata,
           "mark_validated clears the no_metadata flag");
   require(!mv->invalid_data, "mark_validated clears the invalid flag");
 
   // Timestamps (P8.4): every real folder reports its birth (installation) and
   // mtime (changed) so the mod list can show both columns.
-  const auto *timed = by_folder(modsV2, "SomeMod");
+  const auto* timed = by_folder(modsV2, "SomeMod");
   require(timed != nullptr, "SomeMod found for timestamp check");
   require(timed->install_time > 0, "install_time populated for a real folder");
   require(timed->changed_time > 0, "changed_time populated for a real folder");
   require(timed->changed_time >= timed->install_time,
           "changed_time (mtime) is not older than install_time (btime)");
-  const auto *sep = by_folder(modsV2, "My Mods_separator");
-  require(sep != nullptr && sep->install_time > 0,
-          "separators carry a birth time too");
+  const auto* sep = by_folder(modsV2, "My Mods_separator");
+  require(sep != nullptr && sep->install_time > 0, "separators carry a birth time too");
   {
     // Rewriting a file bumps mtime; the re-scanned mod must reflect it.
     // Sleep past the current second first so the bump is observable at
@@ -311,7 +302,7 @@ TEST_CASE("scanner", "[engine]") {
     const fs::path touched = root / "SomeMod" / "content.txt";
     write_file(touched, "hello\n");
     const auto modsR = engine::ModScanner::scan_dir(checker, "skyrim", root);
-    const auto *re = by_folder(modsR, "SomeMod");
+    const auto* re   = by_folder(modsR, "SomeMod");
     require(re != nullptr && re->changed_time > timed->changed_time,
             "changed_time reflects a file write after install");
   }
@@ -363,12 +354,9 @@ TEST_CASE("scan uses game_mods_dir literally", "[engine]") {
   // Instance override beats the hook, also literal.
   const fs::path overridden = root / "Custom Mods";
   fs::create_directories(overridden / "OtherMod");
-  write_file(overridden / "OtherMod" / "meta.ini",
-             "[General]\nversion = 2.0\n");
-  mods = engine::ModScanner::scan(isaac, "isaacmac", root / "install", {},
-                                  overridden);
-  require(by_folder(mods, "OtherMod") != nullptr,
-          "instance override scanned as-is");
+  write_file(overridden / "OtherMod" / "meta.ini", "[General]\nversion = 2.0\n");
+  mods = engine::ModScanner::scan(isaac, "isaacmac", root / "install", {}, overridden);
+  require(by_folder(mods, "OtherMod") != nullptr, "instance override scanned as-is");
 
   // Workspace-s3hn: the mods_subpath fallback is intentionally REMOVED from
   // resolve_game_mods_dir. mods_subpath is a deploy target, not a scan source
@@ -385,8 +373,115 @@ TEST_CASE("scan uses game_mods_dir literally", "[engine]") {
   mods = engine::ModScanner::scan(skyrim, "skyrim", root / "install");
   require(by_folder(mods, "DataMod") == nullptr,
           "no mods_subpath fallback: vanilla Data/ folders are not mods");
-  require(mods.empty(),
-          "empty result when no game_mods_dir / mod_scan_subpath hook");
+  require(mods.empty(), "empty result when no game_mods_dir / mod_scan_subpath hook");
+
+  fs::remove_all(root);
+}
+
+TEST_CASE("prune_orphaned_empty_mods", "[engine]") {
+  // Workspace-5jk3: Steam unsubscribes leave GMM-written meta.ini behind, so
+  // the folder rescans forever as is_empty. Pruning deletes ONLY folders
+  // with proof of prior existence (a ModStateTracker entry).
+  const fs::path root = "/tmp/gmm_prune_test";
+  fs::remove_all(root);
+  const fs::path mods          = root / "mods";
+  const fs::path instance_root = root / "instance";
+  fs::create_directories(instance_root);
+
+  // Tracked ghost: meta.ini only (Steam removed the real files).
+  fs::create_directories(mods / "GhostMod");
+  write_file(mods / "GhostMod" / "meta.ini", "[General]\nversion = 1.0\n");
+
+  // Untracked shell: meta.ini only but never installed - must survive.
+  fs::create_directories(mods / "FreshEmpty");
+  write_file(mods / "FreshEmpty" / "meta.ini", "[General]\nversion = 1.0\n");
+
+  // Tracked live mod: has a real file - must survive.
+  fs::create_directories(mods / "RealMod");
+  write_file(mods / "RealMod" / "meta.ini", "[General]\nversion = 2.0\n");
+  write_file(mods / "RealMod" / "content" / "data.txt", "hello");
+
+  // Tracked separator shell: separators are never pruned.
+  fs::create_directories(mods / "Group_separator");
+  write_file(mods / "Group_separator" / "meta.ini", "[General]\ncolor = #ff888888\n");
+
+  engine::GameKnowledge knowledge;
+  auto scanned = engine::ModScanner::scan_dir(knowledge, "testgame", mods);
+  require(by_folder(scanned, "GhostMod") != nullptr, "ghost scanned");
+  require(by_folder(scanned, "GhostMod")->is_empty, "ghost is empty");
+  require(by_folder(scanned, "RealMod") != nullptr, "real mod scanned");
+  require(!by_folder(scanned, "RealMod")->is_empty, "real mod not empty");
+  require(by_folder(scanned, "Group_separator")->is_separator, "separator detected");
+
+  // Track everything except the fresh shell. The external-only Steam mod
+  // has no instance folder - its scanned row is synthesized by hand.
+  engine::ModStateTracker tracker(instance_root);
+  tracker.record_install("GhostMod");
+  tracker.record_install("RealMod");
+  tracker.record_install("Group_separator");
+  tracker.record_install("SteamMod123");
+  require(tracker.save(), "tracker saved");
+
+  engine::ScannedMod external;
+  external.folder_name  = "SteamMod123";
+  external.display_name = "SteamMod123";
+  external.raw_name     = "SteamMod123";
+  external.is_empty     = true;
+  scanned.push_back(external);
+  // The Steam-owned external folder still exists with only meta.ini - the
+  // prune must never touch it.
+  fs::create_directories(root / "external" / "SteamMod123");
+  write_file(root / "external" / "SteamMod123" / "meta.ini",
+             "[General]\nversion = 3.0\n");
+
+  const auto pruned =
+      engine::ModScanner::prune_orphaned_empty_mods(scanned, mods, instance_root);
+  require(pruned.size() == 1, "exactly one folder pruned");
+  require(pruned.front() == "GhostMod", "the tracked ghost is pruned");
+  require(!fs::exists(mods / "GhostMod"), "ghost folder removed");
+  require(fs::is_directory(mods / "FreshEmpty"), "untracked shell kept");
+  require(fs::is_directory(mods / "RealMod"), "tracked live mod kept");
+  require(fs::is_directory(mods / "Group_separator"), "separator kept");
+  require(fs::is_directory(root / "external" / "SteamMod123"),
+          "external dir untouched");
+
+  // The ghost's tracker entry is gone, the rest survive the save.
+  engine::ModStateTracker reloaded(instance_root);
+  require(reloaded.load(), "tracker reloads");
+  const engine::ModStateTracker& viewed = reloaded;
+  require(viewed.entry("GhostMod") == nullptr, "ghost entry removed");
+  require(viewed.entry("RealMod") != nullptr, "live entry kept");
+  require(viewed.entry("SteamMod123") != nullptr, "external entry kept");
+
+  fs::remove_all(root);
+}
+
+TEST_CASE("prune_orphaned_empty_mods safety gates", "[engine]") {
+  const fs::path root = "/tmp/gmm_prune_gates_test";
+  fs::remove_all(root);
+  const fs::path mods          = root / "mods";
+  const fs::path instance_root = root / "instance";
+  fs::create_directories(mods);
+  fs::create_directories(instance_root);
+
+  fs::create_directories(mods / "ShellMod");
+  write_file(mods / "ShellMod" / "meta.ini", "[General]\nversion = 1.0\n");
+
+  engine::GameKnowledge knowledge;
+  const auto scanned = engine::ModScanner::scan_dir(knowledge, "testgame", mods);
+  require(by_folder(scanned, "ShellMod")->is_empty, "shell is empty");
+
+  // Empty instance root (portable mode): no tracker location, no pruning.
+  require(engine::ModScanner::prune_orphaned_empty_mods(scanned, mods, {}).empty(),
+          "empty instance root prunes nothing");
+  require(fs::is_directory(mods / "ShellMod"), "shell survives no-root call");
+
+  // Corrupt tracker: state unreadable, never delete.
+  write_file(instance_root / "mod_state.json", "{not valid json!!!");
+  require(engine::ModScanner::prune_orphaned_empty_mods(scanned, mods, instance_root)
+              .empty(),
+          "unreadable tracker prunes nothing");
+  require(fs::is_directory(mods / "ShellMod"), "shell survives corrupt tracker");
 
   fs::remove_all(root);
 }
