@@ -12,6 +12,8 @@ class ModActions;
 
 // Forward declaration of SourceVisitInfo (defined in mod_list_controller.h).
 struct SourceVisitInfo;
+// Mod rows (defined in ui/widgets/mod_list_model.h).
+struct ModEntry;
 
 // Mod::ContextMenu - extracted context menu builder for the mod list.
 //
@@ -20,32 +22,35 @@ struct SourceVisitInfo;
 // for remaining cross-controller calls (on_data_mod_info, source_visit_info).
 class ModContextMenu {
 public:
-  ModContextMenu(MainWindow *w, ModActions *actions);
+  ModContextMenu(MainWindow* w, ModActions* actions);
 
   // Set a callback for on_data_mod_info (stays in ModListController).
-  void set_on_data_mod_info(std::function<void(const QString &, int)> cb);
+  void set_on_data_mod_info(std::function<void(const QString&, int)> cb);
 
   // Set a callback for source_visit_info (stays in ModListController).
   void set_source_visit_info(
-      std::function<SourceVisitInfo(const QString &, const QString &,
-                                    const QString &)>
+      std::function<SourceVisitInfo(const QString&, const QString&, const QString&)>
           cb);
 
   // Build and connect the context menu for the mod list view.
   void setup_mod_list_context_menu();
 
   // Add category submenus (Change Categories + Primary Category) to a menu.
-  void add_category_menus(QMenu &menu, const QString &mod_id);
+  void add_category_menus(QMenu& menu, const QString& mod_id);
 
 private:
-  MainWindow *w_ = nullptr;
-  ModActions *actions_ = nullptr;
+  // Whether a mod row has a live external source folder to mirror from
+  // (Workspace-0pi5 menu gating). A member (ModContextMenu is a friend) so
+  // it may read MainWindow's private paths.
+  static bool has_live_external_source(MainWindow* w, const ModEntry& m);
+
+  MainWindow* w_       = nullptr;
+  ModActions* actions_ = nullptr;
 
   // Callbacks for cross-controller operations.
-  std::function<void(const QString &, int)> on_data_mod_info_cb_;
-  std::function<SourceVisitInfo(const QString &, const QString &,
-                                const QString &)>
+  std::function<void(const QString&, int)> on_data_mod_info_cb_;
+  std::function<SourceVisitInfo(const QString&, const QString&, const QString&)>
       source_visit_info_cb_;
 };
 
-} // namespace ui
+}  // namespace ui

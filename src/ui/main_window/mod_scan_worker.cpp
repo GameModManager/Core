@@ -158,6 +158,16 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
             // Content lives in the external dir regardless of metadata.
             // Path resolution (file open, mod info) needs this.
             inst.content_dir = external / inst.folder_name;
+            // Mirror/backup marker (Workspace-0pi5): the external source's
+            // [Mirror] section marks the merged row mirrored while the
+            // source is present (badge, no behavior change). The instance
+            // backup carries the same section, so a rescan after a source
+            // deletion still flags the row source-missing via its own meta.
+            if (m.is_mirrored) {
+              inst.is_mirrored           = true;
+              inst.mirror_source_path    = m.mirror_source_path;
+              inst.mirror_source_missing = false;
+            }
             break;
           }
         }
