@@ -593,3 +593,109 @@ TEST_CASE("mirrored mod is not pruned when its source is gone", "[engine]") {
 
   fs::remove_all(root);
 }
+
+TEST_CASE("prune seeds tracker for healthy mods, prunes on a later scan", "[engine]") {
+  // Workspace-5jk3 follow-up: nothing in production ever called
+  // record_install, so mod_state.json stayed empty and the tracked-entry
+  // gate made pruning a permanent no-op. The prune call itself now seeds
+  // entries for mods that currently have content, so a Steam wipe on a
+  // LATER scan is prunable. Two-scan steady state, no manual seeding.
+  const fs::path root = "/tmp/opencode/gmm_prune_seed_test";
+  fs::remove_all(root);
+  const fs::path mods          = root / "mods";
+  const fs::path instance_root = root / "instance";
+  fs::create_directories(instance_root);
+
+  fs::create_directories(mods / "LiveMod");
+  write_file(mods / "LiveMod" / "meta.ini", "[General]\nversion = 1.0\n");
+  write_file(mods / "LiveMod" / "content" / "data.txt", "hello");
+
+  engine::GameKnowledge knowledge;
+  auto scanned = engine::ModScanner::scan_dir(knowledge, "testgame", mods);
+  require(!by_folder(scanned, "LiveMod")->is_empty, "live mod not empty");
+
+  // First scan: nothing to prune, but the healthy mod is seeded.
+  auto pruned =
+      engine::ModScanner::prune_orphaned_empty_mods(scanned, mods, instance_root);
+  require(pruned.empty(), "nothing pruned while content is present");
+  require(fs::is_directory(mods / "LiveMod"), "live mod kept");
+  {
+    engine::ModStateTracker reloaded(instance_root);
+    require(reloaded.load(), "tracker reloads after seeding");
+    const engine::ModStateTracker& viewed = reloaded;
+    require(viewed.entry("LiveMod") != nullptr, "healthy mod seeded into tracker");
+  }
+
+  // Steam wipes the content, leaving only meta.ini behind.
+  fs::remove_all(mods / "LiveMod" / "content");
+  auto rescanned = engine::ModScanner::scan_dir(knowledge, "testgame", mods);
+  require(by_folder(rescanned, "LiveMod")->is_empty, "wiped mod scans empty");
+
+  // Second scan: the seeded entry proves prior existence - pruned.
+  pruned =
+      engine::ModScanner::prune_orphaned_empty_mods(rescanned, mods, instance_root);
+  require(pruned.size() == 1, "seeded ghost pruned on the later scan");
+  require(pruned.front() == "LiveMod", "the wiped mod is pruned");
+  require(!fs::exists(mods / "LiveMod"), "wiped folder removed");
+
+  fs::remove_all(root);
+}
+
+TEST_CASE("prune removes GMM-managed ghosts, keeps user shells", "[engine]") {
+  // Legacy ghosts from before tracker seeding have no tracker entry. A
+  // meta.ini with a [GameModManager] section proves GMM installed the
+  // folder (a user-created shell never has that section), so it is
+  // pruned - but ONLY when the caller passes the external source dir
+  // and the source folder is gone there. A ghost whose source still
+  // exists, an MO2-imported shell (imported_from_mo2=true), a plain
+  // user shell, and a bare folder all survive.
+  const fs::path root = "/tmp/opencode/gmm_prune_gmm_test";
+  fs::remove_all(root);
+  const fs::path mods          = root / "mods";
+  const fs::path instance_root = root / "instance";
+  const fs::path external      = root / "external";
+  fs::create_directories(instance_root);
+
+  fs::create_directories(mods / "GmmGhost");
+  write_file(mods / "GmmGhost" / "meta.ini",
+             "[General]\nversion = 1.0\n\n[GameModManager]\nsteam_appid = 250900\n");
+  fs::create_directories(mods / "SourceAlive");
+  write_file(mods / "SourceAlive" / "meta.ini",
+             "[General]\nversion = 1.0\n\n[GameModManager]\nsteam_appid = 250900\n");
+  fs::create_directories(external / "SourceAlive");
+  write_file(external / "SourceAlive" / "meta.ini", "[General]\nversion = 1.0\n");
+  fs::create_directories(mods / "Mo2Shell");
+  write_file(
+      mods / "Mo2Shell" / "meta.ini",
+      "[General]\nversion = 1.0\n\n[GameModManager]\nimported_from_mo2 = true\n");
+  fs::create_directories(mods / "UserShell");
+  write_file(mods / "UserShell" / "meta.ini", "[General]\nversion = 1.0\n");
+  fs::create_directories(mods / "BareShell");
+
+  engine::GameKnowledge knowledge;
+  const auto scanned = engine::ModScanner::scan_dir(knowledge, "testgame", mods);
+  require(by_folder(scanned, "GmmGhost")->is_empty, "GMM ghost is empty");
+  require(by_folder(scanned, "UserShell")->is_empty, "user shell is empty");
+  require(by_folder(scanned, "BareShell")->is_empty, "bare shell is empty");
+
+  // No tracker entries at all - nothing was ever seeded or installed.
+  // Without the external dir, even the GMM ghost survives (tracker-only).
+  auto pruned =
+      engine::ModScanner::prune_orphaned_empty_mods(scanned, mods, instance_root);
+  require(pruned.empty(), "no external dir prunes nothing untracked");
+  require(fs::is_directory(mods / "GmmGhost"), "ghost kept without external dir");
+
+  // With the external dir: only the source-gone GMM ghost is pruned.
+  pruned = engine::ModScanner::prune_orphaned_empty_mods(scanned, mods, instance_root,
+                                                         external);
+  require(pruned.size() == 1, "exactly one folder pruned");
+  require(pruned.front() == "GmmGhost", "only the source-gone GMM ghost is pruned");
+  require(!fs::exists(mods / "GmmGhost"), "GMM ghost removed");
+  require(fs::is_directory(mods / "SourceAlive"), "source-alive ghost kept");
+  require(fs::is_directory(external / "SourceAlive"), "external dir untouched");
+  require(fs::is_directory(mods / "Mo2Shell"), "MO2-imported shell kept");
+  require(fs::is_directory(mods / "UserShell"), "user shell kept");
+  require(fs::is_directory(mods / "BareShell"), "bare shell kept");
+
+  fs::remove_all(root);
+}

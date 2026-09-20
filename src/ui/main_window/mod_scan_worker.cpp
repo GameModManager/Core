@@ -143,21 +143,30 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
             if (inst.folder_name != m.folder_name)
               continue;
             if (inst.no_metadata && !m.no_metadata) {
-              // Upgrade metadata from external scan
-              inst.display_name     = m.display_name;
-              inst.raw_name         = m.raw_name;
-              inst.version          = m.version;
-              inst.no_metadata      = false;
-              inst.invalid_data     = m.invalid_data;
-              inst.has_hidden_files = m.has_hidden_files;
-              inst.is_empty         = m.is_empty;
-              inst.category_ids     = m.category_ids;
-              inst.workshop_id      = m.workshop_id;
+              // Upgrade metadata from external scan. Emptiness and
+              // hidden-file state are NOT upgraded here - they union
+              // across both locations below.
+              inst.display_name = m.display_name;
+              inst.raw_name     = m.raw_name;
+              inst.version      = m.version;
+              inst.no_metadata  = false;
+              inst.invalid_data = m.invalid_data;
+              inst.category_ids = m.category_ids;
+              inst.workshop_id  = m.workshop_id;
               ++upgraded;
             }
             // Content lives in the external dir regardless of metadata.
             // Path resolution (file open, mod info) needs this.
             inst.content_dir = external / inst.folder_name;
+            // Emptiness is a union across both locations: the merged row
+            // is empty only when NEITHER side has real files. A
+            // meta.ini-only instance stub must not mark a healthy
+            // external mod empty (Workspace-5jk3 prune + Flags badge),
+            // and real files staged in the instance folder must not be
+            // masked by an emptied external source either. Hidden-file
+            // state unions the same way.
+            inst.is_empty         = inst.is_empty && m.is_empty;
+            inst.has_hidden_files = inst.has_hidden_files || m.has_hidden_files;
             // Mirror/backup marker (Workspace-0pi5): the external source's
             // [Mirror] section marks the merged row mirrored while the
             // source is present (badge, no behavior change). The instance
@@ -564,9 +573,18 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
     // separators, Overwrite/MERGED, game-native rows, or anything in the
     // Steam-owned external dir). Runs on the worker thread with the merged
     // scan flags: a stub whose external content is still healthy merged
-    // is_empty=false and survives.
+    // is_empty=false and survives. The external dir is passed so
+    // pre-seeding legacy ghosts (untracked, GMM-managed meta, source
+    // folder gone) are pruned too - but ONLY for genuinely-external
+    // setups (plugin hook or instance override); otherwise tracker-only
+    // behavior keeps raw user shells safe.
+    const std::filesystem::path prune_external =
+        (explicit_game_mods_dir && !external_mods_dir.empty() &&
+         external_mods_dir != request.mods_dir)
+            ? external_mods_dir
+            : std::filesystem::path{};
     const auto pruned = engine::ModScanner::prune_orphaned_empty_mods(
-        scanned, request.mods_dir, request.instance_root);
+        scanned, request.mods_dir, request.instance_root, prune_external);
     if (!pruned.empty()) {
       const std::unordered_set<std::string> gone(pruned.begin(), pruned.end());
       scanned.erase(std::remove_if(scanned.begin(), scanned.end(),

@@ -792,14 +792,16 @@ bool ModScanner::mark_validated(const std::filesystem::path& mod_folder) {
 std::vector<std::string>
 ModScanner::prune_orphaned_empty_mods(const std::vector<ScannedMod>& scanned,
                                       const std::filesystem::path& mods_dir,
-                                      const std::filesystem::path& instance_root) {
+                                      const std::filesystem::path& instance_root,
+                                      const std::filesystem::path& external_mods_dir) {
   std::vector<std::string> pruned;
   if (instance_root.empty() || mods_dir.empty())
     return pruned;
 
   // Proof-of-prior-existence gate: without a readable tracker no folder may
-  // be deleted. A missing mod_state.json loads as empty state (no entries),
-  // so pruning stays a no-op until something actually tracks installs.
+  // be deleted. A missing mod_state.json loads as empty state (no entries);
+  // the seeding below then records every currently-healthy mod, so pruning
+  // takes effect from the scan after a mod's content disappears.
   // NOTE: the existence check below must use the const entry() overload
   // (pointer, null when absent) - the mutable overload creates on access.
   ModStateTracker tracker(instance_root);
@@ -809,6 +811,24 @@ ModScanner::prune_orphaned_empty_mods(const std::vector<ScannedMod>& scanned,
     return pruned;
   }
   const ModStateTracker& tracked = tracker;
+
+  // Seed proof-of-prior-existence (Workspace-5jk3 follow-up): nothing in
+  // production ever called record_install, so mod_state.json stayed empty
+  // and the gate below made pruning a permanent no-op. Every scanned mod
+  // that currently HAS content proves it existed - ensure a tracker entry
+  // (get-or-create, no install_order bump) so a later scan can prune it
+  // if its content is wiped externally. Empty folders are never seeded,
+  // so a user-created shell still has no entry and still survives.
+  bool tracker_dirty = false;
+  for (const auto& mod : scanned) {
+    if (mod.is_empty || mod.is_separator || mod.is_overwrite || mod.is_game_native)
+      continue;
+    if (tracked.entry(mod.folder_name) != nullptr)
+      continue;
+    // get-or-create: the new default entry is the proof-of-existence.
+    (void)tracker.entry(mod.folder_name);
+    tracker_dirty = true;
+  }
 
   for (const auto& mod : scanned) {
     if (!mod.is_empty || mod.is_separator || mod.is_overwrite || mod.is_game_native)
@@ -825,6 +845,29 @@ ModScanner::prune_orphaned_empty_mods(const std::vector<ScannedMod>& scanned,
           engine::ModMeta::load_file(meta_path).is_mirrored())
         continue;
     }
+    // Legacy-ghost rule (Workspace-5jk3 follow-up): an untracked folder
+    // whose meta.ini proves GMM installed it (a [GameModManager] section
+    // a user-created shell never has - while same-scan MO2-import
+    // enrichment stamps imported_from_mo2=true and stays exempt) is
+    // pruned when the caller-supplied external source dir no longer
+    // holds the folder (Isaac: Steam unsubscribed). The tracker was
+    // never seeded in production before, so pre-existing ghosts have no
+    // entry; without an external dir the tracker entry stays the only
+    // proof.
+    bool source_gone = false;
+    if (!external_mods_dir.empty() && external_mods_dir != mods_dir) {
+      std::error_code meta_ec;
+      auto meta_path = mods_dir / mod.folder_name / "meta.ini";
+      if (std::filesystem::is_regular_file(meta_path, meta_ec)) {
+        auto meta = engine::ModMeta::load_file(meta_path);
+        if (meta.has_section("GameModManager") &&
+            meta.get("GameModManager", "imported_from_mo2") != "true") {
+          std::error_code ext_ec;
+          source_gone = !std::filesystem::is_directory(
+              external_mods_dir / mod.folder_name, ext_ec);
+        }
+      }
+    }
     // Only real instance folders are eligible: external-only mods (Isaac
     // game_dir/mods/) and synthesized game-native rows have no folder here.
     // Steam owns the external dir - it is never touched.
@@ -833,8 +876,9 @@ ModScanner::prune_orphaned_empty_mods(const std::vector<ScannedMod>& scanned,
       continue;
     // The tracker entry proves the mod really existed (installed or
     // snapshotted). An empty folder with no entry is a user-created shell
-    // and must survive.
-    if (tracked.entry(mod.folder_name) == nullptr)
+    // and must survive - unless it is a legacy ghost whose external
+    // source is gone (rule above).
+    if (tracked.entry(mod.folder_name) == nullptr && !source_gone)
       continue;
     std::error_code rm_ec;
     std::filesystem::remove_all(mods_dir / mod.folder_name, rm_ec);
@@ -847,11 +891,10 @@ ModScanner::prune_orphaned_empty_mods(const std::vector<ScannedMod>& scanned,
     tracker.remove(mod.folder_name);
     pruned.push_back(mod.folder_name);
     Logger::instance().info("ModScanner: pruned orphaned empty mod '" +
-                            mod.folder_name +
-                            "' (tracked, content removed externally)");
+                            mod.folder_name + "' (content removed externally)");
   }
 
-  if (!pruned.empty() && !tracker.save())
+  if ((!pruned.empty() || tracker_dirty) && !tracker.save())
     Logger::instance().warn(
         "ModScanner: failed to save mod_state.json after empty-mod prune");
   return pruned;

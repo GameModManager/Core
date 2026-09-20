@@ -134,15 +134,31 @@ public:
   //     Overwrite entry, a MERGED pseudo-row, or a game-native row,
   //   - the folder physically exists under mods_dir (external-only and
   //     synthesized rows have no instance folder and are never touched),
-  //   - ModStateTracker for instance_root holds an entry for the folder
-  //     (proof the mod really existed - never delete merely-empty mods).
+  //   - the folder is not a mirror backup ([Mirror] in its meta.ini
+  //     exempts it unconditionally - the backup is the user's fallback
+  //     when the external source is gone),
+  //   - proof the manager owned the folder: a ModStateTracker entry for
+  //     it (installed or snapshotted while it still had content), OR -
+  //     for pre-seeding legacy ghosts - a [GameModManager] section in
+  //     its meta.ini without imported_from_mo2=true (a user-created
+  //     shell never carries that section, and MO2-import enrichment
+  //     stamps the exemption) COMBINED with a caller-supplied
+  //     external_mods_dir whose <folder> is gone (Isaac: Steam
+  //     unsubscribed). Callers without an external source dir pass
+  //     empty and keep tracker-only behavior; the external dir itself
+  //     is never modified.
+  // Before pruning, currently-healthy scanned mods are seeded into the
+  // tracker (nothing in production called record_install, so without
+  // seeding the gate above would stay a permanent no-op); the tracker
+  // is saved when seeding or pruning changed it.
   // An empty instance_root (portable mode) or an unreadable tracker
   // disables pruning entirely. Returns the pruned folder names so the
   // caller can drop them from its own result list.
   [[nodiscard]] static std::vector<std::string>
   prune_orphaned_empty_mods(const std::vector<ScannedMod>& scanned,
                             const std::filesystem::path& mods_dir,
-                            const std::filesystem::path& instance_root);
+                            const std::filesystem::path& instance_root,
+                            const std::filesystem::path& external_mods_dir = {});
 };
 
 }  // namespace engine
