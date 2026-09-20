@@ -421,19 +421,27 @@ void ModContextMenu::setup_mod_list_context_menu() {
         }
         menu.addAction(
             engine::IconManager::instance().resolve_icon("folder"),
-            QObject::tr("Open in File Manager"), w_, [this, mod_id]() {
-              auto folder = w_->mods_dir_path() / mod_id.toStdString();
-              std::error_code ec;
-              if (!std::filesystem::exists(folder, ec)) {
-                // Fall back to game's native mods directory
-                auto game_mods_subpath =
-                    w_->knowledge_
-                        ? w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "")
-                        : "";
-                auto fallback = w_->current_game_dir_;
-                if (!game_mods_subpath.empty())
-                  fallback /= game_mods_subpath;
-                folder = fallback / mod_id.toStdString();
+            QObject::tr("Open in File Manager"), w_, [this, mod_id, entry]() {
+              // External mods (Isaac game_dir/mods/): open the real source
+              // folder, not the instance stub. mirror_source_for prefers
+              // the row's content_dir, then the game's external mods dir;
+              // empty when the source is gone - then the instance folder
+              // (backup/stub) is the right target.
+              auto folder = actions_->mirror_source_for(entry);
+              if (folder.empty()) {
+                folder = w_->mods_dir_path() / mod_id.toStdString();
+                std::error_code ec;
+                if (!std::filesystem::exists(folder, ec)) {
+                  // Fall back to game's native mods directory
+                  auto game_mods_subpath =
+                      w_->knowledge_ ? w_->knowledge_->get(w_->current_game_id_,
+                                                           "mods_subpath", "")
+                                     : "";
+                  auto fallback = w_->current_game_dir_;
+                  if (!game_mods_subpath.empty())
+                    fallback /= game_mods_subpath;
+                  folder = fallback / mod_id.toStdString();
+                }
               }
               QDesktopServices::openUrl(
                   QUrl::fromLocalFile(QString::fromStdString(folder.string())));
