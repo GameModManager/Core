@@ -22,6 +22,7 @@
 // dir, knowledge hooks drive the scan (no game plugin needed).
 #include "ui/main_window/mod_scan_worker.h"
 
+#include "engine/core/instance/mod_state.h"
 #include "engine/mod/meta/mod_meta.h"
 
 #include <QCoreApplication>
@@ -42,40 +43,39 @@
 namespace fs = std::filesystem;
 
 namespace {
-void check(bool cond, const char *what) {
+void check(bool cond, const char* what) {
   INFO(what);
   REQUIRE(cond);
 }
 
-void write_file(const fs::path &p, const std::string &contents) {
+void write_file(const fs::path& p, const std::string& contents) {
   fs::create_directories(p.parent_path());
   std::ofstream out(p);
   out << contents;
-  check(out.good(),
-        (std::string("write_file failed for ") + p.string()).c_str());
+  check(out.good(), (std::string("write_file failed for ") + p.string()).c_str());
 }
 
-const engine::ScannedMod *by_folder(const std::vector<engine::ScannedMod> &mods,
-                                    const std::string &folder) {
-  for (const auto &m : mods)
+const engine::ScannedMod* by_folder(const std::vector<engine::ScannedMod>& mods,
+                                    const std::string& folder) {
+  for (const auto& m : mods)
     if (m.folder_name == folder)
       return &m;
   return nullptr;
 }
-} // namespace
+}  // namespace
 
 TEST_CASE("mod scan worker stray plugins", "[ui]") {
-  int test_argc = 1;
+  int test_argc     = 1;
   char test_argv0[] = "test";
-  char *test_argv[] = {test_argv0, nullptr};
+  char* test_argv[] = {test_argv0, nullptr};
   QCoreApplication app(test_argc, test_argv);
   (void)app;
 
-  const fs::path base = fs::current_path() / ("gmm_test_mod_scan_worker_" +
-                                              std::to_string(getpid()));
-  const fs::path game_dir = base / "game";
-  const fs::path data_dir = game_dir / "Data";
-  const fs::path mods_dir = base / "mods";
+  const fs::path base =
+      fs::current_path() / ("gmm_test_mod_scan_worker_" + std::to_string(getpid()));
+  const fs::path game_dir    = base / "game";
+  const fs::path data_dir    = game_dir / "Data";
+  const fs::path mods_dir    = base / "mods";
   const fs::path ledger_file = base / ".gmm_deploy_ledger";
   std::error_code ec;
   fs::create_directories(data_dir, ec);
@@ -87,8 +87,7 @@ TEST_CASE("mod scan worker stray plugins", "[ui]") {
 
   // Deployed artifact #1: the real direct-symlink shape — a symlink in
   // Data/ pointing back into the mod folder.
-  fs::create_symlink(mods_dir / "MyMod" / "MyMod.esp", data_dir / "MyMod.esp",
-                     ec);
+  fs::create_symlink(mods_dir / "MyMod" / "MyMod.esp", data_dir / "MyMod.esp", ec);
   check(!ec, "deployed symlink created");
 
   // Deployed artifact #2: a REAL file that the ledger also owns (a game
@@ -124,12 +123,12 @@ TEST_CASE("mod scan worker stray plugins", "[ui]") {
   knowledge.set("testgame", "game_native_plugins", "Skyrim.esm");
 
   ui::ModScanRequest req;
-  req.knowledge = knowledge;
-  req.game_id = "testgame";
-  req.game_dir = game_link; // symlinked spelling
+  req.knowledge     = knowledge;
+  req.game_id       = "testgame";
+  req.game_dir      = game_link;  // symlinked spelling
   req.instance_root = base;
-  req.mods_dir = mods_dir;
-  req.ledger_file = ledger_file;
+  req.mods_dir      = mods_dir;
+  req.ledger_file   = ledger_file;
 
   struct ScanResult {
     ui::ModScanResult result;
@@ -137,7 +136,7 @@ TEST_CASE("mod scan worker stray plugins", "[ui]") {
   };
   std::vector<ScanResult> results;
   ui::ModScanThread thread(&app);
-  ui::ModScanWorker *worker = thread.worker();
+  ui::ModScanWorker* worker = thread.worker();
   QObject::connect(worker, &ui::ModScanWorker::finished, &app,
                    [&](ui::ModScanResult result, quint64 generation) {
                      results.push_back({std::move(result), generation});
@@ -158,7 +157,7 @@ TEST_CASE("mod scan worker stray plugins", "[ui]") {
   check(results.size() == 1, "exactly one result for the single scan");
   check(results[0].generation == 1, "finished() carries the run's generation");
 
-  const auto &scanned = results[0].result.scanned;
+  const auto& scanned = results[0].result.scanned;
 
   // The mod folder itself is scanned from the instance mods dir.
   check(by_folder(scanned, "MyMod") != nullptr,
@@ -172,7 +171,7 @@ TEST_CASE("mod scan worker stray plugins", "[ui]") {
         "ledger-owned real .esp is not synthesized as an unmanaged row");
 
   // A genuinely unmanaged plugin still gets the MO2 UnmanagedMods row.
-  const auto *user_drop = by_folder(scanned, "UserDrop.esp");
+  const auto* user_drop = by_folder(scanned, "UserDrop.esp");
   check(user_drop != nullptr, "user-dropped .esp still synthesized");
   check(user_drop != nullptr && user_drop->is_game_native,
         "user-dropped .esp row is flagged game-native (renders Unmanaged)");
@@ -185,20 +184,19 @@ TEST_CASE("mod scan worker stray plugins", "[ui]") {
 // game_dir/mods_subpath — the Isaac-on-macOS shape where the real mods
 // folder lives outside the install dir.
 TEST_CASE("mod scan worker game mods dir override", "[ui]") {
-  int test_argc = 1;
+  int test_argc     = 1;
   char test_argv0[] = "test";
-  char *test_argv[] = {test_argv0, nullptr};
+  char* test_argv[] = {test_argv0, nullptr};
   QCoreApplication app(test_argc, test_argv);
   (void)app;
 
-  const fs::path base = fs::current_path() / ("gmm_test_mod_scan_worker_ov_" +
-                                              std::to_string(getpid()));
+  const fs::path base =
+      fs::current_path() / ("gmm_test_mod_scan_worker_ov_" + std::to_string(getpid()));
   const fs::path game_dir = base / "game";
   const fs::path data_dir = game_dir / "Data";
   // The actual mods folder, OUTSIDE the game dir.
-  const fs::path external_mods =
-      base / "Binding of Isaac Afterbirth+ Mods";
-  const fs::path mods_dir = base / "mods";
+  const fs::path external_mods = base / "Binding of Isaac Afterbirth+ Mods";
+  const fs::path mods_dir      = base / "mods";
   std::error_code ec;
   fs::create_directories(data_dir, ec);
   fs::create_directories(external_mods, ec);
@@ -215,12 +213,12 @@ TEST_CASE("mod scan worker game mods dir override", "[ui]") {
   knowledge.set("testgame", "game_native_plugins", "Skyrim.esm");
 
   ui::ModScanRequest req;
-  req.knowledge = knowledge;
-  req.game_id = "testgame";
-  req.game_dir = game_dir;
-  req.game_mods_dir = external_mods; // the override under test
+  req.knowledge     = knowledge;
+  req.game_id       = "testgame";
+  req.game_dir      = game_dir;
+  req.game_mods_dir = external_mods;  // the override under test
   req.instance_root = base;
-  req.mods_dir = mods_dir;
+  req.mods_dir      = mods_dir;
 
   struct ScanResult {
     ui::ModScanResult result;
@@ -228,7 +226,7 @@ TEST_CASE("mod scan worker game mods dir override", "[ui]") {
   };
   std::vector<ScanResult> results;
   ui::ModScanThread thread(&app);
-  ui::ModScanWorker *worker = thread.worker();
+  ui::ModScanWorker* worker = thread.worker();
   QObject::connect(worker, &ui::ModScanWorker::finished, &app,
                    [&](ui::ModScanResult result, quint64 generation) {
                      results.push_back({std::move(result), generation});
@@ -246,7 +244,7 @@ TEST_CASE("mod scan worker game mods dir override", "[ui]") {
     }
   }
 
-  const auto &scanned = results[0].result.scanned;
+  const auto& scanned = results[0].result.scanned;
   check(by_folder(scanned, "ExternalStray.esp") != nullptr,
         "stray plugin in the overridden mods dir is synthesized");
   check(by_folder(scanned, "DataStray.esp") == nullptr,
@@ -260,14 +258,14 @@ TEST_CASE("mod scan worker game mods dir override", "[ui]") {
 // The instance mods dir (GMM storage for downloaded-but-not-yet-deployed
 // mods) merges IN, deduped by folder name.
 TEST_CASE("mod scan worker merge keeps game mods dir results", "[ui]") {
-  int test_argc = 1;
+  int test_argc     = 1;
   char test_argv0[] = "test";
-  char *test_argv[] = {test_argv0, nullptr};
+  char* test_argv[] = {test_argv0, nullptr};
   QCoreApplication app(test_argc, test_argv);
   (void)app;
 
-  const fs::path base = fs::current_path() / ("gmm_test_mod_scan_worker_mg_" +
-                                              std::to_string(getpid()));
+  const fs::path base =
+      fs::current_path() / ("gmm_test_mod_scan_worker_mg_" + std::to_string(getpid()));
   const fs::path game_dir = base / "game";
   const fs::path data_dir = game_dir / "Data";
   // The actual mods folder, OUTSIDE the game dir (Isaac-on-macOS shape).
@@ -298,12 +296,12 @@ TEST_CASE("mod scan worker merge keeps game mods dir results", "[ui]") {
   knowledge.set("testgame", "mods_subpath", "Data");
 
   ui::ModScanRequest req;
-  req.knowledge = knowledge;
-  req.game_id = "testgame";
-  req.game_dir = game_dir;
-  req.game_mods_dir = external_mods; // set => results are real, keep them
+  req.knowledge     = knowledge;
+  req.game_id       = "testgame";
+  req.game_dir      = game_dir;
+  req.game_mods_dir = external_mods;  // set => results are real, keep them
   req.instance_root = base;
-  req.mods_dir = mods_dir;
+  req.mods_dir      = mods_dir;
 
   struct ScanResult {
     ui::ModScanResult result;
@@ -311,7 +309,7 @@ TEST_CASE("mod scan worker merge keeps game mods dir results", "[ui]") {
   };
   std::vector<ScanResult> results;
   ui::ModScanThread thread(&app);
-  ui::ModScanWorker *worker = thread.worker();
+  ui::ModScanWorker* worker = thread.worker();
   QObject::connect(worker, &ui::ModScanWorker::finished, &app,
                    [&](ui::ModScanResult result, quint64 generation) {
                      results.push_back({std::move(result), generation});
@@ -329,7 +327,7 @@ TEST_CASE("mod scan worker merge keeps game mods dir results", "[ui]") {
     }
   }
 
-  const auto &scanned = results[0].result.scanned;
+  const auto& scanned = results[0].result.scanned;
   check(by_folder(scanned, "DeployedA") != nullptr,
         "game-mods-dir mod DeployedA survives the instance-mode scan");
   check(by_folder(scanned, "DeployedB") != nullptr,
@@ -337,7 +335,7 @@ TEST_CASE("mod scan worker merge keeps game mods dir results", "[ui]") {
   check(by_folder(scanned, "StoredOnly") != nullptr,
         "instance-stored mod is merged in");
   int shared_count = 0;
-  for (const auto &m : scanned)
+  for (const auto& m : scanned)
     if (m.folder_name == "Shared")
       ++shared_count;
   check(shared_count == 1, "folder present in both dirs appears exactly once");
@@ -351,15 +349,15 @@ TEST_CASE("mod scan worker merge keeps game mods dir results", "[ui]") {
 // folder wins game keys), orphans move to meta.bak/, and raw MO2 metas are
 // enriched in place. Idempotent: a second scan changes nothing.
 TEST_CASE("mod scan worker migrates sidecars in-folder", "[ui]") {
-  int test_argc = 1;
+  int test_argc     = 1;
   char test_argv0[] = "test";
-  char *test_argv[] = {test_argv0, nullptr};
+  char* test_argv[] = {test_argv0, nullptr};
   QCoreApplication app(test_argc, test_argv);
   (void)app;
 
-  const fs::path base = fs::current_path() / ("gmm_test_mod_scan_migrate_" +
-                                              std::to_string(getpid()));
-  const fs::path mods_dir = base / "mods";
+  const fs::path base =
+      fs::current_path() / ("gmm_test_mod_scan_migrate_" + std::to_string(getpid()));
+  const fs::path mods_dir   = base / "mods";
   const fs::path legacy_dir = base / "meta";
   std::error_code ec;
   fs::create_directories(mods_dir / "ModA", ec);
@@ -388,10 +386,10 @@ TEST_CASE("mod scan worker migrates sidecars in-folder", "[ui]") {
   engine::GameKnowledge knowledge;
 
   ui::ModScanRequest req;
-  req.knowledge = knowledge;
-  req.game_id = "testgame";
+  req.knowledge     = knowledge;
+  req.game_id       = "testgame";
   req.instance_root = base;
-  req.mods_dir = mods_dir;
+  req.mods_dir      = mods_dir;
 
   struct ScanResult {
     ui::ModScanResult result;
@@ -399,7 +397,7 @@ TEST_CASE("mod scan worker migrates sidecars in-folder", "[ui]") {
   };
   std::vector<ScanResult> results;
   ui::ModScanThread thread(&app);
-  ui::ModScanWorker *worker = thread.worker();
+  ui::ModScanWorker* worker = thread.worker();
   QObject::connect(worker, &ui::ModScanWorker::finished, &app,
                    [&](ui::ModScanResult result, quint64 generation) {
                      results.push_back({std::move(result), generation});
@@ -419,13 +417,11 @@ TEST_CASE("mod scan worker migrates sidecars in-folder", "[ui]") {
 
   // ModA merged: manager keys from the sidecar, game keys from the folder.
   {
-    const auto merged =
-        engine::ModMeta::load_file(mods_dir / "ModA" / "meta.ini");
+    const auto merged = engine::ModMeta::load_file(mods_dir / "ModA" / "meta.ini");
     check(merged.priority() == 5, "merged priority comes from the sidecar");
     check(merged.source_type() == "nexus", "merged source_type from sidecar");
     check(merged.source_id() == "42", "merged source_id from sidecar");
-    check(merged.get("General", "category") == "7",
-          "merged category from sidecar");
+    check(merged.get("General", "category") == "7", "merged category from sidecar");
     check(merged.get("General", "version") == "9.9",
           "merged version stays folder-owned");
     check(!fs::exists(legacy_dir / "ModA.ini"), "sidecar removed after merge");
@@ -433,8 +429,7 @@ TEST_CASE("mod scan worker migrates sidecars in-folder", "[ui]") {
 
   // ModB moved into the folder.
   {
-    const auto moved =
-        engine::ModMeta::load_file(mods_dir / "ModB" / "meta.ini");
+    const auto moved = engine::ModMeta::load_file(mods_dir / "ModB" / "meta.ini");
     check(moved.priority() == 2, "moved sidecar keeps its priority");
     check(!fs::exists(legacy_dir / "ModB.ini"), "sidecar removed after move");
   }
@@ -446,10 +441,8 @@ TEST_CASE("mod scan worker migrates sidecars in-folder", "[ui]") {
 
   // ModC enriched in place: GameModManager section stamped, game keys kept.
   {
-    const auto enriched =
-        engine::ModMeta::load_file(mods_dir / "ModC" / "meta.ini");
-    check(enriched.source_type() == "nexus",
-          "raw MO2 meta enriched with Nexus source");
+    const auto enriched = engine::ModMeta::load_file(mods_dir / "ModC" / "meta.ini");
+    check(enriched.source_type() == "nexus", "raw MO2 meta enriched with Nexus source");
     check(enriched.source_id() == "123", "enriched source_id is the modid");
     check(enriched.get("GameModManager", "folder") == "ModC",
           "enriched folder key stamped");
@@ -462,15 +455,15 @@ TEST_CASE("mod scan worker migrates sidecars in-folder", "[ui]") {
 // A second scan must not wipe it, and the orphan sweep must never
 // overwrite an existing rescue copy with a same-named sidecar.
 TEST_CASE("mod scan worker preserves meta.bak across scans", "[ui]") {
-  int test_argc = 1;
+  int test_argc     = 1;
   char test_argv0[] = "test";
-  char *test_argv[] = {test_argv0, nullptr};
+  char* test_argv[] = {test_argv0, nullptr};
   QCoreApplication app(test_argc, test_argv);
   (void)app;
 
-  const fs::path base = fs::current_path() / ("gmm_test_mod_scan_bak_" +
-                                              std::to_string(getpid()));
-  const fs::path mods_dir = base / "mods";
+  const fs::path base =
+      fs::current_path() / ("gmm_test_mod_scan_bak_" + std::to_string(getpid()));
+  const fs::path mods_dir   = base / "mods";
   const fs::path legacy_dir = base / "meta";
   std::error_code ec;
   fs::create_directories(mods_dir / "ModA", ec);
@@ -484,7 +477,7 @@ TEST_CASE("mod scan worker preserves meta.bak across scans", "[ui]") {
 
   engine::GameKnowledge knowledge;
   ui::ModScanThread thread(&app);
-  ui::ModScanWorker *worker = thread.worker();
+  ui::ModScanWorker* worker = thread.worker();
   std::vector<ui::ModScanResult> results;
   QObject::connect(worker, &ui::ModScanWorker::finished, &app,
                    [&](ui::ModScanResult result, quint64) {
@@ -492,10 +485,10 @@ TEST_CASE("mod scan worker preserves meta.bak across scans", "[ui]") {
                    });
   auto run_scan = [&](quint64 generation) {
     ui::ModScanRequest req;
-    req.knowledge = knowledge;
-    req.game_id = "testgame";
+    req.knowledge     = knowledge;
+    req.game_id       = "testgame";
     req.instance_root = base;
-    req.mods_dir = mods_dir;
+    req.mods_dir      = mods_dir;
     thread.start(std::move(req), generation);
     QElapsedTimer timer;
     timer.start();
@@ -512,16 +505,14 @@ TEST_CASE("mod scan worker preserves meta.bak across scans", "[ui]") {
 
   // The rescue copy wins: not overwritten by the same-named sidecar, and
   // the sidecar is left in place for a later retry.
-  check(engine::ModMeta::load_file(base / "meta.bak" / "Orphan.ini")
-            .priority() == 99,
+  check(engine::ModMeta::load_file(base / "meta.bak" / "Orphan.ini").priority() == 99,
         "orphan sweep never overwrites an existing rescue copy");
   check(fs::exists(legacy_dir / "Orphan.ini"),
         "skipped orphan sidecar stays in meta/ for the next scan");
 
   // A second scan must not wipe the rescue window.
   run_scan(2);
-  check(engine::ModMeta::load_file(base / "meta.bak" / "Orphan.ini")
-            .priority() == 99,
+  check(engine::ModMeta::load_file(base / "meta.bak" / "Orphan.ini").priority() == 99,
         "meta.bak/ survives a second scan");
 
   fs::remove_all(base, ec);
@@ -534,16 +525,16 @@ TEST_CASE("mod scan worker preserves meta.bak across scans", "[ui]") {
 // again are restored next to the mod; copies shadowing a newer in-folder
 // meta.ini, or with no folder anywhere, stay in meta.bak/.
 TEST_CASE("mod scan worker keeps game-dir sidecars out of meta.bak", "[ui]") {
-  int test_argc = 1;
+  int test_argc     = 1;
   char test_argv0[] = "test";
-  char *test_argv[] = {test_argv0, nullptr};
+  char* test_argv[] = {test_argv0, nullptr};
   QCoreApplication app(test_argc, test_argv);
   (void)app;
 
-  const fs::path base = fs::current_path() / ("gmm_test_mod_scan_gamedir_" +
-                                              std::to_string(getpid()));
-  const fs::path mods_dir = base / "mods";
-  const fs::path game_mods = base / "game" / "mods";
+  const fs::path base =
+      fs::current_path() / ("gmm_test_mod_scan_gamedir_" + std::to_string(getpid()));
+  const fs::path mods_dir   = base / "mods";
+  const fs::path game_mods  = base / "game" / "mods";
   const fs::path legacy_dir = base / "meta";
   std::error_code ec;
   fs::create_directories(mods_dir, ec);
@@ -576,7 +567,7 @@ TEST_CASE("mod scan worker keeps game-dir sidecars out of meta.bak", "[ui]") {
 
   engine::GameKnowledge knowledge;
   ui::ModScanThread thread(&app);
-  ui::ModScanWorker *worker = thread.worker();
+  ui::ModScanWorker* worker = thread.worker();
   std::vector<ui::ModScanResult> results;
   QObject::connect(worker, &ui::ModScanWorker::finished, &app,
                    [&](ui::ModScanResult result, quint64) {
@@ -584,10 +575,10 @@ TEST_CASE("mod scan worker keeps game-dir sidecars out of meta.bak", "[ui]") {
                    });
   {
     ui::ModScanRequest req;
-    req.knowledge = knowledge;
-    req.game_id = "testgame";
+    req.knowledge     = knowledge;
+    req.game_id       = "testgame";
     req.instance_root = base;
-    req.mods_dir = mods_dir;
+    req.mods_dir      = mods_dir;
     req.game_mods_dir = game_mods;
     thread.start(std::move(req), /*generation=*/1);
   }
@@ -602,12 +593,9 @@ TEST_CASE("mod scan worker keeps game-dir sidecars out of meta.bak", "[ui]") {
   }
 
   // The game-dir sidecar migrated next to its mod - not to meta.bak/.
-  check(!fs::exists(legacy_dir / "WorkshopMod.ini"),
-        "game-dir sidecar leaves meta/");
-  const auto moved =
-      engine::ModMeta::load_file(game_mods / "WorkshopMod" / "meta.ini");
-  check(moved.source_type() == "steam",
-        "migrated game-dir meta keeps source_type");
+  check(!fs::exists(legacy_dir / "WorkshopMod.ini"), "game-dir sidecar leaves meta/");
+  const auto moved = engine::ModMeta::load_file(game_mods / "WorkshopMod" / "meta.ini");
+  check(moved.source_type() == "steam", "migrated game-dir meta keeps source_type");
   check(moved.source_id() == "12345", "migrated game-dir meta keeps source_id");
   check(moved.get("General", "category") == "7",
         "migrated game-dir meta keeps category");
@@ -619,21 +607,99 @@ TEST_CASE("mod scan worker keeps game-dir sidecars out of meta.bak", "[ui]") {
   // The buried rescue copy is restored next to its mod.
   check(!fs::exists(base / "meta.bak" / "Buried.ini"),
         "restored rescue copy leaves meta.bak/");
-  const auto revived =
-      engine::ModMeta::load_file(game_mods / "Buried" / "meta.ini");
-  check(revived.source_id() == "999",
-        "restored game-dir meta keeps source_id");
+  const auto revived = engine::ModMeta::load_file(game_mods / "Buried" / "meta.ini");
+  check(revived.source_id() == "999", "restored game-dir meta keeps source_id");
 
   // Newer in-folder state wins; the rescue copy stays for manual restore.
   check(fs::exists(base / "meta.bak" / "Shadowed.ini"),
         "rescue copy shadowing in-folder meta stays in meta.bak/");
-  check(engine::ModMeta::load_file(game_mods / "Shadowed" / "meta.ini")
-            .priority() == 8,
+  check(engine::ModMeta::load_file(game_mods / "Shadowed" / "meta.ini").priority() == 8,
         "in-folder meta is never overwritten by a rescue copy");
 
   // No folder anywhere: stays buried.
   check(fs::exists(base / "meta.bak" / "Ghost.ini"),
         "rescue copy with no mod folder stays in meta.bak/");
+
+  fs::remove_all(base, ec);
+}
+
+// Workspace-5jk3: the scan worker prunes tracked-but-now-empty instance
+// stubs (a Steam unsubscribe deletes the real files but leaves the
+// GMM-written meta.ini behind) and drops them from the result list.
+// Untracked shells and live mods survive.
+TEST_CASE("mod scan worker prunes orphaned empty mods", "[ui]") {
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char* test_argv[] = {test_argv0, nullptr};
+  QCoreApplication app(test_argc, test_argv);
+  (void)app;
+
+  const fs::path base =
+      fs::current_path() / ("gmm_test_mod_scan_prune_" + std::to_string(getpid()));
+  const fs::path mods_dir = base / "mods";
+  std::error_code ec;
+  fs::create_directories(mods_dir, ec);
+
+  // Tracked ghost: meta.ini only.
+  fs::create_directories(mods_dir / "GhostMod", ec);
+  write_file(mods_dir / "GhostMod" / "meta.ini", "[General]\nversion=1.0\n");
+
+  // Untracked shell: meta.ini only, never installed.
+  fs::create_directories(mods_dir / "FreshShell", ec);
+  write_file(mods_dir / "FreshShell" / "meta.ini", "[General]\nversion=1.0\n");
+
+  // Tracked live mod: has a real file.
+  fs::create_directories(mods_dir / "LiveMod", ec);
+  write_file(mods_dir / "LiveMod" / "meta.ini", "[General]\nversion=2.0\n");
+  write_file(mods_dir / "LiveMod" / "data.txt", "content");
+
+  engine::ModStateTracker tracker(base);
+  tracker.record_install("GhostMod");
+  tracker.record_install("LiveMod");
+  check(tracker.save(), "tracker saved");
+
+  engine::GameKnowledge knowledge;
+  ui::ModScanThread thread(&app);
+  ui::ModScanWorker* worker = thread.worker();
+  std::vector<ui::ModScanResult> results;
+  QObject::connect(worker, &ui::ModScanWorker::finished, &app,
+                   [&](ui::ModScanResult result, quint64) {
+                     results.push_back(std::move(result));
+                   });
+  {
+    ui::ModScanRequest req;
+    req.knowledge     = knowledge;
+    req.game_id       = "testgame";
+    req.instance_root = base;
+    req.mods_dir      = mods_dir;
+    thread.start(std::move(req), /*generation=*/1);
+  }
+  QElapsedTimer timer;
+  timer.start();
+  while (results.empty()) {
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    QThread::msleep(2);
+    if (timer.elapsed() > 10000) {
+      FAIL("scan never landed");
+    }
+  }
+
+  check(results.size() == 1, "exactly one result for the single scan");
+  const auto& scanned = results.front().scanned;
+  check(by_folder(scanned, "GhostMod") == nullptr,
+        "pruned ghost is dropped from the result");
+  check(by_folder(scanned, "FreshShell") != nullptr,
+        "untracked shell stays in the result");
+  check(by_folder(scanned, "LiveMod") != nullptr, "live mod stays in the result");
+  check(!fs::exists(mods_dir / "GhostMod"), "pruned ghost folder is removed");
+  check(fs::is_directory(mods_dir / "FreshShell"), "untracked shell kept on disk");
+  check(fs::is_directory(mods_dir / "LiveMod"), "live mod kept on disk");
+
+  engine::ModStateTracker reloaded(base);
+  check(reloaded.load(), "tracker reloads");
+  const engine::ModStateTracker& viewed = reloaded;
+  check(viewed.entry("GhostMod") == nullptr, "ghost tracker entry removed");
+  check(viewed.entry("LiveMod") != nullptr, "live tracker entry kept");
 
   fs::remove_all(base, ec);
 }
