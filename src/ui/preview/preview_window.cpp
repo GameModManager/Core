@@ -146,8 +146,20 @@ public:
 
   [[nodiscard]] bool overlay_enabled() const { return overlay_enabled_; }
 
+  // Transparency checkerboard tile painted behind the pixmap. A null pixmap
+  // disables the grid. Painted here (before QLabel draws the pixmap) so the
+  // grid cannot be covered by an opaque label background.
+  void set_checker_tile(const QPixmap& tile) {
+    checker_tile_ = tile;
+    update();
+  }
+
 protected:
   void paintEvent(QPaintEvent* event) override {
+    if (!checker_tile_.isNull()) {
+      QPainter p(this);
+      p.fillRect(rect(), QBrush(checker_tile_));
+    }
     QLabel::paintEvent(event);
     if (!overlay_enabled_)
       return;
@@ -172,6 +184,7 @@ protected:
 private:
   QSize canvas_size_;
   bool overlay_enabled_ = false;
+  QPixmap checker_tile_;
 };
 
 namespace {
@@ -213,12 +226,18 @@ void PreviewWindow::set_checkerboard_style(int style) {
 void PreviewWindow::update_checkerboard_background() {
   const bool show = checkerboard_style_ != 0 && image_has_alpha_;
   if (!show) {
+    image_label_->set_checker_tile(QPixmap());
     image_label_->setPalette(default_label_palette_);
     scroll_->viewport()->setPalette(default_viewport_palette_);
     return;
   }
   const QPixmap tile =
       checker_pixmap_for_style(static_cast<CheckerboardStyle>(checkerboard_style_));
+  // Painted by DebugImageLabel::paintEvent before the pixmap so transparent
+  // pixels reveal the grid. The palette brushes below cover the viewport
+  // area around the label; both widgets need autoFillBackground (enabled
+  // once in the constructor) for palette brushes to paint.
+  image_label_->set_checker_tile(tile);
   auto pal = default_label_palette_;
   pal.setBrush(QPalette::Base, QBrush(tile));
   pal.setBrush(QPalette::Window, QBrush(tile));
@@ -272,6 +291,11 @@ PreviewWindow::PreviewWindow(QWidget* parent) : QDialog(parent) {
   scroll_->setAlignment(Qt::AlignCenter);
   image_label_ = new DebugImageLabel(scroll_);
   image_label_->setAlignment(Qt::AlignCenter);
+  // Palette brushes only paint when autoFillBackground is set; without this
+  // the checkerboard brush assigned in update_checkerboard_background() is
+  // silently ignored and the background stays plain gray.
+  image_label_->setAutoFillBackground(true);
+  scroll_->viewport()->setAutoFillBackground(true);
   checkerboard_style_       = Settings::instance().checkerboard_style();
   default_label_palette_    = image_label_->palette();
   default_viewport_palette_ = scroll_->viewport()->palette();
