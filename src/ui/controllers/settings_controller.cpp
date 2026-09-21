@@ -66,6 +66,7 @@
 #include "ui/overwrite/query_overwrite_dialog.h"
 #include "ui/panels/tab_panels.h"
 #include "ui/preview/preview_window.h"
+#include "ui/settings/instance_settings.h"
 #include "ui/settings/settings.h"
 #include "ui/settings/settings_dialog.h"
 #include "ui/theme/icon_manager.h"
@@ -1392,6 +1393,21 @@ bool SettingsController::switch_to_instance(const QString& name) {
   if (display_name.empty())
     display_name = game_id;
 
+  // Per-instance settings (Workspace-jagw): when the effective
+  // theme/style/icons/plugins of the target differ from the current ones, a
+  // live switch would leave stale state behind (notably the already-loaded
+  // plugin set), so restart into the target instance like MO2 does. w_->close()
+  // persists app state first and lets the user veto (active downloads).
+  if (ui::instance_effective_settings_differ(w_->current_instance_root_,
+                                             inst.info().root)) {
+    engine::Logger::instance().info("Per-instance settings differ for " + selected +
+                                    " - restarting to apply");
+    if (!w_->close())
+      return false;  // vetoed: stay on the current instance
+    engine::write_last_instance(selected);
+    ui::restart_application({"--instance", QString::fromStdString(selected)});
+    return true;
+  }
   engine::write_last_instance(selected);
   set_game_info(game_id, display_name, "Default", info.game_dir, inst.info().root);
   engine::Logger::instance().debug("Switched to instance: " + selected);
