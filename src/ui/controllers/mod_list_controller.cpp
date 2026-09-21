@@ -3629,6 +3629,8 @@ void ModListController::save_order() {
   if (!out)
     return;
   out << engine::serialize_instance_toml(*tbl);
+  out.flush();
+  engine::invalidate_instance_toml_cache(toml_path);
 }
 
 void ModListController::load_order() {
