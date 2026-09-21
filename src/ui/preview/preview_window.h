@@ -4,6 +4,7 @@
 #include <QLabel>
 #include <QPalette>
 #include <QPixmap>
+#include <QSize>
 #include <QSlider>
 #include <QString>
 #include <QStringList>
@@ -80,8 +81,13 @@ public:
   void set_checkerboard_style(int style);
   [[nodiscard]] int checkerboard_style() const { return checkerboard_style_; }
 
+  // Size of the pixmap currently shown in the image label (empty when no
+  // image is displayed). Test hook for the auto-fit behavior.
+  [[nodiscard]] QSize displayed_pixmap_size() const;
+
 protected:
   void resizeEvent(QResizeEvent* event) override;
+  void showEvent(QShowEvent* event) override;
   void keyPressEvent(QKeyEvent* event) override;
 
 private slots:

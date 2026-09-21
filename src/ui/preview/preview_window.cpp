@@ -18,6 +18,7 @@
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
+#include <QShowEvent>
 #include <QSlider>
 #include <QStackedWidget>
 #include <QTextBrowser>
@@ -855,22 +856,28 @@ void PreviewWindow::apply_zoom() {
   }
   QSize target;
   if (fit_) {
-    const auto vp = scroll_->viewport()->size();
-    if (vp.isEmpty()) {
+    // Scale the whole image to fit inside the viewport (aspect preserved).
+    // The factor min(viewport_w / image_w, viewport_h / image_h) is
+    // deliberately uncapped in both directions: small images scale UP to
+    // fill the window instead of rendering tiny, large images scale DOWN
+    // so they are not cropped.
+    const QSize img = current_pixmap_.size();
+    const QSize vp  = scroll_->viewport()->size();
+    if (vp.isEmpty() || img.isEmpty()) {
+      // No viewport geometry yet (first open while still hidden): show the
+      // raw pixmap; showEvent re-fits once the real size exists.
       image_label_->setPixmap(current_pixmap_);
+      zoom_label_->setText(QStringLiteral("100%"));
       return;
     }
-    target = vp;
+    const qreal scale = qMin(vp.width() / static_cast<qreal>(img.width()),
+                             vp.height() / static_cast<qreal>(img.height()));
+    target            = QSize(static_cast<int>(img.width() * scale),
+                              static_cast<int>(img.height() * scale));
   } else {
     target = current_pixmap_.size() * zoom_;
   }
   target = target.expandedTo(QSize(1, 1));
-  // Constrain to the available column width only in fit mode so that
-  // zoomed-in views can scroll beyond the viewport edge.
-  if (fit_) {
-    if (int col_w = scroll_->viewport()->width(); col_w > 0)
-      target.setWidth(std::min(target.width(), col_w));
-  }
   image_label_->setPixmap(
       current_pixmap_.scaled(target, Qt::KeepAspectRatio, Qt::SmoothTransformation));
   if (!fit_)
@@ -887,6 +894,23 @@ void PreviewWindow::resizeEvent(QResizeEvent* event) {
              stack_->currentWidget() == image_page_) {
     apply_zoom();
   }
+}
+
+void PreviewWindow::showEvent(QShowEvent* event) {
+  QDialog::showEvent(event);
+  // show_file() fits against a hidden (possibly empty) viewport on the
+  // first open, so the initial pixmap may be unfitted; re-fit now that the
+  // real geometry exists so the first visible frame already fills the
+  // window (small images scaled up, large images scaled down).
+  if (fit_ && stack_ && stack_->isVisible() && stack_->currentWidget() == image_page_) {
+    apply_zoom();
+  }
+}
+
+QSize PreviewWindow::displayed_pixmap_size() const {
+  if (!image_label_ || image_label_->pixmap().isNull())
+    return QSize();
+  return image_label_->pixmap().size();
 }
 
 void PreviewWindow::keyPressEvent(QKeyEvent* event) {
