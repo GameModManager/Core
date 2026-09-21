@@ -35,41 +35,41 @@
 #include "engine/source/modl/provider.h"
 #include "engine/source/modpub/provider.h"
 #include "engine/source/nexus_provider.h"
-#include "engine/source/registry.h"
 #include "engine/source/nxm/managed_games.h"
 #include "engine/source/nxm/nxm_router.h"
+#include "engine/source/registry.h"
 #include "engine/source/router.h"
 #include "engine/source/steam_workshop_provider.h"
 #include "ui/install/install_progress_dialog.h"
 #include "ui/main_window/main_window.h"
+#include "ui/network/network_options_bridge.h"
 #include "ui/nxm/nxm_ipc.h"
 #include "ui/panels/tab_panels.h"
 #include "ui/settings/settings.h"
 #include "ui/widgets/right_panel.h"
 #include "ui/widgets/save_info_dialog.h"
 #include "ui/workers/pipeline_worker.h"
-#include "ui/network/network_options_bridge.h"
 
 namespace ui {
 
 namespace {
 
-// FNV-1a 64-bit. std::hash<std::string> is implementation-defined and (on
-// libstdc++) randomized per-process via SipHash, so manifest keys derived
-// from it change between runs and break resume / produce duplicates on a
-// re-click. FNV-1a is process-stable and good enough as a map key.
-uint64_t stable_hash64(const std::string &s) {
+  // FNV-1a 64-bit. std::hash<std::string> is implementation-defined and (on
+  // libstdc++) randomized per-process via SipHash, so manifest keys derived
+  // from it change between runs and break resume / produce duplicates on a
+  // re-click. FNV-1a is process-stable and good enough as a map key.
+  uint64_t stable_hash64(const std::string& s) {
     uint64_t h = 0xcbf29ce484222325ULL;
     for (unsigned char c : s) {
-        h ^= c;
-        h *= 0x100000001b3ULL;
+      h ^= c;
+      h *= 0x100000001b3ULL;
     }
     return h;
-}
+  }
 
-} // namespace
+}  // namespace
 
-DownloadsController::DownloadsController(MainWindow *w, QObject *parent)
+DownloadsController::DownloadsController(MainWindow* w, QObject* parent)
     : QObject(parent), w_(w) {}
 
 void DownloadsController::setup_pipeline() {
@@ -86,11 +86,10 @@ void DownloadsController::setup_pipeline() {
 
   // Download finished (download-only, MO2 model): the row becomes Complete
   // with a real file path; installation is a separate user-triggered step.
-  connect(w_->pipeline_thread_->worker(), &PipelineWorker::download_complete,
-          this,
-          [this](const std::string &id, bool success,
-                 const std::string &archive_path, const std::string &name) {
-            auto *dt = w_->right_panel_->downloads_tab();
+  connect(w_->pipeline_thread_->worker(), &PipelineWorker::download_complete, this,
+          [this](const std::string& id, bool success, const std::string& archive_path,
+                 const std::string& name) {
+            auto* dt = w_->right_panel_->downloads_tab();
             if (dt) {
               if (!archive_path.empty())
                 dt->set_file_path(id, archive_path);
@@ -110,9 +109,9 @@ void DownloadsController::setup_pipeline() {
   // Prefer the source-resolved mod/file name; fall back to the raw archive
   // name (extension stripped) so the row is descriptive either way.
   connect(w_->pipeline_thread_->worker(), &PipelineWorker::download_meta, this,
-          [this](const std::string &id, const std::string &archive_name,
-                 const std::string &display_name) {
-            auto *dt = w_->right_panel_->downloads_tab();
+          [this](const std::string& id, const std::string& archive_name,
+                 const std::string& display_name) {
+            auto* dt = w_->right_panel_->downloads_tab();
             if (!dt)
               return;
             std::string name = display_name;
@@ -128,45 +127,43 @@ void DownloadsController::setup_pipeline() {
   // lock put up at install_requested is released on every terminal signal
   // (success, failure, cancel). A failed install leaves the download row in
   // its download state - only a failed download marks it Failed.
-  connect(
-      w_->pipeline_thread_->worker(), &PipelineWorker::install_complete, this,
-      [this](const std::string &mod_id, bool success, const std::string &,
-             const std::string &installed_folder) {
-        hide_install_progress();
-        w_->set_ui_enabled(true);
-        auto *dt = w_->right_panel_->downloads_tab();
-        if (dt) {
-          if (success) {
-            if (!w_->current_game_id_.empty() && !installed_folder.empty()) {
-              engine::Logger::instance().debug("Install finished for " +
-                                               mod_id + ", adding " +
-                                               installed_folder);
-              w_->mod_list_->add_installed_mod(installed_folder);
-              // P1.3 event bus: mirror MO2 onModInstalled. The bus
-              // handler runs synchronously here (install is UI-thread);
-              // a subscribed plugin must not block.
-              engine::EventBus::instance().dispatch(
-                  engine::events::kModInstalled, engine::json_obj({
-                                                     {"mod", installed_folder},
-                                                     {"name", installed_folder},
-                                                 }));
+  connect(w_->pipeline_thread_->worker(), &PipelineWorker::install_complete, this,
+          [this](const std::string& mod_id, bool success, const std::string&,
+                 const std::string& installed_folder) {
+            hide_install_progress();
+            w_->set_ui_enabled(true);
+            auto* dt = w_->right_panel_->downloads_tab();
+            if (dt) {
+              if (success) {
+                if (!w_->current_game_id_.empty() && !installed_folder.empty()) {
+                  engine::Logger::instance().debug("Install finished for " + mod_id +
+                                                   ", adding " + installed_folder);
+                  w_->mod_list_->add_installed_mod(installed_folder);
+                  // P1.3 event bus: mirror MO2 onModInstalled. The bus
+                  // handler runs synchronously here (install is UI-thread);
+                  // a subscribed plugin must not block.
+                  engine::EventBus::instance().dispatch(engine::events::kModInstalled,
+                                                        engine::json_obj({
+                                                            {"mod", installed_folder},
+                                                            {"name", installed_folder},
+                                                        }));
+                }
+                dt->mark_installed(mod_id);
+              }
+              // Install failure is NOT a download failure: the row keeps its
+              // download state (Complete, retryable Install button). The error
+              // was already logged to the console by the pipeline worker /
+              // extract stage - don't flip the download to Failed here.
             }
-            dt->mark_installed(mod_id);
-          }
-          // Install failure is NOT a download failure: the row keeps its
-          // download state (Complete, retryable Install button). The error
-          // was already logged to the console by the pipeline worker /
-          // extract stage - don't flip the download to Failed here.
-        }
-        // Persist download state
-        save_download_manifest();
-      });
+            // Persist download state
+            save_download_manifest();
+          });
 
   // Install canceled by the user (FOMOD wizard or overwrite dialog): NOT a
   // failure - leave the download in whatever state it had (no Failed mark).
   // Release the UI lock the same way as install_complete.
-  connect(w_->pipeline_thread_->worker(), &PipelineWorker::install_canceled,
-          this, [this](const std::string &) {
+  connect(w_->pipeline_thread_->worker(), &PipelineWorker::install_canceled, this,
+          [this](const std::string&) {
             hide_install_progress();
             w_->set_ui_enabled(true);
             save_download_manifest();
@@ -174,24 +171,22 @@ void DownloadsController::setup_pipeline() {
 
   // Forward install-stage progress (extract/copy) to the install progress
   // popup. Emitted on the worker thread; this connection auto-queues it.
-  connect(w_->pipeline_thread_->worker(), &PipelineWorker::install_progress,
-          this, &DownloadsController::update_install_progress);
+  connect(w_->pipeline_thread_->worker(), &PipelineWorker::install_progress, this,
+          &DownloadsController::update_install_progress);
 
   // A download was paused mid-fetch (partial file kept for resume).
   connect(w_->pipeline_thread_->worker(), &PipelineWorker::paused, this,
-          [this](const std::string &id) {
-            auto *dt = w_->right_panel_->downloads_tab();
+          [this](const std::string& id) {
+            auto* dt = w_->right_panel_->downloads_tab();
             if (dt)
               dt->mark_paused(id);
             save_download_manifest();
           });
 
   // Forward download progress to the DownloadsTab
-  connect(w_->pipeline_thread_->worker(), &PipelineWorker::download_progress,
-          this,
-          [this](const std::string &mod_id, int64_t dl, int64_t total,
-                 double speed) {
-            auto *dt = w_->right_panel_->downloads_tab();
+  connect(w_->pipeline_thread_->worker(), &PipelineWorker::download_progress, this,
+          [this](const std::string& mod_id, int64_t dl, int64_t total, double speed) {
+            auto* dt = w_->right_panel_->downloads_tab();
             if (dt)
               dt->update_progress(mod_id, dl, total, speed);
           });
@@ -228,36 +223,41 @@ void DownloadsController::setup_nxm_ipc() {
   w_->nxm_ipc_ = new engine::NxmIpcServer(w_);
   if (w_->nxm_ipc_->startListening()) {
     connect(w_->nxm_ipc_, &engine::NxmIpcServer::nxmUrlReceived, this,
-            [this](const QString &url) {
+            [this](const QString& url) {
               std::string raw = url.toStdString();
               engine::Logger::instance().debug("[NXM-Parse] Raw URL received: " + raw);
               // Accept gmm:// URLs too - convert to nxm:// for the parser
               static const std::string gmm_pre = "gmm://nexus/";
               if (raw.compare(0, gmm_pre.size(), gmm_pre) == 0) {
                 raw = "nxm://" + raw.substr(gmm_pre.size());
-                engine::Logger::instance().debug("[NXM-Parse] Converted gmm:// to nxm://: " + raw);
+                engine::Logger::instance().debug(
+                    "[NXM-Parse] Converted gmm:// to nxm://: " + raw);
               }
               // Try nxm first; fall back to modl (the protocol is a
               // generic URL forwarder, not nxm-specific - keep the signal
               // name for backward-compat with older builds).
               auto nxm = engine::NxmRouter::parse(raw);
               if (nxm.valid()) {
-                engine::Logger::instance().debug("[NXM-Parse] Parsed NXM link: domain=" + nxm.nexus_domain +
-                                                 " mod_id=" + std::to_string(nxm.mod_id) +
-                                                 " file_id=" + std::to_string(nxm.file_id) +
-                                                 " key=" + (nxm.key.empty() ? "absent" : "present") +
-                                                 " expire=" + (nxm.expire > 0 ? std::to_string(nxm.expire) : "none"));
+                engine::Logger::instance().debug(
+                    "[NXM-Parse] Parsed NXM link: domain=" + nxm.nexus_domain +
+                    " mod_id=" + std::to_string(nxm.mod_id) +
+                    " file_id=" + std::to_string(nxm.file_id) +
+                    " key=" + (nxm.key.empty() ? "absent" : "present") + " expire=" +
+                    (nxm.expire > 0 ? std::to_string(nxm.expire) : "none"));
                 handle_nxm_download(nxm);
                 return;
               }
-              engine::Logger::instance().debug("[NXM-Parse] NXM parse failed, trying modl://");
+              engine::Logger::instance().debug(
+                  "[NXM-Parse] NXM parse failed, trying modl://");
               auto modl = engine::Source::Router::parse_modl(raw);
               if (modl.valid()) {
-                engine::Logger::instance().debug("[NXM-Parse] Parsed modl link: game_id=" + modl.game_id +
-                                                 " direct_url=" + modl.direct_url);
+                engine::Logger::instance().debug(
+                    "[NXM-Parse] Parsed modl link: game_id=" + modl.game_id +
+                    " direct_url=" + modl.direct_url);
                 handle_modl_download(modl);
               } else {
-                engine::Logger::instance().warn("[NXM-Parse] Failed to parse URL as nxm:// or modl://: " + raw);
+                engine::Logger::instance().warn(
+                    "[NXM-Parse] Failed to parse URL as nxm:// or modl://: " + raw);
               }
             });
   }
@@ -268,7 +268,7 @@ bool DownloadsController::confirm_close() {
   // to never ask again ("Don't Ask" persists the preference). MO2 asks the
   // same question (mainwindow.cpp canExit); here Ok/Quit/Don't Ask all
   // proceed with the close, Cancel aborts it.
-  auto *dt = w_->right_panel_ ? w_->right_panel_->downloads_tab() : nullptr;
+  auto* dt = w_->right_panel_ ? w_->right_panel_->downloads_tab() : nullptr;
   if (dt && dt->has_active_download() &&
       Settings::instance().confirm_close_with_downloads()) {
     QMessageBox box(w_);
@@ -276,15 +276,14 @@ bool DownloadsController::confirm_close() {
     box.setIcon(QMessageBox::Warning);
     box.setText(tr("You have active downloads in progress.\n"
                    "Closing the application will cancel them."));
-    auto *ok_btn = box.addButton(tr("Ok"), QMessageBox::AcceptRole);
-    auto *quit_btn = box.addButton(tr("Quit"), QMessageBox::AcceptRole);
-    auto *dont_ask_btn =
-        box.addButton(tr("Don't Ask"), QMessageBox::AcceptRole);
-    auto *cancel_btn = box.addButton(tr("Cancel"), QMessageBox::RejectRole);
+    auto* ok_btn       = box.addButton(tr("Ok"), QMessageBox::AcceptRole);
+    auto* quit_btn     = box.addButton(tr("Quit"), QMessageBox::AcceptRole);
+    auto* dont_ask_btn = box.addButton(tr("Don't Ask"), QMessageBox::AcceptRole);
+    auto* cancel_btn   = box.addButton(tr("Cancel"), QMessageBox::RejectRole);
     box.setDefaultButton(cancel_btn);
     box.exec();
 
-    QAbstractButton *clicked = box.clickedButton();
+    QAbstractButton* clicked = box.clickedButton();
     if (clicked == cancel_btn) {
       return false;
     }
@@ -297,7 +296,7 @@ bool DownloadsController::confirm_close() {
 }
 
 void DownloadsController::save_download_manifest() {
-  auto *dt = w_->right_panel_->downloads_tab();
+  auto* dt = w_->right_panel_->downloads_tab();
   if (!dt)
     return;
   auto path = w_->download_manifest_path();
@@ -324,7 +323,7 @@ void DownloadsController::load_download_manifest() {
                    std::istreambuf_iterator<char>());
   if (json.empty())
     return;
-  auto *dt = w_->right_panel_->downloads_tab();
+  auto* dt = w_->right_panel_->downloads_tab();
   if (!dt)
     return;
   auto downloads_dir = w_->downloads_dir_path();
@@ -332,7 +331,7 @@ void DownloadsController::load_download_manifest() {
 }
 
 void DownloadsController::wire_downloads_tab() {
-  auto *dt = w_->right_panel_->downloads_tab();
+  auto* dt = w_->right_panel_->downloads_tab();
   if (!dt)
     return;
 
@@ -344,10 +343,10 @@ void DownloadsController::wire_downloads_tab() {
   dt->set_downloads_dir(w_->downloads_dir_path());
 
   connect(dt, &DownloadsTab::install_requested, this,
-          [this](const std::string &mod_id, const std::filesystem::path &fp,
-                 const std::string &source_type, const std::string &source_id,
-                 int file_id, const std::string &display_name,
-                 const std::string &page_url) {
+          [this](const std::string& mod_id, const std::filesystem::path& fp,
+                 const std::string& source_type, const std::string& source_id,
+                 int file_id, const std::string& display_name,
+                 const std::string& page_url) {
             if (!w_->pipeline_thread_)
               return;
             // Lock the interface for the duration of the install so the user
@@ -356,8 +355,8 @@ void DownloadsController::wire_downloads_tab() {
             w_->set_ui_enabled(false);
             QMetaObject::invokeMethod(
                 w_->pipeline_thread_->worker(),
-                [this, mod_id, fp, source_type, source_id, file_id,
-                 display_name, page_url]() {
+                [this, mod_id, fp, source_type, source_id, file_id, display_name,
+                 page_url]() {
                   w_->pipeline_thread_->worker()->install_mod(
                       mod_id, fp.string(), source_type, source_id, file_id,
                       display_name, page_url);
@@ -366,83 +365,79 @@ void DownloadsController::wire_downloads_tab() {
           });
   connect(dt, &DownloadsTab::loverslab_url_entered, this,
           &DownloadsController::start_loverslab_download);
-  connect(dt, &DownloadsTab::pause_requested, this,
-          [this](const std::string &id) {
-            if (!w_->pipeline_thread_)
-              return;
-            QMetaObject::invokeMethod(
-                w_->pipeline_thread_->worker(),
-                [this, id]() {
-                  w_->pipeline_thread_->worker()->pause_download(id);
-                },
-                Qt::QueuedConnection);
-          });
-  connect(
-      dt, &DownloadsTab::resume_requested, this, [this](const std::string &id) {
-        if (!w_->pipeline_thread_)
-          return;
-        auto *dtab = w_->right_panel_->downloads_tab();
-        if (dtab)
-          dtab->mark_downloading(id);
-        auto mods_dir = w_->mods_dir_path().string();
-        // Nexus downloads resume with their original NXM link...
-        auto it_nxm = w_->nxm_links_.find(id);
-        if (it_nxm != w_->nxm_links_.end()) {
-          auto link = it_nxm->second;
-          QMetaObject::invokeMethod(
-              w_->pipeline_thread_->worker(),
-              [this, id, link, mods_dir]() {
-                w_->pipeline_thread_->worker()->download_mod(
-                    id, link, w_->current_game_id_, mods_dir);
-              },
-              Qt::QueuedConnection);
-          return;
-        }
-        // ...modl:// downloads resume with their original link.
-        auto it_modl = w_->modl_links_.find(id);
-        if (it_modl != w_->modl_links_.end()) {
-          auto link = it_modl->second;
-          QMetaObject::invokeMethod(
-              w_->pipeline_thread_->worker(),
-              [this, id, link, mods_dir]() {
-                w_->pipeline_thread_->worker()->download_modl(
-                    id, link, w_->current_game_id_, mods_dir);
-              },
-              Qt::QueuedConnection);
-          return;
-        }
-        // ...LoversLab downloads resume with their original URL.
-        auto it_url = w_->url_downloads_.find(id);
-        if (it_url != w_->url_downloads_.end()) {
-          auto url = it_url->second;
-          QMetaObject::invokeMethod(
-              w_->pipeline_thread_->worker(),
-              [this, id, url, mods_dir]() {
-                w_->pipeline_thread_->worker()->download_mod_url(
-                    id, url, w_->current_game_id_, mods_dir);
-              },
-              Qt::QueuedConnection);
-        }
-      });
-  connect(dt, &DownloadsTab::entry_removed, this,
-          [this](const std::string &id) {
-            w_->nxm_links_.erase(id);
-            w_->modl_links_.erase(id);
-            w_->url_downloads_.erase(id);
-            save_download_manifest();
-          });
+  connect(dt, &DownloadsTab::pause_requested, this, [this](const std::string& id) {
+    if (!w_->pipeline_thread_)
+      return;
+    QMetaObject::invokeMethod(
+        w_->pipeline_thread_->worker(),
+        [this, id]() {
+          w_->pipeline_thread_->worker()->pause_download(id);
+        },
+        Qt::QueuedConnection);
+  });
+  connect(dt, &DownloadsTab::resume_requested, this, [this](const std::string& id) {
+    if (!w_->pipeline_thread_)
+      return;
+    auto* dtab = w_->right_panel_->downloads_tab();
+    if (dtab)
+      dtab->mark_downloading(id);
+    auto mods_dir = w_->mods_dir_path().string();
+    // Nexus downloads resume with their original NXM link...
+    auto it_nxm = w_->nxm_links_.find(id);
+    if (it_nxm != w_->nxm_links_.end()) {
+      auto link = it_nxm->second;
+      QMetaObject::invokeMethod(
+          w_->pipeline_thread_->worker(),
+          [this, id, link, mods_dir]() {
+            w_->pipeline_thread_->worker()->download_mod(id, link, w_->current_game_id_,
+                                                         mods_dir);
+          },
+          Qt::QueuedConnection);
+      return;
+    }
+    // ...modl:// downloads resume with their original link.
+    auto it_modl = w_->modl_links_.find(id);
+    if (it_modl != w_->modl_links_.end()) {
+      auto link = it_modl->second;
+      QMetaObject::invokeMethod(
+          w_->pipeline_thread_->worker(),
+          [this, id, link, mods_dir]() {
+            w_->pipeline_thread_->worker()->download_modl(
+                id, link, w_->current_game_id_, mods_dir);
+          },
+          Qt::QueuedConnection);
+      return;
+    }
+    // ...LoversLab downloads resume with their original URL.
+    auto it_url = w_->url_downloads_.find(id);
+    if (it_url != w_->url_downloads_.end()) {
+      auto url = it_url->second;
+      QMetaObject::invokeMethod(
+          w_->pipeline_thread_->worker(),
+          [this, id, url, mods_dir]() {
+            w_->pipeline_thread_->worker()->download_mod_url(
+                id, url, w_->current_game_id_, mods_dir);
+          },
+          Qt::QueuedConnection);
+    }
+  });
+  connect(dt, &DownloadsTab::entry_removed, this, [this](const std::string& id) {
+    w_->nxm_links_.erase(id);
+    w_->modl_links_.erase(id);
+    w_->url_downloads_.erase(id);
+    save_download_manifest();
+  });
 }
 
 void DownloadsController::wire_saves_tab() {
-  auto *st = w_->right_panel_->saves_tab();
+  auto* st = w_->right_panel_->saves_tab();
   if (!st)
     return;
 
   // Saves live under documents/My Games/<game> (game_mygames_dir()). The
   // "Saves" leaf is knowledge-driven where the game plugin defines it; the
   // Bethesda-family default applies to Skyrim/FO4/etc.
-  auto sub =
-      w_->knowledge_->get(w_->current_game_id_, "saves_subpath", "Saves");
+  auto sub = w_->knowledge_->get(w_->current_game_id_, "saves_subpath", "Saves");
   const auto saves_dir = w_->game_mygames_dir() / sub;
   engine::Logger::instance().debug("Saves tab: scanning " + saves_dir.string());
   st->set_saves_dir(saves_dir);
@@ -465,7 +460,7 @@ void DownloadsController::wire_saves_tab() {
 }
 
 void DownloadsController::on_saves_refresh_requested() {
-  auto *st = w_->right_panel_->saves_tab();
+  auto* st = w_->right_panel_->saves_tab();
   if (!st)
     return;
 
@@ -474,19 +469,18 @@ void DownloadsController::on_saves_refresh_requested() {
   if (request.saves_dir.empty())
     return;
   request.extensions = {"ess"};
-  request.game_id = w_->current_game_id_;
+  request.game_id    = w_->current_game_id_;
   // Snapshot the plugin list so results reflect the load order at the moment
   // the refresh was asked for (missing-asset state moves with toggles).
-  request.plugins = w_->plugins_db_.plugins();
-  request.mods_dir = w_->mods_dir_path();
+  request.plugins       = w_->plugins_db_.plugins();
+  request.mods_dir      = w_->mods_dir_path();
   request.overwrite_dir = w_->overwrite_dir_path();
   st->request_scan(std::move(request));
 }
 
-void DownloadsController::on_saves_delete_requested(
-    const QStringList &filepaths) {
+void DownloadsController::on_saves_delete_requested(const QStringList& filepaths) {
   // Trash (never permanent): engine::remove_path -> QDir::moveToTrash.
-  for (const auto &fp : filepaths) {
+  for (const auto& fp : filepaths) {
     engine::remove_path(std::filesystem::path(fp.toStdString()),
                         /*permanent=*/false);
   }
@@ -499,26 +493,25 @@ void DownloadsController::on_save_information_requested(int row) {
   // pull the parsed SaveGame + the scan's missing-assets list from there.
   // We take a LIVE snapshot of the load order here (not the scan-time one
   // baked into the request) so toggles since the scan show up.
-  auto *st = w_->right_panel_->saves_tab();
+  auto* st = w_->right_panel_->saves_tab();
   if (!st)
     return;
-  const engine::SaveGame *save = st->save_at(row);
-  const std::vector<engine::SaveMissingAsset> *missing = st->missing_at(row);
+  const engine::SaveGame* save                         = st->save_at(row);
+  const std::vector<engine::SaveMissingAsset>* missing = st->missing_at(row);
   if (!save)
     return;
 
   // ponytail: stack-alloc the dialog, run modal exec(); the dialog's
   // geometry is persisted via Settings so it remembers size/position.
   ui::SaveInfoDialog dlg(*save, w_->plugins_db_.plugins(),
-                         missing ? *missing
-                                 : std::vector<engine::SaveMissingAsset>{},
+                         missing ? *missing : std::vector<engine::SaveMissingAsset>{},
                          w_);
   dlg.exec();
 }
 
-void DownloadsController::update_install_progress(const std::string &mod_id,
+void DownloadsController::update_install_progress(const std::string& mod_id,
                                                   int percent,
-                                                  const std::string &status) {
+                                                  const std::string& status) {
   // A new install resets the popup (title, bar) and (re)arms the deferred
   // show. Subsequent updates for the same install just refresh it.
   if (mod_id != w_->active_install_progress_id_) {
@@ -530,11 +523,10 @@ void DownloadsController::update_install_progress(const std::string &mod_id,
     if (!w_->install_progress_show_timer_) {
       w_->install_progress_show_timer_ = new QTimer(w_);
       w_->install_progress_show_timer_->setSingleShot(true);
-      connect(w_->install_progress_show_timer_, &QTimer::timeout, this,
-              [this]() {
-                if (w_->install_progress_dialog_)
-                  w_->install_progress_dialog_->show();
-              });
+      connect(w_->install_progress_show_timer_, &QTimer::timeout, this, [this]() {
+        if (w_->install_progress_dialog_)
+          w_->install_progress_dialog_->show();
+      });
     }
     // ~300ms delay so a quick install never flashes the dialog (MO2
     // behaves the same way - the popup only appears for the slow part).
@@ -548,8 +540,7 @@ void DownloadsController::update_install_progress(const std::string &mod_id,
   }
 
   if (w_->install_progress_dialog_) {
-    w_->install_progress_dialog_->set_status(QString::fromStdString(status),
-                                             percent);
+    w_->install_progress_dialog_->set_status(QString::fromStdString(status), percent);
   }
 }
 
@@ -561,10 +552,11 @@ void DownloadsController::hide_install_progress() {
     w_->install_progress_dialog_->hide();
 }
 
-void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
+void DownloadsController::handle_nxm_download(const engine::NxmLink& link) {
   engine::Logger::instance().debug("[NXM-Download] handle_nxm_download called");
   if (!link.valid()) {
-    engine::Logger::instance().warn("[NXM-Download] Invalid NXM link received (empty nexus_domain)");
+    engine::Logger::instance().warn(
+        "[NXM-Download] Invalid NXM link received (empty nexus_domain)");
     return;
   }
 
@@ -581,55 +573,67 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
     }
   }
 
-  engine::Logger::instance().debug("[NXM-Download] Parsed link: domain=" + link.nexus_domain +
-                                   " mod_id=" + std::to_string(link.mod_id) +
-                                   " file_id=" + std::to_string(link.file_id) +
-                                   " key=" + (link.key.empty() ? "absent" : "present(" + std::to_string(link.key.size()) + "B)") +
-                                   " expire=" + (link.expire > 0 ? std::to_string(link.expire) : "none") +
-                                   " user_id=" + (link.user_id > 0 ? std::to_string(link.user_id) : "none") +
-                                   " url=" + log_url);
+  engine::Logger::instance().debug(
+      "[NXM-Download] Parsed link: domain=" + link.nexus_domain +
+      " mod_id=" + std::to_string(link.mod_id) +
+      " file_id=" + std::to_string(link.file_id) + " key=" +
+      (link.key.empty() ? "absent"
+                        : "present(" + std::to_string(link.key.size()) + "B)") +
+      " expire=" + (link.expire > 0 ? std::to_string(link.expire) : "none") +
+      " user_id=" + (link.user_id > 0 ? std::to_string(link.user_id) : "none") +
+      " url=" + log_url);
 
   // Find which game_id owns this nexus_domain via managed games
   std::string matched_game_id;
   if (w_->managed_games_) {
     matched_game_id = w_->managed_games_->game_id_for_domain(link.nexus_domain);
-    engine::Logger::instance().debug("[NXM-Download] Managed games lookup for domain '" + link.nexus_domain + "': " +
-                                     (matched_game_id.empty() ? "no match" : "matched " + matched_game_id));
+    engine::Logger::instance().debug(
+        "[NXM-Download] Managed games lookup for domain '" + link.nexus_domain +
+        "': " + (matched_game_id.empty() ? "no match" : "matched " + matched_game_id));
   } else {
-    engine::Logger::instance().debug("[NXM-Download] No managed_games_ available for domain lookup");
+    engine::Logger::instance().debug(
+        "[NXM-Download] No managed_games_ available for domain lookup");
   }
 
   // Fallback: try matching via loaded plugins
   if (matched_game_id.empty() && w_->plugin_loader_) {
-    engine::Logger::instance().debug("[NXM-Download] Falling back to plugin loader for domain '" + link.nexus_domain + "'");
-    for (const auto &p : w_->plugin_loader_->plugins()) {
+    engine::Logger::instance().debug(
+        "[NXM-Download] Falling back to plugin loader for domain '" +
+        link.nexus_domain + "'");
+    for (const auto& p : w_->plugin_loader_->plugins()) {
       if (p.nexus_domain == link.nexus_domain) {
         matched_game_id = p.game_id;
-        engine::Logger::instance().debug("[NXM-Download] Plugin fallback matched: game_id=" + matched_game_id);
+        engine::Logger::instance().debug(
+            "[NXM-Download] Plugin fallback matched: game_id=" + matched_game_id);
         break;
       }
     }
     if (matched_game_id.empty()) {
-      engine::Logger::instance().debug("[NXM-Download] Plugin fallback: no plugin matches domain '" + link.nexus_domain + "'");
+      engine::Logger::instance().debug(
+          "[NXM-Download] Plugin fallback: no plugin matches domain '" +
+          link.nexus_domain + "'");
     }
   }
 
   if (matched_game_id.empty()) {
-    engine::Logger::instance().warn("[NXM-Download] No game found for domain: " + link.nexus_domain);
+    engine::Logger::instance().warn("[NXM-Download] No game found for domain: " +
+                                    link.nexus_domain);
     QMessageBox::warning(w_, tr("NXM Download"),
                          tr("Unknown Nexus Mods domain: %1\nNo game plugin "
                             "supports this domain.")
-                          .arg(QString::fromStdString(link.nexus_domain)));
+                             .arg(QString::fromStdString(link.nexus_domain)));
     return;
   }
 
   // Is this game managed by us?
   bool is_managed =
       w_->managed_games_ && w_->managed_games_->is_managed(matched_game_id);
-  engine::Logger::instance().debug("[NXM-Download] Game '" + matched_game_id + "' managed: " + (is_managed ? "yes" : "no"));
+  engine::Logger::instance().debug("[NXM-Download] Game '" + matched_game_id +
+                                   "' managed: " + (is_managed ? "yes" : "no"));
 
   if (!is_managed) {
-    engine::Logger::instance().warn("[NXM-Download] Game not managed: " + matched_game_id);
+    engine::Logger::instance().warn("[NXM-Download] Game not managed: " +
+                                    matched_game_id);
     QMessageBox::information(
         w_, tr("NXM Download"),
         tr("This mod is for %1, but GameModManager is not managing this "
@@ -643,7 +647,9 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
 
   // Game is managed - but is the active instance the right one?
   if (matched_game_id != w_->current_game_id_) {
-    engine::Logger::instance().warn("[NXM-Download] Active instance mismatch: expected " + matched_game_id + ", current " + w_->current_game_id_);
+    engine::Logger::instance().warn(
+        "[NXM-Download] Active instance mismatch: expected " + matched_game_id +
+        ", current " + w_->current_game_id_);
     QMessageBox::information(
         w_, tr("NXM Download"),
         tr("This mod is for %1, but the active instance is %2.\n"
@@ -655,17 +661,18 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
   }
 
   // Route to the active instance - start download via pipeline worker
-  engine::Logger::instance().debug("[NXM-Download] Starting download for game: " + w_->current_game_name_ +
-                                   " (mod_id=" + std::to_string(link.mod_id) +
-                                   ", file_id=" + std::to_string(link.file_id) + ")");
+  engine::Logger::instance().debug(
+      "[NXM-Download] Starting download for game: " + w_->current_game_name_ +
+      " (mod_id=" + std::to_string(link.mod_id) +
+      ", file_id=" + std::to_string(link.file_id) + ")");
 
   // Show in DownloadsTab immediately. The entry key is "<mod_id>-<file_id>"
   // so Main and Optional files of the same mod page stay separate entries.
-  const auto mod_id = std::to_string(link.mod_id);
+  const auto mod_id  = std::to_string(link.mod_id);
   const auto file_id = std::to_string(link.file_id);
-  const auto key = mod_id + "-" + file_id;
+  const auto key     = mod_id + "-" + file_id;
 
-  auto *dt = w_->right_panel_->downloads_tab();
+  auto* dt = w_->right_panel_->ensure_downloads_tab();
   if (dt) {
     dt->add_download(key,
                      tr("Mod #%1 - file %2")
@@ -673,9 +680,11 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
                          .arg(link.file_id)
                          .toStdString(),
                      "Nexus Mods", {}, link.nexus_domain, link.file_id, mod_id);
-    engine::Logger::instance().debug("[NXM-Download] Added download entry to DownloadsTab: " + key);
+    engine::Logger::instance().debug(
+        "[NXM-Download] Added download entry to DownloadsTab: " + key);
   } else {
-    engine::Logger::instance().warn("[NXM-Download] DownloadsTab not available, cannot add entry");
+    engine::Logger::instance().warn(
+        "[NXM-Download] DownloadsTab not available, cannot add entry");
   }
 
   // Surface the download: bring the window to front and switch to the
@@ -692,28 +701,33 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
 
   // Build paths for the pipeline context
   auto mods_dir = w_->mods_dir_path();
-  engine::Logger::instance().debug("[NXM-Download] Pipeline paths: mods_dir=" + mods_dir.string());
+  engine::Logger::instance().debug("[NXM-Download] Pipeline paths: mods_dir=" +
+                                   mods_dir.string());
 
   // Invoke the pipeline worker asynchronously (download only - install is a
   // separate user-triggered step)
   if (!w_->pipeline_thread_) {
-    engine::Logger::instance().error("[NXM-Download] pipeline_thread_ is null! Cannot start download.");
+    engine::Logger::instance().error(
+        "[NXM-Download] pipeline_thread_ is null! Cannot start download.");
     return;
   }
-  engine::Logger::instance().debug("[NXM-Download] Invoking download_mod on pipeline worker");
+  engine::Logger::instance().debug(
+      "[NXM-Download] Invoking download_mod on pipeline worker");
   QMetaObject::invokeMethod(
       w_->pipeline_thread_->worker(),
       [this, key, link, mods_dir]() {
-        engine::Logger::instance().debug("[NXM-Download] Lambda executing on worker thread, calling download_mod");
-        w_->pipeline_thread_->worker()->download_mod(
-            key, link, w_->current_game_id_, mods_dir.string());
+        engine::Logger::instance().debug(
+            "[NXM-Download] Lambda executing on worker thread, calling download_mod");
+        w_->pipeline_thread_->worker()->download_mod(key, link, w_->current_game_id_,
+                                                     mods_dir.string());
       },
       Qt::QueuedConnection);
 
-  engine::Logger::instance().debug("[NXM-Download] Download queued for mod " + mod_id + " file " + file_id);
+  engine::Logger::instance().debug("[NXM-Download] Download queued for mod " + mod_id +
+                                   " file " + file_id);
 }
 
-void DownloadsController::handle_modl_download(const engine::Source::ModlLink &link) {
+void DownloadsController::handle_modl_download(const engine::Source::ModlLink& link) {
   if (!link.valid()) {
     engine::Logger::instance().warn("Invalid modl link received");
     return;
@@ -727,17 +741,18 @@ void DownloadsController::handle_modl_download(const engine::Source::ModlLink &l
   std::string log_url = link.direct_url;
   {
     const auto q = log_url.find('?');
-    if (q != std::string::npos) log_url = log_url.substr(0, q) + "?<redacted>";
+    if (q != std::string::npos)
+      log_url = log_url.substr(0, q) + "?<redacted>";
   }
-  engine::Logger::instance().debug(
-      "modl download: game=" + link.game_id + " url=" + log_url);
+  engine::Logger::instance().debug("modl download: game=" + link.game_id +
+                                   " url=" + log_url);
 
   // Match the host against loaded plugin game_ids. modl is site-agnostic
   // (mod.pub + anywhere), so there is no managed_games.json lookup to do
   // and no Nexus-style "is_managed" gate - the host is the source of truth.
   std::string matched_game_id;
   if (w_->plugin_loader_) {
-    for (const auto &p : w_->plugin_loader_->plugins()) {
+    for (const auto& p : w_->plugin_loader_->plugins()) {
       if (p.game_id == link.game_id) {
         matched_game_id = p.game_id;
         break;
@@ -770,32 +785,30 @@ void DownloadsController::handle_modl_download(const engine::Source::ModlLink &l
   // idempotent across re-clicks of the same modl link). Use a process-
   // stable hash so the manifest key survives a restart - resume would
   // otherwise look up a different id and re-fetch from byte zero.
-  const std::string key =
-      "modl-" + std::to_string(stable_hash64(link.direct_url));
+  const std::string key = "modl-" + std::to_string(stable_hash64(link.direct_url));
 
   // Source attribution comes from the direct URL's host (modl is a
   // transport, not a source). mod.pub -> ModPub; anything else -> Manual.
-  const auto derived = engine::Source::Router::derive_source_from_direct_url(
-      link.direct_url);
+  const auto derived =
+      engine::Source::Router::derive_source_from_direct_url(link.direct_url);
   std::string source_label;
   std::string row_name;
   std::string page_url;
   if (derived.source_type == "modpub") {
     source_label = "ModPub";
-    row_name = tr("ModPub download").toStdString();
+    row_name     = tr("ModPub download").toStdString();
     // Use the modl:// URL (carries game_id context) as the page URL until
     // the mod.pub page is visited; the install path will fall back to it.
     page_url = link.full_url;
   } else {
     source_label = "Manual";
-    row_name = tr("Download").toStdString();
-    page_url = link.direct_url;
+    row_name     = tr("Download").toStdString();
+    page_url     = link.direct_url;
   }
 
-  auto *dt = w_->right_panel_->downloads_tab();
+  auto* dt = w_->right_panel_->ensure_downloads_tab();
   if (dt) {
-    dt->add_download(key, row_name, source_label, {},
-                     {}, 0, {}, page_url);
+    dt->add_download(key, row_name, source_label, {}, {}, 0, {}, page_url);
   }
 
   // Surface the download: bring the window to front and switch to the
@@ -815,15 +828,15 @@ void DownloadsController::handle_modl_download(const engine::Source::ModlLink &l
   QMetaObject::invokeMethod(
       w_->pipeline_thread_->worker(),
       [this, key, link, mods_dir]() {
-        w_->pipeline_thread_->worker()->download_modl(
-            key, link, w_->current_game_id_, mods_dir.string());
+        w_->pipeline_thread_->worker()->download_modl(key, link, w_->current_game_id_,
+                                                      mods_dir.string());
       },
       Qt::QueuedConnection);
 
   engine::Logger::instance().debug("modl download queued: " + key);
 }
 
-void DownloadsController::start_loverslab_download(const std::string &url) {
+void DownloadsController::start_loverslab_download(const std::string& url) {
   if (!engine::LoversLabProvider::is_loverslab_url(url)) {
     QMessageBox::warning(
         w_, tr("Download from URL"),
@@ -863,13 +876,11 @@ void DownloadsController::start_loverslab_download(const std::string &url) {
   const std::string key =
       file_id.empty() ? "ll-" + std::to_string(stable_hash64(url)) : file_id;
 
-  auto *dt = w_->right_panel_->downloads_tab();
+  auto* dt = w_->right_panel_->ensure_downloads_tab();
   if (dt) {
     dt->add_download(
-        key,
-        tr("LoversLab file %1").arg(QString::fromStdString(key)).toStdString(),
-        "LoversLab", {}, {}, 0, {},
-        engine::LoversLabProvider::mod_page_url(url));
+        key, tr("LoversLab file %1").arg(QString::fromStdString(key)).toStdString(),
+        "LoversLab", {}, {}, 0, {}, engine::LoversLabProvider::mod_page_url(url));
   }
 
   // Surface the download: bring the window to front and switch to the
@@ -890,12 +901,12 @@ void DownloadsController::start_loverslab_download(const std::string &url) {
   QMetaObject::invokeMethod(
       w_->pipeline_thread_->worker(),
       [this, key, url, mods_dir]() {
-        w_->pipeline_thread_->worker()->download_mod_url(
-            key, url, w_->current_game_id_, mods_dir.string());
+        w_->pipeline_thread_->worker()->download_mod_url(key, url, w_->current_game_id_,
+                                                         mods_dir.string());
       },
       Qt::QueuedConnection);
 
   engine::Logger::instance().debug("LoversLab download queued: " + key);
 }
 
-} // namespace ui
+}  // namespace ui
