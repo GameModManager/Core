@@ -9,6 +9,7 @@
 
 #include <QApplication>
 #include <QImage>
+#include <QPalette>
 #include <QPixmap>
 
 #include <catch2/catch_test_macros.hpp>
@@ -57,7 +58,11 @@ TEST_CASE("checkerboard transparency grid", "[ui]") {
     CHECK(tile_pixel(dark, 0, 0) == QColor(102, 102, 102));
     CHECK(tile_pixel(dark, 8, 0) == QColor(51, 51, 51));
 
-    CHECK(ui::preview::checker_pixmap_for_style(CheckerboardStyle::Off).isNull());
+    const QColor window_color = QApplication::palette().color(QPalette::Window);
+    const QPixmap off = ui::preview::checker_pixmap_for_style(CheckerboardStyle::Off);
+    CHECK(!off.isNull());
+    CHECK(tile_pixel(off, 0, 0) == window_color);
+    CHECK(tile_pixel(off, 8, 8) == window_color);
   }
 
   SECTION("menu icons render 2x2 swatches") {

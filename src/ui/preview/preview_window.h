@@ -100,7 +100,8 @@ private:
   void set_fit();
   void zoom_by(double factor);
   // Re-applies the checkerboard background from checkerboard_style_ and
-  // image_has_alpha_. Shows the grid only for transparent images.
+  // image_has_alpha_. Off shows a solid QPalette::Window color; other
+  // styles show the grid only for transparent images.
   void update_checkerboard_background();
 
   QLabel* name_label_           = nullptr;

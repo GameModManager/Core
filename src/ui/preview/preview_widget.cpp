@@ -54,8 +54,15 @@ QPixmap checker_pixmap_for_style(CheckerboardStyle style) {
     if (checker_dark.isNull())
       checker_dark = checker_tile(QColor(102, 102, 102), QColor(51, 51, 51));
     return checker_dark;
-  case CheckerboardStyle::Off:
-    break;
+  case CheckerboardStyle::Off: {
+    // Off: solid flat color from the palette (dark theme = dark solid,
+    // light theme = light solid) instead of transparent. Built fresh on
+    // every call so theme changes are picked up; unlike the fixed tiles
+    // above it is never cached.
+    QPixmap solid(16, 16);
+    solid.fill(QApplication::palette().color(QPalette::Window));
+    return solid;
+  }
   }
   return QPixmap();
 }

@@ -4,6 +4,8 @@
 #include "ui/preview/preview_widget.h"
 #include "ui/settings/settings.h"
 
+#include <QApplication>
+#include <QColor>
 #include <QFile>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -12,6 +14,7 @@
 #include <QListWidget>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPalette>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
@@ -224,7 +227,23 @@ void PreviewWindow::set_checkerboard_style(int style) {
 }
 
 void PreviewWindow::update_checkerboard_background() {
-  const bool show = checkerboard_style_ != 0 && image_has_alpha_;
+  if (checkerboard_style_ == 0) {
+    // Off: solid flat color from the palette instead of transparent. The
+    // solid tile paints behind the pixmap in DebugImageLabel::paintEvent;
+    // the palette brushes below cover the viewport area around the label.
+    const QColor solid = QApplication::palette().color(QPalette::Window);
+    image_label_->set_checker_tile(checker_pixmap_for_style(CheckerboardStyle::Off));
+    auto pal = default_label_palette_;
+    pal.setBrush(QPalette::Base, QBrush(solid));
+    pal.setBrush(QPalette::Window, QBrush(solid));
+    image_label_->setPalette(pal);
+    auto vpal = default_viewport_palette_;
+    vpal.setBrush(QPalette::Base, QBrush(solid));
+    vpal.setBrush(QPalette::Window, QBrush(solid));
+    scroll_->viewport()->setPalette(vpal);
+    return;
+  }
+  const bool show = image_has_alpha_;
   if (!show) {
     image_label_->set_checker_tile(QPixmap());
     image_label_->setPalette(default_label_palette_);
