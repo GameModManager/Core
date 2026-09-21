@@ -6,22 +6,22 @@
 
 namespace engine {
 
-Instance Instance::portable(const std::filesystem::path &root) {
+Instance Instance::portable(const std::filesystem::path& root) {
   Instance inst;
-  inst.info_.root = root;
+  inst.info_.root     = root;
   inst.info_.portable = true;
   return inst;
 }
 
-Instance Instance::installed(const std::string &name,
-                             const std::filesystem::path &instances_root) {
+Instance Instance::installed(const std::string& name,
+                             const std::filesystem::path& instances_root) {
   Instance inst;
-  inst.info_.root = instances_root / name;
+  inst.info_.root     = instances_root / name;
   inst.info_.portable = false;
   return inst;
 }
 
-Instance Instance::from_root(const std::filesystem::path &root) {
+Instance Instance::from_root(const std::filesystem::path& root) {
   Instance inst;
   inst.info_.root = root;
   return inst;
@@ -32,26 +32,21 @@ std::filesystem::path Instance::path_for(InstanceKind kind) const {
   case InstanceKind::Mods:
     return info_.mods_dir.empty() ? info_.root / "mods" : info_.mods_dir;
   case InstanceKind::Downloads:
-    return info_.downloads_dir.empty() ? info_.root / "downloads"
-                                       : info_.downloads_dir;
+    return info_.downloads_dir.empty() ? info_.root / "downloads" : info_.downloads_dir;
   case InstanceKind::Cache:
     return info_.cache_dir.empty() ? info_.root / "cache" : info_.cache_dir;
   case InstanceKind::CacheArchives: {
-    auto base =
-        info_.cache_dir.empty() ? info_.root / "cache" : info_.cache_dir;
+    auto base = info_.cache_dir.empty() ? info_.root / "cache" : info_.cache_dir;
     return base / "archives";
   }
   case InstanceKind::CacheThumbnails: {
-    auto base =
-        info_.cache_dir.empty() ? info_.root / "cache" : info_.cache_dir;
+    auto base = info_.cache_dir.empty() ? info_.root / "cache" : info_.cache_dir;
     return base / "thumbnails";
   }
   case InstanceKind::Profiles:
-    return info_.profiles_dir.empty() ? info_.root / "profiles"
-                                      : info_.profiles_dir;
+    return info_.profiles_dir.empty() ? info_.root / "profiles" : info_.profiles_dir;
   case InstanceKind::Overwrite:
-    return info_.overwrite_dir.empty() ? info_.root / "overwrite"
-                                       : info_.overwrite_dir;
+    return info_.overwrite_dir.empty() ? info_.root / "overwrite" : info_.overwrite_dir;
   case InstanceKind::Plugins:
     return info_.root / "plugins";
   case InstanceKind::Logs:
@@ -64,8 +59,7 @@ std::filesystem::path Instance::path_for(InstanceKind kind) const {
   return {};
 }
 
-void Instance::set_path_override(InstanceKind kind,
-                                 const std::filesystem::path &path) {
+void Instance::set_path_override(InstanceKind kind, const std::filesystem::path& path) {
   switch (kind) {
   case InstanceKind::Mods:
     info_.mods_dir = path;
@@ -143,14 +137,12 @@ bool Instance::write_toml() const {
   tbl->insert_or_assign("portable", info_.portable);
 
   if (info_.steam_appid > 0) {
-    tbl->insert_or_assign("steam_appid",
-                          static_cast<int64_t>(info_.steam_appid));
+    tbl->insert_or_assign("steam_appid", static_cast<int64_t>(info_.steam_appid));
   } else {
     tbl->erase("steam_appid");
   }
 
-  auto assign_or_erase = [&](const std::string &key,
-                             const std::filesystem::path &val) {
+  auto assign_or_erase = [&](const std::string& key, const std::filesystem::path& val) {
     if (val.empty())
       tbl->erase(key);
     else
@@ -168,15 +160,14 @@ bool Instance::write_toml() const {
   assign_or_erase("overwrite_dir", info_.overwrite_dir);
   assign_or_erase("plugins_txt_path", info_.plugins_txt_path);
 
-  auto assign_str_or_erase = [&](const std::string &key,
-                                 const std::string &val) {
+  auto assign_str_or_erase = [&](const std::string& key, const std::string& val) {
     if (val.empty())
       tbl->erase(key);
     else
       tbl->insert_or_assign(key, val);
   };
 
-  auto assign_int_or_erase = [&](const std::string &key, int64_t val) {
+  auto assign_int_or_erase = [&](const std::string& key, int64_t val) {
     if (val == 0)
       tbl->erase(key);
     else
@@ -193,7 +184,10 @@ bool Instance::write_toml() const {
   if (!out)
     return false;
   out << serialize_instance_toml(*tbl);
-  return out.good();
+  const bool ok = out.good();
+  if (ok)
+    invalidate_instance_toml_cache(toml_path());
+  return ok;
 }
 
 bool Instance::read_toml() {
@@ -255,8 +249,7 @@ bool Instance::read_toml() {
   return true;
 }
 
-bool Instance::write_key(const std::string &key,
-                         const std::string &value) const {
+bool Instance::write_key(const std::string& key, const std::string& value) const {
   auto path = toml_path();
   // Read-modify-write: parse the full file (legacy repair included) so
   // app-owned sections like `executables` survive untouched. A missing or
@@ -275,10 +268,13 @@ bool Instance::write_key(const std::string &key,
   if (!out)
     return false;
   out << serialize_instance_toml(*tbl);
-  return out.good();
+  const bool ok = out.good();
+  if (ok)
+    invalidate_instance_toml_cache(path);
+  return ok;
 }
 
-std::string Instance::to_instance_name(const std::string &display_name) {
+std::string Instance::to_instance_name(const std::string& display_name) {
   static const std::string invalid = R"(\/:*?"<>|)";
   std::string result;
   result.reserve(display_name.size());
@@ -304,7 +300,7 @@ std::string Instance::to_instance_name(const std::string &display_name) {
 }
 
 std::filesystem::path
-Instance::resolve_portable_root(const std::filesystem::path &exe_dir) {
+Instance::resolve_portable_root(const std::filesystem::path& exe_dir) {
   auto toml = exe_dir / "instance.toml";
   if (std::filesystem::exists(toml)) {
     return exe_dir;
@@ -312,8 +308,8 @@ Instance::resolve_portable_root(const std::filesystem::path &exe_dir) {
   return {};
 }
 
-bool Instance::is_portable(const std::filesystem::path &exe_dir) {
+bool Instance::is_portable(const std::filesystem::path& exe_dir) {
   return std::filesystem::exists(exe_dir / "instance.toml");
 }
 
-} // namespace engine
+}  // namespace engine
