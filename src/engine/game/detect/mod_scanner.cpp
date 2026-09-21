@@ -162,6 +162,14 @@ struct ScanConfig {
   // Both empty → no checker registered → no folder can look invalid.
   std::vector<std::string> valid_dirs;
   std::vector<std::string> valid_exts;
+  // Declared base-game plugin filenames (native_plugins_csv: the registry
+  // game_plugins feature first, else the game_native_plugins knowledge
+  // hook). A folder in the mods dir carrying one of these names is vanilla
+  // content that landed in the wrong place - scan_entry flags it unmanaged
+  // instead of listing it as a managed mod. Empty when the game declares
+  // no native plugins (the stray-file synthesis in ModScanWorker is gated
+  // the same way).
+  std::vector<std::string> native_plugins;
   // Steam Workshop tag → category mapping (JSON: {"lowercase_tag": cat_id}).
   // Empty when the game doesn't register the workshop_tag_categories hook.
   std::string workshop_tag_categories;
@@ -232,6 +240,11 @@ static ScanConfig make_scan_config(const GameKnowledge& knowledge,
   // mod_valid_exts = valid top-level file extensions (CSV, no leading dot).
   cfg.valid_dirs = split_csv(knowledge.get(game_id, "mod_valid_dirs", ""));
   cfg.valid_exts = split_csv(knowledge.get(game_id, "mod_valid_exts", ""));
+  // Base-game plugin filenames for the unmanaged-folder guard in
+  // scan_entry. Resolved through the same registry-first helper the
+  // ModScanWorker synthesis uses, so both classify a vanilla name
+  // identically.
+  cfg.native_plugins = split_csv(native_plugins_csv(knowledge, game_id));
 
   cfg.ignored = split_csv(ignored_csv);
   // Game-registered vanilla directories (e.g. Scripts/, Meshes/) that must
@@ -298,13 +311,38 @@ static void apply_mirror_state(ScannedMod& mod,
 
 // Classify a single mod folder. Returns nullopt for ignored folders, symlink
 // folders pointing into managed trees (e.g. Overwrite), and folders with no
-// recognized metadata.
+// recognized metadata. A folder named exactly like a declared base-game
+// plugin is flagged unmanaged (is_game_native) instead - vanilla content,
+// never a managed mod.
 static std::optional<ScannedMod>
 scan_entry(const std::filesystem::path& entry_path, const ScanConfig& cfg,
            const std::vector<std::filesystem::path>& ignore_symlink_targets) {
   auto folder_name = entry_path.filename().string();
   if (should_ignore(folder_name, cfg.ignored))
     return std::nullopt;
+
+  // Base-game plugins are never managed mods. A folder in the mods dir
+  // named exactly like a declared native plugin (Skyrim.esm, a CC .esl,
+  // ...) is vanilla content that landed in the wrong place - a manual copy
+  // of Data files, a botched install, an import quirk. Flag it unmanaged
+  // so it renders as "Unmanaged:" with no checkbox and stays out of the
+  // sort/conflict/update flows - the same semantics as ModScanWorker's
+  // Data-backed synthesized rows. The match is case-insensitive (on-disk
+  // case varies); only exact filenames match, so a folder merely named
+  // "Skyrim" stays a regular mod. The worker's `existing` set already
+  // holds this folder name, so the Data-backed synthesis for the same file
+  // is skipped - exactly one row results.
+  for (const auto& native : cfg.native_plugins) {
+    if (ci_equals(folder_name, native)) {
+      ScannedMod mod;
+      mod.folder_name    = folder_name;
+      mod.display_name   = folder_name;
+      mod.raw_name       = folder_name;
+      mod.is_game_native = true;
+      mod.enabled        = true;
+      return mod;
+    }
+  }
 
   // Skip directories that are symlinks to paths we manage (e.g. Overwrite)
   if (!ignore_symlink_targets.empty()) {
