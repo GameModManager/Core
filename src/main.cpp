@@ -1,20 +1,10 @@
 #include "core/core.h"
 
-#include <QDebug>
-
-#ifdef GMM_HAS_WEBENGINE
-#include <QWebEngineProfile>
-#endif
-
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
   Core::Application app(argc, argv);
-#ifdef GMM_HAS_WEBENGINE
-  // MO2 pattern: untrusted remote content must not persist cookies.
-  // Runs after the QApplication exists (QWebEngineProfile needs one).
-  QWebEngineProfile::defaultProfile()->setPersistentCookiesPolicy(
-      QWebEngineProfile::NoPersistentCookies);
-#else
-  qDebug() << "[Main] GMM_HAS_WEBENGINE not defined, WebEngine unavailable";
-#endif
+  // No QWebEngineProfile setup here (Workspace-2vmp): touching the default
+  // profile initializes Chromium, so the NoPersistentCookies policy is
+  // applied lazily on first WebViewDescriptionRenderer construction
+  // instead. Startups that never open a description view never pay for it.
   return app.run();
 }
