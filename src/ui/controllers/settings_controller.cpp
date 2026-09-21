@@ -248,21 +248,15 @@ void SettingsController::set_game_info(const std::string& game_id,
 
   // Restore the last selected right-panel tab for this instance (Issue
   // #21). current_instance_ was read from instance.toml above; empty or
-  // unsupported values fall back to the first tab.
+  // unsupported values fall back to the first tab. A restored non-Data tab
+  // is built here (it is the tab the user wants to see); all other tabs
+  // stay "Loading..." placeholders until first selected (Workspace-j6ty).
   w_->right_panel_->restore_tab(w_->current_instance_.info().last_tab);
 
-  // Connect conflicts tab signals (tab created during set_game)
-  auto* ct = w_->right_panel_->conflicts_tab();
-  if (ct) {
-    connect(ct, &ui::ConflictsTab::image_diff_requested, w_->mod_list_.get(),
-            &ModListController::on_image_diff_requested);
-  }
-
-  // The Downloads tab was freshly created by set_game: load its manifest,
-  // point it at this instance's downloads dir (which starts the directory
-  // watchdog) and connect its signals. The downloads dir is INSTANCE-owned,
-  // so this works without a game path.
-  w_->downloads_->wire_downloads_tab();
+  // Lazy tabs (Workspace-j6ty): the Conflicts/Downloads/Saves/Plugins tabs
+  // are built on first show and wired by the tab_materialized handler in
+  // the MainWindow ctor - no eager wiring here. The Data tab is always
+  // present, so it is wired directly.
 
   if (!game_dir.empty() && w_->knowledge_) {
     // Wire the freshly created Data tab: resolve real file paths and run
@@ -270,13 +264,9 @@ void SettingsController::set_game_info(const std::string& game_id,
     // context menu, plus "Reveal in file manager" and refresh.
     w_->mod_list_->wire_data_tab();
 
-    // The Saves tab (if the game supports it) was freshly created too:
-    // point it at the game's saves dir, connect refresh/delete, and run an
-    // initial scan.
-    w_->downloads_->wire_saves_tab();
-
     // Plugin-DB preload scans the game's plugin dirs and executable
     // detection needs the game dir - both stay gated on a real path.
+    // (The Saves tab is wired when first shown; see tab_materialized.)
     w_->mod_list_->launch_plugin_db_preload();
     w_->launch_->load_executables();
     w_->launch_->populate_executables();
@@ -562,7 +552,8 @@ void SettingsController::set_game_info(const std::string& game_id,
     w_->process_tree_->setVisible(w_->show_process_tree_);
 
   // The Downloads tab is wired (manifest, downloads dir + watchdog, signal
-  // connections) by wire_downloads_tab() right after the tab is created.
+  // connections) by wire_downloads_tab() when the tab is first built
+  // (tab_materialized), not here.
 
   // Show debug window if debugging.enabled flag exists
   if (!w_->current_instance_root_.empty()) {

@@ -350,9 +350,7 @@ void ModListController::setup_mod_list(QVBoxLayout* left_layout) {
           [this](const QModelIndex& current, const QModelIndex& /*previous*/) {
             if (!current.isValid()) {
               w_->mod_model_->set_selected_mods({});
-              auto* ct = w_->right_panel_->conflicts_tab();
-              if (ct)
-                ct->clear_content();
+              refresh_conflicts_tab();
               return;
             }
             const auto& mods = w_->mod_model_->mods();
@@ -361,20 +359,12 @@ void ModListController::setup_mod_list(QVBoxLayout* left_layout) {
                 !mods[current.row()].is_overwrite) {
               auto& selected = mods[current.row()];
               w_->mod_model_->set_selected_mods({selected.id});
-
-              // Push conflict data to the ConflictsTab
-              auto* ct = w_->right_panel_->conflicts_tab();
-              if (ct) {
-                ct->show_conflicts(selected.id, mods, w_->last_conflict_registry_,
-                                   w_->mod_model_->conflict_pairs(),
-                                   w_->mod_model_->is_conflict_order_reversed());
-              }
             } else {
               w_->mod_model_->set_selected_mods({});
-              auto* ct = w_->right_panel_->conflicts_tab();
-              if (ct)
-                ct->clear_content();
             }
+            // Pushes to the ConflictsTab when it is built; no-op while the
+            // tab is still a lazy placeholder (Workspace-j6ty).
+            refresh_conflicts_tab();
           });
 
   // Mod selection -> highlight the mod's plugins in the plugins list
@@ -2787,35 +2777,32 @@ void ModListController::on_data_hide(const QString& file_path, const QString& mo
   recompute_conflicts();
 }
 
+void ModListController::refresh_conflicts_tab() {
+  auto* ct = w_->right_panel_ ? w_->right_panel_->conflicts_tab() : nullptr;
+  if (!ct || !w_->mod_view_ || !w_->mod_model_)
+    return;
+  const QModelIndex current = w_->mod_view_->selectionModel()->currentIndex();
+  const auto& mods          = w_->mod_model_->mods();
+  if (!current.isValid() || current.row() < 0 || current.row() >= mods.size() ||
+      mods[current.row()].is_separator || mods[current.row()].is_overwrite) {
+    ct->clear_content();
+    return;
+  }
+  // Push conflict data to the ConflictsTab
+  ct->show_conflicts(mods[current.row()].id, mods, w_->last_conflict_registry_,
+                     w_->mod_model_->conflict_pairs(),
+                     w_->mod_model_->is_conflict_order_reversed());
+}
+
 void ModListController::refresh_plugins_tab() {
   if (w_->loading_)
     return;
-  auto* pt = w_->right_panel_->plugins_tab();
-  if (!pt || !w_->knowledge_ || w_->current_game_id_.empty() ||
+  if (!w_->knowledge_ || w_->current_game_id_.empty() ||
       w_->current_game_dir_.empty()) {
     w_->plugins_tab_widget_ = nullptr;
     w_->plugin_owner_index_.clear();
     w_->plugin_row_by_name_.clear();
-    return;  // game without plugin support (or no tab yet)
-  }
-  if (pt != w_->plugins_tab_widget_) {  // tab was recreated on game switch
-    connect(pt, &ui::PluginsTab::toggle_requested, this,
-            &ModListController::on_plugin_toggle);
-    connect(pt, &ui::PluginsTab::reorder_requested, this,
-            &ModListController::on_plugin_reorder);
-    connect(pt, &ui::PluginsTab::lock_requested, this,
-            &ModListController::on_plugin_lock);
-    connect(pt, &ui::PluginsTab::refresh_requested, this, [this]() {
-      refresh_plugins_tab();
-      // set_plugins() rebuilds the rows and clears row-hidden states;
-      // re-apply the active text filter so rows and counter stay
-      // consistent with the filter box.
-      if (w_->right_panel_)
-        w_->right_panel_->reapply_current_filter();
-    });
-    connect(pt->table(), &QTableWidget::itemSelectionChanged, this,
-            &ModListController::on_plugin_selection_changed);
-    w_->plugins_tab_widget_ = pt;
+    return;  // game without plugin support
   }
 
   const auto game_native =
@@ -2824,7 +2811,8 @@ void ModListController::refresh_plugins_tab() {
     w_->plugins_db_ = engine::PluginDb::Database{};
     w_->plugin_owner_index_.clear();
     w_->plugin_row_by_name_.clear();
-    pt->set_plugins({});
+    if (auto* pt = w_->right_panel_ ? w_->right_panel_->plugins_tab() : nullptr)
+      pt->set_plugins({});
     return;
   }
 
@@ -2868,6 +2856,32 @@ void ModListController::refresh_plugins_tab() {
   w_->plugins_db_.generate_mod_indexes();
   if (w_->plugin_loader_)  // plugin-supplied diagnostics land in the tooltip
     w_->plugin_loader_->collect_diagnostics(w_->current_game_id_, w_->plugins_db_);
+
+  // The widget push runs only once the tab is built (Workspace-j6ty). The
+  // tab_materialized handler re-runs this refresh on first show, so the
+  // freshly built tab is populated from the already-refreshed model above.
+  auto* pt = w_->right_panel_ ? w_->right_panel_->plugins_tab() : nullptr;
+  if (!pt)
+    return;
+  if (pt != w_->plugins_tab_widget_) {  // tab was (re)created - wire it
+    connect(pt, &ui::PluginsTab::toggle_requested, this,
+            &ModListController::on_plugin_toggle);
+    connect(pt, &ui::PluginsTab::reorder_requested, this,
+            &ModListController::on_plugin_reorder);
+    connect(pt, &ui::PluginsTab::lock_requested, this,
+            &ModListController::on_plugin_lock);
+    connect(pt, &ui::PluginsTab::refresh_requested, this, [this]() {
+      refresh_plugins_tab();
+      // set_plugins() rebuilds the rows and clears row-hidden states;
+      // re-apply the active text filter so rows and counter stay
+      // consistent with the filter box.
+      if (w_->right_panel_)
+        w_->right_panel_->reapply_current_filter();
+    });
+    connect(pt->table(), &QTableWidget::itemSelectionChanged, this,
+            &ModListController::on_plugin_selection_changed);
+    w_->plugins_tab_widget_ = pt;
+  }
   pt->set_plugins(w_->plugins_db_.plugins());
   rebuild_plugin_highlight_index();
   // Rows and the selection indexes were rebuilt; re-apply any highlights the
@@ -3336,7 +3350,7 @@ void ModListController::import_archives(const QStringList& paths) {
     auto mod_id = fi.completeBaseName().toStdString();
 
     // Show in DownloadsTab immediately with file path, mark ready
-    auto* dt = w_->right_panel_->downloads_tab();
+    auto* dt = w_->right_panel_->ensure_downloads_tab();
     if (dt) {
       dt->add_download(mod_id, mod_id, "Manual", dest);
       dt->mark_complete(mod_id, true);

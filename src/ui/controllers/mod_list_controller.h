@@ -38,31 +38,31 @@ struct SourceVisitInfo {
 class ModListController : public QObject {
   Q_OBJECT
 public:
-  explicit ModListController(MainWindow *w, QObject *parent = nullptr);
+  explicit ModListController(MainWindow* w, QObject* parent = nullptr);
 
   // Builds the mod-list area inside `left_layout` (called from the
   // MainWindow ctor): model, view, header, filter connections, context menu.
-  void setup_mod_list(QVBoxLayout *left_layout);
+  void setup_mod_list(QVBoxLayout* left_layout);
 
 public slots:
   void setup_mod_list_context_menu();
   void load_mods_from_game();
-  void add_installed_mod(const std::string &folder_name);
+  void add_installed_mod(const std::string& folder_name);
   void update_status_bar_for_game();
-  void sync_mod_enable_state(const QString &mod_id, bool enabled);
+  void sync_mod_enable_state(const QString& mod_id, bool enabled);
   void sync_priorities();
   void sort_mods();
   void create_separator();
-  QString create_separator_named(const QString &name, const QString &color);
+  QString create_separator_named(const QString& name, const QString& color);
   void create_empty_mod();
-  void import_archives(const QStringList &paths);
+  void import_archives(const QStringList& paths);
   void export_modlist();
   void import_modlist();
   void open_folder(ui::FolderKind kind);
   void create_separator_at_row(int row);
-  void rename_mod_inline(int row); // start inline edit on a row's name cell
+  void rename_mod_inline(int row);  // start inline edit on a row's name cell
   void apply_rename(int row,
-                    const QString &name); // model rename_requested handler
+                    const QString& name);  // model rename_requested handler
   void delete_separator(int row);
   void select_color_for_selected();
   void reset_color_for_selected();
@@ -81,32 +81,28 @@ public slots:
   void recompute_conflicts();
   void request_conflict_scan(std::function<void()> follow_up);
   void start_conflict_scan();
-  void on_conflict_scan_finished(ui::ConflictScanResult result,
-                                 quint64 generation);
-  void apply_conflict_results(const ui::ConflictScanResult &result);
-  void
-  launch_conflict_scan_batch(std::vector<std::function<void()>> follow_ups);
+  void on_conflict_scan_finished(ui::ConflictScanResult result, quint64 generation);
+  void apply_conflict_results(const ui::ConflictScanResult& result);
+  void launch_conflict_scan_batch(std::vector<std::function<void()>> follow_ups);
   ui::ConflictScanRequest build_conflict_scan_request();
   void reload_open_modinfo_dialog();
   // LOOT advisory-tool sort (PLAN.md §7.1).
   void run_loot_sort();
-  void on_loot_progress(int stage, const QString &message);
+  void on_loot_progress(int stage, const QString& message);
   void on_loot_finished(engine::Sorter::Loot::Result result);
   void refresh_data_tab();
   void wire_data_tab();
-  void on_data_open(const QString &file_path);
-  void on_data_execute(const QString &file_path, bool is_windows_exe,
-                       const QString &vfs_path);
-  void on_data_preview(const QString &file_path,
-                       const QStringList &provider_paths,
-                       const QStringList &provider_names);
-  void on_data_add_executable(const QString &file_path,
-                              const QString &default_name,
-                              const QString &physical_path = {});
-  void on_data_mod_info(const QString &mod_id, int initial_tab = -1);
-  void on_data_hide(const QString &file_path, const QString &mod_id, bool hide);
-  ui::ModInfoData build_mod_info_data(const ModEntry &mod);
-  void on_image_diff_requested(const QString &relative_path);
+  void on_data_open(const QString& file_path);
+  void on_data_execute(const QString& file_path, bool is_windows_exe,
+                       const QString& vfs_path);
+  void on_data_preview(const QString& file_path, const QStringList& provider_paths,
+                       const QStringList& provider_names);
+  void on_data_add_executable(const QString& file_path, const QString& default_name,
+                              const QString& physical_path = {});
+  void on_data_mod_info(const QString& mod_id, int initial_tab = -1);
+  void on_data_hide(const QString& file_path, const QString& mod_id, bool hide);
+  ui::ModInfoData build_mod_info_data(const ModEntry& mod);
+  void on_image_diff_requested(const QString& relative_path);
   // Mod scan (THREADING.md §3.5/§3.6, P8.2).
   void on_mod_scan_finished(ui::ModScanResult result, quint64 generation);
   ui::ModScanRequest build_mod_scan_request();
@@ -122,38 +118,42 @@ public slots:
   void restore_mod_column_visibility();
   // Plugins tab (Skyrim-style games with plugin support).
   void refresh_plugins_tab();
-  void on_plugin_toggle(const std::string &name, bool enabled);
+  // Push the current mod selection's conflicts to the ConflictsTab.
+  // No-op while the tab is still a lazy placeholder (Workspace-j6ty); the
+  // tab_materialized handler re-runs it once the tab is built.
+  void refresh_conflicts_tab();
+  void on_plugin_toggle(const std::string& name, bool enabled);
   void on_plugin_reorder(int from_row, int to_row);
-  void on_plugin_lock(const std::string &name, bool locked);
+  void on_plugin_lock(const std::string& name, bool locked);
   void on_mod_selection_changed();
   void on_plugin_selection_changed();
   void rebuild_plugin_highlight_index();
   // Context-menu actions.
   void remove_selected_mods();
-  void move_to_separator(const QString &mod_id, const QString &sep_id);
-  void send_to_separator(const QString &mod_id);
-  void send_to_highest_priority(const QString &id);
-  void send_to_lowest_priority(const QString &id);
-  void send_to_highest_in_separator(const QString &id);
-  void send_to_lowest_in_separator(const QString &id);
+  void move_to_separator(const QString& mod_id, const QString& sep_id);
+  void send_to_separator(const QString& mod_id);
+  void send_to_highest_priority(const QString& id);
+  void send_to_lowest_priority(const QString& id);
+  void send_to_highest_in_separator(const QString& id);
+  void send_to_lowest_in_separator(const QString& id);
   void priority_move_selected(int step);
   void toggle_selected_mods(bool enabled);
   // "Treat mod as root dir" (Tweaks menu).
-  void toggle_root_override(const QList<int> &rows, bool on);
+  void toggle_root_override(const QList<int>& rows, bool on);
   // MO2's "Change Categories" (checkable) + "Primary Category" (radio)
   // submenus for a single mod. Both edit the mod's [General] "category" CSV
   // (primary first) in the manager sidecar meta; every change persists
   // immediately and refreshes the mod list filter.
-  void add_category_menus(QMenu &menu, const QString &mod_id);
+  void add_category_menus(QMenu& menu, const QString& mod_id);
 
   // Nexus game domain for the current game ("skyrimspecialedition"), resolved
   // from the loaded plugin's identity - the single source of truth (there is
   // NO "nexus_domain" knowledge hook; plugins register it via
   // register_identity).
   [[nodiscard]] QString current_nexus_domain() const;
-  [[nodiscard]] SourceVisitInfo
-  source_visit_info(const QString &source_type, const QString &source_id,
-                    const QString &page_url = {}) const;
+  [[nodiscard]] SourceVisitInfo source_visit_info(const QString& source_type,
+                                                  const QString& source_id,
+                                                  const QString& page_url = {}) const;
 
   // Repopulate the profile selector from the current instance's profiles dir.
   // Resolves the profile to select: the current profile when it still exists,
@@ -171,18 +171,18 @@ private:
   // the callbacks, and the P1.3 kProfileChanged event is dispatched by the
   // engine. On success the active profile name, window title and selector
   // are updated.
-  void switch_profile(const QString &profile);
+  void switch_profile(const QString& profile);
 
   // Recomputes the enabled-mod count and updates the mod-list QLCDNumber
   // (w_->mod_count_enabled_). Called on dataChanged (toggles) and
   // mod_list_changed (add/remove/move/load).
   void update_mod_count_label();
 
-  MainWindow *w_ = nullptr;
+  MainWindow* w_ = nullptr;
 
   // Extracted sub-controllers for mod actions and context menu.
   std::unique_ptr<ModActions> mod_actions_;
   std::unique_ptr<ModContextMenu> mod_context_menu_;
 };
 
-} // namespace ui
+}  // namespace ui
