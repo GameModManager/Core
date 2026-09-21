@@ -6,6 +6,7 @@
 
 set(UI_SOURCES
     settings/settings.cpp
+    settings/instance_settings.cpp
     settings/settings_dialog.cpp
     settings/settings_content_widget.cpp
     settings/source_pages.cpp

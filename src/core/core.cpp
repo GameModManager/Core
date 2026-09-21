@@ -36,6 +36,7 @@
 #include "ui/game_selection/game_selection_widget.h"
 #include "ui/main_window/main_window.h"
 #include "ui/nxm/nxm_ipc.h"
+#include "ui/settings/instance_settings.h"
 #include "ui/settings/settings.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/theme/style_manager.h"
@@ -74,6 +75,35 @@ void qt_message_filter(QtMsgType type, const QMessageLogContext& ctx,
   Q_UNUSED(ctx);
 }
 
+// Mirror of the GUI instance resolution in Application::run()
+// (Workspace-jagw): which instance the coming session will load, so the
+// constructor can already apply its per-instance settings. Returns empty
+// when no loadable instance is known yet (first run).
+fs::path resolve_startup_instance_root(const cli::ParsedArgs& args) {
+  if (args.headless) {
+    if (args.instance_name.isEmpty())
+      return {};
+    return engine::resolve_instance_path(args.instance_name.toStdString());
+  }
+  std::string name;
+  if (!args.instance_name.isEmpty()) {
+    name = args.instance_name.toStdString();
+  } else {
+    name = engine::read_last_instance();
+    if (name.empty() ||
+        !fs::exists(engine::default_instances_dir() / name / "instance.toml")) {
+      const auto existing = engine::scan_instances();
+      name                = existing.empty() ? std::string() : existing[0];
+    }
+  }
+  if (name.empty())
+    return {};
+  const fs::path root = engine::default_instances_dir() / name;
+  if (!fs::exists(root / "instance.toml"))
+    return {};
+  return root;
+}
+
 }  // namespace
 
 namespace Core {
@@ -87,18 +117,6 @@ Application::Application(int& argc, char** argv)
 
   app_.setApplicationName("GameModManager");
   app_.setApplicationVersion(VERSION);
-
-  // Central icon resolution (icon packs). Set up before the window icon so
-  // the app icon itself resolves through the pack chain.
-  {
-    auto& icon_mgr = engine::IconManager::instance();
-    icon_mgr.discover_packs(QCoreApplication::applicationDirPath().toStdString());
-    icon_mgr.set_mode(Settings::instance().icon_pack().toStdString());
-    icon_mgr.set_current_theme(Settings::instance().theme().toStdString());
-  }
-
-  // App window icon: the PNG (the SVG renderer mis-renders on some setups).
-  app_.setWindowIcon(engine::IconManager::instance().resolve_icon("gmm-logo"));
 
   // Store secrets in the OS keyring (QtKeychain: Secret Service / KWallet)
   // when available, falling back to insecure file storage with a warning
@@ -145,6 +163,10 @@ Application::Application(int& argc, char** argv)
   const QString instances_dir = settings.instances_dir();
   if (!instances_dir.isEmpty())
     engine::set_instances_dir_override(instances_dir.toStdString());
+  // Resolve the coming session's instance now so theme/icons/disabled
+  // plugins below use its effective (per-instance with global fallback)
+  // settings (Workspace-jagw).
+  startup_instance_root_  = resolve_startup_instance_root(command_line_.args());
   const QString log_level = settings.log_level();
   if (log_level == "debug")
     engine::Logger::instance().set_level(engine::LogLevel::Debug);
@@ -166,19 +188,22 @@ Application::Application(int& argc, char** argv)
   }
   theme_manager_ = std::make_unique<engine::ThemeManager>();
   theme_manager_->discover_themes(QApplication::applicationDirPath().toStdString());
-  style_manager_         = std::make_unique<engine::StyleManager>(*theme_manager_);
-  const QString qt_style = Settings::instance().style();
-  if (!qt_style.isEmpty()) {
-    if (QStyle* st = QStyleFactory::create(qt_style)) {
-      app_.setStyle(st);
-      engine::Logger::instance().info("Applied Qt style: " + qt_style.toStdString());
-    } else {
-      engine::Logger::instance().warn("Unknown Qt style: " + qt_style.toStdString());
-      style_manager_->apply_theme(Settings::instance().theme().toStdString());
-    }
-  } else {
-    style_manager_->apply_theme(Settings::instance().theme().toStdString());
+  style_manager_ = std::make_unique<engine::StyleManager>(*theme_manager_);
+  apply_effective_appearance(startup_instance_root_);
+
+  // Central icon resolution (icon packs), using the effective per-instance
+  // icon pack / theme. Set up before the window icon so the app icon itself
+  // resolves through the pack chain.
+  {
+    auto& icon_mgr = engine::IconManager::instance();
+    icon_mgr.discover_packs(QCoreApplication::applicationDirPath().toStdString());
+    icon_mgr.set_mode(ui::effective_icon_pack(startup_instance_root_).toStdString());
+    icon_mgr.set_current_theme(
+        ui::effective_theme(startup_instance_root_).toStdString());
   }
+
+  // App window icon: the PNG (the SVG renderer mis-renders on some setups).
+  app_.setWindowIcon(engine::IconManager::instance().resolve_icon("gmm-logo"));
 
   // Compute pending URL from parsed args. Mutual exclusion: at most one
   // --handle-* flag per invocation. A combination (--handle-nxm ... --handle-
@@ -216,10 +241,11 @@ Application::Application(int& argc, char** argv)
   fs::create_directories(fs::path(data_dir()), ec);
   fs::create_directories(engine::default_instances_dir(), ec);
 
-  // Load plugins - needed for both headless and GUI modes
+  // Load plugins - needed for both headless and GUI modes. The disabled
+  // set is the effective per-instance list (Workspace-jagw).
   plugin_loader_ = std::make_unique<engine::PluginLoader>();
   std::vector<std::string> disabled;
-  for (const auto& name : Settings::instance().disabled_plugins())
+  for (const auto& name : ui::effective_disabled_plugins(startup_instance_root_))
     disabled.push_back(name.toStdString());
   plugin_loader_->set_disabled_plugins(disabled);
 
@@ -266,6 +292,22 @@ Application::Application(int& argc, char** argv)
 
 Application::~Application() {
   engine::CrashHandler::uninstall();
+}
+
+void Application::apply_effective_appearance(
+    const std::filesystem::path& instance_root) {
+  const QString qt_style   = ui::effective_style(instance_root);
+  const QString theme_name = ui::effective_theme(instance_root);
+  if (!qt_style.isEmpty()) {
+    if (QStyle* st = QStyleFactory::create(qt_style)) {
+      app_.setStyle(st);
+      engine::Logger::instance().info("Applied Qt style: " + qt_style.toStdString());
+      return;
+    }
+    engine::Logger::instance().warn("Unknown Qt style: " + qt_style.toStdString());
+  }
+  if (style_manager_)
+    style_manager_->apply_theme(theme_name.toStdString());
 }
 
 int Application::run() {
@@ -714,6 +756,33 @@ int Application::run() {
       if (!existing_instances.empty()) {
         active_instance = existing_instances[0];
       }
+    }
+  }
+
+  // Per-instance settings reconciliation (Workspace-jagw): the constructor
+  // applied startup_instance_root_'s effective settings, but --handle-*
+  // flows (or a changed last-instance) may have resolved a different
+  // target. Theme/style/icons re-apply live; a different disabled-plugins
+  // set cannot hot-swap (plugins are already loaded), so restart into the
+  // target instance instead.
+  if (!active_instance.empty()) {
+    const fs::path active_root = engine::default_instances_dir() / active_instance;
+    if (active_root != startup_instance_root_ &&
+        fs::exists(active_root / "instance.toml")) {
+      if (ui::effective_disabled_plugins(startup_instance_root_) !=
+          ui::effective_disabled_plugins(active_root)) {
+        engine::Logger::instance().info("Per-instance plugins differ for " +
+                                        active_instance + " - restarting to apply");
+        engine::write_last_instance(active_instance);
+        ui::restart_application(
+            {"--instance", QString::fromStdString(active_instance)});
+        return 0;
+      }
+      apply_effective_appearance(active_root);
+      auto& icon_mgr = engine::IconManager::instance();
+      icon_mgr.set_mode(ui::effective_icon_pack(active_root).toStdString());
+      icon_mgr.set_current_theme(ui::effective_theme(active_root).toStdString());
+      startup_instance_root_ = active_root;
     }
   }
 
