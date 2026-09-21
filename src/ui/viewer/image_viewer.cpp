@@ -4,11 +4,14 @@
 #include "ui/settings/settings.h"
 #include "ui/widgets/zoom_controls.h"
 
+#include <QApplication>
 #include <QBrush>
+#include <QColor>
 #include <QGraphicsPixmapItem>
 #include <QGraphicsRectItem>
 #include <QGraphicsScene>
 #include <QImageReader>
+#include <QPalette>
 #include <QPen>
 #include <QPixmap>
 #include <QVBoxLayout>
@@ -111,7 +114,16 @@ void ImageViewer::update_checker_background() {
     delete checker_bg_;
     checker_bg_ = nullptr;
   }
-  if (checkerboard_style_ == 0 || !image_has_alpha_ || image_.isNull())
+  if (image_.isNull())
+    return;
+  if (checkerboard_style_ == 0) {
+    // Off: solid flat color from the palette instead of transparent.
+    const QColor solid = QApplication::palette().color(QPalette::Window);
+    checker_bg_ = scene_->addRect(scene_->sceneRect(), QPen(Qt::NoPen), QBrush(solid));
+    checker_bg_->setZValue(-1);
+    return;
+  }
+  if (!image_has_alpha_)
     return;
   const QPixmap tile = preview::checker_pixmap_for_style(
       static_cast<preview::CheckerboardStyle>(checkerboard_style_));

@@ -18,7 +18,8 @@ namespace ui::preview {
 // light #CCCCCC/#999999, medium #999999/#666666, dark #666666/#333333).
 enum class CheckerboardStyle { Off = 0, Light = 1, Medium = 2, Dark = 3 };
 
-// Tile pixmap for a style (8px squares, 2x2 tile). Off returns a null pixmap.
+// Tile pixmap for a style (8px squares, 2x2 tile). Off returns a solid
+// 16x16 pixmap filled with the QPalette::Window color (no checkerboard).
 [[nodiscard]] QPixmap checker_pixmap_for_style(CheckerboardStyle style);
 // 2x2 menu-preview icon for a style (extent x extent px, default 16). Off
 // renders a solid neutral square (no checkerboard).
