@@ -1922,10 +1922,11 @@ void ModListController::load_meta_for_mods() {
       }
     }
 
-    // Update ModEntry with source info
+    // Update ModEntry with source info. "direct" is a transport-only
+    // provider (modl:// flow) - not a user-attributable source. Skip it.
     auto st  = meta.source_type();
     auto sid = meta.source_id();
-    if (!st.empty()) {
+    if (!st.empty() && st != "direct") {
       w_->mod_model_->set_source_info(mod.id, QString::fromStdString(st),
                                       QString::fromStdString(sid),
                                       QString::fromStdString(meta.source_page_url()));
