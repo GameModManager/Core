@@ -1,4 +1,5 @@
 #include "ui/controllers/mod_list_controller.h"
+#include "engine/core/log/crash_handler.h"
 #include "engine/profile/profile_creation.h"
 #include "ui/controllers/downloads_controller.h"
 #include "ui/controllers/launch_controller.h"
@@ -3565,8 +3566,7 @@ void ModListController::open_folder(ui::FolderKind kind) {
             .front();
     break;
   case ui::FolderKind::Logs:
-    if (w_->platform_)
-      target = w_->platform_->data_dir();
+    target = engine::CrashHandler::default_dump_dir();
     break;
   }
 
