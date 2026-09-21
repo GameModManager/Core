@@ -96,11 +96,17 @@ RightPanel::RightPanel(QWidget* parent) : QWidget(parent) {
     if (index < 0 || materializing_)
       return;
     QWidget* w = tab_widget_->widget(index);
+    // Copy the key out of the loop: materialize() erases the entry from
+    // placeholders_, so it must not run while iterating that map.
+    std::string to_materialize;
     for (const auto& [cap, placeholder] : placeholders_) {
       if (placeholder == w) {
-        materialize(cap);
+        to_materialize = cap;
         break;
       }
+    }
+    if (!to_materialize.empty()) {
+      materialize(to_materialize);
     }
     apply_filter();
     update_sort_visibility();
@@ -270,21 +276,27 @@ QWidget* RightPanel::build_tab(const std::string& capability) {
 }
 
 QWidget* RightPanel::materialize(const std::string& capability) {
-  auto built = tabs_.find(capability);
+  // Copy the key: the currentChanged handler passes a reference into
+  // placeholders_, which this function erases below. Hashing that reference
+  // after the erase reads freed memory (SIGSEGV in unordered_map hashing
+  // the key). The local copy stays valid throughout.
+  const std::string key{capability};
+
+  auto built = tabs_.find(key);
   if (built != tabs_.end())
     return built->second;  // already real - emit nothing
 
-  auto ph = placeholders_.find(capability);
+  auto ph = placeholders_.find(key);
   if (ph == placeholders_.end())
     return nullptr;  // capability not in the tab bar
 
   QWidget* placeholder = ph->second;
   const int index      = tab_widget_->indexOf(placeholder);
-  QWidget* real        = build_tab(capability);
+  QWidget* real        = build_tab(key);
   if (!real)
     return nullptr;
 
-  const QString label = tab_labels_[capability];
+  const QString label = tab_labels_[key];
   // The remove/insert fires currentChanged for intermediate states; the
   // handler skips those via materializing_ and the setCurrentIndex below
   // restores the user's selection before any filtering runs.
@@ -301,8 +313,8 @@ QWidget* RightPanel::materialize(const std::string& capability) {
   materializing_ = false;
 
   placeholders_.erase(ph);
-  tabs_[capability] = real;
-  emit tab_materialized(QString::fromStdString(capability));
+  tabs_[key] = real;
+  emit tab_materialized(QString::fromStdString(key));
   return real;
 }
 
