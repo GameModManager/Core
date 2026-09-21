@@ -764,3 +764,72 @@ TEST_CASE("scanner flags native-named folders unmanaged", "[engine]") {
 
   fs::remove_all(root);
 }
+
+TEST_CASE("scanner flags Creation Club content unmanaged", "[engine]") {
+  // CC content (ccBGSSSE*.esm, ccQDRSSE*.esl, ...) ships in the game Data
+  // dir but is never enumerated in a game's declared native list. A folder
+  // in the mods dir carrying a CC plugin filename (a manual Data copy, a
+  // botched install, an import quirk) must scan unmanaged - the same
+  // semantics as declared natives - via the cc-prefix pattern the plugin
+  // database already uses (Database::refresh).
+  const fs::path root = "/tmp/gmm_scanner_cc_test";
+  fs::remove_all(root);
+  const fs::path mods = root / "mods";
+  fs::create_directories(mods);
+
+  fs::create_directories(mods / "ccBGSSSE001-Fish.esm");
+  write_file(mods / "ccBGSSSE001-Fish.esm" / "ccBGSSSE001-Fish.esm", "TES4");
+  fs::create_directories(mods / "ccQDRSSE001-SurvivalMode.esl");
+  write_file(mods / "ccQDRSSE001-SurvivalMode.esl" / "ccQDRSSE001-SurvivalMode.esl",
+             "TES4");
+  // Case-insensitive prefix and extension (on-disk case varies).
+  fs::create_directories(mods / "CCBGSSSE037-Curios.ESL");
+  write_file(mods / "CCBGSSSE037-Curios.ESL" / "CCBGSSSE037-Curios.ESL", "TES4");
+  // Decoys that must stay regular mods: a cc-prefixed folder without a
+  // plugin extension, and cc appearing mid-name.
+  fs::create_directories(mods / "ccCoolMod");
+  write_file(mods / "ccCoolMod" / "meta.ini", "[General]\nversion = 1.0\n");
+  fs::create_directories(mods / "myccMod.esp");
+  write_file(mods / "myccMod.esp" / "myccMod.esp", "TES4");
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("skyrimse", "game_native_plugins",
+                "Skyrim.esm,Update.esm,Dawnguard.esm,HearthFires.esm,"
+                "Dragonborn.esm,_ResourcePack.esl");
+
+  const auto scanned = engine::ModScanner::scan_dir(knowledge, "skyrimse", mods);
+
+  for (const char* cc : {"ccBGSSSE001-Fish.esm", "ccQDRSSE001-SurvivalMode.esl",
+                         "CCBGSSSE037-Curios.ESL"}) {
+    const auto* row = by_folder(scanned, cc);
+    require(row != nullptr, std::string("CC folder still listed: ") + cc);
+    require(row->is_game_native, std::string("CC folder flagged unmanaged: ") + cc);
+    require(row->display_name == cc, "unmanaged CC row keeps file name");
+    require(!row->no_metadata, "unmanaged CC row carries no metadata warning");
+    require(!row->invalid_data, "unmanaged CC row carries no invalid-data flag");
+  }
+
+  const auto* noext = by_folder(scanned, "ccCoolMod");
+  require(noext != nullptr && !noext->is_game_native,
+          "cc-prefixed folder without plugin extension stays a regular mod");
+
+  const auto* mid = by_folder(scanned, "myccMod.esp");
+  require(mid != nullptr && !mid->is_game_native,
+          "folder with cc mid-name stays a regular mod");
+
+  // The single-folder install path goes through the same guard.
+  const auto single = engine::ModScanner::scan_folder(knowledge, "skyrimse", mods,
+                                                      "ccBGSSSE001-Fish.esm");
+  require(single.size() == 1 && single.front().is_game_native,
+          "scan_folder flags the CC-named folder unmanaged");
+
+  // Games declaring no native plugins have no unmanaged concept: the CC
+  // pattern stays inactive there, like the exact-name guard.
+  engine::GameKnowledge bare;
+  const auto bare_scanned = engine::ModScanner::scan_dir(bare, "skyrimse", mods);
+  const auto* bare_row    = by_folder(bare_scanned, "ccBGSSSE001-Fish.esm");
+  require(bare_row != nullptr && !bare_row->is_game_native,
+          "CC pattern inactive without declared native plugins");
+
+  fs::remove_all(root);
+}
