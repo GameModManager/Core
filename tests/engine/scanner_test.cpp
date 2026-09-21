@@ -699,3 +699,68 @@ TEST_CASE("prune removes GMM-managed ghosts, keeps user shells", "[engine]") {
 
   fs::remove_all(root);
 }
+
+TEST_CASE("scanner flags native-named folders unmanaged", "[engine]") {
+  // A folder in the mods dir named exactly like a declared base-game plugin
+  // (vanilla content copied into mods/, a botched install, an import quirk)
+  // must never list as a managed mod - it is flagged unmanaged, the same
+  // semantics as ModScanWorker's Data-backed synthesized rows.
+  const fs::path root = "/tmp/gmm_scanner_native_test";
+  fs::remove_all(root);
+  const fs::path mods = root / "mods";
+  fs::create_directories(mods);
+
+  // Vanilla-named folder with real content inside.
+  fs::create_directories(mods / "Skyrim.esm");
+  write_file(mods / "Skyrim.esm" / "Skyrim.esm", "TES4");
+  // Lowercase spelling - the match is case-insensitive (on-disk case varies).
+  fs::create_directories(mods / "dawnguard.esm");
+  write_file(mods / "dawnguard.esm" / "Dawnguard.esm", "TES4");
+  // Regular mod and a folder merely sharing the stem (no extension).
+  fs::create_directories(mods / "SomeMod");
+  write_file(mods / "SomeMod" / "meta.ini", "[General]\nversion = 1.0\n");
+  fs::create_directories(mods / "Skyrim");
+  write_file(mods / "Skyrim" / "meta.ini", "[General]\nversion = 1.0\n");
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("nativeguard", "game_native_plugins",
+                "Skyrim.esm,Update.esm,Dawnguard.esm,HearthFires.esm,"
+                "Dragonborn.esm,ccBGSSSE001-Fish.esm");
+
+  const auto scanned = engine::ModScanner::scan_dir(knowledge, "nativeguard", mods);
+
+  const auto* skyrim = by_folder(scanned, "Skyrim.esm");
+  require(skyrim != nullptr, "vanilla-named folder still listed");
+  require(skyrim->is_game_native, "Skyrim.esm folder flagged unmanaged");
+  require(skyrim->display_name == "Skyrim.esm", "unmanaged row keeps file name");
+  require(!skyrim->no_metadata, "unmanaged row carries no metadata warning");
+  require(!skyrim->invalid_data, "unmanaged row carries no invalid-data flag");
+
+  const auto* dawn = by_folder(scanned, "dawnguard.esm");
+  require(dawn != nullptr && dawn->is_game_native,
+          "lowercase vanilla name matches case-insensitively");
+
+  const auto* regular = by_folder(scanned, "SomeMod");
+  require(regular != nullptr && !regular->is_game_native,
+          "regular mod unaffected by the guard");
+
+  const auto* stem = by_folder(scanned, "Skyrim");
+  require(stem != nullptr && !stem->is_game_native,
+          "folder sharing only the stem stays a regular mod");
+
+  // The single-folder install path goes through the same guard.
+  const auto single =
+      engine::ModScanner::scan_folder(knowledge, "nativeguard", mods, "Skyrim.esm");
+  require(single.size() == 1 && single.front().is_game_native,
+          "scan_folder flags the vanilla-named folder unmanaged");
+
+  // A game that declares no native plugins is unaffected: the same folder
+  // shape scans as a regular mod.
+  engine::GameKnowledge bare;
+  const auto bare_scanned = engine::ModScanner::scan_dir(bare, "nativeguard", mods);
+  const auto* bare_row    = by_folder(bare_scanned, "Skyrim.esm");
+  require(bare_row != nullptr && !bare_row->is_game_native,
+          "guard inactive without declared native plugins");
+
+  fs::remove_all(root);
+}
