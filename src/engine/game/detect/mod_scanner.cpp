@@ -70,6 +70,29 @@ static bool should_ignore(const std::string& name,
   return false;
 }
 
+// Creation Club content (Skyrim SE/AE: ccBGSSSE*.esm, ccQDRSSE*.esl, ...)
+// ships as game Data-dir files but is never enumerated in a game's declared
+// native list (the list would need every CC release enumerated). The plugin
+// database already identifies CC content by its "cc" filename prefix
+// (Database::refresh: prefix match, force-loaded, pinned above user
+// plugins) - the scanner mirrors that convention so a CC-named folder in
+// the mods dir (a manual Data copy, a botched install, an import quirk)
+// scans unmanaged instead of as a managed mod. The plugin-extension
+// requirement keeps arbitrary "cc"-prefixed mod folders (no extension)
+// regular mods; the match is case-insensitive (on-disk case varies).
+static bool is_creation_club_plugin_name(const std::string& name) {
+  if (name.size() < 7)  // "cc" + 1 char + ".esm" (shortest plugin suffix)
+    return false;
+  if (std::tolower(static_cast<unsigned char>(name[0])) != 'c' ||
+      std::tolower(static_cast<unsigned char>(name[1])) != 'c')
+    return false;
+  auto dot = name.find_last_of('.');
+  if (dot == std::string::npos)
+    return false;
+  const std::string ext = name.substr(dot + 1);
+  return ci_equals(ext, "esp") || ci_equals(ext, "esm") || ci_equals(ext, "esl");
+}
+
 // Folder timestamps for the mod list's Installation/Changed columns. MO2's
 // COL_INSTALLTIME reads the mod folder's birth time (a Replace install
 // recreates the folder → new time; Merge keeps it → old time preserved), and
@@ -312,8 +335,9 @@ static void apply_mirror_state(ScannedMod& mod,
 // Classify a single mod folder. Returns nullopt for ignored folders, symlink
 // folders pointing into managed trees (e.g. Overwrite), and folders with no
 // recognized metadata. A folder named exactly like a declared base-game
-// plugin is flagged unmanaged (is_game_native) instead - vanilla content,
-// never a managed mod.
+// plugin - or matching the Creation Club cc*.esp/esm/esl pattern - is
+// flagged unmanaged (is_game_native) instead: vanilla content, never a
+// managed mod.
 static std::optional<ScannedMod>
 scan_entry(const std::filesystem::path& entry_path, const ScanConfig& cfg,
            const std::vector<std::filesystem::path>& ignore_symlink_targets) {
@@ -332,16 +356,30 @@ scan_entry(const std::filesystem::path& entry_path, const ScanConfig& cfg,
   // "Skyrim" stays a regular mod. The worker's `existing` set already
   // holds this folder name, so the Data-backed synthesis for the same file
   // is skipped - exactly one row results.
+  bool is_native = false;
   for (const auto& native : cfg.native_plugins) {
     if (ci_equals(folder_name, native)) {
-      ScannedMod mod;
-      mod.folder_name    = folder_name;
-      mod.display_name   = folder_name;
-      mod.raw_name       = folder_name;
-      mod.is_game_native = true;
-      mod.enabled        = true;
-      return mod;
+      is_native = true;
+      break;
     }
+  }
+  // Creation Club files are matched by pattern, not by list membership: no
+  // game enumerates every CC release in its declared natives, but a
+  // cc-prefixed plugin is vanilla content by the same convention the plugin
+  // database uses (Database::refresh). Gated on a non-empty native list so
+  // games with no unmanaged concept keep scanning every folder as a mod.
+  if (!is_native && !cfg.native_plugins.empty() &&
+      is_creation_club_plugin_name(folder_name)) {
+    is_native = true;
+  }
+  if (is_native) {
+    ScannedMod mod;
+    mod.folder_name    = folder_name;
+    mod.display_name   = folder_name;
+    mod.raw_name       = folder_name;
+    mod.is_game_native = true;
+    mod.enabled        = true;
+    return mod;
   }
 
   // Skip directories that are symlinks to paths we manage (e.g. Overwrite)
