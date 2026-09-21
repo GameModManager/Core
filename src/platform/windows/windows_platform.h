@@ -13,57 +13,60 @@ namespace engine {
 // code is only in the translation units for its own OS).
 class WindowsPlatform : public Platform {
 public:
-    [[nodiscard]] std::string platform_name() const override { return "windows"; }
+  [[nodiscard]] std::string platform_name() const override { return "windows"; }
 
-    [[nodiscard]] std::filesystem::path data_dir() const override;
-    [[nodiscard]] std::filesystem::path config_dir() const override;
-    [[nodiscard]] std::filesystem::path cache_dir() const override;
+  [[nodiscard]] std::filesystem::path data_dir() const override;
+  [[nodiscard]] std::filesystem::path config_dir() const override;
+  [[nodiscard]] std::filesystem::path cache_dir() const override;
 
-    [[nodiscard]] std::filesystem::path find_steam_root() const override;
-    [[nodiscard]] std::filesystem::path find_proton() const override { return {}; }
-    [[nodiscard]] std::filesystem::path game_documents_dir(uint32_t steam_appid) const override;
-    [[nodiscard]] std::filesystem::path game_local_appdata_dir(uint32_t steam_appid) const override;
+  [[nodiscard]] std::filesystem::path find_steam_root() const override;
+  [[nodiscard]] std::filesystem::path find_proton() const override { return {}; }
+  [[nodiscard]] std::filesystem::path
+  game_documents_dir(uint32_t steam_appid) const override;
+  [[nodiscard]] std::filesystem::path
+  game_local_appdata_dir(uint32_t steam_appid) const override;
+  [[nodiscard]] std::filesystem::path native_documents_dir() const override;
+  [[nodiscard]] std::filesystem::path steam_userdata_dir() const override;
 
-    [[nodiscard]] bool launch_executable(
-        const std::filesystem::path& executable,
-        const std::vector<std::string>& args = {}) const override;
+  [[nodiscard]] bool
+  launch_executable(const std::filesystem::path& executable,
+                    const std::vector<std::string>& args = {}) const override;
 
-    [[nodiscard]] bool is_elevated() const override;
-    [[nodiscard]] bool symlinks_available() const override;
-    [[nodiscard]] bool junctions_available() const override { return true; }
+  [[nodiscard]] bool is_elevated() const override;
+  [[nodiscard]] bool symlinks_available() const override;
+  [[nodiscard]] bool junctions_available() const override { return true; }
 
-    [[nodiscard]] std::filesystem::path home_dir() const override;
-    [[nodiscard]] std::filesystem::path temp_dir() const override;
-    void set_thread_low_priority() const override;
+  [[nodiscard]] std::filesystem::path home_dir() const override;
+  [[nodiscard]] std::filesystem::path temp_dir() const override;
+  void set_thread_low_priority() const override;
 
-    // Windows-specific: read a string value from the Windows registry.
-    // Returns empty path if the key/value doesn't exist or on error.
-    [[nodiscard]] static std::filesystem::path registry_read_string(
-        const std::wstring& key_path, const std::wstring& value_name);
+  // Windows-specific: read a string value from the Windows registry.
+  // Returns empty path if the key/value doesn't exist or on error.
+  [[nodiscard]] static std::filesystem::path
+  registry_read_string(const std::wstring& key_path, const std::wstring& value_name);
 
-    // Windows-specific: register an nxm:// protocol handler.
-    [[nodiscard]] static bool register_nxm_handler(
-        const std::filesystem::path& exe_path);
+  // Windows-specific: register an nxm:// protocol handler.
+  [[nodiscard]] static bool register_nxm_handler(const std::filesystem::path& exe_path);
 
-    // Windows-specific: unregister the nxm:// protocol handler.
-    [[nodiscard]] static bool unregister_nxm_handler();
+  // Windows-specific: unregister the nxm:// protocol handler.
+  [[nodiscard]] static bool unregister_nxm_handler();
 
-    // Windows-specific: register a modl:// protocol handler
-    // (mod.pub / MO2 modlhandler).
-    [[nodiscard]] static bool register_modl_handler(
-        const std::filesystem::path& exe_path);
+  // Windows-specific: register a modl:// protocol handler
+  // (mod.pub / MO2 modlhandler).
+  [[nodiscard]] static bool
+  register_modl_handler(const std::filesystem::path& exe_path);
 
-    // Windows-specific: unregister the modl:// protocol handler.
-    [[nodiscard]] static bool unregister_modl_handler();
+  // Windows-specific: unregister the modl:// protocol handler.
+  [[nodiscard]] static bool unregister_modl_handler();
 
-    // Windows-specific: report whether the modl:// protocol handler points at
-    // our binary. Mirrors is_nxm_handler_registered on Linux so the UI can
-    // query status the same way on every platform.
-    [[nodiscard]] static bool is_modl_handler_registered();
+  // Windows-specific: report whether the modl:// protocol handler points at
+  // our binary. Mirrors is_nxm_handler_registered on Linux so the UI can
+  // query status the same way on every platform.
+  [[nodiscard]] static bool is_modl_handler_registered();
 
 private:
-    std::filesystem::path appdata_dir() const;
-    std::filesystem::path localappdata_dir() const;
+  std::filesystem::path appdata_dir() const;
+  std::filesystem::path localappdata_dir() const;
 };
 
 }  // namespace engine
