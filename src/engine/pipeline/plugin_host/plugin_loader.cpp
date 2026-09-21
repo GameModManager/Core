@@ -43,19 +43,21 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#define RTLD_LAZY 0
 #define RTLD_NOW 0
 #define RTLD_LOCAL 0
-inline void *dlopen(const char *path, int) {
-  return static_cast<void *>(LoadLibraryA(path));
+inline void* dlopen(const char* path, int) {
+  return static_cast<void*>(LoadLibraryA(path));
 }
-inline void *dlsym(void *handle, const char *name) {
-  return reinterpret_cast<void *>(
-      GetProcAddress(static_cast<HMODULE>(handle), name));
+inline void* dlsym(void* handle, const char* name) {
+  return reinterpret_cast<void*>(GetProcAddress(static_cast<HMODULE>(handle), name));
 }
-inline int dlclose(void *handle) {
+inline int dlclose(void* handle) {
   return FreeLibrary(static_cast<HMODULE>(handle));
 }
-inline const char *dlerror() { return "dlopen failed"; }
+inline const char* dlerror() {
+  return "dlopen failed";
+}
 #else
 #include <dlfcn.h>
 #endif
@@ -64,75 +66,74 @@ namespace engine {
 
 // Bridging context passed as user_data to plugin registration callbacks
 struct RegistrationBridge {
-  PluginLoader *loader = nullptr;
-  PluginInfo *current_plugin = nullptr;
+  PluginLoader* loader       = nullptr;
+  PluginInfo* current_plugin = nullptr;
 };
 
 namespace {
 
-// PipelineContext of the stage claim currently executing on this thread. Set
-// around the plugin handler invocation so the host UI bridge callbacks
-// (GmmHostUi::fomod_wizard) can re-enter the engine on the same Mod + context
-// the plugin was handed. Only valid inside the handler; the host marshals any
-// UI onto the main thread itself, so the pointer stays valid for the whole
-// call, and the bridge refuses to run without it (e.g. called on a worker
-// thread spawned by the plugin).
-thread_local PipelineContext *g_active_stage_ctx = nullptr;
+  // PipelineContext of the stage claim currently executing on this thread. Set
+  // around the plugin handler invocation so the host UI bridge callbacks
+  // (GmmHostUi::fomod_wizard) can re-enter the engine on the same Mod + context
+  // the plugin was handed. Only valid inside the handler; the host marshals any
+  // UI onto the main thread itself, so the pointer stays valid for the whole
+  // call, and the bridge refuses to run without it (e.g. called on a worker
+  // thread spawned by the plugin).
+  thread_local PipelineContext* g_active_stage_ctx = nullptr;
 
-// Minimal JSON string escaping for the host->plugin result payloads.
-std::string json_escape(const std::string &s) {
-  std::string out;
-  out.reserve(s.size() + 8);
-  for (char c : s) {
-    switch (c) {
-    case '"':
-      out += "\\\"";
-      break;
-    case '\\':
-      out += "\\\\";
-      break;
-    case '\b':
-      out += "\\b";
-      break;
-    case '\f':
-      out += "\\f";
-      break;
-    case '\n':
-      out += "\\n";
-      break;
-    case '\r':
-      out += "\\r";
-      break;
-    case '\t':
-      out += "\\t";
-      break;
-    default:
-      if (static_cast<unsigned char>(c) < 0x20) {
-        char buf[8];
-        std::snprintf(buf, sizeof buf, "\\u%04x", static_cast<unsigned int>(c));
-        out += buf;
-      } else {
-        out += c;
+  // Minimal JSON string escaping for the host->plugin result payloads.
+  std::string json_escape(const std::string& s) {
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (char c : s) {
+      switch (c) {
+      case '"':
+        out += "\\\"";
+        break;
+      case '\\':
+        out += "\\\\";
+        break;
+      case '\b':
+        out += "\\b";
+        break;
+      case '\f':
+        out += "\\f";
+        break;
+      case '\n':
+        out += "\\n";
+        break;
+      case '\r':
+        out += "\\r";
+        break;
+      case '\t':
+        out += "\\t";
+        break;
+      default:
+        if (static_cast<unsigned char>(c) < 0x20) {
+          char buf[8];
+          std::snprintf(buf, sizeof buf, "\\u%04x", static_cast<unsigned int>(c));
+          out += buf;
+        } else {
+          out += c;
+        }
       }
     }
+    return out;
   }
-  return out;
-}
 
-} // namespace
+}  // namespace
 
 // ABI callback implementations
-static void cb_register_identity(GmmRegistrationCtx *ctx, uint32_t steam_appid,
-                                 const char *gog_id, const char *epic_namespace,
-                                 const char *nexus_domain,
-                                 const char *display_name,
-                                 const char *exe_windows, const char *exe_linux,
-                                 const char *exe_macos) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_register_identity(GmmRegistrationCtx* ctx, uint32_t steam_appid,
+                                 const char* gog_id, const char* epic_namespace,
+                                 const char* nexus_domain, const char* display_name,
+                                 const char* exe_windows, const char* exe_linux,
+                                 const char* exe_macos) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
-  bridge->current_plugin->steam_appid = steam_appid;
+  bridge->current_plugin->steam_appid  = steam_appid;
   bridge->current_plugin->nexus_domain = nexus_domain ? nexus_domain : "";
   if (display_name)
     bridge->current_plugin->game_display_name = display_name;
@@ -143,9 +144,9 @@ static void cb_register_identity(GmmRegistrationCtx *ctx, uint32_t steam_appid,
   // register_identity to scope its sort provider) still gets its game_id set
   // but doesn't appear in the "Create New Instance" game list.
   const std::string gid = bridge->current_plugin->game_id;
-  bool duplicate = false;
+  bool duplicate        = false;
   if (bridge->loader) {
-    for (const auto &other : bridge->loader->plugins()) {
+    for (const auto& other : bridge->loader->plugins()) {
       if (&other == bridge->current_plugin)
         continue;
       if (other.game_support && other.game_id == gid) {
@@ -160,14 +161,13 @@ static void cb_register_identity(GmmRegistrationCtx *ctx, uint32_t steam_appid,
 
   Logger::instance().debug(
       "Plugin registered identity: appid=" + std::to_string(steam_appid) +
-      " name=" +
-      (display_name ? display_name : bridge->current_plugin->game_id) +
+      " name=" + (display_name ? display_name : bridge->current_plugin->game_id) +
       " nexus=" + (nexus_domain ? std::string(nexus_domain) : "none"));
 }
 
-static void cb_register_meta(GmmRegistrationCtx *ctx, const char *author,
-                             const char *version, const char *description) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_register_meta(GmmRegistrationCtx* ctx, const char* author,
+                             const char* version, const char* description) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
@@ -179,9 +179,8 @@ static void cb_register_meta(GmmRegistrationCtx *ctx, const char *author,
     bridge->current_plugin->description = description;
 }
 
-static void cb_register_category(GmmRegistrationCtx *ctx,
-                                 const char *category) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_register_category(GmmRegistrationCtx* ctx, const char* category) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
@@ -189,30 +188,29 @@ static void cb_register_category(GmmRegistrationCtx *ctx,
     bridge->current_plugin->category = category;
 }
 
-static void cb_register_categories(GmmRegistrationCtx *ctx, const int *ids,
-                                   const char *const *names,
-                                   const int *parent_ids, size_t count) {
+static void cb_register_categories(GmmRegistrationCtx* ctx, const int* ids,
+                                   const char* const* names, const int* parent_ids,
+                                   size_t count) {
   if (!ids || !names || count == 0)
     return;
 
   Category::Factory::instance().merge(ids, names, parent_ids, count);
 
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (bridge && bridge->current_plugin) {
-    Logger::instance().debug(
-        "Plugin registered " + std::to_string(count) +
-        " categories (plugin=" + bridge->current_plugin->game_id + ")");
+    Logger::instance().debug("Plugin registered " + std::to_string(count) +
+                             " categories (plugin=" + bridge->current_plugin->game_id +
+                             ")");
   }
 }
 
-static void cb_register_settings(GmmRegistrationCtx *ctx,
-                                 const char *const *keys,
-                                 const char *const *values, size_t count) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_register_settings(GmmRegistrationCtx* ctx, const char* const* keys,
+                                 const char* const* values, size_t count) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin || !keys || !values)
     return;
 
-  auto &settings = bridge->current_plugin->settings;
+  auto& settings = bridge->current_plugin->settings;
   for (size_t i = 0; i < count; ++i) {
     if (!keys[i] || !values[i])
       continue;
@@ -223,18 +221,16 @@ static void cb_register_settings(GmmRegistrationCtx *ctx,
   // callbacks can read/write these keys at runtime (v2 parity for v1 plugins).
   const std::string basename =
       std::filesystem::path(bridge->current_plugin->path).filename().string();
-  PluginSettingsRegistry::instance().register_settings(basename, keys, values,
-                                                       count);
-  PluginSettingsRegistry::instance().register_alias(
-      bridge->current_plugin->game_id, basename);
+  PluginSettingsRegistry::instance().register_settings(basename, keys, values, count);
+  PluginSettingsRegistry::instance().register_alias(bridge->current_plugin->game_id,
+                                                    basename);
 }
 
-static void cb_register_settings_tab(GmmRegistrationCtx *ctx, const char *title,
-                                     const char *const *keys,
-                                     const char *const *types,
-                                     const char *const *defaults,
-                                     const char *const *options, size_t count) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_register_settings_tab(GmmRegistrationCtx* ctx, const char* title,
+                                     const char* const* keys, const char* const* types,
+                                     const char* const* defaults,
+                                     const char* const* options, size_t count) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin || !title || !keys || !types)
     return;
 
@@ -244,7 +240,7 @@ static void cb_register_settings_tab(GmmRegistrationCtx *ctx, const char *title,
     if (!keys[i] || !types[i])
       continue;
     PluginInfo::SettingTabEntry entry;
-    entry.key = keys[i];
+    entry.key  = keys[i];
     entry.type = types[i];
     if (defaults && defaults[i])
       entry.default_value = defaults[i];
@@ -252,7 +248,7 @@ static void cb_register_settings_tab(GmmRegistrationCtx *ctx, const char *title,
       if (entry.type == "choice") {
         // newline-separated candidate choices
         std::string opts = options[i];
-        size_t pos = 0;
+        size_t pos       = 0;
         while ((pos = opts.find('\n')) != std::string::npos) {
           entry.choices.emplace_back(opts.substr(0, pos));
           opts.erase(0, pos + 1);
@@ -271,62 +267,59 @@ static void cb_register_settings_tab(GmmRegistrationCtx *ctx, const char *title,
   // callbacks can read/write these keys at runtime (v2 parity for v1 plugins).
   const std::string basename =
       std::filesystem::path(bridge->current_plugin->path).filename().string();
-  PluginSettingsRegistry::instance().register_settings_tab(
-      basename, title, keys, types, defaults, options, count);
-  PluginSettingsRegistry::instance().register_alias(
-      bridge->current_plugin->game_id, basename);
+  PluginSettingsRegistry::instance().register_settings_tab(basename, title, keys, types,
+                                                           defaults, options, count);
+  PluginSettingsRegistry::instance().register_alias(bridge->current_plugin->game_id,
+                                                    basename);
 }
 
-static void cb_register_diagnostics(GmmRegistrationCtx *ctx,
-                                    GmmDiagnosticsFn fn, void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_register_diagnostics(GmmRegistrationCtx* ctx, GmmDiagnosticsFn fn,
+                                    void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
-  DiagnosticsRegistry::instance().register_provider(
-      bridge->current_plugin->game_id, fn, user_data);
+  DiagnosticsRegistry::instance().register_provider(bridge->current_plugin->game_id, fn,
+                                                    user_data);
 }
 
-static void cb_register_save_parser(GmmRegistrationCtx *ctx,
-                                    const char *game_id, GmmSaveParserFn fn,
-                                    int priority, void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_register_save_parser(GmmRegistrationCtx* ctx, const char* game_id,
+                                    GmmSaveParserFn fn, int priority, void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
   std::string gid = game_id ? game_id : bridge->current_plugin->game_id;
   if (gid.empty() || !fn) {
-    Logger::instance().warn(
-        "Save parser registered with empty game_id or null fn");
+    Logger::instance().warn("Save parser registered with empty game_id or null fn");
     return;
   }
 
   std::string source = bridge->current_plugin->path;
   SaveParserRegistry::instance().register_parser(
       gid, priority,
-      [fn, user_data](const std::filesystem::path &path,
-                      const std::string &game_id) -> SaveGame {
+      [fn, user_data](const std::filesystem::path& path,
+                      const std::string& game_id) -> SaveGame {
         GmmSaveGameC c_out = {};
         if (!fn(path.string().c_str(), game_id.c_str(), &c_out, user_data)) {
           throw SaveParseError("plugin parser returned 0");
         }
         SaveGame out;
-        out.file_path = c_out.file_path ? c_out.file_path : "";
-        out.game_id = c_out.game_id ? c_out.game_id : game_id;
+        out.file_path     = c_out.file_path ? c_out.file_path : "";
+        out.game_id       = c_out.game_id ? c_out.game_id : game_id;
         out.creation_time = c_out.creation_time;
-        out.pc_name = c_out.pc_name ? c_out.pc_name : "";
-        out.pc_level = c_out.pc_level;
-        out.pc_location = c_out.pc_location ? c_out.pc_location : "";
-        out.save_number = c_out.save_number;
-        for (uint32_t i = 0; i < c_out.plugin_count && i < GMM_SAVE_MAX_PLUGINS;
-             ++i) {
+        out.pc_name       = c_out.pc_name ? c_out.pc_name : "";
+        out.pc_level      = c_out.pc_level;
+        out.pc_location   = c_out.pc_location ? c_out.pc_location : "";
+        out.save_number   = c_out.save_number;
+        for (uint32_t i = 0; i < c_out.plugin_count && i < GMM_SAVE_MAX_PLUGINS; ++i) {
           out.plugins.push_back(c_out.plugins[i] ? c_out.plugins[i] : "");
           free(c_out.plugins[i]);
         }
-        for (uint32_t i = 0;
-             i < c_out.light_plugin_count && i < GMM_SAVE_MAX_PLUGINS; ++i) {
-          out.light_plugins.push_back(
-              c_out.light_plugins[i] ? c_out.light_plugins[i] : "");
+        for (uint32_t i = 0; i < c_out.light_plugin_count && i < GMM_SAVE_MAX_PLUGINS;
+             ++i) {
+          out.light_plugins.push_back(c_out.light_plugins[i] ? c_out.light_plugins[i]
+                                                             : "");
           free(c_out.light_plugins[i]);
         }
         free(c_out.file_path);
@@ -339,12 +332,11 @@ static void cb_register_save_parser(GmmRegistrationCtx *ctx,
   Logger::instance().debug("Plugin registered save parser for game=" + gid);
 }
 
-static void cb_register_animation_parser(GmmRegistrationCtx *ctx,
-                                         const char *game_id,
-                                         const char *file_extension,
+static void cb_register_animation_parser(GmmRegistrationCtx* ctx, const char* game_id,
+                                         const char* file_extension,
                                          GmmAnimationParserFn fn, int priority,
-                                         void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+                                         void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
@@ -360,31 +352,30 @@ static void cb_register_animation_parser(GmmRegistrationCtx *ctx,
   }
 
   std::string source = bridge->current_plugin->path;
-  auto feature = std::make_shared<AnimationParserFeature>(
-      [fn, user_data](const std::string &file_path, const std::string &base_dir)
+  auto feature       = std::make_shared<AnimationParserFeature>(
+      [fn, user_data](const std::string& file_path, const std::string& base_dir)
           -> std::optional<AnimationParserFeature::AnimationData> {
         GmmAnimationDataC c_out = {};
         if (!fn(file_path.c_str(), base_dir.c_str(), &c_out, user_data)) {
           return std::nullopt;
         }
         AnimationParserFeature::AnimationData data;
-        data.fps = c_out.fps;
-        data.canvas_width = c_out.canvas_width;
+        data.fps           = c_out.fps;
+        data.canvas_width  = c_out.canvas_width;
         data.canvas_height = c_out.canvas_height;
         for (size_t fi = 0; fi < c_out.frame_count; ++fi) {
-          auto &cf = c_out.frames[fi];
+          auto& cf = c_out.frames[fi];
           AnimationParserFeature::Frame frame;
           frame.delay_ms = cf.delay_ms;
           for (size_t li = 0; li < cf.layer_count; ++li) {
-            auto &cl = cf.layers[li];
+            auto& cl = cf.layers[li];
             AnimationParserFeature::LayerItem layer;
-            layer.x = cl.x;
-            layer.y = cl.y;
-            layer.width = cl.width;
+            layer.x      = cl.x;
+            layer.y      = cl.y;
+            layer.width  = cl.width;
             layer.height = cl.height;
             if (cl.rgba_pixels && cl.pixel_count > 0) {
-              layer.rgba_pixels.assign(cl.rgba_pixels,
-                                       cl.rgba_pixels + cl.pixel_count);
+              layer.rgba_pixels.assign(cl.rgba_pixels, cl.rgba_pixels + cl.pixel_count);
               free(cl.rgba_pixels);
             }
             frame.layers.push_back(std::move(layer));
@@ -398,22 +389,23 @@ static void cb_register_animation_parser(GmmRegistrationCtx *ctx,
 
   Game::Features::Registry::instance().register_feature(
       gid, "animation_parser", priority, std::move(feature), source);
-  Logger::instance().debug("Plugin registered animation parser for game=" +
-                           gid);
+  Logger::instance().debug("Plugin registered animation parser for game=" + gid);
 }
 
-static void cb_register_game_feature(
-    GmmRegistrationCtx *ctx, const char *game_id, const char *feature_type,
-    int priority, const char *const *folder_names, size_t folder_count,
-    const char *const *file_extensions, size_t extension_count) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_register_game_feature(GmmRegistrationCtx* ctx, const char* game_id,
+                                     const char* feature_type, int priority,
+                                     const char* const* folder_names,
+                                     size_t folder_count,
+                                     const char* const* file_extensions,
+                                     size_t extension_count) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
   // NULL game_id = this plugin's own game (matches how every other
   // registration keys itself); an explicit game_id lets a standalone plugin
   // override a game it doesn't provide (the P1.2 override test does this).
-  std::string gid = game_id ? game_id : bridge->current_plugin->game_id;
+  std::string gid  = game_id ? game_id : bridge->current_plugin->game_id;
   std::string type = feature_type ? feature_type : "";
   if (gid.empty() || type.empty()) {
     Logger::instance().warn("Game feature registered with empty game_id/type");
@@ -433,8 +425,8 @@ static void cb_register_game_feature(
         if (file_extensions[i])
           extensions.emplace_back(file_extensions[i]);
     }
-    auto checker = std::make_shared<ModDataCheckerFeature>(
-        std::move(folders), std::move(extensions));
+    auto checker = std::make_shared<ModDataCheckerFeature>(std::move(folders),
+                                                           std::move(extensions));
     Game::Features::Registry::instance().register_feature(
         gid, type, priority, std::move(checker), bridge->current_plugin->path);
   } else if (type == "game_plugins") {
@@ -452,34 +444,30 @@ static void cb_register_game_feature(
     Game::Features::Registry::instance().register_feature(
         gid, type, priority, std::move(feature), bridge->current_plugin->path);
   } else {
-    Logger::instance().warn(
-        "Plugin registered unknown game feature type: " + type + " (ignored)");
+    Logger::instance().warn("Plugin registered unknown game feature type: " + type +
+                            " (ignored)");
     return;
   }
 
-  Logger::instance().debug("Plugin registered game feature: " + type +
-                           " (game=" + gid +
+  Logger::instance().debug("Plugin registered game feature: " + type + " (game=" + gid +
                            ", priority=" + std::to_string(priority) + ")");
 }
 
-static void cb_register_game_feature_data(GmmRegistrationCtx *ctx,
-                                          const char *game_id,
-                                          const char *feature_type,
-                                          int priority, const char *const *keys,
-                                          const char *const *values,
-                                          size_t count) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_register_game_feature_data(GmmRegistrationCtx* ctx, const char* game_id,
+                                          const char* feature_type, int priority,
+                                          const char* const* keys,
+                                          const char* const* values, size_t count) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
   // NULL game_id = this plugin's own game (same rule as every other
   // registration); an explicit game_id lets a standalone plugin override a
   // game it doesn't provide.
-  std::string gid = game_id ? game_id : bridge->current_plugin->game_id;
+  std::string gid  = game_id ? game_id : bridge->current_plugin->game_id;
   std::string type = feature_type ? feature_type : "";
   if (gid.empty() || type.empty()) {
-    Logger::instance().warn(
-        "Game feature data registered with empty game_id/type");
+    Logger::instance().warn("Game feature data registered with empty game_id/type");
     return;
   }
 
@@ -495,17 +483,16 @@ static void cb_register_game_feature_data(GmmRegistrationCtx *ctx,
   }
   if (!engine::register_game_feature_data(gid, type, priority, std::move(kv),
                                           bridge->current_plugin->path)) {
-    return; // register_game_feature_data already logged the reason
+    return;  // register_game_feature_data already logged the reason
   }
 
-  Logger::instance().debug("Plugin registered game feature: " + type +
-                           " (game=" + gid +
+  Logger::instance().debug("Plugin registered game feature: " + type + " (game=" + gid +
                            ", priority=" + std::to_string(priority) + ")");
 }
 
-static void cb_subscribe_event(GmmRegistrationCtx *ctx, const char *event_id,
-                               GmmEventFn fn, void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_subscribe_event(GmmRegistrationCtx* ctx, const char* event_id,
+                               GmmEventFn fn, void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
   if (!event_id || !fn) {
@@ -519,14 +506,13 @@ static void cb_subscribe_event(GmmRegistrationCtx *ctx, const char *event_id,
   // pointer never outlives the .so that owns fn.
   engine::EventBus::instance().subscribe(
       event_id,
-      [fn, user_data](const std::string &eid, const std::string &payload) {
+      [fn, user_data](const std::string& eid, const std::string& payload) {
         fn(eid.c_str(), payload.c_str(), user_data);
       },
       bridge->current_plugin->path);
 
-  Logger::instance().debug(
-      "Plugin subscribed to event: " + std::string(event_id) +
-      " (plugin=" + bridge->current_plugin->game_id + ")");
+  Logger::instance().debug("Plugin subscribed to event: " + std::string(event_id) +
+                           " (plugin=" + bridge->current_plugin->game_id + ")");
 }
 
 // P1.4 - GmmHostUi::fomod_wizard: the plugin's Fomod stage handler asks the
@@ -542,17 +528,15 @@ static void cb_subscribe_event(GmmRegistrationCtx *ctx, const char *event_id,
 // call this from a handler it cached the function pointer of - never from a
 // cached GmmRegistrationCtx (that is host storage, valid only for
 // gmm_register_v1).
-static int cb_fomod_wizard(GmmModHandle mod, char *out_json,
-                           size_t out_capacity) {
-  auto *m = reinterpret_cast<Mod *>(mod);
+static int cb_fomod_wizard(GmmModHandle mod, char* out_json, size_t out_capacity) {
+  auto* m = reinterpret_cast<Mod*>(mod);
   if (!m || !out_json || out_capacity == 0)
     return 0;
   out_json[0] = '\0';
 
-  PipelineContext *pctx = g_active_stage_ctx;
+  PipelineContext* pctx = g_active_stage_ctx;
   if (!pctx) {
-    Logger::instance().warn(
-        "host_ui.fomod_wizard called outside a stage handler");
+    Logger::instance().warn("host_ui.fomod_wizard called outside a stage handler");
     return 0;
   }
 
@@ -571,11 +555,9 @@ static int cb_fomod_wizard(GmmModHandle mod, char *out_json,
   } else if (!ok) {
     json = "{\"outcome\":\"failed\"}";
   } else {
-    json =
-        "{\"outcome\":\"installed\",\"final_name\":\"" + json_escape(m->name) +
-        "\",\"choices\":" +
-        (pctx->fomod_choices_json.empty() ? "null" : pctx->fomod_choices_json) +
-        "}";
+    json = "{\"outcome\":\"installed\",\"final_name\":\"" + json_escape(m->name) +
+           "\",\"choices\":" +
+           (pctx->fomod_choices_json.empty() ? "null" : pctx->fomod_choices_json) + "}";
   }
   if (json.size() >= out_capacity) {
     Logger::instance().warn(
@@ -587,88 +569,81 @@ static int cb_fomod_wizard(GmmModHandle mod, char *out_json,
 }
 
 /* v2 wrapper: casts void* back to GmmModHandle for the v1 cb_fomod_wizard */
-static int cb_fomod_wizard_v2(void *mod, char *out_json, size_t out_capacity) {
-  return cb_fomod_wizard(static_cast<GmmModHandle>(mod), out_json,
-                         out_capacity);
+static int cb_fomod_wizard_v2(void* mod, char* out_json, size_t out_capacity) {
+  return cb_fomod_wizard(static_cast<GmmModHandle>(mod), out_json, out_capacity);
 }
 
-static void cb_register_stage_claim(GmmRegistrationCtx *ctx,
-                                    const char *stage_name, GmmStageFn fn,
-                                    int priority) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_register_stage_claim(GmmRegistrationCtx* ctx, const char* stage_name,
+                                    GmmStageFn fn, int priority) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
   std::string game_id = bridge->current_plugin->game_id;
-  std::string stage = stage_name ? stage_name : "";
+  std::string stage   = stage_name ? stage_name : "";
   if (stage.empty() || !fn)
     return;
 
   bridge->loader->stage_registry().register_claim(
       game_id, stage,
-      [fn](Mod &mod, PipelineContext &ctx_) -> bool {
+      [fn](Mod& mod, PipelineContext& ctx_) -> bool {
         // Wrap the real engine objects in the opaque handles the ABI
         // promises.  Accessors in abi_bridge.cpp are null-safe, so a
         // context without instance/conflict/profile still works.
-        GmmModHandle mod_h = reinterpret_cast<GmmModHandle>(&mod);
-        GmmInstanceHandle inst_h =
-            reinterpret_cast<GmmInstanceHandle>(ctx_.instance);
+        GmmModHandle mod_h       = reinterpret_cast<GmmModHandle>(&mod);
+        GmmInstanceHandle inst_h = reinterpret_cast<GmmInstanceHandle>(ctx_.instance);
         GmmConflictIndexHandle conf_h =
             reinterpret_cast<GmmConflictIndexHandle>(ctx_.conflict_index);
-        GmmProfileHandle prof_h =
-            reinterpret_cast<GmmProfileHandle>(ctx_.profile);
+        GmmProfileHandle prof_h = reinterpret_cast<GmmProfileHandle>(ctx_.profile);
         // The context is live only for the plugin handler's call: the
         // host UI bridge (ctx.host_ui.*) re-enters engine stages on it,
         // so the pointer can never outlive the invoke.
         g_active_stage_ctx = &ctx_;
-        const int result = fn(mod_h, inst_h, conf_h, prof_h, nullptr);
+        const int result   = fn(mod_h, inst_h, conf_h, prof_h, nullptr);
         g_active_stage_ctx = nullptr;
         return result != 0;
       },
       priority, bridge->current_plugin->path);
 }
 
-static void cb_register_wildcard_stage_claim(GmmRegistrationCtx *ctx,
-                                             const char *game_id,
-                                             const char *stage_name,
-                                             GmmStageFn fn, int priority) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_register_wildcard_stage_claim(GmmRegistrationCtx* ctx,
+                                             const char* game_id,
+                                             const char* stage_name, GmmStageFn fn,
+                                             int priority) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
   // NULL/empty game_id = wildcard (applies to all games)
-  std::string gid = game_id ? game_id : "";
+  std::string gid   = game_id ? game_id : "";
   std::string stage = stage_name ? stage_name : "";
   if (stage.empty() || !fn)
     return;
 
   bridge->loader->stage_registry().register_claim(
       gid, stage,
-      [fn](Mod &mod, PipelineContext &ctx_) -> bool {
-        GmmModHandle mod_h = reinterpret_cast<GmmModHandle>(&mod);
-        GmmInstanceHandle inst_h =
-            reinterpret_cast<GmmInstanceHandle>(ctx_.instance);
+      [fn](Mod& mod, PipelineContext& ctx_) -> bool {
+        GmmModHandle mod_h       = reinterpret_cast<GmmModHandle>(&mod);
+        GmmInstanceHandle inst_h = reinterpret_cast<GmmInstanceHandle>(ctx_.instance);
         GmmConflictIndexHandle conf_h =
             reinterpret_cast<GmmConflictIndexHandle>(ctx_.conflict_index);
-        GmmProfileHandle prof_h =
-            reinterpret_cast<GmmProfileHandle>(ctx_.profile);
-        g_active_stage_ctx = &ctx_;
-        const int result = fn(mod_h, inst_h, conf_h, prof_h, nullptr);
-        g_active_stage_ctx = nullptr;
+        GmmProfileHandle prof_h = reinterpret_cast<GmmProfileHandle>(ctx_.profile);
+        g_active_stage_ctx      = &ctx_;
+        const int result        = fn(mod_h, inst_h, conf_h, prof_h, nullptr);
+        g_active_stage_ctx      = nullptr;
         return result != 0;
       },
       priority, bridge->current_plugin->path);
 }
 
-static void cb_register_hook(GmmRegistrationCtx *ctx, const char *tag,
-                             const char *data, GmmHookFn fn, int priority,
-                             void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_register_hook(GmmRegistrationCtx* ctx, const char* tag, const char* data,
+                             GmmHookFn fn, int priority, void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
-  std::string game_id = bridge->current_plugin->game_id;
-  std::string hook_tag = tag ? tag : "";
+  std::string game_id   = bridge->current_plugin->game_id;
+  std::string hook_tag  = tag ? tag : "";
   std::string hook_data = data ? data : "";
 
   // Store as game knowledge - key=tag, value=data
@@ -679,12 +654,11 @@ static void cb_register_hook(GmmRegistrationCtx *ctx, const char *tag,
   // Note: GmmHookFn expects void* data, so we const_cast the string data.
   bridge->loader->hook_registry().register_hook(
       hook_tag,
-      [fn, user_data, hook_tag, hook_data](Mod &mod, PipelineContext &ctx) {
+      [fn, user_data, hook_tag, hook_data](Mod& mod, PipelineContext& ctx) {
         (void)mod;
         (void)ctx;
         if (fn)
-          fn(hook_tag.c_str(), const_cast<char *>(hook_data.c_str()),
-             user_data);
+          fn(hook_tag.c_str(), const_cast<char*>(hook_data.c_str()), user_data);
       },
       priority, bridge->current_plugin->path);
 
@@ -692,9 +666,8 @@ static void cb_register_hook(GmmRegistrationCtx *ctx, const char *tag,
                            " (game=" + game_id + ", data=" + hook_data + ")");
 }
 
-static void cb_register_order_encoding(GmmRegistrationCtx *ctx,
-                                       GmmOrderEncodingFn fn) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_register_order_encoding(GmmRegistrationCtx* ctx, GmmOrderEncodingFn fn) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge)
     return;
 
@@ -703,10 +676,9 @@ static void cb_register_order_encoding(GmmRegistrationCtx *ctx,
   (void)fn;
 }
 
-static void cb_register_deploy_strategy(GmmRegistrationCtx *ctx,
-                                        GmmDeployFn deploy_fn,
+static void cb_register_deploy_strategy(GmmRegistrationCtx* ctx, GmmDeployFn deploy_fn,
                                         GmmRemoveFn remove_fn) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge)
     return;
 
@@ -717,7 +689,7 @@ static void cb_register_deploy_strategy(GmmRegistrationCtx *ctx,
 
 // Convert snake_case tool id to Title Case for display (e.g. "event_bus_viewer"
 // -> "Event Bus Viewer").
-static std::string tool_id_to_display_name(const std::string &id) {
+static std::string tool_id_to_display_name(const std::string& id) {
   std::string result;
   result.reserve(id.size());
   bool capitalise = true;
@@ -735,24 +707,25 @@ static std::string tool_id_to_display_name(const std::string &id) {
   return result;
 }
 
-static void cb_register_tool(GmmRegistrationCtx *ctx, const char *tool_id,
-                             const char *kind, void (*invoke_fn)(void *),
-                             void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_register_tool(GmmRegistrationCtx* ctx, const char* tool_id,
+                             const char* kind, void (*invoke_fn)(void*),
+                             void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
   ExternalTool tool;
-  tool.tool_id = tool_id ? tool_id : "";
-  tool.game_id = bridge->current_plugin->game_id;
+  tool.tool_id      = tool_id ? tool_id : "";
+  tool.game_id      = bridge->current_plugin->game_id;
   tool.display_name = tool_id_to_display_name(tool.tool_id);
 
   std::string kind_str = kind ? kind : "advisory";
-  tool.kind =
-      (kind_str == "workshop") ? ToolKind::Workshop : ToolKind::Advisory;
+  tool.kind = (kind_str == "workshop") ? ToolKind::Workshop : ToolKind::Advisory;
 
   if (invoke_fn) {
-    tool.invoke_fn = [invoke_fn](void *ud) { invoke_fn(ud); };
+    tool.invoke_fn = [invoke_fn](void* ud) {
+      invoke_fn(ud);
+    };
     tool.invoke_user_data = user_data;
   }
 
@@ -764,13 +737,13 @@ static void cb_register_tool(GmmRegistrationCtx *ctx, const char *tool_id,
 
   bridge->loader->tool_registry().register_tool(tool);
 
-  Logger::instance().debug("Plugin registered tool: " + tool.tool_id + " (" +
-                           kind_str + ") for game=" + tool.game_id);
+  Logger::instance().debug("Plugin registered tool: " + tool.tool_id + " (" + kind_str +
+                           ") for game=" + tool.game_id);
 }
 
-static void cb_register_image_diff(GmmRegistrationCtx *ctx, GmmImageDiffFn fn,
-                                   void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_register_image_diff(GmmRegistrationCtx* ctx, GmmImageDiffFn fn,
+                                   void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge)
     return;
 
@@ -779,10 +752,9 @@ static void cb_register_image_diff(GmmRegistrationCtx *ctx, GmmImageDiffFn fn,
   Logger::instance().debug("Plugin registered image diff provider");
 }
 
-static void cb_register_sort_provider(GmmRegistrationCtx *ctx,
-                                      const char *game_id, SortFn sort_fn,
-                                      void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_register_sort_provider(GmmRegistrationCtx* ctx, const char* game_id,
+                                      SortFn sort_fn, void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge)
     return;
 
@@ -792,38 +764,35 @@ static void cb_register_sort_provider(GmmRegistrationCtx *ctx,
     return;
   }
 
-  auto provider =
-      std::make_unique<Sorter::Abi>(gid.c_str(), sort_fn, user_data);
+  auto provider = std::make_unique<Sorter::Abi>(gid.c_str(), sort_fn, user_data);
   Sorter::Registry::instance().register_provider(gid, std::move(provider));
 
   Logger::instance().debug("Plugin registered sort provider for game=" + gid);
 }
 
-static void
-cb_register_capability(GmmRegistrationCtx *ctx, const char *capability,
-                       const char *display_name, const char *data_path,
-                       const char *description, const char *protocol_handler,
-                       const char *website_domain,
-                       const char *supported_platforms) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_register_capability(GmmRegistrationCtx* ctx, const char* capability,
+                                   const char* display_name, const char* data_path,
+                                   const char* description,
+                                   const char* protocol_handler,
+                                   const char* website_domain,
+                                   const char* supported_platforms) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
   CapabilityInfo info;
-  info.game_id = bridge->current_plugin->game_id;
-  info.capability = capability ? capability : "";
-  info.display_name = display_name ? display_name
-                      : capability ? capability
-                                   : "";
-  info.data_path = data_path ? data_path : "";
-  info.description = description ? description : "";
+  info.game_id          = bridge->current_plugin->game_id;
+  info.capability       = capability ? capability : "";
+  info.display_name     = display_name ? display_name : capability ? capability : "";
+  info.data_path        = data_path ? data_path : "";
+  info.description      = description ? description : "";
   info.protocol_handler = protocol_handler ? protocol_handler : "";
-  info.website_domain = website_domain ? website_domain : "";
+  info.website_domain   = website_domain ? website_domain : "";
 
   // Parse comma-separated platforms
   if (supported_platforms) {
     std::string platforms_str = supported_platforms;
-    size_t pos = 0;
+    size_t pos                = 0;
     while ((pos = platforms_str.find(',')) != std::string::npos) {
       info.supported_platforms.push_back(platforms_str.substr(0, pos));
       platforms_str.erase(0, pos + 1);
@@ -836,33 +805,30 @@ cb_register_capability(GmmRegistrationCtx *ctx, const char *capability,
   bridge->loader->capabilities().register_capability(info);
 }
 
-static void
-cb_register_tab(GmmRegistrationCtx *ctx, const char *capability,
-                const char *display_name, const char *data_path,
-                const char *description, const char *protocol_handler,
-                const char *website_domain, const char *supported_platforms,
-                const char *insert_before, const char *insert_after) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_register_tab(GmmRegistrationCtx* ctx, const char* capability,
+                            const char* display_name, const char* data_path,
+                            const char* description, const char* protocol_handler,
+                            const char* website_domain, const char* supported_platforms,
+                            const char* insert_before, const char* insert_after) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
   CapabilityInfo info;
-  info.game_id = bridge->current_plugin->game_id;
-  info.capability = capability ? capability : "";
-  info.display_name = display_name ? display_name
-                      : capability ? capability
-                                   : "";
-  info.data_path = data_path ? data_path : "";
-  info.description = description ? description : "";
+  info.game_id          = bridge->current_plugin->game_id;
+  info.capability       = capability ? capability : "";
+  info.display_name     = display_name ? display_name : capability ? capability : "";
+  info.data_path        = data_path ? data_path : "";
+  info.description      = description ? description : "";
   info.protocol_handler = protocol_handler ? protocol_handler : "";
-  info.website_domain = website_domain ? website_domain : "";
-  info.insert_before = insert_before ? insert_before : "";
-  info.insert_after = insert_after ? insert_after : "";
+  info.website_domain   = website_domain ? website_domain : "";
+  info.insert_before    = insert_before ? insert_before : "";
+  info.insert_after     = insert_after ? insert_after : "";
 
   // Parse comma-separated platforms
   if (supported_platforms) {
     std::string platforms_str = supported_platforms;
-    size_t pos = 0;
+    size_t pos                = 0;
     while ((pos = platforms_str.find(',')) != std::string::npos) {
       info.supported_platforms.push_back(platforms_str.substr(0, pos));
       platforms_str.erase(0, pos + 1);
@@ -885,9 +851,8 @@ cb_register_tab(GmmRegistrationCtx *ctx, const char *capability,
 // plumbing (loader + current_plugin).
 // ---------------------------------------------------------------------------
 
-static void cb_v2_register_plugin(GmmRegistrationCtxV2 *ctx,
-                                  GmmPluginInfo info) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_plugin(GmmRegistrationCtxV2* ctx, GmmPluginInfo info) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
@@ -909,14 +874,13 @@ static void cb_v2_register_plugin(GmmRegistrationCtxV2 *ctx,
   }
 }
 
-static void cb_v2_register_settings(GmmRegistrationCtxV2 *ctx,
-                                    const char *const *keys,
-                                    const char *const *values, size_t count) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_settings(GmmRegistrationCtxV2* ctx, const char* const* keys,
+                                    const char* const* values, size_t count) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin || !keys || !values)
     return;
 
-  auto &settings = bridge->current_plugin->settings;
+  auto& settings = bridge->current_plugin->settings;
   for (size_t i = 0; i < count; ++i) {
     if (!keys[i] || !values[i])
       continue;
@@ -927,20 +891,19 @@ static void cb_v2_register_settings(GmmRegistrationCtxV2 *ctx,
   // callbacks can read/write these keys at runtime.
   const std::string basename =
       std::filesystem::path(bridge->current_plugin->path).filename().string();
-  PluginSettingsRegistry::instance().register_settings(basename, keys, values,
-                                                       count);
-  PluginSettingsRegistry::instance().register_alias(
-      bridge->current_plugin->game_id, basename);
-  PluginSettingsRegistry::instance().register_alias(
-      bridge->current_plugin->plugin_name, basename);
+  PluginSettingsRegistry::instance().register_settings(basename, keys, values, count);
+  PluginSettingsRegistry::instance().register_alias(bridge->current_plugin->game_id,
+                                                    basename);
+  PluginSettingsRegistry::instance().register_alias(bridge->current_plugin->plugin_name,
+                                                    basename);
 }
 
-static void
-cb_v2_register_settings_tab(GmmRegistrationCtxV2 *ctx, const char *title,
-                            const char *const *keys, const char *const *types,
-                            const char *const *defaults,
-                            const char *const *options, size_t count) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_settings_tab(GmmRegistrationCtxV2* ctx, const char* title,
+                                        const char* const* keys,
+                                        const char* const* types,
+                                        const char* const* defaults,
+                                        const char* const* options, size_t count) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin || !title || !keys || !types)
     return;
 
@@ -950,14 +913,14 @@ cb_v2_register_settings_tab(GmmRegistrationCtxV2 *ctx, const char *title,
     if (!keys[i] || !types[i])
       continue;
     PluginInfo::SettingTabEntry entry;
-    entry.key = keys[i];
+    entry.key  = keys[i];
     entry.type = types[i];
     if (defaults && defaults[i])
       entry.default_value = defaults[i];
     if (options && options[i]) {
       if (entry.type == "choice") {
         std::string opts = options[i];
-        size_t pos = 0;
+        size_t pos       = 0;
         while ((pos = opts.find('\n')) != std::string::npos) {
           entry.choices.emplace_back(opts.substr(0, pos));
           opts.erase(0, pos + 1);
@@ -976,17 +939,17 @@ cb_v2_register_settings_tab(GmmRegistrationCtxV2 *ctx, const char *title,
   // callbacks can read/write these keys at runtime.
   const std::string basename =
       std::filesystem::path(bridge->current_plugin->path).filename().string();
-  PluginSettingsRegistry::instance().register_settings_tab(
-      basename, title, keys, types, defaults, options, count);
-  PluginSettingsRegistry::instance().register_alias(
-      bridge->current_plugin->game_id, basename);
-  PluginSettingsRegistry::instance().register_alias(
-      bridge->current_plugin->plugin_name, basename);
+  PluginSettingsRegistry::instance().register_settings_tab(basename, title, keys, types,
+                                                           defaults, options, count);
+  PluginSettingsRegistry::instance().register_alias(bridge->current_plugin->game_id,
+                                                    basename);
+  PluginSettingsRegistry::instance().register_alias(bridge->current_plugin->plugin_name,
+                                                    basename);
 }
 
-static void cb_v2_register_requirements(GmmRegistrationCtxV2 *ctx,
-                                        GmmRequirementsFn fn, void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_requirements(GmmRegistrationCtxV2* ctx, GmmRequirementsFn fn,
+                                        void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin || !fn)
     return;
 
@@ -996,34 +959,33 @@ static void cb_v2_register_requirements(GmmRegistrationCtxV2 *ctx,
   // requirement declared by plugin A may only be satisfiable by plugin B,
   // which loads later). The provider is keyed by plugin path so it can be
   // dropped on unload before dlclose.
-  RequirementsRegistry::instance().register_requirements(
-      bridge->current_plugin->path, fn, user_data);
+  RequirementsRegistry::instance().register_requirements(bridge->current_plugin->path,
+                                                         fn, user_data);
 }
 
-static void cb_v2_register_diagnostics(GmmRegistrationCtxV2 *ctx,
-                                       const char *game_id, GmmDiagnoseFn fn,
-                                       void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_diagnostics(GmmRegistrationCtxV2* ctx, const char* game_id,
+                                       GmmDiagnoseFn fn, void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin || !fn)
     return;
 
   std::string gid = game_id ? game_id : bridge->current_plugin->game_id;
   PluginDiagnostics d;
-  d.game_id = gid;
-  d.fn = reinterpret_cast<void *>(fn);
+  d.game_id   = gid;
+  d.fn        = reinterpret_cast<void*>(fn);
   d.user_data = user_data;
   bridge->current_plugin->diagnostics_v2.push_back(std::move(d));
 
   // Register into the process-wide v2 DiagnoseRegistry so the engine can
   // collect problems for this game via DiagnoseRegistry::collect_diagnostics.
-  DiagnoseRegistry::instance().register_diagnostics(
-      gid, fn, user_data, bridge->current_plugin->path);
+  DiagnoseRegistry::instance().register_diagnostics(gid, fn, user_data,
+                                                    bridge->current_plugin->path);
 
   Logger::instance().debug("Plugin registered v2 diagnostics for game=" + gid);
 }
 
-static void cb_v2_register_game(GmmRegistrationCtxV2 *ctx, GmmGameInfo info) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_game(GmmRegistrationCtxV2* ctx, GmmGameInfo info) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
@@ -1051,9 +1013,9 @@ static void cb_v2_register_game(GmmRegistrationCtxV2 *ctx, GmmGameInfo info) {
   // scope its sort provider) still get their game_id set but don't appear in
   // the "Create New Instance" game list.
   const std::string gid = info.game_id ? info.game_id : "";
-  bool duplicate = false;
+  bool duplicate        = false;
   if (bridge->loader) {
-    for (const auto &other : bridge->loader->plugins()) {
+    for (const auto& other : bridge->loader->plugins()) {
       if (&other == bridge->current_plugin)
         continue;
       if (other.game_support && other.game_id == gid) {
@@ -1068,22 +1030,22 @@ static void cb_v2_register_game(GmmRegistrationCtxV2 *ctx, GmmGameInfo info) {
 
   Logger::instance().debug(
       "Plugin registered game: id=" + bridge->current_plugin->game_id +
-      " name=" + bridge->current_plugin->game_display_name + " nexus=" +
-      (info.nexus_domain ? std::string(info.nexus_domain) : "none"));
+      " name=" + bridge->current_plugin->game_display_name +
+      " nexus=" + (info.nexus_domain ? std::string(info.nexus_domain) : "none"));
 }
 
-static void cb_v2_register_game_feature(GmmRegistrationCtxV2 *ctx,
-                                        const char *feature_type, int priority,
-                                        const char *const *folder_names,
+static void cb_v2_register_game_feature(GmmRegistrationCtxV2* ctx,
+                                        const char* feature_type, int priority,
+                                        const char* const* folder_names,
                                         size_t folder_count,
-                                        const char *const *file_extensions,
+                                        const char* const* file_extensions,
                                         size_t extension_count) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
   // v2 has no explicit game_id on this call; scope to the plugin's own game.
-  std::string gid = bridge->current_plugin->game_id;
+  std::string gid  = bridge->current_plugin->game_id;
   std::string type = feature_type ? feature_type : "";
   if (gid.empty() || type.empty()) {
     Logger::instance().warn("Game feature registered with empty game_id/type");
@@ -1103,8 +1065,8 @@ static void cb_v2_register_game_feature(GmmRegistrationCtxV2 *ctx,
         if (file_extensions[i])
           extensions.emplace_back(file_extensions[i]);
     }
-    auto checker = std::make_shared<ModDataCheckerFeature>(
-        std::move(folders), std::move(extensions));
+    auto checker = std::make_shared<ModDataCheckerFeature>(std::move(folders),
+                                                           std::move(extensions));
     Game::Features::Registry::instance().register_feature(
         gid, type, priority, std::move(checker), bridge->current_plugin->path);
   } else if (type == "game_plugins") {
@@ -1118,28 +1080,27 @@ static void cb_v2_register_game_feature(GmmRegistrationCtxV2 *ctx,
     Game::Features::Registry::instance().register_feature(
         gid, type, priority, std::move(feature), bridge->current_plugin->path);
   } else {
-    Logger::instance().warn(
-        "Plugin registered unknown game feature type: " + type + " (ignored)");
+    Logger::instance().warn("Plugin registered unknown game feature type: " + type +
+                            " (ignored)");
     return;
   }
 
-  Logger::instance().debug("Plugin registered game feature: " + type +
-                           " (game=" + gid +
+  Logger::instance().debug("Plugin registered game feature: " + type + " (game=" + gid +
                            ", priority=" + std::to_string(priority) + ")");
 }
 
-static void cb_v2_register_game_feature_data(
-    GmmRegistrationCtxV2 *ctx, const char *feature_type, int priority,
-    const char *const *keys, const char *const *values, size_t count) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_game_feature_data(GmmRegistrationCtxV2* ctx,
+                                             const char* feature_type, int priority,
+                                             const char* const* keys,
+                                             const char* const* values, size_t count) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
-  std::string gid = bridge->current_plugin->game_id;
+  std::string gid  = bridge->current_plugin->game_id;
   std::string type = feature_type ? feature_type : "";
   if (gid.empty() || type.empty()) {
-    Logger::instance().warn(
-        "Game feature data registered with empty game_id/type");
+    Logger::instance().warn("Game feature data registered with empty game_id/type");
     return;
   }
 
@@ -1151,23 +1112,22 @@ static void cb_v2_register_game_feature_data(
   }
   if (!engine::register_game_feature_data(gid, type, priority, std::move(kv),
                                           bridge->current_plugin->path)) {
-    return; // register_game_feature_data already logged the reason
+    return;  // register_game_feature_data already logged the reason
   }
 
-  Logger::instance().debug("Plugin registered game feature: " + type +
-                           " (game=" + gid +
+  Logger::instance().debug("Plugin registered game feature: " + type + " (game=" + gid +
                            ", priority=" + std::to_string(priority) + ")");
 }
 
-static void cb_v2_register_hook(GmmRegistrationCtxV2 *ctx, const char *tag,
-                                const char *data, GmmHookFnV2 fn, int priority,
-                                void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_hook(GmmRegistrationCtxV2* ctx, const char* tag,
+                                const char* data, GmmHookFnV2 fn, int priority,
+                                void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
-  std::string game_id = bridge->current_plugin->game_id;
-  std::string hook_tag = tag ? tag : "";
+  std::string game_id   = bridge->current_plugin->game_id;
+  std::string hook_tag  = tag ? tag : "";
   std::string hook_data = data ? data : "";
 
   // Store as game knowledge (data payload) - the v1 path's behaviour.
@@ -1180,11 +1140,11 @@ static void cb_v2_register_hook(GmmRegistrationCtxV2 *ctx, const char *tag,
   // provided.
   bridge->loader->hook_registry().register_hook(
       hook_tag,
-      [fn, user_data, hook_tag, hook_data](Mod &mod, PipelineContext &ctx) {
+      [fn, user_data, hook_tag, hook_data](Mod& mod, PipelineContext& ctx) {
         (void)mod;
         (void)ctx;
         if (fn)
-          fn(hook_tag.c_str(), (void *)hook_data.data(), user_data);
+          fn(hook_tag.c_str(), (void*)hook_data.data(), user_data);
       },
       priority, bridge->current_plugin->path);
 
@@ -1192,45 +1152,42 @@ static void cb_v2_register_hook(GmmRegistrationCtxV2 *ctx, const char *tag,
   // the pipeline can dispatch it directly via
   // HookRegistry::instance().dispatch() with an arbitrary data pointer (the v2
   // GmmHookFnV2 contract).
-  ::HookRegistry::instance().register_hook(
-      hook_tag.c_str(), fn, priority, user_data,
-      bridge->current_plugin->path.c_str());
+  ::HookRegistry::instance().register_hook(hook_tag.c_str(), fn, priority, user_data,
+                                           bridge->current_plugin->path.c_str());
 
   Logger::instance().debug("Plugin registered knowledge: " + hook_tag +
                            " (game=" + game_id + ", data=" + hook_data + ")");
 }
 
-static void cb_v2_register_order_encoding(GmmRegistrationCtxV2 *ctx,
-                                          GmmOrderEncodingFnV2 fn,
-                                          void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_order_encoding(GmmRegistrationCtxV2* ctx,
+                                          GmmOrderEncodingFnV2 fn, void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
-  const std::string &game_id = bridge->current_plugin->game_id;
-  bridge->current_plugin->order_encoding_fn = fn;
+  const std::string& game_id                       = bridge->current_plugin->game_id;
+  bridge->current_plugin->order_encoding_fn        = fn;
   bridge->current_plugin->order_encoding_user_data = user_data;
 
   // Store the callback in the order-encoding registry so the pipeline can
   // retrieve and call it when writing load-order files (plugins.txt, ...).
-  OrderEncodingRegistry::instance().register_provider(
-      game_id, fn, user_data, bridge->current_plugin->path);
+  OrderEncodingRegistry::instance().register_provider(game_id, fn, user_data,
+                                                      bridge->current_plugin->path);
 
-  Logger::instance().debug(
-      "Plugin registered v2 order encoding hook (game=" + game_id + ")");
+  Logger::instance().debug("Plugin registered v2 order encoding hook (game=" + game_id +
+                           ")");
 }
 
-static void cb_v2_register_deploy_strategy(GmmRegistrationCtxV2 *ctx,
+static void cb_v2_register_deploy_strategy(GmmRegistrationCtxV2* ctx,
                                            GmmDeployFnV2 deploy_fn,
-                                           GmmRemoveFnV2 remove_fn,
-                                           void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+                                           GmmRemoveFnV2 remove_fn, void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
-  const std::string &game_id = bridge->current_plugin->game_id;
-  bridge->current_plugin->deploy_fn = deploy_fn;
-  bridge->current_plugin->remove_fn = remove_fn;
+  const std::string& game_id               = bridge->current_plugin->game_id;
+  bridge->current_plugin->deploy_fn        = deploy_fn;
+  bridge->current_plugin->remove_fn        = remove_fn;
   bridge->current_plugin->deploy_user_data = user_data;
 
   // Store the callbacks in the deploy-strategy registry so the pipeline can
@@ -1238,21 +1195,20 @@ static void cb_v2_register_deploy_strategy(GmmRegistrationCtxV2 *ctx,
   DeployStrategyRegistry::instance().register_provider(
       game_id, deploy_fn, remove_fn, user_data, bridge->current_plugin->path);
 
-  Logger::instance().debug(
-      "Plugin registered v2 deploy strategy (game=" + game_id + ")");
+  Logger::instance().debug("Plugin registered v2 deploy strategy (game=" + game_id +
+                           ")");
 }
 
-static void cb_v2_register_file_mapper(GmmRegistrationCtxV2 *ctx,
-                                       const char *game_id, GmmFileMapperFn fn,
-                                       void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_file_mapper(GmmRegistrationCtxV2* ctx, const char* game_id,
+                                       GmmFileMapperFn fn, void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin || !fn)
     return;
 
   std::string gid = game_id ? game_id : bridge->current_plugin->game_id;
   PluginFileMapper m;
-  m.game_id = gid;
-  m.fn = reinterpret_cast<void *>(fn);
+  m.game_id   = gid;
+  m.fn        = reinterpret_cast<void*>(fn);
   m.user_data = user_data;
   bridge->current_plugin->file_mappers.push_back(std::move(m));
 
@@ -1267,90 +1223,83 @@ static void cb_v2_register_file_mapper(GmmRegistrationCtxV2 *ctx,
   Logger::instance().debug("Plugin registered v2 file mapper for game=" + gid);
 }
 
-static void cb_v2_register_sort_provider(GmmRegistrationCtxV2 *ctx,
-                                         GmmSortFn sort_fn, void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_sort_provider(GmmRegistrationCtxV2* ctx, GmmSortFn sort_fn,
+                                         void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge)
     return;
 
-  std::string gid =
-      bridge->current_plugin ? bridge->current_plugin->game_id : "";
+  std::string gid = bridge->current_plugin ? bridge->current_plugin->game_id : "";
   if (gid.empty()) {
     Logger::instance().warn("Sort provider registered with empty game_id");
     return;
   }
 
-  auto provider =
-      std::make_unique<Sorter::Abi>(gid.c_str(), sort_fn, user_data);
+  auto provider = std::make_unique<Sorter::Abi>(gid.c_str(), sort_fn, user_data);
   Sorter::Registry::instance().register_provider(gid, std::move(provider));
 
-  Logger::instance().debug("Plugin registered v2 sort provider for game=" +
-                           gid);
+  Logger::instance().debug("Plugin registered v2 sort provider for game=" + gid);
 }
 
-static void cb_v2_register_stage_claim(GmmRegistrationCtxV2 *ctx,
-                                       const char *stage_name, GmmStageFnV2 fn,
+static void cb_v2_register_stage_claim(GmmRegistrationCtxV2* ctx,
+                                       const char* stage_name, GmmStageFnV2 fn,
                                        int priority) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
   std::string game_id = bridge->current_plugin->game_id;
-  std::string stage = stage_name ? stage_name : "";
+  std::string stage   = stage_name ? stage_name : "";
   if (stage.empty() || !fn)
     return;
 
   bridge->loader->stage_registry().register_claim(
       game_id, stage,
-      [fn](Mod &mod, PipelineContext &ctx_) -> bool {
-        GmmModHandle mod_h = reinterpret_cast<GmmModHandle>(&mod);
-        GmmInstanceHandle inst_h =
-            reinterpret_cast<GmmInstanceHandle>(ctx_.instance);
+      [fn](Mod& mod, PipelineContext& ctx_) -> bool {
+        GmmModHandle mod_h       = reinterpret_cast<GmmModHandle>(&mod);
+        GmmInstanceHandle inst_h = reinterpret_cast<GmmInstanceHandle>(ctx_.instance);
         GmmConflictIndexHandle conf_h =
             reinterpret_cast<GmmConflictIndexHandle>(ctx_.conflict_index);
-        GmmProfileHandle prof_h =
-            reinterpret_cast<GmmProfileHandle>(ctx_.profile);
-        g_active_stage_ctx = &ctx_;
-        const int result = fn(mod_h, inst_h, conf_h, prof_h, nullptr);
-        g_active_stage_ctx = nullptr;
+        GmmProfileHandle prof_h = reinterpret_cast<GmmProfileHandle>(ctx_.profile);
+        g_active_stage_ctx      = &ctx_;
+        const int result        = fn(mod_h, inst_h, conf_h, prof_h, nullptr);
+        g_active_stage_ctx      = nullptr;
         return result != 0;
       },
       priority, bridge->current_plugin->path);
 }
 
-static void cb_v2_register_wildcard_stage_claim(GmmRegistrationCtxV2 *ctx,
-                                                const char *game_id,
-                                                const char *stage_name,
-                                                GmmStageFnV2 fn, int priority) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_wildcard_stage_claim(GmmRegistrationCtxV2* ctx,
+                                                const char* game_id,
+                                                const char* stage_name, GmmStageFnV2 fn,
+                                                int priority) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
-  std::string gid = game_id ? game_id : "";
+  std::string gid   = game_id ? game_id : "";
   std::string stage = stage_name ? stage_name : "";
   if (stage.empty() || !fn)
     return;
 
   bridge->loader->stage_registry().register_claim(
       gid, stage,
-      [fn](Mod &mod, PipelineContext &ctx_) -> bool {
-        GmmModHandle mod_h = reinterpret_cast<GmmModHandle>(&mod);
-        GmmInstanceHandle inst_h =
-            reinterpret_cast<GmmInstanceHandle>(ctx_.instance);
+      [fn](Mod& mod, PipelineContext& ctx_) -> bool {
+        GmmModHandle mod_h       = reinterpret_cast<GmmModHandle>(&mod);
+        GmmInstanceHandle inst_h = reinterpret_cast<GmmInstanceHandle>(ctx_.instance);
         GmmConflictIndexHandle conf_h =
             reinterpret_cast<GmmConflictIndexHandle>(ctx_.conflict_index);
-        GmmProfileHandle prof_h =
-            reinterpret_cast<GmmProfileHandle>(ctx_.profile);
-        g_active_stage_ctx = &ctx_;
-        const int result = fn(mod_h, inst_h, conf_h, prof_h, nullptr);
-        g_active_stage_ctx = nullptr;
+        GmmProfileHandle prof_h = reinterpret_cast<GmmProfileHandle>(ctx_.profile);
+        g_active_stage_ctx      = &ctx_;
+        const int result        = fn(mod_h, inst_h, conf_h, prof_h, nullptr);
+        g_active_stage_ctx      = nullptr;
         return result != 0;
       },
       priority, bridge->current_plugin->path);
 }
 
-static char *cb_v2_resolve_file(const char *root, const char *relative_path,
-                                void *user_data) {
+static char* cb_v2_resolve_file(const char* root, const char* relative_path,
+                                void* user_data) {
   if (!root || !relative_path)
     return nullptr;
   const auto gf = engine::vfs::PathResolver(std::filesystem::path(root))
@@ -1358,22 +1307,21 @@ static char *cb_v2_resolve_file(const char *root, const char *relative_path,
   if (!gf)
     return nullptr;
   const std::string s = gf->absolute().string();
-  char *out = static_cast<char *>(std::malloc(s.size() + 1));
+  char* out           = static_cast<char*>(std::malloc(s.size() + 1));
   if (out) {
     std::memcpy(out, s.c_str(), s.size() + 1);
   }
   return out;
 }
 
-static void cb_v2_register_preview(GmmRegistrationCtxV2 *ctx,
-                                   const char *file_extension,
-                                   void *preview_data, GmmPreviewFn fn,
-                                   void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_preview(GmmRegistrationCtxV2* ctx,
+                                   const char* file_extension, void* preview_data,
+                                   GmmPreviewFn fn, void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   Logger::instance().debug(
       "[PluginLoader] cb_v2_register_preview: ctx=" +
-      std::to_string(reinterpret_cast<uintptr_t>(ctx)) + " file_extension=" +
-      (file_extension ? std::string(file_extension) : "NULL") +
+      std::to_string(reinterpret_cast<uintptr_t>(ctx)) +
+      " file_extension=" + (file_extension ? std::string(file_extension) : "NULL") +
       " fn=" + std::to_string(reinterpret_cast<uintptr_t>(fn)) +
       " user_data=" + std::to_string(reinterpret_cast<uintptr_t>(user_data)));
   if (!bridge || !bridge->current_plugin || !fn) {
@@ -1391,9 +1339,9 @@ static void cb_v2_register_preview(GmmRegistrationCtxV2 *ctx,
 
   PluginPreview p;
   p.file_extension = ext_str;
-  p.preview_data = preview_data;
-  p.fn = reinterpret_cast<void *>(fn);
-  p.user_data = user_data;
+  p.preview_data   = preview_data;
+  p.fn             = reinterpret_cast<void*>(fn);
+  p.user_data      = user_data;
   bridge->current_plugin->previews.push_back(std::move(p));
 
   // Mirror the registration into the UI-side Registry so the preview
@@ -1409,24 +1357,24 @@ static void cb_v2_register_preview(GmmRegistrationCtxV2 *ctx,
                            ext_str);
 }
 
-static void cb_v2_register_tool(GmmRegistrationCtxV2 *ctx, const char *tool_id,
-                                const char *kind, GmmToolInvokeFn fn,
-                                void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_tool(GmmRegistrationCtxV2* ctx, const char* tool_id,
+                                const char* kind, GmmToolInvokeFn fn, void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
   ExternalTool tool;
-  tool.tool_id = tool_id ? tool_id : "";
-  tool.game_id = bridge->current_plugin->game_id;
+  tool.tool_id      = tool_id ? tool_id : "";
+  tool.game_id      = bridge->current_plugin->game_id;
   tool.display_name = tool_id_to_display_name(tool.tool_id);
 
   std::string kind_str = kind ? kind : "advisory";
-  tool.kind =
-      (kind_str == "workshop") ? ToolKind::Workshop : ToolKind::Advisory;
+  tool.kind = (kind_str == "workshop") ? ToolKind::Workshop : ToolKind::Advisory;
 
   if (fn) {
-    tool.invoke_fn = [fn](void *ud) { fn(ud); };
+    tool.invoke_fn = [fn](void* ud) {
+      fn(ud);
+    };
     tool.invoke_user_data = user_data;
   }
 
@@ -1442,22 +1390,22 @@ static void cb_v2_register_tool(GmmRegistrationCtxV2 *ctx, const char *tool_id,
   // plugin-provided tool callbacks (raw fn + user_data + owning plugin path,
   // used for unload cleanup). The platform/tools ToolRegistry above drives the
   // Tools menu; this one is the v2 source of truth.
-  PluginToolRegistry::instance().register_tool(
-      tool.tool_id, kind_str, fn, user_data, bridge->current_plugin->path);
+  PluginToolRegistry::instance().register_tool(tool.tool_id, kind_str, fn, user_data,
+                                               bridge->current_plugin->path);
 
   Logger::instance().debug("Plugin registered v2 tool: " + tool.tool_id + " (" +
                            kind_str + ") for game=" + tool.game_id);
 }
 
-static void cb_v2_register_modpage(GmmRegistrationCtxV2 *ctx, const char *url,
-                                   GmmModPageDownloadFn fn, void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_modpage(GmmRegistrationCtxV2* ctx, const char* url,
+                                   GmmModPageDownloadFn fn, void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin || !fn)
     return;
 
   PluginModPage m;
-  m.url = url ? url : "";
-  m.fn = reinterpret_cast<void *>(fn);
+  m.url       = url ? url : "";
+  m.fn        = reinterpret_cast<void*>(fn);
   m.user_data = user_data;
   // Capture url before moving m into the plugin's modpages vector.
   const std::string modpage_url = m.url;
@@ -1466,18 +1414,16 @@ static void cb_v2_register_modpage(GmmRegistrationCtxV2 *ctx, const char *url,
   Logger::instance().debug("Plugin registered v2 modpage for url=" + modpage_url);
 }
 
-static void cb_v2_register_save_parser(GmmRegistrationCtxV2 *ctx,
-                                       const char *game_id,
+static void cb_v2_register_save_parser(GmmRegistrationCtxV2* ctx, const char* game_id,
                                        GmmSaveParserFnV2 fn, int priority,
-                                       void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+                                       void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
   std::string gid = game_id ? game_id : bridge->current_plugin->game_id;
   if (gid.empty() || !fn) {
-    Logger::instance().warn(
-        "Save parser registered with empty game_id or null fn");
+    Logger::instance().warn("Save parser registered with empty game_id or null fn");
     return;
   }
 
@@ -1487,41 +1433,40 @@ static void cb_v2_register_save_parser(GmmRegistrationCtxV2 *ctx,
   // via gmm_abi_features. Plugins built before v2.1 leave this at 0 and
   // get the pre-v2.1 copy path (no new fields read). Load-time only, so
   // no concurrency concern.
-  const uint64_t features = bridge->current_plugin->features;
+  const uint64_t features   = bridge->current_plugin->features;
   const bool has_screenshot = (features & GMM_FEATURE_SAVE_SCREENSHOT) != 0;
-  const bool has_medium = (features & GMM_FEATURE_SAVE_MEDIUM) != 0;
-  const bool has_all_files = (features & GMM_FEATURE_SAVE_ALL_FILES) != 0;
+  const bool has_medium     = (features & GMM_FEATURE_SAVE_MEDIUM) != 0;
+  const bool has_all_files  = (features & GMM_FEATURE_SAVE_ALL_FILES) != 0;
   // Keep a reference to the loader so the wrapper can resolve the
   // overlay fn at parse time (register_save_overlay may fire AFTER
   // register_save_parser inside the plugin, so we cannot capture the
   // overlay fn at registration time). Loader pointer outlives the
   // lambda: load_directory finishes before any save scan runs.
-  PluginLoader *loader = bridge->loader;
+  PluginLoader* loader = bridge->loader;
 
   SaveParserRegistry::instance().register_parser(
       gid, priority,
-      [fn, user_data, has_screenshot, has_medium, has_all_files, gid,
-       loader](const std::filesystem::path &path,
-               const std::string &game_id) -> SaveGame {
+      [fn, user_data, has_screenshot, has_medium, has_all_files, gid, loader](
+          const std::filesystem::path& path, const std::string& game_id) -> SaveGame {
         GmmSaveDataV2 c_out = {};
         if (!fn(path.string().c_str(), game_id.c_str(), &c_out, user_data)) {
           throw SaveParseError("plugin v2 parser returned 0");
         }
         SaveGame out;
-        out.file_path = c_out.file_path ? c_out.file_path : "";
-        out.game_id = c_out.game_id ? c_out.game_id : game_id;
+        out.file_path     = c_out.file_path ? c_out.file_path : "";
+        out.game_id       = c_out.game_id ? c_out.game_id : game_id;
         out.creation_time = c_out.creation_time;
-        out.pc_name = c_out.pc_name ? c_out.pc_name : "";
-        out.pc_level = c_out.pc_level;
-        out.pc_location = c_out.pc_location ? c_out.pc_location : "";
-        out.save_number = c_out.save_number;
+        out.pc_name       = c_out.pc_name ? c_out.pc_name : "";
+        out.pc_level      = c_out.pc_level;
+        out.pc_location   = c_out.pc_location ? c_out.pc_location : "";
+        out.save_number   = c_out.save_number;
         for (uint32_t i = 0; i < c_out.plugin_count && i < 256; ++i) {
           out.plugins.push_back(c_out.plugins[i] ? c_out.plugins[i] : "");
           free(c_out.plugins[i]);
         }
         for (uint32_t i = 0; i < c_out.light_plugin_count && i < 256; ++i) {
-          out.light_plugins.push_back(
-              c_out.light_plugins[i] ? c_out.light_plugins[i] : "");
+          out.light_plugins.push_back(c_out.light_plugins[i] ? c_out.light_plugins[i]
+                                                             : "");
           free(c_out.light_plugins[i]);
         }
 
@@ -1532,28 +1477,25 @@ static void cb_v2_register_save_parser(GmmRegistrationCtxV2 *ctx,
         if (has_screenshot && c_out.screenshot_rgba && c_out.screenshot_size &&
             c_out.screenshot_width > 0 && c_out.screenshot_height > 0) {
           const size_t expected =
-              static_cast<size_t>(c_out.screenshot_width) *
-              c_out.screenshot_height * 4;
+              static_cast<size_t>(c_out.screenshot_width) * c_out.screenshot_height * 4;
           if (c_out.screenshot_size >= expected) {
             out.screenshot.assign(c_out.screenshot_rgba,
                                   c_out.screenshot_rgba + expected);
-            out.screenshot_width = c_out.screenshot_width;
+            out.screenshot_width  = c_out.screenshot_width;
             out.screenshot_height = c_out.screenshot_height;
           }
         }
         if (has_medium) {
           for (uint32_t i = 0;
                i < c_out.medium_plugin_count && i < GMM_SAVE_MAX_PLUGINS; ++i) {
-            out.medium_plugins.push_back(c_out.medium_plugins[i]
-                                             ? c_out.medium_plugins[i]
-                                             : "");
+            out.medium_plugins.push_back(
+                c_out.medium_plugins[i] ? c_out.medium_plugins[i] : "");
             free(c_out.medium_plugins[i]);
           }
         }
         if (has_all_files && c_out.all_files) {
           for (uint32_t i = 0; i < c_out.all_files_count; ++i) {
-            out.all_files.push_back(c_out.all_files[i] ? c_out.all_files[i]
-                                                       : "");
+            out.all_files.push_back(c_out.all_files[i] ? c_out.all_files[i] : "");
             free(c_out.all_files[i]);
           }
           // The outer char** array itself is plugin-malloc'd per the ABI
@@ -1567,16 +1509,14 @@ static void cb_v2_register_save_parser(GmmRegistrationCtxV2 *ctx,
         // the malloc'd GmmSaveOverlayV2 + its strings; we free them all
         // before returning. Mirrors the pre-v2.1 field ownership.
         if (loader) {
-          for (const auto &p : loader->plugins()) {
+          for (const auto& p : loader->plugins()) {
             if (p.save_overlay_fn && p.game_id == gid) {
-              auto overlay_fn = reinterpret_cast<GmmSaveOverlayFnV2>(
-                  p.save_overlay_fn);
-              if (GmmSaveOverlayV2 *ov = overlay_fn(&c_out, p.save_overlay_user_data)) {
+              auto overlay_fn = reinterpret_cast<GmmSaveOverlayFnV2>(p.save_overlay_fn);
+              if (GmmSaveOverlayV2* ov = overlay_fn(&c_out, p.save_overlay_user_data)) {
                 if (ov->kv_keys && ov->kv_values) {
                   for (uint32_t i = 0; i < ov->kv_count; ++i) {
                     out.overlay.push_back({ov->kv_keys[i] ? ov->kv_keys[i] : "",
-                                           ov->kv_values[i] ? ov->kv_values[i]
-                                                            : ""});
+                                           ov->kv_values[i] ? ov->kv_values[i] : ""});
                     free(ov->kv_keys[i]);
                     free(ov->kv_values[i]);
                   }
@@ -1587,7 +1527,7 @@ static void cb_v2_register_save_parser(GmmRegistrationCtxV2 *ctx,
                 free(ov->subtitle);
                 free(ov);
               }
-              break; // first overlay wins (single-registration contract)
+              break;  // first overlay wins (single-registration contract)
             }
           }
         }
@@ -1616,17 +1556,16 @@ static void cb_v2_register_save_parser(GmmRegistrationCtxV2 *ctx,
 // detection, instance/game model, Saves tab) reach in there. We deliberately
 // do NOT invoke these callbacks at registration time beyond capturing them -
 // they're cheap to keep and the rest of the engine consults them lazily.
-static void cb_v2_register_game_validator(GmmRegistrationCtxV2 *ctx,
-                                           const char *game_id,
-                                           GmmLooksValidFn fn, void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_game_validator(GmmRegistrationCtxV2* ctx,
+                                          const char* game_id, GmmLooksValidFn fn,
+                                          void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
   std::string gid = game_id ? game_id : bridge->current_plugin->game_id;
   if (gid.empty() || !fn) {
-    Logger::instance().warn(
-        "Game validator registered with empty game_id or null fn");
+    Logger::instance().warn("Game validator registered with empty game_id or null fn");
     return;
   }
 
@@ -1637,25 +1576,22 @@ static void cb_v2_register_game_validator(GmmRegistrationCtxV2 *ctx,
   // there is the cheap-next-step. For now we capture it on the plugin so
   // the next detection pass can use it (or a debug tool can introspect it).
   // ponytail: hook into game detection when we need non-Steam installs.
-  bridge->current_plugin->game_validator_fn =
-      reinterpret_cast<void *>(fn);
+  bridge->current_plugin->game_validator_fn        = reinterpret_cast<void*>(fn);
   bridge->current_plugin->game_validator_user_data = user_data;
   Logger::instance().debug("Plugin registered v2 game validator for game=" + gid);
 }
 
-static void cb_v2_register_game_variant(GmmRegistrationCtxV2 *ctx,
-                                         const char *game_id,
-                                         const char *variant_id,
-                                         const char *display_name) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_game_variant(GmmRegistrationCtxV2* ctx, const char* game_id,
+                                        const char* variant_id,
+                                        const char* display_name) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
   std::string gid = game_id ? game_id : bridge->current_plugin->game_id;
   std::string vid = variant_id ? variant_id : "";
   if (gid.empty() || vid.empty()) {
-    Logger::instance().warn(
-        "Game variant registered with empty game_id or variant_id");
+    Logger::instance().warn("Game variant registered with empty game_id or variant_id");
     return;
   }
 
@@ -1665,22 +1601,21 @@ static void cb_v2_register_game_variant(GmmRegistrationCtxV2 *ctx,
   // IPluginGame::setGameVariant in MO2.
   bridge->current_plugin->variants.push_back(
       {std::move(vid), display_name ? display_name : ""});
-  Logger::instance().debug("Plugin registered v2 game variant: game=" + gid +
-                           " variant=" + bridge->current_plugin->variants.back().variant_id);
+  Logger::instance().debug(
+      "Plugin registered v2 game variant: game=" + gid +
+      " variant=" + bridge->current_plugin->variants.back().variant_id);
 }
 
-static void cb_v2_register_save_overlay(GmmRegistrationCtxV2 *ctx,
-                                         const char *game_id,
-                                         GmmSaveOverlayFnV2 fn, int priority,
-                                         void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_save_overlay(GmmRegistrationCtxV2* ctx, const char* game_id,
+                                        GmmSaveOverlayFnV2 fn, int priority,
+                                        void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
   std::string gid = game_id ? game_id : bridge->current_plugin->game_id;
   if (gid.empty() || !fn) {
-    Logger::instance().warn(
-        "Save overlay registered with empty game_id or null fn");
+    Logger::instance().warn("Save overlay registered with empty game_id or null fn");
     return;
   }
 
@@ -1689,18 +1624,18 @@ static void cb_v2_register_save_overlay(GmmRegistrationCtxV2 *ctx,
   // (plugin load order is the priority) - good enough for the single-
   // overlay-per-game contract MO2 uses. Stored as void* in PluginInfo
   // so this header doesn't drag the full v2 header in.
-  bridge->current_plugin->save_overlay_fn = reinterpret_cast<void *>(fn);
+  bridge->current_plugin->save_overlay_fn        = reinterpret_cast<void*>(fn);
   bridge->current_plugin->save_overlay_user_data = user_data;
   Logger::instance().debug("Plugin registered v2 save overlay for game=" + gid +
                            " priority=" + std::to_string(priority));
 }
 
-static void cb_v2_register_animation_parser(GmmRegistrationCtxV2 *ctx,
-                                             const char *game_id,
-                                             const char *file_extension,
-                                             GmmAnimationParserFnV2 fn,
-                                             int priority, void *user_data) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_animation_parser(GmmRegistrationCtxV2* ctx,
+                                            const char* game_id,
+                                            const char* file_extension,
+                                            GmmAnimationParserFnV2 fn, int priority,
+                                            void* user_data) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
@@ -1713,39 +1648,39 @@ static void cb_v2_register_animation_parser(GmmRegistrationCtxV2 *ctx,
   }
 
   std::string source = bridge->current_plugin->path;
-  auto feature = std::make_shared<AnimationParserFeature>(
-      [fn, user_data](const std::string &file_path, const std::string &base_dir)
+  auto feature       = std::make_shared<AnimationParserFeature>(
+      [fn, user_data](const std::string& file_path, const std::string& base_dir)
           -> std::optional<AnimationParserFeature::AnimationData> {
         GmmAnimationDataV2 c_out = {};
         if (!fn(file_path.c_str(), base_dir.c_str(), &c_out, user_data)) {
           return std::nullopt;
         }
         AnimationParserFeature::AnimationData data;
-        data.fps = c_out.fps;
-        data.canvas_width = c_out.canvas_width;
+        data.fps           = c_out.fps;
+        data.canvas_width  = c_out.canvas_width;
         data.canvas_height = c_out.canvas_height;
 
         // Pass through the raw animation pointer from the plugin for
         // on-demand rendering. The plugin owns this memory.
-        data.raw_animation = c_out.raw_animation;
-        data.on_demand_canvas_width = c_out.canvas_width;
+        data.raw_animation           = c_out.raw_animation;
+        data.on_demand_canvas_width  = c_out.canvas_width;
         data.on_demand_canvas_height = c_out.canvas_height;
-        data.on_demand_fps = static_cast<int>(c_out.fps);
-        data.on_demand_frame_count = static_cast<int>(c_out.frame_count);
+        data.on_demand_fps           = static_cast<int>(c_out.fps);
+        data.on_demand_frame_count   = static_cast<int>(c_out.frame_count);
 
         // Wrap the plugin's render callback for on-demand frame generation.
         if (c_out.render_frame && c_out.raw_animation) {
-          auto *raw = c_out.raw_animation;
-          auto *render_fn = c_out.render_frame;
+          auto* raw       = c_out.raw_animation;
+          auto* render_fn = c_out.render_frame;
           data.render_frame =
-              [raw, render_fn](float time_ms)
-              -> AnimationParserFeature::RenderResult {
+              [raw, render_fn](float time_ms) -> AnimationParserFeature::RenderResult {
             AnimationParserFeature::RenderResult result;
             int32_t w = 0, h = 0;
-            uint8_t *pixels = render_fn(raw, time_ms, &w, &h);
+            uint8_t* pixels = render_fn(raw, time_ms, &w, &h);
             if (pixels && w > 0 && h > 0) {
-              result.pixels.assign(pixels, pixels + (static_cast<size_t>(w) * static_cast<size_t>(h) * 4));
-              result.width = w;
+              result.pixels.assign(pixels, pixels + (static_cast<size_t>(w) *
+                                                     static_cast<size_t>(h) * 4));
+              result.width  = w;
               result.height = h;
               free(pixels);
             }
@@ -1754,19 +1689,18 @@ static void cb_v2_register_animation_parser(GmmRegistrationCtxV2 *ctx,
         }
 
         for (size_t fi = 0; fi < c_out.frame_count; ++fi) {
-          auto &cf = c_out.frames[fi];
+          auto& cf = c_out.frames[fi];
           AnimationParserFeature::Frame frame;
           frame.delay_ms = cf.delay_ms;
           for (size_t li = 0; li < cf.layer_count; ++li) {
-            auto &cl = cf.layers[li];
+            auto& cl = cf.layers[li];
             AnimationParserFeature::LayerItem layer;
-            layer.x = cl.x;
-            layer.y = cl.y;
-            layer.width = cl.width;
+            layer.x      = cl.x;
+            layer.y      = cl.y;
+            layer.width  = cl.width;
             layer.height = cl.height;
             if (cl.rgba_pixels && cl.pixel_count > 0) {
-              layer.rgba_pixels.assign(cl.rgba_pixels,
-                                       cl.rgba_pixels + cl.pixel_count);
+              layer.rgba_pixels.assign(cl.rgba_pixels, cl.rgba_pixels + cl.pixel_count);
               free(cl.rgba_pixels);
             }
             frame.layers.push_back(std::move(layer));
@@ -1778,50 +1712,50 @@ static void cb_v2_register_animation_parser(GmmRegistrationCtxV2 *ctx,
 
         /* Convert named animation states (new in ABI v2.1) */
         for (size_t si = 0; si < c_out.state_count; ++si) {
-          auto &cs = c_out.states[si];
+          auto& cs = c_out.states[si];
           AnimationParserFeature::AnimationState state;
           if (cs.name) {
             state.name = std::string(cs.name);
             free(cs.name);
           }
-          state.canvas_width = cs.canvas_width;
+          state.canvas_width  = cs.canvas_width;
           state.canvas_height = cs.canvas_height;
           state.raw_animation = cs.raw_animation;
           // Create per-state render callback that captures this state's own
           // raw_animation pointer (not the top-level one which is the first state).
           if (cs.render_frame && cs.raw_animation) {
-            auto *raw = cs.raw_animation;
-            auto *render_fn = cs.render_frame;
+            auto* raw       = cs.raw_animation;
+            auto* render_fn = cs.render_frame;
             state.render_frame =
-                [raw, render_fn](float time_ms)
-                -> AnimationParserFeature::RenderResult {
+                [raw,
+                 render_fn](float time_ms) -> AnimationParserFeature::RenderResult {
               AnimationParserFeature::RenderResult result;
               int32_t w = 0, h = 0;
-              uint8_t *pixels = render_fn(raw, time_ms, &w, &h);
+              uint8_t* pixels = render_fn(raw, time_ms, &w, &h);
               if (pixels && w > 0 && h > 0) {
-                result.pixels.assign(pixels,
-                    pixels + (static_cast<size_t>(w) * static_cast<size_t>(h) * 4));
-                result.width = w;
+                result.pixels.assign(pixels, pixels + (static_cast<size_t>(w) *
+                                                       static_cast<size_t>(h) * 4));
+                result.width  = w;
                 result.height = h;
                 free(pixels);
               }
               return result;
             };
-            state.on_demand_canvas_width = cs.canvas_width;
+            state.on_demand_canvas_width  = cs.canvas_width;
             state.on_demand_canvas_height = cs.canvas_height;
-            state.on_demand_fps = static_cast<int>(c_out.fps);
-            state.on_demand_frame_count = static_cast<int>(cs.frame_count);
+            state.on_demand_fps           = static_cast<int>(c_out.fps);
+            state.on_demand_frame_count   = static_cast<int>(cs.frame_count);
           }
           for (size_t fi = 0; fi < cs.frame_count; ++fi) {
-            auto &cf = cs.frames[fi];
+            auto& cf = cs.frames[fi];
             AnimationParserFeature::Frame frame;
             frame.delay_ms = cf.delay_ms;
             for (size_t li = 0; li < cf.layer_count; ++li) {
-              auto &cl = cf.layers[li];
+              auto& cl = cf.layers[li];
               AnimationParserFeature::LayerItem layer;
-              layer.x = cl.x;
-              layer.y = cl.y;
-              layer.width = cl.width;
+              layer.x      = cl.x;
+              layer.y      = cl.y;
+              layer.width  = cl.width;
               layer.height = cl.height;
               if (cl.rgba_pixels && cl.pixel_count > 0) {
                 layer.rgba_pixels.assign(cl.rgba_pixels,
@@ -1843,13 +1777,11 @@ static void cb_v2_register_animation_parser(GmmRegistrationCtxV2 *ctx,
 
   Game::Features::Registry::instance().register_feature(
       gid, "animation_parser", priority, std::move(feature), source);
-  Logger::instance().debug("Plugin registered v2 animation parser for game=" +
-                           gid);
+  Logger::instance().debug("Plugin registered v2 animation parser for game=" + gid);
 }
 
-static void cb_v2_register_category(GmmRegistrationCtxV2 *ctx,
-                                    const char *category) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_category(GmmRegistrationCtxV2* ctx, const char* category) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
@@ -1857,49 +1789,47 @@ static void cb_v2_register_category(GmmRegistrationCtxV2 *ctx,
     bridge->current_plugin->category = category;
 }
 
-static void cb_v2_register_categories(GmmRegistrationCtxV2 *ctx, const int *ids,
-                                      const char *const *names,
-                                      const int *parent_ids, size_t count) {
+static void cb_v2_register_categories(GmmRegistrationCtxV2* ctx, const int* ids,
+                                      const char* const* names, const int* parent_ids,
+                                      size_t count) {
   if (!ids || !names || count == 0)
     return;
 
   Category::Factory::instance().merge(ids, names, parent_ids, count);
 
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (bridge && bridge->current_plugin) {
-    Logger::instance().debug(
-        "Plugin registered " + std::to_string(count) +
-        " categories (plugin=" + bridge->current_plugin->game_id + ")");
+    Logger::instance().debug("Plugin registered " + std::to_string(count) +
+                             " categories (plugin=" + bridge->current_plugin->game_id +
+                             ")");
   }
 }
 
-static void
-cb_v2_register_tab(GmmRegistrationCtxV2 *ctx, const char *capability,
-                   const char *display_name, const char *data_path,
-                   const char *description, const char *protocol_handler,
-                   const char *website_domain, const char *supported_platforms,
-                   const char *insert_before, const char *insert_after) {
-  auto *bridge = static_cast<RegistrationBridge *>(ctx->user_data);
+static void cb_v2_register_tab(GmmRegistrationCtxV2* ctx, const char* capability,
+                               const char* display_name, const char* data_path,
+                               const char* description, const char* protocol_handler,
+                               const char* website_domain,
+                               const char* supported_platforms,
+                               const char* insert_before, const char* insert_after) {
+  auto* bridge = static_cast<RegistrationBridge*>(ctx->user_data);
   if (!bridge || !bridge->current_plugin)
     return;
 
   CapabilityInfo info;
-  info.game_id = bridge->current_plugin->game_id;
-  info.capability = capability ? capability : "";
-  info.display_name = display_name ? display_name
-                      : capability ? capability
-                                   : "";
-  info.data_path = data_path ? data_path : "";
-  info.description = description ? description : "";
+  info.game_id          = bridge->current_plugin->game_id;
+  info.capability       = capability ? capability : "";
+  info.display_name     = display_name ? display_name : capability ? capability : "";
+  info.data_path        = data_path ? data_path : "";
+  info.description      = description ? description : "";
   info.protocol_handler = protocol_handler ? protocol_handler : "";
-  info.website_domain = website_domain ? website_domain : "";
-  info.insert_before = insert_before ? insert_before : "";
-  info.insert_after = insert_after ? insert_after : "";
+  info.website_domain   = website_domain ? website_domain : "";
+  info.insert_before    = insert_before ? insert_before : "";
+  info.insert_after     = insert_after ? insert_after : "";
 
   // Parse comma-separated platforms
   if (supported_platforms) {
     std::string platforms_str = supported_platforms;
-    size_t pos = 0;
+    size_t pos                = 0;
     while ((pos = platforms_str.find(',')) != std::string::npos) {
       info.supported_platforms.push_back(platforms_str.substr(0, pos));
       platforms_str.erase(0, pos + 1);
@@ -1912,9 +1842,11 @@ cb_v2_register_tab(GmmRegistrationCtxV2 *ctx, const char *capability,
   bridge->loader->capabilities().register_capability(info);
 }
 
-PluginLoader::~PluginLoader() { unload_all(); }
+PluginLoader::~PluginLoader() {
+  unload_all();
+}
 
-bool PluginLoader::load_plugin(const std::string &path) {
+bool PluginLoader::load_plugin(const std::string& path) {
   if (is_loaded(path)) {
     Logger::instance().warn("Plugin already loaded: " + path);
     return true;
@@ -1925,16 +1857,14 @@ bool PluginLoader::load_plugin(const std::string &path) {
     return false;
   }
 
-  void *handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
+  void* handle = dlopen(path.c_str(), RTLD_LAZY | RTLD_LOCAL);
   if (!handle) {
-    Logger::instance().error("Failed to load plugin: " + path + " - " +
-                             dlerror());
+    Logger::instance().error("Failed to load plugin: " + path + " - " + dlerror());
     return false;
   }
 
   // Check ABI version
-  auto version_fn =
-      reinterpret_cast<uint32_t (*)()>(dlsym(handle, "gmm_abi_version"));
+  auto version_fn = reinterpret_cast<uint32_t (*)()>(dlsym(handle, "gmm_abi_version"));
   if (!version_fn) {
     Logger::instance().error("Plugin missing gmm_abi_version: " + path);
     dlclose(handle);
@@ -1952,14 +1882,14 @@ bool PluginLoader::load_plugin(const std::string &path) {
   // and consulted at the parse-time bridge to decide whether to copy the
   // new fields. Load-time only, so no concurrency concern.
   uint64_t plugin_features = 0;
-  if (auto features_fn = reinterpret_cast<uint64_t (*)()>(
-          dlsym(handle, "gmm_abi_features"))) {
+  if (auto features_fn =
+          reinterpret_cast<uint64_t (*)()>(dlsym(handle, "gmm_abi_features"))) {
     plugin_features = features_fn();
   }
 
   if (plugin_abi == 1) {
     // ---- v1 path (unchanged) ----
-    auto register_fn = reinterpret_cast<void (*)(GmmRegistrationCtx *)>(
+    auto register_fn = reinterpret_cast<void (*)(GmmRegistrationCtx*)>(
         dlsym(handle, "gmm_register_v1"));
     if (!register_fn) {
       Logger::instance().error("Plugin missing gmm_register_v1: " + path);
@@ -1968,59 +1898,57 @@ bool PluginLoader::load_plugin(const std::string &path) {
     }
 
     PluginInfo info;
-    info.path = path;
-    info.game_id = std::filesystem::path(path).stem().string();
-    info.game_display_name =
-        info.game_id; // fallback, overridden by register_identity
-    info.abi_version = plugin_abi;
-    info.features = plugin_features;
-    info.loaded = true;
-    info.handle = handle;
+    info.path              = path;
+    info.game_id           = std::filesystem::path(path).stem().string();
+    info.game_display_name = info.game_id;  // fallback, overridden by register_identity
+    info.abi_version       = plugin_abi;
+    info.features          = plugin_features;
+    info.loaded            = true;
+    info.handle            = handle;
 
     // Set up registration context and call plugin
-    GmmRegistrationCtx ctx = {};
-    ctx.register_identity = cb_register_identity;
-    ctx.register_stage_claim = cb_register_stage_claim;
-    ctx.register_hook = cb_register_hook;
-    ctx.register_order_encoding = cb_register_order_encoding;
-    ctx.register_deploy_strategy = cb_register_deploy_strategy;
-    ctx.register_tool = cb_register_tool;
-    ctx.register_sort_provider = cb_register_sort_provider;
-    ctx.register_image_diff = cb_register_image_diff;
-    ctx.register_capability = cb_register_capability;
-    ctx.register_tab = cb_register_tab;
-    ctx.register_meta = cb_register_meta;
-    ctx.register_category = cb_register_category;
-    ctx.register_categories = cb_register_categories;
-    ctx.register_settings = cb_register_settings;
-    ctx.register_settings_tab = cb_register_settings_tab;
-    ctx.register_diagnostics = cb_register_diagnostics;
-    ctx.register_game_feature = cb_register_game_feature;
-    ctx.register_game_feature_data = cb_register_game_feature_data;
-    ctx.register_save_parser = cb_register_save_parser;
-    ctx.register_animation_parser = cb_register_animation_parser;
-    ctx.subscribe_event = cb_subscribe_event;
-    ctx.host_ui.fomod_wizard = cb_fomod_wizard;
+    GmmRegistrationCtx ctx            = {};
+    ctx.register_identity             = cb_register_identity;
+    ctx.register_stage_claim          = cb_register_stage_claim;
+    ctx.register_hook                 = cb_register_hook;
+    ctx.register_order_encoding       = cb_register_order_encoding;
+    ctx.register_deploy_strategy      = cb_register_deploy_strategy;
+    ctx.register_tool                 = cb_register_tool;
+    ctx.register_sort_provider        = cb_register_sort_provider;
+    ctx.register_image_diff           = cb_register_image_diff;
+    ctx.register_capability           = cb_register_capability;
+    ctx.register_tab                  = cb_register_tab;
+    ctx.register_meta                 = cb_register_meta;
+    ctx.register_category             = cb_register_category;
+    ctx.register_categories           = cb_register_categories;
+    ctx.register_settings             = cb_register_settings;
+    ctx.register_settings_tab         = cb_register_settings_tab;
+    ctx.register_diagnostics          = cb_register_diagnostics;
+    ctx.register_game_feature         = cb_register_game_feature;
+    ctx.register_game_feature_data    = cb_register_game_feature_data;
+    ctx.register_save_parser          = cb_register_save_parser;
+    ctx.register_animation_parser     = cb_register_animation_parser;
+    ctx.subscribe_event               = cb_subscribe_event;
+    ctx.host_ui.fomod_wizard          = cb_fomod_wizard;
     ctx.register_wildcard_stage_claim = cb_register_wildcard_stage_claim;
 
     RegistrationBridge bridge;
-    bridge.loader = this;
+    bridge.loader         = this;
     bridge.current_plugin = &info;
-    ctx.user_data = &bridge;
+    ctx.user_data         = &bridge;
 
     register_fn(&ctx);
 
     info.registered = true;
     plugins_.push_back(info);
 
-    Logger::instance().debug("Plugin registered: " + info.game_display_name +
-                             " (" + path + ", game=" + info.game_id +
-                             ", appid=" + std::to_string(info.steam_appid) +
-                             ")");
+    Logger::instance().debug("Plugin registered: " + info.game_display_name + " (" +
+                             path + ", game=" + info.game_id +
+                             ", appid=" + std::to_string(info.steam_appid) + ")");
     return true;
   } else if (plugin_abi == 2) {
     // ---- v2 path ----
-    auto register_fn = reinterpret_cast<void (*)(GmmRegistrationCtxV2 *)>(
+    auto register_fn = reinterpret_cast<void (*)(GmmRegistrationCtxV2*)>(
         dlsym(handle, "gmm_register_v2"));
     if (!register_fn) {
       Logger::instance().error("Plugin missing gmm_register_v2: " + path);
@@ -2029,75 +1957,72 @@ bool PluginLoader::load_plugin(const std::string &path) {
     }
 
     PluginInfo info;
-    info.path = path;
-    info.game_id = std::filesystem::path(path).stem().string();
-    info.game_display_name =
-        info.game_id; // fallback, overridden by register_game
-    info.abi_version = plugin_abi;
-    info.features = plugin_features;
-    info.loaded = true;
-    info.handle = handle;
+    info.path              = path;
+    info.game_id           = std::filesystem::path(path).stem().string();
+    info.game_display_name = info.game_id;  // fallback, overridden by register_game
+    info.abi_version       = plugin_abi;
+    info.features          = plugin_features;
+    info.loaded            = true;
+    info.handle            = handle;
 
     RegistrationBridge bridge;
-    bridge.loader = this;
+    bridge.loader         = this;
     bridge.current_plugin = &info;
 
-    GmmRegistrationCtxV2 ctx = {};
-    ctx.user_data = &bridge;
-    ctx.register_plugin = cb_v2_register_plugin;
-    ctx.register_settings = cb_v2_register_settings;
-    ctx.register_settings_tab = cb_v2_register_settings_tab;
-    ctx.register_requirements = cb_v2_register_requirements;
-    ctx.register_diagnostics = cb_v2_register_diagnostics;
-    ctx.register_game = cb_v2_register_game;
-    ctx.register_game_feature = cb_v2_register_game_feature;
-    ctx.register_game_feature_data = cb_v2_register_game_feature_data;
-    ctx.register_hook = cb_v2_register_hook;
-    ctx.register_order_encoding = cb_v2_register_order_encoding;
-    ctx.register_deploy_strategy = cb_v2_register_deploy_strategy;
-    ctx.register_file_mapper = cb_v2_register_file_mapper;
-    ctx.register_sort_provider = cb_v2_register_sort_provider;
-    ctx.register_stage_claim = cb_v2_register_stage_claim;
+    GmmRegistrationCtxV2 ctx          = {};
+    ctx.user_data                     = &bridge;
+    ctx.register_plugin               = cb_v2_register_plugin;
+    ctx.register_settings             = cb_v2_register_settings;
+    ctx.register_settings_tab         = cb_v2_register_settings_tab;
+    ctx.register_requirements         = cb_v2_register_requirements;
+    ctx.register_diagnostics          = cb_v2_register_diagnostics;
+    ctx.register_game                 = cb_v2_register_game;
+    ctx.register_game_feature         = cb_v2_register_game_feature;
+    ctx.register_game_feature_data    = cb_v2_register_game_feature_data;
+    ctx.register_hook                 = cb_v2_register_hook;
+    ctx.register_order_encoding       = cb_v2_register_order_encoding;
+    ctx.register_deploy_strategy      = cb_v2_register_deploy_strategy;
+    ctx.register_file_mapper          = cb_v2_register_file_mapper;
+    ctx.register_sort_provider        = cb_v2_register_sort_provider;
+    ctx.register_stage_claim          = cb_v2_register_stage_claim;
     ctx.register_wildcard_stage_claim = cb_v2_register_wildcard_stage_claim;
-    ctx.register_preview = cb_v2_register_preview;
-    ctx.register_tool = cb_v2_register_tool;
-    ctx.register_modpage = cb_v2_register_modpage;
-    ctx.register_save_parser = cb_v2_register_save_parser;
-    ctx.register_animation_parser = cb_v2_register_animation_parser;
-    ctx.register_category = cb_v2_register_category;
-    ctx.register_categories = cb_v2_register_categories;
-    ctx.register_tab = cb_v2_register_tab;
-    ctx.resolve_file = cb_v2_resolve_file;
-    ctx.resolve_file_user_data = nullptr;
-    ctx.host_ui.fomod_wizard = cb_fomod_wizard_v2;
+    ctx.register_preview              = cb_v2_register_preview;
+    ctx.register_tool                 = cb_v2_register_tool;
+    ctx.register_modpage              = cb_v2_register_modpage;
+    ctx.register_save_parser          = cb_v2_register_save_parser;
+    ctx.register_animation_parser     = cb_v2_register_animation_parser;
+    ctx.register_category             = cb_v2_register_category;
+    ctx.register_categories           = cb_v2_register_categories;
+    ctx.register_tab                  = cb_v2_register_tab;
+    ctx.resolve_file                  = cb_v2_resolve_file;
+    ctx.resolve_file_user_data        = nullptr;
+    ctx.host_ui.fomod_wizard          = cb_fomod_wizard_v2;
     // v2.1+ additive tail-append slots. The ctx struct grew these fields
     // in gmm_abi_v2.h 3a1484c; zero-initialised above so the .so can be
     // called even on plugins that were built without them (dlsym'd
     // gmm_abi_features will be 0, the ctx slot is NULL, the plugin
     // doesn't touch it).
     ctx.register_game_validator = cb_v2_register_game_validator;
-    ctx.register_game_variant = cb_v2_register_game_variant;
-    ctx.register_save_overlay = cb_v2_register_save_overlay;
+    ctx.register_game_variant   = cb_v2_register_game_variant;
+    ctx.register_save_overlay   = cb_v2_register_save_overlay;
 
     register_fn(&ctx);
 
     info.registered = true;
     plugins_.push_back(info);
 
-    Logger::instance().debug(
-        "Plugin (v2) registered: " + info.game_display_name + " (" + path +
-        ", game=" + info.game_id + ")");
+    Logger::instance().debug("Plugin (v2) registered: " + info.game_display_name +
+                             " (" + path + ", game=" + info.game_id + ")");
     return true;
   } else {
-    Logger::instance().error(
-        "ABI version mismatch: plugin=" + std::to_string(plugin_abi) +
-        " host supports 1 and 2");
+    Logger::instance().error("ABI version mismatch: plugin=" +
+                             std::to_string(plugin_abi) + " host supports 1 and 2");
     dlclose(handle);
     return false;
   }
 }
 
-bool PluginLoader::load_directory(const std::string &dir_path) {
+bool PluginLoader::load_directory(const std::string& dir_path) {
   namespace fs = std::filesystem;
 
   if (!fs::exists(dir_path) || !fs::is_directory(dir_path)) {
@@ -2106,12 +2031,12 @@ bool PluginLoader::load_directory(const std::string &dir_path) {
   }
 
   int loaded = 0;
-  for (const auto &entry : fs::directory_iterator(dir_path)) {
+  for (const auto& entry : fs::directory_iterator(dir_path)) {
     if (!entry.is_regular_file())
       continue;
 
-    const auto &path = entry.path();
-    auto ext = path.extension().string();
+    const auto& path = entry.path();
+    auto ext         = path.extension().string();
 
     // Platform-appropriate shared library extensions. CMake MODULE
     // libraries keep the ".so" suffix even on macOS, so Apple accepts
@@ -2140,8 +2065,8 @@ bool PluginLoader::load_directory(const std::string &dir_path) {
     }
   }
 
-  Logger::instance().debug("Loaded " + std::to_string(loaded) +
-                           " plugins from " + dir_path);
+  Logger::instance().debug("Loaded " + std::to_string(loaded) + " plugins from " +
+                           dir_path);
 
   std::string list_str;
   for (size_t i = 0; i < plugins_.size(); ++i) {
@@ -2155,19 +2080,16 @@ bool PluginLoader::load_directory(const std::string &dir_path) {
   // check_requirements() calls each registered provider and returns the
   // requirements that are not satisfied by the loaded plugin/game set.
   auto unmet = RequirementsRegistry::instance().check_requirements(plugins_);
-  for (const auto &u : unmet) {
-    std::string msg =
-        u.message.empty()
-            ? ("requires " + (u.type.empty() ? "dependency" : u.type) +
-               (u.name.empty() ? "" : " '" + u.name + "'"))
-            : u.message;
-    Logger::instance().warn("Plugin requirement unmet (" + u.plugin_path +
-                            "): " + msg);
+  for (const auto& u : unmet) {
+    std::string msg = u.message.empty()
+                          ? ("requires " + (u.type.empty() ? "dependency" : u.type) +
+                             (u.name.empty() ? "" : " '" + u.name + "'"))
+                          : u.message;
+    Logger::instance().warn("Plugin requirement unmet (" + u.plugin_path + "): " + msg);
   }
   if (!unmet.empty()) {
-    Logger::instance().warn(
-        std::to_string(unmet.size()) +
-        " plugin requirement(s) unmet across loaded plugins");
+    Logger::instance().warn(std::to_string(unmet.size()) +
+                            " plugin requirement(s) unmet across loaded plugins");
   }
 
   // Decide which core category set (if any) populates the global factory now
@@ -2179,17 +2101,16 @@ bool PluginLoader::load_directory(const std::string &dir_path) {
 }
 
 void PluginLoader::finalize_category_sets() {
-  const bool any_registered =
-      !Category::Factory::instance().categories().empty();
+  const bool any_registered = !Category::Factory::instance().categories().empty();
 
   std::string core_set_name;
-  for (const auto &p : plugins_) {
+  for (const auto& p : plugins_) {
     if (!p.game_support)
       continue;
     const auto cs = knowledge_.get(p.game_id, "core_category_set");
     if (!cs.empty()) {
       core_set_name = cs;
-      break; // first game-support plugin with a core set wins
+      break;  // first game-support plugin with a core set wins
     }
   }
 
@@ -2203,16 +2124,16 @@ void PluginLoader::finalize_category_sets() {
   // else: plugins registered categories directly -- use those.
 }
 
-bool PluginLoader::is_loaded(const std::string &path) const {
-  for (const auto &p : plugins_) {
+bool PluginLoader::is_loaded(const std::string& path) const {
+  for (const auto& p : plugins_) {
     if (p.path == path)
       return true;
   }
   return false;
 }
 
-bool PluginLoader::is_disabled(const std::string &filename) const {
-  for (const auto &name : disabled_plugins_) {
+bool PluginLoader::is_disabled(const std::string& filename) const {
+  for (const auto& name : disabled_plugins_) {
     if (name == filename)
       return true;
   }
@@ -2223,13 +2144,13 @@ void PluginLoader::add_loaded_plugin(PluginInfo info) {
   plugins_.push_back(std::move(info));
 }
 
-void PluginLoader::collect_diagnostics(const std::string &game_id,
-                                       PluginDb::Database &db) {
+void PluginLoader::collect_diagnostics(const std::string& game_id,
+                                       PluginDb::Database& db) {
   DiagnosticsRegistry::instance().collect(game_id, db);
 }
 
 void PluginLoader::unload_all() {
-  for (auto &p : plugins_) {
+  for (auto& p : plugins_) {
     // Drop this plugin's event subscriptions BEFORE dlclose so no bus
     // callback can ever run against unloaded .so code.
     EventBus::instance().clear_source(p.path);
@@ -2268,8 +2189,8 @@ void PluginLoader::unload_all() {
   plugins_.clear();
 }
 
-std::string PluginLoader::display_name_for(const std::string &game_id) const {
-  for (const auto &p : plugins_) {
+std::string PluginLoader::display_name_for(const std::string& game_id) const {
+  for (const auto& p : plugins_) {
     if (p.game_id == game_id)
       return p.game_display_name;
   }
@@ -2280,9 +2201,9 @@ std::string PluginLoader::display_name_for(const std::string &game_id) const {
   return game_id;
 }
 
-std::string PluginLoader::resolve_game_id(const std::string &game_id) const {
+std::string PluginLoader::resolve_game_id(const std::string& game_id) const {
   // Exact match - fast path
-  for (const auto &p : plugins_)
+  for (const auto& p : plugins_)
     if (p.game_id == game_id)
       return game_id;
 
@@ -2293,7 +2214,7 @@ std::string PluginLoader::resolve_game_id(const std::string &game_id) const {
   for (char c : game_id)
     q_lower += static_cast<char>(std::tolower(c));
 
-  for (const auto &p : plugins_) {
+  for (const auto& p : plugins_) {
     std::string p_lower;
     for (char c : p.game_id)
       p_lower += static_cast<char>(std::tolower(c));
@@ -2305,7 +2226,7 @@ std::string PluginLoader::resolve_game_id(const std::string &game_id) const {
 
   // Fuzzy: try normalizing display name to instance-name format
   // (spaces → underscores, remove illgal chars)
-  for (const auto &p : plugins_) {
+  for (const auto& p : plugins_) {
     std::string norm;
     for (char c : p.game_display_name) {
       if (c == ' ')
@@ -2317,7 +2238,7 @@ std::string PluginLoader::resolve_game_id(const std::string &game_id) const {
       return p.game_id;
   }
 
-  return game_id; // no match - return as-is
+  return game_id;  // no match - return as-is
 }
 
-} // namespace engine
+}  // namespace engine
