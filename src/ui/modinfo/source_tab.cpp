@@ -34,501 +34,490 @@ namespace ui {
 
 namespace {
 
-// Match a provider by either its source_type() ("nexus") or display_name()
-// ("Nexus Mods"), case-insensitive. Returns nullptr when no provider in the
-// SourceRegistry matches - the caller is then expected to fall back to a
-// generic or placeholder panel.
-engine::SourceProvider *find_provider(const QString &name) {
-  std::string low = name.trimmed().toStdString();
-  for (auto &c : low)
-    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-  for (auto *provider : engine::SourceRegistry::instance().providers()) {
-    auto matches = [&low](const std::string &s) {
-      std::string sl = s;
-      for (auto &c : sl)
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-      return sl == low;
+  // Match a provider by either its source_type() ("nexus") or display_name()
+  // ("Nexus Mods"), case-insensitive. Returns nullptr when no provider in the
+  // SourceRegistry matches - the caller is then expected to fall back to a
+  // generic or placeholder panel.
+  engine::SourceProvider* find_provider(const QString& name) {
+    std::string low = name.trimmed().toStdString();
+    for (auto& c : low)
+      c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (auto* provider : engine::SourceRegistry::instance().providers()) {
+      auto matches = [&low](const std::string& s) {
+        std::string sl = s;
+        for (auto& c : sl)
+          c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return sl == low;
+      };
+      if (matches(provider->source_type()) || matches(provider->display_name()))
+        return provider;
+    }
+    return nullptr;
+  }
+
+  // Add a tab to sources_ with the vendor icon when one resolves. Used for
+  // the single source panel and for the "+" affordance.
+  void add_tab_with_icon(QTabWidget* tabs, QWidget* page, const QString& title,
+                         const QString& source_key) {
+    const std::string vendor_key = engine::vendor_icon_key(source_key.toStdString());
+    if (vendor_key.empty()) {
+      tabs->addTab(page, title);
+    } else {
+      tabs->addTab(page,
+                   engine::IconManager::instance().resolve_icon(
+                       QString::fromStdString(vendor_key)),
+                   title);
+    }
+  }
+
+  // Determine the mod's actual source from meta + ModInfoData fallback.
+  // Returns the canonical source_type ("nexus", "loverslab", "steam") or an
+  // empty QString for manual / unknown. Strategy (Workspace-fqf5):
+  //   1. Use meta's [GameModManager]source_type when it names a known
+  //      provider. Empty / "manual" / unknown are NOT a source.
+  //   2. If absent, look at provider-specific sections already present in the
+  //      meta. A mod with [Nexusmods]/[LoversLab]/[SteamWorkshop] carrying
+  //      data shows that source even when the game's download_sources hook
+  //      does not declare the provider.
+  //   3. Fall back to the in-memory data_.source_type for mods whose meta
+  //      has no provider section yet (e.g. a brand-new install before
+  //      load_meta_for_mods has been called).
+  QString resolve_actual_source(const ModInfoData& data) {
+    auto lower = [](QString s) {
+      return s.toLower();
     };
-    if (matches(provider->source_type()) || matches(provider->display_name()))
-      return provider;
-  }
-  return nullptr;
-}
-
-// Add a tab to sources_ with the vendor icon when one resolves. Used for
-// the single source panel and for the "+" affordance.
-void add_tab_with_icon(QTabWidget *tabs, QWidget *page, const QString &title,
-                       const QString &source_key) {
-  const std::string vendor_key =
-      engine::vendor_icon_key(source_key.toStdString());
-  if (vendor_key.empty()) {
-    tabs->addTab(page, title);
-  } else {
-    tabs->addTab(
-        page,
-        engine::IconManager::instance().resolve_icon(
-            QString::fromStdString(vendor_key)),
-        title);
-  }
-}
-
-// Determine the mod's actual source from meta + ModInfoData fallback.
-// Returns the canonical source_type ("nexus", "loverslab", "steam") or an
-// empty QString for manual / unknown. Strategy (Workspace-fqf5):
-//   1. Use meta's [GameModManager]source_type when it names a known
-//      provider. Empty / "manual" / unknown are NOT a source.
-//   2. If absent, look at provider-specific sections already present in the
-//      meta. A mod with [Nexusmods]/[LoversLab]/[SteamWorkshop] carrying
-//      data shows that source even when the game's download_sources hook
-//      does not declare the provider.
-//   3. Fall back to the in-memory data_.source_type for mods whose meta
-//      has no provider section yet (e.g. a brand-new install before
-//      load_meta_for_mods has been called).
-QString resolve_actual_source(const ModInfoData &data) {
-  auto lower = [](QString s) { return s.toLower(); };
-  if (data.load_meta) {
-    auto meta = data.load_meta();
-    const QString t = lower(QString::fromStdString(meta.source_type()));
-    if (t == QLatin1String("nexus") || t == QLatin1String("loverslab") ||
-        t == QLatin1String("steam") || t == QLatin1String("modpub")) {
-      return t;
-    }
-    // Legacy: "modl" was misregistered as a source (qvi6). Old mods may
-    // still carry it; fall through to the section checks below (which
-    // pick up [ModPub] if the modl link was actually a mod.pub page) or
-    // return empty (-> manual, no source panel). The [Modl] section
-    // remains readable via source_page_url() for the "open source page"
-    // action, so legacy mods do not lose their link.
-    // No declared source_type, but a provider section may exist. Prefer
-    // the section with the strongest signal (an actual id stored in it).
-    if (meta.has_section("Nexusmods")) {
-      const QString modid = QString::fromStdString(
-          meta.get("Nexusmods", "modid"));
-      if (!modid.isEmpty() && modid != QLatin1String("0") &&
-          modid.toLongLong() > 0)
-        return QStringLiteral("nexus");
-    }
-    if (meta.has_section("LoversLab")) {
-      const QString fid =
-          QString::fromStdString(meta.get("LoversLab", "fileid"));
-      if (!fid.isEmpty() && fid.toLongLong() > 0)
-        return QStringLiteral("loverslab");
-    }
-    if (meta.has_section("SteamWorkshop")) {
-      const QString wid = QString::fromStdString(
-          meta.get("SteamWorkshop", "workshop_id"));
-      if (!wid.isEmpty() && wid.toLongLong() > 0)
-        return QStringLiteral("steam");
-    }
-    if (meta.has_section("ModPub")) {
-      const QString mid = QString::fromStdString(
-          meta.get("ModPub", "mod_id"));
-      if (!mid.isEmpty() && mid.toLongLong() > 0)
-        return QStringLiteral("modpub");
-    }
-  }
-  // Fall back to the controller-supplied data_.source_type for mods that
-  // have no sidecar yet (a manual install before any load_meta round trip).
-  const QString dt = lower(data.source_type);
-  if (dt == QLatin1String("nexus") || dt == QLatin1String("loverslab") ||
-      dt == QLatin1String("steam") || dt == QLatin1String("modpub"))
-    return dt;
-  return {};
-}
-
-// Build a panel for the given source_type, using the typed SourceInfoPanel
-// subclass when one exists and a GenericSourcePanel otherwise. The single
-// tab the user sees - the rest of the Source tab is the "+" affordance.
-QWidget *build_panel_for(const QString &source_type,
-                         const ModInfoData &data, QWidget *parent) {
-  if (source_type == QLatin1String("nexus")) {
-    return new NexusSourcePanel(data, parent);
-  }
-  if (source_type == QLatin1String("loverslab")) {
-    return new LoversLabSourcePanel(data, parent);
-  }
-  if (source_type == QLatin1String("steam")) {
-    return new SteamSourcePanel(data, parent);
-  }
-  if (source_type == QLatin1String("modpub")) {
-    return new ModPubSourcePanel(data, parent);
-  }
-  // Unknown / manual: try a registered generic provider that matches the
-  // actual source_type string (some plugins use their own keys).
-  if (auto *provider = find_provider(source_type)) {
-    return new GenericSourcePanel(data, provider, parent);
-  }
-  return nullptr;
-}
-
-// Resolve a human-friendly tab title + vendor icon key for a source_type.
-// Returns std::nullopt when there is no real provider to show and the
-// caller should render a Manual placeholder instead.
-struct SourceDisplay {
-  QString title;
-  QString icon_key;
-};
-std::optional<SourceDisplay> display_for_source(const QString &source_type) {
-  for (auto *provider : engine::SourceRegistry::instance().providers()) {
-    const QString pt = QString::fromStdString(provider->source_type())
-                           .toLower();
-    if (pt == QLatin1String("steamworkshop")) {
-      if (source_type == QLatin1String("steam")) {
-        return SourceDisplay{QString::fromStdString(provider->display_name()),
-                             QStringLiteral("steam")};
+    if (data.load_meta) {
+      auto meta       = data.load_meta();
+      const QString t = lower(QString::fromStdString(meta.source_type()));
+      if (t == QLatin1String("nexus") || t == QLatin1String("loverslab") ||
+          t == QLatin1String("steam") || t == QLatin1String("modpub")) {
+        return t;
       }
-      continue;
+      // Legacy: "modl" was misregistered as a source (qvi6). Old mods may
+      // still carry it; fall through to the section checks below (which
+      // pick up [ModPub] if the modl link was actually a mod.pub page) or
+      // return empty (-> manual, no source panel). The [Modl] section
+      // remains readable via source_page_url() for the "open source page"
+      // action, so legacy mods do not lose their link.
+      // No declared source_type, but a provider section may exist. Prefer
+      // the section with the strongest signal (an actual id stored in it).
+      if (meta.has_section("Nexusmods")) {
+        const QString modid = QString::fromStdString(meta.get("Nexusmods", "modid"));
+        if (!modid.isEmpty() && modid != QLatin1String("0") && modid.toLongLong() > 0)
+          return QStringLiteral("nexus");
+      }
+      if (meta.has_section("LoversLab")) {
+        const QString fid = QString::fromStdString(meta.get("LoversLab", "fileid"));
+        if (!fid.isEmpty() && fid.toLongLong() > 0)
+          return QStringLiteral("loverslab");
+      }
+      if (meta.has_section("SteamWorkshop")) {
+        const QString wid =
+            QString::fromStdString(meta.get("SteamWorkshop", "workshop_id"));
+        if (!wid.isEmpty() && wid.toLongLong() > 0)
+          return QStringLiteral("steam");
+      }
+      if (meta.has_section("ModPub")) {
+        const QString mid = QString::fromStdString(meta.get("ModPub", "mod_id"));
+        if (!mid.isEmpty() && mid.toLongLong() > 0)
+          return QStringLiteral("modpub");
+      }
     }
-    if (pt == source_type) {
-      return SourceDisplay{QString::fromStdString(provider->display_name()),
-                           source_type};
-    }
-  }
-  return std::nullopt;
-}
-
-// -- Add-source dialog -----------------------------------------------------
-
-// A small modal dialog that lets the user pick a provider (Nexus / LoversLab
-// / Steam / anything else in SourceRegistry) and supply the per-provider
-// identifier(s). On accept, writes the provider section + canonical source
-// keys to meta via the ModInfoData lambdas.
-//
-// We keep the dialog deliberately minimal: a provider combo, a small form
-// with the fields each known provider needs, and OK / Cancel. The visible
-// form changes when the combo selection changes.
-//
-// Provider mapping strategy (Workspace-fqf5 review fix):
-//   The combo stores each item's canonical source_type ("nexus" /
-//   "loverslab" / "steam" / ...) in Qt::UserRole via addItem(display,
-//   canonical). chosen_source_type() simply reads currentData(). This
-//   avoids hardcoded positional indices and survives arbitrary registry
-//   orderings or missing providers (e.g. a Nexus-only build with no
-//   LoversLab registered). Priority order in the combo (Nexus first,
-//   then LoversLab, then Steam, then everything else in registration
-//   order) is enforced by sorting an Entry{display,canonical} vector
-//   before populating the combo - no in-place re-ordering that could
-//   mis-track other items' indices.
-class AddSourceDialog : public QDialog {
-public:
-  AddSourceDialog(const ModInfoData &data, QWidget *parent)
-      : QDialog(parent), data_(data) {
-    setWindowTitle(tr("Add Source"));
-    auto *layout = new QVBoxLayout(this);
-
-    auto *intro = new QLabel(tr(
-        "Attach this mod to a download source. The selected provider's "
-        "metadata will be written to the mod's sidecar and the Source tab "
-        "will reload with the new source."),
-        this);
-    intro->setWordWrap(true);
-    layout->addWidget(intro);
-
-    auto *form = new QFormLayout();
-    provider_combo_ = new QComboBox(this);
-
-    // Build the sorted Entry list from the registry. We normalize
-    // "steamworkshop" -> "steam" so the canonical key the rest of the
-    // codebase expects (and that SourceInfoPanel guards on) is consistent
-    // regardless of how a Steam plugin reports itself.
-    struct Entry {
-      QString display;
-      QString canonical;
-      int priority = 0;
-    };
-    auto priority_for = [](const QString &canonical) {
-      if (canonical == QLatin1String("nexus"))
-        return 0;
-      if (canonical == QLatin1String("loverslab"))
-        return 1;
-      if (canonical == QLatin1String("steam"))
-        return 2;
-      if (canonical == QLatin1String("modpub"))
-        return 3;
-      return 4;
-    };
-    QList<Entry> entries;
-    for (auto *provider : engine::SourceRegistry::instance().providers()) {
-      Entry e;
-      e.display = QString::fromStdString(provider->display_name());
-      QString pt = QString::fromStdString(provider->source_type()).toLower();
-      if (pt == QLatin1String("steamworkshop"))
-        pt = QStringLiteral("steam");
-      // "direct" is the transport-only provider used by the modl:// flow;
-      // it is not a user-attributable source (a "Direct" tag carries no
-      // useful identity). Skip it in the Add Source combo.
-      if (pt == QLatin1String("direct"))
-        continue;
-      e.canonical = pt;
-      e.priority = priority_for(pt);
-      entries.append(e);
-    }
-    std::sort(entries.begin(), entries.end(),
-              [](const Entry &a, const Entry &b) {
-                if (a.priority != b.priority)
-                  return a.priority < b.priority;
-                return a.display.compare(b.display, Qt::CaseInsensitive) < 0;
-              });
-    for (const auto &e : entries) {
-      provider_combo_->addItem(e.display, e.canonical);
-    }
-    form->addRow(tr("Provider:"), provider_combo_);
-    layout->addLayout(form);
-
-    // The fields stack swaps based on the chosen provider. Each provider
-    // contributes a small QWidget built lazily and added to the stack; we
-    // rebuild on combo change so edits do not silently carry over.
-    field_stack_ = new QStackedWidget(this);
-    layout->addWidget(field_stack_, 1);
-
-    nexus_page_ = build_nexus_page();
-    loverslab_page_ = build_loverslab_page();
-    steam_page_ = build_steam_page();
-    modpub_page_ = build_modpub_page();
-    field_stack_->addWidget(nexus_page_);
-    field_stack_->addWidget(loverslab_page_);
-    field_stack_->addWidget(steam_page_);
-    field_stack_->addWidget(modpub_page_);
-    // Map canonical -> field page index. Unknown providers (custom plugins)
-    // get an empty page with an "edit in meta.ini" hint.
-    page_by_canonical_[QStringLiteral("nexus")] = 0;
-    page_by_canonical_[QStringLiteral("loverslab")] = 1;
-    page_by_canonical_[QStringLiteral("steam")] = 2;
-    page_by_canonical_[QStringLiteral("modpub")] = 3;
-    unknown_page_ = new QLabel(tr(
-        "This provider has no editable fields here. After confirming, the "
-        "mod's source_type will be set and you can finish configuration by "
-        "editing the meta sidecar directly."),
-        this);
-    unknown_page_->setWordWrap(true);
-    field_stack_->addWidget(unknown_page_);
-    page_by_canonical_[QString()] = field_stack_->count() - 1;
-
-    connect(provider_combo_, qOverload<int>(&QComboBox::currentIndexChanged),
-            this, &AddSourceDialog::on_provider_changed);
-    on_provider_changed(provider_combo_->currentIndex());
-
-    auto *buttons = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    layout->addWidget(buttons);
-    connect(buttons, &QDialogButtonBox::accepted, this,
-            &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, this,
-            &QDialog::reject);
-
-    // OK is disabled until at least the minimum required field is filled
-    // (the current provider's id field). Refresh on every edit and on
-    // provider change.
-    connect(nexus_mod_id_, &QLineEdit::textChanged, this,
-            &AddSourceDialog::refresh_accept_enabled);
-    connect(loverslab_fileid_, &QLineEdit::textChanged, this,
-            &AddSourceDialog::refresh_accept_enabled);
-    connect(steam_workshop_id_, &QLineEdit::textChanged, this,
-            &AddSourceDialog::refresh_accept_enabled);
-    connect(modpub_mod_id_, &QLineEdit::textChanged, this,
-            &AddSourceDialog::refresh_accept_enabled);
-    connect(modpub_page_url_, &QLineEdit::textChanged, this,
-            &AddSourceDialog::refresh_accept_enabled);
-    refresh_accept_enabled();
-  }
-
-  // The provider that the user picked, in the canonical short form used
-  // for [GameModManager]source_type ("nexus" / "loverslab" / "steam" / ...).
-  // Reads the canonical token stored in Qt::UserRole itemData, so the
-  // answer is stable regardless of the combo's visible order.
-  QString chosen_source_type() const {
-    if (!provider_combo_)
-      return {};
-    return provider_combo_->currentData().toString();
-  }
-
-  // Identifier for the chosen provider. For Nexus this is the mod id; for
-  // LoversLab it is the file id; for Steam it is the workshop id; for
-  // ModPub it is the numeric mod id. Custom providers always get an
-  // empty id and rely on the user editing meta.ini.
-  QString chosen_source_id() const {
-    const QString t = chosen_source_type();
-    if (t == QLatin1String("nexus"))
-      return nexus_mod_id_->text().trimmed();
-    if (t == QLatin1String("loverslab"))
-      return loverslab_fileid_->text().trimmed();
-    if (t == QLatin1String("steam"))
-      return steam_workshop_id_->text().trimmed();
-    if (t == QLatin1String("modpub"))
-      return modpub_mod_id_->text().trimmed();
+    // Fall back to the controller-supplied data_.source_type for mods that
+    // have no sidecar yet (a manual install before any load_meta round trip).
+    const QString dt = lower(data.source_type);
+    if (dt == QLatin1String("nexus") || dt == QLatin1String("loverslab") ||
+        dt == QLatin1String("steam") || dt == QLatin1String("modpub"))
+      return dt;
     return {};
   }
 
-  // Per-provider secondary fields. May be empty when the user did not
-  // enter them (LoversLab page_url, ModPub page_url, Steam none).
-  QString loverslab_page_url() const {
-    return loverslab_page_url_->text().trimmed();
-  }
-  QString modpub_page_url() const {
-    return modpub_page_url_->text().trimmed();
-  }
-
-private:
-  QWidget *build_nexus_page() {
-    auto *page = new QWidget(this);
-    auto *form = new QFormLayout(page);
-    nexus_mod_id_ = new QLineEdit(page);
-    nexus_mod_id_->setPlaceholderText(QStringLiteral("e.g. 12345"));
-    form->addRow(tr("Mod ID:"), nexus_mod_id_);
-    auto *hint = new QLabel(tr(
-        "The numeric mod id from the mod's Nexus URL. "
-        "https://www.nexusmods.com/<game>/mods/<id>."),
-        page);
-    hint->setWordWrap(true);
-    form->addRow(hint);
-    return page;
-  }
-  QWidget *build_loverslab_page() {
-    auto *page = new QWidget(this);
-    auto *form = new QFormLayout(page);
-    loverslab_fileid_ = new QLineEdit(page);
-    loverslab_fileid_->setPlaceholderText(QStringLiteral("e.g. 12345"));
-    form->addRow(tr("File ID:"), loverslab_fileid_);
-    loverslab_page_url_ = new QLineEdit(page);
-    loverslab_page_url_->setPlaceholderText(
-        QStringLiteral("https://www.loverslab.com/files/file/12345/"));
-    form->addRow(tr("Page URL (optional):"), loverslab_page_url_);
-    auto *hint = new QLabel(tr(
-        "The numeric file id from the LoversLab file URL. The page URL "
-        "lets the panel open the exact page; otherwise the bare-id URL is "
-        "used. When provided, must start with http:// or https://."),
-        page);
-    hint->setWordWrap(true);
-    form->addRow(hint);
-    return page;
-  }
-  QWidget *build_steam_page() {
-    auto *page = new QWidget(this);
-    auto *form = new QFormLayout(page);
-    steam_workshop_id_ = new QLineEdit(page);
-    steam_workshop_id_->setPlaceholderText(QStringLiteral("e.g. 1234567890"));
-    form->addRow(tr("Workshop ID:"), steam_workshop_id_);
-    auto *hint = new QLabel(tr(
-        "The numeric workshop id from "
-        "https://steamcommunity.com/sharedfiles/filedetails/?id=<id>."),
-        page);
-    hint->setWordWrap(true);
-    form->addRow(hint);
-    return page;
-  }
-  QWidget *build_modpub_page() {
-    auto *page = new QWidget(this);
-    auto *form = new QFormLayout(page);
-    modpub_mod_id_ = new QLineEdit(page);
-    modpub_mod_id_->setPlaceholderText(QStringLiteral("e.g. 22"));
-    form->addRow(tr("Mod ID:"), modpub_mod_id_);
-    modpub_page_url_ = new QLineEdit(page);
-    modpub_page_url_->setPlaceholderText(
-        QStringLiteral("https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng"));
-    form->addRow(tr("Page URL (optional):"), modpub_page_url_);
-    auto *hint = new QLabel(tr(
-        "The numeric mod id from the mod.pub page URL. The page URL is "
-        "strongly recommended: it carries the game-slug and the slug-suffix, "
-        "neither of which can be reconstructed from the id alone. When "
-        "provided, must start with http:// or https://."),
-        page);
-    hint->setWordWrap(true);
-    form->addRow(hint);
-    return page;
-  }
-
-  void on_provider_changed(int idx) {
-    Q_UNUSED(idx);
-    if (!field_stack_)
-      return;
-    const QString t = chosen_source_type();
-    auto it = page_by_canonical_.find(t);
-    if (it != page_by_canonical_.end()) {
-      field_stack_->setCurrentIndex(it.value());
-    } else {
-      field_stack_->setCurrentWidget(unknown_page_);
+  // Build a panel for the given source_type, using the typed SourceInfoPanel
+  // subclass when one exists and a GenericSourcePanel otherwise. The single
+  // tab the user sees - the rest of the Source tab is the "+" affordance.
+  QWidget* build_panel_for(const QString& source_type, const ModInfoData& data,
+                           QWidget* parent) {
+    if (source_type == QLatin1String("nexus")) {
+      return new NexusSourcePanel(data, parent);
     }
-    refresh_accept_enabled();
+    if (source_type == QLatin1String("loverslab")) {
+      return new LoversLabSourcePanel(data, parent);
+    }
+    if (source_type == QLatin1String("steam")) {
+      return new SteamSourcePanel(data, parent);
+    }
+    if (source_type == QLatin1String("modpub")) {
+      return new ModPubSourcePanel(data, parent);
+    }
+    // Unknown / manual: try a registered generic provider that matches the
+    // actual source_type string (some plugins use their own keys).
+    if (auto* provider = find_provider(source_type)) {
+      return new GenericSourcePanel(data, provider, parent);
+    }
+    return nullptr;
   }
 
-  void refresh_accept_enabled() {
-    if (auto *bb = this->findChild<QDialogButtonBox *>()) {
-      const QString t = chosen_source_type();
-      bool ok = true;
-      if (t == QLatin1String("nexus")) {
-        const QString v = nexus_mod_id_->text().trimmed();
-        ok = !v.isEmpty() && v.toLongLong() > 0;
-      } else if (t == QLatin1String("loverslab")) {
-        const QString v = loverslab_fileid_->text().trimmed();
-        ok = !v.isEmpty() && v.toLongLong() > 0;
-        if (ok) {
-          // Optional page_url: when provided, must be http(s). We only
-          // reject when the user typed something but it parses to a
-          // non-web scheme (file://, javascript:, data:, ...). The URL
-          // is later handed to QDesktopServices::openUrl().
-          const QString url = loverslab_page_url_->text().trimmed();
-          if (!url.isEmpty()) {
-            const QUrl parsed(url);
-            const QString scheme = parsed.scheme().toLower();
-            if (scheme != QLatin1String("https") &&
-                scheme != QLatin1String("http")) {
-              ok = false;
-            }
-          }
+  // Resolve a human-friendly tab title + vendor icon key for a source_type.
+  // Returns std::nullopt when there is no real provider to show and the
+  // caller should render a Manual placeholder instead.
+  struct SourceDisplay {
+    QString title;
+    QString icon_key;
+  };
+  std::optional<SourceDisplay> display_for_source(const QString& source_type) {
+    // "direct" is a transport-only provider (modl:// flow) - not a
+    // user-attributable source. Treat it like Manual.
+    if (source_type == QLatin1String("direct"))
+      return std::nullopt;
+    for (auto* provider : engine::SourceRegistry::instance().providers()) {
+      const QString pt = QString::fromStdString(provider->source_type()).toLower();
+      if (pt == QLatin1String("steamworkshop")) {
+        if (source_type == QLatin1String("steam")) {
+          return SourceDisplay{QString::fromStdString(provider->display_name()),
+                               QStringLiteral("steam")};
         }
-      } else if (t == QLatin1String("steam")) {
-        const QString v = steam_workshop_id_->text().trimmed();
-        ok = !v.isEmpty() && v.toLongLong() > 0;
-      } else if (t == QLatin1String("modpub")) {
-        const QString v = modpub_mod_id_->text().trimmed();
-        ok = !v.isEmpty() && v.toLongLong() > 0;
-        if (ok) {
-          // Optional page_url: when provided, must be http(s). Same scheme
-          // gate as LoversLab. The bare-id fallback is acceptable but a
-          // page URL is the recommended form (it carries the game-slug
-          // and the slug-suffix).
-          const QString url = modpub_page_url_->text().trimmed();
-          if (!url.isEmpty()) {
-            const QUrl parsed(url);
-            const QString scheme = parsed.scheme().toLower();
-            if (scheme != QLatin1String("https") &&
-                scheme != QLatin1String("http")) {
-              ok = false;
-            }
-          }
-        }
+        continue;
       }
-      // Custom / unknown providers: allow OK; they get an empty source_id
-      // and rely on manual meta.ini editing.
-      if (bb->button(QDialogButtonBox::Ok))
-        bb->button(QDialogButtonBox::Ok)->setEnabled(ok);
+      if (pt == source_type) {
+        return SourceDisplay{QString::fromStdString(provider->display_name()),
+                             source_type};
+      }
     }
+    return std::nullopt;
   }
 
-  ModInfoData data_;
-  QComboBox *provider_combo_ = nullptr;
-  QStackedWidget *field_stack_ = nullptr;
-  QWidget *nexus_page_ = nullptr;
-  QWidget *loverslab_page_ = nullptr;
-  QWidget *steam_page_ = nullptr;
-  QWidget *modpub_page_ = nullptr;
-  QLabel *unknown_page_ = nullptr;
-  QLineEdit *nexus_mod_id_ = nullptr;
-  QLineEdit *loverslab_fileid_ = nullptr;
-  QLineEdit *loverslab_page_url_ = nullptr;
-  QLineEdit *steam_workshop_id_ = nullptr;
-  QLineEdit *modpub_mod_id_ = nullptr;
-  QLineEdit *modpub_page_url_ = nullptr;
-  // Canonical source_type -> index in field_stack_. Always populated
-  // for the well-known providers; an empty-string entry points at the
-  // unknown-provider hint page.
-  QMap<QString, int> page_by_canonical_;
-};
+  // -- Add-source dialog -----------------------------------------------------
+
+  // A small modal dialog that lets the user pick a provider (Nexus / LoversLab
+  // / Steam / anything else in SourceRegistry) and supply the per-provider
+  // identifier(s). On accept, writes the provider section + canonical source
+  // keys to meta via the ModInfoData lambdas.
+  //
+  // We keep the dialog deliberately minimal: a provider combo, a small form
+  // with the fields each known provider needs, and OK / Cancel. The visible
+  // form changes when the combo selection changes.
+  //
+  // Provider mapping strategy (Workspace-fqf5 review fix):
+  //   The combo stores each item's canonical source_type ("nexus" /
+  //   "loverslab" / "steam" / ...) in Qt::UserRole via addItem(display,
+  //   canonical). chosen_source_type() simply reads currentData(). This
+  //   avoids hardcoded positional indices and survives arbitrary registry
+  //   orderings or missing providers (e.g. a Nexus-only build with no
+  //   LoversLab registered). Priority order in the combo (Nexus first,
+  //   then LoversLab, then Steam, then everything else in registration
+  //   order) is enforced by sorting an Entry{display,canonical} vector
+  //   before populating the combo - no in-place re-ordering that could
+  //   mis-track other items' indices.
+  class AddSourceDialog : public QDialog {
+  public:
+    AddSourceDialog(const ModInfoData& data, QWidget* parent)
+        : QDialog(parent), data_(data) {
+      setWindowTitle(tr("Add Source"));
+      auto* layout = new QVBoxLayout(this);
+
+      auto* intro = new QLabel(
+          tr("Attach this mod to a download source. The selected provider's "
+             "metadata will be written to the mod's sidecar and the Source tab "
+             "will reload with the new source."),
+          this);
+      intro->setWordWrap(true);
+      layout->addWidget(intro);
+
+      auto* form      = new QFormLayout();
+      provider_combo_ = new QComboBox(this);
+
+      // Build the sorted Entry list from the registry. We normalize
+      // "steamworkshop" -> "steam" so the canonical key the rest of the
+      // codebase expects (and that SourceInfoPanel guards on) is consistent
+      // regardless of how a Steam plugin reports itself.
+      struct Entry {
+        QString display;
+        QString canonical;
+        int priority = 0;
+      };
+      auto priority_for = [](const QString& canonical) {
+        if (canonical == QLatin1String("nexus"))
+          return 0;
+        if (canonical == QLatin1String("loverslab"))
+          return 1;
+        if (canonical == QLatin1String("steam"))
+          return 2;
+        if (canonical == QLatin1String("modpub"))
+          return 3;
+        return 4;
+      };
+      QList<Entry> entries;
+      for (auto* provider : engine::SourceRegistry::instance().providers()) {
+        Entry e;
+        e.display  = QString::fromStdString(provider->display_name());
+        QString pt = QString::fromStdString(provider->source_type()).toLower();
+        if (pt == QLatin1String("steamworkshop"))
+          pt = QStringLiteral("steam");
+        // "direct" is the transport-only provider used by the modl:// flow;
+        // it is not a user-attributable source (a "Direct" tag carries no
+        // useful identity). Skip it in the Add Source combo.
+        if (pt == QLatin1String("direct"))
+          continue;
+        e.canonical = pt;
+        e.priority  = priority_for(pt);
+        entries.append(e);
+      }
+      std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) {
+        if (a.priority != b.priority)
+          return a.priority < b.priority;
+        return a.display.compare(b.display, Qt::CaseInsensitive) < 0;
+      });
+      for (const auto& e : entries) {
+        provider_combo_->addItem(e.display, e.canonical);
+      }
+      form->addRow(tr("Provider:"), provider_combo_);
+      layout->addLayout(form);
+
+      // The fields stack swaps based on the chosen provider. Each provider
+      // contributes a small QWidget built lazily and added to the stack; we
+      // rebuild on combo change so edits do not silently carry over.
+      field_stack_ = new QStackedWidget(this);
+      layout->addWidget(field_stack_, 1);
+
+      nexus_page_     = build_nexus_page();
+      loverslab_page_ = build_loverslab_page();
+      steam_page_     = build_steam_page();
+      modpub_page_    = build_modpub_page();
+      field_stack_->addWidget(nexus_page_);
+      field_stack_->addWidget(loverslab_page_);
+      field_stack_->addWidget(steam_page_);
+      field_stack_->addWidget(modpub_page_);
+      // Map canonical -> field page index. Unknown providers (custom plugins)
+      // get an empty page with an "edit in meta.ini" hint.
+      page_by_canonical_[QStringLiteral("nexus")]     = 0;
+      page_by_canonical_[QStringLiteral("loverslab")] = 1;
+      page_by_canonical_[QStringLiteral("steam")]     = 2;
+      page_by_canonical_[QStringLiteral("modpub")]    = 3;
+      unknown_page_                                   = new QLabel(
+          tr("This provider has no editable fields here. After confirming, the "
+             "mod's source_type will be set and you can finish configuration by "
+             "editing the meta sidecar directly."),
+          this);
+      unknown_page_->setWordWrap(true);
+      field_stack_->addWidget(unknown_page_);
+      page_by_canonical_[QString()] = field_stack_->count() - 1;
+
+      connect(provider_combo_, qOverload<int>(&QComboBox::currentIndexChanged), this,
+              &AddSourceDialog::on_provider_changed);
+      on_provider_changed(provider_combo_->currentIndex());
+
+      auto* buttons =
+          new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+      layout->addWidget(buttons);
+      connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
+      connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+
+      // OK is disabled until at least the minimum required field is filled
+      // (the current provider's id field). Refresh on every edit and on
+      // provider change.
+      connect(nexus_mod_id_, &QLineEdit::textChanged, this,
+              &AddSourceDialog::refresh_accept_enabled);
+      connect(loverslab_fileid_, &QLineEdit::textChanged, this,
+              &AddSourceDialog::refresh_accept_enabled);
+      connect(steam_workshop_id_, &QLineEdit::textChanged, this,
+              &AddSourceDialog::refresh_accept_enabled);
+      connect(modpub_mod_id_, &QLineEdit::textChanged, this,
+              &AddSourceDialog::refresh_accept_enabled);
+      connect(modpub_page_url_, &QLineEdit::textChanged, this,
+              &AddSourceDialog::refresh_accept_enabled);
+      refresh_accept_enabled();
+    }
+
+    // The provider that the user picked, in the canonical short form used
+    // for [GameModManager]source_type ("nexus" / "loverslab" / "steam" / ...).
+    // Reads the canonical token stored in Qt::UserRole itemData, so the
+    // answer is stable regardless of the combo's visible order.
+    QString chosen_source_type() const {
+      if (!provider_combo_)
+        return {};
+      return provider_combo_->currentData().toString();
+    }
+
+    // Identifier for the chosen provider. For Nexus this is the mod id; for
+    // LoversLab it is the file id; for Steam it is the workshop id; for
+    // ModPub it is the numeric mod id. Custom providers always get an
+    // empty id and rely on the user editing meta.ini.
+    QString chosen_source_id() const {
+      const QString t = chosen_source_type();
+      if (t == QLatin1String("nexus"))
+        return nexus_mod_id_->text().trimmed();
+      if (t == QLatin1String("loverslab"))
+        return loverslab_fileid_->text().trimmed();
+      if (t == QLatin1String("steam"))
+        return steam_workshop_id_->text().trimmed();
+      if (t == QLatin1String("modpub"))
+        return modpub_mod_id_->text().trimmed();
+      return {};
+    }
+
+    // Per-provider secondary fields. May be empty when the user did not
+    // enter them (LoversLab page_url, ModPub page_url, Steam none).
+    QString loverslab_page_url() const { return loverslab_page_url_->text().trimmed(); }
+    QString modpub_page_url() const { return modpub_page_url_->text().trimmed(); }
+
+  private:
+    QWidget* build_nexus_page() {
+      auto* page    = new QWidget(this);
+      auto* form    = new QFormLayout(page);
+      nexus_mod_id_ = new QLineEdit(page);
+      nexus_mod_id_->setPlaceholderText(QStringLiteral("e.g. 12345"));
+      form->addRow(tr("Mod ID:"), nexus_mod_id_);
+      auto* hint = new QLabel(tr("The numeric mod id from the mod's Nexus URL. "
+                                 "https://www.nexusmods.com/<game>/mods/<id>."),
+                              page);
+      hint->setWordWrap(true);
+      form->addRow(hint);
+      return page;
+    }
+    QWidget* build_loverslab_page() {
+      auto* page        = new QWidget(this);
+      auto* form        = new QFormLayout(page);
+      loverslab_fileid_ = new QLineEdit(page);
+      loverslab_fileid_->setPlaceholderText(QStringLiteral("e.g. 12345"));
+      form->addRow(tr("File ID:"), loverslab_fileid_);
+      loverslab_page_url_ = new QLineEdit(page);
+      loverslab_page_url_->setPlaceholderText(
+          QStringLiteral("https://www.loverslab.com/files/file/12345/"));
+      form->addRow(tr("Page URL (optional):"), loverslab_page_url_);
+      auto* hint = new QLabel(
+          tr("The numeric file id from the LoversLab file URL. The page URL "
+             "lets the panel open the exact page; otherwise the bare-id URL is "
+             "used. When provided, must start with http:// or https://."),
+          page);
+      hint->setWordWrap(true);
+      form->addRow(hint);
+      return page;
+    }
+    QWidget* build_steam_page() {
+      auto* page         = new QWidget(this);
+      auto* form         = new QFormLayout(page);
+      steam_workshop_id_ = new QLineEdit(page);
+      steam_workshop_id_->setPlaceholderText(QStringLiteral("e.g. 1234567890"));
+      form->addRow(tr("Workshop ID:"), steam_workshop_id_);
+      auto* hint =
+          new QLabel(tr("The numeric workshop id from "
+                        "https://steamcommunity.com/sharedfiles/filedetails/?id=<id>."),
+                     page);
+      hint->setWordWrap(true);
+      form->addRow(hint);
+      return page;
+    }
+    QWidget* build_modpub_page() {
+      auto* page     = new QWidget(this);
+      auto* form     = new QFormLayout(page);
+      modpub_mod_id_ = new QLineEdit(page);
+      modpub_mod_id_->setPlaceholderText(QStringLiteral("e.g. 22"));
+      form->addRow(tr("Mod ID:"), modpub_mod_id_);
+      modpub_page_url_ = new QLineEdit(page);
+      modpub_page_url_->setPlaceholderText(
+          QStringLiteral("https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng"));
+      form->addRow(tr("Page URL (optional):"), modpub_page_url_);
+      auto* hint = new QLabel(
+          tr("The numeric mod id from the mod.pub page URL. The page URL is "
+             "strongly recommended: it carries the game-slug and the slug-suffix, "
+             "neither of which can be reconstructed from the id alone. When "
+             "provided, must start with http:// or https://."),
+          page);
+      hint->setWordWrap(true);
+      form->addRow(hint);
+      return page;
+    }
+
+    void on_provider_changed(int idx) {
+      Q_UNUSED(idx);
+      if (!field_stack_)
+        return;
+      const QString t = chosen_source_type();
+      auto it         = page_by_canonical_.find(t);
+      if (it != page_by_canonical_.end()) {
+        field_stack_->setCurrentIndex(it.value());
+      } else {
+        field_stack_->setCurrentWidget(unknown_page_);
+      }
+      refresh_accept_enabled();
+    }
+
+    void refresh_accept_enabled() {
+      if (auto* bb = this->findChild<QDialogButtonBox*>()) {
+        const QString t = chosen_source_type();
+        bool ok         = true;
+        if (t == QLatin1String("nexus")) {
+          const QString v = nexus_mod_id_->text().trimmed();
+          ok              = !v.isEmpty() && v.toLongLong() > 0;
+        } else if (t == QLatin1String("loverslab")) {
+          const QString v = loverslab_fileid_->text().trimmed();
+          ok              = !v.isEmpty() && v.toLongLong() > 0;
+          if (ok) {
+            // Optional page_url: when provided, must be http(s). We only
+            // reject when the user typed something but it parses to a
+            // non-web scheme (file://, javascript:, data:, ...). The URL
+            // is later handed to QDesktopServices::openUrl().
+            const QString url = loverslab_page_url_->text().trimmed();
+            if (!url.isEmpty()) {
+              const QUrl parsed(url);
+              const QString scheme = parsed.scheme().toLower();
+              if (scheme != QLatin1String("https") && scheme != QLatin1String("http")) {
+                ok = false;
+              }
+            }
+          }
+        } else if (t == QLatin1String("steam")) {
+          const QString v = steam_workshop_id_->text().trimmed();
+          ok              = !v.isEmpty() && v.toLongLong() > 0;
+        } else if (t == QLatin1String("modpub")) {
+          const QString v = modpub_mod_id_->text().trimmed();
+          ok              = !v.isEmpty() && v.toLongLong() > 0;
+          if (ok) {
+            // Optional page_url: when provided, must be http(s). Same scheme
+            // gate as LoversLab. The bare-id fallback is acceptable but a
+            // page URL is the recommended form (it carries the game-slug
+            // and the slug-suffix).
+            const QString url = modpub_page_url_->text().trimmed();
+            if (!url.isEmpty()) {
+              const QUrl parsed(url);
+              const QString scheme = parsed.scheme().toLower();
+              if (scheme != QLatin1String("https") && scheme != QLatin1String("http")) {
+                ok = false;
+              }
+            }
+          }
+        }
+        // Custom / unknown providers: allow OK; they get an empty source_id
+        // and rely on manual meta.ini editing.
+        if (bb->button(QDialogButtonBox::Ok))
+          bb->button(QDialogButtonBox::Ok)->setEnabled(ok);
+      }
+    }
+
+    ModInfoData data_;
+    QComboBox* provider_combo_     = nullptr;
+    QStackedWidget* field_stack_   = nullptr;
+    QWidget* nexus_page_           = nullptr;
+    QWidget* loverslab_page_       = nullptr;
+    QWidget* steam_page_           = nullptr;
+    QWidget* modpub_page_          = nullptr;
+    QLabel* unknown_page_          = nullptr;
+    QLineEdit* nexus_mod_id_       = nullptr;
+    QLineEdit* loverslab_fileid_   = nullptr;
+    QLineEdit* loverslab_page_url_ = nullptr;
+    QLineEdit* steam_workshop_id_  = nullptr;
+    QLineEdit* modpub_mod_id_      = nullptr;
+    QLineEdit* modpub_page_url_    = nullptr;
+    // Canonical source_type -> index in field_stack_. Always populated
+    // for the well-known providers; an empty-string entry points at the
+    // unknown-provider hint page.
+    QMap<QString, int> page_by_canonical_;
+  };
 
 }  // namespace
 
-SourceTab::SourceTab(QWidget *parent) : ModInfoTab(parent) {
-  auto *layout = new QVBoxLayout(this);
+SourceTab::SourceTab(QWidget* parent) : ModInfoTab(parent) {
+  auto* layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
 
   sources_ = new QTabWidget(this);
@@ -536,26 +525,25 @@ SourceTab::SourceTab(QWidget *parent) : ModInfoTab(parent) {
   // Intercept selection of the "+" affordance tab. The user can never
   // actually focus it: clicking it opens the add-source dialog instead,
   // and selection snaps back to the previous (real) source tab.
-  connect(sources_, &QTabWidget::currentChanged, this,
-          [this](int index) {
-            if (plus_index_ < 0 || index != plus_index_)
-              return;
-            // Snap selection back to the real source tab BEFORE opening
-            // the dialog so the user can never visually focus the "+"
-            // affordance. QSignalBlocker prevents the recursive
-            // currentChanged the setCurrentIndex below would otherwise
-            // re-trigger. The blocker's destructor re-enables signals.
-            const int restore = plus_index_ > 0 ? plus_index_ - 1 : 0;
-            QSignalBlocker block(sources_);
-            sources_->setCurrentIndex(restore);
-            show_add_source_dialog();
-          });
+  connect(sources_, &QTabWidget::currentChanged, this, [this](int index) {
+    if (plus_index_ < 0 || index != plus_index_)
+      return;
+    // Snap selection back to the real source tab BEFORE opening
+    // the dialog so the user can never visually focus the "+"
+    // affordance. QSignalBlocker prevents the recursive
+    // currentChanged the setCurrentIndex below would otherwise
+    // re-trigger. The blocker's destructor re-enables signals.
+    const int restore = plus_index_ > 0 ? plus_index_ - 1 : 0;
+    QSignalBlocker block(sources_);
+    sources_->setCurrentIndex(restore);
+    show_add_source_dialog();
+  });
   layout->addWidget(sources_, 1);
 }
 
 SourceTab::~SourceTab() = default;
 
-void SourceTab::set_mod(const ModInfoData &data) {
+void SourceTab::set_mod(const ModInfoData& data) {
   // Contract: data is the same ModInfoData passed to set_current() by
   // ModInfoDialog before calling set_mod(). The tab reads the current mod
   // through current() (which holds that same data), so the parameter is
@@ -569,7 +557,7 @@ void SourceTab::set_mod(const ModInfoData &data) {
   for (int i = 0; i < sources_->count(); ++i) {
     if (i == plus_index_)
       continue;
-    auto *panel = qobject_cast<SourceInfoPanel *>(sources_->widget(i));
+    auto* panel = qobject_cast<SourceInfoPanel*>(sources_->widget(i));
     if (panel && panel->has_data()) {
       has = true;
       break;
@@ -587,7 +575,7 @@ void SourceTab::populate() {
   sources_->setUpdatesEnabled(false);
   plus_index_ = -1;
   while (sources_->count() > 0) {
-    QWidget *page = sources_->widget(0);
+    QWidget* page = sources_->widget(0);
     sources_->removeTab(0);
     delete page;
   }
@@ -596,27 +584,26 @@ void SourceTab::populate() {
   if (actual_source.isEmpty()) {
     // No source attributed. Show a Manual placeholder (Workspace-fqf5:
     // manual mods must never show a Nexus tab) and the "+" affordance.
-    auto *hint = new QLabel(
-        tr("This mod has no download source.\n\n"
-           "It is treated as a manual install. Click \"+\" to attach a "
-           "source (Nexus, LoversLab, Steam Workshop, ...) if you know "
-           "where this mod came from."),
-        sources_);
+    auto* hint =
+        new QLabel(tr("This mod has no download source.\n\n"
+                      "It is treated as a manual install. Click \"+\" to attach a "
+                      "source (Nexus, LoversLab, Steam Workshop, ...) if you know "
+                      "where this mod came from."),
+                   sources_);
     hint->setWordWrap(true);
     hint->setAlignment(Qt::AlignCenter);
     sources_->addTab(hint, tr("Manual"));
   } else {
-    QWidget *page = build_panel_for(actual_source, current(), sources_);
+    QWidget* page = build_panel_for(actual_source, current(), sources_);
     if (page == nullptr) {
       // Fallback: provider registered but the typed panel failed to
       // instantiate. Treat as no source.
-      auto *hint = new QLabel(tr("No editor available for this source."),
-                              sources_);
+      auto* hint = new QLabel(tr("No editor available for this source."), sources_);
       hint->setWordWrap(true);
       sources_->addTab(hint, actual_source);
     } else {
-      auto display = display_for_source(actual_source);
-      const QString title = display ? display->title : actual_source;
+      auto display           = display_for_source(actual_source);
+      const QString title    = display ? display->title : actual_source;
       const QString icon_key = display ? display->icon_key : actual_source;
       add_tab_with_icon(sources_, page, title, icon_key);
     }
@@ -624,7 +611,7 @@ void SourceTab::populate() {
 
   // The "+" affordance: a tab on the right that, when activated, opens
   // show_add_source_dialog() instead of switching view. Always present.
-auto *plus_page = new QWidget(sources_);
+  auto* plus_page = new QWidget(sources_);
   plus_page->setMinimumSize(0, 0);
   sources_->addTab(plus_page, QStringLiteral("+"));
   plus_index_ = sources_->count() - 1;
@@ -632,20 +619,22 @@ auto *plus_page = new QWidget(sources_);
   // we never want to display it (the currentChanged handler snaps focus
   // back and opens the dialog). The tooltip is the only thing the user
   // sees when they hover, so make it explicit.
-  if (auto *bar = sources_->tabBar()) {
+  if (auto* bar = sources_->tabBar()) {
     bar->setTabToolTip(plus_index_, tr("Add a source to this mod"));
   }
   sources_->setUpdatesEnabled(true);
 }
 
-void SourceTab::first_activation() { populate(); }
+void SourceTab::first_activation() {
+  populate();
+}
 
 void SourceTab::save_state() {
   // Skip the "+" affordance tab - it has no panel worth saving.
   for (int i = 0; i < sources_->count(); ++i) {
     if (i == plus_index_)
       continue;
-    auto *panel = qobject_cast<SourceInfoPanel *>(sources_->widget(i));
+    auto* panel = qobject_cast<SourceInfoPanel*>(sources_->widget(i));
     if (panel)
       panel->save_state();
   }
@@ -661,7 +650,7 @@ void SourceTab::show_add_source_dialog() {
     return;
 
   const QString source_type = dialog.chosen_source_type();
-  const QString source_id = dialog.chosen_source_id();
+  const QString source_id   = dialog.chosen_source_id();
   if (source_type.isEmpty())
     return;
 
@@ -671,7 +660,7 @@ void SourceTab::show_add_source_dialog() {
   // path on next mod-switch picks up the same values.
   ModInfoData updated = current();
   updated.source_type = source_type;
-  updated.source_id = source_id;
+  updated.source_id   = source_id;
   if (source_type == QLatin1String("loverslab")) {
     updated.source_page_url = dialog.loverslab_page_url();
   } else if (source_type == QLatin1String("modpub")) {
@@ -683,8 +672,7 @@ void SourceTab::show_add_source_dialog() {
   // whether or not the dialog was constructed with a real save_meta.
   if (current().load_meta && current().save_meta) {
     auto meta = current().load_meta();
-    meta.set("GameModManager", "source_type",
-             source_type.toStdString());
+    meta.set("GameModManager", "source_type", source_type.toStdString());
     meta.set("GameModManager", "source_id", source_id.toStdString());
     // Provider-specific keys. We add the minimum the panel needs to
     // identify the mod on the new source: [Nexusmods]modid,
@@ -717,7 +705,7 @@ void SourceTab::show_add_source_dialog() {
   for (int i = 0; i < sources_->count(); ++i) {
     if (i == plus_index_)
       continue;
-    auto *panel = qobject_cast<SourceInfoPanel *>(sources_->widget(i));
+    auto* panel = qobject_cast<SourceInfoPanel*>(sources_->widget(i));
     if (panel && panel->has_data()) {
       has = true;
       break;
@@ -726,4 +714,4 @@ void SourceTab::show_add_source_dialog() {
   set_has_data(has);
 }
 
-} // namespace ui
+}  // namespace ui
