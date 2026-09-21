@@ -179,6 +179,66 @@ bool Instance::write_toml() const {
   assign_int_or_erase("modpack_revision", info_.modpack_revision);
   assign_str_or_erase("last_tab", info_.last_tab);
 
+  // Per-instance appearance overrides (Workspace-1065): surgical key updates
+  // inside [appearance] so unrelated keys survive; drop the section when it
+  // ends up empty.
+  {
+    toml::table* app = (*tbl)["appearance"].as_table();
+    if (!info_.appearance_theme.empty() || !info_.appearance_style.empty() ||
+        !info_.appearance_icon_pack.empty()) {
+      if (!app) {
+        tbl->insert_or_assign("appearance", toml::table{});
+        app = (*tbl)["appearance"].as_table();
+      }
+    }
+    if (app) {
+      auto assign_sub_or_erase = [&](const std::string& key, const std::string& val) {
+        if (val.empty())
+          app->erase(key);
+        else
+          app->insert_or_assign(key, val);
+      };
+      assign_sub_or_erase("theme", info_.appearance_theme);
+      assign_sub_or_erase("style", info_.appearance_style);
+      assign_sub_or_erase("icon_pack", info_.appearance_icon_pack);
+      if (app->empty())
+        tbl->erase("appearance");
+    }
+  }
+
+  // Per-instance disabled plugins (Workspace-1065): nullopt leaves any
+  // existing [plugins] content untouched (global fallback); a set value
+  // (possibly empty) owns the `disabled` key.
+  if (info_.plugins_disabled.has_value()) {
+    toml::table* plug = (*tbl)["plugins"].as_table();
+    if (!plug) {
+      tbl->insert_or_assign("plugins", toml::table{});
+      plug = (*tbl)["plugins"].as_table();
+    }
+    if (plug) {
+      toml::array disabled;
+      for (const auto& name : *info_.plugins_disabled)
+        disabled.push_back(name);
+      plug->insert_or_assign("disabled", disabled);
+    }
+  }
+
+  // Per-instance plugin options (Workspace-1065): only our [plugin_options]
+  // section is managed; an empty map erases it (all-fallback). Individual
+  // entries fall back to globals at read time, so only overrides are stored.
+  if (info_.plugin_options.empty()) {
+    tbl->erase("plugin_options");
+  } else {
+    toml::table opts;
+    for (const auto& [basename, settings] : info_.plugin_options) {
+      toml::table sub;
+      for (const auto& [key, value] : settings)
+        sub.insert_or_assign(key, value);
+      opts.insert_or_assign(basename, sub);
+    }
+    tbl->insert_or_assign("plugin_options", opts);
+  }
+
   std::ofstream out(toml_path());
   if (!out)
     return false;
@@ -238,6 +298,43 @@ bool Instance::read_toml() {
   }
   if (auto v = (*tbl)["last_tab"].value<std::string>()) {
     info_.last_tab = *v;
+  }
+  // Per-instance appearance overrides (Workspace-1065). Missing keys stay
+  // empty (= follow the global Settings value); an explicitly empty string
+  // is also treated as unset.
+  if (const toml::table* app = (*tbl)["appearance"].as_table()) {
+    if (auto v = (*app)["theme"].value<std::string>())
+      info_.appearance_theme = *v;
+    if (auto v = (*app)["style"].value<std::string>())
+      info_.appearance_style = *v;
+    if (auto v = (*app)["icon_pack"].value<std::string>())
+      info_.appearance_icon_pack = *v;
+  }
+  // Per-instance disabled plugins (Workspace-1065). The key's presence (even
+  // as an empty array) marks an explicit override; a missing section/key
+  // leaves nullopt (= global fallback).
+  if (const toml::table* plug = (*tbl)["plugins"].as_table()) {
+    if (const toml::array* disabled = (*plug)["disabled"].as_array()) {
+      std::vector<std::string> names;
+      for (const auto& node : *disabled) {
+        if (auto v = node.value<std::string>())
+          names.push_back(*v);
+      }
+      info_.plugins_disabled = std::move(names);
+    }
+  }
+  // Per-instance plugin options (Workspace-1065). Dotted keys
+  // (plugin1.option1 = "value") and nested tables ([plugin_options."a.so"])
+  // both parse to nested tables; only string values are kept.
+  if (const toml::table* opts = (*tbl)["plugin_options"].as_table()) {
+    for (auto&& [basename, node] : *opts) {
+      if (const toml::table* sub = node.as_table()) {
+        for (auto&& [key, val] : *sub) {
+          if (auto v = val.value<std::string>())
+            info_.plugin_options[std::string(basename)][std::string(key)] = *v;
+        }
+      }
+    }
   }
   if (auto v = (*tbl)["portable"].value<bool>()) {
     info_.portable = *v;

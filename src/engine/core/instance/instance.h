@@ -1,6 +1,8 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -36,7 +38,7 @@ public:
     std::string display_name;
     std::filesystem::path root;
     std::filesystem::path
-        game_dir; // path to the actual game install (e.g. steamapps/common/...)
+        game_dir;  // path to the actual game install (e.g. steamapps/common/...)
     // The game's actual mods folder - the deploy target - when it lives
     // outside the install dir. Resolution order (Workspace-otx): this
     // per-instance override first, then the plugin-declared "game_mods_dir"
@@ -47,7 +49,7 @@ public:
     // Persisted to instance.toml only when non-empty.
     std::filesystem::path game_mods_dir;
     uint32_t steam_appid = 0;
-    bool portable = true;
+    bool portable        = true;
     // Per-folder overrides for the instance's working directories. Empty
     // means "use the default": <root>/mods, <root>/downloads, ... (MO2's
     // base_directory-relative defaults). Persisted to instance.toml only
@@ -85,27 +87,45 @@ public:
     // "plugins", "downloads", "data"). Empty = default to the first tab.
     // Persisted to instance.toml.
     std::string last_tab;
+    // Per-instance appearance overrides (Workspace-1065). Empty = unset:
+    // readers fall back to the global Settings value. Persisted to
+    // instance.toml under [appearance] (theme/style/icon_pack) only when
+    // non-empty.
+    std::string appearance_theme;
+    std::string appearance_style;
+    std::string appearance_icon_pack;
+    // Per-instance disabled plugin basenames (Workspace-1065). nullopt =
+    // unset: readers fall back to the global plugins/disabled list. An
+    // explicitly set (possibly empty) list overrides the globals entirely.
+    // Persisted to instance.toml under [plugins] as `disabled = [...]`.
+    std::optional<std::vector<std::string>> plugins_disabled;
+    // Per-instance plugin options (Workspace-1065): outer key is the plugin
+    // basename, inner key the option name. Entries present here override the
+    // global plugin_setting() value; missing entries fall back to globals.
+    // Persisted to instance.toml under [plugin_options] as nested tables
+    // ([plugin_options."basename"] key = "value").
+    std::map<std::string, std::map<std::string, std::string>> plugin_options;
   };
 
-  static Instance portable(const std::filesystem::path &root);
-  static Instance installed(const std::string &name,
-                            const std::filesystem::path &instances_root);
-  static Instance from_root(const std::filesystem::path &root);
+  static Instance portable(const std::filesystem::path& root);
+  static Instance installed(const std::string& name,
+                            const std::filesystem::path& instances_root);
+  static Instance from_root(const std::filesystem::path& root);
 
-  [[nodiscard]] Info &info() { return info_; }
-  [[nodiscard]] const Info &info() const { return info_; }
+  [[nodiscard]] Info& info() { return info_; }
+  [[nodiscard]] const Info& info() const { return info_; }
   [[nodiscard]] std::filesystem::path path_for(InstanceKind kind) const;
   [[nodiscard]] std::filesystem::path toml_path() const;
 
   // Set/clear a per-folder override (empty clears -> default under root).
-  void set_path_override(InstanceKind kind, const std::filesystem::path &path);
+  void set_path_override(InstanceKind kind, const std::filesystem::path& path);
   [[nodiscard]] std::filesystem::path path_override(InstanceKind kind) const;
 
   // Surgically set/replace a single string key in instance.toml without
   // touching any other keys (the file also holds app-owned sections like
   // `executables`, so a full rewrite would clobber them). Removes the key
   // when `value` is empty. Returns false on I/O failure.
-  bool write_key(const std::string &key, const std::string &value) const;
+  bool write_key(const std::string& key, const std::string& value) const;
 
   bool create_directories() const;
   bool write_toml() const;
@@ -119,11 +139,11 @@ public:
   // "My Skyrim Setup"               → "My Skyrim Setup"
   // Returns "" for degenerate input; callers pick a fallback
   // (unique_instance_name does).
-  static std::string to_instance_name(const std::string &display_name);
+  static std::string to_instance_name(const std::string& display_name);
 
   static std::filesystem::path
-  resolve_portable_root(const std::filesystem::path &exe_dir);
-  static bool is_portable(const std::filesystem::path &exe_dir);
+  resolve_portable_root(const std::filesystem::path& exe_dir);
+  static bool is_portable(const std::filesystem::path& exe_dir);
 
   // Default-constructed instance (empty root). Use portable()/installed()/
   // from_root() for real instances; the default ctor exists so clients can
@@ -137,4 +157,4 @@ private:
 // Backward-compat alias (deprecated - use Instance::Info directly).
 using InstanceInfo = Instance::Info;
 
-} // namespace engine
+}  // namespace engine
