@@ -284,6 +284,12 @@ gmm_catch2_test(checkerboard_test ui/checkerboard_test.cpp
     UI
     LIBS gmm_ui)
 
+# PreviewWindow image auto-fit: small images scale up, large images scale
+# down, resize re-fits. Offscreen; throwaway XDG_CONFIG_HOME (hermetic).
+gmm_catch2_test(preview_fit_test ui/preview_fit_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(source_tab_test ui/source_tab_test.cpp
     UI
     LIBS gmm_ui)
