@@ -280,6 +280,23 @@ int Application::run() {
 
   const auto& args = command_line_.args();
 
+  // -- Single-instance fast path (plain GUI launch only) ------------------
+  // Probe the singleton lock BEFORE instance scanning / URL handling so a
+  // second plain launch exits in milliseconds via requestFocus(). Headless
+  // mode skips the guard entirely, and --handle-* launches skip it here:
+  // they must forward the URL to the running instance first and only fall
+  // through to the guard below when no instance is listening.
+  engine::MultiProcess instance_guard;
+  const bool needs_url_forwarding =
+      args.handle_nxm || args.handle_gmm || args.handle_modl;
+  if (!args.headless && !needs_url_forwarding) {
+    if (!instance_guard.tryAcquire(0)) {
+      instance_guard.requestFocus();
+      engine::Logger::instance().info("Another instance running - requesting focus");
+      return 0;
+    }
+  }
+
   // -- Headless launch mode ---------------------------------------------
   if (args.headless) {
     // --launch and --handle-* are mutually exclusive: the launcher path
@@ -511,8 +528,10 @@ int Application::run() {
   }
 
   // -- Single-instance guard (GUI mode only, not headless) ----------------
-  engine::MultiProcess instance_guard;
-  if (!instance_guard.tryAcquire()) {
+  // Plain launches already hold the lock via the fast path above (a second
+  // tryAcquire() is a no-op once locked). URL launches acquire it here,
+  // after forwarding was attempted and no running instance took the URL.
+  if (!instance_guard.tryAcquire(0)) {
     instance_guard.requestFocus();
     engine::Logger::instance().info("Another instance running - requesting focus");
     return 0;
