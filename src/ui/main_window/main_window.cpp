@@ -29,6 +29,7 @@
 #include "ui/controllers/queue_controller.h"
 #include "ui/controllers/settings_controller.h"
 #include "ui/controllers/tab_mode_controller.h"
+#include "ui/panels/tab_panels.h"
 #include "ui/settings/settings.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/widgets/console_panel.h"
@@ -45,24 +46,24 @@
 
 namespace ui {
 
-MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
+MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   setWindowTitle(tr("GameModManager"));
   resize(1200, 800);
   setAcceptDrops(true);
 
   // Issue #16 controllers - the composer delegates behavior to these. Each
   // controller reaches the shared members below through w_-> (friend).
-  launch_ = std::make_unique<LaunchController>(this, this);
-  queue_ = std::make_unique<QueueController>(this, this);
+  launch_    = std::make_unique<LaunchController>(this, this);
+  queue_     = std::make_unique<QueueController>(this, this);
   overwrite_ = std::make_unique<OverwriteController>(this, this);
   downloads_ = std::make_unique<DownloadsController>(this, this);
-  mod_list_ = std::make_unique<ModListController>(this, this);
-  settings_ = std::make_unique<SettingsController>(this, this);
+  mod_list_  = std::make_unique<ModListController>(this, this);
+  settings_  = std::make_unique<SettingsController>(this, this);
   // Full-UI tab host: created before TabModeController so it can connect to
   // the container in its ctor; the Main tab is added once the console
   // splitter exists (below).
   main_tab_container_ = new MainTabContainer(this);
-  tab_mode_ = std::make_unique<TabModeController>(this, this);
+  tab_mode_           = std::make_unique<TabModeController>(this, this);
 
   // UI Locker for disabling/enabling the interface during operations
   locker_ = std::make_unique<Locker>(this);
@@ -79,7 +80,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   settings_->setup_menu_bar();
 
   // --- Toolbar: QToolBar handles docking, orientation, and sizing natively ---
-  toolbar_ = new MainToolbar(this);
+  toolbar_      = new MainToolbar(this);
   toolbar_area_ = new QToolBar(this);
   toolbar_area_->setObjectName("MainToolbar");
   toolbar_area_->setMovable(true);
@@ -101,30 +102,31 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
           &TabModeController::route_instance_switcher);
   connect(menu_bar_, &AppMenuBar::sort_mods_requested, mod_list_.get(),
           &ModListController::sort_mods);
-  connect(toolbar_, &MainToolbar::shortcut_removed, this,
-          [this](const QString &path) {
-            int idx = toolbar_shortcut_paths_.indexOf(path);
-            if (idx >= 0)
-              toolbar_shortcut_paths_.removeAt(idx);
-            mod_list_->save_order();
-          });
+  connect(toolbar_, &MainToolbar::shortcut_removed, this, [this](const QString& path) {
+    int idx = toolbar_shortcut_paths_.indexOf(path);
+    if (idx >= 0)
+      toolbar_shortcut_paths_.removeAt(idx);
+    mod_list_->save_order();
+  });
 
   // --- Instance Options button: body opens the Instance Options panel, arrow
   // the menu ---
   {
-    QIcon instance_options_icon = engine::IconManager::instance().resolve_icon(
-        "proton", QStyle::SP_ComputerIcon);
+    QIcon instance_options_icon =
+        engine::IconManager::instance().resolve_icon("proton", QStyle::SP_ComputerIcon);
     toolbar_->add_instance_options_button(instance_options_icon);
 
-    auto *instance_options_menu = new QMenu(this);
+    auto* instance_options_menu = new QMenu(this);
     instance_options_menu->addAction(tr("Run winecfg"), this, [this]() {
       launch_->run_prefix_tool({"winecfg"});
     });
-    instance_options_menu->addAction(
-        tr("Run winetricks"), this, [this]() { launch_->run_prefix_tool({}); });
-    instance_options_menu->addAction(
-        tr("Run an .exe in this prefix..."), this,
-        [this]() { launch_->run_exe_in_prefix(); });
+    instance_options_menu->addAction(tr("Run winetricks"), this, [this]() {
+      launch_->run_prefix_tool({});
+    });
+    instance_options_menu->addAction(tr("Run an .exe in this prefix..."), this,
+                                     [this]() {
+                                       launch_->run_exe_in_prefix();
+                                     });
 
     instance_options_menu->addSeparator();
 
@@ -139,9 +141,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
     instance_options_menu->addSeparator();
 
-    instance_options_menu->addAction(
-        tr("Install recommended packages"), this,
-        [this]() { tab_mode_->route_instance_options(); });
+    instance_options_menu->addAction(tr("Install recommended packages"), this,
+                                     [this]() {
+                                       tab_mode_->route_instance_options();
+                                     });
 
     toolbar_->set_instance_options_menu(instance_options_menu);
     connect(toolbar_, &MainToolbar::instance_options_clicked, tab_mode_.get(),
@@ -152,8 +155,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   console_splitter_ = new QSplitter(Qt::Vertical, this);
 
   // Main horizontal area
-  auto *main_area = new QWidget(this);
-  auto *main_layout = new QVBoxLayout(main_area);
+  auto* main_area   = new QWidget(this);
+  auto* main_layout = new QVBoxLayout(main_area);
   main_layout->setContentsMargins(0, 0, 0, 0);
   main_layout->setSpacing(0);
 
@@ -164,8 +167,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
   // --- Left panel: profile bar, mod list, filter bar stacked vertically.
   // ModListController::setup_mod_list fills it (Issue #16). ---
-  auto *left_panel = new QWidget(this);
-  auto *left_layout = new QVBoxLayout(left_panel);
+  auto* left_panel  = new QWidget(this);
+  auto* left_layout = new QVBoxLayout(left_panel);
   left_layout->setContentsMargins(0, 0, 0, 0);
   left_layout->setSpacing(0);
   mod_list_->setup_mod_list(left_layout);
@@ -215,8 +218,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   // --- Pipeline thread, source providers, download/install signals ---
   downloads_->setup_pipeline();
 
-  connect(right_panel_->exec_controls(), &ExecControlsBar::run_clicked,
-          launch_.get(), &LaunchController::launch_game);
+  connect(right_panel_->exec_controls(), &ExecControlsBar::run_clicked, launch_.get(),
+          &LaunchController::launch_game);
 
   // LOOT sort shortcut from the Plugins tab filter bar
   connect(right_panel_, &RightPanel::sort_requested, mod_list_.get(),
@@ -235,8 +238,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
           tab_mode_.get(), &TabModeController::route_exec_entry);
 
   // Keep the persisted per-instance selection in sync with the live combo
-  connect(right_panel_->exec_controls(),
-          &ExecControlsBar::current_executable_changed, this, [this]() {
+  connect(right_panel_->exec_controls(), &ExecControlsBar::current_executable_changed,
+          this, [this]() {
             pending_exec_selection_ =
                 right_panel_->exec_controls()->current_executable();
           });
@@ -245,22 +248,54 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   // write_key does a read-before-write of instance.toml, so app-owned keys
   // (executables, ...) survive. The in-memory instance is refreshed so the
   // value is immediately visible to restore_tab on the next switch.
-  connect(right_panel_, &RightPanel::tab_changed, this,
-          [this](const QString &capability) {
-            if (current_instance_root_.empty())
-              return;
-            engine::Instance write =
-                engine::Instance::from_root(current_instance_root_);
-            write.read_toml();
-            write.write_key("last_tab", capability.toStdString());
-            write.info().last_tab = capability.toStdString();
-            current_instance_ = write;
+  connect(
+      right_panel_, &RightPanel::tab_changed, this, [this](const QString& capability) {
+        if (current_instance_root_.empty())
+          return;
+        engine::Instance write = engine::Instance::from_root(current_instance_root_);
+        write.read_toml();
+        write.write_key("last_tab", capability.toStdString());
+        write.info().last_tab = capability.toStdString();
+        current_instance_     = write;
+      });
+
+  // Lazy right-panel tabs (Workspace-j6ty): a tab's content is built on
+  // first show, so the per-tab wiring that used to run eagerly after
+  // set_game() runs here instead - exactly once per tab build. The Data
+  // tab is always present and wired directly by the controllers.
+  connect(right_panel_, &RightPanel::tab_materialized, this,
+          [this](const QString& capability) {
+            const auto cap = capability.toStdString();
+            if (cap == "downloads") {
+              // Manifest, downloads dir + watchdog, signal connections.
+              // The downloads dir is instance-owned, so this works without
+              // a game path.
+              downloads_->wire_downloads_tab();
+            } else if (cap == "saves") {
+              // Points the tab at the game's saves dir and connects
+              // refresh/delete; the scan itself stays lazy (first show).
+              // Gated on knowledge_ like the old game-load wiring was.
+              if (knowledge_) {
+                downloads_->wire_saves_tab();
+              }
+            } else if (cap == "conflicts") {
+              if (auto* ct = right_panel_->conflicts_tab()) {
+                connect(ct, &ui::ConflictsTab::image_diff_requested, mod_list_.get(),
+                        &ModListController::on_image_diff_requested);
+              }
+              mod_list_->refresh_conflicts_tab();
+            } else if (cap == "plugins") {
+              // Connects the tab's signals (first sight of the new
+              // instance) and populates it from the current model.
+              mod_list_->refresh_plugins_tab();
+            }
           });
 
   // Banner picker (Workspace-tnj): the host owns the picker so the
   // launch/deploy guards reuse the same flow (prompt_for_game_path).
-  connect(game_path_banner_, &GamePathBanner::pick_requested, this,
-          [this]() { prompt_for_game_path(); });
+  connect(game_path_banner_, &GamePathBanner::pick_requested, this, [this]() {
+    prompt_for_game_path();
+  });
 
   // Start IPC server to receive nxm:// URLs from other GMM processes
   downloads_->setup_nxm_ipc();
@@ -281,11 +316,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 // controller header is included (complete types are available).
 MainWindow::~MainWindow() = default;
 
-void MainWindow::set_game_info(const std::string &game_id,
-                               const std::string &game_display_name,
-                               const std::string &profile_name,
-                               const std::filesystem::path &game_dir,
-                               const std::filesystem::path &instance_root) {
+void MainWindow::set_game_info(const std::string& game_id,
+                               const std::string& game_display_name,
+                               const std::string& profile_name,
+                               const std::filesystem::path& game_dir,
+                               const std::filesystem::path& instance_root) {
   // Instance/session setup (state reset, right-panel rebuild, pipeline
   // config, app-state restore) lives in SettingsController::set_game_info.
   settings_->set_game_info(game_id, game_display_name, profile_name, game_dir,
@@ -301,21 +336,20 @@ bool MainWindow::prompt_for_game_path() {
   // ([executables], ...) survive; write_toml() would clobber them.
   engine::Instance::from_root(current_instance_root_)
       .write_key("game_dir", dir.toStdString());
-  settings_->set_game_info(current_game_id_, current_game_name_,
-                           current_profile_name_, dir.toStdString(),
-                           current_instance_root_);
+  settings_->set_game_info(current_game_id_, current_game_name_, current_profile_name_,
+                           dir.toStdString(), current_instance_root_);
   return true;
 }
 
-void MainWindow::handle_nxm_download(const engine::NxmLink &link) {
+void MainWindow::handle_nxm_download(const engine::NxmLink& link) {
   downloads_->handle_nxm_download(link);
 }
 
-void MainWindow::handle_modl_download(const engine::Source::ModlLink &link) {
+void MainWindow::handle_modl_download(const engine::Source::ModlLink& link) {
   downloads_->handle_modl_download(link);
 }
 
-void MainWindow::on_notification(const QString &title, const QString &message) {
+void MainWindow::on_notification(const QString& title, const QString& message) {
   status_bar_->set_status(title + ": " + message);
 }
 
@@ -325,13 +359,13 @@ void MainWindow::update_title() {
   } else if (current_profile_name_.empty()) {
     setWindowTitle(("GameModManager - " + current_game_name_).c_str());
   } else {
-    setWindowTitle(("GameModManager - " + current_profile_name_ + " - " +
-                    current_game_name_)
-                       .c_str());
+    setWindowTitle(
+        ("GameModManager - " + current_profile_name_ + " - " + current_game_name_)
+            .c_str());
   }
 }
 
-void MainWindow::resizeEvent(QResizeEvent *event) {
+void MainWindow::resizeEvent(QResizeEvent* event) {
   QMainWindow::resizeEvent(event);
   if (game_lock_overlay_)
     game_lock_overlay_->setGeometry(rect());
@@ -340,37 +374,37 @@ void MainWindow::resizeEvent(QResizeEvent *event) {
 }
 
 namespace {
-// A drop is a modpack drop when any dragged URL is a local .gmmpack/.zip.
-bool is_pack_drop(const QMimeData *mime) {
-  if (mime == nullptr || !mime->hasUrls())
+  // A drop is a modpack drop when any dragged URL is a local .gmmpack/.zip.
+  bool is_pack_drop(const QMimeData* mime) {
+    if (mime == nullptr || !mime->hasUrls())
+      return false;
+    for (const QUrl& url : mime->urls()) {
+      const QString suffix = QFileInfo(url.toLocalFile()).suffix().toLower();
+      if (suffix == "gmmpack" || suffix == "zip")
+        return true;
+    }
     return false;
-  for (const QUrl &url : mime->urls()) {
-    const QString suffix = QFileInfo(url.toLocalFile()).suffix().toLower();
-    if (suffix == "gmmpack" || suffix == "zip")
-      return true;
   }
-  return false;
-}
-} // namespace
+}  // namespace
 
-void MainWindow::dragEnterEvent(QDragEnterEvent *event) {
+void MainWindow::dragEnterEvent(QDragEnterEvent* event) {
   if (!is_pack_drop(event->mimeData()))
     return;
   event->acceptProposedAction();
   set_drop_overlay_visible(true);
 }
 
-void MainWindow::dragLeaveEvent(QDragLeaveEvent *event) {
+void MainWindow::dragLeaveEvent(QDragLeaveEvent* event) {
   set_drop_overlay_visible(false);
   QMainWindow::dragLeaveEvent(event);
 }
 
-void MainWindow::dropEvent(QDropEvent *event) {
+void MainWindow::dropEvent(QDropEvent* event) {
   set_drop_overlay_visible(false);
   if (!is_pack_drop(event->mimeData()))
     return;
-  for (const QUrl &url : event->mimeData()->urls()) {
-    const QString local = url.toLocalFile();
+  for (const QUrl& url : event->mimeData()->urls()) {
+    const QString local  = url.toLocalFile();
     const QString suffix = QFileInfo(local).suffix().toLower();
     if (!local.isEmpty() && (suffix == "gmmpack" || suffix == "zip")) {
       event->acceptProposedAction();
@@ -396,8 +430,8 @@ void MainWindow::set_drop_overlay_visible(bool visible) {
     font.setBold(true);
     drop_overlay_->setFont(font);
     const QPalette palette = this->palette();
-    const QColor bg = palette.color(QPalette::Highlight);
-    const QColor fg = palette.color(QPalette::HighlightedText);
+    const QColor bg        = palette.color(QPalette::Highlight);
+    const QColor fg        = palette.color(QPalette::HighlightedText);
     drop_overlay_->setStyleSheet(
         QStringLiteral("background-color: rgba(%1, %2, %3, 160); color: %4; "
                        "border: 3px dashed %4; border-radius: 12px;")
@@ -417,7 +451,7 @@ void MainWindow::set_ui_enabled(bool enabled) {
   locker_->set_enabled(enabled);
 }
 
-void MainWindow::closeEvent(QCloseEvent *event) {
+void MainWindow::closeEvent(QCloseEvent* event) {
   // Ask before closing with active downloads (downloads_->confirm_close);
   // Cancel aborts the close, everything else falls through.
   if (!downloads_->confirm_close()) {
@@ -443,14 +477,13 @@ void MainWindow::closeEvent(QCloseEvent *event) {
   QMainWindow::closeEvent(event);
 }
 
-bool MainWindow::eventFilter(QObject *obj, QEvent *event) {
+bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
   if (settings_->handle_global_event(obj, event))
     return true;
 
   // Sync View menu checkboxes when panel visibility changes by any means
   // (splitter drag, programmatic show/hide, window state restore, etc.)
-  if (menu_bar_ &&
-      (event->type() == QEvent::Show || event->type() == QEvent::Hide)) {
+  if (menu_bar_ && (event->type() == QEvent::Show || event->type() == QEvent::Hide)) {
     if (obj == toolbar_area_) {
       menu_bar_->set_toolbar_checked(event->type() == QEvent::Show);
     } else if (obj == statusBar()) {
@@ -470,6 +503,6 @@ void MainWindow::apply_initial_geometry() {
   }
 }
 
-} // namespace ui
+}  // namespace ui
 
 #include "moc_main_window.cpp"
