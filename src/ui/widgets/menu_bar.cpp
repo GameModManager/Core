@@ -273,9 +273,11 @@ void AppMenuBar::set_checkerboard_style(int style) {
     return;
   for (auto* act : checkerboard_group_->actions()) {
     if (act->data().toInt() == style) {
-      act->blockSignals(true);
+      // No blockSignals: the actions emit checkerboard_style_requested via
+      // triggered(), which setChecked() never fires (only toggled()). Blocking
+      // signals here would also defeat the exclusive QActionGroup, leaving the
+      // previously-checked action checked alongside the new one.
       act->setChecked(true);
-      act->blockSignals(false);
       return;
     }
   }
