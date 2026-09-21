@@ -7,6 +7,8 @@
 
 namespace engine {
 
+class Platform;
+
 // Simple key-value knowledge store per game.
 // Plugins register game-specific data (file extensions, patterns, etc.)
 // that the engine queries when managing that game's mods.
@@ -17,18 +19,15 @@ namespace engine {
 // convention).
 class GameKnowledge {
 public:
-  void set(const std::string &game_id, const std::string &key,
-           const std::string &value);
+  void set(const std::string& game_id, const std::string& key,
+           const std::string& value);
 
-  [[nodiscard]] std::string get(const std::string &game_id,
-                                const std::string &key,
-                                const std::string &fallback = "") const;
+  [[nodiscard]] std::string get(const std::string& game_id, const std::string& key,
+                                const std::string& fallback = "") const;
 
-  [[nodiscard]] bool has(const std::string &game_id,
-                         const std::string &key) const;
+  [[nodiscard]] bool has(const std::string& game_id, const std::string& key) const;
 
-  [[nodiscard]] std::vector<std::string>
-  keys_for(const std::string &game_id) const;
+  [[nodiscard]] std::vector<std::string> keys_for(const std::string& game_id) const;
 
   [[nodiscard]] std::vector<std::string> registered_games() const;
 
@@ -36,8 +35,7 @@ public:
 
 private:
   // game_id → key → value
-  std::unordered_map<std::string, std::unordered_map<std::string, std::string>>
-      data_;
+  std::unordered_map<std::string, std::unordered_map<std::string, std::string>> data_;
 };
 
 // Default disable sentinel filename used when a game plugin declares no
@@ -45,13 +43,13 @@ private:
 // mark it disabled, and every consumer (deploy, plugin DB, mod scanner) treats
 // it as authoritative - so "disabled" never silently becomes a no-op for games
 // that ship no game-native marker (Skyrim) the way Isaac's "disable.it" does.
-inline constexpr const char *kDefaultDisableMechanism = ".gmmdisabled";
+inline constexpr const char* kDefaultDisableMechanism = ".gmmdisabled";
 
 // Sentinel filename marking a mod disabled for the given game. Falls back to
 // kDefaultDisableMechanism when the game plugin declares nothing - a game's
 // declared mechanism (e.g. Isaac's "disable.it") always takes precedence.
-[[nodiscard]] std::string disable_mechanism_for(const GameKnowledge &knowledge,
-                                                const std::string &game_id);
+[[nodiscard]] std::string disable_mechanism_for(const GameKnowledge& knowledge,
+                                                const std::string& game_id);
 
 // True when the game plugin declares delayed_disable=true: the engine must
 // defer disable-sentinel disk writes until the Run/deploy phase. Games that
@@ -60,8 +58,8 @@ inline constexpr const char *kDefaultDisableMechanism = ".gmmdisabled";
 // the sentinel is reconciled from the profile at launch instead. All other
 // games (Skyrim, ...) leave it undeclared -> false -> immediate disk writes
 // (current behavior).
-[[nodiscard]] bool delayed_disable_for(const GameKnowledge &knowledge,
-                                       const std::string &game_id);
+[[nodiscard]] bool delayed_disable_for(const GameKnowledge& knowledge,
+                                       const std::string& game_id);
 
 // Deploy strategy names for the per-game "deploy_strategy" knowledge key.
 // The default is Symlink (direct symlinks into game_dir); a game opts out of
@@ -70,19 +68,19 @@ inline constexpr const char *kDefaultDisableMechanism = ".gmmdisabled";
 // kDeployStrategyDirect is the lifecycle-object form of the symlink default:
 // it deploys straight into game_dir through Deploy::Direct (the same
 // on-disk result, but with deploy_all/undeploy/sync as first-class methods).
-inline constexpr const char *kDefaultDeployStrategy = "symlink";
-inline constexpr const char *kDeployStrategyOverlayFs = "overlayfs";
-inline constexpr const char *kDeployStrategyDirect = "direct";
+inline constexpr const char* kDefaultDeployStrategy   = "symlink";
+inline constexpr const char* kDeployStrategyOverlayFs = "overlayfs";
+inline constexpr const char* kDeployStrategyDirect    = "direct";
 
 // Creation club file name for the given game (e.g. "skyrim.ccc").
 // Falls back to "skyrim.ccc" when the plugin declares nothing.
-[[nodiscard]] std::string creation_club_file_for(const GameKnowledge &knowledge,
-                                                 const std::string &game_id);
+[[nodiscard]] std::string creation_club_file_for(const GameKnowledge& knowledge,
+                                                 const std::string& game_id);
 
 // Deploy strategy declared for the given game. Falls back to
 // kDefaultDeployStrategy when the game plugin declares nothing.
-[[nodiscard]] std::string deploy_strategy_for(const GameKnowledge &knowledge,
-                                              const std::string &game_id);
+[[nodiscard]] std::string deploy_strategy_for(const GameKnowledge& knowledge,
+                                              const std::string& game_id);
 
 // Plugin-declared game-mods directory ("game_mods_dir" hook). Plugins may
 // declare either an absolute path (Isaac on macOS:
@@ -92,17 +90,17 @@ inline constexpr const char *kDeployStrategyDirect = "direct";
 // against game_dir and returned as an absolute path. Empty when the plugin
 // declares nothing.
 [[nodiscard]] std::filesystem::path
-resolve_plugin_game_mods_dir(const std::string &game_id,
-                             const std::filesystem::path &game_dir,
-                             const GameKnowledge &knowledge);
+resolve_plugin_game_mods_dir(const std::string& game_id,
+                             const std::filesystem::path& game_dir,
+                             const GameKnowledge& knowledge);
 
 // Plugin-declared raw game-mods directory hook value, ~-expanded when the
 // declared value starts with ~. Empty when the plugin declares nothing.
 // Useful when a caller needs the raw token (absolute OR relative) without
 // anchoring it to game_dir - prefer resolve_plugin_game_mods_dir for any
 // filesystem read.
-[[nodiscard]] std::string plugin_game_mods_dir(const GameKnowledge &knowledge,
-                                               const std::string &game_id);
+[[nodiscard]] std::string plugin_game_mods_dir(const GameKnowledge& knowledge,
+                                               const std::string& game_id);
 
 // The game's native mods directory, resolved once for every consumer:
 //   1. override_dir (the instance.toml "game_mods_dir") when non-empty,
@@ -120,8 +118,49 @@ resolve_plugin_game_mods_dir(const std::string &game_id,
 // Deploy is the exception: it consumes only steps 1-2 (via
 // plugin_game_mods_dir) because folding mods_subpath into the deploy root
 // would misplace root-override mods that must land in the game root.
-[[nodiscard]] std::filesystem::path resolve_game_mods_dir(
-    const std::string &game_id, const std::filesystem::path &game_dir,
-    const GameKnowledge &knowledge, const std::string &override_dir = "");
+[[nodiscard]] std::filesystem::path
+resolve_game_mods_dir(const std::string& game_id, const std::filesystem::path& game_dir,
+                      const GameKnowledge& knowledge,
+                      const std::string& override_dir = "");
 
-} // namespace engine
+// Per-platform My Games leaf for the given game: the "mygames_folder_<os>"
+// hook (os_tag is the platform name: "linux", "macos", "windows") wins over
+// the plain "mygames_folder" hook. Empty when the plugin declares neither -
+// there is intentionally no display-name fallback: guessing from the game's
+// display name points at folders the game never wrote.
+[[nodiscard]] std::string mygames_leaf_for(const GameKnowledge& knowledge,
+                                           const std::string& game_id,
+                                           const std::string& os_tag);
+
+// Parent folder of the game's My Games leaf inside Documents. Defaults to
+// "My Games"; a game with a different layout declares "mygames_parent".
+[[nodiscard]] std::string mygames_parent_for(const GameKnowledge& knowledge,
+                                             const std::string& game_id);
+
+// The game's My Games directory, resolved once for every consumer:
+//   - native game (or anything on native Windows): the per-platform leaf
+//     under the host's native Documents dir;
+//   - Windows executable on a non-Windows host (Proton): "mygames_folder"
+//     under the prefix Documents dir + the mygames parent. No per-OS
+//     override applies here (Proton always presents a Windows layout) and
+//     an empty leaf resolves to empty - never a display-name guess.
+// Returns an empty path when the location cannot be determined (no leaf,
+// no appid, no prefix/Documents dir).
+[[nodiscard]] std::filesystem::path resolve_mygames_dir(const std::string& game_id,
+                                                        const GameKnowledge& knowledge,
+                                                        const Platform* platform,
+                                                        bool is_windows_exe);
+
+// Steam userdata saves for games that keep saves outside Documents (Isaac):
+// <steam>/userdata/<userid>/<appid>/<steam_userdata_saves>/, where <userid>
+// is the first non-zero numeric userdata subdir ("0" is Steam's
+// anonymous/placeholder slot, never real saves). The plugin declares the
+// leaf with the "steam_userdata_saves" hook ("remote" for Isaac) alongside
+// its steam_appid. Empty when the game declares no such hook or Steam/a
+// user dir cannot be found.
+[[nodiscard]] std::filesystem::path
+resolve_steam_userdata_saves_dir(const std::string& game_id,
+                                 const GameKnowledge& knowledge,
+                                 const Platform* platform);
+
+}  // namespace engine

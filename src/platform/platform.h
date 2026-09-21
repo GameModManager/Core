@@ -25,9 +25,9 @@ public:
   [[nodiscard]] virtual std::string platform_name() const = 0;
 
   // Directory resolution per XDG / Windows conventions
-  [[nodiscard]] virtual std::filesystem::path data_dir() const = 0;
+  [[nodiscard]] virtual std::filesystem::path data_dir() const   = 0;
   [[nodiscard]] virtual std::filesystem::path config_dir() const = 0;
-  [[nodiscard]] virtual std::filesystem::path cache_dir() const = 0;
+  [[nodiscard]] virtual std::filesystem::path cache_dir() const  = 0;
 
   // Instances directory (under data_dir by default)
   [[nodiscard]] virtual std::filesystem::path instances_dir() const {
@@ -69,7 +69,7 @@ public:
   // runner's display name (searched among installed runners). Empty when
   // the runner cannot be found.
   [[nodiscard]] virtual std::filesystem::path
-  find_proton_named([[maybe_unused]] const std::string &name) const {
+  find_proton_named([[maybe_unused]] const std::string& name) const {
     return {};
   }
 
@@ -83,8 +83,7 @@ public:
   // All Steam library folders (paths from libraryfolders.vdf, in priority
   // order). Empty when not applicable. Used to build
   // STEAM_COMPAT_LIBRARY_PATHS.
-  [[nodiscard]] virtual std::vector<std::filesystem::path>
-  steam_library_paths() const {
+  [[nodiscard]] virtual std::vector<std::filesystem::path> steam_library_paths() const {
     return {};
   }
 
@@ -96,6 +95,20 @@ public:
   game_documents_dir([[maybe_unused]] uint32_t steam_appid) const {
     return {};
   }
+
+  // Host-native "Documents" directory: where a game running WITHOUT Proton
+  // keeps its files. On Linux this honors ~/.config/user-dirs.dirs
+  // (XDG_DOCUMENTS_DIR) with a ~/Documents fallback; on macOS it is
+  // ~/Documents; on Windows it matches game_documents_dir(). Empty when the
+  // host documents dir cannot be determined.
+  [[nodiscard]] virtual std::filesystem::path native_documents_dir() const {
+    return {};
+  }
+
+  // Steam "userdata" directory (<steam_install>/userdata/) holding per-user
+  // cloud saves (<userid>/<appid>/remote/). Some games (Isaac) keep saves
+  // here instead of Documents. Empty when Steam is not installed.
+  [[nodiscard]] virtual std::filesystem::path steam_userdata_dir() const { return {}; }
 
   // Windows user "Local AppData" directory for a game running under this
   // platform's prefix. On Linux this is inside the Proton prefix
@@ -112,8 +125,8 @@ public:
 
   // Launch a game executable. Platform handles the actual process creation.
   [[nodiscard]] virtual bool
-  launch_executable(const std::filesystem::path &executable,
-                    const std::vector<std::string> &args = {}) const = 0;
+  launch_executable(const std::filesystem::path& executable,
+                    const std::vector<std::string>& args = {}) const = 0;
 
   // Check if the current user has elevated/admin privileges.
   [[nodiscard]] virtual bool is_elevated() const { return false; }
@@ -141,10 +154,10 @@ inline std::filesystem::path safe_home_dir() {
   if (GetEnvironmentVariableW(L"USERPROFILE", buf, MAX_PATH))
     return std::filesystem::path(buf);
 #else
-  if (const char *home = std::getenv("HOME"))
+  if (const char* home = std::getenv("HOME"))
     return std::filesystem::path(home);
 #endif
   return std::filesystem::temp_directory_path();
 }
 
-} // namespace engine
+}  // namespace engine

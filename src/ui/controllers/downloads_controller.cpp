@@ -436,9 +436,18 @@ void DownloadsController::wire_saves_tab() {
 
   // Saves live under documents/My Games/<game> (game_mygames_dir()). The
   // "Saves" leaf is knowledge-driven where the game plugin defines it; the
-  // Bethesda-family default applies to Skyrim/FO4/etc.
-  auto sub = w_->knowledge_->get(w_->current_game_id_, "saves_subpath", "Saves");
-  const auto saves_dir = w_->game_mygames_dir() / sub;
+  // Bethesda-family default applies to Skyrim/FO4/etc. Games that keep saves
+  // in Steam userdata instead (Isaac: userdata/<userid>/<appid>/remote via
+  // the "steam_userdata_saves" hook) resolve there first.
+  std::filesystem::path saves_dir;
+  if (w_->knowledge_ != nullptr) {
+    saves_dir = engine::resolve_steam_userdata_saves_dir(
+        w_->current_game_id_, *w_->knowledge_, w_->platform_);
+    if (saves_dir.empty()) {
+      auto sub  = w_->knowledge_->get(w_->current_game_id_, "saves_subpath", "Saves");
+      saves_dir = w_->game_mygames_dir() / sub;
+    }
+  }
   engine::Logger::instance().debug("Saves tab: scanning " + saves_dir.string());
   st->set_saves_dir(saves_dir);
 

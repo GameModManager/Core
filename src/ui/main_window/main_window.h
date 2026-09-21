@@ -7,10 +7,12 @@
 #include <QString>
 #include <QStringList>
 #include <QVector>
+#include <cctype>
 #include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -53,12 +55,12 @@ struct ConflictStats;
 class StyleManager;
 class Platform;
 namespace Sorter {
-namespace Loot {
-struct Result;
-}
-} // namespace Sorter
+  namespace Loot {
+    struct Result;
+  }
+}  // namespace Sorter
 struct LaunchParams;
-} // namespace engine
+}  // namespace engine
 
 namespace ui {
 
@@ -113,7 +115,7 @@ struct ModScanResult;
 struct ModScanRequest;
 struct PluginDbLoadRequest;
 namespace preview {
-class PreviewWindow;
+  class PreviewWindow;
 }
 
 struct PendingToggle {
@@ -136,17 +138,16 @@ struct DeferredDisable {
 class MainWindow : public QMainWindow {
   Q_OBJECT
 public:
-  explicit MainWindow(QWidget *parent = nullptr);
+  explicit MainWindow(QWidget* parent = nullptr);
   // Out-of-line so the unique_ptr controller members (ModListController,
   // SettingsController, ...) are destroyed where their complete types are
   // visible (main_window.cpp includes every controller header).
   ~MainWindow() override;
 
-  void set_game_info(const std::string &game_id,
-                     const std::string &game_display_name,
-                     const std::string &profile_name = "Default",
-                     const std::filesystem::path &game_dir = {},
-                     const std::filesystem::path &instance_root = {});
+  void set_game_info(const std::string& game_id, const std::string& game_display_name,
+                     const std::string& profile_name            = "Default",
+                     const std::filesystem::path& game_dir      = {},
+                     const std::filesystem::path& instance_root = {});
 
   // Opens the game-directory picker, persists the choice to instance.toml
   // (read-before-write) and reloads through set_game_info. Returns true
@@ -154,34 +155,28 @@ public:
   // the launch/deploy guards (Workspace-wk8).
   bool prompt_for_game_path();
 
-  void set_game_knowledge(engine::GameKnowledge *knowledge) {
-    knowledge_ = knowledge;
-  }
-  void set_plugin_loader(engine::PluginLoader *loader) {
-    plugin_loader_ = loader;
-  }
-  void set_managed_games(engine::ManagedGames *mg) { managed_games_ = mg; }
-  void set_style_manager(engine::StyleManager *sm) { style_manager_ = sm; }
-  void set_platform(engine::Platform *platform) { platform_ = platform; }
+  void set_game_knowledge(engine::GameKnowledge* knowledge) { knowledge_ = knowledge; }
+  void set_plugin_loader(engine::PluginLoader* loader) { plugin_loader_ = loader; }
+  void set_managed_games(engine::ManagedGames* mg) { managed_games_ = mg; }
+  void set_style_manager(engine::StyleManager* sm) { style_manager_ = sm; }
+  void set_platform(engine::Platform* platform) { platform_ = platform; }
 
   // The QApplication's initial (native platform) style name, captured before
   // any user-selected style is applied. Used to restore "Default (system)"
   // after a built-in Qt style was picked in Settings.
-  void set_native_style_name(const QString &name) { native_style_name_ = name; }
+  void set_native_style_name(const QString& name) { native_style_name_ = name; }
 
   // NXM download routing - call when an nxm:// link is received. Delegates
   // to the DownloadsController (Issue #16); kept on MainWindow as the
   // public entry point used by main.cpp.
-  void handle_nxm_download(const engine::NxmLink &link);
+  void handle_nxm_download(const engine::NxmLink& link);
 
   // modl:// download routing - call when a modl:// link is received. Same
   // delegation pattern as handle_nxm_download.
-  void handle_modl_download(const engine::Source::ModlLink &link);
+  void handle_modl_download(const engine::Source::ModlLink& link);
 
-  [[nodiscard]] ModView *mod_view() const { return mod_view_; }
-  [[nodiscard]] QSplitter *console_splitter() const {
-    return console_splitter_;
-  }
+  [[nodiscard]] ModView* mod_view() const { return mod_view_; }
+  [[nodiscard]] QSplitter* console_splitter() const { return console_splitter_; }
 
   // True while a mod scan / install pipeline stage owns the UI state
   // (loading_ flag). Tests and controllers use it to defer disk-effect
@@ -199,57 +194,57 @@ public:
   // restoreGeometry() before platform-window creation is silently ignored.
   void apply_initial_geometry();
 
- protected:
-  void closeEvent(QCloseEvent *event) override;
-  bool eventFilter(QObject *obj, QEvent *event) override;
-  void resizeEvent(QResizeEvent *event) override;
+protected:
+  void closeEvent(QCloseEvent* event) override;
+  bool eventFilter(QObject* obj, QEvent* event) override;
+  void resizeEvent(QResizeEvent* event) override;
   // .gmmpack/.zip drops anywhere on the window open the Import Modpack
   // flow with the file pre-selected (Workspace-pi2p).
-  void dragEnterEvent(QDragEnterEvent *event) override;
-  void dragLeaveEvent(QDragLeaveEvent *event) override;
-  void dropEvent(QDropEvent *event) override;
+  void dragEnterEvent(QDragEnterEvent* event) override;
+  void dragLeaveEvent(QDragLeaveEvent* event) override;
+  void dropEvent(QDropEvent* event) override;
 
 private slots:
-  void on_notification(const QString &title, const QString &message);
+  void on_notification(const QString& title, const QString& message);
 
 private:
   void update_title();
 
   // --- Shared state owned by the composer, used by the controllers ---
-  AppMenuBar *menu_bar_ = nullptr;
-  QToolBar *toolbar_area_ = nullptr;
-  MainToolbar *toolbar_ = nullptr;
-  ProfileBar *profile_bar_ = nullptr;
-  ModFilterBar *filter_bar_ = nullptr;
+  AppMenuBar* menu_bar_     = nullptr;
+  QToolBar* toolbar_area_   = nullptr;
+  MainToolbar* toolbar_     = nullptr;
+  ProfileBar* profile_bar_  = nullptr;
+  ModFilterBar* filter_bar_ = nullptr;
   // MO2-style category filter panel (checkable category tree + Clear/Edit).
   // Hidden by default; the << / >> toggle in the filter bar shows/hides it.
-  CategoryFilterPanel *category_filter_panel_ = nullptr;
-  ModView *mod_view_ = nullptr;
+  CategoryFilterPanel* category_filter_panel_ = nullptr;
+  ModView* mod_view_                          = nullptr;
   // MO2-style digital counter above the mod list (enabled mod count),
   // right-aligned; updated by ModListController on list/toggle changes.
-  QLCDNumber *mod_count_enabled_ = nullptr;
-  ColumnToggleHeaderView *mod_header_ = nullptr;
-  ModList *mod_model_ = nullptr;
-  RightPanel *right_panel_ = nullptr;
-  QSplitter *main_splitter_ = nullptr;
-  QSplitter *console_splitter_ = nullptr;
+  QLCDNumber* mod_count_enabled_      = nullptr;
+  ColumnToggleHeaderView* mod_header_ = nullptr;
+  ModList* mod_model_                 = nullptr;
+  RightPanel* right_panel_            = nullptr;
+  QSplitter* main_splitter_           = nullptr;
+  QSplitter* console_splitter_        = nullptr;
   // Central widget: tab 0 holds console_splitter_ (the Main tab); dynamic
   // view tabs (Settings, Pipeline, ...) are added by TabModeController when
   // Full UI mode is ON.
-  MainTabContainer *main_tab_container_ = nullptr;
-  ConsolePanel *console_ = nullptr;
-  StatusBar *status_bar_ = nullptr;
+  MainTabContainer* main_tab_container_ = nullptr;
+  ConsolePanel* console_                = nullptr;
+  StatusBar* status_bar_                = nullptr;
   // "Set Game Path" banner (Workspace-tnj): visible while a game-less
   // instance is loaded; lives at the top of the main area.
-  GamePathBanner *game_path_banner_ = nullptr;
-  PipelineThread *pipeline_thread_ = nullptr;
-  engine::GameKnowledge *knowledge_ = nullptr;
-  engine::PluginLoader *plugin_loader_ = nullptr;
-  engine::ManagedGames *managed_games_ = nullptr;
+  GamePathBanner* game_path_banner_    = nullptr;
+  PipelineThread* pipeline_thread_     = nullptr;
+  engine::GameKnowledge* knowledge_    = nullptr;
+  engine::PluginLoader* plugin_loader_ = nullptr;
+  engine::ManagedGames* managed_games_ = nullptr;
   QString native_style_name_;
-  engine::StyleManager *style_manager_ = nullptr;
-  engine::Platform *platform_ = nullptr;
-  engine::NxmIpcServer *nxm_ipc_ = nullptr;
+  engine::StyleManager* style_manager_ = nullptr;
+  engine::Platform* platform_          = nullptr;
+  engine::NxmIpcServer* nxm_ipc_       = nullptr;
   std::unique_ptr<Deploy::Interface> deploy_strategy_;
   bool nxm_handler_check_done_ = false;
 
@@ -269,14 +264,14 @@ private:
   // Plugin database driving the Plugins tab (empty until a plugin-capable
   // game is loaded). Rebuilt on refresh; toggles/moves save the profile.
   engine::PluginDb::Database plugins_db_;
-  ui::PluginsTab *plugins_tab_widget_ = nullptr;
+  ui::PluginsTab* plugins_tab_widget_ = nullptr;
   // Long-lived LOOT sort worker thread (created on first use, reused).
-  ui::LootSortThread *loot_sort_thread_ = nullptr;
+  ui::LootSortThread* loot_sort_thread_ = nullptr;
   // Data tab context-menu targets. data_tab_widget_ is set by set_game_info()
   // after each right-panel rebuild; preview_window_ is lazily created on the
   // first preview request and kept across rebuilds.
-  ui::DataTab *data_tab_widget_ = nullptr;
-  ui::preview::PreviewWindow *preview_window_ = nullptr;
+  ui::DataTab* data_tab_widget_               = nullptr;
+  ui::preview::PreviewWindow* preview_window_ = nullptr;
   // Selection-highlight indexes, rebuilt once per plugin refresh (O(P)); the
   // per-selection work is then lookups only, so huge mod lists stay cheap.
   // owner_mod -> plugin names the mod owns; name -> row in plugins_db_.
@@ -298,18 +293,18 @@ private:
   // paused download can be resumed with its original ?do=download URL.
   std::unordered_map<std::string, std::string> url_downloads_;
   int64_t running_process_pid_ = -1;
-  QTimer *process_watch_timer_ = nullptr;
-  bool overlay_launched_ = false;
+  QTimer* process_watch_timer_ = nullptr;
+  bool overlay_launched_       = false;
   std::string
-      cgroup_path_; // cgroup v2 path for process tracking (empty = unavailable)
+      cgroup_path_;  // cgroup v2 path for process tracking (empty = unavailable)
   std::filesystem::file_time_type launch_time_;
   std::filesystem::path
-      staging_dir_; // non-empty when OverlayFS deploy strategy is active
+      staging_dir_;  // non-empty when OverlayFS deploy strategy is active
   // "Output to mod" session: scratch capture dir + target mod folder.
   // Both empty = default Overwrite capture.
   std::filesystem::path output_session_scratch_;
   std::filesystem::path output_mod_dir_;
-  std::filesystem::path conflict_cache_path_; // path to conflict cache JSON
+  std::filesystem::path conflict_cache_path_;  // path to conflict cache JSON
   engine::PathRegistry last_conflict_registry_;
   // Conflict recompute machinery (P8.1): debounce timer coalesces rapid
   // toggle/reorder requests; the scan runs on ConflictScanThread with at most
@@ -317,11 +312,11 @@ private:
   // a fresh scan (conflict_scan_pending_); generation drops stale results;
   // invalidations of the quick-token cache are applied by the worker before
   // it scans. Follow-ups run on the main thread after the results land.
-  QTimer *conflict_debounce_timer_ = nullptr;
-  ui::ConflictScanThread *conflict_scan_thread_ = nullptr;
-  bool conflict_scan_running_ = false;
-  bool conflict_scan_pending_ = false;
-  quint64 conflict_scan_generation_ = 0;
+  QTimer* conflict_debounce_timer_              = nullptr;
+  ui::ConflictScanThread* conflict_scan_thread_ = nullptr;
+  bool conflict_scan_running_                   = false;
+  bool conflict_scan_pending_                   = false;
+  quint64 conflict_scan_generation_             = 0;
   std::unordered_set<std::string> conflict_invalidate_pending_;
   std::vector<std::function<void()>> conflict_scan_pending_follow_ups_;
   std::vector<std::function<void()>> conflict_scan_active_follow_ups_;
@@ -330,8 +325,8 @@ private:
   // switch superseded it). No reentrancy flag needed - the model is only
   // touched from on_mod_scan_finished on the main thread, and the worker
   // thread serializes queued scans.
-  ui::ModScanThread *mod_scan_thread_ = nullptr;
-  quint64 mod_scan_generation_ = 0;
+  ui::ModScanThread* mod_scan_thread_ = nullptr;
+  quint64 mod_scan_generation_        = 0;
   // Plugin-DB preload machinery (P8.5/T6): launch_plugin_db_preload() runs
   // the plugin-DB disk load concurrently with the mod scan on
   // PluginDbLoadThread (gmm-plugin-db). plugin_db_generation_ drops a stale
@@ -339,9 +334,9 @@ private:
   // launch and its consumption - either adoption by refresh_plugins_tab() or
   // a synchronous fallback read (which discards the pending preload so it
   // can't land late and clobber fresher data).
-  ui::PluginDbLoadThread *plugin_db_load_thread_ = nullptr;
-  quint64 plugin_db_generation_ = 0;
-  bool preload_pending_ = false;
+  ui::PluginDbLoadThread* plugin_db_load_thread_ = nullptr;
+  quint64 plugin_db_generation_                  = 0;
+  bool preload_pending_                          = false;
   std::optional<engine::PluginDb::Database> preloaded_plugin_db_;
   std::filesystem::path preloaded_plugin_db_game_dir_;
   // Launch deploy machinery (P8.4): launch_with_executable() builds a
@@ -350,11 +345,11 @@ private:
   // after the deploy finished, so the game provably never starts before
   // .gmm_staging is fully populated. launch_prep_pending_ re-entry-guards the
   // gap; a stale result (instance switched mid-deploy) is dropped.
-  ui::DeployThread *launch_deploy_thread_ = nullptr;
-  bool launch_prep_pending_ = false;
+  ui::DeployThread* launch_deploy_thread_ = nullptr;
+  bool launch_prep_pending_               = false;
   engine::Instance
-      current_instance_; // loaded per-folder overrides for the active instance
-  QPointer<ui::ModInfoDialog> modinfo_dialog_; // alive while the dialog is open
+      current_instance_;  // loaded per-folder overrides for the active instance
+  QPointer<ui::ModInfoDialog> modinfo_dialog_;  // alive while the dialog is open
   // --- Path helpers (inlined: the composer stays thin, Issue #16) ---
   // NOTE: per-mod meta.ini lives in-folder at mods/{folder}/meta.ini
   // (MO2-compatible); there is no meta_dir_path() anymore.
@@ -395,32 +390,49 @@ private:
       return {};
     return current_instance_.path_for(engine::InstanceKind::Overwrite);
   }
-  // Game's My Games folder under the prefix Documents dir (MO2's
-  // documentsDirectory). Empty when the game has no prefix / appid.
+  // Game's My Games folder (MO2's documentsDirectory): native games resolve
+  // under the host Documents dir, Proton games inside the prefix. Empty when
+  // the game declares no My Games folder or no prefix / appid exists.
   std::filesystem::path game_mygames_dir() const {
     if (!platform_ || !knowledge_ || current_game_id_.empty())
       return {};
-    auto id_str = knowledge_->get(current_game_id_, "steam_appid", "");
-    if (id_str.empty())
-      return {};
-    uint32_t appid = 0;
-    try {
-      appid = std::stoul(id_str);
-    } catch (...) {
-      return {};
+    return engine::resolve_mygames_dir(current_game_id_, *knowledge_, platform_,
+                                       game_uses_windows_exe());
+  }
+  // True when the game only ships Windows executables (every entry in the
+  // plugin's "executables" hook ends in .exe): on a non-Windows host it
+  // runs under Proton. Mixed/native games (Isaac ships a .app too) run
+  // natively. The saves/open-folder location depends on the launched binary,
+  // which these call sites do not know - this is the documented heuristic.
+  bool game_uses_windows_exe() const {
+    if (!knowledge_ || current_game_id_.empty())
+      return false;
+    const auto csv = knowledge_->get(current_game_id_, "executables", "");
+    if (csv.empty())
+      return false;
+    std::string entry;
+    std::istringstream csv_stream(csv);
+    bool any = false;
+    while (std::getline(csv_stream, entry, ',')) {
+      const auto first = entry.find_first_not_of(" \t");
+      if (first == std::string::npos)
+        continue;
+      const auto last        = entry.find_last_not_of(" \t");
+      const std::string name = entry.substr(first, last - first + 1);
+      any                    = true;
+      if (name.size() < 4)
+        return false;
+      std::string ext = name.substr(name.size() - 4);
+      for (auto& c : ext)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+      if (ext != ".exe")
+        return false;
     }
-    const auto documents = platform_->game_documents_dir(appid);
-    if (documents.empty())
-      return {};
-    auto sub = knowledge_->get(current_game_id_, "mygames_folder", "");
-    if (sub.empty())
-      sub = current_game_name_.empty() ? current_game_id_ : current_game_name_;
-    return documents / "My Games" / sub;
+    return any;
   }
   std::filesystem::path
-  resolve_mod_folder(const std::string &mod_id,
-                     const std::string &mods_subpath,
-                     const std::string &content_dir_str = {}) const {
+  resolve_mod_folder(const std::string& mod_id, const std::string& mods_subpath,
+                     const std::string& content_dir_str = {}) const {
     // If the mod has an explicit content_dir (external mods: Isaac
     // game_dir/mods/), use it directly. The content_dir IS the mod folder.
     if (!content_dir_str.empty()) {
@@ -436,7 +448,7 @@ private:
       if (std::filesystem::exists(fallback))
         return fallback;
     }
-    return folder; // return the instance path even if it doesn't exist
+    return folder;  // return the instance path even if it doesn't exist
   }
   // Game-native mods dir: the instance.toml "game_mods_dir" override when
   // set (Workspace-6up), else the plugin-declared "game_mods_dir" hook
@@ -468,21 +480,20 @@ private:
   }
   QByteArray pending_geometry_;
   // Restored app state, applied once the widgets are ready
-  int icon_size_ = 24; // toolbar icon size (small/medium/large)
-  QString
-      pending_exec_selection_; // last selected executable path, per instance
+  int icon_size_ = 24;              // toolbar icon size (small/medium/large)
+  QString pending_exec_selection_;  // last selected executable path, per instance
 
   // Konami code easter egg
-  DebugWindow *debug_window_ = nullptr;
-  PipelineWindow *pipeline_window_ = nullptr;
-  int konami_state_ = 0;
+  DebugWindow* debug_window_                = nullptr;
+  PipelineWindow* pipeline_window_          = nullptr;
+  int konami_state_                         = 0;
   static constexpr int konami_sequence_[10] = {
       Qt::Key_Up,    Qt::Key_Up,   Qt::Key_Down,  Qt::Key_Down, Qt::Key_Left,
       Qt::Key_Right, Qt::Key_Left, Qt::Key_Right, Qt::Key_B,    Qt::Key_A};
 
   // Pending changes queue (deferred until game exits)
   std::vector<PendingToggle> pending_changes_;
-  QLabel *pending_queue_label_ = nullptr;
+  QLabel* pending_queue_label_ = nullptr;
 
   // Deferred disable/enable queue for delayed_disable games (see
   // DeferredDisable above). Distinct from pending_changes_: this queue is
@@ -491,22 +502,22 @@ private:
 
   // Drag-and-drop highlight for .gmmpack imports. Lazily created, shown
   // while a pack file is dragged over the window, hidden on leave/drop.
-  QLabel *drop_overlay_ = nullptr;
+  QLabel* drop_overlay_ = nullptr;
   void set_drop_overlay_visible(bool visible);
 
   // Game-lock overlay
-  QWidget *game_lock_overlay_ = nullptr;
-  QLabel *game_lock_label_ = nullptr;
-  QPushButton *unlock_button_ = nullptr;
-  QPushButton *kill_button_ = nullptr;
-  QCheckBox *process_tree_checkbox_ = nullptr;
-  QTreeWidget *process_tree_ = nullptr;
-  int64_t locked_pid_ = -1;
+  QWidget* game_lock_overlay_       = nullptr;
+  QLabel* game_lock_label_          = nullptr;
+  QPushButton* unlock_button_       = nullptr;
+  QPushButton* kill_button_         = nullptr;
+  QCheckBox* process_tree_checkbox_ = nullptr;
+  QTreeWidget* process_tree_        = nullptr;
+  int64_t locked_pid_               = -1;
   // Workspace-k53a: latched true when the overlay is shown and stays true
   // through a normal game exit. Drives the game-finished saves rescan - a
   // game that never showed the overlay (silent launch, instant crash) does
   // not trigger a redundant scan.
-  bool had_lock_overlay_ = false;
+  bool had_lock_overlay_  = false;
   bool show_process_tree_ = false;
 
   // Install-progress popup state. Lazily created on the first install;
@@ -514,8 +525,8 @@ private:
   // defers the first show by ~300ms so a fast install never flashes the
   // dialog; active_install_progress_id_ tracks which install the dialog
   // belongs to so a new install resets it.
-  ui::InstallProgressDialog *install_progress_dialog_ = nullptr;
-  QTimer *install_progress_show_timer_ = nullptr;
+  ui::InstallProgressDialog* install_progress_dialog_ = nullptr;
+  QTimer* install_progress_show_timer_                = nullptr;
   std::string active_install_progress_id_;
 
   // Issue #16 controllers - the composer delegates behavior to these.
@@ -545,4 +556,4 @@ private:
   std::unique_ptr<Locker> locker_;
 };
 
-} // namespace ui
+}  // namespace ui
