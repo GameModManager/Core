@@ -648,6 +648,13 @@ void ModListController::setup_mod_list(QVBoxLayout* left_layout) {
   w_->mod_count_enabled_ = new QLCDNumber(w_);
   w_->mod_count_enabled_->setObjectName("mo2CounterLabel");
   w_->mod_count_enabled_->setDigitCount(4);
+  w_->mod_count_enabled_->setSegmentStyle(QLCDNumber::Flat);
+  // Flat segments using QPalette text color for clear contrast on any theme.
+  {
+    auto pal = w_->mod_count_enabled_->palette();
+    pal.setColor(QPalette::WindowText, pal.color(QPalette::Text));
+    w_->mod_count_enabled_->setPalette(pal);
+  }
   w_->mod_count_enabled_->display(0);
 
   auto* count_row = new QHBoxLayout;
