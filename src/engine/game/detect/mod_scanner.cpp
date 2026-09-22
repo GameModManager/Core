@@ -956,18 +956,19 @@ ModScanner::prune_orphaned_empty_mods(const std::vector<ScannedMod>& scanned,
     // source is gone (rule above).
     if (tracked.entry(mod.folder_name) == nullptr && !source_gone)
       continue;
-    std::error_code rm_ec;
-    std::filesystem::remove_all(mods_dir / mod.folder_name, rm_ec);
-    if (rm_ec) {
-      Logger::instance().warn("ModScanner: failed to prune orphaned empty "
+    // Workspace-f4f7: pruned folders go to the platform trash bin
+    // (recoverable) via remove_path - never permanently deleted.
+    if (!remove_path(mods_dir / mod.folder_name)) {
+      Logger::instance().warn("ModScanner: failed to move orphaned empty "
                               "mod '" +
-                              mod.folder_name + "': " + rm_ec.message());
+                              mod.folder_name + "' to trash; keeping it");
       continue;
     }
     tracker.remove(mod.folder_name);
     pruned.push_back(mod.folder_name);
     Logger::instance().info("ModScanner: pruned orphaned empty mod '" +
-                            mod.folder_name + "' (content removed externally)");
+                            mod.folder_name +
+                            "' to trash (content removed externally)");
   }
 
   if ((!pruned.empty() || tracker_dirty) && !tracker.save())
