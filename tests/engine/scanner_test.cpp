@@ -48,6 +48,28 @@ static const engine::ScannedMod* by_folder(const std::vector<engine::ScannedMod>
   return nullptr;
 }
 
+// Workspace-f4f7: prune_orphaned_empty_mods moves folders to the platform
+// trash (freedesktop root from XDG_DATA_HOME). Redirect it into the
+// throwaway tree so prune tests never touch the real trash. RAII restores
+// the previous value even when a REQUIRE throws mid-case.
+struct TrashRedirect {
+  std::string old;
+  bool had = false;
+  explicit TrashRedirect(const fs::path& fake_home) {
+    if (const char* v = ::getenv("XDG_DATA_HOME")) {
+      old = v;
+      had = true;
+    }
+    ::setenv("XDG_DATA_HOME", fake_home.string().c_str(), 1);
+  }
+  ~TrashRedirect() {
+    if (had)
+      ::setenv("XDG_DATA_HOME", old.c_str(), 1);
+    else
+      ::unsetenv("XDG_DATA_HOME");
+  }
+};
+
 TEST_CASE("scanner", "[engine]") {
   const fs::path root = "/tmp/gmm_scanner_test";
   fs::remove_all(root);
@@ -381,13 +403,15 @@ TEST_CASE("scan uses game_mods_dir literally", "[engine]") {
 
 TEST_CASE("prune_orphaned_empty_mods", "[engine]") {
   // Workspace-5jk3: Steam unsubscribes leave GMM-written meta.ini behind, so
-  // the folder rescans forever as is_empty. Pruning deletes ONLY folders
-  // with proof of prior existence (a ModStateTracker entry).
+  // the folder rescans forever as is_empty. Pruning moves ONLY folders
+  // with proof of prior existence (a ModStateTracker entry) to the trash
+  // (Workspace-f4f7: recoverable, never permanently deleted).
   const fs::path root = "/tmp/gmm_prune_test";
   fs::remove_all(root);
   const fs::path mods          = root / "mods";
   const fs::path instance_root = root / "instance";
   fs::create_directories(instance_root);
+  TrashRedirect trash(root / "fakehome");
 
   // Tracked ghost: meta.ini only (Steam removed the real files).
   fs::create_directories(mods / "GhostMod");
@@ -440,6 +464,10 @@ TEST_CASE("prune_orphaned_empty_mods", "[engine]") {
   require(pruned.size() == 1, "exactly one folder pruned");
   require(pruned.front() == "GhostMod", "the tracked ghost is pruned");
   require(!fs::exists(mods / "GhostMod"), "ghost folder removed");
+#ifndef _WIN32
+  require(fs::exists(root / "fakehome" / "Trash" / "files" / "GhostMod" / "meta.ini"),
+          "pruned ghost is recoverable from trash");
+#endif
   require(fs::is_directory(mods / "FreshEmpty"), "untracked shell kept");
   require(fs::is_directory(mods / "RealMod"), "tracked live mod kept");
   require(fs::is_directory(mods / "Group_separator"), "separator kept");
@@ -560,6 +588,7 @@ TEST_CASE("mirrored mod is not pruned when its source is gone", "[engine]") {
   const fs::path mods          = root / "mods";
   const fs::path instance_root = root / "instance";
   fs::create_directories(instance_root);
+  TrashRedirect trash(root / "fakehome");
 
   fs::create_directories(mods / "MirroredGhost");
   write_file(mods / "MirroredGhost" / "meta.ini",
@@ -590,6 +619,10 @@ TEST_CASE("mirrored mod is not pruned when its source is gone", "[engine]") {
   require(pruned.front() == "PlainGhost", "only the unmirrored ghost is pruned");
   require(fs::is_directory(mods / "MirroredGhost"), "mirrored ghost survives");
   require(!fs::exists(mods / "PlainGhost"), "plain ghost removed");
+#ifndef _WIN32
+  require(fs::exists(root / "fakehome" / "Trash" / "files" / "PlainGhost" / "meta.ini"),
+          "pruned ghost is recoverable from trash");
+#endif
 
   fs::remove_all(root);
 }
@@ -605,6 +638,7 @@ TEST_CASE("prune seeds tracker for healthy mods, prunes on a later scan", "[engi
   const fs::path mods          = root / "mods";
   const fs::path instance_root = root / "instance";
   fs::create_directories(instance_root);
+  TrashRedirect trash(root / "fakehome");
 
   fs::create_directories(mods / "LiveMod");
   write_file(mods / "LiveMod" / "meta.ini", "[General]\nversion = 1.0\n");
@@ -637,6 +671,10 @@ TEST_CASE("prune seeds tracker for healthy mods, prunes on a later scan", "[engi
   require(pruned.size() == 1, "seeded ghost pruned on the later scan");
   require(pruned.front() == "LiveMod", "the wiped mod is pruned");
   require(!fs::exists(mods / "LiveMod"), "wiped folder removed");
+#ifndef _WIN32
+  require(fs::exists(root / "fakehome" / "Trash" / "files" / "LiveMod" / "meta.ini"),
+          "pruned mod is recoverable from trash");
+#endif
 
   fs::remove_all(root);
 }
@@ -655,6 +693,7 @@ TEST_CASE("prune removes GMM-managed ghosts, keeps user shells", "[engine]") {
   const fs::path instance_root = root / "instance";
   const fs::path external      = root / "external";
   fs::create_directories(instance_root);
+  TrashRedirect trash(root / "fakehome");
 
   fs::create_directories(mods / "GmmGhost");
   write_file(mods / "GmmGhost" / "meta.ini",
@@ -691,6 +730,10 @@ TEST_CASE("prune removes GMM-managed ghosts, keeps user shells", "[engine]") {
   require(pruned.size() == 1, "exactly one folder pruned");
   require(pruned.front() == "GmmGhost", "only the source-gone GMM ghost is pruned");
   require(!fs::exists(mods / "GmmGhost"), "GMM ghost removed");
+#ifndef _WIN32
+  require(fs::exists(root / "fakehome" / "Trash" / "files" / "GmmGhost" / "meta.ini"),
+          "pruned ghost is recoverable from trash");
+#endif
   require(fs::is_directory(mods / "SourceAlive"), "source-alive ghost kept");
   require(fs::is_directory(external / "SourceAlive"), "external dir untouched");
   require(fs::is_directory(mods / "Mo2Shell"), "MO2-imported shell kept");
