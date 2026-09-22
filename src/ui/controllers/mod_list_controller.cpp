@@ -2236,6 +2236,10 @@ void ModListController::on_conflict_scan_finished(ui::ConflictScanResult result,
     if (f)
       f();
   reload_open_modinfo_dialog();
+  // The Conflicts tab otherwise only refreshes on selection change, so a
+  // scan landing after the user selected a mod would leave the visible tab
+  // showing stale (possibly empty) data. Repush for the current selection.
+  refresh_conflicts_tab();
 
   // A request arrived mid-scan: launch the queued fresh scan now.
   if (w_->conflict_scan_pending_) {

@@ -357,9 +357,11 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
           base.set(sec, key, side.get(sec, key));
       }
       // The category CSV is manager state (Categories tab writes it);
-      // install stamps ride along too. The rest of [General] is
-      // game-owned and stays as the folder has it.
-      for (const char* key : {"category", "installed", "installationfile"}) {
+      // install stamps ride along too, as does the separator color (the
+      // separator picker writes [General] color in-folder, so a sidecar
+      // that still carries one must not drop it on merge). The rest of
+      // [General] is game-owned and stays as the folder has it.
+      for (const char* key : {"category", "installed", "installationfile", "color"}) {
         const auto v = side.get("General", key);
         if (!v.empty())
           base.set("General", key, v);
