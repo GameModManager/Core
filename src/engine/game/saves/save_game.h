@@ -47,52 +47,57 @@ using SaveEpochSeconds = std::int64_t;
 // decompression-requiring fields (plugins, screenshot) are filled when the
 // data region is read (always by the default parsers).
 struct SaveGame {
-    std::filesystem::path file_path;
-    std::string game_id;  // "skyrim" | "skyrimse" | "skyrimvr" - parser tag
+  std::filesystem::path file_path;
+  std::string game_id;  // "skyrim" | "skyrimse" | "skyrimvr" - parser tag
 
-    // Header fields (MO2 ISaveGame + GamebryoSaveGame simple getters).
-    SaveEpochSeconds creation_time = 0;
-    std::string pc_name;
-    std::uint16_t pc_level = 0;
-    std::string pc_location;
-    std::uint32_t save_number = 0;
+  // Header fields (MO2 ISaveGame + GamebryoSaveGame simple getters).
+  SaveEpochSeconds creation_time = 0;
+  // On-disk file size in bytes. Filled by the no-parser stub scan path
+  // (Workspace-e2td: Isaac rows show size with no parser); parsed saves
+  // leave it 0 - their size was never needed for the Missing column.
+  std::uintmax_t file_size = 0;
+  std::string pc_name;
+  std::uint16_t pc_level = 0;
+  std::string pc_location;
+  std::uint32_t save_number = 0;
 
-    // Data-region fields (decompressed on demand in MO2; always here).
-    std::vector<std::string> plugins;
-    std::vector<std::string> light_plugins;
-    std::vector<std::string> medium_plugins;  // unused by Skyrim; kept for FO4-style games
-    std::vector<std::uint8_t> screenshot;     // raw RGBA (SE) or RGB (LE)
-    int screenshot_width = 0;
-    int screenshot_height = 0;
+  // Data-region fields (decompressed on demand in MO2; always here).
+  std::vector<std::string> plugins;
+  std::vector<std::string> light_plugins;
+  std::vector<std::string>
+      medium_plugins;                    // unused by Skyrim; kept for FO4-style games
+  std::vector<std::uint8_t> screenshot;  // raw RGBA (SE) or RGB (LE)
+  int screenshot_width  = 0;
+  int screenshot_height = 0;
 
-    // Workspace-de5v: lazy heavy data. The scan worker strips the screenshot
-    // after parsing (plugins stay - the Missing column needs them) and sets
-    // this false; the Saves tab re-parses the full save on first hover/click
-    // and caches it. True for every full parse, including tests that build a
-    // SaveGame directly.
-    bool has_heavy_data = true;
+  // Workspace-de5v: lazy heavy data. The scan worker strips the screenshot
+  // after parsing (plugins stay - the Missing column needs them) and sets
+  // this false; the Saves tab re-parses the full save on first hover/click
+  // and caches it. True for every full parse, including tests that build a
+  // SaveGame directly.
+  bool has_heavy_data = true;
 
-    // v2.1+ additive fields (GmmSaveDataV2 tail-append). The bridge copies
-    // these ONLY when the registering plugin proves feature support via
-    // gmm_abi_features (see engine::GMM_FEATURE_SAVE_* in plugin_loader.h).
-    // Empty when the plugin predates the fields or doesn't set the bit -
-    // the Saves tab treats empty all_files/overlay as "fall back to defaults".
-    std::vector<std::string> all_files;  // ess + co-saves + facegen + SE co-files
-    // Save-overlay key/value rows built by register_save_overlay. The Saves
-    // tab renders these as additional rows below the default metadata.
-    struct OverlayRow {
-        std::string key;
-        std::string value;
-    };
-    std::vector<OverlayRow> overlay;
+  // v2.1+ additive fields (GmmSaveDataV2 tail-append). The bridge copies
+  // these ONLY when the registering plugin proves feature support via
+  // gmm_abi_features (see engine::GMM_FEATURE_SAVE_* in plugin_loader.h).
+  // Empty when the plugin predates the fields or doesn't set the bit -
+  // the Saves tab treats empty all_files/overlay as "fall back to defaults".
+  std::vector<std::string> all_files;  // ess + co-saves + facegen + SE co-files
+  // Save-overlay key/value rows built by register_save_overlay. The Saves
+  // tab renders these as additional rows below the default metadata.
+  struct OverlayRow {
+    std::string key;
+    std::string value;
+  };
+  std::vector<OverlayRow> overlay;
 
-    // MO2 GamebryoSaveGame::getName(): "%1, #%2, Level %3, %4".
-    [[nodiscard]] std::string display_name() const;
-    // MO2 getSaveGroupIdentifier(): groups saves per character.
-    [[nodiscard]] const std::string& save_group_identifier() const { return pc_name; }
-    // True when the script-extender co-save (same basename, .skse) exists next
-    // to this save (MO2 GamebryoSaveGame::hasScriptExtenderFile).
-    [[nodiscard]] bool has_script_extender_file() const;
+  // MO2 GamebryoSaveGame::getName(): "%1, #%2, Level %3, %4".
+  [[nodiscard]] std::string display_name() const;
+  // MO2 getSaveGroupIdentifier(): groups saves per character.
+  [[nodiscard]] const std::string& save_group_identifier() const { return pc_name; }
+  // True when the script-extender co-save (same basename, .skse) exists next
+  // to this save (MO2 GamebryoSaveGame::hasScriptExtenderFile).
+  [[nodiscard]] bool has_script_extender_file() const;
 };
 
 // FILETIME → epoch seconds, treating the 100ns-since-1601 value as UTC. No
