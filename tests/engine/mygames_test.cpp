@@ -170,3 +170,36 @@ TEST_CASE("steam userdata saves skip account zero", "[engine]") {
 
   fs::remove_all(userdata);
 }
+
+TEST_CASE("save extensions default to ess", "[engine]") {
+  engine::GameKnowledge knowledge;
+  require(engine::save_extensions_for(knowledge, "skyrim") ==
+              std::vector<std::string>{"ess"},
+          "extensions: undeclared game defaults to ess");
+  require(engine::save_extensions_for(knowledge, "unknown") ==
+              std::vector<std::string>{"ess"},
+          "extensions: unknown game defaults to ess");
+}
+
+TEST_CASE("save extensions parse the hook", "[engine]") {
+  engine::GameKnowledge knowledge;
+  knowledge.set("isaac", "save_extensions", "dat");
+  require(engine::save_extensions_for(knowledge, "isaac") ==
+              std::vector<std::string>{"dat"},
+          "extensions: single hook value");
+
+  knowledge.set("multi", "save_extensions", "ess, ess.bak");
+  require(engine::save_extensions_for(knowledge, "multi") ==
+              (std::vector<std::string>{"ess", "ess.bak"}),
+          "extensions: comma list with whitespace");
+
+  knowledge.set("messy", "save_extensions", " dat ,, bak ");
+  require(engine::save_extensions_for(knowledge, "messy") ==
+              (std::vector<std::string>{"dat", "bak"}),
+          "extensions: empties dropped, whitespace trimmed");
+
+  knowledge.set("empty", "save_extensions", " , ");
+  require(engine::save_extensions_for(knowledge, "empty") ==
+              std::vector<std::string>{"ess"},
+          "extensions: blank hook falls back to ess");
+}
