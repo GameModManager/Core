@@ -1105,6 +1105,15 @@ void run_hover_parity_fixture() {
     require(beta->loot_report.missing_masters.size() == 1,
             "LOOT missing masters attached");
     require(alpha->loot_report.empty(), "unreported plugin stays empty");
+    // Regression: on_loot_finished sets reports then refresh_plugins_tab()
+    // rescans the disk. The rescan must not wipe the last run's findings
+    // (MO2 PluginList::refresh never touches m_AdditionalInfo).
+    db.set_loot_reports({{"beta.esp", report}});
+    require(db.refresh(game, mods, "", "Native.esm"), "rescan after LOOT run");
+    db.sort_load_order();
+    beta = db.find("Beta.esp");
+    require(beta != nullptr && beta->loot_report.messages.size() == 1,
+            "LOOT reports survive refresh()");
     db.clear_loot_reports();
     require(db.find("Beta.esp")->loot_report.empty(), "reports cleared");
   }

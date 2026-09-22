@@ -258,6 +258,9 @@ bool Database::refresh(const std::filesystem::path& game_dir,
   for (auto& p : plugins_)
     scan_plugin_assets(p, archive_candidates);
   rebuild_index();
+  // Re-attach the last LOOT run's findings: the rows above were rebuilt from
+  // disk (MO2 PluginList::refresh never touches m_AdditionalInfo either).
+  apply_loot_reports();
   return true;
 }
 
@@ -655,19 +658,25 @@ void Database::set_missing_masters() {
 
 void Database::set_loot_reports(const std::map<std::string, LootReport>& reports) {
   // Case-insensitive lookup like master resolution (MO2's m_AdditionalInfo is
-  // a FileNameComparator map).
-  std::map<std::string, LootReport> by_lower;
+  // a FileNameComparator map). Stored in the side map so refresh() rebuilds
+  // cannot wipe the last run's findings.
+  loot_reports_.clear();
   for (const auto& [name, report] : reports)
-    by_lower[to_lower(name)] = report;
-  for (auto& p : plugins_) {
-    const auto it = by_lower.find(to_lower(p.name));
-    p.loot_report = it != by_lower.end() ? it->second : LootReport{};
-  }
+    loot_reports_[to_lower(name)] = report;
+  apply_loot_reports();
 }
 
 void Database::clear_loot_reports() {
+  loot_reports_.clear();
   for (auto& p : plugins_)
     p.loot_report = LootReport{};
+}
+
+void Database::apply_loot_reports() {
+  for (auto& p : plugins_) {
+    const auto it = loot_reports_.find(to_lower(p.name));
+    p.loot_report = it != loot_reports_.end() ? it->second : LootReport{};
+  }
 }
 
 void Database::generate_mod_indexes() {
