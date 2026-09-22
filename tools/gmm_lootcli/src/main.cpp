@@ -16,11 +16,13 @@
 #include <loot/api.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -53,25 +55,29 @@ void emit_progress(Progress stage) {
 }
 
 loot::LogLevel parse_log_level(const std::string& text) {
-  if (text == "trace") return loot::LogLevel::trace;
-  if (text == "debug") return loot::LogLevel::debug;
-  if (text == "warning") return loot::LogLevel::warning;
-  if (text == "error") return loot::LogLevel::error;
+  if (text == "trace")
+    return loot::LogLevel::trace;
+  if (text == "debug")
+    return loot::LogLevel::debug;
+  if (text == "warning")
+    return loot::LogLevel::warning;
+  if (text == "error")
+    return loot::LogLevel::error;
   return loot::LogLevel::info;
 }
 
 std::string log_level_name(loot::LogLevel level) {
   switch (level) {
-    case loot::LogLevel::trace:
-      return "trace";
-    case loot::LogLevel::debug:
-      return "debug";
-    case loot::LogLevel::info:
-      return "info";
-    case loot::LogLevel::warning:
-      return "warning";
-    case loot::LogLevel::error:
-      return "error";
+  case loot::LogLevel::trace:
+    return "trace";
+  case loot::LogLevel::debug:
+    return "debug";
+  case loot::LogLevel::info:
+    return "info";
+  case loot::LogLevel::warning:
+    return "warning";
+  case loot::LogLevel::error:
+    return "error";
   }
   return "info";
 }
@@ -80,8 +86,9 @@ std::string log_level_name(loot::LogLevel level) {
 class LogForwarder {
 public:
   explicit LogForwarder(loot::LogLevel level) : level_(level) {
-    loot::SetLoggingCallback(
-        [this](loot::LogLevel level, std::string_view message) { log(level, message); });
+    loot::SetLoggingCallback([this](loot::LogLevel level, std::string_view message) {
+      log(level, message);
+    });
     loot::SetLogLevel(level);
   }
 
@@ -98,14 +105,15 @@ private:
 };
 
 struct Args {
-  std::string game;                    // --game, e.g. "skyrimse"
-  fs::path game_path;                  // --gamePath, dir containing the game executable
-  fs::path local_path;                 // --localPath, profile dir holding loadorder.txt/plugins.txt
-  fs::path plugin_paths_file;          // --pluginPathsFile, one absolute winning plugin path per line
-  fs::path masterlist;                 // --masterlist, masterlist.yaml (engine-managed)
-  fs::path prelude;                    // --prelude, prelude.yaml (engine-managed)
-  fs::path plugin_list_output;         // --pluginListOutputPath, sorted list output
-  fs::path report_output;              // --out, JSON report output
+  std::string game;     // --game, e.g. "skyrimse"
+  fs::path game_path;   // --gamePath, dir containing the game executable
+  fs::path local_path;  // --localPath, profile dir holding loadorder.txt/plugins.txt
+  fs::path plugin_paths_file;   // --pluginPathsFile, one absolute winning plugin path
+                                // per line
+  fs::path masterlist;          // --masterlist, masterlist.yaml (engine-managed)
+  fs::path prelude;             // --prelude, prelude.yaml (engine-managed)
+  fs::path plugin_list_output;  // --pluginListOutputPath, sorted list output
+  fs::path report_output;       // --out, JSON report output
   std::optional<fs::path> plugin_list_path;  // --pluginListPath, current-order fallback
   loot::LogLevel log_level = loot::LogLevel::info;
   std::vector<fs::path> additional_data_paths;  // --additionalDataPaths, ';'-separated
@@ -131,14 +139,14 @@ std::optional<fs::path> take_path(int argc, char** argv, int& i,
 
 Args parse_args(int argc, char** argv) {
   Args args;
-  bool have_game = false;
-  bool have_game_path = false;
-  bool have_local_path = false;
+  bool have_game              = false;
+  bool have_game_path         = false;
+  bool have_local_path        = false;
   bool have_plugin_paths_file = false;
-  bool have_masterlist = false;
-  bool have_prelude = false;
-  bool have_output = false;
-  bool have_report = false;
+  bool have_masterlist        = false;
+  bool have_prelude           = false;
+  bool have_output            = false;
+  bool have_report            = false;
 
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
@@ -167,10 +175,10 @@ Args parse_args(int argc, char** argv) {
       have_prelude = true;
     } else if (key == "pluginListOutputPath") {
       args.plugin_list_output = *take_path(argc, argv, i, key);
-      have_output = true;
+      have_output             = true;
     } else if (key == "out") {
       args.report_output = *take_path(argc, argv, i, key);
-      have_report = true;
+      have_report        = true;
     } else if (key == "pluginListPath") {
       args.plugin_list_path = *take_path(argc, argv, i, key);
     } else if (key == "logLevel") {
@@ -179,7 +187,7 @@ Args parse_args(int argc, char** argv) {
       (void)take_value(argc, argv, i, key);  // accepted for MO2 parity, unused
     } else if (key == "additionalDataPaths") {
       const std::string value = *take_value(argc, argv, i, key);
-      std::size_t start = 0;
+      std::size_t start       = 0;
       while (start < value.size()) {
         const auto sep = value.find(';', start);
         if (sep == std::string::npos) {
@@ -280,23 +288,225 @@ void write_sorted_list(const fs::path& output, const std::vector<std::string>& s
   }
 }
 
-// Minimal but real JSON report: the sorted order plus per-plugin flags. The
-// engine drives its UI from the sorted list; this file is for display/debugging.
-void write_report(const fs::path& output, const std::string& game_name,
+// JSON string escaping for the report (plugin names and LOOT message text
+// are user-controlled; the engine parses this file).
+void write_json_string(std::ostream& out, const std::string& s) {
+  out << '"';
+  for (const char c : s) {
+    switch (c) {
+    case '"':
+      out << "\\\"";
+      break;
+    case '\\':
+      out << "\\\\";
+      break;
+    case '\b':
+      out << "\\b";
+      break;
+    case '\f':
+      out << "\\f";
+      break;
+    case '\n':
+      out << "\\n";
+      break;
+    case '\r':
+      out << "\\r";
+      break;
+    case '\t':
+      out << "\\t";
+      break;
+    default:
+      if (static_cast<unsigned char>(c) < 0x20) {
+        char buf[8];
+        std::snprintf(buf, sizeof buf, "\\u%04x", c);
+        out << buf;
+      } else {
+        out << c;
+      }
+    }
+  }
+  out << '"';
+}
+
+std::string message_type_name(loot::MessageType type) {
+  switch (type) {
+  case loot::MessageType::say:
+    return "info";
+  case loot::MessageType::warn:
+    return "warn";
+  case loot::MessageType::error:
+    return "error";
+  default:
+    return "unknown";
+  }
+}
+
+// Best-effort English text for a LOOT message (mirrors MO2 lootcli's
+// createMessages: default language, skip messages with no content).
+bool message_text(const loot::Message& m, std::string& text_out) {
+  const auto content = loot::SelectMessageContent(
+      m.GetContent(), loot::MessageContent::DEFAULT_LANGUAGE);
+  if (!content.has_value())
+    return false;
+  text_out = content.value().GetText();
+  return true;
+}
+
+// Per-plugin LOOT report in MO2 lootcli's JSON shape (createJsonReport /
+// createPlugins in modorganizer-lootcli/src/lootthread.cpp): the engine
+// parses "plugins" into per-plugin tooltip bullets and flag emblems
+// (PluginList::makeLootTooltip / iconData parity). Empty sections are omitted
+// and plugins carrying nothing but their name are skipped, like MO2's set().
+void write_plugin_reports(std::ostream& out, loot::GameInterface* game,
+                          const std::vector<std::string>& sorted) {
+  out << ",\n  \"plugins\": [";
+  bool first_plugin = true;
+  for (const auto& name : sorted) {
+    std::ostringstream p;
+    bool has_data = false;
+    p << "{\"name\": ";
+    write_json_string(p, name);
+
+    auto plugin   = game->GetPlugin(name);
+    auto metadata = game->GetDatabase().GetPluginMetadata(name, true, true);
+
+    if (metadata.has_value()) {
+      // Incompatibilities, kept only against loaded plugins (MO2 parity).
+      std::ostringstream incompat;
+      bool first_incompat = true;
+      for (const auto& f : metadata->GetIncompatibilities()) {
+        const std::string n = static_cast<std::string>(f.GetName());
+        if (!game->GetPlugin(n))
+          continue;
+        incompat << (first_incompat ? "[" : ", ");
+        first_incompat = false;
+        incompat << "{\"name\": ";
+        write_json_string(incompat, n);
+        if (f.GetDisplayName() != n) {
+          incompat << ", \"displayName\": ";
+          write_json_string(incompat, f.GetDisplayName());
+        }
+        incompat << "}";
+      }
+      if (!first_incompat) {
+        p << ", \"incompatibilities\": " << incompat.str() << "]";
+        has_data = true;
+      }
+
+      std::ostringstream messages;
+      bool first_message = true;
+      for (const auto& m : metadata->GetMessages()) {
+        std::string text;
+        if (!message_text(m, text))
+          continue;
+        messages << (first_message ? "[" : ", ");
+        first_message = false;
+        messages << "{\"type\": \"" << message_type_name(m.GetType())
+                 << "\", \"text\": ";
+        write_json_string(messages, text);
+        messages << "}";
+      }
+      if (!first_message) {
+        p << ", \"messages\": " << messages.str() << "]";
+        has_data = true;
+      }
+
+      auto write_cleaning = [](std::ostringstream& dst,
+                               const std::vector<loot::PluginCleaningData>& data) {
+        bool first = true;
+        for (const auto& d : data) {
+          dst << (first ? "[" : ", ");
+          first = false;
+          dst << "{\"crc\": " << d.GetCRC() << ", \"itm\": " << d.GetITMCount()
+              << ", \"deletedReferences\": " << d.GetDeletedReferenceCount()
+              << ", \"deletedNavmesh\": " << d.GetDeletedNavmeshCount();
+          if (!d.GetCleaningUtility().empty()) {
+            dst << ", \"cleaningUtility\": ";
+            write_json_string(dst, d.GetCleaningUtility());
+          }
+          std::string info;
+          if (message_text(loot::Message(loot::MessageType::say, d.GetDetail()),
+                           info) &&
+              !info.empty()) {
+            dst << ", \"info\": ";
+            write_json_string(dst, info);
+          }
+          dst << "}";
+        }
+        if (!first)
+          dst << "]";
+        return !first;
+      };
+      std::ostringstream dirty;
+      if (write_cleaning(dirty, metadata->GetDirtyInfo())) {
+        p << ", \"dirty\": " << dirty.str();
+        has_data = true;
+      }
+      std::ostringstream clean;
+      if (write_cleaning(clean, metadata->GetCleanInfo())) {
+        p << ", \"clean\": " << clean.str();
+        has_data = true;
+      }
+    }
+
+    if (plugin) {
+      std::ostringstream missing;
+      bool first_missing = true;
+      for (const auto& master : plugin->GetMasters()) {
+        if (game->GetPlugin(master))
+          continue;
+        missing << (first_missing ? "[" : ", ");
+        first_missing = false;
+        write_json_string(missing, master);
+      }
+      if (!first_missing) {
+        p << ", \"missingMasters\": " << missing.str() << "]";
+        has_data = true;
+      }
+      if (plugin->LoadsArchive()) {
+        p << ", \"loadsArchive\": true";
+        has_data = true;
+      }
+      if (plugin->IsMaster()) {
+        p << ", \"isMaster\": true";
+        has_data = true;
+      }
+      if (plugin->IsLightPlugin()) {
+        p << ", \"isLightMaster\": true";
+        has_data = true;
+      }
+    }
+
+    if (!has_data)
+      continue;  // name only: skip, like MO2's createPlugins
+    out << (first_plugin ? "\n    " : ",\n    ") << p.str();
+    first_plugin = false;
+  }
+  out << (first_plugin ? "]" : "\n  ]");
+}
+
+// JSON report: the sorted order (drives the engine) plus per-plugin LOOT
+// findings (drives the tooltip bullets). Kept for display/debugging and
+// parsed by Sorter::Loot::run_sort into Result::reports.
+void write_report(const fs::path& output, loot::GameInterface* game,
+                  const std::string& game_name,
                   const std::vector<std::string>& sorted) {
   std::ofstream out(output);
   if (!out.is_open()) {
     throw std::runtime_error("failed to open report output " + output.string());
   }
-  out << "{\n  \"game\": " << '"' << game_name << "\",\n  \"masterlistLoaded\": true,\n"
-      << "  \"sortedPlugins\": [";
+  out << "{\n  \"game\": ";
+  write_json_string(out, game_name);
+  out << ",\n  \"masterlistLoaded\": true,\n  \"sortedPlugins\": [";
   for (std::size_t i = 0; i < sorted.size(); ++i) {
     if (i != 0) {
       out << ", ";
     }
-    out << '"' << sorted[i] << '"';
+    write_json_string(out, sorted[i]);
   }
-  out << "]\n}\n";
+  out << "]";
+  write_plugin_reports(out, game, sorted);
+  out << "\n}\n";
   if (!out) {
     throw std::runtime_error("failed to write report " + output.string());
   }
@@ -376,7 +586,7 @@ int run(const Args& args) {
   write_sorted_list(args.plugin_list_output, sorted);
 
   emit_progress(Progress::ParsingLootMessages);
-  write_report(args.report_output, args.game, sorted);
+  write_report(args.report_output, game.get(), args.game, sorted);
 
   emit_progress(Progress::Done);
   return 0;
