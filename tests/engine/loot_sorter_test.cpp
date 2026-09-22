@@ -293,6 +293,116 @@ void run_masterlist_fallback_case(const fs::path& base) {
   std::fprintf(stderr, "loot_sorter_test: masterlist-fallback case OK\n");
 }
 
+// Regression test for the gmm_lootcli emitter bug that wrote UNCLOSED plugin
+// objects (each entry missed its '}'), which made every real loot_report.json
+// unparsable so no LOOT bullets ever reached the DB. The golden file mirrors
+// tools/gmm_lootcli/src/main.cpp write_plugin_reports() output style
+// (single-line objects, emitter field order, trailing flag-only entries); if
+// the emitter regresses, the parse below yields no reports and this fails.
+void run_golden_report_case(const fs::path& base) {
+  const fs::path golden =
+      fs::path(__FILE__).parent_path() / "fixtures" / "loot_report_golden.json";
+  require(fs::is_regular_file(golden), "golden report fixture exists");
+
+  const fs::path cli_dir = base / "cli_golden";
+  fs::create_directories(cli_dir);
+  std::ostringstream s;
+  s << "#!/bin/sh\n"
+    << "echo '[progress] 7'\n"
+    << "out=\"\"\nreport=\"\"\nprev=\"\"\n"
+    << "for arg in \"$@\"; do\n"
+    << "  if [ \"$prev\" = \"--pluginListOutputPath\" ]; then out=\"$arg\"; fi\n"
+    << "  if [ \"$prev\" = \"--out\" ]; then report=\"$arg\"; fi\n"
+    << "  prev=\"$arg\"\n"
+    << "done\n"
+    << "printf 'Skyrim.esm\\nUpdate.esm\\nDawnguard.esm\\nTrueHUD.esl\\n"
+       "RaceMenu.esp\\nRaceMenuPlugin.esp\\nXPMSE.esp\\n' > \"$out\"\n"
+    << "cat \"" << golden.string() << "\" > \"$report\"\n"
+    << "exit 0\n";
+  const fs::path cli = cli_dir / "fake_gmm_lootcli_golden";
+  write_file(cli, s.str());
+  chmod(cli.c_str(), 0755);
+
+  engine::Sorter::Loot::Request request;
+  request.game_id            = "SkyrimSpecialEdition";
+  request.loot_game_id       = "skyrimse";
+  request.masterlist_repo    = "skyrimse";
+  request.game_dir           = base / "game_golden";
+  request.profile_dir        = base / "profile_golden";
+  request.cli_path           = cli;
+  request.platform           = new FakePlatform(base / "data_golden");
+  request.update_masterlists = false;
+  request.plugins            = {
+      {"Skyrim.esm", "/fake/path/Skyrim.esm"},
+      {"Update.esm", "/fake/path/Update.esm"},
+      {"Dawnguard.esm", "/fake/path/Dawnguard.esm"},
+      {"TrueHUD.esl", "/fake/path/TrueHUD.esl"},
+      {"RaceMenu.esp", "/fake/path/RaceMenu.esp"},
+      {"RaceMenuPlugin.esp", "/fake/path/RaceMenuPlugin.esp"},
+      {"XPMSE.esp", "/fake/path/XPMSE.esp"},
+  };
+
+  const engine::Sorter::Loot::Result result = engine::Sorter::Loot::run_sort(request);
+  require(result.ok, "golden sort succeeds");
+  require(result.sorted_names.size() == 7, "7 golden sorted names");
+
+  // Flags-only entries (Skyrim.esm, TrueHUD.esl) and the name-only entry
+  // (XPMSE.esp) carry no tooltip data, so only 4 reports survive parsing.
+  require(result.reports.size() == 4, "4 golden plugin reports parsed");
+
+  {
+    const auto it = result.reports.find("Update.esm");
+    require(it != result.reports.end(), "Update.esm report present");
+    require(it->second.dirty.size() == 1, "Update.esm dirty entry");
+    require(it->second.dirty[0].itm_records == 386, "dirty ITM count");
+    require(it->second.dirty[0].deleted_references == 93, "dirty references");
+    require(it->second.dirty[0].deleted_navmeshes == 3, "dirty navmeshes");
+    require(it->second.dirty[0].cleaning_utility.find("SSEEdit") != std::string::npos,
+            "dirty utility");
+    require(it->second.dirty[0].info.find("xEdit") != std::string::npos, "dirty info");
+  }
+
+  {
+    const auto it = result.reports.find("Dawnguard.esm");
+    require(it != result.reports.end(), "Dawnguard.esm report present");
+    const engine::LootReport& rep = it->second;
+    require(rep.incompatibilities.size() == 2, "two incompatibilities");
+    require(rep.incompatibilities[0].first == "XPMSE.esp", "incompat name");
+    require(rep.incompatibilities[0].second == "XP32 Maximum Skeleton",
+            "incompat display name");
+    require(rep.incompatibilities[1].first == "RaceMenu.esp", "2nd incompat");
+    require(rep.incompatibilities[1].second.empty(), "2nd display empty");
+    require(rep.messages.size() == 2, "two LOOT messages");
+    require(rep.messages[0].level == "warning", "warn maps to warning");
+    require(rep.messages[1].level == "error", "error level kept");
+    require(rep.missing_masters.size() == 1 &&
+                rep.missing_masters[0] == "GoneMaster.esm",
+            "LOOT missing masters");
+  }
+
+  {
+    const auto it = result.reports.find("RaceMenu.esp");
+    require(it != result.reports.end(), "RaceMenu.esp report present");
+    require(it->second.clean.size() == 1, "RaceMenu.esp clean entry");
+    require(it->second.clean[0].cleaning_utility == "SSEEdit v4.0.3", "clean utility");
+    const auto pit = result.reports.find("RaceMenuPlugin.esp");
+    require(pit != result.reports.end(), "RaceMenuPlugin.esp report present");
+    require(pit->second.messages.size() == 1, "optional-plugin message");
+    require(pit->second.messages[0].level == "info", "info level kept");
+    require(pit->second.clean.size() == 1, "plugin clean entry");
+  }
+
+  require(result.reports.find("Skyrim.esm") == result.reports.end(),
+          "flags-only entry yields no report");
+  require(result.reports.find("TrueHUD.esl") == result.reports.end(),
+          "light-flag entry yields no report");
+  require(result.reports.find("XPMSE.esp") == result.reports.end(),
+          "name-only entry yields no report");
+
+  delete request.platform;
+  std::fprintf(stderr, "loot_sorter_test: golden case OK\n");
+}
+
 }  // namespace
 
 TEST_CASE("loot sorter", "[engine]") {
@@ -312,4 +422,18 @@ TEST_CASE("loot sorter", "[engine]") {
   run_failure_case(base);
   run_missing_cli_case(base);
   run_masterlist_fallback_case(base);
+}
+
+TEST_CASE("loot sorter golden emitter report", "[engine]") {
+  const fs::path base = "/tmp/gmm_loot_golden_test";
+  std::error_code ec;
+  fs::remove_all(base, ec);
+
+  // Pre-seed a fresh masterlist so the manager uses the cache (no network).
+  const fs::path loot = base / "data_golden" / "loot" / "skyrimse";
+  fs::create_directories(loot, ec);
+  write_file(loot / "masterlist.yaml", "masterlist: 1\n");
+  write_file(loot / "prelude.yaml", "prelude: 1\n");
+
+  run_golden_report_case(base);
 }
