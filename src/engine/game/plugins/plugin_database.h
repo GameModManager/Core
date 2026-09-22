@@ -56,7 +56,11 @@ namespace PluginDb {
 
     // Attach per-plugin LOOT reports after a sort (mirrors
     // LootDialog::showReport -> addLootReport, lootdialog.cpp:287-295).
-    // Unknown names are ignored. Reports persist until clear_loot_reports().
+    // Unknown names are ignored. Reports live in a side map keyed by plugin
+    // name (MO2 m_AdditionalInfo parity: refresh() rebuilds the plugin rows
+    // but never touches the LOOT data), so they survive refresh() and are
+    // only replaced by the next set_loot_reports() or dropped by
+    // clear_loot_reports().
     void set_loot_reports(const std::map<std::string, LootReport>& reports);
     void clear_loot_reports();
 
@@ -161,6 +165,12 @@ namespace PluginDb {
     // pushed down to fill the gaps. Mirrors MO2's PluginList::refreshLoadOrder.
     void apply_locked_order();
 
+    // Copy the side-map LOOT reports onto the current plugin rows
+    // (case-insensitive, MO2 FileNameComparator parity). Called by
+    // set_loot_reports() and at the end of refresh() so a disk rescan never
+    // wipes the findings of the last LOOT run.
+    void apply_loot_reports();
+
     // Plugin indices by name for lookup + ordering.
     std::map<std::string, size_t> by_name_;
     // Lowercased-key index for master lookups. Master names come from TES4
@@ -174,6 +184,12 @@ namespace PluginDb {
     // Locked plugin name -> priority (MO2 lockedorder.txt state). Names of
     // plugins not currently present are kept so the pin survives uninstall.
     std::map<std::string, int> locked_order_;
+
+    // Per-plugin LOOT findings from the last sort, keyed by lowercased plugin
+    // name (MO2 PluginList::m_AdditionalInfo parity). Lives outside the
+    // rebuilt plugin rows so refresh() cannot wipe it; only the next
+    // set_loot_reports()/clear_loot_reports() replaces or drops it.
+    std::map<std::string, LootReport> loot_reports_;
 
     // Game-native plugins in the order declared by the game module.
     std::vector<std::string> native_order_;
