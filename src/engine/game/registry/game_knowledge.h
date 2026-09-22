@@ -163,4 +163,14 @@ resolve_steam_userdata_saves_dir(const std::string& game_id,
                                  const GameKnowledge& knowledge,
                                  const Platform* platform);
 
+// Save-file extensions for the given game, from the comma-separated
+// "save_extensions" hook (e.g. "dat" for Isaac, "ess,ess.bak" for a game
+// with backup saves). Whitespace around entries is ignored; empty entries
+// are dropped. Defaults to {"ess"} when the plugin declares nothing, so
+// Bethesda-family games keep working with no hook. The Saves tab scan uses
+// this (via DownloadsController) instead of a hardcoded extension list -
+// Isaac is just the first non-"ess" consumer.
+[[nodiscard]] std::vector<std::string>
+save_extensions_for(const GameKnowledge& knowledge, const std::string& game_id);
+
 }  // namespace engine

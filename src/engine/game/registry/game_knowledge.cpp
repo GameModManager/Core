@@ -246,4 +246,32 @@ std::filesystem::path resolve_steam_userdata_saves_dir(const std::string& game_i
   return userdata / users.front() / std::to_string(appid) / subpath;
 }
 
+std::vector<std::string> save_extensions_for(const GameKnowledge& knowledge,
+                                             const std::string& game_id) {
+  const std::string declared = knowledge.get(game_id, "save_extensions", "");
+  std::vector<std::string> out;
+  std::string token;
+  for (char c : declared + ",") {
+    if (c == ',') {
+      // Trim ASCII whitespace; drop empties ("dat,, ess" -> "dat","ess").
+      std::size_t begin = 0;
+      while (begin < token.size() &&
+             std::isspace(static_cast<unsigned char>(token[begin])) != 0)
+        ++begin;
+      std::size_t end = token.size();
+      while (end > begin &&
+             std::isspace(static_cast<unsigned char>(token[end - 1])) != 0)
+        --end;
+      if (end > begin)
+        out.push_back(token.substr(begin, end - begin));
+      token.clear();
+    } else {
+      token.push_back(c);
+    }
+  }
+  if (out.empty())
+    return {"ess"};
+  return out;
+}
+
 }  // namespace engine
