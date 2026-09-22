@@ -3005,6 +3005,11 @@ void ModListController::on_loot_finished(engine::Sorter::Loot::Result result) {
     return;
   }
   w_->plugins_db_.save_profile(w_->profiles_dir_path(), w_->current_profile_name_);
+  // Per-plugin LOOT findings (MO2 LootDialog::showReport -> addLootReport
+  // parity, lootdialog.cpp:287-295): replace the previous run's reports so
+  // tooltips and emblems reflect this sort.
+  w_->plugins_db_.clear_loot_reports();
+  w_->plugins_db_.set_loot_reports(result.reports);
   refresh_plugins_tab();
   if (w_->status_bar_)
     w_->status_bar_->set_status(

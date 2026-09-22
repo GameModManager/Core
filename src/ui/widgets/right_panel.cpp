@@ -224,7 +224,7 @@ QWidget* RightPanel::build_tab(const std::string& capability) {
          tr("Load priority of plugins. The higher, the more "
             "\"important\" it is and thus overwrites data from "
             "plugins with lower priority."),
-         tr("Determines the formids of objects originating from this mod."),
+         tr("Determines the formids of objects originating from this mods."),
          tr("Whether this plugin's load order position is pinned.")});
     // Mod Index keeps stretching (it used to be the last section); the
     // Locked column stays a fixed narrow slot.
