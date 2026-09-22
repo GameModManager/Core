@@ -357,6 +357,9 @@ bool message_text(const loot::Message& m, std::string& text_out) {
 // parses "plugins" into per-plugin tooltip bullets and flag emblems
 // (PluginList::makeLootTooltip / iconData parity). Empty sections are omitted
 // and plugins carrying nothing but their name are skipped, like MO2's set().
+// Every emitted object MUST be closed: an unclosed entry invalidates the whole
+// file and parse_loot_reports drops all reports. The golden fixture
+// tests/engine/fixtures/loot_report_golden.json mirrors this output style.
 void write_plugin_reports(std::ostream& out, loot::GameInterface* game,
                           const std::vector<std::string>& sorted) {
   out << ",\n  \"plugins\": [";
@@ -479,6 +482,7 @@ void write_plugin_reports(std::ostream& out, loot::GameInterface* game,
 
     if (!has_data)
       continue;  // name only: skip, like MO2's createPlugins
+    p << "}";
     out << (first_plugin ? "\n    " : ",\n    ") << p.str();
     first_plugin = false;
   }
