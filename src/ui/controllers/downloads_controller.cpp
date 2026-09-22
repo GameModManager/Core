@@ -477,8 +477,16 @@ void DownloadsController::on_saves_refresh_requested() {
   request.saves_dir = st->saves_dir();
   if (request.saves_dir.empty())
     return;
-  request.extensions = {"ess"};
-  request.game_id    = w_->current_game_id_;
+  // Knowledge-driven extensions (Workspace-e2td): Isaac saves are *.dat in
+  // the userdata remote dir, Skyrim-family saves are *.ess. Defaults to
+  // {"ess"} when the plugin declares no "save_extensions" hook.
+  if (w_->knowledge_ != nullptr) {
+    request.extensions =
+        engine::save_extensions_for(*w_->knowledge_, w_->current_game_id_);
+  } else {
+    request.extensions = {"ess"};
+  }
+  request.game_id = w_->current_game_id_;
   // Snapshot the plugin list so results reflect the load order at the moment
   // the refresh was asked for (missing-asset state moves with toggles).
   request.plugins       = w_->plugins_db_.plugins();
