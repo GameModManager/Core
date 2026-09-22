@@ -15,8 +15,8 @@ class Platform;
 
 namespace PluginDb {
 
-class Database {
-public:
+  class Database {
+  public:
     // Discover + parse all plugins from the game's merged Data view.
     //   game_dir   - game install root (Data/ holds vanilla + game-native plugins)
     //   mods_dir   - instance mods dir (per-mod priority lives in each
@@ -32,7 +32,8 @@ public:
 
     // Read creation club file (game root, then Data/) and mark listed content as CC
     // (force-loaded, excluded from plugins.txt). Call before sort_load_order().
-    // The filename comes from the "creation_club_file" knowledge key (default: skyrim.ccc).
+    // The filename comes from the "creation_club_file" knowledge key (default:
+    // skyrim.ccc).
     void load_creation_club(const std::filesystem::path& game_dir,
                             const std::string& ccc_filename = "skyrim.ccc");
 
@@ -52,6 +53,12 @@ public:
 
     // Recompute missing_master flags for the current list.
     void set_missing_masters();
+
+    // Attach per-plugin LOOT reports after a sort (mirrors
+    // LootDialog::showReport -> addLootReport, lootdialog.cpp:287-295).
+    // Unknown names are ignored. Reports persist until clear_loot_reports().
+    void set_loot_reports(const std::map<std::string, LootReport>& reports);
+    void clear_loot_reports();
 
     // Assign formID prefixes (Mod Index column) after the load order is set.
     void generate_mod_indexes();
@@ -92,8 +99,7 @@ public:
     // *repaired (optional) is set when the loaded order violated the native/CC
     // band invariant (a core plugin below user plugins) and was healed.
     bool load_profile(const std::filesystem::path& profiles_dir,
-                      const std::string& profile_name,
-                      bool* repaired = nullptr);
+                      const std::string& profile_name, bool* repaired = nullptr);
 
     // Persist the current state in MO2-compatible files.
     void save_profile(const std::filesystem::path& profiles_dir,
@@ -115,33 +121,31 @@ public:
     // --- Launch-time helpers ---------------------------------------------
 
     // Canonical resolve of the game's plugins.txt target: an explicit
-    // override wins; else platform-resolved %LOCALAPPDATA%/<localappdata_folder>/Plugins.txt.
-    // Returns empty when the game has no plugin support (no localappdata_folder
-    // hook) or the target can't be resolved.
-    static std::filesystem::path resolve_plugins_txt_target(
-        const GameKnowledge& knowledge,
-        const std::string& game_id,
-        uint32_t steam_appid,
-        const Platform* platform,
-        const std::filesystem::path& override_path = {});
+    // override wins; else platform-resolved
+    // %LOCALAPPDATA%/<localappdata_folder>/Plugins.txt. Returns empty when the game has
+    // no plugin support (no localappdata_folder hook) or the target can't be resolved.
+    static std::filesystem::path
+    resolve_plugins_txt_target(const GameKnowledge& knowledge,
+                               const std::string& game_id, uint32_t steam_appid,
+                               const Platform* platform,
+                               const std::filesystem::path& override_path = {});
 
     // Build the plugin list from on-disk state and write plugins.txt to the
     // game's target (an instance.toml plugins_txt_path entry, or the
     // platform-resolved default). Honors a persisted profile's enable state;
     // without one, enables everything so installed mods actually load.
     // Returns false (and skips silently) for games without plugin support.
-    static bool write_plugins_txt_for_launch(
-        const std::filesystem::path& game_dir,
-        const std::filesystem::path& instance_root,
-        const std::string& game_id,
-        uint32_t steam_appid,
-        const GameKnowledge& knowledge,
-        const Platform* platform);
+    static bool write_plugins_txt_for_launch(const std::filesystem::path& game_dir,
+                                             const std::filesystem::path& instance_root,
+                                             const std::string& game_id,
+                                             uint32_t steam_appid,
+                                             const GameKnowledge& knowledge,
+                                             const Platform* platform);
 
     // Default profile name (matches MO2's "Default" profile).
     static constexpr const char* kDefaultProfile = "Default";
 
-private:
+  private:
     void rebuild_index();
 
     // Reassert the fixed band invariant: game-native plugins first (declared
@@ -175,7 +179,7 @@ private:
     std::vector<std::string> native_order_;
     // CC plugins in the order listed by the creation club file.
     std::vector<std::string> ccc_order_;
-};
+  };
 
 }  // namespace PluginDb
 

@@ -37,14 +37,54 @@
 
 namespace ui {
 
-// --- Flag-bound tooltip fragments (MO2 PluginList::tooltipData sub-blocks) ---
+// --- MO2 PluginList::tooltipData parity (pluginlist.cpp:1492-1718) ---
+
+// MO2 TruncateString (pluginlist.cpp:53-65): over-long fields are cut at
+// 1024 chars with "..." appended. Applies to author, description, the master
+// joins and the archive join - never to Origin or the version numbers.
+static QString truncate_mo2(const QString& s) {
+  QString t = s;
+  if (t.length() > 1024) {
+    t.truncate(1024);
+    t += "...";
+  }
+  return t;
+}
 
 static QString missing_masters_html(const engine::GamePlugin& p) {
+  // MO2 testMasters semantics (pluginlist.cpp:1342-1361): enabled plugins
+  // only; a master is unset when absent from the list OR present-but-disabled.
   QStringList names;
-  for (const auto& s : p.missing_masters)
+  for (const auto& s : p.master_unset)
     names << QString::fromStdString(s);
   return "<br><b>" + PluginView::tr("Missing Masters") + "</b>: <b>" +
-         names.join(", ") + "</b>";
+         truncate_mo2(names.join(", ")) + "</b>";
+}
+
+// Enabled Masters = masters minus master_unset (present AND enabled), joined
+// ", " in case-insensitive alphabetical order (MO2 FileNameComparator set),
+// truncated like every other free-text field.
+static QString enabled_masters_html(const engine::GamePlugin& p) {
+  QStringList enabled;
+  for (const auto& m : p.masters) {
+    const QString qm = QString::fromStdString(m);
+    bool unset       = false;
+    for (const auto& u : p.master_unset) {
+      if (qm.compare(QString::fromStdString(u), Qt::CaseInsensitive) == 0) {
+        unset = true;
+        break;
+      }
+    }
+    if (!unset)
+      enabled << qm;
+  }
+  if (enabled.isEmpty())
+    return {};
+  std::sort(enabled.begin(), enabled.end(), [](const QString& a, const QString& b) {
+    return a.compare(b, Qt::CaseInsensitive) < 0;
+  });
+  return "<br><b>" + PluginView::tr("Enabled Masters") +
+         "</b>: " + truncate_mo2(enabled.join(", "));
 }
 
 static QString archives_html(const engine::GamePlugin& p) {
@@ -53,7 +93,7 @@ static QString archives_html(const engine::GamePlugin& p) {
     QStringList names;
     for (const auto& a : p.archives)
       names << QString::fromStdString(a);
-    archive_line = names.join(", ") + "<br>";
+    archive_line = truncate_mo2(names.join(", ")) + "<br>";
   }
   return "<br><b>" + PluginView::tr("Loads Archives") + "</b>: " + archive_line +
          PluginView::tr(
@@ -103,16 +143,106 @@ static QString dummy_html() {
                         "typically used to load a paired archive file.");
 }
 
+static QString force_disabled_html(const engine::GamePlugin& p) {
+  // MO2 forceDisabled block (pluginlist.cpp:1624-1642), non-blueprint games:
+  // an .esl the game cannot load gets the light-support sentence, everything
+  // else the generic custom-loading sentence. Blueprint variants do not apply
+  // (no blueprint-capable game supported).
+  if (p.has_light_ext)
+    return "<br><br>" +
+           PluginView::tr("Light plugins (ESL) are not supported by this game.");
+  return "<br><br>" +
+         PluginView::tr("This game does not currently permit custom plugin "
+                        "loading. There may be manual workarounds.");
+}
+
+// Diagnostics-provider messages (the GMM analogue of MO2's addInformation
+// section). MO2 emits message HTML raw - LOOT messages routinely contain
+// anchors - so no escaping here either.
+static QString messages_ul_html(const engine::GamePlugin& p) {
+  if (p.messages.empty())
+    return {};
+  QString tip = "<hr><ul style=\"margin-left:15px; -qt-list-indent: 0;\">";
+  for (const auto& msg : p.messages)
+    tip += "<li>" + QString::fromStdString(msg) + "</li>";
+  tip += "</ul>";
+  return tip;
+}
+
+// LOOT per-plugin bullets (MO2 PluginList::makeLootTooltip,
+// pluginlist.cpp:1665-1718): incompatibilities, missing masters, messages
+// (Warning:/Error: prefixed), dirty findings ("%1 found %2 ITM record(s)..."),
+// clean findings ("Verified clean by %1") - wrapped once in the exact <ul>.
+static QString loot_ul_html(const engine::LootReport& r) {
+  QString s;
+  for (const auto& f : r.incompatibilities) {
+    const QString name = f.second.empty() ? QString::fromStdString(f.first)
+                                          : QString::fromStdString(f.second);
+    s += "<li>" + PluginView::tr("Incompatible with %1").arg(name) + "</li>";
+  }
+  for (const auto& m : r.missing_masters)
+    s += "<li>" +
+         PluginView::tr("Depends on missing %1").arg(QString::fromStdString(m)) +
+         "</li>";
+  for (const auto& m : r.messages) {
+    QString prefix;
+    if (m.level == "warning")
+      prefix = PluginView::tr("Warning") + ": ";
+    else if (m.level == "error")
+      prefix = PluginView::tr("Error") + ": ";
+    s += "<li>" + prefix + QString::fromStdString(m.text) + "</li>";
+  }
+  for (const auto& d : r.dirty) {
+    const QString utility = d.cleaning_utility.empty()
+                                ? QStringLiteral("?")
+                                : QString::fromStdString(d.cleaning_utility);
+    QString line          = PluginView::tr("%1 found %2 ITM record(s), %3 deleted "
+                                           "reference(s) and %4 deleted navmesh(es).")
+                                .arg(utility)
+                                .arg(d.itm_records)
+                                .arg(d.deleted_references)
+                                .arg(d.deleted_navmeshes);
+    if (!d.info.empty())
+      line += " " + QString::fromStdString(d.info);
+    s += "<li>" + line + "</li>";
+  }
+  for (const auto& c : r.clean) {
+    const QString utility = c.cleaning_utility.empty()
+                                ? QStringLiteral("?")
+                                : QString::fromStdString(c.cleaning_utility);
+    s += "<li>" + PluginView::tr("Verified clean by %1").arg(utility) + "</li>";
+  }
+  if (s.isEmpty())
+    return {};
+  return "<hr><ul style=\"margin-top:0px; padding-top:0px; margin-left:15px; "
+         "-qt-list-indent: 0;\">" +
+         s + "</ul>";
+}
+
 static QString locked_column_tooltip() {
   return PluginView::tr("This plugin's load order position is locked.");
 }
 
 static QVector<QPair<QString, QString>>
 plugin_flag_fragments(const engine::GamePlugin& p) {
+  // MO2 PluginList::iconData order (pluginlist.cpp:1720-1779), minus the
+  // locked emblem (GMM keeps the separate Locked column) and blueprint
+  // (no blueprint-capable game supported): warning, information, attachment,
+  // archive, awaiting, run (+warning when light AND medium), dummy, dirty.
+  // Per-emblem hover text is a GMM additive extra - MO2 serves the row
+  // tooltip on every column instead (see plugin_tooltip_html).
   QVector<QPair<QString, QString>> frags;
-  if (!p.missing_masters.empty())
+  const bool problematic = !p.master_unset.empty() ||
+                           !p.loot_report.incompatibilities.empty() ||
+                           !p.loot_report.missing_masters.empty();
+  if (problematic)
     frags << QPair<QString, QString>(QStringLiteral("warning"),
-                                     missing_masters_html(p));
+                                     !p.master_unset.empty()
+                                         ? missing_masters_html(p)
+                                         : loot_ul_html(p.loot_report));
+  if (!p.messages.empty() || !p.loot_report.messages.empty())
+    frags << QPair<QString, QString>(QStringLiteral("information"),
+                                     messages_ul_html(p) + loot_ul_html(p.loot_report));
   if (p.has_ini)
     frags << QPair<QString, QString>(QStringLiteral("attachment"), has_ini_html());
   if (!p.archives.empty())
@@ -121,37 +251,42 @@ plugin_flag_fragments(const engine::GamePlugin& p) {
     frags << QPair<QString, QString>(QStringLiteral("awaiting"), esl_html(p));
   if (p.is_medium_flagged)
     frags << QPair<QString, QString>(QStringLiteral("run"), esh_html());
-  if (p.has_no_records)
-    frags << QPair<QString, QString>(QStringLiteral("dummy"), dummy_html());
   if (p.is_light_flagged && p.is_medium_flagged) {
+    // MO2 appends a second warning icon after run (pluginlist.cpp:1752-1757).
     const QString warn = both_light_medium_warning_html();
     for (auto& f : frags) {
       if (f.first == QLatin1String("awaiting") || f.first == QLatin1String("run"))
         f.second += warn;
     }
+    frags << QPair<QString, QString>(QStringLiteral("warning"), warn);
   }
+  if (p.has_no_records)
+    frags << QPair<QString, QString>(QStringLiteral("dummy"), dummy_html());
+  if (!p.loot_report.dirty.empty())
+    frags << QPair<QString, QString>(QStringLiteral("dirty"),
+                                     loot_ul_html(p.loot_report));
   return frags;
 }
 
 static QString plugin_tooltip_html(const engine::GamePlugin& p) {
-  auto truncate = [](const QString& s) {
-    QString t = s;
-    if (t.length() > 4096) {
-      t.truncate(4096);
-      t += "...";
-    }
-    return t;
-  };
-
+  // Exact MO2 PluginList::tooltipData emission order (pluginlist.cpp:1499-1660):
+  // Origin, force lines, versions, author/description, masters, archives, INI,
+  // type paragraphs, dummy paragraph, forceDisabled block, messages, LOOT.
   QString tip;
   tip += "<b>" + PluginView::tr("Origin") + "</b>: " +
-         (p.owner_mod.empty() ? PluginView::tr("Game Data")
-                              : QString::fromStdString(p.owner_mod).toHtmlEscaped());
+         (p.owner_mod.empty()
+              ? QStringLiteral("Data")  // MO2 shows the raw base data origin name
+              : QString::fromStdString(p.owner_mod).toHtmlEscaped());
 
   if (p.force_loaded)
     tip += "<br><b><i>" +
            PluginView::tr(
                "This plugin can't be disabled or moved (enforced by the game).") +
+           "</i></b>";
+
+  if (p.force_enabled)
+    tip += "<br><b><i>" +
+           PluginView::tr("This plugin can't be disabled (enforced by the game).") +
            "</i></b>";
 
   if (p.form_version != 0)
@@ -163,24 +298,16 @@ static QString plugin_tooltip_html(const engine::GamePlugin& p) {
 
   if (!p.author.empty())
     tip += "<br><b>" + PluginView::tr("Author") +
-           "</b>: " + truncate(QString::fromStdString(p.author).toHtmlEscaped());
+           "</b>: " + truncate_mo2(QString::fromStdString(p.author));
 
   if (!p.description.empty())
     tip += "<br><b>" + PluginView::tr("Description") +
-           "</b>: " + truncate(QString::fromStdString(p.description).toHtmlEscaped());
+           "</b>: " + truncate_mo2(QString::fromStdString(p.description));
 
-  if (!p.missing_masters.empty())
+  if (!p.master_unset.empty())
     tip += missing_masters_html(p);
 
-  QStringList enabled;
-  for (const auto& m : p.masters) {
-    if (std::find(p.missing_masters.begin(), p.missing_masters.end(), m) ==
-        p.missing_masters.end())
-      enabled << QString::fromStdString(m);
-  }
-  if (!enabled.isEmpty())
-    tip +=
-        "<br><b>" + PluginView::tr("Enabled Masters") + "</b>: " + enabled.join(", ");
+  tip += enabled_masters_html(p);
 
   if (!p.archives.empty())
     tip += archives_html(p);
@@ -200,12 +327,11 @@ static QString plugin_tooltip_html(const engine::GamePlugin& p) {
   if (p.has_no_records)
     tip += dummy_html();
 
-  if (!p.messages.empty()) {
-    tip += "<hr><ul style=\"margin-left:15px; -qt-list-indent: 0;\">";
-    for (const auto& msg : p.messages)
-      tip += "<li>" + QString::fromStdString(msg).toHtmlEscaped() + "</li>";
-    tip += "</ul>";
-  }
+  if (p.force_disabled)
+    tip += force_disabled_html(p);
+
+  tip += messages_ul_html(p);
+  tip += loot_ul_html(p.loot_report);
 
   return tip;
 }
@@ -214,6 +340,8 @@ static QIcon plugin_flag_icon(const QString& token) {
   auto& icons = engine::IconManager::instance();
   if (token == QLatin1String("warning"))
     return icons.resolve_icon("plugin-warning");
+  if (token == QLatin1String("information"))
+    return icons.resolve_icon("dialog-information");
   if (token == QLatin1String("awaiting"))
     return icons.resolve_icon("plugin-light");
   if (token == QLatin1String("run"))
@@ -226,6 +354,8 @@ static QIcon plugin_flag_icon(const QString& token) {
     return icons.resolve_icon("plugin-archive");
   if (token == QLatin1String("dummy"))
     return icons.resolve_icon("plugin-dummy");
+  if (token == QLatin1String("dirty"))
+    return icons.resolve_icon("edit-clear");
   return {};
 }
 
@@ -411,8 +541,8 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
   rows_type_.reserve(plugins.size());
   table_->setRowCount(static_cast<int>(plugins.size()));
 
-  const QColor missing_color(0xB0, 0x30, 0x30);
   const QColor fixed_color(Qt::gray);
+  const QColor disabled_color(Qt::darkRed);
 
   for (int i = 0; i < static_cast<int>(plugins.size()); ++i) {
     const auto& p = plugins[static_cast<size_t>(i)];
@@ -431,10 +561,23 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
 
     auto* name       = new QTableWidgetItem(QString::fromStdString(p.name));
     Qt::ItemFlags nf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-    if (p.force_loaded) {
-      name->setFlags(nf);
+    // MO2 PluginList::checkstateData/flags parity: forceLoaded and
+    // forceEnabled rows render checked and cannot be toggled; forceDisabled
+    // rows render unchecked and cannot be toggled either. Only forceLoaded
+    // and forceDisabled rows lose drag (a locked row stays draggable in MO2,
+    // but GMM keeps its own pinning here - see G25).
+    if (p.force_loaded || p.force_enabled) {
+      Qt::ItemFlags pinned = nf;
+      if (p.force_enabled && !p.locked)
+        pinned |= Qt::ItemIsDragEnabled;
+      name->setFlags(pinned);
       name->setCheckState(Qt::Checked);
-      name->setForeground(fixed_color);
+      if (p.force_loaded)
+        name->setForeground(fixed_color);
+    } else if (p.force_disabled) {
+      name->setFlags(nf);
+      name->setCheckState(Qt::Unchecked);
+      name->setForeground(disabled_color);
     } else {
       nf |= Qt::ItemIsUserCheckable;
       if (!p.locked)
@@ -453,12 +596,6 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
         f.setUnderline(true);
       name->setFont(f);
     }
-    if (p.missing_master) {
-      QFont f = name->font();
-      f.setItalic(true);
-      name->setFont(f);
-      name->setForeground(missing_color);
-    }
 
     const auto flag_frags = plugin_flag_fragments(p);
     QList<QIcon> flag_icons;
@@ -476,19 +613,22 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
 
     auto* flags      = new QTableWidgetItem;
     Qt::ItemFlags ff = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-    if (!p.force_loaded && !p.locked)
+    if (!p.force_loaded && !p.force_disabled && !p.locked)
       ff |= Qt::ItemIsDragEnabled;
     flags->setFlags(ff);
     if (!flag_icons.isEmpty())
       flags->setData(kPluginFlagsRole, QVariant::fromValue(flag_icons));
     if (!flag_tips.isEmpty())
       flags->setData(kPluginFlagTooltipsRole, QVariant::fromValue(flag_tips));
-    flags->setToolTip(QString());
+    // MO2 serves the same rich row tooltip on every column including Flags
+    // (column-independent data()); the per-emblem fragments above stay as a
+    // GMM additive extra answered by FlagsDelegate::helpEvent.
+    flags->setToolTip(tooltip);
     table_->setItem(i, 1, flags);
 
     auto* prio       = new QTableWidgetItem(QString::number(p.priority));
     Qt::ItemFlags pf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-    if (!p.force_loaded && !p.locked)
+    if (!p.force_loaded && !p.force_disabled && !p.locked)
       pf |= Qt::ItemIsDragEnabled;
     prio->setFlags(pf);
     prio->setTextAlignment(Qt::AlignCenter);
@@ -499,7 +639,7 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
 
     auto* idx        = new QTableWidgetItem(QString::fromStdString(p.mod_index_text));
     Qt::ItemFlags xf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-    if (!p.force_loaded && !p.locked)
+    if (!p.force_loaded && !p.force_disabled && !p.locked)
       xf |= Qt::ItemIsDragEnabled;
     idx->setFlags(xf);
     idx->setTextAlignment(Qt::AlignCenter);
@@ -510,7 +650,7 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
 
     auto* lock       = new QTableWidgetItem;
     Qt::ItemFlags lf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-    if (!p.force_loaded && !p.locked)
+    if (!p.force_loaded && !p.force_disabled && !p.locked)
       lf |= Qt::ItemIsDragEnabled;
     lock->setFlags(lf);
     if (p.locked) {
@@ -545,7 +685,7 @@ void PluginView::sync_enabled(const std::vector<engine::GamePlugin>& plugins) {
   for (int i = 0; i < rows; ++i) {
     const auto& p          = plugins[static_cast<size_t>(i)];
     QTableWidgetItem* item = table_->item(i, 0);
-    if (!item || p.force_loaded)
+    if (!item || p.force_loaded || p.force_enabled || p.force_disabled)
       continue;
     item->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
   }
