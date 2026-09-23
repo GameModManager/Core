@@ -60,6 +60,7 @@ set(UI_SOURCES
     widgets/right_filter_bar.cpp
     widgets/column_toggle_header.cpp
     widgets/list_dialog.cpp
+    widgets/task_dialog.cpp
     widgets/save_info_dialog.cpp
     widgets/menu_bar.cpp
     widgets/rolling_chart.cpp

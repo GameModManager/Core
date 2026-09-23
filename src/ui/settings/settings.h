@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QColor>
+#include <QMessageBox>
 #include <QSettings>
 #include <QString>
 #include <QStringList>
@@ -137,6 +138,14 @@ public:
   bool center_dialogs() const;
   void set_center_dialogs(bool on);
   void reset_dialog_geometry();
+  // Remembered TaskDialog answers (MO2 QuestionBoxMemory equivalent).
+  // dialog_choice returns the stored StandardButton for (action, file), or
+  // nullopt when the dialog must ask. Keys live under dialog_choices/.
+  std::optional<QMessageBox::StandardButton> dialog_choice(const QString& action,
+                                                           const QString& file) const;
+  void set_dialog_choice(const QString& action, const QString& file,
+                         QMessageBox::StandardButton button);
+  void reset_dialog_choices();
 
   // paths ------------------------------------------------------------------
   // Instances root dir override (empty = default XDG location).
