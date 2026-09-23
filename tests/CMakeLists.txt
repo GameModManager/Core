@@ -450,6 +450,24 @@ gmm_catch2_test(fomod_plugin_settings_test ui/fomod_plugin_settings_test.cpp
         GMM_TEST_PLUGINS_DIR="${CMAKE_BINARY_DIR}/test_plugins"
 )
 
+# Workspace-52hc: reusable ui::TaskDialog (MO2 U267 port) + the
+# Settings::dialog_choice remember seam + the Remove Mods walking-skeleton
+# consumer. TDD red phase: the component does not exist yet, so these three
+# fail to compile until src/ui/widgets/task_dialog.{h,cpp}, the Settings
+# seam, and ui::configure_remove_mods_dialog land.
+gmm_catch2_test(task_dialog_test ui/task_dialog_test.cpp
+    UI
+    LIBS gmm_ui)
+
+gmm_catch2_test(settings_dialog_choice_test ui/settings_dialog_choice_test.cpp
+    UI
+    LIBS gmm_ui)
+
+gmm_catch2_test(remove_mods_dialog_test ui/remove_mods_dialog_test.cpp
+    UI
+    LIBS gmm_ui
+    DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+
 # ---------------------------------------------------------------------------
 # LD_PRELOAD intercept smoke tests — Linux-only, C (plain executables, not
 # Catch2 — they are C and test the interposer shared libraries directly)
