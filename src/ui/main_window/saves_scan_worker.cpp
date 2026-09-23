@@ -1,5 +1,6 @@
 #include "ui/main_window/saves_scan_worker.h"
 
+#include "engine/game/saves/save_fast_scan.h"
 #include "engine/game/saves/save_reader.h"
 #include "engine/game/saves/save_scanner.h"
 #include "engine/pipeline/plugin_host/save_parser_registry.h"
@@ -64,6 +65,38 @@ void SavesScanWorker::run(SavesScanRequest request) {
       return stub;
     };
 
+    // Workspace-69xt fast scan: prefer a cheap header+plugins parse so the
+    // scan never pays whole-file reads + full-region inflates per save.
+    // Preference order: (1) a registry fast parser the game plugin
+    // registered, (2) the Core fast reader matching request.fast_format
+    // (knowledge-declared, e.g. "gamebryo-tesv"), (3) the full parser
+    // above. A fast result carries no screenshot (has_heavy_data=false);
+    // hover re-parses the full save on demand. SaveNeedFullParse reruns
+    // that one file through the full parser; SaveParseError still skips
+    // it (MO2 listSaves parity).
+    engine::SaveParseFn scan_parses = parses;
+    if (engine::SaveParserRegistry::instance().has_fast_parser(game_id) ||
+        request.fast_format == engine::kSaveFastFormatGamebryoTesv) {
+      scan_parses = [game_id, fast_format = request.fast_format,
+                     full = std::move(parses)](const std::filesystem::path& p) {
+        if (engine::SaveParserRegistry::instance().has_fast_parser(game_id)) {
+          auto r = engine::SaveParserRegistry::instance().parse_save_fast(p, game_id);
+          if (!r) {
+            throw engine::SaveParseError("no fast save parser for " + game_id);
+          }
+          return *r;
+        }
+        if (fast_format == engine::kSaveFastFormatGamebryoTesv) {
+          try {
+            return engine::parse_gamebryo_tesv_fast(p, game_id);
+          } catch (const engine::SaveNeedFullParse&) {
+            return full(p);
+          }
+        }
+        return full(p);
+      };
+    }
+
     // Build the provider index once for the whole scan. Without this, the
     // per-save find_save_missing_assets call re-walks the entire mods dir
     // for every save (Workspace-6kn7: 106 saves × 200 mods of redundant IO).
@@ -85,7 +118,7 @@ void SavesScanWorker::run(SavesScanRequest request) {
     // the table insert runs on the main thread. `done` is 1-based.
     int done = 0;
     engine::scan_saves_streaming(
-        request.saves_dir, request.extensions, parses, [&](engine::SaveGame save) {
+        request.saves_dir, request.extensions, scan_parses, [&](engine::SaveGame save) {
           SavesScanResultEntry entry;
           entry.save    = std::move(save);
           entry.missing = engine::find_save_missing_assets(entry.save, request.plugins,

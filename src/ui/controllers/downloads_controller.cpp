@@ -451,12 +451,14 @@ void DownloadsController::wire_saves_tab() {
   engine::Logger::instance().debug("Saves tab: scanning " + saves_dir.string());
   st->set_saves_dir(saves_dir);
 
-  // No directory watcher and no mod-list/plugin-driven rescans: the Saves
-  // dir is scanned lazily on the tab's first show (Workspace-ugm3) and
-  // after a delete. Earlier versions re-scanned on every mod_list_changed
-  // (via refresh_plugins_tab) to keep the missing-asset column in sync, but
-  // that made a separator fold/unfold trigger a full save scan - so the
-  // missing-asset column now reflects launch-time load order only.
+  // Directory watch + scan triggers (Workspace-69xt, MO2 parity): the tab
+  // watches its saves dir with a 500ms debounce and re-scans only while
+  // visible, plus the lazy first-show scan (Workspace-ugm3) and the delete
+  // flow below. No mod-list/plugin-driven rescans: earlier versions
+  // re-scanned on every mod_list_changed (via refresh_plugins_tab) to keep
+  // the missing-asset column in sync, but that made a separator fold/unfold
+  // trigger a full save scan - so the missing-asset column now reflects
+  // launch-time load order only.
   connect(st, &ui::SavesTab::delete_requested, this,
           &DownloadsController::on_saves_delete_requested);
   connect(st, &ui::SavesTab::information_requested, this,
@@ -487,6 +489,13 @@ void DownloadsController::on_saves_refresh_requested() {
     request.extensions = {"ess"};
   }
   request.game_id = w_->current_game_id_;
+  // Workspace-69xt: knowledge-declared fast-scan format ("" = none, the
+  // scan uses the full parser). The game plugin opts in with the
+  // "save_fast_format" hook (e.g. Skyrim-family: "gamebryo-tesv").
+  if (w_->knowledge_ != nullptr) {
+    request.fast_format =
+        engine::save_fast_format_for(*w_->knowledge_, w_->current_game_id_);
+  }
   // Snapshot the plugin list so results reflect the load order at the moment
   // the refresh was asked for (missing-asset state moves with toggles).
   request.plugins       = w_->plugins_db_.plugins();

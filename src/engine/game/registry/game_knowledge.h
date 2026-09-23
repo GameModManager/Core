@@ -173,4 +173,14 @@ resolve_steam_userdata_saves_dir(const std::string& game_id,
 [[nodiscard]] std::vector<std::string>
 save_extensions_for(const GameKnowledge& knowledge, const std::string& game_id);
 
+// Fast-scan save format for the given game, from the "save_fast_format"
+// hook (Workspace-69xt). Known values: "gamebryo-tesv" (TESV-family header +
+// screenshot-skip + capped inflate, engine/game/saves/save_fast_scan.h).
+// Empty when the plugin declares nothing, meaning the scan uses the full
+// parser. The hook is a format opt-in, never a game branch: the worker
+// applies the matching Core reader only on an exact value match and
+// otherwise falls back to the registered full parser.
+[[nodiscard]] std::string save_fast_format_for(const GameKnowledge& knowledge,
+                                               const std::string& game_id);
+
 }  // namespace engine
