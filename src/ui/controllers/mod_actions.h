@@ -2,13 +2,21 @@
 
 #include <QList>
 #include <QString>
+#include <QStringList>
 #include <filesystem>
 #include <functional>
 
 namespace ui {
 
 class MainWindow;
+class TaskDialog;
 struct ModEntry;
+
+// Testable seam for the Remove Mods confirmation (Workspace-52hc): fills a
+// TaskDialog with the Remove Mods title, the selected-mod count as the main
+// text, the mod list in the details pane, a Question icon, and Yes/No
+// command links. Shared between the controller and the dialog tests.
+void configure_remove_mods_dialog(TaskDialog& dlg, const QStringList& mod_names);
 
 // Mod::Actions - extracted action methods for mod operations (remove, move,
 // toggle, create separator, rename, color, etc.).

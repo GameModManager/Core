@@ -337,6 +337,35 @@ void Settings::reset_dialog_geometry() {
   settings_.endGroup();
 }
 
+namespace {
+
+QString dialog_choice_key(const QString& action, const QString& file) {
+  if (file.isEmpty())
+    return "dialog_choices/" + action;
+  return "dialog_choices/" + action + "/" + file;
+}
+
+}  // namespace
+
+std::optional<QMessageBox::StandardButton>
+Settings::dialog_choice(const QString& action, const QString& file) const {
+  const QString key = dialog_choice_key(action, file);
+  if (!settings_.contains(key))
+    return std::nullopt;
+  return static_cast<QMessageBox::StandardButton>(settings_.value(key).toInt());
+}
+
+void Settings::set_dialog_choice(const QString& action, const QString& file,
+                                 QMessageBox::StandardButton button) {
+  settings_.setValue(dialog_choice_key(action, file), static_cast<int>(button));
+}
+
+void Settings::reset_dialog_choices() {
+  settings_.beginGroup("dialog_choices");
+  settings_.remove("");
+  settings_.endGroup();
+}
+
 // paths -----------------------------------------------------------------------
 
 QString Settings::instances_dir() const {

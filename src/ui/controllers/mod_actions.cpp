@@ -9,6 +9,7 @@
 #include "ui/widgets/list_dialog.h"
 #include "ui/widgets/mod_list_model.h"
 #include "ui/widgets/mod_table_view.h"
+#include "ui/widgets/task_dialog.h"
 
 #include <QColorDialog>
 #include <QDesktopServices>
@@ -111,6 +112,17 @@ void ModActions::set_load_mods_from_game(std::function<void()> cb) {
   load_mods_from_game_cb_ = std::move(cb);
 }
 
+void configure_remove_mods_dialog(TaskDialog& dlg, const QStringList& mod_names) {
+  dlg.title(QObject::tr("Remove Mods"))
+      .main(QObject::tr("Move %1 mod(s) to the trash bin?").arg(mod_names.size()))
+      .content(QObject::tr("Their files stay in the system trash and can be "
+                           "restored."))
+      .details(mod_names.join("\n"))
+      .icon(QMessageBox::Question)
+      .add_button({QObject::tr("Yes"), "", QMessageBox::Yes})
+      .add_button({QObject::tr("No"), "", QMessageBox::No});
+}
+
 void ModActions::remove_selected_mods() {
   auto sel = w_->mod_view_->selectionModel()->selectedRows();
   if (sel.isEmpty())
@@ -128,14 +140,9 @@ void ModActions::remove_selected_mods() {
   if (names.isEmpty())
     return;
 
-  auto reply = QMessageBox::question(
-      w_, QObject::tr("Remove Mods"),
-      QObject::tr("Move %1 mod(s) to the trash bin?\n\n%2\n\nTheir files stay "
-                  "in the system trash and can be restored.")
-          .arg(names.size())
-          .arg(names.join("\n")),
-      QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-  if (reply != QMessageBox::Yes)
+  TaskDialog dlg(w_, {});
+  configure_remove_mods_dialog(dlg, names);
+  if (dlg.exec() != QMessageBox::Yes)
     return;
 
   auto mods_subpath =
