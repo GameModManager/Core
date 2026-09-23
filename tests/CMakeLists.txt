@@ -468,6 +468,13 @@ gmm_catch2_test(remove_mods_dialog_test ui/remove_mods_dialog_test.cpp
     LIBS gmm_ui
     DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
+# Workspace-nef3: instance-switch restart confirmation (MO2 U044 parity).
+# ui::configure_instance_restart_dialog seam + the switch_to_instance wiring.
+gmm_catch2_test(instance_restart_dialog_test ui/instance_restart_dialog_test.cpp
+    UI
+    LIBS gmm_ui
+    DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+
 # ---------------------------------------------------------------------------
 # LD_PRELOAD intercept smoke tests — Linux-only, C (plain executables, not
 # Catch2 — they are C and test the interposer shared libraries directly)
