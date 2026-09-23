@@ -884,6 +884,14 @@ void ModListController::switch_profile(const QString& profile) {
   w_->current_profile_name_ = w_->active_profile_->name();
   w_->update_title();
   refresh_profiles();
+
+  // Workspace-69xt (MO2 activateSelectedProfile parity): a profile switch
+  // rebuilds the Saves list - the saves dir may be profile-local and the
+  // scan-time missing-asset snapshot belongs to the old profile's load
+  // order. Runs even when the Saves tab is hidden, like MO2.
+  if (w_->downloads_) {
+    w_->downloads_->on_saves_refresh_requested();
+  }
 }
 
 void ModListController::update_status_bar_for_game() {

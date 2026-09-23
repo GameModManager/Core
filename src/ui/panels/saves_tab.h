@@ -21,6 +21,8 @@ class QTableWidget;
 class QTableWidgetItem;
 class QEvent;
 class QShowEvent;
+class QFileSystemWatcher;
+class QTimer;
 
 namespace ui {
 
@@ -40,9 +42,10 @@ public:
   void set_saves(SavesScanResult result);
 
   // The saves directory (used by MainWindow when it builds a scan request).
-  // Scans are NOT watched and NOT eager: the first scan runs lazily when
-  // the tab is first shown (Workspace-ugm3), and MainWindow re-runs one
-  // after a delete. No background re-scans.
+  // Scans run lazily on the tab's first show (Workspace-ugm3), after a
+  // delete, on profile switch, and on debounced directory changes while the
+  // tab is visible (Workspace-69xt, MO2 refreshSavesIfOpen parity). No
+  // background re-scans while hidden.
   void set_saves_dir(const std::filesystem::path& dir);
   [[nodiscard]] std::filesystem::path saves_dir() const { return saves_dir_; }
 
@@ -131,6 +134,10 @@ private:
   void on_delete_key();
   void on_information_action();
   void on_context_menu(const QPoint& pos);
+  // Debounced watcher timeout (Workspace-69xt): re-scans only while the
+  // tab is visible (MO2 refreshSavesIfOpen parity) so background churn in
+  // e.g. a Proton-prefix Saves dir never spins scans while hidden.
+  void on_watcher_timeout();
   // Missing-column tooltip: plugin → provider summary (MO2 tooltip spirit).
   static QString missing_tooltip(const SavesScanResultEntry& entry);
   // File-column tooltip: full path, plus size + modified date for unparsed
@@ -143,6 +150,10 @@ private:
   QTableWidget* table_          = nullptr;
   QLabel* empty_label_          = nullptr;
   SavesScanThread* scan_thread_ = nullptr;
+  // Debounced directory watch (Workspace-69xt): directoryChanged restarts
+  // the 500ms single-shot; the timeout re-scans only while visible.
+  QFileSystemWatcher* dir_watcher_ = nullptr;
+  QTimer* rescan_debounce_         = nullptr;
   SavesScanResult saves_;
   std::filesystem::path saves_dir_;
   bool scanning_ = false;

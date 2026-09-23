@@ -274,4 +274,9 @@ std::vector<std::string> save_extensions_for(const GameKnowledge& knowledge,
   return out;
 }
 
+std::string save_fast_format_for(const GameKnowledge& knowledge,
+                                 const std::string& game_id) {
+  return knowledge.get(game_id, "save_fast_format", "");
+}
+
 }  // namespace engine

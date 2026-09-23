@@ -10,10 +10,20 @@
 //     parseable SE saves land in the table and the missing column reflects the
 //     request's plugin snapshot + mods/overwrite dirs (enabled = satisfied,
 //     provided by a mod folder = satisfied-with-provider, absent = missing),
-//   - set_saves_dir() records the directory (no watcher: scans run once at
-//     game load and after a delete — a save dropped on disk must NOT trigger
-//     a background re-scan, regression for the Aug 2026 watch-spam),
+//   - set_saves_dir() records the directory and arms the debounced
+//     directory watch (Workspace-69xt, MO2 parity): a save dropped on disk
+//     re-scans after a 500ms quiet period, but ONLY while the tab is
+//     visible - a hidden tab never scans in the background (the Aug 2026
+//     watch-spam regression stays fixed via the visible-only gate),
 //   - clear_saves() empties the table and unwatches the dir.
+//   - first-show latch: no scan before first activation, exactly one scan
+//     on first show, no rescan on later activations (Workspace-69xt
+//     re-scoped spec: rescans come from the watcher / profile switch /
+//     delete only),
+//   - fast-scan preference: a registered fast parser beats the full parser;
+//     the knowledge-declared "gamebryo-tesv" format parses real TESV saves
+//     with no plugin parser registered; unknown formats fall back safely;
+//     a file the fast reader cannot serve falls back to the full parser.
 //
 // The Delete/context-menu flows are NOT exercised: on_delete_key() shows a
 // modal QMessageBox and the context menu runs menu.exec(), both of which block
@@ -24,11 +34,24 @@
 // is needed here (the engine still links them for the reader).
 #include "ui/panels/tab_panels.h"
 
+#include "engine/core/instance/instance.h"
+#include "engine/game/registry/game_capabilities.h"
+#include "engine/game/registry/game_knowledge.h"
+#include "engine/game/saves/save_fast_scan.h"
 #include "engine/game/saves/save_game.h"
 #include "engine/game/saves/save_reader.h"
 #include "engine/pipeline/plugin_host/save_parser_registry.h"
+#include "engine/profile/profile_creation.h"
+#include "ui/controllers/downloads_controller.h"
+#include "ui/controllers/mod_list_controller.h"
+#include "ui/main_window/main_window.h"
+#include "ui/widgets/profile_bar.h"
+#include "ui/widgets/right_panel.h"
+
+#include <zlib.h>
 
 #include <QApplication>
+#include <QComboBox>
 #include <QEvent>
 #include <QEventLoop>
 #include <QLabel>
@@ -426,10 +449,13 @@ TEST_CASE("saves tab", "[ui]") {
     check(tab.save_at(0) != nullptr, "scan result readable via save_at");
   }
 
-  // --- Part 3: no background re-scan (regression for the Aug 2026 spam:
-  // the Proton-prefix Saves dir churns on its own, and the old
-  // QFileSystemWatcher auto-rescan fired ~once per second while idle).
-  // Scans run once at game load and after a delete — never in the background.
+  // --- Part 3: debounced visible-only re-scan (Workspace-69xt, MO2
+  // refreshSavesIfOpen parity): the tab watches its saves dir with a 500ms
+  // debounce. A hidden tab must NOT rescan on disk changes (the Aug 2026
+  // watch-spam regression: the Proton-prefix Saves dir churns on its own).
+  // The visible-tab rescan is covered by the dedicated watcher case below;
+  // here the tab is never shown, so the table must stay exactly as the
+  // explicit scan left it.
   tab.set_saves_dir(saves);
   check(tab.saves_dir() == saves, "set_saves_dir records the dir");
   // A change on disk must NOT grow the table: drop a brand-new, newest save
@@ -887,6 +913,514 @@ TEST_CASE("saves tab shows an empty state for an empty saves dir", "[ui]") {
   check(tab.empty_state_visible(), "empty state shown after an empty scan lands");
   check(tab.empty_state_text().contains(QString::fromStdString(saves.string())),
         "empty state names the scanned dir");
+
+  fs::remove_all(root);
+}
+
+// --- Workspace-69xt: activation latch, debounced watcher, fast-scan ---
+namespace {
+
+// Pump events until pred() holds or timeout_ms elapses. Returns pred().
+template <typename Pred>
+bool pump_until(Pred pred, int timeout_ms) {
+  QEventLoop loop;
+  QTimer timeout;
+  timeout.setSingleShot(true);
+  QObject::connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+  timeout.start(timeout_ms);
+  while (!pred()) {
+    if (!timeout.isActive())
+      break;
+    loop.processEvents();
+  }
+  timeout.stop();
+  return pred();
+}
+
+// Settle helper: let the event loop run for exactly wait_ms (for asserting
+// that something did NOT happen - e.g. no scan while hidden).
+void settle_ms(int wait_ms) {
+  QEventLoop loop;
+  QTimer t;
+  t.setSingleShot(true);
+  QObject::connect(&t, &QTimer::timeout, &loop, &QEventLoop::quit);
+  t.start(wait_ms);
+  loop.exec();
+}
+
+// Minimal type-1 (zlib chunk chain) TESV save: valid head + plugin lists,
+// then a filler tail across several streams. The fast reader must serve it
+// from the first stream(s) without touching the tail.
+void write_save_type1(const fs::path& dir, const std::string& base,
+                      const std::vector<std::string>& light, int light_count_extra) {
+  std::vector<char> f;
+  const char* magic = "TESV_SAVEGAME";
+  f.insert(f.end(), magic, magic + 13);
+  put_u32(f, 0);
+  put_u32(f, 12);
+  put_u32(f, 9);
+  put_str(f, "Chunky");
+  put_u32(f, 50);
+  put_str(f, "Winterhold");
+  put_str(f, "12:34:56");
+  put_str(f, "ImperialRace");
+  put_u16(f, 0);
+  for (int i = 0; i < 8; ++i)
+    f.push_back(0);
+  put_u64(f, 0x01DD228800000000ULL);
+  put_u32(f, 16);
+  put_u32(f, 16);
+  put_u16(f, 1);  // compression type 1
+  for (int i = 0; i < 16 * 16 * 4; ++i)
+    f.push_back(static_cast<char>(i & 0xFF));
+
+  std::vector<char> raw;
+  raw.push_back(78);
+  raw.push_back(1);
+  put_u16(raw, 0);
+  raw.push_back(0);
+  raw.push_back(1);
+  put_str(raw, "Skyrim.esm");
+  // Light list: the named entries plus filler to cross light_count_extra.
+  put_u16(raw, static_cast<uint16_t>(light.size() + light_count_extra));
+  for (const auto& p : light)
+    put_str(raw, p);
+  // Long filler names (~60B each) so the list clears the fast reader's
+  // 256KiB decompressed cap and forces the full-parser fallback path.
+  const std::string pad(48, 'x');
+  for (int i = 0; i < light_count_extra; ++i)
+    put_str(raw, "Filler" + std::to_string(i) + pad + ".esl");
+  // Filler tail so the region spans several streams.
+  while (raw.size() < 512 * 1024)
+    raw.push_back(static_cast<char>(raw.size() & 0xFF));
+
+  const std::size_t kIn  = 64 * 1024;
+  const std::size_t head = f.size();
+  put_u64(f, 0);  // chunk_start placeholder
+  put_u64(f, raw.size());
+  const std::size_t chunk_start = f.size();
+  for (int i = 0; i < 8; ++i)
+    f[head + i] = static_cast<char>((chunk_start >> (8 * i)) & 0xFF);
+  for (std::size_t off = 0; off < raw.size(); off += kIn) {
+    const std::size_t n = std::min(kIn, raw.size() - off);
+    uLong bound         = compressBound(static_cast<uLong>(n));
+    std::vector<char> out(static_cast<std::size_t>(bound));
+    uLongf outlen = bound;
+    REQUIRE(compress2(reinterpret_cast<Bytef*>(out.data()), &outlen,
+                      reinterpret_cast<const Bytef*>(raw.data() + off),
+                      static_cast<uLong>(n), Z_DEFAULT_COMPRESSION) == Z_OK);
+    out.resize(static_cast<std::size_t>(outlen));
+    f.insert(f.end(), out.begin(), out.end());
+    while (f.size() % 16 != 0)
+      f.push_back(0);
+  }
+  std::ofstream(dir / (base + ".ess"), std::ios::binary)
+      .write(f.data(), static_cast<std::streamsize>(f.size()));
+}
+
+}  // namespace
+
+TEST_CASE("saves tab scans on first activation only", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const fs::path root  = "/tmp/gmm_saves_latch69";
+  const fs::path cfg   = root / "config";
+  const fs::path saves = root / "saves";
+  fs::remove_all(root);
+  fs::create_directories(cfg);
+  fs::create_directories(saves);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char* test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  ui::SavesTab tab;
+  QSignalSpy scan_spy(&tab, &ui::SavesTab::scan_requested);
+  REQUIRE(scan_spy.isValid());
+  check(scan_spy.count() == 0, "no scan at construction (no preload)");
+
+  tab.set_saves_dir(saves);
+  settle_ms(300);
+  check(scan_spy.count() == 0, "setting the dir does not scan (MO2 boot parity)");
+
+  tab.show();
+  check(pump_until(
+            [&] {
+              return scan_spy.count() == 1;
+            },
+            2000),
+        "first activation emits exactly one scan");
+  tab.hide();
+  tab.show();
+  settle_ms(500);
+  check(scan_spy.count() == 1,
+        "re-activation does not rescan (watcher/profile/delete own refreshes)");
+
+  fs::remove_all(root);
+}
+
+TEST_CASE("saves tab watcher rescans only while visible", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const fs::path root  = "/tmp/gmm_saves_watch69";
+  const fs::path cfg   = root / "config";
+  const fs::path saves = root / "saves";
+  fs::remove_all(root);
+  fs::create_directories(cfg);
+  fs::create_directories(saves);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char* test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const uint64_t t1 = 0x01DD228000000000ULL;
+  const uint64_t t2 = t1 + 0x10000000;
+  const uint64_t t3 = t2 + 0x10000000;
+  write_save(saves, "W_first", "Pw", 5, "Loc", 1, t1, {"Skyrim.esm"});
+
+  ui::SavesTab tab;
+  // Controller stand-in: answer scan_requested with a stub-game scan (no
+  // parser registered for "watchgame69", so rows list by mtime).
+  QObject::connect(&tab, &ui::SavesTab::scan_requested, &tab, [&tab, saves] {
+    ui::SavesScanRequest req;
+    req.saves_dir  = saves;
+    req.extensions = {"ess"};
+    req.game_id    = "watchgame69";
+    tab.request_scan(std::move(req));
+  });
+  tab.set_saves_dir(saves);
+  tab.show();
+  REQUIRE(tab.isVisible());
+  auto* table = tab.table();
+  check(pump_until(
+            [&] {
+              return table->rowCount() == 1;
+            },
+            5000),
+        "initial scan lands after first show");
+
+  QSignalSpy scan_spy(&tab, &ui::SavesTab::scan_requested);
+  REQUIRE(scan_spy.isValid());
+  write_save(saves, "W_second", "Pw", 6, "Loc", 2, t2, {"Skyrim.esm"});
+  check(pump_until(
+            [&] {
+              return table->rowCount() == 2;
+            },
+            8000),
+        "visible watcher picks up the dropped save (500ms debounce + scan)");
+  check(scan_spy.count() >= 1, "the rescan came from the watcher");
+
+  // Hidden: disk churn must not scan (the Aug 2026 watch-spam regression).
+  tab.hide();
+  const int scans_before_hide = scan_spy.count();
+  write_save(saves, "W_third", "Pw", 7, "Loc", 3, t3, {"Skyrim.esm"});
+  settle_ms(2000);  // > 3x the 500ms debounce
+  check(table->rowCount() == 2, "hidden tab does not rescan on disk change");
+  check(scan_spy.count() == scans_before_hide, "no scan_requested while hidden");
+
+  fs::remove_all(root);
+}
+
+TEST_CASE("saves scan prefers the registered fast parser", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const fs::path root  = "/tmp/gmm_saves_fastpref69";
+  const fs::path cfg   = root / "config";
+  const fs::path saves = root / "saves";
+  fs::remove_all(root);
+  fs::create_directories(cfg);
+  fs::create_directories(saves);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char* test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  write_file(saves / "F_1.ess", "bytes (content irrelevant, parsers are stubs)");
+
+  int full_calls = 0;
+  engine::SaveParserRegistry::instance().register_parser(
+      "fastgame69", 0,
+      [&full_calls](const std::filesystem::path& p, const std::string& gid) {
+        ++full_calls;
+        engine::SaveGame g;
+        g.file_path     = p;
+        g.game_id       = gid;
+        g.pc_name       = "FULL";
+        g.creation_time = 1;
+        return g;
+      },
+      nullptr, "test:full69");
+  engine::SaveParserRegistry::instance().register_fast_parser(
+      "fastgame69", 0,
+      [](const std::filesystem::path& p, const std::string& gid) {
+        engine::SaveGame g;
+        g.file_path      = p;
+        g.game_id        = gid;
+        g.pc_name        = "FAST";
+        g.creation_time  = 2;
+        g.has_heavy_data = false;
+        return g;
+      },
+      nullptr, "test:fast69");
+
+  ui::SavesTab tab;
+  auto* table = tab.table();
+  ui::SavesScanRequest request;
+  request.saves_dir  = saves;
+  request.extensions = {"ess"};
+  request.game_id    = "fastgame69";
+  // No fast_format: the registry fast parser alone must win.
+  tab.request_scan(std::move(request));
+  check(pump_until(
+            [&] {
+              return table->rowCount() == 1;
+            },
+            5000),
+        "fast-parser scan lands");
+  if (table->rowCount() == 1) {
+    check(tab.save_at(0) != nullptr && tab.save_at(0)->pc_name == "FAST",
+          "row carries the fast parser's marker");
+    check(full_calls == 0, "full parser never ran for the scan");
+  }
+
+  engine::SaveParserRegistry::instance().clear_plugin("test:full69");
+  engine::SaveParserRegistry::instance().clear_plugin("test:fast69");
+  fs::remove_all(root);
+}
+
+TEST_CASE("saves scan uses the knowledge fast format without a plugin parser", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const fs::path root  = "/tmp/gmm_saves_fastfmt69";
+  const fs::path cfg   = root / "config";
+  const fs::path saves = root / "saves";
+  fs::remove_all(root);
+  fs::create_directories(cfg);
+  fs::create_directories(saves);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char* test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  // "tesvfast69" has NO registered parser: the worker would stub-list it.
+  check(!engine::SaveParserRegistry::instance().has_parser("tesvfast69"),
+        "test precondition: no parser for tesvfast69");
+  const uint64_t ft = 0x01DD2288D3CC4860ULL;
+  write_save(saves, "Hero_20260802_1", "Hero", 30, "Markarth", 5, ft,
+             {"Skyrim.esm", "SkyUI_SE.esp"});
+
+  ui::SavesTab tab;
+  auto* table = tab.table();
+
+  // Unknown format value: safe fallback to the stub path (stem, no parse).
+  ui::SavesScanRequest req_stub;
+  req_stub.saves_dir   = saves;
+  req_stub.extensions  = {"ess"};
+  req_stub.game_id     = "tesvfast69";
+  req_stub.fast_format = "martian";
+  tab.request_scan(std::move(req_stub));
+  check(pump_until(
+            [&] {
+              return table->rowCount() == 1;
+            },
+            5000),
+        "unknown-format scan lands");
+  if (table->rowCount() == 1) {
+    check(table->item(0, 1)->text() == "Hero_20260802_1.ess", "file column");
+    check(tab.save_at(0) != nullptr && tab.save_at(0)->pc_name.empty(),
+          "unknown format falls back to the unparsed stub");
+  }
+
+  // Declared format: the Core Gamebryo reader parses header + plugins with
+  // no plugin parser involved.
+  ui::SavesScanRequest req_fast;
+  req_fast.saves_dir   = saves;
+  req_fast.extensions  = {"ess"};
+  req_fast.game_id     = "tesvfast69";
+  req_fast.fast_format = engine::kSaveFastFormatGamebryoTesv;
+  tab.request_scan(std::move(req_fast));
+  check(pump_until(
+            [&] {
+              return table->rowCount() == 1 && tab.save_at(0) != nullptr &&
+                     tab.save_at(0)->pc_name == "Hero";
+            },
+            5000),
+        "declared format parses the save without a plugin parser");
+  if (table->rowCount() == 1 && tab.save_at(0) != nullptr) {
+    check(tab.save_at(0)->pc_level == 30, "fast level");
+    check(tab.save_at(0)->pc_location == "Markarth", "fast location");
+    check(tab.save_at(0)->plugins.size() == 2, "fast plugins");
+    check(!tab.save_at(0)->has_heavy_data, "fast result is heavy-free");
+    check(table->item(0, 0)->text().contains("Level 30"),
+          "display name renders from fast fields");
+  }
+
+  fs::remove_all(root);
+}
+
+TEST_CASE("saves scan falls back to the full parser past the fast cap", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const fs::path root  = "/tmp/gmm_saves_needfull69";
+  const fs::path cfg   = root / "config";
+  const fs::path saves = root / "saves";
+  fs::remove_all(root);
+  fs::create_directories(cfg);
+  fs::create_directories(saves);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char* test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  // A type-1 save whose light list (~9000 names) exceeds the fast reader's
+  // decompressed cap: the fast path must rerun it through the full parser
+  // instead of dropping the row.
+  write_save_type1(saves, "Big_20260802_1", {"B.esl"}, 9000);
+
+  int full_calls = 0;
+  engine::SaveParserRegistry::instance().register_parser(
+      "tesvneedfull69", 0,
+      [&full_calls](const std::filesystem::path& p, const std::string& gid) {
+        ++full_calls;
+        engine::SaveGame g;
+        g.file_path     = p;
+        g.game_id       = gid;
+        g.pc_name       = "FULLFALLBACK";
+        g.creation_time = 3;
+        return g;
+      },
+      nullptr, "test:needfull69");
+
+  ui::SavesTab tab;
+  auto* table = tab.table();
+  ui::SavesScanRequest request;
+  request.saves_dir   = saves;
+  request.extensions  = {"ess"};
+  request.game_id     = "tesvneedfull69";
+  request.fast_format = engine::kSaveFastFormatGamebryoTesv;
+  tab.request_scan(std::move(request));
+  check(pump_until(
+            [&] {
+              return table->rowCount() == 1;
+            },
+            5000),
+        "past-cap save still lands a row");
+  if (table->rowCount() == 1) {
+    check(tab.save_at(0) != nullptr && tab.save_at(0)->pc_name == "FULLFALLBACK",
+          "row came from the full-parser fallback");
+    check(full_calls >= 1, "full parser ran for the past-cap file");
+  }
+
+  engine::SaveParserRegistry::instance().clear_plugin("test:needfull69");
+  fs::remove_all(root);
+}
+
+TEST_CASE("saves tab rebuilds on profile switch", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const fs::path root      = "/tmp/gmm_saves_profile69";
+  const fs::path cfg       = root / "config";
+  const fs::path saves     = root / "saves";
+  const fs::path instances = root / "instances";
+  fs::remove_all(root);
+  fs::create_directories(cfg);
+  fs::create_directories(saves);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char* test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  // Instance harness (game_path_banner_test shape): game-less instance,
+  // knowledge with just a mods subpath. "profilegame69" has no save parser,
+  // so scans stub-list by mtime - the rebuild, not the parse, is under test.
+  auto inst           = engine::Instance::installed("TestGame", instances);
+  inst.info().game_id = "profilegame69";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+  const fs::path inst_root = inst.info().root;
+
+  ui::MainWindow w;
+  engine::GameKnowledge knowledge;
+  knowledge.set("profilegame69", "mods_subpath", "Mods");
+  // Declared BEFORE the window: RightPanel::set_capabilities keeps the raw
+  // pointer, so it must outlive MainWindow (reverse destruction order).
+  engine::GameCapabilities caps;
+  w.set_game_knowledge(&knowledge);
+  w.set_game_info("profilegame69", "Profile Game", "Default", {}, inst_root);
+
+  auto* ctrl = w.findChild<ui::ModListController*>();
+  REQUIRE(ctrl != nullptr);
+  auto* rp = w.findChild<ui::RightPanel*>();
+  REQUIRE(rp != nullptr);
+  // The harness game declares no capabilities, so the tab bar has no saves
+  // placeholder: declare it in-test (mirrors the game plugin's .tabs()).
+  // tab_materialized auto-wires it (main_window.cpp), like production.
+  engine::CapabilityInfo saves_cap;
+  saves_cap.game_id      = "profilegame69";
+  saves_cap.capability   = "saves";
+  saves_cap.display_name = "Saves";
+  caps.register_capability(saves_cap);
+  rp->set_capabilities(&caps);
+  rp->set_game("profilegame69");
+  auto* st = rp->ensure_saves_tab();
+  REQUIRE(st != nullptr);
+  auto* dl = w.findChild<ui::DownloadsController*>();
+  REQUIRE(dl != nullptr);
+  (void)dl;
+  // The wired tab resolves the real saves dir, which does not exist for
+  // this game-less harness: point it at the fixture dir instead.
+  write_file(saves / "P_1.ess", "stub save one");
+  write_file(saves / "P_2.ess", "stub save two");
+  st->set_saves_dir(saves);
+
+  // Populate synchronously through the batch path (no worker wait): the
+  // rebuild proof below observes request_scan's synchronous table clear,
+  // so the test never pumps on threads the harness owns.
+  ui::SavesScanResult seed;
+  seed.saves_dir = saves;
+  for (const auto& base : {"P_1.ess", "P_2.ess"}) {
+    ui::SavesScanResultEntry entry;
+    entry.save.file_path = saves / base;
+    entry.save.game_id   = "profilegame69";
+    entry.save.pc_name   = "Seed";
+    seed.entries.push_back(std::move(entry));
+  }
+  st->set_saves(std::move(seed));
+  REQUIRE(st->table()->rowCount() == 2);
+
+  // Switch profiles through the public path (ProfileBar combo ->
+  // profile_changed -> ModListController::switch_profile). The switch must
+  // rebuild saves even though the tab is hidden (MO2 parity). request_scan
+  // clears the table synchronously when no scan is in flight, so the
+  // rebuild is observable WITHOUT pumping: 2 seeded rows drop to 0 the
+  // moment the switch fires its refresh. (The async re-landing is covered
+  // by every request_scan test above; waiting on harness-owned threads
+  // wedged this test's event pump during development.)
+  const fs::path profiles_dir =
+      engine::Instance::from_root(inst_root).path_for(engine::InstanceKind::Profiles);
+  const auto created = engine::profile::create_fresh_profile(profiles_dir, "Second");
+  REQUIRE(created.success);
+  ctrl->refresh_profiles();
+  auto* profile_bar = w.findChild<ui::ProfileBar*>();
+  REQUIRE(profile_bar != nullptr);
+  auto* combo = profile_bar->findChild<QComboBox*>();
+  REQUIRE(combo != nullptr);
+  REQUIRE(combo->findText("Second") >= 0);
+  combo->setCurrentText("Second");
+  check(st->table()->rowCount() == 0,
+        "profile switch fires a saves rebuild (seeded rows cleared sync)");
 
   fs::remove_all(root);
 }
