@@ -468,6 +468,16 @@ gmm_catch2_test(remove_mods_dialog_test ui/remove_mods_dialog_test.cpp
     LIBS gmm_ui
     DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
+gmm_catch2_test(remove_download_dialog_test ui/remove_download_dialog_test.cpp
+    UI
+    LIBS gmm_ui
+    DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+
+gmm_catch2_test(delete_profile_dialog_test ui/delete_profile_dialog_test.cpp
+    UI
+    LIBS gmm_ui
+    DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+
 # ---------------------------------------------------------------------------
 # LD_PRELOAD intercept smoke tests — Linux-only, C (plain executables, not
 # Catch2 — they are C and test the interposer shared libraries directly)
