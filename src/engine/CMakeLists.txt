@@ -132,6 +132,7 @@ install/conflict_resolver.cpp
     game/plugins/esp_header.cpp
     game/plugins/plugin_database.cpp
     game/saves/save_game.cpp
+    game/saves/save_fast_scan.cpp
     game/saves/save_reader.cpp
     game/saves/save_scanner.cpp
     game/saves/save_missing_assets.cpp

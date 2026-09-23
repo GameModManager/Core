@@ -29,70 +29,75 @@ namespace ui {
 
 // One parsed save plus the missing-assets result for the request's load order.
 struct SavesScanResultEntry {
-    engine::SaveGame save;
-    std::vector<engine::SaveMissingAsset> missing;
+  engine::SaveGame save;
+  std::vector<engine::SaveMissingAsset> missing;
 };
 
 struct SavesScanResult {
-    QVector<SavesScanResultEntry> entries;  // newest first (scanner-sorted)
-    std::filesystem::path saves_dir;
+  QVector<SavesScanResultEntry> entries;  // newest first (scanner-sorted)
+  std::filesystem::path saves_dir;
 };
 
 // Context for one scan. All value types copied into the queued functor, so the
 // worker shares no mutable state with the UI thread.
 struct SavesScanRequest {
-    std::filesystem::path saves_dir;
-    std::vector<std::string> extensions;
-    std::string game_id;                       // tags parsed saves ("skyrimse", …)
-    std::vector<engine::GamePlugin> plugins;   // current load order snapshot
-    std::filesystem::path mods_dir;
-    std::filesystem::path overwrite_dir;
+  std::filesystem::path saves_dir;
+  std::vector<std::string> extensions;
+  std::string game_id;                      // tags parsed saves ("skyrimse", …)
+  std::vector<engine::GamePlugin> plugins;  // current load order snapshot
+  std::filesystem::path mods_dir;
+  std::filesystem::path overwrite_dir;
+  // Knowledge-declared fast-scan format (engine::save_fast_format_for,
+  // Workspace-69xt; "" = none). When set and no registry fast parser
+  // exists, the worker parses header + plugin lists through the matching
+  // Core fast reader instead of the full parser.
+  std::string fast_format;
 };
 
 class SavesScanWorker : public QObject {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit SavesScanWorker(QObject* parent = nullptr);
+  explicit SavesScanWorker(QObject* parent = nullptr);
 
-    // Runs on the worker thread. Only ever invoked through
-    // SavesScanThread::start().
-    void run(SavesScanRequest request);
+  // Runs on the worker thread. Only ever invoked through
+  // SavesScanThread::start().
+  void run(SavesScanRequest request);
 
 signals:
-    // One entry per successfully parsed save. Fired on the worker thread
-    // (SavesScanThread::start) - the UI connects with Qt::QueuedConnection so
-    // the slot runs on the main thread. Carried as shared_ptr so the queued
-    // connection copies 8 bytes, not the whole SaveGame + missing-assets
-    // (Workspace-3wgp: by-value queued signals deep-copy via QMetaType).
-    // `done` is 1-based, `total` is the path-enumeration count (used to
-    // drive a progress bar; equals the count of files that matched the
-    // extension filter, including ones that failed to parse).
-    void entryReady(std::shared_ptr<SavesScanResultEntry> entry, int done, int total);
-    // Final signal: the scan completed (or had no work to do). `count` is the
-    // number of entryReady signals actually fired. UI uses this to flip
-    // scanning_=false and drain any coalesced pending_request_.
-    void finished(int count);
+  // One entry per successfully parsed save. Fired on the worker thread
+  // (SavesScanThread::start) - the UI connects with Qt::QueuedConnection so
+  // the slot runs on the main thread. Carried as shared_ptr so the queued
+  // connection copies 8 bytes, not the whole SaveGame + missing-assets
+  // (Workspace-3wgp: by-value queued signals deep-copy via QMetaType).
+  // `done` is 1-based, `total` is the path-enumeration count (used to
+  // drive a progress bar; equals the count of files that matched the
+  // extension filter, including ones that failed to parse).
+  void entryReady(std::shared_ptr<SavesScanResultEntry> entry, int done, int total);
+  // Final signal: the scan completed (or had no work to do). `count` is the
+  // number of entryReady signals actually fired. UI uses this to flip
+  // scanning_=false and drain any coalesced pending_request_.
+  void finished(int count);
 };
 
 // Long-lived worker thread reusing the PipelineThread/LootSortThread shape.
 // start() queues one scan; call it again for the next refresh.
 class SavesScanThread : public QObject {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit SavesScanThread(QObject* parent = nullptr);
-    ~SavesScanThread() override;
+  explicit SavesScanThread(QObject* parent = nullptr);
+  ~SavesScanThread() override;
 
-    SavesScanWorker* worker() const { return worker_; }
+  SavesScanWorker* worker() const { return worker_; }
 
-    // Queue a scan for the worker thread.
-    void start(SavesScanRequest request);
+  // Queue a scan for the worker thread.
+  void start(SavesScanRequest request);
 
 signals:
-    void operation_finished();
+  void operation_finished();
 
 private:
-    QThread* thread_ = nullptr;
-    SavesScanWorker* worker_ = nullptr;
+  QThread* thread_         = nullptr;
+  SavesScanWorker* worker_ = nullptr;
 };
 
 }  // namespace ui

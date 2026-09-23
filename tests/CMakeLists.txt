@@ -354,7 +354,7 @@ gmm_catch2_test(plugins_tab_test ui/plugins_tab_test.cpp
 
 gmm_catch2_test(saves_tab_test ui/saves_tab_test.cpp
     UI
-    LIBS gmm_ui Qt6::Test)
+    LIBS gmm_ui Qt6::Test PkgConfig::ZLIB)
 
 gmm_catch2_test(save_info_dialog_test ui/save_info_dialog_test.cpp
     UI
