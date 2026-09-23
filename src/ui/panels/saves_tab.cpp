@@ -8,6 +8,7 @@
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QEvent>
+#include <QFileSystemWatcher>
 #include <QGuiApplication>
 #include <QImage>
 #include <QKeyEvent>
@@ -23,6 +24,7 @@
 #include <QStyle>
 #include <QTableWidget>
 #include <QTableWidgetItem>
+#include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -105,9 +107,21 @@ SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
   empty_label_->setVisible(false);
   layout->addWidget(empty_label_);
 
-  // No directory watcher: scans run lazily on first show and after a
-  // delete, never in the background (a watched Proton-prefix Saves dir
-  // churns and spammed 1-per-second re-scans).
+  // Debounced directory watch (Workspace-69xt, MO2 savestab.cpp:21-27
+  // parity): directoryChanged restarts a 500ms single-shot; the timeout
+  // re-scans only while the tab is visible (refreshSavesIfOpen). The old
+  // watcher was removed for spamming 1-per-second re-scans on Proton-prefix
+  // churn; the visible-only gate plus debounce plus the in-flight coalescer
+  // keep that bounded - hidden tabs never scan.
+  dir_watcher_     = new QFileSystemWatcher(this);
+  rescan_debounce_ = new QTimer(this);
+  rescan_debounce_->setSingleShot(true);
+  rescan_debounce_->setInterval(500);
+  connect(dir_watcher_, &QFileSystemWatcher::directoryChanged, this,
+          [this](const QString&) {
+            rescan_debounce_->start();
+          });
+  connect(rescan_debounce_, &QTimer::timeout, this, &SavesTab::on_watcher_timeout);
   scan_thread_ = new SavesScanThread(this);
   // Per-save streaming (Workspace-0owv): one queued insert per parsed save
   // so the user sees rows fill in as they load. The final finished(int)
@@ -132,10 +146,22 @@ SavesTab::~SavesTab() {
 }
 
 void SavesTab::set_saves_dir(const std::filesystem::path& dir) {
+  if (dir_watcher_ && !saves_dir_.empty()) {
+    dir_watcher_->removePath(QString::fromStdString(saves_dir_.string()));
+  }
   saves_dir_ = dir;
   // New game/instance, new saves: the lazy-scan latch belongs to the old
   // dir, so the next first-show scans again (Workspace-ugm3).
   scanned_once_ = false;
+  // MO2 startMonitorSaves parity: (re)watch the current saves dir. A
+  // missing dir cannot be watched; the latch scan on show covers that case
+  // and the watch arms once the dir exists and the dir is (re)set.
+  if (dir_watcher_ && !saves_dir_.empty()) {
+    std::error_code ec;
+    if (std::filesystem::is_directory(saves_dir_, ec)) {
+      dir_watcher_->addPath(QString::fromStdString(saves_dir_.string()));
+    }
+  }
 }
 
 void SavesTab::set_saves(SavesScanResult result) {
@@ -183,10 +209,26 @@ void SavesTab::set_saves(SavesScanResult result) {
 void SavesTab::clear_saves() {
   scanning_     = false;
   scanned_once_ = false;
-  saves_        = {};
+  if (dir_watcher_) {
+    dir_watcher_->removePaths(dir_watcher_->directories());
+  }
+  if (rescan_debounce_) {
+    rescan_debounce_->stop();
+  }
+  saves_ = {};
   table_->setRowCount(0);
   hide_save_info();
   empty_label_->setVisible(false);
+}
+
+void SavesTab::on_watcher_timeout() {
+  // MO2 refreshSavesIfOpen parity: a change on disk re-scans only while
+  // the user is looking at the tab. Hidden tabs stay quiet no matter how
+  // much the watched dir churns.
+  if (!isVisible() || saves_dir_.empty()) {
+    return;
+  }
+  emit scan_requested();
 }
 
 void SavesTab::showEvent(QShowEvent* event) {
