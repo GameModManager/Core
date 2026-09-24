@@ -199,8 +199,13 @@ QWidget *SettingsContentWidget::build_general_tab() {
   auto *center_box  = new QCheckBox(tr("Center dialogs on screen"), geom_group);
   center_box->setChecked(s.center_dialogs());
   auto *reset_btn = new QPushButton(tr("Reset dialog sizes and positions"), geom_group);
+  auto *reset_choices_btn = new QPushButton(tr("Reset dialog choices"), geom_group);
+  reset_choices_btn->setToolTip(
+      tr("Clears remembered dialog answers (\"Remember my choice\"). Dialogs "
+         "will ask again."));
   geom_layout->addWidget(center_box);
   geom_layout->addWidget(reset_btn);
+  geom_layout->addWidget(reset_choices_btn);
   layout->addWidget(geom_group);
 
   connect(center_box, &QCheckBox::toggled, this, [&s](bool on) {
@@ -211,6 +216,11 @@ QWidget *SettingsContentWidget::build_general_tab() {
     QMessageBox::information(
         nullptr, QObject::tr("Settings"),
         QObject::tr("Dialog sizes and positions have been reset."));
+  });
+  connect(reset_choices_btn, &QPushButton::clicked, this, [&s]() {
+    s.reset_dialog_choices();
+    QMessageBox::information(nullptr, QObject::tr("Settings"),
+                             QObject::tr("Remembered dialog choices have been reset."));
   });
 
   layout->addStretch(1);
