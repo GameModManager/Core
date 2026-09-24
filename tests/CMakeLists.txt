@@ -495,6 +495,15 @@ gmm_catch2_test(overwrite_confirm_dialog_test ui/overwrite_confirm_dialog_test.c
     LIBS gmm_ui
     DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
+# Workspace-t373: launch-failure details dialogs (spawn-error parity).
+# ui::configure_executable_unreachable_dialog +
+# ui::configure_launch_failed_dialog seams + the on_launch_params_prepared
+# wiring.
+gmm_catch2_test(launch_failure_dialog_test ui/launch_failure_dialog_test.cpp
+    UI
+    LIBS gmm_ui
+    DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+
 # ---------------------------------------------------------------------------
 # LD_PRELOAD intercept smoke tests — Linux-only, C (plain executables, not
 # Catch2 — they are C and test the interposer shared libraries directly)

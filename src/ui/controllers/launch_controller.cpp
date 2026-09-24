@@ -71,6 +71,7 @@
 #include "ui/widgets/main_toolbar.h"
 #include "ui/widgets/mod_list_model.h"
 #include "ui/widgets/right_panel.h"
+#include "ui/widgets/task_dialog.h"
 
 namespace ui {
 
@@ -102,6 +103,29 @@ namespace {
   }
 
 }  // anonymous namespace
+
+// Launch-failure details dialogs (Workspace-t373, spawn-error parity). Both
+// keep the exact historical QMessageBox wording, re-tiered: the flat message
+// becomes main (+ content), and the executable path moves into the
+// expandable details pane. Acknowledgment-only (no command links -> plain Ok
+// fallback) with a Warning icon, matching the QMessageBox::warning calls
+// they replace.
+void configure_executable_unreachable_dialog(TaskDialog &dlg,
+                                             const QString &exec_path) {
+  dlg.title(QObject::tr("Launch"))
+      .main(QObject::tr(
+          "The selected executable is not reachable in the game directory."))
+      .content(QObject::tr("If it belongs to a mod, make sure that mod is enabled."))
+      .details(exec_path)
+      .icon(QMessageBox::Warning);
+}
+
+void configure_launch_failed_dialog(TaskDialog &dlg, const QString &exec_path) {
+  dlg.title(QObject::tr("Launch"))
+      .main(QObject::tr("Failed to launch game."))
+      .details(exec_path)
+      .icon(QMessageBox::Warning);
+}
 
 // Splits an Executables::Entry "args" string into argv tokens the way a shell
 // would: whitespace-separated, double quotes group tokens (quotes removed,
@@ -751,11 +775,12 @@ void LaunchController::on_launch_params_prepared(engine::LaunchParams lparams) {
       w_->output_session_scratch_.clear();
     }
     w_->output_mod_dir_.clear();
-    QMessageBox::warning(w_, tr("Launch"),
-                         tr("The selected executable is not reachable in the game "
-                            "directory.\n%1\n\n"
-                            "If it belongs to a mod, make sure that mod is enabled.")
-                             .arg(QString::fromStdString(exec_path.string())));
+    // Workspace-t373: spawn-failure acknowledgment via the shared TaskDialog
+    // (executable path in the expandable details pane).
+    TaskDialog dlg(w_);
+    configure_executable_unreachable_dialog(dlg,
+                                            QString::fromStdString(exec_path.string()));
+    dlg.exec();
     return;
   }
   trace.end_stage("launch", true, "Overlay/staging paths ready");
@@ -766,7 +791,11 @@ void LaunchController::on_launch_params_prepared(engine::LaunchParams lparams) {
   if (lresult.pid <= 0) {
     trace.end_stage("launch", false, "launch_game returned no PID");
     hide_game_lock_overlay();
-    QMessageBox::warning(w_, tr("Launch"), tr("Failed to launch game."));
+    // Workspace-t373: spawn-failure acknowledgment via the shared TaskDialog
+    // (executable path in the expandable details pane).
+    TaskDialog dlg(w_);
+    configure_launch_failed_dialog(dlg, QString::fromStdString(exec_path.string()));
+    dlg.exec();
     trace.end_flow("launch", false, "Failed to launch game");
     if (!w_->output_session_scratch_.empty()) {
       std::error_code ec;
