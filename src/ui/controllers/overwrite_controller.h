@@ -8,6 +8,14 @@
 
 namespace ui {
 
+class TaskDialog;
+
+// Testable seam for the clear-overwrite confirmation (Workspace-t6z5): fills
+// a TaskDialog with the Clear Overwrite title, the remove-all-files main
+// text, the system-trash note as content, a Question icon, and Yes/No
+// command links. Shared between the controller and the dialog tests.
+void configure_clear_overwrite_dialog(TaskDialog &dlg);
+
 // Overwrite-folder operations: clear, create mod from overwrite, move content
 // to a mod, sync to mods, open in file manager, info dialog, and drop-to-mod
 // moves. Split out of the 7211-line main_window.cpp (Issue #16).
