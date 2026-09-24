@@ -31,33 +31,33 @@ namespace engine::gmmpack {
 // vector = top-level mod). The vector order IS the conflict-resolution
 // priority -- index 0 wins over index 1, etc.
 struct FlattenedMod {
-    std::string id;
-    bool enabled = true;
-    std::vector<std::string> separator_path;  // e.g. {"Core", "ENB"}
+  std::string id;
+  bool enabled = true;
+  std::vector<std::string> separator_path;  // e.g. {"Core", "ENB"}
 };
 
 // Parse tree.json JSON into the typed structs (recursive: separators nest,
 // mod nodes carry id + enabled). Missing "nodes" yields an empty tree.
-TreeRoot parse_tree(const nlohmann::json& j);
+TreeRoot parse_tree(const nlohmann::json &j);
 
-std::vector<FlattenedMod> flatten_tree(const TreeRoot& tree);
+std::vector<FlattenedMod> flatten_tree(const TreeRoot &tree);
 
 // ---------------------------------------------------------------------------
 // Count
 // ---------------------------------------------------------------------------
 
 // Total number of mod nodes (recursively) in the tree.
-std::size_t count_tree_mods(const TreeRoot& tree);
+std::size_t count_tree_mods(const TreeRoot &tree);
 
 // Total number of separator nodes (recursively) in the tree.
-std::size_t count_tree_separators(const TreeRoot& tree);
+std::size_t count_tree_separators(const TreeRoot &tree);
 
 // ---------------------------------------------------------------------------
 // Serialize
 // ---------------------------------------------------------------------------
 
 // Serialize a TreeRoot back to tree.json-compatible JSON.
-nlohmann::json serialize_tree(const TreeRoot& tree);
+nlohmann::json serialize_tree(const TreeRoot &tree);
 
 // ---------------------------------------------------------------------------
 // Validate
@@ -70,6 +70,6 @@ nlohmann::json serialize_tree(const TreeRoot& tree);
 //   - Mod ids are non-empty
 //   - No duplicate mod ids anywhere in the tree
 // Returns diagnostics (empty = valid).
-Diagnostics validate_tree(const TreeRoot& tree);
+Diagnostics validate_tree(const TreeRoot &tree);
 
 }  // namespace engine::gmmpack

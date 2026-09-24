@@ -40,7 +40,7 @@ protected:
   void set_meta_value(const char *section, const char *key, const QString &v) {
     if (!data_.load_meta || !data_.save_meta)
       return;
-    auto meta = data_.load_meta();
+    auto meta            = data_.load_meta();
     const QString before = QString::fromStdString(meta.get(section, key));
     if (before == v)
       return;
@@ -52,4 +52,4 @@ protected:
   bool loading_ = false;
 };
 
-} // namespace ui
+}  // namespace ui

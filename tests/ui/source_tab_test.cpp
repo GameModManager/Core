@@ -35,231 +35,232 @@
 #include <catch2/catch_test_macros.hpp>
 
 namespace {
-void check(bool cond, const char* what) {
-    INFO(what);
-    REQUIRE(cond);
+void check(bool cond, const char *what) {
+  INFO(what);
+  REQUIRE(cond);
 }
-}
+}  // namespace
 
 // A Nexus-typed provider with no network surface; find_provider() in
 // source_tab.cpp matches its display name and source_type()=="nexus" routes
 // it to the full metadata form.
 struct FakeNexusProvider : engine::SourceProvider {
-    std::string source_type() const override { return "nexus"; }
-    bool fetch(const engine::Mod&, engine::PipelineContext&,
-               const std::filesystem::path&) override {
-        return false;
-    }
-    std::string display_name() const override { return "Test Nexus"; }
+  std::string source_type() const override { return "nexus"; }
+  bool fetch(const engine::Mod &, engine::PipelineContext &,
+             const std::filesystem::path &) override {
+    return false;
+  }
+  std::string display_name() const override { return "Test Nexus"; }
 };
 
-static QPushButton* find_refresh(QWidget& w) {
-    for (auto* b : w.findChildren<QPushButton*>())
-        if (b->text() == QLatin1String("Refresh"))
-            return b;
-    return nullptr;
+static QPushButton *find_refresh(QWidget &w) {
+  for (auto *b : w.findChildren<QPushButton *>())
+    if (b->text() == QLatin1String("Refresh"))
+      return b;
+  return nullptr;
 }
 
-static bool wait_for(const std::function<bool()>& pred, int timeout_ms = 5000) {
-    const auto deadline =
-        std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
-    while (std::chrono::steady_clock::now() < deadline) {
-        QApplication::processEvents(QEventLoop::AllEvents, 20);
-        if (pred()) return true;
-        QThread::msleep(10);
-    }
-    return pred();
+static bool wait_for(const std::function<bool()> &pred, int timeout_ms = 5000) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  while (std::chrono::steady_clock::now() < deadline) {
+    QApplication::processEvents(QEventLoop::AllEvents, 20);
+    if (pred())
+      return true;
+    QThread::msleep(10);
+  }
+  return pred();
 }
 
-static ui::ModInfoData make_data(const std::string& id,
+static ui::ModInfoData make_data(const std::string &id,
                                  std::function<engine::ModInfoResult()> fetch,
-                                 const std::filesystem::path& mods_dir) {
-    ui::ModInfoData data;
-    data.id = QString::fromStdString(id);
-    data.name = QString::fromStdString(id);
-    // Source tab (Workspace-fqf5) only renders a Nexus panel when the mod
-    // is actually Nexus-sourced. Test fixtures that exercise the Nexus
-    // panel therefore mark source_type="nexus" so the panel builds. See
-    // "source tab has_data and single source" below for the manual / non-
-    // Nexus paths.
-    data.source_type = QStringLiteral("nexus");
-    data.source_id = QStringLiteral("42");
-    data.nexus_domain = QStringLiteral("testgame");
-    data.supported_sources = QStringList{QStringLiteral("Test Nexus")};
-    data.fetch_nexus_info = std::move(fetch);
-    data.load_meta = [mods_dir, id] {
-        return engine::ModMeta::load(mods_dir, id);
-    };
-    data.save_meta = [mods_dir, id](const engine::ModMeta& m) {
-        return m.save(mods_dir, id);
-    };
-    return data;
+                                 const std::filesystem::path &mods_dir) {
+  ui::ModInfoData data;
+  data.id   = QString::fromStdString(id);
+  data.name = QString::fromStdString(id);
+  // Source tab (Workspace-fqf5) only renders a Nexus panel when the mod
+  // is actually Nexus-sourced. Test fixtures that exercise the Nexus
+  // panel therefore mark source_type="nexus" so the panel builds. See
+  // "source tab has_data and single source" below for the manual / non-
+  // Nexus paths.
+  data.source_type       = QStringLiteral("nexus");
+  data.source_id         = QStringLiteral("42");
+  data.nexus_domain      = QStringLiteral("testgame");
+  data.supported_sources = QStringList{QStringLiteral("Test Nexus")};
+  data.fetch_nexus_info  = std::move(fetch);
+  data.load_meta         = [mods_dir, id] {
+    return engine::ModMeta::load(mods_dir, id);
+  };
+  data.save_meta = [mods_dir, id](const engine::ModMeta &m) {
+    return m.save(mods_dir, id);
+  };
+  return data;
 }
 
 // Helper for the manual-mod fixtures used in the single-source tests.
-static ui::ModInfoData make_manual_data(const std::string& id,
-                                        const std::filesystem::path& mods_dir) {
-    ui::ModInfoData data;
-    data.id = QString::fromStdString(id);
-    data.name = QString::fromStdString(id);
-    data.source_type = QStringLiteral("manual");
-    data.source_id = QString();
-    data.nexus_domain = QString();
-    data.supported_sources = QStringList{QStringLiteral("Test Nexus")};
-    data.load_meta = [mods_dir, id] {
-        return engine::ModMeta::load(mods_dir, id);
-    };
-    data.save_meta = [mods_dir, id](const engine::ModMeta& m) {
-        return m.save(mods_dir, id);
-    };
-    return data;
+static ui::ModInfoData make_manual_data(const std::string &id,
+                                        const std::filesystem::path &mods_dir) {
+  ui::ModInfoData data;
+  data.id                = QString::fromStdString(id);
+  data.name              = QString::fromStdString(id);
+  data.source_type       = QStringLiteral("manual");
+  data.source_id         = QString();
+  data.nexus_domain      = QString();
+  data.supported_sources = QStringList{QStringLiteral("Test Nexus")};
+  data.load_meta         = [mods_dir, id] {
+    return engine::ModMeta::load(mods_dir, id);
+  };
+  data.save_meta = [mods_dir, id](const engine::ModMeta &m) {
+    return m.save(mods_dir, id);
+  };
+  return data;
 }
 
 TEST_CASE("source tab", "[ui]") {
-    qputenv("QT_QPA_PLATFORM", "offscreen");
-    const std::filesystem::path cfg = "/tmp/gmm_source_tab/config";
-    std::filesystem::remove_all("/tmp/gmm_source_tab");
-    std::filesystem::create_directories(cfg);
-    qputenv("XDG_CONFIG_HOME", cfg.c_str());
-    int test_argc = 1;
-    char test_argv0[] = "test";
-    char* test_argv[] = {test_argv0, nullptr};
-    QApplication app(test_argc, test_argv);
-    QCoreApplication::setOrganizationName("GameModManager");
-    QCoreApplication::setApplicationName("GameModManager");
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_source_tab/config";
+  std::filesystem::remove_all("/tmp/gmm_source_tab");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
 
-    const std::filesystem::path instance = "/tmp/gmm_source_tab/instances/Test";
-    const std::filesystem::path mods_dir = instance / "mods";
-    std::filesystem::create_directories(mods_dir);
+  const std::filesystem::path instance = "/tmp/gmm_source_tab/instances/Test";
+  const std::filesystem::path mods_dir = instance / "mods";
+  std::filesystem::create_directories(mods_dir);
 
-    engine::SourceRegistry::instance().register_provider(
-        std::make_unique<FakeNexusProvider>());
+  engine::SourceRegistry::instance().register_provider(
+      std::make_unique<FakeNexusProvider>());
 
-    // --- Scenario 1: a plain Refresh fetches off the main thread and lands. ---
-    {
-        std::atomic<int> calls = 0;
-        std::atomic<bool> on_worker = false;
-        ui::SourceTab tab;
-        auto data1 = make_data("ModA",
-                               [&]() -> engine::ModInfoResult {
-                                   ++calls;
-                                   on_worker =
-                                       QThread::currentThread() != qApp->thread();
-                                   engine::ModInfoResult r;
-                                   r.available = true;
-                                   r.name = "Fetched Mod";
-                                   r.version = "2.0";
-                                   r.newest_version = "2.1";
-                                   r.category_id = "7";
-                                   r.description = "Fetched description";
-                                   return r;
-                               },
-                               mods_dir);
-        tab.set_current(data1);
-        tab.set_mod(data1);
-        tab.first_activation();
-        QApplication::processEvents();
+  // --- Scenario 1: a plain Refresh fetches off the main thread and lands. ---
+  {
+    std::atomic<int> calls      = 0;
+    std::atomic<bool> on_worker = false;
+    ui::SourceTab tab;
+    auto data1 = make_data(
+        "ModA",
+        [&]() -> engine::ModInfoResult {
+          ++calls;
+          on_worker = QThread::currentThread() != qApp->thread();
+          engine::ModInfoResult r;
+          r.available      = true;
+          r.name           = "Fetched Mod";
+          r.version        = "2.0";
+          r.newest_version = "2.1";
+          r.category_id    = "7";
+          r.description    = "Fetched description";
+          return r;
+        },
+        mods_dir);
+    tab.set_current(data1);
+    tab.set_mod(data1);
+    tab.first_activation();
+    QApplication::processEvents();
 
-        auto* refresh = find_refresh(tab);
-        if (!refresh) {
-            std::printf("DEBUG buttons:");
-            for (auto* b : tab.findChildren<QPushButton*>())
-                std::printf(" [%s]", qPrintable(b->text()));
-            std::printf("\n");
-            for (auto* lbl : tab.findChildren<QLabel*>())
-                std::printf("DEBUG label: %s\n", qPrintable(lbl->text()));
-        }
-        check(refresh != nullptr, "Nexus page has a Refresh button");
-        refresh->click();
-
-        const bool landed = wait_for([&] {
-            return engine::ModMeta::load(mods_dir, "ModA")
-                       .get("Nexusmods", "nexusdescription") ==
-                   "Fetched description";
-        });
-        check(landed, "refresh result persisted to the mod's meta");
-        check(on_worker, "fetch ran on the worker thread, not the UI thread");
-        check(calls == 1, "one refresh = exactly one fetch");
-
-        auto* refresh2 = find_refresh(tab);
-        check(refresh2 != nullptr && refresh2->isEnabled() &&
-                  refresh2->text() == QLatin1String("Refresh"),
-              "Refresh button re-enabled after the result lands");
-
-        bool desc_shown = false;
-        for (auto *renderer : tab.findChildren<ui::DescriptionRenderer *>())
-            if (renderer->current_description().contains("Fetched description"))
-                desc_shown = true;
-        check(desc_shown, "description renderer shows the fetched text");
-
-        bool ver_shown = false;
-        for (auto* le : tab.findChildren<QLineEdit*>())
-            if (le->text() == QStringLiteral("2.0")) ver_shown = true;
-        check(ver_shown, "version field shows the fetched version");
+    auto *refresh = find_refresh(tab);
+    if (!refresh) {
+      std::printf("DEBUG buttons:");
+      for (auto *b : tab.findChildren<QPushButton *>())
+        std::printf(" [%s]", qPrintable(b->text()));
+      std::printf("\n");
+      for (auto *lbl : tab.findChildren<QLabel *>())
+        std::printf("DEBUG label: %s\n", qPrintable(lbl->text()));
     }
+    check(refresh != nullptr, "Nexus page has a Refresh button");
+    refresh->click();
 
-    // --- Scenario 2: a second Refresh while one is in flight supersedes it. ---
-    {
-        QSemaphore gate(0);
-        std::atomic<int> calls = 0;
-        std::atomic<bool> on_worker = false;
-        ui::SourceTab tab;
-        auto data2 = make_data("ModB",
-                               [&]() -> engine::ModInfoResult {
-                                   ++calls;
-                                   on_worker =
-                                       QThread::currentThread() != qApp->thread();
-                                   if (calls == 1)
-                                       gate.tryAcquire(1, 5000);  // park the worker
-                                   engine::ModInfoResult r;
-                                   r.available = true;
-                                   r.description =
-                                       (calls == 2) ? "second result"
-                                                    : "first result";
-                                   return r;
-                               },
-                               mods_dir);
-        tab.set_current(data2);
-        tab.set_mod(data2);
-        tab.first_activation();
-        QApplication::processEvents();
+    const bool landed = wait_for([&] {
+      return engine::ModMeta::load(mods_dir, "ModA")
+                 .get("Nexusmods", "nexusdescription") == "Fetched description";
+    });
+    check(landed, "refresh result persisted to the mod's meta");
+    check(on_worker, "fetch ran on the worker thread, not the UI thread");
+    check(calls == 1, "one refresh = exactly one fetch");
 
-        auto* refresh = find_refresh(tab);
-        REQUIRE(refresh != nullptr);
+    auto *refresh2 = find_refresh(tab);
+    check(refresh2 != nullptr && refresh2->isEnabled() &&
+              refresh2->text() == QLatin1String("Refresh"),
+          "Refresh button re-enabled after the result lands");
 
-        // First click: gen 1, the worker parks inside the fetch.
-        refresh->click();
-        check(wait_for([&] { return calls == 1; }, 2000),
-              "first fetch started and parked on the worker");
+    bool desc_shown = false;
+    for (auto *renderer : tab.findChildren<ui::DescriptionRenderer *>())
+      if (renderer->current_description().contains("Fetched description"))
+        desc_shown = true;
+    check(desc_shown, "description renderer shows the fetched text");
 
-        // The in-flight fetch disables the button (real UI affordance).
-        check(!refresh->isEnabled() &&
-                  refresh->text() == QStringLiteral("Fetching…"),
-              "Refresh disabled while a fetch is in flight");
+    bool ver_shown = false;
+    for (auto *le : tab.findChildren<QLineEdit *>())
+      if (le->text() == QStringLiteral("2.0"))
+        ver_shown = true;
+    check(ver_shown, "version field shows the fetched version");
+  }
 
-        // Second click while the first is in flight must NOT block — a
-        // synchronous refresh would deadlock here (the worker is parked).
-        // The disabled guard blocks real clicks; drive the coalescing path
-        // by re-enabling first (on_refresh re-disables it immediately).
-        refresh->setEnabled(true);
-        refresh->click();
+  // --- Scenario 2: a second Refresh while one is in flight supersedes it. ---
+  {
+    QSemaphore gate(0);
+    std::atomic<int> calls      = 0;
+    std::atomic<bool> on_worker = false;
+    ui::SourceTab tab;
+    auto data2 = make_data(
+        "ModB",
+        [&]() -> engine::ModInfoResult {
+          ++calls;
+          on_worker = QThread::currentThread() != qApp->thread();
+          if (calls == 1)
+            gate.tryAcquire(1, 5000);  // park the worker
+          engine::ModInfoResult r;
+          r.available   = true;
+          r.description = (calls == 2) ? "second result" : "first result";
+          return r;
+        },
+        mods_dir);
+    tab.set_current(data2);
+    tab.set_mod(data2);
+    tab.first_activation();
+    QApplication::processEvents();
 
-        // Release the parked fetch: its stale result must be dropped and a
-        // follow-up fetch launched with the newer generation.
-        gate.release();
-        const bool landed = wait_for([&] {
-            return engine::ModMeta::load(mods_dir, "ModB")
-                       .get("Nexusmods", "nexusdescription") == "second result";
-        });
-        check(landed,
-              "second refresh supersedes the first (stale result dropped)");
-        check(on_worker, "superseded fetch also ran on the worker thread");
-        check(calls == 2, "coalesced: exactly two fetches, no third");
-        check(engine::ModMeta::load(mods_dir, "ModB")
-                      .get("Nexusmods", "nexusdescription") ==
-                  "second result",
-              "meta holds only the newer result (no torn write)");
-    }
+    auto *refresh = find_refresh(tab);
+    REQUIRE(refresh != nullptr);
+
+    // First click: gen 1, the worker parks inside the fetch.
+    refresh->click();
+    check(wait_for(
+              [&] {
+                return calls == 1;
+              },
+              2000),
+          "first fetch started and parked on the worker");
+
+    // The in-flight fetch disables the button (real UI affordance).
+    check(!refresh->isEnabled() && refresh->text() == QStringLiteral("Fetching…"),
+          "Refresh disabled while a fetch is in flight");
+
+    // Second click while the first is in flight must NOT block — a
+    // synchronous refresh would deadlock here (the worker is parked).
+    // The disabled guard blocks real clicks; drive the coalescing path
+    // by re-enabling first (on_refresh re-disables it immediately).
+    refresh->setEnabled(true);
+    refresh->click();
+
+    // Release the parked fetch: its stale result must be dropped and a
+    // follow-up fetch launched with the newer generation.
+    gate.release();
+    const bool landed = wait_for([&] {
+      return engine::ModMeta::load(mods_dir, "ModB")
+                 .get("Nexusmods", "nexusdescription") == "second result";
+    });
+    check(landed, "second refresh supersedes the first (stale result dropped)");
+    check(on_worker, "superseded fetch also ran on the worker thread");
+    check(calls == 2, "coalesced: exactly two fetches, no third");
+    check(
+        engine::ModMeta::load(mods_dir, "ModB").get("Nexusmods", "nexusdescription") ==
+            "second result",
+        "meta holds only the newer result (no torn write)");
+  }
 }
 
 // Source-attribution regression for the Source tab (Workspace-rvld +
@@ -295,133 +296,129 @@ TEST_CASE("source tab", "[ui]") {
 //      a "+" affordance that opens an add-source dialog. Manual mods
 //      show a "Manual" placeholder and no Nexus tab.
 TEST_CASE("source tab has_data and single source", "[ui]") {
-    qputenv("QT_QPA_PLATFORM", "offscreen");
-    const std::filesystem::path cfg = "/tmp/gmm_source_tab_union/config";
-    std::filesystem::remove_all("/tmp/gmm_source_tab_union");
-    std::filesystem::create_directories(cfg);
-    qputenv("XDG_CONFIG_HOME", cfg.c_str());
-    int test_argc = 1;
-    char test_argv0[] = "test";
-    char* test_argv[] = {test_argv0, nullptr};
-    QApplication app(test_argc, test_argv);
-    QCoreApplication::setOrganizationName("GameModManager");
-    QCoreApplication::setApplicationName("GameModManager");
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_source_tab_union/config";
+  std::filesystem::remove_all("/tmp/gmm_source_tab_union");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
 
-    const std::filesystem::path instance =
-        "/tmp/gmm_source_tab_union/instances/Test";
-    const std::filesystem::path mods_dir = instance / "mods";
-    std::filesystem::create_directories(mods_dir);
+  const std::filesystem::path instance = "/tmp/gmm_source_tab_union/instances/Test";
+  const std::filesystem::path mods_dir = instance / "mods";
+  std::filesystem::create_directories(mods_dir);
 
-    // Register the same fake Nexus provider the other scenario uses so
-    // find_provider() can match "Test Nexus".
-    engine::SourceRegistry::instance().register_provider(
-        std::make_unique<FakeNexusProvider>());
+  // Register the same fake Nexus provider the other scenario uses so
+  // find_provider() can match "Test Nexus".
+  engine::SourceRegistry::instance().register_provider(
+      std::make_unique<FakeNexusProvider>());
 
-    // --- Scenario 1: a manual mod shows the "Manual" placeholder, NOT
-    // a Nexus panel (Workspace-fqf5). The "+" affordance tab is the
-    // only thing after the placeholder. ---
-    {
-        engine::ModMeta manual;
-        manual.set("General", "version", "1.0");
-        manual.set("GameModManager", "source_type", "manual");
-        manual.save(mods_dir, "ManualMod");
+  // --- Scenario 1: a manual mod shows the "Manual" placeholder, NOT
+  // a Nexus panel (Workspace-fqf5). The "+" affordance tab is the
+  // only thing after the placeholder. ---
+  {
+    engine::ModMeta manual;
+    manual.set("General", "version", "1.0");
+    manual.set("GameModManager", "source_type", "manual");
+    manual.save(mods_dir, "ManualMod");
 
-        auto data = make_manual_data("ManualMod", mods_dir);
+    auto data = make_manual_data("ManualMod", mods_dir);
 
-        ui::SourceTab tab;
-        tab.set_current(data);
-        tab.set_mod(data);
-        tab.first_activation();
-        QApplication::processEvents();
+    ui::SourceTab tab;
+    tab.set_current(data);
+    tab.set_mod(data);
+    tab.first_activation();
+    QApplication::processEvents();
 
-        // The tab bar has exactly one content tab (the Manual placeholder)
-        // plus the "+" affordance.
-        auto* qtw = tab.findChild<QTabWidget*>();
-        check(qtw != nullptr, "SourceTab owns a QTabWidget");
-        check(qtw && qtw->count() == 2,
-              "manual mod: 2 tabs (Manual placeholder + '+' affordance)");
+    // The tab bar has exactly one content tab (the Manual placeholder)
+    // plus the "+" affordance.
+    auto *qtw = tab.findChild<QTabWidget *>();
+    check(qtw != nullptr, "SourceTab owns a QTabWidget");
+    check(qtw && qtw->count() == 2,
+          "manual mod: 2 tabs (Manual placeholder + '+' affordance)");
 
-        // The Nexus panel is NOT created - this is the core fix.
-        ui::NexusSourcePanel* nexus = nullptr;
-        for (auto* p : tab.findChildren<ui::NexusSourcePanel*>())
-            nexus = p;
-        check(nexus == nullptr,
-              "manual mod: no Nexus panel created (only the actual source)");
+    // The Nexus panel is NOT created - this is the core fix.
+    ui::NexusSourcePanel *nexus = nullptr;
+    for (auto *p : tab.findChildren<ui::NexusSourcePanel *>())
+      nexus = p;
+    check(nexus == nullptr,
+          "manual mod: no Nexus panel created (only the actual source)");
 
-        // The last tab is the "+" affordance - title "+".
-        check(qtw && qtw->tabText(qtw->count() - 1) == QLatin1String("+"),
-              "manual mod: last tab is the '+' affordance");
-    }
+    // The last tab is the "+" affordance - title "+".
+    check(qtw && qtw->tabText(qtw->count() - 1) == QLatin1String("+"),
+          "manual mod: last tab is the '+' affordance");
+  }
 
-    // --- Scenario 2: a Nexus-sourced mod shows exactly one Nexus panel
-    // plus the "+" affordance. The Nexus panel reports has_data()==true. ---
-    {
-        engine::ModMeta nexus_mod;
-        nexus_mod.set("General", "version", "1.0");
-        nexus_mod.set("GameModManager", "source_type", "nexus");
-        nexus_mod.set("GameModManager", "source_id", "12345");
-        nexus_mod.set("Nexusmods", "modid", "12345");
-        nexus_mod.save(mods_dir, "NexusMod");
+  // --- Scenario 2: a Nexus-sourced mod shows exactly one Nexus panel
+  // plus the "+" affordance. The Nexus panel reports has_data()==true. ---
+  {
+    engine::ModMeta nexus_mod;
+    nexus_mod.set("General", "version", "1.0");
+    nexus_mod.set("GameModManager", "source_type", "nexus");
+    nexus_mod.set("GameModManager", "source_id", "12345");
+    nexus_mod.set("Nexusmods", "modid", "12345");
+    nexus_mod.save(mods_dir, "NexusMod");
 
-        ui::ModInfoData data;
-        data.id = QStringLiteral("NexusMod");
-        data.name = QStringLiteral("NexusMod");
-        data.source_type = QStringLiteral("nexus");
-        data.source_id = QStringLiteral("12345");
-        data.nexus_domain = QStringLiteral("testgame");
-        data.supported_sources = QStringList{QStringLiteral("Test Nexus")};
-        data.load_meta = [mods_dir] {
-            return engine::ModMeta::load(mods_dir, "NexusMod");
-        };
-        data.save_meta = [mods_dir](const engine::ModMeta& m) {
-            return m.save(mods_dir, "NexusMod");
-        };
+    ui::ModInfoData data;
+    data.id                = QStringLiteral("NexusMod");
+    data.name              = QStringLiteral("NexusMod");
+    data.source_type       = QStringLiteral("nexus");
+    data.source_id         = QStringLiteral("12345");
+    data.nexus_domain      = QStringLiteral("testgame");
+    data.supported_sources = QStringList{QStringLiteral("Test Nexus")};
+    data.load_meta         = [mods_dir] {
+      return engine::ModMeta::load(mods_dir, "NexusMod");
+    };
+    data.save_meta = [mods_dir](const engine::ModMeta &m) {
+      return m.save(mods_dir, "NexusMod");
+    };
 
-        ui::SourceTab tab;
-        tab.set_current(data);
-        tab.set_mod(data);
-        tab.first_activation();
-        QApplication::processEvents();
+    ui::SourceTab tab;
+    tab.set_current(data);
+    tab.set_mod(data);
+    tab.first_activation();
+    QApplication::processEvents();
 
-        auto* qtw = tab.findChild<QTabWidget*>();
-        check(qtw && qtw->count() == 2,
-              "nexus mod: 2 tabs (Nexus + '+' affordance)");
+    auto *qtw = tab.findChild<QTabWidget *>();
+    check(qtw && qtw->count() == 2, "nexus mod: 2 tabs (Nexus + '+' affordance)");
 
-        ui::NexusSourcePanel* nexus = nullptr;
-        for (auto* p : tab.findChildren<ui::NexusSourcePanel*>())
-            nexus = p;
-        check(nexus && nexus->has_data(),
-              "nexus mod: Nexus panel has_data()==true");
-    }
+    ui::NexusSourcePanel *nexus = nullptr;
+    for (auto *p : tab.findChildren<ui::NexusSourcePanel *>())
+      nexus = p;
+    check(nexus && nexus->has_data(), "nexus mod: Nexus panel has_data()==true");
+  }
 
-    // --- Scenario 3: a mod with [Nexusmods]modid="0" but
-    // source_type="manual" - the MO2 "no Nexus id" sentinel. No Nexus
-    // panel because there is no actual Nexus provenance. ---
-    {
-        engine::ModMeta fake;
-        fake.set("General", "version", "1.0");
-        fake.set("GameModManager", "source_type", "manual");
-        fake.set("Nexusmods", "modid", "0");
-        fake.save(mods_dir, "ZeroModidMod");
+  // --- Scenario 3: a mod with [Nexusmods]modid="0" but
+  // source_type="manual" - the MO2 "no Nexus id" sentinel. No Nexus
+  // panel because there is no actual Nexus provenance. ---
+  {
+    engine::ModMeta fake;
+    fake.set("General", "version", "1.0");
+    fake.set("GameModManager", "source_type", "manual");
+    fake.set("Nexusmods", "modid", "0");
+    fake.save(mods_dir, "ZeroModidMod");
 
-        auto data = make_manual_data("ZeroModidMod", mods_dir);
+    auto data = make_manual_data("ZeroModidMod", mods_dir);
 
-        ui::SourceTab tab;
-        tab.set_current(data);
-        tab.set_mod(data);
-        tab.first_activation();
-        QApplication::processEvents();
+    ui::SourceTab tab;
+    tab.set_current(data);
+    tab.set_mod(data);
+    tab.first_activation();
+    QApplication::processEvents();
 
-        auto* qtw = tab.findChild<QTabWidget*>();
-        check(qtw && qtw->count() == 2,
-              "modid=0 sentinel: 2 tabs (Manual + '+' affordance)");
+    auto *qtw = tab.findChild<QTabWidget *>();
+    check(qtw && qtw->count() == 2,
+          "modid=0 sentinel: 2 tabs (Manual + '+' affordance)");
 
-        ui::NexusSourcePanel* nexus = nullptr;
-        for (auto* p : tab.findChildren<ui::NexusSourcePanel*>())
-            nexus = p;
-        check(nexus == nullptr,
-              "modid=0 sentinel: no Nexus panel created");
-    }
+    ui::NexusSourcePanel *nexus = nullptr;
+    for (auto *p : tab.findChildren<ui::NexusSourcePanel *>())
+      nexus = p;
+    check(nexus == nullptr, "modid=0 sentinel: no Nexus panel created");
+  }
 }
 
 // "+" add-source flow (Workspace-fqf5):
@@ -437,83 +434,78 @@ TEST_CASE("source tab has_data and single source", "[ui]") {
 //   We then assert the side-effects: meta carries the new keys and the
 //   panel count drops from "Manual + '+'" to "Nexus + '+'".
 TEST_CASE("source tab add source flow", "[ui]") {
-    qputenv("QT_QPA_PLATFORM", "offscreen");
-    const std::filesystem::path cfg = "/tmp/gmm_source_tab_add/config";
-    std::filesystem::remove_all("/tmp/gmm_source_tab_add");
-    std::filesystem::create_directories(cfg);
-    qputenv("XDG_CONFIG_HOME", cfg.c_str());
-    int test_argc = 1;
-    char test_argv0[] = "test";
-    char* test_argv[] = {test_argv0, nullptr};
-    QApplication app(test_argc, test_argv);
-    QCoreApplication::setOrganizationName("GameModManager");
-    QCoreApplication::setApplicationName("GameModManager");
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_source_tab_add/config";
+  std::filesystem::remove_all("/tmp/gmm_source_tab_add");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
 
-    const std::filesystem::path instance =
-        "/tmp/gmm_source_tab_add/instances/Test";
-    const std::filesystem::path mods_dir = instance / "mods";
-    std::filesystem::create_directories(mods_dir);
+  const std::filesystem::path instance = "/tmp/gmm_source_tab_add/instances/Test";
+  const std::filesystem::path mods_dir = instance / "mods";
+  std::filesystem::create_directories(mods_dir);
 
-    engine::SourceRegistry::instance().register_provider(
-        std::make_unique<FakeNexusProvider>());
+  engine::SourceRegistry::instance().register_provider(
+      std::make_unique<FakeNexusProvider>());
 
-    // Start from a manual mod with no source attribution.
-    engine::ModMeta initial;
-    initial.set("General", "version", "1.0");
-    initial.set("GameModManager", "source_type", "manual");
-    initial.save(mods_dir, "AddSourceMod");
+  // Start from a manual mod with no source attribution.
+  engine::ModMeta initial;
+  initial.set("General", "version", "1.0");
+  initial.set("GameModManager", "source_type", "manual");
+  initial.save(mods_dir, "AddSourceMod");
 
-    auto data = make_manual_data("AddSourceMod", mods_dir);
+  auto data = make_manual_data("AddSourceMod", mods_dir);
 
-    ui::SourceTab tab;
-    tab.set_current(data);
-    tab.set_mod(data);
-    tab.first_activation();
-    QApplication::processEvents();
+  ui::SourceTab tab;
+  tab.set_current(data);
+  tab.set_mod(data);
+  tab.first_activation();
+  QApplication::processEvents();
 
-    auto* qtw = tab.findChild<QTabWidget*>();
-    check(qtw && qtw->count() == 2,
-          "before add: 2 tabs (Manual + '+')");
+  auto *qtw = tab.findChild<QTabWidget *>();
+  check(qtw && qtw->count() == 2, "before add: 2 tabs (Manual + '+')");
 
-    // Simulate the user picking Nexus with mod id 99999 in the dialog:
-    // mutate the in-memory data, write the meta sidecar via the same
-    // save_meta lambda the dialog uses, then ask the tab to repopulate.
-    ui::ModInfoData updated = data;
-    updated.source_type = QStringLiteral("nexus");
-    updated.source_id = QStringLiteral("99999");
-    updated.nexus_domain = QStringLiteral("testgame");
-    tab.set_current(updated);
+  // Simulate the user picking Nexus with mod id 99999 in the dialog:
+  // mutate the in-memory data, write the meta sidecar via the same
+  // save_meta lambda the dialog uses, then ask the tab to repopulate.
+  ui::ModInfoData updated = data;
+  updated.source_type     = QStringLiteral("nexus");
+  updated.source_id       = QStringLiteral("99999");
+  updated.nexus_domain    = QStringLiteral("testgame");
+  tab.set_current(updated);
 
-    if (updated.load_meta && updated.save_meta) {
-        auto meta = updated.load_meta();
-        meta.set("GameModManager", "source_type", "nexus");
-        meta.set("GameModManager", "source_id", "99999");
-        meta.set("Nexusmods", "modid", "99999");
-        meta.set("Nexusmods", "mod_id", "99999");
-        updated.save_meta(meta);
-    }
-    tab.set_mod(updated);
-    QApplication::processEvents();
+  if (updated.load_meta && updated.save_meta) {
+    auto meta = updated.load_meta();
+    meta.set("GameModManager", "source_type", "nexus");
+    meta.set("GameModManager", "source_id", "99999");
+    meta.set("Nexusmods", "modid", "99999");
+    meta.set("Nexusmods", "mod_id", "99999");
+    updated.save_meta(meta);
+  }
+  tab.set_mod(updated);
+  QApplication::processEvents();
 
-    // After the add-source flow: meta carries Nexus provenance, tab
-    // shows Nexus panel + "+" (not Manual), and Nexus panel has_data().
-    auto loaded = engine::ModMeta::load(mods_dir, "AddSourceMod");
-    check(loaded.get("GameModManager", "source_type") == "nexus",
-          "after add: meta source_type is nexus");
-    check(loaded.get("Nexusmods", "modid") == "99999",
-          "after add: meta Nexusmods modid is the dialog value");
-    check(loaded.get("Nexusmods", "mod_id") == "99999",
-          "after add: meta Nexusmods mod_id alias matches");
+  // After the add-source flow: meta carries Nexus provenance, tab
+  // shows Nexus panel + "+" (not Manual), and Nexus panel has_data().
+  auto loaded = engine::ModMeta::load(mods_dir, "AddSourceMod");
+  check(loaded.get("GameModManager", "source_type") == "nexus",
+        "after add: meta source_type is nexus");
+  check(loaded.get("Nexusmods", "modid") == "99999",
+        "after add: meta Nexusmods modid is the dialog value");
+  check(loaded.get("Nexusmods", "mod_id") == "99999",
+        "after add: meta Nexusmods mod_id alias matches");
 
-    auto* qtw2 = tab.findChild<QTabWidget*>();
-    check(qtw2 && qtw2->count() == 2,
-          "after add: 2 tabs (Nexus + '+')");
+  auto *qtw2 = tab.findChild<QTabWidget *>();
+  check(qtw2 && qtw2->count() == 2, "after add: 2 tabs (Nexus + '+')");
 
-    ui::NexusSourcePanel* nexus = nullptr;
-    for (auto* p : tab.findChildren<ui::NexusSourcePanel*>())
-        nexus = p;
-    check(nexus != nullptr,
-          "after add: Nexus panel exists");
-    check(nexus && nexus->has_data(),
-          "after add: Nexus panel has_data()==true");
+  ui::NexusSourcePanel *nexus = nullptr;
+  for (auto *p : tab.findChildren<ui::NexusSourcePanel *>())
+    nexus = p;
+  check(nexus != nullptr, "after add: Nexus panel exists");
+  check(nexus && nexus->has_data(), "after add: Nexus panel has_data()==true");
 }

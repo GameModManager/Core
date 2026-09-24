@@ -16,11 +16,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-namespace
-{
+namespace {
 
-void check(bool cond, const char* what)
-{
+void check(bool cond, const char *what) {
   INFO(what);
   REQUIRE(cond);
 }
@@ -28,8 +26,7 @@ void check(bool cond, const char* what)
 // A pack exercising every interactive step: 2 patches on 2 mods, INI tweaks
 // (one required, two recommended colliding on the same key so one is
 // overridden), one exactly-one and one at-most-one choice group.
-engine::gmmpack::Gmmpack make_pack()
-{
+engine::gmmpack::Gmmpack make_pack() {
   engine::gmmpack::Gmmpack pack;
   pack.instructions = "# Install\n\nDo the thing.";
 
@@ -87,11 +84,10 @@ engine::gmmpack::Gmmpack make_pack()
   return pack;
 }
 
-QApplication& test_app()
-{
+QApplication &test_app() {
   static int argc     = 1;
   static char argv0[] = "test";
-  static char* argv[] = {argv0, nullptr};
+  static char *argv[] = {argv0, nullptr};
   // Force offscreen: the shared ctest helper intends
   // QT_QPA_PLATFORM=offscreen for UI tests but a quoting bug drops it
   // (ENVIRONMENT keeps only TZ=UTC), so GUI tests would otherwise run on
@@ -104,12 +100,11 @@ QApplication& test_app()
 
 }  // namespace
 
-TEST_CASE("install widget step list", "[ui]")
-{
+TEST_CASE("install widget step list", "[ui]") {
   test_app();
   ui::InstallWidget widget;
 
-  auto* list = widget.findChild<QListView*>(QStringLiteral("install_step_list"));
+  auto *list = widget.findChild<QListView *>(QStringLiteral("install_step_list"));
   check(list != nullptr, "left pane has a step list");
   REQUIRE(list != nullptr);
   check(list->model()->rowCount() == 10, "step list has 10 steps");
@@ -129,8 +124,7 @@ TEST_CASE("install widget step list", "[ui]")
         "Done step shows the check glyph");
 }
 
-TEST_CASE("install widget pack content", "[ui]")
-{
+TEST_CASE("install widget pack content", "[ui]") {
   test_app();
   ui::InstallWidget widget;
   widget.set_pack(make_pack());
@@ -138,7 +132,7 @@ TEST_CASE("install widget pack content", "[ui]")
   // Instructions stay rendered on the right pane.
   check(widget.instructions_markdown().contains("Do the thing"),
         "instructions markdown is stored");
-  auto* browser = widget.findChild<QTextBrowser*>();
+  auto *browser = widget.findChild<QTextBrowser *>();
   check(browser != nullptr && browser->toPlainText().contains("Do the thing"),
         "instructions render in the right pane");
 
@@ -159,7 +153,7 @@ TEST_CASE("install widget pack content", "[ui]")
 
   // The required checkbox is locked in the UI too.
   bool found_locked = false;
-  for (auto* box : widget.findChildren<QCheckBox*>()) {
+  for (auto *box : widget.findChildren<QCheckBox *>()) {
     if (box->text().contains("Shadows")) {
       found_locked = !box->isEnabled() && box->isChecked();
     }
@@ -176,7 +170,7 @@ TEST_CASE("install widget pack content", "[ui]")
         "choice picks round-trip");
   validation          = widget.choice_validation();
   bool textures_valid = false;
-  for (const auto& verdict : validation.verdicts) {
+  for (const auto &verdict : validation.verdicts) {
     if (verdict.group_id == "textures") {
       textures_valid = verdict.status == engine::Collection::ChoiceStatus::Valid;
     }
@@ -185,7 +179,7 @@ TEST_CASE("install widget pack content", "[ui]")
 
   // Radios reflect the picks.
   bool found_radio = false;
-  for (auto* radio : widget.findChildren<QRadioButton*>()) {
+  for (auto *radio : widget.findChildren<QRadioButton *>()) {
     if (radio->text() == "alpha" && radio->isChecked()) {
       found_radio = true;
     }
@@ -198,8 +192,7 @@ TEST_CASE("install widget pack content", "[ui]")
   check(widget.ready_to_finish(), "valid choices + consent allow finishing");
 }
 
-TEST_CASE("install widget patch deny adds a diagnostic", "[ui]")
-{
+TEST_CASE("install widget patch deny adds a diagnostic", "[ui]") {
   test_app();
   ui::InstallWidget widget;
   widget.set_pack(make_pack());
@@ -211,8 +204,7 @@ TEST_CASE("install widget patch deny adds a diagnostic", "[ui]")
         "deny note says mods install unpatched");
 }
 
-TEST_CASE("install widget diagnostics badge", "[ui]")
-{
+TEST_CASE("install widget diagnostics badge", "[ui]") {
   test_app();
   ui::InstallWidget widget;
 
@@ -221,7 +213,7 @@ TEST_CASE("install widget diagnostics badge", "[ui]")
   widget.add_diagnostic(ui::InstallStep::Loot, "no load order");
   check(widget.diagnostic_count() == 3, "three diagnostics recorded");
 
-  auto* list = widget.findChild<QListView*>(QStringLiteral("install_step_list"));
+  auto *list = widget.findChild<QListView *>(QStringLiteral("install_step_list"));
   REQUIRE(list != nullptr);
   const auto text = list->model()->index(1, 0).data(Qt::DisplayRole).toString();
   check(text.contains("(2)"), "step shows its inline diagnostic count");
@@ -233,8 +225,7 @@ TEST_CASE("install widget diagnostics badge", "[ui]")
   check(!cleared.contains("(2)"), "cleared step drops its count");
 }
 
-TEST_CASE("install widget incremental update skips idle steps", "[ui]")
-{
+TEST_CASE("install widget incremental update skips idle steps", "[ui]") {
   test_app();
   ui::InstallWidget widget;
 
@@ -278,8 +269,7 @@ TEST_CASE("install widget incremental update skips idle steps", "[ui]")
         "ini-path diagnostic attaches to the INI step");
 }
 
-TEST_CASE("install widget reconciles prior choices", "[ui]")
-{
+TEST_CASE("install widget reconciles prior choices", "[ui]") {
   test_app();
   ui::InstallWidget widget;
   widget.set_pack(make_pack());
@@ -302,8 +292,7 @@ TEST_CASE("install widget reconciles prior choices", "[ui]")
         "explicit current pick wins over the prior");
 }
 
-TEST_CASE("install widget error blocks finishing", "[ui]")
-{
+TEST_CASE("install widget error blocks finishing", "[ui]") {
   test_app();
   ui::InstallWidget widget;
   widget.set_pack(make_pack());

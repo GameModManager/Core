@@ -40,13 +40,13 @@ namespace {
 
 }  // namespace
 
-TaskDialog::TaskDialog(QWidget* parent, const QString& title) : QWidget(parent) {
+TaskDialog::TaskDialog(QWidget *parent, const QString &title) : QWidget(parent) {
   setWindowTitle(title);
   setWindowFlags(Qt::Dialog);
   setWindowModality(Qt::ApplicationModal);
   setMinimumWidth(400);
 
-  auto* outer = new QHBoxLayout(this);
+  auto *outer = new QHBoxLayout(this);
   outer->setSpacing(12);
 
   icon_label_ = new QLabel(this);
@@ -121,23 +121,23 @@ TaskDialog::TaskDialog(QWidget* parent, const QString& title) : QWidget(parent) 
   content_layout_->addStretch(1);
 }
 
-TaskDialog& TaskDialog::title(const QString& title) {
+TaskDialog &TaskDialog::title(const QString &title) {
   setWindowTitle(title);
   return *this;
 }
 
-TaskDialog& TaskDialog::main(const QString& text) {
+TaskDialog &TaskDialog::main(const QString &text) {
   main_label_->setText(text);
   return *this;
 }
 
-TaskDialog& TaskDialog::content(const QString& text) {
+TaskDialog &TaskDialog::content(const QString &text) {
   content_label_->setText(text);
   content_label_->setVisible(!text.isEmpty());
   return *this;
 }
 
-TaskDialog& TaskDialog::details(const QString& text) {
+TaskDialog &TaskDialog::details(const QString &text) {
   details_edit_->setPlainText(text);
   const bool has = !text.isEmpty();
   details_toggle_->setVisible(has);
@@ -145,7 +145,7 @@ TaskDialog& TaskDialog::details(const QString& text) {
   return *this;
 }
 
-TaskDialog& TaskDialog::icon(QMessageBox::Icon icon) {
+TaskDialog &TaskDialog::icon(QMessageBox::Icon icon) {
   if (icon == QMessageBox::NoIcon)
     return *this;
   const QIcon styled = style()->standardIcon(standard_pixmap_for(icon));
@@ -154,12 +154,12 @@ TaskDialog& TaskDialog::icon(QMessageBox::Icon icon) {
   return *this;
 }
 
-TaskDialog& TaskDialog::add_button(const TaskDialogButton& button) {
+TaskDialog &TaskDialog::add_button(const TaskDialogButton &button) {
   buttons_.append(button);
   return *this;
 }
 
-TaskDialog& TaskDialog::remember(const QString& action, const QString& file) {
+TaskDialog &TaskDialog::remember(const QString &action, const QString &file) {
   remember_action_ = action;
   remember_file_   = file;
   if (action.isEmpty()) {
@@ -182,14 +182,14 @@ TaskDialog& TaskDialog::remember(const QString& action, const QString& file) {
   return *this;
 }
 
-TaskDialog& TaskDialog::add_content(QWidget* widget) {
+TaskDialog &TaskDialog::add_content(QWidget *widget) {
   // Insert injected widgets above the stretch at the end of the panel so
   // they land between the buttons and the details pane.
   content_layout_->insertWidget(content_layout_->count() - 1, widget);
   return *this;
 }
 
-TaskDialog& TaskDialog::set_minimum_width(int width) {
+TaskDialog &TaskDialog::set_minimum_width(int width) {
   setMinimumWidth(width);
   return *this;
 }
@@ -230,12 +230,12 @@ void TaskDialog::reject() {
     hide();
 }
 
-void TaskDialog::closeEvent(QCloseEvent* event) {
+void TaskDialog::closeEvent(QCloseEvent *event) {
   reject();
   event->accept();
 }
 
-void TaskDialog::keyPressEvent(QKeyEvent* event) {
+void TaskDialog::keyPressEvent(QKeyEvent *event) {
   if (event->key() == Qt::Key_Escape) {
     reject();
     event->accept();
@@ -259,8 +259,8 @@ void TaskDialog::build_buttons() {
   buttons_built_ = true;
 
   if (!buttons_.isEmpty()) {
-    for (const auto& spec : buttons_) {
-      auto* link    = new QCommandLinkButton(spec.text, spec.description, this);
+    for (const auto &spec : buttons_) {
+      auto *link    = new QCommandLinkButton(spec.text, spec.description, this);
       const auto id = spec.id;
       connect(link, &QCommandLinkButton::clicked, this, [this, id] {
         accept_with(id);

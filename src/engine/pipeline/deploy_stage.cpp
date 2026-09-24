@@ -8,8 +8,7 @@ namespace engine {
 
 bool DeployStage::execute(Mod &mod, PipelineContext &ctx) {
   if (!ctx.deploy_strategy) {
-    Logger::instance().warn(
-        "DeployStage: no deploy strategy configured, skipping");
+    Logger::instance().warn("DeployStage: no deploy strategy configured, skipping");
     mod.state = ModState::Deployed;
     return true;
   }
@@ -21,8 +20,7 @@ bool DeployStage::execute(Mod &mod, PipelineContext &ctx) {
 
   auto mod_path = ctx.mods_dir / mod.id;
   if (!std::filesystem::exists(mod_path)) {
-    Logger::instance().error("DeployStage: mod path not found: " +
-                             mod_path.string());
+    Logger::instance().error("DeployStage: mod path not found: " + mod_path.string());
     return false;
   }
 
@@ -42,21 +40,19 @@ bool DeployStage::execute(Mod &mod, PipelineContext &ctx) {
         std::filesystem::is_directory(resolved->absolute(), ec2)) {
       target_base = resolved->absolute();
     } else {
-      target_base = root / ctx.deploy_prefix; // fallback: create as requested
+      target_base = root / ctx.deploy_prefix;  // fallback: create as requested
     }
   }
   std::error_code ec;
   std::filesystem::create_directories(target_base, ec);
 
-  int deployed = 0;
-  int failed = 0;
-  auto deploy_root =
-      ctx.deploy_include_mod_id ? target_base / mod.id : target_base;
+  int deployed     = 0;
+  int failed       = 0;
+  auto deploy_root = ctx.deploy_include_mod_id ? target_base / mod.id : target_base;
   // skip_permission_denied: a permission-denied subdirectory makes the
   // range-for's throwing operator++ abort the whole deploy (SIGABRT).
   for (const auto &entry : std::filesystem::recursive_directory_iterator(
-           mod_path,
-           std::filesystem::directory_options::skip_permission_denied)) {
+           mod_path, std::filesystem::directory_options::skip_permission_denied)) {
     if (entry.is_regular_file()) {
       auto rel = std::filesystem::relative(entry.path(), mod_path);
       // NOTE: no create_directories(target.parent_path()) here. The
@@ -73,10 +69,9 @@ bool DeployStage::execute(Mod &mod, PipelineContext &ctx) {
 
   Logger::instance().debug(
       "DeployStage: deployed " + std::to_string(deployed) + " files" +
-      (failed ? ", " + std::to_string(failed) + " failed" : "") + " for " +
-      mod.id);
+      (failed ? ", " + std::to_string(failed) + " failed" : "") + " for " + mod.id);
   mod.state = ModState::Deployed;
   return failed == 0;
 }
 
-} // namespace engine
+}  // namespace engine

@@ -24,8 +24,8 @@ namespace engine::Source {
 // ---------------------------------------------------------------------------
 
 enum class UpdatePolicy {
-    Exact,   // pin to specific fileId/version/hash
-    Latest,  // fetch whatever source currently has
+  Exact,   // pin to specific fileId/version/hash
+  Latest,  // fetch whatever source currently has
 };
 
 // ---------------------------------------------------------------------------
@@ -33,12 +33,12 @@ enum class UpdatePolicy {
 // ---------------------------------------------------------------------------
 
 struct SourcePin {
-    UpdatePolicy policy = UpdatePolicy::Exact;
-    std::string version;
-    std::string sha256;          // 64-char lowercase hex
-    int64_t file_id = 0;
-    int64_t file_size = 0;
-    std::string file_name;
+  UpdatePolicy policy = UpdatePolicy::Exact;
+  std::string version;
+  std::string sha256;  // 64-char lowercase hex
+  int64_t file_id   = 0;
+  int64_t file_size = 0;
+  std::string file_name;
 };
 
 // ---------------------------------------------------------------------------
@@ -46,10 +46,10 @@ struct SourcePin {
 // ---------------------------------------------------------------------------
 
 struct ResolvedIdentity {
-    std::string version;
-    std::string sha256;          // computed after download
-    int64_t file_id = 0;
-    int64_t file_size = 0;
+  std::string version;
+  std::string sha256;  // computed after download
+  int64_t file_id   = 0;
+  int64_t file_size = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -57,16 +57,16 @@ struct ResolvedIdentity {
 // ---------------------------------------------------------------------------
 
 enum class PinVerdict {
-    Match,        // exact: hash matches - proceed silently
-    Mismatch,     // exact: hash mismatch - non-blocking warning, install
-                  //        proceeds with actual file
-    NoPin,        // latest: nothing to check against
-    Incomplete,   // exact: pin missing required fields (sha256/version)
+  Match,       // exact: hash matches - proceed silently
+  Mismatch,    // exact: hash mismatch - non-blocking warning, install
+               //        proceeds with actual file
+  NoPin,       // latest: nothing to check against
+  Incomplete,  // exact: pin missing required fields (sha256/version)
 };
 
 struct VerifyResult {
-    PinVerdict verdict = PinVerdict::NoPin;
-    std::string message;  // human-readable outcome for diagnostics
+  PinVerdict verdict = PinVerdict::NoPin;
+  std::string message;  // human-readable outcome for diagnostics
 };
 
 // ---------------------------------------------------------------------------
@@ -76,23 +76,22 @@ struct VerifyResult {
 // Parse a source JSON object into a SourcePin. Extracts updatePolicy, version,
 // sha256, fileId, fileSize, and fileName. Unknown or absent updatePolicy
 // defaults to Exact. Returns an empty pin on malformed input.
-SourcePin parse_source_pin(const std::string& source_json);
+SourcePin parse_source_pin(const std::string &source_json);
 
 // Verify a resolved download against the declared pin.
 // For Exact policy: compares sha256 if present, file_id if present, file_size
 //   if present. At least one match field must be present; if sha256 is present
 //   it takes precedence.
 // For Latest policy: always returns NoPin (nothing to check).
-VerifyResult verify_resolved(const SourcePin& pin, const ResolvedIdentity& resolved);
+VerifyResult verify_resolved(const SourcePin &pin, const ResolvedIdentity &resolved);
 
 // Verify a downloaded file's SHA-256 against an expected hash.
 // Returns true if hashes match, false otherwise.
 // Returns false if the file cannot be read.
-bool verify_file_hash(const std::string& expected_sha256,
-                       const std::string& file_path);
+bool verify_file_hash(const std::string &expected_sha256, const std::string &file_path);
 
 // Compute SHA-256 of a file. Returns the 64-char lowercase hex string,
 // or empty string on failure.
-std::string compute_file_sha256(const std::string& file_path);
+std::string compute_file_sha256(const std::string &file_path);
 
-} // namespace engine::Source
+}  // namespace engine::Source

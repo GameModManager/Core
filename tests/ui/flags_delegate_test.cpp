@@ -8,18 +8,18 @@
 #include <catch2/catch_test_macros.hpp>
 
 TEST_CASE("flags delegate", "[ui]") {
-    // 16px icons with 2px spacing in the default 80px Flags column.
-    REQUIRE(ui::flags_icons_per_line(80, 16, 2) == 4);
-    // Exactly one full line.
-    REQUIRE(ui::flags_icons_per_line(18, 16, 2) == 1);
-    // Column narrower than a single icon still lays out one per line.
-    REQUIRE(ui::flags_icons_per_line(10, 16, 2) == 1);
-    // Wider column, same rule.
-    REQUIRE(ui::flags_icons_per_line(160, 16, 2) == 8);
+  // 16px icons with 2px spacing in the default 80px Flags column.
+  REQUIRE(ui::flags_icons_per_line(80, 16, 2) == 4);
+  // Exactly one full line.
+  REQUIRE(ui::flags_icons_per_line(18, 16, 2) == 1);
+  // Column narrower than a single icon still lays out one per line.
+  REQUIRE(ui::flags_icons_per_line(10, 16, 2) == 1);
+  // Wider column, same rule.
+  REQUIRE(ui::flags_icons_per_line(160, 16, 2) == 8);
 
-    REQUIRE(ui::flags_icon_lines(1, 4) == 1);
-    REQUIRE(ui::flags_icon_lines(4, 4) == 1);
-    REQUIRE(ui::flags_icon_lines(5, 4) == 2);  // wraps to a second line
-    REQUIRE(ui::flags_icon_lines(9, 4) == 3);
-    REQUIRE(ui::flags_icon_lines(0, 4) == 0);
+  REQUIRE(ui::flags_icon_lines(1, 4) == 1);
+  REQUIRE(ui::flags_icon_lines(4, 4) == 1);
+  REQUIRE(ui::flags_icon_lines(5, 4) == 2);  // wraps to a second line
+  REQUIRE(ui::flags_icon_lines(9, 4) == 3);
+  REQUIRE(ui::flags_icon_lines(0, 4) == 0);
 }

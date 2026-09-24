@@ -22,10 +22,10 @@ namespace engine {
 // loaded plugin/game set. Returned by RequirementsRegistry::check_requirements
 // so the loader can surface it (log a warning today; a UI banner later).
 struct UnmetRequirement {
-    std::string plugin_path;  // the plugin that declared the requirement
-    std::string type;         // "plugin" | "game" | "diagnose"
-    std::string name;         // required plugin/game name
-    std::string message;      // human-readable message if not met
+  std::string plugin_path;  // the plugin that declared the requirement
+  std::string type;         // "plugin" | "game" | "diagnose"
+  std::string name;         // required plugin/game name
+  std::string message;      // human-readable message if not met
 };
 
 // Process-wide registry of v2 plugin requirement providers (MO2 IPlugin
@@ -41,44 +41,42 @@ struct UnmetRequirement {
 // into plugin-owned memory and remain valid only while the plugin is loaded.
 class RequirementsRegistry {
 public:
-    static RequirementsRegistry& instance();
+  static RequirementsRegistry &instance();
 
-    // Register a requirement provider. fn must be non-null; plugin_path is the
-    // .so path, used to drop the provider on unload.
-    void register_requirements(const std::string& plugin_path,
-                               GmmRequirementsFn fn,
-                               void* user_data);
+  // Register a requirement provider. fn must be non-null; plugin_path is the
+  // .so path, used to drop the provider on unload.
+  void register_requirements(const std::string &plugin_path, GmmRequirementsFn fn,
+                             void *user_data);
 
-    // Invoke every registered provider and return the aggregated list of
-    // requirements that are NOT satisfied by the currently loaded plugins
-    // (the plugins_ set owned by the loader). A requirement is considered met
-    // when a loaded plugin matches its name/type (see is_requirement_met).
-    std::vector<UnmetRequirement> check_requirements(
-        const std::vector<PluginInfo>& plugins) const;
+  // Invoke every registered provider and return the aggregated list of
+  // requirements that are NOT satisfied by the currently loaded plugins
+  // (the plugins_ set owned by the loader). A requirement is considered met
+  // when a loaded plugin matches its name/type (see is_requirement_met).
+  std::vector<UnmetRequirement>
+  check_requirements(const std::vector<PluginInfo> &plugins) const;
 
-    // Drop every provider registered by the given plugin path (called from
-    // PluginLoader::unload_all before dlclose so no dangling fn pointer
-    // survives).
-    void clear_plugin(const std::string& plugin_path);
+  // Drop every provider registered by the given plugin path (called from
+  // PluginLoader::unload_all before dlclose so no dangling fn pointer
+  // survives).
+  void clear_plugin(const std::string &plugin_path);
 
-    // Drop all providers (process shutdown / full reload).
-    void clear();
+  // Drop all providers (process shutdown / full reload).
+  void clear();
 
 private:
-    RequirementsRegistry() = default;
+  RequirementsRegistry() = default;
 
-    struct Entry {
-        GmmRequirementsFn fn = nullptr;
-        void* user_data = nullptr;
-        std::string plugin_path;
-    };
+  struct Entry {
+    GmmRequirementsFn fn = nullptr;
+    void *user_data      = nullptr;
+    std::string plugin_path;
+  };
 
-    // Evaluate a single requirement against the loaded plugin set.
-    static bool is_requirement_met(const std::string& type,
-                                   const std::string& name,
-                                   const std::vector<PluginInfo>& plugins);
+  // Evaluate a single requirement against the loaded plugin set.
+  static bool is_requirement_met(const std::string &type, const std::string &name,
+                                 const std::vector<PluginInfo> &plugins);
 
-    std::vector<Entry> entries_;
+  std::vector<Entry> entries_;
 };
 
 }  // namespace engine

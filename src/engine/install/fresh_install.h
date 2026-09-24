@@ -23,12 +23,10 @@
 #include "engine/core/instance/installed_pack_state.h"
 #include "engine/gmmpack/types.h"
 
-namespace engine::Install
-{
+namespace engine::Install {
 
 // What a fresh install will do, in widget step order.
-struct FreshInstallPlan
-{
+struct FreshInstallPlan {
   bool ok = false;
   std::string error;  // set when !ok
   std::string pack_id;
@@ -38,17 +36,17 @@ struct FreshInstallPlan
   std::vector<std::string> patch_consent_mods;  // sorted
   // modpack::ini_key() per tweak, pack order - what apply will record.
   std::vector<std::string> ini_keys;
-  std::size_t tree_mod_count = 0;  // mod leaves in tree.json
+  std::size_t tree_mod_count   = 0;  // mod leaves in tree.json
   std::size_t executable_count = 0;
 };
 
 // Gates on the game match, then translates pack contents into install steps.
-[[nodiscard]] FreshInstallPlan plan_fresh_install(const gmmpack::Gmmpack& pack,
-                                                  const std::string& instance_game_id);
+[[nodiscard]] FreshInstallPlan plan_fresh_install(const gmmpack::Gmmpack &pack,
+                                                  const std::string &instance_game_id);
 
 // Seeds state for a fresh instance: pack identity plus one
 // conforming/installed/pack entry per mod with lastAppliedRevision set.
 // Entries are new by construction, so presence/placement defaults hold.
-void apply_fresh_state(const gmmpack::Gmmpack& pack, InstalledPackState& state);
+void apply_fresh_state(const gmmpack::Gmmpack &pack, InstalledPackState &state);
 
 }  // namespace engine::Install

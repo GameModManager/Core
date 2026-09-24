@@ -29,8 +29,8 @@ namespace ui {
 
 namespace {
 
-  bool write_separator_color_file(const std::filesystem::path& mod_dir,
-                                  const QString& color) {
+  bool write_separator_color_file(const std::filesystem::path &mod_dir,
+                                  const QString &color) {
     auto meta_path = mod_dir / "meta.ini";
     engine::ModMeta meta;
     if (std::filesystem::exists(meta_path)) {
@@ -49,8 +49,8 @@ namespace {
         return true;  // nothing stored - nothing to clear
       // Rebuild the meta without the color key (ModMeta has no remove).
       engine::ModMeta rebuilt;
-      for (const auto& section : meta.sections()) {
-        for (const auto& key : meta.keys(section)) {
+      for (const auto &section : meta.sections()) {
+        for (const auto &key : meta.keys(section)) {
           if (section == "General" && key == "color")
             continue;
           rebuilt.set(section, key, meta.get(section, key));
@@ -78,7 +78,7 @@ namespace {
 
   // Remove the mod's in-folder meta.ini (delete cleanup). Logs on failure;
   // never silently swallows a filesystem error.
-  void remove_sidecar(const std::filesystem::path& mods_dir, const QString& id) {
+  void remove_sidecar(const std::filesystem::path &mods_dir, const QString &id) {
     if (mods_dir.empty())
       return;
     auto path = mods_dir / id.toStdString() / "meta.ini";
@@ -93,10 +93,10 @@ namespace {
 
 }  // namespace
 
-ModActions::ModActions(MainWindow* w) : w_(w) {}
+ModActions::ModActions(MainWindow *w) : w_(w) {}
 
 void ModActions::set_sync_mod_enable_state(
-    std::function<void(const QString&, bool)> cb) {
+    std::function<void(const QString &, bool)> cb) {
   sync_mod_enable_state_cb_ = std::move(cb);
 }
 
@@ -112,7 +112,7 @@ void ModActions::set_load_mods_from_game(std::function<void()> cb) {
   load_mods_from_game_cb_ = std::move(cb);
 }
 
-void configure_remove_mods_dialog(TaskDialog& dlg, const QStringList& mod_names) {
+void configure_remove_mods_dialog(TaskDialog &dlg, const QStringList &mod_names) {
   dlg.title(QObject::tr("Remove Mods"))
       .main(QObject::tr("Move %1 mod(s) to the trash bin?").arg(mod_names.size()))
       .content(QObject::tr("Their files stay in the system trash and can be "
@@ -129,7 +129,7 @@ void ModActions::remove_selected_mods() {
     return;
 
   QStringList names;
-  for (const auto& idx : sel) {
+  for (const auto &idx : sel) {
     int r = idx.row();
     if (r < 0 || r >= w_->mod_model_->mods().size())
       continue;
@@ -150,11 +150,11 @@ void ModActions::remove_selected_mods() {
                      : std::string();
   auto mods_dir = w_->mods_dir_path();
 
-  for (const auto& idx : sel) {
+  for (const auto &idx : sel) {
     int r = idx.row();
     if (r < 0 || r >= w_->mod_model_->mods().size())
       continue;
-    const auto& entry = w_->mod_model_->mods()[r];
+    const auto &entry = w_->mod_model_->mods()[r];
     if (entry.is_overwrite)
       continue;
 
@@ -175,20 +175,20 @@ void ModActions::remove_selected_mods() {
   }
 }
 
-void ModActions::move_to_separator(const QString& mod_id, const QString& sep_id) {
+void ModActions::move_to_separator(const QString &mod_id, const QString &sep_id) {
   // Placement lives in the model: the mod lands in the LAST slot inside the
   // separator's band (lowest priority / last top-down), never first.
   w_->mod_model_->move_to_separator(mod_id, sep_id);
 }
 
-void ModActions::send_to_separator(const QString& mod_id) {
+void ModActions::send_to_separator(const QString &mod_id) {
   // MO2 sendModsToSeparator (modlistviewactions.cpp:661-701): collect the
   // separators in mod-list order into the shared ListDialog and move the mod
   // to the chosen one. Ids ride item data so duplicate display names can't
   // misresolve.
   QStringList names;
   QList<QVariant> ids;
-  for (const auto& m : w_->mod_model_->mods()) {
+  for (const auto &m : w_->mod_model_->mods()) {
     if (m.is_separator) {
       names << m.name;
       ids << m.id;
@@ -208,14 +208,14 @@ void ModActions::send_to_separator(const QString& mod_id) {
     move_to_separator(mod_id, sep_id);
 }
 
-void ModActions::send_selected_to_separator(const QStringList& mod_ids) {
+void ModActions::send_selected_to_separator(const QStringList &mod_ids) {
   if (mod_ids.isEmpty())
     return;
 
   // Collect separators for the list dialog (same as send_to_separator).
   QStringList names;
   QList<QVariant> ids;
-  for (const auto& m : w_->mod_model_->mods()) {
+  for (const auto &m : w_->mod_model_->mods()) {
     if (m.is_separator) {
       names << m.name;
       ids << m.id;
@@ -234,11 +234,11 @@ void ModActions::send_selected_to_separator(const QStringList& mod_ids) {
   if (sep_id.isEmpty())
     return;
 
-  for (const auto& mod_id : mod_ids)
+  for (const auto &mod_id : mod_ids)
     move_to_separator(mod_id, sep_id);
 }
 
-void ModActions::send_to_highest_priority(const QString& id) {
+void ModActions::send_to_highest_priority(const QString &id) {
   if (w_->mod_model_->is_conflict_order_reversed()) {
     // Isaac: lowest priority number = highest priority = top of list
     w_->mod_model_->move_mod(id, 0);
@@ -253,7 +253,7 @@ void ModActions::send_to_highest_priority(const QString& id) {
   }
 }
 
-void ModActions::send_to_lowest_priority(const QString& id) {
+void ModActions::send_to_lowest_priority(const QString &id) {
   if (w_->mod_model_->is_conflict_order_reversed()) {
     // Isaac: highest priority number = lowest priority = bottom of list
     // (below the pinned Overwrite/MERGED which sit at the top).
@@ -264,8 +264,8 @@ void ModActions::send_to_lowest_priority(const QString& id) {
   }
 }
 
-void ModActions::send_to_highest_in_separator(const QString& id) {
-  const auto& mods = w_->mod_model_->mods();
+void ModActions::send_to_highest_in_separator(const QString &id) {
+  const auto &mods = w_->mod_model_->mods();
   int mod_row      = w_->mod_model_->priority_of(id);
   if (mod_row < 0)
     return;
@@ -286,8 +286,8 @@ void ModActions::send_to_highest_in_separator(const QString& id) {
   w_->mod_model_->move_mod(id, sep_row + 1);
 }
 
-void ModActions::send_to_lowest_in_separator(const QString& id) {
-  const auto& mods = w_->mod_model_->mods();
+void ModActions::send_to_lowest_in_separator(const QString &id) {
+  const auto &mods = w_->mod_model_->mods();
   int mod_row      = w_->mod_model_->priority_of(id);
   if (mod_row < 0)
     return;
@@ -316,10 +316,10 @@ void ModActions::priority_move_selected(int step) {
     return;
 
   int r            = sel.first().row();
-  const auto& mods = w_->mod_model_->mods();
+  const auto &mods = w_->mod_model_->mods();
   if (r < 0 || r >= mods.size())
     return;
-  const auto& e = mods[r];
+  const auto &e = mods[r];
   if (e.is_separator || e.is_overwrite || e.is_merged)
     return;
 
@@ -334,11 +334,11 @@ void ModActions::priority_move_selected(int step) {
 
 void ModActions::toggle_selected_mods(bool enabled) {
   auto sel = w_->mod_view_->selectionModel()->selectedRows();
-  for (const auto& idx : sel) {
+  for (const auto &idx : sel) {
     int r = idx.row();
     if (r < 0 || r >= w_->mod_model_->mods().size())
       continue;
-    const auto& entry = w_->mod_model_->mods()[r];
+    const auto &entry = w_->mod_model_->mods()[r];
     if (entry.is_separator || entry.is_overwrite || entry.is_game_native)
       continue;
 
@@ -353,11 +353,11 @@ void ModActions::toggle_selected_mods(bool enabled) {
   }
 }
 
-void ModActions::toggle_root_override(const QList<int>& rows, bool on) {
+void ModActions::toggle_root_override(const QList<int> &rows, bool on) {
   for (int r : rows) {
     if (r < 0 || r >= w_->mod_model_->mods().size())
       continue;
-    const auto& entry = w_->mod_model_->mods()[r];
+    const auto &entry = w_->mod_model_->mods()[r];
     if (entry.is_separator || entry.is_overwrite || entry.is_merged ||
         entry.is_game_native)
       continue;
@@ -383,7 +383,7 @@ void ModActions::toggle_root_override(const QList<int>& rows, bool on) {
     refresh_data_tab_cb_();
 }
 
-QString ModActions::create_separator_named(const QString& name, const QString& color) {
+QString ModActions::create_separator_named(const QString &name, const QString &color) {
   // Separators are instance-owned (folder under the instance mods dir);
   // no game dir required (Workspace-tnj).
   if (!w_->knowledge_ || w_->current_game_id_.empty())
@@ -478,7 +478,7 @@ void ModActions::create_empty_mod() {
 
   // Check for duplicate names
   QString trimmed = name.trimmed();
-  for (const auto& m : w_->mod_model_->mods()) {
+  for (const auto &m : w_->mod_model_->mods()) {
     if (!m.is_separator && !m.is_overwrite && !m.is_merged &&
         (m.name.compare(trimmed, Qt::CaseInsensitive) == 0 ||
          m.id.compare(trimmed, Qt::CaseInsensitive) == 0)) {
@@ -580,13 +580,13 @@ void ModActions::create_separator_at_row(int row) {
 void ModActions::rename_mod_inline(int row) {
   if (row < 0 || row >= w_->mod_model_->mods().size())
     return;
-  const auto& mod = w_->mod_model_->mods()[row];
+  const auto &mod = w_->mod_model_->mods()[row];
   if (mod.is_overwrite || mod.is_merged || mod.is_game_native)
     return;
   w_->mod_view_->edit(w_->mod_model_->index(row, ModList::Name));
 }
 
-void ModActions::apply_rename(int row, const QString& name) {
+void ModActions::apply_rename(int row, const QString &name) {
   const auto revert = [this, row]() {
     emit w_->mod_model_->dataChanged(w_->mod_model_->index(row, ModList::Name),
                                      w_->mod_model_->index(row, ModList::Version));
@@ -594,7 +594,7 @@ void ModActions::apply_rename(int row, const QString& name) {
 
   if (row < 0 || row >= w_->mod_model_->mods().size())
     return;
-  const auto& entry = w_->mod_model_->mods()[row];
+  const auto &entry = w_->mod_model_->mods()[row];
   if (entry.is_overwrite || entry.is_merged || entry.is_game_native) {
     revert();
     return;
@@ -640,7 +640,7 @@ void ModActions::apply_rename(int row, const QString& name) {
   }  // sanitized back to the same folder
 
   // Duplicate check (case-insensitive, excluding self) - MO2 renameMod.
-  for (const auto& m : w_->mod_model_->mods()) {
+  for (const auto &m : w_->mod_model_->mods()) {
     if (m.id == entry.id)
       continue;
     if (m.id.compare(new_id, Qt::CaseInsensitive) == 0) {
@@ -694,7 +694,7 @@ void ModActions::apply_rename(int row, const QString& name) {
 void ModActions::delete_separator(int row) {
   if (row < 0 || row >= w_->mod_model_->mods().size())
     return;
-  const auto& mod = w_->mod_model_->mods()[row];
+  const auto &mod = w_->mod_model_->mods()[row];
   if (!mod.is_separator)
     return;
 
@@ -735,7 +735,7 @@ void ModActions::select_color_for_selected() {
   if (sel.isEmpty())
     return;
 
-  const auto& ref = w_->mod_model_->mods()[sel.first().row()];
+  const auto &ref = w_->mod_model_->mods()[sel.first().row()];
   QColor current;
   if (ref.is_separator && !ref.separator_color.isEmpty())
     current = QColor(ref.separator_color);
@@ -759,11 +759,11 @@ void ModActions::select_color_for_selected() {
   Settings::instance().set_previous_separator_color(color);
   const QString hex = color.name(QColor::HexArgb);
 
-  for (const auto& idx : sel) {
+  for (const auto &idx : sel) {
     int row = idx.row();
     if (row < 0 || row >= w_->mod_model_->mods().size())
       continue;
-    const auto& mod = w_->mod_model_->mods()[row];
+    const auto &mod = w_->mod_model_->mods()[row];
     if (!mod.is_separator)
       continue;
     write_separator_color_file(w_->mods_dir_path() / mod.id.toStdString(), hex);
@@ -776,11 +776,11 @@ void ModActions::reset_color_for_selected() {
   if (sel.isEmpty())
     return;
 
-  for (const auto& idx : sel) {
+  for (const auto &idx : sel) {
     int row = idx.row();
     if (row < 0 || row >= w_->mod_model_->mods().size())
       continue;
-    const auto& mod = w_->mod_model_->mods()[row];
+    const auto &mod = w_->mod_model_->mods()[row];
     if (!mod.is_separator)
       continue;
     write_separator_color_file(w_->mods_dir_path() / mod.id.toStdString(), QString());
@@ -796,7 +796,7 @@ void ModActions::reset_color_for_selected() {
 namespace {
 
   // Folder mtime as epoch seconds (the [Mirror] sourceTimestamp). 0 on error.
-  int64_t folder_mtime_secs(const std::filesystem::path& dir) {
+  int64_t folder_mtime_secs(const std::filesystem::path &dir) {
     std::error_code ec;
     auto mtime = std::filesystem::last_write_time(dir, ec);
     if (ec)
@@ -815,7 +815,7 @@ namespace {
 // Resolve the live external source folder for a mod row: content_dir when it
 // is still a directory, else the game's external mods dir. Empty when
 // neither exists (not an external mod, or its source is gone).
-std::filesystem::path ModActions::mirror_source_for(const ModEntry& entry) {
+std::filesystem::path ModActions::mirror_source_for(const ModEntry &entry) {
   std::error_code ec;
   if (!entry.content_dir.isEmpty()) {
     std::filesystem::path c(entry.content_dir.toStdString());
@@ -831,7 +831,7 @@ std::filesystem::path ModActions::mirror_source_for(const ModEntry& entry) {
   return {};
 }
 
-void ModActions::set_action_status(const QString& text) {
+void ModActions::set_action_status(const QString &text) {
   if (w_->status_bar_)
     w_->status_bar_->set_status(text);
 }
@@ -842,9 +842,9 @@ void ModActions::set_action_status(const QString& text) {
 // the backup copy drives source-missing detection and the prune skip after
 // the source is gone. Re-mirroring compares the live source mtime against
 // the stored timestamp and refreshes the backup on mismatch.
-ModActions::MirrorResult ModActions::mirror_single(const QString& mod_id) {
-  const ModEntry* found = nullptr;
-  for (const auto& m : w_->mod_model_->mods()) {
+ModActions::MirrorResult ModActions::mirror_single(const QString &mod_id) {
+  const ModEntry *found = nullptr;
+  for (const auto &m : w_->mod_model_->mods()) {
     if (m.id == mod_id) {
       found = &m;
       break;
@@ -937,9 +937,9 @@ ModActions::MirrorResult ModActions::mirror_single(const QString& mod_id) {
 
 // Delete the instance backup and clear the source marker (when the source
 // still exists). The model row keeps pointing at the source.
-ModActions::MirrorResult ModActions::unmirror_single(const QString& mod_id) {
-  const ModEntry* found = nullptr;
-  for (const auto& m : w_->mod_model_->mods()) {
+ModActions::MirrorResult ModActions::unmirror_single(const QString &mod_id) {
+  const ModEntry *found = nullptr;
+  for (const auto &m : w_->mod_model_->mods()) {
     if (m.id == mod_id) {
       found = &m;
       break;
@@ -1001,7 +1001,7 @@ ModActions::MirrorResult ModActions::unmirror_single(const QString& mod_id) {
   return MirrorResult::Mirrored;
 }
 
-void ModActions::mirror_mod(const QString& mod_id) {
+void ModActions::mirror_mod(const QString &mod_id) {
   switch (mirror_single(mod_id)) {
   case MirrorResult::Mirrored:
     set_action_status(QObject::tr("Mod mirrored to instance"));
@@ -1015,7 +1015,7 @@ void ModActions::mirror_mod(const QString& mod_id) {
   }
 }
 
-void ModActions::unmirror_mod(const QString& mod_id) {
+void ModActions::unmirror_mod(const QString &mod_id) {
   switch (unmirror_single(mod_id)) {
   case MirrorResult::Mirrored:
     set_action_status(QObject::tr("Mirror backup removed"));
@@ -1033,11 +1033,11 @@ void ModActions::mirror_selected_mods() {
   auto sel  = w_->mod_view_->selectionModel()->selectedRows();
   int total = 0;
   int done  = 0;
-  for (const auto& idx : sel) {
+  for (const auto &idx : sel) {
     int r = idx.row();
     if (r < 0 || r >= w_->mod_model_->mods().size())
       continue;
-    const auto& entry = w_->mod_model_->mods()[r];
+    const auto &entry = w_->mod_model_->mods()[r];
     if (entry.is_separator || entry.is_overwrite || entry.is_merged ||
         entry.is_game_native || entry.is_mirrored)
       continue;
@@ -1059,11 +1059,11 @@ void ModActions::unmirror_selected_mods() {
   auto sel  = w_->mod_view_->selectionModel()->selectedRows();
   int total = 0;
   int done  = 0;
-  for (const auto& idx : sel) {
+  for (const auto &idx : sel) {
     int r = idx.row();
     if (r < 0 || r >= w_->mod_model_->mods().size())
       continue;
-    const auto& entry = w_->mod_model_->mods()[r];
+    const auto &entry = w_->mod_model_->mods()[r];
     if (!entry.is_mirrored)
       continue;
     ++total;

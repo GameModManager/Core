@@ -35,26 +35,25 @@ void apply_nexus_queue_default();
 // opening the modal: set the text via the child QPlainTextEdit and call
 // accept(), then read key().
 class NexusManualKeyDialog : public QDialog {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit NexusManualKeyDialog(QWidget* parent = nullptr);
-    QString key() const;
-    void accept() override;
+  explicit NexusManualKeyDialog(QWidget *parent = nullptr);
+  QString key() const;
+  void accept() override;
 
 private:
-    void open_browser();
-    void paste();
-    void clear();
+  void open_browser();
+  void paste();
+  void clear();
 
-    QPlainTextEdit* key_edit_ = nullptr;
-    QString key_;
+  QPlainTextEdit *key_edit_ = nullptr;
+  QString key_;
 };
 
 // Build the settings page for a source provider, embedded in the Sources tab
 // of the settings dialog. Each known source type contributes its own page
 // here (UI layer only - engine providers stay Qt-free so the headless tests
 // can compile them). Returns nullptr if the provider has nothing to configure.
-QWidget* build_source_settings_page(engine::SourceProvider* provider,
-                                    QWidget* parent);
+QWidget *build_source_settings_page(engine::SourceProvider *provider, QWidget *parent);
 
-} // namespace ui
+}  // namespace ui

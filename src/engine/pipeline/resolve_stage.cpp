@@ -3,8 +3,8 @@
 
 namespace engine {
 
-bool ResolveStage::execute(Mod& mod, PipelineContext& ctx) {
-    return true;
+bool ResolveStage::execute(Mod &mod, PipelineContext &ctx) {
+  return true;
 }
 
 }  // namespace engine

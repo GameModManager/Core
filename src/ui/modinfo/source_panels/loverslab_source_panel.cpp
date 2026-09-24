@@ -17,72 +17,71 @@ namespace ui {
 
 namespace {
 
-void set_description_html(DescriptionRenderer *renderer, const QString &desc,
-                          std::atomic<unsigned> *gen) {
-  if (renderer == nullptr)
-    return;
-  // No clear(): set_description() below replaces the content atomically
-  // and the clear-then-set gap flashes the webview's default background.
-  // `gen` still advances so any stale async work from a previous render
-  // is discarded by the token check.
-  if (desc.isEmpty()) {
-    renderer->set_description(QStringLiteral(
-        "<div style=\"text-align:center; color:grey; padding-top:24px;\">"
-        "<p>No LoversLab description stored for this mod. Press "
-        "<b>Refresh</b> to fetch it live.</p></div>"));
-    return;
+  void set_description_html(DescriptionRenderer *renderer, const QString &desc,
+                            std::atomic<unsigned> *gen) {
+    if (renderer == nullptr)
+      return;
+    // No clear(): set_description() below replaces the content atomically
+    // and the clear-then-set gap flashes the webview's default background.
+    // `gen` still advances so any stale async work from a previous render
+    // is discarded by the token check.
+    if (desc.isEmpty()) {
+      renderer->set_description(QStringLiteral(
+          "<div style=\"text-align:center; color:grey; padding-top:24px;\">"
+          "<p>No LoversLab description stored for this mod. Press "
+          "<b>Refresh</b> to fetch it live.</p></div>"));
+      return;
+    }
+    // LL descriptions are raw Invision Community HTML from
+    // extract_rich_description() - already valid markup for the renderer.
+    // They bypass set_bbcode_html_async() on purpose: bbcode_to_html()
+    // would escape the raw tags. The install is synchronous so there is no
+    // late-arriving parse, but `gen` still advances so any stale async
+    // work from a previous render is discarded by the token check.
+    if (gen != nullptr)
+      ++*gen;
+    renderer->set_description(desc);
   }
-  // LL descriptions are raw Invision Community HTML from
-  // extract_rich_description() - already valid markup for the renderer.
-  // They bypass set_bbcode_html_async() on purpose: bbcode_to_html()
-  // would escape the raw tags. The install is synchronous so there is no
-  // late-arriving parse, but `gen` still advances so any stale async
-  // work from a previous render is discarded by the token check.
-  if (gen != nullptr)
-    ++*gen;
-  renderer->set_description(desc);
-}
 
-// Parse the page's dateModified into a QDate. Accepts the two shapes the
-// schema.org dateModified / og:updated_time values arrive in:
-//   - "2025-06-05"                          (date only)
-//   - "2025-06-05T12:34:56" / "+02:00"      (with time, possibly with TZ)
-// Anything else returns an invalid date and the out-of-date badge stays
-// hidden (Unknown state).
-QDate parse_date_modified(const QString &raw) {
-  if (raw.isEmpty())
-    return {};
-  QDateTime dt = QDateTime::fromString(raw, Qt::ISODate);
-  if (!dt.isValid())
-    dt = QDateTime::fromString(raw.left(10), QStringLiteral("yyyy-MM-dd"));
-  if (!dt.isValid())
-    return {};
-  return dt.date();
-}
+  // Parse the page's dateModified into a QDate. Accepts the two shapes the
+  // schema.org dateModified / og:updated_time values arrive in:
+  //   - "2025-06-05"                          (date only)
+  //   - "2025-06-05T12:34:56" / "+02:00"      (with time, possibly with TZ)
+  // Anything else returns an invalid date and the out-of-date badge stays
+  // hidden (Unknown state).
+  QDate parse_date_modified(const QString &raw) {
+    if (raw.isEmpty())
+      return {};
+    QDateTime dt = QDateTime::fromString(raw, Qt::ISODate);
+    if (!dt.isValid())
+      dt = QDateTime::fromString(raw.left(10), QStringLiteral("yyyy-MM-dd"));
+    if (!dt.isValid())
+      return {};
+    return dt.date();
+  }
 
-// Inverse: epoch seconds -> QDate (UTC). The page's dateModified is
-// always normalized to UTC by the page; the install timestamp is the
-// filesystem clock - on Linux btime is wall clock UTC. We compare at day
-// granularity so timezone offsets cannot push a same-day install into
-// the "page is newer" bucket. Uses QDateTime instead of gmtime_r so the
-// build is portable to MSVC (which lacks gmtime_r) and to keep with the
-// rest of the Qt-using panel. Uses QTimeZone::UTC rather than the
-// deprecated Qt::TimeSpec overload.
-QDate epoch_to_date(qint64 ts) {
-  if (ts <= 0)
-    return {};
-  return QDateTime::fromSecsSinceEpoch(ts, QTimeZone::UTC).date();
-}
+  // Inverse: epoch seconds -> QDate (UTC). The page's dateModified is
+  // always normalized to UTC by the page; the install timestamp is the
+  // filesystem clock - on Linux btime is wall clock UTC. We compare at day
+  // granularity so timezone offsets cannot push a same-day install into
+  // the "page is newer" bucket. Uses QDateTime instead of gmtime_r so the
+  // build is portable to MSVC (which lacks gmtime_r) and to keep with the
+  // rest of the Qt-using panel. Uses QTimeZone::UTC rather than the
+  // deprecated Qt::TimeSpec overload.
+  QDate epoch_to_date(qint64 ts) {
+    if (ts <= 0)
+      return {};
+    return QDateTime::fromSecsSinceEpoch(ts, QTimeZone::UTC).date();
+  }
 
-} // namespace
+}  // namespace
 
-LoversLabSourcePanel::LoversLabSourcePanel(const ModInfoData &data,
-                                           QWidget *parent)
+LoversLabSourcePanel::LoversLabSourcePanel(const ModInfoData &data, QWidget *parent)
     : SourceInfoPanel(data, parent) {
   auto *layout = new QVBoxLayout(this);
 
   auto *form = new QFormLayout();
-  mod_id_ = new QLineEdit(this);
+  mod_id_    = new QLineEdit(this);
   mod_id_->setPlaceholderText(QStringLiteral("0"));
   form->addRow(tr("Mod ID:"), mod_id_);
 
@@ -95,8 +94,8 @@ LoversLabSourcePanel::LoversLabSourcePanel(const ModInfoData &data,
   layout->addLayout(form);
 
   auto *buttons = new QHBoxLayout();
-  refresh_ = new QPushButton(tr("Refresh"), this);
-  visit_ = new QPushButton(tr("Visit on LoversLab"), this);
+  refresh_      = new QPushButton(tr("Refresh"), this);
+  visit_        = new QPushButton(tr("Visit on LoversLab"), this);
   buttons->addWidget(refresh_);
   buttons->addWidget(visit_);
   buttons->addStretch(1);
@@ -112,9 +111,9 @@ LoversLabSourcePanel::LoversLabSourcePanel(const ModInfoData &data,
   out_of_date_label_->setVisible(false);
   layout->addWidget(out_of_date_label_);
 
-  auto *custom_row = new QHBoxLayout();
+  auto *custom_row   = new QHBoxLayout();
   custom_url_toggle_ = new QCheckBox(tr("Custom URL:"), this);
-  custom_url_ = new QLineEdit(this);
+  custom_url_        = new QLineEdit(this);
   custom_url_->setEnabled(false);
   visit_custom_ = new QPushButton(tr("Visit"), this);
   visit_custom_->setEnabled(false);
@@ -145,8 +144,7 @@ LoversLabSourcePanel::LoversLabSourcePanel(const ModInfoData &data,
           &LoversLabSourcePanel::persist_custom_url);
   connect(custom_url_toggle_, &QCheckBox::toggled, this,
           &LoversLabSourcePanel::on_custom_url_toggled);
-  connect(refresh_, &QPushButton::clicked, this,
-          &LoversLabSourcePanel::on_refresh);
+  connect(refresh_, &QPushButton::clicked, this, &LoversLabSourcePanel::on_refresh);
   connect(visit_, &QPushButton::clicked, this, &LoversLabSourcePanel::on_visit);
   connect(visit_custom_, &QPushButton::clicked, this,
           &LoversLabSourcePanel::on_visit_custom);
@@ -171,9 +169,8 @@ void LoversLabSourcePanel::populate() {
   // Lock Mod ID when the mod is confirmed LoversLab-sourced with a
   // numeric id - matches Steam's behavior so the panel does not let the
   // user overwrite a real source id with garbage.
-  const bool is_confirmed_ll =
-      (data_.source_type == QLatin1String("loverslab") && !fid.isEmpty() &&
-       fid.toLongLong() > 0);
+  const bool is_confirmed_ll = (data_.source_type == QLatin1String("loverslab") &&
+                                !fid.isEmpty() && fid.toLongLong() > 0);
   mod_id_->setReadOnly(is_confirmed_ll);
 
   version_->setText(meta_value("General", "version"));
@@ -201,8 +198,7 @@ bool LoversLabSourcePanel::has_data() const {
   // refresh, manual user edit). Pure version-only mods (the default "1.0"
   // stamped on every install) are NOT LoversLab has_data - that would be
   // the same Workspace-rvld bug NexusSourcePanel guards against.
-  if (data_.source_type == QLatin1String("loverslab") &&
-      !data_.source_id.isEmpty())
+  if (data_.source_type == QLatin1String("loverslab") && !data_.source_id.isEmpty())
     return true;
   if (data_.load_meta) {
     auto meta = data_.load_meta();
@@ -222,8 +218,7 @@ void LoversLabSourcePanel::save_state() {
 }
 
 LoversLabSourcePanel::DateCompare LoversLabSourcePanel::compare_dates() const {
-  const QDate page_date =
-      parse_date_modified(meta_value("LoversLab", "date_modified"));
+  const QDate page_date = parse_date_modified(meta_value("LoversLab", "date_modified"));
   const QDate install_date = epoch_to_date(data_.installation_ts);
 
   // Per the analysis: mods downloaded before this feature landed
@@ -233,8 +228,7 @@ LoversLabSourcePanel::DateCompare LoversLabSourcePanel::compare_dates() const {
     return DateCompare::Unknown;
   if (page_date == install_date)
     return DateCompare::SameDay;
-  return page_date > install_date ? DateCompare::PageNewer
-                                  : DateCompare::PageOlder;
+  return page_date > install_date ? DateCompare::PageNewer : DateCompare::PageOlder;
 }
 
 void LoversLabSourcePanel::update_out_of_date_label() {
@@ -243,15 +237,14 @@ void LoversLabSourcePanel::update_out_of_date_label() {
   switch (compare_dates()) {
   case DateCompare::PageNewer: {
     const QString page_date = meta_value("LoversLab", "date_modified").left(10);
-    const QString installed = epoch_to_date(data_.installation_ts)
-                                  .toString(QStringLiteral("yyyy-MM-dd"));
+    const QString installed =
+        epoch_to_date(data_.installation_ts).toString(QStringLiteral("yyyy-MM-dd"));
     // Red, bold. Tooltip explains the comparison for curious users.
     out_of_date_label_->setText(
         tr("This mod is out of date - the page was updated on %1 but the "
            "installed copy is from %2.")
             .arg(page_date, installed));
-    out_of_date_label_->setStyleSheet(
-        QStringLiteral("color: red; font-weight: bold;"));
+    out_of_date_label_->setStyleSheet(QStringLiteral("color: red; font-weight: bold;"));
     out_of_date_label_->setToolTip(
         tr("The page's dateModified is later than this mod's install time. "
            "Press Refresh to fetch the new version's metadata."));
@@ -283,7 +276,7 @@ void LoversLabSourcePanel::update_version_color() {
   if (version_ == nullptr)
     return;
   const QString version = meta_value("General", "version");
-  const QString newest = meta_value("General", "newestversion");
+  const QString newest  = meta_value("General", "newestversion");
   if (!version.isEmpty() && !newest.isEmpty() && version != newest) {
     version_->setStyleSheet(QStringLiteral("color: red;"));
     version_->setToolTip(tr("Newest version: %1").arg(newest));
@@ -318,11 +311,11 @@ void LoversLabSourcePanel::on_refresh() {
 }
 
 void LoversLabSourcePanel::launch_fetch() {
-  fetch_in_flight_ = true;
-  refresh_pending_ = false;
-  refresh_mod_id_ = data_.id;
+  fetch_in_flight_  = true;
+  refresh_pending_  = false;
+  refresh_mod_id_   = data_.id;
   const quint64 gen = refresh_generation_;
-  auto fetch = data_.fetch_loverslab_info;
+  auto fetch        = data_.fetch_loverslab_info;
 
   if (refresh_ != nullptr) {
     refresh_->setEnabled(false);
@@ -331,24 +324,23 @@ void LoversLabSourcePanel::launch_fetch() {
 
   if (source_fetch_thread_ == nullptr) {
     source_fetch_thread_ = new LoversLabFetchThread(this);
-    connect(source_fetch_thread_->worker(), &LoversLabFetchWorker::finished,
-            this, &LoversLabSourcePanel::on_fetch_finished);
+    connect(source_fetch_thread_->worker(), &LoversLabFetchWorker::finished, this,
+            &LoversLabSourcePanel::on_fetch_finished);
   }
   source_fetch_thread_->start(std::move(fetch), gen);
 }
 
-void LoversLabSourcePanel::on_fetch_finished(
-    engine::LoversLabModInfoResult result, quint64 generation) {
+void LoversLabSourcePanel::on_fetch_finished(engine::LoversLabModInfoResult result,
+                                             quint64 generation) {
   fetch_in_flight_ = false;
   if (refresh_ != nullptr) {
     refresh_->setEnabled(true);
     refresh_->setText(tr("Refresh"));
   }
 
-  const bool stale =
-      generation != refresh_generation_ || refresh_mod_id_ != data_.id;
+  const bool stale = generation != refresh_generation_ || refresh_mod_id_ != data_.id;
   const bool relaunch = refresh_pending_;
-  refresh_pending_ = false;
+  refresh_pending_    = false;
 
   if (!stale)
     apply_fetch_result(result);
@@ -450,11 +442,10 @@ void LoversLabSourcePanel::persist_fields() {
     return;
   if (mod_id_ == nullptr)
     return;
-  const QString fid = mod_id_->text().trimmed();
+  const QString fid          = mod_id_->text().trimmed();
   const QString existing_fid = meta_value("LoversLab", "fileid");
   const bool is_loverslab_mod =
-      (data_.source_type == QLatin1String("loverslab")) ||
-      !existing_fid.isEmpty();
+      (data_.source_type == QLatin1String("loverslab")) || !existing_fid.isEmpty();
   if (is_loverslab_mod) {
     set_meta_value("LoversLab", "fileid", fid);
   }
@@ -479,4 +470,4 @@ void LoversLabSourcePanel::persist_custom_url() {
                             !custom_url_->text().isEmpty());
 }
 
-} // namespace ui
+}  // namespace ui

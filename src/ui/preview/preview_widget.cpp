@@ -22,7 +22,7 @@ namespace ui::preview {
 // Single checkerboard tile (8px squares). Cell layout matches the ImageDiff
 // reference (CanvasView::makeCheckerPixmap): c1 top-left/bottom-right,
 // c2 top-right/bottom-left.
-static QPixmap checker_tile(const QColor& c1, const QColor& c2) {
+static QPixmap checker_tile(const QColor &c1, const QColor &c2) {
   const int size = 8;
   QPixmap pm(size * 2, size * 2);
   QPainter p(&pm);
@@ -84,7 +84,7 @@ QIcon checkerboard_icon(int style, int extent) {
   return QIcon(pm);
 }
 
-bool path_supports_transparency(const QString& path) {
+bool path_supports_transparency(const QString &path) {
   static const QStringList kAlphaSuffixes = {
       QStringLiteral("png"),  QStringLiteral("webp"), QStringLiteral("gif"),
       QStringLiteral("apng"), QStringLiteral("tif"),  QStringLiteral("tiff"),
@@ -95,12 +95,12 @@ bool path_supports_transparency(const QString& path) {
   return kAlphaSuffixes.contains(QFileInfo(path).suffix().toLower());
 }
 
-bool image_has_transparency(const QImage& image) {
+bool image_has_transparency(const QImage &image) {
   if (image.isNull() || !image.hasAlphaChannel())
     return false;
   const QImage rgba = image.convertToFormat(QImage::Format_ARGB32);
   for (int y = 0; y < rgba.height(); ++y) {
-    const auto* line = reinterpret_cast<const QRgb*>(rgba.constScanLine(y));
+    const auto *line = reinterpret_cast<const QRgb *>(rgba.constScanLine(y));
     for (int x = 0; x < rgba.width(); ++x) {
       if (qAlpha(line[x]) != 255)
         return true;
@@ -109,7 +109,7 @@ bool image_has_transparency(const QImage& image) {
   return false;
 }
 
-QPixmap checker_pixmap(const QString& mode) {
+QPixmap checker_pixmap(const QString &mode) {
   if (mode == "checker_light")
     return checker_pixmap_for_style(CheckerboardStyle::Light);
   if (mode == "checker_medium")
@@ -124,7 +124,7 @@ QPixmap checker_pixmap(const QString& mode) {
   return checker_pixmap_for_style(CheckerboardStyle::Light);
 }
 
-PreviewWidget::PreviewWidget(QWidget* parent)
+PreviewWidget::PreviewWidget(QWidget *parent)
     : QLabel(parent, Qt::ToolTip | Qt::FramelessWindowHint) {
   setAttribute(Qt::WA_TranslucentBackground);
   apply_style();
@@ -148,7 +148,7 @@ void PreviewWidget::apply_style() {
   }
 }
 
-QPixmap PreviewWidget::make_checker(const QString& c1, const QString& c2) {
+QPixmap PreviewWidget::make_checker(const QString &c1, const QString &c2) {
   return checker_tile(QColor(c1), QColor(c2));
 }
 
@@ -156,7 +156,7 @@ QPixmap PreviewWidget::get_checker_pixmap() {
   return checker_pixmap(bg_mode_);
 }
 
-void PreviewWidget::paintEvent(QPaintEvent* event) {
+void PreviewWidget::paintEvent(QPaintEvent *event) {
   if (bg_mode_ != "solid") {
     QPainter p(this);
     p.fillRect(rect(), QBrush(get_checker_pixmap()));
@@ -165,9 +165,9 @@ void PreviewWidget::paintEvent(QPaintEvent* event) {
   QLabel::paintEvent(event);
 }
 
-void PreviewWidget::contextMenuEvent(QContextMenuEvent* event) {
+void PreviewWidget::contextMenuEvent(QContextMenuEvent *event) {
   QMenu menu(this);
-  QAction* anim_action = menu.addAction(tr("Animate .anm2 preview"));
+  QAction *anim_action = menu.addAction(tr("Animate .anm2 preview"));
   anim_action->setCheckable(true);
   anim_action->setChecked(animate_anm2_);
   connect(anim_action, &QAction::toggled, this, &PreviewWidget::set_animate_anm2);
@@ -180,24 +180,24 @@ void PreviewWidget::set_animate_anm2(bool animate) {
     anm2_timer_.stop();
 }
 
-void PreviewWidget::set_background_mode(const QString& mode) {
+void PreviewWidget::set_background_mode(const QString &mode) {
   bg_mode_ = mode;
   apply_style();
   update();
 }
 
-void PreviewWidget::set_background_color(const QString& color) {
+void PreviewWidget::set_background_color(const QString &color) {
   bg_color_ = color;
   apply_style();
   update();
 }
 
-void PreviewWidget::set_border_color(const QString& color) {
+void PreviewWidget::set_border_color(const QString &color) {
   border_color_ = color;
   apply_style();
 }
 
-bool PreviewWidget::show_preview(const QString& file_path, const QPoint& global_pos,
+bool PreviewWidget::show_preview(const QString &file_path, const QPoint &global_pos,
                                  bool debounce) {
   QString lower = file_path.toLower();
   if (!lower.endsWith(".png") && !lower.endsWith(".anm2"))
@@ -239,7 +239,7 @@ void PreviewWidget::on_debounce_fire() {
   }
 }
 
-bool PreviewWidget::try_load_png(const QString& path) {
+bool PreviewWidget::try_load_png(const QString &path) {
   QPixmap pm(path);
   if (pm.isNull())
     return false;
@@ -253,7 +253,7 @@ bool PreviewWidget::try_load_png(const QString& path) {
   return true;
 }
 
-bool PreviewWidget::try_load_anm2(const QString& path) {
+bool PreviewWidget::try_load_anm2(const QString &path) {
   /* Resolve the animation parser from the game feature registry. When no
    * game-specific parser is registered, the registry's wildcard fallback
    * returns the global (non-game-specific) parser registered by a file-format
@@ -275,12 +275,12 @@ bool PreviewWidget::try_load_anm2(const QString& path) {
     // Show first frame as static image
     if (data->frames.empty())
       return false;
-    const auto& first_frame = data->frames.front();
+    const auto &first_frame = data->frames.front();
     QImage canvas(data->canvas_width, data->canvas_height,
                   QImage::Format_ARGB32_Premultiplied);
     canvas.fill(Qt::transparent);
     QPainter painter(&canvas);
-    for (const auto& layer : first_frame.layers) {
+    for (const auto &layer : first_frame.layers) {
       QImage sprite(layer.rgba_pixels.data(), layer.width, layer.height,
                     QImage::Format_RGBA8888);
       painter.drawImage(QPoint(static_cast<int>(layer.x), static_cast<int>(layer.y)),
@@ -301,12 +301,12 @@ bool PreviewWidget::try_load_anm2(const QString& path) {
   anm2_frames_.clear();
   anm2_delays_.clear();
 
-  for (const auto& frame : data->frames) {
+  for (const auto &frame : data->frames) {
     QImage canvas(data->canvas_width, data->canvas_height,
                   QImage::Format_ARGB32_Premultiplied);
     canvas.fill(Qt::transparent);
     QPainter painter(&canvas);
-    for (const auto& layer : frame.layers) {
+    for (const auto &layer : frame.layers) {
       QImage sprite(layer.rgba_pixels.data(), layer.width, layer.height,
                     QImage::Format_RGBA8888);
       painter.drawImage(QPoint(static_cast<int>(layer.x), static_cast<int>(layer.y)),

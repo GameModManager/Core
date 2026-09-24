@@ -23,8 +23,9 @@ UpdateInfo WindowsSelfUpdater::check_for_update() {
   return fetch_update_info(".exe");
 }
 
-InstallResult WindowsSelfUpdater::install_update(
-    const UpdateInfo &info, std::function<void(float progress)> progress_cb) {
+InstallResult
+WindowsSelfUpdater::install_update(const UpdateInfo &info,
+                                   std::function<void(float progress)> progress_cb) {
   InstallResult result;
 
   if (!info.available || info.download_url.empty()) {
@@ -33,13 +34,12 @@ InstallResult WindowsSelfUpdater::install_update(
   }
 
   // Download installer to a temp path.
-  const auto installer_path =
-      std::filesystem::temp_directory_path() / "gmm_setup.exe";
+  const auto installer_path = std::filesystem::temp_directory_path() / "gmm_setup.exe";
 
   if (progress_cb)
     progress_cb(0.0f);
 
-  namespace dl = engine::download;
+  namespace dl   = engine::download;
   long http_code = 0;
   dl::Options opts;
   opts.user_agent = "GameModManager/SelfUpdater";
@@ -53,11 +53,10 @@ InstallResult WindowsSelfUpdater::install_update(
   };
   dl_progress.start = std::chrono::steady_clock::now();
 
-  bool ok = dl::curl_download(info.download_url, installer_path, http_code,
-                              opts, &dl_progress, 0, nullptr, NET_CALLER);
+  bool ok = dl::curl_download(info.download_url, installer_path, http_code, opts,
+                              &dl_progress, 0, nullptr, NET_CALLER);
   if (!ok || http_code >= 400) {
-    result.error_message =
-        "Download failed (HTTP " + std::to_string(http_code) + ")";
+    result.error_message = "Download failed (HTTP " + std::to_string(http_code) + ")";
     return result;
   }
 
@@ -67,7 +66,7 @@ InstallResult WindowsSelfUpdater::install_update(
   // Launch the installer silently.
   // NSIS supports /S, Inno Setup supports /SILENT /VERYSILENT.
   std::string cmd = "\"" + installer_path.string() + "\" /S";
-  int rc = std::system(cmd.c_str());
+  int rc          = std::system(cmd.c_str());
   if (rc != 0) {
     result.error_message = "Installer exited with code " + std::to_string(rc);
     std::error_code ec;
@@ -75,7 +74,7 @@ InstallResult WindowsSelfUpdater::install_update(
     return result;
   }
 
-  result.success = true;
+  result.success          = true;
   result.requires_restart = true;
   return result;
 }
@@ -85,12 +84,11 @@ void WindowsSelfUpdater::restart() {
   // the user re-launch, or attempt to re-execute the current binary path.
   const auto exe = std::filesystem::current_path() / "gamemodmanager.exe";
   if (std::filesystem::exists(exe)) {
-    ShellExecuteA(nullptr, "open", exe.string().c_str(), nullptr, nullptr,
-                  SW_SHOW);
+    ShellExecuteA(nullptr, "open", exe.string().c_str(), nullptr, nullptr, SW_SHOW);
   }
   std::exit(0);
 }
 
-} // namespace engine::update
+}  // namespace engine::update
 
-#endif // _WIN32
+#endif  // _WIN32

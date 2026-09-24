@@ -21,11 +21,11 @@ namespace engine::gmmpack {
 // Parse one ini/<targetFile>.json document (already schema-validated by the
 // unpack pipeline) into an IniEntry. Lenient by design: missing fields fall
 // back to defaults, since strict shape checking belongs to the schema stage.
-IniEntry parse_ini_entry(const nlohmann::json& j);
+IniEntry parse_ini_entry(const nlohmann::json &j);
 
 // Convert a parsed entry to the engine's tweak structs (notably mapping the
 // raw status string onto modpack::TweakStatus). Unknown status strings map
 // to Recommended; schema-validated input never hits that path.
-modpack::IniEditFile to_edit_file(const IniEntry& entry);
+modpack::IniEditFile to_edit_file(const IniEntry &entry);
 
 }  // namespace engine::gmmpack

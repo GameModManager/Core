@@ -24,10 +24,10 @@ using ToolInvokeFn = void (*)(void *user_data);
 
 struct ToolEntry {
   std::string tool_id;
-  std::string kind; // "tool", "workshop", "advisory", ...
+  std::string kind;  // "tool", "workshop", "advisory", ...
   ToolInvokeFn fn = nullptr;
   void *user_data = nullptr;
-  std::string plugin_path; // owning plugin (for clear_plugin on unload)
+  std::string plugin_path;  // owning plugin (for clear_plugin on unload)
 };
 
 class PluginToolRegistry {
@@ -36,8 +36,7 @@ public:
 
   // Register (or replace) a plugin-provided tool callback.
   void register_tool(const std::string &tool_id, const std::string &kind,
-                     ToolInvokeFn fn, void *user_data,
-                     const std::string &plugin_path);
+                     ToolInvokeFn fn, void *user_data, const std::string &plugin_path);
 
   // Invoke a registered tool by id. Returns false if unknown or fn is null.
   bool invoke(const std::string &tool_id) const;
@@ -62,4 +61,4 @@ private:
   std::vector<ToolEntry> tools_;
 };
 
-} // namespace engine
+}  // namespace engine

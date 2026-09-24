@@ -13,7 +13,7 @@
 namespace fs = std::filesystem;
 
 namespace {
-void require(bool cond, const std::string& msg) {
+void require(bool cond, const std::string &msg) {
   INFO(msg);
   REQUIRE(cond);
 }
@@ -36,15 +36,15 @@ public:
   }
   [[nodiscard]] fs::path steam_userdata_dir() const override { return userdata; }
   [[nodiscard]] bool
-  launch_executable(const fs::path& /*executable*/,
-                    const std::vector<std::string>& /*args*/ = {}) const override {
+  launch_executable(const fs::path & /*executable*/,
+                    const std::vector<std::string> & /*args*/ = {}) const override {
     return false;
   }
   [[nodiscard]] fs::path home_dir() const override { return {}; }
   [[nodiscard]] fs::path temp_dir() const override { return fs::temp_directory_path(); }
 };
 
-static fs::path make_temp(const std::string& tag) {
+static fs::path make_temp(const std::string &tag) {
   static int counter = 0;
   auto dir           = fs::temp_directory_path() /
                        ("gmm_mygames_" + tag + "_" + std::to_string(counter++));

@@ -56,20 +56,20 @@ struct TaskDialogButton {
 // reimplemented here in miniature.
 class TaskDialog : public QWidget {
 public:
-  explicit TaskDialog(QWidget* parent = nullptr, const QString& title = QString());
+  explicit TaskDialog(QWidget *parent = nullptr, const QString &title = QString());
 
-  TaskDialog& title(const QString& title);
-  TaskDialog& main(const QString& text);
-  TaskDialog& content(const QString& text);
-  TaskDialog& details(const QString& text);
-  TaskDialog& icon(QMessageBox::Icon icon);
-  TaskDialog& add_button(const TaskDialogButton& button);
+  TaskDialog &title(const QString &title);
+  TaskDialog &main(const QString &text);
+  TaskDialog &content(const QString &text);
+  TaskDialog &details(const QString &text);
+  TaskDialog &icon(QMessageBox::Icon icon);
+  TaskDialog &add_button(const TaskDialogButton &button);
   // Opt-in answer persistence: a stored choice for (action, file) makes
   // exec() return it without showing the dialog. Empty action = no row.
-  TaskDialog& remember(const QString& action, const QString& file = QString());
+  TaskDialog &remember(const QString &action, const QString &file = QString());
   // Injects an arbitrary widget into the content panel (reparented).
-  TaskDialog& add_content(QWidget* widget);
-  TaskDialog& set_minimum_width(int width);
+  TaskDialog &add_content(QWidget *widget);
+  TaskDialog &set_minimum_width(int width);
 
   // Runs the dialog modally: returns the picked button's StandardButton id,
   // or QMessageBox::Cancel when the dialog is rejected. A remembered answer
@@ -82,24 +82,24 @@ public:
   void reject();
 
 protected:
-  void closeEvent(QCloseEvent* event) override;
-  void keyPressEvent(QKeyEvent* event) override;
+  void closeEvent(QCloseEvent *event) override;
+  void keyPressEvent(QKeyEvent *event) override;
 
 private:
   void build_buttons();
   void accept_with(QMessageBox::StandardButton id);
   bool remember_enabled() const;
 
-  QLabel* icon_label_           = nullptr;
-  QLabel* main_label_           = nullptr;
-  QLabel* content_label_        = nullptr;
-  QVBoxLayout* button_layout_   = nullptr;
-  QVBoxLayout* content_layout_  = nullptr;
-  QDialogButtonBox* button_box_ = nullptr;
-  QToolButton* details_toggle_  = nullptr;
-  QPlainTextEdit* details_edit_ = nullptr;
-  QCheckBox* remember_check_    = nullptr;
-  QComboBox* remember_combo_    = nullptr;
+  QLabel *icon_label_           = nullptr;
+  QLabel *main_label_           = nullptr;
+  QLabel *content_label_        = nullptr;
+  QVBoxLayout *button_layout_   = nullptr;
+  QVBoxLayout *content_layout_  = nullptr;
+  QDialogButtonBox *button_box_ = nullptr;
+  QToolButton *details_toggle_  = nullptr;
+  QPlainTextEdit *details_edit_ = nullptr;
+  QCheckBox *remember_check_    = nullptr;
+  QComboBox *remember_combo_    = nullptr;
 
   QList<TaskDialogButton> buttons_;
   QString remember_action_;
@@ -107,7 +107,7 @@ private:
   QMessageBox::StandardButton result_ = QMessageBox::Ok;
   bool accepted_                      = false;
   bool buttons_built_                 = false;
-  QEventLoop* loop_                   = nullptr;
+  QEventLoop *loop_                   = nullptr;
 };
 
 }  // namespace ui

@@ -2,12 +2,12 @@
 
 namespace ui {
 
-ModInfoTab::ModInfoTab(QWidget* parent) : QWidget(parent) {}
+ModInfoTab::ModInfoTab(QWidget *parent) : QWidget(parent) {}
 
 ModInfoTab::~ModInfoTab() = default;
 
 void ModInfoTab::set_has_data(bool has) {
-    has_data_ = has;
+  has_data_ = has;
 }
 
 }  // namespace ui

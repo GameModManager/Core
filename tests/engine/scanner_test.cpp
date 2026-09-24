@@ -27,22 +27,22 @@
 namespace fs = std::filesystem;
 
 namespace {
-void require(bool cond, const std::string& msg) {
+void require(bool cond, const std::string &msg) {
   INFO(msg);
   REQUIRE(cond);
 }
 }  // namespace
 
-static void write_file(const fs::path& p, const std::string& contents) {
+static void write_file(const fs::path &p, const std::string &contents) {
   fs::create_directories(p.parent_path());
   std::ofstream out(p);
   out << contents;
   require(out.good(), "write_file failed for " + p.string());
 }
 
-static const engine::ScannedMod* by_folder(const std::vector<engine::ScannedMod>& mods,
-                                           const std::string& folder) {
-  for (const auto& m : mods)
+static const engine::ScannedMod *by_folder(const std::vector<engine::ScannedMod> &mods,
+                                           const std::string &folder) {
+  for (const auto &m : mods)
     if (m.folder_name == folder)
       return &m;
   return nullptr;
@@ -55,8 +55,8 @@ static const engine::ScannedMod* by_folder(const std::vector<engine::ScannedMod>
 struct TrashRedirect {
   std::string old;
   bool had = false;
-  explicit TrashRedirect(const fs::path& fake_home) {
-    if (const char* v = ::getenv("XDG_DATA_HOME")) {
+  explicit TrashRedirect(const fs::path &fake_home) {
+    if (const char *v = ::getenv("XDG_DATA_HOME")) {
       old = v;
       had = true;
     }
@@ -89,7 +89,7 @@ TEST_CASE("scanner", "[engine]") {
   engine::GameKnowledge knowledge;
   const auto mods = engine::ModScanner::scan_dir(knowledge, "testgame", root);
 
-  const auto* colored = by_folder(mods, "My Mods_separator");
+  const auto *colored = by_folder(mods, "My Mods_separator");
   require(colored != nullptr, "colored separator found");
   require(colored->is_separator, "My Mods_separator is a separator");
   require(colored->display_name == "My Mods",
@@ -97,14 +97,14 @@ TEST_CASE("scanner", "[engine]") {
   require(colored->separator_color == "#ff888888",
           "color read from meta.ini [General] color");
 
-  const auto* plain = by_folder(mods, "Plain_separator");
+  const auto *plain = by_folder(mods, "Plain_separator");
   require(plain != nullptr, "plain separator found");
   require(plain->is_separator, "Plain_separator is a separator");
   require(plain->display_name == "Plain", "plain separator display name");
   require(plain->separator_color.empty(),
           "no color default - separator_color stays empty");
 
-  const auto* mod = by_folder(mods, "SomeMod");
+  const auto *mod = by_folder(mods, "SomeMod");
   require(mod != nullptr, "regular mod found");
   require(!mod->is_separator, "SomeMod is not a separator");
   require(mod->display_name == "SomeMod", "mod display name is the folder");
@@ -117,7 +117,7 @@ TEST_CASE("scanner", "[engine]") {
   write_file(root / "FomodMod" / "meta.ini",
              "[General]\nversion = 2.0\n[fomod]\nchoices = {\"step\":\"x\"}\n");
   const auto mods3 = engine::ModScanner::scan_dir(knowledge, "testgame", root);
-  const auto* fm   = by_folder(mods3, "FomodMod");
+  const auto *fm   = by_folder(mods3, "FomodMod");
   require(fm != nullptr, "fomod mod found");
   require(fm->is_fomod, "mod with [fomod] choices is flagged FOMOD");
   require(fm->version == "2.0", "fomod mod keeps its version");
@@ -128,7 +128,7 @@ TEST_CASE("scanner", "[engine]") {
   write_file(root / "EmptyFomod" / "meta.ini",
              "[General]\n[fomod]\nalwaysRestore = 1\n");
   const auto mods4 = engine::ModScanner::scan_dir(knowledge, "testgame", root);
-  const auto* ef   = by_folder(mods4, "EmptyFomod");
+  const auto *ef   = by_folder(mods4, "EmptyFomod");
   require(ef != nullptr, "empty-fomod mod found");
   require(!ef->is_fomod, "[fomod] without choices is not flagged FOMOD");
 
@@ -136,7 +136,7 @@ TEST_CASE("scanner", "[engine]") {
   fs::create_directories(root / "NoColor_separator");
   write_file(root / "NoColor_separator" / "meta.ini", "[General]\n");
   const auto mods2 = engine::ModScanner::scan_dir(knowledge, "testgame", root);
-  const auto* nc   = by_folder(mods2, "NoColor_separator");
+  const auto *nc   = by_folder(mods2, "NoColor_separator");
   require(nc != nullptr, "no-color separator found");
   require(nc->separator_color.empty(),
           "meta.ini without a color key yields an empty color");
@@ -148,7 +148,7 @@ TEST_CASE("scanner", "[engine]") {
   write_file(root / "DisabledMod" / "meta.ini", "[General]\n");
   write_file(root / "DisabledMod" / ".gmmdisabled", "");
   const auto mods5 = engine::ModScanner::scan_dir(knowledge, "testgame", root);
-  const auto* dm   = by_folder(mods5, "DisabledMod");
+  const auto *dm   = by_folder(mods5, "DisabledMod");
   require(dm != nullptr, "disabled mod found");
   require(!dm->enabled, "mod carrying .gmmdisabled is disabled by default");
 
@@ -167,7 +167,7 @@ TEST_CASE("scanner", "[engine]") {
   fs::create_directories(root / "RootMod");
   write_file(root / "RootMod" / "meta.ini", "[General]\nrootOverride = 1\n");
   const auto mods6 = engine::ModScanner::scan_dir(knowledge, "testgame", root);
-  const auto* rm   = by_folder(mods6, "RootMod");
+  const auto *rm   = by_folder(mods6, "RootMod");
   require(rm != nullptr, "root-flagged mod found");
   require(rm->root_override, "mod with [General] rootOverride=1 is flagged");
 
@@ -175,7 +175,7 @@ TEST_CASE("scanner", "[engine]") {
   fs::create_directories(root / "FlatMod");
   write_file(root / "FlatMod" / "meta.ini", "[General]\n");
   const auto mods7 = engine::ModScanner::scan_dir(knowledge, "testgame", root);
-  const auto* flat = by_folder(mods7, "FlatMod");
+  const auto *flat = by_folder(mods7, "FlatMod");
   require(flat != nullptr, "flat mod found");
   require(!flat->root_override, "mod without rootOverride stays unflagged");
 
@@ -184,7 +184,7 @@ TEST_CASE("scanner", "[engine]") {
   // installed by the manager. Was silently invisible before.
   fs::create_directories(root / "DroppedFolder");
   const auto modsA = engine::ModScanner::scan_dir(knowledge, "testgame", root);
-  const auto* df   = by_folder(modsA, "DroppedFolder");
+  const auto *df   = by_folder(modsA, "DroppedFolder");
   require(df != nullptr, "meta-less folder is still listed");
   require(df->no_metadata, "meta-less folder flagged no_metadata");
   require(df->display_name == "DroppedFolder",
@@ -196,7 +196,7 @@ TEST_CASE("scanner", "[engine]") {
   fs::create_directories(root / "BrokenMeta");
   write_file(root / "BrokenMeta" / "meta.ini", "this is {{{ not valid ini ]]]");
   const auto modsB = engine::ModScanner::scan_dir(knowledge, "testgame", root);
-  const auto* bm   = by_folder(modsB, "BrokenMeta");
+  const auto *bm   = by_folder(modsB, "BrokenMeta");
   require(bm != nullptr, "malformed meta.ini folder still listed");
   require(!bm->no_metadata, "malformed meta.ini still counts as metadata present");
   require(!bm->invalid_data, "no checker registered -> malformed folder not invalid");
@@ -213,7 +213,7 @@ TEST_CASE("scanner", "[engine]") {
   // mod list, but recognized content is required to clear FLAG_INVALID).
   fs::create_directories(root / "BadContent");
   const auto modsC = engine::ModScanner::scan_dir(checker, "skyrim", root);
-  const auto* bc   = by_folder(modsC, "BadContent");
+  const auto *bc   = by_folder(modsC, "BadContent");
   require(bc != nullptr, "empty content folder is still listed");
   require(bc->invalid_data, "empty content folder flagged invalid");
 
@@ -224,7 +224,7 @@ TEST_CASE("scanner", "[engine]") {
   fs::create_directories(root / "GoodContent" / "textures");
   write_file(root / "GoodContent" / "modfile.esp", "");
   const auto modsC2 = engine::ModScanner::scan_dir(checker, "skyrim", root);
-  const auto* gc    = by_folder(modsC2, "GoodContent");
+  const auto *gc    = by_folder(modsC2, "GoodContent");
   require(gc != nullptr && !gc->invalid_data,
           "folder with .esp and textures/ is valid content");
   require(gc->no_metadata, "folder with .esp still flagged no_metadata");
@@ -234,7 +234,7 @@ TEST_CASE("scanner", "[engine]") {
   fs::create_directories(root / "MetaOnly");
   write_file(root / "MetaOnly" / "meta.ini", "[General]\n");
   const auto modsC3 = engine::ModScanner::scan_dir(checker, "skyrim", root);
-  const auto* mo    = by_folder(modsC3, "MetaOnly");
+  const auto *mo    = by_folder(modsC3, "MetaOnly");
   require(mo != nullptr && !mo->invalid_data, "meta.ini-only folder is valid content");
   require(!mo->no_metadata, "meta.ini-only folder has metadata");
 
@@ -249,7 +249,7 @@ TEST_CASE("scanner", "[engine]") {
   // is listed but flagged invalid (MO2 parity).
   fs::create_directories(root / "XmlNoMeta");
   const auto modsX = engine::ModScanner::scan_dir(xml_know, "isaac", root);
-  const auto* xn   = by_folder(modsX, "XmlNoMeta");
+  const auto *xn   = by_folder(modsX, "XmlNoMeta");
   require(xn != nullptr,
           "xml folder without metadata.xml and no valid content is still listed");
   require(xn->invalid_data, "xml folder without metadata.xml and no valid "
@@ -260,7 +260,7 @@ TEST_CASE("scanner", "[engine]") {
   write_file(root / "XmlMod" / "metadata.xml",
              "<mod><name>My Xml Mod</name><version>1.0</version></mod>");
   const auto modsX2 = engine::ModScanner::scan_dir(xml_know, "isaac", root);
-  const auto* xm    = by_folder(modsX2, "XmlMod");
+  const auto *xm    = by_folder(modsX2, "XmlMod");
   require(xm != nullptr && !xm->no_metadata,
           "xml mod with metadata listed, has metadata");
   require(xm->display_name == "My Xml Mod", "xml name parsed");
@@ -272,7 +272,7 @@ TEST_CASE("scanner", "[engine]") {
   fs::create_directories(root / "XmlResOnly" / "resources-dlc3");
   write_file(root / "XmlResOnly" / "modfile.esm", "");
   const auto modsX3 = engine::ModScanner::scan_dir(xml_know, "isaac", root);
-  const auto* xr    = by_folder(modsX3, "XmlResOnly");
+  const auto *xr    = by_folder(modsX3, "XmlResOnly");
   require(xr != nullptr && !xr->invalid_data,
           "resources-dlc3/ folder with .esm is valid content");
   require(xr->no_metadata, "resources-dlc3/ folder still flagged no_metadata");
@@ -284,7 +284,7 @@ TEST_CASE("scanner", "[engine]") {
   fs::create_directories(root / "XmlValidated");
   write_file(root / "XmlValidated" / "meta.ini", "[General]\nvalidated = true\n");
   const auto modsV = engine::ModScanner::scan_dir(xml_know, "isaac", root);
-  const auto* xv   = by_folder(modsV, "XmlValidated");
+  const auto *xv   = by_folder(modsV, "XmlValidated");
   require(xv != nullptr && !xv->invalid_data,
           "validated=true suppresses the invalid flag");
   require(!xv->no_metadata, "validated=true suppresses the no_metadata flag");
@@ -302,20 +302,20 @@ TEST_CASE("scanner", "[engine]") {
             "mark_validated persisted 'validated' in meta.ini");
   }
   const auto modsV2 = engine::ModScanner::scan_dir(checker, "skyrim", root);
-  const auto* mv    = by_folder(modsV2, "MarkedValid");
+  const auto *mv    = by_folder(modsV2, "MarkedValid");
   require(mv != nullptr && !mv->no_metadata,
           "mark_validated clears the no_metadata flag");
   require(!mv->invalid_data, "mark_validated clears the invalid flag");
 
   // Timestamps (P8.4): every real folder reports its birth (installation) and
   // mtime (changed) so the mod list can show both columns.
-  const auto* timed = by_folder(modsV2, "SomeMod");
+  const auto *timed = by_folder(modsV2, "SomeMod");
   require(timed != nullptr, "SomeMod found for timestamp check");
   require(timed->install_time > 0, "install_time populated for a real folder");
   require(timed->changed_time > 0, "changed_time populated for a real folder");
   require(timed->changed_time >= timed->install_time,
           "changed_time (mtime) is not older than install_time (btime)");
-  const auto* sep = by_folder(modsV2, "My Mods_separator");
+  const auto *sep = by_folder(modsV2, "My Mods_separator");
   require(sep != nullptr && sep->install_time > 0, "separators carry a birth time too");
   {
     // Rewriting a file bumps mtime; the re-scanned mod must reflect it.
@@ -325,7 +325,7 @@ TEST_CASE("scanner", "[engine]") {
     const fs::path touched = root / "SomeMod" / "content.txt";
     write_file(touched, "hello\n");
     const auto modsR = engine::ModScanner::scan_dir(checker, "skyrim", root);
-    const auto* re   = by_folder(modsR, "SomeMod");
+    const auto *re   = by_folder(modsR, "SomeMod");
     require(re != nullptr && re->changed_time > timed->changed_time,
             "changed_time reflects a file write after install");
   }
@@ -477,7 +477,7 @@ TEST_CASE("prune_orphaned_empty_mods", "[engine]") {
   // The ghost's tracker entry is gone, the rest survive the save.
   engine::ModStateTracker reloaded(instance_root);
   require(reloaded.load(), "tracker reloads");
-  const engine::ModStateTracker& viewed = reloaded;
+  const engine::ModStateTracker &viewed = reloaded;
   require(viewed.entry("GhostMod") == nullptr, "ghost entry removed");
   require(viewed.entry("RealMod") != nullptr, "live entry kept");
   require(viewed.entry("SteamMod123") != nullptr, "external entry kept");
@@ -560,18 +560,18 @@ TEST_CASE("mirrored mod detection", "[engine]") {
   engine::GameKnowledge knowledge;
   const auto scanned = engine::ModScanner::scan_dir(knowledge, "testgame", mods);
 
-  const auto* mirrored = by_folder(scanned, "SomeMod");
+  const auto *mirrored = by_folder(scanned, "SomeMod");
   require(mirrored != nullptr, "mirrored mod found");
   require(mirrored->is_mirrored, "mod with [Mirror] flagged mirrored");
   require(!mirrored->mirror_source_missing, "live source not flagged missing");
   require(mirrored->mirror_source_path == source.string(), "source path recorded");
 
-  const auto* gone = by_folder(scanned, "GoneMod");
+  const auto *gone = by_folder(scanned, "GoneMod");
   require(gone != nullptr, "orphaned mirror found");
   require(gone->is_mirrored, "orphaned mirror still flagged mirrored");
   require(gone->mirror_source_missing, "deleted source flagged missing");
 
-  const auto* plain = by_folder(scanned, "PlainMod");
+  const auto *plain = by_folder(scanned, "PlainMod");
   require(plain != nullptr, "plain mod found");
   require(!plain->is_mirrored, "mod without [Mirror] not flagged");
   require(!plain->mirror_source_missing, "plain mod never source-missing");
@@ -599,12 +599,12 @@ TEST_CASE("mirrored mod is not pruned when its source is gone", "[engine]") {
 
   engine::GameKnowledge knowledge;
   const auto scanned = engine::ModScanner::scan_dir(knowledge, "testgame", mods);
-  const auto* mg     = by_folder(scanned, "MirroredGhost");
+  const auto *mg     = by_folder(scanned, "MirroredGhost");
   require(mg != nullptr, "mirrored ghost scanned");
   require(mg->is_empty, "mirrored ghost is empty");
   require(mg->is_mirrored && mg->mirror_source_missing,
           "mirrored ghost flagged source-missing");
-  const auto* pg = by_folder(scanned, "PlainGhost");
+  const auto *pg = by_folder(scanned, "PlainGhost");
   require(pg != nullptr, "plain ghost scanned");
   require(pg->is_empty, "plain ghost is empty");
 
@@ -656,7 +656,7 @@ TEST_CASE("prune seeds tracker for healthy mods, prunes on a later scan", "[engi
   {
     engine::ModStateTracker reloaded(instance_root);
     require(reloaded.load(), "tracker reloads after seeding");
-    const engine::ModStateTracker& viewed = reloaded;
+    const engine::ModStateTracker &viewed = reloaded;
     require(viewed.entry("LiveMod") != nullptr, "healthy mod seeded into tracker");
   }
 
@@ -772,22 +772,22 @@ TEST_CASE("scanner flags native-named folders unmanaged", "[engine]") {
 
   const auto scanned = engine::ModScanner::scan_dir(knowledge, "nativeguard", mods);
 
-  const auto* skyrim = by_folder(scanned, "Skyrim.esm");
+  const auto *skyrim = by_folder(scanned, "Skyrim.esm");
   require(skyrim != nullptr, "vanilla-named folder still listed");
   require(skyrim->is_game_native, "Skyrim.esm folder flagged unmanaged");
   require(skyrim->display_name == "Skyrim.esm", "unmanaged row keeps file name");
   require(!skyrim->no_metadata, "unmanaged row carries no metadata warning");
   require(!skyrim->invalid_data, "unmanaged row carries no invalid-data flag");
 
-  const auto* dawn = by_folder(scanned, "dawnguard.esm");
+  const auto *dawn = by_folder(scanned, "dawnguard.esm");
   require(dawn != nullptr && dawn->is_game_native,
           "lowercase vanilla name matches case-insensitively");
 
-  const auto* regular = by_folder(scanned, "SomeMod");
+  const auto *regular = by_folder(scanned, "SomeMod");
   require(regular != nullptr && !regular->is_game_native,
           "regular mod unaffected by the guard");
 
-  const auto* stem = by_folder(scanned, "Skyrim");
+  const auto *stem = by_folder(scanned, "Skyrim");
   require(stem != nullptr && !stem->is_game_native,
           "folder sharing only the stem stays a regular mod");
 
@@ -801,7 +801,7 @@ TEST_CASE("scanner flags native-named folders unmanaged", "[engine]") {
   // shape scans as a regular mod.
   engine::GameKnowledge bare;
   const auto bare_scanned = engine::ModScanner::scan_dir(bare, "nativeguard", mods);
-  const auto* bare_row    = by_folder(bare_scanned, "Skyrim.esm");
+  const auto *bare_row    = by_folder(bare_scanned, "Skyrim.esm");
   require(bare_row != nullptr && !bare_row->is_game_native,
           "guard inactive without declared native plugins");
 
@@ -842,9 +842,9 @@ TEST_CASE("scanner flags Creation Club content unmanaged", "[engine]") {
 
   const auto scanned = engine::ModScanner::scan_dir(knowledge, "skyrimse", mods);
 
-  for (const char* cc : {"ccBGSSSE001-Fish.esm", "ccQDRSSE001-SurvivalMode.esl",
+  for (const char *cc : {"ccBGSSSE001-Fish.esm", "ccQDRSSE001-SurvivalMode.esl",
                          "CCBGSSSE037-Curios.ESL"}) {
-    const auto* row = by_folder(scanned, cc);
+    const auto *row = by_folder(scanned, cc);
     require(row != nullptr, std::string("CC folder still listed: ") + cc);
     require(row->is_game_native, std::string("CC folder flagged unmanaged: ") + cc);
     require(row->display_name == cc, "unmanaged CC row keeps file name");
@@ -852,11 +852,11 @@ TEST_CASE("scanner flags Creation Club content unmanaged", "[engine]") {
     require(!row->invalid_data, "unmanaged CC row carries no invalid-data flag");
   }
 
-  const auto* noext = by_folder(scanned, "ccCoolMod");
+  const auto *noext = by_folder(scanned, "ccCoolMod");
   require(noext != nullptr && !noext->is_game_native,
           "cc-prefixed folder without plugin extension stays a regular mod");
 
-  const auto* mid = by_folder(scanned, "myccMod.esp");
+  const auto *mid = by_folder(scanned, "myccMod.esp");
   require(mid != nullptr && !mid->is_game_native,
           "folder with cc mid-name stays a regular mod");
 
@@ -870,7 +870,7 @@ TEST_CASE("scanner flags Creation Club content unmanaged", "[engine]") {
   // pattern stays inactive there, like the exact-name guard.
   engine::GameKnowledge bare;
   const auto bare_scanned = engine::ModScanner::scan_dir(bare, "skyrimse", mods);
-  const auto* bare_row    = by_folder(bare_scanned, "ccBGSSSE001-Fish.esm");
+  const auto *bare_row    = by_folder(bare_scanned, "ccBGSSSE001-Fish.esm");
   require(bare_row != nullptr && !bare_row->is_game_native,
           "CC pattern inactive without declared native plugins");
 

@@ -4,6 +4,6 @@
 #include "engine/deploy/ledger.h"
 
 namespace engine {
-using DeployEntry = ::Deploy::Entry;
+using DeployEntry  = ::Deploy::Entry;
 using DeployLedger = ::Deploy::Ledger;
-} // namespace engine
+}  // namespace engine

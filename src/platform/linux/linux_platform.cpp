@@ -25,8 +25,8 @@ namespace engine {
 // --- XDG Base Directory resolution ---
 
 std::filesystem::path
-LinuxPlatform::resolve_env_dir(const char* env_var,
-                               const std::filesystem::path& fallback) {
+LinuxPlatform::resolve_env_dir(const char *env_var,
+                               const std::filesystem::path &fallback) {
   auto val = std::getenv(env_var);
   if (val && val[0] != '\0') {
     return std::filesystem::path(val);
@@ -73,7 +73,7 @@ std::filesystem::path LinuxPlatform::find_steam_root() const {
       home_path / ".steam" / "debian-installation",
   };
 
-  for (const auto& root : candidates) {
+  for (const auto &root : candidates) {
     auto vdf = root / "steamapps" / "libraryfolders.vdf";
     if (std::filesystem::exists(vdf)) {
       return root;
@@ -95,7 +95,7 @@ std::vector<Platform::ProtonVersionInfo> LinuxPlatform::scan_proton_runners() co
   auto tools = steam_root / "steamapps" / "common";
   std::error_code ec;
   if (std::filesystem::exists(tools)) {
-    for (const auto& entry : std::filesystem::directory_iterator(tools, ec)) {
+    for (const auto &entry : std::filesystem::directory_iterator(tools, ec)) {
       if (!entry.is_directory())
         continue;
       auto name = entry.path().filename().string();
@@ -156,7 +156,7 @@ std::filesystem::path LinuxPlatform::find_proton() const {
 
   std::string best_name;
   std::filesystem::path best;
-  for (const auto& r : runners) {
+  for (const auto &r : runners) {
     if (best.empty() || r.name > best_name) {
       best_name = r.name;
       best      = r.binary;
@@ -170,7 +170,7 @@ LinuxPlatform::enumerate_proton_versions() const {
   return scan_proton_runners();
 }
 
-std::filesystem::path LinuxPlatform::find_proton_named(const std::string& name) const {
+std::filesystem::path LinuxPlatform::find_proton_named(const std::string &name) const {
   if (name.empty())
     return {};
 
@@ -183,15 +183,15 @@ std::filesystem::path LinuxPlatform::find_proton_named(const std::string& name) 
   }
 
   // Otherwise match against the display names of installed runners.
-  for (const auto& r : scan_proton_runners()) {
+  for (const auto &r : scan_proton_runners()) {
     if (r.name == name)
       return r.binary;
   }
   return {};
 }
 
-std::string LinuxPlatform::vdf_value_for_key(const std::string& line,
-                                             const std::string& key) {
+std::string LinuxPlatform::vdf_value_for_key(const std::string &line,
+                                             const std::string &key) {
   auto pos = line.find("\"" + key + "\"");
   if (pos == std::string::npos)
     return {};
@@ -271,7 +271,7 @@ std::string LinuxPlatform::read_steam_compat_tool(uint32_t appid) const {
 }
 
 std::filesystem::path
-LinuxPlatform::resolve_tool_dir(const std::string& tool_name) const {
+LinuxPlatform::resolve_tool_dir(const std::string &tool_name) const {
   auto steam_root = find_steam_root();
   if (steam_root.empty())
     return {};
@@ -326,7 +326,7 @@ std::filesystem::path LinuxPlatform::find_proton_for_game(uint32_t appid) const 
       }
       // Some tools have the proton script in a versioned subdirectory
       if (std::filesystem::exists(tool_dir)) {
-        for (const auto& entry : std::filesystem::directory_iterator(tool_dir)) {
+        for (const auto &entry : std::filesystem::directory_iterator(tool_dir)) {
           if (entry.is_directory()) {
             auto sub_proton = entry.path() / "proton";
             if (std::filesystem::exists(sub_proton)) {
@@ -375,7 +375,7 @@ std::vector<std::filesystem::path> LinuxPlatform::steam_library_paths() const {
 }
 
 std::filesystem::path
-LinuxPlatform::prefix_user_dir(const std::filesystem::path& prefix) {
+LinuxPlatform::prefix_user_dir(const std::filesystem::path &prefix) {
   if (prefix.empty())
     return {};
 
@@ -402,7 +402,7 @@ LinuxPlatform::prefix_user_dir(const std::filesystem::path& prefix) {
   };
 
   std::error_code ec;
-  for (const auto& entry : std::filesystem::directory_iterator(users_dir, ec)) {
+  for (const auto &entry : std::filesystem::directory_iterator(users_dir, ec)) {
     if (!entry.is_directory())
       continue;
     auto name = entry.path().filename().string();
@@ -434,12 +434,12 @@ LinuxPlatform::game_local_appdata_dir(uint32_t steam_appid) const {
 std::filesystem::path LinuxPlatform::native_documents_dir() const {
   // Host-native Documents: XDG user-dirs first, ~/Documents fallback.
   // user-dirs.dirs declares e.g. XDG_DOCUMENTS_DIR="$HOME/Documents".
-  const char* home_env = std::getenv("HOME");
+  const char *home_env = std::getenv("HOME");
   if (!home_env || home_env[0] == '\0')
     return {};
   const std::filesystem::path home(home_env);
 
-  const char* config_env = std::getenv("XDG_CONFIG_HOME");
+  const char *config_env = std::getenv("XDG_CONFIG_HOME");
   const std::filesystem::path user_dirs =
       (config_env && config_env[0] != '\0' ? std::filesystem::path(config_env)
                                            : home / ".config") /
@@ -488,7 +488,7 @@ std::filesystem::path LinuxPlatform::steam_userdata_dir() const {
 // --- Wine discovery ---
 
 std::filesystem::path LinuxPlatform::find_wine() const {
-  auto* path = std::getenv("PATH");
+  auto *path = std::getenv("PATH");
   if (path) {
     std::istringstream ss(path);
     std::string token;
@@ -506,7 +506,7 @@ std::filesystem::path LinuxPlatform::find_wine() const {
       "/opt/wine/bin/wine",
   };
 
-  for (const auto& c : candidates) {
+  for (const auto &c : candidates) {
     if (std::filesystem::exists(c))
       return c;
   }
@@ -515,8 +515,8 @@ std::filesystem::path LinuxPlatform::find_wine() const {
 
 // --- Process launch ---
 
-bool LinuxPlatform::launch_executable(const std::filesystem::path& executable,
-                                      const std::vector<std::string>& args) const {
+bool LinuxPlatform::launch_executable(const std::filesystem::path &executable,
+                                      const std::vector<std::string> &args) const {
   if (!std::filesystem::exists(executable))
     return false;
 
@@ -536,7 +536,7 @@ bool LinuxPlatform::is_elevated() const {
 // --- Home / temp / thread priority ---
 
 std::filesystem::path LinuxPlatform::home_dir() const {
-  if (const char* home = std::getenv("HOME"); home && home[0] != '\0')
+  if (const char *home = std::getenv("HOME"); home && home[0] != '\0')
     return std::filesystem::path(home);
   return std::filesystem::temp_directory_path();
 }
@@ -567,16 +567,16 @@ namespace {
 
   using MimeGroup = std::pair<std::string, std::vector<MimeEntry>>;
 
-  std::filesystem::path xdg_dir_or(const char* env_var,
-                                   const std::filesystem::path& fallback) {
-    if (const char* val = std::getenv(env_var); val && val[0] != '\0') {
+  std::filesystem::path xdg_dir_or(const char *env_var,
+                                   const std::filesystem::path &fallback) {
+    if (const char *val = std::getenv(env_var); val && val[0] != '\0') {
       return std::filesystem::path(val);
     }
     return fallback;
   }
 
-  bool read_mimeapps_groups(const std::filesystem::path& path,
-                            std::vector<MimeGroup>& groups) {
+  bool read_mimeapps_groups(const std::filesystem::path &path,
+                            std::vector<MimeGroup> &groups) {
     std::ifstream f(path);
     if (!f)
       return false;
@@ -594,11 +594,11 @@ namespace {
       const auto eq = line.find('=');
       if (eq == std::string::npos)
         continue;
-      auto& entries           = groups.back().second;
+      auto &entries           = groups.back().second;
       const std::string key   = line.substr(0, eq);
       const std::string value = line.substr(eq + 1);
       bool replaced           = false;
-      for (auto& e : entries) {
+      for (auto &e : entries) {
         if (e.key == key) {
           e.value  = value;
           replaced = true;
@@ -611,24 +611,24 @@ namespace {
     return true;
   }
 
-  void write_mimeapps_groups(const std::filesystem::path& path,
-                             const std::vector<MimeGroup>& groups) {
+  void write_mimeapps_groups(const std::filesystem::path &path,
+                             const std::vector<MimeGroup> &groups) {
     std::error_code ec;
     std::filesystem::create_directories(path.parent_path(), ec);
     std::ofstream f(path);
     if (!f)
       return;
-    for (const auto& [name, entries] : groups) {
+    for (const auto &[name, entries] : groups) {
       f << '[' << name << "]\n";
-      for (const auto& e : entries) {
+      for (const auto &e : entries) {
         f << e.key << '=' << e.value << '\n';
       }
     }
   }
 
-  void set_entry(std::vector<MimeEntry>& entries, const std::string& key,
-                 const std::string& value) {
-    for (auto& e : entries) {
+  void set_entry(std::vector<MimeEntry> &entries, const std::string &key,
+                 const std::string &value) {
+    for (auto &e : entries) {
       if (e.key == key) {
         e.value = value;
         return;
@@ -637,9 +637,9 @@ namespace {
     entries.push_back({key, value});
   }
 
-  void remove_entry(std::vector<MimeEntry>& entries, const std::string& key) {
+  void remove_entry(std::vector<MimeEntry> &entries, const std::string &key) {
     entries.erase(std::remove_if(entries.begin(), entries.end(),
-                                 [&](const MimeEntry& e) {
+                                 [&](const MimeEntry &e) {
                                    return e.key == key;
                                  }),
                   entries.end());
@@ -648,13 +648,13 @@ namespace {
   // Sets/updates the default app for `scheme` in one mimeapps file.
   // Desktop-specific files (e.g. kde-mimeapps.list) may only override defaults;
   // the spec-invalid association entry is dropped there so GIO stops warning.
-  void set_mimeapps_scheme(const std::filesystem::path& path, const std::string& scheme,
-                           const std::string& desktop_id, bool desktop_specific) {
+  void set_mimeapps_scheme(const std::filesystem::path &path, const std::string &scheme,
+                           const std::string &desktop_id, bool desktop_specific) {
     std::vector<MimeGroup> groups;
     read_mimeapps_groups(path, groups);
 
     bool found_defaults = false;
-    for (auto& [name, entries] : groups) {
+    for (auto &[name, entries] : groups) {
       if (name == "Default Applications") {
         found_defaults = true;
         set_entry(entries, scheme, desktop_id + ".desktop");
@@ -672,7 +672,7 @@ namespace {
 
     if (desktop_specific) {
       groups.erase(std::remove_if(groups.begin(), groups.end(),
-                                  [](const MimeGroup& g) {
+                                  [](const MimeGroup &g) {
                                     return g.first == "Added Associations" &&
                                            g.second.empty();
                                   }),
@@ -685,7 +685,7 @@ namespace {
   // The mimeapps files that resolve defaults for the current desktop, in spec
   // priority order.
   std::vector<std::filesystem::path> mimeapps_files() {
-    const char* home = std::getenv("HOME");
+    const char *home = std::getenv("HOME");
     std::vector<std::filesystem::path> files;
     if (!home)
       return files;
@@ -694,9 +694,9 @@ namespace {
     const auto data_home =
         xdg_dir_or("XDG_DATA_HOME", std::filesystem::path(home) / ".local" / "share");
 
-    if (const char* desktop = std::getenv("XDG_CURRENT_DESKTOP"); desktop) {
+    if (const char *desktop = std::getenv("XDG_CURRENT_DESKTOP"); desktop) {
       std::string d = desktop;
-      for (auto& c : d)
+      for (auto &c : d)
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
       if (d.find("kde") != std::string::npos) {
         files.push_back(config_home / "kde-mimeapps.list");
@@ -709,8 +709,8 @@ namespace {
 
   // Propagates `desktop_id` as the default for `scheme` across all mimeapps
   // files the resolution path consults.
-  void set_mimeapps_defaults(const std::string& scheme, const std::string& desktop_id) {
-    const char* home = std::getenv("HOME");
+  void set_mimeapps_defaults(const std::string &scheme, const std::string &desktop_id) {
+    const char *home = std::getenv("HOME");
     if (!home)
       return;
     const auto config_home =
@@ -727,15 +727,15 @@ namespace {
   }
 
   // The effective default app for `scheme` per the mimeapps files, or empty.
-  std::string default_for_scheme(const std::string& scheme) {
-    for (const auto& path : mimeapps_files()) {
+  std::string default_for_scheme(const std::string &scheme) {
+    for (const auto &path : mimeapps_files()) {
       std::vector<MimeGroup> groups;
       if (!read_mimeapps_groups(path, groups))
         continue;
-      for (const auto& [name, entries] : groups) {
+      for (const auto &[name, entries] : groups) {
         if (name != "Default Applications")
           continue;
-        for (const auto& e : entries) {
+        for (const auto &e : entries) {
           if (e.key == scheme)
             return e.value;
         }
@@ -746,9 +746,9 @@ namespace {
 
   // Runtime default handler for `scheme` via xdg-mime query default.
   // Returns empty string on failure (xdg-mime missing, error, etc.).
-  std::string runtime_default_for_scheme(const std::string& scheme) {
+  std::string runtime_default_for_scheme(const std::string &scheme) {
     std::string cmd = "xdg-mime query default " + scheme + " 2>/dev/null";
-    FILE* pipe      = popen(cmd.c_str(), "r");
+    FILE *pipe      = popen(cmd.c_str(), "r");
     if (!pipe)
       return {};
     char buf[256];
@@ -766,8 +766,8 @@ namespace {
 
 // --- NXM protocol handler registration (XDG) ---
 
-static const char* NXM_DESKTOP_FILE = "gamemodmanager-nxm.desktop";
-static const char* NXM_DESKTOP_ID   = "gamemodmanager-nxm";
+static const char *NXM_DESKTOP_FILE = "gamemodmanager-nxm.desktop";
+static const char *NXM_DESKTOP_ID   = "gamemodmanager-nxm";
 
 static std::filesystem::path nxm_desktop_path() {
   auto home = std::getenv("HOME");
@@ -777,7 +777,7 @@ static std::filesystem::path nxm_desktop_path() {
          NXM_DESKTOP_FILE;
 }
 
-bool LinuxPlatform::register_nxm_handler(const std::filesystem::path& exe_path) {
+bool LinuxPlatform::register_nxm_handler(const std::filesystem::path &exe_path) {
   auto desktop = nxm_desktop_path();
   if (desktop.empty())
     return false;
@@ -868,7 +868,7 @@ bool LinuxPlatform::is_nxm_handler_registered() {
   // win at runtime while our entry sits unused in the mimeapps files.
   // Run xdg-mime and compare the result; on failure (xdg-mime missing),
   // fall back to the file-based check.
-  FILE* pipe = popen("xdg-mime query default x-scheme-handler/nxm 2>/dev/null", "r");
+  FILE *pipe = popen("xdg-mime query default x-scheme-handler/nxm 2>/dev/null", "r");
   if (pipe) {
     char buf[256];
     std::string runtime_default;
@@ -890,8 +890,8 @@ bool LinuxPlatform::is_nxm_handler_registered() {
 
 // --- GMM protocol handler registration (XDG) ---
 
-static const char* GMM_DESKTOP_FILE = "gamemodmanager-gmm.desktop";
-static const char* GMM_DESKTOP_ID   = "gamemodmanager-gmm";
+static const char *GMM_DESKTOP_FILE = "gamemodmanager-gmm.desktop";
+static const char *GMM_DESKTOP_ID   = "gamemodmanager-gmm";
 
 static std::filesystem::path gmm_desktop_path() {
   auto home = std::getenv("HOME");
@@ -901,7 +901,7 @@ static std::filesystem::path gmm_desktop_path() {
          GMM_DESKTOP_FILE;
 }
 
-bool LinuxPlatform::register_gmm_handler(const std::filesystem::path& exe_path) {
+bool LinuxPlatform::register_gmm_handler(const std::filesystem::path &exe_path) {
   auto desktop = gmm_desktop_path();
   if (desktop.empty())
     return false;
@@ -971,7 +971,7 @@ bool LinuxPlatform::is_gmm_handler_registered() {
     return false;
 
   // Layer 2: KDE runtime resolution agrees (xdg-mime query default).
-  FILE* pipe = popen("xdg-mime query default x-scheme-handler/gmm 2>/dev/null", "r");
+  FILE *pipe = popen("xdg-mime query default x-scheme-handler/gmm 2>/dev/null", "r");
   if (pipe) {
     char buf[256];
     std::string runtime_default;
@@ -992,8 +992,8 @@ bool LinuxPlatform::is_gmm_handler_registered() {
 
 // --- modl:// protocol handler registration (XDG) ---
 
-static const char* MODL_DESKTOP_FILE = "gamemodmanager-modl.desktop";
-static const char* MODL_DESKTOP_ID   = "gamemodmanager-modl";
+static const char *MODL_DESKTOP_FILE = "gamemodmanager-modl.desktop";
+static const char *MODL_DESKTOP_ID   = "gamemodmanager-modl";
 
 static std::filesystem::path modl_desktop_path() {
   auto home = std::getenv("HOME");
@@ -1003,7 +1003,7 @@ static std::filesystem::path modl_desktop_path() {
          MODL_DESKTOP_FILE;
 }
 
-bool LinuxPlatform::register_modl_handler(const std::filesystem::path& exe_path) {
+bool LinuxPlatform::register_modl_handler(const std::filesystem::path &exe_path) {
   auto desktop = modl_desktop_path();
   if (desktop.empty())
     return false;
@@ -1072,7 +1072,7 @@ bool LinuxPlatform::is_modl_handler_registered() {
     return false;
 
   // Layer 2: KDE runtime resolution agrees (xdg-mime query default).
-  FILE* pipe = popen("xdg-mime query default x-scheme-handler/modl 2>/dev/null", "r");
+  FILE *pipe = popen("xdg-mime query default x-scheme-handler/modl 2>/dev/null", "r");
   if (pipe) {
     char buf[256];
     std::string runtime_default;

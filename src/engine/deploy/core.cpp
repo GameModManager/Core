@@ -13,9 +13,8 @@
 
 namespace Deploy {
 
-std::unique_ptr<Interface>
-Core::create(const std::string &name, bool case_sensitive,
-             const std::filesystem::path &staging_dir) {
+std::unique_ptr<Interface> Core::create(const std::string &name, bool case_sensitive,
+                                        const std::filesystem::path &staging_dir) {
   // "overlayfs" - Linux-only OverlayFsDeploy when the platform supports it.
 #ifdef GMM_PLATFORM_LINUX
   if (name == engine::kDeployStrategyOverlayFs) {
@@ -42,15 +41,14 @@ Core::create(const std::string &name, bool case_sensitive,
   // "direct", "symlink", and empty all resolve to Symlink.  The "direct"
   // lifecycle (Deploy::Direct) is constructed by callers that need
   // deploy_all/undeploy/sync; the factory produces the per-file strategy.
-  if (name == engine::kDeployStrategyDirect || name.empty() ||
-      name == "symlink") {
+  if (name == engine::kDeployStrategyDirect || name.empty() || name == "symlink") {
     return std::make_unique<Symlink>(case_sensitive);
   }
 
   // Unknown name - log and degrade to Symlink.
   if (!name.empty()) {
-    engine::Logger::instance().warn("Deploy::Core::create: unknown strategy '" +
-                                    name + "', falling back to Symlink");
+    engine::Logger::instance().warn("Deploy::Core::create: unknown strategy '" + name +
+                                    "', falling back to Symlink");
   }
   return std::make_unique<Symlink>(case_sensitive);
 }
@@ -74,4 +72,4 @@ bool Core::overlay_supported(const std::filesystem::path &overwrite_dir) {
 #endif
 }
 
-} // namespace Deploy
+}  // namespace Deploy

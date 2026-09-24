@@ -18,16 +18,16 @@ namespace engine::profile {
 // FIRST in modlist.txt (MO2 convention: the file's first line is the highest
 // priority mod).
 struct ModListEntry {
-    std::string mod_id;
-    bool enabled = true;   // '+' enabled / '-' disabled
-    bool foreign = false;  // '*' unmanaged (DLC etc.), never written as +/- toggle
-    int priority = 0;
+  std::string mod_id;
+  bool enabled = true;   // '+' enabled / '-' disabled
+  bool foreign = false;  // '*' unmanaged (DLC etc.), never written as +/- toggle
+  int priority = 0;
 };
 
 // One locked plugin priority entry (lockedorder.txt, "name|priority").
 struct LockedPlugin {
-    std::string name;
-    int priority = 0;
+  std::string name;
+  int priority = 0;
 };
 
 // Outcome of Profile::remove(). The engine is Qt-free and never shows
@@ -36,19 +36,19 @@ struct LockedPlugin {
 // QMessageBox before deleting; the result enum replaces the dialog's
 // success/failure handling).
 enum class ProfileRemoveResult {
-    Removed,          // directory and all contents deleted
-    NotFound,         // directory did not exist (nothing to delete)
-    ActiveProfile,    // refused: the profile is the active one
-    PermissionDenied, // could not delete (permissions, locked files, I/O error)
-    PartialFailure,   // some contents deleted, the directory still exists
+  Removed,           // directory and all contents deleted
+  NotFound,          // directory did not exist (nothing to delete)
+  ActiveProfile,     // refused: the profile is the active one
+  PermissionDenied,  // could not delete (permissions, locked files, I/O error)
+  PartialFailure,    // some contents deleted, the directory still exists
 };
 
 // Ordered INI model of settings.ini (root section first, keys in file order).
 // Unknown keys/sections are preserved on save (read-before-write - never
 // overwrite a shared config with a partial view).
 struct IniSection {
-    std::string name;  // empty = root section (before any [header])
-    std::vector<std::pair<std::string, std::string>> entries;
+  std::string name;  // empty = root section (before any [header])
+  std::vector<std::pair<std::string, std::string>> entries;
 };
 
 // Profile directory manager - the core data model of the profile system.
@@ -77,167 +77,179 @@ struct IniSection {
 // bridge. This class owns the profile DIRECTORY and its files.
 class ProfileManager {
 public:
-    // Default debounce delay for modlist.txt writes (MO2 parity).
-    static constexpr std::chrono::milliseconds kModlistWriteDelay{5000};
+  // Default debounce delay for modlist.txt writes (MO2 parity).
+  static constexpr std::chrono::milliseconds kModlistWriteDelay{5000};
 
-    // Construct from an existing profile directory. The directory is NOT
-    // created here (that is profile creation, a separate concern); read
-    // methods return empty state and write methods create the directory on
-    // demand. `modlist_delay` is the DelayedFileWriter debounce (tests pass a
-    // short delay).
-    explicit ProfileManager(std::filesystem::path directory,
-                     std::chrono::milliseconds modlist_delay = kModlistWriteDelay);
-    ~ProfileManager();
+  // Construct from an existing profile directory. The directory is NOT
+  // created here (that is profile creation, a separate concern); read
+  // methods return empty state and write methods create the directory on
+  // demand. `modlist_delay` is the DelayedFileWriter debounce (tests pass a
+  // short delay).
+  explicit ProfileManager(std::filesystem::path directory,
+                          std::chrono::milliseconds modlist_delay = kModlistWriteDelay);
+  ~ProfileManager();
 
-    ProfileManager(const ProfileManager&) = delete;
-    ProfileManager& operator=(const ProfileManager&) = delete;
-    ProfileManager(ProfileManager&&) = delete;
-    ProfileManager& operator=(ProfileManager&&) = delete;
+  ProfileManager(const ProfileManager &)            = delete;
+  ProfileManager &operator=(const ProfileManager &) = delete;
+  ProfileManager(ProfileManager &&)                 = delete;
+  ProfileManager &operator=(ProfileManager &&)      = delete;
 
-    // --- directory ---------------------------------------------------------
+  // --- directory ---------------------------------------------------------
 
-    [[nodiscard]] const std::filesystem::path& directory() const { return directory_; }
-    [[nodiscard]] std::string name() const { return directory_.filename().string(); }
-    [[nodiscard]] bool exists() const { return std::filesystem::exists(directory_); }
+  [[nodiscard]] const std::filesystem::path &directory() const { return directory_; }
+  [[nodiscard]] std::string name() const { return directory_.filename().string(); }
+  [[nodiscard]] bool exists() const { return std::filesystem::exists(directory_); }
 
-    // Permanently delete the profile directory and all its contents
-    // (settings.ini, modlist.txt, plugins.txt, profile-specific save games,
-    // ...) - MO2's "remove profile" behavior.
-    //
-    // is_active must be true when this profile is the currently active one:
-    // deletion is then refused with ActiveProfile. The caller is expected to
-    // check first (defense in depth - MO2 refuses in the dialog too).
-    //
-    // Any pending delayed modlist write is cancelled first so the
-    // DelayedFileWriter thread never recreates files inside a directory that
-    // is being deleted. After a successful removal the Profile object is a
-    // shell: exists() returns false and the caller should drop it.
-    //
-    // The caller is responsible for removing the profile from any in-memory
-    // list and cleaning up references (UI list, active-profile state).
-    ProfileRemoveResult remove(bool is_active = false);
+  // Permanently delete the profile directory and all its contents
+  // (settings.ini, modlist.txt, plugins.txt, profile-specific save games,
+  // ...) - MO2's "remove profile" behavior.
+  //
+  // is_active must be true when this profile is the currently active one:
+  // deletion is then refused with ActiveProfile. The caller is expected to
+  // check first (defense in depth - MO2 refuses in the dialog too).
+  //
+  // Any pending delayed modlist write is cancelled first so the
+  // DelayedFileWriter thread never recreates files inside a directory that
+  // is being deleted. After a successful removal the Profile object is a
+  // shell: exists() returns false and the caller should drop it.
+  //
+  // The caller is responsible for removing the profile from any in-memory
+  // list and cleaning up references (UI list, active-profile state).
+  ProfileRemoveResult remove(bool is_active = false);
 
-    // --- repair ------------------------------------------------------------
+  // --- repair ------------------------------------------------------------
 
-    // Repair a broken profile directory: create any missing required files
-    // (settings.ini, modlist.txt, archives.txt) with sensible defaults -
-    // settings.ini gets LocalSaves=false, LocalSettings=false,
-    // AutomaticArchiveInvalidation=false; modlist.txt and archives.txt are
-    // created empty. Existing files are never touched or overwritten.
-    //
-    // Returns the list of filenames that were generated (empty when the
-    // profile was already complete). Failures are logged and omitted from
-    // the result, so a caller can detect a still-broken profile by comparing
-    // the result against the required set.
-    [[nodiscard]] std::vector<std::string> repair();
+  // Repair a broken profile directory: create any missing required files
+  // (settings.ini, modlist.txt, archives.txt) with sensible defaults -
+  // settings.ini gets LocalSaves=false, LocalSettings=false,
+  // AutomaticArchiveInvalidation=false; modlist.txt and archives.txt are
+  // created empty. Existing files are never touched or overwritten.
+  //
+  // Returns the list of filenames that were generated (empty when the
+  // profile was already complete). Failures are logged and omitted from
+  // the result, so a caller can detect a still-broken profile by comparing
+  // the result against the required set.
+  [[nodiscard]] std::vector<std::string> repair();
 
-    // --- settings.ini ------------------------------------------------------
-    // Values are cached in memory (loaded at construction) and persisted by
-    // save_settings(). Unknown keys/sections are preserved on write
-    // (read-before-write - never overwrite a shared config with a partial
-    // view).
+  // --- settings.ini ------------------------------------------------------
+  // Values are cached in memory (loaded at construction) and persisted by
+  // save_settings(). Unknown keys/sections are preserved on write
+  // (read-before-write - never overwrite a shared config with a partial
+  // view).
 
-    [[nodiscard]] bool local_saves() const;
-    void set_local_saves(bool value);
+  [[nodiscard]] bool local_saves() const;
+  void set_local_saves(bool value);
 
-    [[nodiscard]] bool local_settings() const;
-    void set_local_settings(bool value);
+  [[nodiscard]] bool local_settings() const;
+  void set_local_settings(bool value);
 
-    [[nodiscard]] bool automatic_archive_invalidation() const;
-    void set_automatic_archive_invalidation(bool value);
+  [[nodiscard]] bool automatic_archive_invalidation() const;
+  void set_automatic_archive_invalidation(bool value);
 
-    // Set an arbitrary root-section key in settings.ini (e.g. "ProfileName",
-    // written by profile creation when a profile is copied). Unknown
-    // keys/sections are preserved on save (read-before-write).
-    void set_root_setting(const std::string& key, const std::string& value);
+  // Set an arbitrary root-section key in settings.ini (e.g. "ProfileName",
+  // written by profile creation when a profile is copied). Unknown
+  // keys/sections are preserved on save (read-before-write).
+  void set_root_setting(const std::string &key, const std::string &value);
 
-    // Atomically write settings.ini. Returns true on success.
-    bool save_settings();
+  // Atomically write settings.ini. Returns true on success.
+  bool save_settings();
 
-    // --- modlist.txt -------------------------------------------------------
+  // --- modlist.txt -------------------------------------------------------
 
-    // Re-read modlist.txt and rebuild the mod list + priority map.
-    //
-    // known_mods is the full set of mod ids present in the instance's mods
-    // directory; foreign_mods is the subset that is unmanaged (DLC etc.).
-    // Mods in the file keep their file order (first line = highest priority).
-    // Mods NOT in the file are appended: foreign mods get the lowest
-    // priorities, managed (new) mods the highest, both enabled by default.
-    // When new mods are added the file is rewritten (delayed, batched) so the
-    // on-disk state converges - MO2's refreshModStatus behavior.
-    void refresh_mod_status(const std::vector<std::string>& known_mods,
-                            const std::vector<std::string>& foreign_mods = {});
+  // Re-read modlist.txt and rebuild the mod list + priority map.
+  //
+  // known_mods is the full set of mod ids present in the instance's mods
+  // directory; foreign_mods is the subset that is unmanaged (DLC etc.).
+  // Mods in the file keep their file order (first line = highest priority).
+  // Mods NOT in the file are appended: foreign mods get the lowest
+  // priorities, managed (new) mods the highest, both enabled by default.
+  // When new mods are added the file is rewritten (delayed, batched) so the
+  // on-disk state converges - MO2's refreshModStatus behavior.
+  void refresh_mod_status(const std::vector<std::string> &known_mods,
+                          const std::vector<std::string> &foreign_mods = {});
 
-    // Mods sorted by priority ascending (index 0 = lowest priority). Returns
-    // a copy: the live collection is protected by mods_mutex_ and must never
-    // be handed out by reference.
-    [[nodiscard]] std::vector<ModListEntry> mods() const;
+  // Mods sorted by priority ascending (index 0 = lowest priority). Returns
+  // a copy: the live collection is protected by mods_mutex_ and must never
+  // be handed out by reference.
+  [[nodiscard]] std::vector<ModListEntry> mods() const;
 
-    // Priority of a mod, or -1 when the mod is not in the profile.
-    [[nodiscard]] int priority_of(const std::string& mod_id) const;
+  // Priority of a mod, or -1 when the mod is not in the profile.
+  [[nodiscard]] int priority_of(const std::string &mod_id) const;
 
-    // Enable/disable a mod. Schedules a delayed modlist.txt write.
-    void set_mod_enabled(const std::string& mod_id, bool enabled);
+  // Enable/disable a mod. Schedules a delayed modlist.txt write.
+  void set_mod_enabled(const std::string &mod_id, bool enabled);
 
-    // Move a mod to a new priority (0 = lowest). Clamped to the valid range;
-    // other mods shift to keep priorities contiguous. Schedules a delayed
-    // modlist.txt write. Returns true when the priority changed.
-    bool set_mod_priority(const std::string& mod_id, int new_priority);
+  // Move a mod to a new priority (0 = lowest). Clamped to the valid range;
+  // other mods shift to keep priorities contiguous. Schedules a delayed
+  // modlist.txt write. Returns true when the priority changed.
+  bool set_mod_priority(const std::string &mod_id, int new_priority);
 
-    // Schedule a delayed modlist.txt write (~5s, debounced).
-    void write_modlist();
-    // Flush a pending modlist.txt write immediately.
-    void write_modlist_now();
-    // Discard a pending modlist.txt write.
-    void cancel_modlist_write();
+  // Schedule a delayed modlist.txt write (~5s, debounced).
+  void write_modlist();
+  // Flush a pending modlist.txt write immediately.
+  void write_modlist_now();
+  // Discard a pending modlist.txt write.
+  void cancel_modlist_write();
 
-    // --- plugins.txt / loadorder.txt / lockedorder.txt / archives.txt ------
-    // Game-specific files; the game plugin interprets them. Generic
-    // line-based I/O here, atomic writes.
+  // --- plugins.txt / loadorder.txt / lockedorder.txt / archives.txt ------
+  // Game-specific files; the game plugin interprets them. Generic
+  // line-based I/O here, atomic writes.
 
-    [[nodiscard]] std::vector<std::string> read_plugins() const;
-    bool write_plugins(const std::vector<std::string>& plugins);
+  [[nodiscard]] std::vector<std::string> read_plugins() const;
+  bool write_plugins(const std::vector<std::string> &plugins);
 
-    [[nodiscard]] std::vector<std::string> read_load_order() const;
-    bool write_load_order(const std::vector<std::string>& order);
+  [[nodiscard]] std::vector<std::string> read_load_order() const;
+  bool write_load_order(const std::vector<std::string> &order);
 
-    [[nodiscard]] std::vector<LockedPlugin> read_locked_order() const;
-    bool write_locked_order(const std::vector<LockedPlugin>& locked);
+  [[nodiscard]] std::vector<LockedPlugin> read_locked_order() const;
+  bool write_locked_order(const std::vector<LockedPlugin> &locked);
 
-    [[nodiscard]] std::vector<std::string> read_archives() const;
-    bool write_archives(const std::vector<std::string>& archives);
+  [[nodiscard]] std::vector<std::string> read_archives() const;
+  bool write_archives(const std::vector<std::string> &archives);
 
-    // --- file paths --------------------------------------------------------
+  // --- file paths --------------------------------------------------------
 
-    [[nodiscard]] std::filesystem::path settings_path() const { return directory_ / "settings.ini"; }
-    [[nodiscard]] std::filesystem::path modlist_path() const { return directory_ / "modlist.txt"; }
-    [[nodiscard]] std::filesystem::path plugins_path() const { return directory_ / "plugins.txt"; }
-    [[nodiscard]] std::filesystem::path loadorder_path() const { return directory_ / "loadorder.txt"; }
-    [[nodiscard]] std::filesystem::path lockedorder_path() const { return directory_ / "lockedorder.txt"; }
-    [[nodiscard]] std::filesystem::path archives_path() const { return directory_ / "archives.txt"; }
+  [[nodiscard]] std::filesystem::path settings_path() const {
+    return directory_ / "settings.ini";
+  }
+  [[nodiscard]] std::filesystem::path modlist_path() const {
+    return directory_ / "modlist.txt";
+  }
+  [[nodiscard]] std::filesystem::path plugins_path() const {
+    return directory_ / "plugins.txt";
+  }
+  [[nodiscard]] std::filesystem::path loadorder_path() const {
+    return directory_ / "loadorder.txt";
+  }
+  [[nodiscard]] std::filesystem::path lockedorder_path() const {
+    return directory_ / "lockedorder.txt";
+  }
+  [[nodiscard]] std::filesystem::path archives_path() const {
+    return directory_ / "archives.txt";
+  }
 
 private:
-    // Runs on the DelayedFileWriter thread; serialized with the UI thread via
-    // mods_mutex_.
-    void do_write_modlist();
+  // Runs on the DelayedFileWriter thread; serialized with the UI thread via
+  // mods_mutex_.
+  void do_write_modlist();
 
-    // --- settings.ini helpers (INI model) ---
-    [[nodiscard]] std::string get_setting(const std::string& key) const;
-    void set_setting(const std::string& key, const std::string& value);
-    [[nodiscard]] bool get_setting_bool(const std::string& key) const;
-    void set_setting_bool(const std::string& key, bool value);
+  // --- settings.ini helpers (INI model) ---
+  [[nodiscard]] std::string get_setting(const std::string &key) const;
+  void set_setting(const std::string &key, const std::string &value);
+  [[nodiscard]] bool get_setting_bool(const std::string &key) const;
+  void set_setting_bool(const std::string &key, bool value);
 
-    std::filesystem::path directory_;
+  std::filesystem::path directory_;
 
-    // Ordered INI model of settings.ini (see IniSection above).
-    std::vector<IniSection> ini_;
+  // Ordered INI model of settings.ini (see IniSection above).
+  std::vector<IniSection> ini_;
 
-    // Mod list state - protected by mods_mutex_ (UI thread mutates,
-    // DelayedFileWriter thread reads).
-    mutable std::mutex mods_mutex_;
-    std::vector<ModListEntry> mods_;
+  // Mod list state - protected by mods_mutex_ (UI thread mutates,
+  // DelayedFileWriter thread reads).
+  mutable std::mutex mods_mutex_;
+  std::vector<ModListEntry> mods_;
 
-    DelayedFileWriter modlist_writer_;
+  DelayedFileWriter modlist_writer_;
 };
 
 // Backward-compat alias - remove once all call sites use ProfileManager.

@@ -29,8 +29,7 @@ public:
   [[nodiscard]] bool is_mounted() const { return mounted_; }
 
   // Add a file to the VFS (source -> virtual path mapping)
-  void add_file(const std::string &virtual_path,
-                const std::string &source_path);
+  void add_file(const std::string &virtual_path, const std::string &source_path);
 
   // Remove a file from the VFS
   void remove_file(const std::string &virtual_path);
@@ -42,8 +41,8 @@ private:
   bool mounted_ = false;
   std::filesystem::path mount_point_;
   std::unordered_map<std::string, std::string>
-      file_map_; // virtual_path -> source_path
+      file_map_;  // virtual_path -> source_path
   mutable std::mutex mutex_;
 };
 
-} // namespace Deploy
+}  // namespace Deploy

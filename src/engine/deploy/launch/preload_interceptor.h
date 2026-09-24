@@ -22,25 +22,25 @@ namespace engine {
 //     stays clean and Overwrite only contains *new/modified* files).
 class PreloadInterceptor {
 public:
-    // The intercept .so is always usable on Linux.  Returns true if the
-    // shared library file exists on disk at our expected install path.
-    static bool is_supported();
+  // The intercept .so is always usable on Linux.  Returns true if the
+  // shared library file exists on disk at our expected install path.
+  static bool is_supported();
 
-    // Launch executable with LD_PRELOAD set.  Returns child PID or -1.
-    // `args` are appended to argv after the executable (empty = none); `cwd`
-    // is the working directory for the child (empty = game_dir).
-    static int64_t launch(const std::filesystem::path& executable,
-                          const std::filesystem::path& game_dir,
-                          const std::filesystem::path& overwrite_dir,
-                          const std::vector<std::string>& args = {},
-                          const std::filesystem::path& cwd = {});
+  // Launch executable with LD_PRELOAD set.  Returns child PID or -1.
+  // `args` are appended to argv after the executable (empty = none); `cwd`
+  // is the working directory for the child (empty = game_dir).
+  static int64_t launch(const std::filesystem::path &executable,
+                        const std::filesystem::path &game_dir,
+                        const std::filesystem::path &overwrite_dir,
+                        const std::vector<std::string> &args = {},
+                        const std::filesystem::path &cwd     = {});
 
-    // Poll whether the process exited (non-blocking).  Returns true when
-    // the PID is gone.
-    static bool has_exited(int64_t pid);
+  // Poll whether the process exited (non-blocking).  Returns true when
+  // the PID is gone.
+  static bool has_exited(int64_t pid);
 
-    // Path where the intercept .so is expected at runtime.
-    static std::filesystem::path so_path();
+  // Path where the intercept .so is expected at runtime.
+  static std::filesystem::path so_path();
 };
 
 }  // namespace engine

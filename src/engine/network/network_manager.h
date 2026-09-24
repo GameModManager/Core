@@ -22,8 +22,8 @@
 //
 //   CI / lint suggestion: the following grep should remain EMPTY in CI:
 //     rg -n 'curl_easy_init|curl_easy_perform' projects/Core/src --type cpp \
-//        -g '!src/engine/network/**' -g '!src/engine/source/download/curl_download.cpp' \
-//        -g '!src/engine/source/nexus_http.cpp'
+//        -g '!src/engine/network/**' -g '!src/engine/source/download/curl_download.cpp'
+//        \ -g '!src/engine/source/nexus_http.cpp'
 //     rg -n 'QNetworkAccessManager' projects/Core/src --type cpp \
 //        -g '!src/ui/modinfo/description_browser.cpp'
 //
@@ -73,8 +73,8 @@ namespace engine::network {
 // where the request originated. The Debug panel's Network tab shows this
 // verbatim, so callers always have a hop from "request failed" -> "the mod
 // list refresh did it" -> "nexus_provider.cpp:252".
-#define NET_CALLER \
-    (std::string(__func__) + " @ " + __FILE__ + ":" + std::to_string(__LINE__))
+#define NET_CALLER                                                                     \
+  (std::string(__func__) + " @ " + __FILE__ + ":" + std::to_string(__LINE__))
 
 // -----------------------------------------------------------------------------
 // Redaction - central scrubbing for secrets that MUST NEVER hit the log ring.
@@ -84,36 +84,36 @@ namespace engine::network {
 // -----------------------------------------------------------------------------
 namespace redaction {
 
-// Returns true for header names whose value should be hidden (apikey,
-// authorization, cookie, set-cookie, token, x-api-key, ...). Case-insensitive.
-bool is_sensitive_header(const std::string& header_name);
+  // Returns true for header names whose value should be hidden (apikey,
+  // authorization, cookie, set-cookie, token, x-api-key, ...). Case-insensitive.
+  bool is_sensitive_header(const std::string &header_name);
 
-// Scrub a "Header-Name: value" pair. Returns either the input unchanged
-// (when not sensitive) or "Header-Name: <redacted>".
-std::string redact_header_line(const std::string& line);
+  // Scrub a "Header-Name: value" pair. Returns either the input unchanged
+  // (when not sensitive) or "Header-Name: <redacted>".
+  std::string redact_header_line(const std::string &line);
 
-// Scrub a URL: any query parameter whose key matches a sensitive token is
-// replaced with "<redacted>" so cookies / apikeys pasted into the query
-// string do not leak.
-std::string redact_url(const std::string& url);
+  // Scrub a URL: any query parameter whose key matches a sensitive token is
+  // replaced with "<redacted>" so cookies / apikeys pasted into the query
+  // string do not leak.
+  std::string redact_url(const std::string &url);
 
-// Scrub a JSON-ish body: keys named apikey / token / password / authorization
-// are replaced with "<redacted>" in-place (string-preserving). Best-effort:
-// malformed JSON is returned unchanged.
-std::string redact_body(const std::string& body, std::size_t preview_bytes = 4096);
+  // Scrub a JSON-ish body: keys named apikey / token / password / authorization
+  // are replaced with "<redacted>" in-place (string-preserving). Best-effort:
+  // malformed JSON is returned unchanged.
+  std::string redact_body(const std::string &body, std::size_t preview_bytes = 4096);
 
-// Return a short placeholder for a cookie blob: "<name>=<redacted>, ... (N
-// chars)". Keeps the format human-readable for debugging without leaking
-// values.
-std::string redact_cookie(const std::string& cookie);
+  // Return a short placeholder for a cookie blob: "<name>=<redacted>, ... (N
+  // chars)". Keeps the format human-readable for debugging without leaking
+  // values.
+  std::string redact_cookie(const std::string &cookie);
 
-} // namespace redaction
+}  // namespace redaction
 
 // Parse the Retry-After response header (seconds OR HTTP-date) into a
 // millisecond delay. Returns 0 when the header is missing, unparseable, or
 // negative. Shared with the nexus_v2 GraphQL client so 429 backoff honors
 // the server-provided delay exactly once.
-int parse_retry_after_ms(const std::string& response_headers);
+int parse_retry_after_ms(const std::string &response_headers);
 
 // -----------------------------------------------------------------------------
 // Public data model
@@ -121,16 +121,22 @@ int parse_retry_after_ms(const std::string& response_headers);
 
 enum class Method { Get, Post, Delete, Put, Patch, Head };
 
-inline const char* method_name(Method m) {
-    switch (m) {
-    case Method::Get:    return "GET";
-    case Method::Post:   return "POST";
-    case Method::Delete: return "DELETE";
-    case Method::Put:    return "PUT";
-    case Method::Patch:  return "PATCH";
-    case Method::Head:   return "HEAD";
-    }
+inline const char *method_name(Method m) {
+  switch (m) {
+  case Method::Get:
     return "GET";
+  case Method::Post:
+    return "POST";
+  case Method::Delete:
+    return "DELETE";
+  case Method::Put:
+    return "PUT";
+  case Method::Patch:
+    return "PATCH";
+  case Method::Head:
+    return "HEAD";
+  }
+  return "GET";
 }
 
 // HTTP headers as a flat list of "Name: value" lines (curl_slist-compatible).
@@ -140,133 +146,133 @@ using Headers = std::vector<std::string>;
 // Options struct, injected from the UI. Plain-data so the engine does not
 // reach into QSettings. All fields have safe defaults.
 struct NetworkOptions {
-    bool offline_mode = false;
-    bool use_proxy = false;
-    std::string proxy_host;          // e.g. "127.0.0.1"
-    int proxy_port = 8080;
-    // Max concurrent downloads (Network:: download paths + PipelineWorker).
-    // 0 = legacy 2-slot behaviour (matches the previous PipelineWorker
-    // kMaxConcurrentDownloads default).
-    int max_parallel = 2;
-    // Nexus: serialize downloads even when a parallel slot is free (free /
-    // supporter tier). Premium: parallel. Defaults ON to match the
-    // pre-Network:: behaviour.
-    bool nexus_queue_downloads = true;
-    // Workshop hourly rate limit (mirrors Settings).
-    int workshop_rate_limit_per_hour = 60;
-    // Default per-request timeout for non-download requests (Nexus JSON,
-    // probes, etc). Downloads use 0 (no overall cap) when long_lived.
-    int default_timeout_seconds = 30;
-    // Max retries on transient failure (5xx, network). 0 = no retry.
-    int max_retries = 0;
-    // Initial backoff in milliseconds (doubles each attempt up to 8x).
-    int retry_backoff_ms = 500;
-    // Happy Eyeballs: race IPv6 vs IPv4 connections (RFC 8305).
-    // Disabled when use_proxy is true (QUIC/UDP cannot tunnel through proxies).
-    bool use_happy_eyeballs = true;
-    // HTTP/3 preference: try QUIC first, fall back to h2/h1.1.
-    // Disabled when use_proxy is true.
-    bool use_http3 = true;
+  bool offline_mode = false;
+  bool use_proxy    = false;
+  std::string proxy_host;  // e.g. "127.0.0.1"
+  int proxy_port = 8080;
+  // Max concurrent downloads (Network:: download paths + PipelineWorker).
+  // 0 = legacy 2-slot behaviour (matches the previous PipelineWorker
+  // kMaxConcurrentDownloads default).
+  int max_parallel = 2;
+  // Nexus: serialize downloads even when a parallel slot is free (free /
+  // supporter tier). Premium: parallel. Defaults ON to match the
+  // pre-Network:: behaviour.
+  bool nexus_queue_downloads = true;
+  // Workshop hourly rate limit (mirrors Settings).
+  int workshop_rate_limit_per_hour = 60;
+  // Default per-request timeout for non-download requests (Nexus JSON,
+  // probes, etc). Downloads use 0 (no overall cap) when long_lived.
+  int default_timeout_seconds = 30;
+  // Max retries on transient failure (5xx, network). 0 = no retry.
+  int max_retries = 0;
+  // Initial backoff in milliseconds (doubles each attempt up to 8x).
+  int retry_backoff_ms = 500;
+  // Happy Eyeballs: race IPv6 vs IPv4 connections (RFC 8305).
+  // Disabled when use_proxy is true (QUIC/UDP cannot tunnel through proxies).
+  bool use_happy_eyeballs = true;
+  // HTTP/3 preference: try QUIC first, fall back to h2/h1.1.
+  // Disabled when use_proxy is true.
+  bool use_http3 = true;
 };
 
 // In-memory request (GET/POST for APIs, JSON fetches, probes).
 struct Request {
-    Method method = Method::Get;
-    std::string url;
-    Headers headers;            // "Name: value" lines, appended to defaults
-    std::string body;           // POST/PUT/PATCH body (empty = no body)
-    std::string caller;         // set automatically via NET_CALLER
-    std::chrono::seconds timeout{30};
-    bool follow_redirect = true;
-    // Cap response bytes; 0 = no cap. Used by LoversLab scrape to bound
-    // misconfigured servers.
-    std::int64_t max_bytes = 0;
+  Method method = Method::Get;
+  std::string url;
+  Headers headers;     // "Name: value" lines, appended to defaults
+  std::string body;    // POST/PUT/PATCH body (empty = no body)
+  std::string caller;  // set automatically via NET_CALLER
+  std::chrono::seconds timeout{30};
+  bool follow_redirect = true;
+  // Cap response bytes; 0 = no cap. Used by LoversLab scrape to bound
+  // misconfigured servers.
+  std::int64_t max_bytes = 0;
 };
 
 struct Response {
-    long http_code = 0;
-    std::string body;
-    std::string response_headers; // raw "Name: value\r\n" lines
-    std::string effective_url;
-    std::string content_disposition;
-    std::string error;            // libcurl error string on failure
-    double total_time_ms = 0.0;
-    std::uint64_t request_id = 0; // matches LogEntry::id for cross-reference
-    std::string http_version;     // "http/3", "http/2", "http/1.1" etc.
+  long http_code = 0;
+  std::string body;
+  std::string response_headers;  // raw "Name: value\r\n" lines
+  std::string effective_url;
+  std::string content_disposition;
+  std::string error;  // libcurl error string on failure
+  double total_time_ms     = 0.0;
+  std::uint64_t request_id = 0;  // matches LogEntry::id for cross-reference
+  std::string http_version;      // "http/3", "http/2", "http/1.1" etc.
 };
 
 // File download (with resume, progress callback, queue + parallel limit).
 struct ProgressCb {
-    std::function<void(std::int64_t downloaded, std::int64_t total, double bps)> on;
-    std::function<bool()> should_abort;  // returns true to abort (pause)
-    std::int64_t resume_base = 0;
+  std::function<void(std::int64_t downloaded, std::int64_t total, double bps)> on;
+  std::function<bool()> should_abort;  // returns true to abort (pause)
+  std::int64_t resume_base = 0;
 };
 
 struct DownloadRequest {
-    std::string url;
-    std::filesystem::path dest;
-    Headers headers;
-    std::string caller;
-    ProgressCb progress;
-    // Long-lived (e.g. large archive): no overall timeout, only connect
-    // timeout. Matches the pre-Network:: curl_download long_lived flag.
-    bool long_lived = false;
-    std::int64_t resume_from = 0;
+  std::string url;
+  std::filesystem::path dest;
+  Headers headers;
+  std::string caller;
+  ProgressCb progress;
+  // Long-lived (e.g. large archive): no overall timeout, only connect
+  // timeout. Matches the pre-Network:: curl_download long_lived flag.
+  bool long_lived          = false;
+  std::int64_t resume_from = 0;
 };
 
 struct DownloadResult {
-    bool ok = false;
-    std::string error;
-    long http_code = 0;
-    std::uint64_t request_id = 0;
-    bool aborted = false;             // pause: partial file kept
-    std::int64_t bytes_downloaded = 0;
-    std::int64_t bytes_total = 0;
-    // Final URL after redirects. Empty if no redirect happened.
-    std::string effective_url;
-    // Server-provided Content-Disposition value, if any (LoversLab uses
-    // this to name downloaded archives when the URL is opaque).
-    std::string content_disposition;
-    // Raw response headers, written through the same single-header pass that
-    // also extracts the Content-Disposition above. Lives in DownloadResult
-    // so its address is stable for the entire download lifetime; a
-    // previous stack-local version dangled once prepare_download
-    // returned and corrupted the destination string.
-    std::string response_headers;
-    std::string http_version;         // protocol version used for this download
+  bool ok = false;
+  std::string error;
+  long http_code                = 0;
+  std::uint64_t request_id      = 0;
+  bool aborted                  = false;  // pause: partial file kept
+  std::int64_t bytes_downloaded = 0;
+  std::int64_t bytes_total      = 0;
+  // Final URL after redirects. Empty if no redirect happened.
+  std::string effective_url;
+  // Server-provided Content-Disposition value, if any (LoversLab uses
+  // this to name downloaded archives when the URL is opaque).
+  std::string content_disposition;
+  // Raw response headers, written through the same single-header pass that
+  // also extracts the Content-Disposition above. Lives in DownloadResult
+  // so its address is stable for the entire download lifetime; a
+  // previous stack-local version dangled once prepare_download
+  // returned and corrupted the destination string.
+  std::string response_headers;
+  std::string http_version;  // protocol version used for this download
 };
 
 // One ring-buffer entry per request (active + finished). Logged to file and
 // shown in the Debug panel Network tab.
 struct LogEntry {
-    std::uint64_t id = 0;
-    std::chrono::system_clock::time_point started{};
-    std::chrono::system_clock::time_point finished{};
-    std::string caller;                          // NET_CALLER string
-    std::string method;                          // "GET", "POST", ...
-    std::string url_redacted;
-    std::string request_headers_redacted;
-    std::string request_body_redacted;
-    std::string response_headers_redacted;
-    std::string response_body_preview;           // first 4 KiB
-    std::string effective_url;
-    long http_code = 0;
-    std::string curl_error;
-    std::int64_t bytes_downloaded = 0;
-    std::int64_t bytes_total = 0;
-    double total_time_ms = 0.0;
-    bool ok = false;
-    bool aborted = false;                        // pause / should_abort
-    std::string http_version;                    // protocol version used for this request
+  std::uint64_t id = 0;
+  std::chrono::system_clock::time_point started{};
+  std::chrono::system_clock::time_point finished{};
+  std::string caller;  // NET_CALLER string
+  std::string method;  // "GET", "POST", ...
+  std::string url_redacted;
+  std::string request_headers_redacted;
+  std::string request_body_redacted;
+  std::string response_headers_redacted;
+  std::string response_body_preview;  // first 4 KiB
+  std::string effective_url;
+  long http_code = 0;
+  std::string curl_error;
+  std::int64_t bytes_downloaded = 0;
+  std::int64_t bytes_total      = 0;
+  double total_time_ms          = 0.0;
+  bool ok                       = false;
+  bool aborted                  = false;  // pause / should_abort
+  std::string http_version;               // protocol version used for this request
 };
 
 // Live snapshot of an in-flight request for the Debug panel.
 struct ActiveRequest {
-    std::uint64_t id = 0;
-    std::string caller;
-    std::string method;
-    std::string url_redacted;
-    std::chrono::system_clock::time_point started{};
+  std::uint64_t id = 0;
+  std::string caller;
+  std::string method;
+  std::string url_redacted;
+  std::chrono::system_clock::time_point started{};
 };
 
 // Cumulative bytes GMM itself put on the wire and pulled off it. Reported by
@@ -277,8 +283,8 @@ struct ActiveRequest {
 // DescriptionBrowser (see header L17-19) and any subprocess I/O (e.g.
 // gmm_lootcli) - both intentionally out of scope for this counter.
 struct NetworkIoCounters {
-    std::uint64_t rx_bytes = 0;
-    std::uint64_t tx_bytes = 0;
+  std::uint64_t rx_bytes = 0;
+  std::uint64_t tx_bytes = 0;
 };
 
 // -----------------------------------------------------------------------------
@@ -288,56 +294,56 @@ struct NetworkIoCounters {
 
 class Interface {
 public:
-    virtual ~Interface() = default;
+  virtual ~Interface() = default;
 
-    // In-memory request (GET/POST). Blocking; returns a Response with the
-    // body and headers. Never throws.
-    virtual Response request(const Request& req) = 0;
+  // In-memory request (GET/POST). Blocking; returns a Response with the
+  // body and headers. Never throws.
+  virtual Response request(const Request &req) = 0;
 
-    // File download with resume + progress + abort. Blocking. Returns
-    // DownloadResult; on pause (aborted=true) the partial file is kept on
-    // disk for a later resume.
-    virtual DownloadResult download(DownloadRequest& req) = 0;
+  // File download with resume + progress + abort. Blocking. Returns
+  // DownloadResult; on pause (aborted=true) the partial file is kept on
+  // disk for a later resume.
+  virtual DownloadResult download(DownloadRequest &req) = 0;
 
-    // Live in-flight requests (for the Debug panel "Network" tab).
-    virtual std::vector<ActiveRequest> active_requests() const = 0;
+  // Live in-flight requests (for the Debug panel "Network" tab).
+  virtual std::vector<ActiveRequest> active_requests() const = 0;
 
-    // Pending queued downloads (those that the manager parked because
-    // max_parallel slots were full). Empty for in-memory request() calls.
-    virtual std::size_t queue_depth() const = 0;
+  // Pending queued downloads (those that the manager parked because
+  // max_parallel slots were full). Empty for in-memory request() calls.
+  virtual std::size_t queue_depth() const = 0;
 
-    // Recent log entries, newest first.
-    virtual std::vector<LogEntry> log_snapshot(std::size_t max_entries = 500) const = 0;
+  // Recent log entries, newest first.
+  virtual std::vector<LogEntry> log_snapshot(std::size_t max_entries = 500) const = 0;
 
-    // Drop the log ring buffer (e.g. when switching instances).
-    virtual void clear_log() = 0;
+  // Drop the log ring buffer (e.g. when switching instances).
+  virtual void clear_log() = 0;
 
-    // True while offline_mode is on (NetworkOptions::offline_mode). request
-    // and download return immediately with error="offline" when set.
-    virtual bool is_offline() const = 0;
+  // True while offline_mode is on (NetworkOptions::offline_mode). request
+  // and download return immediately with error="offline" when set.
+  virtual bool is_offline() const = 0;
 
-    // Replace the current options. Triggers immediate re-apply on the next
-    // request.
-    virtual void set_options(NetworkOptions opts) = 0;
-    virtual NetworkOptions options() const = 0;
+  // Replace the current options. Triggers immediate re-apply on the next
+  // request.
+  virtual void set_options(NetworkOptions opts) = 0;
+  virtual NetworkOptions options() const        = 0;
 
-    // Cancel every in-flight and queued request. After this returns, all
-    // NEW request()/download() calls also short-circuit with
-    // error="cancelled" until reset_cancel() is called. Used for clean
-    // shutdown (typically paired with reset_cancel() in tests, or
-    // followed by destroying the Manager entirely in production).
-    virtual void cancel_all() = 0;
+  // Cancel every in-flight and queued request. After this returns, all
+  // NEW request()/download() calls also short-circuit with
+  // error="cancelled" until reset_cancel() is called. Used for clean
+  // shutdown (typically paired with reset_cancel() in tests, or
+  // followed by destroying the Manager entirely in production).
+  virtual void cancel_all() = 0;
 
-    // Clears the cancel flag set by cancel_all() so future requests can
-    // proceed. Mostly useful for tests and for re-using a Manager across
-    // shutdown cycles - production code that intends to discard the
-    // Manager can simply destroy it instead.
-    virtual void reset_cancel() = 0;
+  // Clears the cancel flag set by cancel_all() so future requests can
+  // proceed. Mostly useful for tests and for re-using a Manager across
+  // shutdown cycles - production code that intends to discard the
+  // Manager can simply destroy it instead.
+  virtual void reset_cancel() = 0;
 
-    // Cumulative GMM wire bytes since process start. Polled by the Debug
-    // window's Network IO chart. Default returns zero so out-of-tree
-    // Interface implementations stay source-compatible.
-    virtual NetworkIoCounters io_counters() const { return {}; }
+  // Cumulative GMM wire bytes since process start. Polled by the Debug
+  // window's Network IO chart. Default returns zero so out-of-tree
+  // Interface implementations stay source-compatible.
+  virtual NetworkIoCounters io_counters() const { return {}; }
 };
 
 // -----------------------------------------------------------------------------
@@ -347,85 +353,84 @@ public:
 
 class Manager : public Interface {
 public:
-    Manager();
-    ~Manager() override;
+  Manager();
+  ~Manager() override;
 
-    Manager(const Manager&) = delete;
-    Manager& operator=(const Manager&) = delete;
+  Manager(const Manager &)            = delete;
+  Manager &operator=(const Manager &) = delete;
 
-    Response request(const Request& req) override;
-    DownloadResult download(DownloadRequest& req) override;
+  Response request(const Request &req) override;
+  DownloadResult download(DownloadRequest &req) override;
 
-    std::vector<ActiveRequest> active_requests() const override;
-    std::size_t queue_depth() const override;
-    std::vector<LogEntry> log_snapshot(std::size_t max_entries = 500) const override;
-    void clear_log() override;
-    bool is_offline() const override;
-    void set_options(NetworkOptions opts) override;
-    NetworkOptions options() const override;
-    void cancel_all() override;
-    void reset_cancel() override;
-    NetworkIoCounters io_counters() const override;
+  std::vector<ActiveRequest> active_requests() const override;
+  std::size_t queue_depth() const override;
+  std::vector<LogEntry> log_snapshot(std::size_t max_entries = 500) const override;
+  void clear_log() override;
+  bool is_offline() const override;
+  void set_options(NetworkOptions opts) override;
+  NetworkOptions options() const override;
+  void cancel_all() override;
+  void reset_cancel() override;
+  NetworkIoCounters io_counters() const override;
 
-    // For unit tests: number of ring slots filled. Equivalent to
-    // log_snapshot().size() but cheaper.
-    std::size_t log_size() const;
+  // For unit tests: number of ring slots filled. Equivalent to
+  // log_snapshot().size() but cheaper.
+  std::size_t log_size() const;
 
 private:
-    // Build + configure a CURL* easy handle from a Request (in-memory path).
-    // Caller owns the returned CURL* and must call curl_easy_cleanup.
-    // Returns nullptr on failure (writes the error into out_err).
-    CURL* prepare_request(const Request& req, Response& out_resp,
-                          std::string& out_err);
+  // Build + configure a CURL* easy handle from a Request (in-memory path).
+  // Caller owns the returned CURL* and must call curl_easy_cleanup.
+  // Returns nullptr on failure (writes the error into out_err).
+  CURL *prepare_request(const Request &req, Response &out_resp, std::string &out_err);
 
-    // Build + configure a CURL* easy handle for a file download.
-    CURL* prepare_download(DownloadRequest& req, DownloadResult& out_res,
-                           std::ofstream& out_file, std::string& out_err);
+  // Build + configure a CURL* easy handle for a file download.
+  CURL *prepare_download(DownloadRequest &req, DownloadResult &out_res,
+                         std::ofstream &out_file, std::string &out_err);
 
-    // Record an entry into the ring buffer + emit a debug log line. Caller
-    // supplies everything except id (auto-assigned) and timestamps (filled
-    // in here).
-    LogEntry record_entry(const LogEntry& entry);
+  // Record an entry into the ring buffer + emit a debug log line. Caller
+  // supplies everything except id (auto-assigned) and timestamps (filled
+  // in here).
+  LogEntry record_entry(const LogEntry &entry);
 
-    // Apply NetworkOptions to a CURL* handle (proxy, user agent, etc).
-    void apply_options(CURL* curl) const;
+  // Apply NetworkOptions to a CURL* handle (proxy, user agent, etc).
+  void apply_options(CURL *curl) const;
 
-    mutable std::mutex mu_;
+  mutable std::mutex mu_;
 
-    // Active in-flight tracking (request_id -> snapshot).
-    std::unordered_map<std::uint64_t, ActiveRequest> active_;
+  // Active in-flight tracking (request_id -> snapshot).
+  std::unordered_map<std::uint64_t, ActiveRequest> active_;
 
-    // Bounded ring (oldest dropped when over capacity). 2000 entries by
-    // default - matches the design goal.
-    static constexpr std::size_t kRingCapacity = 2000;
-    std::deque<LogEntry> log_;
+  // Bounded ring (oldest dropped when over capacity). 2000 entries by
+  // default - matches the design goal.
+  static constexpr std::size_t kRingCapacity = 2000;
+  std::deque<LogEntry> log_;
 
-    std::atomic<std::uint64_t> next_id_{1};
-    NetworkOptions opts_;
+  std::atomic<std::uint64_t> next_id_{1};
+  NetworkOptions opts_;
 
-    // libcurl share handle: keeps DNS cache, TLS session cache, and
-    // connection pool across easy handles. Created once per Manager.
-    CURLSH* share_ = nullptr;
+  // libcurl share handle: keeps DNS cache, TLS session cache, and
+  // connection pool across easy handles. Created once per Manager.
+  CURLSH *share_ = nullptr;
 
-    // Per-data-kind mutexes for the share handle's lock callbacks (DNS,
-    // SSL session, connection). curl_share_setopt only stores a single
-    // userdata pointer, so we point it at this map of mutexes.
-    mutable std::unordered_map<int, std::mutex> share_locks_;
+  // Per-data-kind mutexes for the share handle's lock callbacks (DNS,
+  // SSL session, connection). curl_share_setopt only stores a single
+  // userdata pointer, so we point it at this map of mutexes.
+  mutable std::unordered_map<int, std::mutex> share_locks_;
 
-    // H2: cancel_all() previously flipped an atomic<bool> and never reset
-    // it, which permanently blocked every subsequent request() /
-    // download() (every caller received error="cancelled"). The flag is
-    // now paired with reset_cancel() and the doc comment makes the
-    // session-scope kill-switch nature explicit.
-    std::atomic<bool> cancelled_{false};
+  // H2: cancel_all() previously flipped an atomic<bool> and never reset
+  // it, which permanently blocked every subsequent request() /
+  // download() (every caller received error="cancelled"). The flag is
+  // now paired with reset_cancel() and the doc comment makes the
+  // session-scope kill-switch nature explicit.
+  std::atomic<bool> cancelled_{false};
 
-    // Cumulative wire bytes GMM itself produced. Updated after each
-    // curl_easy_perform from CURLINFO_SIZE_DOWNLOAD_T / CURLINFO_SIZE_UPLOAD_T
-    // (see request() / download() implementations). Relaxed ordering is
-    // fine - the Debug panel only needs an eventually-consistent total
-    // and the chart deltas it computes hide any single-tick skew.
-    std::atomic<std::uint64_t> total_rx_bytes_{0};
-    std::atomic<std::uint64_t> total_tx_bytes_{0};
+  // Cumulative wire bytes GMM itself produced. Updated after each
+  // curl_easy_perform from CURLINFO_SIZE_DOWNLOAD_T / CURLINFO_SIZE_UPLOAD_T
+  // (see request() / download() implementations). Relaxed ordering is
+  // fine - the Debug panel only needs an eventually-consistent total
+  // and the chart deltas it computes hide any single-tick skew.
+  std::atomic<std::uint64_t> total_rx_bytes_{0};
+  std::atomic<std::uint64_t> total_tx_bytes_{0};
 };
 
 // -----------------------------------------------------------------------------
@@ -435,55 +440,60 @@ private:
 
 class FakeNetworkManager : public Interface {
 public:
-    FakeNetworkManager() = default;
-    ~FakeNetworkManager() override = default;
+  FakeNetworkManager()           = default;
+  ~FakeNetworkManager() override = default;
 
-    Response request(const Request& req) override;
-    DownloadResult download(DownloadRequest& req) override;
+  Response request(const Request &req) override;
+  DownloadResult download(DownloadRequest &req) override;
 
-    std::vector<ActiveRequest> active_requests() const override { return {}; }
-    std::size_t queue_depth() const override { return 0; }
-    std::vector<LogEntry> log_snapshot(std::size_t = 500) const override { return {}; }
-    void clear_log() override {}
-    bool is_offline() const override { return offline_; }
-    void set_options(NetworkOptions opts) override {
-        offline_ = opts.offline_mode;
-        opts_ = std::move(opts);
-    }
-    NetworkOptions options() const override { return opts_; }
-    void cancel_all() override {}
-    void reset_cancel() override {}
-    NetworkIoCounters io_counters() const override { return {total_rx_bytes_.load(), total_tx_bytes_.load()}; }
+  std::vector<ActiveRequest> active_requests() const override { return {}; }
+  std::size_t queue_depth() const override { return 0; }
+  std::vector<LogEntry> log_snapshot(std::size_t = 500) const override { return {}; }
+  void clear_log() override {}
+  bool is_offline() const override { return offline_; }
+  void set_options(NetworkOptions opts) override {
+    offline_ = opts.offline_mode;
+    opts_    = std::move(opts);
+  }
+  NetworkOptions options() const override { return opts_; }
+  void cancel_all() override {}
+  void reset_cancel() override {}
+  NetworkIoCounters io_counters() const override {
+    return {total_rx_bytes_.load(), total_tx_bytes_.load()};
+  }
 
-    // Configure the next response that request() will return. Popped FIFO.
-    void enqueue_response(Response r) {
-        // Mirror the response body's wire-bytes for tests that need
-        // io_counters() to be non-zero without going through libcurl.
-        total_rx_bytes_.fetch_add(r.body.size(), std::memory_order_relaxed);
-        responses_.push_back(std::move(r));
-    }
+  // Configure the next response that request() will return. Popped FIFO.
+  void enqueue_response(Response r) {
+    // Mirror the response body's wire-bytes for tests that need
+    // io_counters() to be non-zero without going through libcurl.
+    total_rx_bytes_.fetch_add(r.body.size(), std::memory_order_relaxed);
+    responses_.push_back(std::move(r));
+  }
 
-    // Record of every request handed to request()/download() since the
-    // fake was constructed (or since clear_calls()).
-    const std::vector<Request>& seen_requests() const { return seen_requests_; }
-    const std::vector<DownloadRequest>& seen_downloads() const { return seen_downloads_; }
-    void clear_calls() { seen_requests_.clear(); seen_downloads_.clear(); }
+  // Record of every request handed to request()/download() since the
+  // fake was constructed (or since clear_calls()).
+  const std::vector<Request> &seen_requests() const { return seen_requests_; }
+  const std::vector<DownloadRequest> &seen_downloads() const { return seen_downloads_; }
+  void clear_calls() {
+    seen_requests_.clear();
+    seen_downloads_.clear();
+  }
 
-    // Toggle: when true, request()/download() short-circuit with
-    // error="offline" regardless of queued responses.
-    void set_offline(bool on) { offline_ = on; }
+  // Toggle: when true, request()/download() short-circuit with
+  // error="offline" regardless of queued responses.
+  void set_offline(bool on) { offline_ = on; }
 
 private:
-    std::vector<Response> responses_;
-    std::vector<Request> seen_requests_;
-    std::vector<DownloadRequest> seen_downloads_;
-    NetworkOptions opts_;
-    bool offline_ = false;
-    // Same wire-byte contract as Manager: incremented by enqueue_response
-    // so tests can verify io_counters() without going through libcurl.
-    // Default-constructs to zero on every fresh fake.
-    std::atomic<std::uint64_t> total_rx_bytes_{0};
-    std::atomic<std::uint64_t> total_tx_bytes_{0};
+  std::vector<Response> responses_;
+  std::vector<Request> seen_requests_;
+  std::vector<DownloadRequest> seen_downloads_;
+  NetworkOptions opts_;
+  bool offline_ = false;
+  // Same wire-byte contract as Manager: incremented by enqueue_response
+  // so tests can verify io_counters() without going through libcurl.
+  // Default-constructs to zero on every fresh fake.
+  std::atomic<std::uint64_t> total_rx_bytes_{0};
+  std::atomic<std::uint64_t> total_tx_bytes_{0};
 };
 
 // -----------------------------------------------------------------------------
@@ -491,7 +501,7 @@ private:
 // use; tests call set_instance() to inject a FakeNetworkManager.
 // -----------------------------------------------------------------------------
 
-Interface& instance();
+Interface &instance();
 void set_instance(std::unique_ptr<Interface> net);
 
-} // namespace engine::network
+}  // namespace engine::network

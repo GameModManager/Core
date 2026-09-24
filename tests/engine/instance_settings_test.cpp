@@ -20,12 +20,12 @@ namespace fs = std::filesystem;
 
 namespace {
 
-void require(bool cond, const char* msg) {
+void require(bool cond, const char *msg) {
   INFO(msg);
   REQUIRE(cond);
 }
 
-std::string read_file(const fs::path& path) {
+std::string read_file(const fs::path &path) {
   std::ifstream in(path);
   return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
 }

@@ -18,7 +18,7 @@ class TaskDialog;
 // Restart(Yes) / Continue(No, "Some things might be weird.") command links.
 // No remember row - MO2 asks every time here. Shared between the controller
 // and the dialog tests.
-void configure_instance_restart_dialog(TaskDialog& dlg);
+void configure_instance_restart_dialog(TaskDialog &dlg);
 
 // App/instance shell: loading a game instance (set_game_info), app-state
 // persistence, the settings dialog, instance switcher/statistics, pipeline
@@ -27,7 +27,7 @@ void configure_instance_restart_dialog(TaskDialog& dlg);
 class SettingsController : public QObject {
   Q_OBJECT
 public:
-  explicit SettingsController(MainWindow* w, QObject* parent = nullptr);
+  explicit SettingsController(MainWindow *w, QObject *parent = nullptr);
 
   // Builds the menu bar and connects its actions to the controllers. Called
   // from the MainWindow ctor (the composer owns the toolbar; the wiring
@@ -36,10 +36,10 @@ public:
   void connect_menu_actions();
 
 public slots:
-  void set_game_info(const std::string& game_id, const std::string& game_display_name,
-                     const std::string& profile_name            = "Default",
-                     const std::filesystem::path& game_dir      = {},
-                     const std::filesystem::path& instance_root = {});
+  void set_game_info(const std::string &game_id, const std::string &game_display_name,
+                     const std::string &profile_name            = "Default",
+                     const std::filesystem::path &game_dir      = {},
+                     const std::filesystem::path &instance_root = {});
   void save_app_state();
   void restore_app_state();
   QJsonObject read_app_state_extra() const;
@@ -61,7 +61,7 @@ public slots:
   // Exposed as a slot so the Diagnostics tab button can wire to it.
   void show_debug_window();
   void show_instance_switcher();
-  bool switch_to_instance(const QString& name);
+  bool switch_to_instance(const QString &name);
   // Runs the "Create new instance" flow: detects installed games, shows the
   // GameSelectionWidget picker, creates the instance and switches to it.
   // Returns true when an instance was created and loaded, false when the user
@@ -75,13 +75,13 @@ public slots:
   // Global event filter (installed on QApplication by MainWindow): the Konami
   // code easter egg toggles the debug window. Returns true when the event was
   // consumed; MainWindow::eventFilter falls through to QMainWindow otherwise.
-  bool handle_global_event(QObject* obj, QEvent* event);
+  bool handle_global_event(QObject *obj, QEvent *event);
 
   // File > Import Modpack flow: import dialog -> instance selection ->
   // install wizard. Each step cancels the rest when dismissed.
   // preset_file pre-selects a .gmmpack in the import dialog (used by the
   // main-window drag-and-drop handler); empty keeps the dialog untouched.
-  void import_modpack(const QString& preset_file = {});
+  void import_modpack(const QString &preset_file = {});
 
   // File > Export Modpack: capture instance snapshot, open export wizard,
   // produce a .gmmpack archive.
@@ -92,9 +92,9 @@ private:
   // late-bound pointers (game knowledge, profile manager) so the Info tab
   // has the metadata it needs. Centralized so every DebugWindow creation
   // site gets the same wiring.
-  class DebugWindow* create_debug_window();
+  class DebugWindow *create_debug_window();
 
-  MainWindow* w_ = nullptr;
+  MainWindow *w_ = nullptr;
 };
 
 }  // namespace ui

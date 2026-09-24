@@ -2,13 +2,13 @@
 
 namespace Deploy {
 
-void Ledger::record_deploy(const std::string &relative_path,
-                           const std::string &mod_id, uint32_t priority) {
+void Ledger::record_deploy(const std::string &relative_path, const std::string &mod_id,
+                           uint32_t priority) {
   Entry entry;
-  entry.relative_path = relative_path;
-  entry.mod_id = mod_id;
-  entry.priority = priority;
-  entry.deployed = true;
+  entry.relative_path    = relative_path;
+  entry.mod_id           = mod_id;
+  entry.priority         = priority;
+  entry.deployed         = true;
   ledger_[relative_path] = entry;
 }
 
@@ -26,8 +26,8 @@ const Entry *Ledger::find(const std::string &relative_path) const {
   return it != ledger_.end() ? &it->second : nullptr;
 }
 
-std::vector<std::string> Ledger::diff(
-    const std::unordered_map<std::string, std::string> &new_winners) const {
+std::vector<std::string>
+Ledger::diff(const std::unordered_map<std::string, std::string> &new_winners) const {
   std::vector<std::string> changed;
 
   // Check existing deployments - find paths where winner changed
@@ -53,6 +53,8 @@ std::vector<std::string> Ledger::diff(
   return changed;
 }
 
-void Ledger::clear() { ledger_.clear(); }
+void Ledger::clear() {
+  ledger_.clear();
+}
 
-} // namespace Deploy
+}  // namespace Deploy

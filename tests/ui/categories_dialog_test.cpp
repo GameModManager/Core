@@ -36,7 +36,7 @@ void seed_factory() {
     factory.removeCategory(id);
   factory.addCategory(1, "Animations", 0);
   factory.addCategory(2, "Armour", 0);
-  factory.addCategory(3, "Poses", 1); // child of Animations
+  factory.addCategory(3, "Poses", 1);  // child of Animations
 }
 
 QTableWidget *table_of(ui::CategoriesDialog &dlg) {
@@ -59,7 +59,7 @@ QString cell_text(QTableWidget *table, int row, int column) {
   return item ? item->text() : QString();
 }
 
-} // namespace
+}  // namespace
 
 TEST_CASE("categories dialog", "[ui]") {
   qputenv("QT_QPA_PLATFORM", "offscreen");
@@ -67,7 +67,7 @@ TEST_CASE("categories dialog", "[ui]") {
   std::filesystem::remove_all(root);
   std::filesystem::create_directories(root / "config");
   qputenv("XDG_CONFIG_HOME", (root / "config").c_str());
-  int test_argc = 1;
+  int test_argc     = 1;
   char test_argv0[] = "test";
   char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
@@ -94,7 +94,7 @@ TEST_CASE("categories dialog", "[ui]") {
 
   SECTION("add inserts a row with the next free id and root parent") {
     ui::CategoriesDialog dlg(root);
-    auto *table = table_of(dlg);
+    auto *table   = table_of(dlg);
     auto *add_btn = button_of(dlg, "Add");
     REQUIRE(add_btn != nullptr);
 
@@ -114,7 +114,7 @@ TEST_CASE("categories dialog", "[ui]") {
 
   SECTION("remove deletes the selected row") {
     ui::CategoriesDialog dlg(root);
-    auto *table = table_of(dlg);
+    auto *table      = table_of(dlg);
     auto *remove_btn = button_of(dlg, "Remove");
     REQUIRE(remove_btn != nullptr);
     REQUIRE_FALSE(remove_btn->isEnabled());
@@ -134,7 +134,7 @@ TEST_CASE("categories dialog", "[ui]") {
 
     // Edit the name of id 2 and the parent of id 3.
     table->item(1, 1)->setText("Armor");
-    table->item(2, 2)->setText("2"); // Poses -> child of Armour
+    table->item(2, 2)->setText("2");  // Poses -> child of Armour
     // Add a new category.
     button_of(dlg, "Add")->click();
     for (int r = 0; r < table->rowCount(); ++r) {
@@ -176,7 +176,7 @@ TEST_CASE("categories dialog", "[ui]") {
   SECTION("commit rejects a duplicate id") {
     ui::CategoriesDialog dlg(root);
     auto *table = table_of(dlg);
-    table->item(1, 0)->setText("1"); // duplicate of id 1
+    table->item(1, 0)->setText("1");  // duplicate of id 1
     REQUIRE_FALSE(dlg.commit_changes());
     // Factory untouched.
     auto &factory = engine::Category::Factory::instance();
@@ -187,25 +187,23 @@ TEST_CASE("categories dialog", "[ui]") {
   SECTION("commit rejects a dangling parent") {
     ui::CategoriesDialog dlg(root);
     auto *table = table_of(dlg);
-    table->item(2, 2)->setText("99"); // no such category
+    table->item(2, 2)->setText("99");  // no such category
     REQUIRE_FALSE(dlg.commit_changes());
-    REQUIRE(engine::Category::Factory::instance().categoryById(3)->parent_id ==
-            1);
+    REQUIRE(engine::Category::Factory::instance().categoryById(3)->parent_id == 1);
   }
 
   SECTION("commit rejects a self-parent") {
     ui::CategoriesDialog dlg(root);
     auto *table = table_of(dlg);
-    table->item(0, 2)->setText("1"); // Animations is its own parent
+    table->item(0, 2)->setText("1");  // Animations is its own parent
     REQUIRE_FALSE(dlg.commit_changes());
-    REQUIRE(engine::Category::Factory::instance().categoryById(1)->parent_id ==
-            0);
+    REQUIRE(engine::Category::Factory::instance().categoryById(1)->parent_id == 0);
   }
 
   SECTION("commit rejects a non-positive id") {
     ui::CategoriesDialog dlg(root);
     auto *table = table_of(dlg);
-    table->item(0, 0)->setText("0"); // 0 is the implicit "None"
+    table->item(0, 0)->setText("0");  // 0 is the implicit "None"
     REQUIRE_FALSE(dlg.commit_changes());
     REQUIRE(engine::Category::Factory::instance().categoryExists(1));
   }

@@ -13,85 +13,85 @@ namespace engine::update {
 
 namespace {
 
-// GitHub API endpoint for the latest release.
-constexpr const char *kGitHubApiUrl =
-    "https://api.github.com/repos/GameModManager/GMM/releases/latest";
-constexpr const char *kUserAgent = "GameModManager/SelfUpdater";
+  // GitHub API endpoint for the latest release.
+  constexpr const char *kGitHubApiUrl =
+      "https://api.github.com/repos/GameModManager/GMM/releases/latest";
+  constexpr const char *kUserAgent = "GameModManager/SelfUpdater";
 
-// Fetch the raw JSON body from the GitHub releases API.
-bool fetch_github_latest(nlohmann::json &out) {
-  namespace dl = engine::download;
+  // Fetch the raw JSON body from the GitHub releases API.
+  bool fetch_github_latest(nlohmann::json &out) {
+    namespace dl = engine::download;
 
-  const auto tmp = std::filesystem::temp_directory_path() / "gmm_update.json";
-  long http_code = 0;
-  dl::Options opts;
-  opts.user_agent = kUserAgent;
+    const auto tmp = std::filesystem::temp_directory_path() / "gmm_update.json";
+    long http_code = 0;
+    dl::Options opts;
+    opts.user_agent = kUserAgent;
 
-  bool ok = dl::curl_download(kGitHubApiUrl, tmp, http_code, opts, nullptr, 0, nullptr, NET_CALLER);
-  if (!ok || http_code >= 400) {
-    Logger::instance().error("SelfUpdater: GitHub API request failed (HTTP " +
-                             std::to_string(http_code) + ")");
-    std::error_code ec;
-    std::filesystem::remove(tmp, ec);
-    return false;
-  }
-
-  std::ifstream ifs(tmp);
-  if (!ifs) {
-    Logger::instance().error("SelfUpdater: cannot read GitHub response");
-    std::error_code ec;
-    std::filesystem::remove(tmp, ec);
-    return false;
-  }
-
-  try {
-    ifs >> out;
-  } catch (const std::exception &e) {
-    Logger::instance().error(std::string("SelfUpdater: JSON parse error: ") +
-                             e.what());
-    std::error_code ec;
-    std::filesystem::remove(tmp, ec);
-    return false;
-  }
-
-  std::error_code ec;
-  std::filesystem::remove(tmp, ec);
-  return true;
-}
-
-// Parse a "v0.4.2" tag into a comparable triple.
-bool parse_version(const std::string &tag, int &major, int &minor, int &patch) {
-  std::string v = tag;
-  if (!v.empty() && v[0] == 'v')
-    v = v.substr(1);
-  std::regex re(R"((\d+)\.(\d+)\.(\d+))");
-  std::smatch m;
-  if (!std::regex_match(v, m, re))
-    return false;
-  major = std::stoi(m[1]);
-  minor = std::stoi(m[2]);
-  patch = std::stoi(m[3]);
-  return true;
-}
-
-// Find the best asset URL matching the platform suffix.
-std::string find_asset_url(const nlohmann::json &release,
-                           const std::string &suffix) {
-  if (!release.contains("assets") || !release["assets"].is_array())
-    return {};
-  for (const auto &asset : release["assets"]) {
-    if (!asset.contains("name") || !asset.contains("browser_download_url"))
-      continue;
-    const std::string name = asset["name"].get<std::string>();
-    if (name.size() >= suffix.size() &&
-        name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0) {
-      return asset["browser_download_url"].get<std::string>();
+    bool ok = dl::curl_download(kGitHubApiUrl, tmp, http_code, opts, nullptr, 0,
+                                nullptr, NET_CALLER);
+    if (!ok || http_code >= 400) {
+      Logger::instance().error("SelfUpdater: GitHub API request failed (HTTP " +
+                               std::to_string(http_code) + ")");
+      std::error_code ec;
+      std::filesystem::remove(tmp, ec);
+      return false;
     }
-  }
-  return {};
-}
 
-} // namespace
+    std::ifstream ifs(tmp);
+    if (!ifs) {
+      Logger::instance().error("SelfUpdater: cannot read GitHub response");
+      std::error_code ec;
+      std::filesystem::remove(tmp, ec);
+      return false;
+    }
+
+    try {
+      ifs >> out;
+    } catch (const std::exception &e) {
+      Logger::instance().error(std::string("SelfUpdater: JSON parse error: ") +
+                               e.what());
+      std::error_code ec;
+      std::filesystem::remove(tmp, ec);
+      return false;
+    }
+
+    std::error_code ec;
+    std::filesystem::remove(tmp, ec);
+    return true;
+  }
+
+  // Parse a "v0.4.2" tag into a comparable triple.
+  bool parse_version(const std::string &tag, int &major, int &minor, int &patch) {
+    std::string v = tag;
+    if (!v.empty() && v[0] == 'v')
+      v = v.substr(1);
+    std::regex re(R"((\d+)\.(\d+)\.(\d+))");
+    std::smatch m;
+    if (!std::regex_match(v, m, re))
+      return false;
+    major = std::stoi(m[1]);
+    minor = std::stoi(m[2]);
+    patch = std::stoi(m[3]);
+    return true;
+  }
+
+  // Find the best asset URL matching the platform suffix.
+  std::string find_asset_url(const nlohmann::json &release, const std::string &suffix) {
+    if (!release.contains("assets") || !release["assets"].is_array())
+      return {};
+    for (const auto &asset : release["assets"]) {
+      if (!asset.contains("name") || !asset.contains("browser_download_url"))
+        continue;
+      const std::string name = asset["name"].get<std::string>();
+      if (name.size() >= suffix.size() &&
+          name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0) {
+        return asset["browser_download_url"].get<std::string>();
+      }
+    }
+    return {};
+  }
+
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // Shared GitHub helpers for subclass use
@@ -130,9 +130,9 @@ UpdateInfo fetch_update_info(const std::string &asset_suffix,
     }
   }
 
-  info.available = true;
-  info.version = tag;
-  info.changelog = release.value("body", "");
+  info.available    = true;
+  info.version      = tag;
+  info.changelog    = release.value("body", "");
   info.download_url = find_asset_url(release, asset_suffix);
 
   return info;
@@ -235,4 +235,4 @@ std::string SelfUpdater::detect_distro_type() {
 #endif
 }
 
-} // namespace engine::update
+}  // namespace engine::update

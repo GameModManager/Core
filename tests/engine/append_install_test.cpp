@@ -13,23 +13,22 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-namespace fs = std::filesystem;
+namespace fs      = std::filesystem;
 namespace gmmpack = engine::gmmpack;
+using engine::InstalledPackState;
+using engine::PackModPlacement;
 using engine::Install::AppendInstallPlan;
 using engine::Install::apply_append_state;
 using engine::Install::plan_append_install;
 using engine::Install::UserChoice;
-using engine::InstalledPackState;
-using engine::PackModPlacement;
-using engine::Pack::ResolvedMod;
 using engine::modpack::TreeChange;
+using engine::Pack::ResolvedMod;
 
 namespace {
 
 std::atomic<int> g_counter{0};
 
-fs::path make_temp_dir(const char* tag)
-{
+fs::path make_temp_dir(const char *tag) {
   const std::string name = "gmm_append_" + std::string(tag) + "_" +
                            std::to_string(getpid()) + "_" +
                            std::to_string(g_counter.fetch_add(1));
@@ -39,14 +38,13 @@ fs::path make_temp_dir(const char* tag)
   return dir;
 }
 
-gmmpack::Gmmpack make_pack()
-{
+gmmpack::Gmmpack make_pack() {
   gmmpack::Gmmpack pack;
   pack.manifest.id               = "pack-1";
   pack.manifest.revision         = 7;
   pack.manifest.info.gmm_game_id = "skyrimspecialedition";
 
-  for (const std::string& id : {"alpha", "beta", "gamma"}) {
+  for (const std::string &id : {"alpha", "beta", "gamma"}) {
     gmmpack::ModEntry mod;
     mod.id   = id;
     mod.name = id;
@@ -82,9 +80,8 @@ gmmpack::Gmmpack make_pack()
   return pack;
 }
 
-ResolvedMod resolved(const std::string& id, const std::string& source_id = {},
-                     const std::string& archive = {})
-{
+ResolvedMod resolved(const std::string &id, const std::string &source_id = {},
+                     const std::string &archive = {}) {
   ResolvedMod mod;
   mod.entry_id     = id;
   mod.display_name = id + " display";
@@ -94,14 +91,12 @@ ResolvedMod resolved(const std::string& id, const std::string& source_id = {},
   return mod;
 }
 
-std::vector<ResolvedMod> resolve_all()
-{
+std::vector<ResolvedMod> resolve_all() {
   return {resolved("alpha"), resolved("beta"), resolved("gamma")};
 }
 
-bool installs(const AppendInstallPlan& plan, const std::string& id)
-{
-  for (const auto& entry : plan.mods_to_install)
+bool installs(const AppendInstallPlan &plan, const std::string &id) {
+  for (const auto &entry : plan.mods_to_install)
     if (entry.mod.entry_id == id)
       return true;
   return false;
@@ -109,19 +104,17 @@ bool installs(const AppendInstallPlan& plan, const std::string& id)
 
 }  // namespace
 
-TEST_CASE("append install rejects game mismatch", "[append_install]")
-{
+TEST_CASE("append install rejects game mismatch", "[append_install]") {
   const gmmpack::Gmmpack pack = make_pack();
   InstalledPackState state(make_temp_dir("mismatch"));
-  AppendInstallPlan plan = plan_append_install(pack, "fallout4", state, {},
-                                               resolve_all(), {});
+  AppendInstallPlan plan =
+      plan_append_install(pack, "fallout4", state, {}, resolve_all(), {});
   REQUIRE_FALSE(plan.ok);
   REQUIRE_FALSE(plan.error.empty());
   REQUIRE(plan.mods_to_install.empty());
 }
 
-TEST_CASE("append install plans fresh mods into empty state", "[append_install]")
-{
+TEST_CASE("append install plans fresh mods into empty state", "[append_install]") {
   const gmmpack::Gmmpack pack = make_pack();
   InstalledPackState state(make_temp_dir("empty"));
   AppendInstallPlan plan =
@@ -140,14 +133,13 @@ TEST_CASE("append install plans fresh mods into empty state", "[append_install]"
   CHECK(plan.tree_changes[1].mod_id == "beta");
   CHECK(plan.tree_changes[2].mod_id == "gamma");
   CHECK(plan.tree_changes[2].new_parent.empty());
-  for (const auto& change : plan.tree_changes)
+  for (const auto &change : plan.tree_changes)
     CHECK(change.action == TreeChange::Action::Insert);
   REQUIRE(plan.ini_apply_keys.size() == 1);
   REQUIRE(plan.patch_consent_mods == std::vector<std::string>{"beta"});
 }
 
-TEST_CASE("append install skips manual and removed mods", "[append_install]")
-{
+TEST_CASE("append install skips manual and removed mods", "[append_install]") {
   const gmmpack::Gmmpack pack = make_pack();
   InstalledPackState state(make_temp_dir("skip"));
   state.mark_manual("alpha");
@@ -161,12 +153,11 @@ TEST_CASE("append install skips manual and removed mods", "[append_install]")
   REQUIRE_FALSE(installs(plan, "gamma"));
   REQUIRE(installs(plan, "beta"));
   // Skipped mods get no tree changes either.
-  for (const auto& change : plan.tree_changes)
+  for (const auto &change : plan.tree_changes)
     CHECK(change.mod_id == "beta");
 }
 
-TEST_CASE("append install keeps diverged positions", "[append_install]")
-{
+TEST_CASE("append install keeps diverged positions", "[append_install]") {
   const gmmpack::Gmmpack pack = make_pack();
   InstalledPackState state(make_temp_dir("diverged"));
   state.ensure_pack_mod("alpha");
@@ -178,30 +169,28 @@ TEST_CASE("append install keeps diverged positions", "[append_install]")
   REQUIRE(installs(plan, "alpha"));
   REQUIRE(plan.kept_diverged == std::vector<std::string>{"alpha"});
   // ... but follow no tree change.
-  for (const auto& change : plan.tree_changes)
+  for (const auto &change : plan.tree_changes)
     CHECK(change.mod_id != "alpha");
 }
 
-TEST_CASE("append install reports unresolved pack mods", "[append_install]")
-{
+TEST_CASE("append install reports unresolved pack mods", "[append_install]") {
   const gmmpack::Gmmpack pack = make_pack();
   InstalledPackState state(make_temp_dir("unresolved"));
   std::vector<ResolvedMod> partial = {resolved("alpha")};
-  AppendInstallPlan plan = plan_append_install(pack, "skyrimspecialedition", state, {},
-                                               partial, {});
+  AppendInstallPlan plan =
+      plan_append_install(pack, "skyrimspecialedition", state, {}, partial, {});
   REQUIRE(plan.ok);
   REQUIRE(plan.unresolved_mods == std::vector<std::string>{"beta", "gamma"});
   REQUIRE(installs(plan, "alpha"));
   REQUIRE_FALSE(installs(plan, "beta"));
 }
 
-TEST_CASE("append install skips conflicting mod by default", "[append_install]")
-{
+TEST_CASE("append install skips conflicting mod by default", "[append_install]") {
   const gmmpack::Gmmpack pack = make_pack();
   InstalledPackState state(make_temp_dir("conflict-skip"));
   // Same provider + mod id as the pack's beta: DuplicateSource.
-  const std::vector<ResolvedMod> existing = {resolved("old-beta", "src-beta",
-                                                      "old.zip")};
+  const std::vector<ResolvedMod> existing = {
+      resolved("old-beta", "src-beta", "old.zip")};
   AppendInstallPlan plan = plan_append_install(pack, "skyrimspecialedition", state,
                                                existing, resolve_all(), {});
   REQUIRE(plan.ok);
@@ -211,17 +200,16 @@ TEST_CASE("append install skips conflicting mod by default", "[append_install]")
   REQUIRE(installs(plan, "alpha"));
 }
 
-TEST_CASE("append install honors replace and rename choices", "[append_install]")
-{
-  const gmmpack::Gmmpack pack = make_pack();
-  const std::vector<ResolvedMod> existing = {resolved("old-beta", "src-beta",
-                                                      "old.zip")};
+TEST_CASE("append install honors replace and rename choices", "[append_install]") {
+  const gmmpack::Gmmpack pack             = make_pack();
+  const std::vector<ResolvedMod> existing = {
+      resolved("old-beta", "src-beta", "old.zip")};
 
   {
     InstalledPackState state(make_temp_dir("conflict-replace"));
     UserChoice choice;
-    choice.conflict_index = 0;
-    choice.action         = engine::Install::Action::Replace;
+    choice.conflict_index  = 0;
+    choice.action          = engine::Install::Action::Replace;
     AppendInstallPlan plan = plan_append_install(pack, "skyrimspecialedition", state,
                                                  existing, resolve_all(), {choice});
     REQUIRE(plan.ok);
@@ -230,21 +218,20 @@ TEST_CASE("append install honors replace and rename choices", "[append_install]"
   {
     InstalledPackState state(make_temp_dir("conflict-rename"));
     UserChoice choice;
-    choice.conflict_index = 0;
-    choice.action         = engine::Install::Action::Rename;
-    choice.rename_to      = "beta-pack.zip";
+    choice.conflict_index  = 0;
+    choice.action          = engine::Install::Action::Rename;
+    choice.rename_to       = "beta-pack.zip";
     AppendInstallPlan plan = plan_append_install(pack, "skyrimspecialedition", state,
                                                  existing, resolve_all(), {choice});
     REQUIRE(plan.ok);
     REQUIRE(installs(plan, "beta"));
-    for (const auto& entry : plan.mods_to_install)
+    for (const auto &entry : plan.mods_to_install)
       if (entry.mod.entry_id == "beta")
         CHECK(entry.target_name == "beta-pack.zip");
   }
 }
 
-TEST_CASE("append install retracts stale ini and honors toggles", "[append_install]")
-{
+TEST_CASE("append install retracts stale ini and honors toggles", "[append_install]") {
   const gmmpack::Gmmpack pack = make_pack();
   InstalledPackState state(make_temp_dir("ini"));
   state.set_applied_ini_edits({"skyrim.ini::old-tweak:deadbeef"});
@@ -257,8 +244,7 @@ TEST_CASE("append install retracts stale ini and honors toggles", "[append_insta
   REQUIRE(plan.ini_apply_keys.empty());
 }
 
-TEST_CASE("append install skips consent for applied patches", "[append_install]")
-{
+TEST_CASE("append install skips consent for applied patches", "[append_install]") {
   const gmmpack::Gmmpack pack = make_pack();
   InstalledPackState state(make_temp_dir("patches"));
   state.set_applied_patches({engine::modpack::patch_key(pack.patches.front())});
@@ -268,8 +254,7 @@ TEST_CASE("append install skips consent for applied patches", "[append_install]"
   REQUIRE(plan.patch_consent_mods.empty());
 }
 
-TEST_CASE("append install seeds new mods, keeps tracked", "[append_install]")
-{
+TEST_CASE("append install seeds new mods, keeps tracked", "[append_install]") {
   const gmmpack::Gmmpack pack = make_pack();
   InstalledPackState state(make_temp_dir("seed"));
   state.set_pack("other-pack", 3);
@@ -283,19 +268,18 @@ TEST_CASE("append install seeds new mods, keeps tracked", "[append_install]")
   // Existing pack identity and the diverged mod survive untouched ...
   CHECK(state.pack_id() == "other-pack");
   CHECK(state.installed_revision() == 3);
-  const auto* alpha = state.resolved_mod("alpha");
+  const auto *alpha = state.resolved_mod("alpha");
   REQUIRE(alpha != nullptr);
   CHECK(alpha->placement == PackModPlacement::Diverged);
   CHECK(alpha->last_applied_revision == 0);
   // ... while new mods are tracked with the pack revision.
-  const auto* beta = state.resolved_mod("beta");
+  const auto *beta = state.resolved_mod("beta");
   REQUIRE(beta != nullptr);
   CHECK(beta->placement == PackModPlacement::Conforming);
   CHECK(beta->last_applied_revision == 7);
 }
 
-TEST_CASE("append install sets pack identity when none", "[append_install]")
-{
+TEST_CASE("append install sets pack identity when none", "[append_install]") {
   const gmmpack::Gmmpack pack = make_pack();
   InstalledPackState state(make_temp_dir("seed-fresh"));
   AppendInstallPlan plan =

@@ -26,14 +26,14 @@ bool Symlink::deploy(const std::filesystem::path &source,
   // to the mod folder (so skse64_loader.exe would look for SkyrimSE.exe in
   // the mod folder). Same contract as OverlayFsDeploy.
   if (engine::is_executable_binary(source)) {
-    std::filesystem::copy_file(
-        source, merged, std::filesystem::copy_options::overwrite_existing, ec);
+    std::filesystem::copy_file(source, merged,
+                               std::filesystem::copy_options::overwrite_existing, ec);
     if (ec)
       return false;
     std::error_code perm_ec;
     auto perms = std::filesystem::status(merged, perm_ec).permissions();
-    if (!perm_ec && (perms & std::filesystem::perms::owner_exec) ==
-                        std::filesystem::perms::none) {
+    if (!perm_ec &&
+        (perms & std::filesystem::perms::owner_exec) == std::filesystem::perms::none) {
       std::filesystem::permissions(merged,
                                    perms | std::filesystem::perms::owner_exec |
                                        std::filesystem::perms::group_exec |
@@ -56,4 +56,4 @@ bool Symlink::remove(const std::filesystem::path &target) {
   return false;
 }
 
-} // namespace Deploy
+}  // namespace Deploy

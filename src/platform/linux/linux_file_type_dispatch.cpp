@@ -17,15 +17,13 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-namespace engine
-{
+namespace engine {
 
 // ---------------------------------------------------------------------------
 // can_launch
 // ---------------------------------------------------------------------------
 
-bool LinuxFileTypeDispatcher::can_launch(FileType type) const
-{
+bool LinuxFileTypeDispatcher::can_launch(FileType type) const {
   switch (type) {
   case FileType::NativeExecutable:
   case FileType::Script:
@@ -43,8 +41,7 @@ bool LinuxFileTypeDispatcher::can_launch(FileType type) const
 // Launch
 // ---------------------------------------------------------------------------
 
-bool LinuxFileTypeDispatcher::ensure_executable(const std::filesystem::path& file)
-{
+bool LinuxFileTypeDispatcher::ensure_executable(const std::filesystem::path &file) {
   std::error_code ec;
   auto st = std::filesystem::status(file, ec);
   if (ec)
@@ -64,9 +61,8 @@ bool LinuxFileTypeDispatcher::ensure_executable(const std::filesystem::path& fil
 }
 
 LaunchResult LinuxFileTypeDispatcher::fork_exec(
-    const std::filesystem::path& executable, const std::vector<std::string>& argv,
-    const std::filesystem::path& working_dir, bool background)
-{
+    const std::filesystem::path &executable, const std::vector<std::string> &argv,
+    const std::filesystem::path &working_dir, bool background) {
   LaunchResult result;
 
   const pid_t pid = fork();
@@ -93,21 +89,21 @@ LaunchResult LinuxFileTypeDispatcher::fork_exec(
     }
 
     // Build the raw argv array.
-    std::vector<char*> raw_argv;
+    std::vector<char *> raw_argv;
     raw_argv.reserve(argv.size() + 1);
-    for (const auto& arg : argv)
-      raw_argv.push_back(const_cast<char*>(arg.c_str()));
+    for (const auto &arg : argv)
+      raw_argv.push_back(const_cast<char *>(arg.c_str()));
     raw_argv.push_back(nullptr);
 
     execvp(raw_argv[0], raw_argv.data());
 
     // Fallback: try running through /bin/sh for scripts without a
     // proper shebang.
-    std::vector<char*> sh_argv;
+    std::vector<char *> sh_argv;
     sh_argv.reserve(argv.size() + 2);
-    sh_argv.push_back(const_cast<char*>("sh"));
-    for (const auto& arg : argv)
-      sh_argv.push_back(const_cast<char*>(arg.c_str()));
+    sh_argv.push_back(const_cast<char *>("sh"));
+    for (const auto &arg : argv)
+      sh_argv.push_back(const_cast<char *>(arg.c_str()));
     sh_argv.push_back(nullptr);
 
     execv("/bin/sh", sh_argv.data());
@@ -130,9 +126,8 @@ LaunchResult LinuxFileTypeDispatcher::fork_exec(
   return result;
 }
 
-LaunchResult LinuxFileTypeDispatcher::launch(const std::filesystem::path& file,
-                                             const LaunchOptions& options) const
-{
+LaunchResult LinuxFileTypeDispatcher::launch(const std::filesystem::path &file,
+                                             const LaunchOptions &options) const {
   if (!std::filesystem::exists(file))
     return {};
 
@@ -145,7 +140,7 @@ LaunchResult LinuxFileTypeDispatcher::launch(const std::filesystem::path& file,
     ensure_executable(file);
     std::vector<std::string> argv;
     argv.push_back(file.string());
-    for (const auto& a : options.args)
+    for (const auto &a : options.args)
       argv.push_back(a);
     return fork_exec(file, argv, options.working_dir, options.background);
   }
@@ -155,14 +150,14 @@ LaunchResult LinuxFileTypeDispatcher::launch(const std::filesystem::path& file,
     ensure_executable(file);
     std::vector<std::string> argv;
     argv.push_back(file.string());
-    for (const auto& a : options.args)
+    for (const auto &a : options.args)
       argv.push_back(a);
     return fork_exec(file, argv, options.working_dir, options.background);
   }
 
   case FileType::JavaArchive: {
     std::vector<std::string> argv = {"java", "-jar", file.string()};
-    for (const auto& a : options.args)
+    for (const auto &a : options.args)
       argv.push_back(a);
     // java needs the full path to resolve classpath relative to jar.
     return fork_exec("java", argv, file.parent_path(), options.background);
@@ -172,7 +167,7 @@ LaunchResult LinuxFileTypeDispatcher::launch(const std::filesystem::path& file,
     ensure_executable(file);
     std::vector<std::string> argv;
     argv.push_back(file.string());
-    for (const auto& a : options.args)
+    for (const auto &a : options.args)
       argv.push_back(a);
     return fork_exec(file, argv, options.working_dir, options.background);
   }
@@ -194,8 +189,7 @@ LaunchResult LinuxFileTypeDispatcher::launch(const std::filesystem::path& file,
 // Factory
 // ---------------------------------------------------------------------------
 
-std::unique_ptr<FileTypeDispatcher> create_file_type_dispatcher()
-{
+std::unique_ptr<FileTypeDispatcher> create_file_type_dispatcher() {
   return std::make_unique<LinuxFileTypeDispatcher>();
 }
 

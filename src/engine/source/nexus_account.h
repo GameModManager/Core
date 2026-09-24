@@ -12,4 +12,4 @@ using NexusValidateResult = Source::Nexus::ValidateResult;
 using Source::Nexus::Account::parse_rate_limits;
 using Source::Nexus::Account::validate_nexus_account;
 
-} // namespace engine
+}  // namespace engine

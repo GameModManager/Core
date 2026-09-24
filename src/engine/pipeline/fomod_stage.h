@@ -14,13 +14,13 @@ namespace engine {
 // meta.ini persistence.
 class FomodStage : public Stage {
 public:
-    bool execute(Mod& mod, PipelineContext& ctx) override;
-    std::string name() const override { return "Fomod"; }
-    std::string description() const override {
-        return "Detects FOMOD installer archives (fomod/ModuleConfig.xml) and "
-               "installs them via the FOMOD installer wizard";
-    }
-    std::string condition() const override { return "Not a FOMOD archive"; }
+  bool execute(Mod &mod, PipelineContext &ctx) override;
+  std::string name() const override { return "Fomod"; }
+  std::string description() const override {
+    return "Detects FOMOD installer archives (fomod/ModuleConfig.xml) and "
+           "installs them via the FOMOD installer wizard";
+  }
+  std::string condition() const override { return "Not a FOMOD archive"; }
 };
 
 }  // namespace engine

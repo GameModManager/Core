@@ -8,8 +8,9 @@
 
 namespace engine {
 
-// Backward-compat aliases (deprecated - use Source::Nexus::Http::nexus_http_request / Source::Http::encode_url_path)
+// Backward-compat aliases (deprecated - use Source::Nexus::Http::nexus_http_request /
+// Source::Http::encode_url_path)
 using Source::Http::encode_url_path;
 using Source::Nexus::Http::nexus_http_request;
 
-} // namespace engine
+}  // namespace engine

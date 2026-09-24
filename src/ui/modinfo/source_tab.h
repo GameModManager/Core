@@ -17,33 +17,33 @@ namespace ui {
 // provenance existed, and users conflated tab visibility with actual
 // source attribution.
 class SourceTab : public ModInfoTab {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit SourceTab(QWidget* parent = nullptr);
-    ~SourceTab() override;
+  explicit SourceTab(QWidget *parent = nullptr);
+  ~SourceTab() override;
 
-    void set_mod(const ModInfoData& data) override;
-    void first_activation() override;
-    void save_state() override;
+  void set_mod(const ModInfoData &data) override;
+  void first_activation() override;
+  void save_state() override;
 
 private:
-    // Build (or rebuild) the single source tab plus the "+" affordance tab
-    // from the current ModInfoData and the mod's meta. Called whenever the
-    // displayed mod changes or after the user attaches a new source via "+".
-    void populate();
+  // Build (or rebuild) the single source tab plus the "+" affordance tab
+  // from the current ModInfoData and the mod's meta. Called whenever the
+  // displayed mod changes or after the user attaches a new source via "+".
+  void populate();
 
-    // Open a modal dialog that lets the user attach a Nexus / LoversLab /
-    // Steam source to the current mod. On confirm, writes the appropriate
-    // provider section + [GameModManager]source_type/source_id via
-    // current().save_meta(), updates the in-memory ModInfoData, then
-    // repopulates the tab.
-    void show_add_source_dialog();
+  // Open a modal dialog that lets the user attach a Nexus / LoversLab /
+  // Steam source to the current mod. On confirm, writes the appropriate
+  // provider section + [GameModManager]source_type/source_id via
+  // current().save_meta(), updates the in-memory ModInfoData, then
+  // repopulates the tab.
+  void show_add_source_dialog();
 
-    QTabWidget* sources_ = nullptr;
-    // Index of the "+" tab inside sources_, -1 when none. Stored so the
-    // currentChanged handler can detect when the user tried to activate it
-    // and intercept (open the dialog) without leaving the tab focused.
-    int plus_index_ = -1;
+  QTabWidget *sources_ = nullptr;
+  // Index of the "+" tab inside sources_, -1 when none. Stored so the
+  // currentChanged handler can detect when the user tried to activate it
+  // and intercept (open the dialog) without leaving the tab focused.
+  int plus_index_ = -1;
 };
 
 }  // namespace ui

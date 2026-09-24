@@ -21,7 +21,7 @@ namespace engine::Collection::Nexus {
 // ---------------------------------------------------------------------------
 
 struct ParseError : std::runtime_error {
-    using std::runtime_error::runtime_error;
+  using std::runtime_error::runtime_error;
 };
 
 // ---------------------------------------------------------------------------
@@ -37,6 +37,6 @@ struct ParseError : std::runtime_error {
 Manifest parse(std::string_view json);
 
 // Convenience overload: parse from a file path.
-Manifest parse_file(const std::string& path);
+Manifest parse_file(const std::string &path);
 
-} // namespace engine::Collection::Nexus
+}  // namespace engine::Collection::Nexus

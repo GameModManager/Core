@@ -5,16 +5,14 @@
 
 #include "engine/platform/file_type_dispatch.h"
 
-namespace engine
-{
+namespace engine {
 
-class MacOSFileTypeDispatcher : public FileTypeDispatcher
-{
+class MacOSFileTypeDispatcher : public FileTypeDispatcher {
 public:
   [[nodiscard]] bool can_launch(FileType type) const override;
 
-  [[nodiscard]] LaunchResult launch(const std::filesystem::path& file,
-                                    const LaunchOptions& options = {}) const override;
+  [[nodiscard]] LaunchResult launch(const std::filesystem::path &file,
+                                    const LaunchOptions &options = {}) const override;
 };
 
 }  // namespace engine

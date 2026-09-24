@@ -17,7 +17,7 @@ NexusSourcePanel::NexusSourcePanel(const ModInfoData &data, QWidget *parent)
   auto *layout = new QVBoxLayout(this);
 
   auto *form = new QFormLayout();
-  mod_id_ = new QLineEdit(this);
+  mod_id_    = new QLineEdit(this);
   mod_id_->setPlaceholderText(QStringLiteral("0"));
   form->addRow(tr("Mod ID:"), mod_id_);
 
@@ -33,27 +33,31 @@ NexusSourcePanel::NexusSourcePanel(const ModInfoData &data, QWidget *parent)
   layout->addLayout(form);
 
   auto *buttons = new QHBoxLayout();
-  refresh_ = new QPushButton(tr("Refresh"), this);
-  visit_ = new QPushButton(tr("Visit on Nexus"), this);
+  refresh_      = new QPushButton(tr("Refresh"), this);
+  visit_        = new QPushButton(tr("Visit on Nexus"), this);
   buttons->addWidget(refresh_);
   buttons->addWidget(visit_);
 
   if (Settings::instance().endorsement_integration()) {
     auto *endorse = new QPushButton(tr("Endorse"), this);
-    connect(endorse, &QPushButton::clicked, this, [this]() { on_visit(); });
+    connect(endorse, &QPushButton::clicked, this, [this]() {
+      on_visit();
+    });
     buttons->addWidget(endorse);
   }
   if (Settings::instance().tracked_integration()) {
     auto *track = new QPushButton(tr("Track"), this);
-    connect(track, &QPushButton::clicked, this, [this]() { on_visit(); });
+    connect(track, &QPushButton::clicked, this, [this]() {
+      on_visit();
+    });
     buttons->addWidget(track);
   }
   buttons->addStretch(1);
   layout->addLayout(buttons);
 
-  auto *custom_row = new QHBoxLayout();
+  auto *custom_row   = new QHBoxLayout();
   custom_url_toggle_ = new QCheckBox(tr("Custom URL:"), this);
-  custom_url_ = new QLineEdit(this);
+  custom_url_        = new QLineEdit(this);
   custom_url_->setEnabled(false);
   visit_custom_ = new QPushButton(tr("Visit"), this);
   visit_custom_->setEnabled(false);
@@ -149,7 +153,7 @@ void NexusSourcePanel::update_version_color() {
   if (version_ == nullptr)
     return;
   const QString version = meta_value("General", "version");
-  const QString newest = meta_value("General", "newestversion");
+  const QString newest  = meta_value("General", "newestversion");
   if (!version.isEmpty() && !newest.isEmpty() && version != newest) {
     version_->setStyleSheet(QStringLiteral("color: red;"));
     version_->setToolTip(tr("Newest version: %1").arg(newest));
@@ -201,11 +205,11 @@ void NexusSourcePanel::on_refresh() {
 }
 
 void NexusSourcePanel::launch_fetch() {
-  fetch_in_flight_ = true;
-  refresh_pending_ = false;
-  refresh_mod_id_ = data_.id;
+  fetch_in_flight_  = true;
+  refresh_pending_  = false;
+  refresh_mod_id_   = data_.id;
   const quint64 gen = refresh_generation_;
-  auto fetch = data_.fetch_nexus_info;
+  auto fetch        = data_.fetch_nexus_info;
 
   if (refresh_ != nullptr) {
     refresh_->setEnabled(false);
@@ -228,10 +232,9 @@ void NexusSourcePanel::on_fetch_finished(engine::ModInfoResult result,
     refresh_->setText(tr("Refresh"));
   }
 
-  const bool stale =
-      generation != refresh_generation_ || refresh_mod_id_ != data_.id;
+  const bool stale = generation != refresh_generation_ || refresh_mod_id_ != data_.id;
   const bool relaunch = refresh_pending_;
-  refresh_pending_ = false;
+  refresh_pending_    = false;
 
   if (!stale)
     apply_fetch_result(result);
@@ -245,7 +248,7 @@ void NexusSourcePanel::apply_fetch_result(const engine::ModInfoResult &result) {
     return;
   }
 
-  auto meta = data_.load_meta();
+  auto meta          = data_.load_meta();
   const QString name = QString::fromStdString(result.name);
   if (!name.isEmpty())
     meta.set("General", "name", name.toStdString());
@@ -316,11 +319,10 @@ void NexusSourcePanel::persist_fields() {
   // edit here must NOT be persisted as Nexus meta. Only allow the write
   // when this mod is already marked as Nexus-sourced OR already has a
   // [Nexusmods] section (legacy data).
-  const QString modid_text = mod_id_->text().trimmed();
+  const QString modid_text     = mod_id_->text().trimmed();
   const QString existing_modid = meta_value("Nexusmods", "modid");
   const bool is_nexus_mod =
-      (data_.source_type == QLatin1String("nexus")) ||
-      !existing_modid.isEmpty();
+      (data_.source_type == QLatin1String("nexus")) || !existing_modid.isEmpty();
   if (is_nexus_mod) {
     set_meta_value("Nexusmods", "modid", modid_text);
   }
@@ -345,4 +347,4 @@ void NexusSourcePanel::persist_custom_url() {
                             !custom_url_->text().isEmpty());
 }
 
-} // namespace ui
+}  // namespace ui

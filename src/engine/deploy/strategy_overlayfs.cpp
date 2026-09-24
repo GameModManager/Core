@@ -32,9 +32,8 @@ bool OverlayFsKernel::remove(const std::filesystem::path &target) {
   return true;
 }
 
-bool OverlayFsKernel::mount(
-    const std::filesystem::path &mount_point,
-    const std::vector<std::filesystem::path> &lower_dirs) {
+bool OverlayFsKernel::mount(const std::filesystem::path &mount_point,
+                            const std::vector<std::filesystem::path> &lower_dirs) {
   std::lock_guard lock(mutex_);
 
   if (mounted_) {
@@ -44,8 +43,7 @@ bool OverlayFsKernel::mount(
   }
 
   if (lower_dirs.empty()) {
-    engine::Logger::instance().error(
-        "OverlayFS mount: no lower directories provided");
+    engine::Logger::instance().error("OverlayFS mount: no lower directories provided");
     return false;
   }
 
@@ -63,8 +61,7 @@ bool OverlayFsKernel::mount(
     return false;
   }
 
-  work_dir_ =
-      mount_point.parent_path() / (mount_point.filename().string() + "_work");
+  work_dir_ = mount_point.parent_path() / (mount_point.filename().string() + "_work");
   std::filesystem::create_directories(work_dir_, ec);
 
   // Build lowerdir string: first entry = highest priority (first to be looked
@@ -79,8 +76,7 @@ bool OverlayFsKernel::mount(
   // Build mount command: mount -t overlay overlay -o lowerdir=X,workdir=Y
   // mount_point
   std::string cmd = "mount -t overlay overlay -o lowerdir=" + lowerdir_str +
-                    ",workdir=" + work_dir_.string() + " " +
-                    mount_point.string();
+                    ",workdir=" + work_dir_.string() + " " + mount_point.string();
 
   engine::Logger::instance().debug("OverlayFS mount: " + cmd);
 
@@ -92,16 +88,15 @@ bool OverlayFsKernel::mount(
   }
 
   mount_point_ = mount_point;
-  mounted_ = true;
+  mounted_     = true;
 
-  engine::Logger::instance().debug(
-      "OverlayFS mounted at " + mount_point.string() + " with " +
-      std::to_string(lower_dirs.size()) + " layers");
+  engine::Logger::instance().debug("OverlayFS mounted at " + mount_point.string() +
+                                   " with " + std::to_string(lower_dirs.size()) +
+                                   " layers");
   return true;
 }
 
-bool OverlayFsKernel::remount(
-    const std::vector<std::filesystem::path> &lower_dirs) {
+bool OverlayFsKernel::remount(const std::vector<std::filesystem::path> &lower_dirs) {
   std::lock_guard lock(mutex_);
 
   if (!mounted_) {
@@ -123,22 +118,20 @@ bool OverlayFsKernel::remount(
   }
 
   // Remount with new lowerdir order
-  std::string cmd =
-      "mount -t overlay overlay -o remount,lowerdir=" + lowerdir_str + " " +
-      mount_point_.string();
+  std::string cmd = "mount -t overlay overlay -o remount,lowerdir=" + lowerdir_str +
+                    " " + mount_point_.string();
 
   engine::Logger::instance().debug("OverlayFS remount: " + cmd);
 
   int result = std::system(cmd.c_str());
   if (result != 0) {
-    engine::Logger::instance().error(
-        "OverlayFS remount failed with exit code " + std::to_string(result));
+    engine::Logger::instance().error("OverlayFS remount failed with exit code " +
+                                     std::to_string(result));
     return false;
   }
 
   engine::Logger::instance().debug("OverlayFS remounted with " +
-                                   std::to_string(lower_dirs.size()) +
-                                   " layers");
+                                   std::to_string(lower_dirs.size()) + " layers");
   return true;
 }
 
@@ -149,11 +142,11 @@ bool OverlayFsKernel::unmount() {
     return false;
 
   std::string cmd = "umount " + mount_point_.string();
-  int result = std::system(cmd.c_str());
+  int result      = std::system(cmd.c_str());
 
   if (result != 0) {
-    engine::Logger::instance().error(
-        "OverlayFS unmount failed with exit code " + std::to_string(result));
+    engine::Logger::instance().error("OverlayFS unmount failed with exit code " +
+                                     std::to_string(result));
     return false;
   }
 
@@ -162,8 +155,7 @@ bool OverlayFsKernel::unmount() {
   std::filesystem::remove_all(work_dir_, ec);
 
   mounted_ = false;
-  engine::Logger::instance().debug("OverlayFS unmounted from " +
-                                   mount_point_.string());
+  engine::Logger::instance().debug("OverlayFS unmounted from " + mount_point_.string());
   return true;
 }
 
@@ -236,4 +228,4 @@ bool OverlayFsKernel::can_mount_unprivileged() {
   return result == 0;
 }
 
-} // namespace Deploy
+}  // namespace Deploy

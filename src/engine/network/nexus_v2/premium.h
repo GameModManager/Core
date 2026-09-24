@@ -8,14 +8,12 @@
 
 #include "engine/source/nexus/auth.h"
 
-namespace engine::nexus_v2
-{
+namespace engine::nexus_v2 {
 
 // True when the stored Nexus account is Premium (direct downloads, no
 // nxm-key dance). False when unknown, Regular, or Supporter.
-inline bool is_premium_user()
-{
-  const auto& auth = Source::Nexus::Auth::instance();
+inline bool is_premium_user() {
+  const auto &auth = Source::Nexus::Auth::instance();
   return auth.has_user_info() && auth.get_user_info().account_type ==
                                      Source::Nexus::NexusUserInfo::AccountType::Premium;
 }

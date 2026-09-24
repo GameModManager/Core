@@ -11,14 +11,14 @@ namespace ui {
 
 namespace {
 
-  bool have_root(const std::filesystem::path& instance_root) {
+  bool have_root(const std::filesystem::path &instance_root) {
     return !instance_root.empty();
   }
 
 }  // namespace
 
 InstanceAppearance
-read_instance_appearance(const std::filesystem::path& instance_root) {
+read_instance_appearance(const std::filesystem::path &instance_root) {
   InstanceAppearance out;
   if (!have_root(instance_root))
     return out;
@@ -32,7 +32,7 @@ read_instance_appearance(const std::filesystem::path& instance_root) {
 }
 
 InstancePluginSettings
-read_instance_plugin_settings(const std::filesystem::path& instance_root) {
+read_instance_plugin_settings(const std::filesystem::path &instance_root) {
   InstancePluginSettings out;
   if (!have_root(instance_root))
     return out;
@@ -41,54 +41,54 @@ read_instance_plugin_settings(const std::filesystem::path& instance_root) {
     return out;
   if (inst.info().plugins_disabled.has_value()) {
     QStringList disabled;
-    for (const auto& name : *inst.info().plugins_disabled)
+    for (const auto &name : *inst.info().plugins_disabled)
       disabled.append(QString::fromStdString(name));
     out.disabled = disabled;
   }
-  for (const auto& [basename, settings] : inst.info().plugin_options) {
+  for (const auto &[basename, settings] : inst.info().plugin_options) {
     const QString base = QString::fromStdString(basename);
-    for (const auto& [key, value] : settings)
+    for (const auto &[key, value] : settings)
       out.options[base][QString::fromStdString(key)] = QString::fromStdString(value);
   }
   return out;
 }
 
-QString effective_theme(const std::filesystem::path& instance_root) {
+QString effective_theme(const std::filesystem::path &instance_root) {
   const QString local = read_instance_appearance(instance_root).theme;
   if (!local.isEmpty())
     return local;
   return Settings::instance().theme();
 }
 
-QString effective_style(const std::filesystem::path& instance_root) {
+QString effective_style(const std::filesystem::path &instance_root) {
   const QString local = read_instance_appearance(instance_root).style;
   if (!local.isEmpty())
     return local;
   return Settings::instance().style();
 }
 
-QString effective_icon_pack(const std::filesystem::path& instance_root) {
+QString effective_icon_pack(const std::filesystem::path &instance_root) {
   const QString local = read_instance_appearance(instance_root).icon_pack;
   if (!local.isEmpty())
     return local;
   return Settings::instance().icon_pack();
 }
 
-QStringList effective_disabled_plugins(const std::filesystem::path& instance_root) {
+QStringList effective_disabled_plugins(const std::filesystem::path &instance_root) {
   const auto local = read_instance_plugin_settings(instance_root).disabled;
   if (local.has_value())
     return *local;
   return Settings::instance().disabled_plugins();
 }
 
-bool effective_plugin_enabled(const std::filesystem::path& instance_root,
-                              const QString& basename) {
+bool effective_plugin_enabled(const std::filesystem::path &instance_root,
+                              const QString &basename) {
   return !effective_disabled_plugins(instance_root).contains(basename);
 }
 
-QString effective_plugin_setting(const std::filesystem::path& instance_root,
-                                 const QString& basename, const QString& key,
-                                 const QString& default_value) {
+QString effective_plugin_setting(const std::filesystem::path &instance_root,
+                                 const QString &basename, const QString &key,
+                                 const QString &default_value) {
   const auto opts = read_instance_plugin_settings(instance_root).options;
   const auto it   = opts.find(basename);
   if (it != opts.end()) {
@@ -99,8 +99,8 @@ QString effective_plugin_setting(const std::filesystem::path& instance_root,
   return Settings::instance().plugin_setting(basename, key, default_value);
 }
 
-void set_instance_theme(const std::filesystem::path& instance_root,
-                        const QString& value) {
+void set_instance_theme(const std::filesystem::path &instance_root,
+                        const QString &value) {
   if (!have_root(instance_root))
     return;
   engine::Instance inst = engine::Instance::from_root(instance_root);
@@ -111,8 +111,8 @@ void set_instance_theme(const std::filesystem::path& instance_root,
                                     instance_root.string());
 }
 
-void set_instance_style(const std::filesystem::path& instance_root,
-                        const QString& value) {
+void set_instance_style(const std::filesystem::path &instance_root,
+                        const QString &value) {
   if (!have_root(instance_root))
     return;
   engine::Instance inst = engine::Instance::from_root(instance_root);
@@ -123,8 +123,8 @@ void set_instance_style(const std::filesystem::path& instance_root,
                                     instance_root.string());
 }
 
-void set_instance_icon_pack(const std::filesystem::path& instance_root,
-                            const QString& value) {
+void set_instance_icon_pack(const std::filesystem::path &instance_root,
+                            const QString &value) {
   if (!have_root(instance_root))
     return;
   engine::Instance inst = engine::Instance::from_root(instance_root);
@@ -135,8 +135,8 @@ void set_instance_icon_pack(const std::filesystem::path& instance_root,
                                     instance_root.string());
 }
 
-void set_instance_plugin_enabled(const std::filesystem::path& instance_root,
-                                 const QString& basename, bool enabled) {
+void set_instance_plugin_enabled(const std::filesystem::path &instance_root,
+                                 const QString &basename, bool enabled) {
   if (!have_root(instance_root))
     return;
   engine::Instance inst = engine::Instance::from_root(instance_root);
@@ -153,7 +153,7 @@ void set_instance_plugin_enabled(const std::filesystem::path& instance_root,
     disabled.append(basename);
   }
   std::vector<std::string> names;
-  for (const auto& name : disabled)
+  for (const auto &name : disabled)
     names.push_back(name.toStdString());
   inst.info().plugins_disabled = std::move(names);
   if (!inst.write_toml())
@@ -161,9 +161,9 @@ void set_instance_plugin_enabled(const std::filesystem::path& instance_root,
         "Failed to write per-instance disabled plugins to " + instance_root.string());
 }
 
-void set_instance_plugin_setting(const std::filesystem::path& instance_root,
-                                 const QString& basename, const QString& key,
-                                 const QString& value) {
+void set_instance_plugin_setting(const std::filesystem::path &instance_root,
+                                 const QString &basename, const QString &key,
+                                 const QString &value) {
   if (!have_root(instance_root))
     return;
   engine::Instance inst = engine::Instance::from_root(instance_root);
@@ -175,8 +175,8 @@ void set_instance_plugin_setting(const std::filesystem::path& instance_root,
                                     instance_root.string());
 }
 
-bool instance_effective_settings_differ(const std::filesystem::path& from,
-                                        const std::filesystem::path& to) {
+bool instance_effective_settings_differ(const std::filesystem::path &from,
+                                        const std::filesystem::path &to) {
   if (effective_theme(from) != effective_theme(to))
     return true;
   if (effective_style(from) != effective_style(to))
@@ -189,7 +189,7 @@ bool instance_effective_settings_differ(const std::filesystem::path& from,
   // global fallback applied on each side.
   const auto from_opts = read_instance_plugin_settings(from).options;
   const auto to_opts   = read_instance_plugin_settings(to).options;
-  for (const auto& opts : {from_opts, to_opts}) {
+  for (const auto &opts : {from_opts, to_opts}) {
     for (auto it = opts.begin(); it != opts.end(); ++it) {
       for (auto jt = it->begin(); jt != it->end(); ++jt) {
         const QString fallback =
@@ -210,13 +210,13 @@ bool instance_effective_settings_differ(const std::filesystem::path& from,
   return false;
 }
 
-void restart_application(const QStringList& extra_args) {
+void restart_application(const QStringList &extra_args) {
   QStringList args = QCoreApplication::arguments();
   if (!args.isEmpty())
     args.removeFirst();  // argv[0] is re-added by startDetached
   // Drop already-consumed download-handler flags: relaunching with them
   // would re-trigger the download flow (duplicate handling).
-  for (const QString& flag : {"--handle-nxm", "--handle-gmm", "--handle-modl"}) {
+  for (const QString &flag : {"--handle-nxm", "--handle-gmm", "--handle-modl"}) {
     for (int i = args.size() - 1; i >= 0; --i) {
       if (args[i] == flag) {
         args.removeAt(i);

@@ -9,31 +9,31 @@ namespace engine {
 
 namespace {
 
-// Splits on '|' and trims each cell. Returns false when the row does not have
-// at least `min_cells` cells.
-bool split_row(const std::string &line, int min_cells,
-               std::vector<std::string> &out) {
-  out.clear();
-  std::stringstream ss(line);
-  std::string cell;
-  while (std::getline(ss, cell, '|')) {
-    size_t b = cell.find_first_not_of(" \t\r");
-    size_t e = cell.find_last_not_of(" \t\r");
-    if (b == std::string::npos) {
-      out.emplace_back();
-    } else {
-      out.push_back(cell.substr(b, e - b + 1));
+  // Splits on '|' and trims each cell. Returns false when the row does not have
+  // at least `min_cells` cells.
+  bool split_row(const std::string &line, int min_cells,
+                 std::vector<std::string> &out) {
+    out.clear();
+    std::stringstream ss(line);
+    std::string cell;
+    while (std::getline(ss, cell, '|')) {
+      size_t b = cell.find_first_not_of(" \t\r");
+      size_t e = cell.find_last_not_of(" \t\r");
+      if (b == std::string::npos) {
+        out.emplace_back();
+      } else {
+        out.push_back(cell.substr(b, e - b + 1));
+      }
     }
+    return static_cast<int>(out.size()) >= min_cells;
   }
-  return static_cast<int>(out.size()) >= min_cells;
-}
 
-} // namespace
+}  // namespace
 
 void Category::Factory::load(const std::filesystem::path &path) {
   std::ifstream in(path);
   if (!in)
-    return; // missing/unreadable file: keep the current set
+    return;  // missing/unreadable file: keep the current set
 
   std::map<int, Entry> loaded;
   std::string line;
@@ -47,7 +47,7 @@ void Category::Factory::load(const std::filesystem::path &path) {
     if (!split_row(line, 3, cells))
       continue;
 
-    int id = 0;
+    int id     = 0;
     int parent = 0;
     try {
       id = std::stoi(cells[0]);
@@ -55,16 +55,16 @@ void Category::Factory::load(const std::filesystem::path &path) {
       // (id|name|nexusIds|parentId) parses the same way.
       parent = std::stoi(cells[cells.size() - 1]);
     } catch (...) {
-      continue; // malformed row: skip
+      continue;  // malformed row: skip
     }
     if (id == 0)
-      continue; // "None" is implicit
+      continue;  // "None" is implicit
 
     Entry cat;
-    cat.id = id;
-    cat.name = cells[1];
+    cat.id        = id;
+    cat.name      = cells[1];
     cat.parent_id = parent;
-    loaded[id] = std::move(cat);
+    loaded[id]    = std::move(cat);
   }
 
   categories_ = std::move(loaded);
@@ -79,7 +79,7 @@ void Category::Factory::save(const std::filesystem::path &path) const {
   std::ofstream out(path);
   for (const auto &[id, cat] : categories_) {
     if (id == 0)
-      continue; // "None" is implicit
+      continue;  // "None" is implicit
     out << id << '|' << cat.name << '|' << cat.parent_id << '\n';
   }
 }
@@ -91,12 +91,12 @@ void Category::Factory::merge(const int *ids, const char *const *names,
       continue;
     int id = ids[i];
     Entry cat;
-    cat.id = id;
-    cat.name = names[i] ? names[i] : "";
+    cat.id        = id;
+    cat.name      = names[i] ? names[i] : "";
     cat.parent_id = (parent_ids && parent_ids[i]) ? parent_ids[i] : 0;
     plugin_categories_.insert({id, cat});
     if (categories_.count(id))
-      continue; // skip duplicate in the active set
+      continue;  // skip duplicate in the active set
     categories_.emplace(id, std::move(cat));
   }
   rebuildTree();
@@ -112,8 +112,8 @@ bool Category::Factory::applyCoreSet(const std::string &set_name) {
       continue;
     if (!categories_.count(entry.id)) {
       Entry cat;
-      cat.id = entry.id;
-      cat.name = entry.name;
+      cat.id        = entry.id;
+      cat.name      = entry.name;
       cat.parent_id = entry.parent_id;
       categories_.emplace(entry.id, std::move(cat));
     }
@@ -131,13 +131,12 @@ const Category::Factory::Entry *Category::Factory::categoryById(int id) const {
   return it != categories_.end() ? &it->second : nullptr;
 }
 
-void Category::Factory::addCategory(int id, const std::string &name,
-                                    int parent_id) {
+void Category::Factory::addCategory(int id, const std::string &name, int parent_id) {
   if (id == 0 || categories_.count(id))
-    return; // "None" is implicit; duplicates are skipped
+    return;  // "None" is implicit; duplicates are skipped
   Entry cat;
-  cat.id = id;
-  cat.name = name;
+  cat.id        = id;
+  cat.name      = name;
   cat.parent_id = parent_id;
   categories_.emplace(id, std::move(cat));
   rebuildTree();
@@ -153,17 +152,18 @@ void Category::Factory::removeCategory(int id) {
   rebuildTree();
 }
 
-void Category::Factory::updateCategory(int id, const std::string &name,
-                                       int parent_id) {
+void Category::Factory::updateCategory(int id, const std::string &name, int parent_id) {
   auto it = categories_.find(id);
   if (it == categories_.end())
     return;
-  it->second.name = name;
+  it->second.name      = name;
   it->second.parent_id = parent_id;
   rebuildTree();
 }
 
-void Category::Factory::rebuildTree() { updateHasChildren(); }
+void Category::Factory::rebuildTree() {
+  updateHasChildren();
+}
 
 void Category::Factory::clear() {
   categories_.clear();
@@ -181,4 +181,4 @@ void Category::Factory::updateHasChildren() {
     }
 }
 
-} // namespace engine
+}  // namespace engine

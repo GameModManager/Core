@@ -29,8 +29,7 @@ class DescriptionRenderer;
 class ModPubSourcePanel : public SourceInfoPanel {
   Q_OBJECT
 public:
-  explicit ModPubSourcePanel(const ModInfoData &data,
-                             QWidget *parent = nullptr);
+  explicit ModPubSourcePanel(const ModInfoData &data, QWidget *parent = nullptr);
   ~ModPubSourcePanel() override;
 
   void populate() override;
@@ -41,23 +40,22 @@ private:
   void render_description();
   void on_refresh();
   void launch_fetch();
-  void on_fetch_finished(engine::ModPubModInfoResult result,
-                         quint64 generation);
+  void on_fetch_finished(engine::ModPubModInfoResult result, quint64 generation);
   void apply_fetch_result(const engine::ModPubModInfoResult &result);
   void on_visit();
   void persist_fields();
 
-  QLineEdit *mod_id_ = nullptr;
-  QLineEdit *version_ = nullptr;
-  QLineEdit *category_ = nullptr;
-  QLineEdit *author_ = nullptr;
-  QLineEdit *page_url_ = nullptr;
-  QPushButton *refresh_ = nullptr;
-  QPushButton *visit_ = nullptr;
+  QLineEdit *mod_id_                = nullptr;
+  QLineEdit *version_               = nullptr;
+  QLineEdit *category_              = nullptr;
+  QLineEdit *author_                = nullptr;
+  QLineEdit *page_url_              = nullptr;
+  QPushButton *refresh_             = nullptr;
+  QPushButton *visit_               = nullptr;
   DescriptionRenderer *description_ = nullptr;
 
   ModPubFetchThread *source_fetch_thread_ = nullptr;
-  quint64 refresh_generation_ = 0;
+  quint64 refresh_generation_             = 0;
   QString refresh_mod_id_;
   bool fetch_in_flight_ = false;
   bool refresh_pending_ = false;
@@ -70,4 +68,4 @@ private:
   std::atomic<unsigned> description_generation_{0};
 };
 
-} // namespace ui
+}  // namespace ui

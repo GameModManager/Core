@@ -25,18 +25,17 @@ using namespace engine::Collection::Nexus;
 using engine::nexus_v2::CollectionModFile;
 using engine::nexus_v2::CollectionRevision;
 using engine::nexus_v2::ExternalResource;
-using NexusFetchResult = engine::nexus_v2::FetchResult;
+using NexusFetchResult      = engine::nexus_v2::FetchResult;
 using CollectionFetchResult = engine::Collection::FetchResult;
 
-namespace
-{
+namespace {
 
 // A revision fetcher that always fails (for file-path tests where the
 // fetcher must never be called).
 Nexus::Adapter::RevisionFetcher dead_fetcher() {
-  return [](const std::string&, long long) -> NexusFetchResult {
+  return [](const std::string &, long long) -> NexusFetchResult {
     NexusFetchResult r;
-    r.ok = false;
+    r.ok    = false;
     r.error = "fetcher must not be called for file ids";
     return r;
   };
@@ -44,43 +43,43 @@ Nexus::Adapter::RevisionFetcher dead_fetcher() {
 
 CollectionRevision make_revision() {
   CollectionRevision rev;
-  rev.found = true;
-  rev.collection_id = 42;
+  rev.found           = true;
+  rev.collection_id   = 42;
   rev.revision_number = 3;
-  rev.slug = "test-collection";
-  rev.name = "Test Collection";
-  rev.game_domain = "skyrimspecialedition";
+  rev.slug            = "test-collection";
+  rev.name            = "Test Collection";
+  rev.game_domain     = "skyrimspecialedition";
 
   CollectionModFile good;
-  good.mod_id = 17464;
-  good.file_id = 19080;
-  good.game_id = 1704;
-  good.version = "0.4.20";
-  good.file_name = "RaceMenu.7z";
+  good.mod_id        = 17464;
+  good.file_id       = 19080;
+  good.game_id       = 1704;
+  good.version       = "0.4.20";
+  good.file_name     = "RaceMenu.7z";
   good.update_policy = "exact";
-  good.optional = false;
+  good.optional      = false;
   rev.mods.push_back(good);
 
   // file: null upstream - mod_id stays 0, must be skipped with diagnostic.
   CollectionModFile removed;
-  removed.file_id = 99;
-  removed.game_id = 1704;
-  removed.version = "1.0";
-  removed.file_name = "";
+  removed.file_id       = 99;
+  removed.game_id       = 1704;
+  removed.version       = "1.0";
+  removed.file_name     = "";
   removed.update_policy = "latest";
-  removed.optional = true;
+  removed.optional      = true;
   rev.mods.push_back(removed);
 
   ExternalResource ext;
-  ext.name = "SKSE";
-  ext.url = "https://example.com/skse.7z";
-  ext.version = "2.2";
+  ext.name     = "SKSE";
+  ext.url      = "https://example.com/skse.7z";
+  ext.version  = "2.2";
   ext.optional = false;
   rev.external_resources.push_back(ext);
 
   ExternalResource empty;
   empty.name = "Broken";
-  empty.url = "";
+  empty.url  = "";
   rev.external_resources.push_back(empty);
 
   return rev;
@@ -122,18 +121,18 @@ TEST_CASE("parse_source_id collection URL", "[collection][nexus][adapter]") {
 
 TEST_CASE("parse_source_id collection URL with revision path",
           "[collection][nexus][adapter]") {
-  const auto ref = parse_source_id(
-      "https://www.nexusmods.com/skyrimspecialedition/collections/abcd/"
-      "revisions/5");
+  const auto ref =
+      parse_source_id("https://www.nexusmods.com/skyrimspecialedition/collections/abcd/"
+                      "revisions/5");
   REQUIRE(ref.slug == "abcd");
   REQUIRE(ref.revision == 5);
 }
 
 TEST_CASE("parse_source_id collection URL with revision query",
           "[collection][nexus][adapter]") {
-  const auto ref = parse_source_id(
-      "https://www.nexusmods.com/skyrimspecialedition/collections/abcd"
-      "?revision=9");
+  const auto ref =
+      parse_source_id("https://www.nexusmods.com/skyrimspecialedition/collections/abcd"
+                      "?revision=9");
   REQUIRE(ref.slug == "abcd");
   REQUIRE(ref.revision == 9);
 }
@@ -144,8 +143,7 @@ TEST_CASE("parse_source_id json path", "[collection][nexus][adapter]") {
   REQUIRE(ref.file_path == "/tmp/export/collection.json");
 }
 
-TEST_CASE("parse_source_id garbage yields empty slug",
-          "[collection][nexus][adapter]") {
+TEST_CASE("parse_source_id garbage yields empty slug", "[collection][nexus][adapter]") {
   const auto ref = parse_source_id("not a valid id!!!");
   REQUIRE(ref.slug == "not a valid id!!!");
   REQUIRE_FALSE(ref.is_file);
@@ -179,10 +177,10 @@ TEST_CASE("Adapter identity", "[collection][nexus][adapter]") {
 
 TEST_CASE("mod_file_to_source maps fields", "[collection][nexus][adapter]") {
   CollectionModFile mod;
-  mod.mod_id = 17464;
-  mod.file_id = 19080;
-  mod.version = "0.4.20";
-  mod.file_name = "RaceMenu.7z";
+  mod.mod_id        = 17464;
+  mod.file_id       = 19080;
+  mod.version       = "0.4.20";
+  mod.file_name     = "RaceMenu.7z";
   mod.update_policy = "exact";
 
   const auto src = mod_file_to_source(mod, "skyrimspecialedition");
@@ -198,8 +196,8 @@ TEST_CASE("mod_file_to_source maps fields", "[collection][nexus][adapter]") {
 
 TEST_CASE("mod_file_to_source latest policy", "[collection][nexus][adapter]") {
   CollectionModFile mod;
-  mod.mod_id = 1;
-  mod.file_id = 2;
+  mod.mod_id        = 1;
+  mod.file_id       = 2;
   mod.update_policy = "latest";
 
   const auto src = mod_file_to_source(mod, "fallout4");
@@ -210,7 +208,7 @@ TEST_CASE("mod_file_to_source latest policy", "[collection][nexus][adapter]") {
 TEST_CASE("mod_file_to_source null file skipped", "[collection][nexus][adapter]") {
   // file: null upstream leaves mod_id at 0 - nothing to resolve against.
   CollectionModFile mod;
-  mod.file_id = 99;
+  mod.file_id       = 99;
   mod.update_policy = "latest";
   REQUIRE_FALSE(mod_file_to_source(mod, "skyrimspecialedition").has_value());
 }
@@ -231,16 +229,14 @@ TEST_CASE("revision_to_manifest converts mods and externals",
   // 1 Nexus mod + 1 external; removed file + empty URL skipped.
   REQUIRE(out.manifest.mods.size() == 2);
 
-  const auto* nexus_src =
-      std::get_if<SourceNexus>(&out.manifest.mods[0].source);
+  const auto *nexus_src = std::get_if<SourceNexus>(&out.manifest.mods[0].source);
   REQUIRE(nexus_src != nullptr);
   REQUIRE(nexus_src->mod_id == 17464);
   REQUIRE(nexus_src->file_id == 19080);
   REQUIRE(nexus_src->game_domain == "skyrimspecialedition");
   REQUIRE(out.manifest.mods[0].category == ModCategory::Required);
 
-  const auto* direct_src =
-      std::get_if<SourceDirect>(&out.manifest.mods[1].source);
+  const auto *direct_src = std::get_if<SourceDirect>(&out.manifest.mods[1].source);
   REQUIRE(direct_src != nullptr);
   REQUIRE(direct_src->url == "https://example.com/skse.7z");
   REQUIRE(direct_src->resolution == SourceResolution::Browser);
@@ -252,8 +248,8 @@ TEST_CASE("revision_to_manifest falls back to collection id",
           "[collection][nexus][adapter]") {
   CollectionRevision rev;
   rev.collection_id = 77;
-  rev.game_domain = "fallout4";
-  const auto out = revision_to_manifest(rev);
+  rev.game_domain   = "fallout4";
+  const auto out    = revision_to_manifest(rev);
   REQUIRE(out.manifest.id == "nexus-collection-77");
   REQUIRE(out.manifest.mods.empty());
   REQUIRE(out.skipped.empty());
@@ -267,18 +263,18 @@ TEST_CASE("Adapter fetch revision success", "[collection][nexus][adapter]") {
   std::string seen_slug;
   long long seen_revision = -1;
   Nexus::Adapter adapter(
-      [&](const std::string& slug, long long revision) -> NexusFetchResult {
-        seen_slug = slug;
+      [&](const std::string &slug, long long revision) -> NexusFetchResult {
+        seen_slug     = slug;
         seen_revision = revision;
         NexusFetchResult r;
-        r.ok = true;
+        r.ok       = true;
         r.revision = make_revision();
         return r;
       });
 
   const auto outcome = adapter.fetch("test-collection@3");
   REQUIRE(std::holds_alternative<CollectionFetchResult>(outcome));
-  const auto& result = std::get<CollectionFetchResult>(outcome);
+  const auto &result = std::get<CollectionFetchResult>(outcome);
   REQUIRE(result.source_id == "test-collection@3");
   REQUIRE(result.manifest.mods.size() == 2);
   REQUIRE(seen_slug == "test-collection");
@@ -289,13 +285,12 @@ TEST_CASE("Adapter fetch revision success", "[collection][nexus][adapter]") {
 }
 
 TEST_CASE("Adapter fetch revision error", "[collection][nexus][adapter]") {
-  Nexus::Adapter adapter(
-      [](const std::string&, long long) -> NexusFetchResult {
-        NexusFetchResult r;
-        r.ok = false;
-        r.error = "collection not found";
-        return r;
-      });
+  Nexus::Adapter adapter([](const std::string &, long long) -> NexusFetchResult {
+    NexusFetchResult r;
+    r.ok    = false;
+    r.error = "collection not found";
+    return r;
+  });
 
   const auto outcome = adapter.fetch("nope");
   REQUIRE(std::holds_alternative<FetchError>(outcome));
@@ -330,15 +325,14 @@ TEST_CASE("Adapter fetch collection.json file", "[collection][nexus][adapter]") 
   Nexus::Adapter adapter(dead_fetcher());
   const auto outcome = adapter.fetch(file.string());
   REQUIRE(std::holds_alternative<CollectionFetchResult>(outcome));
-  const auto& result = std::get<CollectionFetchResult>(outcome);
+  const auto &result = std::get<CollectionFetchResult>(outcome);
   REQUIRE(result.manifest.info.name == "File Pack");
   REQUIRE(adapter.last_skipped().empty());
 
   fs::remove_all(dir);
 }
 
-TEST_CASE("Adapter fetch missing file is FetchError",
-          "[collection][nexus][adapter]") {
+TEST_CASE("Adapter fetch missing file is FetchError", "[collection][nexus][adapter]") {
   Nexus::Adapter adapter(dead_fetcher());
   const auto outcome = adapter.fetch("/tmp/gmm-does-not-exist/collection.json");
   REQUIRE(std::holds_alternative<FetchError>(outcome));
@@ -352,14 +346,14 @@ TEST_CASE("Adapter route_download browser entries stay browser",
           "[collection][nexus][adapter]") {
   // Redirect Auth disk state before the singleton is first touched so the
   // test never depends on the developer's real Nexus credentials.
-  const fs::path config =
-      fs::temp_directory_path() / ("gmm_nexus_adapter_auth_" + std::to_string(getpid()));
+  const fs::path config = fs::temp_directory_path() /
+                          ("gmm_nexus_adapter_auth_" + std::to_string(getpid()));
   fs::create_directories(config);
   setenv("XDG_CONFIG_HOME", config.c_str(), 1);
 
   SourceDirect direct;
-  direct.resolution = SourceResolution::Browser;
-  direct.url = "https://example.com/mod.7z";
+  direct.resolution  = SourceResolution::Browser;
+  direct.url         = "https://example.com/mod.7z";
   const auto outcome = Nexus::route_download(direct);
   REQUIRE(outcome.path == DownloadPath::Browser);
 

@@ -26,7 +26,7 @@ public:
   [[nodiscard]] std::vector<ProtonVersionInfo>
   enumerate_proton_versions() const override;
   [[nodiscard]] std::filesystem::path
-  find_proton_named(const std::string& name) const override;
+  find_proton_named(const std::string &name) const override;
   [[nodiscard]] std::filesystem::path
   resolve_proton_prefix(uint32_t steam_appid) const override;
   [[nodiscard]] std::vector<std::filesystem::path> steam_library_paths() const override;
@@ -39,8 +39,8 @@ public:
   [[nodiscard]] std::filesystem::path find_wine() const override;
 
   [[nodiscard]] bool
-  launch_executable(const std::filesystem::path& executable,
-                    const std::vector<std::string>& args = {}) const override;
+  launch_executable(const std::filesystem::path &executable,
+                    const std::vector<std::string> &args = {}) const override;
 
   [[nodiscard]] bool is_elevated() const override;
   [[nodiscard]] bool symlinks_available() const override { return true; }
@@ -51,14 +51,14 @@ public:
   void set_thread_low_priority() const override;
 
   // NXM protocol handler registration (XDG compliant)
-  [[nodiscard]] static bool register_nxm_handler(const std::filesystem::path& exe_path);
+  [[nodiscard]] static bool register_nxm_handler(const std::filesystem::path &exe_path);
   [[nodiscard]] static bool unregister_nxm_handler();
   [[nodiscard]] static bool is_nxm_handler_registered();
   [[nodiscard]] static std::string nxm_runtime_default_handler();
   [[nodiscard]] static std::string nxm_file_based_default_handler();
 
   // GMM custom protocol handler registration (for gmm:// links)
-  [[nodiscard]] static bool register_gmm_handler(const std::filesystem::path& exe_path);
+  [[nodiscard]] static bool register_gmm_handler(const std::filesystem::path &exe_path);
   [[nodiscard]] static bool unregister_gmm_handler();
   [[nodiscard]] static bool is_gmm_handler_registered();
   [[nodiscard]] static std::string gmm_runtime_default_handler();
@@ -66,22 +66,22 @@ public:
 
   // modl:// protocol handler registration (mod.pub / MO2 modlhandler).
   [[nodiscard]] static bool
-  register_modl_handler(const std::filesystem::path& exe_path);
+  register_modl_handler(const std::filesystem::path &exe_path);
   [[nodiscard]] static bool unregister_modl_handler();
   [[nodiscard]] static bool is_modl_handler_registered();
   [[nodiscard]] static std::string modl_runtime_default_handler();
   [[nodiscard]] static std::string modl_file_based_default_handler();
 
 private:
-  static std::filesystem::path resolve_env_dir(const char* env_var,
-                                               const std::filesystem::path& fallback);
+  static std::filesystem::path resolve_env_dir(const char *env_var,
+                                               const std::filesystem::path &fallback);
 
   // VDF parsing helpers (Steam config files)
-  static std::string vdf_value_for_key(const std::string& line, const std::string& key);
+  static std::string vdf_value_for_key(const std::string &line, const std::string &key);
   // Per-game Proton tool override from Steam's config.vdf ("proton_experimental", ...)
   std::string read_steam_compat_tool(uint32_t steam_appid) const;
   // Map a tool name to its install directory via compatibilitytool.vdf
-  std::filesystem::path resolve_tool_dir(const std::string& tool_name) const;
+  std::filesystem::path resolve_tool_dir(const std::string &tool_name) const;
   // Every Proton runner Steam manages: dirs under steamapps/common with a
   // `proton` script, plus compatibility tool entries (GE-Proton etc.).
   // `binary` is only non-empty when a `proton` script actually exists.
@@ -89,7 +89,7 @@ private:
   // Windows user profile dir inside a Proton prefix ("drive_c/users/<user>"),
   // resolved by scanning drive_c/users/ (preferring "steamuser"). Empty when
   // the prefix is empty or has no user dir.
-  static std::filesystem::path prefix_user_dir(const std::filesystem::path& prefix);
+  static std::filesystem::path prefix_user_dir(const std::filesystem::path &prefix);
 };
 
 }  // namespace engine

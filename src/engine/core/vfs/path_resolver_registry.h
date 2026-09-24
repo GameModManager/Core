@@ -27,9 +27,8 @@ public:
   static PathResolverRegistry &instance();
 
   // Returns the resolver for (root, cmp), creating it on first request.
-  [[nodiscard]] PathResolver &
-  resolver(const std::filesystem::path &root,
-           NameCompare cmp = NameCompare::CaseInsensitive);
+  [[nodiscard]] PathResolver &resolver(const std::filesystem::path &root,
+                                       NameCompare cmp = NameCompare::CaseInsensitive);
 
   // Drop every cached resolver's index (e.g. after a bulk mod install/remove).
   void invalidate_all();
@@ -41,4 +40,4 @@ private:
   std::vector<uint64_t> subs_;
 };
 
-} // namespace engine::vfs
+}  // namespace engine::vfs

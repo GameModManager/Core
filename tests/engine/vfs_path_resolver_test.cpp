@@ -27,17 +27,14 @@ struct TempTree {
     write(root / "RootFile.ESP");
   }
   ~TempTree() { fs::remove_all(root); }
-  static void write(const fs::path &p) {
-    std::ofstream(p, std::ios::binary).put('x');
-  }
+  static void write(const fs::path &p) { std::ofstream(p, std::ios::binary).put('x'); }
 };
 
-} // namespace
+}  // namespace
 
 TEST_CASE("PathResolver resolves case-insensitively", "[engine][vfs]") {
   TempTree t;
-  engine::vfs::PathResolver r(t.root,
-                              engine::vfs::NameCompare::CaseInsensitive);
+  engine::vfs::PathResolver r(t.root, engine::vfs::NameCompare::CaseInsensitive);
 
   SECTION("resolve finds on-disk casing via CI input") {
     const auto gf = r.resolve("data/meshes/weird.nif");
@@ -52,9 +49,9 @@ TEST_CASE("PathResolver resolves case-insensitively", "[engine][vfs]") {
     REQUIRE(r.exists("DATA/TEXTURES/BAR.dds"));
     REQUIRE(r.exists("rootfile.esp"));
     REQUIRE_FALSE(r.exists("data/meshes/missing.nif"));
-    REQUIRE_FALSE(r.exists(""));              // empty rejected
-    REQUIRE_FALSE(r.exists("../etc/passwd")); // traversal rejected
-    REQUIRE_FALSE(r.exists("/abs/path"));     // absolute rejected
+    REQUIRE_FALSE(r.exists(""));               // empty rejected
+    REQUIRE_FALSE(r.exists("../etc/passwd"));  // traversal rejected
+    REQUIRE_FALSE(r.exists("/abs/path"));      // absolute rejected
   }
 
   SECTION("normalize() is the FULL CI key (filename lowered too)") {
@@ -73,9 +70,8 @@ TEST_CASE("PathResolver resolves case-insensitively", "[engine][vfs]") {
       if (name == "Textures")
         saw_textures = true;
       // normalized() of each entry is the full CI key.
-      REQUIRE(e.normalized() ==
-              engine::vfs::PathResolver(t.root).normalize(
-                  "data/" + e.absolute().filename().string()));
+      REQUIRE(e.normalized() == engine::vfs::PathResolver(t.root).normalize(
+                                    "data/" + e.absolute().filename().string()));
     }
     REQUIRE(saw_meshes);
     REQUIRE(saw_textures);
@@ -104,7 +100,7 @@ TEST_CASE("PathResolver resolves case-insensitively", "[engine][vfs]") {
 
   SECTION("introspection") {
     REQUIRE(r.root() == t.root);
-    REQUIRE_FALSE(r.is_native_ci()); // Linux: indexed backend, not native CI
+    REQUIRE_FALSE(r.is_native_ci());  // Linux: indexed backend, not native CI
   }
 }
 

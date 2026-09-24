@@ -62,7 +62,9 @@ static InstanceKind to_instance_kind(GmmInstanceKind kind) {
 // Handles are opaque by ABI design; the engine-side representation is a raw
 // pointer to the real object.  reinterpret_cast is required because the ABI
 // struct types (GmmMod, GmmInstance, ...) are unrelated incomplete types.
-static Mod *as_mod(GmmModHandle h) { return reinterpret_cast<Mod *>(h); }
+static Mod *as_mod(GmmModHandle h) {
+  return reinterpret_cast<Mod *>(h);
+}
 static Instance *as_instance(GmmInstanceHandle h) {
   return reinterpret_cast<Instance *>(h);
 }
@@ -73,7 +75,7 @@ static Profile *as_profile(GmmProfileHandle h) {
   return reinterpret_cast<Profile *>(h);
 }
 
-} // namespace engine
+}  // namespace engine
 
 using namespace engine;
 
@@ -186,8 +188,7 @@ void gmm_conflict_remove_mod(GmmConflictIndexHandle h, const char *mod_id) {
   index->remove_mod(mod_id);
 }
 
-const char *gmm_conflict_winner(GmmConflictIndexHandle h,
-                                const char *relative_path) {
+const char *gmm_conflict_winner(GmmConflictIndexHandle h, const char *relative_path) {
   auto *index = as_conflict(h);
   if (!index || !relative_path)
     return "";
@@ -211,8 +212,7 @@ void gmm_profile_remove_mod(GmmProfileHandle h, const char *mod_id) {
   profile->remove_mod(mod_id);
 }
 
-void gmm_profile_set_enabled(GmmProfileHandle h, const char *mod_id,
-                             int enabled) {
+void gmm_profile_set_enabled(GmmProfileHandle h, const char *mod_id, int enabled) {
   auto *profile = as_profile(h);
   if (!profile || !mod_id)
     return;
@@ -234,4 +234,4 @@ uint32_t gmm_profile_priority_of(GmmProfileHandle h, const char *mod_id) {
   return profile->priority_of(mod_id);
 }
 
-} // extern "C"
+}  // extern "C"

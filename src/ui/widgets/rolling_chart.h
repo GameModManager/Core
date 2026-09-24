@@ -105,35 +105,35 @@ private:
   // mandatory: the Q_OBJECT moc-generated code references them in the
   // namespace-qualified form, and unqualified bare `QChart *` would not
   // match the real type when Qt6::Charts is linked.
-  QChart *chart_ = nullptr;
+  QChart *chart_          = nullptr;
   QChartView *chart_view_ = nullptr;
-  QLineSeries *series_ = nullptr;
-  QLineSeries *series2_ = nullptr;
-  QValueAxis *axis_x_ = nullptr;
-  QValueAxis *axis_y_ = nullptr;
-  double y_min_ = 0.0;
-  double y_max_ = 0.0;
-  bool y_range_set_ = false;
+  QLineSeries *series_    = nullptr;
+  QLineSeries *series2_   = nullptr;
+  QValueAxis *axis_x_     = nullptr;
+  QValueAxis *axis_y_     = nullptr;
+  double y_min_           = 0.0;
+  double y_max_           = 0.0;
+  bool y_range_set_       = false;
   QString y_label_;
   QString title_;
   QString legend_;
   QString legend2_;
   bool clamp_negative_ = false;
-  std::deque<double> samples_;  // back() = newest; size() <= kCapacity
-  std::deque<double> samples2_; // paired with samples_; same length
+  std::deque<double> samples_;   // back() = newest; size() <= kCapacity
+  std::deque<double> samples2_;  // paired with samples_; same length
 #else
   void paintEvent(QPaintEvent *event) override;
   QString title_;
   QString y_label_;
   QString legend_;
   QString legend2_;
-  double y_min_ = 0.0;
-  double y_max_ = 0.0;
-  bool y_range_set_ = false;
+  double y_min_        = 0.0;
+  double y_max_        = 0.0;
+  bool y_range_set_    = false;
   bool clamp_negative_ = false;
   std::deque<double> samples_;
   std::deque<double> samples2_;
 #endif
 };
 
-} // namespace ui
+}  // namespace ui

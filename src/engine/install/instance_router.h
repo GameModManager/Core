@@ -19,12 +19,10 @@
 
 #include <string>
 
-namespace engine::Install
-{
+namespace engine::Install {
 
 // Where a pack install goes next.
-enum class InstallRoute
-{
+enum class InstallRoute {
   // Ask the user: append to the active instance or create a new one.
   PromptAppendOrNew,
   // Run the standard instance-creation wizard, then hand off to the
@@ -36,8 +34,7 @@ enum class InstallRoute
 // when routing needed no explanation (match, or simply no active
 // instance); it carries the game-mismatch error when a mismatch forced
 // CreateNewInstance, and the "not implemented" text from plan_append().
-struct RouteDecision
-{
+struct RouteDecision {
   InstallRoute route = InstallRoute::CreateNewInstance;
   std::string notice;
 };
@@ -47,20 +44,19 @@ struct RouteDecision
 // instance is open, and active_instance_game_id is its game
 // (Instance::Info::game_id, ignored when no instance is active).
 [[nodiscard]] RouteDecision
-route_pack_install(const std::string& pack_game_id, bool has_active_instance,
-                   const std::string& active_instance_game_id = {});
+route_pack_install(const std::string &pack_game_id, bool has_active_instance,
+                   const std::string &active_instance_game_id = {});
 
 // Append gate for Workspace-pe40: ok == true means the pack may be appended
 // to the instance (games match; the detailed planning lives in
 // append_install.h). A game mismatch reports ok == false so no caller can
 // ever append across games. Pure descriptor - no disk or network touched.
-struct AppendPlan
-{
+struct AppendPlan {
   bool ok = false;
   std::string error;  // set when !ok
 };
 
-[[nodiscard]] AppendPlan plan_append(const std::string& pack_game_id,
-                                     const std::string& instance_game_id);
+[[nodiscard]] AppendPlan plan_append(const std::string &pack_game_id,
+                                     const std::string &instance_game_id);
 
 }  // namespace engine::Install

@@ -34,18 +34,16 @@ void OverwriteController::clear_overwrite() {
   if (w_->current_instance_root_.empty())
     return;
   auto overwrite_dir = w_->overwrite_dir_path();
-  auto mods_subpath = w_->knowledge_ ? w_->knowledge_->get(w_->current_game_id_,
-                                                           "mods_subpath", "")
-                                     : std::string();
+  auto mods_subpath =
+      w_->knowledge_ ? w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "")
+                     : std::string();
   auto cleared = engine::clear_overwrite(overwrite_dir, mods_subpath);
   if (cleared > 0) {
-    engine::Logger::instance().debug("Overwrite cleared (" +
-                                     std::to_string(cleared) + " file(s))");
-    QMessageBox::information(w_, tr("Overwrite"),
-                             tr("Overwrite folder cleared."));
+    engine::Logger::instance().debug("Overwrite cleared (" + std::to_string(cleared) +
+                                     " file(s))");
+    QMessageBox::information(w_, tr("Overwrite"), tr("Overwrite folder cleared."));
   } else {
-    QMessageBox::warning(w_, tr("Overwrite"),
-                         tr("Failed to clear Overwrite folder."));
+    QMessageBox::warning(w_, tr("Overwrite"), tr("Failed to clear Overwrite folder."));
   }
 }
 
@@ -53,41 +51,36 @@ void OverwriteController::create_mod_from_overwrite() {
   if (w_->current_instance_root_.empty())
     return;
   auto overwrite_dir = w_->overwrite_dir_path();
-  auto mods_subpath = w_->knowledge_ ? w_->knowledge_->get(w_->current_game_id_,
-                                                           "mods_subpath", "")
-                                     : std::string();
+  auto mods_subpath =
+      w_->knowledge_ ? w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "")
+                     : std::string();
   if (mods_subpath.empty())
     return;
 
   if (engine::overwrite_is_empty(overwrite_dir, mods_subpath)) {
-    QMessageBox::information(w_, tr("Create Mod"),
-                             tr("Overwrite folder is empty."));
+    QMessageBox::information(w_, tr("Create Mod"), tr("Overwrite folder is empty."));
     return;
   }
 
   bool ok;
-  auto name =
-      QInputDialog::getText(w_, tr("Create Mod from Overwrite"),
-                            tr("Mod name:"), QLineEdit::Normal, QString(), &ok);
+  auto name = QInputDialog::getText(w_, tr("Create Mod from Overwrite"),
+                                    tr("Mod name:"), QLineEdit::Normal, QString(), &ok);
   if (!ok || name.isEmpty())
     return;
 
   auto mod_dir = w_->mods_dir_path() / name.toStdString();
-  auto moved =
-      engine::move_overwrite_to_mod(overwrite_dir, mod_dir, mods_subpath);
+  auto moved   = engine::move_overwrite_to_mod(overwrite_dir, mod_dir, mods_subpath);
   if (moved) {
     // Write the game's metadata file so ModScanner picks the mod up.
     auto metadata_file =
         w_->knowledge_->get(w_->current_game_id_, "metadata_file", "meta.ini");
-    engine::ModMeta::write_game_metadata(mod_dir, metadata_file,
-                                         name.toStdString(), "1.0", "");
+    engine::ModMeta::write_game_metadata(mod_dir, metadata_file, name.toStdString(),
+                                         "1.0", "");
     auto id = name;
     w_->mod_model_->add_mod(id, name, "");
-    engine::Logger::instance().debug("Promote Overwrite to mod: " +
-                                     name.toStdString());
-    QMessageBox::information(
-        w_, tr("Create Mod"),
-        tr("Overwrite contents promoted to mod: %1").arg(name));
+    engine::Logger::instance().debug("Promote Overwrite to mod: " + name.toStdString());
+    QMessageBox::information(w_, tr("Create Mod"),
+                             tr("Overwrite contents promoted to mod: %1").arg(name));
   } else {
     QMessageBox::warning(w_, tr("Create Mod"),
                          tr("Failed to promote Overwrite files."));
@@ -98,14 +91,13 @@ void OverwriteController::move_overwrite_content_to_mod() {
   if (w_->current_instance_root_.empty())
     return;
   auto overwrite_dir = w_->overwrite_dir_path();
-  auto mods_subpath = w_->knowledge_ ? w_->knowledge_->get(w_->current_game_id_,
-                                                           "mods_subpath", "")
-                                     : std::string();
+  auto mods_subpath =
+      w_->knowledge_ ? w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "")
+                     : std::string();
   if (mods_subpath.empty())
     return;
   if (engine::overwrite_is_empty(overwrite_dir, mods_subpath)) {
-    QMessageBox::information(w_, tr("Move content"),
-                             tr("Overwrite folder is empty."));
+    QMessageBox::information(w_, tr("Move content"), tr("Overwrite folder is empty."));
     return;
   }
 
@@ -130,17 +122,14 @@ void OverwriteController::move_overwrite_content_to_mod() {
     return;
 
   auto mod_dir = w_->mods_dir_path() / folder;
-  auto moved =
-      engine::move_overwrite_to_mod(overwrite_dir, mod_dir, mods_subpath);
+  auto moved   = engine::move_overwrite_to_mod(overwrite_dir, mod_dir, mods_subpath);
   if (moved) {
-    engine::Logger::instance().debug("Moved Overwrite contents to mod: " +
-                                     folder);
-    QMessageBox::information(w_, tr("Move content"),
-                             tr("Overwrite contents moved to mod: %1")
-                                 .arg(QString::fromStdString(folder)));
+    engine::Logger::instance().debug("Moved Overwrite contents to mod: " + folder);
+    QMessageBox::information(
+        w_, tr("Move content"),
+        tr("Overwrite contents moved to mod: %1").arg(QString::fromStdString(folder)));
   } else {
-    QMessageBox::warning(w_, tr("Move content"),
-                         tr("Failed to move Overwrite files."));
+    QMessageBox::warning(w_, tr("Move content"), tr("Failed to move Overwrite files."));
   }
 }
 
@@ -148,22 +137,19 @@ void OverwriteController::sync_overwrite_to_mods() {
   if (w_->current_instance_root_.empty() || !w_->knowledge_)
     return;
   auto overwrite_dir = w_->overwrite_dir_path();
-  auto mods_subpath =
-      w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "");
+  auto mods_subpath  = w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "");
   if (mods_subpath.empty())
     return;
   if (engine::overwrite_is_empty(overwrite_dir, mods_subpath)) {
-    QMessageBox::information(w_, tr("Sync to Mods"),
-                             tr("Overwrite folder is empty."));
+    QMessageBox::information(w_, tr("Sync to Mods"), tr("Overwrite folder is empty."));
     return;
   }
 
   const bool conflict_reversed =
-      w_->knowledge_->get(w_->current_game_id_, "conflict_order_reversed",
-                          "") == "true";
-  const bool include_mod_id =
-      w_->knowledge_->get(w_->current_game_id_, "deploy_include_mod_id", "") ==
+      w_->knowledge_->get(w_->current_game_id_, "conflict_order_reversed", "") ==
       "true";
+  const bool include_mod_id =
+      w_->knowledge_->get(w_->current_game_id_, "deploy_include_mod_id", "") == "true";
   const auto metadata_file =
       w_->knowledge_->get(w_->current_game_id_, "metadata_file", "meta.ini");
 
@@ -179,9 +165,8 @@ void OverwriteController::sync_overwrite_to_mods() {
   }
 
   // Game-origin destination: a mod folder named after the game.
-  const auto game_display = w_->current_game_name_.empty()
-                                ? w_->current_game_id_
-                                : w_->current_game_name_;
+  const auto game_display =
+      w_->current_game_name_.empty() ? w_->current_game_id_ : w_->current_game_name_;
   std::string game_folder = game_display;
   for (char &c : game_folder) {
     if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' ||
@@ -191,16 +176,16 @@ void OverwriteController::sync_overwrite_to_mods() {
 
   SyncOverwriteDialog dialog(
       SyncOverwriteDialog::Context{
-          .overwrite_dir = overwrite_dir,
-          .mods_dir = w_->mods_dir_path(),
-          .mod_infos = std::move(mod_infos),
-          .mods_subpath = mods_subpath,
+          .overwrite_dir     = overwrite_dir,
+          .mods_dir          = w_->mods_dir_path(),
+          .mod_infos         = std::move(mod_infos),
+          .mods_subpath      = mods_subpath,
           .conflict_reversed = conflict_reversed,
-          .include_mod_id = include_mod_id,
-          .game_dir = w_->current_game_dir_,
-          .game_folder = game_folder,
-          .game_label = game_display,
-          .metadata_file = metadata_file,
+          .include_mod_id    = include_mod_id,
+          .game_dir          = w_->current_game_dir_,
+          .game_folder       = game_folder,
+          .game_label        = game_display,
+          .metadata_file     = metadata_file,
       },
       w_);
   if (dialog.exec() != QDialog::Accepted)
@@ -210,18 +195,15 @@ void OverwriteController::sync_overwrite_to_mods() {
   if (targets.empty())
     return;
 
-  auto moved =
-      engine::apply_sync_plan(targets, overwrite_dir, w_->mods_dir_path(),
-                              mods_subpath, metadata_file, include_mod_id);
+  auto moved = engine::apply_sync_plan(targets, overwrite_dir, w_->mods_dir_path(),
+                                       mods_subpath, metadata_file, include_mod_id);
   if (moved > 0) {
-    engine::Logger::instance().debug(
-        "Sync Overwrite: " + std::to_string(moved) + " file(s) moved");
-    QMessageBox::information(
-        w_, tr("Sync to Mods"),
-        tr("Moved %1 file(s) from Overwrite to mods.").arg(moved));
+    engine::Logger::instance().debug("Sync Overwrite: " + std::to_string(moved) +
+                                     " file(s) moved");
+    QMessageBox::information(w_, tr("Sync to Mods"),
+                             tr("Moved %1 file(s) from Overwrite to mods.").arg(moved));
   } else {
-    QMessageBox::warning(w_, tr("Sync to Mods"),
-                         tr("Failed to sync Overwrite files."));
+    QMessageBox::warning(w_, tr("Sync to Mods"), tr("Failed to sync Overwrite files."));
   }
 }
 
@@ -245,9 +227,9 @@ void OverwriteController::show_overwrite_info_dialog() {
   if (!std::filesystem::is_directory(overwrite_dir, ec)) {
     std::filesystem::create_directories(overwrite_dir, ec);
   }
-  auto mods_subpath = w_->knowledge_ ? w_->knowledge_->get(w_->current_game_id_,
-                                                           "mods_subpath", "")
-                                     : std::string();
+  auto mods_subpath =
+      w_->knowledge_ ? w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "")
+                     : std::string();
 
   // Shared modeless dialog - MO2's findChild("__overwriteDialog") pattern.
   auto *dialog = w_->findChild<QDialog *>("__overwriteDialog");
@@ -278,16 +260,15 @@ void OverwriteController::move_dropped_overwrite_files(const QStringList &paths,
     return;
 
   auto overwrite_dir = w_->overwrite_dir_path();
-  auto mods_subpath = w_->knowledge_ ? w_->knowledge_->get(w_->current_game_id_,
-                                                           "mods_subpath", "")
-                                     : std::string();
+  auto mods_subpath =
+      w_->knowledge_ ? w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "")
+                     : std::string();
   if (mods_subpath.empty())
     return;
   const bool include_mod_id =
       w_->knowledge_ &&
-      w_->knowledge_->get(w_->current_game_id_, "deploy_include_mod_id", "") ==
-          "true";
-  auto mod_dir = w_->mods_dir_path() / target.id.toStdString();
+      w_->knowledge_->get(w_->current_game_id_, "deploy_include_mod_id", "") == "true";
+  auto mod_dir      = w_->mods_dir_path() / target.id.toStdString();
   const auto mod_id = target.id.toStdString();
 
   bool any = false;
@@ -304,17 +285,16 @@ void OverwriteController::move_dropped_overwrite_files(const QStringList &paths,
       ec.clear();
       continue;
     }
-    if (engine::move_overwrite_entry_to_mod(overwrite_dir, canon, mod_dir,
-                                            mods_subpath, include_mod_id,
-                                            mod_id))
+    if (engine::move_overwrite_entry_to_mod(overwrite_dir, canon, mod_dir, mods_subpath,
+                                            include_mod_id, mod_id))
       any = true;
   }
 
   if (any) {
-    engine::Logger::instance().debug(
-        "Moved dropped Overwrite entries into mod: " + mod_id);
+    engine::Logger::instance().debug("Moved dropped Overwrite entries into mod: " +
+                                     mod_id);
     w_->mod_list_->recompute_conflicts();
   }
 }
 
-} // namespace ui
+}  // namespace ui

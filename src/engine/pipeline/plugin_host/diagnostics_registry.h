@@ -10,7 +10,7 @@
 namespace engine {
 
 namespace PluginDb {
-class Database;
+  class Database;
 }
 
 // Per-game plugin diagnostics providers (MO2 addInformation parity). C
@@ -20,32 +20,31 @@ class Database;
 // which the Plugins tab tooltip renders below a <hr>.
 class DiagnosticsRegistry {
 public:
-    static DiagnosticsRegistry& instance();
+  static DiagnosticsRegistry &instance();
 
-    // game_id: plugin game this provider serves ("" = all games).
-    // fn: called with (plugin_name, buffer, capacity, user_data); the
-    //     provider writes zero or more NUL-terminated messages.
-    void register_provider(const std::string& game_id,
-                           GmmDiagnosticsFn fn,
-                           void* user_data);
+  // game_id: plugin game this provider serves ("" = all games).
+  // fn: called with (plugin_name, buffer, capacity, user_data); the
+  //     provider writes zero or more NUL-terminated messages.
+  void register_provider(const std::string &game_id, GmmDiagnosticsFn fn,
+                         void *user_data);
 
-    // Re-run every matching provider over all plugins in db, replacing each
-    // plugin's messages. No-op when no provider matches game_id.
-    void collect(const std::string& game_id, PluginDb::Database& db) const;
+  // Re-run every matching provider over all plugins in db, replacing each
+  // plugin's messages. No-op when no provider matches game_id.
+  void collect(const std::string &game_id, PluginDb::Database &db) const;
 
-    // Drop all providers (Python shutdown path; acquire the GIL first).
-    void clear();
+  // Drop all providers (Python shutdown path; acquire the GIL first).
+  void clear();
 
 private:
-    DiagnosticsRegistry() = default;
+  DiagnosticsRegistry() = default;
 
-    struct Provider {
-        std::string game_id;
-        GmmDiagnosticsFn fn = nullptr;
-        void* user_data = nullptr;
-    };
+  struct Provider {
+    std::string game_id;
+    GmmDiagnosticsFn fn = nullptr;
+    void *user_data     = nullptr;
+  };
 
-    std::vector<Provider> providers_;
+  std::vector<Provider> providers_;
 };
 
 }  // namespace engine

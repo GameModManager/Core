@@ -94,7 +94,7 @@ struct SaveGame {
   // MO2 GamebryoSaveGame::getName(): "%1, #%2, Level %3, %4".
   [[nodiscard]] std::string display_name() const;
   // MO2 getSaveGroupIdentifier(): groups saves per character.
-  [[nodiscard]] const std::string& save_group_identifier() const { return pc_name; }
+  [[nodiscard]] const std::string &save_group_identifier() const { return pc_name; }
   // True when the script-extender co-save (same basename, .skse) exists next
   // to this save (MO2 GamebryoSaveGame::hasScriptExtenderFile).
   [[nodiscard]] bool has_script_extender_file() const;

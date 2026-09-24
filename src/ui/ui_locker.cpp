@@ -30,4 +30,4 @@ void Locker::set_enabled(bool enabled) {
     w_->status_bar_->setEnabled(enabled);
 }
 
-} // namespace ui
+}  // namespace ui

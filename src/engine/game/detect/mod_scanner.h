@@ -83,46 +83,46 @@ public:
   // resolution returns an empty path, the scan returns empty and the
   // caller is expected to fall back to the instance mods dir.
   [[nodiscard]] static std::vector<ScannedMod>
-  scan(const GameKnowledge& knowledge, const std::string& game_id,
-       const std::filesystem::path& game_install_dir,
-       const std::vector<std::filesystem::path>& ignore_symlink_targets = {},
-       const std::filesystem::path& override_mods_dir                   = {});
+  scan(const GameKnowledge &knowledge, const std::string &game_id,
+       const std::filesystem::path &game_install_dir,
+       const std::vector<std::filesystem::path> &ignore_symlink_targets = {},
+       const std::filesystem::path &override_mods_dir                   = {});
 
   // Scan a specific mods directory directly (bypasses mods_subpath resolution).
   [[nodiscard]] static std::vector<ScannedMod>
-  scan_dir(const GameKnowledge& knowledge, const std::string& game_id,
-           const std::filesystem::path& mods_dir,
-           const std::vector<std::filesystem::path>& ignore_symlink_targets = {});
+  scan_dir(const GameKnowledge &knowledge, const std::string &game_id,
+           const std::filesystem::path &mods_dir,
+           const std::vector<std::filesystem::path> &ignore_symlink_targets = {});
 
   // Scan a single mod folder (installed_missing_stages: the install pipeline
   // produces one folder at a time, so the UI can add just that row instead of
   // rescanning the whole mods dir). Returns empty when the folder holds no
   // recognized mod.
   [[nodiscard]] static std::vector<ScannedMod>
-  scan_folder(const GameKnowledge& knowledge, const std::string& game_id,
-              const std::filesystem::path& mods_dir, const std::string& folder_name,
-              const std::vector<std::filesystem::path>& ignore_symlink_targets = {});
+  scan_folder(const GameKnowledge &knowledge, const std::string &game_id,
+              const std::filesystem::path &mods_dir, const std::string &folder_name,
+              const std::vector<std::filesystem::path> &ignore_symlink_targets = {});
 
   // Create the disable sentinel file for a mod.
-  [[nodiscard]] static bool disable_mod(const GameKnowledge& knowledge,
-                                        const std::string& game_id,
-                                        const std::filesystem::path& mod_folder);
+  [[nodiscard]] static bool disable_mod(const GameKnowledge &knowledge,
+                                        const std::string &game_id,
+                                        const std::filesystem::path &mod_folder);
 
   // Remove the disable sentinel file to enable a mod.
-  [[nodiscard]] static bool enable_mod(const GameKnowledge& knowledge,
-                                       const std::string& game_id,
-                                       const std::filesystem::path& mod_folder);
+  [[nodiscard]] static bool enable_mod(const GameKnowledge &knowledge,
+                                       const std::string &game_id,
+                                       const std::filesystem::path &mod_folder);
 
   // Set the priority of a mod by rewriting its metadata.
-  [[nodiscard]] static bool set_priority(const GameKnowledge& knowledge,
-                                         const std::string& game_id,
-                                         const std::filesystem::path& mod_folder,
+  [[nodiscard]] static bool set_priority(const GameKnowledge &knowledge,
+                                         const std::string &game_id,
+                                         const std::filesystem::path &mod_folder,
                                          int priority);
 
   // MO2's "Ignore missing data": persist [General] validated=true in the
   // folder's meta.ini (creating it if absent) so the invalid/no-metadata
   // flags stay cleared on rescan. Returns false on write failure.
-  [[nodiscard]] static bool mark_validated(const std::filesystem::path& mod_folder);
+  [[nodiscard]] static bool mark_validated(const std::filesystem::path &mod_folder);
 
   // Delete ghost mod stubs left behind when an external source (e.g. a
   // Steam Workshop unsubscribe) removes a mod's real files but leaves the
@@ -155,10 +155,10 @@ public:
   // disables pruning entirely. Returns the pruned folder names so the
   // caller can drop them from its own result list.
   [[nodiscard]] static std::vector<std::string>
-  prune_orphaned_empty_mods(const std::vector<ScannedMod>& scanned,
-                            const std::filesystem::path& mods_dir,
-                            const std::filesystem::path& instance_root,
-                            const std::filesystem::path& external_mods_dir = {});
+  prune_orphaned_empty_mods(const std::vector<ScannedMod> &scanned,
+                            const std::filesystem::path &mods_dir,
+                            const std::filesystem::path &instance_root,
+                            const std::filesystem::path &external_mods_dir = {});
 };
 
 }  // namespace engine

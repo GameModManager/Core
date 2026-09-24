@@ -14,27 +14,27 @@ namespace ui {
 // work on the real filesystem (no VFS - mirrors the Data tab's "no VFS"
 // stance). The tree auto-updates via QFileSystemModel's watcher.
 class FiletreeTab : public ModInfoTab {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit FiletreeTab(QWidget* parent = nullptr);
-    ~FiletreeTab() override;
+  explicit FiletreeTab(QWidget *parent = nullptr);
+  ~FiletreeTab() override;
 
-    void set_mod(const ModInfoData& data) override;
+  void set_mod(const ModInfoData &data) override;
 
 private:
-    void show_menu(const QPoint& pos);
-    QString selected_path() const;
-    void on_open();
-    void on_preview();
-    void on_explore();
-    void on_rename();
-    void on_delete();
-    void on_hide();
-    void on_new_folder();
+  void show_menu(const QPoint &pos);
+  QString selected_path() const;
+  void on_open();
+  void on_preview();
+  void on_explore();
+  void on_rename();
+  void on_delete();
+  void on_hide();
+  void on_new_folder();
 
-    QTreeView* tree_ = nullptr;
-    QFileSystemModel* model_ = nullptr;
-    QString root_path_;
+  QTreeView *tree_         = nullptr;
+  QFileSystemModel *model_ = nullptr;
+  QString root_path_;
 };
 
 }  // namespace ui

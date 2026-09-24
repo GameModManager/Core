@@ -12,24 +12,25 @@ using namespace engine::gmmpack;
 
 namespace {
 
-std::vector<uint8_t> bytes(const std::string& s) {
+std::vector<uint8_t> bytes(const std::string &s) {
   return std::vector<uint8_t>(s.begin(), s.end());
 }
 
-std::string str(const std::vector<uint8_t>& v) {
+std::string str(const std::vector<uint8_t> &v) {
   return std::string(v.begin(), v.end());
 }
 
 // Build a patch-entry JSON doc the way the pack creator would.
-std::string make_json(const std::string& mod, const std::vector<uint8_t>& old_data,
-                      const std::vector<uint8_t>& new_data, const std::string& target,
+std::string make_json(const std::string &mod, const std::vector<uint8_t> &old_data,
+                      const std::vector<uint8_t> &new_data, const std::string &target,
                       int seq = 0) {
   std::vector<uint8_t> patch;
   std::string err;
   REQUIRE(bsdiff_create(old_data.data(), old_data.size(), new_data.data(),
                         new_data.size(), patch, err));
   std::string doc = "{\"modId\":\"" + mod + "\",";
-  if (seq > 0) doc += "\"sequence\":" + std::to_string(seq) + ",";
+  if (seq > 0)
+    doc += "\"sequence\":" + std::to_string(seq) + ",";
   doc += "\"targetPath\":\"" + target + "\",";
   doc += "\"baseFileSha256\":\"" + sha256_hex(old_data) + "\",";
   doc += "\"algorithm\":\"bsdiff\",";
@@ -37,14 +38,14 @@ std::string make_json(const std::string& mod, const std::vector<uint8_t>& old_da
   return doc;
 }
 
-void write_file(const fs::path& p, const std::string& content) {
+void write_file(const fs::path &p, const std::string &content) {
   fs::create_directories(p.parent_path());
   std::ofstream out(p, std::ios::binary | std::ios::trunc);
   REQUIRE(out.good());
   out.write(content.data(), static_cast<std::streamsize>(content.size()));
 }
 
-std::string read_file(const fs::path& p) {
+std::string read_file(const fs::path &p) {
   std::ifstream in(p, std::ios::binary);
   REQUIRE(in.good());
   return std::string((std::istreambuf_iterator<char>(in)),
@@ -65,37 +66,39 @@ TEST_CASE("sha256 known vectors", "[gmmpack]") {
 TEST_CASE("base64 round-trip and strict rejects", "[gmmpack]") {
   for (size_t n = 0; n < 16; ++n) {
     std::vector<uint8_t> v(n);
-    for (size_t i = 0; i < n; ++i) v[i] = static_cast<uint8_t>(i * 37 + n);
+    for (size_t i = 0; i < n; ++i)
+      v[i] = static_cast<uint8_t>(i * 37 + n);
     std::vector<uint8_t> back;
     CHECK(base64_decode(base64_encode(v), back));
     CHECK(back == v);
   }
   std::vector<uint8_t> all;
-  for (int i = 0; i < 256; ++i) all.push_back(static_cast<uint8_t>(i));
+  for (int i = 0; i < 256; ++i)
+    all.push_back(static_cast<uint8_t>(i));
   std::vector<uint8_t> back;
   CHECK(base64_decode(base64_encode(all), back));
   CHECK(back == all);
 
   std::vector<uint8_t> out;
   CHECK_FALSE(base64_decode("!!!", out));
-  CHECK_FALSE(base64_decode("abc", out));      // bad length
-  CHECK_FALSE(base64_decode("ab=c", out));     // padding mid-input
-  CHECK_FALSE(base64_decode("a===bcd=", out)); // padding mid-input
-  CHECK_FALSE(base64_decode("ab cd", out));    // whitespace rejected
+  CHECK_FALSE(base64_decode("abc", out));       // bad length
+  CHECK_FALSE(base64_decode("ab=c", out));      // padding mid-input
+  CHECK_FALSE(base64_decode("a===bcd=", out));  // padding mid-input
+  CHECK_FALSE(base64_decode("ab cd", out));     // whitespace rejected
   CHECK(base64_decode("", out));
   CHECK(out.empty());
 }
 
 TEST_CASE("bsdiff round-trips", "[gmmpack]") {
   std::string err;
-  auto round_trip = [&](const std::vector<uint8_t>& old_data,
-                        const std::vector<uint8_t>& new_data) {
+  auto round_trip = [&](const std::vector<uint8_t> &old_data,
+                        const std::vector<uint8_t> &new_data) {
     std::vector<uint8_t> patch, result;
     INFO("old=" << old_data.size() << " new=" << new_data.size());
     REQUIRE(bsdiff_create(old_data.data(), old_data.size(), new_data.data(),
                           new_data.size(), patch, err));
-    REQUIRE(bsdiff_apply(old_data.data(), old_data.size(), patch.data(),
-                         patch.size(), result, err));
+    REQUIRE(bsdiff_apply(old_data.data(), old_data.size(), patch.data(), patch.size(),
+                         result, err));
     CHECK(result == new_data);
   };
 
@@ -104,7 +107,8 @@ TEST_CASE("bsdiff round-trips", "[gmmpack]") {
   round_trip(bytes(""), bytes(""));
   round_trip(bytes("the quick brown fox"), bytes("the quick red fox!"));
   std::vector<uint8_t> bin(512);
-  for (size_t i = 0; i < bin.size(); ++i) bin[i] = static_cast<uint8_t>(i % 251);
+  for (size_t i = 0; i < bin.size(); ++i)
+    bin[i] = static_cast<uint8_t>(i % 251);
   std::vector<uint8_t> bin2 = bin;
   bin2[0] ^= 0xFF;
   bin2[255] ^= 0x01;
@@ -114,8 +118,8 @@ TEST_CASE("bsdiff round-trips", "[gmmpack]") {
 
   std::vector<uint8_t> big(256 * 1024, 'a');
   std::vector<uint8_t> big2 = big;
-  big2[1000] = 'b';
-  big2[200000] = 'c';
+  big2[1000]                = 'b';
+  big2[200000]              = 'c';
   big2.resize(big2.size() + 500, 'z');
   round_trip(big, big2);
 }
@@ -125,23 +129,23 @@ TEST_CASE("bsdiff_apply rejects garbage", "[gmmpack]") {
   std::vector<uint8_t> newv = bytes("base content THERE!");
   std::vector<uint8_t> patch, result;
   std::string err;
-  REQUIRE(bsdiff_create(oldv.data(), oldv.size(), newv.data(), newv.size(),
-                        patch, err));
+  REQUIRE(
+      bsdiff_create(oldv.data(), oldv.size(), newv.data(), newv.size(), patch, err));
 
   CHECK_FALSE(bsdiff_apply(oldv.data(), oldv.size(),
-                           reinterpret_cast<const uint8_t*>("garbage"), 7,
+                           reinterpret_cast<const uint8_t *>("garbage"), 7, result,
+                           err));
+  CHECK_FALSE(bsdiff_apply(oldv.data(), oldv.size(), patch.data(), patch.size() / 2,
                            result, err));
-  CHECK_FALSE(bsdiff_apply(oldv.data(), oldv.size(), patch.data(),
-                           patch.size() / 2, result, err));
   // Patch built for other content of a different length must fail loudly.
   std::vector<uint8_t> short_base = bytes("x");
   CHECK_FALSE(bsdiff_apply(short_base.data(), short_base.size(), patch.data(),
                            patch.size(), result, err));
   // Flipped magic fails loudly instead of mis-decoding.
   std::vector<uint8_t> bad = patch;
-  bad[0] = 'X';
-  CHECK_FALSE(bsdiff_apply(oldv.data(), oldv.size(), bad.data(), bad.size(),
-                           result, err));
+  bad[0]                   = 'X';
+  CHECK_FALSE(
+      bsdiff_apply(oldv.data(), oldv.size(), bad.data(), bad.size(), result, err));
 }
 
 TEST_CASE("parse_patch_json accepts valid, rejects bad", "[gmmpack]") {
@@ -149,22 +153,22 @@ TEST_CASE("parse_patch_json accepts valid, rejects bad", "[gmmpack]") {
   std::string err;
   auto oldv = bytes("v1"), newv = bytes("v2-patched");
 
-  CHECK(parse_patch_json(make_json("skyui", oldv, newv, "SkyUI.esp"),
-                         "skyui.json", p, err));
+  CHECK(parse_patch_json(make_json("skyui", oldv, newv, "SkyUI.esp"), "skyui.json", p,
+                         err));
   CHECK(p.mod_id == "skyui");
   CHECK_FALSE(p.sequence.has_value());
   CHECK(p.target_path == "SkyUI.esp");
 
-  CHECK(parse_patch_json(make_json("awm", oldv, newv, "A.esp", 2),
-                         "awm-2.json", p, err));
+  CHECK(
+      parse_patch_json(make_json("awm", oldv, newv, "A.esp", 2), "awm-2.json", p, err));
   CHECK(p.sequence == 2);
 
-  CHECK_FALSE(parse_patch_json(make_json("awm", oldv, newv, "A.esp", 2),
-                               "other-2.json", p, err));  // modId mismatch
-  CHECK_FALSE(parse_patch_json(make_json("awm", oldv, newv, "A.esp", 2),
-                               "awm-3.json", p, err));  // sequence mismatch
-  CHECK_FALSE(parse_patch_json(make_json("awm", oldv, newv, "A.esp", 2),
-                               "awm.json", p, err));  // seq w/o suffix
+  CHECK_FALSE(parse_patch_json(make_json("awm", oldv, newv, "A.esp", 2), "other-2.json",
+                               p, err));  // modId mismatch
+  CHECK_FALSE(parse_patch_json(make_json("awm", oldv, newv, "A.esp", 2), "awm-3.json",
+                               p, err));  // sequence mismatch
+  CHECK_FALSE(parse_patch_json(make_json("awm", oldv, newv, "A.esp", 2), "awm.json", p,
+                               err));  // seq w/o suffix
   CHECK_FALSE(parse_patch_json("not json", "skyui.json", p, err));
   CHECK_FALSE(parse_patch_json("{\"modId\":\"x\"}", "x.json", p, err));
   std::string bad_algo = make_json("skyui", oldv, newv, "S.esp");
@@ -179,10 +183,8 @@ TEST_CASE("group_patches orders chains, rejects gaps", "[gmmpack]") {
   auto oldv = bytes("v1"), mid = bytes("v2"), fin = bytes("v3");
   BinaryPatch a, b;
   std::string err;
-  REQUIRE(parse_patch_json(make_json("m", mid, fin, "F.esp", 2), "m-2.json", a,
-                           err));
-  REQUIRE(parse_patch_json(make_json("m", oldv, mid, "F.esp", 1), "m-1.json", b,
-                           err));
+  REQUIRE(parse_patch_json(make_json("m", mid, fin, "F.esp", 2), "m-2.json", a, err));
+  REQUIRE(parse_patch_json(make_json("m", oldv, mid, "F.esp", 1), "m-1.json", b, err));
   std::vector<BinaryPatch> in{a, b};  // deliberately out of order
   std::vector<PatchChain> chains;
   REQUIRE(group_patches(std::move(in), chains, err));
@@ -197,8 +199,7 @@ TEST_CASE("group_patches orders chains, rejects gaps", "[gmmpack]") {
 
   // Mixed sequenced + unsequenced for one target.
   BinaryPatch single;
-  REQUIRE(parse_patch_json(make_json("m", oldv, mid, "F.esp"), "m.json", single,
-                           err));
+  REQUIRE(parse_patch_json(make_json("m", oldv, mid, "F.esp"), "m.json", single, err));
   std::vector<BinaryPatch> mixed{a, single};
   CHECK_FALSE(group_patches(std::move(mixed), out, err));
 }
@@ -213,11 +214,9 @@ TEST_CASE("patch plan + apply end to end", "[gmmpack]") {
 
   BinaryPatch s1, s2;
   std::string err;
-  REQUIRE(parse_patch_json(make_json("awesome-mod", oldv, mid, "AwesomeMod.esp",
-                                     1),
+  REQUIRE(parse_patch_json(make_json("awesome-mod", oldv, mid, "AwesomeMod.esp", 1),
                            "awesome-mod-1.json", s1, err));
-  REQUIRE(parse_patch_json(make_json("awesome-mod", mid, fin, "AwesomeMod.esp",
-                                     2),
+  REQUIRE(parse_patch_json(make_json("awesome-mod", mid, fin, "AwesomeMod.esp", 2),
                            "awesome-mod-2.json", s2, err));
   std::vector<BinaryPatch> in{s2, s1};
   std::vector<PatchChain> chains;
@@ -236,13 +235,13 @@ TEST_CASE("patch plan + apply end to end", "[gmmpack]") {
 
   // Traversal target rejected.
   PatchChain evil;
-  evil.mod_id = "awesome-mod";
+  evil.mod_id      = "awesome-mod";
   evil.target_path = "../../evil.esp";
   evil.steps.push_back(s1);
   CHECK_FALSE(apply_chain(evil, mod, err));
 
   // Unknown mod rejected.
-  PatchPlan bad_plan = plan;
+  PatchPlan bad_plan        = plan;
   bad_plan.chains[0].mod_id = "ghost-mod";
   CHECK_FALSE(apply_plan(bad_plan, dirs, err));
 

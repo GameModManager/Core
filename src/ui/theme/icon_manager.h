@@ -15,7 +15,7 @@ namespace engine {
 // Workshop") - to the vendor icon key, which resolves from
 // resources/icons/vendor/<key>.ico through resolve_icon(). Empty string means
 // no branded icon exists for this source (e.g. "Manual").
-std::string vendor_icon_key(const std::string& source);
+std::string vendor_icon_key(const std::string &source);
 
 // Central icon resolution. Every logical icon key ("list-add",
 // "conflict-overwrite", "gmm-logo", ...) resolves through one chain, so a
@@ -39,39 +39,39 @@ std::string vendor_icon_key(const std::string& source);
 // theme change updates it.
 class IconManager {
 public:
-    static IconManager& instance();
+  static IconManager &instance();
 
-    // Scan <appDir>/../resources/icons/packs/ for bundled packs. Idempotent.
-    void discover_packs(const std::filesystem::path& app_dir);
+  // Scan <appDir>/../resources/icons/packs/ for bundled packs. Idempotent.
+  void discover_packs(const std::filesystem::path &app_dir);
 
-    // Bundled pack names, sorted. The first entry is the base pack used as
-    // the tier-4 fallback.
-    std::vector<std::string> pack_names() const;
+  // Bundled pack names, sorted. The first entry is the base pack used as
+  // the tier-4 fallback.
+  std::vector<std::string> pack_names() const;
 
-    // Resolution mode: "default", "system", or a pack name from pack_names().
-    void set_mode(const std::string& mode);
-    std::string mode() const { return mode_; }
+  // Resolution mode: "default", "system", or a pack name from pack_names().
+  void set_mode(const std::string &mode);
+  std::string mode() const { return mode_; }
 
-    // Active QSS theme name (""/"default" = no theme-icons override).
-    void set_current_theme(const std::string& name);
+  // Active QSS theme name (""/"default" = no theme-icons override).
+  void set_current_theme(const std::string &name);
 
-    // Resolve a logical icon key through the chain above. `sp` is the
-    // per-callsite last-resort fallback (pass QStyle::SP_CustomBase to skip).
-    QIcon resolve_icon(const QString& key,
-                       QStyle::StandardPixmap sp = QStyle::SP_CustomBase) const;
+  // Resolve a logical icon key through the chain above. `sp` is the
+  // per-callsite last-resort fallback (pass QStyle::SP_CustomBase to skip).
+  QIcon resolve_icon(const QString &key,
+                     QStyle::StandardPixmap sp = QStyle::SP_CustomBase) const;
 
 private:
-    IconManager() = default;
+  IconManager() = default;
 
-    // Look for <dir>/<key>.png|.svg|... and load it, or a null icon.
-    QIcon load_from_dir(const std::filesystem::path& dir, const QString& key) const;
+  // Look for <dir>/<key>.png|.svg|... and load it, or a null icon.
+  QIcon load_from_dir(const std::filesystem::path &dir, const QString &key) const;
 
-    std::filesystem::path app_dir_;
-    std::filesystem::path resources_dir_;
-    std::filesystem::path packs_dir_;
-    std::string mode_ = "default";
-    std::string current_theme_;
-    std::vector<std::string> packs_;
+  std::filesystem::path app_dir_;
+  std::filesystem::path resources_dir_;
+  std::filesystem::path packs_dir_;
+  std::string mode_ = "default";
+  std::string current_theme_;
+  std::vector<std::string> packs_;
 };
 
 }  // namespace engine

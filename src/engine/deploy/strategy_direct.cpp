@@ -25,8 +25,8 @@ bool Direct::remove(const std::filesystem::path &target) {
 bool Direct::deploy_all(const engine::DeployProgressFn &progress) {
   return engine::deploy_all_enabled_mods_direct(
       config_.mods_dir, config_.game_dir, config_.deploy_prefix,
-      config_.deploy_include_mod_id, config_.disable_mechanism,
-      config_.case_sensitive, config_.ledger_file, config_.backup_root,
+      config_.deploy_include_mod_id, config_.disable_mechanism, config_.case_sensitive,
+      config_.ledger_file, config_.backup_root,
       /*num_threads=*/0, progress);
 }
 
@@ -44,7 +44,7 @@ bool Direct::undeploy(const engine::DeployProgressFn &progress) {
 SyncResult Direct::sync(const engine::DeployProgressFn &progress) {
   SyncResult result;
   const auto old_ledger = engine::load_deploy_ledger(config_.ledger_file);
-  const bool ok = deploy_all(progress);
+  const bool ok         = deploy_all(progress);
   const auto new_ledger = engine::load_deploy_ledger(config_.ledger_file);
 
   for (const auto &[target, source] : new_ledger) {
@@ -60,7 +60,7 @@ SyncResult Direct::sync(const engine::DeployProgressFn &progress) {
       ++result.files_removed;
   }
   if (!ok)
-    result.files_failed = -1; // sentinel: partial failure
+    result.files_failed = -1;  // sentinel: partial failure
   return result;
 }
 
@@ -69,8 +69,7 @@ bool Direct::is_deployed(const std::filesystem::path &target) const {
   return ledger.count(target) > 0;
 }
 
-const DeployedFileInfo *
-Direct::find(const std::filesystem::path &target) const {
+const DeployedFileInfo *Direct::find(const std::filesystem::path &target) const {
   // The ledger is a value map (target -> source), so a pointer-to-view
   // would dangle as soon as the map is destroyed. Returning nullptr keeps
   // the interface honest; callers that need the info use list_deployed()
@@ -103,8 +102,7 @@ std::vector<DeployedFileInfo> Direct::list_deployed() const {
       if (!rel.empty() && *rel.begin() != "..") {
         std::error_code ec;
         info.backed_up =
-            std::filesystem::is_regular_file(config_.backup_root / rel, ec) &&
-            !ec;
+            std::filesystem::is_regular_file(config_.backup_root / rel, ec) && !ec;
       }
     }
     result.push_back(std::move(info));
@@ -112,9 +110,8 @@ std::vector<DeployedFileInfo> Direct::list_deployed() const {
   return result;
 }
 
-std::map<std::filesystem::path, std::filesystem::path>
-Direct::current_ledger() const {
+std::map<std::filesystem::path, std::filesystem::path> Direct::current_ledger() const {
   return engine::load_deploy_ledger(config_.ledger_file);
 }
 
-} // namespace Deploy
+}  // namespace Deploy

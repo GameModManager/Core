@@ -25,7 +25,7 @@ class CategoriesDialog : public QDialog {
   Q_OBJECT
 public:
   explicit CategoriesDialog(const std::filesystem::path &instance_root = {},
-                            QWidget *parent = nullptr);
+                            QWidget *parent                            = nullptr);
 
   // Validates the table and applies it to engine::Category::Factory::instance()
   // (add/update/remove diff), then saves categories.dat when an instance
@@ -48,9 +48,9 @@ private:
   // Never shows a dialog itself, so tests can call it headless.
   QString validate_table() const;
 
-  QTableWidget *table_ = nullptr;
+  QTableWidget *table_     = nullptr;
   QPushButton *remove_btn_ = nullptr;
   std::filesystem::path instance_root_;
 };
 
-} // namespace ui
+}  // namespace ui

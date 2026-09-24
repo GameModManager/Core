@@ -8,25 +8,21 @@
 #include <filesystem>
 #include <unordered_map>
 
-namespace engine::Install
-{
+namespace engine::Install {
 
-namespace
-{
+namespace {
 
   // The CI identity key for staged archives and display names. Same single
   // source ConflictEngine's Phase-2 registry uses (FULL variant: separators
   // folded, every component lowercased). Purely lexical - never touches disk,
   // so the resolver is built on an empty root and used for normalize() only.
-  const vfs::PathResolver& identity_key()
-  {
+  const vfs::PathResolver &identity_key() {
     static const vfs::PathResolver resolver{std::filesystem::path{},
                                             vfs::NameCompare::CaseInsensitive};
     return resolver;
   }
 
-  [[nodiscard]] std::string lower(std::string s)
-  {
+  [[nodiscard]] std::string lower(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
       return static_cast<char>(std::tolower(c));
     });
@@ -35,37 +31,33 @@ namespace
 
   // Provider identity: lowercased source_type + raw source_id. Empty on both
   // sides means "unknown origin" - never a match.
-  [[nodiscard]] std::string source_key(const Pack::ResolvedMod& mod)
-  {
+  [[nodiscard]] std::string source_key(const Pack::ResolvedMod &mod) {
     if (mod.source_type.empty() && mod.source_id.empty())
       return {};
     return lower(mod.source_type) + '\x1f' + mod.source_id;
   }
 
-  [[nodiscard]] bool same_source(const Pack::ResolvedMod& a, const Pack::ResolvedMod& b)
-  {
+  [[nodiscard]] bool same_source(const Pack::ResolvedMod &a,
+                                 const Pack::ResolvedMod &b) {
     const std::string ka = source_key(a);
     return !ka.empty() && ka == source_key(b);
   }
 
-  [[nodiscard]] bool same_file(const Pack::ResolvedMod& a, const Pack::ResolvedMod& b)
-  {
+  [[nodiscard]] bool same_file(const Pack::ResolvedMod &a, const Pack::ResolvedMod &b) {
     if (a.archive_name.empty() || b.archive_name.empty())
       return false;
     return identity_key().normalize(a.archive_name) ==
            identity_key().normalize(b.archive_name);
   }
 
-  [[nodiscard]] bool same_name(const Pack::ResolvedMod& a, const Pack::ResolvedMod& b)
-  {
+  [[nodiscard]] bool same_name(const Pack::ResolvedMod &a, const Pack::ResolvedMod &b) {
     if (a.display_name.empty() || b.display_name.empty())
       return false;
     return identity_key().normalize(a.display_name) ==
            identity_key().normalize(b.display_name);
   }
 
-  [[nodiscard]] Action default_for(ConflictType type)
-  {
+  [[nodiscard]] Action default_for(ConflictType type) {
     // Name collisions are diagnostics: both mods install as-is.
     if (type == ConflictType::NameCollision)
       return Action::Keep;
@@ -74,8 +66,7 @@ namespace
     return Action::Skip;
   }
 
-  [[nodiscard]] int action_rank(Action action)
-  {
+  [[nodiscard]] int action_rank(Action action) {
     switch (action) {
     case Action::Skip:
       return 3;
@@ -94,12 +85,11 @@ namespace
 }  // namespace
 
 std::vector<Conflict>
-detect_conflicts(const std::vector<Pack::ResolvedMod>& existing_mods,
-                 const std::vector<Pack::ResolvedMod>& pack_mods)
-{
+detect_conflicts(const std::vector<Pack::ResolvedMod> &existing_mods,
+                 const std::vector<Pack::ResolvedMod> &pack_mods) {
   std::vector<Conflict> out;
-  for (const auto& pack : pack_mods) {
-    for (const auto& existing : existing_mods) {
+  for (const auto &pack : pack_mods) {
+    for (const auto &existing : existing_mods) {
       Conflict hit;
       hit.existing = existing;
       hit.pack     = pack;
@@ -119,9 +109,8 @@ detect_conflicts(const std::vector<Pack::ResolvedMod>& existing_mods,
   return out;
 }
 
-std::vector<Resolution> resolve_conflicts(const std::vector<Conflict>& conflicts,
-                                          const std::vector<UserChoice>& user_choices)
-{
+std::vector<Resolution> resolve_conflicts(const std::vector<Conflict> &conflicts,
+                                          const std::vector<UserChoice> &user_choices) {
   std::vector<Resolution> out;
   out.reserve(conflicts.size());
   for (std::size_t i = 0; i < conflicts.size(); ++i) {
@@ -130,7 +119,7 @@ std::vector<Resolution> resolve_conflicts(const std::vector<Conflict>& conflicts
     r.pack_entry_id  = conflicts[i].pack.entry_id;
     r.action         = default_for(conflicts[i].type);
     // Last choice for this conflict wins; out-of-range choices are ignored.
-    for (const auto& choice : user_choices) {
+    for (const auto &choice : user_choices) {
       if (choice.conflict_index != i)
         continue;
       if (choice.action == Action::Ask) {
@@ -153,20 +142,18 @@ std::vector<Resolution> resolve_conflicts(const std::vector<Conflict>& conflicts
   return out;
 }
 
-InstallPlan apply_resolutions(const std::vector<Resolution>& resolutions,
-                              const InstallPlan& install_plan)
-{
+InstallPlan apply_resolutions(const std::vector<Resolution> &resolutions,
+                              const InstallPlan &install_plan) {
   // Strongest action per pack entry: Skip > Replace > Rename > Keep.
-  struct Pick
-  {
+  struct Pick {
     Action action = Action::Keep;
     std::string rename_to;
   };
   std::unordered_map<std::string, Pick> picks;
-  for (const auto& r : resolutions) {
+  for (const auto &r : resolutions) {
     if (r.action == Action::Ask)
       continue;  // never effective; ignore
-    auto& pick = picks[r.pack_entry_id];
+    auto &pick = picks[r.pack_entry_id];
     if (action_rank(r.action) > action_rank(pick.action)) {
       pick.action    = r.action;
       pick.rename_to = r.action == Action::Rename ? r.rename_to : std::string{};
@@ -174,7 +161,7 @@ InstallPlan apply_resolutions(const std::vector<Resolution>& resolutions,
   }
   InstallPlan out;
   out.reserve(install_plan.size());
-  for (const auto& entry : install_plan) {
+  for (const auto &entry : install_plan) {
     const auto it       = picks.find(entry.mod.entry_id);
     const Action action = it == picks.end() ? Action::Keep : it->second.action;
     if (action == Action::Skip)
@@ -188,9 +175,8 @@ InstallPlan apply_resolutions(const std::vector<Resolution>& resolutions,
   return out;
 }
 
-std::string describe(const Conflict& conflict)
-{
-  const char* kind = "";
+std::string describe(const Conflict &conflict) {
+  const char *kind = "";
   switch (conflict.type) {
   case ConflictType::DuplicateSource:
     kind = "duplicate-source";
@@ -207,9 +193,8 @@ std::string describe(const Conflict& conflict)
          "' (" + conflict.existing.display_name + ")";
 }
 
-std::string describe(const Resolution& resolution)
-{
-  const char* verb = "";
+std::string describe(const Resolution &resolution) {
+  const char *verb = "";
   switch (resolution.action) {
   case Action::Skip:
     verb = "skip";

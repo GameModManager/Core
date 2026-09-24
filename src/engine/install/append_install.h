@@ -30,18 +30,16 @@
 #include "engine/install/conflict_resolver.h"
 #include "engine/modpack/incremental_update.h"
 
-namespace engine::Install
-{
+namespace engine::Install {
 
 // What an append install will do. Lists are disclosure-first: skipped,
 // diverged, and unresolved mods are reported, not silently dropped.
-struct AppendInstallPlan
-{
+struct AppendInstallPlan {
   bool ok = false;
-  std::string error;  // set when !ok
-  std::vector<Conflict> conflicts;      // detected before resolution
-  std::vector<Resolution> resolutions;  // effective, Ask already defaulted
-  InstallPlan mods_to_install;          // post-resolution, state-filtered
+  std::string error;                         // set when !ok
+  std::vector<Conflict> conflicts;           // detected before resolution
+  std::vector<Resolution> resolutions;       // effective, Ask already defaulted
+  InstallPlan mods_to_install;               // post-resolution, state-filtered
   std::vector<std::string> skipped_mods;     // manual or user-removed, sorted
   std::vector<std::string> kept_diverged;    // installed, position kept, sorted
   std::vector<std::string> unresolved_mods;  // pack mods with no resolution, sorted
@@ -55,17 +53,17 @@ struct AppendInstallPlan
 // adapter resolved them; pack_resolved are this pack's resolve_mod() outputs
 // (entry_id == pack mod id); choices carry the conflict dialog decisions.
 // state may be empty (instance never had a pack) - untracked ids install.
-[[nodiscard]] AppendInstallPlan plan_append_install(
-    const gmmpack::Gmmpack& pack, const std::string& instance_game_id,
-    const InstalledPackState& state,
-    const std::vector<Pack::ResolvedMod>& existing_mods,
-    const std::vector<Pack::ResolvedMod>& pack_resolved,
-    const std::vector<UserChoice>& choices);
+[[nodiscard]] AppendInstallPlan
+plan_append_install(const gmmpack::Gmmpack &pack, const std::string &instance_game_id,
+                    const InstalledPackState &state,
+                    const std::vector<Pack::ResolvedMod> &existing_mods,
+                    const std::vector<Pack::ResolvedMod> &pack_resolved,
+                    const std::vector<UserChoice> &choices);
 
 // Seeds state for newly installed mods: pack identity (only when the
 // instance has none) plus one conforming/installed/pack entry per new mod
 // with lastAppliedRevision set. Tracked entries are never touched.
-void apply_append_state(const AppendInstallPlan& plan, const gmmpack::Gmmpack& pack,
-                        InstalledPackState& state);
+void apply_append_state(const AppendInstallPlan &plan, const gmmpack::Gmmpack &pack,
+                        InstalledPackState &state);
 
 }  // namespace engine::Install

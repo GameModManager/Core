@@ -30,8 +30,8 @@ struct NodeInfo {
   int id = 0;
   QString text;
   Qt::CheckState checked = Qt::Unchecked;
-  bool checkable = false;
-  int depth = 0;
+  bool checkable         = false;
+  int depth              = 0;
 };
 
 void collect_nodes(QTreeWidgetItem *node, int depth, QVector<NodeInfo> &out) {
@@ -71,10 +71,10 @@ ui::ModInfoData make_data(const std::string &id,
                           const std::filesystem::path &instance_root,
                           const std::filesystem::path &mods_dir) {
   ui::ModInfoData data;
-  data.id = QString::fromStdString(id);
-  data.name = QString::fromStdString(id);
+  data.id            = QString::fromStdString(id);
+  data.name          = QString::fromStdString(id);
   data.instance_root = QString::fromStdString(instance_root.string());
-  data.load_meta = [mods_dir, id] {
+  data.load_meta     = [mods_dir, id] {
     return engine::ModMeta::load(mods_dir, id);
   };
   data.save_meta = [mods_dir, id](const engine::ModMeta &m) {
@@ -83,7 +83,7 @@ ui::ModInfoData make_data(const std::string &id,
   return data;
 }
 
-} // namespace
+}  // namespace
 
 TEST_CASE("categories tab", "[ui]") {
   qputenv("QT_QPA_PLATFORM", "offscreen");
@@ -91,22 +91,19 @@ TEST_CASE("categories tab", "[ui]") {
   std::filesystem::remove_all("/tmp/gmm_categories_tab");
   std::filesystem::create_directories(cfg);
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
-  int test_argc = 1;
+  int test_argc     = 1;
   char test_argv0[] = "test";
   char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
 
-  const std::filesystem::path base = "/tmp/gmm_categories_tab";
-  const std::filesystem::path isaac_dat =
-      base / "instances/Isaac/categories.dat";
-  const std::filesystem::path skyrim_dat =
-      base / "instances/Skyrim/categories.dat";
+  const std::filesystem::path base       = "/tmp/gmm_categories_tab";
+  const std::filesystem::path isaac_dat  = base / "instances/Isaac/categories.dat";
+  const std::filesystem::path skyrim_dat = base / "instances/Skyrim/categories.dat";
   // Isaac-shaped registry (ids mirror the real plugin): Items with a child,
   // plus a root-level Lua category.
-  write_dat(isaac_dat,
-            {"1000|Items|0", "1001|Active Items|1000", "1006|Lua|0"});
+  write_dat(isaac_dat, {"1000|Items|0", "1001|Active Items|1000", "1006|Lua|0"});
   // A different game's set, including a generic MO2 name ("Animations").
   write_dat(skyrim_dat, {"1|Animations|0", "2|Armour|0", "52|Poses|1"});
 
@@ -114,8 +111,8 @@ TEST_CASE("categories tab", "[ui]") {
 
   SECTION("renders the current game's registry with hierarchy") {
     switch_game(isaac_dat);
-    auto data = make_data("ModA", base / "instances/Isaac",
-                          base / "instances/Isaac/mods");
+    auto data =
+        make_data("ModA", base / "instances/Isaac", base / "instances/Isaac/mods");
     tab.set_current(data);
     tab.set_mod(data);
 
@@ -138,7 +135,7 @@ TEST_CASE("categories tab", "[ui]") {
     for (const auto &n : nodes) {
       REQUIRE(n.checkable);
       REQUIRE(n.checked == Qt::Unchecked);
-      REQUIRE(n.id != 1); // "Animations" & co. must stay absent
+      REQUIRE(n.id != 1);  // "Animations" & co. must stay absent
     }
 
     // Metadata has no category yet: the primary combo starts empty.
@@ -149,8 +146,8 @@ TEST_CASE("categories tab", "[ui]") {
 
   SECTION("assignment persists ids with ancestors auto-checked") {
     switch_game(isaac_dat);
-    auto data = make_data("ModA", base / "instances/Isaac",
-                          base / "instances/Isaac/mods");
+    auto data =
+        make_data("ModA", base / "instances/Isaac", base / "instances/Isaac/mods");
     tab.set_current(data);
     tab.set_mod(data);
 
@@ -172,8 +169,7 @@ TEST_CASE("categories tab", "[ui]") {
 
     // Persisted as MO2's "category" CSV of internal ids (primary first;
     // no explicit primary here, so tree order).
-    const auto meta =
-        engine::ModMeta::load(base / "instances/Isaac/mods", "ModA");
+    const auto meta = engine::ModMeta::load(base / "instances/Isaac/mods", "ModA");
     REQUIRE(meta.get("General", "category") == "1000,1001");
 
     // Reloading the mod restores the checked state from the metadata.
@@ -186,8 +182,8 @@ TEST_CASE("categories tab", "[ui]") {
 
   SECTION("rebuilds after an instance/game switch") {
     switch_game(isaac_dat);
-    auto data_a = make_data("ModA", base / "instances/Isaac",
-                            base / "instances/Isaac/mods");
+    auto data_a =
+        make_data("ModA", base / "instances/Isaac", base / "instances/Isaac/mods");
     tab.set_current(data_a);
     tab.set_mod(data_a);
     REQUIRE(nodes_of(tab).size() == 3);
@@ -196,8 +192,8 @@ TEST_CASE("categories tab", "[ui]") {
     // Switch games: the new instance's categories.dat replaces the
     // registry, and the next set_mod() must consume it.
     switch_game(skyrim_dat);
-    auto data_b = make_data("ModB", base / "instances/Skyrim",
-                            base / "instances/Skyrim/mods");
+    auto data_b =
+        make_data("ModB", base / "instances/Skyrim", base / "instances/Skyrim/mods");
     tab.set_current(data_b);
     tab.set_mod(data_b);
 
