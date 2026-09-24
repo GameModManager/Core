@@ -84,6 +84,7 @@
 #include "ui/widgets/pipeline_window.h"
 #include "ui/widgets/right_panel.h"
 #include "ui/widgets/status_bar.h"
+#include "ui/widgets/task_dialog.h"
 #include "ui/workers/pipeline_worker.h"
 
 #ifdef GMM_PLATFORM_LINUX
@@ -92,6 +93,17 @@
 #endif
 
 namespace ui {
+
+void configure_instance_restart_dialog(TaskDialog& dlg) {
+  dlg.title(QObject::tr("Restart GameModManager"))
+      .main(QObject::tr("Restart GameModManager"))
+      .content(
+          QObject::tr("GameModManager must restart to finish configuration changes"))
+      .icon(QMessageBox::Question)
+      .add_button({QObject::tr("Restart"), "", QMessageBox::Yes})
+      .add_button({QObject::tr("Continue"), QObject::tr("Some things might be weird."),
+                   QMessageBox::No});
+}
 
 SettingsController::SettingsController(MainWindow* w, QObject* parent)
     : QObject(parent), w_(w) {}
@@ -1400,6 +1412,24 @@ bool SettingsController::switch_to_instance(const QString& name) {
   // persists app state first and lets the user veto (active downloads).
   if (ui::instance_effective_settings_differ(w_->current_instance_root_,
                                              inst.info().root)) {
+    // MO2 U044 parity (Workspace-nef3): confirm the restart instead of
+    // restarting silently. Restart relaunches into the target instance;
+    // Continue live-switches and accepts possibly stale state (notably the
+    // already-loaded plugin set - "some things might be weird"); closing the
+    // dialog aborts the switch and stays on the current instance.
+    TaskDialog dlg(w_);
+    configure_instance_restart_dialog(dlg);
+    const auto reply = dlg.exec();
+    if (reply != QMessageBox::Yes && reply != QMessageBox::No)
+      return false;
+    if (reply == QMessageBox::No) {
+      engine::Logger::instance().info("Per-instance settings differ for " + selected +
+                                      " - continuing without restart");
+      engine::write_last_instance(selected);
+      set_game_info(game_id, display_name, "Default", info.game_dir, inst.info().root);
+      engine::Logger::instance().debug("Switched to instance: " + selected);
+      return true;
+    }
     engine::Logger::instance().info("Per-instance settings differ for " + selected +
                                     " - restarting to apply");
     if (!w_->close())
