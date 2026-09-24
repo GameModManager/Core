@@ -5,6 +5,7 @@
 #include "ui/controllers/queue_controller.h"
 
 #include "ui/instance_options/instance_options_widget.h"
+#include "ui/widgets/error_popup.h"
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
@@ -1761,10 +1762,10 @@ void LaunchController::create_game_lock_overlay() {
         engine::Logger::instance().error("Kill: kill(-" + std::to_string(pgid) +
                                          ", SIGKILL) failed: " + std::strerror(err) +
                                          " (" + std::to_string(err) + ")");
-        QMessageBox::warning(w_, tr("Kill Failed"),
-                             tr("Failed to terminate process group %1: %2")
-                                 .arg(static_cast<long long>(pgid))
-                                 .arg(std::strerror(err)));
+        ui::report_error(tr("Failed to terminate process group %1: %2")
+                             .arg(static_cast<long long>(pgid))
+                             .arg(std::strerror(err)),
+                         w_);
         return;
       }
     }
@@ -1969,7 +1970,7 @@ void LaunchController::run_exe_in_prefix() {
   int64_t pid =
       engine::run_proton_exe(request, std::filesystem::path(file.toStdString()));
   if (pid < 0) {
-    QMessageBox::warning(w_, tr("Proton Tools"), tr("Failed to run:\n%1").arg(file));
+    ui::report_error(tr("Failed to run:\n%1").arg(file), w_);
   }
 }
 
