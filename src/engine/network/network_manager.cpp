@@ -17,9 +17,10 @@
 //     request.
 // =============================================================================
 
-// libcurl BEFORE our header so its typedefs (CURL, curl_slist, CURLSH)
-// are already in scope; the header forward-declares them only when curl.h
-// has not been pulled in yet.
+// Our header's CURL/CURLSH forward declarations intentionally match the
+// spelling <curl/curl.h> uses for consumers (`typedef void`, see the shim
+// comment in network_manager.h), so the include order between these two
+// headers does not matter - identical typedef redefinition is legal C++.
 #include <curl/curl.h>
 
 #include "engine/network/network_manager.h"
