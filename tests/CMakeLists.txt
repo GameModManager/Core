@@ -517,6 +517,18 @@ gmm_catch2_test(error_popup_test ui/error_popup_test.cpp
     UI
     LIBS gmm_ui)
 
+# Workspace-qs50: full-window in-process GUI harness - drives the REAL
+# MainWindow offscreen with QTest (tab clicks, sort button, mod context
+# menu, hover), asserts QToolTip content, model/view state and filesystem
+# side effects (LOOT sort -> plugin hover bullets, Saves tab scan rows,
+# tab switch -> last_tab, mod delete -> trash). Per-test throwaway
+# /tmp/gmm_qs50_* roots; a fake gmm_lootcli is installed beside the test
+# binary at runtime (removed on teardown), so no network and no real LOOT
+# binary are needed.
+gmm_catch2_test(main_window_harness_test ui/main_window_harness_test.cpp
+    UI
+    LIBS gmm_ui Qt6::Test PkgConfig::ZLIB)
+
 # ---------------------------------------------------------------------------
 # LD_PRELOAD intercept smoke tests — Linux-only, C (plain executables, not
 # Catch2 — they are C and test the interposer shared libraries directly)
