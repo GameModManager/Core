@@ -11,6 +11,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QModelIndex>
+#include <QObject>
 #include <QShortcut>
 #include <QTreeView>
 #include <QUrl>
@@ -18,6 +19,8 @@
 
 #include <algorithm>
 #include <cctype>
+
+#include "ui/widgets/task_dialog.h"
 
 namespace ui {
 
@@ -140,6 +143,21 @@ void OverwriteInfoDialog::show_context_menu(const QPoint &pos) {
   menu.exec(view_->viewport()->mapToGlobal(pos));
 }
 
+void configure_overwrite_delete_dialog(TaskDialog &dlg, int count,
+                                       const QString &file_name) {
+  const QString main =
+      count == 1 ? QObject::tr("Are you sure you want to delete \"%1\"?").arg(file_name)
+                 : QObject::tr("Are you sure you want to delete the "
+                               "%1 selected entries?")
+                       .arg(count);
+  dlg.title(QObject::tr("Confirm"))
+      .main(main)
+      .content(QObject::tr("Deleted files go to the system trash."))
+      .icon(QMessageBox::Question)
+      .add_button({QObject::tr("Yes"), "", QMessageBox::Yes})
+      .add_button({QObject::tr("No"), "", QMessageBox::No});
+}
+
 void OverwriteInfoDialog::delete_selected() {
   auto sel = selected_indexes();
   if (sel.empty())
@@ -161,17 +179,11 @@ void OverwriteInfoDialog::delete_selected() {
   if (to_delete.empty())
     return;
 
-  const auto reply = QMessageBox::question(
-      this, tr("Confirm"),
-      to_delete.size() == 1 ? tr("Are you sure you want to delete \"%1\"? "
-                                 "Deleted files go to the system trash.")
-                                  .arg(model_->fileName(to_delete[0]))
-                            : tr("Are you sure you want to delete the "
-                                 "%1 selected entries? Deleted files go to "
-                                 "the system trash.")
-                                  .arg(to_delete.size()),
-      QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-  if (reply != QMessageBox::Yes)
+  TaskDialog dlg(this, {});
+  configure_overwrite_delete_dialog(
+      dlg, static_cast<int>(to_delete.size()),
+      to_delete.size() == 1 ? model_->fileName(to_delete[0]) : QString());
+  if (dlg.exec() != QMessageBox::Yes)
     return;
 
   for (const auto &index : to_delete) {

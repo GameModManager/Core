@@ -487,6 +487,14 @@ gmm_catch2_test(instance_restart_dialog_test ui/instance_restart_dialog_test.cpp
     LIBS gmm_ui
     DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
+# Workspace-t6z5: TaskDialog adoption for the overwrite confirmations
+# (clear-overwrite + Overwrite info-dialog delete). configure_* seams plus
+# the clear_overwrite / delete_selected wiring.
+gmm_catch2_test(overwrite_confirm_dialog_test ui/overwrite_confirm_dialog_test.cpp
+    UI
+    LIBS gmm_ui
+    DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+
 # Workspace-t373: launch-failure details dialogs (spawn-error parity).
 # ui::configure_executable_unreachable_dialog +
 # ui::configure_launch_failed_dialog seams + the on_launch_params_prepared
