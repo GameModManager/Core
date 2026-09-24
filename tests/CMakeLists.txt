@@ -504,6 +504,13 @@ gmm_catch2_test(launch_failure_dialog_test ui/launch_failure_dialog_test.cpp
     LIBS gmm_ui
     DEFINES PROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
+# Workspace-so1s: global ui::report_error / ui::critical_on_top error popup
+# (MO2 U268 port). TDD red phase: fails to compile until
+# src/ui/widgets/error_popup.{h,cpp} exists.
+gmm_catch2_test(error_popup_test ui/error_popup_test.cpp
+    UI
+    LIBS gmm_ui)
+
 # ---------------------------------------------------------------------------
 # LD_PRELOAD intercept smoke tests — Linux-only, C (plain executables, not
 # Catch2 — they are C and test the interposer shared libraries directly)
