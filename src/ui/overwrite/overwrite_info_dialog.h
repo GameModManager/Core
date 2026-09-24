@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDialog>
+#include <QString>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -10,6 +11,16 @@ class QModelIndex;
 class QTreeView;
 
 namespace ui {
+
+class TaskDialog;
+
+// Testable seam for the Overwrite info-dialog delete confirmation
+// (Workspace-t6z5): fills a TaskDialog with the Confirm title, the
+// single-file ("Are you sure you want to delete ...?") or N-entries main
+// text, the system-trash note as content, a Question icon, and Yes/No
+// command links. Shared between the dialog and the dialog tests.
+void configure_overwrite_delete_dialog(TaskDialog &dlg, int count,
+                                       const QString &file_name);
 
 // MO2 OverwriteInfoDialog port: a modeless file browser over the Overwrite
 // folder. Right-click offers Open / Rename / New Folder / Delete (Delete also

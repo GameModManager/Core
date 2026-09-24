@@ -5,6 +5,7 @@
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QObject>
 #include <QUrl>
 
 #include "engine/core/log/logger.h"
@@ -16,19 +17,26 @@
 #include "ui/overwrite/overwrite_info_dialog.h"
 #include "ui/overwrite/sync_overwrite_dialog.h"
 #include "ui/widgets/mod_list_model.h"
+#include "ui/widgets/task_dialog.h"
 
 namespace ui {
+
+void configure_clear_overwrite_dialog(TaskDialog &dlg) {
+  dlg.title(QObject::tr("Clear Overwrite"))
+      .main(QObject::tr("Remove all files from the Overwrite folder?"))
+      .content(QObject::tr("Deleted files go to the system trash."))
+      .icon(QMessageBox::Question)
+      .add_button({QObject::tr("Yes"), "", QMessageBox::Yes})
+      .add_button({QObject::tr("No"), "", QMessageBox::No});
+}
 
 OverwriteController::OverwriteController(MainWindow *w, QObject *parent)
     : QObject(parent), w_(w) {}
 
 void OverwriteController::clear_overwrite() {
-  auto reply = QMessageBox::question(
-      w_, tr("Clear Overwrite"),
-      tr("Remove all files from the Overwrite folder? Deleted files go to the "
-         "system trash."),
-      QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-  if (reply != QMessageBox::Yes)
+  TaskDialog dlg(w_, {});
+  configure_clear_overwrite_dialog(dlg);
+  if (dlg.exec() != QMessageBox::Yes)
     return;
 
   if (w_->current_instance_root_.empty())
