@@ -45,14 +45,24 @@
 // Forward declaration only. Including <curl/curl.h> here would leak libcurl
 // types into every translation unit that depends on network_manager.h.
 // prepare_request/prepare_download are private helpers so callers never see
-// the underlying handle. When this header is included by the
-// implementation file (which does pull the real libcurl headers), the
-// typedefs already exist - skip them to avoid a redefinition error.
-// CURLINC_CURL_H is libcurl's own include guard (set in <curl/curl.h>).
+// the underlying handle.
+//
+// The spelling below MUST match what <curl/curl.h> declares for ordinary
+// consumers, otherwise a TU that includes this header BEFORE curl.h fails
+// with a conflicting-typedef error (include-order dependence). Upstream
+// libcurl declares `typedef void CURL/CURLSH` for consumers in EVERY
+// version: since 8.11.0 (commit eed3c8f4, "remove the struct pointer for
+// CURL/CURLSH/CURLM typedefs") it is unconditional, and before 8.11.0 the
+// default branch (without BUILDING_LIBCURL/CURL_STRICTER, which this build
+// never defines) was also `typedef void`. `struct curl_slist` is unchanged
+// across versions. Identical typedef redefinition is legal C++, so with the
+// spelling matched, compilation succeeds REGARDLESS of include order.
+// CURLINC_CURL_H is libcurl's own include guard (set in <curl/curl.h>); when
+// curl.h came first its declarations are already in scope and we skip ours.
 #if !defined(CURLINC_CURL_H)
-typedef struct CURL CURL;
+typedef void CURL;
 typedef struct curl_slist curl_slist;
-typedef struct CURLSH CURLSH;
+typedef void CURLSH;
 #endif
 
 #include <atomic>

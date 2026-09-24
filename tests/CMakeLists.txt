@@ -99,6 +99,8 @@ gmm_catch2_test(deploy_parallel_test engine/deploy_parallel_test.cpp)
 gmm_catch2_test(deploy_direct_test engine/deploy_direct_test.cpp)
 gmm_catch2_test(nexus_http_test engine/nexus_http_test.cpp)
 gmm_catch2_test(network_test engine/network_test.cpp)
+gmm_catch2_test(network_include_order_test engine/network_include_order_test.cpp
+    LIBS PkgConfig::CURL)
 gmm_catch2_test(nexus_provider_test engine/nexus_provider_test.cpp)
 gmm_catch2_test(nexus_v2_test engine/nexus_v2_test.cpp)
 gmm_catch2_test(loverslab_auth_test engine/loverslab_auth_test.cpp)
