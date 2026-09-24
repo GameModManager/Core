@@ -38,14 +38,14 @@ namespace {
   // ("Nexus Mods"), case-insensitive. Returns nullptr when no provider in the
   // SourceRegistry matches - the caller is then expected to fall back to a
   // generic or placeholder panel.
-  engine::SourceProvider* find_provider(const QString& name) {
+  engine::SourceProvider *find_provider(const QString &name) {
     std::string low = name.trimmed().toStdString();
-    for (auto& c : low)
+    for (auto &c : low)
       c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    for (auto* provider : engine::SourceRegistry::instance().providers()) {
-      auto matches = [&low](const std::string& s) {
+    for (auto *provider : engine::SourceRegistry::instance().providers()) {
+      auto matches = [&low](const std::string &s) {
         std::string sl = s;
-        for (auto& c : sl)
+        for (auto &c : sl)
           c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         return sl == low;
       };
@@ -57,8 +57,8 @@ namespace {
 
   // Add a tab to sources_ with the vendor icon when one resolves. Used for
   // the single source panel and for the "+" affordance.
-  void add_tab_with_icon(QTabWidget* tabs, QWidget* page, const QString& title,
-                         const QString& source_key) {
+  void add_tab_with_icon(QTabWidget *tabs, QWidget *page, const QString &title,
+                         const QString &source_key) {
     const std::string vendor_key = engine::vendor_icon_key(source_key.toStdString());
     if (vendor_key.empty()) {
       tabs->addTab(page, title);
@@ -82,7 +82,7 @@ namespace {
   //   3. Fall back to the in-memory data_.source_type for mods whose meta
   //      has no provider section yet (e.g. a brand-new install before
   //      load_meta_for_mods has been called).
-  QString resolve_actual_source(const ModInfoData& data) {
+  QString resolve_actual_source(const ModInfoData &data) {
     auto lower = [](QString s) {
       return s.toLower();
     };
@@ -135,8 +135,8 @@ namespace {
   // Build a panel for the given source_type, using the typed SourceInfoPanel
   // subclass when one exists and a GenericSourcePanel otherwise. The single
   // tab the user sees - the rest of the Source tab is the "+" affordance.
-  QWidget* build_panel_for(const QString& source_type, const ModInfoData& data,
-                           QWidget* parent) {
+  QWidget *build_panel_for(const QString &source_type, const ModInfoData &data,
+                           QWidget *parent) {
     if (source_type == QLatin1String("nexus")) {
       return new NexusSourcePanel(data, parent);
     }
@@ -151,7 +151,7 @@ namespace {
     }
     // Unknown / manual: try a registered generic provider that matches the
     // actual source_type string (some plugins use their own keys).
-    if (auto* provider = find_provider(source_type)) {
+    if (auto *provider = find_provider(source_type)) {
       return new GenericSourcePanel(data, provider, parent);
     }
     return nullptr;
@@ -164,12 +164,12 @@ namespace {
     QString title;
     QString icon_key;
   };
-  std::optional<SourceDisplay> display_for_source(const QString& source_type) {
+  std::optional<SourceDisplay> display_for_source(const QString &source_type) {
     // "direct" is a transport-only provider (modl:// flow) - not a
     // user-attributable source. Treat it like Manual.
     if (source_type == QLatin1String("direct"))
       return std::nullopt;
-    for (auto* provider : engine::SourceRegistry::instance().providers()) {
+    for (auto *provider : engine::SourceRegistry::instance().providers()) {
       const QString pt = QString::fromStdString(provider->source_type()).toLower();
       if (pt == QLatin1String("steamworkshop")) {
         if (source_type == QLatin1String("steam")) {
@@ -210,12 +210,12 @@ namespace {
   //   mis-track other items' indices.
   class AddSourceDialog : public QDialog {
   public:
-    AddSourceDialog(const ModInfoData& data, QWidget* parent)
+    AddSourceDialog(const ModInfoData &data, QWidget *parent)
         : QDialog(parent), data_(data) {
       setWindowTitle(tr("Add Source"));
-      auto* layout = new QVBoxLayout(this);
+      auto *layout = new QVBoxLayout(this);
 
-      auto* intro = new QLabel(
+      auto *intro = new QLabel(
           tr("Attach this mod to a download source. The selected provider's "
              "metadata will be written to the mod's sidecar and the Source tab "
              "will reload with the new source."),
@@ -223,7 +223,7 @@ namespace {
       intro->setWordWrap(true);
       layout->addWidget(intro);
 
-      auto* form      = new QFormLayout();
+      auto *form      = new QFormLayout();
       provider_combo_ = new QComboBox(this);
 
       // Build the sorted Entry list from the registry. We normalize
@@ -235,7 +235,7 @@ namespace {
         QString canonical;
         int priority = 0;
       };
-      auto priority_for = [](const QString& canonical) {
+      auto priority_for = [](const QString &canonical) {
         if (canonical == QLatin1String("nexus"))
           return 0;
         if (canonical == QLatin1String("loverslab"))
@@ -247,7 +247,7 @@ namespace {
         return 4;
       };
       QList<Entry> entries;
-      for (auto* provider : engine::SourceRegistry::instance().providers()) {
+      for (auto *provider : engine::SourceRegistry::instance().providers()) {
         Entry e;
         e.display  = QString::fromStdString(provider->display_name());
         QString pt = QString::fromStdString(provider->source_type()).toLower();
@@ -262,12 +262,12 @@ namespace {
         e.priority  = priority_for(pt);
         entries.append(e);
       }
-      std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) {
+      std::sort(entries.begin(), entries.end(), [](const Entry &a, const Entry &b) {
         if (a.priority != b.priority)
           return a.priority < b.priority;
         return a.display.compare(b.display, Qt::CaseInsensitive) < 0;
       });
-      for (const auto& e : entries) {
+      for (const auto &e : entries) {
         provider_combo_->addItem(e.display, e.canonical);
       }
       form->addRow(tr("Provider:"), provider_combo_);
@@ -306,7 +306,7 @@ namespace {
               &AddSourceDialog::on_provider_changed);
       on_provider_changed(provider_combo_->currentIndex());
 
-      auto* buttons =
+      auto *buttons =
           new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
       layout->addWidget(buttons);
       connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
@@ -361,22 +361,22 @@ namespace {
     QString modpub_page_url() const { return modpub_page_url_->text().trimmed(); }
 
   private:
-    QWidget* build_nexus_page() {
-      auto* page    = new QWidget(this);
-      auto* form    = new QFormLayout(page);
+    QWidget *build_nexus_page() {
+      auto *page    = new QWidget(this);
+      auto *form    = new QFormLayout(page);
       nexus_mod_id_ = new QLineEdit(page);
       nexus_mod_id_->setPlaceholderText(QStringLiteral("e.g. 12345"));
       form->addRow(tr("Mod ID:"), nexus_mod_id_);
-      auto* hint = new QLabel(tr("The numeric mod id from the mod's Nexus URL. "
+      auto *hint = new QLabel(tr("The numeric mod id from the mod's Nexus URL. "
                                  "https://www.nexusmods.com/<game>/mods/<id>."),
                               page);
       hint->setWordWrap(true);
       form->addRow(hint);
       return page;
     }
-    QWidget* build_loverslab_page() {
-      auto* page        = new QWidget(this);
-      auto* form        = new QFormLayout(page);
+    QWidget *build_loverslab_page() {
+      auto *page        = new QWidget(this);
+      auto *form        = new QFormLayout(page);
       loverslab_fileid_ = new QLineEdit(page);
       loverslab_fileid_->setPlaceholderText(QStringLiteral("e.g. 12345"));
       form->addRow(tr("File ID:"), loverslab_fileid_);
@@ -384,7 +384,7 @@ namespace {
       loverslab_page_url_->setPlaceholderText(
           QStringLiteral("https://www.loverslab.com/files/file/12345/"));
       form->addRow(tr("Page URL (optional):"), loverslab_page_url_);
-      auto* hint = new QLabel(
+      auto *hint = new QLabel(
           tr("The numeric file id from the LoversLab file URL. The page URL "
              "lets the panel open the exact page; otherwise the bare-id URL is "
              "used. When provided, must start with http:// or https://."),
@@ -393,13 +393,13 @@ namespace {
       form->addRow(hint);
       return page;
     }
-    QWidget* build_steam_page() {
-      auto* page         = new QWidget(this);
-      auto* form         = new QFormLayout(page);
+    QWidget *build_steam_page() {
+      auto *page         = new QWidget(this);
+      auto *form         = new QFormLayout(page);
       steam_workshop_id_ = new QLineEdit(page);
       steam_workshop_id_->setPlaceholderText(QStringLiteral("e.g. 1234567890"));
       form->addRow(tr("Workshop ID:"), steam_workshop_id_);
-      auto* hint =
+      auto *hint =
           new QLabel(tr("The numeric workshop id from "
                         "https://steamcommunity.com/sharedfiles/filedetails/?id=<id>."),
                      page);
@@ -407,9 +407,9 @@ namespace {
       form->addRow(hint);
       return page;
     }
-    QWidget* build_modpub_page() {
-      auto* page     = new QWidget(this);
-      auto* form     = new QFormLayout(page);
+    QWidget *build_modpub_page() {
+      auto *page     = new QWidget(this);
+      auto *form     = new QFormLayout(page);
       modpub_mod_id_ = new QLineEdit(page);
       modpub_mod_id_->setPlaceholderText(QStringLiteral("e.g. 22"));
       form->addRow(tr("Mod ID:"), modpub_mod_id_);
@@ -417,7 +417,7 @@ namespace {
       modpub_page_url_->setPlaceholderText(
           QStringLiteral("https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng"));
       form->addRow(tr("Page URL (optional):"), modpub_page_url_);
-      auto* hint = new QLabel(
+      auto *hint = new QLabel(
           tr("The numeric mod id from the mod.pub page URL. The page URL is "
              "strongly recommended: it carries the game-slug and the slug-suffix, "
              "neither of which can be reconstructed from the id alone. When "
@@ -443,7 +443,7 @@ namespace {
     }
 
     void refresh_accept_enabled() {
-      if (auto* bb = this->findChild<QDialogButtonBox*>()) {
+      if (auto *bb = this->findChild<QDialogButtonBox *>()) {
         const QString t = chosen_source_type();
         bool ok         = true;
         if (t == QLatin1String("nexus")) {
@@ -495,19 +495,19 @@ namespace {
     }
 
     ModInfoData data_;
-    QComboBox* provider_combo_     = nullptr;
-    QStackedWidget* field_stack_   = nullptr;
-    QWidget* nexus_page_           = nullptr;
-    QWidget* loverslab_page_       = nullptr;
-    QWidget* steam_page_           = nullptr;
-    QWidget* modpub_page_          = nullptr;
-    QLabel* unknown_page_          = nullptr;
-    QLineEdit* nexus_mod_id_       = nullptr;
-    QLineEdit* loverslab_fileid_   = nullptr;
-    QLineEdit* loverslab_page_url_ = nullptr;
-    QLineEdit* steam_workshop_id_  = nullptr;
-    QLineEdit* modpub_mod_id_      = nullptr;
-    QLineEdit* modpub_page_url_    = nullptr;
+    QComboBox *provider_combo_     = nullptr;
+    QStackedWidget *field_stack_   = nullptr;
+    QWidget *nexus_page_           = nullptr;
+    QWidget *loverslab_page_       = nullptr;
+    QWidget *steam_page_           = nullptr;
+    QWidget *modpub_page_          = nullptr;
+    QLabel *unknown_page_          = nullptr;
+    QLineEdit *nexus_mod_id_       = nullptr;
+    QLineEdit *loverslab_fileid_   = nullptr;
+    QLineEdit *loverslab_page_url_ = nullptr;
+    QLineEdit *steam_workshop_id_  = nullptr;
+    QLineEdit *modpub_mod_id_      = nullptr;
+    QLineEdit *modpub_page_url_    = nullptr;
     // Canonical source_type -> index in field_stack_. Always populated
     // for the well-known providers; an empty-string entry points at the
     // unknown-provider hint page.
@@ -516,8 +516,8 @@ namespace {
 
 }  // namespace
 
-SourceTab::SourceTab(QWidget* parent) : ModInfoTab(parent) {
-  auto* layout = new QVBoxLayout(this);
+SourceTab::SourceTab(QWidget *parent) : ModInfoTab(parent) {
+  auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
 
   sources_ = new QTabWidget(this);
@@ -543,7 +543,7 @@ SourceTab::SourceTab(QWidget* parent) : ModInfoTab(parent) {
 
 SourceTab::~SourceTab() = default;
 
-void SourceTab::set_mod(const ModInfoData& data) {
+void SourceTab::set_mod(const ModInfoData &data) {
   // Contract: data is the same ModInfoData passed to set_current() by
   // ModInfoDialog before calling set_mod(). The tab reads the current mod
   // through current() (which holds that same data), so the parameter is
@@ -557,7 +557,7 @@ void SourceTab::set_mod(const ModInfoData& data) {
   for (int i = 0; i < sources_->count(); ++i) {
     if (i == plus_index_)
       continue;
-    auto* panel = qobject_cast<SourceInfoPanel*>(sources_->widget(i));
+    auto *panel = qobject_cast<SourceInfoPanel *>(sources_->widget(i));
     if (panel && panel->has_data()) {
       has = true;
       break;
@@ -575,7 +575,7 @@ void SourceTab::populate() {
   sources_->setUpdatesEnabled(false);
   plus_index_ = -1;
   while (sources_->count() > 0) {
-    QWidget* page = sources_->widget(0);
+    QWidget *page = sources_->widget(0);
     sources_->removeTab(0);
     delete page;
   }
@@ -584,7 +584,7 @@ void SourceTab::populate() {
   if (actual_source.isEmpty()) {
     // No source attributed. Show a Manual placeholder (Workspace-fqf5:
     // manual mods must never show a Nexus tab) and the "+" affordance.
-    auto* hint =
+    auto *hint =
         new QLabel(tr("This mod has no download source.\n\n"
                       "It is treated as a manual install. Click \"+\" to attach a "
                       "source (Nexus, LoversLab, Steam Workshop, ...) if you know "
@@ -594,11 +594,11 @@ void SourceTab::populate() {
     hint->setAlignment(Qt::AlignCenter);
     sources_->addTab(hint, tr("Manual"));
   } else {
-    QWidget* page = build_panel_for(actual_source, current(), sources_);
+    QWidget *page = build_panel_for(actual_source, current(), sources_);
     if (page == nullptr) {
       // Fallback: provider registered but the typed panel failed to
       // instantiate. Treat as no source.
-      auto* hint = new QLabel(tr("No editor available for this source."), sources_);
+      auto *hint = new QLabel(tr("No editor available for this source."), sources_);
       hint->setWordWrap(true);
       sources_->addTab(hint, actual_source);
     } else {
@@ -611,7 +611,7 @@ void SourceTab::populate() {
 
   // The "+" affordance: a tab on the right that, when activated, opens
   // show_add_source_dialog() instead of switching view. Always present.
-  auto* plus_page = new QWidget(sources_);
+  auto *plus_page = new QWidget(sources_);
   plus_page->setMinimumSize(0, 0);
   sources_->addTab(plus_page, QStringLiteral("+"));
   plus_index_ = sources_->count() - 1;
@@ -619,7 +619,7 @@ void SourceTab::populate() {
   // we never want to display it (the currentChanged handler snaps focus
   // back and opens the dialog). The tooltip is the only thing the user
   // sees when they hover, so make it explicit.
-  if (auto* bar = sources_->tabBar()) {
+  if (auto *bar = sources_->tabBar()) {
     bar->setTabToolTip(plus_index_, tr("Add a source to this mod"));
   }
   sources_->setUpdatesEnabled(true);
@@ -634,7 +634,7 @@ void SourceTab::save_state() {
   for (int i = 0; i < sources_->count(); ++i) {
     if (i == plus_index_)
       continue;
-    auto* panel = qobject_cast<SourceInfoPanel*>(sources_->widget(i));
+    auto *panel = qobject_cast<SourceInfoPanel *>(sources_->widget(i));
     if (panel)
       panel->save_state();
   }
@@ -705,7 +705,7 @@ void SourceTab::show_add_source_dialog() {
   for (int i = 0; i < sources_->count(); ++i) {
     if (i == plus_index_)
       continue;
-    auto* panel = qobject_cast<SourceInfoPanel*>(sources_->widget(i));
+    auto *panel = qobject_cast<SourceInfoPanel *>(sources_->widget(i));
     if (panel && panel->has_data()) {
       has = true;
       break;

@@ -6,7 +6,7 @@
 #include "engine/deploy/symlink.h"
 
 namespace engine {
-using DeploymentStrategy = ::Deploy::Interface;
-using SymlinkStrategy = ::Deploy::Symlink;
+using DeploymentStrategy      = ::Deploy::Interface;
+using SymlinkStrategy         = ::Deploy::Symlink;
 using OverlayFsDeployStrategy = ::Deploy::OverlayFsDeploy;
-} // namespace engine
+}  // namespace engine

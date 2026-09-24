@@ -10,11 +10,9 @@
 #include <string>
 #include <vector>
 
-namespace engine
-{
+namespace engine {
 
-bool WindowsFileTypeDispatcher::can_launch(FileType type) const
-{
+bool WindowsFileTypeDispatcher::can_launch(FileType type) const {
   switch (type) {
   case FileType::NativeExecutable:
   case FileType::Script:
@@ -28,9 +26,8 @@ bool WindowsFileTypeDispatcher::can_launch(FileType type) const
   return false;
 }
 
-LaunchResult WindowsFileTypeDispatcher::launch(const std::filesystem::path& file,
-                                               const LaunchOptions& options) const
-{
+LaunchResult WindowsFileTypeDispatcher::launch(const std::filesystem::path &file,
+                                               const LaunchOptions &options) const {
   if (!std::filesystem::exists(file))
     return {};
 
@@ -53,8 +50,7 @@ LaunchResult WindowsFileTypeDispatcher::launch(const std::filesystem::path& file
   return result;
 }
 
-std::unique_ptr<FileTypeDispatcher> create_file_type_dispatcher()
-{
+std::unique_ptr<FileTypeDispatcher> create_file_type_dispatcher() {
   return std::make_unique<WindowsFileTypeDispatcher>();
 }
 

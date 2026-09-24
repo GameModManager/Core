@@ -17,18 +17,15 @@
 
 namespace fs = std::filesystem;
 
-namespace
-{
-void require(bool cond, const char* msg)
-{
+namespace {
+void require(bool cond, const char *msg) {
   INFO(msg);
   REQUIRE(cond);
 }
 }  // namespace
 
 // --- Stub platform: controllable proton discovery ---
-class StubPlatform : public engine::Platform
-{
+class StubPlatform : public engine::Platform {
 public:
   std::string platform_name() const override { return "test"; }
   fs::path data_dir() const override { return "/tmp/gmm_proton_test_data"; }
@@ -37,9 +34,8 @@ public:
   fs::path home_dir() const override { return data_dir(); }
   fs::path temp_dir() const override { return data_dir(); }
   fs::path find_steam_root() const override { return {}; }
-  bool launch_executable(const fs::path&,
-                         const std::vector<std::string>&) const override
-  {
+  bool launch_executable(const fs::path &,
+                         const std::vector<std::string> &) const override {
     return false;
   }
 
@@ -48,11 +44,12 @@ public:
 
   fs::path find_proton() const override { return default_result; }
   fs::path find_proton_for_game(uint32_t) const override { return default_result; }
-  fs::path find_proton_named(const std::string&) const override { return named_result; }
+  fs::path find_proton_named(const std::string &) const override {
+    return named_result;
+  }
 };
 
-TEST_CASE("proton tools", "[engine]")
-{
+TEST_CASE("proton tools", "[engine]") {
   StubPlatform platform;
 
   // --- resolve_proton_runner ---

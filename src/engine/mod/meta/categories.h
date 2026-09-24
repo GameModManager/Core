@@ -19,8 +19,8 @@ public:
   // Nexus category (as reported by the Nexus API / catmap).
   struct NexusCat {
     std::string name;
-    int nexus_id = 0;    // Nexus category id (maps to this internal one)
-    int category_id = 0; // internal category this Nexus id maps to
+    int nexus_id    = 0;  // Nexus category id (maps to this internal one)
+    int category_id = 0;  // internal category this Nexus id maps to
   };
 
   // Internal category. `nexus_ids` are Nexus categories mapped to it.
@@ -28,7 +28,7 @@ public:
     int id = 0;
     std::string name;
     std::vector<int> nexus_ids;
-    int parent_id = 0;
+    int parent_id     = 0;
     bool has_children = false;
   };
 
@@ -46,7 +46,7 @@ public:
   // --- Queries ---
   const std::vector<Category> &categories() const { return categories_; }
   bool contains(int id) const;
-  const Category *find(int id) const; // last entry wins (MO2 ID-map)
+  const Category *find(int id) const;  // last entry wins (MO2 ID-map)
   std::vector<const Category *> children_of(int parent_id) const;
 
   // Nexus mapping lookups (from nexuscatmap.dat).
@@ -56,8 +56,7 @@ public:
 
   // --- Mutation ---
   void add_category(int id, const std::string &name, int parent_id = 0);
-  void add_nexus_mapping(int internal_id, const std::string &name,
-                         int nexus_id);
+  void add_nexus_mapping(int internal_id, const std::string &name, int nexus_id);
   void remove_category(int id);
   void set_parent(int id, int parent_id);
 
@@ -74,4 +73,4 @@ private:
   std::map<int, NexusCat> nexus_map_;
 };
 
-} // namespace engine
+}  // namespace engine

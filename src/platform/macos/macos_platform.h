@@ -24,8 +24,8 @@ public:
   [[nodiscard]] std::filesystem::path steam_userdata_dir() const override;
 
   [[nodiscard]] bool
-  launch_executable(const std::filesystem::path& executable,
-                    const std::vector<std::string>& args = {}) const override;
+  launch_executable(const std::filesystem::path &executable,
+                    const std::vector<std::string> &args = {}) const override;
 
   [[nodiscard]] bool is_elevated() const override;
   [[nodiscard]] bool symlinks_available() const override { return true; }

@@ -27,7 +27,7 @@ namespace ui {
 // Whether a mod row has a live external source folder to mirror from:
 // content_dir while it is still a directory, else the game's external mods
 // dir (Workspace-0pi5 menu gating).
-bool ModContextMenu::has_live_external_source(MainWindow* w, const ModEntry& m) {
+bool ModContextMenu::has_live_external_source(MainWindow *w, const ModEntry &m) {
   std::error_code ec;
   if (!m.content_dir.isEmpty() &&
       std::filesystem::is_directory(std::filesystem::path(m.content_dir.toStdString()),
@@ -40,15 +40,17 @@ bool ModContextMenu::has_live_external_source(MainWindow* w, const ModEntry& m) 
   return false;
 }
 
-ModContextMenu::ModContextMenu(MainWindow* w, ModActions* actions)
+ModContextMenu::ModContextMenu(MainWindow *w, ModActions *actions)
     : w_(w), actions_(actions) {}
 
-void ModContextMenu::set_on_data_mod_info(std::function<void(const QString&, int)> cb) {
+void ModContextMenu::set_on_data_mod_info(
+    std::function<void(const QString &, int)> cb) {
   on_data_mod_info_cb_ = std::move(cb);
 }
 
 void ModContextMenu::set_source_visit_info(
-    std::function<SourceVisitInfo(const QString&, const QString&, const QString&)> cb) {
+    std::function<SourceVisitInfo(const QString &, const QString &, const QString &)>
+        cb) {
   source_visit_info_cb_ = std::move(cb);
 }
 
@@ -57,7 +59,7 @@ void ModContextMenu::setup_mod_list_context_menu() {
 
   QObject::connect(
       w_->mod_view_, &QWidget::customContextMenuRequested, w_,
-      [this](const QPoint& pos) {
+      [this](const QPoint &pos) {
         auto idx = w_->mod_view_->indexAt(pos);
         if (!idx.isValid())
           return;
@@ -65,7 +67,7 @@ void ModContextMenu::setup_mod_list_context_menu() {
         int row = idx.row();
         if (row < 0 || row >= w_->mod_model_->mods().size())
           return;
-        const auto& entry = w_->mod_model_->mods()[row];
+        const auto &entry = w_->mod_model_->mods()[row];
 
         QMenu menu;
 
@@ -80,27 +82,27 @@ void ModContextMenu::setup_mod_list_context_menu() {
           const bool has_content =
               !engine::overwrite_is_empty(w_->overwrite_dir_path(), ow_subpath);
 
-          auto* sync_act =
+          auto *sync_act =
               menu.addAction(engine::IconManager::instance().resolve_icon("merge"),
                              QObject::tr("Sync to Mods..."), w_, [this]() {
                                w_->overwrite_->sync_overwrite_to_mods();
                              });
-          auto* create_act = menu.addAction(
+          auto *create_act = menu.addAction(
               engine::IconManager::instance().resolve_icon("document-new"),
               QObject::tr("Create Mod..."), w_, [this]() {
                 w_->overwrite_->create_mod_from_overwrite();
               });
-          auto* move_act =
+          auto *move_act =
               menu.addAction(engine::IconManager::instance().resolve_icon("go-down"),
                              QObject::tr("Move content to Mod..."), w_, [this]() {
                                w_->overwrite_->move_overwrite_content_to_mod();
                              });
-          auto* clear_act =
+          auto *clear_act =
               menu.addAction(engine::IconManager::instance().resolve_icon("edit-clear"),
                              QObject::tr("Clear Overwrite..."), w_, [this]() {
                                w_->overwrite_->clear_overwrite();
                              });
-          for (auto* act : {sync_act, create_act, move_act, clear_act})
+          for (auto *act : {sync_act, create_act, move_act, clear_act})
             act->setEnabled(has_content);
 
           menu.addAction(engine::IconManager::instance().resolve_icon("folder"),
@@ -144,7 +146,7 @@ void ModContextMenu::setup_mod_list_context_menu() {
           menu.addSeparator();
           bool any_folded   = false;
           bool any_unfolded = false;
-          for (const auto& mod : w_->mod_model_->mods()) {
+          for (const auto &mod : w_->mod_model_->mods()) {
             if (!mod.is_separator)
               continue;
             if (mod.folded)
@@ -152,12 +154,12 @@ void ModContextMenu::setup_mod_list_context_menu() {
             else
               any_unfolded = true;
           }
-          auto* expand_action =
+          auto *expand_action =
               menu.addAction(QObject::tr("Expand All Separators"), [this]() {
                 w_->mod_model_->set_all_separators_folded(false);
               });
           expand_action->setEnabled(any_folded);
-          auto* collapse_action =
+          auto *collapse_action =
               menu.addAction(QObject::tr("Collapse All Separators"), [this]() {
                 w_->mod_model_->set_all_separators_folded(true);
               });
@@ -191,10 +193,10 @@ void ModContextMenu::setup_mod_list_context_menu() {
             bool any_off        = false;
             bool any_mirrorable = false;
             bool any_mirrored   = false;
-            for (const auto& si : sel) {
+            for (const auto &si : sel) {
               if (si.row() < 0 || si.row() >= w_->mod_model_->mods().size())
                 continue;
-              const auto& m = w_->mod_model_->mods()[si.row()];
+              const auto &m = w_->mod_model_->mods()[si.row()];
               if (m.is_separator || m.is_overwrite || m.is_merged || m.is_game_native)
                 continue;
               rows << si.row();
@@ -207,10 +209,10 @@ void ModContextMenu::setup_mod_list_context_menu() {
               else if (has_live_external_source(w_, m))
                 any_mirrorable = true;
             }
-            auto* tweaks = menu.addMenu(
+            auto *tweaks = menu.addMenu(
                 engine::IconManager::instance().resolve_icon("preferences-other"),
                 QObject::tr("Tweaks"));
-            auto* root_act = tweaks->addAction(QObject::tr("Treat mod as root dir"));
+            auto *root_act = tweaks->addAction(QObject::tr("Treat mod as root dir"));
             root_act->setCheckable(true);
             const bool all_on = any_on && !any_off;
             root_act->setChecked(all_on);
@@ -234,10 +236,10 @@ void ModContextMenu::setup_mod_list_context_menu() {
           {
             bool has_separator = false;
             QStringList mod_ids;
-            for (const auto& si : sel) {
+            for (const auto &si : sel) {
               if (si.row() < 0 || si.row() >= w_->mod_model_->mods().size())
                 continue;
-              const auto& m = w_->mod_model_->mods()[si.row()];
+              const auto &m = w_->mod_model_->mods()[si.row()];
               if (m.is_separator || m.is_overwrite || m.is_merged || m.is_game_native) {
                 has_separator = true;
                 break;
@@ -246,14 +248,14 @@ void ModContextMenu::setup_mod_list_context_menu() {
             }
             // Check if any separators exist at all in the list.
             bool any_seps = false;
-            for (const auto& m : w_->mod_model_->mods()) {
+            for (const auto &m : w_->mod_model_->mods()) {
               if (m.is_separator) {
                 any_seps = true;
                 break;
               }
             }
             menu.addSeparator();
-            auto* sep_act = menu.addAction(
+            auto *sep_act = menu.addAction(
                 engine::IconManager::instance().resolve_icon("view-sort"),
                 QObject::tr("Send to Separator..."), w_, [this, mod_ids]() {
                   actions_->send_selected_to_separator(mod_ids);
@@ -277,7 +279,7 @@ void ModContextMenu::setup_mod_list_context_menu() {
         // ListDialog (MO2 sendModsToSeparator, listdialog.ui) instead of an
         // inline submenu entry per separator - a submenu with many separators
         // (or long names) grew to cover the whole screen.
-        auto* send_to =
+        auto *send_to =
             menu.addMenu(engine::IconManager::instance().resolve_icon("view-sort"),
                          QObject::tr("Send to..."));
         send_to->addAction(engine::IconManager::instance().resolve_icon("go-top"),
@@ -291,12 +293,12 @@ void ModContextMenu::setup_mod_list_context_menu() {
                              actions_->send_to_lowest_priority(mod_id);
                            });
         bool any_seps = false;
-        for (const auto& m : w_->mod_model_->mods())
+        for (const auto &m : w_->mod_model_->mods())
           if (m.is_separator) {
             any_seps = true;
             break;
           }
-        auto* sep_act = send_to->addAction(
+        auto *sep_act = send_to->addAction(
             engine::IconManager::instance().resolve_icon("view-sort"),
             QObject::tr("Separator..."), w_, [this, mod_id]() {
               actions_->send_to_separator(mod_id);
@@ -363,10 +365,10 @@ void ModContextMenu::setup_mod_list_context_menu() {
         // Mirror/backup (Workspace-0pi5): "Mirror to instance" checkbox for
         // external mods (checked when mirrored). Pseudo-rows never mirror.
         {
-          auto* tweaks = menu.addMenu(
+          auto *tweaks = menu.addMenu(
               engine::IconManager::instance().resolve_icon("preferences-other"),
               QObject::tr("Tweaks"));
-          auto* root_act = tweaks->addAction(QObject::tr("Treat mod as root dir"));
+          auto *root_act = tweaks->addAction(QObject::tr("Treat mod as root dir"));
           root_act->setCheckable(true);
           root_act->setChecked(entry.root_override);
           root_act->setEnabled(!entry.is_separator && !entry.is_overwrite &&
@@ -381,7 +383,7 @@ void ModContextMenu::setup_mod_list_context_menu() {
                                  entry.is_merged || entry.is_game_native;
           if (!is_pseudo &&
               (entry.is_mirrored || has_live_external_source(w_, entry))) {
-            auto* mirror_act = tweaks->addAction(QObject::tr("Mirror to instance"));
+            auto *mirror_act = tweaks->addAction(QObject::tr("Mirror to instance"));
             mirror_act->setCheckable(true);
             mirror_act->setChecked(entry.is_mirrored);
             QObject::connect(mirror_act, &QAction::triggered, w_,
@@ -399,7 +401,7 @@ void ModContextMenu::setup_mod_list_context_menu() {
           auto src = source_visit_info_cb_(entry.source_type, entry.source_id,
                                            entry.source_page_url);
           if (!src.label.isEmpty()) {
-            auto* visit_act = menu.addAction(
+            auto *visit_act = menu.addAction(
                 engine::IconManager::instance().resolve_icon("text-html"), src.label,
                 w_, [src]() {
                   if (!src.url.isEmpty())
@@ -456,7 +458,7 @@ void ModContextMenu::setup_mod_list_context_menu() {
       });
 }
 
-void ModContextMenu::add_category_menus(QMenu& menu, const QString& mod_id) {
+void ModContextMenu::add_category_menus(QMenu &menu, const QString &mod_id) {
   const auto mods_dir = w_->mods_dir_path();
   if (mods_dir.empty())
     return;
@@ -470,7 +472,7 @@ void ModContextMenu::add_category_menus(QMenu& menu, const QString& mod_id) {
     auto meta = engine::ModMeta::load(mods_dir, mod_id.toStdString());
     QVector<int> ids;
     const QString csv = QString::fromStdString(meta.get("General", "category"));
-    for (const auto& part : csv.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+    for (const auto &part : csv.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
       bool ok      = false;
       const int id = part.toInt(&ok);
       if (ok && id > 0 && !ids.contains(id))
@@ -482,7 +484,7 @@ void ModContextMenu::add_category_menus(QMenu& menu, const QString& mod_id) {
   // Persist a new CSV (primary first), update the Category column + filter
   // ids, and re-apply the mod filter so a category-filtered list reacts
   // immediately (MO2 refreshFilter parity).
-  auto apply = [this, mods_dir, mod_id](const QVector<int>& ids) {
+  auto apply = [this, mods_dir, mod_id](const QVector<int> &ids) {
     QStringList parts;
     for (int id : ids)
       parts << QString::number(id);
@@ -492,7 +494,7 @@ void ModContextMenu::add_category_menus(QMenu& menu, const QString& mod_id) {
 
     QString primary_name;
     if (!ids.isEmpty()) {
-      if (const auto* cat =
+      if (const auto *cat =
               engine::Category::Factory::instance().categoryById(ids.first()))
         primary_name = QString::fromStdString(cat->name);
     }
@@ -510,19 +512,19 @@ void ModContextMenu::add_category_menus(QMenu& menu, const QString& mod_id) {
   // the filter panel (MO2's flat category list). Checking appends the id
   // (first checked becomes primary); unchecking removes it and the first
   // remaining id becomes primary.
-  auto* change_menu =
+  auto *change_menu =
       menu.addMenu(engine::IconManager::instance().resolve_icon("preferences-other"),
                    QObject::tr("Change Categories"));
-  std::vector<const engine::Category::Factory::Entry*> cats;
-  for (const auto& [id, cat] : engine::Category::Factory::instance().categories())
+  std::vector<const engine::Category::Factory::Entry *> cats;
+  for (const auto &[id, cat] : engine::Category::Factory::instance().categories())
     if (id != 0)
       cats.push_back(&cat);
-  std::sort(cats.begin(), cats.end(), [](const auto* a, const auto* b) {
+  std::sort(cats.begin(), cats.end(), [](const auto *a, const auto *b) {
     return QString::fromStdString(a->name).compare(QString::fromStdString(b->name),
                                                    Qt::CaseInsensitive) < 0;
   });
-  for (const auto* cat : cats) {
-    auto* act = change_menu->addAction(QString::fromStdString(cat->name));
+  for (const auto *cat : cats) {
+    auto *act = change_menu->addAction(QString::fromStdString(cat->name));
     act->setCheckable(true);
     act->setChecked(current.contains(cat->id));
     QObject::connect(act, &QAction::triggered, w_,
@@ -540,16 +542,16 @@ void ModContextMenu::add_category_menus(QMenu& menu, const QString& mod_id) {
 
   // "Primary Category": radio buttons for the checked categories only (MO2
   // parity). Selecting one moves it to the front of the CSV.
-  auto* primary_menu =
+  auto *primary_menu =
       menu.addMenu(engine::IconManager::instance().resolve_icon("view-sort"),
                    QObject::tr("Primary Category"));
   if (current.isEmpty()) {
     primary_menu->setEnabled(false);
   } else {
-    auto* group = new QActionGroup(primary_menu);
+    auto *group = new QActionGroup(primary_menu);
     for (int id : current) {
-      const auto* cat = engine::Category::Factory::instance().categoryById(id);
-      auto* act       = primary_menu->addAction(cat ? QString::fromStdString(cat->name)
+      const auto *cat = engine::Category::Factory::instance().categoryById(id);
+      auto *act       = primary_menu->addAction(cat ? QString::fromStdString(cat->name)
                                                     : QString::number(id));
       act->setCheckable(true);
       act->setChecked(id == current.first());

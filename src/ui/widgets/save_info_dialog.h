@@ -24,32 +24,30 @@ class QDialogButtonBox;
 class QLabel;
 class QListWidget;
 
-namespace ui
-{
+namespace ui {
 
-class SaveInfoDialog : public QDialog
-{
+class SaveInfoDialog : public QDialog {
   Q_OBJECT
 public:
   // Plugins snapshot is the active load order (PluginDb::Database::plugins()).
   // Missing is the resolver's result for this save against the SAME snapshot
   // — passed in so the tooltip columns match what the Saves tab reports
   // (provider mods etc.) without re-running the resolver.
-  explicit SaveInfoDialog(const engine::SaveGame& save,
-                          const std::vector<engine::GamePlugin>& plugins_snapshot,
-                          const std::vector<engine::SaveMissingAsset>& missing,
-                          QWidget* parent = nullptr);
+  explicit SaveInfoDialog(const engine::SaveGame &save,
+                          const std::vector<engine::GamePlugin> &plugins_snapshot,
+                          const std::vector<engine::SaveMissingAsset> &missing,
+                          QWidget *parent = nullptr);
 
   int exec() override;  // saves/restores geometry
 
 private:
-  void build_thumbnail(QLabel* target) const;
-  void build_basic_info(QWidget* container) const;
-  void build_plugin_list(QListWidget* target) const;
+  void build_thumbnail(QLabel *target) const;
+  void build_basic_info(QWidget *container) const;
+  void build_plugin_list(QListWidget *target) const;
 
   // Header label above the plugin list; owned by the dialog. Set up in the
   // ctor so build_plugin_list only has to add rows.
-  QLabel* plugin_header_ = nullptr;
+  QLabel *plugin_header_ = nullptr;
 
   // Snapshot fields owned by copy (the caller's SaveGame may go away while
   // the dialog is open if the user re-scans).

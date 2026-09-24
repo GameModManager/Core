@@ -16,21 +16,17 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
-namespace ui
-{
+namespace ui {
 
-namespace
-{
+namespace {
 
-  class PreviewDialog : public QDialog
-  {
+  class PreviewDialog : public QDialog {
   public:
-    explicit PreviewDialog(const QString& path, QWidget* parent = nullptr)
-        : QDialog(parent), viewer_(new FileViewer(this))
-    {
+    explicit PreviewDialog(const QString &path, QWidget *parent = nullptr)
+        : QDialog(parent), viewer_(new FileViewer(this)) {
       setWindowTitle(QFileInfo(path).fileName());
       resize(700, 500);
-      auto* layout = new QVBoxLayout(this);
+      auto *layout = new QVBoxLayout(this);
       layout->setContentsMargins(0, 0, 0, 0);
       layout->addWidget(viewer_);
       if (!viewer_->open(path)) {
@@ -41,13 +37,12 @@ namespace
     }
 
   private:
-    FileViewer* viewer_ = nullptr;
+    FileViewer *viewer_ = nullptr;
   };
 
 }  // namespace
 
-FiletreeTab::FiletreeTab(QWidget* parent) : ModInfoTab(parent)
-{
+FiletreeTab::FiletreeTab(QWidget *parent) : ModInfoTab(parent) {
   tree_ = new QTreeView(this);
   tree_->setContextMenuPolicy(Qt::CustomContextMenu);
   tree_->setUniformRowHeights(true);
@@ -61,20 +56,19 @@ FiletreeTab::FiletreeTab(QWidget* parent) : ModInfoTab(parent)
   tree_->header()->setSectionResizeMode(2, QHeaderView::Interactive);
   tree_->header()->setSectionResizeMode(3, QHeaderView::Interactive);
 
-  auto* layout = new QVBoxLayout(this);
+  auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->addWidget(tree_);
 
   connect(tree_, &QTreeView::customContextMenuRequested, this, &FiletreeTab::show_menu);
-  connect(tree_, &QTreeView::doubleClicked, this, [this](const QModelIndex&) {
+  connect(tree_, &QTreeView::doubleClicked, this, [this](const QModelIndex &) {
     on_open();
   });
 }
 
 FiletreeTab::~FiletreeTab() = default;
 
-void FiletreeTab::set_mod(const ModInfoData& data)
-{
+void FiletreeTab::set_mod(const ModInfoData &data) {
   // Wire the view here, not in first_activation(): set_mod() is the only
   // refresh hook a tab gets on mod switch (first_activation runs once per
   // dialog session), so this must re-root the tree every time.
@@ -87,57 +81,53 @@ void FiletreeTab::set_mod(const ModInfoData& data)
   set_has_data(true);
 }
 
-QString FiletreeTab::selected_path() const
-{
+QString FiletreeTab::selected_path() const {
   const QModelIndex index = tree_->currentIndex();
   if (!index.isValid())
     return {};
   return model_->filePath(index);
 }
 
-void FiletreeTab::show_menu(const QPoint& pos)
-{
+void FiletreeTab::show_menu(const QPoint &pos) {
   const QString path = selected_path();
   QMenu menu(this);
 
-  auto* open = menu.addAction(tr("&Open"));
+  auto *open = menu.addAction(tr("&Open"));
   QObject::connect(open, &QAction::triggered, this, &FiletreeTab::on_open);
 
-  auto* preview = menu.addAction(tr("&Preview"));
+  auto *preview = menu.addAction(tr("&Preview"));
   QObject::connect(preview, &QAction::triggered, this, &FiletreeTab::on_preview);
 
-  auto* explore = menu.addAction(tr("Open in &Explorer"));
+  auto *explore = menu.addAction(tr("Open in &Explorer"));
   QObject::connect(explore, &QAction::triggered, this, &FiletreeTab::on_explore);
 
-  auto* new_folder = menu.addAction(tr("New &Folder"));
+  auto *new_folder = menu.addAction(tr("New &Folder"));
   QObject::connect(new_folder, &QAction::triggered, this, &FiletreeTab::on_new_folder);
 
   menu.addSeparator();
 
   const bool is_hidden = engine::is_hidden_file(path.toStdString());
-  auto* hide           = menu.addAction(is_hidden ? tr("&Unhide") : tr("&Hide"));
+  auto *hide           = menu.addAction(is_hidden ? tr("&Unhide") : tr("&Hide"));
   QObject::connect(hide, &QAction::triggered, this, &FiletreeTab::on_hide);
 
-  auto* rename = menu.addAction(tr("&Rename..."));
+  auto *rename = menu.addAction(tr("&Rename..."));
   QObject::connect(rename, &QAction::triggered, this, &FiletreeTab::on_rename);
 
-  auto* remove = menu.addAction(tr("&Delete"));
+  auto *remove = menu.addAction(tr("&Delete"));
   remove->setIcon(engine::IconManager::instance().resolve_icon("edit-delete"));
   QObject::connect(remove, &QAction::triggered, this, &FiletreeTab::on_delete);
 
   menu.exec(tree_->viewport()->mapToGlobal(pos));
 }
 
-void FiletreeTab::on_open()
-{
+void FiletreeTab::on_open() {
   const QString path = selected_path();
   if (path.isEmpty() || !current().open_file)
     return;
   current().open_file(path);
 }
 
-void FiletreeTab::on_preview()
-{
+void FiletreeTab::on_preview() {
   const QString path = selected_path();
   if (path.isEmpty())
     return;
@@ -149,8 +139,7 @@ void FiletreeTab::on_preview()
   }
 }
 
-void FiletreeTab::on_explore()
-{
+void FiletreeTab::on_explore() {
   QString path = selected_path();
   if (path.isEmpty())
     return;
@@ -163,8 +152,7 @@ void FiletreeTab::on_explore()
   }
 }
 
-void FiletreeTab::on_rename()
-{
+void FiletreeTab::on_rename() {
   const QString path = selected_path();
   if (path.isEmpty())
     return;
@@ -189,8 +177,7 @@ void FiletreeTab::on_rename()
   }
 }
 
-void FiletreeTab::on_delete()
-{
+void FiletreeTab::on_delete() {
   const QString path = selected_path();
   if (path.isEmpty())
     return;
@@ -214,8 +201,7 @@ void FiletreeTab::on_delete()
                                    path.toStdString());
 }
 
-void FiletreeTab::on_hide()
-{
+void FiletreeTab::on_hide() {
   const QString path = selected_path();
   if (path.isEmpty() || !current().hide_file)
     return;
@@ -223,8 +209,7 @@ void FiletreeTab::on_hide()
   current().hide_file(path, !hidden);
 }
 
-void FiletreeTab::on_new_folder()
-{
+void FiletreeTab::on_new_folder() {
   const QModelIndex index = tree_->currentIndex();
   QString parent_path     = index.isValid() && model_->isDir(index)
                                 ? model_->filePath(index)

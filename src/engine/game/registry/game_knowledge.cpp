@@ -10,13 +10,13 @@
 
 namespace engine {
 
-void GameKnowledge::set(const std::string& game_id, const std::string& key,
-                        const std::string& value) {
+void GameKnowledge::set(const std::string &game_id, const std::string &key,
+                        const std::string &value) {
   data_[game_id][key] = value;
 }
 
-std::string GameKnowledge::get(const std::string& game_id, const std::string& key,
-                               const std::string& fallback) const {
+std::string GameKnowledge::get(const std::string &game_id, const std::string &key,
+                               const std::string &fallback) const {
   auto game_it = data_.find(game_id);
   if (game_it == data_.end())
     return fallback;
@@ -28,21 +28,21 @@ std::string GameKnowledge::get(const std::string& game_id, const std::string& ke
   return key_it->second;
 }
 
-bool GameKnowledge::has(const std::string& game_id, const std::string& key) const {
+bool GameKnowledge::has(const std::string &game_id, const std::string &key) const {
   auto game_it = data_.find(game_id);
   if (game_it == data_.end())
     return false;
   return game_it->second.count(key) > 0;
 }
 
-std::vector<std::string> GameKnowledge::keys_for(const std::string& game_id) const {
+std::vector<std::string> GameKnowledge::keys_for(const std::string &game_id) const {
   auto game_it = data_.find(game_id);
   if (game_it == data_.end())
     return {};
 
   std::vector<std::string> result;
   result.reserve(game_it->second.size());
-  for (const auto& [key, _] : game_it->second) {
+  for (const auto &[key, _] : game_it->second) {
     result.push_back(key);
   }
   return result;
@@ -51,7 +51,7 @@ std::vector<std::string> GameKnowledge::keys_for(const std::string& game_id) con
 std::vector<std::string> GameKnowledge::registered_games() const {
   std::vector<std::string> result;
   result.reserve(data_.size());
-  for (const auto& [game_id, _] : data_) {
+  for (const auto &[game_id, _] : data_) {
     result.push_back(game_id);
   }
   return result;
@@ -61,32 +61,32 @@ void GameKnowledge::clear() {
   data_.clear();
 }
 
-std::string disable_mechanism_for(const GameKnowledge& knowledge,
-                                  const std::string& game_id) {
+std::string disable_mechanism_for(const GameKnowledge &knowledge,
+                                  const std::string &game_id) {
   const std::string declared = knowledge.get(game_id, "disable_mechanism", "");
   if (!declared.empty())
     return declared;
   return kDefaultDisableMechanism;
 }
 
-std::string deploy_strategy_for(const GameKnowledge& knowledge,
-                                const std::string& game_id) {
+std::string deploy_strategy_for(const GameKnowledge &knowledge,
+                                const std::string &game_id) {
   const std::string declared = knowledge.get(game_id, "deploy_strategy", "");
   if (!declared.empty())
     return declared;
   return kDefaultDeployStrategy;
 }
 
-std::string creation_club_file_for(const GameKnowledge& knowledge,
-                                   const std::string& game_id) {
+std::string creation_club_file_for(const GameKnowledge &knowledge,
+                                   const std::string &game_id) {
   return knowledge.get(game_id, "creation_club_file", "skyrim.ccc");
 }
 
-bool delayed_disable_for(const GameKnowledge& knowledge, const std::string& game_id) {
+bool delayed_disable_for(const GameKnowledge &knowledge, const std::string &game_id) {
   return knowledge.get(game_id, "delayed_disable", "") == "true";
 }
-std::string plugin_game_mods_dir(const GameKnowledge& knowledge,
-                                 const std::string& game_id) {
+std::string plugin_game_mods_dir(const GameKnowledge &knowledge,
+                                 const std::string &game_id) {
   std::string dir = knowledge.get(game_id, "game_mods_dir", "");
   // Expand a leading ~ against $HOME at resolution time (the plugin only
   // declares the literal path; HOME may differ between registration and use).
@@ -97,9 +97,9 @@ std::string plugin_game_mods_dir(const GameKnowledge& knowledge,
 }
 
 std::filesystem::path
-resolve_plugin_game_mods_dir(const std::string& game_id,
-                             const std::filesystem::path& game_dir,
-                             const GameKnowledge& knowledge) {
+resolve_plugin_game_mods_dir(const std::string &game_id,
+                             const std::filesystem::path &game_dir,
+                             const GameKnowledge &knowledge) {
   const std::string declared = plugin_game_mods_dir(knowledge, game_id);
   if (declared.empty())
     return {};
@@ -114,10 +114,10 @@ resolve_plugin_game_mods_dir(const std::string& game_id,
   return game_dir / p;
 }
 
-std::filesystem::path resolve_game_mods_dir(const std::string& game_id,
-                                            const std::filesystem::path& game_dir,
-                                            const GameKnowledge& knowledge,
-                                            const std::string& override_dir) {
+std::filesystem::path resolve_game_mods_dir(const std::string &game_id,
+                                            const std::filesystem::path &game_dir,
+                                            const GameKnowledge &knowledge,
+                                            const std::string &override_dir) {
   // 1. Per-instance user override (instance.toml "game_mods_dir") wins.
   if (!override_dir.empty())
     return std::filesystem::path(override_dir);
@@ -145,8 +145,8 @@ std::filesystem::path resolve_game_mods_dir(const std::string& game_id,
   return {};
 }
 
-std::string mygames_leaf_for(const GameKnowledge& knowledge, const std::string& game_id,
-                             const std::string& os_tag) {
+std::string mygames_leaf_for(const GameKnowledge &knowledge, const std::string &game_id,
+                             const std::string &os_tag) {
   if (!os_tag.empty()) {
     const std::string per_os = knowledge.get(game_id, "mygames_folder_" + os_tag, "");
     if (!per_os.empty())
@@ -155,8 +155,8 @@ std::string mygames_leaf_for(const GameKnowledge& knowledge, const std::string& 
   return knowledge.get(game_id, "mygames_folder", "");
 }
 
-std::string mygames_parent_for(const GameKnowledge& knowledge,
-                               const std::string& game_id) {
+std::string mygames_parent_for(const GameKnowledge &knowledge,
+                               const std::string &game_id) {
   const std::string parent = knowledge.get(game_id, "mygames_parent", "");
   if (!parent.empty())
     return parent;
@@ -165,7 +165,7 @@ std::string mygames_parent_for(const GameKnowledge& knowledge,
 
 namespace {
 
-  uint32_t knowledge_appid(const GameKnowledge& knowledge, const std::string& game_id) {
+  uint32_t knowledge_appid(const GameKnowledge &knowledge, const std::string &game_id) {
     const std::string id_str = knowledge.get(game_id, "steam_appid", "");
     if (id_str.empty())
       return 0;
@@ -178,9 +178,9 @@ namespace {
 
 }  // namespace
 
-std::filesystem::path resolve_mygames_dir(const std::string& game_id,
-                                          const GameKnowledge& knowledge,
-                                          const Platform* platform,
+std::filesystem::path resolve_mygames_dir(const std::string &game_id,
+                                          const GameKnowledge &knowledge,
+                                          const Platform *platform,
                                           bool is_windows_exe) {
   if (platform == nullptr || game_id.empty())
     return {};
@@ -210,9 +210,9 @@ std::filesystem::path resolve_mygames_dir(const std::string& game_id,
   return documents / mygames_parent_for(knowledge, game_id) / leaf;
 }
 
-std::filesystem::path resolve_steam_userdata_saves_dir(const std::string& game_id,
-                                                       const GameKnowledge& knowledge,
-                                                       const Platform* platform) {
+std::filesystem::path resolve_steam_userdata_saves_dir(const std::string &game_id,
+                                                       const GameKnowledge &knowledge,
+                                                       const Platform *platform) {
   if (platform == nullptr || game_id.empty())
     return {};
   const std::string subpath = knowledge.get(game_id, "steam_userdata_saves", "");
@@ -228,7 +228,7 @@ std::filesystem::path resolve_steam_userdata_saves_dir(const std::string& game_i
   // determinism across multi-account machines.
   std::error_code ec;
   std::vector<std::string> users;
-  for (const auto& entry : std::filesystem::directory_iterator(userdata, ec)) {
+  for (const auto &entry : std::filesystem::directory_iterator(userdata, ec)) {
     if (!entry.is_directory())
       continue;
     const std::string name = entry.path().filename().string();
@@ -246,8 +246,8 @@ std::filesystem::path resolve_steam_userdata_saves_dir(const std::string& game_i
   return userdata / users.front() / std::to_string(appid) / subpath;
 }
 
-std::vector<std::string> save_extensions_for(const GameKnowledge& knowledge,
-                                             const std::string& game_id) {
+std::vector<std::string> save_extensions_for(const GameKnowledge &knowledge,
+                                             const std::string &game_id) {
   const std::string declared = knowledge.get(game_id, "save_extensions", "");
   std::vector<std::string> out;
   std::string token;
@@ -274,8 +274,8 @@ std::vector<std::string> save_extensions_for(const GameKnowledge& knowledge,
   return out;
 }
 
-std::string save_fast_format_for(const GameKnowledge& knowledge,
-                                 const std::string& game_id) {
+std::string save_fast_format_for(const GameKnowledge &knowledge,
+                                 const std::string &game_id) {
   return knowledge.get(game_id, "save_fast_format", "");
 }
 

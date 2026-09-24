@@ -33,7 +33,7 @@ DiagnoseRegistry::collect_diagnostics(const std::string &game_id) const {
     if (!e.game_id.empty() && e.game_id != game_id)
       continue;
 
-    size_t count = 0;
+    size_t count                   = 0;
     GmmDiagnosticProblem *problems = e.fn(&count, e.user_data);
     if (!problems)
       continue;
@@ -49,13 +49,14 @@ DiagnoseRegistry::collect_diagnostics(const std::string &game_id) const {
 }
 
 void DiagnoseRegistry::clear_plugin(const std::string &plugin_path) {
-  auto it =
-      std::remove_if(entries_.begin(), entries_.end(), [&](const Entry &e) {
-        return e.plugin_path == plugin_path;
-      });
+  auto it = std::remove_if(entries_.begin(), entries_.end(), [&](const Entry &e) {
+    return e.plugin_path == plugin_path;
+  });
   entries_.erase(it, entries_.end());
 }
 
-void DiagnoseRegistry::clear() { entries_.clear(); }
+void DiagnoseRegistry::clear() {
+  entries_.clear();
+}
 
-} // namespace engine
+}  // namespace engine

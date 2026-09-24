@@ -12,18 +12,18 @@ namespace ui {
 // any click or Esc closes it. The thumbnail-strip navigation is dropped - the
 // wizard already previews the active image inline.
 class FomodImageViewer final : public QDialog {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    FomodImageViewer(const QImage& image, QWidget* parent = nullptr);
+  FomodImageViewer(const QImage &image, QWidget *parent = nullptr);
 
 protected:
-    void resizeEvent(QResizeEvent* event) override;
-    void mousePressEvent(QMouseEvent* event) override;
+  void resizeEvent(QResizeEvent *event) override;
+  void mousePressEvent(QMouseEvent *event) override;
 
 private:
-    void rescale();
-    QImage image_;
-    QLabel* label_ = nullptr;
+  void rescale();
+  QImage image_;
+  QLabel *label_ = nullptr;
 };
 
 }  // namespace ui

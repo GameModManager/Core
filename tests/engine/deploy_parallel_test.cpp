@@ -28,174 +28,180 @@
 namespace fs = std::filesystem;
 
 namespace {
-void check(bool cond, const char* what) {
-    INFO(what);
-    REQUIRE(cond);
+void check(bool cond, const char *what) {
+  INFO(what);
+  REQUIRE(cond);
 }
-}
+}  // namespace
 
-static void write_file(const fs::path& p, const std::string& contents) {
-    fs::create_directories(p.parent_path());
-    std::ofstream out(p);
-    out << contents;
-    if (!out.good()) {
-        std::printf("FAIL: could not write %s\n", p.string().c_str());
-        std::exit(1);
-    }
+static void write_file(const fs::path &p, const std::string &contents) {
+  fs::create_directories(p.parent_path());
+  std::ofstream out(p);
+  out << contents;
+  if (!out.good()) {
+    std::printf("FAIL: could not write %s\n", p.string().c_str());
+    std::exit(1);
+  }
 }
 
 // Probe for a case-sensitive filesystem. macOS APFS is case-insensitive by
 // default, so tests that assert case-variant dirs/files coexist cannot pass.
 static bool is_case_sensitive_fs() {
-    const fs::path base = fs::temp_directory_path() / "gmm_case_probe";
-    std::error_code ec;
-    fs::create_directories(base / "A", ec);
-    const bool result = !fs::exists(base / "a", ec); // CI fs -> "a" exists
-    fs::remove_all(base, ec);
-    return result;
+  const fs::path base = fs::temp_directory_path() / "gmm_case_probe";
+  std::error_code ec;
+  fs::create_directories(base / "A", ec);
+  const bool result = !fs::exists(base / "a", ec);  // CI fs -> "a" exists
+  fs::remove_all(base, ec);
+  return result;
 }
 
 TEST_CASE("deploy parallel", "[engine]") {
-    if (!is_case_sensitive_fs()) {
-        WARN("Skipping: filesystem is case-insensitive (macOS APFS default)");
-        return;
+  if (!is_case_sensitive_fs()) {
+    WARN("Skipping: filesystem is case-insensitive (macOS APFS default)");
+    return;
+  }
+
+  const fs::path base =
+      fs::current_path() / ("gmm_test_deploy_parallel_" + std::to_string(getpid()));
+  const fs::path mods    = base / "mods";
+  const fs::path staging = base / "staging";
+
+  // --- 1) Parallel full deploy: 8 mods x (5 root files + 5 nested) of
+  // DISTINCT relative paths, 4 threads. All 80 files must land as symlinks.
+  for (int m = 0; m < 8; ++m) {
+    const std::string name = "Mod" + std::to_string(m);
+    for (int f = 0; f < 5; ++f) {
+      write_file(mods / name / (name + "_file" + std::to_string(f) + ".txt"), "x");
+      write_file(mods / name / "Sub" / (name + "_s" + std::to_string(f) + ".txt"), "x");
     }
+  }
 
-    const fs::path base =
-        fs::current_path() / ("gmm_test_deploy_parallel_" + std::to_string(getpid()));
-    const fs::path mods = base / "mods";
-    const fs::path staging = base / "staging";
-
-    // --- 1) Parallel full deploy: 8 mods x (5 root files + 5 nested) of
-    // DISTINCT relative paths, 4 threads. All 80 files must land as symlinks.
-    for (int m = 0; m < 8; ++m) {
-        const std::string name = "Mod" + std::to_string(m);
-        for (int f = 0; f < 5; ++f) {
-            write_file(mods / name / (name + "_file" + std::to_string(f) + ".txt"), "x");
-            write_file(mods / name / "Sub" / (name + "_s" + std::to_string(f) + ".txt"), "x");
-        }
+  std::vector<std::pair<int, int>> progress_calls;
+  bool ok = engine::deploy_all_enabled_mods_parallel(
+      mods, staging, "Data", false, "", true, 4,
+      [&progress_calls](int done, int total) {
+        progress_calls.emplace_back(done, total);
+      });
+  check(ok, "parallel full deploy succeeds");
+  for (int m = 0; m < 8; ++m) {
+    const std::string name = "Mod" + std::to_string(m);
+    for (int f = 0; f < 5; ++f) {
+      check(fs::is_symlink(staging / "Data" /
+                           (name + "_file" + std::to_string(f) + ".txt")),
+            (name + " root file deployed").c_str());
+      check(fs::is_symlink(staging / "Data" / "Sub" /
+                           (name + "_s" + std::to_string(f) + ".txt")),
+            (name + " nested file deployed").c_str());
     }
+  }
 
-    std::vector<std::pair<int, int>> progress_calls;
-    bool ok = engine::deploy_all_enabled_mods_parallel(
-        mods, staging, "Data", false, "", true, 4,
-        [&progress_calls](int done, int total) {
-            progress_calls.emplace_back(done, total);
-        });
-    check(ok, "parallel full deploy succeeds");
-    for (int m = 0; m < 8; ++m) {
-        const std::string name = "Mod" + std::to_string(m);
-        for (int f = 0; f < 5; ++f) {
-            check(fs::is_symlink(staging / "Data" / (name + "_file" + std::to_string(f) + ".txt")),
-                  (name + " root file deployed").c_str());
-            check(fs::is_symlink(staging / "Data" / "Sub" / (name + "_s" + std::to_string(f) + ".txt")),
-                  (name + " nested file deployed").c_str());
-        }
+  // Progress: every reported total is 80, done is monotonic and reaches it.
+  bool monotonic  = true;
+  int last        = 0;
+  int final_total = -1;
+  for (const auto &[d, t] : progress_calls) {
+    if (t != 80) {
+      final_total = -2;
+      break;
     }
+    if (d < last || d > t)
+      monotonic = false;
+    last        = d;
+    final_total = t;
+  }
+  check(progress_calls.size() > 1, "progress reported incrementally");
+  check(monotonic, "progress is monotonic");
+  check(final_total == 80, "progress total is the full work count");
+  check(last == 80, "progress completes at the total");
 
-    // Progress: every reported total is 80, done is monotonic and reaches it.
-    bool monotonic = true;
-    int last = 0;
-    int final_total = -1;
-    for (const auto& [d, t] : progress_calls) {
-        if (t != 80) { final_total = -2; break; }
-        if (d < last || d > t) monotonic = false;
-        last = d;
-        final_total = t;
-    }
-    check(progress_calls.size() > 1, "progress reported incrementally");
-    check(monotonic, "progress is monotonic");
-    check(final_total == 80, "progress total is the full work count");
-    check(last == 80, "progress completes at the total");
+  // --- 2) Deterministic conflict winner: ModZ and ModA both ship
+  // conflict.txt; ModZ also ships a unique zonly.txt. Last lexicographic
+  // folder wins -> ModZ.
+  write_file(mods / "ModZ" / "conflict.txt", "zzz");
+  write_file(mods / "ModA" / "conflict.txt", "aaa");
+  write_file(mods / "ModZ" / "zonly.txt", "x");
+  ok = engine::deploy_all_enabled_mods_parallel(mods, staging, "Data", false, "", true,
+                                                4);
+  check(ok, "conflict redeploy succeeds");
+  check(fs::is_symlink(staging / "Data" / "conflict.txt"), "contested target deployed");
+  if (fs::is_symlink(staging / "Data" / "conflict.txt"))
+    check(fs::read_symlink(staging / "Data" / "conflict.txt") ==
+              mods / "ModZ" / "conflict.txt",
+          "lexicographically-last mod wins the contested target");
+  check(fs::is_symlink(staging / "Data" / "zonly.txt"),
+        "unique file of the winner deployed");
 
-    // --- 2) Deterministic conflict winner: ModZ and ModA both ship
-    // conflict.txt; ModZ also ships a unique zonly.txt. Last lexicographic
-    // folder wins -> ModZ.
-    write_file(mods / "ModZ" / "conflict.txt", "zzz");
-    write_file(mods / "ModA" / "conflict.txt", "aaa");
-    write_file(mods / "ModZ" / "zonly.txt", "x");
-    ok = engine::deploy_all_enabled_mods_parallel(mods, staging, "Data", false, "", true, 4);
-    check(ok, "conflict redeploy succeeds");
-    check(fs::is_symlink(staging / "Data" / "conflict.txt"), "contested target deployed");
-    if (fs::is_symlink(staging / "Data" / "conflict.txt"))
-        check(fs::read_symlink(staging / "Data" / "conflict.txt") ==
-                  mods / "ModZ" / "conflict.txt",
-              "lexicographically-last mod wins the contested target");
-    check(fs::is_symlink(staging / "Data" / "zonly.txt"), "unique file of the winner deployed");
+  // --- 3a) O(Δ) ledger: an unchanged re-run touches zero files.
+  progress_calls.clear();
+  ok = engine::deploy_all_enabled_mods_parallel(
+      mods, staging, "Data", false, "", true, 4,
+      [&progress_calls](int done, int total) {
+        progress_calls.emplace_back(done, total);
+      });
+  check(ok, "unchanged redeploy succeeds");
+  check(progress_calls.size() == 1 && progress_calls.front().second == 0,
+        "unchanged redeploy touches zero files (ledger O(Δ))");
+  check(fs::is_symlink(staging / "Data" / "conflict.txt"),
+        "staged tree intact after unchanged redeploy");
 
-    // --- 3a) O(Δ) ledger: an unchanged re-run touches zero files.
-    progress_calls.clear();
-    ok = engine::deploy_all_enabled_mods_parallel(
-        mods, staging, "Data", false, "", true, 4,
-        [&progress_calls](int done, int total) {
-            progress_calls.emplace_back(done, total);
-        });
-    check(ok, "unchanged redeploy succeeds");
-    check(progress_calls.size() == 1 && progress_calls.front().second == 0,
-          "unchanged redeploy touches zero files (ledger O(Δ))");
-    check(fs::is_symlink(staging / "Data" / "conflict.txt"),
-          "staged tree intact after unchanged redeploy");
+  // --- 3b) Disabling a mod unlinks its stale files and re-points the
+  // contested target to the new winner.
+  write_file(mods / "ModZ" / ".gmmdisabled", "x");
+  ok = engine::deploy_all_enabled_mods_parallel(mods, staging, "Data", false,
+                                                ".gmmdisabled", true, 4);
+  check(ok, "redeploy after disable succeeds");
+  check(!fs::exists(staging / "Data" / "zonly.txt"),
+        "disabled mod's unique file unlinked (no stale staging entries)");
+  check(!fs::exists(staging / "Data" / "ModZ_file0.txt"),
+        "disabled mod's distinct files unlinked");
+  if (fs::is_symlink(staging / "Data" / "conflict.txt"))
+    check(fs::read_symlink(staging / "Data" / "conflict.txt") ==
+              mods / "ModA" / "conflict.txt",
+          "contested target re-pointed to the new winner");
+  check(fs::is_symlink(staging / "Data" / "Mod0_file0.txt"),
+        "remaining mods' files untouched");
 
-    // --- 3b) Disabling a mod unlinks its stale files and re-points the
-    // contested target to the new winner.
-    write_file(mods / "ModZ" / ".gmmdisabled", "x");
-    ok = engine::deploy_all_enabled_mods_parallel(
-        mods, staging, "Data", false, ".gmmdisabled", true, 4);
-    check(ok, "redeploy after disable succeeds");
-    check(!fs::exists(staging / "Data" / "zonly.txt"),
-          "disabled mod's unique file unlinked (no stale staging entries)");
-    check(!fs::exists(staging / "Data" / "ModZ_file0.txt"),
-          "disabled mod's distinct files unlinked");
-    if (fs::is_symlink(staging / "Data" / "conflict.txt"))
-        check(fs::read_symlink(staging / "Data" / "conflict.txt") ==
-                  mods / "ModA" / "conflict.txt",
-              "contested target re-pointed to the new winner");
-    check(fs::is_symlink(staging / "Data" / "Mod0_file0.txt"),
-          "remaining mods' files untouched");
+  // --- 3c) Re-enabling brings the mod back (new winner again).
+  fs::remove(mods / "ModZ" / ".gmmdisabled");
+  ok = engine::deploy_all_enabled_mods_parallel(mods, staging, "Data", false, "", true,
+                                                4);
+  check(ok, "redeploy after re-enable succeeds");
+  check(fs::is_symlink(staging / "Data" / "zonly.txt"), "re-enabled mod's file back");
+  if (fs::is_symlink(staging / "Data" / "conflict.txt"))
+    check(fs::read_symlink(staging / "Data" / "conflict.txt") ==
+              mods / "ModZ" / "conflict.txt",
+          "contested target won by the re-enabled mod again");
 
-    // --- 3c) Re-enabling brings the mod back (new winner again).
-    fs::remove(mods / "ModZ" / ".gmmdisabled");
-    ok = engine::deploy_all_enabled_mods_parallel(mods, staging, "Data", false, "", true, 4);
-    check(ok, "redeploy after re-enable succeeds");
-    check(fs::is_symlink(staging / "Data" / "zonly.txt"), "re-enabled mod's file back");
-    if (fs::is_symlink(staging / "Data" / "conflict.txt"))
-        check(fs::read_symlink(staging / "Data" / "conflict.txt") ==
-                  mods / "ModZ" / "conflict.txt",
-              "contested target won by the re-enabled mod again");
+  // --- 4) Include-mod-id layout under parallelism: each mod gets its own
+  // Data/<folder>/ subtree, so even contested paths coexist.
+  const fs::path staging_by_mod = base / "staging_bymod";
+  ok = engine::deploy_all_enabled_mods_parallel(mods, staging_by_mod, "Data", true, "",
+                                                true, 4);
+  check(ok, "include-mod-id parallel deploy succeeds");
+  check(fs::is_symlink(staging_by_mod / "Data" / "ModA" / "conflict.txt"),
+        "include-mod-id keeps both contesting files");
+  check(fs::is_symlink(staging_by_mod / "Data" / "ModZ" / "conflict.txt"),
+        "include-mod-id keeps both contesting files (2)");
 
-    // --- 4) Include-mod-id layout under parallelism: each mod gets its own
-    // Data/<folder>/ subtree, so even contested paths coexist.
-    const fs::path staging_by_mod = base / "staging_bymod";
-    ok = engine::deploy_all_enabled_mods_parallel(
-        mods, staging_by_mod, "Data", true, "", true, 4);
-    check(ok, "include-mod-id parallel deploy succeeds");
-    check(fs::is_symlink(staging_by_mod / "Data" / "ModA" / "conflict.txt"),
-          "include-mod-id keeps both contesting files");
-    check(fs::is_symlink(staging_by_mod / "Data" / "ModZ" / "conflict.txt"),
-          "include-mod-id keeps both contesting files (2)");
+  // --- 5) Case-insensitive merge under parallelism: Meshes/ and meshes/
+  // collapse into one on-disk casing.
+  const fs::path ci_mods    = base / "ci_mods";
+  const fs::path ci_staging = base / "ci_staging";
+  write_file(ci_mods / "CI_Mod" / "Meshes" / "a.nif", "x");
+  write_file(ci_mods / "CI_Mod" / "meshes" / "b.nif", "x");
+  ok = engine::deploy_all_enabled_mods_parallel(ci_mods, ci_staging, "Data", false, "",
+                                                false, 4);
+  check(ok, "parallel CI deploy succeeds");
+  const fs::path data = ci_staging / "Data";
+  // Exactly one REAL directory among the CI-equal spellings; the other may
+  // exist only as the deploy's lowercase alias symlink (fs::exists follows
+  // symlinks, so realness is checked via symlink_status).
+  const bool real_upper = fs::is_directory(fs::symlink_status(data / "Meshes"));
+  const bool real_lower = fs::is_directory(fs::symlink_status(data / "meshes"));
+  check(real_upper != real_lower, "CI-equal dirs merge into exactly one real casing");
+  const fs::path merged = real_upper ? data / "Meshes" : data / "meshes";
+  check(fs::is_symlink(merged / "a.nif") && fs::is_symlink(merged / "b.nif"),
+        "both spellings' files deployed into the merged casing");
 
-    // --- 5) Case-insensitive merge under parallelism: Meshes/ and meshes/
-    // collapse into one on-disk casing.
-    const fs::path ci_mods = base / "ci_mods";
-    const fs::path ci_staging = base / "ci_staging";
-    write_file(ci_mods / "CI_Mod" / "Meshes" / "a.nif", "x");
-    write_file(ci_mods / "CI_Mod" / "meshes" / "b.nif", "x");
-    ok = engine::deploy_all_enabled_mods_parallel(
-        ci_mods, ci_staging, "Data", false, "", false, 4);
-    check(ok, "parallel CI deploy succeeds");
-    const fs::path data = ci_staging / "Data";
-    // Exactly one REAL directory among the CI-equal spellings; the other may
-    // exist only as the deploy's lowercase alias symlink (fs::exists follows
-    // symlinks, so realness is checked via symlink_status).
-    const bool real_upper =
-        fs::is_directory(fs::symlink_status(data / "Meshes"));
-    const bool real_lower =
-        fs::is_directory(fs::symlink_status(data / "meshes"));
-    check(real_upper != real_lower,
-          "CI-equal dirs merge into exactly one real casing");
-    const fs::path merged = real_upper ? data / "Meshes" : data / "meshes";
-    check(fs::is_symlink(merged / "a.nif") && fs::is_symlink(merged / "b.nif"),
-          "both spellings' files deployed into the merged casing");
-
-    fs::remove_all(base);
+  fs::remove_all(base);
 }

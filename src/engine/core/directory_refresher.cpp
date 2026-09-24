@@ -27,7 +27,9 @@ void PlaceholderWorker::run() {
 
 DirectoryRefresher::DirectoryRefresher(QObject *parent) : QObject(parent) {}
 
-DirectoryRefresher::~DirectoryRefresher() { cancel_all(); }
+DirectoryRefresher::~DirectoryRefresher() {
+  cancel_all();
+}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -36,8 +38,7 @@ DirectoryRefresher::~DirectoryRefresher() { cancel_all(); }
 void DirectoryRefresher::refresh(RefreshTargets targets) {
   if (targets.testFlag(RefreshTarget::All)) {
     targets = RefreshTargets(RefreshTarget::Mods) | RefreshTarget::Plugins |
-              RefreshTarget::Conflicts | RefreshTarget::Saves |
-              RefreshTarget::DataTab;
+              RefreshTarget::Conflicts | RefreshTarget::Saves | RefreshTarget::DataTab;
   }
 
   if (targets.testFlag(RefreshTarget::Mods))
@@ -70,7 +71,9 @@ void DirectoryRefresher::cancel_all() {
   active_workers_.clear();
 }
 
-bool DirectoryRefresher::is_busy() const { return !active_workers_.empty(); }
+bool DirectoryRefresher::is_busy() const {
+  return !active_workers_.empty();
+}
 
 int DirectoryRefresher::active_workers() const {
   return static_cast<int>(active_workers_.size());
@@ -115,12 +118,12 @@ void DirectoryRefresher::start_worker(RefreshTarget target) {
   thread->start();
 }
 
-void DirectoryRefresher::on_worker_finished(RefreshTarget target,
-                                            bool success) {
+void DirectoryRefresher::on_worker_finished(RefreshTarget target, bool success) {
   // Remove the finished worker from the active list.
-  auto it = std::remove_if(
-      active_workers_.begin(), active_workers_.end(),
-      [target](const WorkerEntry &e) { return e.target == target; });
+  auto it = std::remove_if(active_workers_.begin(), active_workers_.end(),
+                           [target](const WorkerEntry &e) {
+                             return e.target == target;
+                           });
   active_workers_.erase(it, active_workers_.end());
 
   Logger::instance().debug("DirectoryRefresher: worker finished for target " +
@@ -134,4 +137,4 @@ void DirectoryRefresher::on_worker_finished(RefreshTarget target,
   }
 }
 
-} // namespace engine
+}  // namespace engine

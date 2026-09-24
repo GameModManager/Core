@@ -6,12 +6,12 @@
 namespace cli {
 
 struct ParsedArgs {
-  bool show_help = false;
+  bool show_help    = false;
   bool show_version = false;
-  bool headless = false;
-  bool handle_nxm = false;
-  bool handle_gmm = false;
-  bool handle_modl = false;
+  bool headless     = false;
+  bool handle_nxm   = false;
+  bool handle_gmm   = false;
+  bool handle_modl  = false;
   QString instance_name;
   QString exe_path;
   QString nxm_url;
@@ -22,7 +22,7 @@ struct ParsedArgs {
 class CommandLine {
 public:
   CommandLine(int argc, char **argv);
-  bool parse(); // returns false when --help/--version printed
+  bool parse();  // returns false when --help/--version printed
   const ParsedArgs &args() const;
   bool should_exit() const;
   int exit_code() const;
@@ -31,7 +31,7 @@ private:
   QCommandLineParser parser_;
   ParsedArgs args_;
   bool should_exit_ = false;
-  int exit_code_ = 0;
+  int exit_code_    = 0;
 };
 
-} // namespace cli
+}  // namespace cli

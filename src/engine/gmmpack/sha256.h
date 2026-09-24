@@ -12,13 +12,13 @@ namespace engine::gmmpack {
 // the target platforms). Used to verify baseFileSha256 before applying a
 // patch - a mismatch means the upstream mod file changed since the pack was
 // authored and the patch must NOT be applied.
-std::string sha256_hex(const uint8_t* data, size_t len);
+std::string sha256_hex(const uint8_t *data, size_t len);
 
-inline std::string sha256_hex(const std::string& s) {
-  return sha256_hex(reinterpret_cast<const uint8_t*>(s.data()), s.size());
+inline std::string sha256_hex(const std::string &s) {
+  return sha256_hex(reinterpret_cast<const uint8_t *>(s.data()), s.size());
 }
 
-inline std::string sha256_hex(const std::vector<uint8_t>& v) {
+inline std::string sha256_hex(const std::vector<uint8_t> &v) {
   return sha256_hex(v.data(), v.size());
 }
 

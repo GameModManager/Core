@@ -12,130 +12,131 @@
 
 namespace ui {
 
-ZoomableView::ZoomableView(QWidget* parent)
-    : QGraphicsView(parent) {
-    setRenderHint(QPainter::Antialiasing);
-    setDragMode(QGraphicsView::ScrollHandDrag);
-    setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
+ZoomableView::ZoomableView(QWidget *parent) : QGraphicsView(parent) {
+  setRenderHint(QPainter::Antialiasing);
+  setDragMode(QGraphicsView::ScrollHandDrag);
+  setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
 
-    // Floating zoom bar, pinned to the bottom-right of the viewport.
-    bar_ = new QFrame(this);
-    bar_->setObjectName("zoomControls");
-    auto* lay = new QHBoxLayout(bar_);
-    lay->setContentsMargins(4, 3, 4, 3);
-    lay->setSpacing(3);
+  // Floating zoom bar, pinned to the bottom-right of the viewport.
+  bar_ = new QFrame(this);
+  bar_->setObjectName("zoomControls");
+  auto *lay = new QHBoxLayout(bar_);
+  lay->setContentsMargins(4, 3, 4, 3);
+  lay->setSpacing(3);
 
-    zoom_out_btn_ = new QPushButton("-", bar_);
-    zoom_out_btn_->setObjectName("zoomOutBtn");
-    zoom_out_btn_->setFixedSize(22, 22);
-    zoom_out_btn_->setToolTip("Zoom out");
-    lay->addWidget(zoom_out_btn_);
+  zoom_out_btn_ = new QPushButton("-", bar_);
+  zoom_out_btn_->setObjectName("zoomOutBtn");
+  zoom_out_btn_->setFixedSize(22, 22);
+  zoom_out_btn_->setToolTip("Zoom out");
+  lay->addWidget(zoom_out_btn_);
 
-    slider_ = new QSlider(Qt::Horizontal, bar_);
-    slider_->setObjectName("zoomSlider");
-    slider_->setRange(static_cast<int>(kMinZoom * 100.0),
-                      static_cast<int>(kMaxZoom * 100.0));
-    slider_->setValue(100);
-    slider_->setFixedWidth(110);
-    slider_->setToolTip("Zoom level");
-    lay->addWidget(slider_);
+  slider_ = new QSlider(Qt::Horizontal, bar_);
+  slider_->setObjectName("zoomSlider");
+  slider_->setRange(static_cast<int>(kMinZoom * 100.0),
+                    static_cast<int>(kMaxZoom * 100.0));
+  slider_->setValue(100);
+  slider_->setFixedWidth(110);
+  slider_->setToolTip("Zoom level");
+  lay->addWidget(slider_);
 
-    zoom_in_btn_ = new QPushButton("+", bar_);
-    zoom_in_btn_->setObjectName("zoomInBtn");
-    zoom_in_btn_->setFixedSize(22, 22);
-    zoom_in_btn_->setToolTip("Zoom in");
-    lay->addWidget(zoom_in_btn_);
+  zoom_in_btn_ = new QPushButton("+", bar_);
+  zoom_in_btn_->setObjectName("zoomInBtn");
+  zoom_in_btn_->setFixedSize(22, 22);
+  zoom_in_btn_->setToolTip("Zoom in");
+  lay->addWidget(zoom_in_btn_);
 
-    percent_ = new QLabel("100%", bar_);
-    percent_->setObjectName("zoomPercent");
-    lay->addWidget(percent_);
+  percent_ = new QLabel("100%", bar_);
+  percent_->setObjectName("zoomPercent");
+  lay->addWidget(percent_);
 
-    bar_->adjustSize();
-    bar_->raise();
+  bar_->adjustSize();
+  bar_->raise();
 
-    connect(zoom_in_btn_, &QPushButton::clicked, this, &ZoomableView::zoom_in);
-    connect(zoom_out_btn_, &QPushButton::clicked, this, &ZoomableView::zoom_out);
-    connect(slider_, &QSlider::valueChanged, this, [this](int value) {
-        set_zoom(static_cast<qreal>(value) / 100.0,
-                 QGraphicsView::AnchorViewCenter);
-    });
+  connect(zoom_in_btn_, &QPushButton::clicked, this, &ZoomableView::zoom_in);
+  connect(zoom_out_btn_, &QPushButton::clicked, this, &ZoomableView::zoom_out);
+  connect(slider_, &QSlider::valueChanged, this, [this](int value) {
+    set_zoom(static_cast<qreal>(value) / 100.0, QGraphicsView::AnchorViewCenter);
+  });
 }
 
 void ZoomableView::set_zoom(qreal factor, ViewAnchor anchor) {
-    factor = std::clamp(factor, kMinZoom, kMaxZoom);
-    if (std::abs(factor - factor_) < 0.0005) return;
+  factor = std::clamp(factor, kMinZoom, kMaxZoom);
+  if (std::abs(factor - factor_) < 0.0005)
+    return;
 
-    auto_fit_on_resize_ = false;
-    qreal delta = factor / factor_;
-    factor_ = factor;
+  auto_fit_on_resize_ = false;
+  qreal delta         = factor / factor_;
+  factor_             = factor;
 
-    setTransformationAnchor(anchor);
-    scale(delta, delta);
+  setTransformationAnchor(anchor);
+  scale(delta, delta);
 
-    sync_bar();
-    emit zoom_changed(factor_);
+  sync_bar();
+  emit zoom_changed(factor_);
 }
 
 void ZoomableView::zoom_in() {
-    set_zoom(factor_ * kStep, QGraphicsView::AnchorViewCenter);
+  set_zoom(factor_ * kStep, QGraphicsView::AnchorViewCenter);
 }
 
 void ZoomableView::zoom_out() {
-    set_zoom(factor_ / kStep, QGraphicsView::AnchorViewCenter);
+  set_zoom(factor_ / kStep, QGraphicsView::AnchorViewCenter);
 }
 
 void ZoomableView::fit_to_scene() {
-    QGraphicsScene* s = scene();
-    if (!s) return;
+  QGraphicsScene *s = scene();
+  if (!s)
+    return;
 
-    const QRectF rect = s->itemsBoundingRect();
-    if (rect.isEmpty() || rect.width() <= 0.0 || rect.height() <= 0.0) return;
+  const QRectF rect = s->itemsBoundingRect();
+  if (rect.isEmpty() || rect.width() <= 0.0 || rect.height() <= 0.0)
+    return;
 
-    setTransformationAnchor(QGraphicsView::AnchorViewCenter);
-    fitInView(rect, Qt::KeepAspectRatio);
+  setTransformationAnchor(QGraphicsView::AnchorViewCenter);
+  fitInView(rect, Qt::KeepAspectRatio);
 
-    // Re-derive the zoom factor from the transform fitInView just applied so
-    // the floating bar and factor-based zoom operations stay consistent.
-    const QTransform t = transform();
-    factor_ = std::sqrt(std::abs(t.m11() * t.m22()));
+  // Re-derive the zoom factor from the transform fitInView just applied so
+  // the floating bar and factor-based zoom operations stay consistent.
+  const QTransform t = transform();
+  factor_            = std::sqrt(std::abs(t.m11() * t.m22()));
 
-    sync_bar();
-    auto_fit_on_resize_ = true;
-    emit zoom_changed(factor_);
+  sync_bar();
+  auto_fit_on_resize_ = true;
+  emit zoom_changed(factor_);
 }
 
-void ZoomableView::resizeEvent(QResizeEvent* event) {
-    QGraphicsView::resizeEvent(event);
-    if (auto_fit_on_resize_)
-        fit_to_scene();
-    position_bar();
+void ZoomableView::resizeEvent(QResizeEvent *event) {
+  QGraphicsView::resizeEvent(event);
+  if (auto_fit_on_resize_)
+    fit_to_scene();
+  position_bar();
 }
 
-void ZoomableView::wheelEvent(QWheelEvent* event) {
-    // Ctrl+wheel zooms under the cursor; plain wheel scrolls the canvas.
-    if (event->modifiers() & Qt::ControlModifier) {
-        qreal steps = event->angleDelta().y() / 120.0;
-        if (steps != 0.0) {
-            set_zoom(factor_ * std::pow(kStep, steps),
-                     QGraphicsView::AnchorUnderMouse);
-        }
-        event->accept();
-        return;
+void ZoomableView::wheelEvent(QWheelEvent *event) {
+  // Ctrl+wheel zooms under the cursor; plain wheel scrolls the canvas.
+  if (event->modifiers() & Qt::ControlModifier) {
+    qreal steps = event->angleDelta().y() / 120.0;
+    if (steps != 0.0) {
+      set_zoom(factor_ * std::pow(kStep, steps), QGraphicsView::AnchorUnderMouse);
     }
-    QGraphicsView::wheelEvent(event);
+    event->accept();
+    return;
+  }
+  QGraphicsView::wheelEvent(event);
 }
 
 void ZoomableView::position_bar() {
-    if (!bar_) return;
-    bar_->move(viewport()->width() - bar_->width() - 8,
-               viewport()->height() - bar_->height() - 8);
+  if (!bar_)
+    return;
+  bar_->move(viewport()->width() - bar_->width() - 8,
+             viewport()->height() - bar_->height() - 8);
 }
 
 void ZoomableView::sync_bar() {
-    QSignalBlocker block(slider_);
-    int pct = qRound(factor_ * 100.0);
-    slider_->setValue(pct);
-    percent_->setText(QString::number(pct) + "%");
+  QSignalBlocker block(slider_);
+  int pct = qRound(factor_ * 100.0);
+  slider_->setValue(pct);
+  percent_->setText(QString::number(pct) + "%");
 }
 
 }  // namespace ui

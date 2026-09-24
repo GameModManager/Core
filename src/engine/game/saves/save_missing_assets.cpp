@@ -12,70 +12,66 @@ namespace engine {
 
 namespace {
 
-std::string to_lower(std::string s) {
-  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
-  return s;
-}
+  std::string to_lower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
+      return static_cast<char>(std::tolower(c));
+    });
+    return s;
+  }
 
-// Scans one directory's top level for plugin files and records every hit whose
-// name (case-insensitively) is a missing save plugin. Enumerates through
-// PathResolver so the case-insensitive walk goes through the single canonical
-// seam instead of a hand-rolled directory_iterator + to_lower.
-void collect_providers(
-    const vfs::PathResolver &resolver, std::string_view dir_rel,
-    const std::string &mod_name,
-    const std::map<std::string, SaveMissingAsset *> &missing) {
-  for (const auto &gf : resolver.list(dir_rel)) {
-    // Mirror the original hand-rolled scan: only real plugin files count,
-    // never a directory whose name merely ends in a plugin extension.
-    std::error_code ec;
-    if (!std::filesystem::is_regular_file(gf.absolute(), ec) || ec)
-      continue;
-    if (!is_plugin_file(gf.absolute()))
-      continue;
-    // gf.normalized() is the full CI key; its filename component is the
-    // lowercased name, which matches the missing-map key (to_lower of the
-    // plugin name).
-    const std::string lower_name =
-        std::filesystem::path(gf.normalized()).filename().string();
-    const auto it = missing.find(lower_name);
-    if (it == missing.end())
-      continue;
-    std::vector<std::string> &list = it->second->providing_mods;
-    if (std::find(list.begin(), list.end(), mod_name) == list.end()) {
-      list.push_back(mod_name);
+  // Scans one directory's top level for plugin files and records every hit whose
+  // name (case-insensitively) is a missing save plugin. Enumerates through
+  // PathResolver so the case-insensitive walk goes through the single canonical
+  // seam instead of a hand-rolled directory_iterator + to_lower.
+  void collect_providers(const vfs::PathResolver &resolver, std::string_view dir_rel,
+                         const std::string &mod_name,
+                         const std::map<std::string, SaveMissingAsset *> &missing) {
+    for (const auto &gf : resolver.list(dir_rel)) {
+      // Mirror the original hand-rolled scan: only real plugin files count,
+      // never a directory whose name merely ends in a plugin extension.
+      std::error_code ec;
+      if (!std::filesystem::is_regular_file(gf.absolute(), ec) || ec)
+        continue;
+      if (!is_plugin_file(gf.absolute()))
+        continue;
+      // gf.normalized() is the full CI key; its filename component is the
+      // lowercased name, which matches the missing-map key (to_lower of the
+      // plugin name).
+      const std::string lower_name =
+          std::filesystem::path(gf.normalized()).filename().string();
+      const auto it = missing.find(lower_name);
+      if (it == missing.end())
+        continue;
+      std::vector<std::string> &list = it->second->providing_mods;
+      if (std::find(list.begin(), list.end(), mod_name) == list.end()) {
+        list.push_back(mod_name);
+      }
     }
   }
-}
 
-// Build the (mod_name, lower_name) entries for one directory into the index.
-void index_directory(const std::filesystem::path &dir,
-                     const std::string &mod_name,
-                     SaveProviderIndex &out) {
-  vfs::PathResolver resolver(dir);
-  for (const auto &gf : resolver.list("")) {
-    std::error_code ec;
-    if (!std::filesystem::is_regular_file(gf.absolute(), ec) || ec)
-      continue;
-    if (!is_plugin_file(gf.absolute()))
-      continue;
-    const std::string lower_name =
-        std::filesystem::path(gf.normalized()).filename().string();
-    auto &providers = out[lower_name];
-    if (std::find(providers.begin(), providers.end(), mod_name) ==
-        providers.end()) {
-      providers.push_back(mod_name);
+  // Build the (mod_name, lower_name) entries for one directory into the index.
+  void index_directory(const std::filesystem::path &dir, const std::string &mod_name,
+                       SaveProviderIndex &out) {
+    vfs::PathResolver resolver(dir);
+    for (const auto &gf : resolver.list("")) {
+      std::error_code ec;
+      if (!std::filesystem::is_regular_file(gf.absolute(), ec) || ec)
+        continue;
+      if (!is_plugin_file(gf.absolute()))
+        continue;
+      const std::string lower_name =
+          std::filesystem::path(gf.normalized()).filename().string();
+      auto &providers = out[lower_name];
+      if (std::find(providers.begin(), providers.end(), mod_name) == providers.end()) {
+        providers.push_back(mod_name);
+      }
     }
   }
-}
 
-} // namespace
+}  // namespace
 
 std::vector<SaveMissingAsset>
-find_save_missing_assets(const SaveGame &save,
-                         const std::vector<GamePlugin> &plugins,
+find_save_missing_assets(const SaveGame &save, const std::vector<GamePlugin> &plugins,
                          const std::filesystem::path &mods_dir,
                          const std::filesystem::path &overwrite_dir) {
   // Case-insensitive index of the current load order.
@@ -86,21 +82,20 @@ find_save_missing_assets(const SaveGame &save,
 
   // Pass 1: decide which save plugins are missing (MO2 state machine).
   std::vector<SaveMissingAsset> missing;
-  std::vector<std::string> missing_keys; // lowercased, parallel to `missing`
+  std::vector<std::string> missing_keys;  // lowercased, parallel to `missing`
   const auto consider = [&](const std::string &name) {
     const auto it = by_name.find(to_lower(name));
     // Force-loaded (game-native/CC) plugins are always active in-game and
     // can never be missing, regardless of the snapshot's enabled flag.
-    if (it != by_name.end() &&
-        (it->second->enabled || it->second->force_loaded)) {
-      return; // STATE_ACTIVE - the save's dependency is satisfied.
+    if (it != by_name.end() && (it->second->enabled || it->second->force_loaded)) {
+      return;  // STATE_ACTIVE - the save's dependency is satisfied.
     }
     SaveMissingAsset asset;
     asset.plugin_name = name;
     if (it != by_name.end()) {
-      asset.inactive = true; // STATE_INACTIVE - present but disabled.
+      asset.inactive   = true;  // STATE_INACTIVE - present but disabled.
       asset.origin_mod = it->second->owner_mod;
-    } // else STATE_MISSING - absent from the load order entirely.
+    }  // else STATE_MISSING - absent from the load order entirely.
     missing.push_back(std::move(asset));
     missing_keys.push_back(to_lower(name));
   };
@@ -140,14 +135,13 @@ find_save_missing_assets(const SaveGame &save,
   return missing;
 }
 
-SaveProviderIndex build_save_provider_index(
-    const std::filesystem::path &mods_dir,
-    const std::filesystem::path &overwrite_dir) {
+SaveProviderIndex
+build_save_provider_index(const std::filesystem::path &mods_dir,
+                          const std::filesystem::path &overwrite_dir) {
   SaveProviderIndex index;
   if (!mods_dir.empty()) {
     std::error_code ec;
-    for (const auto &entry :
-         std::filesystem::directory_iterator(mods_dir, ec)) {
+    for (const auto &entry : std::filesystem::directory_iterator(mods_dir, ec)) {
       if (ec)
         break;
       if (!entry.is_directory(ec))
@@ -163,8 +157,7 @@ SaveProviderIndex build_save_provider_index(
 }
 
 std::vector<SaveMissingAsset>
-find_save_missing_assets(const SaveGame &save,
-                         const std::vector<GamePlugin> &plugins,
+find_save_missing_assets(const SaveGame &save, const std::vector<GamePlugin> &plugins,
                          const SaveProviderIndex &provider_index) {
   // Case-insensitive index of the current load order.
   std::map<std::string, const GamePlugin *> by_name;
@@ -178,14 +171,13 @@ find_save_missing_assets(const SaveGame &save,
   std::vector<std::string> missing_keys;
   const auto consider = [&](const std::string &name) {
     const auto it = by_name.find(to_lower(name));
-    if (it != by_name.end() &&
-        (it->second->enabled || it->second->force_loaded)) {
+    if (it != by_name.end() && (it->second->enabled || it->second->force_loaded)) {
       return;
     }
     SaveMissingAsset asset;
     asset.plugin_name = name;
     if (it != by_name.end()) {
-      asset.inactive = true;
+      asset.inactive   = true;
       asset.origin_mod = it->second->owner_mod;
     }
     missing.push_back(std::move(asset));
@@ -206,4 +198,4 @@ find_save_missing_assets(const SaveGame &save,
   return missing;
 }
 
-} // namespace engine
+}  // namespace engine

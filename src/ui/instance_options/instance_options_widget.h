@@ -24,7 +24,7 @@ class QVBoxLayout;
 namespace engine {
 class Platform;
 class PluginLoader;
-} // namespace engine
+}  // namespace engine
 
 namespace ui {
 
@@ -59,12 +59,10 @@ namespace ui {
 class InstanceOptionsWidget : public QWidget {
   Q_OBJECT
 public:
-  InstanceOptionsWidget(engine::Platform *platform,
-                        engine::PluginLoader *plugin_loader,
+  InstanceOptionsWidget(engine::Platform *platform, engine::PluginLoader *plugin_loader,
                         const std::string &game_id,
                         const std::string &game_display_name,
-                        const std::filesystem::path &game_dir,
-                        uint32_t steam_appid,
+                        const std::filesystem::path &game_dir, uint32_t steam_appid,
                         const std::filesystem::path &instance_root,
                         const std::string &current_runner,
                         const std::string &current_deploy_strategy,
@@ -102,8 +100,7 @@ private:
   void update_runner_detail();
   void load_recommended_packages();
   void install_packages(const QStringList &verbs);
-  void finish_install_packages(const QStringList &verbs, bool ok,
-                               const QString &error);
+  void finish_install_packages(const QStringList &verbs, bool ok, const QString &error);
   void build_deploy_management();
   void build_proton_tweaks();
   void run_proton_tweaks();
@@ -113,7 +110,7 @@ private:
   void finish_deploy_task(DeployTaskKind kind, bool ok);
   [[nodiscard]] std::filesystem::path recommended_packages_path() const;
 
-  engine::Platform *platform_ = nullptr;
+  engine::Platform *platform_          = nullptr;
   engine::PluginLoader *plugin_loader_ = nullptr;
   std::string game_id_;
   std::string game_display_name_;
@@ -123,34 +120,34 @@ private:
   std::string current_deploy_strategy_;
   engine::DeployConfig deploy_config_;
 
-  QComboBox *runner_combo_ = nullptr;
-  QLabel *runner_detail_ = nullptr;
-  QPushButton *install_all_btn_ = nullptr;
-  QVBoxLayout *packages_layout_ = nullptr;
-  QLabel *packages_status_ = nullptr;
+  QComboBox *runner_combo_         = nullptr;
+  QLabel *runner_detail_           = nullptr;
+  QPushButton *install_all_btn_    = nullptr;
+  QVBoxLayout *packages_layout_    = nullptr;
+  QLabel *packages_status_         = nullptr;
   QProgressBar *packages_progress_ = nullptr;
-  QThread *packages_thread_ = nullptr;
+  QThread *packages_thread_        = nullptr;
   QVector<QPushButton *> pkg_install_btns_;
   // Proton tweaks (font smoothing + DPI): Steam games only (steam_appid != 0).
-  QGroupBox *tweaks_group_ = nullptr;
-  QCheckBox *smoothing_check_ = nullptr;
-  QCheckBox *autodpi_check_ = nullptr;
-  QSpinBox *dpi_spin_ = nullptr;
-  QPushButton *apply_tweaks_btn_ = nullptr;
-  QLabel *tweaks_status_ = nullptr;
-  QThread *tweaks_thread_ = nullptr;
+  QGroupBox *tweaks_group_          = nullptr;
+  QCheckBox *smoothing_check_       = nullptr;
+  QCheckBox *autodpi_check_         = nullptr;
+  QSpinBox *dpi_spin_               = nullptr;
+  QPushButton *apply_tweaks_btn_    = nullptr;
+  QLabel *tweaks_status_            = nullptr;
+  QThread *tweaks_thread_           = nullptr;
   QComboBox *deploy_strategy_combo_ = nullptr;
-  QPushButton *redeploy_btn_ = nullptr;
-  QPushButton *remove_btn_ = nullptr;
+  QPushButton *redeploy_btn_        = nullptr;
+  QPushButton *remove_btn_          = nullptr;
   // Inline deploy-task progress (hidden while idle): replaces the modal
   // QProgressDialog so the widget works embedded in a tab.
   QProgressBar *deploy_progress_ = nullptr;
-  QLabel *deploy_status_ = nullptr;
-  QThread *deploy_thread_ = nullptr;
-  bool deploy_task_running_ = false;
+  QLabel *deploy_status_         = nullptr;
+  QThread *deploy_thread_        = nullptr;
+  bool deploy_task_running_      = false;
   // Host-supplied flush of the deferred disable/enable queue; empty when the
   // host did not install one (the deploy actions then behave as before).
   std::function<void()> flush_deferred_disable_queue_;
 };
 
-} // namespace ui
+}  // namespace ui

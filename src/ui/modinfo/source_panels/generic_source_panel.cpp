@@ -19,16 +19,18 @@ GenericSourcePanel::GenericSourcePanel(const ModInfoData &data,
   source_name->setTextInteractionFlags(Qt::TextSelectableByMouse);
   form->addRow(tr("Source:"), source_name);
 
-  auto *id_label = new QLabel(data_.source_id.isEmpty()
-                                  ? tr("(not installed from this source)")
-                                  : data_.source_id,
-                              this);
+  auto *id_label =
+      new QLabel(data_.source_id.isEmpty() ? tr("(not installed from this source)")
+                                           : data_.source_id,
+                 this);
   id_label->setTextInteractionFlags(Qt::TextSelectableByMouse);
   form->addRow(tr("Source ID:"), id_label);
 }
 
 void GenericSourcePanel::populate() {}
 
-bool GenericSourcePanel::has_data() const { return !data_.source_id.isEmpty(); }
+bool GenericSourcePanel::has_data() const {
+  return !data_.source_id.isEmpty();
+}
 
-} // namespace ui
+}  // namespace ui

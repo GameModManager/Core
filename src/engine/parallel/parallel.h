@@ -50,7 +50,7 @@ inline unsigned thread_count(size_t n) {
   if (hc == 0)
     hc = 1;
   unsigned t = std::min(hc, 16u);
-  t = std::min<unsigned>(t, static_cast<unsigned>(n));
+  t          = std::min<unsigned>(t, static_cast<unsigned>(n));
   return std::max(t, 1u);
 }
 
@@ -58,7 +58,8 @@ inline unsigned thread_count(size_t n) {
 // threads when enabled and n is large enough to be worth it; otherwise
 // sequential. fn is invoked with no synchronization - it MUST NOT mutate
 // shared state without external sync, or use a per-index slot/mutex.
-template <typename Fn> inline void for_each(size_t n, Fn &&fn) {
+template <typename Fn>
+inline void for_each(size_t n, Fn &&fn) {
   if (n == 0)
     return;
   const unsigned t = thread_count(n);
@@ -84,4 +85,4 @@ template <typename Fn> inline void for_each(size_t n, Fn &&fn) {
     th.join();
 }
 
-} // namespace engine::parallel
+}  // namespace engine::parallel

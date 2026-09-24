@@ -19,28 +19,28 @@ namespace ui {
 // Checking an item auto-checks its ancestors; every change is persisted to the
 // mod's meta as MO2's "category = <primary>,<rest...>" CSV (internal ids).
 class CategoriesTab : public ModInfoTab {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit CategoriesTab(QWidget* parent = nullptr);
-    ~CategoriesTab() override;
+  explicit CategoriesTab(QWidget *parent = nullptr);
+  ~CategoriesTab() override;
 
-    void set_mod(const ModInfoData& data) override;
-    void save_state() override;
+  void set_mod(const ModInfoData &data) override;
+  void save_state() override;
 
 private:
-    void rebuild();
-    void add_children(QTreeWidgetItem* root, int parent_id);
-    void update_primary();
-    void add_checked(QTreeWidgetItem* node);
-    void save_tree();
-    void persist();
-    void on_item_changed(QTreeWidgetItem* item, int column);
+  void rebuild();
+  void add_children(QTreeWidgetItem *root, int parent_id);
+  void update_primary();
+  void add_checked(QTreeWidgetItem *node);
+  void save_tree();
+  void persist();
+  void on_item_changed(QTreeWidgetItem *item, int column);
 
-    QTreeWidget* tree_ = nullptr;
-    QComboBox* primary_ = nullptr;
-    std::shared_ptr<engine::Categories> categories_;
-    int primary_id_ = 0;
-    bool rebuilding_ = false;
+  QTreeWidget *tree_  = nullptr;
+  QComboBox *primary_ = nullptr;
+  std::shared_ptr<engine::Categories> categories_;
+  int primary_id_  = 0;
+  bool rebuilding_ = false;
 };
 
 }  // namespace ui

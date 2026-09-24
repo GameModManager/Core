@@ -16,7 +16,7 @@ void require(bool cond, const char *msg) {
   INFO(msg);
   REQUIRE(cond);
 }
-} // namespace
+}  // namespace
 
 static void write_file(const fs::path &path, const std::string &content) {
   std::ofstream out(path);
@@ -37,9 +37,9 @@ TEST_CASE("category_factory", "[engine]") {
   f.removeCategory(11);
 
   // --- Merge from parallel arrays (ABI register_categories). ---
-  int ids[] = {1, 2, 1, 3};
+  int ids[]           = {1, 2, 1, 3};
   const char *names[] = {"Animations", "Armour", "Duplicate", "Poses"};
-  int parents[] = {0, 0, 0, 1};
+  int parents[]       = {0, 0, 0, 1};
   f.merge(ids, names, parents, 4);
   require(f.categoryExists(1), "id 1 merged");
   require(f.categoryExists(2), "id 2 merged");
@@ -56,8 +56,7 @@ TEST_CASE("category_factory", "[engine]") {
   f.addCategory(11, "Child Mods", 10);
   require(f.categoryById(10)->hasChildren, "hasChildren true after add");
   f.addCategory(10, "Duplicate Add", 0);
-  require(f.categoryById(10)->name == "My Mods",
-          "addCategory skips an existing id");
+  require(f.categoryById(10)->name == "My Mods", "addCategory skips an existing id");
   f.updateCategory(11, "Renamed Child", 0);
   require(f.categoryById(11)->name == "Renamed Child" &&
               f.categoryById(11)->parent_id == 0,
@@ -91,8 +90,7 @@ TEST_CASE("category_factory", "[engine]") {
           "round-trip: Animations present");
   require(saved.find("2|Armour|0\n") != std::string::npos,
           "round-trip: Armour present");
-  require(saved.find("3|Poses|1\n") != std::string::npos,
-          "round-trip: Poses present");
+  require(saved.find("3|Poses|1\n") != std::string::npos, "round-trip: Poses present");
 
   // --- Load replaces the current set; missing file keeps it. ---
   f.addCategory(99, "Transient", 0);
@@ -126,8 +124,7 @@ TEST_CASE("category_factory_apply_core_set", "[engine]") {
 
   // --- Unknown set: returns false and adds nothing. ---
   clear_all();
-  require(!f.applyCoreSet("NoSuchSet"),
-          "applyCoreSet returns false for unknown");
+  require(!f.applyCoreSet("NoSuchSet"), "applyCoreSet returns false for unknown");
   require(f.categories().empty(), "unknown set adds no categories");
 
   // --- "Isaac" set: 22 categories applied, returns true. ---
@@ -154,8 +151,7 @@ TEST_CASE("category_factory_apply_core_set", "[engine]") {
   // ---
   clear_all();
   require(f.applyCoreSet("Bethesda"), "applyCoreSet(Bethesda) returns true");
-  require(f.categories().size() == 56,
-          "Bethesda set adds 56 unique categories");
+  require(f.categories().size() == 56, "Bethesda set adds 56 unique categories");
   const auto *anim = f.categoryById(1);
   require(anim && anim->name == "Animations" && anim->parent_id == 0,
           "Bethesda Animations (1) applied as root");
@@ -208,8 +204,7 @@ TEST_CASE("category_factory_clear_drops_all_entries", "[engine]") {
   require(!f.categoryExists(1000), "Isaac entry gone after clear");
 
   // --- applyCoreSet after clear produces exactly the set (no leakage). ---
-  require(f.applyCoreSet("Bethesda"),
-          "Bethesda applied again after clear");
+  require(f.applyCoreSet("Bethesda"), "Bethesda applied again after clear");
   require(!f.categoryExists(1000),
           "no Isaac categories leak after clear+applyCoreSet(Bethesda)");
   require(f.categoryById(1) && f.categoryById(1)->name == "Animations",
@@ -238,14 +233,12 @@ TEST_CASE("category_factory_no_cross_game_leak", "[engine]") {
 
   // --- Step 1: Plugin registers Isaac categories via merge(). ---
   f.clear();
-  int isaac_ids[] = {1000, 1001, 1002, 1003, 1006};
-  const char *isaac_names[] = {"Items",    "Active Items", "Trinkets",
-                               "Pills",    "Lua"};
-  int isaac_parents[] = {0, 1000, 0, 0, 0};
+  int isaac_ids[]           = {1000, 1001, 1002, 1003, 1006};
+  const char *isaac_names[] = {"Items", "Active Items", "Trinkets", "Pills", "Lua"};
+  int isaac_parents[]       = {0, 1000, 0, 0, 0};
   f.merge(isaac_ids, isaac_names, isaac_parents, 5);
   require(f.categories().size() == 5, "5 Isaac categories merged");
-  require(f.pluginCategories().count(1000),
-          "Isaac Items recorded in plugin set");
+  require(f.pluginCategories().count(1000), "Isaac Items recorded in plugin set");
   require(f.pluginCategories().count(1001),
           "Isaac Active Items recorded in plugin set");
 
@@ -274,8 +267,7 @@ TEST_CASE("category_factory_no_cross_game_leak", "[engine]") {
   require(f.categoryExists(1000), "partial: Isaac entries present");
   require(!f.categoryExists(1001), "partial: missing entry NOT restored");
   require(f.categoryExists(1002), "partial: overlapping entry present");
-  require(f.categoryById(1000)->name == "Custom Items",
-          "file entry wins for naming");
+  require(f.categoryById(1000)->name == "Custom Items", "file entry wins for naming");
 
   // --- Step 5: clear() wipes plugin_categories_ too (instance switch). ---
   f.clear();

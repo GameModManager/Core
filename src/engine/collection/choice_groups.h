@@ -30,42 +30,39 @@ namespace engine::Collection {
 using ChoicePicks = std::unordered_map<std::string, std::vector<std::string>>;
 
 // Per-group validation outcome.
-enum class ChoiceStatus
-{
-  Valid,   // mode satisfied (exactly-one: 1 pick, at-most-one: 0-1 picks)
-  Empty,   // exactly-one group with zero valid picks
-  TooMany, // 2+ valid picks in either mode
+enum class ChoiceStatus {
+  Valid,    // mode satisfied (exactly-one: 1 pick, at-most-one: 0-1 picks)
+  Empty,    // exactly-one group with zero valid picks
+  TooMany,  // 2+ valid picks in either mode
 };
 
-struct GroupVerdict
-{
+struct GroupVerdict {
   std::string group_id;
-  ChoiceStatus status = ChoiceStatus::Valid;
+  ChoiceStatus status     = ChoiceStatus::Valid;
   std::size_t valid_count = 0;
-  std::string winning_pick; // first valid pick, empty when none
+  std::string winning_pick;  // first valid pick, empty when none
 };
 
-struct ChoiceValidation
-{
+struct ChoiceValidation {
   bool success = true;
-  std::vector<GroupVerdict> verdicts; // one per group, in group order
-  std::vector<std::string> unrecognized_groups; // pick keys matching no group
-  std::vector<std::string> unrecognized_members; // picks outside their group
+  std::vector<GroupVerdict> verdicts;             // one per group, in group order
+  std::vector<std::string> unrecognized_groups;   // pick keys matching no group
+  std::vector<std::string> unrecognized_members;  // picks outside their group
 };
 
 // Pure per-group validation of picks against choice groups. Unknown group
 // ids and non-member picks are reported as diagnostics and excluded from
 // the per-group counts; they do not fail validation on their own.
-[[nodiscard]] ChoiceValidation validate_choice_groups(
-    const std::vector<ChoiceGroup>& groups, const ChoicePicks& picks);
+[[nodiscard]] ChoiceValidation
+validate_choice_groups(const std::vector<ChoiceGroup> &groups,
+                       const ChoicePicks &picks);
 
 // Picks remembered from a previous install, plus the group membership
 // snapshot they were chosen against. Persisted in instance state so an
 // incremental update can tell "same options" from "options changed".
-struct PriorChoiceState
-{
+struct PriorChoiceState {
   ChoicePicks picks;
-  ChoicePicks membership; // group id -> member mod ids at pick time
+  ChoicePicks membership;  // group id -> member mod ids at pick time
 };
 
 // Reconcile remembered picks with a new manifest revision for incremental
@@ -74,8 +71,9 @@ struct PriorChoiceState
 // membership. Changed/removed groups and unverifiable snapshots (no
 // recorded membership) are dropped so the install UI re-prompts instead
 // of installing a stale choice.
-[[nodiscard]] ChoicePicks reconcile_prior_choices(
-    const std::vector<ChoiceGroup>& groups, const PriorChoiceState& prior,
-    const ChoicePicks& current_picks);
+[[nodiscard]] ChoicePicks
+reconcile_prior_choices(const std::vector<ChoiceGroup> &groups,
+                        const PriorChoiceState &prior,
+                        const ChoicePicks &current_picks);
 
-} // namespace engine::Collection
+}  // namespace engine::Collection

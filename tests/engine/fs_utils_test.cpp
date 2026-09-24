@@ -10,18 +10,15 @@
 
 namespace fs = std::filesystem;
 
-static void touch(const fs::path& p)
-{
+static void touch(const fs::path &p) {
   std::ofstream(p).put('\n');
 }
 
-static bool path_is(const fs::path& got, const fs::path& want)
-{
+static bool path_is(const fs::path &got, const fs::path &want) {
   return got.lexically_normal() == want.lexically_normal();
 }
 
-TEST_CASE("fs utils", "[engine]")
-{
+TEST_CASE("fs utils", "[engine]") {
   using namespace engine;
 
   const fs::path base = fs::temp_directory_path() / "fs_utils_test_core";
@@ -148,7 +145,7 @@ TEST_CASE("fs utils", "[engine]")
   // freedesktop trash root into the throwaway tree via XDG_DATA_HOME so the
   // test never touches the real trash.
   {
-    const char* old_xdg       = ::getenv("XDG_DATA_HOME");
+    const char *old_xdg       = ::getenv("XDG_DATA_HOME");
     const std::string old_val = old_xdg ? old_xdg : "";
     const fs::path fake_home  = base / "fakehome";
     ::setenv("XDG_DATA_HOME", fake_home.string().c_str(), 1);

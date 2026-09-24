@@ -22,16 +22,15 @@ namespace {
 // sequence and we don't need a per-case app. We guard with
 // QCoreApplication::instance() so re-entry from a test fixture is safe.
 QApplication *ensure_app() {
-  static int argc = 1;
+  static int argc        = 1;
   static char app_name[] = "rolling_chart_test";
-  static char *argv[] = {app_name, nullptr};
-  if (auto *existing =
-          qobject_cast<QApplication *>(QCoreApplication::instance()))
+  static char *argv[]    = {app_name, nullptr};
+  if (auto *existing = qobject_cast<QApplication *>(QCoreApplication::instance()))
     return existing;
   return new QApplication(argc, argv);
 }
 
-} // namespace
+}  // namespace
 
 TEST_CASE("rolling_chart: defaults are sane", "[rolling_chart][ui]") {
   QApplication *app = ensure_app();
@@ -44,8 +43,7 @@ TEST_CASE("rolling_chart: defaults are sane", "[rolling_chart][ui]") {
   CHECK(policy.verticalPolicy() == QSizePolicy::Expanding);
 }
 
-TEST_CASE("rolling_chart: push_sample works without crashing",
-          "[rolling_chart][ui]") {
+TEST_CASE("rolling_chart: push_sample works without crashing", "[rolling_chart][ui]") {
   QApplication *app = ensure_app();
   (void)app;
   ui::RollingChartWidget chart;
@@ -146,8 +144,7 @@ TEST_CASE("rolling_chart: push_samples draws two series without crashing",
   chart.resize(400, 160);
   chart.show();
   for (int i = 0; i < 30; ++i) {
-    chart.push_samples(static_cast<double>(i) * 5.0,
-                       static_cast<double>(i) * 2.5);
+    chart.push_samples(static_cast<double>(i) * 5.0, static_cast<double>(i) * 2.5);
   }
   CHECK(true);
 }

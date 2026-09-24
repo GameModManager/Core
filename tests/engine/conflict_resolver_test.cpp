@@ -8,8 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace
-{
+namespace {
 
 using engine::Install::Action;
 using engine::Install::Conflict;
@@ -22,8 +21,7 @@ using engine::Pack::ResolvedMod;
 
 ResolvedMod make_mod(std::string entry, std::string name, std::string archive,
                      std::string source_type = "nexus", std::string source_id = {},
-                     std::string file_id = {})
-{
+                     std::string file_id = {}) {
   ResolvedMod m;
   m.entry_id     = std::move(entry);
   m.display_name = std::move(name);
@@ -34,10 +32,9 @@ ResolvedMod make_mod(std::string entry, std::string name, std::string archive,
   return m;
 }
 
-const Conflict* find_by_pack(const std::vector<Conflict>& conflicts,
-                             const std::string& pack_entry)
-{
-  for (const auto& c : conflicts) {
+const Conflict *find_by_pack(const std::vector<Conflict> &conflicts,
+                             const std::string &pack_entry) {
+  for (const auto &c : conflicts) {
     if (c.pack.entry_id == pack_entry)
       return &c;
   }
@@ -46,8 +43,7 @@ const Conflict* find_by_pack(const std::vector<Conflict>& conflicts,
 
 }  // namespace
 
-TEST_CASE("conflict resolver reports no conflicts for disjoint mods", "[engine]")
-{
+TEST_CASE("conflict resolver reports no conflicts for disjoint mods", "[engine]") {
   const std::vector<ResolvedMod> existing = {
       make_mod("e1", "Mod One", "one.zip", "nexus", "1")};
   const std::vector<ResolvedMod> pack = {
@@ -57,8 +53,7 @@ TEST_CASE("conflict resolver reports no conflicts for disjoint mods", "[engine]"
   REQUIRE(engine::Install::detect_conflicts(existing, {}).empty());
 }
 
-TEST_CASE("conflict resolver detects duplicate source", "[engine]")
-{
+TEST_CASE("conflict resolver detects duplicate source", "[engine]") {
   const std::vector<ResolvedMod> existing = {
       make_mod("e1", "Mod One v1", "one-v1.zip", "nexus", "100", "1000")};
   // Same provider + mod id, newer file: still the same mod.
@@ -71,8 +66,7 @@ TEST_CASE("conflict resolver detects duplicate source", "[engine]")
   REQUIRE(conflicts[0].pack.entry_id == "p1");
 }
 
-TEST_CASE("conflict resolver matches source case-insensitively", "[engine]")
-{
+TEST_CASE("conflict resolver matches source case-insensitively", "[engine]") {
   const std::vector<ResolvedMod> existing = {
       make_mod("e1", "Mod One", "one.zip", "Nexus", "100")};
   const std::vector<ResolvedMod> pack = {
@@ -82,8 +76,7 @@ TEST_CASE("conflict resolver matches source case-insensitively", "[engine]")
   REQUIRE(conflicts[0].type == ConflictType::DuplicateSource);
 }
 
-TEST_CASE("conflict resolver ignores unknown origins", "[engine]")
-{
+TEST_CASE("conflict resolver ignores unknown origins", "[engine]") {
   // Both sides lack provider identity: must not false-positive, even with
   // identical names and archives... except the archive still collides.
   const std::vector<ResolvedMod> existing = {
@@ -93,8 +86,7 @@ TEST_CASE("conflict resolver ignores unknown origins", "[engine]")
   REQUIRE(engine::Install::detect_conflicts(existing, pack).empty());
 }
 
-TEST_CASE("conflict resolver detects duplicate file", "[engine]")
-{
+TEST_CASE("conflict resolver detects duplicate file", "[engine]") {
   const std::vector<ResolvedMod> existing = {
       make_mod("e1", "Alpha", "Shared.ZIP", "nexus", "1")};
   const std::vector<ResolvedMod> pack = {
@@ -104,15 +96,13 @@ TEST_CASE("conflict resolver detects duplicate file", "[engine]")
   REQUIRE(conflicts[0].type == ConflictType::DuplicateFile);
 }
 
-TEST_CASE("conflict resolver ignores empty archive names", "[engine]")
-{
+TEST_CASE("conflict resolver ignores empty archive names", "[engine]") {
   const std::vector<ResolvedMod> existing = {make_mod("e1", "Alpha", "", "nexus", "1")};
   const std::vector<ResolvedMod> pack = {make_mod("p1", "Beta", "", "loverslab", "2")};
   REQUIRE(engine::Install::detect_conflicts(existing, pack).empty());
 }
 
-TEST_CASE("conflict resolver detects name collisions", "[engine]")
-{
+TEST_CASE("conflict resolver detects name collisions", "[engine]") {
   const std::vector<ResolvedMod> existing = {
       make_mod("e1", "Cool Mod", "cool-a.zip", "nexus", "1")};
   const std::vector<ResolvedMod> pack = {
@@ -122,8 +112,8 @@ TEST_CASE("conflict resolver detects name collisions", "[engine]")
   REQUIRE(conflicts[0].type == ConflictType::NameCollision);
 }
 
-TEST_CASE("conflict resolver reports one conflict per pair, strongest wins", "[engine]")
-{
+TEST_CASE("conflict resolver reports one conflict per pair, strongest wins",
+          "[engine]") {
   const std::vector<ResolvedMod> existing = {
       make_mod("e1", "Same", "same.zip", "nexus", "1")};
   // Same source AND same file AND same name: exactly one DuplicateSource.
@@ -141,8 +131,7 @@ TEST_CASE("conflict resolver reports one conflict per pair, strongest wins", "[e
   REQUIRE(file_name[0].type == ConflictType::DuplicateFile);
 }
 
-TEST_CASE("conflict resolver detects several pack mods at once", "[engine]")
-{
+TEST_CASE("conflict resolver detects several pack mods at once", "[engine]") {
   const std::vector<ResolvedMod> existing = {
       make_mod("e1", "Mod One", "one.zip", "nexus", "1"),
       make_mod("e2", "Mod Two", "two.zip", "nexus", "2")};
@@ -152,8 +141,8 @@ TEST_CASE("conflict resolver detects several pack mods at once", "[engine]")
       make_mod("p3", "Fresh", "fresh.zip", "nexus", "3")};
   const auto conflicts = engine::Install::detect_conflicts(existing, pack);
   REQUIRE(conflicts.size() == 2);
-  const auto* c1 = find_by_pack(conflicts, "p1");
-  const auto* c2 = find_by_pack(conflicts, "p2");
+  const auto *c1 = find_by_pack(conflicts, "p1");
+  const auto *c2 = find_by_pack(conflicts, "p2");
   REQUIRE(c1 != nullptr);
   REQUIRE(c1->type == ConflictType::DuplicateSource);
   REQUIRE(c2 != nullptr);
@@ -161,8 +150,7 @@ TEST_CASE("conflict resolver detects several pack mods at once", "[engine]")
   REQUIRE(find_by_pack(conflicts, "p3") == nullptr);
 }
 
-TEST_CASE("conflict resolver defaults are safe without user choices", "[engine]")
-{
+TEST_CASE("conflict resolver defaults are safe without user choices", "[engine]") {
   const std::vector<Conflict> conflicts = {
       {ConflictType::DuplicateSource, make_mod("e1", "A", "a.zip"),
        make_mod("p1", "A", "a2.zip")},
@@ -186,8 +174,7 @@ TEST_CASE("conflict resolver defaults are safe without user choices", "[engine]"
   REQUIRE(asked[0].action == Action::Skip);
 }
 
-TEST_CASE("conflict resolver honors explicit user choices", "[engine]")
-{
+TEST_CASE("conflict resolver honors explicit user choices", "[engine]") {
   const std::vector<Conflict> conflicts = {
       {ConflictType::DuplicateSource, make_mod("e1", "A", "a.zip"),
        make_mod("p1", "A", "a2.zip")},
@@ -205,8 +192,7 @@ TEST_CASE("conflict resolver honors explicit user choices", "[engine]")
   REQUIRE(resolutions[1].remove_existing.empty());
 }
 
-TEST_CASE("conflict resolver handles bad choices safely", "[engine]")
-{
+TEST_CASE("conflict resolver handles bad choices safely", "[engine]") {
   const std::vector<Conflict> conflicts = {
       {ConflictType::DuplicateFile, make_mod("e1", "A", "a.zip"),
        make_mod("p1", "B", "a.zip")},
@@ -229,8 +215,7 @@ TEST_CASE("conflict resolver handles bad choices safely", "[engine]")
   REQUIRE(renamed[0].action == Action::Rename);
 }
 
-TEST_CASE("conflict resolver rewrites the install plan", "[engine]")
-{
+TEST_CASE("conflict resolver rewrites the install plan", "[engine]") {
   const InstallPlan plan = {
       {make_mod("p1", "A", "a.zip"), ""},
       {make_mod("p2", "B", "b.zip"), ""},
@@ -249,8 +234,7 @@ TEST_CASE("conflict resolver rewrites the install plan", "[engine]")
   REQUIRE(out[1].target_name == "c-renamed.zip");
 }
 
-TEST_CASE("conflict resolver leaves untouched entries alone", "[engine]")
-{
+TEST_CASE("conflict resolver leaves untouched entries alone", "[engine]") {
   const InstallPlan plan = {
       {make_mod("p1", "A", "a.zip"), ""},
       {make_mod("p9", "Z", "z.zip"), "custom.zip"},
@@ -265,8 +249,7 @@ TEST_CASE("conflict resolver leaves untouched entries alone", "[engine]")
   REQUIRE(engine::Install::apply_resolutions({}, {}).empty());
 }
 
-TEST_CASE("conflict resolver strongest action wins per entry", "[engine]")
-{
+TEST_CASE("conflict resolver strongest action wins per entry", "[engine]") {
   const InstallPlan plan                    = {{make_mod("p1", "A", "a.zip"), ""}};
   const std::vector<Resolution> resolutions = {
       {0, Action::Rename, "p1", "a2.zip", ""},
@@ -283,8 +266,7 @@ TEST_CASE("conflict resolver strongest action wins per entry", "[engine]")
   REQUIRE(kept[0].target_name.empty());
 }
 
-TEST_CASE("conflict resolver describes conflicts and resolutions", "[engine]")
-{
+TEST_CASE("conflict resolver describes conflicts and resolutions", "[engine]") {
   const Conflict c{ConflictType::NameCollision, make_mod("e1", "A", "a.zip"),
                    make_mod("p1", "A", "b.zip")};
   const std::string text = engine::Install::describe(c);

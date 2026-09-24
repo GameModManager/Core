@@ -24,8 +24,9 @@ UpdateInfo LinuxSelfUpdater::check_for_update() {
   return info;
 }
 
-InstallResult LinuxSelfUpdater::install_update(
-    const UpdateInfo &info, std::function<void(float progress)> progress_cb) {
+InstallResult
+LinuxSelfUpdater::install_update(const UpdateInfo &info,
+                                 std::function<void(float progress)> progress_cb) {
   InstallResult result;
 
   if (!info.available || info.download_url.empty()) {
@@ -38,7 +39,7 @@ InstallResult LinuxSelfUpdater::install_update(
   if (progress_cb)
     progress_cb(0.0f);
 
-  namespace dl = engine::download;
+  namespace dl   = engine::download;
   long http_code = 0;
   dl::Options opts;
   opts.user_agent = "GameModManager/SelfUpdater";
@@ -52,11 +53,10 @@ InstallResult LinuxSelfUpdater::install_update(
   };
   dl_progress.start = std::chrono::steady_clock::now();
 
-  bool ok =
-      dl::curl_download(info.download_url, dest, http_code, opts, &dl_progress, 0, nullptr, NET_CALLER);
+  bool ok = dl::curl_download(info.download_url, dest, http_code, opts, &dl_progress, 0,
+                              nullptr, NET_CALLER);
   if (!ok || http_code >= 400) {
-    result.error_message =
-        "Download failed (HTTP " + std::to_string(http_code) + ")";
+    result.error_message = "Download failed (HTTP " + std::to_string(http_code) + ")";
     return result;
   }
 
@@ -70,7 +70,7 @@ InstallResult LinuxSelfUpdater::install_update(
                                    std::filesystem::perms::owner_write,
                                std::filesystem::perm_options::add);
 
-  result.success = true;
+  result.success          = true;
   result.requires_restart = true;
   return result;
 }
@@ -85,6 +85,6 @@ void LinuxSelfUpdater::restart() {
   std::exit(0);
 }
 
-} // namespace engine::update
+}  // namespace engine::update
 
-#endif // __linux__
+#endif  // __linux__

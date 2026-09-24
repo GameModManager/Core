@@ -10,7 +10,7 @@
 namespace engine {
 
 // Backward-compat aliases (deprecated - use Source::NxmLink / Source::Router)
-using NxmLink  = Source::NxmLink;
+using NxmLink   = Source::NxmLink;
 using NxmRouter = Source::Router;
 
-} // namespace engine
+}  // namespace engine

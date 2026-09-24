@@ -29,7 +29,7 @@ std::vector<Instance> InstanceManager::list_all() const {
   if (!fs::is_directory(root_, ec))
     return result;
 
-  for (const auto& entry : fs::directory_iterator(root_, ec)) {
+  for (const auto &entry : fs::directory_iterator(root_, ec)) {
     if (!entry.is_directory())
       continue;
     auto toml = entry.path() / "instance.toml";
@@ -42,14 +42,14 @@ std::vector<Instance> InstanceManager::list_all() const {
   }
 
   // Sort by display_name
-  std::sort(result.begin(), result.end(), [](const Instance& a, const Instance& b) {
+  std::sort(result.begin(), result.end(), [](const Instance &a, const Instance &b) {
     return a.info().display_name < b.info().display_name;
   });
 
   return result;
 }
 
-std::optional<Instance> InstanceManager::find_by_name(const std::string& name) const {
+std::optional<Instance> InstanceManager::find_by_name(const std::string &name) const {
   std::error_code ec;
   auto path = root_ / name;
   if (!fs::is_directory(path, ec))
@@ -70,8 +70,8 @@ std::string InstanceManager::last_active_name() const {
   return read_last_instance();
 }
 
-InstanceManager::CreateResult InstanceManager::create(const DetectedGame& game,
-                                                      const std::string& display_name) {
+InstanceManager::CreateResult InstanceManager::create(const DetectedGame &game,
+                                                      const std::string &display_name) {
   ensure_root();
 
   Instance inst = create_instance_for_game(game, root_, display_name);
@@ -85,7 +85,7 @@ InstanceManager::CreateResult InstanceManager::create(const DetectedGame& game,
 }
 
 InstanceManager::CreateResult InstanceManager::create_portable(
-    const DetectedGame& game, const std::string& display_name, const fs::path& root) {
+    const DetectedGame &game, const std::string &display_name, const fs::path &root) {
   if (root.empty()) {
     return {false, "Empty root path for portable instance", {}};
   }
@@ -110,8 +110,8 @@ InstanceManager::CreateResult InstanceManager::create_portable(
 }
 
 InstanceManager::RenameResult
-InstanceManager::rename(const std::string& current_name,
-                        const std::string& new_display_name) {
+InstanceManager::rename(const std::string &current_name,
+                        const std::string &new_display_name) {
   auto opt = find_by_name(current_name);
   if (!opt) {
     return {false, "Instance not found: " + current_name, {}};
@@ -164,7 +164,7 @@ InstanceManager::rename(const std::string& current_name,
   return {true, "", unique_name};
 }
 
-InstanceManager::DeleteResult InstanceManager::remove(const std::string& name,
+InstanceManager::DeleteResult InstanceManager::remove(const std::string &name,
                                                       bool force) {
   auto opt = find_by_name(name);
   if (!opt) {
@@ -195,8 +195,8 @@ InstanceManager::DeleteResult InstanceManager::remove(const std::string& name,
   return {true, "", was_active_flag};
 }
 
-InstanceManager::CloneResult InstanceManager::clone(const std::string& source_name,
-                                                    const std::string& new_display_name,
+InstanceManager::CloneResult InstanceManager::clone(const std::string &source_name,
+                                                    const std::string &new_display_name,
                                                     bool copy_mods, bool copy_profiles,
                                                     bool copy_downloads) {
   auto source_opt = find_by_name(source_name);
@@ -204,7 +204,7 @@ InstanceManager::CloneResult InstanceManager::clone(const std::string& source_na
     return {false, "Source instance not found: " + source_name, {}};
   }
 
-  const Instance& source = *source_opt;
+  const Instance &source = *source_opt;
 
   // Create new instance with the new display_name
   DetectedGame game;
@@ -218,7 +218,7 @@ InstanceManager::CloneResult InstanceManager::clone(const std::string& source_na
     return {false, create_result.error, {}};
   }
 
-  Instance& dest       = create_result.instance;
+  Instance &dest       = create_result.instance;
   fs::path dest_root   = dest.info().root;
   fs::path source_root = source.info().root;
 
@@ -289,8 +289,8 @@ InstanceManager::CloneResult InstanceManager::clone(const std::string& source_na
 }
 
 InstanceManager::ImportResult
-InstanceManager::import_from_path(const fs::path& external_root,
-                                  const std::string& display_name) {
+InstanceManager::import_from_path(const fs::path &external_root,
+                                  const std::string &display_name) {
   if (!fs::is_directory(external_root)) {
     return {false, "Path is not a directory: " + external_root.string(), {}, 0, 0};
   }
@@ -332,7 +332,7 @@ InstanceManager::import_from_path(const fs::path& external_root,
              fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
     if (!ec) {
       // Count mod folders
-      for (const auto& entry : fs::directory_iterator(dst_mods, ec)) {
+      for (const auto &entry : fs::directory_iterator(dst_mods, ec)) {
         if (entry.is_directory())
           ++mods_imported;
       }
@@ -348,7 +348,7 @@ InstanceManager::import_from_path(const fs::path& external_root,
     fs::copy(src_profiles, dst_profiles,
              fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
     if (!ec) {
-      for (const auto& entry : fs::directory_iterator(dst_profiles, ec)) {
+      for (const auto &entry : fs::directory_iterator(dst_profiles, ec)) {
         if (entry.is_directory())
           ++profiles_imported;
       }
@@ -377,7 +377,7 @@ fs::path InstanceManager::instances_root() const {
   return root_;
 }
 
-bool InstanceManager::is_active(const std::string& name) const {
+bool InstanceManager::is_active(const std::string &name) const {
   return read_last_instance() == name;
 }
 

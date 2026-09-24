@@ -9,10 +9,9 @@ namespace ui {
 
 ModPubFetchWorker::ModPubFetchWorker(QObject *parent) : QObject(parent) {}
 
-void ModPubFetchWorker::run(
-    std::function<engine::ModPubModInfoResult()> fetch, quint64 generation) {
-  engine::ModPubModInfoResult result =
-      fetch ? fetch() : engine::ModPubModInfoResult{};
+void ModPubFetchWorker::run(std::function<engine::ModPubModInfoResult()> fetch,
+                            quint64 generation) {
+  engine::ModPubModInfoResult result = fetch ? fetch() : engine::ModPubModInfoResult{};
   emit finished(std::move(result), generation);
 }
 
@@ -31,8 +30,8 @@ ModPubFetchThread::~ModPubFetchThread() {
   thread_->wait();
 }
 
-void ModPubFetchThread::start(
-    std::function<engine::ModPubModInfoResult()> fetch, quint64 generation) {
+void ModPubFetchThread::start(std::function<engine::ModPubModInfoResult()> fetch,
+                              quint64 generation) {
   ModPubFetchWorker *worker = worker_;
   QMetaObject::invokeMethod(
       worker,
@@ -42,4 +41,4 @@ void ModPubFetchThread::start(
       Qt::QueuedConnection);
 }
 
-} // namespace ui
+}  // namespace ui

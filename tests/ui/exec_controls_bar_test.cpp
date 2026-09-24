@@ -25,15 +25,16 @@
 #include <catch2/catch_test_macros.hpp>
 
 TEST_CASE("exec controls bar edit sentinel", "[ui]") {
-  int test_argc = 1;
+  int test_argc     = 1;
   char test_argv0[] = "test";
   char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
 
   ui::ExecControlsBar bar;
   int add_requests = 0;
-  QObject::connect(&bar, &ui::ExecControlsBar::add_entry_requested,
-                   [&] { ++add_requests; });
+  QObject::connect(&bar, &ui::ExecControlsBar::add_entry_requested, [&] {
+    ++add_requests;
+  });
   auto *combo = bar.findChild<QComboBox *>();
   REQUIRE(combo != nullptr);
 
@@ -51,11 +52,10 @@ TEST_CASE("exec controls bar edit sentinel", "[ui]") {
     CHECK(add_requests == 0);
     bar.clear_executables();
     CHECK(add_requests == 0);
-    CHECK(combo->count() == 1); // bare sentinel re-added
+    CHECK(combo->count() == 1);  // bare sentinel re-added
   }
 
-  SECTION(
-      "entries present: sentinel click opens editor and restores selection") {
+  SECTION("entries present: sentinel click opens editor and restores selection") {
     bar.set_executables({"a.exe", "b.exe"}, "b.exe");
     REQUIRE(combo->count() == 3);
     REQUIRE(combo->currentIndex() == 2);
@@ -68,8 +68,8 @@ TEST_CASE("exec controls bar edit sentinel", "[ui]") {
     // activated fires after currentIndexChanged with the restored index;
     // the activated handler guards against double-fire via
     // current_executable().isEmpty().
-    emit combo->activated(2); // Qt emits activated(currentIndex()) post-restore
+    emit combo->activated(2);  // Qt emits activated(currentIndex()) post-restore
     CHECK(add_requests == 1);
-    CHECK(combo->currentIndex() == 2); // restored, not left on sentinel
+    CHECK(combo->currentIndex() == 2);  // restored, not left on sentinel
   }
 }

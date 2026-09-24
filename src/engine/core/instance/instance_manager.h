@@ -30,8 +30,7 @@ public:
     std::string error;
     Instance instance;
   };
-  CreateResult create(const DetectedGame &game,
-                      const std::string &display_name);
+  CreateResult create(const DetectedGame &game, const std::string &display_name);
   CreateResult create_portable(const DetectedGame &game,
                                const std::string &display_name,
                                const std::filesystem::path &root);
@@ -40,7 +39,7 @@ public:
   struct RenameResult {
     bool success = false;
     std::string error;
-    std::string new_name; // sanitized folder name
+    std::string new_name;  // sanitized folder name
   };
   RenameResult rename(const std::string &current_name,
                       const std::string &new_display_name);
@@ -59,16 +58,16 @@ public:
     std::string error;
     Instance instance;
   };
-  CloneResult clone(const std::string &source_name,
-                    const std::string &new_display_name, bool copy_mods = true,
-                    bool copy_profiles = true, bool copy_downloads = false);
+  CloneResult clone(const std::string &source_name, const std::string &new_display_name,
+                    bool copy_mods = true, bool copy_profiles = true,
+                    bool copy_downloads = false);
 
   // Import from MO2
   struct ImportResult {
     bool success = false;
     std::string error;
     Instance instance;
-    int mods_imported = 0;
+    int mods_imported     = 0;
     int profiles_imported = 0;
   };
   ImportResult import_from_mo2(const std::filesystem::path &mo2_instance_dir,
@@ -87,4 +86,4 @@ private:
   void ensure_root() const;
 };
 
-} // namespace engine
+}  // namespace engine

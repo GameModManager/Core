@@ -14,18 +14,18 @@ namespace Deploy {
 
 // Result of a sync operation: what changed.
 struct SyncResult {
-  int files_deployed = 0;  // new/re-pointed files
-  int files_removed = 0;   // stale files unlinked
-  int files_unchanged = 0; // already correct
-  int files_failed = 0;    // -1 sentinel: deploy_all reported a failure
+  int files_deployed  = 0;  // new/re-pointed files
+  int files_removed   = 0;  // stale files unlinked
+  int files_unchanged = 0;  // already correct
+  int files_failed    = 0;  // -1 sentinel: deploy_all reported a failure
 };
 
 // Status of a single deployed file.
 struct DeployedFileInfo {
-  std::filesystem::path target; // path in game_dir
-  std::filesystem::path source; // mod folder source
-  std::string mod_id;           // owning mod (empty when not derivable)
-  bool backed_up = false;       // original game file was backed up
+  std::filesystem::path target;  // path in game_dir
+  std::filesystem::path source;  // mod folder source
+  std::string mod_id;            // owning mod (empty when not derivable)
+  bool backed_up = false;        // original game file was backed up
 };
 
 // Direct-deploy strategy: deploys mods straight into game_dir using symlinks
@@ -51,7 +51,7 @@ public:
     std::string disable_mechanism;
     bool case_sensitive = true;
     std::filesystem::path ledger_file;
-    std::filesystem::path backup_root; // Original_Files dir
+    std::filesystem::path backup_root;  // Original_Files dir
   };
 
   explicit Direct(Config config);
@@ -90,8 +90,7 @@ public:
   // NOTE: returns nullptr in the initial implementation - the ledger is a
   // value map, so a pointer-to-view would dangle. Callers should use
   // list_deployed()/current_ledger() instead.
-  [[nodiscard]] const DeployedFileInfo *
-  find(const std::filesystem::path &target) const;
+  [[nodiscard]] const DeployedFileInfo *find(const std::filesystem::path &target) const;
 
   // Query: list all currently deployed files.
   [[nodiscard]] std::vector<DeployedFileInfo> list_deployed() const;
@@ -110,7 +109,7 @@ public:
 
 private:
   Config config_;
-  Symlink file_strategy_; // per-file symlink/copy operations
+  Symlink file_strategy_;  // per-file symlink/copy operations
 };
 
-} // namespace Deploy
+}  // namespace Deploy

@@ -20,8 +20,9 @@ UpdateInfo AppImageUpdater::check_for_update() {
   return fetch_update_info(".AppImage");
 }
 
-InstallResult AppImageUpdater::install_update(
-    const UpdateInfo &info, std::function<void(float progress)> progress_cb) {
+InstallResult
+AppImageUpdater::install_update(const UpdateInfo &info,
+                                std::function<void(float progress)> progress_cb) {
   InstallResult result;
 
   if (!info.available || info.download_url.empty()) {
@@ -39,13 +40,12 @@ InstallResult AppImageUpdater::install_update(
 
   // Download the new AppImage to a temporary location, then rename into
   // place. This avoids truncating the running binary.
-  const auto tmp_path =
-      std::filesystem::temp_directory_path() / "gmm_update.AppImage";
+  const auto tmp_path = std::filesystem::temp_directory_path() / "gmm_update.AppImage";
 
   if (progress_cb)
     progress_cb(0.0f);
 
-  namespace dl = engine::download;
+  namespace dl   = engine::download;
   long http_code = 0;
   dl::Options opts;
   opts.user_agent = "GameModManager/SelfUpdater";
@@ -62,8 +62,7 @@ InstallResult AppImageUpdater::install_update(
   bool ok = dl::curl_download(info.download_url, tmp_path, http_code, opts,
                               &dl_progress, 0, nullptr, NET_CALLER);
   if (!ok || http_code >= 400) {
-    result.error_message =
-        "Download failed (HTTP " + std::to_string(http_code) + ")";
+    result.error_message = "Download failed (HTTP " + std::to_string(http_code) + ")";
     return result;
   }
 
@@ -71,19 +70,17 @@ InstallResult AppImageUpdater::install_update(
     progress_cb(1.0f);
 
   // Make the new AppImage executable.
-  std::filesystem::permissions(tmp_path,
-                               std::filesystem::perms::owner_exec |
-                                   std::filesystem::perms::owner_read,
-                               std::filesystem::perm_options::add);
+  std::filesystem::permissions(
+      tmp_path, std::filesystem::perms::owner_exec | std::filesystem::perms::owner_read,
+      std::filesystem::perm_options::add);
 
   // Move the new file into place (atomic on the same filesystem).
   std::error_code ec;
   std::filesystem::rename(tmp_path, current_path, ec);
   if (ec) {
     // Cross-device move fallback: copy then remove.
-    std::filesystem::copy_file(
-        tmp_path, current_path,
-        std::filesystem::copy_options::overwrite_existing, ec);
+    std::filesystem::copy_file(tmp_path, current_path,
+                               std::filesystem::copy_options::overwrite_existing, ec);
     std::filesystem::remove(tmp_path);
     if (ec) {
       result.error_message = "Failed to replace AppImage: " + ec.message();
@@ -91,7 +88,7 @@ InstallResult AppImageUpdater::install_update(
     }
   }
 
-  result.success = true;
+  result.success          = true;
   result.requires_restart = true;
   return result;
 }
@@ -105,6 +102,6 @@ void AppImageUpdater::restart() {
   std::exit(0);
 }
 
-} // namespace engine::update
+}  // namespace engine::update
 
-#endif // __linux__
+#endif  // __linux__

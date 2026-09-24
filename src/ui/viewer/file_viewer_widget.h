@@ -11,22 +11,22 @@ namespace ui {
 // must return false when the file cannot be shown (the container then falls
 // back to its "no viewer" page).
 class FileViewerWidget : public QWidget {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit FileViewerWidget(QWidget* parent = nullptr);
-    ~FileViewerWidget() override;
+  explicit FileViewerWidget(QWidget *parent = nullptr);
+  ~FileViewerWidget() override;
 
-    virtual bool open(const QString& path) = 0;
-    virtual void clear() = 0;
+  virtual bool open(const QString &path) = 0;
+  virtual void clear()                   = 0;
 
-    QString current_path() const { return path_; }
-    bool has_content() const { return !path_.isEmpty(); }
+  QString current_path() const { return path_; }
+  bool has_content() const { return !path_.isEmpty(); }
 
 protected:
-    void set_current_path(const QString& path) { path_ = path; }
+  void set_current_path(const QString &path) { path_ = path; }
 
 private:
-    QString path_;
+  QString path_;
 };
 
 }  // namespace ui

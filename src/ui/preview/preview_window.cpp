@@ -41,7 +41,7 @@ namespace ui::preview {
 static constexpr int kSnapValues[]  = {25, 50, 75, 100, 150, 200, 300, 400};
 static constexpr int kSnapThreshold = 5;
 
-SpeedSlider::SpeedSlider(QWidget* parent) : QSlider(Qt::Horizontal, parent) {
+SpeedSlider::SpeedSlider(QWidget *parent) : QSlider(Qt::Horizontal, parent) {
   setRange(25, 400);
   setValue(100);
   setToolTip(tr("Playback speed: 0.25x to 4.0x (drag near a tick to snap)"));
@@ -51,7 +51,7 @@ SpeedSlider::SpeedSlider(QWidget* parent) : QSlider(Qt::Horizontal, parent) {
 // SpeedTickStrip
 // ---------------------------------------------------------------------------
 
-SpeedTickStrip::SpeedTickStrip(QWidget* parent) : QWidget(parent) {
+SpeedTickStrip::SpeedTickStrip(QWidget *parent) : QWidget(parent) {
   setFixedHeight(22);
   setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 }
@@ -92,7 +92,7 @@ QString SpeedTickStrip::labelForValue(int val) const {
   }
 }
 
-void SpeedTickStrip::paintEvent(QPaintEvent* /*event*/) {
+void SpeedTickStrip::paintEvent(QPaintEvent * /*event*/) {
   QPainter p(this);
   p.setRenderHint(QPainter::Antialiasing, true);
 
@@ -141,7 +141,7 @@ class DebugImageLabel : public QLabel {
 public:
   using QLabel::QLabel;
 
-  void set_canvas_size(const QSize& s) { canvas_size_ = s; }
+  void set_canvas_size(const QSize &s) { canvas_size_ = s; }
 
   void set_overlay_enabled(bool enabled) {
     overlay_enabled_ = enabled;
@@ -153,13 +153,13 @@ public:
   // Transparency checkerboard tile painted behind the pixmap. A null pixmap
   // disables the grid. Painted here (before QLabel draws the pixmap) so the
   // grid cannot be covered by an opaque label background.
-  void set_checker_tile(const QPixmap& tile) {
+  void set_checker_tile(const QPixmap &tile) {
     checker_tile_ = tile;
     update();
   }
 
 protected:
-  void paintEvent(QPaintEvent* event) override {
+  void paintEvent(QPaintEvent *event) override {
     if (!checker_tile_.isNull()) {
       QPainter p(this);
       p.fillRect(rect(), QBrush(checker_tile_));
@@ -193,21 +193,21 @@ private:
 
 namespace {
 
-  bool has_extension(const QString& path, const QStringList& exts) {
+  bool has_extension(const QString &path, const QStringList &exts) {
     return exts.contains(QFileInfo(path).suffix().toLower());
   }
 
-  const QStringList& image_extensions() {
+  const QStringList &image_extensions() {
     static const QStringList exts = {"png", "jpg", "jpeg", "webp", "bmp", "gif"};
     return exts;
   }
 
-  const QStringList& animation_extensions() {
+  const QStringList &animation_extensions() {
     static const QStringList exts = {"anm2"};
     return exts;
   }
 
-  const QStringList& text_extensions() {
+  const QStringList &text_extensions() {
     static const QStringList exts = {"txt",  "ini", "cfg",  "log",
                                      "json", "xml", "meta", "md"};
     return exts;
@@ -215,7 +215,7 @@ namespace {
 
 }  // namespace
 
-bool PreviewWindow::supports(const QString& file_path) {
+bool PreviewWindow::supports(const QString &file_path) {
   return has_extension(file_path, image_extensions()) ||
          has_extension(file_path, animation_extensions()) ||
          has_extension(file_path, text_extensions()) ||
@@ -268,12 +268,12 @@ void PreviewWindow::update_checkerboard_background() {
   scroll_->viewport()->setPalette(vpal);
 }
 
-PreviewWindow::PreviewWindow(QWidget* parent) : QDialog(parent) {
+PreviewWindow::PreviewWindow(QWidget *parent) : QDialog(parent) {
   setWindowTitle(tr("Preview"));
   setMinimumSize(440, 380);
   resize(680, 520);
 
-  auto* main_layout = new QVBoxLayout(this);
+  auto *main_layout = new QVBoxLayout(this);
 
   // Filename label
   name_label_ = new QLabel(this);
@@ -281,7 +281,7 @@ PreviewWindow::PreviewWindow(QWidget* parent) : QDialog(parent) {
   main_layout->addWidget(name_label_);
 
   // Previous / Next variant buttons
-  auto* nav_row = new QHBoxLayout;
+  auto *nav_row = new QHBoxLayout;
   prev_button_  = new QPushButton(tr("Previous"), this);
   next_button_  = new QPushButton(tr("Next"), this);
   nav_row->addWidget(prev_button_);
@@ -298,13 +298,13 @@ PreviewWindow::PreviewWindow(QWidget* parent) : QDialog(parent) {
   // Two-column content area: image/animation preview (left) + ANM2 controls
   // (right).  The controls widget is hidden for non-ANM2 files so the stack
   // gets the full width.
-  auto* content_row = new QHBoxLayout;
+  auto *content_row = new QHBoxLayout;
 
   stack_ = new QStackedWidget(this);
 
   // Image page: scrollable image on a checkerboard background + zoom bar.
   image_page_        = new QWidget(this);
-  auto* image_layout = new QVBoxLayout(image_page_);
+  auto *image_layout = new QVBoxLayout(image_page_);
   image_layout->setContentsMargins(0, 0, 0, 0);
   scroll_ = new QScrollArea(image_page_);
   scroll_->setWidgetResizable(true);
@@ -323,10 +323,10 @@ PreviewWindow::PreviewWindow(QWidget* parent) : QDialog(parent) {
   scroll_->setWidget(image_label_);
   image_layout->addWidget(scroll_);
 
-  auto* zoom_bar        = new QHBoxLayout;
-  auto* fit_button      = new QPushButton(tr("Fit"), image_page_);
-  auto* zoom_out_button = new QPushButton("-", image_page_);
-  auto* zoom_in_button  = new QPushButton("+", image_page_);
+  auto *zoom_bar        = new QHBoxLayout;
+  auto *fit_button      = new QPushButton(tr("Fit"), image_page_);
+  auto *zoom_out_button = new QPushButton("-", image_page_);
+  auto *zoom_in_button  = new QPushButton("+", image_page_);
   zoom_label_           = new QLabel("100%", image_page_);
   zoom_bar->addWidget(fit_button);
   zoom_bar->addWidget(zoom_out_button);
@@ -388,9 +388,9 @@ PreviewWindow::PreviewWindow(QWidget* parent) : QDialog(parent) {
   connect(&anm2_timer_, &QTimer::timeout, this, &PreviewWindow::on_anm2_frame_timeout);
 }
 
-void PreviewWindow::show_file(const QString& file_path,
-                              const QStringList& provider_paths,
-                              const QStringList& provider_names) {
+void PreviewWindow::show_file(const QString &file_path,
+                              const QStringList &provider_paths,
+                              const QStringList &provider_names) {
   engine::Logger::instance().debug(
       "[PreviewWindow] show_file: file=" + file_path.toStdString() +
       " providers=" + std::to_string(provider_paths.size()));
@@ -402,7 +402,7 @@ void PreviewWindow::show_file(const QString& file_path,
   // Append any provider variants (skipping the primary, already first, and
   // entries without a resolvable on-disk copy).
   for (int i = 0; i < provider_paths.size(); ++i) {
-    const auto& p = provider_paths[i];
+    const auto &p = provider_paths[i];
     if (p.isEmpty() || p == file_path)
       continue;
     paths_ << p;
@@ -423,7 +423,7 @@ void PreviewWindow::reload() {
   prev_button_->setEnabled(variant_ > 0);
   next_button_->setEnabled(variant_ + 1 < count);
 
-  const QString& path = paths_[variant_];
+  const QString &path = paths_[variant_];
   name_label_->setText(QFileInfo(path).fileName());
   if (variant_ > 0 && variant_ < names_.size() && !names_[variant_].isEmpty()) {
     source_label_->setText(
@@ -491,7 +491,7 @@ void PreviewWindow::reload() {
   show_unsupported();
 }
 
-bool PreviewWindow::load_image(const QString& path) {
+bool PreviewWindow::load_image(const QString &path) {
   if (!has_extension(path, image_extensions()))
     return false;
   QImage img(path);
@@ -518,7 +518,7 @@ bool PreviewWindow::load_image(const QString& path) {
   return true;
 }
 
-bool PreviewWindow::parse_anm2_data(const QString& path) {
+bool PreviewWindow::parse_anm2_data(const QString &path) {
   if (!has_extension(path, animation_extensions()))
     return false;
 
@@ -537,15 +537,15 @@ bool PreviewWindow::parse_anm2_data(const QString& path) {
 
   // Helper lambda to convert a list of raw frames into QPixmaps.
   auto convert_frames =
-      [&](const std::vector<::engine::AnimationParserFeature::Frame>& src, int cw,
+      [&](const std::vector<::engine::AnimationParserFeature::Frame> &src, int cw,
           int ch) {
         AnimationState state;
         state.fps = data->fps;
-        for (const auto& frame : src) {
+        for (const auto &frame : src) {
           QImage canvas(cw, ch, QImage::Format_ARGB32_Premultiplied);
           canvas.fill(Qt::transparent);
           QPainter painter(&canvas);
-          for (const auto& layer : frame.layers) {
+          for (const auto &layer : frame.layers) {
             QImage sprite(layer.rgba_pixels.data(), layer.width, layer.height,
                           QImage::Format_RGBA8888);
             painter.drawImage(
@@ -560,7 +560,7 @@ bool PreviewWindow::parse_anm2_data(const QString& path) {
 
   // If the file provides named animation states, use them.
   if (!data->states.empty()) {
-    for (const auto& s : data->states) {
+    for (const auto &s : data->states) {
       auto state = convert_frames(s.frames, s.canvas_width, s.canvas_height);
       state.name = QString::fromStdString(s.name);
       anm2_states_.push_back(std::move(state));
@@ -575,7 +575,7 @@ bool PreviewWindow::parse_anm2_data(const QString& path) {
   // Store per-state on-demand render callbacks. Each state carries its own
   // render_frame closure that captures the state's raw_animation pointer.
   anm2_state_renders_.clear();
-  for (const auto& s : data->states) {
+  for (const auto &s : data->states) {
     StateRenderData rd;
     rd.render_frame = s.render_frame;
     rd.canvas_w     = s.on_demand_canvas_width;
@@ -612,7 +612,7 @@ bool PreviewWindow::parse_anm2_data(const QString& path) {
   if (anm2_anim_list_) {
     anm2_anim_list_->blockSignals(true);
     anm2_anim_list_->clear();
-    for (const auto& s : anm2_states_) {
+    for (const auto &s : anm2_states_) {
       int frame_count = static_cast<int>(s.frames.size());
       anm2_anim_list_->addItem(tr("%1 (%2 frames)").arg(s.name).arg(frame_count));
     }
@@ -638,7 +638,7 @@ bool PreviewWindow::parse_anm2_data(const QString& path) {
   // raw_animation) over the top-level one (which captures the first state's
   // pointer).
   if (!anm2_state_renders_.empty() && anm2_state_renders_[0].render_frame) {
-    const auto& rd              = anm2_state_renders_[0];
+    const auto &rd              = anm2_state_renders_[0];
     anm2_render_fn_             = rd.render_frame;
     anm2_on_demand_canvas_w_    = rd.canvas_w;
     anm2_on_demand_canvas_h_    = rd.canvas_h;
@@ -667,7 +667,7 @@ bool PreviewWindow::parse_anm2_data(const QString& path) {
 
   // Update info label: "name, X frames, Y fps"
   if (anm2_info_label_) {
-    const auto& state  = anm2_states_.front();
+    const auto &state  = anm2_states_.front();
     int display_frames = has_on_demand ? anm2_on_demand_frame_count_
                                        : static_cast<int>(state.frames.size());
     int display_fps    = has_on_demand ? anm2_on_demand_fps_ : state.fps;
@@ -699,7 +699,7 @@ bool PreviewWindow::parse_anm2_data(const QString& path) {
   return true;
 }
 
-bool PreviewWindow::load_anm2(const QString& path) {
+bool PreviewWindow::load_anm2(const QString &path) {
   if (!parse_anm2_data(path))
     return false;
 
@@ -748,7 +748,7 @@ void PreviewWindow::on_anm2_frame_timeout() {
   update_anm2_ui();
 }
 
-bool PreviewWindow::load_text(const QString& path) {
+bool PreviewWindow::load_text(const QString &path) {
   if (!has_extension(path, text_extensions()))
     return false;
   QFile file(path);
@@ -770,7 +770,7 @@ bool PreviewWindow::load_text(const QString& path) {
   return true;
 }
 
-bool PreviewWindow::load_plugin_preview(const QString& path) {
+bool PreviewWindow::load_plugin_preview(const QString &path) {
   engine::Logger::instance().debug("[PreviewWindow] load_plugin_preview: path=" +
                                    path.toStdString());
   // Drop any previously embedded plugin widget before resolving the new file so
@@ -785,7 +785,7 @@ bool PreviewWindow::load_plugin_preview(const QString& path) {
   // claimed the extension returns a QWidget* (as opaque void*); we embed it.
   engine::Logger::instance().debug(
       "[PreviewWindow] load_plugin_preview: calling Registry::create_preview");
-  void* w = ui::preview::Registry::instance().create_preview(path.toStdString());
+  void *w = ui::preview::Registry::instance().create_preview(path.toStdString());
   engine::Logger::instance().debug(
       "[PreviewWindow] load_plugin_preview: create_preview returned w=" +
       std::to_string(reinterpret_cast<uintptr_t>(w)));
@@ -795,7 +795,7 @@ bool PreviewWindow::load_plugin_preview(const QString& path) {
     return false;
   }
 
-  plugin_widget_ = reinterpret_cast<QWidget*>(w);
+  plugin_widget_ = reinterpret_cast<QWidget *>(w);
   plugin_layout_->addWidget(plugin_widget_);
   image_has_alpha_ = false;
   update_checkerboard_background();
@@ -886,7 +886,7 @@ void PreviewWindow::apply_zoom() {
     zoom_label_->setText(QStringLiteral("100%"));
 }
 
-void PreviewWindow::resizeEvent(QResizeEvent* event) {
+void PreviewWindow::resizeEvent(QResizeEvent *event) {
   QDialog::resizeEvent(event);
   if (fit_ && !anm2_frames_.empty()) {
     apply_zoom();
@@ -896,7 +896,7 @@ void PreviewWindow::resizeEvent(QResizeEvent* event) {
   }
 }
 
-void PreviewWindow::showEvent(QShowEvent* event) {
+void PreviewWindow::showEvent(QShowEvent *event) {
   QDialog::showEvent(event);
   // show_file() fits against a hidden (possibly empty) viewport on the
   // first open, so the initial pixmap may be unfitted; re-fit now that the
@@ -913,7 +913,7 @@ QSize PreviewWindow::displayed_pixmap_size() const {
   return image_label_->pixmap().size();
 }
 
-void PreviewWindow::keyPressEvent(QKeyEvent* event) {
+void PreviewWindow::keyPressEvent(QKeyEvent *event) {
   if (event->key() == Qt::Key_F12) {
     debug_overlay_enabled_ = !debug_overlay_enabled_;
     if (image_label_)
@@ -931,7 +931,7 @@ void PreviewWindow::build_anm2_controls() {
     return;
 
   anm2_controls_ = new QWidget(this);
-  auto* ctrl     = new QVBoxLayout(anm2_controls_);
+  auto *ctrl     = new QVBoxLayout(anm2_controls_);
   ctrl->setContentsMargins(0, 0, 0, 0);
 
   // Info label: "name, X frames, Y fps"
@@ -945,20 +945,20 @@ void PreviewWindow::build_anm2_controls() {
 
   // Speed slider + tick strip. The slider and the strip share the same
   // width via a vertical container so the "|" ticks align with the groove.
-  auto* speed_row = new QHBoxLayout;
+  auto *speed_row = new QHBoxLayout;
   speed_row->addWidget(new QLabel(tr("Speed:"), anm2_controls_));
-  auto* speed_col = new QVBoxLayout;
+  auto *speed_col = new QVBoxLayout;
   speed_col->setContentsMargins(0, 0, 0, 0);
   speed_col->setSpacing(1);
   anm2_speed_slider_ = new SpeedSlider(anm2_controls_);
   speed_col->addWidget(anm2_speed_slider_);
-  auto* speed_ticks = new SpeedTickStrip(anm2_controls_);
+  auto *speed_ticks = new SpeedTickStrip(anm2_controls_);
   speed_col->addWidget(speed_ticks);
   speed_row->addLayout(speed_col, 1);
   ctrl->addLayout(speed_row);
 
   // Play/Pause + frame counter + step buttons row
-  auto* transport_row = new QHBoxLayout;
+  auto *transport_row = new QHBoxLayout;
   anm2_play_btn_      = new QPushButton(tr("Play"), anm2_controls_);
   anm2_play_btn_->setCheckable(true);
   transport_row->addWidget(anm2_play_btn_);
@@ -981,7 +981,7 @@ void PreviewWindow::build_anm2_controls() {
   ctrl->addWidget(anm2_progress_);
 
   // Experimental notice
-  auto* anm2_notice = new QLabel(tr("ANM2 preview is experimental - may not "
+  auto *anm2_notice = new QLabel(tr("ANM2 preview is experimental - may not "
                                     "render all animations correctly"),
                                  anm2_controls_);
   anm2_notice->setAlignment(Qt::AlignCenter);
@@ -1137,7 +1137,7 @@ void PreviewWindow::switch_anm2_state(int index) {
   if (anm2_play_btn_)
     anm2_play_btn_->setText(tr("Play"));
 
-  const auto& state = anm2_states_[index];
+  const auto &state = anm2_states_[index];
   anm2_frames_      = state.frames;
   anm2_delays_      = state.delays;
   anm2_index_       = 0;
@@ -1146,7 +1146,7 @@ void PreviewWindow::switch_anm2_state(int index) {
   // Swap the on-demand render callback to the selected state's callback.
   // Each state has its own closure capturing the state's raw_animation pointer.
   if (index >= 0 && index < static_cast<int>(anm2_state_renders_.size())) {
-    const auto& rd              = anm2_state_renders_[index];
+    const auto &rd              = anm2_state_renders_[index];
     anm2_render_fn_             = rd.render_frame;
     anm2_on_demand_canvas_w_    = rd.canvas_w;
     anm2_on_demand_canvas_h_    = rd.canvas_h;

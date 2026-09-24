@@ -23,13 +23,13 @@ class ZoomableView;
 class ImageViewer : public FileViewerWidget {
   Q_OBJECT
 public:
-  explicit ImageViewer(QWidget* parent = nullptr);
+  explicit ImageViewer(QWidget *parent = nullptr);
 
-  bool open(const QString& path) override;
+  bool open(const QString &path) override;
   void clear() override;
 
   QImage image() const { return image_; }
-  ZoomableView* view() const { return view_; }
+  ZoomableView *view() const { return view_; }
 
   void set_checkerboard_style(int style);
   int checkerboard_style() const { return checkerboard_style_; }
@@ -43,17 +43,17 @@ public:
   void zoom_out();
 
 signals:
-  void image_loaded(const QImage& image);
+  void image_loaded(const QImage &image);
   void zoom_changed(qreal pixel_zoom);
 
 private:
   void apply_image();
   void update_checker_background();
 
-  ZoomableView* view_               = nullptr;
-  QGraphicsScene* scene_            = nullptr;
-  QGraphicsPixmapItem* pixmap_item_ = nullptr;
-  QGraphicsRectItem* checker_bg_    = nullptr;
+  ZoomableView *view_               = nullptr;
+  QGraphicsScene *scene_            = nullptr;
+  QGraphicsPixmapItem *pixmap_item_ = nullptr;
+  QGraphicsRectItem *checker_bg_    = nullptr;
   QImage image_;
   int checkerboard_style_ = 2;
   bool image_has_alpha_   = false;

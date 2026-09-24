@@ -53,9 +53,7 @@ public:
   // --- Per-row metadata (for context menu consumers) ------------------------
 
   [[nodiscard]] const std::vector<std::string> &names() const { return names_; }
-  [[nodiscard]] const std::vector<bool> &rows_locked() const {
-    return rows_locked_;
-  }
+  [[nodiscard]] const std::vector<bool> &rows_locked() const { return rows_locked_; }
   [[nodiscard]] const std::vector<bool> &rows_force_loaded() const {
     return rows_force_loaded_;
   }
@@ -85,7 +83,7 @@ private:
   enum class PluginType { Regular, Master, Light, Medium };
 
   class PluginTable;
-  PluginTable *table_ = nullptr;
+  PluginTable *table_          = nullptr;
   QPushButton *refresh_button_ = nullptr;
   QLCDNumber *counter_display_ = nullptr;
   std::vector<std::string> names_;
@@ -97,4 +95,4 @@ private:
   bool syncing_ = false;
 };
 
-} // namespace ui
+}  // namespace ui

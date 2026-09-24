@@ -10,15 +10,15 @@ class PipelineContentWidget;
 // (standalone window); Full UI tab mode embeds the content widget directly
 // in MainTabContainer.
 class PipelineWindow : public QDialog {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit PipelineWindow(QWidget* parent = nullptr);
+  explicit PipelineWindow(QWidget *parent = nullptr);
 
-    // Forwards to the embedded PipelineContentWidget.
-    void refresh();
+  // Forwards to the embedded PipelineContentWidget.
+  void refresh();
 
 private:
-    PipelineContentWidget* content_ = nullptr;
+  PipelineContentWidget *content_ = nullptr;
 };
 
 }  // namespace ui

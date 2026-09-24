@@ -26,20 +26,17 @@ using engine::update::ModUpdateIndex;
 using engine::update::ModUpdateShardRecord;
 using engine::update::PollResult;
 
-namespace
-{
+namespace {
 
 // RAII temp dir for disk-cache tests; rm -rf on scope exit. Layout
 // matches the production data dir: <root>/instances is the instances
 // dir, and <root>/modupdatedb is the per-game cache (a sibling of
 // instances, the way masterlist_cache_dir() and icon_cache_dir() lay
 // theirs out).
-struct TempDir
-{
+struct TempDir {
   fs::path root;       // data root (parent of instances/)
   fs::path instances;  // <root>/instances
-  explicit TempDir(const std::string& tag)
-  {
+  explicit TempDir(const std::string &tag) {
     root      = fs::temp_directory_path() /
                 ("gmm_mudb_test_" + tag + "_" + std::to_string(::getpid()) + "_" +
                  std::to_string(reinterpret_cast<std::uintptr_t>(this)));
@@ -48,34 +45,30 @@ struct TempDir
     fs::remove_all(root, ec);
     fs::create_directories(instances);
   }
-  ~TempDir()
-  {
+  ~TempDir() {
     std::error_code ec;
     fs::remove_all(root, ec);
   }
-  TempDir(const TempDir&)            = delete;
-  TempDir& operator=(const TempDir&) = delete;
+  TempDir(const TempDir &)            = delete;
+  TempDir &operator=(const TempDir &) = delete;
 };
 
 // Wire the instance-utils override so cache_root() / cache_dir_for() land
 // in our temp dir. RAII restores the prior override on exit.
-struct ScopedInstancesDir
-{
-  explicit ScopedInstancesDir(const fs::path& instances_dir)
-  {
+struct ScopedInstancesDir {
+  explicit ScopedInstancesDir(const fs::path &instances_dir) {
     engine::set_instances_dir_override(instances_dir);
   }
   ~ScopedInstancesDir() { engine::set_instances_dir_override({}); }
-  ScopedInstancesDir(const ScopedInstancesDir&)            = delete;
-  ScopedInstancesDir& operator=(const ScopedInstancesDir&) = delete;
+  ScopedInstancesDir(const ScopedInstancesDir &)            = delete;
+  ScopedInstancesDir &operator=(const ScopedInstancesDir &) = delete;
 };
 
 // Canned response for the next fetch_index_impl call (FIFO). When the
 // list is empty, fetch_index_impl returns ok=false with the supplied
 // error message. Lets the test stage success, 304, 5xx, and offline
 // scenarios without ever touching libcurl.
-struct CannedIndexResponse
-{
+struct CannedIndexResponse {
   int http_code = 200;
   std::string body;
   std::string etag;
@@ -84,8 +77,7 @@ struct CannedIndexResponse
 
 // In-memory shard record for the next fetch_shard_record_impl call
 // (FIFO). Empty list -> found=false.
-struct CannedShardRecord
-{
+struct CannedShardRecord {
   bool set = false;
   ModUpdateShardRecord rec;
 };
@@ -94,8 +86,7 @@ struct CannedShardRecord
 // fetch_index / fetch_shard_record / cache / state flow without the
 // network. The base class owns the disk-cache write-through; we only
 // answer the *_impl hooks.
-class FakeModUpdateDbClient : public ModUpdateDbClient
-{
+class FakeModUpdateDbClient : public ModUpdateDbClient {
 public:
   std::vector<CannedIndexResponse> index_queue;
   std::vector<CannedShardRecord> shard_queue;
@@ -103,9 +94,8 @@ public:
   // call (lets the test assert If-None-Match wiring).
   std::string last_if_none_match;
 
-  PollResult fetch_index_impl(const std::string& /*db_game*/,
-                              const std::string& if_none_match_etag) override
-  {
+  PollResult fetch_index_impl(const std::string & /*db_game*/,
+                              const std::string &if_none_match_etag) override {
     last_if_none_match = if_none_match_etag;
     PollResult res;
     if (index_queue.empty()) {
@@ -134,9 +124,8 @@ public:
     return res;
   }
 
-  ModUpdateShardRecord fetch_shard_record_impl(const std::string& /*db_game*/,
-                                               std::int64_t file_id) override
-  {
+  ModUpdateShardRecord fetch_shard_record_impl(const std::string & /*db_game*/,
+                                               std::int64_t file_id) override {
     if (shard_queue.empty())
       return ModUpdateShardRecord{};
     const auto c = shard_queue.front();
@@ -155,8 +144,8 @@ public:
 
 // --- URL + filename construction ------------------------------------------
 
-TEST_CASE("mod_update_db: shard_filename uses floor(id/1000)*1000", "[engine][update]")
-{
+TEST_CASE("mod_update_db: shard_filename uses floor(id/1000)*1000",
+          "[engine][update]") {
   REQUIRE(ModUpdateDbClient::shard_filename(0) == "0-999.json");
   REQUIRE(ModUpdateDbClient::shard_filename(1) == "0-999.json");
   REQUIRE(ModUpdateDbClient::shard_filename(999) == "0-999.json");
@@ -168,8 +157,7 @@ TEST_CASE("mod_update_db: shard_filename uses floor(id/1000)*1000", "[engine][up
 }
 
 TEST_CASE("mod_update_db: index_url + shard_url target raw.githubusercontent",
-          "[engine][update]")
-{
+          "[engine][update]") {
   REQUIRE(ModUpdateDbClient::index_url("SE") ==
           "https://raw.githubusercontent.com/GameModManager/"
           "ModUpdateData/main/data/index.SE.json");
@@ -180,8 +168,7 @@ TEST_CASE("mod_update_db: index_url + shard_url target raw.githubusercontent",
 
 // --- db_game_for mapping ---------------------------------------------------
 
-TEST_CASE("mod_update_db: db_game_for maps the epic game set", "[engine][update]")
-{
+TEST_CASE("mod_update_db: db_game_for maps the epic game set", "[engine][update]") {
   REQUIRE(ModUpdateDbClient::db_game_for("skyrimspecialedition") == "SE");
   REQUIRE(ModUpdateDbClient::db_game_for("skyrim") == "LE");
   REQUIRE(ModUpdateDbClient::db_game_for("fallout4") == "FO4");
@@ -196,8 +183,7 @@ TEST_CASE("mod_update_db: db_game_for maps the epic game set", "[engine][update]
 }
 
 TEST_CASE("mod_update_db: knowledge override wins over the default map",
-          "[engine][update]")
-{
+          "[engine][update]") {
   engine::GameKnowledge k;
   k.set("customgame", "modupdate_db_game", "ZZ");
   REQUIRE(ModUpdateDbClient::db_game_for("customgame", &k) == "ZZ");
@@ -212,8 +198,7 @@ TEST_CASE("mod_update_db: knowledge override wins over the default map",
 
 // --- has_update truth table -----------------------------------------------
 
-TEST_CASE("mod_update_db: has_update truth table", "[engine][update]")
-{
+TEST_CASE("mod_update_db: has_update truth table", "[engine][update]") {
   ModUpdateIndex idx;
   idx.game          = "SE";
   idx.updated_by_id = {
@@ -223,34 +208,27 @@ TEST_CASE("mod_update_db: has_update truth table", "[engine][update]")
       {9999, ""},
   };
 
-  SECTION("id missing from the DB -> false (not tracked)")
-  {
+  SECTION("id missing from the DB -> false (not tracked)") {
     REQUIRE_FALSE(ModUpdateDbClient::has_update(idx, 42, "2025-01-01T00:00:00Z"));
   }
-  SECTION("local empty + db present -> true (assume stale)")
-  {
+  SECTION("local empty + db present -> true (assume stale)") {
     REQUIRE(ModUpdateDbClient::has_update(idx, 1234, ""));
   }
-  SECTION("db > local -> true (update available)")
-  {
+  SECTION("db > local -> true (update available)") {
     REQUIRE(ModUpdateDbClient::has_update(idx, 1234, "2025-01-01T00:00:00Z"));
   }
-  SECTION("db < local -> false (user has the newer copy)")
-  {
+  SECTION("db < local -> false (user has the newer copy)") {
     REQUIRE_FALSE(ModUpdateDbClient::has_update(idx, 1234, "2026-01-01T00:00:00Z"));
   }
-  SECTION("db == local -> false (equal)")
-  {
+  SECTION("db == local -> false (equal)") {
     REQUIRE_FALSE(ModUpdateDbClient::has_update(idx, 1234, "2025-06-05T14:23:11Z"));
   }
-  SECTION("day-only vs full ISO 8601 compares correctly")
-  {
+  SECTION("day-only vs full ISO 8601 compares correctly") {
     // local is day-only ("2025-06-05"); db is full ("2025-06-05T14:23:11Z").
     // The full string is lexicographically greater, so db > local.
     REQUIRE(ModUpdateDbClient::has_update(idx, 1234, "2025-06-05"));
   }
-  SECTION("cross-day day-only vs full: db earlier than local -> no badge")
-  {
+  SECTION("cross-day day-only vs full: db earlier than local -> no badge") {
     // Regression: a size-first compare in compare_iso8601 misordered
     // this pair (shorter day-only was assumed earlier; in fact a
     // same-month earlier day with a time is earlier). The correct
@@ -260,8 +238,7 @@ TEST_CASE("mod_update_db: has_update truth table", "[engine][update]")
     cross.updated_by_id = {{7777, "2025-06-04T23:59:59Z"}};
     REQUIRE_FALSE(ModUpdateDbClient::has_update(cross, 7777, "2025-06-05"));
   }
-  SECTION("trailing offset +00:00 is normalized to Z for compare")
-  {
+  SECTION("trailing offset +00:00 is normalized to Z for compare") {
     // Local sources may emit "+00:00" instead of "Z" (legacy LL scrape).
     // Both timestamps refer to the same instant, so no badge.
     ModUpdateIndex plus;
@@ -269,18 +246,15 @@ TEST_CASE("mod_update_db: has_update truth table", "[engine][update]")
     REQUIRE_FALSE(
         ModUpdateDbClient::has_update(plus, 8888, "2025-06-05T14:23:11+00:00"));
   }
-  SECTION("db timestamp empty -> false (cannot decide)")
-  {
+  SECTION("db timestamp empty -> false (cannot decide)") {
     REQUIRE_FALSE(ModUpdateDbClient::has_update(idx, 9999, "2025-01-01T00:00:00Z"));
   }
-  SECTION("db timestamp unparseable -> false (no false positive)")
-  {
+  SECTION("db timestamp unparseable -> false (no false positive)") {
     ModUpdateIndex bad;
     bad.updated_by_id = {{42, "not-a-date"}};
     REQUIRE_FALSE(ModUpdateDbClient::has_update(bad, 42, "2025-01-01T00:00:00Z"));
   }
-  SECTION("local timestamp unparseable -> false (cmp == 0)")
-  {
+  SECTION("local timestamp unparseable -> false (cmp == 0)") {
     // When local is garbage, the comparator returns 0 -> no badge.
     // The DB has a real timestamp; the user has nonsense; refuse to
     // misclassify rather than risking a false positive.
@@ -291,8 +265,7 @@ TEST_CASE("mod_update_db: has_update truth table", "[engine][update]")
 // --- JSON parsing ----------------------------------------------------------
 
 TEST_CASE("mod_update_db: parse_index reads the per-game index shape",
-          "[engine][update]")
-{
+          "[engine][update]") {
   const std::string body = R"({
         "game": "SE",
         "schema_version": 2,
@@ -311,40 +284,34 @@ TEST_CASE("mod_update_db: parse_index reads the per-game index shape",
   REQUIRE(idx.updated_by_id.at(22000) == "2025-08-12T00:00:00Z");
 }
 
-TEST_CASE("mod_update_db: parse_index tolerates missing keys", "[engine][update]")
-{
-  SECTION("empty body -> empty index, game = expected")
-  {
+TEST_CASE("mod_update_db: parse_index tolerates missing keys", "[engine][update]") {
+  SECTION("empty body -> empty index, game = expected") {
     auto idx = ModUpdateDbClient::parse_index("", "SE");
     REQUIRE(idx.game == "SE");
     REQUIRE(idx.updated_by_id.empty());
   }
-  SECTION("non-object body -> empty index")
-  {
+  SECTION("non-object body -> empty index") {
     auto idx = ModUpdateDbClient::parse_index("[]", "SE");
     REQUIRE(idx.game == "SE");
     REQUIRE(idx.updated_by_id.empty());
   }
-  SECTION("malformed JSON -> empty index, no throw")
-  {
+  SECTION("malformed JSON -> empty index, no throw") {
     auto idx = ModUpdateDbClient::parse_index("{not json", "SE");
     REQUIRE(idx.game == "SE");
     REQUIRE(idx.updated_by_id.empty());
   }
-  SECTION("object without `updated` key -> empty index")
-  {
+  SECTION("object without `updated` key -> empty index") {
     auto idx = ModUpdateDbClient::parse_index(R"({"game":"SE"})", "SE");
     REQUIRE(idx.updated_by_id.empty());
   }
-  SECTION("game key overrides the expected_game fallback")
-  {
+  SECTION("game key overrides the expected_game fallback") {
     auto idx = ModUpdateDbClient::parse_index(R"({"game":"FO4","updated":{}})", "SE");
     REQUIRE(idx.game == "FO4");
   }
 }
 
-TEST_CASE("mod_update_db: parse_shard_record finds the matching id", "[engine][update]")
-{
+TEST_CASE("mod_update_db: parse_shard_record finds the matching id",
+          "[engine][update]") {
   const std::string body = R"([
         {"id": 11488, "updated": "2025-06-05T14:23:11Z", "version": "1.0",
          "category": "Objects", "tags": ["gameplay", "adult"]},
@@ -361,25 +328,20 @@ TEST_CASE("mod_update_db: parse_shard_record finds the matching id", "[engine][u
   REQUIRE(rec.tags[1] == "adult");
 }
 
-TEST_CASE("mod_update_db: parse_shard_record miss is found=false", "[engine][update]")
-{
-  SECTION("id not in the slice")
-  {
+TEST_CASE("mod_update_db: parse_shard_record miss is found=false", "[engine][update]") {
+  SECTION("id not in the slice") {
     auto rec = ModUpdateDbClient::parse_shard_record(R"([{"id":1,"updated":"x"}])", 42);
     REQUIRE_FALSE(rec.found);
   }
-  SECTION("non-array body")
-  {
+  SECTION("non-array body") {
     auto rec = ModUpdateDbClient::parse_shard_record(R"({"id":42})", 42);
     REQUIRE_FALSE(rec.found);
   }
-  SECTION("malformed JSON")
-  {
+  SECTION("malformed JSON") {
     auto rec = ModUpdateDbClient::parse_shard_record("{not json", 42);
     REQUIRE_FALSE(rec.found);
   }
-  SECTION("id can be a string of digits")
-  {
+  SECTION("id can be a string of digits") {
     auto rec = ModUpdateDbClient::parse_shard_record(
         R"([{"id":"11488","updated":"2025-06-05T14:23:11Z"}])", 11488);
     REQUIRE(rec.found);
@@ -389,8 +351,8 @@ TEST_CASE("mod_update_db: parse_shard_record miss is found=false", "[engine][upd
 
 // --- ETag header extraction ------------------------------------------------
 
-TEST_CASE("mod_update_db: extract_etag parses a CRLF header block", "[engine][update]")
-{
+TEST_CASE("mod_update_db: extract_etag parses a CRLF header block",
+          "[engine][update]") {
   using engine::update::NetworkModUpdateDbClient;
   REQUIRE(NetworkModUpdateDbClient::extract_etag("ETag: W/\"abc123\"\r\n") ==
           "W/\"abc123\"");
@@ -408,8 +370,7 @@ TEST_CASE("mod_update_db: extract_etag parses a CRLF header block", "[engine][up
 
 TEST_CASE("mod_update_db: fetch_index fetches, parses, persists, and "
           "exposes the index for has_update",
-          "[engine][update]")
-{
+          "[engine][update]") {
   TempDir tmp("fetch_200");
   ScopedInstancesDir scope(tmp.instances);
 
@@ -431,7 +392,7 @@ TEST_CASE("mod_update_db: fetch_index fetches, parses, persists, and "
   REQUIRE(db.last_if_none_match.empty());
 
   // In-memory index is now populated.
-  const ModUpdateIndex* idx = db.index("skyrimspecialedition");
+  const ModUpdateIndex *idx = db.index("skyrimspecialedition");
   REQUIRE(idx != nullptr);
   REQUIRE(idx->updated_by_id.at(1234) == "2025-06-05T14:23:11Z");
 
@@ -454,8 +415,7 @@ TEST_CASE("mod_update_db: fetch_index fetches, parses, persists, and "
 }
 
 TEST_CASE("mod_update_db: 304 with prior cache keeps index + last_checked",
-          "[engine][update]")
-{
+          "[engine][update]") {
   TempDir tmp("fetch_304");
   ScopedInstancesDir scope(tmp.instances);
 
@@ -481,7 +441,7 @@ TEST_CASE("mod_update_db: 304 with prior cache keeps index + last_checked",
     // If-None-Match carried the prior etag.
     REQUIRE(db.last_if_none_match == "W/\"v1\"");
 
-    const ModUpdateIndex* idx = db.index("skyrimspecialedition");
+    const ModUpdateIndex *idx = db.index("skyrimspecialedition");
     REQUIRE(idx != nullptr);
     REQUIRE(idx->updated_by_id.at(1234) == "2025-06-05T14:23:11Z");
     REQUIRE(db.last_checked("skyrimspecialedition").time_since_epoch().count() > 0);
@@ -489,8 +449,7 @@ TEST_CASE("mod_update_db: 304 with prior cache keeps index + last_checked",
 }
 
 TEST_CASE("mod_update_db: 304 with no prior cache returns ok but no index",
-          "[engine][update]")
-{
+          "[engine][update]") {
   TempDir tmp("fetch_304_nocache");
   ScopedInstancesDir scope(tmp.instances);
 
@@ -508,8 +467,7 @@ TEST_CASE("mod_update_db: 304 with no prior cache returns ok but no index",
 }
 
 TEST_CASE("mod_update_db: network failure with on-disk cache falls back",
-          "[engine][update]")
-{
+          "[engine][update]") {
   TempDir tmp("fetch_5xx_cache");
   ScopedInstancesDir scope(tmp.instances);
 
@@ -531,15 +489,14 @@ TEST_CASE("mod_update_db: network failure with on-disk cache falls back",
     REQUIRE(r.from_cache);
     // The reason is preserved for the Debug panel.
     REQUIRE(r.last_error == "connection timed out");
-    const ModUpdateIndex* idx = db.index("fallout4");
+    const ModUpdateIndex *idx = db.index("fallout4");
     REQUIRE(idx != nullptr);
     REQUIRE(idx->updated_by_id.at(7777) == "2025-09-01T00:00:00Z");
   }
 }
 
 TEST_CASE("mod_update_db: network failure with no cache returns ok=false",
-          "[engine][update]")
-{
+          "[engine][update]") {
   TempDir tmp("fetch_fail_nocache");
   ScopedInstancesDir scope(tmp.instances);
 
@@ -552,8 +509,7 @@ TEST_CASE("mod_update_db: network failure with no cache returns ok=false",
   REQUIRE(db.index("fallout4") == nullptr);
 }
 
-TEST_CASE("mod_update_db: unmapped game is silently skipped", "[engine][update]")
-{
+TEST_CASE("mod_update_db: unmapped game is silently skipped", "[engine][update]") {
   TempDir tmp("unmapped");
   ScopedInstancesDir scope(tmp.instances);
 
@@ -566,8 +522,8 @@ TEST_CASE("mod_update_db: unmapped game is silently skipped", "[engine][update]"
   REQUIRE(db.index_queue.size() == 0);
 }
 
-TEST_CASE("mod_update_db: fetch_shard_record returns canned record", "[engine][update]")
-{
+TEST_CASE("mod_update_db: fetch_shard_record returns canned record",
+          "[engine][update]") {
   TempDir tmp("shard");
   ScopedInstancesDir scope(tmp.instances);
 
@@ -592,8 +548,7 @@ TEST_CASE("mod_update_db: fetch_shard_record returns canned record", "[engine][u
 }
 
 TEST_CASE("mod_update_db: fetch_shard_record with bad id is a no-op",
-          "[engine][update]")
-{
+          "[engine][update]") {
   TempDir tmp("shard_badid");
   ScopedInstancesDir scope(tmp.instances);
 

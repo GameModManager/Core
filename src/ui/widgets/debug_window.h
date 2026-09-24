@@ -23,9 +23,9 @@ class Instance;
 class PluginLoader;
 class InstanceRegistry;
 namespace profile {
-class ProfileManager;
+  class ProfileManager;
 }
-} // namespace engine
+}  // namespace engine
 
 namespace ui {
 
@@ -46,7 +46,7 @@ public:
                        const std::string &game_id, const std::string &game_name,
                        engine::PluginLoader *plugin_loader,
                        std::function<void()> on_reload_ui = nullptr,
-                       QWidget *parent = nullptr);
+                       QWidget *parent                    = nullptr);
   ~DebugWindow() override;
 
   // Late injection from MainWindow. Some metadata only resolves after the
@@ -79,11 +79,10 @@ public:
   // (so the next show is in sync). The constructor already calls the
   // per-tab populators, so callers don't need to chain them.
   void rebind_for_instance(const std::filesystem::path &instance_root,
-                           const std::string &game_id,
-                           const std::string &game_name) {
+                           const std::string &game_id, const std::string &game_name) {
     instance_root_ = instance_root;
-    game_id_ = game_id;
-    game_name_ = game_name;
+    game_id_       = game_id;
+    game_name_     = game_name;
     refresh_populated();
   }
 
@@ -169,16 +168,16 @@ private:
   static unsigned long parse_after(const std::string &s, int field_index);
 
   // --- Docks (one per page; tabified by default) ---
-  QDockWidget *charts_dock_ = nullptr;
-  QDockWidget *paths_dock_ = nullptr;
-  QDockWidget *info_dock_ = nullptr;
+  QDockWidget *charts_dock_  = nullptr;
+  QDockWidget *paths_dock_   = nullptr;
+  QDockWidget *info_dock_    = nullptr;
   QDockWidget *network_dock_ = nullptr;
-  QDockWidget *memory_dock_ = nullptr;
+  QDockWidget *memory_dock_  = nullptr;
   QDockWidget *modpack_dock_ = nullptr;
 
   // --- Page content ---
-  QTableWidget *paths_table_ = nullptr;
-  QTableWidget *info_table_ = nullptr;
+  QTableWidget *paths_table_   = nullptr;
+  QTableWidget *info_table_    = nullptr;
   QTableWidget *network_table_ = nullptr;
 
   // Track the last (newest) log id we rendered so we can detect "no new
@@ -187,43 +186,43 @@ private:
   std::uint64_t last_network_log_id_ = 0;
 
   // Charts
-  RollingChartWidget *cpu_chart_ = nullptr;
-  RollingChartWidget *ram_chart_ = nullptr;
-  RollingChartWidget *heap_chart_ = nullptr;
-  RollingChartWidget *disk_chart_ = nullptr;
-  RollingChartWidget *net_chart_ = nullptr;
+  RollingChartWidget *cpu_chart_    = nullptr;
+  RollingChartWidget *ram_chart_    = nullptr;
+  RollingChartWidget *heap_chart_   = nullptr;
+  RollingChartWidget *disk_chart_   = nullptr;
+  RollingChartWidget *net_chart_    = nullptr;
   RollingChartWidget *jitter_chart_ = nullptr;
 
   // Header labels (compact summary above each chart): e.g. "12% 3.5/4 cores",
   // "Pss 350 MiB  RSS 412 MiB". Updated on every refresh_stats tick.
-  QLabel *cpu_header_ = nullptr;
-  QLabel *ram_header_ = nullptr;
-  QLabel *heap_header_ = nullptr;
-  QLabel *disk_header_ = nullptr;
-  QLabel *net_header_ = nullptr;
+  QLabel *cpu_header_    = nullptr;
+  QLabel *ram_header_    = nullptr;
+  QLabel *heap_header_   = nullptr;
+  QLabel *disk_header_   = nullptr;
+  QLabel *net_header_    = nullptr;
   QLabel *jitter_header_ = nullptr;
 
   // Legacy labels (kept so existing qss rules targeting objectNames continue
   // to work; value column is updated every refresh_stats).
-  QLabel *cpu_label_ = nullptr;
-  QLabel *ram_label_ = nullptr;
-  QLabel *disk_label_ = nullptr;
+  QLabel *cpu_label_    = nullptr;
+  QLabel *ram_label_    = nullptr;
+  QLabel *disk_label_   = nullptr;
   QLabel *uptime_label_ = nullptr;
 
   QPushButton *reload_ui_btn_ = nullptr;
 
   // --- Memory page widgets ---
-  QTableWidget *mem_stats_table_ = nullptr;
+  QTableWidget *mem_stats_table_  = nullptr;
   QTableWidget *mem_subsys_table_ = nullptr;
-  QTableWidget *mem_types_table_ = nullptr;
-  QTableWidget *mem_alloc_table_ = nullptr;
+  QTableWidget *mem_types_table_  = nullptr;
+  QTableWidget *mem_alloc_table_  = nullptr;
 
   // --- Modpack page widgets ---
-  QLabel *modpack_status_ = nullptr;
+  QLabel *modpack_status_      = nullptr;
   QTableWidget *modpack_table_ = nullptr;
 
   QTimer *refresh_timer_ = nullptr;
-  QTimer *chart_timer_ = nullptr;
+  QTimer *chart_timer_   = nullptr;
 
   // --- Persistent state for delta-based metrics ---
   // refresh_charts() runs at 1 Hz (chart_timer_); refresh_stats() runs on
@@ -232,34 +231,34 @@ private:
   // clobber the other's baseline: label deltas could be computed against
   // a baseline that the chart path had just rewritten. Splitting them
   // gives each path its own baseline and removes the race.
-  bool first_cpu_chart_ = true;
-  unsigned long prev_proc_ticks_chart_ = 0;
-  unsigned long prev_sys_total_chart_ = 0;
-  bool first_io_chart_ = true;
-  unsigned long long prev_read_bytes_chart_ = 0;
+  bool first_cpu_chart_                      = true;
+  unsigned long prev_proc_ticks_chart_       = 0;
+  unsigned long prev_sys_total_chart_        = 0;
+  bool first_io_chart_                       = true;
+  unsigned long long prev_read_bytes_chart_  = 0;
   unsigned long long prev_write_bytes_chart_ = 0;
-  bool first_net_chart_ = true;
-  unsigned long long prev_rx_bytes_chart_ = 0;
-  unsigned long long prev_tx_bytes_chart_ = 0;
+  bool first_net_chart_                      = true;
+  unsigned long long prev_rx_bytes_chart_    = 0;
+  unsigned long long prev_tx_bytes_chart_    = 0;
   QElapsedTimer jitter_timer_;
   bool first_jitter_ = true;
 
-  bool first_cpu_label_ = true;
-  unsigned long prev_proc_ticks_label_ = 0;
-  unsigned long prev_sys_total_label_ = 0;
-  bool first_io_label_ = true;
-  unsigned long long prev_read_bytes_label_ = 0;
+  bool first_cpu_label_                      = true;
+  unsigned long prev_proc_ticks_label_       = 0;
+  unsigned long prev_sys_total_label_        = 0;
+  bool first_io_label_                       = true;
+  unsigned long long prev_read_bytes_label_  = 0;
   unsigned long long prev_write_bytes_label_ = 0;
 
   // --- Constructor-time args / late-bound pointers ---
   std::filesystem::path instance_root_;
   std::string game_id_;
   std::string game_name_;
-  engine::PluginLoader *plugin_loader_ = nullptr;
-  engine::InstanceRegistry *instance_registry_ = nullptr;
-  engine::GameKnowledge *knowledge_ = nullptr;
+  engine::PluginLoader *plugin_loader_             = nullptr;
+  engine::InstanceRegistry *instance_registry_     = nullptr;
+  engine::GameKnowledge *knowledge_                = nullptr;
   engine::profile::ProfileManager *active_profile_ = nullptr;
-  const engine::Instance *current_instance_ = nullptr;
+  const engine::Instance *current_instance_        = nullptr;
 };
 
-} // namespace ui
+}  // namespace ui

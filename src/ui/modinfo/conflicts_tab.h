@@ -19,38 +19,38 @@ namespace ui {
 // Right-click offers Open / Explore / Hide / Unhide (the latter recomputes
 // conflicts and refreshes the dialog).
 class ConflictsInfoTab : public ModInfoTab {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit ConflictsInfoTab(QWidget* parent = nullptr);
-    ~ConflictsInfoTab() override;
+  explicit ConflictsInfoTab(QWidget *parent = nullptr);
+  ~ConflictsInfoTab() override;
 
-    void set_mod(const ModInfoData& data) override;
+  void set_mod(const ModInfoData &data) override;
 
 private:
-    struct File {
-        QString rel_path;    // relative to the mod dir
-        QString display;     // data_subpath stripped
-        QString provider;    // all owner mod folders, comma-joined
-        QString abs_path;
-        bool won = false;
-    };
+  struct File {
+    QString rel_path;  // relative to the mod dir
+    QString display;   // data_subpath stripped
+    QString provider;  // all owner mod folders, comma-joined
+    QString abs_path;
+    bool won = false;
+  };
 
-    struct Group {
-        QTreeWidget* list = nullptr;
-        QLineEdit* filter = nullptr;
-        QLabel* count = nullptr;
-        std::vector<File> files;
-    };
+  struct Group {
+    QTreeWidget *list = nullptr;
+    QLineEdit *filter = nullptr;
+    QLabel *count     = nullptr;
+    std::vector<File> files;
+  };
 
-    void rebuild(Group& group);
-    void apply_filter(Group& group);
-    void show_menu(Group& group, const QPoint& pos);
-    void on_hide(Group& group, bool hide);
-    QString selected_path(Group& group) const;
+  void rebuild(Group &group);
+  void apply_filter(Group &group);
+  void show_menu(Group &group, const QPoint &pos);
+  void on_hide(Group &group, bool hide);
+  QString selected_path(Group &group) const;
 
-    Group wins_;
-    Group loses_;
-    Group no_conflict_;
+  Group wins_;
+  Group loses_;
+  Group no_conflict_;
 };
 
 }  // namespace ui

@@ -29,10 +29,10 @@ namespace ui {
 class SavesTab : public QWidget {
   Q_OBJECT
 public:
-  explicit SavesTab(QWidget* parent = nullptr);
+  explicit SavesTab(QWidget *parent = nullptr);
   ~SavesTab() override;
 
-  [[nodiscard]] QTableWidget* table() const { return table_; }
+  [[nodiscard]] QTableWidget *table() const { return table_; }
 
   // Replace the save list contents (a SavesScanThread result, delivered via
   // its finished signal). Missing-column text and hover info derive from the
@@ -46,7 +46,7 @@ public:
   // delete, on profile switch, and on debounced directory changes while the
   // tab is visible (Workspace-69xt, MO2 refreshSavesIfOpen parity). No
   // background re-scans while hidden.
-  void set_saves_dir(const std::filesystem::path& dir);
+  void set_saves_dir(const std::filesystem::path &dir);
   [[nodiscard]] std::filesystem::path saves_dir() const { return saves_dir_; }
 
   // Game/instance switch: drop the current list.
@@ -64,12 +64,12 @@ public:
   void ensure_scanned();
 
   // Row's save at `row`, or nullptr when out of range.
-  [[nodiscard]] const engine::SaveGame* save_at(int row) const;
-  [[nodiscard]] const std::vector<engine::SaveMissingAsset>* missing_at(int row) const;
+  [[nodiscard]] const engine::SaveGame *save_at(int row) const;
+  [[nodiscard]] const std::vector<engine::SaveMissingAsset> *missing_at(int row) const;
 
   // Underlying scan worker (test-only: lets QSignalSpy observe
   // entryReady / finished). Production callers don't need this.
-  [[nodiscard]] SavesScanThread* scan_thread() const { return scan_thread_; }
+  [[nodiscard]] SavesScanThread *scan_thread() const { return scan_thread_; }
   // Empty-state label visibility (test-only). Uses !isHidden() rather than
   // isVisible() so offscreen tests (tab never shown) can observe it.
   [[nodiscard]] bool empty_state_visible() const {
@@ -94,7 +94,7 @@ public:
 signals:
   // Delete the named save files (and their .skse co-saves) - MainWindow
   // routes through engine::remove_path (trash), then re-scans.
-  void delete_requested(const QStringList& filepaths);
+  void delete_requested(const QStringList &filepaths);
   // User picked "Information..." in the right-click menu on a single row.
   // The controller (which owns the live plugin-db snapshot) opens the
   // dialog; SavesTab just hands off the row index.
@@ -106,9 +106,9 @@ signals:
 protected:
   // Lazy load (Workspace-ugm3): the tab is created at game load but only
   // shown when the user clicks it - that first show fires the one scan.
-  void showEvent(QShowEvent* event) override;
+  void showEvent(QShowEvent *event) override;
   // Drop the hover info panel when the pointer leaves or the window blurs.
-  bool eventFilter(QObject* object, QEvent* event) override;
+  bool eventFilter(QObject *object, QEvent *event) override;
 
 private:
   // Streaming scan's final "done" signal: the worker emits entryReady per
@@ -124,7 +124,7 @@ private:
   // search on creation_time, so the table and saves_.entries stay sorted
   // newest-first without a final re-sort barrier.
   void on_entry_ready(std::shared_ptr<SavesScanResultEntry> entry, int done, int total);
-  void on_item_entered(QTableWidgetItem* item);
+  void on_item_entered(QTableWidgetItem *item);
   void on_selection_changed();
   // Workspace-de5v: re-parse + cache the full save when heavy data was
   // stripped at scan time. No-op when already loaded.
@@ -133,27 +133,27 @@ private:
   void hide_save_info();
   void on_delete_key();
   void on_information_action();
-  void on_context_menu(const QPoint& pos);
+  void on_context_menu(const QPoint &pos);
   // Debounced watcher timeout (Workspace-69xt): re-scans only while the
   // tab is visible (MO2 refreshSavesIfOpen parity) so background churn in
   // e.g. a Proton-prefix Saves dir never spins scans while hidden.
   void on_watcher_timeout();
   // Missing-column tooltip: plugin → provider summary (MO2 tooltip spirit).
-  static QString missing_tooltip(const SavesScanResultEntry& entry);
+  static QString missing_tooltip(const SavesScanResultEntry &entry);
   // File-column tooltip: full path, plus size + modified date for unparsed
   // stubs (Workspace-e2td, e.g. Isaac) - the only metadata those rows have.
-  static QString file_tooltip(const engine::SaveGame& save);
+  static QString file_tooltip(const engine::SaveGame &save);
   // Empty-state label (Workspace-e2td): a landed scan with zero rows shows
   // "No saves found in <dir>" instead of a bare empty table.
   void update_empty_state();
 
-  QTableWidget* table_          = nullptr;
-  QLabel* empty_label_          = nullptr;
-  SavesScanThread* scan_thread_ = nullptr;
+  QTableWidget *table_          = nullptr;
+  QLabel *empty_label_          = nullptr;
+  SavesScanThread *scan_thread_ = nullptr;
   // Debounced directory watch (Workspace-69xt): directoryChanged restarts
   // the 500ms single-shot; the timeout re-scans only while visible.
-  QFileSystemWatcher* dir_watcher_ = nullptr;
-  QTimer* rescan_debounce_         = nullptr;
+  QFileSystemWatcher *dir_watcher_ = nullptr;
+  QTimer *rescan_debounce_         = nullptr;
   SavesScanResult saves_;
   std::filesystem::path saves_dir_;
   bool scanning_ = false;

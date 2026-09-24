@@ -11,8 +11,7 @@ namespace ui {
 class GenericSourcePanel : public SourceInfoPanel {
   Q_OBJECT
 public:
-  GenericSourcePanel(const ModInfoData &data,
-                     engine::Source::Interface *provider,
+  GenericSourcePanel(const ModInfoData &data, engine::Source::Interface *provider,
                      QWidget *parent = nullptr);
 
   void populate() override;
@@ -25,4 +24,4 @@ private:
   engine::Source::Interface *provider_ = nullptr;
 };
 
-} // namespace ui
+}  // namespace ui

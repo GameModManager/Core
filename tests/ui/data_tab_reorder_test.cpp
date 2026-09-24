@@ -32,7 +32,7 @@ namespace {
 using Registry =
     std::unordered_map<std::string, std::vector<std::pair<std::string, int>>>;
 
-void write_file(const std::filesystem::path& path, const char* content) {
+void write_file(const std::filesystem::path &path, const char *content) {
   std::filesystem::create_directories(path.parent_path());
   std::ofstream out(path, std::ios::binary);
   out << content;
@@ -55,8 +55,8 @@ bool wait_for(Pred cond, int timeout_ms = 10000) {
   return true;
 }
 
-QTreeWidgetItem* find_top_row(QTreeWidget* tree, const QString& name) {
-  auto* root = tree->invisibleRootItem();
+QTreeWidgetItem *find_top_row(QTreeWidget *tree, const QString &name) {
+  auto *root = tree->invisibleRootItem();
   for (int i = 0; i < root->childCount(); ++i) {
     if (root->child(i)->text(0) == name)
       return root->child(i);
@@ -70,7 +70,7 @@ TEST_CASE("data tab updates winners in place on reorder", "[ui]") {
   qputenv("QT_QPA_PLATFORM", "offscreen");
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
 
   const std::filesystem::path base = "/tmp/opencode/gmm_data_tab_reorder";
@@ -97,7 +97,7 @@ TEST_CASE("data tab updates winners in place on reorder", "[ui]") {
   const QVector<ui::ModEntry> all_mods{mod_a, mod_b, mod_c};
 
   ui::DataTab tab;
-  auto* tree = tab.tree();
+  auto *tree = tab.tree();
   REQUIRE(tree);
 
   const Registry v1{{"shared.txt", {{"ModA", 2}, {"ModB", 1}}},
@@ -108,9 +108,9 @@ TEST_CASE("data tab updates winners in place on reorder", "[ui]") {
     return find_top_row(tree, "shared.txt") != nullptr;
   }));
 
-  auto* shared = find_top_row(tree, "shared.txt");
-  auto* a_only = find_top_row(tree, "a_only.txt");
-  auto* b_only = find_top_row(tree, "b_only.txt");
+  auto *shared = find_top_row(tree, "shared.txt");
+  auto *a_only = find_top_row(tree, "a_only.txt");
+  auto *b_only = find_top_row(tree, "b_only.txt");
   REQUIRE(shared);
   REQUIRE(a_only);
   REQUIRE(b_only);
@@ -124,7 +124,7 @@ TEST_CASE("data tab updates winners in place on reorder", "[ui]") {
                     {"b_only.txt", {{"ModB", 2}}}};
   tab.show_data(v2, all_mods, false, mods, {}, {}, "", "Data", false);
   REQUIRE(wait_for([&] {
-    auto* s = find_top_row(tree, "shared.txt");
+    auto *s = find_top_row(tree, "shared.txt");
     return s != nullptr && s->text(2) == "Mod B";
   }));
 

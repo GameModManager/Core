@@ -72,38 +72,38 @@
 namespace fs = std::filesystem;
 
 namespace {
-void check(bool cond, const char* what) {
+void check(bool cond, const char *what) {
   INFO(what);
   REQUIRE(cond);
 }
 }  // namespace
 
 // --- minimal SE-format save writer (compression type 0) ---
-static void put_u16(std::vector<char>& v, uint16_t x) {
+static void put_u16(std::vector<char> &v, uint16_t x) {
   v.push_back(static_cast<char>(x & 0xFF));
   v.push_back(static_cast<char>((x >> 8) & 0xFF));
 }
-static void put_u32(std::vector<char>& v, uint32_t x) {
+static void put_u32(std::vector<char> &v, uint32_t x) {
   v.push_back(static_cast<char>(x & 0xFF));
   v.push_back(static_cast<char>((x >> 8) & 0xFF));
   v.push_back(static_cast<char>((x >> 16) & 0xFF));
   v.push_back(static_cast<char>((x >> 24) & 0xFF));
 }
-static void put_u64(std::vector<char>& v, uint64_t x) {
+static void put_u64(std::vector<char> &v, uint64_t x) {
   put_u32(v, static_cast<uint32_t>(x & 0xFFFFFFFFu));
   put_u32(v, static_cast<uint32_t>((x >> 32) & 0xFFFFFFFFu));
 }
-static void put_str(std::vector<char>& v, const std::string& s) {
+static void put_str(std::vector<char> &v, const std::string &s) {
   put_u16(v, static_cast<uint16_t>(s.size()));
   v.insert(v.end(), s.begin(), s.end());
 }
 
-static void write_save(const fs::path& dir, const std::string& base,
-                       const std::string& pc, uint32_t level, const std::string& loc,
+static void write_save(const fs::path &dir, const std::string &base,
+                       const std::string &pc, uint32_t level, const std::string &loc,
                        uint32_t save_number, uint64_t filetime,
-                       const std::vector<std::string>& plugins) {
+                       const std::vector<std::string> &plugins) {
   std::vector<char> f;
-  const char* magic = "TESV_SAVEGAME";
+  const char *magic = "TESV_SAVEGAME";
   f.insert(f.end(), magic, magic + 13);
 
   // header
@@ -133,7 +133,7 @@ static void write_save(const fs::path& dir, const std::string& base,
   put_u16(f, 0);
   f.push_back(0);
   f.push_back(static_cast<char>(plugins.size()));
-  for (const auto& p : plugins)
+  for (const auto &p : plugins)
     put_str(f, p);
   put_u16(f, 0);  // no light plugins
 
@@ -141,7 +141,7 @@ static void write_save(const fs::path& dir, const std::string& base,
       .write(f.data(), static_cast<std::streamsize>(f.size()));
 }
 
-static void write_file(const fs::path& p, const std::string& data) {
+static void write_file(const fs::path &p, const std::string &data) {
   std::ofstream(p, std::ios::binary)
       .write(data.data(), static_cast<std::streamsize>(data.size()));
 }
@@ -152,7 +152,7 @@ static void write_file(const fs::path& p, const std::string& data) {
 // rendering are what is under test, not TES field layouts).
 namespace {
 struct FixtureCursor {
-  const std::vector<uint8_t>& b;
+  const std::vector<uint8_t> &b;
   size_t at = 0;
   uint8_t u8() {
     if (at + 1 > b.size())
@@ -185,7 +185,7 @@ struct FixtureCursor {
     uint16_t n = u16();
     if (at + n > b.size())
       throw engine::SaveParseError("eof");
-    std::string s(reinterpret_cast<const char*>(&b[at]), n);
+    std::string s(reinterpret_cast<const char *>(&b[at]), n);
     at += n;
     return s;
   }
@@ -196,14 +196,14 @@ struct FixtureCursor {
   }
 };
 
-engine::SaveGame parse_fixture_save(const fs::path& path, const std::string& game_id) {
+engine::SaveGame parse_fixture_save(const fs::path &path, const std::string &game_id) {
   std::ifstream in(path, std::ios::binary);
   if (!in)
     throw engine::SaveParseError("open");
   std::vector<uint8_t> b((std::istreambuf_iterator<char>(in)),
                          std::istreambuf_iterator<char>());
   FixtureCursor c{b};
-  const char* magic = "TESV_SAVEGAME";
+  const char *magic = "TESV_SAVEGAME";
   for (int i = 0; i < 13; ++i)
     if (c.u8() != static_cast<uint8_t>(magic[i]))
       throw engine::SaveParseError("magic");
@@ -236,8 +236,8 @@ engine::SaveGame parse_fixture_save(const fs::path& path, const std::string& gam
 }
 }  // namespace
 
-static QWidget* find_tooltip_widget() {
-  for (QWidget* w : QApplication::topLevelWidgets()) {
+static QWidget *find_tooltip_widget() {
+  for (QWidget *w : QApplication::topLevelWidgets()) {
     if (w->windowType() == Qt::ToolTip)
       return w;
   }
@@ -252,7 +252,7 @@ TEST_CASE("saves tab", "[ui]") {
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
@@ -265,7 +265,7 @@ TEST_CASE("saves tab", "[ui]") {
   if (!engine::SaveParserRegistry::instance().has_parser("skyrimse")) {
     engine::SaveParserRegistry::instance().register_parser(
         "skyrimse", 0,
-        [](const std::filesystem::path& path, const std::string& game_id) {
+        [](const std::filesystem::path &path, const std::string &game_id) {
           return parse_fixture_save(path, game_id);
         },
         nullptr, "test:fixture");
@@ -304,7 +304,7 @@ TEST_CASE("saves tab", "[ui]") {
   result.entries = {ea, eb};
   tab.set_saves(result);
 
-  auto* table = tab.table();
+  auto *table = tab.table();
   check(table->rowCount() == 2, "two rows after set_saves");
   check(table->columnCount() == 3, "three columns");
   check(table->horizontalHeaderItem(2)->text() == QLatin1String("Missing"),
@@ -348,13 +348,13 @@ TEST_CASE("saves tab", "[ui]") {
   r2.entries = {eo};
   tab.set_saves(std::move(r2));
   // Trigger the hover popup and look for the overlay rows.
-  QTableWidget* overlay_table = tab.table();
+  QTableWidget *overlay_table = tab.table();
   overlay_table->itemEntered(overlay_table->item(0, 0));
-  QWidget* overlay_popup = find_tooltip_widget();
+  QWidget *overlay_popup = find_tooltip_widget();
   check(overlay_popup != nullptr, "hover on overlay row creates the popup");
   if (overlay_popup) {
     QStringList texts;
-    for (QLabel* lbl : overlay_popup->findChildren<QLabel*>()) {
+    for (QLabel *lbl : overlay_popup->findChildren<QLabel *>()) {
       texts << lbl->text();
     }
     const QString joined = texts.join('\n');
@@ -482,7 +482,7 @@ TEST_CASE("saves tab", "[ui]") {
   // tab's back. SavesTab must tolerate the next hover instead of calling
   // close() on the freed pointer (use QPointer — raw QWidget* was a UAF).
   table->itemEntered(table->item(0, 0));
-  QWidget* popup = find_tooltip_widget();
+  QWidget *popup = find_tooltip_widget();
   check(popup != nullptr, "hover on a row creates the info popup");
   if (popup) {
     popup->close();  // exactly what Qt's tooltip auto-dismiss does
@@ -490,7 +490,7 @@ TEST_CASE("saves tab", "[ui]") {
     check(find_tooltip_widget() == nullptr,
           "external close + deferred delete destroyed the popup");
     table->itemEntered(table->item(0, 0));  // re-enter → show_save_info again
-    QWidget* rebuilt = find_tooltip_widget();
+    QWidget *rebuilt = find_tooltip_widget();
     check(rebuilt != nullptr && rebuilt->isVisible(),
           "re-entering after external destroy rebuilds the popup (no UAF)");
   }
@@ -519,7 +519,7 @@ TEST_CASE("saves tab no-parser fallback lists files", "[ui]") {
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
@@ -537,7 +537,7 @@ TEST_CASE("saves tab no-parser fallback lists files", "[ui]") {
   write_file(saves / "Autosave_20260102_2_3.ess", "also not real");
 
   ui::SavesTab tab;
-  auto* table = tab.table();
+  auto *table = tab.table();
   check(table->rowCount() == 0, "fresh tab starts empty");
 
   ui::SavesScanRequest request;
@@ -570,7 +570,7 @@ TEST_CASE("saves tab no-parser fallback lists files", "[ui]") {
     check(table->item(0, 1)->text() == "Quicksave_20260101_1_1.ess" ||
               table->item(0, 1)->text() == "Autosave_20260102_2_3.ess",
           "file column carries the basename");
-    const auto* save = tab.save_at(0);
+    const auto *save = tab.save_at(0);
     check(save != nullptr && save->file_path.extension() == ".ess",
           "save_at resolves the stub SaveGame and it points at the file");
     check(save != nullptr && save->creation_time > 0,
@@ -607,7 +607,7 @@ TEST_CASE("saves tab coalesces overlapping scan requests", "[ui]") {
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
@@ -622,10 +622,10 @@ TEST_CASE("saves tab coalesces overlapping scan requests", "[ui]") {
   write_save(saves_dir, "C_third", "Pc", 12, "Loc3", 3, t3, {"Skyrim.esm"});
 
   ui::SavesTab tab;
-  auto* table = tab.table();
+  auto *table = tab.table();
   check(table->rowCount() == 0, "fresh tab starts empty");
 
-  auto build_request = [&](const std::string& tag) {
+  auto build_request = [&](const std::string &tag) {
     ui::SavesScanRequest req;
     req.saves_dir  = saves_dir;
     req.extensions = {"ess"};
@@ -678,7 +678,7 @@ TEST_CASE("saves tab coalesces overlapping scan requests", "[ui]") {
 
   // Now fire a third batch and confirm the same coalesce semantics hold:
   // the last request wins.
-  auto* table_before = table;
+  auto *table_before = table;
   tab.request_scan(build_request("X"));
   tab.request_scan(build_request("Y"));
   tab.request_scan(build_request("Z"));
@@ -724,7 +724,7 @@ TEST_CASE("saves tab streams saves as they load", "[ui]") {
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
@@ -773,7 +773,7 @@ TEST_CASE("saves tab streams saves as they load", "[ui]") {
   }
   timeout.stop();
 
-  auto* table = tab.table();
+  auto *table = tab.table();
   check(table->rowCount() == 3, "scan finishes with all 3 rows");
   // Streaming contract: 3 entryReady emissions, 1 finished. The old batch
   // path had 0 entryReady + 1 finished(SavesScanResult) carrying all 3.
@@ -812,7 +812,7 @@ TEST_CASE("saves tab lists isaac-style dat files without a parser", "[ui]") {
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
@@ -823,7 +823,7 @@ TEST_CASE("saves tab lists isaac-style dat files without a parser", "[ui]") {
   write_file(saves / "persistentgamedata1.dat", std::string(64, 'b'));
 
   ui::SavesTab tab;
-  auto* table = tab.table();
+  auto *table = tab.table();
   check(!tab.empty_state_visible(), "empty state hidden before any scan");
 
   ui::SavesScanRequest request;
@@ -850,7 +850,7 @@ TEST_CASE("saves tab lists isaac-style dat files without a parser", "[ui]") {
           "file column carries the .dat basename");
     check(table->item(0, 0)->text() == table->item(0, 1)->text().chopped(4),
           "name column falls back to the filename stem");
-    const auto* save = tab.save_at(0);
+    const auto *save = tab.save_at(0);
     check(save != nullptr && save->file_size > 0,
           "stub SaveGame carries the on-disk file size");
     check(save != nullptr && save->creation_time > 0,
@@ -879,13 +879,13 @@ TEST_CASE("saves tab shows an empty state for an empty saves dir", "[ui]") {
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
 
   ui::SavesTab tab;
-  auto* table = tab.table();
+  auto *table = tab.table();
   QSignalSpy finished_spy(tab.scan_thread()->worker(), &ui::SavesScanWorker::finished);
   REQUIRE(finished_spy.isValid());
 
@@ -951,10 +951,10 @@ void settle_ms(int wait_ms) {
 // Minimal type-1 (zlib chunk chain) TESV save: valid head + plugin lists,
 // then a filler tail across several streams. The fast reader must serve it
 // from the first stream(s) without touching the tail.
-void write_save_type1(const fs::path& dir, const std::string& base,
-                      const std::vector<std::string>& light, int light_count_extra) {
+void write_save_type1(const fs::path &dir, const std::string &base,
+                      const std::vector<std::string> &light, int light_count_extra) {
   std::vector<char> f;
-  const char* magic = "TESV_SAVEGAME";
+  const char *magic = "TESV_SAVEGAME";
   f.insert(f.end(), magic, magic + 13);
   put_u32(f, 0);
   put_u32(f, 12);
@@ -983,7 +983,7 @@ void write_save_type1(const fs::path& dir, const std::string& base,
   put_str(raw, "Skyrim.esm");
   // Light list: the named entries plus filler to cross light_count_extra.
   put_u16(raw, static_cast<uint16_t>(light.size() + light_count_extra));
-  for (const auto& p : light)
+  for (const auto &p : light)
     put_str(raw, p);
   // Long filler names (~60B each) so the list clears the fast reader's
   // 256KiB decompressed cap and forces the full-parser fallback path.
@@ -1006,8 +1006,8 @@ void write_save_type1(const fs::path& dir, const std::string& base,
     uLong bound         = compressBound(static_cast<uLong>(n));
     std::vector<char> out(static_cast<std::size_t>(bound));
     uLongf outlen = bound;
-    REQUIRE(compress2(reinterpret_cast<Bytef*>(out.data()), &outlen,
-                      reinterpret_cast<const Bytef*>(raw.data() + off),
+    REQUIRE(compress2(reinterpret_cast<Bytef *>(out.data()), &outlen,
+                      reinterpret_cast<const Bytef *>(raw.data() + off),
                       static_cast<uLong>(n), Z_DEFAULT_COMPRESSION) == Z_OK);
     out.resize(static_cast<std::size_t>(outlen));
     f.insert(f.end(), out.begin(), out.end());
@@ -1031,7 +1031,7 @@ TEST_CASE("saves tab scans on first activation only", "[ui]") {
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
@@ -1072,7 +1072,7 @@ TEST_CASE("saves tab watcher rescans only while visible", "[ui]") {
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
@@ -1095,7 +1095,7 @@ TEST_CASE("saves tab watcher rescans only while visible", "[ui]") {
   tab.set_saves_dir(saves);
   tab.show();
   REQUIRE(tab.isVisible());
-  auto* table = tab.table();
+  auto *table = tab.table();
   check(pump_until(
             [&] {
               return table->rowCount() == 1;
@@ -1136,7 +1136,7 @@ TEST_CASE("saves scan prefers the registered fast parser", "[ui]") {
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
@@ -1146,7 +1146,7 @@ TEST_CASE("saves scan prefers the registered fast parser", "[ui]") {
   int full_calls = 0;
   engine::SaveParserRegistry::instance().register_parser(
       "fastgame69", 0,
-      [&full_calls](const std::filesystem::path& p, const std::string& gid) {
+      [&full_calls](const std::filesystem::path &p, const std::string &gid) {
         ++full_calls;
         engine::SaveGame g;
         g.file_path     = p;
@@ -1158,7 +1158,7 @@ TEST_CASE("saves scan prefers the registered fast parser", "[ui]") {
       nullptr, "test:full69");
   engine::SaveParserRegistry::instance().register_fast_parser(
       "fastgame69", 0,
-      [](const std::filesystem::path& p, const std::string& gid) {
+      [](const std::filesystem::path &p, const std::string &gid) {
         engine::SaveGame g;
         g.file_path      = p;
         g.game_id        = gid;
@@ -1170,7 +1170,7 @@ TEST_CASE("saves scan prefers the registered fast parser", "[ui]") {
       nullptr, "test:fast69");
 
   ui::SavesTab tab;
-  auto* table = tab.table();
+  auto *table = tab.table();
   ui::SavesScanRequest request;
   request.saves_dir  = saves;
   request.extensions = {"ess"};
@@ -1205,7 +1205,7 @@ TEST_CASE("saves scan uses the knowledge fast format without a plugin parser", "
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
@@ -1218,7 +1218,7 @@ TEST_CASE("saves scan uses the knowledge fast format without a plugin parser", "
              {"Skyrim.esm", "SkyUI_SE.esp"});
 
   ui::SavesTab tab;
-  auto* table = tab.table();
+  auto *table = tab.table();
 
   // Unknown format value: safe fallback to the stub path (stem, no parse).
   ui::SavesScanRequest req_stub;
@@ -1277,7 +1277,7 @@ TEST_CASE("saves scan falls back to the full parser past the fast cap", "[ui]") 
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
@@ -1290,7 +1290,7 @@ TEST_CASE("saves scan falls back to the full parser past the fast cap", "[ui]") 
   int full_calls = 0;
   engine::SaveParserRegistry::instance().register_parser(
       "tesvneedfull69", 0,
-      [&full_calls](const std::filesystem::path& p, const std::string& gid) {
+      [&full_calls](const std::filesystem::path &p, const std::string &gid) {
         ++full_calls;
         engine::SaveGame g;
         g.file_path     = p;
@@ -1302,7 +1302,7 @@ TEST_CASE("saves scan falls back to the full parser past the fast cap", "[ui]") 
       nullptr, "test:needfull69");
 
   ui::SavesTab tab;
-  auto* table = tab.table();
+  auto *table = tab.table();
   ui::SavesScanRequest request;
   request.saves_dir   = saves;
   request.extensions  = {"ess"};
@@ -1337,7 +1337,7 @@ TEST_CASE("saves tab rebuilds on profile switch", "[ui]") {
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
@@ -1360,9 +1360,9 @@ TEST_CASE("saves tab rebuilds on profile switch", "[ui]") {
   w.set_game_knowledge(&knowledge);
   w.set_game_info("profilegame69", "Profile Game", "Default", {}, inst_root);
 
-  auto* ctrl = w.findChild<ui::ModListController*>();
+  auto *ctrl = w.findChild<ui::ModListController *>();
   REQUIRE(ctrl != nullptr);
-  auto* rp = w.findChild<ui::RightPanel*>();
+  auto *rp = w.findChild<ui::RightPanel *>();
   REQUIRE(rp != nullptr);
   // The harness game declares no capabilities, so the tab bar has no saves
   // placeholder: declare it in-test (mirrors the game plugin's .tabs()).
@@ -1374,9 +1374,9 @@ TEST_CASE("saves tab rebuilds on profile switch", "[ui]") {
   caps.register_capability(saves_cap);
   rp->set_capabilities(&caps);
   rp->set_game("profilegame69");
-  auto* st = rp->ensure_saves_tab();
+  auto *st = rp->ensure_saves_tab();
   REQUIRE(st != nullptr);
-  auto* dl = w.findChild<ui::DownloadsController*>();
+  auto *dl = w.findChild<ui::DownloadsController *>();
   REQUIRE(dl != nullptr);
   (void)dl;
   // The wired tab resolves the real saves dir, which does not exist for
@@ -1390,7 +1390,7 @@ TEST_CASE("saves tab rebuilds on profile switch", "[ui]") {
   // so the test never pumps on threads the harness owns.
   ui::SavesScanResult seed;
   seed.saves_dir = saves;
-  for (const auto& base : {"P_1.ess", "P_2.ess"}) {
+  for (const auto &base : {"P_1.ess", "P_2.ess"}) {
     ui::SavesScanResultEntry entry;
     entry.save.file_path = saves / base;
     entry.save.game_id   = "profilegame69";
@@ -1413,9 +1413,9 @@ TEST_CASE("saves tab rebuilds on profile switch", "[ui]") {
   const auto created = engine::profile::create_fresh_profile(profiles_dir, "Second");
   REQUIRE(created.success);
   ctrl->refresh_profiles();
-  auto* profile_bar = w.findChild<ui::ProfileBar*>();
+  auto *profile_bar = w.findChild<ui::ProfileBar *>();
   REQUIRE(profile_bar != nullptr);
-  auto* combo = profile_bar->findChild<QComboBox*>();
+  auto *combo = profile_bar->findChild<QComboBox *>();
   REQUIRE(combo != nullptr);
   REQUIRE(combo->findText("Second") >= 0);
   combo->setCurrentText("Second");

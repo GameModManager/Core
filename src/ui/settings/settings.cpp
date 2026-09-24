@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-Settings& Settings::instance() {
+Settings &Settings::instance() {
   static Settings s;
   return s;
 }
@@ -13,7 +13,7 @@ QString Settings::language() const {
   return settings_.value("language", "en_US").toString();
 }
 
-void Settings::set_language(const QString& tag) {
+void Settings::set_language(const QString &tag) {
   settings_.setValue("language", tag);
 }
 
@@ -194,22 +194,22 @@ QString Settings::default_profile() const {
   return settings_.value("profiles/default").toString();
 }
 
-void Settings::set_default_profile(const QString& name) {
+void Settings::set_default_profile(const QString &name) {
   settings_.setValue("profiles/default", name);
 }
 
 // mod list columns ---------------------------------------------------------
 
-QStringList Settings::modlist_hidden_columns(const QString& instance_name) const {
+QStringList Settings::modlist_hidden_columns(const QString &instance_name) const {
   return settings_.value("modlist/columns/" + instance_name).toStringList();
 }
 
-void Settings::set_modlist_hidden_columns(const QString& instance_name,
-                                          const QStringList& hidden) {
+void Settings::set_modlist_hidden_columns(const QString &instance_name,
+                                          const QStringList &hidden) {
   settings_.setValue("modlist/columns/" + instance_name, hidden);
 }
 
-void Settings::ensure_modlist_column_defaults(const QString& instance_name) {
+void Settings::ensure_modlist_column_defaults(const QString &instance_name) {
   // contains(), not emptiness: a user who deliberately unhides every column
   // persists an empty list under an existing key and must keep it.
   if (!settings_.contains("modlist/columns/" + instance_name))
@@ -217,11 +217,11 @@ void Settings::ensure_modlist_column_defaults(const QString& instance_name) {
         instance_name, {"Category", "Source", "Source ID", "Installation", "Changed"});
 }
 
-bool Settings::modlist_nested(const QString& instance_name) const {
+bool Settings::modlist_nested(const QString &instance_name) const {
   return settings_.value("modlist/nested/" + instance_name, false).toBool();
 }
 
-void Settings::set_modlist_nested(const QString& instance_name, bool on) {
+void Settings::set_modlist_nested(const QString &instance_name, bool on) {
   settings_.setValue("modlist/nested/" + instance_name, on);
 }
 
@@ -291,7 +291,7 @@ QString Settings::theme() const {
   return settings_.value("theme", "default").toString();
 }
 
-void Settings::set_theme(const QString& name) {
+void Settings::set_theme(const QString &name) {
   settings_.setValue("theme", name);
 }
 
@@ -299,7 +299,7 @@ QString Settings::style() const {
   return settings_.value("style").toString();
 }
 
-void Settings::set_style(const QString& name) {
+void Settings::set_style(const QString &name) {
   settings_.setValue("style", name);
 }
 
@@ -317,7 +317,7 @@ QString Settings::icon_pack() const {
   return settings_.value("appearance/icon_pack", "default").toString();
 }
 
-void Settings::set_icon_pack(const QString& name) {
+void Settings::set_icon_pack(const QString &name) {
   settings_.setValue("appearance/icon_pack", name);
 }
 
@@ -339,7 +339,7 @@ void Settings::reset_dialog_geometry() {
 
 namespace {
 
-QString dialog_choice_key(const QString& action, const QString& file) {
+QString dialog_choice_key(const QString &action, const QString &file) {
   if (file.isEmpty())
     return "dialog_choices/" + action;
   return "dialog_choices/" + action + "/" + file;
@@ -348,14 +348,14 @@ QString dialog_choice_key(const QString& action, const QString& file) {
 }  // namespace
 
 std::optional<QMessageBox::StandardButton>
-Settings::dialog_choice(const QString& action, const QString& file) const {
+Settings::dialog_choice(const QString &action, const QString &file) const {
   const QString key = dialog_choice_key(action, file);
   if (!settings_.contains(key))
     return std::nullopt;
   return static_cast<QMessageBox::StandardButton>(settings_.value(key).toInt());
 }
 
-void Settings::set_dialog_choice(const QString& action, const QString& file,
+void Settings::set_dialog_choice(const QString &action, const QString &file,
                                  QMessageBox::StandardButton button) {
   settings_.setValue(dialog_choice_key(action, file), static_cast<int>(button));
 }
@@ -372,7 +372,7 @@ QString Settings::instances_dir() const {
   return settings_.value("paths/instances").toString();
 }
 
-void Settings::set_instances_dir(const QString& dir) {
+void Settings::set_instances_dir(const QString &dir) {
   settings_.setValue("paths/instances", dir);
 }
 
@@ -398,7 +398,7 @@ QString Settings::proxy_host() const {
   return settings_.value("network/proxy_host").toString();
 }
 
-void Settings::set_proxy_host(const QString& host) {
+void Settings::set_proxy_host(const QString &host) {
   settings_.setValue("network/proxy_host", host);
 }
 
@@ -422,7 +422,7 @@ QString Settings::custom_browser_command() const {
   return settings_.value("network/custom_browser_command").toString();
 }
 
-void Settings::set_custom_browser_command(const QString& cmd) {
+void Settings::set_custom_browser_command(const QString &cmd) {
   settings_.setValue("network/custom_browser_command", cmd);
 }
 
@@ -484,7 +484,7 @@ QString Settings::executables_blacklist() const {
   return settings_.value("workarounds/executables_blacklist").toString();
 }
 
-void Settings::set_executables_blacklist(const QString& value) {
+void Settings::set_executables_blacklist(const QString &value) {
   settings_.setValue("workarounds/executables_blacklist", value);
 }
 
@@ -492,7 +492,7 @@ QStringList Settings::skip_file_suffixes() const {
   return settings_.value("workarounds/skip_file_suffixes").toStringList();
 }
 
-void Settings::set_skip_file_suffixes(const QStringList& values) {
+void Settings::set_skip_file_suffixes(const QStringList &values) {
   settings_.setValue("workarounds/skip_file_suffixes", values);
 }
 
@@ -500,7 +500,7 @@ QStringList Settings::skip_directories() const {
   return settings_.value("workarounds/skip_directories").toStringList();
 }
 
-void Settings::set_skip_directories(const QStringList& values) {
+void Settings::set_skip_directories(const QStringList &values) {
   settings_.setValue("workarounds/skip_directories", values);
 }
 
@@ -534,7 +534,7 @@ QString Settings::log_level() const {
   return settings_.value("diagnostics/log_level", "info").toString();
 }
 
-void Settings::set_log_level(const QString& level) {
+void Settings::set_log_level(const QString &level) {
   settings_.setValue("diagnostics/log_level", level);
 }
 
@@ -550,7 +550,7 @@ QString Settings::core_dump_type() const {
   return settings_.value("diagnostics/core_dump_type", "text").toString();
 }
 
-void Settings::set_core_dump_type(const QString& type) {
+void Settings::set_core_dump_type(const QString &type) {
   settings_.setValue("diagnostics/core_dump_type", type);
 }
 
@@ -581,7 +581,7 @@ std::optional<QColor> Settings::previous_separator_color() const {
   return c;
 }
 
-void Settings::set_previous_separator_color(const QColor& c) {
+void Settings::set_previous_separator_color(const QColor &c) {
   settings_.setValue("colors/previous_separator_color", c);
 }
 
@@ -594,7 +594,7 @@ QColor Settings::modlist_overwritten_loose() const {
       .value<QColor>();
 }
 
-void Settings::set_modlist_overwritten_loose(const QColor& c) {
+void Settings::set_modlist_overwritten_loose(const QColor &c) {
   settings_.setValue("colors/modlist_overwritten_loose", c);
 }
 
@@ -603,7 +603,7 @@ QColor Settings::modlist_overwriting_loose() const {
       .value<QColor>();
 }
 
-void Settings::set_modlist_overwriting_loose(const QColor& c) {
+void Settings::set_modlist_overwriting_loose(const QColor &c) {
   settings_.setValue("colors/modlist_overwriting_loose", c);
 }
 
@@ -612,7 +612,7 @@ QColor Settings::modlist_overwritten_archive() const {
       .value<QColor>();
 }
 
-void Settings::set_modlist_overwritten_archive(const QColor& c) {
+void Settings::set_modlist_overwritten_archive(const QColor &c) {
   settings_.setValue("colors/modlist_overwritten_archive", c);
 }
 
@@ -621,7 +621,7 @@ QColor Settings::modlist_overwriting_archive() const {
       .value<QColor>();
 }
 
-void Settings::set_modlist_overwriting_archive(const QColor& c) {
+void Settings::set_modlist_overwriting_archive(const QColor &c) {
   settings_.setValue("colors/modlist_overwriting_archive", c);
 }
 
@@ -630,7 +630,7 @@ QColor Settings::modlist_contains_file() const {
       .value<QColor>();
 }
 
-void Settings::set_modlist_contains_file(const QColor& c) {
+void Settings::set_modlist_contains_file(const QColor &c) {
   settings_.setValue("colors/modlist_contains_file", c);
 }
 
@@ -639,7 +639,7 @@ QColor Settings::plugin_list_contained() const {
       .value<QColor>();
 }
 
-void Settings::set_plugin_list_contained(const QColor& c) {
+void Settings::set_plugin_list_contained(const QColor &c) {
   settings_.setValue("colors/plugin_list_contained", c);
 }
 
@@ -648,7 +648,7 @@ QColor Settings::plugin_list_master() const {
       .value<QColor>();
 }
 
-void Settings::set_plugin_list_master(const QColor& c) {
+void Settings::set_plugin_list_master(const QColor &c) {
   settings_.setValue("colors/plugin_list_master", c);
 }
 
@@ -658,15 +658,15 @@ QStringList Settings::disabled_plugins() const {
   return settings_.value("plugins/disabled").toStringList();
 }
 
-void Settings::set_disabled_plugins(const QStringList& names) {
+void Settings::set_disabled_plugins(const QStringList &names) {
   settings_.setValue("plugins/disabled", names);
 }
 
-bool Settings::plugin_enabled(const QString& name) const {
+bool Settings::plugin_enabled(const QString &name) const {
   return !disabled_plugins().contains(name);
 }
 
-void Settings::set_plugin_enabled(const QString& name, bool enabled) {
+void Settings::set_plugin_enabled(const QString &name, bool enabled) {
   auto disabled = disabled_plugins();
   if (enabled) {
     disabled.removeAll(name);
@@ -676,15 +676,15 @@ void Settings::set_plugin_enabled(const QString& name, bool enabled) {
   set_disabled_plugins(disabled);
 }
 
-QString Settings::plugin_setting(const QString& basename, const QString& key,
-                                 const QString& default_value) const {
+QString Settings::plugin_setting(const QString &basename, const QString &key,
+                                 const QString &default_value) const {
   return settings_
       .value(QString("plugins/settings/%1/%2").arg(basename, key), default_value)
       .toString();
 }
 
-void Settings::set_plugin_setting(const QString& basename, const QString& key,
-                                  const QString& value) {
+void Settings::set_plugin_setting(const QString &basename, const QString &key,
+                                  const QString &value) {
   settings_.setValue(QString("plugins/settings/%1/%2").arg(basename, key), value);
 }
 
@@ -694,7 +694,7 @@ QString Settings::nxm_handler_check() const {
   return settings_.value("nxm/handler_check").toString();
 }
 
-void Settings::set_nxm_handler_check(const QString& value) {
+void Settings::set_nxm_handler_check(const QString &value) {
   settings_.setValue("nxm/handler_check", value);
 }
 
@@ -720,7 +720,7 @@ QByteArray Settings::fomod_window_geometry() const {
   return settings_.value("fomod/window_geometry").toByteArray();
 }
 
-void Settings::set_fomod_window_geometry(const QByteArray& g) {
+void Settings::set_fomod_window_geometry(const QByteArray &g) {
   settings_.setValue("fomod/window_geometry", g);
 }
 
@@ -728,7 +728,7 @@ QByteArray Settings::fomod_center_split() const {
   return settings_.value("fomod/center_split").toByteArray();
 }
 
-void Settings::set_fomod_center_split(const QByteArray& s) {
+void Settings::set_fomod_center_split(const QByteArray &s) {
   settings_.setValue("fomod/center_split", s);
 }
 
@@ -736,7 +736,7 @@ QByteArray Settings::fomod_left_split() const {
   return settings_.value("fomod/left_split").toByteArray();
 }
 
-void Settings::set_fomod_left_split(const QByteArray& s) {
+void Settings::set_fomod_left_split(const QByteArray &s) {
   settings_.setValue("fomod/left_split", s);
 }
 
@@ -744,7 +744,7 @@ QByteArray Settings::modinfo_window_geometry() const {
   return settings_.value("modinfo/window_geometry").toByteArray();
 }
 
-void Settings::set_modinfo_window_geometry(const QByteArray& g) {
+void Settings::set_modinfo_window_geometry(const QByteArray &g) {
   settings_.setValue("modinfo/window_geometry", g);
 }
 
@@ -752,7 +752,7 @@ QByteArray Settings::listdialog_window_geometry() const {
   return settings_.value("listdialog/window_geometry").toByteArray();
 }
 
-void Settings::set_listdialog_window_geometry(const QByteArray& g) {
+void Settings::set_listdialog_window_geometry(const QByteArray &g) {
   settings_.setValue("listdialog/window_geometry", g);
 }
 
@@ -760,7 +760,7 @@ QByteArray Settings::saveinfo_window_geometry() const {
   return settings_.value("saveinfo/window_geometry").toByteArray();
 }
 
-void Settings::set_saveinfo_window_geometry(const QByteArray& g) {
+void Settings::set_saveinfo_window_geometry(const QByteArray &g) {
   settings_.setValue("saveinfo/window_geometry", g);
 }
 

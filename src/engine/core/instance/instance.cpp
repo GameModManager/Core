@@ -6,22 +6,22 @@
 
 namespace engine {
 
-Instance Instance::portable(const std::filesystem::path& root) {
+Instance Instance::portable(const std::filesystem::path &root) {
   Instance inst;
   inst.info_.root     = root;
   inst.info_.portable = true;
   return inst;
 }
 
-Instance Instance::installed(const std::string& name,
-                             const std::filesystem::path& instances_root) {
+Instance Instance::installed(const std::string &name,
+                             const std::filesystem::path &instances_root) {
   Instance inst;
   inst.info_.root     = instances_root / name;
   inst.info_.portable = false;
   return inst;
 }
 
-Instance Instance::from_root(const std::filesystem::path& root) {
+Instance Instance::from_root(const std::filesystem::path &root) {
   Instance inst;
   inst.info_.root = root;
   return inst;
@@ -59,7 +59,7 @@ std::filesystem::path Instance::path_for(InstanceKind kind) const {
   return {};
 }
 
-void Instance::set_path_override(InstanceKind kind, const std::filesystem::path& path) {
+void Instance::set_path_override(InstanceKind kind, const std::filesystem::path &path) {
   switch (kind) {
   case InstanceKind::Mods:
     info_.mods_dir = path;
@@ -141,7 +141,7 @@ bool Instance::write_toml() const {
     tbl->erase("steam_appid");
   }
 
-  auto assign_or_erase = [&](const std::string& key, const std::filesystem::path& val) {
+  auto assign_or_erase = [&](const std::string &key, const std::filesystem::path &val) {
     if (val.empty())
       tbl->erase(key);
     else
@@ -159,14 +159,14 @@ bool Instance::write_toml() const {
   assign_or_erase("overwrite_dir", info_.overwrite_dir);
   assign_or_erase("plugins_txt_path", info_.plugins_txt_path);
 
-  auto assign_str_or_erase = [&](const std::string& key, const std::string& val) {
+  auto assign_str_or_erase = [&](const std::string &key, const std::string &val) {
     if (val.empty())
       tbl->erase(key);
     else
       tbl->insert_or_assign(key, val);
   };
 
-  auto assign_int_or_erase = [&](const std::string& key, int64_t val) {
+  auto assign_int_or_erase = [&](const std::string &key, int64_t val) {
     if (val == 0)
       tbl->erase(key);
     else
@@ -183,7 +183,7 @@ bool Instance::write_toml() const {
   // inside [appearance] so unrelated keys survive; drop the section when it
   // ends up empty.
   {
-    toml::table* app = (*tbl)["appearance"].as_table();
+    toml::table *app = (*tbl)["appearance"].as_table();
     if (!info_.appearance_theme.empty() || !info_.appearance_style.empty() ||
         !info_.appearance_icon_pack.empty()) {
       if (!app) {
@@ -192,7 +192,7 @@ bool Instance::write_toml() const {
       }
     }
     if (app) {
-      auto assign_sub_or_erase = [&](const std::string& key, const std::string& val) {
+      auto assign_sub_or_erase = [&](const std::string &key, const std::string &val) {
         if (val.empty())
           app->erase(key);
         else
@@ -210,14 +210,14 @@ bool Instance::write_toml() const {
   // existing [plugins] content untouched (global fallback); a set value
   // (possibly empty) owns the `disabled` key.
   if (info_.plugins_disabled.has_value()) {
-    toml::table* plug = (*tbl)["plugins"].as_table();
+    toml::table *plug = (*tbl)["plugins"].as_table();
     if (!plug) {
       tbl->insert_or_assign("plugins", toml::table{});
       plug = (*tbl)["plugins"].as_table();
     }
     if (plug) {
       toml::array disabled;
-      for (const auto& name : *info_.plugins_disabled)
+      for (const auto &name : *info_.plugins_disabled)
         disabled.push_back(name);
       plug->insert_or_assign("disabled", disabled);
     }
@@ -230,9 +230,9 @@ bool Instance::write_toml() const {
     tbl->erase("plugin_options");
   } else {
     toml::table opts;
-    for (const auto& [basename, settings] : info_.plugin_options) {
+    for (const auto &[basename, settings] : info_.plugin_options) {
       toml::table sub;
-      for (const auto& [key, value] : settings)
+      for (const auto &[key, value] : settings)
         sub.insert_or_assign(key, value);
       opts.insert_or_assign(basename, sub);
     }
@@ -302,7 +302,7 @@ bool Instance::read_toml() {
   // Per-instance appearance overrides (Workspace-1065). Missing keys stay
   // empty (= follow the global Settings value); an explicitly empty string
   // is also treated as unset.
-  if (const toml::table* app = (*tbl)["appearance"].as_table()) {
+  if (const toml::table *app = (*tbl)["appearance"].as_table()) {
     if (auto v = (*app)["theme"].value<std::string>())
       info_.appearance_theme = *v;
     if (auto v = (*app)["style"].value<std::string>())
@@ -313,10 +313,10 @@ bool Instance::read_toml() {
   // Per-instance disabled plugins (Workspace-1065). The key's presence (even
   // as an empty array) marks an explicit override; a missing section/key
   // leaves nullopt (= global fallback).
-  if (const toml::table* plug = (*tbl)["plugins"].as_table()) {
-    if (const toml::array* disabled = (*plug)["disabled"].as_array()) {
+  if (const toml::table *plug = (*tbl)["plugins"].as_table()) {
+    if (const toml::array *disabled = (*plug)["disabled"].as_array()) {
       std::vector<std::string> names;
-      for (const auto& node : *disabled) {
+      for (const auto &node : *disabled) {
         if (auto v = node.value<std::string>())
           names.push_back(*v);
       }
@@ -326,10 +326,10 @@ bool Instance::read_toml() {
   // Per-instance plugin options (Workspace-1065). Dotted keys
   // (plugin1.option1 = "value") and nested tables ([plugin_options."a.so"])
   // both parse to nested tables; only string values are kept.
-  if (const toml::table* opts = (*tbl)["plugin_options"].as_table()) {
-    for (auto&& [basename, node] : *opts) {
-      if (const toml::table* sub = node.as_table()) {
-        for (auto&& [key, val] : *sub) {
+  if (const toml::table *opts = (*tbl)["plugin_options"].as_table()) {
+    for (auto &&[basename, node] : *opts) {
+      if (const toml::table *sub = node.as_table()) {
+        for (auto &&[key, val] : *sub) {
           if (auto v = val.value<std::string>())
             info_.plugin_options[std::string(basename)][std::string(key)] = *v;
         }
@@ -345,7 +345,7 @@ bool Instance::read_toml() {
   return true;
 }
 
-bool Instance::write_key(const std::string& key, const std::string& value) const {
+bool Instance::write_key(const std::string &key, const std::string &value) const {
   auto path = toml_path();
   // Read-modify-write: parse the full file (legacy repair included) so
   // app-owned sections like `executables` survive untouched. A missing or
@@ -370,7 +370,7 @@ bool Instance::write_key(const std::string& key, const std::string& value) const
   return ok;
 }
 
-std::string Instance::to_instance_name(const std::string& display_name) {
+std::string Instance::to_instance_name(const std::string &display_name) {
   static const std::string invalid = R"(\/:*?"<>|)";
   std::string result;
   result.reserve(display_name.size());
@@ -396,7 +396,7 @@ std::string Instance::to_instance_name(const std::string& display_name) {
 }
 
 std::filesystem::path
-Instance::resolve_portable_root(const std::filesystem::path& exe_dir) {
+Instance::resolve_portable_root(const std::filesystem::path &exe_dir) {
   auto toml = exe_dir / "instance.toml";
   if (std::filesystem::exists(toml)) {
     return exe_dir;
@@ -404,7 +404,7 @@ Instance::resolve_portable_root(const std::filesystem::path& exe_dir) {
   return {};
 }
 
-bool Instance::is_portable(const std::filesystem::path& exe_dir) {
+bool Instance::is_portable(const std::filesystem::path &exe_dir) {
   return std::filesystem::exists(exe_dir / "instance.toml");
 }
 

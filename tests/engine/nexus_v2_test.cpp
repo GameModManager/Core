@@ -20,11 +20,10 @@ using engine::network::FakeNetworkManager;
 using engine::network::Response;
 using engine::nexus_v2::Client;
 
-namespace
-{
+namespace {
 
-Response fake_http(long code, const std::string& body, const std::string& headers = {})
-{
+Response fake_http(long code, const std::string &body,
+                   const std::string &headers = {}) {
   Response r;
   r.http_code        = code;
   r.body             = body;
@@ -32,7 +31,7 @@ Response fake_http(long code, const std::string& body, const std::string& header
   return r;
 }
 
-const char* kEnvelope =
+const char *kEnvelope =
     R"({"data": {"collectionRevision": {"id": 7, "revisionNumber": 3, "revisionStatus": "is_public",)"
     R"( "collection": {"id": 42, "name": "Test Collection", "slug": "test-collection",)"
     R"( "game": {"domainName": "skyrimspecialedition"}},)"
@@ -47,16 +46,14 @@ const char* kEnvelope =
 
 }  // namespace
 
-TEST_CASE("nexus v2 graphql client", "[engine]")
-{
+TEST_CASE("nexus v2 graphql client", "[engine]") {
   // Redirect Auth disk state before the singleton is first touched.
   const fs::path config =
       fs::temp_directory_path() / ("gmm_nexus_v2_test_" + std::to_string(getpid()));
   fs::create_directories(config);
   setenv("XDG_CONFIG_HOME", config.c_str(), 1);
 
-  SECTION("build_body embeds query and variables")
-  {
+  SECTION("build_body embeds query and variables") {
     const std::string body = Client::build_body("query X { y }", R"({"a": 1})");
     CHECK(body.find("query X { y }") != std::string::npos);
     CHECK(body.find("\"a\":1") != std::string::npos);
@@ -66,8 +63,7 @@ TEST_CASE("nexus v2 graphql client", "[engine]")
     CHECK(garbage.find("\"variables\":{}") != std::string::npos);
   }
 
-  SECTION("backoff delays double and cap")
-  {
+  SECTION("backoff delays double and cap") {
     CHECK(Client::backoff_delay_ms(0, 0) == 1000);
     CHECK(Client::backoff_delay_ms(1, 0) == 2000);
     CHECK(Client::backoff_delay_ms(2, 0) == 4000);
@@ -78,8 +74,7 @@ TEST_CASE("nexus v2 graphql client", "[engine]")
     CHECK(Client::backoff_delay_ms(0, -5) == 1000);
   }
 
-  SECTION("parse_response extracts data root")
-  {
+  SECTION("parse_response extracts data root") {
     std::string data, error;
     CHECK(Client::parse_response(R"({"data": {"collectionRevision": {"a": 1}}})",
                                  "collectionRevision", data, error));
@@ -87,8 +82,7 @@ TEST_CASE("nexus v2 graphql client", "[engine]")
     CHECK(error.empty());
   }
 
-  SECTION("parse_response joins graphql errors")
-  {
+  SECTION("parse_response joins graphql errors") {
     std::string data, error;
     CHECK_FALSE(Client::parse_response(
         R"({"errors": [{"message": "bad slug"}, {"message": "nope"}]})",
@@ -97,8 +91,7 @@ TEST_CASE("nexus v2 graphql client", "[engine]")
     CHECK(data.empty());
   }
 
-  SECTION("parse_response rejects garbage and empty")
-  {
+  SECTION("parse_response rejects garbage and empty") {
     std::string data, error;
     CHECK_FALSE(Client::parse_response("not json", "collectionRevision", data, error));
     CHECK_FALSE(
@@ -107,8 +100,7 @@ TEST_CASE("nexus v2 graphql client", "[engine]")
                                        "collectionRevision", data, error));
   }
 
-  SECTION("query posts to v2 endpoint with apikey")
-  {
+  SECTION("query posts to v2 endpoint with apikey") {
     FakeNetworkManager net;
     net.enqueue_response(
         fake_http(200, R"({"data": {"collectionRevision": {"id": 1}}})"));
@@ -126,10 +118,10 @@ TEST_CASE("nexus v2 graphql client", "[engine]")
     CHECK(res.attempts == 1);
     CHECK(sleeps.empty());
     REQUIRE(net.seen_requests().size() == 1);
-    const auto& req = net.seen_requests().front();
+    const auto &req = net.seen_requests().front();
     CHECK(req.url == engine::nexus_v2::kEndpoint);
     bool has_key = false, has_json = false;
-    for (const auto& h : req.headers) {
+    for (const auto &h : req.headers) {
       if (h == "apikey: test-key")
         has_key = true;
       if (h == "Content-Type: application/json")
@@ -140,8 +132,7 @@ TEST_CASE("nexus v2 graphql client", "[engine]")
     CHECK(req.body.find("query Q { x }") != std::string::npos);
   }
 
-  SECTION("query retries 429 then succeeds")
-  {
+  SECTION("query retries 429 then succeeds") {
     FakeNetworkManager net;
     net.enqueue_response(fake_http(429, "slow down"));
     net.enqueue_response(fake_http(200, R"({"data": {"r": {"id": 1}}})"));
@@ -161,8 +152,7 @@ TEST_CASE("nexus v2 graphql client", "[engine]")
     CHECK(sleeps.front() == 1000);
   }
 
-  SECTION("query honors Retry-After on 429")
-  {
+  SECTION("query honors Retry-After on 429") {
     FakeNetworkManager net;
     net.enqueue_response(fake_http(429, "slow", "HTTP/1.1 429\r\nRetry-After: 2\r\n"));
     net.enqueue_response(fake_http(200, R"({"data": {"r": 1}})"));
@@ -181,8 +171,7 @@ TEST_CASE("nexus v2 graphql client", "[engine]")
     CHECK(sleeps.front() == 2000);
   }
 
-  SECTION("query gives up after max attempts")
-  {
+  SECTION("query gives up after max attempts") {
     FakeNetworkManager net;
     for (int i = 0; i < Client::kMaxAttempts; ++i)
       net.enqueue_response(fake_http(429, "slow"));
@@ -202,8 +191,7 @@ TEST_CASE("nexus v2 graphql client", "[engine]")
     CHECK(res.error.find("429") != std::string::npos);
   }
 
-  SECTION("query never retries auth rejection or server errors")
-  {
+  SECTION("query never retries auth rejection or server errors") {
     for (long code : {401L, 403L, 500L}) {
       FakeNetworkManager net;
       net.enqueue_response(fake_http(code, "nope"));
@@ -221,8 +209,7 @@ TEST_CASE("nexus v2 graphql client", "[engine]")
     }
   }
 
-  SECTION("query surfaces transport errors and graphql errors")
-  {
+  SECTION("query surfaces transport errors and graphql errors") {
     FakeNetworkManager net;
     Response transport;
     transport.error = "boom";
@@ -252,8 +239,7 @@ TEST_CASE("nexus v2 graphql client", "[engine]")
     CHECK(gql_err.error == "bad query");
   }
 
-  SECTION("query without api key makes no request")
-  {
+  SECTION("query without api key makes no request") {
     FakeNetworkManager net;
     Client client(
         net,
@@ -269,8 +255,7 @@ TEST_CASE("nexus v2 graphql client", "[engine]")
     CHECK(net.seen_requests().empty());
   }
 
-  SECTION("revision query text and variables")
-  {
+  SECTION("revision query text and variables") {
     const std::string q = engine::nexus_v2::build_collection_revision_query();
     CHECK(q.find("collectionRevision") != std::string::npos);
     CHECK(q.find("$slug: String!") != std::string::npos);
@@ -284,8 +269,7 @@ TEST_CASE("nexus v2 graphql client", "[engine]")
     CHECK(pinned.find("\"revision\":5") != std::string::npos);
   }
 
-  SECTION("parse revision fixture")
-  {
+  SECTION("parse revision fixture") {
     std::string node, error;
     REQUIRE(Client::parse_response(kEnvelope, "collectionRevision", node, error));
     engine::nexus_v2::CollectionRevision rev;
@@ -311,8 +295,7 @@ TEST_CASE("nexus v2 graphql client", "[engine]")
     CHECK(rev.external_resources[0].url == "https://example.com/skse.7z");
   }
 
-  SECTION("parse revision rejects null and garbage")
-  {
+  SECTION("parse revision rejects null and garbage") {
     engine::nexus_v2::CollectionRevision rev;
     std::string error;
     CHECK_FALSE(engine::nexus_v2::parse_collection_revision_data("null", rev, error));
@@ -322,8 +305,7 @@ TEST_CASE("nexus v2 graphql client", "[engine]")
     CHECK_FALSE(error.empty());
   }
 
-  SECTION("fetch revision end to end over fake")
-  {
+  SECTION("fetch revision end to end over fake") {
     FakeNetworkManager net;
     net.enqueue_response(fake_http(200, kEnvelope));
     Client client(
@@ -342,8 +324,7 @@ TEST_CASE("nexus v2 graphql client", "[engine]")
           std::string::npos);
   }
 
-  SECTION("fetch revision surfaces missing collection")
-  {
+  SECTION("fetch revision surfaces missing collection") {
     FakeNetworkManager net;
     net.enqueue_response(fake_http(200, R"({"data": {"collectionRevision": null}})"));
     Client client(
@@ -357,10 +338,9 @@ TEST_CASE("nexus v2 graphql client", "[engine]")
     CHECK_FALSE(res.error.empty());
   }
 
-  SECTION("premium detection follows stored account type")
-  {
+  SECTION("premium detection follows stored account type") {
     using AccountType = engine::Source::Nexus::NexusUserInfo::AccountType;
-    auto& auth        = engine::Source::Nexus::Auth::instance();
+    auto &auth        = engine::Source::Nexus::Auth::instance();
     auth.clear_user_info();
     CHECK_FALSE(engine::nexus_v2::is_premium_user());
     engine::Source::Nexus::NexusUserInfo info;

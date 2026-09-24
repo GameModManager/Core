@@ -28,14 +28,14 @@ namespace engine::Collection {
 
 // A successfully fetched manifest plus the source_id it was fetched from.
 struct FetchResult {
-    Manifest manifest;
-    std::string source_id; // original identifier (URL, path, etc.)
+  Manifest manifest;
+  std::string source_id;  // original identifier (URL, path, etc.)
 };
 
 // Error returned when a fetch fails.
 struct FetchError {
-    std::string message;  // human-readable reason
-    int http_status = 0;  // HTTP status code (0 if not applicable)
+  std::string message;  // human-readable reason
+  int http_status = 0;  // HTTP status code (0 if not applicable)
 };
 
 // Result of a collection fetch: either a valid FetchResult or a FetchError.
@@ -55,37 +55,35 @@ using FetchOutcome = std::variant<FetchResult, FetchError>;
 // is source-agnostic.
 class Provider {
 public:
-    virtual ~Provider() = default;
+  virtual ~Provider() = default;
 
-    // Source type identifier (e.g. "nexus_collection", "gmmpack", "manual_import").
-    // Matches the string used in Source::Registry for mod-file providers when
-    // the same string is appropriate, but a collection source may use a
-    // different string than its underlying mod-file provider.
-    virtual std::string source_type() const = 0;
+  // Source type identifier (e.g. "nexus_collection", "gmmpack", "manual_import").
+  // Matches the string used in Source::Registry for mod-file providers when
+  // the same string is appropriate, but a collection source may use a
+  // different string than its underlying mod-file provider.
+  virtual std::string source_type() const = 0;
 
-    // Human-readable name for the UI (e.g. "Nexus Collections").
-    virtual std::string display_name() const = 0;
+  // Human-readable name for the UI (e.g. "Nexus Collections").
+  virtual std::string display_name() const = 0;
 
-    // Fetch a collection manifest from the source.
-    //
-    // `source_id` is source-specific:
-    //   - Nexus: collection URL or numeric ID
-    //   - gmmpack: file path or URL to the .gmmpack archive
-    //   - manual_import: directory path containing manifest.json
-    //
-    // Returns FetchResult on success, FetchError on failure.
-    // The provider does NOT validate the manifest schema here; callers
-    // should use the archive integrity / schema validation pipeline
-    // before acting on the result.
-    virtual FetchOutcome fetch(const std::string& source_id) = 0;
+  // Fetch a collection manifest from the source.
+  //
+  // `source_id` is source-specific:
+  //   - Nexus: collection URL or numeric ID
+  //   - gmmpack: file path or URL to the .gmmpack archive
+  //   - manual_import: directory path containing manifest.json
+  //
+  // Returns FetchResult on success, FetchError on failure.
+  // The provider does NOT validate the manifest schema here; callers
+  // should use the archive integrity / schema validation pipeline
+  // before acting on the result.
+  virtual FetchOutcome fetch(const std::string &source_id) = 0;
 
-    // Whether this provider can handle the given source identifier.
-    // Used by the provider registry to route source IDs to the right
-    // provider. Default implementation returns false (providers must
-    // opt in).
-    virtual bool can_handle(const std::string& source_id) const {
-        return false;
-    }
+  // Whether this provider can handle the given source identifier.
+  // Used by the provider registry to route source IDs to the right
+  // provider. Default implementation returns false (providers must
+  // opt in).
+  virtual bool can_handle(const std::string &source_id) const { return false; }
 };
 
-} // namespace engine::Collection
+}  // namespace engine::Collection

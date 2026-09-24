@@ -20,4 +20,4 @@ public:
   [[nodiscard]] static bool is_available();
 };
 
-} // namespace Deploy
+}  // namespace Deploy

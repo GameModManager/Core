@@ -37,7 +37,7 @@ namespace {
     return s;
   }
 
-  std::vector<std::string> split_csv(const std::string& s) {
+  std::vector<std::string> split_csv(const std::string &s) {
     std::vector<std::string> out;
     std::stringstream ss(s);
     std::string tok;
@@ -55,13 +55,13 @@ namespace {
     return buf;
   }
 
-  bool is_archive_file(const std::string& lower_name) {
+  bool is_archive_file(const std::string &lower_name) {
     return lower_name.size() >= 4 &&
            (lower_name.compare(lower_name.size() - 4, 4, ".bsa") == 0 ||
             lower_name.compare(lower_name.size() - 4, 4, ".ba2") == 0);
   }
 
-  void strip_cr(std::string& s) {
+  void strip_cr(std::string &s) {
     if (!s.empty() && s.back() == '\r')
       s.pop_back();
   }
@@ -72,8 +72,8 @@ namespace {
   // The .ini is folder-scoped (the plugin's own folder); archives are matched
   // against every archive in the virtual Data view (game Data + all enabled mod
   // folders), like MO2's basename-prefix scan over the whole data dir.
-  void scan_plugin_assets(GamePlugin& p,
-                          const std::vector<std::string>& archive_candidates) {
+  void scan_plugin_assets(GamePlugin &p,
+                          const std::vector<std::string> &archive_candidates) {
     const std::string base = to_lower(p.full_path.stem().string());
     if (base.empty())
       return;
@@ -81,7 +81,7 @@ namespace {
     std::error_code ec;
     const auto parent = p.full_path.parent_path();
     if (std::filesystem::is_directory(parent, ec)) {
-      for (const auto& entry : std::filesystem::directory_iterator(parent, ec)) {
+      for (const auto &entry : std::filesystem::directory_iterator(parent, ec)) {
         if (!entry.is_regular_file(ec))
           continue;
         if (to_lower(entry.path().filename().string()) == base + ".ini") {
@@ -91,7 +91,7 @@ namespace {
       }
     }
 
-    for (const auto& file : archive_candidates) {
+    for (const auto &file : archive_candidates) {
       if (to_lower(file).compare(0, base.size(), base) == 0) {
         p.archives.push_back(file);
       }
@@ -101,16 +101,16 @@ namespace {
 
 }  // namespace
 
-bool Database::refresh(const std::filesystem::path& game_dir,
-                       const std::filesystem::path& mods_dir,
-                       const std::string& disable_mechanism,
-                       const std::string& game_native_plugins) {
+bool Database::refresh(const std::filesystem::path &game_dir,
+                       const std::filesystem::path &mods_dir,
+                       const std::string &disable_mechanism,
+                       const std::string &game_native_plugins) {
   plugins_.clear();
   by_name_.clear();
   native_order_.clear();
 
   std::set<std::string> native_ci_set;
-  for (const auto& tok : split_csv(game_native_plugins)) {
+  for (const auto &tok : split_csv(game_native_plugins)) {
     native_order_.push_back(tok);
     native_ci_set.insert(to_lower(tok));
   }
@@ -126,7 +126,7 @@ bool Database::refresh(const std::filesystem::path& game_dir,
     engine::vfs::PathResolver resolver(game_dir);
     auto data_gf = resolver.resolve("Data");
     if (data_gf && data_gf->exists()) {
-      for (const auto& entry :
+      for (const auto &entry :
            std::filesystem::directory_iterator(data_gf->absolute(), ec)) {
         if (!entry.is_regular_file(ec))
           continue;
@@ -145,7 +145,7 @@ bool Database::refresh(const std::filesystem::path& game_dir,
   };
   std::vector<ModFolder> folders;
   if (std::filesystem::is_directory(mods_dir, ec)) {
-    for (const auto& entry : std::filesystem::directory_iterator(mods_dir, ec)) {
+    for (const auto &entry : std::filesystem::directory_iterator(mods_dir, ec)) {
       if (!entry.is_directory(ec))
         continue;
       const std::string folder = entry.path().filename().string();
@@ -161,15 +161,15 @@ bool Database::refresh(const std::filesystem::path& game_dir,
       folders.push_back({folder, priority});
     }
   }
-  std::sort(folders.begin(), folders.end(), [](const ModFolder& a, const ModFolder& b) {
+  std::sort(folders.begin(), folders.end(), [](const ModFolder &a, const ModFolder &b) {
     if (a.priority != b.priority)
       return a.priority > b.priority;
     return a.name < b.name;
   });
 
   std::map<std::string, GamePlugin> mod_plugins;
-  for (const auto& folder : folders) {
-    for (const auto& entry :
+  for (const auto &folder : folders) {
+    for (const auto &entry :
          std::filesystem::directory_iterator(mods_dir / folder.name, ec)) {
       if (!entry.is_regular_file(ec))
         continue;
@@ -185,13 +185,13 @@ bool Database::refresh(const std::filesystem::path& game_dir,
   }
 
   std::set<std::string> mod_ci_names;
-  for (const auto& [name, plugin] : mod_plugins)
+  for (const auto &[name, plugin] : mod_plugins)
     mod_ci_names.insert(to_lower(name));
-  for (auto& [name, plugin] : mod_plugins) {
+  for (auto &[name, plugin] : mod_plugins) {
     game_data_files.erase(name);
     plugins_.push_back(std::move(plugin));
   }
-  for (auto& [name, path] : game_data_files) {
+  for (auto &[name, path] : game_data_files) {
     if (mod_ci_names.count(to_lower(name)) != 0)
       continue;
     GamePlugin p;
@@ -204,7 +204,7 @@ bool Database::refresh(const std::filesystem::path& game_dir,
   // re-cased (e.g. "skyrim.esm") while the declared list keeps its canonical
   // case. A renamed native must keep its force-loaded band membership, or it
   // silently becomes a draggable user plugin.
-  for (auto& p : plugins_) {
+  for (auto &p : plugins_) {
     p.is_game_native = native_ci_set.count(to_lower(p.name)) != 0;
     if (p.is_game_native)
       p.force_loaded = true;
@@ -213,7 +213,7 @@ bool Database::refresh(const std::filesystem::path& game_dir,
   // Creation Club content is identified by its "cc" filename prefix
   // (independent of Skyrim.ccc): it is always force-loaded and pinned above
   // user plugins. A user plugin named cc*.esp is treated as CC by design.
-  for (auto& p : plugins_) {
+  for (auto &p : plugins_) {
     if (to_lower(p.name).rfind("cc", 0) == 0) {
       p.is_cc        = true;
       p.force_loaded = true;
@@ -229,7 +229,7 @@ bool Database::refresh(const std::filesystem::path& game_dir,
     engine::vfs::PathResolver resolver(game_dir);
     auto data_gf = resolver.resolve("Data");
     if (data_gf && data_gf->exists()) {
-      for (const auto& entry :
+      for (const auto &entry :
            std::filesystem::directory_iterator(data_gf->absolute(), ec)) {
         if (!entry.is_regular_file(ec))
           continue;
@@ -239,8 +239,8 @@ bool Database::refresh(const std::filesystem::path& game_dir,
       }
     }
     if (!mods_dir.empty()) {
-      for (const auto& folder : folders) {
-        for (const auto& entry :
+      for (const auto &folder : folders) {
+        for (const auto &entry :
              std::filesystem::directory_iterator(mods_dir / folder.name, ec)) {
           if (!entry.is_regular_file(ec))
             continue;
@@ -255,7 +255,7 @@ bool Database::refresh(const std::filesystem::path& game_dir,
         std::unique(archive_candidates.begin(), archive_candidates.end()),
         archive_candidates.end());
   }
-  for (auto& p : plugins_)
+  for (auto &p : plugins_)
     scan_plugin_assets(p, archive_candidates);
   rebuild_index();
   // Re-attach the last LOOT run's findings: the rows above were rebuilt from
@@ -273,8 +273,8 @@ void Database::rebuild_index() {
   }
 }
 
-void Database::load_creation_club(const std::filesystem::path& game_dir,
-                                  const std::string& ccc_filename) {
+void Database::load_creation_club(const std::filesystem::path &game_dir,
+                                  const std::string &ccc_filename) {
   ccc_order_.clear();
 
   std::error_code ec;
@@ -297,7 +297,7 @@ void Database::load_creation_club(const std::filesystem::path& game_dir,
   if (candidates.empty())
     return;
 
-  for (const auto& ccc : candidates) {
+  for (const auto &ccc : candidates) {
     std::ifstream in(ccc);
     std::string line;
     while (std::getline(in, line)) {
@@ -311,10 +311,10 @@ void Database::load_creation_club(const std::filesystem::path& game_dir,
       break;
   }
 
-  for (auto& p : plugins_) {
+  for (auto &p : plugins_) {
     const std::string lower = to_lower(p.name);
     const bool in_ccc       = std::any_of(ccc_order_.begin(), ccc_order_.end(),
-                                          [&lower](const std::string& c) {
+                                          [&lower](const std::string &c) {
                                       return to_lower(c) == lower;
                                           });
     if (in_ccc) {
@@ -325,7 +325,7 @@ void Database::load_creation_club(const std::filesystem::path& game_dir,
 }
 
 void Database::parse_headers() {
-  for (auto& p : plugins_) {
+  for (auto &p : plugins_) {
     const auto hdr = read_esp_header(p.full_path);
     if (hdr.valid) {
       p.is_master_flagged = hdr.is_master;
@@ -367,7 +367,7 @@ void Database::sort_load_order() {
   };
 
   // 1. Game-native plugins: declared order first, then any natives not declared.
-  for (const auto& name : native_order_) {
+  for (const auto &name : native_order_) {
     const auto it = by_name_ci_.find(to_lower(name));
     if (it != by_name_ci_.end())
       append(it->second);
@@ -377,7 +377,7 @@ void Database::sort_load_order() {
       append(i);
 
   // 2. Creation Club plugins: ccc file order, then any CC not listed.
-  for (const auto& name : ccc_order_) {
+  for (const auto &name : ccc_order_) {
     const auto it = by_name_ci_.find(to_lower(name));
     if (it != by_name_ci_.end())
       append(it->second);
@@ -406,7 +406,7 @@ void Database::sort_load_order() {
   std::map<std::string, size_t> indegree;
   for (size_t i : mod_indices) {
     size_t deg = 0;
-    for (const auto& master : plugins_[i].masters) {
+    for (const auto &master : plugins_[i].masters) {
       const auto it = by_name_ci_.find(to_lower(master));
       if (it != by_name_ci_.end() && mod_indices.count(it->second) != 0) {
         dependents[to_lower(master)].push_back(i);
@@ -474,7 +474,7 @@ bool Database::reassert_band() {
   // Fixed band: declared natives (CI, so a re-cased file keeps its declared
   // slot), then any remaining natives; then declared CC, then remaining CC.
   // Everything else keeps its current (user/LOOT) relative order.
-  for (const auto& name : native_order_) {
+  for (const auto &name : native_order_) {
     const auto it = by_name_ci_.find(to_lower(name));
     if (it != by_name_ci_.end())
       append(it->second);
@@ -482,7 +482,7 @@ bool Database::reassert_band() {
   for (size_t i = 0; i < n; ++i)
     if (plugins_[i].is_game_native)
       append(i);
-  for (const auto& name : ccc_order_) {
+  for (const auto &name : ccc_order_) {
     const auto it = by_name_ci_.find(to_lower(name));
     if (it != by_name_ci_.end())
       append(it->second);
@@ -515,8 +515,8 @@ bool Database::reassert_band() {
   return true;
 }
 
-bool Database::apply_load_order(const std::vector<std::string>& order,
-                                std::string* error) {
+bool Database::apply_load_order(const std::vector<std::string> &order,
+                                std::string *error) {
   const size_t n = plugins_.size();
   if (n == 0)
     return true;
@@ -533,7 +533,7 @@ bool Database::apply_load_order(const std::vector<std::string>& order,
     user_order.push_back(idx);
     taken[idx] = true;
   };
-  for (const auto& name : order) {
+  for (const auto &name : order) {
     const auto it = by_name_ci_.find(to_lower(name));
     if (it == by_name_ci_.end()) {
       if (error)
@@ -559,7 +559,7 @@ bool Database::apply_load_order(const std::vector<std::string>& order,
     ordered.push_back(idx);
     done[idx] = true;
   };
-  for (const auto& name : native_order_) {
+  for (const auto &name : native_order_) {
     const auto it = by_name_ci_.find(to_lower(name));
     if (it != by_name_ci_.end())
       emit(it->second);
@@ -567,7 +567,7 @@ bool Database::apply_load_order(const std::vector<std::string>& order,
   for (size_t i = 0; i < n; ++i)
     if (plugins_[i].is_game_native)
       emit(i);
-  for (const auto& name : ccc_order_) {
+  for (const auto &name : ccc_order_) {
     const auto it = by_name_ci_.find(to_lower(name));
     if (it != by_name_ci_.end())
       emit(it->second);
@@ -603,9 +603,9 @@ void Database::set_all_enabled() {
   // would only advertise a broken load order (MO2 parity: a missing master
   // blocks the dependent plugin). Natives/CC have no masters or only
   // game-native ones, so the fixed band is unaffected.
-  for (auto& p : plugins_) {
+  for (auto &p : plugins_) {
     bool masters_present = true;
-    for (const auto& master : p.masters) {
+    for (const auto &master : p.masters) {
       if (by_name_ci_.find(to_lower(master)) == by_name_ci_.end()) {
         masters_present = false;
         break;
@@ -618,10 +618,10 @@ void Database::set_all_enabled() {
 void Database::set_missing_masters() {
   // Pass 1 (absent-only): a master that is not in the list at all. Feeds the
   // missing_master flag (enable-blocking).
-  for (auto& p : plugins_) {
+  for (auto &p : plugins_) {
     p.missing_master = false;
     p.missing_masters.clear();
-    for (const auto& master : p.masters) {
+    for (const auto &master : p.masters) {
       if (by_name_ci_.find(to_lower(master)) == by_name_ci_.end()) {
         p.missing_master = true;
         p.missing_masters.push_back(master);
@@ -633,16 +633,16 @@ void Database::set_missing_masters() {
   // Disabled plugins are never flagged. Feeds master_unset (the tooltip's
   // "Missing Masters" line and the warning emblem).
   std::set<std::string> enabled_names;
-  for (const auto& p : plugins_) {
+  for (const auto &p : plugins_) {
     if (p.enabled)
       enabled_names.insert(to_lower(p.name));
   }
-  for (auto& p : plugins_) {
+  for (auto &p : plugins_) {
     p.master_unset.clear();
     if (!p.enabled)
       continue;
     std::set<std::string> seen;
-    for (const auto& master : p.masters) {
+    for (const auto &master : p.masters) {
       const std::string lower = to_lower(master);
       if (enabled_names.find(lower) == enabled_names.end() &&
           seen.insert(lower).second) {
@@ -650,30 +650,30 @@ void Database::set_missing_masters() {
       }
     }
     std::sort(p.master_unset.begin(), p.master_unset.end(),
-              [](const std::string& a, const std::string& b) {
+              [](const std::string &a, const std::string &b) {
                 return to_lower(a) < to_lower(b);
               });
   }
 }
 
-void Database::set_loot_reports(const std::map<std::string, LootReport>& reports) {
+void Database::set_loot_reports(const std::map<std::string, LootReport> &reports) {
   // Case-insensitive lookup like master resolution (MO2's m_AdditionalInfo is
   // a FileNameComparator map). Stored in the side map so refresh() rebuilds
   // cannot wipe the last run's findings.
   loot_reports_.clear();
-  for (const auto& [name, report] : reports)
+  for (const auto &[name, report] : reports)
     loot_reports_[to_lower(name)] = report;
   apply_loot_reports();
 }
 
 void Database::clear_loot_reports() {
   loot_reports_.clear();
-  for (auto& p : plugins_)
+  for (auto &p : plugins_)
     p.loot_report = LootReport{};
 }
 
 void Database::apply_loot_reports() {
-  for (auto& p : plugins_) {
+  for (auto &p : plugins_) {
     const auto it = loot_reports_.find(to_lower(p.name));
     p.loot_report = it != loot_reports_.end() ? it->second : LootReport{};
   }
@@ -684,7 +684,7 @@ void Database::generate_mod_indexes() {
   // plugins get an empty index and the ordinals count only enabled plugins.
   // Medium (ESH) classifies before light (ESL), like MO2's if/else chain.
   uint32_t num_eshs = 0, num_esls = 0, num_full = 0;
-  for (auto& p : plugins_) {
+  for (auto &p : plugins_) {
     if (!p.enabled) {
       p.mod_index = 0;
       p.mod_index_text.clear();
@@ -716,7 +716,7 @@ void Database::generate_mod_indexes() {
   }
 }
 
-bool Database::set_enabled(const std::string& name, bool enabled, std::string* error) {
+bool Database::set_enabled(const std::string &name, bool enabled, std::string *error) {
   const auto it = by_name_.find(name);
   if (it == by_name_.end()) {
     if (error)
@@ -724,7 +724,7 @@ bool Database::set_enabled(const std::string& name, bool enabled, std::string* e
     return false;
   }
 
-  GamePlugin& plugin = plugins_[it->second];
+  GamePlugin &plugin = plugins_[it->second];
   if (plugin.enabled == enabled)
     return true;
 
@@ -732,12 +732,12 @@ bool Database::set_enabled(const std::string& name, bool enabled, std::string* e
     // Collect the transitive closure of disabled masters this enable
     // would touch, visiting every master (not just the first disabled
     // one). A plugin requiring an absent master blocks the whole enable.
-    std::vector<GamePlugin*> chain;
+    std::vector<GamePlugin *> chain;
     std::vector<bool> visited(plugins_.size(), false);
-    std::vector<GamePlugin*> stack;
+    std::vector<GamePlugin *> stack;
     stack.push_back(&plugin);
     while (!stack.empty()) {
-      GamePlugin* cur = stack.back();
+      GamePlugin *cur = stack.back();
       stack.pop_back();
       if (cur->enabled)
         continue;
@@ -746,7 +746,7 @@ bool Database::set_enabled(const std::string& name, bool enabled, std::string* e
         continue;
       visited[idx] = true;
       chain.push_back(cur);
-      for (const auto& master : cur->masters) {
+      for (const auto &master : cur->masters) {
         const auto mit = by_name_ci_.find(to_lower(master));
         if (mit == by_name_ci_.end()) {
           if (error)
@@ -756,7 +756,7 @@ bool Database::set_enabled(const std::string& name, bool enabled, std::string* e
         stack.push_back(&plugins_[mit->second]);
       }
     }
-    for (GamePlugin* p : chain)
+    for (GamePlugin *p : chain)
       p->enabled = true;
     // Enable state feeds master_unset (present-but-disabled masters) and the
     // mod-index ordinals - recompute both so tooltips stay correct.
@@ -772,10 +772,10 @@ bool Database::set_enabled(const std::string& name, bool enabled, std::string* e
     return false;
   }
   const std::string name_lower = to_lower(name);
-  for (auto& other : plugins_) {
+  for (auto &other : plugins_) {
     if (!other.enabled || other.name == name)
       continue;
-    const auto has_master = [&name_lower](const std::string& m) {
+    const auto has_master = [&name_lower](const std::string &m) {
       return to_lower(m) == name_lower;
     };
     if (std::find_if(other.masters.begin(), other.masters.end(), has_master) !=
@@ -790,7 +790,7 @@ bool Database::set_enabled(const std::string& name, bool enabled, std::string* e
   return true;
 }
 
-bool Database::move_plugin(int from_row, int to_row, std::string* error) {
+bool Database::move_plugin(int from_row, int to_row, std::string *error) {
   const int n = static_cast<int>(plugins_.size());
   if (from_row < 0 || from_row >= n) {
     if (error)
@@ -841,14 +841,14 @@ bool Database::move_plugin(int from_row, int to_row, std::string* error) {
   return true;
 }
 
-bool Database::set_locked(const std::string& name, bool lock, std::string* error) {
+bool Database::set_locked(const std::string &name, bool lock, std::string *error) {
   const auto it = by_name_ci_.find(to_lower(name));
   if (it == by_name_ci_.end()) {
     if (error)
       *error = name + " is not in the plugin list";
     return false;
   }
-  GamePlugin& p = plugins_[it->second];
+  GamePlugin &p = plugins_[it->second];
   if (lock && p.force_loaded) {
     if (error)
       *error = p.name + " is a core plugin and cannot be locked";
@@ -863,7 +863,7 @@ bool Database::set_locked(const std::string& name, bool lock, std::string* error
   return true;
 }
 
-bool Database::is_locked(const std::string& name) const {
+bool Database::is_locked(const std::string &name) const {
   const auto it = by_name_ci_.find(to_lower(name));
   return it != by_name_ci_.end() && plugins_[it->second].locked;
 }
@@ -876,7 +876,7 @@ void Database::apply_locked_order() {
   // claim their slots first and a later collision walks upward. Mirrors MO2
   // refreshLoadOrder (pluginlist.cpp:920).
   std::vector<std::pair<int, std::string>> locked;
-  for (const auto& [name, prio] : locked_order_)
+  for (const auto &[name, prio] : locked_order_)
     locked.emplace_back(prio, name);
   std::sort(locked.begin(), locked.end());
 
@@ -884,7 +884,7 @@ void Database::apply_locked_order() {
   std::set<std::string> placed;
   bool changed = false;
 
-  for (const auto& [target, name] : locked) {
+  for (const auto &[target, name] : locked) {
     const auto it = by_name_ci_.find(to_lower(name));
     if (it == by_name_ci_.end())
       continue;  // plugin not installed (pin kept)
@@ -933,8 +933,8 @@ void Database::apply_locked_order() {
   }
 }
 
-bool Database::load_profile(const std::filesystem::path& profiles_dir,
-                            const std::string& profile_name, bool* repaired) {
+bool Database::load_profile(const std::filesystem::path &profiles_dir,
+                            const std::string &profile_name, bool *repaired) {
   const auto dir = profiles_dir / profile_name;
   bool applied   = false;
   if (repaired)
@@ -957,7 +957,7 @@ bool Database::load_profile(const std::filesystem::path& profiles_dir,
         touched[it->second]          = true;
       }
     }
-    for (auto& p : plugins_)
+    for (auto &p : plugins_)
       if (p.force_loaded)
         p.enabled = true;
     applied = true;
@@ -975,11 +975,11 @@ bool Database::load_profile(const std::filesystem::path& profiles_dir,
     while (changed) {
       changed = false;
       for (size_t i = 0; i < plugins_.size(); ++i) {
-        auto& p = plugins_[i];
+        auto &p = plugins_[i];
         if (touched[i] || p.force_loaded || p.enabled)
           continue;
         bool masters_ok = true;
-        for (const auto& master : p.masters) {
+        for (const auto &master : p.masters) {
           const auto mit = by_name_ci_.find(to_lower(master));
           if (mit == by_name_ci_.end() || !plugins_[mit->second].enabled) {
             masters_ok = false;
@@ -1008,7 +1008,7 @@ bool Database::load_profile(const std::filesystem::path& profiles_dir,
     if (!order.empty()) {
       std::vector<bool> taken(plugins_.size(), false);
       std::vector<GamePlugin> reordered;
-      for (const auto& name : order) {
+      for (const auto &name : order) {
         const auto it = by_name_ci_.find(to_lower(name));
         if (it != by_name_ci_.end() && !taken[it->second]) {
           reordered.push_back(plugins_[it->second]);
@@ -1073,8 +1073,8 @@ bool Database::load_profile(const std::filesystem::path& profiles_dir,
   return applied;
 }
 
-void Database::save_profile(const std::filesystem::path& profiles_dir,
-                            const std::string& profile_name) const {
+void Database::save_profile(const std::filesystem::path &profiles_dir,
+                            const std::string &profile_name) const {
   const auto dir = profiles_dir / profile_name;
   std::error_code ec;
   std::filesystem::create_directories(dir, ec);
@@ -1085,19 +1085,19 @@ void Database::save_profile(const std::filesystem::path& profiles_dir,
     locked << "# This file was automatically generated by GameModManager.\n";
     locked << "# Locked plugins keep their position through sorts.\n";
     locked << "# Format: <plugin>|<priority>\n";
-    for (const auto& [name, prio] : locked_order_) {
+    for (const auto &[name, prio] : locked_order_) {
       locked << name << '|' << prio << '\n';
     }
   }
 }
 
-bool Database::write_game_plugins_txt(const std::filesystem::path& path) const {
+bool Database::write_game_plugins_txt(const std::filesystem::path &path) const {
   std::ofstream out(path);
   if (!out)
     return false;
   out << "# This file is used by Skyrim to keep track of your downloaded content.\n";
   out << "# Please do not modify this file.\n";
-  for (const auto& p : plugins_) {
+  for (const auto &p : plugins_) {
     if (p.is_game_native || p.is_cc)
       continue;  // game-native + CC never appear here
     out << (p.enabled ? "*" : "") << p.name << "\n";
@@ -1105,24 +1105,24 @@ bool Database::write_game_plugins_txt(const std::filesystem::path& path) const {
   return out.good();
 }
 
-bool Database::write_load_order_txt(const std::filesystem::path& path) const {
+bool Database::write_load_order_txt(const std::filesystem::path &path) const {
   std::ofstream out(path);
   if (!out)
     return false;
   out << "# This file was automatically generated by GameModManager.\n";
-  for (const auto& p : plugins_)
+  for (const auto &p : plugins_)
     out << p.name << "\n";
   return out.good();
 }
 
-const GamePlugin* Database::find(const std::string& name) const {
+const GamePlugin *Database::find(const std::string &name) const {
   const auto it = by_name_.find(name);
   return it == by_name_.end() ? nullptr : &plugins_[it->second];
 }
 
 std::filesystem::path Database::resolve_plugins_txt_target(
-    const GameKnowledge& knowledge, const std::string& game_id, uint32_t steam_appid,
-    const Platform* platform, const std::filesystem::path& override_path) {
+    const GameKnowledge &knowledge, const std::string &game_id, uint32_t steam_appid,
+    const Platform *platform, const std::filesystem::path &override_path) {
   if (!override_path.empty())
     return override_path;
 
@@ -1137,12 +1137,12 @@ std::filesystem::path Database::resolve_plugins_txt_target(
   return base / subdir / "Plugins.txt";
 }
 
-bool Database::write_plugins_txt_for_launch(const std::filesystem::path& game_dir,
-                                            const std::filesystem::path& instance_root,
-                                            const std::string& game_id,
+bool Database::write_plugins_txt_for_launch(const std::filesystem::path &game_dir,
+                                            const std::filesystem::path &instance_root,
+                                            const std::string &game_id,
                                             uint32_t steam_appid,
-                                            const GameKnowledge& knowledge,
-                                            const Platform* platform) {
+                                            const GameKnowledge &knowledge,
+                                            const Platform *platform) {
   Instance inst = Instance::from_root(instance_root);
   std::filesystem::path override_path;
   if (inst.read_toml())

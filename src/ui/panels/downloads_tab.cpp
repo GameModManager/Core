@@ -65,7 +65,7 @@ static QString state_label(DownloadState s) {
 // Archive extensions the Downloads tab treats as installable: the untracked
 // scan surfaces them and external drops (MO2-style) import them into the
 // downloads dir.
-static const std::vector<std::string>& download_archive_exts() {
+static const std::vector<std::string> &download_archive_exts() {
   static const std::vector<std::string> exts = {".zip", ".7z",  ".tar", ".rar",
                                                 ".gz",  ".bz2", ".xz",  ".fomod"};
   return exts;
@@ -73,25 +73,25 @@ static const std::vector<std::string>& download_archive_exts() {
 
 // Case-insensitive check: does `path` carry one of the supported archive
 // extensions?
-static bool is_archive_path(const std::filesystem::path& path) {
+static bool is_archive_path(const std::filesystem::path &path) {
   std::string lower;
   for (char c : path.extension().string())
     lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-  const auto& exts = download_archive_exts();
+  const auto &exts = download_archive_exts();
   return std::find(exts.begin(), exts.end(), lower) != exts.end();
 }
 
 // MO2's downloads-tab drag gate: accept only when every URL is a local file
 // with a supported archive extension (a single foreign URL rejects the whole
 // drag). Non-local (http etc.) URLs are not handled by the tab.
-static bool accepts_url_drop(const QMimeData* data) {
+static bool accepts_url_drop(const QMimeData *data) {
   if (!data || !data->hasUrls())
     return false;
   const auto urls = data->urls();
   if (urls.isEmpty())
     return false;
 
-  for (const auto& url : urls) {
+  for (const auto &url : urls) {
     if (!url.isLocalFile())
       return false;
     if (!is_archive_path(url.toLocalFile().toStdString()))
@@ -105,7 +105,7 @@ static bool accepts_url_drop(const QMimeData* data) {
 // URLs as text/uri-list (surfaced through QMimeData::urls()); a bare-text
 // fallback covers text-only drags. Returns the URL, or "" when the drop is not
 // a single LoversLab link (so the archive-drop gate below still applies).
-static std::string loverslab_drop_url(const QMimeData* data) {
+static std::string loverslab_drop_url(const QMimeData *data) {
   if (!data)
     return {};
   QString candidate;
@@ -126,17 +126,17 @@ static std::string loverslab_drop_url(const QMimeData* data) {
 }
 
 // --- DownloadsTab ---
-DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
-  auto* layout = new QVBoxLayout(this);
+DownloadsTab::DownloadsTab(QWidget *parent) : QWidget(parent) {
+  auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(0);
 
-  auto* top = new QHBoxLayout;
+  auto *top = new QHBoxLayout;
   top->setContentsMargins(4, 2, 4, 2);
   hide_installed_ = new QCheckBox(tr("Hide installed"), this);
   top->addWidget(hide_installed_);
   top->addStretch(1);
-  auto* add_url_btn = new QPushButton(tr("Add from URL…"), this);
+  auto *add_url_btn = new QPushButton(tr("Add from URL…"), this);
   add_url_btn->setObjectName("addUrlBtn");
   top->addWidget(add_url_btn);
   layout->addLayout(top);
@@ -177,8 +177,8 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
 
   // Default conflict resolver: MO2-style question dialog
   // (Overwrite / Rename new file / Ignore file).
-  conflict_resolver_ = [this](const std::filesystem::path& existing,
-                              const std::filesystem::path& dropped) {
+  conflict_resolver_ = [this](const std::filesystem::path &existing,
+                              const std::filesystem::path &dropped) {
     QMessageBox box(QMessageBox::Question,
                     QString::fromStdString(dropped.filename().string()),
                     tr("A file with the same name has already been "
@@ -249,17 +249,17 @@ void DownloadsTab::set_conflict_resolver(ConflictResolver resolver) {
   conflict_resolver_ = std::move(resolver);
 }
 
-void DownloadsTab::add_download(const std::string& id, const std::string& name,
-                                const std::string& source,
-                                const std::filesystem::path& file_path,
-                                const std::string& nexus_domain, int file_id,
-                                const std::string& parent_mod_id,
-                                const std::string& page_url) {
+void DownloadsTab::add_download(const std::string &id, const std::string &name,
+                                const std::string &source,
+                                const std::filesystem::path &file_path,
+                                const std::string &nexus_domain, int file_id,
+                                const std::string &parent_mod_id,
+                                const std::string &page_url) {
   auto [it, inserted] = downloads_.emplace(id, DownloadEntry{});
   if (!inserted)
     return;  // already exists
 
-  auto& entry = it->second;
+  auto &entry = it->second;
   // Append at the end of the table. Do NOT keep a monotonic row counter:
   // remove_entry() reindexes survivors downward, so a stale counter would
   // point past the table end after entries are removed (rows then never
@@ -291,7 +291,7 @@ void DownloadsTab::add_download(const std::string& id, const std::string& name,
   entry.size_item->setFlags(entry.size_item->flags() & ~Qt::ItemIsEditable);
   table_->setItem(entry.row, 3, entry.size_item);
 
-  auto* bar = new QProgressBar(table_);
+  auto *bar = new QProgressBar(table_);
   bar->setRange(0, 100);
   bar->setValue(0);
   bar->setTextVisible(true);
@@ -302,7 +302,7 @@ void DownloadsTab::add_download(const std::string& id, const std::string& name,
   table_->setRowHeight(entry.row, row_height());
 }
 
-DownloadsTab::DownloadEntry& DownloadsTab::entry_for(const std::string& id) {
+DownloadsTab::DownloadEntry &DownloadsTab::entry_for(const std::string &id) {
   static DownloadEntry null_entry{-1};
   auto it = downloads_.find(id);
   if (it != downloads_.end())
@@ -310,20 +310,20 @@ DownloadsTab::DownloadEntry& DownloadsTab::entry_for(const std::string& id) {
   return null_entry;
 }
 
-void DownloadsTab::rename_download(const std::string& id, const std::string& new_name) {
+void DownloadsTab::rename_download(const std::string &id, const std::string &new_name) {
   auto it = downloads_.find(id);
   if (it == downloads_.end())
     return;
-  auto& entry = it->second;
+  auto &entry = it->second;
   if (entry.name_item) {
     entry.name_item->setText(QString::fromStdString(new_name));
     table_->setRowHeight(entry.row, row_height());
   }
 }
 
-void DownloadsTab::update_progress(const std::string& id, int64_t downloaded,
+void DownloadsTab::update_progress(const std::string &id, int64_t downloaded,
                                    int64_t total, double speed) {
-  auto& entry = entry_for(id);
+  auto &entry = entry_for(id);
   if (entry.row < 0)
     return;
   if (entry.state != DownloadState::Downloading)
@@ -363,9 +363,9 @@ void DownloadsTab::update_progress(const std::string& id, int64_t downloaded,
   }
 }
 
-void DownloadsTab::replace_bar_with_label(const std::string& id, const QString& text,
-                                          const QColor& bg, const QColor& fg) {
-  auto& entry = entry_for(id);
+void DownloadsTab::replace_bar_with_label(const std::string &id, const QString &text,
+                                          const QColor &bg, const QColor &fg) {
+  auto &entry = entry_for(id);
   if (entry.row < 0)
     return;
 
@@ -374,7 +374,7 @@ void DownloadsTab::replace_bar_with_label(const std::string& id, const QString& 
   entry.progress_bar = nullptr;
 
   // Replace with a centered QTableWidgetItem
-  auto* item = new QTableWidgetItem(text);
+  auto *item = new QTableWidgetItem(text);
   item->setFlags(item->flags() & ~Qt::ItemIsEditable);
   item->setTextAlignment(Qt::AlignCenter);
   if (bg.isValid())
@@ -384,8 +384,8 @@ void DownloadsTab::replace_bar_with_label(const std::string& id, const QString& 
   table_->setItem(entry.row, 2, item);
 }
 
-void DownloadsTab::mark_complete(const std::string& id, bool success) {
-  auto& entry = entry_for(id);
+void DownloadsTab::mark_complete(const std::string &id, bool success) {
+  auto &entry = entry_for(id);
   if (entry.row < 0)
     return;
 
@@ -413,8 +413,8 @@ void DownloadsTab::mark_complete(const std::string& id, bool success) {
     on_downloads_dir_changed();
 }
 
-void DownloadsTab::mark_installed(const std::string& id) {
-  auto& entry = entry_for(id);
+void DownloadsTab::mark_installed(const std::string &id) {
+  auto &entry = entry_for(id);
   if (entry.row < 0)
     return;
 
@@ -430,8 +430,8 @@ void DownloadsTab::mark_installed(const std::string& id) {
   apply_installed_filter();
 }
 
-void DownloadsTab::mark_paused(const std::string& id) {
-  auto& entry = entry_for(id);
+void DownloadsTab::mark_paused(const std::string &id) {
+  auto &entry = entry_for(id);
   if (entry.row < 0)
     return;
 
@@ -439,8 +439,8 @@ void DownloadsTab::mark_paused(const std::string& id) {
   replace_bar_with_label(id, tr("Paused"), QColor("#FF9800"), QColor(Qt::white));
 }
 
-void DownloadsTab::mark_downloading(const std::string& id) {
-  auto& entry = entry_for(id);
+void DownloadsTab::mark_downloading(const std::string &id) {
+  auto &entry = entry_for(id);
   if (entry.row < 0)
     return;
 
@@ -454,7 +454,7 @@ void DownloadsTab::mark_downloading(const std::string& id) {
   table_->removeCellWidget(entry.row, 2);
   delete table_->takeItem(entry.row, 2);
 
-  auto* bar = new QProgressBar(table_);
+  auto *bar = new QProgressBar(table_);
   bar->setRange(0, 100);
   bar->setValue(0);
   bar->setTextVisible(true);
@@ -465,15 +465,15 @@ void DownloadsTab::mark_downloading(const std::string& id) {
   table_->setRowHeight(entry.row, row_height());
 }
 
-void DownloadsTab::set_file_path(const std::string& id,
-                                 const std::filesystem::path& path) {
-  auto& entry = entry_for(id);
+void DownloadsTab::set_file_path(const std::string &id,
+                                 const std::filesystem::path &path) {
+  auto &entry = entry_for(id);
   if (entry.row < 0)
     return;
   entry.file_path = path;
 }
 
-void DownloadsTab::set_downloads_dir(const std::filesystem::path& dir) {
+void DownloadsTab::set_downloads_dir(const std::filesystem::path &dir) {
   if (downloads_dir_ != dir) {
     // Re-point the watcher (a switched instance gets a new downloads dir).
     const auto old_str = QString::fromStdString(downloads_dir_.string());
@@ -502,13 +502,13 @@ void DownloadsTab::set_downloads_dir(const std::filesystem::path& dir) {
   scan_downloads_dir();
 }
 
-void DownloadsTab::showEvent(QShowEvent* event) {
+void DownloadsTab::showEvent(QShowEvent *event) {
   QWidget::showEvent(event);
   // Directory watcher handles external changes; no rescan needed on tab switch.
 }
 
 bool DownloadsTab::has_active_download() const {
-  for (const auto& [id, entry] : downloads_) {
+  for (const auto &[id, entry] : downloads_) {
     (void)id;
     if (entry.state == DownloadState::Downloading ||
         entry.state == DownloadState::Paused)
@@ -537,7 +537,7 @@ void DownloadsTab::scan_downloads_dir() {
     return;
   }
   int scanned = 0;
-  for (const auto& entry : it) {
+  for (const auto &entry : it) {
     if (!entry.is_regular_file(ec))
       continue;
     ++scanned;
@@ -553,20 +553,20 @@ void DownloadsTab::scan_downloads_dir() {
   // iterating it. remove_entry() skips the trash step for the missing file
   // and emits entry_removed so the manifest persists the removal.
   std::vector<std::string> vanished;
-  for (const auto& [id, entry] : downloads_) {
+  for (const auto &[id, entry] : downloads_) {
     if (entry.file_path.empty())
       continue;
     std::error_code fec;
     if (!std::filesystem::exists(entry.file_path, fec))
       vanished.push_back(id);
   }
-  for (const auto& id : vanished)
+  for (const auto &id : vanished)
     remove_entry(id);
 
   apply_installed_filter();
 }
 
-bool DownloadsTab::add_downloads_dir_file(const std::filesystem::path& path) {
+bool DownloadsTab::add_downloads_dir_file(const std::filesystem::path &path) {
   if (!is_archive_path(path)) {
     engine::Logger::instance().debug("downloads: skip non-archive " +
                                      path.filename().string());
@@ -584,7 +584,7 @@ bool DownloadsTab::add_downloads_dir_file(const std::filesystem::path& path) {
     // Already tracked under this name: an overwrite drop replaced the
     // file on disk, so refresh the row's size instead of adding a
     // duplicate (the "new archive" must surface immediately).
-    auto& existing = downloads_.at(id);
+    auto &existing = downloads_.at(id);
     auto fsize     = std::filesystem::file_size(path, ec);
     if (!ec) {
       existing.total_size = static_cast<int64_t>(fsize);
@@ -596,14 +596,14 @@ bool DownloadsTab::add_downloads_dir_file(const std::filesystem::path& path) {
 
   // Already backs a tracked entry under a different key (Nexus downloads
   // use "<mod_id>-<file_id>", not the filename).
-  for (const auto& [eid, e] : downloads_) {
+  for (const auto &[eid, e] : downloads_) {
     (void)eid;
     if (e.file_path == path)
       return false;
   }
 
   add_download(id, path.stem().string(), tr("Manual").toStdString(), path);
-  auto& added      = downloads_.at(id);
+  auto &added      = downloads_.at(id);
   added.total_size = static_cast<int64_t>(std::filesystem::file_size(path, ec));
   if (ec)
     added.total_size = 0;
@@ -614,7 +614,7 @@ bool DownloadsTab::add_downloads_dir_file(const std::filesystem::path& path) {
   return true;
 }
 
-bool DownloadsTab::import_dropped_file(const std::filesystem::path& source, bool move) {
+bool DownloadsTab::import_dropped_file(const std::filesystem::path &source, bool move) {
   std::error_code ec;
   if (!std::filesystem::is_regular_file(source, ec)) {
     engine::Logger::instance().warn("drop: invalid source file " + source.string());
@@ -683,19 +683,19 @@ bool DownloadsTab::import_dropped_file(const std::filesystem::path& source, bool
   return add_downloads_dir_file(dest);
 }
 
-void DownloadsTab::dragEnterEvent(QDragEnterEvent* event) {
+void DownloadsTab::dragEnterEvent(QDragEnterEvent *event) {
   if (accepts_url_drop(event->mimeData()) ||
       !loverslab_drop_url(event->mimeData()).empty())
     event->acceptProposedAction();
 }
 
-void DownloadsTab::dragMoveEvent(QDragMoveEvent* event) {
+void DownloadsTab::dragMoveEvent(QDragMoveEvent *event) {
   if (accepts_url_drop(event->mimeData()) ||
       !loverslab_drop_url(event->mimeData()).empty())
     event->acceptProposedAction();
 }
 
-void DownloadsTab::dropEvent(QDropEvent* event) {
+void DownloadsTab::dropEvent(QDropEvent *event) {
   // A single LoversLab download link dropped from a browser starts the same
   // download flow as the "Add from URL…" button.
   const std::string ll_url = loverslab_drop_url(event->mimeData());
@@ -717,7 +717,7 @@ void DownloadsTab::dropEvent(QDropEvent* event) {
   }
 
   // accepts_url_drop already guarantees every URL is a local archive file.
-  for (const auto& url : event->mimeData()->urls())
+  for (const auto &url : event->mimeData()->urls())
     import_dropped_file(url.toLocalFile().toStdString(), move);
   apply_installed_filter();
   event->accept();
@@ -728,7 +728,7 @@ void DownloadsTab::apply_installed_filter() {
     return;
   const bool hide    = hide_installed_->isChecked();
   const QString text = current_filter_text_;
-  for (const auto& [id, entry] : downloads_) {
+  for (const auto &[id, entry] : downloads_) {
     // "Hide installed" always wins over the text filter.
     if (hide && entry.state == DownloadState::Installed) {
       table_->setRowHidden(entry.row, true);
@@ -740,7 +740,7 @@ void DownloadsTab::apply_installed_filter() {
     if (!text.isEmpty()) {
       bool match = false;
       for (int col = 0; col < table_->columnCount(); ++col) {
-        auto* item = table_->item(entry.row, col);
+        auto *item = table_->item(entry.row, col);
         if (item && item->text().toLower().contains(text)) {
           match = true;
           break;
@@ -753,7 +753,7 @@ void DownloadsTab::apply_installed_filter() {
   }
 }
 
-void DownloadsTab::set_filter_text(const QString& text) {
+void DownloadsTab::set_filter_text(const QString &text) {
   current_filter_text_ = text.trimmed().toLower();
 }
 
@@ -764,7 +764,7 @@ void DownloadsTab::reapply_installed_filter() {
 void DownloadsTab::on_cell_double_clicked(int row, int column) {
   (void)column;
   // Find the download id for this row
-  for (const auto& [id, entry] : downloads_) {
+  for (const auto &[id, entry] : downloads_) {
     if (entry.row == row) {
       if (entry.state == DownloadState::Complete ||
           entry.state == DownloadState::Failed ||
@@ -783,7 +783,7 @@ void DownloadsTab::on_cell_double_clicked(int row, int column) {
 }
 
 DownloadsTab::SourceInfo
-DownloadsTab::source_info_for(const std::string& id, const DownloadEntry& entry) const {
+DownloadsTab::source_info_for(const std::string &id, const DownloadEntry &entry) const {
   SourceInfo info;
   const QString source_text = entry.source_item ? entry.source_item->text() : QString();
 
@@ -834,14 +834,14 @@ DownloadsTab::source_info_for(const std::string& id, const DownloadEntry& entry)
   return info;
 }
 
-void DownloadsTab::on_custom_context_menu(const QPoint& pos) {
-  auto* item = table_->itemAt(pos);
+void DownloadsTab::on_custom_context_menu(const QPoint &pos) {
+  auto *item = table_->itemAt(pos);
   if (!item)
     return;
   const int row = item->row();
 
-  const std::string* found = nullptr;
-  for (const auto& [id, entry] : downloads_) {
+  const std::string *found = nullptr;
+  for (const auto &[id, entry] : downloads_) {
     if (entry.row == row) {
       found = &id;
       break;
@@ -855,12 +855,12 @@ void DownloadsTab::on_custom_context_menu(const QPoint& pos) {
   menu.exec(table_->viewport()->mapToGlobal(pos));
 }
 
-void DownloadsTab::add_context_menu_actions(QMenu& menu, const std::string& id) {
-  const auto& entry = downloads_.at(id);
+void DownloadsTab::add_context_menu_actions(QMenu &menu, const std::string &id) {
+  const auto &entry = downloads_.at(id);
 
   // Resolved through the central IconManager (theme/pack -> system -> base pack),
   // with a standard-icon fallback for the download actions.
-  auto icon_for = [](const QString& theme, QStyle::StandardPixmap fallback) -> QIcon {
+  auto icon_for = [](const QString &theme, QStyle::StandardPixmap fallback) -> QIcon {
     return engine::IconManager::instance().resolve_icon(theme, fallback);
   };
 
@@ -870,7 +870,7 @@ void DownloadsTab::add_context_menu_actions(QMenu& menu, const std::string& id) 
                            entry.state != DownloadState::Paused &&
                            !entry.file_path.empty() &&
                            std::filesystem::exists(entry.file_path);
-  auto* install_action   = menu.addAction(
+  auto *install_action   = menu.addAction(
       icon_for("download", QStyle::SP_ArrowDown),
       entry.state == DownloadState::Installed ? tr("Reinstall") : tr("Install"), this,
       [this, id, entry]() {
@@ -933,7 +933,7 @@ void DownloadsTab::add_context_menu_actions(QMenu& menu, const std::string& id) 
                                "/mods/" + entry.parent_mod_id);
   }
   if (!page_url.isEmpty()) {
-    auto* page_action =
+    auto *page_action =
         menu.addAction(icon_for("text-html", QStyle::SP_FileDialogInfoView), page_label,
                        this, [page_url]() {
                          QDesktopServices::openUrl(QUrl(page_url));
@@ -957,7 +957,7 @@ void DownloadsTab::add_context_menu_actions(QMenu& menu, const std::string& id) 
                  });
 }
 
-void configure_remove_download_dialog(TaskDialog& dlg, const QString& file_name) {
+void configure_remove_download_dialog(TaskDialog &dlg, const QString &file_name) {
   dlg.title(QObject::tr("Remove Download"))
       .main(QObject::tr("Move \"%1\" to the trash bin?").arg(file_name))
       .content(QObject::tr("The archive stays in the system trash and can be "
@@ -967,11 +967,11 @@ void configure_remove_download_dialog(TaskDialog& dlg, const QString& file_name)
       .add_button({QObject::tr("No"), "", QMessageBox::No});
 }
 
-void DownloadsTab::remove_entry(const std::string& id) {
+void DownloadsTab::remove_entry(const std::string &id) {
   auto it = downloads_.find(id);
   if (it == downloads_.end())
     return;
-  auto& entry = it->second;
+  auto &entry = it->second;
 
   // Trash the archive file (if any) before dropping the entry.
   if (!entry.file_path.empty() && std::filesystem::exists(entry.file_path)) {
@@ -989,7 +989,7 @@ void DownloadsTab::remove_entry(const std::string& id) {
   downloads_.erase(it);
 
   // Rows below the removed one shift up - reindex the survivors.
-  for (auto& [eid, e] : downloads_) {
+  for (auto &[eid, e] : downloads_) {
     if (e.row > removed_row)
       --e.row;
   }
@@ -1001,7 +1001,7 @@ void DownloadsTab::remove_entry(const std::string& id) {
 
 std::string DownloadsTab::serialize() const {
   QJsonArray arr;
-  for (const auto& [id, entry] : downloads_) {
+  for (const auto &[id, entry] : downloads_) {
     QJsonObject obj;
     obj["id"]         = QString::fromStdString(id);
     obj["name"]       = entry.name_item ? entry.name_item->text() : QString();
@@ -1023,13 +1023,13 @@ std::string DownloadsTab::serialize() const {
   return doc.toJson(QJsonDocument::Compact).toStdString();
 }
 
-void DownloadsTab::deserialize(const std::string& json,
-                               const std::filesystem::path& downloads_dir) {
+void DownloadsTab::deserialize(const std::string &json,
+                               const std::filesystem::path &downloads_dir) {
   auto doc = QJsonDocument::fromJson(QString::fromStdString(json).toUtf8());
   if (!doc.isArray())
     return;
 
-  for (const auto& val : doc.array()) {
+  for (const auto &val : doc.array()) {
     auto obj        = val.toObject();
     auto id         = obj["id"].toString().toStdString();
     auto name       = obj["name"].toString().toStdString();
@@ -1100,7 +1100,7 @@ void DownloadsTab::deserialize(const std::string& json,
     if (!inserted)
       continue;
 
-    auto& entry         = it->second;
+    auto &entry         = it->second;
     entry.row           = table_->rowCount();
     entry.file_path     = file_path;
     entry.state         = state;
@@ -1133,7 +1133,7 @@ void DownloadsTab::deserialize(const std::string& json,
       entry.size_item->setFlags(entry.size_item->flags() & ~Qt::ItemIsEditable);
       table_->setItem(entry.row, 3, entry.size_item);
 
-      auto* bar = new QProgressBar(table_);
+      auto *bar = new QProgressBar(table_);
       bar->setRange(0, 100);
       bar->setValue(0);
       bar->setTextVisible(true);
@@ -1166,7 +1166,7 @@ void DownloadsTab::deserialize(const std::string& json,
       } else if (state == DownloadState::Removed) {
         fg = QColor("#B8860B");
       }
-      auto* item = new QTableWidgetItem(state_label(state));
+      auto *item = new QTableWidgetItem(state_label(state));
       item->setFlags(item->flags() & ~Qt::ItemIsEditable);
       item->setTextAlignment(Qt::AlignCenter);
       if (bg.isValid())

@@ -22,19 +22,16 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-namespace
-{
+namespace {
 
-void check_html(const QString& input, const QString& want_substr)
-{
+void check_html(const QString &input, const QString &want_substr) {
   const QString got = ui::bbcode_to_html(input);
   INFO("input=" + input.toStdString());
   INFO("got=" + got.toStdString());
   REQUIRE(got.contains(want_substr));
 }
 
-void check_html_equals(const QString& input, const QString& want)
-{
+void check_html_equals(const QString &input, const QString &want) {
   const QString got = ui::bbcode_to_html(input);
   INFO("input=" + input.toStdString());
   INFO("got=" + got.toStdString());
@@ -43,8 +40,8 @@ void check_html_equals(const QString& input, const QString& want)
 
 }  // namespace
 
-TEST_CASE("bbcode: raw <br> tags become a line break, not literal text", "[ui][bbcode]")
-{
+TEST_CASE("bbcode: raw <br> tags become a line break, not literal text",
+          "[ui][bbcode]") {
   // All three common forms must be normalized to a raw \n that the
   // panel's white-space:pre-wrap wrapper will render as a break.
   // libcbb preserves \n verbatim (it only escapes <, >, &, ", ').
@@ -57,8 +54,7 @@ TEST_CASE("bbcode: raw <br> tags become a line break, not literal text", "[ui][b
   check_html_equals(QStringLiteral("hello world"), QStringLiteral("hello world"));
 }
 
-TEST_CASE("bbcode: pre-escaped entities round-trip through libcbb", "[ui][bbcode]")
-{
+TEST_CASE("bbcode: pre-escaped entities round-trip through libcbb", "[ui][bbcode]") {
   // The Nexus API returns &amp; for a literal '&' in the source text.
   // Without normalization, libcbb escapes the '&' again -> &amp;amp;
   // and QTextBrowser shows literal "&amp;". After the unescape pass
@@ -79,8 +75,7 @@ TEST_CASE("bbcode: pre-escaped entities round-trip through libcbb", "[ui][bbcode
   check_html_equals(QStringLiteral("&copy; 2026"), QStringLiteral("&amp;copy; 2026"));
 }
 
-TEST_CASE("bbcode: numeric entities are decoded", "[ui][bbcode]")
-{
+TEST_CASE("bbcode: numeric entities are decoded", "[ui][bbcode]") {
   // Decimal.
   check_html_equals(QStringLiteral("&#65;&#66;&#67;"), QStringLiteral("ABC"));
   // Hex (uppercase and lowercase).
@@ -93,8 +88,8 @@ TEST_CASE("bbcode: numeric entities are decoded", "[ui][bbcode]")
                                                                   "b"));
 }
 
-TEST_CASE("bbcode: single-pass unescape preserves double-escape intent", "[ui][bbcode]")
-{
+TEST_CASE("bbcode: single-pass unescape preserves double-escape intent",
+          "[ui][bbcode]") {
   // If the API double-escapes (&amp;amp; -> literal "&amp;"), the
   // single-pass decoder should collapse ONE layer, giving "&amp;".
   // libcbb then re-escapes the '&' back to "&amp;amp;" - same as the
@@ -104,8 +99,7 @@ TEST_CASE("bbcode: single-pass unescape preserves double-escape intent", "[ui][b
   check_html_equals(QStringLiteral("A &amp;amp; B"), QStringLiteral("A &amp;amp; B"));
 }
 
-TEST_CASE("bbcode: [img]https://...[/img] emits an <img> tag", "[ui][bbcode]")
-{
+TEST_CASE("bbcode: [img]https://...[/img] emits an <img> tag", "[ui][bbcode]") {
   // The image URL must survive normalization AND libcbb's URL sanitizer
   // (which allow-lists http/https/mailto/ftp/ftps). The output <img>
   // tag is what QTextBrowser will use to fetch the bytes through
@@ -119,8 +113,7 @@ TEST_CASE("bbcode: [img]https://...[/img] emits an <img> tag", "[ui][bbcode]")
              QStringLiteral("<img src=\"https://example.com/x.png\" alt=\"\">"));
 }
 
-TEST_CASE("bbcode: dangerous [img] schemes are dropped", "[ui][bbcode]")
-{
+TEST_CASE("bbcode: dangerous [img] schemes are dropped", "[ui][bbcode]") {
   // libcbb's URL allow-list must reject javascript: and similar. The
   // tag drops entirely - we get empty output for the dropped section.
   // The remaining surrounding text still escapes correctly.
@@ -132,8 +125,7 @@ TEST_CASE("bbcode: dangerous [img] schemes are dropped", "[ui][bbcode]")
   REQUIRE(out.contains(QStringLiteral("after")));
 }
 
-TEST_CASE("bbcode: combined Nexus-style description", "[ui][bbcode]")
-{
+TEST_CASE("bbcode: combined Nexus-style description", "[ui][bbcode]") {
   // A realistic input that mixes every concern: BBCode bold, a raw
   // <br />, a pre-escaped &amp; / &gt;, and a remote [img] tag.
   const QString input =
@@ -162,8 +154,7 @@ TEST_CASE("bbcode: combined Nexus-style description", "[ui][bbcode]")
                      "images/160916-1.png\" alt=\"\">")));
 }
 
-TEST_CASE("bbcode: empty input returns empty", "[ui][bbcode]")
-{
+TEST_CASE("bbcode: empty input returns empty", "[ui][bbcode]") {
   CHECK(ui::bbcode_to_html(QString()).isEmpty());
   CHECK(ui::bbcode_to_html(QStringLiteral("")).isEmpty());
   // Whitespace-only input is trimmed by collapse_blank_lines so the
@@ -171,8 +162,7 @@ TEST_CASE("bbcode: empty input returns empty", "[ui][bbcode]")
   CHECK(ui::bbcode_to_html(QStringLiteral("   ")).trimmed().isEmpty());
 }
 
-TEST_CASE("bbcode: BBCode bold/italic/url still parse correctly", "[ui][bbcode]")
-{
+TEST_CASE("bbcode: BBCode bold/italic/url still parse correctly", "[ui][bbcode]") {
   // Regression guard for the basics - our normalization must not
   // disturb BBCode tags that the API also emits.
   check_html_equals(QStringLiteral("[b]bold[/b]"), QStringLiteral("<b>bold</b>"));
@@ -181,8 +171,7 @@ TEST_CASE("bbcode: BBCode bold/italic/url still parse correctly", "[ui][bbcode]"
                     QStringLiteral("<a href=\"https://x.com\">link</a>"));
 }
 
-TEST_CASE("bbcode: CRLF line endings are normalized to LF", "[ui][bbcode]")
-{
+TEST_CASE("bbcode: CRLF line endings are normalized to LF", "[ui][bbcode]") {
   // Nexus and Steam both emit "\r\n"; the wrapper uses pre-wrap, so a
   // stray '\r' would render as a visible control char. Normalize first.
   // The exact output is "\n" - libcbb passes raw newlines through.
@@ -193,8 +182,7 @@ TEST_CASE("bbcode: CRLF line endings are normalized to LF", "[ui][bbcode]")
   check_html_equals(QStringLiteral("a\r\n<br />b"), QStringLiteral("a\nb"));
 }
 
-TEST_CASE("bbcode: <br> adjacent newlines are dedup'd", "[ui][bbcode]")
-{
+TEST_CASE("bbcode: <br> adjacent newlines are dedup'd", "[ui][bbcode]") {
   // A <br> with a newline on either side is a single soft break, not
   // a paragraph break. The pre-pass must collapse to a single '\n'.
   check_html_equals(QStringLiteral("a<br>\nb"), QStringLiteral("a\nb"));
@@ -202,8 +190,8 @@ TEST_CASE("bbcode: <br> adjacent newlines are dedup'd", "[ui][bbcode]")
   check_html_equals(QStringLiteral("a<br />\n<br />b"), QStringLiteral("a\nb"));
 }
 
-TEST_CASE("bbcode: 3+ blank lines collapse to a single paragraph break", "[ui][bbcode]")
-{
+TEST_CASE("bbcode: 3+ blank lines collapse to a single paragraph break",
+          "[ui][bbcode]") {
   // Three or more '\n' in a row render as 2+ blank lines under pre-wrap.
   // The on-site visual is a single blank line between paragraphs.
   check_html_equals(QStringLiteral("a\n\n\nb"), QStringLiteral("a\n\nb"));
@@ -214,8 +202,7 @@ TEST_CASE("bbcode: 3+ blank lines collapse to a single paragraph break", "[ui][b
   check_html_equals(QStringLiteral("a\n\nb"), QStringLiteral("a\n\nb"));
 }
 
-TEST_CASE("bbcode: list items collapse blank lines to a single break", "[ui][bbcode]")
-{
+TEST_CASE("bbcode: list items collapse blank lines to a single break", "[ui][bbcode]") {
   // Permissions-style lists (Nexus / LL) frequently have blank lines
   // between [*] items because the site editor uses a separate paragraph
   // for each. Under the pre-wrap wrapper, a '\n\n' between items adds
@@ -244,8 +231,8 @@ TEST_CASE("bbcode: list items collapse blank lines to a single break", "[ui][bbc
   // Five blank lines (the example from the Permissions list) collapse
   // the same way: \n\n\n\n\n[*] -> \n[*], and the trailing \n before
   // [/list] is also collapsed.
-  const QString five_blanks =
-      ui::bbcode_to_html(QStringLiteral("[list]\n[*]first\n\n\n\n\n[*]second\n\n\n\n\n[*]third\n[/list]"));
+  const QString five_blanks = ui::bbcode_to_html(
+      QStringLiteral("[list]\n[*]first\n\n\n\n\n[*]second\n\n\n\n\n[*]third\n[/list]"));
   INFO("five_blanks=" + five_blanks.toStdString());
   REQUIRE(five_blanks.contains(QStringLiteral("<li>first")));
   REQUIRE(five_blanks.contains(QStringLiteral("<li>second")));
@@ -271,8 +258,7 @@ TEST_CASE("bbcode: list items collapse blank lines to a single break", "[ui][bbc
   REQUIRE(after.contains(QStringLiteral("\n\nnext")));
 }
 
-TEST_CASE("bbcode: raw HTML <a href> anchors are converted to BBCode", "[ui][bbcode]")
-{
+TEST_CASE("bbcode: raw HTML <a href> anchors are converted to BBCode", "[ui][bbcode]") {
   // The LoversLab / Mod.pub scrapes feed HTML into the parser via
   // the rich-text DOM block. libcbb is a BBCode parser, not an HTML
   // parser; without this conversion <a href=...> would render as
@@ -306,16 +292,14 @@ TEST_CASE("bbcode: raw HTML <a href> anchors are converted to BBCode", "[ui][bbc
   // the OLD-string capturedEnd() and skipped or duplicated anchors
   // after the first successful replacement.
   {
-    const QString got = ui::bbcode_to_html(QStringLiteral(
-        "<a href=\"https://a.example\">A</a> and <a href=\"https://b.example\">B</a> and "
-        "<a href=\"https://c.example\">C</a>"));
+    const QString got =
+        ui::bbcode_to_html(QStringLiteral("<a href=\"https://a.example\">A</a> and <a "
+                                          "href=\"https://b.example\">B</a> and "
+                                          "<a href=\"https://c.example\">C</a>"));
     INFO("got=" + got.toStdString());
-    REQUIRE(got.contains(
-        QStringLiteral("<a href=\"https://a.example\">A</a>")));
-    REQUIRE(got.contains(
-        QStringLiteral("<a href=\"https://b.example\">B</a>")));
-    REQUIRE(got.contains(
-        QStringLiteral("<a href=\"https://c.example\">C</a>")));
+    REQUIRE(got.contains(QStringLiteral("<a href=\"https://a.example\">A</a>")));
+    REQUIRE(got.contains(QStringLiteral("<a href=\"https://b.example\">B</a>")));
+    REQUIRE(got.contains(QStringLiteral("<a href=\"https://c.example\">C</a>")));
   }
   // Mixed quoted and unquoted forms in one string (single + double
   // pass). The single-quoted pass must not be skipped when there is
@@ -324,15 +308,12 @@ TEST_CASE("bbcode: raw HTML <a href> anchors are converted to BBCode", "[ui][bbc
     const QString got = ui::bbcode_to_html(QStringLiteral(
         "<a href=\"https://a.example\">A</a> <a href='https://b.example'>B</a>"));
     INFO("got=" + got.toStdString());
-    REQUIRE(got.contains(
-        QStringLiteral("<a href=\"https://a.example\">A</a>")));
-    REQUIRE(got.contains(
-        QStringLiteral("<a href=\"https://b.example\">B</a>")));
+    REQUIRE(got.contains(QStringLiteral("<a href=\"https://a.example\">A</a>")));
+    REQUIRE(got.contains(QStringLiteral("<a href=\"https://b.example\">B</a>")));
   }
 }
 
-TEST_CASE("bbcode: bare https URLs are autolinked", "[ui][bbcode]")
-{
+TEST_CASE("bbcode: bare https URLs are autolinked", "[ui][bbcode]") {
   // The user pastes a description that mentions a URL in prose. libcbb
   // has no autolinker, so a bare https://... stays as plain text. After
   // autolink_bare_urls it becomes a real <a>.
@@ -390,8 +371,7 @@ TEST_CASE("bbcode: bare https URLs are autolinked", "[ui][bbcode]")
   }
 }
 
-TEST_CASE("bbcode: @mentions are linkified to profile search", "[ui][bbcode]")
-{
+TEST_CASE("bbcode: @mentions are linkified to profile search", "[ui][bbcode]") {
   // Plain-text JSON-LD descriptions carry "@username" without a link.
   // After linkify_mentions the @username becomes a [url=...]...[/url]
   // pointing at the LoversLab profile search, which resolves to the
@@ -402,7 +382,8 @@ TEST_CASE("bbcode: @mentions are linkified to profile search", "[ui][bbcode]")
   // browser. The link must contain exactly one '@' and there must
   // not be a stray '@' immediately before the <a> tag.
   {
-    const QString got = ui::bbcode_to_html(QStringLiteral("thanks @samuelga24 for the work"));
+    const QString got =
+        ui::bbcode_to_html(QStringLiteral("thanks @samuelga24 for the work"));
     INFO("got=" + got.toStdString());
     REQUIRE(got.contains(QStringLiteral(">@samuelga24</a>")));
     REQUIRE(!got.contains(QStringLiteral("@@")));
@@ -414,8 +395,8 @@ TEST_CASE("bbcode: @mentions are linkified to profile search", "[ui][bbcode]")
   {
     const QString got = ui::bbcode_to_html(QStringLiteral("hi @INueve"));
     INFO("got=" + got.toStdString());
-    REQUIRE(got.contains(
-        QStringLiteral("https://www.loverslab.com/profile/?do=find&amp;search=INueve")));
+    REQUIRE(got.contains(QStringLiteral(
+        "https://www.loverslab.com/profile/?do=find&amp;search=INueve")));
     // Inside the link the visible text is exactly "@INueve" - no
     // double-@, no missing-@.
     REQUIRE(got.contains(QStringLiteral(">@INueve</a>")));
@@ -447,8 +428,7 @@ TEST_CASE("bbcode: @mentions are linkified to profile search", "[ui][bbcode]")
   }
 }
 
-TEST_CASE("bbcode: combined realistic Skooma-style description", "[ui][bbcode]")
-{
+TEST_CASE("bbcode: combined realistic Skooma-style description", "[ui][bbcode]") {
   // Mirrors the on-site Skooma Whore SE description shape (LL rich-text
   // DOM): a <p> with a bare URL, a mention, an <a> anchor, and a <br>.
   // The combined-pipeline assertions cover ordering bugs that would

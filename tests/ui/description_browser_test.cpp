@@ -54,7 +54,7 @@ void check(bool cond, const char *what) {
   INFO(what);
   REQUIRE(cond);
 }
-} // namespace
+}  // namespace
 
 TEST_CASE("description_browser: construction and teardown",
           "[ui][description_browser]") {
@@ -68,9 +68,8 @@ TEST_CASE("description_browser: construction and teardown",
         "openExternalLinks defaults to true to match the prior panels");
 }
 
-TEST_CASE(
-    "description_browser: clear_image_cache on a fresh browser is a no-op",
-    "[ui][description_browser]") {
+TEST_CASE("description_browser: clear_image_cache on a fresh browser is a no-op",
+          "[ui][description_browser]") {
   int argc = 0;
   static QApplication app(argc, nullptr);
   ui::DescriptionBrowser browser;
@@ -91,15 +90,13 @@ TEST_CASE("description_browser: setHtml with a remote [img] does not crash",
   int argc = 0;
   static QApplication app(argc, nullptr);
   ui::DescriptionBrowser browser;
-  browser.setHtml(
-      QStringLiteral("<html><body><img src=\"http://127.0.0.1:1/none.png\" "
-                     "alt=\"\"></body></html>"));
+  browser.setHtml(QStringLiteral("<html><body><img src=\"http://127.0.0.1:1/none.png\" "
+                                 "alt=\"\"></body></html>"));
   // The browser should still display something; the exact rendering
   // depends on whether the request has started yet. We just want to
   // confirm the QTextDocument accepted the HTML and the loadResource
   // override was callable.
-  check(browser.document() != nullptr,
-        "QTextDocument is created after setHtml");
+  check(browser.document() != nullptr, "QTextDocument is created after setHtml");
   // Drain pending events so the QNetworkAccessManager's GET runs
   // through whatever path it can in this offline environment.
   QCoreApplication::processEvents();
@@ -108,9 +105,8 @@ TEST_CASE("description_browser: setHtml with a remote [img] does not crash",
   CHECK(true);
 }
 
-TEST_CASE(
-    "description_browser: doc->resource() on a remote URL does not recurse",
-    "[ui][description_browser]") {
+TEST_CASE("description_browser: doc->resource() on a remote URL does not recurse",
+          "[ui][description_browser]") {
   // REGRESSION TEST for Workspace-78oo (P1 crash). The previous
   // implementation of loadResource() ended with an unconditional
   // doc->resource() call. QTextDocument::resource() falls back to
@@ -128,23 +124,20 @@ TEST_CASE(
   // setHtml so document() is non-null and the layout is willing to
   // resolve the resource at all. Port 1 is reserved and unreachable;
   // the GET is allowed to time out in the background.
-  browser.setHtml(
-      QStringLiteral("<html><body><img src=\"http://127.0.0.1:1/none.png\" "
-                     "alt=\"\"></body></html>"));
+  browser.setHtml(QStringLiteral("<html><body><img src=\"http://127.0.0.1:1/none.png\" "
+                                 "alt=\"\"></body></html>"));
   check(browser.document() != nullptr, "document exists after setHtml");
   // The recursion trigger: ask the document for the resource directly.
   // On the buggy code this recurses forever (stack overflow, SIGSEGV);
   // after the fix it returns an invalid QVariant because the url has
   // not been fetched yet. The point of the test is that we get here
   // and back at all.
-  const QVariant v =
-      browser.document()->resource(QTextDocument::ImageResource, url);
+  const QVariant v = browser.document()->resource(QTextDocument::ImageResource, url);
   check(!v.isValid(),
         "first lookup misses the cache: the network reply has not landed");
   // A second lookup for the same url must also be safe (still no
   // recursion, still a miss).
-  const QVariant v2 =
-      browser.document()->resource(QTextDocument::ImageResource, url);
+  const QVariant v2 = browser.document()->resource(QTextDocument::ImageResource, url);
   check(!v2.isValid(), "second lookup also misses the cache");
   // Drain pending events so any in-flight reply (which will error out
   // on the unreachable host) is cleaned up; clear_image_cache then
@@ -183,8 +176,7 @@ TEST_CASE("description_browser: file:// loadResource does not block the caller",
   // runs to completion off-thread.
   QImage source(512, 512, QImage::Format_RGB32);
   source.fill(Qt::red);
-  const QString path =
-      QDir::tempPath() + QStringLiteral("/gmm_desc_browser_test.png");
+  const QString path = QDir::tempPath() + QStringLiteral("/gmm_desc_browser_test.png");
   // Clean up any leftover from a previous failed run before writing,
   // not after - removing the file here would race the worker decode.
   QFile::remove(path);
@@ -205,8 +197,7 @@ TEST_CASE("description_browser: file:// loadResource does not block the caller",
                                  "alt=\"\"></body></html>")
                       .arg(path));
   const qint64 set_html_ms = ui_thread.elapsed();
-  check(set_html_ms < 20,
-        "setHtml returns without blocking on file:// loadResource");
+  check(set_html_ms < 20, "setHtml returns without blocking on file:// loadResource");
 
   // Separately drive the event loop long enough for the worker thread
   // to finish the decode and post the result back. We poll in a loop
@@ -252,8 +243,7 @@ TEST_CASE("description_browser: decode_image_bytes handles bad input",
   // decode_image_bytes_impl and prove the worker can be re-entered
   // without state corruption.
   const QImage empty = ui::decode_image_bytes(QByteArray());
-  check(empty.isNull(),
-        "decode_image_bytes returns a null QImage for empty input");
+  check(empty.isNull(), "decode_image_bytes returns a null QImage for empty input");
 
   // Random non-image bytes: the worker should treat them as malformed
   // and return a null QImage, never crash. We use a deterministic
@@ -263,16 +253,14 @@ TEST_CASE("description_browser: decode_image_bytes handles bad input",
   for (int i = 0; i < 1024; ++i)
     garbage.append(static_cast<char>(i & 0xff));
   const QImage junk = ui::decode_image_bytes(garbage);
-  check(junk.isNull(),
-        "decode_image_bytes returns a null QImage for garbage bytes");
+  check(junk.isNull(), "decode_image_bytes returns a null QImage for garbage bytes");
 }
 
 TEST_CASE("description_browser: decode_image_file round-trips a PNG on disk",
           "[ui][description_browser]") {
   QImage source(48, 48, QImage::Format_ARGB32);
   source.fill(QColor(200, 100, 50, 255));
-  const QString path =
-      QDir::tempPath() + QStringLiteral("/gmm_desc_browser_test2.png");
+  const QString path = QDir::tempPath() + QStringLiteral("/gmm_desc_browser_test2.png");
   check(QImageWriter(path).write(source),
         "test fixture: PNG written to a writable temp path");
 

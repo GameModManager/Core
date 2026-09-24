@@ -62,24 +62,24 @@
 #include <vector>
 
 namespace {
-void check(bool cond, const char* what) {
+void check(bool cond, const char *what) {
   INFO(what);
   REQUIRE(cond);
 }
 }  // namespace
 
 // Row whose Plugin Name column equals `name`, or -1.
-static int row_with_name(QTableWidget* table, const char* name) {
+static int row_with_name(QTableWidget *table, const char *name) {
   for (int r = 0; r < table->rowCount(); ++r) {
-    auto* it = table->item(r, 0);
+    auto *it = table->item(r, 0);
     if (it && it->text() == QLatin1String(name))
       return r;
   }
   return -1;
 }
 
-static QAction* action_with_text(QMenu& menu, const char* text) {
-  for (auto* a : menu.actions()) {
+static QAction *action_with_text(QMenu &menu, const char *text) {
+  for (auto *a : menu.actions()) {
     if (a->text() == QLatin1String(text))
       return a;
   }
@@ -104,7 +104,7 @@ TEST_CASE("plugins tab", "[ui]") {
   QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, cfg.c_str());
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
@@ -169,7 +169,7 @@ TEST_CASE("plugins tab", "[ui]") {
       native, cc, skyui, broken_enabled, needs_disabled};
 
   TestPluginsTab tab;
-  auto* table = tab.table();
+  auto *table = tab.table();
   tab.set_plugins(plugins);
 
   check(table->rowCount() == 5, "five plugin rows");
@@ -227,7 +227,7 @@ TEST_CASE("plugins tab", "[ui]") {
 
   // Pinned rows: checked, not user-checkable, greyed, not draggable.
   {
-    QTableWidgetItem* en = table->item(0, 0);
+    QTableWidgetItem *en = table->item(0, 0);
     check(en->checkState() == Qt::Checked, "native shows checked");
     check(!(en->flags() & Qt::ItemIsUserCheckable), "native box not toggleable");
     check(!(en->flags() & Qt::ItemIsDragEnabled), "native row not draggable");
@@ -246,7 +246,7 @@ TEST_CASE("plugins tab", "[ui]") {
   // only - no red/italic row styling. The disabled broken row renders like a
   // plain row; its tooltip still lists every master under Enabled Masters.
   {
-    QTableWidgetItem* name = table->item(3, 0);
+    QTableWidgetItem *name = table->item(3, 0);
     check(name->foreground().style() == Qt::NoBrush, "disabled broken row untinted");
     check(!name->font().italic(), "disabled broken row not italic");
     const QString tip = name->toolTip();
@@ -271,7 +271,7 @@ TEST_CASE("plugins tab", "[ui]") {
   // Toggling a checkbox emits toggle_requested with the plugin name.
   std::vector<std::pair<std::string, bool>> toggles;
   QObject::connect(&tab, &ui::PluginsTab::toggle_requested,
-                   [&](const std::string& name, bool enabled) {
+                   [&](const std::string &name, bool enabled) {
                      toggles.emplace_back(name, enabled);
                    });
   table->item(3, 0)->setCheckState(Qt::Checked);
@@ -354,7 +354,7 @@ TEST_CASE("plugins tab", "[ui]") {
           "selected_plugin_names for one row");
     table->setSelectionMode(QAbstractItemView::ExtendedSelection);
     table->clearSelection();
-    auto* sm = table->selectionModel();
+    auto *sm = table->selectionModel();
     sm->select(table->model()->index(0, 0),
                QItemSelectionModel::Select | QItemSelectionModel::Rows);
     sm->select(table->model()->index(1, 0),
@@ -376,7 +376,7 @@ TEST_CASE("plugins tab", "[ui]") {
     tab.resize(640, 400);
     tab.show();
     QApplication::processEvents();
-    auto* viewport = table->viewport();
+    auto *viewport = table->viewport();
 
     table->clearSelection();
     table->selectRow(2);
@@ -506,7 +506,7 @@ TEST_CASE("plugins tab", "[ui]") {
     // the lock pin in its own rightmost column (not a Flags emblem) and the
     // full tooltip intact.
     const int lr         = row_with_name(table, "Locked.esp");
-    QTableWidgetItem* ln = table->item(lr, 0);
+    QTableWidgetItem *ln = table->item(lr, 0);
     check(ln->flags() & Qt::ItemIsUserCheckable, "locked row still toggleable");
     check(!(ln->flags() & Qt::ItemIsDragEnabled), "locked row not draggable");
     check(!(table->item(lr, 1)->flags() & Qt::ItemIsDragEnabled) &&
@@ -640,7 +640,7 @@ TEST_CASE("plugins tab", "[ui]") {
       // "or moved"), draggable, normal foreground.
       {
         const int fr         = row_with_name(table, "ForcedOn.esp");
-        QTableWidgetItem* fn = table->item(fr, 0);
+        QTableWidgetItem *fn = table->item(fr, 0);
         check(fn->checkState() == Qt::Checked, "forceEnabled shows checked");
         check(!(fn->flags() & Qt::ItemIsUserCheckable),
               "forceEnabled box not toggleable");
@@ -655,7 +655,7 @@ TEST_CASE("plugins tab", "[ui]") {
       // matching forceDisabled paragraph (.esl variant vs generic).
       {
         const int er         = row_with_name(table, "ForcedOff.esl");
-        QTableWidgetItem* en = table->item(er, 0);
+        QTableWidgetItem *en = table->item(er, 0);
         check(en->checkState() == Qt::Unchecked, "forceDisabled shows unchecked");
         check(!(en->flags() & Qt::ItemIsUserCheckable),
               "forceDisabled box not toggleable");
@@ -745,13 +745,13 @@ TEST_CASE("plugins tab", "[ui]") {
     // Unlocked user row: offers "Lock load order" and emits lock_requested.
     QMenu menu;
     tab.add_context_menu_actions(menu, row_with_name(table, "SkyUI_SE.esp"));
-    auto* lock_act = action_with_text(menu, "Lock load order");
+    auto *lock_act = action_with_text(menu, "Lock load order");
     check(lock_act != nullptr, "unlocked row offers Lock load order");
     check(action_with_text(menu, "Unlock load order") == nullptr,
           "unlocked row offers no Unlock");
     std::vector<std::pair<std::string, bool>> locks;
     QObject::connect(&tab, &ui::PluginsTab::lock_requested,
-                     [&](const std::string& name, bool locked) {
+                     [&](const std::string &name, bool locked) {
                        locks.emplace_back(name, locked);
                      });
     lock_act->trigger();
@@ -765,7 +765,7 @@ TEST_CASE("plugins tab", "[ui]") {
     tab.set_plugins({native, locked2});
     QMenu menu2;
     tab.add_context_menu_actions(menu2, row_with_name(table, "Locked2.esp"));
-    auto* unlock_act = action_with_text(menu2, "Unlock load order");
+    auto *unlock_act = action_with_text(menu2, "Unlock load order");
     check(unlock_act != nullptr, "locked row offers Unlock load order");
     check(action_with_text(menu2, "Lock load order") == nullptr,
           "locked row offers no Lock");
@@ -810,8 +810,8 @@ TEST_CASE("plugins tab", "[ui]") {
     const std::vector<engine::GamePlugin> count_set = {master, lite,    lite_flag,
                                                        reg_on, reg_off, medium};
 
-    auto* counter     = tab.findChild<QLCDNumber*>("mo2CounterLabel");
-    auto* refresh_btn = tab.findChild<QPushButton*>("pluginRefreshBtn");
+    auto *counter     = tab.findChild<QLCDNumber *>("mo2CounterLabel");
+    auto *refresh_btn = tab.findChild<QPushButton *>("pluginRefreshBtn");
     check(counter != nullptr, "MO2 counter label present above the table");
     check(refresh_btn != nullptr, "Refresh button present above the table");
 

@@ -47,7 +47,7 @@ static std::string trim(std::string s) {
 // followed by 'n'), not a real newline. This is intentionally minimal - we
 // don't need to escape " or ' or anything else that the INI grammar accepts
 // in values.
-static std::string ini_escape_value(const std::string& v) {
+static std::string ini_escape_value(const std::string &v) {
   std::string out;
   out.reserve(v.size());
   for (char c : v) {
@@ -69,7 +69,7 @@ static std::string ini_escape_value(const std::string& v) {
   return out;
 }
 
-static std::string ini_unescape_value(const std::string& v) {
+static std::string ini_unescape_value(const std::string &v) {
   std::string out;
   out.reserve(v.size());
   for (size_t i = 0; i < v.size(); ++i) {
@@ -130,8 +130,8 @@ static const std::unordered_set<std::string> kDropFields = {
 
 static int section_index(
     const std::vector<
-        std::pair<std::string, std::unordered_map<std::string, std::string>>>& sections,
-    const std::string& name) {
+        std::pair<std::string, std::unordered_map<std::string, std::string>>> &sections,
+    const std::string &name) {
   for (int i = 0; i < static_cast<int>(sections.size()); ++i) {
     if (sections[i].first == name)
       return i;
@@ -141,9 +141,9 @@ static int section_index(
 
 // Ensure a section exists (return its index, create if needed at end)
 static int ensure_section(
-    std::vector<std::pair<std::string, std::unordered_map<std::string, std::string>>>&
-        sections,
-    const std::string& name) {
+    std::vector<std::pair<std::string, std::unordered_map<std::string, std::string>>>
+        &sections,
+    const std::string &name) {
   int idx = section_index(sections, name);
   if (idx < 0) {
     idx = static_cast<int>(sections.size());
@@ -156,7 +156,7 @@ static int ensure_section(
 // ModMeta implementation
 // ---------------------------------------------------------------------------
 
-std::string ModMeta::get(const std::string& section, const std::string& key) const {
+std::string ModMeta::get(const std::string &section, const std::string &key) const {
   int idx = section_index(sections_, section);
   if (idx < 0)
     return {};
@@ -166,31 +166,31 @@ std::string ModMeta::get(const std::string& section, const std::string& key) con
   return it->second;
 }
 
-void ModMeta::set(const std::string& section, const std::string& key,
-                  const std::string& value) {
+void ModMeta::set(const std::string &section, const std::string &key,
+                  const std::string &value) {
   int idx                    = ensure_section(sections_, section);
   sections_[idx].second[key] = value;
 }
 
-bool ModMeta::has_section(const std::string& section) const {
+bool ModMeta::has_section(const std::string &section) const {
   return section_index(sections_, section) >= 0;
 }
 
 std::vector<std::string> ModMeta::sections() const {
   std::vector<std::string> out;
   out.reserve(sections_.size());
-  for (const auto& [name, _] : sections_) {
+  for (const auto &[name, _] : sections_) {
     out.push_back(name);
   }
   return out;
 }
 
-std::vector<std::string> ModMeta::keys(const std::string& section) const {
+std::vector<std::string> ModMeta::keys(const std::string &section) const {
   std::vector<std::string> out;
   int idx = section_index(sections_, section);
   if (idx < 0)
     return out;
-  for (const auto& [k, _] : sections_[idx].second) {
+  for (const auto &[k, _] : sections_[idx].second) {
     out.push_back(k);
   }
   return out;
@@ -203,12 +203,12 @@ std::vector<std::string> ModMeta::keys(const std::string& section) const {
 std::string ModMeta::serialize() const {
   std::ostringstream out;
   bool first = true;
-  for (const auto& [section, kv] : sections_) {
+  for (const auto &[section, kv] : sections_) {
     if (!first)
       out << "\n";
     first = false;
     out << "[" << section << "]\n";
-    for (const auto& [key, value] : kv) {
+    for (const auto &[key, value] : kv) {
       // Escape control bytes that would otherwise corrupt the INI
       // structure. A raw '\n' would end the value mid-line, so the
       // parser re-reads the rest as a new section / key, silently
@@ -223,7 +223,7 @@ std::string ModMeta::serialize() const {
 // Parse INI
 // ---------------------------------------------------------------------------
 
-bool ModMeta::parse(const std::string& content) {
+bool ModMeta::parse(const std::string &content) {
   sections_.clear();
 
   std::istringstream in(content);
@@ -282,8 +282,8 @@ bool ModMeta::parse(const std::string& content) {
 // From MO2 import
 // ---------------------------------------------------------------------------
 
-ModMeta ModMeta::from_mo2_import(const std::string& content,
-                                 const std::string& folder_name) {
+ModMeta ModMeta::from_mo2_import(const std::string &content,
+                                 const std::string &folder_name) {
   ModMeta raw;
   raw.parse(content);
 
@@ -313,7 +313,7 @@ ModMeta ModMeta::from_mo2_import(const std::string& content,
   if (raw.has_section("General")) {
     // Determine key ordering: generic first, MO2-origin generic, then nexus fields
     // We copy non-nexus, non-dropped fields to our [General]
-    for (const auto& [key, value] :
+    for (const auto &[key, value] :
          raw.sections_[section_index(raw.sections_, "General")].second) {
       if (kDropFields.count(key))
         continue;
@@ -342,7 +342,7 @@ ModMeta ModMeta::from_mo2_import(const std::string& content,
 
   // Copy [installedFiles] into [Nexusmods] as installedFiles\key
   if (is_nexus && raw.has_section("installedFiles")) {
-    for (const auto& [key, value] :
+    for (const auto &[key, value] :
          raw.sections_[section_index(raw.sections_, "installedFiles")].second) {
       meta.set("Nexusmods", "installedFiles\\" + key, value);
       // Extract primary fileid from 1\fileid
@@ -373,11 +373,11 @@ ModMeta ModMeta::from_mo2_import(const std::string& content,
 // From default (fresh mod, no MO2)
 // ---------------------------------------------------------------------------
 
-ModMeta ModMeta::from_default(const std::string& folder_name,
-                              const std::string& source_type,
-                              const std::string& source_id,
-                              const std::string& installation_file,
-                              const std::string& version) {
+ModMeta ModMeta::from_default(const std::string &folder_name,
+                              const std::string &source_type,
+                              const std::string &source_id,
+                              const std::string &installation_file,
+                              const std::string &version) {
   ModMeta meta;
 
   if (!version.empty())
@@ -462,7 +462,7 @@ std::string ModMeta::separator_id() const {
   return get("GameModManager", "separator_id");
 }
 
-void ModMeta::set_separator_id(const std::string& id) {
+void ModMeta::set_separator_id(const std::string &id) {
   set("GameModManager", "separator_id", id);
 }
 
@@ -505,7 +505,7 @@ std::string ModMeta::parent_id() const {
   return get("GameModManager", "parent_id");
 }
 
-void ModMeta::set_parent_id(const std::string& id) {
+void ModMeta::set_parent_id(const std::string &id) {
   set("GameModManager", "parent_id", id);
 }
 
@@ -517,7 +517,7 @@ std::string ModMeta::collection_id() const {
   return get("GameModManager", "collection_id");
 }
 
-void ModMeta::set_collection_id(const std::string& id) {
+void ModMeta::set_collection_id(const std::string &id) {
   set("GameModManager", "collection_id", id);
 }
 
@@ -573,7 +573,7 @@ int64_t ModMeta::mirror_source_timestamp() const {
   }
 }
 
-void ModMeta::set_mirror(const std::string& source_path, int64_t source_mtime) {
+void ModMeta::set_mirror(const std::string &source_path, int64_t source_mtime) {
   set("Mirror", "sourcePath", source_path);
   set("Mirror", "sourceTimestamp", std::to_string(source_mtime));
 }
@@ -581,13 +581,13 @@ void ModMeta::set_mirror(const std::string& source_path, int64_t source_mtime) {
 void ModMeta::clear_mirror() {
   // Drop the whole section (unset() only clears single keys).
   sections_.erase(std::remove_if(sections_.begin(), sections_.end(),
-                                 [](const auto& named) {
+                                 [](const auto &named) {
                                    return named.first == "Mirror";
                                  }),
                   sections_.end());
 }
 
-void ModMeta::unset(const std::string& section, const std::string& key) {
+void ModMeta::unset(const std::string &section, const std::string &key) {
   int idx = section_index(sections_, section);
   if (idx < 0)
     return;
@@ -598,8 +598,8 @@ void ModMeta::unset(const std::string& section, const std::string& key) {
 // File I/O
 // ---------------------------------------------------------------------------
 
-ModMeta ModMeta::load(const std::filesystem::path& mods_dir,
-                      const std::string& folder_name) {
+ModMeta ModMeta::load(const std::filesystem::path &mods_dir,
+                      const std::string &folder_name) {
   ModMeta meta;
   if (mods_dir.empty() || folder_name.empty())
     return meta;
@@ -634,8 +634,8 @@ ModMeta ModMeta::load(const std::filesystem::path& mods_dir,
   return meta;  // empty meta - caller checks has_section("General")
 }
 
-bool ModMeta::save(const std::filesystem::path& mods_dir,
-                   const std::string& folder_name) const {
+bool ModMeta::save(const std::filesystem::path &mods_dir,
+                   const std::string &folder_name) const {
   auto dir = mods_dir / folder_name;
   std::error_code ec;
   std::filesystem::create_directories(dir, ec);
@@ -650,7 +650,7 @@ bool ModMeta::save(const std::filesystem::path& mods_dir,
   return f.good();
 }
 
-ModMeta ModMeta::load_file(const std::filesystem::path& ini_file) {
+ModMeta ModMeta::load_file(const std::filesystem::path &ini_file) {
   ModMeta meta;
   std::ifstream f(ini_file);
   if (!f)
@@ -661,7 +661,7 @@ ModMeta ModMeta::load_file(const std::filesystem::path& ini_file) {
   return meta;
 }
 
-bool ModMeta::save_file(const std::filesystem::path& ini_file) const {
+bool ModMeta::save_file(const std::filesystem::path &ini_file) const {
   std::error_code ec;
   std::filesystem::create_directories(ini_file.parent_path(), ec);
   if (ec)
@@ -673,8 +673,8 @@ bool ModMeta::save_file(const std::filesystem::path& ini_file) const {
   return f.good();
 }
 
-bool ModMeta::exists(const std::filesystem::path& mods_dir,
-                     const std::string& folder_name) {
+bool ModMeta::exists(const std::filesystem::path &mods_dir,
+                     const std::string &folder_name) {
   if (mods_dir.empty() || folder_name.empty())
     return false;
   std::error_code ec;
@@ -688,12 +688,12 @@ bool ModMeta::exists(const std::filesystem::path& mods_dir,
 // MO2 detection
 // ---------------------------------------------------------------------------
 
-bool ModMeta::has_mo2_meta(const std::filesystem::path& mod_folder) {
+bool ModMeta::has_mo2_meta(const std::filesystem::path &mod_folder) {
   return std::filesystem::exists(mod_folder / "meta.ini");
 }
 
-ModMeta ModMeta::import_mo2(const std::filesystem::path& mod_folder,
-                            const std::string& folder_name) {
+ModMeta ModMeta::import_mo2(const std::filesystem::path &mod_folder,
+                            const std::string &folder_name) {
   auto meta_path = mod_folder / "meta.ini";
   std::ifstream f(meta_path);
   if (!f)
@@ -708,12 +708,12 @@ ModMeta ModMeta::import_mo2(const std::filesystem::path& mod_folder,
 // Game-visible metadata files
 // ---------------------------------------------------------------------------
 
-bool ModMeta::write_game_metadata(const std::filesystem::path& mod_dir,
-                                  const std::string& metadata_file,
-                                  const std::string& display_name,
-                                  const std::string& version,
-                                  const std::string& nexus_mod_id,
-                                  const std::string& installation_file) {
+bool ModMeta::write_game_metadata(const std::filesystem::path &mod_dir,
+                                  const std::string &metadata_file,
+                                  const std::string &display_name,
+                                  const std::string &version,
+                                  const std::string &nexus_mod_id,
+                                  const std::string &installation_file) {
   if (mod_dir.empty())
     return false;
 

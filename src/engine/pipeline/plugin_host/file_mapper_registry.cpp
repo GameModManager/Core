@@ -11,8 +11,8 @@ FileMapperRegistry &FileMapperRegistry::instance() {
   return registry;
 }
 
-void FileMapperRegistry::register_mapper(const std::string &game_id,
-                                         GmmFileMapperFn fn, void *user_data,
+void FileMapperRegistry::register_mapper(const std::string &game_id, GmmFileMapperFn fn,
+                                         void *user_data,
                                          const std::string &plugin_path) {
   if (!fn) {
     Logger::instance().warn("File mapper registered with null fn");
@@ -33,7 +33,7 @@ FileMapperRegistry::get_mappings(const std::string &game_id) const {
     if (!e.game_id.empty() && e.game_id != game_id)
       continue;
 
-    size_t count = 0;
+    size_t count             = 0;
     GmmFileMapping *mappings = e.fn(&count, e.user_data);
     if (!mappings)
       continue;
@@ -49,13 +49,14 @@ FileMapperRegistry::get_mappings(const std::string &game_id) const {
 }
 
 void FileMapperRegistry::clear_plugin(const std::string &plugin_path) {
-  auto it =
-      std::remove_if(entries_.begin(), entries_.end(), [&](const Entry &e) {
-        return e.plugin_path == plugin_path;
-      });
+  auto it = std::remove_if(entries_.begin(), entries_.end(), [&](const Entry &e) {
+    return e.plugin_path == plugin_path;
+  });
   entries_.erase(it, entries_.end());
 }
 
-void FileMapperRegistry::clear() { entries_.clear(); }
+void FileMapperRegistry::clear() {
+  entries_.clear();
+}
 
-} // namespace engine
+}  // namespace engine

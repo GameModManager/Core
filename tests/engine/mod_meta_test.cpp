@@ -21,7 +21,7 @@ void require(bool cond, const char *msg) {
   INFO(msg);
   REQUIRE(cond);
 }
-} // namespace
+}  // namespace
 
 TEST_CASE("mod_meta_ui_state", "[engine]") {
   using engine::ModMeta;
@@ -41,8 +41,7 @@ TEST_CASE("mod_meta_ui_state", "[engine]") {
     parsed.set_folded(false);
     require(!parsed.folded(), "set_folded(false) reads back false");
     ModMeta parsed2;
-    require(parsed2.parse(parsed.serialize()),
-            "serialized folded=false parses");
+    require(parsed2.parse(parsed.serialize()), "serialized folded=false parses");
     require(!parsed2.folded(), "folded=false survives serialize/parse");
     require(parsed2.get("GameModManager", "folded") == "false",
             "folded key is explicit false");
@@ -56,8 +55,7 @@ TEST_CASE("mod_meta_ui_state", "[engine]") {
     require(meta.parent_id() == "ParentMod", "set_parent_id reads back");
     ModMeta parsed;
     require(parsed.parse(meta.serialize()), "serialized parent_id parses");
-    require(parsed.parent_id() == "ParentMod",
-            "parent_id survives serialize/parse");
+    require(parsed.parent_id() == "ParentMod", "parent_id survives serialize/parse");
 
     // unset() removes the key entirely: absent = top-level.
     parsed.unset("GameModManager", "parent_id");
@@ -70,8 +68,7 @@ TEST_CASE("mod_meta_ui_state", "[engine]") {
     ModMeta parsed2;
     require(parsed2.parse(parsed.serialize()),
             "serialized meta without parent_id parses");
-    require(parsed2.parent_id().empty(),
-            "absent parent_id reads back as top-level");
+    require(parsed2.parent_id().empty(), "absent parent_id reads back as top-level");
   }
 
   // --- Sidecar file save/load round trip. ---
@@ -87,8 +84,7 @@ TEST_CASE("mod_meta_ui_state", "[engine]") {
 
     auto loaded = ModMeta::load(root, "ChildMod");
     require(loaded.folded(), "meta load restores folded");
-    require(loaded.parent_id() == "ParentMod",
-            "meta load restores parent_id");
+    require(loaded.parent_id() == "ParentMod", "meta load restores parent_id");
 
     // A mod without a meta file loads as empty (no fold, no parent).
     auto missing = ModMeta::load(root, "NoSuchMod");
@@ -163,19 +159,20 @@ TEST_CASE("mod_meta_multiline_values", "[engine]") {
     // raw newlines mid-value would mean subsequent sections get
     // mis-parsed as new section headers. We assert this directly: the
     // 'nexusdescription' line itself must be one physical line.
-    bool found_desc_line = false;
+    bool found_desc_line                = false;
     bool desc_line_is_one_physical_line = false;
     {
       // Find the start of the nexusdescription line, then walk forward
       // until the next '\n' (or end-of-string). The substring between
       // those two points must not itself contain any '\n'.
       const std::string key_prefix = "nexusdescription = ";
-      size_t start = serialized.find(key_prefix);
+      size_t start                 = serialized.find(key_prefix);
       require(start != std::string::npos,
               "serialized form contains the nexusdescription key");
       found_desc_line = true;
-      size_t end = serialized.find('\n', start);
-      if (end == std::string::npos) end = serialized.size();
+      size_t end      = serialized.find('\n', start);
+      if (end == std::string::npos)
+        end = serialized.size();
       desc_line_is_one_physical_line =
           serialized.find('\n', start + key_prefix.size()) >= end;
     }
@@ -227,10 +224,8 @@ TEST_CASE("mod_meta_multiline_values", "[engine]") {
     ModMeta meta;
     meta.set("General", "path", "C:\\Users\\Mod\\nexusdescription");
     ModMeta parsed;
-    require(parsed.parse(meta.serialize()),
-            "backslash-containing value parses");
-    require(parsed.get("General", "path") ==
-                "C:\\Users\\Mod\\nexusdescription",
+    require(parsed.parse(meta.serialize()), "backslash-containing value parses");
+    require(parsed.get("General", "path") == "C:\\Users\\Mod\\nexusdescription",
             "literal backslashes survive the escape/unescape round trip");
   }
 
@@ -269,11 +264,12 @@ TEST_CASE("mod_meta_write_game_metadata_namespace_isolation", "[engine]") {
   using engine::ModMeta;
 
   // --- Helper: read the [General] modid= value out of a written meta.ini. ---
-  auto read_modid = [](const fs::path& mod_dir) -> std::string {
+  auto read_modid = [](const fs::path &mod_dir) -> std::string {
     std::ifstream f(mod_dir / "meta.ini");
     std::string line;
     while (std::getline(f, line)) {
-      if (line.rfind("modid=", 0) == 0) return line.substr(6);
+      if (line.rfind("modid=", 0) == 0)
+        return line.substr(6);
     }
     return {};
   };
@@ -285,9 +281,8 @@ TEST_CASE("mod_meta_write_game_metadata_namespace_isolation", "[engine]") {
   {
     const auto mod_dir = root / "NexusMod";
     fs::create_directories(mod_dir);
-    require(ModMeta::write_game_metadata(mod_dir, "meta.ini",
-                                          "Some Nexus Mod", "1.0",
-                                          "12345"),
+    require(ModMeta::write_game_metadata(mod_dir, "meta.ini", "Some Nexus Mod", "1.0",
+                                         "12345"),
             "Nexus: write_game_metadata succeeds");
     require(read_modid(mod_dir) == "12345",
             "Nexus: meta.ini modid= is the actual Nexus mod id");
@@ -300,10 +295,9 @@ TEST_CASE("mod_meta_write_game_metadata_namespace_isolation", "[engine]") {
     fs::create_directories(mod_dir);
     // Caller passes empty (the install path now does this for any
     // non-nexus source).
-    require(ModMeta::write_game_metadata(mod_dir, "meta.ini",
-                                          "LoversLab Mod", "1.0",
-                                          ""),
-            "LoversLab: write_game_metadata succeeds");
+    require(
+        ModMeta::write_game_metadata(mod_dir, "meta.ini", "LoversLab Mod", "1.0", ""),
+        "LoversLab: write_game_metadata succeeds");
     require(read_modid(mod_dir) == "0",
             "LoversLab: meta.ini modid=0 (no Nexus attribution)");
   }
@@ -313,9 +307,8 @@ TEST_CASE("mod_meta_write_game_metadata_namespace_isolation", "[engine]") {
   {
     const auto mod_dir = root / "SteamMod";
     fs::create_directories(mod_dir);
-    require(ModMeta::write_game_metadata(mod_dir, "meta.ini",
-                                          "Steam Workshop Mod", "1.0",
-                                          ""),
+    require(ModMeta::write_game_metadata(mod_dir, "meta.ini", "Steam Workshop Mod",
+                                         "1.0", ""),
             "Steam: write_game_metadata succeeds");
     require(read_modid(mod_dir) == "0",
             "Steam: meta.ini modid=0 (no Nexus attribution)");
@@ -325,9 +318,7 @@ TEST_CASE("mod_meta_write_game_metadata_namespace_isolation", "[engine]") {
   {
     const auto mod_dir = root / "ManualMod";
     fs::create_directories(mod_dir);
-    require(ModMeta::write_game_metadata(mod_dir, "meta.ini",
-                                          "Manual Mod", "1.0",
-                                          ""),
+    require(ModMeta::write_game_metadata(mod_dir, "meta.ini", "Manual Mod", "1.0", ""),
             "Manual: write_game_metadata succeeds");
     require(read_modid(mod_dir) == "0",
             "Manual: meta.ini modid=0 (no Nexus attribution)");
@@ -338,10 +329,9 @@ TEST_CASE("mod_meta_write_game_metadata_namespace_isolation", "[engine]") {
   {
     const auto mod_dir = root / "FullFileMod";
     fs::create_directories(mod_dir);
-    require(ModMeta::write_game_metadata(mod_dir, "meta.ini",
-                                          "Full File Mod", "1.0",
-                                          ""),
-            "FullFile: write_game_metadata succeeds");
+    require(
+        ModMeta::write_game_metadata(mod_dir, "meta.ini", "Full File Mod", "1.0", ""),
+        "FullFile: write_game_metadata succeeds");
     std::ifstream f(mod_dir / "meta.ini");
     std::stringstream ss;
     ss << f.rdbuf();
@@ -358,9 +348,7 @@ TEST_CASE("mod_meta_write_game_metadata_namespace_isolation", "[engine]") {
   {
     const auto mod_dir = root / "EmptyMod";
     fs::create_directories(mod_dir);
-    require(ModMeta::write_game_metadata(mod_dir, "meta.ini",
-                                          "Empty", "1.0",
-                                          ""),
+    require(ModMeta::write_game_metadata(mod_dir, "meta.ini", "Empty", "1.0", ""),
             "Empty: write_game_metadata succeeds for create_empty_mod");
     require(read_modid(mod_dir) == "0",
             "Empty: meta.ini modid=0 (no Nexus attribution)");
@@ -371,10 +359,9 @@ TEST_CASE("mod_meta_write_game_metadata_namespace_isolation", "[engine]") {
   {
     const auto mod_dir = root / "OverwriteMod";
     fs::create_directories(mod_dir);
-    require(ModMeta::write_game_metadata(mod_dir, "meta.ini",
-                                          "OverwriteMod", "1.0",
-                                          ""),
-            "Overwrite: write_game_metadata succeeds");
+    require(
+        ModMeta::write_game_metadata(mod_dir, "meta.ini", "OverwriteMod", "1.0", ""),
+        "Overwrite: write_game_metadata succeeds");
     require(read_modid(mod_dir) == "0",
             "Overwrite: meta.ini modid=0 (no Nexus attribution)");
   }
@@ -383,9 +370,8 @@ TEST_CASE("mod_meta_write_game_metadata_namespace_isolation", "[engine]") {
   //     (returns true, does not rewrite). The Nexus id stays put. ---
   {
     const auto mod_dir = root / "NexusMod";
-    require(ModMeta::write_game_metadata(mod_dir, "meta.ini",
-                                          "Different Name", "9.9",
-                                          "99999"),
+    require(ModMeta::write_game_metadata(mod_dir, "meta.ini", "Different Name", "9.9",
+                                         "99999"),
             "Nexus: re-write on existing meta.ini is a no-op success");
     require(read_modid(mod_dir) == "12345",
             "Nexus: re-write does not change an existing modid");
@@ -405,8 +391,7 @@ TEST_CASE("mod_meta_from_mo2_import_modid_guard", "[engine]") {
   using engine::ModMeta;
 
   // Helper to build the most minimal MO2 meta.ini content for the test.
-  auto make_mo2_meta = [](const std::string &repository,
-                          const std::string &modid,
+  auto make_mo2_meta = [](const std::string &repository, const std::string &modid,
                           const std::string &gamename = "Skyrim") {
     std::string s;
     s += "[General]\n";
@@ -422,7 +407,7 @@ TEST_CASE("mod_meta_from_mo2_import_modid_guard", "[engine]") {
   // --- 1) repository=Nexus, modid=0 -> manual (the fqf5 regression). ---
   {
     const std::string content = make_mo2_meta("Nexus", "0");
-    ModMeta m = ModMeta::from_mo2_import(content, "LegacyNexusZero");
+    ModMeta m                 = ModMeta::from_mo2_import(content, "LegacyNexusZero");
     require(m.source_type() == "manual",
             "repository=Nexus with modid=0 falls through to manual");
     require(m.source_id().empty(),
@@ -434,7 +419,7 @@ TEST_CASE("mod_meta_from_mo2_import_modid_guard", "[engine]") {
   // --- 2) repository=Nexus, modid empty -> manual. ---
   {
     const std::string content = make_mo2_meta("Nexus", "");
-    ModMeta m = ModMeta::from_mo2_import(content, "LegacyNexusEmpty");
+    ModMeta m                 = ModMeta::from_mo2_import(content, "LegacyNexusEmpty");
     require(m.source_type() == "manual",
             "repository=Nexus with empty modid falls through to manual");
     require(!m.has_section("Nexusmods"),
@@ -444,13 +429,11 @@ TEST_CASE("mod_meta_from_mo2_import_modid_guard", "[engine]") {
   // --- 3) repository=Nexus, modid=12345 -> nexus (positive id). ---
   {
     const std::string content = make_mo2_meta("Nexus", "12345");
-    ModMeta m = ModMeta::from_mo2_import(content, "LegacyNexusValid");
+    ModMeta m                 = ModMeta::from_mo2_import(content, "LegacyNexusValid");
     require(m.source_type() == "nexus",
             "repository=Nexus with positive modid is tagged nexus");
-    require(m.source_id() == "12345",
-            "source_id is the modid value");
-    require(m.has_section("Nexusmods"),
-            "positive modid writes [Nexusmods] section");
+    require(m.source_id() == "12345", "source_id is the modid value");
+    require(m.has_section("Nexusmods"), "positive modid writes [Nexusmods] section");
     require(m.get("Nexusmods", "modid") == "12345",
             "[Nexusmods]modid mirrors the MO2 modid");
   }
@@ -458,7 +441,7 @@ TEST_CASE("mod_meta_from_mo2_import_modid_guard", "[engine]") {
   // --- 4) repository=Nexus, modid is non-numeric -> manual. ---
   {
     const std::string content = make_mo2_meta("Nexus", "abc");
-    ModMeta m = ModMeta::from_mo2_import(content, "LegacyNexusGarbage");
+    ModMeta m                 = ModMeta::from_mo2_import(content, "LegacyNexusGarbage");
     require(m.source_type() == "manual",
             "repository=Nexus with non-numeric modid falls through to manual");
     require(!m.has_section("Nexusmods"),
@@ -478,9 +461,8 @@ TEST_CASE("mod_meta_from_mo2_import_modid_guard", "[engine]") {
   // --- 6) No repository at all -> manual regardless. (Sanity check.) ---
   {
     const std::string content = make_mo2_meta("", "12345");
-    ModMeta m = ModMeta::from_mo2_import(content, "LegacyNoRepo");
-    require(m.source_type() == "manual",
-            "no repository field falls through to manual");
+    ModMeta m                 = ModMeta::from_mo2_import(content, "LegacyNoRepo");
+    require(m.source_type() == "manual", "no repository field falls through to manual");
     require(!m.has_section("Nexusmods"),
             "no repository field writes NO [Nexusmods] section");
   }
@@ -492,8 +474,8 @@ TEST_CASE("mod_meta_from_mo2_import_modid_guard", "[engine]") {
 TEST_CASE("mod_meta_in_folder_with_legacy_fallback", "[engine]") {
   using engine::ModMeta;
 
-  const fs::path root = "/tmp/gmm_mod_meta_infolder";
-  const fs::path mods = root / "mods";
+  const fs::path root   = "/tmp/gmm_mod_meta_infolder";
+  const fs::path mods   = root / "mods";
   const fs::path legacy = root / "meta";
   fs::remove_all(root);
   fs::create_directories(mods);
@@ -503,8 +485,7 @@ TEST_CASE("mod_meta_in_folder_with_legacy_fallback", "[engine]") {
   meta.set("GameModManager", "folder", "MyMod");
   meta.set_priority(7);
   require(meta.save(mods, "MyMod"), "save writes in-folder meta.ini");
-  require(fs::exists(mods / "MyMod" / "meta.ini"),
-          "in-folder meta.ini exists on disk");
+  require(fs::exists(mods / "MyMod" / "meta.ini"), "in-folder meta.ini exists on disk");
   require(ModMeta::exists(mods, "MyMod"), "exists() sees the in-folder file");
   require(ModMeta::load(mods, "MyMod").priority() == 7,
           "load() reads the in-folder file");
@@ -549,17 +530,15 @@ TEST_CASE("mod_meta_legacy_fallback_guards", "[engine]") {
 
     require(ModMeta::load({}, "SomeMod").priority() < 0,
             "empty mods_dir loads as empty");
-    require(!ModMeta::exists({}, "SomeMod"),
-            "empty mods_dir exists() is false");
-    require(ModMeta::load(mods, "").priority() < 0,
-            "empty folder loads as empty");
+    require(!ModMeta::exists({}, "SomeMod"), "empty mods_dir exists() is false");
+    require(ModMeta::load(mods, "").priority() < 0, "empty folder loads as empty");
     require(!ModMeta::exists(mods, ""), "empty folder exists() is false");
   }
 
   // --- Portable/override layout: a sidecar at {root}/meta is NOT visible
   //     through a mods_dir rooted elsewhere (the fallback safely misses). ---
   {
-    const fs::path root = "/tmp/gmm_mod_meta_fallback_guards";
+    const fs::path root      = "/tmp/gmm_mod_meta_fallback_guards";
     const fs::path game_mods = root / "game" / "mods";
     fs::create_directories(game_mods);
 

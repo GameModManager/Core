@@ -47,7 +47,7 @@ namespace engine {
 //   - otherwise the path is passed through unchanged.
 [[nodiscard]] std::string overwrite_to_mod_rel(const std::string &overwrite_rel,
                                                const std::string &mods_subpath,
-                                               bool include_mod_id = false,
+                                               bool include_mod_id       = false,
                                                const std::string &mod_id = {});
 
 // Lowercase a copy of the string.
@@ -112,9 +112,9 @@ filter_existing_executables(const std::filesystem::path &game_dir,
     const auto first = token.find_first_not_of(" \t");
     if (first == std::string::npos)
       continue;
-    const auto last = token.find_last_not_of(" \t");
+    const auto last        = token.find_last_not_of(" \t");
     const std::string name = token.substr(first, last - first + 1);
-    const auto gf = resolver.resolve(name);
+    const auto gf          = resolver.resolve(name);
     if (!gf)
       continue;
     std::error_code ec;
@@ -145,10 +145,9 @@ inline constexpr const char *kMo2HiddenSuffix = ".mohidden";
 // `.gmm_staging` dir; pass empty to skip the deploy fallback. Both paths
 // are weakly-canonicalized first, so the ~/.steam vs ~/.local/share/Steam
 // spelling mismatch never defeats the relative comparison.
-[[nodiscard]] bool
-merged_view_file_exists(const std::filesystem::path &game_dir,
-                        const std::filesystem::path &staging_dir,
-                        const std::filesystem::path &exec_path);
+[[nodiscard]] bool merged_view_file_exists(const std::filesystem::path &game_dir,
+                                           const std::filesystem::path &staging_dir,
+                                           const std::filesystem::path &exec_path);
 
 // Returns the physical candidate that backs `exec_path` in the merged view:
 // the host path itself when it exists, otherwise the deployed copy under
@@ -203,8 +202,7 @@ bool remove_path(const std::filesystem::path &path, bool permanent = false);
 // caller is responsible for resolving a name conflict first if a prompt is
 // wanted. Returns true on success, false on failure (source kept intact on
 // failure).
-bool move_path(const std::filesystem::path &source,
-               const std::filesystem::path &dest);
+bool move_path(const std::filesystem::path &source, const std::filesystem::path &dest);
 
 // Relay a per-session captured output dir into a mod folder.
 //
@@ -233,4 +231,4 @@ size_t relay_output_to_mod(const std::filesystem::path &scratch_dir,
                            const std::string &mods_subpath, bool include_mod_id,
                            const std::string &mod_id);
 
-} // namespace engine
+}  // namespace engine

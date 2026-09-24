@@ -24,7 +24,7 @@ QString findWrestool();
 class ExeIconWorker : public QObject {
   Q_OBJECT
 public:
-  explicit ExeIconWorker(QObject* parent = nullptr);
+  explicit ExeIconWorker(QObject *parent = nullptr);
 
 public slots:
   // Extracts the icon for exe_path via wrestool and copies the result to
@@ -32,11 +32,11 @@ public slots:
   // when wrestool is missing, fails, or times out - the receiver keeps the
   // placeholder. key/ticket are echoed back so the receiver can match the
   // result to a combo item and drop stale results after a rebuild.
-  void extract(const QString& key, const QString& exe_path,
-               const QString& cache_file_path, quint64 ticket);
+  void extract(const QString &key, const QString &exe_path,
+               const QString &cache_file_path, quint64 ticket);
 
 signals:
-  void extracted(const QString& key, const QString& cache_file_path, bool ok,
+  void extracted(const QString &key, const QString &cache_file_path, bool ok,
                  quint64 ticket);
 };
 

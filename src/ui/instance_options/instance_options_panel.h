@@ -10,7 +10,7 @@
 namespace engine {
 class Platform;
 class PluginLoader;
-}
+}  // namespace engine
 
 namespace ui {
 
@@ -26,32 +26,30 @@ class InstanceOptionsWidget;
 // with inline progress) lives in InstanceOptionsWidget, so the same panel can
 // be embedded as a tab page in Full UI tab mode.
 class InstanceOptionsDialog : public QDialog {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    InstanceOptionsDialog(engine::Platform* platform,
-                          engine::PluginLoader* plugin_loader,
-                          const std::string& game_id,
-                          const std::string& game_display_name,
-                          const std::filesystem::path& game_dir,
-                          uint32_t steam_appid,
-                          const std::filesystem::path& instance_root,
-                          const std::string& current_runner,
-                          const std::string& current_deploy_strategy,
-                          const engine::DeployConfig& deploy_config,
-                          QWidget* parent = nullptr);
+  InstanceOptionsDialog(engine::Platform *platform, engine::PluginLoader *plugin_loader,
+                        const std::string &game_id,
+                        const std::string &game_display_name,
+                        const std::filesystem::path &game_dir, uint32_t steam_appid,
+                        const std::filesystem::path &instance_root,
+                        const std::string &current_runner,
+                        const std::string &current_deploy_strategy,
+                        const engine::DeployConfig &deploy_config,
+                        QWidget *parent = nullptr);
 
-    ~InstanceOptionsDialog() override;
+  ~InstanceOptionsDialog() override;
 
-    // Runner selected in the panel (display name or absolute path).
-    // Empty = automatic (Steam per-game override, then latest).
-    [[nodiscard]] std::string selected_runner() const;
+  // Runner selected in the panel (display name or absolute path).
+  // Empty = automatic (Steam per-game override, then latest).
+  [[nodiscard]] std::string selected_runner() const;
 
-    // The embedded content widget, so the host can wire host-owned
-    // capabilities (e.g. the deferred disable queue flush) onto it.
-    [[nodiscard]] InstanceOptionsWidget* content() const { return content_; }
+  // The embedded content widget, so the host can wire host-owned
+  // capabilities (e.g. the deferred disable queue flush) onto it.
+  [[nodiscard]] InstanceOptionsWidget *content() const { return content_; }
 
 private:
-    InstanceOptionsWidget* content_ = nullptr;
+  InstanceOptionsWidget *content_ = nullptr;
 };
 
 }  // namespace ui

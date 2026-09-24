@@ -34,77 +34,75 @@ struct RegisteredGameFeature {
   std::string game_id;
   std::string feature_type;
   int priority = 0;
-  std::string source; // plugin path, for diagnostics/logging
+  std::string source;  // plugin path, for diagnostics/logging
   std::shared_ptr<GameFeature> feature;
 };
 
 namespace Game {
-namespace Features {
+  namespace Features {
 
-class Registry {
-public:
-  static Registry &instance();
+    class Registry {
+    public:
+      static Registry &instance();
 
-  // Register a feature for (game_id, feature_type). Returns false (and logs)
-  // when feature or feature_type is empty. Registration order is preserved;
-  // see resolve() for the priority + replace rules.
-  bool register_feature(const std::string &game_id,
-                        const std::string &feature_type, int priority,
-                        std::shared_ptr<GameFeature> feature,
-                        const std::string &source = "");
+      // Register a feature for (game_id, feature_type). Returns false (and logs)
+      // when feature or feature_type is empty. Registration order is preserved;
+      // see resolve() for the priority + replace rules.
+      bool register_feature(const std::string &game_id, const std::string &feature_type,
+                            int priority, std::shared_ptr<GameFeature> feature,
+                            const std::string &source = "");
 
-  // Highest-priority feature for (game_id, type), else nullptr. Equal
-  // priority: the LAST registered wins (a later plugin registering the same
-  // priority supersedes the earlier one).
-  [[nodiscard]] std::shared_ptr<GameFeature>
-  resolve(const std::string &game_id, const std::string &feature_type) const;
+      // Highest-priority feature for (game_id, type), else nullptr. Equal
+      // priority: the LAST registered wins (a later plugin registering the same
+      // priority supersedes the earlier one).
+      [[nodiscard]] std::shared_ptr<GameFeature>
+      resolve(const std::string &game_id, const std::string &feature_type) const;
 
-  // Combined ModDataChecker for a game: a feature whose allow-sets are the
-  // union of ALL registered mod_data_checker features' folder_names() and
-  // file_extensions(). nullptr when none registered for the game.
-  [[nodiscard]] std::shared_ptr<const ModDataCheckerFeature>
-  resolve_mod_data_checker(const std::string &game_id) const;
+      // Combined ModDataChecker for a game: a feature whose allow-sets are the
+      // union of ALL registered mod_data_checker features' folder_names() and
+      // file_extensions(). nullptr when none registered for the game.
+      [[nodiscard]] std::shared_ptr<const ModDataCheckerFeature>
+      resolve_mod_data_checker(const std::string &game_id) const;
 
-  // Highest-priority GamePluginsFeature (the game's vanilla plugin files,
-  // MO2 GamePlugins::gamePlugins()), else nullptr.
-  [[nodiscard]] std::shared_ptr<const GamePluginsFeature>
-  resolve_game_plugins(const std::string &game_id) const;
+      // Highest-priority GamePluginsFeature (the game's vanilla plugin files,
+      // MO2 GamePlugins::gamePlugins()), else nullptr.
+      [[nodiscard]] std::shared_ptr<const GamePluginsFeature>
+      resolve_game_plugins(const std::string &game_id) const;
 
-  // Typed resolve for any feature class exposing a static type_key(): the
-  // highest-priority registered feature of T's type, else nullptr. E.g.
-  // resolve_feature<ScriptExtenderFeature>(game_id).
-  //
-  // Wildcard fallback: if no feature is registered for the exact game_id,
-  // retry with the empty game_id. Features registered under the empty
-  // game_id are global / non-game-specific (e.g. a file-format animation
-  // parser that applies to every game), so they are returned when no
-  // game-specific feature exists. This is what lets a generic plugin such as
-  // ANM2 serve any game without being re-registered per game.
-  template <class T>
-  [[nodiscard]] std::shared_ptr<const T>
-  resolve_feature(const std::string &game_id) const {
-    auto f = resolve(game_id, T::type_key());
-    if (!f)
-      f = resolve("", T::type_key()); // global / wildcard fallback
-    return std::dynamic_pointer_cast<const T>(f);
-  }
+      // Typed resolve for any feature class exposing a static type_key(): the
+      // highest-priority registered feature of T's type, else nullptr. E.g.
+      // resolve_feature<ScriptExtenderFeature>(game_id).
+      //
+      // Wildcard fallback: if no feature is registered for the exact game_id,
+      // retry with the empty game_id. Features registered under the empty
+      // game_id are global / non-game-specific (e.g. a file-format animation
+      // parser that applies to every game), so they are returned when no
+      // game-specific feature exists. This is what lets a generic plugin such as
+      // ANM2 serve any game without being re-registered per game.
+      template <class T>
+      [[nodiscard]] std::shared_ptr<const T>
+      resolve_feature(const std::string &game_id) const {
+        auto f = resolve(game_id, T::type_key());
+        if (!f)
+          f = resolve("", T::type_key());  // global / wildcard fallback
+        return std::dynamic_pointer_cast<const T>(f);
+      }
 
-  // All registrations for (game_id, type) in registration order (for
-  // diagnostics/tests). Empty when nothing matches.
-  [[nodiscard]] std::vector<RegisteredGameFeature>
-  features_for(const std::string &game_id,
-               const std::string &feature_type) const;
+      // All registrations for (game_id, type) in registration order (for
+      // diagnostics/tests). Empty when nothing matches.
+      [[nodiscard]] std::vector<RegisteredGameFeature>
+      features_for(const std::string &game_id, const std::string &feature_type) const;
 
-  // Drop all registrations (Python shutdown path, test teardown).
-  void clear();
+      // Drop all registrations (Python shutdown path, test teardown).
+      void clear();
 
-private:
-  Registry() = default;
-  std::vector<RegisteredGameFeature> features_;
-};
+    private:
+      Registry() = default;
+      std::vector<RegisteredGameFeature> features_;
+    };
 
-} // namespace Features
-} // namespace Game
+  }  // namespace Features
+}  // namespace Game
 
 // Backward-compatible alias for existing consumers
 using GameFeatureRegistry = Game::Features::Registry;
@@ -124,8 +122,7 @@ using GameFeatureRegistry = Game::Features::Registry;
 // IUnmanagedMods::mods(false)), empty when none is registered. ModScanWorker
 // merges these into its unmanaged-row synthesis so a plugin can declare mods
 // the game manages itself (DLC/CC folders) that must show in the list.
-[[nodiscard]] std::vector<std::string>
-unmanaged_mods_for(const std::string &game_id);
+[[nodiscard]] std::vector<std::string> unmanaged_mods_for(const std::string &game_id);
 
 // Register a game feature whose payload is key/value pairs - the
 // register_game_feature_data ABI entry (and its pybind mirror) land here, so
@@ -144,9 +141,10 @@ unmanaged_mods_for(const std::string &game_id);
 //   unmanaged_mods    - "mods" (comma-separated internal mod names).
 //   bsa_invalidation  - "bsa_name", "bsa_version".
 // Unknown feature_type or an empty game_id/type is logged and returns false.
-[[nodiscard]] bool register_game_feature_data(
-    const std::string &game_id, const std::string &feature_type, int priority,
-    const std::vector<std::pair<std::string, std::string>> &kv,
-    const std::string &source = "");
+[[nodiscard]] bool
+register_game_feature_data(const std::string &game_id, const std::string &feature_type,
+                           int priority,
+                           const std::vector<std::pair<std::string, std::string>> &kv,
+                           const std::string &source = "");
 
-} // namespace engine
+}  // namespace engine

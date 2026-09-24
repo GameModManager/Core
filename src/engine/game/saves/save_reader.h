@@ -44,7 +44,7 @@ public:
   // head never pays a whole-file read. Reads past the prefix throw
   // SaveParseError (EOF). 0 (default) buffers the whole file, preserving
   // the historical behavior for full parses.
-  SaveReader(const std::filesystem::path& path, const std::string& expected_magic,
+  SaveReader(const std::filesystem::path &path, const std::string &expected_magic,
              std::uint64_t max_prefix_bytes = 0);
 
   // --- raw little-endian primitives; all throw SaveParseError on EOF ---
@@ -89,9 +89,9 @@ public:
 private:
   static std::vector<std::uint8_t> inflate_chunks(std::uint64_t start,
                                                   std::uint64_t total_uncompressed,
-                                                  const std::vector<std::uint8_t>& file,
+                                                  const std::vector<std::uint8_t> &file,
                                                   std::uint64_t cap_bytes = UINT64_MAX);
-  static std::vector<std::uint8_t> lz4_decompress(const std::string& compressed,
+  static std::vector<std::uint8_t> lz4_decompress(const std::string &compressed,
                                                   std::uint32_t uncompressed_size);
 
   std::vector<std::uint8_t> buf_;   // file content, or decompressed region

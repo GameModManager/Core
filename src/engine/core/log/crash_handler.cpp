@@ -42,26 +42,24 @@ std::string CrashHandler::dump_dir_;
 // ---------------------------------------------------------------------------
 std::string CrashHandler::default_dump_dir() {
 #ifdef _WIN32
-    std::filesystem::path base;
-    if (const wchar_t* la = _wgetenv(L"LOCALAPPDATA"); la && la[0] != L'\0') {
-        base = la;
-    } else {
-        base = safe_home_dir() / L"AppData" / L"Local";
-    }
-    return (base / L"gamemodmanager" / L"cache" / L"crash_dumps").string();
+  std::filesystem::path base;
+  if (const wchar_t *la = _wgetenv(L"LOCALAPPDATA"); la && la[0] != L'\0') {
+    base = la;
+  } else {
+    base = safe_home_dir() / L"AppData" / L"Local";
+  }
+  return (base / L"gamemodmanager" / L"cache" / L"crash_dumps").string();
 #elif defined(__APPLE__)
-    return (safe_home_dir() / "Library" / "Caches" / "GameModManager" /
-            "crash_dumps")
-        .string();
+  return (safe_home_dir() / "Library" / "Caches" / "GameModManager" / "crash_dumps")
+      .string();
 #else
-    std::filesystem::path base;
-    if (const char* xdg = std::getenv("XDG_CACHE_HOME");
-        xdg && xdg[0] != '\0') {
-        base = xdg;
-    } else {
-        base = safe_home_dir() / ".cache";
-    }
-    return (base / "GameModManager" / "crash_dumps").string();
+  std::filesystem::path base;
+  if (const char *xdg = std::getenv("XDG_CACHE_HOME"); xdg && xdg[0] != '\0') {
+    base = xdg;
+  } else {
+    base = safe_home_dir() / ".cache";
+  }
+  return (base / "GameModManager" / "crash_dumps").string();
 #endif
 }
 
@@ -69,40 +67,46 @@ std::string CrashHandler::default_dump_dir() {
 // Prune old crash dumps at startup
 // ---------------------------------------------------------------------------
 
-void CrashHandler::prune_old_dumps(int max_kept, const std::string& dump_dir) {
-    if (max_kept <= 0) return;  // 0 = disable pruning entirely
+void CrashHandler::prune_old_dumps(int max_kept, const std::string &dump_dir) {
+  if (max_kept <= 0)
+    return;  // 0 = disable pruning entirely
 
-    const std::string dir = dump_dir.empty() ? dump_dir_ : dump_dir;
-    if (dir.empty()) return;
+  const std::string dir = dump_dir.empty() ? dump_dir_ : dump_dir;
+  if (dir.empty())
+    return;
 
-    std::error_code ec;
-    std::filesystem::path dir_path(dir);
-    if (!std::filesystem::is_directory(dir_path, ec)) return;
+  std::error_code ec;
+  std::filesystem::path dir_path(dir);
+  if (!std::filesystem::is_directory(dir_path, ec))
+    return;
 
-    // Collect all .dmp files in the directory
-    std::vector<std::filesystem::directory_entry> dumps;
-    for (const auto& entry : std::filesystem::directory_iterator(dir_path, ec)) {
-        if (!entry.is_regular_file()) continue;
-        auto ext = entry.path().extension().string();
-        // Case-insensitive extension match
-        for (auto& c : ext) c = static_cast<char>(std::tolower(c));
-        if (ext == ".dmp")
-            dumps.push_back(entry);
-    }
+  // Collect all .dmp files in the directory
+  std::vector<std::filesystem::directory_entry> dumps;
+  for (const auto &entry : std::filesystem::directory_iterator(dir_path, ec)) {
+    if (!entry.is_regular_file())
+      continue;
+    auto ext = entry.path().extension().string();
+    // Case-insensitive extension match
+    for (auto &c : ext)
+      c = static_cast<char>(std::tolower(c));
+    if (ext == ".dmp")
+      dumps.push_back(entry);
+  }
 
-    if (static_cast<int>(dumps.size()) <= max_kept) return;
+  if (static_cast<int>(dumps.size()) <= max_kept)
+    return;
 
-    // Sort newest-first by last write time
-    std::sort(dumps.begin(), dumps.end(),
-              [&ec](const std::filesystem::directory_entry& a,
-                    const std::filesystem::directory_entry& b) {
-                  return a.last_write_time(ec) > b.last_write_time(ec);
-              });
+  // Sort newest-first by last write time
+  std::sort(dumps.begin(), dumps.end(),
+            [&ec](const std::filesystem::directory_entry &a,
+                  const std::filesystem::directory_entry &b) {
+              return a.last_write_time(ec) > b.last_write_time(ec);
+            });
 
-    // Delete oldest entries beyond the limit
-    for (auto it = dumps.begin() + max_kept; it != dumps.end(); ++it) {
-        std::filesystem::remove(it->path(), ec);
-    }
+  // Delete oldest entries beyond the limit
+  for (auto it = dumps.begin() + max_kept; it != dumps.end(); ++it) {
+    std::filesystem::remove(it->path(), ec);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -112,50 +116,48 @@ void CrashHandler::prune_old_dumps(int max_kept, const std::string& dump_dir) {
 
 namespace {
 
-std::filesystem::path g_dump_path;
+  std::filesystem::path g_dump_path;
 
-LONG WINAPI windows_exception_handler(EXCEPTION_POINTERS* exception_info) {
-    HANDLE hFile = CreateFileW(g_dump_path.wstring().c_str(), GENERIC_WRITE, 0,
-                               nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL,
-                               nullptr);
+  LONG WINAPI windows_exception_handler(EXCEPTION_POINTERS *exception_info) {
+    HANDLE hFile = CreateFileW(g_dump_path.wstring().c_str(), GENERIC_WRITE, 0, nullptr,
+                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (hFile != INVALID_HANDLE_VALUE) {
-        MINIDUMP_EXCEPTION_INFORMATION info{};
-        info.ThreadId = GetCurrentThreadId();
-        info.ExceptionPointers = exception_info;
-        info.ClientPointers = FALSE;
-        MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), hFile,
-                          MiniDumpNormal, &info, nullptr, nullptr);
-        CloseHandle(hFile);
+      MINIDUMP_EXCEPTION_INFORMATION info{};
+      info.ThreadId          = GetCurrentThreadId();
+      info.ExceptionPointers = exception_info;
+      info.ClientPointers    = FALSE;
+      MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), hFile,
+                        MiniDumpNormal, &info, nullptr, nullptr);
+      CloseHandle(hFile);
     }
     return EXCEPTION_EXECUTE_HANDLER;
-}
+  }
 
-std::filesystem::path make_dump_path(const std::string& dir) {
+  std::filesystem::path make_dump_path(const std::string &dir) {
     using namespace std::chrono;
     auto now = system_clock::now();
-    auto t = system_clock::to_time_t(now);
+    auto t   = system_clock::to_time_t(now);
     std::tm tm_buf{};
     localtime_s(&tm_buf, &t);
     char filename[128];
-    std::snprintf(filename, sizeof(filename),
-                  "%04d.%02d.%02d-%02d.%02d.%02d.dmp",
+    std::snprintf(filename, sizeof(filename), "%04d.%02d.%02d-%02d.%02d.%02d.dmp",
                   tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday,
                   tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec);
     return std::filesystem::path(dir) / filename;
-}
+  }
 
 }  // namespace
 
-void CrashHandler::install(const std::string& dump_dir) {
-    dump_dir_ = dump_dir;
-    std::error_code ec;
-    std::filesystem::create_directories(std::filesystem::path(dump_dir), ec);
-    g_dump_path = make_dump_path(dump_dir);
-    SetUnhandledExceptionFilter(windows_exception_handler);
+void CrashHandler::install(const std::string &dump_dir) {
+  dump_dir_ = dump_dir;
+  std::error_code ec;
+  std::filesystem::create_directories(std::filesystem::path(dump_dir), ec);
+  g_dump_path = make_dump_path(dump_dir);
+  SetUnhandledExceptionFilter(windows_exception_handler);
 }
 
 void CrashHandler::uninstall() {
-    SetUnhandledExceptionFilter(nullptr);
+  SetUnhandledExceptionFilter(nullptr);
 }
 
 // ---------------------------------------------------------------------------
@@ -166,126 +168,138 @@ void CrashHandler::uninstall() {
 static constexpr int kMaxFrames = 64;
 
 // Recursively create directories (async-signal-safe subset: only uses mkdir + stat).
-static bool mkdirs(const std::string& path, mode_t mode) {
-    struct stat st{};
-    if (stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) return true;
+static bool mkdirs(const std::string &path, mode_t mode) {
+  struct stat st{};
+  if (stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode))
+    return true;
 
-    // Find the parent
-    size_t pos = path.find_last_of('/');
-    if (pos != std::string::npos && pos > 0) {
-        std::string parent = path.substr(0, pos);
-        if (!parent.empty()) mkdirs(parent, mode);
-    }
+  // Find the parent
+  size_t pos = path.find_last_of('/');
+  if (pos != std::string::npos && pos > 0) {
+    std::string parent = path.substr(0, pos);
+    if (!parent.empty())
+      mkdirs(parent, mode);
+  }
 
-    return mkdir(path.c_str(), mode) == 0 || errno == EEXIST;
+  return mkdir(path.c_str(), mode) == 0 || errno == EEXIST;
 }
 
 void CrashHandler::write_dump(int sig) {
-    using namespace std::chrono;
-    auto now = system_clock::now();
-    auto time_t_now = system_clock::to_time_t(now);
+  using namespace std::chrono;
+  auto now        = system_clock::now();
+  auto time_t_now = system_clock::to_time_t(now);
 
-    struct tm tm_buf{};
-    localtime_r(&time_t_now, &tm_buf);
+  struct tm tm_buf{};
+  localtime_r(&time_t_now, &tm_buf);
 
-    char filename[128];
-    std::snprintf(filename, sizeof(filename), "%s/%04d.%02d.%02d-%02d.%02d.%02d.dmp",
-                  dump_dir_.c_str(),
-                  tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday,
-                  tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec);
+  char filename[128];
+  std::snprintf(filename, sizeof(filename), "%s/%04d.%02d.%02d-%02d.%02d.%02d.dmp",
+                dump_dir_.c_str(), tm_buf.tm_year + 1900, tm_buf.tm_mon + 1,
+                tm_buf.tm_mday, tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec);
 
-    int fd = ::open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0) return;
+  int fd = ::open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  if (fd < 0)
+    return;
 
-    auto write_str = [fd](const char* s) {
-        [[maybe_unused]] auto _ = ::write(fd, s, std::strlen(s));
-    };
+  auto write_str = [fd](const char *s) {
+    [[maybe_unused]] auto _ = ::write(fd, s, std::strlen(s));
+  };
 
-    const char* sig_name = "UNKNOWN";
-    switch (sig) {
-        case SIGSEGV: sig_name = "SIGSEGV (segmentation fault)"; break;
-        case SIGABRT: sig_name = "SIGABRT (abort)"; break;
-        case SIGFPE:  sig_name = "SIGFPE (floating point exception)"; break;
-        case SIGBUS:  sig_name = "SIGBUS (bus error)"; break;
-        case SIGILL:  sig_name = "SIGILL (illegal instruction)"; break;
+  const char *sig_name = "UNKNOWN";
+  switch (sig) {
+  case SIGSEGV:
+    sig_name = "SIGSEGV (segmentation fault)";
+    break;
+  case SIGABRT:
+    sig_name = "SIGABRT (abort)";
+    break;
+  case SIGFPE:
+    sig_name = "SIGFPE (floating point exception)";
+    break;
+  case SIGBUS:
+    sig_name = "SIGBUS (bus error)";
+    break;
+  case SIGILL:
+    sig_name = "SIGILL (illegal instruction)";
+    break;
+  }
+
+  write_str("=== GameModManager Crash Dump ===\n");
+  write_str("Signal: ");
+  write_str(sig_name);
+  write_str("\n");
+
+  char ts_buf[64];
+  std::snprintf(ts_buf, sizeof(ts_buf), "Time: %04d-%02d-%02d %02d:%02d:%02d\n",
+                tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday,
+                tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec);
+  write_str(ts_buf);
+
+  write_str("=== Stack Trace ===\n");
+
+  void *frames[kMaxFrames];
+  int count      = backtrace(frames, kMaxFrames);
+  char **symbols = backtrace_symbols(frames, count);
+
+  if (symbols) {
+    for (int i = 0; i < count; ++i) {
+      write_str(symbols[i]);
+      write_str("\n");
     }
+    std::free(symbols);
+  } else {
+    write_str("(backtrace_symbols unavailable)\n");
+  }
 
-    write_str("=== GameModManager Crash Dump ===\n");
-    write_str("Signal: ");
-    write_str(sig_name);
-    write_str("\n");
-
-    char ts_buf[64];
-    std::snprintf(ts_buf, sizeof(ts_buf), "Time: %04d-%02d-%02d %02d:%02d:%02d\n",
-                  tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday,
-                  tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec);
-    write_str(ts_buf);
-
-    write_str("=== Stack Trace ===\n");
-
-    void* frames[kMaxFrames];
-    int count = backtrace(frames, kMaxFrames);
-    char** symbols = backtrace_symbols(frames, count);
-
-    if (symbols) {
-        for (int i = 0; i < count; ++i) {
-            write_str(symbols[i]);
-            write_str("\n");
-        }
-        std::free(symbols);
-    } else {
-        write_str("(backtrace_symbols unavailable)\n");
-    }
-
-    write_str("=== End Dump ===\n");
-    ::close(fd);
+  write_str("=== End Dump ===\n");
+  ::close(fd);
 }
 
 #if defined(__APPLE__)
-void CrashHandler::macos_signal_handler(int sig, siginfo_t*, void*) {
-    write_dump(sig);
-    _exit(128 + sig);
+void CrashHandler::macos_signal_handler(int sig, siginfo_t *, void *) {
+  write_dump(sig);
+  _exit(128 + sig);
 }
 #else
 void CrashHandler::signal_handler(int sig) {
-    write_dump(sig);
-    _exit(128 + sig);
+  write_dump(sig);
+  _exit(128 + sig);
 }
 #endif
 
-void CrashHandler::install(const std::string& dump_dir) {
-    dump_dir_ = dump_dir;
-    mkdirs(dump_dir_, 0755);
+void CrashHandler::install(const std::string &dump_dir) {
+  dump_dir_ = dump_dir;
+  mkdirs(dump_dir_, 0755);
 
-    struct sigaction sa{};
-    sigemptyset(&sa.sa_mask);
+  struct sigaction sa{};
+  sigemptyset(&sa.sa_mask);
 #if defined(__APPLE__)
-    sa.sa_sigaction = macos_signal_handler;
-    sa.sa_flags = SA_SIGINFO;
+  sa.sa_sigaction = macos_signal_handler;
+  sa.sa_flags     = SA_SIGINFO;
 #else
-    sa.sa_handler = signal_handler;
-    sa.sa_flags = SA_RESTART;
+  sa.sa_handler = signal_handler;
+  sa.sa_flags   = SA_RESTART;
 #endif
-    sigaction(SIGSEGV, &sa, nullptr);
-    sigaction(SIGABRT, &sa, nullptr);
-    sigaction(SIGFPE,  &sa, nullptr);
-    sigaction(SIGBUS,  &sa, nullptr);
-    sigaction(SIGILL,  &sa, nullptr);
+  sigaction(SIGSEGV, &sa, nullptr);
+  sigaction(SIGABRT, &sa, nullptr);
+  sigaction(SIGFPE, &sa, nullptr);
+  sigaction(SIGBUS, &sa, nullptr);
+  sigaction(SIGILL, &sa, nullptr);
 }
 
 void CrashHandler::uninstall() {
-    signal(SIGSEGV, SIG_DFL);
-    signal(SIGABRT, SIG_DFL);
-    signal(SIGFPE,  SIG_DFL);
-    signal(SIGBUS,  SIG_DFL);
-    signal(SIGILL,  SIG_DFL);
+  signal(SIGSEGV, SIG_DFL);
+  signal(SIGABRT, SIG_DFL);
+  signal(SIGFPE, SIG_DFL);
+  signal(SIGBUS, SIG_DFL);
+  signal(SIGILL, SIG_DFL);
 }
 
 #endif  // _WIN32
 
 // Free-function entry point used by main().
 void install_crash_handler() {
-    CrashHandler::install(CrashHandler::default_dump_dir());
+  CrashHandler::install(CrashHandler::default_dump_dir());
 }
 
 }  // namespace engine

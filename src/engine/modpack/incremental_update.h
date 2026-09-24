@@ -62,14 +62,14 @@
 namespace engine::modpack {
 
 // "<mod>" or "<mod>#<seq>", stable across revisions for the same patch file.
-[[nodiscard]] std::string patch_base(const gmmpack::PatchEntry& patch);
+[[nodiscard]] std::string patch_base(const gmmpack::PatchEntry &patch);
 // Full appliedPatches key: base + content hash (see header docs).
-[[nodiscard]] std::string patch_key(const gmmpack::PatchEntry& patch);
+[[nodiscard]] std::string patch_key(const gmmpack::PatchEntry &patch);
 
 // Full appliedIniEdits key: lower(target) + tweak id + content hash.
-[[nodiscard]] std::string ini_key(const std::string& target_file,
-                                  const std::string& tweak_id,
-                                  const std::string& content);
+[[nodiscard]] std::string ini_key(const std::string &target_file,
+                                  const std::string &tweak_id,
+                                  const std::string &content);
 
 // One mod that must be re-resolved + reinstalled, with the human-readable
 // reason shown in the widget ("version 1.4.2 -> 1.5", "patch changed", ...).
@@ -89,7 +89,7 @@ struct TreeChange {
 struct IniChange {
   enum class Action { Apply, Retract, Reapply, FlagUserModified };
   Action action = Action::Apply;
-  std::string target_file;   // new pack casing
+  std::string target_file;  // new pack casing
   std::string tweak_id;
   std::string source_mod_id;  // "" = pack-author tweak (or unknown)
   // FlagUserModified only: the drifted key and both values.
@@ -125,8 +125,8 @@ struct UpdatePlan {
 // Diffs new_pack (already unpacked + validated) against the installed state.
 // current_ini_text maps INI target files (any casing) to their current
 // on-disk text; it only enables user-modified flagging and may be empty.
-[[nodiscard]] UpdatePlan diff_update(
-    const gmmpack::Gmmpack& new_pack, const InstalledPackState& state,
-    const std::unordered_map<std::string, std::string>& current_ini_text = {});
+[[nodiscard]] UpdatePlan
+diff_update(const gmmpack::Gmmpack &new_pack, const InstalledPackState &state,
+            const std::unordered_map<std::string, std::string> &current_ini_text = {});
 
 }  // namespace engine::modpack

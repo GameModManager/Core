@@ -16,7 +16,7 @@
 
 namespace {
 
-bool aspect_preserved(const QSize& shown, const QSize& src) {
+bool aspect_preserved(const QSize &shown, const QSize &src) {
   if (shown.isEmpty() || src.isEmpty())
     return false;
   const double a = static_cast<double>(shown.width()) / shown.height();
@@ -34,7 +34,7 @@ TEST_CASE("preview window auto-fits images", "[ui]") {
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");

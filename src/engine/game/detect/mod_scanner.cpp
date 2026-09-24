@@ -25,7 +25,7 @@
 
 namespace engine {
 
-static std::string read_file_text(const std::filesystem::path& path) {
+static std::string read_file_text(const std::filesystem::path &path) {
   std::ifstream f(path);
   if (!f)
     return {};
@@ -35,7 +35,7 @@ static std::string read_file_text(const std::filesystem::path& path) {
 
 // --- Helpers ---
 
-static std::vector<std::string> split_csv(const std::string& s) {
+static std::vector<std::string> split_csv(const std::string &s) {
   std::vector<std::string> result;
   std::istringstream ss(s);
   std::string token;
@@ -50,7 +50,7 @@ static std::vector<std::string> split_csv(const std::string& s) {
   return result;
 }
 
-static bool ci_equals(const std::string& a, const std::string& b) {
+static bool ci_equals(const std::string &a, const std::string &b) {
   if (a.size() != b.size())
     return false;
   for (size_t i = 0; i < a.size(); ++i) {
@@ -61,9 +61,9 @@ static bool ci_equals(const std::string& a, const std::string& b) {
   return true;
 }
 
-static bool should_ignore(const std::string& name,
-                          const std::vector<std::string>& ignored) {
-  for (const auto& ig : ignored) {
+static bool should_ignore(const std::string &name,
+                          const std::vector<std::string> &ignored) {
+  for (const auto &ig : ignored) {
     if (ci_equals(name, ig))
       return true;
   }
@@ -80,7 +80,7 @@ static bool should_ignore(const std::string& name,
 // scans unmanaged instead of as a managed mod. The plugin-extension
 // requirement keeps arbitrary "cc"-prefixed mod folders (no extension)
 // regular mods; the match is case-insensitive (on-disk case varies).
-static bool is_creation_club_plugin_name(const std::string& name) {
+static bool is_creation_club_plugin_name(const std::string &name) {
   if (name.size() < 7)  // "cc" + 1 char + ".esm" (shortest plugin suffix)
     return false;
   if (std::tolower(static_cast<unsigned char>(name[0])) != 'c' ||
@@ -100,8 +100,8 @@ static bool is_creation_club_plugin_name(const std::string& name) {
 // std::filesystem API, so it needs statx(2) on Linux; when the filesystem
 // doesn't report btime the install time falls back to the write time. Epoch
 // seconds, 0 on error.
-static void folder_timestamps(const std::filesystem::path& dir, int64_t& install,
-                              int64_t& changed) {
+static void folder_timestamps(const std::filesystem::path &dir, int64_t &install,
+                              int64_t &changed) {
   install = 0;
   changed = 0;
 
@@ -136,8 +136,8 @@ static void folder_timestamps(const std::filesystem::path& dir, int64_t& install
 // Tags are compared case-insensitively. Returns empty when no mapping
 // is configured or no tags match.
 static std::vector<int>
-map_workshop_tags_to_categories(const std::vector<std::string>& tags,
-                                const std::string& mapping_json) {
+map_workshop_tags_to_categories(const std::vector<std::string> &tags,
+                                const std::string &mapping_json) {
   std::vector<int> result;
   if (mapping_json.empty() || tags.empty())
     return result;
@@ -147,7 +147,7 @@ map_workshop_tags_to_categories(const std::vector<std::string>& tags,
     if (!mapping.is_object())
       return result;
 
-    for (const auto& tag : tags) {
+    for (const auto &tag : tags) {
       // Lowercase the tag for case-insensitive matching
       std::string lower_tag = tag;
       std::transform(lower_tag.begin(), lower_tag.end(), lower_tag.begin(),
@@ -207,8 +207,8 @@ struct ScanConfig {
 // level, OR a top-level subdirectory whose name matches a recognized data
 // directory from the checker's allow-list. No allow-lists registered →
 // nothing can look invalid.
-static bool content_looks_valid(const ScanConfig& cfg,
-                                const std::filesystem::path& entry_path) {
+static bool content_looks_valid(const ScanConfig &cfg,
+                                const std::filesystem::path &entry_path) {
   if (cfg.valid_dirs.empty())
     return true;
 
@@ -220,12 +220,12 @@ static bool content_looks_valid(const ScanConfig& cfg,
                                                        "ba2"};
 
   std::error_code ec;
-  for (const auto& entry : std::filesystem::directory_iterator(entry_path, ec)) {
+  for (const auto &entry : std::filesystem::directory_iterator(entry_path, ec)) {
     // Check for recognized data subdirectories (MO2 GamebryoModDataChecker
     // allows mods with recognized folder names like textures/, meshes/, etc.)
     if (entry.is_directory(ec)) {
       auto dir_name = entry.path().filename().string();
-      for (const auto& vd : cfg.valid_dirs)
+      for (const auto &vd : cfg.valid_dirs)
         if (ci_equals(dir_name, vd))
           return true;
     }
@@ -236,15 +236,15 @@ static bool content_looks_valid(const ScanConfig& cfg,
     if (dot == std::string::npos)
       continue;
     auto ext = entry.path().filename().string().substr(dot + 1);
-    for (const auto& pe : kPluginExts)
+    for (const auto &pe : kPluginExts)
       if (ci_equals(ext, pe))
         return true;
   }
   return false;
 }
 
-static ScanConfig make_scan_config(const GameKnowledge& knowledge,
-                                   const std::string& game_id) {
+static ScanConfig make_scan_config(const GameKnowledge &knowledge,
+                                   const std::string &game_id) {
   ScanConfig cfg;
   cfg.disable_file = disable_mechanism_for(knowledge, game_id);
   auto ignored_csv = knowledge.get(game_id, "ignored_files", "");
@@ -275,7 +275,7 @@ static ScanConfig make_scan_config(const GameKnowledge& knowledge,
   // the engine should skip during directory scanning - same semantics as
   // ignored_files but scoped to subdirectories of the mods dir.
   auto ignored_dirs = split_csv(knowledge.get(game_id, "ignored_dirs", ""));
-  for (auto& d : ignored_dirs) {
+  for (auto &d : ignored_dirs) {
     if (!should_ignore(d, cfg.ignored))
       cfg.ignored.push_back(std::move(d));
   }
@@ -316,8 +316,8 @@ static ScanConfig make_scan_config(const GameKnowledge& knowledge,
 // [Mirror] section is a mirrored source or a mirror backup. The stored
 // sourcePath is checked live: a missing path means the external source is
 // gone (deleted by Steam etc.) and this folder is the surviving backup.
-static void apply_mirror_state(ScannedMod& mod,
-                               const std::filesystem::path& entry_path) {
+static void apply_mirror_state(ScannedMod &mod,
+                               const std::filesystem::path &entry_path) {
   std::error_code ec;
   auto meta_path = entry_path / "meta.ini";
   if (!std::filesystem::is_regular_file(meta_path, ec))
@@ -339,8 +339,8 @@ static void apply_mirror_state(ScannedMod& mod,
 // flagged unmanaged (is_game_native) instead: vanilla content, never a
 // managed mod.
 static std::optional<ScannedMod>
-scan_entry(const std::filesystem::path& entry_path, const ScanConfig& cfg,
-           const std::vector<std::filesystem::path>& ignore_symlink_targets) {
+scan_entry(const std::filesystem::path &entry_path, const ScanConfig &cfg,
+           const std::vector<std::filesystem::path> &ignore_symlink_targets) {
   auto folder_name = entry_path.filename().string();
   if (should_ignore(folder_name, cfg.ignored))
     return std::nullopt;
@@ -357,7 +357,7 @@ scan_entry(const std::filesystem::path& entry_path, const ScanConfig& cfg,
   // holds this folder name, so the Data-backed synthesis for the same file
   // is skipped - exactly one row results.
   bool is_native = false;
-  for (const auto& native : cfg.native_plugins) {
+  for (const auto &native : cfg.native_plugins) {
     if (ci_equals(folder_name, native)) {
       is_native = true;
       break;
@@ -394,7 +394,7 @@ scan_entry(const std::filesystem::path& entry_path, const ScanConfig& cfg,
         auto resolved = std::filesystem::weakly_canonical(link_target, ec2);
         if (!ec2) {
           bool skip = false;
-          for (const auto& ignore_root : ignore_symlink_targets) {
+          for (const auto &ignore_root : ignore_symlink_targets) {
             auto canon_root = std::filesystem::weakly_canonical(ignore_root, ec2);
             if (!ec2) {
               auto r_str = resolved.string();
@@ -613,7 +613,7 @@ scan_entry(const std::filesystem::path& entry_path, const ScanConfig& cfg,
   // Mods store game files in subdirectories (textures/, meshes/, scripts/).
   bool found_real_file = false;
   std::error_code walk_ec;
-  for (const auto& entry :
+  for (const auto &entry :
        std::filesystem::recursive_directory_iterator(entry_path, walk_ec)) {
     if (!entry.is_regular_file())
       continue;
@@ -658,9 +658,9 @@ scan_entry(const std::filesystem::path& entry_path, const ScanConfig& cfg,
 
 // Shared implementation: scan the given mods_dir for mods.
 static std::vector<ScannedMod>
-scan_impl(const GameKnowledge& knowledge, const std::string& game_id,
-          const std::filesystem::path& mods_dir,
-          const std::vector<std::filesystem::path>& ignore_symlink_targets) {
+scan_impl(const GameKnowledge &knowledge, const std::string &game_id,
+          const std::filesystem::path &mods_dir,
+          const std::vector<std::filesystem::path> &ignore_symlink_targets) {
 
   auto cfg = make_scan_config(knowledge, game_id);
 
@@ -677,11 +677,11 @@ scan_impl(const GameKnowledge& knowledge, const std::string& game_id,
   // not safe to walk concurrently across threads on the same directory,
   // and the .gmm_* scratch filter must run before parallel dispatch.
   std::vector<std::filesystem::path> candidates;
-  for (const auto& entry : std::filesystem::directory_iterator(mods_dir)) {
+  for (const auto &entry : std::filesystem::directory_iterator(mods_dir)) {
     try {
       if (!entry.is_directory())
         continue;
-    } catch (const std::filesystem::filesystem_error&) {
+    } catch (const std::filesystem::filesystem_error &) {
       continue;
     }
 
@@ -712,7 +712,7 @@ scan_impl(const GameKnowledge& knowledge, const std::string& game_id,
 
   // Sort: separators first (in insertion order), then by priority if available,
   // else alphabetical
-  std::sort(mods.begin(), mods.end(), [](const ScannedMod& a, const ScannedMod& b) {
+  std::sort(mods.begin(), mods.end(), [](const ScannedMod &a, const ScannedMod &b) {
     if (a.is_separator != b.is_separator)
       return a.is_separator;
     if (a.priority >= 0 && b.priority >= 0)
@@ -731,10 +731,10 @@ scan_impl(const GameKnowledge& knowledge, const std::string& game_id,
 }
 
 std::vector<ScannedMod>
-ModScanner::scan(const GameKnowledge& knowledge, const std::string& game_id,
-                 const std::filesystem::path& game_install_dir,
-                 const std::vector<std::filesystem::path>& ignore_symlink_targets,
-                 const std::filesystem::path& override_mods_dir) {
+ModScanner::scan(const GameKnowledge &knowledge, const std::string &game_id,
+                 const std::filesystem::path &game_install_dir,
+                 const std::vector<std::filesystem::path> &ignore_symlink_targets,
+                 const std::filesystem::path &override_mods_dir) {
 
   // Workspace-93m: resolve through the single resolution point instead of
   // appending mods_subpath here. When game_mods_dir is set (instance
@@ -754,17 +754,17 @@ ModScanner::scan(const GameKnowledge& knowledge, const std::string& game_id,
 }
 
 std::vector<ScannedMod>
-ModScanner::scan_dir(const GameKnowledge& knowledge, const std::string& game_id,
-                     const std::filesystem::path& mods_dir,
-                     const std::vector<std::filesystem::path>& ignore_symlink_targets) {
+ModScanner::scan_dir(const GameKnowledge &knowledge, const std::string &game_id,
+                     const std::filesystem::path &mods_dir,
+                     const std::vector<std::filesystem::path> &ignore_symlink_targets) {
 
   return scan_impl(knowledge, game_id, mods_dir, ignore_symlink_targets);
 }
 
 std::vector<ScannedMod> ModScanner::scan_folder(
-    const GameKnowledge& knowledge, const std::string& game_id,
-    const std::filesystem::path& mods_dir, const std::string& folder_name,
-    const std::vector<std::filesystem::path>& ignore_symlink_targets) {
+    const GameKnowledge &knowledge, const std::string &game_id,
+    const std::filesystem::path &mods_dir, const std::string &folder_name,
+    const std::vector<std::filesystem::path> &ignore_symlink_targets) {
 
   if (folder_name.empty())
     return {};
@@ -775,25 +775,25 @@ std::vector<ScannedMod> ModScanner::scan_folder(
   return {std::move(*mod)};
 }
 
-bool ModScanner::disable_mod(const GameKnowledge& knowledge, const std::string& game_id,
-                             const std::filesystem::path& mod_folder) {
+bool ModScanner::disable_mod(const GameKnowledge &knowledge, const std::string &game_id,
+                             const std::filesystem::path &mod_folder) {
   auto disable_file = disable_mechanism_for(knowledge, game_id);
 
   std::ofstream f(mod_folder / disable_file);
   return f.good();
 }
 
-bool ModScanner::enable_mod(const GameKnowledge& knowledge, const std::string& game_id,
-                            const std::filesystem::path& mod_folder) {
+bool ModScanner::enable_mod(const GameKnowledge &knowledge, const std::string &game_id,
+                            const std::filesystem::path &mod_folder) {
   auto disable_file = disable_mechanism_for(knowledge, game_id);
 
   std::error_code ec;
   return std::filesystem::remove(mod_folder / disable_file, ec);
 }
 
-bool ModScanner::set_priority(const GameKnowledge& knowledge,
-                              const std::string& game_id,
-                              const std::filesystem::path& mod_folder, int priority) {
+bool ModScanner::set_priority(const GameKnowledge &knowledge,
+                              const std::string &game_id,
+                              const std::filesystem::path &mod_folder, int priority) {
   auto metadata_file = knowledge.get(game_id, "metadata_file", "meta.ini");
   auto name_tag      = knowledge.get(game_id, "metadata_name_tag", "name");
   auto prefix_re_str = knowledge.get(game_id, "priority_prefix_re", "");
@@ -850,7 +850,7 @@ bool ModScanner::set_priority(const GameKnowledge& knowledge,
   return fout.good();
 }
 
-bool ModScanner::mark_validated(const std::filesystem::path& mod_folder) {
+bool ModScanner::mark_validated(const std::filesystem::path &mod_folder) {
   // MO2's markValidated: persist [General] validated=true in the mod folder's
   // own meta.ini (creating the file if the folder had none). The scanner
   // reads the same key back, so the invalid/no-metadata flags stay cleared.
@@ -866,10 +866,10 @@ bool ModScanner::mark_validated(const std::filesystem::path& mod_folder) {
 }
 
 std::vector<std::string>
-ModScanner::prune_orphaned_empty_mods(const std::vector<ScannedMod>& scanned,
-                                      const std::filesystem::path& mods_dir,
-                                      const std::filesystem::path& instance_root,
-                                      const std::filesystem::path& external_mods_dir) {
+ModScanner::prune_orphaned_empty_mods(const std::vector<ScannedMod> &scanned,
+                                      const std::filesystem::path &mods_dir,
+                                      const std::filesystem::path &instance_root,
+                                      const std::filesystem::path &external_mods_dir) {
   std::vector<std::string> pruned;
   if (instance_root.empty() || mods_dir.empty())
     return pruned;
@@ -886,7 +886,7 @@ ModScanner::prune_orphaned_empty_mods(const std::vector<ScannedMod>& scanned,
         "ModScanner: mod_state.json unreadable, skipping empty-mod prune");
     return pruned;
   }
-  const ModStateTracker& tracked = tracker;
+  const ModStateTracker &tracked = tracker;
 
   // Seed proof-of-prior-existence (Workspace-5jk3 follow-up): nothing in
   // production ever called record_install, so mod_state.json stayed empty
@@ -896,7 +896,7 @@ ModScanner::prune_orphaned_empty_mods(const std::vector<ScannedMod>& scanned,
   // if its content is wiped externally. Empty folders are never seeded,
   // so a user-created shell still has no entry and still survives.
   bool tracker_dirty = false;
-  for (const auto& mod : scanned) {
+  for (const auto &mod : scanned) {
     if (mod.is_empty || mod.is_separator || mod.is_overwrite || mod.is_game_native)
       continue;
     if (tracked.entry(mod.folder_name) != nullptr)
@@ -906,7 +906,7 @@ ModScanner::prune_orphaned_empty_mods(const std::vector<ScannedMod>& scanned,
     tracker_dirty = true;
   }
 
-  for (const auto& mod : scanned) {
+  for (const auto &mod : scanned) {
     if (!mod.is_empty || mod.is_separator || mod.is_overwrite || mod.is_game_native)
       continue;
     // Mirror backups (Workspace-0pi5) are NEVER pruned: an empty mirrored

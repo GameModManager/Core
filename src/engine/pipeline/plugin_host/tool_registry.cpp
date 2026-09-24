@@ -19,21 +19,21 @@ void PluginToolRegistry::register_tool(const std::string &tool_id,
   std::lock_guard<std::mutex> lock(mutex_);
   for (auto &t : tools_) {
     if (t.tool_id == tool_id) {
-      t.kind = kind;
-      t.fn = fn;
-      t.user_data = user_data;
+      t.kind        = kind;
+      t.fn          = fn;
+      t.user_data   = user_data;
       t.plugin_path = plugin_path;
       return;
     }
   }
   tools_.push_back({tool_id, kind, fn, user_data, plugin_path});
-  Logger::instance().debug("ToolRegistry: registered v2 tool '" + tool_id +
-                           "' from " + plugin_path);
+  Logger::instance().debug("ToolRegistry: registered v2 tool '" + tool_id + "' from " +
+                           plugin_path);
 }
 
 bool PluginToolRegistry::invoke(const std::string &tool_id) const {
   ToolInvokeFn fn = nullptr;
-  void *ud = nullptr;
+  void *ud        = nullptr;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     for (const auto &t : tools_) {
@@ -50,8 +50,7 @@ bool PluginToolRegistry::invoke(const std::string &tool_id) const {
   return true;
 }
 
-std::optional<ToolEntry>
-PluginToolRegistry::find(const std::string &tool_id) const {
+std::optional<ToolEntry> PluginToolRegistry::find(const std::string &tool_id) const {
   std::lock_guard<std::mutex> lock(mutex_);
   for (const auto &t : tools_)
     if (t.tool_id == tool_id)
@@ -88,4 +87,4 @@ void PluginToolRegistry::clear() {
   tools_.clear();
 }
 
-} // namespace engine
+}  // namespace engine

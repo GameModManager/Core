@@ -51,7 +51,7 @@ resolve_deploy_target_ci(const std::filesystem::path &target) {
 
   // Match every directory component (all but the final file name).
   for (size_t i = 0; i + 1 < comps.size(); ++i) {
-    const auto &comp = comps[i];
+    const auto &comp                  = comps[i];
     const std::filesystem::path exact = cur / comp;
     if (std::filesystem::exists(exact, ec) || ec) {
       cur = exact;
@@ -126,10 +126,10 @@ resolve_deploy_target_ci(const std::filesystem::path &target) {
 // 16. progress (if set) is invoked with (done, total) as link operations
 // complete; total==0 means nothing to do.
 [[nodiscard]] bool deploy_all_enabled_mods_parallel(
-    const path &mods_dir, const path &staging_dir,
-    const std::string &deploy_prefix, bool deploy_include_mod_id,
-    const std::string &disable_mechanism, bool case_sensitive = true,
-    unsigned int num_threads = 0, const DeployProgressFn &progress = {});
+    const path &mods_dir, const path &staging_dir, const std::string &deploy_prefix,
+    bool deploy_include_mod_id, const std::string &disable_mechanism,
+    bool case_sensitive = true, unsigned int num_threads = 0,
+    const DeployProgressFn &progress = {});
 
 // Direct-symlink variant (the "deploy_strategy = symlink" default): mods are
 // deployed straight into the game's own directory tree (game_dir), not a
@@ -159,10 +159,9 @@ resolve_deploy_target_ci(const std::filesystem::path &target) {
 // backup_root), and "remove deployed files" restores it. Empty = no backup
 // behavior (pure overlay/symlink semantics for callers that opt out).
 [[nodiscard]] bool deploy_all_enabled_mods_direct(
-    const path &mods_dir, const path &game_dir,
-    const std::string &deploy_prefix, bool deploy_include_mod_id,
-    const std::string &disable_mechanism, bool case_sensitive,
-    const path &ledger_file, const path &backup_root = {},
+    const path &mods_dir, const path &game_dir, const std::string &deploy_prefix,
+    bool deploy_include_mod_id, const std::string &disable_mechanism,
+    bool case_sensitive, const path &ledger_file, const path &backup_root = {},
     unsigned int num_threads = 0, const DeployProgressFn &progress = {});
 
 // Directory name (inside the game's root) where direct-symlink deploys park
@@ -191,10 +190,9 @@ load_deploy_ledger(const std::filesystem::path &ledger_file);
 // failure it is preserved so a later deploy re-checks everything.
 //
 // num_threads/progress behave as in deploy_all_enabled_mods_parallel.
-[[nodiscard]] bool remove_deployed_files(const path &game_dir,
-                                         const path &backup_root,
+[[nodiscard]] bool remove_deployed_files(const path &game_dir, const path &backup_root,
                                          const path &ledger_file,
-                                         unsigned int num_threads = 0,
+                                         unsigned int num_threads         = 0,
                                          const DeployProgressFn &progress = {});
 
 // Create lowercase AND uppercase symlink aliases inside a freshly deployed
@@ -218,4 +216,4 @@ load_deploy_ledger(const std::filesystem::path &ledger_file);
 [[nodiscard]] std::size_t
 add_case_insensitive_aliases(const std::filesystem::path &staging_dir);
 
-} // namespace engine
+}  // namespace engine

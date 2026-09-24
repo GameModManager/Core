@@ -49,12 +49,12 @@ public:
   // What to refresh
   // -----------------------------------------------------------------------
   enum class RefreshTarget {
-    Mods,      // scan mod directories
-    Plugins,   // reload plugin database
-    Conflicts, // scan for conflicts
-    Saves,     // scan save files
-    DataTab,   // rebuild data tab
-    All        // everything
+    Mods,       // scan mod directories
+    Plugins,    // reload plugin database
+    Conflicts,  // scan for conflicts
+    Saves,      // scan save files
+    DataTab,    // rebuild data tab
+    All         // everything
   };
   Q_DECLARE_FLAGS(RefreshTargets, RefreshTarget)
 
@@ -92,8 +92,7 @@ signals:
   void all_refreshes_finished();
 
   // Periodic progress relay from a worker.
-  void progress(RefreshTarget target, int percentage,
-                const QString &status_text);
+  void progress(RefreshTarget target, int percentage, const QString &status_text);
 
 private:
   // -----------------------------------------------------------------------
@@ -118,4 +117,4 @@ private:
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(DirectoryRefresher::RefreshTargets)
 
-} // namespace engine
+}  // namespace engine

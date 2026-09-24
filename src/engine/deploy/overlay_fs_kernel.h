@@ -40,9 +40,9 @@ public:
 private:
   bool mounted_ = false;
   std::filesystem::path mount_point_;
-  std::filesystem::path work_dir_; // required by overlayfs (empty upper dir for
-                                   // read-only overlay)
+  std::filesystem::path work_dir_;  // required by overlayfs (empty upper dir for
+                                    // read-only overlay)
   mutable std::mutex mutex_;
 };
 
-} // namespace Deploy
+}  // namespace Deploy

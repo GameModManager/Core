@@ -26,14 +26,14 @@ enum class CheckerboardStyle { Off = 0, Light = 1, Medium = 2, Dark = 3 };
 [[nodiscard]] QIcon checkerboard_icon(int style, int extent = 16);
 // Whether a file extension can carry transparency (pre-filter; the pixel
 // scan in image_has_transparency is authoritative).
-[[nodiscard]] bool path_supports_transparency(const QString& path);
+[[nodiscard]] bool path_supports_transparency(const QString &path);
 // True when the image actually contains a pixel with alpha < 255.
-[[nodiscard]] bool image_has_transparency(const QImage& image);
+[[nodiscard]] bool image_has_transparency(const QImage &image);
 
 // Shared checkerboard tile for transparency preview backgrounds. mode is
 // "checker_light", "checker_dark" or "auto" (detects the current palette).
 // Used by both the hover PreviewWidget and the persistent PreviewWindow.
-[[nodiscard]] QPixmap checker_pixmap(const QString& mode);
+[[nodiscard]] QPixmap checker_pixmap(const QString &mode);
 
 // Floating tooltip-style popup for previewing .png images and .anm2 animations.
 //
@@ -44,12 +44,12 @@ class PreviewWidget : public QLabel {
   Q_OBJECT
 
 public:
-  explicit PreviewWidget(QWidget* parent = nullptr);
+  explicit PreviewWidget(QWidget *parent = nullptr);
   ~PreviewWidget() override;
 
   // Show preview for a file path at the given global position.
   // Returns false if the file type isn't supported.
-  bool show_preview(const QString& file_path, const QPoint& global_pos,
+  bool show_preview(const QString &file_path, const QPoint &global_pos,
                     bool debounce = true);
 
   // Stop any running preview and hide.
@@ -60,18 +60,18 @@ public:
   [[nodiscard]] bool animate_anm2() const { return animate_anm2_; }
 
   void set_background_mode(
-      const QString& mode);  // "auto", "checker_dark", "checker_light", "solid"
-  void set_background_color(const QString& color);
-  void set_border_color(const QString& color);
+      const QString &mode);  // "auto", "checker_dark", "checker_light", "solid"
+  void set_background_color(const QString &color);
+  void set_border_color(const QString &color);
 
   // Game id used to resolve the animation parser from the registry. Mirrors
   // PreviewWindow::set_game_id(): when empty, the global (non-game-specific)
   // parser is used via the registry's wildcard fallback.
-  void set_game_id(const std::string& id) { game_id_ = id; }
+  void set_game_id(const std::string &id) { game_id_ = id; }
 
 protected:
-  void paintEvent(QPaintEvent* event) override;
-  void contextMenuEvent(QContextMenuEvent* event) override;
+  void paintEvent(QPaintEvent *event) override;
+  void contextMenuEvent(QContextMenuEvent *event) override;
 
 private slots:
   void on_frame_timeout();
@@ -79,12 +79,12 @@ private slots:
 
 private:
   void apply_style();
-  QPixmap make_checker(const QString& c1, const QString& c2);
+  QPixmap make_checker(const QString &c1, const QString &c2);
   QPixmap get_checker_pixmap();
 
   // Try to load and display a file
-  bool try_load_png(const QString& path);
-  bool try_load_anm2(const QString& path);
+  bool try_load_png(const QString &path);
+  bool try_load_anm2(const QString &path);
 
   bool animate_anm2_ = true;
   QString bg_mode_   = "auto";

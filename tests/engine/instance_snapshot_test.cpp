@@ -17,28 +17,28 @@
 namespace fs = std::filesystem;
 
 namespace {
-std::string read_text(const fs::path& p) {
+std::string read_text(const fs::path &p) {
   std::ifstream in(p, std::ios::binary);
   std::ostringstream ss;
   ss << in.rdbuf();
   return ss.str();
 }
 
-void write_text(const fs::path& p, const std::string& content) {
+void write_text(const fs::path &p, const std::string &content) {
   fs::create_directories(p.parent_path());
   std::ofstream out(p, std::ios::binary | std::ios::trunc);
   out << content;
 }
 
-fs::path test_root(const char* name) {
+fs::path test_root(const char *name) {
   return fs::path("/tmp/gmm_snapshot_test") / name;
 }
 
-void require(bool cond, const char* msg) {
+void require(bool cond, const char *msg) {
   INFO(msg);
   REQUIRE(cond);
 }
-} // namespace
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // JSON round-trip: to_json <-> from_json preserves all fields
@@ -48,38 +48,38 @@ TEST_CASE("snapshot - JSON round-trip preserves all fields", "[engine]") {
   using engine::InstanceSnapshot;
 
   InstanceSnapshot snap;
-  snap.game_id = "SkyrimSpecialEdition";
-  snap.display_name = "My Skyrim";
-  snap.portable = true;
+  snap.game_id         = "SkyrimSpecialEdition";
+  snap.display_name    = "My Skyrim";
+  snap.portable        = true;
   snap.deploy_strategy = "symlink";
-  snap.proton_runner = "GE-Proton9-12";
-  snap.steam_appid = 489830;
+  snap.proton_runner   = "GE-Proton9-12";
+  snap.steam_appid     = 489830;
 
   // Mod entries.
   engine::ModTrackingEntry e1;
-  e1.install_order = 1;
-  e1.installed_at = 1234567890;
-  e1.list_position = 0;
-  e1.depth = 0;
-  e1.hidden = true;
+  e1.install_order         = 1;
+  e1.installed_at          = 1234567890;
+  e1.list_position         = 0;
+  e1.depth                 = 0;
+  e1.hidden                = true;
   snap.mod_entries["SKSE"] = e1;
 
   engine::ModTrackingEntry e2;
-  e2.install_order = 2;
-  e2.installed_at = 1234567891;
-  e2.list_position = 1;
-  e2.parent_separator = "Graphics";
-  e2.depth = 1;
-  e2.separator_color = "#ff0000";
-  e2.collapsed = true;
+  e2.install_order        = 2;
+  e2.installed_at         = 1234567891;
+  e2.list_position        = 1;
+  e2.parent_separator     = "Graphics";
+  e2.depth                = 1;
+  e2.separator_color      = "#ff0000";
+  e2.collapsed            = true;
   snap.mod_entries["ENB"] = e2;
 
   engine::ModTrackingEntry e3;
-  e3.install_order = 3;
-  e3.list_position = 2;
-  e3.disabled = true;
-  e3.deploy_at_root = true;
-  e3.hidden_files = {"d3d11.dll"};
+  e3.install_order          = 3;
+  e3.list_position          = 2;
+  e3.disabled               = true;
+  e3.deploy_at_root         = true;
+  e3.hidden_files           = {"d3d11.dll"};
   snap.mod_entries["USSEP"] = e3;
 
   snap.next_install_order = 4;
@@ -87,30 +87,30 @@ TEST_CASE("snapshot - JSON round-trip preserves all fields", "[engine]") {
   // Profile.
   engine::ProfileSnapshot ps;
   ps.name = "Default";
-  ps.mods = {{"ModA", true, false, 2}, {"ModB", false, false, 1},
-             {"DLC1", true, true, 0}};
-  ps.plugins = {"Skyrim.esm", "Update.esm"};
-  ps.load_order = {"Update.esm", "Skyrim.esm"};
-  ps.locked_order = {{"Skyrim.esm", 0}};
-  ps.archives = {"Skyrim - Textures.bsa"};
-  ps.local_saves = true;
+  ps.mods = {
+      {"ModA", true, false, 2}, {"ModB", false, false, 1}, {"DLC1", true, true, 0}};
+  ps.plugins                   = {"Skyrim.esm", "Update.esm"};
+  ps.load_order                = {"Update.esm", "Skyrim.esm"};
+  ps.locked_order              = {{"Skyrim.esm", 0}};
+  ps.archives                  = {"Skyrim - Textures.bsa"};
+  ps.local_saves               = true;
   ps.auto_archive_invalidation = true;
-  ps.tweaked_ini = "[Display]\niSize W=1920\n";
+  ps.tweaked_ini               = "[Display]\niSize W=1920\n";
   snap.profiles.push_back(ps);
 
   // Executables.
   engine::ExecutableEntry exec;
-  exec.path = "SkyrimSE.exe";
+  exec.path  = "SkyrimSE.exe";
   exec.title = "Skyrim";
-  exec.args = "-美学 testing";
-  exec.cwd = "";
-  exec.mod = "";
-  exec.icon = "icon.ico";
-  exec.env = {"VAR1=val1", "VAR2=val2"};
+  exec.args  = "-美学 testing";
+  exec.cwd   = "";
+  exec.mod   = "";
+  exec.icon  = "icon.ico";
+  exec.env   = {"VAR1=val1", "VAR2=val2"};
   snap.executables.push_back(exec);
 
   // Round-trip.
-  auto j = snap.to_json();
+  auto j        = snap.to_json();
   auto restored = InstanceSnapshot::from_json(j);
 
   require(restored.game_id == "SkyrimSpecialEdition", "game_id");
@@ -122,14 +122,11 @@ TEST_CASE("snapshot - JSON round-trip preserves all fields", "[engine]") {
 
   require(restored.mod_entries.size() == 3, "mod_entries count");
   require(restored.mod_entries["SKSE"].hidden == true, "SKSE hidden");
-  require(restored.mod_entries["ENB"].separator_color == "#ff0000",
-          "ENB color");
+  require(restored.mod_entries["ENB"].separator_color == "#ff0000", "ENB color");
   require(restored.mod_entries["ENB"].collapsed == true, "ENB collapsed");
   require(restored.mod_entries["USSEP"].disabled == true, "USSEP disabled");
-  require(restored.mod_entries["USSEP"].deploy_at_root == true,
-          "USSEP deploy_at_root");
-  require(restored.mod_entries["USSEP"].hidden_files.size() == 1,
-          "USSEP hidden_files");
+  require(restored.mod_entries["USSEP"].deploy_at_root == true, "USSEP deploy_at_root");
+  require(restored.mod_entries["USSEP"].hidden_files.size() == 1, "USSEP hidden_files");
   require(restored.next_install_order == 4, "next_install_order");
 
   require(restored.profiles.size() == 1, "profiles count");
@@ -141,8 +138,7 @@ TEST_CASE("snapshot - JSON round-trip preserves all fields", "[engine]") {
   require(restored.profiles[0].mods[2].foreign == true, "DLC1 foreign");
   require(restored.profiles[0].plugins.size() == 2, "plugins count");
   require(restored.profiles[0].load_order.size() == 2, "load_order count");
-  require(restored.profiles[0].locked_order.size() == 1,
-          "locked_order count");
+  require(restored.profiles[0].locked_order.size() == 1, "locked_order count");
   require(restored.profiles[0].archives.size() == 1, "archives count");
   require(restored.profiles[0].local_saves == true, "local_saves");
   require(restored.profiles[0].auto_archive_invalidation == true,
@@ -172,20 +168,20 @@ TEST_CASE("snapshot - save and load file round-trip", "[engine]") {
   const auto path = root / "snapshot.json";
 
   InstanceSnapshot snap;
-  snap.game_id = "SkyrimSpecialEdition";
+  snap.game_id      = "SkyrimSpecialEdition";
   snap.display_name = "Test Instance";
-  snap.portable = true;
-  snap.steam_appid = 489830;
+  snap.portable     = true;
+  snap.steam_appid  = 489830;
 
   engine::ModTrackingEntry e;
-  e.install_order = 1;
-  e.list_position = 0;
+  e.install_order          = 1;
+  e.list_position          = 0;
   snap.mod_entries["SKSE"] = e;
-  snap.next_install_order = 2;
+  snap.next_install_order  = 2;
 
   engine::ProfileSnapshot ps;
-  ps.name = "Default";
-  ps.mods = {{"ModA", true, false, 0}};
+  ps.name    = "Default";
+  ps.mods    = {{"ModA", true, false, 0}};
   ps.plugins = {"Skyrim.esm"};
   snap.profiles.push_back(ps);
 
@@ -241,12 +237,11 @@ TEST_CASE("snapshot - capture from disk instance", "[engine]") {
   fs::create_directories(root);
 
   // Write instance.toml.
-  write_text(root / "instance.toml",
-             "game_id = \"SkyrimSpecialEdition\"\n"
-             "name = \"Capture Test\"\n"
-             "portable = true\n"
-             "steam_appid = 489830\n"
-             "deploy_strategy = \"symlink\"\n");
+  write_text(root / "instance.toml", "game_id = \"SkyrimSpecialEdition\"\n"
+                                     "name = \"Capture Test\"\n"
+                                     "portable = true\n"
+                                     "steam_appid = 489830\n"
+                                     "deploy_strategy = \"symlink\"\n");
 
   // Write mod_state.json.
   {
@@ -272,14 +267,13 @@ TEST_CASE("snapshot - capture from disk instance", "[engine]") {
   write_text(prof / "loadorder.txt", "Update.esm\nSkyrim.esm\n");
   write_text(prof / "lockedorder.txt", "Skyrim.esm|0\n");
   write_text(prof / "archives.txt", "Skyrim - Textures.bsa\n");
-  write_text(prof / "settings.ini",
-             "LocalSaves=true\nLocalSettings=false\n"
-             "AutomaticArchiveInvalidation=true\n");
+  write_text(prof / "settings.ini", "LocalSaves=true\nLocalSettings=false\n"
+                                    "AutomaticArchiveInvalidation=true\n");
   write_text(prof / "initweaks.ini", "[Display]\niSize W=1920\n");
 
   // Capture.
   Instance inst = Instance::from_root(root);
-  auto snap = InstanceSnapshot::capture(inst);
+  auto snap     = InstanceSnapshot::capture(inst);
 
   require(snap.game_id == "SkyrimSpecialEdition", "captured game_id");
   require(snap.display_name == "Capture Test", "captured display_name");
@@ -290,8 +284,7 @@ TEST_CASE("snapshot - capture from disk instance", "[engine]") {
   // Mod entries.
   require(snap.mod_entries.size() == 4, "captured 4 mod entries");
   require(snap.mod_entries["SKSE"].hidden == true, "SKSE hidden captured");
-  require(snap.mod_entries["SKSE"].install_order == 1,
-          "SKSE install_order captured");
+  require(snap.mod_entries["SKSE"].install_order == 1, "SKSE install_order captured");
   require(snap.mod_entries["USSEP"].deploy_at_root == true,
           "USSEP deploy_at_root captured");
   require(snap.mod_entries["Graphics"].separator_color == "#aabbcc",
@@ -307,12 +300,12 @@ TEST_CASE("snapshot - capture from disk instance", "[engine]") {
   // Profile.
   require(snap.profiles.size() == 1, "captured 1 profile");
   require(snap.profiles[0].name == "Default", "profile name captured");
-  auto& pm = snap.profiles[0].mods;
+  auto &pm = snap.profiles[0].mods;
   require(pm.size() == 3, "captured 3 mods in profile");
   // Modlist parsing: file order is +SKSE, -USSEP, *DLC1.
   // Priorities: SKSE=2(highest), USSEP=1, DLC1=0(lowest).
   bool found_skse = false, found_ussep = false, found_dlc = false;
-  for (const auto& m : pm) {
+  for (const auto &m : pm) {
     if (m.mod_id == "SKSE") {
       found_skse = true;
       require(m.enabled == true, "SKSE enabled in profile");
@@ -336,8 +329,7 @@ TEST_CASE("snapshot - capture from disk instance", "[engine]") {
   require(snap.profiles[0].locked_order.size() == 1, "locked_order captured");
   require(snap.profiles[0].locked_order[0].name == "Skyrim.esm",
           "locked name captured");
-  require(snap.profiles[0].locked_order[0].priority == 0,
-          "locked priority captured");
+  require(snap.profiles[0].locked_order[0].priority == 0, "locked priority captured");
   require(snap.profiles[0].archives.size() == 1, "archives captured");
   require(snap.profiles[0].local_saves == true, "local_saves captured");
   require(snap.profiles[0].auto_archive_invalidation == true,
@@ -364,50 +356,50 @@ TEST_CASE("snapshot - apply then capture is idempotent", "[engine]") {
 
   // Build a snapshot.
   InstanceSnapshot snap;
-  snap.game_id = "SkyrimSpecialEdition";
-  snap.display_name = "Apply Test";
-  snap.portable = true;
-  snap.steam_appid = 489830;
+  snap.game_id         = "SkyrimSpecialEdition";
+  snap.display_name    = "Apply Test";
+  snap.portable        = true;
+  snap.steam_appid     = 489830;
   snap.deploy_strategy = "symlink";
-  snap.proton_runner = "GE-Proton9";
+  snap.proton_runner   = "GE-Proton9";
 
   ModTrackingEntry e1;
-  e1.install_order = 1;
-  e1.installed_at = 1000000;
-  e1.list_position = 0;
-  e1.depth = 0;
+  e1.install_order         = 1;
+  e1.installed_at          = 1000000;
+  e1.list_position         = 0;
+  e1.depth                 = 0;
   snap.mod_entries["SKSE"] = e1;
 
   ModTrackingEntry e2;
-  e2.install_order = 2;
-  e2.installed_at = 1000001;
-  e2.list_position = 1;
-  e2.parent_separator = "Graphics";
-  e2.depth = 1;
-  e2.deploy_at_root = true;
-  e2.hidden_files = {"d3d11.dll"};
+  e2.install_order        = 2;
+  e2.installed_at         = 1000001;
+  e2.list_position        = 1;
+  e2.parent_separator     = "Graphics";
+  e2.depth                = 1;
+  e2.deploy_at_root       = true;
+  e2.hidden_files         = {"d3d11.dll"};
   snap.mod_entries["ENB"] = e2;
 
   ModTrackingEntry sep;
-  sep.install_order = 3;
-  sep.list_position = 2;
-  sep.separator_color = "#aabbcc";
-  sep.collapsed = true;
+  sep.install_order            = 3;
+  sep.list_position            = 2;
+  sep.separator_color          = "#aabbcc";
+  sep.collapsed                = true;
   snap.mod_entries["Graphics"] = sep;
 
   snap.next_install_order = 4;
 
   ProfileSnapshot ps;
-  ps.name = "Default";
-  ps.mods = {{"SKSE", true, false, 1}, {"ENB", true, false, 0}};
-  ps.plugins = {"Skyrim.esm"};
-  ps.load_order = {"Skyrim.esm"};
-  ps.locked_order = {{"Skyrim.esm", 0}};
-  ps.archives = {"Skyrim - Textures.bsa"};
-  ps.local_saves = true;
-  ps.local_settings = false;
+  ps.name                      = "Default";
+  ps.mods                      = {{"SKSE", true, false, 1}, {"ENB", true, false, 0}};
+  ps.plugins                   = {"Skyrim.esm"};
+  ps.load_order                = {"Skyrim.esm"};
+  ps.locked_order              = {{"Skyrim.esm", 0}};
+  ps.archives                  = {"Skyrim - Textures.bsa"};
+  ps.local_saves               = true;
+  ps.local_settings            = false;
   ps.auto_archive_invalidation = true;
-  ps.tweaked_ini = "[Display]\niSize W=1920\n";
+  ps.tweaked_ini               = "[Display]\niSize W=1920\n";
   snap.profiles.push_back(ps);
 
   // Apply to disk.
@@ -430,13 +422,11 @@ TEST_CASE("snapshot - apply then capture is idempotent", "[engine]") {
   auto captured = InstanceSnapshot::capture(inst);
 
   require(captured.game_id == snap.game_id, "game_id roundtrips");
-  require(captured.display_name == snap.display_name,
-          "display_name roundtrips");
+  require(captured.display_name == snap.display_name, "display_name roundtrips");
   require(captured.portable == snap.portable, "portable roundtrips");
   require(captured.deploy_strategy == snap.deploy_strategy,
           "deploy_strategy roundtrips");
-  require(captured.proton_runner == snap.proton_runner,
-          "proton_runner roundtrips");
+  require(captured.proton_runner == snap.proton_runner, "proton_runner roundtrips");
   require(captured.steam_appid == snap.steam_appid, "steam_appid roundtrips");
 
   require(captured.mod_entries.size() == snap.mod_entries.size(),
@@ -454,13 +444,10 @@ TEST_CASE("snapshot - apply then capture is idempotent", "[engine]") {
   require(captured.profiles[0].name == "Default", "profile name roundtrips");
   require(captured.profiles[0].mods.size() == 2, "mod count roundtrips");
   require(captured.profiles[0].plugins.size() == 1, "plugins roundtrips");
-  require(captured.profiles[0].load_order.size() == 1,
-          "load_order roundtrips");
-  require(captured.profiles[0].locked_order.size() == 1,
-          "locked_order roundtrips");
+  require(captured.profiles[0].load_order.size() == 1, "load_order roundtrips");
+  require(captured.profiles[0].locked_order.size() == 1, "locked_order roundtrips");
   require(captured.profiles[0].archives.size() == 1, "archives roundtrips");
-  require(captured.profiles[0].local_saves == true,
-          "local_saves roundtrips");
+  require(captured.profiles[0].local_saves == true, "local_saves roundtrips");
   require(captured.profiles[0].auto_archive_invalidation == true,
           "auto_archive_invalidation roundtrips");
   require(captured.profiles[0].tweaked_ini == "[Display]\niSize W=1920\n",
@@ -482,7 +469,7 @@ TEST_CASE("snapshot - empty snapshot roundtrips", "[engine]") {
   fs::create_directories(root);
 
   InstanceSnapshot snap;
-  snap.game_id = "TestGame";
+  snap.game_id      = "TestGame";
   snap.display_name = "Empty";
 
   Instance inst = Instance::from_root(root);
@@ -519,12 +506,11 @@ TEST_CASE("snapshot - multiple profiles", "[engine]") {
   write_text(p1 / "modlist.txt", "+ModA\r\n+ModB\r\n");
   write_text(p1 / "settings.ini", "LocalSaves=true\n");
   write_text(p2 / "modlist.txt", "+ModA\r\n-ModB\r\n");
-  write_text(p2 / "settings.ini",
-             "LocalSaves=false\nLocalSettings=true\n");
+  write_text(p2 / "settings.ini", "LocalSaves=false\nLocalSettings=true\n");
   write_text(p2 / "plugins.txt", "Dawnguard.esm\n");
 
   Instance inst = Instance::from_root(root);
-  auto snap = InstanceSnapshot::capture(inst);
+  auto snap     = InstanceSnapshot::capture(inst);
 
   require(snap.profiles.size() == 2, "two profiles captured");
 
@@ -541,9 +527,8 @@ TEST_CASE("snapshot - multiple profiles", "[engine]") {
           "Default modlist written");
   require(fs::exists(root2 / "profiles" / "Permadeath" / "modlist.txt"),
           "Permadeath modlist written");
-  require(
-      fs::exists(root2 / "profiles" / "Permadeath" / "plugins.txt"),
-      "Permadeath plugins written");
+  require(fs::exists(root2 / "profiles" / "Permadeath" / "plugins.txt"),
+          "Permadeath plugins written");
 
   // Capture back and verify.
   auto captured = InstanceSnapshot::capture(inst2);
@@ -566,30 +551,29 @@ TEST_CASE("snapshot - executables round-trip through TOML", "[engine]") {
   fs::create_directories(root);
 
   // Write instance.toml with executables.
-  write_text(root / "instance.toml",
-             "game_id = \"TestGame\"\n"
-             "name = \"Exec Test\"\n"
-             "portable = true\n"
-             "\n"
-             "[[executables]]\n"
-             "path = \"game.exe\"\n"
-             "title = \"Game\"\n"
-             "args = \"--debug\"\n"
-             "cwd = \"/opt/game\"\n"
-             "mod = \"\"\n"
-             "icon = \"game.ico\"\n"
-             "env = [\"LD_LIBRARY_PATH=/opt/lib\"]\n"
-             "\n"
-             "[[executables]]\n"
-             "path = \"editor.exe\"\n"
-             "title = \"Editor\"\n"
-             "args = \"\"\n"
-             "cwd = \"\"\n"
-             "mod = \"\"\n"
-             "icon = \"\"\n");
+  write_text(root / "instance.toml", "game_id = \"TestGame\"\n"
+                                     "name = \"Exec Test\"\n"
+                                     "portable = true\n"
+                                     "\n"
+                                     "[[executables]]\n"
+                                     "path = \"game.exe\"\n"
+                                     "title = \"Game\"\n"
+                                     "args = \"--debug\"\n"
+                                     "cwd = \"/opt/game\"\n"
+                                     "mod = \"\"\n"
+                                     "icon = \"game.ico\"\n"
+                                     "env = [\"LD_LIBRARY_PATH=/opt/lib\"]\n"
+                                     "\n"
+                                     "[[executables]]\n"
+                                     "path = \"editor.exe\"\n"
+                                     "title = \"Editor\"\n"
+                                     "args = \"\"\n"
+                                     "cwd = \"\"\n"
+                                     "mod = \"\"\n"
+                                     "icon = \"\"\n");
 
   Instance inst = Instance::from_root(root);
-  auto snap = InstanceSnapshot::capture(inst);
+  auto snap     = InstanceSnapshot::capture(inst);
 
   require(snap.executables.size() == 2, "two executables captured");
   require(snap.executables[0].path == "game.exe", "exec1 path");
@@ -598,8 +582,7 @@ TEST_CASE("snapshot - executables round-trip through TOML", "[engine]") {
   require(snap.executables[0].cwd == "/opt/game", "exec1 cwd");
   require(snap.executables[0].icon == "game.ico", "exec1 icon");
   require(snap.executables[0].env.size() == 1, "exec1 env size");
-  require(snap.executables[0].env[0] == "LD_LIBRARY_PATH=/opt/lib",
-          "exec1 env");
+  require(snap.executables[0].env[0] == "LD_LIBRARY_PATH=/opt/lib", "exec1 env");
   require(snap.executables[1].path == "editor.exe", "exec2 path");
 
   // Apply to a clean dir.
@@ -611,17 +594,14 @@ TEST_CASE("snapshot - executables round-trip through TOML", "[engine]") {
 
   // Verify instance.toml has executables.
   auto toml_str = read_text(root2 / "instance.toml");
-  require(toml_str.find("[[executables]]") != std::string::npos,
-          "executables in TOML");
+  require(toml_str.find("[[executables]]") != std::string::npos, "executables in TOML");
   require(toml_str.find("game.exe") != std::string::npos, "game.exe in TOML");
-  require(toml_str.find("editor.exe") != std::string::npos,
-          "editor.exe in TOML");
+  require(toml_str.find("editor.exe") != std::string::npos, "editor.exe in TOML");
 
   // Re-capture.
   auto captured = InstanceSnapshot::capture(inst2);
   require(captured.executables.size() == 2, "executables re-captured");
-  require(captured.executables[0].path == "game.exe",
-          "exec1 path re-captured");
+  require(captured.executables[0].path == "game.exe", "exec1 path re-captured");
 
   fs::remove_all(root);
   fs::remove_all(root2);
@@ -635,16 +615,14 @@ TEST_CASE("snapshot - JSON omits empty optional fields", "[engine]") {
   using engine::InstanceSnapshot;
 
   InstanceSnapshot snap;
-  snap.game_id = "TestGame";
+  snap.game_id      = "TestGame";
   snap.display_name = "Test";
 
   auto j = snap.to_json();
   require(j.value("game_id", "") == "TestGame", "game_id in JSON");
   require(j.value("display_name", "") == "Test", "display_name in JSON");
-  require(j.contains("deploy_strategy") == false,
-          "empty deploy_strategy omitted");
-  require(j.contains("proton_runner") == false,
-          "empty proton_runner omitted");
+  require(j.contains("deploy_strategy") == false, "empty deploy_strategy omitted");
+  require(j.contains("proton_runner") == false, "empty proton_runner omitted");
   require(j.contains("steam_appid") == false, "zero steam_appid omitted");
   require(j["mod_entries"].empty(), "empty mod_entries in JSON");
   require(j["profiles"].empty(), "empty profiles in JSON");
@@ -668,7 +646,7 @@ TEST_CASE("snapshot - from_json handles malformed data", "[engine]") {
   // Missing required fields - should still work (defaults).
   nlohmann::json j;
   j["game_id"] = "TestGame";
-  auto snap = InstanceSnapshot::from_json(j);
+  auto snap    = InstanceSnapshot::from_json(j);
   require(snap.game_id == "TestGame", "minimal valid JSON");
   require(snap.display_name.empty(), "default display_name");
 
@@ -692,12 +670,11 @@ TEST_CASE("snapshot - deployed file manifest round-trip", "[engine]") {
   write_text(root / "instance.toml",
              "game_id = \"TestGame\"\nname = \"Manifest Test\"\n");
   // Ledger TSV: target<TAB>source per line.
-  write_text(root / ".gmm_deploy_ledger",
-             "Data/ModA/esp1.esp\t/mods/ModA/esp1.esp\n"
-             "Data/ModB/mesh.nif\t/mods/ModB/mesh.nif\n");
+  write_text(root / ".gmm_deploy_ledger", "Data/ModA/esp1.esp\t/mods/ModA/esp1.esp\n"
+                                          "Data/ModB/mesh.nif\t/mods/ModB/mesh.nif\n");
 
   Instance inst = Instance::from_root(root);
-  auto snap = InstanceSnapshot::capture(inst);
+  auto snap     = InstanceSnapshot::capture(inst);
 
   require(snap.deployed_files.size() == 2, "two manifest entries captured");
   require(snap.deployed_files[0].target == "Data/ModA/esp1.esp",
@@ -722,7 +699,7 @@ TEST_CASE("snapshot - deployed file manifest round-trip", "[engine]") {
 
   // Applying an empty-manifest snapshot removes a stale ledger.
   InstanceSnapshot empty_snap;
-  empty_snap.game_id = "TestGame";
+  empty_snap.game_id      = "TestGame";
   empty_snap.display_name = "Empty";
   require(empty_snap.apply(inst2), "empty apply succeeds");
   require(!fs::exists(root2 / ".gmm_deploy_ledger"), "stale ledger removed");
@@ -746,27 +723,24 @@ TEST_CASE("snapshot - apply preserves unowned toml keys", "[engine]") {
   fs::create_directories(root);
 
   // Existing instance with machine-local keys.
-  write_text(root / "instance.toml",
-             "game_id = \"TestGame\"\n"
-             "name = \"Old Name\"\n"
-             "game_dir = \"/home/user/games/test\"\n"
-             "last_tab = \"plugins\"\n");
+  write_text(root / "instance.toml", "game_id = \"TestGame\"\n"
+                                     "name = \"Old Name\"\n"
+                                     "game_dir = \"/home/user/games/test\"\n"
+                                     "last_tab = \"plugins\"\n");
 
   InstanceSnapshot snap;
-  snap.game_id = "TestGame";
-  snap.display_name = "New Name";
+  snap.game_id         = "TestGame";
+  snap.display_name    = "New Name";
   snap.deploy_strategy = "symlink";
 
   Instance inst = Instance::from_root(root);
   require(snap.apply(inst), "apply succeeds");
 
   auto toml_str = read_text(root / "instance.toml");
-  require(toml_str.find("New Name") != std::string::npos,
-          "display name updated");
+  require(toml_str.find("New Name") != std::string::npos, "display name updated");
   require(toml_str.find("/home/user/games/test") != std::string::npos,
           "game_dir preserved");
-  require(toml_str.find("last_tab") != std::string::npos,
-          "last_tab preserved");
+  require(toml_str.find("last_tab") != std::string::npos, "last_tab preserved");
 
   fs::remove_all(root);
 }
@@ -776,7 +750,7 @@ TEST_CASE("snapshot - apply preserves unowned toml keys", "[engine]") {
 // ---------------------------------------------------------------------------
 
 namespace {
-bool is_uuid_v4(const std::string& s) {
+bool is_uuid_v4(const std::string &s) {
   if (s.size() != 36)
     return false;
   for (size_t i = 0; i < s.size(); ++i) {
@@ -811,36 +785,34 @@ TEST_CASE("snapshot - modpack identity round-trip", "[engine]") {
 
   // JSON round-trip preserves pack identity.
   InstanceSnapshot snap;
-  snap.game_id = "TestGame";
-  snap.display_name = "Pack Test";
-  snap.modpack_id = id_a;
+  snap.game_id          = "TestGame";
+  snap.display_name     = "Pack Test";
+  snap.modpack_id       = id_a;
   snap.modpack_revision = 3;
-  auto restored = InstanceSnapshot::from_json(snap.to_json());
+  auto restored         = InstanceSnapshot::from_json(snap.to_json());
   require(restored.modpack_id == id_a, "modpack_id survives JSON");
   require(restored.modpack_revision == 3, "modpack_revision survives JSON");
 
   // Empty identity is omitted from JSON (like deploy_strategy).
   InstanceSnapshot bare;
-  bare.game_id = "TestGame";
+  bare.game_id   = "TestGame";
   auto bare_json = bare.to_json();
-  require(bare_json.contains("modpack_id") == false,
-          "empty modpack_id omitted");
+  require(bare_json.contains("modpack_id") == false, "empty modpack_id omitted");
   require(bare_json.contains("modpack_revision") == false,
           "zero modpack_revision omitted");
   auto bare_restored = InstanceSnapshot::from_json(bare_json);
   require(bare_restored.modpack_id.empty(), "modpack_id defaults empty");
-  require(bare_restored.modpack_revision == 0,
-          "modpack_revision defaults zero");
+  require(bare_restored.modpack_revision == 0, "modpack_revision defaults zero");
 
   // instance.toml persists both fields (write_toml/read_toml).
   const auto root = test_root("modpack_identity");
   fs::remove_all(root);
   fs::create_directories(root);
   {
-    Instance inst = Instance::from_root(root);
-    inst.info().game_id = "TestGame";
-    inst.info().display_name = "Pack Test";
-    inst.info().modpack_id = id_a;
+    Instance inst                = Instance::from_root(root);
+    inst.info().game_id          = "TestGame";
+    inst.info().display_name     = "Pack Test";
+    inst.info().modpack_id       = id_a;
     inst.info().modpack_revision = 3;
     require(inst.write_toml(), "write_toml with pack identity");
   }

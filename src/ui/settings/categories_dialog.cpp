@@ -21,118 +21,116 @@ namespace ui {
 
 namespace {
 
-// Shared integer-cell validator for the ID / ParentID columns. Reads the
-// current table contents live (not a snapshot), so edits made in one cell are
-// immediately visible to the other validators. `current_row_` is set by the
-// delegate when an editor opens, so a row never validates against itself.
-class IntCellValidator : public QValidator {
-public:
-  explicit IntCellValidator(int min, int max, QTableWidget *table,
-                            QObject *parent = nullptr)
-      : QValidator(parent), int_validator_(min, max, this), table_(table) {}
-
-  void set_current_row(int row) { current_row_ = row; }
-
-protected:
-  State validate_int(QString &input, int &pos) const {
-    return int_validator_.validate(input, pos);
-  }
-  // All ids currently in column 0, excluding the row being edited.
-  QSet<int> other_ids() const {
-    QSet<int> out;
-    for (int r = 0; r < table_->rowCount(); ++r) {
-      if (r == current_row_)
-        continue;
-      bool ok = false;
-      const int id =
-          table_->item(r, 0) ? table_->item(r, 0)->text().toInt(&ok) : 0;
-      if (ok)
-        out.insert(id);
-    }
-    return out;
-  }
-
-  QTableWidget *table_ = nullptr;
-  int current_row_ = -1;
-  QIntValidator int_validator_;
-};
-
-// ID column: a positive integer that no other row uses.
-class NewIdValidator : public IntCellValidator {
-public:
-  explicit NewIdValidator(QTableWidget *table, QObject *parent = nullptr)
-      : IntCellValidator(1, INT_MAX, table, parent) {}
-
-  State validate(QString &input, int &pos) const override {
-    State base = validate_int(input, pos);
-    if (base != Acceptable)
-      return base;
-    bool ok = false;
-    const int id = input.toInt(&ok);
-    if (!ok || id <= 0 || other_ids().contains(id))
-      return Intermediate;
-    return Acceptable;
-  }
-};
-
-// ParentID column: 0 (root) or an id present in another row.
-class ParentIdValidator : public IntCellValidator {
-public:
-  explicit ParentIdValidator(QTableWidget *table, QObject *parent = nullptr)
-      : IntCellValidator(0, INT_MAX, table, parent) {}
-
-  State validate(QString &input, int &pos) const override {
-    State base = validate_int(input, pos);
-    if (base != Acceptable)
-      return base;
-    bool ok = false;
-    const int id = input.toInt(&ok);
-    if (!ok || id < 0)
-      return Intermediate;
-    if (id == 0 || other_ids().contains(id))
-      return Acceptable;
-    return Intermediate;
-  }
-};
-
-// Editor delegate: a QLineEdit carrying the column validator. Invalid input is
-// never committed (the cell keeps its previous value), mirroring MO2's
-// ValidatingDelegate.
-class ValidatingDelegate : public QStyledItemDelegate {
-public:
-  explicit ValidatingDelegate(IntCellValidator *validator,
+  // Shared integer-cell validator for the ID / ParentID columns. Reads the
+  // current table contents live (not a snapshot), so edits made in one cell are
+  // immediately visible to the other validators. `current_row_` is set by the
+  // delegate when an editor opens, so a row never validates against itself.
+  class IntCellValidator : public QValidator {
+  public:
+    explicit IntCellValidator(int min, int max, QTableWidget *table,
                               QObject *parent = nullptr)
-      : QStyledItemDelegate(parent), validator_(validator) {}
+        : QValidator(parent), int_validator_(min, max, this), table_(table) {}
 
-  QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &option,
-                        const QModelIndex &index) const override {
-    auto *edit = new QLineEdit(parent);
-    validator_->set_current_row(index.row());
-    edit->setValidator(validator_);
-    return edit;
-  }
+    void set_current_row(int row) { current_row_ = row; }
 
-  void setModelData(QWidget *editor, QAbstractItemModel *model,
-                    const QModelIndex &index) const override {
-    auto *edit = qobject_cast<QLineEdit *>(editor);
-    if (!edit)
-      return;
-    int pos = 0;
-    QString text = edit->text();
-    if (validator_->validate(text, pos) == QValidator::Acceptable) {
-      // Store the ID / ParentID as ints so sorting works numerically.
-      if (index.column() == 0 || index.column() == 2)
-        model->setData(index, text.toInt());
-      else
-        QStyledItemDelegate::setModelData(editor, model, index);
+  protected:
+    State validate_int(QString &input, int &pos) const {
+      return int_validator_.validate(input, pos);
     }
-  }
+    // All ids currently in column 0, excluding the row being edited.
+    QSet<int> other_ids() const {
+      QSet<int> out;
+      for (int r = 0; r < table_->rowCount(); ++r) {
+        if (r == current_row_)
+          continue;
+        bool ok      = false;
+        const int id = table_->item(r, 0) ? table_->item(r, 0)->text().toInt(&ok) : 0;
+        if (ok)
+          out.insert(id);
+      }
+      return out;
+    }
 
-private:
-  IntCellValidator *validator_ = nullptr;
-};
+    QTableWidget *table_ = nullptr;
+    int current_row_     = -1;
+    QIntValidator int_validator_;
+  };
 
-} // namespace
+  // ID column: a positive integer that no other row uses.
+  class NewIdValidator : public IntCellValidator {
+  public:
+    explicit NewIdValidator(QTableWidget *table, QObject *parent = nullptr)
+        : IntCellValidator(1, INT_MAX, table, parent) {}
+
+    State validate(QString &input, int &pos) const override {
+      State base = validate_int(input, pos);
+      if (base != Acceptable)
+        return base;
+      bool ok      = false;
+      const int id = input.toInt(&ok);
+      if (!ok || id <= 0 || other_ids().contains(id))
+        return Intermediate;
+      return Acceptable;
+    }
+  };
+
+  // ParentID column: 0 (root) or an id present in another row.
+  class ParentIdValidator : public IntCellValidator {
+  public:
+    explicit ParentIdValidator(QTableWidget *table, QObject *parent = nullptr)
+        : IntCellValidator(0, INT_MAX, table, parent) {}
+
+    State validate(QString &input, int &pos) const override {
+      State base = validate_int(input, pos);
+      if (base != Acceptable)
+        return base;
+      bool ok      = false;
+      const int id = input.toInt(&ok);
+      if (!ok || id < 0)
+        return Intermediate;
+      if (id == 0 || other_ids().contains(id))
+        return Acceptable;
+      return Intermediate;
+    }
+  };
+
+  // Editor delegate: a QLineEdit carrying the column validator. Invalid input is
+  // never committed (the cell keeps its previous value), mirroring MO2's
+  // ValidatingDelegate.
+  class ValidatingDelegate : public QStyledItemDelegate {
+  public:
+    explicit ValidatingDelegate(IntCellValidator *validator, QObject *parent = nullptr)
+        : QStyledItemDelegate(parent), validator_(validator) {}
+
+    QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &option,
+                          const QModelIndex &index) const override {
+      auto *edit = new QLineEdit(parent);
+      validator_->set_current_row(index.row());
+      edit->setValidator(validator_);
+      return edit;
+    }
+
+    void setModelData(QWidget *editor, QAbstractItemModel *model,
+                      const QModelIndex &index) const override {
+      auto *edit = qobject_cast<QLineEdit *>(editor);
+      if (!edit)
+        return;
+      int pos      = 0;
+      QString text = edit->text();
+      if (validator_->validate(text, pos) == QValidator::Acceptable) {
+        // Store the ID / ParentID as ints so sorting works numerically.
+        if (index.column() == 0 || index.column() == 2)
+          model->setData(index, text.toInt());
+        else
+          QStyledItemDelegate::setModelData(editor, model, index);
+      }
+    }
+
+  private:
+    IntCellValidator *validator_ = nullptr;
+  };
+
+}  // namespace
 
 CategoriesDialog::CategoriesDialog(const std::filesystem::path &instance_root,
                                    QWidget *parent)
@@ -145,11 +143,9 @@ CategoriesDialog::CategoriesDialog(const std::filesystem::path &instance_root,
   table_ = new QTableWidget(this);
   table_->setColumnCount(3);
   table_->setHorizontalHeaderLabels({tr("ID"), tr("Name"), tr("ParentID")});
-  table_->horizontalHeader()->setSectionResizeMode(
-      0, QHeaderView::ResizeToContents);
+  table_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
   table_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-  table_->horizontalHeader()->setSectionResizeMode(
-      2, QHeaderView::ResizeToContents);
+  table_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
   table_->verticalHeader()->setVisible(false);
   table_->setSelectionBehavior(QAbstractItemView::SelectRows);
   table_->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -160,10 +156,8 @@ CategoriesDialog::CategoriesDialog(const std::filesystem::path &instance_root,
   // or an existing id.
   auto *new_id_validator = new NewIdValidator(table_, this);
   auto *parent_validator = new ParentIdValidator(table_, this);
-  table_->setItemDelegateForColumn(
-      0, new ValidatingDelegate(new_id_validator, this));
-  table_->setItemDelegateForColumn(
-      2, new ValidatingDelegate(parent_validator, this));
+  table_->setItemDelegateForColumn(0, new ValidatingDelegate(new_id_validator, this));
+  table_->setItemDelegateForColumn(2, new ValidatingDelegate(parent_validator, this));
 
   auto *buttons = new QHBoxLayout();
   buttons->setSpacing(4);
@@ -177,8 +171,8 @@ CategoriesDialog::CategoriesDialog(const std::filesystem::path &instance_root,
   buttons->addStretch(1);
   layout->addLayout(buttons);
 
-  auto *dialog_buttons = new QDialogButtonBox(
-      QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+  auto *dialog_buttons =
+      new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
   connect(dialog_buttons, &QDialogButtonBox::accepted, this, [this]() {
     const QString error = validate_table();
     if (!error.isEmpty()) {
@@ -191,12 +185,12 @@ CategoriesDialog::CategoriesDialog(const std::filesystem::path &instance_root,
   connect(dialog_buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
   layout->addWidget(dialog_buttons);
 
-  connect(add_btn, &QPushButton::clicked, this,
-          &CategoriesDialog::on_add_clicked);
+  connect(add_btn, &QPushButton::clicked, this, &CategoriesDialog::on_add_clicked);
   connect(remove_btn_, &QPushButton::clicked, this,
           &CategoriesDialog::on_remove_clicked);
-  connect(table_, &QTableWidget::itemSelectionChanged, this,
-          [this]() { remove_btn_->setEnabled(table_->currentRow() >= 0); });
+  connect(table_, &QTableWidget::itemSelectionChanged, this, [this]() {
+    remove_btn_->setEnabled(table_->currentRow() >= 0);
+  });
 
   fill_table();
 }
@@ -218,8 +212,8 @@ bool CategoriesDialog::commit_changes() {
   rows.reserve(table_->rowCount());
   for (int r = 0; r < table_->rowCount(); ++r) {
     Row row;
-    row.id = table_->item(r, 0)->text().toInt();
-    row.name = table_->item(r, 1) ? table_->item(r, 1)->text() : QString();
+    row.id        = table_->item(r, 0)->text().toInt();
+    row.name      = table_->item(r, 1) ? table_->item(r, 1)->text() : QString();
     row.parent_id = table_->item(r, 2)->text().toInt();
     rows.push_back(row);
     table_ids.insert(row.id);
@@ -263,11 +257,11 @@ void CategoriesDialog::fill_table() {
   int row = 0;
   for (const auto &[id, cat] : cats) {
     if (id == 0)
-      continue; // "None" is implicit
+      continue;  // "None" is implicit
     table_->insertRow(row);
     auto *id_item = new QTableWidgetItem();
     id_item->setData(Qt::DisplayRole, id);
-    auto *name_item = new QTableWidgetItem(QString::fromStdString(cat.name));
+    auto *name_item   = new QTableWidgetItem(QString::fromStdString(cat.name));
     auto *parent_item = new QTableWidgetItem();
     parent_item->setData(Qt::DisplayRole, cat.parent_id);
     table_->setItem(row, 0, id_item);
@@ -281,9 +275,8 @@ void CategoriesDialog::fill_table() {
 int CategoriesDialog::next_free_id() const {
   int highest = 0;
   for (int r = 0; r < table_->rowCount(); ++r) {
-    bool ok = false;
-    const int id =
-        table_->item(r, 0) ? table_->item(r, 0)->text().toInt(&ok) : 0;
+    bool ok      = false;
+    const int id = table_->item(r, 0) ? table_->item(r, 0)->text().toInt(&ok) : 0;
     if (ok && id > highest)
       highest = id;
   }
@@ -296,7 +289,7 @@ void CategoriesDialog::on_add_clicked() {
   table_->insertRow(row);
   auto *id_item = new QTableWidgetItem();
   id_item->setData(Qt::DisplayRole, next_free_id());
-  auto *name_item = new QTableWidgetItem(tr("new"));
+  auto *name_item   = new QTableWidgetItem(tr("new"));
   auto *parent_item = new QTableWidgetItem();
   parent_item->setData(Qt::DisplayRole, 0);
   table_->setItem(row, 0, id_item);
@@ -322,13 +315,11 @@ QString CategoriesDialog::validate_table() const {
   // IDs: positive and unique.
   QSet<int> ids;
   for (int r = 0; r < table_->rowCount(); ++r) {
-    bool ok = false;
-    const int id =
-        table_->item(r, 0) ? table_->item(r, 0)->text().toInt(&ok) : 0;
+    bool ok      = false;
+    const int id = table_->item(r, 0) ? table_->item(r, 0)->text().toInt(&ok) : 0;
     if (!ok || id <= 0) {
       table_->setCurrentCell(r, 0);
-      return tr("Row %1 has an invalid ID. IDs must be positive integers.")
-          .arg(r + 1);
+      return tr("Row %1 has an invalid ID. IDs must be positive integers.").arg(r + 1);
     }
     if (ids.contains(id)) {
       table_->setCurrentCell(r, 0);
@@ -341,12 +332,10 @@ QString CategoriesDialog::validate_table() const {
 
   // Parents: 0 (root) or an existing id, never the row's own id.
   for (int r = 0; r < table_->rowCount(); ++r) {
-    bool ok = false;
-    const int parent =
-        table_->item(r, 2) ? table_->item(r, 2)->text().toInt(&ok) : -1;
-    const int id = table_->item(r, 0)->text().toInt();
-    if (!ok || parent < 0 || (parent != 0 && !ids.contains(parent)) ||
-        parent == id) {
+    bool ok          = false;
+    const int parent = table_->item(r, 2) ? table_->item(r, 2)->text().toInt(&ok) : -1;
+    const int id     = table_->item(r, 0)->text().toInt();
+    if (!ok || parent < 0 || (parent != 0 && !ids.contains(parent)) || parent == id) {
       table_->setCurrentCell(r, 2);
       return tr("Row %1 has an invalid ParentID. Use 0 for a root "
                 "category or the ID of an existing category.")
@@ -356,4 +345,4 @@ QString CategoriesDialog::validate_table() const {
   return QString();
 }
 
-} // namespace ui
+}  // namespace ui

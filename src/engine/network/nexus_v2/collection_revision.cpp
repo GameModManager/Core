@@ -4,15 +4,12 @@
 
 #include <nlohmann/json.hpp>
 
-namespace engine::nexus_v2
-{
+namespace engine::nexus_v2 {
 
-namespace
-{
+namespace {
 
   // Tolerant getters: the gateway may add/drop fields at any time.
-  long long as_int(const nlohmann::json& j, const char* key)
-  {
+  long long as_int(const nlohmann::json &j, const char *key) {
     const auto it = j.find(key);
     if (it == j.end() || it->is_null())
       return 0;
@@ -21,15 +18,14 @@ namespace
     if (it->is_string()) {
       try {
         return std::stoll(it->get<std::string>());
-      } catch (const std::exception&) {
+      } catch (const std::exception &) {
         return 0;
       }
     }
     return 0;
   }
 
-  std::string as_string(const nlohmann::json& j, const char* key)
-  {
+  std::string as_string(const nlohmann::json &j, const char *key) {
     const auto it = j.find(key);
     if (it == j.end() || it->is_null())
       return {};
@@ -40,16 +36,14 @@ namespace
     return {};
   }
 
-  bool as_bool(const nlohmann::json& j, const char* key)
-  {
+  bool as_bool(const nlohmann::json &j, const char *key) {
     const auto it = j.find(key);
     return it != j.end() && it->is_boolean() && it->get<bool>();
   }
 
 }  // namespace
 
-std::string build_collection_revision_query()
-{
+std::string build_collection_revision_query() {
   return "query collectionRevision($slug: String!, $revision: Int, $viewAdultContent: "
          "Boolean) {"
          " collectionRevision(slug: $slug, revision: $revision, viewAdultContent: "
@@ -61,9 +55,8 @@ std::string build_collection_revision_query()
          " externalResources { name resourceUrl version optional } } }";
 }
 
-std::string build_collection_revision_variables(const std::string& slug,
-                                                long long revision)
-{
+std::string build_collection_revision_variables(const std::string &slug,
+                                                long long revision) {
   nlohmann::json vars;
   vars["slug"] = slug;
   if (revision > 0)
@@ -72,13 +65,12 @@ std::string build_collection_revision_variables(const std::string& slug,
   return vars.dump();
 }
 
-bool parse_collection_revision_data(const std::string& data_json,
-                                    CollectionRevision& out, std::string& out_error)
-{
+bool parse_collection_revision_data(const std::string &data_json,
+                                    CollectionRevision &out, std::string &out_error) {
   nlohmann::json node;
   try {
     node = nlohmann::json::parse(data_json);
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     out_error = std::string("invalid collectionRevision node: ") + e.what();
     return false;
   }
@@ -104,7 +96,7 @@ bool parse_collection_revision_data(const std::string& data_json,
 
   const auto mods_it = node.find("modFiles");
   if (mods_it != node.end() && mods_it->is_array()) {
-    for (const auto& m : *mods_it) {
+    for (const auto &m : *mods_it) {
       if (!m.is_object())
         continue;
       CollectionModFile entry;
@@ -128,7 +120,7 @@ bool parse_collection_revision_data(const std::string& data_json,
 
   const auto ext_it = node.find("externalResources");
   if (ext_it != node.end() && ext_it->is_array()) {
-    for (const auto& e : *ext_it) {
+    for (const auto &e : *ext_it) {
       if (!e.is_object())
         continue;
       ExternalResource res;
@@ -146,9 +138,8 @@ bool parse_collection_revision_data(const std::string& data_json,
   return true;
 }
 
-FetchResult fetch_collection_revision(Client& client, const std::string& slug,
-                                      long long revision)
-{
+FetchResult fetch_collection_revision(Client &client, const std::string &slug,
+                                      long long revision) {
   FetchResult result;
   GraphqlResult gql =
       client.query("collectionRevision", build_collection_revision_query(),

@@ -29,4 +29,4 @@ private:
   MainWindow *w_ = nullptr;
 };
 
-} // namespace ui
+}  // namespace ui

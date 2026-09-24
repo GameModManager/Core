@@ -39,7 +39,7 @@ public:
   bool locked = false;
 };
 
-MultiProcess::MultiProcess(QObject* parent)
+MultiProcess::MultiProcess(QObject *parent)
     : QObject(parent), impl_(std::make_unique<Impl>()) {
   // Long-lived singleton lock: disable timestamp-based staleness so a
   // live holder is never stolen (per QLockFile docs, 0 disables the
@@ -48,7 +48,7 @@ MultiProcess::MultiProcess(QObject* parent)
   // 30 s default.
   impl_->lock_file.setStaleLockTime(0);
   connect(&impl_->focus_server, &QLocalServer::newConnection, this, [this]() {
-    auto* sock = impl_->focus_server.nextPendingConnection();
+    auto *sock = impl_->focus_server.nextPendingConnection();
     if (!sock)
       return;
     connect(sock, &QLocalSocket::readyRead, this, [this, sock]() {

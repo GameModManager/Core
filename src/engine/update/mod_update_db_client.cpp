@@ -15,17 +15,14 @@
 
 namespace fs = std::filesystem;
 
-namespace engine::update
-{
+namespace engine::update {
 
-namespace
-{
+namespace {
 
   // Default mapping of GMM game_id -> ModUpdateData short tag. The set is the
   // same as the GamesAllowed in the epic (Workspace-a33s, section 3).
   // Plugins override via the "modupdate_db_game" knowledge key.
-  const std::unordered_map<std::string, std::string>& default_db_game_map()
-  {
+  const std::unordered_map<std::string, std::string> &default_db_game_map() {
     static const std::unordered_map<std::string, std::string> kMap = {
         // Skyrim (SE + LE retained; VR/SSEAE not in DB).
         {"skyrimspecialedition", "SE"},
@@ -47,7 +44,7 @@ namespace
   }
 
   // Knowledge key plugins use to override the GMM->DB game tag mapping.
-  constexpr const char* kDbGameKey = "modupdate_db_game";
+  constexpr const char *kDbGameKey = "modupdate_db_game";
 
   // Trivial case-insensitive ASCII comparator for the ETag header. The
   // spec says ETags are quoted strings, so case is technically significant
@@ -56,8 +53,7 @@ namespace
   // "If-None-Match: w/\"X\"" as equal. The compare for has_update is on
   // ISO 8601 strings, which ARE case-sensitive (Z must be uppercase).
   // This helper is only used for the ETag cache.
-  bool iequals(const std::string& a, const std::string& b)
-  {
+  bool iequals(const std::string &a, const std::string &b) {
     if (a.size() != b.size())
       return false;
     for (std::size_t i = 0; i < a.size(); ++i) {
@@ -68,8 +64,7 @@ namespace
     return true;
   }
 
-  bool starts_with_i(const std::string& s, const char* prefix)
-  {
+  bool starts_with_i(const std::string &s, const char *prefix) {
     const std::size_t plen = std::char_traits<char>::length(prefix);
     if (s.size() < plen)
       return false;
@@ -83,8 +78,7 @@ namespace
 
   // Trim ASCII whitespace. Pulled out of loverslab_provider.cpp's namespace;
   // kept local so this header doesn't depend on a private helper.
-  std::string trim(const std::string& s)
-  {
+  std::string trim(const std::string &s) {
     const auto first = s.find_first_not_of(" \t\r\n");
     if (first == std::string::npos)
       return {};
@@ -97,8 +91,7 @@ namespace
   // are YYYY-MM-DD and YYYY-MM-DDTHH:MM:SS[.fff][Z|+HH:MM]. We don't need
   // to be perfect - the goal is to avoid "compare a date with a non-date
   // string" false-positives in has_update.
-  bool looks_like_iso8601(const std::string& s)
-  {
+  bool looks_like_iso8601(const std::string &s) {
     if (s.size() < 10)
       return false;
     auto is_digit = [](char c) {
@@ -134,8 +127,7 @@ namespace
   // local sources (legacy LoversLab scrape) emit "+00:00" instead. The
   // scraper-side contract is that local updated fields are also Z by the
   // time they reach this client, but we tolerate +00:00 defensively.
-  std::string normalize_offset_to_z(std::string s)
-  {
+  std::string normalize_offset_to_z(std::string s) {
     // Minimum plausible timestamp with offset is 20 chars:
     // "YYYY-MM-DDTHH:MM:SS+HH:MM" (no fractional seconds).
     if (s.size() < 20)
@@ -161,8 +153,7 @@ namespace
     return s;
   }
 
-  int compare_iso8601(const std::string& a, const std::string& b)
-  {
+  int compare_iso8601(const std::string &a, const std::string &b) {
     if (a.empty() && b.empty())
       return 0;
     if (a.empty())
@@ -189,13 +180,11 @@ namespace
 
 // --- Static helpers --------------------------------------------------------
 
-fs::path ModUpdateDbClient::cache_root()
-{
+fs::path ModUpdateDbClient::cache_root() {
   return default_instances_dir().parent_path() / "modupdatedb";
 }
 
-fs::path ModUpdateDbClient::cache_dir_for(const std::string& gmm_game_id)
-{
+fs::path ModUpdateDbClient::cache_dir_for(const std::string &gmm_game_id) {
   // gmm_game_id becomes a single path component. Internal callers go
   // through db_game_for() which returns controlled tags ("SE", "FO4",
   // ...); a stray "/" or ".." would escape the cache root, so we
@@ -206,9 +195,8 @@ fs::path ModUpdateDbClient::cache_dir_for(const std::string& gmm_game_id)
   return cache_root() / gmm_game_id;
 }
 
-std::string ModUpdateDbClient::db_game_for(const std::string& gmm_game_id,
-                                           const GameKnowledge* knowledge)
-{
+std::string ModUpdateDbClient::db_game_for(const std::string &gmm_game_id,
+                                           const GameKnowledge *knowledge) {
   if (gmm_game_id.empty())
     return {};
   // Plugin override first - cheap, no I/O, takes precedence over the
@@ -219,20 +207,19 @@ std::string ModUpdateDbClient::db_game_for(const std::string& gmm_game_id,
     if (!override.empty())
       return override;
   }
-  const auto& m = default_db_game_map();
+  const auto &m = default_db_game_map();
   auto it       = m.find(gmm_game_id);
   if (it != m.end())
     return it->second;
   return {};
 }
 
-bool ModUpdateDbClient::has_update(const ModUpdateIndex& index, std::int64_t file_id,
-                                   const std::string& local_updated)
-{
+bool ModUpdateDbClient::has_update(const ModUpdateIndex &index, std::int64_t file_id,
+                                   const std::string &local_updated) {
   auto it = index.updated_by_id.find(file_id);
   if (it == index.updated_by_id.end())
     return false;  // not tracked
-  const std::string& db_updated = it->second;
+  const std::string &db_updated = it->second;
   if (db_updated.empty())
     return false;  // DB entry has no timestamp; can't decide
   if (local_updated.empty())
@@ -243,8 +230,7 @@ bool ModUpdateDbClient::has_update(const ModUpdateIndex& index, std::int64_t fil
   return cmp > 0;
 }
 
-std::string ModUpdateDbClient::shard_filename(std::int64_t file_id)
-{
+std::string ModUpdateDbClient::shard_filename(std::int64_t file_id) {
   if (file_id < 0)
     file_id = 0;
   const std::int64_t lo = (file_id / 1000) * 1000;
@@ -252,14 +238,12 @@ std::string ModUpdateDbClient::shard_filename(std::int64_t file_id)
   return std::to_string(lo) + "-" + std::to_string(hi) + ".json";
 }
 
-std::string ModUpdateDbClient::index_url(const std::string& db_game)
-{
+std::string ModUpdateDbClient::index_url(const std::string &db_game) {
   return std::string(kBaseUrl) + "/" + kIndexPrefix + "." + db_game + kIndexExt;
 }
 
-std::string ModUpdateDbClient::shard_url([[maybe_unused]] const std::string& db_game,
-                                         std::int64_t file_id)
-{
+std::string ModUpdateDbClient::shard_url([[maybe_unused]] const std::string &db_game,
+                                         std::int64_t file_id) {
   // Shards are global across DB games (by_game == false in the manifest),
   // so db_game does not participate in the URL. Kept in the signature
   // for symmetry with index_url and the abstract interface.
@@ -268,9 +252,8 @@ std::string ModUpdateDbClient::shard_url([[maybe_unused]] const std::string& db_
 
 // --- Pure parsers ----------------------------------------------------------
 
-ModUpdateIndex ModUpdateDbClient::parse_index(const std::string& body,
-                                              const std::string& expected_game)
-{
+ModUpdateIndex ModUpdateDbClient::parse_index(const std::string &body,
+                                              const std::string &expected_game) {
   ModUpdateIndex out;
   out.game = expected_game;
   if (body.empty())
@@ -288,12 +271,12 @@ ModUpdateIndex ModUpdateDbClient::parse_index(const std::string& body,
       for (auto it = j["updated"].begin(); it != j["updated"].end(); ++it) {
         if (!it.value().is_string())
           continue;
-        const std::string& key = it.key();
+        const std::string &key = it.key();
         // id is a string of digits in the DB; parse defensively.
         std::int64_t id = 0;
         try {
           id = std::stoll(key);
-        } catch (const std::exception&) {
+        } catch (const std::exception &) {
           continue;
         }
         if (id <= 0)
@@ -301,7 +284,7 @@ ModUpdateIndex ModUpdateDbClient::parse_index(const std::string& body,
         out.updated_by_id.emplace(id, it.value().get<std::string>());
       }
     }
-  } catch (const std::exception&) {
+  } catch (const std::exception &) {
     // Malformed body: leave the index empty. The caller sees ok=true
     // (the fetch succeeded) but no updates. Better than a crash.
     out.updated_by_id.clear();
@@ -309,9 +292,8 @@ ModUpdateIndex ModUpdateDbClient::parse_index(const std::string& body,
   return out;
 }
 
-ModUpdateShardRecord ModUpdateDbClient::parse_shard_record(const std::string& body,
-                                                           std::int64_t file_id)
-{
+ModUpdateShardRecord ModUpdateDbClient::parse_shard_record(const std::string &body,
+                                                           std::int64_t file_id) {
   ModUpdateShardRecord out;
   if (body.empty())
     return out;
@@ -319,7 +301,7 @@ ModUpdateShardRecord ModUpdateDbClient::parse_shard_record(const std::string& bo
     auto j = nlohmann::json::parse(body);
     if (!j.is_array())
       return out;
-    for (const auto& node : j) {
+    for (const auto &node : j) {
       if (!node.is_object())
         continue;
       std::int64_t id = 0;
@@ -329,7 +311,7 @@ ModUpdateShardRecord ModUpdateDbClient::parse_shard_record(const std::string& bo
         else if (node["id"].is_string()) {
           try {
             id = std::stoll(node["id"].get<std::string>());
-          } catch (const std::exception&) {
+          } catch (const std::exception &) {
             continue;
           }
         } else {
@@ -349,14 +331,14 @@ ModUpdateShardRecord ModUpdateDbClient::parse_shard_record(const std::string& bo
       if (node.contains("category") && node["category"].is_string())
         out.category = trim(node["category"].get<std::string>());
       if (node.contains("tags") && node["tags"].is_array()) {
-        for (const auto& t : node["tags"]) {
+        for (const auto &t : node["tags"]) {
           if (t.is_string())
             out.tags.push_back(trim(t.get<std::string>()));
         }
       }
       return out;
     }
-  } catch (const std::exception&) {
+  } catch (const std::exception &) {
     // Malformed body: found stays false.
   }
   return out;
@@ -364,8 +346,7 @@ ModUpdateShardRecord ModUpdateDbClient::parse_shard_record(const std::string& bo
 
 // --- Disk persistence -----------------------------------------------------
 
-std::string ModUpdateDbClient::load_disk_etag(const fs::path& dir)
-{
+std::string ModUpdateDbClient::load_disk_etag(const fs::path &dir) {
   std::error_code ec;
   if (!fs::is_regular_file(dir / "etag", ec) || ec)
     return {};
@@ -377,8 +358,7 @@ std::string ModUpdateDbClient::load_disk_etag(const fs::path& dir)
   return trim(buf.str());
 }
 
-void ModUpdateDbClient::save_disk_etag(const fs::path& dir, const std::string& etag)
-{
+void ModUpdateDbClient::save_disk_etag(const fs::path &dir, const std::string &etag) {
   std::error_code ec;
   fs::create_directories(dir, ec);
   std::ofstream ofs(dir / "etag", std::ios::binary | std::ios::trunc);
@@ -387,8 +367,7 @@ void ModUpdateDbClient::save_disk_etag(const fs::path& dir, const std::string& e
   ofs << etag;
 }
 
-std::string ModUpdateDbClient::load_disk_index(const fs::path& dir)
-{
+std::string ModUpdateDbClient::load_disk_index(const fs::path &dir) {
   std::error_code ec;
   if (!fs::is_regular_file(dir / "index.json", ec) || ec)
     return {};
@@ -400,8 +379,7 @@ std::string ModUpdateDbClient::load_disk_index(const fs::path& dir)
   return buf.str();
 }
 
-void ModUpdateDbClient::save_disk_index(const fs::path& dir, const std::string& body)
-{
+void ModUpdateDbClient::save_disk_index(const fs::path &dir, const std::string &body) {
   std::error_code ec;
   fs::create_directories(dir, ec);
   std::ofstream ofs(dir / "index.json", std::ios::binary | std::ios::trunc);
@@ -410,17 +388,16 @@ void ModUpdateDbClient::save_disk_index(const fs::path& dir, const std::string& 
   ofs << body;
 }
 
-void ModUpdateDbClient::apply_fetched_index(const std::string& gmm_game_id,
-                                            const std::string& db_game,
-                                            const std::string& body,
-                                            const std::string& etag, bool from_cache)
-{
+void ModUpdateDbClient::apply_fetched_index(const std::string &gmm_game_id,
+                                            const std::string &db_game,
+                                            const std::string &body,
+                                            const std::string &etag, bool from_cache) {
   auto parsed       = parse_index(body, db_game);
   parsed.etag       = etag;
   parsed.fetched_at = std::chrono::system_clock::now();
   const auto dir    = cache_dir_for(gmm_game_id);
   std::lock_guard<std::mutex> lock(mu_);
-  auto& st        = states_[gmm_game_id];
+  auto &st        = states_[gmm_game_id];
   st.index        = std::move(parsed);
   st.last_etag    = etag;
   st.last_checked = std::chrono::system_clock::now();
@@ -431,8 +408,7 @@ void ModUpdateDbClient::apply_fetched_index(const std::string& gmm_game_id,
 
 // --- In-memory accessors ---------------------------------------------------
 
-const ModUpdateIndex* ModUpdateDbClient::index(const std::string& gmm_game_id) const
-{
+const ModUpdateIndex *ModUpdateDbClient::index(const std::string &gmm_game_id) const {
   std::lock_guard<std::mutex> lock(mu_);
   auto it = states_.find(gmm_game_id);
   if (it == states_.end() || !it->second.loaded)
@@ -441,8 +417,7 @@ const ModUpdateIndex* ModUpdateDbClient::index(const std::string& gmm_game_id) c
 }
 
 std::chrono::system_clock::time_point
-ModUpdateDbClient::last_checked(const std::string& gmm_game_id) const
-{
+ModUpdateDbClient::last_checked(const std::string &gmm_game_id) const {
   std::lock_guard<std::mutex> lock(mu_);
   auto it = states_.find(gmm_game_id);
   if (it == states_.end())
@@ -452,8 +427,7 @@ ModUpdateDbClient::last_checked(const std::string& gmm_game_id) const
 
 // --- Polling ---------------------------------------------------------------
 
-PollResult ModUpdateDbClient::fetch_index(const std::string& gmm_game_id)
-{
+PollResult ModUpdateDbClient::fetch_index(const std::string &gmm_game_id) {
   PollResult res;
   if (gmm_game_id.empty()) {
     res.last_error = "empty game_id";
@@ -484,7 +458,7 @@ PollResult ModUpdateDbClient::fetch_index(const std::string& gmm_game_id)
         apply_fetched_index(gmm_game_id, db_game, cached_body, etag, true);
       } else {
         std::lock_guard<std::mutex> lock(mu_);
-        auto& st        = states_[gmm_game_id];
+        auto &st        = states_[gmm_game_id];
         st.last_checked = std::chrono::system_clock::now();
       }
       res.ok           = true;
@@ -529,9 +503,8 @@ PollResult ModUpdateDbClient::fetch_index(const std::string& gmm_game_id)
 }
 
 ModUpdateShardRecord
-ModUpdateDbClient::fetch_shard_record(const std::string& gmm_game_id,
-                                      std::int64_t file_id)
-{
+ModUpdateDbClient::fetch_shard_record(const std::string &gmm_game_id,
+                                      std::int64_t file_id) {
   ModUpdateShardRecord out;
   if (gmm_game_id.empty() || file_id <= 0)
     return out;
@@ -541,10 +514,9 @@ ModUpdateDbClient::fetch_shard_record(const std::string& gmm_game_id,
   return fetch_shard_record_impl(db_game, file_id);
 }
 
-void ModUpdateDbClient::poll_all(const std::vector<std::string>& gmm_game_ids)
-{
+void ModUpdateDbClient::poll_all(const std::vector<std::string> &gmm_game_ids) {
   int ok = 0, cached = 0, failed = 0;
-  for (const auto& gid : gmm_game_ids) {
+  for (const auto &gid : gmm_game_ids) {
     const PollResult r = fetch_index(gid);
     if (!r.ok) {
       ++failed;
@@ -563,27 +535,24 @@ void ModUpdateDbClient::poll_all(const std::vector<std::string>& gmm_game_ids)
 
 // --- Singleton -------------------------------------------------------------
 
-namespace
-{
+namespace {
   std::unique_ptr<ModUpdateDbClient> g_instance;
 }
 
-ModUpdateDbClient& ModUpdateDbClient::instance()
-{
+ModUpdateDbClient &ModUpdateDbClient::instance() {
   if (!g_instance)
     g_instance = std::make_unique<NetworkModUpdateDbClient>();
   return *g_instance;
 }
 
-void ModUpdateDbClient::set_instance(std::unique_ptr<ModUpdateDbClient> c)
-{
+void ModUpdateDbClient::set_instance(std::unique_ptr<ModUpdateDbClient> c) {
   g_instance = std::move(c);
 }
 
 // --- Network implementation -----------------------------------------------
 
-std::string NetworkModUpdateDbClient::extract_etag(const std::string& response_headers)
-{
+std::string
+NetworkModUpdateDbClient::extract_etag(const std::string &response_headers) {
   if (response_headers.empty())
     return {};
   // Walk line-by-line. response_headers uses "\r\n" separators; the
@@ -612,9 +581,8 @@ std::string NetworkModUpdateDbClient::extract_etag(const std::string& response_h
 }
 
 PollResult
-NetworkModUpdateDbClient::fetch_index_impl(const std::string& db_game,
-                                           const std::string& if_none_match_etag)
-{
+NetworkModUpdateDbClient::fetch_index_impl(const std::string &db_game,
+                                           const std::string &if_none_match_etag) {
   PollResult res;
   network::Request req;
   req.url             = ModUpdateDbClient::index_url(db_game);
@@ -655,9 +623,8 @@ NetworkModUpdateDbClient::fetch_index_impl(const std::string& db_game,
 }
 
 ModUpdateShardRecord
-NetworkModUpdateDbClient::fetch_shard_record_impl(const std::string& db_game,
-                                                  std::int64_t file_id)
-{
+NetworkModUpdateDbClient::fetch_shard_record_impl(const std::string &db_game,
+                                                  std::int64_t file_id) {
   ModUpdateShardRecord out;
   network::Request req;
   req.url             = ModUpdateDbClient::shard_url(db_game, file_id);

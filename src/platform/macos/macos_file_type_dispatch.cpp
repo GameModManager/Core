@@ -12,11 +12,9 @@
 #include <string>
 #include <vector>
 
-namespace engine
-{
+namespace engine {
 
-bool MacOSFileTypeDispatcher::can_launch(FileType type) const
-{
+bool MacOSFileTypeDispatcher::can_launch(FileType type) const {
   switch (type) {
   case FileType::NativeExecutable:
   case FileType::Script:
@@ -30,9 +28,8 @@ bool MacOSFileTypeDispatcher::can_launch(FileType type) const
   return false;
 }
 
-LaunchResult MacOSFileTypeDispatcher::launch(const std::filesystem::path& file,
-                                             const LaunchOptions& options) const
-{
+LaunchResult MacOSFileTypeDispatcher::launch(const std::filesystem::path &file,
+                                             const LaunchOptions &options) const {
   if (!std::filesystem::exists(file))
     return {};
 
@@ -49,9 +46,9 @@ LaunchResult MacOSFileTypeDispatcher::launch(const std::filesystem::path& file,
     if (options.background)
       setsid();
 
-    std::vector<char*> argv;
-    argv.push_back(const_cast<char*>("open"));
-    argv.push_back(const_cast<char*>(file.c_str()));
+    std::vector<char *> argv;
+    argv.push_back(const_cast<char *>("open"));
+    argv.push_back(const_cast<char *>(file.c_str()));
     argv.push_back(nullptr);
 
     execvp("open", argv.data());
@@ -74,8 +71,7 @@ LaunchResult MacOSFileTypeDispatcher::launch(const std::filesystem::path& file,
   return result;
 }
 
-std::unique_ptr<FileTypeDispatcher> create_file_type_dispatcher()
-{
+std::unique_ptr<FileTypeDispatcher> create_file_type_dispatcher() {
   return std::make_unique<MacOSFileTypeDispatcher>();
 }
 

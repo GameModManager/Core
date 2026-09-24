@@ -40,8 +40,8 @@ public:
   fs::path home_dir() const override { return data_dir_; }
   fs::path temp_dir() const override { return data_dir_; }
   fs::path find_steam_root() const override { return {}; }
-  bool launch_executable(const fs::path&,
-                         const std::vector<std::string>&) const override {
+  bool launch_executable(const fs::path &,
+                         const std::vector<std::string> &) const override {
     return false;
   }
 
@@ -49,7 +49,7 @@ private:
   fs::path data_dir_;
 };
 
-void write_file(const fs::path& p, const std::string& content) {
+void write_file(const fs::path &p, const std::string &content) {
   std::ofstream out(p);
   out << content;
 }
@@ -109,14 +109,14 @@ std::string fake_cli_script(int exit_code) {
   return s.str();
 }
 
-fs::path make_fake_cli(const fs::path& dir, int exit_code) {
+fs::path make_fake_cli(const fs::path &dir, int exit_code) {
   const fs::path cli = dir / "fake_gmm_lootcli";
   write_file(cli, fake_cli_script(exit_code));
   chmod(cli.c_str(), 0755);
   return cli;
 }
 
-void run_success_case(const fs::path& base) {
+void run_success_case(const fs::path &base) {
   const fs::path cli_dir = base / "cli";
   fs::create_directories(cli_dir);
   const fs::path cli = make_fake_cli(cli_dir, 0);
@@ -137,8 +137,8 @@ void run_success_case(const fs::path& base) {
   };
 
   std::vector<int> stages;
-  const engine::Sorter::Loot::Result result =
-      engine::Sorter::Loot::run_sort(request, [&stages](int stage, const std::string&) {
+  const engine::Sorter::Loot::Result result = engine::Sorter::Loot::run_sort(
+      request, [&stages](int stage, const std::string &) {
         stages.push_back(stage);
       });
 
@@ -160,7 +160,7 @@ void run_success_case(const fs::path& base) {
 
   // [level] messages relayed.
   bool have_info = false;
-  for (const auto& m : result.messages)
+  for (const auto &m : result.messages)
     if (m.find("[info] fake masterlist loaded") != std::string::npos)
       have_info = true;
   require(have_info, "info message relayed");
@@ -185,7 +185,7 @@ void run_success_case(const fs::path& base) {
     require(result.reports.size() == 1, "one plugin report parsed");
     const auto it = result.reports.find("XPMSE.esp");
     require(it != result.reports.end(), "XPMSE report present");
-    const engine::LootReport& rep = it->second;
+    const engine::LootReport &rep = it->second;
     require(rep.incompatibilities.size() == 1, "one incompatibility");
     require(rep.incompatibilities[0].first == "RaceMenu.esp", "incompatibility name");
     require(rep.incompatibilities[0].second == "RaceMenu",
@@ -219,7 +219,7 @@ void run_success_case(const fs::path& base) {
   std::fprintf(stderr, "loot_sorter_test: success case OK\n");
 }
 
-void run_failure_case(const fs::path& base) {
+void run_failure_case(const fs::path &base) {
   const fs::path cli_dir = base / "cli_fail";
   fs::create_directories(cli_dir);
   const fs::path cli = make_fake_cli(cli_dir, 3);
@@ -246,7 +246,7 @@ void run_failure_case(const fs::path& base) {
   std::fprintf(stderr, "loot_sorter_test: failure case OK\n");
 }
 
-void run_missing_cli_case(const fs::path& base) {
+void run_missing_cli_case(const fs::path &base) {
   engine::Sorter::Loot::Request request;
   request.game_id            = "SkyrimSpecialEdition";
   request.loot_game_id       = "skyrimse";
@@ -268,7 +268,7 @@ void run_missing_cli_case(const fs::path& base) {
   std::fprintf(stderr, "loot_sorter_test: missing-CLI case OK\n");
 }
 
-void run_masterlist_fallback_case(const fs::path& base) {
+void run_masterlist_fallback_case(const fs::path &base) {
   // A valid CLI but no platform data dir: masterlists cannot resolve, so the
   // sort must fail with a clear error before any subprocess runs.
   const fs::path cli_dir = base / "cli_fallback";
@@ -299,7 +299,7 @@ void run_masterlist_fallback_case(const fs::path& base) {
 // tools/gmm_lootcli/src/main.cpp write_plugin_reports() output style
 // (single-line objects, emitter field order, trailing flag-only entries); if
 // the emitter regresses, the parse below yields no reports and this fails.
-void run_golden_report_case(const fs::path& base) {
+void run_golden_report_case(const fs::path &base) {
   const fs::path golden =
       fs::path(__FILE__).parent_path() / "fixtures" / "loot_report_golden.json";
   require(fs::is_regular_file(golden), "golden report fixture exists");
@@ -365,7 +365,7 @@ void run_golden_report_case(const fs::path& base) {
   {
     const auto it = result.reports.find("Dawnguard.esm");
     require(it != result.reports.end(), "Dawnguard.esm report present");
-    const engine::LootReport& rep = it->second;
+    const engine::LootReport &rep = it->second;
     require(rep.incompatibilities.size() == 2, "two incompatibilities");
     require(rep.incompatibilities[0].first == "XPMSE.esp", "incompat name");
     require(rep.incompatibilities[0].second == "XP32 Maximum Skeleton",
@@ -411,7 +411,7 @@ TEST_CASE("loot sorter", "[engine]") {
   fs::remove_all(base, ec);
 
   // Pre-seed fresh masterlists so the manager uses the cache (no network).
-  for (const char* sub : {"data", "data2", "data3"}) {
+  for (const char *sub : {"data", "data2", "data3"}) {
     const fs::path loot = base / sub / "loot" / "skyrimse";
     fs::create_directories(loot, ec);
     write_file(loot / "masterlist.yaml", "masterlist: 1\n");

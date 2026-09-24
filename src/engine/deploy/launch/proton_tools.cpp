@@ -18,15 +18,12 @@
 
 namespace fs = std::filesystem;
 
-namespace engine
-{
+namespace engine {
 
-namespace
-{
+namespace {
 
-  fs::path find_in_path(const std::string& name)
-  {
-    auto* path_env = std::getenv("PATH");
+  fs::path find_in_path(const std::string &name) {
+    auto *path_env = std::getenv("PATH");
     if (!path_env)
       return {};
     std::istringstream ss(path_env);
@@ -41,20 +38,19 @@ namespace
 
   // Detach a child that execs `argv`. stdin from /dev/null, own session so it
   // survives our exit. Returns the child PID or -1 on fork failure.
-  int64_t spawn_detached(std::vector<std::string>& args)
-  {
+  int64_t spawn_detached(std::vector<std::string> &args) {
     if (args.empty())
       return -1;
 
-    std::vector<char*> argv;
+    std::vector<char *> argv;
     argv.reserve(args.size() + 1);
-    for (auto& arg : args)
+    for (auto &arg : args)
       argv.push_back(arg.data());
     argv.push_back(nullptr);
 
 #ifdef _WIN32
     std::string cmd;
-    for (const auto& a : args) {
+    for (const auto &a : args) {
       if (!cmd.empty())
         cmd += " ";
       cmd += "\"" + a + "\"";
@@ -75,8 +71,7 @@ namespace
   }
 
   // WINEPREFIX for a game's prefix: <steam>/steamapps/compatdata/<appid>/pfx.
-  fs::path game_prefix(const ProtonToolRequest& request)
-  {
+  fs::path game_prefix(const ProtonToolRequest &request) {
     if (request.steam_appid == 0 || !request.platform)
       return {};
     auto compat = request.platform->resolve_proton_prefix(request.steam_appid);
@@ -87,15 +82,13 @@ namespace
     return compat / "pfx";
   }
 
-  bool is_wine_builtin(const std::vector<std::string>& args)
-  {
+  bool is_wine_builtin(const std::vector<std::string> &args) {
     return args.size() == 1 && (args[0] == "winecfg" || args[0] == "regedit");
   }
 
 }  // namespace
 
-fs::path resolve_proton_runner(const ProtonToolRequest& request)
-{
+fs::path resolve_proton_runner(const ProtonToolRequest &request) {
   if (!request.platform)
     return {};
   if (!request.runner_override.empty()) {
@@ -107,8 +100,7 @@ fs::path resolve_proton_runner(const ProtonToolRequest& request)
                                            request.runner_override);
 }
 
-bool proton_tooling_available(const ProtonToolRequest& request)
-{
+bool proton_tooling_available(const ProtonToolRequest &request) {
   if (!find_in_path("protontricks").empty())
     return true;
   if (find_in_path("winetricks").empty())
@@ -119,9 +111,8 @@ bool proton_tooling_available(const ProtonToolRequest& request)
   return !find_in_path("wine").empty();
 }
 
-int64_t run_proton_tool(const ProtonToolRequest& request,
-                        const std::vector<std::string>& args)
-{
+int64_t run_proton_tool(const ProtonToolRequest &request,
+                        const std::vector<std::string> &args) {
   // 1. Wine builtins (winecfg/regedit) run via the Proton runner's own
   //    wine (`proton runinprefix`). winetricks cannot run these.
   if (is_wine_builtin(args)) {
@@ -181,10 +172,9 @@ int64_t run_proton_tool(const ProtonToolRequest& request,
   return -1;
 }
 
-int64_t run_proton_exe(const ProtonToolRequest& request,
-                       const std::filesystem::path& exe,
-                       const std::vector<std::string>& args)
-{
+int64_t run_proton_exe(const ProtonToolRequest &request,
+                       const std::filesystem::path &exe,
+                       const std::vector<std::string> &args) {
   if (exe.empty() || !fs::exists(exe))
     return -1;
 

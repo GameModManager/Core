@@ -23,7 +23,7 @@
 #include <optional>
 
 namespace {
-void check(bool cond, const char* what) {
+void check(bool cond, const char *what) {
   INFO(what);
   REQUIRE(cond);
 }
@@ -37,12 +37,12 @@ TEST_CASE("settings dialog_choice persistence", "[ui]") {
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
 
-  auto& s = Settings::instance();
+  auto &s = Settings::instance();
 
   check(!s.dialog_choice("gmm_sc_unset", ""), "an unset action has no stored choice");
 

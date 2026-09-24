@@ -23,8 +23,7 @@ public:
   // Runs on the worker thread. Only ever invoked through
   // LoversLabFetchThread::start(). Never throws; a fetch that fails
   // simply yields ModInfoResult::available=false.
-  void run(std::function<engine::LoversLabModInfoResult()> fetch,
-           quint64 generation);
+  void run(std::function<engine::LoversLabModInfoResult()> fetch, quint64 generation);
 
 signals:
   void finished(engine::LoversLabModInfoResult result, quint64 generation);
@@ -42,14 +41,13 @@ public:
 
   LoversLabFetchWorker *worker() const { return worker_; }
 
-  void start(std::function<engine::LoversLabModInfoResult()> fetch,
-             quint64 generation);
+  void start(std::function<engine::LoversLabModInfoResult()> fetch, quint64 generation);
 
 private:
-  QThread *thread_ = nullptr;
+  QThread *thread_              = nullptr;
   LoversLabFetchWorker *worker_ = nullptr;
 };
 
-} // namespace ui
+}  // namespace ui
 
 Q_DECLARE_METATYPE(engine::LoversLabModInfoResult)

@@ -42,7 +42,7 @@ namespace ui {
 // MO2 TruncateString (pluginlist.cpp:53-65): over-long fields are cut at
 // 1024 chars with "..." appended. Applies to author, description, the master
 // joins and the archive join - never to Origin or the version numbers.
-static QString truncate_mo2(const QString& s) {
+static QString truncate_mo2(const QString &s) {
   QString t = s;
   if (t.length() > 1024) {
     t.truncate(1024);
@@ -51,11 +51,11 @@ static QString truncate_mo2(const QString& s) {
   return t;
 }
 
-static QString missing_masters_html(const engine::GamePlugin& p) {
+static QString missing_masters_html(const engine::GamePlugin &p) {
   // MO2 testMasters semantics (pluginlist.cpp:1342-1361): enabled plugins
   // only; a master is unset when absent from the list OR present-but-disabled.
   QStringList names;
-  for (const auto& s : p.master_unset)
+  for (const auto &s : p.master_unset)
     names << QString::fromStdString(s);
   return "<br><b>" + PluginView::tr("Missing Masters") + "</b>: <b>" +
          truncate_mo2(names.join(", ")) + "</b>";
@@ -64,12 +64,12 @@ static QString missing_masters_html(const engine::GamePlugin& p) {
 // Enabled Masters = masters minus master_unset (present AND enabled), joined
 // ", " in case-insensitive alphabetical order (MO2 FileNameComparator set),
 // truncated like every other free-text field.
-static QString enabled_masters_html(const engine::GamePlugin& p) {
+static QString enabled_masters_html(const engine::GamePlugin &p) {
   QStringList enabled;
-  for (const auto& m : p.masters) {
+  for (const auto &m : p.masters) {
     const QString qm = QString::fromStdString(m);
     bool unset       = false;
-    for (const auto& u : p.master_unset) {
+    for (const auto &u : p.master_unset) {
       if (qm.compare(QString::fromStdString(u), Qt::CaseInsensitive) == 0) {
         unset = true;
         break;
@@ -80,18 +80,18 @@ static QString enabled_masters_html(const engine::GamePlugin& p) {
   }
   if (enabled.isEmpty())
     return {};
-  std::sort(enabled.begin(), enabled.end(), [](const QString& a, const QString& b) {
+  std::sort(enabled.begin(), enabled.end(), [](const QString &a, const QString &b) {
     return a.compare(b, Qt::CaseInsensitive) < 0;
   });
   return "<br><b>" + PluginView::tr("Enabled Masters") +
          "</b>: " + truncate_mo2(enabled.join(", "));
 }
 
-static QString archives_html(const engine::GamePlugin& p) {
+static QString archives_html(const engine::GamePlugin &p) {
   QString archive_line;
   if (p.archives.size() < 6) {
     QStringList names;
-    for (const auto& a : p.archives)
+    for (const auto &a : p.archives)
       names << QString::fromStdString(a);
     archive_line = truncate_mo2(names.join(", ")) + "<br>";
   }
@@ -111,7 +111,7 @@ static QString has_ini_html() {
                         "conflicts.");
 }
 
-static QString esl_html(const engine::GamePlugin& p) {
+static QString esl_html(const engine::GamePlugin &p) {
   const QString type = p.has_master_ext ? "ESM" : "ESP";
   return "<br><br>" +
          PluginView::tr("This %1 is flagged as a light plugin (ESL). It will adhere "
@@ -143,7 +143,7 @@ static QString dummy_html() {
                         "typically used to load a paired archive file.");
 }
 
-static QString force_disabled_html(const engine::GamePlugin& p) {
+static QString force_disabled_html(const engine::GamePlugin &p) {
   // MO2 forceDisabled block (pluginlist.cpp:1624-1642), non-blueprint games:
   // an .esl the game cannot load gets the light-support sentence, everything
   // else the generic custom-loading sentence. Blueprint variants do not apply
@@ -159,11 +159,11 @@ static QString force_disabled_html(const engine::GamePlugin& p) {
 // Diagnostics-provider messages (the GMM analogue of MO2's addInformation
 // section). MO2 emits message HTML raw - LOOT messages routinely contain
 // anchors - so no escaping here either.
-static QString messages_ul_html(const engine::GamePlugin& p) {
+static QString messages_ul_html(const engine::GamePlugin &p) {
   if (p.messages.empty())
     return {};
   QString tip = "<hr><ul style=\"margin-left:15px; -qt-list-indent: 0;\">";
-  for (const auto& msg : p.messages)
+  for (const auto &msg : p.messages)
     tip += "<li>" + QString::fromStdString(msg) + "</li>";
   tip += "</ul>";
   return tip;
@@ -173,18 +173,18 @@ static QString messages_ul_html(const engine::GamePlugin& p) {
 // pluginlist.cpp:1665-1718): incompatibilities, missing masters, messages
 // (Warning:/Error: prefixed), dirty findings ("%1 found %2 ITM record(s)..."),
 // clean findings ("Verified clean by %1") - wrapped once in the exact <ul>.
-static QString loot_ul_html(const engine::LootReport& r) {
+static QString loot_ul_html(const engine::LootReport &r) {
   QString s;
-  for (const auto& f : r.incompatibilities) {
+  for (const auto &f : r.incompatibilities) {
     const QString name = f.second.empty() ? QString::fromStdString(f.first)
                                           : QString::fromStdString(f.second);
     s += "<li>" + PluginView::tr("Incompatible with %1").arg(name) + "</li>";
   }
-  for (const auto& m : r.missing_masters)
+  for (const auto &m : r.missing_masters)
     s += "<li>" +
          PluginView::tr("Depends on missing %1").arg(QString::fromStdString(m)) +
          "</li>";
-  for (const auto& m : r.messages) {
+  for (const auto &m : r.messages) {
     QString prefix;
     if (m.level == "warning")
       prefix = PluginView::tr("Warning") + ": ";
@@ -192,7 +192,7 @@ static QString loot_ul_html(const engine::LootReport& r) {
       prefix = PluginView::tr("Error") + ": ";
     s += "<li>" + prefix + QString::fromStdString(m.text) + "</li>";
   }
-  for (const auto& d : r.dirty) {
+  for (const auto &d : r.dirty) {
     const QString utility = d.cleaning_utility.empty()
                                 ? QStringLiteral("?")
                                 : QString::fromStdString(d.cleaning_utility);
@@ -206,7 +206,7 @@ static QString loot_ul_html(const engine::LootReport& r) {
       line += " " + QString::fromStdString(d.info);
     s += "<li>" + line + "</li>";
   }
-  for (const auto& c : r.clean) {
+  for (const auto &c : r.clean) {
     const QString utility = c.cleaning_utility.empty()
                                 ? QStringLiteral("?")
                                 : QString::fromStdString(c.cleaning_utility);
@@ -224,7 +224,7 @@ static QString locked_column_tooltip() {
 }
 
 static QVector<QPair<QString, QString>>
-plugin_flag_fragments(const engine::GamePlugin& p) {
+plugin_flag_fragments(const engine::GamePlugin &p) {
   // MO2 PluginList::iconData order (pluginlist.cpp:1720-1779), minus the
   // locked emblem (GMM keeps the separate Locked column) and blueprint
   // (no blueprint-capable game supported): warning, information, attachment,
@@ -254,7 +254,7 @@ plugin_flag_fragments(const engine::GamePlugin& p) {
   if (p.is_light_flagged && p.is_medium_flagged) {
     // MO2 appends a second warning icon after run (pluginlist.cpp:1752-1757).
     const QString warn = both_light_medium_warning_html();
-    for (auto& f : frags) {
+    for (auto &f : frags) {
       if (f.first == QLatin1String("awaiting") || f.first == QLatin1String("run"))
         f.second += warn;
     }
@@ -268,7 +268,7 @@ plugin_flag_fragments(const engine::GamePlugin& p) {
   return frags;
 }
 
-static QString plugin_tooltip_html(const engine::GamePlugin& p) {
+static QString plugin_tooltip_html(const engine::GamePlugin &p) {
   // Exact MO2 PluginList::tooltipData emission order (pluginlist.cpp:1499-1660):
   // Origin, force lines, versions, author/description, masters, archives, INI,
   // type paragraphs, dummy paragraph, forceDisabled block, messages, LOOT.
@@ -336,8 +336,8 @@ static QString plugin_tooltip_html(const engine::GamePlugin& p) {
   return tip;
 }
 
-static QIcon plugin_flag_icon(const QString& token) {
-  auto& icons = engine::IconManager::instance();
+static QIcon plugin_flag_icon(const QString &token) {
+  auto &icons = engine::IconManager::instance();
   if (token == QLatin1String("warning"))
     return icons.resolve_icon("plugin-warning");
   if (token == QLatin1String("information"))
@@ -364,14 +364,14 @@ class CenteredIconDelegate : public QStyledItemDelegate {
 public:
   using QStyledItemDelegate::QStyledItemDelegate;
 
-  void paint(QPainter* painter, const QStyleOptionViewItem& option,
-             const QModelIndex& index) const override {
+  void paint(QPainter *painter, const QStyleOptionViewItem &option,
+             const QModelIndex &index) const override {
     QStyleOptionViewItem opt = option;
     initStyleOption(&opt, index);
     const QIcon icon      = opt.icon;
     opt.icon              = QIcon();
-    const QWidget* widget = option.widget;
-    QStyle* style         = widget ? widget->style() : QApplication::style();
+    const QWidget *widget = option.widget;
+    QStyle *style         = widget ? widget->style() : QApplication::style();
     style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, widget);
     if (icon.isNull())
       return;
@@ -393,7 +393,7 @@ public:
   std::function<void(int, int)> on_reorder;
 
 protected:
-  void dropEvent(QDropEvent* event) override {
+  void dropEvent(QDropEvent *event) override {
     const int from = currentRow();
     if (from < 0) {
       event->ignore();
@@ -422,7 +422,7 @@ protected:
     event->accept();
   }
 
-  void mousePressEvent(QMouseEvent* event) override {
+  void mousePressEvent(QMouseEvent *event) override {
     press_was_selected_ = false;
     press_on_check_     = false;
     if (event->button() == Qt::LeftButton && event->modifiers() == Qt::NoModifier) {
@@ -434,7 +434,7 @@ protected:
     QTableWidget::mousePressEvent(event);
   }
 
-  void mouseReleaseEvent(QMouseEvent* event) override {
+  void mouseReleaseEvent(QMouseEvent *event) override {
     if (event->button() == Qt::LeftButton && event->modifiers() == Qt::NoModifier &&
         press_was_selected_ && !press_on_check_) {
       clearSelection();
@@ -445,7 +445,7 @@ protected:
   }
 
 private:
-  QRect check_indicator_rect(const QModelIndex& idx) const {
+  QRect check_indicator_rect(const QModelIndex &idx) const {
     QStyleOptionViewItem opt;
     opt.initFrom(this);
     opt.rect = visualRect(idx);
@@ -459,12 +459,12 @@ private:
 
 // --- PluginView -----------------------------------------------------------
 
-QTableWidget* PluginView::table() const {
+QTableWidget *PluginView::table() const {
   return table_;
 }
 
-PluginView::PluginView(QWidget* parent) : QWidget(parent) {
-  auto* layout = new QVBoxLayout(this);
+PluginView::PluginView(QWidget *parent) : QWidget(parent) {
+  auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
   table_ = new PluginTable(0, 5, this);
   table_->setHorizontalHeaderLabels(
@@ -490,7 +490,7 @@ PluginView::PluginView(QWidget* parent) : QWidget(parent) {
   table_->on_reorder = [this](int from, int to) {
     emit reorder_requested(from, to);
   };
-  connect(table_, &QTableWidget::itemChanged, this, [this](QTableWidgetItem* item) {
+  connect(table_, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *item) {
     if (syncing_ || !item || item->column() != 0)
       return;
     const int row = item->row();
@@ -501,7 +501,7 @@ PluginView::PluginView(QWidget* parent) : QWidget(parent) {
   });
 
   // Header row: refresh button + counter.
-  auto* header = new QHBoxLayout;
+  auto *header = new QHBoxLayout;
   header->setContentsMargins(4, 2, 4, 2);
   refresh_button_ = new QPushButton(tr("Refresh"), this);
   refresh_button_->setObjectName("pluginRefreshBtn");
@@ -528,7 +528,7 @@ PluginView::PluginView(QWidget* parent) : QWidget(parent) {
   refresh_counters();
 }
 
-void PluginView::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
+void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
   syncing_ = true;
   table_->setRowCount(0);
   names_.clear();
@@ -545,7 +545,7 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
   const QColor disabled_color(Qt::darkRed);
 
   for (int i = 0; i < static_cast<int>(plugins.size()); ++i) {
-    const auto& p = plugins[static_cast<size_t>(i)];
+    const auto &p = plugins[static_cast<size_t>(i)];
     names_.push_back(p.name);
     rows_locked_.push_back(p.locked);
     rows_force_loaded_.push_back(p.force_loaded);
@@ -559,7 +559,7 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
       rows_type_.push_back(PluginType::Regular);
     }
 
-    auto* name       = new QTableWidgetItem(QString::fromStdString(p.name));
+    auto *name       = new QTableWidgetItem(QString::fromStdString(p.name));
     Qt::ItemFlags nf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
     // MO2 PluginList::checkstateData/flags parity: forceLoaded and
     // forceEnabled rows render checked and cannot be toggled; forceDisabled
@@ -602,7 +602,7 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
     QStringList flag_tips;
     flag_icons.reserve(flag_frags.size());
     flag_tips.reserve(flag_frags.size());
-    for (const auto& f : flag_frags) {
+    for (const auto &f : flag_frags) {
       flag_icons << plugin_flag_icon(f.first);
       flag_tips << f.second;
     }
@@ -611,7 +611,7 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
     name->setToolTip(tooltip);
     table_->setItem(i, 0, name);
 
-    auto* flags      = new QTableWidgetItem;
+    auto *flags      = new QTableWidgetItem;
     Qt::ItemFlags ff = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
     if (!p.force_loaded && !p.force_disabled && !p.locked)
       ff |= Qt::ItemIsDragEnabled;
@@ -626,7 +626,7 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
     flags->setToolTip(tooltip);
     table_->setItem(i, 1, flags);
 
-    auto* prio       = new QTableWidgetItem(QString::number(p.priority));
+    auto *prio       = new QTableWidgetItem(QString::number(p.priority));
     Qt::ItemFlags pf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
     if (!p.force_loaded && !p.force_disabled && !p.locked)
       pf |= Qt::ItemIsDragEnabled;
@@ -637,7 +637,7 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
     prio->setToolTip(tooltip);
     table_->setItem(i, 2, prio);
 
-    auto* idx        = new QTableWidgetItem(QString::fromStdString(p.mod_index_text));
+    auto *idx        = new QTableWidgetItem(QString::fromStdString(p.mod_index_text));
     Qt::ItemFlags xf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
     if (!p.force_loaded && !p.force_disabled && !p.locked)
       xf |= Qt::ItemIsDragEnabled;
@@ -648,7 +648,7 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin>& plugins) {
     idx->setToolTip(tooltip);
     table_->setItem(i, 3, idx);
 
-    auto* lock       = new QTableWidgetItem;
+    auto *lock       = new QTableWidgetItem;
     Qt::ItemFlags lf = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
     if (!p.force_loaded && !p.force_disabled && !p.locked)
       lf |= Qt::ItemIsDragEnabled;
@@ -669,7 +669,7 @@ void PluginView::relayout_flag_rows() {
   const int col_width = table_->columnWidth(1);
   const int default_h = table_->verticalHeader()->defaultSectionSize();
   for (int i = 0; i < table_->rowCount(); ++i) {
-    const auto* item = table_->item(i, 1);
+    const auto *item = table_->item(i, 1);
     const QList<QIcon> icons =
         item ? item->data(kPluginFlagsRole).value<QList<QIcon>>() : QList<QIcon>();
     const QSize wrapped = ui::flags_wrapped_size(icons, col_width);
@@ -679,12 +679,12 @@ void PluginView::relayout_flag_rows() {
   }
 }
 
-void PluginView::sync_enabled(const std::vector<engine::GamePlugin>& plugins) {
+void PluginView::sync_enabled(const std::vector<engine::GamePlugin> &plugins) {
   syncing_       = true;
   const int rows = std::min(static_cast<int>(plugins.size()), table_->rowCount());
   for (int i = 0; i < rows; ++i) {
-    const auto& p          = plugins[static_cast<size_t>(i)];
-    QTableWidgetItem* item = table_->item(i, 0);
+    const auto &p          = plugins[static_cast<size_t>(i)];
+    QTableWidgetItem *item = table_->item(i, 0);
     if (!item || p.force_loaded || p.force_enabled || p.force_disabled)
       continue;
     item->setCheckState(p.enabled ? Qt::Checked : Qt::Unchecked);
@@ -693,7 +693,7 @@ void PluginView::sync_enabled(const std::vector<engine::GamePlugin>& plugins) {
   refresh_counters();
 }
 
-void PluginView::showEvent(QShowEvent* event) {
+void PluginView::showEvent(QShowEvent *event) {
   QWidget::showEvent(event);
   refresh_counters();
 }
@@ -708,7 +708,7 @@ void PluginView::refresh_counters() {
   for (int i = 0; i < table_->rowCount(); ++i) {
     if (static_cast<size_t>(i) >= rows_type_.size())
       break;
-    QTableWidgetItem* item = table_->item(i, 0);
+    QTableWidgetItem *item = table_->item(i, 0);
     const bool active      = item && item->checkState() == Qt::Checked;
     const bool visible     = !table_->isRowHidden(i);
     switch (rows_type_[static_cast<size_t>(i)]) {
@@ -786,18 +786,18 @@ void PluginView::apply_highlights() {
                               : is_master  ? QBrush(master_color)
                                            : QBrush();
     for (int c = 0; c < table_->columnCount(); ++c) {
-      if (auto* item = table_->item(i, c))
+      if (auto *item = table_->item(i, c))
         item->setBackground(brush);
     }
   }
 }
 
-void PluginView::set_contained_plugins(const QVector<QString>& contained) {
+void PluginView::set_contained_plugins(const QVector<QString> &contained) {
   contained_names_ = QSet<QString>(contained.begin(), contained.end());
   apply_highlights();
 }
 
-void PluginView::set_master_plugins(const QVector<QString>& masters) {
+void PluginView::set_master_plugins(const QVector<QString> &masters) {
   master_names_ = QSet<QString>(masters.begin(), masters.end());
   apply_highlights();
 }
@@ -807,8 +807,8 @@ QStringList PluginView::selected_plugin_names() const {
   if (!table_ || !table_->selectionModel())
     return names;
   const auto rows = table_->selectionModel()->selectedRows();
-  for (const auto& idx : rows) {
-    if (auto* item = table_->item(idx.row(), 0))
+  for (const auto &idx : rows) {
+    if (auto *item = table_->item(idx.row(), 0))
       names << item->text();
   }
   return names;

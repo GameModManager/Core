@@ -18,7 +18,7 @@ class QSplitter;
 namespace KSyntaxHighlighting {
 class Repository;
 class SyntaxHighlighter;
-}
+}  // namespace KSyntaxHighlighting
 #endif
 
 namespace ui {
@@ -33,50 +33,49 @@ class LineNumberPlainTextEdit;
 // (GMM_HAS_SYNTAX_HIGHLIGHTING), resolved per file from its file name;
 // otherwise it stays a plain text editor (no KF6 exists for Windows).
 class GenericFilesTab : public ModInfoTab {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit GenericFilesTab(QWidget* parent = nullptr);
-    ~GenericFilesTab() override;
+  explicit GenericFilesTab(QWidget *parent = nullptr);
+  ~GenericFilesTab() override;
 
-    void set_mod(const ModInfoData& data) override;
-    void save_state() override;
-    bool can_close() override;
+  void set_mod(const ModInfoData &data) override;
+  void save_state() override;
+  bool can_close() override;
 
 protected:
-    // Return true to include `full_path` (path relative to the mod's data dir
-    // is also given for cheap extension checks).
-    virtual bool wants_file(const QString& rel_path,
-                            const QString& full_path) const = 0;
+  // Return true to include `full_path` (path relative to the mod's data dir
+  // is also given for cheap extension checks).
+  virtual bool wants_file(const QString &rel_path, const QString &full_path) const = 0;
 
-    bool event(QEvent* event) override;
+  bool event(QEvent *event) override;
 
 private:
-    struct File {
-        QString full_path;
-        QString text;
-    };
+  struct File {
+    QString full_path;
+    QString text;
+  };
 
-    void rebuild_list();
-    void apply_filter();
-    void select_file(const QModelIndex& index);
-    void load_editor(const QString& path);
-    void save_editor();
-    bool maybe_flush_editor();
-    void apply_theme();
+  void rebuild_list();
+  void apply_filter();
+  void select_file(const QModelIndex &index);
+  void load_editor(const QString &path);
+  void save_editor();
+  bool maybe_flush_editor();
+  void apply_theme();
 
-    QSplitter* splitter_ = nullptr;
-    QListView* list_ = nullptr;
-    QLineEdit* filter_ = nullptr;
-    LineNumberPlainTextEdit* editor_ = nullptr;
-    QPushButton* save_btn_ = nullptr;
+  QSplitter *splitter_             = nullptr;
+  QListView *list_                 = nullptr;
+  QLineEdit *filter_               = nullptr;
+  LineNumberPlainTextEdit *editor_ = nullptr;
+  QPushButton *save_btn_           = nullptr;
 #ifdef GMM_HAS_SYNTAX_HIGHLIGHTING
-    KSyntaxHighlighting::Repository* repository_ = nullptr;
-    KSyntaxHighlighting::SyntaxHighlighter* highlighter_ = nullptr;
+  KSyntaxHighlighting::Repository *repository_         = nullptr;
+  KSyntaxHighlighting::SyntaxHighlighter *highlighter_ = nullptr;
 #endif
-    std::vector<File> files_;
-    QString editor_path_;
-    QString last_loaded_text_;
-    bool editor_dirty_ = false;
+  std::vector<File> files_;
+  QString editor_path_;
+  QString last_loaded_text_;
+  bool editor_dirty_ = false;
 };
 
 }  // namespace ui
