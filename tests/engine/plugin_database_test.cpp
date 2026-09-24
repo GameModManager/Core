@@ -28,7 +28,7 @@
 namespace fs = std::filesystem;
 
 namespace {
-void require(bool cond, const char* msg) {
+void require(bool cond, const char *msg) {
   INFO(msg);
   REQUIRE(cond);
 }
@@ -44,8 +44,8 @@ public:
   fs::path home_dir() const override { return data_dir(); }
   fs::path temp_dir() const override { return data_dir(); }
   fs::path find_steam_root() const override { return {}; }
-  bool launch_executable(const fs::path&,
-                         const std::vector<std::string>&) const override {
+  bool launch_executable(const fs::path &,
+                         const std::vector<std::string> &) const override {
     return false;
   }
   fs::path local_appdata;  // overrides game_local_appdata_dir
@@ -54,7 +54,7 @@ public:
 
 namespace {
 
-void append_u16(std::vector<char>& v, uint16_t x) {
+void append_u16(std::vector<char> &v, uint16_t x) {
   v.push_back(static_cast<char>(x & 0xFF));
   v.push_back(static_cast<char>((x >> 8) & 0xFF));
 }
@@ -63,12 +63,12 @@ void append_u16(std::vector<char>& v, uint16_t x) {
 // Optional HEDR/CNAM/SNAM subrecords + record-header form version let tests
 // exercise the tooltip metadata parsing (author, description, header version,
 // record count / dummy detection, form version).
-void write_esp(const fs::path& path, bool esm_flag,
-               const std::vector<std::string>& masters, const std::string& author = {},
-               const std::string& description = {}, float header_version = 0.0f,
+void write_esp(const fs::path &path, bool esm_flag,
+               const std::vector<std::string> &masters, const std::string &author = {},
+               const std::string &description = {}, float header_version = 0.0f,
                uint32_t num_records = 0, uint32_t form_version = 0) {
   std::vector<char> body;  // subrecords only
-  for (const auto& m : masters) {
+  for (const auto &m : masters) {
     body.push_back('M');
     body.push_back('A');
     body.push_back('S');
@@ -83,15 +83,15 @@ void write_esp(const fs::path& path, bool esm_flag,
     body.push_back('D');
     body.push_back('R');
     append_u16(body, 12);
-    const char* hv = reinterpret_cast<const char*>(&header_version);
+    const char *hv = reinterpret_cast<const char *>(&header_version);
     body.insert(body.end(), hv, hv + 4);
     append_u16(body, static_cast<uint16_t>(num_records & 0xFFFF));
     append_u16(body, static_cast<uint16_t>((num_records >> 16) & 0xFFFF));
     const uint16_t next_obj = 0;
-    body.insert(body.end(), reinterpret_cast<const char*>(&next_obj),
-                reinterpret_cast<const char*>(&next_obj) + 2);
-    body.insert(body.end(), reinterpret_cast<const char*>(&next_obj),
-                reinterpret_cast<const char*>(&next_obj) + 2);
+    body.insert(body.end(), reinterpret_cast<const char *>(&next_obj),
+                reinterpret_cast<const char *>(&next_obj) + 2);
+    body.insert(body.end(), reinterpret_cast<const char *>(&next_obj),
+                reinterpret_cast<const char *>(&next_obj) + 2);
   }
   if (!author.empty()) {
     body.push_back('C');
@@ -114,29 +114,29 @@ void write_esp(const fs::path& path, bool esm_flag,
   std::ofstream out(path, std::ios::binary);
   out.write("TES4", 4);
   const uint32_t data_size = static_cast<uint32_t>(body.size());
-  out.write(reinterpret_cast<const char*>(&data_size), 4);
+  out.write(reinterpret_cast<const char *>(&data_size), 4);
   const uint32_t flags = esm_flag ? 1u : 0u;
-  out.write(reinterpret_cast<const char*>(&flags), 4);
+  out.write(reinterpret_cast<const char *>(&flags), 4);
   const uint32_t zero = 0;
-  out.write(reinterpret_cast<const char*>(&zero), 4);          // formid
-  out.write(reinterpret_cast<const char*>(&zero), 4);          // timestamp
-  out.write(reinterpret_cast<const char*>(&form_version), 4);  // version stamp
+  out.write(reinterpret_cast<const char *>(&zero), 4);          // formid
+  out.write(reinterpret_cast<const char *>(&zero), 4);          // timestamp
+  out.write(reinterpret_cast<const char *>(&form_version), 4);  // version stamp
   out.write(body.data(), static_cast<std::streamsize>(body.size()));
 }
 
-std::string file_contents(const fs::path& p) {
+std::string file_contents(const fs::path &p) {
   std::ifstream in(p);
   return std::string(std::istreambuf_iterator<char>(in),
                      std::istreambuf_iterator<char>());
 }
 
-bool contains(const std::string& haystack, const std::string& needle) {
+bool contains(const std::string &haystack, const std::string &needle) {
   return haystack.find(needle) != std::string::npos;
 }
 
 // Order of a named plugin within the list (first line = 0).
-int order_of(const engine::PluginDatabase& db, const std::string& name) {
-  const auto& ps = db.plugins();
+int order_of(const engine::PluginDatabase &db, const std::string &name) {
+  const auto &ps = db.plugins();
   for (size_t i = 0; i < ps.size(); ++i)
     if (ps[i].name == name)
       return static_cast<int>(i);
@@ -145,7 +145,7 @@ int order_of(const engine::PluginDatabase& db, const std::string& name) {
 
 // Fake ABI diagnostics providers (GmmDiagnosticsFn signature). Write zero or
 // more NUL-terminated messages into the buffer.
-void fake_diagnostics(const char* name, char* out, size_t cap, void*) {
+void fake_diagnostics(const char *name, char *out, size_t cap, void *) {
   const std::string s = std::string(name) == "Alpha.esp"
                             ? std::string("hello-alpha\0bye-alpha", 22)
                             : std::string("hello-beta\0", 11);
@@ -153,7 +153,7 @@ void fake_diagnostics(const char* name, char* out, size_t cap, void*) {
     std::memcpy(out, s.data(), s.size());
 }
 
-void fake_diagnostics_other(const char*, char* out, size_t cap, void*) {
+void fake_diagnostics_other(const char *, char *out, size_t cap, void *) {
   const std::string s("othergame-msg\0", 14);
   if (s.size() < cap)
     std::memcpy(out, s.data(), s.size());
@@ -207,7 +207,7 @@ void run_synthetic_fixture() {
   write_esp(mods / "Lights" / "Lights.esl", false, {"Skyrim.esm"}, "", "", 1.70f, 0,
             44);
   // Meta priorities for the mod tiebreak.
-  for (const auto& [folder, prio] : std::vector<std::pair<const char*, int>>{
+  for (const auto &[folder, prio] : std::vector<std::pair<const char *, int>>{
            {"SkyUI", 3}, {"Patch", 5}, {"Lights", 1}}) {
     auto m = engine::ModMeta::load(mods, folder);
     m.set_priority(prio);
@@ -229,7 +229,7 @@ void run_synthetic_fixture() {
   db.set_all_enabled();
   db.generate_mod_indexes();
 
-  const auto& ps = db.plugins();
+  const auto &ps = db.plugins();
   const int n    = static_cast<int>(ps.size());
   require(n == 7, "7 plugins discovered");
 
@@ -292,36 +292,36 @@ void run_synthetic_fixture() {
 
   // --- TES4 header metadata (tooltip parity) ---
   {
-    const auto& skyui = db.plugins()[order_of(db, "SkyUI_SE.esp")];
+    const auto &skyui = db.plugins()[order_of(db, "SkyUI_SE.esp")];
     require(skyui.author == "SkyUI team", "author parsed from CNAM");
     require(skyui.description == "Sky UI", "description parsed from SNAM");
     require(skyui.header_version == 1.70f, "header version parsed from HEDR");
     require(skyui.form_version == 44, "form version parsed from version stamp");
     require(!skyui.has_no_records, "100-record plugin not marked dummy");
 
-    const auto& native = db.plugins()[order_of(db, "Skyrim.esm")];
+    const auto &native = db.plugins()[order_of(db, "Skyrim.esm")];
     require(native.form_version == 0 && native.author.empty(),
             "no-metadata plugin keeps zeroed fields");
 
-    const auto& lights = db.plugins()[order_of(db, "Lights.esl")];
+    const auto &lights = db.plugins()[order_of(db, "Lights.esl")];
     require(lights.has_no_records, "zero-record plugin marked dummy");
   }
 
   // --- Same-origin assets (Loads Archives / Loads INI) ---
   {
-    const auto& skyui = db.plugins()[order_of(db, "SkyUI_SE.esp")];
+    const auto &skyui = db.plugins()[order_of(db, "SkyUI_SE.esp")];
     require(skyui.has_ini, "SkyUI.ini detected");
     require(skyui.archives.size() == 2 &&
                 skyui.archives[0] == "SkyUI_SE - Textures.bsa" &&
                 skyui.archives[1] == "SkyUI_SE.bsa",
             "archives match by basename prefix, sorted, unrelated excluded");
-    const auto& native = db.plugins()[order_of(db, "Skyrim.esm")];
+    const auto &native = db.plugins()[order_of(db, "Skyrim.esm")];
     require(!native.has_ini && native.archives.empty(),
             "no assets for game-native plugin");
   }
 
   // All enabled (first-run default).
-  for (const auto& p : ps)
+  for (const auto &p : ps)
     require(p.enabled, "all enabled by default");
 
   // Disabling a force-loaded native is blocked.
@@ -352,7 +352,7 @@ void run_synthetic_fixture() {
           "refresh with broken plugin");
   db2.load_creation_club(game);
   db2.sort_load_order();
-  const auto* broken = db2.find("Broken.esp");
+  const auto *broken = db2.find("Broken.esp");
   require(broken != nullptr && broken->missing_master, "missing master flagged");
   require(broken->missing_masters.size() == 1 &&
               broken->missing_masters[0] == "GoneMaster.esm",
@@ -398,7 +398,7 @@ void run_synthetic_fixture() {
   dbc.set_all_enabled();
   require(order_of(dbc, "CaseLib.esp") < order_of(dbc, "CaseClient.esp"),
           "case-mismatched master still orders dependent after master");
-  const auto* casep = dbc.find("CasePlugin.esp");
+  const auto *casep = dbc.find("CasePlugin.esp");
   require(casep && !casep->missing_master,
           "lowercase master flag resolved against Skyrim.esm");
   // Disabling CaseLib is blocked: CaseClient requires it via "caselib.esp".
@@ -468,7 +468,7 @@ void run_synthetic_fixture() {
   require(order_of(db3, "SkyUI_SE.esp") == bottom, "SkyUI at the bottom");
   require(order_of(db3, "SkyUI_SE.esp") > order_of(db3, "Patch.esp"),
           "SkyUI now after Patch");
-  const auto& psv = db3.plugins();
+  const auto &psv = db3.plugins();
   for (int i = 0; i < static_cast<int>(psv.size()); ++i)
     require(psv[i].priority == i, "priority recomputed from row index");
   // No-op self-move.
@@ -803,7 +803,7 @@ void run_synthetic_fixture() {
   // for the tooltip (MO2 addInformation parity).
   {
     engine::PluginDatabase ddx;
-    auto& dxps = ddx.plugins_mutable();
+    auto &dxps = ddx.plugins_mutable();
     {
       engine::GamePlugin a;
       a.name = "Alpha.esp";
@@ -860,7 +860,7 @@ void run_synthetic_fixture() {
     require(dcc.refresh(g, m, "", "Skyrim.esm"), "refresh re-cased ccc fixture");
     dcc.load_creation_club(g);
     dcc.sort_load_order();
-    const auto& cps = dcc.plugins();
+    const auto &cps = dcc.plugins();
     require(cps.size() == 3, "3 plugins in re-cased ccc fixture");
     const int seasons = order_of(dcc, "SeasonsOfSkyrim.esm");
     require(seasons >= 0, "Seasons discovered");
@@ -920,24 +920,24 @@ void run_real_skyrim() {
   db.set_all_enabled();
   db.generate_mod_indexes();
 
-  const auto& ps = db.plugins();
+  const auto &ps = db.plugins();
   require(!ps.empty(), "plugins discovered");
   require(order_of(db, "Skyrim.esm") == 0, "Skyrim.esm first in real order");
   require(order_of(db, "SkyUI_SE.esp") >= 0, "SkyUI discovered");
-  const auto* skyui = db.find("SkyUI_SE.esp");
+  const auto *skyui = db.find("SkyUI_SE.esp");
   require(skyui && !skyui->owner_mod.empty(), "SkyUI owned by a mod");
   require(skyui->enabled, "SkyUI enabled");
 
   // Every game-native ESM is force-loaded and unmodifiable.
-  for (const char* n : {"Skyrim.esm", "Update.esm", "Dawnguard.esm", "HearthFires.esm",
+  for (const char *n : {"Skyrim.esm", "Update.esm", "Dawnguard.esm", "HearthFires.esm",
                         "Dragonborn.esm"}) {
-    const auto* p = db.find(n);
+    const auto *p = db.find(n);
     require(p && p->force_loaded, "native ESM force-loaded");
   }
 
   // CC plugins (present in Data) are force-loaded.
   bool saw_cc = false;
-  for (const auto& p : ps) {
+  for (const auto &p : ps) {
     if (p.is_cc) {
       require(p.force_loaded, "CC plugin force-loaded");
       saw_cc = true;
@@ -950,7 +950,7 @@ void run_real_skyrim() {
   const std::string txt = file_contents(out);
   require(contains(txt, "*SkyUI_SE.esp"), "real plugins.txt enables SkyUI");
 
-  for (const auto& p : ps) {
+  for (const auto &p : ps) {
     std::fprintf(stderr, "  %3d  %-32s %s%s\n", p.priority, p.name.c_str(),
                  p.is_cc ? "[CC] " : "", p.mod_index_text.c_str());
   }
@@ -1054,15 +1054,15 @@ void run_hover_parity_fixture() {
   db.set_missing_masters();
   db.generate_mod_indexes();
 
-  const engine::GamePlugin* alpha = db.find("Alpha.esp");
-  const engine::GamePlugin* beta  = db.find("Beta.esp");
+  const engine::GamePlugin *alpha = db.find("Alpha.esp");
+  const engine::GamePlugin *beta  = db.find("Beta.esp");
   require(alpha != nullptr && beta != nullptr, "both mod plugins found");
   require(alpha->master_unset.empty() && beta->master_unset.empty(),
           "no unset masters while everything is enabled");
   require(alpha->has_ini, "INI is folder-scoped to the owning mod");
   require(!beta->has_ini, "no INI without a same-folder file");
   {
-    const auto& archives = alpha->archives;
+    const auto &archives = alpha->archives;
     require(std::find(archives.begin(), archives.end(), "Alpha - Textures.bsa") !=
                 archives.end(),
             "cross-folder basename-prefix archive associated");

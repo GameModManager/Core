@@ -35,37 +35,37 @@ namespace ui {
 
 namespace {
 
-// Cap on a single image fetch. A slow / unreachable CDN should not pin
-// a request indefinitely; after the timeout we drop the reply and the
-// document keeps a broken-image glyph in place of the picture.
-constexpr int kImageFetchTimeoutMs = 10000;
+  // Cap on a single image fetch. A slow / unreachable CDN should not pin
+  // a request indefinitely; after the timeout we drop the reply and the
+  // document keeps a broken-image glyph in place of the picture.
+  constexpr int kImageFetchTimeoutMs = 10000;
 
-// File-decode worker: read + decode off the UI thread. Returns an empty
-// QImage on any failure (missing file, malformed bytes, unsupported
-// format). Lives at file scope so the tests can call it directly.
-QImage decode_image_file_impl(const QString &path) {
-  if (path.isEmpty())
-    return {};
-  QImageReader reader(path);
-  reader.setAutoTransform(true);
-  QImage img;
-  if (!reader.read(&img))
-    return {};
-  return img;
-}
+  // File-decode worker: read + decode off the UI thread. Returns an empty
+  // QImage on any failure (missing file, malformed bytes, unsupported
+  // format). Lives at file scope so the tests can call it directly.
+  QImage decode_image_file_impl(const QString &path) {
+    if (path.isEmpty())
+      return {};
+    QImageReader reader(path);
+    reader.setAutoTransform(true);
+    QImage img;
+    if (!reader.read(&img))
+      return {};
+    return img;
+  }
 
-QImage decode_image_bytes_impl(const QByteArray &bytes) {
-  if (bytes.isEmpty())
-    return {};
-  QImageReader reader(bytes);
-  reader.setAutoTransform(true);
-  QImage img;
-  if (!reader.read(&img))
-    return {};
-  return img;
-}
+  QImage decode_image_bytes_impl(const QByteArray &bytes) {
+    if (bytes.isEmpty())
+      return {};
+    QImageReader reader(bytes);
+    reader.setAutoTransform(true);
+    QImage img;
+    if (!reader.read(&img))
+      return {};
+    return img;
+  }
 
-} // namespace
+}  // namespace
 
 QImage decode_image_file(const QString &path) {
   return decode_image_file_impl(path);
@@ -83,20 +83,20 @@ bool desc_perf_logging_enabled() {
 }
 
 namespace {
-// stderr logger gated on GMM_DESC_PERF. Cheap, no allocations beyond
-// the format buffer, only fires when the env var is set. Used during
-// the SkyParkour v3 freeze investigation (Workspace-ggml).
-void perf_log(const char *fmt, ...) {
-  if (!desc_perf_logging_enabled())
-    return;
-  std::fprintf(stderr, "[gmm-desc] ");
-  std::va_list ap;
-  va_start(ap, fmt);
-  std::vfprintf(stderr, fmt, ap);
-  va_end(ap);
-  std::fputc('\n', stderr);
-}
-} // namespace
+  // stderr logger gated on GMM_DESC_PERF. Cheap, no allocations beyond
+  // the format buffer, only fires when the env var is set. Used during
+  // the SkyParkour v3 freeze investigation (Workspace-ggml).
+  void perf_log(const char *fmt, ...) {
+    if (!desc_perf_logging_enabled())
+      return;
+    std::fprintf(stderr, "[gmm-desc] ");
+    std::va_list ap;
+    va_start(ap, fmt);
+    std::vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    std::fputc('\n', stderr);
+  }
+}  // namespace
 
 DescriptionBrowser::DescriptionBrowser(QWidget *parent)
     : QTextBrowser(parent), nam_(new QNetworkAccessManager(this)) {
@@ -294,12 +294,11 @@ QVariant DescriptionBrowser::loadResource(int type, const QUrl &name) {
         QNetworkReply *reply = nam_->get(req);
         in_flight_.insert(name, reply);
         // Timeout: kill the request if the CDN is slow / unreachable.
-        QTimer::singleShot(kImageFetchTimeoutMs, Qt::CoarseTimer, reply,
-                           [reply]() {
-                             if (reply->isRunning()) {
-                               reply->abort();
-                             }
-                           });
+        QTimer::singleShot(kImageFetchTimeoutMs, Qt::CoarseTimer, reply, [reply]() {
+          if (reply->isRunning()) {
+            reply->abort();
+          }
+        });
         connect(reply, &QNetworkReply::finished, this, [this, reply, name]() {
           in_flight_.remove(name);
           if (reply->error() != QNetworkReply::NoError) {
@@ -338,4 +337,4 @@ QVariant DescriptionBrowser::loadResource(int type, const QUrl &name) {
   return {};
 }
 
-} // namespace ui
+}  // namespace ui

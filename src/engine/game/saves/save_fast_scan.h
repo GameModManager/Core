@@ -35,7 +35,7 @@ namespace engine {
 // Knowledge value for the "save_fast_format" hook selecting the reader
 // below. Declared by the game plugin (Skyrim-family declares
 // "gamebryo-tesv"); unknown values fall back to the full parser.
-inline constexpr const char* kSaveFastFormatGamebryoTesv = "gamebryo-tesv";
+inline constexpr const char *kSaveFastFormatGamebryoTesv = "gamebryo-tesv";
 
 // Cap on type-1 decompressed bytes during a fast scan. The plugin lists sit
 // at region offset 0; 256KiB holds ~8000 plugin names (real saves carry at
@@ -66,7 +66,7 @@ public:
 // re-parse fills those). Throws SaveParseError on malformed input (the scan
 // skips the file, MO2 listSaves parity) or SaveNeedFullParse when only the
 // full parser can serve the file.
-[[nodiscard]] SaveGame parse_gamebryo_tesv_fast(const std::filesystem::path& path,
-                                                const std::string& game_id);
+[[nodiscard]] SaveGame parse_gamebryo_tesv_fast(const std::filesystem::path &path,
+                                                const std::string &game_id);
 
 }  // namespace engine

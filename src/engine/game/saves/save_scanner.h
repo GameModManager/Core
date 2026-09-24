@@ -16,7 +16,7 @@
 
 namespace engine {
 
-using SaveParseFn = std::function<SaveGame(const std::filesystem::path&)>;
+using SaveParseFn = std::function<SaveGame(const std::filesystem::path &)>;
 
 // Per-file callback for scan_saves_streaming. Invoked on the calling thread
 // (NOT from parallel::for_each worker threads) after each successful parse,
@@ -27,17 +27,18 @@ using SaveEntryCallback = std::function<void(SaveGame)>;
 // Lists save files in `dir` whose extension is in `extensions`
 // (case-insensitive, with or without a leading dot). Returns paths in
 // directory-walk order (unsorted, fastest to enumerate).
-[[nodiscard]] std::vector<std::filesystem::path> enumerate_save_paths(
-    const std::filesystem::path& dir, const std::vector<std::string>& extensions);
+[[nodiscard]] std::vector<std::filesystem::path>
+enumerate_save_paths(const std::filesystem::path &dir,
+                     const std::vector<std::string> &extensions);
 
 // Lists + parses save files in `dir` whose extension is in `extensions`
 // (case-insensitive, with or without a leading dot). Unparseable files are
 // skipped. Returns saves sorted by creation time, newest first - MO2
 // savestab.cpp sorts getCreationTime() desc before rendering, so the scanner
 // owns that ordering.
-[[nodiscard]] std::vector<SaveGame> scan_saves(
-    const std::filesystem::path& dir, const std::vector<std::string>& extensions,
-    const SaveParseFn& parse_fn);
+[[nodiscard]] std::vector<SaveGame>
+scan_saves(const std::filesystem::path &dir, const std::vector<std::string> &extensions,
+           const SaveParseFn &parse_fn);
 
 // Streaming variant: enumerates `dir` the same way scan_saves does, parses
 // each file in parallel (matches the 6kn7 perf path), then invokes
@@ -48,8 +49,9 @@ using SaveEntryCallback = std::function<void(SaveGame)>;
 // waiting for the full batch (Workspace-0owv).
 //
 // `on_entry` runs on the calling thread; emit UI signals from there.
-void scan_saves_streaming(
-    const std::filesystem::path& dir, const std::vector<std::string>& extensions,
-    const SaveParseFn& parse_fn, const SaveEntryCallback& on_entry);
+void scan_saves_streaming(const std::filesystem::path &dir,
+                          const std::vector<std::string> &extensions,
+                          const SaveParseFn &parse_fn,
+                          const SaveEntryCallback &on_entry);
 
 }  // namespace engine

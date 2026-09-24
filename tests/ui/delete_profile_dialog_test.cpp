@@ -36,7 +36,7 @@
 #include <string>
 
 namespace {
-void check(bool cond, const char* what) {
+void check(bool cond, const char *what) {
   INFO(what);
   REQUIRE(cond);
 }
@@ -45,8 +45,8 @@ void check(bool cond, const char* what) {
 namespace {
 
 // See remove_mods_dialog_test.cpp - scripted exec() driving with a watchdog.
-void click_link(ui::TaskDialog& dlg, const QString& text) {
-  for (auto* b : dlg.findChildren<QCommandLinkButton*>()) {
+void click_link(ui::TaskDialog &dlg, const QString &text) {
+  for (auto *b : dlg.findChildren<QCommandLinkButton *>()) {
     if (b->text() == text) {
       b->click();
       return;
@@ -55,8 +55,8 @@ void click_link(ui::TaskDialog& dlg, const QString& text) {
   dlg.reject();
 }
 
-QMessageBox::StandardButton run_dialog(ui::TaskDialog& dlg,
-                                       std::function<void(ui::TaskDialog&)> act) {
+QMessageBox::StandardButton run_dialog(ui::TaskDialog &dlg,
+                                       std::function<void(ui::TaskDialog &)> act) {
   QTimer::singleShot(0, &dlg, [&dlg, act] {
     act(dlg);
   });
@@ -66,10 +66,10 @@ QMessageBox::StandardButton run_dialog(ui::TaskDialog& dlg,
   return dlg.exec();
 }
 
-bool has_icon(const ui::TaskDialog& dlg) {
+bool has_icon(const ui::TaskDialog &dlg) {
   if (!dlg.windowIcon().isNull())
     return true;
-  for (auto* l : dlg.findChildren<QLabel*>()) {
+  for (auto *l : dlg.findChildren<QLabel *>()) {
     if (!l->pixmap(Qt::ReturnByValue).isNull())
       return true;
   }
@@ -86,7 +86,7 @@ TEST_CASE("delete profile confirmation routes through TaskDialog", "[ui]") {
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
@@ -98,12 +98,12 @@ TEST_CASE("delete profile confirmation routes through TaskDialog", "[ui]") {
                                         "/instances/main/profiles/Survival");
     check(dlg.windowTitle() == "Delete Profile", "seam sets the dialog title");
 
-    auto got = run_dialog(dlg, [](ui::TaskDialog& d) {
+    auto got = run_dialog(dlg, [](ui::TaskDialog &d) {
       click_link(d, "Yes");
     });
     check(got == QMessageBox::Yes, "Yes confirms the deletion");
 
-    auto links = dlg.findChildren<QCommandLinkButton*>();
+    auto links = dlg.findChildren<QCommandLinkButton *>();
     check(links.size() == 2, "exactly two choices (Yes / No)");
     if (links.size() == 2) {
       check(links[0]->text() == "Yes", "Yes is the first command link");
@@ -111,14 +111,14 @@ TEST_CASE("delete profile confirmation routes through TaskDialog", "[ui]") {
     }
 
     bool name_in_main = false;
-    for (auto* l : dlg.findChildren<QLabel*>()) {
+    for (auto *l : dlg.findChildren<QLabel *>()) {
       if (l->text().contains("Survival"))
         name_in_main = true;
     }
     check(name_in_main, "main text names the profile");
 
     bool dir_in_details = false;
-    for (auto* e : dlg.findChildren<QPlainTextEdit*>()) {
+    for (auto *e : dlg.findChildren<QPlainTextEdit *>()) {
       if (e->toPlainText().contains("/instances/main/profiles/Survival"))
         dir_in_details = true;
     }
@@ -130,7 +130,7 @@ TEST_CASE("delete profile confirmation routes through TaskDialog", "[ui]") {
   {
     ui::TaskDialog dlg(nullptr, QString());
     ui::configure_delete_profile_dialog(dlg, "Survival", "/profiles/Survival");
-    auto got = run_dialog(dlg, [](ui::TaskDialog& d) {
+    auto got = run_dialog(dlg, [](ui::TaskDialog &d) {
       click_link(d, "No");
     });
     check(got == QMessageBox::No, "No declines the deletion");
@@ -140,7 +140,7 @@ TEST_CASE("delete profile confirmation routes through TaskDialog", "[ui]") {
   {
     ui::TaskDialog dlg(nullptr, QString());
     ui::configure_delete_profile_dialog(dlg, "Survival", "/profiles/Survival");
-    auto got = run_dialog(dlg, [](ui::TaskDialog& d) {
+    auto got = run_dialog(dlg, [](ui::TaskDialog &d) {
       d.reject();
     });
     check(got != QMessageBox::Yes,

@@ -21,19 +21,19 @@ namespace Sorter {
 
     namespace {
 
-      constexpr const char* kPluginPathsFile = "loot_plugin_paths.txt";
-      constexpr const char* kSortedFile      = "loot_sorted.txt";
-      constexpr const char* kReportFile      = "loot_report.json";
+      constexpr const char *kPluginPathsFile = "loot_plugin_paths.txt";
+      constexpr const char *kSortedFile      = "loot_sorted.txt";
+      constexpr const char *kReportFile      = "loot_report.json";
 
       // --- stdout protocol parsing (MO2 lootcli.h) ------------------------------
       //   [progress] N    stage marker, N = lootcli Progress enum
       //   [level] msg     log line, level in {trace,debug,info,warning,error}
 
-      void parse_line(const std::string& line, ProgressFn& progress,
-                      std::vector<std::string>& messages) {
+      void parse_line(const std::string &line, ProgressFn &progress,
+                      std::vector<std::string> &messages) {
         if (line.rfind("[progress] ", 0) == 0) {
           const std::string value = line.substr(11);
-          char* end               = nullptr;
+          char *end               = nullptr;
           const long stage        = std::strtol(value.c_str(), &end, 10);
           if (end && *end == '\0') {
             if (progress)
@@ -64,7 +64,7 @@ namespace Sorter {
       // gmm_lootcli is a non-interactive CLI; stdin is /dev/null and stdout/stderr
       // are captured for protocol parsing below.
 
-      fs::path make_scratch_dir(const fs::path& profile_dir) {
+      fs::path make_scratch_dir(const fs::path &profile_dir) {
         std::error_code ec;
         fs::create_directories(profile_dir, ec);
         const fs::path dir = profile_dir / ".gmm_loot_tmp";
@@ -79,11 +79,11 @@ namespace Sorter {
       // emblems). Unknown keys and malformed entries are skipped; a missing or
       // unparsable report leaves every plugin without LOOT data (never an error:
       // the sort order itself is unaffected).
-      std::string json_string(const nlohmann::json& v) {
+      std::string json_string(const nlohmann::json &v) {
         return v.is_string() ? v.get<std::string>() : std::string{};
       }
 
-      long long json_count(const nlohmann::json& v) {
+      long long json_count(const nlohmann::json &v) {
         if (v.is_number_unsigned())
           return static_cast<long long>(v.get<unsigned long long>());
         if (v.is_number_integer())
@@ -91,7 +91,7 @@ namespace Sorter {
         return 0;
       }
 
-      const nlohmann::json* find_key(const nlohmann::json& obj, const char* key) {
+      const nlohmann::json *find_key(const nlohmann::json &obj, const char *key) {
         if (!obj.is_object())
           return nullptr;
         const auto it = obj.find(key);
@@ -100,7 +100,7 @@ namespace Sorter {
 
       // MO2 lootcli message types ("info"/"warn"/"error"/"unknown") map onto the
       // Warning:/Error: prefixes of PluginList::makeLootTooltip.
-      std::string loot_message_level(const std::string& type) {
+      std::string loot_message_level(const std::string &type) {
         if (type == "warn")
           return "warning";
         if (type == "error")
@@ -108,11 +108,11 @@ namespace Sorter {
         return "info";
       }
 
-      LootReport parse_plugin_report(const nlohmann::json& entry) {
+      LootReport parse_plugin_report(const nlohmann::json &entry) {
         LootReport report;
-        if (const nlohmann::json* v = find_key(entry, "incompatibilities")) {
+        if (const nlohmann::json *v = find_key(entry, "incompatibilities")) {
           if (v->is_array()) {
-            for (const auto& item : *v) {
+            for (const auto &item : *v) {
               const std::string name =
                   json_string(item.value("name", nlohmann::json{}));
               if (name.empty())
@@ -123,18 +123,18 @@ namespace Sorter {
             }
           }
         }
-        if (const nlohmann::json* v = find_key(entry, "missingMasters")) {
+        if (const nlohmann::json *v = find_key(entry, "missingMasters")) {
           if (v->is_array()) {
-            for (const auto& item : *v) {
+            for (const auto &item : *v) {
               const std::string name = json_string(item);
               if (!name.empty())
                 report.missing_masters.push_back(name);
             }
           }
         }
-        if (const nlohmann::json* v = find_key(entry, "messages")) {
+        if (const nlohmann::json *v = find_key(entry, "messages")) {
           if (v->is_array()) {
-            for (const auto& item : *v) {
+            for (const auto &item : *v) {
               LootReport::Message message;
               message.level =
                   loot_message_level(json_string(item.value("type", nlohmann::json{})));
@@ -145,9 +145,9 @@ namespace Sorter {
             }
           }
         }
-        if (const nlohmann::json* v = find_key(entry, "dirty")) {
+        if (const nlohmann::json *v = find_key(entry, "dirty")) {
           if (v->is_array()) {
-            for (const auto& item : *v) {
+            for (const auto &item : *v) {
               LootReport::DirtyEntry entry;
               entry.itm_records = json_count(item.value("itm", nlohmann::json{}));
               entry.deleted_references =
@@ -161,9 +161,9 @@ namespace Sorter {
             }
           }
         }
-        if (const nlohmann::json* v = find_key(entry, "clean")) {
+        if (const nlohmann::json *v = find_key(entry, "clean")) {
           if (v->is_array()) {
-            for (const auto& item : *v) {
+            for (const auto &item : *v) {
               LootReport::CleanEntry entry;
               entry.cleaning_utility =
                   json_string(item.value("cleaningUtility", nlohmann::json{}));
@@ -175,17 +175,17 @@ namespace Sorter {
       }
 
       std::map<std::string, LootReport>
-      parse_loot_reports(const fs::path& report_file) {
+      parse_loot_reports(const fs::path &report_file) {
         std::map<std::string, LootReport> reports;
         std::ifstream in(report_file);
         if (!in.is_open())
           return reports;
         try {
           const nlohmann::json root     = nlohmann::json::parse(in);
-          const nlohmann::json* plugins = find_key(root, "plugins");
+          const nlohmann::json *plugins = find_key(root, "plugins");
           if (plugins == nullptr || !plugins->is_array())
             return reports;
-          for (const auto& entry : *plugins) {
+          for (const auto &entry : *plugins) {
             const std::string name = json_string(entry.value("name", nlohmann::json{}));
             if (name.empty())
               continue;
@@ -193,7 +193,7 @@ namespace Sorter {
             if (!report.empty())
               reports.emplace(name, std::move(report));
           }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
           Logger::instance().warn(std::string{"LOOT report parse failed ("} +
                                   report_file.string() + "): " + e.what());
         }
@@ -202,7 +202,7 @@ namespace Sorter {
 
     }  // namespace
 
-    Result run_sort(const Request& request, ProgressFn progress) {
+    Result run_sort(const Request &request, ProgressFn progress) {
       Result result;
 
       if (request.cli_path.empty() || !fs::is_regular_file(request.cli_path)) {
@@ -251,7 +251,7 @@ namespace Sorter {
           result.error = "could not create " + paths_file.string();
           return result;
         }
-        for (const auto& plugin : request.plugins) {
+        for (const auto &plugin : request.plugins) {
           if (plugin.full_path.empty())
             continue;
           out << plugin.full_path.string() << "\n";

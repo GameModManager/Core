@@ -7,57 +7,54 @@
 
 namespace ui {
 
-ModFilterBar::ModFilterBar(QWidget* parent)
-    : QWidget(parent) {
-    auto* layout = new QHBoxLayout(this);
-    layout->setContentsMargins(4, 2, 4, 2);
-    layout->setSpacing(4);
+ModFilterBar::ModFilterBar(QWidget *parent) : QWidget(parent) {
+  auto *layout = new QHBoxLayout(this);
+  layout->setContentsMargins(4, 2, 4, 2);
+  layout->setSpacing(4);
 
-    // Category filter panel toggle [<< / >>] (MO2 parity): shows/hides the
-    // checkable category tree. The text flips to indicate the panel state.
-    category_toggle_btn_ = new QToolButton(this);
-    category_toggle_btn_->setText(">>");
-    category_toggle_btn_->setToolTip(tr("Show / hide the category filter panel"));
-    category_toggle_btn_->setFixedWidth(30);
-    category_toggle_btn_->setCheckable(true);
-    layout->addWidget(category_toggle_btn_);
+  // Category filter panel toggle [<< / >>] (MO2 parity): shows/hides the
+  // checkable category tree. The text flips to indicate the panel state.
+  category_toggle_btn_ = new QToolButton(this);
+  category_toggle_btn_->setText(">>");
+  category_toggle_btn_->setToolTip(tr("Show / hide the category filter panel"));
+  category_toggle_btn_->setFixedWidth(30);
+  category_toggle_btn_->setCheckable(true);
+  layout->addWidget(category_toggle_btn_);
 
-    connect(category_toggle_btn_, &QToolButton::toggled, this,
-            [this](bool on) {
-                category_toggle_btn_->setText(on ? "<<" : ">>");
-                emit category_panel_toggled(on);
-            });
+  connect(category_toggle_btn_, &QToolButton::toggled, this, [this](bool on) {
+    category_toggle_btn_->setText(on ? "<<" : ">>");
+    emit category_panel_toggled(on);
+  });
 
-    // Filter text input
-    filter_edit_ = new QLineEdit(this);
-    filter_edit_->setPlaceholderText(tr("Filter..."));
-    filter_edit_->setClearButtonEnabled(true);
-    layout->addWidget(filter_edit_, 1);
+  // Filter text input
+  filter_edit_ = new QLineEdit(this);
+  filter_edit_->setPlaceholderText(tr("Filter..."));
+  filter_edit_->setClearButtonEnabled(true);
+  layout->addWidget(filter_edit_, 1);
 
-    connect(filter_edit_, &QLineEdit::textChanged,
-            this, &ModFilterBar::filter_changed);
+  connect(filter_edit_, &QLineEdit::textChanged, this, &ModFilterBar::filter_changed);
 
-    // Groups dropdown
-    group_combo_ = new QComboBox(this);
-    group_combo_->addItem(tr("All"));
-    group_combo_->addItem(tr("Enabled"));
-    group_combo_->addItem(tr("Disabled"));
-    group_combo_->addItem(tr("Conflicts"));
-    group_combo_->addItem(tr("FOMOD"));
-    group_combo_->addItem(tr("Separators"));
-    group_combo_->setMinimumWidth(100);
-    layout->addWidget(group_combo_);
+  // Groups dropdown
+  group_combo_ = new QComboBox(this);
+  group_combo_->addItem(tr("All"));
+  group_combo_->addItem(tr("Enabled"));
+  group_combo_->addItem(tr("Disabled"));
+  group_combo_->addItem(tr("Conflicts"));
+  group_combo_->addItem(tr("FOMOD"));
+  group_combo_->addItem(tr("Separators"));
+  group_combo_->setMinimumWidth(100);
+  layout->addWidget(group_combo_);
 
-    connect(group_combo_, &QComboBox::currentTextChanged,
-            this, &ModFilterBar::group_changed);
+  connect(group_combo_, &QComboBox::currentTextChanged, this,
+          &ModFilterBar::group_changed);
 }
 
 QString ModFilterBar::filter_text() const {
-    return filter_edit_->text();
+  return filter_edit_->text();
 }
 
 QString ModFilterBar::current_group() const {
-    return group_combo_->currentText();
+  return group_combo_->currentText();
 }
 
 }  // namespace ui

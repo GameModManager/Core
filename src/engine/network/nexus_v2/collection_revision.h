@@ -10,16 +10,14 @@
 #include <string>
 #include <vector>
 
-namespace engine::nexus_v2
-{
+namespace engine::nexus_v2 {
 
 class Client;
 
 // One Nexus-hosted mod pinned by a collection revision. mod_id / file_name
 // come from the nested file object and stay 0/empty when the file was
 // removed server-side (file: null) - callers must tolerate that.
-struct CollectionModFile
-{
+struct CollectionModFile {
   long long mod_id  = 0;
   long long file_id = 0;
   long long game_id = 0;
@@ -30,16 +28,14 @@ struct CollectionModFile
 };
 
 // Non-Nexus download (Google Drive, Mega, ...) bundled with the revision.
-struct ExternalResource
-{
+struct ExternalResource {
   std::string name;
   std::string url;
   std::string version;
   bool optional = false;
 };
 
-struct CollectionRevision
-{
+struct CollectionRevision {
   bool found                = false;
   long long collection_id   = 0;
   long long revision_number = 0;
@@ -51,8 +47,7 @@ struct CollectionRevision
   std::vector<ExternalResource> external_resources;
 };
 
-struct FetchResult
-{
+struct FetchResult {
   bool ok = false;
   CollectionRevision revision;
   std::string error;
@@ -63,17 +58,17 @@ struct FetchResult
 std::string build_collection_revision_query();
 
 // variables JSON for the query above. revision <= 0 omits the key.
-std::string build_collection_revision_variables(const std::string& slug,
+std::string build_collection_revision_variables(const std::string &slug,
                                                 long long revision);
 
 // Parse data.collectionRevision (already extracted by Client::parse_response).
 // Returns false with out_error set when the node is missing/unparseable;
 // individual mod entries are skipped, never fatal.
-bool parse_collection_revision_data(const std::string& data_json,
-                                    CollectionRevision& out, std::string& out_error);
+bool parse_collection_revision_data(const std::string &data_json,
+                                    CollectionRevision &out, std::string &out_error);
 
 // Convenience: query + parse in one call. Never throws.
-FetchResult fetch_collection_revision(Client& client, const std::string& slug,
+FetchResult fetch_collection_revision(Client &client, const std::string &slug,
                                       long long revision);
 
 }  // namespace engine::nexus_v2

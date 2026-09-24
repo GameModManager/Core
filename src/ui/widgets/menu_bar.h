@@ -18,11 +18,11 @@ class MainWindow;
 class AppMenuBar : public QMenuBar {
   Q_OBJECT
 public:
-  explicit AppMenuBar(MainWindow* parent);
+  explicit AppMenuBar(MainWindow *parent);
 
-  void set_recent_instances(const std::vector<std::string>& instances);
-  void update_tools_for_game(const std::string& game_id,
-                             const std::vector<engine::ExternalTool>& tools);
+  void set_recent_instances(const std::vector<std::string> &instances);
+  void update_tools_for_game(const std::string &game_id,
+                             const std::vector<engine::ExternalTool> &tools);
   void set_sort_available(bool available);
   void set_icon_size(int size);
 
@@ -38,7 +38,7 @@ signals:
   // File
   void new_instance_requested();
   void open_instance_requested();
-  void recent_instance_selected(const QString& name);
+  void recent_instance_selected(const QString &name);
   void import_mods_requested();
   void export_mods_requested();
   void import_modpack_requested();
@@ -64,7 +64,7 @@ signals:
   void refresh_requested();
 
   // Tools
-  void tool_requested(const QString& tool_id, const QString& game_id);
+  void tool_requested(const QString &tool_id, const QString &game_id);
   void sort_mods_requested();
 
   // Help
@@ -80,18 +80,18 @@ private:
   void build_tools_menu();
   void build_help_menu();
 
-  QMenu* recent_menu_       = nullptr;
-  QMenu* tools_menu_        = nullptr;
-  QMenu* icons_menu_        = nullptr;
-  QAction* tools_separator_ = nullptr;
-  QAction* sort_action_     = nullptr;
+  QMenu *recent_menu_       = nullptr;
+  QMenu *tools_menu_        = nullptr;
+  QMenu *icons_menu_        = nullptr;
+  QAction *tools_separator_ = nullptr;
+  QAction *sort_action_     = nullptr;
   // View menu actions - stored so their checked state can be synced
   // with actual panel visibility from any code path
-  QAction* toggle_toolbar_action_    = nullptr;
-  QAction* toggle_status_bar_action_ = nullptr;
-  QAction* toggle_console_action_    = nullptr;
+  QAction *toggle_toolbar_action_    = nullptr;
+  QAction *toggle_status_bar_action_ = nullptr;
+  QAction *toggle_console_action_    = nullptr;
   // Checkerboard submenu actions (Off/Light/Medium/Dark) for sync.
-  QActionGroup* checkerboard_group_ = nullptr;
+  QActionGroup *checkerboard_group_ = nullptr;
   std::string current_game_id_;
 };
 

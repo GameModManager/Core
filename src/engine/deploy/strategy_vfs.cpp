@@ -39,8 +39,7 @@ bool Vfs::mount(const std::filesystem::path &mount_point) {
   std::lock_guard lock(mutex_);
 
   if (mounted_) {
-    engine::Logger::instance().warn("VFS already mounted at " +
-                                    mount_point.string());
+    engine::Logger::instance().warn("VFS already mounted at " + mount_point.string());
     return false;
   }
 
@@ -51,11 +50,10 @@ bool Vfs::mount(const std::filesystem::path &mount_point) {
   }
 
   mount_point_ = mount_point;
-  mounted_ = true;
+  mounted_     = true;
 
-  engine::Logger::instance().debug("VFS mounted at " + mount_point.string() +
-                                   " with " + std::to_string(file_map_.size()) +
-                                   " files");
+  engine::Logger::instance().debug("VFS mounted at " + mount_point.string() + " with " +
+                                   std::to_string(file_map_.size()) + " files");
 
   // TODO: Actually call fuse_main() with a custom filesystem implementation
   // For now, this is a placeholder that tracks the mapping
@@ -74,13 +72,11 @@ bool Vfs::unmount() {
   mounted_ = false;
   file_map_.clear();
 
-  engine::Logger::instance().debug("VFS unmounted from " +
-                                   mount_point_.string());
+  engine::Logger::instance().debug("VFS unmounted from " + mount_point_.string());
   return true;
 }
 
-void Vfs::add_file(const std::string &virtual_path,
-                   const std::string &source_path) {
+void Vfs::add_file(const std::string &virtual_path, const std::string &source_path) {
   std::lock_guard lock(mutex_);
   file_map_[virtual_path] = source_path;
 }
@@ -121,4 +117,4 @@ bool Vfs::is_available() {
   return false;
 }
 
-} // namespace Deploy
+}  // namespace Deploy

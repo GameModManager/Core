@@ -54,7 +54,7 @@ private:
   void on_item_changed(QTreeWidgetItem *item, int column);
 
   QTreeWidget *tree_ = nullptr;
-  bool rebuilding_ = false;
+  bool rebuilding_   = false;
 };
 
-} // namespace ui
+}  // namespace ui

@@ -69,7 +69,7 @@ public:
   // runner's display name (searched among installed runners). Empty when
   // the runner cannot be found.
   [[nodiscard]] virtual std::filesystem::path
-  find_proton_named([[maybe_unused]] const std::string& name) const {
+  find_proton_named([[maybe_unused]] const std::string &name) const {
     return {};
   }
 
@@ -125,8 +125,8 @@ public:
 
   // Launch a game executable. Platform handles the actual process creation.
   [[nodiscard]] virtual bool
-  launch_executable(const std::filesystem::path& executable,
-                    const std::vector<std::string>& args = {}) const = 0;
+  launch_executable(const std::filesystem::path &executable,
+                    const std::vector<std::string> &args = {}) const = 0;
 
   // Check if the current user has elevated/admin privileges.
   [[nodiscard]] virtual bool is_elevated() const { return false; }
@@ -154,7 +154,7 @@ inline std::filesystem::path safe_home_dir() {
   if (GetEnvironmentVariableW(L"USERPROFILE", buf, MAX_PATH))
     return std::filesystem::path(buf);
 #else
-  if (const char* home = std::getenv("HOME"))
+  if (const char *home = std::getenv("HOME"))
     return std::filesystem::path(home);
 #endif
   return std::filesystem::temp_directory_path();

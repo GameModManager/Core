@@ -16,7 +16,7 @@ namespace engine::profile {
 //
 // The parent directory is created if missing. Returns true on success; on
 // failure the target is left untouched and the temp file is removed.
-[[nodiscard]] bool safe_write_file(const std::filesystem::path& target,
-                                   const std::string& content);
+[[nodiscard]] bool safe_write_file(const std::filesystem::path &target,
+                                   const std::string &content);
 
 }  // namespace engine::profile

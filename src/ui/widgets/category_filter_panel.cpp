@@ -36,8 +36,7 @@ CategoryFilterPanel::CategoryFilterPanel(QWidget *parent) : QWidget(parent) {
 
   connect(tree_, &QTreeWidget::itemChanged, this,
           &CategoryFilterPanel::on_item_changed);
-  connect(clear_btn, &QPushButton::clicked, this,
-          &CategoryFilterPanel::clear_filter);
+  connect(clear_btn, &QPushButton::clicked, this, &CategoryFilterPanel::clear_filter);
   connect(edit_btn, &QPushButton::clicked, this,
           &CategoryFilterPanel::edit_categories_clicked);
 
@@ -63,8 +62,8 @@ void CategoryFilterPanel::add_children(QTreeWidgetItem *root, int parent_id) {
       children.push_back(&cat);
   }
   std::sort(children.begin(), children.end(), [](const auto *a, const auto *b) {
-    return QString::fromStdString(a->name).compare(
-               QString::fromStdString(b->name), Qt::CaseInsensitive) < 0;
+    return QString::fromStdString(a->name).compare(QString::fromStdString(b->name),
+                                                   Qt::CaseInsensitive) < 0;
   });
 
   for (const auto *cat : children) {
@@ -83,8 +82,7 @@ QSet<int> CategoryFilterPanel::checked_category_ids() const {
   return out;
 }
 
-void CategoryFilterPanel::collect_checked(QTreeWidgetItem *node,
-                                          QSet<int> &out) const {
+void CategoryFilterPanel::collect_checked(QTreeWidgetItem *node, QSet<int> &out) const {
   for (int i = 0; i < node->childCount(); ++i) {
     QTreeWidgetItem *child = node->child(i);
     if (child->checkState(0) == Qt::Checked)
@@ -125,4 +123,4 @@ void CategoryFilterPanel::showEvent(QShowEvent *event) {
     rebuild();
 }
 
-} // namespace ui
+}  // namespace ui

@@ -62,4 +62,4 @@ bool Hardlink::remove(const std::filesystem::path &target) {
   return false;
 }
 
-} // namespace Deploy
+}  // namespace Deploy

@@ -2,8 +2,8 @@
 
 namespace engine {
 
-void InAppBackend::notify(const QString& title, const QString& message) {
-    emit notification_received(title, message);
+void InAppBackend::notify(const QString &title, const QString &message) {
+  emit notification_received(title, message);
 }
 
 }  // namespace engine

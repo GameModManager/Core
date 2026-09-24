@@ -25,8 +25,7 @@ class DescriptionRenderer;
 class LoversLabSourcePanel : public SourceInfoPanel {
   Q_OBJECT
 public:
-  explicit LoversLabSourcePanel(const ModInfoData &data,
-                                QWidget *parent = nullptr);
+  explicit LoversLabSourcePanel(const ModInfoData &data, QWidget *parent = nullptr);
   ~LoversLabSourcePanel() override;
 
   void populate() override;
@@ -53,8 +52,7 @@ private:
   void render_description();
   void on_refresh();
   void launch_fetch();
-  void on_fetch_finished(engine::LoversLabModInfoResult result,
-                         quint64 generation);
+  void on_fetch_finished(engine::LoversLabModInfoResult result, quint64 generation);
   void apply_fetch_result(const engine::LoversLabModInfoResult &result);
   void on_visit();
   void on_visit_custom();
@@ -62,19 +60,19 @@ private:
   void persist_fields();
   void persist_custom_url();
 
-  QLineEdit *mod_id_ = nullptr;
-  QLineEdit *version_ = nullptr;
-  QLineEdit *category_ = nullptr;
-  QLabel *out_of_date_label_ = nullptr;
-  QPushButton *refresh_ = nullptr;
-  QPushButton *visit_ = nullptr;
-  QCheckBox *custom_url_toggle_ = nullptr;
-  QLineEdit *custom_url_ = nullptr;
-  QPushButton *visit_custom_ = nullptr;
+  QLineEdit *mod_id_                = nullptr;
+  QLineEdit *version_               = nullptr;
+  QLineEdit *category_              = nullptr;
+  QLabel *out_of_date_label_        = nullptr;
+  QPushButton *refresh_             = nullptr;
+  QPushButton *visit_               = nullptr;
+  QCheckBox *custom_url_toggle_     = nullptr;
+  QLineEdit *custom_url_            = nullptr;
+  QPushButton *visit_custom_        = nullptr;
   DescriptionRenderer *description_ = nullptr;
 
   LoversLabFetchThread *source_fetch_thread_ = nullptr;
-  quint64 refresh_generation_ = 0;
+  quint64 refresh_generation_                = 0;
   QString refresh_mod_id_;
   bool fetch_in_flight_ = false;
   bool refresh_pending_ = false;
@@ -90,4 +88,4 @@ private:
   std::atomic<unsigned> description_generation_{0};
 };
 
-} // namespace ui
+}  // namespace ui

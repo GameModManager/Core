@@ -36,4 +36,4 @@ private:
   MainWindow *w_;
 };
 
-} // namespace ui
+}  // namespace ui

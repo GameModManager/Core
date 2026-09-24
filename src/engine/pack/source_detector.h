@@ -28,9 +28,9 @@ namespace engine::Pack {
 // Pack formats the installer knows how to route. Unknown means "no adapter
 // handles this reference" - the caller should surface Detection::reason.
 enum class PackFormat {
-    Unknown,
-    Gmmpack,          // local .gmmpack zip archive (manifest.json at root)
-    NexusCollection,  // Nexus collection via nxm:// or nexusmods.com/collections/
+  Unknown,
+  Gmmpack,          // local .gmmpack zip archive (manifest.json at root)
+  NexusCollection,  // Nexus collection via nxm:// or nexusmods.com/collections/
 };
 
 // Adapter registry id for a format: "gmmpack", "nexus-collection", or ""
@@ -38,16 +38,16 @@ enum class PackFormat {
 [[nodiscard]] std::string_view format_id_of(PackFormat format);
 
 struct Detection {
-    PackFormat format = PackFormat::Unknown;
-    std::string format_id;  // adapter id, "" when Unknown
-    std::string reason;     // human-readable: why this format / why unknown
+  PackFormat format = PackFormat::Unknown;
+  std::string format_id;  // adapter id, "" when Unknown
+  std::string reason;     // human-readable: why this format / why unknown
 
-    [[nodiscard]] bool known() const { return format != PackFormat::Unknown; }
+  [[nodiscard]] bool known() const { return format != PackFormat::Unknown; }
 };
 
 // Classify url_or_path (local path, direct-download URL, nxm:// link, or
 // nexusmods.com page URL). Never throws; unrecognized input yields Unknown
 // with a reason suitable for logs and UI errors.
-[[nodiscard]] Detection detect_pack_source(const std::string& url_or_path);
+[[nodiscard]] Detection detect_pack_source(const std::string &url_or_path);
 
 }  // namespace engine::Pack

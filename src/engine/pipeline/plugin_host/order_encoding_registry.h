@@ -16,42 +16,40 @@ namespace engine {
 // for a game and calls it when writing load order, instead of (or in addition
 // to) the built-in OrderEncodingHook.
 struct OrderEncodingProvider {
-    GmmOrderEncodingFnV2 fn = nullptr;
-    void* user_data = nullptr;
-    std::string game_id;
-    std::string plugin_path;
+  GmmOrderEncodingFnV2 fn = nullptr;
+  void *user_data         = nullptr;
+  std::string game_id;
+  std::string plugin_path;
 };
 
 class OrderEncodingRegistry {
 public:
-    static OrderEncodingRegistry& instance();
+  static OrderEncodingRegistry &instance();
 
-    // game_id: the game this provider serves (the registering plugin's game).
-    void register_provider(const std::string& game_id,
-                           GmmOrderEncodingFnV2 fn,
-                           void* user_data,
-                           const std::string& plugin_path);
+  // game_id: the game this provider serves (the registering plugin's game).
+  void register_provider(const std::string &game_id, GmmOrderEncodingFnV2 fn,
+                         void *user_data, const std::string &plugin_path);
 
-    // Get the provider for a game (or nullptr if none registered).
-    [[nodiscard]] const OrderEncodingProvider* get_provider(
-        const std::string& game_id) const;
+  // Get the provider for a game (or nullptr if none registered).
+  [[nodiscard]] const OrderEncodingProvider *
+  get_provider(const std::string &game_id) const;
 
-    // Convenience: encode the ordered mod ids to output_path for game_id.
-    // Returns false when no provider is registered or the callback fails.
-    [[nodiscard]] bool encode(const std::string& game_id,
-                              const std::vector<std::string>& ordered_mod_ids,
-                              const std::filesystem::path& output_path) const;
+  // Convenience: encode the ordered mod ids to output_path for game_id.
+  // Returns false when no provider is registered or the callback fails.
+  [[nodiscard]] bool encode(const std::string &game_id,
+                            const std::vector<std::string> &ordered_mod_ids,
+                            const std::filesystem::path &output_path) const;
 
-    // Drop every provider registered by a specific plugin (dlclose path).
-    void clear_plugin(const std::string& plugin_path);
+  // Drop every provider registered by a specific plugin (dlclose path).
+  void clear_plugin(const std::string &plugin_path);
 
-    // Drop all providers (full reload path).
-    void clear();
+  // Drop all providers (full reload path).
+  void clear();
 
 private:
-    OrderEncodingRegistry() = default;
+  OrderEncodingRegistry() = default;
 
-    std::vector<OrderEncodingProvider> providers_;
+  std::vector<OrderEncodingProvider> providers_;
 };
 
 }  // namespace engine

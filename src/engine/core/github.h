@@ -23,7 +23,7 @@ public:
   struct Release {
     std::string tag_name;
     std::string name;
-    std::string body; // changelog
+    std::string body;  // changelog
     std::vector<Asset> assets;
     bool prerelease = false;
   };
@@ -31,9 +31,9 @@ public:
   // Fetch the latest release from a GitHub repository.
   // When include_prereleases is false, only stable releases are returned.
   // Returns std::nullopt on network error or when no release exists.
-  static std::optional<Release>
-  latest_release(const std::string &owner, const std::string &repo,
-                 bool include_prereleases = false);
+  static std::optional<Release> latest_release(const std::string &owner,
+                                               const std::string &repo,
+                                               bool include_prereleases = false);
 
   // Compare two semantic version strings (e.g. "1.2.3" vs "1.2.4").
   // Returns -1 if a < b, 0 if a == b, 1 if a > b.
@@ -42,9 +42,8 @@ public:
   // Download a file from url to dest on disk.
   // progress_cb receives [0.0, 1.0] progress updates.
   // Returns true on success.
-  static bool download(const std::string &url,
-                       const std::filesystem::path &dest,
+  static bool download(const std::string &url, const std::filesystem::path &dest,
                        std::function<void(float)> progress_cb = {});
 };
 
-} // namespace engine
+}  // namespace engine

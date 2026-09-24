@@ -27,40 +27,40 @@ namespace engine::profile {
 // thread never dies via std::terminate.
 class DelayedFileWriter {
 public:
-    using WriteFn = std::function<void()>;
+  using WriteFn = std::function<void()>;
 
-    explicit DelayedFileWriter(WriteFn fn,
-                               std::chrono::milliseconds delay = std::chrono::seconds(5));
-    ~DelayedFileWriter();
+  explicit DelayedFileWriter(WriteFn fn,
+                             std::chrono::milliseconds delay = std::chrono::seconds(5));
+  ~DelayedFileWriter();
 
-    DelayedFileWriter(const DelayedFileWriter&) = delete;
-    DelayedFileWriter& operator=(const DelayedFileWriter&) = delete;
-    DelayedFileWriter(DelayedFileWriter&&) = delete;
-    DelayedFileWriter& operator=(DelayedFileWriter&&) = delete;
+  DelayedFileWriter(const DelayedFileWriter &)            = delete;
+  DelayedFileWriter &operator=(const DelayedFileWriter &) = delete;
+  DelayedFileWriter(DelayedFileWriter &&)                 = delete;
+  DelayedFileWriter &operator=(DelayedFileWriter &&)      = delete;
 
-    // Schedule a write ~delay from now. Debounced: repeated calls within the
-    // delay window collapse into a single write.
-    void write();
+  // Schedule a write ~delay from now. Debounced: repeated calls within the
+  // delay window collapse into a single write.
+  void write();
 
-    // Flush a pending write now, synchronously: when this returns the write
-    // has completed. No-op when nothing is pending.
-    void write_immediately();
+  // Flush a pending write now, synchronously: when this returns the write
+  // has completed. No-op when nothing is pending.
+  void write_immediately();
 
-    // Discard a pending write. No-op when nothing is pending.
-    void cancel();
+  // Discard a pending write. No-op when nothing is pending.
+  void cancel();
 
 private:
-    void run();
+  void run();
 
-    WriteFn fn_;
-    std::chrono::milliseconds delay_;
+  WriteFn fn_;
+  std::chrono::milliseconds delay_;
 
-    std::mutex mutex_;
-    std::condition_variable cv_;
-    bool pending_ = false;    // a write is scheduled
-    bool stop_ = false;       // thread shutdown requested
-    uint64_t generation_ = 0; // bumped on every write() to restart the delay
-    std::thread thread_;
+  std::mutex mutex_;
+  std::condition_variable cv_;
+  bool pending_        = false;  // a write is scheduled
+  bool stop_           = false;  // thread shutdown requested
+  uint64_t generation_ = 0;      // bumped on every write() to restart the delay
+  std::thread thread_;
 };
 
 }  // namespace engine::profile

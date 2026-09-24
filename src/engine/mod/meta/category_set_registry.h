@@ -22,8 +22,7 @@ public:
 
   // Look up a set by name. Returns nullptr when unknown - callers handle
   // gracefully (e.g. fall back to "Default").
-  [[nodiscard]] const CategorySetDefinition *
-  find(const std::string &set_name) const;
+  [[nodiscard]] const CategorySetDefinition *find(const std::string &set_name) const;
 
   // True when a set with this name is registered.
   [[nodiscard]] bool has(const std::string &set_name) const;
@@ -35,4 +34,4 @@ private:
   std::unordered_map<std::string, CategorySetDefinition> sets_;
 };
 
-} // namespace engine
+}  // namespace engine

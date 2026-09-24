@@ -30,4 +30,4 @@ private:
   bool case_sensitive_;
 };
 
-} // namespace Deploy
+}  // namespace Deploy

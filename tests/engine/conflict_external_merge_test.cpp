@@ -25,7 +25,7 @@ TEST_CASE("conflict_external_merge", "[engine]") {
   fs::create_directories(game / "stub_a" / "resources");
   fs::create_directories(game / "stub_b" / "resources");
 
-  auto touch = [](const fs::path& p) {
+  auto touch = [](const fs::path &p) {
     std::ofstream(p).put('\n');
   };
   touch(inst / "stub_a" / "meta.ini");
@@ -51,7 +51,7 @@ TEST_CASE("conflict_external_merge", "[engine]") {
   INFO("stub_b merges its single shared file");
   REQUIRE(results["stub_b"].total_files == 1);
 
-  const auto& reg = engine.last_registry();
+  const auto &reg = engine.last_registry();
   INFO("registry non-empty, Data tab has content");
   REQUIRE(!reg.empty());
   auto shared = reg.find("resources/shared.txt");

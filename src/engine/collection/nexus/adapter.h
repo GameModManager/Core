@@ -33,16 +33,16 @@ namespace engine::Collection::Nexus {
 
 // Parsed form of a Provider::fetch source_id.
 struct CollectionRef {
-  std::string slug;      // collection slug for GraphQL (empty for files)
-  long long revision = 0;  // 0 = latest
-  bool is_file = false;  // source_id is a collection.json path
+  std::string slug;            // collection slug for GraphQL (empty for files)
+  long long revision = 0;      // 0 = latest
+  bool is_file       = false;  // source_id is a collection.json path
   std::string file_path;
 };
 
 // Parse "slug[@revision]", a nexusmods.com collections URL, or a .json
 // path. Never throws; unrecognized ids yield an empty slug, non-file ref
 // (can_handle rejects those before fetch).
-CollectionRef parse_source_id(const std::string& source_id);
+CollectionRef parse_source_id(const std::string &source_id);
 
 // ---------------------------------------------------------------------------
 // Revision -> manifest conversion (pure, no I/O)
@@ -61,12 +61,12 @@ struct RevisionManifest {
 
 // Map one revision mod to a SourceNexus. nullopt when unresolvable
 // (file: null server-side, modId unknown) - caller skips with a diagnostic.
-std::optional<SourceNexus> mod_file_to_source(
-    const nexus_v2::CollectionModFile& mod, const std::string& game_domain);
+std::optional<SourceNexus> mod_file_to_source(const nexus_v2::CollectionModFile &mod,
+                                              const std::string &game_domain);
 
 // Convert a fetched GraphQL revision to a Manifest, skipping unresolvable
 // entries (null files, empty external URLs) with diagnostics.
-RevisionManifest revision_to_manifest(const nexus_v2::CollectionRevision& rev);
+RevisionManifest revision_to_manifest(const nexus_v2::CollectionRevision &rev);
 
 // ---------------------------------------------------------------------------
 // Download path (premium vs free)
@@ -79,16 +79,16 @@ AccountStatus account_status();
 
 // Route one manifest source through the generic router with the current
 // Nexus account status (premium = Auto, free/anonymous = Browser).
-RouteOutcome route_download(const ModSource& source);
+RouteOutcome route_download(const ModSource &source);
 
 // ---------------------------------------------------------------------------
 // Provider
 // ---------------------------------------------------------------------------
 
 class Adapter : public Provider {
- public:
-  using RevisionFetcher = std::function<nexus_v2::FetchResult(
-      const std::string& slug, long long revision)>;
+public:
+  using RevisionFetcher =
+      std::function<nexus_v2::FetchResult(const std::string &slug, long long revision)>;
 
   // Test seam: inject a fake fetcher (no network).
   explicit Adapter(RevisionFetcher fetcher);
@@ -101,17 +101,15 @@ class Adapter : public Provider {
 
   // File ids go through Nexus::parse_file; slugs/URLs through the v2
   // client + revision_to_manifest. Per-mod skips land in last_skipped().
-  FetchOutcome fetch(const std::string& source_id) override;
+  FetchOutcome fetch(const std::string &source_id) override;
 
   // .json paths, nexusmods.com collection URLs, bare slugs.
-  bool can_handle(const std::string& source_id) const override;
+  bool can_handle(const std::string &source_id) const override;
 
   // Diagnostics from the last fetch() (empty after file fetches).
-  const std::vector<SkipDiagnostic>& last_skipped() const {
-    return last_skipped_;
-  }
+  const std::vector<SkipDiagnostic> &last_skipped() const { return last_skipped_; }
 
- private:
+private:
   RevisionFetcher fetcher_;
   std::vector<SkipDiagnostic> last_skipped_;
 };

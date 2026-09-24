@@ -5,17 +5,15 @@
 #include <string>
 #include <vector>
 
-namespace engine
-{
+namespace engine {
 
 class Platform;
 
 // Per-instance context for running wine/protontricks tools against a game's
 // Proton prefix. All discovery goes through `platform`; when `steam_appid` is
 // non-zero the tool runs inside that game's prefix.
-struct ProtonToolRequest
-{
-  const Platform* platform = nullptr;
+struct ProtonToolRequest {
+  const Platform *platform = nullptr;
   uint32_t steam_appid     = 0;
   std::filesystem::path game_dir;
   // Selected runner (display name or absolute path to a `proton` script).
@@ -34,23 +32,23 @@ struct ProtonToolRequest
 // component" picker), a wine builtin (`winecfg`, `regedit`), an install verb
 // (`vcrun2022`, ...), or empty (winetricks main GUI).
 // Returns the child PID, or -1 on failure.
-int64_t run_proton_tool(const ProtonToolRequest& request,
-                        const std::vector<std::string>& args);
+int64_t run_proton_tool(const ProtonToolRequest &request,
+                        const std::vector<std::string> &args);
 
 // Run an arbitrary Windows executable inside the game's prefix, detached.
 // `args` are appended after the exe path on the Wine/Proton command line.
 // Returns the child PID, or -1 on failure.
-int64_t run_proton_exe(const ProtonToolRequest& request,
-                       const std::filesystem::path& exe,
-                       const std::vector<std::string>& args = {});
+int64_t run_proton_exe(const ProtonToolRequest &request,
+                       const std::filesystem::path &exe,
+                       const std::vector<std::string> &args = {});
 
 // True when something on this machine can configure/install packages in a
 // Proton prefix (protontricks, or winetricks + wine/Proton). Used by the UI
 // to warn before offering install actions.
-bool proton_tooling_available(const ProtonToolRequest& request);
+bool proton_tooling_available(const ProtonToolRequest &request);
 
 // Resolve a per-instance runner override to an absolute `proton` script path.
 // Empty when the override is empty or unresolvable.
-std::filesystem::path resolve_proton_runner(const ProtonToolRequest& request);
+std::filesystem::path resolve_proton_runner(const ProtonToolRequest &request);
 
 }  // namespace engine

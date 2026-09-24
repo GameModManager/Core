@@ -23,8 +23,8 @@ public:
     if (!deploy_fn_)
       return false;
 
-    const int result = deploy_fn_(source.string().c_str(),
-                                  target.string().c_str(), user_data_);
+    const int result =
+        deploy_fn_(source.string().c_str(), target.string().c_str(), user_data_);
     return result != 0;
   }
 
@@ -42,4 +42,4 @@ private:
   void *user_data_;
 };
 
-} // namespace Deploy
+}  // namespace Deploy

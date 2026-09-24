@@ -25,68 +25,68 @@ namespace ui {
 
 namespace {
 
-// Compute the auto-scaled Y range from one or two sample sequences.
-// When clamp_negative is true the lower bound is clamped to 0 (for
-// quantities that cannot physically be negative: Disk IO, Network IO,
-// RSS, heap, CPU%). Both series are folded into one range so the
-// chart always shows the larger of the two.
-//
-// Idle-trace special case: when all samples collapse to a single
-// value (including 0) we still draw a useful range. The clamp-
-// negative path picks [0, 1] so the trace hugs the bottom; the
-// un-clamped path (jitter) keeps the +/-1 floor so a steady-state
-// trace centres.
-struct AutoRange {
-  double lo;
-  double hi;
-};
-AutoRange auto_range_from(const std::deque<double> &a,
-                          const std::deque<double> &b, bool clamp_negative) {
-  AutoRange r{0.0, 1.0};
-  if (a.empty() && b.empty())
-    return r;
-  double lo = std::numeric_limits<double>::infinity();
-  double hi = -std::numeric_limits<double>::infinity();
-  for (double v : a) {
-    if (v < lo)
-      lo = v;
-    if (v > hi)
-      hi = v;
-  }
-  for (double v : b) {
-    if (v < lo)
-      lo = v;
-    if (v > hi)
-      hi = v;
-  }
-  if (!std::isfinite(lo) || !std::isfinite(hi))
-    return r;
-  if (qFuzzyCompare(1.0 + lo, 1.0 + hi)) {
-    // Flat trace: keep a small floor so the line still draws. When
-    // clamp_negative is set we anchor the floor at 0 so an idle
-    // chart never shows negative values.
-    if (clamp_negative && lo <= 0.0) {
-      r.lo = 0.0;
-      r.hi = std::max(hi, 1.0);
-    } else {
-      r.lo = lo - 1.0;
-      r.hi = hi + 1.0;
+  // Compute the auto-scaled Y range from one or two sample sequences.
+  // When clamp_negative is true the lower bound is clamped to 0 (for
+  // quantities that cannot physically be negative: Disk IO, Network IO,
+  // RSS, heap, CPU%). Both series are folded into one range so the
+  // chart always shows the larger of the two.
+  //
+  // Idle-trace special case: when all samples collapse to a single
+  // value (including 0) we still draw a useful range. The clamp-
+  // negative path picks [0, 1] so the trace hugs the bottom; the
+  // un-clamped path (jitter) keeps the +/-1 floor so a steady-state
+  // trace centres.
+  struct AutoRange {
+    double lo;
+    double hi;
+  };
+  AutoRange auto_range_from(const std::deque<double> &a, const std::deque<double> &b,
+                            bool clamp_negative) {
+    AutoRange r{0.0, 1.0};
+    if (a.empty() && b.empty())
+      return r;
+    double lo = std::numeric_limits<double>::infinity();
+    double hi = -std::numeric_limits<double>::infinity();
+    for (double v : a) {
+      if (v < lo)
+        lo = v;
+      if (v > hi)
+        hi = v;
     }
+    for (double v : b) {
+      if (v < lo)
+        lo = v;
+      if (v > hi)
+        hi = v;
+    }
+    if (!std::isfinite(lo) || !std::isfinite(hi))
+      return r;
+    if (qFuzzyCompare(1.0 + lo, 1.0 + hi)) {
+      // Flat trace: keep a small floor so the line still draws. When
+      // clamp_negative is set we anchor the floor at 0 so an idle
+      // chart never shows negative values.
+      if (clamp_negative && lo <= 0.0) {
+        r.lo = 0.0;
+        r.hi = std::max(hi, 1.0);
+      } else {
+        r.lo = lo - 1.0;
+        r.hi = hi + 1.0;
+      }
+      return r;
+    }
+    // Pad both sides by 10% of the range, then clamp the lower bound
+    // when requested. The clamp is the bug fix: previously lo -= pad
+    // pushed the axis below 0 even when every sample was >= 0, and
+    // qFuzzyCompare + lo -= 1.0 made the idle chart show [-1, +1].
+    const double pad = (hi - lo) * 0.1;
+    r.lo             = lo - pad;
+    r.hi             = hi + pad;
+    if (clamp_negative && r.lo < 0.0)
+      r.lo = 0.0;
     return r;
   }
-  // Pad both sides by 10% of the range, then clamp the lower bound
-  // when requested. The clamp is the bug fix: previously lo -= pad
-  // pushed the axis below 0 even when every sample was >= 0, and
-  // qFuzzyCompare + lo -= 1.0 made the idle chart show [-1, +1].
-  const double pad = (hi - lo) * 0.1;
-  r.lo = lo - pad;
-  r.hi = hi + pad;
-  if (clamp_negative && r.lo < 0.0)
-    r.lo = 0.0;
-  return r;
-}
 
-} // namespace
+}  // namespace
 
 RollingChartWidget::RollingChartWidget(QWidget *parent) : QWidget(parent) {
   setMinimumHeight(140);
@@ -102,8 +102,8 @@ RollingChartWidget::~RollingChartWidget() = default;
 
 void RollingChartWidget::set_y_range(double min, double max) {
   y_range_set_ = true;
-  y_min_ = min;
-  y_max_ = max;
+  y_min_       = min;
+  y_max_       = max;
 #ifdef GMM_HAS_QTCHARTS
   apply_qtchart_axis();
 #endif
@@ -174,14 +174,14 @@ void RollingChartWidget::push_sample(double value) {
     QList<QPointF> points;
     points.reserve(static_cast<int>(samples_.size()));
     const double n = static_cast<double>(samples_.size());
-    const int cap = static_cast<int>(kCapacity);
+    const int cap  = static_cast<int>(kCapacity);
     // X axis is "seconds ago" with the newest sample at X=0. The visible
     // window always spans the full kCapacity so the chart looks stable.
     // We anchor the latest sample to the right edge: index i maps to
     //   x = cap - n + i
     // so the leftmost point is at x = cap - n and the rightmost at x = cap.
     const double base_x = cap - n;
-    int i = 0;
+    int i               = 0;
     for (double v : samples_) {
       points.append(QPointF(base_x + i, v));
       ++i;
@@ -223,11 +223,11 @@ void RollingChartWidget::push_samples(double a, double b) {
     QList<QPointF> points_b;
     points_a.reserve(static_cast<int>(samples_.size()));
     points_b.reserve(static_cast<int>(samples2_.size()));
-    const double n = static_cast<double>(samples_.size());
-    const int cap = static_cast<int>(kCapacity);
+    const double n      = static_cast<double>(samples_.size());
+    const int cap       = static_cast<int>(kCapacity);
     const double base_x = cap - n;
-    int i = 0;
-    auto it_b = samples2_.begin();
+    int i               = 0;
+    auto it_b           = samples2_.begin();
     for (double v : samples_) {
       points_a.append(QPointF(base_x + i, v));
       if (it_b != samples2_.end()) {
@@ -328,7 +328,7 @@ void RollingChartWidget::apply_qtchart_axis() {
   }
 }
 
-#else // !GMM_HAS_QTCHARTS - QPainter fallback
+#else  // !GMM_HAS_QTCHARTS - QPainter fallback
 
 void RollingChartWidget::paintEvent(QPaintEvent * /*event*/) {
   QPainter p(this);
@@ -348,8 +348,7 @@ void RollingChartWidget::paintEvent(QPaintEvent * /*event*/) {
   const int title_h = title_.isEmpty() ? 0 : title_fm.height() + 2;
 
   QRect plot_area(rect().left() + margin, rect().top() + margin + title_h,
-                  rect().width() - 2 * margin,
-                  rect().height() - 2 * margin - title_h);
+                  rect().width() - 2 * margin, rect().height() - 2 * margin - title_h);
   if (plot_area.width() < 10 || plot_area.height() < 10)
     return;
 
@@ -366,8 +365,8 @@ void RollingChartWidget::paintEvent(QPaintEvent * /*event*/) {
   double hi = y_max_;
   if (!y_range_set_) {
     auto r = auto_range_from(samples_, samples2_, clamp_negative_);
-    lo = r.lo;
-    hi = r.hi;
+    lo     = r.lo;
+    hi     = r.hi;
   }
 
   // Grid + axis box
@@ -401,7 +400,7 @@ void RollingChartWidget::paintEvent(QPaintEvent * /*event*/) {
   if (samples_.empty())
     return;
   const double range = hi - lo;
-  auto to_y = [&](double v) {
+  auto to_y          = [&](double v) {
     if (range <= 0.0)
       return plot_area.top() + plot_area.height() / 2.0;
     const double t = (v - lo) / range;
@@ -409,15 +408,15 @@ void RollingChartWidget::paintEvent(QPaintEvent * /*event*/) {
   };
   auto to_x = [&](std::size_t i) {
     // Anchor newest sample at right edge, oldest at right-edge - n.
-    const double n = static_cast<double>(samples_.size());
+    const double n   = static_cast<double>(samples_.size());
     const double cap = static_cast<double>(kCapacity);
-    const double t = (cap - n + static_cast<double>(i)) / cap;
+    const double t   = (cap - n + static_cast<double>(i)) / cap;
     return plot_area.left() + t * plot_area.width();
   };
 
   auto draw_polyline = [&](const std::deque<double> &q, const QColor &color) {
     QPainterPath path;
-    bool first = true;
+    bool first    = true;
     std::size_t i = 0;
     for (double v : q) {
       const double x = to_x(i);
@@ -440,6 +439,6 @@ void RollingChartWidget::paintEvent(QPaintEvent * /*event*/) {
   }
 }
 
-#endif // GMM_HAS_QTCHARTS
+#endif  // GMM_HAS_QTCHARTS
 
-} // namespace ui
+}  // namespace ui

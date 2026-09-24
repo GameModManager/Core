@@ -25,7 +25,7 @@ namespace engine {
 using Deploy::OverlayFsDeploy;
 using Deploy::Symlink;
 
-bool is_executable_binary(const std::filesystem::path& path) {
+bool is_executable_binary(const std::filesystem::path &path) {
   auto ext = path.extension().string();
   std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
     return static_cast<char>(std::tolower(c));
@@ -63,7 +63,7 @@ bool is_executable_binary(const std::filesystem::path& path) {
 // instance root where the session-end wipe can't reach it, so owner changes
 // across sessions are detected. Round-trips byte-exactly on Linux.
 std::map<std::filesystem::path, std::filesystem::path>
-load_deploy_ledger(const std::filesystem::path& ledger_file) {
+load_deploy_ledger(const std::filesystem::path &ledger_file) {
   std::map<std::filesystem::path, std::filesystem::path> m;
   std::ifstream in(ledger_file);
   std::string line;
@@ -91,7 +91,7 @@ namespace {
   // hardware_concurrency (capped at 16); the index-order dispatch keeps the
   // work items independent, so the callback needs no internal synchronization.
   template <typename Fn>
-  void run_parallel(size_t n, unsigned int num_threads, Fn&& fn) {
+  void run_parallel(size_t n, unsigned int num_threads, Fn &&fn) {
     if (n == 0)
       return;
     unsigned int t = num_threads;
@@ -119,7 +119,7 @@ namespace {
         }
       });
     }
-    for (auto& th : pool)
+    for (auto &th : pool)
       th.join();
   }
 
@@ -129,19 +129,19 @@ namespace {
   // full parallel deploy by design); in direct-symlink mode it lives at the
   // instance root where the session-end wipe can't reach it, so owner changes
   // across sessions are detected. Round-trips byte-exactly on Linux.
-  std::filesystem::path ledger_path(const std::filesystem::path& staging_dir) {
+  std::filesystem::path ledger_path(const std::filesystem::path &staging_dir) {
     return staging_dir / ".gmm_deploy_ledger";
   }
 
-  void save_ledger(const std::filesystem::path& ledger_file,
-                   const std::map<std::filesystem::path, std::filesystem::path>& m) {
+  void save_ledger(const std::filesystem::path &ledger_file,
+                   const std::map<std::filesystem::path, std::filesystem::path> &m) {
     std::error_code ec;
     std::filesystem::path tmpp = ledger_file;
     tmpp += ".tmp";
     std::ofstream out(tmpp, std::ios::trunc);
     if (!out)
       return;
-    for (const auto& [t, s] : m)
+    for (const auto &[t, s] : m)
       out << t.string() << '\t' << s.string() << '\n';
     out.flush();
     out.close();
@@ -151,7 +151,7 @@ namespace {
   // True when `p` is a strict descendant of `root` (same filesystem spelling).
   // Guards the backup store against backing up into itself when a root-override
   // mod ships a path that happens to collide with the Original_Files folder.
-  bool is_within(const std::filesystem::path& p, const std::filesystem::path& root) {
+  bool is_within(const std::filesystem::path &p, const std::filesystem::path &root) {
     const auto rel = p.lexically_relative(root);
     return !rel.empty() && rel != "." && *rel.begin() != "..";
   }
@@ -163,9 +163,9 @@ namespace {
   // are mod artifacts, and a game overwrite of one (e.g. Pandora replacing a
   // deployed symlink with a generated .hkx) is derived data, not an original.
   void backup_original(
-      const std::filesystem::path& target, const std::filesystem::path& deploy_root,
-      const std::filesystem::path& backup_root,
-      const std::map<std::filesystem::path, std::filesystem::path>& old_ledger) {
+      const std::filesystem::path &target, const std::filesystem::path &deploy_root,
+      const std::filesystem::path &backup_root,
+      const std::map<std::filesystem::path, std::filesystem::path> &old_ledger) {
     if (backup_root.empty() || is_within(target, backup_root))
       return;
     std::error_code ec;
@@ -192,9 +192,9 @@ namespace {
   // original was parked for it, restore it from backup_root to the same relative
   // location. Used by the incremental remove pass (a disabled mod's files) and by
   // remove_deployed_files. Returns false if any step failed.
-  bool remove_and_restore(const std::filesystem::path& target,
-                          const std::filesystem::path& deploy_root,
-                          const std::filesystem::path& backup_root) {
+  bool remove_and_restore(const std::filesystem::path &target,
+                          const std::filesystem::path &deploy_root,
+                          const std::filesystem::path &backup_root) {
     bool ok = true;
     std::error_code ec;
     const auto st = std::filesystem::symlink_status(target, ec);
@@ -236,7 +236,7 @@ namespace {
   // Remove empty directories under root, deepest first. Only ever called on the
   // backup store (our own folder) after restoring originals out of it; never on
   // game_dir.
-  void prune_empty_dirs(const std::filesystem::path& root) {
+  void prune_empty_dirs(const std::filesystem::path &root) {
     std::error_code ec;
     std::vector<std::filesystem::path> dirs;
     std::filesystem::recursive_directory_iterator it(
@@ -250,10 +250,10 @@ namespace {
         dirs.push_back(it->path());
     }
     std::sort(dirs.begin(), dirs.end(),
-              [](const std::filesystem::path& a, const std::filesystem::path& b) {
+              [](const std::filesystem::path &a, const std::filesystem::path &b) {
                 return a.string().size() > b.string().size();
               });
-    for (const auto& d : dirs) {
+    for (const auto &d : dirs) {
       std::error_code rec;
       if (std::filesystem::is_empty(d, rec))
         std::filesystem::remove(d, rec);
@@ -262,7 +262,7 @@ namespace {
 
 }  // namespace
 
-std::size_t add_case_insensitive_aliases(const std::filesystem::path& staging_dir) {
+std::size_t add_case_insensitive_aliases(const std::filesystem::path &staging_dir) {
   std::error_code ec;
   if (!std::filesystem::exists(staging_dir, ec) || ec)
     return 0;
@@ -271,8 +271,8 @@ std::size_t add_case_insensitive_aliases(const std::filesystem::path& staging_di
 
   // Create one alias symlink, replacing a stale generated alias but never
   // clobbering a real entry. Returns true when the alias was created.
-  auto create_alias = [&](const std::filesystem::path& alias,
-                          const std::string& target) -> bool {
+  auto create_alias = [&](const std::filesystem::path &alias,
+                          const std::string &target) -> bool {
     std::error_code aec;
     const auto atype = std::filesystem::symlink_status(alias, aec).type();
     if (aec) {
@@ -332,7 +332,7 @@ std::size_t add_case_insensitive_aliases(const std::filesystem::path& staging_di
   // directory itself instead of costing a full scan to prove absent.
   {
     std::error_code dec;
-    for (const auto& entry : std::filesystem::directory_iterator(staging_dir, dec)) {
+    for (const auto &entry : std::filesystem::directory_iterator(staging_dir, dec)) {
       if (dec)
         break;
       std::error_code sec;
@@ -358,12 +358,12 @@ std::size_t add_case_insensitive_aliases(const std::filesystem::path& staging_di
 // case-insensitive games), lowercase directory alias symlinks are added after
 // the link phase so a Windows game's lowercase spellings resolve on the
 // case-sensitive overlay mount.
-bool deploy_impl(const path& mods_dir, const path& deploy_root,
-                 const std::string& deploy_prefix, bool deploy_include_mod_id,
-                 const std::string& disable_mechanism, bool case_sensitive,
-                 Deploy::Interface& strategy, const path& ledger_file,
-                 bool add_ci_aliases, const path& backup_root, unsigned int num_threads,
-                 const DeployProgressFn& progress) {
+bool deploy_impl(const path &mods_dir, const path &deploy_root,
+                 const std::string &deploy_prefix, bool deploy_include_mod_id,
+                 const std::string &disable_mechanism, bool case_sensitive,
+                 Deploy::Interface &strategy, const path &ledger_file,
+                 bool add_ci_aliases, const path &backup_root, unsigned int num_threads,
+                 const DeployProgressFn &progress) {
   std::error_code ec;
   if (!std::filesystem::is_directory(mods_dir, ec)) {
     Logger::instance().warn("deploy_all_enabled_mods: mods_dir not found: " +
@@ -374,7 +374,7 @@ bool deploy_impl(const path& mods_dir, const path& deploy_root,
   // --- Phase 0: snapshot enabled mods (one listing + one sentinel stat +
   //     one meta.ini read per mod; cheap, single-threaded). ---------------
   std::vector<ModSnapshot> mods;
-  for (const auto& entry : std::filesystem::directory_iterator(mods_dir, ec)) {
+  for (const auto &entry : std::filesystem::directory_iterator(mods_dir, ec)) {
     if (!entry.is_directory())
       continue;
 
@@ -390,7 +390,7 @@ bool deploy_impl(const path& mods_dir, const path& deploy_root,
                      !std::filesystem::exists(entry.path() / disable_mechanism);
       if (!enabled)
         continue;
-    } catch (const std::filesystem::filesystem_error& ex) {
+    } catch (const std::filesystem::filesystem_error &ex) {
       Logger::instance().warn(
           "deploy_all_enabled_mods: cannot check enable state for " + folder + ": " +
           ex.what());
@@ -411,7 +411,7 @@ bool deploy_impl(const path& mods_dir, const path& deploy_root,
         try {
           engine::ModMeta meta = engine::ModMeta::load_file(meta_ini);
           root_override        = meta.get("General", "rootOverride") == "1";
-        } catch (const std::exception& ex) {
+        } catch (const std::exception &ex) {
           Logger::instance().warn("deploy_all_enabled_mods: cannot read meta for " +
                                   folder + ": " + ex.what());
         }
@@ -424,14 +424,14 @@ bool deploy_impl(const path& mods_dir, const path& deploy_root,
   // contested target. The sequential version let directory_iterator order
   // decide (arbitrary filesystem order); this fixes the seed of
   // nondeterminism while keeping "later mod wins".
-  std::sort(mods.begin(), mods.end(), [](const ModSnapshot& a, const ModSnapshot& b) {
+  std::sort(mods.begin(), mods.end(), [](const ModSnapshot &a, const ModSnapshot &b) {
     return a.folder < b.folder;
   });
 
   // --- Phase A: walk every enabled mod's tree in parallel, collecting
   //     (rel, source) file pairs. Purely discovery - no deploy work.
   run_parallel(mods.size(), num_threads, [&](size_t i) {
-    ModSnapshot& m     = mods[i];
+    ModSnapshot &m     = mods[i];
     const auto mod_dir = mods_dir / m.folder;
 
     // Walk through the unified tree (PLAN §19.4 P1.1) instead of a
@@ -448,7 +448,7 @@ bool deploy_impl(const path& mods_dir, const path& deploy_root,
     }
     auto tree = DirectoryFileTree::make_tree(mod_dir, NameCompare::CaseInsensitive,
                                              /*ignore_meta_ini=*/true);
-    tree->walk([&](const std::string& prefix, const FileTree::const_reference& entry) {
+    tree->walk([&](const std::string &prefix, const FileTree::const_reference &entry) {
       if (!entry->is_file()) {
         auto dir = std::dynamic_pointer_cast<const DirectoryFileTree>(entry);
         if (dir != nullptr && dir->is_symlink())
@@ -467,7 +467,7 @@ bool deploy_impl(const path& mods_dir, const path& deploy_root,
     });
     // Sort within the mod so CI-equal dir spellings merge into a
     // deterministic casing (first-seen wins).
-    std::sort(m.files.begin(), m.files.end(), [](const auto& a, const auto& b) {
+    std::sort(m.files.begin(), m.files.end(), [](const auto &a, const auto &b) {
       return a.first < b.first;
     });
   });
@@ -482,7 +482,7 @@ bool deploy_impl(const path& mods_dir, const path& deploy_root,
   auto target_base = deploy_root / deploy_prefix;
   std::filesystem::create_directories(target_base, ec);
 
-  auto deploy_root_for = [&](const ModSnapshot& m) -> std::filesystem::path {
+  auto deploy_root_for = [&](const ModSnapshot &m) -> std::filesystem::path {
     return m.root_override
                ? deploy_root
                : (deploy_include_mod_id ? target_base / m.folder : target_base);
@@ -494,13 +494,13 @@ bool deploy_impl(const path& mods_dir, const path& deploy_root,
   // on-disk tree (the ledger stays the source of truth). CI games route
   // directory resolution through it so dual-case mod dirs (Meshes/ + meshes/)
   // collapse into one on-disk casing, exactly as resolve_deploy_target_ci did.
-  auto& resolver = vfs::PathResolverRegistry::instance().resolver(
+  auto &resolver = vfs::PathResolverRegistry::instance().resolver(
       deploy_root, case_sensitive ? vfs::NameCompare::CaseSensitive
                                   : vfs::NameCompare::CaseInsensitive);
   if (case_sensitive) {
-    for (const auto& m : mods) {
+    for (const auto &m : mods) {
       auto base = deploy_root_for(m);
-      for (const auto& [rel, source] : m.files)
+      for (const auto &[rel, source] : m.files)
         winners[base / rel] = source;
     }
   } else {
@@ -513,16 +513,16 @@ bool deploy_impl(const path& mods_dir, const path& deploy_root,
     std::vector<std::filesystem::path> parents;
     {
       std::unordered_set<std::string> seen;
-      for (const auto& m : mods) {
+      for (const auto &m : mods) {
         auto base = deploy_root_for(m);
-        for (const auto& [rel, src] : m.files) {
+        for (const auto &[rel, src] : m.files) {
           auto p = (base / rel).parent_path().lexically_normal();
           if (seen.insert(p.string()).second)
             parents.push_back(p);
         }
       }
     }
-    for (const auto& p : parents) {
+    for (const auto &p : parents) {
       // resolve_dir leaves the last component unmatched; probe a sentinel
       // leaf so every real directory component is CI-matched, then drop
       // it. The resolved directory is the merged on-disk casing.
@@ -538,10 +538,10 @@ bool deploy_impl(const path& mods_dir, const path& deploy_root,
     // order therefore wins the slot (matching the contested-target
     // contract above) and its casing is what lands on disk.
     std::map<std::string, std::filesystem::path> canonical;  // fold -> target
-    for (const auto& m : mods) {
+    for (const auto &m : mods) {
       auto base     = deploy_root_for(m);
       auto base_rel = base.lexically_relative(deploy_root);
-      for (const auto& [rel, source] : m.files) {
+      for (const auto &[rel, source] : m.files) {
         auto rel_against_root = base_rel / rel;
         const auto target     = resolver.resolve_dir(rel_against_root.string()) /
                                 std::filesystem::path(rel).filename();
@@ -566,7 +566,7 @@ bool deploy_impl(const path& mods_dir, const path& deploy_root,
   };
   std::vector<WorkItem> work;
   auto old_ledger = load_deploy_ledger(ledger_file);
-  for (const auto& [target, source] : winners) {
+  for (const auto &[target, source] : winners) {
     bool unchanged = false;
     if (auto it = old_ledger.find(target);
         it != old_ledger.end() && it->second == source) {
@@ -576,7 +576,7 @@ bool deploy_impl(const path& mods_dir, const path& deploy_root,
     if (!unchanged)
       work.push_back({target, source, false});
   }
-  for (const auto& [target, src] : old_ledger) {
+  for (const auto &[target, src] : old_ledger) {
     (void)src;
     if (winners.find(target) == winners.end())
       work.push_back({target, {}, true});
@@ -589,7 +589,7 @@ bool deploy_impl(const path& mods_dir, const path& deploy_root,
     std::atomic<int> failed{0};
     const int total = static_cast<int>(work.size());
     run_parallel(work.size(), num_threads, [&](size_t i) {
-      const WorkItem& w = work[i];
+      const WorkItem &w = work[i];
       bool ok;
       if (w.remove) {
         // Unlink the deployed artifact and, in direct mode with a
@@ -632,7 +632,7 @@ bool deploy_impl(const path& mods_dir, const path& deploy_root,
   }
 
   size_t file_count = 0;
-  for (const auto& m : mods)
+  for (const auto &m : mods)
     file_count += m.files.size();
   Logger::instance().debug("deploy_all_enabled_mods: " + std::to_string(mods.size()) +
                            " mods processed, " + std::to_string(file_count) +
@@ -641,12 +641,12 @@ bool deploy_impl(const path& mods_dir, const path& deploy_root,
   return work_failed == 0;
 }
 
-bool deploy_all_enabled_mods_parallel(const path& mods_dir, const path& staging_dir,
-                                      const std::string& deploy_prefix,
+bool deploy_all_enabled_mods_parallel(const path &mods_dir, const path &staging_dir,
+                                      const std::string &deploy_prefix,
                                       bool deploy_include_mod_id,
-                                      const std::string& disable_mechanism,
+                                      const std::string &disable_mechanism,
                                       bool case_sensitive, unsigned int num_threads,
-                                      const DeployProgressFn& progress) {
+                                      const DeployProgressFn &progress) {
   OverlayFsDeploy strategy(staging_dir, case_sensitive);
   return deploy_impl(mods_dir, staging_dir, deploy_prefix, deploy_include_mod_id,
                      disable_mechanism, case_sensitive, strategy,
@@ -655,22 +655,22 @@ bool deploy_all_enabled_mods_parallel(const path& mods_dir, const path& staging_
                      /*backup_root=*/{}, num_threads, progress);
 }
 
-bool deploy_all_enabled_mods_direct(const path& mods_dir, const path& game_dir,
-                                    const std::string& deploy_prefix,
+bool deploy_all_enabled_mods_direct(const path &mods_dir, const path &game_dir,
+                                    const std::string &deploy_prefix,
                                     bool deploy_include_mod_id,
-                                    const std::string& disable_mechanism,
-                                    bool case_sensitive, const path& ledger_file,
-                                    const path& backup_root, unsigned int num_threads,
-                                    const DeployProgressFn& progress) {
+                                    const std::string &disable_mechanism,
+                                    bool case_sensitive, const path &ledger_file,
+                                    const path &backup_root, unsigned int num_threads,
+                                    const DeployProgressFn &progress) {
   Symlink strategy(case_sensitive);
   return deploy_impl(mods_dir, game_dir, deploy_prefix, deploy_include_mod_id,
                      disable_mechanism, case_sensitive, strategy, ledger_file,
                      /*add_ci_aliases=*/false, backup_root, num_threads, progress);
 }
 
-bool remove_deployed_files(const path& game_dir, const path& backup_root,
-                           const path& ledger_file, unsigned int num_threads,
-                           const DeployProgressFn& progress) {
+bool remove_deployed_files(const path &game_dir, const path &backup_root,
+                           const path &ledger_file, unsigned int num_threads,
+                           const DeployProgressFn &progress) {
   auto ledger = load_deploy_ledger(ledger_file);
   if (ledger.empty()) {
     if (progress)
@@ -680,7 +680,7 @@ bool remove_deployed_files(const path& game_dir, const path& backup_root,
 
   std::vector<path> targets;
   targets.reserve(ledger.size());
-  for (const auto& [target, src] : ledger) {
+  for (const auto &[target, src] : ledger) {
     (void)src;
     targets.push_back(target);
   }
@@ -711,10 +711,10 @@ bool remove_deployed_files(const path& game_dir, const path& backup_root,
   return false;
 }
 
-bool deploy_all_enabled_mods(const path& mods_dir, const path& staging_dir,
-                             const std::string& deploy_prefix,
+bool deploy_all_enabled_mods(const path &mods_dir, const path &staging_dir,
+                             const std::string &deploy_prefix,
                              bool deploy_include_mod_id,
-                             const std::string& disable_mechanism,
+                             const std::string &disable_mechanism,
                              bool case_sensitive) {
   return deploy_all_enabled_mods_parallel(mods_dir, staging_dir, deploy_prefix,
                                           deploy_include_mod_id, disable_mechanism,

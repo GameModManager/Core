@@ -16,432 +16,433 @@ namespace ui {
 
 // --- FetchRunner ---
 
-FetchRunner::FetchRunner(QObject* parent)
-    : QObject(parent) {
-    // Downloads are decoupled from installs (MO2 model): this pipeline never
-    // extracts or installs, it just produces the archive in the instance
-    // downloads dir. Each runner owns its own copy so concurrent transfers
-    // never share a PipelineContext (per-run mutable state - should_abort,
-    // resume offset, progress callbacks).
-    fetch_pipeline_ = std::make_unique<engine::Pipeline>();
-    fetch_pipeline_->set_flow_id("download");
-    fetch_pipeline_->add_stage(std::make_unique<engine::FetchStage>());
+FetchRunner::FetchRunner(QObject *parent) : QObject(parent) {
+  // Downloads are decoupled from installs (MO2 model): this pipeline never
+  // extracts or installs, it just produces the archive in the instance
+  // downloads dir. Each runner owns its own copy so concurrent transfers
+  // never share a PipelineContext (per-run mutable state - should_abort,
+  // resume offset, progress callbacks).
+  fetch_pipeline_ = std::make_unique<engine::Pipeline>();
+  fetch_pipeline_->set_flow_id("download");
+  fetch_pipeline_->add_stage(std::make_unique<engine::FetchStage>());
 
-    thread_ = new QThread(this);
-    thread_->setObjectName(QStringLiteral("gmm-download"));
-    moveToThread(thread_);
-    thread_->start();
+  thread_ = new QThread(this);
+  thread_->setObjectName(QStringLiteral("gmm-download"));
+  moveToThread(thread_);
+  thread_->start();
 }
 
 FetchRunner::~FetchRunner() {
-    stop();
+  stop();
 }
 
 void FetchRunner::stop() {
-    if (thread_ && thread_->isRunning()) {
-        // Cooperative: the in-flight transfer polls cancel_flag_ and aborts,
-        // then run() returns and the queued quit is processed.
-        cancel_flag_.store(true);
-        thread_->quit();
-        thread_->wait(3000);
-    }
+  if (thread_ && thread_->isRunning()) {
+    // Cooperative: the in-flight transfer polls cancel_flag_ and aborts,
+    // then run() returns and the queued quit is processed.
+    cancel_flag_.store(true);
+    thread_->quit();
+    thread_->wait(3000);
+  }
 }
 
-void FetchRunner::run(const std::string& id, engine::Mod mod,
-                      const std::string& mods_dir) {
-    engine::Logger::instance().debug("[Fetch] run started: id=" + id +
-                                     " source=" + mod.download_source_type +
-                                     " source_id=" + mod.download_source_id);
-    auto& ctx = fetch_pipeline_->ctx();
+void FetchRunner::run(const std::string &id, engine::Mod mod,
+                      const std::string &mods_dir) {
+  engine::Logger::instance().debug("[Fetch] run started: id=" + id +
+                                   " source=" + mod.download_source_type +
+                                   " source_id=" + mod.download_source_id);
+  auto &ctx = fetch_pipeline_->ctx();
 
-    // Reset the pause/resume fields for this run (the worker reset the cancel
-    // flag before dispatching).
-    ctx.should_abort = [this]() { return cancel_flag_.load(); };
-    ctx.download_paused = false;
-    ctx.download_resume_from = 0;
+  // Reset the pause/resume fields for this run (the worker reset the cancel
+  // flag before dispatching).
+  ctx.should_abort = [this]() {
+    return cancel_flag_.load();
+  };
+  ctx.download_paused      = false;
+  ctx.download_resume_from = 0;
 
-    if (!mods_dir.empty())
-        ctx.mods_dir = std::filesystem::path(mods_dir);
+  if (!mods_dir.empty())
+    ctx.mods_dir = std::filesystem::path(mods_dir);
 
-    ctx.on_progress = [this, id](int64_t dl, int64_t total, double speed) {
-        emit download_progress(id, dl, total, speed);
-    };
+  ctx.on_progress = [this, id](int64_t dl, int64_t total, double speed) {
+    emit download_progress(id, dl, total, speed);
+  };
 
-    // Fire the resolved name as soon as FetchStage knows it (before the bytes
-    // flow) so the UI can drop its placeholder immediately. Cleared with the
-    // progress callback after the run.
-    ctx.on_download_meta =
-        [this, id](const std::string& archive_name, const std::string& display_name) {
-            emit download_meta(id, archive_name, display_name);
-        };
+  // Fire the resolved name as soon as FetchStage knows it (before the bytes
+  // flow) so the UI can drop its placeholder immediately. Cleared with the
+  // progress callback after the run.
+  ctx.on_download_meta = [this, id](const std::string &archive_name,
+                                    const std::string &display_name) {
+    emit download_meta(id, archive_name, display_name);
+  };
 
-    engine::Logger::instance().debug("[Fetch] Starting pipeline run for id=" + id);
-    const bool success =
-        fetch_pipeline_->run(mod) == engine::PipelineResult::Success;
-    engine::Logger::instance().debug("[Fetch] Pipeline run completed for id=" + id + " success=" + (success ? "true" : "false"));
+  engine::Logger::instance().debug("[Fetch] Starting pipeline run for id=" + id);
+  const bool success = fetch_pipeline_->run(mod) == engine::PipelineResult::Success;
+  engine::Logger::instance().debug("[Fetch] Pipeline run completed for id=" + id +
+                                   " success=" + (success ? "true" : "false"));
 
-    // Clean up progress callbacks
-    ctx.on_progress = nullptr;
-    ctx.on_download_meta = nullptr;
+  // Clean up progress callbacks
+  ctx.on_progress      = nullptr;
+  ctx.on_download_meta = nullptr;
 
-    if (ctx.download_paused) {
-        engine::Logger::instance().debug("[Fetch] Download paused: " + id);
-        emit paused(id);
-        emit fetch_finished(id);
-        return;
-    }
-
-    // FetchStage records the downloaded archive in mod.files[0].
-    std::string archive_path;
-    if (!mod.files.empty())
-        archive_path = mod.files[0].relative_path;
-
-    // Real display name only when the provider resolved one (FetchStage
-    // overwrote the "Mod file <id>" placeholder); empty otherwise so the UI
-    // keeps its own placeholder.
-    std::string display_name =
-        (mod.name == "Mod file " + id) ? std::string{} : mod.name;
-
-    if (success) {
-        engine::Logger::instance().debug("[Fetch] Download complete: " + id + " path=" + archive_path);
-        emit download_complete(id, true, archive_path, display_name);
-    } else {
-        engine::Logger::instance().error("[Fetch] Download failed: " + id);
-        emit download_complete(id, false, archive_path, display_name);
-    }
+  if (ctx.download_paused) {
+    engine::Logger::instance().debug("[Fetch] Download paused: " + id);
+    emit paused(id);
     emit fetch_finished(id);
+    return;
+  }
+
+  // FetchStage records the downloaded archive in mod.files[0].
+  std::string archive_path;
+  if (!mod.files.empty())
+    archive_path = mod.files[0].relative_path;
+
+  // Real display name only when the provider resolved one (FetchStage
+  // overwrote the "Mod file <id>" placeholder); empty otherwise so the UI
+  // keeps its own placeholder.
+  std::string display_name = (mod.name == "Mod file " + id) ? std::string{} : mod.name;
+
+  if (success) {
+    engine::Logger::instance().debug("[Fetch] Download complete: " + id +
+                                     " path=" + archive_path);
+    emit download_complete(id, true, archive_path, display_name);
+  } else {
+    engine::Logger::instance().error("[Fetch] Download failed: " + id);
+    emit download_complete(id, false, archive_path, display_name);
+  }
+  emit fetch_finished(id);
 }
 
 // --- PipelineWorker ---
 
-PipelineWorker::PipelineWorker(QObject* parent)
-    : QObject(parent) {
-    // Build the download pool. Downloads are background work with no UI lock,
-    // so a pool of transfer threads is safe; installs still serialize on this
-    // worker (the UI locks for the duration of an install).
-    for (int i = 0; i < kMaxConcurrentDownloads; ++i) {
-        auto runner = std::make_unique<FetchRunner>();
-        // Relay the pool slots' signals through this object so all existing
-        // UI wiring keeps listening to a single, stable emitter.
-        connect(runner.get(), &FetchRunner::download_progress,
-                this, &PipelineWorker::download_progress);
-        connect(runner.get(), &FetchRunner::download_meta,
-                this, &PipelineWorker::download_meta);
-        connect(runner.get(), &FetchRunner::download_complete,
-                this, &PipelineWorker::download_complete);
-        connect(runner.get(), &FetchRunner::paused,
-                this, &PipelineWorker::paused);
-        connect(runner.get(), &FetchRunner::fetch_finished,
-                this, &PipelineWorker::on_fetch_finished);
-        runners_.push_back(std::move(runner));
-    }
+PipelineWorker::PipelineWorker(QObject *parent) : QObject(parent) {
+  // Build the download pool. Downloads are background work with no UI lock,
+  // so a pool of transfer threads is safe; installs still serialize on this
+  // worker (the UI locks for the duration of an install).
+  for (int i = 0; i < kMaxConcurrentDownloads; ++i) {
+    auto runner = std::make_unique<FetchRunner>();
+    // Relay the pool slots' signals through this object so all existing
+    // UI wiring keeps listening to a single, stable emitter.
+    connect(runner.get(), &FetchRunner::download_progress, this,
+            &PipelineWorker::download_progress);
+    connect(runner.get(), &FetchRunner::download_meta, this,
+            &PipelineWorker::download_meta);
+    connect(runner.get(), &FetchRunner::download_complete, this,
+            &PipelineWorker::download_complete);
+    connect(runner.get(), &FetchRunner::paused, this, &PipelineWorker::paused);
+    connect(runner.get(), &FetchRunner::fetch_finished, this,
+            &PipelineWorker::on_fetch_finished);
+    runners_.push_back(std::move(runner));
+  }
 }
 
 PipelineWorker::~PipelineWorker() {
-    // Stop every transfer thread. Bounded waits - an in-flight download aborts
-    // cooperatively via its cancel flag, so this returns almost immediately.
-    for (auto& runner : runners_) {
-        runner->cancel_flag().store(true);
-        runner->stop();
-    }
+  // Stop every transfer thread. Bounded waits - an in-flight download aborts
+  // cooperatively via its cancel flag, so this returns almost immediately.
+  for (auto &runner : runners_) {
+    runner->cancel_flag().store(true);
+    runner->stop();
+  }
 }
 
 void PipelineWorker::set_pipeline(std::unique_ptr<engine::Pipeline> pipeline) {
-    pipeline_ = std::move(pipeline);
+  pipeline_ = std::move(pipeline);
 }
 
 void PipelineWorker::set_context(engine::PipelineContext ctx) {
-    ctx_ = std::move(ctx);
+  ctx_ = std::move(ctx);
 }
 
-void PipelineWorker::install_mod(const std::string& id, const std::string& zip_path,
-                                  const std::string& source_type,
-                                  const std::string& source_id, int file_id,
-                                  const std::string& name,
-                                  const std::string& page_url) {
-    engine::Logger::instance().debug("Installing mod: " + id);
+void PipelineWorker::install_mod(const std::string &id, const std::string &zip_path,
+                                 const std::string &source_type,
+                                 const std::string &source_id, int file_id,
+                                 const std::string &name, const std::string &page_url) {
+  engine::Logger::instance().debug("Installing mod: " + id);
 
-    if (!pipeline_) {
-        emit install_complete(id, false, "No pipeline configured");
-        return;
-    }
+  if (!pipeline_) {
+    emit install_complete(id, false, "No pipeline configured");
+    return;
+  }
 
-    engine::Mod mod;
-    mod.id = id;
-    mod.name = name.empty() ? id : name;
-    mod.state = engine::ModState::Downloaded;
-    mod.download_source_type = source_type;
-    mod.download_source_id = source_id;
-    mod.download_nxm.file_id = file_id;
-    mod.download_page_url = page_url;
+  engine::Mod mod;
+  mod.id                   = id;
+  mod.name                 = name.empty() ? id : name;
+  mod.state                = engine::ModState::Downloaded;
+  mod.download_source_type = source_type;
+  mod.download_source_id   = source_id;
+  mod.download_nxm.file_id = file_id;
+  mod.download_page_url    = page_url;
 
-    // Add the zip file to mod files
-    engine::ModFile file;
-    file.relative_path = zip_path;
-    mod.files.push_back(file);
+  // Add the zip file to mod files
+  engine::ModFile file;
+  file.relative_path = zip_path;
+  mod.files.push_back(file);
 
-    // Record the archive name (FetchStage used to set this; InstallStage's
-    // meta.ini record reads it).
-    mod.archive_filename = std::filesystem::path(zip_path).filename().string();
+  // Record the archive name (FetchStage used to set this; InstallStage's
+  // meta.ini record reads it).
+  mod.archive_filename = std::filesystem::path(zip_path).filename().string();
 
-    // Route engine install-stage progress (extract/copy) to the UI. The
-    // callback runs on this worker thread; the signal is auto-queued to the
-    // main thread's progress dialog.
-    pipeline_->ctx().on_stage_progress =
-        [this, id](int percent, const std::string& status) {
-            emit install_progress(id, percent, status);
-        };
+  // Route engine install-stage progress (extract/copy) to the UI. The
+  // callback runs on this worker thread; the signal is auto-queued to the
+  // main thread's progress dialog.
+  pipeline_->ctx().on_stage_progress = [this, id](int percent,
+                                                  const std::string &status) {
+    emit install_progress(id, percent, status);
+  };
 
-    // Read the extraction-priority toggle on every install (not cached at
-    // startup) and forward it to the engine via PipelineContext. The engine is
-    // Qt-free and never touches QSettings directly.
-    pipeline_->ctx().low_priority_extraction =
-        Settings::instance().extraction_low_priority();
+  // Read the extraction-priority toggle on every install (not cached at
+  // startup) and forward it to the engine via PipelineContext. The engine is
+  // Qt-free and never touches QSettings directly.
+  pipeline_->ctx().low_priority_extraction =
+      Settings::instance().extraction_low_priority();
 
-    auto result = pipeline_->run(mod);
+  auto result = pipeline_->run(mod);
 
-    if (result == engine::PipelineResult::Success) {
-        engine::Logger::instance().debug("Mod installed: " + id);
-        emit install_complete(id, true, "Success",
-                              pipeline_->ctx().installed_mod_folder);
-    } else if (result == engine::PipelineResult::Canceled) {
-        // User canceled an interactive stage (FOMOD wizard, overwrite dialog).
-        // Not a failure: the download keeps whatever state it had.
-        engine::Logger::instance().debug("Mod install canceled: " + id);
-        emit install_canceled(id);
-    } else {
-        engine::Logger::instance().error("Failed to install mod: " + id);
-        emit install_complete(id, false, "Pipeline failed");
-    }
+  if (result == engine::PipelineResult::Success) {
+    engine::Logger::instance().debug("Mod installed: " + id);
+    emit install_complete(id, true, "Success", pipeline_->ctx().installed_mod_folder);
+  } else if (result == engine::PipelineResult::Canceled) {
+    // User canceled an interactive stage (FOMOD wizard, overwrite dialog).
+    // Not a failure: the download keeps whatever state it had.
+    engine::Logger::instance().debug("Mod install canceled: " + id);
+    emit install_canceled(id);
+  } else {
+    engine::Logger::instance().error("Failed to install mod: " + id);
+    emit install_complete(id, false, "Pipeline failed");
+  }
 }
 
-void PipelineWorker::download_mod(const std::string& id,
-                                   const engine::NxmLink& link,
-                                   const std::string& game_id,
-                                   const std::string& mods_dir) {
-    (void)game_id;
-    engine::Logger::instance().debug("[Pipeline] download_mod called: id=" + id +
-                                     " mod_id=" + std::to_string(link.mod_id) +
-                                     " file_id=" + std::to_string(link.file_id) +
-                                     " domain=" + link.nexus_domain);
+void PipelineWorker::download_mod(const std::string &id, const engine::NxmLink &link,
+                                  const std::string &game_id,
+                                  const std::string &mods_dir) {
+  (void)game_id;
+  engine::Logger::instance().debug("[Pipeline] download_mod called: id=" + id +
+                                   " mod_id=" + std::to_string(link.mod_id) +
+                                   " file_id=" + std::to_string(link.file_id) +
+                                   " domain=" + link.nexus_domain);
 
-    engine::Mod mod;
-    mod.id = id;
-    mod.name = "Mod file " + id;
-    mod.state = engine::ModState::Downloaded;
-    mod.download_source_type = "nexus";
-    mod.download_source_id = std::to_string(link.mod_id);
-    mod.download_nxm.file_id = link.file_id;
-    mod.download_nxm.key = link.key;
-    mod.download_nxm.expire = link.expire;
-    mod.download_nxm.user_id = link.user_id;
-    mod.download_nxm.nexus_domain = link.nexus_domain;
+  engine::Mod mod;
+  mod.id                        = id;
+  mod.name                      = "Mod file " + id;
+  mod.state                     = engine::ModState::Downloaded;
+  mod.download_source_type      = "nexus";
+  mod.download_source_id        = std::to_string(link.mod_id);
+  mod.download_nxm.file_id      = link.file_id;
+  mod.download_nxm.key          = link.key;
+  mod.download_nxm.expire       = link.expire;
+  mod.download_nxm.user_id      = link.user_id;
+  mod.download_nxm.nexus_domain = link.nexus_domain;
 
-    dispatch_fetch({id, std::move(mod), mods_dir});
+  dispatch_fetch({id, std::move(mod), mods_dir});
 }
 
-void PipelineWorker::download_mod_url(const std::string& id,
-                                      const std::string& url,
-                                      const std::string& game_id,
-                                      const std::string& mods_dir) {
-    (void)game_id;
-    engine::Logger::instance().debug("Downloading URL: " + id);
+void PipelineWorker::download_mod_url(const std::string &id, const std::string &url,
+                                      const std::string &game_id,
+                                      const std::string &mods_dir) {
+  (void)game_id;
+  engine::Logger::instance().debug("Downloading URL: " + id);
 
-    engine::Mod mod;
-    mod.id = id;
-    mod.name = "Mod file " + id;
-    mod.state = engine::ModState::Downloaded;
-    mod.download_source_type = "loverslab";
-    mod.download_source_id = id;
-    mod.download_url = url;
+  engine::Mod mod;
+  mod.id                   = id;
+  mod.name                 = "Mod file " + id;
+  mod.state                = engine::ModState::Downloaded;
+  mod.download_source_type = "loverslab";
+  mod.download_source_id   = id;
+  mod.download_url         = url;
 
-    dispatch_fetch({id, std::move(mod), mods_dir});
+  dispatch_fetch({id, std::move(mod), mods_dir});
 }
 
-void PipelineWorker::download_modl(const std::string& id,
-                                    const engine::Source::ModlLink& link,
-                                    const std::string& game_id,
-                                    const std::string& mods_dir) {
-    (void)game_id;
-    if (!link.valid()) {
-        engine::Logger::instance().warn("download_modl: invalid modl link for " + id);
-        emit download_complete(id, false, {}, {});
-        return;
-    }
-    engine::Logger::instance().debug("Downloading modl: " + id + " game=" + link.game_id);
+void PipelineWorker::download_modl(const std::string &id,
+                                   const engine::Source::ModlLink &link,
+                                   const std::string &game_id,
+                                   const std::string &mods_dir) {
+  (void)game_id;
+  if (!link.valid()) {
+    engine::Logger::instance().warn("download_modl: invalid modl link for " + id);
+    emit download_complete(id, false, {}, {});
+    return;
+  }
+  engine::Logger::instance().debug("Downloading modl: " + id + " game=" + link.game_id);
 
-    engine::Mod mod;
-    mod.id = id;
-    mod.name = "Mod file " + id;
-    mod.state = engine::ModState::Downloaded;
-    // Source attribution comes from the direct URL's host (modl is a
-    // transport, not a source). mod.pub -> "modpub" (fetched by the ModPub
-    // provider using the direct URL it has pre-resolved); anything else ->
-    // "direct" (the modl transport provider, which is the curl helper for
-    // arbitrary https URLs).
-    const auto derived =
-        engine::Source::Router::derive_source_from_direct_url(link.direct_url);
-    mod.download_source_type = derived.source_type.empty()
-                                  ? std::string("direct")
-                                  : derived.source_type;
-    // source_id:
-    //   * modpub -> the numeric mod id extracted from the canonical page URL
-    //     (install_stage writes it to [ModPub]mod_id and the panel uses it
-    //     for Visit/Refresh).
-    //   * direct (generic modl) -> the URL basename, ?query/#fragment
-    //     stripped and percent-decoded via the existing helper, so a
-    //     download_url like ".../file.zip?token=abc" yields "file.zip" and
-    //     the on-disk archive has a meaningful default name.
-    if (derived.source_type == "modpub") {
-        mod.download_source_id =
-            engine::Source::ModPub::Provider::extract_mod_id(derived.page_url);
-        mod.download_page_url = derived.page_url;  // canonical https page
-    } else {
-        mod.download_source_id =
-            engine::download::url_path_basename(link.direct_url);
-        mod.download_page_url = link.full_url;     // modl:// audit trail
-    }
-    mod.download_url = link.direct_url;
+  engine::Mod mod;
+  mod.id    = id;
+  mod.name  = "Mod file " + id;
+  mod.state = engine::ModState::Downloaded;
+  // Source attribution comes from the direct URL's host (modl is a
+  // transport, not a source). mod.pub -> "modpub" (fetched by the ModPub
+  // provider using the direct URL it has pre-resolved); anything else ->
+  // "direct" (the modl transport provider, which is the curl helper for
+  // arbitrary https URLs).
+  const auto derived =
+      engine::Source::Router::derive_source_from_direct_url(link.direct_url);
+  mod.download_source_type =
+      derived.source_type.empty() ? std::string("direct") : derived.source_type;
+  // source_id:
+  //   * modpub -> the numeric mod id extracted from the canonical page URL
+  //     (install_stage writes it to [ModPub]mod_id and the panel uses it
+  //     for Visit/Refresh).
+  //   * direct (generic modl) -> the URL basename, ?query/#fragment
+  //     stripped and percent-decoded via the existing helper, so a
+  //     download_url like ".../file.zip?token=abc" yields "file.zip" and
+  //     the on-disk archive has a meaningful default name.
+  if (derived.source_type == "modpub") {
+    mod.download_source_id =
+        engine::Source::ModPub::Provider::extract_mod_id(derived.page_url);
+    mod.download_page_url = derived.page_url;  // canonical https page
+  } else {
+    mod.download_source_id = engine::download::url_path_basename(link.direct_url);
+    mod.download_page_url  = link.full_url;  // modl:// audit trail
+  }
+  mod.download_url = link.direct_url;
 
-    dispatch_fetch({id, std::move(mod), mods_dir});
+  dispatch_fetch({id, std::move(mod), mods_dir});
 }
 
-void PipelineWorker::dispatch_fetch(PendingDownload&& pd) {
-    engine::Logger::instance().debug("[Pipeline] dispatch_fetch: id=" + pd.id +
-                                     " source=" + pd.mod.download_source_type +
-                                     " source_id=" + pd.mod.download_source_id +
-                                     " nexus_queue=" + (nexus_queue_downloads_.load() ? "on" : "off") +
-                                     " nexus_in_flight=" + std::to_string(nexus_in_flight_.size()) +
-                                     " free_slots=" + std::to_string(std::count_if(runners_.begin(), runners_.end(),
-                                         [](const auto& r) { return !r->busy().load(); })));
-    // Per-source queueing: when enabled, a Nexus download waits while any
-    // other Nexus download is still in flight, even if a pool slot is free.
-    // Other sources ignore the rule (a LoversLab download may run alongside).
-    if (pd.mod.download_source_type == "nexus" && nexus_queue_downloads_.load() &&
-        !nexus_in_flight_.empty()) {
-        engine::Logger::instance().debug("[Pipeline] dispatch_fetch: QUEUED (nexus one-at-a-time) id=" + pd.id);
-        pending_.push_back(std::move(pd));
-        return;
-    }
-    // Round-robin scan for a free slot (THREADING §5: transfers live on their
-    // own threads, the UI is never blocked on network).
-    for (std::size_t i = 0; i < runners_.size(); ++i) {
-        auto* runner = runners_[(next_runner_ + i) % runners_.size()].get();
-        if (runner->busy().load())
-            continue;
-        next_runner_ = (next_runner_ + i + 1) % runners_.size();
-        engine::Logger::instance().debug("[Pipeline] dispatch_fetch: DISPATCHED to runner slot " + std::to_string((next_runner_ + i) % runners_.size()) + " id=" + pd.id);
-        start_fetch_on(runner, std::move(pd));
-        return;
-    }
-    // Every slot is busy: park it. on_fetch_finished drains the queue in order
-    // (FIFO - earlier downloads keep their place over later ones).
-    engine::Logger::instance().debug("[Pipeline] dispatch_fetch: QUEUED (all slots busy) id=" + pd.id);
+void PipelineWorker::dispatch_fetch(PendingDownload &&pd) {
+  engine::Logger::instance().debug(
+      "[Pipeline] dispatch_fetch: id=" + pd.id + " source=" +
+      pd.mod.download_source_type + " source_id=" + pd.mod.download_source_id +
+      " nexus_queue=" + (nexus_queue_downloads_.load() ? "on" : "off") +
+      " nexus_in_flight=" + std::to_string(nexus_in_flight_.size()) + " free_slots=" +
+      std::to_string(std::count_if(runners_.begin(), runners_.end(), [](const auto &r) {
+        return !r->busy().load();
+      })));
+  // Per-source queueing: when enabled, a Nexus download waits while any
+  // other Nexus download is still in flight, even if a pool slot is free.
+  // Other sources ignore the rule (a LoversLab download may run alongside).
+  if (pd.mod.download_source_type == "nexus" && nexus_queue_downloads_.load() &&
+      !nexus_in_flight_.empty()) {
+    engine::Logger::instance().debug(
+        "[Pipeline] dispatch_fetch: QUEUED (nexus one-at-a-time) id=" + pd.id);
     pending_.push_back(std::move(pd));
+    return;
+  }
+  // Round-robin scan for a free slot (THREADING §5: transfers live on their
+  // own threads, the UI is never blocked on network).
+  for (std::size_t i = 0; i < runners_.size(); ++i) {
+    auto *runner = runners_[(next_runner_ + i) % runners_.size()].get();
+    if (runner->busy().load())
+      continue;
+    next_runner_ = (next_runner_ + i + 1) % runners_.size();
+    engine::Logger::instance().debug(
+        "[Pipeline] dispatch_fetch: DISPATCHED to runner slot " +
+        std::to_string((next_runner_ + i) % runners_.size()) + " id=" + pd.id);
+    start_fetch_on(runner, std::move(pd));
+    return;
+  }
+  // Every slot is busy: park it. on_fetch_finished drains the queue in order
+  // (FIFO - earlier downloads keep their place over later ones).
+  engine::Logger::instance().debug(
+      "[Pipeline] dispatch_fetch: QUEUED (all slots busy) id=" + pd.id);
+  pending_.push_back(std::move(pd));
 }
 
-void PipelineWorker::start_fetch_on(FetchRunner* runner, PendingDownload&& pd) {
-    engine::Logger::instance().debug("[Pipeline] start_fetch_on: id=" + pd.id +
-                                     " source=" + pd.mod.download_source_type);
-    runner->busy().store(true);
-    // Reset the cooperative-pause flag BEFORE dispatch so a stale flag from a
-    // previous run on this slot can't abort the new download. A pause arriving
-    // after this point still wins: it finds the id in running_ and the flag is
-    // polled by the transfer before/while it starts.
-    runner->cancel_flag().store(false);
-    if (pd.mod.download_source_type == "nexus")
-        nexus_in_flight_.insert(pd.id);
-    running_[pd.id] = runner;
+void PipelineWorker::start_fetch_on(FetchRunner *runner, PendingDownload &&pd) {
+  engine::Logger::instance().debug("[Pipeline] start_fetch_on: id=" + pd.id +
+                                   " source=" + pd.mod.download_source_type);
+  runner->busy().store(true);
+  // Reset the cooperative-pause flag BEFORE dispatch so a stale flag from a
+  // previous run on this slot can't abort the new download. A pause arriving
+  // after this point still wins: it finds the id in running_ and the flag is
+  // polled by the transfer before/while it starts.
+  runner->cancel_flag().store(false);
+  if (pd.mod.download_source_type == "nexus")
+    nexus_in_flight_.insert(pd.id);
+  running_[pd.id] = runner;
 
-    const std::string id = pd.id;
-    QMetaObject::invokeMethod(
-        runner,
-        [runner, id, mod = std::move(pd.mod),
-         mods_dir = std::move(pd.mods_dir)]() mutable {
-            engine::Logger::instance().debug("[Pipeline] FetchRunner lambda executing, calling run() for id=" + id);
-            runner->run(id, std::move(mod), mods_dir);
-        },
-        Qt::QueuedConnection);
+  const std::string id = pd.id;
+  QMetaObject::invokeMethod(
+      runner,
+      [runner, id, mod = std::move(pd.mod),
+       mods_dir = std::move(pd.mods_dir)]() mutable {
+        engine::Logger::instance().debug(
+            "[Pipeline] FetchRunner lambda executing, calling run() for id=" + id);
+        runner->run(id, std::move(mod), mods_dir);
+      },
+      Qt::QueuedConnection);
 }
 
-void PipelineWorker::on_fetch_finished(const std::string& id) {
-    engine::Logger::instance().debug("[Pipeline] on_fetch_finished: id=" + id);
-    auto it = running_.find(id);
-    if (it == running_.end()) {
-        engine::Logger::instance().warn("[Pipeline] on_fetch_finished: id not found in running_: " + id);
-        return;
-    }
-    FetchRunner* runner = it->second;
-    running_.erase(it);
-    runner->busy().store(false);
-    nexus_in_flight_.erase(id);
+void PipelineWorker::on_fetch_finished(const std::string &id) {
+  engine::Logger::instance().debug("[Pipeline] on_fetch_finished: id=" + id);
+  auto it = running_.find(id);
+  if (it == running_.end()) {
+    engine::Logger::instance().warn(
+        "[Pipeline] on_fetch_finished: id not found in running_: " + id);
+    return;
+  }
+  FetchRunner *runner = it->second;
+  running_.erase(it);
+  runner->busy().store(false);
+  nexus_in_flight_.erase(id);
 
-    // A slot freed up: hand it the next queued download, if any. Nexus
-    // downloads respect the one-at-a-time rule - a queued Nexus download takes
-    // the slot only when no other Nexus transfer is in flight. A non-Nexus
-    // download may always take it (so the second pool slot never idles behind
-    // a blocked Nexus front-runner).
-    if (!pending_.empty()) {
-        for (auto pit = pending_.begin(); pit != pending_.end(); ++pit) {
-            if (pit->mod.download_source_type == "nexus" &&
-                nexus_queue_downloads_.load() && !nexus_in_flight_.empty())
-                continue;
-            auto pd = std::move(*pit);
-            pending_.erase(pit);
-            engine::Logger::instance().debug("[Pipeline] on_fetch_finished: dequeuing next id=" + pd.id);
-            start_fetch_on(runner, std::move(pd));
-            return;
-        }
-    }
-    engine::Logger::instance().debug("[Pipeline] on_fetch_finished: no pending downloads to dequeue");
-}
-
-void PipelineWorker::pause_download(const std::string& id) {
-    // In-flight: set the slot's cooperative cancel flag; the transfer's poll
-    // loop aborts and keeps the partial file for a later resume.
-    auto it = running_.find(id);
-    if (it != running_.end()) {
-        it->second->cancel_flag().store(true);
-        return;
-    }
-    // Queued behind a busy pool but not started yet: drop it from the queue
-    // and report the same terminal state. Nothing was fetched, so there is no
-    // partial file to keep - the UI just shows Paused.
+  // A slot freed up: hand it the next queued download, if any. Nexus
+  // downloads respect the one-at-a-time rule - a queued Nexus download takes
+  // the slot only when no other Nexus transfer is in flight. A non-Nexus
+  // download may always take it (so the second pool slot never idles behind
+  // a blocked Nexus front-runner).
+  if (!pending_.empty()) {
     for (auto pit = pending_.begin(); pit != pending_.end(); ++pit) {
-        if (pit->id == id) {
-            pending_.erase(pit);
-            emit paused(id);
-            return;
-        }
+      if (pit->mod.download_source_type == "nexus" && nexus_queue_downloads_.load() &&
+          !nexus_in_flight_.empty())
+        continue;
+      auto pd = std::move(*pit);
+      pending_.erase(pit);
+      engine::Logger::instance().debug(
+          "[Pipeline] on_fetch_finished: dequeuing next id=" + pd.id);
+      start_fetch_on(runner, std::move(pd));
+      return;
     }
+  }
+  engine::Logger::instance().debug(
+      "[Pipeline] on_fetch_finished: no pending downloads to dequeue");
+}
+
+void PipelineWorker::pause_download(const std::string &id) {
+  // In-flight: set the slot's cooperative cancel flag; the transfer's poll
+  // loop aborts and keeps the partial file for a later resume.
+  auto it = running_.find(id);
+  if (it != running_.end()) {
+    it->second->cancel_flag().store(true);
+    return;
+  }
+  // Queued behind a busy pool but not started yet: drop it from the queue
+  // and report the same terminal state. Nothing was fetched, so there is no
+  // partial file to keep - the UI just shows Paused.
+  for (auto pit = pending_.begin(); pit != pending_.end(); ++pit) {
+    if (pit->id == id) {
+      pending_.erase(pit);
+      emit paused(id);
+      return;
+    }
+  }
 }
 
 // --- PipelineThread ---
 
-PipelineThread::PipelineThread(QObject* parent)
-    : QObject(parent) {
-    thread_ = new QThread(this);
-    worker_ = new PipelineWorker();
-    worker_->moveToThread(thread_);
+PipelineThread::PipelineThread(QObject *parent) : QObject(parent) {
+  thread_ = new QThread(this);
+  worker_ = new PipelineWorker();
+  worker_->moveToThread(thread_);
 
-    connect(thread_, &QThread::finished, worker_, &QObject::deleteLater);
+  connect(thread_, &QThread::finished, worker_, &QObject::deleteLater);
 }
 
 PipelineThread::~PipelineThread() {
-    stop();
+  stop();
 }
 
 void PipelineThread::start() {
-    if (!thread_->isRunning()) {
-        thread_->start();
-    }
+  if (!thread_->isRunning()) {
+    thread_->start();
+  }
 }
 
 void PipelineThread::stop() {
-    if (thread_->isRunning()) {
-        thread_->quit();
-        thread_->wait(3000);
-    }
+  if (thread_->isRunning()) {
+    thread_->quit();
+    thread_->wait(3000);
+  }
 }
 
 }  // namespace ui

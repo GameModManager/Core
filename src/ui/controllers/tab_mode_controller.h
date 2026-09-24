@@ -77,4 +77,4 @@ private:
   QPointer<QWidget> previous_page_;
 };
 
-} // namespace ui
+}  // namespace ui

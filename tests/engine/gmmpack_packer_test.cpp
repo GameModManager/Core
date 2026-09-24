@@ -37,35 +37,30 @@ namespace gmmpack = engine::gmmpack;
 // Fixtures: temp mods dir with in-folder meta.ini files
 // ---------------------------------------------------------------------------
 
-struct TempDir
-{
+struct TempDir {
   fs::path root;
-  TempDir()
-  {
+  TempDir() {
     static int counter = 0;
     root               = fs::temp_directory_path() /
                          ("gmmpack_packer_test_" + std::to_string(::getpid()) + "_" +
                           std::to_string(counter++));
     fs::create_directories(root);
   }
-  ~TempDir()
-  {
+  ~TempDir() {
     std::error_code ec;
     fs::remove_all(root, ec);
   }
 };
 
-static void write_meta(const fs::path& mods_dir, const std::string& folder,
-                       engine::ModMeta meta)
-{
+static void write_meta(const fs::path &mods_dir, const std::string &folder,
+                       engine::ModMeta meta) {
   meta.set("GameModManager", "folder", folder);
   REQUIRE(meta.save(mods_dir, folder));
 }
 
-static void nexus_mod(const fs::path& mods_dir, const std::string& folder,
-                      const std::string& mod_id = "12345",
-                      const std::string& fileid = "67890")
-{
+static void nexus_mod(const fs::path &mods_dir, const std::string &folder,
+                      const std::string &mod_id = "12345",
+                      const std::string &fileid = "67890") {
   auto meta =
       engine::ModMeta::from_default(folder, "nexus", mod_id, "SkyUI-1.4.2.7z", "1.4.2");
   meta.set("Nexusmods", "modid", mod_id);
@@ -74,13 +69,11 @@ static void nexus_mod(const fs::path& mods_dir, const std::string& folder,
   write_meta(mods_dir, folder, meta);
 }
 
-static void manual_mod(const fs::path& mods_dir, const std::string& folder)
-{
+static void manual_mod(const fs::path &mods_dir, const std::string &folder) {
   write_meta(mods_dir, folder, engine::ModMeta::from_default(folder, "manual", ""));
 }
 
-static engine::InstanceSnapshot make_snapshot()
-{
+static engine::InstanceSnapshot make_snapshot() {
   engine::InstanceSnapshot snap;
   snap.game_id      = "skyrimspecialedition";
   snap.display_name = "Test Pack";
@@ -88,10 +81,9 @@ static engine::InstanceSnapshot make_snapshot()
   return snap;
 }
 
-static void track(engine::InstanceSnapshot& snap, const std::string& folder,
-                  int32_t pos, const std::string& parent = "", bool collapsed = false,
-                  bool hidden = false, bool disabled = false)
-{
+static void track(engine::InstanceSnapshot &snap, const std::string &folder,
+                  int32_t pos, const std::string &parent = "", bool collapsed = false,
+                  bool hidden = false, bool disabled = false) {
   engine::ModTrackingEntry e;
   e.list_position          = pos;
   e.parent_separator       = parent;
@@ -105,15 +97,14 @@ static void track(engine::InstanceSnapshot& snap, const std::string& folder,
 // resolve_mod_source
 // ---------------------------------------------------------------------------
 
-TEST_CASE("packer resolve: nexus", "[gmmpack][packer]")
-{
+TEST_CASE("packer resolve: nexus", "[gmmpack][packer]") {
   TempDir td;
   nexus_mod(td.root, "SkyUI");
   auto meta = engine::ModMeta::load(td.root, "SkyUI");
 
   auto src = gmmpack::resolve_mod_source(meta, "skyrimspecialedition", 489830);
   REQUIRE(src.has_value());
-  auto* n = std::get_if<gmmpack::ModSourceNexus>(&*src);
+  auto *n = std::get_if<gmmpack::ModSourceNexus>(&*src);
   REQUIRE(n != nullptr);
   REQUIRE(n->mod_id == 12345);
   REQUIRE(n->file_id.has_value());
@@ -127,83 +118,75 @@ TEST_CASE("packer resolve: nexus", "[gmmpack][packer]")
 }
 
 TEST_CASE("packer resolve: nexus without fileid is browser resolution",
-          "[gmmpack][packer]")
-{
+          "[gmmpack][packer]") {
   auto meta = engine::ModMeta::from_default("M", "nexus", "999", "", "2.0");
   auto src  = gmmpack::resolve_mod_source(meta, "skyrim", 0);
   REQUIRE(src.has_value());
-  auto* n = std::get_if<gmmpack::ModSourceNexus>(&*src);
+  auto *n = std::get_if<gmmpack::ModSourceNexus>(&*src);
   REQUIRE(n != nullptr);
   REQUIRE(n->resolution == "browser");
   REQUIRE_FALSE(n->file_id.has_value());
 }
 
-TEST_CASE("packer resolve: steam", "[gmmpack][packer]")
-{
+TEST_CASE("packer resolve: steam", "[gmmpack][packer]") {
   auto meta = engine::ModMeta::from_default("M", "steam", "12345678", "", "1.0");
   auto src  = gmmpack::resolve_mod_source(meta, "skyrim", 489830);
   REQUIRE(src.has_value());
-  auto* s = std::get_if<gmmpack::ModSourceSteamWorkshop>(&*src);
+  auto *s = std::get_if<gmmpack::ModSourceSteamWorkshop>(&*src);
   REQUIRE(s != nullptr);
   REQUIRE(s->workshop_item_id == 12345678);
   REQUIRE(s->app_id == 489830);
   REQUIRE(s->update_policy == "latest");
 }
 
-TEST_CASE("packer resolve: steam_workshop alias", "[gmmpack][packer]")
-{
+TEST_CASE("packer resolve: steam_workshop alias", "[gmmpack][packer]") {
   auto meta = engine::ModMeta::from_default("M", "steam_workshop", "42");
   auto src  = gmmpack::resolve_mod_source(meta, "skyrim", 72850);
   REQUIRE(src.has_value());
-  auto* s = std::get_if<gmmpack::ModSourceSteamWorkshop>(&*src);
+  auto *s = std::get_if<gmmpack::ModSourceSteamWorkshop>(&*src);
   REQUIRE(s != nullptr);
   REQUIRE(s->workshop_item_id == 42);
   REQUIRE(s->app_id == 72850);
 }
 
-TEST_CASE("packer resolve: loverslab", "[gmmpack][packer]")
-{
+TEST_CASE("packer resolve: loverslab", "[gmmpack][packer]") {
   auto meta = engine::ModMeta::from_default("M", "loverslab", "777", "", "3.0");
   meta.set("LoversLab", "fileid", "777");
   meta.set("LoversLab", "page_url", "https://www.loverslab.com/files/file/777/");
   auto src = gmmpack::resolve_mod_source(meta, "skyrim", 0);
   REQUIRE(src.has_value());
-  auto* l = std::get_if<gmmpack::ModSourceLoversLab>(&*src);
+  auto *l = std::get_if<gmmpack::ModSourceLoversLab>(&*src);
   REQUIRE(l != nullptr);
   REQUIRE(std::get<int64_t>(l->mod_id) == 777);
   REQUIRE(l->resolution == "browser");
 }
 
-TEST_CASE("packer resolve: modpub", "[gmmpack][packer]")
-{
+TEST_CASE("packer resolve: modpub", "[gmmpack][packer]") {
   auto meta = engine::ModMeta::from_default("M", "modpub", "99", "", "1.1");
   meta.set("ModPub", "mod_id", "99");
   auto src = gmmpack::resolve_mod_source(meta, "skyrim", 0);
   REQUIRE(src.has_value());
-  auto* p = std::get_if<gmmpack::ModSourceModPub>(&*src);
+  auto *p = std::get_if<gmmpack::ModSourceModPub>(&*src);
   REQUIRE(p != nullptr);
   REQUIRE(std::get<int64_t>(p->mod_id) == 99);
 }
 
-TEST_CASE("packer resolve: direct", "[gmmpack][packer]")
-{
+TEST_CASE("packer resolve: direct", "[gmmpack][packer]") {
   auto meta = engine::ModMeta::from_default(
       "M", "direct", "https://example.com/mods/a.zip", "", "1.0");
   auto src = gmmpack::resolve_mod_source(meta, "skyrim", 0);
   REQUIRE(src.has_value());
-  auto* d = std::get_if<gmmpack::ModSourceDirect>(&*src);
+  auto *d = std::get_if<gmmpack::ModSourceDirect>(&*src);
   REQUIRE(d != nullptr);
   REQUIRE(d->url == "https://example.com/mods/a.zip");
 }
 
-TEST_CASE("packer resolve: manual is skipped", "[gmmpack][packer]")
-{
+TEST_CASE("packer resolve: manual is skipped", "[gmmpack][packer]") {
   auto meta = engine::ModMeta::from_default("M", "manual", "");
   REQUIRE_FALSE(gmmpack::resolve_mod_source(meta, "skyrim", 0).has_value());
 }
 
-TEST_CASE("packer resolve: unknown type is skipped", "[gmmpack][packer]")
-{
+TEST_CASE("packer resolve: unknown type is skipped", "[gmmpack][packer]") {
   auto meta = engine::ModMeta::from_default("M", "bogus", "x");
   REQUIRE_FALSE(gmmpack::resolve_mod_source(meta, "skyrim", 0).has_value());
 }
@@ -212,8 +195,7 @@ TEST_CASE("packer resolve: unknown type is skipped", "[gmmpack][packer]")
 // mod_slug
 // ---------------------------------------------------------------------------
 
-TEST_CASE("packer slug: mapping", "[gmmpack][packer]")
-{
+TEST_CASE("packer slug: mapping", "[gmmpack][packer]") {
   REQUIRE(gmmpack::mod_slug("SkyUI") == "skyui");
   REQUIRE(gmmpack::mod_slug("My Cool Mod!") == "my-cool-mod");
   REQUIRE(gmmpack::mod_slug("a__b--c") == "a-b-c");
@@ -225,8 +207,7 @@ TEST_CASE("packer slug: mapping", "[gmmpack][packer]")
 // build_tree
 // ---------------------------------------------------------------------------
 
-TEST_CASE("packer tree: flat list sorted by position", "[gmmpack][packer]")
-{
+TEST_CASE("packer tree: flat list sorted by position", "[gmmpack][packer]") {
   TempDir td;
   nexus_mod(td.root, "ModB");
   nexus_mod(td.root, "ModA");
@@ -236,8 +217,8 @@ TEST_CASE("packer tree: flat list sorted by position", "[gmmpack][packer]")
 
   auto tree = gmmpack::build_tree(snap, td.root);
   REQUIRE(tree.nodes.size() == 2);
-  auto* first  = std::get_if<gmmpack::ModNode>(&tree.nodes[0].data);
-  auto* second = std::get_if<gmmpack::ModNode>(&tree.nodes[1].data);
+  auto *first  = std::get_if<gmmpack::ModNode>(&tree.nodes[0].data);
+  auto *second = std::get_if<gmmpack::ModNode>(&tree.nodes[1].data);
   REQUIRE(first != nullptr);
   REQUIRE(second != nullptr);
   REQUIRE(first->id == "modb");
@@ -245,8 +226,7 @@ TEST_CASE("packer tree: flat list sorted by position", "[gmmpack][packer]")
   REQUIRE(first->enabled);
 }
 
-TEST_CASE("packer tree: nested separators", "[gmmpack][packer]")
-{
+TEST_CASE("packer tree: nested separators", "[gmmpack][packer]") {
   TempDir td;
   nexus_mod(td.root, "SkyUI");
   nexus_mod(td.root, "ENB");
@@ -258,21 +238,20 @@ TEST_CASE("packer tree: nested separators", "[gmmpack][packer]")
 
   auto tree = gmmpack::build_tree(snap, td.root);
   REQUIRE(tree.nodes.size() == 2);
-  auto* sep = std::get_if<gmmpack::SeparatorNode>(&tree.nodes[0].data);
+  auto *sep = std::get_if<gmmpack::SeparatorNode>(&tree.nodes[0].data);
   REQUIRE(sep != nullptr);
   REQUIRE(sep->name == "Graphics");
   REQUIRE(sep->collapsed);
   REQUIRE(sep->children.size() == 1);
-  auto* child = std::get_if<gmmpack::ModNode>(&sep->children[0].data);
+  auto *child = std::get_if<gmmpack::ModNode>(&sep->children[0].data);
   REQUIRE(child != nullptr);
   REQUIRE(child->id == "enb");
-  auto* top = std::get_if<gmmpack::ModNode>(&tree.nodes[1].data);
+  auto *top = std::get_if<gmmpack::ModNode>(&tree.nodes[1].data);
   REQUIRE(top != nullptr);
   REQUIRE(top->id == "skyui");
 }
 
-TEST_CASE("packer tree: hidden/disabled mods marked not enabled", "[gmmpack][packer]")
-{
+TEST_CASE("packer tree: hidden/disabled mods marked not enabled", "[gmmpack][packer]") {
   TempDir td;
   nexus_mod(td.root, "A");
   nexus_mod(td.root, "B");
@@ -286,8 +265,7 @@ TEST_CASE("packer tree: hidden/disabled mods marked not enabled", "[gmmpack][pac
   REQUIRE_FALSE(std::get<gmmpack::ModNode>(tree.nodes[1].data).enabled);
 }
 
-TEST_CASE("packer tree: manual mods omitted", "[gmmpack][packer]")
-{
+TEST_CASE("packer tree: manual mods omitted", "[gmmpack][packer]") {
   TempDir td;
   nexus_mod(td.root, "Good");
   manual_mod(td.root, "Local");
@@ -300,8 +278,7 @@ TEST_CASE("packer tree: manual mods omitted", "[gmmpack][packer]")
   REQUIRE(std::get<gmmpack::ModNode>(tree.nodes[0].data).id == "good");
 }
 
-TEST_CASE("packer tree: separator color round-trips", "[gmmpack][packer]")
-{
+TEST_CASE("packer tree: separator color round-trips", "[gmmpack][packer]") {
   TempDir td;
   nexus_mod(td.root, "ENB");
   nexus_mod(td.root, "Tool");
@@ -314,10 +291,10 @@ TEST_CASE("packer tree: separator color round-trips", "[gmmpack][packer]")
 
   auto tree = gmmpack::build_tree(snap, td.root);
   REQUIRE(tree.nodes.size() == 2);
-  auto* sep = std::get_if<gmmpack::SeparatorNode>(&tree.nodes[0].data);
+  auto *sep = std::get_if<gmmpack::SeparatorNode>(&tree.nodes[0].data);
   REQUIRE(sep != nullptr);
   REQUIRE(sep->color == "#ff0000");
-  auto* plain = std::get_if<gmmpack::SeparatorNode>(&tree.nodes[1].data);
+  auto *plain = std::get_if<gmmpack::SeparatorNode>(&tree.nodes[1].data);
   REQUIRE(plain != nullptr);
   REQUIRE(plain->color.empty());
 
@@ -326,11 +303,11 @@ TEST_CASE("packer tree: separator color round-trips", "[gmmpack][packer]")
   // Colorless separators omit the key (keeps schema validation green).
   REQUIRE_FALSE(j["nodes"][1].contains("color"));
 
-  auto back = gmmpack::parse_tree(j);
-  auto* bsep = std::get_if<gmmpack::SeparatorNode>(&back.nodes[0].data);
+  auto back  = gmmpack::parse_tree(j);
+  auto *bsep = std::get_if<gmmpack::SeparatorNode>(&back.nodes[0].data);
   REQUIRE(bsep != nullptr);
   REQUIRE(bsep->color == "#ff0000");
-  auto* bplain = std::get_if<gmmpack::SeparatorNode>(&back.nodes[1].data);
+  auto *bplain = std::get_if<gmmpack::SeparatorNode>(&back.nodes[1].data);
   REQUIRE(bplain != nullptr);
   REQUIRE(bplain->color.empty());
 }
@@ -339,8 +316,7 @@ TEST_CASE("packer tree: separator color round-trips", "[gmmpack][packer]")
 // build_manifest
 // ---------------------------------------------------------------------------
 
-TEST_CASE("packer manifest: fields", "[gmmpack][packer]")
-{
+TEST_CASE("packer manifest: fields", "[gmmpack][packer]") {
   auto snap = make_snapshot();
   gmmpack::PackOptions opts;
   opts.author      = "Author";
@@ -364,8 +340,7 @@ TEST_CASE("packer manifest: fields", "[gmmpack][packer]")
 }
 
 TEST_CASE("packer manifest: reuses instance modpack_id and bumps revision",
-          "[gmmpack][packer]")
-{
+          "[gmmpack][packer]") {
   auto snap             = make_snapshot();
   snap.modpack_id       = "11111111-2222-4333-8444-555555555555";
   snap.modpack_revision = 4;
@@ -376,8 +351,7 @@ TEST_CASE("packer manifest: reuses instance modpack_id and bumps revision",
   REQUIRE(m.revision == 5);
 }
 
-TEST_CASE("packer manifest: fallbacks for empty fields", "[gmmpack][packer]")
-{
+TEST_CASE("packer manifest: fallbacks for empty fields", "[gmmpack][packer]") {
   engine::InstanceSnapshot snap;
   gmmpack::PackOptions opts;
   auto m = gmmpack::build_manifest(snap, opts);
@@ -389,15 +363,14 @@ TEST_CASE("packer manifest: fallbacks for empty fields", "[gmmpack][packer]")
   REQUIRE(m.info.homepage.empty());
 }
 
-TEST_CASE("packer manifest: picks up default-profile settings", "[gmmpack][packer]")
-{
-  auto snap               = make_snapshot();
-  snap.deploy_strategy    = "symlink";
+TEST_CASE("packer manifest: picks up default-profile settings", "[gmmpack][packer]") {
+  auto snap            = make_snapshot();
+  snap.deploy_strategy = "symlink";
   engine::ProfileSnapshot prof;
-  prof.name                        = "Default";
-  prof.local_saves                 = true;
-  prof.local_settings              = false;
-  prof.auto_archive_invalidation   = true;
+  prof.name                      = "Default";
+  prof.local_saves               = true;
+  prof.local_settings            = false;
+  prof.auto_archive_invalidation = true;
   snap.profiles.push_back(prof);
 
   gmmpack::PackOptions opts;
@@ -409,8 +382,7 @@ TEST_CASE("packer manifest: picks up default-profile settings", "[gmmpack][packe
 }
 
 TEST_CASE("packer manifest: empty profiles gives default settings",
-          "[gmmpack][packer]")
-{
+          "[gmmpack][packer]") {
   auto snap            = make_snapshot();
   snap.deploy_strategy = "hardlink";
   gmmpack::PackOptions opts;
@@ -422,16 +394,15 @@ TEST_CASE("packer manifest: empty profiles gives default settings",
   REQUIRE(m.instance_settings.deploy_strategy == "hardlink");
 }
 
-TEST_CASE("packer manifest: instance settings round-trip", "[gmmpack][packer]")
-{
+TEST_CASE("packer manifest: instance settings round-trip", "[gmmpack][packer]") {
   gmmpack::Manifest m;
-  m.info.name                                  = "P";
-  m.info.author                                = "A";
-  m.info.gmm_game_id                           = "skyrim";
-  m.instance_settings.local_saves              = true;
-  m.instance_settings.local_settings           = true;
+  m.info.name                                   = "P";
+  m.info.author                                 = "A";
+  m.info.gmm_game_id                            = "skyrim";
+  m.instance_settings.local_saves               = true;
+  m.instance_settings.local_settings            = true;
   m.instance_settings.auto_archive_invalidation = true;
-  m.instance_settings.deploy_strategy          = "symlink";
+  m.instance_settings.deploy_strategy           = "symlink";
 
   auto j = gmmpack::serialize_manifest(m);
   REQUIRE(j.contains("instanceSettings"));
@@ -448,8 +419,7 @@ TEST_CASE("packer manifest: instance settings round-trip", "[gmmpack][packer]")
 }
 
 TEST_CASE("packer manifest: settings unset omits strategy, parses to defaults",
-          "[gmmpack][packer]")
-{
+          "[gmmpack][packer]") {
   gmmpack::Manifest m;
   auto j = gmmpack::serialize_manifest(m);
   REQUIRE(j.contains("instanceSettings"));
@@ -474,8 +444,8 @@ TEST_CASE("packer manifest: settings unset omits strategy, parses to defaults",
 // build_mod_entries
 // ---------------------------------------------------------------------------
 
-TEST_CASE("packer mod entries: skips manual, deterministic order", "[gmmpack][packer]")
-{
+TEST_CASE("packer mod entries: skips manual, deterministic order",
+          "[gmmpack][packer]") {
   TempDir td;
   nexus_mod(td.root, "Zeta");
   manual_mod(td.root, "Local");
@@ -495,8 +465,7 @@ TEST_CASE("packer mod entries: skips manual, deterministic order", "[gmmpack][pa
   REQUIRE(mods[0].phase == 0);
 }
 
-TEST_CASE("packer policies: default is latest", "[gmmpack][packer]")
-{
+TEST_CASE("packer policies: default is latest", "[gmmpack][packer]") {
   TempDir td;
   nexus_mod(td.root, "SkyUI");
   auto snap = make_snapshot();
@@ -505,14 +474,13 @@ TEST_CASE("packer policies: default is latest", "[gmmpack][packer]")
   gmmpack::PackOptions opts;
   auto mods = gmmpack::build_mod_entries(snap, td.root, opts);
   REQUIRE(mods.size() == 1);
-  auto* n = std::get_if<gmmpack::ModSourceNexus>(&mods[0].source);
+  auto *n = std::get_if<gmmpack::ModSourceNexus>(&mods[0].source);
   REQUIRE(n != nullptr);
   REQUIRE(n->update_policy == "latest");
 }
 
 TEST_CASE("packer policies: exact override propagates and round-trips",
-          "[gmmpack][packer]")
-{
+          "[gmmpack][packer]") {
   TempDir td;
   nexus_mod(td.root, "SkyUI");
   auto snap = make_snapshot();
@@ -522,7 +490,7 @@ TEST_CASE("packer policies: exact override propagates and round-trips",
   opts.update_policies["SkyUI"] = "exact";
   auto pack                     = gmmpack::build_gmmpack(snap, td.root, opts);
   REQUIRE(pack.mods.size() == 1);
-  auto* n = std::get_if<gmmpack::ModSourceNexus>(&pack.mods[0].source);
+  auto *n = std::get_if<gmmpack::ModSourceNexus>(&pack.mods[0].source);
   REQUIRE(n != nullptr);
   REQUIRE(n->update_policy == "exact");
 
@@ -530,14 +498,13 @@ TEST_CASE("packer policies: exact override propagates and round-trips",
   auto modj = gmmpack::serialize_mod_entry(pack.mods[0]);
   REQUIRE(modj["source"]["updatePolicy"] == "exact");
   auto back = gmmpack::parse_mod_entry(modj);
-  auto* bn  = std::get_if<gmmpack::ModSourceNexus>(&back.source);
+  auto *bn  = std::get_if<gmmpack::ModSourceNexus>(&back.source);
   REQUIRE(bn != nullptr);
   REQUIRE(bn->update_policy == "exact");
 }
 
 TEST_CASE("packer policies: steam stays latest when exact requested",
-          "[gmmpack][packer]")
-{
+          "[gmmpack][packer]") {
   TempDir td;
   auto meta = engine::ModMeta::from_default("SteamMod", "steam", "12345678");
   write_meta(td.root, "SteamMod", meta);
@@ -546,9 +513,9 @@ TEST_CASE("packer policies: steam stays latest when exact requested",
 
   gmmpack::PackOptions opts;
   opts.update_policies["SteamMod"] = "exact";
-  auto mods = gmmpack::build_mod_entries(snap, td.root, opts);
+  auto mods                        = gmmpack::build_mod_entries(snap, td.root, opts);
   REQUIRE(mods.size() == 1);
-  auto* s = std::get_if<gmmpack::ModSourceSteamWorkshop>(&mods[0].source);
+  auto *s = std::get_if<gmmpack::ModSourceSteamWorkshop>(&mods[0].source);
   REQUIRE(s != nullptr);
   REQUIRE(s->update_policy == "latest");
 }
@@ -557,8 +524,7 @@ TEST_CASE("packer policies: steam stays latest when exact requested",
 // build_executables
 // ---------------------------------------------------------------------------
 
-TEST_CASE("packer executables: mapping and skips", "[gmmpack][packer]")
-{
+TEST_CASE("packer executables: mapping and skips", "[gmmpack][packer]") {
   TempDir td;
   nexus_mod(td.root, "ToolMod");
   manual_mod(td.root, "LocalMod");
@@ -601,8 +567,7 @@ TEST_CASE("packer executables: mapping and skips", "[gmmpack][packer]")
 // build_gmmpack round-trip
 // ---------------------------------------------------------------------------
 
-TEST_CASE("packer round-trip: build then parse back", "[gmmpack][packer]")
-{
+TEST_CASE("packer round-trip: build then parse back", "[gmmpack][packer]") {
   TempDir td;
   nexus_mod(td.root, "SkyUI");
   auto snap = make_snapshot();
@@ -624,7 +589,7 @@ TEST_CASE("packer round-trip: build then parse back", "[gmmpack][packer]")
   auto modj = gmmpack::serialize_mod_entry(pack.mods[0]);
   auto mod  = gmmpack::parse_mod_entry(modj);
   REQUIRE(mod.id == "skyui");
-  auto* n = std::get_if<gmmpack::ModSourceNexus>(&mod.source);
+  auto *n = std::get_if<gmmpack::ModSourceNexus>(&mod.source);
   REQUIRE(n != nullptr);
   REQUIRE(n->mod_id == 12345);
 
@@ -638,8 +603,8 @@ TEST_CASE("packer round-trip: build then parse back", "[gmmpack][packer]")
 // create_gmmpack: archive validity
 // ---------------------------------------------------------------------------
 
-TEST_CASE("packer create: writes archive passing integrity check", "[gmmpack][packer]")
-{
+TEST_CASE("packer create: writes archive passing integrity check",
+          "[gmmpack][packer]") {
   TempDir td;
   nexus_mod(td.root, "SkyUI");
   nexus_mod(td.root, "ENB");
@@ -696,8 +661,7 @@ TEST_CASE("packer create: writes archive passing integrity check", "[gmmpack][pa
 // Schema validation of generated JSON
 // ---------------------------------------------------------------------------
 
-static fs::path schema_dir()
-{
+static fs::path schema_dir() {
   auto project_root = fs::path(PROJECT_SOURCE_DIR);
   auto candidate    = project_root / ".." / ".." / "input";
   if (fs::is_directory(candidate))
@@ -709,8 +673,7 @@ static fs::path schema_dir()
   return candidate;
 }
 
-TEST_CASE("packer schema: generated files validate", "[gmmpack][packer]")
-{
+TEST_CASE("packer schema: generated files validate", "[gmmpack][packer]") {
   TempDir td;
   nexus_mod(td.root, "SkyUI");
 
@@ -763,7 +726,7 @@ TEST_CASE("packer schema: generated files validate", "[gmmpack][packer]")
               .empty());
 
   // Every source variant serializes to schema-valid JSON.
-  auto check_source = [&](const gmmpack::ModSource& s) {
+  auto check_source = [&](const gmmpack::ModSource &s) {
     gmmpack::ModEntry e;
     e.id       = "probe-mod";
     e.name     = "Probe";

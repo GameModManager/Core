@@ -21,8 +21,9 @@ UpdateInfo FlatpakUpdater::check_for_update() {
   return info;
 }
 
-InstallResult FlatpakUpdater::install_update(
-    const UpdateInfo &info, std::function<void(float progress)> progress_cb) {
+InstallResult
+FlatpakUpdater::install_update(const UpdateInfo &info,
+                               std::function<void(float progress)> progress_cb) {
   InstallResult result;
 
   if (!info.available) {
@@ -40,20 +41,18 @@ InstallResult FlatpakUpdater::install_update(
     return result;
   }
 
-  std::string cmd =
-      "flatpak update --assumeyes " + std::string(app_id) + " 2>&1";
-  int rc = std::system(cmd.c_str());
+  std::string cmd = "flatpak update --assumeyes " + std::string(app_id) + " 2>&1";
+  int rc          = std::system(cmd.c_str());
 
   if (progress_cb)
     progress_cb(1.0f);
 
   if (rc != 0) {
-    result.error_message =
-        "flatpak update failed (exit " + std::to_string(rc) + ")";
+    result.error_message = "flatpak update failed (exit " + std::to_string(rc) + ")";
     return result;
   }
 
-  result.success = true;
+  result.success          = true;
   result.requires_restart = true;
   return result;
 }
@@ -67,6 +66,6 @@ void FlatpakUpdater::restart() {
   std::exit(0);
 }
 
-} // namespace engine::update
+}  // namespace engine::update
 
-#endif // __linux__
+#endif  // __linux__

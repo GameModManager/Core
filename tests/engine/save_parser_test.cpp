@@ -48,19 +48,19 @@ using namespace engine;
 namespace fs = std::filesystem;
 
 namespace {
-void check(bool cond, const char* what) {
+void check(bool cond, const char *what) {
   INFO(what);
   REQUIRE(cond);
 }
 
-void write_file(const fs::path& p, const std::string& data) {
+void write_file(const fs::path &p, const std::string &data) {
   std::ofstream(p, std::ios::binary)
       .write(data.data(), static_cast<std::streamsize>(data.size()));
 }
 
 // Touch a file with a given mtime (used to give two saves a known
 // newest-first ordering without depending on real SE file format).
-void touch_with_mtime(const fs::path& p, std::chrono::seconds offset) {
+void touch_with_mtime(const fs::path &p, std::chrono::seconds offset) {
   std::ofstream(p, std::ios::binary).put('x');
   auto base = std::chrono::file_clock::now();
   // Pull offset back from "now" so older writes land earlier.
@@ -78,7 +78,7 @@ struct ScopedClear {
 // --- SaveParserRegistry: dispatch + priority + clear ---
 TEST_CASE("save parser registry: dispatch + priority + clear", "[engine]") {
   ScopedClear clear;
-  auto& reg = SaveParserRegistry::instance();
+  auto &reg = SaveParserRegistry::instance();
 
   check(!reg.has_parser("stubgame"), "no parser registered initially");
 
@@ -86,7 +86,7 @@ TEST_CASE("save parser registry: dispatch + priority + clear", "[engine]") {
   int b_calls = 0;
   reg.register_parser(
       "stubgame", 10,
-      [&a_calls](const fs::path&, const std::string& gid) {
+      [&a_calls](const fs::path &, const std::string &gid) {
         ++a_calls;
         SaveGame g;
         g.game_id = gid;
@@ -97,7 +97,7 @@ TEST_CASE("save parser registry: dispatch + priority + clear", "[engine]") {
 
   reg.register_parser(
       "stubgame", 100,
-      [&b_calls](const fs::path&, const std::string& gid) {
+      [&b_calls](const fs::path &, const std::string &gid) {
         ++b_calls;
         SaveGame g;
         g.game_id = gid;
@@ -129,14 +129,14 @@ TEST_CASE("save parser registry: dispatch + priority + clear", "[engine]") {
 // --- SaveParserRegistry: null fn + cross-game_id isolation ---
 TEST_CASE("save parser registry: null fn and cross-game isolation", "[engine]") {
   ScopedClear clear;
-  auto& reg = SaveParserRegistry::instance();
+  auto &reg = SaveParserRegistry::instance();
 
   reg.register_parser("g1", 50, nullptr, nullptr, "pluginX");
   check(!reg.has_parser("g1"), "null fn is ignored, no entry added");
 
   reg.register_parser(
       "g1", 50,
-      [](const fs::path&, const std::string&) {
+      [](const fs::path &, const std::string &) {
         return SaveGame{};
       },
       nullptr, "pluginX");
@@ -162,7 +162,7 @@ TEST_CASE("scan_saves: extension filter + sort + error swallow", "[engine]") {
   // Stub parse: creation_time derived from mtime, throws on the magic
   // marker "BAD" to exercise the swallow.
   int call_count       = 0;
-  SaveParseFn parse_fn = [&call_count](const fs::path& p) {
+  SaveParseFn parse_fn = [&call_count](const fs::path &p) {
     ++call_count;
     if (p.filename() == "bad.ess") {
       throw SaveParseError("synthetic");
@@ -217,7 +217,7 @@ TEST_CASE("save parser fallback: stub lists files when no parser registered",
   // Same shape as SavesScanWorker::run in saves_scan_worker.cpp: probe the
   // registry, fall through to a stub that returns file_path + mtime.
   const std::string gid = "noparsergame";
-  SaveParseFn parses    = [gid](const fs::path& p) {
+  SaveParseFn parses    = [gid](const fs::path &p) {
     if (SaveParserRegistry::instance().has_parser(gid)) {
       auto r = SaveParserRegistry::instance().parse_save(p, gid);
       if (!r)
@@ -252,13 +252,13 @@ TEST_CASE("save parser fallback: stub lists files when no parser registered",
 // --- End-to-end: register a stub parser, drive scan_saves through the registry ---
 TEST_CASE("save parser end-to-end: registry-driven scan", "[engine]") {
   ScopedClear clear;
-  auto& reg             = SaveParserRegistry::instance();
+  auto &reg             = SaveParserRegistry::instance();
   const std::string gid = "e2egame";
 
   int parsed = 0;
   reg.register_parser(
       gid, 50,
-      [&parsed](const fs::path& p, const std::string& g) {
+      [&parsed](const fs::path &p, const std::string &g) {
         ++parsed;
         SaveGame s;
         s.file_path     = p;
@@ -277,7 +277,7 @@ TEST_CASE("save parser end-to-end: registry-driven scan", "[engine]") {
   write_file(root / "ignore.txt", "x");
 
   // Mirror SavesScanWorker's lambda shape.
-  SaveParseFn parses = [gid](const fs::path& p) {
+  SaveParseFn parses = [gid](const fs::path &p) {
     auto r = SaveParserRegistry::instance().parse_save(p, gid);
     if (!r)
       throw SaveParseError("no save parser for " + gid);
@@ -287,7 +287,7 @@ TEST_CASE("save parser end-to-end: registry-driven scan", "[engine]") {
   auto saves = scan_saves(root, {"ess"}, parses);
   check(saves.size() == 2, "registry parser sees both .ess files");
   check(parsed == 2, "parser invoked twice");
-  for (const auto& s : saves) {
+  for (const auto &s : saves) {
     check(s.game_id == gid, "game_id propagated by registry");
     check(s.pc_name == "E2E", "registry parser filled the field");
   }
@@ -355,8 +355,8 @@ TEST_CASE("save missing assets", "[engine]") {
   auto missing = find_save_missing_assets(save, plugins, am, ow);
 
   check(missing.size() == 3, "missing asset count");
-  std::map<std::string, const SaveMissingAsset*> by_name;
-  for (const auto& m : missing)
+  std::map<std::string, const SaveMissingAsset *> by_name;
+  for (const auto &m : missing)
     by_name[m.plugin_name] = &m;
 
   auto it = by_name.find("SkyUI_SE.esp");
@@ -437,8 +437,8 @@ TEST_CASE("save provider index: build once, reuse for many saves", "[engine]") {
   save.plugins = {"Skyrim.esm", "SkyUI_SE.esp", "GonePlugin.esp", "AlsoMissing.esm"};
   auto missing = find_save_missing_assets(save, plugins, index);
 
-  std::map<std::string, const SaveMissingAsset*> by_name;
-  for (const auto& m : missing)
+  std::map<std::string, const SaveMissingAsset *> by_name;
+  for (const auto &m : missing)
     by_name[m.plugin_name] = &m;
   check(missing.size() == 3, "indexed overload: same 3 missing plugins");
   check(by_name.count("Skyrim.esm") == 0,
@@ -463,7 +463,7 @@ TEST_CASE("save provider index: build once, reuse for many saves", "[engine]") {
   const auto empty_index = build_save_provider_index({}, {});
   auto missing2          = find_save_missing_assets(save, plugins, empty_index);
   check(missing2.size() == 3, "empty index: still classifies missing plugins");
-  for (const auto& m : missing2) {
+  for (const auto &m : missing2) {
     check(m.providing_mods.empty(), "empty index: no provider for any missing plugin");
   }
 
@@ -482,30 +482,30 @@ TEST_CASE("save provider index: build once, reuse for many saves", "[engine]") {
 
 namespace {
 
-void put16(std::vector<char>& v, std::uint16_t x) {
+void put16(std::vector<char> &v, std::uint16_t x) {
   v.push_back(static_cast<char>(x & 0xFF));
   v.push_back(static_cast<char>((x >> 8) & 0xFF));
 }
-void put32(std::vector<char>& v, std::uint32_t x) {
+void put32(std::vector<char> &v, std::uint32_t x) {
   for (int i = 0; i < 4; ++i)
     v.push_back(static_cast<char>((x >> (8 * i)) & 0xFF));
 }
-void put64(std::vector<char>& v, std::uint64_t x) {
+void put64(std::vector<char> &v, std::uint64_t x) {
   put32(v, static_cast<std::uint32_t>(x & 0xFFFFFFFFu));
   put32(v, static_cast<std::uint32_t>((x >> 32) & 0xFFFFFFFFu));
 }
-void putstr(std::vector<char>& v, const std::string& s) {
+void putstr(std::vector<char> &v, const std::string &s) {
   put16(v, static_cast<uint16_t>(s.size()));
   v.insert(v.end(), s.begin(), s.end());
 }
 
 // Common TESV header through the FILETIME. Mirrors the Plugins packet
 // fetch_information_fields order exactly.
-void write_tesv_head(std::vector<char>& f, std::uint32_t version,
-                     std::uint32_t save_number, const std::string& pc,
-                     std::uint32_t level, const std::string& loc,
+void write_tesv_head(std::vector<char> &f, std::uint32_t version,
+                     std::uint32_t save_number, const std::string &pc,
+                     std::uint32_t level, const std::string &loc,
                      std::uint64_t filetime) {
-  const char* magic = "TESV_SAVEGAME";
+  const char *magic = "TESV_SAVEGAME";
   f.insert(f.end(), magic, magic + 13);
   put32(f, 0);  // header size (unused)
   put32(f, version);
@@ -523,28 +523,28 @@ void write_tesv_head(std::vector<char>& f, std::uint32_t version,
 
 // SE data-region head: version/u8 + plugin + light lists (u8 counts here;
 // the wide-light-count case is built by hand in its test).
-void put_se_region_head(std::vector<char>& r, const std::vector<std::string>& plugins,
-                        const std::vector<std::string>& light) {
+void put_se_region_head(std::vector<char> &r, const std::vector<std::string> &plugins,
+                        const std::vector<std::string> &light) {
   r.push_back(78);  // save game version >= 78 -> light plugins present
   r.push_back(1);   // plugin info size (unused)
   put16(r, 0);      // other (unknown)
   r.push_back(0);   // pad
   r.push_back(static_cast<char>(plugins.size()));
-  for (const auto& pl : plugins)
+  for (const auto &pl : plugins)
     putstr(r, pl);
   put16(r, static_cast<std::uint16_t>(light.size()));
-  for (const auto& pl : light)
+  for (const auto &pl : light)
     putstr(r, pl);
 }
 
-void write_file_bytes(const fs::path& p, const std::vector<char>& data) {
+void write_file_bytes(const fs::path &p, const std::vector<char> &data) {
   std::ofstream out(p, std::ios::binary);
   out.write(data.data(), static_cast<std::streamsize>(data.size()));
 }
 
 // Compress `raw` in ~64KiB independent zlib streams (models the MO2 type-1
 // chunk chain; stream count, not size, is what the early-stop test needs).
-std::vector<std::vector<char>> zlib_streams(const std::vector<char>& raw) {
+std::vector<std::vector<char>> zlib_streams(const std::vector<char> &raw) {
   const std::size_t kIn = 64 * 1024;
   std::vector<std::vector<char>> streams;
   for (std::size_t off = 0; off < raw.size(); off += kIn) {
@@ -553,8 +553,8 @@ std::vector<std::vector<char>> zlib_streams(const std::vector<char>& raw) {
     std::vector<char> out(static_cast<std::size_t>(bound));
     uLongf outlen = bound;
     INFO("zlib compress of a fixture chunk must succeed");
-    REQUIRE(compress2(reinterpret_cast<Bytef*>(out.data()), &outlen,
-                      reinterpret_cast<const Bytef*>(raw.data() + off),
+    REQUIRE(compress2(reinterpret_cast<Bytef *>(out.data()), &outlen,
+                      reinterpret_cast<const Bytef *>(raw.data() + off),
                       static_cast<uLong>(n), Z_DEFAULT_COMPRESSION) == Z_OK);
     out.resize(static_cast<std::size_t>(outlen));
     streams.push_back(std::move(out));
@@ -564,7 +564,7 @@ std::vector<std::vector<char>> zlib_streams(const std::vector<char>& raw) {
 
 // Append a type-1 chunk chain for `raw` at the end of `f` (caller already
 // wrote header + screenshot + compression u16).
-void append_type1(std::vector<char>& f, const std::vector<char>& raw) {
+void append_type1(std::vector<char> &f, const std::vector<char> &raw) {
   auto streams           = zlib_streams(raw);
   const std::size_t head = f.size();
   put64(f, 0);  // placeholder chunk_start
@@ -572,7 +572,7 @@ void append_type1(std::vector<char>& f, const std::vector<char>& raw) {
   const std::size_t chunk_start = f.size();
   for (int i = 0; i < 8; ++i)
     f[head + i] = static_cast<char>((chunk_start >> (8 * i)) & 0xFF);
-  for (auto& s : streams) {
+  for (auto &s : streams) {
     f.insert(f.end(), s.begin(), s.end());
     while (f.size() % 16 != 0)
       f.push_back(0);  // 16-byte stream alignment (MO2 readNextChunk)
@@ -595,7 +595,7 @@ TEST_CASE("save fast format hook: declared and default", "[engine]") {
 
 TEST_CASE("save parser registry: fast dispatch + priority + clear", "[engine]") {
   ScopedClear clear;
-  auto& reg = SaveParserRegistry::instance();
+  auto &reg = SaveParserRegistry::instance();
 
   check(!reg.has_fast_parser("fastgame"), "no fast parser initially");
   check(!reg.has_parser("fastgame"), "fast registration never implies full");
@@ -604,7 +604,7 @@ TEST_CASE("save parser registry: fast dispatch + priority + clear", "[engine]") 
   int hi_calls = 0;
   reg.register_fast_parser(
       "fastgame", 10,
-      [&lo_calls](const fs::path&, const std::string& gid) {
+      [&lo_calls](const fs::path &, const std::string &gid) {
         ++lo_calls;
         SaveGame g;
         g.game_id = gid;
@@ -614,7 +614,7 @@ TEST_CASE("save parser registry: fast dispatch + priority + clear", "[engine]") 
       nullptr, "pluginLo");
   reg.register_fast_parser(
       "fastgame", 100,
-      [&hi_calls](const fs::path&, const std::string& gid) {
+      [&hi_calls](const fs::path &, const std::string &gid) {
         ++hi_calls;
         SaveGame g;
         g.game_id = gid;
@@ -764,14 +764,14 @@ TEST_CASE("gamebryo fast scan: rejects bad magic and truncated heads", "[engine]
   try {
     const SaveGame rejected = parse_gamebryo_tesv_fast(root / "bad.ess", "skyrimse");
     (void)rejected;
-  } catch (const SaveParseError&) {
+  } catch (const SaveParseError &) {
     threw = true;
   }
   check(threw, "wrong magic -> SaveParseError (scan skips the file)");
 
   // Truncated right after the magic: header reads run off the end.
   std::vector<char> tiny;
-  const char* magic = "TESV_SAVEGAME";
+  const char *magic = "TESV_SAVEGAME";
   tiny.insert(tiny.end(), magic, magic + 13);
   put32(tiny, 0);
   write_file_bytes(root / "tiny.ess", tiny);
@@ -779,7 +779,7 @@ TEST_CASE("gamebryo fast scan: rejects bad magic and truncated heads", "[engine]
   try {
     const SaveGame rejected = parse_gamebryo_tesv_fast(root / "tiny.ess", "skyrimse");
     (void)rejected;
-  } catch (const SaveParseError&) {
+  } catch (const SaveParseError &) {
     threw = true;
   }
   check(threw, "truncated header -> SaveParseError");
@@ -796,7 +796,7 @@ TEST_CASE("gamebryo fast scan: rejects bad magic and truncated heads", "[engine]
   try {
     const SaveGame rejected = parse_gamebryo_tesv_fast(root / "evil.ess", "skyrimse");
     (void)rejected;
-  } catch (const SaveParseError&) {
+  } catch (const SaveParseError &) {
     threw = true;
   }
   check(threw, "absurd screenshot size -> SaveParseError, no huge alloc");
@@ -843,10 +843,10 @@ TEST_CASE("gamebryo fast scan: oversized plugin data asks for full parse", "[eng
   try {
     const SaveGame rejected = parse_gamebryo_tesv_fast(p, "skyrimse");
     (void)rejected;
-  } catch (const SaveNeedFullParse&) {
+  } catch (const SaveNeedFullParse &) {
     need_full      = true;
     is_parse_error = true;
-  } catch (const SaveParseError&) {
+  } catch (const SaveParseError &) {
     is_parse_error = true;
   }
   check(need_full, "past-cap lists throw SaveNeedFullParse");

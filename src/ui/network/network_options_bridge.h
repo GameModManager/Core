@@ -17,11 +17,9 @@ namespace engine::network {
 // Build a NetworkOptions from the current Settings values. Caller passes
 // each value explicitly (rather than taking a Settings&) so this header
 // does not pull in <QSettings> / ui/settings.
-NetworkOptions build_options_from_settings(bool offline_mode,
-                                           bool use_proxy,
-                                           const std::string& proxy_host,
-                                           int proxy_port,
-                                           bool nexus_queue_downloads,
+NetworkOptions build_options_from_settings(bool offline_mode, bool use_proxy,
+                                           const std::string &proxy_host,
+                                           int proxy_port, bool nexus_queue_downloads,
                                            int workshop_rate_limit_per_hour,
                                            int default_timeout_seconds,
                                            int max_retries);
@@ -30,4 +28,4 @@ NetworkOptions build_options_from_settings(bool offline_mode,
 // Safe to call on every settings change.
 void push_settings_to_network();
 
-} // namespace engine::network
+}  // namespace engine::network

@@ -42,7 +42,7 @@ namespace ui {
 // --- MIME icon + tree helpers ---
 namespace {
 
-  QIcon icon_for_file(const QString& file_path) {
+  QIcon icon_for_file(const QString &file_path) {
     static QFileIconProvider prov;
     auto px = prov.icon(QFileInfo(file_path)).pixmap(16, 16);
     return QIcon(px);
@@ -58,13 +58,13 @@ namespace {
   }
 
   // Find or create a child tree item by name under parent.
-  QTreeWidgetItem* ensure_child(QTreeWidgetItem* parent, const QString& name,
+  QTreeWidgetItem *ensure_child(QTreeWidgetItem *parent, const QString &name,
                                 bool is_dir) {
     for (int i = 0; i < parent->childCount(); ++i) {
       if (parent->child(i)->text(0) == name)
         return parent->child(i);
     }
-    auto* item = new QTreeWidgetItem(parent);
+    auto *item = new QTreeWidgetItem(parent);
     item->setText(0, name);
     if (is_dir)
       item->setIcon(0, folder_icon());
@@ -92,19 +92,19 @@ namespace {
   // Recursively sort a tree so directories come first, then alphabetical.
   // Navigation rows (DataNavRole set) are pinned to the front at every level so
   // the ".." / data-dir switcher stays reachable regardless of sort order.
-  void sort_dirs_first(QTreeWidgetItem* parent) {
-    std::vector<QTreeWidgetItem*> children;
+  void sort_dirs_first(QTreeWidgetItem *parent) {
+    std::vector<QTreeWidgetItem *> children;
     children.reserve(parent->childCount());
     for (int i = 0; i < parent->childCount(); ++i)
       children.push_back(parent->child(i));
 
     auto first_non_nav = std::stable_partition(
-        children.begin(), children.end(), [](const QTreeWidgetItem* c) {
+        children.begin(), children.end(), [](const QTreeWidgetItem *c) {
           return !c->data(0, DataNavRole).isNull();
         });
 
     std::sort(first_non_nav, children.end(),
-              [](const QTreeWidgetItem* a, const QTreeWidgetItem* b) {
+              [](const QTreeWidgetItem *a, const QTreeWidgetItem *b) {
                 bool a_dir = a->childCount() > 0;
                 bool b_dir = b->childCount() > 0;
                 if (a_dir != b_dir)
@@ -113,15 +113,15 @@ namespace {
               });
 
     parent->takeChildren();
-    for (auto* c : children)
+    for (auto *c : children)
       parent->addChild(c);
-    for (auto* c : children)
+    for (auto *c : children)
       sort_dirs_first(c);
   }
 
   // Extension-based gate for the Preview action / preview window. Mirrors the
   // formats PreviewWindow can render (images + text).
-  static bool can_preview(const QString& path) {
+  static bool can_preview(const QString &path) {
     const QString ext                   = QFileInfo(path).suffix().toLower();
     static const QStringList image_exts = {"png", "jpg", "jpeg", "webp",
                                            "bmp", "gif", "anm2"};
@@ -140,7 +140,7 @@ namespace {
   // True when the mod list's display-relevant fields (id, name, root-flag) are
   // unchanged. Compared before storing so a show_data with identical inputs can
   // skip the population pass entirely.
-  bool same_mod_list(const QVector<ModEntry>& a, const QVector<ModEntry>& b) {
+  bool same_mod_list(const QVector<ModEntry> &a, const QVector<ModEntry> &b) {
     if (a.size() != b.size())
       return false;
     for (int i = 0; i < a.size(); ++i) {
@@ -153,9 +153,9 @@ namespace {
 
   // mod id -> display name lookup (used for the source column and tooltips).
   std::unordered_map<std::string, QString>
-  build_display_names(const QVector<ModEntry>& all_mods) {
+  build_display_names(const QVector<ModEntry> &all_mods) {
     std::unordered_map<std::string, QString> names;
-    for (const auto& m : all_mods)
+    for (const auto &m : all_mods)
       names[m.id.toStdString()] = m.name.isEmpty() ? m.id : m.name;
     return names;
   }
@@ -165,13 +165,13 @@ namespace {
   // O(1) - the Data tab's tree can hold tens of thousands of rows, where the
   // linear scan made the full rebuild O(n^2). item_index_ is kept in sync by
   // every caller.
-  QTreeWidgetItem* ensure_indexed_child(QTreeWidgetItem* parent, const QString& name,
-                                        const QString& full_path, bool is_dir,
-                                        QHash<QString, QTreeWidgetItem*>& index) {
+  QTreeWidgetItem *ensure_indexed_child(QTreeWidgetItem *parent, const QString &name,
+                                        const QString &full_path, bool is_dir,
+                                        QHash<QString, QTreeWidgetItem *> &index) {
     auto it = index.constFind(full_path);
     if (it != index.constEnd())
       return *it;
-    auto* item = new QTreeWidgetItem(parent);
+    auto *item = new QTreeWidgetItem(parent);
     item->setText(0, name);
     if (is_dir)
       item->setIcon(0, folder_icon());
@@ -182,12 +182,12 @@ namespace {
   // Insert or update one row's tree item. When the row is already present it is
   // overwritten in place (provider counts, winner, sizes) so callers never
   // recreate items - this is what keeps the install path incremental.
-  void upsert_data_row(QTreeWidget* tree, const DataTabRow& row,
-                       QHash<QString, QTreeWidgetItem*>& index) {
+  void upsert_data_row(QTreeWidget *tree, const DataTabRow &row,
+                       QHash<QString, QTreeWidgetItem *> &index) {
     const QColor dim =
         QApplication::palette().color(QPalette::Disabled, QPalette::Text);
     auto parts   = row.path.split('/');
-    auto* parent = tree->invisibleRootItem();
+    auto *parent = tree->invisibleRootItem();
     QString parent_path;
     for (int i = 0; i < parts.size() - 1; ++i) {
       if (!parent_path.isEmpty())
@@ -196,7 +196,7 @@ namespace {
       parent = ensure_indexed_child(parent, parts[i], parent_path, true, index);
     }
 
-    auto* file_item =
+    auto *file_item =
         ensure_indexed_child(parent, parts.last(), row.path, false, index);
 
     // A hidden copy whose display name is already owned by a visible (or
@@ -241,9 +241,9 @@ namespace {
 
   // Mod ids flagged [General] rootOverride, as displayed in the mod list.
   std::unordered_set<std::string>
-  root_override_mod_ids(const QVector<ModEntry>& all_mods) {
+  root_override_mod_ids(const QVector<ModEntry> &all_mods) {
     std::unordered_set<std::string> out;
-    for (const auto& m : all_mods)
+    for (const auto &m : all_mods)
       if (m.root_override)
         out.insert(m.id.toStdString());
     return out;
@@ -252,8 +252,8 @@ namespace {
   // Navigation row that switches the merged tree scope (".." up to the game
   // root, or the data-dir folder back into the data view). Pinned to the front
   // of the tree by insert order (the worker's dirs-first sort keeps it first).
-  QTreeWidgetItem* make_nav_item(const QString& label, int target) {
-    auto* item = new QTreeWidgetItem();
+  QTreeWidgetItem *make_nav_item(const QString &label, int target) {
+    auto *item = new QTreeWidgetItem();
     item->setText(0, label);
     item->setIcon(0, folder_icon());
     item->setData(0, DataNavRole, target);
@@ -263,14 +263,14 @@ namespace {
 }  // anonymous namespace
 
 // --- DataTab ---
-DataTab::DataTab(QWidget* parent) : QWidget(parent) {
-  auto* layout = new QVBoxLayout(this);
+DataTab::DataTab(QWidget *parent) : QWidget(parent) {
+  auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
 
   tree_ = new QTreeWidget(this);
   tree_->setColumnCount(4);
   tree_->setHeaderLabels({tr("Name"), tr("Size"), tr("Source"), tr("Providers")});
-  auto* header = new ColumnToggleHeaderView(Qt::Horizontal, tree_);
+  auto *header = new ColumnToggleHeaderView(Qt::Horizontal, tree_);
   header->set_column_labels({tr("Name"), tr("Size"), tr("Source"), tr("Providers")});
   tree_->setHeader(header);
   header->setSectionsMovable(true);
@@ -322,12 +322,12 @@ void DataTab::clear_content() {
 }
 
 void DataTab::show_data(
-    const std::unordered_map<std::string, std::vector<std::pair<std::string, int>>>&
-        registry,
-    const QVector<ModEntry>& all_mods, bool conflict_reversed,
-    const std::filesystem::path& mods_dir, const std::filesystem::path& game_mods_dir,
-    const std::filesystem::path& game_root_dir, const std::string& mods_subpath,
-    const std::string& deploy_prefix, bool deploy_include_mod_id) {
+    const std::unordered_map<std::string, std::vector<std::pair<std::string, int>>>
+        &registry,
+    const QVector<ModEntry> &all_mods, bool conflict_reversed,
+    const std::filesystem::path &mods_dir, const std::filesystem::path &game_mods_dir,
+    const std::filesystem::path &game_root_dir, const std::string &mods_subpath,
+    const std::string &deploy_prefix, bool deploy_include_mod_id) {
   // No-op when nothing display-relevant changed: after a recompute that
   // leaves the registry and mod list untouched, skip the population pass
   // instead of rebuilding the whole tree.
@@ -365,7 +365,7 @@ void DataTab::switch_view(View v) {
   request_populate();
 }
 
-void DataTab::showEvent(QShowEvent*) {
+void DataTab::showEvent(QShowEvent *) {
   if (dirty_)
     request_populate();
 }
@@ -418,22 +418,22 @@ void DataTab::apply_build_result(DataTabBuildResult result) {
     // Effective row per display path: the worker sorts the visible copy
     // first, so the first occurrence claims the tree slot (mirrors the
     // upsert skip for dimmed duplicates).
-    QHash<QString, const DataTabRow*> old_eff;
+    QHash<QString, const DataTabRow *> old_eff;
     old_eff.reserve(static_cast<int>(applied_rows_.size()));
-    for (const auto& r : applied_rows_) {
+    for (const auto &r : applied_rows_) {
       if (!old_eff.contains(r.path))
         old_eff.insert(r.path, &r);
     }
-    QHash<QString, const DataTabRow*> new_eff;
+    QHash<QString, const DataTabRow *> new_eff;
     new_eff.reserve(static_cast<int>(result.rows.size()));
-    for (const auto& r : result.rows) {
+    for (const auto &r : result.rows) {
       if (!new_eff.contains(r.path))
         new_eff.insert(r.path, &r);
     }
 
     std::vector<QString> removed;
-    std::vector<const DataTabRow*> added;
-    std::vector<const DataTabRow*> changed;
+    std::vector<const DataTabRow *> added;
+    std::vector<const DataTabRow *> changed;
     removed.reserve(old_eff.size() / 8);
     for (auto it = old_eff.constBegin(); it != old_eff.constEnd(); ++it) {
       auto nit = new_eff.constFind(it.key());
@@ -456,13 +456,13 @@ void DataTab::apply_build_result(DataTabBuildResult result) {
     // visible cannot be applied with plain upserts, so those rare cases
     // fall through to the full rebuild.
     bool any_hidden = false;
-    for (const auto* row : added) {
+    for (const auto *row : added) {
       if (row->hidden) {
         any_hidden = true;
         break;
       }
     }
-    for (const auto* row : changed) {
+    for (const auto *row : changed) {
       if (row->hidden) {
         any_hidden = true;
         break;
@@ -472,7 +472,7 @@ void DataTab::apply_build_result(DataTabBuildResult result) {
     // with an empty game root, game-root set/cleared) needs the full
     // rebuild so the nav row is recreated correctly.
     bool has_nav    = false;
-    auto* root_item = tree_->invisibleRootItem();
+    auto *root_item = tree_->invisibleRootItem();
     for (int i = 0; i < root_item->childCount(); ++i) {
       if (!root_item->child(i)->data(0, DataNavRole).isNull()) {
         has_nav = true;
@@ -484,12 +484,12 @@ void DataTab::apply_build_result(DataTabBuildResult result) {
       // Fall through to the full rebuild below.
     } else if (!any_hidden && base > 0 && delta * 2 <= base) {
       tree_->setUpdatesEnabled(false);
-      for (const auto& path : removed) {
+      for (const auto &path : removed) {
         auto it = item_index_.find(path);
         if (it == item_index_.end())
           continue;
-        QTreeWidgetItem* item = *it;
-        QTreeWidgetItem* parent =
+        QTreeWidgetItem *item = *it;
+        QTreeWidgetItem *parent =
             item->parent() != nullptr ? item->parent() : root_item;
         parent->removeChild(item);
         item_index_.erase(it);
@@ -499,11 +499,11 @@ void DataTab::apply_build_result(DataTabBuildResult result) {
         QString dir_path     = path;
         const int slash      = dir_path.lastIndexOf('/');
         dir_path             = slash >= 0 ? dir_path.left(slash) : QString();
-        QTreeWidgetItem* cur = parent;
+        QTreeWidgetItem *cur = parent;
         while (cur != nullptr && cur != root_item && cur->childCount() == 0 &&
                cur->data(0, DataRealPathRole).toString().isEmpty() &&
                cur->data(0, DataNavRole).isNull()) {
-          QTreeWidgetItem* grand = cur->parent() != nullptr ? cur->parent() : root_item;
+          QTreeWidgetItem *grand = cur->parent() != nullptr ? cur->parent() : root_item;
           grand->removeChild(cur);
           if (!dir_path.isEmpty())
             item_index_.remove(dir_path);
@@ -513,9 +513,9 @@ void DataTab::apply_build_result(DataTabBuildResult result) {
           dir_path    = s >= 0 ? dir_path.left(s) : QString();
         }
       }
-      for (const auto* row : added)
+      for (const auto *row : added)
         upsert_data_row(tree_, *row, item_index_);
-      for (const auto* row : changed)
+      for (const auto *row : changed)
         upsert_data_row(tree_, *row, item_index_);
       // Winner-only deltas (reorder) keep path order, so no re-sort is
       // needed; structural deltas re-sort once (pointer moves, no item
@@ -603,13 +603,13 @@ void DataTab::apply_chunk_step() {
 }
 
 void DataTab::apply_mod(
-    const std::unordered_map<std::string, std::vector<std::pair<std::string, int>>>&
-        registry,
-    const std::string& mod_id, const QVector<ModEntry>& all_mods,
-    bool conflict_reversed, const std::filesystem::path& mods_dir,
-    const std::filesystem::path& game_mods_dir,
-    const std::filesystem::path& game_root_dir, const std::string& mods_subpath,
-    const std::string& deploy_prefix, bool deploy_include_mod_id) {
+    const std::unordered_map<std::string, std::vector<std::pair<std::string, int>>>
+        &registry,
+    const std::string &mod_id, const QVector<ModEntry> &all_mods,
+    bool conflict_reversed, const std::filesystem::path &mods_dir,
+    const std::filesystem::path &game_mods_dir,
+    const std::filesystem::path &game_root_dir, const std::string &mods_subpath,
+    const std::string &deploy_prefix, bool deploy_include_mod_id) {
   if (registry.empty())
     return;
 
@@ -644,11 +644,11 @@ void DataTab::apply_mod(
   const auto root_mods     = root_override_mod_ids(all_mods);
 
   bool any = false;
-  for (const auto& [path, owners] : registry) {
+  for (const auto &[path, owners] : registry) {
     if (owners.empty())
       continue;
     bool provides = false;
-    for (const auto& [owner, _] : owners) {
+    for (const auto &[owner, _] : owners) {
       if (owner == mod_id) {
         provides = true;
         break;
@@ -679,7 +679,7 @@ void DataTab::apply_mod(
   }
 }
 
-void DataTab::on_item_double_clicked(QTreeWidgetItem* item, int column) {
+void DataTab::on_item_double_clicked(QTreeWidgetItem *item, int column) {
   (void)column;
   if (!item)
     return;
@@ -694,7 +694,7 @@ void DataTab::on_item_double_clicked(QTreeWidgetItem* item, int column) {
   open_item(item);
 }
 
-void DataTab::open_item(QTreeWidgetItem* item) {
+void DataTab::open_item(QTreeWidgetItem *item) {
   const QString real_path = item->data(0, DataRealPathRole).toString();
   if (real_path.isEmpty())
     return;
@@ -706,7 +706,7 @@ void DataTab::open_item(QTreeWidgetItem* item) {
     emit open_requested(real_path);
 }
 
-void DataTab::preview_item(QTreeWidgetItem* item) {
+void DataTab::preview_item(QTreeWidgetItem *item) {
   const QString primary = item->data(0, DataRealPathRole).toString();
   if (primary.isEmpty())
     return;
@@ -715,8 +715,8 @@ void DataTab::preview_item(QTreeWidgetItem* item) {
   emit preview_requested(primary, paths, names);
 }
 
-void DataTab::on_custom_context_menu(const QPoint& pos) {
-  auto* item = tree_->itemAt(pos);
+void DataTab::on_custom_context_menu(const QPoint &pos) {
+  auto *item = tree_->itemAt(pos);
   if (!item)
     return;
   // Navigation rows have no file menu - double-click switches the scope.
@@ -736,7 +736,7 @@ void DataTab::on_custom_context_menu(const QPoint& pos) {
   menu.exec(tree_->viewport()->mapToGlobal(pos));
 }
 
-void DataTab::add_file_menus(QMenu& menu, QTreeWidgetItem* item) {
+void DataTab::add_file_menus(QMenu &menu, QTreeWidgetItem *item) {
   const QString real_path = item->data(0, DataRealPathRole).toString();
   const bool hidden       = item->data(0, DataHiddenRole).toBool();
   const bool is_exe       = real_path.endsWith(".exe", Qt::CaseInsensitive) ||
@@ -748,7 +748,7 @@ void DataTab::add_file_menus(QMenu& menu, QTreeWidgetItem* item) {
   // DataVfsPathRole so the receiver launches through the overlay (merged
   // view) - exactly what MO2's plain Execute does when a mod is active.
   // Non-executables open by their physical path (Open carries no VFS role).
-  auto* open_action =
+  auto *open_action =
       menu.addAction(is_exe ? tr("&Execute") : tr("&Open"), this, [this, item]() {
         open_item(item);
       });
@@ -756,7 +756,7 @@ void DataTab::add_file_menus(QMenu& menu, QTreeWidgetItem* item) {
                                 ? tr("Launches this program (in the merged mod view)")
                                 : tr("Opens this file with its default handler"));
 
-  auto* preview_action = menu.addAction(tr("&Preview"), this, [this, item]() {
+  auto *preview_action = menu.addAction(tr("&Preview"), this, [this, item]() {
     preview_item(item);
   });
   preview_action->setStatusTip(tr("Previews this file within GameModManager"));
@@ -768,7 +768,7 @@ void DataTab::add_file_menus(QMenu& menu, QTreeWidgetItem* item) {
 
   menu.addSeparator();
 
-  auto* add_exe_action = menu.addAction(tr("&Add as Executable"), this, [this, item]() {
+  auto *add_exe_action = menu.addAction(tr("&Add as Executable"), this, [this, item]() {
     // Carry the merged-view (deploy-relative) path: it is what the
     // launch overlay resolves, never the on-disk mods-folder path. The
     // physical winning copy rides along so the receiver can extract
@@ -784,7 +784,7 @@ void DataTab::add_file_menus(QMenu& menu, QTreeWidgetItem* item) {
     add_exe_action->setStatusTip(tr("This file is not executable"));
   }
 
-  auto* reveal_action = menu.addAction(tr("Reveal in E&xplorer"), this, [item]() {
+  auto *reveal_action = menu.addAction(tr("Reveal in E&xplorer"), this, [item]() {
     const auto dir =
         QFileInfo(item->data(0, DataRealPathRole).toString()).absolutePath();
     if (!dir.isEmpty())
@@ -794,7 +794,7 @@ void DataTab::add_file_menus(QMenu& menu, QTreeWidgetItem* item) {
 
   const QString origin_mod_id = item->data(0, DataOriginModRole).toString();
   const bool game_native      = origin_mod_id == QLatin1String(kGameRootNativeId);
-  auto* mod_info_action =
+  auto *mod_info_action =
       menu.addAction(tr("Open &Mod Info"), this, [this, origin_mod_id]() {
         emit open_mod_info_requested(origin_mod_id);
       });
@@ -807,7 +807,7 @@ void DataTab::add_file_menus(QMenu& menu, QTreeWidgetItem* item) {
     mod_info_action->setStatusTip(tr("This file is not in a managed mod"));
   }
 
-  auto* hide_action = menu.addAction(
+  auto *hide_action = menu.addAction(
       hidden ? tr("&Un-Hide") : tr("&Hide"), this, [this, item, hidden]() {
         emit hide_requested(item->data(0, DataRealPathRole).toString(),
                             item->data(0, DataOriginModRole).toString(), !hidden);
@@ -819,15 +819,15 @@ void DataTab::add_file_menus(QMenu& menu, QTreeWidgetItem* item) {
   }
 }
 
-void DataTab::add_common_menus(QMenu& menu) {
+void DataTab::add_common_menus(QMenu &menu) {
   menu.addSeparator();
 
-  auto* save_action = menu.addAction(tr("&Save Tree to Text File..."), this, [this]() {
+  auto *save_action = menu.addAction(tr("&Save Tree to Text File..."), this, [this]() {
     dump_tree_to_file();
   });
   save_action->setStatusTip(tr("Writes the list of files to a text file"));
 
-  auto* refresh_action = menu.addAction(tr("&Refresh"), this, [this]() {
+  auto *refresh_action = menu.addAction(tr("&Refresh"), this, [this]() {
     emit refresh_requested();
   });
   refresh_action->setStatusTip(tr("Refreshes the list"));
@@ -851,10 +851,10 @@ void DataTab::dump_tree_to_file() {
     return;
 
   QTextStream out(&file);
-  std::function<void(QTreeWidgetItem*, int)> write = [&](QTreeWidgetItem* parent,
-                                                         int depth) {
+  std::function<void(QTreeWidgetItem *, int)> write = [&](QTreeWidgetItem *parent,
+                                                          int depth) {
     for (int i = 0; i < parent->childCount(); ++i) {
-      auto* child = parent->child(i);
+      auto *child = parent->child(i);
       out << QString(depth * 2, ' ') << child->text(0);
       if (child->childCount() == 0) {
         if (!child->text(1).isEmpty())

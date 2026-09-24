@@ -78,14 +78,13 @@ struct ProfileSwitchCallbacks {
 // Returns false with *error set on the first failure.
 bool save_current_profile(ProfileManager &profile, const ProfileSaveState &state,
                           engine::PluginDb::Database *plugin_db = nullptr,
-                          std::string *error = nullptr);
+                          std::string *error                    = nullptr);
 
 // Atomically write the profile's tweaked INI file (initweaks.ini). The
 // content is the merged INI tweaks of the enabled mods + profile tweaks
 // (MO2's createTweakedIniFile); the engine writes what the caller gathered.
 bool write_tweaked_ini(const std::filesystem::path &profile_dir,
-                       const std::string &content,
-                       std::string *error = nullptr);
+                       const std::string &content, std::string *error = nullptr);
 
 // Switch the active profile to `name` under profiles_dir (MO2's
 // OrganizerCore::setCurrentProfile). Handles the full transition:
@@ -118,4 +117,4 @@ ProfileSwitchResult switch_profile(const std::filesystem::path &profiles_dir,
                                    engine::PluginDb::Database *plugin_db,
                                    const ProfileSwitchCallbacks &callbacks);
 
-} // namespace engine::profile
+}  // namespace engine::profile

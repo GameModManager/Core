@@ -28,7 +28,7 @@ namespace {
   // LoversLab fragments are raw Invision Community HTML (block tags
   // intact), so they get the Invision dark theme instead: no pre-wrap
   // (real <p>/<br> carry the breaks), LL background/text/link colors.
-  QString wrap_web_html(const QString& body, SourceCSS style) {
+  QString wrap_web_html(const QString &body, SourceCSS style) {
     static const QString kNexusCss = QStringLiteral(
         "body{font-family:sans-serif;font-size:14px;background:#404040;color:"
         "#f1f1f1;max-width:1060px;margin:auto;padding:20px "
@@ -90,7 +90,7 @@ void ensure_webengine_profile() {
 }
 
 bool WebViewDescriptionRenderer::InterceptPage::acceptNavigationRequest(
-    const QUrl& url, NavigationType /*type*/, bool isMainFrame) {
+    const QUrl &url, NavigationType /*type*/, bool isMainFrame) {
   if (!isMainFrame)
     return false;
   // Our own setHtml() content is a data: URL - let it load.
@@ -98,7 +98,7 @@ bool WebViewDescriptionRenderer::InterceptPage::acceptNavigationRequest(
     return true;
   // User clicked a link: open externally via the panel's open_url path and
   // keep the view on our content.
-  auto* renderer = qobject_cast<WebViewDescriptionRenderer*>(parent());
+  auto *renderer = qobject_cast<WebViewDescriptionRenderer *>(parent());
   if (renderer != nullptr)
     emit renderer->link_clicked(url);
   else
@@ -106,7 +106,7 @@ bool WebViewDescriptionRenderer::InterceptPage::acceptNavigationRequest(
   return false;
 }
 
-WebViewDescriptionRenderer::WebViewDescriptionRenderer(QWidget* parent)
+WebViewDescriptionRenderer::WebViewDescriptionRenderer(QWidget *parent)
     : DescriptionRenderer(parent), webview_(new QWebEngineView(this)) {
   // First actual WebEngine use: configure the shared profile now that the
   // cost is unavoidable (deferred from main() - see Workspace-2vmp).
@@ -122,14 +122,14 @@ WebViewDescriptionRenderer::WebViewDescriptionRenderer(QWidget* parent)
   // body CSS lands. This is what the user sees as a white flash.
   if (webview_->page() != nullptr)
     webview_->page()->setBackgroundColor(page_background(current_style_));
-  auto* layout = new QVBoxLayout(this);
+  auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->addWidget(webview_, 1);
   setMinimumHeight(200);
   setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 }
 
-void WebViewDescriptionRenderer::set_description(const QString& html) {
+void WebViewDescriptionRenderer::set_description(const QString &html) {
   current_html_ = html;
   webview_->setHtml(wrap_web_html(html, current_style_));
 }

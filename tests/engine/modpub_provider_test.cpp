@@ -14,7 +14,7 @@ void require(bool cond, const char *msg) {
   INFO(msg);
   REQUIRE(cond);
 }
-} // namespace
+}  // namespace
 
 TEST_CASE("modpub provider parse_mod_info", "[engine]") {
   using ModPubModInfoResult = engine::Source::ModPub::ModInfoResult;
@@ -61,8 +61,8 @@ TEST_CASE("modpub provider parse_mod_info", "[engine]") {
 </body>
 </html>)";
 
-  ModPubModInfoResult r =
-      Provider::parse_mod_info(body, "https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng/");
+  ModPubModInfoResult r = Provider::parse_mod_info(
+      body, "https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng/");
   require(r.available, "available parsed");
   require(r.name == "Stay at the System Page NG", "name parsed");
   // applicationCategory is the boilerplate "GameMod" - the parser must
@@ -74,7 +74,8 @@ TEST_CASE("modpub provider parse_mod_info", "[engine]") {
           "description parsed verbatim");
   require(r.date_modified == "2023-09-06 08:55:29",
           "dateModified parsed (out-of-date hook even if not displayed)");
-  require(r.page_url.find("skyrim-se/22-stay-at-the-system-page-ng") != std::string::npos,
+  require(r.page_url.find("skyrim-se/22-stay-at-the-system-page-ng") !=
+              std::string::npos,
           "page_url parsed from JSON-LD url");
   // game_slug is back-filled from the fallback URL when JSON-LD did not
   // expose it directly. The Visit button uses it for the bare-URL
@@ -126,11 +127,10 @@ TEST_CASE("modpub provider parse_mod_info", "[engine]") {
 <meta property="og:title" content="After Bad JSON" />
 <meta property="og:description" content="Recovered description" />
 </head></html>)";
-  ModPubModInfoResult m =
-      Provider::parse_mod_info(malformed, "https://mod.pub/enderalse/9-after-bad-json/");
+  ModPubModInfoResult m = Provider::parse_mod_info(
+      malformed, "https://mod.pub/enderalse/9-after-bad-json/");
   require(m.available, "malformed JSON-LD: og fallback works");
-  require(m.name == "After Bad JSON",
-          "malformed JSON-LD: og:title used as name");
+  require(m.name == "After Bad JSON", "malformed JSON-LD: og:title used as name");
   require(m.description == "Recovered description",
           "malformed JSON-LD: og:description used");
   require(m.game_slug == "enderalse", "malformed: game_slug from fallback URL");
@@ -185,7 +185,8 @@ TEST_CASE("modpub provider URL parsing", "[engine]") {
   using engine::Source::ModPub::Provider;
 
   // is_modpub_url: accepts scheme://mod.pub/... and bare mod.pub/...
-  require(Provider::is_modpub_url("https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng"),
+  require(Provider::is_modpub_url(
+              "https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng"),
           "https scheme + path: recognized");
   require(Provider::is_modpub_url("http://mod.pub/fallout4/7-thing/"),
           "http scheme: recognized");
@@ -193,16 +194,19 @@ TEST_CASE("modpub provider URL parsing", "[engine]") {
           "bare mod.pub/ paste: recognized (no scheme)");
   require(!Provider::is_modpub_url("https://www.moddb.com/mods/1234"),
           "different host: not recognized");
-  require(!Provider::is_modpub_url("https://nexusmods.com/skyrimspecialedition/mods/22"),
-          "nexus: not recognized");
+  require(
+      !Provider::is_modpub_url("https://nexusmods.com/skyrimspecialedition/mods/22"),
+      "nexus: not recognized");
   require(!Provider::is_modpub_url(""), "empty: not recognized");
 
   // extract_mod_id: from a canonical URL with slug suffix
-  require(Provider::extract_mod_id("https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng") == "22",
+  require(Provider::extract_mod_id(
+              "https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng") == "22",
           "URL with slug: id 22");
   require(Provider::extract_mod_id("https://mod.pub/fallout4/7/") == "7",
           "URL with trailing slash, no slug: id 7");
-  require(Provider::extract_mod_id("https://mod.pub/enderalse/99-some-mod-name") == "99",
+  require(Provider::extract_mod_id("https://mod.pub/enderalse/99-some-mod-name") ==
+              "99",
           "URL with hyphenated slug: leading numeric is id");
   require(Provider::extract_mod_id("https://mod.pub/skyrim/12") == "12",
           "bare id: works");
@@ -212,7 +216,8 @@ TEST_CASE("modpub provider URL parsing", "[engine]") {
           "non-mod path: empty (no second segment)");
 
   // extract_game_slug: from the same URLs
-  require(Provider::extract_game_slug("https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng") == "skyrim-se",
+  require(Provider::extract_game_slug(
+              "https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng") == "skyrim-se",
           "URL: game_slug skyrim-se");
   require(Provider::extract_game_slug("https://mod.pub/fallout4/7/") == "fallout4",
           "URL: game_slug fallout4");
@@ -222,10 +227,12 @@ TEST_CASE("modpub provider URL parsing", "[engine]") {
           "wrong host: empty game_slug");
 
   // mod_page_url: strip query/fragment, ensure trailing slash
-  require(Provider::mod_page_url("https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng?utm=1") ==
+  require(Provider::mod_page_url(
+              "https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng?utm=1") ==
               "https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng/",
           "query stripped, trailing slash added");
-  require(Provider::mod_page_url("https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng#files") ==
+  require(Provider::mod_page_url(
+              "https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng#files") ==
               "https://mod.pub/skyrim-se/22-stay-at-the-system-page-ng/",
           "fragment stripped, trailing slash added");
   require(Provider::mod_page_url("https://mod.pub/fallout4/7/") ==
@@ -241,45 +248,39 @@ TEST_CASE("modpub parse_description_html", "[engine]") {
 
   // --- Basic extraction: the "gray-box user-content" div's inner HTML
   // is extracted, anchors converted to [url], other tags stripped.
-  const std::string basic =
-      R"(<div class="gray-box user-content">)"
-      R"(<a href="https://example.com">Click here</a><br />)"
-      R"(<strong>Bold text</strong></div>)";
-  std::string r = Provider::parse_description_html(basic);
+  const std::string basic = R"(<div class="gray-box user-content">)"
+                            R"(<a href="https://example.com">Click here</a><br />)"
+                            R"(<strong>Bold text</strong></div>)";
+  std::string r           = Provider::parse_description_html(basic);
   require(!r.empty(), "basic: extracted");
   require(r.find("[url=https://example.com]Click here[/url]") != std::string::npos,
           "basic: anchor converted to BBCode url");
   require(r.find("Bold text") != std::string::npos,
           "basic: strong tag stripped, text preserved");
-  require(r.find("<strong>") == std::string::npos,
-          "basic: HTML tags stripped");
+  require(r.find("<strong>") == std::string::npos, "basic: HTML tags stripped");
 
   // --- javascript: href dropped (link text preserved, href not in output).
-  const std::string js =
-      R"TAG(<div class="gray-box user-content">)TAG"
-      R"TAG(<a href="javascript:alert(1)">XSS</a></div>)TAG";
-  std::string js_r = Provider::parse_description_html(js);
-  require(js_r.find("XSS") != std::string::npos,
-          "javascript: link text preserved");
+  const std::string js = R"TAG(<div class="gray-box user-content">)TAG"
+                         R"TAG(<a href="javascript:alert(1)">XSS</a></div>)TAG";
+  std::string js_r     = Provider::parse_description_html(js);
+  require(js_r.find("XSS") != std::string::npos, "javascript: link text preserved");
   require(js_r.find("[url=") == std::string::npos,
           "javascript: href not wrapped in [url]");
   require(js_r.find("javascript:") == std::string::npos,
           "javascript: scheme completely absent from output");
 
   // --- Single-quoted class attribute.
-  const std::string sq =
-      R"(<div class='gray-box user-content'>)"
-      R"(<a href="https://example.com">Link</a></div>)";
-  std::string sq_r = Provider::parse_description_html(sq);
+  const std::string sq = R"(<div class='gray-box user-content'>)"
+                         R"(<a href="https://example.com">Link</a></div>)";
+  std::string sq_r     = Provider::parse_description_html(sq);
   require(!sq_r.empty(), "single-quoted class: extracted");
   require(sq_r.find("[url=https://example.com]") != std::string::npos,
           "single-quoted class: anchor converted");
 
   // --- Mention survival: @username is preserved as text.
-  const std::string mention =
-      R"(<div class="gray-box user-content">)"
-      R"(<p>Great mod! Thanks @AuthorName for this.</p></div>)";
-  std::string m_r = Provider::parse_description_html(mention);
+  const std::string mention = R"(<div class="gray-box user-content">)"
+                              R"(<p>Great mod! Thanks @AuthorName for this.</p></div>)";
+  std::string m_r           = Provider::parse_description_html(mention);
   require(m_r.find("@AuthorName") != std::string::npos,
           "mention: @AuthorName survives extraction");
   require(m_r.find("Great mod!") != std::string::npos,
@@ -348,11 +349,10 @@ TEST_CASE("modpub description newline normalization", "[engine]") {
 
   // --- Pretty-printed paragraphs: indentation between block tags must
   // not survive as whitespace-only lines.
-  const std::string pretty =
-      "<div class=\"gray-box user-content\">\n"
-      "    <p>para1</p>\n"
-      "    <p>para2</p>\n"
-      "  </div>";
+  const std::string pretty = "<div class=\"gray-box user-content\">\n"
+                             "    <p>para1</p>\n"
+                             "    <p>para2</p>\n"
+                             "  </div>";
   require(Provider::parse_description_html(pretty) == "para1\n\npara2",
           "pretty-printed paragraphs join with one blank line");
 }
@@ -363,24 +363,22 @@ TEST_CASE("modpub metadata entity decoding", "[engine]") {
 
   // --- Workspace-vbx3: the DOM aside tag arrives HTML-escaped; the
   // panel shows it verbatim so it must be decoded at parse time.
-  const std::string body =
-      "<html><head>"
-      "<script type=\"application/ld+json\">"
-      "{\"@type\":\"SoftwareApplication\","
-      "\"name\":\"Swords &amp; Sorcery\","
-      "\"description\":\"Plain text from JSON-LD\","
-      "\"applicationCategory\":\"GameMod\","
-      "\"author\":{\"name\":\"Modder &quot;Bob&quot;\"}}"
-      "</script>"
-      "</head><body>"
-      "<aside><b>Tag</b> Framework &amp; Resources</aside>"
-      "</body></html>";
-  ModPubModInfoResult r = Provider::parse_mod_info(
-      body, "https://mod.pub/skyrim/1-test-mod/");
+  const std::string body = "<html><head>"
+                           "<script type=\"application/ld+json\">"
+                           "{\"@type\":\"SoftwareApplication\","
+                           "\"name\":\"Swords &amp; Sorcery\","
+                           "\"description\":\"Plain text from JSON-LD\","
+                           "\"applicationCategory\":\"GameMod\","
+                           "\"author\":{\"name\":\"Modder &quot;Bob&quot;\"}}"
+                           "</script>"
+                           "</head><body>"
+                           "<aside><b>Tag</b> Framework &amp; Resources</aside>"
+                           "</body></html>";
+  ModPubModInfoResult r =
+      Provider::parse_mod_info(body, "https://mod.pub/skyrim/1-test-mod/");
   require(r.available, "entities: available");
   require(r.name == "Swords & Sorcery", "entities: JSON-LD name decoded");
   require(r.category == "Framework & Resources",
           "entities: aside tag category decoded");
-  require(r.author == "Modder \"Bob\"",
-          "entities: JSON-LD author decoded");
+  require(r.author == "Modder \"Bob\"", "entities: JSON-LD author decoded");
 }

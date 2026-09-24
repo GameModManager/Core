@@ -29,8 +29,8 @@ public:
   // Register a file mapper. game_id scopes the mapper to one game
   // ("" = all games); plugin_path is the .so path, used to drop the
   // mapper on unload. fn must be non-null.
-  void register_mapper(const std::string &game_id, GmmFileMapperFn fn,
-                       void *user_data, const std::string &plugin_path);
+  void register_mapper(const std::string &game_id, GmmFileMapperFn fn, void *user_data,
+                       const std::string &plugin_path);
 
   // Invoke every mapper matching game_id and return the aggregated
   // {source, target} pairs. Mappers whose game_id is non-empty and != game_id
@@ -51,11 +51,11 @@ private:
   struct Entry {
     std::string game_id;
     GmmFileMapperFn fn = nullptr;
-    void *user_data = nullptr;
+    void *user_data    = nullptr;
     std::string plugin_path;
   };
 
   std::vector<Entry> entries_;
 };
 
-} // namespace engine
+}  // namespace engine

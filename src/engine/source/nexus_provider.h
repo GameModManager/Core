@@ -9,8 +9,9 @@
 
 namespace engine {
 
-// Backward-compat aliases (deprecated - use Source::Nexus::Provider / Source::Nexus::ModInfoResult)
-using ModInfoResult  = Source::Nexus::ModInfoResult;
-using NexusProvider  = Source::Nexus::Provider;
+// Backward-compat aliases (deprecated - use Source::Nexus::Provider /
+// Source::Nexus::ModInfoResult)
+using ModInfoResult = Source::Nexus::ModInfoResult;
+using NexusProvider = Source::Nexus::Provider;
 
-} // namespace engine
+}  // namespace engine

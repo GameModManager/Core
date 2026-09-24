@@ -46,7 +46,7 @@
 
 namespace ui {
 
-MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
+MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   setWindowTitle(tr("GameModManager"));
   resize(1200, 800);
   setAcceptDrops(true);
@@ -102,7 +102,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
           &TabModeController::route_instance_switcher);
   connect(menu_bar_, &AppMenuBar::sort_mods_requested, mod_list_.get(),
           &ModListController::sort_mods);
-  connect(toolbar_, &MainToolbar::shortcut_removed, this, [this](const QString& path) {
+  connect(toolbar_, &MainToolbar::shortcut_removed, this, [this](const QString &path) {
     int idx = toolbar_shortcut_paths_.indexOf(path);
     if (idx >= 0)
       toolbar_shortcut_paths_.removeAt(idx);
@@ -116,7 +116,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         engine::IconManager::instance().resolve_icon("proton", QStyle::SP_ComputerIcon);
     toolbar_->add_instance_options_button(instance_options_icon);
 
-    auto* instance_options_menu = new QMenu(this);
+    auto *instance_options_menu = new QMenu(this);
     instance_options_menu->addAction(tr("Run winecfg"), this, [this]() {
       launch_->run_prefix_tool({"winecfg"});
     });
@@ -155,8 +155,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   console_splitter_ = new QSplitter(Qt::Vertical, this);
 
   // Main horizontal area
-  auto* main_area   = new QWidget(this);
-  auto* main_layout = new QVBoxLayout(main_area);
+  auto *main_area   = new QWidget(this);
+  auto *main_layout = new QVBoxLayout(main_area);
   main_layout->setContentsMargins(0, 0, 0, 0);
   main_layout->setSpacing(0);
 
@@ -167,8 +167,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
   // --- Left panel: profile bar, mod list, filter bar stacked vertically.
   // ModListController::setup_mod_list fills it (Issue #16). ---
-  auto* left_panel  = new QWidget(this);
-  auto* left_layout = new QVBoxLayout(left_panel);
+  auto *left_panel  = new QWidget(this);
+  auto *left_layout = new QVBoxLayout(left_panel);
   left_layout->setContentsMargins(0, 0, 0, 0);
   left_layout->setSpacing(0);
   mod_list_->setup_mod_list(left_layout);
@@ -249,7 +249,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   // (executables, ...) survive. The in-memory instance is refreshed so the
   // value is immediately visible to restore_tab on the next switch.
   connect(
-      right_panel_, &RightPanel::tab_changed, this, [this](const QString& capability) {
+      right_panel_, &RightPanel::tab_changed, this, [this](const QString &capability) {
         if (current_instance_root_.empty())
           return;
         engine::Instance write = engine::Instance::from_root(current_instance_root_);
@@ -264,7 +264,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   // set_game() runs here instead - exactly once per tab build. The Data
   // tab is always present and wired directly by the controllers.
   connect(right_panel_, &RightPanel::tab_materialized, this,
-          [this](const QString& capability) {
+          [this](const QString &capability) {
             const auto cap = capability.toStdString();
             if (cap == "downloads") {
               // Manifest, downloads dir + watchdog, signal connections.
@@ -279,7 +279,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
                 downloads_->wire_saves_tab();
               }
             } else if (cap == "conflicts") {
-              if (auto* ct = right_panel_->conflicts_tab()) {
+              if (auto *ct = right_panel_->conflicts_tab()) {
                 connect(ct, &ui::ConflictsTab::image_diff_requested, mod_list_.get(),
                         &ModListController::on_image_diff_requested);
               }
@@ -316,11 +316,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 // controller header is included (complete types are available).
 MainWindow::~MainWindow() = default;
 
-void MainWindow::set_game_info(const std::string& game_id,
-                               const std::string& game_display_name,
-                               const std::string& profile_name,
-                               const std::filesystem::path& game_dir,
-                               const std::filesystem::path& instance_root) {
+void MainWindow::set_game_info(const std::string &game_id,
+                               const std::string &game_display_name,
+                               const std::string &profile_name,
+                               const std::filesystem::path &game_dir,
+                               const std::filesystem::path &instance_root) {
   // Instance/session setup (state reset, right-panel rebuild, pipeline
   // config, app-state restore) lives in SettingsController::set_game_info.
   settings_->set_game_info(game_id, game_display_name, profile_name, game_dir,
@@ -341,15 +341,15 @@ bool MainWindow::prompt_for_game_path() {
   return true;
 }
 
-void MainWindow::handle_nxm_download(const engine::NxmLink& link) {
+void MainWindow::handle_nxm_download(const engine::NxmLink &link) {
   downloads_->handle_nxm_download(link);
 }
 
-void MainWindow::handle_modl_download(const engine::Source::ModlLink& link) {
+void MainWindow::handle_modl_download(const engine::Source::ModlLink &link) {
   downloads_->handle_modl_download(link);
 }
 
-void MainWindow::on_notification(const QString& title, const QString& message) {
+void MainWindow::on_notification(const QString &title, const QString &message) {
   status_bar_->set_status(title + ": " + message);
 }
 
@@ -365,7 +365,7 @@ void MainWindow::update_title() {
   }
 }
 
-void MainWindow::resizeEvent(QResizeEvent* event) {
+void MainWindow::resizeEvent(QResizeEvent *event) {
   QMainWindow::resizeEvent(event);
   if (game_lock_overlay_)
     game_lock_overlay_->setGeometry(rect());
@@ -375,10 +375,10 @@ void MainWindow::resizeEvent(QResizeEvent* event) {
 
 namespace {
   // A drop is a modpack drop when any dragged URL is a local .gmmpack/.zip.
-  bool is_pack_drop(const QMimeData* mime) {
+  bool is_pack_drop(const QMimeData *mime) {
     if (mime == nullptr || !mime->hasUrls())
       return false;
-    for (const QUrl& url : mime->urls()) {
+    for (const QUrl &url : mime->urls()) {
       const QString suffix = QFileInfo(url.toLocalFile()).suffix().toLower();
       if (suffix == "gmmpack" || suffix == "zip")
         return true;
@@ -387,23 +387,23 @@ namespace {
   }
 }  // namespace
 
-void MainWindow::dragEnterEvent(QDragEnterEvent* event) {
+void MainWindow::dragEnterEvent(QDragEnterEvent *event) {
   if (!is_pack_drop(event->mimeData()))
     return;
   event->acceptProposedAction();
   set_drop_overlay_visible(true);
 }
 
-void MainWindow::dragLeaveEvent(QDragLeaveEvent* event) {
+void MainWindow::dragLeaveEvent(QDragLeaveEvent *event) {
   set_drop_overlay_visible(false);
   QMainWindow::dragLeaveEvent(event);
 }
 
-void MainWindow::dropEvent(QDropEvent* event) {
+void MainWindow::dropEvent(QDropEvent *event) {
   set_drop_overlay_visible(false);
   if (!is_pack_drop(event->mimeData()))
     return;
-  for (const QUrl& url : event->mimeData()->urls()) {
+  for (const QUrl &url : event->mimeData()->urls()) {
     const QString local  = url.toLocalFile();
     const QString suffix = QFileInfo(local).suffix().toLower();
     if (!local.isEmpty() && (suffix == "gmmpack" || suffix == "zip")) {
@@ -451,7 +451,7 @@ void MainWindow::set_ui_enabled(bool enabled) {
   locker_->set_enabled(enabled);
 }
 
-void MainWindow::closeEvent(QCloseEvent* event) {
+void MainWindow::closeEvent(QCloseEvent *event) {
   // Ask before closing with active downloads (downloads_->confirm_close);
   // Cancel aborts the close, everything else falls through.
   if (!downloads_->confirm_close()) {
@@ -477,7 +477,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
   QMainWindow::closeEvent(event);
 }
 
-bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
+bool MainWindow::eventFilter(QObject *obj, QEvent *event) {
   if (settings_->handle_global_event(obj, event))
     return true;
 

@@ -25,17 +25,17 @@ namespace PluginDb {
     //   game_native_plugins - comma-separated vanilla plugins (resolved via
     //   engine::native_plugins_csv(): a registered "game_plugins" game feature,
     //   else the game_native_plugins knowledge hook)
-    bool refresh(const std::filesystem::path& game_dir,
-                 const std::filesystem::path& mods_dir,
-                 const std::string& disable_mechanism,
-                 const std::string& game_native_plugins);
+    bool refresh(const std::filesystem::path &game_dir,
+                 const std::filesystem::path &mods_dir,
+                 const std::string &disable_mechanism,
+                 const std::string &game_native_plugins);
 
     // Read creation club file (game root, then Data/) and mark listed content as CC
     // (force-loaded, excluded from plugins.txt). Call before sort_load_order().
     // The filename comes from the "creation_club_file" knowledge key (default:
     // skyrim.ccc).
-    void load_creation_club(const std::filesystem::path& game_dir,
-                            const std::string& ccc_filename = "skyrim.ccc");
+    void load_creation_club(const std::filesystem::path &game_dir,
+                            const std::string &ccc_filename = "skyrim.ccc");
 
     // Parse TES4 headers for all discovered plugins (extension fallbacks
     // apply when a file can't be parsed). Called by refresh().
@@ -61,7 +61,7 @@ namespace PluginDb {
     // but never touches the LOOT data), so they survive refresh() and are
     // only replaced by the next set_loot_reports() or dropped by
     // clear_loot_reports().
-    void set_loot_reports(const std::map<std::string, LootReport>& reports);
+    void set_loot_reports(const std::map<std::string, LootReport> &reports);
     void clear_loot_reports();
 
     // Assign formID prefixes (Mod Index column) after the load order is set.
@@ -71,8 +71,8 @@ namespace PluginDb {
     // Enabling a plugin transitively enables its masters; disabling a plugin
     // that enabled plugins depend on is blocked with a message.
     // Returns false with *error set on failure.
-    bool set_enabled(const std::string& name, bool enabled,
-                     std::string* error = nullptr);
+    bool set_enabled(const std::string &name, bool enabled,
+                     std::string *error = nullptr);
 
     // Move a plugin within the user band (below the fixed game-native + CC
     // rows). Fixed rows are rejected; out-of-range drops are clamped. Priority
@@ -80,47 +80,47 @@ namespace PluginDb {
     // Locked plugins are rejected both as the source (they never move) and as
     // the destination (a drop there would displace them).
     // Returns false with *error set on failure.
-    bool move_plugin(int from_row, int to_row, std::string* error = nullptr);
+    bool move_plugin(int from_row, int to_row, std::string *error = nullptr);
 
     // Pin/unpin a plugin at its current position (MO2 lock load order). A
     // locked plugin can never move again: move_plugin rejects it and any
     // auto-sort (sort_load_order, LOOT) re-places it at its locked priority.
     // Force-loaded rows (game-native, CC) cannot be locked.
     // Returns false with *error set on failure.
-    bool set_locked(const std::string& name, bool lock, std::string* error = nullptr);
-    [[nodiscard]] bool is_locked(const std::string& name) const;
+    bool set_locked(const std::string &name, bool lock, std::string *error = nullptr);
+    [[nodiscard]] bool is_locked(const std::string &name) const;
 
     // Reorder the user plugin band to the given load order (e.g. LOOT's sorted
     // output). Game-native and Creation Club rows keep their fixed band; locked
     // plugins are re-inserted at their pinned priorities; mod indexes are
     // regenerated. Every name in `order` must resolve to a known plugin
     // (case-insensitively) or the call fails with *error set and nothing changed.
-    bool apply_load_order(const std::vector<std::string>& order,
-                          std::string* error = nullptr);
+    bool apply_load_order(const std::vector<std::string> &order,
+                          std::string *error = nullptr);
 
     // Load profile state (plugins.txt/loadorder.txt/lockedorder.txt) from
     // <profiles_dir>/<profile_name>/. Returns true when state was applied.
     // *repaired (optional) is set when the loaded order violated the native/CC
     // band invariant (a core plugin below user plugins) and was healed.
-    bool load_profile(const std::filesystem::path& profiles_dir,
-                      const std::string& profile_name, bool* repaired = nullptr);
+    bool load_profile(const std::filesystem::path &profiles_dir,
+                      const std::string &profile_name, bool *repaired = nullptr);
 
     // Persist the current state in MO2-compatible files.
-    void save_profile(const std::filesystem::path& profiles_dir,
-                      const std::string& profile_name) const;
+    void save_profile(const std::filesystem::path &profiles_dir,
+                      const std::string &profile_name) const;
 
     // Write the game's plugins.txt (enabled = '*', game-native + CC excluded).
-    bool write_game_plugins_txt(const std::filesystem::path& path) const;
+    bool write_game_plugins_txt(const std::filesystem::path &path) const;
 
     // Write MO2-style loadorder.txt (all plugins, first line = first-loaded).
-    bool write_load_order_txt(const std::filesystem::path& path) const;
+    bool write_load_order_txt(const std::filesystem::path &path) const;
 
-    [[nodiscard]] const std::vector<GamePlugin>& plugins() const { return plugins_; }
-    [[nodiscard]] const GamePlugin* find(const std::string& name) const;
+    [[nodiscard]] const std::vector<GamePlugin> &plugins() const { return plugins_; }
+    [[nodiscard]] const GamePlugin *find(const std::string &name) const;
 
     // Mutable access for engine-side consumers that attach per-plugin data
     // (e.g. DiagnosticsRegistry populating GamePlugin::messages after refresh).
-    std::vector<GamePlugin>& plugins_mutable() { return plugins_; }
+    std::vector<GamePlugin> &plugins_mutable() { return plugins_; }
 
     // --- Launch-time helpers ---------------------------------------------
 
@@ -129,25 +129,25 @@ namespace PluginDb {
     // %LOCALAPPDATA%/<localappdata_folder>/Plugins.txt. Returns empty when the game has
     // no plugin support (no localappdata_folder hook) or the target can't be resolved.
     static std::filesystem::path
-    resolve_plugins_txt_target(const GameKnowledge& knowledge,
-                               const std::string& game_id, uint32_t steam_appid,
-                               const Platform* platform,
-                               const std::filesystem::path& override_path = {});
+    resolve_plugins_txt_target(const GameKnowledge &knowledge,
+                               const std::string &game_id, uint32_t steam_appid,
+                               const Platform *platform,
+                               const std::filesystem::path &override_path = {});
 
     // Build the plugin list from on-disk state and write plugins.txt to the
     // game's target (an instance.toml plugins_txt_path entry, or the
     // platform-resolved default). Honors a persisted profile's enable state;
     // without one, enables everything so installed mods actually load.
     // Returns false (and skips silently) for games without plugin support.
-    static bool write_plugins_txt_for_launch(const std::filesystem::path& game_dir,
-                                             const std::filesystem::path& instance_root,
-                                             const std::string& game_id,
+    static bool write_plugins_txt_for_launch(const std::filesystem::path &game_dir,
+                                             const std::filesystem::path &instance_root,
+                                             const std::string &game_id,
                                              uint32_t steam_appid,
-                                             const GameKnowledge& knowledge,
-                                             const Platform* platform);
+                                             const GameKnowledge &knowledge,
+                                             const Platform *platform);
 
     // Default profile name (matches MO2's "Default" profile).
-    static constexpr const char* kDefaultProfile = "Default";
+    static constexpr const char *kDefaultProfile = "Default";
 
   private:
     void rebuild_index();

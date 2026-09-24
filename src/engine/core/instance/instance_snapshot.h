@@ -44,14 +44,15 @@ struct DeployedFile {
 };
 
 // Snapshot of one profile's state.
-struct ProfileSnapshot {  std::string name;
-  std::vector<profile::ModListEntry> mods; // priority-sorted ascending
+struct ProfileSnapshot {
+  std::string name;
+  std::vector<profile::ModListEntry> mods;  // priority-sorted ascending
   std::vector<std::string> plugins;
   std::vector<std::string> load_order;
   std::vector<profile::LockedPlugin> locked_order;
   std::vector<std::string> archives;
-  bool local_saves = false;
-  bool local_settings = false;
+  bool local_saves               = false;
+  bool local_settings            = false;
   bool auto_archive_invalidation = false;
   std::string tweaked_ini;
 };
@@ -87,20 +88,20 @@ struct InstanceSnapshot {
   std::vector<DeployedFile> deployed_files;
 
   // Capture all tracked state from an instance on disk.
-  [[nodiscard]] static InstanceSnapshot capture(const Instance& instance);
+  [[nodiscard]] static InstanceSnapshot capture(const Instance &instance);
 
   // Apply snapshot state to an instance on disk.
   // Writes instance.toml, mod_state.json, and all profile files.
   // Missing profile directories are created; existing ones are overwritten.
-  [[nodiscard]] bool apply(const Instance& instance) const;
+  [[nodiscard]] bool apply(const Instance &instance) const;
 
   // JSON serialization.
   [[nodiscard]] nlohmann::json to_json() const;
-  [[nodiscard]] static InstanceSnapshot from_json(const nlohmann::json& j);
+  [[nodiscard]] static InstanceSnapshot from_json(const nlohmann::json &j);
 
   // File I/O (convenience wrappers).
-  [[nodiscard]] bool save(const std::filesystem::path& path) const;
-  [[nodiscard]] static InstanceSnapshot load(const std::filesystem::path& path);
+  [[nodiscard]] bool save(const std::filesystem::path &path) const;
+  [[nodiscard]] static InstanceSnapshot load(const std::filesystem::path &path);
 };
 
-} // namespace engine
+}  // namespace engine

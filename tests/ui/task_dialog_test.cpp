@@ -39,7 +39,7 @@
 #include <optional>
 
 namespace {
-void check(bool cond, const char* what) {
+void check(bool cond, const char *what) {
   INFO(what);
   REQUIRE(cond);
 }
@@ -50,8 +50,8 @@ namespace {
 // Clicks the command-link button with the given text. When the scripted
 // button cannot be found the dialog is rejected, so exec() unblocks and the
 // result assertion fails instead of the test hanging.
-void click_link(ui::TaskDialog& dlg, const QString& text) {
-  for (auto* b : dlg.findChildren<QCommandLinkButton*>()) {
+void click_link(ui::TaskDialog &dlg, const QString &text) {
+  for (auto *b : dlg.findChildren<QCommandLinkButton *>()) {
     if (b->text() == text) {
       b->click();
       return;
@@ -61,10 +61,10 @@ void click_link(ui::TaskDialog& dlg, const QString& text) {
 }
 
 // Clicks the Ok button of the standard button box (no-custom-buttons path).
-void click_ok(ui::TaskDialog& dlg) {
-  auto* box = dlg.findChild<QDialogButtonBox*>();
+void click_ok(ui::TaskDialog &dlg) {
+  auto *box = dlg.findChild<QDialogButtonBox *>();
   if (box) {
-    if (auto* b = box->button(QDialogButtonBox::Ok)) {
+    if (auto *b = box->button(QDialogButtonBox::Ok)) {
       b->click();
       return;
     }
@@ -75,8 +75,8 @@ void click_ok(ui::TaskDialog& dlg) {
 // Runs dlg.exec() with a scripted interaction armed for the first turn of the
 // event loop, plus a watchdog that rejects after 8s so a broken dialog can
 // never hang the suite.
-QMessageBox::StandardButton run_dialog(ui::TaskDialog& dlg,
-                                       std::function<void(ui::TaskDialog&)> act) {
+QMessageBox::StandardButton run_dialog(ui::TaskDialog &dlg,
+                                       std::function<void(ui::TaskDialog &)> act) {
   QTimer::singleShot(0, &dlg, [&dlg, act] {
     act(dlg);
   });
@@ -89,10 +89,10 @@ QMessageBox::StandardButton run_dialog(ui::TaskDialog& dlg,
 // The dialog shows its icon either as the window icon or as a pixmapped
 // label (style standard icon in the left icon panel) - accept both
 // placements so the assertion pins "an icon is shown", not its container.
-bool has_icon(const ui::TaskDialog& dlg) {
+bool has_icon(const ui::TaskDialog &dlg) {
   if (!dlg.windowIcon().isNull())
     return true;
-  for (auto* l : dlg.findChildren<QLabel*>()) {
+  for (auto *l : dlg.findChildren<QLabel *>()) {
     if (!l->pixmap(Qt::ReturnByValue).isNull())
       return true;
   }
@@ -109,7 +109,7 @@ TEST_CASE("task dialog", "[ui]") {
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
@@ -117,9 +117,9 @@ TEST_CASE("task dialog", "[ui]") {
   // ---- fluent builder populates the dialog --------------------------------
   {
     ui::TaskDialog dlg(nullptr, "Builder");
-    auto* injected = new QLabel("Injected content");
+    auto *injected = new QLabel("Injected content");
     injected->setObjectName("injected_content");
-    ui::TaskDialog& chain = dlg.title("Builder")
+    ui::TaskDialog &chain = dlg.title("Builder")
                                 .main("Main instruction")
                                 .content("Body content")
                                 .details("Detailed\ndump")
@@ -130,7 +130,7 @@ TEST_CASE("task dialog", "[ui]") {
     check(&chain == &dlg, "builder methods return the dialog itself (fluent)");
 
     // No custom buttons -> the Ok fallback path completes exec().
-    auto result = run_dialog(dlg, [](ui::TaskDialog& d) {
+    auto result = run_dialog(dlg, [](ui::TaskDialog &d) {
       click_ok(d);
     });
     check(result == QMessageBox::Ok, "button-box Ok completes the dialog");
@@ -142,7 +142,7 @@ TEST_CASE("task dialog", "[ui]") {
     bool main_found    = false;
     bool content_found = false;
     bool details_found = false;
-    for (auto* l : dlg.findChildren<QLabel*>()) {
+    for (auto *l : dlg.findChildren<QLabel *>()) {
       if (l->text() == "Main instruction")
         main_found = true;
       if (l->text() == "Body content")
@@ -150,7 +150,7 @@ TEST_CASE("task dialog", "[ui]") {
     }
     check(main_found, "main() text is shown in a label");
     check(content_found, "content() text is shown in a label");
-    for (auto* e : dlg.findChildren<QPlainTextEdit*>()) {
+    for (auto *e : dlg.findChildren<QPlainTextEdit *>()) {
       if (e->toPlainText() == "Detailed\ndump")
         details_found = true;
     }
@@ -171,7 +171,7 @@ TEST_CASE("task dialog", "[ui]") {
       CAPTURE(id);
       ui::TaskDialog dlg(nullptr, "Map");
       dlg.add_button({"Probe", "", id});
-      auto got = run_dialog(dlg, [](ui::TaskDialog& d) {
+      auto got = run_dialog(dlg, [](ui::TaskDialog &d) {
         click_link(d, "Probe");
       });
       check(got == id, "the clicked button's StandardButton id comes back");
@@ -182,7 +182,7 @@ TEST_CASE("task dialog", "[ui]") {
   {
     ui::TaskDialog dlg(nullptr, "Reject");
     dlg.add_button({"Yes", "", QMessageBox::Yes});
-    auto got = run_dialog(dlg, [](ui::TaskDialog& d) {
+    auto got = run_dialog(dlg, [](ui::TaskDialog &d) {
       d.reject();
     });
     check(got == QMessageBox::Cancel, "rejecting (X/Escape) returns Cancel");
@@ -193,12 +193,12 @@ TEST_CASE("task dialog", "[ui]") {
     ui::TaskDialog dlg(nullptr, "Links");
     dlg.add_button({"Yes", "Move files to the trash", QMessageBox::Yes})
         .add_button({"No", "", QMessageBox::No});
-    auto got = run_dialog(dlg, [](ui::TaskDialog& d) {
+    auto got = run_dialog(dlg, [](ui::TaskDialog &d) {
       click_link(d, "Yes");
     });
     check(got == QMessageBox::Yes, "first command link maps to Yes");
 
-    auto links = dlg.findChildren<QCommandLinkButton*>();
+    auto links = dlg.findChildren<QCommandLinkButton *>();
     check(links.size() == 2, "every added button renders as a command link");
     if (links.size() == 2) {
       check(links[0]->text() == "Yes", "command links keep insertion order (first)");
@@ -211,11 +211,11 @@ TEST_CASE("task dialog", "[ui]") {
   }
   {
     ui::TaskDialog dlg(nullptr, "Plain");
-    auto got = run_dialog(dlg, [](ui::TaskDialog& d) {
+    auto got = run_dialog(dlg, [](ui::TaskDialog &d) {
       click_ok(d);
     });
     check(got == QMessageBox::Ok, "no added buttons falls back to Ok");
-    check(dlg.findChildren<QCommandLinkButton*>().isEmpty(),
+    check(dlg.findChildren<QCommandLinkButton *>().isEmpty(),
           "no added buttons means no command links");
   }
 
@@ -227,7 +227,7 @@ TEST_CASE("task dialog", "[ui]") {
         .add_button({"Yes", "", QMessageBox::Yes})
         .add_button({"No", "", QMessageBox::No});
     bool asked = false;
-    auto got   = run_dialog(dlg, [&asked](ui::TaskDialog& d) {
+    auto got   = run_dialog(dlg, [&asked](ui::TaskDialog &d) {
       asked = true;
       click_link(d, "Yes");
     });
@@ -245,7 +245,7 @@ TEST_CASE("task dialog", "[ui]") {
         .add_button({"Yes", "", QMessageBox::Yes})
         .add_button({"No", "", QMessageBox::No});
     bool asked = false;
-    auto got   = run_dialog(dlg, [&asked](ui::TaskDialog& d) {
+    auto got   = run_dialog(dlg, [&asked](ui::TaskDialog &d) {
       asked = true;          // only runs if the dialog actually opened
       click_link(d, "Yes");  // ...and would flip the answer to Yes
     });
@@ -268,7 +268,7 @@ TEST_CASE("task dialog", "[ui]") {
         .add_button({"Yes", "", QMessageBox::Yes})
         .add_button({"No", "", QMessageBox::No});
     bool asked = false;
-    auto got   = run_dialog(dlg, [&asked](ui::TaskDialog& d) {
+    auto got   = run_dialog(dlg, [&asked](ui::TaskDialog &d) {
       asked = true;
       click_link(d, "No");
     });

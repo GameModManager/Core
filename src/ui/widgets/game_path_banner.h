@@ -24,4 +24,4 @@ signals:
   void pick_requested();
 };
 
-} // namespace ui
+}  // namespace ui

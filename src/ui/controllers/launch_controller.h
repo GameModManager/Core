@@ -13,7 +13,9 @@
 
 namespace ui {
 
-namespace Executables { struct Entry; }
+namespace Executables {
+  struct Entry;
+}
 
 // Snapshot of everything the Instance Options UI needs to construct itself,
 // gathered once from the current instance + game knowledge (instance_utils:
@@ -55,9 +57,10 @@ std::vector<std::string> extract_executables(const std::string &content);
 // keeps the game_dir hit when both copies exist. Free function so it tests
 // without a full MainWindow; roots are parameters so the merge is testable on
 // any platform.
-std::vector<std::string> seed_executable_candidates(
-    const std::filesystem::path &game_dir, const std::string &declared,
-    const std::vector<std::filesystem::path> &extra_roots);
+std::vector<std::string>
+seed_executable_candidates(const std::filesystem::path &game_dir,
+                           const std::string &declared,
+                           const std::vector<std::filesystem::path> &extra_roots);
 
 // Game launching: executable list persistence, deploy-before-launch
 // (DeployThread), process watch + game-lock overlay, "output to mod" capture,
@@ -80,9 +83,9 @@ public slots:
   // (Issue #34).
   void launch_with_executable(const QString &full_path,
                               const std::filesystem::path &output_mod_dir = {},
-                              const QString &arguments = {},
-                              const QString &start_in = {},
-                              const QStringList &environment = {});
+                              const QString &arguments                    = {},
+                              const QString &start_in                     = {},
+                              const QStringList &environment              = {});
   // Resolves an output-to-mod target folder, auto-creating it (with the
   // game's metadata file) when it doesn't exist yet. Empty input -> empty.
   std::filesystem::path ensure_output_mod_dir(const QString &mod_name);
@@ -171,4 +174,4 @@ private:
   QHash<QString, QString> pending_toolbar_icons_;
 };
 
-} // namespace ui
+}  // namespace ui

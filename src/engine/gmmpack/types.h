@@ -15,59 +15,59 @@ namespace engine::gmmpack {
 // ---------------------------------------------------------------------------
 
 struct ManifestInfo {
-    std::string name;
-    std::string author;
-    std::string description;
-    std::string gmm_game_id;
-    std::string homepage;
-    std::string created_at;
-    std::string updated_at;
+  std::string name;
+  std::string author;
+  std::string description;
+  std::string gmm_game_id;
+  std::string homepage;
+  std::string created_at;
+  std::string updated_at;
 };
 
 struct ManifestTool {
-    std::string id;
-    std::string name;
-    std::string homepage;
+  std::string id;
+  std::string name;
+  std::string homepage;
 };
 
 struct PlatformPrefixFile {
-    std::string path;
-    std::string source_mod_id;
+  std::string path;
+  std::string source_mod_id;
 };
 
 struct PlatformOverride {
-    std::string proton_version_pin;
-    std::optional<bool> steam_overlay;
-    std::string launch_options;
-    std::vector<PlatformPrefixFile> prefix_files;
+  std::string proton_version_pin;
+  std::optional<bool> steam_overlay;
+  std::string launch_options;
+  std::vector<PlatformPrefixFile> prefix_files;
 };
 
 struct PlatformBlock {
-    std::optional<PlatformOverride> linux_plat;
-    std::optional<PlatformOverride> macos;
-    std::optional<PlatformOverride> windows;
+  std::optional<PlatformOverride> linux_plat;
+  std::optional<PlatformOverride> macos;
+  std::optional<PlatformOverride> windows;
 };
 
 struct ManifestRule {
-    std::string type;  // "before", "after", "requires", "conflicts"
-    std::string from;
-    std::string to;
-    std::string note;
+  std::string type;  // "before", "after", "requires", "conflicts"
+  std::string from;
+  std::string to;
+  std::string note;
 };
 
 struct ManifestLoadOrder {
-    std::vector<std::string> plugin_hint;
+  std::vector<std::string> plugin_hint;
 };
 
 struct ChoiceGroup {
-    std::string id;
-    std::string name;
-    std::string mode;  // "exactly-one", "at-most-one"
-    std::vector<std::string> member_mod_ids;
+  std::string id;
+  std::string name;
+  std::string mode;  // "exactly-one", "at-most-one"
+  std::vector<std::string> member_mod_ids;
 };
 
 struct ManifestArchive {
-    std::unordered_map<std::string, std::string> file_hashes;
+  std::unordered_map<std::string, std::string> file_hashes;
 };
 
 // Per-instance settings carried in manifest.json ("instanceSettings").
@@ -75,24 +75,24 @@ struct ManifestArchive {
 // (profiles[0]) + the snapshot deploy_strategy, documented as
 // "default-profile settings". A per-profile array is a later extension.
 struct InstanceSettings {
-    bool local_saves = false;
-    bool local_settings = false;
-    bool auto_archive_invalidation = false;
-    std::string deploy_strategy;
+  bool local_saves               = false;
+  bool local_settings            = false;
+  bool auto_archive_invalidation = false;
+  std::string deploy_strategy;
 };
 
 struct Manifest {
-    std::string gmmpack_schema;
-    std::string id;
-    int revision = 0;
-    ManifestInfo info;
-    std::vector<ManifestTool> tools;
-    PlatformBlock platform;
-    std::vector<ManifestRule> rules;
-    ManifestLoadOrder load_order;
-    std::vector<ChoiceGroup> choice_groups;
-    ManifestArchive archive;
-    InstanceSettings instance_settings;
+  std::string gmmpack_schema;
+  std::string id;
+  int revision = 0;
+  ManifestInfo info;
+  std::vector<ManifestTool> tools;
+  PlatformBlock platform;
+  std::vector<ManifestRule> rules;
+  ManifestLoadOrder load_order;
+  std::vector<ChoiceGroup> choice_groups;
+  ManifestArchive archive;
+  InstanceSettings instance_settings;
 };
 
 // ---------------------------------------------------------------------------
@@ -100,84 +100,79 @@ struct Manifest {
 // ---------------------------------------------------------------------------
 
 struct ModSourceNexus {
-    std::string provider = "nexus";
-    std::string resolution;
-    std::string game_domain;
-    int64_t mod_id = 0;
-    std::optional<int64_t> file_id;
-    std::optional<std::string> version;
-    std::optional<std::string> file_name;
-    std::optional<int64_t> file_size;
-    std::optional<std::string> sha256;
-    std::string update_policy = "exact";
+  std::string provider = "nexus";
+  std::string resolution;
+  std::string game_domain;
+  int64_t mod_id = 0;
+  std::optional<int64_t> file_id;
+  std::optional<std::string> version;
+  std::optional<std::string> file_name;
+  std::optional<int64_t> file_size;
+  std::optional<std::string> sha256;
+  std::string update_policy = "exact";
 };
 
 struct ModSourceLoversLab {
-    std::string provider = "loverslab";
-    std::string resolution = "browser";
-    std::variant<int64_t, std::string> mod_id;
-    std::string section_slug;
-    std::optional<std::string> version;
-    std::optional<std::string> file_name;
-    std::optional<std::string> sha256;
-    std::string update_policy = "exact";
+  std::string provider   = "loverslab";
+  std::string resolution = "browser";
+  std::variant<int64_t, std::string> mod_id;
+  std::string section_slug;
+  std::optional<std::string> version;
+  std::optional<std::string> file_name;
+  std::optional<std::string> sha256;
+  std::string update_policy = "exact";
 };
 
 struct ModSourceModPub {
-    std::string provider = "modpub";
-    std::string resolution;
-    std::variant<int64_t, std::string> mod_id;
-    std::optional<std::string> version;
-    std::optional<std::string> file_name;
-    std::optional<std::string> sha256;
-    std::string update_policy = "exact";
+  std::string provider = "modpub";
+  std::string resolution;
+  std::variant<int64_t, std::string> mod_id;
+  std::optional<std::string> version;
+  std::optional<std::string> file_name;
+  std::optional<std::string> sha256;
+  std::string update_policy = "exact";
 };
 
 struct ModSourceSteamWorkshop {
-    std::string provider = "steam_workshop";
-    std::string resolution = "client-subscription";
-    int64_t app_id = 0;
-    int64_t workshop_item_id = 0;
-    std::optional<std::string> version;
-    std::string update_policy = "latest";
+  std::string provider     = "steam_workshop";
+  std::string resolution   = "client-subscription";
+  int64_t app_id           = 0;
+  int64_t workshop_item_id = 0;
+  std::optional<std::string> version;
+  std::string update_policy = "latest";
 };
 
 struct ModSourceDirect {
-    std::string provider = "direct";
-    std::string resolution;
-    std::string url;
-    std::optional<std::string> version;
-    std::optional<std::string> file_name;
-    std::optional<std::string> sha256;
-    std::string update_policy = "exact";
+  std::string provider = "direct";
+  std::string resolution;
+  std::string url;
+  std::optional<std::string> version;
+  std::optional<std::string> file_name;
+  std::optional<std::string> sha256;
+  std::string update_policy = "exact";
 };
 
-using ModSource = std::variant<
-    ModSourceNexus,
-    ModSourceLoversLab,
-    ModSourceModPub,
-    ModSourceSteamWorkshop,
-    ModSourceDirect
->;
+using ModSource = std::variant<ModSourceNexus, ModSourceLoversLab, ModSourceModPub,
+                               ModSourceSteamWorkshop, ModSourceDirect>;
 
 enum class ModCategory {
-    Required,
-    Optional,
-    Recommended,
+  Required,
+  Optional,
+  Recommended,
 };
 
 struct InstallerChoices {
-    std::string type;
-    std::unordered_map<std::string, std::vector<std::string>> selections;
+  std::string type;
+  std::unordered_map<std::string, std::vector<std::string>> selections;
 };
 
 struct ModEntry {
-    std::string id;
-    std::string name;
-    int phase = 0;
-    ModCategory category = ModCategory::Optional;
-    ModSource source;
-    std::optional<InstallerChoices> installer_choices;
+  std::string id;
+  std::string name;
+  int phase            = 0;
+  ModCategory category = ModCategory::Optional;
+  ModSource source;
+  std::optional<InstallerChoices> installer_choices;
 };
 
 // ---------------------------------------------------------------------------
@@ -185,38 +180,38 @@ struct ModEntry {
 // ---------------------------------------------------------------------------
 
 struct ExecPlatformOverride {
-    std::unordered_map<std::string, std::string> env_vars;
-    std::string launch_options;
-    std::string proton_version_pin;
-    std::optional<bool> steam_overlay;
+  std::unordered_map<std::string, std::string> env_vars;
+  std::string launch_options;
+  std::string proton_version_pin;
+  std::optional<bool> steam_overlay;
 };
 
 struct ExecPlatform {
-    std::optional<ExecPlatformOverride> linux_plat;
-    std::optional<ExecPlatformOverride> macos;
-    std::optional<ExecPlatformOverride> windows;
+  std::optional<ExecPlatformOverride> linux_plat;
+  std::optional<ExecPlatformOverride> macos;
+  std::optional<ExecPlatformOverride> windows;
 };
 
 struct ExecOutput {
-    std::string path;
-    std::string arg_name;
-    std::string capture;  // "syntheticMod", "inPlace"
-    std::string synthetic_mod_id;
+  std::string path;
+  std::string arg_name;
+  std::string capture;  // "syntheticMod", "inPlace"
+  std::string synthetic_mod_id;
 };
 
 struct ExecutableEntry {
-    std::string id;
-    std::string source_mod_id;
-    std::string relative_path;
-    std::vector<std::string> arguments;
-    std::unordered_map<std::string, std::string> env_vars;
-    std::string working_dir;
-    std::string role;  // "setup", "launcher"
-    bool auto_run = false;
-    bool rerun_on_modset_change = false;
-    bool requires_virtual_fs_visible = false;
-    std::optional<ExecOutput> output;
-    ExecPlatform platform;
+  std::string id;
+  std::string source_mod_id;
+  std::string relative_path;
+  std::vector<std::string> arguments;
+  std::unordered_map<std::string, std::string> env_vars;
+  std::string working_dir;
+  std::string role;  // "setup", "launcher"
+  bool auto_run                    = false;
+  bool rerun_on_modset_change      = false;
+  bool requires_virtual_fs_visible = false;
+  std::optional<ExecOutput> output;
+  ExecPlatform platform;
 };
 
 // ---------------------------------------------------------------------------
@@ -224,19 +219,19 @@ struct ExecutableEntry {
 // ---------------------------------------------------------------------------
 
 struct PatchEntry {
-    std::string mod_id;
-    std::optional<int> sequence;
-    std::string target_path;
-    std::string base_file_sha256;
-    std::string algorithm;  // "bsdiff"
-    std::string payload_base64;
-    std::string archive_path;  // original path in the archive (e.g. "patches/skyui.json")
+  std::string mod_id;
+  std::optional<int> sequence;
+  std::string target_path;
+  std::string base_file_sha256;
+  std::string algorithm;  // "bsdiff"
+  std::string payload_base64;
+  std::string archive_path;  // original path in the archive (e.g. "patches/skyui.json")
 };
 
 // A sorted chain of patches for one mod, applied in ascending sequence order.
 struct PatchChain {
-    std::string mod_id;
-    std::vector<PatchEntry> patches;  // sorted by sequence ascending
+  std::string mod_id;
+  std::vector<PatchEntry> patches;  // sorted by sequence ascending
 };
 
 // ---------------------------------------------------------------------------
@@ -248,18 +243,18 @@ struct PatchChain {
 // ---------------------------------------------------------------------------
 
 struct IniTweak {
-    std::string id;  // stable slug; key for diffing/state/retract
-    std::string name;  // human-readable label
-    std::string status;  // "required", "recommended"
-    bool enabled = true;  // author default
-    std::string content;  // plain INI text
-    std::string source_mod_id;  // empty = null (pack-author tweak)
-    bool has_source_mod_id = false;
+  std::string id;             // stable slug; key for diffing/state/retract
+  std::string name;           // human-readable label
+  std::string status;         // "required", "recommended"
+  bool enabled = true;        // author default
+  std::string content;        // plain INI text
+  std::string source_mod_id;  // empty = null (pack-author tweak)
+  bool has_source_mod_id = false;
 };
 
 struct IniEntry {
-    std::string target_file;
-    std::vector<IniTweak> tweaks;
+  std::string target_file;
+  std::vector<IniTweak> tweaks;
 };
 
 // ---------------------------------------------------------------------------
@@ -269,23 +264,23 @@ struct IniEntry {
 struct TreeNode;
 
 struct SeparatorNode {
-    std::string name;
-    bool collapsed = false;
-    std::string color;  // hex color, empty = none
-    std::vector<TreeNode> children;
+  std::string name;
+  bool collapsed = false;
+  std::string color;  // hex color, empty = none
+  std::vector<TreeNode> children;
 };
 
 struct ModNode {
-    std::string id;
-    bool enabled = true;
+  std::string id;
+  bool enabled = true;
 };
 
 struct TreeNode {
-    std::variant<SeparatorNode, ModNode> data;
+  std::variant<SeparatorNode, ModNode> data;
 };
 
 struct TreeRoot {
-    std::vector<TreeNode> nodes;
+  std::vector<TreeNode> nodes;
 };
 
 // ---------------------------------------------------------------------------
@@ -293,10 +288,10 @@ struct TreeRoot {
 // ---------------------------------------------------------------------------
 
 struct Diagnostic {
-    enum class Severity { Error, Warning };
-    Severity severity = Severity::Error;
-    std::string path;
-    std::string message;
+  enum class Severity { Error, Warning };
+  Severity severity = Severity::Error;
+  std::string path;
+  std::string message;
 };
 
 using Diagnostics = std::vector<Diagnostic>;
@@ -306,13 +301,13 @@ using Diagnostics = std::vector<Diagnostic>;
 // ---------------------------------------------------------------------------
 
 struct ArchiveFile {
-    std::string path;
-    std::string content;
+  std::string path;
+  std::string content;
 };
 
 struct ArchiveContents {
-    std::vector<ArchiveFile> files;
-    std::unordered_map<std::string, size_t> path_index;
+  std::vector<ArchiveFile> files;
+  std::unordered_map<std::string, size_t> path_index;
 };
 
 // ---------------------------------------------------------------------------
@@ -320,13 +315,13 @@ struct ArchiveContents {
 // ---------------------------------------------------------------------------
 
 struct Gmmpack {
-    Manifest manifest;
-    std::vector<ModEntry> mods;
-    std::vector<ExecutableEntry> executables;
-    std::vector<PatchEntry> patches;
-    std::vector<IniEntry> ini_edits;
-    TreeRoot tree;
-    std::optional<std::string> instructions;
+  Manifest manifest;
+  std::vector<ModEntry> mods;
+  std::vector<ExecutableEntry> executables;
+  std::vector<PatchEntry> patches;
+  std::vector<IniEntry> ini_edits;
+  TreeRoot tree;
+  std::optional<std::string> instructions;
 };
 
 // ---------------------------------------------------------------------------
@@ -334,41 +329,46 @@ struct Gmmpack {
 // ---------------------------------------------------------------------------
 
 struct SemverParse {
-    int major = 0;
-    int minor = 0;
-    int patch = 0;
+  int major = 0;
+  int minor = 0;
+  int patch = 0;
 };
 
 // Parse and validate a semver string "MAJOR.MINOR.PATCH".
 // Returns nullopt on any format error.  Does NOT reject major != 1 - callers
 // decide that policy (the schema doc says "any other major is a hard refusal").
-inline std::optional<SemverParse> parse_semver(const std::string& v) {
-    SemverParse sp;
-    size_t pos = 0;
+inline std::optional<SemverParse> parse_semver(const std::string &v) {
+  SemverParse sp;
+  size_t pos = 0;
 
-    auto parse_int = [&](int& out) -> bool {
-        if (pos >= v.size() || !std::isdigit(static_cast<unsigned char>(v[pos])))
-            return false;
-        int val = 0;
-        while (pos < v.size() &&
-               std::isdigit(static_cast<unsigned char>(v[pos]))) {
-            val = val * 10 + (v[pos] - '0');
-            ++pos;
-        }
-        out = val;
-        return true;
-    };
+  auto parse_int = [&](int &out) -> bool {
+    if (pos >= v.size() || !std::isdigit(static_cast<unsigned char>(v[pos])))
+      return false;
+    int val = 0;
+    while (pos < v.size() && std::isdigit(static_cast<unsigned char>(v[pos]))) {
+      val = val * 10 + (v[pos] - '0');
+      ++pos;
+    }
+    out = val;
+    return true;
+  };
 
-    if (!parse_int(sp.major)) return std::nullopt;
-    if (pos >= v.size() || v[pos] != '.') return std::nullopt;
-    ++pos;
-    if (!parse_int(sp.minor)) return std::nullopt;
-    if (pos >= v.size() || v[pos] != '.') return std::nullopt;
-    ++pos;
-    if (!parse_int(sp.patch)) return std::nullopt;
-    if (pos != v.size()) return std::nullopt;  // trailing junk
+  if (!parse_int(sp.major))
+    return std::nullopt;
+  if (pos >= v.size() || v[pos] != '.')
+    return std::nullopt;
+  ++pos;
+  if (!parse_int(sp.minor))
+    return std::nullopt;
+  if (pos >= v.size() || v[pos] != '.')
+    return std::nullopt;
+  ++pos;
+  if (!parse_int(sp.patch))
+    return std::nullopt;
+  if (pos != v.size())
+    return std::nullopt;  // trailing junk
 
-    return sp;
+  return sp;
 }
 
 }  // namespace engine::gmmpack

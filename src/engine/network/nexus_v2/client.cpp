@@ -11,46 +11,39 @@
 #include <chrono>
 #include <thread>
 
-namespace engine::nexus_v2
-{
+namespace engine::nexus_v2 {
 
-namespace
-{
+namespace {
 
-  std::string default_api_key()
-  {
+  std::string default_api_key() {
     return Source::Nexus::Auth::instance().get_api_key();
   }
 
-  void default_sleeper(int ms)
-  {
+  void default_sleeper(int ms) {
     std::this_thread::sleep_for(std::chrono::milliseconds(ms));
   }
 
 }  // namespace
 
-Client::Client(network::Interface& net, ApiKeyProvider api_key, Sleeper sleeper)
+Client::Client(network::Interface &net, ApiKeyProvider api_key, Sleeper sleeper)
     : net_(net),
       api_key_(api_key ? std::move(api_key) : ApiKeyProvider(default_api_key)),
-      sleeper_(sleeper ? std::move(sleeper) : Sleeper(default_sleeper))
-{}
+      sleeper_(sleeper ? std::move(sleeper) : Sleeper(default_sleeper)) {}
 
-std::string Client::build_body(const std::string& query_text,
-                               const std::string& variables_json)
-{
+std::string Client::build_body(const std::string &query_text,
+                               const std::string &variables_json) {
   nlohmann::json body;
   body["query"] = query_text;
   try {
     body["variables"] = variables_json.empty() ? nlohmann::json::object()
                                                : nlohmann::json::parse(variables_json);
-  } catch (const std::exception&) {
+  } catch (const std::exception &) {
     body["variables"] = nlohmann::json::object();
   }
   return body.dump();
 }
 
-int Client::backoff_delay_ms(int attempt, int retry_after_ms)
-{
+int Client::backoff_delay_ms(int attempt, int retry_after_ms) {
   if (retry_after_ms > 0)
     return std::min(retry_after_ms, kMaxDelayMs);
   int delay = kBaseDelayMs;
@@ -59,13 +52,12 @@ int Client::backoff_delay_ms(int attempt, int retry_after_ms)
   return std::min(delay, kMaxDelayMs);
 }
 
-bool Client::parse_response(const std::string& body, const std::string& root,
-                            std::string& out_data, std::string& out_error)
-{
+bool Client::parse_response(const std::string &body, const std::string &root,
+                            std::string &out_data, std::string &out_error) {
   nlohmann::json env;
   try {
     env = nlohmann::json::parse(body);
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     out_error = std::string("invalid GraphQL response: ") + e.what();
     return false;
   }
@@ -81,7 +73,7 @@ bool Client::parse_response(const std::string& body, const std::string& root,
   std::string message;
   const auto err_it = env.find("errors");
   if (err_it != env.end() && err_it->is_array()) {
-    for (const auto& err : *err_it) {
+    for (const auto &err : *err_it) {
       const std::string text = err.value("message", "");
       if (text.empty())
         continue;
@@ -94,9 +86,8 @@ bool Client::parse_response(const std::string& body, const std::string& root,
   return false;
 }
 
-GraphqlResult Client::query(const std::string& root, const std::string& query_text,
-                            const std::string& variables_json)
-{
+GraphqlResult Client::query(const std::string &root, const std::string &query_text,
+                            const std::string &variables_json) {
   GraphqlResult result;
   const std::string key = api_key_();
   if (key.empty()) {

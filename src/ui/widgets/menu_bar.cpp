@@ -13,7 +13,7 @@
 
 namespace ui {
 
-AppMenuBar::AppMenuBar(MainWindow* parent) : QMenuBar(parent) {
+AppMenuBar::AppMenuBar(MainWindow *parent) : QMenuBar(parent) {
   build_file_menu();
   build_edit_menu();
   build_view_menu();
@@ -24,13 +24,13 @@ AppMenuBar::AppMenuBar(MainWindow* parent) : QMenuBar(parent) {
 // --------- File ---------
 
 void AppMenuBar::build_file_menu() {
-  auto* menu = addMenu(tr("&File"));
+  auto *menu = addMenu(tr("&File"));
 
-  auto* new_inst = menu->addAction(tr("New Instance..."));
+  auto *new_inst = menu->addAction(tr("New Instance..."));
   new_inst->setShortcut(QKeySequence::New);
   connect(new_inst, &QAction::triggered, this, &AppMenuBar::new_instance_requested);
 
-  auto* open_inst = menu->addAction(tr("Open Instance..."));
+  auto *open_inst = menu->addAction(tr("Open Instance..."));
   open_inst->setShortcut(QKeySequence::Open);
   connect(open_inst, &QAction::triggered, this, &AppMenuBar::open_instance_requested);
 
@@ -39,32 +39,32 @@ void AppMenuBar::build_file_menu() {
 
   menu->addSeparator();
 
-  auto* import_mods = menu->addAction(tr("Import Mods..."));
+  auto *import_mods = menu->addAction(tr("Import Mods..."));
   import_mods->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I));
   connect(import_mods, &QAction::triggered, this, &AppMenuBar::import_mods_requested);
 
-  auto* export_mods = menu->addAction(tr("Export Mods..."));
+  auto *export_mods = menu->addAction(tr("Export Mods..."));
   export_mods->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E));
   connect(export_mods, &QAction::triggered, this, &AppMenuBar::export_mods_requested);
 
-  auto* import_modpack = menu->addAction(tr("Import Modpack..."));
+  auto *import_modpack = menu->addAction(tr("Import Modpack..."));
   connect(import_modpack, &QAction::triggered, this,
           &AppMenuBar::import_modpack_requested);
 
-  auto* export_modpack = menu->addAction(tr("Export Modpack..."));
+  auto *export_modpack = menu->addAction(tr("Export Modpack..."));
   export_modpack->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M));
   connect(export_modpack, &QAction::triggered, this,
           &AppMenuBar::export_modpack_requested);
 
   menu->addSeparator();
 
-  auto* settings = menu->addAction(tr("Settings..."));
+  auto *settings = menu->addAction(tr("Settings..."));
   settings->setShortcut(QKeySequence::Preferences);
   connect(settings, &QAction::triggered, this, &AppMenuBar::settings_requested);
 
   menu->addSeparator();
 
-  auto* exit = menu->addAction(tr("Exit"));
+  auto *exit = menu->addAction(tr("Exit"));
   exit->setShortcut(QKeySequence::Quit);
   connect(exit, &QAction::triggered, this, &AppMenuBar::exit_requested);
 }
@@ -72,33 +72,33 @@ void AppMenuBar::build_file_menu() {
 // --------- Edit ---------
 
 void AppMenuBar::build_edit_menu() {
-  auto* menu = addMenu(tr("&Edit"));
+  auto *menu = addMenu(tr("&Edit"));
 
-  auto* select_all = menu->addAction(tr("Select All"));
+  auto *select_all = menu->addAction(tr("Select All"));
   select_all->setShortcut(QKeySequence::SelectAll);
   connect(select_all, &QAction::triggered, this, &AppMenuBar::select_all_requested);
 
-  auto* deselect_all = menu->addAction(tr("Deselect All"));
+  auto *deselect_all = menu->addAction(tr("Deselect All"));
   deselect_all->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_A));
   connect(deselect_all, &QAction::triggered, this, &AppMenuBar::deselect_all_requested);
 
   menu->addSeparator();
 
-  auto* enable = menu->addAction(tr("Enable Selected"));
+  auto *enable = menu->addAction(tr("Enable Selected"));
   enable->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
   connect(enable, &QAction::triggered, this, &AppMenuBar::enable_selected_requested);
 
-  auto* disable = menu->addAction(tr("Disable Selected"));
+  auto *disable = menu->addAction(tr("Disable Selected"));
   disable->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
   connect(disable, &QAction::triggered, this, &AppMenuBar::disable_selected_requested);
 
   menu->addSeparator();
 
-  auto* prio_up = menu->addAction(tr("Priority Up"));
+  auto *prio_up = menu->addAction(tr("Priority Up"));
   prio_up->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Up));
   connect(prio_up, &QAction::triggered, this, &AppMenuBar::priority_up_requested);
 
-  auto* prio_down = menu->addAction(tr("Priority Down"));
+  auto *prio_down = menu->addAction(tr("Priority Down"));
   prio_down->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Down));
   connect(prio_down, &QAction::triggered, this, &AppMenuBar::priority_down_requested);
 }
@@ -106,7 +106,7 @@ void AppMenuBar::build_edit_menu() {
 // --------- View ---------
 
 void AppMenuBar::build_view_menu() {
-  auto* menu = addMenu(tr("&View"));
+  auto *menu = addMenu(tr("&View"));
 
   toggle_toolbar_action_ = menu->addAction(tr("Show Toolbar"));
   toggle_toolbar_action_->setCheckable(true);
@@ -127,18 +127,18 @@ void AppMenuBar::build_view_menu() {
 
   menu->addSeparator();
 
-  auto* pipeline = menu->addAction("Workflow Pipeline...");
+  auto *pipeline = menu->addAction("Workflow Pipeline...");
   pipeline->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_P));
   connect(pipeline, &QAction::triggered, this, &AppMenuBar::pipeline_requested);
 
   menu->addSeparator();
 
-  auto* icons_menu  = menu->addMenu(tr("Icons"));
+  auto *icons_menu  = menu->addMenu(tr("Icons"));
   icons_menu_       = icons_menu;
-  auto* icons_group = new QActionGroup(this);
+  auto *icons_group = new QActionGroup(this);
   icons_group->setExclusive(true);
-  auto add_icon_size = [&](const QString& label, int size, bool checked) {
-    auto* act = icons_menu->addAction(label);
+  auto add_icon_size = [&](const QString &label, int size, bool checked) {
+    auto *act = icons_menu->addAction(label);
     act->setCheckable(true);
     act->setData(size);
     act->setChecked(checked);
@@ -153,17 +153,17 @@ void AppMenuBar::build_view_menu() {
 
   // Transparency checkerboard for image previews (PreviewWindow, Mod Info
   // images). Each entry shows a 2x2 swatch of the grid it selects.
-  auto* checker_menu  = menu->addMenu(tr("Checkerboard"));
+  auto *checker_menu  = menu->addMenu(tr("Checkerboard"));
   checkerboard_group_ = new QActionGroup(this);
   checkerboard_group_->setExclusive(true);
-  const std::pair<const char*, int> checker_styles[] = {
+  const std::pair<const char *, int> checker_styles[] = {
       {"Off", 0},
       {"Light", 1},
       {"Medium", 2},
       {"Dark", 3},
   };
-  for (const auto& [label, style] : checker_styles) {
-    auto* act = checker_menu->addAction(preview::checkerboard_icon(style), tr(label));
+  for (const auto &[label, style] : checker_styles) {
+    auto *act = checker_menu->addAction(preview::checkerboard_icon(style), tr(label));
     act->setCheckable(true);
     act->setData(style);
     act->setChecked(style == 2);
@@ -175,7 +175,7 @@ void AppMenuBar::build_view_menu() {
 
   menu->addSeparator();
 
-  auto* refresh = menu->addAction(tr("Refresh"));
+  auto *refresh = menu->addAction(tr("Refresh"));
   refresh->setShortcut(QKeySequence::Refresh);
   connect(refresh, &QAction::triggered, this, &AppMenuBar::refresh_requested);
 }
@@ -195,13 +195,13 @@ void AppMenuBar::build_tools_menu() {
   connect(sort_action_, &QAction::triggered, this, &AppMenuBar::sort_mods_requested);
 }
 
-void AppMenuBar::update_tools_for_game(const std::string& game_id,
-                                       const std::vector<engine::ExternalTool>& tools) {
+void AppMenuBar::update_tools_for_game(const std::string &game_id,
+                                       const std::vector<engine::ExternalTool> &tools) {
   current_game_id_ = game_id;
 
   // Remove all actions before the separator (dynamic tools section)
   auto actions = tools_menu_->actions();
-  for (auto* act : actions) {
+  for (auto *act : actions) {
     if (act == tools_separator_)
       break;
     tools_menu_->removeAction(act);
@@ -212,10 +212,10 @@ void AppMenuBar::update_tools_for_game(const std::string& game_id,
   // clearing loop above reaches them -addAction appends to the end, past the
   // separator, which caused duplicates to accumulate on every switch).
   if (!tools.empty()) {
-    for (const auto& tool : tools) {
+    for (const auto &tool : tools) {
       QString label = QString::fromStdString(
           tool.display_name.empty() ? tool.tool_id : tool.display_name);
-      auto* act = new QAction(label, tools_menu_);
+      auto *act = new QAction(label, tools_menu_);
       tools_menu_->insertAction(tools_separator_, act);
       QString tid = QString::fromStdString(tool.tool_id);
       QString gid = QString::fromStdString(game_id);
@@ -234,7 +234,7 @@ void AppMenuBar::set_sort_available(bool available) {
 void AppMenuBar::set_icon_size(int size) {
   if (!icons_menu_)
     return;
-  for (auto* act : icons_menu_->actions()) {
+  for (auto *act : icons_menu_->actions()) {
     if (act->data().toInt() == size) {
       act->setChecked(true);
       return;
@@ -271,7 +271,7 @@ void AppMenuBar::set_console_checked(bool checked) {
 void AppMenuBar::set_checkerboard_style(int style) {
   if (!checkerboard_group_)
     return;
-  for (auto* act : checkerboard_group_->actions()) {
+  for (auto *act : checkerboard_group_->actions()) {
     if (act->data().toInt() == style) {
       // No blockSignals: the actions emit checkerboard_style_requested via
       // triggered(), which setChecked() never fires (only toggled()). Blocking
@@ -286,21 +286,21 @@ void AppMenuBar::set_checkerboard_style(int style) {
 // --------- Help ---------
 
 void AppMenuBar::build_help_menu() {
-  auto* menu = addMenu(tr("&Help"));
+  auto *menu = addMenu(tr("&Help"));
 
-  auto* stats = menu->addAction(tr("Instance Statistics..."));
+  auto *stats = menu->addAction(tr("Instance Statistics..."));
   connect(stats, &QAction::triggered, this, &AppMenuBar::instance_statistics_requested);
 
-  auto* debug = menu->addAction(tr("Debug Panel"));
+  auto *debug = menu->addAction(tr("Debug Panel"));
   debug->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D));
   connect(debug, &QAction::triggered, this, &AppMenuBar::debug_panel_requested);
 
   menu->addSeparator();
 
-  auto* about = menu->addAction(tr("About GameModManager"));
+  auto *about = menu->addAction(tr("About GameModManager"));
   connect(about, &QAction::triggered, this, &AppMenuBar::about_requested);
 
-  auto* about_qt = menu->addAction(tr("About Qt"));
+  auto *about_qt = menu->addAction(tr("About Qt"));
   connect(about_qt, &QAction::triggered, this, &AppMenuBar::about_qt_requested);
 
   menu->addSeparator();
@@ -308,15 +308,15 @@ void AppMenuBar::build_help_menu() {
 
 // --------- Recent instances ---------
 
-void AppMenuBar::set_recent_instances(const std::vector<std::string>& instances) {
+void AppMenuBar::set_recent_instances(const std::vector<std::string> &instances) {
   recent_menu_->clear();
   if (instances.empty()) {
     recent_menu_->setEnabled(false);
     return;
   }
   recent_menu_->setEnabled(true);
-  for (const auto& name : instances) {
-    auto* action = recent_menu_->addAction(QString::fromStdString(name));
+  for (const auto &name : instances) {
+    auto *action = recent_menu_->addAction(QString::fromStdString(name));
     connect(action, &QAction::triggered, this, [this, name]() {
       emit recent_instance_selected(QString::fromStdString(name));
     });

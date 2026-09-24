@@ -36,15 +36,15 @@
 namespace ui {
 
 // --- SavesTab ---
-QString SavesTab::missing_tooltip(const SavesScanResultEntry& entry) {
+QString SavesTab::missing_tooltip(const SavesScanResultEntry &entry) {
   QStringList lines;
-  for (const auto& asset : entry.missing) {
+  for (const auto &asset : entry.missing) {
     QString line = QString::fromStdString(asset.plugin_name);
     if (asset.inactive) {
       line += tr(" (disabled)");
     } else if (!asset.providing_mods.empty()) {
       QStringList providers;
-      for (const auto& m : asset.providing_mods)
+      for (const auto &m : asset.providing_mods)
         providers << QString::fromStdString(m);
       line += " - " + providers.join(", ");
     }
@@ -53,7 +53,7 @@ QString SavesTab::missing_tooltip(const SavesScanResultEntry& entry) {
   return lines.isEmpty() ? tr("No missing plugins") : lines.join('\n');
 }
 
-QString SavesTab::file_tooltip(const engine::SaveGame& save) {
+QString SavesTab::file_tooltip(const engine::SaveGame &save) {
   QString tip = QString::fromStdString(save.file_path.string());
   // Unparsed stub (Workspace-e2td: no parser, e.g. Isaac): the row's only
   // metadata is file identity, so surface size + modified date here. Parsed
@@ -83,8 +83,8 @@ void SavesTab::update_empty_state() {
   empty_label_->setVisible(empty);
 }
 
-SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
-  auto* layout = new QVBoxLayout(this);
+SavesTab::SavesTab(QWidget *parent) : QWidget(parent) {
+  auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(0);
 
@@ -118,7 +118,7 @@ SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
   rescan_debounce_->setSingleShot(true);
   rescan_debounce_->setInterval(500);
   connect(dir_watcher_, &QFileSystemWatcher::directoryChanged, this,
-          [this](const QString&) {
+          [this](const QString &) {
             rescan_debounce_->start();
           });
   connect(rescan_debounce_, &QTimer::timeout, this, &SavesTab::on_watcher_timeout);
@@ -145,7 +145,7 @@ SavesTab::~SavesTab() {
   delete info_popup_;
 }
 
-void SavesTab::set_saves_dir(const std::filesystem::path& dir) {
+void SavesTab::set_saves_dir(const std::filesystem::path &dir) {
   if (dir_watcher_ && !saves_dir_.empty()) {
     dir_watcher_->removePath(QString::fromStdString(saves_dir_.string()));
   }
@@ -188,14 +188,14 @@ void SavesTab::set_saves(SavesScanResult result) {
       "Saves scan landed: " + std::to_string(saves_.entries.size()) + " save(s) from " +
       saves_.saves_dir.string());
   for (int row = 0; row < saves_.entries.size(); ++row) {
-    const auto& entry = saves_.entries[row];
-    auto* name =
+    const auto &entry = saves_.entries[row];
+    auto *name =
         new QTableWidgetItem(QString::fromStdString(entry.save.display_name()));
-    auto* file = new QTableWidgetItem(
+    auto *file = new QTableWidgetItem(
         QString::fromStdString(entry.save.file_path.filename().string()));
     file->setToolTip(file_tooltip(entry.save));
     int missing = static_cast<int>(entry.missing.size());
-    auto* miss =
+    auto *miss =
         new QTableWidgetItem(missing > 0 ? QString::number(missing) : QString());
     miss->setToolTip(missing_tooltip(entry));
     table_->setItem(row, kColumnName, name);
@@ -231,7 +231,7 @@ void SavesTab::on_watcher_timeout() {
   emit scan_requested();
 }
 
-void SavesTab::showEvent(QShowEvent* event) {
+void SavesTab::showEvent(QShowEvent *event) {
   QWidget::showEvent(event);
   ensure_scanned();
 }
@@ -243,13 +243,13 @@ void SavesTab::ensure_scanned() {
   emit scan_requested();
 }
 
-const engine::SaveGame* SavesTab::save_at(int row) const {
+const engine::SaveGame *SavesTab::save_at(int row) const {
   if (row < 0 || row >= saves_.entries.size())
     return nullptr;
   return &saves_.entries[row].save;
 }
 
-const std::vector<engine::SaveMissingAsset>* SavesTab::missing_at(int row) const {
+const std::vector<engine::SaveMissingAsset> *SavesTab::missing_at(int row) const {
   if (row < 0 || row >= saves_.entries.size())
     return nullptr;
   return &saves_.entries[row].missing;
@@ -297,14 +297,14 @@ void SavesTab::on_entry_ready(std::shared_ptr<SavesScanResultEntry> entry, int d
   const int row = lo;
   table_->insertRow(row);
   saves_.entries.insert(saves_.entries.begin() + row, std::move(*entry));
-  const auto& inserted = saves_.entries[row];
-  auto* name =
+  const auto &inserted = saves_.entries[row];
+  auto *name =
       new QTableWidgetItem(QString::fromStdString(inserted.save.display_name()));
-  auto* file = new QTableWidgetItem(
+  auto *file = new QTableWidgetItem(
       QString::fromStdString(inserted.save.file_path.filename().string()));
   file->setToolTip(file_tooltip(inserted.save));
   const int missing = static_cast<int>(inserted.missing.size());
-  auto* miss = new QTableWidgetItem(missing > 0 ? QString::number(missing) : QString());
+  auto *miss = new QTableWidgetItem(missing > 0 ? QString::number(missing) : QString());
   miss->setToolTip(missing_tooltip(inserted));
   table_->setItem(row, kColumnName, name);
   table_->setItem(row, kColumnFile, file);
@@ -339,7 +339,7 @@ void SavesTab::on_scan_complete(int count) {
   }
 }
 
-void SavesTab::on_item_entered(QTableWidgetItem* item) {
+void SavesTab::on_item_entered(QTableWidgetItem *item) {
   if (!item)
     return;
   show_save_info(item->row());
@@ -363,7 +363,7 @@ void SavesTab::on_selection_changed() {
 void SavesTab::ensure_heavy_data(int row) {
   if (row < 0 || row >= saves_.entries.size())
     return;
-  auto& save = saves_.entries[row].save;
+  auto &save = saves_.entries[row].save;
   if (save.has_heavy_data)
     return;
   try {
@@ -378,17 +378,17 @@ void SavesTab::ensure_heavy_data(int row) {
 
 void SavesTab::show_save_info(int row) {
   ensure_heavy_data(row);
-  const auto* save = save_at(row);
+  const auto *save = save_at(row);
   if (!save)
     return;
-  const auto* missing = missing_at(row);
+  const auto *missing = missing_at(row);
 
   hide_save_info();
-  auto* popup = new QWidget(nullptr, Qt::ToolTip | Qt::FramelessWindowHint);
+  auto *popup = new QWidget(nullptr, Qt::ToolTip | Qt::FramelessWindowHint);
   popup->setAttribute(Qt::WA_DeleteOnClose);
   info_popup_ = popup;
 
-  auto* v = new QVBoxLayout(popup);
+  auto *v = new QVBoxLayout(popup);
   v->setContentsMargins(8, 8, 8, 8);
   v->setSpacing(2);
 
@@ -399,16 +399,16 @@ void SavesTab::show_save_info(int row) {
     const bool rgba =
         save->screenshot.size() ==
         static_cast<std::size_t>(save->screenshot_width) * save->screenshot_height * 4;
-    QImage img(static_cast<const uchar*>(save->screenshot.data()),
+    QImage img(static_cast<const uchar *>(save->screenshot.data()),
                save->screenshot_width, save->screenshot_height,
                rgba ? QImage::Format_RGBA8888 : QImage::Format_RGB888);
-    auto* shot = new QLabel(popup);
+    auto *shot = new QLabel(popup);
     shot->setPixmap(QPixmap::fromImage(img));
     v->addWidget(shot);
   }
 
-  const auto add_row = [&](const QString& label, const QString& value) {
-    auto* row = new QLabel(QString("<b>%1</b> %2").arg(label, value), popup);
+  const auto add_row = [&](const QString &label, const QString &value) {
+    auto *row = new QLabel(QString("<b>%1</b> %2").arg(label, value), popup);
     v->addWidget(row);
   };
   add_row(tr("Character:"), QString::fromStdString(save->pc_name));
@@ -427,7 +427,7 @@ void SavesTab::show_save_info(int row) {
   // "Details" header was floating with no context - removed; the row
   // keys already self-describe.
   if (!save->overlay.empty()) {
-    for (const auto& row : save->overlay) {
+    for (const auto &row : save->overlay) {
       v->addWidget(
           new QLabel(QString("    <b>%1</b> %2")
                          .arg(QString::fromStdString(row.key).toHtmlEscaped(),
@@ -437,19 +437,19 @@ void SavesTab::show_save_info(int row) {
   }
 
   if (save->has_script_extender_file()) {
-    auto* skse = new QLabel(tr("<b>Has Script Extender Data</b>"), popup);
+    auto *skse = new QLabel(tr("<b>Has Script Extender Data</b>"), popup);
     v->addWidget(skse);
   }
 
-  auto* header = new QLabel(tr("<i>Missing ESPs</i>"), popup);
+  auto *header = new QLabel(tr("<i>Missing ESPs</i>"), popup);
   v->addWidget(header);
   int shown = 0;
   if (missing && !missing->empty()) {
-    for (const auto& asset : *missing) {
+    for (const auto &asset : *missing) {
       if (shown >= 7)
         break;
       ++shown;
-      auto* label = new QLabel(
+      auto *label = new QLabel(
           QString("    %1").arg(QString::fromStdString(asset.plugin_name)), popup);
       v->addWidget(label);
     }
@@ -492,12 +492,12 @@ void SavesTab::hide_save_info() {
   }
 }
 
-bool SavesTab::eventFilter(QObject* object, QEvent* event) {
+bool SavesTab::eventFilter(QObject *object, QEvent *event) {
   if (object == table_ || object == table_->viewport()) {
     if (event->type() == QEvent::Leave || event->type() == QEvent::WindowDeactivate) {
       hide_save_info();
     } else if (event->type() == QEvent::KeyPress) {
-      auto* key = static_cast<QKeyEvent*>(event);
+      auto *key = static_cast<QKeyEvent *>(event);
       if (key->key() == Qt::Key_Delete) {
         on_delete_key();
         return true;
@@ -514,8 +514,8 @@ void SavesTab::on_delete_key() {
 
   QStringList delete_files;
   QStringList label_rows;
-  for (const auto& idx : selected) {
-    const auto* save = save_at(idx.row());
+  for (const auto &idx : selected) {
+    const auto *save = save_at(idx.row());
     if (!save)
       continue;
     delete_files << QString::fromStdString(save->file_path.string());
@@ -551,7 +551,7 @@ void SavesTab::on_delete_key() {
   }
 }
 
-void SavesTab::on_context_menu(const QPoint& pos) {
+void SavesTab::on_context_menu(const QPoint &pos) {
   const auto selected = table_->selectionModel()->selectedRows();
   if (selected.isEmpty())
     return;
@@ -561,7 +561,7 @@ void SavesTab::on_context_menu(const QPoint& pos) {
   // showing that save's plugins/basic info. For multi-select it's hidden,
   // matching MO2's "Open in Explorer" / detail windows that always target
   // a single save.
-  auto* info_action =
+  auto *info_action =
       menu.addAction(tr("Information..."), this, &SavesTab::on_information_action);
   info_action->setEnabled(selected.size() == 1);
   menu.addSeparator();
@@ -571,7 +571,7 @@ void SavesTab::on_context_menu(const QPoint& pos) {
     const auto sel = table_->selectionModel()->selectedRows();
     if (sel.isEmpty())
       return;
-    const auto* save = save_at(sel.first().row());
+    const auto *save = save_at(sel.first().row());
     if (!save)
       return;
     QDesktopServices::openUrl(QUrl::fromLocalFile(

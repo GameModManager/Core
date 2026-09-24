@@ -17,4 +17,4 @@ namespace engine::update {
 UpdateInfo fetch_update_info(const std::string &asset_suffix,
                              bool include_prereleases = false);
 
-} // namespace engine::update
+}  // namespace engine::update

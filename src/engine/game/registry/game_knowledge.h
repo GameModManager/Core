@@ -19,15 +19,15 @@ class Platform;
 // convention).
 class GameKnowledge {
 public:
-  void set(const std::string& game_id, const std::string& key,
-           const std::string& value);
+  void set(const std::string &game_id, const std::string &key,
+           const std::string &value);
 
-  [[nodiscard]] std::string get(const std::string& game_id, const std::string& key,
-                                const std::string& fallback = "") const;
+  [[nodiscard]] std::string get(const std::string &game_id, const std::string &key,
+                                const std::string &fallback = "") const;
 
-  [[nodiscard]] bool has(const std::string& game_id, const std::string& key) const;
+  [[nodiscard]] bool has(const std::string &game_id, const std::string &key) const;
 
-  [[nodiscard]] std::vector<std::string> keys_for(const std::string& game_id) const;
+  [[nodiscard]] std::vector<std::string> keys_for(const std::string &game_id) const;
 
   [[nodiscard]] std::vector<std::string> registered_games() const;
 
@@ -43,13 +43,13 @@ private:
 // mark it disabled, and every consumer (deploy, plugin DB, mod scanner) treats
 // it as authoritative - so "disabled" never silently becomes a no-op for games
 // that ship no game-native marker (Skyrim) the way Isaac's "disable.it" does.
-inline constexpr const char* kDefaultDisableMechanism = ".gmmdisabled";
+inline constexpr const char *kDefaultDisableMechanism = ".gmmdisabled";
 
 // Sentinel filename marking a mod disabled for the given game. Falls back to
 // kDefaultDisableMechanism when the game plugin declares nothing - a game's
 // declared mechanism (e.g. Isaac's "disable.it") always takes precedence.
-[[nodiscard]] std::string disable_mechanism_for(const GameKnowledge& knowledge,
-                                                const std::string& game_id);
+[[nodiscard]] std::string disable_mechanism_for(const GameKnowledge &knowledge,
+                                                const std::string &game_id);
 
 // True when the game plugin declares delayed_disable=true: the engine must
 // defer disable-sentinel disk writes until the Run/deploy phase. Games that
@@ -58,8 +58,8 @@ inline constexpr const char* kDefaultDisableMechanism = ".gmmdisabled";
 // the sentinel is reconciled from the profile at launch instead. All other
 // games (Skyrim, ...) leave it undeclared -> false -> immediate disk writes
 // (current behavior).
-[[nodiscard]] bool delayed_disable_for(const GameKnowledge& knowledge,
-                                       const std::string& game_id);
+[[nodiscard]] bool delayed_disable_for(const GameKnowledge &knowledge,
+                                       const std::string &game_id);
 
 // Deploy strategy names for the per-game "deploy_strategy" knowledge key.
 // The default is Symlink (direct symlinks into game_dir); a game opts out of
@@ -68,19 +68,19 @@ inline constexpr const char* kDefaultDisableMechanism = ".gmmdisabled";
 // kDeployStrategyDirect is the lifecycle-object form of the symlink default:
 // it deploys straight into game_dir through Deploy::Direct (the same
 // on-disk result, but with deploy_all/undeploy/sync as first-class methods).
-inline constexpr const char* kDefaultDeployStrategy   = "symlink";
-inline constexpr const char* kDeployStrategyOverlayFs = "overlayfs";
-inline constexpr const char* kDeployStrategyDirect    = "direct";
+inline constexpr const char *kDefaultDeployStrategy   = "symlink";
+inline constexpr const char *kDeployStrategyOverlayFs = "overlayfs";
+inline constexpr const char *kDeployStrategyDirect    = "direct";
 
 // Creation club file name for the given game (e.g. "skyrim.ccc").
 // Falls back to "skyrim.ccc" when the plugin declares nothing.
-[[nodiscard]] std::string creation_club_file_for(const GameKnowledge& knowledge,
-                                                 const std::string& game_id);
+[[nodiscard]] std::string creation_club_file_for(const GameKnowledge &knowledge,
+                                                 const std::string &game_id);
 
 // Deploy strategy declared for the given game. Falls back to
 // kDefaultDeployStrategy when the game plugin declares nothing.
-[[nodiscard]] std::string deploy_strategy_for(const GameKnowledge& knowledge,
-                                              const std::string& game_id);
+[[nodiscard]] std::string deploy_strategy_for(const GameKnowledge &knowledge,
+                                              const std::string &game_id);
 
 // Plugin-declared game-mods directory ("game_mods_dir" hook). Plugins may
 // declare either an absolute path (Isaac on macOS:
@@ -90,17 +90,17 @@ inline constexpr const char* kDeployStrategyDirect    = "direct";
 // against game_dir and returned as an absolute path. Empty when the plugin
 // declares nothing.
 [[nodiscard]] std::filesystem::path
-resolve_plugin_game_mods_dir(const std::string& game_id,
-                             const std::filesystem::path& game_dir,
-                             const GameKnowledge& knowledge);
+resolve_plugin_game_mods_dir(const std::string &game_id,
+                             const std::filesystem::path &game_dir,
+                             const GameKnowledge &knowledge);
 
 // Plugin-declared raw game-mods directory hook value, ~-expanded when the
 // declared value starts with ~. Empty when the plugin declares nothing.
 // Useful when a caller needs the raw token (absolute OR relative) without
 // anchoring it to game_dir - prefer resolve_plugin_game_mods_dir for any
 // filesystem read.
-[[nodiscard]] std::string plugin_game_mods_dir(const GameKnowledge& knowledge,
-                                               const std::string& game_id);
+[[nodiscard]] std::string plugin_game_mods_dir(const GameKnowledge &knowledge,
+                                               const std::string &game_id);
 
 // The game's native mods directory, resolved once for every consumer:
 //   1. override_dir (the instance.toml "game_mods_dir") when non-empty,
@@ -119,23 +119,23 @@ resolve_plugin_game_mods_dir(const std::string& game_id,
 // plugin_game_mods_dir) because folding mods_subpath into the deploy root
 // would misplace root-override mods that must land in the game root.
 [[nodiscard]] std::filesystem::path
-resolve_game_mods_dir(const std::string& game_id, const std::filesystem::path& game_dir,
-                      const GameKnowledge& knowledge,
-                      const std::string& override_dir = "");
+resolve_game_mods_dir(const std::string &game_id, const std::filesystem::path &game_dir,
+                      const GameKnowledge &knowledge,
+                      const std::string &override_dir = "");
 
 // Per-platform My Games leaf for the given game: the "mygames_folder_<os>"
 // hook (os_tag is the platform name: "linux", "macos", "windows") wins over
 // the plain "mygames_folder" hook. Empty when the plugin declares neither -
 // there is intentionally no display-name fallback: guessing from the game's
 // display name points at folders the game never wrote.
-[[nodiscard]] std::string mygames_leaf_for(const GameKnowledge& knowledge,
-                                           const std::string& game_id,
-                                           const std::string& os_tag);
+[[nodiscard]] std::string mygames_leaf_for(const GameKnowledge &knowledge,
+                                           const std::string &game_id,
+                                           const std::string &os_tag);
 
 // Parent folder of the game's My Games leaf inside Documents. Defaults to
 // "My Games"; a game with a different layout declares "mygames_parent".
-[[nodiscard]] std::string mygames_parent_for(const GameKnowledge& knowledge,
-                                             const std::string& game_id);
+[[nodiscard]] std::string mygames_parent_for(const GameKnowledge &knowledge,
+                                             const std::string &game_id);
 
 // The game's My Games directory, resolved once for every consumer:
 //   - native game (or anything on native Windows): the per-platform leaf
@@ -146,9 +146,9 @@ resolve_game_mods_dir(const std::string& game_id, const std::filesystem::path& g
 //     an empty leaf resolves to empty - never a display-name guess.
 // Returns an empty path when the location cannot be determined (no leaf,
 // no appid, no prefix/Documents dir).
-[[nodiscard]] std::filesystem::path resolve_mygames_dir(const std::string& game_id,
-                                                        const GameKnowledge& knowledge,
-                                                        const Platform* platform,
+[[nodiscard]] std::filesystem::path resolve_mygames_dir(const std::string &game_id,
+                                                        const GameKnowledge &knowledge,
+                                                        const Platform *platform,
                                                         bool is_windows_exe);
 
 // Steam userdata saves for games that keep saves outside Documents (Isaac):
@@ -159,9 +159,9 @@ resolve_game_mods_dir(const std::string& game_id, const std::filesystem::path& g
 // its steam_appid. Empty when the game declares no such hook or Steam/a
 // user dir cannot be found.
 [[nodiscard]] std::filesystem::path
-resolve_steam_userdata_saves_dir(const std::string& game_id,
-                                 const GameKnowledge& knowledge,
-                                 const Platform* platform);
+resolve_steam_userdata_saves_dir(const std::string &game_id,
+                                 const GameKnowledge &knowledge,
+                                 const Platform *platform);
 
 // Save-file extensions for the given game, from the comma-separated
 // "save_extensions" hook (e.g. "dat" for Isaac, "ess,ess.bak" for a game
@@ -171,7 +171,7 @@ resolve_steam_userdata_saves_dir(const std::string& game_id,
 // this (via DownloadsController) instead of a hardcoded extension list -
 // Isaac is just the first non-"ess" consumer.
 [[nodiscard]] std::vector<std::string>
-save_extensions_for(const GameKnowledge& knowledge, const std::string& game_id);
+save_extensions_for(const GameKnowledge &knowledge, const std::string &game_id);
 
 // Fast-scan save format for the given game, from the "save_fast_format"
 // hook (Workspace-69xt). Known values: "gamebryo-tesv" (TESV-family header +
@@ -180,7 +180,7 @@ save_extensions_for(const GameKnowledge& knowledge, const std::string& game_id);
 // parser. The hook is a format opt-in, never a game branch: the worker
 // applies the matching Core reader only on an exact value match and
 // otherwise falls back to the registered full parser.
-[[nodiscard]] std::string save_fast_format_for(const GameKnowledge& knowledge,
-                                               const std::string& game_id);
+[[nodiscard]] std::string save_fast_format_for(const GameKnowledge &knowledge,
+                                               const std::string &game_id);
 
 }  // namespace engine

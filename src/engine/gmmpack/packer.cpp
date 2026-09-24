@@ -17,18 +17,15 @@
 #include "engine/gmmpack/tree_parser.h"
 #include "engine/gmmpack/uuid.h"
 
-namespace engine::gmmpack
-{
+namespace engine::gmmpack {
 
-namespace
-{
+namespace {
 
   // ---------------------------------------------------------------------------
   // Small parsing helpers
   // ---------------------------------------------------------------------------
 
-  int64_t parse_int64(const std::string& s, bool& ok)
-  {
+  int64_t parse_int64(const std::string &s, bool &ok) {
     try {
       size_t pos = 0;
       int64_t v  = std::stoll(s, &pos);
@@ -40,8 +37,7 @@ namespace
     }
   }
 
-  bool is_numeric_id(const std::string& s)
-  {
+  bool is_numeric_id(const std::string &s) {
     if (s.empty())
       return false;
     size_t i = (s[0] == '-') ? 1 : 0;
@@ -54,8 +50,7 @@ namespace
     return true;
   }
 
-  std::variant<int64_t, std::string> int_or_string_id(const std::string& s)
-  {
+  std::variant<int64_t, std::string> int_or_string_id(const std::string &s) {
     bool ok   = false;
     int64_t v = parse_int64(s, ok);
     if (ok)
@@ -63,18 +58,17 @@ namespace
     return s;
   }
 
-  std::string non_empty(const ModMeta& meta, const std::string& section,
-                        const std::string& key)
-  {
+  std::string non_empty(const ModMeta &meta, const std::string &section,
+                        const std::string &key) {
     std::string v = meta.get(section, key);
     return v.empty() ? std::string{} : v;
   }
 
   // First non-empty value across several (section, key) candidates.
-  std::string first_of(const ModMeta& meta,
-                       std::initializer_list<std::pair<const char*, const char*>> keys)
-  {
-    for (const auto& [section, key] : keys) {
+  std::string
+  first_of(const ModMeta &meta,
+           std::initializer_list<std::pair<const char *, const char *>> keys) {
+    for (const auto &[section, key] : keys) {
       std::string v = meta.get(section, key);
       if (!v.empty())
         return v;
@@ -89,17 +83,16 @@ namespace
   // Folder -> exported-mod-id map shared by build_mod_entries/build_tree/
   // build_executables so all three agree. Sorted input -> deterministic.
   std::map<std::string, std::string>
-  slug_all(const std::unordered_map<std::string, ModTrackingEntry>& entries)
-  {
+  slug_all(const std::unordered_map<std::string, ModTrackingEntry> &entries) {
     std::vector<std::string> folders;
     folders.reserve(entries.size());
-    for (const auto& [folder, _] : entries)
+    for (const auto &[folder, _] : entries)
       folders.push_back(folder);
     std::sort(folders.begin(), folders.end());
 
     std::map<std::string, std::string> out;
     std::unordered_set<std::string> used;
-    for (const auto& folder : folders) {
+    for (const auto &folder : folders) {
       std::string slug = mod_slug(folder);
       if (used.count(slug)) {
         int n = 2;
@@ -113,8 +106,7 @@ namespace
     return out;
   }
 
-  std::string utc_now_iso8601()
-  {
+  std::string utc_now_iso8601() {
     auto now       = std::chrono::system_clock::now();
     std::time_t tt = std::chrono::system_clock::to_time_t(now);
     std::tm tm{};
@@ -128,16 +120,14 @@ namespace
   // Tree construction
   // ---------------------------------------------------------------------------
 
-  int32_t sort_pos(int32_t p)
-  {
+  int32_t sort_pos(int32_t p) {
     // Unset (-1) sorts last.
     return p < 0 ? INT32_MAX : p;
   }
 
 }  // namespace
 
-std::string mod_slug(const std::string& folder_name)
-{
+std::string mod_slug(const std::string &folder_name) {
   std::string slug;
   slug.reserve(folder_name.size());
   bool last_dash = true;  // trims leading dashes
@@ -167,10 +157,9 @@ std::string mod_slug(const std::string& folder_name)
 // choice from the export wizard); latest keeps the output schema-valid
 // without fabricating hashes.
 
-std::optional<ModSource> resolve_mod_source(const ModMeta& meta,
-                                            const std::string& game_id,
-                                            uint32_t steam_appid)
-{
+std::optional<ModSource> resolve_mod_source(const ModMeta &meta,
+                                            const std::string &game_id,
+                                            uint32_t steam_appid) {
   const std::string type    = meta.source_type();
   const std::string sid     = meta.source_id();
   const std::string version = meta.version();
@@ -277,12 +266,11 @@ std::optional<ModSource> resolve_mod_source(const ModMeta& meta,
 // build_tree
 // ---------------------------------------------------------------------------
 
-TreeRoot build_tree(const InstanceSnapshot& snapshot,
-                    const std::filesystem::path& mods_dir)
-{
+TreeRoot build_tree(const InstanceSnapshot &snapshot,
+                    const std::filesystem::path &mods_dir) {
   // Separators: folder names referenced as someone's parent_separator.
   std::unordered_set<std::string> separators;
-  for (const auto& [folder, entry] : snapshot.mod_entries) {
+  for (const auto &[folder, entry] : snapshot.mod_entries) {
     if (!entry.parent_separator.empty())
       separators.insert(entry.parent_separator);
   }
@@ -290,12 +278,12 @@ TreeRoot build_tree(const InstanceSnapshot& snapshot,
   // Which non-separator folders survive export (resolvable source)?
   std::unordered_set<std::string> exported;
   if (mods_dir.empty()) {
-    for (const auto& [folder, _] : snapshot.mod_entries) {
+    for (const auto &[folder, _] : snapshot.mod_entries) {
       if (!separators.count(folder))
         exported.insert(folder);
     }
   } else {
-    for (const auto& [folder, _] : snapshot.mod_entries) {
+    for (const auto &[folder, _] : snapshot.mod_entries) {
       if (separators.count(folder))
         continue;
       ModMeta meta = ModMeta::load(mods_dir, folder);
@@ -308,7 +296,7 @@ TreeRoot build_tree(const InstanceSnapshot& snapshot,
   // Children lookup: parent folder -> member folders, sorted by position.
   std::unordered_map<std::string, std::vector<std::string>> children;
   std::vector<std::string> top_level;
-  for (const auto& [folder, entry] : snapshot.mod_entries) {
+  for (const auto &[folder, entry] : snapshot.mod_entries) {
     if (separators.count(folder))
       continue;  // separators handled below
     if (!exported.count(folder))
@@ -319,19 +307,19 @@ TreeRoot build_tree(const InstanceSnapshot& snapshot,
       top_level.push_back(folder);
     }
   }
-  auto by_pos = [&](const std::string& a, const std::string& b) {
+  auto by_pos = [&](const std::string &a, const std::string &b) {
     int32_t pa = sort_pos(snapshot.mod_entries.at(a).list_position);
     int32_t pb = sort_pos(snapshot.mod_entries.at(b).list_position);
     return pa != pb ? pa < pb : a < b;
   };
-  for (auto& [_, v] : children)
+  for (auto &[_, v] : children)
     std::sort(v.begin(), v.end(), by_pos);
   std::sort(top_level.begin(), top_level.end(), by_pos);
 
   // Separator folders sorted by their own position.
   std::vector<std::string> sep_folders(separators.begin(), separators.end());
   std::sort(sep_folders.begin(), sep_folders.end(),
-            [&](const std::string& a, const std::string& b) {
+            [&](const std::string &a, const std::string &b) {
               auto it_a  = snapshot.mod_entries.find(a);
               auto it_b  = snapshot.mod_entries.find(b);
               int32_t pa = it_a == snapshot.mod_entries.end()
@@ -348,9 +336,9 @@ TreeRoot build_tree(const InstanceSnapshot& snapshot,
   // explicit parent links; separator-as-child-of-separator is supported
   // through the same children map (keyed on separator folders that are
   // themselves nested).
-  std::function<TreeNode(const std::string&)> mod_node =
-      [&](const std::string& folder) {
-        const auto& e = snapshot.mod_entries.at(folder);
+  std::function<TreeNode(const std::string &)> mod_node =
+      [&](const std::string &folder) {
+        const auto &e = snapshot.mod_entries.at(folder);
         return TreeNode{ModNode{slugs.at(folder), !e.hidden && !e.disabled}};
       };
 
@@ -358,7 +346,7 @@ TreeRoot build_tree(const InstanceSnapshot& snapshot,
   // itself a known separator nests inside it; the rest are top-level.
   std::unordered_map<std::string, std::vector<std::string>> sep_children;
   std::vector<std::string> top_seps;
-  for (const auto& s : sep_folders) {
+  for (const auto &s : sep_folders) {
     auto it = snapshot.mod_entries.find(s);
     std::string parent =
         it == snapshot.mod_entries.end() ? "" : it->second.parent_separator;
@@ -369,16 +357,16 @@ TreeRoot build_tree(const InstanceSnapshot& snapshot,
     }
   }
 
-  std::function<TreeNode(const std::string&)> sep_node =
-      [&](const std::string& sep) -> TreeNode {
+  std::function<TreeNode(const std::string &)> sep_node =
+      [&](const std::string &sep) -> TreeNode {
     SeparatorNode node;
     node.name      = sep;
     auto it        = snapshot.mod_entries.find(sep);
     node.collapsed = it != snapshot.mod_entries.end() && it->second.collapsed;
-    node.color = it != snapshot.mod_entries.end() ? it->second.separator_color : "";
+    node.color     = it != snapshot.mod_entries.end() ? it->second.separator_color : "";
     auto mit       = children.find(sep);
     if (mit != children.end()) {
-      for (const auto& m : mit->second)
+      for (const auto &m : mit->second)
         node.children.push_back(mod_node(m));
     }
     auto sit = sep_children.find(sep);
@@ -387,7 +375,7 @@ TreeRoot build_tree(const InstanceSnapshot& snapshot,
       // list_position (both lists already sorted; merge here).
       // ponytail: append after mods - order within a separator beyond
       // mod priority is cosmetic.
-      for (const auto& s : sit->second)
+      for (const auto &s : sit->second)
         node.children.push_back(sep_node(s));
     }
     return TreeNode{node};
@@ -395,27 +383,26 @@ TreeRoot build_tree(const InstanceSnapshot& snapshot,
 
   TreeRoot root;
   // Merge top-level mods and separators by list_position.
-  struct Item
-  {
+  struct Item {
     int32_t pos = 0;
     std::string name;
     bool is_sep = false;
   };
   std::vector<Item> items;
-  for (const auto& m : top_level) {
+  for (const auto &m : top_level) {
     items.push_back({sort_pos(snapshot.mod_entries.at(m).list_position), m, false});
   }
-  for (const auto& s : top_seps) {
+  for (const auto &s : top_seps) {
     auto it = snapshot.mod_entries.find(s);
     items.push_back({it == snapshot.mod_entries.end()
                          ? INT32_MAX
                          : sort_pos(it->second.list_position),
                      s, true});
   }
-  std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) {
+  std::sort(items.begin(), items.end(), [](const Item &a, const Item &b) {
     return a.pos != b.pos ? a.pos < b.pos : a.name < b.name;
   });
-  for (const auto& item : items) {
+  for (const auto &item : items) {
     root.nodes.push_back(item.is_sep ? sep_node(item.name) : mod_node(item.name));
   }
   return root;
@@ -425,8 +412,7 @@ TreeRoot build_tree(const InstanceSnapshot& snapshot,
 // build_manifest
 // ---------------------------------------------------------------------------
 
-Manifest build_manifest(const InstanceSnapshot& snapshot, const PackOptions& options)
-{
+Manifest build_manifest(const InstanceSnapshot &snapshot, const PackOptions &options) {
   Manifest m;
   m.gmmpack_schema = "1.0.0";
   // Stable pack identity: reuse the instance's modpack_id so re-exports of
@@ -445,8 +431,8 @@ Manifest build_manifest(const InstanceSnapshot& snapshot, const PackOptions& opt
   m.info.updated_at  = m.info.created_at;
   // Per-instance settings from snapshot (default-profile settings: the
   // three flags come from profiles[0], the strategy from the snapshot).
-  auto& prof = snapshot.profiles;
-  m.instance_settings.local_saves = !prof.empty() && prof[0].local_saves;
+  auto &prof                         = snapshot.profiles;
+  m.instance_settings.local_saves    = !prof.empty() && prof[0].local_saves;
   m.instance_settings.local_settings = !prof.empty() && prof[0].local_settings;
   m.instance_settings.auto_archive_invalidation =
       !prof.empty() && prof[0].auto_archive_invalidation;
@@ -458,35 +444,33 @@ Manifest build_manifest(const InstanceSnapshot& snapshot, const PackOptions& opt
 // build_mod_entries
 // ---------------------------------------------------------------------------
 
-std::vector<ModEntry> build_mod_entries(const InstanceSnapshot& snapshot,
-                                        const std::filesystem::path& mods_dir,
-                                        const PackOptions& options)
-{
+std::vector<ModEntry> build_mod_entries(const InstanceSnapshot &snapshot,
+                                        const std::filesystem::path &mods_dir,
+                                        const PackOptions &options) {
   auto slugs = slug_all(snapshot.mod_entries);
 
   std::unordered_set<std::string> separators;
-  for (const auto& [folder, entry] : snapshot.mod_entries) {
+  for (const auto &[folder, entry] : snapshot.mod_entries) {
     if (!entry.parent_separator.empty())
       separators.insert(entry.parent_separator);
   }
 
-  struct Row
-  {
+  struct Row {
     int32_t pos = 0;
     std::string folder;
   };
   std::vector<Row> rows;
-  for (const auto& [folder, entry] : snapshot.mod_entries) {
+  for (const auto &[folder, entry] : snapshot.mod_entries) {
     if (separators.count(folder))
       continue;
     rows.push_back({sort_pos(entry.list_position), folder});
   }
-  std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) {
+  std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) {
     return a.pos != b.pos ? a.pos < b.pos : a.folder < b.folder;
   });
 
   std::vector<ModEntry> out;
-  for (const auto& row : rows) {
+  for (const auto &row : rows) {
     ModMeta meta = ModMeta::load(mods_dir, row.folder);
     auto source  = resolve_mod_source(meta, snapshot.game_id, snapshot.steam_appid);
     if (!source)
@@ -497,7 +481,7 @@ std::vector<ModEntry> build_mod_entries(const InstanceSnapshot& snapshot,
       // client-subscription based, so exact is meaningless there: those
       // sources always stay "latest".
       std::visit(
-          [](auto& s) {
+          [](auto &s) {
             using T = std::decay_t<decltype(s)>;
             if constexpr (!std::is_same_v<T, ModSourceSteamWorkshop>)
               s.update_policy = "exact";
@@ -519,19 +503,18 @@ std::vector<ModEntry> build_mod_entries(const InstanceSnapshot& snapshot,
 // build_executables
 // ---------------------------------------------------------------------------
 
-std::vector<ExecutableEntry> build_executables(const InstanceSnapshot& snapshot,
-                                               const std::filesystem::path& mods_dir)
-{
+std::vector<ExecutableEntry> build_executables(const InstanceSnapshot &snapshot,
+                                               const std::filesystem::path &mods_dir) {
   // Exported mod ids, to validate sourceModId references.
   std::unordered_set<std::string> exported_ids;
   {
     auto slugs = slug_all(snapshot.mod_entries);
     std::unordered_set<std::string> separators;
-    for (const auto& [folder, entry] : snapshot.mod_entries) {
+    for (const auto &[folder, entry] : snapshot.mod_entries) {
       if (!entry.parent_separator.empty())
         separators.insert(entry.parent_separator);
     }
-    for (const auto& [folder, _] : snapshot.mod_entries) {
+    for (const auto &[folder, _] : snapshot.mod_entries) {
       if (separators.count(folder))
         continue;
       if (mods_dir.empty()) {
@@ -546,7 +529,7 @@ std::vector<ExecutableEntry> build_executables(const InstanceSnapshot& snapshot,
   auto slugs = slug_all(snapshot.mod_entries);
 
   std::vector<ExecutableEntry> out;
-  for (const auto& exec : snapshot.executables) {
+  for (const auto &exec : snapshot.executables) {
     if (exec.path.empty())
       continue;
     if (exec.mod.empty())
@@ -566,7 +549,7 @@ std::vector<ExecutableEntry> build_executables(const InstanceSnapshot& snapshot,
       while (ss >> tok)
         e.arguments.push_back(tok);  // ponytail: no quote handling
     }
-    for (const auto& kv : exec.env) {
+    for (const auto &kv : exec.env) {
       auto eq = kv.find('=');
       if (eq == std::string::npos || eq == 0)
         continue;
@@ -583,10 +566,9 @@ std::vector<ExecutableEntry> build_executables(const InstanceSnapshot& snapshot,
 // JSON serializers (reverse of unpacker.cpp parse_*)
 // ---------------------------------------------------------------------------
 
-nlohmann::json serialize_mod_source(const ModSource& source)
-{
+nlohmann::json serialize_mod_source(const ModSource &source) {
   return std::visit(
-      [](const auto& s) -> nlohmann::json {
+      [](const auto &s) -> nlohmann::json {
         using T = std::decay_t<decltype(s)>;
         nlohmann::json j;
         j["provider"]   = s.provider;
@@ -607,7 +589,7 @@ nlohmann::json serialize_mod_source(const ModSource& source)
           j["updatePolicy"] = s.update_policy;
         } else if constexpr (std::is_same_v<T, ModSourceLoversLab>) {
           std::visit(
-              [&](const auto& id) {
+              [&](const auto &id) {
                 j["modId"] = id;
               },
               s.mod_id);
@@ -621,7 +603,7 @@ nlohmann::json serialize_mod_source(const ModSource& source)
           j["updatePolicy"] = s.update_policy;
         } else if constexpr (std::is_same_v<T, ModSourceModPub>) {
           std::visit(
-              [&](const auto& id) {
+              [&](const auto &id) {
                 j["modId"] = id;
               },
               s.mod_id);
@@ -653,8 +635,7 @@ nlohmann::json serialize_mod_source(const ModSource& source)
       source);
 }
 
-static std::string category_name(ModCategory c)
-{
+static std::string category_name(ModCategory c) {
   switch (c) {
   case ModCategory::Required:
     return "required";
@@ -666,8 +647,7 @@ static std::string category_name(ModCategory c)
   }
 }
 
-nlohmann::json serialize_mod_entry(const ModEntry& m)
-{
+nlohmann::json serialize_mod_entry(const ModEntry &m) {
   nlohmann::json j;
   j["id"]       = m.id;
   j["name"]     = m.name;
@@ -678,7 +658,7 @@ nlohmann::json serialize_mod_entry(const ModEntry& m)
     nlohmann::json ic;
     ic["type"]         = m.installer_choices->type;
     nlohmann::json sel = nlohmann::json::object();
-    for (const auto& [k, v] : m.installer_choices->selections)
+    for (const auto &[k, v] : m.installer_choices->selections)
       sel[k] = v;
     ic["selections"]      = std::move(sel);
     j["installerChoices"] = std::move(ic);
@@ -686,8 +666,7 @@ nlohmann::json serialize_mod_entry(const ModEntry& m)
   return j;
 }
 
-nlohmann::json serialize_executable_entry(const ExecutableEntry& e)
-{
+nlohmann::json serialize_executable_entry(const ExecutableEntry &e) {
   nlohmann::json j;
   j["id"]           = e.id;
   j["sourceModId"]  = e.source_mod_id;
@@ -697,7 +676,7 @@ nlohmann::json serialize_executable_entry(const ExecutableEntry& e)
     j["arguments"] = e.arguments;
   if (!e.env_vars.empty()) {
     nlohmann::json env = nlohmann::json::object();
-    for (const auto& [k, v] : e.env_vars)
+    for (const auto &[k, v] : e.env_vars)
       env[k] = v;
     j["envVars"] = std::move(env);
   }
@@ -712,8 +691,7 @@ nlohmann::json serialize_executable_entry(const ExecutableEntry& e)
   return j;
 }
 
-nlohmann::json serialize_manifest(const Manifest& m)
-{
+nlohmann::json serialize_manifest(const Manifest &m) {
   nlohmann::json j;
   j["gmmpackSchema"] = m.gmmpack_schema;
   j["id"]            = m.id;
@@ -731,7 +709,7 @@ nlohmann::json serialize_manifest(const Manifest& m)
   j["info"]         = std::move(info);
   if (!m.tools.empty()) {
     j["tools"] = nlohmann::json::array();
-    for (const auto& t : m.tools) {
+    for (const auto &t : m.tools) {
       nlohmann::json tj;
       tj["id"]   = t.id;
       tj["name"] = t.name;
@@ -740,7 +718,7 @@ nlohmann::json serialize_manifest(const Manifest& m)
       j["tools"].push_back(std::move(tj));
     }
   }
-  auto ser_plat = [](const std::optional<PlatformOverride>& plat) {
+  auto ser_plat = [](const std::optional<PlatformOverride> &plat) {
     nlohmann::json pj;
     if (!plat->proton_version_pin.empty())
       pj["protonVersionPin"] = plat->proton_version_pin;
@@ -750,7 +728,7 @@ nlohmann::json serialize_manifest(const Manifest& m)
       pj["launchOptions"] = plat->launch_options;
     if (!plat->prefix_files.empty()) {
       pj["prefixFiles"] = nlohmann::json::array();
-      for (const auto& pf : plat->prefix_files) {
+      for (const auto &pf : plat->prefix_files) {
         pj["prefixFiles"].push_back(
             {{"path", pf.path}, {"sourceModId", pf.source_mod_id}});
       }
@@ -769,7 +747,7 @@ nlohmann::json serialize_manifest(const Manifest& m)
   }
   if (!m.rules.empty()) {
     j["rules"] = nlohmann::json::array();
-    for (const auto& r : m.rules) {
+    for (const auto &r : m.rules) {
       nlohmann::json rj;
       rj["type"] = r.type;
       rj["from"] = r.from;
@@ -783,7 +761,7 @@ nlohmann::json serialize_manifest(const Manifest& m)
     j["loadOrder"] = {{"pluginHint", m.load_order.plugin_hint}};
   if (!m.choice_groups.empty()) {
     j["choiceGroups"] = nlohmann::json::array();
-    for (const auto& cg : m.choice_groups) {
+    for (const auto &cg : m.choice_groups) {
       j["choiceGroups"].push_back({{"id", cg.id},
                                    {"name", cg.name},
                                    {"mode", cg.mode},
@@ -791,12 +769,12 @@ nlohmann::json serialize_manifest(const Manifest& m)
     }
   }
   nlohmann::json fh = nlohmann::json::object();
-  for (const auto& [path, hash] : m.archive.file_hashes)
+  for (const auto &[path, hash] : m.archive.file_hashes)
     fh[path] = hash;
   j["archive"] = {{"fileHashes", std::move(fh)}};
   nlohmann::json is;
-  is["localSaves"] = m.instance_settings.local_saves;
-  is["localSettings"] = m.instance_settings.local_settings;
+  is["localSaves"]                   = m.instance_settings.local_saves;
+  is["localSettings"]                = m.instance_settings.local_settings;
   is["automaticArchiveInvalidation"] = m.instance_settings.auto_archive_invalidation;
   if (!m.instance_settings.deploy_strategy.empty())
     is["deployStrategy"] = m.instance_settings.deploy_strategy;
@@ -808,9 +786,9 @@ nlohmann::json serialize_manifest(const Manifest& m)
 // build_gmmpack
 // ---------------------------------------------------------------------------
 
-Gmmpack build_gmmpack(const InstanceSnapshot& snapshot,
-                      const std::filesystem::path& mods_dir, const PackOptions& options)
-{
+Gmmpack build_gmmpack(const InstanceSnapshot &snapshot,
+                      const std::filesystem::path &mods_dir,
+                      const PackOptions &options) {
   Gmmpack pack;
   pack.manifest    = build_manifest(snapshot, options);
   pack.mods        = build_mod_entries(snapshot, mods_dir, options);
@@ -825,10 +803,9 @@ Gmmpack build_gmmpack(const InstanceSnapshot& snapshot,
 // Archive writing
 // ---------------------------------------------------------------------------
 
-static bool write_zip_entry(struct archive* a, const std::string& path,
-                            const std::string& content, std::string& error)
-{
-  struct archive_entry* e = archive_entry_new();
+static bool write_zip_entry(struct archive *a, const std::string &path,
+                            const std::string &content, std::string &error) {
+  struct archive_entry *e = archive_entry_new();
   archive_entry_set_pathname(e, path.c_str());
   archive_entry_set_size(e, static_cast<la_int64_t>(content.size()));
   archive_entry_set_filetype(e, AE_IFREG);
@@ -849,11 +826,10 @@ static bool write_zip_entry(struct archive* a, const std::string& path,
   return true;
 }
 
-PackResult create_gmmpack(const InstanceSnapshot& snapshot,
-                          const std::filesystem::path& mods_dir,
-                          const PackOptions& options,
-                          const std::filesystem::path& output_path)
-{
+PackResult create_gmmpack(const InstanceSnapshot &snapshot,
+                          const std::filesystem::path &mods_dir,
+                          const PackOptions &options,
+                          const std::filesystem::path &output_path) {
   PackResult result;
   result.output_path = output_path;
 
@@ -861,10 +837,10 @@ PackResult create_gmmpack(const InstanceSnapshot& snapshot,
 
   // Serialize every payload first; hash them into the manifest.
   std::vector<std::pair<std::string, std::string>> files;
-  for (const auto& mod : pack.mods) {
+  for (const auto &mod : pack.mods) {
     files.emplace_back("mods/" + mod.id + ".json", serialize_mod_entry(mod).dump(2));
   }
-  for (const auto& exec : pack.executables) {
+  for (const auto &exec : pack.executables) {
     files.emplace_back("executables/" + exec.id + ".json",
                        serialize_executable_entry(exec).dump(2));
   }
@@ -872,12 +848,12 @@ PackResult create_gmmpack(const InstanceSnapshot& snapshot,
   if (pack.instructions)
     files.emplace_back("instructions.md", *pack.instructions);
 
-  for (const auto& [path, content] : files) {
+  for (const auto &[path, content] : files) {
     pack.manifest.archive.file_hashes[path] = "sha256:" + sha256_hex(content);
   }
   const std::string manifest_json = serialize_manifest(pack.manifest).dump(2);
 
-  struct archive* a = archive_write_new();
+  struct archive *a = archive_write_new();
   archive_write_set_format_zip(a);
   archive_write_set_options(a, "zip:compression=deflate");
   if (archive_write_open_filename(a, output_path.string().c_str()) != ARCHIVE_OK) {
@@ -888,7 +864,7 @@ PackResult create_gmmpack(const InstanceSnapshot& snapshot,
   }
   std::string error;
   bool ok = write_zip_entry(a, "manifest.json", manifest_json, error);
-  for (const auto& [path, content] : files) {
+  for (const auto &[path, content] : files) {
     if (ok)
       ok = write_zip_entry(a, path, content, error);
   }

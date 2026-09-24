@@ -12,7 +12,9 @@
 
 namespace fs = std::filesystem;
 
-static void touch(const fs::path &p) { std::ofstream(p).put('\n'); }
+static void touch(const fs::path &p) {
+  std::ofstream(p).put('\n');
+}
 
 static void write_str(const fs::path &p, const std::string &s) {
   std::ofstream(p) << s;
@@ -44,7 +46,7 @@ static bool is_case_sensitive_fs() {
   const fs::path base = fs::temp_directory_path() / "gmm_case_probe";
   std::error_code ec;
   fs::create_directories(base / "A", ec);
-  const bool result = !fs::exists(base / "a", ec); // CI fs -> "a" exists
+  const bool result = !fs::exists(base / "a", ec);  // CI fs -> "a" exists
   fs::remove_all(base, ec);
   return result;
 }
@@ -64,26 +66,25 @@ TEST_CASE("overwrite utils", "[engine]") {
 
   // --- overwrite_to_mod_rel ------------------------------------------------
   {
-    REQUIRE(overwrite_to_mod_rel("Data/ShaderCache/x", "Data") ==
-           "ShaderCache/x");
-    REQUIRE(overwrite_to_mod_rel("Data/SkyUI/SkyUI_SE.bsa", "Data", true,
-                                "SkyUI") == "SkyUI_SE.bsa");
-    REQUIRE(overwrite_to_mod_rel("Data/SkyUI/SkyUI_SE.bsa", "Data", true,
-                                "Other") == "SkyUI/SkyUI_SE.bsa");
+    REQUIRE(overwrite_to_mod_rel("Data/ShaderCache/x", "Data") == "ShaderCache/x");
+    REQUIRE(overwrite_to_mod_rel("Data/SkyUI/SkyUI_SE.bsa", "Data", true, "SkyUI") ==
+            "SkyUI_SE.bsa");
+    REQUIRE(overwrite_to_mod_rel("Data/SkyUI/SkyUI_SE.bsa", "Data", true, "Other") ==
+            "SkyUI/SkyUI_SE.bsa");
     REQUIRE(overwrite_to_mod_rel("ControlMap_Custom.txt", "Data") ==
-           "ControlMap_Custom.txt");
+            "ControlMap_Custom.txt");
     REQUIRE(overwrite_to_mod_rel("data/meshes/x.nif", "Data") == "meshes/x.nif");
     REQUIRE(overwrite_to_mod_rel("Data", "Data").empty());
     REQUIRE(overwrite_to_mod_rel("Mods/MyMod/resources/gfx/x.png", "mods", true,
-                                "MyMod") == "resources/gfx/x.png");
+                                 "MyMod") == "resources/gfx/x.png");
     std::printf("  overwrite_to_mod_rel: OK\n");
   }
 
   // --- move_overwrite_to_mod (Skyrim: strip Data/, prune empties) ----------
   {
-    const fs::path ow = base / "ow_move_skyrim";
+    const fs::path ow   = base / "ow_move_skyrim";
     const fs::path mods = base / "mods_move_skyrim";
-    const fs::path mod = mods / "NewMod";
+    const fs::path mod  = mods / "NewMod";
     fs::create_directories(ow / "Data" / "sub");
     touch(ow / "Data" / "a.txt");
     touch(ow / "Data" / "sub" / "b.txt");
@@ -93,8 +94,8 @@ TEST_CASE("overwrite utils", "[engine]") {
     REQUIRE(fs::exists(mod / "a.txt"));
     REQUIRE(fs::exists(mod / "sub" / "b.txt"));
     REQUIRE(fs::exists(mod / "top.txt"));
-    REQUIRE(!fs::exists(mod / "Data")); // Data/ prefix must be stripped
-    REQUIRE(fs::exists(ow));            // the Overwrite dir itself stays
+    REQUIRE(!fs::exists(mod / "Data"));  // Data/ prefix must be stripped
+    REQUIRE(fs::exists(ow));             // the Overwrite dir itself stays
     REQUIRE(count_files_recursive(ow) == 0);
 
     fs::remove_all(mods);
@@ -103,16 +104,15 @@ TEST_CASE("overwrite utils", "[engine]") {
 
   // --- move_overwrite_to_mod (include_mod_id, Isaac style) -----------------
   {
-    const fs::path ow = base / "ow_move_isaac";
+    const fs::path ow   = base / "ow_move_isaac";
     const fs::path mods = base / "mods_move_isaac";
-    const fs::path mod = mods / "MyMod";
+    const fs::path mod  = mods / "MyMod";
     fs::create_directories(ow / "data" / "MyMod" / "resources" / "gfx");
     fs::create_directories(ow / "data" / "resources" / "gfx");
     touch(ow / "data" / "MyMod" / "resources" / "gfx" / "a.png");
     touch(ow / "data" / "resources" / "gfx" / "b.png");
 
-    REQUIRE(move_overwrite_to_mod(ow, mod, "data", /*include_mod_id=*/true,
-                                 "MyMod"));
+    REQUIRE(move_overwrite_to_mod(ow, mod, "data", /*include_mod_id=*/true, "MyMod"));
     REQUIRE(fs::exists(mod / "resources" / "gfx" / "a.png"));
     REQUIRE(fs::exists(mod / "resources" / "gfx" / "b.png"));
     REQUIRE(!fs::exists(mod / "data"));
@@ -124,9 +124,9 @@ TEST_CASE("overwrite utils", "[engine]") {
 
   // --- move_overwrite_entry_to_mod (single entry, mapping-root handling) ---
   {
-    const fs::path ow = base / "ow_entry";
+    const fs::path ow   = base / "ow_entry";
     const fs::path mods = base / "mods_entry";
-    const fs::path mod = mods / "Target";
+    const fs::path mod  = mods / "Target";
     fs::create_directories(ow / "Data" / "Shaders");
     fs::create_directories(ow / "Data" / "Meshes");
     touch(ow / "Data" / "Shaders" / "frag.hlsl");
@@ -134,8 +134,8 @@ TEST_CASE("overwrite utils", "[engine]") {
     touch(ow / "top.txt");
 
     // Dragging a plain file: moved to the mod root (Data/ stripped).
-    REQUIRE(move_overwrite_entry_to_mod(
-        ow, ow / "Data" / "Shaders" / "frag.hlsl", mod, "Data"));
+    REQUIRE(move_overwrite_entry_to_mod(ow, ow / "Data" / "Shaders" / "frag.hlsl", mod,
+                                        "Data"));
     REQUIRE(fs::exists(mod / "Shaders" / "frag.hlsl"));
 
     // Dragging a mapping-root directory ("Data"): its contents move.
@@ -152,9 +152,9 @@ TEST_CASE("overwrite utils", "[engine]") {
 
   // --- sync_overwrite_file (replace existing dest, remove overwrite src) ---
   {
-    const fs::path ow = base / "ow_sync";
+    const fs::path ow   = base / "ow_sync";
     const fs::path mods = base / "mods_sync";
-    const fs::path mod = mods / "Target";
+    const fs::path mod  = mods / "Target";
     fs::create_directories(ow / "Data" / "Shaders");
     fs::create_directories(mod);
     write_str(ow / "Data" / "Shaders" / "frag.hlsl", "overwrite");
@@ -163,7 +163,7 @@ TEST_CASE("overwrite utils", "[engine]") {
     REQUIRE(sync_overwrite_file(ow, "Data/Shaders/frag.hlsl", mod, "Data"));
     REQUIRE(read_str(mod / "Shaders" / "frag.hlsl") == "overwrite");
     REQUIRE(!fs::exists(ow / "Data" / "Shaders" / "frag.hlsl"));
-    REQUIRE(!fs::exists(ow / "Data")); // pruned
+    REQUIRE(!fs::exists(ow / "Data"));  // pruned
 
     fs::remove_all(mods);
     std::printf("  sync_overwrite_file: OK\n");
@@ -172,13 +172,13 @@ TEST_CASE("overwrite utils", "[engine]") {
   // --- overwrite_is_empty ---------------------------------------------------
   {
     const fs::path ow = base / "ow_empty";
-    REQUIRE(overwrite_is_empty(ow, "Data")); // missing dir == empty
+    REQUIRE(overwrite_is_empty(ow, "Data"));  // missing dir == empty
     fs::create_directories(ow);
     REQUIRE(overwrite_is_empty(ow, "Data"));
     touch(ow / "meta.ini");
-    REQUIRE(overwrite_is_empty(ow, "Data")); // meta.ini ignored
+    REQUIRE(overwrite_is_empty(ow, "Data"));  // meta.ini ignored
     fs::create_directories(ow / "Data");
-    REQUIRE(overwrite_is_empty(ow, "Data")); // empty mapping root ignored
+    REQUIRE(overwrite_is_empty(ow, "Data"));  // empty mapping root ignored
     touch(ow / "Data" / "x.txt");
     REQUIRE(!overwrite_is_empty(ow, "Data"));
     fs::remove_all(ow);
@@ -197,9 +197,9 @@ TEST_CASE("overwrite utils", "[engine]") {
     touch(ow / "top.txt");
 
     REQUIRE(clear_overwrite(ow, "Data"));
-    REQUIRE(!fs::exists(ow / "Data"));       // empty mapping root removed
-    REQUIRE(count_files_recursive(ow) == 0); // everything inside gone
-    REQUIRE(overwrite_is_empty(ow, "Data")); // UI reports empty
+    REQUIRE(!fs::exists(ow / "Data"));        // empty mapping root removed
+    REQUIRE(count_files_recursive(ow) == 0);  // everything inside gone
+    REQUIRE(overwrite_is_empty(ow, "Data"));  // UI reports empty
     REQUIRE(fs::exists(trash / "Trash" / "files" / "loose.esp"));
     REQUIRE(fs::exists(trash / "Trash" / "files" / "top.txt"));
     REQUIRE(!fs::exists(trash / "Trash" / "files" / "Data"));
@@ -220,7 +220,7 @@ TEST_CASE("overwrite utils", "[engine]") {
 
   // --- collect_overwrite_sync_files ----------------------------------------
   {
-    const fs::path ow = base / "ow_collect";
+    const fs::path ow   = base / "ow_collect";
     const fs::path mods = base / "mods_collect";
     const fs::path game = base / "game_collect";
     fs::create_directories(ow / "Data");
@@ -229,10 +229,10 @@ TEST_CASE("overwrite utils", "[engine]") {
     fs::create_directories(game / "Data");
 
     touch(mods / "mod_a" / "texture.dds");
-    touch(mods / "mod_b" / "texture.dds"); // conflict over texture.dds
+    touch(mods / "mod_b" / "texture.dds");  // conflict over texture.dds
     touch(ow / "Data" / "texture.dds");
     touch(ow / "Data" / "unique.txt");
-    touch(game / "Data" / "unique.txt"); // owned by the game, not any mod
+    touch(game / "Data" / "unique.txt");  // owned by the game, not any mod
 
     const std::vector<std::pair<std::string, int>> mod_infos = {
         {"mod_a", 3},
@@ -247,14 +247,14 @@ TEST_CASE("overwrite utils", "[engine]") {
     for (const auto &f : files) {
       if (f.overwrite_rel == "Data/texture.dds") {
         REQUIRE(f.owners.size() == 2);
-        REQUIRE(f.owners[0].mod_id == "mod_a"); // pri 3 wins
+        REQUIRE(f.owners[0].mod_id == "mod_a");  // pri 3 wins
         REQUIRE(f.owners[1].mod_id == "mod_b");
         REQUIRE(f.owners[0].priority == 3);
         REQUIRE(f.owners[1].priority == 1);
         REQUIRE(!f.game_has_file);
       } else if (f.overwrite_rel == "Data/unique.txt") {
-        REQUIRE(f.owners.empty()); // no mod owns it
-        REQUIRE(f.game_has_file);  // the game itself does
+        REQUIRE(f.owners.empty());  // no mod owns it
+        REQUIRE(f.game_has_file);   // the game itself does
       } else {
         REQUIRE(false);
       }
@@ -267,7 +267,7 @@ TEST_CASE("overwrite utils", "[engine]") {
                                          /*include_mod_id=*/false, game);
     for (const auto &f : files) {
       if (f.overwrite_rel == "Data/texture.dds") {
-        REQUIRE(f.owners[0].mod_id == "mod_b"); // pri 1 wins
+        REQUIRE(f.owners[0].mod_id == "mod_b");  // pri 1 wins
         REQUIRE(f.owners[1].mod_id == "mod_a");
       }
     }
@@ -300,7 +300,7 @@ TEST_CASE("overwrite utils", "[engine]") {
   // meshes/readme.txt. The old normalize_ci_key lookup kept the filename's
   // casing and silently dropped the association ("no owner").
   {
-    const fs::path ow = base / "ow_collect_fullci";
+    const fs::path ow   = base / "ow_collect_fullci";
     const fs::path mods = base / "mods_collect_fullci";
     const fs::path game = base / "game_collect_fullci";
     fs::create_directories(ow / "Data" / "Meshes");
@@ -308,8 +308,8 @@ TEST_CASE("overwrite utils", "[engine]") {
     fs::create_directories(mods / "mod_b" / "meshes");
     fs::create_directories(game / "Data");
 
-    touch(mods / "mod_a" / "meshes" / "readme.txt"); // lowercase name
-    touch(mods / "mod_b" / "meshes" / "ReadMe.txt"); // CI-equal name
+    touch(mods / "mod_a" / "meshes" / "readme.txt");  // lowercase name
+    touch(mods / "mod_b" / "meshes" / "ReadMe.txt");  // CI-equal name
     // Captured write uses a third casing for dir AND filename.
     touch(ow / "Data" / "Meshes" / "ReadMe.txt");
 
@@ -349,7 +349,7 @@ TEST_CASE("overwrite utils", "[engine]") {
 
   // --- apply_sync_plan -------------------------------------------------------
   {
-    const fs::path ow = base / "ow_plan";
+    const fs::path ow   = base / "ow_plan";
     const fs::path mods = base / "mods_plan";
     fs::create_directories(ow / "Data");
     touch(ow / "Data" / "x.txt");
@@ -384,7 +384,7 @@ TEST_CASE("overwrite utils", "[engine]") {
     // apply_sync_plan with include_mod_id (Isaac): the mod-folder segment
     // is stripped from the destination path.
     {
-      const fs::path ow2 = base / "ow_plan_isaac";
+      const fs::path ow2   = base / "ow_plan_isaac";
       const fs::path mods2 = base / "mods_plan_isaac";
       fs::create_directories(ow2 / "Mods" / "MyMod" / "resources" / "gfx");
       touch(ow2 / "Mods" / "MyMod" / "resources" / "gfx" / "x.png");

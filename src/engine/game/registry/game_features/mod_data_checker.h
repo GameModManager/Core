@@ -30,4 +30,4 @@ public:
   static const std::unordered_set<std::string> &file_extensions();
 };
 
-} // namespace engine
+}  // namespace engine

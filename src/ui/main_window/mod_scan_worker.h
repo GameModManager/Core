@@ -18,33 +18,33 @@ namespace ui {
 // knowledge copy is populated once at plugin registration and read-only
 // afterwards, so handing it to a worker is safe.
 struct ModScanRequest {
-    engine::GameKnowledge knowledge;  // per-game hooks, copied
-    std::string game_id;
-    std::filesystem::path game_dir;      // game install dir
-    // The game's mods dir when it is genuinely external: instance.toml
-    // "game_mods_dir" override (Workspace-6up) or the plugin-declared
-    // "game_mods_dir" hook (Workspace-otx). Empty = no external mods dir
-    // for this game; the only legitimate scan source is the instance
-    // mods dir (or the portable-mode mods dir). Workspace-s3hn removed
-    // the game_dir/mods_subpath fallback that used to live here: walking
-    // the install root as a scan source would synthesize vanilla game
-    // content (Data/, SKSE, Scripts, Meshes, Source, ...) as ScannedMod
-    // rows, contrary to MO2.
-    std::filesystem::path game_mods_dir;
-    std::filesystem::path instance_root; // empty = portable (no-instance) mode
-    std::filesystem::path mods_dir;      // resolved mods_dir_path() (instance or game)
-    // NOTE: per-mod meta.ini lives in-folder at mods/{folder}/meta.ini
-    // (MO2-compatible). Legacy sidecars ({instance_root}/meta/*.ini) are
-    // migrated by ModScanWorker::run from instance_root, no path needed.
-    // Direct-symlink deploy ledger (<instance>/.gmm_deploy_ledger). The stray
-    // plugin scan consults it so files we deployed ourselves are never
-    // synthesized as unmanaged rows. Empty = no ledger (portable mode, or the
-    // instance has never been deployed).
-    std::filesystem::path ledger_file;
+  engine::GameKnowledge knowledge;  // per-game hooks, copied
+  std::string game_id;
+  std::filesystem::path game_dir;  // game install dir
+  // The game's mods dir when it is genuinely external: instance.toml
+  // "game_mods_dir" override (Workspace-6up) or the plugin-declared
+  // "game_mods_dir" hook (Workspace-otx). Empty = no external mods dir
+  // for this game; the only legitimate scan source is the instance
+  // mods dir (or the portable-mode mods dir). Workspace-s3hn removed
+  // the game_dir/mods_subpath fallback that used to live here: walking
+  // the install root as a scan source would synthesize vanilla game
+  // content (Data/, SKSE, Scripts, Meshes, Source, ...) as ScannedMod
+  // rows, contrary to MO2.
+  std::filesystem::path game_mods_dir;
+  std::filesystem::path instance_root;  // empty = portable (no-instance) mode
+  std::filesystem::path mods_dir;       // resolved mods_dir_path() (instance or game)
+  // NOTE: per-mod meta.ini lives in-folder at mods/{folder}/meta.ini
+  // (MO2-compatible). Legacy sidecars ({instance_root}/meta/*.ini) are
+  // migrated by ModScanWorker::run from instance_root, no path needed.
+  // Direct-symlink deploy ledger (<instance>/.gmm_deploy_ledger). The stray
+  // plugin scan consults it so files we deployed ourselves are never
+  // synthesized as unmanaged rows. Empty = no ledger (portable mode, or the
+  // instance has never been deployed).
+  std::filesystem::path ledger_file;
 };
 
 struct ModScanResult {
-    std::vector<engine::ScannedMod> scanned;
+  std::vector<engine::ScannedMod> scanned;
 };
 
 // Runs the mods-dir scan (ModScanner::scan/scan_dir), the game-native plugin
@@ -53,35 +53,35 @@ struct ModScanResult {
 // once via finished(); `generation` tags which scan the result belongs to so a
 // newer refresh / instance switch can drop an older in-flight result.
 class ModScanWorker : public QObject {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit ModScanWorker(QObject* parent = nullptr);
+  explicit ModScanWorker(QObject *parent = nullptr);
 
-    // Runs on the worker thread. Only ever invoked through ModScanThread::start().
-    void run(ModScanRequest request, quint64 generation);
+  // Runs on the worker thread. Only ever invoked through ModScanThread::start().
+  void run(ModScanRequest request, quint64 generation);
 
 signals:
-    void finished(ModScanResult result, quint64 generation);
+  void finished(ModScanResult result, quint64 generation);
 };
 
 // Long-lived worker thread reusing the ConflictScanThread/LootSortThread shape.
 // start() queues one scan; call it again for the next run. Scans serialize on
 // this single thread, so the per-instance meta-import writes never interleave.
 class ModScanThread : public QObject {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit ModScanThread(QObject* parent = nullptr);
-    ~ModScanThread() override;
+  explicit ModScanThread(QObject *parent = nullptr);
+  ~ModScanThread() override;
 
-    ModScanWorker* worker() const { return worker_; }
+  ModScanWorker *worker() const { return worker_; }
 
-    // Queue a scan for the worker thread. The request is copied into the
-    // queued functor, so no shared state.
-    void start(ModScanRequest request, quint64 generation);
+  // Queue a scan for the worker thread. The request is copied into the
+  // queued functor, so no shared state.
+  void start(ModScanRequest request, quint64 generation);
 
 private:
-    QThread* thread_ = nullptr;
-    ModScanWorker* worker_ = nullptr;
+  QThread *thread_       = nullptr;
+  ModScanWorker *worker_ = nullptr;
 };
 
 }  // namespace ui

@@ -8,29 +8,29 @@ namespace engine::vfs {
 
 namespace {
 
-// Lowercase a copy of the string.
-[[nodiscard]] std::string to_lower(std::string s) {
-  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
-  return s;
-}
+  // Lowercase a copy of the string.
+  [[nodiscard]] std::string to_lower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
+      return static_cast<char>(std::tolower(c));
+    });
+    return s;
+  }
 
-// Translate Windows backslash separators to '/'.
-[[nodiscard]] std::string normalize_separators(std::string p) {
-  std::replace(p.begin(), p.end(), '\\', '/');
-  return p;
-}
+  // Translate Windows backslash separators to '/'.
+  [[nodiscard]] std::string normalize_separators(std::string p) {
+    std::replace(p.begin(), p.end(), '\\', '/');
+    return p;
+  }
 
-// True when any path component is ".." (a directory-escape attempt).
-[[nodiscard]] bool has_parent_escape(std::string_view rel) {
-  const std::filesystem::path p(rel);
-  return std::any_of(p.begin(), p.end(), [](const std::filesystem::path &part) {
-    return part == "..";
-  });
-}
+  // True when any path component is ".." (a directory-escape attempt).
+  [[nodiscard]] bool has_parent_escape(std::string_view rel) {
+    const std::filesystem::path p(rel);
+    return std::any_of(p.begin(), p.end(), [](const std::filesystem::path &part) {
+      return part == "..";
+    });
+  }
 
-} // namespace
+}  // namespace
 
 struct PathResolver::Impl {
   std::filesystem::path root;
@@ -47,14 +47,16 @@ struct PathResolver::Impl {
 PathResolver::PathResolver(std::filesystem::path root, NameCompare cmp)
     : impl_(std::make_unique<Impl>()) {
   impl_->root = std::move(root);
-  impl_->cmp = cmp;
+  impl_->cmp  = cmp;
 }
 
-PathResolver::~PathResolver() = default;
-PathResolver::PathResolver(PathResolver &&) noexcept = default;
+PathResolver::~PathResolver()                                   = default;
+PathResolver::PathResolver(PathResolver &&) noexcept            = default;
 PathResolver &PathResolver::operator=(PathResolver &&) noexcept = default;
 
-const std::filesystem::path &PathResolver::root() const { return impl_->root; }
+const std::filesystem::path &PathResolver::root() const {
+  return impl_->root;
+}
 
 bool PathResolver::is_native_ci() const {
 #ifdef _WIN32
@@ -79,12 +81,10 @@ std::string PathResolver::normalize(std::string_view game_rel) const {
 // tree and caching every directory scanned. Returns nullopt when a component is
 // not found. On Windows this is a lexical normalize + exists() with no scan.
 std::optional<std::filesystem::path>
-PathResolver::walk_to_absolute(PathResolver::Impl &self,
-                               const std::string &rel) {
+PathResolver::walk_to_absolute(PathResolver::Impl &self, const std::string &rel) {
 #ifdef _WIN32
   std::error_code ec;
-  const auto candidate =
-      (self.root / std::filesystem::path(rel)).lexically_normal();
+  const auto candidate = (self.root / std::filesystem::path(rel)).lexically_normal();
   if (!std::filesystem::exists(candidate, ec)) {
     return std::nullopt;
   }
@@ -96,7 +96,7 @@ PathResolver::walk_to_absolute(PathResolver::Impl &self,
   std::unique_lock<std::shared_mutex> lock(self.index_mu);
 
   std::filesystem::path cur = self.root;
-  std::string rel_acc; // original-cased accumulation, for stable cache keys
+  std::string rel_acc;  // original-cased accumulation, for stable cache keys
   for (const auto &part : std::filesystem::path(rel)) {
     std::string comp = part.string();
     if (comp.empty() || comp == ".") {
@@ -121,8 +121,7 @@ PathResolver::walk_to_absolute(PathResolver::Impl &self,
       }
       const std::string name = e.path().filename().string();
       entries.push_back(name);
-      if (!found &&
-          (name == comp || (ci && to_lower(name) == to_lower(comp)))) {
+      if (!found && (name == comp || (ci && to_lower(name) == to_lower(comp)))) {
         match = e.path();
         found = true;
       }
@@ -157,13 +156,13 @@ std::filesystem::path PathResolver::walk_to_dir(PathResolver::Impl &self,
   std::unique_lock<std::shared_mutex> lock(self.index_mu);
 
   std::filesystem::path cur = self.root;
-  std::string rel_acc; // original-cased accumulation, for stable cache keys
+  std::string rel_acc;  // original-cased accumulation, for stable cache keys
   const auto relp = std::filesystem::path(rel);
   std::vector<std::string> comps;
   for (const auto &part : relp)
     comps.push_back(part.string());
   const size_t n = comps.size();
-  for (size_t i = 0; i + 1 < n; ++i) { // every component but the final filename
+  for (size_t i = 0; i + 1 < n; ++i) {  // every component but the final filename
     std::string comp = comps[i];
     if (comp.empty() || comp == ".")
       continue;
@@ -184,14 +183,13 @@ std::filesystem::path PathResolver::walk_to_dir(PathResolver::Impl &self,
         break;
       const std::string name = e.path().filename().string();
       entries.push_back(name);
-      if (!found &&
-          (name == comp || (ci && to_lower(name) == to_lower(comp)))) {
+      if (!found && (name == comp || (ci && to_lower(name) == to_lower(comp)))) {
         match = e.path();
         found = true;
       }
     }
     self.dir_index[dir_key] = std::move(entries);
-    cur = found ? match : (cur / comp);
+    cur                     = found ? match : (cur / comp);
     if (!rel_acc.empty())
       rel_acc += '/';
     rel_acc += comp;
@@ -200,8 +198,7 @@ std::filesystem::path PathResolver::walk_to_dir(PathResolver::Impl &self,
 #endif
 }
 
-std::filesystem::path
-PathResolver::resolve_dir(std::string_view game_rel) const {
+std::filesystem::path PathResolver::resolve_dir(std::string_view game_rel) const {
   const std::string rel = normalize_separators(std::string(game_rel));
   if (rel.empty())
     return impl_->root;
@@ -279,7 +276,7 @@ std::vector<GameFile> PathResolver::list(std::string_view dir_rel) const {
         if (ec) {
           break;
         }
-        const std::string name = e.path().filename().string();
+        const std::string name      = e.path().filename().string();
         const std::string entry_rel = rel.empty() ? name : (rel + "/" + name);
         out.emplace_back(GameFile{e.path(), normalize(entry_rel), entry_rel});
       }
@@ -287,8 +284,7 @@ std::vector<GameFile> PathResolver::list(std::string_view dir_rel) const {
     }
     for (const auto &name : it->second) {
       const std::string entry_rel = rel.empty() ? name : (rel + "/" + name);
-      out.emplace_back(
-          GameFile{*abs_dir / name, normalize(entry_rel), entry_rel});
+      out.emplace_back(GameFile{*abs_dir / name, normalize(entry_rel), entry_rel});
     }
   }
   return out;
@@ -309,4 +305,4 @@ void PathResolver::invalidate_all() {
   impl_->dir_index.clear();
 }
 
-} // namespace engine::vfs
+}  // namespace engine::vfs

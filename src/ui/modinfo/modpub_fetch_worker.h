@@ -24,8 +24,7 @@ public:
   // Runs on the worker thread. Only ever invoked through
   // ModPubFetchThread::start(). Never throws; a fetch that fails simply
   // yields ModInfoResult::available=false.
-  void run(std::function<engine::ModPubModInfoResult()> fetch,
-           quint64 generation);
+  void run(std::function<engine::ModPubModInfoResult()> fetch, quint64 generation);
 
 signals:
   void finished(engine::ModPubModInfoResult result, quint64 generation);
@@ -43,14 +42,13 @@ public:
 
   ModPubFetchWorker *worker() const { return worker_; }
 
-  void start(std::function<engine::ModPubModInfoResult()> fetch,
-             quint64 generation);
+  void start(std::function<engine::ModPubModInfoResult()> fetch, quint64 generation);
 
 private:
-  QThread *thread_ = nullptr;
+  QThread *thread_           = nullptr;
   ModPubFetchWorker *worker_ = nullptr;
 };
 
-} // namespace ui
+}  // namespace ui
 
 Q_DECLARE_METATYPE(engine::ModPubModInfoResult)

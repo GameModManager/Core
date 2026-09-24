@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "gmm_abi_v2.h" // GmmPreviewFn
+#include "gmm_abi_v2.h"  // GmmPreviewFn
 #include "engine/core/log/logger.h"
 
 // ---------------------------------------------------------------------------
@@ -31,13 +31,12 @@
 namespace ui::preview {
 
 struct RegistryEntry {
-  std::string extension;     // normalized: lowercase, leading dot (e.g. ".dds")
-  GmmPreviewFn fn = nullptr; // plugin generator: (file_path, preview_data,
-                             // user_data) -> QWidget*
+  std::string extension;      // normalized: lowercase, leading dot (e.g. ".dds")
+  GmmPreviewFn fn = nullptr;  // plugin generator: (file_path, preview_data,
+                              // user_data) -> QWidget*
   void *preview_data = nullptr;
-  void *user_data = nullptr;
-  std::string
-      plugin_path; // owning plugin path; used to drop the entry on unload
+  void *user_data    = nullptr;
+  std::string plugin_path;  // owning plugin path; used to drop the entry on unload
 };
 
 class Registry {
@@ -57,14 +56,13 @@ public:
     if (!fn)
       return;
     const std::string norm = normalize_extension(extension);
-    engine::Logger::instance().debug("[Registry] register_preview: ext=" + norm +
-                             " fn=" + std::to_string(reinterpret_cast<uintptr_t>(fn)) +
-                             " plugin=" + plugin_path);
+    engine::Logger::instance().debug(
+        "[Registry] register_preview: ext=" + norm + " fn=" +
+        std::to_string(reinterpret_cast<uintptr_t>(fn)) + " plugin=" + plugin_path);
     std::lock_guard<std::mutex> lock(mutex_);
-    entries_.push_back(RegistryEntry{norm, fn, preview_data, user_data,
-                                            plugin_path});
+    entries_.push_back(RegistryEntry{norm, fn, preview_data, user_data, plugin_path});
     engine::Logger::instance().debug("[Registry] total entries after register: " +
-                             std::to_string(entries_.size()));
+                                     std::to_string(entries_.size()));
   }
 
   // Drop every entry owned by a plugin (called from PluginLoader::unload_all
@@ -80,21 +78,25 @@ public:
 
   // Whether any plugin registered a preview for this file's extension.
   [[nodiscard]] bool has_preview(const std::string &file_path) const {
-    const std::string ext = normalize_extension(
-        std::filesystem::path(file_path).extension().string());
-    engine::Logger::instance().debug("[Registry] has_preview: file=" + file_path +
-                             " ext=" + ext + " entries_count=" + std::to_string(entries_.size()));
+    const std::string ext =
+        normalize_extension(std::filesystem::path(file_path).extension().string());
+    engine::Logger::instance().debug(
+        "[Registry] has_preview: file=" + file_path + " ext=" + ext +
+        " entries_count=" + std::to_string(entries_.size()));
     if (ext.empty()) {
-      engine::Logger::instance().debug("[Registry] has_preview: ext empty, returning false");
+      engine::Logger::instance().debug(
+          "[Registry] has_preview: ext empty, returning false");
       return false;
     }
     std::lock_guard<std::mutex> lock(mutex_);
-    bool found = std::any_of(entries_.begin(), entries_.end(),
-                             [&](const RegistryEntry &e) {
-                               engine::Logger::instance().debug("[Registry] has_preview: checking entry ext=" + e.extension);
-                               return e.extension == ext;
-                             });
-    engine::Logger::instance().debug("[Registry] has_preview: result=" + std::string(found ? "TRUE" : "FALSE"));
+    bool found =
+        std::any_of(entries_.begin(), entries_.end(), [&](const RegistryEntry &e) {
+          engine::Logger::instance().debug(
+              "[Registry] has_preview: checking entry ext=" + e.extension);
+          return e.extension == ext;
+        });
+    engine::Logger::instance().debug("[Registry] has_preview: result=" +
+                                     std::string(found ? "TRUE" : "FALSE"));
     return found;
   }
 
@@ -102,36 +104,40 @@ public:
   // plugin-provided QWidget* as a void* (the caller casts to QWidget*), or
   // nullptr if no plugin handles the extension or the generator declined.
   [[nodiscard]] void *create_preview(const std::string &file_path) const {
-    const std::string ext = normalize_extension(
-        std::filesystem::path(file_path).extension().string());
-    engine::Logger::instance().debug("[Registry] create_preview: file=" + file_path +
-                             " ext=" + ext + " entries_count=" + std::to_string(entries_.size()));
+    const std::string ext =
+        normalize_extension(std::filesystem::path(file_path).extension().string());
+    engine::Logger::instance().debug(
+        "[Registry] create_preview: file=" + file_path + " ext=" + ext +
+        " entries_count=" + std::to_string(entries_.size()));
     if (ext.empty()) {
-      engine::Logger::instance().debug("[Registry] create_preview: ext empty, returning nullptr");
+      engine::Logger::instance().debug(
+          "[Registry] create_preview: ext empty, returning nullptr");
       return nullptr;
     }
     std::lock_guard<std::mutex> lock(mutex_);
     for (size_t i = 0; i < entries_.size(); ++i) {
       const auto &e = entries_[i];
-      engine::Logger::instance().debug("[Registry] create_preview: entry[" + std::to_string(i) +
-                               "] ext=" + e.extension + " fn=" +
-                               std::to_string(reinterpret_cast<uintptr_t>(e.fn)));
+      engine::Logger::instance().debug(
+          "[Registry] create_preview: entry[" + std::to_string(i) + "] ext=" +
+          e.extension + " fn=" + std::to_string(reinterpret_cast<uintptr_t>(e.fn)));
     }
-    auto it = std::find_if(entries_.begin(), entries_.end(),
-                           [&](const RegistryEntry &e) {
-                             return e.extension == ext && e.fn != nullptr;
-                           });
+    auto it =
+        std::find_if(entries_.begin(), entries_.end(), [&](const RegistryEntry &e) {
+          return e.extension == ext && e.fn != nullptr;
+        });
     if (it == entries_.end()) {
-      engine::Logger::instance().debug("[Registry] create_preview: no match found, returning nullptr");
+      engine::Logger::instance().debug(
+          "[Registry] create_preview: no match found, returning nullptr");
       return nullptr;
     }
-    engine::Logger::instance().debug("[Registry] create_preview: match found, calling fn");
+    engine::Logger::instance().debug(
+        "[Registry] create_preview: match found, calling fn");
     return it->fn(file_path.c_str(), it->preview_data, it->user_data);
   }
 
 private:
-  Registry() = default;
-  Registry(const Registry &) = delete;
+  Registry()                            = default;
+  Registry(const Registry &)            = delete;
   Registry &operator=(const Registry &) = delete;
 
   static std::string normalize_extension(std::string ext) {
@@ -147,4 +153,4 @@ private:
   std::vector<RegistryEntry> entries_;
 };
 
-} // namespace ui::preview
+}  // namespace ui::preview

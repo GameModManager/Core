@@ -34,24 +34,20 @@
 #include <string>
 #include <vector>
 
-namespace
-{
-void check(bool cond, const char* what)
-{
+namespace {
+void check(bool cond, const char *what) {
   INFO(what);
   REQUIRE(cond);
 }
 }  // namespace
 
-static QListWidget* list_of(ui::SaveInfoDialog& dlg)
-{
-  return dlg.findChild<QListWidget*>();
+static QListWidget *list_of(ui::SaveInfoDialog &dlg) {
+  return dlg.findChild<QListWidget *>();
 }
 
-static QLabel* thumb_of(ui::SaveInfoDialog& dlg)
-{
-  QList<QLabel*> labels = dlg.findChildren<QLabel*>();
-  for (QLabel* l : labels) {
+static QLabel *thumb_of(ui::SaveInfoDialog &dlg) {
+  QList<QLabel *> labels = dlg.findChildren<QLabel *>();
+  for (QLabel *l : labels) {
     if (!l->pixmap().isNull())
       return l;
     if (!l->text().isEmpty() && l->text().contains("preview"))
@@ -60,8 +56,7 @@ static QLabel* thumb_of(ui::SaveInfoDialog& dlg)
   return nullptr;
 }
 
-TEST_CASE("save info dialog", "[ui]")
-{
+TEST_CASE("save info dialog", "[ui]") {
   qputenv("QT_QPA_PLATFORM", "offscreen");
   const std::filesystem::path cfg = "/tmp/gmm_save_info_dialog/config";
   std::filesystem::remove_all("/tmp/gmm_save_info_dialog");
@@ -69,7 +64,7 @@ TEST_CASE("save info dialog", "[ui]")
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
@@ -118,19 +113,19 @@ TEST_CASE("save info dialog", "[ui]")
   std::vector<engine::SaveMissingAsset> missing = {gone, skyui_missing};
 
   ui::SaveInfoDialog dlg(save, snapshot, missing);
-  auto* list = list_of(dlg);
+  auto *list = list_of(dlg);
   check(list != nullptr, "dialog has a QListWidget child");
   check(list->count() == 3, "three rows: Skyrim.esm + SkyUI_SE.esp + GoneMod.esp");
 
   // --- 3-state verdict ---------------------------------------------------
   // Row 0: Skyrim.esm present+enabled => check icon, default foreground.
-  QListWidgetItem* row0 = list->item(0);
+  QListWidgetItem *row0 = list->item(0);
   check(row0->text() == "Skyrim.esm", "row 0 name = Skyrim.esm");
   check(!row0->icon().isNull(), "present row has an icon");
 
   // Row 1: SkyUI_SE.esp present-but-disabled => present icon, but tooltip
   // mentions the disabled state.
-  QListWidgetItem* row1 = list->item(1);
+  QListWidgetItem *row1 = list->item(1);
   check(row1->text() == "SkyUI_SE.esp",
         "row 1 name = SkyUI_SE.esp (mixed-case lookup found the lowercase "
         "load-order entry)");
@@ -142,7 +137,7 @@ TEST_CASE("save info dialog", "[ui]")
   // mentions <overwrite> as provider. Standard icons have no stable
   // identity (QStyle::standardIcon rebuilds each call), so we just
   // verify the missing row's icon differs from the present row's icon.
-  QListWidgetItem* row2 = list->item(2);
+  QListWidgetItem *row2 = list->item(2);
   check(row2->text() == "GoneMod.esp", "row 2 name = GoneMod.esp");
   check(row2->toolTip().contains("<overwrite>"),
         "missing row tooltip names <overwrite> provider");
@@ -158,7 +153,7 @@ TEST_CASE("save info dialog", "[ui]")
 
   // --- Header label carries the count -----------------------------------
   bool found_header = false;
-  for (QLabel* lbl : dlg.findChildren<QLabel*>()) {
+  for (QLabel *lbl : dlg.findChildren<QLabel *>()) {
     if (lbl->text().contains("Plugins (3)")) {
       found_header = true;
       break;
@@ -168,7 +163,7 @@ TEST_CASE("save info dialog", "[ui]")
 
   // --- Basic info block --------------------------------------------------
   QStringList all_text;
-  for (QLabel* lbl : dlg.findChildren<QLabel*>()) {
+  for (QLabel *lbl : dlg.findChildren<QLabel *>()) {
     all_text << lbl->text();
   }
   const QString joined = all_text.join('\n');
@@ -181,7 +176,7 @@ TEST_CASE("save info dialog", "[ui]")
   // in offscreen mode, so we cannot inspect the elided text here - just
   // verify the tooltip carries the full filename).
   bool file_tooltip_ok = false;
-  for (QLabel* lbl : dlg.findChildren<QLabel*>()) {
+  for (QLabel *lbl : dlg.findChildren<QLabel *>()) {
     if (lbl->toolTip().contains("Manual0_20260802_1_1.ess")) {
       file_tooltip_ok = true;
       break;
@@ -190,12 +185,12 @@ TEST_CASE("save info dialog", "[ui]")
   check(file_tooltip_ok, "basic info shows the file basename (via tooltip)");
 
   // --- Screenshot decoded ------------------------------------------------
-  QLabel* thumb = thumb_of(dlg);
+  QLabel *thumb = thumb_of(dlg);
   // thumb_of may return the placeholder (no pixmap) when decoded - in
   // either case the dialog must not crash; verify the screenshot pipeline
   // did run by checking the list or labels for a QPixmap-backed QLabel.
   bool any_pixmap = false;
-  for (QLabel* lbl : dlg.findChildren<QLabel*>()) {
+  for (QLabel *lbl : dlg.findChildren<QLabel *>()) {
     if (!lbl->pixmap().isNull()) {
       any_pixmap = true;
       break;
@@ -211,7 +206,7 @@ TEST_CASE("save info dialog", "[ui]")
   stub.creation_time = 1755000000;
   // plugins/light/medium all empty - no parser produced them.
   ui::SaveInfoDialog stub_dlg(stub, /*plugins=*/{}, /*missing=*/{});
-  auto* stub_list = list_of(stub_dlg);
+  auto *stub_list = list_of(stub_dlg);
   check(stub_list != nullptr, "stub dialog still has a list");
   check(stub_list->count() == 1, "stub dialog shows exactly one placeholder row");
   check(stub_list->item(0)->text().contains("No plugin data"),
@@ -227,7 +222,7 @@ TEST_CASE("save info dialog", "[ui]")
   no_shot.plugins       = {"X.esp"};
   ui::SaveInfoDialog no_shot_dlg(no_shot, {}, {});
   bool found_placeholder = false;
-  for (QLabel* lbl : no_shot_dlg.findChildren<QLabel*>()) {
+  for (QLabel *lbl : no_shot_dlg.findChildren<QLabel *>()) {
     if (lbl->text().contains("No preview")) {
       found_placeholder = true;
       break;

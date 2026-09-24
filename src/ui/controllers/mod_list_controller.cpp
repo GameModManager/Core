@@ -120,8 +120,8 @@ namespace {
     return {};
   }
 
-  bool write_separator_color_file(const std::filesystem::path& mod_dir,
-                                  const QString& color) {
+  bool write_separator_color_file(const std::filesystem::path &mod_dir,
+                                  const QString &color) {
     auto meta_path = mod_dir / "meta.ini";
     engine::ModMeta meta;
     if (std::filesystem::exists(meta_path)) {
@@ -140,8 +140,8 @@ namespace {
         return true;  // nothing stored - nothing to clear
       // Rebuild the meta without the color key (ModMeta has no remove).
       engine::ModMeta rebuilt;
-      for (const auto& section : meta.sections()) {
-        for (const auto& key : meta.keys(section)) {
+      for (const auto &section : meta.sections()) {
+        for (const auto &key : meta.keys(section)) {
           if (section == "General" && key == "color")
             continue;
           rebuilt.set(section, key, meta.get(section, key));
@@ -181,13 +181,13 @@ namespace {
     QString parent_id;
   };
 
-  SidecarUiState load_sidecar_ui_state(const std::filesystem::path& mods_dir,
-                                       const QString& id) {
+  SidecarUiState load_sidecar_ui_state(const std::filesystem::path &mods_dir,
+                                       const QString &id) {
     SidecarUiState out;
     if (mods_dir.empty())
       return out;
     out.meta = engine::ModMeta::load(mods_dir, id.toStdString());
-    for (const auto& key : out.meta.keys("GameModManager")) {
+    for (const auto &key : out.meta.keys("GameModManager")) {
       if (key == "folded") {
         out.has_folded = true;
         out.folded     = out.meta.get("GameModManager", "folded") == "true";
@@ -204,7 +204,7 @@ namespace {
 
   // Remove the mod's in-folder meta.ini (delete cleanup). Logs on failure;
   // never silently swallows a filesystem error.
-  void remove_sidecar(const std::filesystem::path& mods_dir, const QString& id) {
+  void remove_sidecar(const std::filesystem::path &mods_dir, const QString &id) {
     if (mods_dir.empty())
       return;
     auto sidecar = mods_dir / id.toStdString() / "meta.ini";
@@ -214,7 +214,7 @@ namespace {
     }
   }
 
-  std::vector<QStringList> parse_csv(const QByteArray& data) {
+  std::vector<QStringList> parse_csv(const QByteArray &data) {
     std::vector<QStringList> rows;
     const QString text = QString::fromUtf8(data);
     QStringList current;
@@ -254,7 +254,7 @@ namespace {
     return rows;
   }
 
-  QString csv_escape(const QString& field) {
+  QString csv_escape(const QString &field) {
     if (!field.contains(',') && !field.contains('"') && !field.contains('\n'))
       return field;
     QString quoted = field;
@@ -267,8 +267,8 @@ namespace {
   // absolute, cannot be resolved relative to the game dir, or escapes the game
   // dir (e.g. /usr/bin/dolphin) - such pins keep the absolute form and launch
   // path-only.
-  QString to_game_relative_path(const std::filesystem::path& game_dir,
-                                const QString& path) {
+  QString to_game_relative_path(const std::filesystem::path &game_dir,
+                                const QString &path) {
     if (path.isEmpty() || game_dir.empty() || !QFileInfo(path).isAbsolute())
       return path;
     std::error_code ec;
@@ -285,11 +285,11 @@ namespace {
 
 }  // anonymous namespace
 
-ModListController::ModListController(MainWindow* w, QObject* parent)
+ModListController::ModListController(MainWindow *w, QObject *parent)
     : QObject(parent), w_(w) {
   // Initialize the extracted sub-controllers.
   mod_actions_ = std::make_unique<ModActions>(w);
-  mod_actions_->set_sync_mod_enable_state([this](const QString& mod_id, bool enabled) {
+  mod_actions_->set_sync_mod_enable_state([this](const QString &mod_id, bool enabled) {
     sync_mod_enable_state(mod_id, enabled);
   });
   mod_actions_->set_refresh_data_tab([this]() {
@@ -303,17 +303,17 @@ ModListController::ModListController(MainWindow* w, QObject* parent)
   });
 
   mod_context_menu_ = std::make_unique<ModContextMenu>(w, mod_actions_.get());
-  mod_context_menu_->set_on_data_mod_info([this](const QString& mod_id, int tab) {
+  mod_context_menu_->set_on_data_mod_info([this](const QString &mod_id, int tab) {
     on_data_mod_info(mod_id, tab);
   });
   mod_context_menu_->set_source_visit_info(
-      [this](const QString& source_type, const QString& source_id,
-             const QString& page_url) -> SourceVisitInfo {
+      [this](const QString &source_type, const QString &source_id,
+             const QString &page_url) -> SourceVisitInfo {
         return source_visit_info(source_type, source_id, page_url);
       });
 }
 
-void ModListController::setup_mod_list(QVBoxLayout* left_layout) {
+void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   w_->profile_bar_ = new ProfileBar(w_);
   left_layout->addWidget(w_->profile_bar_);
 
@@ -325,7 +325,7 @@ void ModListController::setup_mod_list(QVBoxLayout* left_layout) {
   });
 
   connect(w_->profile_bar_, &ProfileBar::profile_changed, this,
-          [this](const QString& profile) {
+          [this](const QString &profile) {
             switch_profile(profile);
           });
   connect(w_->profile_bar_, &ProfileBar::manage_profiles_requested, this, [this]() {
@@ -348,17 +348,17 @@ void ModListController::setup_mod_list(QVBoxLayout* left_layout) {
 
   // Highlight conflicting mods on selection + populate ConflictsTab
   connect(w_->mod_view_->selectionModel(), &QItemSelectionModel::currentChanged, this,
-          [this](const QModelIndex& current, const QModelIndex& /*previous*/) {
+          [this](const QModelIndex &current, const QModelIndex & /*previous*/) {
             if (!current.isValid()) {
               w_->mod_model_->set_selected_mods({});
               refresh_conflicts_tab();
               return;
             }
-            const auto& mods = w_->mod_model_->mods();
+            const auto &mods = w_->mod_model_->mods();
             if (current.row() >= 0 && current.row() < mods.size() &&
                 !mods[current.row()].is_separator &&
                 !mods[current.row()].is_overwrite) {
-              auto& selected = mods[current.row()];
+              auto &selected = mods[current.row()];
               w_->mod_model_->set_selected_mods({selected.id});
             } else {
               w_->mod_model_->set_selected_mods({});
@@ -380,8 +380,8 @@ void ModListController::setup_mod_list(QVBoxLayout* left_layout) {
   // Sync checkbox toggles to filesystem (disable.it)
   connect(
       w_->mod_model_, &QAbstractItemModel::dataChanged, this,
-      [this](const QModelIndex& topLeft, const QModelIndex& bottomRight,
-             const QVector<int>& roles) {
+      [this](const QModelIndex &topLeft, const QModelIndex &bottomRight,
+             const QVector<int> &roles) {
         (void)bottomRight;
         if (roles.contains(Qt::CheckStateRole) && topLeft.column() == ModList::Name) {
           auto id =
@@ -438,7 +438,7 @@ void ModListController::setup_mod_list(QVBoxLayout* left_layout) {
   // Inline rename (MO2 renameMod): the handler renames the folder on disk
   // and updates the row in place; on failure it reverts the editor.
   connect(w_->mod_model_, &ModList::rename_requested, this,
-          [this](int row, const QString& name) {
+          [this](int row, const QString &name) {
             apply_rename(row, name);
           });
 
@@ -447,7 +447,7 @@ void ModListController::setup_mod_list(QVBoxLayout* left_layout) {
   // Name cell - must not fold. A separator with no content to hide shows an
   // empty Fold cell and its click is a dead no-op too. With nesting enabled
   // a mod with children folds the same way (hides its subtree).
-  connect(w_->mod_view_, &QTreeView::clicked, this, [this](const QModelIndex& idx) {
+  connect(w_->mod_view_, &QTreeView::clicked, this, [this](const QModelIndex &idx) {
     if (!idx.isValid() || idx.column() != ModList::Fold)
       return;
     int row = idx.row();
@@ -469,13 +469,13 @@ void ModListController::setup_mod_list(QVBoxLayout* left_layout) {
   // resolvable source (Overwrite, separators, game-native, unknown source)
   // do nothing.
   connect(w_->mod_view_, &QTreeView::doubleClicked, this,
-          [this](const QModelIndex& idx) {
+          [this](const QModelIndex &idx) {
             if (!idx.isValid())
               return;
             int row = idx.row();
             if (row < 0 || row >= w_->mod_model_->mods().size())
               return;
-            const auto& entry = w_->mod_model_->mods()[row];
+            const auto &entry = w_->mod_model_->mods()[row];
 
             if (QApplication::keyboardModifiers() & Qt::ShiftModifier) {
               if (!entry.is_overwrite && !entry.is_separator && !entry.is_game_native) {
@@ -522,13 +522,13 @@ void ModListController::setup_mod_list(QVBoxLayout* left_layout) {
   // dir. Foreign/unmanaged (game-native) rows, separators and MERGED do
   // nothing.
   connect(w_->mod_view_, &ModView::ctrl_double_clicked, this,
-          [this](const QModelIndex& idx) {
+          [this](const QModelIndex &idx) {
             if (!idx.isValid())
               return;
             int row = idx.row();
             if (row < 0 || row >= w_->mod_model_->mods().size())
               return;
-            const auto& entry = w_->mod_model_->mods()[row];
+            const auto &entry = w_->mod_model_->mods()[row];
             if (entry.is_separator || entry.is_merged || entry.is_game_native)
               return;
 
@@ -551,18 +551,18 @@ void ModListController::setup_mod_list(QVBoxLayout* left_layout) {
 
   // Drag-and-drop archives onto the mod list to install manually
   connect(w_->mod_view_, &ModView::files_dropped, this,
-          [this](const QStringList& paths) {
+          [this](const QStringList &paths) {
             import_archives(paths);
           });
 
   // Drag-and-drop files/folders out of the Overwrite info dialog onto a mod
   // row moves them into that mod (MO2's drop-to-mod).
   connect(w_->mod_view_, &ModView::overwrite_files_dropped, this,
-          [this](const QStringList& paths, int mod_row) {
+          [this](const QStringList &paths, int mod_row) {
             w_->overwrite_->move_dropped_overwrite_files(paths, mod_row);
           });
 
-  auto* mod_header = new ColumnToggleHeaderView(Qt::Horizontal, w_->mod_view_);
+  auto *mod_header = new ColumnToggleHeaderView(Qt::Horizontal, w_->mod_view_);
   mod_header->set_column_labels({"", "Name", "Conflicts", "Flags", "Category", "Source",
                                  "Source ID", "Version", "Installation", "Changed",
                                  "Priority"});
@@ -657,19 +657,19 @@ void ModListController::setup_mod_list(QVBoxLayout* left_layout) {
   }
   w_->mod_count_enabled_->display(0);
 
-  auto* count_row = new QHBoxLayout;
+  auto *count_row = new QHBoxLayout;
   count_row->setContentsMargins(4, 2, 4, 2);
   count_row->addStretch(1);  // push the counter to the right edge
   count_row->addWidget(w_->mod_count_enabled_);
 
-  auto* mod_list_pane = new QWidget(w_);
-  auto* pane_layout   = new QVBoxLayout(mod_list_pane);
+  auto *mod_list_pane = new QWidget(w_);
+  auto *pane_layout   = new QVBoxLayout(mod_list_pane);
   pane_layout->setContentsMargins(0, 0, 0, 0);
   pane_layout->setSpacing(2);
   pane_layout->addLayout(count_row);
   pane_layout->addWidget(w_->mod_view_, 1);
 
-  auto* mod_splitter = new QSplitter(Qt::Horizontal, w_);
+  auto *mod_splitter = new QSplitter(Qt::Horizontal, w_);
   mod_splitter->addWidget(w_->category_filter_panel_);
   mod_splitter->addWidget(mod_list_pane);
   mod_splitter->setStretchFactor(0, 0);
@@ -729,7 +729,7 @@ void ModListController::refresh_profiles() {
   // (settings.ini, modlist.txt, archives.txt) with sensible defaults instead
   // of failing silently later. repair() never touches existing files, so a
   // partially-populated profile keeps its mod list and settings.
-  for (const auto& name : engine::profile::list_profiles(profiles_dir)) {
+  for (const auto &name : engine::profile::list_profiles(profiles_dir)) {
     engine::profile::ProfileManager profile(profiles_dir / name);
     const auto generated = profile.repair();
     if (!generated.empty()) {
@@ -740,7 +740,7 @@ void ModListController::refresh_profiles() {
   }
 
   QStringList names;
-  for (const auto& name : engine::profile::list_profiles(profiles_dir))
+  for (const auto &name : engine::profile::list_profiles(profiles_dir))
     names << QString::fromStdString(name);
 
   // Resolve the profile to select: the current profile when it still exists,
@@ -777,7 +777,7 @@ void ModListController::open_profile_manager() {
     refresh_profiles();
   });
   connect(&dlg, &ProfileManagerDialog::default_profile_changed, this,
-          [](const QString& name) {
+          [](const QString &name) {
             Settings::instance().set_default_profile(name);
           });
 
@@ -791,7 +791,7 @@ void ModListController::open_profile_manager() {
   refresh_profiles();
 }
 
-void ModListController::switch_profile(const QString& profile) {
+void ModListController::switch_profile(const QString &profile) {
   if (profile.isEmpty() || profile == QString::fromStdString(w_->current_profile_name_))
     return;
 
@@ -802,7 +802,7 @@ void ModListController::switch_profile(const QString& profile) {
   // Live state snapshot for save_current_profile (MO2's saveCurrentProfile):
   // the in-memory mod list is the source of truth for what's installed.
   engine::profile::ProfileSaveState state;
-  for (const auto& m : w_->mod_model_->mods()) {
+  for (const auto &m : w_->mod_model_->mods()) {
     if (m.is_separator || m.is_overwrite || m.is_merged)
       continue;
     state.known_mods.push_back(m.id.toStdString());
@@ -869,7 +869,7 @@ void ModListController::switch_profile(const QString& profile) {
   if (w_->knowledge_ && !w_->current_game_id_.empty() &&
       engine::delayed_disable_for(*w_->knowledge_, w_->current_game_id_)) {
     w_->deferred_disable_queue_.clear();
-    for (const auto& pm : w_->active_profile_->mods()) {
+    for (const auto &pm : w_->active_profile_->mods()) {
       w_->deferred_disable_queue_.push_back({pm.mod_id, pm.enabled});
     }
     engine::Logger::instance().debug(
@@ -902,7 +902,7 @@ void ModListController::update_status_bar_for_game() {
   auto sources_csv = w_->knowledge_->get(w_->current_game_id_, "download_sources", "");
   QStringList sources;
   if (!sources_csv.empty()) {
-    for (const auto& part :
+    for (const auto &part :
          QString::fromStdString(sources_csv).split(',', Qt::SkipEmptyParts)) {
       sources.append(part.trimmed());
     }
@@ -917,7 +917,7 @@ void ModListController::update_mod_count_label() {
   // Overwrite pseudo-row are not mods.
   int enabled = 0;
   int total   = 0;
-  for (const auto& m : w_->mod_model_->mods()) {
+  for (const auto &m : w_->mod_model_->mods()) {
     if (m.is_separator || m.is_overwrite)
       continue;
     ++total;
@@ -942,14 +942,14 @@ void ModListController::update_mod_count_label() {
           .arg(total));
 }
 
-void ModListController::sync_mod_enable_state(const QString& mod_id, bool enabled) {
+void ModListController::sync_mod_enable_state(const QString &mod_id, bool enabled) {
   if (w_->loading_)
     return;
   if (!w_->knowledge_ || w_->current_game_id_.empty() || w_->current_game_dir_.empty())
     return;
 
   // Separators don't have enable/disable on disk
-  for (const auto& m : w_->mod_model_->mods()) {
+  for (const auto &m : w_->mod_model_->mods()) {
     if (m.id == mod_id && m.is_separator)
       return;
   }
@@ -958,7 +958,7 @@ void ModListController::sync_mod_enable_state(const QString& mod_id, bool enable
   if (w_->running_process_pid_ > 0) {
     // Remove any existing pending toggle for w_ mod (latest wins)
     auto it = std::remove_if(w_->pending_changes_.begin(), w_->pending_changes_.end(),
-                             [&](const PendingToggle& pt) {
+                             [&](const PendingToggle &pt) {
                                return pt.mod_id == mod_id;
                              });
     w_->pending_changes_.erase(it, w_->pending_changes_.end());
@@ -980,7 +980,7 @@ void ModListController::sync_mod_enable_state(const QString& mod_id, bool enable
   if (engine::delayed_disable_for(*w_->knowledge_, w_->current_game_id_)) {
     auto it = std::remove_if(w_->deferred_disable_queue_.begin(),
                              w_->deferred_disable_queue_.end(),
-                             [&](const DeferredDisable& dd) {
+                             [&](const DeferredDisable &dd) {
                                return dd.mod_id == mod_id.toStdString();
                              });
     w_->deferred_disable_queue_.erase(it, w_->deferred_disable_queue_.end());
@@ -1055,7 +1055,7 @@ void ModListController::sync_priorities() {
   auto mods_dir     = w_->mods_dir_path();
   auto mods_subpath = w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "");
 
-  auto& mods = w_->mod_model_->mods();
+  auto &mods = w_->mod_model_->mods();
   for (int i = 0; i < mods.size(); ++i) {
     // Persist priority to the mod's in-folder meta.ini. Phantom rows
     // (Overwrite/MERGED/game-native) have no folder under mods_dir - saving
@@ -1103,10 +1103,10 @@ void ModListController::sync_priorities() {
 }
 
 void ModListController::sort_mods() {
-  auto& trace = engine::TraceRecorder::instance();
+  auto &trace = engine::TraceRecorder::instance();
   trace.begin_flow("sort");
 
-  auto* provider =
+  auto *provider =
       engine::Sorter::Registry::instance().get_provider(w_->current_game_id_);
   if (!provider) {
     engine::Logger::instance().warn("No sort provider registered for game: " +
@@ -1118,7 +1118,7 @@ void ModListController::sort_mods() {
   // Build mod info list from current model
   trace.begin_stage("sort", "Gather mod info");
   std::vector<engine::Sorter::ModInfo> mod_infos;
-  for (const auto& mod : w_->mod_model_->mods()) {
+  for (const auto &mod : w_->mod_model_->mods()) {
     if (mod.is_separator || mod.is_overwrite || mod.id == kOverwriteModId ||
         mod.is_game_native)
       continue;
@@ -1156,19 +1156,19 @@ void ModListController::sort_mods() {
 
   // Build a map of folder_name -> ModEntry
   QMap<QString, ui::ModEntry> mod_map;
-  for (const auto& mod : w_->mod_model_->mods()) {
+  for (const auto &mod : w_->mod_model_->mods()) {
     mod_map[mod.id] = mod;
   }
 
   // Create new ordered list: game-native (unmanaged) mods first (fixed top
   // band, in declared order), then the provider's sorted user mods.
   QVector<ui::ModEntry> new_order;
-  for (const auto& mod : w_->mod_model_->mods())
+  for (const auto &mod : w_->mod_model_->mods())
     if (mod.is_game_native)
       new_order.append(mod);
 
   // Add mods in sorted order
-  for (const auto& folder : result.sorted_folders) {
+  for (const auto &folder : result.sorted_folders) {
     auto qfolder = QString::fromStdString(folder);
     if (mod_map.contains(qfolder)) {
       new_order.append(mod_map[qfolder]);
@@ -1176,7 +1176,7 @@ void ModListController::sort_mods() {
   }
 
   // Add any mods not in the sorted result (shouldn't happen, but be safe)
-  for (const auto& mod : w_->mod_model_->mods()) {
+  for (const auto &mod : w_->mod_model_->mods()) {
     if (!mod.is_overwrite && !mod.is_game_native &&
         std::find(result.sorted_folders.begin(), result.sorted_folders.end(),
                   mod.id.toStdString()) == result.sorted_folders.end()) {
@@ -1185,7 +1185,7 @@ void ModListController::sort_mods() {
   }
 
   // Overwrite always at bottom
-  for (const auto& mod : w_->mod_model_->mods()) {
+  for (const auto &mod : w_->mod_model_->mods()) {
     if (mod.is_overwrite) {
       new_order.append(mod);
       break;
@@ -1196,7 +1196,7 @@ void ModListController::sort_mods() {
   w_->mod_model_->reset_with_order(new_order);
 
   // Apply tags from sort result
-  for (const auto& tag_info : result.tags) {
+  for (const auto &tag_info : result.tags) {
     QVector<ui::ModTag> tags;
     tags.append({QString::fromStdString(tag_info.type),
                  QString::fromStdString(tag_info.message)});
@@ -1350,7 +1350,7 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
     return;
   }
 
-  auto& scanned = result.scanned;
+  auto &scanned = result.scanned;
 
   // Apply the per-instance column visibility (defaults on first run; Name is
   // always forced visible). The instance root is known now, so per-instance
@@ -1368,13 +1368,13 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
 
   // Filter out MERGED pseudo-mod folder from scan results
   scanned.erase(std::remove_if(scanned.begin(), scanned.end(),
-                               [](const engine::ScannedMod& m) {
+                               [](const engine::ScannedMod &m) {
                                  return m.folder_name == "MERGED";
                                }),
                 scanned.end());
 
   // Add scanned mods before Overwrite (Overwrite stays last)
-  for (const auto& mod : scanned) {
+  for (const auto &mod : scanned) {
     auto id   = QString::fromStdString(mod.folder_name);
     auto name = QString::fromStdString(mod.display_name);
     auto ver  = QString::fromStdString(mod.version);
@@ -1441,7 +1441,7 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
             ? engine::disable_mechanism_for(*w_->knowledge_, w_->current_game_id_)
             : std::string();
     const auto mods_dir = w_->mods_dir_path();
-    for (const auto& mod : scanned) {
+    for (const auto &mod : scanned) {
       if (!mod.is_mirrored || !mod.mirror_source_missing)
         continue;
       const auto id = QString::fromStdString(mod.folder_name);
@@ -1476,7 +1476,7 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
       // past it. Natives fill the remaining top slots in declared order.
       int native_priority = 0;
       std::set<int> sep_priorities;
-      for (const auto& m : w_->mod_model_->mods()) {
+      for (const auto &m : w_->mod_model_->mods()) {
         if (!m.is_separator)
           continue;
         auto sep_meta = engine::ModMeta::load(mods_dir, m.id.toStdString());
@@ -1484,7 +1484,7 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
         if (sp >= 0)
           sep_priorities.insert(sp);
       }
-      for (const auto& m : w_->mod_model_->mods()) {
+      for (const auto &m : w_->mod_model_->mods()) {
         if (!m.is_game_native)
           continue;
         while (sep_priorities.count(native_priority))
@@ -1496,12 +1496,12 @@ void ModListController::on_mod_scan_finished(ui::ModScanResult result,
       // a user mod without a persisted priority gets the highest one - just
       // above the pinned Overwrite/MERGED block (MO2's new-mod rule).
       int regular_rows = 0;
-      for (const auto& m : w_->mod_model_->mods()) {
+      for (const auto &m : w_->mod_model_->mods()) {
         if (!m.is_overwrite && !m.is_merged)
           ++regular_rows;
       }
       int bottom_priority = std::max(0, regular_rows - 1);
-      for (const auto& m : w_->mod_model_->mods()) {
+      for (const auto &m : w_->mod_model_->mods()) {
         if (m.is_game_native)
           continue;
         auto meta = engine::ModMeta::load(mods_dir, m.id.toStdString());
@@ -1574,7 +1574,7 @@ void ModListController::apply_profile_mod_states() {
   // persisted (delayed) - MO2's refreshModStatus behavior.
   std::vector<std::string> known_mods;
   std::vector<std::string> foreign_mods;
-  for (const auto& m : w_->mod_model_->mods()) {
+  for (const auto &m : w_->mod_model_->mods()) {
     if (m.is_separator || m.is_overwrite || m.is_merged)
       continue;
     known_mods.push_back(m.id.toStdString());
@@ -1588,7 +1588,7 @@ void ModListController::apply_profile_mod_states() {
   // marker). Runs while w_->loading_ is true, so the model-change handlers
   // (save_order, sync_mod_enable_state) early-return and no disk write is
   // triggered from here.
-  for (const auto& pm : w_->active_profile_->mods()) {
+  for (const auto &pm : w_->active_profile_->mods()) {
     w_->mod_model_->set_mod_enabled(QString::fromStdString(pm.mod_id), pm.enabled);
   }
 
@@ -1603,7 +1603,7 @@ void ModListController::apply_profile_mod_states() {
   if (!disable_file.empty()) {
     const auto inst_mods = w_->mods_dir_path();
     const auto game_mods = w_->current_game_mods_dir();
-    for (const auto& pm : w_->active_profile_->mods()) {
+    for (const auto &pm : w_->active_profile_->mods()) {
       std::error_code ec;
       const bool disabled =
           std::filesystem::exists(inst_mods / pm.mod_id / disable_file, ec) ||
@@ -1615,7 +1615,7 @@ void ModListController::apply_profile_mod_states() {
   }
 }
 
-void ModListController::add_installed_mod(const std::string& folder_name) {
+void ModListController::add_installed_mod(const std::string &folder_name) {
   if (folder_name.empty())
     return;
   if (!w_->knowledge_ || w_->current_game_id_.empty())
@@ -1630,14 +1630,14 @@ void ModListController::add_installed_mod(const std::string& folder_name) {
   if (scanned.empty())
     return;
 
-  const auto& mod = scanned.front();
+  const auto &mod = scanned.front();
 
   // If the row already exists (Merge/Replace into an existing folder, or a
   // reinstall), don't add a duplicate - the files changed, so the conflict
   // and Data refreshes below still run.
   const auto id = QString::fromStdString(mod.folder_name);
   bool exists   = false;
-  for (const auto& m : w_->mod_model_->mods()) {
+  for (const auto &m : w_->mod_model_->mods()) {
     if (m.id == id) {
       exists = true;
       break;
@@ -1681,7 +1681,7 @@ void ModListController::add_installed_mod(const std::string& folder_name) {
   // runs off the main thread (P8.1); the incremental apply runs once the
   // freshly computed registry includes w_ mod.
   request_conflict_scan([this, folder_name]() {
-    if (auto* dt = w_->right_panel_->data_tab()) {
+    if (auto *dt = w_->right_panel_->data_tab()) {
       std::string mods_subpath;
       std::string deploy_prefix;
       bool deploy_include_mod_id = false;
@@ -1725,7 +1725,7 @@ void ModListController::load_meta_for_mods() {
 
   auto mods = w_->mod_model_->mods();
   for (int i = 0; i < mods.size(); ++i) {
-    const auto& mod = mods[i];
+    const auto &mod = mods[i];
     if (mod.is_separator || is_phantom_row(mod))
       continue;
 
@@ -1760,7 +1760,7 @@ void ModListController::load_meta_for_mods() {
     // Persist back where the meta was read from. External mods save to
     // their game-dir meta.ini (the parent folder exists - no stub
     // mkdir); instance mods save as before.
-    auto persist_meta = [&](const engine::ModMeta& m) {
+    auto persist_meta = [&](const engine::ModMeta &m) {
       if (is_external)
         return m.save_file(external_meta);
       return m.save(mods_dir, folder_name);
@@ -2003,12 +2003,12 @@ void ModListController::load_meta_for_mods() {
       const int nexus_id =
           QString::fromStdString(meta.get("Nexusmods", "nexuscategory")).toInt();
       if (nexus_id > 0) {
-        if (const auto* cat = cats.category_for_nexus(nexus_id))
+        if (const auto *cat = cats.category_for_nexus(nexus_id))
           primary = cat->id;
       }
     }
     if (primary > 0) {
-      if (const auto* cat = cats.find(primary))
+      if (const auto *cat = cats.find(primary))
         category_name = QString::fromStdString(cat->name);
     }
     if (!category_name.isEmpty())
@@ -2018,7 +2018,7 @@ void ModListController::load_meta_for_mods() {
     // (primary first). The Nexus fallback (no CSV) contributes the mapped
     // internal id so the panel can filter those mods too.
     QVector<int> category_ids;
-    for (const auto& p : parts) {
+    for (const auto &p : parts) {
       bool ok       = false;
       const int cid = p.toInt(&ok);
       if (ok && cid > 0)
@@ -2041,7 +2041,7 @@ void ModListController::load_meta_for_mods() {
           try {
             auto mapping = nlohmann::json::parse(tag_mapping);
             if (mapping.is_object()) {
-              for (const auto& tag : tags) {
+              for (const auto &tag : tags) {
                 auto lower_tag = tag.toLower().toStdString();
                 auto it        = mapping.find(lower_tag);
                 if (it != mapping.end() && it->is_number_integer()) {
@@ -2130,7 +2130,7 @@ void ModListController::launch_conflict_scan_batch(
     // when it launches, so it reflects the newest state); its follow-ups
     // run after that newer scan lands.
     w_->conflict_scan_pending_ = true;
-    for (auto& f : follow_ups)
+    for (auto &f : follow_ups)
       if (f)
         w_->conflict_scan_pending_follow_ups_.push_back(std::move(f));
     return;
@@ -2145,7 +2145,7 @@ void ModListController::launch_conflict_scan_batch(
     // early-return - the registry is cleared, follow-ups still run so the
     // Data tab (and any incremental install apply) empties.
     w_->last_conflict_registry_.clear();
-    for (auto& f : follow_ups)
+    for (auto &f : follow_ups)
       if (f)
         f();
     return;
@@ -2180,7 +2180,7 @@ ui::ConflictScanRequest ModListController::build_conflict_scan_request() {
       w_->knowledge_->get(w_->current_game_id_, "metadata_file", "meta.ini");
   auto disable_file =
       engine::disable_mechanism_for(*w_->knowledge_, w_->current_game_id_);
-  for (const auto* f : {&metadata_file, &disable_file}) {
+  for (const auto *f : {&metadata_file, &disable_file}) {
     if (f->empty())
       continue;
     if (request.ignored_csv.find(*f) != std::string::npos)
@@ -2196,7 +2196,7 @@ ui::ConflictScanRequest ModListController::build_conflict_scan_request() {
       w_->knowledge_->get(w_->current_game_id_, "conflict_scan_dirs", "");
 
   // Collect mod info - only enabled mods affect the game
-  for (const auto& mod : w_->mod_model_->mods()) {
+  for (const auto &mod : w_->mod_model_->mods()) {
     if (mod.is_separator)
       continue;
     if (!mod.enabled && !mod.is_overwrite && !mod.is_merged)
@@ -2240,7 +2240,7 @@ void ModListController::on_conflict_scan_finished(ui::ConflictScanResult result,
 
   auto follow_ups = std::move(w_->conflict_scan_active_follow_ups_);
   w_->conflict_scan_active_follow_ups_.clear();
-  for (auto& f : follow_ups)
+  for (auto &f : follow_ups)
     if (f)
       f();
   reload_open_modinfo_dialog();
@@ -2258,41 +2258,41 @@ void ModListController::on_conflict_scan_finished(ui::ConflictScanResult result,
   }
 }
 
-void ModListController::apply_conflict_results(const ui::ConflictScanResult& result) {
+void ModListController::apply_conflict_results(const ui::ConflictScanResult &result) {
   // Push per-mod stats into the model
-  for (const auto& [folder_name, cs] : result.stats) {
+  for (const auto &[folder_name, cs] : result.stats) {
     w_->mod_model_->set_conflict_stats(QString::fromStdString(folder_name), cs.wins,
                                        cs.losses);
   }
   // Zero out any stale stats for disabled mods (not fed to the engine)
-  for (const auto& mod : w_->mod_model_->mods()) {
+  for (const auto &mod : w_->mod_model_->mods()) {
     if (!mod.enabled && !mod.is_overwrite && !mod.is_merged && !mod.is_separator)
       w_->mod_model_->set_conflict_stats(mod.id, 0, 0);
   }
 
   // "Redundant" mods: every file they provide is won by a higher-priority
   // owner, so nothing the mod provides actually takes effect.
-  const auto& registry         = result.registry;
+  const auto &registry         = result.registry;
   const bool conflict_reversed = result.conflict_reversed;
   std::unordered_set<std::string> owns_files;
   std::unordered_set<std::string> wins_a_file;
-  for (const auto& [path, owners] : registry) {
+  for (const auto &[path, owners] : registry) {
     if (owners.empty())
       continue;
-    for (const auto& [owner, _] : owners)
+    for (const auto &[owner, _] : owners)
       owns_files.insert(owner);
-    const auto& winner = conflict_reversed
+    const auto &winner = conflict_reversed
                              ? *std::min_element(owners.begin(), owners.end(),
-                                                 [](const auto& a, const auto& b) {
+                                                 [](const auto &a, const auto &b) {
                                                    return a.second < b.second;
                                                  })
                              : *std::max_element(owners.begin(), owners.end(),
-                                                 [](const auto& a, const auto& b) {
+                                                 [](const auto &a, const auto &b) {
                                                    return a.second < b.second;
                                                  });
     wins_a_file.insert(winner.first);
   }
-  for (const auto& mod : w_->mod_model_->mods()) {
+  for (const auto &mod : w_->mod_model_->mods()) {
     bool redundant = owns_files.count(mod.id.toStdString()) > 0 &&
                      wins_a_file.count(mod.id.toStdString()) == 0;
     w_->mod_model_->set_conflict_redundant(mod.id, redundant);
@@ -2300,31 +2300,31 @@ void ModListController::apply_conflict_results(const ui::ConflictScanResult& res
 
   // Build pairwise data from the file registry
   QMap<QString, ui::ConflictPairs> pairs;
-  auto add_win = [&](const QString& winner, const QString& loser) {
-    auto& w = pairs[winner];
+  auto add_win = [&](const QString &winner, const QString &loser) {
+    auto &w = pairs[winner];
     if (!w.wins_against.contains(loser))
       w.wins_against.append(loser);
   };
-  auto add_loss = [&](const QString& loser, const QString& winner) {
-    auto& l = pairs[loser];
+  auto add_loss = [&](const QString &loser, const QString &winner) {
+    auto &l = pairs[loser];
     if (!l.loses_to.contains(winner))
       l.loses_to.append(winner);
   };
-  for (const auto& [path, owners] : registry) {
+  for (const auto &[path, owners] : registry) {
     if (owners.size() <= 1)
       continue;
     auto winner_it     = conflict_reversed
                              ? std::min_element(owners.begin(), owners.end(),
-                                                [](const auto& a, const auto& b) {
+                                                [](const auto &a, const auto &b) {
                                               return a.second < b.second;
                                                 })
                              : std::max_element(owners.begin(), owners.end(),
-                                                [](const auto& a, const auto& b) {
+                                                [](const auto &a, const auto &b) {
                                               return a.second < b.second;
                                                 });
-    const auto& winner = *winner_it;
+    const auto &winner = *winner_it;
     auto wq            = QString::fromStdString(winner.first);
-    for (const auto& [loser_name, _] : owners) {
+    for (const auto &[loser_name, _] : owners) {
       if (loser_name == winner.first)
         continue;
       auto lq = QString::fromStdString(loser_name);
@@ -2342,7 +2342,7 @@ void ModListController::reload_open_modinfo_dialog() {
   const QString id = w_->modinfo_dialog_->current_mod_id();
   if (id.isEmpty())
     return;
-  for (const auto& m : w_->mod_model_->mods()) {
+  for (const auto &m : w_->mod_model_->mods()) {
     if (m.id == id) {
       w_->modinfo_dialog_->reload_current(build_mod_info_data(m));
       return;
@@ -2351,7 +2351,7 @@ void ModListController::reload_open_modinfo_dialog() {
 }
 
 void ModListController::refresh_data_tab() {
-  auto* dt = w_->right_panel_->data_tab();
+  auto *dt = w_->right_panel_->data_tab();
   if (!dt)
     return;
 
@@ -2381,7 +2381,7 @@ void ModListController::refresh_data_tab() {
 }
 
 void ModListController::wire_data_tab() {
-  auto* dt = w_->right_panel_->data_tab();
+  auto *dt = w_->right_panel_->data_tab();
   if (!dt || dt == w_->data_tab_widget_)
     return;
   connect(dt, &ui::DataTab::open_requested, this, &ModListController::on_data_open);
@@ -2392,7 +2392,7 @@ void ModListController::wire_data_tab() {
   connect(dt, &ui::DataTab::add_executable_requested, this,
           &ModListController::on_data_add_executable);
   connect(dt, &ui::DataTab::open_mod_info_requested, this,
-          [this](const QString& mod_id) {
+          [this](const QString &mod_id) {
             on_data_mod_info(mod_id);
           });
   connect(dt, &ui::DataTab::hide_requested, this, &ModListController::on_data_hide);
@@ -2401,14 +2401,14 @@ void ModListController::wire_data_tab() {
   w_->data_tab_widget_ = dt;
 }
 
-void ModListController::on_data_open(const QString& file_path) {
+void ModListController::on_data_open(const QString &file_path) {
   if (!QDesktopServices::openUrl(QUrl::fromLocalFile(file_path))) {
     QMessageBox::warning(w_, tr("Open"), tr("Failed to open:\n%1").arg(file_path));
   }
 }
 
-void ModListController::on_data_execute(const QString& file_path, bool is_windows_exe,
-                                        const QString& vfs_path) {
+void ModListController::on_data_execute(const QString &file_path, bool is_windows_exe,
+                                        const QString &vfs_path) {
   // Every execute goes through the standard overlay-launch chain (the same
   // one the game and toolbar shortcuts use): it deploys enabled mods into
   // .gmm_staging and launches inside the overlay, so the tool sees the
@@ -2430,7 +2430,7 @@ void ModListController::on_data_execute(const QString& file_path, bool is_window
   QString arguments;
   QString start_in;
   QStringList environment;
-  if (const auto* match = Executables::entry_for_path(
+  if (const auto *match = Executables::entry_for_path(
           w_->right_panel_->exec_controls()->executable_entries(),
           w_->current_game_dir_, target)) {
     arguments   = match->arguments;
@@ -2440,9 +2440,9 @@ void ModListController::on_data_execute(const QString& file_path, bool is_window
   w_->launch_->launch_with_executable(target, {}, arguments, start_in, environment);
 }
 
-void ModListController::on_data_preview(const QString& file_path,
-                                        const QStringList& provider_paths,
-                                        const QStringList& provider_names) {
+void ModListController::on_data_preview(const QString &file_path,
+                                        const QStringList &provider_paths,
+                                        const QStringList &provider_names) {
   if (!w_->preview_window_)
     w_->preview_window_ = new ui::preview::PreviewWindow(w_);
   w_->preview_window_->set_game_id(w_->current_game_id_);
@@ -2452,10 +2452,10 @@ void ModListController::on_data_preview(const QString& file_path,
   w_->preview_window_->activateWindow();
 }
 
-void ModListController::on_data_add_executable(const QString& file_path,
-                                               const QString& default_name,
-                                               const QString& physical_path) {
-  auto* ec = w_->right_panel_->exec_controls();
+void ModListController::on_data_add_executable(const QString &file_path,
+                                               const QString &default_name,
+                                               const QString &physical_path) {
+  auto *ec = w_->right_panel_->exec_controls();
   if (!ec)
     return;
 
@@ -2480,7 +2480,7 @@ void ModListController::on_data_add_executable(const QString& file_path,
   w_->launch_->save_executables();
 }
 
-ui::ModInfoData ModListController::build_mod_info_data(const ModEntry& mod) {
+ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
   ui::ModInfoData data;
   data.id                = mod.id;
   data.name              = mod.name;
@@ -2512,7 +2512,7 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry& mod) {
   const auto sources_csv =
       w_->knowledge_ ? w_->knowledge_->get(w_->current_game_id_, "download_sources", "")
                      : "";
-  for (const auto& part :
+  for (const auto &part :
        QString::fromStdString(sources_csv).split(',', Qt::SkipEmptyParts))
     data.supported_sources.append(part.trimmed());
 
@@ -2538,9 +2538,9 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry& mod) {
 
   // Conflicts touching w_ mod (registry paths are mod-dir-relative, i.e.
   // what ConflictEngine walked with w_ mod folder as the root).
-  for (const auto& [path, owners] : w_->last_conflict_registry_) {
+  for (const auto &[path, owners] : w_->last_conflict_registry_) {
     bool is_owner = false;
-    for (const auto& [owner, _] : owners)
+    for (const auto &[owner, _] : owners)
       if (owner == mod.id.toStdString()) {
         is_owner = true;
         break;
@@ -2549,7 +2549,7 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry& mod) {
       continue;
     ui::ModInfoData::Owners owner_list;
     owner_list.reserve(owners.size());
-    for (const auto& [owner, prio] : owners)
+    for (const auto &[owner, prio] : owners)
       owner_list.emplace_back(QString::fromStdString(owner), prio);
     data.conflicts.emplace_back(QString::fromStdString(path), std::move(owner_list));
   }
@@ -2563,7 +2563,7 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry& mod) {
   // real mod (Workspace-pmrh H1).
   const auto mods_dir      = w_->mods_dir_path();
   const auto game_mods_dir = w_->current_game_mods_dir();
-  auto external_meta_file  = [game_mods_dir](const QString& id) {
+  auto external_meta_file  = [game_mods_dir](const QString &id) {
     if (game_mods_dir.empty())
       return std::filesystem::path{};
     std::error_code ec;
@@ -2582,7 +2582,7 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry& mod) {
     return meta;
   };
   data.save_meta = [mods_dir, external_meta_file,
-                    mod_id = mod.id](const engine::ModMeta& meta) {
+                    mod_id = mod.id](const engine::ModMeta &meta) {
     std::error_code ec;
     if (!std::filesystem::is_directory(mods_dir / mod_id.toStdString(), ec)) {
       const auto ext = external_meta_file(mod_id);
@@ -2597,19 +2597,19 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry& mod) {
   data.open_explorer        = [mod_dir_str]() {
     QDesktopServices::openUrl(QUrl::fromLocalFile(mod_dir_str));
   };
-  data.open_file = [](const QString& path) {
+  data.open_file = [](const QString &path) {
     QDesktopServices::openUrl(QUrl::fromLocalFile(path));
   };
-  data.open_url = [](const QString& url) {
+  data.open_url = [](const QString &url) {
     QDesktopServices::openUrl(QUrl(url));
   };
-  data.hide_file = [this, mod_id = mod.id, mod_folder](const QString& abs, bool hide) {
+  data.hide_file = [this, mod_id = mod.id, mod_folder](const QString &abs, bool hide) {
     const std::filesystem::path p(abs.toStdString());
     bool ok = hide ? engine::hide_file(p) : engine::unhide_file(p);
     if (ok) {
       bool has_any_hidden = false;
       std::error_code ec;
-      for (const auto& entry :
+      for (const auto &entry :
            std::filesystem::recursive_directory_iterator(mod_folder, ec)) {
         if (entry.is_regular_file() && engine::is_hidden_file(entry.path())) {
           has_any_hidden = true;
@@ -2620,7 +2620,7 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry& mod) {
     }
     return ok;
   };
-  data.set_mod_color = [this, mod_id = mod.id](const QColor& c) {
+  data.set_mod_color = [this, mod_id = mod.id](const QColor &c) {
     if (c.isValid())
       w_->mod_model_->set_mod_color(mod_id, c);
     else
@@ -2664,7 +2664,7 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry& mod) {
       if (!sidecar_id.isEmpty())
         live_id = sidecar_id;
     }
-    auto* provider = dynamic_cast<engine::Source::Nexus::Provider*>(
+    auto *provider = dynamic_cast<engine::Source::Nexus::Provider *>(
         engine::SourceRegistry::instance().provider_for("nexus"));
     if (!provider || domain.isEmpty() || live_id.isEmpty())
       return engine::ModInfoResult{};
@@ -2692,7 +2692,7 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry& mod) {
       if (!sidecar_url.isEmpty())
         live_url = sidecar_url;
     }
-    auto* provider = dynamic_cast<engine::Source::LoversLab::Provider*>(
+    auto *provider = dynamic_cast<engine::Source::LoversLab::Provider *>(
         engine::SourceRegistry::instance().provider_for("loverslab"));
     if (!provider)
       return engine::LoversLabModInfoResult{};
@@ -2722,7 +2722,7 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry& mod) {
       if (!sidecar_url.isEmpty())
         live_url = sidecar_url;
     }
-    auto* provider = dynamic_cast<engine::Source::ModPub::Provider*>(
+    auto *provider = dynamic_cast<engine::Source::ModPub::Provider *>(
         engine::SourceRegistry::instance().provider_for("modpub"));
     if (!provider)
       return engine::ModPubModInfoResult{};
@@ -2736,10 +2736,10 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry& mod) {
   return data;
 }
 
-void ModListController::on_data_mod_info(const QString& mod_id, int initial_tab) {
+void ModListController::on_data_mod_info(const QString &mod_id, int initial_tab) {
   ui::ModInfoData mod_data;
   bool found = false;
-  for (const auto& mod : w_->mod_model_->mods()) {
+  for (const auto &mod : w_->mod_model_->mods()) {
     if (mod.id == mod_id) {
       mod_data = build_mod_info_data(mod);
       found    = true;
@@ -2751,14 +2751,14 @@ void ModListController::on_data_mod_info(const QString& mod_id, int initial_tab)
 
   std::vector<std::pair<QString, bool>> nav_list;
   nav_list.reserve(w_->mod_model_->mods().size());
-  for (const auto& mod : w_->mod_model_->mods()) {
+  for (const auto &mod : w_->mod_model_->mods()) {
     nav_list.emplace_back(mod.id, mod.is_separator);
   }
 
   ui::ModInfoDialog dlg(std::move(mod_data), std::move(nav_list),
                         static_cast<ui::ModInfoTabId>(initial_tab), w_);
-  dlg.set_data_builder([this](const QString& id) -> ui::ModInfoData {
-    for (const auto& mod : w_->mod_model_->mods()) {
+  dlg.set_data_builder([this](const QString &id) -> ui::ModInfoData {
+    for (const auto &mod : w_->mod_model_->mods()) {
       if (mod.id == id)
         return build_mod_info_data(mod);
     }
@@ -2777,7 +2777,7 @@ void ModListController::on_data_mod_info(const QString& mod_id, int initial_tab)
   load_meta_for_mods();
 }
 
-void ModListController::on_data_hide(const QString& file_path, const QString& mod_id,
+void ModListController::on_data_hide(const QString &file_path, const QString &mod_id,
                                      bool hide) {
   const auto p  = std::filesystem::path(file_path.toStdString());
   const bool ok = hide ? engine::hide_file(p) : engine::unhide_file(p);
@@ -2799,11 +2799,11 @@ void ModListController::on_data_hide(const QString& file_path, const QString& mo
 }
 
 void ModListController::refresh_conflicts_tab() {
-  auto* ct = w_->right_panel_ ? w_->right_panel_->conflicts_tab() : nullptr;
+  auto *ct = w_->right_panel_ ? w_->right_panel_->conflicts_tab() : nullptr;
   if (!ct || !w_->mod_view_ || !w_->mod_model_)
     return;
   const QModelIndex current = w_->mod_view_->selectionModel()->currentIndex();
-  const auto& mods          = w_->mod_model_->mods();
+  const auto &mods          = w_->mod_model_->mods();
   if (!current.isValid() || current.row() < 0 || current.row() >= mods.size() ||
       mods[current.row()].is_separator || mods[current.row()].is_overwrite) {
     ct->clear_content();
@@ -2832,7 +2832,7 @@ void ModListController::refresh_plugins_tab() {
     w_->plugins_db_ = engine::PluginDb::Database{};
     w_->plugin_owner_index_.clear();
     w_->plugin_row_by_name_.clear();
-    if (auto* pt = w_->right_panel_ ? w_->right_panel_->plugins_tab() : nullptr)
+    if (auto *pt = w_->right_panel_ ? w_->right_panel_->plugins_tab() : nullptr)
       pt->set_plugins({});
     return;
   }
@@ -2881,7 +2881,7 @@ void ModListController::refresh_plugins_tab() {
   // The widget push runs only once the tab is built (Workspace-j6ty). The
   // tab_materialized handler re-runs this refresh on first show, so the
   // freshly built tab is populated from the already-refreshed model above.
-  auto* pt = w_->right_panel_ ? w_->right_panel_->plugins_tab() : nullptr;
+  auto *pt = w_->right_panel_ ? w_->right_panel_->plugins_tab() : nullptr;
   if (!pt)
     return;
   if (pt != w_->plugins_tab_widget_) {  // tab was (re)created - wire it
@@ -2939,7 +2939,7 @@ void ModListController::run_loot_sort() {
   request.game_dir    = w_->current_game_dir_;
   request.profile_dir = w_->profiles_dir_path() / w_->current_profile_name_;
   request.platform    = w_->platform_;
-  for (const auto& p : w_->plugins_db_.plugins()) {
+  for (const auto &p : w_->plugins_db_.plugins()) {
     request.plugins.push_back({p.name, p.full_path});
   }
   if (request.plugins.empty()) {
@@ -2953,7 +2953,7 @@ void ModListController::run_loot_sort() {
   request.cli_path =
       QCoreApplication::applicationDirPath().toStdString() + "/gmm_lootcli";
   if (!std::filesystem::is_regular_file(request.cli_path)) {
-    if (const char* path_env = std::getenv("PATH")) {
+    if (const char *path_env = std::getenv("PATH")) {
       std::istringstream ss(path_env);
       std::string token;
       while (std::getline(ss, token, ':')) {
@@ -2978,7 +2978,7 @@ void ModListController::run_loot_sort() {
   w_->loot_sort_thread_->start(std::move(request));
 }
 
-void ModListController::on_loot_progress(int stage, const QString&) {
+void ModListController::on_loot_progress(int stage, const QString &) {
   static const QStringList kStageNames = {
       QString(),                     // 0 - none
       tr("Checking masterlist…"),    // 1
@@ -3024,10 +3024,10 @@ void ModListController::on_loot_finished(engine::Sorter::Loot::Result result) {
         tr("Load order sorted by LOOT (%1 plugins)").arg(result.sorted_names.size()));
 }
 
-void ModListController::on_plugin_toggle(const std::string& name, bool enabled) {
+void ModListController::on_plugin_toggle(const std::string &name, bool enabled) {
   std::string err;
   if (!w_->plugins_db_.set_enabled(name, enabled, &err)) {
-    auto* pt = w_->right_panel_->plugins_tab();
+    auto *pt = w_->right_panel_->plugins_tab();
     if (pt)
       pt->sync_enabled(w_->plugins_db_.plugins());
     if (!err.empty())
@@ -3035,7 +3035,7 @@ void ModListController::on_plugin_toggle(const std::string& name, bool enabled) 
     return;
   }
   w_->plugins_db_.save_profile(w_->profiles_dir_path(), w_->current_profile_name_);
-  auto* pt = w_->right_panel_->plugins_tab();
+  auto *pt = w_->right_panel_->plugins_tab();
   if (pt)
     pt->sync_enabled(w_->plugins_db_.plugins());
   // P1.3 event bus: mirror MO2 onPluginStateChanged.
@@ -3050,7 +3050,7 @@ void ModListController::on_plugin_reorder(int from_row, int to_row) {
   // Capture the moved plugin's name before the reorder so the event carries
   // it (refresh_plugins_tab() rebuilds rows right after the move).
   std::string moved_name;
-  const auto& plugins_before = w_->plugins_db_.plugins();
+  const auto &plugins_before = w_->plugins_db_.plugins();
   if (from_row >= 0 && from_row < static_cast<int>(plugins_before.size()))
     moved_name = plugins_before[static_cast<size_t>(from_row)].name;
 
@@ -3072,7 +3072,7 @@ void ModListController::on_plugin_reorder(int from_row, int to_row) {
                                         }));
 }
 
-void ModListController::on_plugin_lock(const std::string& name, bool locked) {
+void ModListController::on_plugin_lock(const std::string &name, bool locked) {
   std::string err;
   if (!w_->plugins_db_.set_locked(name, locked, &err)) {
     if (!err.empty())
@@ -3086,10 +3086,10 @@ void ModListController::on_plugin_lock(const std::string& name, bool locked) {
 void ModListController::rebuild_plugin_highlight_index() {
   w_->plugin_owner_index_.clear();
   w_->plugin_row_by_name_.clear();
-  const auto& plugins = w_->plugins_db_.plugins();
+  const auto &plugins = w_->plugins_db_.plugins();
   w_->plugin_row_by_name_.reserve(static_cast<int>(plugins.size()));
   for (size_t i = 0; i < plugins.size(); ++i) {
-    const auto& p = plugins[i];
+    const auto &p = plugins[i];
     w_->plugin_row_by_name_.insert(QString::fromStdString(p.name), static_cast<int>(i));
     if (!p.owner_mod.empty())
       w_->plugin_owner_index_[QString::fromStdString(p.owner_mod)].append(
@@ -3098,21 +3098,21 @@ void ModListController::rebuild_plugin_highlight_index() {
 }
 
 void ModListController::on_mod_selection_changed() {
-  auto* pt = w_->right_panel_ ? w_->right_panel_->plugins_tab() : nullptr;
+  auto *pt = w_->right_panel_ ? w_->right_panel_->plugins_tab() : nullptr;
   if (!pt || w_->plugin_row_by_name_.isEmpty())
     return;
 
-  const auto& mods = w_->mod_model_->mods();
+  const auto &mods = w_->mod_model_->mods();
   QVector<QString> contained;
   QSet<QString> seen_contained;
   contained.reserve(w_->plugin_row_by_name_.size());
 
   const auto rows = w_->mod_view_->selectionModel()->selectedRows();
-  for (const auto& idx : rows) {
+  for (const auto &idx : rows) {
     const int r = idx.row();
     if (r < 0 || r >= mods.size())
       continue;
-    const auto& m = mods[r];
+    const auto &m = mods[r];
     if (m.is_separator || m.is_overwrite || m.is_merged)
       continue;
 
@@ -3121,7 +3121,7 @@ void ModListController::on_mod_selection_changed() {
     // winning origin already).
     const auto it = w_->plugin_owner_index_.constFind(m.id);
     if (it != w_->plugin_owner_index_.constEnd()) {
-      for (const auto& name : it.value()) {
+      for (const auto &name : it.value()) {
         if (seen_contained.contains(name))
           continue;
         seen_contained.insert(name);
@@ -3133,7 +3133,7 @@ void ModListController::on_mod_selection_changed() {
     if (m.is_game_native) {
       const auto nit = w_->plugin_row_by_name_.constFind(m.id);
       if (nit != w_->plugin_row_by_name_.constEnd()) {
-        const auto& p = w_->plugins_db_.plugins()[nit.value()];
+        const auto &p = w_->plugins_db_.plugins()[nit.value()];
         if (p.owner_mod.empty() && !seen_contained.contains(m.id)) {
           seen_contained.insert(m.id);
           contained.append(m.id);
@@ -3145,7 +3145,7 @@ void ModListController::on_mod_selection_changed() {
 }
 
 void ModListController::on_plugin_selection_changed() {
-  auto* pt = w_->right_panel_ ? w_->right_panel_->plugins_tab() : nullptr;
+  auto *pt = w_->right_panel_ ? w_->right_panel_->plugins_tab() : nullptr;
   if (!pt)
     return;
 
@@ -3154,18 +3154,18 @@ void ModListController::on_plugin_selection_changed() {
   QVector<QString> masters;
   QSet<QString> seen_masters;
 
-  for (const auto& name : selected) {
+  for (const auto &name : selected) {
     const auto it = w_->plugin_row_by_name_.constFind(name);
     if (it == w_->plugin_row_by_name_.constEnd())
       continue;
-    const auto& p = w_->plugins_db_.plugins()[it.value()];
+    const auto &p = w_->plugins_db_.plugins()[it.value()];
     // Owning mod: owner_mod, or the unmanaged mod row for game-owned files
     // (MO2's plugin-list selection -> setHighlightedMods).
     const QString owner =
         p.owner_mod.empty() ? name : QString::fromStdString(p.owner_mod);
     highlighted_mods.insert(owner);
     // Masters of the selected plugin render plugin_list_master.
-    for (const auto& master : p.masters) {
+    for (const auto &master : p.masters) {
       const QString m = QString::fromStdString(master);
       if (!w_->plugin_row_by_name_.contains(m) || seen_masters.contains(m))
         continue;
@@ -3177,7 +3177,7 @@ void ModListController::on_plugin_selection_changed() {
   pt->set_master_plugins(masters);
 }
 
-void ModListController::on_image_diff_requested(const QString& relative_path) {
+void ModListController::on_image_diff_requested(const QString &relative_path) {
   if (!w_->plugin_loader_ || !w_->plugin_loader_->has_image_diff())
     return;
 
@@ -3186,7 +3186,7 @@ void ModListController::on_image_diff_requested(const QString& relative_path) {
   if (it == w_->last_conflict_registry_.end() || it->second.size() < 2)
     return;
 
-  const auto& owners = it->second;
+  const auto &owners = it->second;
   std::vector<std::string> source_paths;
   source_paths.reserve(owners.size());
 
@@ -3196,7 +3196,7 @@ void ModListController::on_image_diff_requested(const QString& relative_path) {
                            w_->current_game_id_, w_->current_game_dir_, *w_->knowledge_)
                      : std::filesystem::path{};
 
-  for (const auto& [mod_name, _] : owners) {
+  for (const auto &[mod_name, _] : owners) {
     // Check instance mods dir first, then game native mods dir
     std::filesystem::path abs_path = mods_dir / mod_name / relative_path.toStdString();
     if (std::filesystem::exists(abs_path)) {
@@ -3222,11 +3222,11 @@ void ModListController::on_image_diff_requested(const QString& relative_path) {
   std::filesystem::create_directories(output_path.parent_path(), ec);
 
   // Invoke the image diff provider
-  const auto& provider = w_->plugin_loader_->image_diff_provider();
+  const auto &provider = w_->plugin_loader_->image_diff_provider();
   if (provider.fn) {
-    std::vector<const char*> c_paths;
+    std::vector<const char *> c_paths;
     c_paths.reserve(source_paths.size());
-    for (const auto& p : source_paths)
+    for (const auto &p : source_paths)
       c_paths.push_back(p.c_str());
 
     std::string out_str = output_path.string();
@@ -3238,7 +3238,7 @@ void ModListController::setup_mod_list_context_menu() {
   mod_context_menu_->setup_mod_list_context_menu();
 }
 
-void ModListController::add_category_menus(QMenu& menu, const QString& mod_id) {
+void ModListController::add_category_menus(QMenu &menu, const QString &mod_id) {
   mod_context_menu_->add_category_menus(menu, mod_id);
 }
 
@@ -3246,28 +3246,28 @@ void ModListController::remove_selected_mods() {
   mod_actions_->remove_selected_mods();
 }
 
-void ModListController::move_to_separator(const QString& mod_id,
-                                          const QString& sep_id) {
+void ModListController::move_to_separator(const QString &mod_id,
+                                          const QString &sep_id) {
   mod_actions_->move_to_separator(mod_id, sep_id);
 }
 
-void ModListController::send_to_separator(const QString& mod_id) {
+void ModListController::send_to_separator(const QString &mod_id) {
   mod_actions_->send_to_separator(mod_id);
 }
 
-void ModListController::send_to_highest_priority(const QString& id) {
+void ModListController::send_to_highest_priority(const QString &id) {
   mod_actions_->send_to_highest_priority(id);
 }
 
-void ModListController::send_to_lowest_priority(const QString& id) {
+void ModListController::send_to_lowest_priority(const QString &id) {
   mod_actions_->send_to_lowest_priority(id);
 }
 
-void ModListController::send_to_highest_in_separator(const QString& id) {
+void ModListController::send_to_highest_in_separator(const QString &id) {
   mod_actions_->send_to_highest_in_separator(id);
 }
 
-void ModListController::send_to_lowest_in_separator(const QString& id) {
+void ModListController::send_to_lowest_in_separator(const QString &id) {
   mod_actions_->send_to_lowest_in_separator(id);
 }
 
@@ -3279,13 +3279,13 @@ void ModListController::toggle_selected_mods(bool enabled) {
   mod_actions_->toggle_selected_mods(enabled);
 }
 
-void ModListController::toggle_root_override(const QList<int>& rows, bool on) {
+void ModListController::toggle_root_override(const QList<int> &rows, bool on) {
   mod_actions_->toggle_root_override(rows, on);
 }
 
 QString ModListController::current_nexus_domain() const {
   if (w_->plugin_loader_ && !w_->current_game_id_.empty()) {
-    for (const auto& p : w_->plugin_loader_->plugins()) {
+    for (const auto &p : w_->plugin_loader_->plugins()) {
       if (p.game_id == w_->current_game_id_)
         return QString::fromStdString(p.nexus_domain);
     }
@@ -3293,9 +3293,9 @@ QString ModListController::current_nexus_domain() const {
   return {};
 }
 
-SourceVisitInfo ModListController::source_visit_info(const QString& source_type,
-                                                     const QString& source_id,
-                                                     const QString& page_url) const {
+SourceVisitInfo ModListController::source_visit_info(const QString &source_type,
+                                                     const QString &source_id,
+                                                     const QString &page_url) const {
   if (source_type == "steam") {
     return {tr("Visit on Workshop"),
             QString("https://steamcommunity.com/sharedfiles/filedetails/?id=%1")
@@ -3340,8 +3340,8 @@ SourceVisitInfo ModListController::source_visit_info(const QString& source_type,
   return {tr("Visit on %1").arg(label), QString()};
 }
 
-QString ModListController::create_separator_named(const QString& name,
-                                                  const QString& color) {
+QString ModListController::create_separator_named(const QString &name,
+                                                  const QString &color) {
   return mod_actions_->create_separator_named(name, color);
 }
 
@@ -3353,14 +3353,14 @@ void ModListController::create_empty_mod() {
   mod_actions_->create_empty_mod();
 }
 
-void ModListController::import_archives(const QStringList& paths) {
+void ModListController::import_archives(const QStringList &paths) {
   if (w_->current_instance_root_.empty())
     return;
   auto dl_dir = w_->downloads_dir_path();
   std::error_code ec;
   std::filesystem::create_directories(dl_dir, ec);
 
-  for (const auto& path : paths) {
+  for (const auto &path : paths) {
     QFileInfo fi(path);
     auto dest = dl_dir / fi.fileName().toStdString();
 
@@ -3376,7 +3376,7 @@ void ModListController::import_archives(const QStringList& paths) {
     auto mod_id = fi.completeBaseName().toStdString();
 
     // Show in DownloadsTab immediately with file path, mark ready
-    auto* dt = w_->right_panel_->ensure_downloads_tab();
+    auto *dt = w_->right_panel_->ensure_downloads_tab();
     if (dt) {
       dt->add_download(mod_id, mod_id, "Manual", dest);
       dt->mark_complete(mod_id, true);
@@ -3398,10 +3398,10 @@ void ModListController::export_modlist() {
     return;
   }
 
-  auto write_row = [&](const QStringList& fields) {
+  auto write_row = [&](const QStringList &fields) {
     QStringList escaped;
     escaped.reserve(fields.size());
-    for (const auto& field : fields)
+    for (const auto &field : fields)
       escaped << csv_escape(field);
     f.write(escaped.join(",").toUtf8());
     f.write("\n");
@@ -3411,10 +3411,10 @@ void ModListController::export_modlist() {
              QStringLiteral("source_link"), QStringLiteral("color"),
              QStringLiteral("modid"), QStringLiteral("folder_name")});
 
-  const auto& mods = w_->mod_model_->mods();
+  const auto &mods = w_->mod_model_->mods();
   int exported     = 0;
   for (int i = 0; i < mods.size(); ++i) {
-    const auto& m = mods[i];
+    const auto &m = mods[i];
     if (m.is_overwrite || m.is_merged)
       continue;
     if (m.is_separator) {
@@ -3463,15 +3463,15 @@ void ModListController::import_modlist() {
   // Match by strict priority: modid > folder name > display name. Each
   // criterion gets its own full pass so an early name collision can't
   // shadow a later, stronger folder/modid match.
-  auto find_row = [this](const QString& modid, const QString& folder_name,
-                         const QString& name, bool want_separator) -> int {
-    const auto& mods = w_->mod_model_->mods();
-    auto match_any   = [&mods, want_separator](const QString& key,
-                                               QString ModEntry::* field) -> int {
+  auto find_row = [this](const QString &modid, const QString &folder_name,
+                         const QString &name, bool want_separator) -> int {
+    const auto &mods = w_->mod_model_->mods();
+    auto match_any   = [&mods, want_separator](const QString &key,
+                                               QString ModEntry::*field) -> int {
       if (key.isEmpty())
         return -1;
       for (int i = 0; i < mods.size(); ++i) {
-        const auto& m = mods[i];
+        const auto &m = mods[i];
         if (m.is_overwrite || m.is_merged)
           continue;
         if (m.is_separator != want_separator)
@@ -3496,7 +3496,7 @@ void ModListController::import_modlist() {
   int missing  = 0;
   int cursor   = 0;
   for (size_t r = start; r < rows.size(); ++r) {
-    const auto& row     = rows[r];
+    const auto &row     = rows[r];
     QString type        = row.value(0).trimmed().toLower();
     QString name        = row.value(2).trimmed();
     QString modid       = row.value(5).trimmed();
@@ -3519,7 +3519,7 @@ void ModListController::import_modlist() {
       continue;
     }
 
-    const auto& mods = w_->mod_model_->mods();
+    const auto &mods = w_->mod_model_->mods();
     if (idx != cursor)
       w_->mod_model_->move_mod(mods[idx].id, cursor);
     ++cursor;
@@ -3613,7 +3613,7 @@ void ModListController::rename_mod_inline(int row) {
   mod_actions_->rename_mod_inline(row);
 }
 
-void ModListController::apply_rename(int row, const QString& name) {
+void ModListController::apply_rename(int row, const QString &name) {
   mod_actions_->apply_rename(row, name);
 }
 
@@ -3649,7 +3649,7 @@ void ModListController::save_order() {
   // keys are stripped here so the next save heals old instance.toml files.
   // The icons key is only stripped for backward compat with pre-#34 files; it
   // is no longer written either.
-  for (const char* legacy : {"mod_order", "folded_separators", "folded_mods",
+  for (const char *legacy : {"mod_order", "folded_separators", "folded_mods",
                              "mod_parents", "toolbar_shortcut_icons"}) {
     tbl->erase(legacy);
   }
@@ -3660,7 +3660,7 @@ void ModListController::save_order() {
   // is duplicated here anymore. toolbar_shortcut_icons was removed with the
   // schema change (legacy files are migrated on load).
   auto ts = toml::array{};
-  for (const auto& path : w_->toolbar_shortcut_paths_)
+  for (const auto &path : w_->toolbar_shortcut_paths_)
     ts.push_back(path.toStdString());
   tbl->insert_or_assign("toolbar_shortcuts", std::move(ts));
 
@@ -3691,7 +3691,7 @@ void ModListController::load_order() {
   // Legacy mod_order: array of folder names (strings; tolerate numeric ids
   // from very old files).
   if (auto arr = (*tbl)["mod_order"].as_array()) {
-    for (const auto& e : *arr) {
+    for (const auto &e : *arr) {
       if (auto s = e.value<std::string>()) {
         order.push_back(*s);
       } else if (auto i = e.value<int64_t>()) {
@@ -3700,20 +3700,20 @@ void ModListController::load_order() {
     }
   }
   if (auto arr = (*tbl)["folded_separators"].as_array()) {
-    for (const auto& e : *arr) {
+    for (const auto &e : *arr) {
       if (auto s = e.value<std::string>())
         folded_names.push_back(*s);
     }
   }
   if (auto arr = (*tbl)["folded_mods"].as_array()) {
-    for (const auto& e : *arr) {
+    for (const auto &e : *arr) {
       if (auto s = e.value<std::string>())
         folded_mod_names.push_back(*s);
     }
   }
   // Legacy mod_parents: array of "child=parent" strings.
   if (auto arr = (*tbl)["mod_parents"].as_array()) {
-    for (const auto& e : *arr) {
+    for (const auto &e : *arr) {
       if (auto s = e.value<std::string>()) {
         auto eq = s->find('=');
         if (eq != std::string::npos && eq != 0 && eq != s->size() - 1)
@@ -3722,13 +3722,13 @@ void ModListController::load_order() {
     }
   }
   if (auto arr = (*tbl)["toolbar_shortcuts"].as_array()) {
-    for (const auto& e : *arr) {
+    for (const auto &e : *arr) {
       if (auto s = e.value<std::string>())
         toolbar_paths.push_back(*s);
     }
   }
   if (auto arr = (*tbl)["toolbar_shortcut_icons"].as_array()) {
-    for (const auto& e : *arr) {
+    for (const auto &e : *arr) {
       if (auto s = e.value<std::string>())
         toolbar_icons.push_back(*s);
     }
@@ -3757,7 +3757,7 @@ void ModListController::load_order() {
   // the gaps for one release).
   QHash<QString, std::pair<bool, QString>> ui_state;
   bool migrated = false;
-  for (auto& m : mods) {
+  for (auto &m : mods) {
     if (m.is_overwrite || m.is_merged || m.is_game_native)
       continue;
     auto st     = load_sidecar_ui_state(mods_dir, m.id);
@@ -3769,8 +3769,8 @@ void ModListController::load_order() {
     } else {
       // Legacy fallback: folded_separators/folded_mods are name-keyed (same
       // matching as the old apply_fold).
-      const auto& names = m.is_separator ? folded_names : folded_mod_names;
-      for (const auto& fn : names) {
+      const auto &names = m.is_separator ? folded_names : folded_mod_names;
+      for (const auto &fn : names) {
         if (m.name.toStdString() == fn) {
           folded = true;
           st.meta.set_folded(true);
@@ -3783,7 +3783,7 @@ void ModListController::load_order() {
       parent = st.parent_id;
     } else {
       // Legacy fallback: mod_parents is id-keyed ("child=parent").
-      for (const auto& [child, par] : parent_links) {
+      for (const auto &[child, par] : parent_links) {
         if (child == m.id.toStdString()) {
           parent = QString::fromStdString(par);
           st.meta.set_parent_id(par);
@@ -3811,7 +3811,7 @@ void ModListController::load_order() {
   // Apply fold state from the effective map (sidecar primary; legacy filled
   // the gaps above). The flag is reset first so a stale sidecar entry can't
   // resurrect a fold that was later unfolded.
-  auto apply_fold = [&ui_state](ModEntry& m) {
+  auto apply_fold = [&ui_state](ModEntry &m) {
     auto it  = ui_state.constFind(m.id);
     m.folded = (it != ui_state.constEnd()) ? it->first : false;
   };
@@ -3832,7 +3832,7 @@ void ModListController::load_order() {
     QVector<ModEntry> reordered;
     // Saved order
     int prio = 1;
-    for (const auto& folder_str : order) {
+    for (const auto &folder_str : order) {
       auto folder_id = QString::fromStdString(folder_str);
       if (id_to_idx.contains(folder_id)) {
         auto entry     = mods[id_to_idx[folder_id]];
@@ -3843,7 +3843,7 @@ void ModListController::load_order() {
       }
     }
     // Remaining (new) entries
-    for (auto& m : mods) {
+    for (auto &m : mods) {
       if (id_to_idx.contains(m.id)) {
         m.priority = prio++;
         apply_fold(m);
@@ -3852,7 +3852,7 @@ void ModListController::load_order() {
     }
     // Game-native (unmanaged) mods own the top band: hoist them above the
     // user entries, preserving relative order on both sides.
-    std::stable_partition(reordered.begin(), reordered.end(), [](const ModEntry& m) {
+    std::stable_partition(reordered.begin(), reordered.end(), [](const ModEntry &m) {
       return m.is_game_native;
     });
     // Overwrite always first, MERGED always second (only for games that use it)
@@ -3880,11 +3880,11 @@ void ModListController::load_order() {
     // Mods without a persisted priority (-1) sort to the bottom of the user
     // band, never the top - otherwise a freshly installed mod would win the
     // list (top = priority 0).
-    auto key = [](const ModEntry& e) {
+    auto key = [](const ModEntry &e) {
       return e.priority < 0 ? 1000000 : e.priority;
     };
     std::stable_sort(sorted.begin(), sorted.end(),
-                     [&key](const ModEntry& a, const ModEntry& b) {
+                     [&key](const ModEntry &a, const ModEntry &b) {
                        if (a.is_overwrite)
                          return false;
                        if (b.is_overwrite)
@@ -3915,7 +3915,7 @@ void ModListController::load_order() {
       }
     }
     if (needs_sort) {
-      for (auto& m : sorted)
+      for (auto &m : sorted)
         apply_fold(m);
       w_->mod_model_->reset_with_order(sorted);
       w_->mod_model_->renumber_priorities();
@@ -3973,10 +3973,10 @@ void ModListController::sync_separator_ids() {
   if (mods_dir.empty())
     return;
 
-  const auto& mods = w_->mod_model_->mods();
+  const auto &mods = w_->mod_model_->mods();
   QString current_sep_id;
   for (int i = 0; i < mods.size(); ++i) {
-    const auto& m = mods[i];
+    const auto &m = mods[i];
     if (m.is_separator) {
       current_sep_id = m.id;
       w_->mod_model_->set_separator_id(m.id, m.id);
@@ -4009,8 +4009,8 @@ void ModListController::sync_mod_ui_state() {
   // Pseudo-rows (Overwrite/MERGED/game-native) never persist fold/parent.
   // Only rows whose sidecar diverges from the model are written, so a
   // steady-state mod_list_changed (e.g. a priority move) costs reads only.
-  const auto& mods = w_->mod_model_->mods();
-  for (const auto& m : mods) {
+  const auto &mods = w_->mod_model_->mods();
+  for (const auto &m : mods) {
     if (m.is_overwrite || m.is_merged || m.is_game_native)
       continue;
     auto st      = load_sidecar_ui_state(mods_dir, m.id);
@@ -4036,7 +4036,7 @@ void ModListController::sync_mod_ui_state() {
 }
 
 void ModListController::group_mods_by_separator() {
-  const auto& mods = w_->mod_model_->mods();
+  const auto &mods = w_->mod_model_->mods();
   if (mods.isEmpty())
     return;
   auto mods_dir = w_->mods_dir_path();
@@ -4051,7 +4051,7 @@ void ModListController::group_mods_by_separator() {
   ModEntry overwrite_entry;
   bool has_overwrite = false;
 
-  for (const auto& m : mods) {
+  for (const auto &m : mods) {
     if (m.is_separator) {
       separators.append(m);
     } else if (m.is_overwrite) {
@@ -4073,11 +4073,11 @@ void ModListController::group_mods_by_separator() {
   // at bottom
   QVector<ModEntry> reordered;
 
-  for (const auto& sep : separators) {
+  for (const auto &sep : separators) {
     reordered.append(sep);
     auto it = grouped.find(sep.id);
     if (it != grouped.end()) {
-      for (auto& m : it.value()) {
+      for (auto &m : it.value()) {
         m.separator_id = sep.id;
         reordered.append(m);
       }
@@ -4088,13 +4088,13 @@ void ModListController::group_mods_by_separator() {
   // Any remaining grouped mods whose separator no longer exists → append
   // ungrouped
   for (auto it = grouped.begin(); it != grouped.end(); ++it) {
-    for (auto& m : it.value()) {
+    for (auto &m : it.value()) {
       m.separator_id.clear();
       ungrouped.append(m);
     }
   }
 
-  for (auto& m : ungrouped)
+  for (auto &m : ungrouped)
     reordered.append(m);
 
   // Overwrite always at bottom
@@ -4117,7 +4117,7 @@ void ModListController::apply_mod_filter() {
 
   const QString text  = w_->filter_bar_->filter_text().trimmed().toLower();
   const QString group = w_->filter_bar_->current_group();
-  const auto& mods    = w_->mod_model_->mods();
+  const auto &mods    = w_->mod_model_->mods();
 
   // Category filter: with any category checked, a mod matches when it carries
   // at least one checked category id (MO2 OR semantics). No checked categories
@@ -4137,7 +4137,7 @@ void ModListController::apply_mod_filter() {
   // First pass: compute visibility for each mod row
   QVector<bool> visible(mods.size(), false);
   for (int row = 0; row < mods.size(); ++row) {
-    const auto& m = mods[row];
+    const auto &m = mods[row];
 
     // Separators: determined in second pass
     if (m.is_separator)

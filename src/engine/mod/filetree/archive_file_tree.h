@@ -18,29 +18,27 @@ namespace engine {
 
 class ArchiveFileTree final : public FileTree {
 public:
-    // Tree over any libarchive-supported archive (zip/7z/tar/rar/gz/bz2/xz).
-    // Returns null on open/list failure with `error` set to a human-readable
-    // reason.
-    static std::shared_ptr<FileTree> make_tree(const std::filesystem::path& archive,
-                                               std::string* error,
-                                               NameCompare cmp);
+  // Tree over any libarchive-supported archive (zip/7z/tar/rar/gz/bz2/xz).
+  // Returns null on open/list failure with `error` set to a human-readable
+  // reason.
+  static std::shared_ptr<FileTree> make_tree(const std::filesystem::path &archive,
+                                             std::string *error, NameCompare cmp);
 
-    // The archive this tree represents.
-    const std::filesystem::path& archive_path() const { return m_archive; }
+  // The archive this tree represents.
+  const std::filesystem::path &archive_path() const { return m_archive; }
 
-    ArchiveFileTree(std::shared_ptr<const FileTree> parent, std::string name,
-                    NameCompare cmp, std::filesystem::path archive,
-                    std::string prefix,
-                    std::shared_ptr<const std::vector<ArchiveEntryInfo>> entries);
+  ArchiveFileTree(std::shared_ptr<const FileTree> parent, std::string name,
+                  NameCompare cmp, std::filesystem::path archive, std::string prefix,
+                  std::shared_ptr<const std::vector<ArchiveEntryInfo>> entries);
 
 protected:
-    bool do_populate(std::shared_ptr<const FileTree> parent,
-                     std::vector<value_type>& out) const override;
+  bool do_populate(std::shared_ptr<const FileTree> parent,
+                   std::vector<value_type> &out) const override;
 
 private:
-    std::filesystem::path m_archive;
-    std::string m_prefix;  // this node's path within the archive; "" at the root
-    std::shared_ptr<const std::vector<ArchiveEntryInfo>> m_entries;
+  std::filesystem::path m_archive;
+  std::string m_prefix;  // this node's path within the archive; "" at the root
+  std::shared_ptr<const std::vector<ArchiveEntryInfo>> m_entries;
 };
 
 }  // namespace engine

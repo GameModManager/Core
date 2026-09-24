@@ -14,19 +14,21 @@
 // raw ABI function pointer + user_data so the engine can fire it directly
 // without wrapping in a std::function.
 struct HookRegistration {
-    std::string tag;
-    GmmHookFnV2 fn = nullptr;  // from gmm_abi_v2.h
-    int priority = 0;
-    void* user_data = nullptr;
-    std::string plugin_path;
+  std::string tag;
+  GmmHookFnV2 fn  = nullptr;  // from gmm_abi_v2.h
+  int priority    = 0;
+  void *user_data = nullptr;
+  std::string plugin_path;
 };
 
 class HookRegistry {
 public:
-    static HookRegistry& instance();
-    void register_hook(const char* tag, GmmHookFnV2 fn, int priority, void* user_data, const char* plugin_path);
-    void dispatch(const char* tag, void* data);
-    void clear_plugin(const char* plugin_path);
+  static HookRegistry &instance();
+  void register_hook(const char *tag, GmmHookFnV2 fn, int priority, void *user_data,
+                     const char *plugin_path);
+  void dispatch(const char *tag, void *data);
+  void clear_plugin(const char *plugin_path);
+
 private:
-    std::vector<HookRegistration> hooks_;
+  std::vector<HookRegistration> hooks_;
 };

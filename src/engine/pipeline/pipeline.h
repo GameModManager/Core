@@ -21,16 +21,16 @@ class FomodViewModel;
 // How an install should handle a mod folder that already exists. Mirrors
 // MO2's QueryOverwriteDialog actions (queryoverwritedialog.h).
 enum class OverwriteAction {
-  Merge,   // add files into the existing folder, overwriting on conflict
-  Replace, // delete the existing folder and install fresh
-  Rename,  // install under a new folder name (decision.new_name)
-  Cancel,  // abort the install
+  Merge,    // add files into the existing folder, overwriting on conflict
+  Replace,  // delete the existing folder and install fresh
+  Rename,   // install under a new folder name (decision.new_name)
+  Cancel,   // abort the install
 };
 
 struct OverwriteDecision {
   OverwriteAction action = OverwriteAction::Cancel;
-  bool backup = false;  // keep a <name>_backup copy of the old folder
-  std::string new_name; // for Rename: the new mod folder name
+  bool backup            = false;  // keep a <name>_backup copy of the old folder
+  std::string new_name;            // for Rename: the new mod folder name
 };
 
 // Result of the FOMOD install wizard. The engine runs the wizard (when one is
@@ -38,12 +38,12 @@ struct OverwriteDecision {
 // passes the choices back so the mod folder can persist them for reinstall
 // restore (MO2-style "restore previous choices").
 struct FomodDecision {
-  bool accept = false;         // true = install with the chosen options
-  bool manual = false;         // true = skip option selection, install the
-                               // archive contents as-is (FOMOD "Manual")
-  std::string choices_json;    // FOMOD Plus fomod.json shape
-  std::string mod_name;        // wizard-edited mod name ("" = keep suggested)
-  bool ignore_missing = false; // skip sources missing from the archive
+  bool accept = false;          // true = install with the chosen options
+  bool manual = false;          // true = skip option selection, install the
+                                // archive contents as-is (FOMOD "Manual")
+  std::string choices_json;     // FOMOD Plus fomod.json shape
+  std::string mod_name;         // wizard-edited mod name ("" = keep suggested)
+  bool ignore_missing = false;  // skip sources missing from the archive
 };
 
 // Result of a pipeline run. Canceled is distinct from Failed: the user aborted
@@ -56,13 +56,14 @@ enum class PipelineResult {
 };
 
 struct PipelineContext {
-  Instance *instance = nullptr;
-  ConflictIndex *conflict_index = nullptr;
-  ProfileModel *profile = nullptr;
+  Instance *instance                 = nullptr;
+  ConflictIndex *conflict_index      = nullptr;
+  ProfileModel *profile              = nullptr;
   Deploy::Interface *deploy_strategy = nullptr;
-  OrderEncodingHook *order_hook = nullptr;
-  std::filesystem::path game_dir; // live game directory (for Overwrite capture)
-  std::filesystem::path mods_dir; // where mod folders live (meta.ini sits inside each folder)
+  OrderEncodingHook *order_hook      = nullptr;
+  std::filesystem::path game_dir;  // live game directory (for Overwrite capture)
+  std::filesystem::path
+      mods_dir;  // where mod folders live (meta.ini sits inside each folder)
 
   // Game-relative prefix for deployed mod files (e.g. "Data" for Skyrim, "mods"
   // for Isaac)
@@ -88,8 +89,7 @@ struct PipelineContext {
   // thread with the existing mod folder name; must be thread-safe (the UI
   // wires it to marshal the dialog onto the main thread). Unset = silently
   // replace (headless/CLI default, matching the pre-dialog behavior).
-  std::function<OverwriteDecision(const std::string &mod_name)>
-      overwrite_query_cb;
+  std::function<OverwriteDecision(const std::string &mod_name)> overwrite_query_cb;
 
   // Non-FOMOD install name confirmation (MO2's SimpleInstallDialog). Invoked
   // on the pipeline thread with the suggested mod name (typically the Nexus
@@ -138,16 +138,14 @@ struct PipelineContext {
 
   // Download progress callback (bytes downloaded, total bytes, speed in
   // bytes/sec)
-  std::function<void(int64_t downloaded, int64_t total, double speed)>
-      on_progress;
+  std::function<void(int64_t downloaded, int64_t total, double speed)> on_progress;
 
   // Resolved download metadata. FetchStage fires this right after the
   // provider's resolve_download_info - before any bytes flow - so the UI can
   // replace its placeholder row name with the real mod/file name immediately
   // instead of waiting for download_complete. Invoked on the pipeline thread.
   // Both values may be empty when the provider could not resolve anything.
-  std::function<void(const std::string &archive_name,
-                     const std::string &display_name)>
+  std::function<void(const std::string &archive_name, const std::string &display_name)>
       on_download_meta;
 
   // Install-stage progress (extract/copy): current percent 0-100, or -1 when
@@ -192,4 +190,4 @@ private:
   std::string flow_id_ = "install";
 };
 
-} // namespace engine
+}  // namespace engine

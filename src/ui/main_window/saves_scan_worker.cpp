@@ -13,7 +13,7 @@
 #include <utility>
 namespace ui {
 
-SavesScanWorker::SavesScanWorker(QObject* parent) : QObject(parent) {}
+SavesScanWorker::SavesScanWorker(QObject *parent) : QObject(parent) {}
 
 void SavesScanWorker::run(SavesScanRequest request) {
   int emitted = 0;
@@ -28,7 +28,7 @@ void SavesScanWorker::run(SavesScanRequest request) {
      * for any game without a registered parser. */
     std::string game_id = request.game_id;
     engine::SaveParseFn parses =
-        [game_id](const std::filesystem::path& p) -> engine::SaveGame {
+        [game_id](const std::filesystem::path &p) -> engine::SaveGame {
       if (engine::SaveParserRegistry::instance().has_parser(game_id)) {
         auto r = engine::SaveParserRegistry::instance().parse_save(p, game_id);
         if (!r) {
@@ -78,7 +78,7 @@ void SavesScanWorker::run(SavesScanRequest request) {
     if (engine::SaveParserRegistry::instance().has_fast_parser(game_id) ||
         request.fast_format == engine::kSaveFastFormatGamebryoTesv) {
       scan_parses = [game_id, fast_format = request.fast_format,
-                     full = std::move(parses)](const std::filesystem::path& p) {
+                     full = std::move(parses)](const std::filesystem::path &p) {
         if (engine::SaveParserRegistry::instance().has_fast_parser(game_id)) {
           auto r = engine::SaveParserRegistry::instance().parse_save_fast(p, game_id);
           if (!r) {
@@ -89,7 +89,7 @@ void SavesScanWorker::run(SavesScanRequest request) {
         if (fast_format == engine::kSaveFastFormatGamebryoTesv) {
           try {
             return engine::parse_gamebryo_tesv_fast(p, game_id);
-          } catch (const engine::SaveNeedFullParse&) {
+          } catch (const engine::SaveNeedFullParse &) {
             return full(p);
           }
         }
@@ -143,7 +143,7 @@ void SavesScanWorker::run(SavesScanRequest request) {
   emit finished(emitted);
 }
 
-SavesScanThread::SavesScanThread(QObject* parent) : QObject(parent) {
+SavesScanThread::SavesScanThread(QObject *parent) : QObject(parent) {
   qRegisterMetaType<std::shared_ptr<ui::SavesScanResultEntry>>();
   thread_ = new QThread(this);
   thread_->setObjectName(QStringLiteral("gmm-saves-scan"));
@@ -160,7 +160,7 @@ SavesScanThread::~SavesScanThread() {
 }
 
 void SavesScanThread::start(SavesScanRequest request) {
-  SavesScanWorker* worker = worker_;
+  SavesScanWorker *worker = worker_;
   QMetaObject::invokeMethod(
       worker,
       [worker, req = std::move(request)]() mutable {

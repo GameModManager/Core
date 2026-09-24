@@ -29,10 +29,9 @@ namespace {
 std::atomic<int> g_counter{0};
 
 fs::path make_temp_dir(const char *tag) {
-  auto dir =
-      fs::temp_directory_path() /
-      ("gmm_profile_switch_" + std::string(tag) + "_" +
-       std::to_string(getpid()) + "_" + std::to_string(g_counter.fetch_add(1)));
+  auto dir = fs::temp_directory_path() /
+             ("gmm_profile_switch_" + std::string(tag) + "_" +
+              std::to_string(getpid()) + "_" + std::to_string(g_counter.fetch_add(1)));
   fs::remove_all(dir);
   fs::create_directories(dir);
   return dir;
@@ -88,11 +87,14 @@ recording_callbacks(std::vector<std::string> &log,
   cb.refresh_directory_structure = [&log] {
     log.push_back("refresh_directory_structure");
   };
-  cb.refresh_plugin_list = [&log] { log.push_back("refresh_plugin_list"); };
-  cb.refresh_bsa_list = [&log] { log.push_back("refresh_bsa_list"); };
+  cb.refresh_plugin_list = [&log] {
+    log.push_back("refresh_plugin_list");
+  };
+  cb.refresh_bsa_list = [&log] {
+    log.push_back("refresh_bsa_list");
+  };
   cb.set_archive_invalidation = [&log, invalidation_active](bool active) {
-    log.push_back(std::string("set_archive_invalidation:") +
-                  (active ? "1" : "0"));
+    log.push_back(std::string("set_archive_invalidation:") + (active ? "1" : "0"));
     if (invalidation_active) {
       *invalidation_active = active;
     }
@@ -100,7 +102,7 @@ recording_callbacks(std::vector<std::string> &log,
   return cb;
 }
 
-} // namespace
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // save_current_profile
@@ -108,24 +110,23 @@ recording_callbacks(std::vector<std::string> &log,
 
 TEST_CASE("save_current_profile flushes modlist and writes archives/settings",
           "[engine]") {
-  auto root = make_temp_dir("save");
+  auto root               = make_temp_dir("save");
   const auto profiles_dir = root / "profiles";
   auto created = engine::profile::create_fresh_profile(profiles_dir, "Default");
   REQUIRE(created.success);
 
   engine::profile::ProfileManager profile(created.directory,
-                                   std::chrono::milliseconds(10s));
+                                          std::chrono::milliseconds(10s));
   profile.refresh_mod_status({"ModA", "ModB"});
-  profile.set_mod_enabled("ModA", false); // schedules a delayed write
+  profile.set_mod_enabled("ModA", false);  // schedules a delayed write
 
   engine::profile::ProfileSaveState state;
-  state.known_mods = {"ModA", "ModB"};
-  state.archives = {"Skyrim - Textures.bsa"};
+  state.known_mods  = {"ModA", "ModB"};
+  state.archives    = {"Skyrim - Textures.bsa"};
   state.tweaked_ini = "[Archive]\nbInvalidateOlderFiles=1\n";
 
   std::string error;
-  REQUIRE(
-      engine::profile::save_current_profile(profile, state, nullptr, &error));
+  REQUIRE(engine::profile::save_current_profile(profile, state, nullptr, &error));
   REQUIRE(error.empty());
 
   // modlist.txt flushed immediately (the delayed write was pending).
@@ -134,15 +135,16 @@ TEST_CASE("save_current_profile flushes modlist and writes archives/settings",
   REQUIRE(modlist.find("+ModB") != std::string::npos);
 
   // archives.txt + initweaks.ini + settings.ini written.
-  REQUIRE(read_text(created.directory / "archives.txt")
-              .find("Skyrim - Textures.bsa") != std::string::npos);
-  REQUIRE(read_text(created.directory / "initweaks.ini")
-              .find("bInvalidateOlderFiles=1") != std::string::npos);
+  REQUIRE(read_text(created.directory / "archives.txt").find("Skyrim - Textures.bsa") !=
+          std::string::npos);
+  REQUIRE(
+      read_text(created.directory / "initweaks.ini").find("bInvalidateOlderFiles=1") !=
+      std::string::npos);
   REQUIRE(fs::exists(created.directory / "settings.ini"));
 }
 
 TEST_CASE("save_current_profile skips tweaked ini when empty", "[engine]") {
-  auto root = make_temp_dir("save_no_tweak");
+  auto root               = make_temp_dir("save_no_tweak");
   const auto profiles_dir = root / "profiles";
   auto created = engine::profile::create_fresh_profile(profiles_dir, "Default");
   REQUIRE(created.success);
@@ -150,11 +152,10 @@ TEST_CASE("save_current_profile skips tweaked ini when empty", "[engine]") {
   engine::profile::ProfileManager profile(created.directory);
   engine::profile::ProfileSaveState state;
   state.known_mods = {"ModA"};
-  state.archives = {};
+  state.archives   = {};
 
   std::string error;
-  REQUIRE(
-      engine::profile::save_current_profile(profile, state, nullptr, &error));
+  REQUIRE(engine::profile::save_current_profile(profile, state, nullptr, &error));
   REQUIRE_FALSE(fs::exists(created.directory / "initweaks.ini"));
   // archives.txt is always written (empty list is a valid state).
   REQUIRE(fs::exists(created.directory / "archives.txt"));
@@ -166,9 +167,8 @@ TEST_CASE("save_current_profile skips tweaked ini when empty", "[engine]") {
 // that empty list over a populated modlist.txt (the UI used to construct the
 // current profile without loading it, wiping every profile's enabled state on
 // switch).
-TEST_CASE("save_current_profile preserves an unloaded profile's modlist",
-          "[engine]") {
-  auto root = make_temp_dir("save_unloaded");
+TEST_CASE("save_current_profile preserves an unloaded profile's modlist", "[engine]") {
+  auto root               = make_temp_dir("save_unloaded");
   const auto profiles_dir = root / "profiles";
   auto created = engine::profile::create_fresh_profile(profiles_dir, "Default");
   REQUIRE(created.success);
@@ -188,8 +188,7 @@ TEST_CASE("save_current_profile preserves an unloaded profile's modlist",
   engine::profile::ProfileSaveState state;
   state.known_mods = {"ModA", "ModB"};
   std::string error;
-  REQUIRE(
-      engine::profile::save_current_profile(profile, state, nullptr, &error));
+  REQUIRE(engine::profile::save_current_profile(profile, state, nullptr, &error));
   REQUIRE(error.empty());
 
   const std::string modlist = read_text(created.directory / "modlist.txt");
@@ -212,30 +211,30 @@ TEST_CASE("write_tweaked_ini writes atomically", "[engine]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("switch_profile is a no-op for the current profile", "[engine]") {
-  auto root = make_temp_dir("noop");
+  auto root               = make_temp_dir("noop");
   const auto profiles_dir = root / "profiles";
   auto created = engine::profile::create_fresh_profile(profiles_dir, "Default");
   REQUIRE(created.success);
 
   engine::profile::ProfileManager current(created.directory);
   std::vector<std::string> log;
-  auto result = engine::profile::switch_profile(
-      profiles_dir, "Default", &current, {}, nullptr, recording_callbacks(log));
+  auto result = engine::profile::switch_profile(profiles_dir, "Default", &current, {},
+                                                nullptr, recording_callbacks(log));
 
   REQUIRE(result.success);
   REQUIRE_FALSE(result.changed);
   REQUIRE(result.profile == nullptr);
-  REQUIRE(log.empty()); // nothing was refreshed
+  REQUIRE(log.empty());  // nothing was refreshed
 }
 
 TEST_CASE("switch_profile fails for a missing profile", "[engine]") {
-  auto root = make_temp_dir("missing");
+  auto root               = make_temp_dir("missing");
   const auto profiles_dir = root / "profiles";
   fs::create_directories(profiles_dir);
 
   std::vector<std::string> log;
-  auto result = engine::profile::switch_profile(
-      profiles_dir, "Nope", nullptr, {}, nullptr, recording_callbacks(log));
+  auto result = engine::profile::switch_profile(profiles_dir, "Nope", nullptr, {},
+                                                nullptr, recording_callbacks(log));
 
   REQUIRE_FALSE(result.success);
   REQUIRE_FALSE(result.changed);
@@ -250,7 +249,7 @@ TEST_CASE("switch_profile fails for a missing profile", "[engine]") {
 
 TEST_CASE("switch_profile saves current, restores mod state and refreshes",
           "[engine]") {
-  auto root = make_temp_dir("switch");
+  auto root               = make_temp_dir("switch");
   const auto profiles_dir = root / "profiles";
 
   // Profile A: ModA enabled (high), ModB disabled (low).
@@ -280,18 +279,18 @@ TEST_CASE("switch_profile saves current, restores mod state and refreshes",
   // Current profile is Alpha with a pending (unflushed) modlist change.
   engine::profile::ProfileManager current(a.directory, std::chrono::milliseconds(10s));
   current.refresh_mod_status({"ModA", "ModB"});
-  current.set_mod_enabled("ModA", false); // pending delayed write
+  current.set_mod_enabled("ModA", false);  // pending delayed write
 
   engine::profile::ProfileSaveState state;
   state.known_mods = {"ModA", "ModB"};
-  state.archives = {"Alpha.bsa"};
+  state.archives   = {"Alpha.bsa"};
 
   std::vector<std::string> log;
   bool invalidation_active = true;
-  auto result = engine::profile::switch_profile(
+  auto result              = engine::profile::switch_profile(
       profiles_dir, "beta", &current, state, nullptr,
       recording_callbacks(log,
-                          &invalidation_active)); // lowercase name on purpose
+                          &invalidation_active));  // lowercase name on purpose
 
   REQUIRE(result.success);
   REQUIRE(result.changed);
@@ -300,8 +299,7 @@ TEST_CASE("switch_profile saves current, restores mod state and refreshes",
 
   // The current profile was saved before switching: the pending modlist
   // change was flushed and archives.txt written.
-  REQUIRE(read_text(a.directory / "modlist.txt").find("-ModA") !=
-          std::string::npos);
+  REQUIRE(read_text(a.directory / "modlist.txt").find("-ModA") != std::string::npos);
   REQUIRE(read_text(a.directory / "archives.txt").find("Alpha.bsa") !=
           std::string::npos);
 
@@ -317,10 +315,9 @@ TEST_CASE("switch_profile saves current, restores mod state and refreshes",
   // Archive invalidation deactivated (Beta has AutomaticArchiveInvalidation
   // = false) and the refresh callbacks ran in MO2 order.
   REQUIRE_FALSE(invalidation_active);
-  REQUIRE(log ==
-          std::vector<std::string>(
-              {"set_archive_invalidation:0", "refresh_directory_structure",
-               "refresh_plugin_list", "refresh_bsa_list"}));
+  REQUIRE(log == std::vector<std::string>({"set_archive_invalidation:0",
+                                           "refresh_directory_structure",
+                                           "refresh_plugin_list", "refresh_bsa_list"}));
 }
 
 // Regression for the "profile switch wipes modlist.txt" P0 bug: the UI used
@@ -331,7 +328,7 @@ TEST_CASE("switch_profile saves current, restores mod state and refreshes",
 TEST_CASE("switch_profile preserves the current profile's modlist when "
           "unloaded",
           "[engine]") {
-  auto root = make_temp_dir("switch_unloaded");
+  auto root               = make_temp_dir("switch_unloaded");
   const auto profiles_dir = root / "profiles";
   auto a = engine::profile::create_fresh_profile(profiles_dir, "Alpha");
   auto b = engine::profile::create_fresh_profile(profiles_dir, "Beta");
@@ -345,8 +342,7 @@ TEST_CASE("switch_profile preserves the current profile's modlist when "
     pa.set_mod_enabled("ModB", false);
     pa.write_modlist_now();
   }
-  REQUIRE(read_text(a.directory / "modlist.txt").find("-ModB") !=
-          std::string::npos);
+  REQUIRE(read_text(a.directory / "modlist.txt").find("-ModB") != std::string::npos);
 
   // Current Profile constructed WITHOUT loading (the UI bug: mods_ empty).
   engine::profile::ProfileManager current(a.directory);
@@ -354,8 +350,8 @@ TEST_CASE("switch_profile preserves the current profile's modlist when "
   state.known_mods = {"ModA", "ModB"};
 
   std::vector<std::string> log;
-  auto result = engine::profile::switch_profile(
-      profiles_dir, "Beta", &current, state, nullptr, recording_callbacks(log));
+  auto result = engine::profile::switch_profile(profiles_dir, "Beta", &current, state,
+                                                nullptr, recording_callbacks(log));
   REQUIRE(result.success);
   REQUIRE(result.changed);
 
@@ -376,7 +372,7 @@ TEST_CASE("switch_profile preserves the current profile's modlist when "
 }
 
 TEST_CASE("switch_profile emits profile_changed event", "[engine]") {
-  auto root = make_temp_dir("event");
+  auto root               = make_temp_dir("event");
   const auto profiles_dir = root / "profiles";
   auto a = engine::profile::create_fresh_profile(profiles_dir, "Alpha");
   auto b = engine::profile::create_fresh_profile(profiles_dir, "Beta");
@@ -388,7 +384,7 @@ TEST_CASE("switch_profile emits profile_changed event", "[engine]") {
   const auto token = engine::EventBus::instance().subscribe(
       engine::events::kProfileChanged,
       [&](const std::string &event_id, const std::string &payload) {
-        received_event = event_id;
+        received_event   = event_id;
         received_payload = payload;
       });
 
@@ -396,14 +392,13 @@ TEST_CASE("switch_profile emits profile_changed event", "[engine]") {
   engine::profile::ProfileSaveState state;
   state.known_mods = {"ModA"};
   std::vector<std::string> log;
-  auto result = engine::profile::switch_profile(
-      profiles_dir, "Beta", &current, state, nullptr, recording_callbacks(log));
+  auto result = engine::profile::switch_profile(profiles_dir, "Beta", &current, state,
+                                                nullptr, recording_callbacks(log));
 
   REQUIRE(result.success);
   REQUIRE(received_event == engine::events::kProfileChanged);
   REQUIRE(received_payload.find("\"profile\":\"Beta\"") != std::string::npos);
-  REQUIRE(received_payload.find("\"old_profile\":\"Alpha\"") !=
-          std::string::npos);
+  REQUIRE(received_payload.find("\"old_profile\":\"Alpha\"") != std::string::npos);
 
   engine::EventBus::instance().unsubscribe(token);
 }
@@ -414,10 +409,10 @@ TEST_CASE("switch_profile emits profile_changed event", "[engine]") {
 
 TEST_CASE("switch_profile saves and restores plugin state via PluginDatabase",
           "[engine]") {
-  auto root = make_temp_dir("plugins");
+  auto root               = make_temp_dir("plugins");
   const auto profiles_dir = root / "profiles";
-  const auto game_dir = root / "game";
-  const auto mods_dir = root / "mods";
+  const auto game_dir     = root / "game";
+  const auto mods_dir     = root / "mods";
   fs::create_directories(profiles_dir);
   fs::create_directories(mods_dir);
 
@@ -429,7 +424,7 @@ TEST_CASE("switch_profile saves and restores plugin state via PluginDatabase",
   // Live plugin DB: both plugins enabled, Alpha.esp first.
   auto db = make_plugin_db(game_dir, mods_dir);
   REQUIRE(db.plugins().size() == 2);
-  REQUIRE(db.set_enabled("Beta.esp", false)); // Beta disabled in Alpha
+  REQUIRE(db.set_enabled("Beta.esp", false));  // Beta disabled in Alpha
 
   // Save Alpha's plugin state through the switcher.
   engine::profile::ProfileManager current(a.directory);
@@ -459,8 +454,8 @@ TEST_CASE("switch_profile saves and restores plugin state via PluginDatabase",
 
   // Switch to Beta: the live DB must now reflect Beta's plugin state.
   std::vector<std::string> log;
-  auto result = engine::profile::switch_profile(
-      profiles_dir, "Beta", &current, state, &db, recording_callbacks(log));
+  auto result = engine::profile::switch_profile(profiles_dir, "Beta", &current, state,
+                                                &db, recording_callbacks(log));
   REQUIRE(result.success);
 
   const auto *beta_plugin = db.find("Beta.esp");

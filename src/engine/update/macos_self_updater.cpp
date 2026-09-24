@@ -22,8 +22,9 @@ UpdateInfo MacOSSelfUpdater::check_for_update() {
   return fetch_update_info(".dmg");
 }
 
-InstallResult MacOSSelfUpdater::install_update(
-    const UpdateInfo &info, std::function<void(float progress)> progress_cb) {
+InstallResult
+MacOSSelfUpdater::install_update(const UpdateInfo &info,
+                                 std::function<void(float progress)> progress_cb) {
   InstallResult result;
 
   if (!info.available || info.download_url.empty()) {
@@ -37,7 +38,7 @@ InstallResult MacOSSelfUpdater::install_update(
   if (progress_cb)
     progress_cb(0.0f);
 
-  namespace dl = engine::download;
+  namespace dl   = engine::download;
   long http_code = 0;
   dl::Options opts;
   opts.user_agent = "GameModManager/SelfUpdater";
@@ -54,8 +55,7 @@ InstallResult MacOSSelfUpdater::install_update(
   bool ok = dl::curl_download(info.download_url, dmg_path, http_code, opts,
                               &dl_progress, 0, nullptr, NET_CALLER);
   if (!ok || http_code >= 400) {
-    result.error_message =
-        "Download failed (HTTP " + std::to_string(http_code) + ")";
+    result.error_message = "Download failed (HTTP " + std::to_string(http_code) + ")";
     return result;
   }
 
@@ -66,9 +66,9 @@ InstallResult MacOSSelfUpdater::install_update(
   const std::string mount_point = "/Volumes/GameModManagerUpdate";
 
   // hdiutil attach -nobrowse -mountpoint <mp> <dmg>
-  std::string attach_cmd = "hdiutil attach -nobrowse -mountpoint \"" +
-                           mount_point + "\" \"" + dmg_path.string() + "\"";
-  int rc = std::system(attach_cmd.c_str());
+  std::string attach_cmd = "hdiutil attach -nobrowse -mountpoint \"" + mount_point +
+                           "\" \"" + dmg_path.string() + "\"";
+  int rc                 = std::system(attach_cmd.c_str());
   if (rc != 0) {
     result.error_message =
         "Failed to mount DMG (hdiutil exit " + std::to_string(rc) + ")";
@@ -77,12 +77,10 @@ InstallResult MacOSSelfUpdater::install_update(
 
   // Find the .app inside the mounted volume.
   std::filesystem::path app_src;
-  auto it = std::find_if(
-      std::filesystem::directory_iterator(mount_point),
-      std::filesystem::directory_iterator{},
-      [](const auto &entry) {
-        return entry.path().extension() == ".app";
-      });
+  auto it = std::find_if(std::filesystem::directory_iterator(mount_point),
+                         std::filesystem::directory_iterator{}, [](const auto &entry) {
+                           return entry.path().extension() == ".app";
+                         });
   if (it != std::filesystem::directory_iterator{}) {
     app_src = it->path();
   }
@@ -94,7 +92,7 @@ InstallResult MacOSSelfUpdater::install_update(
   }
 
   const std::string app_name = app_src.filename().string();
-  const auto app_dst = std::filesystem::path("/Applications") / app_name;
+  const auto app_dst         = std::filesystem::path("/Applications") / app_name;
 
   // cp -R to /Applications (overwrites existing).
   std::string cp_cmd =
@@ -105,12 +103,12 @@ InstallResult MacOSSelfUpdater::install_update(
   std::system(("hdiutil detach \"" + mount_point + "\"").c_str());
 
   if (rc != 0) {
-    result.error_message = "Failed to copy .app to /Applications (exit " +
-                           std::to_string(rc) + ")";
+    result.error_message =
+        "Failed to copy .app to /Applications (exit " + std::to_string(rc) + ")";
     return result;
   }
 
-  result.success = true;
+  result.success          = true;
   result.requires_restart = true;
   return result;
 }
@@ -121,6 +119,6 @@ void MacOSSelfUpdater::restart() {
   std::exit(0);
 }
 
-} // namespace engine::update
+}  // namespace engine::update
 
-#endif // __APPLE__
+#endif  // __APPLE__

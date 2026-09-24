@@ -9,8 +9,8 @@ namespace ui {
 
 LoversLabFetchWorker::LoversLabFetchWorker(QObject *parent) : QObject(parent) {}
 
-void LoversLabFetchWorker::run(
-    std::function<engine::LoversLabModInfoResult()> fetch, quint64 generation) {
+void LoversLabFetchWorker::run(std::function<engine::LoversLabModInfoResult()> fetch,
+                               quint64 generation) {
   engine::LoversLabModInfoResult result =
       fetch ? fetch() : engine::LoversLabModInfoResult{};
   emit finished(std::move(result), generation);
@@ -31,8 +31,8 @@ LoversLabFetchThread::~LoversLabFetchThread() {
   thread_->wait();
 }
 
-void LoversLabFetchThread::start(
-    std::function<engine::LoversLabModInfoResult()> fetch, quint64 generation) {
+void LoversLabFetchThread::start(std::function<engine::LoversLabModInfoResult()> fetch,
+                                 quint64 generation) {
   LoversLabFetchWorker *worker = worker_;
   QMetaObject::invokeMethod(
       worker,
@@ -42,4 +42,4 @@ void LoversLabFetchThread::start(
       Qt::QueuedConnection);
 }
 
-} // namespace ui
+}  // namespace ui

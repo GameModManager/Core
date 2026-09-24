@@ -5,6 +5,6 @@
 
 namespace engine {
 using DirectDeployStrategy = ::Deploy::Direct;
-using SyncResult = ::Deploy::SyncResult;
-using DeployedFileInfo = ::Deploy::DeployedFileInfo;
-} // namespace engine
+using SyncResult           = ::Deploy::SyncResult;
+using DeployedFileInfo     = ::Deploy::DeployedFileInfo;
+}  // namespace engine

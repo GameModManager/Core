@@ -21,46 +21,45 @@
 #include <catch2/catch_test_macros.hpp>
 
 namespace {
-std::string slurp(const std::filesystem::path& p) {
-    std::ifstream f(p);
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return ss.str();
+std::string slurp(const std::filesystem::path &p) {
+  std::ifstream f(p);
+  std::stringstream ss;
+  ss << f.rdbuf();
+  return ss.str();
 }
-}
+}  // namespace
 
 TEST_CASE("loverslab provider - real captured fixture", "[engine][live]") {
-    const std::filesystem::path fixture =
-        std::filesystem::path(__FILE__).parent_path() / "fixtures" /
-        "loverslab_page.html";
-    if (!std::filesystem::exists(fixture)) {
-        WARN("no live fixture at " << fixture.string()
-             << " - skipping (capture with curl to enable)");
-        return;
-    }
-    const std::string body = slurp(fixture);
-    INFO("body size: " << body.size());
+  const std::filesystem::path fixture = std::filesystem::path(__FILE__).parent_path() /
+                                        "fixtures" / "loverslab_page.html";
+  if (!std::filesystem::exists(fixture)) {
+    WARN("no live fixture at " << fixture.string()
+                               << " - skipping (capture with curl to enable)");
+    return;
+  }
+  const std::string body = slurp(fixture);
+  INFO("body size: " << body.size());
 
-    auto r = engine::LoversLabProvider::parse_mod_info(body);
-    INFO("available: " << r.available);
-    INFO("name: " << r.name);
-    INFO("version: " << r.version);
-    INFO("category: " << r.category);
-    INFO("author: " << r.author);
-    INFO("date_modified: " << r.date_modified);
-    INFO("page_url: " << r.page_url);
+  auto r = engine::LoversLabProvider::parse_mod_info(body);
+  INFO("available: " << r.available);
+  INFO("name: " << r.name);
+  INFO("version: " << r.version);
+  INFO("category: " << r.category);
+  INFO("author: " << r.author);
+  INFO("date_modified: " << r.date_modified);
+  INFO("page_url: " << r.page_url);
 
-    REQUIRE(r.available);
-    REQUIRE(!r.name.empty());
-    REQUIRE(!r.description.empty());
-    REQUIRE(!r.date_modified.empty());
+  REQUIRE(r.available);
+  REQUIRE(!r.name.empty());
+  REQUIRE(!r.description.empty());
+  REQUIRE(!r.date_modified.empty());
 
-    // Raw-HTML mode on the real captured page: the description is the
-    // anchor-sanitized inner fragment of the first ipsType_richText
-    // block - markup intact (paragraphs render from real <p> tags),
-    // visible text present, no executable URLs.
-    REQUIRE(r.description.find("<p>") != std::string::npos);
-    REQUIRE(r.description.find("Hi all.") != std::string::npos);
-    REQUIRE(r.description.find("javascript:") == std::string::npos);
-    REQUIRE(r.description.find("data:") == std::string::npos);
+  // Raw-HTML mode on the real captured page: the description is the
+  // anchor-sanitized inner fragment of the first ipsType_richText
+  // block - markup intact (paragraphs render from real <p> tags),
+  // visible text present, no executable URLs.
+  REQUIRE(r.description.find("<p>") != std::string::npos);
+  REQUIRE(r.description.find("Hi all.") != std::string::npos);
+  REQUIRE(r.description.find("javascript:") == std::string::npos);
+  REQUIRE(r.description.find("data:") == std::string::npos);
 }

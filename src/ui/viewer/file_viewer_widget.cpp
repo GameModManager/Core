@@ -2,7 +2,7 @@
 
 namespace ui {
 
-FileViewerWidget::FileViewerWidget(QWidget* parent) : QWidget(parent) {}
+FileViewerWidget::FileViewerWidget(QWidget *parent) : QWidget(parent) {}
 
 FileViewerWidget::~FileViewerWidget() = default;
 

@@ -53,11 +53,11 @@ private:
   struct Entry {
     std::string game_id;
     GmmDiagnoseFn fn = nullptr;
-    void *user_data = nullptr;
+    void *user_data  = nullptr;
     std::string plugin_path;
   };
 
   std::vector<Entry> entries_;
 };
 
-} // namespace engine
+}  // namespace engine

@@ -104,4 +104,4 @@ QImage decode_image_file(const QString &path);
 // (Workspace-ggml).
 bool desc_perf_logging_enabled();
 
-} // namespace ui
+}  // namespace ui

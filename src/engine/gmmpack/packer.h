@@ -19,11 +19,9 @@
 #include "engine/gmmpack/types.h"
 #include "engine/mod/meta/mod_meta.h"
 
-namespace engine::gmmpack
-{
+namespace engine::gmmpack {
 
-struct PackOptions
-{
+struct PackOptions {
   std::string author;
   std::string description;
   std::string homepage;
@@ -34,8 +32,7 @@ struct PackOptions
   std::unordered_map<std::string, std::string> update_policies;
 };
 
-struct PackResult
-{
+struct PackResult {
   bool ok = false;
   std::string error;
   std::filesystem::path output_path;
@@ -45,62 +42,62 @@ struct PackResult
 // sources (those mods are skipped on export - the pack format has no
 // manual provider). game_id is the GMM game id (nexus gameDomain fallback);
 // steam_appid feeds the steam_workshop appId field.
-std::optional<ModSource> resolve_mod_source(const ModMeta& meta,
-                                            const std::string& game_id,
+std::optional<ModSource> resolve_mod_source(const ModMeta &meta,
+                                            const std::string &game_id,
                                             uint32_t steam_appid = 0);
 
 // Folder name -> schema-valid mod id slug. Lowercase alnum runs joined by
 // single hyphens; collisions get -2/-3 suffixes. Deterministic for a given
 // input set (inputs are sorted before slugging).
-std::string mod_slug(const std::string& folder_name);
+std::string mod_slug(const std::string &folder_name);
 
 // Build the display tree from mod-state nesting. Separators are entries
 // whose folder name appears as another entry's parent_separator; children
 // sort by list_position. ModNode enabled = !hidden && !disabled. Manual/
 // unresolvable mods are omitted (they have no mods/<id>.json to point at).
-TreeRoot build_tree(const InstanceSnapshot& snapshot,
-                    const std::filesystem::path& mods_dir);
+TreeRoot build_tree(const InstanceSnapshot &snapshot,
+                    const std::filesystem::path &mods_dir);
 
 // Manifest with stable pack identity: reuses snapshot.modpack_id when set
 // (fresh UUID v4 otherwise), revision = snapshot.modpack_revision + 1,
 // schema "1.0.0", info from snapshot + options, current UTC timestamps.
 // archive.fileHashes is left empty - write_gmmpack_archive fills it after
 // serializing every file.
-Manifest build_manifest(const InstanceSnapshot& snapshot, const PackOptions& options);
+Manifest build_manifest(const InstanceSnapshot &snapshot, const PackOptions &options);
 
 // One ModEntry per snapshot mod with a resolvable source. Manual/unknown
 // sources are skipped. Order is deterministic (list_position, then folder).
 // options.update_policies (folder -> "latest"|"exact", absent = "latest")
 // overrides the resolved source's update_policy; steam_workshop sources
 // always stay "latest".
-std::vector<ModEntry> build_mod_entries(const InstanceSnapshot& snapshot,
-                                        const std::filesystem::path& mods_dir,
-                                        const PackOptions& options);
+std::vector<ModEntry> build_mod_entries(const InstanceSnapshot &snapshot,
+                                        const std::filesystem::path &mods_dir,
+                                        const PackOptions &options);
 
 // Snapshot executables -> pack executables. Entries whose mod does not
 // resolve to an exported mod (game-root exes, manual mods) are skipped:
 // sourceModId must pass referential integrity.
-std::vector<ExecutableEntry> build_executables(const InstanceSnapshot& snapshot,
-                                               const std::filesystem::path& mods_dir);
+std::vector<ExecutableEntry> build_executables(const InstanceSnapshot &snapshot,
+                                               const std::filesystem::path &mods_dir);
 
 // JSON serializers (reverse of unpacker.cpp parse_*).
-nlohmann::json serialize_manifest(const Manifest& m);
-nlohmann::json serialize_mod_source(const ModSource& source);
-nlohmann::json serialize_mod_entry(const ModEntry& m);
-nlohmann::json serialize_executable_entry(const ExecutableEntry& e);
+nlohmann::json serialize_manifest(const Manifest &m);
+nlohmann::json serialize_mod_source(const ModSource &source);
+nlohmann::json serialize_mod_entry(const ModEntry &m);
+nlohmann::json serialize_executable_entry(const ExecutableEntry &e);
 
 // Assemble the full pack in memory.
-Gmmpack build_gmmpack(const InstanceSnapshot& snapshot,
-                      const std::filesystem::path& mods_dir,
-                      const PackOptions& options);
+Gmmpack build_gmmpack(const InstanceSnapshot &snapshot,
+                      const std::filesystem::path &mods_dir,
+                      const PackOptions &options);
 
 // Serialize + write a .gmmpack (zip) archive: manifest.json, tree.json,
 // mods/*.json, executables/*.json, instructions.md when present.
 // fileHashes are computed over the serialized payloads and baked into the
 // manifest before writing, so the archive passes verify_archive_integrity.
-PackResult create_gmmpack(const InstanceSnapshot& snapshot,
-                          const std::filesystem::path& mods_dir,
-                          const PackOptions& options,
-                          const std::filesystem::path& output_path);
+PackResult create_gmmpack(const InstanceSnapshot &snapshot,
+                          const std::filesystem::path &mods_dir,
+                          const PackOptions &options,
+                          const std::filesystem::path &output_path);
 
 }  // namespace engine::gmmpack

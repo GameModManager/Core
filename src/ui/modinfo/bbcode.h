@@ -48,4 +48,4 @@ QString bbcode_to_html(const QString &input);
 void set_bbcode_html_async(DescriptionRenderer *renderer, const QString &desc,
                            std::atomic<unsigned> *request_token);
 
-} // namespace ui
+}  // namespace ui

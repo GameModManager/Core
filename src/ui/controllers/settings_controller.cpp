@@ -94,7 +94,7 @@
 
 namespace ui {
 
-void configure_instance_restart_dialog(TaskDialog& dlg) {
+void configure_instance_restart_dialog(TaskDialog &dlg) {
   dlg.title(QObject::tr("Restart GameModManager"))
       .main(QObject::tr("Restart GameModManager"))
       .content(
@@ -105,14 +105,14 @@ void configure_instance_restart_dialog(TaskDialog& dlg) {
                    QMessageBox::No});
 }
 
-SettingsController::SettingsController(MainWindow* w, QObject* parent)
+SettingsController::SettingsController(MainWindow *w, QObject *parent)
     : QObject(parent), w_(w) {}
 
-void SettingsController::set_game_info(const std::string& game_id,
-                                       const std::string& game_display_name,
-                                       const std::string& profile_name,
-                                       const std::filesystem::path& game_dir,
-                                       const std::filesystem::path& instance_root) {
+void SettingsController::set_game_info(const std::string &game_id,
+                                       const std::string &game_display_name,
+                                       const std::string &profile_name,
+                                       const std::filesystem::path &game_dir,
+                                       const std::filesystem::path &instance_root) {
   // Clear previous instance state before switching
   w_->console_->clear();
   w_->downloads_->hide_install_progress();
@@ -313,7 +313,7 @@ void SettingsController::set_game_info(const std::string& game_id,
     // The pipeline runs on a worker thread; ask_overwrite marshals the
     // modal dialog onto the main thread. Backup defaults to checked,
     // matching MO2's QueryOverwriteDialog::BACKUP_YES default.
-    ctx.overwrite_query_cb = [this](const std::string& mod_name) {
+    ctx.overwrite_query_cb = [this](const std::string &mod_name) {
       // The user dialog supersedes the progress popup (MO2 does the
       // same: the progress dialog is only visible while it can show
       // progress, not while a decision is pending).
@@ -327,11 +327,11 @@ void SettingsController::set_game_info(const std::string& game_id,
     // onto the main thread like ask_overwrite. Settings gate the
     // previous-choice restore and the image preview.
     ctx.fomod_query_cb =
-        [this](const std::shared_ptr<engine::FomodViewModel>& view_model,
-               const std::filesystem::path& content_root,
-               const std::string& suggested_name, const std::string& previous_choices) {
+        [this](const std::shared_ptr<engine::FomodViewModel> &view_model,
+               const std::filesystem::path &content_root,
+               const std::string &suggested_name, const std::string &previous_choices) {
           w_->downloads_->hide_install_progress();
-          auto& s = Settings::instance();
+          auto &s = Settings::instance();
           // FOMOD wizard behavior comes from the FomodInstaller plugin's
           // declared settings (register_settings_tab), which render inline
           // under Plugins > FOMOD Installer. Fall back to the legacy core
@@ -339,7 +339,7 @@ void SettingsController::set_game_info(const std::string& game_id,
           bool always_restore = s.always_restore_fomod_choices();
           bool show_images    = s.show_fomod_images();
           if (w_->plugin_loader_) {
-            for (const auto& p : w_->plugin_loader_->plugins()) {
+            for (const auto &p : w_->plugin_loader_->plugins()) {
               if (p.settings_tab.title != "FOMOD")
                 continue;
               const QString basename = QString::fromStdString(
@@ -359,8 +359,8 @@ void SettingsController::set_game_info(const std::string& game_id,
     // name (typically the Nexus name); the dialog's dropdown also offers a
     // cleaned archive-stem derivation and the full archive filename.
     // Canceling aborts the install.
-    ctx.name_query_cb = [this](const std::string& suggested_name,
-                               const std::string& archive_filename) {
+    ctx.name_query_cb = [this](const std::string &suggested_name,
+                               const std::string &archive_filename) {
       w_->downloads_->hide_install_progress();
       return ui::ask_install_name(suggested_name, archive_filename, w_);
     };
@@ -411,11 +411,11 @@ void SettingsController::set_game_info(const std::string& game_id,
     // FOMOD-detection branch that aborts with a warning until FOMOD
     // installers are supported.
     auto claim_for =
-        [this](const std::string& stage_name) -> std::optional<engine::StageClaim> {
+        [this](const std::string &stage_name) -> std::optional<engine::StageClaim> {
       if (!w_->plugin_loader_)
         return std::nullopt;
       std::optional<engine::StageClaim> best;
-      for (const auto& c : w_->plugin_loader_->stage_registry().claims()) {
+      for (const auto &c : w_->plugin_loader_->stage_registry().claims()) {
         if (c.stage_name != stage_name)
           continue;
         // An empty game_id is a wildcard claim matching any game; at equal
@@ -434,7 +434,8 @@ void SettingsController::set_game_info(const std::string& game_id,
       return best;
     };
 
-    std::vector<std::pair<const char*, std::function<std::unique_ptr<engine::Stage>()>>>
+    std::vector<
+        std::pair<const char *, std::function<std::unique_ptr<engine::Stage>()>>>
         core_makers = {
             {"Extract",
              [] {
@@ -449,7 +450,7 @@ void SettingsController::set_game_info(const std::string& game_id,
                return std::make_unique<engine::InstallStage>();
              }},
         };
-    static const char* kInstallStages[] = {
+    static const char *kInstallStages[] = {
         "Extract",
         "Fomod",
         "Install",
@@ -461,7 +462,7 @@ void SettingsController::set_game_info(const std::string& game_id,
 
     std::vector<engine::TraceStage> flow_stages;
     flow_stages.reserve(3);
-    for (const char* stage_name : kInstallStages) {
+    for (const char *stage_name : kInstallStages) {
       auto claim = claim_for(stage_name);
       std::unique_ptr<engine::Stage> impl;
       std::string origin = "core";
@@ -471,7 +472,7 @@ void SettingsController::set_game_info(const std::string& game_id,
                                                           claim->handler);
         origin = claim->plugin_id;
       } else {
-        for (const auto& [name, maker] : core_makers) {
+        for (const auto &[name, maker] : core_makers) {
           if (std::strcmp(name, stage_name) == 0) {
             impl = maker();
             break;
@@ -623,7 +624,7 @@ void SettingsController::connect_menu_actions() {
     w_->tab_mode_->route_instance_switcher();
   });
   connect(w_->menu_bar_, &AppMenuBar::recent_instance_selected, this,
-          [this](const QString& name) {
+          [this](const QString &name) {
             switch_to_instance(name);
           });
   connect(w_->menu_bar_, &AppMenuBar::import_mods_requested, this, [this]() {
@@ -660,14 +661,14 @@ void SettingsController::connect_menu_actions() {
   });
   connect(w_->menu_bar_, &AppMenuBar::enable_selected_requested, this, [this]() {
     auto sel = w_->mod_view_->selectionModel()->selectedRows();
-    for (const auto& idx : sel) {
+    for (const auto &idx : sel) {
       w_->mod_model_->setData(idx, Qt::Checked, Qt::CheckStateRole);
     }
     engine::Logger::instance().debug("Enabled " + std::to_string(sel.size()) + " mods");
   });
   connect(w_->menu_bar_, &AppMenuBar::disable_selected_requested, this, [this]() {
     auto sel = w_->mod_view_->selectionModel()->selectedRows();
-    for (const auto& idx : sel) {
+    for (const auto &idx : sel) {
       w_->mod_model_->setData(idx, Qt::Unchecked, Qt::CheckStateRole);
     }
     engine::Logger::instance().debug("Disabled " + std::to_string(sel.size()) +
@@ -723,10 +724,10 @@ void SettingsController::connect_menu_actions() {
 
   // --- Tools ---
   connect(w_->menu_bar_, &AppMenuBar::tool_requested, this,
-          [this](const QString& tool_id, const QString& game_id) {
+          [this](const QString &tool_id, const QString &game_id) {
             if (!w_->plugin_loader_)
               return;
-            auto* tool = w_->plugin_loader_->tool_registry().get_tool(
+            auto *tool = w_->plugin_loader_->tool_registry().get_tool(
                 game_id.toStdString(), tool_id.toStdString());
             if (!tool) {
               engine::Logger::instance().warn(
@@ -747,7 +748,7 @@ void SettingsController::connect_menu_actions() {
               tool->invoke_fn(tool->invoke_user_data);
             } else {
               // Fallback: try launching the executable
-              for (const auto& path : tool->search_paths) {
+              for (const auto &path : tool->search_paths) {
                 auto exe_path = std::filesystem::path(path) / tool->executable_name;
                 std::error_code ec;
                 if (std::filesystem::exists(exe_path, ec)) {
@@ -808,9 +809,9 @@ void SettingsController::save_app_state() {
                            ? w_->mod_view_->header()->saveState().toBase64()
                            : QByteArray();
 
-  auto write_ba = [&](const QByteArray& ba) {
+  auto write_ba = [&](const QByteArray &ba) {
     uint32_t len = static_cast<uint32_t>(ba.size());
-    out.write(reinterpret_cast<const char*>(&len), sizeof(len));
+    out.write(reinterpret_cast<const char *>(&len), sizeof(len));
     if (len > 0)
       out.write(ba.constData(), len);
   };
@@ -824,10 +825,10 @@ void SettingsController::save_app_state() {
   // Save right panel table header states (column widths, order, visibility)
   QJsonObject header_states;
   if (w_->right_panel_) {
-    auto* tw = w_->right_panel_->tab_widget();
+    auto *tw = w_->right_panel_->tab_widget();
     for (int i = 0; i < tw->count(); ++i) {
-      auto* tab   = tw->widget(i);
-      auto* table = tab->findChild<QTableWidget*>();
+      auto *tab   = tw->widget(i);
+      auto *table = tab->findChild<QTableWidget *>();
       if (table && table->horizontalHeader()) {
         auto state = table->horizontalHeader()->saveState().toBase64();
         if (!state.isEmpty()) {
@@ -863,7 +864,7 @@ void SettingsController::restore_app_state() {
 
   auto read_ba = [&]() -> QByteArray {
     uint32_t len = 0;
-    if (!in.read(reinterpret_cast<char*>(&len), sizeof(len)) || len == 0)
+    if (!in.read(reinterpret_cast<char *>(&len), sizeof(len)) || len == 0)
       return {};
     std::vector<char> buf(len);
     if (!in.read(buf.data(), len))
@@ -907,13 +908,13 @@ void SettingsController::restore_app_state() {
       if (w_->toolbar_)
         w_->toolbar_->set_icon_size(w_->icon_size_);
     }
-    auto* tw = w_->right_panel_->tab_widget();
+    auto *tw = w_->right_panel_->tab_widget();
     for (int i = 0; i < tw->count(); ++i) {
       auto key = tw->tabText(i);
       if (!obj.contains(key))
         continue;
-      auto* tab   = tw->widget(i);
-      auto* table = tab->findChild<QTableWidget*>();
+      auto *tab   = tw->widget(i);
+      auto *table = tab->findChild<QTableWidget *>();
       if (table && table->horizontalHeader()) {
         auto state = QByteArray::fromBase64(obj[key].toString().toUtf8());
         if (!state.isEmpty())
@@ -921,13 +922,13 @@ void SettingsController::restore_app_state() {
         // Re-apply desired stretch modes so restoreState
         // doesn't permanently override them from old sessions
         if (key == "Data") {
-          auto* h = table->horizontalHeader();
+          auto *h = table->horizontalHeader();
           h->setStretchLastSection(false);
           h->setSectionResizeMode(0, QHeaderView::Stretch);
           h->setSectionResizeMode(1, QHeaderView::Interactive);
           h->setSectionResizeMode(2, QHeaderView::Interactive);
         } else if (key == "Downloads") {
-          auto* h = table->horizontalHeader();
+          auto *h = table->horizontalHeader();
           h->setStretchLastSection(false);
           h->setSectionResizeMode(0, QHeaderView::Stretch);
           h->setSectionResizeMode(1, QHeaderView::Interactive);
@@ -950,7 +951,7 @@ QJsonObject SettingsController::read_app_state_extra() const {
 
   auto read_ba = [&]() -> QByteArray {
     uint32_t len = 0;
-    if (!in.read(reinterpret_cast<char*>(&len), sizeof(len)) || len == 0)
+    if (!in.read(reinterpret_cast<char *>(&len), sizeof(len)) || len == 0)
       return {};
     std::vector<char> buf(len);
     if (!in.read(buf.data(), len))
@@ -963,7 +964,7 @@ QJsonObject SettingsController::read_app_state_extra() const {
     read_ba();
 
   uint32_t extra_len = 0;
-  if (!in.read(reinterpret_cast<char*>(&extra_len), sizeof(extra_len)) ||
+  if (!in.read(reinterpret_cast<char *>(&extra_len), sizeof(extra_len)) ||
       extra_len == 0)
     return empty;
   std::vector<char> buf(extra_len);
@@ -1055,9 +1056,9 @@ void SettingsController::ensure_nxm_handler_default() {
                   .arg(current_handler));
   msg.setTextFormat(Qt::RichText);
   msg.setIcon(QMessageBox::Question);
-  auto* yes       = msg.addButton(tr("Yes"), QMessageBox::YesRole);
-  auto* dont_show = msg.addButton(tr("Don't show"), QMessageBox::ActionRole);
-  auto* no        = msg.addButton(tr("No"), QMessageBox::NoRole);
+  auto *yes       = msg.addButton(tr("Yes"), QMessageBox::YesRole);
+  auto *dont_show = msg.addButton(tr("Don't show"), QMessageBox::ActionRole);
+  auto *no        = msg.addButton(tr("No"), QMessageBox::NoRole);
   msg.setDefaultButton(yes);
   msg.exec();
 
@@ -1101,7 +1102,7 @@ void SettingsController::apply_settings_changes() {
   // re-sync IconManager and re-apply the persistent window/toolbar icons.
   // Context menus build their icons on demand, so they pick it up already.
   {
-    auto& icon_mgr = engine::IconManager::instance();
+    auto &icon_mgr = engine::IconManager::instance();
     icon_mgr.set_current_theme(Settings::instance().theme().toStdString());
     icon_mgr.set_mode(Settings::instance().icon_pack().toStdString());
     w_->toolbar_->reapply_icons();
@@ -1113,7 +1114,7 @@ void SettingsController::apply_settings_changes() {
   // The per-instance nesting setting may have changed in the dialog.
   apply_nesting_setting();
   // The compact-downloads setting may have changed in the dialog.
-  if (auto* dt = w_->right_panel_->downloads_tab())
+  if (auto *dt = w_->right_panel_->downloads_tab())
     dt->apply_compact_style();
   // The Nexus queue-downloads setting may have changed in the dialog: push
   // the new value into the fetch pool.
@@ -1142,7 +1143,7 @@ void SettingsController::show_instance_statistics() {
 
   auto cache_dir = w_->cache_dir_path();
   int total_mods = 0;
-  for (const auto& m : w_->mod_model_->mods()) {
+  for (const auto &m : w_->mod_model_->mods()) {
     if (!m.is_separator && !m.is_overwrite)
       ++total_mods;
   }
@@ -1164,8 +1165,8 @@ void SettingsController::show_pipeline_window() {
   w_->pipeline_window_->activateWindow();
 }
 
-DebugWindow* SettingsController::create_debug_window() {
-  auto* dw = new DebugWindow(
+DebugWindow *SettingsController::create_debug_window() {
+  auto *dw = new DebugWindow(
       w_->current_instance_root_, w_->current_game_id_, w_->current_game_name_,
       w_->plugin_loader_,
       [this]() {
@@ -1231,7 +1232,7 @@ bool SettingsController::create_new_instance() {
   std::vector<engine::DetectedGame> installed_games;
   if (w_->plugin_loader_) {
     std::vector<std::pair<uint32_t, std::pair<std::string, std::string>>> game_specs;
-    for (const auto& p : w_->plugin_loader_->game_plugins()) {
+    for (const auto &p : w_->plugin_loader_->game_plugins()) {
       if (p.steam_appid > 0)
         game_specs.push_back({p.steam_appid, {p.game_id, p.game_display_name}});
     }
@@ -1239,7 +1240,7 @@ bool SettingsController::create_new_instance() {
   }
 
   std::vector<ui::GameEntry> installed_entries, available_entries;
-  for (const auto& g : installed_games) {
+  for (const auto &g : installed_games) {
     ui::GameEntry e;
     e.game_id      = g.game_id;
     e.display_name = g.name;
@@ -1249,9 +1250,9 @@ bool SettingsController::create_new_instance() {
     installed_entries.push_back(e);
   }
   if (w_->plugin_loader_) {
-    for (const auto& p : w_->plugin_loader_->game_plugins()) {
+    for (const auto &p : w_->plugin_loader_->game_plugins()) {
       bool found = false;
-      for (const auto& ie : installed_entries) {
+      for (const auto &ie : installed_entries) {
         if (ie.game_id == p.game_id) {
           found = true;
           break;
@@ -1271,15 +1272,15 @@ bool SettingsController::create_new_instance() {
   QDialog sel_dlg(w_);
   sel_dlg.setWindowTitle(tr("Create New Instance"));
   sel_dlg.setMinimumSize(600, 400);
-  auto* layout    = new QVBoxLayout(&sel_dlg);
-  auto* selection = new ui::GameSelectionWidget(&sel_dlg);
+  auto *layout    = new QVBoxLayout(&sel_dlg);
+  auto *selection = new ui::GameSelectionWidget(&sel_dlg);
   selection->set_games(installed_entries, available_entries);
   layout->addWidget(selection);
 
   ui::GameEntry chosen;
   bool chosen_ok = false;
   QObject::connect(selection, &ui::GameSelectionWidget::game_selected,
-                   [&](const ui::GameEntry& entry) {
+                   [&](const ui::GameEntry &entry) {
                      chosen    = entry;
                      chosen_ok = true;
                      sel_dlg.accept();
@@ -1319,7 +1320,7 @@ bool SettingsController::create_new_instance() {
   return true;
 }
 
-void SettingsController::import_modpack(const QString& preset_file) {
+void SettingsController::import_modpack(const QString &preset_file) {
   ModpackImportDialog import_dialog(w_);
   if (!preset_file.isEmpty())
     import_dialog.set_picked_file(preset_file);
@@ -1331,7 +1332,7 @@ void SettingsController::import_modpack(const QString& preset_file) {
   // Instances matching the pack's game.
   const auto instances_dir = engine::default_instances_dir();
   std::vector<ModpackInstanceChoice> choices;
-  for (const auto& name : engine::scan_instances()) {
+  for (const auto &name : engine::scan_instances()) {
     auto inst = engine::Instance::installed(name, instances_dir);
     if (!inst.read_toml() || inst.info().game_id != game_id)
       continue;
@@ -1378,7 +1379,7 @@ void SettingsController::export_modpack() {
   wizard.exec();
 }
 
-bool SettingsController::switch_to_instance(const QString& name) {
+bool SettingsController::switch_to_instance(const QString &name) {
   auto instances_dir = engine::default_instances_dir();
   auto selected      = name.toStdString();
   if (selected.empty())
@@ -1396,7 +1397,7 @@ bool SettingsController::switch_to_instance(const QString& name) {
     return false;
   }
 
-  auto& info          = inst.info();
+  auto &info          = inst.info();
   std::string game_id = info.game_id;
   std::string display_name;
   if (w_->plugin_loader_) {
@@ -1451,7 +1452,7 @@ void SettingsController::refresh_recent_instances() {
   std::vector<std::string> names;
   std::error_code ec;
   if (std::filesystem::is_directory(instances_dir, ec)) {
-    for (const auto& entry : std::filesystem::directory_iterator(instances_dir, ec)) {
+    for (const auto &entry : std::filesystem::directory_iterator(instances_dir, ec)) {
       if (!entry.is_directory())
         continue;
       if (!std::filesystem::exists(entry.path() / "instance.toml"))
@@ -1463,9 +1464,9 @@ void SettingsController::refresh_recent_instances() {
   w_->menu_bar_->set_recent_instances(names);
 }
 
-bool SettingsController::handle_global_event(QObject* obj, QEvent* event) {
+bool SettingsController::handle_global_event(QObject *obj, QEvent *event) {
   if (event->type() == QEvent::KeyPress && !w_->current_instance_root_.empty()) {
-    auto* ke = static_cast<QKeyEvent*>(event);
+    auto *ke = static_cast<QKeyEvent *>(event);
     int key  = ke->key();
     (void)obj;
 

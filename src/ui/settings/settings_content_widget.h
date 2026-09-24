@@ -9,7 +9,7 @@ class QTabWidget;
 namespace engine {
 class PluginLoader;
 class StyleManager;
-} // namespace engine
+}  // namespace engine
 
 namespace ui {
 
@@ -17,7 +17,7 @@ namespace ui {
 // Plugins tab's two columns) at a usable size. The popup host (SettingsDialog)
 // uses both as its window minimum; the Plugins tab itself uses the width to
 // keep the left plugin list at half the minimum window width.
-inline constexpr int kSettingsMinWidth = 723;
+inline constexpr int kSettingsMinWidth  = 723;
 inline constexpr int kSettingsMinHeight = 634;
 
 // Mode-agnostic settings panel. Extracted from SettingsDialog so the same
@@ -32,8 +32,7 @@ public:
   SettingsContentWidget(engine::StyleManager *style_manager,
                         const QString &native_style_name,
                         const std::filesystem::path &instance_root,
-                        engine::PluginLoader *plugin_loader,
-                        QWidget *parent = nullptr);
+                        engine::PluginLoader *plugin_loader, QWidget *parent = nullptr);
 
   // The internal tab widget (General, Theme, ...). Exposed so embedding
   // hosts can select tabs programmatically.
@@ -63,7 +62,7 @@ private:
   QString native_style_name_;
   std::filesystem::path instance_root_;
   engine::PluginLoader *plugin_loader_ = nullptr;
-  QTabWidget *tabs_ = nullptr;
+  QTabWidget *tabs_                    = nullptr;
 };
 
-} // namespace ui
+}  // namespace ui

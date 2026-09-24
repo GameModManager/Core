@@ -54,7 +54,7 @@ void check(bool cond, const std::string &msg) {
   INFO(msg);
   REQUIRE(cond);
 }
-} // namespace
+}  // namespace
 
 static void write_file(const fs::path &p, const std::string &contents) {
   fs::create_directories(p.parent_path());
@@ -63,9 +63,8 @@ static void write_file(const fs::path &p, const std::string &contents) {
   check(out.good(), "write_file failed for " + p.string());
 }
 
-static const engine::ScannedMod *
-by_folder(const std::vector<engine::ScannedMod> &mods,
-          const std::string &folder) {
+static const engine::ScannedMod *by_folder(const std::vector<engine::ScannedMod> &mods,
+                                           const std::string &folder) {
   for (const auto &m : mods)
     if (m.folder_name == folder)
       return &m;
@@ -96,8 +95,7 @@ static void test_registry_semantics() {
   // A higher-priority registration overrides it for resolve() (priority +
   // replace), and equal priority = last registered wins.
   reg.register_feature("skyrim", "mod_data_checker", 10,
-                       make_checker({"customstuff"}, {"custoext"}),
-                       "override_plugin");
+                       make_checker({"customstuff"}, {"custoext"}), "override_plugin");
   reg.register_feature("skyrim", "mod_data_checker", 10,
                        make_checker({"secondstuff"}, {}), "second_plugin");
   auto winner = std::dynamic_pointer_cast<engine::ModDataCheckerFeature>(
@@ -110,8 +108,8 @@ static void test_registry_semantics() {
   // Per-game isolation.
   check(reg.resolve("isaac", "mod_data_checker") == nullptr,
         "another game resolves nullptr");
-  reg.register_feature("isaac", "mod_data_checker", 0,
-                       make_checker({"resources"}, {}), "isaac_plugin");
+  reg.register_feature("isaac", "mod_data_checker", 0, make_checker({"resources"}, {}),
+                       "isaac_plugin");
   check(reg.resolve("isaac", "mod_data_checker") != nullptr,
         "isaac's own checker resolves");
   check(reg.resolve("skyrim", "mod_data_checker") != nullptr,
@@ -143,11 +141,10 @@ static void test_registry_semantics() {
   // higher priority wins resolve().
   check(reg.resolve_game_plugins("skyrim") == nullptr,
         "no game_plugins registered yet -> nullptr");
-  reg.register_feature(
-      "skyrim", "game_plugins", 0,
-      std::make_shared<engine::GamePluginsFeature>(
-          std::vector<std::string>{"Skyrim.esm", "Update.esm"}),
-      "skyrim_plugin");
+  reg.register_feature("skyrim", "game_plugins", 0,
+                       std::make_shared<engine::GamePluginsFeature>(
+                           std::vector<std::string>{"Skyrim.esm", "Update.esm"}),
+                       "skyrim_plugin");
   auto own_band = reg.resolve_game_plugins("skyrim");
   check(own_band != nullptr && own_band->plugins().size() == 2 &&
             own_band->plugins()[0] == "Skyrim.esm",
@@ -192,19 +189,17 @@ static void test_scanner_integration() {
   fs::create_directories(root / "FallbackBad");
   fs::create_directories(root / "FallbackGood" / "textures");
   write_file(root / "FallbackGood" / "modfile.esp", "");
-  auto fb = engine::ModScanner::scan_dir(knowledge, "skyrim", root);
+  auto fb         = engine::ModScanner::scan_dir(knowledge, "skyrim", root);
   const auto *fbb = by_folder(fb, "FallbackBad");
   const auto *fbg = by_folder(fb, "FallbackGood");
   check(fbb && fbb->invalid_data, "knowledge fallback: empty folder invalid");
-  check(fbg && !fbg->invalid_data,
-        "knowledge fallback: .esp file makes folder valid");
+  check(fbg && !fbg->invalid_data, "knowledge fallback: .esp file makes folder valid");
 
   // Registry-driven: a registered checker (no knowledge at all) drives the
   // same flag. customstuff/ is valid, otherstuff/ is not.
   reg.register_feature("skyrim", "mod_data_checker", 0,
                        make_checker({"customstuff"}, {}), "checker_plugin");
-  auto mods =
-      engine::ModScanner::scan_dir(engine::GameKnowledge{}, "skyrim", root);
+  auto mods = engine::ModScanner::scan_dir(engine::GameKnowledge{}, "skyrim", root);
   const auto *cm = by_folder(mods, "CustomMod");
   const auto *om = by_folder(mods, "OtherMod");
   check(cm != nullptr && !cm->invalid_data,
@@ -221,8 +216,7 @@ static void test_native_plugins_resolution() {
   reg.clear();
 
   engine::GameKnowledge knowledge;
-  knowledge.set("skyrim", "game_native_plugins",
-                "Skyrim.esm,Update.esm,Dawnguard.esm");
+  knowledge.set("skyrim", "game_native_plugins", "Skyrim.esm,Update.esm,Dawnguard.esm");
 
   // Knowledge fallback: no registered feature -> the hook CSV drives the
   // consumers (plugin_database / mod list / mod scan) exactly as before.
@@ -235,8 +229,7 @@ static void test_native_plugins_resolution() {
                        std::make_shared<engine::GamePluginsFeature>(
                            std::vector<std::string>{"Custom.esm", "Other.esm"}),
                        "skyrim_plugin");
-  check(engine::native_plugins_csv(knowledge, "skyrim") ==
-            "Custom.esm,Other.esm",
+  check(engine::native_plugins_csv(knowledge, "skyrim") == "Custom.esm,Other.esm",
         "registered game_plugins feature supersedes the hook");
 
   // A higher-priority registration overrides it.
@@ -274,9 +267,9 @@ static void test_all_feature_types() {
         "unknown feature_type refused");
 
   // data_archives: the vanilla archive list (csv split).
-  check(engine::register_game_feature_data(
-            "skyrim", "data_archives", 0,
-            {{"vanilla_archives", "a.bsa, b.bsa"}}, "skyrim_plugin"),
+  check(engine::register_game_feature_data("skyrim", "data_archives", 0,
+                                           {{"vanilla_archives", "a.bsa, b.bsa"}},
+                                           "skyrim_plugin"),
         "data_archives registers");
   auto da = reg.resolve_feature<engine::DataArchivesFeature>("skyrim");
   check(da && da->vanilla_archives().size() == 2 &&
@@ -285,14 +278,13 @@ static void test_all_feature_types() {
         "data_archives resolves the csv split list");
 
   // script_extender: four named fields + priority replace.
-  check(
-      engine::register_game_feature_data("skyrim", "script_extender", 0,
-                                         {{"binary", "skse64_loader.exe"},
-                                          {"plugin_path", "skse/plugins"},
-                                          {"loader_name", "skse64_loader.exe"},
-                                          {"savegame_extension", "skse"}},
-                                         "skyrim_plugin"),
-      "script_extender registers");
+  check(engine::register_game_feature_data("skyrim", "script_extender", 0,
+                                           {{"binary", "skse64_loader.exe"},
+                                            {"plugin_path", "skse/plugins"},
+                                            {"loader_name", "skse64_loader.exe"},
+                                            {"savegame_extension", "skse"}},
+                                           "skyrim_plugin"),
+        "script_extender registers");
   auto se = reg.resolve_feature<engine::ScriptExtenderFeature>("skyrim");
   check(se && se->binary_name() == "skse64_loader.exe" &&
             se->plugin_path() == "skse/plugins" &&
@@ -307,8 +299,7 @@ static void test_all_feature_types() {
                                            "override_plugin"),
         "script_extender override registers");
   auto se2 = reg.resolve_feature<engine::ScriptExtenderFeature>("skyrim");
-  check(se2 && se2->binary_name() == "other.exe" &&
-            se2->savegame_extension() == "xse",
+  check(se2 && se2->binary_name() == "other.exe" && se2->savegame_extension() == "xse",
         "higher-priority script_extender overrides");
 
   // save_game_info: extension csv.
@@ -329,8 +320,7 @@ static void test_all_feature_types() {
             "skyrim_plugin"),
         "local_savegames registers");
   auto lsg = reg.resolve_feature<engine::LocalSavegamesFeature>("skyrim");
-  check(lsg && lsg->saves_subpath() == "Saves" &&
-            lsg->ini_file() == "Skyrimcustom.ini",
+  check(lsg && lsg->saves_subpath() == "Saves" && lsg->ini_file() == "Skyrimcustom.ini",
         "local_savegames resolves subpath + ini");
 
   // unmanaged_mods + the consumer helper.
@@ -348,12 +338,11 @@ static void test_all_feature_types() {
         "unmanaged_mods_for empty for a game without the feature");
 
   // bsa_invalidation: name + version.
-  check(
-      engine::register_game_feature_data(
-          "skyrim", "bsa_invalidation", 0,
-          {{"bsa_name", "Skyrim - Invalidation.bsa"}, {"bsa_version", "0x68"}},
-          "skyrim_plugin"),
-      "bsa_invalidation registers");
+  check(engine::register_game_feature_data(
+            "skyrim", "bsa_invalidation", 0,
+            {{"bsa_name", "Skyrim - Invalidation.bsa"}, {"bsa_version", "0x68"}},
+            "skyrim_plugin"),
+        "bsa_invalidation registers");
   auto bsa = reg.resolve_feature<engine::BSAInvalidationFeature>("skyrim");
   check(bsa && bsa->bsa_name() == "Skyrim - Invalidation.bsa" &&
             bsa->bsa_version() == "0x68",
@@ -362,16 +351,14 @@ static void test_all_feature_types() {
   // mod_data_content: enabled catalog ids + content: overrides.
   check(engine::register_game_feature_data(
             "skyrim", "mod_data_content", 0,
-            {{"enabled", "plugin,texture"},
-             {"content:plugin", "Plugins|plugin2|0"}},
+            {{"enabled", "plugin,texture"}, {"content:plugin", "Plugins|plugin2|0"}},
             "skyrim_plugin"),
         "mod_data_content registers");
   auto mdc = reg.resolve_feature<engine::ModDataContentFeature>("skyrim");
   check(mdc != nullptr && mdc->enabled_ids().size() == 2,
         "mod_data_content enabled list parsed");
   std::vector<engine::ModDataContentFeature::Content> contents =
-      mdc ? mdc->all_contents()
-          : std::vector<engine::ModDataContentFeature::Content>{};
+      mdc ? mdc->all_contents() : std::vector<engine::ModDataContentFeature::Content>{};
   check(contents.size() == 2 && contents[0].name == "Plugins" &&
             contents[0].icon == "plugin2",
         "content: override applied to the catalog entry");
@@ -406,8 +393,7 @@ static void test_mod_data_content_classifier() {
   fs::create_directories(root / "textures" / "armor");
   fs::create_directories(root / "scripts");
   fs::create_directories(root / "skse" / "plugins");
-  fs::create_directories(root / "meshes" / "actors" / "character" /
-                         "facegendata");
+  fs::create_directories(root / "meshes" / "actors" / "character" / "facegendata");
   write_file(root / "Foo.esm", "");
   write_file(root / "skse" / "plugins" / "x.dll", "");
   write_file(root / "note.txt", "");
@@ -430,8 +416,7 @@ static void test_mod_data_content_classifier() {
   check(mdc != nullptr, "mod_data_content resolves");
   std::vector<int> ids =
       mdc ? mdc->contents_for(tree, "skse/plugins") : std::vector<int>{};
-  check(has(ids, engine::ModContentId::Plugin),
-        "classifier finds the top-level esm");
+  check(has(ids, engine::ModContentId::Plugin), "classifier finds the top-level esm");
   check(has(ids, engine::ModContentId::Texture), "classifier finds textures/");
   check(has(ids, engine::ModContentId::Script), "classifier finds scripts/");
   check(has(ids, engine::ModContentId::Mesh), "classifier finds meshes/");
@@ -441,32 +426,28 @@ static void test_mod_data_content_classifier() {
         "classifier finds a dll under the plugin path");
   check(has(ids, engine::ModContentId::SkseFiles),
         "classifier finds the plugin-path dir");
-  check(!has(ids, engine::ModContentId::Bsa) &&
-            !has(ids, engine::ModContentId::Mcm) &&
+  check(!has(ids, engine::ModContentId::Bsa) && !has(ids, engine::ModContentId::Mcm) &&
             !has(ids, engine::ModContentId::Ini) &&
             !has(ids, engine::ModContentId::Optional),
         "classifier flags nothing for absent categories");
 
   // Disabled categories are not reported even when present: an override
   // with only plugin/texture/script enabled hides skse + facegen.
-  check(engine::register_game_feature_data(
-            "skyrim", "mod_data_content", 10,
-            {{"enabled", "plugin,texture,script"}}, "override"),
+  check(engine::register_game_feature_data("skyrim", "mod_data_content", 10,
+                                           {{"enabled", "plugin,texture,script"}},
+                                           "override"),
         "override registers");
   auto mdc2 = reg.resolve_feature<engine::ModDataContentFeature>("skyrim");
   std::vector<int> ids2 =
       mdc2 ? mdc2->contents_for(tree, "skse/plugins") : std::vector<int>{};
-  check(!has(ids2, engine::ModContentId::Skse),
-        "skse disabled -> not reported");
+  check(!has(ids2, engine::ModContentId::Skse), "skse disabled -> not reported");
   check(!has(ids2, engine::ModContentId::SkseFiles),
         "skse_files disabled -> not reported");
-  check(!has(ids2, engine::ModContentId::Facegen),
-        "facegen disabled -> not reported");
+  check(!has(ids2, engine::ModContentId::Facegen), "facegen disabled -> not reported");
 
   // Without a script-extender plugin path the skse dir is not classified.
-  auto mdc3 = reg.resolve_feature<engine::ModDataContentFeature>("skyrim");
-  std::vector<int> ids3 =
-      mdc3 ? mdc3->contents_for(tree, "") : std::vector<int>{};
+  auto mdc3             = reg.resolve_feature<engine::ModDataContentFeature>("skyrim");
+  std::vector<int> ids3 = mdc3 ? mdc3->contents_for(tree, "") : std::vector<int>{};
   check(!has(ids3, engine::ModContentId::Skse) &&
             !has(ids3, engine::ModContentId::SkseFiles),
         "no plugin path -> no skse categories");
@@ -485,8 +466,7 @@ static void test_override_via_c_abi() {
   // classes); the override fixture proves the C ABI game-feature surface.
   check(loader.load_plugin(GMM_SKYRIM_PLUGIN_PATH), "Skyrim plugin loads");
   // The override registers at priority 100 through the C ABI.
-  check(loader.load_plugin(GMM_OVERRIDE_PLUGIN_PATH),
-        "override test plugin loads");
+  check(loader.load_plugin(GMM_OVERRIDE_PLUGIN_PATH), "override test plugin loads");
   check(loader.plugins().size() == 2, "both plugins registered");
 
   auto all = reg.features_for("SkyrimSpecialEdition", "mod_data_checker");
@@ -511,8 +491,8 @@ static void test_override_via_c_abi() {
             gp_winner->plugins()[0] == "VanillaOverride.esm",
         "resolve_game_plugins returns the override's band");
 
-  const std::string native_csv = engine::native_plugins_csv(
-      engine::GameKnowledge{}, "SkyrimSpecialEdition");
+  const std::string native_csv =
+      engine::native_plugins_csv(engine::GameKnowledge{}, "SkyrimSpecialEdition");
   check(native_csv == "VanillaOverride.esm,AlsoVanilla.esm",
         "native_plugins_csv resolves through the C ABI override");
   check(native_csv.find("Skyrim.esm") == std::string::npos,
@@ -520,8 +500,7 @@ static void test_override_via_c_abi() {
 
   // The restored Skyrim plugin registers knowledge hooks only, so the only
   // script_extender registration is the override fixture's (priority 100).
-  auto se = reg.resolve_feature<engine::ScriptExtenderFeature>(
-      "SkyrimSpecialEdition");
+  auto se = reg.resolve_feature<engine::ScriptExtenderFeature>("SkyrimSpecialEdition");
   check(se != nullptr && se->binary_name() == "superse_loader.exe" &&
             se->plugin_path() == "superse/plugins" &&
             se->loader_name() == "superse_loader.exe" &&
@@ -530,39 +509,36 @@ static void test_override_via_c_abi() {
   auto se_regs = reg.features_for("SkyrimSpecialEdition", "script_extender");
   check(se_regs.size() == 1 && se_regs[0].priority == 100,
         "override is the only script_extender registration");
-  auto bsa = reg.resolve_feature<engine::BSAInvalidationFeature>(
-      "SkyrimSpecialEdition");
-  check(
-      bsa != nullptr && bsa->bsa_name() == "CustomInvalidation.bsa" &&
-          bsa->bsa_version() == "0x68",
-      "bsa_invalidation registers via the C ABI though Skyrim registers none");
-  check(reg.features_for("SkyrimSpecialEdition", "bsa_invalidation").size() ==
-            1,
+  auto bsa =
+      reg.resolve_feature<engine::BSAInvalidationFeature>("SkyrimSpecialEdition");
+  check(bsa != nullptr && bsa->bsa_name() == "CustomInvalidation.bsa" &&
+            bsa->bsa_version() == "0x68",
+        "bsa_invalidation registers via the C ABI though Skyrim registers none");
+  check(reg.features_for("SkyrimSpecialEdition", "bsa_invalidation").size() == 1,
         "exactly one bsa_invalidation registration (the override)");
 
   // Feature classes the restored Skyrim plugin does not register (its data
   // lives in knowledge hooks now): nothing resolves them but the override's
   // bsa_invalidation.
-  check(reg.resolve_feature<engine::DataArchivesFeature>(
-            "SkyrimSpecialEdition") == nullptr,
+  check(reg.resolve_feature<engine::DataArchivesFeature>("SkyrimSpecialEdition") ==
+            nullptr,
         "no data_archives baseline (Skyrim plugin ships hooks, not features)");
-  check(reg.resolve_feature<engine::SaveGameInfoFeature>(
-            "SkyrimSpecialEdition") == nullptr,
+  check(reg.resolve_feature<engine::SaveGameInfoFeature>("SkyrimSpecialEdition") ==
+            nullptr,
         "no save_game_info baseline");
-  check(reg.resolve_feature<engine::LocalSavegamesFeature>(
-            "SkyrimSpecialEdition") == nullptr,
+  check(reg.resolve_feature<engine::LocalSavegamesFeature>("SkyrimSpecialEdition") ==
+            nullptr,
         "no local_savegames baseline");
-  check(reg.resolve_feature<engine::ModDataContentFeature>(
-            "SkyrimSpecialEdition") == nullptr,
+  check(reg.resolve_feature<engine::ModDataContentFeature>("SkyrimSpecialEdition") ==
+            nullptr,
         "no mod_data_content baseline");
-  check(reg.resolve_feature<engine::UnmanagedModsFeature>(
-            "SkyrimSpecialEdition") == nullptr,
+  check(reg.resolve_feature<engine::UnmanagedModsFeature>("SkyrimSpecialEdition") ==
+            nullptr,
         "no unmanaged_mods baseline");
 
   auto combined = reg.resolve_mod_data_checker("SkyrimSpecialEdition");
   check(combined != nullptr, "combined checker resolves");
-  bool has_tex = false, has_custom = false, has_ext = false,
-       has_custoext = false;
+  bool has_tex = false, has_custom = false, has_ext = false, has_custoext = false;
   if (combined) {
     for (const auto &d : combined->folder_names()) {
       if (d == "textures")
@@ -591,11 +567,11 @@ static void test_override_via_c_abi() {
   fs::create_directories(root / "Foreignmod" / "otherstuff");
   // The scanner's GameKnowledge is the TEST's, not the loader's: the registry
   // (populated via the plugins' C ABI calls) is what decides validity.
-  auto mods = engine::ModScanner::scan_dir(engine::GameKnowledge{},
-                                           "SkyrimSpecialEdition", root);
+  auto mods                = engine::ModScanner::scan_dir(engine::GameKnowledge{},
+                                                          "SkyrimSpecialEdition", root);
   const auto *override_mod = by_folder(mods, "OverrideMod");
-  const auto *base_mod = by_folder(mods, "BaseMod");
-  const auto *foreign_mod = by_folder(mods, "Foreignmod");
+  const auto *base_mod     = by_folder(mods, "BaseMod");
+  const auto *foreign_mod  = by_folder(mods, "Foreignmod");
   check(override_mod != nullptr && !override_mod->invalid_data,
         "checker wins: customstuff/ mod is valid content");
   check(base_mod != nullptr && base_mod->invalid_data,
@@ -607,9 +583,9 @@ static void test_override_via_c_abi() {
   // (mod_valid_dirs/mod_valid_exts — what the restored Skyrim plugin
   // actually registers) become the scanner's allow-lists.
   reg.clear();
-  auto mods_hooks = engine::ModScanner::scan_dir(loader.knowledge(),
-                                                 "SkyrimSpecialEdition", root);
-  const auto *hook_base = by_folder(mods_hooks, "BaseMod");
+  auto mods_hooks =
+      engine::ModScanner::scan_dir(loader.knowledge(), "SkyrimSpecialEdition", root);
+  const auto *hook_base     = by_folder(mods_hooks, "BaseMod");
   const auto *hook_override = by_folder(mods_hooks, "OverrideMod");
   check(hook_base != nullptr && !hook_base->invalid_data,
         "hook fallback: textures/ valid via the plugin's mod_valid_dirs");
@@ -636,11 +612,9 @@ static void test_override_via_c_abi() {
     ev_lines.push_back(ev_line);
   check(ev_lines.size() == 2, "C-ABI fixture received both dispatched events");
   check(ev_lines.size() == 2 &&
-            ev_lines[0] ==
-                "mod_installed {\"mod\":\"SkyUI\",\"name\":\"SkyUI\"}",
+            ev_lines[0] == "mod_installed {\"mod\":\"SkyUI\",\"name\":\"SkyUI\"}",
         "C-ABI fixture logged mod_installed payload verbatim");
-  check(ev_lines.size() == 2 &&
-            ev_lines[1] == "game_finished {\"exit_code\":\"0\"}",
+  check(ev_lines.size() == 2 && ev_lines[1] == "game_finished {\"exit_code\":\"0\"}",
         "C-ABI fixture logged game_finished payload verbatim");
   engine::EventBus::instance().clear();
 

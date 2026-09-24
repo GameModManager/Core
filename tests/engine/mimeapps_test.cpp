@@ -21,155 +21,159 @@
 
 namespace fs = std::filesystem;
 
-
 namespace {
-void check(bool cond, const char* what) {
-    INFO(what);
-    REQUIRE(cond);
+void check(bool cond, const char *what) {
+  INFO(what);
+  REQUIRE(cond);
 }
-}
+}  // namespace
 
-static std::string read_file(const fs::path& p) {
-    std::ifstream f(p);
-    return std::string(std::istreambuf_iterator<char>(f),
-                       std::istreambuf_iterator<char>());
+static std::string read_file(const fs::path &p) {
+  std::ifstream f(p);
+  return std::string(std::istreambuf_iterator<char>(f),
+                     std::istreambuf_iterator<char>());
 }
 
 // Mirrors the real-world stale state: the generic config already names
 // gamemodmanager, but the KDE-specific file still pins amethyst and carries a
 // spec-invalid [Added Associations] group (the GIO warning).
-static void seed_isolated_home(const fs::path& root) {
-    fs::create_directories(root / ".config");
-    fs::create_directories(root / ".local/share/applications");
+static void seed_isolated_home(const fs::path &root) {
+  fs::create_directories(root / ".config");
+  fs::create_directories(root / ".local/share/applications");
 
-    {
-        std::ofstream f(root / ".config" / "mimeapps.list");
-        f << "[Added Associations]\n"
-          << "text/plain=org.kde.kwrite.desktop;\n"
-          << "x-scheme-handler/nxm=gamemodmanager-nxm.desktop;\n"
-          << "\n"
-          << "[Default Applications]\n"
-          << "application/pdf=app.zen_browser.zen.desktop;\n"
-          << "x-scheme-handler/nxm=gamemodmanager-nxm.desktop\n"
-          << "\n"
-          << "[Removed Associations]\n"
-          << "inode/directory=org.kde.kate.desktop;\n";
-    }
-    {
-        std::ofstream f(root / ".config" / "kde-mimeapps.list");
-        f << "[Default Applications]\n"
-          << "\n"
-          << "x-scheme-handler/nxm=amethystmodmanager-nxm.desktop\n"
-          << "[Added Associations]\n"
-          << "x-scheme-handler/nxm=amethystmodmanager-nxm.desktop\n";
-    }
-    {
-        std::ofstream f(root / ".local/share/applications" / "mimeapps.list");
-        f << "[Default Applications]\n"
-          << "x-scheme-handler/modl=com.fluorine.manager.nxm-handler.desktop;\n"
-          << "\n"
-          << "x-scheme-handler/nxm=amethystmodmanager-nxm.desktop\n"
-          << "[Added Associations]\n"
-          << "x-scheme-handler/modl=com.fluorine.manager.nxm-handler.desktop;\n"
-          << "x-scheme-handler/nxm=amethystmodmanager-nxm.desktop\n";
-    }
+  {
+    std::ofstream f(root / ".config" / "mimeapps.list");
+    f << "[Added Associations]\n"
+      << "text/plain=org.kde.kwrite.desktop;\n"
+      << "x-scheme-handler/nxm=gamemodmanager-nxm.desktop;\n"
+      << "\n"
+      << "[Default Applications]\n"
+      << "application/pdf=app.zen_browser.zen.desktop;\n"
+      << "x-scheme-handler/nxm=gamemodmanager-nxm.desktop\n"
+      << "\n"
+      << "[Removed Associations]\n"
+      << "inode/directory=org.kde.kate.desktop;\n";
+  }
+  {
+    std::ofstream f(root / ".config" / "kde-mimeapps.list");
+    f << "[Default Applications]\n"
+      << "\n"
+      << "x-scheme-handler/nxm=amethystmodmanager-nxm.desktop\n"
+      << "[Added Associations]\n"
+      << "x-scheme-handler/nxm=amethystmodmanager-nxm.desktop\n";
+  }
+  {
+    std::ofstream f(root / ".local/share/applications" / "mimeapps.list");
+    f << "[Default Applications]\n"
+      << "x-scheme-handler/modl=com.fluorine.manager.nxm-handler.desktop;\n"
+      << "\n"
+      << "x-scheme-handler/nxm=amethystmodmanager-nxm.desktop\n"
+      << "[Added Associations]\n"
+      << "x-scheme-handler/modl=com.fluorine.manager.nxm-handler.desktop;\n"
+      << "x-scheme-handler/nxm=amethystmodmanager-nxm.desktop\n";
+  }
 }
 
 TEST_CASE("mimeapps", "[engine]") {
-    const std::string old_home = std::getenv("HOME") ? std::getenv("HOME") : "";
-    const fs::path root =
-        fs::temp_directory_path() / ("gmm_mimeapps_test_" + std::to_string(::getpid()));
-    seed_isolated_home(root);
+  const std::string old_home = std::getenv("HOME") ? std::getenv("HOME") : "";
+  const fs::path root =
+      fs::temp_directory_path() / ("gmm_mimeapps_test_" + std::to_string(::getpid()));
+  seed_isolated_home(root);
 
-    ::setenv("HOME", root.c_str(), 1);
-    ::setenv("XDG_CONFIG_HOME", (root / ".config").c_str(), 1);
-    ::setenv("XDG_DATA_HOME", (root / ".local/share").c_str(), 1);
-    ::setenv("XDG_CURRENT_DESKTOP", "KDE", 1);
+  ::setenv("HOME", root.c_str(), 1);
+  ::setenv("XDG_CONFIG_HOME", (root / ".config").c_str(), 1);
+  ::setenv("XDG_DATA_HOME", (root / ".local/share").c_str(), 1);
+  ::setenv("XDG_CURRENT_DESKTOP", "KDE", 1);
 
-    // 1. Stale KDE state must be detected as NOT registered.
-    check(!engine::LinuxPlatform::is_nxm_handler_registered(),
-          "detected NOT registered while kde-mimeapps.list pins amethyst");
+  // 1. Stale KDE state must be detected as NOT registered.
+  check(!engine::LinuxPlatform::is_nxm_handler_registered(),
+        "detected NOT registered while kde-mimeapps.list pins amethyst");
 
-    // 2. Registration must fix all three mimeapps files.
-    check(engine::LinuxPlatform::register_nxm_handler(root / "gamemodmanager"),
-          "register_nxm_handler succeeds");
-    check(fs::exists(root / ".local/share/applications/gamemodmanager-nxm.desktop"),
-          "nxm desktop file written");
+  // 2. Registration must fix all three mimeapps files.
+  check(engine::LinuxPlatform::register_nxm_handler(root / "gamemodmanager"),
+        "register_nxm_handler succeeds");
+  check(fs::exists(root / ".local/share/applications/gamemodmanager-nxm.desktop"),
+        "nxm desktop file written");
 
-    const std::string kde = read_file(root / ".config/kde-mimeapps.list");
-    check(kde.find("x-scheme-handler/nxm=gamemodmanager-nxm.desktop") != std::string::npos,
-          "kde-mimeapps.list default updated to gamemodmanager");
-    check(kde.find("amethystmodmanager-nxm.desktop") == std::string::npos,
-          "kde-mimeapps.list no longer pins amethyst");
-    check(kde.find("[Added Associations]") == std::string::npos,
-          "kde-mimeapps.list invalid [Added Associations] group dropped");
+  const std::string kde = read_file(root / ".config/kde-mimeapps.list");
+  check(kde.find("x-scheme-handler/nxm=gamemodmanager-nxm.desktop") !=
+            std::string::npos,
+        "kde-mimeapps.list default updated to gamemodmanager");
+  check(kde.find("amethystmodmanager-nxm.desktop") == std::string::npos,
+        "kde-mimeapps.list no longer pins amethyst");
+  check(kde.find("[Added Associations]") == std::string::npos,
+        "kde-mimeapps.list invalid [Added Associations] group dropped");
 
-    const std::string generic = read_file(root / ".config/mimeapps.list");
-    check(generic.find("x-scheme-handler/nxm=gamemodmanager-nxm.desktop") != std::string::npos,
-          "generic mimeapps.list keeps gamemodmanager default");
-    check(generic.find("application/pdf=app.zen_browser.zen.desktop;") != std::string::npos,
-          "generic mimeapps.list unrelated Default Applications preserved");
-    check(generic.find("text/plain=org.kde.kwrite.desktop;") != std::string::npos,
-          "generic mimeapps.list unrelated Added Associations preserved");
-    check(generic.find("org.kde.kate.desktop") != std::string::npos,
-          "generic mimeapps.list Removed Associations preserved");
+  const std::string generic = read_file(root / ".config/mimeapps.list");
+  check(generic.find("x-scheme-handler/nxm=gamemodmanager-nxm.desktop") !=
+            std::string::npos,
+        "generic mimeapps.list keeps gamemodmanager default");
+  check(generic.find("application/pdf=app.zen_browser.zen.desktop;") !=
+            std::string::npos,
+        "generic mimeapps.list unrelated Default Applications preserved");
+  check(generic.find("text/plain=org.kde.kwrite.desktop;") != std::string::npos,
+        "generic mimeapps.list unrelated Added Associations preserved");
+  check(generic.find("org.kde.kate.desktop") != std::string::npos,
+        "generic mimeapps.list Removed Associations preserved");
 
-    const std::string data = read_file(root / ".local/share/applications/mimeapps.list");
-    check(data.find("x-scheme-handler/nxm=gamemodmanager-nxm.desktop") != std::string::npos,
-          "data mimeapps.list default updated to gamemodmanager");
-    check(data.find("amethystmodmanager-nxm.desktop") == std::string::npos,
-          "data mimeapps.list no longer pins amethyst");
-    check(data.find("com.fluorine.manager.nxm-handler.desktop") != std::string::npos,
-          "data mimeapps.list unrelated entries preserved");
+  const std::string data = read_file(root / ".local/share/applications/mimeapps.list");
+  check(data.find("x-scheme-handler/nxm=gamemodmanager-nxm.desktop") !=
+            std::string::npos,
+        "data mimeapps.list default updated to gamemodmanager");
+  check(data.find("amethystmodmanager-nxm.desktop") == std::string::npos,
+        "data mimeapps.list no longer pins amethyst");
+  check(data.find("com.fluorine.manager.nxm-handler.desktop") != std::string::npos,
+        "data mimeapps.list unrelated entries preserved");
 
-    // 3. Detection now sees us as the default.
-    // The file-based check must pass. The runtime check (xdg-mime query default)
-    // may not see the test's isolated HOME in all environments (it also reads
-    // system-wide directories), so we verify the file-based logic directly here.
-    // The runtime cross-check is validated in integration tests with a real session.
-    const std::string value = engine::LinuxPlatform::nxm_file_based_default_handler();
-    check(!value.empty(), "file-based check: scheme has a default");
-    const auto first = value.substr(0, value.find(';'));
-    check(first == "gamemodmanager-nxm.desktop",
-          "file-based check: default is gamemodmanager-nxm.desktop");
+  // 3. Detection now sees us as the default.
+  // The file-based check must pass. The runtime check (xdg-mime query default)
+  // may not see the test's isolated HOME in all environments (it also reads
+  // system-wide directories), so we verify the file-based logic directly here.
+  // The runtime cross-check is validated in integration tests with a real session.
+  const std::string value = engine::LinuxPlatform::nxm_file_based_default_handler();
+  check(!value.empty(), "file-based check: scheme has a default");
+  const auto first = value.substr(0, value.find(';'));
+  check(first == "gamemodmanager-nxm.desktop",
+        "file-based check: default is gamemodmanager-nxm.desktop");
 
-    // Also verify the public API returns true when runtime check is bypassed
-    // (in a real session with proper isolation, the full API would also pass).
-    // Note: is_nxm_handler_registered() includes the runtime cross-check which
-    // may fail in this isolated test environment.
+  // Also verify the public API returns true when runtime check is bypassed
+  // (in a real session with proper isolation, the full API would also pass).
+  // Note: is_nxm_handler_registered() includes the runtime cross-check which
+  // may fail in this isolated test environment.
 
-    // 4. gmm:// scheme gets the same treatment.
-    check(engine::LinuxPlatform::register_gmm_handler(root / "gamemodmanager"),
-          "register_gmm_handler succeeds");
-    // Verify file-based check for gmm (runtime check may see system entries)
-    const std::string gmm_value = engine::LinuxPlatform::gmm_file_based_default_handler();
-    check(!gmm_value.empty(), "gmm file-based check: scheme has a default");
-    const auto gmm_first = gmm_value.substr(0, gmm_value.find(';'));
-    check(gmm_first == "gamemodmanager-gmm.desktop",
-          "gmm handler registered after registration (file-based)");
-    const std::string kde2 = read_file(root / ".config/kde-mimeapps.list");
-    check(kde2.find("x-scheme-handler/gmm=gamemodmanager-gmm.desktop") != std::string::npos,
-          "kde-mimeapps.list gmm default set");
+  // 4. gmm:// scheme gets the same treatment.
+  check(engine::LinuxPlatform::register_gmm_handler(root / "gamemodmanager"),
+        "register_gmm_handler succeeds");
+  // Verify file-based check for gmm (runtime check may see system entries)
+  const std::string gmm_value = engine::LinuxPlatform::gmm_file_based_default_handler();
+  check(!gmm_value.empty(), "gmm file-based check: scheme has a default");
+  const auto gmm_first = gmm_value.substr(0, gmm_value.find(';'));
+  check(gmm_first == "gamemodmanager-gmm.desktop",
+        "gmm handler registered after registration (file-based)");
+  const std::string kde2 = read_file(root / ".config/kde-mimeapps.list");
+  check(kde2.find("x-scheme-handler/gmm=gamemodmanager-gmm.desktop") !=
+            std::string::npos,
+        "kde-mimeapps.list gmm default set");
 
-    // 5. Non-KDE desktops resolve from the generic file.
-    // The file-based check should work regardless of desktop. The runtime check
-    // may see system-wide entries in this isolated environment.
-    ::setenv("XDG_CURRENT_DESKTOP", "GNOME", 1);
-    const std::string value_gnome = engine::LinuxPlatform::nxm_file_based_default_handler();
-    check(!value_gnome.empty(), "file-based check works on non-KDE desktops");
-    const auto first_gnome = value_gnome.substr(0, value_gnome.find(';'));
-    check(first_gnome == "gamemodmanager-nxm.desktop",
-          "detection works on non-KDE desktops (generic file)");
+  // 5. Non-KDE desktops resolve from the generic file.
+  // The file-based check should work regardless of desktop. The runtime check
+  // may see system-wide entries in this isolated environment.
+  ::setenv("XDG_CURRENT_DESKTOP", "GNOME", 1);
+  const std::string value_gnome =
+      engine::LinuxPlatform::nxm_file_based_default_handler();
+  check(!value_gnome.empty(), "file-based check works on non-KDE desktops");
+  const auto first_gnome = value_gnome.substr(0, value_gnome.find(';'));
+  check(first_gnome == "gamemodmanager-nxm.desktop",
+        "detection works on non-KDE desktops (generic file)");
 
-    // Restore the environment.
-    ::unsetenv("XDG_CURRENT_DESKTOP");
-    ::unsetenv("XDG_DATA_HOME");
-    ::unsetenv("XDG_CONFIG_HOME");
-    if (!old_home.empty()) {
-        ::setenv("HOME", old_home.c_str(), 1);
-    }
+  // Restore the environment.
+  ::unsetenv("XDG_CURRENT_DESKTOP");
+  ::unsetenv("XDG_DATA_HOME");
+  ::unsetenv("XDG_CONFIG_HOME");
+  if (!old_home.empty()) {
+    ::setenv("HOME", old_home.c_str(), 1);
+  }
 
-    std::error_code cleanup_ec;
-    fs::remove_all(root, cleanup_ec);
-
+  std::error_code cleanup_ec;
+  fs::remove_all(root, cleanup_ec);
 }

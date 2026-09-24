@@ -21,36 +21,36 @@
 
 namespace engine::Source::Nexus::Http {
 
-bool nexus_http_request(const std::string& url,
-                        const std::string& post_body,
-                        std::string& response_body,
-                        long& http_code,
-                        curl_slist* headers,
-                        std::string* response_headers,
+bool nexus_http_request(const std::string &url, const std::string &post_body,
+                        std::string &response_body, long &http_code,
+                        curl_slist *headers, std::string *response_headers,
                         long timeout_seconds) {
-    network::Request req;
-    req.url = url;
-    req.caller = NET_CALLER;
-    req.timeout = std::chrono::seconds(timeout_seconds);
-    req.body = post_body;
-    if (!post_body.empty()) req.method = network::Method::Post;
+  network::Request req;
+  req.url     = url;
+  req.caller  = NET_CALLER;
+  req.timeout = std::chrono::seconds(timeout_seconds);
+  req.body    = post_body;
+  if (!post_body.empty())
+    req.method = network::Method::Post;
 
-    // Walk the legacy curl_slist and turn it into Network:: Headers. Each
-    // entry is a "Name: value" line; the network manager will redact at log
-    // time so secrets never reach the ring buffer.
-    if (headers) {
-        for (curl_slist* h = headers; h != nullptr; h = h->next) {
-            if (h->data) req.headers.emplace_back(h->data);
-        }
+  // Walk the legacy curl_slist and turn it into Network:: Headers. Each
+  // entry is a "Name: value" line; the network manager will redact at log
+  // time so secrets never reach the ring buffer.
+  if (headers) {
+    for (curl_slist *h = headers; h != nullptr; h = h->next) {
+      if (h->data)
+        req.headers.emplace_back(h->data);
     }
+  }
 
-    auto resp = network::instance().request(req);
-    response_body = std::move(resp.body);
-    http_code = resp.http_code;
-    if (response_headers) *response_headers = std::move(resp.response_headers);
-    // Surface the libcurl error string for diagnostics; Network:: sets it on
-    // transport failures, so the caller can still log it.
-    return resp.error.empty() && resp.http_code > 0;
+  auto resp     = network::instance().request(req);
+  response_body = std::move(resp.body);
+  http_code     = resp.http_code;
+  if (response_headers)
+    *response_headers = std::move(resp.response_headers);
+  // Surface the libcurl error string for diagnostics; Network:: sets it on
+  // transport failures, so the caller can still log it.
+  return resp.error.empty() && resp.http_code > 0;
 }
 
-} // namespace engine::Source::Nexus::Http
+}  // namespace engine::Source::Nexus::Http

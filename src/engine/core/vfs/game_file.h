@@ -19,9 +19,7 @@ class PathResolver;
 //   about.
 class GameFile {
 public:
-  [[nodiscard]] const std::filesystem::path &absolute() const {
-    return absolute_;
-  }
+  [[nodiscard]] const std::filesystem::path &absolute() const { return absolute_; }
   [[nodiscard]] const std::string &normalized() const { return normalized_; }
   [[nodiscard]] const std::string &logical() const { return logical_; }
 
@@ -44,4 +42,4 @@ private:
   std::string logical_;
 };
 
-} // namespace engine::vfs
+}  // namespace engine::vfs

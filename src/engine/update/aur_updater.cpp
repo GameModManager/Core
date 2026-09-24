@@ -12,18 +12,18 @@ namespace engine::update {
 
 namespace {
 
-// Find the AUR helper (yay or paru) on PATH.
-std::string find_aur_helper() {
-  int rc = std::system("which yay >/dev/null 2>&1");
-  if (rc == 0)
-    return "yay";
-  rc = std::system("which paru >/dev/null 2>&1");
-  if (rc == 0)
-    return "paru";
-  return {};
-}
+  // Find the AUR helper (yay or paru) on PATH.
+  std::string find_aur_helper() {
+    int rc = std::system("which yay >/dev/null 2>&1");
+    if (rc == 0)
+      return "yay";
+    rc = std::system("which paru >/dev/null 2>&1");
+    if (rc == 0)
+      return "paru";
+    return {};
+  }
 
-} // namespace
+}  // namespace
 
 std::unique_ptr<SelfUpdater> create_aur_updater() {
   return std::make_unique<AurUpdater>();
@@ -56,18 +56,17 @@ AurUpdater::install_update(const UpdateInfo &info,
 
   // -Ss to search, -S to install. Use --noconfirm for non-interactive.
   std::string cmd = helper + " -S gamemodmanager --noconfirm 2>&1";
-  int rc = std::system(cmd.c_str());
+  int rc          = std::system(cmd.c_str());
 
   if (progress_cb)
     progress_cb(1.0f);
 
   if (rc != 0) {
-    result.error_message =
-        helper + " install failed (exit " + std::to_string(rc) + ")";
+    result.error_message = helper + " install failed (exit " + std::to_string(rc) + ")";
     return result;
   }
 
-  result.success = true;
+  result.success          = true;
   result.requires_restart = true;
   return result;
 }
@@ -81,6 +80,6 @@ void AurUpdater::restart() {
   std::exit(0);
 }
 
-} // namespace engine::update
+}  // namespace engine::update
 
-#endif // __linux__
+#endif  // __linux__

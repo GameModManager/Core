@@ -19,53 +19,55 @@ namespace engine {
 
 class FomodFileStateResolver {
 public:
-    virtual ~FomodFileStateResolver() = default;
-    // The MO2-equivalent state of a file: Active (present + enabled), Inactive
-    // (present + disabled), Missing (not present in the merged view).
-    virtual FileDependencyTypeEnum file_state(const std::string& fileName) = 0;
+  virtual ~FomodFileStateResolver() = default;
+  // The MO2-equivalent state of a file: Active (present + enabled), Inactive
+  // (present + disabled), Missing (not present in the merged view).
+  virtual FileDependencyTypeEnum file_state(const std::string &fileName) = 0;
 };
 
 class FomodGameVersionProvider {
 public:
-    virtual ~FomodGameVersionProvider() = default;
-    // The game's version string (e.g. "1.6.640"). Compared lexicographically
-    // against gameDependency versions, matching MO2 behavior.
-    virtual std::string game_version() = 0;
+  virtual ~FomodGameVersionProvider() = default;
+  // The game's version string (e.g. "1.6.640"). Compared lexicographically
+  // against gameDependency versions, matching MO2 behavior.
+  virtual std::string game_version() = 0;
 };
 
 class FomodConditionTester {
 public:
-    FomodConditionTester(FomodFileStateResolver* fileStateResolver,
-        FomodGameVersionProvider* gameVersionProvider)
-        : mFileStateResolver(fileStateResolver)
-        , mGameVersionProvider(gameVersionProvider)
-    {
-    }
+  FomodConditionTester(FomodFileStateResolver *fileStateResolver,
+                       FomodGameVersionProvider *gameVersionProvider)
+      : mFileStateResolver(fileStateResolver),
+        mGameVersionProvider(gameVersionProvider) {}
 
-    bool isStepVisible(const std::shared_ptr<FlagMap>& flags, const CompositeDependency& compositeDependency,
-        int stepIndex, const std::vector<std::shared_ptr<StepViewModel>>& steps) const;
+  bool isStepVisible(const std::shared_ptr<FlagMap> &flags,
+                     const CompositeDependency &compositeDependency, int stepIndex,
+                     const std::vector<std::shared_ptr<StepViewModel>> &steps) const;
 
-    bool testCompositeDependency(
-        const std::shared_ptr<FlagMap>& flags, const CompositeDependency& compositeDependency) const;
+  bool testCompositeDependency(const std::shared_ptr<FlagMap> &flags,
+                               const CompositeDependency &compositeDependency) const;
 
-    static bool testFlagDependency(const std::shared_ptr<FlagMap>& flags, const FlagDependency& flagDependency);
+  static bool testFlagDependency(const std::shared_ptr<FlagMap> &flags,
+                                 const FlagDependency &flagDependency);
 
-    [[nodiscard]] bool testFileDependency(const FileDependency& fileDependency) const;
+  [[nodiscard]] bool testFileDependency(const FileDependency &fileDependency) const;
 
-    bool testGameDependency(const GameDependency& gameDependency) const;
+  bool testGameDependency(const GameDependency &gameDependency) const;
 
-    [[nodiscard]] PluginTypeEnum getPluginTypeDescriptorState(
-        const std::shared_ptr<Plugin>& plugin, const std::shared_ptr<FlagMap>& flags) const;
+  [[nodiscard]] PluginTypeEnum
+  getPluginTypeDescriptorState(const std::shared_ptr<Plugin> &plugin,
+                               const std::shared_ptr<FlagMap> &flags) const;
 
 private:
-    FomodFileStateResolver* mFileStateResolver;
-    FomodGameVersionProvider* mGameVersionProvider;
+  FomodFileStateResolver *mFileStateResolver;
+  FomodGameVersionProvider *mGameVersionProvider;
 
-    friend class FomodViewModel;
+  friend class FomodViewModel;
 
-    [[nodiscard]] FileDependencyTypeEnum getFileDependencyState(const std::string& fileName) const;
+  [[nodiscard]] FileDependencyTypeEnum
+  getFileDependencyState(const std::string &fileName) const;
 
-    mutable std::unordered_map<std::string, FileDependencyTypeEnum> fileDependencyCache;
+  mutable std::unordered_map<std::string, FileDependencyTypeEnum> fileDependencyCache;
 };
 
 }  // namespace engine

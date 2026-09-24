@@ -18,17 +18,17 @@ namespace {
 
 std::atomic<int> g_counter{0};
 
-fs::path make_temp_dir(const char* tag) {
-  const std::string name =
-      "gmm_pack_state_" + std::string(tag) + "_" + std::to_string(getpid()) + "_" +
-      std::to_string(g_counter.fetch_add(1));
-  auto dir = fs::temp_directory_path() / name;
+fs::path make_temp_dir(const char *tag) {
+  const std::string name = "gmm_pack_state_" + std::string(tag) + "_" +
+                           std::to_string(getpid()) + "_" +
+                           std::to_string(g_counter.fetch_add(1));
+  auto dir               = fs::temp_directory_path() / name;
   fs::remove_all(dir);
   fs::create_directories(dir);
   return dir;
 }
 
-void write_text(const fs::path& path, const std::string& content) {
+void write_text(const fs::path &path, const std::string &content) {
   std::ofstream out(path, std::ios::binary | std::ios::trunc);
   out.write(content.data(), static_cast<std::streamsize>(content.size()));
 }
@@ -98,7 +98,7 @@ TEST_CASE("installed pack state - resolved mod roundtrip", "[engine]") {
   state.set_pack("pack-1", 4);
   state.record_pack_version("skyui", 67890, "1.4.2", "sha256:abc", 4);
 
-  const auto* e = state.resolved_mod("skyui");
+  const auto *e = state.resolved_mod("skyui");
   REQUIRE(e != nullptr);
   REQUIRE(e->origin == PackModOrigin::Pack);
   REQUIRE(e->presence == PackModPresence::Installed);
@@ -115,7 +115,7 @@ TEST_CASE("installed pack state - resolved mod roundtrip", "[engine]") {
 
   InstalledPackState reloaded(root);
   REQUIRE(reloaded.load());
-  const auto* r = reloaded.resolved_mod("skyui");
+  const auto *r = reloaded.resolved_mod("skyui");
   REQUIRE(r != nullptr);
   REQUIRE(r->origin == PackModOrigin::Pack);
   REQUIRE(r->presence == PackModPresence::Installed);
@@ -211,7 +211,7 @@ TEST_CASE("installed pack state - generated mods", "[engine]") {
   const fs::path root = make_temp_dir("generated");
   InstalledPackState state(root);
   state.mark_generated("nemesis-output", "nemesis");
-  const auto* e = state.resolved_mod("nemesis-output");
+  const auto *e = state.resolved_mod("nemesis-output");
   REQUIRE(e->origin == PackModOrigin::Generated);
   REQUIRE(e->produced_by == "nemesis");
   // Generated output still participates in updates and the tree.
@@ -221,7 +221,7 @@ TEST_CASE("installed pack state - generated mods", "[engine]") {
 
   InstalledPackState reloaded(root);
   REQUIRE(reloaded.load());
-  const auto* r = reloaded.resolved_mod("nemesis-output");
+  const auto *r = reloaded.resolved_mod("nemesis-output");
   REQUIRE(r->origin == PackModOrigin::Generated);
   REQUIRE(r->produced_by == "nemesis");
 }

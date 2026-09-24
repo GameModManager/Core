@@ -21,8 +21,7 @@ class QLabel;
 class QProgressBar;
 class QTreeWidget;
 
-namespace ui
-{
+namespace ui {
 
 // Modpack export wizard: left sidebar (step list, ~30%) + right
 // QStackedWidget content + Cancel/Back/Next navigation.
@@ -36,12 +35,10 @@ namespace ui
 // create_gmmpack() a filtered snapshot copy. Per-row categories are
 // stored for reference (the engine currently exports all mods as
 // Optional).
-class ExportWizard : public QDialog
-{
+class ExportWizard : public QDialog {
   Q_OBJECT
 public:
-  enum class Step
-  {
+  enum class Step {
     Info,
     Mods,
     Executables,
@@ -49,21 +46,19 @@ public:
     Review,
   };
 
-  ExportWizard(const engine::InstanceSnapshot& snapshot, std::filesystem::path mods_dir,
-               QWidget* parent = nullptr);
+  ExportWizard(const engine::InstanceSnapshot &snapshot, std::filesystem::path mods_dir,
+               QWidget *parent = nullptr);
   ~ExportWizard() override = default;
 
 private:
-  struct StepState
-  {
+  struct StepState {
     Step id;
     QString title;
     bool skipped = false;
     bool visited = false;
   };
 
-  struct ModRow
-  {
+  struct ModRow {
     std::string folder;
     QString source;
     bool disabled             = false;
@@ -74,8 +69,7 @@ private:
     std::string update_policy = "latest";  // "latest" or "exact"
   };
 
-  struct ExeRow
-  {
+  struct ExeRow {
     int index = -1;
     QString title;
     QString path;
@@ -92,16 +86,16 @@ private:
   void on_next();
   void on_back();
   void on_cancel();
-  void on_step_clicked(QListWidgetItem* item);
+  void on_step_clicked(QListWidgetItem *item);
   void refresh_chrome();
   static QString step_title(Step step);
 
   // Page builders (one per step, in step order).
-  QWidget* build_info_page();
-  QWidget* build_mods_page();
-  QWidget* build_executables_page();
-  QWidget* build_tree_page();
-  QWidget* build_review_page();
+  QWidget *build_info_page();
+  QWidget *build_mods_page();
+  QWidget *build_executables_page();
+  QWidget *build_tree_page();
+  QWidget *build_review_page();
 
   // Per-page refresh / enter hooks.
   void on_page_entered(int index);
@@ -128,34 +122,34 @@ private:
   std::vector<ModRow> mods_;
   std::vector<ExeRow> exes_;
 
-  QListWidget* sidebar_     = nullptr;
-  QStackedWidget* stack_    = nullptr;
-  QPushButton* back_button_ = nullptr;
-  QPushButton* next_button_ = nullptr;
+  QListWidget *sidebar_     = nullptr;
+  QStackedWidget *stack_    = nullptr;
+  QPushButton *back_button_ = nullptr;
+  QPushButton *next_button_ = nullptr;
 
   // Step 1: pack metadata.
-  QLineEdit* name_edit_         = nullptr;
-  QLineEdit* author_edit_       = nullptr;
-  QTextEdit* desc_edit_         = nullptr;
-  QLineEdit* homepage_edit_     = nullptr;
-  QTextEdit* instructions_edit_ = nullptr;
+  QLineEdit *name_edit_         = nullptr;
+  QLineEdit *author_edit_       = nullptr;
+  QTextEdit *desc_edit_         = nullptr;
+  QLineEdit *homepage_edit_     = nullptr;
+  QTextEdit *instructions_edit_ = nullptr;
 
   // Step 2: mod review.
-  QTableWidget* mods_table_ = nullptr;
-  QLabel* mods_count_       = nullptr;
+  QTableWidget *mods_table_ = nullptr;
+  QLabel *mods_count_       = nullptr;
 
   // Step 3: executable selection.
-  QTableWidget* exes_table_ = nullptr;
+  QTableWidget *exes_table_ = nullptr;
 
   // Step 4: tree preview.
-  QTreeWidget* tree_    = nullptr;
-  QLabel* tree_summary_ = nullptr;
+  QTreeWidget *tree_    = nullptr;
+  QLabel *tree_summary_ = nullptr;
 
   // Step 5: review + export.
-  QLabel* review_summary_ = nullptr;
-  QLineEdit* output_edit_ = nullptr;
-  QLabel* status_label_   = nullptr;
-  QProgressBar* progress_ = nullptr;
+  QLabel *review_summary_ = nullptr;
+  QLineEdit *output_edit_ = nullptr;
+  QLabel *status_label_   = nullptr;
+  QProgressBar *progress_ = nullptr;
 };
 
 }  // namespace ui

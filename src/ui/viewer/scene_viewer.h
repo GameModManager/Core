@@ -11,16 +11,16 @@ namespace ui {
 // implement rendering in open() and surface it here so FileViewer keeps
 // routing mesh extensions to it. Until then it shows a friendly placeholder.
 class SceneViewer : public FileViewerWidget {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit SceneViewer(QWidget* parent = nullptr);
+  explicit SceneViewer(QWidget *parent = nullptr);
 
-    bool open(const QString& path) override;
-    void clear() override;
+  bool open(const QString &path) override;
+  void clear() override;
 
 private:
-    QLabel* name_label_ = nullptr;
-    QLabel* message_ = nullptr;
+  QLabel *name_label_ = nullptr;
+  QLabel *message_    = nullptr;
 };
 
 }  // namespace ui

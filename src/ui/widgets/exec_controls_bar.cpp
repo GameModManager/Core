@@ -34,17 +34,17 @@ struct PendingIcon {
 // Synchronous placeholder for an on-disk file: mirrors the tail of
 // extractExeIcon (QFileIconProvider, then the standard file icon). Fast -
 // no subprocess - so it is safe on the main thread.
-QIcon placeholderIcon(const QString& full_path) {
+QIcon placeholderIcon(const QString &full_path) {
   auto provider_icon = QFileIconProvider().icon(QFileInfo(full_path));
   if (!provider_icon.isNull())
     return provider_icon;
   return QApplication::style()->standardIcon(QStyle::SP_FileIcon);
 }
 
-PendingIcon resolveEntryIconFast(const ui::Executables::Entry& entry,
-                                 const std::filesystem::path& game_dir,
-                                 const std::filesystem::path& icon_cache_dir,
-                                 const std::filesystem::path& staging_dir) {
+PendingIcon resolveEntryIconFast(const ui::Executables::Entry &entry,
+                                 const std::filesystem::path &game_dir,
+                                 const std::filesystem::path &icon_cache_dir,
+                                 const std::filesystem::path &staging_dir) {
   PendingIcon out;
   if (!entry.icon_path.isEmpty()) {
     QPixmap pix(entry.icon_path);
@@ -108,9 +108,9 @@ PendingIcon resolveEntryIconFast(const ui::Executables::Entry& entry,
 
 namespace ui {
 
-QIcon extractExeIcon(const QString& exePath,
-                     const std::filesystem::path& icon_cache_dir) {
-  auto& log      = engine::Logger::instance();
+QIcon extractExeIcon(const QString &exePath,
+                     const std::filesystem::path &icon_cache_dir) {
+  auto &log      = engine::Logger::instance();
   auto exe_std   = exePath.toStdString();
   auto cache_key = QFileInfo(exePath).fileName() + ".ico";
   auto cache_path =
@@ -175,8 +175,8 @@ QIcon extractExeIcon(const QString& exePath,
   return QApplication::style()->standardIcon(QStyle::SP_FileIcon);
 }
 
-ExecControlsBar::ExecControlsBar(QWidget* parent) : QWidget(parent) {
-  auto* layout = new QGridLayout(this);
+ExecControlsBar::ExecControlsBar(QWidget *parent) : QWidget(parent) {
+  auto *layout = new QGridLayout(this);
   layout->setContentsMargins(4, 2, 4, 2);
   layout->setSpacing(4);
 
@@ -203,7 +203,7 @@ ExecControlsBar::ExecControlsBar(QWidget* parent) : QWidget(parent) {
   shortcut_btn_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
   shortcut_btn_->setPopupMode(QToolButton::MenuButtonPopup);
 
-  auto* shortcut_menu = new QMenu(this);
+  auto *shortcut_menu = new QMenu(this);
   shortcut_menu->addAction(tr("Shortcut to Toolbar"));
   shortcut_menu->addAction(tr("Shortcut to Desktop"));
   connect(shortcut_menu->actions()[0], &QAction::triggered, this,
@@ -241,7 +241,7 @@ ExecControlsBar::ExecControlsBar(QWidget* parent) : QWidget(parent) {
   // activated fires - making activated()'s index parameter unreliable for
   // detecting the sentinel in the entries-present case.
   connect(exec_combo_, &QComboBox::currentIndexChanged, this, [this](int index) {
-    auto& log = engine::Logger::instance();
+    auto &log = engine::Logger::instance();
     if (index < 0)
       return;
     if (exec_combo_->itemData(index).toJsonObject().isEmpty()) {
@@ -316,15 +316,15 @@ void ExecControlsBar::ensure_icon_worker() {
   icon_thread_->start();
 }
 
-void ExecControlsBar::request_async_icon(const QString& key, const QString& exe_path,
-                                         const QString& cache_file) {
+void ExecControlsBar::request_async_icon(const QString &key, const QString &exe_path,
+                                         const QString &cache_file) {
   if (key.isEmpty() || exe_path.isEmpty() || cache_file.isEmpty())
     return;
   ensure_icon_worker();
   emit request_extraction(key, exe_path, cache_file, icon_generation_);
 }
 
-void ExecControlsBar::on_exe_icon_ready(const QString& key, const QString& cache_file,
+void ExecControlsBar::on_exe_icon_ready(const QString &key, const QString &cache_file,
                                         bool ok, quint64 ticket) {
   // Stale (a rebuild bumped the generation) or failed (wrestool missing /
   // error): keep the placeholder - it is the same QFileIconProvider icon
@@ -351,7 +351,7 @@ QJsonObject ExecControlsBar::item_data(int index) const {
   return {};
 }
 
-void ExecControlsBar::set_item_data(int index, const QJsonObject& obj) {
+void ExecControlsBar::set_item_data(int index, const QJsonObject &obj) {
   exec_combo_->setItemData(index, QVariant(obj));
 }
 
@@ -385,8 +385,8 @@ QVector<Executables::Entry> ExecControlsBar::executable_entries() const {
   return entries;
 }
 
-void ExecControlsBar::add_executable(const QString& display_name,
-                                     const QString& rel_path, const QIcon& icon) {
+void ExecControlsBar::add_executable(const QString &display_name,
+                                     const QString &rel_path, const QIcon &icon) {
   Executables::Entry e;
   e.title        = display_name;
   e.path         = rel_path;
@@ -396,7 +396,7 @@ void ExecControlsBar::add_executable(const QString& display_name,
   exec_combo_->setCurrentIndex(insert_pos);
 }
 
-void ExecControlsBar::add_entry(const Executables::Entry& entry) {
+void ExecControlsBar::add_entry(const Executables::Entry &entry) {
   auto pending = resolveEntryIconFast(entry, game_dir_, icon_cache_dir_, staging_dir_);
 
   // Append at the end (after the sentinel) so the combo order matches the
@@ -428,7 +428,7 @@ void ExecControlsBar::clear_executables() {
   ++icon_generation_;
 }
 
-bool ExecControlsBar::select_executable(const QString& path) {
+bool ExecControlsBar::select_executable(const QString &path) {
   if (path.isEmpty())
     return false;
   for (int i = 1; i < exec_combo_->count(); ++i) {
@@ -440,11 +440,11 @@ bool ExecControlsBar::select_executable(const QString& path) {
   return false;
 }
 
-void ExecControlsBar::set_executables(const QStringList& names,
-                                      const QString& default_name,
-                                      const std::filesystem::path& game_dir,
-                                      const std::filesystem::path& icon_cache_dir,
-                                      const std::filesystem::path& staging_dir) {
+void ExecControlsBar::set_executables(const QStringList &names,
+                                      const QString &default_name,
+                                      const std::filesystem::path &game_dir,
+                                      const std::filesystem::path &icon_cache_dir,
+                                      const std::filesystem::path &staging_dir) {
   // Programmatic rebuild: suppress currentIndexChanged while resetting to
   // the bare sentinel so it never looks like a selection change.
   {

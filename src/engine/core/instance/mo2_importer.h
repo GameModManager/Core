@@ -24,7 +24,7 @@ struct Mo2ImportResult {
   bool success = false;
   std::string error;
   Instance instance;
-  int mods_imported = 0;
+  int mods_imported     = 0;
   int profiles_imported = 0;
   std::string mo2_game_name;
   std::string mapped_game_id;
@@ -35,4 +35,4 @@ Mo2ImportResult import_mo2_instance(const std::filesystem::path &mo2_dir,
                                     const std::filesystem::path &gmm_root,
                                     const std::string &display_name = "");
 
-} // namespace engine
+}  // namespace engine

@@ -44,4 +44,4 @@ PathResolverRegistry::PathResolverRegistry() {
     subs_.push_back(engine::EventBus::instance().subscribe(ev, handler));
 }
 
-} // namespace engine::vfs
+}  // namespace engine::vfs

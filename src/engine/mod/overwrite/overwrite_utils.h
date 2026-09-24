@@ -22,21 +22,21 @@ namespace engine {
 
 // A mod that provides a file, ordered for the sync dialog.
 struct OverwriteOwner {
-    std::string mod_id;   // mod folder name
-    int priority = 0;     // as recorded by the conflict engine
+  std::string mod_id;  // mod folder name
+  int priority = 0;    // as recorded by the conflict engine
 };
 
 // Per-file sync decision built by collect_overwrite_sync_files().
 struct OverwriteSyncFile {
-    std::string overwrite_rel;                 // game-root-relative path
-    std::vector<OverwriteOwner> owners;        // winner first, then alternatives
-    bool game_has_file = false;                // vanilla game copy exists
+  std::string overwrite_rel;           // game-root-relative path
+  std::vector<OverwriteOwner> owners;  // winner first, then alternatives
+  bool game_has_file = false;          // vanilla game copy exists
 };
 
 // One moved file in an applied sync plan.
 struct OverwriteSyncTarget {
-    std::string overwrite_rel;
-    std::string mod_folder;                    // destination mod folder ("" = don't sync)
+  std::string overwrite_rel;
+  std::string mod_folder;  // destination mod folder ("" = don't sync)
 };
 
 // Normalize an overwrite-relative (game-root-relative) path into the
@@ -48,51 +48,49 @@ struct OverwriteSyncTarget {
 // overwrite_to_mod_rel() (so a Skyrim "Data/..." file lands at the mod root).
 // Emptied overwrite dirs are pruned. Cross-device fallback (copy + remove).
 // Returns false on the first failure.
-bool move_overwrite_to_mod(const std::filesystem::path& overwrite_dir,
-                           const std::filesystem::path& mod_dir,
-                           const std::string& mods_subpath,
-                           bool include_mod_id = false,
-                           const std::string& mod_id = {});
+bool move_overwrite_to_mod(const std::filesystem::path &overwrite_dir,
+                           const std::filesystem::path &mod_dir,
+                           const std::string &mods_subpath, bool include_mod_id = false,
+                           const std::string &mod_id = {});
 
 // Move a single overwrite entry (file or directory, given as an absolute
 // path under overwrite_dir) into mod_dir. A mapping-root directory (e.g.
 // "Data") has its contents moved (MO2 ModList::dropLocalFiles semantics for
 // overwrite-origin drops); anything else moves wholesale. Returns false when
 // entry is not under overwrite_dir or the move fails.
-bool move_overwrite_entry_to_mod(const std::filesystem::path& overwrite_dir,
-                                 const std::filesystem::path& entry_path,
-                                 const std::filesystem::path& mod_dir,
-                                 const std::string& mods_subpath,
-                                 bool include_mod_id = false,
-                                 const std::string& mod_id = {});
+bool move_overwrite_entry_to_mod(const std::filesystem::path &overwrite_dir,
+                                 const std::filesystem::path &entry_path,
+                                 const std::filesystem::path &mod_dir,
+                                 const std::string &mods_subpath,
+                                 bool include_mod_id       = false,
+                                 const std::string &mod_id = {});
 
 // Move a single overwrite file into dest_mod_dir, removing any existing
 // destination first (MO2 SyncOverwriteDialog::applyTo). Returns false on
 // failure. Emptied overwrite dirs are pruned. include_mod_id / mod_id mirror
 // overwrite_to_mod_rel() for include_mod_id games (Isaac).
-bool sync_overwrite_file(const std::filesystem::path& overwrite_dir,
-                         const std::string& overwrite_rel,
-                         const std::filesystem::path& dest_mod_dir,
-                         const std::string& mods_subpath,
-                         bool include_mod_id = false,
-                         const std::string& mod_id = {});
+bool sync_overwrite_file(const std::filesystem::path &overwrite_dir,
+                         const std::string &overwrite_rel,
+                         const std::filesystem::path &dest_mod_dir,
+                         const std::string &mods_subpath, bool include_mod_id = false,
+                         const std::string &mod_id = {});
 
 // True when overwrite is effectively empty - an empty mod-mapping root dir
 // (mods_subpath, e.g. "Data") does not count as content (MO2
 // ModInfoOverwrite::isEmpty).
-bool overwrite_is_empty(const std::filesystem::path& overwrite_dir,
-                        const std::string& mods_subpath = {});
+bool overwrite_is_empty(const std::filesystem::path &overwrite_dir,
+                        const std::string &mods_subpath = {});
 
 // Clear overwrite. Contents of the mod-mapping root dir (mods_subpath) are
 // deleted but the root dir itself is kept; everything else is deleted whole
 // (MO2 ModListViewActions::clearOverwrite). All deletions go to the system
 // trash via engine::remove_path(). Returns true when the folder is gone/empty.
-bool clear_overwrite(const std::filesystem::path& overwrite_dir,
-                     const std::string& mods_subpath = {});
+bool clear_overwrite(const std::filesystem::path &overwrite_dir,
+                     const std::string &mods_subpath = {});
 
 // True when the game ships a regular file at the game-root-relative path.
-bool game_has_file(const std::filesystem::path& game_dir,
-                   const std::string& overwrite_rel);
+bool game_has_file(const std::filesystem::path &game_dir,
+                   const std::string &overwrite_rel);
 
 // Build the per-file sync decisions for "Sync to Mods...".
 //
@@ -105,13 +103,10 @@ bool game_has_file(const std::filesystem::path& game_dir,
 // with "<mods_subpath>/<mod-folder>/" stripped. A file with no mod owner but a
 // vanilla game copy gets game_has_file=true.
 std::vector<OverwriteSyncFile> collect_overwrite_sync_files(
-    const std::filesystem::path& overwrite_dir,
-    const std::filesystem::path& mods_dir,
-    const std::vector<std::pair<std::string, int>>& mod_infos,
-    const std::string& mods_subpath,
-    bool conflict_reversed,
-    bool include_mod_id = false,
-    const std::filesystem::path& game_dir = {});
+    const std::filesystem::path &overwrite_dir, const std::filesystem::path &mods_dir,
+    const std::vector<std::pair<std::string, int>> &mod_infos,
+    const std::string &mods_subpath, bool conflict_reversed,
+    bool include_mod_id = false, const std::filesystem::path &game_dir = {});
 
 // Apply a sync plan chosen by the dialog: for each target, move the overwrite
 // file into mods_dir/<target.mod_folder>/ (creating that mod folder and
@@ -121,12 +116,11 @@ std::vector<OverwriteSyncFile> collect_overwrite_sync_files(
 // from the path is the target's own mod_folder (Isaac convention). The dialog
 // resolves the game-origin destination to a concrete folder name before
 // calling.
-size_t apply_sync_plan(const std::vector<OverwriteSyncTarget>& targets,
-                       const std::filesystem::path& overwrite_dir,
-                       const std::filesystem::path& mods_dir,
-                       const std::string& mods_subpath,
-                       const std::string& metadata_file,
-                       bool include_mod_id = false);
+size_t apply_sync_plan(const std::vector<OverwriteSyncTarget> &targets,
+                       const std::filesystem::path &overwrite_dir,
+                       const std::filesystem::path &mods_dir,
+                       const std::string &mods_subpath,
+                       const std::string &metadata_file, bool include_mod_id = false);
 
 // Merge case-insensitive-duplicate directories in overwrite_dir so the folder
 // follows the SAME CI rule the deploy and conflict registry use
@@ -140,7 +134,6 @@ size_t apply_sync_plan(const std::vector<OverwriteSyncTarget>& targets,
 // deploy makes). Idempotent and cheap on an already-normalized tree (one
 // directory listing per dir, zero merges). Symlinks are never followed or
 // merged. Returns the number of directories merged away.
-std::size_t normalize_overwrite_casing(
-    const std::filesystem::path& overwrite_dir);
+std::size_t normalize_overwrite_casing(const std::filesystem::path &overwrite_dir);
 
 }  // namespace engine
