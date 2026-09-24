@@ -17,6 +17,19 @@ namespace Executables {
   struct Entry;
 }
 
+class TaskDialog;
+
+// Testable seams for the launch-failure details dialogs (Workspace-t373,
+// spawn-error parity): fill a TaskDialog for the two failure exits of
+// LaunchController::on_launch_params_prepared(). Both keep the exact
+// historical wording, re-tiered into the 3-tier hierarchy (flat text ->
+// main + content, executable path -> expandable details pane), with a
+// Warning icon (parity with the QMessageBox::warning calls they replace).
+// Acknowledgment-only: no command links are added, so the dialog falls back
+// to a single plain Ok. Shared between the controller and the dialog tests.
+void configure_executable_unreachable_dialog(TaskDialog &dlg, const QString &exec_path);
+void configure_launch_failed_dialog(TaskDialog &dlg, const QString &exec_path);
+
 // Snapshot of everything the Instance Options UI needs to construct itself,
 // gathered once from the current instance + game knowledge (instance_utils:
 // single source of truth for direct-symlink deploys). Shared by the popup
