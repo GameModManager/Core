@@ -25,16 +25,16 @@ namespace engine {
 enum class DeploySpace { Data, Root };
 
 struct ClassifiedPath {
-    DeploySpace space = DeploySpace::Data;
-    std::string display_path;  // path relative to the space's view root
+  DeploySpace space = DeploySpace::Data;
+  std::string display_path;  // path relative to the space's view root
 };
 
 // owners: (mod_id, priority) providers of rel_path, winner-first order is not
 // required (only membership in root_override_mods is consulted).
-ClassifiedPath classify_registry_path(
-    const std::string& rel_path,
-    const std::vector<std::pair<std::string, int>>& owners,
-    const std::unordered_set<std::string>& root_override_mods,
-    const std::string& deploy_prefix);
+ClassifiedPath
+classify_registry_path(const std::string &rel_path,
+                       const std::vector<std::pair<std::string, int>> &owners,
+                       const std::unordered_set<std::string> &root_override_mods,
+                       const std::string &deploy_prefix);
 
 }  // namespace engine

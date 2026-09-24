@@ -12,4 +12,4 @@ using SourceDownloadInfo = Source::SourceDownloadInfo;
 using SourceProvider     = Source::Interface;
 using SourceRegistry     = Source::Registry;
 
-} // namespace engine
+}  // namespace engine

@@ -14,7 +14,7 @@ struct LaunchParams {
   std::filesystem::path game_dir;
   std::filesystem::path overwrite_dir;
   uint32_t steam_appid = 0;
-  bool is_windows_exe = false;
+  bool is_windows_exe  = false;
 
   // Platform services (Steam/Proton discovery, prefix resolution, user dirs).
   // All platform-specific path resolution in the launch path goes through this.
@@ -81,7 +81,7 @@ struct LaunchParams {
 };
 
 struct LaunchResult {
-  int64_t pid = -1;
+  int64_t pid           = -1;
   bool overlay_launched = false;
   // Cgroup v2 path for reliable process tracking (empty = not available).
   // When non-empty, all game descendants are members of this cgroup.
@@ -123,7 +123,7 @@ void capture_overwrite(const std::filesystem::path &game_dir,
 // -- Cgroup v2 process tracking (primary) --------------------------------
 
 struct CgroupHandle {
-  std::string path; // empty = not available / delegation failed
+  std::string path;  // empty = not available / delegation failed
 };
 
 // Create a cgroup v2 directory under the user's delegated subtree.
@@ -163,4 +163,4 @@ void wait_for_process_group(int64_t pgid, int poll_ms = 500);
 // Used as fallback when cgroup delegation is unavailable.
 std::vector<int64_t> get_process_descendants(int64_t root_pid);
 
-} // namespace engine
+}  // namespace engine

@@ -25,178 +25,186 @@
 namespace fs = std::filesystem;
 
 namespace {
-void require(bool cond, const char* msg) {
-    INFO(msg);
-    REQUIRE(cond);
+void require(bool cond, const char *msg) {
+  INFO(msg);
+  REQUIRE(cond);
 }
-}
+}  // namespace
 
 TEST_CASE("instance path", "[engine]") {
-    using engine::Instance;
-    using engine::InstanceKind;
+  using engine::Instance;
+  using engine::InstanceKind;
 
-    const fs::path root = "/tmp/gmm_instance_path/instances/Test";
+  const fs::path root = "/tmp/gmm_instance_path/instances/Test";
 
-    // --- Defaults live under the instance root. ---
-    Instance inst = Instance::from_root(root);
-    require(inst.path_for(InstanceKind::Mods) == root / "mods",
-            "default mods dir is <root>/mods");
-    require(inst.path_for(InstanceKind::Downloads) == root / "downloads",
-            "default downloads dir is <root>/downloads");
-    require(inst.path_for(InstanceKind::Cache) == root / "cache",
-            "default cache dir is <root>/cache");
-    require(inst.path_for(InstanceKind::Profiles) == root / "profiles",
-            "default profiles dir is <root>/profiles");
-    require(inst.path_for(InstanceKind::Overwrite) == root / "overwrite",
-            "default overwrite dir is <root>/overwrite");
-    require(inst.path_for(InstanceKind::Plugins) == root / "plugins",
-            "default plugins dir is <root>/plugins");
+  // --- Defaults live under the instance root. ---
+  Instance inst = Instance::from_root(root);
+  require(inst.path_for(InstanceKind::Mods) == root / "mods",
+          "default mods dir is <root>/mods");
+  require(inst.path_for(InstanceKind::Downloads) == root / "downloads",
+          "default downloads dir is <root>/downloads");
+  require(inst.path_for(InstanceKind::Cache) == root / "cache",
+          "default cache dir is <root>/cache");
+  require(inst.path_for(InstanceKind::Profiles) == root / "profiles",
+          "default profiles dir is <root>/profiles");
+  require(inst.path_for(InstanceKind::Overwrite) == root / "overwrite",
+          "default overwrite dir is <root>/overwrite");
+  require(inst.path_for(InstanceKind::Plugins) == root / "plugins",
+          "default plugins dir is <root>/plugins");
 
-    // --- Overrides replace the defaults. ---
-    const fs::path mods = "/data/mods";
-    const fs::path dl = "/data/archives";
-    const fs::path cache = "/data/cache";
-    const fs::path profiles = "/data/profiles";
-    const fs::path overwrite = "/data/overwrite";
-    inst.set_path_override(InstanceKind::Mods, mods);
-    inst.set_path_override(InstanceKind::Downloads, dl);
-    inst.set_path_override(InstanceKind::Cache, cache);
-    inst.set_path_override(InstanceKind::Profiles, profiles);
-    inst.set_path_override(InstanceKind::Overwrite, overwrite);
-    require(inst.path_for(InstanceKind::Mods) == mods, "mods override wins");
-    require(inst.path_for(InstanceKind::Downloads) == dl, "downloads override wins");
-    require(inst.path_for(InstanceKind::Cache) == cache, "cache override wins");
-    require(inst.path_for(InstanceKind::Profiles) == profiles, "profiles override wins");
-    require(inst.path_for(InstanceKind::Overwrite) == overwrite, "overwrite override wins");
-    require(inst.path_for(InstanceKind::Plugins) == root / "plugins",
-            "non-overridable kinds keep the default");
-    require(inst.path_override(InstanceKind::Mods) == mods, "path_override returns the value");
-    require(inst.path_override(InstanceKind::Plugins).empty(),
-            "path_override is empty for non-overridable kinds");
+  // --- Overrides replace the defaults. ---
+  const fs::path mods      = "/data/mods";
+  const fs::path dl        = "/data/archives";
+  const fs::path cache     = "/data/cache";
+  const fs::path profiles  = "/data/profiles";
+  const fs::path overwrite = "/data/overwrite";
+  inst.set_path_override(InstanceKind::Mods, mods);
+  inst.set_path_override(InstanceKind::Downloads, dl);
+  inst.set_path_override(InstanceKind::Cache, cache);
+  inst.set_path_override(InstanceKind::Profiles, profiles);
+  inst.set_path_override(InstanceKind::Overwrite, overwrite);
+  require(inst.path_for(InstanceKind::Mods) == mods, "mods override wins");
+  require(inst.path_for(InstanceKind::Downloads) == dl, "downloads override wins");
+  require(inst.path_for(InstanceKind::Cache) == cache, "cache override wins");
+  require(inst.path_for(InstanceKind::Profiles) == profiles, "profiles override wins");
+  require(inst.path_for(InstanceKind::Overwrite) == overwrite,
+          "overwrite override wins");
+  require(inst.path_for(InstanceKind::Plugins) == root / "plugins",
+          "non-overridable kinds keep the default");
+  require(inst.path_override(InstanceKind::Mods) == mods,
+          "path_override returns the value");
+  require(inst.path_override(InstanceKind::Plugins).empty(),
+          "path_override is empty for non-overridable kinds");
 
-    // --- Cache-derived folders follow the cache override. ---
-    require(inst.path_for(InstanceKind::CacheArchives) == cache / "archives",
-            "archives follow the cache override");
-    require(inst.path_for(InstanceKind::CacheThumbnails) == cache / "thumbnails",
-            "thumbnails follow the cache override");
+  // --- Cache-derived folders follow the cache override. ---
+  require(inst.path_for(InstanceKind::CacheArchives) == cache / "archives",
+          "archives follow the cache override");
+  require(inst.path_for(InstanceKind::CacheThumbnails) == cache / "thumbnails",
+          "thumbnails follow the cache override");
 
-    // --- Clearing an override falls back to the default. ---
-    inst.set_path_override(InstanceKind::Cache, {});
-    require(inst.path_for(InstanceKind::Cache) == root / "cache",
-            "cleared cache override falls back to the default");
-    require(inst.path_for(InstanceKind::CacheArchives) == root / "cache" / "archives",
-            "cleared cache override resets archives default");
-    require(inst.path_override(InstanceKind::Cache).empty(), "cleared override reads empty");
-    inst.set_path_override(InstanceKind::Cache, cache);
+  // --- Clearing an override falls back to the default. ---
+  inst.set_path_override(InstanceKind::Cache, {});
+  require(inst.path_for(InstanceKind::Cache) == root / "cache",
+          "cleared cache override falls back to the default");
+  require(inst.path_for(InstanceKind::CacheArchives) == root / "cache" / "archives",
+          "cleared cache override resets archives default");
+  require(inst.path_override(InstanceKind::Cache).empty(),
+          "cleared override reads empty");
+  inst.set_path_override(InstanceKind::Cache, cache);
 
-    // --- instance.toml roundtrip. ---
-    fs::remove_all(root);
-    fs::create_directories(root);
-    require(inst.write_toml(), "write_toml succeeds");
+  // --- instance.toml roundtrip. ---
+  fs::remove_all(root);
+  fs::create_directories(root);
+  require(inst.write_toml(), "write_toml succeeds");
 
-    Instance read_back = Instance::from_root(root);
-    require(read_back.read_toml(), "read_toml succeeds");
-    require(read_back.path_for(InstanceKind::Mods) == mods, "mods override survives toml");
-    require(read_back.path_for(InstanceKind::Downloads) == dl, "downloads override survives toml");
-    require(read_back.path_for(InstanceKind::Cache) == cache, "cache override survives toml");
-    require(read_back.path_for(InstanceKind::Profiles) == profiles, "profiles override survives toml");
-    require(read_back.path_for(InstanceKind::Overwrite) == overwrite, "overwrite override survives toml");
-    require(read_back.path_for(InstanceKind::Plugins) == root / "plugins",
-            "non-overridden kinds stay default after roundtrip");
+  Instance read_back = Instance::from_root(root);
+  require(read_back.read_toml(), "read_toml succeeds");
+  require(read_back.path_for(InstanceKind::Mods) == mods,
+          "mods override survives toml");
+  require(read_back.path_for(InstanceKind::Downloads) == dl,
+          "downloads override survives toml");
+  require(read_back.path_for(InstanceKind::Cache) == cache,
+          "cache override survives toml");
+  require(read_back.path_for(InstanceKind::Profiles) == profiles,
+          "profiles override survives toml");
+  require(read_back.path_for(InstanceKind::Overwrite) == overwrite,
+          "overwrite override survives toml");
+  require(read_back.path_for(InstanceKind::Plugins) == root / "plugins",
+          "non-overridden kinds stay default after roundtrip");
 
-    // Only non-empty overrides are written.
-    Instance partial = Instance::from_root(root);
-    partial.info().game_id = "test_game";
-    partial.set_path_override(InstanceKind::Mods, mods);
-    require(partial.write_toml(), "partial write_toml succeeds");
-    Instance partial_back = Instance::from_root(root);
-    require(partial_back.read_toml(), "partial read_toml succeeds");
-    require(partial_back.path_for(InstanceKind::Mods) == mods, "mods override roundtrips");
-    require(partial_back.path_for(InstanceKind::Downloads) == root / "downloads",
-            "unset override stays default after write");
-    require(partial_back.info().game_id == "test_game",
-            "existing keys preserved alongside new override keys");
+  // Only non-empty overrides are written.
+  Instance partial       = Instance::from_root(root);
+  partial.info().game_id = "test_game";
+  partial.set_path_override(InstanceKind::Mods, mods);
+  require(partial.write_toml(), "partial write_toml succeeds");
+  Instance partial_back = Instance::from_root(root);
+  require(partial_back.read_toml(), "partial read_toml succeeds");
+  require(partial_back.path_for(InstanceKind::Mods) == mods,
+          "mods override roundtrips");
+  require(partial_back.path_for(InstanceKind::Downloads) == root / "downloads",
+          "unset override stays default after write");
+  require(partial_back.info().game_id == "test_game",
+          "existing keys preserved alongside new override keys");
 
-    // --- write_key surgical roundtrip (proton_runner). ---
-    Instance runner = Instance::from_root(root);
-    require(runner.write_key("proton_runner", "Proton 10.0"),
-            "write_key sets proton_runner");
-    Instance runner_back = Instance::from_root(root);
-    require(runner_back.read_toml(), "read_toml after write_key succeeds");
-    require(runner_back.info().proton_runner == "Proton 10.0",
-            "proton_runner roundtrips through toml");
-    require(runner_back.path_for(InstanceKind::Mods) == mods,
-            "write_key preserves existing override sections");
-    require(runner_back.info().game_id == "test_game",
-            "write_key preserves unrelated top-level keys");
+  // --- write_key surgical roundtrip (proton_runner). ---
+  Instance runner = Instance::from_root(root);
+  require(runner.write_key("proton_runner", "Proton 10.0"),
+          "write_key sets proton_runner");
+  Instance runner_back = Instance::from_root(root);
+  require(runner_back.read_toml(), "read_toml after write_key succeeds");
+  require(runner_back.info().proton_runner == "Proton 10.0",
+          "proton_runner roundtrips through toml");
+  require(runner_back.path_for(InstanceKind::Mods) == mods,
+          "write_key preserves existing override sections");
+  require(runner_back.info().game_id == "test_game",
+          "write_key preserves unrelated top-level keys");
 
-    // write_key with an absolute path survives too.
-    require(runner.write_key("proton_runner", "/opt/proton/proton"),
-            "write_key accepts absolute paths");
-    Instance abs_back = Instance::from_root(root);
-    require(abs_back.read_toml(), "read_toml after absolute write_key succeeds");
-    require(abs_back.info().proton_runner == "/opt/proton/proton",
-            "absolute proton_runner roundtrips");
+  // write_key with an absolute path survives too.
+  require(runner.write_key("proton_runner", "/opt/proton/proton"),
+          "write_key accepts absolute paths");
+  Instance abs_back = Instance::from_root(root);
+  require(abs_back.read_toml(), "read_toml after absolute write_key succeeds");
+  require(abs_back.info().proton_runner == "/opt/proton/proton",
+          "absolute proton_runner roundtrips");
 
-    // Empty value removes the key.
-    require(runner.write_key("proton_runner", ""), "write_key with empty value succeeds");
-    Instance cleared_back = Instance::from_root(root);
-    require(cleared_back.read_toml(), "read_toml after clearing succeeds");
-    require(cleared_back.info().proton_runner.empty(),
-            "cleared proton_runner reads empty");
+  // Empty value removes the key.
+  require(runner.write_key("proton_runner", ""), "write_key with empty value succeeds");
+  Instance cleared_back = Instance::from_root(root);
+  require(cleared_back.read_toml(), "read_toml after clearing succeeds");
+  require(cleared_back.info().proton_runner.empty(),
+          "cleared proton_runner reads empty");
 
-    // --- deploy_strategy: write_toml + write_key roundtrips. ---
-    Instance strat = Instance::from_root(root);
-    strat.info().deploy_strategy = "overlayfs";
-    require(strat.write_toml(), "write_toml with deploy_strategy succeeds");
-    Instance strat_back = Instance::from_root(root);
-    require(strat_back.read_toml(), "read_toml after deploy_strategy write succeeds");
-    require(strat_back.info().deploy_strategy == "overlayfs",
-            "deploy_strategy roundtrips through write_toml");
+  // --- deploy_strategy: write_toml + write_key roundtrips. ---
+  Instance strat               = Instance::from_root(root);
+  strat.info().deploy_strategy = "overlayfs";
+  require(strat.write_toml(), "write_toml with deploy_strategy succeeds");
+  Instance strat_back = Instance::from_root(root);
+  require(strat_back.read_toml(), "read_toml after deploy_strategy write succeeds");
+  require(strat_back.info().deploy_strategy == "overlayfs",
+          "deploy_strategy roundtrips through write_toml");
 
-    Instance strat_key = Instance::from_root(root);
-    require(strat_key.write_key("deploy_strategy", "symlink"),
-            "write_key sets deploy_strategy");
-    Instance strat_key_back = Instance::from_root(root);
-    require(strat_key_back.read_toml(), "read_toml after deploy_strategy write_key succeeds");
-    require(strat_key_back.info().deploy_strategy == "symlink",
-            "deploy_strategy roundtrips through write_key");
-    require(strat_key.write_key("deploy_strategy", ""),
-            "write_key with empty value clears deploy_strategy");
-    Instance strat_cleared = Instance::from_root(root);
-    require(strat_cleared.read_toml(), "read_toml after clearing deploy_strategy succeeds");
-    require(strat_cleared.info().deploy_strategy.empty(),
-            "cleared deploy_strategy reads empty");
+  Instance strat_key = Instance::from_root(root);
+  require(strat_key.write_key("deploy_strategy", "symlink"),
+          "write_key sets deploy_strategy");
+  Instance strat_key_back = Instance::from_root(root);
+  require(strat_key_back.read_toml(),
+          "read_toml after deploy_strategy write_key succeeds");
+  require(strat_key_back.info().deploy_strategy == "symlink",
+          "deploy_strategy roundtrips through write_key");
+  require(strat_key.write_key("deploy_strategy", ""),
+          "write_key with empty value clears deploy_strategy");
+  Instance strat_cleared = Instance::from_root(root);
+  require(strat_cleared.read_toml(),
+          "read_toml after clearing deploy_strategy succeeds");
+  require(strat_cleared.info().deploy_strategy.empty(),
+          "cleared deploy_strategy reads empty");
 
-    // --- last_tab roundtrip (Issue #21). ---
-    Instance tabbed = Instance::from_root(root);
-    tabbed.info().game_id = "test_game";
-    tabbed.info().last_tab = "plugins";
-    require(tabbed.write_toml(), "write_toml with last_tab succeeds");
-    Instance tabbed_back = Instance::from_root(root);
-    require(tabbed_back.read_toml(), "read_toml after last_tab write succeeds");
-    require(tabbed_back.info().last_tab == "plugins",
-            "last_tab roundtrips through toml");
-    require(tabbed_back.info().game_id == "test_game",
-            "last_tab write preserves unrelated top-level keys");
+  // --- last_tab roundtrip (Issue #21). ---
+  Instance tabbed        = Instance::from_root(root);
+  tabbed.info().game_id  = "test_game";
+  tabbed.info().last_tab = "plugins";
+  require(tabbed.write_toml(), "write_toml with last_tab succeeds");
+  Instance tabbed_back = Instance::from_root(root);
+  require(tabbed_back.read_toml(), "read_toml after last_tab write succeeds");
+  require(tabbed_back.info().last_tab == "plugins", "last_tab roundtrips through toml");
+  require(tabbed_back.info().game_id == "test_game",
+          "last_tab write preserves unrelated top-level keys");
 
-    // write_key surgical roundtrip for last_tab.
-    require(tabbed.write_key("last_tab", "downloads"),
-            "write_key sets last_tab");
-    Instance tab_key_back = Instance::from_root(root);
-    require(tab_key_back.read_toml(), "read_toml after last_tab write_key succeeds");
-    require(tab_key_back.info().last_tab == "downloads",
-            "last_tab write_key roundtrips through toml");
-    require(tab_key_back.info().game_id == "test_game",
-            "last_tab write_key preserves unrelated top-level keys");
+  // write_key surgical roundtrip for last_tab.
+  require(tabbed.write_key("last_tab", "downloads"), "write_key sets last_tab");
+  Instance tab_key_back = Instance::from_root(root);
+  require(tab_key_back.read_toml(), "read_toml after last_tab write_key succeeds");
+  require(tab_key_back.info().last_tab == "downloads",
+          "last_tab write_key roundtrips through toml");
+  require(tab_key_back.info().game_id == "test_game",
+          "last_tab write_key preserves unrelated top-level keys");
 
-    // Empty last_tab is not persisted; a fresh instance reads empty (defaults
-    // to the first tab).
-    require(tabbed.write_key("last_tab", ""), "write_key clears last_tab");
-    Instance tab_cleared = Instance::from_root(root);
-    require(tab_cleared.read_toml(), "read_toml after clearing last_tab succeeds");
-    require(tab_cleared.info().last_tab.empty(),
-            "cleared last_tab reads empty");
+  // Empty last_tab is not persisted; a fresh instance reads empty (defaults
+  // to the first tab).
+  require(tabbed.write_key("last_tab", ""), "write_key clears last_tab");
+  Instance tab_cleared = Instance::from_root(root);
+  require(tab_cleared.read_toml(), "read_toml after clearing last_tab succeeds");
+  require(tab_cleared.info().last_tab.empty(), "cleared last_tab reads empty");
 }
 
 // Workspace-4fu: user-chosen instance names. The display name is sanitized
@@ -204,54 +212,51 @@ TEST_CASE("instance path", "[engine]") {
 // name fails, and creating over an existing instance.toml is refused instead
 // of clobbering it.
 TEST_CASE("create_instance_for_game custom display name", "[engine]") {
-    using engine::Instance;
+  using engine::Instance;
 
-    const fs::path instances_root = "/tmp/gmm_instance_path/wk4fu_instances";
-    fs::remove_all(instances_root);
+  const fs::path instances_root = "/tmp/gmm_instance_path/wk4fu_instances";
+  fs::remove_all(instances_root);
 
-    engine::DetectedGame game;
-    game.game_id = "testgame";
-    game.name = "Test Game";
+  engine::DetectedGame game;
+  game.game_id = "testgame";
+  game.name    = "Test Game";
 
-    // Spaces survive sanitization; the folder IS the (sanitized) name.
-    Instance inst = engine::create_instance_for_game(
-        game, instances_root, "My Skyrim Setup");
-    require(inst.info().root.filename() == "My Skyrim Setup",
-            "custom name becomes the folder name, spaces preserved");
-    require(fs::is_regular_file(inst.info().root / "instance.toml"),
-            "instance.toml written for the custom-named instance");
+  // Spaces survive sanitization; the folder IS the (sanitized) name.
+  Instance inst =
+      engine::create_instance_for_game(game, instances_root, "My Skyrim Setup");
+  require(inst.info().root.filename() == "My Skyrim Setup",
+          "custom name becomes the folder name, spaces preserved");
+  require(fs::is_regular_file(inst.info().root / "instance.toml"),
+          "instance.toml written for the custom-named instance");
 
-    // Filesystem-unsafe characters are sanitized away.
-    Instance unsafe = engine::create_instance_for_game(
-        game, instances_root, "a/b:c?d");
-    require(unsafe.info().root.filename() == "a_b_c_d",
-            "unsafe chars replaced during sanitization");
+  // Filesystem-unsafe characters are sanitized away.
+  Instance unsafe = engine::create_instance_for_game(game, instances_root, "a/b:c?d");
+  require(unsafe.info().root.filename() == "a_b_c_d",
+          "unsafe chars replaced during sanitization");
 
-    // Uniqueness: creating again with the same name must fail, leaving the
-    // original instance.toml untouched.
-    const std::string toml_before = [&] {
-        std::ifstream f(inst.info().root / "instance.toml");
-        std::ostringstream ss;
-        ss << f.rdbuf();
-        return ss.str();
-    }();
-    Instance dup = engine::create_instance_for_game(
-        game, instances_root, "My Skyrim Setup");
-    require(dup.info().game_id.empty(),
-            "duplicate instance name refused");
-    std::ifstream after(inst.info().root / "instance.toml");
-    std::ostringstream ss_after;
-    ss_after << after.rdbuf();
-    require(ss_after.str() == toml_before,
-            "existing instance.toml not clobbered");
+  // Uniqueness: creating again with the same name must fail, leaving the
+  // original instance.toml untouched.
+  const std::string toml_before = [&] {
+    std::ifstream f(inst.info().root / "instance.toml");
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    return ss.str();
+  }();
+  Instance dup =
+      engine::create_instance_for_game(game, instances_root, "My Skyrim Setup");
+  require(dup.info().game_id.empty(), "duplicate instance name refused");
+  std::ifstream after(inst.info().root / "instance.toml");
+  std::ostringstream ss_after;
+  ss_after << after.rdbuf();
+  require(ss_after.str() == toml_before, "existing instance.toml not clobbered");
 
-    // Empty/unusable names fail cleanly.
-    Instance blank = engine::create_instance_for_game(game, instances_root, "");
-    require(blank.info().game_id.empty(), "empty custom name refused");
-    Instance dots = engine::create_instance_for_game(game, instances_root, "..");
-    require(dots.info().game_id.empty(), "dot-only name refused");
+  // Empty/unusable names fail cleanly.
+  Instance blank = engine::create_instance_for_game(game, instances_root, "");
+  require(blank.info().game_id.empty(), "empty custom name refused");
+  Instance dots = engine::create_instance_for_game(game, instances_root, "..");
+  require(dots.info().game_id.empty(), "dot-only name refused");
 
-    fs::remove_all(instances_root);
+  fs::remove_all(instances_root);
 }
 
 // Workspace-wk8: instance creation must not require a game path. A
@@ -259,60 +264,60 @@ TEST_CASE("create_instance_for_game custom display name", "[engine]") {
 // instance: directories + instance.toml exist, and the toml round-trips
 // without a game_dir key (empty = omitted).
 TEST_CASE("create_instance_for_game without a game path", "[engine]") {
-    using engine::Instance;
+  using engine::Instance;
 
-    const fs::path instances_root = "/tmp/gmm_instance_path/wk8_instances";
-    fs::remove_all(instances_root);
+  const fs::path instances_root = "/tmp/gmm_instance_path/wk8_instances";
+  fs::remove_all(instances_root);
 
-    engine::DetectedGame game;
-    game.game_id = "testgame";
-    game.name = "Test Game";
-    // install_path deliberately empty - the whole point.
+  engine::DetectedGame game;
+  game.game_id = "testgame";
+  game.name    = "Test Game";
+  // install_path deliberately empty - the whole point.
 
-    Instance inst = engine::create_instance_for_game(game, instances_root);
-    REQUIRE(!inst.info().root.empty());
-    REQUIRE(fs::is_directory(inst.info().root / "mods"));
-    REQUIRE(fs::is_regular_file(inst.info().root / "instance.toml"));
+  Instance inst = engine::create_instance_for_game(game, instances_root);
+  REQUIRE(!inst.info().root.empty());
+  REQUIRE(fs::is_directory(inst.info().root / "mods"));
+  REQUIRE(fs::is_regular_file(inst.info().root / "instance.toml"));
 
-    // Round-trip: no game_dir key on disk, reads back empty.
-    std::string toml;
-    {
-        std::ifstream f(inst.info().root / "instance.toml");
-        REQUIRE(f.is_open());
-        std::ostringstream ss;
-        ss << f.rdbuf();
-        toml = ss.str();
-    }
-    INFO("instance.toml: " << toml);
-    REQUIRE(toml.find("game_dir") == std::string::npos);
+  // Round-trip: no game_dir key on disk, reads back empty.
+  std::string toml;
+  {
+    std::ifstream f(inst.info().root / "instance.toml");
+    REQUIRE(f.is_open());
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    toml = ss.str();
+  }
+  INFO("instance.toml: " << toml);
+  REQUIRE(toml.find("game_dir") == std::string::npos);
 
-    Instance read_back = Instance::from_root(inst.info().root);
-    REQUIRE(read_back.read_toml());
-    REQUIRE(read_back.info().game_id == "testgame");
-    REQUIRE(read_back.info().game_dir.empty());
+  Instance read_back = Instance::from_root(inst.info().root);
+  REQUIRE(read_back.read_toml());
+  REQUIRE(read_back.info().game_id == "testgame");
+  REQUIRE(read_back.info().game_dir.empty());
 
-    fs::remove_all(instances_root);
+  fs::remove_all(instances_root);
 }
 
 // Workspace-wk8: with an empty game_dir, backup_root must stay empty (the
 // documented "caller opts out" state) instead of becoming the CWD-relative
 // "Original_Files".
 TEST_CASE("deploy_config_for without a game path", "[engine]") {
-    engine::GameKnowledge knowledge;
-    const fs::path instance_root = "/tmp/gmm_instance_path/wk8_deploy_inst";
+  engine::GameKnowledge knowledge;
+  const fs::path instance_root = "/tmp/gmm_instance_path/wk8_deploy_inst";
 
-    const engine::DeployConfig cfg =
-        engine::deploy_config_for(instance_root, {}, knowledge, "testgame");
-    REQUIRE(cfg.game_dir.empty());
-    REQUIRE(cfg.backup_root.empty());
-    REQUIRE(!cfg.mods_dir.empty());
-    REQUIRE(!cfg.ledger_file.empty());
+  const engine::DeployConfig cfg =
+      engine::deploy_config_for(instance_root, {}, knowledge, "testgame");
+  REQUIRE(cfg.game_dir.empty());
+  REQUIRE(cfg.backup_root.empty());
+  REQUIRE(!cfg.mods_dir.empty());
+  REQUIRE(!cfg.ledger_file.empty());
 
-    // A real game dir still yields <game_dir>/Original_Files.
-    const engine::DeployConfig with_dir = engine::deploy_config_for(
-        instance_root, "/games/test", knowledge, "testgame");
-    REQUIRE(with_dir.backup_root ==
-            fs::path("/games/test") / engine::kOriginalFilesDirName);
+  // A real game dir still yields <game_dir>/Original_Files.
+  const engine::DeployConfig with_dir =
+      engine::deploy_config_for(instance_root, "/games/test", knowledge, "testgame");
+  REQUIRE(with_dir.backup_root ==
+          fs::path("/games/test") / engine::kOriginalFilesDirName);
 }
 
 // Workspace-6up: the "game_mods_dir" deploy-target override. Round-trips
@@ -320,78 +325,75 @@ TEST_CASE("deploy_config_for without a game path", "[engine]") {
 // DeployConfig.game_mods_dir so every deploy consumer's deploy_target() is
 // the actual mods folder while game_dir/backup_root keep their raw meaning.
 TEST_CASE("game mods dir override", "[engine]") {
-    using engine::Instance;
-    using engine::deploy_config_for;
+  using engine::deploy_config_for;
+  using engine::Instance;
 
-    const fs::path instances_root = "/tmp/gmm_instance_path/wk6up_instances";
-    fs::remove_all(instances_root);
+  const fs::path instances_root = "/tmp/gmm_instance_path/wk6up_instances";
+  fs::remove_all(instances_root);
 
-    engine::DetectedGame game;
-    game.game_id = "testgame";
-    game.name = "Test Game";
-    Instance inst = engine::create_instance_for_game(game, instances_root);
-    REQUIRE(!inst.info().root.empty());
+  engine::DetectedGame game;
+  game.game_id  = "testgame";
+  game.name     = "Test Game";
+  Instance inst = engine::create_instance_for_game(game, instances_root);
+  REQUIRE(!inst.info().root.empty());
 
-    engine::GameKnowledge knowledge;
-    knowledge.set("testgame", "mods_subpath", "Data");
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Data");
 
-    // --- No override: deploy target falls back to game_dir. ---
-    {
-        const auto cfg = deploy_config_for(inst.info().root, "/games/test",
-                                           knowledge, "testgame");
-        REQUIRE(cfg.game_mods_dir.empty());
-        REQUIRE(cfg.deploy_target() == fs::path("/games/test"));
-        // The plugin-declared data subdir still rides on deploy_prefix.
-        REQUIRE(cfg.deploy_prefix == "Data");
-        REQUIRE(cfg.backup_root ==
-                fs::path("/games/test") / engine::kOriginalFilesDirName);
-    }
+  // --- No override: deploy target falls back to game_dir. ---
+  {
+    const auto cfg =
+        deploy_config_for(inst.info().root, "/games/test", knowledge, "testgame");
+    REQUIRE(cfg.game_mods_dir.empty());
+    REQUIRE(cfg.deploy_target() == fs::path("/games/test"));
+    // The plugin-declared data subdir still rides on deploy_prefix.
+    REQUIRE(cfg.deploy_prefix == "Data");
+    REQUIRE(cfg.backup_root == fs::path("/games/test") / engine::kOriginalFilesDirName);
+  }
 
-    // --- Override set: it becomes the deploy target; game_dir-derived
-    // fields stay raw. ---
-    const fs::path override_dir =
-        "/Users/test/Library/Application Support/Binding of Isaac Afterbirth+ Mods";
-    REQUIRE(inst.write_key("game_mods_dir", override_dir.string()));
-    {
-        Instance back = Instance::from_root(inst.info().root);
-        REQUIRE(back.read_toml());
-        REQUIRE(back.info().game_mods_dir == override_dir);
+  // --- Override set: it becomes the deploy target; game_dir-derived
+  // fields stay raw. ---
+  const fs::path override_dir =
+      "/Users/test/Library/Application Support/Binding of Isaac Afterbirth+ Mods";
+  REQUIRE(inst.write_key("game_mods_dir", override_dir.string()));
+  {
+    Instance back = Instance::from_root(inst.info().root);
+    REQUIRE(back.read_toml());
+    REQUIRE(back.info().game_mods_dir == override_dir);
 
-        const auto cfg = deploy_config_for(inst.info().root, "/games/test",
-                                           knowledge, "testgame");
-        REQUIRE(cfg.game_mods_dir == override_dir);
-        REQUIRE(cfg.deploy_target() == override_dir);
-        // Override IS the mods folder: deploy_prefix must be cleared or
-        // target_base = deploy_target() / deploy_prefix double-nests
-        // (override/"Data") instead of landing files directly.
-        REQUIRE(cfg.deploy_prefix.empty());
-        REQUIRE(cfg.game_dir == fs::path("/games/test"));
-        // Backups still park next to the game install, not inside the
-        // external mods folder.
-        REQUIRE(cfg.backup_root ==
-                fs::path("/games/test") / engine::kOriginalFilesDirName);
-    }
+    const auto cfg =
+        deploy_config_for(inst.info().root, "/games/test", knowledge, "testgame");
+    REQUIRE(cfg.game_mods_dir == override_dir);
+    REQUIRE(cfg.deploy_target() == override_dir);
+    // Override IS the mods folder: deploy_prefix must be cleared or
+    // target_base = deploy_target() / deploy_prefix double-nests
+    // (override/"Data") instead of landing files directly.
+    REQUIRE(cfg.deploy_prefix.empty());
+    REQUIRE(cfg.game_dir == fs::path("/games/test"));
+    // Backups still park next to the game install, not inside the
+    // external mods folder.
+    REQUIRE(cfg.backup_root == fs::path("/games/test") / engine::kOriginalFilesDirName);
+  }
 
-    // --- Self-referential guard: override == instance mods dir is dropped
-    // (deploying the mods dir into itself). ---
-    REQUIRE(inst.write_key("game_mods_dir",
-                           (inst.info().root / "mods").string()));
-    {
-        const auto cfg = deploy_config_for(inst.info().root, "/games/test",
-                                           knowledge, "testgame");
-        REQUIRE(cfg.game_mods_dir.empty());
-        REQUIRE(cfg.deploy_target() == fs::path("/games/test"));
-    }
+  // --- Self-referential guard: override == instance mods dir is dropped
+  // (deploying the mods dir into itself). ---
+  REQUIRE(inst.write_key("game_mods_dir", (inst.info().root / "mods").string()));
+  {
+    const auto cfg =
+        deploy_config_for(inst.info().root, "/games/test", knowledge, "testgame");
+    REQUIRE(cfg.game_mods_dir.empty());
+    REQUIRE(cfg.deploy_target() == fs::path("/games/test"));
+  }
 
-    // --- Clearing the key restores the fallback. ---
-    REQUIRE(inst.write_key("game_mods_dir", ""));
-    {
-        Instance back = Instance::from_root(inst.info().root);
-        REQUIRE(back.read_toml());
-        REQUIRE(back.info().game_mods_dir.empty());
-    }
+  // --- Clearing the key restores the fallback. ---
+  REQUIRE(inst.write_key("game_mods_dir", ""));
+  {
+    Instance back = Instance::from_root(inst.info().root);
+    REQUIRE(back.read_toml());
+    REQUIRE(back.info().game_mods_dir.empty());
+  }
 
-    fs::remove_all(instances_root);
+  fs::remove_all(instances_root);
 }
 
 // Workspace-otx: game-specific absolute mods dirs come from the plugin's
@@ -409,72 +411,69 @@ TEST_CASE("game mods dir override", "[engine]") {
 // "mod_scan_subpath", the resolution returns an empty path: there is no
 // game-dir scan source, full stop.
 TEST_CASE("plugin declared game mods dir", "[engine]") {
-    using engine::GameKnowledge;
-    using engine::plugin_game_mods_dir;
-    using engine::resolve_game_mods_dir;
+  using engine::GameKnowledge;
+  using engine::plugin_game_mods_dir;
+  using engine::resolve_game_mods_dir;
 
-    // --- Undeclared: empty accessor; chain returns empty path (no game-dir
-    //     scan source - the scanner falls back to the instance mods dir).
-    //     mods_subpath is a deploy target and is not consulted here.
-    GameKnowledge plain;
-    plain.set("testgame", "mods_subpath", "Data");
-    REQUIRE(plugin_game_mods_dir(plain, "testgame").empty());
-    REQUIRE(resolve_game_mods_dir("testgame", "/games/test", plain).empty());
-    REQUIRE(resolve_game_mods_dir("othergame", "/games/test", plain).empty());
+  // --- Undeclared: empty accessor; chain returns empty path (no game-dir
+  //     scan source - the scanner falls back to the instance mods dir).
+  //     mods_subpath is a deploy target and is not consulted here.
+  GameKnowledge plain;
+  plain.set("testgame", "mods_subpath", "Data");
+  REQUIRE(plugin_game_mods_dir(plain, "testgame").empty());
+  REQUIRE(resolve_game_mods_dir("testgame", "/games/test", plain).empty());
+  REQUIRE(resolve_game_mods_dir("othergame", "/games/test", plain).empty());
 
-    // --- Plugin-declared ~ path expands against $HOME. ---
-    GameKnowledge isaac;
-    isaac.set("TheBindingOfIsaacRebirth", "game_mods_dir",
-              "~/Library/Application Support/Binding of Isaac Afterbirth+ Mods");
-    const auto expanded =
-        fs::path(std::getenv("HOME") ? std::getenv("HOME") : "") /
-        "Library/Application Support/Binding of Isaac Afterbirth+ Mods";
-    REQUIRE(plugin_game_mods_dir(isaac, "TheBindingOfIsaacRebirth") ==
-            expanded.string());
-    REQUIRE(resolve_game_mods_dir("TheBindingOfIsaacRebirth", "/games/isaac",
-                                  isaac) == expanded);
-    // Other games are unaffected by the declaration: still no game-dir scan
-    // source (no "game_mods_dir" or "mod_scan_subpath" for testgame).
-    REQUIRE(resolve_game_mods_dir("testgame", "/games/test", isaac).empty());
+  // --- Plugin-declared ~ path expands against $HOME. ---
+  GameKnowledge isaac;
+  isaac.set("TheBindingOfIsaacRebirth", "game_mods_dir",
+            "~/Library/Application Support/Binding of Isaac Afterbirth+ Mods");
+  const auto expanded = fs::path(std::getenv("HOME") ? std::getenv("HOME") : "") /
+                        "Library/Application Support/Binding of Isaac Afterbirth+ Mods";
+  REQUIRE(plugin_game_mods_dir(isaac, "TheBindingOfIsaacRebirth") == expanded.string());
+  REQUIRE(resolve_game_mods_dir("TheBindingOfIsaacRebirth", "/games/isaac", isaac) ==
+          expanded);
+  // Other games are unaffected by the declaration: still no game-dir scan
+  // source (no "game_mods_dir" or "mod_scan_subpath" for testgame).
+  REQUIRE(resolve_game_mods_dir("testgame", "/games/test", isaac).empty());
 
-    // --- Instance override beats the plugin declaration. ---
-    REQUIRE(resolve_game_mods_dir("TheBindingOfIsaacRebirth", "/games/isaac",
-                                  isaac, "/custom/mods") ==
-            fs::path("/custom/mods"));
+  // --- Instance override beats the plugin declaration. ---
+  REQUIRE(resolve_game_mods_dir("TheBindingOfIsaacRebirth", "/games/isaac", isaac,
+                                "/custom/mods") == fs::path("/custom/mods"));
 
-    // --- Deploy honors the plugin key only when the user did not override,
-    // and never folds mods_subpath into the deploy root. ---
-    const fs::path instances_root = "/tmp/gmm_instance_path/wkotx_instances";
-    fs::remove_all(instances_root);
-    engine::DetectedGame game;
-    game.game_id = "testgame";
-    game.name = "Test Game";
-    engine::Instance inst = engine::create_instance_for_game(game, instances_root);
-    REQUIRE(!inst.info().root.empty());
+  // --- Deploy honors the plugin key only when the user did not override,
+  // and never folds mods_subpath into the deploy root. ---
+  const fs::path instances_root = "/tmp/gmm_instance_path/wkotx_instances";
+  fs::remove_all(instances_root);
+  engine::DetectedGame game;
+  game.game_id          = "testgame";
+  game.name             = "Test Game";
+  engine::Instance inst = engine::create_instance_for_game(game, instances_root);
+  REQUIRE(!inst.info().root.empty());
 
-    {
-        const auto cfg = engine::deploy_config_for(
-            inst.info().root, "/games/test", isaac, "TheBindingOfIsaacRebirth");
-        REQUIRE(cfg.game_mods_dir == expanded);
-        REQUIRE(cfg.deploy_target() == expanded);
-    }
-    {
-        // mods_subpath-only games keep the classic layout (prefix carries it).
-        const auto cfg = engine::deploy_config_for(
-            inst.info().root, "/games/test", plain, "testgame");
-        REQUIRE(cfg.game_mods_dir.empty());
-        REQUIRE(cfg.deploy_target() == fs::path("/games/test"));
-        REQUIRE(cfg.deploy_prefix == "Data");
-    }
-    // User override in instance.toml still wins over the plugin key.
-    REQUIRE(inst.write_key("game_mods_dir", "/custom/mods"));
-    {
-        const auto cfg = engine::deploy_config_for(
-            inst.info().root, "/games/test", isaac, "TheBindingOfIsaacRebirth");
-        REQUIRE(cfg.game_mods_dir == fs::path("/custom/mods"));
-    }
+  {
+    const auto cfg = engine::deploy_config_for(inst.info().root, "/games/test", isaac,
+                                               "TheBindingOfIsaacRebirth");
+    REQUIRE(cfg.game_mods_dir == expanded);
+    REQUIRE(cfg.deploy_target() == expanded);
+  }
+  {
+    // mods_subpath-only games keep the classic layout (prefix carries it).
+    const auto cfg =
+        engine::deploy_config_for(inst.info().root, "/games/test", plain, "testgame");
+    REQUIRE(cfg.game_mods_dir.empty());
+    REQUIRE(cfg.deploy_target() == fs::path("/games/test"));
+    REQUIRE(cfg.deploy_prefix == "Data");
+  }
+  // User override in instance.toml still wins over the plugin key.
+  REQUIRE(inst.write_key("game_mods_dir", "/custom/mods"));
+  {
+    const auto cfg = engine::deploy_config_for(inst.info().root, "/games/test", isaac,
+                                               "TheBindingOfIsaacRebirth");
+    REQUIRE(cfg.game_mods_dir == fs::path("/custom/mods"));
+  }
 
-    fs::remove_all(instances_root);
+  fs::remove_all(instances_root);
 }
 
 // Workspace-9szv: relative plugin "game_mods_dir" declarations resolve
@@ -483,70 +482,64 @@ TEST_CASE("plugin declared game mods dir", "[engine]") {
 // Support path. resolve_plugin_game_mods_dir anchors relative values to
 // game_dir so the resulting absolute path matches what the deploy target
 // and scan worker see.
-TEST_CASE("plugin game_mods_dir resolves relative paths against game_dir",
-          "[engine]") {
-    using engine::GameKnowledge;
-    using engine::resolve_plugin_game_mods_dir;
-    using engine::resolve_game_mods_dir;
+TEST_CASE("plugin game_mods_dir resolves relative paths against game_dir", "[engine]") {
+  using engine::GameKnowledge;
+  using engine::resolve_game_mods_dir;
+  using engine::resolve_plugin_game_mods_dir;
 
-    const fs::path game_dir = "/games/isaac";
+  const fs::path game_dir = "/games/isaac";
 
-    // Relative "mods" -> game_dir/mods (Isaac on Linux/Windows).
-    GameKnowledge isaac_linux;
-    isaac_linux.set("TheBindingOfIsaacRebirth", "game_mods_dir", "mods");
-    REQUIRE(resolve_plugin_game_mods_dir(
-                "TheBindingOfIsaacRebirth", game_dir, isaac_linux) ==
-            game_dir / "mods");
-    // resolve_game_mods_dir (full scan chain) honors the same hook and
-    // returns the anchored absolute path.
-    REQUIRE(resolve_game_mods_dir("TheBindingOfIsaacRebirth", game_dir,
-                                  isaac_linux) == game_dir / "mods");
+  // Relative "mods" -> game_dir/mods (Isaac on Linux/Windows).
+  GameKnowledge isaac_linux;
+  isaac_linux.set("TheBindingOfIsaacRebirth", "game_mods_dir", "mods");
+  REQUIRE(resolve_plugin_game_mods_dir("TheBindingOfIsaacRebirth", game_dir,
+                                       isaac_linux) == game_dir / "mods");
+  // resolve_game_mods_dir (full scan chain) honors the same hook and
+  // returns the anchored absolute path.
+  REQUIRE(resolve_game_mods_dir("TheBindingOfIsaacRebirth", game_dir, isaac_linux) ==
+          game_dir / "mods");
 
-    // Absolute declaration (Isaac on macOS) passes through unchanged.
-    GameKnowledge isaac_mac;
-    isaac_mac.set("TheBindingOfIsaacRebirth", "game_mods_dir",
-                  "/Library/Application Support/Binding of Isaac Afterbirth+ Mods");
-    REQUIRE(resolve_plugin_game_mods_dir(
-                "TheBindingOfIsaacRebirth", game_dir, isaac_mac) ==
-            fs::path("/Library/Application Support/Binding of Isaac Afterbirth+ Mods"));
+  // Absolute declaration (Isaac on macOS) passes through unchanged.
+  GameKnowledge isaac_mac;
+  isaac_mac.set("TheBindingOfIsaacRebirth", "game_mods_dir",
+                "/Library/Application Support/Binding of Isaac Afterbirth+ Mods");
+  REQUIRE(
+      resolve_plugin_game_mods_dir("TheBindingOfIsaacRebirth", game_dir, isaac_mac) ==
+      fs::path("/Library/Application Support/Binding of Isaac Afterbirth+ Mods"));
 
-    // Empty declaration: both helpers return an empty path so the chain
-    // falls through to mod_scan_subpath / no scan source. A relative hook
-    // with no game_dir also returns empty - we have nothing to anchor to.
-    GameKnowledge plain;
-    REQUIRE(resolve_plugin_game_mods_dir("anygame", game_dir, plain).empty());
-    REQUIRE(resolve_plugin_game_mods_dir("anygame", {}, isaac_linux).empty());
+  // Empty declaration: both helpers return an empty path so the chain
+  // falls through to mod_scan_subpath / no scan source. A relative hook
+  // with no game_dir also returns empty - we have nothing to anchor to.
+  GameKnowledge plain;
+  REQUIRE(resolve_plugin_game_mods_dir("anygame", game_dir, plain).empty());
+  REQUIRE(resolve_plugin_game_mods_dir("anygame", {}, isaac_linux).empty());
 
-    // Instance override beats the relative plugin declaration (the
-    // override is always treated as absolute; the caller - main_window -
-    // is responsible for refusing an override equal to the instance mods
-    // dir).
-    REQUIRE(resolve_game_mods_dir("TheBindingOfIsaacRebirth", game_dir,
-                                  isaac_linux, "/custom/mods") ==
-            fs::path("/custom/mods"));
+  // Instance override beats the relative plugin declaration (the
+  // override is always treated as absolute; the caller - main_window -
+  // is responsible for refusing an override equal to the instance mods
+  // dir).
+  REQUIRE(resolve_game_mods_dir("TheBindingOfIsaacRebirth", game_dir, isaac_linux,
+                                "/custom/mods") == fs::path("/custom/mods"));
 
-    // Deploy target mirrors the anchored absolute path: a relative
-    // plugin hook resolves to game_dir/mods (same target the previous
-    // game_dir + deploy_prefix "mods" layout produced), with deploy_prefix
-    // cleared so we do not double-nest.
-    const fs::path instances_root =
-        "/tmp/gmm_instance_path/w9szv_relative_instances";
-    fs::remove_all(instances_root);
-    engine::DetectedGame game;
-    game.game_id = "TheBindingOfIsaacRebirth";
-    game.name = "Isaac";
-    engine::Instance inst =
-        engine::create_instance_for_game(game, instances_root);
-    REQUIRE(!inst.info().root.empty());
-    {
-        const auto cfg = engine::deploy_config_for(
-            inst.info().root, game_dir, isaac_linux,
-            "TheBindingOfIsaacRebirth");
-        REQUIRE(cfg.game_mods_dir == game_dir / "mods");
-        REQUIRE(cfg.deploy_prefix.empty());
-        REQUIRE(cfg.deploy_target() == game_dir / "mods");
-    }
-    fs::remove_all(instances_root);
+  // Deploy target mirrors the anchored absolute path: a relative
+  // plugin hook resolves to game_dir/mods (same target the previous
+  // game_dir + deploy_prefix "mods" layout produced), with deploy_prefix
+  // cleared so we do not double-nest.
+  const fs::path instances_root = "/tmp/gmm_instance_path/w9szv_relative_instances";
+  fs::remove_all(instances_root);
+  engine::DetectedGame game;
+  game.game_id          = "TheBindingOfIsaacRebirth";
+  game.name             = "Isaac";
+  engine::Instance inst = engine::create_instance_for_game(game, instances_root);
+  REQUIRE(!inst.info().root.empty());
+  {
+    const auto cfg = engine::deploy_config_for(inst.info().root, game_dir, isaac_linux,
+                                               "TheBindingOfIsaacRebirth");
+    REQUIRE(cfg.game_mods_dir == game_dir / "mods");
+    REQUIRE(cfg.deploy_prefix.empty());
+    REQUIRE(cfg.deploy_target() == game_dir / "mods");
+  }
+  fs::remove_all(instances_root);
 }
 
 // Workspace-l6w: instance names are user-chosen and may contain spaces.
@@ -554,147 +547,150 @@ TEST_CASE("plugin game_mods_dir resolves relative paths against game_dir",
 // control chars/NUL), trims dots/whitespace at both ends so ".", ".." and
 // "..." degrade to "".
 TEST_CASE("to_instance_name sanitization", "[engine]") {
-    using engine::Instance;
+  using engine::Instance;
 
-    // Spaces are filesystem-safe and preserved.
-    REQUIRE(Instance::to_instance_name("My Skyrim Setup") == "My Skyrim Setup");
-    // Invalid chars stripped, inner content kept.
-    REQUIRE(Instance::to_instance_name(R"(a/b\c:d*e?f"g<h>i|j)") ==
-            "abcdefghij");
-    // Control characters (incl. NUL) stripped.
-    REQUIRE(Instance::to_instance_name(std::string("a\x01" "b\x7f" "c")) == "abc");
-    REQUIRE(Instance::to_instance_name(std::string("a\0b", 3)) == "ab");
-    // Dot-only and degenerate names sanitize to empty.
-    REQUIRE(Instance::to_instance_name(".") == "");
-    REQUIRE(Instance::to_instance_name("..") == "");
-    REQUIRE(Instance::to_instance_name("...") == "");
-    REQUIRE(Instance::to_instance_name("") == "");
-    REQUIRE(Instance::to_instance_name("   ") == "");
-    // Leading/trailing dots and whitespace trimmed; inner dots survive.
-    REQUIRE(Instance::to_instance_name(" .name. ") == "name");
-    REQUIRE(Instance::to_instance_name("The.Dot.Game") == "The.Dot.Game");
+  // Spaces are filesystem-safe and preserved.
+  REQUIRE(Instance::to_instance_name("My Skyrim Setup") == "My Skyrim Setup");
+  // Invalid chars stripped, inner content kept.
+  REQUIRE(Instance::to_instance_name(R"(a/b\c:d*e?f"g<h>i|j)") == "abcdefghij");
+  // Control characters (incl. NUL) stripped.
+  REQUIRE(Instance::to_instance_name(std::string("a\x01"
+                                                 "b\x7f"
+                                                 "c")) == "abc");
+  REQUIRE(Instance::to_instance_name(std::string("a\0b", 3)) == "ab");
+  // Dot-only and degenerate names sanitize to empty.
+  REQUIRE(Instance::to_instance_name(".") == "");
+  REQUIRE(Instance::to_instance_name("..") == "");
+  REQUIRE(Instance::to_instance_name("...") == "");
+  REQUIRE(Instance::to_instance_name("") == "");
+  REQUIRE(Instance::to_instance_name("   ") == "");
+  // Leading/trailing dots and whitespace trimmed; inner dots survive.
+  REQUIRE(Instance::to_instance_name(" .name. ") == "name");
+  REQUIRE(Instance::to_instance_name("The.Dot.Game") == "The.Dot.Game");
 }
 
 // Workspace-l6w: creation-time uniqueness. Names disambiguate with " 2",
 // " 3", ... against anything existing under the root (dirs AND files), and
 // degenerate names fall back instead of producing an empty folder name.
 TEST_CASE("unique_instance_name", "[engine]") {
-    namespace fs = std::filesystem;
-    using engine::unique_instance_name;
+  namespace fs = std::filesystem;
+  using engine::unique_instance_name;
 
-    const fs::path root = "/tmp/gmm_instance_path/l6w_unique";
-    fs::remove_all(root);
-    fs::create_directories(root);
+  const fs::path root = "/tmp/gmm_instance_path/l6w_unique";
+  fs::remove_all(root);
+  fs::create_directories(root);
 
-    REQUIRE(unique_instance_name("My Setup", root) == "My Setup");
-    fs::create_directory(root / "My Setup");
-    REQUIRE(unique_instance_name("My Setup", root) == "My Setup 2");
-    fs::create_directory(root / "My Setup 2");
-    REQUIRE(unique_instance_name("My Setup", root) == "My Setup 3");
+  REQUIRE(unique_instance_name("My Setup", root) == "My Setup");
+  fs::create_directory(root / "My Setup");
+  REQUIRE(unique_instance_name("My Setup", root) == "My Setup 2");
+  fs::create_directory(root / "My Setup 2");
+  REQUIRE(unique_instance_name("My Setup", root) == "My Setup 3");
 
-    // Plain files block a name too (an instance dir can't be created there).
-    { std::ofstream f(root / "Other"); f << "x"; }
-    REQUIRE(unique_instance_name("Other", root) == "Other 2");
+  // Plain files block a name too (an instance dir can't be created there).
+  {
+    std::ofstream f(root / "Other");
+    f << "x";
+  }
+  REQUIRE(unique_instance_name("Other", root) == "Other 2");
 
-    // Degenerate input falls back to a usable name.
-    REQUIRE(unique_instance_name("...", root) == "New Instance");
+  // Degenerate input falls back to a usable name.
+  REQUIRE(unique_instance_name("...", root) == "New Instance");
 
-    fs::remove_all(root);
+  fs::remove_all(root);
 }
 
 // Workspace-l6w: create_instance_for_game derives a unique folder per call
 // and persists the raw display name as instance.toml "name"; the display
 // helper falls back to the folder basename for legacy instances.
-TEST_CASE("create_instance_for_game unique names and display name",
-          "[engine]") {
-    using engine::Instance;
+TEST_CASE("create_instance_for_game unique names and display name", "[engine]") {
+  using engine::Instance;
 
-    const fs::path instances_root = "/tmp/gmm_instance_path/l6w_create";
-    fs::remove_all(instances_root);
+  const fs::path instances_root = "/tmp/gmm_instance_path/l6w_create";
+  fs::remove_all(instances_root);
 
-    engine::DetectedGame game;
-    game.game_id = "testgame";
-    game.name = "Test Game";
+  engine::DetectedGame game;
+  game.game_id = "testgame";
+  game.name    = "Test Game";
 
-    Instance first = engine::create_instance_for_game(game, instances_root);
-    REQUIRE(first.info().root.filename() == "Test Game");
-    REQUIRE(first.info().display_name == "Test Game");
+  Instance first = engine::create_instance_for_game(game, instances_root);
+  REQUIRE(first.info().root.filename() == "Test Game");
+  REQUIRE(first.info().display_name == "Test Game");
 
-    Instance second = engine::create_instance_for_game(game, instances_root);
-    REQUIRE(second.info().root.filename() == "Test Game 2");
-    REQUIRE(fs::is_regular_file(second.info().root / "instance.toml"));
+  Instance second = engine::create_instance_for_game(game, instances_root);
+  REQUIRE(second.info().root.filename() == "Test Game 2");
+  REQUIRE(fs::is_regular_file(second.info().root / "instance.toml"));
 
-    // Display name round-trips through instance.toml.
-    REQUIRE(engine::instance_display_name(second.info().root) == "Test Game");
+  // Display name round-trips through instance.toml.
+  REQUIRE(engine::instance_display_name(second.info().root) == "Test Game");
 
-    // Legacy fallback: no "name" key -> folder basename.
-    REQUIRE(first.write_key("name", ""));
-    REQUIRE(engine::instance_display_name(first.info().root) ==
-            first.info().root.filename().string());
+  // Legacy fallback: no "name" key -> folder basename.
+  REQUIRE(first.write_key("name", ""));
+  REQUIRE(engine::instance_display_name(first.info().root) ==
+          first.info().root.filename().string());
 
-    fs::remove_all(instances_root);
+  fs::remove_all(instances_root);
 }
 
 // Workspace-ldh: write_toml() must preserve app-owned TOML sections (e.g.
 // `executables`) that it does not manage.  Before this fix write_toml()
 // built a fresh table from scratch, silently dropping any extra keys.
 TEST_CASE("write_toml preserves unknown sections", "[engine]") {
-    using engine::Instance;
+  using engine::Instance;
 
-    const fs::path root = "/tmp/gmm_instance_path/ldh_clobber";
-    fs::remove_all(root);
-    fs::create_directories(root);
+  const fs::path root = "/tmp/gmm_instance_path/ldh_clobber";
+  fs::remove_all(root);
+  fs::create_directories(root);
 
-    // Seed a toml with a known key AND an app-owned section.
-    {
-        std::ofstream out(root / "instance.toml");
-        out << "game_id = \"skyrim\"\n"
-               "name = \"My Setup\"\n"
-               "portable = false\n"
-               "\n"
-               "[[executables]]\n"
-               "path = \"SkyrimSE.exe\"\n"
-               "\n"
-               "[[executables]]\n"
-               "path = \"SKSE64_loader.exe\"\n";
-    }
+  // Seed a toml with a known key AND an app-owned section.
+  {
+    std::ofstream out(root / "instance.toml");
+    out << "game_id = \"skyrim\"\n"
+           "name = \"My Setup\"\n"
+           "portable = false\n"
+           "\n"
+           "[[executables]]\n"
+           "path = \"SkyrimSE.exe\"\n"
+           "\n"
+           "[[executables]]\n"
+           "path = \"SKSE64_loader.exe\"\n";
+  }
 
-    // Load, tweak a known field, write back.
-    Instance inst = Instance::from_root(root);
-    REQUIRE(inst.read_toml());
-    REQUIRE(inst.info().game_id == "skyrim");
-    inst.info().deploy_strategy = "overlayfs";
-    REQUIRE(inst.write_toml());
+  // Load, tweak a known field, write back.
+  Instance inst = Instance::from_root(root);
+  REQUIRE(inst.read_toml());
+  REQUIRE(inst.info().game_id == "skyrim");
+  inst.info().deploy_strategy = "overlayfs";
+  REQUIRE(inst.write_toml());
 
-    // Re-read: deploy_strategy must round-trip AND executables must survive.
-    Instance back = Instance::from_root(root);
-    REQUIRE(back.read_toml());
-    REQUIRE(back.info().deploy_strategy == "overlayfs");
-    REQUIRE(back.info().game_id == "skyrim");
-    REQUIRE(back.info().display_name == "My Setup");
+  // Re-read: deploy_strategy must round-trip AND executables must survive.
+  Instance back = Instance::from_root(root);
+  REQUIRE(back.read_toml());
+  REQUIRE(back.info().deploy_strategy == "overlayfs");
+  REQUIRE(back.info().game_id == "skyrim");
+  REQUIRE(back.info().display_name == "My Setup");
 
-    // Verify executables section survived by reading raw file content.
-    std::ifstream in(root / "instance.toml");
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    const std::string raw = ss.str();
-    REQUIRE(raw.find("[[executables]]") != std::string::npos);
-    REQUIRE(raw.find("SkyrimSE.exe") != std::string::npos);
-    REQUIRE(raw.find("SKSE64_loader.exe") != std::string::npos);
+  // Verify executables section survived by reading raw file content.
+  std::ifstream in(root / "instance.toml");
+  std::ostringstream ss;
+  ss << in.rdbuf();
+  const std::string raw = ss.str();
+  REQUIRE(raw.find("[[executables]]") != std::string::npos);
+  REQUIRE(raw.find("SkyrimSE.exe") != std::string::npos);
+  REQUIRE(raw.find("SKSE64_loader.exe") != std::string::npos);
 
-    // Clearing a field removes it from toml (erase-on-empty).
-    inst.info().deploy_strategy = "";
-    REQUIRE(inst.write_toml());
-    Instance cleared = Instance::from_root(root);
-    REQUIRE(cleared.read_toml());
-    REQUIRE(cleared.info().deploy_strategy.empty());
-    REQUIRE(cleared.info().game_id == "skyrim");
+  // Clearing a field removes it from toml (erase-on-empty).
+  inst.info().deploy_strategy = "";
+  REQUIRE(inst.write_toml());
+  Instance cleared = Instance::from_root(root);
+  REQUIRE(cleared.read_toml());
+  REQUIRE(cleared.info().deploy_strategy.empty());
+  REQUIRE(cleared.info().game_id == "skyrim");
 
-    // executables still there after clearing deploy_strategy.
-    std::ifstream in2(root / "instance.toml");
-    std::ostringstream ss2;
-    ss2 << in2.rdbuf();
-    REQUIRE(ss2.str().find("[[executables]]") != std::string::npos);
+  // executables still there after clearing deploy_strategy.
+  std::ifstream in2(root / "instance.toml");
+  std::ostringstream ss2;
+  ss2 << in2.rdbuf();
+  REQUIRE(ss2.str().find("[[executables]]") != std::string::npos);
 
-    fs::remove_all(root);
+  fs::remove_all(root);
 }

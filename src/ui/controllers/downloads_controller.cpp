@@ -58,7 +58,7 @@ namespace {
   // libstdc++) randomized per-process via SipHash, so manifest keys derived
   // from it change between runs and break resume / produce duplicates on a
   // re-click. FNV-1a is process-stable and good enough as a map key.
-  uint64_t stable_hash64(const std::string& s) {
+  uint64_t stable_hash64(const std::string &s) {
     uint64_t h = 0xcbf29ce484222325ULL;
     for (unsigned char c : s) {
       h ^= c;
@@ -69,7 +69,7 @@ namespace {
 
 }  // namespace
 
-DownloadsController::DownloadsController(MainWindow* w, QObject* parent)
+DownloadsController::DownloadsController(MainWindow *w, QObject *parent)
     : QObject(parent), w_(w) {}
 
 void DownloadsController::setup_pipeline() {
@@ -87,9 +87,9 @@ void DownloadsController::setup_pipeline() {
   // Download finished (download-only, MO2 model): the row becomes Complete
   // with a real file path; installation is a separate user-triggered step.
   connect(w_->pipeline_thread_->worker(), &PipelineWorker::download_complete, this,
-          [this](const std::string& id, bool success, const std::string& archive_path,
-                 const std::string& name) {
-            auto* dt = w_->right_panel_->downloads_tab();
+          [this](const std::string &id, bool success, const std::string &archive_path,
+                 const std::string &name) {
+            auto *dt = w_->right_panel_->downloads_tab();
             if (dt) {
               if (!archive_path.empty())
                 dt->set_file_path(id, archive_path);
@@ -109,9 +109,9 @@ void DownloadsController::setup_pipeline() {
   // Prefer the source-resolved mod/file name; fall back to the raw archive
   // name (extension stripped) so the row is descriptive either way.
   connect(w_->pipeline_thread_->worker(), &PipelineWorker::download_meta, this,
-          [this](const std::string& id, const std::string& archive_name,
-                 const std::string& display_name) {
-            auto* dt = w_->right_panel_->downloads_tab();
+          [this](const std::string &id, const std::string &archive_name,
+                 const std::string &display_name) {
+            auto *dt = w_->right_panel_->downloads_tab();
             if (!dt)
               return;
             std::string name = display_name;
@@ -128,11 +128,11 @@ void DownloadsController::setup_pipeline() {
   // (success, failure, cancel). A failed install leaves the download row in
   // its download state - only a failed download marks it Failed.
   connect(w_->pipeline_thread_->worker(), &PipelineWorker::install_complete, this,
-          [this](const std::string& mod_id, bool success, const std::string&,
-                 const std::string& installed_folder) {
+          [this](const std::string &mod_id, bool success, const std::string &,
+                 const std::string &installed_folder) {
             hide_install_progress();
             w_->set_ui_enabled(true);
-            auto* dt = w_->right_panel_->downloads_tab();
+            auto *dt = w_->right_panel_->downloads_tab();
             if (dt) {
               if (success) {
                 if (!w_->current_game_id_.empty() && !installed_folder.empty()) {
@@ -163,7 +163,7 @@ void DownloadsController::setup_pipeline() {
   // failure - leave the download in whatever state it had (no Failed mark).
   // Release the UI lock the same way as install_complete.
   connect(w_->pipeline_thread_->worker(), &PipelineWorker::install_canceled, this,
-          [this](const std::string&) {
+          [this](const std::string &) {
             hide_install_progress();
             w_->set_ui_enabled(true);
             save_download_manifest();
@@ -176,8 +176,8 @@ void DownloadsController::setup_pipeline() {
 
   // A download was paused mid-fetch (partial file kept for resume).
   connect(w_->pipeline_thread_->worker(), &PipelineWorker::paused, this,
-          [this](const std::string& id) {
-            auto* dt = w_->right_panel_->downloads_tab();
+          [this](const std::string &id) {
+            auto *dt = w_->right_panel_->downloads_tab();
             if (dt)
               dt->mark_paused(id);
             save_download_manifest();
@@ -185,8 +185,8 @@ void DownloadsController::setup_pipeline() {
 
   // Forward download progress to the DownloadsTab
   connect(w_->pipeline_thread_->worker(), &PipelineWorker::download_progress, this,
-          [this](const std::string& mod_id, int64_t dl, int64_t total, double speed) {
-            auto* dt = w_->right_panel_->downloads_tab();
+          [this](const std::string &mod_id, int64_t dl, int64_t total, double speed) {
+            auto *dt = w_->right_panel_->downloads_tab();
             if (dt)
               dt->update_progress(mod_id, dl, total, speed);
           });
@@ -223,7 +223,7 @@ void DownloadsController::setup_nxm_ipc() {
   w_->nxm_ipc_ = new engine::NxmIpcServer(w_);
   if (w_->nxm_ipc_->startListening()) {
     connect(w_->nxm_ipc_, &engine::NxmIpcServer::nxmUrlReceived, this,
-            [this](const QString& url) {
+            [this](const QString &url) {
               std::string raw = url.toStdString();
               engine::Logger::instance().debug("[NXM-Parse] Raw URL received: " + raw);
               // Accept gmm:// URLs too - convert to nxm:// for the parser
@@ -268,7 +268,7 @@ bool DownloadsController::confirm_close() {
   // to never ask again ("Don't Ask" persists the preference). MO2 asks the
   // same question (mainwindow.cpp canExit); here Ok/Quit/Don't Ask all
   // proceed with the close, Cancel aborts it.
-  auto* dt = w_->right_panel_ ? w_->right_panel_->downloads_tab() : nullptr;
+  auto *dt = w_->right_panel_ ? w_->right_panel_->downloads_tab() : nullptr;
   if (dt && dt->has_active_download() &&
       Settings::instance().confirm_close_with_downloads()) {
     QMessageBox box(w_);
@@ -276,14 +276,14 @@ bool DownloadsController::confirm_close() {
     box.setIcon(QMessageBox::Warning);
     box.setText(tr("You have active downloads in progress.\n"
                    "Closing the application will cancel them."));
-    auto* ok_btn       = box.addButton(tr("Ok"), QMessageBox::AcceptRole);
-    auto* quit_btn     = box.addButton(tr("Quit"), QMessageBox::AcceptRole);
-    auto* dont_ask_btn = box.addButton(tr("Don't Ask"), QMessageBox::AcceptRole);
-    auto* cancel_btn   = box.addButton(tr("Cancel"), QMessageBox::RejectRole);
+    auto *ok_btn       = box.addButton(tr("Ok"), QMessageBox::AcceptRole);
+    auto *quit_btn     = box.addButton(tr("Quit"), QMessageBox::AcceptRole);
+    auto *dont_ask_btn = box.addButton(tr("Don't Ask"), QMessageBox::AcceptRole);
+    auto *cancel_btn   = box.addButton(tr("Cancel"), QMessageBox::RejectRole);
     box.setDefaultButton(cancel_btn);
     box.exec();
 
-    QAbstractButton* clicked = box.clickedButton();
+    QAbstractButton *clicked = box.clickedButton();
     if (clicked == cancel_btn) {
       return false;
     }
@@ -296,7 +296,7 @@ bool DownloadsController::confirm_close() {
 }
 
 void DownloadsController::save_download_manifest() {
-  auto* dt = w_->right_panel_->downloads_tab();
+  auto *dt = w_->right_panel_->downloads_tab();
   if (!dt)
     return;
   auto path = w_->download_manifest_path();
@@ -323,7 +323,7 @@ void DownloadsController::load_download_manifest() {
                    std::istreambuf_iterator<char>());
   if (json.empty())
     return;
-  auto* dt = w_->right_panel_->downloads_tab();
+  auto *dt = w_->right_panel_->downloads_tab();
   if (!dt)
     return;
   auto downloads_dir = w_->downloads_dir_path();
@@ -331,7 +331,7 @@ void DownloadsController::load_download_manifest() {
 }
 
 void DownloadsController::wire_downloads_tab() {
-  auto* dt = w_->right_panel_->downloads_tab();
+  auto *dt = w_->right_panel_->downloads_tab();
   if (!dt)
     return;
 
@@ -343,10 +343,10 @@ void DownloadsController::wire_downloads_tab() {
   dt->set_downloads_dir(w_->downloads_dir_path());
 
   connect(dt, &DownloadsTab::install_requested, this,
-          [this](const std::string& mod_id, const std::filesystem::path& fp,
-                 const std::string& source_type, const std::string& source_id,
-                 int file_id, const std::string& display_name,
-                 const std::string& page_url) {
+          [this](const std::string &mod_id, const std::filesystem::path &fp,
+                 const std::string &source_type, const std::string &source_id,
+                 int file_id, const std::string &display_name,
+                 const std::string &page_url) {
             if (!w_->pipeline_thread_)
               return;
             // Lock the interface for the duration of the install so the user
@@ -365,7 +365,7 @@ void DownloadsController::wire_downloads_tab() {
           });
   connect(dt, &DownloadsTab::loverslab_url_entered, this,
           &DownloadsController::start_loverslab_download);
-  connect(dt, &DownloadsTab::pause_requested, this, [this](const std::string& id) {
+  connect(dt, &DownloadsTab::pause_requested, this, [this](const std::string &id) {
     if (!w_->pipeline_thread_)
       return;
     QMetaObject::invokeMethod(
@@ -375,10 +375,10 @@ void DownloadsController::wire_downloads_tab() {
         },
         Qt::QueuedConnection);
   });
-  connect(dt, &DownloadsTab::resume_requested, this, [this](const std::string& id) {
+  connect(dt, &DownloadsTab::resume_requested, this, [this](const std::string &id) {
     if (!w_->pipeline_thread_)
       return;
-    auto* dtab = w_->right_panel_->downloads_tab();
+    auto *dtab = w_->right_panel_->downloads_tab();
     if (dtab)
       dtab->mark_downloading(id);
     auto mods_dir = w_->mods_dir_path().string();
@@ -421,7 +421,7 @@ void DownloadsController::wire_downloads_tab() {
           Qt::QueuedConnection);
     }
   });
-  connect(dt, &DownloadsTab::entry_removed, this, [this](const std::string& id) {
+  connect(dt, &DownloadsTab::entry_removed, this, [this](const std::string &id) {
     w_->nxm_links_.erase(id);
     w_->modl_links_.erase(id);
     w_->url_downloads_.erase(id);
@@ -430,7 +430,7 @@ void DownloadsController::wire_downloads_tab() {
 }
 
 void DownloadsController::wire_saves_tab() {
-  auto* st = w_->right_panel_->saves_tab();
+  auto *st = w_->right_panel_->saves_tab();
   if (!st)
     return;
 
@@ -471,7 +471,7 @@ void DownloadsController::wire_saves_tab() {
 }
 
 void DownloadsController::on_saves_refresh_requested() {
-  auto* st = w_->right_panel_->saves_tab();
+  auto *st = w_->right_panel_->saves_tab();
   if (!st)
     return;
 
@@ -504,9 +504,9 @@ void DownloadsController::on_saves_refresh_requested() {
   st->request_scan(std::move(request));
 }
 
-void DownloadsController::on_saves_delete_requested(const QStringList& filepaths) {
+void DownloadsController::on_saves_delete_requested(const QStringList &filepaths) {
   // Trash (never permanent): engine::remove_path -> QDir::moveToTrash.
-  for (const auto& fp : filepaths) {
+  for (const auto &fp : filepaths) {
     engine::remove_path(std::filesystem::path(fp.toStdString()),
                         /*permanent=*/false);
   }
@@ -519,11 +519,11 @@ void DownloadsController::on_save_information_requested(int row) {
   // pull the parsed SaveGame + the scan's missing-assets list from there.
   // We take a LIVE snapshot of the load order here (not the scan-time one
   // baked into the request) so toggles since the scan show up.
-  auto* st = w_->right_panel_->saves_tab();
+  auto *st = w_->right_panel_->saves_tab();
   if (!st)
     return;
-  const engine::SaveGame* save                         = st->save_at(row);
-  const std::vector<engine::SaveMissingAsset>* missing = st->missing_at(row);
+  const engine::SaveGame *save                         = st->save_at(row);
+  const std::vector<engine::SaveMissingAsset> *missing = st->missing_at(row);
   if (!save)
     return;
 
@@ -535,9 +535,9 @@ void DownloadsController::on_save_information_requested(int row) {
   dlg.exec();
 }
 
-void DownloadsController::update_install_progress(const std::string& mod_id,
+void DownloadsController::update_install_progress(const std::string &mod_id,
                                                   int percent,
-                                                  const std::string& status) {
+                                                  const std::string &status) {
   // A new install resets the popup (title, bar) and (re)arms the deferred
   // show. Subsequent updates for the same install just refresh it.
   if (mod_id != w_->active_install_progress_id_) {
@@ -578,7 +578,7 @@ void DownloadsController::hide_install_progress() {
     w_->install_progress_dialog_->hide();
 }
 
-void DownloadsController::handle_nxm_download(const engine::NxmLink& link) {
+void DownloadsController::handle_nxm_download(const engine::NxmLink &link) {
   engine::Logger::instance().debug("[NXM-Download] handle_nxm_download called");
   if (!link.valid()) {
     engine::Logger::instance().warn(
@@ -626,7 +626,7 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink& link) {
     engine::Logger::instance().debug(
         "[NXM-Download] Falling back to plugin loader for domain '" +
         link.nexus_domain + "'");
-    for (const auto& p : w_->plugin_loader_->plugins()) {
+    for (const auto &p : w_->plugin_loader_->plugins()) {
       if (p.nexus_domain == link.nexus_domain) {
         matched_game_id = p.game_id;
         engine::Logger::instance().debug(
@@ -698,7 +698,7 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink& link) {
   const auto file_id = std::to_string(link.file_id);
   const auto key     = mod_id + "-" + file_id;
 
-  auto* dt = w_->right_panel_->ensure_downloads_tab();
+  auto *dt = w_->right_panel_->ensure_downloads_tab();
   if (dt) {
     dt->add_download(key,
                      tr("Mod #%1 - file %2")
@@ -753,7 +753,7 @@ void DownloadsController::handle_nxm_download(const engine::NxmLink& link) {
                                    " file " + file_id);
 }
 
-void DownloadsController::handle_modl_download(const engine::Source::ModlLink& link) {
+void DownloadsController::handle_modl_download(const engine::Source::ModlLink &link) {
   if (!link.valid()) {
     engine::Logger::instance().warn("Invalid modl link received");
     return;
@@ -778,7 +778,7 @@ void DownloadsController::handle_modl_download(const engine::Source::ModlLink& l
   // and no Nexus-style "is_managed" gate - the host is the source of truth.
   std::string matched_game_id;
   if (w_->plugin_loader_) {
-    for (const auto& p : w_->plugin_loader_->plugins()) {
+    for (const auto &p : w_->plugin_loader_->plugins()) {
       if (p.game_id == link.game_id) {
         matched_game_id = p.game_id;
         break;
@@ -832,7 +832,7 @@ void DownloadsController::handle_modl_download(const engine::Source::ModlLink& l
     page_url     = link.direct_url;
   }
 
-  auto* dt = w_->right_panel_->ensure_downloads_tab();
+  auto *dt = w_->right_panel_->ensure_downloads_tab();
   if (dt) {
     dt->add_download(key, row_name, source_label, {}, {}, 0, {}, page_url);
   }
@@ -862,7 +862,7 @@ void DownloadsController::handle_modl_download(const engine::Source::ModlLink& l
   engine::Logger::instance().debug("modl download queued: " + key);
 }
 
-void DownloadsController::start_loverslab_download(const std::string& url) {
+void DownloadsController::start_loverslab_download(const std::string &url) {
   if (!engine::LoversLabProvider::is_loverslab_url(url)) {
     QMessageBox::warning(
         w_, tr("Download from URL"),
@@ -902,7 +902,7 @@ void DownloadsController::start_loverslab_download(const std::string& url) {
   const std::string key =
       file_id.empty() ? "ll-" + std::to_string(stable_hash64(url)) : file_id;
 
-  auto* dt = w_->right_panel_->ensure_downloads_tab();
+  auto *dt = w_->right_panel_->ensure_downloads_tab();
   if (dt) {
     dt->add_download(
         key, tr("LoversLab file %1").arg(QString::fromStdString(key)).toStdString(),

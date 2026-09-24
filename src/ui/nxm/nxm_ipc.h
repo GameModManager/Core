@@ -8,42 +8,42 @@ namespace engine {
 // IPC server that listens for nxm:// URLs from other GMM processes.
 // Uses QLocalServer (Unix domain socket on Linux, named pipe on Windows).
 class NxmIpcServer : public QObject {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit NxmIpcServer(QObject* parent = nullptr);
-    ~NxmIpcServer() override;
+  explicit NxmIpcServer(QObject *parent = nullptr);
+  ~NxmIpcServer() override;
 
-    // Start listening on a well-known socket path.
-    // Returns false if another instance is already listening.
-    bool startListening();
+  // Start listening on a well-known socket path.
+  // Returns false if another instance is already listening.
+  bool startListening();
 
-    // Stop listening and clean up the socket file.
-    void stopListening();
+  // Stop listening and clean up the socket file.
+  void stopListening();
 
-    [[nodiscard]] bool isListening() const;
+  [[nodiscard]] bool isListening() const;
 
 signals:
-    // Emitted when another process sends a URL (nxm://, modl://, or gmm://).
-    // The receiver tries NxmRouter::parse first, then Router::parse_modl.
-    void urlReceived(const QString& url);
+  // Emitted when another process sends a URL (nxm://, modl://, or gmm://).
+  // The receiver tries NxmRouter::parse first, then Router::parse_modl.
+  void urlReceived(const QString &url);
 
-    // Backward-compat alias for the historical signal name. Connects from
-    // existing code (and out-of-tree plugins) keep working - it just
-    // re-emits as urlReceived. Prefer urlReceived in new code.
-    void nxmUrlReceived(const QString& url);
+  // Backward-compat alias for the historical signal name. Connects from
+  // existing code (and out-of-tree plugins) keep working - it just
+  // re-emits as urlReceived. Prefer urlReceived in new code.
+  void nxmUrlReceived(const QString &url);
 
 private:
-    class Impl;
-    Impl* impl_;
+  class Impl;
+  Impl *impl_;
 };
 
 // Try to send an nxm:// URL to a running GMM instance.
 // Returns true if the URL was delivered.
-bool send_nxm_to_running_instance(const QString& url);
+bool send_nxm_to_running_instance(const QString &url);
 
 // Generic URL forwarder (used for both nxm:// and modl://). Identical wire
 // format to send_nxm_to_running_instance; the receiving side tries
 // NxmRouter::parse first, then Router::parse_modl.
-bool send_url_to_running_instance(const QString& url);
+bool send_url_to_running_instance(const QString &url);
 
 }  // namespace engine

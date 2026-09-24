@@ -12,9 +12,9 @@
 namespace engine::Source::Nexus::Account {
 
 namespace {
-constexpr const char *kValidateUrl =
-    "https://api.nexusmods.com/v1/users/validate.json";
-} // namespace
+  constexpr const char *kValidateUrl =
+      "https://api.nexusmods.com/v1/users/validate.json";
+}  // namespace
 
 void parse_rate_limits(const std::string &headers) {
   auto find_header = [&](const std::string &name) -> int64_t {
@@ -43,30 +43,25 @@ void parse_rate_limits(const std::string &headers) {
   // NexusInterface::parseLimits reads the same plain headers). Prefer the
   // authenticated variants (they reflect the API-key quota), fall back to
   // the plain ones.
-  auto pick = [&](const std::string &primary,
-                  const std::string &fallback) -> int64_t {
+  auto pick = [&](const std::string &primary, const std::string &fallback) -> int64_t {
     int64_t v = find_header(primary);
     return v >= 0 ? v : find_header(fallback);
   };
 
-  int64_t daily_limit =
-      pick("x-rl-authenticated-daily-limit", "x-rl-daily-limit");
+  int64_t daily_limit = pick("x-rl-authenticated-daily-limit", "x-rl-daily-limit");
   int64_t daily_remaining =
       pick("x-rl-authenticated-daily-remaining", "x-rl-daily-remaining");
-  int64_t daily_reset =
-      pick("x-rl-authenticated-daily-reset", "x-rl-daily-reset");
-  int64_t hourly_limit =
-      pick("x-rl-authenticated-hourly-limit", "x-rl-hourly-limit");
+  int64_t daily_reset  = pick("x-rl-authenticated-daily-reset", "x-rl-daily-reset");
+  int64_t hourly_limit = pick("x-rl-authenticated-hourly-limit", "x-rl-hourly-limit");
   int64_t hourly_remaining =
       pick("x-rl-authenticated-hourly-remaining", "x-rl-hourly-remaining");
-  int64_t hourly_reset =
-      pick("x-rl-authenticated-hourly-reset", "x-rl-hourly-reset");
+  int64_t hourly_reset = pick("x-rl-authenticated-hourly-reset", "x-rl-hourly-reset");
 
   if (daily_limit > 0 || hourly_limit > 0) {
-    Auth::instance().update_rate_limit(
-        static_cast<int>(hourly_limit), static_cast<int>(hourly_remaining),
-        hourly_reset, static_cast<int>(daily_limit),
-        static_cast<int>(daily_remaining), daily_reset);
+    Auth::instance().update_rate_limit(static_cast<int>(hourly_limit),
+                                       static_cast<int>(hourly_remaining), hourly_reset,
+                                       static_cast<int>(daily_limit),
+                                       static_cast<int>(daily_remaining), daily_reset);
   }
 }
 
@@ -85,17 +80,17 @@ ValidateResult validate_nexus_account() {
   }
 
   curl_slist *headers = nullptr;
-  headers = curl_slist_append(headers, ("apikey: " + api_key).c_str());
-  headers = curl_slist_append(headers, "Accept: application/json");
+  headers             = curl_slist_append(headers, ("apikey: " + api_key).c_str());
+  headers             = curl_slist_append(headers, "Accept: application/json");
 
   std::string response;
   std::string resp_headers;
   long http_code = 0;
-  const bool ok = Http::nexus_http_request(
-      kValidateUrl, "", response, http_code, headers, &resp_headers, 10);
+  const bool ok  = Http::nexus_http_request(kValidateUrl, "", response, http_code,
+                                            headers, &resp_headers, 10);
   curl_slist_free_all(headers);
 
-  if (resp_headers.size() > 20) // sanity check - don't parse empty/trivial
+  if (resp_headers.size() > 20)  // sanity check - don't parse empty/trivial
     parse_rate_limits(resp_headers);
 
   if (!ok) {
@@ -103,9 +98,8 @@ ValidateResult validate_nexus_account() {
     return result;
   }
   if (http_code == 401 || http_code == 403) {
-    result.message =
-        "API key rejected by Nexus (HTTP " + std::to_string(http_code) +
-        "). Check your key at nexusmods.com/users/myaccount?tab=api.";
+    result.message = "API key rejected by Nexus (HTTP " + std::to_string(http_code) +
+                     "). Check your key at nexusmods.com/users/myaccount?tab=api.";
     return result;
   }
   if (http_code != 200) {
@@ -125,7 +119,7 @@ ValidateResult validate_nexus_account() {
 
     info.name = j.value("name", "");
 
-    const bool premium = j.value("is_premium", false);
+    const bool premium   = j.value("is_premium", false);
     const bool supporter = j.value("is_supporter", false);
     if (premium)
       info.account_type = NexusUserInfo::AccountType::Premium;
@@ -144,4 +138,4 @@ ValidateResult validate_nexus_account() {
   return result;
 }
 
-} // namespace engine::Source::Nexus::Account
+}  // namespace engine::Source::Nexus::Account

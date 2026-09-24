@@ -18,17 +18,17 @@ namespace ui {
 // the UI thread could race with; `generation` tags which run a result belongs
 // to, so a newer Refresh can drop an older in-flight result.
 class SourceFetchWorker : public QObject {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit SourceFetchWorker(QObject* parent = nullptr);
+  explicit SourceFetchWorker(QObject *parent = nullptr);
 
-    // Runs on the worker thread. Only ever invoked through
-    // SourceFetchThread::start(). Never throws; a fetch that fails simply
-    // yields ModInfoResult::available=false.
-    void run(std::function<engine::ModInfoResult()> fetch, quint64 generation);
+  // Runs on the worker thread. Only ever invoked through
+  // SourceFetchThread::start(). Never throws; a fetch that fails simply
+  // yields ModInfoResult::available=false.
+  void run(std::function<engine::ModInfoResult()> fetch, quint64 generation);
 
 signals:
-    void finished(engine::ModInfoResult result, quint64 generation);
+  void finished(engine::ModInfoResult result, quint64 generation);
 };
 
 // Long-lived worker thread reusing the LootSortThread shape. start() queues
@@ -39,20 +39,20 @@ signals:
 // returns (bounded by the HTTP timeout) - the same trade the other worker
 // threads accept; the worker is never left running into a dead receiver.
 class SourceFetchThread : public QObject {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit SourceFetchThread(QObject* parent = nullptr);
-    ~SourceFetchThread() override;
+  explicit SourceFetchThread(QObject *parent = nullptr);
+  ~SourceFetchThread() override;
 
-    SourceFetchWorker* worker() const { return worker_; }
+  SourceFetchWorker *worker() const { return worker_; }
 
-    // Queue a fetch for the worker thread. The callable is copied into the
-    // queued functor, so no shared state.
-    void start(std::function<engine::ModInfoResult()> fetch, quint64 generation);
+  // Queue a fetch for the worker thread. The callable is copied into the
+  // queued functor, so no shared state.
+  void start(std::function<engine::ModInfoResult()> fetch, quint64 generation);
 
 private:
-    QThread* thread_ = nullptr;
-    SourceFetchWorker* worker_ = nullptr;
+  QThread *thread_           = nullptr;
+  SourceFetchWorker *worker_ = nullptr;
 };
 
 }  // namespace ui

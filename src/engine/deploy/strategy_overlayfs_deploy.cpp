@@ -7,8 +7,7 @@
 
 namespace Deploy {
 
-OverlayFsDeploy::OverlayFsDeploy(std::filesystem::path staging_dir,
-                                 bool case_sensitive)
+OverlayFsDeploy::OverlayFsDeploy(std::filesystem::path staging_dir, bool case_sensitive)
     : staging_dir_(std::move(staging_dir)), case_sensitive_(case_sensitive) {}
 
 bool OverlayFsDeploy::deploy(const std::filesystem::path &source,
@@ -30,9 +29,8 @@ bool OverlayFsDeploy::deploy(const std::filesystem::path &source,
   // file) would linger in the overlay.
   std::filesystem::remove(merged, ec);
   if (ec) {
-    engine::Logger::instance().error(
-        "OverlayFS deploy: failed to clear stale target " + merged.string() +
-        ": " + ec.message());
+    engine::Logger::instance().error("OverlayFS deploy: failed to clear stale target " +
+                                     merged.string() + ": " + ec.message());
     return false;
   }
 
@@ -41,12 +39,12 @@ bool OverlayFsDeploy::deploy(const std::filesystem::path &source,
   // symlinked lowerdir inode resolves through to the mod folder (so
   // skse64_loader.exe would look for SkyrimSE.exe in the mod folder).
   if (engine::is_executable_binary(source)) {
-    std::filesystem::copy_file(
-        source, merged, std::filesystem::copy_options::overwrite_existing, ec);
+    std::filesystem::copy_file(source, merged,
+                               std::filesystem::copy_options::overwrite_existing, ec);
     if (ec) {
-      engine::Logger::instance().error(
-          "OverlayFS deploy: failed to copy binary " + source.string() +
-          " -> " + merged.string() + ": " + ec.message());
+      engine::Logger::instance().error("OverlayFS deploy: failed to copy binary " +
+                                       source.string() + " -> " + merged.string() +
+                                       ": " + ec.message());
       return false;
     }
     // Ensure the staged copy carries the exec bit (copy_file preserves the
@@ -55,8 +53,8 @@ bool OverlayFsDeploy::deploy(const std::filesystem::path &source,
     // the binary into the overwrite upperdir on launch.
     std::error_code perm_ec;
     auto perms = std::filesystem::status(merged, perm_ec).permissions();
-    if (!perm_ec && (perms & std::filesystem::perms::owner_exec) ==
-                        std::filesystem::perms::none) {
+    if (!perm_ec &&
+        (perms & std::filesystem::perms::owner_exec) == std::filesystem::perms::none) {
       std::filesystem::permissions(merged,
                                    perms | std::filesystem::perms::owner_exec |
                                        std::filesystem::perms::group_exec |
@@ -64,8 +62,8 @@ bool OverlayFsDeploy::deploy(const std::filesystem::path &source,
                                    perm_ec);
       if (perm_ec) {
         engine::Logger::instance().error(
-            "OverlayFS deploy: failed to set exec bit on " + merged.string() +
-            ": " + perm_ec.message());
+            "OverlayFS deploy: failed to set exec bit on " + merged.string() + ": " +
+            perm_ec.message());
         return false;
       }
     }
@@ -75,8 +73,8 @@ bool OverlayFsDeploy::deploy(const std::filesystem::path &source,
   std::filesystem::create_symlink(source, merged, ec);
   if (ec) {
     engine::Logger::instance().error("OverlayFS deploy: failed to symlink " +
-                                     merged.string() + " -> " +
-                                     source.string() + ": " + ec.message());
+                                     merged.string() + " -> " + source.string() + ": " +
+                                     ec.message());
     return false;
   }
   return true;
@@ -88,8 +86,7 @@ bool OverlayFsDeploy::remove(const std::filesystem::path &target) {
   return true;
 }
 
-void OverlayFsDeploy::set_mod_paths(
-    const std::vector<std::filesystem::path> &paths) {
+void OverlayFsDeploy::set_mod_paths(const std::vector<std::filesystem::path> &paths) {
   mod_paths_ = paths;
 }
 
@@ -97,4 +94,4 @@ const std::vector<std::filesystem::path> &OverlayFsDeploy::mod_paths() const {
   return mod_paths_;
 }
 
-} // namespace Deploy
+}  // namespace Deploy

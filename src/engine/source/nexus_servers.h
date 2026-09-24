@@ -5,8 +5,9 @@
 
 namespace engine {
 
-// Backward-compat aliases (deprecated - use Source::Nexus::Servers / Source::Nexus::NexusServer)
+// Backward-compat aliases (deprecated - use Source::Nexus::Servers /
+// Source::Nexus::NexusServer)
 using NexusServers = Source::Nexus::Servers;
 using NexusServer  = Source::Nexus::NexusServer;
 
-} // namespace engine
+}  // namespace engine

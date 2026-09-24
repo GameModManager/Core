@@ -11,43 +11,41 @@ struct Mod;
 struct PipelineContext;
 
 // Stage execution function
-using StageFn = std::function<bool(Mod&, PipelineContext&)>;
+using StageFn = std::function<bool(Mod &, PipelineContext &)>;
 
 struct StageClaim {
-    std::string game_id;
-    std::string stage_name;
-    StageFn handler;
-    int priority = 0;
-    std::string plugin_id;  // for logging which plugin claimed it
+  std::string game_id;
+  std::string stage_name;
+  StageFn handler;
+  int priority = 0;
+  std::string plugin_id;  // for logging which plugin claimed it
 };
 
 class StageRegistry {
 public:
-    void register_claim(const std::string& game_id,
-                        const std::string& stage_name,
-                        StageFn handler,
-                        int priority = 0,
-                        const std::string& plugin_id = "");
+  void register_claim(const std::string &game_id, const std::string &stage_name,
+                      StageFn handler, int priority = 0,
+                      const std::string &plugin_id = "");
 
-    // Returns the handler for a (game_id, stage_name) pair, or nullptr if none
-    // claimed. A claim registered with an empty game_id is a wildcard that
-    // matches any game; at equal priority a game-specific claim wins over a
-    // wildcard.
-    [[nodiscard]] StageFn get_handler(const std::string& game_id,
-                                      const std::string& stage_name) const;
+  // Returns the handler for a (game_id, stage_name) pair, or nullptr if none
+  // claimed. A claim registered with an empty game_id is a wildcard that
+  // matches any game; at equal priority a game-specific claim wins over a
+  // wildcard.
+  [[nodiscard]] StageFn get_handler(const std::string &game_id,
+                                    const std::string &stage_name) const;
 
-    // Check if any claim exists for a given stage. A wildcard claim (empty
-    // game_id) counts as a claim for every game.
-    [[nodiscard]] bool has_claim(const std::string& game_id,
-                                 const std::string& stage_name) const;
+  // Check if any claim exists for a given stage. A wildcard claim (empty
+  // game_id) counts as a claim for every game.
+  [[nodiscard]] bool has_claim(const std::string &game_id,
+                               const std::string &stage_name) const;
 
-    // Get all claims for a game (for logging/debugging)
-    [[nodiscard]] const std::vector<StageClaim>& claims() const { return claims_; }
+  // Get all claims for a game (for logging/debugging)
+  [[nodiscard]] const std::vector<StageClaim> &claims() const { return claims_; }
 
-    void clear();
+  void clear();
 
 private:
-    std::vector<StageClaim> claims_;
+  std::vector<StageClaim> claims_;
 };
 
 }  // namespace engine

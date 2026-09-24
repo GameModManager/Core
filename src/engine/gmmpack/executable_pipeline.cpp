@@ -8,16 +8,13 @@
 
 #include "engine/core/util/process_utils.h"
 
-namespace engine::gmmpack
-{
-namespace
-{
+namespace engine::gmmpack {
+namespace {
 
   namespace fs = std::filesystem;
 
-  const ExecPlatformOverride* platform_override_for(const ExecutableEntry& entry,
-                                                    const std::string& os)
-  {
+  const ExecPlatformOverride *platform_override_for(const ExecutableEntry &entry,
+                                                    const std::string &os) {
     if (os == "linux" && entry.platform.linux_plat.has_value())
       return &entry.platform.linux_plat.value();
     if (os == "macos" && entry.platform.macos.has_value())
@@ -29,8 +26,7 @@ namespace
 
 }  // namespace
 
-std::string host_os_name()
-{
+std::string host_os_name() {
 #if defined(_WIN32)
   return "windows";
 #elif defined(__APPLE__)
@@ -40,30 +36,28 @@ std::string host_os_name()
 #endif
 }
 
-std::vector<std::string> merged_environment(const ExecutableEntry& entry,
-                                            const std::string& os)
-{
+std::vector<std::string> merged_environment(const ExecutableEntry &entry,
+                                            const std::string &os) {
   // std::map keeps keys sorted for deterministic output.
   std::map<std::string, std::string> merged(entry.env_vars.begin(),
                                             entry.env_vars.end());
-  if (const auto* os_override = platform_override_for(entry, os)) {
-    for (const auto& [key, value] : os_override->env_vars)
+  if (const auto *os_override = platform_override_for(entry, os)) {
+    for (const auto &[key, value] : os_override->env_vars)
       merged[key] = value;  // additive: OS wins on conflict
   }
   std::vector<std::string> out;
   out.reserve(merged.size());
-  for (const auto& [key, value] : merged)
+  for (const auto &[key, value] : merged)
     out.push_back(key + "=" + value);
   return out;
 }
 
-std::vector<ResolvedExecutable> resolve_executables(const Gmmpack& pack,
-                                                    const fs::path& mods_root,
-                                                    const std::string& os)
-{
+std::vector<ResolvedExecutable> resolve_executables(const Gmmpack &pack,
+                                                    const fs::path &mods_root,
+                                                    const std::string &os) {
   std::vector<ResolvedExecutable> out;
   out.reserve(pack.executables.size());
-  for (const auto& entry : pack.executables) {
+  for (const auto &entry : pack.executables) {
     ResolvedExecutable r;
     r.entry                 = entry;
     const fs::path mod_root = mods_root / entry.source_mod_id;
@@ -73,7 +67,7 @@ std::vector<ResolvedExecutable> resolve_executables(const Gmmpack& pack,
     if (entry.output.has_value() && !entry.output->path.empty())
       r.output_dir = r.working_dir / entry.output->path;
     r.argv.push_back(r.executable_path.string());
-    for (const auto& arg : entry.arguments)
+    for (const auto &arg : entry.arguments)
       r.argv.push_back(arg);
     // Output-path injection: pass the resolved absolute output dir when
     // the tool accepts an output-dir flag instead of trusting its default.
@@ -88,16 +82,15 @@ std::vector<ResolvedExecutable> resolve_executables(const Gmmpack& pack,
   return out;
 }
 
-RunOrder order_for_run(const std::vector<std::string>& ids,
-                       const std::vector<ManifestRule>& rules)
-{
+RunOrder order_for_run(const std::vector<std::string> &ids,
+                       const std::vector<ManifestRule> &rules) {
   const std::set<std::string> known(ids.begin(), ids.end());
   std::map<std::string, std::set<std::string>> edges;  // before -> afters
   std::map<std::string, size_t> position;
   for (size_t i = 0; i < ids.size(); ++i)
     position[ids[i]] = i;
 
-  for (const auto& rule : rules) {
+  for (const auto &rule : rules) {
     if (!known.contains(rule.from) || !known.contains(rule.to))
       continue;  // rules may reference plain mods - no edge here
     if (rule.from == rule.to)
@@ -112,15 +105,15 @@ RunOrder order_for_run(const std::vector<std::string>& ids,
 
   // Kahn's algorithm, pack-order tiebreak for determinism.
   std::map<std::string, size_t> indegree;
-  for (const auto& id : ids)
+  for (const auto &id : ids)
     indegree[id] = 0;
-  for (const auto& [from, tos] : edges)
-    for (const auto& to : tos)
+  for (const auto &[from, tos] : edges)
+    for (const auto &to : tos)
       indegree[to] += 1;
 
   RunOrder result;
   std::set<std::pair<size_t, std::string>> ready;  // (pack pos, id)
-  for (const auto& id : ids)
+  for (const auto &id : ids)
     if (indegree[id] == 0)
       ready.emplace(position[id], id);
   while (!ready.empty()) {
@@ -128,7 +121,7 @@ RunOrder order_for_run(const std::vector<std::string>& ids,
     const std::string id = ready.begin()->second;
     ready.erase(ready.begin());
     result.ids.push_back(id);
-    for (const auto& next : edges[id]) {
+    for (const auto &next : edges[id]) {
       if (--indegree[next] == 0)
         ready.emplace(position[next], next);
     }
@@ -137,38 +130,37 @@ RunOrder order_for_run(const std::vector<std::string>& ids,
   if (result.has_cycle) {
     // Append the cyclic remainder in pack order - deterministic fallback.
     const std::set<std::string> emitted(result.ids.begin(), result.ids.end());
-    for (const auto& id : ids)
+    for (const auto &id : ids)
       if (!emitted.contains(id))
         result.ids.push_back(id);
   }
   return result;
 }
 
-std::vector<std::string> setup_auto_run_ids(const Gmmpack& pack, const RunOrder& order)
-{
-  std::map<std::string, const ExecutableEntry*> by_id;
-  for (const auto& e : pack.executables)
+std::vector<std::string> setup_auto_run_ids(const Gmmpack &pack,
+                                            const RunOrder &order) {
+  std::map<std::string, const ExecutableEntry *> by_id;
+  for (const auto &e : pack.executables)
     by_id[e.id] = &e;
   std::vector<std::string> out;
-  for (const auto& id : order.ids) {
+  for (const auto &id : order.ids) {
     const auto it = by_id.find(id);
     if (it == by_id.end())
       continue;  // order may include plain mod ids
-    const auto* e = it->second;
+    const auto *e = it->second;
     if (e->role == "setup" && e->auto_run)
       out.push_back(id);
   }
   return out;
 }
 
-std::string modset_input_hash(const std::vector<std::string>& inputs)
-{
+std::string modset_input_hash(const std::vector<std::string> &inputs) {
   // FNV-1a 64-bit: stable across runs/platforms, no crypto dependency.
   // Change detection only - never used for integrity or security.
   std::vector<std::string> sorted = inputs;
   std::sort(sorted.begin(), sorted.end());
   uint64_t hash = 14695981039346656037ULL;
-  for (const auto& token : sorted) {
+  for (const auto &token : sorted) {
     for (const unsigned char c : token) {
       hash ^= c;
       hash *= 1099511628211ULL;
@@ -176,7 +168,7 @@ std::string modset_input_hash(const std::vector<std::string>& inputs)
     hash ^= 0xFF;  // token separator
     hash *= 1099511628211ULL;
   }
-  static const char* hex = "0123456789abcdef";
+  static const char *hex = "0123456789abcdef";
   std::string out;
   out.reserve(16);
   for (int i = 0; i < 8; ++i) {
@@ -187,15 +179,13 @@ std::string modset_input_hash(const std::vector<std::string>& inputs)
   return out;
 }
 
-bool exe_rerun_due(const ExecutableEntry& entry, const std::string& current_hash,
-                   const std::string& last_hash)
-{
+bool exe_rerun_due(const ExecutableEntry &entry, const std::string &current_hash,
+                   const std::string &last_hash) {
   return entry.rerun_on_modset_change && !last_hash.empty() &&
          current_hash != last_hash;
 }
 
-CapturedProcess run_executable(const ResolvedExecutable& resolved)
-{
+CapturedProcess run_executable(const ResolvedExecutable &resolved) {
   RunOptions options;
   options.env = resolved.environment;
   options.cwd = resolved.working_dir.string();
@@ -215,14 +205,13 @@ CapturedProcess run_executable(const ResolvedExecutable& resolved)
   return run_captured(resolved.argv, options);
 }
 
-CaptureResult capture_exe_output(const ResolvedExecutable& resolved,
-                                 const fs::path& mods_root)
-{
+CaptureResult capture_exe_output(const ResolvedExecutable &resolved,
+                                 const fs::path &mods_root) {
   const bool synthetic = resolved.entry.output.has_value() &&
                          resolved.entry.output->capture == "syntheticMod";
   if (!synthetic || resolved.output_dir.empty())
     return {true, {}};
-  const std::string& mod_id = resolved.entry.output->synthetic_mod_id;
+  const std::string &mod_id = resolved.entry.output->synthetic_mod_id;
   if (mod_id.empty())
     return {false, "syntheticMod capture without syntheticModId"};
   if (mod_id.find('/') != std::string::npos || mod_id.find('\\') != std::string::npos ||
@@ -258,8 +247,7 @@ CaptureResult capture_exe_output(const ResolvedExecutable& resolved,
   return {true, {}};
 }
 
-LaunchParams to_launch_params(const ResolvedExecutable& resolved)
-{
+LaunchParams to_launch_params(const ResolvedExecutable &resolved) {
   LaunchParams params;
   params.executable = resolved.executable_path;
   params.args.assign(resolved.argv.begin() + 1, resolved.argv.end());

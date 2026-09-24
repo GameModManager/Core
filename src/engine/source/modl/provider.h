@@ -19,11 +19,11 @@ namespace engine::Source::Modl {
 // direct-URL download regardless of origin.
 class Provider : public Interface {
 public:
-    std::string source_type() const override { return "direct"; }
-    bool fetch(const ::engine::Mod& mod, ::engine::PipelineContext& ctx,
-               const std::filesystem::path& dest_path) override;
-    SourceDownloadInfo resolve_download_info(const ::engine::Mod& mod) const override;
-    std::string display_name() const override;
+  std::string source_type() const override { return "direct"; }
+  bool fetch(const ::engine::Mod &mod, ::engine::PipelineContext &ctx,
+             const std::filesystem::path &dest_path) override;
+  SourceDownloadInfo resolve_download_info(const ::engine::Mod &mod) const override;
+  std::string display_name() const override;
 };
 
-} // namespace engine::Source::Modl
+}  // namespace engine::Source::Modl

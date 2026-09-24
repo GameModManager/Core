@@ -38,18 +38,15 @@ namespace py = pybind11;
 //    to the ABI GmmDiagnosticsFn the engine registry expects. Providers are
 //    owned here (they hold py::object) and cleared on interpreter shutdown.
 
-namespace
-{
+namespace {
 
-struct PyDiagnosticsProvider
-{
+struct PyDiagnosticsProvider {
   py::object fn;
 };
 
-void py_diagnostics_bridge(const char* plugin_name, char* out_buffer,
-                           size_t out_capacity, void* user_data)
-{
-  auto* provider = static_cast<PyDiagnosticsProvider*>(user_data);
+void py_diagnostics_bridge(const char *plugin_name, char *out_buffer,
+                           size_t out_capacity, void *user_data) {
+  auto *provider = static_cast<PyDiagnosticsProvider *>(user_data);
   if (!provider)
     return;
 
@@ -65,7 +62,7 @@ void py_diagnostics_bridge(const char* plugin_name, char* out_buffer,
           messages.push_back(py::cast<std::string>(item));
     }
     size_t off = 0;
-    for (const auto& msg : messages) {
+    for (const auto &msg : messages) {
       if (off + msg.size() + 1 > out_capacity)
         break;
       std::memcpy(out_buffer + off, msg.data(), msg.size());
@@ -74,7 +71,7 @@ void py_diagnostics_bridge(const char* plugin_name, char* out_buffer,
     }
     if (off < out_capacity)
       out_buffer[off] = '\0';
-  } catch (const py::error_already_set& e) {
+  } catch (const py::error_already_set &e) {
     engine::Logger::instance().warn("Python diagnostics bridge error: " +
                                     std::string(e.what()));
     PyErr_Clear();  // a broken provider must not crash the refresh
@@ -89,14 +86,12 @@ std::vector<std::unique_ptr<PyDiagnosticsProvider>> g_py_providers;
 //    are owned here (they hold py::object) and cleared on interpreter
 //    shutdown, matching the diagnostics providers above.
 
-struct PyEventHandler
-{
+struct PyEventHandler {
   py::object fn;
 };
 
-void py_event_bridge(const char* event_id, const char* json_payload, void* user_data)
-{
-  auto* handler = static_cast<PyEventHandler*>(user_data);
+void py_event_bridge(const char *event_id, const char *json_payload, void *user_data) {
+  auto *handler = static_cast<PyEventHandler *>(user_data);
   if (!handler)
     return;
 
@@ -105,7 +100,7 @@ void py_event_bridge(const char* event_id, const char* json_payload, void* user_
     py::object parsed =
         py::module_::import("json").attr("loads")(py::str(json_payload));
     handler->fn(py::str(event_id), parsed);
-  } catch (const py::error_already_set& e) {
+  } catch (const py::error_already_set &e) {
     engine::Logger::instance().warn("Python event bridge error: " +
                                     std::string(e.what()));
     PyErr_Clear();  // a broken handler must not crash the emitter
@@ -122,9 +117,8 @@ std::vector<std::unique_ptr<PyEventHandler>> g_py_handlers;
 // the backing strings alive in the provider until interpreter shutdown.
 // ---------------------------------------------------------------------------
 
-static char* dup_str(const std::string& s)
-{
-  char* p = static_cast<char*>(std::malloc(s.size() + 1));
+static char *dup_str(const std::string &s) {
+  char *p = static_cast<char *>(std::malloc(s.size() + 1));
   if (p) {
     std::memcpy(p, s.data(), s.size());
     p[s.size()] = '\0';
@@ -132,23 +126,20 @@ static char* dup_str(const std::string& s)
   return p;
 }
 
-static std::string basename_of(const std::string& path)
-{
+static std::string basename_of(const std::string &path) {
   return std::filesystem::path(path).filename().string();
 }
 
 // -- Requirements (GmmRequirementsFn) --
-struct PyRequirementsProvider
-{
+struct PyRequirementsProvider {
   py::object fn;
   std::vector<std::string> owned;
   std::vector<GmmPluginRequirement> array;
 };
 std::vector<std::unique_ptr<PyRequirementsProvider>> g_py_req_providers;
 
-GmmPluginRequirement* py_requirements_bridge(size_t* out_count, void* user_data)
-{
-  auto* p = static_cast<PyRequirementsProvider*>(user_data);
+GmmPluginRequirement *py_requirements_bridge(size_t *out_count, void *user_data) {
+  auto *p = static_cast<PyRequirementsProvider *>(user_data);
   if (!p) {
     *out_count = 0;
     return nullptr;
@@ -190,7 +181,7 @@ GmmPluginRequirement* py_requirements_bridge(size_t* out_count, void* user_data)
     }
     *out_count = p->array.size();
     return p->array.data();
-  } catch (const py::error_already_set& e) {
+  } catch (const py::error_already_set &e) {
     engine::Logger::instance().warn("Python requirements bridge error: " +
                                     std::string(e.what()));
     PyErr_Clear();
@@ -200,28 +191,25 @@ GmmPluginRequirement* py_requirements_bridge(size_t* out_count, void* user_data)
 }
 
 // -- Diagnostics v2 (GmmDiagnoseFn) --
-struct PyGuidedFixProvider
-{
+struct PyGuidedFixProvider {
   py::object fn;
 };
 
-void py_guided_fix_bridge(void* user_data)
-{
-  auto* fix = static_cast<PyGuidedFixProvider*>(user_data);
+void py_guided_fix_bridge(void *user_data) {
+  auto *fix = static_cast<PyGuidedFixProvider *>(user_data);
   if (!fix)
     return;
   py::gil_scoped_acquire acquire;
   try {
     fix->fn();
-  } catch (const py::error_already_set& e) {
+  } catch (const py::error_already_set &e) {
     engine::Logger::instance().warn("Python guided fix bridge error: " +
                                     std::string(e.what()));
     PyErr_Clear();
   }
 }
 
-struct PyDiagnoseProvider
-{
+struct PyDiagnoseProvider {
   py::object fn;
   std::vector<std::string> owned;
   std::vector<GmmDiagnosticProblem> array;
@@ -232,8 +220,7 @@ std::vector<std::unique_ptr<PyDiagnoseProvider>> g_py_diagnose_providers;
 // Extract a short description string from a problem item returned by a Python
 // diagnostics callable (accepts a bare string, a (short, full) tuple, or a
 // dict with short_description / full_description).
-static std::string diag_short_desc(py::handle item)
-{
+static std::string diag_short_desc(py::handle item) {
   try {
     if (py::isinstance<py::str>(item)) {
       return py::cast<std::string>(item);
@@ -246,7 +233,7 @@ static std::string diag_short_desc(py::handle item)
       if (d.contains("full_description"))
         return py::cast<std::string>(d["full_description"]);
     }
-  } catch (const py::error_already_set& e) {
+  } catch (const py::error_already_set &e) {
     engine::Logger::instance().warn("Python diag_short_desc error: " +
                                     std::string(e.what()));
     PyErr_Clear();
@@ -256,10 +243,9 @@ static std::string diag_short_desc(py::handle item)
 
 // v1 DiagnosticsRegistry bridge: fill the buffer with short descriptions so the
 // Plugins tab (PluginLoader::collect_diagnostics) can render them.
-void py_diag_v1_bridge(const char* plugin_name, char* out_buffer, size_t out_capacity,
-                       void* user_data)
-{
-  auto* p = static_cast<PyDiagnoseProvider*>(user_data);
+void py_diag_v1_bridge(const char *plugin_name, char *out_buffer, size_t out_capacity,
+                       void *user_data) {
+  auto *p = static_cast<PyDiagnoseProvider *>(user_data);
   if (!p)
     return;
   py::gil_scoped_acquire acquire;
@@ -274,7 +260,7 @@ void py_diag_v1_bridge(const char* plugin_name, char* out_buffer, size_t out_cap
       }
     }
     size_t off = 0;
-    for (const auto& msg : messages) {
+    for (const auto &msg : messages) {
       if (off + msg.size() + 1 > out_capacity)
         break;
       std::memcpy(out_buffer + off, msg.data(), msg.size());
@@ -283,7 +269,7 @@ void py_diag_v1_bridge(const char* plugin_name, char* out_buffer, size_t out_cap
     }
     if (off < out_capacity)
       out_buffer[off] = '\0';
-  } catch (const py::error_already_set& e) {
+  } catch (const py::error_already_set &e) {
     engine::Logger::instance().warn("Python diag v1 bridge error: " +
                                     std::string(e.what()));
     PyErr_Clear();
@@ -291,9 +277,8 @@ void py_diag_v1_bridge(const char* plugin_name, char* out_buffer, size_t out_cap
 }
 
 // v2 DiagnoseRegistry bridge: return an array of GmmDiagnosticProblem.
-GmmDiagnosticProblem* py_diag_v2_bridge(size_t* out_count, void* user_data)
-{
-  auto* p = static_cast<PyDiagnoseProvider*>(user_data);
+GmmDiagnosticProblem *py_diag_v2_bridge(size_t *out_count, void *user_data) {
+  auto *p = static_cast<PyDiagnoseProvider *>(user_data);
   if (!p) {
     *out_count = 0;
     return nullptr;
@@ -356,7 +341,7 @@ GmmDiagnosticProblem* py_diag_v2_bridge(size_t* out_count, void* user_data)
     }
     *out_count = p->array.size();
     return p->array.data();
-  } catch (const py::error_already_set& e) {
+  } catch (const py::error_already_set &e) {
     engine::Logger::instance().warn("Python diag v2 bridge error: " +
                                     std::string(e.what()));
     PyErr_Clear();
@@ -366,17 +351,15 @@ GmmDiagnosticProblem* py_diag_v2_bridge(size_t* out_count, void* user_data)
 }
 
 // -- File mapper (GmmFileMapperFn) --
-struct PyFileMapperProvider
-{
+struct PyFileMapperProvider {
   py::object fn;
   std::vector<std::string> owned;
   std::vector<GmmFileMapping> array;
 };
 std::vector<std::unique_ptr<PyFileMapperProvider>> g_py_file_mapper_providers;
 
-GmmFileMapping* py_file_mapper_bridge(size_t* out_count, void* user_data)
-{
-  auto* p = static_cast<PyFileMapperProvider*>(user_data);
+GmmFileMapping *py_file_mapper_bridge(size_t *out_count, void *user_data) {
+  auto *p = static_cast<PyFileMapperProvider *>(user_data);
   if (!p) {
     *out_count = 0;
     return nullptr;
@@ -414,7 +397,7 @@ GmmFileMapping* py_file_mapper_bridge(size_t* out_count, void* user_data)
     }
     *out_count = p->array.size();
     return p->array.data();
-  } catch (const py::error_already_set& e) {
+  } catch (const py::error_already_set &e) {
     engine::Logger::instance().warn("Python file mapper bridge error: " +
                                     std::string(e.what()));
     PyErr_Clear();
@@ -424,16 +407,14 @@ GmmFileMapping* py_file_mapper_bridge(size_t* out_count, void* user_data)
 }
 
 // -- Order encoding (GmmOrderEncodingFnV2) --
-struct PyOrderEncodingProvider
-{
+struct PyOrderEncodingProvider {
   py::object fn;
 };
 std::vector<std::unique_ptr<PyOrderEncodingProvider>> g_py_order_encoding_providers;
 
-int py_order_encoding_bridge(const char* const* ordered_mod_ids, size_t count,
-                             const char* output_path, void* user_data)
-{
-  auto* p = static_cast<PyOrderEncodingProvider*>(user_data);
+int py_order_encoding_bridge(const char *const *ordered_mod_ids, size_t count,
+                             const char *output_path, void *user_data) {
+  auto *p = static_cast<PyOrderEncodingProvider *>(user_data);
   if (!p)
     return 0;
   py::gil_scoped_acquire acquire;
@@ -443,7 +424,7 @@ int py_order_encoding_bridge(const char* const* ordered_mod_ids, size_t count,
       ids.emplace_back(ordered_mod_ids[i] ? ordered_mod_ids[i] : "");
     py::object result = p->fn(ids, py::str(output_path ? output_path : ""));
     return py::cast<int>(result) != 0 ? 1 : 0;
-  } catch (const py::error_already_set& e) {
+  } catch (const py::error_already_set &e) {
     engine::Logger::instance().warn("Python order encoding bridge error: " +
                                     std::string(e.what()));
     PyErr_Clear();
@@ -452,16 +433,14 @@ int py_order_encoding_bridge(const char* const* ordered_mod_ids, size_t count,
 }
 
 // -- Deploy strategy (GmmDeployFnV2 / GmmRemoveFnV2) --
-struct PyDeployProvider
-{
+struct PyDeployProvider {
   py::object deploy_fn;
   py::object remove_fn;
 };
 std::vector<std::unique_ptr<PyDeployProvider>> g_py_deploy_providers;
 
-int py_deploy_bridge(const char* source, const char* target, void* user_data)
-{
-  auto* p = static_cast<PyDeployProvider*>(user_data);
+int py_deploy_bridge(const char *source, const char *target, void *user_data) {
+  auto *p = static_cast<PyDeployProvider *>(user_data);
   if (!p || p->deploy_fn.is_none())
     return 0;
   py::gil_scoped_acquire acquire;
@@ -469,7 +448,7 @@ int py_deploy_bridge(const char* source, const char* target, void* user_data)
     py::object result =
         p->deploy_fn(py::str(source ? source : ""), py::str(target ? target : ""));
     return py::cast<int>(result) != 0 ? 1 : 0;
-  } catch (const py::error_already_set& e) {
+  } catch (const py::error_already_set &e) {
     engine::Logger::instance().warn("Python deploy bridge error: " +
                                     std::string(e.what()));
     PyErr_Clear();
@@ -477,16 +456,15 @@ int py_deploy_bridge(const char* source, const char* target, void* user_data)
   }
 }
 
-int py_remove_bridge(const char* target, void* user_data)
-{
-  auto* p = static_cast<PyDeployProvider*>(user_data);
+int py_remove_bridge(const char *target, void *user_data) {
+  auto *p = static_cast<PyDeployProvider *>(user_data);
   if (!p || p->remove_fn.is_none())
     return 0;
   py::gil_scoped_acquire acquire;
   try {
     py::object result = p->remove_fn(py::str(target ? target : ""));
     return py::cast<int>(result) != 0 ? 1 : 0;
-  } catch (const py::error_already_set& e) {
+  } catch (const py::error_already_set &e) {
     engine::Logger::instance().warn("Python remove bridge error: " +
                                     std::string(e.what()));
     PyErr_Clear();
@@ -495,42 +473,38 @@ int py_remove_bridge(const char* target, void* user_data)
 }
 
 // -- Hook (GmmHookFnV2) --
-struct PyHookProvider
-{
+struct PyHookProvider {
   py::object fn;
 };
 std::vector<std::unique_ptr<PyHookProvider>> g_py_hook_providers;
 
-void py_hook_bridge(const char* tag, void* data, void* user_data)
-{
-  auto* p = static_cast<PyHookProvider*>(user_data);
+void py_hook_bridge(const char *tag, void *data, void *user_data) {
+  auto *p = static_cast<PyHookProvider *>(user_data);
   if (!p)
     return;
   py::gil_scoped_acquire acquire;
   try {
-    const char* d = static_cast<const char*>(data);
+    const char *d = static_cast<const char *>(data);
     p->fn(py::str(tag ? tag : ""), py::str(d ? d : ""));
-  } catch (const py::error_already_set&) {
+  } catch (const py::error_already_set &) {
     PyErr_Clear();
   }
 }
 
 // -- Tool (GmmToolInvokeFn) --
-struct PyToolProvider
-{
+struct PyToolProvider {
   py::object fn;
 };
 std::vector<std::unique_ptr<PyToolProvider>> g_py_tool_providers;
 
-void py_tool_bridge(void* user_data)
-{
-  auto* p = static_cast<PyToolProvider*>(user_data);
+void py_tool_bridge(void *user_data) {
+  auto *p = static_cast<PyToolProvider *>(user_data);
   if (!p)
     return;
   py::gil_scoped_acquire acquire;
   try {
     p->fn();
-  } catch (const py::error_already_set&) {
+  } catch (const py::error_already_set &) {
     PyErr_Clear();
   }
 }
@@ -541,16 +515,14 @@ void py_tool_bridge(void* user_data)
 // The engine stores the void* exactly like a C plugin; the UI casts it back to
 // QWidget*. The returned Python object is kept alive so the widget is not
 // garbage-collected while embedded.
-struct PyPreviewProvider
-{
+struct PyPreviewProvider {
   py::object fn;
   py::object keep_alive;
 };
 std::vector<std::unique_ptr<PyPreviewProvider>> g_py_preview_providers;
 
-void* py_preview_bridge(const char* file_path, void* preview_data, void* user_data)
-{
-  auto* p = static_cast<PyPreviewProvider*>(user_data);
+void *py_preview_bridge(const char *file_path, void *preview_data, void *user_data) {
+  auto *p = static_cast<PyPreviewProvider *>(user_data);
   if (!p)
     return nullptr;
   py::gil_scoped_acquire acquire;
@@ -558,25 +530,23 @@ void* py_preview_bridge(const char* file_path, void* preview_data, void* user_da
     py::object result = p->fn(py::str(file_path ? file_path : ""));
     p->keep_alive     = result;
     if (py::isinstance<py::int_>(result)) {
-      return reinterpret_cast<void*>(py::cast<uintptr_t>(result));
+      return reinterpret_cast<void *>(py::cast<uintptr_t>(result));
     }
     return nullptr;
-  } catch (const py::error_already_set&) {
+  } catch (const py::error_already_set &) {
     PyErr_Clear();
     return nullptr;
   }
 }
 
 // -- ModPage download (GmmModPageDownloadFn) --
-struct PyModPageProvider
-{
+struct PyModPageProvider {
   py::object fn;
 };
 std::vector<std::unique_ptr<PyModPageProvider>> g_py_modpage_providers;
 
-int py_modpage_bridge(const char* url, const char* output_path, void* user_data)
-{
-  auto* p = static_cast<PyModPageProvider*>(user_data);
+int py_modpage_bridge(const char *url, const char *output_path, void *user_data) {
+  auto *p = static_cast<PyModPageProvider *>(user_data);
   if (!p)
     return 0;
   py::gil_scoped_acquire acquire;
@@ -584,23 +554,21 @@ int py_modpage_bridge(const char* url, const char* output_path, void* user_data)
     py::object result =
         p->fn(py::str(url ? url : ""), py::str(output_path ? output_path : ""));
     return py::cast<int>(result) != 0 ? 1 : 0;
-  } catch (const py::error_already_set&) {
+  } catch (const py::error_already_set &) {
     PyErr_Clear();
     return 0;
   }
 }
 
 // -- Save parser (GmmSaveParserFnV2) --
-struct PySaveParserProvider
-{
+struct PySaveParserProvider {
   py::object fn;
 };
 std::vector<std::unique_ptr<PySaveParserProvider>> g_py_save_parser_providers;
 
-int py_save_parser_bridge(const char* path, const char* game_id, GmmSaveDataV2* out,
-                          void* user_data)
-{
-  auto* p = static_cast<PySaveParserProvider*>(user_data);
+int py_save_parser_bridge(const char *path, const char *game_id, GmmSaveDataV2 *out,
+                          void *user_data) {
+  auto *p = static_cast<PySaveParserProvider *>(user_data);
   if (!p || !out)
     return 0;
   py::gil_scoped_acquire acquire;
@@ -639,25 +607,23 @@ int py_save_parser_bridge(const char* path, const char* game_id, GmmSaveDataV2* 
         out->light_plugins[i] = dup_str(pl[i]);
     }
     return 1;
-  } catch (const py::error_already_set&) {
+  } catch (const py::error_already_set &) {
     PyErr_Clear();
     return 0;
   }
 }
 
 // -- Sort provider (GmmSortFn) --
-struct PySortProvider
-{
+struct PySortProvider {
   py::object fn;
   std::vector<std::string> owned;
-  std::vector<const char*> array;
+  std::vector<const char *> array;
 };
 std::vector<std::unique_ptr<PySortProvider>> g_py_sort_providers;
 
-const char* const* py_sort_bridge(const char* const* mod_folders, size_t count,
-                                  void* user_data)
-{
-  auto* p = static_cast<PySortProvider*>(user_data);
+const char *const *py_sort_bridge(const char *const *mod_folders, size_t count,
+                                  void *user_data) {
+  auto *p = static_cast<PySortProvider *>(user_data);
   if (!p)
     return nullptr;
   py::gil_scoped_acquire acquire;
@@ -682,7 +648,7 @@ const char* const* py_sort_bridge(const char* const* mod_folders, size_t count,
     }
     p->array.push_back(nullptr);  // null terminator
     return p->array.data();
-  } catch (const py::error_already_set&) {
+  } catch (const py::error_already_set &) {
     PyErr_Clear();
     return nullptr;
   }
@@ -691,16 +657,14 @@ const char* const* py_sort_bridge(const char* const* mod_folders, size_t count,
 // -- Stage claim (GmmStageFnV2) --
 // The ABI callback receives opaque pointers; we pass them through to Python as
 // int (pointer-sized) values.  The Python handler must return True/False.
-struct PyStageClaimProvider
-{
+struct PyStageClaimProvider {
   py::object fn;
 };
 std::vector<std::unique_ptr<PyStageClaimProvider>> g_py_stage_claim_providers;
 
-int py_stage_claim_bridge(void* mod, void* instance, void* conflicts, void* profile,
-                          void* user_data)
-{
-  auto* p = static_cast<PyStageClaimProvider*>(user_data);
+int py_stage_claim_bridge(void *mod, void *instance, void *conflicts, void *profile,
+                          void *user_data) {
+  auto *p = static_cast<PyStageClaimProvider *>(user_data);
   if (!p)
     return 0;
   py::gil_scoped_acquire acquire;
@@ -713,7 +677,7 @@ int py_stage_claim_bridge(void* mod, void* instance, void* conflicts, void* prof
     if (py::isinstance<py::int_>(result))
       return py::cast<int>(result) != 0 ? 1 : 0;
     return 0;
-  } catch (const py::error_already_set&) {
+  } catch (const py::error_already_set &) {
     PyErr_Clear();
     return 0;
   }
@@ -723,16 +687,14 @@ int py_stage_claim_bridge(void* mod, void* instance, void* conflicts, void* prof
 // The ABI GmmAnimationParserFnV2 fills a complex GmmAnimationDataV2 struct.
 // For Python, we accept a simpler callable that returns a dict with frames,
 // fps, canvas_width, canvas_height.  The bridge marshals it into the C struct.
-struct PyAnimationParserProvider
-{
+struct PyAnimationParserProvider {
   py::object fn;
 };
 std::vector<std::unique_ptr<PyAnimationParserProvider>> g_py_animation_parser_providers;
 
-int py_animation_parser_bridge(const char* file_path, const char* base_dir,
-                               GmmAnimationDataV2* out, void* user_data)
-{
-  auto* p = static_cast<PyAnimationParserProvider*>(user_data);
+int py_animation_parser_bridge(const char *file_path, const char *base_dir,
+                               GmmAnimationDataV2 *out, void *user_data) {
+  auto *p = static_cast<PyAnimationParserProvider *>(user_data);
   if (!p || !out)
     return 0;
   py::gil_scoped_acquire acquire;
@@ -756,11 +718,11 @@ int py_animation_parser_bridge(const char* file_path, const char* base_dir,
       size_t count     = py::len(frames_list);
       if (count > 0) {
         out->frame_count = count;
-        out->frames      = static_cast<GmmAnimationFrameV2*>(
+        out->frames      = static_cast<GmmAnimationFrameV2 *>(
             std::calloc(count, sizeof(GmmAnimationFrameV2)));
         for (size_t fi = 0; fi < count; ++fi) {
           auto fd     = py::cast<py::dict>(frames_list[fi]);
-          auto& frame = out->frames[fi];
+          auto &frame = out->frames[fi];
           if (fd.contains("delay_ms"))
             frame.delay_ms = py::cast<float>(fd["delay_ms"]);
           if (fd.contains("layers")) {
@@ -768,11 +730,11 @@ int py_animation_parser_bridge(const char* file_path, const char* base_dir,
             size_t lc        = py::len(layers_list);
             if (lc > 0) {
               frame.layer_count = lc;
-              frame.layers      = static_cast<GmmAnimationLayerV2*>(
+              frame.layers      = static_cast<GmmAnimationLayerV2 *>(
                   std::calloc(lc, sizeof(GmmAnimationLayerV2)));
               for (size_t li = 0; li < lc; ++li) {
                 auto ld     = py::cast<py::dict>(layers_list[li]);
-                auto& layer = frame.layers[li];
+                auto &layer = frame.layers[li];
                 if (ld.contains("x"))
                   layer.x = py::cast<int32_t>(ld["x"]);
                 if (ld.contains("y"))
@@ -786,7 +748,7 @@ int py_animation_parser_bridge(const char* file_path, const char* base_dir,
                   if (!pixels.empty()) {
                     layer.pixel_count = pixels.size();
                     layer.rgba_pixels =
-                        static_cast<uint8_t*>(std::malloc(pixels.size()));
+                        static_cast<uint8_t *>(std::malloc(pixels.size()));
                     std::memcpy(layer.rgba_pixels, pixels.data(), pixels.size());
                   }
                 }
@@ -797,7 +759,7 @@ int py_animation_parser_bridge(const char* file_path, const char* base_dir,
       }
     }
     return 1;
-  } catch (const py::error_already_set&) {
+  } catch (const py::error_already_set &) {
     PyErr_Clear();
     return 0;
   }
@@ -811,21 +773,18 @@ std::vector<std::string> g_loaded_plugin_paths;
 
 // -- gmm.RegistrationContext - Python-side wrapper --
 
-class PyRegistrationContext
-{
+class PyRegistrationContext {
 public:
-  PyRegistrationContext(engine::PluginLoader* loader, engine::PluginInfo* plugin)
-      : loader_(loader), plugin_(plugin)
-  {}
+  PyRegistrationContext(engine::PluginLoader *loader, engine::PluginInfo *plugin)
+      : loader_(loader), plugin_(plugin) {}
 
   // -- Fluent chaining: every register_* returns *this --
 
-  PyRegistrationContext&
-  register_identity(uint32_t steam_appid, const std::string& gog_id,
-                    const std::string& epic_namespace, const std::string& nexus_domain,
-                    const std::string& display_name, const std::string& exe_windows,
-                    const std::string& exe_linux, const std::string& exe_macos)
-  {
+  PyRegistrationContext &
+  register_identity(uint32_t steam_appid, const std::string &gog_id,
+                    const std::string &epic_namespace, const std::string &nexus_domain,
+                    const std::string &display_name, const std::string &exe_windows,
+                    const std::string &exe_linux, const std::string &exe_macos) {
     plugin_->steam_appid  = steam_appid;
     plugin_->nexus_domain = nexus_domain;
     if (!display_name.empty())
@@ -838,27 +797,24 @@ public:
     return *this;
   }
 
-  PyRegistrationContext& register_meta(const std::string& author,
-                                       const std::string& version,
-                                       const std::string& description)
-  {
+  PyRegistrationContext &register_meta(const std::string &author,
+                                       const std::string &version,
+                                       const std::string &description) {
     plugin_->author      = author;
     plugin_->version     = version;
     plugin_->description = description;
     return *this;
   }
 
-  PyRegistrationContext& register_category(const std::string& category)
-  {
+  PyRegistrationContext &register_category(const std::string &category) {
     plugin_->category = category;
     return *this;
   }
 
   // -- Batched categories (plural form) --
-  PyRegistrationContext& register_categories(py::list categories)
-  {
+  PyRegistrationContext &register_categories(py::list categories) {
     plugin_->categories.clear();
-    for (const auto& item : categories) {
+    for (const auto &item : categories) {
       std::string s = py::cast<std::string>(item);
       if (s.empty())
         continue;
@@ -872,18 +828,17 @@ public:
     return *this;
   }
 
-  PyRegistrationContext&
-  register_settings(const std::vector<std::pair<std::string, std::string>>& settings)
-  {
+  PyRegistrationContext &
+  register_settings(const std::vector<std::pair<std::string, std::string>> &settings) {
     plugin_->settings = settings;
 
     // Mirror into the process-wide settings registry so the host callbacks
     // can read/write these keys at runtime (v2 IPlugin settings persistence).
     const std::string basename = basename_of(plugin_->path);
-    std::vector<const char*> keys, values;
+    std::vector<const char *> keys, values;
     keys.reserve(settings.size());
     values.reserve(settings.size());
-    for (const auto& kv : settings) {
+    for (const auto &kv : settings) {
       keys.push_back(kv.first.c_str());
       values.push_back(kv.second.c_str());
     }
@@ -900,16 +855,15 @@ public:
   // register_settings_tab entry. Each entry is a (key, type, default,
   // options) tuple; options is None except for type "choice" (a list of
   // candidate choices) or "int" (the "min:max" range string).
-  PyRegistrationContext& register_settings_tab(const std::string& title,
-                                               py::object settings_obj)
-  {
+  PyRegistrationContext &register_settings_tab(const std::string &title,
+                                               py::object settings_obj) {
     if (title.empty()) {
       engine::Logger::instance().warn("register_settings_tab: empty title - ignored");
       return *this;
     }
     engine::PluginInfo::SettingTab tab;
     tab.title = title;
-    std::vector<const char*> keys, types, defaults, options;
+    std::vector<const char *> keys, types, defaults, options;
     // Own every options string here. The registry only borrows the pointers
     // for the duration of its call, so taking c_str() mid-loop dangles: `opt`
     // dies each iteration and tab.settings reallocations invalidate earlier
@@ -918,7 +872,7 @@ public:
     std::vector<std::string> owned_options;
     py::list settings = settings_obj.cast<py::list>();
     owned_options.reserve(static_cast<size_t>(py::len(settings)));
-    for (const auto& item : settings) {
+    for (const auto &item : settings) {
       py::tuple t = py::reinterpret_borrow<py::tuple>(item);
       if (py::len(t) < 3)
         continue;
@@ -929,7 +883,7 @@ public:
       std::string opt;
       if (py::len(t) >= 4 && !t[3].is_none()) {
         if (entry.type == "choice") {
-          for (const auto& o : py::cast<std::vector<std::string>>(t[3]))
+          for (const auto &o : py::cast<std::vector<std::string>>(t[3]))
             entry.choices.push_back(o);
           std::string joined;
           for (size_t i = 0; i < entry.choices.size(); ++i) {
@@ -959,7 +913,7 @@ public:
     defaults.reserve(settings_count);
     options.reserve(settings_count);
     for (size_t i = 0; i < settings_count; ++i) {
-      const auto& e = plugin_->settings_tab.settings[i];
+      const auto &e = plugin_->settings_tab.settings[i];
       keys.push_back(e.key.c_str());
       types.push_back(e.type.c_str());
       defaults.push_back(e.default_value.c_str());
@@ -978,8 +932,7 @@ public:
   }
 
   // -- v2 IPlugin requirements --
-  PyRegistrationContext& register_requirements(py::object fn)
-  {
+  PyRegistrationContext &register_requirements(py::object fn) {
     if (!py::isinstance<py::function>(fn)) {
       engine::Logger::instance().warn(
           "register_requirements: fn is not a callable - ignored");
@@ -987,7 +940,7 @@ public:
     }
     auto provider   = std::make_unique<PyRequirementsProvider>();
     provider->fn    = std::move(fn);
-    void* user_data = provider.get();
+    void *user_data = provider.get();
     g_py_req_providers.push_back(std::move(provider));
     engine::RequirementsRegistry::instance().register_requirements(
         plugin_->path, py_requirements_bridge, user_data);
@@ -997,9 +950,8 @@ public:
 
   // -- v2 IPluginDiagnose (registers into both the v1 DiagnosticsRegistry for
   //    the Plugins tab and the v2 DiagnoseRegistry) --
-  PyRegistrationContext& register_diagnostics(py::object fn,
-                                              const std::string& game_id = "")
-  {
+  PyRegistrationContext &register_diagnostics(py::object fn,
+                                              const std::string &game_id = "") {
     if (!py::isinstance<py::function>(fn)) {
       engine::Logger::instance().warn(
           "register_diagnostics: fn is not a callable - ignored");
@@ -1007,7 +959,7 @@ public:
     }
     auto provider   = std::make_unique<PyDiagnoseProvider>();
     provider->fn    = std::move(fn);
-    void* user_data = provider.get();
+    void *user_data = provider.get();
     g_py_diagnose_providers.push_back(std::move(provider));
 
     std::string gid = game_id.empty() ? plugin_->game_id : game_id;
@@ -1020,8 +972,7 @@ public:
     return *this;
   }
 
-  PyRegistrationContext& subscribe_event(const std::string& event_id, py::object fn)
-  {
+  PyRegistrationContext &subscribe_event(const std::string &event_id, py::object fn) {
     if (event_id.empty()) {
       engine::Logger::instance().warn("subscribe_event: empty event_id - ignored");
       return *this;
@@ -1033,11 +984,11 @@ public:
     }
     auto handler    = std::make_unique<PyEventHandler>();
     handler->fn     = std::move(fn);
-    void* user_data = handler.get();
+    void *user_data = handler.get();
     g_py_handlers.push_back(std::move(handler));
     engine::EventBus::instance().subscribe(
         event_id,
-        [user_data](const std::string& eid, const std::string& payload) {
+        [user_data](const std::string &eid, const std::string &payload) {
           py_event_bridge(eid.c_str(), payload.c_str(), user_data);
         },
         plugin_->path);
@@ -1045,11 +996,10 @@ public:
     return *this;
   }
 
-  PyRegistrationContext&
-  register_game_feature(const std::string& game_id, const std::string& feature_type,
-                        int priority, const std::vector<std::string>& folder_names,
-                        const std::vector<std::string>& file_extensions)
-  {
+  PyRegistrationContext &
+  register_game_feature(const std::string &game_id, const std::string &feature_type,
+                        int priority, const std::vector<std::string> &folder_names,
+                        const std::vector<std::string> &file_extensions) {
     std::string gid = game_id.empty() ? plugin_->game_id : game_id;
     if (gid.empty() || feature_type.empty()) {
       engine::Logger::instance().warn(
@@ -1076,10 +1026,9 @@ public:
     return *this;
   }
 
-  PyRegistrationContext& register_game_feature_data(const std::string& game_id,
-                                                    const std::string& feature_type,
-                                                    int priority, py::dict data)
-  {
+  PyRegistrationContext &register_game_feature_data(const std::string &game_id,
+                                                    const std::string &feature_type,
+                                                    int priority, py::dict data) {
     std::string gid = game_id.empty() ? plugin_->game_id : game_id;
     if (gid.empty() || feature_type.empty()) {
       engine::Logger::instance().warn(
@@ -1102,8 +1051,8 @@ public:
   }
 
   // -- v2 IPluginFileMapper --
-  PyRegistrationContext& register_file_mapper(const std::string& game_id, py::object fn)
-  {
+  PyRegistrationContext &register_file_mapper(const std::string &game_id,
+                                              py::object fn) {
     if (!py::isinstance<py::function>(fn)) {
       engine::Logger::instance().warn(
           "register_file_mapper: fn is not a callable - ignored");
@@ -1111,13 +1060,13 @@ public:
     }
     auto provider   = std::make_unique<PyFileMapperProvider>();
     provider->fn    = std::move(fn);
-    void* user_data = provider.get();
+    void *user_data = provider.get();
     g_py_file_mapper_providers.push_back(std::move(provider));
 
     std::string gid = game_id.empty() ? plugin_->game_id : game_id;
     engine::PluginFileMapper m;
     m.game_id   = gid;
-    m.fn        = reinterpret_cast<void*>(py_file_mapper_bridge);
+    m.fn        = reinterpret_cast<void *>(py_file_mapper_bridge);
     m.user_data = user_data;
     plugin_->file_mappers.push_back(std::move(m));
     engine::FileMapperRegistry::instance().register_mapper(gid, py_file_mapper_bridge,
@@ -1128,9 +1077,8 @@ public:
   }
 
   // -- v2 IPluginSaveParser --
-  PyRegistrationContext& register_save_parser(const std::string& game_id, py::object fn,
-                                              int priority = 0)
-  {
+  PyRegistrationContext &register_save_parser(const std::string &game_id, py::object fn,
+                                              int priority = 0) {
     if (!py::isinstance<py::function>(fn)) {
       engine::Logger::instance().warn(
           "register_save_parser: fn is not a callable - ignored");
@@ -1138,7 +1086,7 @@ public:
     }
     auto provider   = std::make_unique<PySaveParserProvider>();
     provider->fn    = std::move(fn);
-    void* user_data = provider.get();
+    void *user_data = provider.get();
     g_py_save_parser_providers.push_back(std::move(provider));
 
     std::string gid = game_id.empty() ? plugin_->game_id : game_id;
@@ -1148,8 +1096,8 @@ public:
     }
     engine::SaveParserRegistry::instance().register_parser(
         gid, priority,
-        [user_data](const std::filesystem::path& path,
-                    const std::string& g) -> engine::SaveGame {
+        [user_data](const std::filesystem::path &path,
+                    const std::string &g) -> engine::SaveGame {
           GmmSaveDataV2 c_out = {};
           if (!py_save_parser_bridge(path.string().c_str(), g.c_str(), &c_out,
                                      user_data)) {
@@ -1185,16 +1133,15 @@ public:
   }
 
   // -- v2 IPluginGame hook --
-  PyRegistrationContext& register_hook(const std::string& tag, const std::string& data,
-                                       py::object fn, int priority = 0)
-  {
+  PyRegistrationContext &register_hook(const std::string &tag, const std::string &data,
+                                       py::object fn, int priority = 0) {
     if (!py::isinstance<py::function>(fn)) {
       engine::Logger::instance().warn("register_hook: fn is not a callable - ignored");
       return *this;
     }
     auto provider   = std::make_unique<PyHookProvider>();
     provider->fn    = std::move(fn);
-    void* user_data = provider.get();
+    void *user_data = provider.get();
     g_py_hook_providers.push_back(std::move(provider));
 
     std::string game_id   = plugin_->game_id;
@@ -1210,8 +1157,7 @@ public:
   }
 
   // -- v2 IPluginGame order encoding --
-  PyRegistrationContext& register_order_encoding(py::object fn)
-  {
+  PyRegistrationContext &register_order_encoding(py::object fn) {
     if (!py::isinstance<py::function>(fn)) {
       engine::Logger::instance().warn(
           "register_order_encoding: fn is not a callable - ignored");
@@ -1219,10 +1165,10 @@ public:
     }
     auto provider   = std::make_unique<PyOrderEncodingProvider>();
     provider->fn    = std::move(fn);
-    void* user_data = provider.get();
+    void *user_data = provider.get();
     g_py_order_encoding_providers.push_back(std::move(provider));
 
-    const std::string& game_id        = plugin_->game_id;
+    const std::string &game_id        = plugin_->game_id;
     plugin_->order_encoding_fn        = py_order_encoding_bridge;
     plugin_->order_encoding_user_data = user_data;
     engine::OrderEncodingRegistry::instance().register_provider(
@@ -1233,9 +1179,8 @@ public:
   }
 
   // -- v2 IPluginGame deploy strategy --
-  PyRegistrationContext& register_deploy_strategy(py::object deploy_fn,
-                                                  py::object remove_fn)
-  {
+  PyRegistrationContext &register_deploy_strategy(py::object deploy_fn,
+                                                  py::object remove_fn) {
     if (!py::isinstance<py::function>(deploy_fn)) {
       engine::Logger::instance().warn(
           "register_deploy_strategy: deploy_fn is not a callable - ignored");
@@ -1244,10 +1189,10 @@ public:
     auto provider       = std::make_unique<PyDeployProvider>();
     provider->deploy_fn = std::move(deploy_fn);
     provider->remove_fn = remove_fn;
-    void* user_data     = provider.get();
+    void *user_data     = provider.get();
     g_py_deploy_providers.push_back(std::move(provider));
 
-    const std::string& game_id = plugin_->game_id;
+    const std::string &game_id = plugin_->game_id;
     plugin_->deploy_fn         = py_deploy_bridge;
     plugin_->remove_fn =
         py::isinstance<py::function>(remove_fn) ? py_remove_bridge : nullptr;
@@ -1262,10 +1207,9 @@ public:
   }
 
   // -- v2 IPluginTool --
-  PyRegistrationContext& register_tool(const std::string& tool_id,
-                                       const std::string& kind,
-                                       py::object fn = py::none())
-  {
+  PyRegistrationContext &register_tool(const std::string &tool_id,
+                                       const std::string &kind,
+                                       py::object fn = py::none()) {
     engine::ExternalTool tool;
     tool.tool_id         = tool_id;
     tool.game_id         = plugin_->game_id;
@@ -1277,7 +1221,7 @@ public:
     if (py::isinstance<py::function>(fn)) {
       auto provider   = std::make_unique<PyToolProvider>();
       provider->fn    = std::move(fn);
-      void* user_data = provider.get();
+      void *user_data = provider.get();
       g_py_tool_providers.push_back(std::move(provider));
 
       tool.invoke_fn        = py_tool_bridge;
@@ -1291,8 +1235,7 @@ public:
   }
 
   // -- v2 IPluginPreview --
-  PyRegistrationContext& register_preview(const std::string& extension, py::object fn)
-  {
+  PyRegistrationContext &register_preview(const std::string &extension, py::object fn) {
     if (!py::isinstance<py::function>(fn)) {
       engine::Logger::instance().warn(
           "register_preview: fn is not a callable - ignored");
@@ -1300,12 +1243,12 @@ public:
     }
     auto provider   = std::make_unique<PyPreviewProvider>();
     provider->fn    = std::move(fn);
-    void* user_data = provider.get();
+    void *user_data = provider.get();
     g_py_preview_providers.push_back(std::move(provider));
 
     engine::PluginPreview p;
     p.file_extension = extension;
-    p.fn             = reinterpret_cast<void*>(py_preview_bridge);
+    p.fn             = reinterpret_cast<void *>(py_preview_bridge);
     p.user_data      = user_data;
     plugin_->previews.push_back(std::move(p));
 
@@ -1317,8 +1260,7 @@ public:
   }
 
   // -- v2 IPluginModPage --
-  PyRegistrationContext& register_modpage(const std::string& url, py::object fn)
-  {
+  PyRegistrationContext &register_modpage(const std::string &url, py::object fn) {
     if (!py::isinstance<py::function>(fn)) {
       engine::Logger::instance().warn(
           "register_modpage: fn is not a callable - ignored");
@@ -1326,12 +1268,12 @@ public:
     }
     auto provider   = std::make_unique<PyModPageProvider>();
     provider->fn    = std::move(fn);
-    void* user_data = provider.get();
+    void *user_data = provider.get();
     g_py_modpage_providers.push_back(std::move(provider));
 
     engine::PluginModPage m;
     m.url       = url;
-    m.fn        = reinterpret_cast<void*>(py_modpage_bridge);
+    m.fn        = reinterpret_cast<void *>(py_modpage_bridge);
     m.user_data = user_data;
     plugin_->modpages.push_back(std::move(m));
     engine::Logger::instance().debug("Python plugin registered modpage for url=" + url);
@@ -1339,8 +1281,7 @@ public:
   }
 
   // -- v2 IPluginGame sort provider --
-  PyRegistrationContext& register_sort_provider(py::object fn)
-  {
+  PyRegistrationContext &register_sort_provider(py::object fn) {
     if (!py::isinstance<py::function>(fn)) {
       engine::Logger::instance().warn(
           "register_sort_provider: fn is not a callable - ignored");
@@ -1348,7 +1289,7 @@ public:
     }
     auto provider   = std::make_unique<PySortProvider>();
     provider->fn    = std::move(fn);
-    void* user_data = provider.get();
+    void *user_data = provider.get();
     g_py_sort_providers.push_back(std::move(provider));
 
     std::string gid = plugin_->game_id;
@@ -1358,20 +1299,20 @@ public:
       return *this;
     }
     engine::Sorter::Registry::instance().register_provider(
-        gid, std::make_unique<engine::Sorter::Abi>(gid.c_str(), py_sort_bridge, user_data));
+        gid,
+        std::make_unique<engine::Sorter::Abi>(gid.c_str(), py_sort_bridge, user_data));
     engine::Logger::instance().debug(
         "Python plugin registered sort provider for game=" + gid);
     return *this;
   }
 
   // -- v2 IPluginGame identity (register_game) --
-  PyRegistrationContext&
-  register_game(const std::string& game_id, const std::string& display_name,
-                uint32_t steam_appid = 0, const std::string& nexus_domain = "",
-                const std::string& gog_id = "", const std::string& epic_namespace = "",
-                const std::string& exe_windows = "", const std::string& exe_linux = "",
-                const std::string& exe_macos = "")
-  {
+  PyRegistrationContext &
+  register_game(const std::string &game_id, const std::string &display_name,
+                uint32_t steam_appid = 0, const std::string &nexus_domain = "",
+                const std::string &gog_id = "", const std::string &epic_namespace = "",
+                const std::string &exe_windows = "", const std::string &exe_linux = "",
+                const std::string &exe_macos = "") {
     if (!game_id.empty())
       plugin_->game_id = game_id;
     if (!display_name.empty())
@@ -1398,9 +1339,8 @@ public:
   // declares the args via py::arg(...) with defaults, so callers should
   // pass them by keyword and ignore position. Example:
   //   ctx.register_stage_claim(stage_name="loot_sort", fn=fn, priority=200)
-  PyRegistrationContext& register_stage_claim(const std::string& stage_name,
-                                              py::object fn, int priority = 100)
-  {
+  PyRegistrationContext &register_stage_claim(const std::string &stage_name,
+                                              py::object fn, int priority = 100) {
     if (!py::isinstance<py::function>(fn)) {
       engine::Logger::instance().warn(
           "register_stage_claim: fn is not a callable - ignored");
@@ -1413,17 +1353,17 @@ public:
     }
     auto provider   = std::make_unique<PyStageClaimProvider>();
     provider->fn    = std::move(fn);
-    void* user_data = provider.get();
+    void *user_data = provider.get();
     g_py_stage_claim_providers.push_back(std::move(provider));
 
     std::string game_id = plugin_->game_id;
     loader_->stage_registry().register_claim(
         game_id, stage_name,
-        [user_data](engine::Mod& mod, engine::PipelineContext& ctx) -> bool {
-          return py_stage_claim_bridge(reinterpret_cast<void*>(&mod),
-                                       reinterpret_cast<void*>(ctx.instance),
-                                       reinterpret_cast<void*>(ctx.conflict_index),
-                                       reinterpret_cast<void*>(ctx.profile),
+        [user_data](engine::Mod &mod, engine::PipelineContext &ctx) -> bool {
+          return py_stage_claim_bridge(reinterpret_cast<void *>(&mod),
+                                       reinterpret_cast<void *>(ctx.instance),
+                                       reinterpret_cast<void *>(ctx.conflict_index),
+                                       reinterpret_cast<void *>(ctx.profile),
                                        user_data) != 0;
         },
         priority, plugin_->path);
@@ -1433,11 +1373,10 @@ public:
   }
 
   // -- Wildcard stage claim (wired to StageRegistry) --
-  PyRegistrationContext& register_wildcard_stage_claim(const std::string& game_id,
-                                                       const std::string& stage_name,
+  PyRegistrationContext &register_wildcard_stage_claim(const std::string &game_id,
+                                                       const std::string &stage_name,
                                                        py::object fn,
-                                                       int priority = 100)
-  {
+                                                       int priority = 100) {
     if (!py::isinstance<py::function>(fn)) {
       engine::Logger::instance().warn(
           "register_wildcard_stage_claim: fn is not a callable - ignored");
@@ -1450,17 +1389,17 @@ public:
     }
     auto provider   = std::make_unique<PyStageClaimProvider>();
     provider->fn    = std::move(fn);
-    void* user_data = provider.get();
+    void *user_data = provider.get();
     g_py_stage_claim_providers.push_back(std::move(provider));
 
     std::string gid = game_id.empty() ? plugin_->game_id : game_id;
     loader_->stage_registry().register_claim(
         gid, stage_name,
-        [user_data](engine::Mod& mod, engine::PipelineContext& ctx) -> bool {
-          return py_stage_claim_bridge(reinterpret_cast<void*>(&mod),
-                                       reinterpret_cast<void*>(ctx.instance),
-                                       reinterpret_cast<void*>(ctx.conflict_index),
-                                       reinterpret_cast<void*>(ctx.profile),
+        [user_data](engine::Mod &mod, engine::PipelineContext &ctx) -> bool {
+          return py_stage_claim_bridge(reinterpret_cast<void *>(&mod),
+                                       reinterpret_cast<void *>(ctx.instance),
+                                       reinterpret_cast<void *>(ctx.conflict_index),
+                                       reinterpret_cast<void *>(ctx.profile),
                                        user_data) != 0;
         },
         priority, plugin_->path);
@@ -1477,10 +1416,9 @@ public:
   // the parameter, but do not lie about per-extension routing - the host's
   // extension dispatch (in the UI preview widget) is what selects which
   // parser is invoked for a given file.
-  PyRegistrationContext& register_animation_parser(const std::string& game_id,
-                                                   const std::string& extension,
-                                                   py::object fn, int priority = 100)
-  {
+  PyRegistrationContext &register_animation_parser(const std::string &game_id,
+                                                   const std::string &extension,
+                                                   py::object fn, int priority = 100) {
     if (!py::isinstance<py::function>(fn)) {
       engine::Logger::instance().warn(
           "register_animation_parser: fn is not a callable - ignored");
@@ -1493,12 +1431,12 @@ public:
     }
     auto provider   = std::make_unique<PyAnimationParserProvider>();
     provider->fn    = std::move(fn);
-    void* user_data = provider.get();
+    void *user_data = provider.get();
     g_py_animation_parser_providers.push_back(std::move(provider));
 
     std::string gid = game_id.empty() ? plugin_->game_id : game_id;
     auto feature    = std::make_shared<engine::AnimationParserFeature>(
-        [user_data](const std::string& file_path, const std::string& base_dir)
+        [user_data](const std::string &file_path, const std::string &base_dir)
             -> std::optional<engine::AnimationParserFeature::AnimationData> {
           GmmAnimationDataV2 c_out = {};
           if (!py_animation_parser_bridge(file_path.c_str(), base_dir.c_str(), &c_out,
@@ -1511,11 +1449,11 @@ public:
           data.canvas_height = c_out.canvas_height;
           data.raw_animation = c_out.raw_animation;
           for (size_t fi = 0; fi < c_out.frame_count; ++fi) {
-            auto& cf = c_out.frames[fi];
+            auto &cf = c_out.frames[fi];
             engine::AnimationParserFeature::Frame frame;
             frame.delay_ms = cf.delay_ms;
             for (size_t li = 0; li < cf.layer_count; ++li) {
-              auto& cl = cf.layers[li];
+              auto &cl = cf.layers[li];
               engine::AnimationParserFeature::LayerItem layer;
               layer.x      = cl.x;
               layer.y      = cl.y;
@@ -1544,9 +1482,8 @@ public:
   void register_image_diff() {}
 
   // -- Batched tabs (plural form) --
-  PyRegistrationContext& register_tabs(py::list tabs)
-  {
-    for (const auto& item : tabs) {
+  PyRegistrationContext &register_tabs(py::list tabs) {
+    for (const auto &item : tabs) {
       if (py::isinstance<py::dict>(item)) {
         auto d = py::cast<py::dict>(item);
         std::string cap =
@@ -1585,14 +1522,13 @@ public:
     return *this;
   }
 
-  PyRegistrationContext& register_capability(const std::string& capability,
-                                             const std::string& display_name,
-                                             const std::string& data_path,
-                                             const std::string& description,
-                                             const std::string& protocol_handler,
-                                             const std::string& website_domain,
-                                             const std::string& supported_platforms)
-  {
+  PyRegistrationContext &register_capability(const std::string &capability,
+                                             const std::string &display_name,
+                                             const std::string &data_path,
+                                             const std::string &description,
+                                             const std::string &protocol_handler,
+                                             const std::string &website_domain,
+                                             const std::string &supported_platforms) {
     engine::CapabilityInfo info;
     info.game_id          = plugin_->game_id;
     info.capability       = capability;
@@ -1617,13 +1553,12 @@ public:
     return *this;
   }
 
-  PyRegistrationContext&
-  register_tab(const std::string& capability, const std::string& display_name,
-               const std::string& data_path, const std::string& description,
-               const std::string& protocol_handler, const std::string& website_domain,
-               const std::string& supported_platforms, const std::string& insert_before,
-               const std::string& insert_after)
-  {
+  PyRegistrationContext &
+  register_tab(const std::string &capability, const std::string &display_name,
+               const std::string &data_path, const std::string &description,
+               const std::string &protocol_handler, const std::string &website_domain,
+               const std::string &supported_platforms, const std::string &insert_before,
+               const std::string &insert_after) {
     engine::CapabilityInfo info;
     info.game_id          = plugin_->game_id;
     info.capability       = capability;
@@ -1651,8 +1586,7 @@ public:
   }
 
   // -- Resolve file (host service) --
-  std::string resolve_file(const std::string& root, const std::string& relative_path)
-  {
+  std::string resolve_file(const std::string &root, const std::string &relative_path) {
     if (root.empty() || relative_path.empty())
       return "";
     try {
@@ -1669,8 +1603,8 @@ public:
   [[nodiscard]] std::string game_id() const { return plugin_->game_id; }
 
 private:
-  engine::PluginLoader* loader_;
-  engine::PluginInfo* plugin_;
+  engine::PluginLoader *loader_;
+  engine::PluginInfo *plugin_;
 };
 
 // -- Embedded gmm module --
@@ -1678,8 +1612,7 @@ private:
 // Forward declaration for the Plugin base class trampoline
 struct PyPluginBase;
 
-PYBIND11_EMBEDDED_MODULE(gmm, m)
-{
+PYBIND11_EMBEDDED_MODULE(gmm, m) {
   m.doc() = "GameModManager Python plugin API - version-agnostic";
 
   py::class_<PyRegistrationContext>(m, "RegistrationContext", py::dynamic_attr())
@@ -1852,8 +1785,7 @@ del _PluginBase
 
 static std::unique_ptr<py::scoped_interpreter> s_interpreter;
 
-bool engine::python_init()
-{
+bool engine::python_init() {
   if (s_interpreter)
     return true;
 
@@ -1861,14 +1793,13 @@ bool engine::python_init()
     s_interpreter = std::make_unique<py::scoped_interpreter>();
     Logger::instance().debug("Python interpreter initialized");
     return true;
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     Logger::instance().error("Failed to initialize Python: " + std::string(e.what()));
     return false;
   }
 }
 
-bool engine::python_load_plugin(PluginLoader* loader, const std::string& path)
-{
+bool engine::python_load_plugin(PluginLoader *loader, const std::string &path) {
   if (!s_interpreter) {
     Logger::instance().error("Python not initialized, cannot load: " + path);
     return false;
@@ -1900,12 +1831,10 @@ bool engine::python_load_plugin(PluginLoader* loader, const std::string& path)
     // is longer than original_path_size. Safe to run from the destructor
     // during stack unwinding because the GIL is held by the caller via
     // py::gil_scoped_acquire above.
-    struct SysPathGuard
-    {
-      py::list& list;
+    struct SysPathGuard {
+      py::list &list;
       size_t baseline;
-      ~SysPathGuard()
-      {
+      ~SysPathGuard() {
         try {
           while (py::len(list) > baseline)
             list.attr("pop")(0);
@@ -2056,18 +1985,17 @@ bool engine::python_load_plugin(PluginLoader* loader, const std::string& path)
                              ", appid=" + std::to_string(steam_appid) + ")");
     return true;
 
-  } catch (const py::error_already_set& e) {
+  } catch (const py::error_already_set &e) {
     Logger::instance().error("Python plugin error: " + path + " - " + e.what());
     return false;
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     Logger::instance().error("Failed to load Python plugin: " + path + " - " +
                              e.what());
     return false;
   }
 }
 
-void engine::python_shutdown()
-{
+void engine::python_shutdown() {
   {
     // Destroy Python-side handlers + providers with the GIL held. Registries
     // are cleared FIRST (scoped by plugin path) so no callback can still run
@@ -2078,7 +2006,7 @@ void engine::python_shutdown()
     Game::Features::Registry::instance().clear();
     PluginSettingsRegistry::instance().clear();
     Sorter::Registry::instance().clear();
-    for (const auto& p : g_loaded_plugin_paths) {
+    for (const auto &p : g_loaded_plugin_paths) {
       DiagnoseRegistry::instance().clear_plugin(p);
       FileMapperRegistry::instance().clear_plugin(p);
       RequirementsRegistry::instance().clear_plugin(p);

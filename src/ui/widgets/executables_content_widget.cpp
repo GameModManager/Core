@@ -34,19 +34,16 @@
 
 #include <functional>
 
-namespace ui
-{
-namespace Executables
-{
+namespace ui {
+namespace Executables {
 
   // Parses the Environment field into "KEY=VALUE" entries. One per line; blank
   // lines and lines without a '=' (which the launcher would reject anyway) are
   // dropped.
-  static QStringList parse_environment_text(const QString& text)
-  {
+  static QStringList parse_environment_text(const QString &text) {
     QStringList out;
     const auto lines = text.split(QLatin1Char('\n'));
-    for (const auto& line : lines) {
+    for (const auto &line : lines) {
       const auto trimmed = line.trimmed();
       if (!trimmed.isEmpty() && trimmed.contains(QLatin1Char('=')))
         out.append(trimmed);
@@ -56,8 +53,7 @@ namespace Executables
 
   // Name filter for the "Select Executable" pickers. On macOS, .app bundles
   // are directories, so *.app is only offered there (see select_executable_path).
-  static QString executable_filter()
-  {
+  static QString executable_filter() {
 #ifdef Q_OS_WIN
     return ContentWidget::tr("Executables (*.exe);;All Files (*)");
 #elif defined(Q_OS_MACOS)
@@ -73,9 +69,8 @@ namespace Executables
   // panels refuse to return .app bundles (they are directories), so fall back
   // to the Qt widget dialog where a directory matching the name filter is
   // selectable like a file.
-  static QString select_executable_path(QWidget* parent, const QString& caption,
-                                        const QString& dir, const QString& filter)
-  {
+  static QString select_executable_path(QWidget *parent, const QString &caption,
+                                        const QString &dir, const QString &filter) {
 #ifdef Q_OS_MACOS
     QFileDialog dlg(parent);
     // Options must be set before other properties (Qt docs).
@@ -96,8 +91,7 @@ namespace Executables
   // Entry
   // ---------------------------------------------------------------------------
 
-  QJsonObject Entry::toJson() const
-  {
+  QJsonObject Entry::toJson() const {
     QJsonObject obj;
     obj["path"]  = path;
     obj["title"] = title;
@@ -109,8 +103,7 @@ namespace Executables
     return obj;
   }
 
-  Entry Entry::fromJson(const QJsonObject& obj)
-  {
+  Entry Entry::fromJson(const QJsonObject &obj) {
     Entry e;
     e.path       = obj["path"].toString();
     e.title      = obj["title"].toString();
@@ -121,13 +114,12 @@ namespace Executables
     e.environment.clear();
     const auto env_arr = obj["env"].toArray();
     e.environment.reserve(env_arr.size());
-    for (const auto& v : env_arr)
+    for (const auto &v : env_arr)
       e.environment.append(v.toString());
     return e;
   }
 
-  Entry Entry::fromLegacyPath(const QString& relPath)
-  {
+  Entry Entry::fromLegacyPath(const QString &relPath) {
     Entry e;
     e.path = relPath;
     return e;
@@ -137,8 +129,7 @@ namespace Executables
   // Helpers
   // ---------------------------------------------------------------------------
 
-  QString exec_entry_display_name(const Entry& e)
-  {
+  QString exec_entry_display_name(const Entry &e) {
     if (!e.title.isEmpty())
       return e.title;
     if (!e.path.isEmpty()) {
@@ -153,11 +144,10 @@ namespace Executables
   // AND satisfies `pick`. Returns nullptr when nothing matches / inputs are
   // empty. `pick` keeps each consumer's skip-empty semantics (an entry without
   // an output mod, or without env vars, does not shadow a later configured one).
-  static const Entry* find_entry_for_path(const QVector<Entry>& entries,
-                                          const std::filesystem::path& game_dir,
-                                          const QString& full_path,
-                                          const std::function<bool(const Entry&)>& pick)
-  {
+  static const Entry *
+  find_entry_for_path(const QVector<Entry> &entries,
+                      const std::filesystem::path &game_dir, const QString &full_path,
+                      const std::function<bool(const Entry &)> &pick) {
     if (game_dir.empty() || full_path.isEmpty())
       return nullptr;
 
@@ -183,40 +173,37 @@ namespace Executables
       return nullptr;
     const QString rel_lower = rel_q.toLower();
 
-    for (const auto& e : entries) {
+    for (const auto &e : entries) {
       if (!e.path.isEmpty() && e.path.toLower() == rel_lower && pick(e))
         return &e;
     }
     return nullptr;
   }
 
-  QString output_mod_for_path(const QVector<Entry>& entries,
-                              const std::filesystem::path& game_dir,
-                              const QString& full_path)
-  {
-    const Entry* e =
-        find_entry_for_path(entries, game_dir, full_path, [](const Entry& en) {
+  QString output_mod_for_path(const QVector<Entry> &entries,
+                              const std::filesystem::path &game_dir,
+                              const QString &full_path) {
+    const Entry *e =
+        find_entry_for_path(entries, game_dir, full_path, [](const Entry &en) {
           return !en.output_mod.isEmpty();
         });
     return e ? e->output_mod : QString();
   }
 
-  QStringList environment_for_path(const QVector<Entry>& entries,
-                                   const std::filesystem::path& game_dir,
-                                   const QString& full_path)
-  {
-    const Entry* e =
-        find_entry_for_path(entries, game_dir, full_path, [](const Entry& en) {
+  QStringList environment_for_path(const QVector<Entry> &entries,
+                                   const std::filesystem::path &game_dir,
+                                   const QString &full_path) {
+    const Entry *e =
+        find_entry_for_path(entries, game_dir, full_path, [](const Entry &en) {
           return !en.environment.isEmpty();
         });
     return e ? e->environment : QStringList();
   }
 
-  const Entry* entry_for_path(const QVector<Entry>& entries,
-                              const std::filesystem::path& game_dir,
-                              const QString& full_path)
-  {
-    return find_entry_for_path(entries, game_dir, full_path, [](const Entry&) {
+  const Entry *entry_for_path(const QVector<Entry> &entries,
+                              const std::filesystem::path &game_dir,
+                              const QString &full_path) {
+    return find_entry_for_path(entries, game_dir, full_path, [](const Entry &) {
       return true;
     });
   }
@@ -225,34 +212,33 @@ namespace Executables
   // ContentWidget
   // ---------------------------------------------------------------------------
 
-  ContentWidget::ContentWidget(const std::filesystem::path& game_dir,
-                               const QVector<QPair<QString, QString>>& mod_list,
-                               const QVector<Entry>& initial_entries,
-                               const std::filesystem::path& icon_cache_dir,
-                               QWidget* parent)
+  ContentWidget::ContentWidget(const std::filesystem::path &game_dir,
+                               const QVector<QPair<QString, QString>> &mod_list,
+                               const QVector<Entry> &initial_entries,
+                               const std::filesystem::path &icon_cache_dir,
+                               QWidget *parent)
       : QWidget(parent), game_dir_(game_dir), icon_cache_dir_(icon_cache_dir),
-        entries_(initial_entries)
-  {
+        entries_(initial_entries) {
     setMinimumSize(680, 460);
 
-    auto* main = new QVBoxLayout(this);
+    auto *main = new QVBoxLayout(this);
 
-    auto* splitter = new QSplitter(Qt::Horizontal, this);
+    auto *splitter = new QSplitter(Qt::Horizontal, this);
 
     // -- Left panel: entry list + Add/Remove/Up/Down toolbar --
-    auto* left_panel  = new QWidget(this);
-    auto* left_layout = new QVBoxLayout(left_panel);
+    auto *left_panel  = new QWidget(this);
+    auto *left_layout = new QVBoxLayout(left_panel);
     left_layout->setContentsMargins(0, 0, 0, 0);
     left_layout->setSpacing(3);
 
-    auto* toolbar = new QHBoxLayout;
+    auto *toolbar = new QHBoxLayout;
     toolbar->setSpacing(0);
     toolbar->addWidget(new QLabel(tr("Executables"), left_panel));
     toolbar->addStretch();
 
-    auto make_btn = [this](const QString& tooltip, const QString& theme_icon,
+    auto make_btn = [this](const QString &tooltip, const QString &theme_icon,
                            QStyle::StandardPixmap fallback) {
-      auto* btn = new QToolButton(this);
+      auto *btn = new QToolButton(this);
       btn->setToolTip(tooltip);
       btn->setIcon(engine::IconManager::instance().resolve_icon(theme_icon, fallback));
       btn->setAutoRaise(true);
@@ -270,7 +256,7 @@ namespace Executables
     down_btn_   = make_btn(tr("Move the executable down in the list"),
                            QStringLiteral("go-down"), QStyle::SP_ArrowDown);
 
-    auto* add_menu = new QMenu(add_btn_);
+    auto *add_menu = new QMenu(add_btn_);
     add_menu->addAction(tr("Add from file..."), this, &ContentWidget::on_add_from_file);
     add_menu->addAction(tr("Add empty"), this, &ContentWidget::on_add_empty);
     add_menu->addAction(tr("Clone selected"), this, &ContentWidget::on_clone_selected);
@@ -293,18 +279,18 @@ namespace Executables
     splitter->addWidget(left_panel);
 
     // -- Right panel: form fields --
-    auto* right_panel = new QWidget(this);
-    auto* form        = new QFormLayout(right_panel);
+    auto *right_panel = new QWidget(this);
+    auto *form        = new QFormLayout(right_panel);
     form->setContentsMargins(8, 0, 0, 0);
 
     title_edit_ = new QLineEdit(right_panel);
     title_edit_->setPlaceholderText(tr("Leave empty to use the executable filename"));
     form->addRow(tr("Title:"), title_edit_);
 
-    auto* binary_row = new QHBoxLayout;
+    auto *binary_row = new QHBoxLayout;
     binary_edit_     = new QLineEdit(right_panel);
     binary_edit_->setPlaceholderText(tr("Relative path from game directory"));
-    auto* browse_bin = new QPushButton(tr("Browse..."), right_panel);
+    auto *browse_bin = new QPushButton(tr("Browse..."), right_panel);
     binary_row->addWidget(binary_edit_);
     binary_row->addWidget(browse_bin);
     form->addRow(tr("Binary:"), binary_row);
@@ -313,10 +299,10 @@ namespace Executables
     args_edit_->setPlaceholderText(tr("Optional command-line arguments"));
     form->addRow(tr("Arguments:"), args_edit_);
 
-    auto* cwd_row  = new QHBoxLayout;
+    auto *cwd_row  = new QHBoxLayout;
     start_in_edit_ = new QLineEdit(right_panel);
     start_in_edit_->setPlaceholderText(tr("Leave empty to use the game directory"));
-    auto* browse_cwd = new QPushButton(tr("Browse..."), right_panel);
+    auto *browse_cwd = new QPushButton(tr("Browse..."), right_panel);
     cwd_row->addWidget(start_in_edit_);
     cwd_row->addWidget(browse_cwd);
     form->addRow(tr("Start in:"), cwd_row);
@@ -329,13 +315,13 @@ namespace Executables
            "list yet is auto-created as a new mod when the executable runs.\n"
            "Empty (--- None ---) routes output to Overwrite."));
     output_mod_combo_->addItem(tr("--- None ---"), QVariant(""));
-    for (const auto& [id, name] : mod_list) {
+    for (const auto &[id, name] : mod_list) {
       output_mod_combo_->addItem(name, QVariant(id));
     }
     form->addRow(tr("Output to mod:"), output_mod_combo_);
 
     // Icon row: checkbox + preview + button
-    auto* icon_row = new QHBoxLayout;
+    auto *icon_row = new QHBoxLayout;
     use_app_icon_check_ =
         new QCheckBox(tr("Use Application's Icon for shortcuts"), right_panel);
     use_app_icon_check_->setChecked(true);
@@ -431,30 +417,26 @@ namespace Executables
       ui::enable_smooth_scrolling(this);
   }
 
-  QVector<Entry> ContentWidget::entries() const
-  {
+  QVector<Entry> ContentWidget::entries() const {
     return entries_;
   }
 
-  void ContentWidget::rebuild_list()
-  {
+  void ContentWidget::rebuild_list() {
     QSignalBlocker blocker(entry_list_);
     entry_list_->clear();
     for (int i = 0; i < entries_.size(); ++i) {
-      auto* item = new QListWidgetItem(exec_entry_display_name(entries_[i]));
+      auto *item = new QListWidgetItem(exec_entry_display_name(entries_[i]));
       item->setData(Qt::UserRole, i);
       entry_list_->addItem(item);
     }
   }
 
-  void ContentWidget::restamp_list_indices()
-  {
+  void ContentWidget::restamp_list_indices() {
     for (int r = 0; r < entry_list_->count(); ++r)
       entry_list_->item(r)->setData(Qt::UserRole, r);
   }
 
-  void ContentWidget::select_entry(int index)
-  {
+  void ContentWidget::select_entry(int index) {
     if (index < 0 || index >= entries_.size()) {
       current_index_ = InvalidIndex;
       update_move_buttons();
@@ -464,7 +446,7 @@ namespace Executables
     save_current_entry();
 
     current_index_ = index;
-    const auto& e  = entries_[index];
+    const auto &e  = entries_[index];
 
     updating_fields_ = true;
     title_edit_->setText(e.title);
@@ -505,12 +487,11 @@ namespace Executables
     update_move_buttons();
   }
 
-  void ContentWidget::save_current_entry()
-  {
+  void ContentWidget::save_current_entry() {
     if (current_index_ < 0 || current_index_ >= entries_.size())
       return;
 
-    auto& e       = entries_[current_index_];
+    auto &e       = entries_[current_index_];
     e.title       = title_edit_->text().trimmed();
     e.path        = binary_edit_->text().trimmed();
     e.arguments   = args_edit_->text().trimmed();
@@ -522,8 +503,7 @@ namespace Executables
     // icon_path unchanged when unchecked (already set via on_change_icon)
   }
 
-  QString ContentWidget::current_output_mod_text() const
-  {
+  QString ContentWidget::current_output_mod_text() const {
     const QString text = output_mod_combo_->currentText().trimmed();
     // Selecting a listed mod returns its stored id; the "--- None ---" sentinel
     // returns its empty data. Anything else is free-typed and routed as-is.
@@ -533,8 +513,7 @@ namespace Executables
     return text;
   }
 
-  void ContentWidget::on_add_from_file()
-  {
+  void ContentWidget::on_add_from_file() {
     save_current_entry();
 
     auto start_dir = game_dir_.empty() ? QDir::homePath()
@@ -566,38 +545,34 @@ namespace Executables
     add_new_entry(e);
   }
 
-  void ContentWidget::on_add_empty()
-  {
+  void ContentWidget::on_add_empty() {
     Entry e;
     e.title = tr("New Executable");
     add_new_entry(e);
   }
 
-  void ContentWidget::on_clone_selected()
-  {
+  void ContentWidget::on_clone_selected() {
     if (current_index_ < 0 || current_index_ >= entries_.size())
       return;
     save_current_entry();
     add_new_entry(entries_[current_index_]);
   }
 
-  void ContentWidget::add_new_entry(const Entry& src)
-  {
+  void ContentWidget::add_new_entry(const Entry &src) {
     Entry e = src;
     e.title = make_non_conflicting_title(exec_entry_display_name(e));
 
     entries_.append(e);
-    auto* item = new QListWidgetItem(exec_entry_display_name(e), entry_list_);
+    auto *item = new QListWidgetItem(exec_entry_display_name(e), entry_list_);
     item->setData(Qt::UserRole, entries_.size() - 1);
     entry_list_->addItem(item);
     select_entry(entry_list_->count() - 1);
     update_move_buttons();
   }
 
-  QString ContentWidget::make_non_conflicting_title(const QString& base) const
-  {
-    auto taken = [this](const QString& candidate) {
-      for (const auto& e : entries_) {
+  QString ContentWidget::make_non_conflicting_title(const QString &base) const {
+    auto taken = [this](const QString &candidate) {
+      for (const auto &e : entries_) {
         if (exec_entry_display_name(e) == candidate)
           return true;
       }
@@ -615,8 +590,7 @@ namespace Executables
     return base;
   }
 
-  void ContentWidget::on_remove_entry()
-  {
+  void ContentWidget::on_remove_entry() {
     if (current_index_ < 0 || current_index_ >= entries_.size())
       return;
 
@@ -652,22 +626,19 @@ namespace Executables
     update_move_buttons();
   }
 
-  void ContentWidget::on_up_clicked()
-  {
+  void ContentWidget::on_up_clicked() {
     if (current_index_ <= 0)
       return;
     move_entry(current_index_, current_index_ - 1);
   }
 
-  void ContentWidget::on_down_clicked()
-  {
+  void ContentWidget::on_down_clicked() {
     if (current_index_ < 0 || current_index_ >= entries_.size() - 1)
       return;
     move_entry(current_index_, current_index_ + 1);
   }
 
-  void ContentWidget::move_entry(int from, int to)
-  {
+  void ContentWidget::move_entry(int from, int to) {
     if (from < 0 || from >= entries_.size() || to < 0 || to >= entries_.size())
       return;
 
@@ -676,7 +647,7 @@ namespace Executables
 
     {
       QSignalBlocker blocker(entry_list_);
-      auto* item = entry_list_->takeItem(from);
+      auto *item = entry_list_->takeItem(from);
       entry_list_->insertItem(to, item);
       restamp_list_indices();
     }
@@ -688,17 +659,15 @@ namespace Executables
     update_move_buttons();
   }
 
-  void ContentWidget::on_rows_about_to_move(const QModelIndex&, int, int,
-                                            const QModelIndex&, int)
-  {
+  void ContentWidget::on_rows_about_to_move(const QModelIndex &, int, int,
+                                            const QModelIndex &, int) {
     // The view updates the selection during the move, before our rowsMoved
     // handler runs. Ignore those intermediate selection changes.
     reordering_ = true;
   }
 
-  void ContentWidget::on_rows_moved(const QModelIndex&, int, int, const QModelIndex&,
-                                    int)
-  {
+  void ContentWidget::on_rows_moved(const QModelIndex &, int, int, const QModelIndex &,
+                                    int) {
     // Rebuild entries_ in the new list order. Each item still carries its
     // pre-move source index in UserRole.
     QVector<Entry> reordered;
@@ -739,14 +708,12 @@ namespace Executables
     update_move_buttons();
   }
 
-  void ContentWidget::update_move_buttons()
-  {
+  void ContentWidget::update_move_buttons() {
     up_btn_->setEnabled(current_index_ > 0);
     down_btn_->setEnabled(current_index_ >= 0 && current_index_ < entries_.size() - 1);
   }
 
-  void ContentWidget::on_change_icon()
-  {
+  void ContentWidget::on_change_icon() {
     if (current_index_ < 0 || current_index_ >= entries_.size())
       return;
 
@@ -804,7 +771,7 @@ namespace Executables
       }
     }
 
-    auto& e     = entries_[current_index_];
+    auto &e     = entries_[current_index_];
     e.icon_path = resolved;
     use_app_icon_check_->setChecked(false);
     change_icon_btn_->setEnabled(true);
@@ -817,8 +784,7 @@ namespace Executables
     }
   }
 
-  void ContentWidget::on_use_app_icon_toggled(bool checked)
-  {
+  void ContentWidget::on_use_app_icon_toggled(bool checked) {
     if (updating_fields_)
       return;
 
@@ -831,8 +797,7 @@ namespace Executables
     }
   }
 
-  void ContentWidget::on_list_selection_changed()
-  {
+  void ContentWidget::on_list_selection_changed() {
     if (reordering_)
       return;
 
@@ -842,13 +807,12 @@ namespace Executables
     select_entry(row);
   }
 
-  void ContentWidget::on_field_changed()
-  {
+  void ContentWidget::on_field_changed() {
     if (updating_fields_)
       return;
 
     if (current_index_ >= 0 && current_index_ < entries_.size()) {
-      auto& e       = entries_[current_index_];
+      auto &e       = entries_[current_index_];
       e.title       = title_edit_->text().trimmed();
       e.path        = binary_edit_->text().trimmed();
       e.arguments   = args_edit_->text().trimmed();
@@ -858,7 +822,7 @@ namespace Executables
       if (use_app_icon_check_->isChecked())
         e.icon_path.clear();
 
-      auto* item = entry_list_->item(current_index_);
+      auto *item = entry_list_->item(current_index_);
       if (item) {
         QSignalBlocker blocker(entry_list_);
         item->setText(exec_entry_display_name(e));
@@ -866,8 +830,7 @@ namespace Executables
     }
   }
 
-  void ContentWidget::browse_binary()
-  {
+  void ContentWidget::browse_binary() {
     save_current_entry();
 
     auto start_dir = game_dir_.empty() ? QDir::homePath()
@@ -899,8 +862,7 @@ namespace Executables
       title_edit_->setText(QFileInfo(path).fileName());
   }
 
-  void ContentWidget::browse_start_in()
-  {
+  void ContentWidget::browse_start_in() {
     auto start_dir =
         start_in_edit_->text().isEmpty()
             ? (game_dir_.empty() ? QDir::homePath()
@@ -914,8 +876,7 @@ namespace Executables
     }
   }
 
-  bool ContentWidget::validate()
-  {
+  bool ContentWidget::validate() {
     save_current_entry();
 
     for (int i = 0; i < entries_.size(); ++i) {

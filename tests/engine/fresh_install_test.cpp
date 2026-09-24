@@ -12,23 +12,22 @@
 #include <catch2/catch_test_macros.hpp>
 
 namespace gmmpack = engine::gmmpack;
-using engine::Install::apply_fresh_state;
-using engine::Install::FreshInstallPlan;
-using engine::Install::plan_fresh_install;
 using engine::InstalledPackState;
 using engine::PackModOrigin;
 using engine::PackModPlacement;
 using engine::PackModPresence;
+using engine::Install::apply_fresh_state;
+using engine::Install::FreshInstallPlan;
+using engine::Install::plan_fresh_install;
 
 namespace {
 
-gmmpack::Gmmpack make_pack()
-{
+gmmpack::Gmmpack make_pack() {
   gmmpack::Gmmpack pack;
-  pack.manifest.id                        = "pack-1";
-  pack.manifest.revision                  = 4;
-  pack.manifest.info.gmm_game_id          = "skyrimspecialedition";
-  pack.manifest.info.name                 = "Pack One";
+  pack.manifest.id               = "pack-1";
+  pack.manifest.revision         = 4;
+  pack.manifest.info.gmm_game_id = "skyrimspecialedition";
+  pack.manifest.info.name        = "Pack One";
 
   gmmpack::ModEntry alpha;
   alpha.id   = "alpha";
@@ -39,12 +38,12 @@ gmmpack::Gmmpack make_pack()
   pack.mods = {alpha, beta};
 
   gmmpack::PatchEntry patch;
-  patch.mod_id         = "beta";
-  patch.target_path    = "meshes/beta.nif";
+  patch.mod_id           = "beta";
+  patch.target_path      = "meshes/beta.nif";
   patch.base_file_sha256 = "base";
-  patch.algorithm      = "bsdiff";
-  patch.payload_base64 = "aaa";
-  pack.patches         = {patch};
+  patch.algorithm        = "bsdiff";
+  patch.payload_base64   = "aaa";
+  pack.patches           = {patch};
 
   gmmpack::IniTweak tweak;
   tweak.id      = "shadows";
@@ -74,10 +73,9 @@ gmmpack::Gmmpack make_pack()
 
 }  // namespace
 
-TEST_CASE("fresh install rejects game mismatch", "[fresh_install]")
-{
+TEST_CASE("fresh install rejects game mismatch", "[fresh_install]") {
   const gmmpack::Gmmpack pack = make_pack();
-  FreshInstallPlan plan = plan_fresh_install(pack, "fallout4");
+  FreshInstallPlan plan       = plan_fresh_install(pack, "fallout4");
   REQUIRE_FALSE(plan.ok);
   REQUIRE_FALSE(plan.error.empty());
   REQUIRE(plan.error.find("skyrimspecialedition") != std::string::npos);
@@ -85,8 +83,7 @@ TEST_CASE("fresh install rejects game mismatch", "[fresh_install]")
   REQUIRE(plan.mods.empty());
 }
 
-TEST_CASE("fresh install rejects undeclared game", "[fresh_install]")
-{
+TEST_CASE("fresh install rejects undeclared game", "[fresh_install]") {
   gmmpack::Gmmpack pack = make_pack();
   pack.manifest.info.gmm_game_id.clear();
   FreshInstallPlan plan = plan_fresh_install(pack, "fallout4");
@@ -94,10 +91,9 @@ TEST_CASE("fresh install rejects undeclared game", "[fresh_install]")
   REQUIRE_FALSE(plan.error.empty());
 }
 
-TEST_CASE("fresh install plans every pack mod in order", "[fresh_install]")
-{
+TEST_CASE("fresh install plans every pack mod in order", "[fresh_install]") {
   const gmmpack::Gmmpack pack = make_pack();
-  FreshInstallPlan plan = plan_fresh_install(pack, "SkyrimSE");
+  FreshInstallPlan plan       = plan_fresh_install(pack, "SkyrimSE");
   REQUIRE(plan.ok);
   REQUIRE(plan.error.empty());
   REQUIRE(plan.pack_id == "pack-1");
@@ -110,20 +106,18 @@ TEST_CASE("fresh install plans every pack mod in order", "[fresh_install]")
   REQUIRE(plan.executable_count == 1);
 }
 
-TEST_CASE("fresh install matches through game aliases", "[fresh_install]")
-{
+TEST_CASE("fresh install matches through game aliases", "[fresh_install]") {
   const gmmpack::Gmmpack pack = make_pack();
-  FreshInstallPlan plan = plan_fresh_install(pack, "skyrimse");
+  FreshInstallPlan plan       = plan_fresh_install(pack, "skyrimse");
   REQUIRE(plan.ok);
   REQUIRE(plan.mods.size() == 2);
 }
 
-TEST_CASE("fresh install handles empty pack", "[fresh_install]")
-{
+TEST_CASE("fresh install handles empty pack", "[fresh_install]") {
   gmmpack::Gmmpack pack;
   pack.manifest.id               = "empty";
   pack.manifest.info.gmm_game_id = "fallout4";
-  FreshInstallPlan plan = plan_fresh_install(pack, "fallout4");
+  FreshInstallPlan plan          = plan_fresh_install(pack, "fallout4");
   REQUIRE(plan.ok);
   REQUIRE(plan.mods.empty());
   REQUIRE(plan.patch_consent_mods.empty());
@@ -132,15 +126,14 @@ TEST_CASE("fresh install handles empty pack", "[fresh_install]")
   REQUIRE(plan.executable_count == 0);
 }
 
-TEST_CASE("fresh install consent list is sorted and deduplicated", "[fresh_install]")
-{
+TEST_CASE("fresh install consent list is sorted and deduplicated", "[fresh_install]") {
   gmmpack::Gmmpack pack = make_pack();
   gmmpack::PatchEntry second;
-  second.mod_id          = "alpha";
-  second.target_path     = "meshes/alpha.nif";
-  second.base_file_sha256  = "base";
-  second.algorithm       = "bsdiff";
-  second.payload_base64  = "bbb";
+  second.mod_id           = "alpha";
+  second.target_path      = "meshes/alpha.nif";
+  second.base_file_sha256 = "base";
+  second.algorithm        = "bsdiff";
+  second.payload_base64   = "bbb";
   pack.patches.push_back(second);
   pack.patches.push_back(second);  // duplicate patch file, one consent
   FreshInstallPlan plan = plan_fresh_install(pack, "skyrimspecialedition");
@@ -148,8 +141,7 @@ TEST_CASE("fresh install consent list is sorted and deduplicated", "[fresh_insta
   REQUIRE(plan.patch_consent_mods == std::vector<std::string>{"alpha", "beta"});
 }
 
-TEST_CASE("fresh install seeds conforming state with revision", "[fresh_install]")
-{
+TEST_CASE("fresh install seeds conforming state with revision", "[fresh_install]") {
   const gmmpack::Gmmpack pack = make_pack();
   InstalledPackState state(std::filesystem::temp_directory_path() / "gmm_fresh_state");
   apply_fresh_state(pack, state);
@@ -157,8 +149,8 @@ TEST_CASE("fresh install seeds conforming state with revision", "[fresh_install]
   REQUIRE(state.has_pack());
   REQUIRE(state.pack_id() == "pack-1");
   REQUIRE(state.installed_revision() == 4);
-  for (const std::string& id : {"alpha", "beta"}) {
-    const auto* entry = state.resolved_mod(id);
+  for (const std::string &id : {"alpha", "beta"}) {
+    const auto *entry = state.resolved_mod(id);
     REQUIRE(entry != nullptr);
     CHECK(entry->origin == PackModOrigin::Pack);
     CHECK(entry->presence == PackModPresence::Installed);

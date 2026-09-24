@@ -66,9 +66,7 @@ public:
   const char *type_name() const override { return type_key(); }
 
   const std::vector<std::string> &folder_names() const { return folders_; }
-  const std::vector<std::string> &file_extensions() const {
-    return extensions_;
-  }
+  const std::vector<std::string> &file_extensions() const { return extensions_; }
 
   // MO2 dataLooksValid() returning VALID: the tree holds a top-level
   // directory named in folder_names() or a top-level file whose extension
@@ -114,7 +112,7 @@ public:
   struct Content {
     int id = 0;
     std::string name;
-    std::string icon; // icon key; empty = none
+    std::string icon;  // icon key; empty = none
     bool filter_only = false;
   };
 
@@ -127,9 +125,7 @@ public:
   const char *type_name() const override { return type_key(); }
 
   const std::vector<int> &enabled_ids() const { return enabled_ids_; }
-  const std::vector<Content> &custom_contents() const {
-    return custom_contents_;
-  }
+  const std::vector<Content> &custom_contents() const { return custom_contents_; }
 
   // Standard catalog + custom overrides, filtered to the enabled set.
   std::vector<Content> all_contents() const;
@@ -191,9 +187,7 @@ public:
   static constexpr const char *type_key() { return "data_archives"; }
   const char *type_name() const override { return type_key(); }
 
-  const std::vector<std::string> &vanilla_archives() const {
-    return vanilla_archives_;
-  }
+  const std::vector<std::string> &vanilla_archives() const { return vanilla_archives_; }
 
 private:
   std::vector<std::string> vanilla_archives_;
@@ -206,8 +200,7 @@ class ScriptExtenderFeature : public GameFeature {
 public:
   ScriptExtenderFeature(std::string binary_name, std::string plugin_path,
                         std::string loader_name, std::string savegame_extension)
-      : binary_name_(std::move(binary_name)),
-        plugin_path_(std::move(plugin_path)),
+      : binary_name_(std::move(binary_name)), plugin_path_(std::move(plugin_path)),
         loader_name_(std::move(loader_name)),
         savegame_extension_(std::move(savegame_extension)) {}
 
@@ -251,8 +244,7 @@ private:
 class LocalSavegamesFeature : public GameFeature {
 public:
   LocalSavegamesFeature(std::string saves_subpath, std::string ini_file)
-      : saves_subpath_(std::move(saves_subpath)),
-        ini_file_(std::move(ini_file)) {}
+      : saves_subpath_(std::move(saves_subpath)), ini_file_(std::move(ini_file)) {}
 
   static constexpr const char *type_key() { return "local_savegames"; }
   const char *type_name() const override { return type_key(); }
@@ -317,8 +309,7 @@ public:
   static constexpr const char *type_key() { return "save_parser"; }
   const char *type_name() const override { return type_key(); }
 
-  SaveGame parse(const std::filesystem::path &path,
-                 const std::string &game_id) const {
+  SaveGame parse(const std::filesystem::path &path, const std::string &game_id) const {
     return parser_(path, game_id);
   }
 
@@ -337,20 +328,20 @@ private:
 class AnimationParserFeature : public GameFeature {
 public:
   struct LayerItem {
-    float x = 0, y = 0; // composited position on canvas
+    float x = 0, y = 0;  // composited position on canvas
     int width = 0, height = 0;
-    std::vector<std::uint8_t> rgba_pixels; // raw RGBA data
+    std::vector<std::uint8_t> rgba_pixels;  // raw RGBA data
   };
 
   struct Frame {
     std::vector<LayerItem> layers;
-    int delay_ms = 33; // frame duration
+    int delay_ms = 33;  // frame duration
   };
 
   // Result of an on-demand render call: raw RGBA pixels + dimensions.
   struct RenderResult {
     std::vector<std::uint8_t> pixels;
-    int width = 0;
+    int width  = 0;
     int height = 0;
   };
 
@@ -364,25 +355,25 @@ public:
   struct AnimationState {
     std::string name;
     std::vector<Frame> frames;
-    int canvas_width = 0;
+    int canvas_width  = 0;
     int canvas_height = 0;
     // On-demand rendering support: opaque pointer to plugin-owned data.
     // When non-null, the host should prefer render_frame over pre-baked frames.
-    void* raw_animation = nullptr;
+    void *raw_animation = nullptr;
     // On-demand render callback for this specific state.
     // Captures this state's raw_animation pointer in its closure.
     RenderFrameFn render_frame;
-    int on_demand_canvas_width = 0;
+    int on_demand_canvas_width  = 0;
     int on_demand_canvas_height = 0;
-    int on_demand_fps = 0;
-    int on_demand_frame_count = 0;
+    int on_demand_fps           = 0;
+    int on_demand_frame_count   = 0;
   };
 
   struct AnimationData {
-    std::vector<Frame> frames; // default/first state (backward compat)
-    int canvas_width = 0;
+    std::vector<Frame> frames;  // default/first state (backward compat)
+    int canvas_width  = 0;
     int canvas_height = 0;
-    int fps = 30;
+    int fps           = 30;
     // All named animation states from the file. When non-empty, the UI
     // should present a state selector and use frames from the selected
     // state instead of the top-level frames vector.
@@ -390,7 +381,7 @@ public:
 
     // On-demand rendering: opaque pointer to plugin-owned raw animation data.
     // When non-null, render_frame can be called for on-demand frame generation.
-    void* raw_animation = nullptr;
+    void *raw_animation = nullptr;
 
     // On-demand render callback: renders a single frame at the given time
     // (in milliseconds, 0-based from animation start). Returns raw RGBA
@@ -401,7 +392,7 @@ public:
     RenderFrameFn render_frame;
 
     // Fixed canvas dimensions for on-demand rendering.
-    int on_demand_canvas_width = 0;
+    int on_demand_canvas_width  = 0;
     int on_demand_canvas_height = 0;
 
     // On-demand FPS for the animation (from the render callback).
@@ -416,8 +407,7 @@ public:
   using ParserFn = std::function<std::optional<AnimationData>(
       const std::string &file_path, const std::string &base_dir)>;
 
-  explicit AnimationParserFeature(ParserFn parser)
-      : parser_(std::move(parser)) {}
+  explicit AnimationParserFeature(ParserFn parser) : parser_(std::move(parser)) {}
 
   static constexpr const char *type_key() { return "animation_parser"; }
   const char *type_name() const override { return type_key(); }
@@ -431,4 +421,4 @@ private:
   ParserFn parser_;
 };
 
-} // namespace engine
+}  // namespace engine

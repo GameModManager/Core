@@ -11,7 +11,7 @@ namespace engine {
 class MultiProcess : public QObject {
   Q_OBJECT
 public:
-  explicit MultiProcess(QObject* parent = nullptr);
+  explicit MultiProcess(QObject *parent = nullptr);
   ~MultiProcess() override;
 
   // Try to acquire the singleton lock.

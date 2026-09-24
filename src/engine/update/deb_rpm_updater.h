@@ -17,7 +17,7 @@ public:
   void restart() override;
 
 private:
-  std::string pkg_type_; // "deb" or "rpm"
+  std::string pkg_type_;  // "deb" or "rpm"
 };
 
-} // namespace engine::update
+}  // namespace engine::update

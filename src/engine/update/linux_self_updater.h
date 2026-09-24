@@ -15,4 +15,4 @@ public:
   void restart() override;
 };
 
-} // namespace engine::update
+}  // namespace engine::update

@@ -19,8 +19,8 @@ namespace fs = std::filesystem;
 namespace engine {
 
 namespace {
-constexpr int kRegistryVersion = 1;
-} // namespace
+  constexpr int kRegistryVersion = 1;
+}  // namespace
 
 // --- Entry ---
 
@@ -34,21 +34,22 @@ bool InstanceRegistry::Entry::exists() const {
 
 // --- Construction / Destruction ---
 
-InstanceRegistry::InstanceRegistry() : path_(registry_path()) { (void)load(); }
+InstanceRegistry::InstanceRegistry() : path_(registry_path()) {
+  (void)load();
+}
 
 InstanceRegistry::~InstanceRegistry() = default;
 
 // --- Persistence ---
 
 fs::path InstanceRegistry::registry_path() {
-  return safe_home_dir() / ".config" / "GameModManager" /
-         "instance_registry.toml";
+  return safe_home_dir() / ".config" / "GameModManager" / "instance_registry.toml";
 }
 
 bool InstanceRegistry::load() {
   std::error_code ec;
   if (!fs::exists(path_, ec))
-    return true; // empty registry is fine
+    return true;  // empty registry is fine
 
   std::ifstream in(path_);
   if (!in) {
@@ -83,7 +84,7 @@ bool InstanceRegistry::load() {
   entries_.clear();
   auto instances = tbl["instances"].as_array();
   if (!instances)
-    return true; // no instances yet
+    return true;  // no instances yet
 
   for (const auto &item : *instances) {
     auto *tbl_item = item.as_table();
@@ -150,9 +151,8 @@ bool InstanceRegistry::save() const {
   std::error_code ec;
   fs::rename(tmp_path, path_, ec);
   if (ec) {
-    Logger::instance().error("InstanceRegistry: rename failed: " +
-                             ec.message());
-    fs::remove(tmp_path, ec); // cleanup
+    Logger::instance().error("InstanceRegistry: rename failed: " + ec.message());
+    fs::remove(tmp_path, ec);  // cleanup
     return false;
   }
 
@@ -165,8 +165,7 @@ std::vector<InstanceRegistry::Entry> InstanceRegistry::all_entries() const {
   return entries_;
 }
 
-std::vector<InstanceRegistry::ValidatedEntry>
-InstanceRegistry::all_validated() const {
+std::vector<InstanceRegistry::ValidatedEntry> InstanceRegistry::all_validated() const {
   std::vector<ValidatedEntry> result;
   result.reserve(entries_.size());
   for (const auto &e : entries_) {
@@ -203,17 +202,16 @@ std::string InstanceRegistry::active_name() const {
 
 // --- Mutations ---
 
-void InstanceRegistry::register_instance(const std::string &name,
-                                         const fs::path &root,
+void InstanceRegistry::register_instance(const std::string &name, const fs::path &root,
                                          const std::string &type,
                                          const std::string &game_id,
                                          const std::string &display_name) {
   // Check if already registered - update if so
   for (auto &e : entries_) {
     if (e.name == name) {
-      e.root = root.string();
-      e.type = type;
-      e.game_id = game_id;
+      e.root         = root.string();
+      e.type         = type;
+      e.game_id      = game_id;
       e.display_name = display_name.empty() ? name : display_name;
       e.last_used_at = now_iso8601();
       (void)save();
@@ -223,22 +221,23 @@ void InstanceRegistry::register_instance(const std::string &name,
 
   // New entry
   Entry entry;
-  entry.name = name;
-  entry.root = root.string();
-  entry.type = type;
-  entry.game_id = game_id;
+  entry.name         = name;
+  entry.root         = root.string();
+  entry.type         = type;
+  entry.game_id      = game_id;
   entry.display_name = display_name.empty() ? name : display_name;
-  entry.created_at = now_iso8601();
+  entry.created_at   = now_iso8601();
   entry.last_used_at = entry.created_at;
-  entry.is_active = false;
+  entry.is_active    = false;
 
   entries_.push_back(std::move(entry));
   (void)save();
 }
 
 void InstanceRegistry::unregister_instance(const std::string &name) {
-  auto it = std::remove_if(entries_.begin(), entries_.end(),
-                           [&name](const Entry &e) { return e.name == name; });
+  auto it = std::remove_if(entries_.begin(), entries_.end(), [&name](const Entry &e) {
+    return e.name == name;
+  });
   if (it != entries_.end()) {
     entries_.erase(it, entries_.end());
     (void)save();
@@ -262,8 +261,7 @@ void InstanceRegistry::update_last_used(const std::string &name) {
   }
 }
 
-void InstanceRegistry::update_root(const std::string &name,
-                                   const fs::path &new_root) {
+void InstanceRegistry::update_root(const std::string &name, const fs::path &new_root) {
   for (auto &e : entries_) {
     if (e.name == name) {
       e.root = new_root.string();
@@ -275,8 +273,7 @@ void InstanceRegistry::update_root(const std::string &name,
 
 // --- Validation ---
 
-std::vector<InstanceRegistry::ValidatedEntry>
-InstanceRegistry::validate_all() const {
+std::vector<InstanceRegistry::ValidatedEntry> InstanceRegistry::validate_all() const {
   std::vector<ValidatedEntry> problems;
   for (const auto &e : entries_) {
     auto status = validate(e);
@@ -310,7 +307,7 @@ InstanceRegistry::validate(const Entry &entry) const {
   // registered by plugins. This is a soft warning, not a hard error.
   if (!entry.game_id.empty()) {
     auto &registry = Game::Features::Registry::instance();
-    auto features = registry.features_for(entry.game_id, "mod_data_checker");
+    auto features  = registry.features_for(entry.game_id, "mod_data_checker");
     if (features.empty()) {
       // Also check for any feature type for this game
       auto any_features = registry.features_for(entry.game_id, "");
@@ -340,7 +337,7 @@ InstanceRegistry::repair_missing(const std::string &name) {
 // --- Helpers ---
 
 std::string InstanceRegistry::now_iso8601() const {
-  auto now = std::chrono::system_clock::now();
+  auto now  = std::chrono::system_clock::now();
   auto time = std::chrono::system_clock::to_time_t(now);
   std::tm utc{};
 #ifdef _WIN32
@@ -358,4 +355,4 @@ std::string InstanceRegistry::sanitize_name(const std::string &name) const {
   return sanitize_directory_name(name);
 }
 
-} // namespace engine
+}  // namespace engine

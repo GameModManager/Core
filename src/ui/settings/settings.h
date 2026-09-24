@@ -14,11 +14,11 @@
 // names where they already existed to avoid a migration.
 class Settings {
 public:
-  static Settings& instance();
+  static Settings &instance();
 
   // interface ------------------------------------------------------------
   QString language() const;
-  void set_language(const QString& tag);
+  void set_language(const QString &tag);
   bool smooth_scrolling() const;
   void set_smooth_scrolling(bool on);
   bool show_download_notifications() const;
@@ -71,25 +71,25 @@ public:
   // Default (startup) profile name for the current instance. Empty when no
   // default was chosen - the app then falls back to the first profile.
   QString default_profile() const;  // key: profiles/default
-  void set_default_profile(const QString& name);
+  void set_default_profile(const QString &name);
 
   // mod list columns --------------------------------------------------------
   // Per-instance set of mod-list columns the user has hidden (by column
   // name, stable across reordering). Missing key = first-run defaults apply.
   // The Name column is never stored here (it cannot be hidden).
-  QStringList modlist_hidden_columns(const QString& instance_name) const;
-  void set_modlist_hidden_columns(const QString& instance_name,
-                                  const QStringList& hidden);
+  QStringList modlist_hidden_columns(const QString &instance_name) const;
+  void set_modlist_hidden_columns(const QString &instance_name,
+                                  const QStringList &hidden);
   // Write-once initialization for a newly created instance: seeds the
   // default hidden columns (Category, Source, Source ID, Installation,
   // Changed) only when no per-instance key exists yet. Existing saved
   // preferences are never overwritten.
-  void ensure_modlist_column_defaults(const QString& instance_name);
+  void ensure_modlist_column_defaults(const QString &instance_name);
   // Per-instance "nested mod list" toggle: allows dragging mods onto mods and
   // separators onto separators to build a visual nesting (indented, foldable
   // children) without changing load order / priorities. Defaults to off.
-  bool modlist_nested(const QString& instance_name) const;
-  void set_modlist_nested(const QString& instance_name, bool on);
+  bool modlist_nested(const QString &instance_name) const;
+  void set_modlist_nested(const QString &instance_name, bool on);
 
   // general ---------------------------------------------------------------
   bool check_for_updates() const;
@@ -122,17 +122,17 @@ public:
 
   // theme ------------------------------------------------------------------
   QString theme() const;  // GMM QSS theme name ("default")
-  void set_theme(const QString& name);
+  void set_theme(const QString &name);
   void clear_theme();     // no QSS theme selected
   QString style() const;  // Qt built-in style ("Fusion", ...)
-  void set_style(const QString& name);
+  void set_style(const QString &name);
   void clear_style();  // no Qt built-in style selected
 
   // icon pack ------------------------------------------------------------
   // "default" (theme icons first, then system), "system" (ignore theme/pack
   // icons), or a bundled pack name from resources/icons/packs/ (e.g. "MO2").
   QString icon_pack() const;
-  void set_icon_pack(const QString& name);
+  void set_icon_pack(const QString &name);
 
   // geometry ---------------------------------------------------------------
   bool center_dialogs() const;
@@ -141,16 +141,16 @@ public:
   // Remembered TaskDialog answers (MO2 QuestionBoxMemory equivalent).
   // dialog_choice returns the stored StandardButton for (action, file), or
   // nullopt when the dialog must ask. Keys live under dialog_choices/.
-  std::optional<QMessageBox::StandardButton> dialog_choice(const QString& action,
-                                                           const QString& file) const;
-  void set_dialog_choice(const QString& action, const QString& file,
+  std::optional<QMessageBox::StandardButton> dialog_choice(const QString &action,
+                                                           const QString &file) const;
+  void set_dialog_choice(const QString &action, const QString &file,
                          QMessageBox::StandardButton button);
   void reset_dialog_choices();
 
   // paths ------------------------------------------------------------------
   // Instances root dir override (empty = default XDG location).
   QString instances_dir() const;
-  void set_instances_dir(const QString& dir);
+  void set_instances_dir(const QString &dir);
 
   // network ----------------------------------------------------------------
   bool offline_mode() const;
@@ -158,13 +158,13 @@ public:
   bool use_proxy() const;
   void set_use_proxy(bool on);
   QString proxy_host() const;
-  void set_proxy_host(const QString& host);
+  void set_proxy_host(const QString &host);
   int proxy_port() const;
   void set_proxy_port(int port);
   bool use_custom_browser() const;
   void set_use_custom_browser(bool on);
   QString custom_browser_command() const;
-  void set_custom_browser_command(const QString& cmd);
+  void set_custom_browser_command(const QString &cmd);
 
   // nexus source -----------------------------------------------------------
   bool endorsement_integration() const;
@@ -189,11 +189,11 @@ public:
 
   // workarounds ---------------------------------------------------------------
   QString executables_blacklist() const;
-  void set_executables_blacklist(const QString& value);
+  void set_executables_blacklist(const QString &value);
   QStringList skip_file_suffixes() const;
-  void set_skip_file_suffixes(const QStringList& values);
+  void set_skip_file_suffixes(const QStringList &values);
   QStringList skip_directories() const;
-  void set_skip_directories(const QStringList& values);
+  void set_skip_directories(const QStringList &values);
   bool force_enable_core_files() const;
   void set_force_enable_core_files(bool on);
   bool experimental_archive_parsing() const;
@@ -203,11 +203,11 @@ public:
 
   // diagnostics ---------------------------------------------------------------
   QString log_level() const;  // "debug"/"info"/"warn"/"error"
-  void set_log_level(const QString& level);
+  void set_log_level(const QString &level);
   int max_core_dumps() const;
   void set_max_core_dumps(int n);
   QString core_dump_type() const;  // "text"/"full"
-  void set_core_dump_type(const QString& type);
+  void set_core_dump_type(const QString &type);
 
   // colors -------------------------------------------------------------------
   bool color_separator_scrollbar() const;
@@ -219,40 +219,40 @@ public:
   // Remembered color for the next separator (MO2 previousSeparatorColor).
   // Hidden setting - never shown in the settings dialog.
   std::optional<QColor> previous_separator_color() const;
-  void set_previous_separator_color(const QColor& c);
+  void set_previous_separator_color(const QColor &c);
   void remove_previous_separator_color();
   // MO2 mod-list conflict colors; defaults match MO2's colortable.cpp.
   QColor modlist_overwritten_loose() const;  // "Is overwritten (loose files)"
-  void set_modlist_overwritten_loose(const QColor& c);
+  void set_modlist_overwritten_loose(const QColor &c);
   QColor modlist_overwriting_loose() const;  // "Is overwriting (loose files)"
-  void set_modlist_overwriting_loose(const QColor& c);
+  void set_modlist_overwriting_loose(const QColor &c);
   QColor modlist_overwritten_archive() const;  // "Is overwritten (archives)"
-  void set_modlist_overwritten_archive(const QColor& c);
+  void set_modlist_overwritten_archive(const QColor &c);
   QColor modlist_overwriting_archive() const;  // "Is overwriting (archives)"
-  void set_modlist_overwriting_archive(const QColor& c);
+  void set_modlist_overwriting_archive(const QColor &c);
   QColor modlist_contains_file() const;  // "Mod contains selected file"
-  void set_modlist_contains_file(const QColor& c);
+  void set_modlist_contains_file(const QColor &c);
   QColor plugin_list_contained() const;  // "Plugin is contained in selected mod"
-  void set_plugin_list_contained(const QColor& c);
+  void set_plugin_list_contained(const QColor &c);
   QColor plugin_list_master() const;  // "Plugin is master of selected plugin"
-  void set_plugin_list_master(const QColor& c);
+  void set_plugin_list_master(const QColor &c);
 
   // plugins -------------------------------------------------------------------
   QStringList disabled_plugins() const;  // key: plugins/disabled
-  void set_disabled_plugins(const QStringList& names);
-  bool plugin_enabled(const QString& name) const;
-  void set_plugin_enabled(const QString& name, bool enabled);
+  void set_disabled_plugins(const QStringList &names);
+  bool plugin_enabled(const QString &name) const;
+  void set_plugin_enabled(const QString &name, bool enabled);
 
   // Plugin-declared options (register_settings), persisted per plugin as
   // plain key:value pairs under plugins/settings/<basename>/<key>.
-  QString plugin_setting(const QString& basename, const QString& key,
-                         const QString& default_value) const;
-  void set_plugin_setting(const QString& basename, const QString& key,
-                          const QString& value);
+  QString plugin_setting(const QString &basename, const QString &key,
+                         const QString &default_value) const;
+  void set_plugin_setting(const QString &basename, const QString &key,
+                          const QString &value);
 
   // nxm -----------------------------------------------------------------------
   QString nxm_handler_check() const;  // key: nxm/handler_check
-  void set_nxm_handler_check(const QString& value);
+  void set_nxm_handler_check(const QString &value);
 
   // fomod ---------------------------------------------------------------------
   // FOMOD install wizard behavior. Restore-on-reinstall defaults to on so the
@@ -264,16 +264,16 @@ public:
   void set_show_fomod_images(bool on);
   // Last wizard geometry + splitter states (empty until the first install).
   QByteArray fomod_window_geometry() const;  // key: fomod/window_geometry
-  void set_fomod_window_geometry(const QByteArray& g);
+  void set_fomod_window_geometry(const QByteArray &g);
   QByteArray fomod_center_split() const;  // key: fomod/center_split
-  void set_fomod_center_split(const QByteArray& s);
+  void set_fomod_center_split(const QByteArray &s);
   QByteArray fomod_left_split() const;  // key: fomod/left_split
-  void set_fomod_left_split(const QByteArray& s);
+  void set_fomod_left_split(const QByteArray &s);
 
   // mod info -----------------------------------------------------------------
   // Mod Info dialog geometry + last active tab (restored on next open).
   QByteArray modinfo_window_geometry() const;  // key: modinfo/window_geometry
-  void set_modinfo_window_geometry(const QByteArray& g);
+  void set_modinfo_window_geometry(const QByteArray &g);
   int modinfo_last_tab() const;  // key: modinfo/last_tab
   void set_modinfo_last_tab(int index);
 
@@ -285,11 +285,11 @@ public:
 
   // ListDialog (generic choice picker) geometry - restored on next open.
   QByteArray listdialog_window_geometry() const;  // key: listdialog/window_geometry
-  void set_listdialog_window_geometry(const QByteArray& g);
+  void set_listdialog_window_geometry(const QByteArray &g);
 
   // SaveInfoDialog (right-click save > Information) geometry - restored on next open.
   QByteArray saveinfo_window_geometry() const;  // key: saveinfo/window_geometry
-  void set_saveinfo_window_geometry(const QByteArray& g);
+  void set_saveinfo_window_geometry(const QByteArray &g);
 
 private:
   Settings() = default;

@@ -17,7 +17,7 @@ namespace engine {
 
 namespace {
 
-  std::wstring expand_env(const wchar_t* pattern) {
+  std::wstring expand_env(const wchar_t *pattern) {
     wchar_t buf[MAX_PATH];
     DWORD len = ExpandEnvironmentStringsW(pattern, buf, MAX_PATH);
     if (len == 0 || len > MAX_PATH)
@@ -25,8 +25,8 @@ namespace {
     return buf;
   }
 
-  std::filesystem::path env_path(const wchar_t* var) {
-    auto* val = _wgetenv(var);
+  std::filesystem::path env_path(const wchar_t *var) {
+    auto *val = _wgetenv(var);
     if (val && val[0] != L'\0')
       return val;
     return {};
@@ -104,7 +104,7 @@ std::filesystem::path WindowsPlatform::find_steam_root() const {
   if (!reg_path.empty()) {
     // Registry stores forward slashes; normalize
     std::string s = reg_path.string();
-    for (auto& c : s) {
+    for (auto &c : s) {
       if (c == '/')
         c = '\\';
     }
@@ -122,7 +122,7 @@ std::filesystem::path WindowsPlatform::find_steam_root() const {
       expand_env(LR"(%PROGRAMFILES%\Steam)"),
   };
 
-  for (const auto& root : candidates) {
+  for (const auto &root : candidates) {
     auto vdf = root / "steamapps" / "libraryfolders.vdf";
     if (std::filesystem::exists(vdf))
       return root;
@@ -134,8 +134,8 @@ std::filesystem::path WindowsPlatform::find_steam_root() const {
 // --- Registry access ---
 
 std::filesystem::path
-WindowsPlatform::registry_read_string(const std::wstring& key_path,
-                                      const std::wstring& value_name) {
+WindowsPlatform::registry_read_string(const std::wstring &key_path,
+                                      const std::wstring &value_name) {
   HKEY hkey;
   LONG result = RegOpenKeyExW(HKEY_CURRENT_USER, key_path.c_str(), 0, KEY_READ, &hkey);
   if (result != ERROR_SUCCESS)
@@ -157,14 +157,14 @@ WindowsPlatform::registry_read_string(const std::wstring& key_path,
 
 // --- Process launch ---
 
-bool WindowsPlatform::launch_executable(const std::filesystem::path& executable,
-                                        const std::vector<std::string>& args) const {
+bool WindowsPlatform::launch_executable(const std::filesystem::path &executable,
+                                        const std::vector<std::string> &args) const {
   if (!std::filesystem::exists(executable))
     return false;
 
   // Build command line
   std::wstring cmd = L"\"" + executable.wstring() + L"\"";
-  for (const auto& arg : args) {
+  for (const auto &arg : args) {
     cmd += L" \"" + std::wstring(arg.begin(), arg.end()) + L"\"";
   }
 
@@ -232,18 +232,18 @@ void WindowsPlatform::set_thread_low_priority() const {
 
 // --- nxm:// protocol handler registration ---
 
-bool WindowsPlatform::register_nxm_handler(const std::filesystem::path& exe_path) {
+bool WindowsPlatform::register_nxm_handler(const std::filesystem::path &exe_path) {
   std::wstring exe_w = exe_path.wstring();
 
   // Register under HKCU\Software\Classes\nxm
-  auto set_reg = [](const wchar_t* key, const wchar_t* name, const wchar_t* value) {
+  auto set_reg = [](const wchar_t *key, const wchar_t *name, const wchar_t *value) {
     HKEY hkey;
     LONG r =
         RegCreateKeyExW(HKEY_CURRENT_USER, key, 0, nullptr, REG_OPTION_NON_VOLATILE,
                         KEY_SET_VALUE, nullptr, &hkey, nullptr);
     if (r != ERROR_SUCCESS)
       return false;
-    r = RegSetValueExW(hkey, name, 0, REG_SZ, reinterpret_cast<const BYTE*>(value),
+    r = RegSetValueExW(hkey, name, 0, REG_SZ, reinterpret_cast<const BYTE *>(value),
                        (DWORD)((wcslen(value) + 1) * sizeof(wchar_t)));
     RegCloseKey(hkey);
     return r == ERROR_SUCCESS;
@@ -267,17 +267,17 @@ bool WindowsPlatform::unregister_nxm_handler() {
 
 // --- modl:// protocol handler registration ---
 
-bool WindowsPlatform::register_modl_handler(const std::filesystem::path& exe_path) {
+bool WindowsPlatform::register_modl_handler(const std::filesystem::path &exe_path) {
   std::wstring exe_w = exe_path.wstring();
 
-  auto set_reg = [](const wchar_t* key, const wchar_t* name, const wchar_t* value) {
+  auto set_reg = [](const wchar_t *key, const wchar_t *name, const wchar_t *value) {
     HKEY hkey;
     LONG r =
         RegCreateKeyExW(HKEY_CURRENT_USER, key, 0, nullptr, REG_OPTION_NON_VOLATILE,
                         KEY_SET_VALUE, nullptr, &hkey, nullptr);
     if (r != ERROR_SUCCESS)
       return false;
-    r = RegSetValueExW(hkey, name, 0, REG_SZ, reinterpret_cast<const BYTE*>(value),
+    r = RegSetValueExW(hkey, name, 0, REG_SZ, reinterpret_cast<const BYTE *>(value),
                        (DWORD)((wcslen(value) + 1) * sizeof(wchar_t)));
     RegCloseKey(hkey);
     return r == ERROR_SUCCESS;

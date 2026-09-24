@@ -14,4 +14,4 @@ namespace engine {
 // Backward-compat alias (deprecated - use Source::LoversLab::Auth)
 using LoversLabAuth = Source::LoversLab::Auth;
 
-} // namespace engine
+}  // namespace engine

@@ -42,9 +42,8 @@ public:
 
   // Column role constants (forwarded from PluginView for callers that
   // reference them via PluginsTab::kPluginFlagsRole).
-  static constexpr int kPluginFlagsRole = PluginView::kPluginFlagsRole;
-  static constexpr int kPluginFlagTooltipsRole =
-      PluginView::kPluginFlagTooltipsRole;
+  static constexpr int kPluginFlagsRole        = PluginView::kPluginFlagsRole;
+  static constexpr int kPluginFlagTooltipsRole = PluginView::kPluginFlagTooltipsRole;
 
 signals:
   void toggle_requested(const std::string &name, bool enabled);
@@ -63,4 +62,4 @@ private:
   std::unique_ptr<engine::PluginDb::ContextMenu> context_menu_;
 };
 
-} // namespace ui
+}  // namespace ui

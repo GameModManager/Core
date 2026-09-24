@@ -10,16 +10,19 @@
 // Lives in its own C-compatible header so the LD_PRELOAD intercept (.c) can
 // share it without pulling in C++.
 static inline int gmm_debug_enabled(void) {
-    const char* v = getenv("GMM_DEBUG");
-    if (!v) return 0;
-    switch (v[0]) {
-        case '1':              // 1
-        case 't': case 'T':    // true / TRUE
-        case 'y': case 'Y':    // yes / YES
-            return 1;
-        default:
-            return 0;
-    }
+  const char *v = getenv("GMM_DEBUG");
+  if (!v)
+    return 0;
+  switch (v[0]) {
+  case '1':  // 1
+  case 't':
+  case 'T':  // true / TRUE
+  case 'y':
+  case 'Y':  // yes / YES
+    return 1;
+  default:
+    return 0;
+  }
 }
 
 #endif

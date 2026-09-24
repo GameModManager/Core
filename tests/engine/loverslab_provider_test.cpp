@@ -9,17 +9,14 @@
 #include <cstdio>
 #include <string>
 
-namespace
-{
-void require(bool cond, const char* msg)
-{
+namespace {
+void require(bool cond, const char *msg) {
   INFO(msg);
   REQUIRE(cond);
 }
 }  // namespace
 
-TEST_CASE("loverslab provider", "[engine]")
-{
+TEST_CASE("loverslab provider", "[engine]") {
   using engine::LoversLabModInfoResult;
   using engine::LoversLabProvider;
 
@@ -208,8 +205,7 @@ TEST_CASE("loverslab provider", "[engine]")
           "both: rich text preserves the link the user sees on-site");
 }
 
-TEST_CASE("loverslab provider description_html block", "[engine][loverslab]")
-{
+TEST_CASE("loverslab provider description_html block", "[engine][loverslab]") {
   using engine::LoversLabProvider;
   // --- Realistic Invision Community "About This File" block: the
   // class="ipsType_richText" container holds <p>...</p> paragraphs, a
@@ -242,13 +238,11 @@ TEST_CASE("loverslab provider description_html block", "[engine][loverslab]")
   require(!got.empty(), "rich-text block extracted");
   // Safe links survive as real <a> tags - no BBCode round-trip, so the
   // renderer receives the markup the site authored.
-  require(got.find("<a href=\"https://www.example.com/foo\">") !=
-              std::string::npos,
+  require(got.find("<a href=\"https://www.example.com/foo\">") != std::string::npos,
           "safe anchor preserved verbatim");
   // Block markup survives: paragraphs stay <p> for the renderer (no
   // '\n\n' join - the tags carry the breaks).
-  require(got.find("<p>Hi all, attached is the latest issue.</p>") !=
-              std::string::npos,
+  require(got.find("<p>Hi all, attached is the latest issue.</p>") != std::string::npos,
           "paragraph markup preserved");
   // Inline formatting tags (<span>, <strong>) survive with their text.
   require(got.find("<strong>wtrshpdwn</strong>") != std::string::npos,
@@ -271,8 +265,7 @@ TEST_CASE("loverslab provider description_html block", "[engine][loverslab]")
           "javascript: scheme is dropped");
   require(bad_got.find("bad") != std::string::npos,
           "link text preserved when scheme is bad");
-  require(bad_got == "before bad after",
-          "unsafe anchor collapses exactly to its text");
+  require(bad_got == "before bad after", "unsafe anchor collapses exactly to its text");
 
   // --- Single-quoted safe href: preserved verbatim (sanitizer keeps the
   // whole tag, quotes and all).
@@ -293,15 +286,13 @@ TEST_CASE("loverslab provider description_html block", "[engine][loverslab]")
   // either quote.
   const std::string single_quote =
       R"DELIM(<div class='ipsType_richText'><p>quoted class survives</p></div>)DELIM";
-  const std::string sq_got =
-      LoversLabProvider::parse_description_html(single_quote);
+  const std::string sq_got = LoversLabProvider::parse_description_html(single_quote);
   require(!sq_got.empty(), "single-quoted class: block extracted");
   require(sq_got.find("quoted class survives") != std::string::npos,
           "single-quoted class: text preserved");
 }
 
-TEST_CASE("loverslab description raw html passthrough", "[engine][loverslab]")
-{
+TEST_CASE("loverslab description raw html passthrough", "[engine][loverslab]") {
   using engine::LoversLabProvider;
   // --- Raw-HTML mode: the inner fragment reaches the renderer verbatim.
   // <br> stays a tag (the WebEngine view renders it natively), so the
@@ -317,8 +308,7 @@ line2</div>)DELIM";
   // the renderer normalizes line endings.
   const std::string br_crlf =
       "<div class=\"ipsType_richText\">line1<br />\r\nline2</div>";
-  require(LoversLabProvider::parse_description_html(br_crlf) ==
-              "line1<br />\r\nline2",
+  require(LoversLabProvider::parse_description_html(br_crlf) == "line1<br />\r\nline2",
           "<br /> + CRLF preserved verbatim");
 
   // --- A doubled <br><br> (author-intended gap) stays two tags.
@@ -329,18 +319,16 @@ line2</div>)DELIM";
 
   // --- Pretty-printed paragraphs: block tags and their indentation
   // survive untouched - the renderer lays them out.
-  const std::string pretty =
-      "<div class=\"ipsType_richText\">\n"
-      "    <p>para1</p>\n"
-      "    <p>para2</p>\n"
-      "  </div>";
+  const std::string pretty = "<div class=\"ipsType_richText\">\n"
+                             "    <p>para1</p>\n"
+                             "    <p>para2</p>\n"
+                             "  </div>";
   require(LoversLabProvider::parse_description_html(pretty) ==
               "\n    <p>para1</p>\n    <p>para2</p>\n  ",
           "pretty-printed block markup preserved verbatim");
 }
 
-TEST_CASE("loverslab metadata entity decoding", "[engine][loverslab]")
-{
+TEST_CASE("loverslab metadata entity decoding", "[engine][loverslab]") {
   using engine::LoversLabModInfoResult;
   using engine::LoversLabProvider;
   // --- Workspace-vbx3: JSON-LD text fields arrive HTML-escaped from

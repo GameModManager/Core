@@ -9,7 +9,7 @@ namespace engine::Source::Http {
 // Edition v0-4-20-0-...7z"), so the path segment must be percent-encoded
 // before CURLOPT_URL. Scheme, host and query are left untouched; existing
 // %XX escapes are preserved (no double-encoding).
-std::string encode_url_path(const std::string& url);
+std::string encode_url_path(const std::string &url);
 
 // Decode the HTML entities the Nexus / LoversLab / mod.pub pages emit in
 // human-readable metadata (category, author, titles): &amp; &lt; &gt;
@@ -24,6 +24,6 @@ std::string encode_url_path(const std::string& url);
 // which already unescapes before parsing - decoding here as well would
 // double-decode and break its single-pass guarantee. Use this only for
 // short plain-text fields shown verbatim (category / name / author).
-std::string decode_html_entities(const std::string& in);
+std::string decode_html_entities(const std::string &in);
 
-} // namespace engine::Source::Http
+}  // namespace engine::Source::Http

@@ -17,10 +17,10 @@ namespace ui {
 // Helpers
 // ---------------------------------------------------------------------------
 
-uint64_t StatsContentWidget::dir_size(const std::filesystem::path& dir) {
+uint64_t StatsContentWidget::dir_size(const std::filesystem::path &dir) {
   uint64_t total = 0;
   std::error_code ec;
-  for (const auto& entry : std::filesystem::recursive_directory_iterator(
+  for (const auto &entry : std::filesystem::recursive_directory_iterator(
            dir, std::filesystem::directory_options::skip_permission_denied, ec)) {
     if (entry.is_regular_file(ec)) {
       total += entry.file_size(ec);
@@ -30,7 +30,7 @@ uint64_t StatsContentWidget::dir_size(const std::filesystem::path& dir) {
 }
 
 std::string StatsContentWidget::format_size(uint64_t bytes) {
-  constexpr const char* units[] = {"B", "KiB", "MiB", "GiB", "TiB"};
+  constexpr const char *units[] = {"B", "KiB", "MiB", "GiB", "TiB"};
   int unit                      = 0;
   double size                   = static_cast<double>(bytes);
   while (size >= 1024.0 && unit < 4) {
@@ -51,7 +51,7 @@ std::string StatsContentWidget::format_size(uint64_t bytes) {
 // Known size-explorer executables (Linux)
 // ---------------------------------------------------------------------------
 
-static const std::vector<std::pair<const char*, const char*>> kExplorers = {
+static const std::vector<std::pair<const char *, const char *>> kExplorers = {
     {"filelight", "Filelight from KDE"},
     {"qdirstat", "QDirStat"},
     {"baobab", "Baobab (GNOME Disk Usage Analyzer)"},
@@ -62,18 +62,18 @@ static const std::vector<std::pair<const char*, const char*>> kExplorers = {
 // Constructor
 // ---------------------------------------------------------------------------
 
-StatsContentWidget::StatsContentWidget(const std::filesystem::path& instance_root,
-                                       const std::filesystem::path& cache_dir,
-                                       int total_mods, QWidget* parent)
+StatsContentWidget::StatsContentWidget(const std::filesystem::path &instance_root,
+                                       const std::filesystem::path &cache_dir,
+                                       int total_mods, QWidget *parent)
     : QWidget(parent), instance_root_(instance_root), cache_dir_(cache_dir),
       total_mods_(total_mods) {
 
-  auto* layout = new QVBoxLayout(this);
+  auto *layout = new QVBoxLayout(this);
   layout->setSpacing(8);
 
-  auto fmt = [this](const char* label, QLabel** out) {
-    auto* row = new QHBoxLayout;
-    auto* lbl = new QLabel(tr(label));
+  auto fmt = [this](const char *label, QLabel **out) {
+    auto *row = new QHBoxLayout;
+    auto *lbl = new QLabel(tr(label));
     lbl->setObjectName("statLabel");
     *out = new QLabel;
     (*out)->setAlignment(Qt::AlignRight);
@@ -88,8 +88,8 @@ StatsContentWidget::StatsContentWidget(const std::filesystem::path& instance_roo
   layout->addLayout(fmt("Downloads size:", &downloads_size_label_));
   layout->addLayout(fmt("Logs size:", &logs_size_label_));
 
-  auto* mods_row = new QHBoxLayout;
-  auto* mods_lbl = new QLabel(tr("Total mods:"));
+  auto *mods_row = new QHBoxLayout;
+  auto *mods_lbl = new QLabel(tr("Total mods:"));
   mods_lbl->setObjectName("statLabel");
   total_mods_label_ = new QLabel;
   total_mods_label_->setAlignment(Qt::AlignRight);
@@ -103,7 +103,7 @@ StatsContentWidget::StatsContentWidget(const std::filesystem::path& instance_roo
   explorer_btn_ = new QPushButton(tr("Open in size explorer..."));
   std::string explorer_path;
   std::string explorer_name;
-  for (const auto& [exe, display] : kExplorers) {
+  for (const auto &[exe, display] : kExplorers) {
     auto found = QStandardPaths::findExecutable(QString::fromUtf8(exe)).toStdString();
     if (!found.empty()) {
       explorer_path = found;
@@ -129,7 +129,7 @@ StatsContentWidget::StatsContentWidget(const std::filesystem::path& instance_roo
   layout->addWidget(explorer_btn_);
 
   // Close button
-  auto* close_btn = new QPushButton(tr("Close"));
+  auto *close_btn = new QPushButton(tr("Close"));
   connect(close_btn, &QPushButton::clicked, this, &StatsContentWidget::close_requested);
   layout->addWidget(close_btn);
 }
@@ -172,7 +172,7 @@ void StatsContentWidget::refresh() {
   }
 }
 
-void StatsContentWidget::showEvent(QShowEvent* event) {
+void StatsContentWidget::showEvent(QShowEvent *event) {
   QWidget::showEvent(event);
   refresh();
 }

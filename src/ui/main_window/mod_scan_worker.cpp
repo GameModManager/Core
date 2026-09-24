@@ -38,10 +38,10 @@ namespace {
   // game_dir/mods_subpath. The override / plugin hook always wins so the
   // stray-plugin synthesis keeps matching the plugin's actual on-disk
   // reality.
-  std::filesystem::path native_dir_for(const std::string& game_id,
-                                       const std::filesystem::path& game_dir,
-                                       const engine::GameKnowledge& knowledge,
-                                       const std::filesystem::path& override_dir) {
+  std::filesystem::path native_dir_for(const std::string &game_id,
+                                       const std::filesystem::path &game_dir,
+                                       const engine::GameKnowledge &knowledge,
+                                       const std::filesystem::path &override_dir) {
     if (!override_dir.empty())
       return override_dir;
     // Plugin hook (absolute OR relative -> game_dir). Anchors Isaac on
@@ -58,14 +58,14 @@ namespace {
 
 }  // namespace
 
-ModScanWorker::ModScanWorker(QObject* parent) : QObject(parent) {}
+ModScanWorker::ModScanWorker(QObject *parent) : QObject(parent) {}
 
 void ModScanWorker::run(ModScanRequest request, quint64 generation) {
   ModScanResult result;
-  auto& scanned = result.scanned;
+  auto &scanned = result.scanned;
 
-  const auto& knowledge = request.knowledge;
-  const auto& game_id   = request.game_id;
+  const auto &knowledge = request.knowledge;
+  const auto &game_id   = request.game_id;
 
   // Mod sources, MO2-style:
   //   - In instance mode: the instance's own mods dir (<instance>/mods) is
@@ -121,10 +121,10 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
           knowledge, game_id, external, std::vector<std::filesystem::path>{});
       const auto kept = scanned.size();
       std::unordered_set<std::string> existing;
-      for (const auto& m : scanned)
+      for (const auto &m : scanned)
         existing.insert(m.folder_name);
       int upgraded = 0;
-      for (auto& m : ext_scanned) {
+      for (auto &m : ext_scanned) {
         auto it = existing.find(m.folder_name);
         if (it == existing.end()) {
           // New mod from external dir - set its content_dir to the external
@@ -139,7 +139,7 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
           // external metadata. This handles Isaac: instance/mods/ has a
           // stub folder with only meta.ini, while game_dir/mods/ has the
           // real metadata.xml, content files, version, etc.
-          for (auto& inst : scanned) {
+          for (auto &inst : scanned) {
             if (inst.folder_name != m.folder_name)
               continue;
             if (inst.no_metadata && !m.no_metadata) {
@@ -204,7 +204,7 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
           native_dir_for(game_id, request.game_dir, knowledge, request.game_mods_dir);
 
       std::unordered_set<std::string> existing;
-      for (const auto& m : scanned)
+      for (const auto &m : scanned)
         existing.insert(m.folder_name);
 
       std::unordered_set<std::string> declared_native;
@@ -245,7 +245,7 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
         // scan only cares about plugins).
         std::unordered_set<std::filesystem::path> deployed_plugins;
         if (!request.ledger_file.empty()) {
-          for (const auto& [target, source] :
+          for (const auto &[target, source] :
                engine::load_deploy_ledger(request.ledger_file)) {
             (void)source;
             if (!engine::is_plugin_file(target))
@@ -257,7 +257,7 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
           }
         }
 
-        for (const auto& entry :
+        for (const auto &entry :
              std::filesystem::directory_iterator(native_dir, scan_ec)) {
           // Deployed .esp files are always symlinks (only executables
           // are copied as real files, and .esp is never executable):
@@ -304,10 +304,10 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
           native_dir_for(game_id, request.game_dir, knowledge, request.game_mods_dir);
 
       std::unordered_set<std::string> existing;
-      for (const auto& m : scanned)
+      for (const auto &m : scanned)
         existing.insert(m.folder_name);
 
-      for (const auto& name : unmanaged) {
+      for (const auto &name : unmanaged) {
         if (name.empty() || existing.count(name))
           continue;
         std::error_code ec;
@@ -348,12 +348,12 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
     // Merge a legacy sidecar into the in-folder base: the sidecar was the
     // source of truth for manager state, the folder may hold newer
     // game-written data (MO2-touched installs).
-    auto merge_sidecar = [](engine::ModMeta& base, const engine::ModMeta& side) {
-      for (const auto& key : side.keys("GameModManager"))
+    auto merge_sidecar = [](engine::ModMeta &base, const engine::ModMeta &side) {
+      for (const auto &key : side.keys("GameModManager"))
         base.set("GameModManager", key, side.get("GameModManager", key));
-      for (const char* sec :
+      for (const char *sec :
            {"Nexusmods", "LoversLab", "ModPub", "SteamWorkshop", "Modl"}) {
-        for (const auto& key : side.keys(sec))
+        for (const auto &key : side.keys(sec))
           base.set(sec, key, side.get(sec, key));
       }
       // The category CSV is manager state (Categories tab writes it);
@@ -361,7 +361,7 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
       // separator picker writes [General] color in-folder, so a sidecar
       // that still carries one must not drop it on merge). The rest of
       // [General] is game-owned and stays as the folder has it.
-      for (const char* key : {"category", "installed", "installationfile", "color"}) {
+      for (const char *key : {"category", "installed", "installationfile", "color"}) {
         const auto v = side.get("General", key);
         if (!v.empty())
           base.set("General", key, v);
@@ -374,9 +374,9 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
     // known. Returns true when the sidecar was consumed. Used for
     // instance folders below, and for external game-dir folders + the
     // meta.bak/ recovery in the orphan sweep (Workspace-7tjz).
-    auto move_sidecar_into = [&](const std::filesystem::path& sidecar,
-                                 const std::filesystem::path& folder_dir,
-                                 const std::string& folder_name) {
+    auto move_sidecar_into = [&](const std::filesystem::path &sidecar,
+                                 const std::filesystem::path &folder_dir,
+                                 const std::string &folder_name) {
       const auto in_folder = folder_dir / "meta.ini";
       std::error_code mec2;
       if (std::filesystem::exists(in_folder, mec2)) {
@@ -417,7 +417,7 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
     };
 
     std::error_code ec;
-    for (const auto& entry : std::filesystem::directory_iterator(request.mods_dir)) {
+    for (const auto &entry : std::filesystem::directory_iterator(request.mods_dir)) {
       if (!entry.is_directory())
         continue;
       auto folder_name     = entry.path().filename().string();
@@ -480,7 +480,7 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
     if (!legacy_dir.empty() && std::filesystem::exists(legacy_dir, ec)) {
       int orphans = 0;
       int rescued = 0;
-      for (const auto& sentry : std::filesystem::directory_iterator(legacy_dir, ec)) {
+      for (const auto &sentry : std::filesystem::directory_iterator(legacy_dir, ec)) {
         std::error_code sec;
         if (!sentry.is_regular_file(sec) || sentry.path().extension() != ".ini")
           continue;
@@ -532,7 +532,7 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
     // that rescue copy stays in meta.bak/ for a manual restore instead.
     if (!legacy_dir.empty() && std::filesystem::is_directory(bak_dir, ec)) {
       int restored = 0;
-      for (const auto& bentry : std::filesystem::directory_iterator(bak_dir, ec)) {
+      for (const auto &bentry : std::filesystem::directory_iterator(bak_dir, ec)) {
         std::error_code sec;
         if (!bentry.is_regular_file(sec) || bentry.path().extension() != ".ini")
           continue;
@@ -590,7 +590,7 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
     if (!pruned.empty()) {
       const std::unordered_set<std::string> gone(pruned.begin(), pruned.end());
       scanned.erase(std::remove_if(scanned.begin(), scanned.end(),
-                                   [&gone](const engine::ScannedMod& m) {
+                                   [&gone](const engine::ScannedMod &m) {
                                      return gone.count(m.folder_name) > 0;
                                    }),
                     scanned.end());
@@ -602,7 +602,7 @@ void ModScanWorker::run(ModScanRequest request, quint64 generation) {
   emit finished(std::move(result), generation);
 }
 
-ModScanThread::ModScanThread(QObject* parent) : QObject(parent) {
+ModScanThread::ModScanThread(QObject *parent) : QObject(parent) {
   qRegisterMetaType<ui::ModScanResult>();
   thread_ = new QThread(this);
   thread_->setObjectName(QStringLiteral("gmm-mod-scan"));
@@ -618,7 +618,7 @@ ModScanThread::~ModScanThread() {
 }
 
 void ModScanThread::start(ModScanRequest request, quint64 generation) {
-  ModScanWorker* worker = worker_;
+  ModScanWorker *worker = worker_;
   QMetaObject::invokeMethod(
       worker,
       [worker, req = std::move(request), gen = generation]() mutable {

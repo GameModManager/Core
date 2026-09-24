@@ -58,4 +58,4 @@ public:
   overlay_supported(const std::filesystem::path &overwrite_dir = {});
 };
 
-} // namespace Deploy
+}  // namespace Deploy

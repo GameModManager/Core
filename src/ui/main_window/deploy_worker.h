@@ -24,15 +24,15 @@ namespace ui {
 // ordering). An instance switch mid-deploy yields a result the consumer drops
 // (stale game_dir), never a torn launch.
 class DeployWorker : public QObject {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit DeployWorker(QObject* parent = nullptr);
+  explicit DeployWorker(QObject *parent = nullptr);
 
-    void run(engine::LaunchPrepRequest req);
+  void run(engine::LaunchPrepRequest req);
 
 signals:
-    void progress(int files_done, int files_total);
-    void prepared(engine::LaunchParams params);
+  void progress(int files_done, int files_total);
+  void prepared(engine::LaunchParams params);
 };
 
 // Long-lived worker thread reusing the LootSortThread/SourceFetchThread
@@ -42,21 +42,21 @@ signals:
 // (bounded by the deploy itself) - the same trade the other worker threads
 // accept; the worker is never left running into a dead receiver.
 class DeployThread : public QObject {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit DeployThread(QObject* parent = nullptr);
-    ~DeployThread() override;
+  explicit DeployThread(QObject *parent = nullptr);
+  ~DeployThread() override;
 
-    DeployWorker* worker() const { return worker_; }
+  DeployWorker *worker() const { return worker_; }
 
-    void start(engine::LaunchPrepRequest req);
+  void start(engine::LaunchPrepRequest req);
 
 signals:
-    void operation_finished();
+  void operation_finished();
 
 private:
-    QThread* thread_ = nullptr;
-    DeployWorker* worker_ = nullptr;
+  QThread *thread_      = nullptr;
+  DeployWorker *worker_ = nullptr;
 };
 
 }  // namespace ui

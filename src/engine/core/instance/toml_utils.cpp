@@ -22,7 +22,7 @@ namespace {
   // (escapes included); a closing quote followed by ':' becomes the TOML key
   // separator. In valid TOML a quoted string is never followed by ':', so the
   // transform is a no-op on well-formed files.
-  std::string repair_legacy_json_inline_tables(const std::string& content) {
+  std::string repair_legacy_json_inline_tables(const std::string &content) {
     std::string out;
     out.reserve(content.size());
     const size_t n = content.size();
@@ -79,17 +79,17 @@ namespace {
     toml::table table;
   };
 
-  std::mutex& toml_cache_mutex() {
+  std::mutex &toml_cache_mutex() {
     static std::mutex mutex;
     return mutex;
   }
 
-  std::unordered_map<std::string, TomlCacheEntry>& toml_cache() {
+  std::unordered_map<std::string, TomlCacheEntry> &toml_cache() {
     static std::unordered_map<std::string, TomlCacheEntry> cache;
     return cache;
   }
 
-  std::string toml_cache_key(const std::filesystem::path& path) {
+  std::string toml_cache_key(const std::filesystem::path &path) {
     std::error_code ec;
     auto abs = std::filesystem::absolute(path, ec);
     if (ec)
@@ -99,20 +99,20 @@ namespace {
 
 }  // namespace
 
-std::optional<toml::table> parse_instance_toml_content(const std::string& content) {
+std::optional<toml::table> parse_instance_toml_content(const std::string &content) {
   try {
     return toml::parse(content);
-  } catch (const toml::parse_error&) {
+  } catch (const toml::parse_error &) {
     // Legacy JSON-style inline tables (pre-toml++ migration).
     try {
       return toml::parse(repair_legacy_json_inline_tables(content));
-    } catch (const toml::parse_error&) {
+    } catch (const toml::parse_error &) {
       return std::nullopt;
     }
   }
 }
 
-std::optional<toml::table> parse_instance_toml(const std::filesystem::path& path) {
+std::optional<toml::table> parse_instance_toml(const std::filesystem::path &path) {
   const std::string key = toml_cache_key(path);
   // Stat before reading: if the file changes mid-read the stored stamp stays
   // old and the next call re-parses instead of serving torn content.
@@ -140,7 +140,7 @@ std::optional<toml::table> parse_instance_toml(const std::filesystem::path& path
   return tbl;
 }
 
-void invalidate_instance_toml_cache(const std::filesystem::path& path) {
+void invalidate_instance_toml_cache(const std::filesystem::path &path) {
   std::lock_guard<std::mutex> lock(toml_cache_mutex());
   toml_cache().erase(toml_cache_key(path));
 }
@@ -150,7 +150,7 @@ void clear_instance_toml_cache() {
   toml_cache().clear();
 }
 
-std::string serialize_instance_toml(const toml::table& tbl) {
+std::string serialize_instance_toml(const toml::table &tbl) {
   std::ostringstream ss;
   ss << toml::toml_formatter(tbl);
   ss << '\n';

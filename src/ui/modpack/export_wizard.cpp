@@ -31,31 +31,26 @@
 #include "engine/gmmpack/packer.h"
 #include "engine/mod/meta/mod_meta.h"
 
-namespace ui
-{
-namespace
-{
+namespace ui {
+namespace {
 
-  QScrollArea* wrap_scroll(QWidget* inner)
-  {
-    auto* scroll = new QScrollArea();
+  QScrollArea *wrap_scroll(QWidget *inner) {
+    auto *scroll = new QScrollArea();
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setWidget(inner);
     return scroll;
   }
 
-  bool is_separator_name(const std::string& name)
-  {
+  bool is_separator_name(const std::string &name) {
     return name.find("_separator") != std::string::npos;
   }
 
 }  // namespace
 
-ExportWizard::ExportWizard(const engine::InstanceSnapshot& snapshot,
-                           std::filesystem::path mods_dir, QWidget* parent)
-    : QDialog(parent), snapshot_(snapshot), mods_dir_(std::move(mods_dir))
-{
+ExportWizard::ExportWizard(const engine::InstanceSnapshot &snapshot,
+                           std::filesystem::path mods_dir, QWidget *parent)
+    : QDialog(parent), snapshot_(snapshot), mods_dir_(std::move(mods_dir)) {
   const QString pack_name = QString::fromStdString(snapshot_.display_name);
   setWindowTitle(pack_name.isEmpty() ? tr("Export Modpack")
                                      : tr("Export Modpack: %1").arg(pack_name));
@@ -67,30 +62,30 @@ ExportWizard::ExportWizard(const engine::InstanceSnapshot& snapshot,
   build_mod_rows();
   build_exe_rows();
 
-  auto* layout   = new QHBoxLayout(this);
-  auto* splitter = new QSplitter(Qt::Horizontal, this);
+  auto *layout   = new QHBoxLayout(this);
+  auto *splitter = new QSplitter(Qt::Horizontal, this);
   layout->addWidget(splitter);
 
   sidebar_ = new QListWidget(splitter);
   sidebar_->setMinimumWidth(140);
   sidebar_->setMaximumWidth(220);
-  for (const auto& step : steps_) {
-    auto* item = new QListWidgetItem(step.title, sidebar_);
+  for (const auto &step : steps_) {
+    auto *item = new QListWidgetItem(step.title, sidebar_);
     item->setData(Qt::UserRole, static_cast<int>(step.id));
   }
   splitter->addWidget(sidebar_);
   connect(sidebar_, &QListWidget::itemClicked, this, &ExportWizard::on_step_clicked);
 
-  auto* right        = new QWidget(splitter);
-  auto* right_layout = new QVBoxLayout(right);
+  auto *right        = new QWidget(splitter);
+  auto *right_layout = new QVBoxLayout(right);
   right_layout->setContentsMargins(0, 0, 0, 0);
   stack_ = new QStackedWidget(right);
   build_pages();
   right_layout->addWidget(stack_, 1);
 
-  auto* nav = new QHBoxLayout();
+  auto *nav = new QHBoxLayout();
   nav->addStretch(1);
-  auto* cancel_button = new QPushButton(tr("Cancel"), right);
+  auto *cancel_button = new QPushButton(tr("Cancel"), right);
   back_button_        = new QPushButton(tr("< Back"), right);
   next_button_        = new QPushButton(tr("Next >"), right);
   next_button_->setDefault(true);
@@ -110,8 +105,7 @@ ExportWizard::ExportWizard(const engine::InstanceSnapshot& snapshot,
   refresh_chrome();
 }
 
-QString ExportWizard::step_title(Step step)
-{
+QString ExportWizard::step_title(Step step) {
   switch (step) {
   case Step::Info:
     return tr("Info");
@@ -127,8 +121,7 @@ QString ExportWizard::step_title(Step step)
   return {};
 }
 
-void ExportWizard::build_steps()
-{
+void ExportWizard::build_steps() {
   const std::vector<Step> order = {
       Step::Info, Step::Mods, Step::Executables, Step::Tree, Step::Review,
   };
@@ -144,34 +137,30 @@ void ExportWizard::build_steps()
 // Snapshot folders referenced as someone's parent_separator are separators,
 // not mods. Shared with the engine's own separator detection.
 static std::unordered_set<std::string>
-separator_folders(const engine::InstanceSnapshot& snapshot)
-{
+separator_folders(const engine::InstanceSnapshot &snapshot) {
   std::unordered_set<std::string> separators;
-  for (const auto& [folder, entry] : snapshot.mod_entries) {
+  for (const auto &[folder, entry] : snapshot.mod_entries) {
     if (!entry.parent_separator.empty())
       separators.insert(entry.parent_separator);
   }
   return separators;
 }
 
-void ExportWizard::load_foreign_mods()
-{
+void ExportWizard::load_foreign_mods() {
   foreign_mods_.clear();
   if (snapshot_.profiles.empty())
     return;
-  for (const auto& entry : snapshot_.profiles.front().mods) {
+  for (const auto &entry : snapshot_.profiles.front().mods) {
     if (entry.foreign)
       foreign_mods_.insert(entry.mod_id);
   }
 }
 
-void ExportWizard::build_mod_rows()
-{
+void ExportWizard::build_mod_rows() {
   // Collect mod folder names.  If mod_state.json exists (new instances)
   // we use the tracked entries; otherwise fall back to scanning the mods/
   // directory on disk so old instances still work.
-  struct Row
-  {
+  struct Row {
     int32_t pos = 0;
     std::string folder;
   };
@@ -179,7 +168,7 @@ void ExportWizard::build_mod_rows()
 
   if (!snapshot_.mod_entries.empty()) {
     const auto separators = separator_folders(snapshot_);
-    for (const auto& [folder, entry] : snapshot_.mod_entries) {
+    for (const auto &[folder, entry] : snapshot_.mod_entries) {
       if (separators.count(folder) || is_separator_name(folder))
         continue;
       const int32_t pos = entry.list_position < 0 ? INT32_MAX : entry.list_position;
@@ -189,7 +178,7 @@ void ExportWizard::build_mod_rows()
     // Fallback: scan mods/ directory for folders that contain a meta.ini
     // or at minimum look like mod folders (skip hidden/system dirs and
     // separators, which are never exported as mods).
-    for (const auto& entry : std::filesystem::directory_iterator(mods_dir_)) {
+    for (const auto &entry : std::filesystem::directory_iterator(mods_dir_)) {
       if (!entry.is_directory())
         continue;
       const std::string name = entry.path().filename().string();
@@ -207,11 +196,11 @@ void ExportWizard::build_mod_rows()
     }
   }
 
-  std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) {
+  std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) {
     return a.pos != b.pos ? a.pos < b.pos : a.folder < b.folder;
   });
 
-  for (const auto& row : rows) {
+  for (const auto &row : rows) {
     ModRow out;
     out.folder     = row.folder;
     const auto it  = snapshot_.mod_entries.find(row.folder);
@@ -240,10 +229,9 @@ void ExportWizard::build_mod_rows()
   }
 }
 
-void ExportWizard::build_exe_rows()
-{
+void ExportWizard::build_exe_rows() {
   for (size_t i = 0; i < snapshot_.executables.size(); ++i) {
-    const auto& exe = snapshot_.executables[i];
+    const auto &exe = snapshot_.executables[i];
     ExeRow row;
     row.index = static_cast<int>(i);
     row.title = QString::fromStdString(exe.title.empty() ? exe.path : exe.title);
@@ -253,8 +241,7 @@ void ExportWizard::build_exe_rows()
   }
 }
 
-void ExportWizard::build_pages()
-{
+void ExportWizard::build_pages() {
   stack_->addWidget(wrap_scroll(build_info_page()));    // Info
   stack_->addWidget(build_mods_page());                 // Mods
   stack_->addWidget(build_executables_page());          // Executables
@@ -262,8 +249,7 @@ void ExportWizard::build_pages()
   stack_->addWidget(wrap_scroll(build_review_page()));  // Review
 }
 
-void ExportWizard::go_to(int index)
-{
+void ExportWizard::go_to(int index) {
   if (index < 0 || index >= static_cast<int>(steps_.size()))
     return;
   if (steps_[index].skipped)
@@ -275,14 +261,13 @@ void ExportWizard::go_to(int index)
   refresh_chrome();
 }
 
-void ExportWizard::on_next()
-{
+void ExportWizard::on_next() {
   if (steps_[current_].id == Step::Info && name_edit_->text().trimmed().isEmpty()) {
     QMessageBox::information(this, tr("Info"), tr("Please give the modpack a name."));
     return;
   }
   if (steps_[current_].id == Step::Mods) {
-    const bool any = std::any_of(mods_.begin(), mods_.end(), [](const ModRow& r) {
+    const bool any = std::any_of(mods_.begin(), mods_.end(), [](const ModRow &r) {
       return r.included;
     });
     if (!any) {
@@ -306,8 +291,7 @@ void ExportWizard::on_next()
   go_to(next);
 }
 
-void ExportWizard::on_back()
-{
+void ExportWizard::on_back() {
   int prev = current_ - 1;
   while (prev >= 0 && steps_[prev].skipped)
     --prev;
@@ -315,8 +299,7 @@ void ExportWizard::on_back()
     go_to(prev);
 }
 
-void ExportWizard::on_cancel()
-{
+void ExportWizard::on_cancel() {
   if (current_ > 0) {
     const auto answer = QMessageBox::question(
         this, tr("Export Modpack"),
@@ -327,8 +310,7 @@ void ExportWizard::on_cancel()
   reject();
 }
 
-void ExportWizard::on_step_clicked(QListWidgetItem* item)
-{
+void ExportWizard::on_step_clicked(QListWidgetItem *item) {
   const int index = sidebar_->row(item);
   // Only back-navigation to already-visited steps; never forward past
   // the furthest visited step and never onto skipped steps.
@@ -342,12 +324,11 @@ void ExportWizard::on_step_clicked(QListWidgetItem* item)
   refresh_chrome();
 }
 
-void ExportWizard::refresh_chrome()
-{
+void ExportWizard::refresh_chrome() {
   const QPalette palette = this->palette();
   const QColor dim       = palette.color(QPalette::Disabled, QPalette::WindowText);
   for (int i = 0; i < static_cast<int>(steps_.size()); ++i) {
-    auto* item    = sidebar_->item(i);
+    auto *item    = sidebar_->item(i);
     QString label = steps_[i].title;
     QFont font    = item->font();
     if (steps_[i].skipped) {
@@ -382,11 +363,10 @@ void ExportWizard::refresh_chrome()
 // Page builders
 // ---------------------------------------------------------------------------
 
-QWidget* ExportWizard::build_info_page()
-{
-  auto* page   = new QWidget();
-  auto* layout = new QVBoxLayout(page);
-  auto* form   = new QFormLayout();
+QWidget *ExportWizard::build_info_page() {
+  auto *page   = new QWidget();
+  auto *layout = new QVBoxLayout(page);
+  auto *form   = new QFormLayout();
 
   name_edit_ = new QLineEdit(page);
   name_edit_->setText(QString::fromStdString(snapshot_.display_name));
@@ -413,17 +393,16 @@ QWidget* ExportWizard::build_info_page()
   return page;
 }
 
-QWidget* ExportWizard::build_mods_page()
-{
-  auto* page   = new QWidget();
-  auto* layout = new QVBoxLayout(page);
+QWidget *ExportWizard::build_mods_page() {
+  auto *page   = new QWidget();
+  auto *layout = new QVBoxLayout(page);
 
   mods_count_ = new QLabel(page);
   layout->addWidget(mods_count_);
 
-  auto* actions = new QHBoxLayout();
+  auto *actions = new QHBoxLayout();
   actions->addStretch(1);
-  auto* exclude = new QPushButton(tr("Exclude All Disabled"), page);
+  auto *exclude = new QPushButton(tr("Exclude All Disabled"), page);
   connect(exclude, &QPushButton::clicked, this, &ExportWizard::on_exclude_disabled);
   actions->addWidget(exclude);
   layout->addLayout(actions);
@@ -447,8 +426,8 @@ QWidget* ExportWizard::build_mods_page()
   const QPalette palette = this->palette();
   const QColor dim       = palette.color(QPalette::Disabled, QPalette::WindowText);
   for (int row = 0; row < static_cast<int>(mods_.size()); ++row) {
-    const ModRow& mod = mods_[row];
-    auto* check       = new QCheckBox(mods_table_);
+    const ModRow &mod = mods_[row];
+    auto *check       = new QCheckBox(mods_table_);
     check->setChecked(mod.included);
     check->setProperty("row", row);
     if (mod.is_vanilla) {
@@ -465,14 +444,14 @@ QWidget* ExportWizard::build_mods_page()
     }
     connect(check, &QCheckBox::toggled, this, &ExportWizard::on_mod_include_toggled);
     // Center the checkbox in its cell.
-    auto* cell        = new QWidget(mods_table_);
-    auto* cell_layout = new QHBoxLayout(cell);
+    auto *cell        = new QWidget(mods_table_);
+    auto *cell_layout = new QHBoxLayout(cell);
     cell_layout->setContentsMargins(0, 0, 0, 0);
     cell_layout->setAlignment(Qt::AlignCenter);
     cell_layout->addWidget(check);
     mods_table_->setCellWidget(row, 0, cell);
 
-    auto* name_item = new QTableWidgetItem(QString::fromStdString(mod.folder));
+    auto *name_item = new QTableWidgetItem(QString::fromStdString(mod.folder));
     name_item->setData(Qt::UserRole, row);
     if (mod.is_vanilla) {
       name_item->setForeground(dim);
@@ -484,7 +463,7 @@ QWidget* ExportWizard::build_mods_page()
       name_item->setToolTip(tr("This mod is disabled in the instance."));
     }
     mods_table_->setItem(row, 1, name_item);
-    auto* source_item = new QTableWidgetItem(mod.source);
+    auto *source_item = new QTableWidgetItem(mod.source);
     if (mod.is_vanilla || mod.is_manual) {
       source_item->setForeground(dim);
     }
@@ -492,7 +471,7 @@ QWidget* ExportWizard::build_mods_page()
     // Per-mod update policy. Vanilla masters and manual mods have no
     // provider to resolve against; steam workshop resolution is
     // client-subscription based, so those rows stay "latest".
-    auto* policy = new QComboBox(mods_table_);
+    auto *policy = new QComboBox(mods_table_);
     policy->addItem(tr("Latest"));
     policy->addItem(tr("Exact Version"));
     policy->setProperty("row", row);
@@ -513,12 +492,11 @@ QWidget* ExportWizard::build_mods_page()
   return page;
 }
 
-QWidget* ExportWizard::build_executables_page()
-{
-  auto* page   = new QWidget();
-  auto* layout = new QVBoxLayout(page);
+QWidget *ExportWizard::build_executables_page() {
+  auto *page   = new QWidget();
+  auto *layout = new QVBoxLayout(page);
   if (exes_.empty()) {
-    auto* note = new QLabel(tr("No executables in this instance."), page);
+    auto *note = new QLabel(tr("No executables in this instance."), page);
     note->setAlignment(Qt::AlignCenter);
     layout->addStretch(1);
     layout->addWidget(note);
@@ -536,12 +514,12 @@ QWidget* ExportWizard::build_executables_page()
   exes_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
   exes_table_->setRowCount(static_cast<int>(exes_.size()));
   for (int row = 0; row < static_cast<int>(exes_.size()); ++row) {
-    auto* check = new QCheckBox(exes_table_);
+    auto *check = new QCheckBox(exes_table_);
     check->setChecked(exes_[row].included);
     check->setProperty("row", row);
     connect(check, &QCheckBox::toggled, this, &ExportWizard::on_exe_include_toggled);
-    auto* cell        = new QWidget(exes_table_);
-    auto* cell_layout = new QHBoxLayout(cell);
+    auto *cell        = new QWidget(exes_table_);
+    auto *cell_layout = new QHBoxLayout(cell);
     cell_layout->setContentsMargins(0, 0, 0, 0);
     cell_layout->setAlignment(Qt::AlignCenter);
     cell_layout->addWidget(check);
@@ -554,10 +532,9 @@ QWidget* ExportWizard::build_executables_page()
   return page;
 }
 
-QWidget* ExportWizard::build_tree_page()
-{
-  auto* page   = new QWidget();
-  auto* layout = new QVBoxLayout(page);
+QWidget *ExportWizard::build_tree_page() {
+  auto *page   = new QWidget();
+  auto *layout = new QVBoxLayout(page);
   layout->addWidget(
       new QLabel(tr("Preview of the separator/mod layout written to the pack."), page));
   tree_ = new QTreeWidget(page);
@@ -570,16 +547,15 @@ QWidget* ExportWizard::build_tree_page()
   return page;
 }
 
-QWidget* ExportWizard::build_review_page()
-{
-  auto* page   = new QWidget();
-  auto* layout = new QVBoxLayout(page);
+QWidget *ExportWizard::build_review_page() {
+  auto *page   = new QWidget();
+  auto *layout = new QVBoxLayout(page);
 
   review_summary_ = new QLabel(page);
   review_summary_->setWordWrap(true);
   layout->addWidget(review_summary_);
 
-  auto* form   = new QFormLayout();
+  auto *form   = new QFormLayout();
   output_edit_ = new QLineEdit(page);
   QString name = QString::fromStdString(snapshot_.display_name).trimmed();
   if (name.isEmpty())
@@ -588,11 +564,11 @@ QWidget* ExportWizard::build_review_page()
       QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
   const QString base = desktop.isEmpty() ? QStringLiteral("~") : desktop;
   output_edit_->setText(base + QStringLiteral("/") + name + QStringLiteral(".gmmpack"));
-  auto* row        = new QWidget(page);
-  auto* row_layout = new QHBoxLayout(row);
+  auto *row        = new QWidget(page);
+  auto *row_layout = new QHBoxLayout(row);
   row_layout->setContentsMargins(0, 0, 0, 0);
   row_layout->addWidget(output_edit_, 1);
-  auto* browse = new QPushButton(tr("Browse..."), row);
+  auto *browse = new QPushButton(tr("Browse..."), row);
   connect(browse, &QPushButton::clicked, this, &ExportWizard::on_browse_output);
   row_layout->addWidget(browse);
   form->addRow(tr("Output file:"), row);
@@ -616,8 +592,7 @@ QWidget* ExportWizard::build_review_page()
 // Page hooks + slots
 // ---------------------------------------------------------------------------
 
-void ExportWizard::on_page_entered(int index)
-{
+void ExportWizard::on_page_entered(int index) {
   if (steps_[index].id == Step::Tree) {
     refresh_tree();
   } else if (steps_[index].id == Step::Review) {
@@ -625,12 +600,11 @@ void ExportWizard::on_page_entered(int index)
   }
 }
 
-void ExportWizard::refresh_mods_count()
-{
+void ExportWizard::refresh_mods_count() {
   if (mods_count_ == nullptr)
     return;
   int selected = 0;
-  for (const auto& mod : mods_) {
+  for (const auto &mod : mods_) {
     if (mod.included)
       ++selected;
   }
@@ -638,8 +612,7 @@ void ExportWizard::refresh_mods_count()
       tr("%1 of %2 mods selected").arg(selected).arg(static_cast<int>(mods_.size())));
 }
 
-void ExportWizard::refresh_tree()
-{
+void ExportWizard::refresh_tree() {
   if (tree_ == nullptr)
     return;
   tree_->clear();
@@ -660,7 +633,7 @@ void ExportWizard::refresh_tree()
     options.instructions = instructions_edit_->toPlainText().toStdString();
   // Per-mod update policies from the mods table (only included rows
   // matter - the rest are erased from the filtered snapshot).
-  for (const auto& mod : mods_) {
+  for (const auto &mod : mods_) {
     if (mod.included)
       options.update_policies[mod.folder] = mod.update_policy;
   }
@@ -688,7 +661,7 @@ void ExportWizard::refresh_tree()
     archive_name = name + QStringLiteral(".gmmpack");
   }
 
-  auto* root = new QTreeWidgetItem({archive_name});
+  auto *root = new QTreeWidgetItem({archive_name});
   root->setIcon(0, file_icon);
   root->setExpanded(true);
   tree_->addTopLevelItem(root);
@@ -700,50 +673,50 @@ void ExportWizard::refresh_tree()
                    ? tr("Unknown")
                    : QString::fromStdString(manifest.info.author))
           .arg(QString::fromStdString(manifest.info.gmm_game_id));
-  auto* manifest_item = new QTreeWidgetItem({QStringLiteral("manifest.json")});
+  auto *manifest_item = new QTreeWidgetItem({QStringLiteral("manifest.json")});
   manifest_item->setIcon(0, file_icon);
   manifest_item->setToolTip(0, manifest_summary);
   manifest_item->addChild(new QTreeWidgetItem({manifest_summary}));
   root->addChild(manifest_item);
 
-  auto mod_source_name = [](const engine::gmmpack::ModEntry& mod) {
+  auto mod_source_name = [](const engine::gmmpack::ModEntry &mod) {
     return std::visit(
-        [](const auto& s) -> std::string {
+        [](const auto &s) -> std::string {
           return s.provider;
         },
         mod.source);
   };
 
-  auto* mods_folder = new QTreeWidgetItem({QStringLiteral("mods/")});
+  auto *mods_folder = new QTreeWidgetItem({QStringLiteral("mods/")});
   mods_folder->setIcon(0, folder_icon);
-  for (const auto& mod : mod_entries) {
+  for (const auto &mod : mod_entries) {
     const QString label = QStringLiteral("mods/%1.json - %2 (%3)")
                               .arg(QString::fromStdString(mod.id))
                               .arg(QString::fromStdString(mod.name))
                               .arg(QString::fromStdString(mod_source_name(mod)));
-    auto* item          = new QTreeWidgetItem({label});
+    auto *item          = new QTreeWidgetItem({label});
     item->setIcon(0, file_icon);
     mods_folder->addChild(item);
   }
   root->addChild(mods_folder);
 
-  std::function<void(QTreeWidgetItem*, const std::vector<engine::gmmpack::TreeNode>&)>
-      add_nodes = [&](QTreeWidgetItem* parent,
-                      const std::vector<engine::gmmpack::TreeNode>& nodes) {
-        for (const auto& node : nodes) {
+  std::function<void(QTreeWidgetItem *, const std::vector<engine::gmmpack::TreeNode> &)>
+      add_nodes = [&](QTreeWidgetItem *parent,
+                      const std::vector<engine::gmmpack::TreeNode> &nodes) {
+        for (const auto &node : nodes) {
           if (std::holds_alternative<engine::gmmpack::SeparatorNode>(node.data)) {
-            const auto& sep = std::get<engine::gmmpack::SeparatorNode>(node.data);
-            auto* item      = new QTreeWidgetItem({QString::fromStdString(sep.name)});
+            const auto &sep = std::get<engine::gmmpack::SeparatorNode>(node.data);
+            auto *item      = new QTreeWidgetItem({QString::fromStdString(sep.name)});
             item->setIcon(0, folder_icon);
             item->setExpanded(!sep.collapsed);
             add_nodes(item, sep.children);
             parent->addChild(item);
           } else {
-            const auto& mod = std::get<engine::gmmpack::ModNode>(node.data);
+            const auto &mod = std::get<engine::gmmpack::ModNode>(node.data);
             QString label   = QString::fromStdString(mod.id);
             if (!mod.enabled)
               label += tr(" (disabled)");
-            auto* item = new QTreeWidgetItem({label});
+            auto *item = new QTreeWidgetItem({label});
             item->setIcon(0, file_icon);
             if (!mod.enabled)
               item->setForeground(0, dim);
@@ -752,13 +725,13 @@ void ExportWizard::refresh_tree()
         }
       };
   std::unordered_map<std::string, std::string> exe_titles;
-  for (const auto& exe : filtered.executables) {
+  for (const auto &exe : filtered.executables) {
     if (!exe.title.empty())
       exe_titles[exe.path] = exe.title;
   }
-  auto* exes_folder = new QTreeWidgetItem({QStringLiteral("executables/")});
+  auto *exes_folder = new QTreeWidgetItem({QStringLiteral("executables/")});
   exes_folder->setIcon(0, folder_icon);
-  for (const auto& exe : exe_entries) {
+  for (const auto &exe : exe_entries) {
     QString title;
     const auto it = exe_titles.find(exe.relative_path);
     if (it != exe_titles.end())
@@ -768,19 +741,19 @@ void ExportWizard::refresh_tree()
     const QString label = QStringLiteral("executables/%1.json - %2")
                               .arg(QString::fromStdString(exe.id))
                               .arg(title);
-    auto* item          = new QTreeWidgetItem({label});
+    auto *item          = new QTreeWidgetItem({label});
     item->setIcon(0, file_icon);
     exes_folder->addChild(item);
   }
   root->addChild(exes_folder);
 
-  auto* tree_file = new QTreeWidgetItem({QStringLiteral("tree.json")});
+  auto *tree_file = new QTreeWidgetItem({QStringLiteral("tree.json")});
   tree_file->setIcon(0, file_icon);
   root->addChild(tree_file);
   add_nodes(tree_file, layout.nodes);
 
   if (!options.instructions.empty()) {
-    auto* instructions = new QTreeWidgetItem({QStringLiteral("instructions.md")});
+    auto *instructions = new QTreeWidgetItem({QStringLiteral("instructions.md")});
     instructions->setIcon(0, file_icon);
     root->addChild(instructions);
   }
@@ -793,18 +766,17 @@ void ExportWizard::refresh_tree()
   tree_->expandAll();
 }
 
-void ExportWizard::refresh_review()
-{
+void ExportWizard::refresh_review() {
   if (review_summary_ == nullptr)
     return;
   int mods = 0;
-  for (const auto& mod : mods_) {
+  for (const auto &mod : mods_) {
     if (!mod.included)
       continue;
     ++mods;
   }
   int exes = 0;
-  for (const auto& exe : exes_) {
+  for (const auto &exe : exes_) {
     if (exe.included)
       ++exes;
   }
@@ -823,18 +795,17 @@ void ExportWizard::refresh_review()
           .arg(separator_count()));
 }
 
-engine::InstanceSnapshot ExportWizard::filtered_snapshot() const
-{
+engine::InstanceSnapshot ExportWizard::filtered_snapshot() const {
   engine::InstanceSnapshot out = snapshot_;
   const QString name = name_edit_ != nullptr ? name_edit_->text().trimmed() : QString();
   if (!name.isEmpty())
     out.display_name = name.toStdString();
-  for (const auto& row : mods_) {
+  for (const auto &row : mods_) {
     if (!row.included)
       out.mod_entries.erase(row.folder);
   }
   std::vector<engine::ExecutableEntry> kept;
-  for (const auto& row : exes_) {
+  for (const auto &row : exes_) {
     if (row.included && row.index >= 0 &&
         row.index < static_cast<int>(snapshot_.executables.size())) {
       kept.push_back(snapshot_.executables[static_cast<size_t>(row.index)]);
@@ -844,19 +815,17 @@ engine::InstanceSnapshot ExportWizard::filtered_snapshot() const
   return out;
 }
 
-int ExportWizard::separator_count() const
-{
+int ExportWizard::separator_count() const {
   return static_cast<int>(separator_folders(filtered_snapshot()).size());
 }
 
-void ExportWizard::on_exclude_disabled()
-{
+void ExportWizard::on_exclude_disabled() {
   for (size_t i = 0; i < mods_.size(); ++i) {
     if (mods_[i].disabled && mods_[i].included) {
       mods_[i].included = false;
       if (mods_table_ != nullptr) {
-        if (auto* cell = mods_table_->cellWidget(static_cast<int>(i), 0)) {
-          if (auto* check = cell->findChild<QCheckBox*>()) {
+        if (auto *cell = mods_table_->cellWidget(static_cast<int>(i), 0)) {
+          if (auto *check = cell->findChild<QCheckBox *>()) {
             const bool blocked = check->blockSignals(true);
             check->setChecked(false);
             check->blockSignals(blocked);
@@ -868,9 +837,8 @@ void ExportWizard::on_exclude_disabled()
   refresh_mods_count();
 }
 
-void ExportWizard::on_mod_include_toggled()
-{
-  const auto* check = qobject_cast<const QCheckBox*>(sender());
+void ExportWizard::on_mod_include_toggled() {
+  const auto *check = qobject_cast<const QCheckBox *>(sender());
   if (check == nullptr)
     return;
   const int row = check->property("row").toInt();
@@ -880,9 +848,8 @@ void ExportWizard::on_mod_include_toggled()
   refresh_mods_count();
 }
 
-void ExportWizard::on_policy_changed()
-{
-  const auto* combo = qobject_cast<const QComboBox*>(sender());
+void ExportWizard::on_policy_changed() {
+  const auto *combo = qobject_cast<const QComboBox *>(sender());
   if (combo == nullptr)
     return;
   const int row = combo->property("row").toInt();
@@ -892,9 +859,8 @@ void ExportWizard::on_policy_changed()
       combo->currentIndex() == 1 ? "exact" : "latest";
 }
 
-void ExportWizard::on_exe_include_toggled()
-{
-  const auto* check = qobject_cast<const QCheckBox*>(sender());
+void ExportWizard::on_exe_include_toggled() {
+  const auto *check = qobject_cast<const QCheckBox *>(sender());
   if (check == nullptr)
     return;
   const int row = check->property("row").toInt();
@@ -903,16 +869,14 @@ void ExportWizard::on_exe_include_toggled()
   exes_[static_cast<size_t>(row)].included = check->isChecked();
 }
 
-void ExportWizard::on_browse_output()
-{
+void ExportWizard::on_browse_output() {
   const QString path = QFileDialog::getSaveFileName(
       this, tr("Export Modpack"), output_edit_->text(), tr("Modpack (*.gmmpack)"));
   if (!path.isEmpty())
     output_edit_->setText(path);
 }
 
-void ExportWizard::on_export()
-{
+void ExportWizard::on_export() {
   const QString output =
       output_edit_ != nullptr ? output_edit_->text().trimmed() : QString();
   if (output.isEmpty()) {
@@ -926,7 +890,7 @@ void ExportWizard::on_export()
   options.instructions = instructions_edit_->toPlainText().toStdString();
   // Per-mod update policies from the mods table (only included rows
   // matter - the rest are erased from the filtered snapshot).
-  for (const auto& mod : mods_) {
+  for (const auto &mod : mods_) {
     if (mod.included)
       options.update_policies[mod.folder] = mod.update_policy;
   }

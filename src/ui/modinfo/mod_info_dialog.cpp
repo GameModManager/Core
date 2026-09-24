@@ -30,7 +30,7 @@ namespace ui {
 
 ModInfoDialog::ModInfoDialog(ModInfoData data,
                              std::vector<std::pair<QString, bool>> nav_list,
-                             ModInfoTabId initial_tab, QWidget* parent)
+                             ModInfoTabId initial_tab, QWidget *parent)
     : QDialog(parent), current_mod_data_(std::move(data)),
       nav_list_(std::move(nav_list)), nav_index_(-1) {
   setWindowTitle(tr("Mod Information"));
@@ -44,7 +44,7 @@ ModInfoDialog::ModInfoDialog(ModInfoData data,
     }
   }
 
-  auto* layout = new QVBoxLayout(this);
+  auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(6, 6, 6, 6);
 
   tabs_ = new QTabWidget(this);
@@ -53,7 +53,7 @@ ModInfoDialog::ModInfoDialog(ModInfoData data,
   tabs_->setMovable(true);
   layout->addWidget(tabs_, 1);
 
-  const auto make_tab = [&](ModInfoTab* tab, const QString& title) {
+  const auto make_tab = [&](ModInfoTab *tab, const QString &title) {
     tab->set_tab_id(static_cast<ModInfoTabId>(tab_order_.size()));
     tab_order_.push_back(tab);
     tabs_->addTab(tab, title);
@@ -73,12 +73,12 @@ ModInfoDialog::ModInfoDialog(ModInfoData data,
   tab_activated_.assign(tab_order_.size(), false);
 
   connect(tabs_, &QTabWidget::currentChanged, this, [this](int /*visual*/) {
-    QWidget* cur = tabs_->currentWidget();
+    QWidget *cur = tabs_->currentWidget();
     auto it      = std::find(tab_order_.begin(), tab_order_.end(), cur);
     if (it == tab_order_.end())
       return;
     const size_t idx = static_cast<size_t>(it - tab_order_.begin());
-    auto* tab        = *it;
+    auto *tab        = *it;
     if (!tab_loaded_[idx]) {
       tab_loaded_[idx] = true;
       tab->set_current(current_mod_data_);
@@ -92,8 +92,8 @@ ModInfoDialog::ModInfoDialog(ModInfoData data,
   });
 
   // --- bottom bar: prev / mod name / next | delete | close ---
-  auto* bar        = new QWidget(this);
-  auto* bar_layout = new QHBoxLayout(bar);
+  auto *bar        = new QWidget(this);
+  auto *bar_layout = new QHBoxLayout(bar);
   bar_layout->setContentsMargins(0, 4, 0, 0);
 
   prev_btn_ = new QPushButton(QChar(0x226A), bar);  // "≪"
@@ -114,7 +114,7 @@ ModInfoDialog::ModInfoDialog(ModInfoData data,
   delete_btn_->setObjectName("deleteModBtn");
   bar_layout->addWidget(delete_btn_);
 
-  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, bar);
+  auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, bar);
   connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
   bar_layout->addWidget(buttons);
 
@@ -208,7 +208,7 @@ void ModInfoDialog::switch_to(int index) {
     if (tab_loaded_[i])
       tab_order_[i]->save_state();
 
-  const QString& target_id = nav_list_[static_cast<size_t>(index)].first;
+  const QString &target_id = nav_list_[static_cast<size_t>(index)].first;
   if (data_builder_) {
     current_mod_data_ = data_builder_(target_id);
     tab_loaded_.assign(tab_order_.size(), false);
@@ -218,7 +218,7 @@ void ModInfoDialog::switch_to(int index) {
     // save_state() would be skipped (tab_loaded_ reset to false).
     // Resolve via currentWidget() to get the logical index - currentIndex()
     // is visual and shifts when tabs are dragged (setMovable(true)).
-    QWidget* cur = tabs_->currentWidget();
+    QWidget *cur = tabs_->currentWidget();
     auto it      = std::find(tab_order_.begin(), tab_order_.end(), cur);
     if (it != tab_order_.end()) {
       const size_t logical = static_cast<size_t>(it - tab_order_.begin());
@@ -264,7 +264,7 @@ void ModInfoDialog::reload_current(ModInfoData data) {
   tab_activated_.assign(tab_order_.size(), false);
   // Re-init the currently visible tab (same rationale as switch_to()).
   // Use currentWidget() to derive logical index - currentIndex() is visual.
-  QWidget* cur = tabs_->currentWidget();
+  QWidget *cur = tabs_->currentWidget();
   auto it      = std::find(tab_order_.begin(), tab_order_.end(), cur);
   if (it != tab_order_.end()) {
     const size_t logical = static_cast<size_t>(it - tab_order_.begin());
@@ -286,7 +286,7 @@ QString ModInfoDialog::current_mod_id() const {
 }
 
 bool ModInfoDialog::can_switch() const {
-  for (auto* tab : tab_order_) {
+  for (auto *tab : tab_order_) {
     if (!tab->can_close())
       return false;
   }
@@ -315,7 +315,7 @@ void ModInfoDialog::on_delete_mod() {
   }
 }
 
-void ModInfoDialog::keyPressEvent(QKeyEvent* event) {
+void ModInfoDialog::keyPressEvent(QKeyEvent *event) {
   if (event->key() == Qt::Key_Delete) {
     on_delete_mod();
     event->accept();
@@ -335,7 +335,7 @@ void ModInfoDialog::restore_geometry() {
     restoreGeometry(geo);
 }
 
-void ModInfoDialog::closeEvent(QCloseEvent* event) {
+void ModInfoDialog::closeEvent(QCloseEvent *event) {
   if (!can_switch()) {
     event->ignore();
     return;
@@ -350,7 +350,7 @@ void ModInfoDialog::closeEvent(QCloseEvent* event) {
   QDialog::closeEvent(event);
 }
 
-void ModInfoDialog::moveEvent(QMoveEvent* event) {
+void ModInfoDialog::moveEvent(QMoveEvent *event) {
   QDialog::moveEvent(event);
   // Persist on move so a crashed/dropped dialog still restores its spot.
   Settings::instance().set_modinfo_window_geometry(saveGeometry());

@@ -29,8 +29,8 @@ public:
   [[nodiscard]] std::filesystem::path steam_userdata_dir() const override;
 
   [[nodiscard]] bool
-  launch_executable(const std::filesystem::path& executable,
-                    const std::vector<std::string>& args = {}) const override;
+  launch_executable(const std::filesystem::path &executable,
+                    const std::vector<std::string> &args = {}) const override;
 
   [[nodiscard]] bool is_elevated() const override;
   [[nodiscard]] bool symlinks_available() const override;
@@ -43,10 +43,10 @@ public:
   // Windows-specific: read a string value from the Windows registry.
   // Returns empty path if the key/value doesn't exist or on error.
   [[nodiscard]] static std::filesystem::path
-  registry_read_string(const std::wstring& key_path, const std::wstring& value_name);
+  registry_read_string(const std::wstring &key_path, const std::wstring &value_name);
 
   // Windows-specific: register an nxm:// protocol handler.
-  [[nodiscard]] static bool register_nxm_handler(const std::filesystem::path& exe_path);
+  [[nodiscard]] static bool register_nxm_handler(const std::filesystem::path &exe_path);
 
   // Windows-specific: unregister the nxm:// protocol handler.
   [[nodiscard]] static bool unregister_nxm_handler();
@@ -54,7 +54,7 @@ public:
   // Windows-specific: register a modl:// protocol handler
   // (mod.pub / MO2 modlhandler).
   [[nodiscard]] static bool
-  register_modl_handler(const std::filesystem::path& exe_path);
+  register_modl_handler(const std::filesystem::path &exe_path);
 
   // Windows-specific: unregister the modl:// protocol handler.
   [[nodiscard]] static bool unregister_modl_handler();

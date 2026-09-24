@@ -20,22 +20,19 @@
 #include <string>
 #include <vector>
 
-namespace engine::Install
-{
+namespace engine::Install {
 
 // ---------------------------------------------------------------------------
 // Conflicts
 // ---------------------------------------------------------------------------
 
-enum class ConflictType
-{
+enum class ConflictType {
   DuplicateSource,  // same provider + mod id (source_type + source_id)
   DuplicateFile,    // different source, same staged archive name
   NameCollision,    // different mod, same display name (diagnostic only)
 };
 
-struct Conflict
-{
+struct Conflict {
   ConflictType type = ConflictType::DuplicateSource;
   Pack::ResolvedMod existing;  // already installed
   Pack::ResolvedMod pack;      // incoming from the pack
@@ -44,15 +41,14 @@ struct Conflict
 // One (existing, pack) pair reports at most one Conflict: the strongest
 // match wins (source > file > name). Empty identities never match.
 [[nodiscard]] std::vector<Conflict>
-detect_conflicts(const std::vector<Pack::ResolvedMod>& existing_mods,
-                 const std::vector<Pack::ResolvedMod>& pack_mods);
+detect_conflicts(const std::vector<Pack::ResolvedMod> &existing_mods,
+                 const std::vector<Pack::ResolvedMod> &pack_mods);
 
 // ---------------------------------------------------------------------------
 // Resolutions
 // ---------------------------------------------------------------------------
 
-enum class Action
-{
+enum class Action {
   Skip,     // keep the installed mod, drop the pack entry
   Replace,  // uninstall the installed mod, install the pack entry
   Rename,   // install the pack entry under rename_to
@@ -60,15 +56,13 @@ enum class Action
   Ask,      // input only: user deferred - resolve_conflicts applies the default
 };
 
-struct UserChoice
-{
+struct UserChoice {
   std::size_t conflict_index = 0;
   Action action              = Action::Ask;
   std::string rename_to;  // only read when action == Rename
 };
 
-struct Resolution
-{
+struct Resolution {
   std::size_t conflict_index = 0;
   Action action              = Action::Skip;  // effective action, never Ask
   std::string pack_entry_id;                  // conflicts[conflict_index].pack.entry_id
@@ -81,15 +75,14 @@ struct Resolution
 // an empty rename_to falls back to Skip. Out-of-range choices are ignored;
 // when several choices name one conflict, the last wins.
 [[nodiscard]] std::vector<Resolution>
-resolve_conflicts(const std::vector<Conflict>& conflicts,
-                  const std::vector<UserChoice>& user_choices);
+resolve_conflicts(const std::vector<Conflict> &conflicts,
+                  const std::vector<UserChoice> &user_choices);
 
 // ---------------------------------------------------------------------------
 // Install plan
 // ---------------------------------------------------------------------------
 
-struct PlanEntry
-{
+struct PlanEntry {
   Pack::ResolvedMod mod;
   // Archive name to install as; empty means mod.archive_name.
   std::string target_name;
@@ -102,8 +95,8 @@ using InstallPlan = std::vector<PlanEntry>;
 // resolution pass through; resolutions naming unknown entries are ignored.
 // When several resolutions name one entry, Skip beats Replace beats Rename
 // beats Keep.
-[[nodiscard]] InstallPlan apply_resolutions(const std::vector<Resolution>& resolutions,
-                                            const InstallPlan& install_plan);
+[[nodiscard]] InstallPlan apply_resolutions(const std::vector<Resolution> &resolutions,
+                                            const InstallPlan &install_plan);
 
 // ---------------------------------------------------------------------------
 // Diagnostics
@@ -111,7 +104,7 @@ using InstallPlan = std::vector<PlanEntry>;
 
 // One-line human summary for the log; every detected conflict is logged by
 // detect_conflicts itself.
-[[nodiscard]] std::string describe(const Conflict& conflict);
-[[nodiscard]] std::string describe(const Resolution& resolution);
+[[nodiscard]] std::string describe(const Conflict &conflict);
+[[nodiscard]] std::string describe(const Resolution &resolution);
 
 }  // namespace engine::Install

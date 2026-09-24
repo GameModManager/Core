@@ -80,8 +80,8 @@ std::filesystem::path MacOSPlatform::steam_userdata_dir() const {
 
 // --- Process launch ---
 
-bool MacOSPlatform::launch_executable(const std::filesystem::path& executable,
-                                      const std::vector<std::string>& args) const {
+bool MacOSPlatform::launch_executable(const std::filesystem::path &executable,
+                                      const std::vector<std::string> &args) const {
   if (!std::filesystem::exists(executable))
     return false;
 
@@ -94,10 +94,10 @@ bool MacOSPlatform::launch_executable(const std::filesystem::path& executable,
     setsid();
     pid_t inner = fork();
     if (inner == 0) {
-      std::vector<char*> argv;
-      argv.push_back(const_cast<char*>(executable.c_str()));
-      for (const auto& arg : args) {
-        argv.push_back(const_cast<char*>(arg.c_str()));
+      std::vector<char *> argv;
+      argv.push_back(const_cast<char *>(executable.c_str()));
+      for (const auto &arg : args) {
+        argv.push_back(const_cast<char *>(arg.c_str()));
       }
       argv.push_back(nullptr);
       execvp(executable.c_str(), argv.data());
@@ -121,7 +121,7 @@ bool MacOSPlatform::is_elevated() const {
 // --- Home / temp / thread priority ---
 
 std::filesystem::path MacOSPlatform::home_dir() const {
-  if (const char* home = std::getenv("HOME"); home && home[0] != '\0')
+  if (const char *home = std::getenv("HOME"); home && home[0] != '\0')
     return std::filesystem::path(home);
   return std::filesystem::temp_directory_path();
 }

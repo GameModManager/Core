@@ -39,7 +39,7 @@
 #include <string>
 
 namespace {
-void check(bool cond, const char* what) {
+void check(bool cond, const char *what) {
   INFO(what);
   REQUIRE(cond);
 }
@@ -48,8 +48,8 @@ void check(bool cond, const char* what) {
 namespace {
 
 // See task_dialog_test.cpp - scripted exec() driving with a watchdog.
-void click_link(ui::TaskDialog& dlg, const QString& text) {
-  for (auto* b : dlg.findChildren<QCommandLinkButton*>()) {
+void click_link(ui::TaskDialog &dlg, const QString &text) {
+  for (auto *b : dlg.findChildren<QCommandLinkButton *>()) {
     if (b->text() == text) {
       b->click();
       return;
@@ -58,8 +58,8 @@ void click_link(ui::TaskDialog& dlg, const QString& text) {
   dlg.reject();
 }
 
-QMessageBox::StandardButton run_dialog(ui::TaskDialog& dlg,
-                                       std::function<void(ui::TaskDialog&)> act) {
+QMessageBox::StandardButton run_dialog(ui::TaskDialog &dlg,
+                                       std::function<void(ui::TaskDialog &)> act) {
   QTimer::singleShot(0, &dlg, [&dlg, act] {
     act(dlg);
   });
@@ -69,10 +69,10 @@ QMessageBox::StandardButton run_dialog(ui::TaskDialog& dlg,
   return dlg.exec();
 }
 
-bool has_icon(const ui::TaskDialog& dlg) {
+bool has_icon(const ui::TaskDialog &dlg) {
   if (!dlg.windowIcon().isNull())
     return true;
-  for (auto* l : dlg.findChildren<QLabel*>()) {
+  for (auto *l : dlg.findChildren<QLabel *>()) {
     if (!l->pixmap(Qt::ReturnByValue).isNull())
       return true;
   }
@@ -89,7 +89,7 @@ TEST_CASE("instance switch restart confirmation routes through TaskDialog", "[ui
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
@@ -100,12 +100,12 @@ TEST_CASE("instance switch restart confirmation routes through TaskDialog", "[ui
     ui::configure_instance_restart_dialog(dlg);
     check(dlg.windowTitle() == "Restart GameModManager", "seam sets the dialog title");
 
-    auto got = run_dialog(dlg, [](ui::TaskDialog& d) {
+    auto got = run_dialog(dlg, [](ui::TaskDialog &d) {
       click_link(d, "Restart");
     });
     check(got == QMessageBox::Yes, "Restart confirms the restart path");
 
-    auto links = dlg.findChildren<QCommandLinkButton*>();
+    auto links = dlg.findChildren<QCommandLinkButton *>();
     check(links.size() == 2, "exactly two choices (Restart / Continue)");
     if (links.size() == 2) {
       check(links[0]->text() == "Restart", "Restart is the first command link");
@@ -116,7 +116,7 @@ TEST_CASE("instance switch restart confirmation routes through TaskDialog", "[ui
 
     bool content_set = false;
     bool main_set    = false;
-    for (auto* l : dlg.findChildren<QLabel*>()) {
+    for (auto *l : dlg.findChildren<QLabel *>()) {
       if (l->text().contains("must restart to finish configuration changes"))
         content_set = true;
       if (l->text() == "Restart GameModManager")
@@ -131,7 +131,7 @@ TEST_CASE("instance switch restart confirmation routes through TaskDialog", "[ui
   {
     ui::TaskDialog dlg(nullptr, QString());
     ui::configure_instance_restart_dialog(dlg);
-    auto got = run_dialog(dlg, [](ui::TaskDialog& d) {
+    auto got = run_dialog(dlg, [](ui::TaskDialog &d) {
       click_link(d, "Continue");
     });
     check(got == QMessageBox::No, "Continue takes the live-switch path");
@@ -141,7 +141,7 @@ TEST_CASE("instance switch restart confirmation routes through TaskDialog", "[ui
   {
     ui::TaskDialog dlg(nullptr, QString());
     ui::configure_instance_restart_dialog(dlg);
-    auto got = run_dialog(dlg, [](ui::TaskDialog& d) {
+    auto got = run_dialog(dlg, [](ui::TaskDialog &d) {
       d.reject();
     });
     check(got != QMessageBox::Yes && got != QMessageBox::No,

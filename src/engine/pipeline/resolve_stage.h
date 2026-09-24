@@ -6,7 +6,7 @@ namespace engine {
 
 class ResolveStage : public Stage {
 public:
-    bool execute(Mod& mod, PipelineContext& ctx) override;
+  bool execute(Mod &mod, PipelineContext &ctx) override;
 };
 
 }  // namespace engine

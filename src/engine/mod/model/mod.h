@@ -7,65 +7,66 @@
 namespace engine {
 
 enum class ModType {
-    Regular,      // standard managed mod
-    Foreign,      // DLC/CC: game-native
-    Separator,    // separator row
-    Backup,       // backup mod
-    Overwrite,    // overwrite pseudo-row
-    Merged,       // MERGED pseudo-row
-    GameNative,   // unmanaged game plugin
+  Regular,     // standard managed mod
+  Foreign,     // DLC/CC: game-native
+  Separator,   // separator row
+  Backup,      // backup mod
+  Overwrite,   // overwrite pseudo-row
+  Merged,      // MERGED pseudo-row
+  GameNative,  // unmanaged game plugin
 };
 
 enum class ModState {
-    Downloaded,
-    Extracted,
-    Installed,
-    Staged,
-    Deployed,
+  Downloaded,
+  Extracted,
+  Installed,
+  Staged,
+  Deployed,
 };
 
 struct ModFile {
-    std::string relative_path;
-    uint64_t size = 0;
+  std::string relative_path;
+  uint64_t size = 0;
 };
 
 struct Mod {
-    std::string id;
-    std::string name;
-    std::string version;
-    ModType type = ModType::Regular;
-    ModState state = ModState::Downloaded;
-    std::vector<ModFile> files;
+  std::string id;
+  std::string name;
+  std::string version;
+  ModType type   = ModType::Regular;
+  ModState state = ModState::Downloaded;
+  std::vector<ModFile> files;
 
-    // Download metadata (populated before pipeline run for remote sources)
-    std::string download_source_type;  // "nexus", "steam", "loverslab", "modpub", "direct", "manual"
-    std::string download_source_id;    // Nexus mod_id or Steam workshop_id
-    struct {
-        int64_t file_id = 0;
-        std::string key;
-        int64_t expire = 0;
-        int64_t user_id = 0;
-        std::string nexus_domain;  // e.g. "skyrimspecialedition"
-    } download_nxm;
+  // Download metadata (populated before pipeline run for remote sources)
+  std::string download_source_type;  // "nexus", "steam", "loverslab", "modpub",
+                                     // "direct", "manual"
+  std::string download_source_id;    // Nexus mod_id or Steam workshop_id
+  struct {
+    int64_t file_id = 0;
+    std::string key;
+    int64_t expire  = 0;
+    int64_t user_id = 0;
+    std::string nexus_domain;  // e.g. "skyrimspecialedition"
+  } download_nxm;
 
-    // Pre-resolved direct download URL. When set, providers download from this
-    // URL directly instead of resolving one themselves.
-    std::string download_url;
+  // Pre-resolved direct download URL. When set, providers download from this
+  // URL directly instead of resolving one themselves.
+  std::string download_url;
 
-    // Source page URL for the download (e.g. a LoversLab file page). Persisted
-    // into the mod's per-source meta section so the UI can link back to it.
-    std::string download_page_url;
+  // Source page URL for the download (e.g. a LoversLab file page). Persisted
+  // into the mod's per-source meta section so the UI can link back to it.
+  std::string download_page_url;
 
-    // Archive filename determined during fetch (e.g. "mod-12345-1-0.zip")
-    std::string archive_filename;
+  // Archive filename determined during fetch (e.g. "mod-12345-1-0.zip")
+  std::string archive_filename;
 
-    // Collection tracking (Workspace-5wmu). Source-agnostic: set for any mod
-    // installed as part of a collection, regardless of provider (Nexus,
-    // .gmmpack, manual import). Empty collection_id + in_collection=false
-    // means the mod is standalone / untracked.
-    std::string collection_id;      // Manifest::id of the owning collection
-    int64_t collection_revision = 0; // Manifest::revision at install time
-    bool in_collection = false;     // per-mod-in-collection flag
+  // Collection tracking (Workspace-5wmu). Source-agnostic: set for any mod
+  // installed as part of a collection, regardless of provider (Nexus,
+  // .gmmpack, manual import). Empty collection_id + in_collection=false
+  // means the mod is standalone / untracked.
+  std::string collection_id;            // Manifest::id of the owning collection
+  int64_t collection_revision = 0;      // Manifest::revision at install time
+  bool in_collection          = false;  // per-mod-in-collection flag
 };
 
 }  // namespace engine

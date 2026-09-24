@@ -51,4 +51,4 @@ public:
   static std::string detect_distro_type();
 };
 
-} // namespace engine::update
+}  // namespace engine::update

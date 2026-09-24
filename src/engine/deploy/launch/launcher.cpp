@@ -40,8 +40,7 @@ using pid_t = int;
 
 namespace fs = std::filesystem;
 
-namespace engine
-{
+namespace engine {
 
 #ifndef _WIN32  // POSIX-only launcher - Windows USVFS launch is ticket
                 // Workspace-3br4
@@ -51,8 +50,7 @@ namespace engine
 // poll: Proton's `waitforexitandrun` hands a Steam game off and exits 0
 // while the game's own processes keep running in the launch cgroup.
 // Falling back would spawn a SECOND game instance.
-static bool game_chain_alive_in_cgroup()
-{
+static bool game_chain_alive_in_cgroup() {
   std::ifstream f("/proc/self/cgroup");
   std::string line, rel;
   while (std::getline(f, line)) {
@@ -86,9 +84,8 @@ static bool game_chain_alive_in_cgroup()
 // Returns true when `exec_path` resolves to a regular file. The directory
 // case (e.g. a mod's bin/ folder) is rejected with a clear message instead of
 // a cryptic exec failure inside the overlay child.
-static bool check_launch_executable(const fs::path& game_dir, const fs::path& staging,
-                                    const fs::path& exec_path)
-{
+static bool check_launch_executable(const fs::path &game_dir, const fs::path &staging,
+                                    const fs::path &exec_path) {
   const fs::path resolved = merged_view_file_resolve(game_dir, staging, exec_path);
   if (resolved.empty()) {
     Logger::instance().error("Executable not found: " + exec_path.string());
@@ -103,12 +100,11 @@ static bool check_launch_executable(const fs::path& game_dir, const fs::path& st
   return true;
 }
 
-static LaunchResult do_launch(const LaunchParams& params);
+static LaunchResult do_launch(const LaunchParams &params);
 
 // Truthy check for an opt-in env flag: set and not "0".
-static bool env_is_true(const char* name)
-{
-  const char* v = std::getenv(name);
+static bool env_is_true(const char *name) {
+  const char *v = std::getenv(name);
   return v && *v && v[0] != '0';
 }
 
@@ -119,8 +115,7 @@ static bool env_is_true(const char* name)
 // assignment operator-deletes memory it never allocated (ASan
 // alloc-dealloc-mismatch). Only the trivially copyable fields cross the pipe;
 // the parent rebuilds cgroup_path from its own local CgroupHandle.
-struct LaunchResultWire
-{
+struct LaunchResultWire {
   int64_t pid           = -1;
   bool overlay_launched = false;
 };
@@ -129,26 +124,22 @@ struct LaunchResultWire
 
 ProcessRunner::ProcessRunner(LaunchParams params) : params_(std::move(params)) {}
 
-LaunchResult ProcessRunner::run()
-{
+LaunchResult ProcessRunner::run() {
   last_result_ = launch_game(params_);
   return last_result_;
 }
 
-const LaunchParams& ProcessRunner::params() const
-{
+const LaunchParams &ProcessRunner::params() const {
   return params_;
 }
 
-const LaunchResult& ProcessRunner::last_result() const
-{
+const LaunchResult &ProcessRunner::last_result() const {
   return last_result_;
 }
 
 // -- Backward-compatible free function --
 
-LaunchResult launch_game(const LaunchParams& params)
-{
+LaunchResult launch_game(const LaunchParams &params) {
   auto exec_path = params.executable;
   // Merged-view pre-check (same semantics as do_launch): the file may be
   // game-native (physical), deployed into .gmm_staging, or only visible
@@ -276,8 +267,7 @@ LaunchResult launch_game(const LaunchParams& params)
 
 // Core launch logic - extracted so it can run inside the subreaper child
 // on Linux. Returns the actual game PID and whether overlay was used.
-static LaunchResult do_launch(const LaunchParams& params)
-{
+static LaunchResult do_launch(const LaunchParams &params) {
   Logger::instance().debug("Launching " + params.executable.string());
 
   auto exec_path = params.executable;
@@ -336,7 +326,7 @@ static LaunchResult do_launch(const LaunchParams& params)
   // applied before downstream launch decisions (e.g. the broken-CI-shim
   // opt-in gate) so launch knobs can be supplied per executable via the
   // Environment field.
-  for (const auto& var : params.environment) {
+  for (const auto &var : params.environment) {
     auto eq = var.find('=');
     if (eq == std::string::npos || eq == 0) {
       Logger::instance().warn(
@@ -372,7 +362,7 @@ static LaunchResult do_launch(const LaunchParams& params)
       if (e)
         return fs::path();
       auto d = self.parent_path();
-      for (const auto& cand : {d / "libgmm_ci_intercept.so",
+      for (const auto &cand : {d / "libgmm_ci_intercept.so",
                                d.parent_path() / "lib" / "libgmm_ci_intercept.so"}) {
         if (fs::exists(cand, e))
           return cand;
@@ -412,7 +402,7 @@ static LaunchResult do_launch(const LaunchParams& params)
         // args are appended after the executable so the game receives them.
         std::vector<std::string> ovl_args = {proton.string(), "waitforexitandrun",
                                              exec_path.string()};
-        for (const auto& a : params.args)
+        for (const auto &a : params.args)
           ovl_args.push_back(a);
         pid = OverlayFsLauncher::launch(
             proton, params.game_dir, capture_dir, ovl_args, params.extra_lowerdirs,
@@ -522,9 +512,8 @@ static LaunchResult do_launch(const LaunchParams& params)
   return {pid, false};
 }
 
-void capture_overwrite(const fs::path& game_dir, const fs::path& overwrite_dir,
-                       fs::file_time_type capture_time, bool case_insensitive)
-{
+void capture_overwrite(const fs::path &game_dir, const fs::path &overwrite_dir,
+                       fs::file_time_type capture_time, bool case_insensitive) {
   if (game_dir.empty() || overwrite_dir.empty())
     return;
 
@@ -541,7 +530,7 @@ void capture_overwrite(const fs::path& game_dir, const fs::path& overwrite_dir,
           game_dir, fs::directory_options::skip_permission_denied, ec);
       auto end = fs::recursive_directory_iterator();
       while (it != end && !ec) {
-        auto& entry = *it;
+        auto &entry = *it;
         if (entry.is_regular_file() && !entry.is_symlink()) {
           auto ft = entry.last_write_time(ec);
           if (!ec && ft >= capture_time) {
@@ -580,7 +569,7 @@ void capture_overwrite(const fs::path& game_dir, const fs::path& overwrite_dir,
           game_dir, fs::directory_options::skip_permission_denied, ec);
       auto end = fs::recursive_directory_iterator();
       while (it != end && !ec) {
-        auto& entry = *it;
+        auto &entry = *it;
         if (entry.is_directory() && !entry.is_symlink()) {
           auto dir = entry.path();
           if (fs::is_empty(dir, ec) && !ec) {
@@ -613,13 +602,12 @@ void capture_overwrite(const fs::path& game_dir, const fs::path& overwrite_dir,
       Logger::instance().debug("Overwrite capture: " + std::to_string(captured.size()) +
                                " file(s) moved to Overwrite after process exit");
     }
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     Logger::instance().error("Overwrite capture failed: " + std::string(e.what()));
   }
 }
 
-bool is_process_group_alive(int64_t pgid)
-{
+bool is_process_group_alive(int64_t pgid) {
   if (pgid <= 0)
     return false;
   pid_t p = static_cast<pid_t>(pgid);
@@ -633,11 +621,11 @@ bool is_process_group_alive(int64_t pgid)
     return true;
 
   bool found    = false;
-  DIR* proc_dir = opendir("/proc");
+  DIR *proc_dir = opendir("/proc");
   if (!proc_dir)
     return false;
 
-  struct dirent* entry;
+  struct dirent *entry;
   while ((entry = readdir(proc_dir)) && !found) {
     if (entry->d_type != DT_DIR)
       continue;
@@ -646,7 +634,7 @@ bool is_process_group_alive(int64_t pgid)
       continue;
 
     std::string spath = "/proc/" + std::to_string(pid) + "/stat";
-    FILE* f           = fopen(spath.c_str(), "r");
+    FILE *f           = fopen(spath.c_str(), "r");
     if (!f)
       continue;
     char buf[4096] = {};
@@ -654,10 +642,10 @@ bool is_process_group_alive(int64_t pgid)
     fclose(f);
     buf[n] = '\0';
 
-    char* cp = strrchr(buf, ')');
+    char *cp = strrchr(buf, ')');
     if (!cp)
       continue;
-    char* p = cp + 1;
+    char *p = cp + 1;
     while (*p == ' ')
       ++p;
     if (*p == 'Z')
@@ -679,30 +667,27 @@ bool is_process_group_alive(int64_t pgid)
   return found;
 }
 
-void wait_for_process_group(int64_t pgid, int poll_ms)
-{
+void wait_for_process_group(int64_t pgid, int poll_ms) {
   while (is_process_group_alive(pgid)) {
     std::this_thread::sleep_for(std::chrono::milliseconds(poll_ms));
   }
 }
 
-std::vector<int64_t> get_process_descendants(int64_t root_pid)
-{
+std::vector<int64_t> get_process_descendants(int64_t root_pid) {
   std::vector<int64_t> result;
   if (root_pid <= 0)
     return result;
 
-  struct RawProc
-  {
+  struct RawProc {
     pid_t pid;
     pid_t ppid;
   };
   std::vector<RawProc> all;
 
-  DIR* dir = opendir("/proc");
+  DIR *dir = opendir("/proc");
   if (!dir)
     return result;
-  struct dirent* entry;
+  struct dirent *entry;
   while ((entry = readdir(dir))) {
     if (entry->d_type != DT_DIR)
       continue;
@@ -711,7 +696,7 @@ std::vector<int64_t> get_process_descendants(int64_t root_pid)
       continue;
 
     std::string spath = "/proc/" + std::to_string(pid) + "/stat";
-    FILE* f           = fopen(spath.c_str(), "r");
+    FILE *f           = fopen(spath.c_str(), "r");
     if (!f)
       continue;
     char buf[4096] = {};
@@ -719,10 +704,10 @@ std::vector<int64_t> get_process_descendants(int64_t root_pid)
     fclose(f);
     buf[n] = '\0';
 
-    char* cp = strrchr(buf, ')');
+    char *cp = strrchr(buf, ')');
     if (!cp)
       continue;
-    char* p = cp + 1;
+    char *p = cp + 1;
     while (*p == ' ')
       ++p;
     while (*p && *p != ' ')
@@ -739,7 +724,7 @@ std::vector<int64_t> get_process_descendants(int64_t root_pid)
   bool changed = true;
   while (changed) {
     changed = false;
-    for (const auto& r : all) {
+    for (const auto &r : all) {
       if (descendants.count(r.pid))
         continue;
       if (descendants.count(r.ppid)) {
@@ -757,8 +742,7 @@ std::vector<int64_t> get_process_descendants(int64_t root_pid)
 
 // -- Cgroup v2 ------------------------------------------------------------
 
-CgroupHandle create_launch_cgroup(const std::string& name)
-{
+CgroupHandle create_launch_cgroup(const std::string &name) {
   CgroupHandle h;
   std::string uid = std::to_string(getuid());
   std::error_code ec;
@@ -787,8 +771,7 @@ CgroupHandle create_launch_cgroup(const std::string& name)
   return h;
 }
 
-void cgroup_add_pid(const CgroupHandle& h, int64_t pid)
-{
+void cgroup_add_pid(const CgroupHandle &h, int64_t pid) {
   if (h.path.empty() || pid <= 0)
     return;
   std::ofstream f(h.path + "/cgroup.procs");
@@ -796,8 +779,7 @@ void cgroup_add_pid(const CgroupHandle& h, int64_t pid)
     f << pid;
 }
 
-std::vector<int64_t> cgroup_members(const CgroupHandle& h)
-{
+std::vector<int64_t> cgroup_members(const CgroupHandle &h) {
   std::vector<int64_t> result;
   if (h.path.empty())
     return result;
@@ -808,16 +790,14 @@ std::vector<int64_t> cgroup_members(const CgroupHandle& h)
   return result;
 }
 
-bool cgroup_is_empty(const CgroupHandle& h)
-{
+bool cgroup_is_empty(const CgroupHandle &h) {
   if (h.path.empty())
     return true;
   std::ifstream f(h.path + "/cgroup.procs");
   return f.peek() == std::ifstream::traits_type::eof();
 }
 
-void cgroup_kill(const CgroupHandle& h)
-{
+void cgroup_kill(const CgroupHandle &h) {
   if (h.path.empty())
     return;
   std::ofstream f(h.path + "/cgroup.kill");
@@ -825,8 +805,7 @@ void cgroup_kill(const CgroupHandle& h)
     f << "1";
 }
 
-void cgroup_remove(const CgroupHandle& h)
-{
+void cgroup_remove(const CgroupHandle &h) {
   if (h.path.empty())
     return;
   // fs::remove (rmdir) on the cgroup directory itself - recursive delete
@@ -846,26 +825,22 @@ void cgroup_remove(const CgroupHandle& h)
 
 ProcessRunner::ProcessRunner(LaunchParams params) : params_(std::move(params)) {}
 
-LaunchResult ProcessRunner::run()
-{
+LaunchResult ProcessRunner::run() {
   last_result_ = launch_game(params_);
   return last_result_;
 }
 
-const LaunchParams& ProcessRunner::params() const
-{
+const LaunchParams &ProcessRunner::params() const {
   return params_;
 }
 
-const LaunchResult& ProcessRunner::last_result() const
-{
+const LaunchResult &ProcessRunner::last_result() const {
   return last_result_;
 }
 
 // -- Backward-compatible free function --
 
-LaunchResult launch_game(const LaunchParams& params)
-{
+LaunchResult launch_game(const LaunchParams &params) {
   Logger::instance().debug("launch_game: Windows stub - launch not yet implemented");
   (void)params;
   return {};
@@ -874,46 +849,41 @@ LaunchResult launch_game(const LaunchParams& params)
 // -- Overwrite capture (cross-platform std::filesystem, but cgroup path unused on
 // Windows) --
 
-void capture_overwrite(const fs::path& /*game_dir*/, const fs::path& /*overwrite_dir*/,
-                       fs::file_time_type /*capture_time*/, bool /*case_insensitive*/)
-{
+void capture_overwrite(const fs::path & /*game_dir*/,
+                       const fs::path & /*overwrite_dir*/,
+                       fs::file_time_type /*capture_time*/, bool /*case_insensitive*/) {
   // No-op on Windows until the Windows launch path is implemented.
 }
 
 // -- Cgroup v2 (Linux-only) --
 
-CgroupHandle create_launch_cgroup(const std::string& /*name*/)
-{
+CgroupHandle create_launch_cgroup(const std::string & /*name*/) {
   return {};
 }
 
-void cgroup_add_pid(const CgroupHandle& /*h*/, int64_t /*pid*/) {}
+void cgroup_add_pid(const CgroupHandle & /*h*/, int64_t /*pid*/) {}
 
-std::vector<int64_t> cgroup_members(const CgroupHandle& /*h*/)
-{
+std::vector<int64_t> cgroup_members(const CgroupHandle & /*h*/) {
   return {};
 }
 
-bool cgroup_is_empty(const CgroupHandle& /*h*/)
-{
+bool cgroup_is_empty(const CgroupHandle & /*h*/) {
   return true;
 }
 
-void cgroup_kill(const CgroupHandle& /*h*/) {}
+void cgroup_kill(const CgroupHandle & /*h*/) {}
 
-void cgroup_remove(const CgroupHandle& /*h*/) {}
+void cgroup_remove(const CgroupHandle & /*h*/) {}
 
 // -- Process group monitoring (Linux-only, /proc-based) --
 
-bool is_process_group_alive(int64_t /*pgid*/)
-{
+bool is_process_group_alive(int64_t /*pgid*/) {
   return false;
 }
 
 void wait_for_process_group(int64_t /*pgid*/, int /*poll_ms*/) {}
 
-std::vector<int64_t> get_process_descendants(int64_t /*root_pid*/)
-{
+std::vector<int64_t> get_process_descendants(int64_t /*root_pid*/) {
   return {};
 }
 

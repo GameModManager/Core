@@ -23,7 +23,7 @@ namespace Core {
 
 class Application {
 public:
-  Application(int& argc, char** argv);
+  Application(int &argc, char **argv);
   ~Application();
 
   int run();
@@ -46,7 +46,7 @@ private:
   std::filesystem::path startup_instance_root_;
   // Applies the effective (per-instance with global fallback) Qt style /
   // QSS theme for instance_root to the live QApplication.
-  void apply_effective_appearance(const std::filesystem::path& instance_root);
+  void apply_effective_appearance(const std::filesystem::path &instance_root);
   // True when the constructor detected a CLI error (e.g. conflicting
   // --handle-* flags) and run() should exit immediately with
   // early_exit_code_. The QApplication ctor is not allowed to return values.

@@ -51,7 +51,7 @@ void check(bool cond, const char *what) {
   INFO(what);
   REQUIRE(cond);
 }
-} // namespace
+}  // namespace
 
 // A LoversLab-typed provider with no network surface; find_provider() in
 // source_tab.cpp matches its display name and source_type()=="loverslab"
@@ -84,21 +84,21 @@ static bool wait_for(const std::function<bool()> &pred, int timeout_ms = 5000) {
   return pred();
 }
 
-static ui::ModInfoData
-make_data(const std::string &id, const std::string &file_id,
-          const std::string &page_url,
-          std::function<engine::LoversLabModInfoResult()> fetch,
-          const std::filesystem::path &mods_dir, qint64 installation_ts = 0) {
+static ui::ModInfoData make_data(const std::string &id, const std::string &file_id,
+                                 const std::string &page_url,
+                                 std::function<engine::LoversLabModInfoResult()> fetch,
+                                 const std::filesystem::path &mods_dir,
+                                 qint64 installation_ts = 0) {
   ui::ModInfoData data;
-  data.id = QString::fromStdString(id);
-  data.name = QString::fromStdString(id);
-  data.source_id = QString::fromStdString(file_id);
-  data.source_page_url = QString::fromStdString(page_url);
-  data.source_type = QStringLiteral("loverslab");
-  data.supported_sources = QStringList{QStringLiteral("Test LoversLab")};
+  data.id                   = QString::fromStdString(id);
+  data.name                 = QString::fromStdString(id);
+  data.source_id            = QString::fromStdString(file_id);
+  data.source_page_url      = QString::fromStdString(page_url);
+  data.source_type          = QStringLiteral("loverslab");
+  data.supported_sources    = QStringList{QStringLiteral("Test LoversLab")};
   data.fetch_loverslab_info = std::move(fetch);
-  data.installation_ts = installation_ts;
-  data.load_meta = [mods_dir, id] {
+  data.installation_ts      = installation_ts;
+  data.load_meta            = [mods_dir, id] {
     return engine::ModMeta::load(mods_dir, id);
   };
   data.save_meta = [mods_dir, id](const engine::ModMeta &m) {
@@ -113,15 +113,14 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
   std::filesystem::remove_all("/tmp/gmm_ll_source_panel");
   std::filesystem::create_directories(cfg);
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
-  int test_argc = 1;
+  int test_argc     = 1;
   char test_argv0[] = "test";
   char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
 
-  const std::filesystem::path instance =
-      "/tmp/gmm_ll_source_panel/instances/Test";
+  const std::filesystem::path instance = "/tmp/gmm_ll_source_panel/instances/Test";
   const std::filesystem::path mods_dir = instance / "mods";
   std::filesystem::create_directories(mods_dir);
 
@@ -137,22 +136,21 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
     // 2025-06-01 UTC - BEFORE the page's dateModified below
     // (2025-06-05), so the page was updated AFTER the user
     // installed this mod -> out of date.
-    const qint64 install_ts = 1748736000; // 2025-06-01 00:00 UTC
-    auto data = make_data(
+    const qint64 install_ts = 1748736000;  // 2025-06-01 00:00 UTC
+    auto data               = make_data(
         "LLModA", "11488",
         "https://www.loverslab.com/files/file/11488-the-xims-magazine/",
         [&]() -> engine::LoversLabModInfoResult {
           on_worker = QThread::currentThread() != qApp->thread();
           engine::LoversLabModInfoResult r;
-          r.available = true;
-          r.name = "The Xims Magazine";
-          r.version = "1.1";
-          r.author = "INueve";
-          r.category = "Objects";
-          r.description = "Hi all, the refreshed mod.";
+          r.available     = true;
+          r.name          = "The Xims Magazine";
+          r.version       = "1.1";
+          r.author        = "INueve";
+          r.category      = "Objects";
+          r.description   = "Hi all, the refreshed mod.";
           r.date_modified = "2025-06-05T14:23:11";
-          r.page_url =
-              "https://www.loverslab.com/files/file/11488-the-xims-magazine/";
+          r.page_url = "https://www.loverslab.com/files/file/11488-the-xims-magazine/";
           return r;
         },
         mods_dir, install_ts);
@@ -167,8 +165,7 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
 
     const bool landed = wait_for([&] {
       return engine::ModMeta::load(mods_dir, "LLModA")
-                 .get("LoversLab", "description") ==
-             "Hi all, the refreshed mod.";
+                 .get("LoversLab", "description") == "Hi all, the refreshed mod.";
     });
     check(landed, "refresh result persisted to the mod's meta");
     check(on_worker, "fetch ran on the worker thread, not the UI thread");
@@ -178,10 +175,8 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
           "file id persisted (writes happen when source_type==loverslab)");
     check(meta_after.get("General", "version") == "1.1",
           "version persisted in [General]");
-    check(meta_after.get("LoversLab", "category") == "Objects",
-          "category persisted");
-    check(meta_after.get("LoversLab", "author") == "INueve",
-          "author persisted");
+    check(meta_after.get("LoversLab", "category") == "Objects", "category persisted");
+    check(meta_after.get("LoversLab", "author") == "INueve", "author persisted");
     check(meta_after.get("LoversLab", "date_modified") == "2025-06-05T14:23:11",
           "date_modified persisted (out-of-date detection input)");
 
@@ -222,7 +217,7 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
           if (calls == 1)
             gate.tryAcquire(1, 5000);
           engine::LoversLabModInfoResult r;
-          r.available = true;
+          r.available   = true;
           r.description = (calls == 2) ? "second" : "first";
           return r;
         },
@@ -234,7 +229,11 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
     auto *refresh = find_refresh(tab);
     REQUIRE(refresh != nullptr);
     refresh->click();
-    check(wait_for([&] { return calls == 1; }, 2000),
+    check(wait_for(
+              [&] {
+                return calls == 1;
+              },
+              2000),
           "first fetch started on the worker");
     // Re-enable the disabled Refresh to drive the coalescing path.
     refresh->setEnabled(true);
@@ -261,10 +260,10 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
     m.save(mods_dir, "LLModSameDay");
 
     // 2025-06-05 12:00 UTC.
-    const qint64 same_day = 1749124800; // 2025-06-05 12:00 UTC
+    const qint64 same_day = 1749124800;  // 2025-06-05 12:00 UTC
     auto data = make_data("LLModSameDay", "99999",
-                          "https://www.loverslab.com/files/file/99999-x/",
-                          nullptr, mods_dir, same_day);
+                          "https://www.loverslab.com/files/file/99999-x/", nullptr,
+                          mods_dir, same_day);
     ui::SourceTab tab;
     tab.set_current(data);
     tab.set_mod(data);
@@ -278,8 +277,7 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
         break;
       }
     }
-    check(!ood_visible,
-          "same-day install vs page stamp: not flagged as out of date");
+    check(!ood_visible, "same-day install vs page stamp: not flagged as out of date");
   }
 
   // ---- Scenario 4: missing date_modified (pre-feature mod) -> not
@@ -291,10 +289,9 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
     // No date_modified key.
     m.save(mods_dir, "LLModPreFeature");
 
-    auto data =
-        make_data("LLModPreFeature", "88888",
-                  "https://www.loverslab.com/files/file/88888-x/", nullptr,
-                  mods_dir, 1748736000); // 2025-06-01 (pre-feature mod)
+    auto data = make_data("LLModPreFeature", "88888",
+                          "https://www.loverslab.com/files/file/88888-x/", nullptr,
+                          mods_dir, 1748736000);  // 2025-06-01 (pre-feature mod)
     ui::SourceTab tab;
     tab.set_current(data);
     tab.set_mod(data);
@@ -328,12 +325,12 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
     m.save(mods_dir, "ManualMod");
 
     ui::ModInfoData data;
-    data.id = QStringLiteral("ManualMod");
-    data.name = QStringLiteral("ManualMod");
-    data.source_type = QStringLiteral("manual");
-    data.source_id = QString();
+    data.id                = QStringLiteral("ManualMod");
+    data.name              = QStringLiteral("ManualMod");
+    data.source_type       = QStringLiteral("manual");
+    data.source_id         = QString();
     data.supported_sources = QStringList{QStringLiteral("Test LoversLab")};
-    data.load_meta = [mods_dir] {
+    data.load_meta         = [mods_dir] {
       return engine::ModMeta::load(mods_dir, "ManualMod");
     };
     data.save_meta = [mods_dir](const engine::ModMeta &m) {
@@ -348,8 +345,7 @@ TEST_CASE("loverslab source panel - refresh + out-of-date", "[ui]") {
     ui::LoversLabSourcePanel *ll = nullptr;
     for (auto *p : tab.findChildren<ui::LoversLabSourcePanel *>())
       ll = p;
-    check(ll == nullptr,
-          "manual mod: no LoversLab panel created (single-source tab)");
+    check(ll == nullptr, "manual mod: no LoversLab panel created (single-source tab)");
 
     auto *qtw = tab.findChild<QTabWidget *>();
     check(qtw && qtw->count() == 2,

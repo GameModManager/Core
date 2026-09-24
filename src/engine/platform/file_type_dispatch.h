@@ -21,13 +21,11 @@
 #include <string>
 #include <vector>
 
-namespace engine
-{
+namespace engine {
 
 // File types the dispatcher recognizes. Classification is extension-based
 // (fast) with optional MIME probing for extensionless files.
-enum class FileType
-{
+enum class FileType {
   NativeExecutable,  // ELF, Mach-O, PE (.exe)
   Script,            // .sh, .bash, .bat, .cmd, .ps1, .zsh
   JavaArchive,       // .jar
@@ -37,8 +35,7 @@ enum class FileType
 };
 
 // Human-readable name for a FileType (for logs).
-inline const char* file_type_name(FileType t)
-{
+inline const char *file_type_name(FileType t) {
   switch (t) {
   case FileType::NativeExecutable:
     return "native-executable";
@@ -57,8 +54,7 @@ inline const char* file_type_name(FileType t)
 }
 
 // Lowercase a string in-place.
-inline std::string to_lower_str(std::string s)
-{
+inline std::string to_lower_str(std::string s) {
   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
     return std::tolower(c);
   });
@@ -68,8 +64,7 @@ inline std::string to_lower_str(std::string s)
 // Classify a file by extension (lowercase, dot-stripped). Returns Unknown for
 // empty extensions or unrecognized ones. This is a pure extension lookup - no
 // filesystem access, no MIME probing. Fast path for the common case.
-inline FileType classify_by_extension(const std::filesystem::path& file)
-{
+inline FileType classify_by_extension(const std::filesystem::path &file) {
   auto ext = to_lower_str(file.extension().string());
 
   // Strip the leading dot: ".exe" -> "exe"
@@ -98,30 +93,26 @@ inline FileType classify_by_extension(const std::filesystem::path& file)
   return FileType::Unknown;
 }
 
-struct LaunchOptions
-{
+struct LaunchOptions {
   std::filesystem::path working_dir;  // empty = inherit parent's cwd
   std::vector<std::string> args;      // extra argv after the executable
   bool background = true;             // true = detach from terminal
 };
 
-struct LaunchResult
-{
+struct LaunchResult {
   bool ok     = false;
   int64_t pid = -1;  // child PID, -1 if unknown
 };
 
 // Platform-specific file type dispatcher. Each OS provides its own
 // implementation. The engine never calls OS-specific APIs directly.
-class FileTypeDispatcher
-{
+class FileTypeDispatcher {
 public:
   virtual ~FileTypeDispatcher() = default;
 
   // Classify a file. Default: extension-based. Override to add MIME
   // probing or other heuristics.
-  [[nodiscard]] virtual FileType classify(const std::filesystem::path& file) const
-  {
+  [[nodiscard]] virtual FileType classify(const std::filesystem::path &file) const {
     return classify_by_extension(file);
   }
 
@@ -133,8 +124,8 @@ public:
   // Launch a file with type-appropriate dispatch.
   // Returns false if the type isn't supported or exec fails.
   [[nodiscard]] virtual LaunchResult
-  launch(const std::filesystem::path& file,
-         const LaunchOptions& options = {}) const = 0;
+  launch(const std::filesystem::path &file,
+         const LaunchOptions &options = {}) const = 0;
 };
 
 // Factory: returns the platform-appropriate implementation.

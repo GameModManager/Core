@@ -29,8 +29,7 @@ namespace gmmpack = engine::gmmpack;
 // Helpers
 // ---------------------------------------------------------------------------
 
-static gmmpack::ExecutableEntry make_setup(const std::string& id)
-{
+static gmmpack::ExecutableEntry make_setup(const std::string &id) {
   gmmpack::ExecutableEntry e;
   e.id            = id;
   e.source_mod_id = "toolmod";
@@ -41,8 +40,7 @@ static gmmpack::ExecutableEntry make_setup(const std::string& id)
   return e;
 }
 
-static gmmpack::ExecutableEntry make_launcher(const std::string& id)
-{
+static gmmpack::ExecutableEntry make_launcher(const std::string &id) {
   gmmpack::ExecutableEntry e;
   e.id            = id;
   e.source_mod_id = "gamemod";
@@ -51,9 +49,8 @@ static gmmpack::ExecutableEntry make_launcher(const std::string& id)
   return e;
 }
 
-static gmmpack::ManifestRule make_rule(const std::string& type, const std::string& from,
-                                       const std::string& to)
-{
+static gmmpack::ManifestRule make_rule(const std::string &type, const std::string &from,
+                                       const std::string &to) {
   gmmpack::ManifestRule r;
   r.type = type;
   r.from = from;
@@ -62,11 +59,9 @@ static gmmpack::ManifestRule make_rule(const std::string& type, const std::strin
 }
 
 // RAII scratch dir under the system temp root.
-struct TempDir
-{
+struct TempDir {
   fs::path path;
-  TempDir()
-  {
+  TempDir() {
     static std::atomic<int> counter{0};
 #ifdef _WIN32
     const int pid = _getpid();
@@ -79,15 +74,13 @@ struct TempDir
                                         "-" + std::to_string(counter.fetch_add(1)));
     fs::create_directories(path);
   }
-  ~TempDir()
-  {
+  ~TempDir() {
     std::error_code ec;
     fs::remove_all(path, ec);
   }
 };
 
-static void write_file(const fs::path& p, const std::string& content)
-{
+static void write_file(const fs::path &p, const std::string &content) {
   std::error_code ec;
   fs::create_directories(p.parent_path(), ec);
   REQUIRE(!ec);
@@ -101,8 +94,7 @@ static void write_file(const fs::path& p, const std::string& content)
 // ---------------------------------------------------------------------------
 
 TEST_CASE("resolve_executables computes absolute paths and argv",
-          "[executable_pipeline]")
-{
+          "[executable_pipeline]") {
   gmmpack::Gmmpack pack;
   auto e      = make_setup("nemesis");
   e.arguments = {"-forceD3D9"};
@@ -110,7 +102,7 @@ TEST_CASE("resolve_executables computes absolute paths and argv",
 
   const auto resolved = gmmpack::resolve_executables(pack, fs::path("/mods"), "linux");
   REQUIRE(resolved.size() == 1);
-  const auto& r = resolved[0];
+  const auto &r = resolved[0];
   CHECK(r.executable_path == fs::path("/mods/toolmod/Tool/tool.exe"));
   CHECK(r.working_dir == fs::path("/mods/toolmod/Tool"));
   REQUIRE(r.argv.size() == 2);
@@ -120,8 +112,7 @@ TEST_CASE("resolve_executables computes absolute paths and argv",
 }
 
 TEST_CASE("resolve_executables falls back to exe parent dir without workingDir",
-          "[executable_pipeline]")
-{
+          "[executable_pipeline]") {
   gmmpack::Gmmpack pack;
   auto e = make_setup("pandora");
   e.working_dir.clear();
@@ -133,8 +124,7 @@ TEST_CASE("resolve_executables falls back to exe parent dir without workingDir",
 }
 
 TEST_CASE("resolve_executables injects resolved output path via argName",
-          "[executable_pipeline]")
-{
+          "[executable_pipeline]") {
   gmmpack::Gmmpack pack;
   auto e = make_setup("nemesis");
   gmmpack::ExecOutput out;
@@ -147,7 +137,7 @@ TEST_CASE("resolve_executables injects resolved output path via argName",
 
   const auto resolved = gmmpack::resolve_executables(pack, fs::path("/mods"), "linux");
   REQUIRE(resolved.size() == 1);
-  const auto& r = resolved[0];
+  const auto &r = resolved[0];
   CHECK(r.output_dir == fs::path("/mods/toolmod/Tool/Output"));
   REQUIRE(r.argv.size() == 3);
   CHECK(r.argv[1] == "--output");
@@ -155,8 +145,7 @@ TEST_CASE("resolve_executables injects resolved output path via argName",
 }
 
 TEST_CASE("resolve_executables skips output injection without argName",
-          "[executable_pipeline]")
-{
+          "[executable_pipeline]") {
   gmmpack::Gmmpack pack;
   auto e = make_setup("nemesis");
   gmmpack::ExecOutput out;
@@ -176,8 +165,7 @@ TEST_CASE("resolve_executables skips output injection without argName",
 // ---------------------------------------------------------------------------
 
 TEST_CASE("merged_environment layers per-OS vars over the base set",
-          "[executable_pipeline]")
-{
+          "[executable_pipeline]") {
   auto e     = make_setup("nemesis");
   e.env_vars = {{"BASE", "1"}, {"SHARED", "base"}};
   gmmpack::ExecPlatformOverride linux_override;
@@ -201,8 +189,7 @@ TEST_CASE("merged_environment layers per-OS vars over the base set",
 // order_for_run
 // ---------------------------------------------------------------------------
 
-TEST_CASE("order_for_run honors before/after/requires", "[executable_pipeline]")
-{
+TEST_CASE("order_for_run honors before/after/requires", "[executable_pipeline]") {
   const std::vector<std::string> ids = {"awesome-mod", "nemesis", "patcher"};
   const std::vector<gmmpack::ManifestRule> rules = {
       make_rule("requires", "nemesis", "awesome-mod"),  // mod first
@@ -214,8 +201,8 @@ TEST_CASE("order_for_run honors before/after/requires", "[executable_pipeline]")
   CHECK(order.ids == std::vector<std::string>{"awesome-mod", "nemesis", "patcher"});
 }
 
-TEST_CASE("order_for_run keeps pack order without constraints", "[executable_pipeline]")
-{
+TEST_CASE("order_for_run keeps pack order without constraints",
+          "[executable_pipeline]") {
   const std::vector<std::string> ids = {"b", "a", "c"};
   const auto order                   = gmmpack::order_for_run(ids, {});
   CHECK(!order.has_cycle);
@@ -223,8 +210,7 @@ TEST_CASE("order_for_run keeps pack order without constraints", "[executable_pip
 }
 
 TEST_CASE("order_for_run ignores unknown ids, conflicts, and self rules",
-          "[executable_pipeline]")
-{
+          "[executable_pipeline]") {
   const std::vector<std::string> ids             = {"a", "b"};
   const std::vector<gmmpack::ManifestRule> rules = {
       make_rule("before", "a", "ghost-mod"),  // references a plain mod id
@@ -237,8 +223,7 @@ TEST_CASE("order_for_run ignores unknown ids, conflicts, and self rules",
   CHECK(order.ids == ids);
 }
 
-TEST_CASE("order_for_run flags cycles and keeps every id", "[executable_pipeline]")
-{
+TEST_CASE("order_for_run flags cycles and keeps every id", "[executable_pipeline]") {
   const std::vector<std::string> ids             = {"a", "b", "c"};
   const std::vector<gmmpack::ManifestRule> rules = {
       make_rule("before", "a", "b"),
@@ -255,8 +240,7 @@ TEST_CASE("order_for_run flags cycles and keeps every id", "[executable_pipeline
 // ---------------------------------------------------------------------------
 
 TEST_CASE("setup_auto_run_ids selects setup auto-runs in run order",
-          "[executable_pipeline]")
-{
+          "[executable_pipeline]") {
   gmmpack::Gmmpack pack;
   auto setup      = make_setup("nemesis");
   auto manual     = make_setup("bodyslide");
@@ -277,8 +261,8 @@ TEST_CASE("setup_auto_run_ids selects setup auto-runs in run order",
 // modset_input_hash + exe_rerun_due
 // ---------------------------------------------------------------------------
 
-TEST_CASE("modset_input_hash is stable and order-independent", "[executable_pipeline]")
-{
+TEST_CASE("modset_input_hash is stable and order-independent",
+          "[executable_pipeline]") {
   const std::vector<std::string> a = {"skyui:1.4.2", "awesome-mod:2.0"};
   const std::vector<std::string> b = {"awesome-mod:2.0", "skyui:1.4.2"};
   CHECK(gmmpack::modset_input_hash(a) == gmmpack::modset_input_hash(b));
@@ -287,8 +271,7 @@ TEST_CASE("modset_input_hash is stable and order-independent", "[executable_pipe
         gmmpack::modset_input_hash({"skyui:1.4.3", "awesome-mod:2.0"}));
 }
 
-TEST_CASE("exe_rerun_due fires only on real modset change", "[executable_pipeline]")
-{
+TEST_CASE("exe_rerun_due fires only on real modset change", "[executable_pipeline]") {
   auto e                   = make_setup("nemesis");
   e.rerun_on_modset_change = true;
   const std::string h1     = gmmpack::modset_input_hash({"a:1"});
@@ -306,8 +289,7 @@ TEST_CASE("exe_rerun_due fires only on real modset change", "[executable_pipelin
 
 #ifndef _WIN32
 
-TEST_CASE("run_executable captures output with env and cwd", "[executable_pipeline]")
-{
+TEST_CASE("run_executable captures output with env and cwd", "[executable_pipeline]") {
   TempDir tmp;
   const fs::path tool_dir = tmp.path / "toolmod" / "Tool";
   write_file(tool_dir / "probe.sh",
@@ -337,8 +319,7 @@ TEST_CASE("run_executable captures output with env and cwd", "[executable_pipeli
   CHECK(proc.err == "oops\n");
 }
 
-TEST_CASE("run_executable propagates non-zero exit codes", "[executable_pipeline]")
-{
+TEST_CASE("run_executable propagates non-zero exit codes", "[executable_pipeline]") {
   TempDir tmp;
   write_file(tmp.path / "fail.sh", "#!/bin/sh\nexit 3\n");
 
@@ -353,8 +334,7 @@ TEST_CASE("run_executable propagates non-zero exit codes", "[executable_pipeline
 }
 
 TEST_CASE("run_executable reports missing executables via exit 127",
-          "[executable_pipeline]")
-{
+          "[executable_pipeline]") {
   gmmpack::ResolvedExecutable r;
   r.executable_path = "/nonexistent-tool-dir/tool";
   r.working_dir     = fs::temp_directory_path();
@@ -372,8 +352,7 @@ TEST_CASE("run_executable reports missing executables via exit 127",
 // ---------------------------------------------------------------------------
 
 TEST_CASE("capture_exe_output promotes output to a synthetic mod",
-          "[executable_pipeline]")
-{
+          "[executable_pipeline]") {
   TempDir tmp;
   const fs::path mods = tmp.path / "mods";
   const fs::path out  = tmp.path / "toolmod" / "Tool" / "Output";
@@ -400,8 +379,7 @@ TEST_CASE("capture_exe_output promotes output to a synthetic mod",
 }
 
 TEST_CASE("capture_exe_output inPlace and missing output are no-ops",
-          "[executable_pipeline]")
-{
+          "[executable_pipeline]") {
   TempDir tmp;
   gmmpack::ResolvedExecutable r;
   r.entry = make_setup("tool");
@@ -419,8 +397,7 @@ TEST_CASE("capture_exe_output inPlace and missing output are no-ops",
 }
 
 TEST_CASE("capture_exe_output rejects bad syntheticMod targets",
-          "[executable_pipeline]")
-{
+          "[executable_pipeline]") {
   TempDir tmp;
   gmmpack::ResolvedExecutable r;
   r.entry = make_setup("nemesis");
@@ -449,8 +426,7 @@ TEST_CASE("capture_exe_output rejects bad syntheticMod targets",
 // ---------------------------------------------------------------------------
 
 TEST_CASE("to_launch_params converts a launcher exe for the Play path",
-          "[executable_pipeline]")
-{
+          "[executable_pipeline]") {
   gmmpack::Gmmpack pack;
   auto e        = make_launcher("play");
   e.arguments   = {"-forcesteamloader"};

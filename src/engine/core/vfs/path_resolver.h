@@ -16,8 +16,8 @@ namespace engine::vfs {
 
 // How component names are matched against the on-disk tree.
 enum class NameCompare {
-  CaseSensitive,   // Linux-native CI=false filesystems, or forced-exact callers
-  CaseInsensitive, // Windows-native behavior; the default for game roots
+  CaseSensitive,    // Linux-native CI=false filesystems, or forced-exact callers
+  CaseInsensitive,  // Windows-native behavior; the default for game roots
 };
 
 // One canonical path resolver per logical root (a game dir, a mod dir, the
@@ -43,8 +43,7 @@ public:
 
   // Resolve a game-relative path to its real on-disk file. Returns nullopt
   // when the path is empty, absolute, escapes via "..", or is not found.
-  [[nodiscard]] std::optional<GameFile>
-  resolve(std::string_view game_rel) const;
+  [[nodiscard]] std::optional<GameFile> resolve(std::string_view game_rel) const;
 
   // Resolve the DIRECTORY part of game_rel (every component except the final
   // filename) case-insensitively against the on-disk tree, keeping the
@@ -55,8 +54,7 @@ public:
   // deploy engine needs: it folds CI-equal directory spellings (Meshes/ +
   // meshes/) into one on-disk directory while leaving the file name for the
   // winner map to fold separately (resolve_deploy_target_ci's contract).
-  [[nodiscard]] std::filesystem::path
-  resolve_dir(std::string_view game_rel) const;
+  [[nodiscard]] std::filesystem::path resolve_dir(std::string_view game_rel) const;
 
   // True when game_rel resolves to an existing file.
   [[nodiscard]] bool exists(std::string_view game_rel) const;
@@ -99,8 +97,8 @@ private:
   // case-insensitively and keeping the requested spelling for any component
   // that does not yet exist. Defined in the .cpp. Returns the resolved
   // directory absolute path.
-  [[nodiscard]] static std::filesystem::path
-  walk_to_dir(Impl &self, const std::string &rel);
+  [[nodiscard]] static std::filesystem::path walk_to_dir(Impl &self,
+                                                         const std::string &rel);
 };
 
-} // namespace engine::vfs
+}  // namespace engine::vfs

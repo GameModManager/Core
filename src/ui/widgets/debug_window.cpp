@@ -57,100 +57,99 @@ namespace ui {
 
 namespace {
 
-// --- procfs value parsers --------------------------------------------------
+  // --- procfs value parsers --------------------------------------------------
 
-// Parse "Key: <value> kB" (or "Key: <value>") from /proc/self/smaps_rollup
-// and /proc/self/status. Returns 0 on miss/parse error (raw unsigned long).
-unsigned long parse_kb_line(const std::string &blob, const char *key) {
-  auto pos = blob.find(key);
-  if (pos == std::string::npos)
-    return 0;
-  pos += std::strlen(key);
-  while (pos < blob.size() && (blob[pos] == ' ' || blob[pos] == '\t'))
-    ++pos;
-  auto end = blob.find('\n', pos);
-  if (end == std::string::npos)
-    end = blob.size();
-  auto val_str = blob.substr(pos, end - pos);
-  auto space = val_str.find(' ');
-  if (space != std::string::npos)
-    val_str = val_str.substr(0, space);
-  // stoul throws on bad parse - guard.
-  try {
-    return std::stoul(val_str);
-  } catch (...) {
-    return 0;
-  }
-}
-
-// Parse "Key: <value>" from /proc/self/io returning an unsigned long long
-// (no kB suffix on io counters; raw bytes).
-unsigned long long parse_io_value(const std::string &blob, const char *key) {
-  auto pos = blob.find(key);
-  if (pos == std::string::npos)
-    return 0;
-  pos += std::strlen(key);
-  while (pos < blob.size() && (blob[pos] == ' ' || blob[pos] == '\t'))
-    ++pos;
-  auto end = blob.find('\n', pos);
-  if (end == std::string::npos)
-    end = blob.size();
-  auto val_str = blob.substr(pos, end - pos);
-  auto space = val_str.find(' ');
-  if (space != std::string::npos)
-    val_str = val_str.substr(0, space);
-  unsigned long long result = 0;
-  std::from_chars(val_str.data(), val_str.data() + val_str.size(), result);
-  return result;
-}
-
-// CPU cores (online); 0 when sysconf fails (non-Linux).
-long online_cpu_count() {
-#ifdef __linux__
-  long n = ::sysconf(_SC_NPROCESSORS_ONLN);
-  return n > 0 ? n : 1;
-#else
-  return 0;
-#endif
-}
-
-// CPU model name from /proc/cpuinfo (first "model name" line). Empty when
-// not Linux or the field is missing (rare ARM boards).
-std::string cpu_model_name() {
-#ifdef __linux__
-  std::ifstream f("/proc/cpuinfo");
-  if (!f)
-    return {};
-  std::string line;
-  while (std::getline(f, line)) {
-    if (line.compare(0, 10, "model name") == 0) {
-      auto colon = line.find(':');
-      if (colon == std::string::npos)
-        return {};
-      auto val = line.substr(colon + 1);
-      // Trim leading whitespace.
-      auto first = val.find_first_not_of(" \t");
-      if (first == std::string::npos)
-        return {};
-      return val.substr(first);
+  // Parse "Key: <value> kB" (or "Key: <value>") from /proc/self/smaps_rollup
+  // and /proc/self/status. Returns 0 on miss/parse error (raw unsigned long).
+  unsigned long parse_kb_line(const std::string &blob, const char *key) {
+    auto pos = blob.find(key);
+    if (pos == std::string::npos)
+      return 0;
+    pos += std::strlen(key);
+    while (pos < blob.size() && (blob[pos] == ' ' || blob[pos] == '\t'))
+      ++pos;
+    auto end = blob.find('\n', pos);
+    if (end == std::string::npos)
+      end = blob.size();
+    auto val_str = blob.substr(pos, end - pos);
+    auto space   = val_str.find(' ');
+    if (space != std::string::npos)
+      val_str = val_str.substr(0, space);
+    // stoul throws on bad parse - guard.
+    try {
+      return std::stoul(val_str);
+    } catch (...) {
+      return 0;
     }
   }
+
+  // Parse "Key: <value>" from /proc/self/io returning an unsigned long long
+  // (no kB suffix on io counters; raw bytes).
+  unsigned long long parse_io_value(const std::string &blob, const char *key) {
+    auto pos = blob.find(key);
+    if (pos == std::string::npos)
+      return 0;
+    pos += std::strlen(key);
+    while (pos < blob.size() && (blob[pos] == ' ' || blob[pos] == '\t'))
+      ++pos;
+    auto end = blob.find('\n', pos);
+    if (end == std::string::npos)
+      end = blob.size();
+    auto val_str = blob.substr(pos, end - pos);
+    auto space   = val_str.find(' ');
+    if (space != std::string::npos)
+      val_str = val_str.substr(0, space);
+    unsigned long long result = 0;
+    std::from_chars(val_str.data(), val_str.data() + val_str.size(), result);
+    return result;
+  }
+
+  // CPU cores (online); 0 when sysconf fails (non-Linux).
+  long online_cpu_count() {
+#ifdef __linux__
+    long n = ::sysconf(_SC_NPROCESSORS_ONLN);
+    return n > 0 ? n : 1;
+#else
+    return 0;
 #endif
-  return {};
-}
+  }
 
-QString bool_text(bool v) {
-  return v ? QStringLiteral("true") : QStringLiteral("false");
-}
+  // CPU model name from /proc/cpuinfo (first "model name" line). Empty when
+  // not Linux or the field is missing (rare ARM boards).
+  std::string cpu_model_name() {
+#ifdef __linux__
+    std::ifstream f("/proc/cpuinfo");
+    if (!f)
+      return {};
+    std::string line;
+    while (std::getline(f, line)) {
+      if (line.compare(0, 10, "model name") == 0) {
+        auto colon = line.find(':');
+        if (colon == std::string::npos)
+          return {};
+        auto val = line.substr(colon + 1);
+        // Trim leading whitespace.
+        auto first = val.find_first_not_of(" \t");
+        if (first == std::string::npos)
+          return {};
+        return val.substr(first);
+      }
+    }
+#endif
+    return {};
+  }
 
-} // namespace
+  QString bool_text(bool v) {
+    return v ? QStringLiteral("true") : QStringLiteral("false");
+  }
+
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // Construction
 // ---------------------------------------------------------------------------
 
-DebugWindow::DebugWindow(const fs::path &instance_root,
-                         const std::string &game_id,
+DebugWindow::DebugWindow(const fs::path &instance_root, const std::string &game_id,
                          const std::string &game_name,
                          engine::PluginLoader *plugin_loader,
                          std::function<void()> on_reload_ui, QWidget *parent)
@@ -173,28 +172,29 @@ DebugWindow::DebugWindow(const fs::path &instance_root,
   reload_ui_btn_ = new QPushButton(tr("Reload UI"), this);
   reload_ui_btn_->setToolTip(tr("Re-read debug.qss and apply (Ctrl+Shift+R)"));
   if (on_reload_ui) {
-    connect(reload_ui_btn_, &QPushButton::clicked, this,
-            [on_reload_ui]() { on_reload_ui(); });
+    connect(reload_ui_btn_, &QPushButton::clicked, this, [on_reload_ui]() {
+      on_reload_ui();
+    });
   }
   toolbar->addWidget(reload_ui_btn_);
   auto *reset_btn = new QPushButton(tr("Reset Docks"), this);
-  reset_btn->setToolTip(
-      tr("Re-show every panel and restore the tabbed layout"));
-  connect(reset_btn, &QPushButton::clicked, this,
-          &DebugWindow::reset_dock_layout);
+  reset_btn->setToolTip(tr("Re-show every panel and restore the tabbed layout"));
+  connect(reset_btn, &QPushButton::clicked, this, &DebugWindow::reset_dock_layout);
   toolbar->addWidget(reset_btn);
   auto *close_btn = new QPushButton(tr("Close"), this);
-  connect(close_btn, &QPushButton::clicked, this, [this]() { hide(); });
+  connect(close_btn, &QPushButton::clicked, this, [this]() {
+    hide();
+  });
   toolbar->addWidget(close_btn);
 
   // One dockable panel per page; tabified by default so the window opens
   // exactly like the old tab widget, but every panel can float, split,
   // or sit side-by-side.
-  charts_dock_ = make_dock(tr("Charts"), build_charts_page());
-  paths_dock_ = make_dock(tr("Paths"), build_paths_page());
-  info_dock_ = make_dock(tr("Info"), build_info_page());
+  charts_dock_  = make_dock(tr("Charts"), build_charts_page());
+  paths_dock_   = make_dock(tr("Paths"), build_paths_page());
+  info_dock_    = make_dock(tr("Info"), build_info_page());
   network_dock_ = make_dock(tr("Network"), build_network_page());
-  memory_dock_ = make_dock(tr("Memory"), build_memory_page());
+  memory_dock_  = make_dock(tr("Memory"), build_memory_page());
   modpack_dock_ = make_dock(tr("Modpack"), build_modpack_page());
   reset_dock_layout();
 
@@ -220,8 +220,7 @@ QDockWidget *DebugWindow::make_dock(const QString &title, QWidget *content) {
   dock->setObjectName(QStringLiteral("debug_dock_") + title);
   dock->setWidget(content);
   dock->setAllowedAreas(Qt::AllDockWidgetAreas);
-  dock->setFeatures(QDockWidget::DockWidgetMovable |
-                    QDockWidget::DockWidgetFloatable |
+  dock->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable |
                     QDockWidget::DockWidgetClosable);
   // Expanding policies so the docks claim all space left by the (absent)
   // central widget and grow with the window.
@@ -233,7 +232,7 @@ QDockWidget *DebugWindow::make_dock(const QString &title, QWidget *content) {
 }
 
 void DebugWindow::reset_dock_layout() {
-  QDockWidget *docks[] = {charts_dock_,  paths_dock_,   info_dock_,
+  QDockWidget *docks[] = {charts_dock_,  paths_dock_,  info_dock_,
                           network_dock_, memory_dock_, modpack_dock_};
   for (auto *d : docks) {
     if (d && !d->isVisible())
@@ -264,36 +263,36 @@ DebugWindow::~DebugWindow() {
 
 namespace {
 
-// Wraps a single chart widget (header label + RollingChartWidget) into a
-// QGroupBox, so the chart tab lays them out in a grid.
-QGroupBox *wrap_chart(const QString &title, QLabel **header_out,
-                      RollingChartWidget **chart_out) {
-  auto *gb = new QGroupBox(title);
-  auto *v = new QVBoxLayout(gb);
-  v->setContentsMargins(6, 12, 6, 6);
-  v->setSpacing(2);
-  auto *hdr = new QLabel(QStringLiteral("-"));
-  hdr->setObjectName("debugValue");
-  hdr->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-  *header_out = hdr;
-  v->addWidget(hdr);
-  auto *chart = new RollingChartWidget();
-  *chart_out = chart;
-  v->addWidget(chart, 1);
-  return gb;
-}
+  // Wraps a single chart widget (header label + RollingChartWidget) into a
+  // QGroupBox, so the chart tab lays them out in a grid.
+  QGroupBox *wrap_chart(const QString &title, QLabel **header_out,
+                        RollingChartWidget **chart_out) {
+    auto *gb = new QGroupBox(title);
+    auto *v  = new QVBoxLayout(gb);
+    v->setContentsMargins(6, 12, 6, 6);
+    v->setSpacing(2);
+    auto *hdr = new QLabel(QStringLiteral("-"));
+    hdr->setObjectName("debugValue");
+    hdr->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    *header_out = hdr;
+    v->addWidget(hdr);
+    auto *chart = new RollingChartWidget();
+    *chart_out  = chart;
+    v->addWidget(chart, 1);
+    return gb;
+  }
 
-} // namespace
+}  // namespace
 
 QWidget *DebugWindow::build_charts_page() {
-  auto *tab = new QWidget;
+  auto *tab   = new QWidget;
   auto *outer = new QVBoxLayout(tab);
   outer->setContentsMargins(4, 4, 4, 4);
 
   // Legacy labels stay so existing qss rules targeting objectNames keep
   // working; they're tucked above the charts in a horizontal row.
   auto *legacy_row = new QHBoxLayout;
-  auto add_legacy = [&](const char *key, QLabel **out) {
+  auto add_legacy  = [&](const char *key, QLabel **out) {
     auto *k = new QLabel(QCoreApplication::translate("DebugWindow", key));
     k->setObjectName("debugKey");
     *out = new QLabel(QStringLiteral("-"));
@@ -313,7 +312,7 @@ QWidget *DebugWindow::build_charts_page() {
   scroll->setFrameShape(QFrame::NoFrame);
 
   auto *grid_host = new QWidget;
-  auto *grid = new QGridLayout(grid_host);
+  auto *grid      = new QGridLayout(grid_host);
   grid->setContentsMargins(0, 0, 0, 0);
   grid->setHorizontalSpacing(8);
   grid->setVerticalSpacing(8);
@@ -322,20 +321,16 @@ QWidget *DebugWindow::build_charts_page() {
 
   grid->addWidget(wrap_chart(tr("CPU"), &cpu_header_, &cpu_chart_), 0, 0);
   grid->addWidget(wrap_chart(tr("RAM (Pss)"), &ram_header_, &ram_chart_), 0, 1);
-  grid->addWidget(wrap_chart(tr("Heap (VmData)"), &heap_header_, &heap_chart_),
-                  1, 0);
-  grid->addWidget(wrap_chart(tr("Disk I/O"), &disk_header_, &disk_chart_), 1,
-                  1);
-  grid->addWidget(wrap_chart(tr("Network I/O (GMM only)"), &net_header_,
-                            &net_chart_),
+  grid->addWidget(wrap_chart(tr("Heap (VmData)"), &heap_header_, &heap_chart_), 1, 0);
+  grid->addWidget(wrap_chart(tr("Disk I/O"), &disk_header_, &disk_chart_), 1, 1);
+  grid->addWidget(wrap_chart(tr("Network I/O (GMM only)"), &net_header_, &net_chart_),
                   2, 0);
   if (net_header_)
-    net_header_->setToolTip(tr(
-        "Bytes GMM itself put on / pulled off the wire. Excludes QNAM "
-        "image fetches in mod descriptions and any subprocess traffic."));
-  grid->addWidget(
-      wrap_chart(tr("Event-loop jitter"), &jitter_header_, &jitter_chart_), 2,
-      1);
+    net_header_->setToolTip(
+        tr("Bytes GMM itself put on / pulled off the wire. Excludes QNAM "
+           "image fetches in mod descriptions and any subprocess traffic."));
+  grid->addWidget(wrap_chart(tr("Event-loop jitter"), &jitter_header_, &jitter_chart_),
+                  2, 1);
 
   scroll->setWidget(grid_host);
   outer->addWidget(scroll, 1);
@@ -375,7 +370,7 @@ QWidget *DebugWindow::build_charts_page() {
 
 QWidget *DebugWindow::build_paths_page() {
   auto *tab = new QWidget;
-  auto *v = new QVBoxLayout(tab);
+  auto *v   = new QVBoxLayout(tab);
   v->setContentsMargins(4, 4, 4, 4);
   paths_table_ = new QTableWidget(0, 2, tab);
   paths_table_->setHorizontalHeaderLabels({tr("Key"), tr("Value")});
@@ -417,7 +412,7 @@ QWidget *DebugWindow::build_paths_page() {
 
 QWidget *DebugWindow::build_info_page() {
   auto *tab = new QWidget;
-  auto *v = new QVBoxLayout(tab);
+  auto *v   = new QVBoxLayout(tab);
   v->setContentsMargins(4, 4, 4, 4);
   info_table_ = new QTableWidget(0, 2, tab);
   info_table_->setHorizontalHeaderLabels({tr("Key"), tr("Value")});
@@ -518,10 +513,8 @@ void DebugWindow::populate_paths() {
   add_group_header(paths_table_, tr("Instance Root"));
   add_kv_row(paths_table_, tr("Instance root"),
              QString::fromStdString(instance_root_.string()), true);
-  add_kv_row(
-      paths_table_, tr("Instance TOML"),
-      QString::fromStdString((instance_root_ / "instance.toml").string()),
-      true);
+  add_kv_row(paths_table_, tr("Instance TOML"),
+             QString::fromStdString((instance_root_ / "instance.toml").string()), true);
   add_kv_row(paths_table_, tr("Display name"),
              info ? QString::fromStdString(info->display_name)
                   : QString::fromStdString(game_name_),
@@ -531,28 +524,22 @@ void DebugWindow::populate_paths() {
   if (info) {
     add_kv_row(paths_table_, tr("Portable"), bool_text(info->portable), false);
   } else {
-    add_kv_row(paths_table_, tr("Portable"), QStringLiteral("(unknown)"),
-               false);
+    add_kv_row(paths_table_, tr("Portable"), QStringLiteral("(unknown)"), false);
   }
 
   // Group: Game
   add_group_header(paths_table_, tr("Game"));
-  add_kv_row(paths_table_, tr("Game ID"), QString::fromStdString(game_id_),
-             true);
+  add_kv_row(paths_table_, tr("Game ID"), QString::fromStdString(game_id_), true);
   QString game_display;
   if (plugin_loader_) {
-    game_display =
-        QString::fromStdString(plugin_loader_->display_name_for(game_id_));
+    game_display = QString::fromStdString(plugin_loader_->display_name_for(game_id_));
   }
   add_kv_row(paths_table_, tr("Game display"),
-             game_display.isEmpty() ? QStringLiteral("(unknown)")
-                                    : game_display,
-             true);
+             game_display.isEmpty() ? QStringLiteral("(unknown)") : game_display, true);
   if (info) {
     add_kv_row(paths_table_, tr("Game dir"),
-               info->game_dir.empty()
-                   ? QStringLiteral("(not set)")
-                   : QString::fromStdString(info->game_dir.string()),
+               info->game_dir.empty() ? QStringLiteral("(not set)")
+                                      : QString::fromStdString(info->game_dir.string()),
                true);
     add_kv_row(paths_table_, tr("Game mods dir (override)"),
                info->game_mods_dir.empty()
@@ -567,8 +554,7 @@ void DebugWindow::populate_paths() {
     add_kv_row(paths_table_, tr("Game dir"), QStringLiteral("(unknown)"), true);
     add_kv_row(paths_table_, tr("Game mods dir (override)"),
                QStringLiteral("(unknown)"), true);
-    add_kv_row(paths_table_, tr("Steam AppID"), QStringLiteral("(unknown)"),
-               false);
+    add_kv_row(paths_table_, tr("Steam AppID"), QStringLiteral("(unknown)"), false);
   }
 
   // Group: Directories (effective). path_for() honors overrides.
@@ -663,8 +649,7 @@ void DebugWindow::populate_paths() {
   } else {
     add_kv_row(paths_table_, tr("Proton runner"), tr("(unknown)"), true);
     add_kv_row(paths_table_, tr("Plugins.txt override"), tr("(unknown)"), true);
-    add_kv_row(paths_table_, tr("Deploy strategy (override)"), tr("(unknown)"),
-               false);
+    add_kv_row(paths_table_, tr("Deploy strategy (override)"), tr("(unknown)"), false);
     add_kv_row(paths_table_, tr("Last tab"), tr("(unknown)"), false);
   }
 }
@@ -680,8 +665,7 @@ void DebugWindow::populate_info() {
 
   // Group: Instance metadata (from Instance::Info when available).
   add_group_header(info_table_, tr("Instance metadata"));
-  add_kv_row(info_table_, tr("Display name"),
-             QString::fromStdString(game_name_), true);
+  add_kv_row(info_table_, tr("Display name"), QString::fromStdString(game_name_), true);
   add_kv_row(info_table_, tr("Folder name"),
              QString::fromStdString(instance_root_.filename().string()), true);
   // Use Instance::Info::portable as the source of truth (matches the Paths
@@ -719,14 +703,14 @@ void DebugWindow::populate_info() {
     reg = owned_reg.get();
   }
   if (reg) {
-    auto all = reg->all_entries();
-    reg_total = static_cast<int>(all.size());
+    auto all    = reg->all_entries();
+    reg_total   = static_cast<int>(all.size());
     active_name = QString::fromStdString(reg->active_name());
-    auto entry = reg->find_by_root(instance_root_);
+    auto entry  = reg->find_by_root(instance_root_);
     if (entry) {
-      entry_type = QString::fromStdString(entry->type);
-      created_at = QString::fromStdString(entry->created_at);
-      last_used = QString::fromStdString(entry->last_used_at);
+      entry_type  = QString::fromStdString(entry->type);
+      created_at  = QString::fromStdString(entry->created_at);
+      last_used   = QString::fromStdString(entry->last_used_at);
       auto status = reg->validate(*entry);
       switch (status) {
       case engine::InstanceRegistry::ValidationStatus::Valid:
@@ -755,38 +739,35 @@ void DebugWindow::populate_info() {
   add_kv_row(info_table_, tr("Entry type"), entry_type, false);
   add_kv_row(info_table_, tr("Created at"), created_at, true);
   add_kv_row(info_table_, tr("Last used"), last_used, true);
-  add_kv_row(info_table_, tr("Is active"),
-             active_name.isEmpty()
-                 ? QStringLiteral("false")
-                 : (QString::fromStdString(
-                        instance_root_.filename().string()) == active_name
-                        ? QStringLiteral("true")
-                        : QStringLiteral("false")),
-             false);
+  add_kv_row(
+      info_table_, tr("Is active"),
+      active_name.isEmpty()
+          ? QStringLiteral("false")
+          : (QString::fromStdString(instance_root_.filename().string()) == active_name
+                 ? QStringLiteral("true")
+                 : QStringLiteral("false")),
+      false);
   add_kv_row(info_table_, tr("Validation"), validation, false);
-  add_kv_row(info_table_, tr("Total instances"), QString::number(reg_total),
-             false);
+  add_kv_row(info_table_, tr("Total instances"), QString::number(reg_total), false);
 
   // Group: Categories
   add_group_header(info_table_, tr("Categories"));
-  auto &factory = engine::Category::Factory::instance();
-  int factory_size = static_cast<int>(factory.categories().size());
+  auto &factory            = engine::Category::Factory::instance();
+  int factory_size         = static_cast<int>(factory.categories().size());
   fs::path categories_path = instance_root_ / "categories.dat";
-  bool cat_exists = fs::exists(categories_path);
+  bool cat_exists          = fs::exists(categories_path);
   add_kv_row(info_table_, tr("Core set (knowledge)"),
-             knowledge_ ? QString::fromStdString(knowledge_->get(
-                              game_id_, "core_category_set", "(none)"))
+             knowledge_ ? QString::fromStdString(
+                              knowledge_->get(game_id_, "core_category_set", "(none)"))
                         : QStringLiteral("(no knowledge)"),
              false);
-  add_kv_row(info_table_, tr("Factory size"), QString::number(factory_size),
-             false);
-  add_kv_row(info_table_, tr("categories.dat exists"), bool_text(cat_exists),
-             false);
+  add_kv_row(info_table_, tr("Factory size"), QString::number(factory_size), false);
+  add_kv_row(info_table_, tr("categories.dat exists"), bool_text(cat_exists), false);
   add_kv_row(info_table_, tr("categories.dat path"),
              QString::fromStdString(categories_path.string()), true);
   // Nexus map size.
   fs::path nexus_map = instance_root_ / "nexuscatmap.dat";
-  int nexus_size = 0;
+  int nexus_size     = 0;
   {
     std::ifstream f(nexus_map.string());
     if (f) {
@@ -795,29 +776,26 @@ void DebugWindow::populate_info() {
         ++nexus_size;
     }
   }
-  add_kv_row(info_table_, tr("Nexus cat map size"), QString::number(nexus_size),
-             false);
+  add_kv_row(info_table_, tr("Nexus cat map size"), QString::number(nexus_size), false);
 
   // Group: Profile
   add_group_header(info_table_, tr("Profile"));
   QString active_profile_name = tr("(none)");
-  int profile_count = 0;
-  int modlist_count = 0;
-  int locked_count = 0;
-  int plugins_count = 0;
-  QString local_saves = QStringLiteral("-");
-  QString local_settings = QStringLiteral("-");
-  QString auto_arch_inv = QStringLiteral("-");
+  int profile_count           = 0;
+  int modlist_count           = 0;
+  int locked_count            = 0;
+  int plugins_count           = 0;
+  QString local_saves         = QStringLiteral("-");
+  QString local_settings      = QStringLiteral("-");
+  QString auto_arch_inv       = QStringLiteral("-");
   if (active_profile_) {
     active_profile_name = QString::fromStdString(active_profile_->name());
-    modlist_count = static_cast<int>(active_profile_->mods().size());
-    local_saves = bool_text(active_profile_->local_saves());
-    local_settings = bool_text(active_profile_->local_settings());
-    auto_arch_inv =
-        bool_text(active_profile_->automatic_archive_invalidation());
+    modlist_count       = static_cast<int>(active_profile_->mods().size());
+    local_saves         = bool_text(active_profile_->local_saves());
+    local_settings      = bool_text(active_profile_->local_settings());
+    auto_arch_inv       = bool_text(active_profile_->automatic_archive_invalidation());
     try {
-      locked_count =
-          static_cast<int>(active_profile_->read_locked_order().size());
+      locked_count  = static_cast<int>(active_profile_->read_locked_order().size());
       plugins_count = static_cast<int>(active_profile_->read_plugins().size());
     } catch (...) {
     }
@@ -837,33 +815,28 @@ void DebugWindow::populate_info() {
       for (auto &e : fs::directory_iterator(profiles_dir, ec)) {
         if (e.is_directory(ec)) {
           if (profile_count == 0)
-            active_profile_name =
-                QString::fromStdString(e.path().filename().string());
+            active_profile_name = QString::fromStdString(e.path().filename().string());
           ++profile_count;
         }
       }
     }
   }
   add_kv_row(info_table_, tr("Active profile"), active_profile_name, true);
-  add_kv_row(info_table_, tr("Profiles (count)"),
-             QString::number(profile_count), false);
-  add_kv_row(info_table_, tr("Modlist entries"), QString::number(modlist_count),
+  add_kv_row(info_table_, tr("Profiles (count)"), QString::number(profile_count),
              false);
+  add_kv_row(info_table_, tr("Modlist entries"), QString::number(modlist_count), false);
   add_kv_row(info_table_, tr("Local saves"), local_saves, false);
   add_kv_row(info_table_, tr("Local settings"), local_settings, false);
-  add_kv_row(info_table_, tr("Auto archive invalidation"), auto_arch_inv,
+  add_kv_row(info_table_, tr("Auto archive invalidation"), auto_arch_inv, false);
+  add_kv_row(info_table_, tr("Locked plugins"), QString::number(locked_count), false);
+  add_kv_row(info_table_, tr("plugins.txt entries"), QString::number(plugins_count),
              false);
-  add_kv_row(info_table_, tr("Locked plugins"), QString::number(locked_count),
-             false);
-  add_kv_row(info_table_, tr("plugins.txt entries"),
-             QString::number(plugins_count), false);
 
   // Group: Game Knowledge
   add_group_header(info_table_, tr("Game knowledge"));
   if (knowledge_) {
     int reg_games = static_cast<int>(knowledge_->registered_games().size());
-    add_kv_row(info_table_, tr("Registered games"), QString::number(reg_games),
-               false);
+    add_kv_row(info_table_, tr("Registered games"), QString::number(reg_games), false);
     auto keys = knowledge_->keys_for(game_id_);
     QString keys_str =
         keys.empty() ? QStringLiteral("(none)") : QString::fromStdString([&]() {
@@ -876,34 +849,30 @@ void DebugWindow::populate_info() {
           return joined;
         }());
     add_kv_row(info_table_, tr("Keys (this game)"), keys_str, true);
-    add_kv_row(
-        info_table_, tr("disable_mechanism"),
-        QString::fromStdString(knowledge_->get(
-            game_id_, "disable_mechanism", engine::kDefaultDisableMechanism)),
-        false);
+    add_kv_row(info_table_, tr("disable_mechanism"),
+               QString::fromStdString(knowledge_->get(
+                   game_id_, "disable_mechanism", engine::kDefaultDisableMechanism)),
+               false);
     add_kv_row(info_table_, tr("delayed_disable"),
-               bool_text(engine::delayed_disable_for(*knowledge_, game_id_)),
+               bool_text(engine::delayed_disable_for(*knowledge_, game_id_)), false);
+    add_kv_row(
+        info_table_, tr("creation_club_file"),
+        QString::fromStdString(engine::creation_club_file_for(*knowledge_, game_id_)),
+        true);
+    add_kv_row(
+        info_table_, tr("deploy_strategy (knowledge)"),
+        QString::fromStdString(engine::deploy_strategy_for(*knowledge_, game_id_)),
+        false);
+    add_kv_row(info_table_, tr("deploy_prefix"),
+               QString::fromStdString(knowledge_->get(game_id_, "deploy_prefix", "")),
                false);
-    add_kv_row(info_table_, tr("creation_club_file"),
-               QString::fromStdString(
-                   engine::creation_club_file_for(*knowledge_, game_id_)),
-               true);
-    add_kv_row(info_table_, tr("deploy_strategy (knowledge)"),
-               QString::fromStdString(
-                   engine::deploy_strategy_for(*knowledge_, game_id_)),
+    add_kv_row(info_table_, tr("mods_subpath"),
+               QString::fromStdString(knowledge_->get(game_id_, "mods_subpath", "")),
                false);
     add_kv_row(
-        info_table_, tr("deploy_prefix"),
-        QString::fromStdString(knowledge_->get(game_id_, "deploy_prefix", "")),
-        false);
-    add_kv_row(
-        info_table_, tr("mods_subpath"),
-        QString::fromStdString(knowledge_->get(game_id_, "mods_subpath", "")),
-        false);
-    add_kv_row(info_table_, tr("game_mods_dir (plugin hook)"),
-               QString::fromStdString(
-                   engine::plugin_game_mods_dir(*knowledge_, game_id_)),
-               true);
+        info_table_, tr("game_mods_dir (plugin hook)"),
+        QString::fromStdString(engine::plugin_game_mods_dir(*knowledge_, game_id_)),
+        true);
   } else {
     add_kv_row(info_table_, tr("(knowledge unavailable)"), QString(), false);
   }
@@ -911,19 +880,17 @@ void DebugWindow::populate_info() {
   // Group: App
   add_group_header(info_table_, tr("App"));
   add_kv_row(info_table_, tr("GMM version"), QStringLiteral(VERSION), true);
-  add_kv_row(info_table_, tr("Qt version"), QString::fromUtf8(qVersion()),
-             true);
+  add_kv_row(info_table_, tr("Qt version"), QString::fromUtf8(qVersion()), true);
   add_kv_row(info_table_, tr("Kernel / OS"),
              QStringLiteral("%1 (%2)").arg(QSysInfo::kernelVersion(),
                                            QSysInfo::prettyProductName()),
              true);
-  add_kv_row(info_table_, tr("CPU model"),
-             QString::fromStdString(cpu_model_name()), true);
-  add_kv_row(info_table_, tr("CPU cores (online)"),
-             QString::number(online_cpu_count()), false);
-  add_kv_row(info_table_, tr("Default instances dir"),
-             QString::fromStdString(engine::default_instances_dir().string()),
+  add_kv_row(info_table_, tr("CPU model"), QString::fromStdString(cpu_model_name()),
              true);
+  add_kv_row(info_table_, tr("CPU cores (online)"), QString::number(online_cpu_count()),
+             false);
+  add_kv_row(info_table_, tr("Default instances dir"),
+             QString::fromStdString(engine::default_instances_dir().string()), true);
 }
 
 // ---------------------------------------------------------------------------
@@ -960,8 +927,10 @@ void DebugWindow::showEvent(QShowEvent *event) {
   refresh_populated();
   // Restart the periodic timers so a previously hidden dialog resumes
   // refreshing. hideEvent() pauses them.
-  if (refresh_timer_) refresh_timer_->start(1000);
-  if (chart_timer_) chart_timer_->start(1000);
+  if (refresh_timer_)
+    refresh_timer_->start(1000);
+  if (chart_timer_)
+    chart_timer_->start(1000);
 }
 
 void DebugWindow::hideEvent(QHideEvent *event) {
@@ -969,8 +938,10 @@ void DebugWindow::hideEvent(QHideEvent *event) {
   // dialog nobody is looking at. populate_network() in particular would
   // otherwise rebuild 500 rows x 6 cells every refresh tick (1-2s),
   // which manifested as a UI giga-freeze in the nfpb review.
-  if (refresh_timer_) refresh_timer_->stop();
-  if (chart_timer_) chart_timer_->stop();
+  if (refresh_timer_)
+    refresh_timer_->stop();
+  if (chart_timer_)
+    chart_timer_->stop();
   QMainWindow::hideEvent(event);
 }
 
@@ -979,19 +950,19 @@ void DebugWindow::refresh_charts() {
     return;
   // Re-read everything for chart sampling; refresh_stats does the label
   // updates, this path is purely for chart series.
-  auto proc_stat = read_proc("/proc/self/stat");
-  auto sys_stat = read_proc("/proc/stat");
+  auto proc_stat  = read_proc("/proc/self/stat");
+  auto sys_stat   = read_proc("/proc/stat");
   auto status_str = read_proc("/proc/self/status");
-  auto io_str = read_proc("/proc/self/io");
+  auto io_str     = read_proc("/proc/self/io");
 
-  double cpu_pct = 0.0;
-  unsigned long pss_kb = 0;
+  double cpu_pct          = 0.0;
+  unsigned long pss_kb    = 0;
   unsigned long vmdata_kb = 0;
-  double disk_read_kbs = 0.0;
-  double disk_write_kbs = 0.0;
-  double rx_kbs = 0.0;
-  double tx_kbs = 0.0;
-  double jitter_ms = 0.0;
+  double disk_read_kbs    = 0.0;
+  double disk_write_kbs   = 0.0;
+  double rx_kbs           = 0.0;
+  double tx_kbs           = 0.0;
+  double jitter_ms        = 0.0;
 
   // --- CPU% ---
   if (!proc_stat.empty() && !sys_stat.empty()) {
@@ -1002,9 +973,8 @@ void DebugWindow::refresh_charts() {
     unsigned long su, sn, ss, sid, siow, sir, sq, sst;
     // sscanf returns 8 on success, < 8 on format mismatch. We don't need
     // to bail: missing columns just zero out the system total.
-    int got =
-        std::sscanf(sys_stat.c_str(), "cpu  %lu %lu %lu %lu %lu %lu %lu %lu",
-                    &su, &sn, &ss, &sid, &siow, &sir, &sq, &sst);
+    int got = std::sscanf(sys_stat.c_str(), "cpu  %lu %lu %lu %lu %lu %lu %lu %lu", &su,
+                          &sn, &ss, &sid, &siow, &sir, &sq, &sst);
     if (got == 8) {
       unsigned long sys_total = su + sn + ss + sid + siow + sir + sq + sst;
       if (!first_cpu_chart_) {
@@ -1013,14 +983,14 @@ void DebugWindow::refresh_charts() {
         if (ds > 0)
           cpu_pct = 100.0 * static_cast<double>(dp) / static_cast<double>(ds);
       }
-      first_cpu_chart_ = false;
+      first_cpu_chart_       = false;
       prev_proc_ticks_chart_ = proc_ticks;
-      prev_sys_total_chart_ = sys_total;
+      prev_sys_total_chart_  = sys_total;
     }
   }
 
   // --- RAM (Pss) + Heap (VmData) ---
-  pss_kb = parse_kb_line(status_str, "VmRSS:");
+  pss_kb    = parse_kb_line(status_str, "VmRSS:");
   vmdata_kb = parse_kb_line(status_str, "VmData:");
 
   // --- Disk IO (KiB/s). We sample at 1 Hz so divide by 1024 (KiB), not by
@@ -1031,11 +1001,11 @@ void DebugWindow::refresh_charts() {
     if (!first_io_chart_) {
       unsigned long long dr = r - prev_read_bytes_chart_;
       unsigned long long dw = w - prev_write_bytes_chart_;
-      disk_read_kbs = static_cast<double>(dr) / 1024.0;
-      disk_write_kbs = static_cast<double>(dw) / 1024.0;
+      disk_read_kbs         = static_cast<double>(dr) / 1024.0;
+      disk_write_kbs        = static_cast<double>(dw) / 1024.0;
     }
-    first_io_chart_ = false;
-    prev_read_bytes_chart_ = r;
+    first_io_chart_         = false;
+    prev_read_bytes_chart_  = r;
     prev_write_bytes_chart_ = w;
   }
 
@@ -1050,10 +1020,10 @@ void DebugWindow::refresh_charts() {
   if (!first_net_chart_) {
     double dr = static_cast<double>(net.rx_bytes - prev_rx_bytes_chart_);
     double dw = static_cast<double>(net.tx_bytes - prev_tx_bytes_chart_);
-    rx_kbs = dr / 1024.0;
-    tx_kbs = dw / 1024.0;
+    rx_kbs    = dr / 1024.0;
+    tx_kbs    = dw / 1024.0;
   }
-  first_net_chart_ = false;
+  first_net_chart_     = false;
   prev_rx_bytes_chart_ = net.rx_bytes;
   prev_tx_bytes_chart_ = net.tx_bytes;
 
@@ -1062,7 +1032,7 @@ void DebugWindow::refresh_charts() {
     qint64 ns = jitter_timer_.nsecsElapsed();
     jitter_timer_.restart();
     double actual_ms = static_cast<double>(ns) / 1e6;
-    jitter_ms = actual_ms - 1000.0;
+    jitter_ms        = actual_ms - 1000.0;
     if (jitter_ms > 50.0)
       jitter_ms = 50.0;
     if (jitter_ms < -50.0)
@@ -1086,11 +1056,10 @@ void DebugWindow::refresh_charts() {
 
   // Headers.
   if (cpu_header_) {
-    cpu_header_->setText(
-        QStringLiteral("%1%  (%2 cores: %3)")
-            .arg(cpu_pct, 0, 'f', 1)
-            .arg(online_cpu_count())
-            .arg(QString::fromStdString(cpu_model_name()).left(60)));
+    cpu_header_->setText(QStringLiteral("%1%  (%2 cores: %3)")
+                             .arg(cpu_pct, 0, 'f', 1)
+                             .arg(online_cpu_count())
+                             .arg(QString::fromStdString(cpu_model_name()).left(60)));
   }
   if (ram_header_) {
     ram_header_->setText(QStringLiteral("RSS %1 MiB  VmHWM %2 MiB")
@@ -1098,10 +1067,9 @@ void DebugWindow::refresh_charts() {
                              .arg(parse_kb_line(status_str, "VmHWM:") / 1024));
   }
   if (heap_header_) {
-    heap_header_->setText(
-        QStringLiteral("Data %1 MiB  Peak %2 MiB")
-            .arg(vmdata_kb / 1024)
-            .arg(parse_kb_line(status_str, "VmPeak:") / 1024));
+    heap_header_->setText(QStringLiteral("Data %1 MiB  Peak %2 MiB")
+                              .arg(vmdata_kb / 1024)
+                              .arg(parse_kb_line(status_str, "VmPeak:") / 1024));
   }
   if (disk_header_) {
     disk_header_->setText(QStringLiteral("R %1 KiB/s  W %2 KiB/s")
@@ -1123,11 +1091,11 @@ void DebugWindow::refresh_charts() {
 
 void DebugWindow::refresh_stats() {
   // Read everything once.
-  auto proc_stat = read_proc("/proc/self/stat");
-  auto sys_stat = read_proc("/proc/stat");
-  auto rollup = read_proc("/proc/self/smaps_rollup");
+  auto proc_stat  = read_proc("/proc/self/stat");
+  auto sys_stat   = read_proc("/proc/stat");
+  auto rollup     = read_proc("/proc/self/smaps_rollup");
   auto status_str = read_proc("/proc/self/status");
-  auto io_str = read_proc("/proc/self/io");
+  auto io_str     = read_proc("/proc/self/io");
   auto uptime_str = read_proc("/proc/uptime");
 
   // --- CPU ---
@@ -1137,25 +1105,23 @@ void DebugWindow::refresh_stats() {
     unsigned long proc_ticks = proc_utime + proc_stime;
 
     unsigned long su, sn, ss, sid, siow, sir, sq, sst;
-    int got =
-        std::sscanf(sys_stat.c_str(), "cpu  %lu %lu %lu %lu %lu %lu %lu %lu",
-                    &su, &sn, &ss, &sid, &siow, &sir, &sq, &sst);
+    int got = std::sscanf(sys_stat.c_str(), "cpu  %lu %lu %lu %lu %lu %lu %lu %lu", &su,
+                          &sn, &ss, &sid, &siow, &sir, &sq, &sst);
     if (got == 8) {
       unsigned long sys_total = su + sn + ss + sid + siow + sir + sq + sst;
       if (!first_cpu_label_) {
         unsigned long dp = proc_ticks - prev_proc_ticks_label_;
         unsigned long ds = sys_total - prev_sys_total_label_;
         double pct =
-            ds > 0 ? 100.0 * static_cast<double>(dp) / static_cast<double>(ds)
-                   : 0.0;
+            ds > 0 ? 100.0 * static_cast<double>(dp) / static_cast<double>(ds) : 0.0;
         char buf[32];
         std::snprintf(buf, sizeof(buf), "%.1f%%", pct);
         if (cpu_label_)
           cpu_label_->setText(QString::fromUtf8(buf));
       }
-      first_cpu_label_ = false;
+      first_cpu_label_       = false;
       prev_proc_ticks_label_ = proc_ticks;
-      prev_sys_total_label_ = sys_total;
+      prev_sys_total_label_  = sys_total;
     }
   }
 
@@ -1169,24 +1135,23 @@ void DebugWindow::refresh_stats() {
 
   // --- Disk IO (B/s or KiB/s) ---
   if (!io_str.empty()) {
-    unsigned long long cur_read = parse_io_value(io_str, "read_bytes:");
+    unsigned long long cur_read  = parse_io_value(io_str, "read_bytes:");
     unsigned long long cur_write = parse_io_value(io_str, "write_bytes:");
     if (!first_io_label_) {
-      auto delta_read = cur_read - prev_read_bytes_label_;
+      auto delta_read  = cur_read - prev_read_bytes_label_;
       auto delta_write = cur_write - prev_write_bytes_label_;
       // The label timer runs at a fixed 1 s, so the deltas are
       // accumulated over 1 s; divide by 1 for B/s (kept explicit so the
       // rate math stays obvious if the interval ever changes).
       constexpr double interval_s = 1.0;
-      auto read_bs = delta_read / interval_s;
-      auto write_bs = delta_write / interval_s;
-      auto read_kbs = static_cast<unsigned long>(read_bs / 1024.0);
-      auto write_kbs = static_cast<unsigned long>(write_bs / 1024.0);
+      auto read_bs                = delta_read / interval_s;
+      auto write_bs               = delta_write / interval_s;
+      auto read_kbs               = static_cast<unsigned long>(read_bs / 1024.0);
+      auto write_kbs              = static_cast<unsigned long>(write_bs / 1024.0);
       if (read_kbs > 0 || write_kbs > 0) {
         if (disk_label_)
-          disk_label_->setText(QStringLiteral("R: %1 KiB/s  W: %2 KiB/s")
-                                   .arg(read_kbs)
-                                   .arg(write_kbs));
+          disk_label_->setText(
+              QStringLiteral("R: %1 KiB/s  W: %2 KiB/s").arg(read_kbs).arg(write_kbs));
       } else {
         if (disk_label_)
           disk_label_->setText(QStringLiteral("R: %1 B/s  W: %2 B/s")
@@ -1194,8 +1159,8 @@ void DebugWindow::refresh_stats() {
                                    .arg(static_cast<int>(write_bs)));
       }
     }
-    first_io_label_ = false;
-    prev_read_bytes_label_ = cur_read;
+    first_io_label_         = false;
+    prev_read_bytes_label_  = cur_read;
     prev_write_bytes_label_ = cur_write;
   }
 
@@ -1203,9 +1168,9 @@ void DebugWindow::refresh_stats() {
 #ifdef __linux__
   if (!proc_stat.empty()) {
     auto start_ticks = parse_after(proc_stat, 21);
-    long hz = ::sysconf(_SC_CLK_TCK);
+    long hz          = ::sysconf(_SC_CLK_TCK);
     if (hz > 0 && start_ticks > 0 && !uptime_str.empty()) {
-      auto space = uptime_str.find(' ');
+      auto space        = uptime_str.find(' ');
       double sys_uptime = 0.0;
       try {
         sys_uptime = std::stod(uptime_str.substr(0, space));
@@ -1214,17 +1179,13 @@ void DebugWindow::refresh_stats() {
       double proc_uptime = sys_uptime - static_cast<double>(start_ticks) / hz;
       if (proc_uptime < 0)
         proc_uptime = 0;
-      int days = static_cast<int>(proc_uptime / 86400);
+      int days  = static_cast<int>(proc_uptime / 86400);
       int hours = static_cast<int>(std::fmod(proc_uptime, 86400) / 3600);
-      int mins = static_cast<int>(std::fmod(proc_uptime, 3600) / 60);
-      int secs = static_cast<int>(std::fmod(proc_uptime, 60));
+      int mins  = static_cast<int>(std::fmod(proc_uptime, 3600) / 60);
+      int secs  = static_cast<int>(std::fmod(proc_uptime, 60));
       QString s;
       if (days > 0)
-        s = QStringLiteral("%1d %2h %3m %4s")
-                .arg(days)
-                .arg(hours)
-                .arg(mins)
-                .arg(secs);
+        s = QStringLiteral("%1d %2h %3m %4s").arg(days).arg(hours).arg(mins).arg(secs);
       else if (hours > 0)
         s = QStringLiteral("%1h %2m %3s").arg(hours).arg(mins).arg(secs);
       else if (mins > 0)
@@ -1255,56 +1216,56 @@ void DebugWindow::refresh_stats() {
 
 namespace {
 
-// Small helper: builds a 2-column key/value table with the debug panel's
-// copy-friendly conventions.
-QTableWidget *make_kv_table(QWidget *parent, const QStringList &headers) {
-  auto *t = new QTableWidget(0, static_cast<int>(headers.size()), parent);
-  t->setHorizontalHeaderLabels(headers);
-  t->verticalHeader()->hide();
-  t->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  t->setSelectionBehavior(QAbstractItemView::SelectRows);
-  t->setSelectionMode(QAbstractItemView::SingleSelection);
-  t->setAlternatingRowColors(true);
-  t->setShowGrid(false);
-  auto *hh = t->horizontalHeader();
-  hh->setStretchLastSection(true);
-  for (int c = 0; c < headers.size(); ++c)
-    hh->setSectionResizeMode(c, QHeaderView::ResizeToContents);
-  t->setContextMenuPolicy(Qt::CustomContextMenu);
-  QObject::connect(t, &QWidget::customContextMenuRequested, t,
-                   [t](const QPoint &pos) {
-                     auto *item = t->itemAt(pos);
-                     if (!item)
-                       return;
-                     QStringList row;
-                     for (int c = 0; c < t->columnCount(); ++c) {
-                       auto *cell = t->item(item->row(), c);
-                       row << (cell ? cell->text() : QString());
-                     }
-                     QGuiApplication::clipboard()->setText(
-                         row.join(QStringLiteral(" | ")));
-                   });
-  return t;
-}
+  // Small helper: builds a 2-column key/value table with the debug panel's
+  // copy-friendly conventions.
+  QTableWidget *make_kv_table(QWidget *parent, const QStringList &headers) {
+    auto *t = new QTableWidget(0, static_cast<int>(headers.size()), parent);
+    t->setHorizontalHeaderLabels(headers);
+    t->verticalHeader()->hide();
+    t->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    t->setSelectionBehavior(QAbstractItemView::SelectRows);
+    t->setSelectionMode(QAbstractItemView::SingleSelection);
+    t->setAlternatingRowColors(true);
+    t->setShowGrid(false);
+    auto *hh = t->horizontalHeader();
+    hh->setStretchLastSection(true);
+    for (int c = 0; c < headers.size(); ++c)
+      hh->setSectionResizeMode(c, QHeaderView::ResizeToContents);
+    t->setContextMenuPolicy(Qt::CustomContextMenu);
+    QObject::connect(
+        t, &QWidget::customContextMenuRequested, t, [t](const QPoint &pos) {
+          auto *item = t->itemAt(pos);
+          if (!item)
+            return;
+          QStringList row;
+          for (int c = 0; c < t->columnCount(); ++c) {
+            auto *cell = t->item(item->row(), c);
+            row << (cell ? cell->text() : QString());
+          }
+          QGuiApplication::clipboard()->setText(row.join(QStringLiteral(" | ")));
+        });
+    return t;
+  }
 
-QString mib_text(unsigned long kb) {
-  return QStringLiteral("%1 MiB").arg(kb / 1024);
-}
+  QString mib_text(unsigned long kb) {
+    return QStringLiteral("%1 MiB").arg(kb / 1024);
+  }
 
-} // namespace
+}  // namespace
 
 QWidget *DebugWindow::build_memory_page() {
-  auto *tab = new QWidget;
+  auto *tab   = new QWidget;
   auto *outer = new QVBoxLayout(tab);
   outer->setContentsMargins(4, 4, 4, 4);
   outer->setSpacing(6);
 
   // Controls: manual refresh only (label/chart timers run at fixed 1 s).
-  auto *controls = new QHBoxLayout;
+  auto *controls    = new QHBoxLayout;
   auto *refresh_btn = new QPushButton(tr("Refresh now"), tab);
   refresh_btn->setToolTip(tr("Rebuild every memory table immediately"));
-  connect(refresh_btn, &QPushButton::clicked, this,
-          [this]() { populate_memory(); });
+  connect(refresh_btn, &QPushButton::clicked, this, [this]() {
+    populate_memory();
+  });
   controls->addWidget(refresh_btn);
   controls->addStretch(1);
   outer->addLayout(controls);
@@ -1337,16 +1298,15 @@ QWidget *DebugWindow::build_memory_page() {
     grid->addWidget(gb, row, col);
   };
 
-  add_section(tr("Process"), &mem_stats_table_, {tr("Metric"), tr("Value")}, 0,
-              0);
+  add_section(tr("Process"), &mem_stats_table_, {tr("Metric"), tr("Value")}, 0, 0);
   add_section(tr("Subsystems"), &mem_subsys_table_,
               {tr("Subsystem"), tr("Metric"), tr("Value")}, 0, 1);
 
   // Per-type counter is sortable so the biggest owners float to the top.
-  add_section(tr("Objects by type"), &mem_types_table_,
-              {tr("Type"), tr("Count"), tr("Bytes each"), tr("Total (est.)"),
-               tr("Owner")},
-              1, 0);
+  add_section(
+      tr("Objects by type"), &mem_types_table_,
+      {tr("Type"), tr("Count"), tr("Bytes each"), tr("Total (est.)"), tr("Owner")}, 1,
+      0);
   if (mem_types_table_)
     mem_types_table_->setSortingEnabled(true);
 
@@ -1359,21 +1319,20 @@ QWidget *DebugWindow::build_memory_page() {
 }
 
 void DebugWindow::populate_memory() {
-  if (!mem_stats_table_ || !mem_subsys_table_ || !mem_types_table_ ||
-      !mem_alloc_table_)
+  if (!mem_stats_table_ || !mem_subsys_table_ || !mem_types_table_ || !mem_alloc_table_)
     return;
 
-  const std::string status = read_proc("/proc/self/status");
-  const std::string stat = read_proc("/proc/self/stat");
-  const std::string rollup = read_proc("/proc/self/smaps_rollup");
+  const std::string status  = read_proc("/proc/self/status");
+  const std::string stat    = read_proc("/proc/self/stat");
+  const std::string rollup  = read_proc("/proc/self/smaps_rollup");
   const std::string meminfo = read_proc("/proc/meminfo");
 
-  const unsigned long rss_kb = parse_kb_line(status, "VmRSS:");
-  const unsigned long vms_kb = parse_kb_line(status, "VmSize:");
+  const unsigned long rss_kb   = parse_kb_line(status, "VmRSS:");
+  const unsigned long vms_kb   = parse_kb_line(status, "VmSize:");
   const unsigned long shmem_kb = parse_kb_line(status, "RssShmem:");
-  const unsigned long file_kb = parse_kb_line(status, "RssFile:");
-  const unsigned long hwm_kb = parse_kb_line(status, "VmHWM:");
-  const unsigned long peak_kb = parse_kb_line(status, "VmPeak:");
+  const unsigned long file_kb  = parse_kb_line(status, "RssFile:");
+  const unsigned long hwm_kb   = parse_kb_line(status, "VmHWM:");
+  const unsigned long peak_kb  = parse_kb_line(status, "VmPeak:");
 
   unsigned long mem_total_kb = 0;
   {
@@ -1386,17 +1345,15 @@ void DebugWindow::populate_memory() {
 
   // --- Process-level stats ---
   mem_stats_table_->setRowCount(0);
-  const double pct =
-      mem_total_kb > 0 ? 100.0 * rss_kb / mem_total_kb : 0.0;
+  const double pct = mem_total_kb > 0 ? 100.0 * rss_kb / mem_total_kb : 0.0;
   add_kv_row(mem_stats_table_, tr("RSS (physical)"), mib_text(rss_kb), true);
   add_kv_row(mem_stats_table_, tr("VMS (virtual)"), mib_text(vms_kb), true);
-  add_kv_row(mem_stats_table_, tr("Shared (file+shmem)"),
-             mib_text(file_kb + shmem_kb), true);
+  add_kv_row(mem_stats_table_, tr("Shared (file+shmem)"), mib_text(file_kb + shmem_kb),
+             true);
   add_kv_row(mem_stats_table_, tr("Share of system"),
              QStringLiteral("%1%").arg(pct, 0, 'f', 2), false);
   add_kv_row(mem_stats_table_, tr("Peak RSS (VmHWM)"), mib_text(hwm_kb), true);
-  add_kv_row(mem_stats_table_, tr("Peak VMS (VmPeak)"), mib_text(peak_kb),
-             true);
+  add_kv_row(mem_stats_table_, tr("Peak VMS (VmPeak)"), mib_text(peak_kb), true);
   add_kv_row(mem_stats_table_, tr("Page faults (minor/major)"),
              QStringLiteral("%1 / %2").arg(min_flt).arg(maj_flt), false);
   if (!rollup.empty()) {
@@ -1406,13 +1363,11 @@ void DebugWindow::populate_memory() {
 
   // --- Per-subsystem inventory (best effort from live objects) ---
   mem_subsys_table_->setRowCount(0);
-  auto subsys_row = [&](const QString &sub, const QString &metric,
-                        const QString &val) {
+  auto subsys_row = [&](const QString &sub, const QString &metric, const QString &val) {
     int row = mem_subsys_table_->rowCount();
     mem_subsys_table_->insertRow(row);
     for (int c = 0; c < 3; ++c) {
-      auto *it = new QTableWidgetItem(
-          c == 0 ? sub : (c == 1 ? metric : val));
+      auto *it = new QTableWidgetItem(c == 0 ? sub : (c == 1 ? metric : val));
       it->setFlags(it->flags() & ~Qt::ItemIsEditable);
       mem_subsys_table_->setItem(row, c, it);
     }
@@ -1435,7 +1390,7 @@ void DebugWindow::populate_memory() {
   if (active_profile_)
     profile_mods = static_cast<int>(active_profile_->mods().size());
   const auto net_log = engine::network::instance().log_snapshot(2000);
-  const auto net_io = engine::network::instance().io_counters();
+  const auto net_io  = engine::network::instance().io_counters();
 
   subsys_row(QStringLiteral("Engine"), tr("registry entries"),
              QString::number(reg_entries));
@@ -1469,7 +1424,7 @@ void DebugWindow::populate_memory() {
                       const QString &owner) {
     int row = mem_types_table_->rowCount();
     mem_types_table_->insertRow(row);
-    const long total = count * each;
+    const long total       = count * each;
     const QString cells[5] = {
         type,
         QString::number(count),
@@ -1489,22 +1444,20 @@ void DebugWindow::populate_memory() {
     }
   };
   // Real counts: every live QWidget grouped by concrete type.
-  for (auto it = widget_kinds.constBegin(); it != widget_kinds.constEnd();
-       ++it)
+  for (auto it = widget_kinds.constBegin(); it != widget_kinds.constEnd(); ++it)
     type_row(it.key(), it.value(), 0, QStringLiteral("UI"));
   // Estimated sizes for the hottest Qt value types (sizeof at compile).
-  type_row(QStringLiteral("QTableWidgetItem"),
-           static_cast<long>(tree_items), 64, QStringLiteral("UI"));
-  type_row(QStringLiteral("QString (empty)"), 0,
-           static_cast<long>(sizeof(QString)), QStringLiteral("Qt"));
-  type_row(QStringLiteral("QModelIndex"), 0,
-           static_cast<long>(sizeof(QModelIndex)), QStringLiteral("Qt"));
+  type_row(QStringLiteral("QTableWidgetItem"), static_cast<long>(tree_items), 64,
+           QStringLiteral("UI"));
+  type_row(QStringLiteral("QString (empty)"), 0, static_cast<long>(sizeof(QString)),
+           QStringLiteral("Qt"));
+  type_row(QStringLiteral("QModelIndex"), 0, static_cast<long>(sizeof(QModelIndex)),
+           QStringLiteral("Qt"));
   mem_types_table_->setSortingEnabled(true);
 
   // --- Allocation tracker: heap stats + top mappings ---
   mem_alloc_table_->setRowCount(0);
-  auto alloc_row = [&](const QString &src, const QString &detail,
-                       const QString &size) {
+  auto alloc_row = [&](const QString &src, const QString &detail, const QString &size) {
     int row = mem_alloc_table_->rowCount();
     mem_alloc_table_->insertRow(row);
     const QString cells[3] = {src, detail, size};
@@ -1520,10 +1473,9 @@ void DebugWindow::populate_memory() {
             mib_text(static_cast<unsigned long>(mi.uordblks / 1024)));
   alloc_row(tr("heap"), tr("free (fordblks)"),
             mib_text(static_cast<unsigned long>(mi.fordblks / 1024)));
-  alloc_row(tr("heap"), tr("arena"), mib_text(static_cast<unsigned long>(
-                                        mi.arena / 1024)));
-  alloc_row(tr("heap"), tr("mmap chunks"),
-            QString::number(mi.hblks));
+  alloc_row(tr("heap"), tr("arena"),
+            mib_text(static_cast<unsigned long>(mi.arena / 1024)));
+  alloc_row(tr("heap"), tr("mmap chunks"), QString::number(mi.hblks));
 #else
   alloc_row(tr("heap"), tr("(mallinfo2 unavailable on this platform)"),
             QStringLiteral("-"));
@@ -1544,7 +1496,7 @@ void DebugWindow::populate_memory() {
     while (std::getline(f, line)) {
       if (line.find("kB") == std::string::npos) {
         // Mapping header: "... pathname" or bare addresses.
-        auto sp = line.rfind(' ');
+        auto sp  = line.rfind(' ');
         cur_name = sp == std::string::npos
                        ? QStringLiteral("[anon]")
                        : QString::fromStdString(line.substr(sp + 1));
@@ -1558,8 +1510,9 @@ void DebugWindow::populate_memory() {
     }
   }
 #endif
-  std::sort(maps.begin(), maps.end(),
-            [](const MapEntry &a, const MapEntry &b) { return a.rss > b.rss; });
+  std::sort(maps.begin(), maps.end(), [](const MapEntry &a, const MapEntry &b) {
+    return a.rss > b.rss;
+  });
   if (maps.empty()) {
     alloc_row(tr("mappings"), tr("(smaps unavailable on this platform)"),
               QStringLiteral("-"));
@@ -1577,7 +1530,7 @@ void DebugWindow::populate_memory() {
 
 QWidget *DebugWindow::build_modpack_page() {
   auto *tab = new QWidget;
-  auto *v = new QVBoxLayout(tab);
+  auto *v   = new QVBoxLayout(tab);
   v->setContentsMargins(4, 4, 4, 4);
   modpack_status_ = new QLabel(tr("No modpack loaded"), tab);
   modpack_status_->setObjectName("debugKey");
@@ -1626,13 +1579,13 @@ void DebugWindow::populate_modpack() {
 
 QWidget *DebugWindow::build_network_page() {
   auto *tab = new QWidget;
-  auto *v = new QVBoxLayout(tab);
+  auto *v   = new QVBoxLayout(tab);
   v->setContentsMargins(4, 4, 4, 4);
 
   network_table_ = new QTableWidget(0, 7, tab);
   network_table_->setHorizontalHeaderLabels(
-      {tr("Caller"), tr("Method"), tr("URL (redacted)"), tr("Status"),
-       tr("Time (ms)"), tr("Protocol"), tr("Error")});
+      {tr("Caller"), tr("Method"), tr("URL (redacted)"), tr("Status"), tr("Time (ms)"),
+       tr("Protocol"), tr("Error")});
   network_table_->verticalHeader()->hide();
   network_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
   network_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -1690,7 +1643,7 @@ void DebugWindow::populate_network() {
   // even on busy networks. The ring buffer still holds 2000 entries
   // internally; users wanting the full history can scroll/filter later.
   constexpr std::size_t kMaxRows = 100;
-  auto entries = engine::network::instance().log_snapshot(kMaxRows);
+  auto entries                   = engine::network::instance().log_snapshot(kMaxRows);
   if (entries.empty()) {
     if (network_table_->rowCount() != 0) {
       network_table_->setRowCount(0);
@@ -1711,7 +1664,7 @@ void DebugWindow::populate_network() {
   network_table_->setRowCount(static_cast<int>(entries.size()));
   for (std::size_t i = 0; i < entries.size(); ++i) {
     const auto &e = entries[i];
-    int row = static_cast<int>(i);
+    int row       = static_cast<int>(i);
     auto set_cell = [&](int col, const QString &s) {
       auto *it = new QTableWidgetItem(s);
       it->setFlags(it->flags() & ~Qt::ItemIsEditable);
@@ -1752,8 +1705,8 @@ unsigned long DebugWindow::parse_after(const std::string &s, int field_index) {
   auto end_comm = s.rfind(')');
   if (end_comm == std::string::npos)
     return 0;
-  auto pos = s.find(' ', end_comm); // field 3 (state) starts here
-  int idx = 2;                      // we've looked past fields 1 and 2
+  auto pos = s.find(' ', end_comm);  // field 3 (state) starts here
+  int idx  = 2;                      // we've looked past fields 1 and 2
   while (pos != std::string::npos && idx < field_index) {
     ++idx;
     auto next = s.find(' ', pos + 1);
@@ -1766,14 +1719,14 @@ unsigned long DebugWindow::parse_after(const std::string &s, int field_index) {
   auto start = s.find_first_not_of(' ', pos + 1);
   if (start == std::string::npos)
     return 0;
-  auto end = s.find(' ', start);
-  auto val = s.substr(start, end - start);
+  auto end             = s.find(' ', start);
+  auto val             = s.substr(start, end - start);
   unsigned long result = 0;
   std::from_chars(val.data(), val.data() + val.size(), result);
   return result;
 }
 
-} // namespace ui
+}  // namespace ui
 
 // AUTOMOC (set in CMakeLists.txt) generates and includes the moc output
 // automatically; an explicit #include "moc_debug_window.cpp" would create

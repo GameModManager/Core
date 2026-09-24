@@ -16,60 +16,60 @@ namespace ui {
 
 namespace {
 
-QString xml_find_tag_text(const QString &xml, const QString &tag) {
-  const std::string xml_s = xml.toStdString();
-  const std::string tag_s = tag.toStdString();
-  const std::string result = engine::xml_find_tag(xml_s, tag_s);
-  return QString::fromStdString(result);
-}
-
-QString load_metadata_content(const ModInfoData &data) {
-  if (data.mod_dir.path().isEmpty())
-    return {};
-  const QString file_name = data.metadata_file.isEmpty()
-                                ? QStringLiteral("metadata.xml")
-                                : data.metadata_file;
-  const QString xml_path = data.mod_dir.filePath(file_name);
-  QFile f(xml_path);
-  if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
-    return {};
-  const QString content = QString::fromUtf8(f.readAll());
-  return content;
-}
-
-void set_description_html(DescriptionRenderer *renderer, const QString &desc,
-                          std::atomic<unsigned> *gen) {
-  if (renderer == nullptr)
-    return;
-  // No clear(): set_description()/set_bbcode_html_async() replace the
-  // content atomically; the clear-then-set gap flashes the webview's
-  // default background. The token bump below discards stale async parses.
-  if (desc.isEmpty()) {
-    renderer->set_description(QStringLiteral(
-        "<div style=\"text-align:center; color:grey; padding-top:24px;\">"
-        "<p>No description stored for this mod. Press "
-        "<b>Refresh</b> to re-read metadata.</p></div>"));
-    return;
+  QString xml_find_tag_text(const QString &xml, const QString &tag) {
+    const std::string xml_s  = xml.toStdString();
+    const std::string tag_s  = tag.toStdString();
+    const std::string result = engine::xml_find_tag(xml_s, tag_s);
+    return QString::fromStdString(result);
   }
-  // Steam Workshop descriptions are BBCode (b/i/u/url/img/quote/etc), same
-  // dialect the Nexus source panel parses. The old plain-text-escape path
-  // hid all of that from the user; libcbb now renders it. The async
-  // helper moves the parse + layout off the UI thread for descriptions
-  // >= 1 KB and uses `gen` to drop stale results when the user clicks
-  // rapidly through the mod list.
-  if (gen != nullptr)
-    ++*gen;
-  set_bbcode_html_async(renderer, desc, gen);
-}
 
-} // namespace
+  QString load_metadata_content(const ModInfoData &data) {
+    if (data.mod_dir.path().isEmpty())
+      return {};
+    const QString file_name = data.metadata_file.isEmpty()
+                                  ? QStringLiteral("metadata.xml")
+                                  : data.metadata_file;
+    const QString xml_path  = data.mod_dir.filePath(file_name);
+    QFile f(xml_path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+      return {};
+    const QString content = QString::fromUtf8(f.readAll());
+    return content;
+  }
+
+  void set_description_html(DescriptionRenderer *renderer, const QString &desc,
+                            std::atomic<unsigned> *gen) {
+    if (renderer == nullptr)
+      return;
+    // No clear(): set_description()/set_bbcode_html_async() replace the
+    // content atomically; the clear-then-set gap flashes the webview's
+    // default background. The token bump below discards stale async parses.
+    if (desc.isEmpty()) {
+      renderer->set_description(QStringLiteral(
+          "<div style=\"text-align:center; color:grey; padding-top:24px;\">"
+          "<p>No description stored for this mod. Press "
+          "<b>Refresh</b> to re-read metadata.</p></div>"));
+      return;
+    }
+    // Steam Workshop descriptions are BBCode (b/i/u/url/img/quote/etc), same
+    // dialect the Nexus source panel parses. The old plain-text-escape path
+    // hid all of that from the user; libcbb now renders it. The async
+    // helper moves the parse + layout off the UI thread for descriptions
+    // >= 1 KB and uses `gen` to drop stale results when the user clicks
+    // rapidly through the mod list.
+    if (gen != nullptr)
+      ++*gen;
+    set_bbcode_html_async(renderer, desc, gen);
+  }
+
+}  // namespace
 
 SteamSourcePanel::SteamSourcePanel(const ModInfoData &data, QWidget *parent)
     : SourceInfoPanel(data, parent) {
   auto *layout = new QVBoxLayout(this);
 
   auto *form = new QFormLayout();
-  mod_id_ = new QLineEdit(this);
+  mod_id_    = new QLineEdit(this);
   mod_id_->setPlaceholderText(QStringLiteral("0"));
   form->addRow(tr("Mod ID:"), mod_id_);
 
@@ -82,16 +82,16 @@ SteamSourcePanel::SteamSourcePanel(const ModInfoData &data, QWidget *parent)
   layout->addLayout(form);
 
   auto *buttons = new QHBoxLayout();
-  refresh_ = new QPushButton(tr("Refresh"), this);
-  visit_ = new QPushButton(tr("Visit on Workshop"), this);
+  refresh_      = new QPushButton(tr("Refresh"), this);
+  visit_        = new QPushButton(tr("Visit on Workshop"), this);
   buttons->addWidget(refresh_);
   buttons->addWidget(visit_);
   buttons->addStretch(1);
   layout->addLayout(buttons);
 
-  auto *custom_row = new QHBoxLayout();
+  auto *custom_row   = new QHBoxLayout();
   custom_url_toggle_ = new QCheckBox(tr("Custom URL:"), this);
-  custom_url_ = new QLineEdit(this);
+  custom_url_        = new QLineEdit(this);
   custom_url_->setEnabled(false);
   visit_custom_ = new QPushButton(tr("Visit"), this);
   visit_custom_->setEnabled(false);
@@ -144,9 +144,8 @@ void SteamSourcePanel::populate() {
 
   // Lock Mod ID when source is confirmed Steam (numeric id and source_type ==
   // steam)
-  const bool is_confirmed_steam =
-      (data_.source_type == QLatin1String("steam") && !wid.isEmpty() &&
-       wid.toLongLong() > 0);
+  const bool is_confirmed_steam = (data_.source_type == QLatin1String("steam") &&
+                                   !wid.isEmpty() && wid.toLongLong() > 0);
   mod_id_->setReadOnly(is_confirmed_steam);
 
   // Version: [General]version fallback current.version fallback metadata.xml
@@ -198,7 +197,7 @@ QString SteamSourcePanel::read_metadata_tag(const QString &tag) const {
 
 void SteamSourcePanel::update_version_color() {
   const QString version = meta_value("General", "version");
-  const QString newest = meta_value("General", "newestversion");
+  const QString newest  = meta_value("General", "newestversion");
   if (!version.isEmpty() && !newest.isEmpty() && version != newest) {
     version_->setStyleSheet(QStringLiteral("color: red;"));
     version_->setToolTip(tr("Newest version: %1").arg(newest));
@@ -232,9 +231,8 @@ void SteamSourcePanel::on_refresh() {
       content.isEmpty() ? QString{}
                         : xml_find_tag_text(content, QStringLiteral("version"));
   const QString xml_desc =
-      content.isEmpty()
-          ? QString{}
-          : xml_find_tag_text(content, QStringLiteral("description"));
+      content.isEmpty() ? QString{}
+                        : xml_find_tag_text(content, QStringLiteral("description"));
 
   // Re-populate version if file has a value
   if (!xml_version.isEmpty()) {
@@ -268,8 +266,7 @@ void SteamSourcePanel::on_visit() {
   if (!data_.open_url)
     return;
   data_.open_url(
-      QStringLiteral(
-          "https://steamcommunity.com/sharedfiles/filedetails/?id=%1")
+      QStringLiteral("https://steamcommunity.com/sharedfiles/filedetails/?id=%1")
           .arg(id));
 }
 
@@ -327,4 +324,4 @@ void SteamSourcePanel::persist_custom_url() {
                             !custom_url_->text().isEmpty());
 }
 
-} // namespace ui
+}  // namespace ui

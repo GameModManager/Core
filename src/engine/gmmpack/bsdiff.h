@@ -24,15 +24,13 @@ namespace engine::gmmpack {
 // crash - patch payloads come from untrusted archives.
 
 // Build a patch that turns `old_data` into `new_data`.
-bool bsdiff_create(const uint8_t* old_data, size_t old_len,
-                   const uint8_t* new_data, size_t new_len,
-                   std::vector<uint8_t>& out_patch, std::string& error);
+bool bsdiff_create(const uint8_t *old_data, size_t old_len, const uint8_t *new_data,
+                   size_t new_len, std::vector<uint8_t> &out_patch, std::string &error);
 
 // Reconstruct the new file from `old_data` and a patch made by
 // bsdiff_create. Fails when the patch is corrupt OR when it was made
 // against different base content (length/offset checks catch that).
-bool bsdiff_apply(const uint8_t* old_data, size_t old_len,
-                  const uint8_t* patch, size_t patch_len,
-                  std::vector<uint8_t>& out_new, std::string& error);
+bool bsdiff_apply(const uint8_t *old_data, size_t old_len, const uint8_t *patch,
+                  size_t patch_len, std::vector<uint8_t> &out_new, std::string &error);
 
 }  // namespace engine::gmmpack

@@ -3,18 +3,15 @@
 #include <cctype>
 #include <unordered_map>
 
-namespace engine::Install
-{
+namespace engine::Install {
 
-namespace
-{
+namespace {
 
   // Alias -> canonical catalog id. Mirrors the MO2 GameShortName aliases in
   // source/nxm/nxm_router.cpp but resolves to GMM's long canonical ids
   // ("skyrimspecialedition", not "skyrimse"). Keys are lowercase; input is
   // lowercased before lookup.
-  const std::unordered_map<std::string, std::string>& aliases()
-  {
+  const std::unordered_map<std::string, std::string> &aliases() {
     static const std::unordered_map<std::string, std::string> kMap = {
         {"morrowind", "morrowind"},
         {"oblivion", "oblivion"},
@@ -34,8 +31,7 @@ namespace
     return kMap;
   }
 
-  std::string trim(const std::string& s)
-  {
+  std::string trim(const std::string &s) {
     std::size_t first = 0;
     while (first < s.size() && std::isspace(static_cast<unsigned char>(s[first]))) {
       ++first;
@@ -49,8 +45,7 @@ namespace
 
 }  // namespace
 
-std::string normalize_game_id(const std::string& game_id)
-{
+std::string normalize_game_id(const std::string &game_id) {
   std::string lowered;
   lowered.reserve(game_id.size());
   for (char c : trim(game_id)) {
@@ -58,14 +53,13 @@ std::string normalize_game_id(const std::string& game_id)
   }
   if (lowered.empty())
     return lowered;
-  const auto& map = aliases();
+  const auto &map = aliases();
   auto it         = map.find(lowered);
   return it != map.end() ? it->second : lowered;
 }
 
-GameMatchResult validate_game_match(const std::string& pack_game_id,
-                                    const std::string& instance_game_id)
-{
+GameMatchResult validate_game_match(const std::string &pack_game_id,
+                                    const std::string &instance_game_id) {
   if (pack_game_id.empty() || trim(pack_game_id).empty()) {
     return {false, "Pack does not declare a game (missing info.gmmGameId); "
                    "cannot verify it matches this instance."};

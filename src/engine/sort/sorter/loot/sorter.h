@@ -34,7 +34,7 @@ namespace Sorter {
       std::filesystem::path
           profile_dir;                 // MO2-format profile (loadorder.txt/plugins.txt)
       std::filesystem::path cli_path;  // gmm_lootcli binary; empty = not built
-      const Platform* platform = nullptr;  // data_dir() for masterlist cache
+      const Platform *platform = nullptr;  // data_dir() for masterlist cache
       std::vector<Plugin> plugins;  // every plugin (natives + CC + user), winning paths
       bool update_masterlists = true;  // refresh stale masterlists before sorting
     };
@@ -56,14 +56,14 @@ namespace Sorter {
     // 1 CheckingMasterlistExistence, 2 UpdatingMasterlist, 3 LoadingLists,
     // 4 ReadingPlugins, 5 SortingPlugins, 6 WritingLoadorder, 7 ParsingLootMessages,
     // 8 Done.
-    using ProgressFn = std::function<void(int stage, const std::string& message)>;
+    using ProgressFn = std::function<void(int stage, const std::string &message)>;
 
     // Run gmm_lootcli against the request. On success Result::sorted_names is
     // the sorted order for every plugin (the caller applies it, preserving the
     // fixed native/CC band and locked plugins). On failure Result::error
     // carries a user-facing reason (CLI missing, masterlists unavailable, CLI
     // error). `progress` (optional) receives stage markers as they stream by.
-    Result run_sort(const Request& request, ProgressFn progress = {});
+    Result run_sort(const Request &request, ProgressFn progress = {});
 
   }  // namespace Loot
 }  // namespace Sorter

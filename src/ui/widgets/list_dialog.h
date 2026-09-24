@@ -22,7 +22,7 @@ class ListDialog : public QDialog {
 public:
   explicit ListDialog(QWidget *parent = nullptr);
 
-  int exec() override; // saves and restores geometry
+  int exec() override;  // saves and restores geometry
 
   void setChoices(const QStringList &choices);
   // Optional parallel payloads, one per choice (length must match choices).
@@ -40,11 +40,11 @@ private slots:
 private:
   void apply_filter();
 
-  QListWidget *list_ = nullptr;
-  QLineEdit *filter_ = nullptr;
+  QListWidget *list_         = nullptr;
+  QLineEdit *filter_         = nullptr;
   QDialogButtonBox *buttons_ = nullptr;
   QStringList choices_;
   QList<QVariant> data_;
 };
 
-} // namespace ui
+}  // namespace ui

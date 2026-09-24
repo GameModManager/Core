@@ -25,8 +25,8 @@ std::string masterlist_url_for(const GameKnowledge &knowledge,
   return knowledge.get(game_id, kMasterlistUrlKey, "");
 }
 
-bool ensure_masterlist_cached(const std::string &game_id,
-                              const std::string &url, std::string &error) {
+bool ensure_masterlist_cached(const std::string &game_id, const std::string &url,
+                              std::string &error) {
   error.clear();
 
   if (url.empty()) {
@@ -41,7 +41,7 @@ bool ensure_masterlist_cached(const std::string &game_id,
   bool cached_ok = false;
   if (fs::is_regular_file(path, ec) && !ec) {
     std::uintmax_t sz = fs::file_size(path, ec);
-    cached_ok = !ec && sz > 0;
+    cached_ok         = !ec && sz > 0;
   }
   if (cached_ok)
     return true;
@@ -54,7 +54,8 @@ bool ensure_masterlist_cached(const std::string &game_id,
   fs::create_directories(path.parent_path(), mk);
 
   long http_code = 0;
-  if (!engine::download::curl_download(url, path, http_code, {}, nullptr, 0, nullptr, NET_CALLER)) {
+  if (!engine::download::curl_download(url, path, http_code, {}, nullptr, 0, nullptr,
+                                       NET_CALLER)) {
     error = "download failed (HTTP " + std::to_string(http_code) + ")";
     return false;
   }
@@ -82,4 +83,4 @@ std::string read_cached_masterlist(const std::string &game_id) {
                      std::istreambuf_iterator<char>());
 }
 
-} // namespace engine
+}  // namespace engine

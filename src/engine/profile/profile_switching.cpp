@@ -13,23 +13,23 @@ namespace engine::profile {
 
 namespace {
 
-// Case-insensitive string equality (profile names are compared
-// case-insensitively - MO2 walks directories and matches with
-// Qt::CaseInsensitive).
-bool iequals(const std::string &a, const std::string &b) {
-  if (a.size() != b.size()) {
-    return false;
-  }
-  for (size_t i = 0; i < a.size(); ++i) {
-    if (std::tolower(static_cast<unsigned char>(a[i])) !=
-        std::tolower(static_cast<unsigned char>(b[i]))) {
+  // Case-insensitive string equality (profile names are compared
+  // case-insensitively - MO2 walks directories and matches with
+  // Qt::CaseInsensitive).
+  bool iequals(const std::string &a, const std::string &b) {
+    if (a.size() != b.size()) {
       return false;
     }
+    for (size_t i = 0; i < a.size(); ++i) {
+      if (std::tolower(static_cast<unsigned char>(a[i])) !=
+          std::tolower(static_cast<unsigned char>(b[i]))) {
+        return false;
+      }
+    }
+    return true;
   }
-  return true;
-}
 
-} // namespace
+}  // namespace
 
 bool write_tweaked_ini(const std::filesystem::path &profile_dir,
                        const std::string &content, std::string *error) {
@@ -46,8 +46,7 @@ bool write_tweaked_ini(const std::filesystem::path &profile_dir,
 }
 
 bool save_current_profile(ProfileManager &profile, const ProfileSaveState &state,
-                          engine::PluginDb::Database *plugin_db,
-                          std::string *error) {
+                          engine::PluginDb::Database *plugin_db, std::string *error) {
   // 1. Flush modlist.txt immediately. The in-memory mod list is the source
   //    of truth (the UI converges it with the mods dir via
   //    refresh_mod_status at scan time); the delayed writer must never hold
@@ -126,8 +125,8 @@ ProfileSwitchResult switch_profile(const std::filesystem::path &profiles_dir,
   // the profiles dir and match case-insensitively (MO2 parity).
   std::filesystem::path profile_dir;
   std::error_code ec;
-  for (std::filesystem::directory_iterator it(profiles_dir, ec), end;
-       !ec && it != end; it.increment(ec)) {
+  for (std::filesystem::directory_iterator it(profiles_dir, ec), end; !ec && it != end;
+       it.increment(ec)) {
     if (!it->is_directory(ec) || ec) {
       continue;
     }
@@ -147,8 +146,7 @@ ProfileSwitchResult switch_profile(const std::filesystem::path &profiles_dir,
   // after the save succeeded.
   if (current != nullptr) {
     std::string save_error;
-    if (!save_current_profile(*current, current_state, plugin_db,
-                              &save_error)) {
+    if (!save_current_profile(*current, current_state, plugin_db, &save_error)) {
       result.error = "failed to save current profile: " + save_error;
       Logger::instance().error("profile switch: " + result.error);
       return result;
@@ -164,8 +162,7 @@ ProfileSwitchResult switch_profile(const std::filesystem::path &profiles_dir,
   // "set profile on ModList" step: the ProfileManager's in-memory mod list now
   // mirrors the new profile, and the UI rebuilds its ModList in the
   // refresh_directory_structure callback.
-  new_profile->refresh_mod_status(current_state.known_mods,
-                                  current_state.foreign_mods);
+  new_profile->refresh_mod_status(current_state.known_mods, current_state.foreign_mods);
 
   // Restore plugin state (plugins.txt / loadorder.txt / lockedorder.txt)
   // into the live plugin database.
@@ -173,9 +170,8 @@ ProfileSwitchResult switch_profile(const std::filesystem::path &profiles_dir,
     bool repaired = false;
     plugin_db->load_profile(profiles_dir, new_profile->name(), &repaired);
     if (repaired) {
-      Logger::instance().debug(
-          "profile switch: load order repaired for profile '" +
-          new_profile->name() + "'");
+      Logger::instance().debug("profile switch: load order repaired for profile '" +
+                               new_profile->name() + "'");
     }
   }
 
@@ -183,8 +179,7 @@ ProfileSwitchResult switch_profile(const std::filesystem::path &profiles_dir,
   // AutomaticArchiveInvalidation setting (MO2's activateInvalidation /
   // deactivateInvalidation).
   if (callbacks.set_archive_invalidation) {
-    callbacks.set_archive_invalidation(
-        new_profile->automatic_archive_invalidation());
+    callbacks.set_archive_invalidation(new_profile->automatic_archive_invalidation());
   }
 
   // Refresh the UI-owned views (MO2's refreshDirectoryStructure +
@@ -211,4 +206,4 @@ ProfileSwitchResult switch_profile(const std::filesystem::path &profiles_dir,
   return result;
 }
 
-} // namespace engine::profile
+}  // namespace engine::profile

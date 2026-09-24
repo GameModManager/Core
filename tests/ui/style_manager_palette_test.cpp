@@ -24,67 +24,66 @@
 #include <catch2/catch_test_macros.hpp>
 
 namespace {
-void check(bool cond, const char* what) {
-    INFO(what);
-    REQUIRE(cond);
+void check(bool cond, const char *what) {
+  INFO(what);
+  REQUIRE(cond);
 }
-}
+}  // namespace
 
 TEST_CASE("style manager palette", "[ui]") {
-    qputenv("QT_QPA_PLATFORM", "offscreen");
-    const std::filesystem::path cfg = "/tmp/gmm_style_palette/config";
-    std::filesystem::remove_all("/tmp/gmm_style_palette");
-    std::filesystem::create_directories(cfg);
-    qputenv("XDG_CONFIG_HOME", cfg.c_str());
-    int test_argc = 1;
-    char test_argv0[] = "test";
-    char* test_argv[] = {test_argv0, nullptr};
-    QApplication app(test_argc, test_argv);
-    QCoreApplication::setOrganizationName("GameModManager");
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_style_palette/config";
+  std::filesystem::remove_all("/tmp/gmm_style_palette");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
 
-    engine::ThemeManager theme_manager;
-    engine::StyleManager style_manager(theme_manager);
-    style_manager.apply_default();
+  engine::ThemeManager theme_manager;
+  engine::StyleManager style_manager(theme_manager);
+  style_manager.apply_default();
 
-    check(!qApp->styleSheet().isEmpty(),
-          "default theme installs a global stylesheet");
+  check(!qApp->styleSheet().isEmpty(), "default theme installs a global stylesheet");
 
-    // Probe widget styled by a palette()-token QSS rule. #zoomControls is
-    // `background-color: palette(midlight)` in default_qss, which
-    // QStyleSheetStyle resolves at polish time into the widget's
-    // QPalette::Window - and leaves stale there on a palette change unless the
-    // sheet is re-applied.
-    QWidget probe;
-    probe.setObjectName("zoomControls");
-    probe.resize(100, 40);
-    probe.show();
-    QApplication::processEvents();
+  // Probe widget styled by a palette()-token QSS rule. #zoomControls is
+  // `background-color: palette(midlight)` in default_qss, which
+  // QStyleSheetStyle resolves at polish time into the widget's
+  // QPalette::Window - and leaves stale there on a palette change unless the
+  // sheet is re-applied.
+  QWidget probe;
+  probe.setObjectName("zoomControls");
+  probe.resize(100, 40);
+  probe.show();
+  QApplication::processEvents();
 
-    const QColor baseline_midlight = app.palette().color(QPalette::Midlight);
-    check(probe.palette().color(QPalette::Window) == baseline_midlight,
-          "probe rendered with palette(midlight) at baseline");
+  const QColor baseline_midlight = app.palette().color(QPalette::Midlight);
+  check(probe.palette().color(QPalette::Window) == baseline_midlight,
+        "probe rendered with palette(midlight) at baseline");
 
-    // Simulate a system Light<->Dark switch: Qt propagates a new app palette
-    // and StyleManager's ApplicationPaletteChange hook must re-polish the
-    // probe so its palette()-token background follows the new palette.
-    QPalette dark = app.palette();
-    dark.setColor(QPalette::Midlight, QColor(0x12, 0x34, 0x56));
-    dark.setColor(QPalette::Window, QColor(0x11, 0x11, 0x11));
-    dark.setColor(QPalette::Base, QColor(0x22, 0x22, 0x22));
-    dark.setColor(QPalette::Text, QColor(0xee, 0xee, 0xee));
-    app.setPalette(dark);
-    QApplication::processEvents();
+  // Simulate a system Light<->Dark switch: Qt propagates a new app palette
+  // and StyleManager's ApplicationPaletteChange hook must re-polish the
+  // probe so its palette()-token background follows the new palette.
+  QPalette dark = app.palette();
+  dark.setColor(QPalette::Midlight, QColor(0x12, 0x34, 0x56));
+  dark.setColor(QPalette::Window, QColor(0x11, 0x11, 0x11));
+  dark.setColor(QPalette::Base, QColor(0x22, 0x22, 0x22));
+  dark.setColor(QPalette::Text, QColor(0xee, 0xee, 0xee));
+  app.setPalette(dark);
+  QApplication::processEvents();
 
-    check(probe.palette().color(QPalette::Window) == dark.color(QPalette::Midlight),
-          "probe re-resolves palette(midlight) after palette change");
+  check(probe.palette().color(QPalette::Window) == dark.color(QPalette::Midlight),
+        "probe re-resolves palette(midlight) after palette change");
 
-    // The guard: a Qt built-in style clears the sheet (settings_dialog does
-    // qApp->setStyleSheet(QString())); on such a palette change the sheet must
-    // stay empty - the native path updates everything itself, StyleManager
-    // must not clobber it back to default_qss.
-    app.setStyleSheet(QString());
-    app.setPalette(app.palette());
-    QApplication::processEvents();
-    check(qApp->styleSheet().isEmpty(),
-          "empty-sheet guard: stylesheet stays cleared on palette change");
+  // The guard: a Qt built-in style clears the sheet (settings_dialog does
+  // qApp->setStyleSheet(QString())); on such a palette change the sheet must
+  // stay empty - the native path updates everything itself, StyleManager
+  // must not clobber it back to default_qss.
+  app.setStyleSheet(QString());
+  app.setPalette(app.palette());
+  QApplication::processEvents();
+  check(qApp->styleSheet().isEmpty(),
+        "empty-sheet guard: stylesheet stays cleared on palette change");
 }

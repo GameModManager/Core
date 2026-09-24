@@ -12,16 +12,14 @@
 #include <vector>
 
 // Forward declare ABI image diff callback type
-typedef void (*GmmImageDiffFn)(const char *const *, size_t, const char *,
-                               void *);
+typedef void (*GmmImageDiffFn)(const char *const *, size_t, const char *, void *);
 
 // v2 ABI callback types - forward declared so plugin_loader.h can reference
 // them in PluginInfo without dragging the v2 header into every translation
 // unit. The real definitions live in gmm_abi_v2.h (included by
 // plugin_loader.cpp). Function pointers are valid across translation units
 // as long as the call site (plugin_loader.cpp) sees the actual type.
-typedef int (*GmmOrderEncodingFnV2)(const char *const *, size_t, const char *,
-                                    void *);
+typedef int (*GmmOrderEncodingFnV2)(const char *const *, size_t, const char *, void *);
 typedef int (*GmmDeployFnV2)(const char *, const char *, void *);
 typedef int (*GmmRemoveFnV2)(const char *, void *);
 typedef void (*GmmHookFnV2)(const char *, void *, void *);
@@ -29,7 +27,7 @@ typedef void (*GmmHookFnV2)(const char *, void *, void *);
 // A provider registered by a tool plugin for merging conflicting files
 struct ImageDiffProvider {
   GmmImageDiffFn fn = nullptr;
-  void *user_data = nullptr;
+  void *user_data   = nullptr;
 };
 
 // ABI version from the header
@@ -38,7 +36,7 @@ struct ImageDiffProvider {
 namespace engine {
 
 namespace PluginDb {
-class Database;
+  class Database;
 }
 
 // v2 ABI registration storage. These concepts have no v1-equivalent registry;
@@ -47,44 +45,44 @@ class Database;
 // void* (the real v2 types live in gmm_abi_v2.h, which is only included by
 // plugin_loader.cpp) and are safe for the plugin's loaded lifetime.
 struct PluginRequirement {
-  std::string type;    // "plugin", "game", "diagnose"
-  std::string name;    // required plugin/game name
-  std::string message; // error message if not met
+  std::string type;     // "plugin", "game", "diagnose"
+  std::string name;     // required plugin/game name
+  std::string message;  // error message if not met
 };
 
 struct PluginPreview {
   std::string file_extension;
   void *preview_data = nullptr;
-  void *fn = nullptr;
-  void *user_data = nullptr;
+  void *fn           = nullptr;
+  void *user_data    = nullptr;
 };
 
 struct PluginModPage {
   std::string url;
-  void *fn = nullptr;
+  void *fn        = nullptr;
   void *user_data = nullptr;
 };
 
 struct PluginFileMapper {
   std::string game_id;
-  void *fn = nullptr;
+  void *fn        = nullptr;
   void *user_data = nullptr;
 };
 
 struct PluginDiagnostics {
   std::string game_id;
-  void *fn = nullptr;
+  void *fn        = nullptr;
   void *user_data = nullptr;
 };
 
 struct PluginInfo {
   std::string path;
   std::string game_id;
-  std::string game_display_name; // e.g. "Skyrim Special Edition"
-  std::string author;            // optional, via register_meta
-  std::string version;           // optional, via register_meta
-  std::string description;       // optional, via register_meta
-  std::string category;          // optional, primary category (via register_category)
+  std::string game_display_name;  // e.g. "Skyrim Special Edition"
+  std::string author;             // optional, via register_meta
+  std::string version;            // optional, via register_meta
+  std::string description;        // optional, via register_meta
+  std::string category;           // optional, primary category (via register_category)
   // Optional list of additional categories declared via
   // register_categories(categories). The first entry is mirrored into
   // `category` for legacy consumers; the full list lives here so
@@ -94,7 +92,7 @@ struct PluginInfo {
   uint32_t steam_appid = 0;
   std::string nexus_domain;
   // v2-only identity fields (populated by register_game / register_plugin).
-  std::string plugin_name; // the plugin's own name (v2 register_plugin)
+  std::string plugin_name;  // the plugin's own name (v2 register_plugin)
   std::string gog_id;
   std::string epic_namespace;
   std::string exe_windows;
@@ -104,11 +102,11 @@ struct PluginInfo {
   // game support (a game to create instances for). Tool/feature plugins
   // (ImageDiff, IsaacModSorter, ...) never do; their game_id is just the
   // module stem, so gate any "list of games" on this, never on game_id.
-  bool game_support = false;
+  bool game_support    = false;
   uint32_t abi_version = 0;
-  bool loaded = false;
-  bool registered = false;
-  void *handle = nullptr; // dlopen handle
+  bool loaded          = false;
+  bool registered      = false;
+  void *handle         = nullptr;  // dlopen handle
 
   // User-facing options declared via register_settings as plain
   // key:value pairs (key = label, value = default). Source providers
@@ -124,10 +122,10 @@ struct PluginInfo {
   // raw rows in the Plugins-tab info pane.
   struct SettingTabEntry {
     std::string key;
-    std::string type; // "bool" | "int" | "string" | "choice"
+    std::string type;  // "bool" | "int" | "string" | "choice"
     std::string default_value;
-    std::vector<std::string> choices; // "choice": candidate values
-    std::string int_range;            // "int": "min:max", empty = default
+    std::vector<std::string> choices;  // "choice": candidate values
+    std::string int_range;             // "int": "min:max", empty = default
   };
   struct SettingTab {
     std::string title;
@@ -146,14 +144,14 @@ struct PluginInfo {
   // register_order_encoding). The pipeline invokes this when writing
   // load-order files (plugins.txt, metadata.xml, etc.).
   GmmOrderEncodingFnV2 order_encoding_fn = nullptr;
-  void *order_encoding_user_data = nullptr;
+  void *order_encoding_user_data         = nullptr;
 
   // v2 deploy strategy callbacks + user data (registered via
   // register_deploy_strategy). The deploy pipeline uses these instead
   // of the default copy/symlink strategy.
   GmmDeployFnV2 deploy_fn = nullptr;
   GmmRemoveFnV2 remove_fn = nullptr;
-  void *deploy_user_data = nullptr;
+  void *deploy_user_data  = nullptr;
 
   // -- v2.1+ additive tail-append (GmmSaveDataV2 features) --
   //
@@ -175,7 +173,7 @@ struct PluginInfo {
   // Stored as void* to avoid dragging the full v2 header into this
   // forward-declared header; cast back to GmmSaveOverlayFnV2 in the
   // .cpp.
-  void *save_overlay_fn = nullptr;
+  void *save_overlay_fn        = nullptr;
   void *save_overlay_user_data = nullptr;
 
   // Per-game validator (GmmLooksValidFn) and named variants
@@ -183,11 +181,11 @@ struct PluginInfo {
   // The validator is stored as void* for the same forward-decl reason
   // as save_overlay_fn; cast to GmmLooksValidFn in the .cpp. variants
   // is plain data (no callbacks) and lives here.
-  void *game_validator_fn = nullptr;
+  void *game_validator_fn        = nullptr;
   void *game_validator_user_data = nullptr;
   struct GameVariant {
-    std::string variant_id;   // "Steam", "GOG", "Epic"
-    std::string display_name; // "Steam", "GOG Galaxy", "Epic Games Store"
+    std::string variant_id;    // "Steam", "GOG", "Epic"
+    std::string display_name;  // "Steam", "GOG Galaxy", "Epic Games Store"
   };
   std::vector<GameVariant> variants;
 };
@@ -197,18 +195,23 @@ struct PluginInfo {
 // Discovered at load time on a per-plugin basis. Bit values are stable;
 // future additions go in the next free bit. The canonical enum will
 // move into gmm_abi_v2.h when the ABI ships the bit definitions.
-static constexpr uint64_t GMM_FEATURE_SAVE_SCREENSHOT = 1ull << 0; // GmmSaveDataV2.screenshot_rgba
-static constexpr uint64_t GMM_FEATURE_SAVE_ALL_FILES = 1ull << 1; // GmmSaveDataV2.all_files
-static constexpr uint64_t GMM_FEATURE_SAVE_MEDIUM    = 1ull << 2; // GmmSaveDataV2.medium_plugins
-static constexpr uint64_t GMM_FEATURE_SAVE_OVERLAY   = 1ull << 3; // register_save_overlay
-static constexpr uint64_t GMM_FEATURE_GAME_VARIANTS  = 1ull << 4; // register_game_variant
+static constexpr uint64_t GMM_FEATURE_SAVE_SCREENSHOT =
+    1ull << 0;  // GmmSaveDataV2.screenshot_rgba
+static constexpr uint64_t GMM_FEATURE_SAVE_ALL_FILES = 1ull
+                                                       << 1;  // GmmSaveDataV2.all_files
+static constexpr uint64_t GMM_FEATURE_SAVE_MEDIUM =
+    1ull << 2;  // GmmSaveDataV2.medium_plugins
+static constexpr uint64_t GMM_FEATURE_SAVE_OVERLAY  = 1ull
+                                                      << 3;  // register_save_overlay
+static constexpr uint64_t GMM_FEATURE_GAME_VARIANTS = 1ull
+                                                      << 4;  // register_game_variant
 
 class PluginLoader {
 public:
   PluginLoader() = default;
   ~PluginLoader();
 
-  PluginLoader(const PluginLoader &) = delete;
+  PluginLoader(const PluginLoader &)            = delete;
   PluginLoader &operator=(const PluginLoader &) = delete;
 
   bool load_plugin(const std::string &path);
@@ -283,12 +286,10 @@ public:
 
   // Image diff provider - tool plugin for merging conflicting sprite files
   void register_image_diff(GmmImageDiffFn fn, void *user_data) {
-    image_diff_.fn = fn;
+    image_diff_.fn        = fn;
     image_diff_.user_data = user_data;
   }
-  [[nodiscard]] bool has_image_diff() const {
-    return image_diff_.fn != nullptr;
-  }
+  [[nodiscard]] bool has_image_diff() const { return image_diff_.fn != nullptr; }
   [[nodiscard]] const ImageDiffProvider &image_diff_provider() const {
     return image_diff_;
   }
@@ -312,4 +313,4 @@ private:
   ImageDiffProvider image_diff_;
 };
 
-} // namespace engine
+}  // namespace engine

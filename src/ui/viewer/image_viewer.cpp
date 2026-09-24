@@ -20,8 +20,8 @@
 
 namespace ui {
 
-ImageViewer::ImageViewer(QWidget* parent) : FileViewerWidget(parent) {
-  auto* layout = new QVBoxLayout(this);
+ImageViewer::ImageViewer(QWidget *parent) : FileViewerWidget(parent) {
+  auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(0);
 
@@ -39,7 +39,7 @@ ImageViewer::ImageViewer(QWidget* parent) : FileViewerWidget(parent) {
   });
 }
 
-bool ImageViewer::open(const QString& path) {
+bool ImageViewer::open(const QString &path) {
   // Release the previous full-res image before decoding the next one so
   // switching images never holds two full buffers at once.
   clear();

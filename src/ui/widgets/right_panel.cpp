@@ -14,11 +14,11 @@
 
 namespace ui {
 
-static void setup_toggle_header(QTableWidget* table, const QStringList& labels,
-                                const QStringList& tooltips = {}) {
+static void setup_toggle_header(QTableWidget *table, const QStringList &labels,
+                                const QStringList &tooltips = {}) {
   if (!table)
     return;
-  auto* header = new ColumnToggleHeaderView(Qt::Horizontal, table);
+  auto *header = new ColumnToggleHeaderView(Qt::Horizontal, table);
   header->set_column_labels(labels);
   header->set_section_tooltips(tooltips);
   table->setHorizontalHeader(header);
@@ -29,7 +29,7 @@ static void setup_toggle_header(QTableWidget* table, const QStringList& labels,
 namespace {
 
   // Hide a tree item unless it or any descendant matches the filter text.
-  bool apply_tree_filter(QTreeWidgetItem* item, const QString& text) {
+  bool apply_tree_filter(QTreeWidgetItem *item, const QString &text) {
     bool self_match = text.isEmpty();
     if (!self_match) {
       for (int col = 0; col < item->columnCount(); ++col) {
@@ -51,7 +51,7 @@ namespace {
   // Capabilities with lazily built content (Workspace-j6ty). Single source
   // of truth shared by ensure_tab (placeholder gating) and build_tab (the
   // factory returns nullptr for anything else).
-  bool is_lazy_tab_capability(const std::string& capability) {
+  bool is_lazy_tab_capability(const std::string &capability) {
     return capability == "plugins" || capability == "conflicts" ||
            capability == "archives" || capability == "saves" ||
            capability == "downloads";
@@ -59,11 +59,11 @@ namespace {
 
 }  // anonymous namespace
 
-RightPanel::RightPanel(QWidget* parent) : QWidget(parent) {
+RightPanel::RightPanel(QWidget *parent) : QWidget(parent) {
   // QSS anchor for right-panel-specific rules (e.g. #rightPanel QTableView).
   setObjectName("rightPanel");
 
-  auto* layout = new QVBoxLayout(this);
+  auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(0);
 
@@ -95,11 +95,11 @@ RightPanel::RightPanel(QWidget* parent) : QWidget(parent) {
   connect(tab_widget_, &QTabWidget::currentChanged, this, [this](int index) {
     if (index < 0 || materializing_)
       return;
-    QWidget* w = tab_widget_->widget(index);
+    QWidget *w = tab_widget_->widget(index);
     // Copy the key out of the loop: materialize() erases the entry from
     // placeholders_, so it must not run while iterating that map.
     std::string to_materialize;
-    for (const auto& [cap, placeholder] : placeholders_) {
+    for (const auto &[cap, placeholder] : placeholders_) {
       if (placeholder == w) {
         to_materialize = cap;
         break;
@@ -133,13 +133,13 @@ void RightPanel::update_sort_visibility() {
   filter_bar_->set_sort_visible(on_plugins_tab);
 }
 
-QTableWidget* RightPanel::current_table() const {
-  auto* w = tab_widget_->currentWidget();
+QTableWidget *RightPanel::current_table() const {
+  auto *w = tab_widget_->currentWidget();
   if (!w)
     return nullptr;
 
   // Each tab type exposes table() - try common patterns
-  if (auto* t = w->findChild<QTableWidget*>())
+  if (auto *t = w->findChild<QTableWidget *>())
     return t;
   return nullptr;
 }
@@ -147,18 +147,18 @@ QTableWidget* RightPanel::current_table() const {
 void RightPanel::apply_filter() {
   const QString text = filter_bar_->filter_text().trimmed().toLower();
 
-  auto* table = current_table();
+  auto *table = current_table();
   if (table) {
     filter_bar_->apply_to(table);
     // The Plugins-tab counter is MO2-style (enabled + filter-visible), so
     // it must track the filter as it is typed.
-    if (auto* pt = plugins_tab())
+    if (auto *pt = plugins_tab())
       pt->refresh_counters();
     // DownloadsTab: re-apply the "hide installed" filter on top of the
     // text filter. set_filter_text feeds it the current text so the
     // re-apply hides rows that fail either filter instead of unhiding the
     // text-filtered ones.
-    if (auto* dt = qobject_cast<DownloadsTab*>(tab_widget_->currentWidget())) {
+    if (auto *dt = qobject_cast<DownloadsTab *>(tab_widget_->currentWidget())) {
       dt->set_filter_text(text);
       dt->reapply_installed_filter();
     }
@@ -167,10 +167,10 @@ void RightPanel::apply_filter() {
 
   // ConflictsTab / DataTab use QTreeWidget - filter recursively so a branch
   // stays visible when any descendant matches.
-  auto* w = tab_widget_->currentWidget();
+  auto *w = tab_widget_->currentWidget();
   if (!w)
     return;
-  auto* tree = w->findChild<QTreeWidget*>();
+  auto *tree = w->findChild<QTreeWidget *>();
   if (tree) {
     for (int i = 0; i < tree->topLevelItemCount(); ++i)
       apply_tree_filter(tree->topLevelItem(i), text);
@@ -182,18 +182,18 @@ void RightPanel::clear_tabs() {
   while (tab_widget_->count() > 1) {
     tab_widget_->removeTab(1);
   }
-  for (auto& [key, widget] : tabs_) {
+  for (auto &[key, widget] : tabs_) {
     delete widget;
   }
   tabs_.clear();
-  for (auto& [key, widget] : placeholders_) {
+  for (auto &[key, widget] : placeholders_) {
     delete widget;
   }
   placeholders_.clear();
   tab_labels_.clear();
 }
 
-void RightPanel::ensure_tab(const std::string& capability, const QString& label) {
+void RightPanel::ensure_tab(const std::string &capability, const QString &label) {
   if (tabs_.count(capability) || placeholders_.count(capability))
     return;
 
@@ -203,18 +203,18 @@ void RightPanel::ensure_tab(const std::string& capability, const QString& label)
   if (!is_lazy_tab_capability(capability))
     return;
 
-  auto* placeholder = new QLabel(tr("Loading..."), tab_widget_);
+  auto *placeholder = new QLabel(tr("Loading..."), tab_widget_);
   placeholder->setAlignment(Qt::AlignCenter);
   placeholders_[capability] = placeholder;
   tab_labels_[capability]   = label;
   tab_widget_->addTab(placeholder, label);
 }
 
-QWidget* RightPanel::build_tab(const std::string& capability) {
-  QWidget* tab = nullptr;
+QWidget *RightPanel::build_tab(const std::string &capability) {
+  QWidget *tab = nullptr;
 
   if (capability == "plugins") {
-    auto* t = new PluginsTab(tab_widget_);
+    auto *t = new PluginsTab(tab_widget_);
     // Column header tooltips mirror MO2's PluginList::getColumnToolTip.
     setup_toggle_header(
         t->table(),
@@ -228,23 +228,23 @@ QWidget* RightPanel::build_tab(const std::string& capability) {
          tr("Whether this plugin's load order position is pinned.")});
     // Mod Index keeps stretching (it used to be the last section); the
     // Locked column stays a fixed narrow slot.
-    auto* hdr = t->table()->horizontalHeader();
+    auto *hdr = t->table()->horizontalHeader();
     hdr->setStretchLastSection(false);
     hdr->setSectionResizeMode(3, QHeaderView::Stretch);
     hdr->resizeSection(4, 80);
     tab = t;
   } else if (capability == "conflicts") {
-    auto* t = new ConflictsTab(tab_widget_);
+    auto *t = new ConflictsTab(tab_widget_);
     tab     = t;
   } else if (capability == "archives") {
     // Flat tree, no header.
-    auto* t = new ArchivesTab(tab_widget_);
+    auto *t = new ArchivesTab(tab_widget_);
     tab     = t;
   } else if (capability == "saves") {
-    auto* t = new SavesTab(tab_widget_);
+    auto *t = new SavesTab(tab_widget_);
     setup_toggle_header(t->table(), {tr("Name"), tr("File"), tr("Missing")});
     // Name stretches; File/Missing keep user-set width on resize.
-    auto* hdr = t->table()->horizontalHeader();
+    auto *hdr = t->table()->horizontalHeader();
     hdr->setStretchLastSection(false);
     hdr->setSectionResizeMode(0, QHeaderView::Stretch);
     hdr->setSectionResizeMode(1, QHeaderView::Interactive);
@@ -253,11 +253,11 @@ QWidget* RightPanel::build_tab(const std::string& capability) {
     hdr->resizeSection(2, 60);
     tab = t;
   } else if (capability == "downloads") {
-    auto* t = new DownloadsTab(tab_widget_);
+    auto *t = new DownloadsTab(tab_widget_);
     setup_toggle_header(t->table(),
                         {tr("Name"), tr("Source"), tr("Status"), tr("Size")});
     // Name stretches; Source/Status/Size keep user-set width on resize
-    auto* hdr = t->table()->horizontalHeader();
+    auto *hdr = t->table()->horizontalHeader();
     hdr->setStretchLastSection(false);
     hdr->setSectionResizeMode(0, QHeaderView::Stretch);
     hdr->setSectionResizeMode(1, QHeaderView::Interactive);
@@ -275,7 +275,7 @@ QWidget* RightPanel::build_tab(const std::string& capability) {
   return nullptr;
 }
 
-QWidget* RightPanel::materialize(const std::string& capability) {
+QWidget *RightPanel::materialize(const std::string &capability) {
   // Copy the key: the currentChanged handler passes a reference into
   // placeholders_, which this function erases below. Hashing that reference
   // after the erase reads freed memory (SIGSEGV in unordered_map hashing
@@ -290,9 +290,9 @@ QWidget* RightPanel::materialize(const std::string& capability) {
   if (ph == placeholders_.end())
     return nullptr;  // capability not in the tab bar
 
-  QWidget* placeholder = ph->second;
+  QWidget *placeholder = ph->second;
   const int index      = tab_widget_->indexOf(placeholder);
-  QWidget* real        = build_tab(key);
+  QWidget *real        = build_tab(key);
   if (!real)
     return nullptr;
 
@@ -318,7 +318,7 @@ QWidget* RightPanel::materialize(const std::string& capability) {
   return real;
 }
 
-void RightPanel::set_game(const std::string& game_id) {
+void RightPanel::set_game(const std::string &game_id) {
   current_game_id_ = game_id;
   // Rebuilding the tab bar fires currentChanged for every removed/added
   // tab; none of those are user selections, so suppress tab_changed.
@@ -331,7 +331,7 @@ void RightPanel::set_game(const std::string& game_id) {
     // Remove Data from index 0 - re-add at correct sorted position
     tab_widget_->removeTab(0);
 
-    for (const auto& info : caps) {
+    for (const auto &info : caps) {
       if (info.capability == "data") {
         tab_widget_->addTab(data_tab_, tr("Data"));
       } else {
@@ -354,7 +354,7 @@ void RightPanel::set_game(const std::string& game_id) {
   suppress_tab_save_ = false;
 }
 
-void RightPanel::restore_tab(const std::string& capability) {
+void RightPanel::restore_tab(const std::string &capability) {
   if (capability.empty())
     return;  // default = first tab
 
@@ -363,7 +363,7 @@ void RightPanel::restore_tab(const std::string& capability) {
   if (capability != "data")
     materialize(capability);
 
-  QWidget* target = nullptr;
+  QWidget *target = nullptr;
   if (capability == "data") {
     target = data_tab_;
   } else {
@@ -385,41 +385,41 @@ void RightPanel::restore_tab(const std::string& capability) {
 }
 
 std::string RightPanel::current_tab_capability() const {
-  auto* w = tab_widget_->currentWidget();
+  auto *w = tab_widget_->currentWidget();
   if (!w)
     return {};
   if (w == data_tab_)
     return "data";
-  for (const auto& [cap, widget] : tabs_) {
+  for (const auto &[cap, widget] : tabs_) {
     if (widget == w)
       return cap;
   }
   // Still a placeholder (e.g. queried mid-rebuild): the capability is known
   // even though the content is not built yet.
-  for (const auto& [cap, widget] : placeholders_) {
+  for (const auto &[cap, widget] : placeholders_) {
     if (widget == w)
       return cap;
   }
   return {};
 }
 
-DownloadsTab* RightPanel::downloads_tab() const {
+DownloadsTab *RightPanel::downloads_tab() const {
   auto it = tabs_.find("downloads");
   if (it != tabs_.end())
-    return qobject_cast<DownloadsTab*>(it->second);
+    return qobject_cast<DownloadsTab *>(it->second);
   return nullptr;
 }
 
-SavesTab* RightPanel::saves_tab() const {
+SavesTab *RightPanel::saves_tab() const {
   auto it = tabs_.find("saves");
   if (it != tabs_.end())
-    return qobject_cast<SavesTab*>(it->second);
+    return qobject_cast<SavesTab *>(it->second);
   return nullptr;
 }
 
 void RightPanel::show_downloads_tab() {
   // A download arrived: the user should see it, so build the tab now.
-  auto* dt = ensure_downloads_tab();
+  auto *dt = ensure_downloads_tab();
   if (!dt)
     return;
   int index = tab_widget_->indexOf(dt);
@@ -432,46 +432,46 @@ void RightPanel::show_downloads_tab() {
   suppress_tab_save_ = false;
 }
 
-ConflictsTab* RightPanel::conflicts_tab() const {
+ConflictsTab *RightPanel::conflicts_tab() const {
   auto it = tabs_.find("conflicts");
   if (it != tabs_.end())
-    return qobject_cast<ConflictsTab*>(it->second);
+    return qobject_cast<ConflictsTab *>(it->second);
   return nullptr;
 }
 
-DataTab* RightPanel::data_tab() const {
+DataTab *RightPanel::data_tab() const {
   return data_tab_;
 }
 
-PluginsTab* RightPanel::plugins_tab() const {
+PluginsTab *RightPanel::plugins_tab() const {
   auto it = tabs_.find("plugins");
   if (it != tabs_.end())
-    return qobject_cast<PluginsTab*>(it->second);
+    return qobject_cast<PluginsTab *>(it->second);
   return nullptr;
 }
 
-DownloadsTab* RightPanel::ensure_downloads_tab() {
-  if (auto* dt = downloads_tab())
+DownloadsTab *RightPanel::ensure_downloads_tab() {
+  if (auto *dt = downloads_tab())
     return dt;
-  return qobject_cast<DownloadsTab*>(materialize("downloads"));
+  return qobject_cast<DownloadsTab *>(materialize("downloads"));
 }
 
-SavesTab* RightPanel::ensure_saves_tab() {
-  if (auto* st = saves_tab())
+SavesTab *RightPanel::ensure_saves_tab() {
+  if (auto *st = saves_tab())
     return st;
-  return qobject_cast<SavesTab*>(materialize("saves"));
+  return qobject_cast<SavesTab *>(materialize("saves"));
 }
 
-ConflictsTab* RightPanel::ensure_conflicts_tab() {
-  if (auto* ct = conflicts_tab())
+ConflictsTab *RightPanel::ensure_conflicts_tab() {
+  if (auto *ct = conflicts_tab())
     return ct;
-  return qobject_cast<ConflictsTab*>(materialize("conflicts"));
+  return qobject_cast<ConflictsTab *>(materialize("conflicts"));
 }
 
-PluginsTab* RightPanel::ensure_plugins_tab() {
-  if (auto* pt = plugins_tab())
+PluginsTab *RightPanel::ensure_plugins_tab() {
+  if (auto *pt = plugins_tab())
     return pt;
-  return qobject_cast<PluginsTab*>(materialize("plugins"));
+  return qobject_cast<PluginsTab *>(materialize("plugins"));
 }
 
 }  // namespace ui

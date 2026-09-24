@@ -15,39 +15,39 @@ namespace ui {
 
 namespace {
 
-void set_description_html(DescriptionRenderer *renderer, const QString &desc,
-                          std::atomic<unsigned> *gen) {
-  if (renderer == nullptr)
-    return;
-  // No clear(): the install below replaces the content atomically; the
-  // clear-then-set gap flashes the webview's default background. The
-  // token bump discards stale async parses instead. Same sanitization
-  // pipeline as the other source panels: bbcode_to_html strips
-  // javascript:/data: URLs and CSS meta-chars; each renderer wraps the
-  // fragment in its own shell.
-  if (desc.isEmpty()) {
-    renderer->set_description(QStringLiteral(
-        "<div style=\"text-align:center; color:grey; padding-top:24px;\">"
-        "<p>No mod.pub description stored for this mod. Press "
-        "<b>Refresh</b> to fetch it live.</p></div>"));
-    return;
+  void set_description_html(DescriptionRenderer *renderer, const QString &desc,
+                            std::atomic<unsigned> *gen) {
+    if (renderer == nullptr)
+      return;
+    // No clear(): the install below replaces the content atomically; the
+    // clear-then-set gap flashes the webview's default background. The
+    // token bump discards stale async parses instead. Same sanitization
+    // pipeline as the other source panels: bbcode_to_html strips
+    // javascript:/data: URLs and CSS meta-chars; each renderer wraps the
+    // fragment in its own shell.
+    if (desc.isEmpty()) {
+      renderer->set_description(QStringLiteral(
+          "<div style=\"text-align:center; color:grey; padding-top:24px;\">"
+          "<p>No mod.pub description stored for this mod. Press "
+          "<b>Refresh</b> to fetch it live.</p></div>"));
+      return;
+    }
+    // BBCode parse + layout moves off the UI thread for descriptions
+    // >= 1 KB. The async helper uses `gen` to drop stale results when the
+    // user clicks rapidly through the mod list.
+    if (gen != nullptr)
+      ++*gen;
+    set_bbcode_html_async(renderer, desc, gen);
   }
-  // BBCode parse + layout moves off the UI thread for descriptions
-  // >= 1 KB. The async helper uses `gen` to drop stale results when the
-  // user clicks rapidly through the mod list.
-  if (gen != nullptr)
-    ++*gen;
-  set_bbcode_html_async(renderer, desc, gen);
-}
 
-} // namespace
+}  // namespace
 
 ModPubSourcePanel::ModPubSourcePanel(const ModInfoData &data, QWidget *parent)
     : SourceInfoPanel(data, parent) {
   auto *layout = new QVBoxLayout(this);
 
   auto *form = new QFormLayout();
-  mod_id_ = new QLineEdit(this);
+  mod_id_    = new QLineEdit(this);
   mod_id_->setPlaceholderText(QStringLiteral("0"));
   form->addRow(tr("Mod ID:"), mod_id_);
 
@@ -63,14 +63,13 @@ ModPubSourcePanel::ModPubSourcePanel(const ModInfoData &data, QWidget *parent)
   form->addRow(tr("Author:"), author_);
 
   page_url_ = new QLineEdit(this);
-  page_url_->setPlaceholderText(
-      QStringLiteral("https://mod.pub/<game>/<id>-<slug>"));
+  page_url_->setPlaceholderText(QStringLiteral("https://mod.pub/<game>/<id>-<slug>"));
   form->addRow(tr("Page URL:"), page_url_);
   layout->addLayout(form);
 
   auto *buttons = new QHBoxLayout();
-  refresh_ = new QPushButton(tr("Refresh"), this);
-  visit_ = new QPushButton(tr("Visit on ModPub"), this);
+  refresh_      = new QPushButton(tr("Refresh"), this);
+  visit_        = new QPushButton(tr("Visit on ModPub"), this);
   buttons->addWidget(refresh_);
   buttons->addWidget(visit_);
   buttons->addStretch(1);
@@ -96,8 +95,7 @@ ModPubSourcePanel::ModPubSourcePanel(const ModInfoData &data, QWidget *parent)
           &ModPubSourcePanel::persist_fields);
   connect(page_url_, &QLineEdit::editingFinished, this,
           &ModPubSourcePanel::persist_fields);
-  connect(refresh_, &QPushButton::clicked, this,
-          &ModPubSourcePanel::on_refresh);
+  connect(refresh_, &QPushButton::clicked, this, &ModPubSourcePanel::on_refresh);
   connect(visit_, &QPushButton::clicked, this, &ModPubSourcePanel::on_visit);
 
   populate();
@@ -120,9 +118,8 @@ void ModPubSourcePanel::populate() {
   // Lock the Mod ID when the mod is confirmed ModPub-sourced with a
   // numeric id - matches LoversLab/Steam behavior so the panel does not
   // let the user overwrite a real source id with garbage.
-  const bool is_confirmed_mp =
-      (data_.source_type == QLatin1String("modpub") && !mid.isEmpty() &&
-       mid.toLongLong() > 0);
+  const bool is_confirmed_mp = (data_.source_type == QLatin1String("modpub") &&
+                                !mid.isEmpty() && mid.toLongLong() > 0);
   mod_id_->setReadOnly(is_confirmed_mp);
 
   version_->setText(meta_value("General", "version"));
@@ -142,8 +139,7 @@ bool ModPubSourcePanel::has_data() const {
   // section already exists in the sidecar meta (legacy data, future
   // refresh, manual user edit). Pure version-only mods (the default
   // "1.0" stamped on every install) are NOT ModPub has_data.
-  if (data_.source_type == QLatin1String("modpub") &&
-      !data_.source_id.isEmpty())
+  if (data_.source_type == QLatin1String("modpub") && !data_.source_id.isEmpty())
     return true;
   if (data_.load_meta) {
     auto meta = data_.load_meta();
@@ -157,7 +153,9 @@ bool ModPubSourcePanel::has_data() const {
          !meta_value("ModPub", "description").isEmpty();
 }
 
-void ModPubSourcePanel::save_state() { persist_fields(); }
+void ModPubSourcePanel::save_state() {
+  persist_fields();
+}
 
 void ModPubSourcePanel::render_description() {
   if (description_ == nullptr)
@@ -189,11 +187,11 @@ void ModPubSourcePanel::on_refresh() {
 }
 
 void ModPubSourcePanel::launch_fetch() {
-  fetch_in_flight_ = true;
-  refresh_pending_ = false;
-  refresh_mod_id_ = data_.id;
+  fetch_in_flight_  = true;
+  refresh_pending_  = false;
+  refresh_mod_id_   = data_.id;
   const quint64 gen = refresh_generation_;
-  auto fetch = data_.fetch_modpub_info;
+  auto fetch        = data_.fetch_modpub_info;
 
   if (refresh_ != nullptr) {
     refresh_->setEnabled(false);
@@ -202,24 +200,23 @@ void ModPubSourcePanel::launch_fetch() {
 
   if (source_fetch_thread_ == nullptr) {
     source_fetch_thread_ = new ModPubFetchThread(this);
-    connect(source_fetch_thread_->worker(), &ModPubFetchWorker::finished,
-            this, &ModPubSourcePanel::on_fetch_finished);
+    connect(source_fetch_thread_->worker(), &ModPubFetchWorker::finished, this,
+            &ModPubSourcePanel::on_fetch_finished);
   }
   source_fetch_thread_->start(std::move(fetch), gen);
 }
 
-void ModPubSourcePanel::on_fetch_finished(
-    engine::ModPubModInfoResult result, quint64 generation) {
+void ModPubSourcePanel::on_fetch_finished(engine::ModPubModInfoResult result,
+                                          quint64 generation) {
   fetch_in_flight_ = false;
   if (refresh_ != nullptr) {
     refresh_->setEnabled(true);
     refresh_->setText(tr("Refresh"));
   }
 
-  const bool stale =
-      generation != refresh_generation_ || refresh_mod_id_ != data_.id;
+  const bool stale = generation != refresh_generation_ || refresh_mod_id_ != data_.id;
   const bool relaunch = refresh_pending_;
-  refresh_pending_ = false;
+  refresh_pending_    = false;
 
   if (!stale)
     apply_fetch_result(result);
@@ -227,8 +224,7 @@ void ModPubSourcePanel::on_fetch_finished(
     launch_fetch();
 }
 
-void ModPubSourcePanel::apply_fetch_result(
-    const engine::ModPubModInfoResult &result) {
+void ModPubSourcePanel::apply_fetch_result(const engine::ModPubModInfoResult &result) {
   if (!result.available) {
     render_description();
     return;
@@ -265,8 +261,7 @@ void ModPubSourcePanel::apply_fetch_result(
     meta.set("ModPub", "description",
              QString::fromStdString(result.description).toStdString());
   if (!result.author.empty())
-    meta.set("ModPub", "author",
-             QString::fromStdString(result.author).toStdString());
+    meta.set("ModPub", "author", QString::fromStdString(result.author).toStdString());
   if (!result.date_modified.empty())
     meta.set("ModPub", "date_modified",
              QString::fromStdString(result.date_modified).toStdString());
@@ -302,11 +297,10 @@ void ModPubSourcePanel::persist_fields() {
     return;
   if (mod_id_ == nullptr)
     return;
-  const QString mid = mod_id_->text().trimmed();
+  const QString mid          = mod_id_->text().trimmed();
   const QString existing_mid = meta_value("ModPub", "mod_id");
   const bool is_modpub_mod =
-      (data_.source_type == QLatin1String("modpub")) ||
-      !existing_mid.isEmpty();
+      (data_.source_type == QLatin1String("modpub")) || !existing_mid.isEmpty();
   if (is_modpub_mod) {
     set_meta_value("ModPub", "mod_id", mid);
   }
@@ -323,4 +317,4 @@ void ModPubSourcePanel::persist_fields() {
   }
 }
 
-} // namespace ui
+}  // namespace ui

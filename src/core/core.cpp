@@ -64,8 +64,8 @@ std::string log_path() {
   return data_dir() + "/gamemodmanager.log";
 }
 
-void qt_message_filter(QtMsgType type, const QMessageLogContext& ctx,
-                       const QString& msg) {
+void qt_message_filter(QtMsgType type, const QMessageLogContext &ctx,
+                       const QString &msg) {
   // Suppress noisy Qt platform/theme messages
   if (msg.contains("grabbing the mouse") || msg.contains("This plugin supports"))
     return;
@@ -79,7 +79,7 @@ void qt_message_filter(QtMsgType type, const QMessageLogContext& ctx,
 // (Workspace-jagw): which instance the coming session will load, so the
 // constructor can already apply its per-instance settings. Returns empty
 // when no loadable instance is known yet (first run).
-fs::path resolve_startup_instance_root(const cli::ParsedArgs& args) {
+fs::path resolve_startup_instance_root(const cli::ParsedArgs &args) {
   if (args.headless) {
     if (args.instance_name.isEmpty())
       return {};
@@ -108,7 +108,7 @@ fs::path resolve_startup_instance_root(const cli::ParsedArgs& args) {
 
 namespace Core {
 
-Application::Application(int& argc, char** argv)
+Application::Application(int &argc, char **argv)
     : app_(argc, argv), command_line_(argc, argv) {
   // Install the cross-platform crash handler as early as possible, before any
   // UI or engine setup, so crashes during startup are captured too.
@@ -159,7 +159,7 @@ Application::Application(int& argc, char** argv)
 #endif
 
   // Apply app settings that affect startup behavior.
-  auto& settings              = Settings::instance();
+  auto &settings              = Settings::instance();
   const QString instances_dir = settings.instances_dir();
   if (!instances_dir.isEmpty())
     engine::set_instances_dir_override(instances_dir.toStdString());
@@ -180,7 +180,7 @@ Application::Application(int& argc, char** argv)
   // Capture the native (platform) style name in canonical QStyleFactory
   // casing before any user-selected style is applied.
   native_style_name_ = app_.style()->objectName();
-  for (const auto& key : QStyleFactory::keys()) {
+  for (const auto &key : QStyleFactory::keys()) {
     if (key.compare(native_style_name_, Qt::CaseInsensitive) == 0) {
       native_style_name_ = key;
       break;
@@ -195,7 +195,7 @@ Application::Application(int& argc, char** argv)
   // icon pack / theme. Set up before the window icon so the app icon itself
   // resolves through the pack chain.
   {
-    auto& icon_mgr = engine::IconManager::instance();
+    auto &icon_mgr = engine::IconManager::instance();
     icon_mgr.discover_packs(QCoreApplication::applicationDirPath().toStdString());
     icon_mgr.set_mode(ui::effective_icon_pack(startup_instance_root_).toStdString());
     icon_mgr.set_current_theme(
@@ -210,7 +210,7 @@ Application::Application(int& argc, char** argv)
   // modl ...) silently dropping the second URL is the kind of footgun the
   // user notices three days later. Set the early-exit flag here and let
   // run() handle the actual return code (constructors can't return values).
-  const auto& args       = command_line_.args();
+  const auto &args       = command_line_.args();
   const int handle_count = (args.handle_nxm ? 1 : 0) + (args.handle_gmm ? 1 : 0) +
                            (args.handle_modl ? 1 : 0);
   if (handle_count > 1) {
@@ -245,7 +245,7 @@ Application::Application(int& argc, char** argv)
   // set is the effective per-instance list (Workspace-jagw).
   plugin_loader_ = std::make_unique<engine::PluginLoader>();
   std::vector<std::string> disabled;
-  for (const auto& name : ui::effective_disabled_plugins(startup_instance_root_))
+  for (const auto &name : ui::effective_disabled_plugins(startup_instance_root_))
     disabled.push_back(name.toStdString());
   plugin_loader_->set_disabled_plugins(disabled);
 
@@ -254,7 +254,7 @@ Application::Application(int& argc, char** argv)
       app_dir + "/plugins",
       app_dir + "/../plugins",
   };
-  for (const auto& dir : plugin_dirs) {
+  for (const auto &dir : plugin_dirs) {
     if (QDir(dir).exists()) {
       plugin_loader_->load_directory(dir.toStdString());
     }
@@ -270,14 +270,14 @@ Application::Application(int& argc, char** argv)
   // cache file finishes writing after exit).
   {
     std::vector<std::pair<std::string, std::string>> pending;
-    for (const auto& game_id : plugin_loader_->knowledge().registered_games()) {
+    for (const auto &game_id : plugin_loader_->knowledge().registered_games()) {
       std::string url =
           engine::masterlist_url_for(plugin_loader_->knowledge(), game_id);
       if (!url.empty())
         pending.emplace_back(game_id, std::move(url));
     }
     std::thread([pending = std::move(pending)] {
-      for (const auto& [game_id, url] : pending) {
+      for (const auto &[game_id, url] : pending) {
         std::string error;
         if (!engine::ensure_masterlist_cached(game_id, url, error)) {
           engine::Logger::instance().warn("Masterlist fetch failed for " + game_id +
@@ -295,11 +295,11 @@ Application::~Application() {
 }
 
 void Application::apply_effective_appearance(
-    const std::filesystem::path& instance_root) {
+    const std::filesystem::path &instance_root) {
   const QString qt_style   = ui::effective_style(instance_root);
   const QString theme_name = ui::effective_theme(instance_root);
   if (!qt_style.isEmpty()) {
-    if (QStyle* st = QStyleFactory::create(qt_style)) {
+    if (QStyle *st = QStyleFactory::create(qt_style)) {
       app_.setStyle(st);
       engine::Logger::instance().info("Applied Qt style: " + qt_style.toStdString());
       return;
@@ -320,7 +320,7 @@ int Application::run() {
   if (early_exit_)
     return early_exit_code_;
 
-  const auto& args = command_line_.args();
+  const auto &args = command_line_.args();
 
   // -- Single-instance fast path (plain GUI launch only) ------------------
   // Probe the singleton lock BEFORE instance scanning / URL handling so a
@@ -396,7 +396,7 @@ int Application::run() {
     auto ext            = exec_path.extension().string();
     if (!ext.empty() && ext[0] == '.') {
       auto lower = ext.substr(1);
-      for (auto& c : lower)
+      for (auto &c : lower)
         c = std::tolower(c);
       is_windows_exe = (lower == "exe");
     }
@@ -453,7 +453,7 @@ int Application::run() {
     // instance and trigger a "no game supports this" dialog in the wrong
     // process.
     std::string matched_game_id;
-    for (const auto& p : plugin_loader_->plugins()) {
+    for (const auto &p : plugin_loader_->plugins()) {
       if (p.nexus_domain == link.nexus_domain) {
         matched_game_id = p.game_id;
         break;
@@ -476,7 +476,7 @@ int Application::run() {
 
     // Find an existing instance for this game
     std::string target_instance;
-    for (const auto& inst_name : existing_instances) {
+    for (const auto &inst_name : existing_instances) {
       auto inst =
           engine::Instance::installed(inst_name, engine::default_instances_dir());
       if (inst.read_toml() && inst.info().game_id == matched_game_id) {
@@ -517,7 +517,7 @@ int Application::run() {
     // "other" is the catch-all and always passes this check.
     std::string matched_game_id;
     if (link.game_id != "other") {
-      for (const auto& p : plugin_loader_->plugins()) {
+      for (const auto &p : plugin_loader_->plugins()) {
         if (p.game_id == link.game_id) {
           matched_game_id = p.game_id;
           break;
@@ -543,7 +543,7 @@ int Application::run() {
     if (link.game_id == "other") {
       target_instance = engine::read_last_instance();
     } else {
-      for (const auto& inst_name : existing_instances) {
+      for (const auto &inst_name : existing_instances) {
         auto inst =
             engine::Instance::installed(inst_name, engine::default_instances_dir());
         if (inst.read_toml() && inst.info().game_id == matched_game_id) {
@@ -595,7 +595,7 @@ int Application::run() {
     std::vector<engine::DetectedGame> installed_games;
     {
       std::vector<std::pair<uint32_t, std::pair<std::string, std::string>>> game_specs;
-      for (const auto& plugin : plugin_loader_->game_plugins()) {
+      for (const auto &plugin : plugin_loader_->game_plugins()) {
         if (plugin.steam_appid > 0) {
           game_specs.push_back(
               {plugin.steam_appid, {plugin.game_id, plugin.game_display_name}});
@@ -608,7 +608,7 @@ int Application::run() {
 
     // Build installed games list
     std::vector<ui::GameEntry> installed_entries;
-    for (const auto& g : installed_games) {
+    for (const auto &g : installed_games) {
       ui::GameEntry e;
       e.game_id      = g.game_id;
       e.display_name = g.name;
@@ -620,9 +620,9 @@ int Application::run() {
 
     // Build available games list (all registered but not detected)
     std::vector<ui::GameEntry> available_entries;
-    for (const auto& plugin : plugin_loader_->game_plugins()) {
+    for (const auto &plugin : plugin_loader_->game_plugins()) {
       bool found = false;
-      for (const auto& g : installed_games) {
+      for (const auto &g : installed_games) {
         if (g.game_id == plugin.game_id) {
           found = true;
           break;
@@ -640,14 +640,14 @@ int Application::run() {
 
     // Show game selection, then MainWindow on game selected
     QStackedWidget stack;
-    auto* selection = new ui::GameSelectionWidget();
+    auto *selection = new ui::GameSelectionWidget();
     selection->set_games(installed_entries, available_entries);
 
-    ui::MainWindow* main_window = nullptr;
+    ui::MainWindow *main_window = nullptr;
 
     QObject::connect(
         selection, &ui::GameSelectionWidget::game_selected,
-        [&](const ui::GameEntry& entry) {
+        [&](const ui::GameEntry &entry) {
           engine::Logger::instance().info("Game selected: " + entry.game_id);
 
           const std::string inst_name = ui::prompt_instance_name(
@@ -658,7 +658,7 @@ int Application::run() {
           // Find the full DetectedGame for this entry
           engine::DetectedGame detected;
           bool is_detected = false;
-          for (const auto& g : installed_games) {
+          for (const auto &g : installed_games) {
             if (g.game_id == entry.game_id) {
               detected    = g;
               is_detected = true;
@@ -779,7 +779,7 @@ int Application::run() {
         return 0;
       }
       apply_effective_appearance(active_root);
-      auto& icon_mgr = engine::IconManager::instance();
+      auto &icon_mgr = engine::IconManager::instance();
       icon_mgr.set_mode(ui::effective_icon_pack(active_root).toStdString());
       icon_mgr.set_current_theme(ui::effective_theme(active_root).toStdString());
       startup_instance_root_ = active_root;

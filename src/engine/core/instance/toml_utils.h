@@ -15,22 +15,22 @@ namespace engine {
 // syntax and re-parses. Returns nullopt when the file cannot be read or
 // parsed.
 [[nodiscard]] std::optional<toml::table>
-parse_instance_toml(const std::filesystem::path& path);
+parse_instance_toml(const std::filesystem::path &path);
 
 // Content overload (tests, in-memory callers).
 [[nodiscard]] std::optional<toml::table>
-parse_instance_toml_content(const std::string& content);
+parse_instance_toml_content(const std::string &content);
 
 // Drop the cached parse for `path`, if any. Every instance.toml writer must
 // call this after a successful write: the path-keyed cache below is
 // validated by mtime+size, and a same-tick rewrite would otherwise risk
 // serving the pre-write table to the next reader.
-void invalidate_instance_toml_cache(const std::filesystem::path& path);
+void invalidate_instance_toml_cache(const std::filesystem::path &path);
 
 // Drop all cached parses. Intended for test isolation.
 void clear_instance_toml_cache();
 
 // Serialize a table back to TOML text (trailing newline included).
-[[nodiscard]] std::string serialize_instance_toml(const toml::table& tbl);
+[[nodiscard]] std::string serialize_instance_toml(const toml::table &tbl);
 
 }  // namespace engine

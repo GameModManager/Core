@@ -7,7 +7,7 @@ Language: Cpp
 DeriveLineEnding: false
 UseCRLF: false
 DerivePointerAlignment: false
-PointerAlignment: Left
+PointerAlignment: Right
 AlignConsecutiveAssignments: true
 AllowShortFunctionsOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: Never
@@ -20,4 +20,7 @@ NamespaceIndentation: Inner
 MaxEmptyLinesToKeep: 1
 BreakBeforeBraces: Attach
 ColumnLimit: 88
+# Include order is load-bearing (e.g. the CURLINC_CURL_H guard shim in
+# network_manager.h) - never let clang-format reorder includes.
+SortIncludes: Never
 ForEachMacros: ['Q_FOREACH', 'foreach']

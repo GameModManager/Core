@@ -57,7 +57,7 @@ struct SavesScanRequest {
 class SavesScanWorker : public QObject {
   Q_OBJECT
 public:
-  explicit SavesScanWorker(QObject* parent = nullptr);
+  explicit SavesScanWorker(QObject *parent = nullptr);
 
   // Runs on the worker thread. Only ever invoked through
   // SavesScanThread::start().
@@ -84,10 +84,10 @@ signals:
 class SavesScanThread : public QObject {
   Q_OBJECT
 public:
-  explicit SavesScanThread(QObject* parent = nullptr);
+  explicit SavesScanThread(QObject *parent = nullptr);
   ~SavesScanThread() override;
 
-  SavesScanWorker* worker() const { return worker_; }
+  SavesScanWorker *worker() const { return worker_; }
 
   // Queue a scan for the worker thread.
   void start(SavesScanRequest request);
@@ -96,8 +96,8 @@ signals:
   void operation_finished();
 
 private:
-  QThread* thread_         = nullptr;
-  SavesScanWorker* worker_ = nullptr;
+  QThread *thread_         = nullptr;
+  SavesScanWorker *worker_ = nullptr;
 };
 
 }  // namespace ui

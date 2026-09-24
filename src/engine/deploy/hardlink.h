@@ -22,4 +22,4 @@ public:
                                         const std::filesystem::path &b);
 };
 
-} // namespace Deploy
+}  // namespace Deploy

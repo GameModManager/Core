@@ -23,36 +23,36 @@ namespace {
 
   // Human-readable result for a failed profile operation (the engine returns
   // error strings; the UI shows them in a message box).
-  void show_error(QWidget* parent, const QString& title, const std::string& error) {
+  void show_error(QWidget *parent, const QString &title, const std::string &error) {
     QMessageBox::warning(parent, title, QString::fromStdString(error));
   }
 
 }  // namespace
 
-ProfileManagerDialog::ProfileManagerDialog(const std::filesystem::path& profiles_dir,
-                                           const QString& active_profile,
-                                           const QString& default_profile,
-                                           QWidget* parent)
+ProfileManagerDialog::ProfileManagerDialog(const std::filesystem::path &profiles_dir,
+                                           const QString &active_profile,
+                                           const QString &default_profile,
+                                           QWidget *parent)
     : QDialog(parent), profiles_dir_(profiles_dir), active_profile_(active_profile),
       default_profile_(default_profile) {
   setWindowTitle(tr("Profile Manager"));
   setMinimumSize(480, 420);
 
-  auto* root = new QVBoxLayout(this);
+  auto *root = new QVBoxLayout(this);
 
   list_ = new QListWidget(this);
   root->addWidget(list_, 1);
 
   // Per-profile settings (MO2's ProfilesDialog checkboxes).
-  auto* settings_group  = new QGroupBox(tr("Profile settings"), this);
-  auto* settings_layout = new QVBoxLayout(settings_group);
+  auto *settings_group  = new QGroupBox(tr("Profile settings"), this);
+  auto *settings_layout = new QVBoxLayout(settings_group);
   settings_widget_      = new ProfileSettingsWidget(settings_group);
   settings_layout->addWidget(settings_widget_);
   root->addWidget(settings_group);
 
   // Action buttons.
-  auto* buttons    = new QHBoxLayout;
-  auto* create_btn = new QPushButton(tr("Create"), this);
+  auto *buttons    = new QHBoxLayout;
+  auto *create_btn = new QPushButton(tr("Create"), this);
   copy_btn_        = new QPushButton(tr("Copy"), this);
   rename_btn_      = new QPushButton(tr("Rename"), this);
   delete_btn_      = new QPushButton(tr("Delete"), this);
@@ -65,10 +65,10 @@ ProfileManagerDialog::ProfileManagerDialog(const std::filesystem::path& profiles
   buttons->addStretch(1);
   root->addLayout(buttons);
 
-  auto* bottom = new QHBoxLayout;
+  auto *bottom = new QHBoxLayout;
   select_btn_  = new QPushButton(tr("Select"), this);
   select_btn_->setDefault(true);
-  auto* close_btn = new QPushButton(tr("Close"), this);
+  auto *close_btn = new QPushButton(tr("Close"), this);
   bottom->addStretch(1);
   bottom->addWidget(select_btn_);
   bottom->addWidget(close_btn);
@@ -84,11 +84,11 @@ ProfileManagerDialog::ProfileManagerDialog(const std::filesystem::path& profiles
   connect(select_btn_, &QPushButton::clicked, this, &ProfileManagerDialog::on_select);
   connect(close_btn, &QPushButton::clicked, this, &QDialog::reject);
   connect(list_, &QListWidget::currentItemChanged, this,
-          [this](QListWidgetItem* current, QListWidgetItem*) {
+          [this](QListWidgetItem *current, QListWidgetItem *) {
             Q_UNUSED(current)
             on_selection_changed();
           });
-  connect(list_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem*) {
+  connect(list_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *) {
     on_select();
   });
 
@@ -110,7 +110,7 @@ ProfileManagerDialog::ProfileManagerDialog(const std::filesystem::path& profiles
 }
 
 QString ProfileManagerDialog::current_item_name() const {
-  auto* item = list_->currentItem();
+  auto *item = list_->currentItem();
   if (!item) {
     return {};
   }
@@ -122,7 +122,7 @@ void ProfileManagerDialog::refresh_list() {
   list_->clear();
 
   const auto names = engine::profile::list_profiles(profiles_dir_);
-  for (const auto& name : names) {
+  for (const auto &name : names) {
     const QString qname = QString::fromStdString(name);
     QString label       = qname;
     if (qname == active_profile_) {
@@ -130,7 +130,7 @@ void ProfileManagerDialog::refresh_list() {
     } else if (qname == default_profile_) {
       label += tr("  (default)");
     }
-    auto* item = new QListWidgetItem(label, list_);
+    auto *item = new QListWidgetItem(label, list_);
     item->setData(Qt::UserRole, qname);
     if (qname == active_profile_) {
       QFont font = item->font();
@@ -228,8 +228,8 @@ void ProfileManagerDialog::on_rename() {
   emit profiles_changed();
 }
 
-void configure_delete_profile_dialog(TaskDialog& dlg, const QString& profile_name,
-                                     const QString& profile_dir) {
+void configure_delete_profile_dialog(TaskDialog &dlg, const QString &profile_name,
+                                     const QString &profile_dir) {
   dlg.title(QObject::tr("Delete Profile"))
       .main(QObject::tr("Delete profile \"%1\"? This removes the profile "
                         "directory and all profile-specific files (including "
@@ -319,7 +319,7 @@ void ProfileManagerDialog::on_selection_changed() {
   load_settings_for(name);
 }
 
-void ProfileManagerDialog::load_settings_for(const QString& name) {
+void ProfileManagerDialog::load_settings_for(const QString &name) {
   // The widget blocks its own signals while loading, so this never triggers
   // the save-on-toggle handler.
   settings_widget_->set_profile(name.isEmpty() ? std::filesystem::path{}

@@ -34,17 +34,15 @@ TabModeController::TabModeController(MainWindow *w, QObject *parent)
               content->deleteLater();
             } else if (auto *stats = qobject_cast<StatsContentWidget *>(page)) {
               stats->deleteLater();
-            } else if (auto *pipeline =
-                           qobject_cast<PipelineContentWidget *>(page)) {
+            } else if (auto *pipeline = qobject_cast<PipelineContentWidget *>(page)) {
               pipeline->deleteLater();
-            } else if (auto *exec =
-                           qobject_cast<Executables::ContentWidget *>(page)) {
+            } else if (auto *exec = qobject_cast<Executables::ContentWidget *>(page)) {
               exec->deleteLater();
             } else if (auto *instance_options =
                            qobject_cast<InstanceOptionsWidget *>(page)) {
               instance_options->deleteLater();
-            } else if (auto *switcher = qobject_cast<
-                           InstanceSwitcherContentWidget *>(page)) {
+            } else if (auto *switcher =
+                           qobject_cast<InstanceSwitcherContentWidget *>(page)) {
               switcher->deleteLater();
             }
           });
@@ -54,13 +52,12 @@ TabModeController::TabModeController(MainWindow *w, QObject *parent)
   // apply_settings_changes), so changes take effect live while the tab stays
   // open. QTabWidget::currentChanged reports the NEW index only, so the
   // previous page is tracked in previous_page_.
-  connect(w_->main_tab_container_, &QTabWidget::currentChanged, this,
-          [this](int) {
-            if (qobject_cast<SettingsContentWidget *>(previous_page_.data())) {
-              w_->settings_->apply_settings_changes();
-            }
-            previous_page_ = w_->main_tab_container_->currentWidget();
-          });
+  connect(w_->main_tab_container_, &QTabWidget::currentChanged, this, [this](int) {
+    if (qobject_cast<SettingsContentWidget *>(previous_page_.data())) {
+      w_->settings_->apply_settings_changes();
+    }
+    previous_page_ = w_->main_tab_container_->currentWidget();
+  });
 }
 
 void TabModeController::route_settings() {
@@ -78,9 +75,9 @@ void TabModeController::route_settings() {
 
   // Full UI mode: the mode-agnostic settings panel is embedded as a tab page
   // instead of a modal dialog. The plain QWidget needs no window-flag strip.
-  auto *content = new SettingsContentWidget(
-      w_->style_manager_, w_->native_style_name_, w_->current_instance_root_,
-      w_->plugin_loader_, w_);
+  auto *content =
+      new SettingsContentWidget(w_->style_manager_, w_->native_style_name_,
+                                w_->current_instance_root_, w_->plugin_loader_, w_);
   // Toggling the mode inside the panel updates the tab bar live.
   connect(content, &SettingsContentWidget::full_ui_mode_toggled, this,
           &TabModeController::on_mode_changed);
@@ -142,13 +139,14 @@ void TabModeController::route_stats() {
       ++total_mods;
   }
 
-  auto *stats = new StatsContentWidget(w_->current_instance_root_, cache_dir,
-                                       total_mods, w_);
+  auto *stats =
+      new StatsContentWidget(w_->current_instance_root_, cache_dir, total_mods, w_);
   // The widget's own Close button drops the tab; the tab bar's close button
   // is handled by view_tab_removed (deleteLater). The widget refreshes on
   // every show, so re-activating the tab re-reads the current sizes.
-  connect(stats, &StatsContentWidget::close_requested, this,
-          [this, key]() { close_tab(key); });
+  connect(stats, &StatsContentWidget::close_requested, this, [this, key]() {
+    close_tab(key);
+  });
   w_->main_tab_container_->add_view_tab(stats, tr("Instance Statistics"), key);
 }
 
@@ -170,17 +168,17 @@ void TabModeController::route_exec_entry() {
   // ExecControlsBar (incrementally, the tab stays open for further edits) and
   // closes the tab; Cancel just closes the tab, discarding the edits.
   auto icon_cache = w_->cache_thumbnails_dir_path();
-  auto existing = w_->right_panel_->exec_controls()->executable_entries();
-  auto *content = new Executables::ContentWidget(w_->current_game_dir_,
-                                             w_->launch_->output_mod_list(),
-                                             existing, icon_cache, w_);
+  auto existing   = w_->right_panel_->exec_controls()->executable_entries();
+  auto *content   = new Executables::ContentWidget(
+      w_->current_game_dir_, w_->launch_->output_mod_list(), existing, icon_cache, w_);
   connect(content, &Executables::ContentWidget::save_requested, this,
           [this, key, content]() {
             w_->launch_->apply_exec_entries(content->entries());
             close_tab(key);
           });
-  connect(content, &Executables::ContentWidget::cancel_requested, this,
-          [this, key]() { close_tab(key); });
+  connect(content, &Executables::ContentWidget::cancel_requested, this, [this, key]() {
+    close_tab(key);
+  });
   open_in_tab(content, tr("Modify Executables"), key);
 }
 
@@ -211,13 +209,14 @@ void TabModeController::route_instance_options() {
   // matching the popup behavior).
   auto *content = new InstanceOptionsWidget(
       w_->platform_, w_->plugin_loader_, params.game_id, params.game_name,
-      params.game_dir, params.steam_appid, params.instance_root,
-      params.current_runner, params.deploy_strategy, params.deploy_config, w_);
+      params.game_dir, params.steam_appid, params.instance_root, params.current_runner,
+      params.deploy_strategy, params.deploy_config, w_);
   // The deploy management section must flush the deferred disable queue before
   // Force re-deploy / Remove, exactly like the launch path does (the deploy
   // reads on-disk sentinels, so queued toggles must be applied first).
-  content->set_flush_deferred_disable_queue(
-      [this]() { w_->launch_->flush_deferred_disable_queue(); });
+  content->set_flush_deferred_disable_queue([this]() {
+    w_->launch_->flush_deferred_disable_queue();
+  });
   connect(content, &InstanceOptionsWidget::save_requested, this,
           [this, key, content]() {
             auto runner = content->selected_runner();
@@ -228,8 +227,9 @@ void TabModeController::route_instance_options() {
             w_->current_instance_ = write;
             close_tab(key);
           });
-  connect(content, &InstanceOptionsWidget::cancel_requested, this,
-          [this, key]() { close_tab(key); });
+  connect(content, &InstanceOptionsWidget::cancel_requested, this, [this, key]() {
+    close_tab(key);
+  });
   open_in_tab(content, tr("Instance Options"), key);
 }
 
@@ -252,7 +252,7 @@ void TabModeController::route_instance_switcher() {
   // on success. The tab stays open when the user cancels the create flow or
   // the switch fails.
   auto instances_dir = engine::default_instances_dir();
-  auto *content = new InstanceSwitcherContentWidget(w_->plugin_loader_, w_);
+  auto *content      = new InstanceSwitcherContentWidget(w_->plugin_loader_, w_);
   content->set_immediate_switch(true);
   content->load_instances(instances_dir.string());
   connect(content, &InstanceSwitcherContentWidget::instance_selected, this,
@@ -301,6 +301,6 @@ void TabModeController::on_mode_changed(bool full_ui_mode) {
     w_->main_tab_container_->close_all_view_tabs();
 }
 
-} // namespace ui
+}  // namespace ui
 
 #include "moc_tab_mode_controller.cpp"

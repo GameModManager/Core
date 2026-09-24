@@ -24,7 +24,7 @@ struct NodeInfo {
   int id = 0;
   QString text;
   Qt::CheckState checked = Qt::Unchecked;
-  int depth = 0;
+  int depth              = 0;
 };
 
 void collect_nodes(QTreeWidgetItem *node, int depth, QVector<NodeInfo> &out) {
@@ -46,7 +46,7 @@ QVector<NodeInfo> nodes_of(const ui::CategoryFilterPanel &panel) {
   return out;
 }
 
-} // namespace
+}  // namespace
 
 TEST_CASE("category filter panel", "[ui]") {
   qputenv("QT_QPA_PLATFORM", "offscreen");
@@ -54,7 +54,7 @@ TEST_CASE("category filter panel", "[ui]") {
   std::filesystem::remove_all("/tmp/gmm_category_filter_panel");
   std::filesystem::create_directories(cfg);
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
-  int test_argc = 1;
+  int test_argc     = 1;
   char test_argv0[] = "test";
   char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
@@ -69,12 +69,11 @@ TEST_CASE("category filter panel", "[ui]") {
   factory.removeCategory(4);
   factory.addCategory(1, "Animations", 0);
   factory.addCategory(2, "Armour", 0);
-  factory.addCategory(3, "Poses", 1); // child of Animations
-  factory.addCategory(4, "Idles", 1); // child of Animations
+  factory.addCategory(3, "Poses", 1);  // child of Animations
+  factory.addCategory(4, "Idles", 1);  // child of Animations
 
   ui::CategoryFilterPanel panel;
-  QSignalSpy changed_spy(&panel,
-                         &ui::CategoryFilterPanel::category_filter_changed);
+  QSignalSpy changed_spy(&panel, &ui::CategoryFilterPanel::category_filter_changed);
 
   SECTION("tree mirrors the factory hierarchy") {
     const auto nodes = nodes_of(panel);
@@ -134,7 +133,7 @@ TEST_CASE("category filter panel", "[ui]") {
     REQUIRE(panel.has_active_filter());
 
     panel.clear_filter();
-    REQUIRE(changed_spy.count() == 3); // 2 toggles + 1 clear
+    REQUIRE(changed_spy.count() == 3);  // 2 toggles + 1 clear
     REQUIRE_FALSE(panel.has_active_filter());
     REQUIRE(panel.checked_category_ids().isEmpty());
     for (const auto &n : nodes_of(panel))

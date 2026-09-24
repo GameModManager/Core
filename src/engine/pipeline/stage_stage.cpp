@@ -3,9 +3,9 @@
 
 namespace engine {
 
-bool StageStage::execute(Mod& mod, PipelineContext& ctx) {
-    mod.state = ModState::Staged;
-    return true;
+bool StageStage::execute(Mod &mod, PipelineContext &ctx) {
+  mod.state = ModState::Staged;
+  return true;
 }
 
 }  // namespace engine

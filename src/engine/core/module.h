@@ -29,7 +29,7 @@ public:
   ~Module();
 
   // Non-copyable
-  Module(const Module &) = delete;
+  Module(const Module &)            = delete;
   Module &operator=(const Module &) = delete;
 
   // Movable
@@ -44,7 +44,7 @@ public:
 
 private:
   ModuleInfo info_;
-  void *handle_ = nullptr; // HMODULE on Windows, void* on POSIX
+  void *handle_ = nullptr;  // HMODULE on Windows, void* on POSIX
 };
 
-} // namespace engine
+}  // namespace engine

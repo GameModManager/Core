@@ -2,13 +2,11 @@
 
 #include "engine/install/game_match_validator.h"
 
-namespace engine::Install
-{
+namespace engine::Install {
 
-RouteDecision route_pack_install(const std::string& pack_game_id,
+RouteDecision route_pack_install(const std::string &pack_game_id,
                                  bool has_active_instance,
-                                 const std::string& active_instance_game_id)
-{
+                                 const std::string &active_instance_game_id) {
   if (!has_active_instance)
     return {InstallRoute::CreateNewInstance, {}};
   GameMatchResult match = validate_game_match(pack_game_id, active_instance_game_id);
@@ -19,9 +17,8 @@ RouteDecision route_pack_install(const std::string& pack_game_id,
   return {InstallRoute::CreateNewInstance, match.error};
 }
 
-AppendPlan plan_append(const std::string& pack_game_id,
-                       const std::string& instance_game_id)
-{
+AppendPlan plan_append(const std::string &pack_game_id,
+                       const std::string &instance_game_id) {
   GameMatchResult match = validate_game_match(pack_game_id, instance_game_id);
   if (!match.matches)
     return {false, match.error};

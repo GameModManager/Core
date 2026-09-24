@@ -19,324 +19,317 @@ namespace engine::Source::ModPub {
 
 namespace {
 
-// Cap on the response body we'll buffer. mod.pub mod pages are well under
-// 100 KB; anything past a few MB is either a misconfigured server or
-// hostile. Once we hit the cap we abort the transfer (returning 0 from the
-// libcurl write callback is documented as the way to signal an abort).
-constexpr size_t kMaxBodyBytes = 10 * 1024 * 1024;
+  // Cap on the response body we'll buffer. mod.pub mod pages are well under
+  // 100 KB; anything past a few MB is either a misconfigured server or
+  // hostile. Once we hit the cap we abort the transfer (returning 0 from the
+  // libcurl write callback is documented as the way to signal an abort).
+  constexpr size_t kMaxBodyBytes = 10 * 1024 * 1024;
 
-// Lowercase ASCII. Avoids pulling in <algorithm> for a one-shot helper.
-std::string to_lower_ascii(const std::string &in) {
-  std::string out(in);
-  for (auto &c : out)
-    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-  return out;
-}
+  // Lowercase ASCII. Avoids pulling in <algorithm> for a one-shot helper.
+  std::string to_lower_ascii(const std::string &in) {
+    std::string out(in);
+    for (auto &c : out)
+      c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return out;
+  }
 
-// Trim surrounding ASCII whitespace (used when pulling strings out of HTML
-// attributes and JSON-LD text fields).
-std::string trim(const std::string &s) {
-  const auto first = s.find_first_not_of(" \t\r\n");
-  if (first == std::string::npos)
-    return {};
-  const auto last = s.find_last_not_of(" \t\r\n");
-  return s.substr(first, last - first + 1);
-}
+  // Trim surrounding ASCII whitespace (used when pulling strings out of HTML
+  // attributes and JSON-LD text fields).
+  std::string trim(const std::string &s) {
+    const auto first = s.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos)
+      return {};
+    const auto last = s.find_last_not_of(" \t\r\n");
+    return s.substr(first, last - first + 1);
+  }
 
-// Pull the value out of an HTML attribute like:
-//   name="..."  or  name='...'
-// Matches og:* tags too: og:title sits in the `property` attribute on a
-// <meta> element, so the caller passes the property value (og:title) as
-// `attr` and the search is constrained to <meta> tags. Attribute values
-// are HTML-encoded, so decode the most common entities so the resulting
-// string does not carry "&quot;" etc. Only used as a last-resort fallback
-// when JSON-LD is missing or malformed.
-std::string read_meta(const std::string &html, const std::string &attr) {
-  // Build a tolerant regex that matches any attribute order. Real HTML
-  // pages emit either:
-  //   <meta property="og:..." content="...">
-  //   <meta content="..." property="og:...">
-  // and the same two with name= instead of property=. We allow any
-  // whitespace between attributes and accept both orderings via two
-  // alternatives joined with `|`. The capture group is the content= value.
-  // The regex is reconstructed on each call (mod.pub emits 4-5 og:*
-  // tags per page; LoversLab follows the same pattern). A static
-  // std::regex would need a placeholder+replace dance that std::regex
-  // does not support natively.
-  const std::string key = "(?:property|name)";
-  const std::regex kMeta("<meta\\s+(?:"
-                             // property/name first, content second
-                             + key + "=[\"']" + attr +
-                             "[\"']\\s+content=[\"']([^\"']*)[\"']"
-                             "|" +
-                             // content first, property/name second
-                             "content=[\"']([^\"']*)[\"']\\s+" + key +
-                             "=[\"']" + attr +
-                             "[\"']"
-                             ")",
-                         std::regex::icase);
-  std::smatch m;
-  if (!std::regex_search(html, m, kMeta))
-    return {};
-  std::string raw = m[1].matched ? m[1].str() : m[2].str();
-  auto replace_all = [](std::string &s, const std::string &from,
-                        const std::string &to) {
-    size_t pos = 0;
-    while ((pos = s.find(from, pos)) != std::string::npos) {
-      s.replace(pos, from.size(), to);
-      pos += to.size();
-    }
-  };
-  replace_all(raw, "&amp;", "&");
-  replace_all(raw, "&quot;", "\"");
-  replace_all(raw, "&#39;", "'");
-  replace_all(raw, "&lt;", "<");
-  replace_all(raw, "&gt;", ">");
-  replace_all(raw, "&nbsp;", " ");
-  return trim(raw);
-}
-
-// Pull a string value out of the JSON object by key. Returns empty when the
-// key is missing or the value is not a string.
-std::string j_str(const nlohmann::json &j, const char *key) {
-  if (!j.is_object() || !j.contains(key))
-    return {};
-  const auto &v = j.at(key);
-  if (v.is_string())
-    return trim(v.get<std::string>());
-  return {};
-}
-
-// Build the canonical mod page URL from a (game_slug, mod_id) pair,
-// always the bare "https://mod.pub/<slug>/<id>/" form. mod.pub's URL
-// shape is "<game>/<id>-<slug-suffix>"; the suffix is reconstructible
-// only by re-fetching the mod list, so we synthesize the bare form
-// (no suffix) and let the parser's fallback overwrite page_url with
-// the JSON-LD `url` field on success.
-std::string build_page_url(const std::string &game_slug,
-                           const std::string &mod_id) {
-  return "https://mod.pub/" + game_slug + "/" + mod_id + "/";
-}
-
-// Pull the page's <aside> "category" tag out of the DOM. mod.pub tags each
-// mod with a category (e.g. "User interface") that is NOT carried in the
-// JSON-LD applicationCategory field (which is always "GameMod"). The
-// aside sits next to the upload metadata; we match the visible text node
-// after the label.
-//
-// The text is HTML-decoded by the same entity replacement read_meta() uses
-// (via trim + a small entity pass); we only decode the entities that
-// actually appear in mod.pub pages, no full spec compliance.
-std::string read_aside_tag(const std::string &html) {
-  // The aside line on the mod page looks like (whitespace variable):
-  //   <aside>...<b>Tag</b> User interface ...</aside>
-  // or in a sibling <div> with a class. We accept the text between the
-  // label and the next tag/element boundary. The regex is intentionally
-  // loose; the parser downstream trims the result.
-  static const std::regex kTag(R"(<aside[^>]*>[\s\S]*?<b>\s*Tag\s*</b>\s*([^<]+))",
-                               std::regex::icase);
-  std::smatch m;
-  if (!std::regex_search(html, m, kTag))
-    return {};
-  std::string raw = m[1].str();
-  auto replace_all = [](std::string &s, const std::string &from,
-                        const std::string &to) {
-    size_t pos = 0;
-    while ((pos = s.find(from, pos)) != std::string::npos) {
-      s.replace(pos, from.size(), to);
-      pos += to.size();
-    }
-  };
-  replace_all(raw, "&amp;", "&");
-  replace_all(raw, "&quot;", "\"");
-  replace_all(raw, "&#39;", "'");
-  replace_all(raw, "&nbsp;", " ");
-  return trim(raw);
-}
-
-// Locate the JSON-LD block whose @type is "SoftwareApplication" (the
-// schema mod.pub emits for mod pages). Returns the JSON text, or empty
-// when none is found. The regex is intentionally simple: anything tagged
-// application/ld+json whose body parses to an object with
-// @type=SoftwareApplication wins. We never evaluate HTML or scripts.
-std::string find_softwareapp_json_ld(const std::string &html) {
-  static const std::regex kScript(
-      R"(<script[^>]*type=["']application/ld\+json["'][^>]*>([\s\S]*?)</script>)",
-      std::regex::icase);
-  auto begin = std::sregex_iterator(html.begin(), html.end(), kScript);
-  auto end = std::sregex_iterator();
-  for (auto it = begin; it != end; ++it) {
-    std::string body = trim((*it)[1].str());
-    if (body.empty())
-      continue;
-    try {
-      auto j = nlohmann::json::parse(body);
-      auto check = [](const nlohmann::json &node) -> bool {
-        if (!node.is_object())
-          return false;
-        auto t = j_str(node, "@type");
-        if (t.empty())
-          return false;
-        return to_lower_ascii(t) == "softwareapplication";
-      };
-      if (check(j))
-        return body;
-      if (j.is_object() && j.contains("@graph") && j["@graph"].is_array()) {
-        for (const auto &node : j["@graph"]) {
-          if (check(node))
-            return node.dump();
-        }
+  // Pull the value out of an HTML attribute like:
+  //   name="..."  or  name='...'
+  // Matches og:* tags too: og:title sits in the `property` attribute on a
+  // <meta> element, so the caller passes the property value (og:title) as
+  // `attr` and the search is constrained to <meta> tags. Attribute values
+  // are HTML-encoded, so decode the most common entities so the resulting
+  // string does not carry "&quot;" etc. Only used as a last-resort fallback
+  // when JSON-LD is missing or malformed.
+  std::string read_meta(const std::string &html, const std::string &attr) {
+    // Build a tolerant regex that matches any attribute order. Real HTML
+    // pages emit either:
+    //   <meta property="og:..." content="...">
+    //   <meta content="..." property="og:...">
+    // and the same two with name= instead of property=. We allow any
+    // whitespace between attributes and accept both orderings via two
+    // alternatives joined with `|`. The capture group is the content= value.
+    // The regex is reconstructed on each call (mod.pub emits 4-5 og:*
+    // tags per page; LoversLab follows the same pattern). A static
+    // std::regex would need a placeholder+replace dance that std::regex
+    // does not support natively.
+    const std::string key = "(?:property|name)";
+    const std::regex kMeta("<meta\\s+(?:"
+                               // property/name first, content second
+                               + key + "=[\"']" + attr +
+                               "[\"']\\s+content=[\"']([^\"']*)[\"']"
+                               "|" +
+                               // content first, property/name second
+                               "content=[\"']([^\"']*)[\"']\\s+" + key + "=[\"']" +
+                               attr +
+                               "[\"']"
+                               ")",
+                           std::regex::icase);
+    std::smatch m;
+    if (!std::regex_search(html, m, kMeta))
+      return {};
+    std::string raw  = m[1].matched ? m[1].str() : m[2].str();
+    auto replace_all = [](std::string &s, const std::string &from,
+                          const std::string &to) {
+      size_t pos = 0;
+      while ((pos = s.find(from, pos)) != std::string::npos) {
+        s.replace(pos, from.size(), to);
+        pos += to.size();
       }
-    } catch (const std::exception &) {
-      continue;
-    }
-  }
-  return {};
-}
-
-// Pure HTML-attribute allowlist for the rich-text description block.
-// Mirrors the scheme list the BBCode layer uses (see
-// ui/modinfo/bbcode.cpp::is_url_scheme_ok). javascript:, data:, etc.
-// are dropped - the link text survives as plain text and the
-// surrounding page is never handed an executable URL.
-bool is_safe_description_url(const std::string &url) {
-  if (url.empty())
-    return false;
-  auto starts_with_ci = [](const std::string &s, const char *prefix) {
-    const size_t n = std::strlen(prefix);
-    if (s.size() < n)
-      return false;
-    for (size_t i = 0; i < n; ++i) {
-      char a = s[i];
-      char b = prefix[i];
-      if (a >= 'A' && a <= 'Z')
-        a = static_cast<char>(a - 'A' + 'a');
-      if (b >= 'A' && b <= 'Z')
-        b = static_cast<char>(b - 'A' + 'a');
-      if (a != b)
-        return false;
-    }
-    return true;
-  };
-  return starts_with_ci(url, "http://") ||
-         starts_with_ci(url, "https://") ||
-         starts_with_ci(url, "mailto:") ||
-         starts_with_ci(url, "ftp://") ||
-         starts_with_ci(url, "ftps://");
-}
-
-// Convert a single HTML anchor tag into a BBCode [url=...]text[/url] or,
-// when the href is unsafe, into the visible text alone. Operates on the
-// first match in `html`; the caller iterates until no match remains.
-// Returns true if a replacement was made.
-bool convert_anchor_once(std::string &html) {
-  static const std::regex kAnchorDq(
-      "<a\\b[^>]*\\bhref\\s*=\\s*\"([^\"]*)\"[^>]*>([\\s\\S]*?)</a>",
-      std::regex::icase);
-  static const std::regex kAnchorSq(
-      "<a\\b[^>]*\\bhref\\s*=\\s*'([^']*)'[^>]*>([\\s\\S]*?)</a>",
-      std::regex::icase);
-  std::smatch m;
-  if (std::regex_search(html, m, kAnchorDq)) {
-    const std::string href = m[1].str();
-    const std::string text = m[2].str();
-    const std::string repl = is_safe_description_url(href)
-                                 ? ("[url=" + href + "]" + text + "[/url]")
-                                 : text;
-    html.replace(m.position(), m.length(), repl);
-    return true;
-  }
-  if (std::regex_search(html, m, kAnchorSq)) {
-    const std::string href = m[1].str();
-    const std::string text = m[2].str();
-    const std::string repl = is_safe_description_url(href)
-                                 ? ("[url=" + href + "]" + text + "[/url]")
-                                 : text;
-    html.replace(m.position(), m.length(), repl);
-    return true;
-  }
-  return false;
-}
-
-// Strip every HTML tag from `html` EXCEPT <a>, <br>, and <p> which are
-// converted to BBCode equivalents (the anchor pass already converted
-// <a>). Other tags are stripped and their inner text preserved. Runs of
-// >2 newlines (the <p> pass introduces them) are collapsed to one
-// paragraph break.
-void strip_unwanted_tags(std::string &html) {
-  static const std::regex kBr("<\\s*br\\s*/?\\s*>", std::regex::icase);
-  html = std::regex_replace(html, kBr, "\n");
-  static const std::regex kP(
-      "<p\\b[^>]*>([\\s\\S]*?)</p>", std::regex::icase);
-  html = std::regex_replace(html, kP, "\n\n$1\n\n");
-  static const std::regex kAnyTag("<[^>]+>");
-  html = std::regex_replace(html, kAnyTag, "");
-  static const std::regex kThreeNl("\n{3,}");
-  html = std::regex_replace(html, kThreeNl, "\n\n");
-  auto first = html.find_first_not_of(" \t\r\n");
-  if (first == std::string::npos) {
-    html.clear();
-    return;
-  }
-  auto last = html.find_last_not_of(" \t\r\n");
-  html = html.substr(first, last - first + 1);
-}
-
-// Extract the first "gray-box user-content" rich-text block from the
-// mod.pub page HTML and return a BBCode-ish string the UI's
-// bbcode_to_html can further normalize. mod.pub wraps the description
-// in <div class="gray-box user-content">...</div>. We pick the first
-// such block (the Credits section also uses "user-content" but inside a
-// card-body, which does not match "gray-box").
-std::string extract_rich_description(const std::string &html_body) {
-  if (html_body.empty())
-    return {};
-  // Match either single- or double-quoted class attribute.
-  static const std::regex kOpen(
-      "<div\\b[^>]*\\bclass\\s*=\\s*[\"'][^\"']*"
-      "gray-box\\s+user-content[^\"']*[\"'][^>]*>",
-      std::regex::icase);
-  std::smatch m;
-  if (!std::regex_search(html_body, m, kOpen))
-    return {};
-  const size_t open_end = m.position() + m.length();
-  // Depth-aware walk to the matching </div>.
-  size_t depth = 1;
-  size_t pos = open_end;
-  static const std::regex kDivOpen("<div\\b", std::regex::icase);
-  static const std::regex kDivClose("</div\\s*>", std::regex::icase);
-  while (depth > 0 && pos < html_body.size()) {
-    auto find_next = [&](const std::regex &re) -> size_t {
-      const std::string rest = html_body.substr(pos);
-      std::smatch r;
-      return std::regex_search(rest, r, re)
-                 ? size_t(r.position()) + pos
-                 : std::string::npos;
     };
-    const size_t next_open = find_next(kDivOpen);
-    const size_t next_close = find_next(kDivClose);
-    if (next_close == std::string::npos)
-      break; // malformed; bail out
-    if (next_open != std::string::npos && next_open < next_close) {
-      ++depth;
-      pos = next_open + std::strlen("<div");
-    } else {
-      --depth;
-      pos = next_close + std::strlen("</div");
-      if (depth == 0) {
-        std::string inner = html_body.substr(
-            open_end, (pos - std::strlen("</div")) - open_end);
-        while (convert_anchor_once(inner)) {
+    replace_all(raw, "&amp;", "&");
+    replace_all(raw, "&quot;", "\"");
+    replace_all(raw, "&#39;", "'");
+    replace_all(raw, "&lt;", "<");
+    replace_all(raw, "&gt;", ">");
+    replace_all(raw, "&nbsp;", " ");
+    return trim(raw);
+  }
+
+  // Pull a string value out of the JSON object by key. Returns empty when the
+  // key is missing or the value is not a string.
+  std::string j_str(const nlohmann::json &j, const char *key) {
+    if (!j.is_object() || !j.contains(key))
+      return {};
+    const auto &v = j.at(key);
+    if (v.is_string())
+      return trim(v.get<std::string>());
+    return {};
+  }
+
+  // Build the canonical mod page URL from a (game_slug, mod_id) pair,
+  // always the bare "https://mod.pub/<slug>/<id>/" form. mod.pub's URL
+  // shape is "<game>/<id>-<slug-suffix>"; the suffix is reconstructible
+  // only by re-fetching the mod list, so we synthesize the bare form
+  // (no suffix) and let the parser's fallback overwrite page_url with
+  // the JSON-LD `url` field on success.
+  std::string build_page_url(const std::string &game_slug, const std::string &mod_id) {
+    return "https://mod.pub/" + game_slug + "/" + mod_id + "/";
+  }
+
+  // Pull the page's <aside> "category" tag out of the DOM. mod.pub tags each
+  // mod with a category (e.g. "User interface") that is NOT carried in the
+  // JSON-LD applicationCategory field (which is always "GameMod"). The
+  // aside sits next to the upload metadata; we match the visible text node
+  // after the label.
+  //
+  // The text is HTML-decoded by the same entity replacement read_meta() uses
+  // (via trim + a small entity pass); we only decode the entities that
+  // actually appear in mod.pub pages, no full spec compliance.
+  std::string read_aside_tag(const std::string &html) {
+    // The aside line on the mod page looks like (whitespace variable):
+    //   <aside>...<b>Tag</b> User interface ...</aside>
+    // or in a sibling <div> with a class. We accept the text between the
+    // label and the next tag/element boundary. The regex is intentionally
+    // loose; the parser downstream trims the result.
+    static const std::regex kTag(R"(<aside[^>]*>[\s\S]*?<b>\s*Tag\s*</b>\s*([^<]+))",
+                                 std::regex::icase);
+    std::smatch m;
+    if (!std::regex_search(html, m, kTag))
+      return {};
+    std::string raw  = m[1].str();
+    auto replace_all = [](std::string &s, const std::string &from,
+                          const std::string &to) {
+      size_t pos = 0;
+      while ((pos = s.find(from, pos)) != std::string::npos) {
+        s.replace(pos, from.size(), to);
+        pos += to.size();
+      }
+    };
+    replace_all(raw, "&amp;", "&");
+    replace_all(raw, "&quot;", "\"");
+    replace_all(raw, "&#39;", "'");
+    replace_all(raw, "&nbsp;", " ");
+    return trim(raw);
+  }
+
+  // Locate the JSON-LD block whose @type is "SoftwareApplication" (the
+  // schema mod.pub emits for mod pages). Returns the JSON text, or empty
+  // when none is found. The regex is intentionally simple: anything tagged
+  // application/ld+json whose body parses to an object with
+  // @type=SoftwareApplication wins. We never evaluate HTML or scripts.
+  std::string find_softwareapp_json_ld(const std::string &html) {
+    static const std::regex kScript(
+        R"(<script[^>]*type=["']application/ld\+json["'][^>]*>([\s\S]*?)</script>)",
+        std::regex::icase);
+    auto begin = std::sregex_iterator(html.begin(), html.end(), kScript);
+    auto end   = std::sregex_iterator();
+    for (auto it = begin; it != end; ++it) {
+      std::string body = trim((*it)[1].str());
+      if (body.empty())
+        continue;
+      try {
+        auto j     = nlohmann::json::parse(body);
+        auto check = [](const nlohmann::json &node) -> bool {
+          if (!node.is_object())
+            return false;
+          auto t = j_str(node, "@type");
+          if (t.empty())
+            return false;
+          return to_lower_ascii(t) == "softwareapplication";
+        };
+        if (check(j))
+          return body;
+        if (j.is_object() && j.contains("@graph") && j["@graph"].is_array()) {
+          for (const auto &node : j["@graph"]) {
+            if (check(node))
+              return node.dump();
+          }
         }
-        strip_unwanted_tags(inner);
-        return inner;
+      } catch (const std::exception &) {
+        continue;
       }
     }
+    return {};
   }
-  return {};
-}
 
-} // namespace
+  // Pure HTML-attribute allowlist for the rich-text description block.
+  // Mirrors the scheme list the BBCode layer uses (see
+  // ui/modinfo/bbcode.cpp::is_url_scheme_ok). javascript:, data:, etc.
+  // are dropped - the link text survives as plain text and the
+  // surrounding page is never handed an executable URL.
+  bool is_safe_description_url(const std::string &url) {
+    if (url.empty())
+      return false;
+    auto starts_with_ci = [](const std::string &s, const char *prefix) {
+      const size_t n = std::strlen(prefix);
+      if (s.size() < n)
+        return false;
+      for (size_t i = 0; i < n; ++i) {
+        char a = s[i];
+        char b = prefix[i];
+        if (a >= 'A' && a <= 'Z')
+          a = static_cast<char>(a - 'A' + 'a');
+        if (b >= 'A' && b <= 'Z')
+          b = static_cast<char>(b - 'A' + 'a');
+        if (a != b)
+          return false;
+      }
+      return true;
+    };
+    return starts_with_ci(url, "http://") || starts_with_ci(url, "https://") ||
+           starts_with_ci(url, "mailto:") || starts_with_ci(url, "ftp://") ||
+           starts_with_ci(url, "ftps://");
+  }
+
+  // Convert a single HTML anchor tag into a BBCode [url=...]text[/url] or,
+  // when the href is unsafe, into the visible text alone. Operates on the
+  // first match in `html`; the caller iterates until no match remains.
+  // Returns true if a replacement was made.
+  bool convert_anchor_once(std::string &html) {
+    static const std::regex kAnchorDq(
+        "<a\\b[^>]*\\bhref\\s*=\\s*\"([^\"]*)\"[^>]*>([\\s\\S]*?)</a>",
+        std::regex::icase);
+    static const std::regex kAnchorSq(
+        "<a\\b[^>]*\\bhref\\s*=\\s*'([^']*)'[^>]*>([\\s\\S]*?)</a>", std::regex::icase);
+    std::smatch m;
+    if (std::regex_search(html, m, kAnchorDq)) {
+      const std::string href = m[1].str();
+      const std::string text = m[2].str();
+      const std::string repl = is_safe_description_url(href)
+                                   ? ("[url=" + href + "]" + text + "[/url]")
+                                   : text;
+      html.replace(m.position(), m.length(), repl);
+      return true;
+    }
+    if (std::regex_search(html, m, kAnchorSq)) {
+      const std::string href = m[1].str();
+      const std::string text = m[2].str();
+      const std::string repl = is_safe_description_url(href)
+                                   ? ("[url=" + href + "]" + text + "[/url]")
+                                   : text;
+      html.replace(m.position(), m.length(), repl);
+      return true;
+    }
+    return false;
+  }
+
+  // Strip every HTML tag from `html` EXCEPT <a>, <br>, and <p> which are
+  // converted to BBCode equivalents (the anchor pass already converted
+  // <a>). Other tags are stripped and their inner text preserved. Runs of
+  // >2 newlines (the <p> pass introduces them) are collapsed to one
+  // paragraph break.
+  void strip_unwanted_tags(std::string &html) {
+    static const std::regex kBr("<\\s*br\\s*/?\\s*>", std::regex::icase);
+    html = std::regex_replace(html, kBr, "\n");
+    static const std::regex kP("<p\\b[^>]*>([\\s\\S]*?)</p>", std::regex::icase);
+    html = std::regex_replace(html, kP, "\n\n$1\n\n");
+    static const std::regex kAnyTag("<[^>]+>");
+    html = std::regex_replace(html, kAnyTag, "");
+    static const std::regex kThreeNl("\n{3,}");
+    html       = std::regex_replace(html, kThreeNl, "\n\n");
+    auto first = html.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) {
+      html.clear();
+      return;
+    }
+    auto last = html.find_last_not_of(" \t\r\n");
+    html      = html.substr(first, last - first + 1);
+  }
+
+  // Extract the first "gray-box user-content" rich-text block from the
+  // mod.pub page HTML and return a BBCode-ish string the UI's
+  // bbcode_to_html can further normalize. mod.pub wraps the description
+  // in <div class="gray-box user-content">...</div>. We pick the first
+  // such block (the Credits section also uses "user-content" but inside a
+  // card-body, which does not match "gray-box").
+  std::string extract_rich_description(const std::string &html_body) {
+    if (html_body.empty())
+      return {};
+    // Match either single- or double-quoted class attribute.
+    static const std::regex kOpen("<div\\b[^>]*\\bclass\\s*=\\s*[\"'][^\"']*"
+                                  "gray-box\\s+user-content[^\"']*[\"'][^>]*>",
+                                  std::regex::icase);
+    std::smatch m;
+    if (!std::regex_search(html_body, m, kOpen))
+      return {};
+    const size_t open_end = m.position() + m.length();
+    // Depth-aware walk to the matching </div>.
+    size_t depth = 1;
+    size_t pos   = open_end;
+    static const std::regex kDivOpen("<div\\b", std::regex::icase);
+    static const std::regex kDivClose("</div\\s*>", std::regex::icase);
+    while (depth > 0 && pos < html_body.size()) {
+      auto find_next = [&](const std::regex &re) -> size_t {
+        const std::string rest = html_body.substr(pos);
+        std::smatch r;
+        return std::regex_search(rest, r, re) ? size_t(r.position()) + pos
+                                              : std::string::npos;
+      };
+      const size_t next_open  = find_next(kDivOpen);
+      const size_t next_close = find_next(kDivClose);
+      if (next_close == std::string::npos)
+        break;  // malformed; bail out
+      if (next_open != std::string::npos && next_open < next_close) {
+        ++depth;
+        pos = next_open + std::strlen("<div");
+      } else {
+        --depth;
+        pos = next_close + std::strlen("</div");
+        if (depth == 0) {
+          std::string inner =
+              html_body.substr(open_end, (pos - std::strlen("</div")) - open_end);
+          while (convert_anchor_once(inner)) {
+          }
+          strip_unwanted_tags(inner);
+          return inner;
+        }
+      }
+    }
+    return {};
+  }
+
+}  // namespace
 
 bool Provider::is_modpub_url(const std::string &url) {
   if (url.empty())
@@ -381,8 +374,8 @@ std::string Provider::extract_game_slug(const std::string &url) {
     return {};
   }
   const auto end = low.find_first_of("/?#", start);
-  std::string slug = low.substr(
-      start, (end == std::string::npos) ? std::string::npos : end - start);
+  std::string slug =
+      low.substr(start, (end == std::string::npos) ? std::string::npos : end - start);
   // Reject empty / pure-separator / non-slug inputs. The slug must be
   // kebab-case ASCII; a path like "mod.pub//" or "mod.pub/files/..."
   // should return empty (the latter is a different route, not a mod page).
@@ -419,14 +412,14 @@ std::string Provider::extract_mod_id(const std::string &url) {
   const auto slug_end = low.find('/', start);
   if (slug_end == std::string::npos)
     return {};
-  std::size_t id_start = slug_end + 1;
+  std::size_t id_start      = slug_end + 1;
   const std::size_t seg_end = low.find_first_of("/?&", id_start);
-  std::string seg = low.substr(
-      id_start,
-      (seg_end == std::string::npos) ? std::string::npos : seg_end - id_start);
+  std::string seg =
+      low.substr(id_start, (seg_end == std::string::npos) ? std::string::npos
+                                                          : seg_end - id_start);
   // Drop the slug suffix after the first '-'.
   const auto dash = seg.find('-');
-  std::string id = (dash == std::string::npos) ? seg : seg.substr(0, dash);
+  std::string id  = (dash == std::string::npos) ? seg : seg.substr(0, dash);
   if (id.empty())
     return {};
   for (const char c : id) {
@@ -437,7 +430,7 @@ std::string Provider::extract_mod_id(const std::string &url) {
 }
 
 std::string Provider::mod_page_url(const std::string &url) {
-  const auto cut = url.find_first_of("?#");
+  const auto cut   = url.find_first_of("?#");
   std::string page = (cut == std::string::npos) ? url : url.substr(0, cut);
   // Always end with a trailing slash so the panel's "Open on ModPub"
   // builds a URL that matches what mod.pub itself renders.
@@ -462,13 +455,13 @@ ModInfoResult Provider::parse_mod_info(const std::string &html_body,
     try {
       auto j = nlohmann::json::parse(ld_body);
       if (j.is_object()) {
-        result.name = j_str(j, "name");
+        result.name    = j_str(j, "name");
         result.version = j_str(j, "softwareVersion");
         // applicationCategory on mod.pub is the boilerplate "GameMod"
         // string. We use the aside tag (DOM-only) as a more useful
         // category below.
-        result.category = j_str(j, "applicationCategory");
-        result.description = j_str(j, "description");
+        result.category      = j_str(j, "applicationCategory");
+        result.description   = j_str(j, "description");
         result.date_modified = j_str(j, "dateModified");
         if (j.contains("author")) {
           const auto &a = j.at("author");
@@ -561,8 +554,7 @@ ModInfoResult Provider::fetch_mod_info(const std::string &url_or_id) const {
       // Normalize bare-host pastes ("mod.pub/skyrim-se/22-foo") by
       // prepending https:// - is_modpub_url accepts that form but
       // libcurl would reject it as a relative URL otherwise.
-      if (url.compare(0, 7, "http://") != 0 &&
-          url.compare(0, 8, "https://") != 0) {
+      if (url.compare(0, 7, "http://") != 0 && url.compare(0, 8, "https://") != 0) {
         url = "https://" + url;
       }
       game_slug = extract_game_slug(url_or_id);
@@ -573,11 +565,10 @@ ModInfoResult Provider::fetch_mod_info(const std::string &url_or_id) const {
     } else {
       // "game/id" paste. Split on the slash.
       const auto slash = url_or_id.find('/');
-      if (slash == std::string::npos || slash == 0 ||
-          slash + 1 >= url_or_id.size())
+      if (slash == std::string::npos || slash == 0 || slash + 1 >= url_or_id.size())
         return result;
       game_slug = url_or_id.substr(0, slash);
-      mod_id = url_or_id.substr(slash + 1);
+      mod_id    = url_or_id.substr(slash + 1);
       // mod_id may carry a "-slug" suffix; strip it.
       const auto dash = mod_id.find('-');
       if (dash != std::string::npos)
@@ -614,8 +605,7 @@ ModInfoResult Provider::fetch_mod_info(const std::string &url_or_id) const {
       }
     }
     if (!digits_only) {
-      Logger::instance().debug(
-          "ModPubProvider: fetch_mod_info id is not numeric");
+      Logger::instance().debug("ModPubProvider: fetch_mod_info id is not numeric");
       return result;
     }
     Logger::instance().debug(
@@ -629,20 +619,19 @@ ModInfoResult Provider::fetch_mod_info(const std::string &url_or_id) const {
   // any session cookie here. Downloads require auth (modl://) and are
   // not routed through this provider.
   network::Request req;
-  req.url = Http::encode_url_path(url);
-  req.caller = NET_CALLER;
-  req.timeout = std::chrono::seconds(15);
+  req.url             = Http::encode_url_path(url);
+  req.caller          = NET_CALLER;
+  req.timeout         = std::chrono::seconds(15);
   req.follow_redirect = true;
   // Cap the response body. mod.pub mod pages are well under 100 KB; the
   // transfer aborts if it exceeds kMaxBodyBytes.
   req.max_bytes = static_cast<std::int64_t>(kMaxBodyBytes);
-  req.headers.push_back(
-      "User-Agent: GameModManager/0.1 (ModPub Provider)");
+  req.headers.push_back("User-Agent: GameModManager/0.1 (ModPub Provider)");
 
   auto resp = network::instance().request(req);
   if (!resp.error.empty()) {
-    Logger::instance().debug(
-        "ModPubProvider: fetch_mod_info curl error: " + resp.error);
+    Logger::instance().debug("ModPubProvider: fetch_mod_info curl error: " +
+                             resp.error);
     return result;
   }
   // NSFW mods and Cloudflare challenges redirect to /account/login (HTTP
@@ -651,8 +640,7 @@ ModInfoResult Provider::fetch_mod_info(const std::string &url_or_id) const {
   // available=false gate in parse_mod_info covers the redirect case.
   if (resp.http_code != 200) {
     Logger::instance().debug(
-        "ModPubProvider: fetch_mod_info HTTP " +
-        std::to_string(resp.http_code) +
+        "ModPubProvider: fetch_mod_info HTTP " + std::to_string(resp.http_code) +
         " - the mod may be removed or the site is rejecting the request");
     return result;
   }
@@ -685,7 +673,8 @@ bool Provider::fetch(const ::engine::Mod &mod, ::engine::PipelineContext &ctx,
   // panel are wired up, while the actual bytes still come from the URL in
   // mod.download_url. Without a URL we refuse (the metadata-only path: no
   // file to produce).
-  if (mod.download_source_type != "modpub") return false;
+  if (mod.download_source_type != "modpub")
+    return false;
   if (mod.download_url.empty()) {
     Logger::instance().error(
         "ModPubProvider: fetch() called for a ModPub-sourced mod with no "
@@ -694,30 +683,29 @@ bool Provider::fetch(const ::engine::Mod &mod, ::engine::PipelineContext &ctx,
     return false;
   }
 
-engine::download::Progress dp;
-   dp.callback = ctx.on_progress;
-   dp.should_abort = ctx.should_abort;
-   dp.resume_base = ctx.download_resume_from;
-   dp.start = std::chrono::steady_clock::now();
+  engine::download::Progress dp;
+  dp.callback     = ctx.on_progress;
+  dp.should_abort = ctx.should_abort;
+  dp.resume_base  = ctx.download_resume_from;
+  dp.start        = std::chrono::steady_clock::now();
 
-   engine::download::Options opts;
-   opts.user_agent = "GameModManager/0.1 (ModPub Provider)";
-   opts.long_lived = true;
+  engine::download::Options opts;
+  opts.user_agent = "GameModManager/0.1 (ModPub Provider)";
+  opts.long_lived = true;
 
-long http_code = 0;
-    bool aborted = false;
-    if (!engine::download::curl_download(mod.download_url, dest_path, http_code,
-                                        opts, &dp, ctx.download_resume_from,
-                                        &aborted, NET_CALLER)) {
+  long http_code = 0;
+  bool aborted   = false;
+  if (!engine::download::curl_download(mod.download_url, dest_path, http_code, opts,
+                                       &dp, ctx.download_resume_from, &aborted,
+                                       NET_CALLER)) {
     if (aborted) {
       ctx.download_paused = true;
       Logger::instance().debug(
           "ModPubProvider: download aborted (pause), partial kept at " +
           dest_path.string());
     } else {
-      Logger::instance().error(
-          "ModPubProvider: download failed (HTTP " +
-          std::to_string(http_code) + ")");
+      Logger::instance().error("ModPubProvider: download failed (HTTP " +
+                               std::to_string(http_code) + ")");
     }
     return false;
   }
@@ -726,15 +714,13 @@ long http_code = 0;
   return true;
 }
 
-SourceDownloadInfo
-Provider::resolve_download_info(const ::engine::Mod &mod) const {
+SourceDownloadInfo Provider::resolve_download_info(const ::engine::Mod &mod) const {
   // Best-effort name when the modl flow populated download_url: use the
   // URL's basename as a placeholder. FetchStage's on_download_meta overwrites
   // it from the actual Content-Disposition header once the transfer starts.
   SourceDownloadInfo info;
   if (!mod.download_url.empty()) {
-    const std::string fname =
-        engine::download::url_path_basename(mod.download_url);
+    const std::string fname = engine::download::url_path_basename(mod.download_url);
     if (!fname.empty()) {
       info.archive_name = fname;
       info.display_name = std::filesystem::path(fname).stem().string();
@@ -743,6 +729,8 @@ Provider::resolve_download_info(const ::engine::Mod &mod) const {
   return info;
 }
 
-std::string Provider::display_name() const { return "ModPub"; }
+std::string Provider::display_name() const {
+  return "ModPub";
+}
 
-} // namespace engine::Source::ModPub
+}  // namespace engine::Source::ModPub

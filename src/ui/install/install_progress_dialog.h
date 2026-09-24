@@ -17,23 +17,23 @@ namespace ui {
 // flash it, hides it before each interactive install dialog, and closes it on
 // install completion/cancel/failure.
 class InstallProgressDialog : public QDialog {
-    Q_OBJECT
+  Q_OBJECT
 public:
-    explicit InstallProgressDialog(QWidget* parent = nullptr);
+  explicit InstallProgressDialog(QWidget *parent = nullptr);
 
-    // Reset for the next install: window title + empty status + 0% bar.
-    void begin(const QString& title);
-    // Updates the status line and the bar. percent < 0 switches the bar to
-    // the indeterminate (busy) animation; a determinate update switches back.
-    void set_status(const QString& status, int percent);
+  // Reset for the next install: window title + empty status + 0% bar.
+  void begin(const QString &title);
+  // Updates the status line and the bar. percent < 0 switches the bar to
+  // the indeterminate (busy) animation; a determinate update switches back.
+  void set_status(const QString &status, int percent);
 
 protected:
-    // No cancel: Escape must not dismiss the popup mid-install.
-    void keyPressEvent(QKeyEvent* event) override;
+  // No cancel: Escape must not dismiss the popup mid-install.
+  void keyPressEvent(QKeyEvent *event) override;
 
 private:
-    QLabel* status_label_ = nullptr;
-    QProgressBar* progress_bar_ = nullptr;
+  QLabel *status_label_       = nullptr;
+  QProgressBar *progress_bar_ = nullptr;
 };
 
 }  // namespace ui

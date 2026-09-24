@@ -13,4 +13,4 @@ namespace engine {
 // Backward-compat alias (deprecated - use Source::Steam::Provider)
 using SteamWorkshopProvider = Source::Steam::Provider;
 
-} // namespace engine
+}  // namespace engine

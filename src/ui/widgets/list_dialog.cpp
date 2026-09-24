@@ -27,15 +27,14 @@ ListDialog::ListDialog(QWidget *parent) : QDialog(parent) {
   filter_->setClearButtonEnabled(true);
   layout->addWidget(filter_);
 
-  buttons_ = new QDialogButtonBox(
-      QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+  buttons_ =
+      new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
   connect(buttons_, &QDialogButtonBox::accepted, this, &ListDialog::accept);
   connect(buttons_, &QDialogButtonBox::rejected, this, &QDialog::reject);
   layout->addWidget(buttons_);
 
   connect(list_, &QListWidget::itemDoubleClicked, this, &ListDialog::accept);
-  connect(filter_, &QLineEdit::textChanged, this,
-          &ListDialog::on_filter_textChanged);
+  connect(filter_, &QLineEdit::textChanged, this, &ListDialog::on_filter_textChanged);
 
   filter_->setFocus();
 }
@@ -87,14 +86,13 @@ void ListDialog::on_filter_textChanged(const QString &filter) {
 
 void ListDialog::apply_filter() {
   const QString filter = filter_->text().trimmed();
-  const int count = choices_.size();
+  const int count      = choices_.size();
 
   QStringList newChoices;
   QList<QVariant> newData;
   newChoices.reserve(count);
   for (int i = 0; i < count; ++i) {
-    if (filter.isEmpty() ||
-        choices_.at(i).contains(filter, Qt::CaseInsensitive)) {
+    if (filter.isEmpty() || choices_.at(i).contains(filter, Qt::CaseInsensitive)) {
       newChoices.append(choices_.at(i));
       if (i < data_.size())
         newData.append(data_[i]);
@@ -127,4 +125,4 @@ void ListDialog::apply_filter() {
   }
 }
 
-} // namespace ui
+}  // namespace ui

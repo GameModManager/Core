@@ -20,7 +20,7 @@ CategoriesTab::CategoriesTab(QWidget *parent) : ModInfoTab(parent) {
   layout->setContentsMargins(0, 0, 0, 0);
 
   auto *header = new QHBoxLayout();
-  auto *label = new QLabel(tr("Primary category:"), this);
+  auto *label  = new QLabel(tr("Primary category:"), this);
   header->addWidget(label);
   primary_ = new QComboBox(this);
   header->addWidget(primary_, 1);
@@ -30,8 +30,7 @@ CategoriesTab::CategoriesTab(QWidget *parent) : ModInfoTab(parent) {
   tree_->setHeaderHidden(true);
   layout->addWidget(tree_, 1);
 
-  connect(tree_, &QTreeWidget::itemChanged, this,
-          &CategoriesTab::on_item_changed);
+  connect(tree_, &QTreeWidget::itemChanged, this, &CategoriesTab::on_item_changed);
   connect(primary_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
           [this](int index) {
             if (rebuilding_)
@@ -69,7 +68,7 @@ void CategoriesTab::set_mod(const ModInfoData &data) {
   QSet<int> enabled;
   const QString csv =
       QString::fromStdString(data.load_meta().get("General", "category"));
-  int primary = 0;
+  int primary      = 0;
   const auto parts = csv.split(QLatin1Char(','), Qt::SkipEmptyParts);
   if (!parts.isEmpty()) {
     primary = parts.first().toInt();
@@ -79,9 +78,9 @@ void CategoriesTab::set_mod(const ModInfoData &data) {
 
   // Fall back to the Nexus category mapping when the CSV is empty.
   if (enabled.isEmpty()) {
-    const int nexus_id = QString::fromStdString(
-                             data.load_meta().get("Nexusmods", "nexuscategory"))
-                             .toInt();
+    const int nexus_id =
+        QString::fromStdString(data.load_meta().get("Nexusmods", "nexuscategory"))
+            .toInt();
     if (nexus_id > 0) {
       if (const auto *cat = categories_->category_for_nexus(nexus_id)) {
         enabled.insert(cat->id);
@@ -122,8 +121,8 @@ void CategoriesTab::add_children(QTreeWidgetItem *root, int parent_id) {
       children.push_back(&cat);
   }
   std::sort(children.begin(), children.end(), [](const auto *a, const auto *b) {
-    return QString::fromStdString(a->name).compare(
-               QString::fromStdString(b->name), Qt::CaseInsensitive) < 0;
+    return QString::fromStdString(a->name).compare(QString::fromStdString(b->name),
+                                                   Qt::CaseInsensitive) < 0;
   });
 
   for (const auto *cat : children) {
@@ -185,16 +184,17 @@ void CategoriesTab::save_tree() {
   if (!parts.isEmpty())
     csv = parts.join(QLatin1Char(','));
 
-  auto meta = current().load_meta();
-  const QString before =
-      QString::fromStdString(meta.get("General", "category"));
+  auto meta            = current().load_meta();
+  const QString before = QString::fromStdString(meta.get("General", "category"));
   if (csv == before)
-    return; // nothing changed
+    return;  // nothing changed
   meta.set("General", "category", csv.toStdString());
   current().save_meta(meta);
 }
 
-void CategoriesTab::persist() { save_tree(); }
+void CategoriesTab::persist() {
+  save_tree();
+}
 
 void CategoriesTab::on_item_changed(QTreeWidgetItem *item, int column) {
   Q_UNUSED(item)
@@ -215,6 +215,8 @@ void CategoriesTab::on_item_changed(QTreeWidgetItem *item, int column) {
   save_tree();
 }
 
-void CategoriesTab::save_state() { save_tree(); }
+void CategoriesTab::save_state() {
+  save_tree();
+}
 
-} // namespace ui
+}  // namespace ui

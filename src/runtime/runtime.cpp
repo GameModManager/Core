@@ -15,24 +15,22 @@
 #include <unistd.h>
 #endif
 
-namespace engine
-{
+namespace engine {
 
 // --- NativeRuntime ---
 
-bool NativeRuntime::launch(const std::filesystem::path& executable,
-                           const std::filesystem::path& game_dir,
+bool NativeRuntime::launch(const std::filesystem::path &executable,
+                           const std::filesystem::path &game_dir,
                            uint32_t /*steam_appid*/,
-                           const std::vector<std::string>& args,
-                           const std::filesystem::path& cwd)
-{
+                           const std::vector<std::string> &args,
+                           const std::filesystem::path &cwd) {
   if (!std::filesystem::exists(executable))
     return false;
 
 #ifdef _WIN32
   // On Windows, use ShellExecute to launch any registered file type
   std::string cmd = "\"" + executable.string() + "\"";
-  for (const auto& a : args)
+  for (const auto &a : args)
     cmd += " \"" + a + "\"";
   return std::system(cmd.c_str()) == 0;
 #else
@@ -61,19 +59,19 @@ bool NativeRuntime::launch(const std::filesystem::path& executable,
     if (freopen("/dev/null", "r", stdin)) {
     }
     // argv[0] = executable, then the configured args, then nullptr.
-    std::vector<char*> argv;
-    argv.push_back(const_cast<char*>(executable.c_str()));
-    for (const auto& a : args)
-      argv.push_back(const_cast<char*>(a.c_str()));
+    std::vector<char *> argv;
+    argv.push_back(const_cast<char *>(executable.c_str()));
+    for (const auto &a : args)
+      argv.push_back(const_cast<char *>(a.c_str()));
     argv.push_back(nullptr);
     execvp(argv[0], argv.data());
     // If exec fails, try running through /bin/sh (for scripts without
     // proper shebang), preserving the args.
-    std::vector<char*> sh_argv;
-    sh_argv.push_back(const_cast<char*>("sh"));
-    sh_argv.push_back(const_cast<char*>(executable.c_str()));
-    for (const auto& a : args)
-      sh_argv.push_back(const_cast<char*>(a.c_str()));
+    std::vector<char *> sh_argv;
+    sh_argv.push_back(const_cast<char *>("sh"));
+    sh_argv.push_back(const_cast<char *>(executable.c_str()));
+    for (const auto &a : args)
+      sh_argv.push_back(const_cast<char *>(a.c_str()));
     sh_argv.push_back(nullptr);
     execv("/bin/sh", sh_argv.data());
     _exit(1);
@@ -86,20 +84,18 @@ bool NativeRuntime::launch(const std::filesystem::path& executable,
 #endif
 }
 
-bool NativeRuntime::is_available() const
-{
+bool NativeRuntime::is_available() const {
   return true;
 }
 
 // --- ProtonRuntime ---
 
-ProtonRuntime::ProtonRuntime(const Platform* platform) : platform_(platform) {}
+ProtonRuntime::ProtonRuntime(const Platform *platform) : platform_(platform) {}
 
-bool ProtonRuntime::launch(const std::filesystem::path& executable,
-                           const std::filesystem::path& game_dir, uint32_t steam_appid,
-                           const std::vector<std::string>& args,
-                           const std::filesystem::path& cwd)
-{
+bool ProtonRuntime::launch(const std::filesystem::path &executable,
+                           const std::filesystem::path &game_dir, uint32_t steam_appid,
+                           const std::vector<std::string> &args,
+                           const std::filesystem::path &cwd) {
   if (!std::filesystem::exists(executable))
     return false;
   if (!platform_)
@@ -124,12 +120,12 @@ bool ProtonRuntime::launch(const std::filesystem::path& executable,
     // NOTE: proton_name must outlive execv - filename() returns a
     // temporary whose c_str() would dangle (Workspace-0y6g).
     auto proton_name = proton.filename();
-    std::vector<char*> argv;
-    argv.push_back(const_cast<char*>(proton_name.c_str()));
-    argv.push_back(const_cast<char*>("waitforexitandrun"));
-    argv.push_back(const_cast<char*>(executable.c_str()));
-    for (const auto& a : args)
-      argv.push_back(const_cast<char*>(a.c_str()));
+    std::vector<char *> argv;
+    argv.push_back(const_cast<char *>(proton_name.c_str()));
+    argv.push_back(const_cast<char *>("waitforexitandrun"));
+    argv.push_back(const_cast<char *>(executable.c_str()));
+    for (const auto &a : args)
+      argv.push_back(const_cast<char *>(a.c_str()));
     argv.push_back(nullptr);
     execv(proton.c_str(), argv.data());
     _exit(1);
@@ -143,9 +139,8 @@ bool ProtonRuntime::launch(const std::filesystem::path& executable,
 // --- Static helpers ---
 
 std::filesystem::path
-ProtonRuntime::find_proton_binary(const Platform* platform, uint32_t steam_appid,
-                                  const std::string& runner_override)
-{
+ProtonRuntime::find_proton_binary(const Platform *platform, uint32_t steam_appid,
+                                  const std::string &runner_override) {
   if (!platform)
     return {};
 
@@ -163,10 +158,9 @@ ProtonRuntime::find_proton_binary(const Platform* platform, uint32_t steam_appid
   return platform->find_proton();
 }
 
-bool ProtonRuntime::prepare_proton_environment(const Platform* platform,
-                                               const std::filesystem::path& game_dir,
-                                               uint32_t steam_appid)
-{
+bool ProtonRuntime::prepare_proton_environment(const Platform *platform,
+                                               const std::filesystem::path &game_dir,
+                                               uint32_t steam_appid) {
   if (!platform)
     return false;
 
@@ -186,7 +180,7 @@ bool ProtonRuntime::prepare_proton_environment(const Platform* platform,
   // Build library paths - all Steam library folders
   auto libs = platform->steam_library_paths();
   std::string library_paths;
-  for (const auto& lib : libs) {
+  for (const auto &lib : libs) {
     if (!library_paths.empty())
       library_paths += ":";
     library_paths += lib.string();
@@ -199,8 +193,7 @@ bool ProtonRuntime::prepare_proton_environment(const Platform* platform,
   return true;
 }
 
-bool ProtonRuntime::is_available() const
-{
+bool ProtonRuntime::is_available() const {
   return platform_ && !find_proton_binary(platform_, 0, runner_override_).empty();
 }
 

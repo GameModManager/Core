@@ -40,28 +40,21 @@ InstanceOptionsWidget::InstanceOptionsWidget(
     engine::Platform *platform, engine::PluginLoader *plugin_loader,
     const std::string &game_id, const std::string &game_display_name,
     const std::filesystem::path &game_dir, uint32_t steam_appid,
-    const std::filesystem::path &instance_root,
-    const std::string &current_runner,
+    const std::filesystem::path &instance_root, const std::string &current_runner,
     const std::string &current_deploy_strategy,
     const engine::DeployConfig &deploy_config, QWidget *parent)
-    : QWidget(parent),
-      platform_(platform),
-      plugin_loader_(plugin_loader),
-      game_id_(game_id),
-      game_display_name_(game_display_name),
-      game_dir_(game_dir),
-      steam_appid_(steam_appid),
-      instance_root_(instance_root),
-      current_deploy_strategy_(current_deploy_strategy),
-      deploy_config_(deploy_config) {
+    : QWidget(parent), platform_(platform), plugin_loader_(plugin_loader),
+      game_id_(game_id), game_display_name_(game_display_name), game_dir_(game_dir),
+      steam_appid_(steam_appid), instance_root_(instance_root),
+      current_deploy_strategy_(current_deploy_strategy), deploy_config_(deploy_config) {
   setMinimumWidth(420);
 
   auto *root = new QVBoxLayout(this);
 
   // --- Runtime Environment: runner selector (boxed) ---
-  auto *runtime_group = new QGroupBox(tr("Runtime Environment"), this);
+  auto *runtime_group  = new QGroupBox(tr("Runtime Environment"), this);
   auto *runtime_layout = new QVBoxLayout(runtime_group);
-  auto *runner_row = new QHBoxLayout;
+  auto *runner_row     = new QHBoxLayout;
   runner_row->addWidget(new QLabel(tr("Runner:"), runtime_group));
   runner_combo_ = new QComboBox(runtime_group);
   runner_row->addWidget(runner_combo_, 1);
@@ -77,9 +70,9 @@ InstanceOptionsWidget::InstanceOptionsWidget(
           &InstanceOptionsWidget::update_runner_detail);
 
   // --- Recommended packages (wine.json shipped with the game plugin) ---
-  auto *packages_group = new QGroupBox(tr("Recommended Wine Packages"), this);
+  auto *packages_group  = new QGroupBox(tr("Recommended Wine Packages"), this);
   auto *packages_layout = new QVBoxLayout(packages_group);
-  packages_layout_ = packages_layout;
+  packages_layout_      = packages_layout;
   root->addWidget(packages_group);
 
   // Non-Steam games (steam_appid == 0) have no Proton prefix to configure:
@@ -90,7 +83,8 @@ InstanceOptionsWidget::InstanceOptionsWidget(
   if (steam_appid_ == 0) {
     runtime_group->hide();
     packages_group->hide();
-    if (tweaks_group_) tweaks_group_->hide();
+    if (tweaks_group_)
+      tweaks_group_->hide();
   }
 
   // --- Deploy management (symlink-deploy games only) ---
@@ -100,8 +94,8 @@ InstanceOptionsWidget::InstanceOptionsWidget(
   // Replaces the modal QProgressDialog the popup used: the same widget works
   // embedded in a tab, where a modal progress dialog would be wrong.
   auto *progress_row = new QHBoxLayout;
-  deploy_progress_ = new QProgressBar(this);
-  deploy_progress_->setRange(0, 0); // indeterminate until the first step
+  deploy_progress_   = new QProgressBar(this);
+  deploy_progress_->setRange(0, 0);  // indeterminate until the first step
   deploy_progress_->setTextVisible(false);
   deploy_progress_->hide();
   progress_row->addWidget(deploy_progress_, 1);
@@ -113,11 +107,10 @@ InstanceOptionsWidget::InstanceOptionsWidget(
 
   // --- Buttons ---
   auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
-  auto *save = buttons->addButton(tr("Save"), QDialogButtonBox::AcceptRole);
+  auto *save    = buttons->addButton(tr("Save"), QDialogButtonBox::AcceptRole);
   connect(buttons, &QDialogButtonBox::rejected, this,
           &InstanceOptionsWidget::cancel_requested);
-  connect(save, &QPushButton::clicked, this,
-          &InstanceOptionsWidget::save_requested);
+  connect(save, &QPushButton::clicked, this, &InstanceOptionsWidget::save_requested);
   root->addWidget(buttons);
 
   refresh_runners();
@@ -144,10 +137,12 @@ void InstanceOptionsWidget::set_flush_deferred_disable_queue(
 }
 
 std::string InstanceOptionsWidget::selected_runner() const {
-  if (!runner_combo_) return {};
+  if (!runner_combo_)
+    return {};
   // Item 0 is "Automatic"; everything else is a discovered runner name.
   int idx = runner_combo_->currentIndex();
-  if (idx <= 0) return {};
+  if (idx <= 0)
+    return {};
   return runner_combo_->itemText(idx).toStdString();
 }
 
@@ -179,19 +174,19 @@ void InstanceOptionsWidget::refresh_runners() {
 }
 
 void InstanceOptionsWidget::update_runner_detail() {
-  if (!runner_detail_ || !platform_) return;
+  if (!runner_detail_ || !platform_)
+    return;
 
   QString resolved;
   int idx = runner_combo_->currentIndex();
   if (idx <= 0) {
-    auto proton =
-        engine::ProtonRuntime::find_proton_binary(platform_, steam_appid_);
+    auto proton = engine::ProtonRuntime::find_proton_binary(platform_, steam_appid_);
     if (proton.empty())
       resolved = tr("no Proton runner found - falls back to standalone Wine");
     else
       resolved = QString::fromStdString(proton.string());
   } else {
-    auto name = runner_combo_->itemText(idx).toStdString();
+    auto name  = runner_combo_->itemText(idx).toStdString();
     auto found = platform_->find_proton_named(name);
     if (found.empty())
       resolved = tr("runner not found on disk");
@@ -202,13 +197,15 @@ void InstanceOptionsWidget::update_runner_detail() {
 }
 
 std::filesystem::path InstanceOptionsWidget::recommended_packages_path() const {
-  if (!plugin_loader_ || game_id_.empty()) return {};
+  if (!plugin_loader_ || game_id_.empty())
+    return {};
   for (const auto &p : plugin_loader_->plugins()) {
     if (p.game_id == game_id_) {
       // wine.json is shipped next to the plugin as <plugin_dir>/<game_id>/wine.json.
-      auto dir = std::filesystem::path(p.path).parent_path() / game_id_;
+      auto dir       = std::filesystem::path(p.path).parent_path() / game_id_;
       auto candidate = dir / "wine.json";
-      if (std::filesystem::exists(candidate)) return candidate;
+      if (std::filesystem::exists(candidate))
+        return candidate;
       return {};
     }
   }
@@ -216,12 +213,14 @@ std::filesystem::path InstanceOptionsWidget::recommended_packages_path() const {
 }
 
 void InstanceOptionsWidget::load_recommended_packages() {
-  if (!packages_layout_) return;
+  if (!packages_layout_)
+    return;
   pkg_install_btns_.clear();
 
   auto path = recommended_packages_path();
   if (path.empty()) {
-    auto *missing = new QLabel(tr("No recommended packages defined for this game."), this);
+    auto *missing =
+        new QLabel(tr("No recommended packages defined for this game."), this);
     packages_layout_->addWidget(missing);
     return;
   }
@@ -245,21 +244,24 @@ void InstanceOptionsWidget::load_recommended_packages() {
   const auto arr = doc.object().value("packages").toArray();
   for (const auto &v : arr) {
     auto verb = v.toString();
-    if (verb.isEmpty()) continue;
+    if (verb.isEmpty())
+      continue;
     verbs << verb;
 
     auto *row = new QHBoxLayout;
     row->addWidget(new QLabel(verb, this), 1);
     auto *install = new QPushButton(tr("Install"), this);
     pkg_install_btns_.append(install);
-    connect(install, &QPushButton::clicked, this,
-            [this, verb]() { install_packages({verb}); });
+    connect(install, &QPushButton::clicked, this, [this, verb]() {
+      install_packages({verb});
+    });
     row->addWidget(install);
     packages_layout_->addLayout(row);
   }
 
   if (verbs.isEmpty()) {
-    auto *missing = new QLabel(tr("No recommended packages defined for this game."), this);
+    auto *missing =
+        new QLabel(tr("No recommended packages defined for this game."), this);
     packages_layout_->addWidget(missing);
     return;
   }
@@ -285,17 +287,18 @@ void InstanceOptionsWidget::load_recommended_packages() {
 
   // Warn up front when nothing can actually install these.
   engine::ProtonToolRequest request;
-  request.platform = platform_;
+  request.platform    = platform_;
   request.steam_appid = steam_appid_;
-  request.game_dir = game_dir_;
+  request.game_dir    = game_dir_;
   if (!engine::proton_tooling_available(request)) {
-    packages_status_->setText(
-        tr("protontricks is not installed - recommended packages cannot be installed."));
+    packages_status_->setText(tr(
+        "protontricks is not installed - recommended packages cannot be installed."));
   }
 }
 
 void InstanceOptionsWidget::install_packages(const QStringList &verbs) {
-  if (verbs.isEmpty() || packages_thread_) return;
+  if (verbs.isEmpty() || packages_thread_)
+    return;
 
   // Prefer plain winetricks (we resolve the prefix ourselves, avoiding
   // protontricks' scan of ALL Steam appmanifest files); fall back to
@@ -305,9 +308,10 @@ void InstanceOptionsWidget::install_packages(const QStringList &verbs) {
   if (tool.isEmpty())
     tool = QStandardPaths::findExecutable(QStringLiteral("protontricks"));
   if (tool.isEmpty()) {
-    QMessageBox::warning(this, tr("Instance Options"),
-                         tr("No protontricks / winetricks available to install packages.\n"
-                            "Install protontricks to manage Proton prefixes."));
+    QMessageBox::warning(
+        this, tr("Instance Options"),
+        tr("No protontricks / winetricks available to install packages.\n"
+           "Install protontricks to manage Proton prefixes."));
     return;
   }
 
@@ -315,11 +319,10 @@ void InstanceOptionsWidget::install_packages(const QStringList &verbs) {
   // <compatdata>/<appid>/pfx when present, otherwise the compatdata dir.
   std::filesystem::path prefix;
   if (platform_ && steam_appid_ != 0) {
-    if (auto compat = platform_->resolve_proton_prefix(steam_appid_);
-        !compat.empty()) {
+    if (auto compat = platform_->resolve_proton_prefix(steam_appid_); !compat.empty()) {
       std::error_code ec;
       auto pfx = compat / "pfx";
-      prefix = std::filesystem::is_directory(pfx, ec) ? pfx : compat;
+      prefix   = std::filesystem::is_directory(pfx, ec) ? pfx : compat;
     }
   }
   if (use_winetricks) {
@@ -336,20 +339,17 @@ void InstanceOptionsWidget::install_packages(const QStringList &verbs) {
   if (use_winetricks) {
     tool_args << QStringLiteral("-q") << verbs;
   } else {
-    tool_args << QStringLiteral("--no-term")
-              << QString::number(steam_appid_) << verbs;
+    tool_args << QStringLiteral("--no-term") << QString::number(steam_appid_) << verbs;
   }
   const QString prefix_str =
-      prefix.empty() ? QString()
-                     : QString::fromStdString(prefix.string());
+      prefix.empty() ? QString() : QString::fromStdString(prefix.string());
   QString steam_root_str;
   if (!use_winetricks && platform_) {
     const auto steam_root = platform_->find_steam_root();
     if (!steam_root.empty())
       steam_root_str = QString::fromStdString(steam_root.string());
   }
-  const QString runner_override =
-      QString::fromStdString(selected_runner());
+  const QString runner_override = QString::fromStdString(selected_runner());
 
   if (packages_status_)
     packages_status_->setText(tr("Installing: %1...").arg(verbs.join(", ")));
@@ -357,74 +357,77 @@ void InstanceOptionsWidget::install_packages(const QStringList &verbs) {
     packages_progress_->setRange(0, 0);
     packages_progress_->show();
   }
-  if (install_all_btn_) install_all_btn_->setEnabled(false);
+  if (install_all_btn_)
+    install_all_btn_->setEnabled(false);
   for (auto *btn : pkg_install_btns_) {
-    if (btn) btn->setEnabled(false);
+    if (btn)
+      btn->setEnabled(false);
   }
 
   // winetricks blocks (downloads, wineserver spin-up), so it runs on a
   // worker: same QPointer-guarded pattern as run_proton_tweaks(), safe if
   // the tab closes mid-run.
   QPointer<InstanceOptionsWidget> self(this);
-  auto *thread = QThread::create(
-      [self, tool, tool_args, prefix_str, steam_root_str, runner_override,
-       verbs, use_winetricks]() {
-        QProcess proc;
-        proc.setProgram(tool);
-        proc.setArguments(tool_args);
-        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-        if (!prefix_str.isEmpty())
-          env.insert(QStringLiteral("WINEPREFIX"), prefix_str);
-        if (!use_winetricks) {
-          if (!steam_root_str.isEmpty())
-            env.insert(QStringLiteral("STEAM_DIR"), steam_root_str);
-          if (!runner_override.isEmpty() && !runner_override.contains('/'))
-            env.insert(QStringLiteral("PROTON_VERSION"), runner_override);
-        }
-        proc.setProcessEnvironment(env);
-        proc.start();
-        QString error;
-        bool ok = false;
-        if (!proc.waitForStarted()) {
-          error = proc.errorString();
-        } else if (!proc.waitForFinished(-1)) {
-          error = proc.errorString();
-        } else {
-          error = QString::fromLocal8Bit(proc.readAllStandardError()).trimmed();
-          if (error.isEmpty())
-            error = QString::fromLocal8Bit(proc.readAllStandardOutput())
-                        .trimmed();
-          ok = (proc.exitStatus() == QProcess::NormalExit &&
-                proc.exitCode() == 0);
-        }
-        if (!self) return; // widget destroyed while the task was running
-        QMetaObject::invokeMethod(
-            self,
-            [self, verbs, ok, error]() {
-              if (!self) return;
-              self->finish_install_packages(verbs, ok, error);
-            },
-            Qt::QueuedConnection);
-      });
+  auto *thread = QThread::create([self, tool, tool_args, prefix_str, steam_root_str,
+                                  runner_override, verbs, use_winetricks]() {
+    QProcess proc;
+    proc.setProgram(tool);
+    proc.setArguments(tool_args);
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    if (!prefix_str.isEmpty())
+      env.insert(QStringLiteral("WINEPREFIX"), prefix_str);
+    if (!use_winetricks) {
+      if (!steam_root_str.isEmpty())
+        env.insert(QStringLiteral("STEAM_DIR"), steam_root_str);
+      if (!runner_override.isEmpty() && !runner_override.contains('/'))
+        env.insert(QStringLiteral("PROTON_VERSION"), runner_override);
+    }
+    proc.setProcessEnvironment(env);
+    proc.start();
+    QString error;
+    bool ok = false;
+    if (!proc.waitForStarted()) {
+      error = proc.errorString();
+    } else if (!proc.waitForFinished(-1)) {
+      error = proc.errorString();
+    } else {
+      error = QString::fromLocal8Bit(proc.readAllStandardError()).trimmed();
+      if (error.isEmpty())
+        error = QString::fromLocal8Bit(proc.readAllStandardOutput()).trimmed();
+      ok = (proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0);
+    }
+    if (!self)
+      return;  // widget destroyed while the task was running
+    QMetaObject::invokeMethod(
+        self,
+        [self, verbs, ok, error]() {
+          if (!self)
+            return;
+          self->finish_install_packages(verbs, ok, error);
+        },
+        Qt::QueuedConnection);
+  });
   thread->setObjectName(QStringLiteral("gmm-install-packages"));
   packages_thread_ = thread;
   connect(thread, &QThread::finished, thread, &QObject::deleteLater);
   thread->start();
 }
 
-void InstanceOptionsWidget::finish_install_packages(const QStringList &verbs,
-                                                    bool ok,
+void InstanceOptionsWidget::finish_install_packages(const QStringList &verbs, bool ok,
                                                     const QString &error) {
   packages_thread_ = nullptr;
-  if (packages_progress_) packages_progress_->hide();
-  if (install_all_btn_) install_all_btn_->setEnabled(true);
+  if (packages_progress_)
+    packages_progress_->hide();
+  if (install_all_btn_)
+    install_all_btn_->setEnabled(true);
   for (auto *btn : pkg_install_btns_) {
-    if (btn) btn->setEnabled(true);
+    if (btn)
+      btn->setEnabled(true);
   }
-  if (!packages_status_) return;
+  if (!packages_status_)
+    return;
   if (ok) {
-    packages_status_->setText(
-        tr("Successfully installed: %1").arg(verbs.join(", ")));
+    packages_status_->setText(tr("Successfully installed: %1").arg(verbs.join(", ")));
   } else {
     packages_status_->setText(
         tr("Installation failed: %1\n%2").arg(verbs.join(", "), error));
@@ -433,17 +436,17 @@ void InstanceOptionsWidget::finish_install_packages(const QStringList &verbs,
 
 void InstanceOptionsWidget::build_proton_tweaks() {
   auto *root = qobject_cast<QVBoxLayout *>(this->layout());
-  if (!root) return;
+  if (!root)
+    return;
 
   tweaks_group_ = new QGroupBox(tr("Proton Tweaks"), this);
-  auto *layout = new QVBoxLayout(tweaks_group_);
+  auto *layout  = new QVBoxLayout(tweaks_group_);
 
-  smoothing_check_ =
-      new QCheckBox(tr("Font smoothing (RGB ClearType)"), tweaks_group_);
+  smoothing_check_ = new QCheckBox(tr("Font smoothing (RGB ClearType)"), tweaks_group_);
   smoothing_check_->setChecked(true);
   layout->addWidget(smoothing_check_);
 
-  auto *dpi_row = new QHBoxLayout;
+  auto *dpi_row  = new QHBoxLayout;
   autodpi_check_ = new QCheckBox(tr("Auto-detect DPI"), tweaks_group_);
   autodpi_check_->setChecked(true);
   dpi_row->addWidget(autodpi_check_);
@@ -455,10 +458,11 @@ void InstanceOptionsWidget::build_proton_tweaks() {
   dpi_row->addStretch(1);
   layout->addLayout(dpi_row);
   connect(autodpi_check_, &QCheckBox::toggled, this, [this](bool checked) {
-    if (dpi_spin_) dpi_spin_->setVisible(!checked);
+    if (dpi_spin_)
+      dpi_spin_->setVisible(!checked);
   });
 
-  auto *btn_row = new QHBoxLayout;
+  auto *btn_row     = new QHBoxLayout;
   apply_tweaks_btn_ = new QPushButton(tr("Apply Proton Tweaks"), this);
   connect(apply_tweaks_btn_, &QPushButton::clicked, this,
           &InstanceOptionsWidget::run_proton_tweaks);
@@ -474,7 +478,8 @@ void InstanceOptionsWidget::build_proton_tweaks() {
 }
 
 void InstanceOptionsWidget::run_proton_tweaks() {
-  if (tweaks_thread_) return; // a run is already in progress
+  if (tweaks_thread_)
+    return;  // a run is already in progress
   if (!platform_ || steam_appid_ == 0) {
     if (tweaks_status_)
       tweaks_status_->setText(tr("Proton tweaks need a Steam game."));
@@ -484,11 +489,10 @@ void InstanceOptionsWidget::run_proton_tweaks() {
   // Resolve the wine prefix: <compatdata>/<appid>/pfx when present,
   // otherwise the compatdata dir itself.
   std::filesystem::path prefix;
-  if (auto compat = platform_->resolve_proton_prefix(steam_appid_);
-      !compat.empty()) {
+  if (auto compat = platform_->resolve_proton_prefix(steam_appid_); !compat.empty()) {
     std::error_code ec;
     auto pfx = compat / "pfx";
-    prefix = std::filesystem::is_directory(pfx, ec) ? pfx : compat;
+    prefix   = std::filesystem::is_directory(pfx, ec) ? pfx : compat;
   }
   {
     std::error_code ec;
@@ -501,7 +505,7 @@ void InstanceOptionsWidget::run_proton_tweaks() {
   }
 
   const bool smoothing = !smoothing_check_ || smoothing_check_->isChecked();
-  const bool auto_dpi = !autodpi_check_ || autodpi_check_->isChecked();
+  const bool auto_dpi  = !autodpi_check_ || autodpi_check_->isChecked();
   // Detect on the GUI thread (QScreen belongs there); the worker then uses
   // the detected value as force_dpi so it never touches QScreen itself.
   const int dpi_arg = auto_dpi ? engine::proton::detect_system_dpi()
@@ -510,23 +514,26 @@ void InstanceOptionsWidget::run_proton_tweaks() {
   if (tweaks_status_)
     tweaks_status_->setText(
         tr("Applying Proton tweaks (corefonts may take a few minutes)..."));
-  if (apply_tweaks_btn_) apply_tweaks_btn_->setEnabled(false);
+  if (apply_tweaks_btn_)
+    apply_tweaks_btn_->setEnabled(false);
 
   // Registry writes + corefonts install block (wineserver spin-up,
   // downloads), so they run on a worker: same QPointer-guarded pattern as
   // run_deploy_task(), safe if the tab closes mid-run.
   QPointer<InstanceOptionsWidget> self(this);
   const uint32_t appid = steam_appid_;
-  auto *thread = QThread::create([self, prefix, appid, smoothing, dpi_arg]() {
+  auto *thread         = QThread::create([self, prefix, appid, smoothing, dpi_arg]() {
     const bool core = engine::proton::ensure_corefonts(prefix, appid);
     const bool smooth =
         !smoothing || engine::proton::ensure_font_smoothing(prefix, appid);
     const bool dpi = engine::proton::ensure_dpi(prefix, appid, dpi_arg);
-    if (!self) return; // widget destroyed while the task was running
+    if (!self)
+      return;  // widget destroyed while the task was running
     QMetaObject::invokeMethod(
         self,
         [self, core, smooth, dpi, dpi_arg]() {
-          if (!self) return;
+          if (!self)
+            return;
           self->finish_proton_tweaks(core, smooth, dpi, dpi_arg);
         },
         Qt::QueuedConnection);
@@ -537,26 +544,28 @@ void InstanceOptionsWidget::run_proton_tweaks() {
   thread->start();
 }
 
-void InstanceOptionsWidget::finish_proton_tweaks(bool core, bool smooth,
-                                                 bool dpi, int dpi_value) {
+void InstanceOptionsWidget::finish_proton_tweaks(bool core, bool smooth, bool dpi,
+                                                 int dpi_value) {
   tweaks_thread_ = nullptr;
-  if (apply_tweaks_btn_) apply_tweaks_btn_->setEnabled(true);
-  if (!tweaks_status_) return;
+  if (apply_tweaks_btn_)
+    apply_tweaks_btn_->setEnabled(true);
+  if (!tweaks_status_)
+    return;
   const auto part = [this](bool v) {
     return v ? tr("ok") : tr("failed");
   };
-  tweaks_status_->setText(
-      tr("Corefonts: %1, font smoothing: %2, DPI %3: %4")
-          .arg(part(core), part(smooth))
-          .arg(dpi_value)
-          .arg(part(dpi)));
+  tweaks_status_->setText(tr("Corefonts: %1, font smoothing: %2, DPI %3: %4")
+                              .arg(part(core), part(smooth))
+                              .arg(dpi_value)
+                              .arg(part(dpi)));
 }
 
 void InstanceOptionsWidget::build_deploy_management() {
   auto *root = qobject_cast<QVBoxLayout *>(this->layout());
-  if (!root) return;
+  if (!root)
+    return;
 
-  auto *group = new QGroupBox(tr("Deploy Management"), this);
+  auto *group  = new QGroupBox(tr("Deploy Management"), this);
   auto *layout = new QVBoxLayout(group);
 
   // Deployment strategy selector. Only the strategies this build actually
@@ -569,14 +578,12 @@ void InstanceOptionsWidget::build_deploy_management() {
   deploy_strategy_combo_ = new QComboBox(group);
   deploy_strategy_combo_->addItem(tr("Symlink"),
                                   QString::fromLatin1(engine::kDefaultDeployStrategy));
-  deploy_strategy_combo_->addItem(
-      tr("Direct"),
-      QString::fromLatin1(engine::kDeployStrategyDirect));
+  deploy_strategy_combo_->addItem(tr("Direct"),
+                                  QString::fromLatin1(engine::kDeployStrategyDirect));
 #ifdef GMM_PLATFORM_LINUX
   if (engine::OverlayFsLauncher::is_supported(instance_root_ / "overwrite")) {
     deploy_strategy_combo_->addItem(
-        tr("OverlayFS"),
-        QString::fromLatin1(engine::kDeployStrategyOverlayFs));
+        tr("OverlayFS"), QString::fromLatin1(engine::kDeployStrategyOverlayFs));
   }
 #endif
   int idx = deploy_strategy_combo_->findData(
@@ -584,26 +591,27 @@ void InstanceOptionsWidget::build_deploy_management() {
   deploy_strategy_combo_->setCurrentIndex(idx >= 0 ? idx : 0);
   current_deploy_strategy_ =
       deploy_strategy_combo_->currentData().toString().toStdString();
-  connect(deploy_strategy_combo_, &QComboBox::currentIndexChanged, this,
-          [this](int) {
-            const std::string value =
-                deploy_strategy_combo_->currentData().toString().toStdString();
-            engine::Instance inst = engine::Instance::from_root(instance_root_);
-            inst.read_toml();
-            inst.write_key("deploy_strategy", value);
-            current_deploy_strategy_ = value;
-            update_deploy_actions_enabled();
-          });
+  connect(deploy_strategy_combo_, &QComboBox::currentIndexChanged, this, [this](int) {
+    const std::string value =
+        deploy_strategy_combo_->currentData().toString().toStdString();
+    engine::Instance inst = engine::Instance::from_root(instance_root_);
+    inst.read_toml();
+    inst.write_key("deploy_strategy", value);
+    current_deploy_strategy_ = value;
+    update_deploy_actions_enabled();
+  });
   strategy_row->addWidget(deploy_strategy_combo_, 1);
   layout->addLayout(strategy_row);
 
-  auto *row = new QHBoxLayout;
+  auto *row     = new QHBoxLayout;
   redeploy_btn_ = new QPushButton(tr("Force re-deploy links"), this);
-  remove_btn_ = new QPushButton(tr("Remove deployed files"), this);
-  connect(redeploy_btn_, &QPushButton::clicked, this,
-          [this]() { run_deploy_task(DeployTaskKind::Redeploy); });
-  connect(remove_btn_, &QPushButton::clicked, this,
-          [this]() { run_deploy_task(DeployTaskKind::Remove); });
+  remove_btn_   = new QPushButton(tr("Remove deployed files"), this);
+  connect(redeploy_btn_, &QPushButton::clicked, this, [this]() {
+    run_deploy_task(DeployTaskKind::Redeploy);
+  });
+  connect(remove_btn_, &QPushButton::clicked, this, [this]() {
+    run_deploy_task(DeployTaskKind::Remove);
+  });
   row->addWidget(redeploy_btn_);
   row->addWidget(remove_btn_);
   layout->addLayout(row);
@@ -619,18 +627,20 @@ void InstanceOptionsWidget::update_deploy_actions_enabled() {
   // touches game_dir. While a task runs, the whole deploy section is locked
   // (the popup's modal progress dialog used to block interaction the same
   // way).
-  const bool direct =
-      (current_deploy_strategy_ == engine::kDefaultDeployStrategy) ||
-      (current_deploy_strategy_ == engine::kDeployStrategyDirect);
+  const bool direct  = (current_deploy_strategy_ == engine::kDefaultDeployStrategy) ||
+                       (current_deploy_strategy_ == engine::kDeployStrategyDirect);
   const bool enabled = !deploy_task_running_ && direct;
-  if (redeploy_btn_) redeploy_btn_->setEnabled(enabled);
-  if (remove_btn_) remove_btn_->setEnabled(enabled);
+  if (redeploy_btn_)
+    redeploy_btn_->setEnabled(enabled);
+  if (remove_btn_)
+    remove_btn_->setEnabled(enabled);
   if (deploy_strategy_combo_)
     deploy_strategy_combo_->setEnabled(!deploy_task_running_);
 }
 
 void InstanceOptionsWidget::run_deploy_task(DeployTaskKind kind) {
-  if (deploy_thread_) return; // a task is already running
+  if (deploy_thread_)
+    return;  // a task is already running
 
   // Game-less instance (Workspace-wk8): the engine would resolve paths
   // against the CWD. The host prompts before this panel is even shown;
@@ -642,14 +652,15 @@ void InstanceOptionsWidget::run_deploy_task(DeployTaskKind kind) {
   }
 
   const bool remove_only = (kind == DeployTaskKind::Remove);
-  const QString confirm = remove_only
-      ? tr("Remove all deployed files and restore the original game files?\n\n"
-           "Every deployed link/copy is deleted and any original file parked "
-           "in Original_Files is moved back. The game returns to its pristine, "
-           "unmodded state.")
-      : tr("Force re-deploy of all mod links?\n\n"
-           "The current deploy is first removed (original game files are "
-           "restored), then every enabled mod is re-deployed from scratch.");
+  const QString confirm =
+      remove_only
+          ? tr("Remove all deployed files and restore the original game files?\n\n"
+               "Every deployed link/copy is deleted and any original file parked "
+               "in Original_Files is moved back. The game returns to its pristine, "
+               "unmodded state.")
+          : tr("Force re-deploy of all mod links?\n\n"
+               "The current deploy is first removed (original game files are "
+               "restored), then every enabled mod is re-deployed from scratch.");
   if (QMessageBox::question(this, tr("Deploy Management"), confirm) !=
       QMessageBox::Yes) {
     return;
@@ -674,12 +685,15 @@ void InstanceOptionsWidget::run_deploy_task(DeployTaskKind kind) {
   QPointer<InstanceOptionsWidget> self(this);
   auto *thread = QThread::create([self, kind, config, remove_only]() {
     const auto on_progress = [self](int done, int total) {
-      if (!self) return; // widget destroyed while the task was running
+      if (!self)
+        return;  // widget destroyed while the task was running
       QMetaObject::invokeMethod(
           self,
           [self, done, total]() {
-            if (!self) return;
-            if (!self->deploy_progress_) return;
+            if (!self)
+              return;
+            if (!self->deploy_progress_)
+              return;
             if (total > 0) {
               self->deploy_progress_->setRange(0, total);
               self->deploy_progress_->setValue(done);
@@ -689,13 +703,11 @@ void InstanceOptionsWidget::run_deploy_task(DeployTaskKind kind) {
     };
     bool ok;
     if (remove_only) {
-      ok = engine::remove_deployed_files(
-          config.deploy_target(), config.backup_root, config.ledger_file, 0,
-          on_progress);
+      ok = engine::remove_deployed_files(config.deploy_target(), config.backup_root,
+                                         config.ledger_file, 0, on_progress);
     } else {
-      ok = engine::remove_deployed_files(
-          config.deploy_target(), config.backup_root, config.ledger_file, 0,
-          on_progress);
+      ok = engine::remove_deployed_files(config.deploy_target(), config.backup_root,
+                                         config.ledger_file, 0, on_progress);
       if (ok) {
         ok = engine::deploy_all_enabled_mods_direct(
             config.mods_dir, config.deploy_target(), config.deploy_prefix,
@@ -704,11 +716,16 @@ void InstanceOptionsWidget::run_deploy_task(DeployTaskKind kind) {
             on_progress);
       }
     }
-    if (!self) return; // widget destroyed while the task was running
-    QMetaObject::invokeMethod(self, [self, kind, ok]() {
-      if (!self) return;
-      self->finish_deploy_task(kind, ok);
-    }, Qt::QueuedConnection);
+    if (!self)
+      return;  // widget destroyed while the task was running
+    QMetaObject::invokeMethod(
+        self,
+        [self, kind, ok]() {
+          if (!self)
+            return;
+          self->finish_deploy_task(kind, ok);
+        },
+        Qt::QueuedConnection);
   });
   thread->setObjectName(QStringLiteral("gmm-deploy-management"));
   deploy_thread_ = thread;
@@ -727,20 +744,20 @@ void InstanceOptionsWidget::run_deploy_task(DeployTaskKind kind) {
 }
 
 void InstanceOptionsWidget::finish_deploy_task(DeployTaskKind kind, bool ok) {
-  deploy_thread_ = nullptr;
+  deploy_thread_       = nullptr;
   deploy_task_running_ = false;
   deploy_progress_->hide();
   deploy_status_->hide();
   deploy_progress_->setRange(0, 0);
   update_deploy_actions_enabled();
 
-  const QString text = ok
-      ? (kind == DeployTaskKind::Remove
-             ? tr("Deployed files removed and original game files restored.")
-             : tr("All enabled mods re-deployed."))
-      : (kind == DeployTaskKind::Remove
-             ? tr("Removal finished with errors - see the log.")
-             : tr("Re-deploy finished with errors - see the log."));
+  const QString text =
+      ok ? (kind == DeployTaskKind::Remove
+                ? tr("Deployed files removed and original game files restored.")
+                : tr("All enabled mods re-deployed."))
+         : (kind == DeployTaskKind::Remove
+                ? tr("Removal finished with errors - see the log.")
+                : tr("Re-deploy finished with errors - see the log."));
   // Heap-allocate a notification dialog and parent it to `this` so Qt's
   // parent-child ownership is correct: ~QObject() -> deleteChildren()
   // safely deletes the heap-allocated QMessageBox when the widget is
@@ -750,11 +767,10 @@ void InstanceOptionsWidget::finish_deploy_task(DeployTaskKind kind, bool ok) {
   // widget was destroyed during its nested event loop, deleteChildren()
   // would call `delete` on a stack address, causing
   // "munmap_chunk(): invalid pointer" in Release builds.
-  auto *box = new QMessageBox(QMessageBox::Information,
-                              tr("Deploy Management"), text, QMessageBox::Ok,
-                              this);
+  auto *box = new QMessageBox(QMessageBox::Information, tr("Deploy Management"), text,
+                              QMessageBox::Ok, this);
   box->setAttribute(Qt::WA_DeleteOnClose);
   box->open();
 }
 
-} // namespace ui
+}  // namespace ui

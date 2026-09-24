@@ -16,17 +16,17 @@ namespace {
     throw SaveParseError("unexpected end of file");
   }
 
-  std::uint16_t rd16(const std::vector<std::uint8_t>& b, std::size_t at) {
+  std::uint16_t rd16(const std::vector<std::uint8_t> &b, std::size_t at) {
     return static_cast<std::uint16_t>(b[at]) |
            (static_cast<std::uint16_t>(b[at + 1]) << 8);
   }
 
 }  // namespace
 
-SaveReader::SaveReader(const std::filesystem::path& path,
-                       const std::string& expected_magic,
+SaveReader::SaveReader(const std::filesystem::path &path,
+                       const std::string &expected_magic,
                        std::uint64_t max_prefix_bytes) {
-  FILE* f = std::fopen(path.string().c_str(), "rb");
+  FILE *f = std::fopen(path.string().c_str(), "rb");
   if (!f) {
     throw SaveParseError("failed to open " + path.string());
   }
@@ -113,7 +113,7 @@ std::string SaveReader::read_bytes(std::size_t count) {
   if (pos_ + count > buf_.size()) {
     throw_eof();
   }
-  std::string out(reinterpret_cast<const char*>(buf_.data() + pos_), count);
+  std::string out(reinterpret_cast<const char *>(buf_.data() + pos_), count);
   pos_ += count;
   return out;
 }
@@ -195,7 +195,7 @@ void SaveReader::begin_compressed(std::uint16_t type, std::uint64_t max_decompre
 
 std::vector<std::uint8_t>
 SaveReader::inflate_chunks(std::uint64_t start, std::uint64_t total_uncompressed,
-                           const std::vector<std::uint8_t>& file,
+                           const std::vector<std::uint8_t> &file,
                            std::uint64_t cap_bytes) {
   constexpr std::size_t kChunk   = 16384;
   constexpr std::uint64_t kAlign = 16;
@@ -257,10 +257,10 @@ SaveReader::inflate_chunks(std::uint64_t start, std::uint64_t total_uncompressed
   return out;
 }
 
-std::vector<std::uint8_t> SaveReader::lz4_decompress(const std::string& compressed,
+std::vector<std::uint8_t> SaveReader::lz4_decompress(const std::string &compressed,
                                                      std::uint32_t uncompressed_size) {
   std::vector<std::uint8_t> out(uncompressed_size);
-  int n = LZ4_decompress_safe(compressed.data(), reinterpret_cast<char*>(out.data()),
+  int n = LZ4_decompress_safe(compressed.data(), reinterpret_cast<char *>(out.data()),
                               static_cast<int>(compressed.size()),
                               static_cast<int>(uncompressed_size));
   if (n < 0 || static_cast<std::uint32_t>(n) != uncompressed_size) {

@@ -15,27 +15,27 @@ namespace engine {
 
 // One entry in an archive's listing (MO2's FileData analogue).
 struct ArchiveEntryInfo {
-    std::string path;  // '/'-separated, relative to the archive root, no leading slash
-    bool is_dir = false;
-    int64_t size = 0;    // uncompressed size (files only)
-    int64_t index = -1;  // ordinal in the listing, for future selected extraction
+  std::string path;  // '/'-separated, relative to the archive root, no leading slash
+  bool is_dir   = false;
+  int64_t size  = 0;   // uncompressed size (files only)
+  int64_t index = -1;  // ordinal in the listing, for future selected extraction
 };
 
 // A read-only archive source that can enumerate its entries.
 class DataArchive {
 public:
-    virtual ~DataArchive() = default;
+  virtual ~DataArchive() = default;
 
-    // Fill `out` with every entry. Returns true on success; on failure `error`
-    // (when non-null) holds a human-readable reason.
-    virtual bool list(std::vector<ArchiveEntryInfo>& out,
-                      std::string* error = nullptr) const = 0;
+  // Fill `out` with every entry. Returns true on success; on failure `error`
+  // (when non-null) holds a human-readable reason.
+  virtual bool list(std::vector<ArchiveEntryInfo> &out,
+                    std::string *error = nullptr) const = 0;
 };
 
 // libarchive-backed DataArchive. Paths are normalized to '/'-separated
 // Windows-native form and entries whose names are "." or ".." are dropped,
 // mirroring MO2's ArchiveFileTree::makeTree.
-[[nodiscard]] std::shared_ptr<DataArchive> open_libarchive(
-    const std::filesystem::path& archive);
+[[nodiscard]] std::shared_ptr<DataArchive>
+open_libarchive(const std::filesystem::path &archive);
 
 }  // namespace engine

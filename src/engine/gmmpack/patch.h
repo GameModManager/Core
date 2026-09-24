@@ -14,10 +14,10 @@ namespace engine::gmmpack {
 // input shape so the two can merge without touching each other's files.
 struct BinaryPatch {
   std::string mod_id;
-  std::optional<int> sequence;  // absent = single non-chained patch
-  std::string target_path;      // path within the installed mod
+  std::optional<int> sequence;   // absent = single non-chained patch
+  std::string target_path;       // path within the installed mod
   std::string base_file_sha256;  // lowercase hex, file this step applies to
-  std::string payload_base64;   // bsdiff payload
+  std::string payload_base64;    // bsdiff payload
 };
 
 // Patches for one (mod, target file), sorted ascending by sequence.
@@ -38,14 +38,14 @@ struct PatchPlan {
 // Parse one patch JSON document. `filename` is the archive-relative name
 // (e.g. "awesome-mod.json" or "awesome-mod-2.json"); modId/sequence inside
 // the document MUST agree with it or the entry is rejected.
-bool parse_patch_json(const std::string& json_text, const std::string& filename,
-                      BinaryPatch& out, std::string& error);
+bool parse_patch_json(const std::string &json_text, const std::string &filename,
+                      BinaryPatch &out, std::string &error);
 
 // Group entries into chains (one per mod+target) in ascending sequence
 // order. Rejects gaps (sequences must run 1..N), duplicates, and mixing
 // sequenced with unsequenced entries for the same target.
 bool group_patches(std::vector<BinaryPatch> entries,
-                   std::vector<PatchChain>& out_chains, std::string& error);
+                   std::vector<PatchChain> &out_chains, std::string &error);
 
 PatchPlan build_plan(std::vector<PatchChain> chains);
 
@@ -53,14 +53,14 @@ PatchPlan build_plan(std::vector<PatchChain> chains);
 // base SHA-256, apply in order, write the final result atomically (the file
 // on disk is untouched unless every step succeeds). Rejects target paths
 // that escape mod_dir.
-bool apply_chain(const PatchChain& chain, const std::filesystem::path& mod_dir,
-                 std::string& error);
+bool apply_chain(const PatchChain &chain, const std::filesystem::path &mod_dir,
+                 std::string &error);
 
 // Apply every chain in the plan. `mod_dirs` maps mod id to its installed
 // directory. Stops at the first failure; earlier chains stay applied (the
 // installer applies onto a staging dir, so retry is cheap).
-bool apply_plan(const PatchPlan& plan,
-                const std::unordered_map<std::string, std::filesystem::path>& mod_dirs,
-                std::string& error);
+bool apply_plan(const PatchPlan &plan,
+                const std::unordered_map<std::string, std::filesystem::path> &mod_dirs,
+                std::string &error);
 
 }  // namespace engine::gmmpack

@@ -24,11 +24,11 @@ QString findWrestool() {
   return {};
 }
 
-ExeIconWorker::ExeIconWorker(QObject* parent) : QObject(parent) {}
+ExeIconWorker::ExeIconWorker(QObject *parent) : QObject(parent) {}
 
-void ExeIconWorker::extract(const QString& key, const QString& exe_path,
-                            const QString& cache_file_path, quint64 ticket) {
-  auto& log          = engine::Logger::instance();
+void ExeIconWorker::extract(const QString &key, const QString &exe_path,
+                            const QString &cache_file_path, quint64 ticket) {
+  auto &log          = engine::Logger::instance();
   const auto exe_std = exe_path.toStdString();
   bool ok            = false;
 

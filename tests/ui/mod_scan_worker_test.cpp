@@ -43,21 +43,21 @@
 namespace fs = std::filesystem;
 
 namespace {
-void check(bool cond, const char* what) {
+void check(bool cond, const char *what) {
   INFO(what);
   REQUIRE(cond);
 }
 
-void write_file(const fs::path& p, const std::string& contents) {
+void write_file(const fs::path &p, const std::string &contents) {
   fs::create_directories(p.parent_path());
   std::ofstream out(p);
   out << contents;
   check(out.good(), (std::string("write_file failed for ") + p.string()).c_str());
 }
 
-const engine::ScannedMod* by_folder(const std::vector<engine::ScannedMod>& mods,
-                                    const std::string& folder) {
-  for (const auto& m : mods)
+const engine::ScannedMod *by_folder(const std::vector<engine::ScannedMod> &mods,
+                                    const std::string &folder) {
+  for (const auto &m : mods)
     if (m.folder_name == folder)
       return &m;
   return nullptr;
@@ -67,7 +67,7 @@ const engine::ScannedMod* by_folder(const std::vector<engine::ScannedMod>& mods,
 TEST_CASE("mod scan worker stray plugins", "[ui]") {
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QCoreApplication app(test_argc, test_argv);
   (void)app;
 
@@ -136,7 +136,7 @@ TEST_CASE("mod scan worker stray plugins", "[ui]") {
   };
   std::vector<ScanResult> results;
   ui::ModScanThread thread(&app);
-  ui::ModScanWorker* worker = thread.worker();
+  ui::ModScanWorker *worker = thread.worker();
   QObject::connect(worker, &ui::ModScanWorker::finished, &app,
                    [&](ui::ModScanResult result, quint64 generation) {
                      results.push_back({std::move(result), generation});
@@ -157,7 +157,7 @@ TEST_CASE("mod scan worker stray plugins", "[ui]") {
   check(results.size() == 1, "exactly one result for the single scan");
   check(results[0].generation == 1, "finished() carries the run's generation");
 
-  const auto& scanned = results[0].result.scanned;
+  const auto &scanned = results[0].result.scanned;
 
   // The mod folder itself is scanned from the instance mods dir.
   check(by_folder(scanned, "MyMod") != nullptr,
@@ -171,7 +171,7 @@ TEST_CASE("mod scan worker stray plugins", "[ui]") {
         "ledger-owned real .esp is not synthesized as an unmanaged row");
 
   // A genuinely unmanaged plugin still gets the MO2 UnmanagedMods row.
-  const auto* user_drop = by_folder(scanned, "UserDrop.esp");
+  const auto *user_drop = by_folder(scanned, "UserDrop.esp");
   check(user_drop != nullptr, "user-dropped .esp still synthesized");
   check(user_drop != nullptr && user_drop->is_game_native,
         "user-dropped .esp row is flagged game-native (renders Unmanaged)");
@@ -186,7 +186,7 @@ TEST_CASE("mod scan worker stray plugins", "[ui]") {
 TEST_CASE("mod scan worker game mods dir override", "[ui]") {
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QCoreApplication app(test_argc, test_argv);
   (void)app;
 
@@ -226,7 +226,7 @@ TEST_CASE("mod scan worker game mods dir override", "[ui]") {
   };
   std::vector<ScanResult> results;
   ui::ModScanThread thread(&app);
-  ui::ModScanWorker* worker = thread.worker();
+  ui::ModScanWorker *worker = thread.worker();
   QObject::connect(worker, &ui::ModScanWorker::finished, &app,
                    [&](ui::ModScanResult result, quint64 generation) {
                      results.push_back({std::move(result), generation});
@@ -244,7 +244,7 @@ TEST_CASE("mod scan worker game mods dir override", "[ui]") {
     }
   }
 
-  const auto& scanned = results[0].result.scanned;
+  const auto &scanned = results[0].result.scanned;
   check(by_folder(scanned, "ExternalStray.esp") != nullptr,
         "stray plugin in the overridden mods dir is synthesized");
   check(by_folder(scanned, "DataStray.esp") == nullptr,
@@ -260,7 +260,7 @@ TEST_CASE("mod scan worker game mods dir override", "[ui]") {
 TEST_CASE("mod scan worker merge keeps game mods dir results", "[ui]") {
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QCoreApplication app(test_argc, test_argv);
   (void)app;
 
@@ -309,7 +309,7 @@ TEST_CASE("mod scan worker merge keeps game mods dir results", "[ui]") {
   };
   std::vector<ScanResult> results;
   ui::ModScanThread thread(&app);
-  ui::ModScanWorker* worker = thread.worker();
+  ui::ModScanWorker *worker = thread.worker();
   QObject::connect(worker, &ui::ModScanWorker::finished, &app,
                    [&](ui::ModScanResult result, quint64 generation) {
                      results.push_back({std::move(result), generation});
@@ -327,7 +327,7 @@ TEST_CASE("mod scan worker merge keeps game mods dir results", "[ui]") {
     }
   }
 
-  const auto& scanned = results[0].result.scanned;
+  const auto &scanned = results[0].result.scanned;
   check(by_folder(scanned, "DeployedA") != nullptr,
         "game-mods-dir mod DeployedA survives the instance-mode scan");
   check(by_folder(scanned, "DeployedB") != nullptr,
@@ -335,7 +335,7 @@ TEST_CASE("mod scan worker merge keeps game mods dir results", "[ui]") {
   check(by_folder(scanned, "StoredOnly") != nullptr,
         "instance-stored mod is merged in");
   int shared_count = 0;
-  for (const auto& m : scanned)
+  for (const auto &m : scanned)
     if (m.folder_name == "Shared")
       ++shared_count;
   check(shared_count == 1, "folder present in both dirs appears exactly once");
@@ -351,7 +351,7 @@ TEST_CASE("mod scan worker merge keeps game mods dir results", "[ui]") {
 TEST_CASE("mod scan worker migrates sidecars in-folder", "[ui]") {
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QCoreApplication app(test_argc, test_argv);
   (void)app;
 
@@ -397,7 +397,7 @@ TEST_CASE("mod scan worker migrates sidecars in-folder", "[ui]") {
   };
   std::vector<ScanResult> results;
   ui::ModScanThread thread(&app);
-  ui::ModScanWorker* worker = thread.worker();
+  ui::ModScanWorker *worker = thread.worker();
   QObject::connect(worker, &ui::ModScanWorker::finished, &app,
                    [&](ui::ModScanResult result, quint64 generation) {
                      results.push_back({std::move(result), generation});
@@ -457,7 +457,7 @@ TEST_CASE("mod scan worker migrates sidecars in-folder", "[ui]") {
 TEST_CASE("mod scan worker preserves meta.bak across scans", "[ui]") {
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QCoreApplication app(test_argc, test_argv);
   (void)app;
 
@@ -477,7 +477,7 @@ TEST_CASE("mod scan worker preserves meta.bak across scans", "[ui]") {
 
   engine::GameKnowledge knowledge;
   ui::ModScanThread thread(&app);
-  ui::ModScanWorker* worker = thread.worker();
+  ui::ModScanWorker *worker = thread.worker();
   std::vector<ui::ModScanResult> results;
   QObject::connect(worker, &ui::ModScanWorker::finished, &app,
                    [&](ui::ModScanResult result, quint64) {
@@ -527,7 +527,7 @@ TEST_CASE("mod scan worker preserves meta.bak across scans", "[ui]") {
 TEST_CASE("mod scan worker keeps game-dir sidecars out of meta.bak", "[ui]") {
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QCoreApplication app(test_argc, test_argv);
   (void)app;
 
@@ -567,7 +567,7 @@ TEST_CASE("mod scan worker keeps game-dir sidecars out of meta.bak", "[ui]") {
 
   engine::GameKnowledge knowledge;
   ui::ModScanThread thread(&app);
-  ui::ModScanWorker* worker = thread.worker();
+  ui::ModScanWorker *worker = thread.worker();
   std::vector<ui::ModScanResult> results;
   QObject::connect(worker, &ui::ModScanWorker::finished, &app,
                    [&](ui::ModScanResult result, quint64) {
@@ -630,7 +630,7 @@ TEST_CASE("mod scan worker keeps game-dir sidecars out of meta.bak", "[ui]") {
 TEST_CASE("mod scan worker prunes orphaned empty mods", "[ui]") {
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QCoreApplication app(test_argc, test_argv);
   (void)app;
 
@@ -660,7 +660,7 @@ TEST_CASE("mod scan worker prunes orphaned empty mods", "[ui]") {
 
   engine::GameKnowledge knowledge;
   ui::ModScanThread thread(&app);
-  ui::ModScanWorker* worker = thread.worker();
+  ui::ModScanWorker *worker = thread.worker();
   std::vector<ui::ModScanResult> results;
   QObject::connect(worker, &ui::ModScanWorker::finished, &app,
                    [&](ui::ModScanResult result, quint64) {
@@ -685,7 +685,7 @@ TEST_CASE("mod scan worker prunes orphaned empty mods", "[ui]") {
   }
 
   check(results.size() == 1, "exactly one result for the single scan");
-  const auto& scanned = results.front().scanned;
+  const auto &scanned = results.front().scanned;
   check(by_folder(scanned, "GhostMod") == nullptr,
         "pruned ghost is dropped from the result");
   check(by_folder(scanned, "FreshShell") != nullptr,
@@ -697,7 +697,7 @@ TEST_CASE("mod scan worker prunes orphaned empty mods", "[ui]") {
 
   engine::ModStateTracker reloaded(base);
   check(reloaded.load(), "tracker reloads");
-  const engine::ModStateTracker& viewed = reloaded;
+  const engine::ModStateTracker &viewed = reloaded;
   check(viewed.entry("GhostMod") == nullptr, "ghost tracker entry removed");
   check(viewed.entry("LiveMod") != nullptr, "live tracker entry kept");
 
@@ -712,7 +712,7 @@ TEST_CASE("mod scan worker merge unions emptiness with external source", "[ui]")
   // the stub once tracked); an emptied external source over a stub IS.
   int test_argc     = 1;
   char test_argv0[] = "test";
-  char* test_argv[] = {test_argv0, nullptr};
+  char *test_argv[] = {test_argv0, nullptr};
   QCoreApplication app(test_argc, test_argv);
   (void)app;
 
@@ -740,7 +740,7 @@ TEST_CASE("mod scan worker merge unions emptiness with external source", "[ui]")
 
   engine::GameKnowledge knowledge;
   ui::ModScanThread thread(&app);
-  ui::ModScanWorker* worker = thread.worker();
+  ui::ModScanWorker *worker = thread.worker();
   std::vector<ui::ModScanResult> results;
   QObject::connect(worker, &ui::ModScanWorker::finished, &app,
                    [&](ui::ModScanResult result, quint64) {
@@ -766,8 +766,8 @@ TEST_CASE("mod scan worker merge unions emptiness with external source", "[ui]")
     }
   }
 
-  const auto& scanned = results.front().scanned;
-  const auto* healthy = by_folder(scanned, "HealthyShared");
+  const auto &scanned = results.front().scanned;
+  const auto *healthy = by_folder(scanned, "HealthyShared");
   check(healthy != nullptr, "healthy merged mod present");
   check(!healthy->is_empty, "stub over healthy external source is not empty");
   check(healthy->content_dir == external_mods / "HealthyShared",
@@ -775,7 +775,7 @@ TEST_CASE("mod scan worker merge unions emptiness with external source", "[ui]")
   // The healthy stub survives the prune that runs inside the same scan.
   check(fs::is_directory(mods_dir / "HealthyShared"), "healthy stub kept on disk");
 
-  const auto* emptied = by_folder(scanned, "GoneShared");
+  const auto *emptied = by_folder(scanned, "GoneShared");
   check(emptied == nullptr, "ghost stub pruned and dropped from the result");
   check(!fs::exists(mods_dir / "GoneShared"), "ghost stub folder removed");
 

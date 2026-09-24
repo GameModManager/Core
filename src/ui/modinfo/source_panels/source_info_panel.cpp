@@ -5,4 +5,4 @@ namespace ui {
 // Anchor the vtable for Q_OBJECT class.
 SourceInfoPanel::~SourceInfoPanel() = default;
 
-} // namespace ui
+}  // namespace ui

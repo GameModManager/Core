@@ -22,8 +22,8 @@ namespace {
 
   // The parse itself, parameterized by read window: `prefix` bytes buffered
   // (0 = whole file). Everything else is identical.
-  SaveGame parse_with_prefix(const std::filesystem::path& path,
-                             const std::string& game_id, std::uint64_t prefix) {
+  SaveGame parse_with_prefix(const std::filesystem::path &path,
+                             const std::string &game_id, std::uint64_t prefix) {
     SaveReader r(path, "TESV_SAVEGAME", prefix);
     SaveGame out;
     out.file_path = path;
@@ -79,7 +79,7 @@ namespace {
             out.light_plugins.push_back(r.wstring());
           }
         }
-      } catch (const SaveParseError&) {
+      } catch (const SaveParseError &) {
         // The capped inflate ran out mid-list: the plugin data genuinely
         // exceeds kFastScanDecompressedCap. The full parser (uncapped
         // inflate) can still serve this file - ask the worker to rerun it
@@ -97,7 +97,7 @@ namespace {
         for (std::uint8_t i = 0; i < plugin_count; ++i) {
           out.plugins.push_back(r.wstring());
         }
-      } catch (const SaveParseError&) {
+      } catch (const SaveParseError &) {
         throw SaveNeedFullParse("plugin data past fast-scan cap for " + path.string());
       }
     }
@@ -111,13 +111,13 @@ namespace {
 
 }  // namespace
 
-SaveGame parse_gamebryo_tesv_fast(const std::filesystem::path& path,
-                                  const std::string& game_id) {
+SaveGame parse_gamebryo_tesv_fast(const std::filesystem::path &path,
+                                  const std::string &game_id) {
   try {
     return parse_with_prefix(path, game_id, kFastScanPrefixBytes);
-  } catch (const SaveNeedFullParse&) {
+  } catch (const SaveNeedFullParse &) {
     throw;
-  } catch (const SaveParseError&) {
+  } catch (const SaveParseError &) {
     // The 1MiB window ran dry (screenshot or lists past the window, freak
     // file): retry with the whole file buffered. A genuinely corrupt file
     // fails again and the scan skips it, same as before.

@@ -12,13 +12,11 @@
 
 namespace engine::update {
 
-std::unique_ptr<SelfUpdater>
-create_debrpm_updater(const std::string &pkg_type) {
+std::unique_ptr<SelfUpdater> create_debrpm_updater(const std::string &pkg_type) {
   return std::make_unique<DebRpmUpdater>(pkg_type);
 }
 
-DebRpmUpdater::DebRpmUpdater(std::string pkg_type)
-    : pkg_type_(std::move(pkg_type)) {}
+DebRpmUpdater::DebRpmUpdater(std::string pkg_type) : pkg_type_(std::move(pkg_type)) {}
 
 UpdateInfo DebRpmUpdater::check_for_update() {
   if (pkg_type_ == "deb")
@@ -39,13 +37,12 @@ DebRpmUpdater::install_update(const UpdateInfo &info,
   }
 
   const std::string ext = (pkg_type_ == "deb") ? ".deb" : ".rpm";
-  const auto pkg_path =
-      std::filesystem::temp_directory_path() / ("gmm_update" + ext);
+  const auto pkg_path   = std::filesystem::temp_directory_path() / ("gmm_update" + ext);
 
   if (progress_cb)
     progress_cb(0.0f);
 
-  namespace dl = engine::download;
+  namespace dl   = engine::download;
   long http_code = 0;
   dl::Options opts;
   opts.user_agent = "GameModManager/SelfUpdater";
@@ -62,8 +59,7 @@ DebRpmUpdater::install_update(const UpdateInfo &info,
   bool ok = dl::curl_download(info.download_url, pkg_path, http_code, opts,
                               &dl_progress, 0, nullptr, NET_CALLER);
   if (!ok || http_code >= 400) {
-    result.error_message =
-        "Download failed (HTTP " + std::to_string(http_code) + ")";
+    result.error_message = "Download failed (HTTP " + std::to_string(http_code) + ")";
     return result;
   }
 
@@ -80,12 +76,11 @@ DebRpmUpdater::install_update(const UpdateInfo &info,
 
   int rc = std::system(cmd.c_str());
   if (rc != 0) {
-    result.error_message =
-        "Package install failed (exit " + std::to_string(rc) + ")";
+    result.error_message = "Package install failed (exit " + std::to_string(rc) + ")";
     return result;
   }
 
-  result.success = true;
+  result.success          = true;
   result.requires_restart = true;
   return result;
 }
@@ -99,6 +94,6 @@ void DebRpmUpdater::restart() {
   std::exit(0);
 }
 
-} // namespace engine::update
+}  // namespace engine::update
 
-#endif // __linux__
+#endif  // __linux__

@@ -11,13 +11,13 @@ struct Entry {
   std::string relative_path;
   std::string mod_id;
   uint32_t priority = 0;
-  bool deployed = false;
+  bool deployed     = false;
 };
 
 class Ledger {
 public:
-  void record_deploy(const std::string &relative_path,
-                     const std::string &mod_id, uint32_t priority);
+  void record_deploy(const std::string &relative_path, const std::string &mod_id,
+                     uint32_t priority);
 
   void record_remove(const std::string &relative_path);
 
@@ -37,4 +37,4 @@ private:
   std::unordered_map<std::string, Entry> ledger_;
 };
 
-} // namespace Deploy
+}  // namespace Deploy

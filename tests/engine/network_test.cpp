@@ -28,14 +28,16 @@ TEST_CASE("redaction: header lines", "[engine][network]") {
           "Accept: application/json");
   REQUIRE(engine::network::redaction::redact_header_line("Authorization: Bearer xyz") ==
           "Authorization: <redacted>");
-  REQUIRE(engine::network::redaction::redact_header_line("apikey: SECRET") == "apikey: <redacted>");
+  REQUIRE(engine::network::redaction::redact_header_line("apikey: SECRET") ==
+          "apikey: <redacted>");
   REQUIRE(engine::network::redaction::redact_header_line("cookie: a=1; b=2") ==
           "cookie: <redacted>");
 }
 
 TEST_CASE("redaction: query string", "[engine][network]") {
   // Sensitive params are redacted, others pass through verbatim.
-  REQUIRE(engine::network::redaction::redact_url("https://api.nexusmods.com/foo?key=ABC&bar=1") ==
+  REQUIRE(engine::network::redaction::redact_url(
+              "https://api.nexusmods.com/foo?key=ABC&bar=1") ==
           "https://api.nexusmods.com/foo?key=<redacted>&bar=1");
   // Multiple sensitive keys.
   REQUIRE(engine::network::redaction::redact_url(
@@ -51,9 +53,10 @@ TEST_CASE("redaction: M3 path tokens", "[engine][network]") {
               "https://api.example.com/v1/token/abcdef0123456789abcdef01/data") ==
           "https://api.example.com/v1/token/<redacted>/data");
   // Same with "apikey" prefix.
-  REQUIRE(engine::network::redaction::redact_url(
-              "https://api.example.com/v1/apikey/Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MA/data") ==
-          "https://api.example.com/v1/apikey/<redacted>/data");
+  REQUIRE(
+      engine::network::redaction::redact_url(
+          "https://api.example.com/v1/apikey/Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MA/data") ==
+      "https://api.example.com/v1/apikey/<redacted>/data");
   // Long hex/base64-looking segment is redacted even without a sensitive
   // prefix (catches JWTs / opaque API tokens).
   REQUIRE(engine::network::redaction::redact_url(
@@ -72,10 +75,12 @@ TEST_CASE("redaction: M3 path tokens", "[engine][network]") {
 TEST_CASE("redaction: body", "[engine][network]") {
   REQUIRE(engine::network::redaction::redact_body("apikey=ABC&foo=bar", 4096) ==
           "apikey=<redacted>&foo=bar");
-  REQUIRE(engine::network::redaction::redact_body("{\"apikey\":\"ABC\",\"name\":\"x\"}", 4096) ==
+  REQUIRE(engine::network::redaction::redact_body("{\"apikey\":\"ABC\",\"name\":\"x\"}",
+                                                  4096) ==
           "{\"apikey\":\"<redacted>\",\"name\":\"x\"}");
   // Plain body with no '=' -> unchanged.
-  REQUIRE(engine::network::redaction::redact_body("hello world", 4096) == "hello world");
+  REQUIRE(engine::network::redaction::redact_body("hello world", 4096) ==
+          "hello world");
 }
 
 TEST_CASE("redaction: cookie blob", "[engine][network]") {
@@ -89,11 +94,11 @@ TEST_CASE("FakeNetworkManager: records requests and serves canned responses",
   FakeNetworkManager fake;
   engine::network::Response canned;
   canned.http_code = 200;
-  canned.body = "{\"ok\":true}";
+  canned.body      = "{\"ok\":true}";
   fake.enqueue_response(canned);
 
   engine::network::Request req;
-  req.url = "https://api.example.com/v1/test";
+  req.url    = "https://api.example.com/v1/test";
   req.caller = "TEST";
   req.headers.push_back("apikey: SECRET");
 
@@ -111,9 +116,9 @@ TEST_CASE("FakeNetworkManager: offline short-circuits with error",
   FakeNetworkManager fake;
   fake.set_offline(true);
   engine::network::Request req;
-  req.url = "https://x/";
+  req.url    = "https://x/";
   req.caller = "TEST";
-  auto resp = fake.request(req);
+  auto resp  = fake.request(req);
   REQUIRE(resp.error == "offline");
 }
 
@@ -121,9 +126,9 @@ TEST_CASE("FakeNetworkManager: empty queue surfaces no-fake-response error",
           "[engine][network]") {
   FakeNetworkManager fake;
   engine::network::Request req;
-  req.url = "https://x/";
+  req.url    = "https://x/";
   req.caller = "TEST";
-  auto resp = fake.request(req);
+  auto resp  = fake.request(req);
   REQUIRE(resp.error == "no fake response queued");
 }
 
@@ -131,10 +136,10 @@ TEST_CASE("FakeNetworkManager: download returns ok and records the call",
           "[engine][network]") {
   FakeNetworkManager fake;
   engine::network::DownloadRequest req;
-  req.url = "https://x/file.7z";
+  req.url    = "https://x/file.7z";
   req.caller = "TEST";
-  req.dest = std::filesystem::temp_directory_path() / "gmm_test_dl";
-  auto r = fake.download(req);
+  req.dest   = std::filesystem::temp_directory_path() / "gmm_test_dl";
+  auto r     = fake.download(req);
   REQUIRE(r.ok);
   REQUIRE(r.http_code == 200);
   REQUIRE(fake.seen_downloads().size() == 1);
@@ -145,9 +150,9 @@ TEST_CASE("FakeNetworkManager: options round-trip", "[engine][network]") {
   FakeNetworkManager fake;
   NetworkOptions opts;
   opts.offline_mode = true;
-  opts.use_proxy = true;
-  opts.proxy_host = "127.0.0.1";
-  opts.proxy_port = 8888;
+  opts.use_proxy    = true;
+  opts.proxy_host   = "127.0.0.1";
+  opts.proxy_port   = 8888;
   opts.max_parallel = 4;
   fake.set_options(opts);
   auto got = fake.options();
@@ -218,10 +223,10 @@ TEST_CASE("FakeNetworkManager: io_counters tracks canned body bytes",
   fake.enqueue_response(b);
 
   engine::network::Request req;
-  req.url = "https://x/";
+  req.url    = "https://x/";
   req.caller = "TEST";
-  auto r1 = fake.request(req);
-  auto r2 = fake.request(req);
+  auto r1    = fake.request(req);
+  auto r2    = fake.request(req);
   REQUIRE(r1.error.empty());
   REQUIRE(r2.error.empty());
 
@@ -241,9 +246,9 @@ TEST_CASE("FakeNetworkManager: io_counters stays zero when offline",
   canned.body = "ignored";
   fake.enqueue_response(canned);
   engine::network::Request req;
-  req.url = "https://x/";
+  req.url    = "https://x/";
   req.caller = "TEST";
-  auto r = fake.request(req);
+  auto r     = fake.request(req);
   REQUIRE(r.error == "offline");
   // enqueue_response still counted the body size, but the request never
   // ran. That's fine - the test guards the Manager real path; the fake's

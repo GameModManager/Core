@@ -30,7 +30,7 @@ fs::path default_instances_dir() {
   return safe_home_dir() / ".local/share/GameModManager/instances";
 }
 
-void set_instances_dir_override(const fs::path& dir) {
+void set_instances_dir_override(const fs::path &dir) {
   instances_dir_override_ = dir;
 }
 
@@ -46,7 +46,7 @@ std::string read_last_instance() {
   return name;
 }
 
-void write_last_instance(const std::string& name) {
+void write_last_instance(const std::string &name) {
   std::ofstream f(last_instance_file_path());
   if (f)
     f << name << "\n";
@@ -59,7 +59,7 @@ std::vector<std::string> scan_instances() {
   if (!fs::is_directory(dir, ec))
     return result;
 
-  for (const auto& entry : fs::directory_iterator(dir, ec)) {
+  for (const auto &entry : fs::directory_iterator(dir, ec)) {
     if (!entry.is_directory())
       continue;
     auto toml = entry.path() / "instance.toml";
@@ -70,7 +70,7 @@ std::vector<std::string> scan_instances() {
   return result;
 }
 
-fs::path resolve_instance_path(const std::string& name_or_path) {
+fs::path resolve_instance_path(const std::string &name_or_path) {
   if (name_or_path.empty())
     return {};
 
@@ -87,12 +87,12 @@ fs::path resolve_instance_path(const std::string& name_or_path) {
   return {};
 }
 
-std::string unique_instance_name(const std::string& display_name,
-                                 const fs::path& instances_root) {
+std::string unique_instance_name(const std::string &display_name,
+                                 const fs::path &instances_root) {
   std::string base = Instance::to_instance_name(display_name);
   if (base.empty())
     base = "New Instance";
-  const auto taken = [&](const std::string& name) {
+  const auto taken = [&](const std::string &name) {
     std::error_code ec;
     return fs::exists(instances_root / name, ec);
   };
@@ -105,7 +105,7 @@ std::string unique_instance_name(const std::string& display_name,
   }
 }
 
-std::string instance_display_name(const fs::path& instance_root) {
+std::string instance_display_name(const fs::path &instance_root) {
   if (!instance_root.empty()) {
     Instance inst = Instance::from_root(instance_root);
     if (inst.read_toml() && !inst.info().display_name.empty())
@@ -114,9 +114,9 @@ std::string instance_display_name(const fs::path& instance_root) {
   return instance_root.filename().string();
 }
 
-Instance create_instance_for_game(const DetectedGame& game,
-                                  const fs::path& instances_root,
-                                  const std::string& display_name) {
+Instance create_instance_for_game(const DetectedGame &game,
+                                  const fs::path &instances_root,
+                                  const std::string &display_name) {
   // Workspace-4fu: user-chosen names are sanitized with spaces preserved;
   // empty or dot-only custom names are refused.
   // Workspace-l6w: explicit names are refused when an instance.toml already
@@ -154,8 +154,8 @@ Instance create_instance_for_game(const DetectedGame& game,
   return inst;
 }
 
-Instance create_instance_for_game(const DetectedGame& game,
-                                  const fs::path& instances_root) {
+Instance create_instance_for_game(const DetectedGame &game,
+                                  const fs::path &instances_root) {
   // Legacy path: derive the folder name from the game name, keeping
   // to_instance_name's space->underscore folding. Auto-disambiguates with
   // " 2", " 3", etc. when the name is taken (unlike the explicit-name
@@ -190,9 +190,9 @@ Instance create_instance_for_game(const DetectedGame& game,
   return inst;
 }
 
-DeployConfig deploy_config_for(const fs::path& instance_root, const fs::path& game_dir,
-                               const GameKnowledge& knowledge,
-                               const std::string& game_id) {
+DeployConfig deploy_config_for(const fs::path &instance_root, const fs::path &game_dir,
+                               const GameKnowledge &knowledge,
+                               const std::string &game_id) {
   DeployConfig cfg;
   cfg.mods_dir = instance_root / "mods";
   cfg.game_dir = game_dir;
@@ -235,7 +235,7 @@ DeployConfig deploy_config_for(const fs::path& instance_root, const fs::path& ga
       knowledge.get(game_id, "deploy_include_mod_id", "false") == "true";
   cfg.disable_mechanism = disable_mechanism_for(knowledge, game_id);
   cfg.case_sensitive    = knowledge.get(game_id, "case_sensitive", "true") != "false";
-  if (const char* cs = std::getenv("GMM_CASE_SENSITIVE"); cs)
+  if (const char *cs = std::getenv("GMM_CASE_SENSITIVE"); cs)
     cfg.case_sensitive = (std::string(cs) == "1");
   cfg.ledger_file = instance_root / ".gmm_deploy_ledger";
   // Empty game_dir -> empty backup_root (documented "caller opts out"):
@@ -246,9 +246,9 @@ DeployConfig deploy_config_for(const fs::path& instance_root, const fs::path& ga
   return cfg;
 }
 
-std::string effective_deploy_strategy(const fs::path& instance_root,
-                                      const GameKnowledge& knowledge,
-                                      const std::string& game_id) {
+std::string effective_deploy_strategy(const fs::path &instance_root,
+                                      const GameKnowledge &knowledge,
+                                      const std::string &game_id) {
   if (!instance_root.empty()) {
     Instance inst = Instance::from_root(instance_root);
     if (inst.read_toml() && !inst.info().deploy_strategy.empty())
@@ -257,11 +257,11 @@ std::string effective_deploy_strategy(const fs::path& instance_root,
   return deploy_strategy_for(knowledge, game_id);
 }
 
-LaunchParams prepare_launch_params(const std::filesystem::path& instance_root,
-                                   const std::filesystem::path& game_dir,
-                                   const std::filesystem::path& executable,
-                                   const GameKnowledge& knowledge,
-                                   const std::string& game_id, uint32_t steam_appid,
+LaunchParams prepare_launch_params(const std::filesystem::path &instance_root,
+                                   const std::filesystem::path &game_dir,
+                                   const std::filesystem::path &executable,
+                                   const GameKnowledge &knowledge,
+                                   const std::string &game_id, uint32_t steam_appid,
                                    bool is_windows_exe) {
   LaunchPrepRequest req;
   req.instance_root  = instance_root;
@@ -274,8 +274,8 @@ LaunchParams prepare_launch_params(const std::filesystem::path& instance_root,
   return prepare_launch_params(req);
 }
 
-LaunchParams prepare_launch_params(const LaunchPrepRequest& req,
-                                   const DeployProgressFn& progress) {
+LaunchParams prepare_launch_params(const LaunchPrepRequest &req,
+                                   const DeployProgressFn &progress) {
   LaunchParams params;
   params.executable     = req.executable;
   params.game_dir       = req.game_dir;

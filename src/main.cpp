@@ -1,6 +1,6 @@
 #include "core/core.h"
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
   Core::Application app(argc, argv);
   // No QWebEngineProfile setup here (Workspace-2vmp): touching the default
   // profile initializes Chromium, so the NoPersistentCookies policy is
