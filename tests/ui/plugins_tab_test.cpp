@@ -735,6 +735,11 @@ TEST_CASE("plugins tab", "[ui]") {
 
   // --- Lock context menu (MO2 PluginListContextMenu parity) ---
   {
+    // Regression Workspace-a3t7: the table must carry Qt::CustomContextMenu -
+    // without it customContextMenuRequested never fires and the whole menu
+    // stays dead no matter how healthy the builder below is.
+    check(tab.table()->contextMenuPolicy() == Qt::CustomContextMenu,
+          "plugin table uses CustomContextMenu policy (menu signal fires)");
     tab.set_plugins(plugins);
 
     // Unlocked user row: offers "Lock load order" and emits lock_requested.
