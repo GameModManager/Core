@@ -465,6 +465,12 @@ gmm_catch2_test(settings_dialog_choice_test ui/settings_dialog_choice_test.cpp
     UI
     LIBS gmm_ui)
 
+# Workspace-kxm7: Settings General-tab "Reset dialog choices" button closing
+# the TaskDialog remember loop (MO2 QuestionBoxMemory-reset parity).
+gmm_catch2_test(settings_reset_choices_test ui/settings_reset_choices_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(remove_mods_dialog_test ui/remove_mods_dialog_test.cpp
     UI
     LIBS gmm_ui
