@@ -1,5 +1,6 @@
 #include "engine/core/instance/instance_utils.h"
 
+#include "engine/core/instance/toml_utils.h"
 #include "engine/core/log/logger.h"
 #include "engine/core/util/fs_utils.h"
 #include "engine/deploy/core.h"
@@ -11,6 +12,7 @@
 #include "engine/game/saves/local_saves.h"
 #include "platform/platform.h"
 
+#include <cctype>
 #include <cstdlib>
 #include <fstream>
 #include <unordered_set>
@@ -272,6 +274,107 @@ LaunchParams prepare_launch_params(const std::filesystem::path &instance_root,
   req.steam_appid    = steam_appid;
   req.is_windows_exe = is_windows_exe;
   return prepare_launch_params(req);
+}
+
+std::vector<std::string> split_launch_arguments(const std::string &args) {
+  std::vector<std::string> out;
+  size_t i = 0;
+  while (i < args.size()) {
+    while (i < args.size() && std::isspace(static_cast<unsigned char>(args[i])))
+      ++i;
+    if (i >= args.size())
+      break;
+    std::string token;
+    if (args[i] == '"') {
+      ++i;
+      while (i < args.size() && args[i] != '"') {
+        if (args[i] == '\\' && i + 1 < args.size())
+          ++i;
+        token += args[i++];
+      }
+      if (i < args.size())
+        ++i;  // consume closing quote
+    } else {
+      while (i < args.size() && !std::isspace(static_cast<unsigned char>(args[i])))
+        token += args[i++];
+    }
+    if (!token.empty())
+      out.push_back(token);
+  }
+  return out;
+}
+
+fs::path resolve_launch_cwd(const fs::path &game_dir, const std::string &start_in) {
+  if (start_in.empty())
+    return {};
+  fs::path p(start_in);
+  if (!p.is_absolute())
+    p = game_dir / p;
+  return p;
+}
+
+namespace {
+  std::string ascii_lower(const std::string &s) {
+    std::string out = s;
+    for (auto &c : out)
+      c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return out;
+  }
+}  // namespace
+
+ExecutableLaunchConfig lookup_executable_launch_config(const fs::path &instance_root,
+                                                       const fs::path &game_dir,
+                                                       const fs::path &executable) {
+  ExecutableLaunchConfig none;
+  if (instance_root.empty() || game_dir.empty() || executable.empty())
+    return none;
+
+  // Canonicalize both spellings first (game_dir commonly goes through the
+  // ~/.steam symlink, so a raw comparison would dead-end), then match as a
+  // game-relative path. Paths escaping the game dir ("..") never match.
+  std::error_code ec;
+  auto canon_base     = fs::weakly_canonical(game_dir, ec);
+  const fs::path base = (ec || canon_base.empty()) ? game_dir : canon_base;
+  auto canon_full     = fs::weakly_canonical(executable, ec);
+  if (ec || canon_full.empty())
+    canon_full = executable;
+  auto rel = fs::relative(canon_full, base, ec);
+  if (ec || rel.empty())
+    return none;
+  if (rel.begin() != rel.end() && rel.begin()->string() == "..")
+    return none;
+  const std::string rel_lower = ascii_lower(rel.generic_string());
+  if (rel_lower.empty())
+    return none;
+
+  auto tbl = parse_instance_toml(instance_root / "instance.toml");
+  if (!tbl)
+    return none;
+  auto arr = (*tbl)["executables"].as_array();
+  if (!arr)
+    return none;
+  for (const auto &elem : *arr) {
+    auto entry = elem.as_table();
+    if (!entry)
+      continue;  // legacy plain-string entries carry no config
+    auto path_value = (*entry)["path"].value<std::string>();
+    if (!path_value || ascii_lower(*path_value) != rel_lower)
+      continue;
+    ExecutableLaunchConfig found;
+    found.found = true;
+    if (auto args_value = (*entry)["args"].value<std::string>())
+      found.args = split_launch_arguments(*args_value);
+    if (auto *env_arr = (*entry)["env"].as_array()) {
+      for (const auto &v : *env_arr) {
+        if (auto s = v.value<std::string>())
+          found.environment.push_back(*s);
+      }
+    }
+    if (auto cwd_value = (*entry)["cwd"].value<std::string>())
+      found.cwd = resolve_launch_cwd(game_dir, *cwd_value);
+    return found;
+  }
+  return none;
 }
 
 LaunchParams prepare_launch_params(const LaunchPrepRequest &req,
