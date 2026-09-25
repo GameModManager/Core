@@ -11,6 +11,8 @@ class PluginLoader;
 bool python_init();
 
 // Load a .py plugin file and call its register() function.
+// Lazily initializes the interpreter on first use (production startup never
+// calls python_init() explicitly), so all callers benefit. Idempotent init.
 // Returns true on success.
 bool python_load_plugin(PluginLoader *loader, const std::string &path);
 
