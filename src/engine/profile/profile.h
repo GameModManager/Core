@@ -252,6 +252,18 @@ private:
   DelayedFileWriter modlist_writer_;
 };
 
+// Recreate decision for the cached active profile (Workspace-gzbs).
+//
+// Compares the full profile DIRECTORY, not just the name: two instances may
+// each own a profile named "Default" in different directories, and a
+// name-only check keeps the stale instance's ProfileManager - whose delayed
+// writer then persists the new instance's mods into the wrong modlist.txt.
+// Paths are compared lexically-normalized so equivalent spellings (trailing
+// slash, "/./" segments) do not trigger spurious recreates.
+[[nodiscard]] bool
+profile_needs_recreate(const ProfileManager *active,
+                       const std::filesystem::path &expected_directory);
+
 // Backward-compat alias - remove once all call sites use ProfileManager.
 using Profile = ProfileManager;
 
