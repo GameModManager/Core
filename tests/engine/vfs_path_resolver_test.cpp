@@ -26,6 +26,13 @@ namespace {
 // registers each Catch2 section as a separate test and runs them as parallel
 // worker processes, so the previous fixed "gmm_vfs_test" path let one
 // process's ctor/dtor remove_all() wipe another process's tree mid-resolve.
+//
+// Uniqueness contract: the pid disambiguates parallel worker processes
+// (live pids never collide) and the atomic sequence disambiguates instances
+// within one process (both TEST_CASEs, every SECTION re-entry). A stale dir
+// with our exact name can only come from a crashed run, so the ctor's
+// remove_all() is scoped to a name no live process owns. The dtor is
+// explicitly noexcept: test-helper cleanup must never throw.
 struct TempTree {
   fs::path root;
   TempTree() {
@@ -48,7 +55,7 @@ struct TempTree {
     write(root / "Docs" / "ReadMe.TXT");
     write(root / "RootFile.ESP");
   }
-  ~TempTree() {
+  ~TempTree() noexcept {
     std::error_code ec;  // never throw from the dtor
     fs::remove_all(root, ec);
   }

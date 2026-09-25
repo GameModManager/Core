@@ -60,12 +60,18 @@ namespace {
   // again. IMPORTANT: decode BEFORE trim - &nbsp; at an edge decodes to a
   // space the trim must then remove.
   void decode_html_entities(std::string &s) {
-    replace_all_inplace(s, "&amp;", "&");
+    // &amp; decodes LAST: resolving it first would double-decode
+    // "&amp;lt;" all the way to '<' instead of once to "&lt;". The terminal
+    // forms (&quot; &#39; &lt; &gt; &nbsp;) cannot match inside a
+    // still-escaped "&amp;..." sequence, so decoding them first keeps this
+    // a strict single-decode pass - no output of one replacement is ever
+    // re-scanned as input by a later one.
     replace_all_inplace(s, "&quot;", "\"");
     replace_all_inplace(s, "&#39;", "'");
     replace_all_inplace(s, "&lt;", "<");
     replace_all_inplace(s, "&gt;", ">");
     replace_all_inplace(s, "&nbsp;", " ");
+    replace_all_inplace(s, "&amp;", "&");
   }
   // Pull the value out of an HTML attribute like:
   //   name="..."  or  name='...'
@@ -139,9 +145,10 @@ namespace {
   // aside sits next to the upload metadata; we match the visible text node
   // after the label.
   //
-  // The text is HTML-decoded by the same entity replacement read_meta() uses
-  // (via trim + a small entity pass); we only decode the entities that
-  // actually appear in mod.pub pages, no full spec compliance.
+  // The text is HTML-decoded with the shared decode_html_entities() helper
+  // (then trimmed), same as the og:meta and JSON-LD paths; we only decode
+  // the entities that actually appear in mod.pub pages, no full spec
+  // compliance.
   std::string read_aside_tag(const std::string &html) {
     // The aside line on the mod page looks like (whitespace variable):
     //   <aside>...<b>Tag</b> User interface ...</aside>
@@ -266,10 +273,12 @@ namespace {
   // paragraph break.
   //
   // Newline discipline (order matters):
-  //   1. <br> consumes its own trailing line break - pretty-printed HTML
-  //      puts a literal newline after every <br>, which must not become a
-  //      second break. Trailing spaces/tabs before that newline are
-  //      consumed too.
+  //   1. <br> consumes at most ONE trailing line break - pretty-printed
+  //      HTML puts a literal newline after every <br>, which must not
+  //      become a second break. Trailing spaces/tabs before that newline
+  //      are consumed too. A SECOND newline after the <br> is content, not
+  //      formatting: an explicit blank line means a paragraph break, the
+  //      same as <br><br> (pinned by the br_blank test).
   //   2. CRLF / lone CR (real HTTP bodies) normalize to \n.
   //   3. <p> blocks become paragraph breaks; inter-tag indentation lines
   //      (spaces/tabs only) are deleted so pretty-printed markup leaves
@@ -285,11 +294,33 @@ namespace {
     static const std::regex kAnyTag("<[^>]+>");
     html = std::regex_replace(html, kAnyTag, "");
     // Delete whitespace-only (but non-empty) lines left by pretty-printed
-    // indentation between block tags. Loop: one pass cannot collapse runs
-    // of consecutive indented lines because matches cannot overlap.
-    static const std::regex kBlankLine("\n[ \\t]+\\n");
-    while (std::regex_search(html, kBlankLine))
-      html = std::regex_replace(html, kBlankLine, "\n\n");
+    // indentation between block tags. Single linear pass: a '\n' followed
+    // by spaces/tabs and then another '\n' drops the indented line, and the
+    // closing '\n' is re-examined so runs of consecutive indented lines
+    // collapse fully without rescanning the string. Genuine empty lines
+    // ('\n\n', paragraph breaks) carry no spaces/tabs and survive.
+    std::string collapsed;
+    collapsed.reserve(html.size());
+    size_t i = 0;
+    while (i < html.size()) {
+      if (html[i] != '\n') {
+        collapsed += html[i];
+        ++i;
+        continue;
+      }
+      size_t j = i + 1;
+      while (j < html.size() && (html[j] == ' ' || html[j] == '\t'))
+        ++j;
+      if (j > i + 1 && j < html.size() && html[j] == '\n') {
+        collapsed += '\n';  // drop the whitespace-only line...
+        i = j;              // ...and re-examine the closing newline: it may
+                            // open another indented line
+      } else {
+        collapsed += '\n';
+        ++i;
+      }
+    }
+    html = std::move(collapsed);
     // Trailing indentation before end-of-string (e.g. "\n  " after the
     // last </p>) is not between newlines - the final trim below removes it.
     static const std::regex kThreeNl("\n{3,}");
