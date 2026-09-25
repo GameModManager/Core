@@ -753,6 +753,51 @@ gmm.register(GoodPlugin)
   fs::remove_all(tmp);
 }
 
+// Workspace-9pbc production-path contract: load_directory() must load .py
+// plugins WITHOUT the caller pre-initializing the interpreter. Every other
+// test in this binary calls engine::python_init() explicitly, which masked
+// the missing production wiring (core.cpp startup never calls python_init).
+// This test pins that blind spot: no python_init() call before load_directory.
+static void test_python_load_directory_lazy_init() {
+  std::cout << "=== test_python_load_directory_lazy_init ===" << std::endl;
+
+  fs::path tmp = fs::temp_directory_path() / "gmm_python_lazy_init";
+  fs::create_directories(tmp);
+
+  fs::path plugin_path = tmp / "lazygame.py";
+  {
+    std::ofstream f(plugin_path);
+    f << R"(
+import gmm
+
+def register(ctx):
+    ctx.register_identity(
+        steam_appid=424242,
+        nexus_domain="lazygame",
+        display_name="Lazy Game",
+    )
+)";
+  }
+
+  // NOTE: deliberately no engine::python_init() here - the production path
+  // (PluginLoader::load_directory from core.cpp) never calls it either.
+  engine::PluginLoader loader;
+  require(loader.load_directory(tmp.string()),
+          "load_directory loads .py plugin with no prior python_init (lazy init)");
+  require(loader.plugins().size() == 1, "exactly one plugin loaded via load_directory");
+  require(loader.plugins()[0].game_id == "lazygame", "module stem becomes game_id");
+  require(loader.plugins()[0].steam_appid == 424242,
+          "steam_appid registered via lazy-loaded plugin");
+  require(loader.plugins()[0].registered, "plugin marked registered");
+  require(loader.plugins()[0].loaded, "plugin marked loaded");
+
+  std::cout << "  load_directory lazily initialized the interpreter" << std::endl;
+  std::cout << "  PASSED" << std::endl;
+
+  engine::python_shutdown();
+  fs::remove_all(tmp);
+}
+
 TEST_CASE("python plugin", "[engine]") {
   std::cout << "Python plugin tests" << std::endl;
 
@@ -767,4 +812,5 @@ TEST_CASE("python plugin", "[engine]") {
   test_python_fluent_chaining();
   test_python_batched_tabs();
   test_python_plugin_registered_list_isolation();
+  test_python_load_directory_lazy_init();
 }

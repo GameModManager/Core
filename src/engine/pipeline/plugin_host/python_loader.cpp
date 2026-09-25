@@ -1801,8 +1801,16 @@ bool engine::python_init() {
 
 bool engine::python_load_plugin(PluginLoader *loader, const std::string &path) {
   if (!s_interpreter) {
-    Logger::instance().error("Python not initialized, cannot load: " + path);
-    return false;
+    // Lazy initialization for the production path (Workspace-9pbc):
+    // PluginLoader::load_directory() dispatches .py files straight here and
+    // production startup (core.cpp) never calls python_init() explicitly, so
+    // initialize on first use. python_init() is idempotent (early-returns
+    // when already initialized); plugin loading runs on the main thread at
+    // startup, so no additional locking is needed.
+    if (!engine::python_init()) {
+      Logger::instance().error("Python initialization failed, cannot load: " + path);
+      return false;
+    }
   }
 
   if (loader->is_loaded(path)) {
