@@ -7,6 +7,7 @@
 #include "engine/source/modpub/provider.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <chrono>
 #include <string>
 
 namespace {
@@ -373,6 +374,23 @@ TEST_CASE("modpub description newline normalization", "[engine]") {
       "<div class=\"gray-box user-content\">line1\r\nline2</div>";
   require(Provider::parse_description_html(plain_crlf) == "line1\nline2",
           "plain CRLF normalized, no stray \\r");
+
+  // --- <br> with NO trailing newline (mid-line break): still one break.
+  // The kBr replacement's trailing-newline match is optional, so a bare
+  // <br> between text runs becomes exactly one \n.
+  const std::string br_bare =
+      "<div class=\"gray-box user-content\">line1<br>line2</div>";
+  require(Provider::parse_description_html(br_bare) == "line1\nline2",
+          "<br> with no trailing newline stays a single break");
+
+  // --- <br> followed by an explicit blank line: the kBr pass consumes
+  // only ONE trailing line break, so the second newline is content - an
+  // intentional paragraph break, same as <br><br>. Pinned so a future
+  // consume-all-newlines change stays deliberate.
+  const std::string br_blank =
+      "<div class=\"gray-box user-content\">line1<br>\n\nline2</div>";
+  require(Provider::parse_description_html(br_blank) == "line1\n\nline2",
+          "<br> + blank line stays a paragraph break");
 }
 
 TEST_CASE("modpub metadata entity decoding", "[engine]") {
@@ -399,4 +417,47 @@ TEST_CASE("modpub metadata entity decoding", "[engine]") {
   require(r.category == "Framework & Resources",
           "entities: aside tag category decoded");
   require(r.author == "Modder \"Bob\"", "entities: JSON-LD author decoded");
+
+  // --- Double-escaped input decodes EXACTLY once: "&amp;lt;" is the
+  // literal text "&lt;", not a nested "<". decode_html_entities() must
+  // decode the terminal forms before "&amp;" (amp-last ordering) so a
+  // second pass can never fire on the first pass's output.
+  const std::string dbl = "<html><head>"
+                          "<script type=\"application/ld+json\">"
+                          "{\"@type\":\"SoftwareApplication\","
+                          "\"name\":\"Fish &amp;lt; Chips\","
+                          "\"description\":\"Double-escape pin\","
+                          "\"applicationCategory\":\"GameMod\"}"
+                          "</script>"
+                          "</head><body>"
+                          "</body></html>";
+  ModPubModInfoResult d =
+      Provider::parse_mod_info(dbl, "https://mod.pub/skyrim/2-double-escape/");
+  require(d.available, "double-escape: available");
+  require(d.name == "Fish &lt; Chips",
+          "double-escape: &amp;lt; decodes once to &lt;, not <");
+}
+
+TEST_CASE("modpub description indented-line collapse scales", "[engine]") {
+  using engine::Source::ModPub::Provider;
+
+  // --- Scale guard for the whitespace-only-line collapse in
+  // strip_unwanted_tags(): N consecutive indented lines must collapse in
+  // a single linear pass. Correctness first (output identical to the
+  // two-line pretty case), then a deliberately loose time bound: a
+  // linear scan clears this in milliseconds even in debug builds on
+  // slow CI, while a reintroduced per-line rescan loop would need
+  // seconds-to-minutes. The 10 s headroom means this never flakes - it
+  // only fires on a genuine superlinear regression.
+  std::string body             = "<div class=\"gray-box user-content\"><p>para1</p>\n";
+  constexpr int kIndentedLines = 20000;
+  for (int i = 0; i < kIndentedLines; ++i)
+    body += "    \n";
+  body += "<p>para2</p></div>";
+  const auto start      = std::chrono::steady_clock::now();
+  const std::string out = Provider::parse_description_html(body);
+  const auto elapsed    = std::chrono::steady_clock::now() - start;
+  require(out == "para1\n\npara2", "20000 indented lines collapse to one blank line");
+  require(elapsed < std::chrono::seconds(10),
+          "collapse stays fast (linear scan, never flakes)");
 }
