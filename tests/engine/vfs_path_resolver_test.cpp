@@ -1,7 +1,15 @@
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <system_error>
 #include <vector>
+
+#if defined(_WIN32)
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -13,11 +21,25 @@ namespace {
 
 // Build a small on-disk tree with deliberately MIXED casing so we can prove the
 // resolver matches case-insensitively on a case-sensitive (Linux) filesystem.
+//
+// Each instance owns a UNIQUE temp dir (pid + sequence suffix): ctest
+// registers each Catch2 section as a separate test and runs them as parallel
+// worker processes, so the previous fixed "gmm_vfs_test" path let one
+// process's ctor/dtor remove_all() wipe another process's tree mid-resolve.
 struct TempTree {
   fs::path root;
   TempTree() {
-    root = fs::temp_directory_path() / "gmm_vfs_test";
-    fs::remove_all(root);
+    static std::atomic<unsigned> seq{0};
+#if defined(_WIN32)
+    const unsigned long pid = static_cast<unsigned long>(_getpid());
+#else
+    const unsigned long pid = static_cast<unsigned long>(::getpid());
+#endif
+    root = fs::temp_directory_path() /
+           ("gmm_vfs_test_" + std::to_string(pid) + "_" +
+            std::to_string(seq.fetch_add(1, std::memory_order_relaxed)));
+    std::error_code ec;
+    fs::remove_all(root, ec);  // stale dir from a crashed run with our name
     fs::create_directories(root / "Data" / "Meshes");
     fs::create_directories(root / "Data" / "Textures");
     fs::create_directories(root / "Docs");
@@ -26,7 +48,10 @@ struct TempTree {
     write(root / "Docs" / "ReadMe.TXT");
     write(root / "RootFile.ESP");
   }
-  ~TempTree() { fs::remove_all(root); }
+  ~TempTree() {
+    std::error_code ec;  // never throw from the dtor
+    fs::remove_all(root, ec);
+  }
   static void write(const fs::path &p) { std::ofstream(p, std::ios::binary).put('x'); }
 };
 
