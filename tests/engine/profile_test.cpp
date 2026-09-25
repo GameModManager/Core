@@ -578,3 +578,54 @@ TEST_CASE("remove reports partial failure on permission errors", "[engine]") {
   }
   fs::permissions(dir / "locked", fs::perms::owner_all, fs::perm_options::replace);
 }
+
+// ---------------------------------------------------------------------------
+// Workspace-gzbs: modlist.txt cross-contamination between instances sharing
+// a profile name
+// ---------------------------------------------------------------------------
+
+TEST_CASE("gzbs: profile_needs_recreate detects same-name cross-instance switch",
+          "[engine]") {
+  auto root        = make_temp_dir("gzbs_guard");
+  const auto dir_a = root / "instA" / "profiles" / "Default";
+  const auto dir_b = root / "instB" / "profiles" / "Default";
+  fs::create_directories(dir_a);
+  fs::create_directories(dir_b);
+
+  // No active profile: (re)creation is always needed.
+  REQUIRE(engine::profile::profile_needs_recreate(nullptr, dir_a));
+
+  engine::profile::ProfileManager active(dir_a, 50ms);
+  // Same directory: no recreate.
+  REQUIRE_FALSE(engine::profile::profile_needs_recreate(&active, dir_a));
+  // Same profile NAME in the other instance's directory: MUST recreate.
+  // The old name-only guard returned false here and kept the stale
+  // directory, so refresh_mod_status() merged the new instance's mods into
+  // the old instance's modlist.txt (both directions, forever).
+  REQUIRE(active.name() == "Default");
+  REQUIRE(engine::profile::profile_needs_recreate(&active, dir_b));
+}
+
+TEST_CASE("gzbs: same-name profiles stay isolated across instances", "[engine]") {
+  auto root        = make_temp_dir("gzbs_isolation");
+  const auto dir_a = root / "instA" / "profiles" / "Default";
+  const auto dir_b = root / "instB" / "profiles" / "Default";
+  fs::create_directories(dir_a);
+  fs::create_directories(dir_b);
+  write_text(dir_a / "modlist.txt", "+IsaacModA\r\n");
+  write_text(dir_b / "modlist.txt", "+SkyrimModB\r\n");
+
+  // The fixed instance-switch flow recreates the ProfileManager on the new
+  // instance's directory before converging: refreshing B's scan through B's
+  // object must never touch A's file.
+  {
+    engine::profile::ProfileManager profile_b(dir_b, 50ms);
+    profile_b.refresh_mod_status({"SkyrimModB", "SkyrimModC"});
+    profile_b.write_modlist_now();
+  }
+
+  REQUIRE(read_text(dir_a / "modlist.txt").find("SkyrimMod") == std::string::npos);
+  const std::string content_b = read_text(dir_b / "modlist.txt");
+  REQUIRE(content_b.find("IsaacMod") == std::string::npos);
+  REQUIRE(content_b.find("+SkyrimModC") != std::string::npos);
+}
