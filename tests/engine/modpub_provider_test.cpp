@@ -355,6 +355,24 @@ TEST_CASE("modpub description newline normalization", "[engine]") {
                              "  </div>";
   require(Provider::parse_description_html(pretty) == "para1\n\npara2",
           "pretty-printed paragraphs join with one blank line");
+
+  // --- <br> followed by spaces then a newline: still one break.
+  const std::string br_padded =
+      "<div class=\"gray-box user-content\">line1<br>   \nline2</div>";
+  require(Provider::parse_description_html(br_padded) == "line1\nline2",
+          "<br> + spaces + newline stays a single break");
+
+  // --- Lone CR (old-Mac line ending) after <br>: normalized, one break.
+  const std::string br_cr =
+      "<div class=\"gray-box user-content\">line1<br>\rline2</div>";
+  require(Provider::parse_description_html(br_cr) == "line1\nline2",
+          "<br> + lone CR stays a single break, no stray \\r");
+
+  // --- Stray CRLF in plain text (no <br> involved): normalized to \n.
+  const std::string plain_crlf =
+      "<div class=\"gray-box user-content\">line1\r\nline2</div>";
+  require(Provider::parse_description_html(plain_crlf) == "line1\nline2",
+          "plain CRLF normalized, no stray \\r");
 }
 
 TEST_CASE("modpub metadata entity decoding", "[engine]") {

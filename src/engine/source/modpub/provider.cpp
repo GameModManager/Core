@@ -43,6 +43,30 @@ namespace {
     return s.substr(first, last - first + 1);
   }
 
+  // In-place substring replacement (used by the HTML entity decoder).
+  void replace_all_inplace(std::string &s, const std::string &from,
+                           const std::string &to) {
+    size_t pos = 0;
+    while ((pos = s.find(from, pos)) != std::string::npos) {
+      s.replace(pos, from.size(), to);
+      pos += to.size();
+    }
+  }
+
+  // Decode the HTML entities that actually appear in mod.pub pages (JSON-LD
+  // script blocks carry HTML-escaped text, and a JSON parser never decodes
+  // HTML entities, so the scrape layer must). Single shared helper so the
+  // three extraction sites (og:meta, JSON-LD, aside tag) cannot drift apart
+  // again. IMPORTANT: decode BEFORE trim - &nbsp; at an edge decodes to a
+  // space the trim must then remove.
+  void decode_html_entities(std::string &s) {
+    replace_all_inplace(s, "&amp;", "&");
+    replace_all_inplace(s, "&quot;", "\"");
+    replace_all_inplace(s, "&#39;", "'");
+    replace_all_inplace(s, "&lt;", "<");
+    replace_all_inplace(s, "&gt;", ">");
+    replace_all_inplace(s, "&nbsp;", " ");
+  }
   // Pull the value out of an HTML attribute like:
   //   name="..."  or  name='...'
   // Matches og:* tags too: og:title sits in the `property` attribute on a
@@ -78,32 +102,24 @@ namespace {
     std::smatch m;
     if (!std::regex_search(html, m, kMeta))
       return {};
-    std::string raw  = m[1].matched ? m[1].str() : m[2].str();
-    auto replace_all = [](std::string &s, const std::string &from,
-                          const std::string &to) {
-      size_t pos = 0;
-      while ((pos = s.find(from, pos)) != std::string::npos) {
-        s.replace(pos, from.size(), to);
-        pos += to.size();
-      }
-    };
-    replace_all(raw, "&amp;", "&");
-    replace_all(raw, "&quot;", "\"");
-    replace_all(raw, "&#39;", "'");
-    replace_all(raw, "&lt;", "<");
-    replace_all(raw, "&gt;", ">");
-    replace_all(raw, "&nbsp;", " ");
+    std::string raw = m[1].matched ? m[1].str() : m[2].str();
+    decode_html_entities(raw);
     return trim(raw);
   }
 
   // Pull a string value out of the JSON object by key. Returns empty when the
-  // key is missing or the value is not a string.
+  // key is missing or the value is not a string. Values come from the
+  // raw JSON-LD script-block text, which mod.pub HTML-escapes, so decode
+  // entities exactly like the og:meta and aside paths do.
   std::string j_str(const nlohmann::json &j, const char *key) {
     if (!j.is_object() || !j.contains(key))
       return {};
     const auto &v = j.at(key);
-    if (v.is_string())
-      return trim(v.get<std::string>());
+    if (v.is_string()) {
+      std::string s = v.get<std::string>();
+      decode_html_entities(s);
+      return trim(s);
+    }
     return {};
   }
 
@@ -137,19 +153,8 @@ namespace {
     std::smatch m;
     if (!std::regex_search(html, m, kTag))
       return {};
-    std::string raw  = m[1].str();
-    auto replace_all = [](std::string &s, const std::string &from,
-                          const std::string &to) {
-      size_t pos = 0;
-      while ((pos = s.find(from, pos)) != std::string::npos) {
-        s.replace(pos, from.size(), to);
-        pos += to.size();
-      }
-    };
-    replace_all(raw, "&amp;", "&");
-    replace_all(raw, "&quot;", "\"");
-    replace_all(raw, "&#39;", "'");
-    replace_all(raw, "&nbsp;", " ");
+    std::string raw = m[1].str();
+    decode_html_entities(raw);
     return trim(raw);
   }
 
@@ -259,13 +264,34 @@ namespace {
   // <a>). Other tags are stripped and their inner text preserved. Runs of
   // >2 newlines (the <p> pass introduces them) are collapsed to one
   // paragraph break.
+  //
+  // Newline discipline (order matters):
+  //   1. <br> consumes its own trailing line break - pretty-printed HTML
+  //      puts a literal newline after every <br>, which must not become a
+  //      second break. Trailing spaces/tabs before that newline are
+  //      consumed too.
+  //   2. CRLF / lone CR (real HTTP bodies) normalize to \n.
+  //   3. <p> blocks become paragraph breaks; inter-tag indentation lines
+  //      (spaces/tabs only) are deleted so pretty-printed markup leaves
+  //      no whitespace-only lines. Genuine empty lines (paragraph breaks)
+  //      survive - only lines containing spaces/tabs are removed.
   void strip_unwanted_tags(std::string &html) {
-    static const std::regex kBr("<\\s*br\\s*/?\\s*>", std::regex::icase);
+    static const std::regex kBr("<\\s*br\\s*/?\\s*>[ \\t]*\\r?\\n?", std::regex::icase);
     html = std::regex_replace(html, kBr, "\n");
+    replace_all_inplace(html, "\r\n", "\n");
+    replace_all_inplace(html, "\r", "\n");
     static const std::regex kP("<p\\b[^>]*>([\\s\\S]*?)</p>", std::regex::icase);
     html = std::regex_replace(html, kP, "\n\n$1\n\n");
     static const std::regex kAnyTag("<[^>]+>");
     html = std::regex_replace(html, kAnyTag, "");
+    // Delete whitespace-only (but non-empty) lines left by pretty-printed
+    // indentation between block tags. Loop: one pass cannot collapse runs
+    // of consecutive indented lines because matches cannot overlap.
+    static const std::regex kBlankLine("\n[ \\t]+\\n");
+    while (std::regex_search(html, kBlankLine))
+      html = std::regex_replace(html, kBlankLine, "\n\n");
+    // Trailing indentation before end-of-string (e.g. "\n  " after the
+    // last </p>) is not between newlines - the final trim below removes it.
     static const std::regex kThreeNl("\n{3,}");
     html       = std::regex_replace(html, kThreeNl, "\n\n");
     auto first = html.find_first_not_of(" \t\r\n");
@@ -467,8 +493,11 @@ ModInfoResult Provider::parse_mod_info(const std::string &html_body,
           const auto &a = j.at("author");
           if (a.is_object())
             result.author = j_str(a, "name");
-          else if (a.is_string())
-            result.author = trim(a.get<std::string>());
+          else if (a.is_string()) {
+            std::string s = a.get<std::string>();
+            decode_html_entities(s);
+            result.author = trim(s);
+          }
         }
         auto url = j_str(j, "url");
         if (!url.empty())
