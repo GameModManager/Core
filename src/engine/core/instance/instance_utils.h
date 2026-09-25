@@ -113,6 +113,37 @@ struct LaunchPrepRequest {
   std::filesystem::path cwd;
 };
 
+// Shell-like argument splitter (Qt-free mirror of the GUI split_arguments in
+// launch_controller.cpp): whitespace-separated, double quotes group tokens
+// (quotes removed, backslash escapes the next char). Empty input yields an
+// empty vector. Shared by headless --args and the executables entry lookup
+// below so both produce the exact argv.
+[[nodiscard]] std::vector<std::string> split_launch_arguments(const std::string &args);
+
+// Working-directory resolver (Qt-free mirror of the GUI resolve_start_in in
+// launch_controller.cpp): empty stays empty (the launcher defaults to
+// game_dir), relative resolves against game_dir, absolute passes through.
+[[nodiscard]] std::filesystem::path
+resolve_launch_cwd(const std::filesystem::path &game_dir, const std::string &start_in);
+
+// Per-executable launch config from the instance.toml executables array.
+struct ExecutableLaunchConfig {
+  bool found = false;
+  std::vector<std::string> args;
+  std::vector<std::string> environment;
+  std::filesystem::path cwd;
+};
+
+// GUI parity lookup (MO2 getByBinary): the first executables entry whose
+// game-relative path matches the launched binary (case-insensitive,
+// symlink-canonicalized, first match wins). Args are split, cwd is resolved
+// against game_dir, env is forwarded verbatim. No match (or no file) yields
+// found=false with empty fields.
+[[nodiscard]] ExecutableLaunchConfig
+lookup_executable_launch_config(const std::filesystem::path &instance_root,
+                                const std::filesystem::path &game_dir,
+                                const std::filesystem::path &executable);
+
 // Direct-symlink deploy parameters gathered once from instance.toml + game
 // knowledge. The single source of truth for direct-mode deploys: both
 // prepare_launch_params and the UI's "Deploy management" actions consume it

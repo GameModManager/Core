@@ -423,6 +423,23 @@ int Application::run() {
     cfg.knowledge      = &plugin_loader_->knowledge();
     cfg.game_id        = inst.info().game_id;
 
+    // Headless launch overrides (--args/--env/--cwd): explicit flags ride on
+    // the Config and win over the instance.toml executables entry per field
+    // (see cli::build_launch_request).
+    if (args.has_launch_args) {
+      cfg.args     = engine::split_launch_arguments(args.launch_args.toStdString());
+      cfg.args_set = true;
+    }
+    if (args.has_launch_env) {
+      for (const auto &entry : args.launch_env)
+        cfg.environment.push_back(entry.toStdString());
+      cfg.environment_set = true;
+    }
+    if (args.has_launch_cwd) {
+      cfg.cwd     = args.launch_cwd.toStdString();
+      cfg.cwd_set = true;
+    }
+
     cli::HeadlessLauncher launcher(cfg, platform_.get());
     int exit_code = launcher.run();
     engine::Logger::instance().debug("Headless: exit code " +
