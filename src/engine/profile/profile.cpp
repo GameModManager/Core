@@ -237,6 +237,15 @@ ProfileManager::ProfileManager(std::filesystem::path directory,
 
 ProfileManager::~ProfileManager() = default;
 
+bool profile_needs_recreate(const ProfileManager *active,
+                            const std::filesystem::path &expected_directory) {
+  if (active == nullptr) {
+    return true;
+  }
+  return active->directory().lexically_normal() !=
+         expected_directory.lexically_normal();
+}
+
 // --- deletion --------------------------------------------------------------
 
 ProfileRemoveResult ProfileManager::remove(bool is_active) {
