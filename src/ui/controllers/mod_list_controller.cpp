@@ -815,10 +815,13 @@ void ModListController::switch_profile(const QString &profile) {
   // sync_mod_enable_state). Ensure it exists and is loaded before the
   // switcher saves it - a fresh Profile has an empty in-memory list and
   // would flush an empty modlist.txt over the real per-profile state.
-  if (!w_->active_profile_ ||
-      w_->active_profile_->name() != w_->current_profile_name_) {
-    w_->active_profile_ = std::make_unique<engine::profile::ProfileManager>(
-        profiles_dir / w_->current_profile_name_);
+  // Workspace-gzbs: compare the full profile directory, not just the name -
+  // two instances may each own a same-named profile in different dirs.
+  const auto expected_profile_dir = profiles_dir / w_->current_profile_name_;
+  if (engine::profile::profile_needs_recreate(w_->active_profile_.get(),
+                                              expected_profile_dir)) {
+    w_->active_profile_ =
+        std::make_unique<engine::profile::ProfileManager>(expected_profile_dir);
     w_->active_profile_->refresh_mod_status(state.known_mods, state.foreign_mods);
   }
 
@@ -1233,12 +1236,19 @@ void ModListController::load_mods_from_game() {
   // profile before the scan lands, so this guard only fires on first load
   // / instance switch (the name still matches during the switch's refresh
   // callback, which runs before current_profile_name_ is updated).
-  if (!w_->current_profile_name_.empty() &&
-      (!w_->active_profile_ ||
-       w_->active_profile_->name() != w_->current_profile_name_)) {
-    w_->active_profile_ = std::make_unique<engine::profile::ProfileManager>(
-        w_->profiles_dir_path() / w_->current_profile_name_);
-    w_->active_profile_->refresh_mod_status({}, {});
+  // Workspace-gzbs: compare the full profile directory, not just the name -
+  // two instances may each own a same-named profile in different dirs, and
+  // a name-only check keeps the stale instance's ProfileManager (whose
+  // delayed writer then persists foreign mods into the wrong modlist.txt).
+  if (!w_->current_profile_name_.empty()) {
+    const auto expected_profile_dir =
+        w_->profiles_dir_path() / w_->current_profile_name_;
+    if (engine::profile::profile_needs_recreate(w_->active_profile_.get(),
+                                                expected_profile_dir)) {
+      w_->active_profile_ =
+          std::make_unique<engine::profile::ProfileManager>(expected_profile_dir);
+      w_->active_profile_->refresh_mod_status({}, {});
+    }
   }
 
   w_->loading_ = true;
