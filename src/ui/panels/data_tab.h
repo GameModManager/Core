@@ -73,6 +73,43 @@ public:
 
   [[nodiscard]] QTreeWidget *tree_widget() const { return tree_; }
 
+  // Double-click resolution (Workspace-co2 + Workspace-636, MO2
+  // doubleClicksOpenPreviews): pure decision, no widget access, so tests
+  // can pin the setting x modifier x file-type matrix directly.
+  //
+  // Precedence, first match wins:
+  //   1. Ctrl          -> Reveal the containing folder in the OS file manager
+  //   2. executable    -> Execute (never preview an exe)
+  //   3. Alt           -> swap the setting for this one click
+  //   4. the setting itself, with Preview falling back to Open
+  //
+  // The setting is the persisted DEFAULT: OFF = plain double-click opens with
+  // the OS handler, ON = plain double-click opens the built-in preview. Alt is
+  // the on-the-fly switch that inverts whatever the setting says for that one
+  // click, matching the main mod list convention where Ctrl+double-click
+  // reveals in Explorer (MO2 featuremap row 784).
+  //
+  //   setting | Ctrl | Alt | previewable | result
+  //   --------+------+-----+-------------+--------------------------------
+  //   any     | yes  | any | any         | Reveal   (Ctrl beats Alt)
+  //   any     | no   | no  | yes (exe)   | Execute  (exe beats Alt swap)
+  //   OFF     | no   | no  | yes         | Open     (OS handler)
+  //   OFF     | no   | yes | yes         | Preview  (Alt flips OFF -> on)
+  //   ON      | no   | no  | yes         | Preview
+  //   ON      | no   | yes | yes         | Open     (Alt flips ON -> off)
+  //   any     | no   | any | no          | Open     (no preview handler:
+  //                                               always the OS handler,
+  //                                               whatever the setting or Alt)
+  enum class DoubleClickAction { Open, Preview, Execute, Reveal };
+  static DoubleClickAction resolve_double_click(bool previews_setting_on,
+                                                bool ctrl_pressed,
+                                                bool alt_pressed,
+                                                bool preview_supported,
+                                                bool is_executable);
+  // The directory the Reveal action opens: the file's containing folder,
+  // empty when `real_path` is empty. Exposed for tests.
+  static QString reveal_dir(const QString &real_path);
+
 signals:
   // A non-executable file should be opened with its default handler.
   void open_requested(const QString &file_path);
@@ -120,6 +157,9 @@ protected:
   void add_common_menus(QMenu &menu);
   void open_item(QTreeWidgetItem *item);
   void preview_item(QTreeWidgetItem *item);
+  // Opens the file's containing folder in the OS file manager. Shared by the
+  // context-menu action and Ctrl+double-click.
+  void reveal_item(QTreeWidgetItem *item);
   void dump_tree_to_file();
 
 private:
