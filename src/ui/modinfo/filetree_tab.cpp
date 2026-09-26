@@ -149,7 +149,14 @@ void FiletreeTab::on_double_clicked() {
   // vs Ctrl double-click between OS-open and built-in preview; Ctrl always
   // inverts the setting. on_preview falls back to the OS handler for
   // unsupported types (and explores directories), so no gate is needed.
-  const bool ctrl = QApplication::keyboardModifiers() & Qt::ControlModifier;
+  // Alt+double-click always reveals the containing folder in the OS file
+  // manager (MO2 "Reveal in Explorer" action), ahead of every other rule.
+  const auto mods = QApplication::keyboardModifiers();
+  if (mods & Qt::AltModifier) {
+    on_explore();
+    return;
+  }
+  const bool ctrl = mods & Qt::ControlModifier;
   if (Settings::instance().double_clicks_open_previews() != ctrl)
     on_preview();
   else

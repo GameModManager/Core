@@ -6,7 +6,9 @@
 //
 //   - the setting defaults to false and round-trips through QSettings
 //   - DataTab::resolve_double_click pins the setting x modifier x
-//     file-type matrix (executables always execute - never preview an exe)
+//     file-type matrix (executables always execute - never preview an exe;
+//     Alt always reveals the containing folder)
+//   - reveal_dir pins the Alt target to the file's containing folder
 //   - plain double-click integration: setting OFF opens, setting ON
 //     previews when supported and opens otherwise
 //
@@ -108,21 +110,57 @@ TEST_CASE("data tab double-click action matrix", "[ui]") {
   using Action = ui::DataTab::DoubleClickAction;
   // Executables always execute - never preview an exe, whatever the
   // setting, modifier, or preview support says.
-  CHECK(ui::DataTab::resolve_double_click(false, false, false, true) ==
+  CHECK(ui::DataTab::resolve_double_click(false, false, false, false, true) ==
         Action::Execute);
-  CHECK(ui::DataTab::resolve_double_click(true, false, true, true) == Action::Execute);
-  CHECK(ui::DataTab::resolve_double_click(true, true, true, true) == Action::Execute);
+  CHECK(ui::DataTab::resolve_double_click(true, false, false, true, true) ==
+        Action::Execute);
+  CHECK(ui::DataTab::resolve_double_click(true, true, false, true, true) ==
+        Action::Execute);
   // Setting OFF (default): plain opens, Ctrl previews.
-  CHECK(ui::DataTab::resolve_double_click(false, false, true, false) == Action::Open);
-  CHECK(ui::DataTab::resolve_double_click(false, true, true, false) == Action::Preview);
+  CHECK(ui::DataTab::resolve_double_click(false, false, false, true, false) ==
+        Action::Open);
+  CHECK(ui::DataTab::resolve_double_click(false, true, false, true, false) ==
+        Action::Preview);
   // Setting ON: plain previews, Ctrl opens.
-  CHECK(ui::DataTab::resolve_double_click(true, false, true, false) == Action::Preview);
-  CHECK(ui::DataTab::resolve_double_click(true, true, true, false) == Action::Open);
+  CHECK(ui::DataTab::resolve_double_click(true, false, false, true, false) ==
+        Action::Preview);
+  CHECK(ui::DataTab::resolve_double_click(true, true, false, true, false) ==
+        Action::Open);
   // No preview handler: fall back to OS-open in every mode.
-  CHECK(ui::DataTab::resolve_double_click(false, false, false, false) == Action::Open);
-  CHECK(ui::DataTab::resolve_double_click(false, true, false, false) == Action::Open);
-  CHECK(ui::DataTab::resolve_double_click(true, false, false, false) == Action::Open);
-  CHECK(ui::DataTab::resolve_double_click(true, true, false, false) == Action::Open);
+  CHECK(ui::DataTab::resolve_double_click(false, false, false, false, false) ==
+        Action::Open);
+  CHECK(ui::DataTab::resolve_double_click(false, true, false, false, false) ==
+        Action::Open);
+  CHECK(ui::DataTab::resolve_double_click(true, false, false, false, false) ==
+        Action::Open);
+  CHECK(ui::DataTab::resolve_double_click(true, true, false, false, false) ==
+        Action::Open);
+  // Alt always reveals the containing folder, beating every other rule
+  // (the setting, Ctrl, preview support and executables alike).
+  CHECK(ui::DataTab::resolve_double_click(false, false, true, true, false) ==
+        Action::Reveal);
+  CHECK(ui::DataTab::resolve_double_click(false, true, true, true, false) ==
+        Action::Reveal);
+  CHECK(ui::DataTab::resolve_double_click(true, false, true, true, false) ==
+        Action::Reveal);
+  CHECK(ui::DataTab::resolve_double_click(true, true, true, true, false) ==
+        Action::Reveal);
+  CHECK(ui::DataTab::resolve_double_click(false, false, true, false, true) ==
+        Action::Reveal);
+}
+
+TEST_CASE("alt double-click reveals the containing folder", "[ui]") {
+  // Alt+double-click resolves to Reveal (above), and Reveal targets the
+  // file's CONTAINING FOLDER in the OS file manager, not the file itself.
+  // Only file rows carry a real path (directories have no DataRealPathRole),
+  // so the containing folder is always the parent of the file.
+  CHECK(ui::DataTab::resolve_double_click(false, false, true, true, false) ==
+        ui::DataTab::DoubleClickAction::Reveal);
+  CHECK(ui::DataTab::reveal_dir("/tmp/opencode/mods/ModA/textures/face.dds") ==
+        "/tmp/opencode/mods/ModA/textures");
+  CHECK(ui::DataTab::reveal_dir("/tmp/opencode/mods/ModA/readme.txt") ==
+        "/tmp/opencode/mods/ModA");
+  CHECK(ui::DataTab::reveal_dir("").isEmpty());
 }
 
 TEST_CASE("data tab double-click honors the previews setting", "[ui]") {

@@ -3274,6 +3274,14 @@ void ModListController::on_conflict_file_preview(const QString &mod_id,
   on_data_preview(abs, {}, {});
 }
 
+void ModListController::on_conflict_file_reveal(const QString &mod_id,
+                                                const QString &relative_path) {
+  const QString abs = conflict_file_abs_path(mod_id, relative_path);
+  if (abs.isEmpty())
+    return;
+  QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(abs).absolutePath()));
+}
+
 QString ModListController::conflict_file_abs_path(const QString &mod_id,
                                                   const QString &relative_path) const {
   // Resolve the owning mod's on-disk copy: instance mods dir first, then
