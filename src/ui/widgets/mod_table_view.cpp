@@ -377,6 +377,35 @@ void ModView::mouseDoubleClickEvent(QMouseEvent *event) {
   QTreeView::mouseDoubleClickEvent(event);
 }
 
+void ModView::mouseReleaseEvent(QMouseEvent *event) {
+  // Anti-bounce bookkeeping (Workspace-8fy): if this release toggles a
+  // Name checkbox, note the time so the controller can swallow a
+  // double-click landing within doubleClickInterval() (the second half of
+  // a checkbox aim, not an open request). Comparing the check state
+  // before/after keeps programmatic toggles (profile sync, bulk enable)
+  // out of the guard - only real mouse toggles arm it.
+  const QModelIndex idx = indexAt(event->pos());
+  const bool watching = event->button() == Qt::LeftButton && idx.isValid() &&
+                        idx.column() == ModList::Name;
+  // Persistent copy: the toggle emits mod_list_changed, and the handlers
+  // behind that signal are free to reshape the model, which would leave the
+  // plain QModelIndex dangling (reading it after a reset is UB). A reset
+  // instead just skips arming the guard - the conservative outcome.
+  const QPersistentModelIndex watched_idx(watching ? idx : QModelIndex());
+  const QVariant before = watching ? idx.data(Qt::CheckStateRole) : QVariant();
+  QTreeView::mouseReleaseEvent(event);
+  if (before.isValid() && watched_idx.isValid()) {
+    const QVariant after = watched_idx.data(Qt::CheckStateRole);
+    if (after.isValid() && after != before)
+      last_checkbox_toggle_.start();
+  }
+}
+
+bool ModView::checkbox_toggle_recent() const {
+  return last_checkbox_toggle_.isValid() &&
+         last_checkbox_toggle_.elapsed() < QApplication::doubleClickInterval();
+}
+
 void ModView::dragEnterEvent(QDragEnterEvent *event) {
   if (event->mimeData()->hasUrls()) {
     for (const auto &url : event->mimeData()->urls()) {

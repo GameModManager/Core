@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QElapsedTimer>
 #include <QHelpEvent>
 #include <QIcon>
 #include <QList>
@@ -172,6 +173,13 @@ public:
   // QTreeView::setHeader; main_window calls it through ModView*.
   void setHeader(QHeaderView *header);
 
+  // Anti-bounce guard (Workspace-8fy): true when a Name-checkbox toggle
+  // from a real mouse release landed within
+  // QApplication::doubleClickInterval(). Only mouse toggles arm it (see
+  // mouseReleaseEvent) - programmatic toggles (profile sync, bulk enable)
+  // never do, so loads cannot swallow legitimate double-clicks.
+  [[nodiscard]] bool checkbox_toggle_recent() const;
+
 signals:
   void files_dropped(const QStringList &paths);
   // Files/folders dragged out of the Overwrite info dialog onto mod row
@@ -188,9 +196,12 @@ protected:
   void dragMoveEvent(QDragMoveEvent *event) override;
   void dropEvent(QDropEvent *event) override;
   void mouseDoubleClickEvent(QMouseEvent *event) override;
+  void mouseReleaseEvent(QMouseEvent *event) override;
 
 private:
   bool is_under_overwrite(const QString &path) const;
+  // Last Name-checkbox toggle from a real mouse release (see above).
+  QElapsedTimer last_checkbox_toggle_;
 };
 
 // Backward-compat alias

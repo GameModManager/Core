@@ -462,15 +462,26 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
 
   // Double-clicking the Overwrite row opens the shared info dialog (MO2's
   // default-action behavior for the Overwrite entry). Mod rows map the
-  // clicked column to a Mod Info tab (MO2's modlistview.cpp double-click):
-  // Version → Nexus, Flags → Conflicts, anything else → last-used tab.
-  // Shift+Double-Click (MO2 parity) opens the mod's source page in the
-  // default browser instead of the Mod Info dialog; rows without a
-  // resolvable source (Overwrite, separators, game-native, unknown source)
-  // do nothing.
+  // clicked column to a Mod Info tab (MO2's modlistview.cpp double-click,
+  // see mod_info_tab_for_column): Conflicts/Flags -> Conflicts,
+  // Category -> Categories, Source/SourceId/Version -> Source (GMM rename
+  // of MO2's Nexus tab), anything else -> last-used tab. GMM has no
+  // Notes/Game/Mod-ID columns, so those MO2 mappings have no target here.
+  // Double-clicking a separator toggles its fold (MO2 parity), same as the
+  // Fold-column arrow click above. Shift+Double-Click (MO2 parity) opens
+  // the mod's source page in the default browser instead of the Mod Info
+  // dialog; rows without a resolvable source (Overwrite, separators,
+  // game-native, unknown source) do nothing. A double-click within
+  // QApplication::doubleClickInterval() of a Name-checkbox toggle is
+  // swallowed by the anti-bounce guard (Workspace-8fy, tracked view-side
+  // in ModView so programmatic toggles never arm it).
   connect(w_->mod_view_, &QTreeView::doubleClicked, this,
           [this](const QModelIndex &idx) {
             if (!idx.isValid())
+              return;
+            // Anti-bounce: the second half of a checkbox aim, not an open
+            // request.
+            if (w_->mod_view_->checkbox_toggle_recent())
               return;
             int row = idx.row();
             if (row < 0 || row >= w_->mod_model_->mods().size())
@@ -491,29 +502,17 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
               w_->overwrite_->show_overwrite_info_dialog();
               return;
             }
-            if (entry.is_separator || entry.is_game_native)
+            if (entry.is_separator) {
+              if (w_->mod_model_->has_content(row)) {
+                const bool folded = w_->mod_model_->mods()[row].folded;
+                w_->mod_model_->set_folded(row, !folded);
+              }
+              return;
+            }
+            if (entry.is_game_native)
               return;
 
-            int tab = -1;
-            switch (idx.column()) {
-            case ModList::Conflicts:
-              tab = static_cast<int>(ui::ModInfoTabId::Conflicts);
-              break;
-            case ModList::Flags:
-              tab = static_cast<int>(ui::ModInfoTabId::Conflicts);
-              break;
-            case ModList::Category:
-              tab = static_cast<int>(ui::ModInfoTabId::Categories);
-              break;
-            case ModList::Source:
-            case ModList::SourceId:
-            case ModList::Version:
-              tab = static_cast<int>(ui::ModInfoTabId::Source);
-              break;
-            default:
-              break;  // last-used tab
-            }
-            on_data_mod_info(entry.id, tab);
+            on_data_mod_info(entry.id, mod_info_tab_for_column(idx.column()));
           });
 
   // MO2 parity: Ctrl+Double-Click opens the OS file explorer at the mod's
@@ -2744,6 +2743,27 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
   };
 
   return data;
+}
+
+// Column -> Mod Info tab for a plain double-click (MO2's modlistview.cpp
+// double-click; GMM renames MO2's Nexus tab to Source). -1 means the
+// dialog opens on the last-used tab (Name, Fold, Installation, Changed,
+// Priority). GMM has no Notes/Game/Mod-ID columns, so those MO2 mappings
+// have no target here - a GMM difference, not a gap.
+int ModListController::mod_info_tab_for_column(int column) {
+  switch (column) {
+  case ModList::Conflicts:
+  case ModList::Flags:
+    return static_cast<int>(ui::ModInfoTabId::Conflicts);
+  case ModList::Category:
+    return static_cast<int>(ui::ModInfoTabId::Categories);
+  case ModList::Source:
+  case ModList::SourceId:
+  case ModList::Version:
+    return static_cast<int>(ui::ModInfoTabId::Source);
+  default:
+    return -1;  // last-used tab
+  }
 }
 
 void ModListController::on_data_mod_info(const QString &mod_id, int initial_tab) {
