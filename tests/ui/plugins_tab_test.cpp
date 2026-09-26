@@ -41,10 +41,12 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QEventLoop>
 #include <QIcon>
 #include <QLCDNumber>
 #include <QList>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QPoint>
 #include <QPushButton>
 #include <QRect>
@@ -869,4 +871,141 @@ TEST_CASE("plugins tab", "[ui]") {
     check(refreshed, "Refresh button emits refresh_requested");
     tab.hide();
   }
+}
+
+// Double-click on a plugin row acts on the mod that owns it (MO2 parity,
+// Workspace-aon): plain asks for that mod's Mod Info dialog, Ctrl asks to
+// reveal its folder. Unowned (game Data) rows own no mod and ask for nothing.
+// The anti-bounce guard (Workspace-8fy, shared with ModView) swallows a
+// double-click landing right after a checkbox toggle.
+TEST_CASE("plugins tab double-click targets the owning mod", "[ui][dblclick]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_plugins_dblclick/config";
+  std::filesystem::remove_all("/tmp/gmm_plugins_dblclick");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  QSettings::setDefaultFormat(QSettings::IniFormat);
+  QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+  engine::IconManager::instance().discover_packs(GMM_TEST_RESOURCES_DIR);
+
+  engine::GamePlugin native;  // game Data: no owner_mod, nothing to open
+  native.name              = "Skyrim.esm";
+  native.has_master_ext    = true;
+  native.is_master_flagged = true;
+  native.is_game_native    = true;
+  native.force_loaded      = true;
+  native.enabled           = true;
+  native.priority          = 0;
+  native.mod_index_text    = "00";
+
+  engine::GamePlugin skyui;
+  skyui.name           = "SkyUI_SE.esp";
+  skyui.owner_mod      = "SkyUI";
+  skyui.is_light_flagged = true;
+  skyui.enabled        = true;
+  skyui.priority       = 1;
+  skyui.mod_index_text = "FE:000";
+
+  engine::GamePlugin foo;
+  foo.name           = "Foo.esp";
+  foo.owner_mod      = "Foo_mod";
+  foo.enabled        = true;
+  foo.priority       = 2;
+  foo.mod_index_text = "01";
+
+  TestPluginsTab tab;
+  auto *table = tab.table();
+  tab.resize(600, 300);
+  tab.show();
+  tab.set_plugins({native, skyui, foo});
+  QApplication::processEvents();
+
+  const int skyui_row = row_with_name(table, "SkyUI_SE.esp");
+  const int foo_row   = row_with_name(table, "Foo.esp");
+  const int game_row  = row_with_name(table, "Skyrim.esm");
+  check(skyui_row == 1 && foo_row == 2 && game_row == 0, "rows in load order");
+
+  std::vector<std::string> mod_info;
+  std::vector<std::string> reveals;
+  QObject::connect(&tab, &ui::PluginsTab::mod_info_requested,
+                   [&](const std::string &owner) { mod_info.push_back(owner); });
+  QObject::connect(&tab, &ui::PluginsTab::reveal_requested,
+                   [&](const std::string &owner) { reveals.push_back(owner); });
+
+  // Synthesized platform double-click (Press, Release, DblClick, Release).
+  // QTest::mouseDClick does not reach mouseDoubleClickEvent on these views
+  // offscreen, hence the direct sequence - same shape as the mod list
+  // double-click test (Workspace-8fy).
+  auto dblclick = [&](int row, Qt::KeyboardModifiers mods) {
+    table->scrollTo(table->model()->index(row, 0));
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    const QRect cell = table->visualRect(table->model()->index(row, 0));
+    REQUIRE(cell.isValid());
+    const QPoint pos    = cell.center();
+    const QPoint global = table->viewport()->mapToGlobal(pos);
+    QMouseEvent press(QEvent::MouseButtonPress, pos, global, Qt::LeftButton,
+                      Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent release(QEvent::MouseButtonRelease, pos, global, Qt::LeftButton,
+                        Qt::NoButton, Qt::NoModifier);
+    QMouseEvent dblpress(QEvent::MouseButtonDblClick, pos, global, Qt::LeftButton,
+                         Qt::LeftButton, mods);
+    QCoreApplication::sendEvent(table->viewport(), &press);
+    QCoreApplication::sendEvent(table->viewport(), &release);
+    QCoreApplication::sendEvent(table->viewport(), &dblpress);
+    QCoreApplication::sendEvent(table->viewport(), &release);
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+  };
+
+  // Plain double-click: Mod Info for the owning mod, nothing revealed.
+  dblclick(skyui_row, Qt::NoModifier);
+  check(mod_info.size() == 1 && mod_info[0] == "SkyUI",
+        "plain double-click requests Mod Info for the owning mod");
+  check(reveals.empty(), "plain double-click does not reveal");
+
+  // Ctrl+double-click: reveal that same owner's folder, and only that - the
+  // plain handler must not also fire.
+  dblclick(skyui_row, Qt::ControlModifier);
+  check(reveals.size() == 1 && reveals[0] == "SkyUI",
+        "Ctrl+double-click requests reveal for the owning mod");
+  check(mod_info.size() == 1, "Ctrl+double-click does not also request Mod Info");
+
+  // Each row resolves its own owner, from any column of the row.
+  dblclick(foo_row, Qt::NoModifier);
+  check(mod_info.size() == 2 && mod_info[1] == "Foo_mod",
+        "second mod's plugin requests its own Mod Info");
+
+  // A game-Data plugin owns no mod: there is nothing to open or reveal.
+  dblclick(game_row, Qt::NoModifier);
+  dblclick(game_row, Qt::ControlModifier);
+  check(mod_info.size() == 2 && reveals.size() == 1,
+        "unowned game-Data row requests nothing");
+
+  // Anti-bounce: a real checkbox click immediately before the double-click
+  // swallows it (the second half of a checkbox aim, not an open request).
+  // The click lands on the row that is NOT selected, so the deselect
+  // shortcut in mouseReleaseEvent does not eat the toggle.
+  const QRect cell = table->visualRect(table->model()->index(skyui_row, 0));
+  REQUIRE(cell.isValid());
+  const auto before_click = table->item(skyui_row, 0)->checkState();
+  QTest::mouseClick(table->viewport(), Qt::LeftButton, Qt::NoModifier,
+                    QPoint(cell.left() + 8, cell.center().y()));
+  QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+  REQUIRE(table->item(skyui_row, 0)->checkState() != before_click);
+  dblclick(skyui_row, Qt::NoModifier);
+  check(mod_info.size() == 2, "double-click right after a checkbox toggle is swallowed");
+
+  // Control: the same gesture opens once the interval has passed, so the
+  // check above is the guard and not a dead gesture.
+  QTest::qWait(QApplication::doubleClickInterval() + 50);
+  dblclick(skyui_row, Qt::NoModifier);
+  check(mod_info.size() == 3 && mod_info[2] == "SkyUI",
+        "double-click works again after the interval");
+
+  tab.hide();
 }
