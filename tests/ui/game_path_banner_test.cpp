@@ -17,6 +17,8 @@
 // GameKnowledge seeded with just mods_subpath. No network, no plugins.
 #include "engine/core/instance/instance.h"
 #include "engine/game/registry/game_knowledge.h"
+#include "engine/sort/sorter/interface.h"
+#include "engine/sort/sorter/registry.h"
 #include "ui/controllers/mod_list_controller.h"
 #include "ui/main_window/main_window.h"
 #include "ui/settings/settings.h"
@@ -32,10 +34,15 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <memory>
 #include <optional>
 #include <string>
 #include <system_error>
+#include <vector>
 
 #if defined(_WIN32)
 #include <process.h>
@@ -124,6 +131,59 @@ struct CaseSetup {
     // same choice a user makes with "Don't show".
     Settings::instance().set_nxm_handler_check("dont_ask");
   }
+};
+
+// Workspace-8tqw: the game hooks TheBindingOfIsaacRebirth registers for
+// sort-order persistence. Seeded under a local game id so the case needs no
+// plugin install (TheBindingOfIsaacRebirth.cpp:68-74 / :300-321).
+void seed_game_native_order_knowledge(engine::GameKnowledge &knowledge,
+                                      const std::string &game_id) {
+  knowledge.set(game_id, "mods_subpath", "mods");
+  knowledge.set(game_id, "game_mods_dir", "mods");
+  knowledge.set(game_id, "metadata_file", "metadata.xml");
+  knowledge.set(game_id, "metadata_name_tag", "name");
+  knowledge.set(game_id, "priority_prefix_re", "^[^a-zA-Z]+");
+  knowledge.set(game_id, "priority_format", "%03d ");
+}
+
+// Blocking-free wait for the async ModScanThread result: pump events until
+// `done` holds, fail the case if the scan never lands.
+template <typename Done>
+void pump_until(Done done) {
+  QElapsedTimer timer;
+  timer.start();
+  while (!done()) {
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    QThread::msleep(2);
+    if (timer.elapsed() > 10000)
+      FAIL("mod scan never landed");
+  }
+}
+
+std::string read_text(const std::filesystem::path &p) {
+  std::ifstream f(p);
+  return {std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>()};
+}
+
+void write_text(const std::filesystem::path &p, const std::string &body) {
+  std::filesystem::create_directories(p.parent_path());
+  std::ofstream out(p);
+  out << body;
+  REQUIRE(out.good());
+}
+
+// A Sorter::Registry provider that reverses the model's order, so a persisted
+// sort can never coincide with the seeded one.
+class ReverseSorter : public engine::Sorter::Interface {
+public:
+  engine::Sorter::Result
+  sort(const std::vector<engine::Sorter::ModInfo> &mods) const override {
+    engine::Sorter::Result out;
+    for (auto it = mods.rbegin(); it != mods.rend(); ++it)
+      out.sorted_folders.push_back(it->folder_name);
+    return out;
+  }
+  const char *name() const override { return "reverse"; }
 };
 
 }  // namespace
@@ -252,4 +312,150 @@ TEST_CASE("mod list loads from instance mods dir without a game dir", "[ui]") {
     if (!found && timer.elapsed() > 10000)
       FAIL("mod scan never landed for the game-less instance");
   }
+}
+
+// Workspace-8tqw: the game-native sort-order write must follow the row's
+// content_dir (<game_dir>/mods/<id>), not the instance mods dir. Two on-disk
+// shapes, both produced by real code paths:
+//   Stub_mod   - instance/mods/<id> is a meta.ini-only stub while the real
+//                mod lives in <game_dir>/mods/<id> (the merge in
+//                ModScanWorker:136-160). Writing at the instance folder is a
+//                silent no-op: there is no metadata.xml there.
+//   Mirror_mod - instance/mods/<id> is a full backup copy INCLUDING
+//                metadata.xml (Workspace-0pi5). Writing at the instance
+//                folder "succeeds" but lands in the backup, which the game
+//                never reads.
+TEST_CASE("Isaac sort order is written to the game mods dir", "[ui]") {
+  CaseSetup setup;
+
+  const auto root = make_instance(setup.scratch.instances);
+  const auto mods_dir =
+      engine::Instance::from_root(root).path_for(engine::InstanceKind::Mods);
+  const auto game_dir  = setup.scratch.root / "game";
+  const auto game_mods = game_dir / "mods";
+
+  const std::string stub_meta = "<mod><name>Stub</name><version>1.0</version></mod>";
+  const std::string mirror_meta =
+      "<mod><name>Mirror</name><version>1.0</version></mod>";
+
+  // MERGED shape: instance stub only.
+  write_text(mods_dir / "Stub_mod" / "meta.ini", "[General]\nversion = 1.0\n");
+  // MIRRORED shape: the instance folder is a full copy, metadata included.
+  write_text(mods_dir / "Mirror_mod" / "meta.ini", "[General]\nversion = 1.0\n");
+  write_text(mods_dir / "Mirror_mod" / "metadata.xml", mirror_meta);
+  // The real source in the game mods dir, for both.
+  write_text(game_mods / "Stub_mod" / "metadata.xml", stub_meta);
+  write_text(game_mods / "Mirror_mod" / "metadata.xml", mirror_meta);
+
+  ui::MainWindow w;
+  engine::GameKnowledge knowledge;
+  seed_game_native_order_knowledge(knowledge, "testgame");
+  w.set_game_knowledge(&knowledge);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "", game_dir, root);
+
+  auto *model = w.findChild<ui::ModList *>();
+  REQUIRE(model != nullptr);
+  auto *ctrl = w.findChild<ui::ModListController *>();
+  REQUIRE(ctrl != nullptr);
+
+  // Wait for the merged scan: both rows must carry the game-side content_dir,
+  // which is what sync_priorities has to follow.
+  pump_until([&] {
+    int seen = 0;
+    for (const auto &m : model->mods()) {
+      if ((m.id == "Stub_mod" || m.id == "Mirror_mod") && !m.content_dir.isEmpty() &&
+          std::filesystem::exists(std::filesystem::path(m.content_dir.toStdString())))
+        ++seen;
+    }
+    return seen == 2;
+  });
+
+  // Reorder so at least one row moves away from the priority it was seeded at.
+  model->move_mod(QString("Mirror_mod"), 0);
+
+  ctrl->sync_priorities();
+
+  // Expected prefix per row = its index after the reorder (what
+  // sync_priorities passes to set_priority).
+  const auto expected_prefix = [&](const QString &id) {
+    const auto it =
+        std::find_if(model->mods().cbegin(), model->mods().cend(), [&](const auto &m) {
+          return m.id == id;
+        });
+    REQUIRE(it != model->mods().cend());
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%03d ",
+                  static_cast<int>(std::distance(model->mods().cbegin(), it)));
+    return std::string(buf);
+  };
+
+  const auto stub_xml = read_text(game_mods / "Stub_mod" / "metadata.xml");
+  INFO("game-side Stub_mod metadata.xml was: " << stub_xml);
+  CHECK(stub_xml.find("<name>" + expected_prefix("Stub_mod") + "Stub<") !=
+        std::string::npos);
+
+  const auto mirror_xml = read_text(game_mods / "Mirror_mod" / "metadata.xml");
+  INFO("game-side Mirror_mod metadata.xml was: " << mirror_xml);
+  CHECK(mirror_xml.find("<name>" + expected_prefix("Mirror_mod") + "Mirror<") !=
+        std::string::npos);
+
+  // The instance backup copy is not what the game reads - it must stay byte
+  // identical, i.e. the write must not have landed there.
+  CHECK(read_text(mods_dir / "Mirror_mod" / "metadata.xml") == mirror_meta);
+}
+
+// Workspace-8tqw: sort_mods() used to rebuild the model while w_->loading_
+// was still true, so the mod_list_changed receiver's sync_priorities()
+// early-returned and the sort persisted NOTHING (not the in-folder meta.ini,
+// not the game-native metadata). Applies to every Sorter::Registry game, not
+// just Isaac.
+TEST_CASE("sort_mods persists the new order to disk", "[ui]") {
+  CaseSetup setup;
+
+  const auto root = make_instance(setup.scratch.instances);
+  const auto mods_dir =
+      engine::Instance::from_root(root).path_for(engine::InstanceKind::Mods);
+  for (const auto *id : {"A_mod", "B_mod", "C_mod"})
+    write_text(mods_dir / id / "meta.ini", "[General]\nversion = 1.0\n");
+
+  engine::Sorter::Registry::instance().register_provider(
+      "testgame", std::make_unique<ReverseSorter>());
+
+  ui::MainWindow w;
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+  w.set_game_knowledge(&knowledge);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "", {}, root);
+
+  auto *model = w.findChild<ui::ModList *>();
+  REQUIRE(model != nullptr);
+  auto *ctrl = w.findChild<ui::ModListController *>();
+  REQUIRE(ctrl != nullptr);
+
+  pump_until([&] {
+    int seen = 0;
+    for (const auto &m : model->mods())
+      if (m.id == "A_mod" || m.id == "B_mod" || m.id == "C_mod")
+        ++seen;
+    return seen == 3;
+  });
+
+  ctrl->sort_mods();
+
+  // The provider reversed the order, so every row's index differs from the
+  // seed order - each mod's meta.ini priority must now carry its row index.
+  for (int i = 0; i < model->mods().size(); ++i) {
+    const auto &m = model->mods()[i];
+    if (m.id != "A_mod" && m.id != "B_mod" && m.id != "C_mod")
+      continue;
+    const auto meta = read_text(mods_dir / m.id.toStdString() / "meta.ini");
+    INFO(m.id.toStdString() << " meta.ini was: " << meta);
+    CHECK(meta.find("priority = " + std::to_string(i)) != std::string::npos);
+  }
+  // Sanity: the reversal really happened, otherwise the case is vacuous.
+  CHECK(model->mods().front().id == "C_mod");
+
+  engine::Sorter::Registry::instance().clear();
 }
