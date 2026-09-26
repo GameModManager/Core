@@ -371,8 +371,19 @@ TEST_CASE("Isaac sort order is written to the game mods dir", "[ui]") {
     return seen == 2;
   });
 
-  // Reorder so at least one row moves away from the priority it was seeded at.
-  model->move_mod(QString("Mirror_mod"), 0);
+  // Reorder so a row moves away from the priority it was seeded at. scan_dir
+  // sorts by display_name, so don't hardcode which row sits where: move
+  // Mirror_mod onto Stub_mod's index, which swaps the pair for any scan order
+  // instead of landing on its own index (a no-op move).
+  const auto stub_row = std::find_if(model->mods().cbegin(), model->mods().cend(),
+                                     [](const auto &m) { return m.id == "Stub_mod"; });
+  REQUIRE(stub_row != model->mods().cend());
+  const auto stub_index =
+      static_cast<int>(std::distance(model->mods().cbegin(), stub_row));
+  model->move_mod(QString("Mirror_mod"), stub_index);
+  // The move has to be a real reorder: a self-move would leave both rows on
+  // their seeded priority and make every assertion below vacuous.
+  REQUIRE(model->mods()[stub_index].id == "Mirror_mod");
 
   ctrl->sync_priorities();
 
