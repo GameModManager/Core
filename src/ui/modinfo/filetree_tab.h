@@ -24,6 +24,7 @@ public:
 private:
   void show_menu(const QPoint &pos);
   QString selected_path() const;
+  void on_double_clicked();
   void on_open();
   void on_preview();
   void on_explore();

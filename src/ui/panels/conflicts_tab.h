@@ -34,6 +34,12 @@ public:
 
 signals:
   void file_open_requested(const QString &mod_id, const QString &relative_path);
+  // Built-in preview of a conflicted file (Workspace-co2): the receiver
+  // falls back to OS-open when no preview handler exists.
+  void file_preview_requested(const QString &mod_id, const QString &relative_path);
+  // Reveal the conflicted file's containing folder in the OS file manager
+  // (Alt+double-click, MO2 "Reveal in Explorer").
+  void file_reveal_requested(const QString &mod_id, const QString &relative_path);
   void image_diff_requested(const QString &relative_path);
 
 private:

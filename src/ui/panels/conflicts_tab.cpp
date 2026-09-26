@@ -1,8 +1,10 @@
 #include "ui/panels/conflicts_tab.h"
 #include "ui/panels/panel_utils.h"
+#include "ui/settings/settings.h"
 #include "ui/widgets/mod_list_model.h"
 
 #include <QAction>
+#include <QApplication>
 #include <QColor>
 #include <QFont>
 #include <QMap>
@@ -184,7 +186,22 @@ void ConflictsTab::on_item_double_clicked(QTreeWidgetItem *item, int column) {
   if (mod_id.isEmpty())
     return;
 
-  emit file_open_requested(mod_id, file_path);
+  // Alt+double-click always reveals the containing folder in the OS file
+  // manager (MO2 "Reveal in Explorer" action), ahead of every other rule.
+  const auto mods = QApplication::keyboardModifiers();
+  if (mods & Qt::AltModifier) {
+    emit file_reveal_requested(mod_id, file_path);
+    return;
+  }
+  // MO2 doubleClicksOpenPreviews (Workspace-co2): the setting swaps plain
+  // vs Ctrl double-click between OS-open and built-in preview; Ctrl always
+  // inverts the setting. Preview support is gated by the receiver, which
+  // falls back to OS-open when no preview handler exists.
+  const bool ctrl = mods & Qt::ControlModifier;
+  if (Settings::instance().double_clicks_open_previews() != ctrl)
+    emit file_preview_requested(mod_id, file_path);
+  else
+    emit file_open_requested(mod_id, file_path);
 }
 
 void ConflictsTab::on_custom_context_menu(const QPoint &pos) {

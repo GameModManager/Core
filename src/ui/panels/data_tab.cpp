@@ -1,6 +1,8 @@
 #include "ui/panels/data_tab.h"
 #include "ui/main_window/data_tab_build_worker.h"
 #include "ui/panels/panel_utils.h"
+#include "ui/preview/preview_window.h"
+#include "ui/settings/settings.h"
 #include "ui/widgets/column_toggle_header.h"
 #include "ui/widgets/mod_list_model.h"
 
@@ -15,10 +17,12 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFont>
 #include <QHash>
 #include <QHeaderView>
 #include <QIcon>
 #include <QMenu>
+#include <QShortcut>
 #include <QShowEvent>
 #include <QSize>
 #include <QTextStream>
@@ -119,15 +123,13 @@ namespace {
       sort_dirs_first(c);
   }
 
-  // Extension-based gate for the Preview action / preview window. Mirrors the
-  // formats PreviewWindow can render (images + text).
+  // Preview support gate: the single source of truth is what the
+  // PreviewWindow can render (built-in image/text formats + any
+  // plugin-registered preview widget). The context menu and the
+  // double-click path both consult it, so a newly registered preview
+  // enables both at once.
   static bool can_preview(const QString &path) {
-    const QString ext                   = QFileInfo(path).suffix().toLower();
-    static const QStringList image_exts = {"png", "jpg", "jpeg", "webp",
-                                           "bmp", "gif", "anm2"};
-    static const QStringList text_exts  = {"txt",  "ini", "cfg",  "log",
-                                           "json", "xml", "meta", "md"};
-    return image_exts.contains(ext) || text_exts.contains(ext);
+    return preview::PreviewWindow::supports(path);
   }
 
   // --- Data tab: per-row build + merge helpers. The per-row compute
@@ -293,6 +295,18 @@ DataTab::DataTab(QWidget *parent) : QWidget(parent) {
   tree_->setContextMenuPolicy(Qt::CustomContextMenu);
   connect(tree_, &QTreeWidget::customContextMenuRequested, this,
           &DataTab::on_custom_context_menu);
+
+  // Enter-key activation (Workspace-636): the Enter/Return keys run the
+  // same open/preview resolution as a plain double-click on the current
+  // item. Dedicated shortcuts (not the activated signal) so a single
+  // mouse click can never trigger an open.
+  for (const auto key : {Qt::Key_Return, Qt::Key_Enter}) {
+    auto *enter = new QShortcut(QKeySequence(key), tree_);
+    enter->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(enter, &QShortcut::activated, this, [this]() {
+      on_item_double_clicked(tree_->currentItem(), 0);
+    });
+  }
 
   // Background row building (THREADING.md §0): the per-file stat pass runs on
   // the worker thread; the finished row set arrives via a queued signal and
@@ -689,9 +703,58 @@ void DataTab::on_item_double_clicked(QTreeWidgetItem *item, int column) {
                                                                      : View::Data);
     return;
   }
-  if (item->data(0, DataRealPathRole).toString().isEmpty())
+  const QString real_path = item->data(0, DataRealPathRole).toString();
+  if (real_path.isEmpty())
     return;
-  open_item(item);
+  // MO2 doubleClicksOpenPreviews (Workspace-co2): the setting swaps plain
+  // vs Ctrl double-click between OS-open and built-in preview; Ctrl always
+  // inverts the setting. Alt always reveals the containing folder in the OS
+  // file manager (MO2 "Reveal in Explorer" action). Executables execute.
+  const auto mods   = QApplication::keyboardModifiers();
+  const bool ctrl   = mods & Qt::ControlModifier;
+  const bool alt    = mods & Qt::AltModifier;
+  const bool is_exe = real_path.endsWith(".exe", Qt::CaseInsensitive) ||
+                      QFileInfo(real_path).isExecutable();
+  switch (resolve_double_click(Settings::instance().double_clicks_open_previews(), ctrl,
+                               alt, can_preview(real_path), is_exe)) {
+  case DoubleClickAction::Reveal:
+    reveal_item(item);
+    break;
+  case DoubleClickAction::Preview:
+    preview_item(item);
+    break;
+  case DoubleClickAction::Execute:
+  case DoubleClickAction::Open:
+    open_item(item);
+    break;
+  }
+}
+
+DataTab::DoubleClickAction DataTab::resolve_double_click(bool previews_setting_on,
+                                                         bool ctrl_pressed,
+                                                         bool alt_pressed,
+                                                         bool preview_supported,
+                                                         bool is_executable) {
+  if (alt_pressed)
+    return DoubleClickAction::Reveal;
+  if (is_executable)
+    return DoubleClickAction::Execute;
+  const bool want_preview = previews_setting_on != ctrl_pressed;
+  if (want_preview && preview_supported)
+    return DoubleClickAction::Preview;
+  return DoubleClickAction::Open;
+}
+
+QString DataTab::reveal_dir(const QString &real_path) {
+  if (real_path.isEmpty())
+    return {};
+  return QFileInfo(real_path).absolutePath();
+}
+
+void DataTab::reveal_item(QTreeWidgetItem *item) {
+  const QString dir = reveal_dir(item->data(0, DataRealPathRole).toString());
+  if (!dir.isEmpty())
+    QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
 }
 
 void DataTab::open_item(QTreeWidgetItem *item) {
@@ -766,6 +829,19 @@ void DataTab::add_file_menus(QMenu &menu, QTreeWidgetItem *item) {
         tr("This file has no preview handler associated with it"));
   }
 
+  // MO2 FileTree parity (Workspace-co2 row 411): bold the default
+  // (first-enabled) menu entry - the action a plain double-click runs.
+  // Executables always execute, so Execute stays the default regardless
+  // of the setting; otherwise the previews setting picks Preview vs Open
+  // (Preview only when a handler exists).
+  const bool preview_default = !is_exe &&
+                               Settings::instance().double_clicks_open_previews() &&
+                               can_preview(real_path);
+  auto *default_action       = preview_default ? preview_action : open_action;
+  QFont default_font         = default_action->font();
+  default_font.setBold(true);
+  default_action->setFont(default_font);
+
   menu.addSeparator();
 
   auto *add_exe_action = menu.addAction(tr("&Add as Executable"), this, [this, item]() {
@@ -784,12 +860,10 @@ void DataTab::add_file_menus(QMenu &menu, QTreeWidgetItem *item) {
     add_exe_action->setStatusTip(tr("This file is not executable"));
   }
 
-  auto *reveal_action = menu.addAction(tr("Reveal in E&xplorer"), this, [item]() {
-    const auto dir =
-        QFileInfo(item->data(0, DataRealPathRole).toString()).absolutePath();
-    if (!dir.isEmpty())
-      QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
-  });
+  auto *reveal_action =
+      menu.addAction(tr("Reveal in E&xplorer"), this, [this, item]() {
+        reveal_item(item);
+      });
   reveal_action->setStatusTip(tr("Opens the file in the file manager"));
 
   const QString origin_mod_id = item->data(0, DataOriginModRole).toString();

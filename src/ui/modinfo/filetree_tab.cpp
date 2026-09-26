@@ -2,12 +2,16 @@
 
 #include "engine/core/log/logger.h"
 #include "engine/core/util/fs_utils.h"
+#include "ui/settings/settings.h"
 #include "ui/theme/icon_manager.h"
 #include "ui/viewer/file_viewer.h"
 
+#include <QApplication>
 #include <QDesktopServices>
 #include <QDialog>
+#include <QFileInfo>
 #include <QFileSystemModel>
+#include <QFont>
 #include <QHeaderView>
 #include <QInputDialog>
 #include <QMenu>
@@ -61,8 +65,10 @@ FiletreeTab::FiletreeTab(QWidget *parent) : ModInfoTab(parent) {
   layout->addWidget(tree_);
 
   connect(tree_, &QTreeView::customContextMenuRequested, this, &FiletreeTab::show_menu);
+  // MO2 doubleClicksOpenPreviews (Workspace-co2): plain vs Ctrl
+  // double-click swaps between OS-open and built-in preview.
   connect(tree_, &QTreeView::doubleClicked, this, [this](const QModelIndex &) {
-    on_open();
+    on_double_clicked();
   });
 }
 
@@ -98,6 +104,14 @@ void FiletreeTab::show_menu(const QPoint &pos) {
   auto *preview = menu.addAction(tr("&Preview"));
   QObject::connect(preview, &QAction::triggered, this, &FiletreeTab::on_preview);
 
+  // MO2 FileTree parity (Workspace-co2 row 411): bold the default
+  // (first-enabled) menu entry - the action a plain double-click runs.
+  auto *default_action =
+      Settings::instance().double_clicks_open_previews() ? preview : open;
+  QFont default_font = default_action->font();
+  default_font.setBold(true);
+  default_action->setFont(default_font);
+
   auto *explore = menu.addAction(tr("Open in &Explorer"));
   QObject::connect(explore, &QAction::triggered, this, &FiletreeTab::on_explore);
 
@@ -125,6 +139,28 @@ void FiletreeTab::on_open() {
   if (path.isEmpty() || !current().open_file)
     return;
   current().open_file(path);
+}
+
+void FiletreeTab::on_double_clicked() {
+  const QString path = selected_path();
+  if (path.isEmpty())
+    return;
+  // MO2 doubleClicksOpenPreviews (Workspace-co2): the setting swaps plain
+  // vs Ctrl double-click between OS-open and built-in preview; Ctrl always
+  // inverts the setting. on_preview falls back to the OS handler for
+  // unsupported types (and explores directories), so no gate is needed.
+  // Alt+double-click always reveals the containing folder in the OS file
+  // manager (MO2 "Reveal in Explorer" action), ahead of every other rule.
+  const auto mods = QApplication::keyboardModifiers();
+  if (mods & Qt::AltModifier) {
+    on_explore();
+    return;
+  }
+  const bool ctrl = mods & Qt::ControlModifier;
+  if (Settings::instance().double_clicks_open_previews() != ctrl)
+    on_preview();
+  else
+    on_open();
 }
 
 void FiletreeTab::on_preview() {

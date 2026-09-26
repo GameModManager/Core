@@ -2610,6 +2610,16 @@ ui::ModInfoData ModListController::build_mod_info_data(const ModEntry &mod) {
   data.open_file = [](const QString &path) {
     QDesktopServices::openUrl(QUrl::fromLocalFile(path));
   };
+  data.preview_file = [this](const QString &path) {
+    // PreviewWindow falls back internally for unsupported types, but gate
+    // here too so a stray call degrades to the OS handler, never a blank
+    // window (same fallback as the ConflictsTab receiver).
+    if (!ui::preview::PreviewWindow::supports(path)) {
+      QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+      return;
+    }
+    on_data_preview(path, {}, {});
+  };
   data.open_url = [](const QString &url) {
     QDesktopServices::openUrl(QUrl(url));
   };
@@ -3242,6 +3252,55 @@ void ModListController::on_image_diff_requested(const QString &relative_path) {
     std::string out_str = output_path.string();
     provider.fn(c_paths.data(), c_paths.size(), out_str.c_str(), provider.user_data);
   }
+}
+
+void ModListController::on_conflict_file_open(const QString &mod_id,
+                                              const QString &relative_path) {
+  const QString abs = conflict_file_abs_path(mod_id, relative_path);
+  if (!abs.isEmpty())
+    QDesktopServices::openUrl(QUrl::fromLocalFile(abs));
+}
+
+void ModListController::on_conflict_file_preview(const QString &mod_id,
+                                                 const QString &relative_path) {
+  const QString abs = conflict_file_abs_path(mod_id, relative_path);
+  if (abs.isEmpty())
+    return;
+  // Fall back to OS-open when no preview handler exists (MO2 parity).
+  if (!ui::preview::PreviewWindow::supports(abs)) {
+    QDesktopServices::openUrl(QUrl::fromLocalFile(abs));
+    return;
+  }
+  on_data_preview(abs, {}, {});
+}
+
+void ModListController::on_conflict_file_reveal(const QString &mod_id,
+                                                const QString &relative_path) {
+  const QString abs = conflict_file_abs_path(mod_id, relative_path);
+  if (abs.isEmpty())
+    return;
+  QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(abs).absolutePath()));
+}
+
+QString ModListController::conflict_file_abs_path(const QString &mod_id,
+                                                  const QString &relative_path) const {
+  // Resolve the owning mod's on-disk copy: instance mods dir first, then
+  // the game-native mods dir (same order as on_image_diff_requested).
+  const std::filesystem::path rel = relative_path.toStdString();
+  std::filesystem::path abs_path  = w_->mods_dir_path() / mod_id.toStdString() / rel;
+  std::error_code ec;
+  if (std::filesystem::exists(abs_path, ec))
+    return QString::fromStdString(abs_path.string());
+  const std::filesystem::path game_mods_dir =
+      w_->knowledge_ ? engine::resolve_game_mods_dir(
+                           w_->current_game_id_, w_->current_game_dir_, *w_->knowledge_)
+                     : std::filesystem::path{};
+  if (!game_mods_dir.empty()) {
+    abs_path = game_mods_dir / mod_id.toStdString() / rel;
+    if (std::filesystem::exists(abs_path, ec))
+      return QString::fromStdString(abs_path.string());
+  }
+  return {};
 }
 
 void ModListController::setup_mod_list_context_menu() {
