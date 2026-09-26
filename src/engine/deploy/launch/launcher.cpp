@@ -336,7 +336,7 @@ static LaunchResult do_launch(const LaunchParams &params) {
     const std::string key   = var.substr(0, eq);
     const std::string value = var.substr(eq + 1);
     setenv(key.c_str(), value.c_str(), 1);
-    Logger::instance().debug("Launch env: " + key + "=" + value);
+    Logger::instance().debug("Launch env: " + key + "=<redacted>");
   }
 
   // === BROKEN FEATURE - DO NOT ENABLE ===

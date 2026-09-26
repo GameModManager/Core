@@ -77,6 +77,17 @@ gmm_catch2_test(profile_test engine/profile_test.cpp)
 gmm_catch2_test(profile_creation_test engine/profile_creation_test.cpp)
 gmm_catch2_test(profile_switching_test engine/profile_switching_test.cpp)
 gmm_catch2_test(launch_params_test engine/launch_params_test.cpp)
+
+# Workspace-cch0: headless CLI launch honors per-executable args/env/cwd -
+# Qt-free splitter/cwd/entry-lookup helpers mirrored from the GUI path.
+gmm_catch2_test(headless_launch_config_test engine/headless_launch_config_test.cpp)
+
+# Workspace-cch0: headless CLI --args/--env/--cwd parsing plus the
+# Config/entry -> LaunchPrepRequest -> LaunchParams mapping (no spawn).
+gmm_catch2_test(headless_launch_cli_test cli/headless_launch_test.cpp
+    ../src/cli/command_line.cpp
+    UI
+    LIBS gmm_cli Qt6::Core)
 gmm_catch2_test(game_icons_test engine/game_icons_test.cpp)
 gmm_catch2_test(nxm_router_test engine/nxm_router_test.cpp)
 gmm_catch2_test(pack_source_detector_test engine/pack_source_detector_test.cpp)
