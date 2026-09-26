@@ -103,6 +103,10 @@ public slots:
   void on_data_hide(const QString &file_path, const QString &mod_id, bool hide);
   ui::ModInfoData build_mod_info_data(const ModEntry &mod);
   void on_image_diff_requested(const QString &relative_path);
+  // ConflictsTab double-click (Workspace-co2): OS-open or built-in preview
+  // of a conflicted file, resolved to the owning mod's on-disk copy.
+  void on_conflict_file_open(const QString &mod_id, const QString &relative_path);
+  void on_conflict_file_preview(const QString &mod_id, const QString &relative_path);
   // Mod scan (THREADING.md §3.5/§3.6, P8.2).
   void on_mod_scan_finished(ui::ModScanResult result, quint64 generation);
   ui::ModScanRequest build_mod_scan_request();
@@ -177,6 +181,12 @@ private:
   // (w_->mod_count_enabled_). Called on dataChanged (toggles) and
   // mod_list_changed (add/remove/move/load).
   void update_mod_count_label();
+
+  // Resolve a conflicted file to the owning mod's on-disk copy (instance
+  // mods dir first, then the game-native mods dir). Empty when neither
+  // copy exists. Helper for the ConflictsTab open/preview receivers.
+  QString conflict_file_abs_path(const QString &mod_id,
+                                 const QString &relative_path) const;
 
   MainWindow *w_ = nullptr;
 

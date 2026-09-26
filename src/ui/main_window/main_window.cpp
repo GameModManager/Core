@@ -282,6 +282,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
               if (auto *ct = right_panel_->conflicts_tab()) {
                 connect(ct, &ui::ConflictsTab::image_diff_requested, mod_list_.get(),
                         &ModListController::on_image_diff_requested);
+                connect(ct, &ui::ConflictsTab::file_open_requested, mod_list_.get(),
+                        &ModListController::on_conflict_file_open);
+                connect(ct, &ui::ConflictsTab::file_preview_requested, mod_list_.get(),
+                        &ModListController::on_conflict_file_preview);
               }
               mod_list_->refresh_conflicts_tab();
             } else if (cap == "plugins") {

@@ -49,6 +49,14 @@ void Settings::set_compact_downloads(bool on) {
   settings_.setValue("downloads/compact", on);
 }
 
+bool Settings::double_clicks_open_previews() const {
+  return settings_.value("interface/double_clicks_open_previews", false).toBool();
+}
+
+void Settings::set_double_clicks_open_previews(bool on) {
+  settings_.setValue("interface/double_clicks_open_previews", on);
+}
+
 bool Settings::display_foreign() const {
   return settings_.value("interface/display_foreign", true).toBool();
 }
