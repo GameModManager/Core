@@ -72,8 +72,6 @@ Testing/
 
 # Testing icons
 resources/icons/mo2icons/
-# CocoIndex Code (ccc)
-/.cocoindex_code/
 
 # macOS metadata
 .DS_Store
