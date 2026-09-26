@@ -25,10 +25,12 @@ public:
   void set_show_download_notifications(bool on);
   bool hide_installed_downloads() const;  // key: downloads/hide_installed
   void set_hide_installed_downloads(bool on);
-  // Double-click opens previews (MO2 doubleClicksOpenPreviews): plain
-  // double-click previews a file built-in when a preview handler exists
-  // (else OS-open), Ctrl+double-click OS-opens. OFF (default) swaps the
-  // two: plain double-click OS-opens, Ctrl+double-click previews.
+  // Double-click opens previews (MO2 doubleClicksOpenPreviews): the persisted
+  // default for file double-clicks in the file trees. ON = plain double-click
+  // previews a file built-in when a preview handler exists (else OS-open).
+  // OFF (default) = plain double-click OS-opens. Alt inverts the setting for
+  // that one click; Ctrl+double-click reveals the containing folder in
+  // Explorer (the same convention the mod list uses).
   // Governs file open-vs-preview only - not mod open/install behaviors.
   bool
   double_clicks_open_previews() const;  // key: interface/double_clicks_open_previews

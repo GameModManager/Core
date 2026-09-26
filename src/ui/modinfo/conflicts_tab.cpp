@@ -246,19 +246,21 @@ void ConflictsInfoTab::open_or_preview(Group &group, QTreeWidgetItem *item) {
   if (row < 0 || row >= static_cast<int>(group.files.size()))
     return;
   const QString abs = group.files[static_cast<size_t>(row)].abs_path;
-  // Alt+double-click always reveals the containing folder in the OS file
-  // manager (MO2 "Reveal in Explorer" action), ahead of every other rule.
+  // Modifier roles (Workspace-co2/636, user ruling 2026-09-26): Ctrl reveals
+  // the containing folder in the OS file manager (mirroring the mod list,
+  // featuremap row 784), Alt is the on-the-fly swap between the OS handler and
+  // the built-in preview, and the doubleClicksOpenPreviews setting is the
+  // persisted default that plain double-click follows.
+  //   Ctrl -> Reveal (wins over Alt) | Alt -> swap the setting for this click
+  //   otherwise -> the setting, falling back to OS-open when no preview
+  //   handler exists.
   const auto mods = QApplication::keyboardModifiers();
-  if (mods & Qt::AltModifier) {
+  if (mods & Qt::ControlModifier) {
     QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(abs).absolutePath()));
     return;
   }
-  // MO2 doubleClicksOpenPreviews (Workspace-co2): the setting swaps plain
-  // vs Ctrl double-click between OS-open and built-in preview; Ctrl always
-  // inverts the setting. Preview falls back to OS-open when no preview
-  // handler exists.
-  const bool ctrl         = mods & Qt::ControlModifier;
-  const bool want_preview = Settings::instance().double_clicks_open_previews() != ctrl;
+  const bool alt         = mods & Qt::AltModifier;
+  const bool want_preview = Settings::instance().double_clicks_open_previews() != alt;
   if (want_preview && preview::PreviewWindow::supports(abs) && current().preview_file)
     current().preview_file(abs);
   else

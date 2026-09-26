@@ -76,10 +76,30 @@ public:
   // Double-click resolution (Workspace-co2 + Workspace-636, MO2
   // doubleClicksOpenPreviews): pure decision, no widget access, so tests
   // can pin the setting x modifier x file-type matrix directly.
-  // Alt always Reveals the containing folder in the OS file manager, ahead of
-  // every other rule. Executables Execute (never preview an exe). Otherwise
-  // the previews setting swaps plain vs Ctrl between Preview and OS-Open, and
-  // Preview falls back to Open when no preview handler exists.
+  //
+  // Precedence, first match wins:
+  //   1. Ctrl          -> Reveal the containing folder in the OS file manager
+  //   2. executable    -> Execute (never preview an exe)
+  //   3. Alt           -> swap the setting for this one click
+  //   4. the setting itself, with Preview falling back to Open
+  //
+  // The setting is the persisted DEFAULT: OFF = plain double-click opens with
+  // the OS handler, ON = plain double-click opens the built-in preview. Alt is
+  // the on-the-fly switch that inverts whatever the setting says for that one
+  // click, matching the main mod list convention where Ctrl+double-click
+  // reveals in Explorer (MO2 featuremap row 784).
+  //
+  //   setting | Ctrl | Alt | previewable | result
+  //   --------+------+-----+-------------+--------------------------------
+  //   any     | yes  | any | any         | Reveal   (Ctrl beats Alt)
+  //   any     | no   | no  | yes (exe)   | Execute  (exe beats Alt swap)
+  //   OFF     | no   | no  | yes         | Open     (OS handler)
+  //   OFF     | no   | yes | yes         | Preview  (Alt flips OFF -> on)
+  //   ON      | no   | no  | yes         | Preview
+  //   ON      | no   | yes | yes         | Open     (Alt flips ON -> off)
+  //   any     | no   | any | no          | Open     (no preview handler:
+  //                                               always the OS handler,
+  //                                               whatever the setting or Alt)
   enum class DoubleClickAction { Open, Preview, Execute, Reveal };
   static DoubleClickAction resolve_double_click(bool previews_setting_on,
                                                 bool ctrl_pressed,
@@ -138,7 +158,7 @@ protected:
   void open_item(QTreeWidgetItem *item);
   void preview_item(QTreeWidgetItem *item);
   // Opens the file's containing folder in the OS file manager. Shared by the
-  // context-menu action and Alt+double-click.
+  // context-menu action and Ctrl+double-click.
   void reveal_item(QTreeWidgetItem *item);
   void dump_tree_to_file();
 

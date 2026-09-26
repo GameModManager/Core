@@ -706,10 +706,12 @@ void DataTab::on_item_double_clicked(QTreeWidgetItem *item, int column) {
   const QString real_path = item->data(0, DataRealPathRole).toString();
   if (real_path.isEmpty())
     return;
-  // MO2 doubleClicksOpenPreviews (Workspace-co2): the setting swaps plain
-  // vs Ctrl double-click between OS-open and built-in preview; Ctrl always
-  // inverts the setting. Alt always reveals the containing folder in the OS
-  // file manager (MO2 "Reveal in Explorer" action). Executables execute.
+  // Modifier roles (Workspace-co2/636, user ruling 2026-09-26): Ctrl reveals
+  // the containing folder in the OS file manager (mirroring the mod list,
+  // featuremap row 784), Alt is the on-the-fly swap between the OS handler and
+  // the built-in preview, and the doubleClicksOpenPreviews setting is the
+  // persisted default that plain double-click follows. Precedence and the full
+  // truth table live on resolve_double_click in the header.
   const auto mods   = QApplication::keyboardModifiers();
   const bool ctrl   = mods & Qt::ControlModifier;
   const bool alt    = mods & Qt::AltModifier;
@@ -735,11 +737,15 @@ DataTab::DoubleClickAction DataTab::resolve_double_click(bool previews_setting_o
                                                          bool alt_pressed,
                                                          bool preview_supported,
                                                          bool is_executable) {
-  if (alt_pressed)
+  // Truth table and precedence are documented on the declaration in
+  // data_tab.h. In short: Ctrl reveals, executables execute, Alt inverts the
+  // previews setting for this one click, and anything with no preview handler
+  // always falls back to the OS handler.
+  if (ctrl_pressed)
     return DoubleClickAction::Reveal;
   if (is_executable)
     return DoubleClickAction::Execute;
-  const bool want_preview = previews_setting_on != ctrl_pressed;
+  const bool want_preview = previews_setting_on != alt_pressed;
   if (want_preview && preview_supported)
     return DoubleClickAction::Preview;
   return DoubleClickAction::Open;

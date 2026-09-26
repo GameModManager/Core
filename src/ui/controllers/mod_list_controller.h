@@ -113,7 +113,7 @@ public slots:
   // of a conflicted file, resolved to the owning mod's on-disk copy.
   void on_conflict_file_open(const QString &mod_id, const QString &relative_path);
   void on_conflict_file_preview(const QString &mod_id, const QString &relative_path);
-  // Alt+double-click in the Conflicts tab: reveal the file's containing
+  // Ctrl+double-click in the Conflicts tab: reveal the file's containing
   // folder in the OS file manager.
   void on_conflict_file_reveal(const QString &mod_id, const QString &relative_path);
   // Mod scan (THREADING.md §3.5/§3.6, P8.2).
