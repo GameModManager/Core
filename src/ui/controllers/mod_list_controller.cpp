@@ -889,7 +889,19 @@ void ModListController::switch_profile(const QString &profile) {
       engine::delayed_disable_for(*w_->knowledge_, w_->current_game_id_)) {
     w_->deferred_disable_queue_.clear();
     for (const auto &pm : w_->active_profile_->mods()) {
-      w_->deferred_disable_queue_.push_back({pm.mod_id, pm.enabled});
+      // content_dir so the sentinel lands on the real source. The scan for the
+      // new profile lands after this, so a row that is not in the model yet
+      // contributes an empty content_dir and resolve_mod_folder falls back to
+      // the instance folder - the same as before (Workspace-8tqw).
+      QString content_dir;
+      for (const auto &m : w_->mod_model_->mods()) {
+        if (m.id == QString::fromStdString(pm.mod_id)) {
+          content_dir = m.content_dir;
+          break;
+        }
+      }
+      w_->deferred_disable_queue_.push_back(
+          {pm.mod_id, pm.enabled, content_dir.toStdString()});
     }
     engine::Logger::instance().debug(
         "Delayed disable: queued full profile state for '" +
@@ -967,10 +979,17 @@ void ModListController::sync_mod_enable_state(const QString &mod_id, bool enable
   if (!w_->knowledge_ || w_->current_game_id_.empty() || w_->current_game_dir_.empty())
     return;
 
-  // Separators don't have enable/disable on disk
+  // Separators don't have enable/disable on disk. Same pass captures the
+  // row's content_dir: the sentinel has to be written next to the real
+  // source, not into the instance stub/backup (Workspace-8tqw).
+  QString row_content_dir;
   for (const auto &m : w_->mod_model_->mods()) {
-    if (m.id == mod_id && m.is_separator)
+    if (m.id != mod_id)
+      continue;
+    if (m.is_separator)
       return;
+    row_content_dir = m.content_dir;
+    break;
   }
 
   // Game is running - queue the change instead of writing to disk
@@ -981,7 +1000,7 @@ void ModListController::sync_mod_enable_state(const QString &mod_id, bool enable
                                return pt.mod_id == mod_id;
                              });
     w_->pending_changes_.erase(it, w_->pending_changes_.end());
-    w_->pending_changes_.push_back({mod_id, enabled});
+    w_->pending_changes_.push_back({mod_id, enabled, row_content_dir});
     w_->queue_->update_queue_label();
     engine::Logger::instance().debug(
         "Queued toggle for " + mod_id.toStdString() + " -> " +
@@ -1003,7 +1022,8 @@ void ModListController::sync_mod_enable_state(const QString &mod_id, bool enable
                                return dd.mod_id == mod_id.toStdString();
                              });
     w_->deferred_disable_queue_.erase(it, w_->deferred_disable_queue_.end());
-    w_->deferred_disable_queue_.push_back({mod_id.toStdString(), enabled});
+    w_->deferred_disable_queue_.push_back(
+        {mod_id.toStdString(), enabled, row_content_dir.toStdString()});
 
     // Persist the toggle to the active profile's modlist.txt (the per-profile
     // source of truth for enabled state).
@@ -1030,7 +1050,8 @@ void ModListController::sync_mod_enable_state(const QString &mod_id, bool enable
   if (mods_subpath.empty())
     return;
 
-  auto mod_folder = w_->resolve_mod_folder(mod_id.toStdString(), mods_subpath);
+  auto mod_folder = w_->resolve_mod_folder(mod_id.toStdString(), mods_subpath,
+                                           row_content_dir.toStdString());
 
   if (enabled) {
     (void)engine::ModScanner::enable_mod(*w_->knowledge_, w_->current_game_id_,
@@ -1108,14 +1129,23 @@ void ModListController::sync_priorities() {
     // NNN prefix in metadata.xml, read by the game itself) get a folder
     // write; MO2-style games persist priority in the in-folder meta.ini
     // above and read load order from their plugins.txt / order encoding.
-    if (!mods[i].is_overwrite && !mods[i].is_separator && !mods_subpath.empty()) {
+    // is_phantom_row covers Overwrite and MERGED (both pseudo-rows have no
+    // folder, so set_priority would only ever fail + log on them).
+    if (!is_phantom_row(mods[i]) && !mods[i].is_separator && !mods_subpath.empty()) {
       auto metadata_file =
           w_->knowledge_->get(w_->current_game_id_, "metadata_file", "meta.ini");
       if (!metadata_file.empty() && metadata_file != "meta.ini") {
-        auto mod_folder =
-            w_->resolve_mod_folder(mods[i].id.toStdString(), mods_subpath);
-        (void)engine::ModScanner::set_priority(*w_->knowledge_, w_->current_game_id_,
-                                               mod_folder, i);
+        auto mod_folder = w_->resolve_mod_folder(mods[i].id.toStdString(), mods_subpath,
+                                                 mods[i].content_dir.toStdString());
+        // Checked, not (void): a discarded false here is what turned the
+        // missing content_dir into a two-week silent regression (Workspace-8tqw).
+        // Name the folder we tried so the log points at the right tree.
+        if (!engine::ModScanner::set_priority(*w_->knowledge_, w_->current_game_id_,
+                                              mod_folder, i)) {
+          engine::Logger::instance().warn("Sort order not written for '" +
+                                          mods[i].id.toStdString() + "': no " +
+                                          metadata_file + " in " + mod_folder.string());
+        }
       }
     }
   }
@@ -1171,7 +1201,13 @@ void ModListController::sort_mods() {
 
   // Apply the sorted order to the model
   trace.begin_stage("sort", "Apply order");
-  w_->loading_ = true;
+  // loading_ must be CLEAR before reset_with_order() below. That call emits
+  // mod_list_changed, and the receiver's sync_priorities() early-returns while
+  // loading_ is true - so a sort used to persist NOTHING (not the in-folder
+  // meta.ini, not the game-native metadata) and was lost on restart. Clearing
+  // it here lets the existing receiver do the sync, exactly as a drag-reorder
+  // does (Workspace-8tqw).
+  w_->loading_ = false;
 
   // Build a map of folder_name -> ModEntry
   QMap<QString, ui::ModEntry> mod_map;
@@ -1211,7 +1247,7 @@ void ModListController::sort_mods() {
     }
   }
 
-  // Apply the new order
+  // Apply the new order (emits mod_list_changed -> the receiver syncs)
   w_->mod_model_->reset_with_order(new_order);
 
   // Apply tags from sort result
@@ -1222,9 +1258,10 @@ void ModListController::sort_mods() {
     w_->mod_model_->set_tags(QString::fromStdString(tag_info.folder_name), tags);
   }
 
-  w_->loading_ = false;
   trace.end_stage("sort", true, "New order applied");
 
+  // save_order() is redundant with the reset_with_order receiver above and is
+  // kept only because the trace stage is part of the recorded sort flow.
   trace.begin_stage("sort", "Save order");
   save_order();
   trace.end_stage("sort", true, "Order persisted");

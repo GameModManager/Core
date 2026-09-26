@@ -676,7 +676,7 @@ void LaunchController::flush_deferred_disable_queue() {
   // by sync_mod_enable_state / switch_profile). The deploy worker starts only
   // after this returns, so it reads the reconciled on-disk sentinels.
   for (const auto &op : w_->deferred_disable_queue_) {
-    auto mod_folder = w_->resolve_mod_folder(op.mod_id, mods_subpath);
+    auto mod_folder = w_->resolve_mod_folder(op.mod_id, mods_subpath, op.content_dir);
     if (op.enabled) {
       (void)engine::ModScanner::enable_mod(*w_->knowledge_, w_->current_game_id_,
                                            mod_folder);
