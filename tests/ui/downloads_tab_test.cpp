@@ -64,6 +64,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 #include <catch2/catch_test_macros.hpp>
 
 namespace {
@@ -1039,4 +1040,97 @@ TEST_CASE("downloads source attribution", "[ui]") {
             "manifest repair: stale LoversLab label coerced to Manual");
     }
   }
+}
+
+// MO2 parity for the downloads-tab double-click (Workspace-o03). MO2's
+// downloadlistview drives a double-click off the row's state: READY (and
+// above) installs, PAUSED resumes, DOWNLOADING does nothing. The install
+// half already existed; the resume half was missing (a paused row fell
+// through the handler and did nothing at all), so the two signals are
+// asserted per state to keep the branches from bleeding into each other:
+// a paused row must resume and NOT install, a finished row must install
+// and NOT resume, an in-flight row must do neither.
+//
+// Direct signal capture, no waits: cellDoubleClicked is invoked with
+// Qt::DirectConnection so the handler has fully run by the time
+// invokeMethod returns, and the signals are emitted synchronously from it.
+TEST_CASE("downloads double-click state gating", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_dblclick_gate/config";
+  std::filesystem::remove_all("/tmp/gmm_dblclick_gate");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const std::filesystem::path dl_dir = "/tmp/gmm_dblclick_gate/dl";
+  std::filesystem::create_directories(dl_dir);
+
+  // Every row gets a real on-disk archive: the install branch is gated on
+  // std::filesystem::exists(file_path), so a missing file would make the
+  // "finished row installs" assertion pass for the wrong reason.
+  const auto paused_zip = dl_dir / "Paused Mod.zip";
+  const auto active_zip = dl_dir / "Active Mod.zip";
+  const auto done_zip   = dl_dir / "Done Mod.zip";
+  const auto failed_zip = dl_dir / "Broken Mod.zip";
+  write_file(paused_zip, 256);
+  write_file(active_zip, 256);
+  write_file(done_zip, 256);
+  write_file(failed_zip, 256);
+
+  TestDownloadsTab tab;
+  tab.add_download("paused-1", "Paused Mod", "Nexus Mods", paused_zip);
+  tab.add_download("active-1", "Active Mod", "Nexus Mods", active_zip);
+  tab.add_download("done-1", "Done Mod", "Nexus Mods", done_zip);
+  tab.add_download("failed-1", "Broken Mod", "Nexus Mods", failed_zip);
+  tab.mark_paused("paused-1");           // Downloading -> Paused
+  tab.mark_complete("done-1", true);     // Downloading -> Complete
+  tab.mark_complete("failed-1", false);  // Downloading -> Failed
+  // active-1 stays Downloading (the state add_download starts in).
+
+  std::vector<std::string> resumed;
+  std::vector<std::string> installed;
+  QObject::connect(&tab, &ui::DownloadsTab::resume_requested,
+                   [&](const std::string &id) { resumed.push_back(id); });
+  QObject::connect(&tab, &ui::DownloadsTab::install_requested,
+                   [&](const std::string &id, const std::filesystem::path &,
+                       const std::string &, const std::string &, int, const std::string &,
+                       const std::string &) { installed.push_back(id); });
+
+  auto double_click = [&](const char *name) {
+    const int row = row_with_name(tab.table(), name);
+    check(row >= 0, "row present before double-click");
+    if (row < 0)
+      return;
+    QMetaObject::invokeMethod(tab.table(), "cellDoubleClicked", Qt::DirectConnection,
+                              Q_ARG(int, row), Q_ARG(int, 0));
+    app.processEvents();
+  };
+
+  double_click("Paused Mod");
+  check(resumed.size() == 1 && resumed[0] == "paused-1",
+        "double-click on a Paused row emits resume_requested for it");
+  check(installed.empty(), "double-click on a Paused row does NOT install");
+
+  double_click("Active Mod");
+  check(resumed.size() == 1,
+        "double-click on a Downloading row does NOT resume (context menu only)");
+  check(installed.empty(), "double-click on a Downloading row does NOT install");
+
+  double_click("Done Mod");
+  check(resumed.size() == 1, "double-click on a Complete row does NOT resume");
+  check(installed.size() == 1 && installed[0] == "done-1",
+        "double-click on a Complete row emits install_requested for it");
+
+  // Failed is a deliberate GMM extra over MO2: a broken download still has
+  // its partial archive on disk, so re-offering Install is the recovery
+  // path. Locked here so a later MO2-parity sweep does not silently drop it.
+  double_click("Broken Mod");
+  check(resumed.size() == 1, "double-click on a Failed row does NOT resume");
+  check(installed.size() == 2 && installed[1] == "failed-1",
+        "double-click on a Failed row still offers install (GMM extra)");
 }
