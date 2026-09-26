@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QApplication>
 #include <QElapsedTimer>
 #include <QHelpEvent>
 #include <QIcon>
@@ -157,6 +158,25 @@ private:
       kIndentStep / 2;  // center of each indentation zone
 };
 
+// Anti-bounce guard (Workspace-8fy), shared by every checkable list view:
+// true when a checkbox toggle from a real mouse release landed within
+// QApplication::doubleClickInterval(), so a double-click in that window is
+// the second half of a checkbox aim rather than an open request. Only mouse
+// toggles arm it (each view compares the check state across its own
+// mouseReleaseEvent); programmatic toggles (profile sync, bulk enable,
+// set_plugins) never do, so loads cannot swallow legitimate double-clicks.
+class CheckboxBounceGuard {
+public:
+  void arm() { timer_.start(); }
+  [[nodiscard]] bool recent() const {
+    return timer_.isValid() &&
+           timer_.elapsed() < QApplication::doubleClickInterval();
+  }
+
+private:
+  QElapsedTimer timer_;
+};
+
 class ModView : public QTreeView {
   Q_OBJECT
 public:
@@ -201,7 +221,7 @@ protected:
 private:
   bool is_under_overwrite(const QString &path) const;
   // Last Name-checkbox toggle from a real mouse release (see above).
-  QElapsedTimer last_checkbox_toggle_;
+  CheckboxBounceGuard bounce_guard_;
 };
 
 // Backward-compat alias

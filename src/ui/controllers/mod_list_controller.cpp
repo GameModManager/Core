@@ -94,6 +94,23 @@ namespace ui {
 
 namespace {
 
+// Mod row for `id` when it names a real folder-backed mod, else nullptr.
+// Shared by the plugins-tab double-click handlers (Workspace-aon) so Mod
+// Info and folder reveal agree on what an owner id may open: a phantom row
+// (Overwrite / MERGED / game-native, Workspace-pmrh) and a separator have no
+// mod folder, so a plugin owned by one does nothing. The returned pointer
+// stays valid only until the model is reshaped - use it before any call that
+// can rebuild the list.
+const ModEntry *openable_mod_row(const ModList *model, const QString &id) {
+  if (!model || id.isEmpty())
+    return nullptr;
+  for (const auto &mod : model->mods()) {
+    if (mod.id == id)
+      return (is_phantom_row(mod) || mod.is_separator) ? nullptr : &mod;
+  }
+  return nullptr;
+}
+
   QString mod_column_name(int column) {
     switch (column) {
     case ModList::Name:
@@ -2931,6 +2948,39 @@ void ModListController::refresh_plugins_tab() {
     });
     connect(pt->table(), &QTableWidget::itemSelectionChanged, this,
             &ModListController::on_plugin_selection_changed);
+    // Double-clicking a plugin row acts on the mod that owns it (MO2 parity):
+    // plain opens that mod's Mod Info dialog, Ctrl reveals its folder in the
+    // OS file manager. The view already drops unowned (game-Data) rows;
+    // openable_mod_row drops the rest - an owner that is not a real mod has
+    // no dialog to show and no folder to reveal.
+    connect(pt, &ui::PluginsTab::mod_info_requested, this,
+            [this](const std::string &owner) {
+              const QString id = QString::fromStdString(owner);
+              // Guarded as a plain lookup: the pointer must not outlive the
+              // call below, whose modal dialog can reshape the mod model.
+              if (!openable_mod_row(w_->mod_model_, id))
+                return;
+              on_data_mod_info(id);
+            });
+    connect(pt, &ui::PluginsTab::reveal_requested, this,
+            [this](const std::string &owner) {
+              const ModEntry *entry =
+                  openable_mod_row(w_->mod_model_, QString::fromStdString(owner));
+              if (!entry)
+                return;
+              // Same resolution as the mod list's Ctrl+Double-Click.
+              const auto mods_subpath =
+                  w_->knowledge_
+                      ? w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "")
+                      : "";
+              const std::filesystem::path folder = w_->resolve_mod_folder(
+                  entry->id.toStdString(), mods_subpath,
+                  entry->content_dir.toStdString());
+              if (folder.empty())
+                return;
+              QDesktopServices::openUrl(
+                  QUrl::fromLocalFile(QString::fromStdString(folder.string())));
+            });
     w_->plugins_tab_widget_ = pt;
   }
   pt->set_plugins(w_->plugins_db_.plugins());
