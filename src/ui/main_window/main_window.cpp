@@ -286,6 +286,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
                         &ModListController::on_conflict_file_open);
                 connect(ct, &ui::ConflictsTab::file_preview_requested, mod_list_.get(),
                         &ModListController::on_conflict_file_preview);
+                connect(ct, &ui::ConflictsTab::file_reveal_requested, mod_list_.get(),
+                        &ModListController::on_conflict_file_reveal);
               }
               mod_list_->refresh_conflicts_tab();
             } else if (cap == "plugins") {

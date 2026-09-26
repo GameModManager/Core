@@ -76,14 +76,19 @@ public:
   // Double-click resolution (Workspace-co2 + Workspace-636, MO2
   // doubleClicksOpenPreviews): pure decision, no widget access, so tests
   // can pin the setting x modifier x file-type matrix directly.
-  // Executables always Execute (never preview an exe). Otherwise the
-  // previews setting swaps plain vs Ctrl between Preview and OS-Open, and
+  // Alt always Reveals the containing folder in the OS file manager, ahead of
+  // every other rule. Executables Execute (never preview an exe). Otherwise
+  // the previews setting swaps plain vs Ctrl between Preview and OS-Open, and
   // Preview falls back to Open when no preview handler exists.
-  enum class DoubleClickAction { Open, Preview, Execute };
+  enum class DoubleClickAction { Open, Preview, Execute, Reveal };
   static DoubleClickAction resolve_double_click(bool previews_setting_on,
                                                 bool ctrl_pressed,
+                                                bool alt_pressed,
                                                 bool preview_supported,
                                                 bool is_executable);
+  // The directory the Reveal action opens: the file's containing folder,
+  // empty when `real_path` is empty. Exposed for tests.
+  static QString reveal_dir(const QString &real_path);
 
 signals:
   // A non-executable file should be opened with its default handler.
@@ -132,6 +137,9 @@ protected:
   void add_common_menus(QMenu &menu);
   void open_item(QTreeWidgetItem *item);
   void preview_item(QTreeWidgetItem *item);
+  // Opens the file's containing folder in the OS file manager. Shared by the
+  // context-menu action and Alt+double-click.
+  void reveal_item(QTreeWidgetItem *item);
   void dump_tree_to_file();
 
 private:
