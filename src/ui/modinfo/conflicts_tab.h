@@ -19,8 +19,10 @@ namespace ui {
 // Provider (all owner mods, comma-joined). Each list has a filter and a count.
 // Right-click offers Open / Preview / Explore / Hide / Unhide (the latter
 // recomputes conflicts and refreshes the dialog). Double-click honors the
-// doubleClicksOpenPreviews setting (Workspace-co2): plain vs Ctrl swaps
-// between OS-open and built-in preview, with fallback to OS-open.
+// doubleClicksOpenPreviews setting (Workspace-co2): plain follows the setting,
+// Ctrl reveals the containing folder in Explorer and Alt is the on-the-fly
+// swap between the OS handler and the built-in preview, which falls back to
+// OS-open.
 class ConflictsInfoTab : public ModInfoTab {
   Q_OBJECT
 public:
