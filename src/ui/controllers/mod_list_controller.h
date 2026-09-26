@@ -44,6 +44,12 @@ public:
   // MainWindow ctor): model, view, header, filter connections, context menu.
   void setup_mod_list(QVBoxLayout *left_layout);
 
+  // Maps a ModList column to the Mod Info tab a plain double-click should
+  // open (MO2's modlistview.cpp double-click; GMM renames MO2's Nexus tab
+  // to Source). Returns -1 for the last-used tab. GMM has no Notes/Game/
+  // Mod-ID columns, so those MO2 mappings have no target here.
+  [[nodiscard]] static int mod_info_tab_for_column(int column);
+
 public slots:
   void setup_mod_list_context_menu();
   void load_mods_from_game();
