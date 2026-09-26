@@ -58,12 +58,18 @@
 #include "ui/settings/settings.h"
 #include "ui/theme/icon_manager.h"
 
+#include "engine/core/log/logger.h"
+#include "ui/main_window/main_window.h"
+#include "ui/widgets/right_panel.h"
+
 #include <QByteArray>
 
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 #include <catch2/catch_test_macros.hpp>
 
 namespace {
@@ -1039,4 +1045,188 @@ TEST_CASE("downloads source attribution", "[ui]") {
             "manifest repair: stale LoversLab label coerced to Manual");
     }
   }
+}
+
+// MO2 parity for the downloads-tab double-click (Workspace-o03). MO2's
+// downloadlistview drives a double-click off the row's state: READY (and
+// above) installs, PAUSED resumes, DOWNLOADING does nothing. The install
+// half already existed; the resume half was missing (a paused row fell
+// through the handler and did nothing at all), so the two signals are
+// asserted per state to keep the branches from bleeding into each other:
+// a paused row must resume and NOT install, a finished row must install
+// and NOT resume, an in-flight row must do neither.
+//
+// Direct signal capture, no waits: cellDoubleClicked is invoked with
+// Qt::DirectConnection so the handler has fully run by the time
+// invokeMethod returns, and the signals are emitted synchronously from it.
+TEST_CASE("downloads double-click state gating", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_dblclick_gate/config";
+  std::filesystem::remove_all("/tmp/gmm_dblclick_gate");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  const std::filesystem::path dl_dir = "/tmp/gmm_dblclick_gate/dl";
+  std::filesystem::create_directories(dl_dir);
+
+  // Every row gets a real on-disk archive: the install branch is gated on
+  // std::filesystem::exists(file_path), so a missing file would make the
+  // "finished row installs" assertion pass for the wrong reason.
+  const auto paused_zip = dl_dir / "Paused Mod.zip";
+  const auto active_zip = dl_dir / "Active Mod.zip";
+  const auto done_zip   = dl_dir / "Done Mod.zip";
+  const auto failed_zip = dl_dir / "Broken Mod.zip";
+  write_file(paused_zip, 256);
+  write_file(active_zip, 256);
+  write_file(done_zip, 256);
+  write_file(failed_zip, 256);
+
+  TestDownloadsTab tab;
+  tab.add_download("paused-1", "Paused Mod", "Nexus Mods", paused_zip);
+  tab.add_download("active-1", "Active Mod", "Nexus Mods", active_zip);
+  tab.add_download("done-1", "Done Mod", "Nexus Mods", done_zip);
+  tab.add_download("failed-1", "Broken Mod", "Nexus Mods", failed_zip);
+  tab.mark_paused("paused-1");           // Downloading -> Paused
+  tab.mark_complete("done-1", true);     // Downloading -> Complete
+  tab.mark_complete("failed-1", false);  // Downloading -> Failed
+  // active-1 stays Downloading (the state add_download starts in).
+
+  std::vector<std::string> resumed;
+  std::vector<std::string> installed;
+  QObject::connect(&tab, &ui::DownloadsTab::resume_requested,
+                   [&](const std::string &id) { resumed.push_back(id); });
+  QObject::connect(&tab, &ui::DownloadsTab::install_requested,
+                   [&](const std::string &id, const std::filesystem::path &,
+                       const std::string &, const std::string &, int, const std::string &,
+                       const std::string &) { installed.push_back(id); });
+
+  auto double_click = [&](const char *name) {
+    const int row = row_with_name(tab.table(), name);
+    check(row >= 0, "row present before double-click");
+    if (row < 0)
+      return;
+    QMetaObject::invokeMethod(tab.table(), "cellDoubleClicked", Qt::DirectConnection,
+                              Q_ARG(int, row), Q_ARG(int, 0));
+    app.processEvents();
+  };
+
+  double_click("Paused Mod");
+  check(resumed.size() == 1 && resumed[0] == "paused-1",
+        "double-click on a Paused row emits resume_requested for it");
+  check(installed.empty(), "double-click on a Paused row does NOT install");
+
+  double_click("Active Mod");
+  check(resumed.size() == 1,
+        "double-click on a Downloading row does NOT resume (context menu only)");
+  check(installed.empty(), "double-click on a Downloading row does NOT install");
+
+  double_click("Done Mod");
+  check(resumed.size() == 1, "double-click on a Complete row does NOT resume");
+  check(installed.size() == 1 && installed[0] == "done-1",
+        "double-click on a Complete row emits install_requested for it");
+
+  // Failed is a deliberate GMM extra over MO2: a broken download still has
+  // its partial archive on disk, so re-offering Install is the recovery
+  // path. Locked here so a later MO2-parity sweep does not silently drop it.
+  double_click("Broken Mod");
+  check(resumed.size() == 1, "double-click on a Failed row does NOT resume");
+  check(installed.size() == 2 && installed[1] == "failed-1",
+        "double-click on a Failed row still offers install (GMM extra)");
+}
+
+// Resume on a row with no known source link must leave the state alone
+// (downloads_controller.cpp, resume_requested handler).
+//
+// A row restored from the download manifest - or any row on a window that
+// never started it - has no nxm/modl/url link: those maps are in-memory only
+// and deserialize() restores the state, never the link. Marking the row
+// Downloading first stranded it forever (nothing gets queued, so the worker
+// never emits download_complete/paused), the context menu then offered Pause
+// instead of Resume, and has_active_download() kept scan_downloads_dir()
+// early-returning for the rest of the session.
+//
+// Driven through the real MainWindow so the production controller lambda is
+// the thing under test; a fresh window has no link entries, which is exactly
+// the state a manifest-restored row is in. The Status cell (column 2) is the
+// rendered state: Paused is a "Paused" label, Downloading is a QProgressBar
+// with format "Starting...".
+TEST_CASE("downloads resume without a link keeps the row paused", "[ui]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path root = "/tmp/gmm_resume_nolink";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root / "config");
+  qputenv("XDG_CONFIG_HOME", (root / "config").c_str());
+  int test_argc     = 1;
+  char test_argv0[] = "test";
+  char *test_argv[] = {test_argv0, nullptr};
+  QApplication app(test_argc, test_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+  // Same offscreen hang guard as the MainWindow tests: the nxm handler pops a
+  // modal QMessageBox inside the first processEvents.
+  Settings::instance().set_nxm_handler_check("dont_ask");
+
+  // The guard's warn is the only observable proof the handler reached the
+  // link-miss branch and did not bail on the earlier pipeline_thread_ check.
+  // Function-local static on purpose: Logger::add_callback cannot be removed,
+  // so a sink captured by reference from a TEST_CASE local would dangle for
+  // the rest of the process. This one is constructed before the Logger
+  // singleton, so it is destroyed after it and no callback can outlive it.
+  static std::vector<std::string> warnings;
+  engine::Logger::instance().add_callback(
+      [](engine::LogLevel level, const std::string &,
+         const std::string &message) {
+        if (level == engine::LogLevel::Warn)
+          warnings.push_back(message);
+      });
+  warnings.clear();  // drop the replay buffer handed to late subscribers
+
+  ui::MainWindow w;
+  auto *rp = w.findChild<ui::RightPanel *>();
+  REQUIRE(rp != nullptr);
+  // The downloads tab is a lazy capability and always present in the bar;
+  // materializing it is what runs wire_downloads_tab(), i.e. what connects
+  // the resume handler this case exercises.
+  rp->set_game("testgame");
+  auto *tab = rp->ensure_downloads_tab();
+  REQUIRE(tab != nullptr);
+  auto *table = tab->table();
+  REQUIRE(table != nullptr);
+
+  tab->add_download("orphan-1", "Orphan Mod", "Nexus Mods");
+  tab->mark_paused("orphan-1");
+  const int row = row_with_name(table, "Orphan Mod");
+  REQUIRE(row >= 0);
+  // Baseline: Paused renders a label, no progress bar.
+  REQUIRE(table->cellWidget(row, 2) == nullptr);
+  REQUIRE(table->item(row, 2) != nullptr);
+  REQUIRE(table->item(row, 2)->text() == QLatin1String("Paused"));
+
+  warnings.clear();
+  // The path PR #178 added: cell double-click -> resume_requested(id) ->
+  // the controller's handler.
+  QMetaObject::invokeMethod(table, "cellDoubleClicked", Qt::DirectConnection,
+                            Q_ARG(int, row), Q_ARG(int, 0));
+  app.processEvents();
+
+  // State unchanged: still Paused, not a fake Downloading. Guarded on the
+  // item so a regression reports the two CHECKs instead of segfaulting on a
+  // null deref (mark_downloading deletes the Status item).
+  auto *status = table->item(row, 2);
+  CHECK(table->cellWidget(row, 2) == nullptr);
+  CHECK(status != nullptr);
+  if (status)
+    CHECK(status->text() == QLatin1String("Paused"));
+  // And the handler said why instead of dying silently.
+  const auto logged = std::any_of(warnings.begin(), warnings.end(), [](const std::string &m) {
+    return m.find("orphan-1") != std::string::npos &&
+           m.find("no NXM/modl/URL link") != std::string::npos;
+  });
+  CHECK(logged);
 }
