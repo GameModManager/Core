@@ -96,9 +96,11 @@ struct ModInfoData {
   std::function<bool(const engine::ModMeta &)> save_meta;
 
   // --- actions (wired to MainWindow) ---
-  std::function<void()> open_explorer;                   // reveal in file manager
-  std::function<void(const QString &)> open_file;        // open with the default app
-  std::function<void(const QString &)> open_url;         // open an http(s) URL
+  std::function<void()> open_explorer;             // reveal in file manager
+  std::function<void(const QString &)> open_file;  // open with the default app
+  std::function<void(const QString &)>
+      preview_file;                               // built-in preview (Workspace-co2)
+  std::function<void(const QString &)> open_url;  // open an http(s) URL
   std::function<bool(const QString &, bool)> hide_file;  // (abs path, hide)
   std::function<void()> refresh_conflicts;               // recompute + reshow dialog
   std::function<bool()> delete_mod;                      // remove the mod from the list

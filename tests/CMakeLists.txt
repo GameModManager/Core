@@ -350,6 +350,14 @@ gmm_catch2_test(data_tab_reorder_test ui/data_tab_reorder_test.cpp
     UI
     LIBS gmm_ui)
 
+# Double-click opens previews (Workspace-co2 + Workspace-636): the
+# Settings::double_clicks_open_previews round-trip, the DataTab
+# setting x modifier x file-type matrix, and the plain double-click
+# integration. Offscreen; throwaway XDG_CONFIG_HOME + /tmp/opencode tree.
+gmm_catch2_test(double_click_previews_test ui/double_click_previews_test.cpp
+    UI
+    LIBS gmm_ui)
+
 # BBCode adapter + entity/BR normalization (ui/modinfo/bbcode.cpp). Pure
 # logic - no QApplication, no panel, no event loop. Reaches gmm_ui for
 # the bbcode_to_html symbol but does not need the QT_QPA_PLATFORM=offscreen
