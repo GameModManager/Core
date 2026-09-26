@@ -152,6 +152,52 @@ TEST_CASE("data tab double-click action matrix", "[ui]") {
         Action::Open);
 }
 
+TEST_CASE("alt double-click flips the previews setting both ways", "[ui]") {
+  using Action = ui::DataTab::DoubleClickAction;
+  // Alt is the on-the-fly switch, relative to the persisted default, and ONLY
+  // for a file that has a built-in preview. It inverts whatever
+  // doubleClicksOpenPreviews says for that one click: setting OFF (default)
+  // -> built-in preview, setting ON -> OS handler.
+  CHECK(ui::DataTab::resolve_double_click(false, false, true, true, false) ==
+        Action::Preview);
+  CHECK(ui::DataTab::resolve_double_click(true, false, true, true, false) ==
+        Action::Open);
+  // The plain click still follows the setting, so the Alt pair above really is
+  // a flip of the default rather than a hardcoded outcome.
+  CHECK(ui::DataTab::resolve_double_click(false, false, false, true, false) ==
+        Action::Open);
+  CHECK(ui::DataTab::resolve_double_click(true, false, false, true, false) ==
+        Action::Preview);
+  // Alt alone never reveals and never executes - those belong to Ctrl and to
+  // the executable rule.
+  CHECK(ui::DataTab::resolve_double_click(true, false, true, true, false) !=
+        Action::Reveal);
+  CHECK(ui::DataTab::resolve_double_click(false, false, true, false, true) ==
+        Action::Execute);
+}
+
+TEST_CASE("alt double-click on a non-previewable file does nothing special",
+          "[ui]") {
+  using Action = ui::DataTab::DoubleClickAction;
+  // The ruling: Alt applies ONLY to files that CAN be previewed. With no
+  // registered built-in preview handler, Alt must resolve to exactly the same
+  // action as no modifier at all - compared against the unmodified click so
+  // "no special case" is the assertion itself, not a hardcoded constant.
+  CHECK(ui::DataTab::resolve_double_click(false, false, true, false, false) ==
+        ui::DataTab::resolve_double_click(false, false, false, false, false));
+  CHECK(ui::DataTab::resolve_double_click(true, false, true, false, false) ==
+        ui::DataTab::resolve_double_click(true, false, false, false, false));
+  // ...and that shared outcome is the OS handler: not a preview, and not the
+  // reveal that Alt used to do.
+  CHECK(ui::DataTab::resolve_double_click(false, false, true, false, false) ==
+        Action::Open);
+  CHECK(ui::DataTab::resolve_double_click(true, false, true, false, false) ==
+        Action::Open);
+  // A non-previewable executable is still an executable, not a preview.
+  CHECK(ui::DataTab::resolve_double_click(false, false, true, false, true) ==
+        Action::Execute);
+}
+
 TEST_CASE("ctrl double-click reveals the containing folder", "[ui]") {
   // Ctrl+double-click resolves to Reveal (above), and Reveal targets the
   // file's CONTAINING FOLDER in the OS file manager, not the file itself.
