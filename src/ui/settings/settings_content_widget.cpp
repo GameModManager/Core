@@ -138,7 +138,8 @@ QWidget *SettingsContentWidget::build_general_tab() {
   previews_box->setToolTip(
       tr("Preview files built-in on double-click when a preview handler "
          "exists (images, text), else open with the default app. Alt swaps "
-         "the behavior. Off = double-click opens, Alt previews."));
+         "the behavior. Ctrl reveals the file's folder. Off = double-click "
+         "opens, Alt previews."));
   // Push the persisted toggle value into the engine so the next scan uses it.
   engine::parallel::set_enabled(s.performance_multi_core());
   gen_layout->addWidget(update_box);
