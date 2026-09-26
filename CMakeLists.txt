@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.22)
 
 # macOS deployment target — must be set before project()/enable_language() so
 # every compiler invocation and toolchain probe targets the same OS version.

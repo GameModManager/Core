@@ -33,13 +33,13 @@ function(gmm_catch2_test NAME)
         target_compile_definitions(${NAME} PRIVATE ${GCT_DEFINES})
     endif()
 
-    set(_env "TZ=UTC")
+    set(_props ENVIRONMENT "TZ=UTC")
     if(GCT_UI)
-        list(APPEND _env "QT_QPA_PLATFORM=offscreen")
+        list(APPEND _props ENVIRONMENT_MODIFICATION "QT_QPA_PLATFORM=set:offscreen")
     endif()
     catch_discover_tests(${NAME}
         TEST_PREFIX "${NAME}."
-        PROPERTIES ENVIRONMENT "${_env}" ${GCT_PROPERTIES}
+        PROPERTIES ${_props} ${GCT_PROPERTIES}
     )
 endfunction()
 
