@@ -19,8 +19,8 @@
 # Builds a Catch2 test executable and registers every TEST_CASE with CTest.
 # Every test links gmm_engine (its PUBLIC include dirs carry the project
 # include roots); pass extra libraries via LIBS. All tests run with TZ=UTC
-# (hermetic); UI tests additionally get QT_QPA_PLATFORM=offscreen so they run
-# headless.
+# (hermetic); UI tests additionally get QT_QPA_PLATFORM=offscreen via
+# ENVIRONMENT_MODIFICATION so they run headless.
 function(gmm_catch2_test NAME)
     set(options UI)
     set(oneValueArgs "")
@@ -33,13 +33,18 @@ function(gmm_catch2_test NAME)
         target_compile_definitions(${NAME} PRIVATE ${GCT_DEFINES})
     endif()
 
-    set(_env "TZ=UTC")
+    # NOTE: keep every PROPERTIES value single-valued. The old quoted
+    # ENVIRONMENT "TZ=UTC;QT_QPA_PLATFORM=offscreen" list broke because
+    # Catch.cmake:222 joins TEST_PROPERTIES on semicolons and re-splits it,
+    # so the env var name became a bogus property. Offscreen therefore rides
+    # ENVIRONMENT_MODIFICATION (one value, no semicolons, survives all layers).
+    set(_props ENVIRONMENT "TZ=UTC")
     if(GCT_UI)
-        list(APPEND _env "QT_QPA_PLATFORM=offscreen")
+        list(APPEND _props ENVIRONMENT_MODIFICATION "QT_QPA_PLATFORM=set:offscreen")
     endif()
     catch_discover_tests(${NAME}
         TEST_PREFIX "${NAME}."
-        PROPERTIES ENVIRONMENT "${_env}" ${GCT_PROPERTIES}
+        PROPERTIES ${_props} ${GCT_PROPERTIES}
     )
 endfunction()
 
