@@ -34,6 +34,7 @@
 #include "platform/platform.h"
 #include "ui/controllers/mod_list_controller.h"
 #include "ui/main_window/main_window.h"
+#include "ui/modinfo/mod_info_data.h"
 #include "ui/panels/plugins_tab.h"
 #include "ui/panels/saves_tab.h"
 #include "ui/settings/settings.h"
@@ -638,5 +639,285 @@ TEST_CASE("MainWindow: mod delete moves folder to trash", "[ui][harness]") {
   CHECK(fs::exists(trash_root / "files" / "Foo_mod"));
   CHECK(fs::exists(trash_root / "info" / "Foo_mod.trashinfo"));
 
+  fs::remove_all(root);
+}
+
+// ---------------------------------------------------------------------------
+// Workspace-8fy: mod-list double-click - column-dependent Mod Info tab,
+// separator fold toggle, anti-bounce guard.
+// ---------------------------------------------------------------------------
+TEST_CASE("ModList double-click column maps to Mod Info tab", "[ui][dblclick]") {
+  using ui::ModInfoTabId;
+  using ui::ModList;
+  using ui::ModListController;
+  // MO2 column -> tab mapping (GMM renames MO2's Nexus tab to Source; GMM
+  // has no Notes/Game/Mod-ID columns, so those MO2 mappings have no target).
+  CHECK(ModListController::mod_info_tab_for_column(ModList::Conflicts) ==
+        static_cast<int>(ModInfoTabId::Conflicts));
+  CHECK(ModListController::mod_info_tab_for_column(ModList::Flags) ==
+        static_cast<int>(ModInfoTabId::Conflicts));
+  CHECK(ModListController::mod_info_tab_for_column(ModList::Category) ==
+        static_cast<int>(ModInfoTabId::Categories));
+  CHECK(ModListController::mod_info_tab_for_column(ModList::Source) ==
+        static_cast<int>(ModInfoTabId::Source));
+  CHECK(ModListController::mod_info_tab_for_column(ModList::SourceId) ==
+        static_cast<int>(ModInfoTabId::Source));
+  CHECK(ModListController::mod_info_tab_for_column(ModList::Version) ==
+        static_cast<int>(ModInfoTabId::Source));
+  // Everything else opens the dialog on the last-used tab (-1).
+  CHECK(ModListController::mod_info_tab_for_column(ModList::Fold) == -1);
+  CHECK(ModListController::mod_info_tab_for_column(ModList::Name) == -1);
+  CHECK(ModListController::mod_info_tab_for_column(ModList::Installation) == -1);
+  CHECK(ModListController::mod_info_tab_for_column(ModList::Changed) == -1);
+  CHECK(ModListController::mod_info_tab_for_column(ModList::Priority) == -1);
+}
+
+namespace {
+// Records a modal Mod Info dialog's tab and closes it so dlg.exec()
+// unwinds instead of hanging the case (the task_dialog_test pattern: the
+// poll fires inside the nested exec loop).
+struct ModalProbe {
+  QTimer poll;
+  bool dialog_seen           = false;
+  int seen_tab               = -2;
+  bool conflicts_tab_enabled = true;
+  void reset() {
+    dialog_seen           = false;
+    seen_tab              = -2;
+    conflicts_tab_enabled = true;
+  }
+  void arm() {
+    poll.setInterval(25);
+    QObject::connect(&poll, &QTimer::timeout, [this] {
+      if (auto *modal = QApplication::activeModalWidget()) {
+        dialog_seen = true;
+        if (auto *tabs = modal->findChild<QTabWidget *>()) {
+          seen_tab = tabs->currentIndex();
+          for (int i = 0; i < tabs->count(); ++i) {
+            if (tabs->tabText(i) == QStringLiteral("Conflicts"))
+              conflicts_tab_enabled = tabs->isTabEnabled(i);
+          }
+        }
+        modal->close();
+      }
+    });
+    poll.start();
+  }
+  void disarm() { poll.stop(); }
+};
+}  // namespace
+
+TEST_CASE("MainWindow: mod list double-click tabs, separator toggle, bounce guard",
+          "[ui][harness]") {
+  const fs::path root     = make_case_root("gmm_8fy_dblclick");
+  const fs::path inst_dir = root / "instances";
+
+  // QApplication must outlive everything in this case (dialogs, widgets),
+  // so it is declared here - never in a helper that would return first.
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "main_window_harness_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  auto inst           = engine::Instance::installed("TestGame", inst_dir);
+  inst.info().game_id = "testgame";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+  const fs::path inst_root = inst.info().root;
+  const fs::path mods_dir =
+      engine::Instance::from_root(inst_root).path_for(engine::InstanceKind::Mods);
+  fs::create_directories(mods_dir / "Foo_mod");
+  write_file(mods_dir / "Foo_mod" / "meta.ini", "[General]\npriority=0\n");
+  fs::create_directories(mods_dir / "Bar_mod");
+  write_file(mods_dir / "Bar_mod" / "meta.ini", "[General]\npriority=1\n");
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.show();
+  // Game-less instance (banner-test shape): instance-owned mod ops work
+  // without a game dir.
+  w.set_game_info("testgame", "Test Game", "Default", {}, inst_root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  auto *model = w.findChild<ui::ModList *>();
+  REQUIRE(model != nullptr);
+  auto *view = w.mod_view();
+  REQUIRE(view != nullptr);
+  auto *ctl = w.findChild<ui::ModListController *>();
+  REQUIRE(ctl != nullptr);
+  REQUIRE(pump_until([&] {
+    return find_mod_row(view, QStringLiteral("Foo_mod")) >= 0;
+  }));
+  REQUIRE(pump_until([&] {
+    return find_mod_row(view, QStringLiteral("Bar_mod")) >= 0;
+  }));
+
+  // Separator above the mods (created without prompts, then moved to row 0
+  // so it has content below - the flat fold rule needs a mod underneath).
+  const QString sep_id =
+      ctl->create_separator_named(QStringLiteral("Group"), QString());
+  REQUIRE_FALSE(sep_id.isEmpty());
+  model->move_mod(sep_id, 0);
+  QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+
+  auto find_separator_row = [&] {
+    const auto &mods = model->mods();
+    for (int r = 0; r < static_cast<int>(mods.size()); ++r) {
+      if (mods[r].is_separator)
+        return r;
+    }
+    return -1;
+  };
+  REQUIRE(find_separator_row() >= 0);
+  REQUIRE(model->has_content(find_separator_row()));
+  REQUIRE_FALSE(model->mods()[find_separator_row()].folded);
+
+  // Safety watchdog: if a scripted gesture leaves a modal open, close it
+  // after 10s so the case FAILs instead of hanging.
+  QTimer::singleShot(10000, [] {
+    if (auto *popup = QApplication::activePopupWidget())
+      popup->close();
+    if (auto *modal = QApplication::activeModalWidget())
+      modal->close();
+  });
+
+  ModalProbe probe;
+  probe.arm();
+
+  int dblclick_count    = 0;
+  int last_dblclick_row = -1;
+  int last_dblclick_col = -1;
+  QObject::connect(view, &QTreeView::doubleClicked, [&](const QModelIndex &idx) {
+    ++dblclick_count;
+    last_dblclick_row = idx.row();
+    last_dblclick_col = idx.column();
+  });
+
+  auto dblclick_cell = [&](int row, int col) {
+    dblclick_count = 0;
+    view->scrollTo(view->model()->index(row, col));
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    const QRect cell = view->visualRect(view->model()->index(row, col));
+    REQUIRE(cell.isValid());
+    // Synthesized platform double-click sequence (Press, Release,
+    // DblClick, Release). QTest::mouseDClick does not produce
+    // doubleClicked on this view offscreen, hence the direct sequence.
+    const QPoint pos    = cell.center();
+    const QPoint global = view->viewport()->mapToGlobal(pos);
+    QMouseEvent press(QEvent::MouseButtonPress, pos, global, Qt::LeftButton,
+                      Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent release(QEvent::MouseButtonRelease, pos, global, Qt::LeftButton,
+                        Qt::NoButton, Qt::NoModifier);
+    QMouseEvent dblpress(QEvent::MouseButtonDblClick, pos, global, Qt::LeftButton,
+                         Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(view->viewport(), &press);
+    QCoreApplication::sendEvent(view->viewport(), &release);
+    QCoreApplication::sendEvent(view->viewport(), &dblpress);
+    QCoreApplication::sendEvent(view->viewport(), &release);
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+  };
+
+  int foo = find_mod_row(view, QStringLiteral("Foo_mod"));
+  REQUIRE(foo >= 0);
+
+  // Column -> tab: Version opens the Source tab (GMM rename of MO2's Nexus
+  // tab). Closing the dialog persists it as the last-used tab.
+  probe.reset();
+  dblclick_count = 0;
+  dblclick_cell(foo, ui::ModList::Version);
+  CHECK(dblclick_count == 1);
+  CHECK(last_dblclick_row == foo);
+  CHECK(last_dblclick_col == static_cast<int>(ui::ModList::Version));
+  CHECK(probe.dialog_seen);
+  CHECK(probe.seen_tab == static_cast<int>(ui::ModInfoTabId::Source));
+
+  // Name opens the dialog on the last-used tab (Source, just persisted).
+  foo = find_mod_row(view, QStringLiteral("Foo_mod"));
+  REQUIRE(foo >= 0);
+  probe.reset();
+  dblclick_cell(foo, ui::ModList::Name);
+  CHECK(probe.dialog_seen);
+  CHECK(probe.seen_tab == static_cast<int>(ui::ModInfoTabId::Source));
+
+  // Category -> Categories, Conflicts -> Conflicts.
+  foo = find_mod_row(view, QStringLiteral("Foo_mod"));
+  REQUIRE(foo >= 0);
+  probe.reset();
+  dblclick_cell(foo, ui::ModList::Category);
+  CHECK(dblclick_count == 1);
+  CHECK(last_dblclick_col == static_cast<int>(ui::ModList::Category));
+  CHECK(probe.dialog_seen);
+  CHECK(probe.seen_tab == static_cast<int>(ui::ModInfoTabId::Categories));
+
+  foo = find_mod_row(view, QStringLiteral("Foo_mod"));
+  REQUIRE(foo >= 0);
+  probe.reset();
+  dblclick_cell(foo, ui::ModList::Conflicts);
+  CHECK(dblclick_count == 1);
+  CHECK(last_dblclick_col == static_cast<int>(ui::ModList::Conflicts));
+  CHECK(probe.dialog_seen);
+  // Foo is contentless, so the dialog disables the empty Conflicts tab
+  // and Qt advances to the next enabled tab (Categories). The
+  // column -> Conflicts mapping itself is pinned by the unit test above;
+  // here the click chain (Conflicts column -> dialog) plus the
+  // disabled-for-empty Conflicts tab cover the integration.
+  CHECK_FALSE(probe.conflicts_tab_enabled);
+
+  // Separator double-click toggles the fold (MO2 parity) and never opens a
+  // dialog - twice, so it folds then unfolds.
+  int sep = find_separator_row();
+  REQUIRE(sep >= 0);
+  probe.reset();
+  dblclick_cell(sep, ui::ModList::Name);
+  CHECK_FALSE(probe.dialog_seen);
+  CHECK(model->mods()[find_separator_row()].folded);
+
+  sep = find_separator_row();
+  REQUIRE(sep >= 0);
+  probe.reset();
+  dblclick_cell(sep, ui::ModList::Name);
+  CHECK_FALSE(probe.dialog_seen);
+  CHECK_FALSE(model->mods()[find_separator_row()].folded);
+
+  // Anti-bounce: a real checkbox click immediately before the
+  // double-click swallows it (the second half of a checkbox aim, not an
+  // open request). The click targets the checkbox at the left of the Name
+  // cell; the toggle is verified through the model before double-clicking.
+  foo = find_mod_row(view, QStringLiteral("Foo_mod"));
+  REQUIRE(foo >= 0);
+  view->scrollTo(view->model()->index(foo, ui::ModList::Name));
+  QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+  const QRect name_cell =
+      view->visualRect(view->model()->index(foo, ui::ModList::Name));
+  REQUIRE(name_cell.isValid());
+  QModelIndex name_idx    = view->model()->index(foo, ui::ModList::Name);
+  const auto before_click = static_cast<Qt::CheckState>(
+      view->model()->data(name_idx, Qt::CheckStateRole).toInt());
+  QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier,
+                    QPoint(name_cell.left() + 8, name_cell.center().y()));
+  QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+  const auto after_click = static_cast<Qt::CheckState>(
+      view->model()->data(name_idx, Qt::CheckStateRole).toInt());
+  REQUIRE(after_click != before_click);
+  probe.reset();
+  dblclick_cell(foo, ui::ModList::Version);
+  CHECK_FALSE(probe.dialog_seen);
+
+  // Control: the same cell opens the dialog once the interval has passed, so
+  // the CHECK above is the guard and not a dead gesture.
+  pump_ms(QApplication::doubleClickInterval() + 50);
+  probe.reset();
+  dblclick_cell(foo, ui::ModList::Version);
+  CHECK(probe.dialog_seen);
+
+  probe.disarm();
   fs::remove_all(root);
 }
