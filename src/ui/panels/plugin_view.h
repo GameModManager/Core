@@ -58,6 +58,14 @@ public:
     return rows_force_loaded_;
   }
 
+  /// Mod folder providing row `row`, "" for a game-Data (unowned) plugin or
+  /// an out-of-range row. Parallel to names(), same order as the table rows.
+  [[nodiscard]] std::string owner_mod_at(int row) const {
+    if (row < 0 || row >= static_cast<int>(owners_.size()))
+      return {};
+    return owners_[static_cast<size_t>(row)];
+  }
+
   // --- Column role constants -----------------------------------------------
 
   // User role on the Flags column holding the row's emblems as individual
@@ -71,6 +79,13 @@ signals:
   void reorder_requested(int from_row, int to_row);
   /// Refresh button pressed: re-scan plugins on disk and repopulate.
   void refresh_requested();
+  /// Double-clicked a plugin row: ask for the Mod Info dialog of the mod
+  /// owning it. Never emitted for a game-Data plugin (no owner) - the view
+  /// drops those, so an unowned row is simply inert.
+  void mod_info_requested(const std::string &owner_mod);
+  /// Ctrl+Double-clicked a plugin row: ask to reveal (open the OS file
+  /// manager at) the folder of the mod owning it.
+  void reveal_requested(const std::string &owner_mod);
 
 protected:
   void showEvent(QShowEvent *event) override;
@@ -87,6 +102,10 @@ private:
   QPushButton *refresh_button_ = nullptr;
   QLCDNumber *counter_display_ = nullptr;
   std::vector<std::string> names_;
+  // Mod folder providing each row's plugin ("" = game Data), parallel to
+  // names_. The double-click handlers need it: a plugin's own name says
+  // nothing about where the owning mod lives.
+  std::vector<std::string> owners_;
   std::vector<bool> rows_locked_;
   std::vector<bool> rows_force_loaded_;
   std::vector<PluginType> rows_type_;

@@ -397,13 +397,12 @@ void ModView::mouseReleaseEvent(QMouseEvent *event) {
   if (before.isValid() && watched_idx.isValid()) {
     const QVariant after = watched_idx.data(Qt::CheckStateRole);
     if (after.isValid() && after != before)
-      last_checkbox_toggle_.start();
+      bounce_guard_.arm();
   }
 }
 
 bool ModView::checkbox_toggle_recent() const {
-  return last_checkbox_toggle_.isValid() &&
-         last_checkbox_toggle_.elapsed() < QApplication::doubleClickInterval();
+  return bounce_guard_.recent();
 }
 
 void ModView::dragEnterEvent(QDragEnterEvent *event) {

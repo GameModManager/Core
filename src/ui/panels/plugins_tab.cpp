@@ -26,6 +26,8 @@ PluginsTab::PluginsTab(QWidget *parent) : QWidget(parent) {
   connect(view_, &PluginView::toggle_requested, this, &PluginsTab::toggle_requested);
   connect(view_, &PluginView::reorder_requested, this, &PluginsTab::reorder_requested);
   connect(view_, &PluginView::refresh_requested, this, &PluginsTab::refresh_requested);
+  connect(view_, &PluginView::mod_info_requested, this, &PluginsTab::mod_info_requested);
+  connect(view_, &PluginView::reveal_requested, this, &PluginsTab::reveal_requested);
 
   // Extracted context menu (lock/unlock actions).
   context_menu_ = std::make_unique<engine::PluginDb::ContextMenu>(this);
