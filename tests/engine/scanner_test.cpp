@@ -876,3 +876,64 @@ TEST_CASE("scanner flags Creation Club content unmanaged", "[engine]") {
 
   fs::remove_all(root);
 }
+
+// Workspace-8tqw: set_priority is the ONLY writer of the game-native NNN
+// <name> prefix (Isaac's metadata.xml, read by the game itself). It had zero
+// coverage, which is how a call-site regression could ship silently. The
+// hooks below mirror TheBindingOfIsaacRebirth.cpp:68-74 / :300-306 exactly.
+TEST_CASE("set_priority writes the game-native name prefix", "[engine]") {
+  const fs::path root = "/tmp/gmm_scanner_set_priority_test";
+  fs::remove_all(root);
+  const fs::path mods = root / "mods";
+  fs::create_directories(mods);
+
+  engine::GameKnowledge isaac;
+  isaac.set("isaac", "metadata_file", "metadata.xml");
+  isaac.set("isaac", "metadata_name_tag", "name");
+  isaac.set("isaac", "priority_prefix_re", "^[^a-zA-Z]+");
+  isaac.set("isaac", "priority_format", "%03d ");
+
+  const auto name_of = [](const fs::path &mod_folder) {
+    std::ifstream f(mod_folder / "metadata.xml");
+    return std::string((std::istreambuf_iterator<char>(f)),
+                       std::istreambuf_iterator<char>());
+  };
+
+  // A plain mod: the number goes in front of the <name> tag's content and
+  // everything else in the file survives untouched.
+  fs::create_directories(mods / "Foo_mod");
+  write_file(mods / "Foo_mod" / "metadata.xml",
+             "<mod><name>Foo</name><version>1.0</version></mod>");
+  require(engine::ModScanner::set_priority(isaac, "isaac", mods / "Foo_mod", 3),
+          "set_priority reports success for a metadata.xml mod");
+  const auto rewritten = name_of(mods / "Foo_mod");
+  require(rewritten.find("<name>003 Foo</name>") != std::string::npos,
+          "name tag carries the %03d prefix, got: " + rewritten);
+  require(rewritten.find("<version>1.0</version>") != std::string::npos,
+          "sibling tags are preserved, got: " + rewritten);
+
+  // Idempotent: re-running with the same priority must not stack prefixes
+  // ("^[^a-zA-Z]+" strips the existing one first).
+  require(engine::ModScanner::set_priority(isaac, "isaac", mods / "Foo_mod", 3),
+          "re-running set_priority on an already-prefixed name succeeds");
+  const auto again = name_of(mods / "Foo_mod");
+  require(again == rewritten, "set_priority is idempotent, got: " + again);
+
+  // And a different priority renumbers cleanly rather than appending.
+  require(engine::ModScanner::set_priority(isaac, "isaac", mods / "Foo_mod", 11),
+          "renumbering succeeds");
+  const auto renumbered = name_of(mods / "Foo_mod");
+  require(renumbered.find("<name>011 Foo</name>") != std::string::npos,
+          "renumber replaces the old prefix, got: " + renumbered);
+
+  // A folder with no metadata.xml is a hard failure and must NOT be created
+  // as a side effect - this is the silent no-op that swallowed the
+  // regression (Workspace-8tqw): the caller used to discard the bool.
+  fs::create_directories(mods / "Stub_mod");
+  require(!engine::ModScanner::set_priority(isaac, "isaac", mods / "Stub_mod", 0),
+          "no metadata.xml means failure, not a silent success");
+  require(!fs::exists(mods / "Stub_mod" / "metadata.xml"),
+          "set_priority never creates a metadata.xml it did not find");
+
+  fs::remove_all(root);
+}
