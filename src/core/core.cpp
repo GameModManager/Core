@@ -433,6 +433,9 @@ int Application::run() {
     if (args.has_launch_env) {
       for (const auto &entry : args.launch_env)
         cfg.environment.push_back(entry.toStdString());
+      // Fail fast on typos: malformed entries warn here instead of riding
+      // verbatim into the launch and dropping only at spawn time.
+      cfg.environment     = cli::filter_valid_env_entries(cfg.environment);
       cfg.environment_set = true;
     }
     if (args.has_launch_cwd) {

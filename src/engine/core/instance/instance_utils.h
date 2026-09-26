@@ -135,10 +135,13 @@ struct ExecutableLaunchConfig {
 };
 
 // GUI parity lookup (MO2 getByBinary): the first executables entry whose
-// game-relative path matches the launched binary (case-insensitive,
-// symlink-canonicalized, first match wins). Args are split, cwd is resolved
-// against game_dir, env is forwarded verbatim. No match (or no file) yields
-// found=false with empty fields.
+// game-relative path matches the launched binary (case-insensitive via a
+// UTF-8-aware lowercase fold matching QString::toLower for the ASCII and
+// Latin-1 ranges, symlink-canonicalized, first match wins). Args are split,
+// cwd is resolved against game_dir, env is forwarded verbatim. No match (or
+// no file) yields found=false with empty fields; legacy plain-string entries
+// carry no config and are skipped (also found=false, same empty request as
+// no match - zero behavioral delta).
 [[nodiscard]] ExecutableLaunchConfig
 lookup_executable_launch_config(const std::filesystem::path &instance_root,
                                 const std::filesystem::path &game_dir,

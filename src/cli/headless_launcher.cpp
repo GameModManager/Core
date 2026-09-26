@@ -118,6 +118,22 @@ namespace {
 HeadlessLauncher::HeadlessLauncher(const Config &config, engine::Platform *platform)
     : config_(config), platform_(platform) {}
 
+std::vector<std::string>
+filter_valid_env_entries(const std::vector<std::string> &entries) {
+  std::vector<std::string> kept;
+  kept.reserve(entries.size());
+  for (const auto &entry : entries) {
+    const auto eq = entry.find('=');
+    if (eq == std::string::npos || eq == 0) {
+      engine::Logger::instance().warn(
+          "Headless: ignoring malformed --env entry (want KEY=VALUE): " + entry);
+      continue;
+    }
+    kept.push_back(entry);
+  }
+  return kept;
+}
+
 engine::LaunchPrepRequest build_launch_request(const HeadlessLauncher::Config &config) {
   engine::LaunchPrepRequest req;
   req.instance_root  = config.instance_root;
@@ -175,13 +191,25 @@ int HeadlessLauncher::run() {
   // Build launch params through the shared workflow (same as GUI "Run" path).
   // Per-executable args/env/cwd ride along: the instance.toml executables
   // entry by default, explicit CLI flags on top (see build_launch_request).
+  // Both platform assignments are load-bearing and mirror the GUI Run path
+  // (launch_controller.cpp): req.platform feeds prepare-time resolution
+  // (local saves), lparams.platform feeds launch-time Proton/runtime use -
+  // prepare_launch_params does not propagate one to the other.
   auto req     = build_launch_request(config_);
   req.platform = platform_;
   auto lparams = engine::prepare_launch_params(req);
   if (!lparams.args.empty()) {
     std::string joined;
-    for (const auto &a : lparams.args)
-      joined += (joined.empty() ? "" : " ") + a;
+    for (const auto &a : lparams.args) {
+      if (!joined.empty())
+        joined += " ";
+      // Quote tokens containing whitespace so the debug line round-trips
+      // unambiguously; bare tokens stay bare.
+      if (a.find_first_of(" \t\"") != std::string::npos)
+        joined += "\"" + a + "\"";
+      else
+        joined += a;
+    }
     engine::Logger::instance().debug("  args: " + joined);
   }
   if (!lparams.environment.empty()) {
