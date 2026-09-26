@@ -38,7 +38,8 @@ void QueueController::flush_pending_changes() {
   // Apply toggles (latest state per mod wins - already deduplicated by
   // sync_mod_enable_state)
   for (const auto &pt : w_->pending_changes_) {
-    auto mod_folder = w_->resolve_mod_folder(pt.mod_id.toStdString(), mods_subpath);
+    auto mod_folder = w_->resolve_mod_folder(pt.mod_id.toStdString(), mods_subpath,
+                                             pt.content_dir.toStdString());
     if (pt.enabled) {
       (void)engine::ModScanner::enable_mod(*w_->knowledge_, w_->current_game_id_,
                                            mod_folder);

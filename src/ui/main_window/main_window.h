@@ -118,9 +118,15 @@ namespace preview {
   class PreviewWindow;
 }
 
+// Both queues carry the row's content_dir alongside the id (Workspace-8tqw):
+// the on-disk sentinel must be written next to the real source
+// (<game_dir>/mods/<id> for Isaac-style external mods), not into the instance
+// stub/backup. Captured at enqueue time so a source that disappears before the
+// flush still resolves sanely.
 struct PendingToggle {
   QString mod_id;
   bool enabled = false;
+  QString content_dir;
 };
 
 // One deferred disable/enable operation for a delayed_disable game (e.g.
@@ -133,6 +139,7 @@ struct PendingToggle {
 struct DeferredDisable {
   std::string mod_id;
   bool enabled = false;
+  std::string content_dir;
 };
 
 class MainWindow : public QMainWindow {
@@ -430,9 +437,16 @@ private:
     }
     return any;
   }
-  std::filesystem::path
-  resolve_mod_folder(const std::string &mod_id, const std::string &mods_subpath,
-                     const std::string &content_dir_str = {}) const {
+  // The mod folder a row's game-visible writes (priority prefix, enable/disable
+  // sentinel) must land in. content_dir_str is the row's content_dir and is
+  // NOT defaulted on purpose: an external mod's real source is
+  // <game_dir>/mods/<id>, and the instance folder is a stub or a backup that
+  // the game never reads. A caller that forgets content_dir resolves to the
+  // instance folder and the write silently no-ops or lands in the backup
+  // (Workspace-8tqw) - so every call site must pass the row explicitly.
+  std::filesystem::path resolve_mod_folder(const std::string &mod_id,
+                                           const std::string &mods_subpath,
+                                           const std::string &content_dir_str) const {
     // If the mod has an explicit content_dir (external mods: Isaac
     // game_dir/mods/), use it directly. The content_dir IS the mod folder.
     if (!content_dir_str.empty()) {
