@@ -11,12 +11,15 @@
 // Workspace-wk8 adds: the mod list itself loads for a game-less instance —
 // ModScanWorker replaces the game-dir scan with the instance mods-dir scan.
 //
-// Hermetic: offscreen platform, throwaway /tmp instance root, an empty
+// Hermetic: offscreen platform, per-case unique /tmp scratch root
+// (pid + sequence, cf. TempTree in vfs_path_resolver_test.cpp) plus
+// throwaway XDG_CONFIG_HOME/XDG_DATA_HOME per case, an empty
 // GameKnowledge seeded with just mods_subpath. No network, no plugins.
 #include "engine/core/instance/instance.h"
 #include "engine/game/registry/game_knowledge.h"
 #include "ui/controllers/mod_list_controller.h"
 #include "ui/main_window/main_window.h"
+#include "ui/settings/settings.h"
 #include "ui/widgets/game_path_banner.h"
 #include "ui/widgets/mod_list_model.h"
 
@@ -27,17 +30,65 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <filesystem>
+#include <string>
+#include <system_error>
+
+#if defined(_WIN32)
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 namespace {
 
-const auto kInstancesRoot = "/tmp/gmm_tnj_teardown/instances";
+// Per-TEST_CASE isolated scratch root (pid + sequence suffix): ctest
+// registers each TEST_CASE as a separate test and runs them as concurrent
+// worker processes, so the previous fixed /tmp/gmm_tnj_teardown path let one
+// process's make_instance() remove_all() wipe another process's tree
+// mid-assertion or mid async ModScanWorker scan.
+//
+// Uniqueness contract (same as TempTree in vfs_path_resolver_test.cpp,
+// PR #170): the pid disambiguates parallel worker processes (live pids never
+// collide) and the atomic sequence disambiguates instances within one
+// process. A stale dir with our exact name can only come from a crashed run,
+// so the ctor's remove_all() is scoped to a name no live process owns. The
+// dtor is explicitly noexcept: test-helper cleanup must never throw.
+struct ScopedScratch {
+  std::filesystem::path root;       // scratch base, unique per instance
+  std::filesystem::path instances;  // <root>/instances (instance storage)
+  std::filesystem::path config;     // throwaway XDG_CONFIG_HOME
+  std::filesystem::path data;       // throwaway XDG_DATA_HOME
 
-// Creates <root>/TestGame with dirs + instance.toml (game_id set, game_dir
-// deliberately empty) — the on-disk shape of a game-less instance.
-std::filesystem::path make_instance() {
-  std::filesystem::remove_all("/tmp/gmm_tnj_teardown");
-  auto inst           = engine::Instance::installed("TestGame", kInstancesRoot);
+  ScopedScratch() {
+    static std::atomic<unsigned> seq{0};
+#if defined(_WIN32)
+    const auto pid = static_cast<unsigned long>(_getpid());
+#else
+    const auto pid = static_cast<unsigned long>(::getpid());
+#endif
+    root = std::filesystem::temp_directory_path() /
+           ("gmm_tnj_teardown_" + std::to_string(pid) + "_" +
+            std::to_string(seq.fetch_add(1, std::memory_order_relaxed)));
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);  // stale dir from a crashed run
+    instances = root / "instances";
+    config    = root / "config";
+    data      = root / "data";
+    std::filesystem::create_directories(config, ec);
+    std::filesystem::create_directories(data, ec);
+  }
+  ~ScopedScratch() noexcept {
+    std::error_code ec;  // never throw from the dtor
+    std::filesystem::remove_all(root, ec);
+  }
+};
+
+// Creates <instances_root>/TestGame with dirs + instance.toml (game_id set,
+// game_dir deliberately empty) — the on-disk shape of a game-less instance.
+std::filesystem::path make_instance(const std::filesystem::path &instances_root) {
+  auto inst           = engine::Instance::installed("TestGame", instances_root);
   inst.info().game_id = "testgame";
   REQUIRE(inst.create_directories());
   REQUIRE(inst.write_toml());
@@ -47,15 +98,23 @@ std::filesystem::path make_instance() {
 }  // namespace
 
 TEST_CASE("set_game_info with empty game dir keeps the UI alive", "[ui]") {
+  ScopedScratch scratch;
   qputenv("QT_QPA_PLATFORM", "offscreen");
+  qputenv("XDG_CONFIG_HOME", QByteArray(scratch.config.string().c_str()));
+  qputenv("XDG_DATA_HOME", QByteArray(scratch.data.string().c_str()));
   int test_argc     = 1;
   char test_argv0[] = "test";
   char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
+  // set_game_info posts ensure_nxm_handler_default() via singleShot(0); it
+  // pops a modal NXM-handler QMessageBox inside the first processEvents
+  // (infinite hang offscreen). The "dont_ask" setting is its early-out -
+  // same choice a user makes with "Don't show".
+  Settings::instance().set_nxm_handler_check("dont_ask");
 
-  const auto root = make_instance();
+  const auto root = make_instance(scratch.instances);
 
   ui::MainWindow w;
   engine::GameKnowledge knowledge;
@@ -74,20 +133,28 @@ TEST_CASE("set_game_info with empty game dir keeps the UI alive", "[ui]") {
   CHECK(std::filesystem::is_directory(root / "profiles" / "Default"));
 
   // A later load WITH a game dir hides the banner again.
-  w.set_game_info("testgame", "Test Game", "", "/tmp/gmm_tnj_teardown/game", root);
+  w.set_game_info("testgame", "Test Game", "", scratch.root / "game", root);
   CHECK_FALSE(banner->isVisible());
 }
 
 TEST_CASE("instance-owned mod ops work without a game dir", "[ui]") {
+  ScopedScratch scratch;
   qputenv("QT_QPA_PLATFORM", "offscreen");
+  qputenv("XDG_CONFIG_HOME", QByteArray(scratch.config.string().c_str()));
+  qputenv("XDG_DATA_HOME", QByteArray(scratch.data.string().c_str()));
   int test_argc     = 1;
   char test_argv0[] = "test";
   char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
+  // set_game_info posts ensure_nxm_handler_default() via singleShot(0); it
+  // pops a modal NXM-handler QMessageBox inside the first processEvents
+  // (infinite hang offscreen). The "dont_ask" setting is its early-out -
+  // same choice a user makes with "Don't show".
+  Settings::instance().set_nxm_handler_check("dont_ask");
 
-  const auto root = make_instance();
+  const auto root = make_instance(scratch.instances);
   const auto mods_dir =
       engine::Instance::from_root(root).path_for(engine::InstanceKind::Mods);
 
@@ -145,15 +212,23 @@ TEST_CASE("instance-owned mod ops work without a game dir", "[ui]") {
 // runs against the instance mods dir (ModScanWorker swaps it in when
 // game_dir is empty), so a mod folder seeded there shows up.
 TEST_CASE("mod list loads from instance mods dir without a game dir", "[ui]") {
+  ScopedScratch scratch;
   qputenv("QT_QPA_PLATFORM", "offscreen");
+  qputenv("XDG_CONFIG_HOME", QByteArray(scratch.config.string().c_str()));
+  qputenv("XDG_DATA_HOME", QByteArray(scratch.data.string().c_str()));
   int test_argc     = 1;
   char test_argv0[] = "test";
   char *test_argv[] = {test_argv0, nullptr};
   QApplication app(test_argc, test_argv);
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
+  // set_game_info posts ensure_nxm_handler_default() via singleShot(0); it
+  // pops a modal NXM-handler QMessageBox inside the first processEvents
+  // (infinite hang offscreen). The "dont_ask" setting is its early-out -
+  // same choice a user makes with "Don't show".
+  Settings::instance().set_nxm_handler_check("dont_ask");
 
-  const auto root = make_instance();
+  const auto root = make_instance(scratch.instances);
   const auto mods_dir =
       engine::Instance::from_root(root).path_for(engine::InstanceKind::Mods);
 
