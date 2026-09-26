@@ -133,6 +133,12 @@ QWidget *SettingsContentWidget::build_general_tab() {
       tr("Spread CPU-heavy work (mod scanning) across multiple cores for a "
          "snappier launch. Off = single-core sequential fallback for "
          "debugging. Deploy stays parallel either way."));
+  auto *previews_box = new QCheckBox(tr("Double-click opens previews"), gen_group);
+  previews_box->setChecked(s.double_clicks_open_previews());
+  previews_box->setToolTip(
+      tr("Preview files built-in on double-click when a preview handler "
+         "exists (images, text), else open with the default app. Ctrl "
+         "swaps the behavior. Off = double-click opens, Ctrl previews."));
   // Push the persisted toggle value into the engine so the next scan uses it.
   engine::parallel::set_enabled(s.performance_multi_core());
   gen_layout->addWidget(update_box);
@@ -142,6 +148,7 @@ QWidget *SettingsContentWidget::build_general_tab() {
   gen_layout->addWidget(full_ui_box);
   gen_layout->addWidget(extract_prio_box);
   gen_layout->addWidget(multicore_box);
+  gen_layout->addWidget(previews_box);
   layout->addWidget(gen_group);
 
   connect(update_box, &QCheckBox::toggled, this, [&s](bool on) {
@@ -166,6 +173,9 @@ QWidget *SettingsContentWidget::build_general_tab() {
   connect(multicore_box, &QCheckBox::toggled, this, [&s](bool on) {
     s.set_performance_multi_core(on);
     engine::parallel::set_enabled(on);
+  });
+  connect(previews_box, &QCheckBox::toggled, this, [&s](bool on) {
+    s.set_double_clicks_open_previews(on);
   });
 
   // Profile defaults ---------------------------------------------------------

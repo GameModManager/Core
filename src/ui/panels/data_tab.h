@@ -73,6 +73,18 @@ public:
 
   [[nodiscard]] QTreeWidget *tree_widget() const { return tree_; }
 
+  // Double-click resolution (Workspace-co2 + Workspace-636, MO2
+  // doubleClicksOpenPreviews): pure decision, no widget access, so tests
+  // can pin the setting x modifier x file-type matrix directly.
+  // Executables always Execute (never preview an exe). Otherwise the
+  // previews setting swaps plain vs Ctrl between Preview and OS-Open, and
+  // Preview falls back to Open when no preview handler exists.
+  enum class DoubleClickAction { Open, Preview, Execute };
+  static DoubleClickAction resolve_double_click(bool previews_setting_on,
+                                                bool ctrl_pressed,
+                                                bool preview_supported,
+                                                bool is_executable);
+
 signals:
   // A non-executable file should be opened with its default handler.
   void open_requested(const QString &file_path);
