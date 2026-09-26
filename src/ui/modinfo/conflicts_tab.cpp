@@ -246,11 +246,18 @@ void ConflictsInfoTab::open_or_preview(Group &group, QTreeWidgetItem *item) {
   if (row < 0 || row >= static_cast<int>(group.files.size()))
     return;
   const QString abs = group.files[static_cast<size_t>(row)].abs_path;
+  // Alt+double-click always reveals the containing folder in the OS file
+  // manager (MO2 "Reveal in Explorer" action), ahead of every other rule.
+  const auto mods = QApplication::keyboardModifiers();
+  if (mods & Qt::AltModifier) {
+    QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(abs).absolutePath()));
+    return;
+  }
   // MO2 doubleClicksOpenPreviews (Workspace-co2): the setting swaps plain
   // vs Ctrl double-click between OS-open and built-in preview; Ctrl always
   // inverts the setting. Preview falls back to OS-open when no preview
   // handler exists.
-  const bool ctrl         = QApplication::keyboardModifiers() & Qt::ControlModifier;
+  const bool ctrl         = mods & Qt::ControlModifier;
   const bool want_preview = Settings::instance().double_clicks_open_previews() != ctrl;
   if (want_preview && preview::PreviewWindow::supports(abs) && current().preview_file)
     current().preview_file(abs);

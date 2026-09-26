@@ -708,12 +708,18 @@ void DataTab::on_item_double_clicked(QTreeWidgetItem *item, int column) {
     return;
   // MO2 doubleClicksOpenPreviews (Workspace-co2): the setting swaps plain
   // vs Ctrl double-click between OS-open and built-in preview; Ctrl always
-  // inverts the setting. Executables always execute regardless.
-  const bool ctrl   = QApplication::keyboardModifiers() & Qt::ControlModifier;
+  // inverts the setting. Alt always reveals the containing folder in the OS
+  // file manager (MO2 "Reveal in Explorer" action). Executables execute.
+  const auto mods   = QApplication::keyboardModifiers();
+  const bool ctrl   = mods & Qt::ControlModifier;
+  const bool alt    = mods & Qt::AltModifier;
   const bool is_exe = real_path.endsWith(".exe", Qt::CaseInsensitive) ||
                       QFileInfo(real_path).isExecutable();
   switch (resolve_double_click(Settings::instance().double_clicks_open_previews(), ctrl,
-                               can_preview(real_path), is_exe)) {
+                               alt, can_preview(real_path), is_exe)) {
+  case DoubleClickAction::Reveal:
+    reveal_item(item);
+    break;
   case DoubleClickAction::Preview:
     preview_item(item);
     break;
@@ -726,14 +732,29 @@ void DataTab::on_item_double_clicked(QTreeWidgetItem *item, int column) {
 
 DataTab::DoubleClickAction DataTab::resolve_double_click(bool previews_setting_on,
                                                          bool ctrl_pressed,
+                                                         bool alt_pressed,
                                                          bool preview_supported,
                                                          bool is_executable) {
+  if (alt_pressed)
+    return DoubleClickAction::Reveal;
   if (is_executable)
     return DoubleClickAction::Execute;
   const bool want_preview = previews_setting_on != ctrl_pressed;
   if (want_preview && preview_supported)
     return DoubleClickAction::Preview;
   return DoubleClickAction::Open;
+}
+
+QString DataTab::reveal_dir(const QString &real_path) {
+  if (real_path.isEmpty())
+    return {};
+  return QFileInfo(real_path).absolutePath();
+}
+
+void DataTab::reveal_item(QTreeWidgetItem *item) {
+  const QString dir = reveal_dir(item->data(0, DataRealPathRole).toString());
+  if (!dir.isEmpty())
+    QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
 }
 
 void DataTab::open_item(QTreeWidgetItem *item) {
@@ -839,12 +860,10 @@ void DataTab::add_file_menus(QMenu &menu, QTreeWidgetItem *item) {
     add_exe_action->setStatusTip(tr("This file is not executable"));
   }
 
-  auto *reveal_action = menu.addAction(tr("Reveal in E&xplorer"), this, [item]() {
-    const auto dir =
-        QFileInfo(item->data(0, DataRealPathRole).toString()).absolutePath();
-    if (!dir.isEmpty())
-      QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
-  });
+  auto *reveal_action =
+      menu.addAction(tr("Reveal in E&xplorer"), this, [this, item]() {
+        reveal_item(item);
+      });
   reveal_action->setStatusTip(tr("Opens the file in the file manager"));
 
   const QString origin_mod_id = item->data(0, DataOriginModRole).toString();
