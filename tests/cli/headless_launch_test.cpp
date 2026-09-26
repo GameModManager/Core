@@ -185,6 +185,66 @@ TEST_CASE("headless CLI flags win over entry", "[cli]") {
   fs::remove_all(root);
 }
 
+TEST_CASE("headless explicit empty args clear entry", "[cli]") {
+  const fs::path root     = fresh_root("empty_flag");
+  const fs::path game_dir = root / "game";
+  fs::create_directories(game_dir);
+  fs::create_directories(root / "mods");
+  write_file(root / "instance.toml",
+             "game_id = \"testgame\"\n"
+             "executables = [\n"
+             "  { path = \"game.exe\", args = \"-entry\", env = [\"ENTRY=1\"] },\n"
+             "]\n");
+
+  // --args "" means "no args", not "no override": the entry args are cleared.
+  cli::HeadlessLauncher::Config config;
+  config.executable    = game_dir / "game.exe";
+  config.game_dir      = game_dir;
+  config.instance_root = root;
+  config.game_id       = "testgame";
+  config.args.clear();
+  config.args_set = true;
+
+  const engine::LaunchPrepRequest req = cli::build_launch_request(config);
+  check(req.args.empty(), "explicit empty --args clears entry args");
+  check(req.environment == std::vector<std::string>{"ENTRY=1"},
+        "entry env kept without --env");
+
+  fs::remove_all(root);
+}
+
+TEST_CASE("headless absolute cwd flag passes through", "[cli]") {
+  const fs::path root     = fresh_root("abs_cwd");
+  const fs::path game_dir = root / "game";
+  fs::create_directories(game_dir);
+  fs::create_directories(root / "mods");
+  write_file(root / "instance.toml", "game_id = \"testgame\"\n");
+
+  const fs::path absolute = fs::temp_directory_path() / "gmm_abs_cwd_probe";
+  cli::HeadlessLauncher::Config config;
+  config.executable    = game_dir / "game.exe";
+  config.game_dir      = game_dir;
+  config.instance_root = root;
+  config.game_id       = "testgame";
+  config.cwd           = absolute;
+  config.cwd_set       = true;
+
+  const engine::LaunchPrepRequest req = cli::build_launch_request(config);
+  check(req.cwd == absolute, "absolute --cwd passes through unresolved");
+
+  fs::remove_all(root);
+}
+
+TEST_CASE("headless env validation warns and skips malformed", "[cli]") {
+  const std::vector<std::string> mixed = {"K=V", "NOEQUALS", "=nokey",
+                                          "EMPTY=", "A=B=C"};
+  const auto filtered                  = cli::filter_valid_env_entries(mixed);
+  check(filtered == std::vector<std::string>{"K=V", "EMPTY=", "A=B=C"},
+        "entries without '=' or with an empty key are skipped, rest kept "
+        "verbatim in order");
+  check(cli::filter_valid_env_entries({}).empty(), "empty input stays empty");
+}
+
 TEST_CASE("headless launch request empty regression", "[cli]") {
   const fs::path root     = fresh_root("empty");
   const fs::path game_dir = root / "game";

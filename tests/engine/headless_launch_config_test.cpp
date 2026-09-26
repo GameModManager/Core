@@ -182,3 +182,52 @@ TEST_CASE("lookup executable launch config edge cases", "[engine]") {
   check(!legacy.found, "legacy plain-string entry yields no config");
   fs::remove_all(legacy_root);
 }
+
+TEST_CASE("lookup matches through symlinked game_dir", "[engine]") {
+  using engine::lookup_executable_launch_config;
+
+  // The game dir commonly goes through the ~/.steam symlink: the lookup
+  // spelling and the entry spelling must still meet after canonicalization.
+  const fs::path root      = fresh_root("symlink");
+  const fs::path real_game = root / "real_game";
+  fs::create_directories(real_game);
+  write_file(root / "instance.toml", "game_id = \"testgame\"\n"
+                                     "executables = [\n"
+                                     "  { path = \"game.exe\", args = \"-s\" },\n"
+                                     "]\n");
+  const fs::path linked = root / "linked_game";
+  std::error_code ec;
+  fs::create_directory_symlink(real_game, linked, ec);
+  REQUIRE(!ec);
+
+  const auto hit = lookup_executable_launch_config(root, linked, linked / "GAME.EXE");
+  check(hit.found, "entry found through the symlinked game_dir spelling");
+  check(hit.args == std::vector<std::string>{"-s"},
+        "entry args split through the symlinked spelling");
+  fs::remove_all(root);
+}
+
+TEST_CASE("lookup folds non-ascii case like the gui", "[engine]") {
+  using engine::lookup_executable_launch_config;
+
+  // GUI parity: QString::toLower folds U+00DC (uppercase U-umlaut) to U+00FC,
+  // so an entry under an umlaut dir matches a lowercase lookup spelling.
+  // Hex escapes keep this file plain ASCII.
+  const fs::path root     = fresh_root("unicode_fold");
+  const fs::path game_dir = root / "game";
+  fs::create_directories(game_dir);
+  write_file(root / "instance.toml", "game_id = \"testgame\"\n"
+                                     "executables = [\n"
+                                     "  { path = \"\xC3\x9C"
+                                     "bersicht/game.exe\", args = \"-u\" },\n"
+                                     "]\n");
+
+  const auto hit = lookup_executable_launch_config(root, game_dir,
+                                                   game_dir /
+                                                       "\xC3\xBC"
+                                                       "bersicht" /
+                                                       "GAME.EXE");
+  check(hit.found, "umlaut entry found through lowercase spelling");
+  check(hit.args == std::vector<std::string>{"-u"}, "umlaut entry args split");
+  fs::remove_all(root);
+}

@@ -14,6 +14,7 @@
 
 #include <cctype>
 #include <cstdlib>
+#include <cwctype>
 #include <fstream>
 #include <unordered_set>
 #include <utility>
@@ -314,10 +315,80 @@ fs::path resolve_launch_cwd(const fs::path &game_dir, const std::string &start_i
 }
 
 namespace {
-  std::string ascii_lower(const std::string &s) {
-    std::string out = s;
-    for (auto &c : out)
-      c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  // Single code-point lowercase fold. ASCII and Latin-1 (covers the umlaut-dir
+  // case) fold via range arithmetic independent of the process locale;
+  // anything else goes through towlower (locale-dependent, best effort).
+  char32_t fold_code_point(char32_t cp) {
+    if (cp >= U'A' && cp <= U'Z')
+      return cp + (U'a' - U'A');
+    if (cp >= U'\u00c0' && cp <= U'\u00de' && cp != U'\u00d7')
+      return cp + 32;
+    const wint_t lowered = std::towlower(static_cast<wint_t>(cp));
+    return (lowered == WEOF) ? cp : static_cast<char32_t>(lowered);
+  }
+
+  // UTF-8-aware lowercase fold matching the GUI QString::toLower matching
+  // semantics for lookup purposes: decodes to code points, folds each, and
+  // re-encodes. Invalid UTF-8 bytes pass through unchanged so lookups never
+  // fail to compare.
+  std::string utf8_lower(const std::string &s) {
+    std::string out;
+    out.reserve(s.size());
+    for (size_t i = 0; i < s.size();) {
+      const unsigned char c = static_cast<unsigned char>(s[i]);
+      char32_t cp           = 0;
+      size_t len            = 0;
+      if (c < 0x80) {
+        cp  = c;
+        len = 1;
+      } else if ((c & 0xE0) == 0xC0) {
+        cp  = c & 0x1F;
+        len = 2;
+      } else if ((c & 0xF0) == 0xE0) {
+        cp  = c & 0x0F;
+        len = 3;
+      } else if ((c & 0xF8) == 0xF0) {
+        cp  = c & 0x07;
+        len = 4;
+      } else {
+        out += s[i++];
+        continue;
+      }
+      if (i + len > s.size()) {
+        out.append(s.substr(i));
+        break;
+      }
+      bool ok = true;
+      for (size_t k = 1; k < len; ++k) {
+        const unsigned char d = static_cast<unsigned char>(s[i + k]);
+        if ((d & 0xC0) != 0x80) {
+          ok = false;
+          break;
+        }
+        cp = (cp << 6) | (d & 0x3F);
+      }
+      if (!ok) {
+        out += s[i++];
+        continue;
+      }
+      cp = fold_code_point(cp);
+      if (cp < 0x80) {
+        out += static_cast<char>(cp);
+      } else if (cp < 0x800) {
+        out += static_cast<char>(0xC0 | (cp >> 6));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+      } else if (cp < 0x10000) {
+        out += static_cast<char>(0xE0 | (cp >> 12));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+      } else {
+        out += static_cast<char>(0xF0 | (cp >> 18));
+        out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+      }
+      i += len;
+    }
     return out;
   }
 }  // namespace
@@ -343,9 +414,7 @@ ExecutableLaunchConfig lookup_executable_launch_config(const fs::path &instance_
     return none;
   if (rel.begin() != rel.end() && rel.begin()->string() == "..")
     return none;
-  const std::string rel_lower = ascii_lower(rel.generic_string());
-  if (rel_lower.empty())
-    return none;
+  const std::string rel_lower = utf8_lower(rel.generic_string());
 
   auto tbl = parse_instance_toml(instance_root / "instance.toml");
   if (!tbl)
@@ -358,7 +427,7 @@ ExecutableLaunchConfig lookup_executable_launch_config(const fs::path &instance_
     if (!entry)
       continue;  // legacy plain-string entries carry no config
     auto path_value = (*entry)["path"].value<std::string>();
-    if (!path_value || ascii_lower(*path_value) != rel_lower)
+    if (!path_value || utf8_lower(*path_value) != rel_lower)
       continue;
     ExecutableLaunchConfig found;
     found.found = true;
