@@ -1,9 +1,12 @@
 #include "ui/modinfo/conflicts_tab.h"
 
 #include "engine/core/util/fs_utils.h"
+#include "ui/preview/preview_window.h"
+#include "ui/settings/settings.h"
 
 #include <QApplication>
 #include <QDesktopServices>
+#include <QFont>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -92,13 +95,7 @@ ConflictsInfoTab::ConflictsInfoTab(QWidget *parent) : ModInfoTab(parent) {
             });
     connect(group->list, &QTreeWidget::itemDoubleClicked, this,
             [this, group](QTreeWidgetItem *item, int) {
-              if (!item)
-                return;
-              const int row = group->list->indexOfTopLevelItem(item);
-              if (row < 0 || row >= static_cast<int>(group->files.size()))
-                return;
-              QDesktopServices::openUrl(
-                  QUrl::fromLocalFile(group->files[static_cast<size_t>(row)].abs_path));
+              open_or_preview(*group, item);
             });
   }
 }
@@ -205,6 +202,28 @@ void ConflictsInfoTab::show_menu(Group &group, const QPoint &pos) {
     QDesktopServices::openUrl(QUrl::fromLocalFile(abs));
   });
 
+  auto *preview = menu.addAction(tr("&Preview"));
+  QObject::connect(preview, &QAction::triggered, this, [this, abs]() {
+    if (current().preview_file && preview::PreviewWindow::supports(abs))
+      current().preview_file(abs);
+    else
+      QDesktopServices::openUrl(QUrl::fromLocalFile(abs));
+  });
+  if (!preview::PreviewWindow::supports(abs)) {
+    preview->setEnabled(false);
+    preview->setToolTip(tr("This file has no preview handler associated with it"));
+  }
+
+  // MO2 FileTree parity (Workspace-co2 row 411): bold the default
+  // (first-enabled) menu entry - the action a plain double-click runs.
+  auto *default_action =
+      (Settings::instance().double_clicks_open_previews() && preview->isEnabled())
+          ? preview
+          : open;
+  QFont default_font = default_action->font();
+  default_font.setBold(true);
+  default_action->setFont(default_font);
+
   auto *explore = menu.addAction(tr("Open in &Explorer"));
   QObject::connect(explore, &QAction::triggered, this, [abs]() {
     QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(abs).absolutePath()));
@@ -218,6 +237,25 @@ void ConflictsInfoTab::show_menu(Group &group, const QPoint &pos) {
   });
 
   menu.exec(group.list->viewport()->mapToGlobal(pos));
+}
+
+void ConflictsInfoTab::open_or_preview(Group &group, QTreeWidgetItem *item) {
+  if (!item)
+    return;
+  const int row = group.list->indexOfTopLevelItem(item);
+  if (row < 0 || row >= static_cast<int>(group.files.size()))
+    return;
+  const QString abs = group.files[static_cast<size_t>(row)].abs_path;
+  // MO2 doubleClicksOpenPreviews (Workspace-co2): the setting swaps plain
+  // vs Ctrl double-click between OS-open and built-in preview; Ctrl always
+  // inverts the setting. Preview falls back to OS-open when no preview
+  // handler exists.
+  const bool ctrl         = QApplication::keyboardModifiers() & Qt::ControlModifier;
+  const bool want_preview = Settings::instance().double_clicks_open_previews() != ctrl;
+  if (want_preview && preview::PreviewWindow::supports(abs) && current().preview_file)
+    current().preview_file(abs);
+  else
+    QDesktopServices::openUrl(QUrl::fromLocalFile(abs));
 }
 
 void ConflictsInfoTab::on_hide(Group &group, bool hide) {
