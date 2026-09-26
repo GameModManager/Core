@@ -766,6 +766,14 @@ void DownloadsTab::on_cell_double_clicked(int row, int column) {
   // Find the download id for this row
   for (const auto &[id, entry] : downloads_) {
     if (entry.row == row) {
+      // MO2 parity: a double-click drives the row by its state. A paused
+      // download resumes (the context menu's Resume action is the same
+      // primitive), a finished one installs, an active one does nothing -
+      // pausing an in-flight download stays a context-menu-only action.
+      if (entry.state == DownloadState::Paused) {
+        emit resume_requested(id);
+        return;
+      }
       if (entry.state == DownloadState::Complete ||
           entry.state == DownloadState::Failed ||
           entry.state == DownloadState::Installed) {
