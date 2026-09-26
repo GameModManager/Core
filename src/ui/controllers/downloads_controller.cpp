@@ -378,12 +378,27 @@ void DownloadsController::wire_downloads_tab() {
   connect(dt, &DownloadsTab::resume_requested, this, [this](const std::string &id) {
     if (!w_->pipeline_thread_)
       return;
+    // Resolve the source link BEFORE flipping the state. The link maps are
+    // in-memory only (cleared on instance switch, never restored by
+    // deserialize), so a row restored from the manifest has no link. Marking
+    // first would strand it in a fake Downloading state: nothing gets queued,
+    // the context menu then offers Pause instead of Resume, and
+    // has_active_download() wedges scan_downloads_dir() for the session.
+    auto it_nxm = w_->nxm_links_.find(id);
+    auto it_modl = w_->modl_links_.find(id);
+    auto it_url = w_->url_downloads_.find(id);
+    if (it_nxm == w_->nxm_links_.end() && it_modl == w_->modl_links_.end() &&
+        it_url == w_->url_downloads_.end()) {
+      engine::Logger::instance().warn(
+          "[Downloads] Resume ignored for '" + id +
+          "': no NXM/modl/URL link known this session");
+      return;
+    }
     auto *dtab = w_->right_panel_->downloads_tab();
     if (dtab)
       dtab->mark_downloading(id);
     auto mods_dir = w_->mods_dir_path().string();
     // Nexus downloads resume with their original NXM link...
-    auto it_nxm = w_->nxm_links_.find(id);
     if (it_nxm != w_->nxm_links_.end()) {
       auto link = it_nxm->second;
       QMetaObject::invokeMethod(
@@ -396,7 +411,6 @@ void DownloadsController::wire_downloads_tab() {
       return;
     }
     // ...modl:// downloads resume with their original link.
-    auto it_modl = w_->modl_links_.find(id);
     if (it_modl != w_->modl_links_.end()) {
       auto link = it_modl->second;
       QMetaObject::invokeMethod(
@@ -409,7 +423,6 @@ void DownloadsController::wire_downloads_tab() {
       return;
     }
     // ...LoversLab downloads resume with their original URL.
-    auto it_url = w_->url_downloads_.find(id);
     if (it_url != w_->url_downloads_.end()) {
       auto url = it_url->second;
       QMetaObject::invokeMethod(
