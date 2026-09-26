@@ -23,6 +23,18 @@ CommandLine::CommandLine(int /*argc*/, char ** /*argv*/) {
   QCommandLineOption exeOpt("exe", "Executable path relative to game dir", "path");
   parser_.addOption(exeOpt);
 
+  QCommandLineOption argsOpt(
+      "args", "Extra game arguments (shell-quoted, e.g. --args '-a \"b c\"')", "args");
+  parser_.addOption(argsOpt);
+
+  QCommandLineOption envOpt("env", "Environment override KEY=VALUE (repeatable)",
+                            "KEY=VALUE");
+  parser_.addOption(envOpt);
+
+  QCommandLineOption cwdOpt("cwd", "Working directory (game-relative or absolute)",
+                            "path");
+  parser_.addOption(cwdOpt);
+
   QCommandLineOption nxmOpt("handle-nxm", "Handle an nxm:// download link", "url");
   parser_.addOption(nxmOpt);
 
@@ -47,6 +59,16 @@ bool CommandLine::parse() {
 
   if (parser_.isSet("exe"))
     args_.exe_path = parser_.value("exe");
+
+  args_.has_launch_args = parser_.isSet("args");
+  args_.has_launch_env  = parser_.isSet("env");
+  args_.has_launch_cwd  = parser_.isSet("cwd");
+  if (args_.has_launch_args)
+    args_.launch_args = parser_.value("args");
+  if (args_.has_launch_env)
+    args_.launch_env = parser_.values("env");
+  if (args_.has_launch_cwd)
+    args_.launch_cwd = parser_.value("cwd");
 
   if (parser_.isSet("handle-nxm"))
     args_.nxm_url = parser_.value("handle-nxm");
@@ -93,7 +115,21 @@ bool CommandLine::parse() {
             "  gamemodmanager %s--launch%s %s--instance%s %s<path>%s "
             "%s--exe%s %s<path>%s\n",
             O, D, O, D, B, D, O, D, B, D);
-    fprintf(stdout, "                                # Launch game headless\n\n");
+    fprintf(stdout, "                                # Launch game headless\n");
+    fprintf(stdout,
+            "  gamemodmanager %s--launch%s %s--instance%s %s<path>%s "
+            "%s--exe%s %s<path>%s\n",
+            O, D, O, D, B, D, O, D, B, D);
+    fprintf(
+        stdout,
+        "    %s--args%s %s<args>%s %s--env%s %s<KEY=VALUE>%s %s--cwd%s %s<path>%s\n", O,
+        D, B, D, O, D, B, D, O, D, B, D);
+    fprintf(stdout, "        # Headless launch with args/env/cwd overrides\n");
+    fprintf(stdout,
+            "  (Explicit %s--args%s/%s--env%s/%s--cwd%s win over the matching "
+            "instance.toml executables entry for that field;\n",
+            O, D, O, D, O, D);
+    fprintf(stdout, "   without flags the entry is used.)\n\n");
 
     // Options
     fprintf(stdout, "%sOptions:%s\n", R, D);
@@ -108,6 +144,14 @@ bool CommandLine::parse() {
     fprintf(stdout,
             "  %s--exe%s %s<path>%s      Executable path relative to game "
             "dir\n",
+            O, D, B, D);
+    fprintf(stdout, "  %s--args%s %s<args>%s     Extra game arguments (shell-quoted)\n",
+            O, D, B, D);
+    fprintf(stdout, "  %s--env%s %s<KEY=VALUE>%s  Environment override (repeatable)\n",
+            O, D, B, D);
+    fprintf(stdout,
+            "  %s--cwd%s %s<path>%s      Working directory (game-rel. or "
+            "absolute)\n",
             O, D, B, D);
     fprintf(stdout,
             "  %s--handle-nxm%s %s<url>%s  Handle an nxm:// download "

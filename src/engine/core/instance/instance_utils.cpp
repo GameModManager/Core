@@ -1,5 +1,6 @@
 #include "engine/core/instance/instance_utils.h"
 
+#include "engine/core/instance/toml_utils.h"
 #include "engine/core/log/logger.h"
 #include "engine/core/util/fs_utils.h"
 #include "engine/deploy/core.h"
@@ -11,7 +12,9 @@
 #include "engine/game/saves/local_saves.h"
 #include "platform/platform.h"
 
+#include <cctype>
 #include <cstdlib>
+#include <cwctype>
 #include <fstream>
 #include <unordered_set>
 #include <utility>
@@ -272,6 +275,175 @@ LaunchParams prepare_launch_params(const std::filesystem::path &instance_root,
   req.steam_appid    = steam_appid;
   req.is_windows_exe = is_windows_exe;
   return prepare_launch_params(req);
+}
+
+std::vector<std::string> split_launch_arguments(const std::string &args) {
+  std::vector<std::string> out;
+  size_t i = 0;
+  while (i < args.size()) {
+    while (i < args.size() && std::isspace(static_cast<unsigned char>(args[i])))
+      ++i;
+    if (i >= args.size())
+      break;
+    std::string token;
+    if (args[i] == '"') {
+      ++i;
+      while (i < args.size() && args[i] != '"') {
+        if (args[i] == '\\' && i + 1 < args.size())
+          ++i;
+        token += args[i++];
+      }
+      if (i < args.size())
+        ++i;  // consume closing quote
+    } else {
+      while (i < args.size() && !std::isspace(static_cast<unsigned char>(args[i])))
+        token += args[i++];
+    }
+    if (!token.empty())
+      out.push_back(token);
+  }
+  return out;
+}
+
+fs::path resolve_launch_cwd(const fs::path &game_dir, const std::string &start_in) {
+  if (start_in.empty())
+    return {};
+  fs::path p(start_in);
+  if (!p.is_absolute())
+    p = game_dir / p;
+  return p;
+}
+
+namespace {
+  // Single code-point lowercase fold. ASCII and Latin-1 (covers the umlaut-dir
+  // case) fold via range arithmetic independent of the process locale;
+  // anything else goes through towlower (locale-dependent, best effort).
+  char32_t fold_code_point(char32_t cp) {
+    if (cp >= U'A' && cp <= U'Z')
+      return cp + (U'a' - U'A');
+    if (cp >= U'\u00c0' && cp <= U'\u00de' && cp != U'\u00d7')
+      return cp + 32;
+    const wint_t lowered = std::towlower(static_cast<wint_t>(cp));
+    return (lowered == WEOF) ? cp : static_cast<char32_t>(lowered);
+  }
+
+  // UTF-8-aware lowercase fold matching the GUI QString::toLower matching
+  // semantics for lookup purposes: decodes to code points, folds each, and
+  // re-encodes. Invalid UTF-8 bytes pass through unchanged so lookups never
+  // fail to compare.
+  std::string utf8_lower(const std::string &s) {
+    std::string out;
+    out.reserve(s.size());
+    for (size_t i = 0; i < s.size();) {
+      const unsigned char c = static_cast<unsigned char>(s[i]);
+      char32_t cp           = 0;
+      size_t len            = 0;
+      if (c < 0x80) {
+        cp  = c;
+        len = 1;
+      } else if ((c & 0xE0) == 0xC0) {
+        cp  = c & 0x1F;
+        len = 2;
+      } else if ((c & 0xF0) == 0xE0) {
+        cp  = c & 0x0F;
+        len = 3;
+      } else if ((c & 0xF8) == 0xF0) {
+        cp  = c & 0x07;
+        len = 4;
+      } else {
+        out += s[i++];
+        continue;
+      }
+      if (i + len > s.size()) {
+        out.append(s.substr(i));
+        break;
+      }
+      bool ok = true;
+      for (size_t k = 1; k < len; ++k) {
+        const unsigned char d = static_cast<unsigned char>(s[i + k]);
+        if ((d & 0xC0) != 0x80) {
+          ok = false;
+          break;
+        }
+        cp = (cp << 6) | (d & 0x3F);
+      }
+      if (!ok) {
+        out += s[i++];
+        continue;
+      }
+      cp = fold_code_point(cp);
+      if (cp < 0x80) {
+        out += static_cast<char>(cp);
+      } else if (cp < 0x800) {
+        out += static_cast<char>(0xC0 | (cp >> 6));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+      } else if (cp < 0x10000) {
+        out += static_cast<char>(0xE0 | (cp >> 12));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+      } else {
+        out += static_cast<char>(0xF0 | (cp >> 18));
+        out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+      }
+      i += len;
+    }
+    return out;
+  }
+}  // namespace
+
+ExecutableLaunchConfig lookup_executable_launch_config(const fs::path &instance_root,
+                                                       const fs::path &game_dir,
+                                                       const fs::path &executable) {
+  ExecutableLaunchConfig none;
+  if (instance_root.empty() || game_dir.empty() || executable.empty())
+    return none;
+
+  // Canonicalize both spellings first (game_dir commonly goes through the
+  // ~/.steam symlink, so a raw comparison would dead-end), then match as a
+  // game-relative path. Paths escaping the game dir ("..") never match.
+  std::error_code ec;
+  auto canon_base     = fs::weakly_canonical(game_dir, ec);
+  const fs::path base = (ec || canon_base.empty()) ? game_dir : canon_base;
+  auto canon_full     = fs::weakly_canonical(executable, ec);
+  if (ec || canon_full.empty())
+    canon_full = executable;
+  auto rel = fs::relative(canon_full, base, ec);
+  if (ec || rel.empty())
+    return none;
+  if (rel.begin() != rel.end() && rel.begin()->string() == "..")
+    return none;
+  const std::string rel_lower = utf8_lower(rel.generic_string());
+
+  auto tbl = parse_instance_toml(instance_root / "instance.toml");
+  if (!tbl)
+    return none;
+  auto arr = (*tbl)["executables"].as_array();
+  if (!arr)
+    return none;
+  for (const auto &elem : *arr) {
+    auto entry = elem.as_table();
+    if (!entry)
+      continue;  // legacy plain-string entries carry no config
+    auto path_value = (*entry)["path"].value<std::string>();
+    if (!path_value || utf8_lower(*path_value) != rel_lower)
+      continue;
+    ExecutableLaunchConfig found;
+    found.found = true;
+    if (auto args_value = (*entry)["args"].value<std::string>())
+      found.args = split_launch_arguments(*args_value);
+    if (auto *env_arr = (*entry)["env"].as_array()) {
+      for (const auto &v : *env_arr) {
+        if (auto s = v.value<std::string>())
+          found.environment.push_back(*s);
+      }
+    }
+    if (auto cwd_value = (*entry)["cwd"].value<std::string>())
+      found.cwd = resolve_launch_cwd(game_dir, *cwd_value);
+    return found;
+  }
+  return none;
 }
 
 LaunchParams prepare_launch_params(const LaunchPrepRequest &req,

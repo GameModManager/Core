@@ -2,6 +2,7 @@
 
 #include <QCommandLineParser>
 #include <QString>
+#include <QStringList>
 
 namespace cli {
 
@@ -17,6 +18,15 @@ struct ParsedArgs {
   QString nxm_url;
   QString gmm_url;
   QString modl_url;
+  // Headless launch overrides (--args/--env/--cwd). Each has_* flag records
+  // whether the flag was passed: an explicit flag wins over the matching
+  // instance.toml executables entry for that field (see --help).
+  QString launch_args;
+  QStringList launch_env;
+  QString launch_cwd;
+  bool has_launch_args = false;
+  bool has_launch_env  = false;
+  bool has_launch_cwd  = false;
 };
 
 class CommandLine {

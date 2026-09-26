@@ -118,6 +118,62 @@ namespace {
 HeadlessLauncher::HeadlessLauncher(const Config &config, engine::Platform *platform)
     : config_(config), platform_(platform) {}
 
+std::vector<std::string>
+filter_valid_env_entries(const std::vector<std::string> &entries) {
+  std::vector<std::string> kept;
+  kept.reserve(entries.size());
+  for (const auto &entry : entries) {
+    const auto eq = entry.find('=');
+    if (eq == std::string::npos || eq == 0) {
+      engine::Logger::instance().warn(
+          "Headless: ignoring malformed --env entry (want KEY=VALUE): " + entry);
+      continue;
+    }
+    kept.push_back(entry);
+  }
+  return kept;
+}
+
+engine::LaunchPrepRequest build_launch_request(const HeadlessLauncher::Config &config) {
+  engine::LaunchPrepRequest req;
+  req.instance_root  = config.instance_root;
+  req.game_dir       = config.game_dir;
+  req.executable     = config.executable;
+  req.knowledge      = config.knowledge ? *config.knowledge : engine::GameKnowledge();
+  req.game_id        = config.game_id;
+  req.steam_appid    = config.steam_appid;
+  req.is_windows_exe = config.is_windows_exe;
+  req.local_saves_enabled = config.local_saves_enabled;
+
+  // GUI parity default: the instance.toml executables entry for this binary.
+  const auto entry = engine::lookup_executable_launch_config(
+      config.instance_root, config.game_dir, config.executable);
+  if (entry.found) {
+    req.args        = entry.args;
+    req.environment = entry.environment;
+    req.cwd         = entry.cwd;
+  }
+  // Explicit CLI flags win per field (documented in --help).
+  if (config.args_set)
+    req.args = config.args;
+  if (config.environment_set)
+    req.environment = config.environment;
+  if (config.cwd_set)
+    req.cwd = engine::resolve_launch_cwd(config.game_dir, config.cwd.string());
+
+  // A broken cwd downgrades to game_dir inside the launcher rather than
+  // erroring - warn here so a headless typo is visible instead of silent.
+  if (!req.cwd.empty()) {
+    std::error_code ec;
+    if (!fs::is_directory(req.cwd, ec)) {
+      engine::Logger::instance().warn("Headless: working directory '" +
+                                      req.cwd.string() +
+                                      "' is not a directory - launching in game_dir");
+    }
+  }
+  return req;
+}
+
 int HeadlessLauncher::run() {
   engine::Logger::instance().enable_console();
   engine::Logger::instance().debug("GameModManager - headless launch");
@@ -132,19 +188,37 @@ int HeadlessLauncher::run() {
   // (deployed into .gmm_staging). prepare_launch_params populates staging;
   // do_launch then validates reachability and fails with a log line.
 
-  // Build launch params through the shared workflow (same as GUI "Run" path)
-  engine::LaunchPrepRequest req;
-  req.instance_root  = config_.instance_root;
-  req.game_dir       = config_.game_dir;
-  req.executable     = config_.executable;
-  req.knowledge      = config_.knowledge ? *config_.knowledge : engine::GameKnowledge();
-  req.game_id        = config_.game_id;
-  req.steam_appid    = config_.steam_appid;
-  req.is_windows_exe = config_.is_windows_exe;
-  req.local_saves_enabled = config_.local_saves_enabled;
-  req.platform            = platform_;
-  auto lparams            = engine::prepare_launch_params(req);
-  lparams.platform        = platform_;
+  // Build launch params through the shared workflow (same as GUI "Run" path).
+  // Per-executable args/env/cwd ride along: the instance.toml executables
+  // entry by default, explicit CLI flags on top (see build_launch_request).
+  // Both platform assignments are load-bearing and mirror the GUI Run path
+  // (launch_controller.cpp): req.platform feeds prepare-time resolution
+  // (local saves), lparams.platform feeds launch-time Proton/runtime use -
+  // prepare_launch_params does not propagate one to the other.
+  auto req     = build_launch_request(config_);
+  req.platform = platform_;
+  auto lparams = engine::prepare_launch_params(req);
+  if (!lparams.args.empty()) {
+    std::string joined;
+    for (const auto &a : lparams.args) {
+      if (!joined.empty())
+        joined += " ";
+      // Quote tokens containing whitespace so the debug line round-trips
+      // unambiguously; bare tokens stay bare.
+      if (a.find_first_of(" \t\"") != std::string::npos)
+        joined += "\"" + a + "\"";
+      else
+        joined += a;
+    }
+    engine::Logger::instance().debug("  args: " + joined);
+  }
+  if (!lparams.environment.empty()) {
+    engine::Logger::instance().debug(
+        "  env: " + std::to_string(lparams.environment.size()) + " override(s)");
+  }
+  if (!lparams.cwd.empty())
+    engine::Logger::instance().debug("  cwd: " + lparams.cwd.string());
+  lparams.platform = platform_;
 
   // MO2-equivalent plugin order: build + write the game's Plugins.txt (and
   // the instance profile) right before launch. No-op for games without
