@@ -1129,7 +1129,9 @@ void ModListController::sync_priorities() {
     // NNN prefix in metadata.xml, read by the game itself) get a folder
     // write; MO2-style games persist priority in the in-folder meta.ini
     // above and read load order from their plugins.txt / order encoding.
-    if (!mods[i].is_overwrite && !mods[i].is_separator && !mods_subpath.empty()) {
+    // is_phantom_row covers Overwrite and MERGED (both pseudo-rows have no
+    // folder, so set_priority would only ever fail + log on them).
+    if (!is_phantom_row(mods[i]) && !mods[i].is_separator && !mods_subpath.empty()) {
       auto metadata_file =
           w_->knowledge_->get(w_->current_game_id_, "metadata_file", "meta.ini");
       if (!metadata_file.empty() && metadata_file != "meta.ini") {
