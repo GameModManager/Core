@@ -50,6 +50,11 @@ signals:
   void reorder_requested(int from_row, int to_row);
   void lock_requested(const std::string &name, bool locked);
   void refresh_requested();
+  // Forwarded from PluginView: double-clicking a row asks for the owning
+  // mod's Mod Info / folder reveal. Owner id is "" only for game-Data rows,
+  // which never emit.
+  void mod_info_requested(const std::string &owner_mod);
+  void reveal_requested(const std::string &owner_mod);
 
 protected:
   void add_context_menu_actions(QMenu &menu, int row);

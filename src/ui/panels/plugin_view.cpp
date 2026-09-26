@@ -391,6 +391,16 @@ public:
   using QTableWidget::QTableWidget;
 
   std::function<void(int, int)> on_reorder;
+  // Double-click routing, wired by PluginView. `owner_of_row` maps a table
+  // row to the mod folder providing that plugin ("" = a game-Data row, which
+  // is dropped before either action runs); the two actions then carry the
+  // owner id. Mirrors ModView's Ctrl+Double-Click split.
+  std::function<std::string(int)> owner_of_row;
+  std::function<void(const std::string &)> on_mod_info;
+  std::function<void(const std::string &)> on_reveal;
+
+  // Anti-bounce guard (Workspace-8fy, shared with ModView).
+  [[nodiscard]] bool checkbox_toggle_recent() const { return bounce_guard_.recent(); }
 
 protected:
   void dropEvent(QDropEvent *event) override {
@@ -434,6 +444,31 @@ protected:
     QTableWidget::mousePressEvent(event);
   }
 
+  void mouseDoubleClickEvent(QMouseEvent *event) override {
+    const QModelIndex idx = indexAt(event->pos());
+    if (!idx.isValid())
+      return;
+    // Anti-bounce: a double-click landing within doubleClickInterval() of a
+    // checkbox toggle is the second half of an aim, not an open request.
+    if (bounce_guard_.recent())
+      return;
+    // A game-Data plugin owns no mod, so there is nothing to open or reveal.
+    const std::string owner = owner_of_row ? owner_of_row(idx.row()) : std::string();
+    if (owner.empty())
+      return;
+    // MO2 parity (pluginlist.cpp): Ctrl+Double-Click opens the OS file
+    // manager at the owning mod's folder. Consumed so the plain
+    // double-click (Mod Info) does not also fire - same split as the mod
+    // list (ModView::mouseDoubleClickEvent).
+    if (event->modifiers() & Qt::ControlModifier) {
+      if (on_reveal)
+        on_reveal(owner);
+      return;
+    }
+    if (on_mod_info)
+      on_mod_info(owner);
+  }
+
   void mouseReleaseEvent(QMouseEvent *event) override {
     if (event->button() == Qt::LeftButton && event->modifiers() == Qt::NoModifier &&
         press_was_selected_ && !press_on_check_) {
@@ -441,7 +476,22 @@ protected:
       event->accept();
       return;
     }
+    // Anti-bounce bookkeeping (Workspace-8fy, shared with ModView): note the
+    // time when this release actually flipped the enable checkbox, so the
+    // double-click that follows is swallowed. Programmatic toggles
+    // (set_plugins / sync_enabled) never pass through here.
+    const QModelIndex idx = indexAt(event->pos());
+    const bool watching = event->button() == Qt::LeftButton && idx.isValid() &&
+                          idx.column() == 0;
+    // Copy the state, never hold the QTableWidgetItem*: the toggle emits
+    // toggle_requested, and the controller behind it may rebuild the table
+    // and delete the item (use-after-free). Re-looked up after the base call.
+    const int row    = watching ? idx.row() : -1;
+    const int before = watching && item(row, 0) ? int(item(row, 0)->checkState()) : -1;
     QTableWidget::mouseReleaseEvent(event);
+    QTableWidgetItem *after_item = before >= 0 ? item(row, 0) : nullptr;
+    if (after_item && int(after_item->checkState()) != before)
+      bounce_guard_.arm();
   }
 
 private:
@@ -455,6 +505,7 @@ private:
 
   bool press_was_selected_ = false;
   bool press_on_check_     = false;
+  CheckboxBounceGuard bounce_guard_;
 };
 
 // --- PluginView -----------------------------------------------------------
@@ -489,6 +540,16 @@ PluginView::PluginView(QWidget *parent) : QWidget(parent) {
   table_->setDropIndicatorShown(true);
   table_->on_reorder = [this](int from, int to) {
     emit reorder_requested(from, to);
+  };
+  // Double-click routing (MO2 parity): plain opens the owning mod's Mod
+  // Info, Ctrl reveals the owning mod's folder. The table only reports the
+  // owner id; what to do with it belongs to the controller.
+  table_->owner_of_row = [this](int row) { return owner_mod_at(row); };
+  table_->on_mod_info = [this](const std::string &owner) {
+    emit mod_info_requested(owner);
+  };
+  table_->on_reveal = [this](const std::string &owner) {
+    emit reveal_requested(owner);
   };
   connect(table_, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *item) {
     if (syncing_ || !item || item->column() != 0)
@@ -532,10 +593,12 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
   syncing_ = true;
   table_->setRowCount(0);
   names_.clear();
+  owners_.clear();
   rows_locked_.clear();
   rows_force_loaded_.clear();
   rows_type_.clear();
   names_.reserve(plugins.size());
+  owners_.reserve(plugins.size());
   rows_locked_.reserve(plugins.size());
   rows_force_loaded_.reserve(plugins.size());
   rows_type_.reserve(plugins.size());
@@ -547,6 +610,7 @@ void PluginView::set_plugins(const std::vector<engine::GamePlugin> &plugins) {
   for (int i = 0; i < static_cast<int>(plugins.size()); ++i) {
     const auto &p = plugins[static_cast<size_t>(i)];
     names_.push_back(p.name);
+    owners_.push_back(p.owner_mod);
     rows_locked_.push_back(p.locked);
     rows_force_loaded_.push_back(p.force_loaded);
     if (p.is_medium_flagged) {
