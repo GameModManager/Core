@@ -24,6 +24,7 @@
 #include "ui/widgets/mod_list_model.h"
 
 #include <QApplication>
+#include <QByteArray>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QThread>
@@ -32,6 +33,7 @@
 #include <algorithm>
 #include <atomic>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <system_error>
 
@@ -95,26 +97,41 @@ std::filesystem::path make_instance(const std::filesystem::path &instances_root)
   return inst.info().root;
 }
 
+// Per-case Qt + isolation setup (was triplicated verbatim in each TEST_CASE):
+// unique scratch root, offscreen/XDG env before QApplication, org/app names,
+// and the dont_ask seed. Same statements in the same order - just DRY.
+// Env goes before the QApplication emplace (it is read at construction);
+// org/app + dont_ask go after (QCoreApplication must exist, and dont_ask is
+// the early-out for ensure_nxm_handler_default()'s modal NXM-handler box,
+// which would hang forever offscreen on the first processEvents pump).
+struct CaseSetup {
+  ScopedScratch scratch;
+  int test_argc      = 1;
+  char test_argv0[5] = "test";
+  char *test_argv[2] = {test_argv0, nullptr};
+  std::optional<QApplication> app;
+
+  CaseSetup() {
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    qputenv("XDG_CONFIG_HOME", QByteArray(scratch.config.string().c_str()));
+    qputenv("XDG_DATA_HOME", QByteArray(scratch.data.string().c_str()));
+    app.emplace(test_argc, test_argv);
+    QCoreApplication::setOrganizationName("GameModManager");
+    QCoreApplication::setApplicationName("GameModManager");
+    // set_game_info posts ensure_nxm_handler_default() via singleShot(0); it
+    // pops a modal NXM-handler QMessageBox inside the first processEvents
+    // (infinite hang offscreen). The "dont_ask" setting is its early-out -
+    // same choice a user makes with "Don't show".
+    Settings::instance().set_nxm_handler_check("dont_ask");
+  }
+};
+
 }  // namespace
 
 TEST_CASE("set_game_info with empty game dir keeps the UI alive", "[ui]") {
-  ScopedScratch scratch;
-  qputenv("QT_QPA_PLATFORM", "offscreen");
-  qputenv("XDG_CONFIG_HOME", QByteArray(scratch.config.string().c_str()));
-  qputenv("XDG_DATA_HOME", QByteArray(scratch.data.string().c_str()));
-  int test_argc     = 1;
-  char test_argv0[] = "test";
-  char *test_argv[] = {test_argv0, nullptr};
-  QApplication app(test_argc, test_argv);
-  QCoreApplication::setOrganizationName("GameModManager");
-  QCoreApplication::setApplicationName("GameModManager");
-  // set_game_info posts ensure_nxm_handler_default() via singleShot(0); it
-  // pops a modal NXM-handler QMessageBox inside the first processEvents
-  // (infinite hang offscreen). The "dont_ask" setting is its early-out -
-  // same choice a user makes with "Don't show".
-  Settings::instance().set_nxm_handler_check("dont_ask");
+  CaseSetup setup;
 
-  const auto root = make_instance(scratch.instances);
+  const auto root = make_instance(setup.scratch.instances);
 
   ui::MainWindow w;
   engine::GameKnowledge knowledge;
@@ -133,28 +150,14 @@ TEST_CASE("set_game_info with empty game dir keeps the UI alive", "[ui]") {
   CHECK(std::filesystem::is_directory(root / "profiles" / "Default"));
 
   // A later load WITH a game dir hides the banner again.
-  w.set_game_info("testgame", "Test Game", "", scratch.root / "game", root);
+  w.set_game_info("testgame", "Test Game", "", setup.scratch.root / "game", root);
   CHECK_FALSE(banner->isVisible());
 }
 
 TEST_CASE("instance-owned mod ops work without a game dir", "[ui]") {
-  ScopedScratch scratch;
-  qputenv("QT_QPA_PLATFORM", "offscreen");
-  qputenv("XDG_CONFIG_HOME", QByteArray(scratch.config.string().c_str()));
-  qputenv("XDG_DATA_HOME", QByteArray(scratch.data.string().c_str()));
-  int test_argc     = 1;
-  char test_argv0[] = "test";
-  char *test_argv[] = {test_argv0, nullptr};
-  QApplication app(test_argc, test_argv);
-  QCoreApplication::setOrganizationName("GameModManager");
-  QCoreApplication::setApplicationName("GameModManager");
-  // set_game_info posts ensure_nxm_handler_default() via singleShot(0); it
-  // pops a modal NXM-handler QMessageBox inside the first processEvents
-  // (infinite hang offscreen). The "dont_ask" setting is its early-out -
-  // same choice a user makes with "Don't show".
-  Settings::instance().set_nxm_handler_check("dont_ask");
+  CaseSetup setup;
 
-  const auto root = make_instance(scratch.instances);
+  const auto root = make_instance(setup.scratch.instances);
   const auto mods_dir =
       engine::Instance::from_root(root).path_for(engine::InstanceKind::Mods);
 
@@ -212,23 +215,9 @@ TEST_CASE("instance-owned mod ops work without a game dir", "[ui]") {
 // runs against the instance mods dir (ModScanWorker swaps it in when
 // game_dir is empty), so a mod folder seeded there shows up.
 TEST_CASE("mod list loads from instance mods dir without a game dir", "[ui]") {
-  ScopedScratch scratch;
-  qputenv("QT_QPA_PLATFORM", "offscreen");
-  qputenv("XDG_CONFIG_HOME", QByteArray(scratch.config.string().c_str()));
-  qputenv("XDG_DATA_HOME", QByteArray(scratch.data.string().c_str()));
-  int test_argc     = 1;
-  char test_argv0[] = "test";
-  char *test_argv[] = {test_argv0, nullptr};
-  QApplication app(test_argc, test_argv);
-  QCoreApplication::setOrganizationName("GameModManager");
-  QCoreApplication::setApplicationName("GameModManager");
-  // set_game_info posts ensure_nxm_handler_default() via singleShot(0); it
-  // pops a modal NXM-handler QMessageBox inside the first processEvents
-  // (infinite hang offscreen). The "dont_ask" setting is its early-out -
-  // same choice a user makes with "Don't show".
-  Settings::instance().set_nxm_handler_check("dont_ask");
+  CaseSetup setup;
 
-  const auto root = make_instance(scratch.instances);
+  const auto root = make_instance(setup.scratch.instances);
   const auto mods_dir =
       engine::Instance::from_root(root).path_for(engine::InstanceKind::Mods);
 
