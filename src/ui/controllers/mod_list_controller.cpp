@@ -1095,8 +1095,18 @@ void ModListController::sync_priorities() {
   auto mods_dir     = w_->mods_dir_path();
   auto mods_subpath = w_->knowledge_->get(w_->current_game_id_, "mods_subpath", "");
 
-  auto &mods = w_->mod_model_->mods();
-  for (int i = 0; i < mods.size(); ++i) {
+  // Workspace-fr71: an iteration must be about ONE row. The kModMoved
+  // dispatch below can reach a plugin handler that adds/removes/rebuilds the
+  // model, and the two writes an iteration performs (in-folder meta.ini here,
+  // game-native metadata after the dispatch) must not land on two different
+  // mods. So the row is copied out of the model once, up front, and nothing
+  // holds a reference into the model across the dispatch. ModEntry is
+  // implicitly shared (QString/QVector members), so the copy is a handful of
+  // refcount bumps next to the stat() + meta.ini read this loop already does
+  // per row. The loop bound stays a live read: a model that shrinks mid-loop
+  // (a plugin removed a row) just ends the loop earlier.
+  for (int i = 0; i < w_->mod_model_->mods().size(); ++i) {
+    const ModEntry mod = w_->mod_model_->mods()[i];
     // Persist priority to the mod's in-folder meta.ini. Phantom rows
     // (Overwrite/MERGED/game-native) have no folder under mods_dir - saving
     // for them would mkdir mods/{id}/ and the next scan would list it as a
@@ -1104,20 +1114,22 @@ void ModListController::sync_priorities() {
     // The is_directory check is belt-and-braces for future row kinds.
     std::error_code dir_ec;
     const bool persistable =
-        !mods_dir.empty() && !is_phantom_row(mods[i]) &&
-        std::filesystem::is_directory(mods_dir / mods[i].id.toStdString(), dir_ec);
+        !mods_dir.empty() && !is_phantom_row(mod) &&
+        std::filesystem::is_directory(mods_dir / mod.id.toStdString(), dir_ec);
     if (persistable) {
-      auto meta        = engine::ModMeta::load(mods_dir, mods[i].id.toStdString());
+      auto meta        = engine::ModMeta::load(mods_dir, mod.id.toStdString());
       int old_priority = meta.priority();
       if (old_priority != i) {
         meta.set_priority(i);
-        meta.save(mods_dir, mods[i].id.toStdString());
+        meta.save(mods_dir, mod.id.toStdString());
         // P1.3 event bus: mirror MO2 onModMoved - fired only for real
-        // moves, on the UI thread, after the priority persisted.
-        if (old_priority >= 0 && !mods[i].is_overwrite && !mods[i].is_separator) {
+        // moves, on the UI thread, after the priority persisted. Kept here
+        // on purpose: per-row and between the two writes, so a plugin sees
+        // the event after the in-folder meta.ini is already on disk.
+        if (old_priority >= 0 && !mod.is_overwrite && !mod.is_separator) {
           engine::EventBus::instance().dispatch(
               engine::events::kModMoved, engine::json_obj({
-                                             {"mod", mods[i].id.toStdString()},
+                                             {"mod", mod.id.toStdString()},
                                              {"from", std::to_string(old_priority)},
                                              {"to", std::to_string(i)},
                                          }));
@@ -1131,19 +1143,19 @@ void ModListController::sync_priorities() {
     // above and read load order from their plugins.txt / order encoding.
     // is_phantom_row covers Overwrite and MERGED (both pseudo-rows have no
     // folder, so set_priority would only ever fail + log on them).
-    if (!is_phantom_row(mods[i]) && !mods[i].is_separator && !mods_subpath.empty()) {
+    if (!is_phantom_row(mod) && !mod.is_separator && !mods_subpath.empty()) {
       auto metadata_file =
           w_->knowledge_->get(w_->current_game_id_, "metadata_file", "meta.ini");
       if (!metadata_file.empty() && metadata_file != "meta.ini") {
-        auto mod_folder = w_->resolve_mod_folder(mods[i].id.toStdString(), mods_subpath,
-                                                 mods[i].content_dir.toStdString());
+        auto mod_folder = w_->resolve_mod_folder(mod.id.toStdString(), mods_subpath,
+                                                 mod.content_dir.toStdString());
         // Checked, not (void): a discarded false here is what turned the
         // missing content_dir into a two-week silent regression (Workspace-8tqw).
         // Name the folder we tried so the log points at the right tree.
         if (!engine::ModScanner::set_priority(*w_->knowledge_, w_->current_game_id_,
                                               mod_folder, i)) {
           engine::Logger::instance().warn("Sort order not written for '" +
-                                          mods[i].id.toStdString() + "': no " +
+                                          mod.id.toStdString() + "': no " +
                                           metadata_file + " in " + mod_folder.string());
         }
       }
