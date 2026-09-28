@@ -3031,3 +3031,150 @@ TEST_CASE("mod list column visibility round-trips by name", "[ui][mo2-parity]") 
   s.ensure_modlist_column_defaults("FreshInstance");
   CHECK(s.modlist_hidden_columns("FreshInstance").isEmpty());
 }
+
+// Cell hover text (Qt::ToolTipRole), MO2 verbatim where the data exists.
+//
+// Header text and cell text are different things and both have to survive:
+// header_tooltips() describes the column, data() the cell. The version cell
+// deliberately stays empty - MO2's version tooltip only carries a newest
+// version, a downgrade warning, a Nexus file status and a next-check
+// cooldown, and this build tracks none of them, so there is nothing honest
+// to add to the version already shown in the cell.
+TEST_CASE("mod list cell tooltips match MO2", "[ui][mo2-parity]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_mod_list_tooltips/config";
+  std::filesystem::remove_all("/tmp/gmm_mod_list_tooltips");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int         argc   = 1;
+  char        arg0[] = "test";
+  char       *argv[] = {arg0, nullptr};
+  QApplication app(argc, argv);
+
+  ui::ModList model;
+  model.add_mod(QStringLiteral("Wins"), QStringLiteral("Wins Mod"),
+                QStringLiteral("1.0"));
+  model.add_mod(QStringLiteral("Loses"), QStringLiteral("Loses Mod"),
+                QStringLiteral("1.0"));
+  model.add_mod(QStringLiteral("Mixed"), QStringLiteral("Mixed Mod"),
+                QStringLiteral("1.0"));
+  model.add_mod(QStringLiteral("Redundant"), QStringLiteral("Redundant Mod"),
+                QStringLiteral("1.0"));
+  model.add_mod(QStringLiteral("Clean"), QStringLiteral("Clean Mod"),
+                QStringLiteral("2.0"), 10);
+  model.add_mod(QStringLiteral("Categorised"), QStringLiteral("Categorised Mod"),
+                QStringLiteral("1.0"));
+  model.add_mod(QStringLiteral("Ghost"), QStringLiteral("Ghost Mod"),
+                QStringLiteral("1.0"));
+  model.add_mod(QStringLiteral("Hidden"), QStringLiteral("Hidden Files Mod"),
+                QStringLiteral("1.0"));
+  model.add_mod(QStringLiteral("Mirror"), QStringLiteral("Mirror Mod"),
+                QStringLiteral("1.0"));
+  model.add_mod(QStringLiteral("MirrorGone"), QStringLiteral("Mirror Gone Mod"),
+                QStringLiteral("1.0"));
+  model.add_separator(QStringLiteral("Sep"), QStringLiteral("Audio"),
+                      QStringLiteral("blue"));
+
+  // std::string throughout: a QString comparison in a failure prints "{?}"
+  // instead of the text, which is exactly what these assertions are about.
+  auto tip = [&model](const char *id, int column) {
+    return model.data(model.index(row_with_id(model, id), column), Qt::ToolTipRole)
+        .toString()
+        .toStdString();
+  };
+
+  // --- Conflicts: MO2's four reachable loose-file flags, verbatim. The
+  // conflict engine counts colliding loose files, which is what these
+  // strings describe. The archive variants have no counterpart here.
+  model.set_conflict_stats(QStringLiteral("Wins"), 3, 0);
+  model.set_conflict_stats(QStringLiteral("Loses"), 0, 2);
+  model.set_conflict_stats(QStringLiteral("Mixed"), 1, 4);
+  // Redundant wins every file, so it also has losses: MO2's switch is
+  // exclusive and "Redundant" must win over the mixed string.
+  model.set_conflict_stats(QStringLiteral("Redundant"), 5, 5);
+  model.set_conflict_redundant(QStringLiteral("Redundant"), true);
+
+  CHECK(tip("Wins", ui::ModList::Conflicts) == "Overwrites loose files");
+  CHECK(tip("Loses", ui::ModList::Conflicts) == "Overwritten loose files");
+  CHECK(tip("Mixed", ui::ModList::Conflicts) ==
+        "Loose files Overwrites & Overwritten");
+  CHECK(tip("Redundant", ui::ModList::Conflicts) == "Redundant");
+  // No conflict at all: no tooltip, and none of the four strings leaks in.
+  CHECK(tip("Clean", ui::ModList::Conflicts).empty());
+
+  // --- Name: MO2's getDescription() is the invalid-data sentence or the
+  // category list; it is never a text description.
+  model.set_invalid_data(QStringLiteral("Ghost"), true);
+  CHECK(tip("Ghost", ui::ModList::Name) ==
+        "Ghost Mod contains no esp/esm/esl and no asset (textures, meshes, "
+        "interface, ...) directory");
+  // A mod with no categories has no description either way.
+  CHECK(tip("Clean", ui::ModList::Name).empty());
+
+  // --- Category: "Categories: " plus every name, " , " apart. The Category
+  // column itself still shows only the primary.
+  model.set_category(QStringLiteral("Categorised"), QStringLiteral("Combat"));
+  model.set_category_names(QStringLiteral("Categorised"),
+                           {QStringLiteral("Combat"), QStringLiteral("Weapons"),
+                            QStringLiteral("Magic")});
+  CHECK(tip("Categorised", ui::ModList::Category) ==
+        "Categories: Combat , Weapons , Magic");
+  // MO2 puts the same list on the Name cell, so both cells carry it.
+  CHECK(tip("Categorised", ui::ModList::Name) ==
+        "Categories: Combat , Weapons , Magic");
+  CHECK(tip("Clean", ui::ModList::Category).empty());
+  // The column text is unaffected by the tooltip list.
+  const QVariant cat_display =
+      model.data(model.index(row_with_id(model, "Categorised"),
+                             ui::ModList::Category),
+                 Qt::DisplayRole);
+  CHECK(cat_display.toString().toStdString() == "Combat");
+
+  // --- Flags: MO2's texts, in getFlags() order.
+  model.set_hidden_files(QStringLiteral("Hidden"), true);
+  CHECK(tip("Hidden", ui::ModList::Flags) == "Contains hidden files");
+  model.set_mirror_info(QStringLiteral("Mirror"), true, false,
+                        QStringLiteral("/games/skyrim"));
+  CHECK(tip("Mirror", ui::ModList::Flags) == "Backup");
+  model.set_mirror_info(QStringLiteral("MirrorGone"), true, true,
+                        QStringLiteral("/games/skyrim"));
+  CHECK(tip("MirrorGone", ui::ModList::Flags) ==
+        "Backup\nSource location for this mod is no longer on disk. Backup "
+        "files still on disk.");
+  CHECK(tip("Ghost", ui::ModList::Flags) == "No valid game data");
+  CHECK(tip("Clean", ui::ModList::Flags).empty());
+
+  // --- Separator: MO2 ModInfoSeparator::getDescription() on the Name cell,
+  // getFlagText(FLAG_SEPARATOR) on the Flags cell.
+  CHECK(tip("Sep", ui::ModList::Name) == "This is a Separator");
+  CHECK(tip("Sep", ui::ModList::Flags) == "Separator");
+  // The cells the row actually holds still say what they are.
+  CHECK(tip("Sep", ui::ModList::Version) == "Audio");
+
+  // --- Version: empty, because there is no newest version to add to it.
+  CHECK(tip("Wins", ui::ModList::Version).empty());
+  CHECK(!model.data(model.index(row_with_id(model, "Wins"), ui::ModList::Version),
+                    Qt::ToolTipRole)
+             .isValid());
+
+  // --- Columns MO2 gives no cell tooltip at all (Installation, Priority,
+  // Nexus ID, Content) stay empty. Source keeps our vendor-name tooltip.
+  for (int c : {ui::ModList::Installation, ui::ModList::Changed,
+                ui::ModList::Priority, ui::ModList::SourceId,
+                ui::ModList::Source, ui::ModList::Fold})
+    CHECK(tip("Wins", c).empty());
+  model.set_source_info(QStringLiteral("Wins"), QStringLiteral("nexusmods"),
+                        QStringLiteral("12345"));
+  CHECK(tip("Wins", ui::ModList::Source) == "nexusmods");
+
+  // --- The header text is untouched by any of the above, and no cell text
+  // collides with it: both mechanisms are live at once.
+  const QStringList headers = ui::ModList::header_tooltips();
+  CHECK(headers.size() == ui::ModList::ColumnCount);
+  CHECK(headers.at(ui::ModList::Name).toStdString() == "Name of your mods");
+  CHECK(tip("Clean", ui::ModList::Name) !=
+        headers.at(ui::ModList::Name).toStdString());
+  CHECK(tip("Sep", ui::ModList::Flags) !=
+        headers.at(ui::ModList::Flags).toStdString());
+}
+

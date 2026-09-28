@@ -65,6 +65,11 @@ struct ModEntry {
   // [General] category CSV primary, else [Nexusmods] nexuscategory). Empty
   // when unresolvable.
   QString category;
+  // Every category NAME on the mod, resolved from the same CSV, primary
+  // first. `category` is the single name the column shows; the list is what
+  // the cell tooltip prints (a header saying "Categories:" followed by one
+  // name would read as a truncated list). Empty when the mod has none.
+  QStringList category_names;
   // Category ids from the mod's meta.ini [General] "category" CSV (primary
   // first), used by the category filter panel. Empty when the mod has no
   // categories assigned (or only a Nexus mapping, which contributes the
@@ -161,6 +166,32 @@ public:
   // Empty for Fold, which is locked visible.
   [[nodiscard]] static QString column_name(int column);
 
+  // Per-CELL hover text (Qt::ToolTipRole, data() below), MO2 verbatim where
+  // the underlying data exists and absent where it does not:
+  //
+  //   Name       an invalid mod says so ("<name> contains no esp/esm/esl and
+  //              no asset ... directory", MO2 ModInfoRegular::getDescription);
+  //              a valid one lists its categories, because MO2's
+  //              getDescription() returns the category list, not a text
+  //              description. A separator says "This is a Separator".
+  //   Conflicts  the four loose-file conflict flags MO2's conflict engine
+  //              can reach (Redundant / overwrites / overwritten / mixed).
+  //   Flags      "Contains hidden files", "Backup" (a mirrored mod), "No
+  //              valid data", "Separator", plus the badge lines with no MO2
+  //              counterpart (no-metadata, empty, FOMOD, root override, tags,
+  //              mirror source gone).
+  //   Category   "Categories: " followed by every category name, " , " apart.
+  //
+  // MO2 text this build cannot back is deliberately NOT emitted: the Version
+  // cell stays empty (MO2's version tooltip only carries content beyond the
+  // installed version we track - a newest version, a downgrade warning, a
+  // Nexus file status and a next-check cooldown, none of which this model
+  // has), and no endorsement, website-tracking, notes or alternate-game text
+  // is emitted because there is no such state.
+  //
+  // Cell text and column text are separate mechanisms and both are live:
+  // data() describes the CELL, the two functions below the COLUMN.
+
   // Per-column hover text, indexed by column and always ColumnCount long.
   // MO2's wording is used verbatim for every column MO2 has (modlist.cpp
   // ModList::getColumnToolTip); the two columns MO2 lacks keep our own.
@@ -255,6 +286,11 @@ public:
   // Category name for the Category column (resolved by the window layer from
   // the instance's category DB; the model just stores the display string).
   void set_category(const QString &id, const QString &category);
+  // Every category name on the mod (primary first), resolved from the same
+  // [General] "category" CSV against the instance's category DB. Drives the
+  // cell tooltip only; the Category column still shows the single primary
+  // name set by set_category().
+  void set_category_names(const QString &id, const QStringList &names);
   // Category ids for the category filter panel (the full [General] "category"
   // CSV, primary first). The model stores them for the filter; the Category
   // column display is unaffected.
@@ -380,6 +416,10 @@ private:
   // when a caller inserted the rows themselves.
   void pin_pinned_rows();
   [[nodiscard]] QString compute_separator_flags(int row) const;
+  // "Categories: " + every category name, " , " apart (MO2's COL_CATEGORY
+  // cell tooltip). Empty when the mod has no categories, which is what MO2
+  // returns for an uncategorized mod.
+  [[nodiscard]] static QString category_tooltip(const ModEntry &mod);
   // Conflict-highlight color for a mod id: red (modlist_overwriting_loose)
   // when some selected mod loses to it, green (modlist_overwritten_loose)
   // when some selected mod wins over it, invalid otherwise. Red wins over
