@@ -216,6 +216,15 @@ private slots:
 
 private:
   void update_title();
+  // MO2 setFilterShortcuts (references/modorganizer/src/mainwindow.cpp:204-232):
+  // Ctrl+F focuses + selects the active filter input, Escape clears it.
+  // One window-scoped pair for both bars - the right-panel bar is the target
+  // while it holds focus, the mod-list bar otherwise. Registered after
+  // setup_mod_list() and RightPanel's construction, which is where both bars
+  // come into existence.
+  void setup_filter_shortcuts();
+  void focus_active_filter();
+  void clear_active_filter();
 
   // --- Shared state owned by the composer, used by the controllers ---
   AppMenuBar *menu_bar_     = nullptr;

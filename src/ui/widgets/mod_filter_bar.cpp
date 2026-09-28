@@ -26,9 +26,10 @@ ModFilterBar::ModFilterBar(QWidget *parent) : QWidget(parent) {
     emit category_panel_toggled(on);
   });
 
-  // Filter text input
+  // Filter text input. The placeholder is MO2's plain "Filter"
+  // (references/modorganizer/src/mainwindow.ui:584) - not "Filter...".
   filter_edit_ = new QLineEdit(this);
-  filter_edit_->setPlaceholderText(tr("Filter..."));
+  filter_edit_->setPlaceholderText(tr("Filter"));
   filter_edit_->setClearButtonEnabled(true);
   layout->addWidget(filter_edit_, 1);
 
@@ -51,6 +52,22 @@ ModFilterBar::ModFilterBar(QWidget *parent) : QWidget(parent) {
 
 QString ModFilterBar::filter_text() const {
   return filter_edit_->text();
+}
+
+void ModFilterBar::focus_filter() {
+  filter_edit_->setFocus();
+  filter_edit_->selectAll();
+}
+
+bool ModFilterBar::clear_filter() {
+  if (filter_edit_->text().isEmpty())
+    return false;
+  filter_edit_->clear();
+  return true;
+}
+
+bool ModFilterBar::filter_has_focus() const {
+  return filter_edit_->hasFocus();
 }
 
 QString ModFilterBar::current_group() const {

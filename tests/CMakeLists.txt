@@ -599,6 +599,16 @@ gmm_catch2_test(main_window_harness_test ui/main_window_harness_test.cpp
     UI
     LIBS gmm_ui Qt6::Test PkgConfig::ZLIB)
 
+# Workspace-sds7: filter-bar MO2 parity - the "Filter" placeholder plus the
+# Ctrl+F focus / Escape clear pair. Drives the REAL MainWindow offscreen and
+# sends the keys with QTest, so the check covers Qt actually routing them to
+# the window shortcuts (not a direct handler call). No game, no instance, no
+# files; rows go straight into the model so the clear path is observable
+# through row visibility.
+gmm_catch2_test(filter_shortcuts_test ui/filter_shortcuts_test.cpp
+    UI
+    LIBS gmm_ui Qt6::Test)
+
 # ---------------------------------------------------------------------------
 # LD_PRELOAD intercept smoke tests — Linux-only, C (plain executables, not
 # Catch2 — they are C and test the interposer shared libraries directly)

@@ -16,6 +16,15 @@ public:
   [[nodiscard]] QString filter_text() const;
   [[nodiscard]] QString current_group() const;
 
+  // Ctrl+F / Escape pair, MO2 setFilterShortcuts
+  // (references/modorganizer/src/mainwindow.cpp:204-232). The window owns
+  // the shortcuts; the bar owns what they do.
+  void focus_filter();
+  // Clears the text (fires filter_changed). False when it was already empty,
+  // so a no-op stays a no-op instead of stealing focus for nothing.
+  bool clear_filter();
+  [[nodiscard]] bool filter_has_focus() const;
+
 signals:
   void filter_changed(const QString &text);
   void group_changed(const QString &group);
