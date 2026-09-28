@@ -6,13 +6,16 @@
 // support URL), Chat on Discord, Report Issue, Tutorials, About, About Qt -
 // one level deep throughout, with Tutorials the only submenu. GMM folds
 // Documentation, Report Issue, About and About Qt under a More submenu, which
-// MO2 has no equivalent of: this is a deliberate difference, not parity. The
-// Tutorials entries come from tutorials/*.js "//TL" headers sorted by their
-// order value (First Steps / Conflict Resolution / Overview); nothing ships
-// them yet, so the submenu stands empty, as MO2's does when its directory is
-// empty. GMM has no Discord presence, so that entry is dropped rather than
-// left disabled, and the two link entries point at this repo instead of
-// MO2's.
+// MO2 has no equivalent of: this is a deliberate difference, not parity. GMM
+// has no Discord presence, so that entry is dropped rather than left disabled,
+// and the two link entries point at this repo instead of MO2's.
+//
+// Two entries are gated on content this build does not carry. Game Support
+// Wiki waits for a game support URL, and Tutorials waits for a tutorial to
+// open; both are absent from the menu rather than offered and inert. MO2 shows
+// Tutorials because MO2 ships the tutorials/*.js files the submenu is built
+// from, so matching its enabled state without the content behind it would
+// advertise something that is not there.
 //
 // Shortcuts - the eight MO2 binds, read straight out of mainwindow.ui:
 //   Ctrl+M Install Mod   Ctrl+P Profiles    Ctrl+E Executables  Ctrl+I Tool Plugins
@@ -60,11 +63,12 @@ std::vector<std::string> menu_entries(const QMenu *menu) {
   return out;
 }
 
-// The Help menu bar's own entries, in order. Game Support Wiki is not here: it
-// is gated on a game support URL and none exists, so it is asserted on its own
-// below rather than padding the list with an entry nobody can see.
+// The Help menu bar's own entries, in order. Neither Game Support Wiki nor
+// Tutorials is here: both are gated on content that does not ship, so they are
+// asserted on their own below rather than padding the list with entries
+// nobody can see.
 const std::vector<std::string> kHelpTopLevel = {
-    "Help on UI", "More", "Tutorials", "Instance Statistics...", "Debug Panel"};
+    "Help on UI", "More", "Instance Statistics...", "Debug Panel"};
 
 // What More folds one level down, in order. No separators inside it.
 const std::vector<std::string> kMoreOrder = {
@@ -169,8 +173,8 @@ TEST_CASE("Help menu carries its own tree", "[ui][menu][parity]") {
   }
 
   SECTION("the separator splits the help block from the GMM-only entries") {
-    // Help on UI / More / Tutorials above it, Instance Statistics and Debug
-    // Panel below: the split position, not just the presence of a separator.
+    // Help on UI / More above it, Instance Statistics and Debug Panel below:
+    // the split position, not just the presence of a separator.
     const auto actions = help->actions();
     const auto sep =
         std::find_if(actions.begin(), actions.end(),
@@ -179,7 +183,7 @@ TEST_CASE("Help menu carries its own tree", "[ui][menu][parity]") {
     const auto above = std::count_if(actions.begin(), sep, [](const QAction *act) {
       return !act->isSeparator() && act->isVisible();
     });
-    CHECK(above == 3);
+    CHECK(above == 2);
     CHECK(std::count_if(sep, actions.end(), [](const QAction *act) {
             return !act->isSeparator() && act->isVisible();
           }) == 2);
@@ -192,14 +196,16 @@ TEST_CASE("Help menu carries its own tree", "[ui][menu][parity]") {
     CHECK(act->isEnabled());
   }
 
-  SECTION("Tutorials is a submenu that stands empty, as MO2's does") {
+  SECTION("Tutorials stays out of the menu until there is a tutorial to open") {
     auto *act = find_action(help, "Tutorials");
     REQUIRE(act != nullptr);
     REQUIRE(act->menu() != nullptr);
-    // MO2 adds the submenu and never disables it
-    // (mainwindow.cpp:1119-1160); an empty one is how it says nothing ships.
-    CHECK(act->isEnabled());
-    CHECK(act->menu()->actions().empty());
+    // No tutorial content ships, so the submenu is not offered at all. An
+    // entry that opens onto nothing advertises something the build cannot
+    // deliver; the menu keeps the slot and hides it until content arrives.
+    CHECK_FALSE(act->isVisible());
+    const auto visible = menu_entries(help);
+    CHECK(find(visible.begin(), visible.end(), "Tutorials") == visible.end());
   }
 
   SECTION("Game Support Wiki is hidden until the game carries a support URL") {

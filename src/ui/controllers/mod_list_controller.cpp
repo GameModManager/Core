@@ -663,6 +663,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   // look (same as the plugins-tab counter); colors come from the palette.
   w_->mod_count_enabled_ = new QLCDNumber(w_);
   w_->mod_count_enabled_->setObjectName("mo2CounterLabel");
+  w_->mod_count_enabled_->setWhatsThis(tr("The number of mods enabled in this instance."));
   w_->mod_count_enabled_->setDigitCount(4);
   w_->mod_count_enabled_->setSegmentStyle(QLCDNumber::Flat);
   // Flat segments using QPalette text color for clear contrast on any theme.

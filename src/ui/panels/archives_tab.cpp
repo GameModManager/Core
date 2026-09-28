@@ -12,6 +12,8 @@ ArchivesTab::ArchivesTab(QWidget *parent) : QWidget(parent) {
   auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
   tree_ = new QTreeWidget(this);
+  tree_->setWhatsThis(
+      tr("The archives this instance draws files from, and what is inside them."));
   tree_->setColumnCount(1);
   tree_->setHeaderHidden(true);
   tree_->setRootIsDecorated(false);

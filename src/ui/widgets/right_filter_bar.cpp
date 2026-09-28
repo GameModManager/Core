@@ -13,6 +13,9 @@ RightFilterBar::RightFilterBar(QWidget *parent) : QWidget(parent) {
   layout->setContentsMargins(4, 2, 4, 2);
   layout->setSpacing(4);
 
+  setWhatsThis(tr("Filter whatever list the current tab is showing. \"Sort\" "
+                  "reorders the plugins on the Plugins tab using LOOT."));
+
   // MO2's right-hand lists use the same plain "Filter" placeholder as the
   // mod list (references/modorganizer/src/mainwindow.ui:997).
   filter_edit_ = new QLineEdit(this);
