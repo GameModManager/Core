@@ -72,6 +72,32 @@ static bool wait_for(const std::function<bool()> &pred, int timeout_ms = 5000) {
   return pred();
 }
 
+// One QApplication for the whole process, not one per TEST_CASE. Chromium's
+// default QWebEngineProfile (built lazily by the first Nexus panel via
+// create_description_renderer) is a process-wide singleton that outlives a
+// stack-local QApplication; once its internals are initialized, the next
+// case's QWebEnginePage construction dereferences state owned by the
+// destroyed first app and SEGVs inside libQt6WebEngineCore. Catch2 runs all
+// three cases in one binary, so the app must live as long as the process -
+// same pattern description_browser_test already uses. Heap-allocated and
+// intentionally never deleted: destroying it during exit() crashes in
+// ~QApplication -> qt_call_post_routines once Chromium's globals are
+// already torn down. LSan does not report it - QCoreApplication::self
+// (a global in libQt6Widgets) keeps it reachable.
+static QApplication &shared_app() {
+  static int argc     = 1;
+  static char argv0[] = "source_tab_test";
+  static char *argv[] = {argv0, nullptr};
+  // Offscreen tests never render to a real surface, so keep Chromium's
+  // GPU/Vulkan stack out entirely: with the app kept alive to exit, the
+  // GPU thread outlives the test and calls vkCreateInstance during process
+  // teardown, which crashes inside system Vulkan layers (MangoHud on this
+  // machine). Must be set before the first QWebEnginePage/profile is built.
+  qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu --disable-features=Vulkan");
+  static QApplication *app = new QApplication(argc, argv);
+  return *app;
+}
+
 static ui::ModInfoData make_data(const std::string &id,
                                  std::function<engine::ModInfoResult()> fetch,
                                  const std::filesystem::path &mods_dir) {
@@ -122,10 +148,7 @@ TEST_CASE("source tab", "[ui]") {
   std::filesystem::remove_all("/tmp/gmm_source_tab");
   std::filesystem::create_directories(cfg);
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
-  int test_argc     = 1;
-  char test_argv0[] = "test";
-  char *test_argv[] = {test_argv0, nullptr};
-  QApplication app(test_argc, test_argv);
+  shared_app();  // process-lifetime QApplication (see above)
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
 
@@ -255,6 +278,7 @@ TEST_CASE("source tab", "[ui]") {
     });
     check(landed, "second refresh supersedes the first (stale result dropped)");
     check(on_worker, "superseded fetch also ran on the worker thread");
+    INFO("calls=" << calls.load());
     check(calls == 2, "coalesced: exactly two fetches, no third");
     check(
         engine::ModMeta::load(mods_dir, "ModB").get("Nexusmods", "nexusdescription") ==
@@ -301,10 +325,7 @@ TEST_CASE("source tab has_data and single source", "[ui]") {
   std::filesystem::remove_all("/tmp/gmm_source_tab_union");
   std::filesystem::create_directories(cfg);
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
-  int test_argc     = 1;
-  char test_argv0[] = "test";
-  char *test_argv[] = {test_argv0, nullptr};
-  QApplication app(test_argc, test_argv);
+  shared_app();  // process-lifetime QApplication (see above)
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
 
@@ -439,10 +460,7 @@ TEST_CASE("source tab add source flow", "[ui]") {
   std::filesystem::remove_all("/tmp/gmm_source_tab_add");
   std::filesystem::create_directories(cfg);
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
-  int test_argc     = 1;
-  char test_argv0[] = "test";
-  char *test_argv[] = {test_argv0, nullptr};
-  QApplication app(test_argc, test_argv);
+  shared_app();  // process-lifetime QApplication (see above)
   QCoreApplication::setOrganizationName("GameModManager");
   QCoreApplication::setApplicationName("GameModManager");
 
