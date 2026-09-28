@@ -511,6 +511,24 @@ gmm_catch2_test(settings_reset_choices_test ui/settings_reset_choices_test.cpp
     UI
     LIBS gmm_ui)
 
+# Workspace-2zm: QSettings isolation. Two halves of the same proof.
+#   qsettings_sandbox_test       - the production QSettings expression, as built
+#     by the shared runner, lands in a temp ini and cannot touch the user's
+#     real config.
+#   qsettings_native_format_test - the same expression with the sandbox opted
+#     out (GMM_TEST_NATIVE_QSETTINGS=1) is NativeFormat and resolves to the
+#     exact file the old (org, app) ctor used. Compare PATHS only; QSettings is
+#     lazy, so neither test reads or writes the user's store.
+# Both are non-UI (no widget, no event loop). The native one uses
+# ENVIRONMENT_MODIFICATION, not ENVIRONMENT, so the TZ=UTC entry from
+# gmm_catch2_test keeps working (see the semicolon note above).
+gmm_catch2_test(qsettings_sandbox_test ui/qsettings_sandbox_test.cpp
+    LIBS gmm_ui Qt6::Core)
+
+gmm_catch2_test(qsettings_native_format_test ui/qsettings_native_format_test.cpp
+    LIBS Qt6::Core
+    PROPERTIES ENVIRONMENT_MODIFICATION "GMM_TEST_NATIVE_QSETTINGS=set:1")
+
 gmm_catch2_test(remove_mods_dialog_test ui/remove_mods_dialog_test.cpp
     UI
     LIBS gmm_ui
