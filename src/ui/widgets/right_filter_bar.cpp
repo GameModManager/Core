@@ -13,8 +13,10 @@ RightFilterBar::RightFilterBar(QWidget *parent) : QWidget(parent) {
   layout->setContentsMargins(4, 2, 4, 2);
   layout->setSpacing(4);
 
+  // MO2's right-hand lists use the same plain "Filter" placeholder as the
+  // mod list (references/modorganizer/src/mainwindow.ui:997).
   filter_edit_ = new QLineEdit(this);
-  filter_edit_->setPlaceholderText(tr("Filter..."));
+  filter_edit_->setPlaceholderText(tr("Filter"));
   filter_edit_->setClearButtonEnabled(true);
   layout->addWidget(filter_edit_, 1);
 
@@ -35,6 +37,22 @@ void RightFilterBar::set_sort_visible(bool visible) {
 
 QString RightFilterBar::filter_text() const {
   return filter_edit_->text();
+}
+
+void RightFilterBar::focus_filter() {
+  filter_edit_->setFocus();
+  filter_edit_->selectAll();
+}
+
+bool RightFilterBar::clear_filter() {
+  if (filter_edit_->text().isEmpty())
+    return false;
+  filter_edit_->clear();
+  return true;
+}
+
+bool RightFilterBar::filter_has_focus() const {
+  return filter_edit_->hasFocus();
 }
 
 void RightFilterBar::apply_to(QTableWidget *table) const {
