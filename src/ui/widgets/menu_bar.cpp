@@ -27,7 +27,6 @@ void AppMenuBar::build_file_menu() {
   auto *menu = addMenu(tr("&File"));
 
   auto *new_inst = menu->addAction(tr("New Instance..."));
-  new_inst->setShortcut(QKeySequence::New);
   connect(new_inst, &QAction::triggered, this, &AppMenuBar::new_instance_requested);
 
   auto *open_inst = menu->addAction(tr("Open Instance..."));
@@ -59,6 +58,14 @@ void AppMenuBar::build_file_menu() {
   connect(export_modpack, &QAction::triggered, this,
           &AppMenuBar::export_modpack_requested);
 
+  // MO2's Ctrl+N opens the selected mod's page on the site it came from, under
+  // the generic name rather than a vendor's brand, because the source may be
+  // Nexus, the Workshop, LoversLab, ModDB or mod.pub. Stays enabled with
+  // nothing selected - the handler is a no-op there, same as MO2's.
+  auto *mod_source = menu->addAction(tr("Open Mod Source Page"));
+  mod_source->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_N));
+  connect(mod_source, &QAction::triggered, this, &AppMenuBar::mod_source_page_requested);
+
   menu->addSeparator();
 
   auto *settings = menu->addAction(tr("Settings..."));
@@ -89,8 +96,9 @@ void AppMenuBar::build_edit_menu() {
 
   menu->addSeparator();
 
+  // Ctrl+E is MO2's Modify Executables, over in Tools; the pair of checkbox
+  // entries carries no shortcut of its own.
   auto *enable = menu->addAction(tr("Enable Selected"));
-  enable->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
   connect(enable, &QAction::triggered, this, &AppMenuBar::enable_selected_requested);
 
   auto *disable = menu->addAction(tr("Disable Selected"));
@@ -133,7 +141,6 @@ void AppMenuBar::build_view_menu() {
   menu->addSeparator();
 
   auto *pipeline = menu->addAction("Workflow Pipeline...");
-  pipeline->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_P));
   connect(pipeline, &QAction::triggered, this, &AppMenuBar::pipeline_requested);
 
   menu->addSeparator();
@@ -206,6 +213,18 @@ void AppMenuBar::build_tools_menu() {
   auto *tool_plugins = tools_menu_->addAction(tr("Tool Plugins"));
   tool_plugins->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_I));
   connect(tool_plugins, &QAction::triggered, this, &AppMenuBar::tool_plugins_requested);
+
+  // MO2 opens these two first in its Tools menu, ahead of the tool list. They
+  // sit below the per-game tools here because update_tools_for_game() owns the
+  // block above the first separator and rewrites it on every game switch.
+  tools_menu_->addSeparator();
+  auto *profiles = tools_menu_->addAction(tr("Profiles..."));
+  profiles->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_P));
+  connect(profiles, &QAction::triggered, this, &AppMenuBar::profiles_requested);
+
+  auto *executables = tools_menu_->addAction(tr("Executables..."));
+  executables->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
+  connect(executables, &QAction::triggered, this, &AppMenuBar::executables_requested);
 }
 
 void AppMenuBar::update_tools_for_game(const std::string &game_id,
@@ -298,13 +317,12 @@ void AppMenuBar::set_checkerboard_style(int style) {
 
 // --------- Help ---------
 
-// Where the Help menu's link entries go. An empty string means "not
-// configured": the entry keeps its place in the menu but is disabled, so the
-// menu has MO2's shape without pointing at an address nobody picked.
+// Where the Help menu's link entries go. Both addresses are this project's
+// own; a link entry with an empty URL keeps its place in the menu but is
+// disabled, so the menu has MO2's shape without pointing at a missing page.
 namespace {
-constexpr auto kDocumentationUrl = "";
-constexpr auto kDiscordUrl       = "";
-constexpr auto kIssueUrl         = "";
+constexpr auto kDocumentationUrl = "https://github.com/GameModManager/Core";
+constexpr auto kIssueUrl         = "https://github.com/GameModManager/Core/issues";
 }  // namespace
 
 void AppMenuBar::build_help_menu() {
@@ -316,6 +334,7 @@ void AppMenuBar::build_help_menu() {
 
   auto link_entry = [this, menu](const QString &title, const QString &url) {
     auto *act = menu->addAction(title);
+    act->setData(url);
     act->setEnabled(!url.isEmpty());
     connect(act, &QAction::triggered, this,
             [this, url]() { emit open_url_requested(url); });
@@ -335,7 +354,6 @@ void AppMenuBar::build_help_menu() {
           [this]() { emit open_url_requested(game_support_url_); });
   set_game_support_url(game_support_url_);
 
-  link_entry(tr("Chat on Discord"), kDiscordUrl);
   link_entry(tr("Report Issue"), kIssueUrl);
 
   // MO2 fills this from the tutorials/*.js "//TL" headers, ordered by their

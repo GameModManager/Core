@@ -48,6 +48,7 @@ signals:
   void export_mods_requested();
   void import_modpack_requested();
   void export_modpack_requested();
+  void mod_source_page_requested();
   void settings_requested();
   void exit_requested();
 
@@ -72,6 +73,8 @@ signals:
   void tool_requested(const QString &tool_id, const QString &game_id);
   void sort_mods_requested();
   void tool_plugins_requested();
+  void profiles_requested();
+  void executables_requested();
 
   // Help
   void help_on_ui_requested();

@@ -647,6 +647,12 @@ void SettingsController::connect_menu_actions() {
   connect(w_->menu_bar_, &AppMenuBar::export_modpack_requested, this, [this]() {
     export_modpack();
   });
+  // Ctrl+N: open the selected mod's page on whichever site it came from. The
+  // controller holds the selection and the per-source URL rules; no-op when
+  // nothing resolvable is selected.
+  connect(w_->menu_bar_, &AppMenuBar::mod_source_page_requested, this, [this]() {
+    w_->mod_list_->visit_selected_mod_source();
+  });
   connect(w_->menu_bar_, &AppMenuBar::settings_requested, w_->tab_mode_.get(),
           &TabModeController::route_settings);
   connect(w_->menu_bar_, &AppMenuBar::exit_requested, this, [this]() {
@@ -729,6 +735,13 @@ void SettingsController::connect_menu_actions() {
   connect(w_->menu_bar_, &AppMenuBar::tool_plugins_requested, this, [this]() {
     w_->right_panel_->show_plugins_tab();
   });
+  // MO2's Ctrl+P Profiles opens the profile manager, Ctrl+E Modify Executables
+  // the executable editor. Both route through the controller that owns them.
+  connect(w_->menu_bar_, &AppMenuBar::profiles_requested, this, [this]() {
+    w_->mod_list_->open_profile_manager();
+  });
+  connect(w_->menu_bar_, &AppMenuBar::executables_requested, w_->tab_mode_.get(),
+          &TabModeController::route_exec_entry);
   connect(w_->menu_bar_, &AppMenuBar::tool_requested, this,
           [this](const QString &tool_id, const QString &game_id) {
             if (!w_->plugin_loader_)
