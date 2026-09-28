@@ -365,8 +365,13 @@ void MainWindow::clear_active_filter() {
     right_panel_->filter_bar()->clear_filter();
     return;
   }
-  if (filter_bar_ && filter_bar_->clear_filter())
+  if (filter_bar_) {
+    // Unconditional, exactly like MO2's reset lambda (edit->clear();
+    // widget->setFocus(); - mainwindow.cpp:211-214). Gating the hand-back on
+    // "was there text to clear" left the keyboard stuck in an empty filter.
+    filter_bar_->clear_filter();
     mod_view_->setFocus();
+  }
 }
 
 void MainWindow::set_game_info(const std::string &game_id,

@@ -4,10 +4,10 @@
 //   G52 - the filter input's placeholder is MO2's plain "Filter", not
 //         "Filter..." (references/modorganizer/src/mainwindow.ui:584,997).
 //   G15 - Ctrl+F focuses the active filter input from anywhere in the main
-//         window; Escape clears it and hands focus back to the mod list, and
-//         does nothing when the filter is already empty. MO2 wires exactly
-//         this pair in setFilterShortcuts() (mainwindow.cpp:204-232) and calls
-//         it for the mod list, the plugin list and the downloads list
+//         window; Escape clears it and ALWAYS hands focus back to the owning
+//         list, whether or not there was text to clear. MO2 wires exactly this
+//         pair in setFilterShortcuts() (mainwindow.cpp:204-232) and calls it
+//         for the mod list, the plugin list and the downloads list
 //         (mainwindow.cpp:464-466).
 //
 // Asserted through the REAL window, not by poking the handler: the shortcuts
@@ -117,12 +117,16 @@ TEST_CASE("filter bar: Ctrl+F focuses the filter, Escape clears it", "[ui][filte
     CHECK(view->hasFocus());
   }
 
-  SECTION("Escape on an already-empty filter keeps focus where it is") {
-    view->setFocus();
-    REQUIRE(view->hasFocus());
+  SECTION("Escape on an already-empty filter still hands focus to the mod list") {
+    // The user's bug: focus is IN the filter, the filter is EMPTY, Escape does
+    // nothing at all and the input keeps the keyboard. MO2's reset lambda is
+    // unconditional (edit->clear(); widget->setFocus();), so the hand-back
+    // must not depend on there having been text to clear.
+    mod_edit->setFocus();
+    REQUIRE(mod_edit->hasFocus());
+    REQUIRE(mod_edit->text().isEmpty());
     QTest::keyClick(&w, Qt::Key_Escape);
     CHECK(mod_edit->text().isEmpty());
-    CHECK(right_edit->text().isEmpty());
     CHECK(view->hasFocus());
   }
 
@@ -138,9 +142,13 @@ TEST_CASE("filter bar: Ctrl+F focuses the filter, Escape clears it", "[ui][filte
   SECTION("Escape clears the right-panel filter without leaving the panel") {
     right_edit->setText("Sky");
     right_edit->setFocus();
+    REQUIRE(right_edit->hasFocus());
     QTest::keyClick(&w, Qt::Key_Escape);
-    CHECK(right_edit->text().isEmpty());
+    CHECK(right_edit->text().isEmpty());  // proves the shortcut fired
     CHECK(right_edit->hasFocus());
+    // The deliberate right-panel deviation: there is no single owning view to
+    // hand focus to, so Escape must NOT jump across the window to the mod list.
+    CHECK_FALSE(view->hasFocus());
   }
 
   std::filesystem::remove_all("/tmp/opencode/gmm_sds7_filter");

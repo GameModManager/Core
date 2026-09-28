@@ -59,11 +59,8 @@ void ModFilterBar::focus_filter() {
   filter_edit_->selectAll();
 }
 
-bool ModFilterBar::clear_filter() {
-  if (filter_edit_->text().isEmpty())
-    return false;
+void ModFilterBar::clear_filter() {
   filter_edit_->clear();
-  return true;
 }
 
 bool ModFilterBar::filter_has_focus() const {
