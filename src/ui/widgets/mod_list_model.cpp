@@ -192,6 +192,13 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
       return QBrush(bg);
     }
     if (role == Qt::ToolTipRole) {
+      // MO2 ModInfoSeparator::getDescription() on the Name cell and
+      // getFlagText(FLAG_SEPARATOR) on the Flags cell. The other cells keep
+      // the separator name, which is the only thing they hold.
+      if (index.column() == Name)
+        return tr("This is a Separator");
+      if (index.column() == Flags)
+        return tr("Separator");
       return mod.name;
     }
     if (role == Qt::ForegroundRole) {
@@ -341,27 +348,60 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
   if (role == Qt::DecorationRole && index.column() == Source && !mod.is_separator) {
     return source_icon(mod.source_type);
   }
-  // Conflicts tooltip: what this mod wins/loses against.
+  // Name cell (MO2 ModInfoRegular::getDescription). MO2's "description" is
+  // not a text description: an invalid mod reports what it lacks, and a
+  // valid one lists its categories - the same list the Category cell shows.
+  // The scan flags invalid_data for a mod with no validated data and nothing
+  // recognizable in the folder (no top-level esp/esm/esl - or bsa/ba2, which
+  // MO2 also counts as a plugin here - and no known data subdirectory), so
+  // MO2's sentence is true for every row that reaches this branch.
+  if (role == Qt::ToolTipRole && index.column() == Name) {
+    if (mod.invalid_data) {
+      return tr("%1 contains no esp/esm/esl and no asset (textures, meshes, "
+                "interface, ...) directory")
+          .arg(mod.name);
+    }
+    return category_tooltip(mod);
+  }
+  // Category cell (MO2 ModList::data COL_CATEGORY).
+  if (role == Qt::ToolTipRole && index.column() == Category)
+    return category_tooltip(mod);
+  // Conflicts cell (MO2 ModList::getConflictFlagText over
+  // ModInfoWithConflictInfo::getConflictFlags). The conflict engine counts
+  // colliding LOOSE FILES, which is exactly what MO2's loose-file conflict
+  // flags describe, so those four ship verbatim; the archive/loose-archive
+  // variants have no counterpart because no archive is ever unpacked here.
+  // MO2's switch is exclusive, and a redundant mod is won on every file it
+  // provides, so the order below is the order the flags are pushed in.
   if (role == Qt::ToolTipRole && index.column() == Conflicts && !mod.is_separator &&
       (mod.conflict_wins > 0 || mod.conflict_losses > 0 || mod.redundant)) {
-    QStringList lines;
     if (mod.redundant)
-      lines << tr("Redundant: every file is provided by a higher-priority mod");
+      return tr("Redundant");
+    if (mod.conflict_wins > 0 && mod.conflict_losses > 0)
+      return tr("Loose files Overwrites & Overwritten");
     if (mod.conflict_wins > 0)
-      lines << tr("Overwrites %1 file(s)").arg(mod.conflict_wins);
-    if (mod.conflict_losses > 0)
-      lines << tr("Overwritten by %1 file(s)").arg(mod.conflict_losses);
-    return lines.join("\n");
+      return tr("Overwrites loose files");
+    return tr("Overwritten loose files");
   }
   // Source tooltip: the download source name.
   if (role == Qt::ToolTipRole && index.column() == Source && !mod.source_type.isEmpty())
     return mod.source_type;
   if (role == Qt::ToolTipRole && index.column() == Flags &&
       (!mod.tags.isEmpty() || mod.is_fomod || mod.root_override || mod.invalid_data ||
-       mod.no_metadata || mod.is_empty ||
-       (mod.is_mirrored && mod.mirror_source_missing))) {
+       mod.no_metadata || mod.is_empty || mod.has_hidden_files || mod.is_mirrored)) {
     QStringList lines;
-    // Mirrored-but-source-present carries no tooltip (no behavior change).
+    // MO2 flag texts, in ModInfo::getFlags() order. "Not endorsed yet",
+    // "Mod is being tracked on the website" and the alternate-game warning
+    // have no state behind them here and are not emitted.
+    if (mod.has_hidden_files) {
+      lines << tr("Contains hidden files");
+    }
+    // A mirrored mod carries a backup of its source (MO2 FLAG_BACKUP). A
+    // mirror whose source is still there changes nothing on its own, so the
+    // source-gone case adds the only extra line there is to add.
+    if (mod.is_mirrored) {
+      lines << tr("Backup");
+    }
     if (mod.is_mirrored && mod.mirror_source_missing) {
       lines << tr("Source location for this mod is no longer on disk. Backup "
                   "files still on disk.");
@@ -484,6 +524,15 @@ QString ModList::column_name(int column) {
     return QStringLiteral("Priority");
   }
   return {};
+}
+
+QString ModList::category_tooltip(const ModEntry &mod) {
+  if (mod.category_names.isEmpty())
+    return {};
+  // MO2 writes the names in a <span style="white-space: nowrap;"><i>...
+  // </font></span> wrapper; only the separator and the header are load-bearing
+  // here, and plain text keeps the " , " spacing literal.
+  return tr("Categories: ") + mod.category_names.join(QStringLiteral(" , "));
 }
 
 QStringList ModList::header_tooltips() {
@@ -1501,6 +1550,18 @@ void ModList::set_category(const QString &id, const QString &category) {
     if (mods_[i].id == id && mods_[i].category != category) {
       mods_[i].category = category;
       emit dataChanged(index(i, Category), index(i, Category));
+      return;
+    }
+  }
+}
+
+void ModList::set_category_names(const QString &id, const QStringList &names) {
+  for (int i = 0; i < mods_.size(); ++i) {
+    if (mods_[i].id == id && mods_[i].category_names != names) {
+      mods_[i].category_names = names;
+      // The list is cell-tooltip text on Name and Category only; the cell
+      // text the column shows is untouched.
+      emit dataChanged(index(i, Name), index(i, Category), {Qt::ToolTipRole});
       return;
     }
   }
