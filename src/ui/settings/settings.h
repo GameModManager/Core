@@ -303,5 +303,16 @@ public:
 
 private:
   Settings() = default;
-  QSettings settings_{"GameModManager", "GameModManager"};
+  // The format is now an explicit argument instead of being implied by the
+  // (organization, application) constructor. QSettings::defaultFormat() is
+  // QSettings::NativeFormat unless someone called setDefaultFormat(), and no
+  // production code does, so this resolves to exactly the same store the
+  // org/app ctor used (same file, same key space, same fallback chain).
+  // Tests get the sandbox instead: the shared Catch2 runner calls
+  // setDefaultFormat(IniFormat) + setPath(IniFormat, UserScope, tmpdir)
+  // before QApplication exists (Workspace-2zm). IniFormat + setPath is
+  // honoured on EVERY platform, so no test can reach the macOS
+  // CFPreferences plist, the Windows registry, or the user's ~/.config.
+  QSettings settings_{QSettings::defaultFormat(), QSettings::UserScope,
+                      "GameModManager", "GameModManager"};
 };

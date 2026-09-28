@@ -1,41 +1,45 @@
 // Shared Catch2 runner for every Core test target (Workspace-2zm).
 //
-// Why this file exists: production code builds QSettings with the
-// (organization, application) constructor
-// (QSettings settings_{"GameModManager", "GameModManager"} in
-// src/ui/settings/settings.h), and that constructor ALWAYS uses
-// NativeFormat - QSettings::setDefaultFormat() has no effect on it (Qt docs,
-// qsettings.html). NativeFormat writes to ~/Library/Preferences on macOS
-// (CFPreferences plist) and to $HOME/.config on Unix, so before this fixture
-// every test that reached Settings::instance() - directly or through a
-// widget - read and wrote the user's REAL settings. That is a live
-// correctness bug (tests can permanently change the user's configuration)
-// and a source of cross-run "unexplained" settings-test flakiness.
+// Why this file exists: production code builds QSettings with an explicit
+// format - QSettings(QSettings::defaultFormat(), QSettings::UserScope,
+// "GameModManager", "GameModManager") in src/ui/settings/settings.h and in
+// plugin_settings_registry.cpp. In a real run nothing calls
+// setDefaultFormat(), so defaultFormat() is NativeFormat and the store is
+// byte-identical to what the old (organization, application) constructor used
+// (same file, same key space, same fallback chain). In a test run THIS file
+// calls setDefaultFormat(IniFormat), so the same production expression becomes
+// a temp .ini and the user's real config is unreachable.
+//
+// NativeFormat writes to ~/Library/Preferences on macOS (CFPreferences plist),
+// to the registry on Windows, and to $HOME/.config on Unix. None of those are
+// redirected by format, so the fix has to come from the FORMAT, not from a
+// path: IniFormat + setPath(IniFormat, UserScope, dir) is honoured on every
+// platform (Qt docs, qsettings.html - only setPath(NativeFormat) is a
+// documented no-op on Windows/macOS/iOS). No environment variable is
+// involved in the isolation itself, so it cannot differ per platform.
 //
 // The isolation lives here, ONCE, so a new test inherits it and nobody can
 // forget to copy the setup block:
-//   1. point XDG_CONFIG_HOME at a process-unique temp dir FIRST - before any
-//      QSettings API call. The native .conf path is resolved once, from the
-//      environment the process sees at that first call; setting it later is
-//      silently ignored (verified with probe4: a later qputenv does not move
-//      an already-resolved QSettings path),
-//   2. setPath(NativeFormat/IniFormat, UserScope, dir) - on Unix both formats
-//      share the same UserScope path table, so this makes the redirect
-//      deterministic regardless of who calls QSettings first. (On
-//      Windows/macOS/iOS setPath(NativeFormat) is a documented no-op - the
-//      env redirect above is what covers Unix, and any test that must touch
-//      platform-native backends uses the opt-in below),
-//   3. force QSettings IniFormat + setPath(IniFormat) as well, so the default
-//      QSettings() constructor and explicit IniFormat users land in the same
-//      sandbox,
+//   1. setDefaultFormat(IniFormat) - the decisive step. The three production
+//      sites read defaultFormat() when they construct their QSettings, so
+//      every one of them - present and future - lands in the sandbox. The
+//      default QSettings() ctor and explicit IniFormat users come along for
+//      free.
+//   2. setPath(IniFormat, UserScope, dir) - where that ini actually goes.
+//   3. point XDG_CONFIG_HOME at the same dir FIRST, before any QSettings API
+//      call. This is belt-and-braces, NOT the mechanism: the native .conf path
+//      is resolved once, from the environment the process sees at the first
+//      QSettings call, so this covers anything still built with a native ctor
+//      on Unix, plus the direct file consumers (std::filesystem, QFile) that
+//      follow XDG_CONFIG_HOME. Setting it later is silently ignored.
 //   4. remove the temp dir at exit.
 //
 // Note on per-test XDG overrides: a test may still call
 // qputenv("XDG_CONFIG_HOME", itsOwnDir). That keeps working for direct file
-// consumers (std::filesystem, QFile), but QSettings itself keeps using the
-// process-wide sandbox from step 1 - reads and writes still go to the SAME
-// place, so round-trips are unaffected; only the on-disk location differs
-// from what the test's env var says. Nothing in the suite asserts on that.
+// consumers, but QSettings itself keeps using the process-wide sandbox from
+// step 1 - reads and writes still go to the SAME place, so round-trips are
+// unaffected; only the on-disk location differs from what the test's env var
+// says. Nothing in the suite asserts on that.
 //
 // Per-test/pere-process uniqueness: CTest runs one TEST_CASE per process
 // (catch_discover_tests registers each case as its own test), so every case
@@ -43,11 +47,12 @@
 // by hand) share one sandbox - same as before this fixture, when they all
 // shared the first XDG_CONFIG_HOME the process saw.
 //
-// Escape hatch - explicit NativeFormat opt-in: a test that genuinely must
-// exercise NativeFormat runs with GMM_TEST_NATIVE_QSETTINGS=1 in its CTest
-// ENVIRONMENT properties (or on the command line) and is then responsible
-// for its own config isolation. There is no such test today: nothing in the
-// suite asserts on platform-native settings backends.
+// Escape hatch - the unsandboxed process: GMM_TEST_NATIVE_QSETTINGS=1 skips
+// everything above, so the process sees exactly what a real run sees. Used by
+// qsettings_native_format_test, which asserts the production format is
+// NativeFormat and resolves to the pre-change file; it compares PATHS only
+// because QSettings is lazy and creates nothing until a value is written. Any
+// other test that opts out owns its isolation.
 
 #include <QDir>
 #include <QSettings>
@@ -85,9 +90,10 @@ void sandbox_settings() {
   // the system temp dir - never in the user's config.
   std::atexit(remove_sandbox);
 
-  // Order matters: env first (the native path is resolved from the
-  // environment at the first QSettings API call), then the explicit path
-  // table overrides.
+  // Order: the env var first, because the native .conf path is resolved from
+  // the environment at the first QSettings API call. The three steps are
+  // independent of each other after that; the format flip is what redirects
+  // the production sites, the path table says where the ini goes.
   qputenv("XDG_CONFIG_HOME", sandbox_dir.toLocal8Bit());
   QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope,
                      sandbox_dir);
