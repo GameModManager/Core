@@ -43,7 +43,12 @@ function(gmm_catch2_test NAME)
     set(multiValueArgs "LIBS" "DEFINES" "PROPERTIES")
     cmake_parse_arguments(GCT "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
-    add_executable(${NAME} ${GCT_UNPARSED_ARGUMENTS})
+    # Every test also links the LSan suppression list (Workspace-86bq):
+    # __lsan_default_suppressions() in tests/support/lsan_suppressions.c
+    # silences third-party exit-time allocations (Qt font/WebEngine, GPU
+    # drivers, ...) without any env plumbing, so manual runs are covered too.
+    add_executable(${NAME} ${GCT_UNPARSED_ARGUMENTS}
+        ${CMAKE_CURRENT_SOURCE_DIR}/support/lsan_suppressions.c)
     target_link_libraries(${NAME} PRIVATE gmm_test_support gmm_engine ${GCT_LIBS})
     if(GCT_DEFINES)
         target_compile_definitions(${NAME} PRIVATE ${GCT_DEFINES})
@@ -612,4 +617,15 @@ if(UNIX AND NOT APPLE)
     target_link_libraries(ci_intercept_test PRIVATE ${CMAKE_DL_LIBS})
     add_test(NAME ci_intercept_test COMMAND ci_intercept_test)
     set_tests_properties(ci_intercept_test PROPERTIES ENVIRONMENT "TZ=UTC")
+
+    # Workspace-86bq: deliberate leak that MUST still be reported. The binary
+    # links the same suppression list as every other test; PASS_REGULAR_
+    # EXPRESSION matches LSan's report, so a suppression entry broad enough
+    # to hide our own leaks turns this test red.
+    add_executable(lsan_selftest engine/lsan_selftest.c
+        support/lsan_suppressions.c)
+    add_test(NAME lsan_selftest COMMAND lsan_selftest)
+    set_tests_properties(lsan_selftest PROPERTIES
+        ENVIRONMENT "TZ=UTC"
+        PASS_REGULAR_EXPRESSION "detected memory leaks")
 endif()
