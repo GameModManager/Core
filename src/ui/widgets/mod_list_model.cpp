@@ -366,22 +366,29 @@ QVariant ModList::data(const QModelIndex &index, int role) const {
   // Category cell (MO2 ModList::data COL_CATEGORY).
   if (role == Qt::ToolTipRole && index.column() == Category)
     return category_tooltip(mod);
-  // Conflicts cell (MO2 ModList::getConflictFlagText over
-  // ModInfoWithConflictInfo::getConflictFlags). The conflict engine counts
-  // colliding LOOSE FILES, which is exactly what MO2's loose-file conflict
-  // flags describe, so those four ship verbatim; the archive/loose-archive
-  // variants have no counterpart because no archive is ever unpacked here.
-  // MO2's switch is exclusive, and a redundant mod is won on every file it
-  // provides, so the order below is the order the flags are pushed in.
+  // Conflicts cell. MO2 ModList::getConflictFlagText names the state
+  // ("Overwrites loose files", "Overwritten loose files", "Loose files
+  // Overwrites & Overwritten", "Redundant") and we add the count it drops:
+  // the conflict engine counts colliding LOOSE FILES, so the number is
+  // exact. The archive/loose-archive variants have no counterpart because no
+  // archive is ever unpacked here. MO2's switch is exclusive, and a redundant
+  // mod is beaten on every file it provides, so the order below is the order
+  // the flags are pushed in.
   if (role == Qt::ToolTipRole && index.column() == Conflicts && !mod.is_separator &&
       (mod.conflict_wins > 0 || mod.conflict_losses > 0 || mod.redundant)) {
     if (mod.redundant)
       return tr("Redundant");
-    if (mod.conflict_wins > 0 && mod.conflict_losses > 0)
-      return tr("Loose files Overwrites & Overwritten");
+    // Wins are active ("Overwrites 3 loose files": this mod is the one
+    // doing the overwriting) and losses passive ("2 loose files
+    // overwritten": this mod's own files are the ones beaten), which is the
+    // voice MO2's own two strings use. A mod that does both gets one line
+    // per fact instead of MO2's single "Overwrites & Overwritten".
+    QStringList lines;
     if (mod.conflict_wins > 0)
-      return tr("Overwrites loose files");
-    return tr("Overwritten loose files");
+      lines << tr("Overwrites %1").arg(loose_files(mod.conflict_wins));
+    if (mod.conflict_losses > 0)
+      lines << tr("%1 overwritten").arg(loose_files(mod.conflict_losses));
+    return lines.join("\n");
   }
   // Source tooltip: the download source name.
   if (role == Qt::ToolTipRole && index.column() == Source && !mod.source_type.isEmpty())
@@ -524,6 +531,14 @@ QString ModList::column_name(int column) {
     return QStringLiteral("Priority");
   }
   return {};
+}
+
+QString ModList::loose_files(int count) {
+  // "1 loose file" / "3 loose files". Qt's %n plural form only renders right
+  // from a translated catalog entry, so the singular is spelled out instead.
+  if (count == 1)
+    return tr("1 loose file");
+  return tr("%1 loose files").arg(count);
 }
 
 QString ModList::category_tooltip(const ModEntry &mod) {
