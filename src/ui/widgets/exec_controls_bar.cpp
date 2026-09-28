@@ -180,6 +180,12 @@ ExecControlsBar::ExecControlsBar(QWidget *parent) : QWidget(parent) {
   layout->setContentsMargins(4, 2, 4, 2);
   layout->setSpacing(4);
 
+  setWhatsThis(tr("Choose the program to run. Once you start using GameModManager, "
+                  "run the game and its tools from here or through a shortcut "
+                  "created here - anything launched outside the instance will not "
+                  "see its mods. \"Run\" starts the selected program with the "
+                  "instance active, \"Shortcut\" writes a launcher for it."));
+
   exec_combo_ = new QComboBox(this);
   exec_combo_->setMinimumHeight(50);
   exec_combo_->setMinimumWidth(200);

@@ -90,6 +90,11 @@ SavesTab::SavesTab(QWidget *parent) : QWidget(parent) {
 
   table_ = make_table(3, {tr("Name"), tr("File"), tr("Missing")}, this);
   table_->setObjectName("savesTable");
+  table_->setWhatsThis(
+      tr("This is a list of the save games found for this game. Hover a row for its "
+         "file, and for a save in a format that is not parsed, its size and the date "
+         "it was last written. \"Missing\" counts the plugins a save needs that the "
+         "instance does not have active."));
   table_->setMouseTracking(true);
   table_->setContextMenuPolicy(Qt::CustomContextMenu);
   table_->setEditTriggers(QAbstractItemView::NoEditTriggers);

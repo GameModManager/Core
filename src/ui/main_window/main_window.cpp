@@ -167,6 +167,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
   // "Set Game Path" banner (Workspace-tnj): hidden until a game-less
   // instance is loaded; sits above the splitter so it is always visible.
   game_path_banner_ = new GamePathBanner(main_area);
+  game_path_banner_->setWhatsThis(
+      tr("This instance has no game directory yet. Pick one so the app can read the "
+         "game's own files and launch it."));
   main_layout->addWidget(game_path_banner_);
 
   // --- Left panel: profile bar, mod list, filter bar stacked vertically.
@@ -197,6 +200,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
   // --- Console panel (hidden by default, drag to expand) ---
   console_ = new ConsolePanel(this);
+  console_->setWhatsThis(
+      tr("The log window. It stays collapsed until \"View > Show Console\" turns it "
+         "on; drag the divider to give it more room."));
   console_->setMinimumHeight(0);
   console_->setMaximumHeight(300);
   console_splitter_->addWidget(console_);
@@ -217,6 +223,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
   // --- Status bar ---
   status_bar_ = new StatusBar(this);
+  status_bar_->setWhatsThis(
+      tr("Shows what the app is doing, and the sources the active instance draws "
+         "mods from."));
   statusBar()->addWidget(status_bar_, 1);
 
   // Global event filter for Konami code (child widgets may eat arrow keys).

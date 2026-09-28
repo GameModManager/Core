@@ -20,6 +20,9 @@ PluginsTab::PluginsTab(QWidget *parent) : QWidget(parent) {
   layout->setContentsMargins(0, 0, 0, 0);
 
   view_ = new PluginView(this);
+  view_->setWhatsThis(
+      tr("List of the instance's plugin files, in the order they are loaded. Drag "
+         "rows to reorder them yourself, or use \"Sort\" below to have LOOT do it."));
   layout->addWidget(view_);
 
   // Forward PluginView signals.

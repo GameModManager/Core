@@ -270,6 +270,10 @@ DataTab::DataTab(QWidget *parent) : QWidget(parent) {
   layout->setContentsMargins(0, 0, 0, 0);
 
   tree_ = new QTreeWidget(this);
+  tree_->setWhatsThis(
+      tr("This is an overview of your data directory as visible to the game (and "
+         "tools). Double-click a file to open or preview it; the right-click menu "
+         "refreshes the tree and hides or un-hides individual files."));
   tree_->setColumnCount(4);
   tree_->setHeaderLabels({tr("Name"), tr("Size"), tr("Source"), tr("Providers")});
   auto *header = new ColumnToggleHeaderView(Qt::Horizontal, tree_);
