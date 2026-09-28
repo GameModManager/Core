@@ -16,12 +16,14 @@
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileSystemWatcher>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLineEdit>
+#include <QLocale>
 #include <QMenu>
 #include <QMessageBox>
 #include <QMimeData>
@@ -126,6 +128,62 @@ static std::string loverslab_drop_url(const QMimeData *data) {
 }
 
 // --- DownloadsTab ---
+
+// MO2's header labels (downloadlist.cpp:76-91) for the columns we carry.
+QString DownloadsTab::column_name(int column) {
+  switch (column) {
+  case Name:
+    return tr("Name");
+  case Source:
+    return tr("Source");
+  case Status:
+    return tr("Status");
+  case Size:
+    return tr("Size");
+  case Filetime:
+    return tr("Filetime");
+  case NexusId:
+    return tr("Nexus ID");
+  }
+  return {};
+}
+
+QStringList DownloadsTab::header_tooltips() {
+  // MO2's download list has no header tooltips (downloadlist.cpp's
+  // headerData only answers DisplayRole; its single ToolTipRole is a cell
+  // role at line 214). These describe what this build renders, including
+  // when a column is legitimately blank.
+  return {
+      tr("Name the downloaded file is known by. A Nexus download shows a "
+         "placeholder until the file name resolves."),
+      tr("Site the file was downloaded from."),
+      tr("Progress of the download, and what can be done with it."),
+      tr("Archive size, or the current download speed while the file is "
+         "being fetched."),
+      tr("When the archive landed in the downloads folder. Empty until the "
+         "download finishes."),
+      tr("Mod ID on Nexus Mods. Empty for anything not downloaded from "
+         "Nexus."),
+  };
+}
+
+QStringList DownloadsTab::default_hidden_column_names() {
+  // MO2 hides COL_MODNAME, COL_VERSION, COL_ID and COL_SOURCEGAME on a
+  // fresh profile (downloadlistview.cpp:147-151). Of the columns this tab
+  // ships, only COL_ID is in that set. Filetime is one MO2 shows.
+  return {QStringLiteral("Nexus ID")};
+}
+
+void DownloadsTab::apply_default_hidden_columns(QTableWidget *table) {
+  if (!table || !table->horizontalHeader())
+    return;
+  const QStringList hidden_names = default_hidden_column_names();
+  for (int c = 0; c < ColumnCount; ++c) {
+    if (hidden_names.contains(column_name(c)))
+      table->horizontalHeader()->setSectionHidden(c, true);
+  }
+}
+
 DownloadsTab::DownloadsTab(QWidget *parent) : QWidget(parent) {
   auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
@@ -141,8 +199,24 @@ DownloadsTab::DownloadsTab(QWidget *parent) : QWidget(parent) {
   top->addWidget(add_url_btn);
   layout->addLayout(top);
 
-  table_ = make_table(4, {tr("Name"), tr("Source"), tr("Status"), tr("Size")}, this);
+  QStringList headers;
+  for (int c = 0; c < ColumnCount; ++c)
+    headers << column_name(c);
+
+  table_ = make_table(ColumnCount, headers, this);
   table_->setObjectName("downloadsTable");
+
+  // Positional: every header needs an entry or the tooltips after the gap
+  // sit on the wrong column.
+  const QStringList tooltips = header_tooltips();
+  for (int c = 0; c < ColumnCount; ++c) {
+    if (auto *header_item = table_->horizontalHeaderItem(c))
+      header_item->setToolTip(tooltips.value(c));
+  }
+  // Resolved by name, so a renamed or retired entry in the list is inert
+  // rather than hiding whatever happens to sit at that index.
+  apply_default_hidden_columns(table_);
+
   table_->setWhatsThis(
       tr("This is a list of the mods this instance has downloaded. Right-click a "
          "finished download to install it. You can also drop a download link from "
@@ -280,7 +354,7 @@ void DownloadsTab::add_download(const std::string &id, const std::string &name,
 
   entry.name_item = new QTableWidgetItem(QString::fromStdString(name));
   entry.name_item->setFlags(entry.name_item->flags() & ~Qt::ItemIsEditable);
-  table_->setItem(entry.row, 0, entry.name_item);
+  table_->setItem(entry.row, Name, entry.name_item);
 
   entry.source_item = new QTableWidgetItem(QString::fromStdString(source));
   entry.source_item->setFlags(entry.source_item->flags() & ~Qt::ItemIsEditable);
@@ -289,21 +363,59 @@ void DownloadsTab::add_download(const std::string &id, const std::string &name,
   if (!vendor_key.empty())
     entry.source_item->setIcon(engine::IconManager::instance().resolve_icon(
         QString::fromStdString(vendor_key)));
-  table_->setItem(entry.row, 1, entry.source_item);
+  table_->setItem(entry.row, Source, entry.source_item);
 
   entry.size_item = new QTableWidgetItem(QString());
   entry.size_item->setFlags(entry.size_item->flags() & ~Qt::ItemIsEditable);
-  table_->setItem(entry.row, 3, entry.size_item);
+  table_->setItem(entry.row, Size, entry.size_item);
+
+  entry.filetime_item = new QTableWidgetItem(QString());
+  entry.filetime_item->setFlags(entry.filetime_item->flags() & ~Qt::ItemIsEditable);
+  entry.filetime_item->setTextAlignment(Qt::AlignCenter);
+  table_->setItem(entry.row, Filetime, entry.filetime_item);
+  update_filetime(entry);
+
+  // Nexus ID: the parent mod page id. Only Nexus downloads carry one, so
+  // every other source leaves this cell blank.
+  auto *nexus_id_item = new QTableWidgetItem(QString::fromStdString(parent_mod_id));
+  nexus_id_item->setFlags(nexus_id_item->flags() & ~Qt::ItemIsEditable);
+  nexus_id_item->setTextAlignment(Qt::AlignCenter);
+  table_->setItem(entry.row, NexusId, nexus_id_item);
 
   auto *bar = new QProgressBar(table_);
   bar->setRange(0, 100);
   bar->setValue(0);
   bar->setTextVisible(true);
   bar->setFormat("Starting...");
-  table_->setCellWidget(entry.row, 2, bar);
+  table_->setCellWidget(entry.row, Status, bar);
   entry.progress_bar = bar;
 
   table_->setRowHeight(entry.row, row_height());
+}
+
+void DownloadsTab::update_filetime(DownloadEntry &entry) {
+  if (!entry.filetime_item)
+    return;
+  if (entry.file_path.empty()) {
+    entry.filetime_item->setText(QString());
+    return;
+  }
+  const QFileInfo info(QString::fromStdString(entry.file_path.string()));
+  if (!info.exists()) {
+    entry.filetime_item->setText(QString());
+    return;
+  }
+  // MO2's DownloadManager::getFileTime (downloadmanager.cpp:1441-1447):
+  // when the file was created, falling back through the times a filesystem
+  // may not record. birthTime is the honest answer for a freshly landed
+  // archive; lastModified is what a copy preserves.
+  QDateTime stamp = info.birthTime();
+  if (!stamp.isValid())
+    stamp = info.metadataChangeTime();
+  if (!stamp.isValid())
+    stamp = info.lastModified();
+  entry.filetime_item->setText(
+      stamp.isValid() ? QLocale().toString(stamp, QLocale::ShortFormat) : QString());
 }
 
 DownloadsTab::DownloadEntry &DownloadsTab::entry_for(const std::string &id) {
@@ -374,7 +486,7 @@ void DownloadsTab::replace_bar_with_label(const std::string &id, const QString &
     return;
 
   // Remove the progress bar widget
-  table_->removeCellWidget(entry.row, 2);
+  table_->removeCellWidget(entry.row, Status);
   entry.progress_bar = nullptr;
 
   // Replace with a centered QTableWidgetItem
@@ -385,7 +497,7 @@ void DownloadsTab::replace_bar_with_label(const std::string &id, const QString &
     item->setBackground(bg);
   if (fg.isValid())
     item->setForeground(fg);
-  table_->setItem(entry.row, 2, item);
+  table_->setItem(entry.row, Status, item);
 }
 
 void DownloadsTab::mark_complete(const std::string &id, bool success) {
@@ -455,15 +567,15 @@ void DownloadsTab::mark_downloading(const std::string &id) {
     entry.progress_bar->deleteLater();
     entry.progress_bar = nullptr;
   }
-  table_->removeCellWidget(entry.row, 2);
-  delete table_->takeItem(entry.row, 2);
+  table_->removeCellWidget(entry.row, Status);
+  delete table_->takeItem(entry.row, Status);
 
   auto *bar = new QProgressBar(table_);
   bar->setRange(0, 100);
   bar->setValue(0);
   bar->setTextVisible(true);
   bar->setFormat("Starting...");
-  table_->setCellWidget(entry.row, 2, bar);
+  table_->setCellWidget(entry.row, Status, bar);
   entry.progress_bar = bar;
 
   table_->setRowHeight(entry.row, row_height());
@@ -475,6 +587,9 @@ void DownloadsTab::set_file_path(const std::string &id,
   if (entry.row < 0)
     return;
   entry.file_path = path;
+  // The archive only exists now, so this is the first moment Filetime has
+  // something to show.
+  update_filetime(entry);
 }
 
 void DownloadsTab::set_downloads_dir(const std::filesystem::path &dir) {
@@ -595,6 +710,7 @@ bool DownloadsTab::add_downloads_dir_file(const std::filesystem::path &path) {
       if (existing.size_item)
         existing.size_item->setText(format_size(existing.total_size));
     }
+    update_filetime(existing);
     return true;
   }
 
@@ -1127,7 +1243,7 @@ void DownloadsTab::deserialize(const std::string &json,
 
     entry.name_item = new QTableWidgetItem(QString::fromStdString(name));
     entry.name_item->setFlags(entry.name_item->flags() & ~Qt::ItemIsEditable);
-    table_->setItem(entry.row, 0, entry.name_item);
+    table_->setItem(entry.row, Name, entry.name_item);
 
     entry.source_item = new QTableWidgetItem(QString::fromStdString(source));
     entry.source_item->setFlags(entry.source_item->flags() & ~Qt::ItemIsEditable);
@@ -1136,21 +1252,32 @@ void DownloadsTab::deserialize(const std::string &json,
     if (!vendor_key.empty())
       entry.source_item->setIcon(engine::IconManager::instance().resolve_icon(
           QString::fromStdString(vendor_key)));
-    table_->setItem(entry.row, 1, entry.source_item);
+    table_->setItem(entry.row, Source, entry.source_item);
+
+    entry.filetime_item = new QTableWidgetItem(QString());
+    entry.filetime_item->setFlags(entry.filetime_item->flags() & ~Qt::ItemIsEditable);
+    entry.filetime_item->setTextAlignment(Qt::AlignCenter);
+    table_->setItem(entry.row, Filetime, entry.filetime_item);
+    update_filetime(entry);
+
+    auto *nexus_id_item = new QTableWidgetItem(QString::fromStdString(parent_mod_id));
+    nexus_id_item->setFlags(nexus_id_item->flags() & ~Qt::ItemIsEditable);
+    nexus_id_item->setTextAlignment(Qt::AlignCenter);
+    table_->setItem(entry.row, NexusId, nexus_id_item);
 
     // For non-downloading states, show the file size; during download the
     // size cell is empty until update_progress sets the speed text.
     if (state == DownloadState::Downloading) {
       entry.size_item = new QTableWidgetItem(QString());
       entry.size_item->setFlags(entry.size_item->flags() & ~Qt::ItemIsEditable);
-      table_->setItem(entry.row, 3, entry.size_item);
+      table_->setItem(entry.row, Size, entry.size_item);
 
       auto *bar = new QProgressBar(table_);
       bar->setRange(0, 100);
       bar->setValue(0);
       bar->setTextVisible(true);
       bar->setFormat("Starting...");
-      table_->setCellWidget(entry.row, 2, bar);
+      table_->setCellWidget(entry.row, Status, bar);
       entry.progress_bar = bar;
     } else {
       // If total_size wasn't persisted (old manifest), stat the file
@@ -1167,7 +1294,7 @@ void DownloadsTab::deserialize(const std::string &json,
           (resolved_size > 0) ? format_size(resolved_size) : QString();
       entry.size_item = new QTableWidgetItem(display_size);
       entry.size_item->setFlags(entry.size_item->flags() & ~Qt::ItemIsEditable);
-      table_->setItem(entry.row, 3, entry.size_item);
+      table_->setItem(entry.row, Size, entry.size_item);
 
       QColor bg, fg;
       if (state == DownloadState::Complete) {
@@ -1185,7 +1312,7 @@ void DownloadsTab::deserialize(const std::string &json,
         item->setBackground(bg);
       if (fg.isValid())
         item->setForeground(fg);
-      table_->setItem(entry.row, 2, item);
+      table_->setItem(entry.row, Status, item);
     }
 
     table_->setRowHeight(entry.row, row_height());
