@@ -1,9 +1,8 @@
-// Filter-bar MO2 parity (Workspace-sds7 - gaps G15 + G52 of the
-// Workspace-lbe1.12 audit).
+// Filter-bar MO2 parity.
 //
-//   G52 - the filter input's placeholder is MO2's plain "Filter", not
+//   Placeholder - the filter input's is MO2's plain "Filter", not
 //         "Filter..." (references/modorganizer/src/mainwindow.ui:584,997).
-//   G15 - Ctrl+F focuses the active filter input from anywhere in the main
+//   Shortcuts - Ctrl+F focuses the active filter input from anywhere in the main
 //         window; Escape clears it and ALWAYS hands focus back to the owning
 //         list, whether or not there was text to clear. MO2 wires exactly this
 //         pair in setFilterShortcuts() (mainwindow.cpp:204-232) and calls it
@@ -118,9 +117,9 @@ TEST_CASE("filter bar: Ctrl+F focuses the filter, Escape clears it", "[ui][filte
   }
 
   SECTION("Escape on an already-empty filter still hands focus to the mod list") {
-    // The user's bug: focus is IN the filter, the filter is EMPTY, Escape does
-    // nothing at all and the input keeps the keyboard. MO2's reset lambda is
-    // unconditional (edit->clear(); widget->setFocus();), so the hand-back
+    // Focus is IN the filter, the filter is EMPTY, Escape must still hand
+    // focus back and the input must not keep the keyboard. MO2's reset lambda
+    // is unconditional (edit->clear(); widget->setFocus();), so the hand-back
     // must not depend on there having been text to clear.
     mod_edit->setFocus();
     REQUIRE(mod_edit->hasFocus());
