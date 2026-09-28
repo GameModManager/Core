@@ -29,12 +29,10 @@ bool Provider::fetch(const Mod &mod, PipelineContext &ctx,
   }
 
   // Lazy-init WorkshopClient
-  if (!client_) {
-    client_ = std::make_unique<WorkshopClient>(db_path_, rate_limit_, rate_window_);
-  }
+  auto *client = ensure_client();
 
   // Fetch metadata from Steam API (uses SQLite cache, respects rate limits)
-  auto item = client_->get_details(workshop_id);
+  auto item = client->get_details(workshop_id);
   if (!item) {
     Logger::instance().warn("SteamWorkshopProvider: no metadata for workshop_id=" +
                             std::to_string(workshop_id) +
@@ -94,7 +92,35 @@ std::string Provider::display_name() const {
   return "Steam Workshop";
 }
 
+WorkshopClient *Provider::ensure_client() const {
+  std::lock_guard<std::mutex> lock(client_mutex_);
+  if (!client_) {
+    client_ = std::make_unique<WorkshopClient>(db_path_, rate_limit_, rate_window_);
+  }
+  return client_.get();
+}
+
+SourceRateLimit Provider::rate_limit_readout() const {
+  // Steam is metered because the cooldown is ours: WorkshopClient keeps the
+  // timestamps of our own requests and refuses to exceed rate_limit_ per
+  // rate_window_ seconds. Report how much of it is spent, so the readout is
+  // ours to keep - before the first fetch the count is genuinely 0.
+  SourceRateLimit out;
+  out.metered = true;
+
+  WorkshopClient *client = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(client_mutex_);
+    client = client_.get();
+  }
+  const int used = client != nullptr ? client->rate_limit_state().first : 0;
+
+  out.readout = std::to_string(used) + "/" + std::to_string(rate_limit_);
+  return out;
+}
+
 void Provider::set_rate_limit(int limit, int window) {
+  std::lock_guard<std::mutex> lock(client_mutex_);
   rate_limit_  = limit;
   rate_window_ = window;
   if (client_)

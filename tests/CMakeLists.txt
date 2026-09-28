@@ -468,6 +468,13 @@ gmm_catch2_test(game_path_banner_test ui/game_path_banner_test.cpp
     UI
     LIBS gmm_ui)
 
+# Status bar: context label (game - instance - profile), the metered-source
+# rule that keeps a per-source readout only for a source with a budget, the
+# separator that must not dangle, and the transient status timeout.
+gmm_catch2_test(status_bar_test ui/status_bar_test.cpp
+    UI
+    LIBS gmm_ui)
+
 gmm_catch2_test(instance_options_panel_test ui/instance_options_panel_test.cpp
     UI
     LIBS gmm_ui ${CMAKE_DL_LIBS}

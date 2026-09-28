@@ -430,6 +430,20 @@ void MainWindow::update_title() {
         ("GameModManager - " + current_profile_name_ + " - " + current_game_name_)
             .c_str());
   }
+
+  // The status bar's context label names the same identity in the order
+  // MO2's updateNormalMessage() does (statusbar.cpp:144-163): game, instance,
+  // profile. Driven from here because this is the one place every identity
+  // change funnels through - an instance load, a profile switch, and the
+  // profile-name fallback all call update_title().
+  if (status_bar_ != nullptr) {
+    status_bar_->set_context(
+        ui::context_label_text(QString::fromStdString(current_game_name_),
+                               QString::fromStdString(current_instance_root_
+                                                          .filename()
+                                                          .string()),
+                               QString::fromStdString(current_profile_name_)));
+  }
 }
 
 void MainWindow::resizeEvent(QResizeEvent *event) {
