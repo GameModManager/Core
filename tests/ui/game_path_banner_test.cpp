@@ -11,12 +11,18 @@
 // Workspace-wk8 adds: the mod list itself loads for a game-less instance —
 // ModScanWorker replaces the game-dir scan with the instance mods-dir scan.
 //
+// Workspace-fr71 adds: sync_priorities() must survive a kModMoved handler
+// that mutates the mod model mid-loop (it used to hold a reference to the
+// row vector across the dispatch).
+//
 // Hermetic: offscreen platform, per-case unique /tmp scratch root
 // (pid + sequence, cf. TempTree in vfs_path_resolver_test.cpp) plus
 // throwaway XDG_CONFIG_HOME/XDG_DATA_HOME per case, an empty
 // GameKnowledge seeded with just mods_subpath. No network, no plugins.
+#include "engine/core/events/event_bus.h"
 #include "engine/core/instance/instance.h"
 #include "engine/game/registry/game_knowledge.h"
+#include "engine/mod/meta/mod_meta.h"
 #include "engine/sort/sorter/interface.h"
 #include "engine/sort/sorter/registry.h"
 #include "ui/controllers/mod_list_controller.h"
@@ -469,4 +475,122 @@ TEST_CASE("sort_mods persists the new order to disk", "[ui]") {
   CHECK(model->mods().front().id == "C_mod");
 
   engine::Sorter::Registry::instance().clear();
+}
+
+// Workspace-fr71: sync_priorities() calls engine::EventBus::dispatch(kModMoved)
+// INSIDE the per-row loop, so a plugin handler can change the mod model
+// between the two writes an iteration performs - the in-folder meta.ini write
+// (which happens before the dispatch) and the game-native metadata write
+// (which happens after it). The loop used to re-read the row from the model
+// for every field access, so once the handler moved a different row onto that
+// index the iteration finished on somebody else: meta.ini for one mod,
+// game-side priority for another, both at the same priority. A mod removed by
+// a plugin mid-sync ended up half-written.
+//
+// This installs a kModMoved handler that removes the row the in-flight
+// iteration is writing, on a game with a game-native metadata file (the
+// second sink, cf. Workspace-8tqw). Both writes of one iteration must land on
+// the same row.
+TEST_CASE("sync_priorities keeps one row per iteration across a mutating "
+          "kModMoved handler",
+          "[ui]") {
+  CaseSetup setup;
+
+  const auto root = make_instance(setup.scratch.instances);
+  const auto mods_dir =
+      engine::Instance::from_root(root).path_for(engine::InstanceKind::Mods);
+  // The game-visible side: <game_dir>/mods/<id>/metadata.xml, reached through
+  // the row's content_dir (Isaac's external-mod layout).
+  const auto game_mods = setup.scratch.root / "game" / "mods";
+
+  // Instance side: the meta.ini sync_priorities writes, seeded at a priority
+  // no row index can match so every row is a REAL move. A real move is what
+  // fires kModMoved at all (a missing meta.ini reads back as -1 and persists
+  // without dispatching).
+  for (const auto *id : {"A_mod", "B_mod", "C_mod"}) {
+    engine::ModMeta meta;
+    meta.set_priority(99);
+    REQUIRE(meta.save(mods_dir, id));
+  }
+  // Game side: a metadata.xml per mod, with no priority prefix yet.
+  const auto seed_metadata = [&](const std::string &id, const std::string &name) {
+    write_text(game_mods / id / "metadata.xml",
+               "<mod><name>" + name + "</name><version>1.0</version></mod>");
+  };
+  seed_metadata("A_mod", "A");
+  seed_metadata("B_mod", "B");
+  seed_metadata("C_mod", "C");
+
+  ui::MainWindow w;
+  engine::GameKnowledge knowledge;
+  seed_game_native_order_knowledge(knowledge, "testgame");
+  w.set_game_knowledge(&knowledge);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "", {}, root);
+
+  auto *model = w.findChild<ui::ModList *>();
+  REQUIRE(model != nullptr);
+
+  // sync_priorities() early-returns while the load is still running.
+  pump_until([&] {
+    return !w.is_loading();
+  });
+
+  // Three rows with a fixed order (the async scan sorts by display name) and
+  // an explicit content_dir, so the game-native write is aimed at a known
+  // folder instead of whatever the scan happened to resolve.
+  QVector<ui::ModEntry> order;
+  for (const auto *id : {"A_mod", "B_mod", "C_mod"}) {
+    ui::ModEntry entry;
+    entry.id          = QString::fromLatin1(id);
+    entry.name        = entry.id;
+    entry.content_dir = QString::fromStdString((game_mods / id).string());
+    order.push_back(entry);
+  }
+
+  // The bus is a process singleton: start from a known subscriber set so the
+  // hit count below is this handler's alone. Install BEFORE the reorder below,
+  // because the reorder's mod_list_changed cascade is what runs
+  // sync_priorities() - the same window a drag-reorder opens.
+  engine::EventBus::instance().clear();
+  int handler_hits = 0;
+  const auto token = engine::EventBus::instance().subscribe(
+      engine::events::kModMoved, [&, model](const std::string &, const std::string &) {
+        // Remove the row the in-flight iteration just wrote. The removal also
+        // reaches mod_list_changed, which re-enters sync_priorities() for the
+        // shrunken model, so this must happen exactly once or the re-entry
+        // would dispatch forever.
+        if (handler_hits++ == 0)
+          model->remove_mod("A_mod");
+      });
+  REQUIRE(token != 0);
+
+  // Re-seed the on-disk priorities now that the handler is listening: the scan
+  // above already synced them to their row indices, and a sync that finds
+  // every row in place persists nothing and dispatches nothing. A meta.ini
+  // write is a plain file write - no model mutation, so no cascade.
+  for (const auto *id : {"A_mod", "B_mod", "C_mod"}) {
+    engine::ModMeta meta;
+    meta.set_priority(99);
+    REQUIRE(meta.save(mods_dir, id));
+  }
+
+  model->reset_with_order(order);
+
+  // Non-vacuous: the mutation window was actually entered, and the row the
+  // handler removed is gone from the model.
+  CHECK(handler_hits > 0);
+  REQUIRE(model->mods().size() == 2);
+  CHECK(model->mods().front().id == "B_mod");
+
+  // Row 0's iteration wrote A_mod's meta.ini to 0, then dispatched, then
+  // removed A_mod. The game-side write belongs to that same iteration, so
+  // A_mod's metadata.xml must carry the priority prefix too. Pre-fix the
+  // iteration re-read the model and wrote the prefix to B_mod instead, which
+  // is the half-written state this case is about.
+  CHECK(engine::ModMeta::load(mods_dir, "A_mod").priority() == 0);
+  const auto a_xml      = read_text(game_mods / "A_mod" / "metadata.xml");
+  const bool a_prefixed = a_xml.find("<name>000 A<") != std::string::npos;
+  INFO("A_mod metadata.xml was: " << a_xml);
+  CHECK(a_prefixed);
 }
