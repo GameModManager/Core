@@ -3528,6 +3528,24 @@ SourceVisitInfo ModListController::source_visit_info(const QString &source_type,
   return {tr("Visit on %1").arg(label), QString()};
 }
 
+void ModListController::visit_selected_mod_source() {
+  const auto sel = w_->mod_view_->selectionModel()->selectedRows();
+  if (sel.isEmpty())
+    return;
+  const auto &mods = w_->mod_model_->mods();
+  const int row    = sel.first().row();
+  if (row < 0 || row >= mods.size())
+    return;
+  const auto &entry = mods[row];
+  if (entry.is_overwrite || entry.is_separator || entry.is_game_native)
+    return;
+  const auto src = source_visit_info(entry.source_type, entry.source_id,
+                                     entry.source_page_url);
+  if (src.url.isEmpty())
+    return;
+  QDesktopServices::openUrl(QUrl(src.url));
+}
+
 QString ModListController::create_separator_named(const QString &name,
                                                   const QString &color) {
   return mod_actions_->create_separator_named(name, color);

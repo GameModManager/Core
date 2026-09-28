@@ -6,6 +6,8 @@
 // carries a support URL), Chat on Discord, Report Issue, Tutorials, About,
 // About Qt. The Tutorials entries come from tutorials/*.js "//TL" headers
 // sorted by their order value (First Steps / Conflict Resolution / Overview).
+// GMM has no Discord presence, so that one entry is dropped rather than left
+// disabled, and the two link entries point at this repo instead of MO2's.
 //
 // Shortcuts - the eight MO2 binds, read straight out of mainwindow.ui:
 //   Ctrl+M Install Mod   Ctrl+P Profiles    Ctrl+E Executables  Ctrl+I Tool Plugins
@@ -15,11 +17,12 @@
 // every action and its shortcut, so the menu bar IS the thing under test. No
 // MainWindow, no game, no instance, no files touched.
 //
-// The two keys GMM cannot adopt without taking a key away from an existing
-// entry (Ctrl+P Workflow Pipeline, Ctrl+N New Instance vs MO2's Profiles and
-// Visit Nexus) are pinned by an explicit assertion, so the conflict is visible
-// in the suite rather than only in a commit message: a future rebind has to
-// update this test deliberately.
+// All eight of MO2's keys are adopted. Three GMM entries (New Instance, Enable
+// Selected, Workflow Pipeline) gave up the key that stood where MO2 puts
+// Profiles / the mod source page / Executables; they keep their menu route and
+// a test asserts both halves of that, so a silent re-bind cannot creep back in.
+// A tree-wide uniqueness check pins the rule that got broken twice already:
+// one key, one action.
 #include "ui/widgets/menu_bar.h"
 
 #include <QAction>
@@ -42,9 +45,16 @@ namespace {
 // The Help menu as MO2 builds it, minus the support-URL entry (conditional, so
 // it is asserted on its own) and the GMM-only entries appended below it. About
 // keeps GMM's longer "About GameModManager" label - it is the same entry.
+// Chat on Discord is gone: GMM has no Discord presence to point at.
 const std::vector<std::string> kMo2HelpOrder = {
-    "Help on UI", "Documentation",        "Chat on Discord", "Report Issue",
-    "Tutorials",  "About GameModManager", "About Qt"};
+    "Help on UI", "Documentation",   "Report Issue", "Tutorials",
+    "About GameModManager", "About Qt"};
+
+// The project's own addresses. The Help menu's link entries carry the
+// destination in the QAction's data() so the destination is readable without
+// firing the action.
+const std::string kRepoUrl  = "https://github.com/GameModManager/Core";
+const std::string kIssueUrl = "https://github.com/GameModManager/Core/issues";
 
 // What the user actually sees: entries in order, separators and hidden
 // entries dropped.
@@ -184,16 +194,25 @@ TEST_CASE("Help menu mirrors MO2's tree", "[ui][menu][parity]") {
     CHECK(find(visible.begin(), visible.end(), "Game Support Wiki") == visible.end());
   }
 
-  SECTION("the URL entries are listed but disabled while no URL is configured") {
-    // MO2 hardcodes its own destinations (mainwindow.cpp:2352-2370). GMM has
-    // no project URL configured, so the entries are offered disabled rather
-    // than pointing at a made-up or borrowed address.
-    for (const char *title : {"Documentation", "Chat on Discord", "Report Issue"}) {
-      auto *act = find_action(help, title);
-      INFO("entry: " << title);
-      REQUIRE(act != nullptr);
-      CHECK_FALSE(act->isEnabled());
-    }
+  SECTION("the project link entries point at the Core repo") {
+    // MO2 hardcodes its own destinations (mainwindow.cpp:2352-2370). GMM points
+    // Documentation at the Core repo and issue reporting at its tracker; both
+    // are live, so both entries are enabled.
+    auto *doc = find_action(help, "Documentation");
+    REQUIRE(doc != nullptr);
+    CHECK(doc->isEnabled());
+    CHECK(doc->data().toString().toStdString() == kRepoUrl);
+
+    auto *issue = find_action(help, "Report Issue");
+    REQUIRE(issue != nullptr);
+    CHECK(issue->isEnabled());
+    CHECK(issue->data().toString().toStdString() == kIssueUrl);
+  }
+
+  SECTION("no Discord entry: GMM has no Discord presence to link to") {
+    CHECK(find_action(help, "Chat on Discord") == nullptr);
+    const auto entries = menu_entries(help);
+    CHECK(find(entries.begin(), entries.end(), "Chat on Discord") == entries.end());
   }
 
   std::filesystem::remove_all("/tmp/opencode/gmm_menu_parity");
@@ -217,9 +236,6 @@ TEST_CASE("menu shortcuts match MO2's table", "[ui][menu][parity][shortcuts]") {
   auto table = shortcut_table(bar);
 
   SECTION("MO2's keys that GMM can adopt without displacing anything") {
-    // Ctrl+M: MO2's Install Mod. GMM's 'install a new mod from an archive' is
-    // File > Import Mods...
-    CHECK(table["Ctrl+M"] == "Import Mods...");
     // Ctrl+I: MO2's Tool Plugins, the plugin list.
     CHECK(table["Ctrl+I"] == "Tool Plugins");
     // Ctrl+H: MO2 binds it on the Help menu action itself. QMenu has no
@@ -233,21 +249,91 @@ TEST_CASE("menu shortcuts match MO2's table", "[ui][menu][parity][shortcuts]") {
   }
 
   SECTION("adopting a MO2 key does not cost the binding it replaces") {
+    // Ctrl+M is MO2's Install Mod, so it lands on Import Mods. Ctrl+Shift+I
+    // was the entry's own key and stays: both resolve to the same action.
+    CHECK(table["Ctrl+M"] == "Import Mods...");
     auto *import = find_action(menu_named(bar, "&File"), "Import Mods...");
     REQUIRE(import != nullptr);
     CHECK(import->shortcuts().contains(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I)));
+
+    // Ctrl+Shift+M and Ctrl+Shift+E sat next to the MO2 keys and must not have
+    // been dragged onto them: Export Modpack keeps Ctrl+Shift+M, Export Mods
+    // keeps Ctrl+Shift+E.
+    CHECK(table["Ctrl+Shift+M"] == "Export Modpack...");
+    CHECK(table["Ctrl+Shift+E"] == "Export Mods...");
 
     auto *settings = find_action(menu_named(bar, "&File"), "Settings...");
     REQUIRE(settings != nullptr);
     CHECK(settings->shortcuts().contains(QKeySequence::Preferences));
   }
 
-  SECTION("keys MO2 wants for Profiles and Visit Nexus keep their GMM entries") {
-    // MO2 wants Ctrl+P Profiles and Ctrl+N Visit Nexus. Both keys are taken
-    // here, so neither was stolen: the pipeline and the instance switcher
-    // keep working and MO2's Profiles / Visit Nexus have no menu entry yet.
-    CHECK(table["Ctrl+P"] == "Workflow Pipeline...");
-    CHECK(table["Ctrl+N"] == "New Instance...");
+  SECTION("MO2's four keys reach the MO2 action") {
+    // Ctrl+P Profiles / Ctrl+N the mod's source page / Ctrl+E Executables /
+    // Ctrl+M install from an archive.
+    CHECK(table["Ctrl+P"] == "Profiles...");
+    CHECK(table["Ctrl+N"] == "Open Mod Source Page");
+    CHECK(table["Ctrl+E"] == "Executables...");
+    CHECK(table["Ctrl+M"] == "Import Mods...");
+  }
+
+  SECTION("the MO2 entries sit where MO2 keeps them") {
+    // mainwindow.ui: File = Change Game, Install Mod, Nexus, ---, Exit;
+    // Tools = Add Profile, Modify Executables, ---, Tool, ---, Settings.
+    auto *file  = menu_named(bar, "&File");
+    auto *tools = menu_named(bar, "&Tools");
+    REQUIRE(file != nullptr);
+    REQUIRE(tools != nullptr);
+    CHECK(find_action(file, "Open Mod Source Page") != nullptr);
+    CHECK(find_action(tools, "Profiles...") != nullptr);
+    CHECK(find_action(tools, "Executables...") != nullptr);
+  }
+
+  SECTION("the entries that gave up their key are still reachable from the menu") {
+    // Adopting MO2's keys cost three entries their shortcut, not their
+    // route: each stays a first-class item in its own menu.
+    CHECK(find_action(menu_named(bar, "&File"), "New Instance...") != nullptr);
+    CHECK(find_action(menu_named(bar, "&Edit"), "Enable Selected") != nullptr);
+    CHECK(find_action(menu_named(bar, "&View"), "Workflow Pipeline...") != nullptr);
+
+    // And none of them kept the key they gave up, so the four above are the
+    // only owners of Ctrl+P / Ctrl+N / Ctrl+E.
+    auto *new_instance = find_action(menu_named(bar, "&File"), "New Instance...");
+    CHECK(new_instance->shortcut().isEmpty());
+    auto *enable = find_action(menu_named(bar, "&Edit"), "Enable Selected");
+    CHECK(enable->shortcut().isEmpty());
+    auto *pipeline = find_action(menu_named(bar, "&View"), "Workflow Pipeline...");
+    CHECK(pipeline->shortcut().isEmpty());
+  }
+
+  SECTION("no two actions in the whole menu bar claim the same shortcut") {
+    // General guard over the entire tree, submenus included: a key belongs to
+    // exactly one action. shortcut_table() cannot catch this (a repeated key
+    // just overwrites), so the pairs are collected separately.
+    std::vector<const QAction *> acts;
+    for (QAction *top : bar.actions()) {
+      // The menu's own action carries the key that pops the menu - Ctrl+H on
+      // Help - and walk() descends into a menu action rather than collecting
+      // it, so it is collected here or the guard would miss it.
+      acts.push_back(top);
+      if (QMenu *menu = top->menu())
+        walk(menu, acts);
+    }
+    std::map<std::string, std::vector<std::string>> owners;
+    for (const QAction *act : acts) {
+      for (const QKeySequence &seq : act->shortcuts()) {
+        if (seq.isEmpty())
+          continue;
+        const auto key = seq.toString().toStdString();
+        auto &list     = owners[key];
+        if (std::find(list.begin(), list.end(), act->text().toStdString()) ==
+            list.end())
+          list.push_back(act->text().toStdString());
+      }
+    }
+    for (const auto &[key, texts] : owners) {
+      INFO("key: " << key);
+      CHECK(texts.size() == 1);
+    }
   }
 
   SECTION("the filter-bar pair is not shadowed by any menu action") {
