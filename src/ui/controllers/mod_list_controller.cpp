@@ -2110,6 +2110,17 @@ void ModListController::load_meta_for_mods() {
     if (!category_ids.isEmpty())
       w_->mod_model_->set_category_ids(mod.id, category_ids);
 
+    // Names for the Category cell tooltip, which lists every category rather
+    // than the one the column shows. Ids the category DB does not know are
+    // dropped - a nameless entry would render as an empty item.
+    QStringList category_names;
+    for (const int cid : category_ids) {
+      if (const auto *cat = cats.find(cid))
+        category_names << QString::fromStdString(cat->name);
+    }
+    if (!category_names.isEmpty())
+      w_->mod_model_->set_category_names(mod.id, category_names);
+
     // Update ModEntry with separator info from meta.ini
     auto sep_id = meta.separator_id();
     if (!sep_id.empty()) {
