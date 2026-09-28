@@ -24,6 +24,11 @@ ProfileBar::ProfileBar(QWidget *parent) : QWidget(parent) {
   layout->setContentsMargins(4, 2, 4, 2);
   layout->setSpacing(4);
 
+  setWhatsThis(tr("Create profiles here. Each profile carries its own list of active "
+                  "mods and its own plugin load order, so you can switch between "
+                  "setups for different playthroughs. Choose \"<Manage...>\" in the "
+                  "dropdown to open the profile manager."));
+
   // Profile label + dropdown
   auto *profile_label = new QLabel(tr("Profile:"), this);
   layout->addWidget(profile_label);

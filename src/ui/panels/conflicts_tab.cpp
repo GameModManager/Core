@@ -43,6 +43,9 @@ ConflictsTab::ConflictsTab(QWidget *parent) : QWidget(parent) {
   layout->setContentsMargins(0, 0, 0, 0);
 
   tree_ = new QTreeWidget(this);
+  tree_->setWhatsThis(
+      tr("Files that two or more of the instance's mods provide, with the mod that "
+         "wins named first. Double-click a file to open or preview it."));
   tree_->setHeaderLabel("Conflicts");
   tree_->setRootIsDecorated(true);
   tree_->setAlternatingRowColors(true);

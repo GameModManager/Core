@@ -298,6 +298,9 @@ void ModMarkingScrollBar::paintEvent(QPaintEvent *event) {
 }
 
 ModView::ModView(QWidget *parent) : QTreeView(parent) {
+  setWhatsThis(tr("This is a list of installed mods. Use the checkboxes to "
+                  "activate/deactivate mods and drag & drop mods to change their "
+                  "\"installation\" orders."));
   setRootIsDecorated(false);
   setIndentation(0);
   setAlternatingRowColors(true);

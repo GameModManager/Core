@@ -12,6 +12,11 @@ ModFilterBar::ModFilterBar(QWidget *parent) : QWidget(parent) {
   layout->setContentsMargins(4, 2, 4, 2);
   layout->setSpacing(4);
 
+  setWhatsThis(tr("Filter the mod list. The box narrows it by text, the dropdown "
+                  "narrows it to one group - enabled, disabled, mods with conflicts, "
+                  "and so on - and the button at the far left shows or hides the "
+                  "category filter."));
+
   // Category filter panel toggle [<< / >>] (MO2 parity): shows/hides the
   // checkable category tree. The text flips to indicate the panel state.
   category_toggle_btn_ = new QToolButton(this);

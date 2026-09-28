@@ -11,6 +11,10 @@
 namespace ui {
 
 MainToolbar::MainToolbar(QWidget *parent) : QWidget(parent) {
+  setWhatsThis(
+      tr("The toolbar. Its buttons apply to the whole instance; the ones on the "
+         "right are shortcuts to the executables you have set up."));
+
   auto *instances_btn = add_gmm_button("Switch Instance", "computer");
   auto *settings_btn  = add_gmm_button("Settings", "preferences-system");
 
