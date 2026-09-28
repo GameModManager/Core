@@ -420,6 +420,9 @@ private:
   // cell tooltip). Empty when the mod has no categories, which is what MO2
   // returns for an uncategorized mod.
   [[nodiscard]] static QString category_tooltip(const ModEntry &mod);
+  // "1 loose file" / "3 loose files" - the conflict cell's counted noun, so
+  // the singular and the "loose" qualifier are decided in one place.
+  [[nodiscard]] static QString loose_files(int count);
   // Conflict-highlight color for a mod id: red (modlist_overwriting_loose)
   // when some selected mod loses to it, green (modlist_overwritten_loose)
   // when some selected mod wins over it, invalid otherwise. Red wins over
