@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -8,6 +9,11 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+#ifdef __SANITIZE_ADDRESS__
+/* Provided by libasan; used only to locate the runtime's path below. */
+void __asan_init(void);
+#endif
 
 // Functional test for libgmm_ci_intercept.so: the interposer must
 // case-insensitively resolve a READ-side lookup that fails ENOENT on a
@@ -193,7 +199,21 @@ int main(void) {
   }
   self[selflen] = '\0';
 
+  /* The binary is built with -fsanitize=address, so libasan arrives via
+   * DT_NEEDED: a bare LD_PRELOAD=<shim> would put the shim ahead of it and
+   * every child would die with "ASan runtime does not come first in initial
+   * library list". Prepend the path of the runtime we are linked against. */
+#ifdef __SANITIZE_ADDRESS__
+  Dl_info asan_info;
+  char preload[8192];
+  if (dladdr((void *)__asan_init, &asan_info) && asan_info.dli_fname)
+    snprintf(preload, sizeof preload, "%s:%s", asan_info.dli_fname, GMM_CI_SO);
+  else
+    snprintf(preload, sizeof preload, "%s", GMM_CI_SO);
+  setenv("LD_PRELOAD", preload, 1);
+#else
   setenv("LD_PRELOAD", GMM_CI_SO, 1);
+#endif
   setenv("GMM_CI_ENABLED", "1", 1);
   setenv("GMM_CI_DEBUG", "1", 1);
   setenv("GMM_CI_ROOT", base, 1);

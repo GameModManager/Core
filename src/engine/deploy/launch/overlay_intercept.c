@@ -101,6 +101,18 @@ __attribute__((constructor)) void gmm_overlay_init(void) {
   }
 }
 
+/* Release the constructor's copies when the interposer is unloaded (the
+ * tests dlclose() the .so; without this the two strdup()s are still live at
+ * the LeakSanitizer exit check and the owning frames are already unmapped). */
+__attribute__((destructor)) void gmm_overlay_fini(void) {
+  free(gmm_game_dir);
+  gmm_game_dir = NULL;
+  gmm_game_dir_len = 0;
+  free(gmm_overwrite_dir);
+  gmm_overwrite_dir = NULL;
+  gmm_overwrite_dir_len = 0;
+}
+
 static int is_under_game_dir(const char *path) {
   if (!path || !gmm_game_dir)
     return 0;
