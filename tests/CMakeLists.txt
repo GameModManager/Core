@@ -3,13 +3,29 @@
 # gmm_ui, gmm_runtime, gmm_platform) instead of re-listing engine sources;
 # the libraries carry their transitive link dependencies.
 #
-# Every C++ test is a Catch2 v3 test: Catch2WithMain provides the runner
-# main() and catch_discover_tests() registers each TEST_CASE as its own CTest
-# test, so a failure in one case never hides the rest.
+# Every C++ test is a Catch2 v3 test: gmm_test_support provides the runner
+# main() (with QSettings sandboxing, see below) and catch_discover_tests()
+# registers each TEST_CASE as its own CTest test, so a failure in one case
+# never hides the rest.
 
 # ---------------------------------------------------------------------------
 # Catch2 test helper
 # ---------------------------------------------------------------------------
+# Shared runner (Workspace-2zm): one main() for every test target that
+# sandboxes QSettings (IniFormat + process-unique temp dir + XDG_CONFIG_HOME)
+# before QApplication exists, so no test can read or write the user's real
+# config. Linking it instead of Catch2WithMain is what makes the isolation
+# automatic - see tests/support/test_main.cpp. A test that must exercise
+# NativeFormat opts in with GMM_TEST_NATIVE_QSETTINGS=1 in its CTest
+# ENVIRONMENT (documented there); none does today.
+# Qt6::Core is PRIVATE: test sources still cannot include Qt headers unless
+# they link Qt themselves (gmm_ui / Qt6::Core in LIBS), so the Qt-free engine
+# tests stay Qt-free at compile time.
+add_library(gmm_test_support STATIC support/test_main.cpp)
+target_link_libraries(gmm_test_support
+    PUBLIC Catch2::Catch2
+    PRIVATE Qt6::Core)
+
 # gmm_catch2_test(<name> <sources...>
 #     [UI]
 #     LIBS <extra link libraries>
@@ -28,7 +44,7 @@ function(gmm_catch2_test NAME)
     cmake_parse_arguments(GCT "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
     add_executable(${NAME} ${GCT_UNPARSED_ARGUMENTS})
-    target_link_libraries(${NAME} PRIVATE Catch2::Catch2WithMain gmm_engine ${GCT_LIBS})
+    target_link_libraries(${NAME} PRIVATE gmm_test_support gmm_engine ${GCT_LIBS})
     if(GCT_DEFINES)
         target_compile_definitions(${NAME} PRIVATE ${GCT_DEFINES})
     endif()

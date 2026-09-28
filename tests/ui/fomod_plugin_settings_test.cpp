@@ -92,10 +92,7 @@ TEST_CASE("fomod plugin settings integration", "[ui]") {
   std::filesystem::remove_all("/tmp/gmm_fomod_plugin_settings");
   std::filesystem::create_directories(cfg);
   qputenv("XDG_CONFIG_HOME", cfg.c_str());
-  // macOS QSettings NativeFormat ignores XDG_CONFIG_HOME (uses
-  // ~/Library/Preferences plist); force IniFormat under the throwaway dir.
-  QSettings::setDefaultFormat(QSettings::IniFormat);
-  QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, cfg.c_str());
+  // QSettings itself is sandboxed once in tests/support/test_main.cpp.
 
   int test_argc     = 1;
   char test_argv0[] = "test";
