@@ -954,12 +954,21 @@ void SettingsController::restore_app_state() {
           h->setSectionResizeMode(1, QHeaderView::Interactive);
           h->setSectionResizeMode(2, QHeaderView::Interactive);
         } else if (key == "Downloads") {
+          // One entry per DownloadsTab::Column - restoreState does not carry
+          // resize modes, so a column added without a line here comes back
+          // with the stale mode from the section it inherits.
           auto *h = table->horizontalHeader();
           h->setStretchLastSection(false);
           h->setSectionResizeMode(0, QHeaderView::Stretch);
-          h->setSectionResizeMode(1, QHeaderView::Interactive);
-          h->setSectionResizeMode(2, QHeaderView::Interactive);
-          h->setSectionResizeMode(3, QHeaderView::Interactive);
+          for (int c = 1; c < ui::DownloadsTab::ColumnCount; ++c)
+            h->setSectionResizeMode(c, QHeaderView::Interactive);
+          // A state saved before a column existed carries no opinion on it,
+          // and Qt leaves such a section visible - so the default-hidden set
+          // has to be re-applied after the restore, not just in the ctor.
+          // ponytail: unconditional because this tab's header has no
+          // column-toggle menu, so there is no user choice to overwrite;
+          // make it conditional if one is ever added.
+          ui::DownloadsTab::apply_default_hidden_columns(table);
         }
       }
     }
