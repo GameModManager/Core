@@ -47,11 +47,14 @@
 #include <QCheckBox>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QFileInfo>
 #include <QHeaderView>
+#include <QLocale>
 #include <QMenu>
 #include <QMimeData>
 #include <QTableWidget>
 #include <QTableWidgetItem>
+#include <QSet>
 #include <QThread>
 #include <QUrl>
 
@@ -1229,4 +1232,267 @@ TEST_CASE("downloads resume without a link keeps the row paused", "[ui]") {
            m.find("no NXM/modl/URL link") != std::string::npos;
   });
   CHECK(logged);
+}
+
+// MO2 column parity for the downloads list, locked against the rendered table.
+//
+// MO2 (references/modorganizer/src/downloadlist.h:38-50) has 8 columns:
+// COL_NAME, COL_STATUS, COL_SIZE, COL_FILETIME, COL_MODNAME, COL_VERSION,
+// COL_ID, COL_SOURCEGAME. Of the four this tab was missing it can honestly
+// populate two, both appended so the index-keyed header state written by
+// SettingsController::save_app_state keeps its meaning for sections 0-3.
+TEST_CASE("downloads column set matches MO2", "[ui][mo2-parity]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_downloads_columns/config";
+  std::filesystem::remove_all("/tmp/gmm_downloads_columns");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int         argc    = 1;
+  char        arg0[]  = "test";
+  char       *argv[]  = {arg0, nullptr};
+  QApplication app(argc, argv);
+
+  TestDownloadsTab tab;
+  auto           *table = tab.table();
+  REQUIRE(table != nullptr);
+
+  // The four columns the tab already had keep their indices - a saved
+  // header state (SettingsController::save_app_state, keyed by the tab
+  // name) stores per-section width/visibility by index, so moving one of
+  // them would reinterpret everything a previous build wrote.
+  const QStringList expected = {
+      QStringLiteral("Name"), QStringLiteral("Source"), QStringLiteral("Status"),
+      QStringLiteral("Size"), QStringLiteral("Filetime"), QStringLiteral("Nexus ID"),
+  };
+  INFO("column count: " << table->columnCount());
+  check(table->columnCount() == expected.size(), "tab carries MO2's shippable columns");
+
+  for (int c = 0; c < expected.size(); ++c) {
+    auto *header = table->horizontalHeaderItem(c);
+    INFO("column " << c);
+    REQUIRE(header != nullptr);
+    check(header->text() == expected[c], "header label matches the column spec");
+    // A header with no tooltip shows nothing on hover; the list is
+    // positional, so an empty entry means every later tooltip is off by one.
+    check(!header->toolTip().isEmpty(), "every header carries a tooltip");
+  }
+
+  // MO2 hides COL_ID on a fresh profile (downloadlistview.cpp:147-151) and
+  // shows COL_FILETIME. Same here: nothing the user could already see
+  // becomes hidden, and the new Nexus ID column starts out of the way.
+  auto *header = table->horizontalHeader();
+  check(!header->isSectionHidden(0), "Name stays visible");
+  check(!header->isSectionHidden(1), "Source stays visible");
+  check(!header->isSectionHidden(2), "Status stays visible");
+  check(!header->isSectionHidden(3), "Size stays visible");
+  check(!header->isSectionHidden(4), "Filetime is visible by default (MO2 shows it)");
+  check(header->isSectionHidden(5), "Nexus ID is hidden by default (MO2 hides it)");
+}
+
+TEST_CASE("downloads new columns carry the data they claim", "[ui][mo2-parity]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg  = "/tmp/gmm_downloads_columns_data/config";
+  const std::filesystem::path dl   = "/tmp/gmm_downloads_columns_data/dl";
+  std::filesystem::remove_all("/tmp/gmm_downloads_columns_data");
+  std::filesystem::create_directories(cfg);
+  std::filesystem::create_directories(dl);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int         argc    = 1;
+  char        arg0[]  = "test";
+  char       *argv[]  = {arg0, nullptr};
+  QApplication app(argc, argv);
+
+  const auto nexus_zip = dl / "Nexus Mod.zip";
+  const auto local_zip = dl / "Local Mod.zip";
+  write_file(nexus_zip, 512);
+  write_file(local_zip, 512);
+
+  TestDownloadsTab tab;
+  auto           *table = tab.table();
+
+  // A Nexus row: mod id, file id and an archive on disk.
+  tab.add_download("1234-5678", "Nexus Mod", "Nexus Mods", nexus_zip,
+                   "skyrimspecialedition", 5678, "1234");
+  // A row that came from a local archive: no Nexus origin at all.
+  tab.add_download("Local Mod", "Local Mod", "Manual", local_zip);
+
+  const int nexus_row = row_with_name(table, "Nexus Mod");
+  const int local_row = row_with_name(table, "Local Mod");
+  REQUIRE(nexus_row >= 0);
+  REQUIRE(local_row >= 0);
+
+  // Nexus ID: the mod id off parent_mod_id, blank for everything else.
+  auto *id_item = table->item(nexus_row, 5);
+  REQUIRE(id_item != nullptr);
+  check(id_item->text() == QLatin1String("1234"), "Nexus ID shows the mod id");
+  auto *local_id = table->item(local_row, 5);
+  REQUIRE(local_id != nullptr);
+  check(local_id->text().isEmpty(), "Nexus ID is blank for a non-Nexus download");
+
+  // Filetime: archive mtime, so a download that has not landed a file yet
+  // is blank rather than showing a made-up time.
+  auto *ft_item = table->item(nexus_row, 4);
+  REQUIRE(ft_item != nullptr);
+  // MO2 shows the file's creation time, falling back through the times a
+  // filesystem may not record (downloadmanager.cpp:1441-1447), so either
+  // stamp is a pass - a freshly written test archive has them identical.
+  const QFileInfo nexus_info(QString::fromStdString(nexus_zip.string()));
+  const QString want_birth =
+      QLocale().toString(nexus_info.birthTime(), QLocale::ShortFormat);
+  const QString want_mtime =
+      QLocale().toString(nexus_info.lastModified(), QLocale::ShortFormat);
+  INFO("filetime rendered: " << ft_item->text().toStdString());
+  check(ft_item->text() == want_birth || ft_item->text() == want_mtime,
+        "Filetime shows the archive's creation time");
+  check(!ft_item->text().isEmpty(), "Filetime is populated for a finished download");
+
+  tab.add_download("pending-1", "Mod #9 - file 1", "Nexus Mods", {}, "skyrimspecialedition",
+                   1, "9");
+  const int pending_row = row_with_name(table, "Mod #9 - file 1");
+  REQUIRE(pending_row >= 0);
+  auto *pending_ft = table->item(pending_row, 4);
+  REQUIRE(pending_ft != nullptr);
+  check(pending_ft->text().isEmpty(), "Filetime is blank while the archive is not on disk");
+  auto *pending_id = table->item(pending_row, 5);
+  REQUIRE(pending_id != nullptr);
+  check(pending_id->text() == QLatin1String("9"),
+        "Nexus ID is known before the file lands");
+
+  // set_file_path is the path a Nexus download takes when the archive only
+  // becomes known after the fetch; Filetime must follow it.
+  const auto late_zip = dl / "Late Mod.zip";
+  write_file(late_zip, 512);
+  tab.set_file_path("pending-1", late_zip);
+  auto *late_ft = table->item(pending_row, 4);
+  REQUIRE(late_ft != nullptr);
+  const QFileInfo late_info(QString::fromStdString(late_zip.string()));
+  check(late_ft->text() == QLocale().toString(late_info.birthTime(), QLocale::ShortFormat) ||
+            late_ft->text() == QLocale().toString(late_info.lastModified(), QLocale::ShortFormat),
+        "Filetime follows set_file_path");
+}
+
+// The header state for this tab is a QHeaderView blob keyed by tab name
+// (SettingsController::save_app_state / restore_app_state), which stores
+// per-section size and visibility by INDEX. Two things follow from that,
+// and both are the reason new columns are appended rather than inserted:
+// a saved width must still land on the same header, and a state written by
+// a build that predates a column must not decide that column's visibility.
+//
+// The second one is not free: Qt applies a shorter saved state to the
+// leading sections and leaves the rest VISIBLE, so restoring a legacy blob
+// silently unhides everything appended after it. SettingsController has to
+// re-apply the default-hidden set afterwards, and this drives the same
+// sequence the real startup runs.
+TEST_CASE("downloads header state survives appending columns", "[ui][mo2-parity]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_downloads_header_state/config";
+  std::filesystem::remove_all("/tmp/gmm_downloads_header_state");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int         argc    = 1;
+  char        arg0[]  = "test";
+  char       *argv[]  = {arg0, nullptr};
+  QApplication app(argc, argv);
+
+  // "Saved" state from a build that had only the original four columns:
+  // Size widened, Source hidden.
+  QByteArray legacy;
+  {
+    QTableWidget old(0, 4);
+    old.horizontalHeader()->resizeSection(3, 321);
+    old.horizontalHeader()->setSectionHidden(1, true);
+    legacy = old.horizontalHeader()->saveState();
+  }
+
+  TestDownloadsTab tab;
+  auto           *table  = tab.table();
+  auto           *header = table->horizontalHeader();
+  check(header->isSectionHidden(5), "Nexus ID starts hidden on a fresh tab");
+
+  header->restoreState(legacy);
+  INFO("restored section 3 width: " << header->sectionSize(3));
+  check(header->sectionSize(3) == 321, "saved width still lands on Size");
+  check(header->isSectionHidden(1), "saved hidden flag still lands on Source");
+  // Documented Qt behaviour, asserted so a future Qt bump that changes it
+  // is noticed here rather than showing up as a column that reappears for
+  // everyone upgrading from a 4-column build.
+  check(!header->isSectionHidden(5),
+        "restoreState alone unhides a column the saved state predates");
+
+  // ... which is why the re-apply runs after every restore.
+  ui::DownloadsTab::apply_default_hidden_columns(table);
+  check(header->isSectionHidden(5), "the default-hidden set is re-applied after a restore");
+  check(header->sectionSize(3) == 321, "the re-apply leaves saved widths alone");
+  check(header->isSectionHidden(1), "the re-apply leaves the user's hidden flag alone");
+
+  // A state written by the current build round-trips over the new columns.
+  header->restoreState(header->saveState());
+  check(header->sectionSize(3) == 321, "a current-build state round-trips");
+  check(header->isSectionHidden(5), "Nexus ID stays hidden across the round-trip");
+}
+
+// The spec is on the widget, next to the enum it must stay aligned with.
+// A header label list and a tooltip list are both positional, so a column
+// added without extending them shifts every later tooltip onto the wrong
+// header; that is what these lock down.
+TEST_CASE("downloads column spec is positionally complete", "[ui][mo2-parity]") {
+  const auto tooltips = ui::DownloadsTab::header_tooltips();
+  INFO("tooltip count: " << tooltips.size() << ", column count: " << ui::DownloadsTab::ColumnCount);
+  check(static_cast<int>(tooltips.size()) == ui::DownloadsTab::ColumnCount,
+        "the tooltip list is exactly as long as the column list");
+  for (int c = 0; c < ui::DownloadsTab::ColumnCount; ++c) {
+    INFO("column " << c);
+    check(!ui::DownloadsTab::column_name(c).isEmpty(), "every column has a name");
+    INFO("tooltip: " << tooltips.value(c).toStdString());
+    check(!tooltips.value(c).isEmpty(), "every column has a non-empty tooltip");
+  }
+  check(ui::DownloadsTab::column_name(-1).isEmpty(), "an out-of-range column has no name");
+  check(ui::DownloadsTab::column_name(ui::DownloadsTab::ColumnCount).isEmpty(),
+        "an out-of-range column has no name");
+
+  // MO2's labels (downloadlist.cpp:76-91) for the columns we carry.
+  check(ui::DownloadsTab::column_name(ui::DownloadsTab::Name) == QLatin1String("Name"),
+        "Name");
+  check(ui::DownloadsTab::column_name(ui::DownloadsTab::Status) == QLatin1String("Status"),
+        "Status");
+  check(ui::DownloadsTab::column_name(ui::DownloadsTab::Size) == QLatin1String("Size"),
+        "Size");
+  check(ui::DownloadsTab::column_name(ui::DownloadsTab::Filetime) == QLatin1String("Filetime"),
+        "Filetime");
+  check(ui::DownloadsTab::column_name(ui::DownloadsTab::NexusId) == QLatin1String("Nexus ID"),
+        "Nexus ID");
+
+  // The default-hidden set, in both directions: exactly MO2's COL_ID, and
+  // nothing MO2 shows.
+  const QStringList hidden = ui::DownloadsTab::default_hidden_column_names();
+  check(hidden.size() == 1, "one default-hidden column");
+  check(hidden.contains(ui::DownloadsTab::column_name(ui::DownloadsTab::NexusId)),
+        "Nexus ID is hidden by default");
+  check(!hidden.contains(ui::DownloadsTab::column_name(ui::DownloadsTab::Filetime)),
+        "Filetime is not hidden by default");
+
+  // Name resolution runs the way the ctor runs it: every stored name is
+  // matched against column_name(), so a name that no longer exists matches
+  // nothing and leaves the table alone.
+  QSet<int> resolved;
+  for (const QString &name : hidden) {
+    for (int c = 0; c < ui::DownloadsTab::ColumnCount; ++c)
+      if (ui::DownloadsTab::column_name(c) == name)
+        resolved.insert(c);
+  }
+  check(resolved.size() == 1, "the default-hidden list resolves to exactly one column");
+  check(resolved.contains(ui::DownloadsTab::NexusId), "and it is Nexus ID");
+
+  // The same resolution over a stored list carrying a retired column name,
+  // which is what a future rename would leave behind.
+  const QStringList with_retired = {QStringLiteral("Some Retired Column"),
+                                    QStringLiteral("Nexus ID")};
+  QSet<int>         after_rename;
+  for (const QString &name : with_retired) {
+    for (int c = 0; c < ui::DownloadsTab::ColumnCount; ++c)
+      if (ui::DownloadsTab::column_name(c) == name)
+        after_rename.insert(c);
+  }
+  check(after_rename.size() == 1, "a retired name contributes nothing");
+  check(after_rename.contains(ui::DownloadsTab::NexusId), "the live name still resolves");
 }

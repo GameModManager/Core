@@ -50,6 +50,74 @@ enum class DropConflictAction { Overwrite, Rename, Ignore };
 class DownloadsTab : public QWidget {
   Q_OBJECT
 public:
+  // Display order is the column order.
+  //
+  // MO2 (references/modorganizer/src/downloadlist.h:38-50) shows 8 columns:
+  // COL_NAME, COL_STATUS, COL_SIZE, COL_FILETIME, COL_MODNAME, COL_VERSION,
+  // COL_ID, COL_SOURCEGAME. This tab carries 6, chosen against that list:
+  //
+  //   MO2 column      here
+  //   --------------  -------------------------------------------
+  //   Name            Name
+  //   Status          Status
+  //   Size            Size
+  //   Filetime        Filetime
+  //   Mod name        - our Name column already holds the name the source
+  //                     gave the file; a second column would repeat it
+  //   Version         - nothing in the download flow produces a version
+  //                     string. The Nexus provider's file metadata
+  //                     (resolve_download_info) carries only the archive
+  //                     name and the display name, and the one place a
+  //                     version exists (fetch_mod_info) is a separate,
+  //                     API-key-gated mod-list lookup
+  //   Nexus ID        NexusId
+  //   Source Game     - a GMM instance is single-game and this tab is
+  //                     already scoped to it, so there is nothing to show
+  //
+  // and one column MO2 does not have: Source, which site a file came from.
+  //
+  // APPEND ONLY. Unlike the mod list, this tab's header state is a
+  // QHeaderView::saveState() blob keyed by the right-panel tab name
+  // (SettingsController::save_app_state), and that blob stores per-section
+  // width and hidden flag by INDEX. Inserting or reordering here would
+  // land a saved width on the wrong header after a restart, so new
+  // columns go at the end and the four that shipped before keep their
+  // indices.
+  //
+  // Qt applies a SHORTER saved state to the leading sections only, and
+  // leaves the rest visible - so a blob written by a build that predates a
+  // column would unhide that column on the next launch. apply_default_
+  // hidden_columns() has to run again after every restoreState() for that
+  // reason; SettingsController::restore_app_state does it for this tab.
+  enum Column {
+    Name,
+    Source,
+    Status,
+    Size,
+    Filetime,
+    NexusId,
+    ColumnCount
+  };
+
+  // Per-column header label, empty for an out-of-range index.
+  [[nodiscard]] static QString column_name(int column);
+
+  // Per-column hover text, indexed by column and always ColumnCount long.
+  // MO2's download list has no header tooltips at all (only a cell-level
+  // ToolTipRole in downloadlist.cpp:214), so these describe what this build
+  // actually shows rather than copying wording that does not exist.
+  [[nodiscard]] static QStringList header_tooltips();
+
+  // Column names hidden for a newly created instance. MO2 hides COL_ID and
+  // shows COL_FILETIME (downloadlistview.cpp:147-151); of the columns this
+  // tab ships, that is Nexus ID alone.
+  [[nodiscard]] static QStringList default_hidden_column_names();
+
+  // Hide default_hidden_column_names() on `table`'s header. Resolved by name,
+  // so a renamed or retired entry is inert rather than hiding whatever sits
+  // at that index. Idempotent, and safe to call again after restoreState().
+  static void apply_default_hidden_columns(QTableWidget *table);
+
   explicit DownloadsTab(QWidget *parent = nullptr);
   [[nodiscard]] QTableWidget *table() const { return table_; }
 
@@ -145,10 +213,14 @@ private:
     QTableWidgetItem *name_item   = nullptr;
     QTableWidgetItem *source_item = nullptr;
     QTableWidgetItem *size_item   = nullptr;
+    QTableWidgetItem *filetime_item = nullptr;
     QProgressBar *progress_bar    = nullptr;
   };
 
   DownloadEntry &entry_for(const std::string &id);
+  // Filetime cell content: the on-disk archive's mtime, empty while no
+  // archive exists yet. Re-run whenever entry.file_path or the file changes.
+  void update_filetime(DownloadEntry &entry);
   void replace_bar_with_label(const std::string &id, const QString &text,
                               const QColor &bg, const QColor &fg);
   void on_cell_double_clicked(int row, int column);
