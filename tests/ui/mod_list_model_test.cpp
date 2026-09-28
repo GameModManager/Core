@@ -3054,7 +3054,11 @@ TEST_CASE("mod list cell tooltips match MO2", "[ui][mo2-parity]") {
   ui::ModList model;
   model.add_mod(QStringLiteral("Wins"), QStringLiteral("Wins Mod"),
                 QStringLiteral("1.0"));
+  model.add_mod(QStringLiteral("WinsOne"), QStringLiteral("Wins One Mod"),
+                QStringLiteral("1.0"));
   model.add_mod(QStringLiteral("Loses"), QStringLiteral("Loses Mod"),
+                QStringLiteral("1.0"));
+  model.add_mod(QStringLiteral("LosesOne"), QStringLiteral("Loses One Mod"),
                 QStringLiteral("1.0"));
   model.add_mod(QStringLiteral("Mixed"), QStringLiteral("Mixed Mod"),
                 QStringLiteral("1.0"));
@@ -3083,23 +3087,33 @@ TEST_CASE("mod list cell tooltips match MO2", "[ui][mo2-parity]") {
         .toStdString();
   };
 
-  // --- Conflicts: MO2's four reachable loose-file flags, verbatim. The
-  // conflict engine counts colliding loose files, which is what these
-  // strings describe. The archive variants have no counterpart here.
+  // --- Conflicts: MO2's four reachable loose-file flag states, each carrying
+  // the count MO2 drops. The conflict engine counts colliding loose files, so
+  // the number is exact, and singular is its own string so it never reads
+  // "1 loose files". The archive variants have no counterpart here.
   model.set_conflict_stats(QStringLiteral("Wins"), 3, 0);
+  model.set_conflict_stats(QStringLiteral("WinsOne"), 1, 0);
   model.set_conflict_stats(QStringLiteral("Loses"), 0, 2);
+  model.set_conflict_stats(QStringLiteral("LosesOne"), 0, 1);
   model.set_conflict_stats(QStringLiteral("Mixed"), 1, 4);
-  // Redundant wins every file, so it also has losses: MO2's switch is
-  // exclusive and "Redundant" must win over the mixed string.
+  // A redundant mod is beaten on every file it provides, so in practice it
+  // carries losses only. The row also carries wins so the state string is
+  // pinned ahead of the two-count line, which it would otherwise take.
   model.set_conflict_stats(QStringLiteral("Redundant"), 5, 5);
   model.set_conflict_redundant(QStringLiteral("Redundant"), true);
 
-  CHECK(tip("Wins", ui::ModList::Conflicts) == "Overwrites loose files");
-  CHECK(tip("Loses", ui::ModList::Conflicts) == "Overwritten loose files");
+  CHECK(tip("Wins", ui::ModList::Conflicts) == "Overwrites 3 loose files");
+  CHECK(tip("WinsOne", ui::ModList::Conflicts) == "Overwrites 1 loose file");
+  CHECK(tip("Loses", ui::ModList::Conflicts) == "2 loose files overwritten");
+  CHECK(tip("LosesOne", ui::ModList::Conflicts) == "1 loose file overwritten");
+  // Both counts, one per line, wins first.
   CHECK(tip("Mixed", ui::ModList::Conflicts) ==
-        "Loose files Overwrites & Overwritten");
+        "Overwrites 1 loose file\n4 loose files overwritten");
+  // "Redundant" outranks the counts: it is a state, and the number behind it
+  // is the mod's whole file count, not a size of the conflict.
   CHECK(tip("Redundant", ui::ModList::Conflicts) == "Redundant");
-  // No conflict at all: no tooltip, and none of the four strings leaks in.
+  CHECK(tip("Redundant", ui::ModList::Conflicts).find("5") == std::string::npos);
+  // No conflict at all: no tooltip, and none of the strings above leaks in.
   CHECK(tip("Clean", ui::ModList::Conflicts).empty());
 
   // --- Name: MO2's getDescription() is the invalid-data sentence or the
