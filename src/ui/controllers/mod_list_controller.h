@@ -168,6 +168,16 @@ public slots:
                                                   const QString &source_id,
                                                   const QString &page_url = {}) const;
 
+  // Opens the profile manager dialog (MO2's ProfilesDialog, Ctrl+P). Applies
+  // the selected profile switch and refreshes the selector on list changes.
+  void open_profile_manager();
+
+  // Opens the selected mod's page on the site it came from (MO2's Ctrl+N,
+  // named for the source rather than for a vendor). Takes the first selected
+  // row; does nothing when nothing is selected or the row has no source, so
+  // the key never opens a blank page.
+  void visit_selected_mod_source();
+
   // Repopulate the profile selector from the current instance's profiles dir.
   // Resolves the profile to select: the current profile when it still exists,
   // else the saved default profile, else the first profile. Called on every
@@ -175,9 +185,6 @@ public slots:
   void refresh_profiles();
 
 private:
-  // Opens the profile manager dialog (MO2's ProfilesDialog). Applies the
-  // selected profile switch and refreshes the selector on list changes.
-  void open_profile_manager();
   // Applies a profile switch via engine::profile::switch_profile (g08): the
   // current profile is saved (modlist flush, plugins, archives, settings),
   // the new profile's state is restored, the UI views are refreshed through
