@@ -332,8 +332,8 @@ void AppMenuBar::build_help_menu() {
   // the key rides on the menu's QAction, which is what QMenuBar watches.
   menu->menuAction()->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_H));
 
-  auto link_entry = [this, menu](const QString &title, const QString &url) {
-    auto *act = menu->addAction(title);
+  auto link_entry = [this](QMenu *into, const QString &title, const QString &url) {
+    auto *act = into->addAction(title);
     act->setData(url);
     act->setEnabled(!url.isEmpty());
     connect(act, &QAction::triggered, this,
@@ -344,7 +344,18 @@ void AppMenuBar::build_help_menu() {
   auto *help_on_ui = menu->addAction(tr("Help on UI"));
   connect(help_on_ui, &QAction::triggered, this, &AppMenuBar::help_on_ui_requested);
 
-  link_entry(tr("Documentation"), kDocumentationUrl);
+  // The project's own addresses and the two About dialogs fold one level
+  // down. MO2 keeps all four on the menu bar itself, at the same level as
+  // Help on UI (mainwindow.cpp:1097-1162); More is where they live here.
+  auto *more = menu->addMenu(tr("More"));
+  link_entry(more, tr("Documentation"), kDocumentationUrl);
+  link_entry(more, tr("Report Issue"), kIssueUrl);
+
+  auto *about = more->addAction(tr("About GameModManager"));
+  connect(about, &QAction::triggered, this, &AppMenuBar::about_requested);
+
+  auto *about_qt = more->addAction(tr("About Qt"));
+  connect(about_qt, &QAction::triggered, this, &AppMenuBar::about_qt_requested);
 
   // The game's own support wiki. The URL is read when the entry fires, not
   // when it is built, so a game switch that arrives later still opens the new
@@ -354,21 +365,13 @@ void AppMenuBar::build_help_menu() {
           [this]() { emit open_url_requested(game_support_url_); });
   set_game_support_url(game_support_url_);
 
-  link_entry(tr("Report Issue"), kIssueUrl);
-
   // MO2 fills this from the tutorials/*.js "//TL" headers, ordered by their
-  // order value. Nothing ships tutorial content yet, so it stands empty and
-  // disabled until some does.
-  menu->addMenu(tr("Tutorials"))->setEnabled(false);
+  // order value, and adds the submenu without disabling it
+  // (mainwindow.cpp:1119-1160). Nothing ships tutorial content yet, so it
+  // stands empty, the way MO2's does over an empty tutorials directory.
+  menu->addMenu(tr("Tutorials"));
 
-  auto *about = menu->addAction(tr("About GameModManager"));
-  connect(about, &QAction::triggered, this, &AppMenuBar::about_requested);
-
-  auto *about_qt = menu->addAction(tr("About Qt"));
-  connect(about_qt, &QAction::triggered, this, &AppMenuBar::about_qt_requested);
-
-  // GMM-only entries, below MO2's block rather than mixed into it, so the
-  // order above stays the one MO2 documents.
+  // GMM-only entries, below the help entries rather than mixed into them.
   menu->addSeparator();
 
   auto *stats = menu->addAction(tr("Instance Statistics..."));
