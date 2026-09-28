@@ -11,10 +11,13 @@
 // that list this file as a source - no env var to remember, no CTest property
 // to thread through Catch2's discovery plumbing (PROPERTIES values must stay
 // single-valued; semicolons break Catch.cmake transport). LSan merges this
-// hook with any LSAN_OPTIONS=suppressions=<file> wiring, so it coexists with
-// the general exit-leak work on Workspace-86bq - reuse this file for other
-// tests by adding it as an extra source, do NOT add a competing global
-// suppression file.
+// hook with any LSAN_OPTIONS=suppressions=<file> wiring.
+//
+// TEMPORARY: PR #183 (Workspace-86bq) links a global suppression file into
+// every test via gmm_catch2_test(). Once #183 merges, DELETE this file and
+// the three CMake lines that list it - two definitions of
+// __lsan_default_suppressions() in one binary is a duplicate-symbol link
+// error. The source_tab_test.cpp SEGV fix is unrelated and stays.
 //
 // Scope discipline: patterns are module paths of third-party/system code
 // only (Chromium, GPU driver, dbus, udev, freetype/fontconfig/harfbuzz, and
