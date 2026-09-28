@@ -397,6 +397,22 @@ std::string Provider::display_name() const {
   return "Nexus Mods";
 }
 
+SourceRateLimit Provider::rate_limit_readout() const {
+  // Nexus is metered: the server enforces an hourly and a daily API budget
+  // and reports what is left of each in the response headers.
+  SourceRateLimit out;
+  out.metered = true;
+
+  const auto rl = Nexus::Auth::instance().get_rate_limit();
+  if (rl.hourly_limit <= 0 || rl.daily_limit <= 0) {
+    out.readout = "--";
+    return out;
+  }
+  out.readout = std::to_string(rl.hourly_remaining) + "/" +
+                std::to_string(rl.daily_remaining);
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Provider::fetch_mod_info
 // ---------------------------------------------------------------------------

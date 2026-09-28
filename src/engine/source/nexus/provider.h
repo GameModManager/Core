@@ -28,6 +28,10 @@ public:
   // name (file_name) for correct naming/extension and the display name.
   SourceDownloadInfo resolve_download_info(const ::engine::Mod &mod) const override;
   std::string display_name() const override;
+  // The Nexus API budget: hourly and daily requests left, out of their limits
+  // (the same numbers Settings > Sources shows). "--" while logged out, when
+  // there is no budget to report.
+  SourceRateLimit rate_limit_readout() const override;
 
   // Live mod-info lookup for the Mod Info Nexus tab ("Refresh" button).
   // Requires a configured API key; fills ModInfoResult::available=false on
