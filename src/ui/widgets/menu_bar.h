@@ -39,6 +39,11 @@ public:
   // string takes the entry back out of the menu.
   void set_game_support_url(const QString &url);
 
+  // The Help > Tutorials entries, as (title, address) pairs. The submenu is
+  // offered only while the list is non-empty; passing an empty list takes it
+  // back out of the menu.
+  void set_tutorials(const QList<QPair<QString, QString>> &tutorials);
+
 signals:
   // File
   void new_instance_requested();
@@ -94,6 +99,8 @@ private:
   QMenu *recent_menu_       = nullptr;
   QMenu *tools_menu_        = nullptr;
   QMenu *icons_menu_        = nullptr;
+  // Help > Tutorials. Hidden until set_tutorials() has entries to put in it.
+  QMenu *tutorials_menu_     = nullptr;
   QAction *tools_separator_ = nullptr;
   QAction *sort_action_     = nullptr;
   // Help > Game Support Wiki. Hidden until set_game_support_url() has a URL.

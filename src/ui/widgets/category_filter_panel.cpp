@@ -18,6 +18,9 @@ CategoryFilterPanel::CategoryFilterPanel(QWidget *parent) : QWidget(parent) {
   layout->setContentsMargins(4, 2, 4, 2);
   layout->setSpacing(4);
 
+  setWhatsThis(tr("Narrow the mod list to the categories ticked here. The category "
+                  "list is global - \"Edit...\" opens the editor for it."));
+
   tree_ = new QTreeWidget(this);
   tree_->setHeaderHidden(true);
   tree_->setMinimumWidth(160);

@@ -14,6 +14,8 @@
 namespace ui {
 
 AppMenuBar::AppMenuBar(MainWindow *parent) : QMenuBar(parent) {
+  setWhatsThis(tr("The application's menus. \"Help > Help on UI\" turns on a pointer "
+                  "you can then click any element with to read what it does."));
   build_file_menu();
   build_edit_menu();
   build_view_menu();
@@ -366,10 +368,15 @@ void AppMenuBar::build_help_menu() {
   set_game_support_url(game_support_url_);
 
   // MO2 fills this from the tutorials/*.js "//TL" headers, ordered by their
-  // order value, and adds the submenu without disabling it
-  // (mainwindow.cpp:1119-1160). Nothing ships tutorial content yet, so it
-  // stands empty, the way MO2's does over an empty tutorials directory.
-  menu->addMenu(tr("Tutorials"));
+  // order value (mainwindow.cpp:1119-1160). Its submenu is live because MO2
+  // ships the files it lists. Nothing here ships tutorial content, so the
+  // submenu is held out of the menu until set_tutorials() has entries to put
+  // in it: a submenu that opens onto nothing advertises something this build
+  // cannot deliver, and a user who clicks it is left with no way forward.
+  // Gated the same way Game Support Wiki is, on the content rather than on a
+  // hardcoded disable, so it takes care of itself when content arrives.
+  tutorials_menu_ = menu->addMenu(tr("Tutorials"));
+  tutorials_menu_->menuAction()->setVisible(false);
 
   // GMM-only entries, below the help entries rather than mixed into them.
   menu->addSeparator();
@@ -388,6 +395,19 @@ void AppMenuBar::set_game_support_url(const QString &url) {
     return;
   game_support_wiki_action_->setVisible(!url.isEmpty());
   game_support_wiki_action_->setEnabled(!url.isEmpty());
+}
+
+void AppMenuBar::set_tutorials(const QList<QPair<QString, QString>> &tutorials) {
+  if (!tutorials_menu_)
+    return;
+  tutorials_menu_->clear();
+  for (const auto &[title, address] : tutorials) {
+    auto *act = tutorials_menu_->addAction(title);
+    act->setData(address);
+    connect(act, &QAction::triggered, this,
+            [this, address]() { emit open_url_requested(address); });
+  }
+  tutorials_menu_->menuAction()->setVisible(!tutorials.isEmpty());
 }
 
 // --------- Recent instances ---------

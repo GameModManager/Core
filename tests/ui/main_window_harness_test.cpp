@@ -35,21 +35,37 @@
 #include "ui/controllers/mod_list_controller.h"
 #include "ui/main_window/main_window.h"
 #include "ui/modinfo/mod_info_data.h"
+#include "ui/panels/archives_tab.h"
+#include "ui/panels/conflicts_tab.h"
+#include "ui/panels/data_tab.h"
+#include "ui/panels/downloads_tab.h"
+#include "ui/panels/plugin_view.h"
 #include "ui/panels/plugins_tab.h"
 #include "ui/panels/saves_tab.h"
 #include "ui/settings/settings.h"
+#include "ui/widgets/category_filter_panel.h"
+#include "ui/widgets/console_panel.h"
+#include "ui/widgets/exec_controls_bar.h"
+#include "ui/widgets/game_path_banner.h"
+#include "ui/widgets/main_toolbar.h"
+#include "ui/widgets/menu_bar.h"
+#include "ui/widgets/mod_filter_bar.h"
 #include "ui/widgets/mod_list_model.h"
 #include "ui/widgets/mod_table_view.h"
+#include "ui/widgets/profile_bar.h"
 #include "ui/widgets/right_filter_bar.h"
 #include "ui/widgets/right_panel.h"
+#include "ui/widgets/status_bar.h"
 
 #include <QApplication>
 #include <QCommandLinkButton>
 #include <QContextMenuEvent>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QEvent>
 #include <QHelpEvent>
 #include <QItemSelectionModel>
+#include <QLCDNumber>
 #include <QMenu>
 #include <QModelIndex>
 #include <QPushButton>
@@ -59,7 +75,9 @@
 #include <QTest>
 #include <QThread>
 #include <QTimer>
+#include <QToolBar>
 #include <QToolTip>
+#include <QTreeWidget>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -67,6 +85,8 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -670,6 +690,111 @@ TEST_CASE("ModList double-click column maps to Mod Info tab", "[ui][dblclick]") 
   CHECK(ModListController::mod_info_tab_for_column(ModList::Installation) == -1);
   CHECK(ModListController::mod_info_tab_for_column(ModList::Changed) == -1);
   CHECK(ModListController::mod_info_tab_for_column(ModList::Priority) == -1);
+}
+
+// ---------------------------------------------------------------------------
+// Help on UI: the What's This text behind QWhatsThis::enterWhatsThisMode().
+// Without it the mode hands the user a pointer and nothing to read, so every
+// main-window surface the mode can be pointed at has to carry a string. The
+// list below is the covered set, asserted by name so a surface cannot quietly
+// lose its text.
+// ---------------------------------------------------------------------------
+TEST_CASE("MainWindow: surfaces carry What's This text for Help on UI",
+          "[ui][harness][whatsthis]") {
+  const fs::path root     = make_case_root("gmm_whats_this");
+  const fs::path inst_dir = root / "instances";
+
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  int app_argc     = 1;
+  char app_argv0[] = "main_window_harness_test";
+  char *app_argv[] = {app_argv0, nullptr};
+  QApplication app(app_argc, app_argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  auto inst           = engine::Instance::installed("TestGame", inst_dir);
+  inst.info().game_id = "testgame";
+  REQUIRE(inst.create_directories());
+  REQUIRE(inst.write_toml());
+
+  engine::GameKnowledge knowledge;
+  knowledge.set("testgame", "mods_subpath", "Mods");
+
+  ui::MainWindow w;
+  w.set_game_knowledge(&knowledge);
+  w.show();
+  w.set_game_info("testgame", "Test Game", "Default", {}, inst.info().root);
+  REQUIRE(pump_until([&w] {
+    return !w.is_loading();
+  }));
+
+  auto *rp = w.findChild<ui::RightPanel *>();
+  REQUIRE(rp != nullptr);
+  REQUIRE(rp->data_tab() != nullptr);
+
+  // Surface name -> widget. The containers (bars, panels, the window's own
+  // chrome) carry the text themselves; Qt walks up the parent chain from
+  // whatever the pointer lands on, so a container covers the controls inside
+  // it, exactly as Designer-set whatsThis does in MO2's .ui files.
+  const std::vector<std::pair<const char *, QWidget *>> surfaces = {{
+      {"AppMenuBar", w.findChild<ui::AppMenuBar *>()},
+      {"MainToolbar", w.findChild<ui::MainToolbar *>()},
+      {"StatusBar", w.findChild<ui::StatusBar *>()},
+      {"ConsolePanel", w.findChild<ui::ConsolePanel *>()},
+      {"GamePathBanner", w.findChild<ui::GamePathBanner *>()},
+      {"ProfileBar", w.findChild<ui::ProfileBar *>()},
+      {"ModView", w.findChild<ui::ModView *>()},
+      {"ModFilterBar", w.findChild<ui::ModFilterBar *>()},
+      {"CategoryFilterPanel", w.findChild<ui::CategoryFilterPanel *>()},
+      {"mod count counter", w.findChild<QLCDNumber *>()},
+      {"RightPanel", rp},
+      {"RightFilterBar", rp->filter_bar()},
+      {"ExecControlsBar", rp->exec_controls()},
+      {"DataTab tree", rp->data_tab()->tree()},
+  }};
+
+  for (const auto &[name, widget] : surfaces) {
+    INFO("surface: " << name);
+    REQUIRE(widget != nullptr);
+    CHECK_FALSE(widget->whatsThis().trimmed().isEmpty());
+  }
+
+  // The tabs the right panel builds on first show. They carry their text in
+  // their own constructors, so they are pinned here by construction rather
+  // than by materializing five tabs on a wired instance - the string is the
+  // thing under test, not the lazy build.
+  {
+    const ui::PluginsTab plugins;
+    const ui::ConflictsTab conflicts;
+    const ui::ArchivesTab archives;
+    const ui::SavesTab saves;
+    const ui::DownloadsTab downloads;
+    const std::vector<std::pair<const char *, QWidget *>> tabs = {
+        {"PluginsTab view", plugins.findChild<ui::PluginView *>()},
+        {"ConflictsTab tree", conflicts.findChild<QTreeWidget *>()},
+        {"ArchivesTab tree", archives.tree()},
+        {"SavesTab table", saves.table()},
+        {"DownloadsTab table", downloads.table()},
+    };
+    for (const auto &[name, widget] : tabs) {
+      INFO("surface: " << name);
+      REQUIRE(widget != nullptr);
+      CHECK_FALSE(widget->whatsThis().trimmed().isEmpty());
+    }
+  }
+
+  // One pinned string, so a wholesale wipe-and-refill cannot pass on a set of
+  // blank-looking-but-non-empty stubs. MO2 carries the same sentence on its
+  // mod list (mainwindow.ui, modList).
+  auto *view = w.findChild<ui::ModView *>();
+  REQUIRE(view != nullptr);
+  CHECK(view->whatsThis().contains("list of installed mods"));
+  CHECK(view->whatsThis().contains("activate/deactivate"));
+
+  // The Data tab's own wording, taken from MO2's dataTree.
+  CHECK(rp->data_tab()->tree()->whatsThis().contains("data directory"));
+
+  fs::remove_all(root);
 }
 
 namespace {

@@ -63,6 +63,12 @@ RightPanel::RightPanel(QWidget *parent) : QWidget(parent) {
   // QSS anchor for right-panel-specific rules (e.g. #rightPanel QTableView).
   setObjectName("rightPanel");
 
+  setWhatsThis(tr("The instance, in detail: the plugins it loads and in what order, "
+                  "the files in its data directory, the conflicts between its mods, "
+                  "the archives it draws those files from, its saves and its "
+                  "downloads. Each tab builds its contents the first time you open "
+                  "it."));
+
   auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(0);

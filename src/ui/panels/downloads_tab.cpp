@@ -143,6 +143,10 @@ DownloadsTab::DownloadsTab(QWidget *parent) : QWidget(parent) {
 
   table_ = make_table(4, {tr("Name"), tr("Source"), tr("Status"), tr("Size")}, this);
   table_->setObjectName("downloadsTable");
+  table_->setWhatsThis(
+      tr("This is a list of the mods this instance has downloaded. Right-click a "
+         "finished download to install it. You can also drop a download link from "
+         "your browser onto this tab to start the download."));
   layout->addWidget(table_, 1);
   apply_compact_style();
 
