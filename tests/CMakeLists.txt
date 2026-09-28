@@ -609,6 +609,14 @@ gmm_catch2_test(filter_shortcuts_test ui/filter_shortcuts_test.cpp
     UI
     LIBS gmm_ui Qt6::Test)
 
+# MO2 menu parity - the Help tree (order, the game-support-URL condition, the
+# stubbed Tutorials submenu) and the keyboard table read off the real
+# AppMenuBar. The menu bar owns every action and its shortcut, so it is built
+# standalone: no MainWindow, no game, no instance, no files touched.
+gmm_catch2_test(menu_parity_test ui/menu_parity_test.cpp
+    UI
+    LIBS gmm_ui)
+
 # ---------------------------------------------------------------------------
 # LD_PRELOAD intercept smoke tests — Linux-only, C (plain executables, not
 # Catch2 — they are C and test the interposer shared libraries directly)

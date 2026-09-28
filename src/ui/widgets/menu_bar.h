@@ -34,6 +34,11 @@ public:
   // 3=dark) without re-emitting checkerboard_style_requested.
   void set_checkerboard_style(int style);
 
+  // The managed game's own support wiki, offered in the Help menu only while
+  // it is non-empty (MO2 gates the entry the same way). Passing an empty
+  // string takes the entry back out of the menu.
+  void set_game_support_url(const QString &url);
+
 signals:
   // File
   void new_instance_requested();
@@ -66,8 +71,11 @@ signals:
   // Tools
   void tool_requested(const QString &tool_id, const QString &game_id);
   void sort_mods_requested();
+  void tool_plugins_requested();
 
   // Help
+  void help_on_ui_requested();
+  void open_url_requested(const QString &url);
   void about_requested();
   void about_qt_requested();
   void instance_statistics_requested();
@@ -85,6 +93,9 @@ private:
   QMenu *icons_menu_        = nullptr;
   QAction *tools_separator_ = nullptr;
   QAction *sort_action_     = nullptr;
+  // Help > Game Support Wiki. Hidden until set_game_support_url() has a URL.
+  QAction *game_support_wiki_action_ = nullptr;
+  QString game_support_url_;
   // View menu actions - stored so their checked state can be synced
   // with actual panel visibility from any code path
   QAction *toggle_toolbar_action_    = nullptr;
