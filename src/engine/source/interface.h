@@ -21,6 +21,19 @@ struct SourceDownloadInfo {
   std::string display_name;  // human-readable mod/file name for the UI
 };
 
+// A source's request budget, formatted for a status-bar readout.
+//
+// `metered` is false for a source whose request rate we do not meter at all -
+// a source with no API and no cooldown we enforce (LoversLab). The UI shows no
+// readout for those, rather than a permanent "--" that advertises a number we
+// never compute. A metered source fills `readout` with a real value on every
+// call; each provider formats its own units, because they differ (Nexus has a
+// server-side hourly+daily budget, Steam a client-side per-hour cooldown).
+struct SourceRateLimit {
+  bool        metered = false;
+  std::string readout;
+};
+
 class Interface {
 public:
   virtual ~Interface()                    = default;
@@ -39,6 +52,9 @@ public:
 
   // Human-readable provider name for the UI (Sources tab).
   virtual std::string display_name() const { return source_type(); }
+
+  // Optional request-budget meter for the status bar. Default: not metered.
+  virtual SourceRateLimit rate_limit_readout() const { return {}; }
 };
 
 }  // namespace engine::Source
