@@ -111,32 +111,6 @@ const ModEntry *openable_mod_row(const ModList *model, const QString &id) {
   return nullptr;
 }
 
-  QString mod_column_name(int column) {
-    switch (column) {
-    case ModList::Name:
-      return "Name";
-    case ModList::Conflicts:
-      return "Conflicts";
-    case ModList::Flags:
-      return "Flags";
-    case ModList::Category:
-      return "Category";
-    case ModList::Source:
-      return "Source";
-    case ModList::SourceId:
-      return "Source ID";
-    case ModList::Version:
-      return "Version";
-    case ModList::Installation:
-      return "Installation";
-    case ModList::Changed:
-      return "Changed";
-    case ModList::Priority:
-      return "Priority";
-    }
-    return {};
-  }
-
   bool write_separator_color_file(const std::filesystem::path &mod_dir,
                                   const QString &color) {
     auto meta_path = mod_dir / "meta.ini";
@@ -582,19 +556,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
   mod_header->set_column_labels({"", "Name", "Conflicts", "Flags", "Category", "Source",
                                  "Source ID", "Version", "Installation", "Changed",
                                  "Priority"});
-  mod_header->set_section_tooltips({
-      tr("Fold or unfold w_ separator (hides or shows its contents)"),
-      tr("Name of the mod"),
-      tr("Win/loss state of file conflicts with other mods"),
-      tr("Badges: hidden files, FOMOD saved, root override, invalid data"),
-      tr("Primary category of the mod"),
-      tr("Site the mod was downloaded from"),
-      tr("Mod/file ID on the source site"),
-      tr("Version of the mod (if available)"),
-      tr("When the mod folder was created (install/replace time)"),
-      tr("Last time the mod folder was modified"),
-      tr("Install priority: the higher, the more it overwrites"),
-  });
+  mod_header->set_section_tooltips(ModList::header_tooltips());
   w_->mod_view_->setHeader(mod_header);
   w_->mod_header_ = mod_header;
 
@@ -632,7 +594,7 @@ void ModListController::setup_mod_list(QVBoxLayout *left_layout) {
                 QString::fromStdString(w_->current_instance_root_.filename().string());
             const auto stored  = Settings::instance().modlist_hidden_columns(key);
             auto hidden_set    = QSet<QString>(stored.cbegin(), stored.cend());
-            const QString name = mod_column_name(logical);
+            const QString name = ModList::column_name(logical);
             if (hidden)
               hidden_set.insert(name);
             else
@@ -2166,7 +2128,7 @@ void ModListController::restore_mod_column_visibility() {
   const auto hidden_set = QSet<QString>(stored.cbegin(), stored.cend());
 
   for (int c = ModList::Name; c < ModList::ColumnCount; ++c) {
-    const QString name = mod_column_name(c);
+    const QString name = ModList::column_name(c);
     if (name.isEmpty())
       continue;
     // Name is hard-locked visible; everything else follows the stored set.

@@ -460,6 +460,65 @@ bool ModList::setData(const QModelIndex &index, const QVariant &value, int role)
   return false;
 }
 
+QString ModList::column_name(int column) {
+  switch (column) {
+  case Name:
+    return QStringLiteral("Name");
+  case Conflicts:
+    return QStringLiteral("Conflicts");
+  case Flags:
+    return QStringLiteral("Flags");
+  case Category:
+    return QStringLiteral("Category");
+  case Source:
+    return QStringLiteral("Source");
+  case SourceId:
+    return QStringLiteral("Source ID");
+  case Version:
+    return QStringLiteral("Version");
+  case Installation:
+    return QStringLiteral("Installation");
+  case Changed:
+    return QStringLiteral("Changed");
+  case Priority:
+    return QStringLiteral("Priority");
+  }
+  return {};
+}
+
+QStringList ModList::header_tooltips() {
+  return {
+      // Columns MO2 also has use its wording verbatim (modlist.cpp
+      // ModList::getColumnToolTip). The four below have no MO2 counterpart and
+      // keep text describing what this build actually shows. Source ID
+      // deliberately does NOT take MO2's "as used on Nexus" - it is the id on
+      // whichever site the mod came from, and saying Nexus would be wrong for
+      // every non-Nexus mod.
+      tr("Fold or unfold a separator (hides or shows its contents)"),
+      tr("Name of your mods"),
+      tr("Indicators of file conflicts between mods."),
+      tr("Emblems to highlight things that might require attention."),
+      tr("Primary category of the mod."),
+      tr("Site the mod was downloaded from"),
+      tr("Mod/file ID on the source site"),
+      tr("Version of the mod (if available)"),
+      tr("Time this mod was installed"),
+      tr("Last time the mod folder was modified"),
+      tr("Installation priority of your mod. The higher, the more \"important\" "
+         "it is and thus overwrites files from mods with lower priority."),
+  };
+}
+
+QStringList ModList::default_hidden_column_names() {
+  // MO2 hides Content, Nexus ID, Uploader, Source Game, Installation and
+  // Notes on a fresh profile (modlistview.cpp:817-824). Of the ones we carry
+  // that is Source ID and Installation, both below. Source and Changed are
+  // ours and stay hidden as they always were. Category is deliberately NOT
+  // here: MO2 shows it and we have the data for it.
+  return {QStringLiteral("Source"), QStringLiteral("Source ID"),
+          QStringLiteral("Installation"), QStringLiteral("Changed")};
+}
+
 QVariant ModList::headerData(int section, Qt::Orientation, int role) const {
   if (role != Qt::DisplayRole)
     return {};
