@@ -80,7 +80,12 @@ void PluginSettingsRegistry::register_alias(const std::string &alias,
 std::string PluginSettingsRegistry::get_setting(const std::string &plugin_id,
                                                 const std::string &key) const {
   const std::string basename = resolve(plugin_id);
-  QSettings settings("GameModManager", "GameModManager");
+  // Format is explicit, sourced from QSettings::defaultFormat(): NativeFormat
+  // in production (identical store to the org/app ctor), the test sandbox
+  // otherwise (Workspace-2zm). The engine asks Qt for its own default; it has
+  // no idea tests exist and does not need to.
+  QSettings settings(QSettings::defaultFormat(), QSettings::UserScope,
+                     "GameModManager", "GameModManager");
   const QString stored = settings
                              .value(QString("plugins/settings/%1/%2")
                                         .arg(QString::fromStdString(basename),
@@ -104,7 +109,8 @@ void PluginSettingsRegistry::set_setting(const std::string &plugin_id,
                                          const std::string &key,
                                          const std::string &value) {
   const std::string basename = resolve(plugin_id);
-  QSettings settings("GameModManager", "GameModManager");
+  QSettings settings(QSettings::defaultFormat(), QSettings::UserScope,
+                     "GameModManager", "GameModManager");
   settings.setValue(
       QString("plugins/settings/%1/%2")
           .arg(QString::fromStdString(basename), QString::fromStdString(key)),

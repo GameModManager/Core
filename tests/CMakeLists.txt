@@ -3,13 +3,29 @@
 # gmm_ui, gmm_runtime, gmm_platform) instead of re-listing engine sources;
 # the libraries carry their transitive link dependencies.
 #
-# Every C++ test is a Catch2 v3 test: Catch2WithMain provides the runner
-# main() and catch_discover_tests() registers each TEST_CASE as its own CTest
-# test, so a failure in one case never hides the rest.
+# Every C++ test is a Catch2 v3 test: gmm_test_support provides the runner
+# main() (with QSettings sandboxing, see below) and catch_discover_tests()
+# registers each TEST_CASE as its own CTest test, so a failure in one case
+# never hides the rest.
 
 # ---------------------------------------------------------------------------
 # Catch2 test helper
 # ---------------------------------------------------------------------------
+# Shared runner (Workspace-2zm): one main() for every test target that
+# sandboxes QSettings (IniFormat + process-unique temp dir + XDG_CONFIG_HOME)
+# before QApplication exists, so no test can read or write the user's real
+# config. Linking it instead of Catch2WithMain is what makes the isolation
+# automatic - see tests/support/test_main.cpp. A test that must exercise
+# NativeFormat opts in with GMM_TEST_NATIVE_QSETTINGS=1 in its CTest
+# ENVIRONMENT (documented there); none does today.
+# Qt6::Core is PRIVATE: test sources still cannot include Qt headers unless
+# they link Qt themselves (gmm_ui / Qt6::Core in LIBS), so the Qt-free engine
+# tests stay Qt-free at compile time.
+add_library(gmm_test_support STATIC support/test_main.cpp)
+target_link_libraries(gmm_test_support
+    PUBLIC Catch2::Catch2
+    PRIVATE Qt6::Core)
+
 # gmm_catch2_test(<name> <sources...>
 #     [UI]
 #     LIBS <extra link libraries>
@@ -33,7 +49,7 @@ function(gmm_catch2_test NAME)
     # drivers, ...) without any env plumbing, so manual runs are covered too.
     add_executable(${NAME} ${GCT_UNPARSED_ARGUMENTS}
         ${CMAKE_CURRENT_SOURCE_DIR}/support/lsan_suppressions.c)
-    target_link_libraries(${NAME} PRIVATE Catch2::Catch2WithMain gmm_engine ${GCT_LIBS})
+    target_link_libraries(${NAME} PRIVATE gmm_test_support gmm_engine ${GCT_LIBS})
     if(GCT_DEFINES)
         target_compile_definitions(${NAME} PRIVATE ${GCT_DEFINES})
     endif()
@@ -499,6 +515,31 @@ gmm_catch2_test(settings_dialog_choice_test ui/settings_dialog_choice_test.cpp
 gmm_catch2_test(settings_reset_choices_test ui/settings_reset_choices_test.cpp
     UI
     LIBS gmm_ui)
+
+# Workspace-2zm: QSettings isolation. Two halves of the same proof.
+#   qsettings_sandbox_test       - the production QSettings objects land in a
+#     temp ini when the shared runner has flipped the default format, and
+#     cannot touch the user's real config.
+#   qsettings_native_format_test - the same production objects with the sandbox
+#     opted out (GMM_TEST_NATIVE_QSETTINGS=1), i.e. the real native store, and
+#     the constructor they replaced reads back everything they wrote.
+# Both are non-UI (no widget, no event loop).
+#
+# The native target WRITES, so it must not be able to reach a real config. It
+# relocates the native store root itself, with QSettings::setPath, before it
+# constructs anything - see ui/qsettings_native_format_test.cpp. It is NOT done
+# with a fake HOME env var here: ENVIRONMENT_MODIFICATION takes a ';' list, and
+# an escaped list does not survive catch_discover_tests' -D hand-off (the values
+# arrive as separate arguments and become bogus property names - the same
+# failure mode as the ENVIRONMENT note above), while a single HOME override
+# would not be enough anyway: a developer machine with XDG_CONFIG_HOME set
+# resolves the native store from that, not from HOME.
+gmm_catch2_test(qsettings_sandbox_test ui/qsettings_sandbox_test.cpp
+    LIBS gmm_ui Qt6::Core)
+
+gmm_catch2_test(qsettings_native_format_test ui/qsettings_native_format_test.cpp
+    LIBS gmm_ui Qt6::Core
+    PROPERTIES ENVIRONMENT_MODIFICATION "GMM_TEST_NATIVE_QSETTINGS=set:1")
 
 gmm_catch2_test(remove_mods_dialog_test ui/remove_mods_dialog_test.cpp
     UI
