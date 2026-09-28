@@ -29,8 +29,10 @@
 #include <QIcon>
 #include <QImage>
 #include <QMenu>
+#include <QMap>
 #include <QMimeData>
 #include <QModelIndexList>
+#include <QSet>
 #include <QTableView>
 #include <QTimer>
 
@@ -2771,4 +2773,261 @@ TEST_CASE("mod list phantom row predicate", "[ui]") {
   native.id             = QLatin1String("Skyrim.esm");
   native.is_game_native = true;
   check(ui::is_phantom_row(native), "game-native row never persists meta");
+}
+
+// ---------------------------------------------------------------------------
+// Column set / order / tooltips / default-hidden parity with MO2.
+//
+// The reference is the vendored MO2 tree, not any prose summary:
+//   references/modorganizer/src/modlist.h          EColumn (the 13 columns)
+//   references/modorganizer/src/modlist.cpp:1313   ModList::getColumnName
+//   references/modorganizer/src/modlist.cpp:1345   ModList::getColumnToolTip
+//   references/modorganizer/src/modlistview.cpp:817 the default-hidden set
+//
+// MO2's EColumn order is the display order: no moveSection() call exists in
+// modlist.cpp, so the enum order IS the visual order.
+TEST_CASE("mod list column set matches MO2", "[ui][mo2-parity]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_mod_list_columns/config";
+  std::filesystem::remove_all("/tmp/gmm_mod_list_columns");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int         argc    = 1;
+  char        arg0[]  = "test";
+  char       *argv[]  = {arg0, nullptr};
+  QApplication app(argc, argv);
+
+  // MO2's 13 columns, in modlist.h's EColumn order. nullptr marks a column
+  // MO2 has and this model deliberately does not.
+  struct Mo2Col {
+    const char *name;
+    int         ours;  // our Column, or -1 when we do not carry it
+  };
+  const std::vector<Mo2Col> mo2 = {
+      {"Mod Name", ui::ModList::Name},
+      {"Conflicts", ui::ModList::Conflicts},
+      {"Flags", ui::ModList::Flags},
+      {"Content", -1},  // no per-mod content ids are built at scan time
+      {"Category", ui::ModList::Category},
+      {"Author", -1},  // never written to meta.ini
+      {"Uploader", -1},
+      {"Nexus ID", ui::ModList::SourceId},
+      {"Source Game", -1},  // a GMM instance is single-game
+      {"Version", ui::ModList::Version},
+      {"Installation", ui::ModList::Installation},
+      {"Priority", ui::ModList::Priority},
+      {"Notes", -1},  // no notes are stored or edited anywhere
+  };
+  CHECK(mo2.size() == 13);
+
+  // Every column we carry is an MO2 column, and the ones we do carry keep
+  // MO2's relative order. Checked structurally (each carried column sits
+  // after the previous carried one) rather than against a literal list, so
+  // the assertion survives our three extra columns.
+  int previous = -1;
+  for (const auto &col : mo2) {
+    if (col.ours < 0)
+      continue;
+    INFO("MO2 column " << col.name);
+    CHECK(col.ours > previous);
+    previous = col.ours;
+  }
+
+  // The mapping is exhaustive in the other direction too: no column of ours
+  // is unaccounted for. Fold, Source and Changed are GMM's own additions.
+  const QSet<int> mapped = {ui::ModList::Name,    ui::ModList::Conflicts,
+                            ui::ModList::Flags,    ui::ModList::Category,
+                            ui::ModList::SourceId, ui::ModList::Version,
+                            ui::ModList::Installation,
+                            ui::ModList::Priority};
+  for (int c = 0; c < ui::ModList::ColumnCount; ++c) {
+    const bool is_extra = (c == ui::ModList::Fold) || (c == ui::ModList::Source) ||
+                          (c == ui::ModList::Changed);
+    const bool accounted = mapped.contains(c) || is_extra;
+    INFO("our column index " << c);
+    CHECK(accounted);
+  }
+
+  // The header label and the persistence name must agree, or a column toggle
+  // writes a name the restore path can never match.
+  ui::ModList model;
+  for (int c = 0; c < ui::ModList::ColumnCount; ++c) {
+    const QString label =
+        model.headerData(c, Qt::Horizontal, Qt::DisplayRole).toString();
+    INFO("column index " << c);
+    if (c == ui::ModList::Fold) {
+      CHECK(label.isEmpty());
+      CHECK(ui::ModList::column_name(c).isEmpty());
+      continue;
+    }
+    CHECK(!label.isEmpty());
+    CHECK(!ui::ModList::column_name(c).isEmpty());
+  }
+}
+
+TEST_CASE("mod list default-hidden set matches MO2", "[ui][mo2-parity]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_mod_list_columns/config";
+  std::filesystem::remove_all("/tmp/gmm_mod_list_columns");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int         argc    = 1;
+  char        arg0[]  = "test";
+  char       *argv[]  = {arg0, nullptr};
+  QApplication app(argc, argv);
+
+  // modlistview.cpp:817-824 hides exactly these when no header state was
+  // ever saved. Every one we carry must be hidden by default too.
+  const QStringList hidden = ui::ModList::default_hidden_column_names();
+
+  // MO2 name -> our persistence name, for the MO2 columns we carry.
+  const QMap<QString, QString> ours_for = {
+      {QStringLiteral("Mod Name"), QStringLiteral("Name")},
+      {QStringLiteral("Conflicts"), QStringLiteral("Conflicts")},
+      {QStringLiteral("Flags"), QStringLiteral("Flags")},
+      {QStringLiteral("Category"), QStringLiteral("Category")},
+      {QStringLiteral("Nexus ID"), QStringLiteral("Source ID")},
+      {QStringLiteral("Version"), QStringLiteral("Version")},
+      {QStringLiteral("Installation"), QStringLiteral("Installation")},
+      {QStringLiteral("Priority"), QStringLiteral("Priority")},
+  };
+
+  for (const char *mo2_hidden : {"Content", "Nexus ID", "Uploader", "Source Game",
+                                 "Installation", "Notes"}) {
+    const QString key = QString::fromLatin1(mo2_hidden);
+    INFO("MO2 hides " << key.toStdString());
+    const QString ours = ours_for.value(key);
+    if (ours.isEmpty())
+      continue;  // a column we do not carry
+    CHECK(hidden.contains(ours));
+  }
+
+  // And nothing else: a column MO2 shows must not be hidden by default.
+  // "Category" is the one that matters - MO2 shows it and we have the data.
+  for (const char *mo2_shown :
+       {"Mod Name", "Conflicts", "Flags", "Category", "Version", "Priority"}) {
+    const QString key = QString::fromLatin1(mo2_shown);
+    INFO("MO2 shows " << key.toStdString());
+    CHECK(!hidden.contains(ours_for.value(key)));
+  }
+
+  // Every default-hidden name must be a real column name, or the default
+  // silently does nothing.
+  for (const QString &name : hidden) {
+    INFO("default hidden " << name.toStdString());
+    bool found = false;
+    for (int c = 0; c < ui::ModList::ColumnCount && !found; ++c)
+      found = (ui::ModList::column_name(c) == name);
+    CHECK(found);
+  }
+}
+
+TEST_CASE("mod list header tooltips match MO2", "[ui][mo2-parity]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_mod_list_columns/config";
+  std::filesystem::remove_all("/tmp/gmm_mod_list_columns");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int         argc    = 1;
+  char        arg0[]  = "test";
+  char       *argv[]  = {arg0, nullptr};
+  QApplication app(argc, argv);
+
+  const QStringList tips = ui::ModList::header_tooltips();
+  // A short list would silently shift every later tooltip onto the wrong
+  // column, which is invisible until a user hovers the wrong header.
+  CHECK(tips.size() == ui::ModList::ColumnCount);
+
+  // MO2's exact strings, verbatim from ModList::getColumnToolTip.
+  const QMap<int, QString> mo2 = {
+      {ui::ModList::Name, QStringLiteral("Name of your mods")},
+      {ui::ModList::Conflicts,
+       QStringLiteral("Indicators of file conflicts between mods.")},
+      {ui::ModList::Flags,
+       QStringLiteral("Emblems to highlight things that might require attention.")},
+      {ui::ModList::Category, QStringLiteral("Primary category of the mod.")},
+      {ui::ModList::Version,
+       QStringLiteral("Version of the mod (if available)")},
+      {ui::ModList::Installation, QStringLiteral("Time this mod was installed")},
+      {ui::ModList::Priority,
+       QStringLiteral("Installation priority of your mod. The higher, the more "
+                      "\"important\" it is and thus overwrites files from mods "
+                      "with lower priority.")},
+  };
+  for (auto it = mo2.cbegin(); it != mo2.cend(); ++it) {
+    INFO("MO2 tooltip for column " << it.key());
+    // Compared as std::string so a failure prints the text, not a "{?}".
+    CHECK(tips.at(it.key()).toStdString() == it.value().toStdString());
+  }
+
+  // No column may ship an empty tooltip.
+  for (int c = 0; c < ui::ModList::ColumnCount; ++c) {
+    INFO("tooltip for column " << c);
+    CHECK(!tips.at(c).isEmpty());
+  }
+}
+
+TEST_CASE("mod list column visibility round-trips by name", "[ui][mo2-parity]") {
+  qputenv("QT_QPA_PLATFORM", "offscreen");
+  const std::filesystem::path cfg = "/tmp/gmm_mod_list_columns/config";
+  std::filesystem::remove_all("/tmp/gmm_mod_list_columns");
+  std::filesystem::create_directories(cfg);
+  qputenv("XDG_CONFIG_HOME", cfg.c_str());
+  int         argc    = 1;
+  char        arg0[]  = "test";
+  char       *argv[]  = {arg0, nullptr};
+  QApplication app(argc, argv);
+  QCoreApplication::setOrganizationName("GameModManager");
+  QCoreApplication::setApplicationName("GameModManager");
+
+  // This is the restart-only regression: a user who saved a visibility choice
+  // on an older build must land on the same columns afterwards. Visibility is
+  // persisted by name, so the guarantee is that every name resolves to exactly
+  // one column and the resolve is stable.
+  for (int c = 0; c < ui::ModList::ColumnCount; ++c) {
+    const QString name = ui::ModList::column_name(c);
+    if (name.isEmpty()) {
+      INFO("column " << c << " is not persisted (locked)");
+      continue;
+    }
+    int resolved = -1;
+    for (int k = 0; k < ui::ModList::ColumnCount; ++k) {
+      if (ui::ModList::column_name(k) == name) {
+        CHECK(resolved == -1);  // names are unique
+        resolved                = k;
+      }
+    }
+    INFO("name " << name.toStdString() << " must resolve back to column " << c);
+    CHECK(resolved == c);
+  }
+
+  // A stored list of names - exactly what an older build wrote - still
+  // selects the same set of columns, and unknown names are inert.
+  Settings &s = Settings::instance();
+  s.set_modlist_hidden_columns("ParityInstance",
+                               {"Flags", "Changed", "Priority", "Some Retired Column"});
+  const QStringList stored = s.modlist_hidden_columns("ParityInstance");
+  QSet<int>         hidden_cols;
+  for (const QString &name : stored) {
+    for (int k = 0; k < ui::ModList::ColumnCount; ++k)
+      if (ui::ModList::column_name(k) == name)
+        hidden_cols.insert(k);
+  }
+  CHECK(hidden_cols.size() == 3);  // the retired name contributes nothing
+  CHECK(hidden_cols.contains(ui::ModList::Flags));
+  CHECK(hidden_cols.contains(ui::ModList::Changed));
+  CHECK(hidden_cols.contains(ui::ModList::Priority));
+
+  // A fresh instance (no stored value yet) gets the defaults, and a second
+  // call must not clobber a deliberate override.
+  s.ensure_modlist_column_defaults("FreshInstance");
+  CHECK(s.modlist_hidden_columns("FreshInstance") ==
+        ui::ModList::default_hidden_column_names());
+  s.ensure_modlist_column_defaults("FreshInstance");
+  CHECK(s.modlist_hidden_columns("FreshInstance") ==
+        ui::ModList::default_hidden_column_names());
+
+  s.set_modlist_hidden_columns("FreshInstance", {});
+  s.ensure_modlist_column_defaults("FreshInstance");
+  CHECK(s.modlist_hidden_columns("FreshInstance").isEmpty());
 }

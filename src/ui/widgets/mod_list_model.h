@@ -109,8 +109,37 @@ class ModList : public QAbstractTableModel {
 public:
   // Column order is the display order: Fold first (never hideable, pinned to
   // the left edge, carries the separator fold arrow), Name second, Priority
-  // last. Adding/reordering columns is safe - no code persists column
-  // indices.
+  // last.
+  //
+  // MO2 (references/modorganizer/src/modlist.h EColumn) shows 13 columns in
+  // the order Name, Conflicts, Flags, Content, Category, Author, Uploader,
+  // Nexus ID, Source Game, Version, Installation, Priority, Notes. This model
+  // carries 11, chosen against that list:
+  //
+  //   MO2 column      here
+  //   --------------  -------------------------------------------
+  //   Mod Name        Name
+  //   Conflicts       Conflicts
+  //   Flags           Flags
+  //   Content         - no per-mod content ids are built at scan time
+  //   Category        Category
+  //   Author          - not written to meta.ini by any GMM path
+  //   Uploader        - ditto, and rarely differs from Author
+  //   Nexus ID        SourceId (source-agnostic: Nexus / LoversLab / Steam)
+  //   Source Game     - a GMM instance is single-game, so there is no origin
+  //   Version         Version
+  //   Installation    Installation
+  //   Priority        Priority
+  //   Notes           - no notes are stored or edited anywhere
+  //
+  // and three columns MO2 does not have: Fold (the separator arrow), Source
+  // (which site a mod came from) and Changed (folder mtime).
+  //
+  // Nothing persists a column INDEX. Column visibility is stored by name
+  // (Settings::modlist_hidden_columns) and the mod-list header state is
+  // deliberately not restored, so inserting here cannot reinterpret a value
+  // saved by an older build. Adding a column still means adding a case to
+  // data(), headerData() and the two lists below.
   enum Column {
     Fold,
     Name,
@@ -125,6 +154,20 @@ public:
     Priority,
     ColumnCount
   };
+
+  // Stable per-column name, used as the persistence key for the user's
+  // visibility choice. Must never be renamed once released: a rename would
+  // make every stored hidden-column list silently stop matching.
+  // Empty for Fold, which is locked visible.
+  [[nodiscard]] static QString column_name(int column);
+
+  // Per-column hover text, indexed by column and always ColumnCount long.
+  // MO2's wording is used verbatim for every column MO2 has (modlist.cpp
+  // ModList::getColumnToolTip); the two columns MO2 lacks keep our own.
+  [[nodiscard]] static QStringList header_tooltips();
+
+  // Column names hidden for a newly created instance.
+  [[nodiscard]] static QStringList default_hidden_column_names();
 
   // Custom role for the separator-marking scrollbar; separator rows return
   // their background QColor, everything else returns an invalid variant.

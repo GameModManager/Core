@@ -1,5 +1,7 @@
 #include "ui/settings/settings.h"
 
+#include "ui/widgets/mod_list_model.h"
+
 #include <algorithm>
 
 Settings &Settings::instance() {
@@ -221,8 +223,8 @@ void Settings::ensure_modlist_column_defaults(const QString &instance_name) {
   // contains(), not emptiness: a user who deliberately unhides every column
   // persists an empty list under an existing key and must keep it.
   if (!settings_.contains("modlist/columns/" + instance_name))
-    set_modlist_hidden_columns(
-        instance_name, {"Category", "Source", "Source ID", "Installation", "Changed"});
+    set_modlist_hidden_columns(instance_name,
+                               ui::ModList::default_hidden_column_names());
 }
 
 bool Settings::modlist_nested(const QString &instance_name) const {
