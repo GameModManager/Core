@@ -15,10 +15,12 @@
 //      ledger state.
 #include "engine/deploy/strategy_direct.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <string>
 #include <unistd.h>
 #include <utility>
@@ -118,10 +120,18 @@ TEST_CASE("direct strategy deploy_all and queries", "[engine]") {
   write_file(base / "mods" / "Overwrite" / "stray.txt", "x");
   write_file(base / "mods" / "MERGED" / "merged.txt", "x");
 
+  // DeployProgressFn is invoked from the executor's WORKER THREADS
+  // (deploy_utils.h), so the collector needs a lock: two work items farmed to
+  // two threads used to emplace_back into the same vector concurrently, which
+  // corrupts the heap ("double free or corruption") or loses the ordering of
+  // the reported values. Delivery order across threads is not part of the
+  // contract either, so the calls are checked as a set, not as "the last one".
+  std::mutex progress_mutex;
   std::vector<std::pair<int, int>> progress;
-  check(strategy.deploy_all([&progress](int done, int total) {
-    progress.emplace_back(done, total);
-  }),
+  check(strategy.deploy_all([&](int done, int total) {
+          std::lock_guard<std::mutex> lock(progress_mutex);
+          progress.emplace_back(done, total);
+        }),
         "deploy_all succeeds");
 
   // Enabled mod deployed as symlinks into game_dir.
@@ -138,10 +148,17 @@ TEST_CASE("direct strategy deploy_all and queries", "[engine]") {
   check(!fs::exists(base / "game" / "Data" / "Overwrite"), "Overwrite dir skipped");
   check(!fs::exists(base / "game" / "Data" / "MERGED"), "MERGED dir skipped");
 
-  // Progress reported and completes at the total (2 files).
+  // Progress reported: exactly one report per work item, every report carrying
+  // the work count, and the deploy reported completion at that count. Checked
+  // over the whole set because worker threads may deliver out of order.
   check(!progress.empty(), "progress reported");
-  check(progress.back().second == 2, "progress total is the work count");
-  check(progress.back().first == 2, "progress completes at the total");
+  check(progress.size() == 2, "one progress report per work item");
+  check(std::all_of(progress.begin(), progress.end(),
+                    [](const std::pair<int, int> &p) { return p.second == 2; }),
+        "progress total is the work count");
+  check(std::any_of(progress.begin(), progress.end(),
+                    [](const std::pair<int, int> &p) { return p.first == 2; }),
+        "progress completes at the total");
 
   // Persistent ledger written at the instance root.
   check(fs::is_regular_file(base / ".gmm_deploy_ledger"),
