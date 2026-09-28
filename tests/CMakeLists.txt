@@ -312,10 +312,12 @@ gmm_catch2_test(preview_fit_test ui/preview_fit_test.cpp
     LIBS gmm_ui)
 
 gmm_catch2_test(source_tab_test ui/source_tab_test.cpp
+    support/lsan_exit_leak_suppressions.cpp
     UI
     LIBS gmm_ui)
 
 gmm_catch2_test(loverslab_source_panel_test ui/loverslab_source_panel_test.cpp
+    support/lsan_exit_leak_suppressions.cpp
     UI
     LIBS gmm_ui)
 
@@ -370,6 +372,7 @@ gmm_catch2_test(bbcode_test ui/bbcode_test.cpp
 # QApplication for the loadResource override to be exercisable, so this is
 # a UI test (offscreen).
 gmm_catch2_test(description_browser_test ui/description_browser_test.cpp
+    support/lsan_exit_leak_suppressions.cpp
     UI
     LIBS gmm_ui)
 
