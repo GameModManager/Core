@@ -21,6 +21,7 @@
 #include <QToolBar>
 #include <QTreeWidget>
 #include <QUrl>
+#include <QWhatsThis>
 #include <algorithm>
 #include <fstream>
 #include <iterator>
@@ -723,6 +724,11 @@ void SettingsController::connect_menu_actions() {
           });
 
   // --- Tools ---
+  // Tools > Tool Plugins: MO2 opens its plugin list from Ctrl+I, here the list
+  // is the right panel's Plugins tab.
+  connect(w_->menu_bar_, &AppMenuBar::tool_plugins_requested, this, [this]() {
+    w_->right_panel_->show_plugins_tab();
+  });
   connect(w_->menu_bar_, &AppMenuBar::tool_requested, this,
           [this](const QString &tool_id, const QString &game_id) {
             if (!w_->plugin_loader_)
@@ -763,6 +769,13 @@ void SettingsController::connect_menu_actions() {
           });
 
   // --- Help ---
+  // "Help on UI" and the link entries are pure Qt: What This mode and a
+  // browser hand-off, no app state involved.
+  connect(w_->menu_bar_, &AppMenuBar::help_on_ui_requested, this, []() {
+    QWhatsThis::enterWhatsThisMode();
+  });
+  connect(w_->menu_bar_, &AppMenuBar::open_url_requested, this,
+          [](const QString &url) { QDesktopServices::openUrl(QUrl(url)); });
   connect(w_->menu_bar_, &AppMenuBar::about_requested, this, [this]() {
     QMessageBox::about(w_, tr("About GameModManager"),
                        "<h3>GameModManager</h3>"

@@ -40,7 +40,10 @@ void AppMenuBar::build_file_menu() {
   menu->addSeparator();
 
   auto *import_mods = menu->addAction(tr("Import Mods..."));
-  import_mods->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I));
+  // MO2's Ctrl+M Install Mod installs a new mod from an archive, which is what
+  // this entry does; Ctrl+Shift+I stays alongside it.
+  import_mods->setShortcuts({QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I),
+                             QKeySequence(Qt::CTRL | Qt::Key_M)});
   connect(import_mods, &QAction::triggered, this, &AppMenuBar::import_mods_requested);
 
   auto *export_mods = menu->addAction(tr("Export Mods..."));
@@ -59,7 +62,9 @@ void AppMenuBar::build_file_menu() {
   menu->addSeparator();
 
   auto *settings = menu->addAction(tr("Settings..."));
-  settings->setShortcut(QKeySequence::Preferences);
+  // MO2 binds Settings to Ctrl+S; the platform-native Preferences key stays.
+  settings->setShortcuts(
+      {QKeySequence::Preferences, QKeySequence(Qt::CTRL | Qt::Key_S)});
   connect(settings, &QAction::triggered, this, &AppMenuBar::settings_requested);
 
   menu->addSeparator();
@@ -193,6 +198,14 @@ void AppMenuBar::build_tools_menu() {
   sort_action_ = tools_menu_->addAction(tr("Sort Mods"));
   sort_action_->setVisible(false);
   connect(sort_action_, &QAction::triggered, this, &AppMenuBar::sort_mods_requested);
+
+  // MO2's Tool Plugins entry (Ctrl+I) shows the loaded plugins; here that list
+  // is the right panel's Plugins tab. Below the per-game tools because it is
+  // an app-level view, not one of them.
+  tools_menu_->addSeparator();
+  auto *tool_plugins = tools_menu_->addAction(tr("Tool Plugins"));
+  tool_plugins->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_I));
+  connect(tool_plugins, &QAction::triggered, this, &AppMenuBar::tool_plugins_requested);
 }
 
 void AppMenuBar::update_tools_for_game(const std::string &game_id,
@@ -285,17 +298,50 @@ void AppMenuBar::set_checkerboard_style(int style) {
 
 // --------- Help ---------
 
+// Where the Help menu's link entries go. An empty string means "not
+// configured": the entry keeps its place in the menu but is disabled, so the
+// menu has MO2's shape without pointing at an address nobody picked.
+namespace {
+constexpr auto kDocumentationUrl = "";
+constexpr auto kDiscordUrl       = "";
+constexpr auto kIssueUrl         = "";
+}  // namespace
+
 void AppMenuBar::build_help_menu() {
   auto *menu = addMenu(tr("&Help"));
+  // MO2 binds Ctrl+H on the Help action itself, so the key pops the menu open
+  // rather than firing one of its entries. QMenu has no setShortcut in Qt 6 -
+  // the key rides on the menu's QAction, which is what QMenuBar watches.
+  menu->menuAction()->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_H));
 
-  auto *stats = menu->addAction(tr("Instance Statistics..."));
-  connect(stats, &QAction::triggered, this, &AppMenuBar::instance_statistics_requested);
+  auto link_entry = [this, menu](const QString &title, const QString &url) {
+    auto *act = menu->addAction(title);
+    act->setEnabled(!url.isEmpty());
+    connect(act, &QAction::triggered, this,
+            [this, url]() { emit open_url_requested(url); });
+    return act;
+  };
 
-  auto *debug = menu->addAction(tr("Debug Panel"));
-  debug->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D));
-  connect(debug, &QAction::triggered, this, &AppMenuBar::debug_panel_requested);
+  auto *help_on_ui = menu->addAction(tr("Help on UI"));
+  connect(help_on_ui, &QAction::triggered, this, &AppMenuBar::help_on_ui_requested);
 
-  menu->addSeparator();
+  link_entry(tr("Documentation"), kDocumentationUrl);
+
+  // The game's own support wiki. The URL is read when the entry fires, not
+  // when it is built, so a game switch that arrives later still opens the new
+  // game's page.
+  game_support_wiki_action_ = menu->addAction(tr("Game Support Wiki"));
+  connect(game_support_wiki_action_, &QAction::triggered, this,
+          [this]() { emit open_url_requested(game_support_url_); });
+  set_game_support_url(game_support_url_);
+
+  link_entry(tr("Chat on Discord"), kDiscordUrl);
+  link_entry(tr("Report Issue"), kIssueUrl);
+
+  // MO2 fills this from the tutorials/*.js "//TL" headers, ordered by their
+  // order value. Nothing ships tutorial content yet, so it stands empty and
+  // disabled until some does.
+  menu->addMenu(tr("Tutorials"))->setEnabled(false);
 
   auto *about = menu->addAction(tr("About GameModManager"));
   connect(about, &QAction::triggered, this, &AppMenuBar::about_requested);
@@ -303,7 +349,24 @@ void AppMenuBar::build_help_menu() {
   auto *about_qt = menu->addAction(tr("About Qt"));
   connect(about_qt, &QAction::triggered, this, &AppMenuBar::about_qt_requested);
 
+  // GMM-only entries, below MO2's block rather than mixed into it, so the
+  // order above stays the one MO2 documents.
   menu->addSeparator();
+
+  auto *stats = menu->addAction(tr("Instance Statistics..."));
+  connect(stats, &QAction::triggered, this, &AppMenuBar::instance_statistics_requested);
+
+  auto *debug = menu->addAction(tr("Debug Panel"));
+  debug->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D));
+  connect(debug, &QAction::triggered, this, &AppMenuBar::debug_panel_requested);
+}
+
+void AppMenuBar::set_game_support_url(const QString &url) {
+  game_support_url_ = url;
+  if (!game_support_wiki_action_)
+    return;
+  game_support_wiki_action_->setVisible(!url.isEmpty());
+  game_support_wiki_action_->setEnabled(!url.isEmpty());
 }
 
 // --------- Recent instances ---------

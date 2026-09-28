@@ -58,6 +58,10 @@ public:
   // the new entry appear.
   void show_downloads_tab();
 
+  // Same, for the Plugins tab: Tools > Tool Plugins switches to the loaded
+  // plugin list. No-op when the game has no plugins capability.
+  void show_plugins_tab();
+
   // Re-apply the current filter text to the current tab's table. Used after
   // a Plugins-tab refresh, whose set_plugins() rebuild rebuilds rows and
   // clears the row-hidden states the filter had set.
@@ -89,6 +93,10 @@ signals:
 private:
   void clear_tabs();
   void ensure_tab(const std::string &capability, const QString &label);
+  // Build `capability` if needed and make its tab current, without recording it
+  // as the instance's last tab. Backs show_downloads_tab() and
+  // show_plugins_tab().
+  void show_capability_tab(const std::string &capability);
   // Build the real content widget for a capability (no tab-bar changes).
   // Returns nullptr for unknown capabilities. Caller takes ownership.
   QWidget *build_tab(const std::string &capability);

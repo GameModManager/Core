@@ -419,14 +419,24 @@ SavesTab *RightPanel::saves_tab() const {
 
 void RightPanel::show_downloads_tab() {
   // A download arrived: the user should see it, so build the tab now.
-  auto *dt = ensure_downloads_tab();
-  if (!dt)
+  show_capability_tab("downloads");
+}
+
+void RightPanel::show_plugins_tab() {
+  // Tools > Tool Plugins (Ctrl+I): the user asked to see the plugin list, so
+  // build the tab now and switch to it.
+  show_capability_tab("plugins");
+}
+
+void RightPanel::show_capability_tab(const std::string &capability) {
+  auto *tab = materialize(capability);
+  if (!tab)
     return;
-  int index = tab_widget_->indexOf(dt);
+  int index = tab_widget_->indexOf(tab);
   if (index < 0)
     return;
-  // Programmatic switch (a download arrived) - not a user selection, so
-  // don't persist it as the instance's last tab.
+  // Programmatic switch (an event, not a user selection) - don't persist it as
+  // the instance's last tab.
   suppress_tab_save_ = true;
   tab_widget_->setCurrentIndex(index);
   suppress_tab_save_ = false;
