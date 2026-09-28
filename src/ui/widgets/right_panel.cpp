@@ -423,7 +423,7 @@ void RightPanel::show_downloads_tab() {
 }
 
 void RightPanel::show_plugins_tab() {
-  // Tools > Tool Plugins (Ctrl+I): the user asked to see the plugin list, so
+  // Tools > Tool Plugins (Ctrl+I): the entry asks for the plugin list, so
   // build the tab now and switch to it.
   show_capability_tab("plugins");
 }

@@ -242,7 +242,7 @@ TEST_CASE("menu shortcuts match MO2's table", "[ui][menu][parity][shortcuts]") {
     CHECK(settings->shortcuts().contains(QKeySequence::Preferences));
   }
 
-  SECTION("keys still on their pre-parity GMM action, pending the user's call") {
+  SECTION("keys MO2 wants for Profiles and Visit Nexus keep their GMM entries") {
     // MO2 wants Ctrl+P Profiles and Ctrl+N Visit Nexus. Both keys are taken
     // here, so neither was stolen: the pipeline and the instance switcher
     // keep working and MO2's Profiles / Visit Nexus have no menu entry yet.
